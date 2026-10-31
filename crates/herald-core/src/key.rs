@@ -81,22 +81,17 @@ impl FromStr for Key {
     type Err = NotAKey;
 
     fn from_str(text: &str) -> Result<Self, Self::Err> {
-        if text.len() != HEX_DIGITS {
+        let hex = text
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte));
+        if !hex || text.len() != HEX_DIGITS {
             return Err(NotAKey);
         }
-        let digits: Vec<u8> = text
-            .chars()
-            .map(|digit| match digit {
-                '0'..='9' | 'a'..='f' => digit
-                    .to_digit(16)
-                    .and_then(|value| u8::try_from(value).ok()),
-                _ => None,
-            })
-            .collect::<Option<_>>()
-            .ok_or(NotAKey)?;
-        let bytes: Vec<u8> = digits
+        let bytes: Vec<u8> = text
+            .as_bytes()
             .chunks(2)
-            .map(|pair| pair.iter().fold(0, |byte, digit| byte << 4 | digit))
+            .filter_map(|pair| std::str::from_utf8(pair).ok())
+            .filter_map(|pair| u8::from_str_radix(pair, 16).ok())
             .collect();
         bytes.try_into().map(Self).map_err(|_| NotAKey)
     }

@@ -6,7 +6,26 @@ const TITLE: &str =
     "📦 {{ event.project }} {{ event.version }}{% if event.prerelease %} · pre-release{% endif %}";
 
 fn templates(sources: &[(&str, &str)]) -> Templates {
-    Templates::compile(sources).unwrap()
+    let lines: Vec<(&str, &str, Form)> = sources
+        .iter()
+        .map(|&(name, source)| (name, source, Form::Line))
+        .collect();
+    Templates::compile(&lines).unwrap()
+}
+
+fn markdown(source: &str, event: &Event) -> String {
+    let route = RouteId::new("r");
+    Templates::compile(&[("t", source, Form::Markdown)])
+        .unwrap()
+        .render(
+            "t",
+            &Context {
+                event,
+                route: &route,
+                herald: "0.1.0",
+            },
+        )
+        .unwrap()
 }
 
 fn render(source: &str, event: &Event) -> Result<String, TemplateError> {
@@ -95,9 +114,9 @@ fn a_render_line_is_on_one_line() {
 #[test]
 fn every_template_that_does_not_compile_is_named() {
     let errors = Templates::compile(&[
-        ("good", "{{ event.title }}"),
-        ("bad", "{% if %}"),
-        ("worse", "{{"),
+        ("good", "{{ event.title }}", Form::Line),
+        ("bad", "{% if %}", Form::Markdown),
+        ("worse", "{{", Form::Line),
     ])
     .unwrap_err();
     let names: Vec<&str> = errors.iter().map(|error| error.name.as_str()).collect();
@@ -178,4 +197,44 @@ fn markup_in_event_text_is_left_to_the_dialect_conversion() {
     })
     .unwrap();
     assert_eq!(render("{{ event.title }}", &html).unwrap(), "<b>x</b>");
+}
+
+#[test]
+fn a_markdown_template_places_event_text_literally_and_the_body_as_markdown() {
+    let hostile = Event::normalise(Draft {
+        title: "[click](https://evil.example) *now* @everyone <@&1> #1".to_owned(),
+        body: "**bold** [docs](https://example.org)".to_owned(),
+        ..draft()
+    })
+    .unwrap();
+    assert_eq!(
+        markdown("## {{ event.title }}\n\n{{ event.body }}", &hostile),
+        "## \\[click\\]\\(https\\:\\/\\/evil\\.example\\) \\*now\\* \\@everyone \\<\\@\\&1\\> \\#1\n\n**bold** [docs](https://example.org)"
+    );
+}
+
+#[test]
+fn a_markdown_template_prints_numbers_and_absent_values_as_a_line_template_does() {
+    let unversioned = Event::normalise(Draft {
+        version: None,
+        ..draft()
+    })
+    .unwrap();
+    assert_eq!(
+        markdown("{{ 1 + 1 }} {{ event.version }}", &unversioned),
+        render("{{ 1 + 1 }} {{ event.version }}", &unversioned).unwrap()
+    );
+    assert!(
+        Templates::compile(&[("t", "{{ event.nope }}", Form::Markdown)])
+            .unwrap()
+            .render(
+                "t",
+                &Context {
+                    event: &event(),
+                    route: &RouteId::new("r"),
+                    herald: "0.1.0"
+                }
+            )
+            .is_err()
+    );
 }

@@ -19,9 +19,9 @@ pub use event::{Draft, Event, Kind, Problem};
 pub use housekeep::{Chore, Schedule, due, schedules};
 pub use key::{Identity, Key, NotAKey, RouteId};
 pub use ledger::{Entry, Facts, Lease, Plan, Planned, Record, State, Step, plan, steps};
-pub use markup::{Text, convert};
+pub use markup::{Text, convert, literal};
 pub use profile::{Dialect, Features, Limits, Measure, MentionStyle, Profile, Threads};
-pub use render::{Context, TemplateError, Templates};
+pub use render::{Context, Form, TemplateError, Templates};
 pub use route::{
     Delivery, DestinationName, Filter, Mentions, Prereleases, RoleId, Route, SourceName,
     TemplateName, Thread, route,

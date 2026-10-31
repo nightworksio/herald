@@ -1,0 +1,15 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc fb3123248dcd23f14a4769141e04c809d2aa13a9ef231ee87191606190ad33fe # shrinks to markdown = "@everyone`@everyone`"
+cc aa03ab459824e9e0eeff09e421e3cb5dd13e1cb58cc00fb3699d114e2f75e89f # shrinks to title = "", body = "`@everyone`"
+cc 6384dd9a2d5fe71b4c18e51352565f85cf192290889ae7710660d41662da1ea7 # shrinks to markdown = "> @everyone"
+cc 042597367992c6cd23d32767a8ade0fe23c9ef56ae43f1a5dbd4f7718ee72cad # shrinks to title = "", body = "`@everyone``` `"
+cc 0eb7c6c1255b7bc7ee924ba8d1aa6f067eaf599c2e6ddc6e808c4774bd2c1959 # shrinks to markdown = "```@everyone"
+cc 6db6df7f8ba86bd7c37276c34584f4de681045648689601e842d0f13bbbd50f6 # shrinks to title = "", body = "```https://matrix.to/#/@a:b"
+cc bbdb6f0794d75afd48a32c008b1cf7a992033a9773cb6d8b838a5208a5e277c7 # shrinks to markdown = "0)"
+cc 8c1f275836d1587b5b8bbf204c92591dbd96c7b50a4496aaf4e4ea5c07ac3d79 # shrinks to title = "", body = "[- [x] \\[x](https://evil.example)"
+cc b3f73be93f8cf94a4130df6369dc87c9503cf98beb7ad8d1bc1b2b806a10f5df # shrinks to markdown = "[![i](https://img.example/i.png)\\[pill](https://matrix.to/#/@a:b)"

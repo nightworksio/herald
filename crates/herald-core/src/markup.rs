@@ -11,20 +11,19 @@ pub struct Text {
     pub html: Option<String>,
 }
 
-/// `markdown` in `dialect`, with raw HTML shown as text and links to anything
-/// but the web or mail shown as their text alone.
+/// `markdown` in `dialect`.
+///
+/// Whatever the Markdown says, the result mentions no one and links nowhere it
+/// does not show: raw HTML is shown as text, a link to anything but the web or
+/// mail keeps only its text, a link shows its URL, every URL is
+/// percent-encoded past what could close it, and an `@` cannot start a
+/// mention.
 #[must_use]
 pub fn convert(markdown: &str, dialect: Dialect) -> Text {
     match dialect {
         Dialect::Matrix => {
             let mut html = String::new();
-            html::push_html(
-                &mut html,
-                safe(markdown).map(|event| match event {
-                    Event::Html(text) | Event::InlineHtml(text) => Event::Text(text),
-                    other => other,
-                }),
-            );
+            html::push_html(&mut html, safe(markdown, dialect).map(matrix));
             Text {
                 body: Writer::run(markdown, Dialect::Plain),
                 html: Some(html.trim_end().to_owned()),
@@ -37,27 +36,124 @@ pub fn convert(markdown: &str, dialect: Dialect) -> Text {
     }
 }
 
+/// `text` shown literally in `dialect`: nothing in it is read as markup, a
+/// mention or a link. For a title or a name placed where markup is read.
+#[must_use]
+pub fn literal(text: &str, dialect: Dialect) -> Text {
+    match dialect {
+        Dialect::Discord => Text {
+            body: discord_escape(text),
+            html: None,
+        },
+        Dialect::Slack => Text {
+            body: slack_escape(text),
+            html: None,
+        },
+        Dialect::Matrix => {
+            let mut html = String::new();
+            html::push_html(
+                &mut html,
+                std::iter::once(Event::Text(CowStr::from(neutralised(text)))),
+            );
+            Text {
+                body: neutralised(text),
+                html: Some(html),
+            }
+        }
+        Dialect::Plain => Text {
+            body: neutralised(text),
+            html: None,
+        },
+    }
+}
+
 /// The Markdown extensions every dialect reads.
 pub(crate) const EXTENSIONS: Options =
     Options::ENABLE_STRIKETHROUGH.union(Options::ENABLE_TASKLISTS);
+
+const BREAK: char = '\u{200B}';
+const PILLS: &str = "https://matrix.to/";
 
 fn parser(markdown: &str) -> Parser<'_> {
     Parser::new_ext(markdown, EXTENSIONS)
 }
 
-fn web(url: &str) -> bool {
-    ["https://", "http://", "mailto:"]
+fn linkable(url: &str, dialect: Dialect) -> bool {
+    let web = ["https://", "http://", "mailto:"]
         .iter()
-        .any(|scheme| url.starts_with(scheme))
+        .any(|scheme| url.starts_with(scheme));
+    web && !(dialect == Dialect::Matrix && url.starts_with(PILLS))
 }
 
-fn safe(markdown: &str) -> impl Iterator<Item = Event<'_>> {
+fn safe_url(url: &str) -> String {
+    url.bytes()
+        .map(|byte| {
+            if byte.is_ascii_graphic() && !b"\"<>\\^`{|}()[]".contains(&byte) {
+                char::from(byte).to_string()
+            } else {
+                format!("%{byte:02X}")
+            }
+        })
+        .collect()
+}
+
+fn language(info: &str) -> String {
+    info.split_whitespace()
+        .next()
+        .filter(|word| {
+            word.chars()
+                .all(|character| character.is_ascii_alphanumeric() || "_+-.#".contains(character))
+        })
+        .unwrap_or_default()
+        .to_owned()
+}
+
+fn unfenced(code: &str) -> String {
+    let mut code = code.to_owned();
+    while code.contains("``") {
+        code = code.replace("``", &format!("`{BREAK}`"));
+    }
+    code
+}
+
+fn neutralised(text: &str) -> String {
+    text.replace('@', &format!("@{BREAK}"))
+}
+
+fn safe(markdown: &str, dialect: Dialect) -> impl Iterator<Item = Event<'_>> {
     let mut unsafe_links = Vec::new();
     parser(markdown).filter_map(move |event| match event {
-        Event::Start(Tag::Link { ref dest_url, .. } | Tag::Image { ref dest_url, .. }) => {
-            let drop = !web(dest_url);
-            unsafe_links.push(drop);
-            (!drop).then_some(event)
+        Event::Start(Tag::Link {
+            link_type,
+            dest_url,
+            title,
+            id,
+        }) => {
+            let keep = linkable(&dest_url, dialect);
+            unsafe_links.push(!keep);
+            let dest_url = CowStr::from(safe_url(&dest_url));
+            keep.then_some(Event::Start(Tag::Link {
+                link_type,
+                dest_url,
+                title,
+                id,
+            }))
+        }
+        Event::Start(Tag::Image {
+            link_type,
+            dest_url,
+            title,
+            id,
+        }) => {
+            let keep = linkable(&dest_url, dialect);
+            unsafe_links.push(!keep);
+            let dest_url = CowStr::from(safe_url(&dest_url));
+            keep.then_some(Event::Start(Tag::Image {
+                link_type,
+                dest_url,
+                title,
+                id,
+            }))
         }
         Event::End(TagEnd::Link | TagEnd::Image) => {
             let drop = unsafe_links.pop().unwrap_or(false);
@@ -65,6 +161,31 @@ fn safe(markdown: &str) -> impl Iterator<Item = Event<'_>> {
         }
         other => Some(other),
     })
+}
+
+fn matrix(event: Event<'_>) -> Event<'_> {
+    match event {
+        Event::Text(text) | Event::Html(text) | Event::InlineHtml(text) => {
+            Event::Text(CowStr::from(neutralised(&text)))
+        }
+        Event::Start(Tag::Image {
+            link_type,
+            dest_url,
+            title,
+            id,
+        }) => Event::Start(Tag::Link {
+            link_type,
+            dest_url,
+            title,
+            id,
+        }),
+        Event::Code(code) => Event::Code(CowStr::from(neutralised(&code))),
+        Event::Start(Tag::CodeBlock(CodeBlockKind::Fenced(info))) => Event::Start(Tag::CodeBlock(
+            CodeBlockKind::Fenced(CowStr::from(language(&info))),
+        )),
+        Event::End(TagEnd::Image) => Event::End(TagEnd::Link),
+        other => other,
+    }
 }
 
 struct Writer {
@@ -86,7 +207,7 @@ impl Writer {
             links: Vec::new(),
             code: false,
         };
-        for event in safe(markdown) {
+        for event in safe(markdown, dialect) {
             writer.event(event);
         }
         writer.root.trim().to_owned()
@@ -165,8 +286,10 @@ impl Writer {
                 self.block();
                 self.code = true;
                 let language = match kind {
-                    CodeBlockKind::Fenced(language) if self.dialect == Dialect::Discord => language,
-                    _ => CowStr::Borrowed(""),
+                    CodeBlockKind::Fenced(info) if self.dialect == Dialect::Discord => {
+                        language(&info)
+                    }
+                    _ => String::new(),
                 };
                 if self.dialect != Dialect::Plain {
                     self.push(&format!("```{language}\n"));
@@ -233,7 +356,6 @@ impl Writer {
                 self.lists.pop();
                 self.block();
             }
-            TagEnd::Item => self.line(),
             TagEnd::Emphasis => self.mark("*", "_", ""),
             TagEnd::Strong => self.mark("**", "*", ""),
             TagEnd::Strikethrough => self.mark("~~", "~", ""),
@@ -253,38 +375,40 @@ impl Writer {
 
     fn inline_code(&mut self, code: &str) {
         match self.dialect {
-            Dialect::Plain | Dialect::Matrix => self.push(code),
-            Dialect::Slack => {
-                let code = slack_escape(code);
-                self.push(&format!("`{code}`"));
-            }
+            Dialect::Plain | Dialect::Matrix => self.push(&neutralised(code)),
+            Dialect::Slack if code.contains('`') => self.push(&slack_escape(code)),
+            Dialect::Slack => self.push(&format!("`{}`", slack_escape(code))),
             Dialect::Discord => {
+                let code = unfenced(&neutralised(code));
                 let fence = if code.contains('`') { "``" } else { "`" };
-                self.push(&format!("{fence}{code}{fence}"));
+                let pad = if code.starts_with('`') || code.ends_with('`') {
+                    " "
+                } else {
+                    ""
+                };
+                self.push(&format!("{fence}{pad}{code}{pad}{fence}"));
             }
         }
     }
 
     fn open_link(&mut self, url: &str) {
-        self.links.push(Some(url.to_owned()));
+        let nested = !self.links.is_empty();
+        self.links.push((!nested).then(|| url.to_owned()));
         self.buffers.push(String::new());
     }
 
     fn close_link(&mut self) {
         let text = self.buffers.pop().unwrap_or_default();
-        let url = self.links.pop().flatten().unwrap_or_default();
-        let bare = text.is_empty() || text == url;
+        let Some(url) = self.links.pop().flatten() else {
+            self.push(&text);
+            return;
+        };
+        let bare = text.is_empty() || text == self.escape(&url);
         let link = match self.dialect {
-            Dialect::Slack => {
-                let url = url.replace('|', "%7C").replace('>', "%3E");
-                if bare {
-                    format!("<{url}>")
-                } else {
-                    format!("<{url}|{text}>")
-                }
-            }
+            Dialect::Slack | Dialect::Discord if bare => format!("<{url}>"),
+            Dialect::Slack => format!("<{url}|{text}>"),
+            Dialect::Discord => format!("{text} (<{url}>)"),
             _ if bare => url,
-            Dialect::Discord => format!("[{text}]({url})"),
             _ => format!("{text} ({url})"),
         };
         self.push(&link);
@@ -292,9 +416,11 @@ impl Writer {
 
     fn escape(&self, text: &str) -> String {
         match self.dialect {
+            Dialect::Slack if self.code => slack_escape(&unfenced(text)),
             Dialect::Slack => slack_escape(text),
-            Dialect::Discord if !self.code => discord_escape(text),
-            _ => text.to_owned(),
+            Dialect::Discord if self.code => unfenced(&neutralised(text)),
+            Dialect::Discord => discord_escape(text),
+            _ => neutralised(text),
         }
     }
 }
@@ -308,16 +434,18 @@ fn slack_escape(text: &str) -> String {
 fn discord_escape(text: &str) -> String {
     let mut escaped = String::with_capacity(text.len());
     for character in text.chars() {
-        if matches!(
-            character,
-            '\\' | '*' | '_' | '~' | '`' | '|' | '<' | '>' | '[' | ']' | '#'
-        ) {
+        if character.is_ascii_punctuation() && character != '@' {
             escaped.push('\\');
         }
         escaped.push(character);
+        if character == '@' {
+            escaped.push(BREAK);
+        }
     }
     escaped
 }
 
+#[cfg(test)]
+mod inert;
 #[cfg(test)]
 mod tests;

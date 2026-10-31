@@ -62,6 +62,28 @@ fn a_long_word_is_cut_between_graphemes_and_never_inside_one() {
 }
 
 #[test]
+fn a_grapheme_longer_than_a_part_is_cut_between_its_characters() {
+    let cluster = format!("e{}", "\u{301}".repeat(9));
+    let parts = chunk(&cluster, Dialect::Plain, room(4, 4));
+    assert_eq!(
+        parts
+            .iter()
+            .map(|part| part.body.chars().count())
+            .collect::<Vec<_>>(),
+        [4, 4, 2]
+    );
+}
+
+#[test]
+fn a_code_block_whose_opening_does_not_fit_loses_its_language() {
+    let markdown = format!("```{}\nlet a = 1;\n```", "x".repeat(40));
+    assert_eq!(
+        bodies(&chunk(&markdown, Dialect::Discord, room(20, 20))),
+        ["```\nlet a = 1;\n```"]
+    );
+}
+
+#[test]
 fn a_code_block_cut_in_two_is_fenced_on_both_sides() {
     let markdown = "```rust\nlet a = 1;\nlet b = 2;\n```";
     let parts = chunk(markdown, Dialect::Discord, room(24, 24));

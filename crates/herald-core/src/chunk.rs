@@ -28,6 +28,11 @@ pub fn chunk(markdown: &str, dialect: Dialect, room: Room) -> Vec<Text> {
             if fits(&block, narrowest) {
                 vec![block]
             } else if let Some((open, close, code)) = fenced(&block) {
+                let open = if fits(&format!("{open}\n{close}"), narrowest) {
+                    open
+                } else {
+                    close.clone()
+                };
                 split(
                     &code,
                     &|piece| fits(&format!("{open}\n{piece}\n{close}"), narrowest),
@@ -131,6 +136,7 @@ enum Level {
     Lines,
     Words,
     Graphemes,
+    Chars,
 }
 
 impl Level {
@@ -139,6 +145,10 @@ impl Level {
             Self::Lines => text.split('\n').collect(),
             Self::Words => text.split(' ').collect(),
             Self::Graphemes => text.graphemes(true).collect(),
+            Self::Chars => text
+                .char_indices()
+                .filter_map(|(index, character)| text.get(index..index + character.len_utf8()))
+                .collect(),
         }
     }
 
@@ -146,7 +156,7 @@ impl Level {
         match self {
             Self::Lines => "\n",
             Self::Words => " ",
-            Self::Graphemes => "",
+            Self::Graphemes | Self::Chars => "",
         }
     }
 
@@ -154,7 +164,8 @@ impl Level {
         match self {
             Self::Lines => Some(Self::Words),
             Self::Words => Some(Self::Graphemes),
-            Self::Graphemes => None,
+            Self::Graphemes => Some(Self::Chars),
+            Self::Chars => None,
         }
     }
 }

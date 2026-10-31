@@ -1,0 +1,30 @@
+[package]
+name = "herald-fuzz"
+version = "0.0.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+herald-core = { path = "../crates/herald-core" }
+libfuzzer-sys = "0.4"
+
+[workspace]
+members = ["."]
+
+[[bin]]
+name = "markup"
+path = "fuzz_targets/markup.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "chunk"
+path = "fuzz_targets/chunk.rs"
+test = false
+doc = false
+bench = false
