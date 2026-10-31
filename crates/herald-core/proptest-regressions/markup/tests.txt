@@ -13,3 +13,6 @@ cc 6db6df7f8ba86bd7c37276c34584f4de681045648689601e842d0f13bbbd50f6 # shrinks to
 cc bbdb6f0794d75afd48a32c008b1cf7a992033a9773cb6d8b838a5208a5e277c7 # shrinks to markdown = "0)"
 cc 8c1f275836d1587b5b8bbf204c92591dbd96c7b50a4496aaf4e4ea5c07ac3d79 # shrinks to title = "", body = "[- [x] \\[x](https://evil.example)"
 cc b3f73be93f8cf94a4130df6369dc87c9503cf98beb7ad8d1bc1b2b806a10f5df # shrinks to markdown = "[![i](https://img.example/i.png)\\[pill](https://matrix.to/#/@a:b)"
+cc 37dfe30e17e7894a098c0cd68c6a82afda233de266a6ab09e15458db34eca02b # shrinks to title = "", body = "[x](mailto:a@b.c)"
+cc 55c9671b7aefef5b6a3d9ddaf7c15e2663c5d46a310fa0b1296b7e762d1e15ae # shrinks to title = "", body = "<https://auto.example>@everyone"
+cc 0f84a9dc4c74b2dacd7fb6ad619c242f4a6e00007e46194cf5b6067bc2f67c89 # shrinks to markdown = "\t>>>> "

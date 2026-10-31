@@ -42,7 +42,7 @@ fn markdown_becomes_matrix_html_beside_a_plain_body() {
     assert_eq!(
         text.html.as_deref(),
         Some(
-            "<h1>Added</h1>\n<p>Some <strong>bold</strong>, <em>em</em>, <del>gone</del> and <code>code</code>.</p>\n<ul>\n<li>one</li>\n<li>two\n<ul>\n<li>nested</li>\n</ul>\n</li>\n</ul>\n<ol>\n<li>first</li>\n<li>second</li>\n</ol>\n<blockquote>\n<p>quoted\nline</p>\n</blockquote>\n<pre><code class=\"language-rust\">let x = 1 &lt; 2;\n</code></pre>\n<p><a href=\"https://example.org/r\">the release</a> and <a href=\"https://example.org/auto\">https://example.org/auto</a></p>\n<p>&lt;b&gt;raw&lt;/b&gt; bad a_b*c</p>\n<hr />\n<p>end</p>"
+            "<h1>Added</h1>\n<p>Some <strong>bold</strong>, <em>em</em>, <del>gone</del> and <code>code</code>.</p>\n<ul>\n<li>one</li>\n<li>two\n<ul>\n<li>nested</li>\n</ul>\n</li>\n</ul>\n<ol>\n<li>first</li>\n<li>second</li>\n</ol>\n<blockquote>\n<p>quoted\nline</p>\n</blockquote>\n<pre><code class=\"language-rust\">let x = 1 &lt; 2;\n</code></pre>\n<p>the release (<a href=\"https://example.org/r\">https://example.org/r</a>) and <a href=\"https://example.org/auto\">https://example.org/auto</a></p>\n<p>&lt;b&gt;raw&lt;/b&gt; bad a_b*c</p>\n<hr />\n<p>end</p>"
         )
     );
 }
@@ -75,6 +75,21 @@ fn the_oracle_refuses_what_could_mention_or_link() {
     assert!(inert(&text("`x"), Dialect::Discord).is_err());
     assert!(inert(&text("<@&1>"), Dialect::Discord).is_err());
     assert!(inert(&matrix("<p"), Dialect::Matrix).is_err());
+    assert!(inert(&text("x\n-# small"), Dialect::Discord).is_err());
+    assert!(inert(&text(">>> quote"), Dialect::Discord).is_err());
+    assert!(inert(&text("a & b"), Dialect::Slack).is_err());
+    assert!(inert(&text("#tag"), Dialect::Plain).is_err());
+    assert!(inert(&text("\u{FF20}everyone"), Dialect::Discord).is_err());
+    let masked = Text {
+        body: "https://a.example".to_owned(),
+        html: Some("<a href=\"https://a.example\">b</a>".to_owned()),
+    };
+    assert!(inert(&masked, Dialect::Matrix).is_err());
+    let unshown = Text {
+        body: "nothing".to_owned(),
+        html: Some("<a href=\"https://a.example\">https://a.example</a>".to_owned()),
+    };
+    assert!(inert(&unshown, Dialect::Matrix).is_err());
     assert!(inert(&text("a > b"), Dialect::Slack).is_err());
     assert!(inert(&text("<!channel>"), Dialect::Slack).is_err());
     assert!(inert(&matrix("<script>x</script>"), Dialect::Matrix).is_err());
@@ -86,6 +101,11 @@ fn the_oracle_refuses_what_could_mention_or_link() {
         .is_err()
     );
     assert_eq!(inert(&matrix("<p>x</p>"), Dialect::Matrix), Ok(()));
+    assert_eq!(
+        inert(&convert("3. three", Dialect::Matrix), Dialect::Matrix),
+        Ok(())
+    );
+    assert!(inert(&matrix("<ol start=\"x\">"), Dialect::Matrix).is_err());
     assert!(literal_inert(&text("a*b"), Dialect::Discord).is_err());
     assert!(literal_inert(&text("<https://x.example>"), Dialect::Slack).is_err());
     assert!(literal_inert(&matrix("<p>x</p>"), Dialect::Matrix).is_err());
@@ -112,6 +132,37 @@ fn a_mail_link_is_kept_and_an_image_becomes_its_link() {
     assert_eq!(
         convert("![](https://example.org/logo.png)", Dialect::Plain).body,
         "https://example.org/logo.png"
+    );
+}
+
+#[test]
+fn matrix_html_shows_each_links_url_once_and_keeps_its_formatting() {
+    assert_eq!(
+        convert(
+            "[![i](https://img.example/i.png) **docs**](https://example.org/d)",
+            Dialect::Matrix
+        )
+        .html
+        .as_deref(),
+        Some(
+            "<p>i <strong>docs</strong> (<a href=\"https://example.org/d\">https://example.org/d</a>)</p>"
+        )
+    );
+    assert_eq!(
+        convert("3. three", Dialect::Matrix).html.as_deref(),
+        Some("<ol start=\"3\">\n<li>three</li>\n</ol>")
+    );
+}
+
+#[test]
+fn a_bare_url_in_plain_text_is_kept_apart_from_what_follows() {
+    assert_eq!(
+        convert("<https://a.example>@x and more", Dialect::Plain).body,
+        "https://a.example @\u{200B}x and more"
+    );
+    assert_eq!(
+        convert("<https://a.example> then", Dialect::Plain).body,
+        "https://a.example then"
     );
 }
 
@@ -246,6 +297,29 @@ mod hostile {
         "- [x] ",
         "    ",
         "\t",
+        "<@!1>",
+        "<t:1:R>",
+        "</cmd:1>",
+        "<:e:1>",
+        "<a:e:1>",
+        "-# ",
+        ">>> ",
+        "<!subteam^S1>",
+        "<@U1>",
+        "<#C1>",
+        "&amp;lt;",
+        "&#64;everyone",
+        "&#x40;here",
+        "\u{FF20}everyone",
+        "\u{FE6B}here",
+        "#tag",
+        "&lt;@1&gt;",
+        "\u{200B}",
+        "||spoiler||",
+        "@room:example.org",
+        "<https://a.example>@x",
+        "[a](https://a.example?q=1&r=2)",
+        "\t>>>> ",
     ];
 
     fn hostile() -> impl Strategy<Value = String> {
@@ -319,7 +393,9 @@ fn a_matrix_pill_link_is_its_text_alone_and_an_image_a_link() {
     let markdown = "[pill](https://matrix.to/#/@a:b) ![logo](https://example.org/i.png)";
     assert_eq!(
         convert(markdown, Dialect::Matrix).html.as_deref(),
-        Some("<p>pill <a href=\"https://example.org/i.png\">logo</a></p>")
+        Some(
+            "<p>pill logo (<a href=\"https://example.org/i.png\">https://example.org/i.png</a>)</p>"
+        )
     );
     assert_eq!(
         convert("[pill](https://matrix.to/#/@a:b)", Dialect::Discord).body,

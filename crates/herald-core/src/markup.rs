@@ -1,4 +1,4 @@
-use pulldown_cmark::{CodeBlockKind, CowStr, Event, Options, Parser, Tag, TagEnd, html};
+use pulldown_cmark::{CodeBlockKind, CowStr, Event, LinkType, Options, Parser, Tag, TagEnd, html};
 
 use crate::profile::Dialect;
 
@@ -23,14 +23,18 @@ pub fn convert(markdown: &str, dialect: Dialect) -> Text {
     match dialect {
         Dialect::Matrix => {
             let mut html = String::new();
-            html::push_html(&mut html, safe(markdown, dialect).map(matrix));
+            let events: Vec<Event<'static>> = safe(markdown, dialect)
+                .map(matrix)
+                .map(Event::into_static)
+                .collect();
+            html::push_html(&mut html, shown_links(events.into_iter()).into_iter());
             Text {
-                body: Writer::run(markdown, Dialect::Plain),
+                body: Writer::run(markdown, Dialect::Plain, Dialect::Matrix),
                 html: Some(html.trim_end().to_owned()),
             }
         }
         _ => Text {
-            body: Writer::run(markdown, dialect),
+            body: Writer::run(markdown, dialect, dialect),
             html: None,
         },
     }
@@ -72,6 +76,7 @@ pub(crate) const EXTENSIONS: Options =
     Options::ENABLE_STRIKETHROUGH.union(Options::ENABLE_TASKLISTS);
 
 const BREAK: char = '\u{200B}';
+const SIGILS: [char; 4] = ['@', '\u{FF20}', '\u{FE6B}', '#'];
 const PILLS: &str = "https://matrix.to/";
 
 fn parser(markdown: &str) -> Parser<'_> {
@@ -88,7 +93,7 @@ fn linkable(url: &str, dialect: Dialect) -> bool {
 fn safe_url(url: &str) -> String {
     url.bytes()
         .map(|byte| {
-            if byte.is_ascii_graphic() && !b"\"<>\\^`{|}()[]".contains(&byte) {
+            if byte.is_ascii_graphic() && !b"\"'<>\\^`{|}()[]".contains(&byte) {
                 char::from(byte).to_string()
             } else {
                 format!("%{byte:02X}")
@@ -117,7 +122,76 @@ fn unfenced(code: &str) -> String {
 }
 
 fn neutralised(text: &str) -> String {
-    text.replace('@', &format!("@{BREAK}"))
+    let mut neutral = String::with_capacity(text.len());
+    for character in text.chars() {
+        neutral.push(character);
+        if SIGILS.contains(&character) {
+            neutral.push(BREAK);
+        }
+    }
+    neutral
+}
+
+fn shown_links(events: impl Iterator<Item = Event<'static>>) -> Vec<Event<'static>> {
+    let mut shown = Vec::new();
+    let mut open: Option<(CowStr<'static>, Vec<Event<'static>>, usize)> = None;
+    for event in events {
+        open = match (open, event) {
+            (None, Event::Start(Tag::Link { dest_url, .. })) => Some((dest_url, Vec::new(), 0)),
+            (None, other) => {
+                shown.push(other);
+                None
+            }
+            (Some((url, inner, depth)), Event::Start(Tag::Link { .. })) => {
+                Some((url, inner, depth + 1))
+            }
+            (Some((url, inner, depth)), Event::End(TagEnd::Link)) if depth > 0 => {
+                Some((url, inner, depth - 1))
+            }
+            (Some((url, inner, _)), Event::End(TagEnd::Link)) => {
+                shown.extend(link(url, inner));
+                None
+            }
+            (Some((url, mut inner, depth)), other) => {
+                inner.push(other);
+                Some((url, inner, depth))
+            }
+        };
+    }
+    shown
+}
+
+fn link(url: CowStr<'static>, text: Vec<Event<'static>>) -> Vec<Event<'static>> {
+    let plain: String = text
+        .iter()
+        .filter_map(|event| {
+            if let Event::Text(text) = event {
+                Some(text.as_ref())
+            } else {
+                None
+            }
+        })
+        .collect();
+    let bare = text.is_empty() || plain == url.as_ref();
+    let shown = CowStr::from(neutralised(&url));
+    let anchor = [
+        Event::Start(Tag::Link {
+            link_type: LinkType::Inline,
+            dest_url: url,
+            title: CowStr::Borrowed(""),
+            id: CowStr::Borrowed(""),
+        }),
+        Event::Text(shown),
+        Event::End(TagEnd::Link),
+    ];
+    if bare {
+        return anchor.into();
+    }
+    text.into_iter()
+        .chain([Event::Text(CowStr::Borrowed(" ("))])
+        .chain(anchor)
+        .chain([Event::Text(CowStr::Borrowed(")"))])
+        .collect()
 }
 
 fn safe(markdown: &str, dialect: Dialect) -> impl Iterator<Item = Event<'_>> {
@@ -195,10 +269,11 @@ struct Writer {
     lists: Vec<Option<u64>>,
     links: Vec<Option<String>>,
     code: bool,
+    spaced: bool,
 }
 
 impl Writer {
-    fn run(markdown: &str, dialect: Dialect) -> String {
+    fn run(markdown: &str, dialect: Dialect, rules: Dialect) -> String {
         let mut writer = Self {
             dialect,
             root: String::new(),
@@ -206,8 +281,9 @@ impl Writer {
             lists: Vec::new(),
             links: Vec::new(),
             code: false,
+            spaced: false,
         };
-        for event in safe(markdown, dialect) {
+        for event in safe(markdown, rules) {
             writer.event(event);
         }
         writer.root.trim().to_owned()
@@ -221,10 +297,14 @@ impl Writer {
     }
 
     fn push(&mut self, text: &str) {
+        if std::mem::take(&mut self.spaced) && !text.starts_with(char::is_whitespace) {
+            self.out().push(' ');
+        }
         self.out().push_str(text);
     }
 
     fn line(&mut self) {
+        self.spaced = false;
         let out = self.out();
         if !out.is_empty() && !out.ends_with('\n') {
             out.push('\n');
@@ -412,6 +492,7 @@ impl Writer {
             _ => format!("{text} ({url})"),
         };
         self.push(&link);
+        self.spaced = bare && matches!(self.dialect, Dialect::Plain | Dialect::Matrix);
     }
 
     fn escape(&self, text: &str) -> String {
@@ -438,7 +519,7 @@ fn discord_escape(text: &str) -> String {
             escaped.push('\\');
         }
         escaped.push(character);
-        if character == '@' {
+        if SIGILS.contains(&character) {
             escaped.push(BREAK);
         }
     }

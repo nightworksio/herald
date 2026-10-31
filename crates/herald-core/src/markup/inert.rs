@@ -4,6 +4,7 @@
 use crate::{Dialect, Text};
 
 const BREAK: char = '\u{200B}';
+const MENTIONS: [char; 3] = ['@', '\u{FF20}', '\u{FE6B}'];
 const SCHEMES: [&str; 3] = ["https://", "http://", "mailto:"];
 
 /// Why `text`, converted to `dialect`, is not inert.
@@ -13,8 +14,10 @@ pub fn inert(text: &Text, dialect: Dialect) -> Result<(), String> {
         Dialect::Slack => slack(&text.body),
         Dialect::Plain => plain(&text.body),
         Dialect::Matrix => {
-            plain(&text.body)?;
-            html(text.html.as_deref().unwrap_or_default())
+            let markup = text.html.as_deref().unwrap_or_default();
+            breaks(&outside_urls(&text.body), &MENTIONS)?;
+            html(markup)?;
+            hrefs_shown_in(markup, &text.body)
         }
     }
 }
@@ -45,14 +48,75 @@ pub fn literal_inert(text: &Text, dialect: Dialect) -> Result<(), String> {
     }
 }
 
-fn at_breaks(text: &str) -> Result<(), String> {
+fn breaks(text: &str, sigils: &[char]) -> Result<(), String> {
     let mut characters = text.chars().peekable();
     while let Some(character) = characters.next() {
-        if character == '@' && characters.peek() != Some(&BREAK) {
-            return Err(format!("an @ that could mention in {text:?}"));
+        if sigils.contains(&character) && characters.peek() != Some(&BREAK) {
+            return Err(format!(
+                "a {character} that could mention or tag in {text:?}"
+            ));
         }
     }
     Ok(())
+}
+
+fn at_breaks(text: &str) -> Result<(), String> {
+    breaks(text, &MENTIONS)
+}
+
+fn urls(text: &str) -> Vec<(usize, usize)> {
+    let mut found = Vec::new();
+    for scheme in SCHEMES {
+        for (start, _) in text.match_indices(scheme) {
+            let rest = text.get(start..).unwrap_or_default();
+            let length = rest
+                .find(|character: char| character.is_whitespace() || "()".contains(character))
+                .unwrap_or(rest.len());
+            found.push((start, start + length));
+        }
+    }
+    found.sort_unstable();
+    found
+}
+
+fn outside_urls(text: &str) -> String {
+    let mut outside = String::new();
+    let mut at = 0;
+    for (start, end) in urls(text) {
+        if start >= at {
+            outside.push_str(text.get(at..start).unwrap_or_default());
+            outside.push(' ');
+            at = end;
+        }
+    }
+    outside.push_str(text.get(at..).unwrap_or_default());
+    outside
+}
+
+fn hrefs_shown_in(markup: &str, body: &str) -> Result<(), String> {
+    let shown: Vec<&str> = urls(body)
+        .into_iter()
+        .filter_map(|(start, end)| body.get(start..end))
+        .collect();
+    anchors(markup).into_iter().try_for_each(|href| {
+        if shown.contains(&href.as_str()) {
+            Ok(())
+        } else {
+            Err(format!(
+                "the link {href} is not shown in the plain body {body:?}"
+            ))
+        }
+    })
+}
+
+fn anchors(markup: &str) -> Vec<String> {
+    markup
+        .split('<')
+        .skip(1)
+        .filter_map(|tag| tag.strip_prefix("a href=\""))
+        .filter_map(|rest| rest.split('"').next())
+        .map(|href| href.replace("&amp;", "&"))
+        .collect()
 }
 
 fn link_span(rest: &str) -> Option<usize> {
@@ -70,6 +134,13 @@ fn discord(body: &str) -> Result<(), String> {
             break;
         };
         let width = character.len_utf8();
+        let line_start = index == 0
+            || body
+                .get(..index)
+                .is_some_and(|before| before.ends_with('\n'));
+        if line_start && (rest.starts_with("-#") || rest.starts_with(">>>")) {
+            return Err(format!("the line start of {rest:?} in {body:?}"));
+        }
         match character {
             '\\' => {
                 index += width
@@ -93,7 +164,7 @@ fn discord(body: &str) -> Result<(), String> {
                     .ok_or_else(|| format!("a < that is no shown link in {body:?}"))?;
             }
             '[' | ']' => return Err(format!("a masked link bracket in {body:?}")),
-            '@' => {
+            '@' | '\u{FF20}' | '\u{FE6B}' => {
                 at_breaks(rest.get(..width + BREAK.len_utf8()).unwrap_or(rest))?;
                 index += width;
             }
@@ -114,6 +185,12 @@ fn slack(body: &str) -> Result<(), String> {
                 link_span(rest).ok_or_else(|| format!("a < that is no shown link in {body:?}"))?;
         } else if character == '>' && !quote_marker(body, index) {
             return Err(format!("an unescaped > in {body:?}"));
+        } else if character == '&'
+            && !["&amp;", "&lt;", "&gt;"]
+                .iter()
+                .any(|entity| rest.starts_with(entity))
+        {
+            return Err(format!("an unescaped & in {body:?}"));
         } else {
             index += character.len_utf8();
         }
@@ -135,11 +212,20 @@ fn quote_marker(body: &str, index: usize) -> bool {
 }
 
 fn plain(body: &str) -> Result<(), String> {
-    let words: Vec<&str> = body
-        .split(|character: char| character.is_whitespace() || character == '(' || character == ')')
-        .filter(|word| !SCHEMES.iter().any(|scheme| word.starts_with(scheme)))
-        .collect();
-    words.iter().try_for_each(|word| at_breaks(word))
+    breaks(&outside_urls(body), &['@', '\u{FF20}', '\u{FE6B}', '#'])
+}
+
+fn shows_href(after: &str, tag: &str) -> bool {
+    let href = tag
+        .strip_prefix("a href=\"")
+        .and_then(|rest| rest.strip_suffix('"'))
+        .unwrap_or_default();
+    let text = after
+        .split("</a>")
+        .next()
+        .unwrap_or_default()
+        .replace(BREAK, "");
+    text == href
 }
 
 fn numbered(tag: &str) -> bool {
@@ -188,10 +274,11 @@ fn html(markup: &str) -> Result<(), String> {
         let allowed = match name {
             "a" => {
                 tag == "/a"
-                    || tag.strip_prefix("a href=\"").is_some_and(|href| {
-                        SCHEMES.iter().any(|scheme| href.starts_with(scheme))
-                            && !href.starts_with("https://matrix.to/")
-                    })
+                    || (shows_href(rest.get(open + close + 1..).unwrap_or_default(), tag)
+                        && tag.strip_prefix("a href=\"").is_some_and(|href| {
+                            SCHEMES.iter().any(|scheme| href.starts_with(scheme))
+                                && !href.starts_with("https://matrix.to/")
+                        }))
             }
             "input" => {
                 tag == "input disabled=\"\" type=\"checkbox\"/"
