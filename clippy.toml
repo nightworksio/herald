@@ -1,0 +1,30 @@
+allow-unwrap-in-tests = true
+allow-expect-in-tests = true
+allow-panic-in-tests = true
+allow-indexing-slicing-in-tests = true
+
+# Every crate before the I/O layers is handed what it reads (ADR-0001). The
+# I/O layers and the tooling carry a clippy.toml of their own without these.
+disallowed-methods = [
+  { path = "std::env::args", reason = "argv is read by a driver" },
+  { path = "std::env::args_os", reason = "argv is read by a driver" },
+  { path = "std::env::var", reason = "the environment is read through Secrets or by a driver" },
+  { path = "std::env::var_os", reason = "the environment is read through Secrets or by a driver" },
+  { path = "std::env::vars", reason = "the environment is read through Secrets or by a driver" },
+  { path = "std::env::vars_os", reason = "the environment is read through Secrets or by a driver" },
+  { path = "std::fs::read", reason = "the filesystem belongs to the I/O layers" },
+  { path = "std::fs::read_to_string", reason = "the filesystem belongs to the I/O layers" },
+  { path = "std::fs::write", reason = "the filesystem belongs to the I/O layers" },
+  { path = "std::thread::sleep", reason = "waiting belongs to the I/O layers" },
+  { path = "std::thread::spawn", reason = "threads belong to the I/O layers" },
+  { path = "std::time::Instant::now", reason = "time is read through Clock" },
+  { path = "std::time::SystemTime::now", reason = "time is read through Clock" },
+]
+disallowed-types = [
+  { path = "std::fs::File", reason = "the filesystem belongs to the I/O layers" },
+  { path = "std::fs::OpenOptions", reason = "the filesystem belongs to the I/O layers" },
+  { path = "std::net::TcpListener", reason = "the network is reached through Http" },
+  { path = "std::net::TcpStream", reason = "the network is reached through Http" },
+  { path = "std::net::UdpSocket", reason = "the network is reached through Http" },
+  { path = "std::process::Command", reason = "herald spawns no process outside the I/O layers" },
+]
