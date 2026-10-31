@@ -4,6 +4,7 @@ use unicode_segmentation::UnicodeSegmentation;
 use crate::chunk::{Room, chunk};
 use crate::event::Event;
 use crate::key::{Key, RouteId};
+use crate::marker::Marker;
 use crate::markup::Text;
 use crate::profile::{Measure, Profile};
 use crate::render::{Context, TemplateError, Templates};
@@ -34,6 +35,8 @@ pub fn thread_template(route: &RouteId) -> String {
 pub struct Announcement {
     /// Its never-twice key.
     pub key: Key,
+    /// The marker its posts carry, the MAC of its key.
+    pub marker: Marker,
     /// The route that made it.
     pub route: RouteId,
     /// The title, on one line, within the destination's limit.
@@ -52,7 +55,8 @@ pub struct Announcement {
     pub occurred: Timestamp,
 }
 
-/// `event` rendered by `route` for a destination described by `profile`.
+/// `event` rendered by `route` for a destination described by `profile`,
+/// carrying `marker`, the MAC of its key.
 ///
 /// # Errors
 ///
@@ -63,6 +67,7 @@ pub fn announce(
     templates: &Templates,
     profile: &Profile,
     herald: &str,
+    marker: Marker,
 ) -> Result<Announcement, TemplateError> {
     let context = Context {
         event,
@@ -82,6 +87,7 @@ pub fn announce(
     };
     Ok(Announcement {
         key: Key::derive(&route.id, event.identity()),
+        marker,
         route: route.id.clone(),
         title: shortened(&title, profile.limits.title, profile.measure),
         parts: chunk(&body, profile.dialect, room),

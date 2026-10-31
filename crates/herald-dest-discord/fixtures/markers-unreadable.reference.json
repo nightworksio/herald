@@ -3,9 +3,28 @@
     {
       "request": {
         "method": "GET",
+        "url": "https://discord.com/api/v10/users/@me",
+        "headers": {
+          "Authorization": "Bot «secret:HERALD_DISCORD_TOKEN»",
+          "User-Agent": "DiscordBot (https://github.com/nightworksio/herald, 0.0.0)"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "id": "1566190000000000099",
+          "username": "herald",
+          "bot": true
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
         "url": "https://discord.com/api/v10/channels/1566184281406177531/messages?limit=100",
         "headers": {
-          "Authorization": "Bot «secret:HERALD_DISCORD_TOKEN»"
+          "Authorization": "Bot «secret:HERALD_DISCORD_TOKEN»",
+          "User-Agent": "DiscordBot (https://github.com/nightworksio/herald, 0.0.0)"
         }
       },
       "response": {

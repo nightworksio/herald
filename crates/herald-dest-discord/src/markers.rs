@@ -1,8 +1,9 @@
-use herald_core::{Entry, Facts, Key, Step};
-use herald_ports::{Http, Markers, MarkersError, Method, Request, Text};
+use herald_core::{Entry, Facts, Key, Marker, Step};
+use herald_ports::{Http, Markers, MarkersError, Method, Text};
 use serde_json::Value;
 
 use crate::discord::{Credential, Discord};
+use crate::request::{bare, fragment};
 
 /// The most messages Discord lists in one page.
 const PAGE: u8 = 100;
@@ -11,7 +12,8 @@ const CROSSPOSTED: u64 = 1;
 /// The type of an ordinary message, as a chunk is.
 const DEFAULT_TYPE: u64 = 0;
 
-/// A Discord channel read back for the keys its posts carry (ADR-0005).
+/// A Discord channel read back for the markers herald's own posts carry
+/// (ADR-0005, ADR-0011).
 #[derive(Debug)]
 pub struct DiscordMarkers<'a, H> {
     discord: &'a Discord,
@@ -25,20 +27,14 @@ impl<'a, H: Http> DiscordMarkers<'a, H> {
         Self { discord, http }
     }
 
-    async fn messages(&self, channel: &str) -> Result<Vec<Value>, MarkersError> {
-        let Credential::Bot(token) = &self.discord.credential else {
+    async fn read(&self, path: &str) -> Result<Value, MarkersError> {
+        if let Credential::Webhook(_) = &self.discord.credential {
             return Err(MarkersError::Unreadable {
                 reason: "a webhook cannot read a channel's messages".to_owned(),
             });
-        };
-        let url = format!(
-            "{}/channels/{channel}/messages?limit={PAGE}",
-            self.discord.api
-        );
-        let request = Request::new(Method::Get, Text::plain(url)).header(
-            "Authorization",
-            Text::plain("Bot ").then_secret(token.clone()),
-        );
+        }
+        let url = Text::plain(format!("{}{path}", self.discord.api));
+        let request = bare(Method::Get, url, &self.discord.credential);
         let response = self
             .http
             .send(request)
@@ -51,8 +47,33 @@ impl<'a, H: Http> DiscordMarkers<'a, H> {
                 reason: format!("Discord answered {}", response.status),
             });
         }
-        let page: Value = serde_json::from_slice(&response.body).unwrap_or(Value::Null);
-        Ok(page.as_array().cloned().unwrap_or_default())
+        Ok(serde_json::from_slice(&response.body).unwrap_or(Value::Null))
+    }
+
+    async fn herald(&self) -> Result<String, MarkersError> {
+        let user = self.read("/users/@me").await?;
+        text(&user, "id").ok_or_else(|| MarkersError::Unreadable {
+            reason: "Discord did not say which user the bot is".to_owned(),
+        })
+    }
+
+    async fn messages(&self, channel: &str, author: &str) -> Result<Vec<Value>, MarkersError> {
+        let page = self
+            .read(&format!("/channels/{channel}/messages?limit={PAGE}"))
+            .await?;
+        Ok(page
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter(|message| {
+                message
+                    .get("author")
+                    .and_then(|user| text(user, "id"))
+                    .as_deref()
+                    == Some(author)
+            })
+            .cloned()
+            .collect())
     }
 }
 
@@ -63,8 +84,8 @@ fn text(value: &Value, field: &str) -> Option<String> {
         .map(ToOwned::to_owned)
 }
 
-fn carries(message: &Value, key: &Key) -> bool {
-    let marker = format!("#herald-{key}");
+fn carries(message: &Value, marker: &Marker) -> bool {
+    let marker = fragment(marker);
     message
         .get("embeds")
         .and_then(Value::as_array)
@@ -75,14 +96,14 @@ fn carries(message: &Value, key: &Key) -> bool {
 }
 
 impl<H: Http> Markers for DiscordMarkers<'_, H> {
-    async fn entry(&self, key: &Key) -> Result<Option<Entry>, MarkersError> {
+    async fn entry(&self, key: &Key, marker: &Marker) -> Result<Option<Entry>, MarkersError> {
         let channel = self.discord.route.channel.as_deref().unwrap_or_default();
-        let messages = self.messages(channel).await?;
-        let Some(post) = messages.iter().find(|message| carries(message, key)) else {
+        let herald = self.herald().await?;
+        let messages = self.messages(channel, &herald).await?;
+        let Some(post) = messages.iter().find(|message| carries(message, marker)) else {
             return Ok(None);
         };
         let message = text(post, "id");
-        let author = post.get("author").and_then(|author| text(author, "id"));
         let thread = post.get("thread").and_then(|thread| text(thread, "id"));
         let mut entry = Entry::new(*key).landed(
             Step::Post,
@@ -118,10 +139,9 @@ impl<H: Http> Markers for DiscordMarkers<'_, H> {
             },
         );
         let chunks = self
-            .messages(&thread)
+            .messages(&thread, &herald)
             .await?
             .iter()
-            .filter(|chunk| chunk.get("author").and_then(|author| text(author, "id")) == author)
             .filter(|chunk| chunk.get("type").and_then(Value::as_u64) == Some(DEFAULT_TYPE))
             .filter(|chunk| text(chunk, "id") != message)
             .count();

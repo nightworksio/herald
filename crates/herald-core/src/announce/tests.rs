@@ -30,6 +30,10 @@ fn profile(title: usize, text: usize) -> Profile {
     }
 }
 
+fn marker() -> Marker {
+    Marker::of(b"mac")
+}
+
 fn templates(route: &Route) -> Templates {
     Templates::compile(&[
         (
@@ -70,9 +74,11 @@ fn an_event_is_announced_with_its_key_title_parts_thread_and_link() {
         &templates(&route),
         &profile(256, 4096),
         "0.1.0",
+        marker(),
     )
     .unwrap();
     assert_eq!(announcement.key, Key::derive(&route.id, event().identity()));
+    assert_eq!(announcement.marker, marker());
     assert_eq!(announcement.route, route.id);
     assert_eq!(announcement.title, "📦 php-mutation-gate v0.1.0");
     assert_eq!(
@@ -101,8 +107,15 @@ fn a_route_without_a_thread_names_none_and_a_long_body_is_cut() {
         ..draft()
     })
     .unwrap();
-    let announcement =
-        announce(&long, &route, &templates(&route), &profile(10, 5), "0.1.0").unwrap();
+    let announcement = announce(
+        &long,
+        &route,
+        &templates(&route),
+        &profile(10, 5),
+        "0.1.0",
+        marker(),
+    )
+    .unwrap();
     assert_eq!(announcement.thread, None);
     assert_eq!(announcement.title, "📦 php-mut…");
     assert_eq!(announcement.parts.len(), 3);
@@ -120,8 +133,15 @@ fn without_a_release_link_the_first_link_is_used() {
         ..draft()
     })
     .unwrap();
-    let announcement =
-        announce(&other, &route, &templates(&route), &profile(256, 4096), "0").unwrap();
+    let announcement = announce(
+        &other,
+        &route,
+        &templates(&route),
+        &profile(256, 4096),
+        "0",
+        marker(),
+    )
+    .unwrap();
     assert_eq!(announcement.link.as_deref(), Some("https://example.org/c"));
     let bare = Event::normalise(Draft {
         links: BTreeMap::new(),
@@ -129,9 +149,16 @@ fn without_a_release_link_the_first_link_is_used() {
     })
     .unwrap();
     assert_eq!(
-        announce(&bare, &route, &templates(&route), &profile(256, 4096), "0")
-            .unwrap()
-            .link,
+        announce(
+            &bare,
+            &route,
+            &templates(&route),
+            &profile(256, 4096),
+            "0",
+            marker()
+        )
+        .unwrap()
+        .link,
         None
     );
 }
@@ -140,16 +167,46 @@ fn without_a_release_link_the_first_link_is_used() {
 fn a_template_that_fails_fails_the_announcement() {
     let route = threaded();
     let broken = Templates::compile(&[]).unwrap();
-    assert!(announce(&event(), &route, &broken, &profile(256, 4096), "0").is_err());
+    assert!(
+        announce(
+            &event(),
+            &route,
+            &broken,
+            &profile(256, 4096),
+            "0",
+            marker()
+        )
+        .is_err()
+    );
     let no_body =
         Templates::compile(&[(&title_template(&route.template), "t", Form::Line)]).unwrap();
-    assert!(announce(&event(), &route, &no_body, &profile(256, 4096), "0").is_err());
+    assert!(
+        announce(
+            &event(),
+            &route,
+            &no_body,
+            &profile(256, 4096),
+            "0",
+            marker()
+        )
+        .is_err()
+    );
     let no_thread = Templates::compile(&[
         (&title_template(&route.template), "t", Form::Line),
         (&body_template(&route.template), "b", Form::Markdown),
     ])
     .unwrap();
-    assert!(announce(&event(), &route, &no_thread, &profile(256, 4096), "0").is_err());
+    assert!(
+        announce(
+            &event(),
+            &route,
+            &no_thread,
+            &profile(256, 4096),
+            "0",
+            marker()
+        )
+        .is_err()
+    );
 }
 
 #[test]

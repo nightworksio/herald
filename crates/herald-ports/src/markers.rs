@@ -1,7 +1,7 @@
 use std::fmt;
 use std::future::Future;
 
-use herald_core::{Entry, Key};
+use herald_core::{Entry, Key, Marker};
 
 /// Why a destination's posts could not be read.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -23,11 +23,16 @@ impl fmt::Display for MarkersError {
     }
 }
 
-/// The never-twice keys a destination's recent posts carry (ADR-0005).
+/// The markers a destination's recent posts carry (ADR-0005, ADR-0011).
 pub trait Markers: Sync {
-    /// The ledger entry the destination's own posts make for `key`: which
-    /// steps landed, read from the post that carries the key.
-    fn entry(&self, key: &Key) -> impl Future<Output = Result<Option<Entry>, MarkersError>> + Send;
+    /// The ledger entry for `key` made by herald's own post carrying
+    /// `marker`, the MAC of `key`: which steps landed, read from that post. A
+    /// post by anyone else is never read as herald's.
+    fn entry(
+        &self,
+        key: &Key,
+        marker: &Marker,
+    ) -> impl Future<Output = Result<Option<Entry>, MarkersError>> + Send;
 }
 
 #[cfg(test)]

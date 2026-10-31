@@ -1,6 +1,6 @@
 use std::fmt;
 
-use herald_core::{Announcement, Chore, Delivery, Entry, Step};
+use herald_core::{Announcement, Chore, Delivery, Entry, Marker, Step};
 use herald_ports::{Method, Request, Text};
 use serde_json::{Map, Value, json};
 
@@ -57,7 +57,7 @@ fn json(method: Method, url: Text, credential: &Credential, body: &Value) -> Req
     authorised(request, credential)
 }
 
-fn bare(method: Method, url: Text, credential: &Credential) -> Request {
+pub(crate) fn bare(method: Method, url: Text, credential: &Credential) -> Request {
     authorised(
         Request::new(method, url).header("User-Agent", Text::plain(USER_AGENT)),
         credential,
@@ -74,9 +74,13 @@ fn authorised(request: Request, credential: &Credential) -> Request {
     }
 }
 
+pub(crate) fn fragment(marker: &Marker) -> String {
+    format!("#herald-{marker}")
+}
+
 fn marked(link: &str, announcement: &Announcement) -> String {
     let page = link.split('#').next().unwrap_or(link);
-    format!("{page}#herald-{}", announcement.key)
+    format!("{page}{}", fragment(&announcement.marker))
 }
 
 fn message(announcement: &Announcement, delivery: &Delivery, nonce: bool) -> Value {

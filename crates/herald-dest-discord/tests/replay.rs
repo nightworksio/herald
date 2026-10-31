@@ -4,11 +4,11 @@
 #[cfg(test)]
 mod replay {
     use herald_core::{
-        Announcement, Chore, Delivery, Entry, Facts, Identity, Key, Mentions, RoleId, RouteId,
-        Sent, Step, Text, Thread,
+        Announcement, Chore, Delivery, Entry, Facts, Identity, Key, Marker, Mentions, Plan,
+        Planned, RoleId, RouteId, Sent, Step, Text, Thread, plan,
     };
     use herald_dest_discord::{Credential, Discord, DiscordMarkers, RouteOptions};
-    use herald_ports::{Markers, Secret};
+    use herald_ports::{Markers, MarkersError, Secret};
     use herald_testing::{Fixture, Replay};
     use jiff::SignedDuration;
 
@@ -53,12 +53,17 @@ mod replay {
         )
     }
 
+    fn marker() -> Marker {
+        Marker::of(&[0xa5; 32])
+    }
+
     fn announcement() -> Announcement {
         Announcement {
             key: Key::derive(
                 &RouteId::new("php-mutation-gate-releases"),
                 &Identity::new("github.com/1066469473/v0.1.0"),
             ),
+            marker: marker(),
             route: RouteId::new("php-mutation-gate-releases"),
             title: "📦 php-mutation-gate v0.1.0".to_owned(),
             parts: vec![
@@ -315,14 +320,20 @@ mod replay {
         );
     }
 
+    fn read_back(
+        discord: &Discord,
+        http: &Replay,
+        marker: &Marker,
+    ) -> Result<Option<Entry>, MarkersError> {
+        pollster::block_on(DiscordMarkers::new(discord, http).entry(&announcement().key, marker))
+    }
+
     #[test]
     fn markers_read_back_which_steps_landed() {
         let replay = fixture!("markers");
-        let discord = bot(CHANNEL, false);
-        let entry =
-            pollster::block_on(DiscordMarkers::new(&discord, &replay).entry(&announcement().key))
-                .unwrap()
-                .unwrap();
+        let entry = read_back(&bot(CHANNEL, false), &replay, &marker())
+            .unwrap()
+            .unwrap();
         let thread = Facts {
             thread: Some("1566200000000000001".to_owned()),
             ..Facts::default()
@@ -340,20 +351,32 @@ mod replay {
 
     #[test]
     fn markers_without_a_thread_or_a_match_say_so() {
-        let replay = fixture!("markers-unthreaded");
         let discord = bot(CHANNEL, false);
-        let entry =
-            pollster::block_on(DiscordMarkers::new(&discord, &replay).entry(&announcement().key))
-                .unwrap();
+        let replay = fixture!("markers-unthreaded");
         assert_eq!(
-            entry,
+            read_back(&discord, &replay, &marker()).unwrap(),
             Some(Entry::new(announcement().key).landed(Step::Post, message("1566200000000000001")))
         );
-        let other = Key::derive(&RouteId::new("other"), &Identity::new("other"));
         let replay = fixture!("markers-unthreaded");
         assert_eq!(
-            pollster::block_on(DiscordMarkers::new(&discord, &replay).entry(&other)).unwrap(),
+            read_back(&discord, &replay, &Marker::of(&[0x5a; 32])).unwrap(),
             None
+        );
+    }
+
+    #[test]
+    fn a_planted_or_guessed_marker_is_not_herald_s_post_so_the_announcement_is_still_posted() {
+        let replay = fixture!("markers-planted");
+        let entry = read_back(&bot(CHANNEL, false), &replay, &marker()).unwrap();
+        assert_eq!(entry, None);
+        replay.finish().unwrap();
+        let now = "2026-10-31T12:00:00Z".parse().unwrap();
+        assert_eq!(
+            plan(entry.as_ref(), &[Step::Post], "run", now),
+            Plan::Send(vec![Planned {
+                step: Step::Post,
+                verify_first: false,
+            }])
         );
     }
 
@@ -361,25 +384,31 @@ mod replay {
     fn markers_that_cannot_be_read_say_why() {
         let discord = bot(CHANNEL, false);
         let replay = fixture!("markers-unreadable");
-        let error =
-            pollster::block_on(DiscordMarkers::new(&discord, &replay).entry(&announcement().key))
-                .unwrap_err();
         assert_eq!(
-            error.to_string(),
+            read_back(&discord, &replay, &marker())
+                .unwrap_err()
+                .to_string(),
             "the destination's posts could not be read: Discord answered 403"
         );
         let nothing = Replay::of(Fixture::default());
-        assert!(
-            pollster::block_on(DiscordMarkers::new(&discord, &nothing).entry(&announcement().key))
-                .is_err()
-        );
-        let hook = webhook(false);
-        let error =
-            pollster::block_on(DiscordMarkers::new(&hook, &nothing).entry(&announcement().key))
-                .unwrap_err();
+        assert!(read_back(&discord, &nothing, &marker()).is_err());
         assert_eq!(
-            error.to_string(),
+            read_back(&webhook(false), &nothing, &marker())
+                .unwrap_err()
+                .to_string(),
             "the destination's posts could not be read: a webhook cannot read a channel's messages"
+        );
+        let anonymous = Replay::of(
+            Fixture::from_json(
+                r#"{"exchanges":[{"request":{"method":"GET","url":"https://discord.com/api/v10/users/@me","headers":{"Authorization":"Bot «secret:HERALD_DISCORD_TOKEN»","User-Agent":"DiscordBot (https://github.com/nightworksio/herald, 0.0.0)"}},"response":{"status":200,"body":{"username":"herald"}}}]}"#,
+            )
+            .unwrap(),
+        );
+        assert_eq!(
+            read_back(&discord, &anonymous, &marker())
+                .unwrap_err()
+                .to_string(),
+            "the destination's posts could not be read: Discord did not say which user the bot is"
         );
     }
 
