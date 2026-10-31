@@ -179,6 +179,17 @@ pub struct Planned {
     pub verify_first: bool,
 }
 
+/// What a destination answered to one step.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Sent {
+    /// The step landed, as these facts say.
+    Landed(Facts),
+    /// The destination asked to be asked again after this long.
+    RetryAfter(jiff::SignedDuration),
+    /// The destination refused the step, for this reason.
+    Refused(String),
+}
+
 /// What a run is to do with one announcement.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Plan {

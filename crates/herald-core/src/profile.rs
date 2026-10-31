@@ -25,8 +25,10 @@ pub enum Measure {
 pub struct Limits {
     /// The longest title.
     pub title: usize,
-    /// The longest text of one message.
+    /// The longest text of the announcement itself.
     pub text: usize,
+    /// The longest text of each overflow message after it.
+    pub followup: usize,
     /// The longest thread name.
     pub thread_name: usize,
 }

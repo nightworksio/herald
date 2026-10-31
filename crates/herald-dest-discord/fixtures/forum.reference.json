@@ -1,0 +1,104 @@
+{
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "url": "https://discord.com/api/v10/channels/1566184281406177600/threads",
+        "headers": {
+          "Authorization": "Bot «secret:HERALD_DISCORD_TOKEN»",
+          "Content-Type": "application/json",
+          "User-Agent": "DiscordBot (https://github.com/nightworksio/herald, 0.0.0)"
+        },
+        "body": {
+          "name": "php-mutation-gate v0.1.0",
+          "auto_archive_duration": 10080,
+          "message": {
+            "content": "<@&1566190000000000001>",
+            "embeds": [
+              {
+                "title": "📦 php-mutation-gate v0.1.0",
+                "description": "## Added",
+                "color": 14916134,
+                "timestamp": "2026-10-31T12:00:00Z",
+                "url": "https://github.com/nightworksio/php-mutation-gate/releases/tag/v0.1.0#herald-da765393824b2f92d4e0df694048a62b994615c2ca027d5a69263e41b6828159"
+              }
+            ],
+            "allowed_mentions": {
+              "parse": [],
+              "roles": [
+                "1566190000000000001"
+              ]
+            }
+          }
+        }
+      },
+      "response": {
+        "status": 201,
+        "body": {
+          "id": "1566200000000000010",
+          "type": 11,
+          "parent_id": "1566184281406177600",
+          "name": "php-mutation-gate v0.1.0",
+          "message": {
+            "id": "1566200000000000010",
+            "channel_id": "1566200000000000010",
+            "type": 0,
+            "content": "",
+            "author": {
+              "id": "1566190000000000099",
+              "username": "herald",
+              "bot": true
+            },
+            "embeds": [
+              {
+                "title": "📦 php-mutation-gate v0.1.0",
+                "description": "## Added",
+                "color": 14916134,
+                "timestamp": "2026-10-31T12:00:00Z",
+                "url": "https://github.com/nightworksio/php-mutation-gate/releases/tag/v0.1.0#herald-da765393824b2f92d4e0df694048a62b994615c2ca027d5a69263e41b6828159"
+              }
+            ],
+            "flags": 0,
+            "pinned": false,
+            "timestamp": "2026-10-31T12:00:01.000000+00:00"
+          }
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "url": "https://discord.com/api/v10/channels/1566200000000000010/messages",
+        "headers": {
+          "Authorization": "Bot «secret:HERALD_DISCORD_TOKEN»",
+          "Content-Type": "application/json",
+          "User-Agent": "DiscordBot (https://github.com/nightworksio/herald, 0.0.0)"
+        },
+        "body": {
+          "content": "- the gate",
+          "allowed_mentions": {
+            "parse": []
+          }
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "id": "1566200000000000011",
+          "channel_id": "1566200000000000010",
+          "type": 0,
+          "content": "",
+          "author": {
+            "id": "1566190000000000099",
+            "username": "herald",
+            "bot": true
+          },
+          "embeds": [],
+          "flags": 0,
+          "pinned": false,
+          "timestamp": "2026-10-31T12:00:01.000000+00:00"
+        }
+      }
+    }
+  ]
+}

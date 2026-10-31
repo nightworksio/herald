@@ -1,0 +1,20 @@
+{
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "url": "https://discord.com/api/v10/channels/1566184281406177531/messages?limit=100",
+        "headers": {
+          "Authorization": "Bot «secret:HERALD_DISCORD_TOKEN»"
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "message": "Missing Access",
+          "code": 50001
+        }
+      }
+    }
+  ]
+}

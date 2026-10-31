@@ -173,6 +173,12 @@ impl Event {
         self.links.get(name).map(String::as_str)
     }
 
+    /// The first link, by name.
+    #[must_use]
+    pub fn first_link(&self) -> Option<&str> {
+        self.links.values().next().map(String::as_str)
+    }
+
     /// Whether it is a pre-release.
     #[must_use]
     pub fn prerelease(&self) -> bool {

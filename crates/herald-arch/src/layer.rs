@@ -66,12 +66,14 @@ fn outside_allowed(layer: Layer) -> &'static [&'static str] {
             "jiff",
             "minijinja",
             "pulldown-cmark",
+            "schemars",
             "serde",
             "sha2",
             "unicode-segmentation",
         ],
         Layer::Ports => &["jiff"],
         Layer::Testing => &["jiff", "serde", "serde_json"],
+        Layer::Destinations => &["jiff", "schemars", "serde", "serde_json"],
         _ => &[],
     }
 }
@@ -141,6 +143,7 @@ mod tests {
         assert!(!Layer::Sources.allows_outside("serde"));
         assert!(Layer::Testing.allows_outside("serde_json"));
         assert!(Layer::Ports.allows_outside("jiff"));
+        assert!(Layer::Destinations.allows_outside("schemars"));
     }
 
     #[test]

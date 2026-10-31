@@ -45,6 +45,15 @@ name!(
     RoleId
 );
 
+/// A secret, by the name the platform keeps it under: `{ secret = "NAME" }`.
+/// The config holds this and never the secret's value (ADR-0007).
+#[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct SecretRef {
+    /// The secret's name.
+    pub secret: String,
+}
+
 /// Which pre-releases a route takes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Prereleases {

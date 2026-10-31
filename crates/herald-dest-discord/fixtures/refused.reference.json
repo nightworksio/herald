@@ -1,0 +1,42 @@
+{
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "url": "https://discord.com/api/v10/channels/1566184281406177531/messages",
+        "headers": {
+          "Authorization": "Bot «secret:HERALD_DISCORD_TOKEN»",
+          "Content-Type": "application/json",
+          "User-Agent": "DiscordBot (https://github.com/nightworksio/herald, 0.0.0)"
+        },
+        "body": {
+          "content": "<@&1566190000000000001>",
+          "embeds": [
+            {
+              "title": "📦 php-mutation-gate v0.1.0",
+              "description": "## Added",
+              "color": 14916134,
+              "timestamp": "2026-10-31T12:00:00Z",
+              "url": "https://github.com/nightworksio/php-mutation-gate/releases/tag/v0.1.0#herald-da765393824b2f92d4e0df694048a62b994615c2ca027d5a69263e41b6828159"
+            }
+          ],
+          "allowed_mentions": {
+            "parse": [],
+            "roles": [
+              "1566190000000000001"
+            ]
+          },
+          "nonce": "da765393824b2f92d4e0df694",
+          "enforce_nonce": true
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "message": "Missing Permissions",
+          "code": 50013
+        }
+      }
+    }
+  ]
+}
