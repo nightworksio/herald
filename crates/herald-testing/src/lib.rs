@@ -9,6 +9,7 @@
     reason = "a fake answers at once, and is written as the async trait it fakes"
 )]
 
+mod audit;
 mod clock;
 mod conformance;
 mod crypto;
@@ -21,6 +22,7 @@ mod store;
 
 use std::sync::{Mutex, MutexGuard, PoisonError};
 
+pub use audit::{credentials, secret_header};
 pub use clock::FakeClock;
 pub use conformance::store_conformance;
 pub use crypto::{FakeSigner, FakeVerifier};

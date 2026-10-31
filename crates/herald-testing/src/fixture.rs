@@ -5,6 +5,9 @@ use herald_ports::{Http, HttpError, Request, Response};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+use herald_ports::Segment;
+
+use crate::audit::{credentials, secret_header};
 use crate::lock;
 
 /// A request as a fixture holds it: its secrets redacted, a JSON body as JSON.
@@ -108,8 +111,51 @@ impl Fixture {
     /// # Errors
     ///
     /// When `json` is not a fixture.
-    pub fn from_json(json: &str) -> Result<Self, serde_json::Error> {
-        serde_json::from_str(json)
+    pub fn from_json(json: &str) -> Result<Self, String> {
+        let fixture: Self = serde_json::from_str(json).map_err(|error| error.to_string())?;
+        fixture.audit(&[])?;
+        Ok(fixture)
+    }
+
+    /// Whether the fixture holds no credential: none of `secrets`, nothing
+    /// shaped like a token, and no header that only carries credentials
+    /// without its secret redacted.
+    ///
+    /// # Errors
+    ///
+    /// Each credential found, by where it is and what it looks like, never
+    /// by its value.
+    pub fn audit(&self, secrets: &[String]) -> Result<(), String> {
+        let mut found = Vec::new();
+        for (index, exchange) in self.exchanges.iter().enumerate() {
+            let text = serde_json::to_string(exchange).unwrap_or_default();
+            if secrets
+                .iter()
+                .any(|secret| !secret.is_empty() && text.contains(secret.as_str()))
+            {
+                found.push(format!("exchange {index} holds a secret it was handed"));
+            }
+            found.extend(
+                credentials(&text)
+                    .into_iter()
+                    .map(|what| format!("exchange {index} holds {what}")),
+            );
+            let headers = exchange
+                .request
+                .headers
+                .iter()
+                .chain(&exchange.response.headers);
+            found.extend(
+                headers
+                    .filter(|(name, value)| secret_header(name, value))
+                    .map(|(name, _)| format!("exchange {index} has a {name} header in the clear")),
+            );
+        }
+        if found.is_empty() {
+            Ok(())
+        } else {
+            Err(found.join("\n"))
+        }
     }
 
     /// The fixture as pretty JSON, ending in a newline.
@@ -154,6 +200,17 @@ fn scrubbed(value: &Value, scrub: &[(String, String)]) -> Value {
         ),
         other => other.clone(),
     }
+}
+
+fn secrets(request: &Request) -> Vec<String> {
+    let texts = std::iter::once(&request.url).chain(request.headers.iter().map(|(_, value)| value));
+    texts
+        .flat_map(herald_ports::Text::segments)
+        .filter_map(|segment| match segment {
+            Segment::Secret(secret) => Some(secret.expose().to_owned()),
+            Segment::Plain(_) => None,
+        })
+        .collect()
 }
 
 /// An `Http` that answers from a fixture, in order, and refuses any request
@@ -226,12 +283,14 @@ impl Http for Replay {
 }
 
 /// An `Http` that sends through another and records each exchange, with its
-/// secrets redacted and each scrubbed value replaced.
+/// secrets redacted and each scrubbed value replaced. It keeps the value of
+/// every secret it sends, and refuses to hand over a recording holding one.
 #[derive(Debug)]
 pub struct Recorder<H> {
     inner: H,
     scrub: Vec<(String, String)>,
     exchanges: Mutex<Vec<Exchange>>,
+    secrets: Mutex<Vec<String>>,
 }
 
 impl<H: Http> Recorder<H> {
@@ -243,21 +302,28 @@ impl<H: Http> Recorder<H> {
             inner,
             scrub,
             exchanges: Mutex::new(Vec::new()),
+            secrets: Mutex::new(Vec::new()),
         }
     }
 
-    /// What it recorded.
-    #[must_use]
-    pub fn fixture(&self) -> Fixture {
-        Fixture {
+    /// What it recorded, once [`Fixture::audit`] finds no credential in it.
+    ///
+    /// # Errors
+    ///
+    /// Each credential the recording holds, so it is never written.
+    pub fn fixture(&self) -> Result<Fixture, String> {
+        let fixture = Fixture {
             exchanges: lock(&self.exchanges).clone(),
-        }
+        };
+        fixture.audit(&lock(&self.secrets))?;
+        Ok(fixture)
     }
 }
 
 impl<H: Http> Http for Recorder<H> {
     async fn send(&self, request: Request) -> Result<Response, HttpError> {
         let recorded = Recorded::of(&request).scrubbed(&self.scrub);
+        lock(&self.secrets).extend(secrets(&request));
         let response = self.inner.send(request).await?;
         let exchange = Exchange {
             request: recorded,

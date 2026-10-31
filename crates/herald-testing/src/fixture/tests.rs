@@ -99,7 +99,7 @@ fn a_recorder_records_what_it_sends_scrubbed() {
         vec![("9".to_owned(), "1000".to_owned())],
     );
     pollster::block_on(recorder.send(message("hi"))).unwrap();
-    let made = recorder.fixture();
+    let made = recorder.fixture().unwrap();
     assert_eq!(made.exchanges.len(), 1);
     assert_eq!(made.exchanges[0].request, fixture().exchanges[0].request);
     assert_eq!(
@@ -133,7 +133,7 @@ fn a_recorder_scrubs_urls_and_nested_bodies() {
 fn a_failed_send_records_nothing() {
     let recorder = Recorder::new(Replay::of(Fixture::default()), vec![]);
     assert!(pollster::block_on(recorder.send(message("hi"))).is_err());
-    assert_eq!(recorder.fixture(), Fixture::default());
+    assert_eq!(recorder.fixture(), Ok(Fixture::default()));
 }
 
 #[test]
@@ -153,4 +153,78 @@ fn a_fixture_round_trips_through_its_json() {
     let json = fixture().to_json();
     assert!(json.ends_with("}\n"));
     assert_eq!(Fixture::from_json(&json).unwrap(), fixture());
+}
+
+fn echo(body: &str) -> Fixture {
+    Fixture {
+        exchanges: vec![Exchange {
+            request: Recorded::of(&message("hi")),
+            response: Answer {
+                status: 200,
+                headers: BTreeMap::new(),
+                body: Some(json!({ "echo": body })),
+            },
+        }],
+    }
+}
+
+#[test]
+fn a_secret_sent_through_the_recorder_never_reaches_the_written_file() {
+    let recorder = Recorder::new(Replay::of(fixture()), vec![]);
+    pollster::block_on(recorder.send(message("hi"))).unwrap();
+    let written = recorder.fixture().unwrap().to_json();
+    assert!(!written.contains("hunter2"), "{written}");
+    assert!(written.contains("«secret:TOKEN»"));
+}
+
+#[test]
+fn a_recording_that_echoes_a_secret_it_was_handed_is_refused() {
+    let recorder = Recorder::new(Replay::of(echo("hunter2")), vec![]);
+    pollster::block_on(recorder.send(message("hi"))).unwrap();
+    assert_eq!(
+        recorder.fixture(),
+        Err("exchange 0 holds a secret it was handed".to_owned())
+    );
+}
+
+#[test]
+fn a_fixture_holding_anything_shaped_like_a_credential_is_refused() {
+    let token = ["xox", "b-", "0123456789"].concat();
+    assert_eq!(
+        echo(&token).audit(&[]),
+        Err("exchange 0 holds a Slack bot token".to_owned())
+    );
+    let json = echo(&token).to_json();
+    assert_eq!(
+        Fixture::from_json(&json),
+        Err("exchange 0 holds a Slack bot token".to_owned())
+    );
+    let mut clear = fixture();
+    clear.exchanges[0]
+        .request
+        .headers
+        .insert("Authorization".to_owned(), "Bot plain".to_owned());
+    assert_eq!(
+        clear.audit(&[]),
+        Err("exchange 0 has a Authorization header in the clear".to_owned())
+    );
+    assert!(Fixture::from_json("not json").is_err());
+}
+
+#[test]
+fn a_plain_secret_the_recorder_was_never_told_of_is_still_found_by_its_shape() {
+    let token = ["gh", "p_", "0123456789abcdef"].concat();
+    let leaky = Request::new(
+        Method::Post,
+        Text::plain(format!("https://api.github.com/x?token={token}")),
+    );
+    let recorder = Recorder::new(Replay::of(Fixture::default()), vec![]);
+    let _ = pollster::block_on(recorder.send(leaky));
+    assert_eq!(recorder.fixture(), Ok(Fixture::default()));
+    let mut leaked = fixture();
+    leaked.exchanges[0].request.url = format!("https://api.github.com/x?token={token}");
+    assert_eq!(leaked.audit(&[]),
+        Err("exchange 0 holds a GitHub token".to_owned())
+    );
+    assert_eq!(fixture().audit(&[String::new()]), Ok(()));
 }
