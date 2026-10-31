@@ -5,6 +5,13 @@ it, and where the design is written down. A vulnerability is reported
 privately, as [SECURITY.md](SECURITY.md) says, and everyone here keeps the
 [code of conduct](CODE_OF_CONDUCT.md).
 
+## Setup
+
+- **Rust through rustup.** `rust-toolchain.toml` pins the toolchain, with
+  rustfmt, clippy, `llvm-tools-preview` and the `wasm32-unknown-unknown`
+  target, and rustup installs it on the first `cargo` command.
+- **cargo-nextest** runs the suite.
+
 ## The local gates
 
 CI runs every gate on every pull request. Before you push, run the ones for
@@ -12,9 +19,23 @@ what you changed:
 
 | You changed | Run |
 |-------------|-----|
-| anything | `typos` |
-| Markdown | `markdownlint-cli2` and `lychee --config lychee.toml .` |
+| anything | `typos` and `.github/scripts/line-cap.sh` |
+| Rust | `cargo fmt --all --check`, `cargo clippy --workspace --all-targets -- -D warnings`, and the tests of what you changed: `cargo nextest run -p <crate>` |
+| `Cargo.toml` or `Cargo.lock` | `cargo deny check` |
+| Markdown | `markdownlint-cli2 "**/*.md"` and `lychee --config lychee.toml .` |
 | a workflow | `actionlint` and `zizmor .` |
+
+Leave these to CI, which runs them on every pull request:
+
+- **coverage**, `cargo llvm-cov nextest`, which fails under 100% of lines;
+- **mutation testing**, cargo-mutants in shards, which fails on any missed
+  mutant (ADR-0008);
+- **msrv**, the suite on the oldest supported toolchain;
+- **wasm**, the core built for `wasm32-unknown-unknown`;
+- **audit**, CodeQL and gitleaks.
+
+The tools CI installs are pinned by version and SHA-256 in
+[`.github/scripts/install-tool.sh`](.github/scripts/install-tool.sh).
 
 Each tool reads its configuration from the repository's root: `typos.toml`,
 `.markdownlint.jsonc` with `.markdownlint-cli2.jsonc`, and `lychee.toml`.
@@ -48,6 +69,10 @@ run.
   gives a decision, the alternatives and why they lost.
   [ADR-0001](.docs/decisions/0001-a-sans-io-core-behind-ports.md) lays out
   the crates and the order in which they may name each other.
+- **`crates/herald-arch` holds that order.** Its tests read `cargo metadata`
+  and refuse an edge to a later layer or a sibling, an outside crate a layer
+  does not allow, a runtime or I/O crate before the I/O layers, and a
+  `clippy.toml` that would lift the workspace's bans on ambient I/O.
 
 ## Maintainers and decisions
 

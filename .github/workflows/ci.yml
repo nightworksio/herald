@@ -1,0 +1,212 @@
+# The Rust gates: formatting, clippy, the suite with the architecture tests,
+# coverage, the dependency audits, the oldest supported toolchain, the wasm
+# build of the core, and mutation testing in shards (ADR-0008).
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  # The weekly run mutates the whole workspace.
+  schedule:
+    - cron: "0 3 * * 1"
+
+permissions:
+  contents: read
+
+# A pull request pushed again cancels the run on its old head, and a push to
+# main cancels the run of the push before it. A scheduled run is grouped by
+# its own run, so it is never cancelled and never cancels.
+concurrency:
+  group: ${{ github.workflow }}-${{ contains(fromJSON('["pull_request","push"]'), github.event_name) && github.ref || github.run_id }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: "0"
+
+jobs:
+  fmt:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: cargo fmt --all --check
+
+  clippy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            target
+          key: clippy-${{ hashFiles('rust-toolchain.toml', 'Cargo.lock') }}
+      - run: cargo clippy --workspace --all-targets --locked -- -D warnings
+
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            target
+          key: test-${{ hashFiles('rust-toolchain.toml', 'Cargo.lock') }}
+      - run: .github/scripts/install-tool.sh cargo-nextest
+      - run: cargo nextest run --workspace --locked --profile ci
+
+  # Every line of the workspace, less the platform-only entry points that the
+  # serverless smoke tests run (ADR-0008).
+  coverage:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            target
+          key: coverage-${{ hashFiles('rust-toolchain.toml', 'Cargo.lock') }}
+      - run: .github/scripts/install-tool.sh cargo-nextest
+      - run: .github/scripts/install-tool.sh cargo-llvm-cov
+      - run: cargo llvm-cov nextest --workspace --locked --profile ci --fail-under-lines 100 --show-missing-lines
+
+  deny:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: .github/scripts/install-tool.sh cargo-deny
+      - run: cargo deny --locked check
+
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: .github/scripts/install-tool.sh cargo-audit
+      - run: cargo audit --deny warnings
+
+  # The oldest toolchain the workspace promises, `rust-version` in Cargo.toml.
+  # RUSTUP_TOOLCHAIN takes precedence over rust-toolchain.toml, which would
+  # otherwise hand this job the pinned toolchain.
+  msrv:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      RUSTUP_TOOLCHAIN: "1.95"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: |
+          set -euo pipefail
+          declared=$(sed -n 's/^rust-version = "\(.*\)"$/\1/p' Cargo.toml)
+          if [ "$declared" != "$RUSTUP_TOOLCHAIN" ]; then
+            echo "::error::Cargo.toml declares rust-version ${declared}, and this job tests ${RUSTUP_TOOLCHAIN}"
+            exit 1
+          fi
+          rustup toolchain install "$RUSTUP_TOOLCHAIN" --profile minimal
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            target
+          key: msrv-${{ hashFiles('Cargo.toml', 'Cargo.lock') }}
+      - run: cargo test --workspace --locked
+
+  # The core and everything the wasm drivers build on compile for wasm32.
+  wasm:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            target
+          key: wasm-${{ hashFiles('rust-toolchain.toml', 'Cargo.lock') }}
+      - run: cargo build --locked --target wasm32-unknown-unknown -p herald-core
+
+  # A pull request mutates what its diff touches; main and the weekly run
+  # mutate the whole workspace. Any missed mutant fails its shard (ADR-0008).
+  mutants-shard:
+    name: mutants shard ${{ matrix.shard }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+          key: mutants-${{ hashFiles('rust-toolchain.toml', 'Cargo.lock') }}
+      - run: .github/scripts/install-tool.sh cargo-nextest
+      - run: .github/scripts/install-tool.sh cargo-mutants
+      - env:
+          EVENT: ${{ github.event_name }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+          SHARD: ${{ matrix.shard }}
+          SHARDS: ${{ strategy.job-total }}
+        run: |
+          set -euo pipefail
+          scope=()
+          if [ "$EVENT" = "pull_request" ]; then
+            git diff "$(git merge-base "$BASE" HEAD)" HEAD > "${RUNNER_TEMP}/change.diff"
+            scope=(--in-diff "${RUNNER_TEMP}/change.diff")
+          fi
+          cargo mutants --workspace --no-shuffle --shard "${SHARD}/${SHARDS}" "${scope[@]}"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: failure()
+        with:
+          name: mutants-${{ matrix.shard }}
+          path: mutants.out
+          retention-days: 7
+
+  mutants:
+    needs: mutants-shard
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - env:
+          RESULT: ${{ needs.mutants-shard.result }}
+        run: |
+          if [ "$RESULT" != "success" ]; then
+            echo "::error::A mutants shard ended ${RESULT}; its mutants.out artifact names each mutant that survived."
+            exit 1
+          fi

@@ -1,0 +1,71 @@
+[graph]
+all-features = true
+
+[advisories]
+version = 2
+yanked = "deny"
+
+[bans]
+multiple-versions = "deny"
+wildcards = "deny"
+allow-wildcard-paths = true
+deny = [
+  { crate = "amplitude", reason = "reports on the person running it" },
+  { crate = "aptabase", reason = "reports on the person running it" },
+  { crate = "bugsnag", reason = "reports on the person running it" },
+  { crate = "countly", reason = "reports on the person running it" },
+  { crate = "datadog", reason = "reports on the person running it" },
+  { crate = "google-analytics", reason = "reports on the person running it" },
+  { crate = "libhoney", reason = "reports on the person running it" },
+  { crate = "mixpanel", reason = "reports on the person running it" },
+  { crate = "opentelemetry", reason = "reports on the person running it" },
+  { crate = "posthog", reason = "reports on the person running it" },
+  { crate = "rollbar", reason = "reports on the person running it" },
+  { crate = "segment", reason = "reports on the person running it" },
+  { crate = "sentry", reason = "reports on the person running it" },
+  { crate = "snowplow", reason = "reports on the person running it" },
+  { crate = "abi_stable", reason = "runs code it was handed" },
+  { crate = "dlopen", reason = "runs code it was handed" },
+  { crate = "libloading", reason = "runs code it was handed" },
+  { crate = "sharedlib", reason = "runs code it was handed" },
+  { crate = "boa_engine", reason = "runs code it was handed" },
+  { crate = "deno_core", reason = "runs code it was handed" },
+  { crate = "dyon", reason = "runs code it was handed" },
+  { crate = "extism", reason = "runs code it was handed" },
+  { crate = "gluon", reason = "runs code it was handed" },
+  { crate = "hlua", reason = "runs code it was handed" },
+  { crate = "koto", reason = "runs code it was handed" },
+  { crate = "lua", reason = "runs code it was handed" },
+  { crate = "mlua", reason = "runs code it was handed" },
+  { crate = "quickjs", reason = "runs code it was handed" },
+  { crate = "rhai", reason = "runs code it was handed" },
+  { crate = "rlua", reason = "runs code it was handed" },
+  { crate = "rquickjs", reason = "runs code it was handed" },
+  { crate = "rustpython", reason = "runs code it was handed" },
+  { crate = "starlark", reason = "runs code it was handed" },
+  { crate = "v8", reason = "runs code it was handed" },
+  { crate = "wasm3", reason = "runs code it was handed" },
+  { crate = "wasmedge", reason = "runs code it was handed" },
+  { crate = "wasmer", reason = "runs code it was handed" },
+  { crate = "wasmi", reason = "runs code it was handed" },
+  { crate = "wasmtime", reason = "runs code it was handed" },
+]
+
+[licenses]
+version = 2
+allow = [
+  "MIT",
+  "Apache-2.0",
+  "Apache-2.0 WITH LLVM-exception",
+  "BSD-2-Clause",
+  "BSD-3-Clause",
+  "ISC",
+  "Unicode-3.0",
+  "Zlib",
+]
+confidence-threshold = 0.9
+unused-allowed-license = "allow"
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"

@@ -1,0 +1,19 @@
+[package]
+name = "herald-arch"
+description = "The architecture rules of herald's workspace, held over its dependency graph"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish.workspace = true
+
+[dependencies]
+cargo_metadata.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[lints]
+workspace = true
