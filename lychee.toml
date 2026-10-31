@@ -5,6 +5,9 @@ hidden = true
 exclude_path = [".git", "target"]
 
 exclude_loopback = true
+# The README shows its logo by an absolute URL on main, so it renders off
+# GitHub too; on a pull request that adds the file, main does not hold it yet.
+exclude = ['^https://raw\.githubusercontent\.com/nightworksio/herald/main/']
 max_retries = 3
 retry_wait_time = 3
 
