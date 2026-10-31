@@ -139,6 +139,8 @@ mod tests {
         assert!(!Layer::Core.allows_outside("tokio"));
         assert!(!Layer::Ports.allows_outside("sha2"));
         assert!(!Layer::Sources.allows_outside("serde"));
+        assert!(Layer::Testing.allows_outside("serde_json"));
+        assert!(Layer::Ports.allows_outside("jiff"));
     }
 
     #[test]

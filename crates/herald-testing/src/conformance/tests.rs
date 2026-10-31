@@ -10,6 +10,7 @@ enum Fault {
     UndeclaredSchedules,
     UndeclaredSubscriptions,
     OverwritesEntries,
+    RefusesWrites,
     OverwritesCursors,
     DuplicatesSchedules,
     IgnoresProjects,
@@ -87,6 +88,9 @@ impl Store for Faulty {
         expected: Option<Version>,
     ) -> Result<Written, StoreError> {
         self.refuses("ledger")?;
+        if self.fault == Fault::RefusesWrites {
+            return Ok(Written::Conflict);
+        }
         let expected = match self.fault {
             Fault::OverwritesEntries => self
                 .inner
@@ -159,7 +163,7 @@ impl Store for Faulty {
     }
 }
 
-fn run(fault: Fault) -> Result<(), String> {
+fn run(fault: Fault) -> Result<(), Failure> {
     pollster::block_on(store_conformance(&Faulty::new(fault)))
 }
 
@@ -187,9 +191,9 @@ fn a_kind_kept_but_not_declared_is_refused() {
     for (fault, what) in cases {
         assert_eq!(
             run(fault),
-            Err(format!(
+            Err(Failure(format!(
                 "a store that does not declare {what} must answer unsupported"
-            ))
+            )))
         );
     }
 }
@@ -200,6 +204,10 @@ fn a_store_that_breaks_its_promises_is_refused() {
         (
             Fault::OverwritesEntries,
             "an entry was written as new over one that exists",
+        ),
+        (
+            Fault::RefusesWrites,
+            "a write the store should have taken conflicted",
         ),
         (
             Fault::OverwritesCursors,
@@ -215,14 +223,21 @@ fn a_store_that_breaks_its_promises_is_refused() {
         ),
     ];
     for (fault, failure) in cases {
-        assert_eq!(run(fault), Err(failure.to_owned()));
+        assert_eq!(run(fault), Err(Failure(failure.to_owned())));
     }
+}
+
+#[test]
+fn a_failure_reads_as_its_sentence() {
+    assert_eq!(Failure("x".to_owned()).to_string(), "x");
 }
 
 #[test]
 fn a_store_that_fails_says_how() {
     assert_eq!(
         run(Fault::Broken),
-        Err("the store failed: the store could not be reached: broken".to_owned())
+        Err(Failure(
+            "the store failed: the store could not be reached: broken".to_owned()
+        ))
     );
 }

@@ -223,7 +223,8 @@ fn a_plain_secret_the_recorder_was_never_told_of_is_still_found_by_its_shape() {
     assert_eq!(recorder.fixture(), Ok(Fixture::default()));
     let mut leaked = fixture();
     leaked.exchanges[0].request.url = format!("https://api.github.com/x?token={token}");
-    assert_eq!(leaked.audit(&[]),
+    assert_eq!(
+        leaked.audit(&[]),
         Err("exchange 0 holds a GitHub token".to_owned())
     );
     assert_eq!(fixture().audit(&[String::new()]), Ok(()));

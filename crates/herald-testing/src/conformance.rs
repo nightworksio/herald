@@ -2,6 +2,8 @@ use herald_core::{
     Chore, Cursor, DestinationName, Entry, Facts, Identity, Key, RouteId, Schedule, SourceName,
     Step, Subscription,
 };
+use std::fmt;
+
 use herald_ports::{Store, StoreError, Version, Written};
 use jiff::Timestamp;
 
@@ -12,7 +14,7 @@ use jiff::Timestamp;
 /// # Errors
 ///
 /// The first way the store fails, as a sentence.
-pub async fn store_conformance<S: Store>(store: &S) -> Result<(), String> {
+pub async fn store_conformance<S: Store>(store: &S) -> Result<(), Failure> {
     let capabilities = store.capabilities();
     if capabilities.ledger {
         ledger(store).await?;
@@ -45,23 +47,56 @@ pub async fn store_conformance<S: Store>(store: &S) -> Result<(), String> {
     Ok(())
 }
 
-fn ensure(holds: bool, failure: &str) -> Result<(), String> {
-    if holds {
-        Ok(())
-    } else {
-        Err(failure.to_owned())
+/// The first way a store fails the conformance suite, as a sentence.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Failure(pub String);
+
+impl fmt::Display for Failure {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.0)
     }
 }
 
-fn failed(error: &StoreError) -> String {
-    format!("the store failed: {error}")
+impl From<StoreError> for Failure {
+    fn from(error: StoreError) -> Self {
+        Self(format!("the store failed: {error}"))
+    }
 }
 
-fn unsupported(answer: &Result<(), StoreError>, what: &str) -> Result<(), String> {
-    ensure(
+#[derive(Default)]
+struct Checks(Vec<String>);
+
+impl Checks {
+    fn ensure(&mut self, holds: bool, failure: &str) {
+        if !holds {
+            self.0.push(failure.to_owned());
+        }
+    }
+
+    fn written(&mut self, written: Written) -> Version {
+        if let Written::Written(version) = written {
+            return version;
+        }
+        self.0
+            .push("a write the store should have taken conflicted".to_owned());
+        Version(0)
+    }
+
+    fn done(self) -> Result<(), Failure> {
+        self.0
+            .into_iter()
+            .next()
+            .map_or(Ok(()), |failure| Err(Failure(failure)))
+    }
+}
+
+fn unsupported(answer: &Result<(), StoreError>, what: &str) -> Result<(), Failure> {
+    let mut checks = Checks::default();
+    checks.ensure(
         matches!(answer, Err(StoreError::Unsupported { .. })),
         &format!("a store that does not declare {what} must answer unsupported"),
-    )
+    );
+    checks.done()
 }
 
 fn key(identity: &str) -> Key {
@@ -78,49 +113,28 @@ fn subscription(destination: &str, project: &str, subscriber: &str) -> Subscript
     }
 }
 
-fn version(written: Written) -> Result<Version, String> {
-    match written {
-        Written::Written(version) => Ok(version),
-        Written::Conflict => Err("a write the store should have taken conflicted".to_owned()),
-    }
-}
-
-async fn ledger<S: Store>(store: &S) -> Result<(), String> {
+async fn ledger<S: Store>(store: &S) -> Result<(), Failure> {
+    let mut checks = Checks::default();
     let first = Entry::new(key("first")).attempted(Step::Post, NOON);
-    ensure(
-        store
-            .entry(&first.key)
-            .await
-            .map_err(|error| failed(&error))?
-            .is_none(),
+    checks.ensure(
+        store.entry(&first.key).await?.is_none(),
         "an entry never written was found",
-    )?;
-    let v1 = version(
-        store
-            .put_entry(&first, None)
-            .await
-            .map_err(|error| failed(&error))?,
-    )?;
-    let read = store
-        .entry(&first.key)
-        .await
-        .map_err(|error| failed(&error))?;
-    ensure(
+    );
+    let v1 = checks.written(store.put_entry(&first, None).await?);
+    let read = store.entry(&first.key).await?;
+    checks.ensure(
         read.as_ref().map(|record| &record.value) == Some(&first),
         "an entry written was not read back as written",
-    )?;
-    ensure(
+    );
+    checks.ensure(
         read.map(|record| record.version) == Some(v1),
         "an entry was read back at another version than it was written at",
-    )?;
-    let again = store
-        .put_entry(&first, None)
-        .await
-        .map_err(|error| failed(&error))?;
-    ensure(
+    );
+    let again = store.put_entry(&first, None).await?;
+    checks.ensure(
         again == Written::Conflict,
         "an entry was written as new over one that exists",
-    )?;
+    );
     let landed = first.clone().landed(
         Step::Post,
         Facts {
@@ -128,116 +142,75 @@ async fn ledger<S: Store>(store: &S) -> Result<(), String> {
             ..Facts::default()
         },
     );
-    let v2 = version(
-        store
-            .put_entry(&landed, Some(v1))
-            .await
-            .map_err(|error| failed(&error))?,
-    )?;
-    ensure(v2 != v1, "an entry rewritten kept its version")?;
+    let v2 = checks.written(store.put_entry(&landed, Some(v1)).await?);
+    checks.ensure(v2 != v1, "an entry rewritten kept its version");
     let stale = first.clone().landed(Step::Pin, Facts::default());
-    let lost = store
-        .put_entry(&stale, Some(v1))
-        .await
-        .map_err(|error| failed(&error))?;
-    ensure(
+    let lost = store.put_entry(&stale, Some(v1)).await?;
+    checks.ensure(
         lost == Written::Conflict,
         "an entry was written over a version it did not expect",
-    )?;
-    let read = store
-        .entry(&first.key)
-        .await
-        .map_err(|error| failed(&error))?;
-    ensure(
+    );
+    let read = store.entry(&first.key).await?;
+    checks.ensure(
         read.map(|record| record.value) == Some(landed),
         "a conflicting write changed the entry",
-    )?;
-    let other = store
-        .entry(&key("other"))
-        .await
-        .map_err(|error| failed(&error))?;
-    ensure(other.is_none(), "writing one entry made another appear")?;
-    Ok(())
+    );
+    let other = store.entry(&key("other")).await?;
+    checks.ensure(other.is_none(), "writing one entry made another appear");
+    checks.done()
 }
 
-async fn cursors<S: Store>(store: &S) -> Result<(), String> {
+async fn cursors<S: Store>(store: &S) -> Result<(), Failure> {
+    let mut checks = Checks::default();
     let source = SourceName::new("feed");
     let cursor = Cursor {
         seen: vec![Identity::new("a")],
         etag: Some("e1".to_owned()),
         last_modified: None,
     };
-    ensure(
-        store
-            .cursor(&source)
-            .await
-            .map_err(|error| failed(&error))?
-            .is_none(),
+    checks.ensure(
+        store.cursor(&source).await?.is_none(),
         "a cursor never written was found",
-    )?;
-    let v1 = version(
-        store
-            .put_cursor(&source, &cursor, None)
-            .await
-            .map_err(|error| failed(&error))?,
-    )?;
-    let read = store
-        .cursor(&source)
-        .await
-        .map_err(|error| failed(&error))?;
-    ensure(
+    );
+    let v1 = checks.written(store.put_cursor(&source, &cursor, None).await?);
+    let read = store.cursor(&source).await?;
+    checks.ensure(
         read.as_ref().map(|record| &record.value) == Some(&cursor),
         "a cursor written was not read back as written",
-    )?;
-    ensure(
+    );
+    checks.ensure(
         read.map(|record| record.version) == Some(v1),
         "a cursor was read back at another version than it was written at",
-    )?;
+    );
     let advanced = Cursor {
         seen: vec![Identity::new("b"), Identity::new("a")],
         etag: Some("e2".to_owned()),
         last_modified: None,
     };
-    let v2 = version(
-        store
-            .put_cursor(&source, &advanced, Some(v1))
-            .await
-            .map_err(|error| failed(&error))?,
-    )?;
-    ensure(v2 != v1, "a cursor rewritten kept its version")?;
-    let lost = store
-        .put_cursor(&source, &cursor, Some(v1))
-        .await
-        .map_err(|error| failed(&error))?;
-    ensure(
+    let v2 = checks.written(store.put_cursor(&source, &advanced, Some(v1)).await?);
+    checks.ensure(v2 != v1, "a cursor rewritten kept its version");
+    let lost = store.put_cursor(&source, &cursor, Some(v1)).await?;
+    checks.ensure(
         lost == Written::Conflict,
         "a cursor was written over a version it did not expect",
-    )?;
-    let created = store
-        .put_cursor(&source, &cursor, None)
-        .await
-        .map_err(|error| failed(&error))?;
-    ensure(
+    );
+    let created = store.put_cursor(&source, &cursor, None).await?;
+    checks.ensure(
         created == Written::Conflict,
         "a cursor was written as new over one that exists",
-    )?;
-    let read = store
-        .cursor(&source)
-        .await
-        .map_err(|error| failed(&error))?;
-    ensure(
+    );
+    let read = store.cursor(&source).await?;
+    checks.ensure(
         read.map(|record| record.value) == Some(advanced),
         "a conflicting write changed the cursor",
-    )?;
-    let other = store
-        .cursor(&SourceName::new("other"))
-        .await
-        .map_err(|error| failed(&error))?;
-    ensure(other.is_none(), "writing one cursor made another appear")?;
-    Ok(())
+    );
+    let other = store.cursor(&SourceName::new("other")).await?;
+    checks.ensure(other.is_none(), "writing one cursor made another appear");
+    checks.done()
 }
 
-async fn schedules<S: Store>(store: &S) -> Result<(), String> {
+async fn schedules<S: Store>(store: &S) -> Result<(), Failure> {
+    let mut checks = Checks::default();
     let schedule = |thread: &str, chore| Schedule {
         key: key(thread),
         thread: thread.to_owned(),
@@ -246,45 +219,38 @@ async fn schedules<S: Store>(store: &S) -> Result<(), String> {
     };
     let archive = schedule("1", Chore::Archive);
     let lock = schedule("2", Chore::Lock);
-    ensure(
-        store
-            .schedules()
-            .await
-            .map_err(|error| failed(&error))?
-            .is_empty(),
+    checks.ensure(
+        store.schedules().await?.is_empty(),
         "a new store holds schedules",
-    )?;
+    );
     store
         .put_schedules(&[archive.clone(), lock.clone()], &[])
-        .await
-        .map_err(|error| failed(&error))?;
+        .await?;
     store
         .put_schedules(std::slice::from_ref(&archive), &[])
-        .await
-        .map_err(|error| failed(&error))?;
-    let mut held = store.schedules().await.map_err(|error| failed(&error))?;
+        .await?;
+    let mut held = store.schedules().await?;
     held.sort_by(|left, right| left.thread.cmp(&right.thread));
-    ensure(
+    checks.ensure(
         held == [archive.clone(), lock.clone()],
         "schedules added were not held once each",
-    )?;
+    );
     store
         .put_schedules(&[], std::slice::from_ref(&archive))
-        .await
-        .map_err(|error| failed(&error))?;
+        .await?;
     store
         .put_schedules(&[], std::slice::from_ref(&archive))
-        .await
-        .map_err(|error| failed(&error))?;
-    let held = store.schedules().await.map_err(|error| failed(&error))?;
-    ensure(
+        .await?;
+    let held = store.schedules().await?;
+    checks.ensure(
         held == [lock],
         "a schedule removed was still held, or another went with it",
-    )?;
-    Ok(())
+    );
+    checks.done()
 }
 
-async fn subscriptions<S: Store>(store: &S) -> Result<(), String> {
+async fn subscriptions<S: Store>(store: &S) -> Result<(), Failure> {
+    let mut checks = Checks::default();
     let slack = DestinationName::new("slack");
     let alice = subscription("slack", "herald", "alice");
     let bob = subscription("slack", "herald", "bob");
@@ -292,46 +258,27 @@ async fn subscriptions<S: Store>(store: &S) -> Result<(), String> {
         subscription("slack", "other", "carol"),
         subscription("matrix", "herald", "dave"),
     ];
-    ensure(
-        store
-            .subscribers(&slack, "herald")
-            .await
-            .map_err(|error| failed(&error))?
-            .is_empty(),
+    checks.ensure(
+        store.subscribers(&slack, "herald").await?.is_empty(),
         "a new store holds subscribers",
-    )?;
+    );
     for subscribed in [&alice, &bob, &alice, &elsewhere[0], &elsewhere[1]] {
-        store
-            .subscribe(subscribed)
-            .await
-            .map_err(|error| failed(&error))?;
+        store.subscribe(subscribed).await?;
     }
-    let mut held = store
-        .subscribers(&slack, "herald")
-        .await
-        .map_err(|error| failed(&error))?;
+    let mut held = store.subscribers(&slack, "herald").await?;
     held.sort();
-    ensure(
+    checks.ensure(
         held == ["alice", "bob"],
         "the subscribers of a project on a destination were not those subscribed, once each",
-    )?;
-    store
-        .unsubscribe(&alice)
-        .await
-        .map_err(|error| failed(&error))?;
-    store
-        .unsubscribe(&alice)
-        .await
-        .map_err(|error| failed(&error))?;
-    let held = store
-        .subscribers(&slack, "herald")
-        .await
-        .map_err(|error| failed(&error))?;
-    ensure(
+    );
+    store.unsubscribe(&alice).await?;
+    store.unsubscribe(&alice).await?;
+    let held = store.subscribers(&slack, "herald").await?;
+    checks.ensure(
         held == ["bob"],
         "a subscriber removed was still held, or another went with them",
-    )?;
-    Ok(())
+    );
+    checks.done()
 }
 
 #[cfg(test)]

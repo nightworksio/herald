@@ -24,7 +24,7 @@ use std::sync::{Mutex, MutexGuard, PoisonError};
 
 pub use audit::{credentials, secret_header};
 pub use clock::FakeClock;
-pub use conformance::store_conformance;
+pub use conformance::{Failure, store_conformance};
 pub use crypto::{FakeSigner, FakeVerifier};
 pub use fixture::{Answer, Exchange, Fixture, Recorded, Recorder, Replay};
 pub use kv::FakeKv;
