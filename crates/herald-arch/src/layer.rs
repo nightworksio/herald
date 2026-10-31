@@ -70,6 +70,8 @@ fn outside_allowed(layer: Layer) -> &'static [&'static str] {
             "sha2",
             "unicode-segmentation",
         ],
+        Layer::Ports => &["jiff"],
+        Layer::Testing => &["jiff", "serde", "serde_json"],
         _ => &[],
     }
 }
@@ -136,6 +138,7 @@ mod tests {
         assert!(Layer::Core.allows_outside("sha2"));
         assert!(!Layer::Core.allows_outside("tokio"));
         assert!(!Layer::Ports.allows_outside("sha2"));
+        assert!(!Layer::Sources.allows_outside("serde"));
     }
 
     #[test]

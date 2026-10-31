@@ -1,0 +1,17 @@
+[package]
+name = "herald-ports"
+description = "The traits through which herald reaches everything outside its core"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish.workspace = true
+
+[dependencies]
+herald-core.workspace = true
+jiff.workspace = true
+
+[lints]
+workspace = true

@@ -1,0 +1,24 @@
+//! The ports: the traits through which herald reaches everything outside its
+//! core (ADR-0001).
+//!
+//! Every method answers a value or an error value, and every future is `Send`.
+//! A driver on a single-threaded platform wraps its platform's futures to say
+//! so.
+
+mod clock;
+mod crypto;
+mod http;
+mod kv;
+mod markers;
+mod secret;
+mod sql;
+mod store;
+
+pub use clock::Clock;
+pub use crypto::{Algorithm, CryptoError, Signer, Verifier};
+pub use http::{Http, HttpError, Method, Request, Response};
+pub use kv::{Kv, KvError, Pair, Stamped, Versionstamp};
+pub use markers::{Markers, MarkersError};
+pub use secret::{Secret, SecretError, Secrets, Segment, Text};
+pub use sql::{Changed, Sql, SqlError, Statement, Value};
+pub use store::{Capabilities, Store, StoreError, Version, Versioned, Written};

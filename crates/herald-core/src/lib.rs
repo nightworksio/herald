@@ -5,6 +5,7 @@
 //! targets.
 
 mod chunk;
+mod cursor;
 mod event;
 mod housekeep;
 mod key;
@@ -13,8 +14,10 @@ mod markup;
 mod profile;
 mod render;
 mod route;
+mod subscription;
 
 pub use chunk::{Room, chunk, size};
+pub use cursor::{Cursor, fresh};
 pub use event::{Draft, Event, Kind, Problem};
 pub use housekeep::{Chore, Schedule, due, schedules};
 pub use key::{Identity, Key, NotAKey, RouteId};
@@ -26,3 +29,4 @@ pub use route::{
     Delivery, DestinationName, Filter, Mentions, Prereleases, RoleId, Route, SourceName,
     TemplateName, Thread, route,
 };
+pub use subscription::Subscription;

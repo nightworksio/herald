@@ -26,7 +26,8 @@ impl RouteId {
 }
 
 /// What makes an event that event, stable across reruns and polls.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(transparent)]
 pub struct Identity(String);
 
 impl Identity {

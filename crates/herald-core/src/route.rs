@@ -6,7 +6,10 @@ use crate::key::RouteId;
 macro_rules! name {
     ($(#[$doc:meta])* $name:ident) => {
         $(#[$doc])*
-        #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+        #[derive(
+            Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+        )]
+        #[serde(transparent)]
         pub struct $name(String);
 
         impl $name {

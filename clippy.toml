@@ -2,6 +2,7 @@ allow-unwrap-in-tests = true
 allow-expect-in-tests = true
 allow-panic-in-tests = true
 allow-indexing-slicing-in-tests = true
+doc-valid-idents = ["ActivityPub", "WebFinger", ".."]
 
 # Every crate before the I/O layers is handed what it reads (ADR-0001). The
 # I/O layers and the tooling carry a clippy.toml of their own without these.
