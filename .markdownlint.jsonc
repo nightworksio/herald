@@ -14,6 +14,8 @@
   "MD036": false,
   // Fenced output blocks have no language to declare.
   "MD040": false,
+  // The README centres its header with inline HTML.
+  "MD033": false,
   // The pull request template starts at a second-level heading, under the
   // title GitHub shows above it.
   "MD041": false,
