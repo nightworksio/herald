@@ -39,7 +39,11 @@ drivers touch it. This ADR fixes where the lines run.
    | stores | `herald-store-sqlite`, `herald-store-postgres`, `herald-store-d1`, `herald-store-dynamodb`, `herald-store-deno-kv`, `herald-store-markers`, `herald-store-git-branch`, `herald-store-actions-cache`, `herald-store-repo-variables` | One crate per store (ADR-0005) |
    | config | `herald-config` | `herald.toml` read into typed config, the JSON Schema, and templates compiled at load (ADR-0006) |
    | flows | `herald-flows` | The commands as flows over the ports: announce, poll, housekeep, interact, doctor and preview |
-   | drivers | `herald` (the CLI), `herald-native`, `herald-worker`, `herald-lambda`, `herald-vercel`, `herald-netlify`, `herald-deno`, `herald-server` | The only crates with an async runtime and real I/O |
+   | native | `herald-native` | The ports implemented with Tokio, `reqwest` with rustls, the filesystem and the environment, shared by the native drivers |
+   | drivers | `herald` (the CLI), `herald-worker`, `herald-lambda`, `herald-vercel`, `herald-netlify`, `herald-deno`, `herald-server` | The composition roots |
+
+   The native and driver layers are the only crates with an async runtime and
+   real I/O, and the rules below call them the I/O layers.
 
    Within the sources, destinations, stores and drivers layers, a crate names
    no sibling. A source knows nothing of Discord, Discord knows nothing of
@@ -111,11 +115,9 @@ drivers touch it. This ADR fixes where the lines run.
    runner and the Worker on Cloudflare run the same announce flow.
 
 8. **Drivers are the composition roots.** Each is the only place its ports are
-   constructed:
+   constructed. The CLI, the Lambda and the server construct theirs from
+   `herald-native`:
    - `herald` is the CLI;
-   - `herald-native` implements the ports with Tokio, `reqwest` with rustls,
-     the filesystem and the environment, and is shared by the CLI, the Lambda
-     and the server;
    - `herald-worker` is built on `workers-rs`, with `fetch`, D1 and the
      Worker's secrets;
    - `herald-lambda` is the AWS Lambda entry point;
@@ -129,12 +131,12 @@ drivers touch it. This ADR fixes where the lines run.
    - **The layer order, and no sibling dependencies.** An arch test reads
      `cargo metadata` and refuses any edge between workspace crates that the
      table in decision 1 does not allow.
-   - **No runtime or I/O crate outside the drivers.** The same arch test holds
-     an allow-list of outside crates per layer. Tokio, `reqwest`, `rusqlite`,
-     `tokio-postgres`, `axum`, `workers-rs` and `lambda_runtime` are allowed
-     only in drivers.
-   - **No ambient I/O outside the drivers.** Clippy's `disallowed-methods` and
-     `disallowed-types`, configured for every crate before the drivers, refuse
+   - **No runtime or I/O crate outside the I/O layers.** The same arch test
+     holds an allow-list of outside crates per layer. Tokio, `reqwest`,
+     `rusqlite`, `tokio-postgres`, `axum`, `workers-rs` and `lambda_runtime`
+     are allowed only in the I/O layers.
+   - **No ambient I/O outside the I/O layers.** Clippy's `disallowed-methods`
+     and `disallowed-types`, configured for every crate before them, refuse
      the filesystem, the network, processes, the environment, the system clock,
      sleeping and randomness.
    - **The core is portable.** CI builds `herald-core` for
@@ -162,7 +164,7 @@ proved against recorded fixtures, and every store against the shared
 conformance suite (ADR-0008).
 
 **A new runtime is a new driver and nothing else.** Nothing before the
-drivers names Tokio, the filesystem or a platform, and the arch test fails
+I/O layers names Tokio, the filesystem or a platform, and the arch test fails
 the day something does.
 
 **A new source, destination or store is one new crate.** It names the core,
