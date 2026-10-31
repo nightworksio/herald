@@ -1,0 +1,22 @@
+// markdownlint, for the `markdown` job in .github/workflows/hygiene.yml.
+//
+// Each entry only relaxes a default.
+{
+  // Prose is wrapped by the author, not by a column count.
+  "MD013": false,
+  // Shell examples keep their `$` prompt; it is how the command is read aloud.
+  "MD014": false,
+  // The same sub-heading recurs under different parents.
+  "MD024": { "siblings_only": true },
+  // Ordered lists restart per section rather than running on.
+  "MD029": false,
+  // Bold lead-ins are emphasis, not headings.
+  "MD036": false,
+  // Fenced output blocks have no language to declare.
+  "MD040": false,
+  // The pull request template starts at a second-level heading, under the
+  // title GitHub shows above it.
+  "MD041": false,
+  // Tables are written to be read as text, not aligned by a formatter.
+  "MD060": false
+}

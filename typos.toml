@@ -1,0 +1,7 @@
+# Spelling, for the `typos` job in .github/workflows/hygiene.yml.
+
+[files]
+# Hidden files are read, so `.docs` and `.github` are checked. `.git` holds
+# compressed objects rather than text, so it comes back out.
+ignore-hidden = false
+extend-exclude = [".git/", "target/", "Cargo.lock", "LICENSE-APACHE", "LICENSE-MIT"]

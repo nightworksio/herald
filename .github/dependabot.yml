@@ -1,0 +1,28 @@
+# In every ecosystem a release waits seven days before it is offered, so a
+# revision pulled shortly after publication is one somebody else has already
+# run. Security updates are never held by a cooldown.
+
+version: 2
+
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: daily
+      time: "05:00"
+      timezone: Europe/Amsterdam
+    cooldown:
+      default-days: 7
+    groups:
+      # `init`, `analyze` and `upload-sarif` are one action, and CodeQL refuses
+      # a run whose parts are different revisions of it.
+      codeql:
+        patterns: ['github/codeql-action*']
+        update-types: ['major', 'minor', 'patch']
+      actions:
+        patterns: ['*']
+        # Majors left out, so each arrives on its own.
+        update-types: ['minor', 'patch']
+    commit-message:
+      prefix: build
+      include: scope

@@ -1,0 +1,16 @@
+# Link checking, for the `links` job in .github/workflows/hygiene.yml.
+
+# Hidden files are read, so the decision records under `.docs` are checked.
+hidden = true
+exclude_path = [".git", "target"]
+
+exclude_loopback = true
+max_retries = 3
+retry_wait_time = 3
+
+# What is not a broken link:
+#   206  a partial response: the host answered, in pieces
+#   429  the host asking to be asked less often
+#   5xx  the host is unwell, which says nothing about whether the link is wrong
+# A link that is wrong answers 404 or 410, and those still fail.
+accept = ["200", "206", "429", "500..=599"]
