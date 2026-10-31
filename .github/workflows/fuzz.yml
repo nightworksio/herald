@@ -46,7 +46,7 @@ jobs:
           TARGET: ${{ matrix.target }}
           SECONDS_TO_RUN: ${{ github.event_name == 'schedule' && '1800' || '60' }}
         working-directory: fuzz
-        run: cargo fuzz run "$TARGET" -- -max_total_time="$SECONDS_TO_RUN" -dict=markup.dict
+        run: cargo fuzz run --target x86_64-unknown-linux-gnu "$TARGET" -- -max_total_time="$SECONDS_TO_RUN" -dict=markup.dict
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: failure()
         with:
