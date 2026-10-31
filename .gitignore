@@ -1,0 +1,8 @@
+/target/
+/fuzz/target/
+/fuzz/corpus/
+/fuzz/artifacts/
+/mutants.out*/
+/lcov.info
+/node_modules/
+.DS_Store
