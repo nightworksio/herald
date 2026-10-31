@@ -1,6 +1,6 @@
 # ADR-0005: An announcement is sent once, finished if interrupted, and kept in any of nine stores
 
-**Status:** Accepted
+**Status:** Accepted; decision 7 superseded in part by [ADR-0011](0011-a-marker-counts-only-on-herald-s-own-post-and-only-herald-can-compute-it.md)
 **Date:** 2026-10-31
 
 ## Context
@@ -141,3 +141,4 @@ choice one of capability, not of correctness.
 - [ADR-0003](0003-every-source-becomes-one-neutral-event.md): identities and cursors
 - [ADR-0004](0004-each-destination-gets-its-own-dialect-limits-and-features.md): steps, markers and each platform's idempotency
 - [ADR-0008](0008-every-line-is-covered-and-no-mutant-survives.md): property tests for the plan, and the conformance suite in CI
+- [ADR-0011](0011-a-marker-counts-only-on-herald-s-own-post-and-only-herald-can-compute-it.md): a marker counts only on herald's own post, and only herald can compute it
