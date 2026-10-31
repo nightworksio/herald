@@ -10,7 +10,16 @@ authors.workspace = true
 publish.workspace = true
 
 [dependencies]
+jiff.workspace = true
+minijinja.workspace = true
+pulldown-cmark.workspace = true
+serde.workspace = true
 sha2.workspace = true
+unicode-segmentation.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true
+serde_json.workspace = true
 
 [lints]
 workspace = true
