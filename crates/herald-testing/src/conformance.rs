@@ -4,7 +4,7 @@ use herald_core::{
 };
 use std::fmt;
 
-use herald_ports::{Store, StoreError, Version, Written};
+use herald_ports::{Keeping, Store, StoreError, Version, Written};
 use jiff::Timestamp;
 
 /// Whether `store`, empty, keeps every record its capabilities declare as a
@@ -16,10 +16,10 @@ use jiff::Timestamp;
 /// The first way the store fails, as a sentence.
 pub async fn store_conformance<S: Store>(store: &S) -> Result<(), Failure> {
     let capabilities = store.capabilities();
-    if capabilities.ledger {
-        ledger(store).await?;
-    } else {
-        unsupported(&store.entry(&key("absent")).await.map(|_| ()), "ledger")?;
+    match capabilities.ledger {
+        Keeping::Kept => ledger(store).await?,
+        Keeping::Derived => derived_ledger(store).await?,
+        Keeping::None => unsupported(&store.entry(&key("absent")).await.map(|_| ()), "ledger")?,
     }
     if capabilities.cursors {
         cursors(store).await?;
@@ -29,10 +29,10 @@ pub async fn store_conformance<S: Store>(store: &S) -> Result<(), Failure> {
             "cursors",
         )?;
     }
-    if capabilities.schedules {
-        schedules(store).await?;
-    } else {
-        unsupported(&store.schedules().await.map(|_| ()), "schedules")?;
+    match capabilities.schedules {
+        Keeping::Kept => schedules(store).await?,
+        Keeping::Derived => derived_schedules(store).await?,
+        Keeping::None => unsupported(&store.schedules().await.map(|_| ()), "schedules")?,
     }
     if capabilities.subscriptions {
         subscriptions(store).await?;
@@ -159,6 +159,55 @@ async fn ledger<S: Store>(store: &S) -> Result<(), Failure> {
     );
     let other = store.entry(&key("other")).await?;
     checks.ensure(other.is_none(), "writing one entry made another appear");
+    checks.done()
+}
+
+async fn derived_ledger<S: Store>(store: &S) -> Result<(), Failure> {
+    let mut checks = Checks::default();
+    let first = Entry::new(key("first")).attempted(Step::Post, NOON);
+    checks.ensure(
+        store.entry(&first.key).await?.is_none(),
+        "an entry no post carries was found",
+    );
+    let v1 = checks.written(store.put_entry(&first, None).await?);
+    let again = store.put_entry(&first, Some(v1)).await?;
+    checks.ensure(
+        matches!(again, Written::Written(v2) if v2 > v1),
+        "a write to a derived ledger was not taken at a later version",
+    );
+    checks.ensure(
+        store.entry(&first.key).await?.is_none(),
+        "a derived ledger kept a write",
+    );
+    checks.done()
+}
+
+async fn derived_schedules<S: Store>(store: &S) -> Result<(), Failure> {
+    let mut checks = Checks::default();
+    let schedule = Schedule {
+        key: key("1"),
+        route: RouteId::new("conformance"),
+        thread: "1".to_owned(),
+        chore: Chore::Archive,
+        due: NOON,
+    };
+    checks.ensure(
+        store.schedules().await?.is_empty(),
+        "schedules no post carries were found",
+    );
+    store
+        .put_schedules(std::slice::from_ref(&schedule), &[])
+        .await?;
+    store
+        .put_schedules(&[], std::slice::from_ref(&schedule))
+        .await?;
+    store
+        .put_schedules(std::slice::from_ref(&schedule), &[])
+        .await?;
+    checks.ensure(
+        store.schedules().await?.is_empty(),
+        "a store deriving schedules kept one written",
+    );
     checks.done()
 }
 

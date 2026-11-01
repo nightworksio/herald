@@ -167,5 +167,8 @@ mod tests {
         assert!(Layer::Native.allows_outside("tokio"));
         assert!(Layer::Drivers.allows_outside("axum"));
         assert!(Layer::Tooling.allows_outside("cargo_metadata"));
+        for layer in [Layer::Native, Layer::Drivers, Layer::Tooling] {
+            assert_eq!(outside_allowed(layer), [] as [&str; 0]);
+        }
     }
 }

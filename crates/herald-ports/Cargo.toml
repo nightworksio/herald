@@ -13,5 +13,8 @@ publish.workspace = true
 herald-core.workspace = true
 jiff.workspace = true
 
+[dev-dependencies]
+pollster.workspace = true
+
 [lints]
 workspace = true

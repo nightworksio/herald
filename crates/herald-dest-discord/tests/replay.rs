@@ -9,8 +9,8 @@ mod replay {
     use herald_dest_discord::{
         Credential, DestinationOptions, Discord, DiscordMarkers, Refusal, RouteOptions,
     };
-    use herald_ports::{Markers, MarkersError, Secret};
-    use herald_testing::sample::{self, announcement, marker};
+    use herald_ports::{MarkedThread, Markers, MarkersError, Secret};
+    use herald_testing::sample::{self, announcement, marker, route_marker};
     use herald_testing::{Fixture, Replay};
     use jiff::SignedDuration;
 
@@ -446,6 +446,7 @@ mod replay {
             .landed(Step::Post, message("1566200000000000001"))
             .landed(Step::Crosspost, message("1566200000000000001"))
             .landed(Step::Pin, Facts::default())
+            .landed(Step::Unpin, Facts::default())
             .landed(Step::OpenThread, thread.clone())
             .landed(Step::Chunk(1), thread.clone())
             .landed(Step::Chunk(2), thread);
@@ -481,6 +482,38 @@ mod replay {
                 step: Step::Post,
                 verify_first: false,
             }])
+        );
+    }
+
+    #[test]
+    fn the_threads_of_herald_s_own_posts_on_a_route_are_listed() {
+        let replay = fixture!("threads");
+        let discord = bot(CHANNEL, false);
+        let threads =
+            pollster::block_on(DiscordMarkers::new(&discord, &replay).threads(&route_marker()))
+                .unwrap();
+        replay.finish().unwrap();
+        assert_eq!(
+            threads,
+            [
+                MarkedThread {
+                    thread: "1566200000000000061".to_owned(),
+                    opened: "2026-10-31T12:00:02Z".parse().unwrap(),
+                    archived: false,
+                    locked: false,
+                },
+                MarkedThread {
+                    thread: "1566200000000000062".to_owned(),
+                    opened: "2026-10-24T12:00:01Z".parse().unwrap(),
+                    archived: true,
+                    locked: false,
+                },
+            ]
+        );
+        let unreadable = fixture!("markers-unreadable");
+        assert!(
+            pollster::block_on(DiscordMarkers::new(&discord, &unreadable).threads(&route_marker()))
+                .is_err()
         );
     }
 

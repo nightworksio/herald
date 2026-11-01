@@ -49,6 +49,22 @@ pub enum Store {
 }
 
 impl Store {
+    /// The kind's name, as `[store] kind` writes it.
+    #[must_use]
+    pub fn kind(&self) -> &'static str {
+        match self {
+            Self::Sqlite => "sqlite",
+            Self::Postgres => "postgres",
+            Self::D1 => "d1",
+            Self::Dynamodb => "dynamodb",
+            Self::DenoKv => "deno-kv",
+            Self::Markers => "markers",
+            Self::GitBranch(_) => "git-branch",
+            Self::ActionsCache => "actions-cache",
+            Self::RepoVariables => "repo-variables",
+        }
+    }
+
     /// Every kind, as the config spells it.
     pub const KINDS: [&'static str; 9] = [
         "sqlite",

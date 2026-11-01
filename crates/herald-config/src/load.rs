@@ -270,18 +270,17 @@ impl Loader<'_> {
         }
         self.typed::<NoOptions>(rest, "store")?;
         [
-            ("sqlite", Store::Sqlite),
-            ("postgres", Store::Postgres),
-            ("d1", Store::D1),
-            ("dynamodb", Store::Dynamodb),
-            ("deno-kv", Store::DenoKv),
-            ("markers", Store::Markers),
-            ("actions-cache", Store::ActionsCache),
-            ("repo-variables", Store::RepoVariables),
+            Store::Sqlite,
+            Store::Postgres,
+            Store::D1,
+            Store::Dynamodb,
+            Store::DenoKv,
+            Store::Markers,
+            Store::ActionsCache,
+            Store::RepoVariables,
         ]
         .into_iter()
-        .find(|(name, _)| *name == kind)
-        .map(|(_, store)| store)
+        .find(|store| store.kind() == kind)
     }
 
     fn destinations(

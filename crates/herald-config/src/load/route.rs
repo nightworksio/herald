@@ -125,7 +125,11 @@ impl Loader<'_> {
                 subscribers: route.mentions.subscribers,
             },
         };
-        for key in profile.features.lacking(&delivery) {
+        let lacking = profile.features.lacking(&delivery);
+        for key in lacking
+            .into_iter()
+            .filter(|key| !(options.forum && *key == "thread"))
+        {
             self.error(
                 &span,
                 &format!("{path}.{key}"),

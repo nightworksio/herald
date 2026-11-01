@@ -27,16 +27,28 @@ pub enum Written {
     Conflict,
 }
 
+/// How a store holds a kind of record.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Keeping {
+    /// It holds none, and answers unsupported.
+    None,
+    /// It keeps what is written, and reads it back.
+    Kept,
+    /// It reads them from the destinations' own posts, and takes each write
+    /// without keeping it, as the post is the record (ADR-0005).
+    Derived,
+}
+
 /// What a store keeps, for doctor to compare with what a config needs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[allow(clippy::struct_excessive_bools)]
 pub struct Capabilities {
     /// The ledger.
-    pub ledger: bool,
+    pub ledger: Keeping,
     /// Cursors.
     pub cursors: bool,
     /// Schedules.
-    pub schedules: bool,
+    pub schedules: Keeping,
     /// Subscriptions.
     pub subscriptions: bool,
     /// Each route's pinned post.

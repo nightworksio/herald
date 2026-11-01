@@ -97,6 +97,9 @@ after a month.
      store that keeps no pins, such as `markers`, and says to use
      `"markers"` or a store that keeps them.
    - **An earlier pin already gone** counts as unpinned.
+   - **Read back from a post.** A pinned post counts its route's unpin as
+     landed too, as the post cannot show it. An earlier pin that a stopped
+     run left is unpinned by the route's next announcement.
 
 5. **Each destination says how many pins it holds, and the steps follow.**
    - **Many pins**, as a Discord channel: the announcement is pinned, then

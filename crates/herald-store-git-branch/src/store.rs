@@ -1,7 +1,9 @@
 use herald_core::{
     Cursor, DestinationName, Entry, Key, RouteId, Schedule, SourceName, Subscription,
 };
-use herald_ports::{Capabilities, Http, Secret, Store, StoreError, Version, Versioned, Written};
+use herald_ports::{
+    Capabilities, Http, Keeping, Secret, Store, StoreError, Version, Versioned, Written,
+};
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 use serde_json::Value;
@@ -161,9 +163,9 @@ impl<H: Http> GitBranchStore<H> {
 impl<H: Http> Store for GitBranchStore<H> {
     fn capabilities(&self) -> Capabilities {
         Capabilities {
-            ledger: true,
+            ledger: Keeping::Kept,
             cursors: true,
-            schedules: true,
+            schedules: Keeping::Kept,
             subscriptions: true,
             pins: true,
             concurrent: true,

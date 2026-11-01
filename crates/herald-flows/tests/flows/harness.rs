@@ -3,8 +3,8 @@ use std::sync::Mutex;
 
 use herald_config::{Config, load};
 use herald_core::{
-    Cursor, DestinationName, Draft, Entry, Event, Key, Kind, RouteId, Schedule, SourceName, Step,
-    Subscription,
+    Cursor, DestinationName, Draft, Entry, Event, Identity, Key, Kind, RouteId, Schedule,
+    SourceName, Step, Subscription,
 };
 use herald_flows::{Announced, Outcome, Ports, announce, prepare};
 use herald_ports::{
@@ -296,4 +296,19 @@ impl Store for Failing {
         }
         self.inner.put_pinned(route, post).await
     }
+}
+
+pub(crate) fn marks() -> String {
+    let route = herald_core::Marker::of(&fake_mac(&herald_core::Marker::route_message(
+        &RouteId::new("releases"),
+    )));
+    let key = Key::derive(&RouteId::new("releases"), &Identity::new("github.com/1/v1"));
+    let announcement = herald_core::Marker::of(&fake_mac(&herald_core::Marker::message(&key)));
+    format!("{route}.{announcement}")
+}
+
+pub(crate) fn fake_mac(message: &[u8]) -> Vec<u8> {
+    let derived =
+        herald_core::hex(&[b"HmacSha256", &b"hunter2"[..], b"herald/marker-key/v1"].join(&b'|'));
+    [b"HmacSha256", derived.as_bytes(), message].join(&b'|')
 }

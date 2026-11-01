@@ -557,6 +557,7 @@ dependencies = [
  "herald-dest-discord",
  "herald-ports",
  "herald-sources-forge",
+ "herald-store-markers",
  "herald-testing",
  "jiff",
  "pollster",
@@ -589,6 +590,7 @@ version = "0.0.0"
 dependencies = [
  "herald-core",
  "jiff",
+ "pollster",
 ]
 
 [[package]]
@@ -616,6 +618,17 @@ dependencies = [
  "schemars",
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "herald-store-markers"
+version = "0.0.0"
+dependencies = [
+ "herald-core",
+ "herald-ports",
+ "herald-testing",
+ "jiff",
+ "pollster",
 ]
 
 [[package]]

@@ -7,7 +7,7 @@ use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 
 use herald_core::{Identity, Key, RouteId};
-use herald_ports::{HttpError, Method, Request, Response, Secret, Store as _};
+use herald_ports::{HttpError, Method, Request, Response, Secret};
 use serde_json::{Value, json};
 
 use super::*;
@@ -314,8 +314,8 @@ fn a_run_that_cannot_start_says_why() {
         (
             "GITHUB_RUN_ID",
             None,
-            &CONFIG.replace("kind = \"git-branch\"", "kind = \"markers\""),
-            "this herald keeps records only on a git branch",
+            &CONFIG.replace("kind = \"git-branch\"", "kind = \"sqlite\""),
+            "this herald keeps records in git-branch or markers; set [store] kind to one of them",
         ),
         (
             "GITHUB_RUN_ID",
@@ -387,13 +387,103 @@ fn doctor_names_what_the_config_leaves_to_chance() {
         &["doctor"],
     );
     assert!(!keyed.out.contains("Rotating"), "{}", keyed.out);
-    let markers = run(
-        &setup(&CONFIG.replace("kind = \"git-branch\"", "kind = \"markers\"")),
+    let sqlite = run(
+        &setup(&CONFIG.replace("kind = \"git-branch\"", "kind = \"sqlite\"")),
         &world,
         &["doctor"],
     );
-    assert_eq!(markers.code, STOPPED);
-    assert!(markers.out.contains("set [store] kind = \"git-branch\""));
+    assert_eq!(sqlite.code, STOPPED);
+    assert!(
+        sqlite.out.ends_with("store.kind: keeping records in sqlite cannot be served: this herald keeps records in git-branch or markers; set [store] kind to one of them.\n"),
+        "{}",
+        sqlite.out
+    );
+}
+
+const MARKERS: &str = "kind = \"markers\"";
+
+#[test]
+fn doctor_names_what_the_markers_store_cannot_serve() {
+    let gaps = |config: &str| {
+        let doctored = run(&setup(config), &World::default(), &["doctor"]);
+        assert_eq!(doctored.code, STOPPED, "{}", doctored.err);
+        assert!(
+            doctored
+                .out
+                .contains("The markers store has no compare-and-set")
+        );
+        doctored
+            .out
+            .lines()
+            .filter(|line| line.contains("cannot be served"))
+            .map(ToOwned::to_owned)
+            .collect::<Vec<_>>()
+    };
+    let markers = CONFIG.replace("kind = \"git-branch\"", MARKERS);
+    let polling = "sources.cli: polling cli cannot be served: the markers store keeps no cursors; `herald poll` needs a store that does.";
+    assert_eq!(
+        gaps(&markers.replace(
+            "template = \"release\"\n",
+            "template = \"release\"\npin = \"store\"\n"
+        )),
+        [
+            "routes[0].pin: a pin the store remembers cannot be served: the markers store keeps no pins; set pin = \"markers\".",
+            polling,
+        ]
+    );
+    let hooked = markers.replace(
+        "token = { secret = \"HERALD_DISCORD_TOKEN\" }",
+        "webhook = { secret = \"HERALD_DISCORD_WEBHOOK\" }",
+    );
+    assert_eq!(
+        gaps(&hooked),
+        [
+            "routes[0].destination: sending each announcement once cannot be served: the markers store reads announcements back from their posts, and a webhook cannot read back its posts; post through a bot to a text or announcement channel, or choose a store that keeps records.",
+            polling,
+        ]
+    );
+    let forum = markers.replace("channel = \"100\"", "channel = \"100\"\nforum = true");
+    assert!(gaps(&forum)[0].contains("and a forum's posts are not read back"));
+}
+
+#[test]
+fn a_release_kept_only_in_its_post_is_announced_once_and_each_command_warns_of_its_gaps() {
+    let mut setup = setup(&CONFIG.replace("kind = \"git-branch\"", MARKERS));
+    setup.vars.remove("GITHUB_TOKEN");
+    let world = World::default();
+    discord(
+        &world,
+        &[
+            ("/users/@me", 200, r#"{"id":"99"}"#),
+            ("/channels/100/messages?limit=100", 200, "[]"),
+            ("/channels/100/messages", 200, r#"{"id":"1"}"#),
+        ],
+    );
+    let announced = run(&setup, &world, &ANNOUNCE);
+    assert_eq!(
+        (announced.code, announced.out.as_str()),
+        (
+            DONE,
+            "warning: sources.cli: polling cli cannot be served: the markers store keeps no cursors; `herald poll` needs a store that does.\nreleases: announced (post)\n"
+        )
+    );
+    setup
+        .vars
+        .insert("GITHUB_ACTIONS".to_owned(), "true".to_owned());
+    let polled = run(&setup, &world, &POLL);
+    assert_eq!(
+        (polled.code, polled.out.as_str()),
+        (
+            STOPPED,
+            "::warning title=herald doctor::sources.cli: polling cli cannot be served: the markers store keeps no cursors; `herald poll` needs a store that does.\ncli: stopped: this store keeps no cursors; choose a store that does. The next poll asks again.\n"
+        )
+    );
+    let housekept = run(&setup, &world, &["housekeep"]);
+    assert!(
+        housekept.out.ends_with("No chore is due.\n"),
+        "{}",
+        housekept.out
+    );
 }
 
 #[test]
@@ -744,5 +834,47 @@ fn a_config_without_sources_has_nothing_to_poll() {
     assert_eq!(
         (idle.code, idle.out.as_str(), idle.err.as_str()),
         (DONE, "The config names no source to poll.\n", "")
+    );
+}
+
+#[test]
+fn a_warning_on_actions_stays_one_workflow_command() {
+    assert_eq!(
+        escaped("100% done\r\n::error::forged"),
+        "100%25 done%0D%0A::error::forged"
+    );
+    let mut setup = setup(
+        &CONFIG
+            .replace("kind = \"git-branch\"", MARKERS)
+            .replace("[sources.cli]", "[sources.\"cli\\n::error::forged\"]")
+            .replace(
+                "sources = [\"cli\"]",
+                "sources = [\"cli\\n::error::forged\"]",
+            ),
+    );
+    setup
+        .vars
+        .insert("GITHUB_ACTIONS".to_owned(), "true".to_owned());
+    setup.vars.insert(
+        "GITHUB_EVENT_NAME".to_owned(),
+        "push\n::error::forged".to_owned(),
+    );
+    let warned = run(&setup, &World::default(), &ANNOUNCE);
+    assert_eq!(
+        warned
+            .out
+            .lines()
+            .filter(|line| line.starts_with("::"))
+            .count(),
+        1,
+        "{}",
+        warned.out
+    );
+    assert!(
+        warned
+            .out
+            .contains("The run's event is push ::error::forged, not a release"),
+        "{}",
+        warned.out
     );
 }

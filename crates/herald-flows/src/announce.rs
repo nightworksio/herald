@@ -3,7 +3,7 @@ use herald_core::{
     Announcement, Entry, Event, Facts, Key, Marker, Marks, Pinning, Plan, RouteId, Sent,
     SourceName, Step, Templates, Threads, plan, schedules, steps,
 };
-use herald_ports::{Algorithm, Clock, Http, Secret, Signer, Store, Version, Written};
+use herald_ports::{Clock, Http, Secret, Signer, Store, Version, Written, marker};
 use jiff::{SignedDuration, Timestamp};
 
 use crate::prepare::{Connected, PreparedRoute};
@@ -93,10 +93,8 @@ struct Progress {
 }
 
 async fn mac<G: Signer>(signer: &G, key: &Secret, message: &[u8]) -> Result<Marker, Stop> {
-    signer
-        .sign(Algorithm::HmacSha256, key, message)
+    marker(signer, key, message)
         .await
-        .map(|mac| Marker::of(&mac))
         .map_err(|error| Stop::Marker(error.to_string()))
 }
 

@@ -1,4 +1,4 @@
-use herald_ports::{Capabilities, Versioned};
+use herald_ports::{Capabilities, Keeping, Versioned};
 
 use super::*;
 use crate::FakeStore;
@@ -19,6 +19,10 @@ enum Fault {
     SharesPins,
     Broken,
     KeepsNothing,
+    DerivesButKeeps,
+    DerivesSchedulesButKeeps,
+    DerivesAtOneVersion,
+    Derives,
 }
 
 struct Faulty {
@@ -54,7 +58,7 @@ impl Store for Faulty {
         let all = self.inner.capabilities();
         match self.fault {
             Fault::UndeclaredLedger => Capabilities {
-                ledger: false,
+                ledger: Keeping::None,
                 ..all
             },
             Fault::UndeclaredCursors => Capabilities {
@@ -62,7 +66,20 @@ impl Store for Faulty {
                 ..all
             },
             Fault::UndeclaredSchedules => Capabilities {
-                schedules: false,
+                schedules: Keeping::None,
+                ..all
+            },
+            Fault::DerivesButKeeps | Fault::DerivesAtOneVersion => Capabilities {
+                ledger: Keeping::Derived,
+                ..all
+            },
+            Fault::DerivesSchedulesButKeeps => Capabilities {
+                schedules: Keeping::Derived,
+                ..all
+            },
+            Fault::Derives => Capabilities {
+                ledger: Keeping::Derived,
+                schedules: Keeping::Derived,
                 ..all
             },
             Fault::UndeclaredSubscriptions => Capabilities {
@@ -71,9 +88,9 @@ impl Store for Faulty {
             },
             Fault::UndeclaredPins => Capabilities { pins: false, ..all },
             Fault::KeepsNothing => Capabilities {
-                ledger: false,
+                ledger: Keeping::None,
                 cursors: false,
-                schedules: false,
+                schedules: Keeping::None,
                 subscriptions: false,
                 pins: false,
                 concurrent: false,
@@ -84,6 +101,9 @@ impl Store for Faulty {
 
     async fn entry(&self, key: &Key) -> Result<Option<Versioned<Entry>>, StoreError> {
         self.refuses("ledger")?;
+        if self.fault == Fault::Derives {
+            return Ok(None);
+        }
         self.inner.entry(key).await
     }
 
@@ -93,8 +113,13 @@ impl Store for Faulty {
         expected: Option<Version>,
     ) -> Result<Written, StoreError> {
         self.refuses("ledger")?;
-        if self.fault == Fault::RefusesWrites {
-            return Ok(Written::Conflict);
+        match self.fault {
+            Fault::RefusesWrites => return Ok(Written::Conflict),
+            Fault::DerivesAtOneVersion => return Ok(Written::Written(Version(1))),
+            Fault::Derives => {
+                return Ok(Written::Written(Version(expected.map_or(1, |v| v.0 + 1))));
+            }
+            _ => {}
         }
         let expected = match self.fault {
             Fault::OverwritesEntries => self
@@ -132,6 +157,9 @@ impl Store for Faulty {
 
     async fn schedules(&self) -> Result<Vec<Schedule>, StoreError> {
         self.refuses("schedules")?;
+        if self.fault == Fault::Derives {
+            return Ok(Vec::new());
+        }
         let held = self.inner.schedules().await?;
         Ok(match self.fault {
             Fault::DuplicatesSchedules => held.iter().chain(&held).cloned().collect(),
@@ -200,6 +228,25 @@ fn the_fake_store_passes() {
         pollster::block_on(store_conformance(&FakeStore::default())),
         Ok(())
     );
+}
+
+#[test]
+fn a_store_deriving_its_ledger_and_schedules_passes_when_it_keeps_neither() {
+    assert_eq!(run(Fault::Derives), Ok(()));
+    let cases = [
+        (Fault::DerivesButKeeps, "a derived ledger kept a write"),
+        (
+            Fault::DerivesAtOneVersion,
+            "a write to a derived ledger was not taken at a later version",
+        ),
+        (
+            Fault::DerivesSchedulesButKeeps,
+            "a store deriving schedules kept one written",
+        ),
+    ];
+    for (fault, failure) in cases {
+        assert_eq!(run(fault), Err(Failure(failure.to_owned())));
+    }
 }
 
 #[test]

@@ -4,10 +4,11 @@ use std::fmt;
 use herald_config::{Config, Destination, RouteConfig, RouteOptions, Source};
 use herald_core::{DestinationName, RouteId, SourceName, hex};
 use herald_dest_discord::{Credential, Discord};
-use herald_ports::{Algorithm, CryptoError, Secret, SecretError, Secrets, Signer};
+use herald_ports::{Algorithm, CryptoError, Http, Secret, SecretError, Secrets, Signer};
 use herald_sources_forge::GitHub;
+use herald_store_markers::{MarkedRoute, MarkersStore};
 
-use crate::reached::Reached;
+use crate::reached::{Posts, Reached};
 
 /// What a marker key is derived from a credential under (ADR-0011).
 const DERIVATION: &[u8] = b"herald/marker-key/v1";
@@ -93,6 +94,25 @@ pub struct Prepared {
 pub struct Connected<H> {
     pub(crate) routes: Vec<(PreparedRoute, H)>,
     pub(crate) sources: Vec<(PreparedSource, H)>,
+}
+
+impl<H: Http> Connected<H> {
+    /// The store the posts of every route that reads them back make, its
+    /// markers computed by `signer` (ADR-0005).
+    pub fn marked<G: Signer>(&self, signer: G) -> MarkersStore<Posts<'_, H>, G> {
+        let routes = self
+            .routes
+            .iter()
+            .filter(|(route, _)| route.reached.profile().features.reads_back)
+            .map(|(route, http)| MarkedRoute {
+                route: route.config.route.id.clone(),
+                thread: route.config.route.delivery.thread.clone(),
+                markers: route.reached.posts(http),
+                key: route.marker_key.clone(),
+            })
+            .collect();
+        MarkersStore::new(routes, signer)
+    }
 }
 
 impl Prepared {

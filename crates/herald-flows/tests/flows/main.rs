@@ -10,8 +10,12 @@
 #[cfg(test)]
 mod announce;
 #[cfg(test)]
+mod doctor;
+#[cfg(test)]
 mod harness;
 #[cfg(test)]
 mod housekeep;
+#[cfg(test)]
+mod marked;
 #[cfg(test)]
 mod poll;

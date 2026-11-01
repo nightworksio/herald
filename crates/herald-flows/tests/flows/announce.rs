@@ -124,21 +124,6 @@ fn a_run_stopped_by_a_rate_limit_is_finished_by_the_next_after_it_asks_what_land
     );
 }
 
-fn marks() -> String {
-    let route = herald_core::Marker::of(&fake_mac(&herald_core::Marker::route_message(
-        &RouteId::new("releases"),
-    )));
-    let key = Key::derive(&RouteId::new("releases"), &Identity::new("github.com/1/v1"));
-    let announcement = herald_core::Marker::of(&fake_mac(&herald_core::Marker::message(&key)));
-    format!("{route}.{announcement}")
-}
-
-fn fake_mac(message: &[u8]) -> Vec<u8> {
-    let derived =
-        herald_core::hex(&[b"HmacSha256", &b"hunter2"[..], b"herald/marker-key/v1"].join(&b'|'));
-    [b"HmacSha256", derived.as_bytes(), message].join(&b'|')
-}
-
 #[test]
 fn a_refusal_or_an_unreachable_destination_stops_the_run() {
     let store = healthy();

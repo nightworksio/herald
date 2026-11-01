@@ -4,7 +4,7 @@ use std::sync::Mutex;
 use herald_core::{
     Cursor, DestinationName, Entry, Key, RouteId, Schedule, SourceName, Subscription,
 };
-use herald_ports::{Capabilities, Store, StoreError, Version, Versioned, Written};
+use herald_ports::{Capabilities, Keeping, Store, StoreError, Version, Versioned, Written};
 
 use crate::lock;
 
@@ -47,9 +47,9 @@ fn compare_and_set<K: Ord, T: Clone>(
 impl Store for FakeStore {
     fn capabilities(&self) -> Capabilities {
         Capabilities {
-            ledger: true,
+            ledger: Keeping::Kept,
             cursors: true,
-            schedules: true,
+            schedules: Keeping::Kept,
             subscriptions: true,
             pins: true,
             concurrent: true,

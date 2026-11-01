@@ -170,6 +170,15 @@ body = "{{ event.body }}"
     }
 
     #[test]
+    fn every_store_kind_loads_as_itself() {
+        for kind in Store::KINDS {
+            let text = EXAMPLE.replace("kind = \"git-branch\"", &format!("kind = \"{kind}\""));
+            let config = load("herald.toml", &text, &|_| Err(String::new())).unwrap();
+            assert_eq!(config.store.kind(), kind);
+        }
+    }
+
+    #[test]
     fn an_option_its_destination_lacks_is_an_error_not_a_no_op() {
         let text = EXAMPLE
             .replace("token = { secret = \"HERALD_DISCORD_TOKEN\" }", "webhook = { secret = \"HERALD_DISCORD_WEBHOOK\" }")
@@ -184,7 +193,13 @@ body = "{{ event.body }}"
         );
         let text = text.replace("channel_id = \"2\"\n", "");
         let error = errors(&text);
-        for key in ["crosspost", "pin", "mentions.subscribers"] {
+        for key in [
+            "crosspost",
+            "pin",
+            "mentions.subscribers",
+            "thread",
+            "thread.archive_after",
+        ] {
             assert!(
                 error.contains(&format!(
                     "routes[0].{key}: the destination \"discord\" cannot do this as it is reached"
@@ -193,6 +208,16 @@ body = "{{ event.body }}"
             );
         }
         assert!(!error.contains("mentions.roles"), "{error}");
+        let forum = text
+            .replace("crosspost = true\npin = \"markers\"\n", "forum = true\n")
+            .replace("mentions = { roles = [\"1\"], subscribers = true }\n", "")
+            .replace("archive_after = \"14d\"", "lock_after = \"14d\"");
+        let error = errors(&forum);
+        assert!(!error.contains("routes[0].thread:"), "{error}");
+        assert!(
+            error.contains("routes[0].thread.lock_after: the destination \"discord\" cannot do this as it is reached"),
+            "{error}"
+        );
         let unchannelled = EXAMPLE.replace("channel = \"1566184281406177531\"\n", "");
         assert!(errors(&unchannelled).contains("routes[0]: a Discord bot posts to a channel"));
     }

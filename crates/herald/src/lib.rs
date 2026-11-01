@@ -13,15 +13,15 @@ use std::sync::Arc;
 
 use clap::{Parser, Subcommand, ValueEnum};
 use herald_config::{Config, Source, Store, load};
-use herald_core::{Chore, Schedule, SourceName, Step};
+use herald_core::{Chore, Event, Schedule, SourceName, Step};
 use herald_flows::{
-    Announced, Chored, Connected, Kept, Outcome, Ports, Remembered, Stop, Sweep, Swept, announce,
-    housekeep, poll, prepare,
+    Announced, Chored, Connected, Findings, Gap, Kept, Outcome, Ports, Remembered, Stop, Sweep,
+    Swept, announce, doctor, housekeep, poll, prepare, unserved,
 };
 use herald_native::{EnvSecrets, RingSigner, SystemClock};
-use herald_ports::{Http, HttpError, Request, Response, Secrets};
+use herald_ports::{Http, HttpError, Request, Response, Secrets, Store as Keeps};
 use herald_sources_forge::GitHub;
-use herald_store_git_branch::{GitBranch, GitBranchStore};
+use herald_store_git_branch::{GitBranch, GitBranchStore, StoreOptions};
 
 /// Every route announced, already announced, or held by another run; every
 /// source polled and its cursor moved on; or every chore that fell due done
@@ -85,6 +85,15 @@ struct Cli {
 
 #[derive(Debug, Subcommand)]
 enum Command {
+    #[command(flatten)]
+    Serve(Serve),
+    /// Check the config, and name what it asks for that herald cannot serve.
+    Doctor,
+}
+
+/// The commands that serve a config, each warning first of what it cannot.
+#[derive(Debug, Subcommand)]
+enum Serve {
     /// Announce the run's event to every route that takes it.
     Announce {
         /// Where the event comes from.
@@ -95,8 +104,6 @@ enum Command {
     Poll,
     /// Archive and lock every announcement thread whose time has come.
     Housekeep,
-    /// Check the config, and name what it asks for that herald cannot serve.
-    Doctor,
 }
 
 #[derive(Debug, Clone, Copy, ValueEnum)]
@@ -130,18 +137,22 @@ pub async fn run(
     let config = match read(&cli.config) {
         Ok(config) => config,
         Err(message) => {
-            let _ = writeln!(err, "{message}");
+            say(err, &message);
             return MISTAKEN;
         }
     };
-    let ran = match cli.command {
-        Command::Doctor => return doctor(&cli.config, &config, out),
-        Command::Announce { from: From::Github } => github(&config, vars, connect, out).await,
-        Command::Poll => polling(&config, vars, connect, out).await,
-        Command::Housekeep => housekeeping(&config, vars, connect, out).await,
+    let findings = doctor(&config, &STORES);
+    let Command::Serve(serve) = cli.command else {
+        return checked(&cli.config, &findings, out);
+    };
+    warned(&findings.gaps, vars, out);
+    let ran = match serve {
+        Serve::Announce { from: From::Github } => github(&config, vars, connect, out).await,
+        Serve::Poll => polling(&config, vars, connect, out).await,
+        Serve::Housekeep => housekeeping(&config, vars, connect, out).await,
     };
     ran.unwrap_or_else(|message| {
-        let _ = writeln!(err, "{message}");
+        say(err, &message);
         STOPPED
     })
 }
@@ -156,25 +167,63 @@ fn read(path: &str) -> Result<Config, String> {
     load(path, &text, &files).map_err(|errors| errors.to_string())
 }
 
-fn doctor(path: &str, config: &Config, out: &mut dyn Write) -> u8 {
-    let _ = writeln!(
+fn checked(path: &str, findings: &Findings, out: &mut dyn Write) -> u8 {
+    say(
         out,
-        "{path} reads, its names resolve and its templates render."
+        &format!("{path} reads, its names resolve and its templates render."),
     );
-    if config.marker_key.is_none() {
-        let _ = writeln!(
-            out,
-            "Each post's markers are keyed by its destination's credential, as no [markers] key is set. Rotating that credential forgets every earlier marker, so an announcement made before the rotation can be posted again on a store that has only markers. Set [markers] key = {{ secret = \"HERALD_MARKER_SECRET\" }} to keep them."
-        );
+    for note in &findings.notes {
+        say(out, note);
     }
-    if !matches!(config.store, Store::GitBranch(_)) {
-        let _ = writeln!(
-            out,
-            "This herald keeps records only on a git branch; set [store] kind = \"git-branch\"."
-        );
-        return STOPPED;
+    for gap in &findings.gaps {
+        say(out, &gapped(gap));
     }
-    DONE
+    if findings.gaps.is_empty() {
+        DONE
+    } else {
+        STOPPED
+    }
+}
+
+fn gapped(gap: &Gap) -> String {
+    format!(
+        "{}: {} cannot be served: {}.",
+        gap.key, gap.feature, gap.why
+    )
+}
+
+/// Each gap as a warning, annotated on GitHub Actions.
+fn warned(gaps: &[Gap], vars: &BTreeMap<String, String>, out: &mut dyn Write) {
+    let actions = vars
+        .get("GITHUB_ACTIONS")
+        .is_some_and(|value| value == "true");
+    for gap in gaps {
+        let line = gapped(gap);
+        if actions {
+            say(
+                out,
+                &format!("::warning title=herald doctor::{}", escaped(&line)),
+            );
+        } else {
+            say(out, &format!("warning: {line}"));
+        }
+    }
+}
+
+/// Writes `line` as one line: a line break inside it, from a name or an
+/// answer herald was handed, would otherwise start a line of its own, which
+/// GitHub Actions could read as a workflow command.
+fn say(to: &mut dyn Write, line: &str) {
+    let _ = writeln!(to, "{}", line.replace(['\r', '\n'], " "));
+}
+
+/// `message` as one workflow command's message: a line break would start
+/// another command.
+fn escaped(message: &str) -> String {
+    message
+        .replace('%', "%25")
+        .replace('\r', "%0D")
+        .replace('\n', "%0A")
 }
 
 fn variable<'a>(vars: &'a BTreeMap<String, String>, name: &str) -> Result<&'a str, String> {
@@ -192,9 +241,9 @@ async fn github(
 ) -> Result<u8, String> {
     let event_name = variable(vars, "GITHUB_EVENT_NAME")?;
     if event_name != "release" {
-        let _ = writeln!(
+        say(
             out,
-            "The run's event is {event_name}, not a release; nothing to announce."
+            &format!("The run's event is {event_name}, not a release; nothing to announce."),
         );
         return Ok(DONE);
     }
@@ -202,9 +251,9 @@ async fn github(
     let payload =
         std::fs::read(path).map_err(|error| format!("{path} could not be read: {error}"))?;
     let Some(event) = GitHub::event(&payload).map_err(|error| error.to_string())? else {
-        let _ = writeln!(
+        say(
             out,
-            "The release is not published, or is a draft; nothing to announce."
+            "The release is not published, or is a draft; nothing to announce.",
         );
         return Ok(DONE);
     };
@@ -222,23 +271,57 @@ async fn github(
             "no source in the config names {repository}; add [sources.<name>] with kind = \"github\" and repository = \"{repository}\""
         ));
     }
-    let (store, connected) = reached(config, vars, connect).await?;
-    let ports = Ports {
-        store: &store,
-        clock: &SystemClock,
-        signer: &RingSigner,
-    };
+    let (records, connected) = reached(config, vars, connect).await?;
     let run = run_name(vars);
-    let mut code = DONE;
-    for source in sources {
-        for announced in announce(config, &connected, &ports, source, &event, &run).await {
-            if matches!(announced.outcome, Outcome::Stopped { .. }) {
-                code = STOPPED;
+    let announcing = Announcing {
+        config,
+        connected: &connected,
+        sources: &sources,
+        event: &event,
+        run: &run,
+    };
+    Ok(match &records {
+        Records::Branch(store) => announcing.to(store, out).await,
+        Records::Posts => announcing.to(&connected.marked(RingSigner), out).await,
+    })
+}
+
+/// An event, and the routes and sources it is announced through.
+struct Announcing<'a> {
+    config: &'a Config,
+    connected: &'a Connected<Connection>,
+    sources: &'a [&'a SourceName],
+    event: &'a Event,
+    run: &'a str,
+}
+
+impl Announcing<'_> {
+    async fn to<S: Keeps>(&self, store: &S, out: &mut dyn Write) -> u8 {
+        let ports = Ports {
+            store,
+            clock: &SystemClock,
+            signer: &RingSigner,
+        };
+        let mut code = DONE;
+        for source in self.sources {
+            let announced = announce(
+                self.config,
+                self.connected,
+                &ports,
+                source,
+                self.event,
+                self.run,
+            )
+            .await;
+            for announced in announced {
+                if matches!(announced.outcome, Outcome::Stopped { .. }) {
+                    code = STOPPED;
+                }
+                say(out, &report(&announced));
             }
-            let _ = writeln!(out, "{}", report(&announced));
         }
+        code
     }
-    Ok(code)
 }
 
 /// The name this run takes its leases under.
@@ -255,15 +338,14 @@ async fn polling(
     connect: Connect<'_>,
     out: &mut dyn Write,
 ) -> Result<u8, String> {
-    let (store, connected) = reached(config, vars, connect).await?;
-    let ports = Ports {
-        store: &store,
-        clock: &SystemClock,
-        signer: &RingSigner,
+    let (records, connected) = reached(config, vars, connect).await?;
+    let run = run_name(vars);
+    let swept = match &records {
+        Records::Branch(store) => swept(config, &connected, store, &run).await,
+        Records::Posts => swept(config, &connected, &connected.marked(RingSigner), &run).await,
     };
-    let swept = poll(config, &connected, &ports, &run_name(vars)).await;
     if swept.is_empty() {
-        let _ = writeln!(out, "The config names no source to poll.");
+        say(out, "The config names no source to poll.");
     }
     let mut code = DONE;
     for swept in &swept {
@@ -276,10 +358,24 @@ async fn polling(
             code = STOPPED;
         }
         for line in polled(swept) {
-            let _ = writeln!(out, "{line}");
+            say(out, &line);
         }
     }
     Ok(code)
+}
+
+async fn swept<S: Keeps>(
+    config: &Config,
+    connected: &Connected<Connection>,
+    store: &S,
+    run: &str,
+) -> Vec<Swept> {
+    let ports = Ports {
+        store,
+        clock: &SystemClock,
+        signer: &RingSigner,
+    };
+    poll(config, connected, &ports, run).await
 }
 
 fn polled(swept: &Swept) -> Vec<String> {
@@ -327,20 +423,44 @@ fn polled(swept: &Swept) -> Vec<String> {
     }
 }
 
-/// The run's store, and every route's destination connected.
+/// Where the run's records are kept.
+enum Records {
+    /// On a git branch.
+    Branch(GitBranchStore<Connection>),
+    /// In the routes' own posts.
+    Posts,
+}
+
+/// The store kinds this herald keeps records in.
+const STORES: [&str; 2] = ["git-branch", "markers"];
+
+/// The run's records, and every route and source connected.
 async fn reached(
     config: &Config,
     vars: &BTreeMap<String, String>,
     connect: Connect<'_>,
-) -> Result<(GitBranchStore<Connection>, Connected<Connection>), String> {
-    let repository = variable(vars, "GITHUB_REPOSITORY")?;
-    let Store::GitBranch(options) = &config.store else {
-        return Err(
-            "this herald keeps records only on a git branch; set [store] kind = \"git-branch\""
-                .to_owned(),
-        );
-    };
+) -> Result<(Records, Connected<Connection>), String> {
     let secrets = EnvSecrets::from_vars(vars.clone());
+    let records = match &config.store {
+        Store::GitBranch(options) => {
+            Records::Branch(branch(options, vars, &secrets, connect).await?)
+        }
+        Store::Markers => Records::Posts,
+        _ => return Err(unserved(&STORES)),
+    };
+    let prepared = prepare(config, &secrets, &RingSigner)
+        .await
+        .map_err(|error| error.to_string())?;
+    Ok((records, prepared.connect(connect)?))
+}
+
+async fn branch(
+    options: &StoreOptions,
+    vars: &BTreeMap<String, String>,
+    secrets: &EnvSecrets,
+    connect: Connect<'_>,
+) -> Result<GitBranchStore<Connection>, String> {
+    let repository = variable(vars, "GITHUB_REPOSITORY")?;
     let token_name = options
         .token
         .as_ref()
@@ -354,11 +474,7 @@ async fn reached(
         options.branch.as_deref(),
         options.api.as_deref(),
     );
-    let store = GitBranchStore::new(branch.clone(), connect(branch.api())?);
-    let prepared = prepare(config, &secrets, &RingSigner)
-        .await
-        .map_err(|error| error.to_string())?;
-    Ok((store, prepared.connect(connect)?))
+    Ok(GitBranchStore::new(branch.clone(), connect(branch.api())?))
 }
 
 async fn housekeeping(
@@ -367,19 +483,21 @@ async fn housekeeping(
     connect: Connect<'_>,
     out: &mut dyn Write,
 ) -> Result<u8, String> {
-    let (store, connected) = reached(config, vars, connect).await?;
-    let kept = housekeep(&connected, &store, &SystemClock)
-        .await
-        .map_err(|stop| why(&stop))?;
+    let (records, connected) = reached(config, vars, connect).await?;
+    let kept = match &records {
+        Records::Branch(store) => housekeep(&connected, store, &SystemClock).await,
+        Records::Posts => housekeep(&connected, &connected.marked(RingSigner), &SystemClock).await,
+    }
+    .map_err(|stop| why(&stop))?;
     if kept.is_empty() {
-        let _ = writeln!(out, "No chore is due.");
+        say(out, "No chore is due.");
     }
     let mut code = DONE;
     for kept in &kept {
         if matches!(kept.outcome, Chored::Later(_)) {
             code = STOPPED;
         }
-        let _ = writeln!(out, "{}", chored(kept));
+        say(out, &chored(kept));
     }
     Ok(code)
 }
