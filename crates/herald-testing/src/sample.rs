@@ -49,6 +49,12 @@ pub fn announcement() -> Announcement {
         link: Some(
             "https://github.com/nightworksio/php-mutation-gate/releases/tag/v0.1.0".to_owned(),
         ),
+        release: Some(
+            "https://github.com/nightworksio/php-mutation-gate/releases/tag/v0.1.0".to_owned(),
+        ),
+        changelog: Some(
+            "https://github.com/nightworksio/php-mutation-gate/blob/v0.1.0/CHANGELOG.md".to_owned(),
+        ),
         prerelease: false,
         occurred: jiff::Timestamp::constant(1_793_448_000, 0),
         replaces: None,

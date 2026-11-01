@@ -3,7 +3,7 @@
     {
       "request": {
         "method": "POST",
-        "url": "«secret:HERALD_DISCORD_WEBHOOK»?wait=true",
+        "url": "«secret:HERALD_DISCORD_WEBHOOK»?wait=true&with_components=true",
         "headers": {
           "Content-Type": "application/json",
           "User-Agent": "DiscordBot (https://github.com/nightworksio/herald, 0.0.0)"
@@ -25,7 +25,26 @@
               "1566190000000000001"
             ]
           },
-          "thread_name": "php-mutation-gate v0.1.0"
+          "thread_name": "php-mutation-gate v0.1.0",
+          "components": [
+            {
+              "type": 1,
+              "components": [
+                {
+                  "type": 2,
+                  "style": 5,
+                  "label": "Release",
+                  "url": "https://github.com/nightworksio/php-mutation-gate/releases/tag/v0.1.0"
+                },
+                {
+                  "type": 2,
+                  "style": 5,
+                  "label": "Changelog",
+                  "url": "https://github.com/nightworksio/php-mutation-gate/blob/v0.1.0/CHANGELOG.md"
+                }
+              ]
+            }
+          ]
         }
       },
       "response": {

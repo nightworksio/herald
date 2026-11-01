@@ -14,6 +14,12 @@ const PRERELEASE: u32 = 0x008F_88C7;
 const ARCHIVE_MINUTES: u32 = 10_080;
 /// The flag of a forum post pinned to the top of its forum.
 pub(crate) const PINNED: u64 = 2;
+/// A row of message components.
+const ACTION_ROW: u8 = 1;
+/// A button component.
+const BUTTON: u8 = 2;
+/// The style of a button that opens a link.
+const LINK: u8 = 5;
 /// The longest nonce Discord takes.
 const NONCE: usize = 25;
 const USER_AGENT: &str = concat!(
@@ -123,6 +129,7 @@ fn message(announcement: &Announcement, delivery: &Delivery, nonce: bool) -> Val
     let mut body = Map::new();
     body.insert("content".to_owned(), json!(content.join(" ")));
     body.insert("embeds".to_owned(), json!([embed]));
+    body.extend(buttons(announcement).map(|components| ("components".to_owned(), components)));
     body.insert(
         "allowed_mentions".to_owned(),
         json!({ "parse": [], "roles": roles }),
@@ -135,6 +142,21 @@ fn message(announcement: &Announcement, delivery: &Delivery, nonce: bool) -> Val
     }));
     body.extend(nonce.then(|| ("enforce_nonce".to_owned(), json!(true))));
     Value::Object(body)
+}
+
+fn buttons(announcement: &Announcement) -> Option<Value> {
+    let links = [
+        ("Release", &announcement.release),
+        ("Changelog", &announcement.changelog),
+    ];
+    let buttons: Vec<Value> = links
+        .into_iter()
+        .filter_map(|(label, url)| {
+            url.as_ref()
+                .map(|url| json!({ "type": BUTTON, "style": LINK, "label": label, "url": url }))
+        })
+        .collect();
+    (!buttons.is_empty()).then(|| json!([{ "type": ACTION_ROW, "components": buttons }]))
 }
 
 fn thread_name(announcement: &Announcement) -> String {
@@ -213,7 +235,7 @@ fn webhook(
             }
             Ok(json(
                 Method::Post,
-                Text::secret(url.clone()).then("?wait=true"),
+                Text::secret(url.clone()).then("?wait=true&with_components=true"),
                 &credential,
                 &body,
             ))

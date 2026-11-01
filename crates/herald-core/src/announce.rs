@@ -49,6 +49,10 @@ pub struct Announcement {
     /// The link the announcement leads to: the event's `release` link, or
     /// its first.
     pub link: Option<String>,
+    /// The event's `release` link, the release page.
+    pub release: Option<String>,
+    /// The event's `changelog` link.
+    pub changelog: Option<String>,
     /// Whether the event is a pre-release.
     pub prerelease: bool,
     /// When the event happened.
@@ -100,6 +104,8 @@ pub fn announce(
             .link("release")
             .or_else(|| event.first_link())
             .map(ToOwned::to_owned),
+        release: event.link("release").map(ToOwned::to_owned),
+        changelog: event.link("changelog").map(ToOwned::to_owned),
         prerelease: event.prerelease(),
         occurred: event.occurred(),
         replaces: None,

@@ -99,6 +99,8 @@ fn an_event_is_announced_with_its_key_title_parts_thread_and_link() {
         announcement.link.as_deref(),
         Some("https://github.com/nightworksio/php-mutation-gate/releases/tag/v0.1.0")
     );
+    assert_eq!(announcement.release, announcement.link);
+    assert_eq!(announcement.changelog, None);
     assert!(!announcement.prerelease);
     assert_eq!(announcement.occurred, event().occurred());
 }
@@ -128,7 +130,7 @@ fn a_route_without_a_thread_names_none_and_a_long_body_is_cut() {
 }
 
 #[test]
-fn without_a_release_link_the_first_link_is_used() {
+fn without_a_release_link_the_first_link_is_used_and_the_changelog_kept() {
     let route = route_for("r", "php-mutation-gate");
     let other = Event::normalise(Draft {
         links: BTreeMap::from([
@@ -148,6 +150,11 @@ fn without_a_release_link_the_first_link_is_used() {
     )
     .unwrap();
     assert_eq!(announcement.link.as_deref(), Some("https://example.org/c"));
+    assert_eq!(announcement.release, None);
+    assert_eq!(
+        announcement.changelog.as_deref(),
+        Some("https://example.org/c")
+    );
     let bare = Event::normalise(Draft {
         links: BTreeMap::new(),
         ..draft()

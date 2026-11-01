@@ -541,6 +541,34 @@ mod replay {
     }
 
     #[test]
+    fn a_post_shows_a_button_for_each_link_it_has() {
+        let body = |announcement: &Announcement| -> serde_json::Value {
+            let request = bot(CHANNEL, false)
+                .request(
+                    &Step::Post,
+                    announcement,
+                    &delivery(),
+                    &Entry::new(announcement.key),
+                )
+                .unwrap();
+            serde_json::from_slice(&request.body).unwrap()
+        };
+        let unlinked = Announcement {
+            release: None,
+            changelog: None,
+            ..announcement()
+        };
+        assert_eq!(body(&unlinked).get("components"), None);
+        let changelog_only = Announcement {
+            release: None,
+            ..announcement()
+        };
+        let buttons = &body(&changelog_only)["components"][0]["components"];
+        assert_eq!(buttons.as_array().map(Vec::len), Some(1));
+        assert_eq!(buttons[0]["label"], "Changelog");
+    }
+
+    #[test]
     fn an_answer_without_an_id_is_refused() {
         let replay = fixture!("answer-without-id");
         assert_eq!(
