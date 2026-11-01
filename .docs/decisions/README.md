@@ -26,6 +26,7 @@ no separate requirements document, and there are no requirement IDs.
 | [0006](0006-one-herald-toml-with-sandboxed-templates-and-a-published-schema.md) | One `herald.toml`, with sandboxed templates and a published JSON Schema, validated before anything posts | Accepted |
 | [0007](0007-secrets-stay-out-of-reach-and-every-inbound-request-is-verified-first.md) | Secrets stay out of argv, templates and logs, every inbound request is verified before it is parsed, and the supply chain is pinned and signed | Accepted |
 | [0008](0008-every-line-is-covered-and-no-mutant-survives.md) | Every line is covered, no mutant survives, and every parser is fuzzed | Accepted |
-| [0009](0009-herald-ships-as-binaries-an-action-an-image-and-a-wasm-build.md) | herald ships as signed binaries, an Action, an image and a wasm build, from GitHub alone until 1.0 | Accepted |
+| [0009](0009-herald-ships-as-binaries-an-action-an-image-and-a-wasm-build.md) | herald ships as signed binaries, an Action, an image and a wasm build, from GitHub alone until 1.0 | Accepted; superseded in part by [0012](0012-a-release-is-drafted-by-the-bot-signed-by-the-maintainer-and-published-after-the-full-gate.md) |
 | [0010](0010-herald-announces-itself-with-itself.md) | herald announces itself with itself | Accepted |
 | [0011](0011-markers-count-only-on-herald-s-own-posts-a-route-keeps-one-pin-and-a-lock-archives.md) | Markers count only on herald's own posts, a route keeps one pin, and a lock archives | Accepted |
+| [0012](0012-a-release-is-drafted-by-the-bot-signed-by-the-maintainer-and-published-after-the-full-gate.md) | A release is drafted by the bot, signed by the maintainer, and published after the full gate | Accepted |
