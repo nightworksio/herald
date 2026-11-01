@@ -74,6 +74,7 @@ fn outside_allowed(layer: Layer) -> &'static [&'static str] {
         Layer::Ports | Layer::Flows => &["jiff"],
         Layer::Testing => &["jiff", "serde", "serde_json"],
         Layer::Sources | Layer::Destinations => &["jiff", "schemars", "serde", "serde_json"],
+        Layer::Stores => &["base64", "jiff", "serde", "serde_json"],
         Layer::Config => &["jiff", "schemars", "serde", "serde_json", "toml"],
         _ => &[],
     }
@@ -154,6 +155,8 @@ mod tests {
         assert!(Layer::Ports.allows_outside("jiff"));
         assert!(Layer::Destinations.allows_outside("schemars"));
         assert!(Layer::Config.allows_outside("toml"));
+        assert!(Layer::Stores.allows_outside("base64"));
+        assert!(!Layer::Stores.allows_outside("rusqlite"));
         assert!(!Layer::Config.allows_outside("tokio"));
         assert!(Layer::Flows.allows_outside("jiff"));
         assert!(!Layer::Flows.allows_outside("reqwest"));

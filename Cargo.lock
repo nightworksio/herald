@@ -478,6 +478,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "herald-store-git-branch"
+version = "0.0.0"
+dependencies = [
+ "base64",
+ "herald-core",
+ "herald-ports",
+ "herald-testing",
+ "pollster",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "herald-testing"
 version = "0.0.0"
 dependencies = [
