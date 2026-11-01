@@ -49,10 +49,12 @@ releases this way, and herald follows it.
    - **verifies the tag.** Its signature is checked against
      `.github/allowed_signers` as `main` holds it, never as the tag holds it,
      and a repository without the file publishes nothing. A lightweight tag,
-     or one on a commit that is not on `main`, is refused. The commit the signed tag points at is recorded and handed to
-     every later job, each of which checks it out by its SHA and checks the
-     tag still points at it, so nothing builds, judges, publishes or
-     announces a tag read again by name.
+     or one on a commit that is not on `main`, is refused. The signed tag
+     must point at the run's own commit, `GITHUB_SHA`, which no later push
+     can change. Every later job checks out that commit by its SHA and
+     checks the tag still points at it, so nothing builds, judges, publishes
+     or announces a tag read again by name, and no job is handed a commit
+     to check out.
    - **runs the full gate.** `ci.yml` runs on the tagged commit, mutating the
      whole workspace (ADR-0008).
    - **builds and attests.** Each of the six targets builds with

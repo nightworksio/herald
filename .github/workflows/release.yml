@@ -176,7 +176,6 @@ jobs:
     outputs:
       line: ${{ steps.tag.outputs.line }}
       prerelease: ${{ steps.tag.outputs.prerelease }}
-      commit: ${{ steps.signed.outputs.commit }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -190,8 +189,9 @@ jobs:
       # The checkout fetched every tag and branch. The signers are read from
       # main, never from the tag, and a repository without the file releases
       # nothing.
-      # Every later job is handed the commit recorded here, checks out that
-      # commit by its SHA, and checks the tag still points at it.
+      # Here the signed tag is proven to name the run's own commit, GITHUB_SHA,
+      # which no later push can change. Every later job checks out that
+      # commit by its SHA and checks the tag still points at it.
       - name: Check the tag's signature and that it is on main
         id: signed
         env:
@@ -218,7 +218,6 @@ jobs:
             echo "::error::${TAG} points at a commit that is not on ${DEFAULT_BRANCH}."
             exit 1
           fi
-          echo "commit=${commit}" >> "$GITHUB_OUTPUT"
 
   # The whole gate over the verified commit (ADR-0008): only when it passes is
   # the release published.
@@ -228,8 +227,6 @@ jobs:
     permissions:
       contents: read
     uses: ./.github/workflows/ci.yml # zizmor: ignore[self-repository]
-    with:
-      commit: ${{ needs.verify.outputs.commit }}
 
   # Each target from the verified commit, checked out by its SHA and built
   # clean with no cache, archived as the Action downloads it (ADR-0009).
@@ -259,14 +256,14 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ needs.verify.outputs.commit }}
+          ref: ${{ github.sha }}
           persist-credentials: false
       - name: Check the tag is still at the verified commit
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}
-          COMMIT: ${{ needs.verify.outputs.commit }}
+          COMMIT: ${{ github.sha }}
         run: .github/scripts/still-tagged.sh
       - name: Install musl
         if: contains(matrix.target, 'musl')
@@ -317,14 +314,14 @@ jobs:
       # subject of their attestations.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ needs.verify.outputs.commit }}
+          ref: ${{ github.sha }}
           persist-credentials: false
       - name: Check the tag is still at the verified commit
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}
-          COMMIT: ${{ needs.verify.outputs.commit }}
+          COMMIT: ${{ github.sha }}
         run: .github/scripts/still-tagged.sh
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
@@ -345,7 +342,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}
-          COMMIT: ${{ needs.verify.outputs.commit }}
+          COMMIT: ${{ github.sha }}
         run: .github/scripts/still-tagged.sh
       - name: Publish the release
         env:
@@ -366,7 +363,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           LINE: ${{ needs.verify.outputs.line }}
-          COMMIT: ${{ needs.verify.outputs.commit }}
+          COMMIT: ${{ github.sha }}
         run: |
           set -euo pipefail
           repository="repos/${GITHUB_REPOSITORY}"
@@ -389,14 +386,14 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ needs.verify.outputs.commit }}
+          ref: ${{ github.sha }}
           persist-credentials: false
       - name: Check the tag is still at the verified commit
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}
-          COMMIT: ${{ needs.verify.outputs.commit }}
+          COMMIT: ${{ github.sha }}
         run: .github/scripts/still-tagged.sh
       - uses: ./ # zizmor: ignore[self-repository]
         env:

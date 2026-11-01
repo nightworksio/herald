@@ -1,6 +1,7 @@
 use crate::*;
 use herald_core::{Identity, Key, RouteId};
 use herald_ports::{HttpError, Method, Request, Response, Secret};
+use herald_store_git_branch::GitBranch;
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};

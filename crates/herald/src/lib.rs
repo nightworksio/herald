@@ -13,21 +13,22 @@ use std::pin::Pin;
 use std::sync::{Arc, Mutex, PoisonError};
 
 use clap::{Parser, Subcommand, ValueEnum};
-use herald_config::{Config, Source, Store, load, samples};
+use herald_config::{Config, Source, load, samples};
 use herald_core::{Chore, Event, Kind, RouteId, Schedule, SourceName, Step};
 use herald_flows::{
     Announced, Chored, Connected, Findings, Gap, Kept, Outcome, Ports, Remembered, Stop, Sweep,
-    Swept, announce, doctor, housekeep, poll, prepare, preview, unserved,
+    Swept, announce, doctor, housekeep, poll, prepare, preview,
 };
 use herald_native::{EnvSecrets, RingSigner, SystemClock, random_secret};
-use herald_ports::{Http, HttpError, Request, Response, Secret, Secrets, Store as Keeps};
+use herald_ports::{Http, HttpError, Request, Response, Secrets, Store as Keeps};
 use herald_records::Memory;
 use herald_sources_forge::{Forge, Origin, Repository, SourceOptions, Token};
-use herald_store_actions_cache::{ActionsCache, ActionsCacheStore, StoreOptions as CacheOptions};
-use herald_store_git_branch::{GitBranch, GitBranchStore, StoreOptions as BranchOptions};
-use herald_store_repo_variables::{
-    RepoVariables, RepoVariablesStore, StoreOptions as VariablesOptions,
-};
+
+mod output;
+mod stores;
+
+use output::{Scrubbing, hidden, masked, say, warned};
+use stores::{Records, STORES, reached};
 
 /// Every route announced, already announced, or held by another run; every
 /// source polled and its cursor moved on; or every chore that fell due done
@@ -293,91 +294,6 @@ pub async fn run(
     code
 }
 
-/// Every secret the run may resolve, by its name, and each line of a value
-/// that spans lines on its own as well.
-fn hidden(config: &Config, vars: &BTreeMap<String, String>) -> Vec<Secret> {
-    let mut names = config.secrets();
-    names.extend([GITHUB_TOKEN, RUNTIME_TOKEN, JOB_TOKEN]);
-    let mut hidden = Vec::new();
-    for (name, value) in names
-        .iter()
-        .filter_map(|name| vars.get(*name).map(|value| (*name, value)))
-    {
-        let lines = value.lines().filter(|line| *line != value.as_str());
-        for part in std::iter::once(value.as_str()).chain(lines) {
-            if !part.trim().is_empty() {
-                hidden.push(Secret::new(name, part));
-            }
-        }
-    }
-    hidden.sort_by_key(|secret| std::cmp::Reverse(secret.expose().len()));
-    hidden
-}
-
-/// A writer that writes each line with every secret the run may resolve
-/// shown as `«secret:NAME»`, whatever handed the line to it: an answer a
-/// server echoed back included (ADR-0007).
-struct Scrubbing<'a> {
-    inner: &'a mut dyn Write,
-    hidden: Vec<&'a Secret>,
-    line: Vec<u8>,
-}
-
-impl<'a> Scrubbing<'a> {
-    fn new(inner: &'a mut dyn Write, hidden: &'a [Secret]) -> Self {
-        Self {
-            inner,
-            hidden: hidden
-                .iter()
-                .filter(|secret| secret.expose().chars().count() >= SCRUBBED)
-                .collect(),
-            line: Vec::new(),
-        }
-    }
-
-    /// `bytes` written with each secret shown by its name, the longest
-    /// value matched first, in one pass.
-    fn emit(&mut self, bytes: &[u8]) -> std::io::Result<()> {
-        let text = String::from_utf8_lossy(bytes);
-        let mut scrubbed = String::with_capacity(text.len());
-        let mut rest = text.as_ref();
-        while let Some(first) = rest.chars().next() {
-            let found = self
-                .hidden
-                .iter()
-                .find(|secret| rest.starts_with(secret.expose()));
-            if let Some(secret) = found {
-                scrubbed.push_str(&secret.redacted());
-                rest = rest.get(secret.expose().len()..).unwrap_or_default();
-            } else {
-                scrubbed.push(first);
-                rest = rest.get(first.len_utf8()..).unwrap_or_default();
-            }
-        }
-        self.inner.write_all(scrubbed.as_bytes())
-    }
-}
-
-impl Write for Scrubbing<'_> {
-    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
-        self.line.extend_from_slice(bytes);
-        while let Some(end) = self.line.iter().position(|byte| *byte == b'\n') {
-            let rest = self.line.split_off(end + 1);
-            let line = std::mem::replace(&mut self.line, rest);
-            self.emit(&line)?;
-        }
-        Ok(bytes.len())
-    }
-
-    fn flush(&mut self) -> std::io::Result<()> {
-        let line = std::mem::take(&mut self.line);
-        if !line.is_empty() {
-            self.emit(&line)?;
-        }
-        self.inner.flush()
-    }
-}
-
 fn read(path: &str) -> Result<Config, String> {
     let text = std::fs::read_to_string(path)
         .map_err(|error| format!("{path} could not be read: {error}"))?;
@@ -411,56 +327,6 @@ fn gapped(gap: &Gap) -> String {
         "{}: {} cannot be served: {}.",
         gap.key, gap.feature, gap.why
     )
-}
-
-/// Whether the run is on GitHub Actions.
-fn on_actions(vars: &BTreeMap<String, String>) -> bool {
-    vars.get("GITHUB_ACTIONS")
-        .is_some_and(|value| value == "true")
-}
-
-/// On GitHub Actions, every secret the run may resolve masked before
-/// anything else is printed, each of its lines on its own as well
-/// (ADR-0007).
-fn masked(hidden: &[Secret], vars: &BTreeMap<String, String>, out: &mut dyn Write) {
-    if !on_actions(vars) {
-        return;
-    }
-    for secret in hidden {
-        say(out, &format!("::add-mask::{}", escaped(secret.expose())));
-    }
-}
-
-/// Each gap as a warning, annotated on GitHub Actions.
-fn warned(gaps: &[Gap], vars: &BTreeMap<String, String>, out: &mut dyn Write) {
-    let actions = on_actions(vars);
-    for gap in gaps {
-        let line = gapped(gap);
-        if actions {
-            say(
-                out,
-                &format!("::warning title=herald doctor::{}", escaped(&line)),
-            );
-        } else {
-            say(out, &format!("warning: {line}"));
-        }
-    }
-}
-
-/// Writes `line` as one line: a line break inside it, from a name or an
-/// answer herald was handed, would otherwise start a line of its own, which
-/// GitHub Actions could read as a workflow command.
-fn say(to: &mut dyn Write, line: &str) {
-    let _ = writeln!(to, "{}", line.replace(['\r', '\n'], " "));
-}
-
-/// `message` as one workflow command's message: a line break would start
-/// another command.
-fn escaped(message: &str) -> String {
-    message
-        .replace('%', "%25")
-        .replace('\r', "%0D")
-        .replace('\n', "%0A")
 }
 
 fn variable<'a>(vars: &'a BTreeMap<String, String>, name: &str) -> Result<&'a str, String> {
@@ -959,126 +825,6 @@ fn polled(swept: &Swept) -> Vec<String> {
             lines
         }
     }
-}
-
-/// Where the run's records are kept.
-enum Records<'a> {
-    /// On a git branch.
-    Branch(GitBranchStore<Connection>),
-    /// In the Actions cache.
-    Cache(ActionsCacheStore<'a, Connection>),
-    /// In the repository's variables.
-    Variables(RepoVariablesStore<Connection>),
-    /// In the routes' own posts.
-    Posts,
-    /// In memory, for a dry run.
-    Memory(herald_records::Kept<Memory>),
-}
-
-impl Records<'_> {
-    /// `work` done over the store, the routes' posts made one where they
-    /// keep the records.
-    async fn serve<W: Served>(&self, connected: &Connected<Connection>, work: &W) -> W::Done {
-        match self {
-            Self::Branch(store) => work.over(store).await,
-            Self::Cache(store) => work.over(store).await,
-            Self::Variables(store) => work.over(store).await,
-            Self::Posts => work.over(&connected.marked(RingSigner)).await,
-            Self::Memory(store) => work.over(store).await,
-        }
-    }
-}
-
-/// The store kinds this herald keeps records in.
-const STORES: [&str; 4] = ["git-branch", "markers", "actions-cache", "repo-variables"];
-
-/// The run's records, and every route and source connected.
-async fn reached<'a>(
-    config: &Config,
-    vars: &BTreeMap<String, String>,
-    connect: Connect<'a>,
-) -> Result<(Records<'a>, Connected<Connection>), String> {
-    let secrets = EnvSecrets::from_vars(vars.clone());
-    let records = match &config.store {
-        Store::GitBranch(options) => {
-            Records::Branch(branch(options, vars, &secrets, connect).await?)
-        }
-        Store::ActionsCache(options) => {
-            Records::Cache(cache(options, vars, &secrets, connect).await?)
-        }
-        Store::RepoVariables(options) => {
-            Records::Variables(variables(options, vars, &secrets, connect).await?)
-        }
-        Store::Markers => Records::Posts,
-        _ => return Err(unserved(&STORES)),
-    };
-    let prepared = prepare(config, &secrets, &RingSigner)
-        .await
-        .map_err(|error| error.to_string())?;
-    Ok((records, prepared.connect(connect)?))
-}
-
-/// The repository a store names, or else the run's own.
-fn repository<'a>(
-    named: Option<&'a str>,
-    vars: &'a BTreeMap<String, String>,
-) -> Result<&'a str, String> {
-    named.map_or_else(|| variable(vars, "GITHUB_REPOSITORY"), Ok)
-}
-
-async fn branch(
-    options: &BranchOptions,
-    vars: &BTreeMap<String, String>,
-    secrets: &EnvSecrets,
-    connect: Connect<'_>,
-) -> Result<GitBranchStore<Connection>, String> {
-    let repository = repository(options.repository.as_deref(), vars)?;
-    let token_name = options
-        .token
-        .as_ref()
-        .map_or(GITHUB_TOKEN, |token| token.secret.as_str());
-    let token = secrets.secret(token_name).await.map_err(|_| {
-        format!("{token_name} is not set; the git-branch store needs a token that may push")
-    })?;
-    let branch = GitBranch::new(
-        repository,
-        token,
-        options.branch.as_deref(),
-        options.api.as_deref(),
-    );
-    let http = connect(branch.api())?;
-    Ok(branch.store(http))
-}
-
-async fn cache<'a>(
-    options: &CacheOptions,
-    vars: &BTreeMap<String, String>,
-    secrets: &EnvSecrets,
-    connect: Connect<'a>,
-) -> Result<ActionsCacheStore<'a, Connection>, String> {
-    let results = variable(vars, RESULTS)?;
-    let token = secrets.secret(RUNTIME_TOKEN).await.map_err(|_| {
-        format!("{RUNTIME_TOKEN} is not set; the actions-cache store runs through herald's Action")
-    })?;
-    let cache = ActionsCache::new(results, token, options.prefix.as_deref());
-    let http = connect(cache.results())?;
-    Ok(cache.store(http, Box::new(connect)))
-}
-
-async fn variables(
-    options: &VariablesOptions,
-    vars: &BTreeMap<String, String>,
-    secrets: &EnvSecrets,
-    connect: Connect<'_>,
-) -> Result<RepoVariablesStore<Connection>, String> {
-    let repository = repository(options.repository.as_deref(), vars)?;
-    let name = options.token.secret.as_str();
-    let token = secrets.secret(name).await.map_err(|_| {
-        format!("{name} is not set; the repo-variables store needs a token with the repository's Variables permission")
-    })?;
-    let variables = RepoVariables::new(repository, token, options.api.as_deref());
-    let http = connect(variables.api())?;
-    Ok(variables.store(http))
 }
 
 async fn housekeeping(
