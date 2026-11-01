@@ -1,7 +1,9 @@
 use std::fmt;
 use std::future::Future;
 
-use herald_core::{Cursor, DestinationName, Entry, Key, Schedule, SourceName, Subscription};
+use herald_core::{
+    Cursor, DestinationName, Entry, Key, RouteId, Schedule, SourceName, Subscription,
+};
 
 /// The version a store keeps beside a record, for compare-and-set.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -37,6 +39,8 @@ pub struct Capabilities {
     pub schedules: bool,
     /// Subscriptions.
     pub subscriptions: bool,
+    /// Each route's pinned post.
+    pub pins: bool,
     /// Compare-and-set that holds when runs write at the same time.
     pub concurrent: bool,
 }
@@ -75,11 +79,12 @@ impl fmt::Display for StoreError {
     }
 }
 
-/// The ledger, cursors, schedules and subscriptions (ADR-0005).
+/// The ledger, cursors, schedules, subscriptions and pins (ADR-0005,
+/// ADR-0011).
 ///
 /// Entries and cursors are written with compare-and-set. Schedules and
 /// subscriptions are sets, and adding or removing one twice is the same as
-/// once.
+/// once. A route's pin is one value, and the last written is kept.
 pub trait Store: Sync {
     /// What the store keeps.
     fn capabilities(&self) -> Capabilities;
@@ -140,6 +145,19 @@ pub trait Store: Sync {
     fn unsubscribe(
         &self,
         subscription: &Subscription,
+    ) -> impl Future<Output = Result<(), StoreError>> + Send;
+
+    /// The post `route` last pinned.
+    fn pinned(
+        &self,
+        route: &RouteId,
+    ) -> impl Future<Output = Result<Option<String>, StoreError>> + Send;
+
+    /// Keeps `post` as the post `route` last pinned.
+    fn put_pinned(
+        &self,
+        route: &RouteId,
+        post: &str,
     ) -> impl Future<Output = Result<(), StoreError>> + Send;
 }
 

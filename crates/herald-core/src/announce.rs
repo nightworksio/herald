@@ -4,7 +4,7 @@ use unicode_segmentation::UnicodeSegmentation;
 use crate::chunk::{Room, chunk};
 use crate::event::Event;
 use crate::key::{Key, RouteId};
-use crate::marker::Marker;
+use crate::marker::Marks;
 use crate::markup::Text;
 use crate::profile::{Measure, Profile};
 use crate::render::{Context, TemplateError, Templates};
@@ -35,8 +35,8 @@ pub fn thread_template(route: &RouteId) -> String {
 pub struct Announcement {
     /// Its never-twice key.
     pub key: Key,
-    /// The marker its posts carry, the MAC of its key.
-    pub marker: Marker,
+    /// The markers its post carries.
+    pub marks: Marks,
     /// The route that made it.
     pub route: RouteId,
     /// The title, on one line, within the destination's limit.
@@ -53,10 +53,13 @@ pub struct Announcement {
     pub prerelease: bool,
     /// When the event happened.
     pub occurred: Timestamp,
+    /// The route's earlier pinned post, where the store remembers it, for
+    /// the unpin step to unpin.
+    pub replaces: Option<String>,
 }
 
 /// `event` rendered by `route` for a destination described by `profile`,
-/// carrying `marker`, the MAC of its key.
+/// carrying `marks`.
 ///
 /// # Errors
 ///
@@ -67,7 +70,7 @@ pub fn announce(
     templates: &Templates,
     profile: &Profile,
     herald: &str,
-    marker: Marker,
+    marks: Marks,
 ) -> Result<Announcement, TemplateError> {
     let context = Context {
         event,
@@ -87,7 +90,7 @@ pub fn announce(
     };
     Ok(Announcement {
         key: Key::derive(&route.id, event.identity()),
-        marker,
+        marks,
         route: route.id.clone(),
         title: shortened(&title, profile.limits.title, profile.measure),
         parts: chunk(&body, profile.dialect, room),
@@ -99,6 +102,7 @@ pub fn announce(
             .map(ToOwned::to_owned),
         prerelease: event.prerelease(),
         occurred: event.occurred(),
+        replaces: None,
     })
 }
 

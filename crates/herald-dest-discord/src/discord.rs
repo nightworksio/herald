@@ -7,6 +7,7 @@ use herald_ports::{Http, HttpError, Request, Secret};
 use crate::options::RouteOptions;
 use crate::read::{read, trouble};
 use crate::request::{Refusal, chore, step};
+use crate::unpin::unpinned;
 
 /// The API herald speaks, at the version it was written against.
 pub(crate) const API: &str = "https://discord.com/api/v10";
@@ -106,6 +107,9 @@ impl Discord {
         delivery: &Delivery,
         entry: &Entry,
     ) -> Result<Sent, HttpError> {
+        if *step_to_take == Step::Unpin {
+            return unpinned(self, http, announcement, entry).await;
+        }
         let request = match self.request(step_to_take, announcement, delivery, entry) {
             Ok(request) => request,
             Err(refusal) => return Ok(Sent::Refused(refusal.to_string())),

@@ -1,6 +1,6 @@
 use std::fmt;
 
-use herald_core::{Announcement, Chore, Delivery, Entry, Marker, Step};
+use herald_core::{Announcement, Chore, Delivery, Entry, Marks, Step};
 use herald_ports::{Method, Request, Text};
 use serde_json::{Map, Value, json};
 
@@ -74,13 +74,9 @@ fn authorised(request: Request, credential: &Credential) -> Request {
     }
 }
 
-pub(crate) fn fragment(marker: &Marker) -> String {
-    format!("#herald-{marker}")
-}
-
-fn marked(link: &str, announcement: &Announcement) -> String {
+fn marked(link: &str, marks: &Marks) -> String {
     let page = link.split('#').next().unwrap_or(link);
-    format!("{page}{}", fragment(&announcement.marker))
+    format!("{page}#herald-{}.{}", marks.route, marks.announcement)
 }
 
 fn message(announcement: &Announcement, delivery: &Delivery, nonce: bool) -> Value {
@@ -119,7 +115,7 @@ fn message(announcement: &Announcement, delivery: &Delivery, nonce: bool) -> Val
         announcement
             .link
             .iter()
-            .map(|link| ("url".to_owned(), json!(marked(link, announcement)))),
+            .map(|link| ("url".to_owned(), json!(marked(link, &announcement.marks)))),
     );
     let key = announcement.key.to_string();
     let mut body = Map::new();
@@ -164,7 +160,7 @@ fn landed<'a>(
     entry.facts(step).ok_or(Refusal::Missing(what))
 }
 
-fn posted(entry: &Entry) -> Result<&str, Refusal> {
+pub(crate) fn posted(entry: &Entry) -> Result<&str, Refusal> {
     landed(entry, &Step::Post, "the announcement's message")?
         .message
         .as_deref()
@@ -237,6 +233,7 @@ fn webhook(
         Step::Crosspost => Err(Refusal::WebhookCannot("crosspost")),
         Step::OpenThread => Err(Refusal::WebhookCannot("open a thread from a message")),
         Step::Pin => Err(Refusal::WebhookCannot("pin")),
+        Step::Unpin => Err(Refusal::WebhookCannot("unpin")),
         Step::Deliver(_) => Err(Refusal::NoInbox),
     }
 }
@@ -306,8 +303,26 @@ fn bot(
             let url = Text::plain(format!("{api}/channels/{channel}/messages/pins/{message}"));
             Ok(bare(Method::Put, url, credential))
         }
+        Step::Unpin => {
+            posted(entry)?;
+            let earlier = announcement
+                .replaces
+                .as_deref()
+                .ok_or(Refusal::Missing("the route's earlier pin"))?;
+            Ok(unpin(discord, channel, earlier))
+        }
         Step::Deliver(_) => Err(Refusal::NoInbox),
     }
+}
+
+pub(crate) fn get(discord: &Discord, path: &str) -> Request {
+    let url = format!("{}{path}", discord.api);
+    bare(Method::Get, Text::plain(url), &discord.credential)
+}
+
+pub(crate) fn unpin(discord: &Discord, channel: &str, message: &str) -> Request {
+    let url = format!("{}/channels/{channel}/messages/pins/{message}", discord.api);
+    bare(Method::Delete, Text::plain(url), &discord.credential)
 }
 
 pub(crate) fn chore(

@@ -6,7 +6,7 @@ mod replay {
     use herald_core::{
         Announcement, Chore, Delivery, Entry, Facts, Marker, Plan, Planned, Sent, Step, plan,
     };
-    use herald_dest_discord::{Credential, Discord, DiscordMarkers, RouteOptions};
+    use herald_dest_discord::{Credential, Discord, DiscordMarkers, Refusal, RouteOptions};
     use herald_ports::{Markers, MarkersError, Secret};
     use herald_testing::sample::{self, announcement, marker};
     use herald_testing::{Fixture, Replay};
@@ -91,6 +91,7 @@ mod replay {
             ),
             (Step::Chunk(1), message("1566200000000000002")),
             (Step::Pin, Facts::default()),
+            (Step::Unpin, Facts::default()),
         ];
         for (step, facts) in steps {
             assert_eq!(
@@ -201,7 +202,15 @@ mod replay {
             refused(&nowhere, Step::Post),
             "the route names no Discord channel; set its channel"
         );
-        for step in [Step::Crosspost, Step::OpenThread, Step::Pin] {
+        assert_eq!(
+            refused(&nowhere, Step::Unpin),
+            "the route names no Discord channel; set its channel"
+        );
+        assert_eq!(
+            refused(&webhook(false), Step::Unpin),
+            "a Discord webhook cannot unpin; use a bot token"
+        );
+        for step in [Step::Crosspost, Step::OpenThread, Step::Pin, Step::Unpin] {
             assert_eq!(
                 refused(&bot(CHANNEL, false), step),
                 "the announcement's message is not recorded, so this step cannot be taken yet"
@@ -213,6 +222,91 @@ mod replay {
             Sent::Refused(_)
         ));
         replay.finish().unwrap();
+    }
+
+    fn pinned() -> Entry {
+        Entry::new(announcement().key).landed(Step::Post, message("1566200000000000001"))
+    }
+
+    fn replacing(earlier: &str) -> Announcement {
+        Announcement {
+            replaces: Some(earlier.to_owned()),
+            ..announcement()
+        }
+    }
+
+    fn unpin(
+        discord: &Discord,
+        replay: &Replay,
+        announcement: &Announcement,
+        entry: &Entry,
+    ) -> Sent {
+        pollster::block_on(discord.send(replay, &Step::Unpin, announcement, &delivery(), entry))
+            .unwrap()
+    }
+
+    #[test]
+    fn the_pin_the_store_remembers_is_unpinned_and_one_already_gone_is_done() {
+        let replay = fixture!("unpin-remembered");
+        let discord = bot(CHANNEL, false);
+        let earlier = replacing("1566200000000000008");
+        assert_eq!(
+            unpin(&discord, &replay, &earlier, &pinned()),
+            Sent::Landed(Facts::default())
+        );
+        assert_eq!(
+            unpin(&discord, &replay, &earlier, &pinned()),
+            Sent::Refused("Discord refused it with 403: 50013 Missing Permissions".to_owned())
+        );
+        let itself = replacing("1566200000000000001");
+        assert_eq!(
+            unpin(&discord, &replay, &itself, &pinned()),
+            Sent::Landed(Facts::default())
+        );
+        replay.finish().unwrap();
+    }
+
+    #[test]
+    fn pins_that_cannot_be_read_say_why() {
+        let replay = fixture!("unpin-unreadable");
+        let discord = bot(CHANNEL, false);
+        let refusals = [
+            "Discord did not say which user the bot is",
+            "Discord refused it with 401: 0 401: Unauthorized",
+            "Discord refused it with 403: 50001 Missing Access",
+        ];
+        for refusal in refusals {
+            assert_eq!(
+                unpin(&discord, &replay, &announcement(), &pinned()),
+                Sent::Refused(refusal.to_owned())
+            );
+        }
+        replay.finish().unwrap();
+    }
+
+    #[test]
+    fn an_unpin_is_built_for_the_pin_the_store_remembers() {
+        let discord = bot(CHANNEL, false);
+        let request = discord
+            .request(
+                &Step::Unpin,
+                &replacing("1566200000000000008"),
+                &delivery(),
+                &pinned(),
+            )
+            .unwrap();
+        assert_eq!(
+            request.to_string(),
+            "DELETE https://discord.com/api/v10/channels/1566184281406177531/messages/pins/1566200000000000008\nUser-Agent: DiscordBot (https://github.com/nightworksio/herald, 0.0.0)\nAuthorization: Bot «secret:HERALD_DISCORD_TOKEN»"
+        );
+        assert_eq!(
+            discord.request(&Step::Unpin, &announcement(), &delivery(), &pinned()),
+            Err(Refusal::Missing("the route's earlier pin"))
+        );
+        assert_eq!(
+            webhook(false).request(&Step::Unpin, &announcement(), &delivery(), &pinned()),
+            Err(Refusal::WebhookCannot("unpin"))
+        );
     }
 
     #[test]

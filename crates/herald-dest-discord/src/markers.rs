@@ -1,9 +1,9 @@
 use herald_core::{Entry, Facts, Key, Marker, Step};
-use herald_ports::{Http, Markers, MarkersError, Method, Text};
+use herald_ports::{Http, Markers, MarkersError};
 use serde_json::Value;
 
 use crate::discord::{Credential, Discord};
-use crate::request::{bare, fragment};
+use crate::request::get;
 
 /// The most messages Discord lists in one page.
 const PAGE: u8 = 100;
@@ -33,8 +33,7 @@ impl<'a, H: Http> DiscordMarkers<'a, H> {
                 reason: "a webhook cannot read a channel's messages".to_owned(),
             });
         }
-        let url = Text::plain(format!("{}{path}", self.discord.api));
-        let request = bare(Method::Get, url, &self.discord.credential);
+        let request = get(self.discord, path);
         let response = self
             .http
             .send(request)
@@ -65,13 +64,7 @@ impl<'a, H: Http> DiscordMarkers<'a, H> {
             .as_array()
             .into_iter()
             .flatten()
-            .filter(|message| {
-                message
-                    .get("author")
-                    .and_then(|user| text(user, "id"))
-                    .as_deref()
-                    == Some(author)
-            })
+            .filter(|message| self::author(message) == Some(author))
             .cloned()
             .collect())
     }
@@ -84,15 +77,32 @@ fn text(value: &Value, field: &str) -> Option<String> {
         .map(ToOwned::to_owned)
 }
 
-fn carries(message: &Value, marker: &Marker) -> bool {
-    let marker = fragment(marker);
+/// The route and announcement markers on `message`'s embed links, as
+/// written: `#herald-<route>.<announcement>`.
+pub(crate) fn marks(message: &Value) -> Vec<(String, String)> {
     message
         .get("embeds")
         .and_then(Value::as_array)
         .into_iter()
         .flatten()
         .filter_map(|embed| embed.get("url").and_then(Value::as_str))
-        .any(|url| url.ends_with(&marker))
+        .filter_map(|url| url.rsplit_once("#herald-"))
+        .filter_map(|(_, fragment)| fragment.split_once('.'))
+        .map(|(route, announcement)| (route.to_owned(), announcement.to_owned()))
+        .collect()
+}
+
+pub(crate) fn author(message: &Value) -> Option<&str> {
+    message
+        .get("author")
+        .and_then(|user| user.get("id"))
+        .and_then(Value::as_str)
+}
+
+fn carries(message: &Value, marker: &Marker) -> bool {
+    marks(message)
+        .iter()
+        .any(|(_, announcement)| announcement == marker.as_str())
 }
 
 impl<H: Http> Markers for DiscordMarkers<'_, H> {

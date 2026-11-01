@@ -44,6 +44,14 @@ pub async fn store_conformance<S: Store>(store: &S) -> Result<(), Failure> {
             "subscriptions",
         )?;
     }
+    if capabilities.pins {
+        pins(store).await?;
+    } else {
+        unsupported(
+            &store.pinned(&RouteId::new("absent")).await.map(|_| ()),
+            "pins",
+        )?;
+    }
     Ok(())
 }
 
@@ -271,6 +279,23 @@ async fn subscriptions<S: Store>(store: &S) -> Result<(), Failure> {
     checks.ensure(
         held == ["bob"],
         "a subscriber removed was still held, or another went with them",
+    );
+    checks.done()
+}
+
+async fn pins<S: Store>(store: &S) -> Result<(), Failure> {
+    let mut checks = Checks::default();
+    let releases = RouteId::new("releases");
+    checks.ensure(
+        store.pinned(&releases).await?.is_none(),
+        "a new store holds a pin",
+    );
+    store.put_pinned(&releases, "1").await?;
+    store.put_pinned(&releases, "2").await?;
+    store.put_pinned(&RouteId::new("other"), "3").await?;
+    checks.ensure(
+        store.pinned(&releases).await?.as_deref() == Some("2"),
+        "a route's pin was not the one written last",
     );
     checks.done()
 }

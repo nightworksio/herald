@@ -1,12 +1,12 @@
 use std::fmt;
 
-use crate::key::{Key, hex};
+use crate::key::{Key, RouteId, hex};
 
 const DOMAIN: &[u8] = b"herald/marker/v1\0";
+const ROUTE_DOMAIN: &[u8] = b"herald/route/v1\0";
 
-/// What an announcement carries on its destination to show herald posted it:
-/// the MAC of its key under the installation's marker secret, in lowercase
-/// hex (ADR-0011).
+/// What a post carries on its destination to show herald made it: a MAC
+/// under the installation's marker key, in lowercase hex (ADR-0011).
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Marker(String);
 
@@ -15,6 +15,12 @@ impl Marker {
     #[must_use]
     pub fn message(key: &Key) -> Vec<u8> {
         [DOMAIN, key.as_bytes()].concat()
+    }
+
+    /// The message whose MAC is `route`'s marker.
+    #[must_use]
+    pub fn route_message(route: &RouteId) -> Vec<u8> {
+        [ROUTE_DOMAIN, route.as_str().as_bytes()].concat()
     }
 
     /// The marker spelled by `mac`.
@@ -36,10 +42,19 @@ impl fmt::Display for Marker {
     }
 }
 
+/// The markers an announcement's post carries: its route's, and its own.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct Marks {
+    /// The MAC of the route id, the same on every post of the route.
+    pub route: Marker,
+    /// The MAC of the announcement's key.
+    pub announcement: Marker,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::key::{Identity, RouteId};
+    use crate::key::Identity;
 
     #[test]
     fn the_message_is_the_domain_and_the_key() {
@@ -47,6 +62,12 @@ mod tests {
         let message = Marker::message(&key);
         assert_eq!(&message[..17], b"herald/marker/v1\0");
         assert_eq!(&message[17..], key.as_bytes());
+    }
+
+    #[test]
+    fn the_route_message_is_its_domain_and_the_route_id() {
+        let message = Marker::route_message(&RouteId::new("releases"));
+        assert_eq!(message, b"herald/route/v1\0releases");
     }
 
     #[test]

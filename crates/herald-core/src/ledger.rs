@@ -19,6 +19,8 @@ pub enum Step {
     Chunk(u32),
     /// Pin it.
     Pin,
+    /// Unpin the route's earlier pin.
+    Unpin,
     /// Deliver it to one recipient's inbox.
     Deliver(String),
 }
@@ -162,8 +164,8 @@ pub fn steps(
         steps.push(Step::OpenThread);
     }
     steps.extend((1..parts).map(Step::Chunk));
-    if delivery.pin && features.pins {
-        steps.push(Step::Pin);
+    if delivery.pin.is_some() && features.pins {
+        steps.extend([Step::Pin, Step::Unpin]);
     }
     steps.extend(recipients.iter().cloned().map(Step::Deliver));
     steps
@@ -258,7 +260,7 @@ mod tests {
     use super::*;
     use crate::key::{Identity, RouteId};
     use crate::profile::MentionStyle;
-    use crate::route::Thread;
+    use crate::route::{Pinning, Thread};
 
     fn key() -> Key {
         Key::derive(&RouteId::new("route"), &Identity::new("identity"))
@@ -288,7 +290,7 @@ mod tests {
                 archive_after: None,
                 lock_after: None,
             }),
-            pin: true,
+            pin: Some(Pinning::Markers),
             ..Delivery::default()
         }
     }
@@ -322,6 +324,7 @@ mod tests {
                 Step::Chunk(1),
                 Step::Chunk(2),
                 Step::Pin,
+                Step::Unpin,
                 Step::Deliver("https://a.example/inbox".to_owned()),
             ]
         );
@@ -353,7 +356,7 @@ mod tests {
         };
         assert_eq!(
             steps(&everything(), &features, 1, &[]),
-            [Step::Post, Step::Crosspost, Step::Pin]
+            [Step::Post, Step::Crosspost, Step::Pin, Step::Unpin]
         );
     }
 

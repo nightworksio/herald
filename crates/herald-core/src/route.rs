@@ -114,6 +114,22 @@ pub struct Mentions {
     pub subscribers: bool,
 }
 
+/// How a route keeps its newest announcement pinned: each pin unpins the
+/// route's earlier one, found as this says (ADR-0011).
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, Default, serde::Deserialize, schemars::JsonSchema,
+)]
+#[serde(rename_all = "lowercase")]
+pub enum Pinning {
+    /// Among the destination's pins, by the route marker herald's own posts
+    /// carry. Every store serves it.
+    #[default]
+    Markers,
+    /// By the pinned message the store remembers for the route. Only a store
+    /// that keeps pins serves it.
+    Store,
+}
+
 /// How a route delivers, in the features every destination describes.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Delivery {
@@ -121,8 +137,9 @@ pub struct Delivery {
     pub crosspost: bool,
     /// The thread to open for it.
     pub thread: Option<Thread>,
-    /// Whether to pin it.
-    pub pin: bool,
+    /// Whether to pin it, unpinning the route's earlier pin, and how that
+    /// pin is found.
+    pub pin: Option<Pinning>,
     /// Who to mention.
     pub mentions: Mentions,
 }

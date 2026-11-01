@@ -27,12 +27,12 @@ pub use event::{Draft, Event, Kind, Problem};
 pub use housekeep::{Chore, Schedule, due, schedules};
 pub use key::{Identity, Key, NotAKey, RouteId};
 pub use ledger::{Entry, Facts, Lease, Plan, Planned, Record, Sent, State, Step, plan, steps};
-pub use marker::Marker;
+pub use marker::{Marker, Marks};
 pub use markup::{Text, convert, literal};
 pub use profile::{Dialect, Features, Limits, Measure, MentionStyle, Profile, Threads};
 pub use render::{Context, Form, TemplateError, Templates};
 pub use route::{
-    Delivery, DestinationName, Filter, Mentions, Prereleases, RoleId, Route, SecretRef, SourceName,
-    TemplateName, Thread, route,
+    Delivery, DestinationName, Filter, Mentions, Pinning, Prereleases, RoleId, Route, SecretRef,
+    SourceName, TemplateName, Thread, route,
 };
 pub use subscription::Subscription;
