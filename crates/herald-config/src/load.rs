@@ -268,6 +268,11 @@ impl Loader<'_> {
                 .typed::<herald_store_git_branch::StoreOptions>(rest, "store")
                 .map(Store::GitBranch);
         }
+        if kind == "actions-cache" {
+            return self
+                .typed::<herald_store_actions_cache::StoreOptions>(rest, "store")
+                .map(Store::ActionsCache);
+        }
         if kind == "repo-variables" {
             return self
                 .typed::<herald_store_repo_variables::StoreOptions>(rest, "store")
@@ -281,7 +286,6 @@ impl Loader<'_> {
             Store::Dynamodb,
             Store::DenoKv,
             Store::Markers,
-            Store::ActionsCache,
         ]
         .into_iter()
         .find(|store| store.kind() == kind)

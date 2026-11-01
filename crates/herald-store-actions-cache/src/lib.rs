@@ -9,6 +9,8 @@
 //! and drops what no run reads for a week.
 
 mod cache;
+mod options;
 mod service;
 
 pub use cache::{ActionsCache, ActionsCacheStore, Blobs, CacheRecords};
+pub use options::StoreOptions;

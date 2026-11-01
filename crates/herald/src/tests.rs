@@ -955,7 +955,10 @@ fn a_warning_on_actions_stays_one_workflow_command() {
 
 #[test]
 fn a_release_is_announced_once_through_the_actions_cache() {
-    let mut setup = setup(&CONFIG.replace("kind = \"git-branch\"", "kind = \"actions-cache\""));
+    let mut setup = setup(&CONFIG.replace(
+        "kind = \"git-branch\"",
+        "kind = \"actions-cache\"\nprefix = \"run-7\"",
+    ));
     let world = World::default();
     discord(&world, &[("/channels/100/messages", 200, r#"{"id":"1"}"#)]);
     let unset = run(&setup, &world, &ANNOUNCE);
@@ -982,6 +985,15 @@ fn a_release_is_announced_once_through_the_actions_cache() {
     );
     let again = run(&setup, &world, &ANNOUNCE);
     assert_eq!(again.out, "releases: already announced; nothing sent\n");
+    assert!(
+        world
+            .state
+            .lock()
+            .unwrap()
+            .cache
+            .keys()
+            .all(|key| key.starts_with("run-7-"))
+    );
 }
 
 #[test]

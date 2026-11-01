@@ -21,7 +21,7 @@ use herald_flows::{
 use herald_native::{EnvSecrets, RingSigner, SystemClock};
 use herald_ports::{Http, HttpError, Request, Response, Secrets, Store as Keeps};
 use herald_sources_forge::{GitHub, SourceOptions};
-use herald_store_actions_cache::{ActionsCache, ActionsCacheStore};
+use herald_store_actions_cache::{ActionsCache, ActionsCacheStore, StoreOptions as CacheOptions};
 use herald_store_git_branch::{GitBranch, GitBranchStore, StoreOptions as BranchOptions};
 use herald_store_repo_variables::{
     RepoVariables, RepoVariablesStore, StoreOptions as VariablesOptions,
@@ -583,7 +583,9 @@ async fn reached<'a>(
         Store::GitBranch(options) => {
             Records::Branch(branch(options, vars, &secrets, connect).await?)
         }
-        Store::ActionsCache => Records::Cache(cache(vars, &secrets, connect).await?),
+        Store::ActionsCache(options) => {
+            Records::Cache(cache(options, vars, &secrets, connect).await?)
+        }
         Store::RepoVariables(options) => {
             Records::Variables(variables(options, vars, &secrets, connect).await?)
         }
@@ -629,6 +631,7 @@ async fn branch(
 }
 
 async fn cache<'a>(
+    options: &CacheOptions,
     vars: &BTreeMap<String, String>,
     secrets: &EnvSecrets,
     connect: Connect<'a>,
@@ -637,7 +640,7 @@ async fn cache<'a>(
     let token = secrets.secret(RUNTIME_TOKEN).await.map_err(|_| {
         format!("{RUNTIME_TOKEN} is not set; the actions-cache store runs through herald's Action")
     })?;
-    let cache = ActionsCache::new(results, token, None);
+    let cache = ActionsCache::new(results, token, options.prefix.as_deref());
     let http = connect(cache.results())?;
     Ok(cache.store(http, Box::new(connect)))
 }

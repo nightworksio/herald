@@ -25,7 +25,7 @@ enum StoreSchema {
     /// One file per record on a `herald-state` branch.
     GitBranch(herald_store_git_branch::StoreOptions),
     /// Generations of the GitHub Actions cache.
-    ActionsCache {},
+    ActionsCache(herald_store_actions_cache::StoreOptions),
     /// The repository's variables.
     RepoVariables(herald_store_repo_variables::StoreOptions),
 }

@@ -96,7 +96,7 @@ pub fn doctor(config: &Config, stores: &[&str]) -> Findings {
         ));
     }
     match config.store {
-        Store::ActionsCache => findings.notes.push(SCOPED.to_owned()),
+        Store::ActionsCache(_) => findings.notes.push(SCOPED.to_owned()),
         Store::RepoVariables(_) => findings.notes.push(CROWDED.to_owned()),
         _ => {}
     }

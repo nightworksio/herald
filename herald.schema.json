@@ -575,6 +575,13 @@
             "kind": {
               "type": "string",
               "const": "actions-cache"
+            },
+            "prefix": {
+              "description": "What every generation's key starts with, so two configs in one\nrepository keep their records apart; `herald-state` where absent.",
+              "type": [
+                "string",
+                "null"
+              ]
             }
           },
           "additionalProperties": false,
