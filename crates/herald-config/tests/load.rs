@@ -3,8 +3,9 @@
 
 #[cfg(test)]
 mod load {
-    use herald_config::{Destination, RouteOptions, Source, StoreKind, load, schema};
+    use herald_config::{Destination, RouteOptions, Source, Store, load, schema};
     use herald_core::{Kind, Pinning, Prereleases};
+    use herald_sources_forge::Forge;
 
     const EXAMPLE: &str = r#"#:schema https://raw.githubusercontent.com/nightworksio/herald/main/herald.schema.json
 version = 1
@@ -47,7 +48,10 @@ body = "{{ event.body }}"
     #[test]
     fn the_documented_example_loads() {
         let config = load("herald.toml", EXAMPLE, &nothing).unwrap();
-        assert_eq!(config.store, StoreKind::GitBranch);
+        assert_eq!(
+            config.store,
+            Store::GitBranch(herald_store_git_branch::StoreOptions::default())
+        );
         assert_eq!(config.marker_key, None);
         assert!(matches!(
             config.destinations.values().next(),
@@ -55,7 +59,7 @@ body = "{{ event.body }}"
         ));
         assert!(matches!(
             config.sources.values().next(),
-            Some(Source::GitHub(options)) if options.repository == "nightworksio/php-mutation-gate"
+            Some(Source::Forge(Forge::GitHub, options)) if options.repository == "nightworksio/php-mutation-gate"
         ));
         let route = &config.routes[0];
         assert_eq!(route.route.id.as_str(), "php-mutation-gate-releases");
@@ -130,7 +134,7 @@ body = "{{ event.body }}"
 
     #[test]
     fn every_mistake_is_reported_in_one_pass_in_file_order() {
-        let text = "version = 2\nunknown = 1\n[store]\nkind = \"nowhere\"\n[destinations.d]\nkind = \"discord\"\n[sources.s]\nkind = \"gitlab\"\n";
+        let text = "version = 2\nunknown = 1\n[store]\nkind = \"nowhere\"\n[destinations.d]\nkind = \"discord\"\n[sources.s]\nkind = \"bitbucket\"\n";
         assert_eq!(
             errors(text),
             [
@@ -138,7 +142,7 @@ body = "{{ event.body }}"
                 "herald.toml:2:1 unknown: herald.toml has no key \"unknown\"; the keys are \"version\", \"store\", \"markers\", \"destinations\", \"sources\", \"routes\", \"templates\", \"apps\", \"schedule\"",
                 "herald.toml:4:8 store.kind: there is no kind \"nowhere\"; the kinds are \"sqlite\", \"postgres\", \"d1\", \"dynamodb\", \"deno-kv\", \"markers\", \"git-branch\", \"actions-cache\", \"repo-variables\"",
                 "herald.toml:5:1 destinations.d: a Discord destination needs a token or a webhook; give one",
-                "herald.toml:8:8 sources.s.kind: there is no kind \"gitlab\"; the kinds are \"github\"",
+                "herald.toml:8:8 sources.s.kind: there is no kind \"bitbucket\"; the kinds are \"github\", \"gitlab\", \"forgejo\", \"packagist\", \"crates-io\", \"npm\", \"docker-hub\", \"feed\"",
             ]
             .join("\n")
         );
@@ -167,6 +171,121 @@ body = "{{ event.body }}"
     }
 
     #[test]
+    fn every_secret_the_config_names_is_listed_once() {
+        let text = EXAMPLE
+            .replace(
+                "kind = \"git-branch\"",
+                "kind = \"git-branch\"\ntoken = { secret = \"STATE_TOKEN\" }",
+            )
+            .replace(
+                "repository = \"nightworksio/php-mutation-gate\"",
+                "repository = \"nightworksio/php-mutation-gate\"\ntoken = { secret = \"HERALD_DISCORD_TOKEN\" }",
+            );
+        let config = load("herald.toml", &text, &|_| Err(String::new())).unwrap();
+        let secrets: Vec<&str> = config.secrets().into_iter().collect();
+        assert_eq!(secrets, ["HERALD_DISCORD_TOKEN", "STATE_TOKEN"]);
+        let variables = EXAMPLE.replace(
+            "kind = \"git-branch\"",
+            "kind = \"repo-variables\"\ntoken = { secret = \"VARIABLES_TOKEN\" }",
+        );
+        let keyed =
+            format!("{variables}\n[markers]\nkey = {{ secret = \"HERALD_MARKER_SECRET\" }}\n");
+        let config = load("herald.toml", &keyed, &|_| Err(String::new())).unwrap();
+        assert!(config.secrets().contains("VARIABLES_TOKEN"));
+        assert!(config.secrets().contains("HERALD_MARKER_SECRET"));
+        let marked = EXAMPLE.replace("kind = \"git-branch\"", "kind = \"markers\"");
+        let config = load("herald.toml", &marked, &|_| Err(String::new())).unwrap();
+        assert_eq!(config.secrets().len(), 1);
+    }
+
+    #[test]
+    fn every_store_kind_loads_as_itself() {
+        for kind in Store::KINDS {
+            let options = if kind == "repo-variables" {
+                "\ntoken = { secret = \"HERALD_STATE_TOKEN\" }"
+            } else {
+                ""
+            };
+            let text = EXAMPLE.replace(
+                "kind = \"git-branch\"",
+                &format!("kind = \"{kind}\"{options}"),
+            );
+            let config = load("herald.toml", &text, &|_| Err(String::new())).unwrap();
+            assert_eq!(config.store.kind(), kind);
+        }
+    }
+
+    #[test]
+    fn every_source_kind_loads_as_itself() {
+        for kind in Source::KINDS {
+            let forge = ["github", "gitlab", "forgejo"].contains(&kind);
+            let mut text = EXAMPLE.replace("kind = \"github\"", &format!("kind = \"{kind}\""));
+            if kind == "feed" {
+                text = text
+                    .replace(
+                        "repository = \"nightworksio/php-mutation-gate\"",
+                        "url = \"https://blog.example/feed.xml\"",
+                    )
+                    .replace("kinds = [\"release\"]", "kinds = [\"feed-entry\"]");
+            } else if !forge {
+                text = text
+                    .replace("repository = ", "package = ")
+                    .replace("kinds = [\"release\"]", "kinds = [\"package-version\"]");
+            }
+            let config = load("herald.toml", &text, &|_| Err(String::new())).unwrap();
+            let source = config.sources.values().next().unwrap();
+            assert_eq!(source.kind(), kind);
+            assert!(config.secrets().contains("HERALD_DISCORD_TOKEN"));
+            let made = match kind {
+                "feed" => Kind::FeedEntry,
+                _ if forge => Kind::Release,
+                _ => Kind::PackageVersion,
+            };
+            assert_eq!(source.kinds(), [made]);
+        }
+    }
+
+    #[test]
+    fn a_route_s_versions_pattern_is_read_and_refused_where_its_kinds_carry_none() {
+        let text = EXAMPLE.replace(
+            "kinds = [\"release\"]",
+            "kinds = [\"release\"]\nversions = \"v*.*.*\"",
+        );
+        let config = load("herald.toml", &text, &nothing).unwrap();
+        let versions = config.routes[0].route.filter.versions.as_ref().unwrap();
+        assert_eq!(versions.as_str(), "v*.*.*");
+        let feeds = text.replace(
+            "kinds = [\"release\"]",
+            "kinds = [\"release\", \"feed-entry\"]",
+        );
+        let refused = errors(&feeds);
+        assert!(
+            refused.starts_with("herald.toml:19:12 routes[0].versions: feed entries and app messages carry no version"),
+            "{refused}"
+        );
+    }
+
+    #[test]
+    fn only_npm_takes_a_token_among_the_registries() {
+        let registry = |kind: &str| {
+            EXAMPLE
+                .replace("kind = \"github\"", &format!("kind = \"{kind}\""))
+                .replace(
+                    "repository = \"nightworksio/php-mutation-gate\"",
+                    "package = \"nightworksio/php-mutation-gate\"\ntoken = { secret = \"REGISTRY_TOKEN\" }",
+                )
+                .replace("kinds = [\"release\"]", "kinds = [\"package-version\"]")
+        };
+        let config = load("herald.toml", &registry("npm"), &|_| Err(String::new())).unwrap();
+        assert!(config.secrets().contains("REGISTRY_TOKEN"));
+        let refused = errors(&registry("crates-io"));
+        assert!(
+            refused.starts_with("herald.toml:11:1 sources.php-mutation-gate.token: the registry \"crates-io\" takes no token; remove token\n"),
+            "{refused}"
+        );
+    }
+
+    #[test]
     fn an_option_its_destination_lacks_is_an_error_not_a_no_op() {
         let text = EXAMPLE
             .replace("token = { secret = \"HERALD_DISCORD_TOKEN\" }", "webhook = { secret = \"HERALD_DISCORD_WEBHOOK\" }")
@@ -181,7 +300,13 @@ body = "{{ event.body }}"
         );
         let text = text.replace("channel_id = \"2\"\n", "");
         let error = errors(&text);
-        for key in ["crosspost", "pin", "mentions.subscribers"] {
+        for key in [
+            "crosspost",
+            "pin",
+            "mentions.subscribers",
+            "thread",
+            "thread.archive_after",
+        ] {
             assert!(
                 error.contains(&format!(
                     "routes[0].{key}: the destination \"discord\" cannot do this as it is reached"
@@ -190,6 +315,16 @@ body = "{{ event.body }}"
             );
         }
         assert!(!error.contains("mentions.roles"), "{error}");
+        let forum = text
+            .replace("crosspost = true\npin = \"markers\"\n", "forum = true\n")
+            .replace("mentions = { roles = [\"1\"], subscribers = true }\n", "")
+            .replace("archive_after = \"14d\"", "lock_after = \"14d\"");
+        let error = errors(&forum);
+        assert!(!error.contains("routes[0].thread:"), "{error}");
+        assert!(
+            error.contains("routes[0].thread.lock_after: the destination \"discord\" cannot do this as it is reached"),
+            "{error}"
+        );
         let unchannelled = EXAMPLE.replace("channel = \"1566184281406177531\"\n", "");
         assert!(errors(&unchannelled).contains("routes[0]: a Discord bot posts to a channel"));
     }
@@ -309,9 +444,19 @@ body = "{{ event.body }}"
         );
         let extra = EXAMPLE.replace(
             "kind = \"git-branch\"",
-            "kind = \"git-branch\"\nbranch = \"x\"",
+            "kind = \"git-branch\"\nbranch_name = \"x\"",
         );
-        assert!(errors(&extra).contains("store.branch: unknown field `branch`"));
+        assert!(errors(&extra).contains("store.branch_name: unknown field `branch_name`"));
+        let stray = EXAMPLE.replace(
+            "kind = \"git-branch\"",
+            "kind = \"markers\"\nbranch = \"x\"",
+        );
+        assert!(errors(&stray).contains("store.branch: unknown field `branch`"));
+        let markers = EXAMPLE.replace("kind = \"git-branch\"", "kind = \"markers\"");
+        assert_eq!(
+            load("herald.toml", &markers, &nothing).unwrap().store,
+            Store::Markers
+        );
         let pinned = EXAMPLE.replace("crosspost = true", "crosspost = true\npin = \"store\"");
         assert_eq!(
             load("herald.toml", &pinned, &nothing).unwrap().routes[0]

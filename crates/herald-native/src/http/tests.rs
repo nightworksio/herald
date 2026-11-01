@@ -216,8 +216,8 @@ async fn a_host_that_does_not_answer_in_time_times_out() {
 
 #[tokio::test]
 async fn a_body_up_to_the_cap_is_read_and_a_larger_one_refused() {
-    let full = vec![b'a'; BODY_CAP];
-    let over = vec![b'a'; BODY_CAP + 1];
+    let full = vec![b'a'; BODY_LIMIT];
+    let over = vec![b'a'; BODY_LIMIT + 1];
     let (base, server) = serve(vec![
         answer("200 OK", "", &full),
         answer("200 OK", "", &over),
@@ -225,11 +225,11 @@ async fn a_body_up_to_the_cap_is_read_and_a_larger_one_refused() {
     .await;
     let http = http(&base);
     let request = || Request::new(Method::Get, Text::plain(format!("{base}/")));
-    assert_eq!(http.send(request()).await.unwrap().body.len(), BODY_CAP);
+    assert_eq!(http.send(request()).await.unwrap().body.len(), BODY_LIMIT);
     assert_eq!(
         http.send(request()).await,
         Err(HttpError::Unreachable {
-            reason: "the response is larger than 8388608 bytes".to_owned()
+            reason: "the response is larger than 33554432 bytes".to_owned()
         })
     );
     server.await.unwrap();
@@ -264,5 +264,20 @@ fn tls_without_a_cipher_suite_is_not_set_up() {
             .to_string()
             .starts_with("the HTTP client could not be built: "),
         "{error}"
+    );
+}
+
+#[test]
+fn a_client_for_a_base_reaches_only_that_base_or_says_why_not() {
+    assert!(NativeHttp::reaching("https://discord.com/api/v10").is_ok());
+    let refused = NativeHttp::reaching("http://discord.com").unwrap_err();
+    assert_eq!(
+        refused.to_string(),
+        "http://discord.com is not HTTPS; plain HTTP is allowed only on a loopback host"
+    );
+    let unbuilt = ConnectError::Build(BuildError("no TLS".to_owned()));
+    assert_eq!(
+        unbuilt.to_string(),
+        "the HTTP client could not be built: no TLS"
     );
 }

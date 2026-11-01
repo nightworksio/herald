@@ -3,19 +3,17 @@ use std::fmt;
 use std::sync::Arc;
 use std::time::Duration;
 
-use herald_ports::{Http, HttpError, Method, Request, Response};
+use herald_ports::{BODY_LIMIT, Http, HttpError, Method, Request, Response};
 use rustls::crypto::CryptoProvider;
 use rustls::{ClientConfig, RootCertStore};
 use url::Url;
 
-use crate::reach::Reach;
+use crate::reach::{Reach, ReachError};
 
 /// How long a connection may take to open.
 const CONNECT: Duration = Duration::from_secs(10);
 /// How long a request may take, from sending it to the end of its response.
 const TOTAL: Duration = Duration::from_secs(30);
-/// The largest response body read, in bytes.
-const BODY_CAP: usize = 8_388_608;
 
 /// Why the HTTP client could not be built.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -24,6 +22,24 @@ pub struct BuildError(String);
 impl fmt::Display for BuildError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "the HTTP client could not be built: {}", self.0)
+    }
+}
+
+/// Why an `Http` for a base URL could not be made.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ConnectError {
+    /// The base URL may not be reached.
+    Reach(ReachError),
+    /// The client could not be built.
+    Build(BuildError),
+}
+
+impl fmt::Display for ConnectError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Reach(error) => error.fmt(f),
+            Self::Build(error) => error.fmt(f),
+        }
     }
 }
 
@@ -44,6 +60,16 @@ impl NativeHttp {
     pub fn new(reach: Reach) -> Result<Self, BuildError> {
         let tls = tls(rustls::crypto::ring::default_provider())?;
         Self::built(reach, Some(tls), CONNECT, TOTAL)
+    }
+
+    /// A client reaching only the origin of `base`.
+    ///
+    /// # Errors
+    ///
+    /// When `base` may not be reached, or the client cannot be built.
+    pub fn reaching(base: &str) -> Result<Self, ConnectError> {
+        let reach = Reach::new([base]).map_err(ConnectError::Reach)?;
+        Self::new(reach).map_err(ConnectError::Build)
     }
 
     pub(crate) fn built(
@@ -117,9 +143,9 @@ async fn read(mut response: reqwest::Response) -> Result<Response, HttpError> {
         .collect();
     let mut body = Vec::new();
     while let Some(chunk) = response.chunk().await.map_err(failed)? {
-        if body.len() + chunk.len() > BODY_CAP {
+        if body.len() + chunk.len() > BODY_LIMIT {
             return Err(HttpError::Unreachable {
-                reason: format!("the response is larger than {BODY_CAP} bytes"),
+                reason: format!("the response is larger than {BODY_LIMIT} bytes"),
             });
         }
         body.extend_from_slice(&chunk);

@@ -32,6 +32,14 @@ pub enum Kind {
     Message,
 }
 
+impl Kind {
+    /// Whether an event of the kind carries a version.
+    #[must_use]
+    pub const fn versioned(self) -> bool {
+        matches!(self, Self::Release | Self::PackageVersion)
+    }
+}
+
 /// An event as a source parsed it, before [`Event::normalise`] checks it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Draft {
@@ -240,6 +248,14 @@ pub(crate) mod tests {
             prerelease: false,
             occurred: "2026-10-31T12:00:00Z".parse().unwrap(),
         }
+    }
+
+    #[test]
+    fn releases_and_package_versions_carry_a_version_and_nothing_else_does() {
+        assert!(Kind::Release.versioned());
+        assert!(Kind::PackageVersion.versioned());
+        assert!(!Kind::FeedEntry.versioned());
+        assert!(!Kind::Message.versioned());
     }
 
     pub(crate) fn event() -> Event {

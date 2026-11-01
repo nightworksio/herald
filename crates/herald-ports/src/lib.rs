@@ -16,9 +16,9 @@ mod store;
 
 pub use clock::Clock;
 pub use crypto::{Algorithm, CryptoError, Signer, Verifier};
-pub use http::{Http, HttpError, Method, Request, Response};
+pub use http::{BODY_LIMIT, Http, HttpError, Method, Request, Response, USER_AGENT};
 pub use kv::{Kv, KvError, Pair, Stamped, Versionstamp};
-pub use markers::{Markers, MarkersError};
+pub use markers::{MarkedThread, Markers, MarkersError, marker};
 pub use secret::{Secret, SecretError, Secrets, Segment, Text};
 pub use sql::{Changed, Sql, SqlError, Statement, Value};
-pub use store::{Capabilities, Store, StoreError, Version, Versioned, Written};
+pub use store::{Admitted, Capabilities, Keeping, Store, StoreError, Version, Versioned, Written};

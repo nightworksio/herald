@@ -9,9 +9,13 @@ publish = false
 cargo-fuzz = true
 
 [dependencies]
+herald-config = { path = "../crates/herald-config" }
 herald-core = { path = "../crates/herald-core" }
 herald-ports = { path = "../crates/herald-ports" }
+herald-sources-feed = { path = "../crates/herald-sources-feed" }
 herald-sources-forge = { path = "../crates/herald-sources-forge" }
+herald-sources-registry = { path = "../crates/herald-sources-registry" }
+jiff = { version = "0.2", default-features = false, features = ["std"] }
 libfuzzer-sys = "0.4"
 
 [workspace]
@@ -34,6 +38,34 @@ bench = false
 [[bin]]
 name = "forge"
 path = "fuzz_targets/forge.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "registry"
+path = "fuzz_targets/registry.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "feed"
+path = "fuzz_targets/feed.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "config"
+path = "fuzz_targets/config.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "inbound"
+path = "fuzz_targets/inbound.rs"
 test = false
 doc = false
 bench = false

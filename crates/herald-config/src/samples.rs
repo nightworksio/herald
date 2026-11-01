@@ -37,7 +37,8 @@ fn draft(kind: Kind) -> Draft {
 
 /// The sample events of `kind` every template is dry-rendered against: a
 /// plain one, a pre-release and one with a long body (ADR-0006).
-pub(crate) fn samples(kind: Kind) -> Vec<Event> {
+#[must_use]
+pub fn samples(kind: Kind) -> Vec<Event> {
     let plain = draft(kind);
     let prerelease = Draft {
         version: plain

@@ -1,5 +1,6 @@
 use herald_core::{Entry, Facts, Key, Marker, Step};
-use herald_ports::{Http, Markers, MarkersError};
+use herald_ports::{Http, MarkedThread, Markers, MarkersError};
+use jiff::Timestamp;
 use serde_json::Value;
 
 use crate::discord::{Credential, Discord};
@@ -99,6 +100,30 @@ pub(crate) fn author(message: &Value) -> Option<&str> {
         .and_then(Value::as_str)
 }
 
+fn timestamp(value: &Value, field: &str) -> Option<Timestamp> {
+    value
+        .get(field)
+        .and_then(Value::as_str)
+        .and_then(|text| text.parse().ok())
+}
+
+fn flag(value: &Value, field: &str) -> bool {
+    value.get(field).and_then(Value::as_bool) == Some(true)
+}
+
+/// The thread opened from `post`, as the post describes it: opened when
+/// Discord says, or else when the post was made.
+fn marked_thread(post: &Value) -> Option<MarkedThread> {
+    let thread = post.get("thread")?;
+    let metadata = thread.get("thread_metadata").unwrap_or(&Value::Null);
+    Some(MarkedThread {
+        thread: text(thread, "id")?,
+        opened: timestamp(metadata, "create_timestamp").or_else(|| timestamp(post, "timestamp"))?,
+        archived: flag(metadata, "archived"),
+        locked: flag(metadata, "locked"),
+    })
+}
+
 fn carries(message: &Value, marker: &Marker) -> bool {
     marks(message)
         .iter()
@@ -106,6 +131,22 @@ fn carries(message: &Value, marker: &Marker) -> bool {
 }
 
 impl<H: Http> Markers for DiscordMarkers<'_, H> {
+    async fn threads(&self, route: &Marker) -> Result<Vec<MarkedThread>, MarkersError> {
+        let channel = self.discord.route.channel.as_deref().unwrap_or_default();
+        let herald = self.herald().await?;
+        Ok(self
+            .messages(channel, &herald)
+            .await?
+            .iter()
+            .filter(|post| {
+                marks(post)
+                    .iter()
+                    .any(|(carried, _)| carried == route.as_str())
+            })
+            .filter_map(marked_thread)
+            .collect())
+    }
+
     async fn entry(&self, key: &Key, marker: &Marker) -> Result<Option<Entry>, MarkersError> {
         let channel = self.discord.route.channel.as_deref().unwrap_or_default();
         let herald = self.herald().await?;
@@ -135,8 +176,10 @@ impl<H: Http> Markers for DiscordMarkers<'_, H> {
                 },
             );
         }
-        if post.get("pinned").and_then(Value::as_bool) == Some(true) {
-            entry = entry.landed(Step::Pin, Facts::default());
+        if flag(post, "pinned") {
+            entry = entry
+                .landed(Step::Pin, Facts::default())
+                .landed(Step::Unpin, Facts::default());
         }
         let Some(thread) = thread else {
             return Ok(Some(entry));

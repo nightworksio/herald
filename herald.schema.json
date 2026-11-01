@@ -333,6 +333,13 @@
               "type": "null"
             }
           ]
+        },
+        "versions": {
+          "description": "The versions it takes, as a pattern in which `*` stands for any run\nof characters and `?` for any one, such as `\"*.*.*\"`, which leaves\nout a Docker Hub tag such as `latest`; every version where absent.",
+          "type": [
+            "string",
+            "null"
+          ]
         }
       },
       "additionalProperties": false,
@@ -394,7 +401,7 @@
           "type": "object",
           "properties": {
             "api": {
-              "description": "The API's base URL, for a GitHub Enterprise Server; GitHub's own API\nwhere absent.",
+              "description": "The API's base URL, for a forge that is not GitHub, GitLab.com or\nCodeberg, such as `https://forge.example/api/v1`. Where absent, it is\nthe CI run's own when announcing the run's repository, and otherwise\nthe forge's public instance.",
               "type": [
                 "string",
                 "null"
@@ -412,11 +419,11 @@
               "const": "github"
             },
             "repository": {
-              "description": "The repository, as `owner/name`.",
+              "description": "The repository, as `owner/name`, or a GitLab project's full path,\nsuch as `group/subgroup/name`.",
               "type": "string"
             },
             "token": {
-              "description": "A token that raises the API's rate limit, such as the run's\n`GITHUB_TOKEN`.",
+              "description": "A token that reaches a private repository or raises the API's rate\nlimit, such as the run's `GITHUB_TOKEN`.",
               "anyOf": [
                 {
                   "$ref": "#/$defs/SecretRef"
@@ -431,6 +438,296 @@
           "required": [
             "kind",
             "repository"
+          ]
+        },
+        {
+          "description": "A GitLab project's releases.",
+          "type": "object",
+          "properties": {
+            "api": {
+              "description": "The API's base URL, for a forge that is not GitHub, GitLab.com or\nCodeberg, such as `https://forge.example/api/v1`. Where absent, it is\nthe CI run's own when announcing the run's repository, and otherwise\nthe forge's public instance.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "backfill": {
+              "description": "How many of the newest releases the first poll announces; none where\nabsent (ADR-0003).",
+              "type": "integer",
+              "format": "uint",
+              "default": 0,
+              "minimum": 0
+            },
+            "kind": {
+              "type": "string",
+              "const": "gitlab"
+            },
+            "repository": {
+              "description": "The repository, as `owner/name`, or a GitLab project's full path,\nsuch as `group/subgroup/name`.",
+              "type": "string"
+            },
+            "token": {
+              "description": "A token that reaches a private repository or raises the API's rate\nlimit, such as the run's `GITHUB_TOKEN`.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/SecretRef"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "repository"
+          ]
+        },
+        {
+          "description": "A Forgejo or Gitea repository's releases.",
+          "type": "object",
+          "properties": {
+            "api": {
+              "description": "The API's base URL, for a forge that is not GitHub, GitLab.com or\nCodeberg, such as `https://forge.example/api/v1`. Where absent, it is\nthe CI run's own when announcing the run's repository, and otherwise\nthe forge's public instance.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "backfill": {
+              "description": "How many of the newest releases the first poll announces; none where\nabsent (ADR-0003).",
+              "type": "integer",
+              "format": "uint",
+              "default": 0,
+              "minimum": 0
+            },
+            "kind": {
+              "type": "string",
+              "const": "forgejo"
+            },
+            "repository": {
+              "description": "The repository, as `owner/name`, or a GitLab project's full path,\nsuch as `group/subgroup/name`.",
+              "type": "string"
+            },
+            "token": {
+              "description": "A token that reaches a private repository or raises the API's rate\nlimit, such as the run's `GITHUB_TOKEN`.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/SecretRef"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "repository"
+          ]
+        },
+        {
+          "description": "A package's versions on Packagist.",
+          "type": "object",
+          "properties": {
+            "api": {
+              "description": "The registry's base URL, for a mirror or a private registry that\nanswers as the public one does; the public registry's where absent.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "backfill": {
+              "description": "How many of the newest versions the first poll announces; none where\nabsent (ADR-0003).",
+              "type": "integer",
+              "format": "uint",
+              "default": 0,
+              "minimum": 0
+            },
+            "kind": {
+              "type": "string",
+              "const": "packagist"
+            },
+            "package": {
+              "description": "The package, as the registry names it: `vendor/name` on Packagist,\na crate's name, an npm package's name such as `@scope/name`, or a\nDocker Hub repository such as `library/caddy`, where an official\nimage may leave out `library/`.",
+              "type": "string"
+            },
+            "token": {
+              "description": "A token for a private npm package, sent as a bearer token; the other\nregistries take none.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/SecretRef"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "package"
+          ]
+        },
+        {
+          "description": "A crate's versions on crates.io.",
+          "type": "object",
+          "properties": {
+            "api": {
+              "description": "The registry's base URL, for a mirror or a private registry that\nanswers as the public one does; the public registry's where absent.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "backfill": {
+              "description": "How many of the newest versions the first poll announces; none where\nabsent (ADR-0003).",
+              "type": "integer",
+              "format": "uint",
+              "default": 0,
+              "minimum": 0
+            },
+            "kind": {
+              "type": "string",
+              "const": "crates-io"
+            },
+            "package": {
+              "description": "The package, as the registry names it: `vendor/name` on Packagist,\na crate's name, an npm package's name such as `@scope/name`, or a\nDocker Hub repository such as `library/caddy`, where an official\nimage may leave out `library/`.",
+              "type": "string"
+            },
+            "token": {
+              "description": "A token for a private npm package, sent as a bearer token; the other\nregistries take none.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/SecretRef"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "package"
+          ]
+        },
+        {
+          "description": "A package's versions on the npm registry.",
+          "type": "object",
+          "properties": {
+            "api": {
+              "description": "The registry's base URL, for a mirror or a private registry that\nanswers as the public one does; the public registry's where absent.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "backfill": {
+              "description": "How many of the newest versions the first poll announces; none where\nabsent (ADR-0003).",
+              "type": "integer",
+              "format": "uint",
+              "default": 0,
+              "minimum": 0
+            },
+            "kind": {
+              "type": "string",
+              "const": "npm"
+            },
+            "package": {
+              "description": "The package, as the registry names it: `vendor/name` on Packagist,\na crate's name, an npm package's name such as `@scope/name`, or a\nDocker Hub repository such as `library/caddy`, where an official\nimage may leave out `library/`.",
+              "type": "string"
+            },
+            "token": {
+              "description": "A token for a private npm package, sent as a bearer token; the other\nregistries take none.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/SecretRef"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "package"
+          ]
+        },
+        {
+          "description": "A repository's tags on Docker Hub.",
+          "type": "object",
+          "properties": {
+            "api": {
+              "description": "The registry's base URL, for a mirror or a private registry that\nanswers as the public one does; the public registry's where absent.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "backfill": {
+              "description": "How many of the newest versions the first poll announces; none where\nabsent (ADR-0003).",
+              "type": "integer",
+              "format": "uint",
+              "default": 0,
+              "minimum": 0
+            },
+            "kind": {
+              "type": "string",
+              "const": "docker-hub"
+            },
+            "package": {
+              "description": "The package, as the registry names it: `vendor/name` on Packagist,\na crate's name, an npm package's name such as `@scope/name`, or a\nDocker Hub repository such as `library/caddy`, where an official\nimage may leave out `library/`.",
+              "type": "string"
+            },
+            "token": {
+              "description": "A token for a private npm package, sent as a bearer token; the other\nregistries take none.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/SecretRef"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "package"
+          ]
+        },
+        {
+          "description": "An RSS or Atom feed's entries.",
+          "type": "object",
+          "properties": {
+            "backfill": {
+              "description": "How many of the newest entries the first poll announces; none where\nabsent (ADR-0003).",
+              "type": "integer",
+              "format": "uint",
+              "default": 0,
+              "minimum": 0
+            },
+            "kind": {
+              "type": "string",
+              "const": "feed"
+            },
+            "url": {
+              "description": "The feed's URL, RSS 2.0 or Atom 1.0.",
+              "type": "string"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "url"
           ]
         }
       ]
@@ -526,9 +823,41 @@
           "description": "One file per record on a `herald-state` branch.",
           "type": "object",
           "properties": {
+            "api": {
+              "description": "The API's base URL, for a GitHub Enterprise Server; GitHub's own API\nwhere absent.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "branch": {
+              "description": "The branch the records are kept on; `herald-state` where absent.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
             "kind": {
               "type": "string",
               "const": "git-branch"
+            },
+            "repository": {
+              "description": "The repository, as `owner/name`; the run's own where absent.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "token": {
+              "description": "The secret holding a token that may push to the branch;\n`GITHUB_TOKEN` where absent.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/SecretRef"
+                },
+                {
+                  "type": "null"
+                }
+              ]
             }
           },
           "additionalProperties": false,
@@ -543,6 +872,13 @@
             "kind": {
               "type": "string",
               "const": "actions-cache"
+            },
+            "prefix": {
+              "description": "What every generation's key starts with, so two configs in one\nrepository keep their records apart; `herald-state` where absent.",
+              "type": [
+                "string",
+                "null"
+              ]
             }
           },
           "additionalProperties": false,
@@ -554,14 +890,33 @@
           "description": "The repository's variables.",
           "type": "object",
           "properties": {
+            "api": {
+              "description": "The API's base URL, for a GitHub Enterprise Server; GitHub's own API\nwhere absent.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
             "kind": {
               "type": "string",
               "const": "repo-variables"
+            },
+            "repository": {
+              "description": "The repository, as `owner/name`; the run's own where absent.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "token": {
+              "description": "The secret holding a token with the repository's Variables\npermission; the job's own token cannot write variables.",
+              "$ref": "#/$defs/SecretRef"
             }
           },
           "additionalProperties": false,
           "required": [
-            "kind"
+            "kind",
+            "token"
           ]
         }
       ]

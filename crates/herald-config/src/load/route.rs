@@ -2,8 +2,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::ops::Range;
 
 use herald_core::{
-    Delivery, DestinationName, Filter, Kind, Mentions, Profile, Route, RouteId, SourceName,
-    TemplateName, Thread,
+    Delivery, DestinationName, Filter, Kind, Mentions, Pattern, Profile, Route, RouteId,
+    SourceName, TemplateName, Thread,
 };
 use toml::Spanned;
 use toml::de::{DeTable, DeValue};
@@ -125,7 +125,11 @@ impl Loader<'_> {
                 subscribers: route.mentions.subscribers,
             },
         };
-        for key in profile.features.lacking(&delivery) {
+        let lacking = profile.features.lacking(&delivery);
+        for key in lacking
+            .into_iter()
+            .filter(|key| !(options.forum && *key == "thread"))
+        {
             self.error(
                 &span,
                 &format!("{path}.{key}"),
@@ -149,6 +153,16 @@ impl Loader<'_> {
         } else {
             route.kinds.iter().copied().collect()
         };
+        if let Some(versions) = &route.versions
+            && sample_kinds.iter().any(|kind| !kind.versioned())
+        {
+            self.error(
+                &versions.span(),
+                &format!("{path}.versions"),
+                "feed entries and app messages carry no version, so a route with versions takes none of them; give kinds = [\"release\", \"package-version\"], or remove versions",
+            );
+            return None;
+        }
         let config = RouteConfig {
             route: Route {
                 id: RouteId::new(route.id.get_ref()),
@@ -160,6 +174,9 @@ impl Loader<'_> {
                         .collect(),
                     kinds: route.kinds,
                     prereleases: route.prereleases,
+                    versions: route
+                        .versions
+                        .map(|versions| Pattern::new(versions.into_inner())),
                 },
                 destination,
                 template,

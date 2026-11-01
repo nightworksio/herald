@@ -13,20 +13,32 @@ authors = ["NightWorksIO"]
 publish = false
 
 [workspace.dependencies]
+base64 = "0.23"
 herald-config = { path = "crates/herald-config" }
 herald-core = { path = "crates/herald-core" }
 herald-dest-discord = { path = "crates/herald-dest-discord" }
+herald-flows = { path = "crates/herald-flows" }
 herald-native = { path = "crates/herald-native" }
 herald-ports = { path = "crates/herald-ports" }
+herald-records = { path = "crates/herald-records" }
+herald-sources-feed = { path = "crates/herald-sources-feed" }
 herald-sources-forge = { path = "crates/herald-sources-forge" }
+herald-sources-registry = { path = "crates/herald-sources-registry" }
+herald-store-actions-cache = { path = "crates/herald-store-actions-cache" }
+herald-store-git-branch = { path = "crates/herald-store-git-branch" }
+herald-store-markers = { path = "crates/herald-store-markers" }
+herald-store-repo-variables = { path = "crates/herald-store-repo-variables" }
 herald-testing = { path = "crates/herald-testing" }
+herald-wire = { path = "crates/herald-wire" }
 cargo_metadata = "0.23"
 minijinja = { version = "3", default-features = false, features = ["builtins", "fuel", "multi_template", "serde"] }
+quick-xml = { version = "0.42", default-features = false }
 pulldown-cmark = { version = "0.13", default-features = false, features = ["html"] }
 unicode-segmentation = "1"
 url = "2"
 jiff = { version = "0.2", default-features = false, features = ["std", "serde"] }
 pollster = "1"
+ring = "0.17"
 reqwest = { version = "0.13", default-features = false, features = ["rustls-no-provider"] }
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
 proptest = "1"

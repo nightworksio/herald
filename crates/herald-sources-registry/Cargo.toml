@@ -1,0 +1,25 @@
+[package]
+name = "herald-sources-registry"
+description = "Package versions as herald events: Packagist, crates.io, npm and Docker Hub"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish.workspace = true
+
+[dependencies]
+herald-core.workspace = true
+herald-ports.workspace = true
+herald-wire.workspace = true
+jiff.workspace = true
+schemars.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true
+
+[lints]
+workspace = true

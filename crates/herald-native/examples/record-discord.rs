@@ -13,7 +13,7 @@ use herald_core::{Chore, Entry, Facts, Sent, Step};
 use herald_dest_discord::{Credential, Discord, DiscordMarkers, RouteOptions};
 use herald_native::{NativeHttp, Reach};
 use herald_ports::{HttpError, Markers, Secret};
-use herald_testing::sample::{announcement, delivery, marker};
+use herald_testing::sample::{announcement, delivery, marker, route_marker};
 use herald_testing::{Ids, Recorder, Scrub};
 
 const TOKEN: &str = "HERALD_DISCORD_TOKEN";
@@ -135,6 +135,16 @@ async fn record(setup: &Setup) -> Result<Vec<(&'static str, Recorder<NativeHttp>
         .map_err(|error| error.to_string())?
         .ok_or("the announcement just posted was not read back")?;
     recordings.push(("markers", recorder));
+
+    let recorder = Recorder::new(http.clone());
+    let threads = DiscordMarkers::new(&bot, &recorder)
+        .threads(&route_marker())
+        .await
+        .map_err(|error| error.to_string())?;
+    if threads.is_empty() {
+        return Err("the thread just opened was not listed".to_owned());
+    }
+    recordings.push(("threads", recorder));
 
     let recorder = Recorder::new(http.clone());
     for chore in [Chore::Archive, Chore::Lock] {

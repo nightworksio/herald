@@ -1,6 +1,6 @@
 # ADR-0009: herald ships as signed binaries, an Action, an image and a wasm build, from GitHub alone until 1.0
 
-**Status:** Accepted
+**Status:** Accepted; decision 2 superseded in part by [ADR-0012](0012-a-release-is-drafted-by-the-bot-signed-by-the-maintainer-and-published-after-the-full-gate.md)
 **Date:** 2026-10-31
 
 ## Context
@@ -110,3 +110,4 @@ and Docker Hub are unclaimed by herald.
 - [ADR-0002](0002-three-layers-of-support-and-a-doctor-that-names-the-gaps.md): the layers each artefact serves
 - [ADR-0007](0007-secrets-stay-out-of-reach-and-every-inbound-request-is-verified-first.md): signing and verification
 - [ADR-0010](0010-herald-announces-itself-with-itself.md): the release that announces itself
+- [ADR-0012](0012-a-release-is-drafted-by-the-bot-signed-by-the-maintainer-and-published-after-the-full-gate.md): how a release is drafted, signed and published, and the Action at a release line

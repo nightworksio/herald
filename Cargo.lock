@@ -3,6 +3,56 @@
 version = 4
 
 [[package]]
+name = "anstream"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "824a212faf96e9acacdbd09febd34438f8f711fb84e09a8916013cd7815ca28d"
+dependencies = [
+ "anstyle",
+ "anstyle-parse",
+ "anstyle-query",
+ "anstyle-wincon",
+ "colorchoice",
+ "is_terminal_polyfill",
+ "utf8parse",
+]
+
+[[package]]
+name = "anstyle"
+version = "1.0.14"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "940b3a0ca603d1eade50a4846a2afffd5ef57a9feac2c0e2ec2e14f9ead76000"
+
+[[package]]
+name = "anstyle-parse"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "52ce7f38b242319f7cabaa6813055467063ecdc9d355bbb4ce0c68908cd8130e"
+dependencies = [
+ "utf8parse",
+]
+
+[[package]]
+name = "anstyle-query"
+version = "1.1.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "40c48f72fd53cd289104fc64099abca73db4166ad86ea0b4341abe65af83dadc"
+dependencies = [
+ "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "anstyle-wincon"
+version = "3.0.11"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "291e6a250ff86cd4a820112fb8898808a366d8f9f58ce16d1f538353ad55747d"
+dependencies = [
+ "anstyle",
+ "once_cell_polyfill",
+ "windows-sys 0.61.2",
+]
+
+[[package]]
 name = "atomic-waker"
 version = "1.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -161,6 +211,52 @@ dependencies = [
  "cpufeatures",
  "rand_core",
 ]
+
+[[package]]
+name = "clap"
+version = "4.6.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "aa8876b300ab35ba921adea3dfd70157a46249b33f95c9084ae5709785478946"
+dependencies = [
+ "clap_builder",
+ "clap_derive",
+]
+
+[[package]]
+name = "clap_builder"
+version = "4.6.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ec0797fb7aeb1406c84efac526901f7ec3ead2124f946b494e72879d4b54704d"
+dependencies = [
+ "anstream",
+ "anstyle",
+ "clap_lex",
+ "strsim",
+]
+
+[[package]]
+name = "clap_derive"
+version = "4.6.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f9c751b79415d4e559e3d1fcf128e09e720eb673a06d26cf6f392d37d75b66e0"
+dependencies = [
+ "heck",
+ "proc-macro2",
+ "quote",
+ "syn 3.0.9",
+]
+
+[[package]]
+name = "clap_lex"
+version = "1.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1c133bc6a41be0d194c306b5506d15e6feeea7b1d6604bd3f8310dfb2ca96486"
+
+[[package]]
+name = "colorchoice"
+version = "1.0.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1d07550c9036bf2ae0c684c4297d503f838287c83c53686d05370d0e139ae570"
 
 [[package]]
 name = "combine"
@@ -376,6 +472,34 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ed5909b6e89a2db4456e54cd5f673791d7eca6732202bbf2a9cc504fe2f9b84a"
 
 [[package]]
+name = "heck"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2304e00983f87ffb38b55b444b5e3b60a884b5d30c0fca7d82fe33449bbe55ea"
+
+[[package]]
+name = "herald"
+version = "0.0.0"
+dependencies = [
+ "clap",
+ "herald-config",
+ "herald-core",
+ "herald-flows",
+ "herald-native",
+ "herald-ports",
+ "herald-records",
+ "herald-sources-forge",
+ "herald-store-actions-cache",
+ "herald-store-git-branch",
+ "herald-store-repo-variables",
+ "jiff",
+ "pollster",
+ "serde_json",
+ "tempfile",
+ "tokio",
+]
+
+[[package]]
 name = "herald-arch"
 version = "0.0.0"
 dependencies = [
@@ -389,7 +513,12 @@ version = "0.0.0"
 dependencies = [
  "herald-core",
  "herald-dest-discord",
+ "herald-sources-feed",
  "herald-sources-forge",
+ "herald-sources-registry",
+ "herald-store-actions-cache",
+ "herald-store-git-branch",
+ "herald-store-repo-variables",
  "jiff",
  "schemars",
  "serde",
@@ -401,6 +530,7 @@ dependencies = [
 name = "herald-core"
 version = "0.0.0"
 dependencies = [
+ "base64",
  "jiff",
  "minijinja",
  "proptest",
@@ -427,14 +557,36 @@ dependencies = [
 ]
 
 [[package]]
+name = "herald-flows"
+version = "0.0.0"
+dependencies = [
+ "herald-config",
+ "herald-core",
+ "herald-dest-discord",
+ "herald-ports",
+ "herald-sources-feed",
+ "herald-sources-forge",
+ "herald-sources-registry",
+ "herald-store-markers",
+ "herald-testing",
+ "jiff",
+ "pollster",
+ "serde_json",
+]
+
+[[package]]
 name = "herald-native"
 version = "0.0.0"
 dependencies = [
+ "base64",
  "herald-core",
  "herald-dest-discord",
  "herald-ports",
  "herald-testing",
+ "jiff",
+ "pollster",
  "reqwest",
+ "ring",
  "rustls",
  "serde_json",
  "tokio",
@@ -448,6 +600,34 @@ version = "0.0.0"
 dependencies = [
  "herald-core",
  "jiff",
+ "pollster",
+]
+
+[[package]]
+name = "herald-records"
+version = "0.0.0"
+dependencies = [
+ "herald-core",
+ "herald-ports",
+ "herald-testing",
+ "jiff",
+ "pollster",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "herald-sources-feed"
+version = "0.0.0"
+dependencies = [
+ "herald-core",
+ "herald-ports",
+ "herald-wire",
+ "jiff",
+ "proptest",
+ "quick-xml",
+ "schemars",
+ "serde",
 ]
 
 [[package]]
@@ -456,8 +636,79 @@ version = "0.0.0"
 dependencies = [
  "herald-core",
  "herald-ports",
+ "herald-wire",
  "jiff",
  "proptest",
+ "schemars",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "herald-sources-registry"
+version = "0.0.0"
+dependencies = [
+ "herald-core",
+ "herald-ports",
+ "herald-wire",
+ "jiff",
+ "proptest",
+ "schemars",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "herald-store-actions-cache"
+version = "0.0.0"
+dependencies = [
+ "base64",
+ "herald-core",
+ "herald-ports",
+ "herald-records",
+ "herald-testing",
+ "pollster",
+ "schemars",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "herald-store-git-branch"
+version = "0.0.0"
+dependencies = [
+ "base64",
+ "herald-core",
+ "herald-ports",
+ "herald-records",
+ "herald-testing",
+ "pollster",
+ "schemars",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "herald-store-markers"
+version = "0.0.0"
+dependencies = [
+ "herald-core",
+ "herald-ports",
+ "herald-testing",
+ "jiff",
+ "pollster",
+]
+
+[[package]]
+name = "herald-store-repo-variables"
+version = "0.0.0"
+dependencies = [
+ "herald-core",
+ "herald-ports",
+ "herald-records",
+ "herald-testing",
+ "jiff",
+ "pollster",
  "schemars",
  "serde",
  "serde_json",
@@ -471,6 +722,17 @@ dependencies = [
  "herald-ports",
  "jiff",
  "pollster",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "herald-wire"
+version = "0.0.0"
+dependencies = [
+ "herald-core",
+ "herald-ports",
+ "proptest",
  "serde",
  "serde_json",
 ]
@@ -702,6 +964,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "791930b43c0d5973160d90a8f3894509f2b273430f5c5c73b668636d0287c5c0"
 
 [[package]]
+name = "is_terminal_polyfill"
+version = "1.70.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a6cb138bb79a146c1bd460005623e142ef0181e3d0219cb493e02f7d08a35695"
+
+[[package]]
 name = "itoa"
 version = "1.0.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -870,6 +1138,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9f7c3e4beb33f85d45ae3e3a1792185706c8e16d043238c593331cc7cd313b50"
 
 [[package]]
+name = "once_cell_polyfill"
+version = "1.70.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "384b8ab6d37215f3c5301a95a4accb5d64aa607f1fcb26a11b5303878451b4fe"
+
+[[package]]
 name = "openssl-probe"
 version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -978,6 +1252,15 @@ name = "quick-error"
 version = "1.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a1d01941d82fa2ab50be1e79e6714289dd7cde78eba4c074bc5a4374f650dfe0"
+
+[[package]]
+name = "quick-xml"
+version = "0.42.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "41b1177fdf999d2321d3fb46ff47159d9c1fb9ad66a4879f8c50a0b504615e9b"
+dependencies = [
+ "memchr",
+]
 
 [[package]]
 name = "quote"
@@ -1407,6 +1690,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6ce2be8dc25455e1f91df71bfa12ad37d7af1092ae736f3a6cd0e37bc7810596"
 
 [[package]]
+name = "strsim"
+version = "0.11.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7da8b5736845d9f2fcb837ea5d9e2628564b3b043a70948a3f0b778838c5fb4f"
+
+[[package]]
 name = "subtle"
 version = "2.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1710,6 +1999,12 @@ checksum = "af3bd9d3e571c26fcce9d033b87ea5ab061b8d2ffe9b7a5675d810d68f03edf0"
 dependencies = [
  "utf_types",
 ]
+
+[[package]]
+name = "utf8parse"
+version = "0.2.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "06abde3611657adf66d383f00b093d7faecc7fa57071cce2578660c9f1010821"
 
 [[package]]
 name = "utf_types"

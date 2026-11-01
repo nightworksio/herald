@@ -77,7 +77,7 @@ all still has the destination, and the destination holds the posts.
    | `dynamodb` | an AWS DynamoDB table | the Lambda and the CLI | conditional writes, over `Http` with SigV4 |
    | `deno-kv` | Deno KV | the Deno driver | an atomic check of versionstamps over `Kv` |
    | `markers` | the destination's own posts | every layer | the destination's own idempotency |
-   | `git-branch` | one file per record on a `herald-state` branch | Actions, and the CLI anywhere with a token that may push | a ref update that is refused unless it fast-forwards |
+   | `git-branch` | one file per record on a `herald-state` branch | Actions, and the CLI anywhere with a token that may push | a write naming the blob it replaces, which the contents API refuses once the file has changed |
    | `actions-cache` | generations of the Actions cache | Actions | creating the next generation, which the cache service refuses if it exists |
    | `repo-variables` | repository variables | Actions, with a token that may write variables | a lock variable, whose creation the API refuses if it exists |
 

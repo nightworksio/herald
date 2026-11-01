@@ -9,10 +9,12 @@ mod chunk;
 mod cursor;
 mod event;
 mod housekeep;
+mod inbound;
 mod key;
 mod ledger;
 mod marker;
 mod markup;
+mod pattern;
 mod profile;
 mod render;
 mod route;
@@ -23,13 +25,18 @@ pub use announce::{
     Announcement, announce, body_template, shortened, thread_template, title_template,
 };
 pub use chunk::{Room, chunk, size};
-pub use cursor::{Cursor, fresh};
+pub use cursor::{Cursor, Polled, fresh};
 pub use event::{Draft, Event, Kind, Problem};
 pub use housekeep::{Chore, Schedule, due, schedules};
-pub use key::{Identity, Key, NotAKey, RouteId};
+pub use inbound::{
+    Claim, DELIVERIES_KEPT, MOST_SIGNATURES, REPLAY_WINDOW, Refusal, Scheme, Signature, claim, key,
+    same,
+};
+pub use key::{Identity, Key, NotAKey, RouteId, digest, hex};
 pub use ledger::{Entry, Facts, Lease, Plan, Planned, Record, Sent, State, Step, plan, steps};
 pub use marker::{Marker, Marks};
 pub use markup::{Text, convert, literal};
+pub use pattern::Pattern;
 pub use profile::{Dialect, Features, Limits, Measure, MentionStyle, Pins, Profile, Threads};
 pub use render::{Context, Form, TemplateError, Templates};
 pub use route::{

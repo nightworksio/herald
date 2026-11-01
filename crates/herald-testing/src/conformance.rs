@@ -1,10 +1,10 @@
 use herald_core::{
-    Chore, Cursor, DestinationName, Entry, Facts, Identity, Key, RouteId, Schedule, SourceName,
-    Step, Subscription,
+    Chore, Cursor, DestinationName, Entry, Facts, Identity, Key, RouteId, Schedule, Scheme,
+    SourceName, Step, Subscription,
 };
 use std::fmt;
 
-use herald_ports::{Store, StoreError, Version, Written};
+use herald_ports::{Admitted, Keeping, Store, StoreError, Version, Written};
 use jiff::Timestamp;
 
 /// Whether `store`, empty, keeps every record its capabilities declare as a
@@ -16,10 +16,10 @@ use jiff::Timestamp;
 /// The first way the store fails, as a sentence.
 pub async fn store_conformance<S: Store>(store: &S) -> Result<(), Failure> {
     let capabilities = store.capabilities();
-    if capabilities.ledger {
-        ledger(store).await?;
-    } else {
-        unsupported(&store.entry(&key("absent")).await.map(|_| ()), "ledger")?;
+    match capabilities.ledger {
+        Keeping::Kept => ledger(store).await?,
+        Keeping::Derived => derived_ledger(store).await?,
+        Keeping::None => unsupported(&store.entry(&key("absent")).await.map(|_| ()), "ledger")?,
     }
     if capabilities.cursors {
         cursors(store).await?;
@@ -29,10 +29,10 @@ pub async fn store_conformance<S: Store>(store: &S) -> Result<(), Failure> {
             "cursors",
         )?;
     }
-    if capabilities.schedules {
-        schedules(store).await?;
-    } else {
-        unsupported(&store.schedules().await.map(|_| ()), "schedules")?;
+    match capabilities.schedules {
+        Keeping::Kept => schedules(store).await?,
+        Keeping::Derived => derived_schedules(store).await?,
+        Keeping::None => unsupported(&store.schedules().await.map(|_| ()), "schedules")?,
     }
     if capabilities.subscriptions {
         subscriptions(store).await?;
@@ -50,6 +50,17 @@ pub async fn store_conformance<S: Store>(store: &S) -> Result<(), Failure> {
         unsupported(
             &store.pinned(&RouteId::new("absent")).await.map(|_| ()),
             "pins",
+        )?;
+    }
+    if capabilities.deliveries {
+        deliveries(store).await?;
+    } else {
+        unsupported(
+            &store
+                .admit(Scheme::GitHub, "absent", NOON)
+                .await
+                .map(|_| ()),
+            "deliveries",
         )?;
     }
     Ok(())
@@ -162,6 +173,55 @@ async fn ledger<S: Store>(store: &S) -> Result<(), Failure> {
     checks.done()
 }
 
+async fn derived_ledger<S: Store>(store: &S) -> Result<(), Failure> {
+    let mut checks = Checks::default();
+    let first = Entry::new(key("first")).attempted(Step::Post, NOON);
+    checks.ensure(
+        store.entry(&first.key).await?.is_none(),
+        "an entry no post carries was found",
+    );
+    let v1 = checks.written(store.put_entry(&first, None).await?);
+    let again = store.put_entry(&first, Some(v1)).await?;
+    checks.ensure(
+        matches!(again, Written::Written(v2) if v2 > v1),
+        "a write to a derived ledger was not taken at a later version",
+    );
+    checks.ensure(
+        store.entry(&first.key).await?.is_none(),
+        "a derived ledger kept a write",
+    );
+    checks.done()
+}
+
+async fn derived_schedules<S: Store>(store: &S) -> Result<(), Failure> {
+    let mut checks = Checks::default();
+    let schedule = Schedule {
+        key: key("1"),
+        route: RouteId::new("conformance"),
+        thread: "1".to_owned(),
+        chore: Chore::Archive,
+        due: NOON,
+    };
+    checks.ensure(
+        store.schedules().await?.is_empty(),
+        "schedules no post carries were found",
+    );
+    store
+        .put_schedules(std::slice::from_ref(&schedule), &[])
+        .await?;
+    store
+        .put_schedules(&[], std::slice::from_ref(&schedule))
+        .await?;
+    store
+        .put_schedules(std::slice::from_ref(&schedule), &[])
+        .await?;
+    checks.ensure(
+        store.schedules().await?.is_empty(),
+        "a store deriving schedules kept one written",
+    );
+    checks.done()
+}
+
 async fn cursors<S: Store>(store: &S) -> Result<(), Failure> {
     let mut checks = Checks::default();
     let source = SourceName::new("feed");
@@ -215,6 +275,7 @@ async fn schedules<S: Store>(store: &S) -> Result<(), Failure> {
     let mut checks = Checks::default();
     let schedule = |thread: &str, chore| Schedule {
         key: key(thread),
+        route: RouteId::new("conformance"),
         thread: thread.to_owned(),
         chore,
         due: NOON,
@@ -296,6 +357,41 @@ async fn pins<S: Store>(store: &S) -> Result<(), Failure> {
     checks.ensure(
         store.pinned(&releases).await?.as_deref() == Some("2"),
         "a route's pin was not the one written last",
+    );
+    checks.done()
+}
+
+async fn deliveries<S: Store>(store: &S) -> Result<(), Failure> {
+    let mut checks = Checks::default();
+    let later = NOON + jiff::SignedDuration::from_hours(1);
+    let latest = NOON + jiff::SignedDuration::from_hours(2);
+    checks.ensure(
+        store.admit(Scheme::GitHub, "one", NOON).await? == Admitted::Fresh,
+        "a delivery arriving the first time was not fresh",
+    );
+    checks.ensure(
+        store.admit(Scheme::GitHub, "one", later).await? == Admitted::Seen,
+        "a delivery admitted before was fresh again",
+    );
+    checks.ensure(
+        store.admit(Scheme::GitLab, "one", NOON).await? == Admitted::Fresh,
+        "another scheme's delivery of the same id was seen",
+    );
+    store.release(Scheme::GitHub, "one").await?;
+    checks.ensure(
+        store.admit(Scheme::GitHub, "one", later).await? == Admitted::Fresh,
+        "a released delivery was not admitted again",
+    );
+    store.admit(Scheme::Forgejo, "old", NOON).await?;
+    store.admit(Scheme::Forgejo, "new", later).await?;
+    store.expire_deliveries(later).await?;
+    checks.ensure(
+        store.admit(Scheme::Forgejo, "old", latest).await? == Admitted::Fresh,
+        "a delivery admitted before the expiry was still seen",
+    );
+    checks.ensure(
+        store.admit(Scheme::Forgejo, "new", latest).await? == Admitted::Seen,
+        "a delivery admitted at the expiry was forgotten",
     );
     checks.done()
 }
