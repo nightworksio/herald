@@ -1,6 +1,7 @@
 use herald_config::Config;
 use herald_core::{Cursor, Event, Polled, SourceName, fresh};
 use herald_ports::{Clock, Http, Signer, Store, Written};
+use herald_sources_feed::Feed;
 use herald_sources_forge::Forge;
 use herald_sources_registry::Registry;
 
@@ -109,6 +110,13 @@ async fn polled<H: Http>(
                 return Ok(None);
             }
             package.versions(&answer).map(Some).map_err(unreadable)
+        }
+        Asked::Feed(feed) => {
+            let answer = http.send(feed.request(cursor)).await.map_err(unreachable)?;
+            if Feed::unchanged(&answer) {
+                return Ok(None);
+            }
+            feed.entries(&answer).map(Some).map_err(unreadable)
         }
     }
 }

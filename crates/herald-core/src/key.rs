@@ -84,6 +84,13 @@ pub fn hex(bytes: &[u8]) -> String {
     })
 }
 
+/// The SHA-256 of `text`, in lowercase hex: what identifies a thing that
+/// names itself nowhere else.
+#[must_use]
+pub fn digest(text: &str) -> String {
+    hex(&Sha256::digest(text.as_bytes()))
+}
+
 /// A text that is not a key: anything but 64 lowercase hex digits.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct NotAKey;
@@ -134,6 +141,14 @@ mod tests {
 
     fn key(route: &str, identity: &str) -> Key {
         Key::derive(&RouteId::new(route), &Identity::new(identity))
+    }
+
+    #[test]
+    fn a_digest_is_the_sha_256_of_the_text_in_hex() {
+        assert_eq!(
+            digest("abc"),
+            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+        );
     }
 
     #[test]

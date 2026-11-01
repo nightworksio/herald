@@ -1,0 +1,25 @@
+[package]
+name = "herald-sources-feed"
+description = "Feed entries as herald events: RSS 2.0 and Atom 1.0, their HTML converted to Markdown"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish.workspace = true
+
+[dependencies]
+herald-core.workspace = true
+herald-ports.workspace = true
+herald-wire.workspace = true
+jiff.workspace = true
+quick-xml.workspace = true
+schemars.workspace = true
+serde.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true
+
+[lints]
+workspace = true

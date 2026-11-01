@@ -51,8 +51,13 @@ GitHub release should render a Forgejo release unchanged.
      such as `"*.*.*"`, takes only the versions that match it, so a Docker Hub
      tag that moves, such as `latest`, stays quiet; doctor notes a route that
      takes Docker Hub tags without one.
-   - **`herald-sources-feed`** parses RSS 2.0 and Atom 1.0. An entry's HTML is
-     sanitised and converted to Markdown.
+   - **`herald-sources-feed`** parses RSS 2.0, RSS 1.0 and Atom 1.0. An
+     entry's HTML is converted to Markdown: paragraphs, headings, emphasis,
+     code, lists, quotes and links to the web or mail are kept, scripts,
+     styles and every other element are dropped with what they hold, and its
+     text is escaped so that nothing in it reads as markup. An entry that
+     gives no time of its own takes the time of the answer, and its link is
+     the event's `entry` link.
    - **`herald-sources-app`** parses herald's own event JSON, published as a
      JSON Schema beside the config's (ADR-0006). The CLI reads it from a file
      or standard input, and the HTTP API from a request body.
@@ -97,7 +102,9 @@ GitHub release should render a Forgejo release unchanged.
      through the HTTP API at layer two and up.
 
 6. **Parsers are bounded and refuse what they cannot read.** Each parser caps
-   the size it reads. The XML parser expands no entity it does not know.
+   the size it reads, and herald reads no response body past 32 MiB. The XML
+   parser expands no entity it does not know, and keeps an unknown reference
+   as text.
    Malformed input becomes an error naming the source and the field, never a
    panic. Every parser is fuzzed (ADR-0008).
 

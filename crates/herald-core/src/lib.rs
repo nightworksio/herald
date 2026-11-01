@@ -27,7 +27,7 @@ pub use chunk::{Room, chunk, size};
 pub use cursor::{Cursor, Polled, fresh};
 pub use event::{Draft, Event, Kind, Problem};
 pub use housekeep::{Chore, Schedule, due, schedules};
-pub use key::{Identity, Key, NotAKey, RouteId, hex};
+pub use key::{Identity, Key, NotAKey, RouteId, digest, hex};
 pub use ledger::{Entry, Facts, Lease, Plan, Planned, Record, Sent, State, Step, plan, steps};
 pub use marker::{Marker, Marks};
 pub use markup::{Text, convert, literal};

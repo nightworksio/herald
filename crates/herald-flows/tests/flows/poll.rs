@@ -4,6 +4,7 @@ use herald_config::{Config, Source};
 use herald_core::{Cursor, Identity, SourceName};
 use herald_flows::{Fresh, Outcome, Ports, PrepareError, Remembered, Stop, Sweep, poll, prepare};
 use herald_ports::Store as _;
+use herald_sources_feed::FeedOptions;
 use herald_sources_registry::{Registry, RegistryOptions};
 use herald_testing::{FakeClock, FakeSigner, FakeStore};
 
@@ -17,6 +18,7 @@ const REPOSITORY: (&str, u16, &str) = (
 );
 const ETAG: (&str, &str) = ("etag", "W/\"2\"");
 const VERSIONS: &str = "/crates/gate/versions?per_page=30&sort=date";
+const FEED: &str = "https://blog.example/feed.xml";
 
 fn releases(versions: &[&str]) -> String {
     let releases: Vec<serde_json::Value> = versions
@@ -323,4 +325,35 @@ fn a_registry_is_polled_as_a_forge_is_with_one_request() {
             "crates.io's versions was answered with 404".to_owned()
         ))
     );
+}
+
+#[test]
+fn a_feed_is_polled_with_one_request_and_its_entries_announced() {
+    let store = healthy();
+    let mut config = config("");
+    config.sources.insert(
+        SourceName::new("gate"),
+        Source::Feed(FeedOptions {
+            url: "https://blog.example/feed.xml".to_owned(),
+            backfill: 1,
+        }),
+    );
+    let feed = "<feed xmlns=\"http://www.w3.org/2005/Atom\"><title>Blog</title>\
+        <entry><id>2</id><title>Second</title><updated>2026-10-31T12:00:00Z</updated></entry>\
+        <entry><id>1</id><title>First</title><updated>2026-10-30T12:00:00Z</updated></entry></feed>";
+    let mut answers = vec![(FEED, 200, feed)];
+    answers.extend(announced());
+    let Sweep::Polled {
+        first,
+        found,
+        announced,
+        ..
+    } = swept(&config, &store, &Script::answering(&answers))
+    else {
+        panic!("the feed was not polled");
+    };
+    assert_eq!((first, found), (true, 2));
+    assert_eq!(announced[0].event.title(), "Second");
+    let unchanged = Script::answering(&[(FEED, 304, "")]);
+    assert_eq!(swept(&config, &store, &unchanged), Sweep::Unchanged);
 }

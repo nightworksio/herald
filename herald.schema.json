@@ -703,6 +703,32 @@
             "kind",
             "package"
           ]
+        },
+        {
+          "description": "An RSS or Atom feed's entries.",
+          "type": "object",
+          "properties": {
+            "backfill": {
+              "description": "How many of the newest entries the first poll announces; none where\nabsent (ADR-0003).",
+              "type": "integer",
+              "format": "uint",
+              "default": 0,
+              "minimum": 0
+            },
+            "kind": {
+              "type": "string",
+              "const": "feed"
+            },
+            "url": {
+              "description": "The feed's URL, RSS 2.0 or Atom 1.0.",
+              "type": "string"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "url"
+          ]
         }
       ]
     },

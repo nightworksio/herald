@@ -5,6 +5,7 @@ use herald_config::{Config, Destination, RouteConfig, RouteOptions, Source};
 use herald_core::{DestinationName, RouteId, SourceName, hex};
 use herald_dest_discord::{Credential, Discord};
 use herald_ports::{Algorithm, CryptoError, Http, Secret, SecretError, Secrets, Signer};
+use herald_sources_feed::Feed;
 use herald_sources_forge::{Origin, Token};
 use herald_sources_registry::Package;
 use herald_store_markers::{MarkedRoute, MarkersStore};
@@ -86,6 +87,8 @@ pub(crate) enum Asked {
         package: Package,
         token: Option<Secret>,
     },
+    /// A feed's entries.
+    Feed(Feed),
 }
 
 impl Asked {
@@ -93,6 +96,7 @@ impl Asked {
         match self {
             Self::Forge { origin, .. } => origin.api(),
             Self::Registry { package, .. } => package.api(),
+            Self::Feed(feed) => feed.api(),
         }
     }
 }
@@ -264,6 +268,7 @@ pub async fn prepare<S: Secrets, G: Signer>(
         let named = match source {
             Source::Forge(_, options) => options.token.as_ref(),
             Source::Registry(_, options) => options.token.as_ref(),
+            Source::Feed(_) => None,
         };
         let token = match named {
             Some(named) => Some(secrets.secret(&named.secret).await?),
@@ -284,6 +289,7 @@ pub async fn prepare<S: Secrets, G: Signer>(
                 },
                 options.backfill,
             ),
+            Source::Feed(options) => (Asked::Feed(Feed::new(options)), options.backfill),
         };
         sources.push(PreparedSource {
             name: name.clone(),

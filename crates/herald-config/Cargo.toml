@@ -12,6 +12,7 @@ publish.workspace = true
 [dependencies]
 herald-core.workspace = true
 herald-dest-discord.workspace = true
+herald-sources-feed.workspace = true
 herald-sources-forge.workspace = true
 herald-sources-registry.workspace = true
 herald-store-actions-cache.workspace = true

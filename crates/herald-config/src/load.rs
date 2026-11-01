@@ -327,9 +327,10 @@ impl Loader<'_> {
             let Some((kind, rest)) = self.kinded(value, &path, &Source::KINDS) else {
                 continue;
             };
-            let source = if let Some(forge) =
-                Forge::ALL.into_iter().find(|forge| forge.kind() == kind)
-            {
+            let source = if kind == "feed" {
+                self.typed::<herald_sources_feed::FeedOptions>(rest, &path)
+                    .map(Source::Feed)
+            } else if let Some(forge) = Forge::ALL.into_iter().find(|forge| forge.kind() == kind) {
                 self.typed::<herald_sources_forge::SourceOptions>(rest, &path)
                     .map(|options| Source::Forge(forge, options))
             } else {

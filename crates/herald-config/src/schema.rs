@@ -63,6 +63,8 @@ enum SourceSchema {
     Npm(herald_sources_registry::RegistryOptions),
     /// A repository's tags on Docker Hub.
     DockerHub(herald_sources_registry::RegistryOptions),
+    /// An RSS or Atom feed's entries.
+    Feed(herald_sources_feed::FeedOptions),
 }
 
 /// A route: what it takes, where it announces, and its destination's own

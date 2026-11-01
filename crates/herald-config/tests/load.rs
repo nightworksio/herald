@@ -142,7 +142,7 @@ body = "{{ event.body }}"
                 "herald.toml:2:1 unknown: herald.toml has no key \"unknown\"; the keys are \"version\", \"store\", \"markers\", \"destinations\", \"sources\", \"routes\", \"templates\", \"apps\", \"schedule\"",
                 "herald.toml:4:8 store.kind: there is no kind \"nowhere\"; the kinds are \"sqlite\", \"postgres\", \"d1\", \"dynamodb\", \"deno-kv\", \"markers\", \"git-branch\", \"actions-cache\", \"repo-variables\"",
                 "herald.toml:5:1 destinations.d: a Discord destination needs a token or a webhook; give one",
-                "herald.toml:8:8 sources.s.kind: there is no kind \"bitbucket\"; the kinds are \"github\", \"gitlab\", \"forgejo\", \"packagist\", \"crates-io\", \"npm\", \"docker-hub\"",
+                "herald.toml:8:8 sources.s.kind: there is no kind \"bitbucket\"; the kinds are \"github\", \"gitlab\", \"forgejo\", \"packagist\", \"crates-io\", \"npm\", \"docker-hub\", \"feed\"",
             ]
             .join("\n")
         );
@@ -220,7 +220,14 @@ body = "{{ event.body }}"
         for kind in Source::KINDS {
             let forge = ["github", "gitlab", "forgejo"].contains(&kind);
             let mut text = EXAMPLE.replace("kind = \"github\"", &format!("kind = \"{kind}\""));
-            if !forge {
+            if kind == "feed" {
+                text = text
+                    .replace(
+                        "repository = \"nightworksio/php-mutation-gate\"",
+                        "url = \"https://blog.example/feed.xml\"",
+                    )
+                    .replace("kinds = [\"release\"]", "kinds = [\"feed-entry\"]");
+            } else if !forge {
                 text = text
                     .replace("repository = ", "package = ")
                     .replace("kinds = [\"release\"]", "kinds = [\"package-version\"]");
@@ -228,10 +235,11 @@ body = "{{ event.body }}"
             let config = load("herald.toml", &text, &|_| Err(String::new())).unwrap();
             let source = config.sources.values().next().unwrap();
             assert_eq!(source.kind(), kind);
-            let made = if forge {
-                Kind::Release
-            } else {
-                Kind::PackageVersion
+            assert!(config.secrets().contains("HERALD_DISCORD_TOKEN"));
+            let made = match kind {
+                "feed" => Kind::FeedEntry,
+                _ if forge => Kind::Release,
+                _ => Kind::PackageVersion,
             };
             assert_eq!(source.kinds(), [made]);
         }

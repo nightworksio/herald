@@ -38,6 +38,7 @@ impl Config {
         let sources = self.sources.values().map(|source| match source {
             Source::Forge(_, options) => &options.token,
             Source::Registry(_, options) => &options.token,
+            Source::Feed(_) => &None,
         });
         let store = match &self.store {
             Store::GitBranch(options) => options.token.as_ref(),
@@ -122,6 +123,8 @@ pub enum Source {
     Forge(Forge, herald_sources_forge::SourceOptions),
     /// A package's versions on a registry.
     Registry(Registry, herald_sources_registry::RegistryOptions),
+    /// An RSS or Atom feed's entries.
+    Feed(herald_sources_feed::FeedOptions),
 }
 
 impl Source {
@@ -131,11 +134,12 @@ impl Source {
         match self {
             Self::Forge(forge, _) => forge.kind(),
             Self::Registry(registry, _) => registry.kind(),
+            Self::Feed(_) => "feed",
         }
     }
 
     /// Every kind, as the config spells it.
-    pub const KINDS: [&'static str; 7] = [
+    pub const KINDS: [&'static str; 8] = [
         "github",
         "gitlab",
         "forgejo",
@@ -143,6 +147,7 @@ impl Source {
         "crates-io",
         "npm",
         "docker-hub",
+        "feed",
     ];
 
     /// The kinds of event the source produces.
@@ -151,6 +156,7 @@ impl Source {
         match self {
             Self::Forge(..) => &[Kind::Release],
             Self::Registry(..) => &[Kind::PackageVersion],
+            Self::Feed(_) => &[Kind::FeedEntry],
         }
     }
 }

@@ -3,7 +3,7 @@ use std::fmt;
 use std::sync::Arc;
 use std::time::Duration;
 
-use herald_ports::{Http, HttpError, Method, Request, Response};
+use herald_ports::{BODY_LIMIT, Http, HttpError, Method, Request, Response};
 use rustls::crypto::CryptoProvider;
 use rustls::{ClientConfig, RootCertStore};
 use url::Url;
@@ -14,8 +14,6 @@ use crate::reach::{Reach, ReachError};
 const CONNECT: Duration = Duration::from_secs(10);
 /// How long a request may take, from sending it to the end of its response.
 const TOTAL: Duration = Duration::from_secs(30);
-/// The largest response body read, in bytes.
-const BODY_CAP: usize = 8_388_608;
 
 /// Why the HTTP client could not be built.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -145,9 +143,9 @@ async fn read(mut response: reqwest::Response) -> Result<Response, HttpError> {
         .collect();
     let mut body = Vec::new();
     while let Some(chunk) = response.chunk().await.map_err(failed)? {
-        if body.len() + chunk.len() > BODY_CAP {
+        if body.len() + chunk.len() > BODY_LIMIT {
             return Err(HttpError::Unreachable {
-                reason: format!("the response is larger than {BODY_CAP} bytes"),
+                reason: format!("the response is larger than {BODY_LIMIT} bytes"),
             });
         }
         body.extend_from_slice(&chunk);
