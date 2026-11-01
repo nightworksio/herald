@@ -74,7 +74,9 @@ impl fmt::Display for Key {
     }
 }
 
-pub(crate) fn hex(bytes: &[u8]) -> String {
+/// `bytes` in lowercase hex.
+#[must_use]
+pub fn hex(bytes: &[u8]) -> String {
     bytes.iter().fold(String::new(), |mut text, byte| {
         let _ = write!(text, "{byte:02x}");
         text

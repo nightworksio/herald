@@ -1,0 +1,25 @@
+[package]
+name = "herald-flows"
+description = "herald's commands as flows over the ports: announce, poll, housekeep, doctor and preview"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish.workspace = true
+
+[dependencies]
+herald-config.workspace = true
+herald-core.workspace = true
+herald-dest-discord.workspace = true
+herald-ports.workspace = true
+jiff.workspace = true
+
+[dev-dependencies]
+herald-testing.workspace = true
+pollster.workspace = true
+serde_json.workspace = true
+
+[lints]
+workspace = true

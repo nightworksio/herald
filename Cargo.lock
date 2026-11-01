@@ -427,6 +427,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "herald-flows"
+version = "0.0.0"
+dependencies = [
+ "herald-config",
+ "herald-core",
+ "herald-dest-discord",
+ "herald-ports",
+ "herald-testing",
+ "jiff",
+ "pollster",
+ "serde_json",
+]
+
+[[package]]
 name = "herald-native"
 version = "0.0.0"
 dependencies = [

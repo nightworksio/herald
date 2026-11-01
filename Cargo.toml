@@ -16,6 +16,7 @@ publish = false
 herald-config = { path = "crates/herald-config" }
 herald-core = { path = "crates/herald-core" }
 herald-dest-discord = { path = "crates/herald-dest-discord" }
+herald-flows = { path = "crates/herald-flows" }
 herald-native = { path = "crates/herald-native" }
 herald-ports = { path = "crates/herald-ports" }
 herald-sources-forge = { path = "crates/herald-sources-forge" }
