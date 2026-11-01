@@ -19,3 +19,5 @@ mod housekeep;
 mod marked;
 #[cfg(test)]
 mod poll;
+#[cfg(test)]
+mod preview;

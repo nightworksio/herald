@@ -9,17 +9,18 @@ use std::future::Future;
 use std::io::Write;
 use std::path::Path;
 use std::pin::Pin;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, PoisonError};
 
 use clap::{Parser, Subcommand, ValueEnum};
-use herald_config::{Config, Source, Store, load};
-use herald_core::{Chore, Event, Schedule, SourceName, Step};
+use herald_config::{Config, Source, Store, load, samples};
+use herald_core::{Chore, Event, Kind, RouteId, Schedule, SourceName, Step};
 use herald_flows::{
     Announced, Chored, Connected, Findings, Gap, Kept, Outcome, Ports, Remembered, Stop, Sweep,
-    Swept, announce, doctor, housekeep, poll, prepare, unserved,
+    Swept, announce, doctor, housekeep, poll, prepare, preview, unserved,
 };
-use herald_native::{EnvSecrets, RingSigner, SystemClock};
+use herald_native::{EnvSecrets, RingSigner, SystemClock, random_secret};
 use herald_ports::{Http, HttpError, Request, Response, Secrets, Store as Keeps};
+use herald_records::Memory;
 use herald_sources_forge::{GitHub, SourceOptions};
 use herald_store_actions_cache::{ActionsCache, ActionsCacheStore, StoreOptions as CacheOptions};
 use herald_store_git_branch::{GitBranch, GitBranchStore, StoreOptions as BranchOptions};
@@ -94,6 +95,15 @@ struct Cli {
 
 #[derive(Debug, Subcommand)]
 enum Command {
+    /// Print a new marker secret, once, to store as `HERALD_MARKER_SECRET`.
+    Init,
+    #[command(flatten)]
+    Read(Reading),
+}
+
+/// The commands that read the config.
+#[derive(Debug, Subcommand)]
+enum Reading {
     #[command(flatten)]
     Serve(Serve),
     /// Check the config, and name what it asks for that herald cannot serve.
@@ -101,6 +111,16 @@ enum Command {
         /// The layer to check the config for.
         #[arg(long, value_enum, default_value_t = Layer::Actions)]
         layer: Layer,
+    },
+    /// Render each route's templates as its destination would show them,
+    /// against a sample event or a release event's file.
+    Preview {
+        /// Only this route.
+        #[arg(long)]
+        route: Option<String>,
+        /// A GitHub release event's file, in place of a sample event.
+        #[arg(long)]
+        event: Option<String>,
     },
 }
 
@@ -132,6 +152,10 @@ enum Serve {
         /// place of the run's own event.
         #[arg(long)]
         release: Option<String>,
+        /// Print every request a first announcement sends, with every secret
+        /// redacted, and send nothing and keep no record.
+        #[arg(long)]
+        dry_run: bool,
     },
     /// Ask every source for what it has not seen, and announce it.
     Poll,
@@ -167,6 +191,10 @@ pub async fn run(
             return u8::try_from(error.exit_code()).unwrap_or(MISTAKEN);
         }
     };
+    let reading = match cli.command {
+        Command::Init => return init(random_secret(), out, err),
+        Command::Read(reading) => reading,
+    };
     let config = match read(&cli.config) {
         Ok(config) => config,
         Err(message) => {
@@ -174,11 +202,14 @@ pub async fn run(
             return MISTAKEN;
         }
     };
-    let serve = match cli.command {
-        Command::Doctor { layer } => {
+    let serve = match reading {
+        Reading::Doctor { layer } => {
             return checked(&cli.config, &doctor(&config, layer.stores()), out);
         }
-        Command::Serve(serve) => serve,
+        Reading::Preview { route, event } => {
+            return previewing(&config, route.as_deref(), event.as_deref(), out, err);
+        }
+        Reading::Serve(serve) => serve,
     };
     masked(&config, vars, out);
     warned(&doctor(&config, Layer::Actions.stores()).gaps, vars, out);
@@ -186,7 +217,14 @@ pub async fn run(
         Serve::Announce {
             from: From::Github,
             release,
-        } => github(&config, vars, connect, release.as_deref(), out).await,
+            dry_run,
+        } => {
+            let announcing = Announce {
+                release: release.as_deref(),
+                dry_run,
+            };
+            github(&config, vars, connect, announcing, out).await
+        }
         Serve::Poll => polling(&config, vars, connect, out).await,
         Serve::Housekeep => housekeeping(&config, vars, connect, out).await,
     };
@@ -295,11 +333,20 @@ fn variable<'a>(vars: &'a BTreeMap<String, String>, name: &str) -> Result<&'a st
         .ok_or_else(|| format!("{name} is not set; this command runs in GitHub Actions"))
 }
 
+/// How an announcement is asked for.
+#[derive(Debug, Clone, Copy)]
+struct Announce<'a> {
+    /// The release to announce by its tag, in place of the run's event.
+    release: Option<&'a str>,
+    /// Whether to print the requests and send nothing.
+    dry_run: bool,
+}
+
 async fn github(
     config: &Config,
     vars: &BTreeMap<String, String>,
     connect: Connect<'_>,
-    release: Option<&str>,
+    asked: Announce<'_>,
     out: &mut dyn Write,
 ) -> Result<u8, String> {
     let repository = variable(vars, "GITHUB_REPOSITORY")?;
@@ -318,7 +365,7 @@ async fn github(
             "no source in the config names {repository}; add [sources.<name>] with kind = \"github\" and repository = \"{repository}\""
         ));
     };
-    let event = match release {
+    let event = match asked.release {
         Some(tag) => tagged(options, tag, vars, connect, out).await?,
         None => evented(vars, out)?,
     };
@@ -326,7 +373,12 @@ async fn github(
         return Ok(DONE);
     };
     let sources: Vec<&SourceName> = named.iter().map(|(name, _)| *name).collect();
-    let (records, connected) = reached(config, vars, connect).await?;
+    let sent = Arc::new(Mutex::new(Vec::new()));
+    let (records, connected) = if asked.dry_run {
+        dry(config, vars, &sent).await?
+    } else {
+        reached(config, vars, connect).await?
+    };
     let run = run_name(vars);
     let announcing = Announcing {
         config,
@@ -335,14 +387,155 @@ async fn github(
         event: &event,
         run: &run,
     };
+    let announced = records.serve(&connected, &announcing).await;
+    if asked.dry_run {
+        say(
+            out,
+            "A dry run sends nothing and keeps no record: these are the requests a first announcement sends.",
+        );
+        for request in sent.lock().unwrap_or_else(PoisonError::into_inner).iter() {
+            say(out, "");
+            for line in request.lines() {
+                say(out, line);
+            }
+        }
+        say(out, "");
+    }
     let mut code = DONE;
-    for announced in records.serve(&connected, &announcing).await {
+    for announced in announced {
         if matches!(announced.outcome, Outcome::Stopped { .. }) {
             code = STOPPED;
         }
         say(out, &report(&announced));
     }
     Ok(code)
+}
+
+/// An `Http` that keeps each request it is handed, sends none, and answers
+/// each with a success, for a dry run.
+struct Dry {
+    sent: Arc<Mutex<Vec<String>>>,
+}
+
+impl Http for Dry {
+    fn send(&self, request: Request) -> impl Future<Output = Result<Response, HttpError>> + Send {
+        self.sent
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .push(request.to_string());
+        std::future::ready(Ok(Response {
+            status: 200,
+            headers: Vec::new(),
+            body: br#"{"id":"0"}"#.to_vec(),
+        }))
+    }
+}
+
+/// A dry run's records, kept in memory, and every route connected to a
+/// [`Dry`] that keeps what it is sent in `sent`.
+async fn dry<'a>(
+    config: &Config,
+    vars: &BTreeMap<String, String>,
+    sent: &Arc<Mutex<Vec<String>>>,
+) -> Result<(Records<'a>, Connected<Connection>), String> {
+    let secrets = EnvSecrets::from_vars(vars.clone());
+    let prepared = prepare(config, &secrets, &RingSigner)
+        .await
+        .map_err(|error| error.to_string())?;
+    let connected = prepared.connect(|_| {
+        Ok::<_, String>(Connection::new(Dry {
+            sent: Arc::clone(sent),
+        }))
+    })?;
+    Ok((
+        Records::Memory(herald_records::Kept::new(Memory::default())),
+        connected,
+    ))
+}
+
+/// A new marker secret printed once, or why none could be made.
+fn init(secret: Option<String>, out: &mut dyn Write, err: &mut dyn Write) -> u8 {
+    let Some(secret) = secret else {
+        say(
+            err,
+            "the system's random generator failed, so no secret was made",
+        );
+        return STOPPED;
+    };
+    say(out, &format!("HERALD_MARKER_SECRET={secret}"));
+    say(
+        out,
+        "Store it as the secret HERALD_MARKER_SECRET, and name it in herald.toml as [markers] key = { secret = \"HERALD_MARKER_SECRET\" }. herald prints it only this once.",
+    );
+    DONE
+}
+
+/// Each route's templates rendered against `event_file`'s release, or a
+/// sample release, as its destination would show them.
+fn previewing(
+    config: &Config,
+    route: Option<&str>,
+    event_file: Option<&str>,
+    out: &mut dyn Write,
+    err: &mut dyn Write,
+) -> u8 {
+    let events = match event_file {
+        Some(path) => {
+            let read = std::fs::read(path)
+                .map_err(|error| format!("{path} could not be read: {error}"))
+                .and_then(|payload| GitHub::event(&payload).map_err(|error| error.to_string()));
+            match read {
+                Ok(Some(event)) => vec![event],
+                Ok(None) => {
+                    say(err, &format!("{path} publishes no release"));
+                    return MISTAKEN;
+                }
+                Err(message) => {
+                    say(err, &message);
+                    return MISTAKEN;
+                }
+            }
+        }
+        None => samples(Kind::Release).into_iter().take(1).collect(),
+    };
+    let only = route.map(RouteId::new);
+    let mut code = DONE;
+    for event in &events {
+        let previewed = preview(config, event, only.as_ref());
+        if previewed.is_empty() {
+            say(
+                err,
+                &format!("no route has the id \"{}\"", route.unwrap_or_default()),
+            );
+            return MISTAKEN;
+        }
+        for shown in previewed {
+            let head = format!("{} to {}", shown.route.as_str(), shown.destination.as_str());
+            match shown.rendered {
+                Ok(announcement) => {
+                    say(out, &format!("{head}:"));
+                    say(out, &format!("  title: {}", announcement.title));
+                    if let Some(thread) = &announcement.thread {
+                        say(out, &format!("  thread: {thread}"));
+                    }
+                    for (index, part) in announcement.parts.iter().enumerate() {
+                        say(out, &format!("  part {}:", index + 1));
+                        for line in part.body.lines() {
+                            say(out, &format!("    {line}"));
+                        }
+                    }
+                }
+                Err(reason) => {
+                    code = STOPPED;
+                    say(
+                        out,
+                        &format!("{head}: the templates cannot render this event: {reason}"),
+                    );
+                }
+            }
+        }
+    }
+    code
 }
 
 /// The release the run's own event publishes, if it does.
@@ -578,6 +771,8 @@ enum Records<'a> {
     Variables(RepoVariablesStore<Connection>),
     /// In the routes' own posts.
     Posts,
+    /// In memory, for a dry run.
+    Memory(herald_records::Kept<Memory>),
 }
 
 impl Records<'_> {
@@ -589,6 +784,7 @@ impl Records<'_> {
             Self::Cache(store) => work.over(store).await,
             Self::Variables(store) => work.over(store).await,
             Self::Posts => work.over(&connected.marked(RingSigner)).await,
+            Self::Memory(store) => work.over(store).await,
         }
     }
 }

@@ -4,9 +4,11 @@
 mod crypto;
 mod environment;
 mod http;
+mod random;
 mod reach;
 
 pub use crypto::{RingSigner, RingVerifier};
 pub use environment::{EnvSecrets, SystemClock};
 pub use http::{BuildError, ConnectError, NativeHttp};
+pub use random::random_secret;
 pub use reach::{Reach, ReachError};

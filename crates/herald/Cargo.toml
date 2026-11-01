@@ -20,6 +20,7 @@ herald-core.workspace = true
 herald-flows.workspace = true
 herald-native.workspace = true
 herald-ports.workspace = true
+herald-records.workspace = true
 herald-sources-forge.workspace = true
 herald-store-actions-cache.workspace = true
 herald-store-git-branch.workspace = true

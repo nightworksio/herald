@@ -4,6 +4,7 @@
 )]
 
 mod announce;
+mod commands;
 mod doctor;
 mod housekeep;
 mod poll;

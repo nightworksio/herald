@@ -11,6 +11,7 @@ publish.workspace = true
 
 [dependencies]
 base64.workspace = true
+herald-core.workspace = true
 herald-ports.workspace = true
 jiff.workspace = true
 ring.workspace = true
@@ -20,7 +21,6 @@ url.workspace = true
 webpki-roots.workspace = true
 
 [dev-dependencies]
-herald-core.workspace = true
 herald-dest-discord.workspace = true
 herald-testing.workspace = true
 pollster.workspace = true

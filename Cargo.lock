@@ -487,6 +487,7 @@ dependencies = [
  "herald-flows",
  "herald-native",
  "herald-ports",
+ "herald-records",
  "herald-sources-forge",
  "herald-store-actions-cache",
  "herald-store-git-branch",

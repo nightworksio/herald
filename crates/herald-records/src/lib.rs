@@ -9,8 +9,10 @@
 //! backend's.
 
 mod kept;
+mod memory;
 mod paths;
 mod records;
 
 pub use kept::Kept;
+pub use memory::Memory;
 pub use records::{Blob, Records, Wrote};
