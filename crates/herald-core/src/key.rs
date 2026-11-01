@@ -158,6 +158,12 @@ mod tests {
     }
 
     #[test]
+    fn a_key_hands_out_the_bytes_it_displays() {
+        let key = key("route", "identity");
+        assert_eq!(hex(key.as_bytes()), key.to_string());
+    }
+
+    #[test]
     fn a_key_reads_back_from_its_hex() {
         let key = key("route", "identity");
         assert_eq!(key.to_string().parse::<Key>(), Ok(key));
