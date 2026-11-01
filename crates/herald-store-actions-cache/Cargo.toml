@@ -1,0 +1,25 @@
+[package]
+name = "herald-store-actions-cache"
+description = "herald's records kept in generations of the GitHub Actions cache"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish.workspace = true
+
+[dependencies]
+base64.workspace = true
+herald-ports.workspace = true
+herald-records.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+herald-core.workspace = true
+herald-testing.workspace = true
+pollster.workspace = true
+
+[lints]
+workspace = true

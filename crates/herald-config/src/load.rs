@@ -268,6 +268,11 @@ impl Loader<'_> {
                 .typed::<herald_store_git_branch::StoreOptions>(rest, "store")
                 .map(Store::GitBranch);
         }
+        if kind == "repo-variables" {
+            return self
+                .typed::<herald_store_repo_variables::StoreOptions>(rest, "store")
+                .map(Store::RepoVariables);
+        }
         self.typed::<NoOptions>(rest, "store")?;
         [
             Store::Sqlite,
@@ -277,7 +282,6 @@ impl Loader<'_> {
             Store::DenoKv,
             Store::Markers,
             Store::ActionsCache,
-            Store::RepoVariables,
         ]
         .into_iter()
         .find(|store| store.kind() == kind)

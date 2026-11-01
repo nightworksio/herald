@@ -26,6 +26,8 @@ struct State {
     seen: Vec<String>,
     failing: Option<Method>,
     forge: BTreeMap<String, (u16, String)>,
+    cache: BTreeMap<String, Vec<u8>>,
+    variables: BTreeMap<String, String>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -100,6 +102,57 @@ impl State {
         }
     }
 
+    fn results(&mut self, method: &str, body: &Value) -> Response {
+        let key = body["key"].as_str().unwrap_or_default().to_owned();
+        match method {
+            "GetCacheEntryDownloadURL" => match self.cache.keys().next_back() {
+                Some(latest) => answer(
+                    200,
+                    &json!({
+                        "ok": true,
+                        "signed_download_url": format!("https://blobs.example/{latest}?sig=r"),
+                        "matched_key": latest,
+                    }),
+                ),
+                None => answer(200, &json!({ "ok": false })),
+            },
+            "CreateCacheEntry" if self.cache.contains_key(&key) => answer(409, &json!({})),
+            "CreateCacheEntry" => answer(
+                200,
+                &json!({ "ok": true, "signed_upload_url": format!("https://blobs.example/{key}?sig=w") }),
+            ),
+            _ => answer(200, &json!({ "ok": true })),
+        }
+    }
+
+    fn variable(&mut self, method: Method, name: &str, body: &Value) -> Response {
+        let name = name.trim_start_matches('/').to_owned();
+        match method {
+            Method::Get => match self.variables.get(&name) {
+                Some(value) => answer(200, &json!({ "name": name, "value": value })),
+                None => answer(404, &json!({})),
+            },
+            Method::Post => {
+                let name = body["name"].as_str().unwrap_or_default().to_owned();
+                if self.variables.contains_key(&name) {
+                    return answer(409, &json!({}));
+                }
+                let value = body["value"].as_str().unwrap_or_default().to_owned();
+                self.variables.insert(name, value);
+                answer(201, &Value::Null)
+            }
+            Method::Patch => {
+                let value = body["value"].as_str().unwrap_or_default().to_owned();
+                self.variables.insert(name, value);
+                answer(204, &Value::Null)
+            }
+            _ => {
+                self.variables.remove(&name);
+                answer(204, &Value::Null)
+            }
+        }
+    }
+
     fn discord(&mut self, line: &str) -> Response {
         if self.discord.is_empty() {
             return answer(500, &json!({}));
@@ -117,6 +170,29 @@ impl Http for World {
         let line = format!("{} {}", request.method.as_str(), url);
         state.seen.push(line.clone());
         let body: Value = serde_json::from_slice(&request.body).unwrap_or(Value::Null);
+        if let Some(method) = url.strip_prefix(
+            "https://results.example/twirp/github.actions.results.api.v1.CacheService/",
+        ) {
+            return Ok(state.results(method, &body));
+        }
+        if let Some(key) = url.strip_prefix("https://blobs.example/") {
+            let key = key.split('?').next().unwrap_or_default().to_owned();
+            if request.method == Method::Put {
+                state.cache.insert(key, request.body);
+                return Ok(answer(201, &Value::Null));
+            }
+            let held = state.cache.get(&key).cloned().unwrap_or_default();
+            return Ok(Response {
+                status: 200,
+                headers: Vec::new(),
+                body: held,
+            });
+        }
+        if let Some(name) =
+            url.strip_prefix("https://api.github.com/repos/cli/cli/actions/variables")
+        {
+            return Ok(state.variable(request.method, name, &body));
+        }
         if let Some(path) = url.strip_prefix("https://api.github.com") {
             return Ok(state.github(request.method, path, &body));
         }
@@ -315,7 +391,7 @@ fn a_run_that_cannot_start_says_why() {
             "GITHUB_RUN_ID",
             None,
             &CONFIG.replace("kind = \"git-branch\"", "kind = \"sqlite\""),
-            "this herald keeps records in git-branch or markers; set [store] kind to one of them",
+            "this herald keeps records in git-branch, markers, actions-cache or repo-variables; set [store] kind to one of them",
         ),
         (
             "GITHUB_RUN_ID",
@@ -394,7 +470,7 @@ fn doctor_names_what_the_config_leaves_to_chance() {
     );
     assert_eq!(sqlite.code, STOPPED);
     assert!(
-        sqlite.out.ends_with("store.kind: keeping records in sqlite cannot be served: this herald keeps records in git-branch or markers; set [store] kind to one of them.\n"),
+        sqlite.out.ends_with("store.kind: keeping records in sqlite cannot be served: this herald keeps records in git-branch, markers, actions-cache or repo-variables; set [store] kind to one of them.\n"),
         "{}",
         sqlite.out
     );
@@ -874,5 +950,71 @@ fn a_warning_on_actions_stays_one_workflow_command() {
             .contains("The run's event is push ::error::forged, not a release"),
         "{}",
         warned.out
+    );
+}
+
+#[test]
+fn a_release_is_announced_once_through_the_actions_cache() {
+    let mut setup = setup(&CONFIG.replace("kind = \"git-branch\"", "kind = \"actions-cache\""));
+    let world = World::default();
+    discord(&world, &[("/channels/100/messages", 200, r#"{"id":"1"}"#)]);
+    let unset = run(&setup, &world, &ANNOUNCE);
+    assert_eq!(
+        unset.err,
+        "ACTIONS_RESULTS_URL is not set; this command runs in GitHub Actions\n"
+    );
+    setup.vars.insert(
+        "ACTIONS_RESULTS_URL".to_owned(),
+        "https://results.example".to_owned(),
+    );
+    let tokenless = run(&setup, &world, &ANNOUNCE);
+    assert_eq!(
+        tokenless.err,
+        "ACTIONS_RUNTIME_TOKEN is not set; the actions-cache store runs through herald's Action\n"
+    );
+    setup
+        .vars
+        .insert("ACTIONS_RUNTIME_TOKEN".to_owned(), "runtime".to_owned());
+    let first = run(&setup, &world, &ANNOUNCE);
+    assert_eq!(
+        (first.code, first.out.as_str(), first.err.as_str()),
+        (DONE, "releases: announced (post)\n", "")
+    );
+    let again = run(&setup, &world, &ANNOUNCE);
+    assert_eq!(again.out, "releases: already announced; nothing sent\n");
+}
+
+#[test]
+fn a_release_is_announced_once_through_the_repository_s_variables() {
+    let config = CONFIG.replace(
+        "kind = \"git-branch\"",
+        "kind = \"repo-variables\"\ntoken = { secret = \"HERALD_STATE_TOKEN\" }",
+    );
+    let mut setup = setup(&config);
+    let world = World::default();
+    discord(&world, &[("/channels/100/messages", 200, r#"{"id":"1"}"#)]);
+    let unset = run(&setup, &world, &ANNOUNCE);
+    assert_eq!(
+        unset.err,
+        "HERALD_STATE_TOKEN is not set; the repo-variables store needs a token with the repository's Variables permission\n"
+    );
+    setup
+        .vars
+        .insert("HERALD_STATE_TOKEN".to_owned(), "variables".to_owned());
+    let first = run(&setup, &world, &ANNOUNCE);
+    assert_eq!(
+        (first.code, first.out.as_str(), first.err.as_str()),
+        (DONE, "releases: announced (post)\n", "")
+    );
+    let again = run(&setup, &world, &ANNOUNCE);
+    assert_eq!(again.out, "releases: already announced; nothing sent\n");
+    assert!(
+        world
+            .state
+            .lock()
+            .unwrap()
+            .variables
+            .keys()
+            .all(|name| name.starts_with("HERALD_"))
     );
 }

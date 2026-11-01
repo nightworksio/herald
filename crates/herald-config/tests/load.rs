@@ -172,7 +172,15 @@ body = "{{ event.body }}"
     #[test]
     fn every_store_kind_loads_as_itself() {
         for kind in Store::KINDS {
-            let text = EXAMPLE.replace("kind = \"git-branch\"", &format!("kind = \"{kind}\""));
+            let options = if kind == "repo-variables" {
+                "\ntoken = { secret = \"HERALD_STATE_TOKEN\" }"
+            } else {
+                ""
+            };
+            let text = EXAMPLE.replace(
+                "kind = \"git-branch\"",
+                &format!("kind = \"{kind}\"{options}"),
+            );
             let config = load("herald.toml", &text, &|_| Err(String::new())).unwrap();
             assert_eq!(config.store.kind(), kind);
         }
@@ -337,9 +345,9 @@ body = "{{ event.body }}"
         );
         let extra = EXAMPLE.replace(
             "kind = \"git-branch\"",
-            "kind = \"git-branch\"\nbrnach = \"x\"",
+            "kind = \"git-branch\"\nbranch_name = \"x\"",
         );
-        assert!(errors(&extra).contains("store.brnach: unknown field `brnach`"));
+        assert!(errors(&extra).contains("store.branch_name: unknown field `branch_name`"));
         let stray = EXAMPLE.replace(
             "kind = \"git-branch\"",
             "kind = \"markers\"\nbranch = \"x\"",

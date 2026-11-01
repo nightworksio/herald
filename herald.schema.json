@@ -586,14 +586,33 @@
           "description": "The repository's variables.",
           "type": "object",
           "properties": {
+            "api": {
+              "description": "The API's base URL, for a GitHub Enterprise Server; GitHub's own API\nwhere absent.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
             "kind": {
               "type": "string",
               "const": "repo-variables"
+            },
+            "repository": {
+              "description": "The repository, as `owner/name`; the run's own where absent.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "token": {
+              "description": "The secret holding a token with the repository's Variables\npermission; the job's own token cannot write variables.",
+              "$ref": "#/$defs/SecretRef"
             }
           },
           "additionalProperties": false,
           "required": [
-            "kind"
+            "kind",
+            "token"
           ]
         }
       ]

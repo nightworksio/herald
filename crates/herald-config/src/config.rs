@@ -45,7 +45,7 @@ pub enum Store {
     /// The GitHub Actions cache.
     ActionsCache,
     /// The repository's variables.
-    RepoVariables,
+    RepoVariables(herald_store_repo_variables::StoreOptions),
 }
 
 impl Store {
@@ -61,7 +61,7 @@ impl Store {
             Self::Markers => "markers",
             Self::GitBranch(_) => "git-branch",
             Self::ActionsCache => "actions-cache",
-            Self::RepoVariables => "repo-variables",
+            Self::RepoVariables(_) => "repo-variables",
         }
     }
 

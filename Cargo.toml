@@ -22,8 +22,10 @@ herald-native = { path = "crates/herald-native" }
 herald-ports = { path = "crates/herald-ports" }
 herald-records = { path = "crates/herald-records" }
 herald-sources-forge = { path = "crates/herald-sources-forge" }
+herald-store-actions-cache = { path = "crates/herald-store-actions-cache" }
 herald-store-git-branch = { path = "crates/herald-store-git-branch" }
 herald-store-markers = { path = "crates/herald-store-markers" }
+herald-store-repo-variables = { path = "crates/herald-store-repo-variables" }
 herald-testing = { path = "crates/herald-testing" }
 cargo_metadata = "0.23"
 minijinja = { version = "3", default-features = false, features = ["builtins", "fuel", "multi_template", "serde"] }

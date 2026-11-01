@@ -21,7 +21,11 @@ use herald_flows::{
 use herald_native::{EnvSecrets, RingSigner, SystemClock};
 use herald_ports::{Http, HttpError, Request, Response, Secrets, Store as Keeps};
 use herald_sources_forge::GitHub;
-use herald_store_git_branch::{GitBranch, GitBranchStore, StoreOptions};
+use herald_store_actions_cache::{ActionsCache, ActionsCacheStore};
+use herald_store_git_branch::{GitBranch, GitBranchStore, StoreOptions as BranchOptions};
+use herald_store_repo_variables::{
+    RepoVariables, RepoVariablesStore, StoreOptions as VariablesOptions,
+};
 
 /// Every route announced, already announced, or held by another run; every
 /// source polled and its cursor moved on; or every chore that fell due done
@@ -36,6 +40,11 @@ pub const MISTAKEN: u8 = 2;
 /// The secret a git-branch store's token is read from where the config names
 /// none.
 const GITHUB_TOKEN: &str = "GITHUB_TOKEN";
+/// Where the Actions cache's results service is, as herald's Action hands
+/// it on.
+const RESULTS: &str = "ACTIONS_RESULTS_URL";
+/// The run's token for the Actions cache, as herald's Action hands it on.
+const RUNTIME_TOKEN: &str = "ACTIONS_RUNTIME_TOKEN";
 
 type Sending<'a> = Pin<Box<dyn Future<Output = Result<Response, HttpError>> + Send + 'a>>;
 
@@ -67,7 +76,7 @@ impl Http for Connection {
 }
 
 /// What makes the connection to a base URL.
-pub type Connect<'a> = &'a dyn Fn(&str) -> Result<Connection, String>;
+pub type Connect<'a> = &'a (dyn Fn(&str) -> Result<Connection, String> + Send + Sync);
 
 #[derive(Debug, Parser)]
 #[command(
@@ -302,10 +311,23 @@ async fn github(
         event: &event,
         run: &run,
     };
-    Ok(match &records {
-        Records::Branch(store) => announcing.to(store, out).await,
-        Records::Posts => announcing.to(&connected.marked(RingSigner), out).await,
-    })
+    let mut code = DONE;
+    for announced in records.serve(&connected, &announcing).await {
+        if matches!(announced.outcome, Outcome::Stopped { .. }) {
+            code = STOPPED;
+        }
+        say(out, &report(&announced));
+    }
+    Ok(code)
+}
+
+/// A command's work, over whichever store the config names.
+trait Served {
+    /// What the work did.
+    type Done;
+
+    /// The work done over `store`.
+    fn over<S: Keeps>(&self, store: &S) -> impl Future<Output = Self::Done>;
 }
 
 /// An event, and the routes and sources it is announced through.
@@ -317,32 +339,63 @@ struct Announcing<'a> {
     run: &'a str,
 }
 
-impl Announcing<'_> {
-    async fn to<S: Keeps>(&self, store: &S, out: &mut dyn Write) -> u8 {
+impl Served for Announcing<'_> {
+    type Done = Vec<Announced>;
+
+    async fn over<S: Keeps>(&self, store: &S) -> Vec<Announced> {
         let ports = Ports {
             store,
             clock: &SystemClock,
             signer: &RingSigner,
         };
-        let mut code = DONE;
+        let mut all = Vec::new();
         for source in self.sources {
-            let announced = announce(
-                self.config,
-                self.connected,
-                &ports,
-                source,
-                self.event,
-                self.run,
-            )
-            .await;
-            for announced in announced {
-                if matches!(announced.outcome, Outcome::Stopped { .. }) {
-                    code = STOPPED;
-                }
-                say(out, &report(&announced));
-            }
+            all.extend(
+                announce(
+                    self.config,
+                    self.connected,
+                    &ports,
+                    source,
+                    self.event,
+                    self.run,
+                )
+                .await,
+            );
         }
-        code
+        all
+    }
+}
+
+/// Every source polled through the routes and sources connected.
+struct Polling<'a> {
+    config: &'a Config,
+    connected: &'a Connected<Connection>,
+    run: &'a str,
+}
+
+impl Served for Polling<'_> {
+    type Done = Vec<Swept>;
+
+    async fn over<S: Keeps>(&self, store: &S) -> Vec<Swept> {
+        let ports = Ports {
+            store,
+            clock: &SystemClock,
+            signer: &RingSigner,
+        };
+        poll(self.config, self.connected, &ports, self.run).await
+    }
+}
+
+/// Every chore that fell due, done through the routes connected.
+struct Housekeeping<'a> {
+    connected: &'a Connected<Connection>,
+}
+
+impl Served for Housekeeping<'_> {
+    type Done = Result<Vec<Kept>, Stop>;
+
+    async fn over<S: Keeps>(&self, store: &S) -> Self::Done {
+        housekeep(self.connected, store, &SystemClock).await
     }
 }
 
@@ -362,10 +415,12 @@ async fn polling(
 ) -> Result<u8, String> {
     let (records, connected) = reached(config, vars, connect).await?;
     let run = run_name(vars);
-    let swept = match &records {
-        Records::Branch(store) => swept(config, &connected, store, &run).await,
-        Records::Posts => swept(config, &connected, &connected.marked(RingSigner), &run).await,
+    let polling = Polling {
+        config,
+        connected: &connected,
+        run: &run,
     };
+    let swept = records.serve(&connected, &polling).await;
     if swept.is_empty() {
         say(out, "The config names no source to poll.");
     }
@@ -384,20 +439,6 @@ async fn polling(
         }
     }
     Ok(code)
-}
-
-async fn swept<S: Keeps>(
-    config: &Config,
-    connected: &Connected<Connection>,
-    store: &S,
-    run: &str,
-) -> Vec<Swept> {
-    let ports = Ports {
-        store,
-        clock: &SystemClock,
-        signer: &RingSigner,
-    };
-    poll(config, connected, &ports, run).await
 }
 
 fn polled(swept: &Swept) -> Vec<String> {
@@ -446,26 +487,47 @@ fn polled(swept: &Swept) -> Vec<String> {
 }
 
 /// Where the run's records are kept.
-enum Records {
+enum Records<'a> {
     /// On a git branch.
     Branch(GitBranchStore<Connection>),
+    /// In the Actions cache.
+    Cache(ActionsCacheStore<'a, Connection>),
+    /// In the repository's variables.
+    Variables(RepoVariablesStore<Connection>),
     /// In the routes' own posts.
     Posts,
 }
 
+impl Records<'_> {
+    /// `work` done over the store, the routes' posts made one where they
+    /// keep the records.
+    async fn serve<W: Served>(&self, connected: &Connected<Connection>, work: &W) -> W::Done {
+        match self {
+            Self::Branch(store) => work.over(store).await,
+            Self::Cache(store) => work.over(store).await,
+            Self::Variables(store) => work.over(store).await,
+            Self::Posts => work.over(&connected.marked(RingSigner)).await,
+        }
+    }
+}
+
 /// The store kinds this herald keeps records in.
-const STORES: [&str; 2] = ["git-branch", "markers"];
+const STORES: [&str; 4] = ["git-branch", "markers", "actions-cache", "repo-variables"];
 
 /// The run's records, and every route and source connected.
-async fn reached(
+async fn reached<'a>(
     config: &Config,
     vars: &BTreeMap<String, String>,
-    connect: Connect<'_>,
-) -> Result<(Records, Connected<Connection>), String> {
+    connect: Connect<'a>,
+) -> Result<(Records<'a>, Connected<Connection>), String> {
     let secrets = EnvSecrets::from_vars(vars.clone());
     let records = match &config.store {
         Store::GitBranch(options) => {
             Records::Branch(branch(options, vars, &secrets, connect).await?)
+        }
+        Store::ActionsCache => Records::Cache(cache(vars, &secrets, connect).await?),
+        Store::RepoVariables(options) => {
+            Records::Variables(variables(options, vars, &secrets, connect).await?)
         }
         Store::Markers => Records::Posts,
         _ => return Err(unserved(&STORES)),
@@ -476,13 +538,21 @@ async fn reached(
     Ok((records, prepared.connect(connect)?))
 }
 
+/// The repository a store names, or else the run's own.
+fn repository<'a>(
+    named: Option<&'a str>,
+    vars: &'a BTreeMap<String, String>,
+) -> Result<&'a str, String> {
+    named.map_or_else(|| variable(vars, "GITHUB_REPOSITORY"), Ok)
+}
+
 async fn branch(
-    options: &StoreOptions,
+    options: &BranchOptions,
     vars: &BTreeMap<String, String>,
     secrets: &EnvSecrets,
     connect: Connect<'_>,
 ) -> Result<GitBranchStore<Connection>, String> {
-    let repository = variable(vars, "GITHUB_REPOSITORY")?;
+    let repository = repository(options.repository.as_deref(), vars)?;
     let token_name = options
         .token
         .as_ref()
@@ -491,13 +561,43 @@ async fn branch(
         format!("{token_name} is not set; the git-branch store needs a token that may push")
     })?;
     let branch = GitBranch::new(
-        options.repository.as_deref().unwrap_or(repository),
+        repository,
         token,
         options.branch.as_deref(),
         options.api.as_deref(),
     );
     let http = connect(branch.api())?;
     Ok(branch.store(http))
+}
+
+async fn cache<'a>(
+    vars: &BTreeMap<String, String>,
+    secrets: &EnvSecrets,
+    connect: Connect<'a>,
+) -> Result<ActionsCacheStore<'a, Connection>, String> {
+    let results = variable(vars, RESULTS)?;
+    let token = secrets.secret(RUNTIME_TOKEN).await.map_err(|_| {
+        format!("{RUNTIME_TOKEN} is not set; the actions-cache store runs through herald's Action")
+    })?;
+    let cache = ActionsCache::new(results, token, None);
+    let http = connect(cache.results())?;
+    Ok(cache.store(http, Box::new(connect)))
+}
+
+async fn variables(
+    options: &VariablesOptions,
+    vars: &BTreeMap<String, String>,
+    secrets: &EnvSecrets,
+    connect: Connect<'_>,
+) -> Result<RepoVariablesStore<Connection>, String> {
+    let repository = repository(options.repository.as_deref(), vars)?;
+    let name = options.token.secret.as_str();
+    let token = secrets.secret(name).await.map_err(|_| {
+        format!("{name} is not set; the repo-variables store needs a token with the repository's Variables permission")
+    })?;
+    let variables = RepoVariables::new(repository, token, options.api.as_deref());
+    let http = connect(variables.api())?;
+    Ok(variables.store(http))
 }
 
 async fn housekeeping(
@@ -507,11 +607,13 @@ async fn housekeeping(
     out: &mut dyn Write,
 ) -> Result<u8, String> {
     let (records, connected) = reached(config, vars, connect).await?;
-    let kept = match &records {
-        Records::Branch(store) => housekeep(&connected, store, &SystemClock).await,
-        Records::Posts => housekeep(&connected, &connected.marked(RingSigner), &SystemClock).await,
-    }
-    .map_err(|stop| why(&stop))?;
+    let housekeeping = Housekeeping {
+        connected: &connected,
+    };
+    let kept = records
+        .serve(&connected, &housekeeping)
+        .await
+        .map_err(|stop| why(&stop))?;
     if kept.is_empty() {
         say(out, "No chore is due.");
     }

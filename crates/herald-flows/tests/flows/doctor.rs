@@ -35,6 +35,24 @@ fn a_config_on_a_store_that_keeps_records_has_no_gaps_and_notes_a_derived_marker
 }
 
 #[test]
+fn the_actions_cache_and_repository_variables_note_what_they_cannot_hold() {
+    const ALL: [&str; 4] = ["git-branch", "markers", "actions-cache", "repo-variables"];
+    let cache = doctor(&on("actions-cache", ""), &ALL);
+    assert_eq!(cache.gaps, []);
+    assert!(cache.notes[1].starts_with("The Actions cache keeps records apart for each ref"));
+    let mut variables = on("git-branch", "");
+    variables.store = load(
+        "herald.toml",
+        "version = 1\n[store]\nkind = \"repo-variables\"\ntoken = { secret = \"T\" }\n",
+        &|_| Err(String::new()),
+    )
+    .unwrap()
+    .store;
+    let noted = doctor(&variables, &ALL);
+    assert!(noted.notes[1].starts_with("Each record is a repository variable"));
+}
+
+#[test]
 fn a_store_this_herald_does_not_serve_is_a_gap() {
     let findings = doctor(&on("sqlite", ""), &STORES);
     assert_eq!(
@@ -48,6 +66,14 @@ fn a_store_this_herald_does_not_serve_is_a_gap() {
     assert_eq!(
         unserved(&STORES),
         "this herald keeps records in git-branch or markers; set [store] kind to one of them"
+    );
+    assert_eq!(
+        unserved(&["a", "b", "c"]),
+        "this herald keeps records in a, b or c; set [store] kind to one of them"
+    );
+    assert_eq!(
+        unserved(&["a"]),
+        "this herald keeps records in a; set [store] kind to one of them"
     );
 }
 

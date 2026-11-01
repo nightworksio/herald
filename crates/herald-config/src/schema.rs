@@ -27,7 +27,7 @@ enum StoreSchema {
     /// Generations of the GitHub Actions cache.
     ActionsCache {},
     /// The repository's variables.
-    RepoVariables {},
+    RepoVariables(herald_store_repo_variables::StoreOptions),
 }
 
 /// A destination, by its kind.

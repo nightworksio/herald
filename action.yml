@@ -121,9 +121,25 @@ runs:
         [[ "$RUNNER_OS" == Windows ]] && binary="$binary.exe"
         echo "binary=$binary" >> "$GITHUB_OUTPUT"
 
+    # The cache service's address and the run's token reach only JavaScript
+    # actions, so this step hands them on, masked, for the actions-cache store.
+    - name: Hand on the Actions cache's address and token
+      id: runtime
+      uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+      with:
+        script: |
+          const token = process.env.ACTIONS_RUNTIME_TOKEN ?? "";
+          if (token) {
+            core.setSecret(token);
+          }
+          core.setOutput("token", token);
+          core.setOutput("results", process.env.ACTIONS_RESULTS_URL ?? "");
+
     - name: Run herald
       shell: bash
       env:
+        ACTIONS_RESULTS_URL: ${{ steps.runtime.outputs.results }}
+        ACTIONS_RUNTIME_TOKEN: ${{ steps.runtime.outputs.token }}
         HERALD: ${{ steps.download.outputs.binary || steps.build.outputs.binary }}
         GITHUB_TOKEN: ${{ inputs.token }}
         COMMAND: ${{ inputs.command }}

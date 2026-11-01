@@ -21,7 +21,9 @@ herald-flows.workspace = true
 herald-native.workspace = true
 herald-ports.workspace = true
 herald-sources-forge.workspace = true
+herald-store-actions-cache.workspace = true
 herald-store-git-branch.workspace = true
+herald-store-repo-variables.workspace = true
 tokio = { workspace = true, features = ["macros", "rt"] }
 
 [dev-dependencies]
