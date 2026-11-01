@@ -15,6 +15,24 @@ pub struct DestinationOptions {
     pub api: Option<String>,
 }
 
+impl DestinationOptions {
+    /// Whether the destination posts as a bot, or else through a webhook.
+    ///
+    /// # Errors
+    ///
+    /// When it names neither a token nor a webhook, or both.
+    pub fn bot(&self) -> Result<bool, &'static str> {
+        match (&self.token, &self.webhook) {
+            (Some(_), None) => Ok(true),
+            (None, Some(_)) => Ok(false),
+            (None, None) => Err("a Discord destination needs a token or a webhook; give one"),
+            (Some(_), Some(_)) => {
+                Err("a Discord destination takes a token or a webhook, not both; keep one")
+            }
+        }
+    }
+}
+
 /// What a route says about Discord alone, beside its crosspost, thread, pin
 /// and mentions.
 #[derive(Debug, Clone, PartialEq, Eq, Default, Deserialize, JsonSchema)]
