@@ -1,6 +1,6 @@
 use std::fmt;
 
-use herald_core::{Refusal, Scheme, Signature, claim};
+use herald_core::{Refusal, Scheme, Signature, claim, key};
 use herald_ports::{Algorithm, Verifier};
 use jiff::Timestamp;
 
@@ -11,6 +11,8 @@ pub enum Rejected {
     Refused(Refusal),
     /// Its signature is not its sender's.
     Forged,
+    /// The key it would be checked with is not written in its scheme's form.
+    Unkeyed,
 }
 
 impl fmt::Display for Rejected {
@@ -18,14 +20,17 @@ impl fmt::Display for Rejected {
         match self {
             Self::Refused(refusal) => refusal.fmt(f),
             Self::Forged => f.write_str("the request's signature is not its sender's"),
+            Self::Unkeyed => f.write_str(
+                "the key the request is checked with is not written in its form, so no request is let through",
+            ),
         }
     }
 }
 
 /// Whether a request of `scheme`, with its `headers` and raw `body`, is
-/// signed by the holder of `key` at `now`: the shared secret's bytes for an
-/// HMAC, the sender's public key for Ed25519 (ADR-0007). Only a request this
-/// lets through may reach a parser.
+/// signed by the holder of `written` at `now`: a shared secret for an HMAC,
+/// the sender's public key for Ed25519, each as [`key`] reads it
+/// (ADR-0007). Only a request this lets through may reach a parser.
 ///
 /// # Errors
 ///
@@ -33,22 +38,24 @@ impl fmt::Display for Rejected {
 pub async fn verified<V: Verifier>(
     verifier: &V,
     scheme: Scheme,
-    key: &[u8],
+    written: &str,
     headers: &[(&str, &str)],
     body: &[u8],
     now: Timestamp,
 ) -> Result<(), Rejected> {
+    let key = key(scheme, written).ok_or(Rejected::Unkeyed)?;
     let claim = claim(scheme, headers, body, now).map_err(Rejected::Refused)?;
     let algorithm = match claim.kind {
         Signature::HmacSha256 => Algorithm::HmacSha256,
         Signature::Ed25519 => Algorithm::Ed25519,
     };
-    if verifier
-        .verify(algorithm, key, &claim.message, &claim.signature)
-        .await
-    {
-        Ok(())
-    } else {
-        Err(Rejected::Forged)
+    for signature in &claim.signatures {
+        if verifier
+            .verify(algorithm, &key, &claim.message, signature)
+            .await
+        {
+            return Ok(());
+        }
     }
+    Err(Rejected::Forged)
 }

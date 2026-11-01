@@ -1,15 +1,22 @@
 //! Whatever headers and body a request carries, reading its claim answers a
-//! claim or a refusal, and a claim's message holds the body it was read from.
+//! claim or a refusal, a claim's message holds the body it was read from, and
+//! it carries at least one signature, none of them empty.
 
 #![no_main]
 
-use herald_core::{Scheme, claim};
+use herald_core::{Scheme, claim, key};
 use jiff::Timestamp;
 use libfuzzer_sys::fuzz_target;
 
-const SCHEMES: [Scheme; 4] = [Scheme::GitHub, Scheme::Forgejo, Scheme::Discord, Scheme::Slack];
+const SCHEMES: [Scheme; 5] = [
+    Scheme::GitHub,
+    Scheme::Forgejo,
+    Scheme::GitLab,
+    Scheme::Discord,
+    Scheme::Slack,
+];
 
-const HEADERS: [&str; 7] = [
+const HEADERS: [&str; 10] = [
     "X-Hub-Signature-256",
     "X-Forgejo-Signature",
     "X-Gitea-Signature",
@@ -17,6 +24,9 @@ const HEADERS: [&str; 7] = [
     "X-Signature-Timestamp",
     "X-Slack-Signature",
     "X-Slack-Request-Timestamp",
+    "webhook-id",
+    "webhook-timestamp",
+    "webhook-signature",
 ];
 
 fuzz_target!(|input: (Vec<String>, Vec<u8>, i64)| {
@@ -32,6 +42,11 @@ fuzz_target!(|input: (Vec<String>, Vec<u8>, i64)| {
     for scheme in SCHEMES {
         if let Ok(claim) = claim(scheme, &headers, &body, now) {
             assert!(claim.message.ends_with(&body), "{scheme:?}");
+            assert!(!claim.signatures.is_empty(), "{scheme:?}");
+            assert!(claim.signatures.iter().all(|signature| !signature.is_empty()), "{scheme:?}");
+        }
+        for value in &values {
+            let _ = key(scheme, value);
         }
     }
 });

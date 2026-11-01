@@ -68,6 +68,7 @@ impl Layer {
 fn outside_allowed(layer: Layer) -> &'static [&'static str] {
     match layer {
         Layer::Core => &[
+            "base64",
             "jiff",
             "minijinja",
             "pulldown-cmark",
@@ -157,6 +158,7 @@ mod tests {
     #[test]
     fn a_layer_before_the_io_layers_names_only_its_allowed_outside_crates() {
         assert!(Layer::Core.allows_outside("sha2"));
+        assert!(Layer::Core.allows_outside("base64"));
         assert!(!Layer::Core.allows_outside("tokio"));
         assert!(!Layer::Ports.allows_outside("sha2"));
         assert!(Layer::Sources.allows_outside("serde_json"));

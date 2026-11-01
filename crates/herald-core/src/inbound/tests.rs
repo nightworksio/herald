@@ -18,7 +18,7 @@ fn a_github_webhook_claims_an_hmac_of_its_body() {
         Claim {
             kind: Signature::HmacSha256,
             message: BODY.to_vec(),
-            signature: vec![0x00, 0xff, 0x10],
+            signatures: vec![vec![0x00, 0xff, 0x10]],
         }
     );
 }
@@ -48,7 +48,7 @@ fn a_forgejo_webhook_claims_an_hmac_of_its_body_under_either_header() {
         let claim = claimed(Scheme::Forgejo, &[(header, "abcd")]).unwrap();
         assert_eq!(claim.kind, Signature::HmacSha256, "{header}");
         assert_eq!(claim.message, BODY, "{header}");
-        assert_eq!(claim.signature, [0xab, 0xcd], "{header}");
+        assert_eq!(claim.signatures, [[0xab, 0xcd]], "{header}");
     }
     assert_eq!(
         claimed(Scheme::Forgejo, &[("X-Gitea-Signature", "abc")]),
@@ -71,7 +71,7 @@ fn a_forgejo_header_is_read_before_a_gitea_one() {
         &[("X-Gitea-Signature", "00"), ("X-Forgejo-Signature", "01")],
     )
     .unwrap();
-    assert_eq!(claim.signature, [0x01]);
+    assert_eq!(claim.signatures, [[0x01]]);
 }
 
 #[test]
@@ -86,7 +86,7 @@ fn a_discord_interaction_claims_an_ed25519_signature_of_its_timestamp_and_body()
     .unwrap();
     assert_eq!(claim.kind, Signature::Ed25519);
     assert_eq!(claim.message, [b"1800000000".as_slice(), BODY].concat());
-    assert_eq!(claim.signature, [0x0a, 0x0b]);
+    assert_eq!(claim.signatures, [[0x0a, 0x0b]]);
     assert_eq!(
         claimed(Scheme::Discord, &[("X-Signature-Timestamp", "1800000000")]),
         Err(Refusal::Unsigned {
@@ -119,7 +119,7 @@ fn a_slack_request_claims_an_hmac_of_its_versioned_base_string() {
     .unwrap();
     assert_eq!(claim.kind, Signature::HmacSha256);
     assert_eq!(claim.message, [b"v0:1800000000:".as_slice(), BODY].concat());
-    assert_eq!(claim.signature, [0xff]);
+    assert_eq!(claim.signatures, [[0xff]]);
     assert_eq!(
         claimed(
             Scheme::Slack,
@@ -226,4 +226,91 @@ fn each_refusal_reads_as_a_sentence() {
         Refusal::Stale.to_string(),
         "the request was signed more than 5 minutes from now, so it is taken for a replay"
     );
+}
+
+fn gitlab(signature: &str) -> Result<Claim, Refusal> {
+    claimed(
+        Scheme::GitLab,
+        &[
+            ("webhook-id", "msg_2KWPBgLlAfxdpx2AI54pPJ85f4W"),
+            ("webhook-timestamp", "1800000000"),
+            ("webhook-signature", signature),
+        ],
+    )
+}
+
+#[test]
+fn a_gitlab_webhook_claims_each_v1_signature_of_its_id_timestamp_and_body() {
+    let claim = gitlab("v1,AAE= v2,ignored v1,/w==").unwrap();
+    assert_eq!(claim.kind, Signature::HmacSha256);
+    assert_eq!(
+        claim.message,
+        [
+            b"msg_2KWPBgLlAfxdpx2AI54pPJ85f4W.1800000000.".as_slice(),
+            BODY
+        ]
+        .concat()
+    );
+    assert_eq!(claim.signatures, [vec![0x00, 0x01], vec![0xff]]);
+}
+
+#[test]
+fn a_gitlab_webhook_with_no_v1_signature_or_one_not_in_base64_is_malformed() {
+    for signature in ["", "v2,AAE=", "v1,", "v1,!!!", "v1,AAE= v1,%%"] {
+        assert_eq!(
+            gitlab(signature),
+            Err(Refusal::Malformed {
+                header: "webhook-signature"
+            }),
+            "{signature}"
+        );
+    }
+}
+
+#[test]
+fn a_gitlab_webhook_names_what_it_lacks() {
+    assert_eq!(
+        claimed(Scheme::GitLab, &[]),
+        Err(Refusal::Unsigned {
+            header: "webhook-id"
+        })
+    );
+    assert_eq!(
+        claimed(
+            Scheme::GitLab,
+            &[("webhook-id", "msg"), ("webhook-timestamp", "1800000000")]
+        ),
+        Err(Refusal::Unsigned {
+            header: "webhook-signature"
+        })
+    );
+    assert_eq!(
+        claimed(
+            Scheme::GitLab,
+            &[
+                ("webhook-id", "msg"),
+                ("webhook-timestamp", "1"),
+                ("webhook-signature", "v1,AA==")
+            ],
+        ),
+        Err(Refusal::Stale)
+    );
+}
+
+#[test]
+fn each_scheme_reads_its_key_as_it_is_written() {
+    assert_eq!(key(Scheme::GitLab, "whsec_AAE="), Some(vec![0x00, 0x01]));
+    for written in ["AAE=", "whsec_", "whsec_!!"] {
+        assert_eq!(key(Scheme::GitLab, written), None, "{written}");
+    }
+    assert_eq!(key(Scheme::Discord, "0aFF"), Some(vec![0x0a, 0xff]));
+    assert_eq!(key(Scheme::Discord, "public"), None);
+    for scheme in [Scheme::GitHub, Scheme::Forgejo, Scheme::Slack] {
+        assert_eq!(
+            key(scheme, "secret"),
+            Some(b"secret".to_vec()),
+            "{scheme:?}"
+        );
+        assert_eq!(key(scheme, ""), None, "{scheme:?}");
+    }
 }

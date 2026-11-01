@@ -1,11 +1,14 @@
 //! What an inbound request claims about who signed it, read from its raw
 //! headers and body before anything parses the body (ADR-0007).
 //!
-//! The claim names the bytes that were signed and the signature over them.
-//! Checking the signature is left to a `Verifier`, so this step holds no key.
+//! The claim names the bytes that were signed and the signatures over them.
+//! Checking a signature is left to a `Verifier`, so this step holds no key;
+//! [`key`] reads the key a scheme checks with from the way it is written.
 
 use std::fmt;
 
+use base64::Engine as _;
+use base64::engine::general_purpose::STANDARD;
 use jiff::{SignedDuration, Timestamp};
 
 /// How far a signed timestamp may lie from now, either way, before the
@@ -21,6 +24,11 @@ pub enum Scheme {
     /// A Forgejo or Gitea webhook: `X-Forgejo-Signature` or
     /// `X-Gitea-Signature`, the hex HMAC-SHA256 of the body.
     Forgejo,
+    /// A GitLab webhook signed with a signing token, as Standard Webhooks
+    /// sign: `webhook-signature: v1,<base64>`, an HMAC-SHA256 of
+    /// `<webhook-id>.<webhook-timestamp>.<body>`, keyed by the token's
+    /// base64 after its `whsec_`.
+    GitLab,
     /// A Discord interaction: `X-Signature-Ed25519` over
     /// `X-Signature-Timestamp` and the body.
     Discord,
@@ -38,15 +46,16 @@ pub enum Signature {
     Ed25519,
 }
 
-/// What a request claims: that `signature` signs `message` under `kind`.
+/// What a request claims: that one of `signatures` signs `message` under
+/// `kind`. A sender rotating its key signs with each key it holds.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Claim {
     /// The kind of signature.
     pub kind: Signature,
     /// The bytes that were signed.
     pub message: Vec<u8>,
-    /// The signature over them.
-    pub signature: Vec<u8>,
+    /// The signatures over them, any one of which holds.
+    pub signatures: Vec<Vec<u8>>,
 }
 
 /// Why a request is refused before its signature is checked.
@@ -119,7 +128,7 @@ pub fn claim(
             Ok(Claim {
                 kind: Signature::Ed25519,
                 message: [stamp.as_bytes(), body].concat(),
-                signature: unhex(signature).ok_or(Refusal::Malformed { header: SIGNATURE })?,
+                signatures: vec![unhex(signature).ok_or(Refusal::Malformed { header: SIGNATURE })?],
             })
         }
         Scheme::Slack => {
@@ -131,6 +140,46 @@ pub fn claim(
                 signature,
             ))
         }
+        Scheme::GitLab => {
+            const SIGNATURE: &str = "webhook-signature";
+            let id = required(headers, "webhook-id")?;
+            let stamp = timestamp(headers, "webhook-timestamp", now)?;
+            let signatures: Vec<Vec<u8>> = required(headers, SIGNATURE)?
+                .split(' ')
+                .filter_map(|entry| entry.strip_prefix("v1,"))
+                .map(|encoded| {
+                    STANDARD
+                        .decode(encoded)
+                        .ok()
+                        .filter(|signature| !signature.is_empty())
+                })
+                .collect::<Option<_>>()
+                .filter(|signatures: &Vec<Vec<u8>>| !signatures.is_empty())
+                .ok_or(Refusal::Malformed { header: SIGNATURE })?;
+            Ok(Claim {
+                kind: Signature::HmacSha256,
+                message: [id.as_bytes(), b".", stamp.as_bytes(), b".", body].concat(),
+                signatures,
+            })
+        }
+    }
+}
+
+/// The key a request of `scheme` is checked with, from the way it is
+/// written: a GitLab signing token's base64 after its `whsec_`, a Discord
+/// application's public key in hex, and any other shared secret as its
+/// bytes. Nothing where it is not written in its form.
+#[must_use]
+pub fn key(scheme: Scheme, written: &str) -> Option<Vec<u8>> {
+    match scheme {
+        Scheme::GitLab => written
+            .strip_prefix("whsec_")
+            .and_then(|encoded| STANDARD.decode(encoded).ok())
+            .filter(|key| !key.is_empty()),
+        Scheme::Discord => unhex(written),
+        Scheme::GitHub | Scheme::Forgejo | Scheme::Slack => {
+            (!written.is_empty()).then(|| written.as_bytes().to_vec())
+        }
     }
 }
 
@@ -138,7 +187,7 @@ fn hmac(message: Vec<u8>, signature: Vec<u8>) -> Claim {
     Claim {
         kind: Signature::HmacSha256,
         message,
-        signature,
+        signatures: vec![signature],
     }
 }
 

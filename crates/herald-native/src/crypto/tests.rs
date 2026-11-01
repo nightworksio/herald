@@ -131,7 +131,7 @@ fn githubs_documented_delivery_verifies_and_a_changed_body_does_not() {
                 Algorithm::HmacSha256,
                 secret,
                 &claim.message,
-                &claim.signature
+                &claim.signatures[0]
             ),
             holds
         );

@@ -170,6 +170,7 @@ dependencies = [
 name = "herald-core"
 version = "0.0.0"
 dependencies = [
+ "base64",
  "jiff",
  "minijinja",
  "pulldown-cmark",
