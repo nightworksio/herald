@@ -437,6 +437,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "herald-sources-forge"
+version = "0.0.0"
+dependencies = [
+ "herald-core",
+ "herald-ports",
+ "jiff",
+ "proptest",
+ "schemars",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "herald-testing"
 version = "0.0.0"
 dependencies = [

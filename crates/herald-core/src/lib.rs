@@ -17,6 +17,7 @@ mod profile;
 mod render;
 mod route;
 mod subscription;
+mod version;
 
 pub use announce::{
     Announcement, announce, body_template, shortened, thread_template, title_template,
@@ -36,3 +37,4 @@ pub use route::{
     SourceName, TemplateName, Thread, route,
 };
 pub use subscription::Subscription;
+pub use version::prerelease_version;

@@ -1,5 +1,5 @@
-# Mention, link, tag and fence syntax of every dialect herald writes, for the
-# markup fuzz target.
+# The tokens the fuzz targets read: the mention, link, tag and fence syntax of
+# every dialect herald writes, and the fields of a forge's release JSON.
 "@everyone"
 "@here"
 "@room"
@@ -42,3 +42,17 @@
 "<a href="
 "<script>"
 "<img src="
+"\"action\""
+"\"published\""
+"\"release\""
+"\"repository\""
+"\"tag_name\""
+"\"html_url\""
+"\"published_at\""
+"\"prerelease\""
+"\"draft\""
+"\"id\""
+"\"name\""
+"\"body\""
+"\"2026-10-31T12:00:00Z\""
+"https://github.com/"

@@ -73,7 +73,7 @@ fn outside_allowed(layer: Layer) -> &'static [&'static str] {
         ],
         Layer::Ports => &["jiff"],
         Layer::Testing => &["jiff", "serde", "serde_json"],
-        Layer::Destinations => &["jiff", "schemars", "serde", "serde_json"],
+        Layer::Sources | Layer::Destinations => &["jiff", "schemars", "serde", "serde_json"],
         _ => &[],
     }
 }
@@ -140,7 +140,8 @@ mod tests {
         assert!(Layer::Core.allows_outside("sha2"));
         assert!(!Layer::Core.allows_outside("tokio"));
         assert!(!Layer::Ports.allows_outside("sha2"));
-        assert!(!Layer::Sources.allows_outside("serde"));
+        assert!(Layer::Sources.allows_outside("serde_json"));
+        assert!(!Layer::Sources.allows_outside("reqwest"));
         assert!(Layer::Testing.allows_outside("serde_json"));
         assert!(Layer::Ports.allows_outside("jiff"));
         assert!(Layer::Destinations.allows_outside("schemars"));
