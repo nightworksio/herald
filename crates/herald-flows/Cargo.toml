@@ -15,6 +15,7 @@ herald-core.workspace = true
 herald-dest-discord.workspace = true
 herald-ports.workspace = true
 herald-sources-forge.workspace = true
+herald-sources-registry.workspace = true
 herald-store-markers.workspace = true
 jiff.workspace = true
 

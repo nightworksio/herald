@@ -3,9 +3,11 @@ use jiff::civil::DateTime;
 use jiff::tz::TimeZone;
 use serde::{Deserialize, Deserializer};
 
-use crate::error::ForgeError;
 use crate::forge::{Api, Repository};
-use crate::wire::{Found, read, segment};
+use herald_wire::SourceError;
+use herald_wire::segment;
+
+use crate::wire::{Found, read};
 
 pub(crate) const API: Api = Api {
     url: "https://gitlab.com/api/v4",
@@ -93,10 +95,10 @@ pub(crate) fn project(api: &str, path: &str) -> String {
 pub(crate) fn published(
     what: &'static str,
     payload: &[u8],
-) -> Result<Option<(Repository, Found)>, ForgeError> {
+) -> Result<Option<(Repository, Found)>, SourceError> {
     let hook: Hook = read(what, payload)?;
     if hook.object_kind != "release" {
-        return Err(ForgeError::Unreadable {
+        return Err(SourceError::Unreadable {
             what,
             reason: format!("it is a {} hook, not a release hook", hook.object_kind),
         });
@@ -116,11 +118,11 @@ pub(crate) fn published(
     Ok(Some((hook.project, found)))
 }
 
-pub(crate) fn found(what: &'static str, body: &[u8]) -> Result<Found, ForgeError> {
+pub(crate) fn found(what: &'static str, body: &[u8]) -> Result<Found, SourceError> {
     read::<Release>(what, body).map(Found::from)
 }
 
-pub(crate) fn all_found(what: &'static str, body: &[u8]) -> Result<Vec<Found>, ForgeError> {
+pub(crate) fn all_found(what: &'static str, body: &[u8]) -> Result<Vec<Found>, SourceError> {
     let releases: Vec<Release> = read(what, body)?;
     Ok(releases.into_iter().map(Found::from).collect())
 }

@@ -6,7 +6,6 @@
 //! releases API is described as requests the flow sends and responses it
 //! hands back.
 
-mod error;
 mod forge;
 mod forgejo;
 mod github;
@@ -14,6 +13,5 @@ mod gitlab;
 mod options;
 mod wire;
 
-pub use error::ForgeError;
-pub use forge::{Forge, Origin, Releases, Repository, Token};
+pub use forge::{Forge, Origin, Repository, Token};
 pub use options::SourceOptions;

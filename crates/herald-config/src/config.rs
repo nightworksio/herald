@@ -2,6 +2,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use herald_core::{DestinationName, Kind, Route, RouteId, SecretRef, SourceName, Templates};
 use herald_sources_forge::Forge;
+use herald_sources_registry::Registry;
 use jiff::SignedDuration;
 
 /// A config, read, resolved and with its templates compiled.
@@ -34,9 +35,9 @@ impl Config {
             let Destination::Discord(options) = destination;
             [&options.token, &options.webhook]
         });
-        let sources = self.sources.values().map(|source| {
-            let Source::Forge(_, options) = source;
-            &options.token
+        let sources = self.sources.values().map(|source| match source {
+            Source::Forge(_, options) => &options.token,
+            Source::Registry(_, options) => &options.token,
         });
         let store = match &self.store {
             Store::GitBranch(options) => options.token.as_ref(),
@@ -119,6 +120,8 @@ pub enum Destination {
 pub enum Source {
     /// A repository's releases on a forge.
     Forge(Forge, herald_sources_forge::SourceOptions),
+    /// A package's versions on a registry.
+    Registry(Registry, herald_sources_registry::RegistryOptions),
 }
 
 impl Source {
@@ -127,17 +130,27 @@ impl Source {
     pub fn kind(&self) -> &'static str {
         match self {
             Self::Forge(forge, _) => forge.kind(),
+            Self::Registry(registry, _) => registry.kind(),
         }
     }
 
     /// Every kind, as the config spells it.
-    pub const KINDS: [&'static str; 3] = ["github", "gitlab", "forgejo"];
+    pub const KINDS: [&'static str; 7] = [
+        "github",
+        "gitlab",
+        "forgejo",
+        "packagist",
+        "crates-io",
+        "npm",
+        "docker-hub",
+    ];
 
     /// The kinds of event the source produces.
     #[must_use]
     pub fn kinds(&self) -> &'static [Kind] {
         match self {
             Self::Forge(..) => &[Kind::Release],
+            Self::Registry(..) => &[Kind::PackageVersion],
         }
     }
 }

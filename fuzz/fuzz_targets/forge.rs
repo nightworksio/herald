@@ -3,9 +3,9 @@
 
 #![no_main]
 
-use herald_core::Event;
+use herald_core::{Event, Polled};
 use herald_ports::Response;
-use herald_sources_forge::{Forge, Releases, Repository};
+use herald_sources_forge::{Forge, Repository};
 use libfuzzer_sys::fuzz_target;
 
 const FORGES: [Forge; 3] = [Forge::GitHub, Forge::GitLab, Forge::Forgejo];
@@ -30,7 +30,7 @@ fuzz_target!(|bytes: &[u8]| {
         if let Ok(Some(event)) = forge.release(&repository, &response) {
             identified(&event, Some(repository.id));
         }
-        if let Ok(Releases { events, .. }) = forge.releases(&repository, &response) {
+        if let Ok(Polled { events, .. }) = forge.releases(&repository, &response) {
             for event in &events {
                 identified(event, Some(repository.id));
             }

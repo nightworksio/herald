@@ -514,6 +514,7 @@ dependencies = [
  "herald-core",
  "herald-dest-discord",
  "herald-sources-forge",
+ "herald-sources-registry",
  "herald-store-actions-cache",
  "herald-store-git-branch",
  "herald-store-repo-variables",
@@ -562,6 +563,7 @@ dependencies = [
  "herald-dest-discord",
  "herald-ports",
  "herald-sources-forge",
+ "herald-sources-registry",
  "herald-store-markers",
  "herald-testing",
  "jiff",
@@ -616,6 +618,21 @@ version = "0.0.0"
 dependencies = [
  "herald-core",
  "herald-ports",
+ "herald-wire",
+ "jiff",
+ "proptest",
+ "schemars",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "herald-sources-registry"
+version = "0.0.0"
+dependencies = [
+ "herald-core",
+ "herald-ports",
+ "herald-wire",
  "jiff",
  "proptest",
  "schemars",
@@ -687,6 +704,17 @@ dependencies = [
  "herald-ports",
  "jiff",
  "pollster",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "herald-wire"
+version = "0.0.0"
+dependencies = [
+ "herald-core",
+ "herald-ports",
+ "proptest",
  "serde",
  "serde_json",
 ]

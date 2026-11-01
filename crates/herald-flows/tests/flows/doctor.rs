@@ -125,3 +125,25 @@ fn the_markers_store_names_the_pins_cursors_and_read_backs_it_lacks() {
     );
     assert_eq!(webhook.gaps[0].feature, "sending each announcement once");
 }
+
+#[test]
+fn a_route_taking_docker_hub_tags_without_versions_is_noted() {
+    let text = |versions: &str| {
+        format!(
+            "version = 1\n[store]\nkind = \"git-branch\"\n[markers]\nkey = {{ secret = \"K\" }}\n[destinations.discord]\nkind = \"discord\"\ntoken = {{ secret = \"T\" }}\n[sources.caddy]\nkind = \"docker-hub\"\npackage = \"caddy\"\n[[routes]]\nid = \"images\"\nsources = [\"caddy\"]\ndestination = \"discord\"\nchannel = \"1\"\ntemplate = \"t\"\n{versions}\n[templates.t]\ntitle = \"{{{{ event.version }}}}\"\nbody = \"\"\n"
+        )
+    };
+    let loaded =
+        |versions: &str| load("herald.toml", &text(versions), &|_| Err(String::new())).unwrap();
+    let noted = doctor(&loaded(""), &STORES);
+    assert_eq!(
+        noted.notes,
+        [
+            "The route images takes caddy's tags with no versions pattern, so a tag that moves, such as latest, is announced the first time it is pushed. Set versions = \"*.*.*\" on the route to leave such tags out."
+        ]
+    );
+    assert_eq!(
+        doctor(&loaded("versions = \"*.*.*\""), &STORES).notes,
+        Vec::<String>::new()
+    );
+}

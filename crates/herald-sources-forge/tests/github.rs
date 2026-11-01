@@ -2,11 +2,10 @@
 
 #[cfg(test)]
 mod github {
-    use herald_core::{Cursor, Kind, Problem, prerelease_version};
+    use herald_core::{Cursor, Kind, Polled, Problem, prerelease_version};
     use herald_ports::{Response, Secret};
-    use herald_sources_forge::{
-        Forge, ForgeError, Origin, Releases, Repository, SourceOptions, Token,
-    };
+    use herald_sources_forge::{Forge, Origin, Repository, SourceOptions, Token};
+    use herald_wire::SourceError;
     use proptest::prelude::*;
     use serde_json::{Value, json};
 
@@ -97,7 +96,7 @@ mod github {
         let nameless = edited(|payload| payload["repository"]["name"] = json!(""));
         assert_eq!(
             Forge::GitHub.event(&nameless),
-            Err(ForgeError::Invalid {
+            Err(SourceError::Invalid {
                 what: "GitHub's release event",
                 problem: Problem::NoProject
             })
@@ -118,7 +117,7 @@ mod github {
         );
         assert!(matches!(
             Forge::GitHub.event(&huge[..4_194_304]),
-            Err(ForgeError::Unreadable { .. })
+            Err(SourceError::Unreadable { .. })
         ));
     }
 
@@ -131,7 +130,7 @@ mod github {
                 name: "neovim".to_owned()
             }
         );
-        let Releases {
+        let Polled {
             events,
             etag,
             last_modified,
@@ -204,7 +203,7 @@ mod github {
         );
         assert_eq!(
             Forge::GitHub.repository(&answer(404, "{}")),
-            Err(ForgeError::Answered {
+            Err(SourceError::Answered {
                 what: "GitHub's repository",
                 status: 404
             })
@@ -260,18 +259,6 @@ mod github {
         assert_eq!(
             source(None).repository_request(None).url.redacted(),
             "https://api.github.com/repos/neovim/neovim"
-        );
-    }
-
-    #[test]
-    fn each_error_reads_as_a_sentence() {
-        assert_eq!(
-            ForgeError::Invalid {
-                what: "x",
-                problem: Problem::NoTitle
-            }
-            .to_string(),
-            "x makes no event: the event has no title"
         );
     }
 

@@ -1,4 +1,4 @@
-use herald_config::{Config, Destination, RouteConfig, RouteOptions, Store};
+use herald_config::{Config, Destination, RouteConfig, RouteOptions, Source, Store};
 use herald_core::Pinning;
 use herald_dest_discord::profile;
 
@@ -96,6 +96,18 @@ pub fn doctor(config: &Config, stores: &[&str]) -> Findings {
             "store.kind".to_owned(),
             unserved(stores),
         ));
+    }
+    for route in &config.routes {
+        let moving = route.route.filter.sources.iter().find(|name| {
+            matches!(config.sources.get(*name), Some(Source::Registry(registry, _)) if registry.moving_tags())
+        });
+        if let (Some(source), None) = (moving, &route.route.filter.versions) {
+            findings.notes.push(format!(
+                "The route {} takes {}'s tags with no versions pattern, so a tag that moves, such as latest, is announced the first time it is pushed. Set versions = \"*.*.*\" on the route to leave such tags out.",
+                route.route.id.as_str(),
+                source.as_str()
+            ));
+        }
     }
     match config.store {
         Store::ActionsCache(_) => findings.notes.push(SCOPED.to_owned()),

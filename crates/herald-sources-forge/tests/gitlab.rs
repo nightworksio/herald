@@ -4,7 +4,8 @@
 mod gitlab {
     use herald_core::{Cursor, Kind};
     use herald_ports::{Response, Secret};
-    use herald_sources_forge::{Forge, ForgeError, Origin, Repository, SourceOptions, Token};
+    use herald_sources_forge::{Forge, Origin, Repository, SourceOptions, Token};
+    use herald_wire::SourceError;
     use proptest::prelude::*;
     use serde_json::{Value, json};
 
@@ -91,12 +92,12 @@ mod gitlab {
         let garbled = edited(|payload| payload["released_at"] = json!("last Tuesday UTC"));
         assert!(matches!(
             Forge::GitLab.event(&garbled),
-            Err(ForgeError::Unreadable { .. })
+            Err(SourceError::Unreadable { .. })
         ));
         let garbled = edited(|payload| payload["released_at"] = json!("last Tuesday"));
         assert!(matches!(
             Forge::GitLab.event(&garbled),
-            Err(ForgeError::Unreadable { .. })
+            Err(SourceError::Unreadable { .. })
         ));
     }
 
@@ -168,7 +169,7 @@ mod gitlab {
         );
         assert_eq!(
             Forge::GitLab.repository(&answer(404, "{}")),
-            Err(ForgeError::Answered {
+            Err(SourceError::Answered {
                 what: "GitLab's project",
                 status: 404
             })

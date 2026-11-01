@@ -4,7 +4,8 @@
 mod forgejo {
     use herald_core::Kind;
     use herald_ports::{Response, Secret};
-    use herald_sources_forge::{Forge, ForgeError, Origin, Repository, SourceOptions, Token};
+    use herald_sources_forge::{Forge, Origin, Repository, SourceOptions, Token};
+    use herald_wire::SourceError;
     use proptest::prelude::*;
     use serde_json::{Value, json};
 
@@ -85,7 +86,7 @@ mod forgejo {
             Forge::Forgejo
                 .releases(&forgejo(), &answer(500, "{}"))
                 .unwrap_err(),
-            ForgeError::Answered {
+            SourceError::Answered {
                 what: "Forgejo's releases",
                 status: 500
             }

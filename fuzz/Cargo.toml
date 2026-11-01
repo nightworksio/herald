@@ -13,6 +13,7 @@ herald-config = { path = "../crates/herald-config" }
 herald-core = { path = "../crates/herald-core" }
 herald-ports = { path = "../crates/herald-ports" }
 herald-sources-forge = { path = "../crates/herald-sources-forge" }
+herald-sources-registry = { path = "../crates/herald-sources-registry" }
 libfuzzer-sys = "0.4"
 
 [workspace]
@@ -35,6 +36,13 @@ bench = false
 [[bin]]
 name = "forge"
 path = "fuzz_targets/forge.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "registry"
+path = "fuzz_targets/registry.rs"
 test = false
 doc = false
 bench = false

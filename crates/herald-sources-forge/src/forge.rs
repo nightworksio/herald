@@ -1,16 +1,13 @@
-use herald_core::{Cursor, Event};
+use herald_core::{Cursor, Event, Polled};
 use herald_ports::{Method, Request, Response, Secret, Text, USER_AGENT};
 use serde::Deserialize;
 
-use crate::error::ForgeError;
 use crate::options::SourceOptions;
-use crate::wire::{Found, answered, event, read, segment};
-use crate::{forgejo, github, gitlab};
+use herald_wire::SourceError;
+use herald_wire::{NOT_MODIFIED, PAGE, answered, segment};
 
-/// The releases asked for in one poll.
-const PAGE: u8 = 30;
-/// What a forge answers to a conditional request when nothing changed.
-const NOT_MODIFIED: u16 = 304;
+use crate::wire::{Found, event, read};
+use crate::{forgejo, github, gitlab};
 
 /// A forge whose releases herald announces.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -47,18 +44,6 @@ pub struct Repository {
     pub name: String,
 }
 
-/// The published releases a poll found, the newest first, and the
-/// validators to send next time.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Releases {
-    /// The releases, as events.
-    pub events: Vec<Event>,
-    /// The `ETag` the forge returned.
-    pub etag: Option<String>,
-    /// The `Last-Modified` the forge returned.
-    pub last_modified: Option<String>,
-}
-
 /// The token a request carries.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Token {
@@ -78,6 +63,9 @@ pub struct Origin {
 }
 
 impl Forge {
+    /// Every forge.
+    pub const ALL: [Self; 3] = [Self::GitHub, Self::GitLab, Self::Forgejo];
+
     /// Its name, as a source's `kind` in `herald.toml` writes it.
     #[must_use]
     pub const fn kind(self) -> &'static str {
@@ -104,7 +92,7 @@ impl Forge {
     ///
     /// When the payload is too large, is not the forge's release event, or
     /// makes no event.
-    pub fn event(self, payload: &[u8]) -> Result<Option<Event>, ForgeError> {
+    pub fn event(self, payload: &[u8]) -> Result<Option<Event>, SourceError> {
         let what = self.api().event;
         let published = match self {
             Self::GitHub | Self::Forgejo => github::published(what, payload)?,
@@ -122,20 +110,20 @@ impl Forge {
     /// # Errors
     ///
     /// When the forge did not answer with the repository.
-    pub fn repository(self, response: &Response) -> Result<Repository, ForgeError> {
+    pub fn repository(self, response: &Response) -> Result<Repository, SourceError> {
         let what = self.api().repository;
         answered(what, response)?;
         read(what, &response.body)
     }
 
-    fn found(self, what: &'static str, body: &[u8]) -> Result<Found, ForgeError> {
+    fn found(self, what: &'static str, body: &[u8]) -> Result<Found, SourceError> {
         match self {
             Self::GitHub | Self::Forgejo => github::found(what, body),
             Self::GitLab => gitlab::found(what, body),
         }
     }
 
-    fn all_found(self, what: &'static str, body: &[u8]) -> Result<Vec<Found>, ForgeError> {
+    fn all_found(self, what: &'static str, body: &[u8]) -> Result<Vec<Found>, SourceError> {
         match self {
             Self::GitHub | Self::Forgejo => github::all_found(what, body),
             Self::GitLab => gitlab::all_found(what, body),
@@ -153,7 +141,7 @@ impl Forge {
         self,
         repository: &Repository,
         response: &Response,
-    ) -> Result<Option<Event>, ForgeError> {
+    ) -> Result<Option<Event>, SourceError> {
         let what = self.api().release;
         answered(what, response)?;
         event(what, repository, self.found(what, &response.body)?)
@@ -169,15 +157,15 @@ impl Forge {
         self,
         repository: &Repository,
         response: &Response,
-    ) -> Result<Releases, ForgeError> {
+    ) -> Result<Polled, SourceError> {
         let what = self.api().releases;
         answered(what, response)?;
         let events = self
             .all_found(what, &response.body)?
             .into_iter()
             .filter_map(|found| event(what, repository, found).transpose())
-            .collect::<Result<Vec<Event>, ForgeError>>()?;
-        Ok(Releases {
+            .collect::<Result<Vec<Event>, SourceError>>()?;
+        Ok(Polled {
             events,
             etag: response.header("etag").map(ToOwned::to_owned),
             last_modified: response.header("last-modified").map(ToOwned::to_owned),

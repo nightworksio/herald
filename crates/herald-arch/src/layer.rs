@@ -7,8 +7,9 @@ pub enum Layer {
     Ports,
     /// The fakes, the replaying `Http` and the conformance suites.
     Testing,
-    /// What several stores share: records kept one per path, and later the
-    /// SQL every SQL store runs.
+    /// What siblings of a later layer share: records kept one per path,
+    /// later the SQL the SQL stores run, and what every source reads its
+    /// answers with.
     Kits,
     /// One crate per source family.
     Sources,
@@ -37,7 +38,7 @@ impl Layer {
             "herald-core" => Some(Self::Core),
             "herald-ports" => Some(Self::Ports),
             "herald-testing" => Some(Self::Testing),
-            "herald-records" | "herald-sql" => Some(Self::Kits),
+            "herald-records" | "herald-sql" | "herald-wire" => Some(Self::Kits),
             "herald-config" => Some(Self::Config),
             "herald-flows" => Some(Self::Flows),
             "herald-native" => Some(Self::Native),
@@ -103,6 +104,7 @@ mod tests {
             ("herald-testing", Layer::Testing),
             ("herald-records", Layer::Kits),
             ("herald-sql", Layer::Kits),
+            ("herald-wire", Layer::Kits),
             ("herald-sources-forge", Layer::Sources),
             ("herald-dest-discord", Layer::Destinations),
             ("herald-store-sqlite", Layer::Stores),

@@ -2,9 +2,9 @@ use herald_ports::{Request, Text};
 use jiff::Timestamp;
 use serde::Deserialize;
 
-use crate::error::ForgeError;
 use crate::forge::{Api, Repository};
 use crate::wire::{Found, read};
+use herald_wire::SourceError;
 
 /// The API version herald was written against.
 const API_VERSION: &str = "2022-11-28";
@@ -65,16 +65,16 @@ pub(crate) fn headed(request: Request) -> Request {
 pub(crate) fn published(
     what: &'static str,
     payload: &[u8],
-) -> Result<Option<(Repository, Found)>, ForgeError> {
+) -> Result<Option<(Repository, Found)>, SourceError> {
     let payload: Payload = read(what, payload)?;
     Ok((payload.action == "published").then(|| (payload.repository, payload.release.into())))
 }
 
-pub(crate) fn found(what: &'static str, body: &[u8]) -> Result<Found, ForgeError> {
+pub(crate) fn found(what: &'static str, body: &[u8]) -> Result<Found, SourceError> {
     read::<Release>(what, body).map(Found::from)
 }
 
-pub(crate) fn all_found(what: &'static str, body: &[u8]) -> Result<Vec<Found>, ForgeError> {
+pub(crate) fn all_found(what: &'static str, body: &[u8]) -> Result<Vec<Found>, SourceError> {
     let releases: Vec<Release> = read(what, body)?;
     Ok(releases.into_iter().map(Found::from).collect())
 }

@@ -1,6 +1,6 @@
 [package]
 name = "herald-sources-forge"
-description = "Forge releases as herald events: GitHub's release event and releases API"
+description = "Forge releases as herald events: GitHub's, GitLab's and Forgejo's release events and releases APIs"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -12,6 +12,7 @@ publish.workspace = true
 [dependencies]
 herald-core.workspace = true
 herald-ports.workspace = true
+herald-wire.workspace = true
 jiff.workspace = true
 schemars.workspace = true
 serde.workspace = true

@@ -1,10 +1,11 @@
 use herald_config::Config;
-use herald_core::{Event, SourceName, fresh};
+use herald_core::{Cursor, Event, Polled, SourceName, fresh};
 use herald_ports::{Clock, Http, Signer, Store, Written};
 use herald_sources_forge::Forge;
+use herald_sources_registry::Registry;
 
 use crate::announce::{Announced, Outcome, Ports, Stop, announce};
-use crate::prepare::{Connected, PreparedSource};
+use crate::prepare::{Asked, Connected, PreparedSource};
 
 /// What polling one source did.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -71,6 +72,47 @@ fn unreadable(error: impl std::fmt::Display) -> Stop {
     Stop::Source(error.to_string())
 }
 
+/// What `asked` answers since `cursor`, or nothing where it says nothing
+/// changed.
+async fn polled<H: Http>(
+    asked: &Asked,
+    http: &H,
+    cursor: Option<&Cursor>,
+) -> Result<Option<Polled>, Stop> {
+    match asked {
+        Asked::Forge { origin, token } => {
+            let token = token.as_ref();
+            let answer = http
+                .send(origin.releases_request(cursor, token))
+                .await
+                .map_err(unreachable)?;
+            if Forge::unchanged(&answer) {
+                return Ok(None);
+            }
+            let described = http
+                .send(origin.repository_request(token))
+                .await
+                .map_err(unreachable)?;
+            let forge = origin.forge();
+            let repository = forge.repository(&described).map_err(unreadable)?;
+            forge
+                .releases(&repository, &answer)
+                .map(Some)
+                .map_err(unreadable)
+        }
+        Asked::Registry { package, token } => {
+            let answer = http
+                .send(package.versions_request(cursor, token.as_ref()))
+                .await
+                .map_err(unreachable)?;
+            if Registry::unchanged(&answer) {
+                return Ok(None);
+            }
+            package.versions(&answer).map(Some).map_err(unreadable)
+        }
+    }
+}
+
 async fn sweep<S: Store, C: Clock, G: Signer, H: Http>(
     config: &Config,
     connected: &Connected<H>,
@@ -80,21 +122,9 @@ async fn sweep<S: Store, C: Clock, G: Signer, H: Http>(
 ) -> Result<Sweep, Stop> {
     let record = ports.store.cursor(&source.name).await.map_err(stored)?;
     let cursor = record.as_ref().map(|record| &record.value);
-    let token = source.token.as_ref();
-    let answer = http
-        .send(source.origin.releases_request(cursor, token))
-        .await
-        .map_err(unreachable)?;
-    if Forge::unchanged(&answer) {
+    let Some(releases) = polled(&source.asked, http, cursor).await? else {
         return Ok(Sweep::Unchanged);
-    }
-    let described = http
-        .send(source.origin.repository_request(token))
-        .await
-        .map_err(unreachable)?;
-    let forge = source.origin.forge();
-    let repository = forge.repository(&described).map_err(unreadable)?;
-    let releases = forge.releases(&repository, &answer).map_err(unreadable)?;
+    };
     let found = releases.events.len();
     let mut announced = Vec::new();
     let mut settled = true;

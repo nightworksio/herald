@@ -6,6 +6,7 @@ use herald_core::{DestinationName, RouteId, SourceName, hex};
 use herald_dest_discord::{Credential, Discord};
 use herald_ports::{Algorithm, CryptoError, Http, Secret, SecretError, Secrets, Signer};
 use herald_sources_forge::{Origin, Token};
+use herald_sources_registry::Package;
 use herald_store_markers::{MarkedRoute, MarkersStore};
 
 use crate::reached::{Posts, Reached};
@@ -72,12 +73,35 @@ pub(crate) struct PreparedRoute {
     pub(crate) derived: bool,
 }
 
-/// A source ready to poll, with its token resolved.
+/// What a source is asked, with its token resolved.
+#[derive(Debug, Clone)]
+pub(crate) enum Asked {
+    /// A repository's releases on a forge.
+    Forge {
+        origin: Origin,
+        token: Option<Token>,
+    },
+    /// A package's versions on a registry.
+    Registry {
+        package: Package,
+        token: Option<Secret>,
+    },
+}
+
+impl Asked {
+    fn api(&self) -> &str {
+        match self {
+            Self::Forge { origin, .. } => origin.api(),
+            Self::Registry { package, .. } => package.api(),
+        }
+    }
+}
+
+/// A source ready to poll.
 #[derive(Debug, Clone)]
 pub(crate) struct PreparedSource {
     pub(crate) name: SourceName,
-    pub(crate) origin: Origin,
-    pub(crate) token: Option<Token>,
+    pub(crate) asked: Asked,
     pub(crate) backfill: usize,
 }
 
@@ -153,7 +177,7 @@ impl Prepared {
         }
         let mut sources = Vec::new();
         for source in self.sources {
-            let reaching = reach(source.origin.api())?;
+            let reaching = reach(source.asked.api())?;
             sources.push((source, reaching));
         }
         Ok(Connected { routes, sources })
@@ -237,16 +261,34 @@ pub async fn prepare<S: Secrets, G: Signer>(
     }
     let mut sources = Vec::new();
     for (name, source) in &config.sources {
-        let Source::Forge(forge, options) = source;
-        let token = match &options.token {
-            Some(token) => Some(Token::Named(secrets.secret(&token.secret).await?)),
+        let named = match source {
+            Source::Forge(_, options) => options.token.as_ref(),
+            Source::Registry(_, options) => options.token.as_ref(),
+        };
+        let token = match named {
+            Some(named) => Some(secrets.secret(&named.secret).await?),
             None => None,
+        };
+        let (asked, backfill) = match source {
+            Source::Forge(forge, options) => (
+                Asked::Forge {
+                    origin: Origin::new(*forge, options),
+                    token: token.map(Token::Named),
+                },
+                options.backfill,
+            ),
+            Source::Registry(registry, options) => (
+                Asked::Registry {
+                    package: Package::new(*registry, options),
+                    token,
+                },
+                options.backfill,
+            ),
         };
         sources.push(PreparedSource {
             name: name.clone(),
-            origin: Origin::new(*forge, options),
-            token,
-            backfill: options.backfill,
+            asked,
+            backfill,
         });
     }
     Ok(Prepared { routes, sources })

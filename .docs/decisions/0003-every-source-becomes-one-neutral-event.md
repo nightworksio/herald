@@ -45,9 +45,12 @@ GitHub release should render a Forgejo release unchanged.
      Forgejo's `published`, and GitLab's `create`. A draft never announces,
      nor does a release GitLab's API calls upcoming.
    - **`herald-sources-registry`** parses Packagist's `p2` metadata, crates.io's
-     versions API, the npm registry's packument, and Docker Hub's tags API. A
-     Docker Hub tag is announced when it matches the route's tag pattern, so
-     moving tags such as `latest` stay quiet.
+     versions API, the npm registry's packument, and Docker Hub's tags API.
+     A poll reads a package's 30 newest versions. A yanked crate and an
+     unpublished npm version are not versions. A route's `versions` pattern,
+     such as `"*.*.*"`, takes only the versions that match it, so a Docker Hub
+     tag that moves, such as `latest`, stays quiet; doctor notes a route that
+     takes Docker Hub tags without one.
    - **`herald-sources-feed`** parses RSS 2.0 and Atom 1.0. An entry's HTML is
      sanitised and converted to Markdown.
    - **`herald-sources-app`** parses herald's own event JSON, published as a

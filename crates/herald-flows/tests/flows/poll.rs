@@ -4,6 +4,7 @@ use herald_config::{Config, Source};
 use herald_core::{Cursor, Identity, SourceName};
 use herald_flows::{Fresh, Outcome, Ports, PrepareError, Remembered, Stop, Sweep, poll, prepare};
 use herald_ports::Store as _;
+use herald_sources_registry::{Registry, RegistryOptions};
 use herald_testing::{FakeClock, FakeSigner, FakeStore};
 
 use crate::harness::*;
@@ -15,6 +16,7 @@ const REPOSITORY: (&str, u16, &str) = (
     r#"{"id":1,"name":"php-mutation-gate"}"#,
 );
 const ETAG: (&str, &str) = ("etag", "W/\"2\"");
+const VERSIONS: &str = "/crates/gate/versions?per_page=30&sort=date";
 
 fn releases(versions: &[&str]) -> String {
     let releases: Vec<serde_json::Value> = versions
@@ -276,4 +278,49 @@ fn a_source_token_is_resolved_with_the_rest_of_the_config() {
     ));
     let tokened = secrets().with("GITHUB_TOKEN", "github-token");
     assert!(pollster::block_on(prepare(&config, &tokened, &FakeSigner)).is_ok());
+}
+
+#[test]
+fn a_registry_is_polled_as_a_forge_is_with_one_request() {
+    let store = healthy();
+    let mut config = config("");
+    config.sources.insert(
+        SourceName::new("gate"),
+        Source::Registry(
+            Registry::CratesIo,
+            RegistryOptions {
+                package: "gate".to_owned(),
+                backfill: 1,
+                ..RegistryOptions::default()
+            },
+        ),
+    );
+    let versions = serde_json::json!({ "versions": [
+        { "num": "0.2.0", "created_at": "2026-10-31T12:00:00Z", "yanked": false },
+        { "num": "0.1.0", "created_at": "2026-10-30T12:00:00Z", "yanked": false },
+    ]})
+    .to_string();
+    let mut answers = vec![(VERSIONS, 200, versions.as_str())];
+    answers.extend(announced());
+    let Sweep::Polled {
+        first,
+        found,
+        announced,
+        cursor: remembered,
+    } = swept(&config, &store, &Script::answering(&answers))
+    else {
+        panic!("the registry was not polled");
+    };
+    assert_eq!((first, found, remembered), (true, 2, Remembered::Advanced));
+    assert_eq!(announced.len(), 1);
+    assert_eq!(announced[0].event.version(), Some("0.2.0"));
+    let unchanged = Script::answering(&[(VERSIONS, 304, "")]);
+    assert_eq!(swept(&config, &store, &unchanged), Sweep::Unchanged);
+    let refused = Script::answering(&[(VERSIONS, 404, "{}")]);
+    assert_eq!(
+        swept(&config, &store, &refused),
+        Sweep::Stopped(Stop::Source(
+            "crates.io's versions was answered with 404".to_owned()
+        ))
+    );
 }

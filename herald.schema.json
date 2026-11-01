@@ -333,6 +333,13 @@
               "type": "null"
             }
           ]
+        },
+        "versions": {
+          "description": "The versions it takes, as a pattern in which `*` stands for any run\nof characters and `?` for any one, such as `\"*.*.*\"`, which leaves\nout a Docker Hub tag such as `latest`; every version where absent.",
+          "type": [
+            "string",
+            "null"
+          ]
         }
       },
       "additionalProperties": false,
@@ -519,6 +526,182 @@
           "required": [
             "kind",
             "repository"
+          ]
+        },
+        {
+          "description": "A package's versions on Packagist.",
+          "type": "object",
+          "properties": {
+            "api": {
+              "description": "The registry's base URL, for a mirror or a private registry that\nanswers as the public one does; the public registry's where absent.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "backfill": {
+              "description": "How many of the newest versions the first poll announces; none where\nabsent (ADR-0003).",
+              "type": "integer",
+              "format": "uint",
+              "default": 0,
+              "minimum": 0
+            },
+            "kind": {
+              "type": "string",
+              "const": "packagist"
+            },
+            "package": {
+              "description": "The package, as the registry names it: `vendor/name` on Packagist,\na crate's name, an npm package's name such as `@scope/name`, or a\nDocker Hub repository such as `library/caddy`, where an official\nimage may leave out `library/`.",
+              "type": "string"
+            },
+            "token": {
+              "description": "A token for a private npm package, sent as a bearer token; the other\nregistries take none.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/SecretRef"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "package"
+          ]
+        },
+        {
+          "description": "A crate's versions on crates.io.",
+          "type": "object",
+          "properties": {
+            "api": {
+              "description": "The registry's base URL, for a mirror or a private registry that\nanswers as the public one does; the public registry's where absent.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "backfill": {
+              "description": "How many of the newest versions the first poll announces; none where\nabsent (ADR-0003).",
+              "type": "integer",
+              "format": "uint",
+              "default": 0,
+              "minimum": 0
+            },
+            "kind": {
+              "type": "string",
+              "const": "crates-io"
+            },
+            "package": {
+              "description": "The package, as the registry names it: `vendor/name` on Packagist,\na crate's name, an npm package's name such as `@scope/name`, or a\nDocker Hub repository such as `library/caddy`, where an official\nimage may leave out `library/`.",
+              "type": "string"
+            },
+            "token": {
+              "description": "A token for a private npm package, sent as a bearer token; the other\nregistries take none.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/SecretRef"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "package"
+          ]
+        },
+        {
+          "description": "A package's versions on the npm registry.",
+          "type": "object",
+          "properties": {
+            "api": {
+              "description": "The registry's base URL, for a mirror or a private registry that\nanswers as the public one does; the public registry's where absent.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "backfill": {
+              "description": "How many of the newest versions the first poll announces; none where\nabsent (ADR-0003).",
+              "type": "integer",
+              "format": "uint",
+              "default": 0,
+              "minimum": 0
+            },
+            "kind": {
+              "type": "string",
+              "const": "npm"
+            },
+            "package": {
+              "description": "The package, as the registry names it: `vendor/name` on Packagist,\na crate's name, an npm package's name such as `@scope/name`, or a\nDocker Hub repository such as `library/caddy`, where an official\nimage may leave out `library/`.",
+              "type": "string"
+            },
+            "token": {
+              "description": "A token for a private npm package, sent as a bearer token; the other\nregistries take none.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/SecretRef"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "package"
+          ]
+        },
+        {
+          "description": "A repository's tags on Docker Hub.",
+          "type": "object",
+          "properties": {
+            "api": {
+              "description": "The registry's base URL, for a mirror or a private registry that\nanswers as the public one does; the public registry's where absent.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "backfill": {
+              "description": "How many of the newest versions the first poll announces; none where\nabsent (ADR-0003).",
+              "type": "integer",
+              "format": "uint",
+              "default": 0,
+              "minimum": 0
+            },
+            "kind": {
+              "type": "string",
+              "const": "docker-hub"
+            },
+            "package": {
+              "description": "The package, as the registry names it: `vendor/name` on Packagist,\na crate's name, an npm package's name such as `@scope/name`, or a\nDocker Hub repository such as `library/caddy`, where an official\nimage may leave out `library/`.",
+              "type": "string"
+            },
+            "token": {
+              "description": "A token for a private npm package, sent as a bearer token; the other\nregistries take none.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/SecretRef"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "package"
           ]
         }
       ]

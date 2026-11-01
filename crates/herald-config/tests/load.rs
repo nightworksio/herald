@@ -142,7 +142,7 @@ body = "{{ event.body }}"
                 "herald.toml:2:1 unknown: herald.toml has no key \"unknown\"; the keys are \"version\", \"store\", \"markers\", \"destinations\", \"sources\", \"routes\", \"templates\", \"apps\", \"schedule\"",
                 "herald.toml:4:8 store.kind: there is no kind \"nowhere\"; the kinds are \"sqlite\", \"postgres\", \"d1\", \"dynamodb\", \"deno-kv\", \"markers\", \"git-branch\", \"actions-cache\", \"repo-variables\"",
                 "herald.toml:5:1 destinations.d: a Discord destination needs a token or a webhook; give one",
-                "herald.toml:8:8 sources.s.kind: there is no kind \"bitbucket\"; the kinds are \"github\", \"gitlab\", \"forgejo\"",
+                "herald.toml:8:8 sources.s.kind: there is no kind \"bitbucket\"; the kinds are \"github\", \"gitlab\", \"forgejo\", \"packagist\", \"crates-io\", \"npm\", \"docker-hub\"",
             ]
             .join("\n")
         );
@@ -218,12 +218,63 @@ body = "{{ event.body }}"
     #[test]
     fn every_source_kind_loads_as_itself() {
         for kind in Source::KINDS {
-            let text = EXAMPLE.replace("kind = \"github\"", &format!("kind = \"{kind}\""));
+            let forge = ["github", "gitlab", "forgejo"].contains(&kind);
+            let mut text = EXAMPLE.replace("kind = \"github\"", &format!("kind = \"{kind}\""));
+            if !forge {
+                text = text
+                    .replace("repository = ", "package = ")
+                    .replace("kinds = [\"release\"]", "kinds = [\"package-version\"]");
+            }
             let config = load("herald.toml", &text, &|_| Err(String::new())).unwrap();
             let source = config.sources.values().next().unwrap();
             assert_eq!(source.kind(), kind);
-            assert_eq!(source.kinds(), [Kind::Release]);
+            let made = if forge {
+                Kind::Release
+            } else {
+                Kind::PackageVersion
+            };
+            assert_eq!(source.kinds(), [made]);
         }
+    }
+
+    #[test]
+    fn a_route_s_versions_pattern_is_read_and_refused_where_its_kinds_carry_none() {
+        let text = EXAMPLE.replace(
+            "kinds = [\"release\"]",
+            "kinds = [\"release\"]\nversions = \"v*.*.*\"",
+        );
+        let config = load("herald.toml", &text, &nothing).unwrap();
+        let versions = config.routes[0].route.filter.versions.as_ref().unwrap();
+        assert_eq!(versions.as_str(), "v*.*.*");
+        let feeds = text.replace(
+            "kinds = [\"release\"]",
+            "kinds = [\"release\", \"feed-entry\"]",
+        );
+        let refused = errors(&feeds);
+        assert!(
+            refused.starts_with("herald.toml:19:12 routes[0].versions: feed entries and app messages carry no version"),
+            "{refused}"
+        );
+    }
+
+    #[test]
+    fn only_npm_takes_a_token_among_the_registries() {
+        let registry = |kind: &str| {
+            EXAMPLE
+                .replace("kind = \"github\"", &format!("kind = \"{kind}\""))
+                .replace(
+                    "repository = \"nightworksio/php-mutation-gate\"",
+                    "package = \"nightworksio/php-mutation-gate\"\ntoken = { secret = \"REGISTRY_TOKEN\" }",
+                )
+                .replace("kinds = [\"release\"]", "kinds = [\"package-version\"]")
+        };
+        let config = load("herald.toml", &registry("npm"), &|_| Err(String::new())).unwrap();
+        assert!(config.secrets().contains("REGISTRY_TOKEN"));
+        let refused = errors(&registry("crates-io"));
+        assert!(
+            refused.starts_with("herald.toml:11:1 sources.php-mutation-gate.token: the registry \"crates-io\" takes no token; remove token\n"),
+            "{refused}"
+        );
     }
 
     #[test]

@@ -54,6 +54,15 @@ enum SourceSchema {
     GitLab(herald_sources_forge::SourceOptions),
     /// A Forgejo or Gitea repository's releases.
     Forgejo(herald_sources_forge::SourceOptions),
+    /// A package's versions on Packagist.
+    Packagist(herald_sources_registry::RegistryOptions),
+    /// A crate's versions on crates.io.
+    #[serde(rename = "crates-io")]
+    CratesIo(herald_sources_registry::RegistryOptions),
+    /// A package's versions on the npm registry.
+    Npm(herald_sources_registry::RegistryOptions),
+    /// A repository's tags on Docker Hub.
+    DockerHub(herald_sources_registry::RegistryOptions),
 }
 
 /// A route: what it takes, where it announces, and its destination's own

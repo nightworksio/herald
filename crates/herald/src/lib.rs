@@ -406,9 +406,12 @@ async fn announcing_from(
         .sources
         .iter()
         .filter_map(|(name, source)| match source {
-            Source::Forge(kind, options) => (*kind == forge
-                && options.repository.eq_ignore_ascii_case(repository))
-            .then_some((name, options)),
+            Source::Forge(kind, options)
+                if *kind == forge && options.repository.eq_ignore_ascii_case(repository) =>
+            {
+                Some((name, options))
+            }
+            _ => None,
         })
         .collect();
     let Some((_, named_options)) = named.first() else {
