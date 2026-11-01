@@ -16,6 +16,8 @@ mod harness;
 #[cfg(test)]
 mod housekeep;
 #[cfg(test)]
+mod inbound;
+#[cfg(test)]
 mod marked;
 #[cfg(test)]
 mod poll;

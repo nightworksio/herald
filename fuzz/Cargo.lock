@@ -201,6 +201,7 @@ dependencies = [
  "herald-sources-feed",
  "herald-sources-forge",
  "herald-sources-registry",
+ "jiff",
  "libfuzzer-sys",
 ]
 

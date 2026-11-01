@@ -15,6 +15,7 @@ herald-ports = { path = "../crates/herald-ports" }
 herald-sources-feed = { path = "../crates/herald-sources-feed" }
 herald-sources-forge = { path = "../crates/herald-sources-forge" }
 herald-sources-registry = { path = "../crates/herald-sources-registry" }
+jiff = { version = "0.2", default-features = false, features = ["std"] }
 libfuzzer-sys = "0.4"
 
 [workspace]
@@ -58,6 +59,13 @@ bench = false
 [[bin]]
 name = "config"
 path = "fuzz_targets/config.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "inbound"
+path = "fuzz_targets/inbound.rs"
 test = false
 doc = false
 bench = false

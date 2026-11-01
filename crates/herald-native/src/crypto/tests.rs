@@ -112,3 +112,28 @@ fn a_secret_that_is_not_a_key_for_the_algorithm_is_named() {
         );
     }
 }
+
+#[test]
+fn githubs_documented_delivery_verifies_and_a_changed_body_does_not() {
+    let headers = [(
+        "X-Hub-Signature-256",
+        "sha256=757107ea0eb2509fc211221cce984b8a37570b6d7586c22c46f4379c8b043e17",
+    )];
+    let now = jiff::Timestamp::UNIX_EPOCH;
+    let secret = b"It's a Secret to Everybody";
+    for (body, holds) in [
+        (b"Hello, World!".as_slice(), true),
+        (b"Hello, World?", false),
+    ] {
+        let claim = herald_core::claim(herald_core::Scheme::GitHub, &headers, body, now).unwrap();
+        assert_eq!(
+            verify(
+                Algorithm::HmacSha256,
+                secret,
+                &claim.message,
+                &claim.signature
+            ),
+            holds
+        );
+    }
+}
