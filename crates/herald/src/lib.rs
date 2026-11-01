@@ -88,7 +88,27 @@ enum Command {
     #[command(flatten)]
     Serve(Serve),
     /// Check the config, and name what it asks for that herald cannot serve.
-    Doctor,
+    Doctor {
+        /// The layer to check the config for.
+        #[arg(long, value_enum, default_value_t = Layer::Actions)]
+        layer: Layer,
+    },
+}
+
+/// A layer of support (ADR-0002).
+#[derive(Debug, Clone, Copy, ValueEnum)]
+enum Layer {
+    /// The CLI, on GitHub Actions or anywhere else.
+    Actions,
+}
+
+impl Layer {
+    /// The store kinds it keeps records in.
+    fn stores(self) -> &'static [&'static str] {
+        match self {
+            Self::Actions => &STORES,
+        }
+    }
 }
 
 /// The commands that serve a config, each warning first of what it cannot.
@@ -141,11 +161,13 @@ pub async fn run(
             return MISTAKEN;
         }
     };
-    let findings = doctor(&config, &STORES);
-    let Command::Serve(serve) = cli.command else {
-        return checked(&cli.config, &findings, out);
+    let serve = match cli.command {
+        Command::Doctor { layer } => {
+            return checked(&cli.config, &doctor(&config, layer.stores()), out);
+        }
+        Command::Serve(serve) => serve,
     };
-    warned(&findings.gaps, vars, out);
+    warned(&doctor(&config, Layer::Actions.stores()).gaps, vars, out);
     let ran = match serve {
         Serve::Announce { from: From::Github } => github(&config, vars, connect, out).await,
         Serve::Poll => polling(&config, vars, connect, out).await,

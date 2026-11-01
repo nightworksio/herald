@@ -367,7 +367,7 @@ fn a_destination_that_cannot_be_reached_or_a_run_without_ids_still_answers() {
 #[test]
 fn doctor_names_what_the_config_leaves_to_chance() {
     let world = World::default();
-    let derived = run(&setup(CONFIG), &world, &["doctor"]);
+    let derived = run(&setup(CONFIG), &world, &["doctor", "--layer", "actions"]);
     assert_eq!(derived.code, DONE);
     assert!(
         derived
