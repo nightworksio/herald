@@ -89,7 +89,7 @@ fn a_run_that_cannot_start_says_why() {
             "GITHUB_EVENT_NAME",
             None,
             CONFIG,
-            "GITHUB_EVENT_NAME is not set; this command runs in GitHub Actions",
+            "GITHUB_EVENT_NAME is not set; herald reads it from the CI run",
         ),
         (
             "GITHUB_EVENT_PATH",

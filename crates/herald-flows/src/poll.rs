@@ -1,7 +1,7 @@
 use herald_config::Config;
 use herald_core::{Event, SourceName, fresh};
 use herald_ports::{Clock, Http, Signer, Store, Written};
-use herald_sources_forge::GitHub;
+use herald_sources_forge::Forge;
 
 use crate::announce::{Announced, Outcome, Ports, Stop, announce};
 use crate::prepare::{Connected, PreparedSource};
@@ -82,18 +82,19 @@ async fn sweep<S: Store, C: Clock, G: Signer, H: Http>(
     let cursor = record.as_ref().map(|record| &record.value);
     let token = source.token.as_ref();
     let answer = http
-        .send(source.github.releases_request(cursor, token))
+        .send(source.origin.releases_request(cursor, token))
         .await
         .map_err(unreachable)?;
-    if GitHub::unchanged(&answer) {
+    if Forge::unchanged(&answer) {
         return Ok(Sweep::Unchanged);
     }
     let described = http
-        .send(source.github.repository_request(token))
+        .send(source.origin.repository_request(token))
         .await
         .map_err(unreachable)?;
-    let repository = GitHub::repository(&described).map_err(unreadable)?;
-    let releases = GitHub::releases(&repository, &answer).map_err(unreadable)?;
+    let forge = source.origin.forge();
+    let repository = forge.repository(&described).map_err(unreadable)?;
+    let releases = forge.releases(&repository, &answer).map_err(unreadable)?;
     let found = releases.events.len();
     let mut announced = Vec::new();
     let mut settled = true;

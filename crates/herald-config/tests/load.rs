@@ -5,6 +5,7 @@
 mod load {
     use herald_config::{Destination, RouteOptions, Source, Store, load, schema};
     use herald_core::{Kind, Pinning, Prereleases};
+    use herald_sources_forge::Forge;
 
     const EXAMPLE: &str = r#"#:schema https://raw.githubusercontent.com/nightworksio/herald/main/herald.schema.json
 version = 1
@@ -58,7 +59,7 @@ body = "{{ event.body }}"
         ));
         assert!(matches!(
             config.sources.values().next(),
-            Some(Source::GitHub(options)) if options.repository == "nightworksio/php-mutation-gate"
+            Some(Source::Forge(Forge::GitHub, options)) if options.repository == "nightworksio/php-mutation-gate"
         ));
         let route = &config.routes[0];
         assert_eq!(route.route.id.as_str(), "php-mutation-gate-releases");
@@ -133,7 +134,7 @@ body = "{{ event.body }}"
 
     #[test]
     fn every_mistake_is_reported_in_one_pass_in_file_order() {
-        let text = "version = 2\nunknown = 1\n[store]\nkind = \"nowhere\"\n[destinations.d]\nkind = \"discord\"\n[sources.s]\nkind = \"gitlab\"\n";
+        let text = "version = 2\nunknown = 1\n[store]\nkind = \"nowhere\"\n[destinations.d]\nkind = \"discord\"\n[sources.s]\nkind = \"bitbucket\"\n";
         assert_eq!(
             errors(text),
             [
@@ -141,7 +142,7 @@ body = "{{ event.body }}"
                 "herald.toml:2:1 unknown: herald.toml has no key \"unknown\"; the keys are \"version\", \"store\", \"markers\", \"destinations\", \"sources\", \"routes\", \"templates\", \"apps\", \"schedule\"",
                 "herald.toml:4:8 store.kind: there is no kind \"nowhere\"; the kinds are \"sqlite\", \"postgres\", \"d1\", \"dynamodb\", \"deno-kv\", \"markers\", \"git-branch\", \"actions-cache\", \"repo-variables\"",
                 "herald.toml:5:1 destinations.d: a Discord destination needs a token or a webhook; give one",
-                "herald.toml:8:8 sources.s.kind: there is no kind \"gitlab\"; the kinds are \"github\"",
+                "herald.toml:8:8 sources.s.kind: there is no kind \"bitbucket\"; the kinds are \"github\", \"gitlab\", \"forgejo\"",
             ]
             .join("\n")
         );
@@ -211,6 +212,17 @@ body = "{{ event.body }}"
             );
             let config = load("herald.toml", &text, &|_| Err(String::new())).unwrap();
             assert_eq!(config.store.kind(), kind);
+        }
+    }
+
+    #[test]
+    fn every_source_kind_loads_as_itself() {
+        for kind in Source::KINDS {
+            let text = EXAMPLE.replace("kind = \"github\"", &format!("kind = \"{kind}\""));
+            let config = load("herald.toml", &text, &|_| Err(String::new())).unwrap();
+            let source = config.sources.values().next().unwrap();
+            assert_eq!(source.kind(), kind);
+            assert_eq!(source.kinds(), [Kind::Release]);
         }
     }
 

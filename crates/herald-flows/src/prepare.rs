@@ -5,7 +5,7 @@ use herald_config::{Config, Destination, RouteConfig, RouteOptions, Source};
 use herald_core::{DestinationName, RouteId, SourceName, hex};
 use herald_dest_discord::{Credential, Discord};
 use herald_ports::{Algorithm, CryptoError, Http, Secret, SecretError, Secrets, Signer};
-use herald_sources_forge::GitHub;
+use herald_sources_forge::{Origin, Token};
 use herald_store_markers::{MarkedRoute, MarkersStore};
 
 use crate::reached::{Posts, Reached};
@@ -76,8 +76,8 @@ pub(crate) struct PreparedRoute {
 #[derive(Debug, Clone)]
 pub(crate) struct PreparedSource {
     pub(crate) name: SourceName,
-    pub(crate) github: GitHub,
-    pub(crate) token: Option<Secret>,
+    pub(crate) origin: Origin,
+    pub(crate) token: Option<Token>,
     pub(crate) backfill: usize,
 }
 
@@ -153,7 +153,7 @@ impl Prepared {
         }
         let mut sources = Vec::new();
         for source in self.sources {
-            let reaching = reach(source.github.api())?;
+            let reaching = reach(source.origin.api())?;
             sources.push((source, reaching));
         }
         Ok(Connected { routes, sources })
@@ -237,14 +237,14 @@ pub async fn prepare<S: Secrets, G: Signer>(
     }
     let mut sources = Vec::new();
     for (name, source) in &config.sources {
-        let Source::GitHub(options) = source;
+        let Source::Forge(forge, options) = source;
         let token = match &options.token {
-            Some(token) => Some(secrets.secret(&token.secret).await?),
+            Some(token) => Some(Token::Named(secrets.secret(&token.secret).await?)),
             None => None,
         };
         sources.push(PreparedSource {
             name: name.clone(),
-            github: GitHub::new(options),
+            origin: Origin::new(*forge, options),
             token,
             backfill: options.backfill,
         });

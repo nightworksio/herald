@@ -2,6 +2,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::ops::Range;
 
 use herald_core::{DestinationName, RouteId, SourceName, TemplateName};
+use herald_sources_forge::Forge;
 use serde::de::DeserializeOwned;
 use toml::Spanned;
 use toml::de::{DeTable, DeValue, ValueDeserializer};
@@ -28,7 +29,6 @@ const SECTIONS: [&str; 9] = [
     "schedule",
 ];
 const DESTINATION_KINDS: [&str; 1] = ["discord"];
-const SOURCE_KINDS: [&str; 1] = ["github"];
 /// The length of a SHA-256 in hex.
 const HASH_DIGITS: usize = 64;
 
@@ -322,11 +322,16 @@ impl Loader<'_> {
         let mut sources = BTreeMap::new();
         for (name, value) in self.named(value, "sources") {
             let path = format!("sources.{name}");
-            let Some((_, rest)) = self.kinded(value, &path, &SOURCE_KINDS) else {
+            let Some((kind, rest)) = self.kinded(value, &path, &Source::KINDS) else {
                 continue;
             };
+            let forge = match kind.as_str() {
+                "gitlab" => Forge::GitLab,
+                "forgejo" => Forge::Forgejo,
+                _ => Forge::GitHub,
+            };
             if let Some(options) = self.typed::<herald_sources_forge::SourceOptions>(rest, &path) {
-                sources.insert(SourceName::new(name), Source::GitHub(options));
+                sources.insert(SourceName::new(name), Source::Forge(forge, options));
             }
         }
         sources

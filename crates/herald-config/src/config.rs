@@ -1,6 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use herald_core::{DestinationName, Kind, Route, RouteId, SecretRef, SourceName, Templates};
+use herald_sources_forge::Forge;
 use jiff::SignedDuration;
 
 /// A config, read, resolved and with its templates compiled.
@@ -34,7 +35,7 @@ impl Config {
             [&options.token, &options.webhook]
         });
         let sources = self.sources.values().map(|source| {
-            let Source::GitHub(options) = source;
+            let Source::Forge(_, options) = source;
             &options.token
         });
         let store = match &self.store {
@@ -116,16 +117,27 @@ pub enum Destination {
 /// A source and its options, by its kind.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Source {
-    /// A GitHub repository's releases.
-    GitHub(herald_sources_forge::SourceOptions),
+    /// A repository's releases on a forge.
+    Forge(Forge, herald_sources_forge::SourceOptions),
 }
 
 impl Source {
+    /// The kind's name, as `[sources.<name>] kind` writes it.
+    #[must_use]
+    pub fn kind(&self) -> &'static str {
+        match self {
+            Self::Forge(forge, _) => forge.kind(),
+        }
+    }
+
+    /// Every kind, as the config spells it.
+    pub const KINDS: [&'static str; 3] = ["github", "gitlab", "forgejo"];
+
     /// The kinds of event the source produces.
     #[must_use]
     pub fn kinds(&self) -> &'static [Kind] {
         match self {
-            Self::GitHub(_) => &[Kind::Release],
+            Self::Forge(..) => &[Kind::Release],
         }
     }
 }

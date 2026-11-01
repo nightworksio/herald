@@ -6,6 +6,7 @@
 mod announce;
 mod commands;
 mod doctor;
+mod forges;
 mod housekeep;
 mod poll;
 mod stores;

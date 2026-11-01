@@ -1,15 +1,19 @@
-//! herald's forge sources (ADR-0003): a release on a forge becomes an
-//! [`Event`](herald_core::Event), parsed without I/O.
+//! herald's forge sources (ADR-0003): a release on GitHub, GitLab or
+//! Forgejo becomes an [`Event`](herald_core::Event), parsed without I/O.
 //!
-//! GitHub's `release` event, as a webhook or as GitHub Actions' event file,
-//! announces on `published` only, and a draft never announces. Polling the
+//! Each forge's release event, as a webhook or as its CI's event, announces
+//! a published release only, and a draft never announces. Polling a forge's
 //! releases API is described as requests the flow sends and responses it
 //! hands back.
 
 mod error;
+mod forge;
+mod forgejo;
 mod github;
+mod gitlab;
 mod options;
+mod wire;
 
 pub use error::ForgeError;
-pub use github::{GitHub, Releases, Repository};
+pub use forge::{Forge, Origin, Releases, Repository, Token};
 pub use options::SourceOptions;

@@ -4,7 +4,9 @@
 mod github {
     use herald_core::{Cursor, Kind, Problem, prerelease_version};
     use herald_ports::{Response, Secret};
-    use herald_sources_forge::{ForgeError, GitHub, Releases, Repository, SourceOptions};
+    use herald_sources_forge::{
+        Forge, ForgeError, Origin, Releases, Repository, SourceOptions, Token,
+    };
     use proptest::prelude::*;
     use serde_json::{Value, json};
 
@@ -33,20 +35,23 @@ mod github {
     }
 
     fn neovim() -> Repository {
-        GitHub::repository(&answer(200, REPOSITORY)).unwrap()
+        Forge::GitHub.repository(&answer(200, REPOSITORY)).unwrap()
     }
 
-    fn source(api: Option<&str>) -> GitHub {
-        GitHub::new(&SourceOptions {
-            repository: "neovim/neovim".to_owned(),
-            api: api.map(ToOwned::to_owned),
-            ..SourceOptions::default()
-        })
+    fn source(api: Option<&str>) -> Origin {
+        Origin::new(
+            Forge::GitHub,
+            &SourceOptions {
+                repository: "neovim/neovim".to_owned(),
+                api: api.map(ToOwned::to_owned),
+                ..SourceOptions::default()
+            },
+        )
     }
 
     #[test]
     fn a_published_release_event_becomes_an_event() {
-        let event = GitHub::event(EVENT.as_bytes()).unwrap().unwrap();
+        let event = Forge::GitHub.event(EVENT.as_bytes()).unwrap().unwrap();
         assert_eq!(event.identity().as_str(), "github.com/212613049/v2.103.3");
         assert_eq!(event.kind(), Kind::Release);
         assert_eq!(event.project(), "cli");
@@ -64,9 +69,9 @@ mod github {
     #[test]
     fn only_a_published_release_that_is_not_a_draft_announces() {
         let created = edited(|payload| payload["action"] = json!("created"));
-        assert_eq!(GitHub::event(&created), Ok(None));
+        assert_eq!(Forge::GitHub.event(&created), Ok(None));
         let draft = edited(|payload| payload["release"]["draft"] = json!(true));
-        assert_eq!(GitHub::event(&draft), Ok(None));
+        assert_eq!(Forge::GitHub.event(&draft), Ok(None));
     }
 
     #[test]
@@ -76,7 +81,7 @@ mod github {
             payload["release"]["name"] = json!("  ");
             payload["release"]["body"] = json!(null);
         });
-        let event = GitHub::event(&candidate).unwrap().unwrap();
+        let event = Forge::GitHub.event(&candidate).unwrap().unwrap();
         assert!(event.prerelease());
         assert_eq!(event.title(), "v3.0.0-rc.1");
         assert_eq!(event.body(), "");
@@ -86,18 +91,20 @@ mod github {
     fn what_is_not_a_release_event_says_why() {
         let unpublished = edited(|payload| payload["release"]["published_at"] = json!(null));
         assert_eq!(
-            GitHub::event(&unpublished).unwrap_err().to_string(),
-            "GitHub's release event could not be read: a published release has no published_at"
+            Forge::GitHub.event(&unpublished).unwrap_err().to_string(),
+            "GitHub's release event could not be read: a published release has no publication time"
         );
         let nameless = edited(|payload| payload["repository"]["name"] = json!(""));
         assert_eq!(
-            GitHub::event(&nameless),
+            Forge::GitHub.event(&nameless),
             Err(ForgeError::Invalid {
                 what: "GitHub's release event",
                 problem: Problem::NoProject
             })
         );
-        let error = GitHub::event(b"{\"action\":\"published\"}").unwrap_err();
+        let error = Forge::GitHub
+            .event(b"{\"action\":\"published\"}")
+            .unwrap_err();
         assert!(
             error
                 .to_string()
@@ -106,11 +113,11 @@ mod github {
         );
         let huge = vec![b' '; 4_194_305];
         assert_eq!(
-            GitHub::event(&huge).unwrap_err().to_string(),
+            Forge::GitHub.event(&huge).unwrap_err().to_string(),
             "GitHub's release event is larger than the 4194304 bytes herald reads"
         );
         assert!(matches!(
-            GitHub::event(&huge[..4_194_304]),
+            Forge::GitHub.event(&huge[..4_194_304]),
             Err(ForgeError::Unreadable { .. })
         ));
     }
@@ -128,7 +135,9 @@ mod github {
             events,
             etag,
             last_modified,
-        } = GitHub::releases(&neovim(), &answer(200, RELEASES)).unwrap();
+        } = Forge::GitHub
+            .releases(&neovim(), &answer(200, RELEASES))
+            .unwrap();
         let found: Vec<(&str, bool)> = events
             .iter()
             .map(|event| (event.identity().as_str(), event.prerelease()))
@@ -162,18 +171,20 @@ mod github {
         );
         let releases: Value = serde_json::from_str(RELEASES).unwrap();
         let one = releases[1].to_string();
-        let event = GitHub::release(&neovim(), &answer(200, &one))
+        let event = Forge::GitHub
+            .release(&neovim(), &answer(200, &one))
             .unwrap()
             .unwrap();
         assert_eq!(event.identity().as_str(), "github.com/16408992/v0.12.6");
         let mut draft = releases[1].clone();
         draft["draft"] = json!(true);
         assert_eq!(
-            GitHub::release(&neovim(), &answer(200, &draft.to_string())),
+            Forge::GitHub.release(&neovim(), &answer(200, &draft.to_string())),
             Ok(None)
         );
         assert_eq!(
-            GitHub::release(&neovim(), &answer(404, "{}"))
+            Forge::GitHub
+                .release(&neovim(), &answer(404, "{}"))
                 .unwrap_err()
                 .to_string(),
             "GitHub's release was answered with 404"
@@ -182,16 +193,17 @@ mod github {
 
     #[test]
     fn a_poll_with_nothing_new_or_a_refusal_says_so() {
-        assert!(GitHub::unchanged(&answer(304, "")));
-        assert!(!GitHub::unchanged(&answer(200, RELEASES)));
+        assert!(Forge::unchanged(&answer(304, "")));
+        assert!(!Forge::unchanged(&answer(200, RELEASES)));
         assert_eq!(
-            GitHub::releases(&neovim(), &answer(403, "{}"))
+            Forge::GitHub
+                .releases(&neovim(), &answer(403, "{}"))
                 .unwrap_err()
                 .to_string(),
             "GitHub's releases was answered with 403"
         );
         assert_eq!(
-            GitHub::repository(&answer(404, "{}")),
+            Forge::GitHub.repository(&answer(404, "{}")),
             Err(ForgeError::Answered {
                 what: "GitHub's repository",
                 status: 404
@@ -201,16 +213,22 @@ mod github {
         drafts[0]["draft"] = json!(true);
         drafts[1]["published_at"] = json!(null);
         let body = drafts.to_string();
-        assert!(GitHub::releases(&neovim(), &answer(200, &body)).is_err());
+        assert!(
+            Forge::GitHub
+                .releases(&neovim(), &answer(200, &body))
+                .is_err()
+        );
         drafts[1]["draft"] = json!(true);
         let body = drafts.to_string();
-        let releases = GitHub::releases(&neovim(), &answer(200, &body)).unwrap();
+        let releases = Forge::GitHub
+            .releases(&neovim(), &answer(200, &body))
+            .unwrap();
         assert_eq!(releases.events.len(), 1);
     }
 
     #[test]
     fn the_requests_ask_conditionally_with_herald_s_user_agent() {
-        let token = Secret::new("GITHUB_TOKEN", "hunter2");
+        let token = Token::Run(Secret::new("GITHUB_TOKEN", "hunter2"));
         let cursor = Cursor {
             seen: Vec::new(),
             etag: Some("W/\"abc\"".to_owned()),
@@ -270,9 +288,9 @@ mod github {
     proptest! {
         #[test]
         fn any_bytes_are_an_event_nothing_or_an_error(bytes in proptest::collection::vec(any::<u8>(), 0..512)) {
-            let _ = GitHub::event(&bytes);
-            let _ = GitHub::releases(&neovim(), &Response { status: 200, headers: Vec::new(), body: bytes.clone() });
-            let _ = GitHub::repository(&Response { status: 200, headers: Vec::new(), body: bytes });
+            let _ = Forge::GitHub.event(&bytes);
+            let _ = Forge::GitHub.releases(&neovim(), &Response { status: 200, headers: Vec::new(), body: bytes.clone() });
+            let _ = Forge::GitHub.repository(&Response { status: 200, headers: Vec::new(), body: bytes });
         }
 
         #[test]
@@ -282,7 +300,7 @@ mod github {
             id in any::<u64>(),
             flagged in any::<bool>(),
         ) {
-            let event = GitHub::event(&payload(&tag, &host, id, flagged)).unwrap().unwrap();
+            let event = Forge::GitHub.event(&payload(&tag, &host, id, flagged)).unwrap().unwrap();
             prop_assert_eq!(event.identity().as_str(), format!("{host}/{id}/{tag}"));
             prop_assert_eq!(event.prerelease(), flagged || prerelease_version(&tag));
         }

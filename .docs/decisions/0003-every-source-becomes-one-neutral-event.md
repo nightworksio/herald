@@ -41,8 +41,9 @@ GitHub release should render a Forgejo release unchanged.
      - GitLab's release hook and a GitLab CI tag pipeline;
      - Forgejo's and Gitea's `release` event and Forgejo Actions' event file.
 
-     A release event announces on `published` only, and a draft never
-     announces.
+     A release event announces a published release only: GitHub's and
+     Forgejo's `published`, and GitLab's `create`. A draft never announces,
+     nor does a release GitLab's API calls upcoming.
    - **`herald-sources-registry`** parses Packagist's `p2` metadata, crates.io's
      versions API, the npm registry's packument, and Docker Hub's tags API. A
      Docker Hub tag is announced when it matches the route's tag pattern, so
@@ -82,8 +83,10 @@ GitHub release should render a Forgejo release unchanged.
 
 5. **How each family reaches herald, by layer** (ADR-0002):
    - **Forge releases.** On Actions, `herald announce --from github` reads the
-     run's event, as do `--from gitlab` on GitLab CI and `--from forgejo` on
-     Forgejo Actions. At layer two and up, a verified webhook reaches the
+     run's event, as does `--from forgejo` on Forgejo Actions. On a GitLab CI
+     tag pipeline, `--from gitlab` asks the releases API for the pipeline's
+     tag with the job's token, and names the project from the pipeline's
+     variables. At layer two and up, a verified webhook reaches the
      endpoint (ADR-0007). At every layer, a scheduled poll of the releases
      API reaches repositories that are not the workflow's own.
    - **Registries and feeds** are polled on a schedule at every layer.

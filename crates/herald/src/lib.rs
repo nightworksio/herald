@@ -1,5 +1,6 @@
-//! herald's CLI (ADR-0009): `herald announce --from github`, `herald poll`
-//! and `herald housekeep` on GitHub Actions, and `herald doctor` anywhere.
+//! herald's CLI (ADR-0009): `herald announce --from github`, `--from gitlab`
+//! or `--from forgejo` in a forge's CI, `herald poll` and `herald housekeep`
+//! on a schedule, and `herald doctor` anywhere.
 //!
 //! [`run`] is the whole CLI, handed its arguments, its environment and the
 //! way to reach each base URL, so it runs the same under test as on a runner.
@@ -21,7 +22,7 @@ use herald_flows::{
 use herald_native::{EnvSecrets, RingSigner, SystemClock, random_secret};
 use herald_ports::{Http, HttpError, Request, Response, Secrets, Store as Keeps};
 use herald_records::Memory;
-use herald_sources_forge::{GitHub, SourceOptions};
+use herald_sources_forge::{Forge, Origin, Repository, SourceOptions, Token};
 use herald_store_actions_cache::{ActionsCache, ActionsCacheStore, StoreOptions as CacheOptions};
 use herald_store_git_branch::{GitBranch, GitBranchStore, StoreOptions as BranchOptions};
 use herald_store_repo_variables::{
@@ -118,9 +119,13 @@ enum Reading {
         /// Only this route.
         #[arg(long)]
         route: Option<String>,
-        /// A GitHub release event's file, in place of a sample event.
+        /// A release event's file, as the forge sends it, in place of a
+        /// sample event.
         #[arg(long)]
         event: Option<String>,
+        /// The forge whose release event the file is.
+        #[arg(long, value_enum, default_value_t = From::Github)]
+        from: From,
     },
 }
 
@@ -167,6 +172,47 @@ enum Serve {
 enum From {
     /// The GitHub Actions run's own event.
     Github,
+    /// The GitLab CI pipeline's tag.
+    Gitlab,
+    /// The Forgejo Actions run's own event.
+    Forgejo,
+}
+
+impl From {
+    const fn forge(self) -> Forge {
+        match self {
+            Self::Github => Forge::GitHub,
+            Self::Gitlab => Forge::GitLab,
+            Self::Forgejo => Forge::Forgejo,
+        }
+    }
+}
+
+/// The variables a forge's CI names a run's repository, API and token in.
+struct Ci {
+    /// The repository's path.
+    repository: &'static str,
+    /// The base URL of the forge's API.
+    api: &'static str,
+    /// The run's own token.
+    token: &'static str,
+}
+
+impl Ci {
+    const fn of(forge: Forge) -> Self {
+        match forge {
+            Forge::GitHub | Forge::Forgejo => Self {
+                repository: "GITHUB_REPOSITORY",
+                api: "GITHUB_API_URL",
+                token: GITHUB_TOKEN,
+            },
+            Forge::GitLab => Self {
+                repository: "CI_PROJECT_PATH",
+                api: "CI_API_V4_URL",
+                token: "CI_JOB_TOKEN",
+            },
+        }
+    }
 }
 
 /// The CLI, run with `args`, in an environment of `vars`, reaching each base
@@ -206,8 +252,9 @@ pub async fn run(
         Reading::Doctor { layer } => {
             return checked(&cli.config, &doctor(&config, layer.stores()), out);
         }
-        Reading::Preview { route, event } => {
-            return previewing(&config, route.as_deref(), event.as_deref(), out, err);
+        Reading::Preview { route, event, from } => {
+            let event = event.as_deref().map(|path| (from.forge(), path));
+            return previewing(&config, route.as_deref(), event, out, err);
         }
         Reading::Serve(serve) => serve,
     };
@@ -215,15 +262,16 @@ pub async fn run(
     warned(&doctor(&config, Layer::Actions.stores()).gaps, vars, out);
     let ran = match serve {
         Serve::Announce {
-            from: From::Github,
+            from,
             release,
             dry_run,
         } => {
             let announcing = Announce {
+                forge: from.forge(),
                 release: release.as_deref(),
                 dry_run,
             };
-            github(&config, vars, connect, announcing, out).await
+            announcing_from(&config, vars, connect, announcing, out).await
         }
         Serve::Poll => polling(&config, vars, connect, out).await,
         Serve::Housekeep => housekeeping(&config, vars, connect, out).await,
@@ -330,44 +378,71 @@ fn variable<'a>(vars: &'a BTreeMap<String, String>, name: &str) -> Result<&'a st
     vars.get(name)
         .map(String::as_str)
         .filter(|value| !value.is_empty())
-        .ok_or_else(|| format!("{name} is not set; this command runs in GitHub Actions"))
+        .ok_or_else(|| format!("{name} is not set; herald reads it from the CI run"))
 }
 
 /// How an announcement is asked for.
 #[derive(Debug, Clone, Copy)]
 struct Announce<'a> {
+    /// The forge whose CI the run is in.
+    forge: Forge,
     /// The release to announce by its tag, in place of the run's event.
     release: Option<&'a str>,
     /// Whether to print the requests and send nothing.
     dry_run: bool,
 }
 
-async fn github(
+async fn announcing_from(
     config: &Config,
     vars: &BTreeMap<String, String>,
     connect: Connect<'_>,
     asked: Announce<'_>,
     out: &mut dyn Write,
 ) -> Result<u8, String> {
-    let repository = variable(vars, "GITHUB_REPOSITORY")?;
+    let forge = asked.forge;
+    let ci = Ci::of(forge);
+    let repository = variable(vars, ci.repository)?;
     let named: Vec<(&SourceName, &SourceOptions)> = config
         .sources
         .iter()
         .filter_map(|(name, source)| match source {
-            Source::GitHub(options) => options
-                .repository
-                .eq_ignore_ascii_case(repository)
-                .then_some((name, options)),
+            Source::Forge(kind, options) => (*kind == forge
+                && options.repository.eq_ignore_ascii_case(repository))
+            .then_some((name, options)),
         })
         .collect();
-    let Some((_, options)) = named.first() else {
+    let Some((_, named_options)) = named.first() else {
         return Err(format!(
-            "no source in the config names {repository}; add [sources.<name>] with kind = \"github\" and repository = \"{repository}\""
+            "no source in the config names {repository}; add [sources.<name>] with kind = \"{}\" and repository = \"{repository}\"",
+            forge.kind()
         ));
     };
-    let event = match asked.release {
-        Some(tag) => tagged(options, tag, vars, connect, out).await?,
-        None => evented(vars, out)?,
+    let options = &SourceOptions {
+        api: named_options
+            .api
+            .clone()
+            .or_else(|| vars.get(ci.api).filter(|api| !api.is_empty()).cloned()),
+        ..(*named_options).clone()
+    };
+    let tag = match forge {
+        Forge::GitLab => asked.release.or_else(|| {
+            vars.get("CI_COMMIT_TAG")
+                .map(String::as_str)
+                .filter(|tag| !tag.is_empty())
+        }),
+        Forge::GitHub | Forge::Forgejo => asked.release,
+    };
+    let event = match (forge, tag) {
+        (Forge::GitLab, None) => {
+            say(out, "The pipeline is not for a tag; nothing to announce.");
+            None
+        }
+        (Forge::GitLab, Some(tag)) => {
+            let project = project(vars)?;
+            tagged(options, forge, tag, Some(project), vars, connect, out).await?
+        }
+        (_, Some(tag)) => tagged(options, forge, tag, None, vars, connect, out).await?,
+        (_, None) => evented(forge, vars, out)?,
     };
     let Some(event) = event else {
         return Ok(DONE);
@@ -470,20 +545,20 @@ fn init(secret: Option<String>, out: &mut dyn Write, err: &mut dyn Write) -> u8 
     DONE
 }
 
-/// Each route's templates rendered against `event_file`'s release, or a
-/// sample release, as its destination would show them.
+/// Each route's templates rendered against the release of a forge's event
+/// file, or a sample release, as its destination would show them.
 fn previewing(
     config: &Config,
     route: Option<&str>,
-    event_file: Option<&str>,
+    event_file: Option<(Forge, &str)>,
     out: &mut dyn Write,
     err: &mut dyn Write,
 ) -> u8 {
     let events = match event_file {
-        Some(path) => {
+        Some((forge, path)) => {
             let read = std::fs::read(path)
                 .map_err(|error| format!("{path} could not be read: {error}"))
-                .and_then(|payload| GitHub::event(&payload).map_err(|error| error.to_string()));
+                .and_then(|payload| forge.event(&payload).map_err(|error| error.to_string()));
             match read {
                 Ok(Some(event)) => vec![event],
                 Ok(None) => {
@@ -539,7 +614,11 @@ fn previewing(
 }
 
 /// The release the run's own event publishes, if it does.
-fn evented(vars: &BTreeMap<String, String>, out: &mut dyn Write) -> Result<Option<Event>, String> {
+fn evented(
+    forge: Forge,
+    vars: &BTreeMap<String, String>,
+    out: &mut dyn Write,
+) -> Result<Option<Event>, String> {
     let event_name = variable(vars, "GITHUB_EVENT_NAME")?;
     if event_name != "release" {
         say(
@@ -551,7 +630,7 @@ fn evented(vars: &BTreeMap<String, String>, out: &mut dyn Write) -> Result<Optio
     let path = variable(vars, "GITHUB_EVENT_PATH")?;
     let payload =
         std::fs::read(path).map_err(|error| format!("{path} could not be read: {error}"))?;
-    let event = GitHub::event(&payload).map_err(|error| error.to_string())?;
+    let event = forge.event(&payload).map_err(|error| error.to_string())?;
     if event.is_none() {
         say(
             out,
@@ -561,32 +640,57 @@ fn evented(vars: &BTreeMap<String, String>, out: &mut dyn Write) -> Result<Optio
     Ok(event)
 }
 
-/// The release tagged `tag` of the repository `options` names, asked of
-/// GitHub with the source's token, or else the run's own.
+/// The GitLab CI pipeline's project, as its variables name it.
+fn project(vars: &BTreeMap<String, String>) -> Result<Repository, String> {
+    let id = variable(vars, "CI_PROJECT_ID")?;
+    Ok(Repository {
+        id: id
+            .parse()
+            .map_err(|_| format!("CI_PROJECT_ID is {id}, not a project's id"))?,
+        name: variable(vars, "CI_PROJECT_NAME")?.to_owned(),
+    })
+}
+
+/// The release tagged `tag` of the repository `options` names on `forge`,
+/// asked for with the source's token, or else the run's own; the
+/// repository asked for too where the run does not name it.
 async fn tagged(
     options: &SourceOptions,
+    forge: Forge,
     tag: &str,
+    known: Option<Repository>,
     vars: &BTreeMap<String, String>,
     connect: Connect<'_>,
     out: &mut dyn Write,
 ) -> Result<Option<Event>, String> {
     let secrets = EnvSecrets::from_vars(vars.clone());
     let token = match &options.token {
-        Some(named) => Some(
-            secrets
-                .secret(&named.secret)
-                .await
-                .map_err(|_| format!("{} is not set; the source names it", named.secret))?,
-        ),
-        None => secrets.secret(GITHUB_TOKEN).await.ok(),
+        Some(named) => {
+            Some(Token::Named(secrets.secret(&named.secret).await.map_err(
+                |_| format!("{} is not set; the source names it", named.secret),
+            )?))
+        }
+        None => secrets
+            .secret(Ci::of(forge).token)
+            .await
+            .ok()
+            .map(Token::Run),
     };
-    let github = GitHub::new(options);
-    let http = connect(github.api())?;
+    let origin = Origin::new(forge, options);
+    let http = connect(origin.api())?;
     let asked = |request| async { http.send(request).await.map_err(|error| error.to_string()) };
-    let answer = asked(github.release_request(tag, token.as_ref())).await?;
-    let described = asked(github.repository_request(token.as_ref())).await?;
-    let repository = GitHub::repository(&described).map_err(|error| error.to_string())?;
-    let event = GitHub::release(&repository, &answer).map_err(|error| error.to_string())?;
+    let answer = asked(origin.release_request(tag, token.as_ref())).await?;
+    let repository = if let Some(repository) = known {
+        repository
+    } else {
+        let described = asked(origin.repository_request(token.as_ref())).await?;
+        forge
+            .repository(&described)
+            .map_err(|error| error.to_string())?
+    };
+    let event = forge
+        .release(&repository, &answer)
+        .map_err(|error| error.to_string())?;
     if event.is_none() {
         say(
             out,
@@ -676,9 +780,13 @@ impl Served for Housekeeping<'_> {
 
 /// The name this run takes its leases under.
 fn run_name(vars: &BTreeMap<String, String>) -> String {
-    match (vars.get("GITHUB_RUN_ID"), vars.get("GITHUB_RUN_ATTEMPT")) {
-        (Some(id), Some(attempt)) => format!("github/{id}/{attempt}"),
-        _ => "local".to_owned(),
+    let pair = |first: &str, second: &str| vars.get(first).zip(vars.get(second));
+    if let Some((id, attempt)) = pair("GITHUB_RUN_ID", "GITHUB_RUN_ATTEMPT") {
+        format!("github/{id}/{attempt}")
+    } else if let Some((pipeline, job)) = pair("CI_PIPELINE_ID", "CI_JOB_ID") {
+        format!("gitlab/{pipeline}/{job}")
+    } else {
+        "local".to_owned()
     }
 }
 

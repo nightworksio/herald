@@ -49,6 +49,11 @@ enum SourceSchema {
     /// A GitHub repository's releases.
     #[serde(rename = "github")]
     GitHub(herald_sources_forge::SourceOptions),
+    /// A GitLab project's releases.
+    #[serde(rename = "gitlab")]
+    GitLab(herald_sources_forge::SourceOptions),
+    /// A Forgejo or Gitea repository's releases.
+    Forgejo(herald_sources_forge::SourceOptions),
 }
 
 /// A route: what it takes, where it announces, and its destination's own

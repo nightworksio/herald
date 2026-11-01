@@ -186,6 +186,14 @@ impl Http for World {
         {
             return Ok(state.variable(request.method, name, &body));
         }
+        for base in ["https://gitlab.com/api/v4", "https://codeberg.org/api/v1"] {
+            if let Some(path) = url.strip_prefix(base) {
+                return Ok(match state.forge.get(path) {
+                    Some((status, body)) => answer(*status, &serde_json::from_str(body).unwrap()),
+                    None => answer(404, &json!({})),
+                });
+            }
+        }
         if let Some(path) = url.strip_prefix("https://api.github.com") {
             return Ok(state.github(request.method, path, &body));
         }

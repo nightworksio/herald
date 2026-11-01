@@ -49,7 +49,7 @@ fn a_release_is_announced_once_through_the_actions_cache() {
     let unset = herald(&setup, &world, &ANNOUNCE);
     assert_eq!(
         unset.err,
-        "ACTIONS_RESULTS_URL is not set; this command runs in GitHub Actions\n"
+        "ACTIONS_RESULTS_URL is not set; herald reads it from the CI run\n"
     );
     setup.vars.insert(
         "ACTIONS_RESULTS_URL".to_owned(),

@@ -394,7 +394,7 @@
           "type": "object",
           "properties": {
             "api": {
-              "description": "The API's base URL, for a GitHub Enterprise Server; GitHub's own API\nwhere absent.",
+              "description": "The API's base URL, for a forge that is not GitHub, GitLab.com or\nCodeberg, such as `https://forge.example/api/v1`. Where absent, it is\nthe CI run's own when announcing the run's repository, and otherwise\nthe forge's public instance.",
               "type": [
                 "string",
                 "null"
@@ -412,11 +412,99 @@
               "const": "github"
             },
             "repository": {
-              "description": "The repository, as `owner/name`.",
+              "description": "The repository, as `owner/name`, or a GitLab project's full path,\nsuch as `group/subgroup/name`.",
               "type": "string"
             },
             "token": {
-              "description": "A token that raises the API's rate limit, such as the run's\n`GITHUB_TOKEN`.",
+              "description": "A token that reaches a private repository or raises the API's rate\nlimit, such as the run's `GITHUB_TOKEN`.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/SecretRef"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "repository"
+          ]
+        },
+        {
+          "description": "A GitLab project's releases.",
+          "type": "object",
+          "properties": {
+            "api": {
+              "description": "The API's base URL, for a forge that is not GitHub, GitLab.com or\nCodeberg, such as `https://forge.example/api/v1`. Where absent, it is\nthe CI run's own when announcing the run's repository, and otherwise\nthe forge's public instance.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "backfill": {
+              "description": "How many of the newest releases the first poll announces; none where\nabsent (ADR-0003).",
+              "type": "integer",
+              "format": "uint",
+              "default": 0,
+              "minimum": 0
+            },
+            "kind": {
+              "type": "string",
+              "const": "gitlab"
+            },
+            "repository": {
+              "description": "The repository, as `owner/name`, or a GitLab project's full path,\nsuch as `group/subgroup/name`.",
+              "type": "string"
+            },
+            "token": {
+              "description": "A token that reaches a private repository or raises the API's rate\nlimit, such as the run's `GITHUB_TOKEN`.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/SecretRef"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "repository"
+          ]
+        },
+        {
+          "description": "A Forgejo or Gitea repository's releases.",
+          "type": "object",
+          "properties": {
+            "api": {
+              "description": "The API's base URL, for a forge that is not GitHub, GitLab.com or\nCodeberg, such as `https://forge.example/api/v1`. Where absent, it is\nthe CI run's own when announcing the run's repository, and otherwise\nthe forge's public instance.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "backfill": {
+              "description": "How many of the newest releases the first poll announces; none where\nabsent (ADR-0003).",
+              "type": "integer",
+              "format": "uint",
+              "default": 0,
+              "minimum": 0
+            },
+            "kind": {
+              "type": "string",
+              "const": "forgejo"
+            },
+            "repository": {
+              "description": "The repository, as `owner/name`, or a GitLab project's full path,\nsuch as `group/subgroup/name`.",
+              "type": "string"
+            },
+            "token": {
+              "description": "A token that reaches a private repository or raises the API's rate\nlimit, such as the run's `GITHUB_TOKEN`.",
               "anyOf": [
                 {
                   "$ref": "#/$defs/SecretRef"

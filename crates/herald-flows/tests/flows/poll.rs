@@ -39,7 +39,7 @@ fn announced() -> [(&'static str, u16, &'static str); 6] {
 }
 
 fn backfilled(mut config: Config, backfill: usize) -> Config {
-    if let Some(Source::GitHub(options)) = config.sources.values_mut().next() {
+    if let Some(Source::Forge(_, options)) = config.sources.values_mut().next() {
         options.backfill = backfill;
     }
     config
@@ -265,7 +265,7 @@ fn a_source_that_cannot_be_read_or_reached_stops_its_poll() {
 #[test]
 fn a_source_token_is_resolved_with_the_rest_of_the_config() {
     let mut config = config("");
-    if let Some(Source::GitHub(options)) = config.sources.values_mut().next() {
+    if let Some(Source::Forge(_, options)) = config.sources.values_mut().next() {
         options.token = Some(herald_core::SecretRef {
             secret: "GITHUB_TOKEN".to_owned(),
         });
