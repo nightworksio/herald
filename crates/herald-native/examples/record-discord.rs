@@ -201,29 +201,38 @@ fn scrub(setup: &Setup, bot: String) -> Scrub {
     }
 }
 
-async fn run() -> Result<Vec<PathBuf>, String> {
+/// Every fixture recorded and scrubbed, with the path it is written to.
+async fn run() -> Result<Vec<(PathBuf, String)>, String> {
     let setup = Setup::from_env()?;
     let recorded = record(&setup).await?;
     let scrub = scrub(&setup, bot_id(&recorded)?);
-    let fixtures: Vec<(&str, String)> = recorded
-        .iter()
-        .map(|(name, recorder)| Ok((*name, recorder.fixture(&scrub)?.to_json())))
-        .collect::<Result<_, String>>()?;
     let directory =
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../herald-dest-discord/fixtures");
-    fixtures
-        .into_iter()
-        .map(|(name, json)| {
-            let path = directory.join(format!("{name}.json"));
-            fs::write(&path, json).map_err(|error| format!("{}: {error}", path.display()))?;
-            Ok(path)
+    recorded
+        .iter()
+        .map(|(name, recorder)| {
+            let json = recorder.fixture(&scrub)?.to_json();
+            Ok((directory.join(format!("{name}.json")), json))
         })
         .collect()
 }
 
-#[tokio::main(flavor = "current_thread")]
-async fn main() -> ExitCode {
-    match run().await {
+fn main() -> ExitCode {
+    let recorded = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|error| error.to_string())
+        .and_then(|runtime| runtime.block_on(run()));
+    let written = recorded.and_then(|fixtures| {
+        fixtures
+            .into_iter()
+            .map(|(path, json)| {
+                fs::write(&path, json).map_err(|error| format!("{}: {error}", path.display()))?;
+                Ok(path)
+            })
+            .collect::<Result<Vec<PathBuf>, String>>()
+    });
+    match written {
         Ok(written) => {
             for path in written {
                 println!("wrote {}", path.display());
