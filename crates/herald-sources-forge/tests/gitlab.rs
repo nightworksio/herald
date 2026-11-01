@@ -89,6 +89,13 @@ mod gitlab {
             Forge::GitLab.event(&unreleased).unwrap_err().to_string(),
             "GitLab's release event could not be read: a published release has no publication time"
         );
+        let missing = edited(|payload| {
+            payload.as_object_mut().unwrap().remove("released_at");
+        });
+        assert_eq!(
+            Forge::GitLab.event(&missing).unwrap_err().to_string(),
+            "GitLab's release event could not be read: a published release has no publication time"
+        );
         let garbled = edited(|payload| payload["released_at"] = json!("last Tuesday UTC"));
         assert!(matches!(
             Forge::GitLab.event(&garbled),
