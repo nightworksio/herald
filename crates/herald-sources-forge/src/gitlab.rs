@@ -31,7 +31,7 @@ struct Hook {
     name: Option<String>,
     description: Option<String>,
     url: String,
-    #[serde(deserialize_with = "when")]
+    #[serde(default, deserialize_with = "when")]
     released_at: Option<Timestamp>,
     project: Repository,
 }

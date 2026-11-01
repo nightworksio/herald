@@ -2,7 +2,7 @@
 import json
 import unittest
 
-from fixture_server import REFUSED, Replay
+from fixture_server import FIXTURES, REFUSED, Replay, fixture_path
 
 EXCHANGES = [
     {"method": "GET", "path": "/a", "body": None, "status": 200, "response": {"id": "1"}},
@@ -44,3 +44,11 @@ class Answer(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class Fixtures(unittest.TestCase):
+    def test_a_fixture_under_dogfood_is_read_and_nothing_else(self):
+        for fixture in sorted(FIXTURES.glob("*.json")):
+            self.assertEqual(fixture_path(str(fixture)), fixture)
+        for named in [str(FIXTURES / ".." / "workflows" / "ci.yml"), "/etc/passwd", str(FIXTURES / "absent.json"), str(FIXTURES)]:
+            self.assertIsNone(fixture_path(named), named)

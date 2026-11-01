@@ -227,6 +227,7 @@ jobs:
             cat "${RUNNER_TEMP}/fixtures.log"
             exit 1
           fi
+          tail -n 1 "${RUNNER_TEMP}/fixtures.log"
 
   # A pull request mutates what its diff touches; main and the weekly run
   # mutate the whole workspace. Any missed mutant fails its shard (ADR-0008).
