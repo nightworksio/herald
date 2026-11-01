@@ -4,7 +4,7 @@
 # one it lists; where it lists none, the one this repository first downloaded.
 set -euo pipefail
 
-tool="${1:?usage: install-tool.sh <cargo-nextest|cargo-llvm-cov|cargo-deny|cargo-audit|cargo-mutants|gitleaks>}"
+tool="${1:?usage: install-tool.sh <cargo-nextest|cargo-llvm-cov|cargo-deny|cargo-audit|cargo-mutants|cargo-fuzz|gitleaks>}"
 
 case "$tool" in
   cargo-nextest)
@@ -36,6 +36,12 @@ case "$tool" in
     url="https://github.com/sourcefrog/cargo-mutants/releases/download/v${version}/cargo-mutants-x86_64-unknown-linux-gnu.tar.gz"
     sha256="dfe6dc37d0342c891d2829b5a695aa57c2d0edecef7e7d0399a30cc6e206411e"
     member="cargo-mutants"
+    ;;
+  cargo-fuzz)
+    version="0.13.2"
+    url="https://github.com/rust-fuzz/cargo-fuzz/releases/download/${version}/cargo-fuzz-${version}-x86_64-unknown-linux-musl.tar.gz"
+    sha256="b5b704018b63e0f151c17a057ac53b5111e1db545d1b9f72fee79f08a545931c"
+    member="cargo-fuzz"
     ;;
   gitleaks)
     version="8.30.1"

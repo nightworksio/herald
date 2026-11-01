@@ -62,7 +62,14 @@ impl Layer {
 
 fn outside_allowed(layer: Layer) -> &'static [&'static str] {
     match layer {
-        Layer::Core => &["sha2"],
+        Layer::Core => &[
+            "jiff",
+            "minijinja",
+            "pulldown-cmark",
+            "serde",
+            "sha2",
+            "unicode-segmentation",
+        ],
         _ => &[],
     }
 }
