@@ -444,11 +444,15 @@ dependencies = [
 name = "herald-native"
 version = "0.0.0"
 dependencies = [
+ "base64",
  "herald-core",
  "herald-dest-discord",
  "herald-ports",
  "herald-testing",
+ "jiff",
+ "pollster",
  "reqwest",
+ "ring",
  "rustls",
  "serde_json",
  "tokio",
