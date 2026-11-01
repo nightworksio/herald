@@ -1,0 +1,124 @@
+use std::collections::BTreeMap;
+
+use herald_core::{DestinationName, Kind, Route, RouteId, SecretRef, SourceName, Templates};
+use jiff::SignedDuration;
+
+/// A config, read, resolved and with its templates compiled.
+#[derive(Debug)]
+pub struct Config {
+    /// The store the ledger and the rest are kept in (ADR-0005).
+    pub store: StoreKind,
+    /// The installation's marker key, where it is set (ADR-0011).
+    pub marker_key: Option<SecretRef>,
+    /// The destinations, by name.
+    pub destinations: BTreeMap<DestinationName, Destination>,
+    /// The sources, by name.
+    pub sources: BTreeMap<SourceName, Source>,
+    /// The routes, in the order the file gives them.
+    pub routes: Vec<RouteConfig>,
+    /// Every template, compiled: each template's title and body, and each
+    /// route's thread name.
+    pub templates: Templates,
+    /// The HTTP API's apps, by name (ADR-0007).
+    pub apps: BTreeMap<String, App>,
+    /// The cadence of polling and housekeeping.
+    pub schedule: Schedule,
+}
+
+/// Which store keeps herald's records.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StoreKind {
+    /// A SQLite file.
+    Sqlite,
+    /// A Postgres database.
+    Postgres,
+    /// Cloudflare D1.
+    D1,
+    /// An AWS DynamoDB table.
+    Dynamodb,
+    /// Deno KV.
+    DenoKv,
+    /// The destinations' own posts.
+    Markers,
+    /// A branch of the repository.
+    GitBranch,
+    /// The GitHub Actions cache.
+    ActionsCache,
+    /// The repository's variables.
+    RepoVariables,
+}
+
+impl StoreKind {
+    /// Every kind, as the config spells it.
+    pub const ALL: [(&'static str, Self); 9] = [
+        ("sqlite", Self::Sqlite),
+        ("postgres", Self::Postgres),
+        ("d1", Self::D1),
+        ("dynamodb", Self::Dynamodb),
+        ("deno-kv", Self::DenoKv),
+        ("markers", Self::Markers),
+        ("git-branch", Self::GitBranch),
+        ("actions-cache", Self::ActionsCache),
+        ("repo-variables", Self::RepoVariables),
+    ];
+}
+
+/// A destination and its options, by its kind.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Destination {
+    /// Discord.
+    Discord(herald_dest_discord::DestinationOptions),
+}
+
+/// A source and its options, by its kind.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Source {
+    /// A GitHub repository's releases.
+    GitHub(herald_sources_forge::SourceOptions),
+}
+
+impl Source {
+    /// The kinds of event the source produces.
+    #[must_use]
+    pub fn kinds(&self) -> &'static [Kind] {
+        match self {
+            Self::GitHub(_) => &[Kind::Release],
+        }
+    }
+}
+
+/// A route, and the options its destination's kind defines.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RouteConfig {
+    /// The route.
+    pub route: Route,
+    /// Its destination's own options.
+    pub options: RouteOptions,
+}
+
+/// A route's options for its destination's kind.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RouteOptions {
+    /// Discord's.
+    Discord(herald_dest_discord::RouteOptions),
+}
+
+/// An app of the HTTP API: its token's hash and what it may announce to.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct App {
+    /// The SHA-256 of its token, in lowercase hex.
+    pub token_sha256: String,
+    /// The projects it may announce.
+    pub projects: Vec<String>,
+    /// The routes it may announce to.
+    pub routes: Vec<RouteId>,
+}
+
+/// How often a driver that keeps its own schedule polls and keeps house.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct Schedule {
+    /// How often sources are polled.
+    pub poll: Option<SignedDuration>,
+    /// How often threads are kept.
+    pub housekeep: Option<SignedDuration>,
+}

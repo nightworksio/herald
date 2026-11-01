@@ -100,3 +100,115 @@ pub struct Profile {
     /// What it can do beyond posting.
     pub features: Features,
 }
+
+impl Features {
+    /// The options of `delivery` a destination with these features cannot do,
+    /// by the key a route writes each under.
+    #[must_use]
+    pub fn lacking(&self, delivery: &crate::Delivery) -> Vec<&'static str> {
+        [
+            (delivery.crosspost && !self.crosspost, "crosspost"),
+            (delivery.pin.is_some() && self.pins == Pins::None, "pin"),
+            (
+                !delivery.mentions.roles.is_empty() && self.mentions != MentionStyle::Roles,
+                "mentions.roles",
+            ),
+            (
+                delivery.mentions.subscribers && self.mentions != MentionStyle::Users,
+                "mentions.subscribers",
+            ),
+        ]
+        .into_iter()
+        .filter_map(|(lacks, key)| lacks.then_some(key))
+        .collect()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{Delivery, Mentions, Pinning, RoleId};
+
+    fn features(mentions: MentionStyle) -> Features {
+        Features {
+            threads: Threads::None,
+            crosspost: false,
+            pins: Pins::None,
+            reads_back: false,
+            edits: false,
+            mentions,
+            interactions: false,
+        }
+    }
+
+    fn asking(roles: &[&str], subscribers: bool) -> Delivery {
+        Delivery {
+            crosspost: false,
+            thread: None,
+            pin: None,
+            mentions: Mentions {
+                roles: roles.iter().map(|role| RoleId::new(*role)).collect(),
+                subscribers,
+            },
+        }
+    }
+
+    #[test]
+    fn a_delivery_asking_nothing_lacks_nothing_anywhere() {
+        for style in [MentionStyle::None, MentionStyle::Roles, MentionStyle::Users] {
+            assert_eq!(
+                features(style).lacking(&asking(&[], false)),
+                Vec::<&str>::new()
+            );
+        }
+    }
+
+    #[test]
+    fn roles_are_lacking_only_where_the_destination_mentions_no_roles() {
+        let roles = asking(&["1"], false);
+        assert_eq!(
+            features(MentionStyle::Roles).lacking(&roles),
+            Vec::<&str>::new()
+        );
+        assert_eq!(
+            features(MentionStyle::Users).lacking(&roles),
+            ["mentions.roles"]
+        );
+        assert_eq!(
+            features(MentionStyle::None).lacking(&roles),
+            ["mentions.roles"]
+        );
+    }
+
+    #[test]
+    fn subscribers_are_lacking_only_where_the_destination_mentions_no_users() {
+        let subscribers = asking(&[], true);
+        assert_eq!(
+            features(MentionStyle::Users).lacking(&subscribers),
+            Vec::<&str>::new()
+        );
+        assert_eq!(
+            features(MentionStyle::Roles).lacking(&subscribers),
+            ["mentions.subscribers"]
+        );
+    }
+
+    #[test]
+    fn crossposting_and_pinning_are_lacking_where_the_destination_cannot() {
+        let delivery = Delivery {
+            crosspost: true,
+            pin: Some(Pinning::Markers),
+            ..asking(&[], false)
+        };
+        assert_eq!(
+            features(MentionStyle::Roles).lacking(&delivery),
+            ["crosspost", "pin"]
+        );
+        let able = Features {
+            crosspost: true,
+            pins: Pins::Many,
+            ..features(MentionStyle::Roles)
+        };
+        assert_eq!(able.lacking(&delivery), Vec::<&str>::new());
+    }
+}

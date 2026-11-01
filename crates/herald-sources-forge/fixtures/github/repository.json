@@ -1,0 +1,22 @@
+{
+  "id": 16408992,
+  "node_id": "MDEwOlJlcG9zaXRvcnkxNjQwODk5Mg==",
+  "name": "neovim",
+  "full_name": "neovim/neovim",
+  "private": false,
+  "owner": {
+    "login": "neovim",
+    "id": 6471485,
+    "type": "Organization",
+    "html_url": "https://github.com/neovim"
+  },
+  "html_url": "https://github.com/neovim/neovim",
+  "description": "Vim-fork focused on extensibility and usability",
+  "fork": false,
+  "url": "https://api.github.com/repos/neovim/neovim",
+  "created_at": "2014-01-31T13:39:22Z",
+  "updated_at": "2026-11-01T00:27:16Z",
+  "pushed_at": "2026-11-01T00:27:06Z",
+  "default_branch": "master",
+  "visibility": "public"
+}

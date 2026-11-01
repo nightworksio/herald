@@ -73,7 +73,8 @@ fn outside_allowed(layer: Layer) -> &'static [&'static str] {
         ],
         Layer::Ports => &["jiff"],
         Layer::Testing => &["jiff", "serde", "serde_json"],
-        Layer::Destinations => &["jiff", "schemars", "serde", "serde_json"],
+        Layer::Sources | Layer::Destinations => &["jiff", "schemars", "serde", "serde_json"],
+        Layer::Config => &["jiff", "schemars", "serde", "serde_json", "toml"],
         _ => &[],
     }
 }
@@ -81,6 +82,13 @@ fn outside_allowed(layer: Layer) -> &'static [&'static str] {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_io_layer_names_outside_crates_without_a_list() {
+        for layer in [Layer::Native, Layer::Drivers, Layer::Tooling] {
+            assert!(outside_allowed(layer).is_empty(), "{layer:?}");
+        }
+    }
 
     #[test]
     fn each_crate_name_belongs_to_its_layer() {
@@ -140,10 +148,13 @@ mod tests {
         assert!(Layer::Core.allows_outside("sha2"));
         assert!(!Layer::Core.allows_outside("tokio"));
         assert!(!Layer::Ports.allows_outside("sha2"));
-        assert!(!Layer::Sources.allows_outside("serde"));
+        assert!(Layer::Sources.allows_outside("serde_json"));
+        assert!(!Layer::Sources.allows_outside("reqwest"));
         assert!(Layer::Testing.allows_outside("serde_json"));
         assert!(Layer::Ports.allows_outside("jiff"));
         assert!(Layer::Destinations.allows_outside("schemars"));
+        assert!(Layer::Config.allows_outside("toml"));
+        assert!(!Layer::Config.allows_outside("tokio"));
     }
 
     #[test]

@@ -1,0 +1,634 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "herald.toml",
+  "description": "`herald.toml`: herald's whole config (ADR-0006).",
+  "type": "object",
+  "properties": {
+    "apps": {
+      "description": "The HTTP API's apps, by name.",
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/App"
+      }
+    },
+    "destinations": {
+      "description": "The places herald posts to, by name.",
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/Destination"
+      }
+    },
+    "markers": {
+      "description": "The installation's marker key.",
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Markers"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "routes": {
+      "description": "Which events go where, rendered how.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Route"
+      }
+    },
+    "schedule": {
+      "description": "How often a driver that keeps its own schedule polls and keeps house.",
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Schedule"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "sources": {
+      "description": "What herald listens to, by name.",
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/Source"
+      }
+    },
+    "store": {
+      "description": "The store herald keeps its records in.",
+      "$ref": "#/$defs/Store"
+    },
+    "templates": {
+      "description": "The templates routes render with, by name.",
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/Template"
+      }
+    },
+    "version": {
+      "description": "The version of the config: 1.",
+      "type": "integer",
+      "format": "uint8",
+      "maximum": 255,
+      "minimum": 0
+    }
+  },
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "store"
+  ],
+  "$defs": {
+    "App": {
+      "description": "An app of the HTTP API (ADR-0007).",
+      "type": "object",
+      "properties": {
+        "projects": {
+          "description": "The projects it may announce.",
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "string"
+          }
+        },
+        "routes": {
+          "description": "The routes it may announce to.",
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "string"
+          }
+        },
+        "token_sha256": {
+          "description": "The SHA-256 of the app's token, as `herald token new` prints it.",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "token_sha256"
+      ]
+    },
+    "Destination": {
+      "description": "A destination, by its kind.",
+      "oneOf": [
+        {
+          "description": "Discord, by bot token or webhook.",
+          "type": "object",
+          "properties": {
+            "api": {
+              "description": "Another base URL for Discord's API, such as a recorded-fixture server.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "kind": {
+              "type": "string",
+              "const": "discord"
+            },
+            "token": {
+              "description": "The secret holding a bot token. A bot crossposts, threads, pins and\nreads back its posts.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/SecretRef"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "webhook": {
+              "description": "The secret holding an incoming webhook's URL. A webhook only posts.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/SecretRef"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind"
+          ]
+        }
+      ]
+    },
+    "Duration": {
+      "description": "A length of time: a number and m, h, d or w, as \"14d\".",
+      "type": "string",
+      "pattern": "^[0-9]+[mhdw]$"
+    },
+    "Kind": {
+      "description": "What kind of thing an event announces.",
+      "oneOf": [
+        {
+          "description": "A release on a forge.",
+          "type": "string",
+          "const": "release"
+        },
+        {
+          "description": "A new version of a package on a registry.",
+          "type": "string",
+          "const": "package-version"
+        },
+        {
+          "description": "An entry in a feed.",
+          "type": "string",
+          "const": "feed-entry"
+        },
+        {
+          "description": "Anything an app says.",
+          "type": "string",
+          "const": "message"
+        }
+      ]
+    },
+    "Markers": {
+      "description": "`[markers]`: the installation's marker key (ADR-0011).",
+      "type": "object",
+      "properties": {
+        "key": {
+          "description": "The secret holding the marker key, such as `HERALD_MARKER_SECRET`.",
+          "$ref": "#/$defs/SecretRef"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "key"
+      ]
+    },
+    "Mentions": {
+      "description": "Who a route mentions.",
+      "type": "object",
+      "properties": {
+        "roles": {
+          "description": "The roles it pings, by the destination's ids for them.",
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "string"
+          }
+        },
+        "subscribers": {
+          "description": "Whether it mentions the subscribers herald keeps.",
+          "type": "boolean",
+          "default": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "Pinning": {
+      "description": "How a route keeps its newest announcement pinned: each pin unpins the\nroute's earlier one, found as this says (ADR-0011).",
+      "oneOf": [
+        {
+          "description": "Among the destination's pins, by the route marker herald's own posts\ncarry. Every store serves it.",
+          "type": "string",
+          "const": "markers"
+        },
+        {
+          "description": "By the pinned message the store remembers for the route. Only a store\nthat keeps pins serves it.",
+          "type": "string",
+          "const": "store"
+        }
+      ]
+    },
+    "Prereleases": {
+      "description": "Which pre-releases a route takes.",
+      "oneOf": [
+        {
+          "description": "Releases and pre-releases alike.",
+          "type": "string",
+          "const": "include"
+        },
+        {
+          "description": "Releases only.",
+          "type": "string",
+          "const": "exclude"
+        },
+        {
+          "description": "Pre-releases only.",
+          "type": "string",
+          "const": "only"
+        }
+      ]
+    },
+    "Route": {
+      "description": "A route: what it takes, where it announces, and its destination's own\noptions.",
+      "type": "object",
+      "properties": {
+        "channel": {
+          "description": "The channel's id. A bot needs one; a webhook posts where it was made.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "crosspost": {
+          "description": "Whether to crosspost each announcement.",
+          "type": "boolean",
+          "default": false
+        },
+        "destination": {
+          "description": "The destination it announces to.",
+          "type": "string"
+        },
+        "forum": {
+          "description": "Whether the channel is a forum, where each announcement is a post of\nits own.",
+          "type": "boolean",
+          "default": false
+        },
+        "id": {
+          "description": "The route's stable id, part of every announcement's key.",
+          "type": "string"
+        },
+        "kinds": {
+          "description": "The kinds of event it takes; every kind where absent.",
+          "type": "array",
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/Kind"
+          }
+        },
+        "mentions": {
+          "description": "Who it mentions.",
+          "$ref": "#/$defs/Mentions"
+        },
+        "pin": {
+          "description": "Whether to pin each announcement in place of the route's earlier pin,\nand how the earlier pin is found.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Pinning"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "prereleases": {
+          "description": "Which pre-releases it takes.",
+          "$ref": "#/$defs/Prereleases"
+        },
+        "sources": {
+          "description": "The sources it takes events from.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "template": {
+          "description": "The template it renders with.",
+          "type": "string"
+        },
+        "thread": {
+          "description": "The thread to open for each announcement.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Thread"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "sources",
+        "destination",
+        "template"
+      ]
+    },
+    "Schedule": {
+      "description": "How often a driver that keeps its own schedule polls and keeps house.",
+      "type": "object",
+      "properties": {
+        "housekeep": {
+          "description": "How often threads are kept.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Duration"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "poll": {
+          "description": "How often sources are polled.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Duration"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "SecretRef": {
+      "description": "A secret, by the name the platform keeps it under: `{ secret = \"NAME\" }`.\nThe config holds this and never the secret's value (ADR-0007).",
+      "type": "object",
+      "properties": {
+        "secret": {
+          "description": "The secret's name.",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "secret"
+      ]
+    },
+    "Source": {
+      "description": "A source, by its kind.",
+      "oneOf": [
+        {
+          "description": "A GitHub repository's releases.",
+          "type": "object",
+          "properties": {
+            "api": {
+              "description": "The API's base URL, for a GitHub Enterprise Server; GitHub's own API\nwhere absent.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "backfill": {
+              "description": "How many of the newest releases the first poll announces; none where\nabsent (ADR-0003).",
+              "type": "integer",
+              "format": "uint",
+              "default": 0,
+              "minimum": 0
+            },
+            "kind": {
+              "type": "string",
+              "const": "github"
+            },
+            "repository": {
+              "description": "The repository, as `owner/name`.",
+              "type": "string"
+            },
+            "token": {
+              "description": "A token that raises the API's rate limit, such as the run's\n`GITHUB_TOKEN`.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/SecretRef"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "repository"
+          ]
+        }
+      ]
+    },
+    "Store": {
+      "description": "`[store]`: one store, by its kind.",
+      "oneOf": [
+        {
+          "description": "A SQLite file, on a volume or a persistent disk.",
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "sqlite"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind"
+          ]
+        },
+        {
+          "description": "A Postgres database.",
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "postgres"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind"
+          ]
+        },
+        {
+          "description": "Cloudflare D1, through the Worker's binding.",
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "d1"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind"
+          ]
+        },
+        {
+          "description": "An AWS DynamoDB table.",
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "dynamodb"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind"
+          ]
+        },
+        {
+          "description": "Deno KV, on Deno Deploy.",
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "deno-kv"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind"
+          ]
+        },
+        {
+          "description": "The destinations' own posts.",
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "markers"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind"
+          ]
+        },
+        {
+          "description": "One file per record on a `herald-state` branch.",
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "git-branch"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind"
+          ]
+        },
+        {
+          "description": "Generations of the GitHub Actions cache.",
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "actions-cache"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind"
+          ]
+        },
+        {
+          "description": "The repository's variables.",
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "repo-variables"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind"
+          ]
+        }
+      ]
+    },
+    "Template": {
+      "description": "A template: its title, and its body inline or in a file beside the config.",
+      "type": "object",
+      "properties": {
+        "body": {
+          "description": "The body, in Markdown.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "file": {
+          "description": "A file beside the config holding the body.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "title": {
+          "description": "The title, on one line.",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "title"
+      ]
+    },
+    "Thread": {
+      "description": "A thread a route opens, and when housekeeping closes it.",
+      "type": "object",
+      "properties": {
+        "archive_after": {
+          "description": "How long after the announcement the thread is archived.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Duration"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "lock_after": {
+          "description": "How long after the announcement the thread is locked, and archived.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Duration"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "name": {
+          "description": "The template of the thread's name.",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "name"
+      ]
+    }
+  }
+}

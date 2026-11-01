@@ -13,10 +13,12 @@ authors = ["NightWorksIO"]
 publish = false
 
 [workspace.dependencies]
+herald-config = { path = "crates/herald-config" }
 herald-core = { path = "crates/herald-core" }
 herald-dest-discord = { path = "crates/herald-dest-discord" }
 herald-native = { path = "crates/herald-native" }
 herald-ports = { path = "crates/herald-ports" }
+herald-sources-forge = { path = "crates/herald-sources-forge" }
 herald-testing = { path = "crates/herald-testing" }
 cargo_metadata = "0.23"
 minijinja = { version = "3", default-features = false, features = ["builtins", "fuel", "multi_template", "serde"] }
@@ -33,6 +35,7 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2 = { version = "0.11", default-features = false }
 tempfile = "3"
+toml = { version = "1", default-features = false, features = ["parse", "serde", "std"] }
 tokio = { version = "1", default-features = false }
 webpki-roots = "1"
 
