@@ -20,8 +20,8 @@ const ACTION_ROW: u8 = 1;
 const BUTTON: u8 = 2;
 /// The style of a button that opens a link.
 const LINK: u8 = 5;
-/// The longest nonce Discord takes.
-const NONCE: usize = 25;
+/// The longest deduplication key Discord takes, in a message's `nonce`.
+const KEY_LENGTH: usize = 25;
 const USER_AGENT: &str = concat!(
     "DiscordBot (https://github.com/nightworksio/herald, ",
     env!("CARGO_PKG_VERSION"),
@@ -87,7 +87,7 @@ fn marked(link: &str, marks: &Marks) -> String {
     format!("{page}#herald-{}.{}", marks.route, marks.announcement)
 }
 
-fn message(announcement: &Announcement, delivery: &Delivery, nonce: bool) -> Value {
+fn message(announcement: &Announcement, delivery: &Delivery, deduplicated: bool) -> Value {
     let roles: Vec<&str> = delivery
         .mentions
         .roles
@@ -134,13 +134,13 @@ fn message(announcement: &Announcement, delivery: &Delivery, nonce: bool) -> Val
         "allowed_mentions".to_owned(),
         json!({ "parse": [], "roles": roles }),
     );
-    body.extend(nonce.then(|| {
+    body.extend(deduplicated.then(|| {
         (
             "nonce".to_owned(),
-            json!(key.chars().take(NONCE).collect::<String>()),
+            json!(key.chars().take(KEY_LENGTH).collect::<String>()),
         )
     }));
-    body.extend(nonce.then(|| ("enforce_nonce".to_owned(), json!(true))));
+    body.extend(deduplicated.then(|| ("enforce_nonce".to_owned(), json!(true))));
     Value::Object(body)
 }
 
