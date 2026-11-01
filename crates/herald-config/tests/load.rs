@@ -276,6 +276,14 @@ body = "{{ event.body }}"
             error.contains("apps.cd.routes: no route has the id \"nowhere\""),
             "{error}"
         );
+        for hash in ["g".repeat(64), "abc".to_owned()] {
+            let app = format!("{EXAMPLE}\n[apps.ci]\ntoken_sha256 = \"{hash}\"\n");
+            assert!(
+                errors(&app)
+                    .contains("apps.ci.token_sha256: a token's SHA-256 is 64 lowercase hex digits"),
+                "{hash}"
+            );
+        }
     }
 
     #[test]
