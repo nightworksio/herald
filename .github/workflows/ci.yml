@@ -10,6 +10,8 @@ on:
   # The weekly run mutates the whole workspace.
   schedule:
     - cron: "0 3 * * 1"
+  # The release runs the whole gate on its tag before it publishes (ADR-0012).
+  workflow_call:
 
 permissions:
   contents: read

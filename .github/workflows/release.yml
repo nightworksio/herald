@@ -1,0 +1,376 @@
+name: release
+
+# A release is drafted by the bot and signed by the maintainer (ADR-0012).
+#
+# - Drafting, on workflow_dispatch: the next version from the commits since the
+#   last tag, its CHANGELOG.md section from git-cliff, and the pull request
+#   `release/vX.Y.Z`, opened as the App. A dispatch for a version whose branch
+#   exists is refused, so it never discards edits made there. Until the App's
+#   client id and key are set, drafting says so and skips.
+# - Signing: the maintainer edits and merges that pull request, runs
+#   `git tag -s vX.Y.Z` on the squash commit and pushes the tag.
+# - Publishing, on that tag: the tag's signature is checked against
+#   `.github/allowed_signers` on main, and fails closed without it; the whole
+#   gate runs; the six targets build and are attested; the release takes the
+#   version's section as its notes and the archives and SHA256SUMS as its
+#   assets; the tag of its release line moves to it; and the release announces
+#   itself through herald's own Action (ADR-0010).
+#
+# This workflow never creates a version tag.
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: The version to release, such as 0.1.0 or 0.1.0-rc.1; computed from the commits since the last tag where empty.
+        type: string
+        default: ""
+  push:
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+"
+      - "v[0-9]+.[0-9]+.[0-9]+-*"
+
+permissions: {}
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # A dispatch before the App is set up says what is missing and succeeds.
+  draft-unset:
+    name: draft
+    if: github.event_name == 'workflow_dispatch' && vars.HERALD_BOT_CLIENT_ID == ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions: {}
+    steps:
+      - run: echo "::notice::No release is drafted until the repository variable HERALD_BOT_CLIENT_ID and the bot environment's secret HERALD_BOT_PRIVATE_KEY are set (ADR-0012)."
+
+  draft:
+    name: draft
+    if: github.event_name == 'workflow_dispatch' && vars.HERALD_BOT_CLIENT_ID != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # The App's private key lives in this environment, whose deployment-branch
+    # policy allows main only (ADR-0012).
+    environment: bot
+    permissions:
+      contents: read
+    steps:
+      - name: Check the App's key is set
+        id: app-key
+        env:
+          KEY_SET: ${{ secrets.HERALD_BOT_PRIVATE_KEY != '' }}
+        run: |
+          if [ "${KEY_SET}" != "true" ]; then
+            echo "::notice::No release is drafted until the bot environment's secret HERALD_BOT_PRIVATE_KEY is set (ADR-0012)."
+          fi
+          echo "set=${KEY_SET}" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: steps.app-key.outputs.set == 'true'
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Compute the version
+        id: version
+        if: steps.app-key.outputs.set == 'true'
+        env:
+          VERSION: ${{ inputs.version }}
+        run: python3 .github/scripts/release.py next
+      - name: Install git-cliff
+        if: steps.app-key.outputs.set == 'true'
+        env:
+          CLIFF_VERSION: 2.14.2
+          CLIFF_SHA256: 24f397c733add5390fdceee3a2088588ab0d5f944ce00d34cb7029b888cf2db4
+        run: |
+          set -euo pipefail
+          archive="git-cliff-${CLIFF_VERSION}-x86_64-unknown-linux-gnu.tar.gz"
+          curl -fsSL -o "${RUNNER_TEMP}/${archive}" \
+            "https://github.com/orhun/git-cliff/releases/download/v${CLIFF_VERSION}/${archive}"
+          echo "${CLIFF_SHA256}  ${RUNNER_TEMP}/${archive}" | sha256sum --check --strict
+          tar -xzf "${RUNNER_TEMP}/${archive}" -C "${RUNNER_TEMP}"
+          echo "${RUNNER_TEMP}/git-cliff-${CLIFF_VERSION}" >> "${GITHUB_PATH}"
+      - name: Write the version's changelog section
+        if: steps.app-key.outputs.set == 'true'
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          if [ -f CHANGELOG.md ]; then
+            git-cliff --config cliff.toml --unreleased --tag "v${VERSION}" --strip all \
+              | python3 .github/scripts/release.py prepend
+          else
+            git-cliff --config cliff.toml --unreleased --tag "v${VERSION}" --output CHANGELOG.md
+          fi
+      - uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        id: app
+        if: steps.app-key.outputs.set == 'true'
+        with:
+          client-id: ${{ vars.HERALD_BOT_CLIENT_ID }}
+          private-key: ${{ secrets.HERALD_BOT_PRIVATE_KEY }}
+          permission-contents: write
+          permission-pull-requests: write
+      # The branch starts from main's head, and the commit goes through
+      # createCommitOnBranch with no custom author, so GitHub signs it and CI
+      # starts on it. A branch that exists may hold the maintainer's edits of
+      # the section, so it is never reset.
+      - name: Open the release pull request
+        if: steps.app-key.outputs.set == 'true'
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+          LINE: ${{ steps.version.outputs.line }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          set -euo pipefail
+          repository="repos/${GITHUB_REPOSITORY}"
+          branch="release/v${VERSION}"
+          head="$(git rev-parse HEAD)"
+          if gh api "${repository}/git/ref/heads/${branch}" --silent 2>/dev/null; then
+            echo "::error::${branch} exists, and may hold edits of its changelog section. Edit its pull request, or delete the branch to draft v${VERSION} again."
+            exit 1
+          fi
+          gh api "${repository}/git/refs" -f ref="refs/heads/${branch}" -f sha="${head}" --silent
+          git ls-files -z --modified --others --exclude-standard | while IFS= read -r -d '' path; do
+            jq -n --arg path "${path}" --rawfile contents "${path}" '{path: $path, contents: ($contents | @base64)}'
+          done | jq -s \
+            --arg repository "${GITHUB_REPOSITORY}" --arg branch "${branch}" --arg head "${head}" \
+            --arg headline "chore(release): v${VERSION}" \
+            '{
+              query: "mutation($input: CreateCommitOnBranchInput!) { createCommitOnBranch(input: $input) { commit { oid } } }",
+              variables: {input: {
+                branch: {repositoryNameWithOwner: $repository, branchName: $branch},
+                message: {headline: $headline},
+                expectedHeadOid: $head,
+                fileChanges: {additions: .}
+              }}
+            }' > "${RUNNER_TEMP}/commit.json"
+          gh api graphql --input "${RUNNER_TEMP}/commit.json" --silent
+          if [ -n "${LINE}" ]; then
+            moves="moves \`v${LINE}\` to it"
+          else
+            moves="moves no release line, as a pre-release"
+          fi
+          cat > "${RUNNER_TEMP}/body.md" <<BODY
+          The CHANGELOG.md section of v${VERSION}, from the commits since the last tag.
+
+          - Edit the section: it becomes the release's notes.
+          - Merge, then tag the squash commit on ${DEFAULT_BRANCH} and push the tag:
+            \`git tag -s v${VERSION} -m v${VERSION} <commit> && git push origin v${VERSION}\`.
+          - The tag's push runs the whole gate, publishes the release, ${moves}, and announces it.
+          BODY
+          gh api "${repository}/pulls" -f head="${branch}" -f base="${DEFAULT_BRANCH}" \
+            -f title="chore(release): v${VERSION}" -F body=@"${RUNNER_TEMP}/body.md" --silent
+
+  verify:
+    name: verify
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      line: ${{ steps.tag.outputs.line }}
+      prerelease: ${{ steps.tag.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Read the tag's release line
+        id: tag
+        env:
+          TAG: ${{ github.ref_name }}
+        run: python3 .github/scripts/release.py check-tag
+      # The checkout fetched every tag and branch. The signers are read from
+      # main, never from the tag, and a repository without the file releases
+      # nothing.
+      - name: Check the tag's signature and that it is on main
+        env:
+          TAG: ${{ github.ref_name }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          set -euo pipefail
+          signers="${RUNNER_TEMP}/allowed_signers"
+          if ! git show "origin/${DEFAULT_BRANCH}:.github/allowed_signers" > "${signers}" 2>/dev/null || [ ! -s "${signers}" ]; then
+            echo "::error::${DEFAULT_BRANCH} has no .github/allowed_signers, so no tag can be verified and nothing is released."
+            exit 1
+          fi
+          if [ "$(git cat-file -t "refs/tags/${TAG}")" != "tag" ]; then
+            echo "::error::${TAG} is a lightweight tag; a release tag is signed: git tag -s ${TAG}."
+            exit 1
+          fi
+          git -c gpg.ssh.allowedSignersFile="${signers}" verify-tag "${TAG}"
+          if ! git merge-base --is-ancestor "${TAG}^{commit}" "origin/${DEFAULT_BRANCH}"; then
+            echo "::error::${TAG} points at a commit that is not on ${DEFAULT_BRANCH}."
+            exit 1
+          fi
+
+  # The whole gate over the tagged commit (ADR-0008): only when it passes is
+  # the release published.
+  gate:
+    name: gate
+    needs: verify
+    permissions:
+      contents: read
+    uses: ./.github/workflows/ci.yml # zizmor: ignore[self-repository]
+
+  # Each target from the verified commit, built clean with no cache, archived
+  # as the Action downloads it (ADR-0009).
+  build:
+    name: build ${{ matrix.target }}
+    needs: verify
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-musl
+            runner: ubuntu-24.04
+          - target: aarch64-unknown-linux-musl
+            runner: ubuntu-24.04-arm
+          - target: x86_64-apple-darwin
+            runner: macos-15
+          - target: aarch64-apple-darwin
+            runner: macos-15
+          - target: x86_64-pc-windows-msvc
+            runner: windows-2025
+          - target: aarch64-pc-windows-msvc
+            runner: windows-11-arm
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Install musl
+        if: contains(matrix.target, 'musl')
+        run: sudo apt-get update && sudo apt-get install --yes musl-tools
+      - name: Build
+        shell: bash
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          set -euo pipefail
+          rustup target add "${TARGET}"
+          cargo build --locked --release --package herald --target "${TARGET}"
+      - name: Archive
+        shell: bash
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          directory="target/${TARGET}/release"
+          if [[ "${TARGET}" == *windows* ]]; then
+            (cd "${directory}" && 7z a "${GITHUB_WORKSPACE}/dist/herald-${TARGET}.zip" herald.exe)
+          else
+            tar -czf "dist/herald-${TARGET}.tar.gz" -C "${directory}" herald
+          fi
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: herald-${{ matrix.target }}
+          path: dist/
+          retention-days: 7
+
+  # The release, from the commit verify and the gate judged, once both passed.
+  publish:
+    name: publish
+    needs: [verify, gate, build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: release
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      # Everything here is the commit `verify` and the gate judged, never the
+      # tag read again by name: a tag moved since then is refused.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Check the tag is still at the judged commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+          COMMIT: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          tagged="$(gh api "repos/${GITHUB_REPOSITORY}/commits/refs/tags/${TAG}" --jq .sha)"
+          if [ "${tagged}" != "${COMMIT}" ]; then
+            echo "::error::${TAG} is at ${tagged} now, not at ${COMMIT}, which this run verified and judged."
+            exit 1
+          fi
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: herald-*
+          path: dist
+          merge-multiple: true
+      - name: List every archive's checksum
+        run: |
+          set -euo pipefail
+          cd dist
+          sha256sum herald-* > SHA256SUMS
+          cat SHA256SUMS
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: dist/herald-*
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+          PRERELEASE: ${{ needs.verify.outputs.prerelease }}
+        run: |
+          set -euo pipefail
+          python3 .github/scripts/release.py notes > "${RUNNER_TEMP}/notes.md"
+          marked=()
+          if [ "${PRERELEASE}" = "true" ]; then
+            marked=(--prerelease)
+          fi
+          gh release create "${TAG}" --repo "${GITHUB_REPOSITORY}" --verify-tag \
+            --title "${TAG}" --notes-file "${RUNNER_TEMP}/notes.md" "${marked[@]}" dist/*
+      - name: Move the release line's tag
+        if: needs.verify.outputs.line != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          LINE: ${{ needs.verify.outputs.line }}
+          COMMIT: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          repository="repos/${GITHUB_REPOSITORY}"
+          moving="v${LINE}"
+          if gh api "${repository}/git/ref/tags/${moving}" --silent 2>/dev/null; then
+            gh api --method PATCH "${repository}/git/refs/tags/${moving}" -f sha="${COMMIT}" -F force=true --silent
+          else
+            gh api "${repository}/git/refs" -f ref="refs/tags/${moving}" -f sha="${COMMIT}" --silent
+          fi
+
+  # The release announces itself with the binary it just published (ADR-0010).
+  # A failed announcement fails the release workflow.
+  announce:
+    name: announce
+    needs: publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: ./ # zizmor: ignore[self-repository]
+        env:
+          HERALD_DISCORD_TOKEN: ${{ secrets.HERALD_DISCORD_TOKEN }}
+          HERALD_MARKER_SECRET: ${{ secrets.HERALD_MARKER_SECRET }}
+        with:
+          release: ${{ github.ref_name }}
+          tag: ${{ github.ref_name }}
