@@ -384,10 +384,10 @@ fn on_actions_every_secret_is_masked_before_anything_is_printed() {
     assert_eq!(
         masked.out,
         [
-            "::add-mask::github-token",
             "::add-mask::first line%0Asecond 100%25",
-            "::add-mask::first line",
+            "::add-mask::github-token",
             "::add-mask::second 100%25",
+            "::add-mask::first line",
             "The run's event is push, not a release; nothing to announce.",
             "",
         ]

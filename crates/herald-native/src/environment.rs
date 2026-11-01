@@ -1,13 +1,23 @@
 use std::collections::BTreeMap;
+use std::fmt;
 use std::future::{Future, ready};
 
 use herald_ports::{Clock, Secret, SecretError, Secrets};
 use jiff::Timestamp;
 
-/// Secrets from the environment, read once when it is made (ADR-0007).
-#[derive(Debug, Clone, Default)]
+/// Secrets from the environment, read once when it is made (ADR-0007). Its
+/// `Debug` names the variables it holds, and shows none of their values.
+#[derive(Clone, Default)]
 pub struct EnvSecrets {
     values: BTreeMap<String, String>,
+}
+
+impl fmt::Debug for EnvSecrets {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("EnvSecrets")
+            .field("names", &self.values.keys().collect::<Vec<_>>())
+            .finish()
+    }
 }
 
 impl EnvSecrets {
@@ -53,6 +63,12 @@ impl Clock for SystemClock {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn debug_names_the_variables_and_shows_no_value() {
+        let secrets = EnvSecrets::from_vars([("TOKEN".to_owned(), "hunter2".to_owned())]);
+        assert_eq!(format!("{secrets:?}"), "EnvSecrets { names: [\"TOKEN\"] }");
+    }
 
     #[test]
     fn a_secret_set_and_not_empty_is_read_and_any_other_is_missing() {

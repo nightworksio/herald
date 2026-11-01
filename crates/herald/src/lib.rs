@@ -20,7 +20,7 @@ use herald_flows::{
     Swept, announce, doctor, housekeep, poll, prepare, preview, unserved,
 };
 use herald_native::{EnvSecrets, RingSigner, SystemClock, random_secret};
-use herald_ports::{Http, HttpError, Request, Response, Secrets, Store as Keeps};
+use herald_ports::{Http, HttpError, Request, Response, Secret, Secrets, Store as Keeps};
 use herald_records::Memory;
 use herald_sources_forge::{Forge, Origin, Repository, SourceOptions, Token};
 use herald_store_actions_cache::{ActionsCache, ActionsCacheStore, StoreOptions as CacheOptions};
@@ -47,6 +47,11 @@ const GITHUB_TOKEN: &str = "GITHUB_TOKEN";
 const RESULTS: &str = "ACTIONS_RESULTS_URL";
 /// The run's token for the Actions cache, as herald's Action hands it on.
 const RUNTIME_TOKEN: &str = "ACTIONS_RUNTIME_TOKEN";
+/// A GitLab CI job's own token.
+const JOB_TOKEN: &str = "CI_JOB_TOKEN";
+/// The fewest characters of a value scrubbed from output: a shorter one
+/// would rewrite ordinary words, and is no credential.
+const SCRUBBED: usize = 8;
 
 type Sending<'a> = Pin<Box<dyn Future<Output = Result<Response, HttpError>> + Send + 'a>>;
 
@@ -209,7 +214,7 @@ impl Ci {
             Forge::GitLab => Self {
                 repository: "CI_PROJECT_PATH",
                 api: "CI_API_V4_URL",
-                token: "CI_JOB_TOKEN",
+                token: JOB_TOKEN,
             },
         }
     }
@@ -258,7 +263,10 @@ pub async fn run(
         }
         Reading::Serve(serve) => serve,
     };
-    masked(&config, vars, out);
+    let hidden = hidden(&config, vars);
+    masked(&hidden, vars, out);
+    let out = &mut Scrubbing::new(out, &hidden);
+    let err = &mut Scrubbing::new(err, &hidden);
     warned(&doctor(&config, Layer::Actions.stores()).gaps, vars, out);
     let ran = match serve {
         Serve::Announce {
@@ -276,10 +284,98 @@ pub async fn run(
         Serve::Poll => polling(&config, vars, connect, out).await,
         Serve::Housekeep => housekeeping(&config, vars, connect, out).await,
     };
-    ran.unwrap_or_else(|message| {
+    let code = ran.unwrap_or_else(|message| {
         say(err, &message);
         STOPPED
-    })
+    });
+    let _ = out.flush();
+    let _ = err.flush();
+    code
+}
+
+/// Every secret the run may resolve, by its name, and each line of a value
+/// that spans lines on its own as well.
+fn hidden(config: &Config, vars: &BTreeMap<String, String>) -> Vec<Secret> {
+    let mut names = config.secrets();
+    names.extend([GITHUB_TOKEN, RUNTIME_TOKEN, JOB_TOKEN]);
+    let mut hidden = Vec::new();
+    for (name, value) in names
+        .iter()
+        .filter_map(|name| vars.get(*name).map(|value| (*name, value)))
+    {
+        let lines = value.lines().filter(|line| *line != value.as_str());
+        for part in std::iter::once(value.as_str()).chain(lines) {
+            if !part.trim().is_empty() {
+                hidden.push(Secret::new(name, part));
+            }
+        }
+    }
+    hidden.sort_by_key(|secret| std::cmp::Reverse(secret.expose().len()));
+    hidden
+}
+
+/// A writer that writes each line with every secret the run may resolve
+/// shown as `«secret:NAME»`, whatever handed the line to it: an answer a
+/// server echoed back included (ADR-0007).
+struct Scrubbing<'a> {
+    inner: &'a mut dyn Write,
+    hidden: Vec<&'a Secret>,
+    line: Vec<u8>,
+}
+
+impl<'a> Scrubbing<'a> {
+    fn new(inner: &'a mut dyn Write, hidden: &'a [Secret]) -> Self {
+        Self {
+            inner,
+            hidden: hidden
+                .iter()
+                .filter(|secret| secret.expose().chars().count() >= SCRUBBED)
+                .collect(),
+            line: Vec::new(),
+        }
+    }
+
+    /// `bytes` written with each secret shown by its name, the longest
+    /// value matched first, in one pass.
+    fn emit(&mut self, bytes: &[u8]) -> std::io::Result<()> {
+        let text = String::from_utf8_lossy(bytes);
+        let mut scrubbed = String::with_capacity(text.len());
+        let mut rest = text.as_ref();
+        while let Some(first) = rest.chars().next() {
+            let found = self
+                .hidden
+                .iter()
+                .find(|secret| rest.starts_with(secret.expose()));
+            if let Some(secret) = found {
+                scrubbed.push_str(&secret.redacted());
+                rest = rest.get(secret.expose().len()..).unwrap_or_default();
+            } else {
+                scrubbed.push(first);
+                rest = rest.get(first.len_utf8()..).unwrap_or_default();
+            }
+        }
+        self.inner.write_all(scrubbed.as_bytes())
+    }
+}
+
+impl Write for Scrubbing<'_> {
+    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+        self.line.extend_from_slice(bytes);
+        while let Some(end) = self.line.iter().position(|byte| *byte == b'\n') {
+            let rest = self.line.split_off(end + 1);
+            let line = std::mem::replace(&mut self.line, rest);
+            self.emit(&line)?;
+        }
+        Ok(bytes.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        let line = std::mem::take(&mut self.line);
+        if !line.is_empty() {
+            self.emit(&line)?;
+        }
+        self.inner.flush()
+    }
 }
 
 fn read(path: &str) -> Result<Config, String> {
@@ -326,19 +422,12 @@ fn on_actions(vars: &BTreeMap<String, String>) -> bool {
 /// On GitHub Actions, every secret the run may resolve masked before
 /// anything else is printed, each of its lines on its own as well
 /// (ADR-0007).
-fn masked(config: &Config, vars: &BTreeMap<String, String>, out: &mut dyn Write) {
+fn masked(hidden: &[Secret], vars: &BTreeMap<String, String>, out: &mut dyn Write) {
     if !on_actions(vars) {
         return;
     }
-    let mut names = config.secrets();
-    names.extend([GITHUB_TOKEN, RUNTIME_TOKEN]);
-    for value in names.iter().filter_map(|name| vars.get(*name)) {
-        let lines = value.lines().filter(|line| *line != value.as_str());
-        for hidden in std::iter::once(value.as_str()).chain(lines) {
-            if !hidden.trim().is_empty() {
-                say(out, &format!("::add-mask::{}", escaped(hidden)));
-            }
-        }
+    for secret in hidden {
+        say(out, &format!("::add-mask::{}", escaped(secret.expose())));
     }
 }
 

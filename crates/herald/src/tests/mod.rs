@@ -9,5 +9,6 @@ mod doctor;
 mod forges;
 mod housekeep;
 mod poll;
+mod secrets;
 mod stores;
 mod world;
