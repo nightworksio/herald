@@ -610,6 +610,7 @@ dependencies = [
  "herald-core",
  "herald-ports",
  "herald-testing",
+ "jiff",
  "pollster",
  "serde",
  "serde_json",

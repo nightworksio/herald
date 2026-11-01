@@ -1,4 +1,5 @@
-use herald_ports::{Capabilities, Keeping, Versioned};
+use herald_ports::{Admitted, Capabilities, Keeping, Versioned};
+use jiff::Timestamp;
 
 use super::*;
 use crate::FakeStore;
@@ -10,6 +11,7 @@ enum Fault {
     UndeclaredSchedules,
     UndeclaredSubscriptions,
     UndeclaredPins,
+    UndeclaredDeliveries,
     OverwritesEntries,
     RefusesWrites,
     OverwritesCursors,
@@ -17,6 +19,11 @@ enum Fault {
     IgnoresProjects,
     KeepsTheFirstPin,
     SharesPins,
+    AdmitsTwice,
+    SharesDeliveries,
+    KeepsReleased,
+    ExpiresEverything,
+    ExpiresNothing,
     Broken,
     KeepsNothing,
     DerivesButKeeps,
@@ -87,12 +94,17 @@ impl Store for Faulty {
                 ..all
             },
             Fault::UndeclaredPins => Capabilities { pins: false, ..all },
+            Fault::UndeclaredDeliveries => Capabilities {
+                deliveries: false,
+                ..all
+            },
             Fault::KeepsNothing => Capabilities {
                 ledger: Keeping::None,
                 cursors: false,
                 schedules: Keeping::None,
                 subscriptions: false,
                 pins: false,
+                deliveries: false,
                 concurrent: false,
             },
             _ => all,
@@ -216,6 +228,36 @@ impl Store for Faulty {
         }
         self.inner.put_pinned(&route, post).await
     }
+
+    async fn admit(&self, scheme: Scheme, id: &str, at: Timestamp) -> Result<Admitted, StoreError> {
+        self.refuses("deliveries")?;
+        let scheme = match self.fault {
+            Fault::SharesDeliveries => Scheme::GitHub,
+            _ => scheme,
+        };
+        let admitted = self.inner.admit(scheme, id, at).await?;
+        Ok(match self.fault {
+            Fault::AdmitsTwice => Admitted::Fresh,
+            _ => admitted,
+        })
+    }
+
+    async fn release(&self, scheme: Scheme, id: &str) -> Result<(), StoreError> {
+        self.refuses("deliveries")?;
+        if self.fault == Fault::KeepsReleased {
+            return Ok(());
+        }
+        self.inner.release(scheme, id).await
+    }
+
+    async fn expire_deliveries(&self, before: Timestamp) -> Result<(), StoreError> {
+        self.refuses("deliveries")?;
+        match self.fault {
+            Fault::ExpiresNothing => Ok(()),
+            Fault::ExpiresEverything => self.inner.expire_deliveries(Timestamp::MAX).await,
+            _ => self.inner.expire_deliveries(before).await,
+        }
+    }
 }
 
 fn run(fault: Fault) -> Result<(), Failure> {
@@ -262,6 +304,7 @@ fn a_kind_kept_but_not_declared_is_refused() {
         (Fault::UndeclaredSchedules, "schedules"),
         (Fault::UndeclaredSubscriptions, "subscriptions"),
         (Fault::UndeclaredPins, "pins"),
+        (Fault::UndeclaredDeliveries, "deliveries"),
     ];
     for (fault, what) in cases {
         assert_eq!(
@@ -303,6 +346,26 @@ fn a_store_that_breaks_its_promises_is_refused() {
         (
             Fault::SharesPins,
             "a route's pin was not the one written last",
+        ),
+        (
+            Fault::AdmitsTwice,
+            "a delivery admitted before was fresh again",
+        ),
+        (
+            Fault::SharesDeliveries,
+            "another scheme's delivery of the same id was seen",
+        ),
+        (
+            Fault::KeepsReleased,
+            "a released delivery was not admitted again",
+        ),
+        (
+            Fault::ExpiresNothing,
+            "a delivery admitted before the expiry was still seen",
+        ),
+        (
+            Fault::ExpiresEverything,
+            "a delivery admitted at the expiry was forgotten",
         ),
     ];
     for (fault, failure) in cases {

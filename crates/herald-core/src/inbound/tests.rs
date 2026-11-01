@@ -12,13 +12,21 @@ fn claimed(scheme: Scheme, headers: &[(&str, &str)]) -> Result<Claim, Refusal> {
 
 #[test]
 fn a_github_webhook_claims_an_hmac_of_its_body() {
-    let claim = claimed(Scheme::GitHub, &[("x-hub-signature-256", "sha256=00Ff10")]).unwrap();
+    let claim = claimed(
+        Scheme::GitHub,
+        &[
+            ("x-hub-signature-256", "sha256=00Ff10"),
+            ("x-github-delivery", "72d3162e-cc78-11e3-81ab-4c9367dc0958"),
+        ],
+    )
+    .unwrap();
     assert_eq!(
         claim,
         Claim {
             kind: Signature::HmacSha256,
             message: BODY.to_vec(),
             signatures: vec![vec![0x00, 0xff, 0x10]],
+            delivery: Some("00ff10".to_owned()),
         }
     );
 }
@@ -44,11 +52,15 @@ fn a_github_webhook_without_its_signature_or_its_prefix_is_refused() {
 
 #[test]
 fn a_forgejo_webhook_claims_an_hmac_of_its_body_under_either_header() {
-    for header in ["X-Forgejo-Signature", "x-gitea-signature"] {
-        let claim = claimed(Scheme::Forgejo, &[(header, "abcd")]).unwrap();
+    for (header, delivered) in [
+        ("X-Forgejo-Signature", "X-Forgejo-Delivery"),
+        ("x-gitea-signature", "x-gitea-delivery"),
+    ] {
+        let claim = claimed(Scheme::Forgejo, &[(header, "abcd"), (delivered, "7")]).unwrap();
         assert_eq!(claim.kind, Signature::HmacSha256, "{header}");
         assert_eq!(claim.message, BODY, "{header}");
         assert_eq!(claim.signatures, [[0xab, 0xcd]], "{header}");
+        assert_eq!(claim.delivery.as_deref(), Some("abcd"), "{header}");
     }
     assert_eq!(
         claimed(Scheme::Forgejo, &[("X-Gitea-Signature", "abc")]),
@@ -68,10 +80,16 @@ fn a_forgejo_webhook_claims_an_hmac_of_its_body_under_either_header() {
 fn a_forgejo_header_is_read_before_a_gitea_one() {
     let claim = claimed(
         Scheme::Forgejo,
-        &[("X-Gitea-Signature", "00"), ("X-Forgejo-Signature", "01")],
+        &[
+            ("X-Gitea-Signature", "00"),
+            ("X-Forgejo-Signature", "01"),
+            ("X-Gitea-Delivery", "gitea"),
+            ("X-Forgejo-Delivery", "forgejo"),
+        ],
     )
     .unwrap();
     assert_eq!(claim.signatures, [[0x01]]);
+    assert_eq!(claim.delivery.as_deref(), Some("01"));
 }
 
 #[test]
@@ -87,6 +105,7 @@ fn a_discord_interaction_claims_an_ed25519_signature_of_its_timestamp_and_body()
     assert_eq!(claim.kind, Signature::Ed25519);
     assert_eq!(claim.message, [b"1800000000".as_slice(), BODY].concat());
     assert_eq!(claim.signatures, [[0x0a, 0x0b]]);
+    assert_eq!(claim.delivery, None);
     assert_eq!(
         claimed(Scheme::Discord, &[("X-Signature-Timestamp", "1800000000")]),
         Err(Refusal::Unsigned {
@@ -120,6 +139,7 @@ fn a_slack_request_claims_an_hmac_of_its_versioned_base_string() {
     assert_eq!(claim.kind, Signature::HmacSha256);
     assert_eq!(claim.message, [b"v0:1800000000:".as_slice(), BODY].concat());
     assert_eq!(claim.signatures, [[0xff]]);
+    assert_eq!(claim.delivery, None);
     assert_eq!(
         claimed(
             Scheme::Slack,
@@ -252,6 +272,10 @@ fn a_gitlab_webhook_claims_each_v1_signature_of_its_id_timestamp_and_body() {
         .concat()
     );
     assert_eq!(claim.signatures, [vec![0x00, 0x01], vec![0xff]]);
+    assert_eq!(
+        claim.delivery.as_deref(),
+        Some("msg_2KWPBgLlAfxdpx2AI54pPJ85f4W")
+    );
 }
 
 #[test]
@@ -339,6 +363,7 @@ fn a_matrix_transaction_claims_the_homeserver_token_it_presents() {
     assert_eq!(claim.kind, Signature::Token);
     assert_eq!(claim.message, Vec::<u8>::new());
     assert_eq!(claim.signatures, [b"hs-token".to_vec()]);
+    assert_eq!(claim.delivery, None);
     for value in ["hs-token", "Bearer ", "Basic aHM6dG9rZW4="] {
         assert_eq!(
             claimed(Scheme::Matrix, &[("Authorization", value)]),
@@ -370,4 +395,17 @@ fn a_token_is_the_same_only_byte_for_byte() {
     ] {
         assert!(!same(b"hs-token", presented), "{presented:?}");
     }
+}
+
+#[test]
+fn an_unsigned_delivery_header_changes_nothing_a_store_admits() {
+    let signature = [("X-Hub-Signature-256", "sha256=0a0b")];
+    let renamed = [
+        ("X-Hub-Signature-256", "sha256=0a0b"),
+        ("X-GitHub-Delivery", "a-fresh-id"),
+    ];
+    assert_eq!(
+        claimed(Scheme::GitHub, &signature).map(|claim| claim.delivery),
+        claimed(Scheme::GitHub, &renamed).map(|claim| claim.delivery)
+    );
 }

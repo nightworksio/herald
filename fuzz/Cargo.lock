@@ -220,6 +220,7 @@ version = "0.0.0"
 dependencies = [
  "herald-core",
  "herald-ports",
+ "jiff",
  "serde",
  "serde_json",
 ]

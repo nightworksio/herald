@@ -1,7 +1,10 @@
 use herald_core::{
-    Cursor, DestinationName, Entry, Key, RouteId, Schedule, SourceName, Subscription,
+    Cursor, DestinationName, Entry, Key, RouteId, Schedule, Scheme, SourceName, Subscription,
 };
-use herald_ports::{Capabilities, Keeping, Store, StoreError, Version, Versioned, Written};
+use herald_ports::{
+    Admitted, Capabilities, Keeping, Store, StoreError, Version, Versioned, Written,
+};
+use jiff::Timestamp;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -174,6 +177,7 @@ impl<R: Records> Store for Kept<R> {
             schedules: Keeping::Kept,
             subscriptions: true,
             pins: true,
+            deliveries: true,
             concurrent: true,
         }
     }
@@ -250,5 +254,31 @@ impl<R: Records> Store for Kept<R> {
 
     async fn put_pinned(&self, route: &RouteId, post: &str) -> Result<(), StoreError> {
         self.kept(&paths::pin(route), &post).await
+    }
+
+    async fn admit(&self, scheme: Scheme, id: &str, at: Timestamp) -> Result<Admitted, StoreError> {
+        Ok(
+            match self
+                .compare_and_set(&paths::delivery(scheme, id), &at, None)
+                .await?
+            {
+                Written::Written(_) => Admitted::Fresh,
+                Written::Conflict => Admitted::Seen,
+            },
+        )
+    }
+
+    async fn release(&self, scheme: Scheme, id: &str) -> Result<(), StoreError> {
+        self.removed(&paths::delivery(scheme, id)).await
+    }
+
+    async fn expire_deliveries(&self, before: Timestamp) -> Result<(), StoreError> {
+        for path in self.records.list(paths::DELIVERIES).await? {
+            let admitted = self.record::<Timestamp>(&path).await?;
+            if admitted.is_some_and(|admitted| admitted.value < before) {
+                self.removed(&path).await?;
+            }
+        }
+        Ok(())
     }
 }

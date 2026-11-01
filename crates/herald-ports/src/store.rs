@@ -2,8 +2,9 @@ use std::fmt;
 use std::future::Future;
 
 use herald_core::{
-    Cursor, DestinationName, Entry, Key, RouteId, Schedule, SourceName, Subscription,
+    Cursor, DestinationName, Entry, Key, RouteId, Schedule, Scheme, SourceName, Subscription,
 };
+use jiff::Timestamp;
 
 /// The version a store keeps beside a record, for compare-and-set.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -53,8 +54,19 @@ pub struct Capabilities {
     pub subscriptions: bool,
     /// Each route's pinned post.
     pub pins: bool,
+    /// The ids of webhook deliveries it admitted (ADR-0013).
+    pub deliveries: bool,
     /// Compare-and-set that holds when runs write at the same time.
     pub concurrent: bool,
+}
+
+/// What admitting a delivery came to.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Admitted {
+    /// It is the first time the delivery arrives, and its id is now kept.
+    Fresh,
+    /// The delivery was admitted before.
+    Seen,
 }
 
 /// Why a store could not answer.
@@ -170,6 +182,29 @@ pub trait Store: Sync {
         &self,
         route: &RouteId,
         post: &str,
+    ) -> impl Future<Output = Result<(), StoreError>> + Send;
+
+    /// Admits the delivery `id` of `scheme`, arriving `at`: fresh the first
+    /// time, and seen every later time until it is released or expires. Two
+    /// admitting the same delivery at once admit one.
+    fn admit(
+        &self,
+        scheme: Scheme,
+        id: &str,
+        at: Timestamp,
+    ) -> impl Future<Output = Result<Admitted, StoreError>> + Send;
+
+    /// Forgets the delivery `id` of `scheme`, so it is admitted again.
+    fn release(
+        &self,
+        scheme: Scheme,
+        id: &str,
+    ) -> impl Future<Output = Result<(), StoreError>> + Send;
+
+    /// Forgets every delivery admitted before `before`.
+    fn expire_deliveries(
+        &self,
+        before: Timestamp,
     ) -> impl Future<Output = Result<(), StoreError>> + Send;
 }
 

@@ -2,9 +2,12 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Mutex;
 
 use herald_core::{
-    Cursor, DestinationName, Entry, Key, RouteId, Schedule, SourceName, Subscription,
+    Cursor, DestinationName, Entry, Key, RouteId, Schedule, Scheme, SourceName, Subscription,
 };
-use herald_ports::{Capabilities, Keeping, Store, StoreError, Version, Versioned, Written};
+use herald_ports::{
+    Admitted, Capabilities, Keeping, Store, StoreError, Version, Versioned, Written,
+};
+use jiff::Timestamp;
 
 use crate::lock;
 
@@ -15,6 +18,7 @@ struct State {
     schedules: Vec<Schedule>,
     subscriptions: BTreeSet<Subscription>,
     pins: BTreeMap<RouteId, String>,
+    deliveries: BTreeMap<(&'static str, String), Timestamp>,
 }
 
 /// A store in memory, keeping everything a store can keep.
@@ -52,6 +56,7 @@ impl Store for FakeStore {
             schedules: Keeping::Kept,
             subscriptions: true,
             pins: true,
+            deliveries: true,
             concurrent: true,
         }
     }
@@ -143,6 +148,28 @@ impl Store for FakeStore {
         lock(&self.state)
             .pins
             .insert(route.clone(), post.to_owned());
+        Ok(())
+    }
+
+    async fn admit(&self, scheme: Scheme, id: &str, at: Timestamp) -> Result<Admitted, StoreError> {
+        let mut state = lock(&self.state);
+        let delivery = (scheme.name(), id.to_owned());
+        if state.deliveries.contains_key(&delivery) {
+            return Ok(Admitted::Seen);
+        }
+        state.deliveries.insert(delivery, at);
+        Ok(Admitted::Fresh)
+    }
+
+    async fn release(&self, scheme: Scheme, id: &str) -> Result<(), StoreError> {
+        lock(&self.state)
+            .deliveries
+            .remove(&(scheme.name(), id.to_owned()));
+        Ok(())
+    }
+
+    async fn expire_deliveries(&self, before: Timestamp) -> Result<(), StoreError> {
+        lock(&self.state).deliveries.retain(|_, at| *at >= before);
         Ok(())
     }
 }

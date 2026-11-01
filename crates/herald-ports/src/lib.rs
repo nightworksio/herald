@@ -21,4 +21,4 @@ pub use kv::{Kv, KvError, Pair, Stamped, Versionstamp};
 pub use markers::{MarkedThread, Markers, MarkersError, marker};
 pub use secret::{Secret, SecretError, Secrets, Segment, Text};
 pub use sql::{Changed, Sql, SqlError, Statement, Value};
-pub use store::{Capabilities, Keeping, Store, StoreError, Version, Versioned, Written};
+pub use store::{Admitted, Capabilities, Keeping, Store, StoreError, Version, Versioned, Written};

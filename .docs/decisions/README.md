@@ -30,3 +30,4 @@ no separate requirements document, and there are no requirement IDs.
 | [0010](0010-herald-announces-itself-with-itself.md) | herald announces itself with itself | Accepted |
 | [0011](0011-markers-count-only-on-herald-s-own-posts-a-route-keeps-one-pin-and-a-lock-archives.md) | Markers count only on herald's own posts, a route keeps one pin, and a lock archives | Accepted |
 | [0012](0012-a-release-is-drafted-by-the-bot-signed-by-the-maintainer-and-published-after-the-full-gate.md) | A release is drafted by the bot, signed by the maintainer, and published after the full gate | Accepted |
+| [0013](0013-a-webhook-delivery-is-admitted-once-released-when-it-fails-and-kept-for-a-week.md) | A webhook delivery is admitted once, released when it fails, and kept for a week | Accepted |

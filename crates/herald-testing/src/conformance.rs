@@ -1,10 +1,10 @@
 use herald_core::{
-    Chore, Cursor, DestinationName, Entry, Facts, Identity, Key, RouteId, Schedule, SourceName,
-    Step, Subscription,
+    Chore, Cursor, DestinationName, Entry, Facts, Identity, Key, RouteId, Schedule, Scheme,
+    SourceName, Step, Subscription,
 };
 use std::fmt;
 
-use herald_ports::{Keeping, Store, StoreError, Version, Written};
+use herald_ports::{Admitted, Keeping, Store, StoreError, Version, Written};
 use jiff::Timestamp;
 
 /// Whether `store`, empty, keeps every record its capabilities declare as a
@@ -50,6 +50,17 @@ pub async fn store_conformance<S: Store>(store: &S) -> Result<(), Failure> {
         unsupported(
             &store.pinned(&RouteId::new("absent")).await.map(|_| ()),
             "pins",
+        )?;
+    }
+    if capabilities.deliveries {
+        deliveries(store).await?;
+    } else {
+        unsupported(
+            &store
+                .admit(Scheme::GitHub, "absent", NOON)
+                .await
+                .map(|_| ()),
+            "deliveries",
         )?;
     }
     Ok(())
@@ -346,6 +357,41 @@ async fn pins<S: Store>(store: &S) -> Result<(), Failure> {
     checks.ensure(
         store.pinned(&releases).await?.as_deref() == Some("2"),
         "a route's pin was not the one written last",
+    );
+    checks.done()
+}
+
+async fn deliveries<S: Store>(store: &S) -> Result<(), Failure> {
+    let mut checks = Checks::default();
+    let later = NOON + jiff::SignedDuration::from_hours(1);
+    let latest = NOON + jiff::SignedDuration::from_hours(2);
+    checks.ensure(
+        store.admit(Scheme::GitHub, "one", NOON).await? == Admitted::Fresh,
+        "a delivery arriving the first time was not fresh",
+    );
+    checks.ensure(
+        store.admit(Scheme::GitHub, "one", later).await? == Admitted::Seen,
+        "a delivery admitted before was fresh again",
+    );
+    checks.ensure(
+        store.admit(Scheme::GitLab, "one", NOON).await? == Admitted::Fresh,
+        "another scheme's delivery of the same id was seen",
+    );
+    store.release(Scheme::GitHub, "one").await?;
+    checks.ensure(
+        store.admit(Scheme::GitHub, "one", later).await? == Admitted::Fresh,
+        "a released delivery was not admitted again",
+    );
+    store.admit(Scheme::Forgejo, "old", NOON).await?;
+    store.admit(Scheme::Forgejo, "new", later).await?;
+    store.expire_deliveries(later).await?;
+    checks.ensure(
+        store.admit(Scheme::Forgejo, "old", latest).await? == Admitted::Fresh,
+        "a delivery admitted before the expiry was still seen",
+    );
+    checks.ensure(
+        store.admit(Scheme::Forgejo, "new", latest).await? == Admitted::Seen,
+        "a delivery admitted at the expiry was forgotten",
     );
     checks.done()
 }

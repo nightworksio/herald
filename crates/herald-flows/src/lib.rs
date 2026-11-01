@@ -24,7 +24,7 @@ mod reached;
 pub use announce::{Announced, Outcome, Ports, Stop, announce};
 pub use doctor::{Findings, Gap, doctor, unserved};
 pub use housekeep::{Chored, Kept, housekeep};
-pub use inbound::{Rejected, verified};
+pub use inbound::{Rejected, Verified, admitted, released, verified};
 pub use poll::{Fresh, Remembered, Sweep, Swept, poll};
 pub use prepare::{Connected, PrepareError, Prepared, prepare};
 pub use preview::{Previewed, preview};

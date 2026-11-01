@@ -11,13 +11,14 @@
 use std::future::{Future, ready};
 
 use herald_core::{
-    Chore, Cursor, DestinationName, Entry, Identity, Key, Marker, RouteId, Schedule, SourceName,
-    Subscription, Thread, schedules,
+    Chore, Cursor, DestinationName, Entry, Identity, Key, Marker, RouteId, Schedule, Scheme,
+    SourceName, Subscription, Thread, schedules,
 };
 use herald_ports::{
-    Capabilities, Keeping, Markers, Secret, Signer, Store, StoreError, Version, Versioned, Written,
-    marker,
+    Admitted, Capabilities, Keeping, Markers, Secret, Signer, Store, StoreError, Version,
+    Versioned, Written, marker,
 };
+use jiff::Timestamp;
 
 /// One route whose posts are read back: the markers it reads, and the key
 /// its markers are computed under.
@@ -103,6 +104,7 @@ impl<M: Markers, G: Signer> Store for MarkersStore<M, G> {
             schedules: Keeping::Derived,
             subscriptions: false,
             pins: false,
+            deliveries: false,
             concurrent: false,
         }
     }
@@ -202,5 +204,29 @@ impl<M: Markers, G: Signer> Store for MarkersStore<M, G> {
         _post: &str,
     ) -> impl Future<Output = Result<(), StoreError>> + Send {
         ready(unsupported("pins"))
+    }
+
+    fn admit(
+        &self,
+        _scheme: Scheme,
+        _id: &str,
+        _at: Timestamp,
+    ) -> impl Future<Output = Result<Admitted, StoreError>> + Send {
+        ready(unsupported("deliveries"))
+    }
+
+    fn release(
+        &self,
+        _scheme: Scheme,
+        _id: &str,
+    ) -> impl Future<Output = Result<(), StoreError>> + Send {
+        ready(unsupported("deliveries"))
+    }
+
+    fn expire_deliveries(
+        &self,
+        _before: Timestamp,
+    ) -> impl Future<Output = Result<(), StoreError>> + Send {
+        ready(unsupported("deliveries"))
     }
 }

@@ -1,4 +1,4 @@
-use herald_core::{Schedule, Sent, due};
+use herald_core::{DELIVERIES_KEPT, Schedule, Sent, due};
 use herald_ports::{Clock, Http, Store};
 
 use crate::announce::Stop;
@@ -27,16 +27,24 @@ pub enum Chored {
 
 /// Every chore due at the clock's time done through the route that
 /// scheduled it, each schedule removed once its chore is done or cannot be
-/// (ADR-0005).
+/// (ADR-0005), after every delivery the store admitted more than
+/// [`DELIVERIES_KEPT`] ago is forgotten (ADR-0013).
 ///
 /// # Errors
 ///
-/// When the store's schedules cannot be read.
+/// When the store's schedules cannot be read, or its deliveries cannot be
+/// expired.
 pub async fn housekeep<S: Store, C: Clock, H: Http>(
     connected: &Connected<H>,
     store: &S,
     clock: &C,
 ) -> Result<Vec<Kept>, Stop> {
+    if store.capabilities().deliveries {
+        store
+            .expire_deliveries(clock.now() - DELIVERIES_KEPT)
+            .await
+            .map_err(|error| Stop::Store(error.to_string()))?;
+    }
     let schedules = store
         .schedules()
         .await

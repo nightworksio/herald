@@ -1,6 +1,6 @@
 use std::fmt::Write as _;
 
-use herald_core::{DestinationName, Key, RouteId, Schedule, SourceName, Subscription};
+use herald_core::{DestinationName, Key, RouteId, Schedule, Scheme, SourceName, Subscription};
 
 /// A name as one segment of a path: letters, digits, `.`, `_` and `-` kept,
 /// and every other byte written as `~` and its two hex digits.
@@ -48,6 +48,12 @@ pub(crate) fn subscribed(subscription: &Subscription) -> String {
         subscribers(&subscription.destination, &subscription.project),
         segment(&subscription.subscriber)
     )
+}
+
+pub(crate) const DELIVERIES: &str = "deliveries";
+
+pub(crate) fn delivery(scheme: Scheme, id: &str) -> String {
+    format!("{DELIVERIES}/{}.{}.json", scheme.name(), segment(id))
 }
 
 pub(crate) fn pin(route: &RouteId) -> String {

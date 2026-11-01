@@ -1,8 +1,8 @@
 use std::sync::Mutex;
 
-use herald_core::{Chore, Identity, Key, RouteId, Schedule};
+use herald_core::{Chore, DELIVERIES_KEPT, Identity, Key, RouteId, Schedule, Scheme};
 use herald_flows::{Chored, Stop, housekeep, prepare};
-use herald_ports::Store as _;
+use herald_ports::{Admitted, Store as _};
 use herald_testing::{FakeClock, FakeSigner, FakeStore};
 use jiff::SignedDuration;
 
@@ -130,4 +130,44 @@ fn housekeeping_that_cannot_reach_its_destination_or_its_store_keeps_its_schedul
             "the store could not be reached: broken".to_owned()
         ))
     );
+}
+
+#[test]
+fn housekeeping_forgets_a_delivery_admitted_more_than_a_week_ago_and_keeps_the_rest() {
+    let store = healthy();
+    let day = SignedDuration::from_hours(24);
+    let week_and_a_day = NOON.checked_sub(DELIVERIES_KEPT + day).unwrap();
+    let six_days = NOON.checked_sub(DELIVERIES_KEPT - day).unwrap();
+    pollster::block_on(store.admit(Scheme::GitHub, "old", week_and_a_day)).unwrap();
+    pollster::block_on(store.admit(Scheme::GitHub, "recent", six_days)).unwrap();
+    assert_eq!(kept(&store, &Script::answering(&[])).unwrap(), []);
+    assert_eq!(
+        pollster::block_on(store.admit(Scheme::GitHub, "old", NOON)).unwrap(),
+        Admitted::Fresh
+    );
+    assert_eq!(
+        pollster::block_on(store.admit(Scheme::GitHub, "recent", NOON)).unwrap(),
+        Admitted::Seen
+    );
+}
+
+#[test]
+fn deliveries_that_cannot_be_expired_stop_housekeeping() {
+    let store = Failing {
+        fault: Fault::ExpiresDeliveries,
+        ..healthy()
+    };
+    assert_eq!(
+        kept(&store, &Script::answering(&[])),
+        Err(Stop::Store(broken().to_string()))
+    );
+}
+
+#[test]
+fn a_store_keeping_no_deliveries_is_never_asked_to_expire_them() {
+    let store = Failing {
+        fault: Fault::KeepsNoDeliveries,
+        ..healthy()
+    };
+    assert_eq!(kept(&store, &Script::answering(&[])), Ok(Vec::new()));
 }

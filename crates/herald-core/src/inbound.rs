@@ -20,6 +20,9 @@ pub const REPLAY_WINDOW: SignedDuration = SignedDuration::from_mins(5);
 /// keys signs with two or three.
 pub const MOST_SIGNATURES: usize = 4;
 
+/// How long a store keeps a delivery id it admitted (ADR-0013).
+pub const DELIVERIES_KEPT: SignedDuration = SignedDuration::from_hours(7 * 24);
+
 /// Who signs a kind of inbound request, and how.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Scheme {
@@ -32,7 +35,7 @@ pub enum Scheme {
     /// A GitLab webhook signed with a signing token, as Standard Webhooks
     /// sign: `webhook-signature: v1,<base64>`, an HMAC-SHA256 of
     /// `<webhook-id>.<webhook-timestamp>.<body>`, keyed by the token's
-    /// base64 after its `whsec_`.
+    /// base64 after its `whsec_` and delivered as `webhook-id`.
     GitLab,
     /// A Discord interaction: `X-Signature-Ed25519` over
     /// `X-Signature-Timestamp` and the body.
@@ -43,6 +46,21 @@ pub enum Scheme {
     /// A Matrix application-service transaction: `Authorization: Bearer
     /// <hs_token>`, the homeserver token its registration names.
     Matrix,
+}
+
+impl Scheme {
+    /// The scheme's name, as a store keeps its deliveries under it.
+    #[must_use]
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::GitHub => "github",
+            Self::Forgejo => "forgejo",
+            Self::GitLab => "gitlab",
+            Self::Discord => "discord",
+            Self::Slack => "slack",
+            Self::Matrix => "matrix",
+        }
+    }
 }
 
 /// The kind of signature a scheme carries.
@@ -66,6 +84,11 @@ pub struct Claim {
     pub message: Vec<u8>,
     /// The signatures over them, any one of which holds.
     pub signatures: Vec<Vec<u8>>,
+    /// What makes this delivery that delivery, as its signature covers it,
+    /// which the store admits once (ADR-0013): the signed `webhook-id` of a
+    /// GitLab webhook, and the signature itself, in hex, of a GitHub or
+    /// Forgejo webhook, whose delivery ids no signature covers.
+    pub delivery: Option<String>,
 }
 
 /// Why a request is refused before its signature is checked.
@@ -116,7 +139,7 @@ pub fn claim(
         Scheme::GitHub => {
             const HEADER: &str = "X-Hub-Signature-256";
             let signature = prefixed(headers, HEADER, "sha256=")?;
-            Ok(hmac(body.to_vec(), signature))
+            Ok(signed_body(body, signature))
         }
         Scheme::Forgejo => {
             let (header, value) = ["X-Forgejo-Signature", "X-Gitea-Signature"]
@@ -125,10 +148,8 @@ pub fn claim(
                 .ok_or(Refusal::Unsigned {
                     header: "X-Forgejo-Signature",
                 })?;
-            Ok(hmac(
-                body.to_vec(),
-                unhex(value).ok_or(Refusal::Malformed { header })?,
-            ))
+            let signature = unhex(value).ok_or(Refusal::Malformed { header })?;
+            Ok(signed_body(body, signature))
         }
         Scheme::Discord => {
             const SIGNATURE: &str = "X-Signature-Ed25519";
@@ -139,6 +160,7 @@ pub fn claim(
                 kind: Signature::Ed25519,
                 message: [stamp.as_bytes(), body].concat(),
                 signatures: vec![unhex(signature).ok_or(Refusal::Malformed { header: SIGNATURE })?],
+                delivery: None,
             })
         }
         Scheme::Slack => {
@@ -148,6 +170,7 @@ pub fn claim(
             Ok(hmac(
                 [b"v0:", stamp.as_bytes(), b":", body].concat(),
                 signature,
+                None,
             ))
         }
         Scheme::Matrix => {
@@ -160,6 +183,7 @@ pub fn claim(
                 kind: Signature::Token,
                 message: Vec::new(),
                 signatures: vec![token.as_bytes().to_vec()],
+                delivery: None,
             })
         }
         Scheme::GitLab => {
@@ -185,6 +209,7 @@ pub fn claim(
                 kind: Signature::HmacSha256,
                 message: [id.as_bytes(), b".", stamp.as_bytes(), b".", body].concat(),
                 signatures,
+                delivery: Some(id.to_owned()),
             })
         }
     }
@@ -219,11 +244,18 @@ pub fn same(held: &[u8], presented: &[u8]) -> bool {
     std::hint::black_box(differs) == 0 && held.len() == presented.len()
 }
 
-fn hmac(message: Vec<u8>, signature: Vec<u8>) -> Claim {
+/// The claim of a webhook signing its body alone, delivered as its signature.
+fn signed_body(body: &[u8], signature: Vec<u8>) -> Claim {
+    let delivery = crate::hex(&signature);
+    hmac(body.to_vec(), signature, Some(&delivery))
+}
+
+fn hmac(message: Vec<u8>, signature: Vec<u8>, delivery: Option<&str>) -> Claim {
     Claim {
         kind: Signature::HmacSha256,
         message,
         signatures: vec![signature],
+        delivery: delivery.map(str::to_owned),
     }
 }
 

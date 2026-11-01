@@ -169,6 +169,8 @@ pub(crate) fn outcome(announced: &[Announced]) -> &Outcome {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Fault {
     Nothing,
+    ExpiresDeliveries,
+    KeepsNoDeliveries,
     Cursors,
     WritesCursors,
     CursorConflicts,
@@ -205,7 +207,14 @@ pub(crate) fn broken() -> StoreError {
 
 impl Store for Failing {
     fn capabilities(&self) -> Capabilities {
-        self.inner.capabilities()
+        let all = self.inner.capabilities();
+        if self.fault == Fault::KeepsNoDeliveries {
+            return herald_ports::Capabilities {
+                deliveries: false,
+                ..all
+            };
+        }
+        all
     }
 
     async fn entry(&self, key: &Key) -> Result<Option<Versioned<Entry>>, StoreError> {
@@ -295,6 +304,30 @@ impl Store for Failing {
             return Err(broken());
         }
         self.inner.put_pinned(route, post).await
+    }
+
+    async fn admit(
+        &self,
+        scheme: herald_core::Scheme,
+        id: &str,
+        at: jiff::Timestamp,
+    ) -> Result<herald_ports::Admitted, StoreError> {
+        self.inner.admit(scheme, id, at).await
+    }
+
+    async fn release(&self, scheme: herald_core::Scheme, id: &str) -> Result<(), StoreError> {
+        self.inner.release(scheme, id).await
+    }
+
+    async fn expire_deliveries(&self, before: jiff::Timestamp) -> Result<(), StoreError> {
+        match self.fault {
+            Fault::ExpiresDeliveries => return Err(broken()),
+            Fault::KeepsNoDeliveries => {
+                return Err(StoreError::Unsupported { what: "deliveries" });
+            }
+            _ => {}
+        }
+        self.inner.expire_deliveries(before).await
     }
 }
 

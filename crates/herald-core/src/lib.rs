@@ -29,7 +29,8 @@ pub use cursor::{Cursor, Polled, fresh};
 pub use event::{Draft, Event, Kind, Problem};
 pub use housekeep::{Chore, Schedule, due, schedules};
 pub use inbound::{
-    Claim, MOST_SIGNATURES, REPLAY_WINDOW, Refusal, Scheme, Signature, claim, key, same,
+    Claim, DELIVERIES_KEPT, MOST_SIGNATURES, REPLAY_WINDOW, Refusal, Scheme, Signature, claim, key,
+    same,
 };
 pub use key::{Identity, Key, NotAKey, RouteId, digest, hex};
 pub use ledger::{Entry, Facts, Lease, Plan, Planned, Record, Sent, State, Step, plan, steps};
