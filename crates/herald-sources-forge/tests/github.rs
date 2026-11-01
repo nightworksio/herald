@@ -149,6 +149,38 @@ mod github {
     }
 
     #[test]
+    fn one_release_is_asked_for_by_its_tag_and_becomes_its_event() {
+        let request = source(None).release_request("v0.12.6", None);
+        assert_eq!(
+            request.url.redacted(),
+            "https://api.github.com/repos/neovim/neovim/releases/tags/v0.12.6"
+        );
+        let odd = source(None).release_request("release/1 2", None);
+        assert_eq!(
+            odd.url.redacted(),
+            "https://api.github.com/repos/neovim/neovim/releases/tags/release%2F1%202"
+        );
+        let releases: Value = serde_json::from_str(RELEASES).unwrap();
+        let one = releases[1].to_string();
+        let event = GitHub::release(&neovim(), &answer(200, &one))
+            .unwrap()
+            .unwrap();
+        assert_eq!(event.identity().as_str(), "github.com/16408992/v0.12.6");
+        let mut draft = releases[1].clone();
+        draft["draft"] = json!(true);
+        assert_eq!(
+            GitHub::release(&neovim(), &answer(200, &draft.to_string())),
+            Ok(None)
+        );
+        assert_eq!(
+            GitHub::release(&neovim(), &answer(404, "{}"))
+                .unwrap_err()
+                .to_string(),
+            "GitHub's release was answered with 404"
+        );
+    }
+
+    #[test]
     fn a_poll_with_nothing_new_or_a_refusal_says_so() {
         assert!(GitHub::unchanged(&answer(304, "")));
         assert!(!GitHub::unchanged(&answer(200, RELEASES)));

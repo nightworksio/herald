@@ -87,14 +87,14 @@ body = "{{{{ event.body }}}}"
         let outside = command
             .args(["announce", "--from", "github"])
             .current_dir(directory.path())
-            .env_remove("GITHUB_EVENT_NAME")
+            .env_remove("GITHUB_REPOSITORY")
             .output()
             .unwrap();
         assert_eq!(outside.status.code(), Some(1));
         assert!(
             String::from_utf8(outside.stderr)
                 .unwrap()
-                .contains("GITHUB_EVENT_NAME is not set")
+                .contains("GITHUB_REPOSITORY is not set")
         );
     }
 

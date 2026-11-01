@@ -20,7 +20,7 @@ use herald_flows::{
 };
 use herald_native::{EnvSecrets, RingSigner, SystemClock};
 use herald_ports::{Http, HttpError, Request, Response, Secrets, Store as Keeps};
-use herald_sources_forge::GitHub;
+use herald_sources_forge::{GitHub, SourceOptions};
 use herald_store_actions_cache::{ActionsCache, ActionsCacheStore};
 use herald_store_git_branch::{GitBranch, GitBranchStore, StoreOptions as BranchOptions};
 use herald_store_repo_variables::{
@@ -128,6 +128,10 @@ enum Serve {
         /// Where the event comes from.
         #[arg(long, value_enum)]
         from: From,
+        /// The release of the run's repository to announce, by its tag, in
+        /// place of the run's own event.
+        #[arg(long)]
+        release: Option<String>,
     },
     /// Ask every source for what it has not seen, and announce it.
     Poll,
@@ -178,7 +182,10 @@ pub async fn run(
     };
     warned(&doctor(&config, Layer::Actions.stores()).gaps, vars, out);
     let ran = match serve {
-        Serve::Announce { from: From::Github } => github(&config, vars, connect, out).await,
+        Serve::Announce {
+            from: From::Github,
+            release,
+        } => github(&config, vars, connect, release.as_deref(), out).await,
         Serve::Poll => polling(&config, vars, connect, out).await,
         Serve::Housekeep => housekeeping(&config, vars, connect, out).await,
     };
@@ -268,40 +275,33 @@ async fn github(
     config: &Config,
     vars: &BTreeMap<String, String>,
     connect: Connect<'_>,
+    release: Option<&str>,
     out: &mut dyn Write,
 ) -> Result<u8, String> {
-    let event_name = variable(vars, "GITHUB_EVENT_NAME")?;
-    if event_name != "release" {
-        say(
-            out,
-            &format!("The run's event is {event_name}, not a release; nothing to announce."),
-        );
-        return Ok(DONE);
-    }
-    let path = variable(vars, "GITHUB_EVENT_PATH")?;
-    let payload =
-        std::fs::read(path).map_err(|error| format!("{path} could not be read: {error}"))?;
-    let Some(event) = GitHub::event(&payload).map_err(|error| error.to_string())? else {
-        say(
-            out,
-            "The release is not published, or is a draft; nothing to announce.",
-        );
-        return Ok(DONE);
-    };
     let repository = variable(vars, "GITHUB_REPOSITORY")?;
-    let sources: Vec<&SourceName> = config
+    let named: Vec<(&SourceName, &SourceOptions)> = config
         .sources
         .iter()
-        .filter(|(_, source)| match source {
-            Source::GitHub(options) => options.repository.eq_ignore_ascii_case(repository),
+        .filter_map(|(name, source)| match source {
+            Source::GitHub(options) => options
+                .repository
+                .eq_ignore_ascii_case(repository)
+                .then_some((name, options)),
         })
-        .map(|(name, _)| name)
         .collect();
-    if sources.is_empty() {
+    let Some((_, options)) = named.first() else {
         return Err(format!(
             "no source in the config names {repository}; add [sources.<name>] with kind = \"github\" and repository = \"{repository}\""
         ));
-    }
+    };
+    let event = match release {
+        Some(tag) => tagged(options, tag, vars, connect, out).await?,
+        None => evented(vars, out)?,
+    };
+    let Some(event) = event else {
+        return Ok(DONE);
+    };
+    let sources: Vec<&SourceName> = named.iter().map(|(name, _)| *name).collect();
     let (records, connected) = reached(config, vars, connect).await?;
     let run = run_name(vars);
     let announcing = Announcing {
@@ -319,6 +319,64 @@ async fn github(
         say(out, &report(&announced));
     }
     Ok(code)
+}
+
+/// The release the run's own event publishes, if it does.
+fn evented(vars: &BTreeMap<String, String>, out: &mut dyn Write) -> Result<Option<Event>, String> {
+    let event_name = variable(vars, "GITHUB_EVENT_NAME")?;
+    if event_name != "release" {
+        say(
+            out,
+            &format!("The run's event is {event_name}, not a release; nothing to announce."),
+        );
+        return Ok(None);
+    }
+    let path = variable(vars, "GITHUB_EVENT_PATH")?;
+    let payload =
+        std::fs::read(path).map_err(|error| format!("{path} could not be read: {error}"))?;
+    let event = GitHub::event(&payload).map_err(|error| error.to_string())?;
+    if event.is_none() {
+        say(
+            out,
+            "The release is not published, or is a draft; nothing to announce.",
+        );
+    }
+    Ok(event)
+}
+
+/// The release tagged `tag` of the repository `options` names, asked of
+/// GitHub with the source's token, or else the run's own.
+async fn tagged(
+    options: &SourceOptions,
+    tag: &str,
+    vars: &BTreeMap<String, String>,
+    connect: Connect<'_>,
+    out: &mut dyn Write,
+) -> Result<Option<Event>, String> {
+    let secrets = EnvSecrets::from_vars(vars.clone());
+    let token = match &options.token {
+        Some(named) => Some(
+            secrets
+                .secret(&named.secret)
+                .await
+                .map_err(|_| format!("{} is not set; the source names it", named.secret))?,
+        ),
+        None => secrets.secret(GITHUB_TOKEN).await.ok(),
+    };
+    let github = GitHub::new(options);
+    let http = connect(github.api())?;
+    let asked = |request| async { http.send(request).await.map_err(|error| error.to_string()) };
+    let answer = asked(github.release_request(tag, token.as_ref())).await?;
+    let described = asked(github.repository_request(token.as_ref())).await?;
+    let repository = GitHub::repository(&described).map_err(|error| error.to_string())?;
+    let event = GitHub::release(&repository, &answer).map_err(|error| error.to_string())?;
+    if event.is_none() {
+        say(
+            out,
+            &format!("The release {tag} is a draft; nothing to announce."),
+        );
+    }
+    Ok(event)
 }
 
 /// A command's work, over whichever store the config names.

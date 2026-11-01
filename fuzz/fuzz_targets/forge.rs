@@ -24,6 +24,9 @@ fuzz_target!(|bytes: &[u8]| {
     let response = Response { status: 200, headers: Vec::new(), body: bytes.to_vec() };
     let _ = GitHub::repository(&response);
     let repository = Repository { id: 7, name: "fuzzed".to_owned() };
+    if let Ok(Some(event)) = GitHub::release(&repository, &response) {
+        identified(&event, Some(repository.id));
+    }
     if let Ok(Releases { events, .. }) = GitHub::releases(&repository, &response) {
         for event in &events {
             identified(event, Some(repository.id));

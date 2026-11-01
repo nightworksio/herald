@@ -1,7 +1,7 @@
-# herald's Action (ADR-0009): at a release tag, or given a release, it
-# downloads that release's binary and checks it against the release's
-# SHA256SUMS; at any other ref, such as a commit SHA, it builds the CLI from
-# its own checkout.
+# herald's Action (ADR-0009, ADR-0012): at a release tag, at a release line's
+# tag such as v0.1, or given a release, it downloads that release's binary
+# and checks it against the release's SHA256SUMS; at any other ref, such as
+# a commit SHA, it builds the CLI from its own checkout.
 name: herald
 description: Announce every release to Discord, Matrix, Slack and the Fediverse, from one herald.toml.
 author: NightWorksIO
@@ -20,7 +20,10 @@ inputs:
     description: The token for the git-branch store and GitHub's API; the run's own where not given.
     default: ${{ github.token }}
   release:
-    description: The release whose binary to run, such as v0.1.0; the ref the Action is called at where that names a release.
+    description: The release whose binary to run, such as v0.1.0; the ref the Action is called at where that names a release or a release line.
+    default: ""
+  tag:
+    description: A release of the run's repository to announce, by its tag, where the run's event is not that release.
     default: ""
 
 runs:
@@ -31,14 +34,29 @@ runs:
       shell: bash
       env:
         ACTION_REF: ${{ github.action_ref }}
+        ACTION_REPOSITORY: ${{ github.action_repository || github.repository }}
         RELEASE: ${{ inputs.release }}
+        GH_TOKEN: ${{ inputs.token }}
       run: |
         version='^v[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.-]+)?$'
+        line='^v[0-9]+(\.[0-9]+)?$'
         if [[ -n "$RELEASE" && ! "$RELEASE" =~ $version ]]; then
           echo "::error::herald's release input names a release such as v0.1.0"
           exit 1
         fi
         release="${RELEASE:-$ACTION_REF}"
+        if [[ -z "$RELEASE" && "$ACTION_REF" =~ $line ]]; then
+          release=$(gh release list --repo "$ACTION_REPOSITORY" --limit 100 \
+            --exclude-drafts --exclude-pre-releases --json tagName \
+            | jq -r --arg line "$ACTION_REF." '[.[].tagName
+                | select(test("^v[0-9]+\\.[0-9]+\\.[0-9]+$") and startswith($line))]
+              | sort_by(ltrimstr("v") | split(".") | map(tonumber)) | last // empty')
+          if [[ -z "$release" ]]; then
+            echo "::error::herald has no release on the line $ACTION_REF"
+            exit 1
+          fi
+          echo "herald's line $ACTION_REF is at $release."
+        fi
         if [[ "$release" =~ $version ]]; then
           echo "release=$release" >> "$GITHUB_OUTPUT"
         else
@@ -144,9 +162,10 @@ runs:
         GITHUB_TOKEN: ${{ inputs.token }}
         COMMAND: ${{ inputs.command }}
         CONFIG: ${{ inputs.config }}
+        TAG: ${{ inputs.tag }}
       run: |
         case "$COMMAND" in
-          announce) set -- announce --from github ;;
+          announce) set -- announce --from github ${TAG:+--release "$TAG"} ;;
           poll) set -- poll ;;
           housekeep) set -- housekeep ;;
           *) echo "::error::herald's command input is announce, poll or housekeep"; exit 1 ;;

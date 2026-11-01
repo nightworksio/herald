@@ -1018,3 +1018,61 @@ fn a_release_is_announced_once_through_the_repository_s_variables() {
             .all(|name| name.starts_with("HERALD_"))
     );
 }
+
+fn tagged(world: &World, status: u16, draft: bool) {
+    let release = json!({
+        "tag_name": "v1",
+        "name": "GitHub CLI v1",
+        "body": "## What's Changed",
+        "draft": draft,
+        "prerelease": false,
+        "published_at": "2026-10-31T12:00:00Z",
+        "html_url": "https://github.com/cli/cli/releases/tag/v1",
+    });
+    forge(world, (200, &[]));
+    world.state.lock().unwrap().forge.insert(
+        "/repos/cli/cli/releases/tags/v1".to_owned(),
+        (status, release.to_string()),
+    );
+}
+
+#[test]
+fn a_release_named_by_its_tag_is_announced_in_place_of_the_run_s_event() {
+    let mut evented = setup(CONFIG);
+    evented
+        .vars
+        .insert("GITHUB_EVENT_NAME".to_owned(), "push".to_owned());
+    let world = World::default();
+    tagged(&world, 200, false);
+    discord(&world, &[("/channels/100/messages", 200, r#"{"id":"1"}"#)]);
+    let released = ["announce", "--from", "github", "--release", "v1"];
+    let announced = run(&evented, &world, &released);
+    assert_eq!(
+        (
+            announced.code,
+            announced.out.as_str(),
+            announced.err.as_str()
+        ),
+        (DONE, "releases: announced (post)\n", "")
+    );
+    let drafted = World::default();
+    tagged(&drafted, 200, true);
+    assert_eq!(
+        run(&evented, &drafted, &released).out,
+        "The release v1 is a draft; nothing to announce.\n"
+    );
+    let missing = World::default();
+    tagged(&missing, 404, false);
+    assert_eq!(
+        run(&evented, &missing, &released).err,
+        "GitHub's release was answered with 404\n"
+    );
+    let tokened = setup(&CONFIG.replace(
+        "repository = \"cli/cli\"",
+        "repository = \"cli/cli\"\ntoken = { secret = \"CLI_TOKEN\" }",
+    ));
+    assert_eq!(
+        run(&tokened, &World::default(), &released).err,
+        "CLI_TOKEN is not set; the source names it\n"
+    );
+}

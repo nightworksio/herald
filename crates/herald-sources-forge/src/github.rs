@@ -27,6 +27,7 @@ const USER_AGENT: &str = concat!(
 const EVENT: &str = "GitHub's release event";
 const RELEASES: &str = "GitHub's releases";
 const REPOSITORY: &str = "GitHub's repository";
+const RELEASE: &str = "GitHub's release";
 
 #[derive(Deserialize)]
 struct Payload {
@@ -219,6 +220,37 @@ impl GitHub {
             request = request.header("If-Modified-Since", Text::plain(modified));
         }
         request
+    }
+
+    /// The request for the release tagged `tag`.
+    #[must_use]
+    pub fn release_request(&self, tag: &str, token: Option<&Secret>) -> Request {
+        let tag: String = tag
+            .bytes()
+            .map(|byte| {
+                if byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b'-') {
+                    char::from(byte).to_string()
+                } else {
+                    format!("%{byte:02X}")
+                }
+            })
+            .collect();
+        self.get(&format!("/releases/tags/{tag}"), token)
+    }
+
+    /// The event the release of `repository` in GitHub's answer to
+    /// [`GitHub::release_request`] announces: a published release that is
+    /// not a draft, or nothing.
+    ///
+    /// # Errors
+    ///
+    /// When GitHub did not answer with a release, or it makes no event.
+    pub fn release(
+        repository: &Repository,
+        response: &Response,
+    ) -> Result<Option<Event>, ForgeError> {
+        answered(RELEASE, response)?;
+        release(RELEASE, repository, read(RELEASE, &response.body)?)
     }
 
     /// Whether GitHub's answer to [`GitHub::releases_request`] says nothing
