@@ -1,6 +1,6 @@
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD;
-use herald_ports::{Http, Method, Request, Response, StoreError, Text};
+use herald_ports::{Http, Method, Request, Response, StoreError, Text, USER_AGENT};
 use herald_records::{Blob, Records, Wrote};
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -8,11 +8,6 @@ use serde_json::{Value, json};
 use crate::store::{BranchRecords, GitBranch};
 
 const API_VERSION: &str = "2022-11-28";
-const USER_AGENT: &str = concat!(
-    "herald/",
-    env!("CARGO_PKG_VERSION"),
-    " (+https://github.com/nightworksio/herald)"
-);
 const OK: u16 = 200;
 const MISSING: u16 = 404;
 const CONFLICT: u16 = 409;

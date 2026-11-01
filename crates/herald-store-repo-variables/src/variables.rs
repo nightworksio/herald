@@ -1,4 +1,4 @@
-use herald_ports::{Http, Method, Request, Response, Secret, StoreError, Text};
+use herald_ports::{Http, Method, Request, Response, Secret, StoreError, Text, USER_AGENT};
 use herald_records::{Blob, Kept, Records, Wrote};
 use jiff::{SignedDuration, Timestamp};
 use serde::Deserialize;
@@ -9,11 +9,6 @@ use crate::name;
 /// GitHub's own API.
 const API: &str = "https://api.github.com";
 const API_VERSION: &str = "2022-11-28";
-const USER_AGENT: &str = concat!(
-    "herald/",
-    env!("CARGO_PKG_VERSION"),
-    " (+https://github.com/nightworksio/herald)"
-);
 /// The most variables GitHub lists in one page.
 const PAGE: usize = 30;
 /// How long a lock holds before it is taken as abandoned.

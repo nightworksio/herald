@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 
 use herald_core::{Cursor, Draft, Event, Kind, prerelease_version};
-use herald_ports::{Method, Request, Response, Secret, Text};
+use herald_ports::{Method, Request, Response, Secret, Text, USER_AGENT};
 use jiff::Timestamp;
 use serde::Deserialize;
 use serde::de::DeserializeOwned;
@@ -19,11 +19,6 @@ const LIMIT: usize = 4_194_304;
 const PAGE: u8 = 30;
 /// What GitHub answers to a conditional request when nothing changed.
 const NOT_MODIFIED: u16 = 304;
-const USER_AGENT: &str = concat!(
-    "herald/",
-    env!("CARGO_PKG_VERSION"),
-    " (+https://github.com/nightworksio/herald)"
-);
 const EVENT: &str = "GitHub's release event";
 const RELEASES: &str = "GitHub's releases";
 const REPOSITORY: &str = "GitHub's repository";

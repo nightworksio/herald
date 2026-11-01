@@ -86,6 +86,14 @@ impl fmt::Display for Request {
     }
 }
 
+/// The `User-Agent` every request herald sends carries: herald, its version
+/// and its repository (ADR-0003).
+pub const USER_AGENT: &str = concat!(
+    "herald/",
+    env!("CARGO_PKG_VERSION"),
+    " (+https://github.com/nightworksio/herald)"
+);
+
 /// One response, as a value.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Response {
