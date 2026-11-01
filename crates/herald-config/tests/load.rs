@@ -220,6 +220,14 @@ body = "{{ event.body }}"
             error.contains("over the destination's 256; shorten it"),
             "{error}"
         );
+        let title = |length: usize| {
+            EXAMPLE.replace(
+                "title = \"📦 {{ event.project }} {{ event.version }}{% if event.prerelease %} · pre-release{% endif %}\"",
+                &format!("title = \"{}\"", "x".repeat(length)),
+            )
+        };
+        assert!(load("herald.toml", &title(256), &nothing).is_ok());
+        assert!(errors(&title(257)).contains("it renders 257 characters"));
         let thread = EXAMPLE.replace(
             "{{ event.project }} {{ event.version }}\", archive_after",
             "{{ event.nope }}\", archive_after",

@@ -226,6 +226,12 @@ pub(crate) mod tests {
         }
     }
 
+    #[test]
+    fn a_secret_expects_its_written_form() {
+        use serde::de::Expected;
+        assert_eq!((&SecretVisitor as &dyn Expected).to_string(), SECRET_FORM);
+    }
+
     fn prerelease() -> Event {
         Event::normalise(Draft {
             prerelease: true,

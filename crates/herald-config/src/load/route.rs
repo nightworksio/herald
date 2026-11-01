@@ -2,8 +2,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::ops::Range;
 
 use herald_core::{
-    Delivery, DestinationName, Filter, Kind, MentionStyle, Mentions, Pins, Profile, Route, RouteId,
-    SourceName, TemplateName, Thread,
+    Delivery, DestinationName, Filter, Kind, Mentions, Profile, Route, RouteId, SourceName,
+    TemplateName, Thread,
 };
 use toml::Spanned;
 use toml::de::{DeTable, DeValue};
@@ -106,23 +106,26 @@ impl Loader<'_> {
             );
             sound = false;
         }
-        let wants = [
-            (route.crosspost && !profile.features.crosspost, "crosspost"),
-            (
-                route.pin.is_some() && profile.features.pins == Pins::None,
-                "pin",
-            ),
-            (
-                !route.mentions.roles.is_empty()
-                    && profile.features.mentions != MentionStyle::Roles,
-                "mentions.roles",
-            ),
-            (
-                route.mentions.subscribers && profile.features.mentions != MentionStyle::Users,
-                "mentions.subscribers",
-            ),
-        ];
-        for (_, key) in wants.iter().filter(|(lacks, _)| *lacks) {
+        let thread_name = route.thread.as_ref().map(|thread| thread.name.clone());
+        let delivery = Delivery {
+            crosspost: route.crosspost,
+            thread: route.thread.map(|thread| Thread {
+                name: thread.name.into_inner(),
+                archive_after: thread.archive_after.map(|after| after.0),
+                lock_after: thread.lock_after.map(|after| after.0),
+            }),
+            pin: route.pin,
+            mentions: Mentions {
+                roles: route
+                    .mentions
+                    .roles
+                    .into_iter()
+                    .map(herald_core::RoleId::new)
+                    .collect(),
+                subscribers: route.mentions.subscribers,
+            },
+        };
+        for key in profile.features.lacking(&delivery) {
             self.error(
                 &span,
                 &format!("{path}.{key}"),
@@ -146,7 +149,6 @@ impl Loader<'_> {
         } else {
             route.kinds.iter().copied().collect()
         };
-        let thread_name = route.thread.as_ref().map(|thread| thread.name.clone());
         let config = RouteConfig {
             route: Route {
                 id: RouteId::new(route.id.get_ref()),
@@ -161,24 +163,7 @@ impl Loader<'_> {
                 },
                 destination,
                 template,
-                delivery: Delivery {
-                    crosspost: route.crosspost,
-                    thread: route.thread.map(|thread| Thread {
-                        name: thread.name.into_inner(),
-                        archive_after: thread.archive_after.map(|after| after.0),
-                        lock_after: thread.lock_after.map(|after| after.0),
-                    }),
-                    pin: route.pin,
-                    mentions: Mentions {
-                        roles: route
-                            .mentions
-                            .roles
-                            .into_iter()
-                            .map(herald_core::RoleId::new)
-                            .collect(),
-                        subscribers: route.mentions.subscribers,
-                    },
-                },
+                delivery,
             },
             options: RouteOptions::Discord(options),
         };
