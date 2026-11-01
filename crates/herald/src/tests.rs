@@ -496,15 +496,13 @@ fn doctor_names_what_the_markers_store_cannot_serve() {
             .collect::<Vec<_>>()
     };
     let markers = CONFIG.replace("kind = \"git-branch\"", MARKERS);
-    let polling = "sources.cli: polling cli cannot be served: the markers store keeps no cursors; `herald poll` needs a store that does.";
     assert_eq!(
         gaps(&markers.replace(
             "template = \"release\"\n",
             "template = \"release\"\npin = \"store\"\n"
         )),
         [
-            "routes[0].pin: a pin the store remembers cannot be served: the markers store keeps no pins; set pin = \"markers\".",
-            polling,
+            "routes[0].pin: a pin the store remembers cannot be served: the markers store keeps no pins; set pin = \"markers\"."
         ]
     );
     let hooked = markers.replace(
@@ -514,8 +512,7 @@ fn doctor_names_what_the_markers_store_cannot_serve() {
     assert_eq!(
         gaps(&hooked),
         [
-            "routes[0].destination: sending each announcement once cannot be served: the markers store reads announcements back from their posts, and a webhook cannot read back its posts; post through a bot to a text or announcement channel, or choose a store that keeps records.",
-            polling,
+            "routes[0].destination: sending each announcement once cannot be served: the markers store reads announcements back from their posts, and a webhook cannot read back its posts; post through a bot to a text or announcement channel, or choose a store that keeps records."
         ]
     );
     let forum = markers.replace("channel = \"100\"", "channel = \"100\"\nforum = true");
@@ -523,7 +520,7 @@ fn doctor_names_what_the_markers_store_cannot_serve() {
 }
 
 #[test]
-fn a_release_kept_only_in_its_post_is_announced_once_and_each_command_warns_of_its_gaps() {
+fn a_release_kept_only_in_its_post_is_announced_once_and_poll_stops_without_cursors() {
     let mut setup = setup(&CONFIG.replace("kind = \"git-branch\"", MARKERS));
     setup.vars.remove("GITHUB_TOKEN");
     let world = World::default();
@@ -538,10 +535,7 @@ fn a_release_kept_only_in_its_post_is_announced_once_and_each_command_warns_of_i
     let announced = run(&setup, &world, &ANNOUNCE);
     assert_eq!(
         (announced.code, announced.out.as_str()),
-        (
-            DONE,
-            "warning: sources.cli: polling cli cannot be served: the markers store keeps no cursors; `herald poll` needs a store that does.\nreleases: announced (post)\n"
-        )
+        (DONE, "releases: announced (post)\n")
     );
     setup
         .vars
@@ -551,7 +545,7 @@ fn a_release_kept_only_in_its_post_is_announced_once_and_each_command_warns_of_i
         (polled.code, polled.out.as_str()),
         (
             STOPPED,
-            "::warning title=herald doctor::sources.cli: polling cli cannot be served: the markers store keeps no cursors; `herald poll` needs a store that does.\ncli: stopped: this store keeps no cursors; choose a store that does. The next poll asks again.\n"
+            "cli: stopped: this store keeps no cursors; choose a store that does. The next poll asks again.\n"
         )
     );
     let housekept = run(&setup, &world, &["housekeep"]);
@@ -917,15 +911,10 @@ fn a_warning_on_actions_stays_one_workflow_command() {
         escaped("100% done\r\n::error::forged"),
         "100%25 done%0D%0A::error::forged"
     );
-    let mut setup = setup(
-        &CONFIG
-            .replace("kind = \"git-branch\"", MARKERS)
-            .replace("[sources.cli]", "[sources.\"cli\\n::error::forged\"]")
-            .replace(
-                "sources = [\"cli\"]",
-                "sources = [\"cli\\n::error::forged\"]",
-            ),
-    );
+    let mut setup = setup(&CONFIG.replace("kind = \"git-branch\"", MARKERS).replace(
+        "template = \"release\"\n",
+        "template = \"release\"\npin = \"store\"\n",
+    ));
     setup
         .vars
         .insert("GITHUB_ACTIONS".to_owned(), "true".to_owned());

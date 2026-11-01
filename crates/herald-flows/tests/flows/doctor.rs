@@ -82,17 +82,27 @@ fn the_markers_store_names_the_pins_cursors_and_read_backs_it_lacks() {
     let mut config = on("markers", "");
     config.routes[0].route.delivery.pin = Some(herald_core::Pinning::Store);
     let findings = doctor(&config, &STORES);
-    assert_eq!(keys(&findings.gaps), ["routes[0].pin", "sources.gate"]);
+    assert_eq!(keys(&findings.gaps), ["routes[0].pin"]);
+    assert!(findings.notes[1].starts_with("`herald poll` stops on the markers store"));
+    assert!(findings.notes[2].starts_with("The markers store has no compare-and-set"));
+    let mut scheduled = on("markers", "[schedule]\npoll = \"1h\"\n");
+    scheduled.sources.clear();
+    let polled = doctor(&scheduled, &STORES);
+    assert_eq!(keys(&polled.gaps), ["schedule.poll"]);
     assert_eq!(
-        findings.gaps[1].why,
-        "the markers store keeps no cursors; `herald poll` needs a store that does"
+        polled.gaps[0].why,
+        "the markers store keeps no cursors; choose a store that does"
     );
-    assert!(findings.notes[1].starts_with("The markers store has no compare-and-set"));
+    let sourced = doctor(&on("markers", ""), &STORES);
+    assert_eq!(sourced.notes.len(), 3);
+    let mut bare = on("markers", "");
+    bare.sources.clear();
+    assert_eq!(doctor(&bare, &STORES).notes.len(), 2);
     config.routes[0].route.delivery.pin = Some(herald_core::Pinning::Markers);
     let herald_config::RouteOptions::Discord(placed) = &mut config.routes[0].options;
     placed.forum = true;
     let forum = doctor(&config, &STORES);
-    assert_eq!(keys(&forum.gaps), ["routes[0].destination", "sources.gate"]);
+    assert_eq!(keys(&forum.gaps), ["routes[0].destination"]);
     assert!(
         forum.gaps[0]
             .why

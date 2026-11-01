@@ -28,6 +28,8 @@ const DERIVED_KEY: &str = "Each post's markers are keyed by its destination's cr
 /// What the markers store cannot hold apart (ADR-0005).
 const UNGUARDED: &str = "The markers store has no compare-and-set, so two runs at once can both post an announcement; run one herald at a time, or choose a store that keeps records.";
 
+/// What the markers store cannot run (ADR-0005).
+const UNPOLLED: &str = "`herald poll` stops on the markers store, which keeps no cursors; announcing each release from its own event needs none.";
 /// What the Actions cache keeps apart and drops (ADR-0005).
 const SCOPED: &str = "The Actions cache keeps records apart for each ref a run is on, and drops what no run reads for a week: a release run on its tag does not see what a run on the default branch wrote. Run housekeeping and polling on one ref, or choose a store that keeps records across refs.";
 /// What repository variables hold at most (ADR-0005).
@@ -104,13 +106,14 @@ pub fn doctor(config: &Config, stores: &[&str]) -> Findings {
         for (index, route) in config.routes.iter().enumerate() {
             unkept(config, index, route, &mut findings.gaps);
         }
-        for name in config.sources.keys() {
+        if config.schedule.poll.is_some() {
             findings.gaps.push(gap(
-                &format!("polling {}", name.as_str()),
-                format!("sources.{}", name.as_str()),
-                "the markers store keeps no cursors; `herald poll` needs a store that does"
-                    .to_owned(),
+                "polling every source",
+                "schedule.poll".to_owned(),
+                "the markers store keeps no cursors; choose a store that does".to_owned(),
             ));
+        } else if !config.sources.is_empty() {
+            findings.notes.push(UNPOLLED.to_owned());
         }
         findings.notes.push(UNGUARDED.to_owned());
     }
