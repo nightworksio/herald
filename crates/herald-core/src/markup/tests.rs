@@ -167,6 +167,27 @@ fn a_bare_url_in_plain_text_is_kept_apart_from_what_follows() {
 }
 
 #[test]
+fn only_a_bare_url_in_plain_text_or_matrix_is_kept_apart_from_what_follows() {
+    assert_eq!(
+        convert("[docs](https://a.example)x", Dialect::Plain).body,
+        "docs (https://a.example)x"
+    );
+    assert_eq!(
+        convert("<https://a.example>x", Dialect::Discord).body,
+        "<https://a.example>x"
+    );
+    assert_eq!(
+        convert("<https://a.example>x", Dialect::Matrix).body,
+        "https://a.example x"
+    );
+}
+
+#[test]
+fn backticks_outside_code_reach_slack_unbroken() {
+    assert_eq!(convert("a ``` b", Dialect::Slack).body, "a ``` b");
+}
+
+#[test]
 fn a_link_inside_a_link_is_its_text_alone() {
     assert_eq!(
         convert(
