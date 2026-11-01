@@ -137,3 +137,46 @@ fn githubs_documented_delivery_verifies_and_a_changed_body_does_not() {
         );
     }
 }
+
+const SPKI: &str = include_str!("../../fixtures/rsa-2048-spki.test.pem");
+
+#[test]
+fn an_activity_signed_by_its_actors_key_verifies_through_the_pem_it_publishes() {
+    let body = b"{\"type\":\"Follow\"}";
+    let digest = format!(
+        "SHA-256={}",
+        STANDARD.encode(ring::digest::digest(&ring::digest::SHA256, body))
+    );
+    let date = "Fri, 15 Jan 2027 08:00:00 GMT";
+    let signing = format!(
+        "(request-target): post /inbox\nhost: herald.example\ndate: {date}\ndigest: {digest}"
+    );
+    let key = Secret::new("ACTOR", pem(&unhex(RSA)));
+    let signed = STANDARD.encode(sign(Algorithm::RsaSha256, &key, signing.as_bytes()).unwrap());
+    let signature = format!(
+        r#"keyId="https://social.example/users/ana#main-key",algorithm="rsa-sha256",headers="(request-target) host date digest",signature="{signed}""#
+    );
+    let headers = [
+        ("(request-target)", "post /inbox"),
+        ("Host", "herald.example"),
+        ("Date", date),
+        ("Digest", digest.as_str()),
+        ("Signature", signature.as_str()),
+    ];
+    let now = "2027-01-15T08:00:00Z".parse().unwrap();
+    let public = herald_core::key(herald_core::Scheme::ActivityPub, SPKI).unwrap();
+    for (body, holds) in [(body.as_slice(), true), (b"{\"type\":\"Undo\"}", false)] {
+        match herald_core::claim(herald_core::Scheme::ActivityPub, &headers, body, now) {
+            Ok(claim) => assert_eq!(
+                verify(
+                    Algorithm::RsaSha256,
+                    &public,
+                    &claim.message,
+                    &claim.signatures[0]
+                ),
+                holds
+            ),
+            Err(refusal) => assert!(!holds, "{refusal}"),
+        }
+    }
+}

@@ -134,6 +134,7 @@ fn a_matrix_transaction_holds_only_with_the_homeserver_token() {
 fn delivered(id: &str) -> Verified {
     Verified {
         delivery: Some(id.to_owned()),
+        signer: None,
     }
 }
 
@@ -171,7 +172,10 @@ fn a_delivery_is_admitted_once_until_it_is_released() {
         Ok(())
     );
     assert_eq!(admit(&delivered("1")), Ok(()));
-    let unnamed = Verified { delivery: None };
+    let unnamed = Verified {
+        delivery: None,
+        signer: None,
+    };
     assert_eq!(admit(&unnamed), Ok(()));
     assert_eq!(admit(&unnamed), Ok(()));
     assert_eq!(
@@ -293,5 +297,57 @@ fn a_store_that_cannot_answer_lets_nothing_through() {
     assert_eq!(
         pollster::block_on(released(&store, Scheme::GitHub, &verified)),
         Err(down)
+    );
+}
+
+const ACTOR_KEY: &str = include_str!("../../../herald-native/fixtures/rsa-2048-spki.test.pem");
+
+#[test]
+fn an_activity_is_checked_as_rsa_and_names_its_signer() {
+    use base64::Engine as _;
+    use base64::engine::general_purpose::STANDARD;
+    use sha2::Digest as _;
+    let digest = format!("SHA-256={}", STANDARD.encode(sha2::Sha256::digest(BODY)));
+    let at: Timestamp = "2027-01-15T08:00:00Z".parse().unwrap();
+    let signing = |signature: &str| {
+        vec![
+            ("(request-target)", "post /inbox".to_owned()),
+            ("Host", "herald.example".to_owned()),
+            ("Date", "Fri, 15 Jan 2027 08:00:00 GMT".to_owned()),
+            ("Digest", digest.clone()),
+            (
+                "Signature",
+                format!(
+                    r#"keyId="https://social.example/users/ana#main-key",headers="(request-target) host date digest",signature="{signature}""#
+                ),
+            ),
+        ]
+    };
+    let probe = signing("AA==");
+    let probe: Vec<(&str, &str)> = probe
+        .iter()
+        .map(|(name, value)| (*name, value.as_str()))
+        .collect();
+    let message = herald_core::claim(Scheme::ActivityPub, &probe, BODY, at)
+        .unwrap()
+        .message;
+    let public = herald_core::key(Scheme::ActivityPub, ACTOR_KEY).unwrap();
+    let spelled = [b"RsaSha256|".as_slice(), &public, b"|", &message].concat();
+    let headers = signing(&STANDARD.encode(spelled));
+    let headers: Vec<(&str, &str)> = headers
+        .iter()
+        .map(|(name, value)| (*name, value.as_str()))
+        .collect();
+    let verified = pollster::block_on(verified(
+        &FakeVerifier,
+        Scheme::ActivityPub,
+        ACTOR_KEY,
+        &headers,
+        BODY,
+        at,
+    ));
+    assert_eq!(
+        verified.map(|verified| verified.signer),
+        Ok(Some("https://social.example/users/ana#main-key".to_owned()))
     );
 }

@@ -27,6 +27,7 @@ fn a_github_webhook_claims_an_hmac_of_its_body() {
             message: BODY.to_vec(),
             signatures: vec![vec![0x00, 0xff, 0x10]],
             delivery: Some("00ff10".to_owned()),
+            signer: None,
         }
     );
 }
@@ -419,9 +420,256 @@ fn each_scheme_keeps_its_deliveries_under_its_own_name() {
         Scheme::Discord,
         Scheme::Slack,
         Scheme::Matrix,
+        Scheme::ActivityPub,
     ];
     assert_eq!(
         schemes.map(Scheme::name),
-        ["github", "forgejo", "gitlab", "discord", "slack", "matrix"]
+        [
+            "github",
+            "forgejo",
+            "gitlab",
+            "discord",
+            "slack",
+            "matrix",
+            "activitypub"
+        ]
+    );
+}
+
+const PUBLIC_KEY: &str = "-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAtz228sa1z4u70xtqdZER\nBwxBvj+JP0V8SEK7SPdlULv1XbBcoI7T238LnlVGo4IN+C/TsW4tpwORACY7iOb2\npF8LZU0LBOFBV7U4fsd2JwwZa45m8U9wd5Q00xcqQoMZYfwQF3HonOlHwNt8DKpb\nmlKsH1WjhhCcjD5m1Q8LeEuGhVviBtrtAor81FzU106aGDYkMwcrUouxSPzDx8+I\nS7oicynJwyHgqqq8ImqZnqYGufaQuqxcOxNNL1GEMtwW6uylOyPIUb4aJ2wcoXTs\nt1dNhGrVFrSUYlad0nhHNuzF8n83Pj0cELoGmrBepQ8+LqI+Yj6sUIagTEi7P0tz\nowIDAQAB\n-----END PUBLIC KEY-----\n";
+
+const ACTIVITY: &[u8] = b"{\"type\":\"Follow\"}";
+
+fn activity_headers<'a>(
+    signature: &'a str,
+    date: &'a str,
+    digest: &'a str,
+) -> Vec<(&'a str, &'a str)> {
+    vec![
+        ("(request-target)", "post /inbox"),
+        ("Host", "herald.example"),
+        ("Date", date),
+        ("Digest", digest),
+        ("Signature", signature),
+    ]
+}
+
+const DATE: &str = "Fri, 15 Jan 2027 08:00:00 GMT";
+
+fn activity_now() -> Timestamp {
+    "2027-01-15T08:00:00Z".parse().unwrap()
+}
+
+fn digest() -> String {
+    use sha2::Digest as _;
+    format!(
+        "SHA-256={}",
+        STANDARD.encode(sha2::Sha256::digest(ACTIVITY))
+    )
+}
+
+const SIGNED: &str = r#"keyId="https://social.example/users/ana#main-key",algorithm="rsa-sha256",headers="(request-target) host date digest",signature="AAE=""#;
+
+fn activitypub(headers: &[(&str, &str)]) -> Result<Claim, Refusal> {
+    claim(Scheme::ActivityPub, headers, ACTIVITY, activity_now())
+}
+
+#[test]
+fn an_activity_claims_rsa_over_the_headers_its_signature_names() {
+    let digest = digest();
+    let claim = activitypub(&activity_headers(SIGNED, DATE, &digest)).unwrap();
+    assert_eq!(claim.kind, Signature::RsaSha256);
+    assert_eq!(
+        String::from_utf8(claim.message).unwrap(),
+        format!(
+            "(request-target): post /inbox\nhost: herald.example\ndate: {DATE}\ndigest: {digest}"
+        )
+    );
+    assert_eq!(claim.signatures, [[0x00, 0x01]]);
+    assert_eq!(
+        claim.signer.as_deref(),
+        Some("https://social.example/users/ana#main-key")
+    );
+    assert_eq!(claim.delivery, None);
+}
+
+#[test]
+fn an_activity_must_sign_its_target_host_date_and_digest() {
+    let digest = digest();
+    for (dropped, header) in [
+        ("(request-target) ", "(request-target)"),
+        ("host ", "host"),
+        ("date ", "date"),
+        (" digest", "digest"),
+    ] {
+        let signature = SIGNED.replace(dropped, "");
+        assert_eq!(
+            activitypub(&activity_headers(&signature, DATE, &digest)),
+            Err(Refusal::Uncovered { header }),
+            "{header}"
+        );
+    }
+    let defaulted = SIGNED.replace(r#"headers="(request-target) host date digest","#, "");
+    assert_eq!(
+        activitypub(&activity_headers(&defaulted, DATE, &digest)),
+        Err(Refusal::Uncovered {
+            header: "(request-target)"
+        })
+    );
+}
+
+#[test]
+fn an_activity_without_a_body_need_not_sign_a_digest() {
+    let signature = SIGNED.replace(" digest", "");
+    let headers = activity_headers(&signature, DATE, "");
+    let claim = claim(Scheme::ActivityPub, &headers, b"", activity_now()).unwrap();
+    assert!(!String::from_utf8(claim.message).unwrap().contains("digest"));
+}
+
+#[test]
+fn an_activity_whose_digest_is_not_its_bodys_is_refused() {
+    let altered = "SHA-256=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
+    assert_eq!(
+        activitypub(&activity_headers(SIGNED, DATE, altered)),
+        Err(Refusal::Unmatched { header: "Digest" })
+    );
+    let both = format!("SHA-512=xyz, {}", digest().replace("SHA-256", "sha-256"));
+    assert!(activitypub(&activity_headers(SIGNED, DATE, &both)).is_ok());
+    for written in ["", "MD5=abc", "SHA-256"] {
+        assert_eq!(
+            activitypub(&activity_headers(SIGNED, DATE, written)),
+            Err(Refusal::Malformed { header: "Digest" }),
+            "{written}"
+        );
+    }
+}
+
+#[test]
+fn an_activity_dated_outside_the_window_or_undated_is_refused() {
+    let digest = digest();
+    assert_eq!(
+        activitypub(&activity_headers(
+            SIGNED,
+            "Fri, 15 Jan 2027 07:54:59 GMT",
+            &digest
+        )),
+        Err(Refusal::Stale)
+    );
+    assert!(
+        activitypub(&activity_headers(
+            SIGNED,
+            "Fri, 15 Jan 2027 07:55:00 GMT",
+            &digest
+        ))
+        .is_ok()
+    );
+    assert_eq!(
+        activitypub(&activity_headers(
+            SIGNED,
+            "Fri, 15 Jan 2027 08:05:01 GMT",
+            &digest
+        )),
+        Err(Refusal::Stale)
+    );
+    assert_eq!(
+        activitypub(&activity_headers(SIGNED, "yesterday", &digest)),
+        Err(Refusal::Malformed { header: "Date" })
+    );
+}
+
+#[test]
+fn a_signature_header_not_in_its_form_is_malformed() {
+    let digest = digest();
+    for signature in [
+        "",
+        "keyId=ana",
+        r#"keyId="ana""#,
+        r#"keyId="a",keyId="b",headers="(request-target) host date digest",signature="AAE=""#,
+        r#"keyId="",headers="(request-target) host date digest",signature="AAE=""#,
+        r#"keyId="a",headers="(request-target) host date digest",signature="!!""#,
+        r#"keyId="a",headers="(request-target) host date digest",signature="""#,
+        r#"keyId="a",algorithm="hmac-sha256",headers="(request-target) host date digest",signature="AAE=""#,
+        r#"keyId="a" headers="(request-target) host date digest""#,
+        r#"="a",signature="AAE=""#,
+        r#"keyId="a",headers="(request-target) host date digest x-missing",signature="AAE=""#,
+    ] {
+        assert_eq!(
+            activitypub(&activity_headers(signature, DATE, &digest)),
+            Err(Refusal::Malformed {
+                header: "Signature"
+            }),
+            "{signature}"
+        );
+    }
+    let hs2019 = SIGNED.replace("rsa-sha256", "hs2019");
+    assert!(activitypub(&activity_headers(&hs2019, DATE, &digest)).is_ok());
+    let unnamed = SIGNED.replace(r#"algorithm="rsa-sha256","#, "");
+    assert!(activitypub(&activity_headers(&unnamed, DATE, &digest)).is_ok());
+}
+
+/// The test key's SPKI made wrong one way each, as an actor might publish it.
+const NOT_KEYS: [(&str, &str); 8] = [
+    (
+        "another algorithm",
+        "-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQIFAAOCAQ8AMIIBCgKCAQEAtz228sa1z4u70xtqdZER\nBwxBvj+JP0V8SEK7SPdlULv1XbBcoI7T238LnlVGo4IN+C/TsW4tpwORACY7iOb2\npF8LZU0LBOFBV7U4fsd2JwwZa45m8U9wd5Q00xcqQoMZYfwQF3HonOlHwNt8DKpb\nmlKsH1WjhhCcjD5m1Q8LeEuGhVviBtrtAor81FzU106aGDYkMwcrUouxSPzDx8+I\nS7oicynJwyHgqqq8ImqZnqYGufaQuqxcOxNNL1GEMtwW6uylOyPIUb4aJ2wcoXTs\nt1dNhGrVFrSUYlad0nhHNuzF8n83Pj0cELoGmrBepQ8+LqI+Yj6sUIagTEi7P0tz\nowIDAQAB\n-----END PUBLIC KEY-----\n",
+    ),
+    (
+        "bytes after the key",
+        "-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAtz228sa1z4u70xtqdZER\nBwxBvj+JP0V8SEK7SPdlULv1XbBcoI7T238LnlVGo4IN+C/TsW4tpwORACY7iOb2\npF8LZU0LBOFBV7U4fsd2JwwZa45m8U9wd5Q00xcqQoMZYfwQF3HonOlHwNt8DKpb\nmlKsH1WjhhCcjD5m1Q8LeEuGhVviBtrtAor81FzU106aGDYkMwcrUouxSPzDx8+I\nS7oicynJwyHgqqq8ImqZnqYGufaQuqxcOxNNL1GEMtwW6uylOyPIUb4aJ2wcoXTs\nt1dNhGrVFrSUYlad0nhHNuzF8n83Pj0cELoGmrBepQ8+LqI+Yj6sUIagTEi7P0tz\nowIDAQABAA==\n-----END PUBLIC KEY-----\n",
+    ),
+    (
+        "bytes after its bit string",
+        "-----BEGIN PUBLIC KEY-----\nMIIBJDANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAtz228sa1z4u70xtqdZER\nBwxBvj+JP0V8SEK7SPdlULv1XbBcoI7T238LnlVGo4IN+C/TsW4tpwORACY7iOb2\npF8LZU0LBOFBV7U4fsd2JwwZa45m8U9wd5Q00xcqQoMZYfwQF3HonOlHwNt8DKpb\nmlKsH1WjhhCcjD5m1Q8LeEuGhVviBtrtAor81FzU106aGDYkMwcrUouxSPzDx8+I\nS7oicynJwyHgqqq8ImqZnqYGufaQuqxcOxNNL1GEMtwW6uylOyPIUb4aJ2wcoXTs\nt1dNhGrVFrSUYlad0nhHNuzF8n83Pj0cELoGmrBepQ8+LqI+Yj6sUIagTEi7P0tz\nowIDAQABBQA=\n-----END PUBLIC KEY-----\n",
+    ),
+    (
+        "a bit string that is no RSA key",
+        "-----BEGIN PUBLIC KEY-----\nMBcwDQYJKoZIhvcNAQEBBQADBgAEAwECAw==\n-----END PUBLIC KEY-----\n",
+    ),
+    (
+        "bytes after the RSA key",
+        "-----BEGIN PUBLIC KEY-----\nMIIBIzANBgkqhkiG9w0BAQEFAAOCARAAMIIBCgKCAQEAtz228sa1z4u70xtqdZER\nBwxBvj+JP0V8SEK7SPdlULv1XbBcoI7T238LnlVGo4IN+C/TsW4tpwORACY7iOb2\npF8LZU0LBOFBV7U4fsd2JwwZa45m8U9wd5Q00xcqQoMZYfwQF3HonOlHwNt8DKpb\nmlKsH1WjhhCcjD5m1Q8LeEuGhVviBtrtAor81FzU106aGDYkMwcrUouxSPzDx8+I\nS7oicynJwyHgqqq8ImqZnqYGufaQuqxcOxNNL1GEMtwW6uylOyPIUb4aJ2wcoXTs\nt1dNhGrVFrSUYlad0nhHNuzF8n83Pj0cELoGmrBepQ8+LqI+Yj6sUIagTEi7P0tz\nowIDAQABAA==\n-----END PUBLIC KEY-----\n",
+    ),
+    (
+        "a length in three bytes",
+        "-----BEGIN PUBLIC KEY-----\nMIMAASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEBALc9tvLGtc+Lu9MbanWR\nEQcMQb4/iT9FfEhCu0j3ZVC79V2wXKCO09t/C55VRqOCDfgv07FuLacDkQAmO4jm\n9qRfC2VNCwThQVe1OH7HdicMGWuOZvFPcHeUNNMXKkKDGWH8EBdx6JzpR8DbfAyq\nW5pSrB9Vo4YQnIw+ZtUPC3hLhoVb4gba7QKK/NRc1NdOmhg2JDMHK1KLsUj8w8fP\niEu6InMpycMh4KqqvCJqmZ6mBrn2kLqsXDsTTS9RhDLcFurspTsjyFG+GidsHKF0\n7LdXTYRq1Ra0lGJWndJ4RzbsxfJ/Nz49HBC6BpqwXqUPPi6iPmI+rFCGoExIuz9L\nc6MCAwEAAQ==\n-----END PUBLIC KEY-----\n",
+    ),
+    (
+        "a bit string with unused bits",
+        "-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8BMIIBCgKCAQEAtz228sa1z4u70xtqdZER\nBwxBvj+JP0V8SEK7SPdlULv1XbBcoI7T238LnlVGo4IN+C/TsW4tpwORACY7iOb2\npF8LZU0LBOFBV7U4fsd2JwwZa45m8U9wd5Q00xcqQoMZYfwQF3HonOlHwNt8DKpb\nmlKsH1WjhhCcjD5m1Q8LeEuGhVviBtrtAor81FzU106aGDYkMwcrUouxSPzDx8+I\nS7oicynJwyHgqqq8ImqZnqYGufaQuqxcOxNNL1GEMtwW6uylOyPIUb4aJ2wcoXTs\nt1dNhGrVFrSUYlad0nhHNuzF8n83Pj0cELoGmrBepQ8+LqI+Yj6sUIagTEi7P0tz\nowIDAQAB\n-----END PUBLIC KEY-----\n",
+    ),
+    (
+        "a key cut short",
+        "-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAtz228sa1z4u70xtqdZER\nBwxBvj+JP0V8SEK7SPdlULv1XbBcoI7T238LnlVGo4IN+C/TsW4tpwORACY7iOb2\npF8LZU0LBOFBV7U4fsd2JwwZa45m8U9wd5Q00xcqQoMZYfwQF3HonOlHwNt8DKpb\nmlKsH1WjhhCcjD5m1Q8LeEuGhVviBtrtAor81FzU106aGDYkMwcrUouxSPzDx8+I\nS7oicynJwyHgqqq8ImqZnqYGufaQuqxcOxNNL1GEMtwW6uylOyPIUb4aJ2wcoXTs\nt1dNhGrVFrSUYlad0nhHNuzF8n83Pj0cELoGmrBepQ8+LqI+Yj6sUIagTEi7P0tz\now==\n-----END PUBLIC KEY-----\n",
+    ),
+];
+
+#[test]
+fn an_actors_pem_public_key_reads_as_its_pkcs1_der() {
+    let der = key(Scheme::ActivityPub, PUBLIC_KEY).unwrap();
+    assert_eq!(der.len(), 270);
+    assert_eq!(der[..4], [0x30, 0x82, 0x01, 0x0a]);
+    for written in [
+        "",
+        "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA",
+        &PUBLIC_KEY.replace("PUBLIC KEY", "PRIVATE KEY"),
+        &PUBLIC_KEY.replace("MIIBIjAN", "MIIBIjAM"),
+        "-----BEGIN PUBLIC KEY-----\n!!\n-----END PUBLIC KEY-----",
+    ] {
+        assert_eq!(key(Scheme::ActivityPub, written), None, "{written}");
+    }
+    for (wrong, written) in NOT_KEYS {
+        assert_eq!(key(Scheme::ActivityPub, written), None, "{wrong}");
+    }
+}
+
+#[test]
+fn each_new_refusal_reads_as_a_sentence() {
+    assert_eq!(
+        Refusal::Uncovered { header: "digest" }.to_string(),
+        "the request's signature does not cover its digest"
+    );
+    assert_eq!(
+        Refusal::Unmatched { header: "Digest" }.to_string(),
+        "the request's Digest does not match its body"
     );
 }

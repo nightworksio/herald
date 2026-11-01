@@ -29,6 +29,9 @@ pub struct Verified {
     /// What it is delivered as, as its signature covers it, where its scheme
     /// names its deliveries.
     pub delivery: Option<String>,
+    /// The key it named its signer by, where its scheme names one: an
+    /// ActivityPub actor's `keyId`, which the activity's own actor must be.
+    pub signer: Option<String>,
 }
 
 impl fmt::Display for Rejected {
@@ -69,10 +72,12 @@ pub async fn verified<V: Verifier>(
     let algorithm = match claim.kind {
         Signature::HmacSha256 => Algorithm::HmacSha256,
         Signature::Ed25519 => Algorithm::Ed25519,
+        Signature::RsaSha256 => Algorithm::RsaSha256,
         Signature::Token => {
             return if claim.signatures.iter().any(|token| same(&key, token)) {
                 Ok(Verified {
                     delivery: claim.delivery,
+                    signer: claim.signer,
                 })
             } else {
                 Err(Rejected::Forged)
@@ -86,6 +91,7 @@ pub async fn verified<V: Verifier>(
         {
             return Ok(Verified {
                 delivery: claim.delivery,
+                signer: claim.signer,
             });
         }
     }

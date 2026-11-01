@@ -1,7 +1,8 @@
 //! Whatever headers and body a request carries, reading its claim answers a
 //! claim or a refusal. A signed claim's message holds the body it was read
-//! from and a token's holds nothing, and each claim carries one to
-//! `MOST_SIGNATURES` signatures, none of them empty.
+//! from, a token's holds nothing and an activity's names its signer, and
+//! each claim carries one to `MOST_SIGNATURES` signatures, none of them
+//! empty.
 
 #![no_main]
 
@@ -9,16 +10,17 @@ use herald_core::{Scheme, claim, key};
 use jiff::Timestamp;
 use libfuzzer_sys::fuzz_target;
 
-const SCHEMES: [Scheme; 6] = [
+const SCHEMES: [Scheme; 7] = [
     Scheme::GitHub,
     Scheme::Forgejo,
     Scheme::GitLab,
     Scheme::Discord,
     Scheme::Slack,
     Scheme::Matrix,
+    Scheme::ActivityPub,
 ];
 
-const HEADERS: [&str; 11] = [
+const HEADERS: [&str; 16] = [
     "X-Hub-Signature-256",
     "X-Forgejo-Signature",
     "X-Gitea-Signature",
@@ -30,6 +32,11 @@ const HEADERS: [&str; 11] = [
     "webhook-timestamp",
     "webhook-signature",
     "Authorization",
+    "(request-target)",
+    "Host",
+    "Date",
+    "Digest",
+    "Signature",
 ];
 
 fuzz_target!(|input: (Vec<String>, Vec<u8>, i64)| {
@@ -46,6 +53,8 @@ fuzz_target!(|input: (Vec<String>, Vec<u8>, i64)| {
         if let Ok(claim) = claim(scheme, &headers, &body, now) {
             if scheme == Scheme::Matrix {
                 assert!(claim.message.is_empty());
+            } else if scheme == Scheme::ActivityPub {
+                assert!(claim.signer.is_some());
             } else {
                 assert!(claim.message.ends_with(&body), "{scheme:?}");
             }
@@ -55,5 +64,6 @@ fuzz_target!(|input: (Vec<String>, Vec<u8>, i64)| {
         for value in &values {
             let _ = key(scheme, value);
         }
+        let _ = key(scheme, &format!("-----BEGIN PUBLIC KEY-----{}-----END PUBLIC KEY-----", String::from_utf8_lossy(&body)));
     }
 });
