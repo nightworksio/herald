@@ -83,6 +83,13 @@ mod tests {
     use super::*;
 
     #[test]
+    fn an_io_layer_names_outside_crates_without_a_list() {
+        for layer in [Layer::Native, Layer::Drivers, Layer::Tooling] {
+            assert!(outside_allowed(layer).is_empty(), "{layer:?}");
+        }
+    }
+
+    #[test]
     fn each_crate_name_belongs_to_its_layer() {
         let cases = [
             ("herald-core", Layer::Core),
