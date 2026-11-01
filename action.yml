@@ -9,6 +9,9 @@ branding:
   color: yellow
 
 inputs:
+  command:
+    description: What to run, announce (the run's release) or housekeep (archive and lock threads that fell due).
+    default: announce
   config:
     description: The config to read.
     default: herald.toml
@@ -82,10 +85,17 @@ runs:
         [[ "$RUNNER_OS" == Windows ]] && binary="$binary.exe"
         echo "binary=$binary" >> "$GITHUB_OUTPUT"
 
-    - name: Announce
+    - name: Run herald
       shell: bash
       env:
         HERALD: ${{ steps.download.outputs.binary || steps.build.outputs.binary }}
         GITHUB_TOKEN: ${{ inputs.token }}
+        COMMAND: ${{ inputs.command }}
         CONFIG: ${{ inputs.config }}
-      run: '"$HERALD" announce --from github --config "$CONFIG"'
+      run: |
+        case "$COMMAND" in
+          announce) set -- announce --from github ;;
+          housekeep) set -- housekeep ;;
+          *) echo "::error::herald's command is announce or housekeep, not $COMMAND"; exit 1 ;;
+        esac
+        "$HERALD" --config "$CONFIG" "$@"

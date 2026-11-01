@@ -215,6 +215,7 @@ async fn schedules<S: Store>(store: &S) -> Result<(), Failure> {
     let mut checks = Checks::default();
     let schedule = |thread: &str, chore| Schedule {
         key: key(thread),
+        route: RouteId::new("conformance"),
         thread: thread.to_owned(),
         chore,
         due: NOON,

@@ -141,7 +141,13 @@ impl<S: Store, C: Clock, G: Signer, H: Http> Run<'_, S, C, G, H> {
             _ => None,
         };
         if let (Some(thread), Some(wanted)) = (opened, &route.delivery.thread) {
-            let due = schedules(progress.entry.key, wanted, &thread, self.ports.clock.now());
+            let due = schedules(
+                progress.entry.key,
+                &route.id,
+                wanted,
+                &thread,
+                self.ports.clock.now(),
+            );
             self.ports
                 .store
                 .put_schedules(&due, &[])

@@ -6,8 +6,8 @@
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 
-use herald_core::RouteId;
-use herald_ports::{HttpError, Method, Request, Response};
+use herald_core::{Identity, Key, RouteId};
+use herald_ports::{HttpError, Method, Request, Response, Secret, Store as _};
 use serde_json::{Value, json};
 
 use super::*;
@@ -24,6 +24,7 @@ struct State {
     made: u64,
     discord: Vec<(String, u16, String)>,
     seen: Vec<String>,
+    failing: Option<Method>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -53,13 +54,32 @@ impl State {
         let file = path
             .strip_prefix("/repos/cli/cli/contents/")
             .map(|file| file.trim_end_matches("?ref=herald-state").to_owned());
+        if self.failing == Some(method) {
+            return answer(500, &json!({}));
+        }
         match (method, file) {
             (Method::Get, Some(file)) => match self.files.get(&file) {
                 Some((sha, content)) if self.branch => {
                     answer(200, &json!({ "sha": sha, "content": content }))
                 }
-                _ => answer(404, &json!({})),
+                _ => {
+                    let inside: Vec<Value> = self
+                        .files
+                        .keys()
+                        .filter(|path| path.starts_with(&format!("{file}/")))
+                        .map(|path| json!({ "path": path }))
+                        .collect();
+                    if inside.is_empty() {
+                        answer(404, &json!({}))
+                    } else {
+                        answer(200, &Value::Array(inside))
+                    }
+                }
             },
+            (Method::Delete, Some(file)) => {
+                self.files.remove(&file);
+                answer(200, &json!({}))
+            }
             (Method::Put, Some(_)) if !self.branch => answer(404, &json!({})),
             (Method::Put, Some(file)) => {
                 let sha = self.sha();
@@ -266,7 +286,7 @@ fn a_run_that_cannot_start_says_why() {
             "GITHUB_EVENT_NAME",
             None,
             CONFIG,
-            "GITHUB_EVENT_NAME is not set; herald announce --from github runs in GitHub Actions",
+            "GITHUB_EVENT_NAME is not set; this command runs in GitHub Actions",
         ),
         (
             "GITHUB_EVENT_PATH",
@@ -495,5 +515,109 @@ fn every_outcome_and_step_reads_as_a_line() {
     assert_eq!(
         steps(&all),
         "post, crosspost, thread, chunk 2, pin, unpin, delivery to https://a.example/inbox"
+    );
+}
+
+const OVERDUE: &str = "2020-01-01T00:00:00Z";
+const DISTANT: &str = "2100-01-01T00:00:00Z";
+
+fn scheduled(world: &World, schedules: &[(&str, &str, Chore, &str)]) {
+    let store = GitBranchStore::new(
+        GitBranch::new(
+            "cli/cli",
+            Secret::new("GITHUB_TOKEN", "github-token"),
+            None,
+            None,
+        ),
+        Connection::new(world.clone()),
+    );
+    let schedules: Vec<Schedule> = schedules
+        .iter()
+        .map(|&(route, thread, chore, due)| Schedule {
+            key: Key::derive(&RouteId::new(route), &Identity::new(thread)),
+            route: RouteId::new(route),
+            thread: thread.to_owned(),
+            chore,
+            due: due.parse().unwrap(),
+        })
+        .collect();
+    pollster::block_on(store.put_schedules(&schedules, &[])).unwrap();
+}
+
+fn discord(world: &World, answers: &[(&str, u16, &str)]) {
+    world.state.lock().unwrap().discord.extend(
+        answers
+            .iter()
+            .map(|&(path, status, body)| (path.to_owned(), status, body.to_owned())),
+    );
+}
+
+#[test]
+fn housekeeping_does_each_chore_that_fell_due_and_says_so() {
+    let setup = setup(CONFIG);
+    let world = World::default();
+    let idle = run(&setup, &world, &["housekeep"]);
+    assert_eq!(
+        (idle.code, idle.out.as_str(), idle.err.as_str()),
+        (DONE, "No chore is due.\n", "")
+    );
+    scheduled(
+        &world,
+        &[
+            ("releases", "7", Chore::Archive, OVERDUE),
+            ("gone", "8", Chore::Lock, OVERDUE),
+            ("releases", "9", Chore::Lock, DISTANT),
+        ],
+    );
+    discord(&world, &[("/channels/7", 200, "{}")]);
+    let kept = run(&setup, &world, &["housekeep"]);
+    assert_eq!(
+        (kept.code, kept.out.as_str()),
+        (
+            DONE,
+            "releases: thread 7 archived\ngone: thread 8 not locked, and not tried again: the route is no longer in the config\n"
+        )
+    );
+    let again = run(&setup, &world, &["housekeep"]);
+    assert_eq!(again.out, "No chore is due.\n");
+}
+
+#[test]
+fn housekeeping_that_must_wait_or_cannot_read_its_store_stops() {
+    let setup = setup(CONFIG);
+    let world = World::default();
+    scheduled(
+        &world,
+        &[
+            ("releases", "7", Chore::Archive, OVERDUE),
+            ("releases", "8", Chore::Archive, OVERDUE),
+        ],
+    );
+    discord(&world, &[("/channels/7", 429, r#"{"retry_after":2}"#)]);
+    let waiting = run(&setup, &world, &["housekeep"]);
+    assert_eq!(waiting.code, STOPPED);
+    assert_eq!(
+        waiting.out.lines().collect::<Vec<_>>(),
+        [
+            "releases: thread 7 not archived yet: the destination asked to wait 2s. The next run tries again.",
+            "releases: thread 8 not archived yet: the destination asked to wait 2s. The next run tries again.",
+        ]
+    );
+    world.state.lock().unwrap().failing = Some(Method::Get);
+    let unread = run(&setup, &world, &["housekeep"]);
+    assert_eq!(
+        (unread.code, unread.out.as_str(), unread.err.as_str()),
+        (
+            STOPPED,
+            "",
+            "the store could not be reached: GitHub answered 500\n"
+        )
+    );
+    let mut outside = setup;
+    outside.vars.remove("GITHUB_REPOSITORY");
+    let unset = run(&outside, &world, &["housekeep"]);
+    assert_eq!(
+        unset.err,
+        "GITHUB_REPOSITORY is not set; this command runs in GitHub Actions\n"
     );
 }

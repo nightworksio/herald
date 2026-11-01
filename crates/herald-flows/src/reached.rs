@@ -1,4 +1,4 @@
-use herald_core::{Announcement, Delivery, Entry, Key, Marker, Profile, Sent, Step};
+use herald_core::{Announcement, Chore, Delivery, Entry, Key, Marker, Profile, Sent, Step};
 use herald_dest_discord::{Discord, DiscordMarkers};
 use herald_ports::{Http, HttpError, Markers};
 
@@ -40,6 +40,17 @@ impl Reached {
                     .send(http, step, announcement, delivery, entry)
                     .await
             }
+        }
+    }
+
+    pub(crate) async fn housekeep<H: Http>(
+        &self,
+        http: &H,
+        chore: Chore,
+        thread: &str,
+    ) -> Result<Sent, HttpError> {
+        match self {
+            Self::Discord(discord) => discord.housekeep(http, chore, thread).await,
         }
     }
 

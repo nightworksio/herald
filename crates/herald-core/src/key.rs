@@ -8,7 +8,8 @@ const DOMAIN: &[u8] = b"herald/key/v1\0";
 const HEX_DIGITS: usize = 64;
 
 /// A route's stable id, as the config names it.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(transparent)]
 pub struct RouteId(String);
 
 impl RouteId {
