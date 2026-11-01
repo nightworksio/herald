@@ -6,7 +6,9 @@ mod replay {
     use herald_core::{
         Announcement, Chore, Delivery, Entry, Facts, Marker, Pins, Plan, Planned, Sent, Step, plan,
     };
-    use herald_dest_discord::{Credential, Discord, DiscordMarkers, Refusal, RouteOptions};
+    use herald_dest_discord::{
+        Credential, DestinationOptions, Discord, DiscordMarkers, Refusal, RouteOptions,
+    };
     use herald_ports::{Markers, MarkersError, Secret};
     use herald_testing::sample::{self, announcement, marker};
     use herald_testing::{Fixture, Replay};
@@ -592,6 +594,34 @@ mod replay {
             Some("http://127.0.0.1:8080/api/"),
         );
         assert_eq!(local.api(), "http://127.0.0.1:8080/api");
+    }
+
+    #[test]
+    fn a_destination_posts_as_a_bot_or_through_a_webhook_but_not_both() {
+        let secret = || {
+            Some(herald_core::SecretRef {
+                secret: "S".to_owned(),
+            })
+        };
+        let options = |token, webhook| DestinationOptions {
+            token,
+            webhook,
+            api: None,
+        };
+        assert_eq!(options(secret(), None).bot(), Ok(true));
+        assert_eq!(options(None, secret()).bot(), Ok(false));
+        assert!(
+            options(None, None)
+                .bot()
+                .unwrap_err()
+                .contains("needs a token or a webhook")
+        );
+        assert!(
+            options(secret(), secret())
+                .bot()
+                .unwrap_err()
+                .contains("not both")
+        );
     }
 
     #[test]

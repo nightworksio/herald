@@ -51,34 +51,10 @@ impl Discord {
     /// What the destination can do, as the core plans with it.
     #[must_use]
     pub fn profile(&self) -> Profile {
-        let bot = matches!(self.credential, Credential::Bot(_));
-        Profile {
-            dialect: Dialect::Discord,
-            measure: Measure::Chars,
-            limits: Limits {
-                title: 256,
-                text: 4096,
-                followup: 2000,
-                thread_name: 100,
-            },
-            features: Features {
-                threads: if bot {
-                    Threads::FromMessage
-                } else {
-                    Threads::None
-                },
-                crosspost: bot,
-                pins: match (bot, self.route.forum) {
-                    (false, _) => Pins::None,
-                    (true, false) => Pins::Many,
-                    (true, true) => Pins::One,
-                },
-                reads_back: bot && !self.route.forum,
-                edits: bot,
-                mentions: MentionStyle::Roles,
-                interactions: bot,
-            },
-        }
+        profile(
+            matches!(self.credential, Credential::Bot(_)),
+            self.route.forum,
+        )
     }
 
     /// The request for `step` of `announcement`, given what `entry` says
@@ -146,5 +122,38 @@ impl Discord {
             }
         }
         Ok(Sent::Landed(herald_core::Facts::default()))
+    }
+}
+
+/// What a Discord destination can do: as a bot or through a webhook, into a
+/// forum or a channel.
+#[must_use]
+pub fn profile(bot: bool, forum: bool) -> Profile {
+    Profile {
+        dialect: Dialect::Discord,
+        measure: Measure::Chars,
+        limits: Limits {
+            title: 256,
+            text: 4096,
+            followup: 2000,
+            thread_name: 100,
+        },
+        features: Features {
+            threads: if bot {
+                Threads::FromMessage
+            } else {
+                Threads::None
+            },
+            crosspost: bot,
+            pins: match (bot, forum) {
+                (false, _) => Pins::None,
+                (true, false) => Pins::Many,
+                (true, true) => Pins::One,
+            },
+            reads_back: bot && !forum,
+            edits: bot,
+            mentions: MentionStyle::Roles,
+            interactions: bot,
+        },
     }
 }

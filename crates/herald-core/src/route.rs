@@ -47,15 +47,52 @@ name!(
 
 /// A secret, by the name the platform keeps it under: `{ secret = "NAME" }`.
 /// The config holds this and never the secret's value (ADR-0007).
-#[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Deserialize, schemars::JsonSchema)]
-#[serde(deny_unknown_fields)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, schemars::JsonSchema)]
+#[schemars(deny_unknown_fields)]
 pub struct SecretRef {
     /// The secret's name.
     pub secret: String,
 }
 
+/// How a secret is written, for an error that never repeats what was written
+/// in its place.
+const SECRET_FORM: &str = "a secret is written as { secret = \"NAME\" }, naming where the platform keeps it, never as its value";
+
+struct SecretVisitor;
+
+impl<'de> serde::de::Visitor<'de> for SecretVisitor {
+    type Value = SecretRef;
+
+    fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(SECRET_FORM)
+    }
+
+    fn visit_map<A: serde::de::MapAccess<'de>>(self, mut map: A) -> Result<SecretRef, A::Error> {
+        let mut secret = None;
+        while let Some(key) = map.next_key::<String>()? {
+            if key != "secret" || secret.is_some() {
+                return Err(serde::de::Error::custom(SECRET_FORM));
+            }
+            secret = Some(map.next_value::<String>()?);
+        }
+        secret
+            .filter(|name| !name.trim().is_empty())
+            .map(|secret| SecretRef { secret })
+            .ok_or_else(|| serde::de::Error::custom(SECRET_FORM))
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for SecretRef {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        deserializer
+            .deserialize_map(SecretVisitor)
+            .map_err(|_: D::Error| serde::de::Error::custom(SECRET_FORM))
+    }
+}
+
 /// Which pre-releases a route takes.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "lowercase")]
 pub enum Prereleases {
     /// Releases and pre-releases alike.
     #[default]
@@ -237,6 +274,28 @@ pub(crate) mod tests {
                 pre,
                 "{prereleases:?}"
             );
+        }
+    }
+
+    #[test]
+    fn a_secret_is_read_by_its_name_and_never_from_its_value() {
+        let named: SecretRef =
+            serde_json::from_str(r#"{"secret":"HERALD_DISCORD_TOKEN"}"#).unwrap();
+        assert_eq!(named.secret, "HERALD_DISCORD_TOKEN");
+        for written in [
+            r#""xoxb-not-a-name""#,
+            r#"{"secret":""}"#,
+            r#"{"secret":"A","secret":"B"}"#,
+            r#"{"value":"xoxb-not-a-name"}"#,
+            r#"{"secret":7}"#,
+            "{}",
+            "[]",
+        ] {
+            let error = serde_json::from_str::<SecretRef>(written)
+                .unwrap_err()
+                .to_string();
+            assert!(error.starts_with(SECRET_FORM), "{error}");
+            assert!(!error.contains("xoxb"), "{error}");
         }
     }
 

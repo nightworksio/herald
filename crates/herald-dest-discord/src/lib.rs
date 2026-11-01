@@ -14,7 +14,7 @@ mod read;
 mod request;
 mod unpin;
 
-pub use discord::{Credential, Discord};
+pub use discord::{Credential, Discord, profile};
 pub use markers::DiscordMarkers;
 pub use options::{DestinationOptions, RouteOptions};
 pub use request::Refusal;
