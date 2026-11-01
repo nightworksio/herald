@@ -70,7 +70,9 @@ after a month.
 3. **The marker key is `HERALD_MARKER_SECRET` where it is set, and is
    otherwise derived from the destination's credential.**
    - **The installation secret.** `HERALD_MARKER_SECRET` is a secret like any
-     other (ADR-0007): named in `herald.toml`, never written in it.
+     other (ADR-0007): named in `herald.toml` as
+     `[markers] key = { secret = "HERALD_MARKER_SECRET" }`, never written in
+     it.
      `herald init` prints a new 256-bit random one once, for the adopter to
      store as that secret.
    - **The fallback.** Without it, the marker key is the HMAC-SHA256 of
