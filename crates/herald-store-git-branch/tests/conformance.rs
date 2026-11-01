@@ -165,10 +165,7 @@ mod conformance {
     }
 
     fn store(github: GitHub) -> GitBranchStore<GitHub> {
-        GitBranchStore::new(
-            GitBranch::new("o/r", Secret::new("GITHUB_TOKEN", "hunter2"), None, None),
-            github,
-        )
+        GitBranch::new("o/r", Secret::new("GITHUB_TOKEN", "hunter2"), None, None).store(github)
     }
 
     fn key() -> Key {
@@ -387,7 +384,7 @@ mod conformance {
             Some("https://ghe.example/api/v3/"),
         );
         assert_eq!(branch.api(), "https://ghe.example/api/v3");
-        let store = GitBranchStore::new(branch, Unreachable);
+        let store = branch.store(Unreachable);
         assert_eq!(
             pollster::block_on(store.entry(&key())),
             Err(StoreError::Unavailable {

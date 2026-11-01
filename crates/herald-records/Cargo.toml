@@ -1,0 +1,23 @@
+[package]
+name = "herald-records"
+description = "herald's Store kept one record per path, over any backend that replaces a record only as it was read"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish.workspace = true
+
+[dependencies]
+herald-core.workspace = true
+herald-ports.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+herald-testing.workspace = true
+pollster.workspace = true
+
+[lints]
+workspace = true

@@ -496,7 +496,8 @@ async fn branch(
         options.branch.as_deref(),
         options.api.as_deref(),
     );
-    Ok(GitBranchStore::new(branch.clone(), connect(branch.api())?))
+    let http = connect(branch.api())?;
+    Ok(branch.store(http))
 }
 
 async fn housekeeping(

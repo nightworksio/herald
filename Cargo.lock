@@ -594,6 +594,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "herald-records"
+version = "0.0.0"
+dependencies = [
+ "herald-core",
+ "herald-ports",
+ "herald-testing",
+ "pollster",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "herald-sources-forge"
 version = "0.0.0"
 dependencies = [
@@ -613,6 +625,7 @@ dependencies = [
  "base64",
  "herald-core",
  "herald-ports",
+ "herald-records",
  "herald-testing",
  "pollster",
  "schemars",

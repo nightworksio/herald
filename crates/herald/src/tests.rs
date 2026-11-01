@@ -616,15 +616,13 @@ const OVERDUE: &str = "2020-01-01T00:00:00Z";
 const DISTANT: &str = "2100-01-01T00:00:00Z";
 
 fn scheduled(world: &World, schedules: &[(&str, &str, Chore, &str)]) {
-    let store = GitBranchStore::new(
-        GitBranch::new(
-            "cli/cli",
-            Secret::new("GITHUB_TOKEN", "github-token"),
-            None,
-            None,
-        ),
-        Connection::new(world.clone()),
-    );
+    let store = GitBranch::new(
+        "cli/cli",
+        Secret::new("GITHUB_TOKEN", "github-token"),
+        None,
+        None,
+    )
+    .store(Connection::new(world.clone()));
     let schedules: Vec<Schedule> = schedules
         .iter()
         .map(|&(route, thread, chore, due)| Schedule {

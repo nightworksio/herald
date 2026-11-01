@@ -7,6 +7,9 @@ pub enum Layer {
     Ports,
     /// The fakes, the replaying `Http` and the conformance suites.
     Testing,
+    /// What several stores share: records kept one per path, and later the
+    /// SQL every SQL store runs.
+    Kits,
     /// One crate per source family.
     Sources,
     /// One crate per destination.
@@ -34,6 +37,7 @@ impl Layer {
             "herald-core" => Some(Self::Core),
             "herald-ports" => Some(Self::Ports),
             "herald-testing" => Some(Self::Testing),
+            "herald-records" | "herald-sql" => Some(Self::Kits),
             "herald-config" => Some(Self::Config),
             "herald-flows" => Some(Self::Flows),
             "herald-native" => Some(Self::Native),
@@ -72,7 +76,7 @@ fn outside_allowed(layer: Layer) -> &'static [&'static str] {
             "unicode-segmentation",
         ],
         Layer::Ports | Layer::Flows => &["jiff"],
-        Layer::Testing => &["jiff", "serde", "serde_json"],
+        Layer::Testing | Layer::Kits => &["jiff", "serde", "serde_json"],
         Layer::Sources | Layer::Destinations => &["jiff", "schemars", "serde", "serde_json"],
         Layer::Stores => &["base64", "jiff", "schemars", "serde", "serde_json"],
         Layer::Config => &["jiff", "schemars", "serde", "serde_json", "toml"],
@@ -97,6 +101,8 @@ mod tests {
             ("herald-core", Layer::Core),
             ("herald-ports", Layer::Ports),
             ("herald-testing", Layer::Testing),
+            ("herald-records", Layer::Kits),
+            ("herald-sql", Layer::Kits),
             ("herald-sources-forge", Layer::Sources),
             ("herald-dest-discord", Layer::Destinations),
             ("herald-store-sqlite", Layer::Stores),
@@ -129,6 +135,7 @@ mod tests {
             Layer::Core,
             Layer::Ports,
             Layer::Testing,
+            Layer::Kits,
             Layer::Sources,
             Layer::Destinations,
             Layer::Stores,
@@ -160,6 +167,9 @@ mod tests {
         assert!(!Layer::Config.allows_outside("tokio"));
         assert!(Layer::Flows.allows_outside("jiff"));
         assert!(!Layer::Flows.allows_outside("reqwest"));
+        assert!(Layer::Kits.allows_outside("serde_json"));
+        assert!(!Layer::Kits.allows_outside("base64"));
+        assert!(Layer::Testing < Layer::Kits && Layer::Kits < Layer::Sources);
     }
 
     #[test]

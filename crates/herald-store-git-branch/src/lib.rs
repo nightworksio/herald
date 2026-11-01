@@ -6,8 +6,7 @@
 
 mod contents;
 mod options;
-mod paths;
 mod store;
 
 pub use options::StoreOptions;
-pub use store::{GitBranch, GitBranchStore};
+pub use store::{BranchRecords, GitBranch, GitBranchStore};

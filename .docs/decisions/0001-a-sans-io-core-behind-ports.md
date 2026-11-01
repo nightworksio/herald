@@ -34,6 +34,7 @@ drivers touch it. This ADR fixes where the lines run.
    | core | `herald-core` | The domain, with no I/O |
    | ports | `herald-ports` | The traits through which everything outside is reached |
    | testing | `herald-testing` | A fake of every port, the `Http` that replays recorded fixtures, and the shared conformance suites. A dev-dependency only |
+   | kits | `herald-records`, `herald-sql` | What several stores share: `herald-records` is the `Store` kept one record per path over any backend that replaces a record only as it was read, which the git-branch, Actions-cache and repository-variables stores are; `herald-sql` is the schema and statements the SQLite, Postgres and D1 stores run over `Sql` |
    | sources | `herald-sources-forge`, `herald-sources-registry`, `herald-sources-feed`, `herald-sources-app` | One crate per source family (ADR-0003) |
    | destinations | `herald-dest-discord`, `herald-dest-matrix`, `herald-dest-slack`, `herald-dest-fediverse` | One crate per destination (ADR-0004) |
    | stores | `herald-store-sqlite`, `herald-store-postgres`, `herald-store-d1`, `herald-store-dynamodb`, `herald-store-deno-kv`, `herald-store-markers`, `herald-store-git-branch`, `herald-store-actions-cache`, `herald-store-repo-variables` | One crate per store (ADR-0005) |
@@ -48,7 +49,8 @@ drivers touch it. This ADR fixes where the lines run.
    Within the sources, destinations, stores and drivers layers, a crate names
    no sibling. A source knows nothing of Discord, Discord knows nothing of
    SQLite, and the Worker knows nothing of the Lambda. What they share lives
-   in an earlier layer.
+   in an earlier layer: what several stores share is a kit, and each store
+   keeps its own crate and passes the conformance suite on its own.
 
 2. **`herald-core` decides, and does nothing else.** It holds these values:
    - `Event`: source-neutral, with a kind, project, version, title, body,
