@@ -170,6 +170,34 @@ body = "{{ event.body }}"
     }
 
     #[test]
+    fn every_secret_the_config_names_is_listed_once() {
+        let text = EXAMPLE
+            .replace(
+                "kind = \"git-branch\"",
+                "kind = \"git-branch\"\ntoken = { secret = \"STATE_TOKEN\" }",
+            )
+            .replace(
+                "repository = \"nightworksio/php-mutation-gate\"",
+                "repository = \"nightworksio/php-mutation-gate\"\ntoken = { secret = \"HERALD_DISCORD_TOKEN\" }",
+            );
+        let config = load("herald.toml", &text, &|_| Err(String::new())).unwrap();
+        let secrets: Vec<&str> = config.secrets().into_iter().collect();
+        assert_eq!(secrets, ["HERALD_DISCORD_TOKEN", "STATE_TOKEN"]);
+        let variables = EXAMPLE.replace(
+            "kind = \"git-branch\"",
+            "kind = \"repo-variables\"\ntoken = { secret = \"VARIABLES_TOKEN\" }",
+        );
+        let keyed =
+            format!("{variables}\n[markers]\nkey = {{ secret = \"HERALD_MARKER_SECRET\" }}\n");
+        let config = load("herald.toml", &keyed, &|_| Err(String::new())).unwrap();
+        assert!(config.secrets().contains("VARIABLES_TOKEN"));
+        assert!(config.secrets().contains("HERALD_MARKER_SECRET"));
+        let marked = EXAMPLE.replace("kind = \"git-branch\"", "kind = \"markers\"");
+        let config = load("herald.toml", &marked, &|_| Err(String::new())).unwrap();
+        assert_eq!(config.secrets().len(), 1);
+    }
+
+    #[test]
     fn every_store_kind_loads_as_itself() {
         for kind in Store::KINDS {
             let options = if kind == "repo-variables" {

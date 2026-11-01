@@ -180,6 +180,7 @@ pub async fn run(
         }
         Command::Serve(serve) => serve,
     };
+    masked(&config, vars, out);
     warned(&doctor(&config, Layer::Actions.stores()).gaps, vars, out);
     let ran = match serve {
         Serve::Announce {
@@ -230,11 +231,34 @@ fn gapped(gap: &Gap) -> String {
     )
 }
 
+/// Whether the run is on GitHub Actions.
+fn on_actions(vars: &BTreeMap<String, String>) -> bool {
+    vars.get("GITHUB_ACTIONS")
+        .is_some_and(|value| value == "true")
+}
+
+/// On GitHub Actions, every secret the run may resolve masked before
+/// anything else is printed, each of its lines on its own as well
+/// (ADR-0007).
+fn masked(config: &Config, vars: &BTreeMap<String, String>, out: &mut dyn Write) {
+    if !on_actions(vars) {
+        return;
+    }
+    let mut names = config.secrets();
+    names.extend([GITHUB_TOKEN, RUNTIME_TOKEN]);
+    for value in names.iter().filter_map(|name| vars.get(*name)) {
+        let lines = value.lines().filter(|line| *line != value.as_str());
+        for hidden in std::iter::once(value.as_str()).chain(lines) {
+            if !hidden.trim().is_empty() {
+                say(out, &format!("::add-mask::{}", escaped(hidden)));
+            }
+        }
+    }
+}
+
 /// Each gap as a warning, annotated on GitHub Actions.
 fn warned(gaps: &[Gap], vars: &BTreeMap<String, String>, out: &mut dyn Write) {
-    let actions = vars
-        .get("GITHUB_ACTIONS")
-        .is_some_and(|value| value == "true");
+    let actions = on_actions(vars);
     for gap in gaps {
         let line = gapped(gap);
         if actions {

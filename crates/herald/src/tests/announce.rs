@@ -311,7 +311,7 @@ fn a_warning_on_actions_stays_one_workflow_command() {
         warned
             .out
             .lines()
-            .filter(|line| line.starts_with("::"))
+            .filter(|line| line.starts_with("::") && !line.starts_with("::add-mask::"))
             .count(),
         1,
         "{}",
@@ -365,4 +365,35 @@ fn a_release_named_by_its_tag_is_announced_in_place_of_the_run_s_event() {
         herald(&tokened, &World::default(), &released).err,
         "CLI_TOKEN is not set; the source names it\n"
     );
+}
+
+#[test]
+fn on_actions_every_secret_is_masked_before_anything_is_printed() {
+    let mut setup = setup(CONFIG);
+    setup
+        .vars
+        .insert("GITHUB_ACTIONS".to_owned(), "true".to_owned());
+    setup.vars.insert(
+        "HERALD_DISCORD_TOKEN".to_owned(),
+        "first line\nsecond 100%".to_owned(),
+    );
+    setup
+        .vars
+        .insert("GITHUB_EVENT_NAME".to_owned(), "push".to_owned());
+    let masked = herald(&setup, &World::default(), &ANNOUNCE);
+    assert_eq!(
+        masked.out,
+        [
+            "::add-mask::github-token",
+            "::add-mask::first line%0Asecond 100%25",
+            "::add-mask::first line",
+            "::add-mask::second 100%25",
+            "The run's event is push, not a release; nothing to announce.",
+            "",
+        ]
+        .join("\n")
+    );
+    setup.vars.remove("GITHUB_ACTIONS");
+    let local = herald(&setup, &World::default(), &ANNOUNCE);
+    assert!(!local.out.contains("add-mask"), "{}", local.out);
 }

@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use herald_core::{DestinationName, Kind, Route, RouteId, SecretRef, SourceName, Templates};
 use jiff::SignedDuration;
@@ -23,6 +23,33 @@ pub struct Config {
     pub apps: BTreeMap<String, App>,
     /// The cadence of polling and housekeeping.
     pub schedule: Schedule,
+}
+
+impl Config {
+    /// The name of every secret the config names, once each.
+    #[must_use]
+    pub fn secrets(&self) -> BTreeSet<&str> {
+        let destinations = self.destinations.values().flat_map(|destination| {
+            let Destination::Discord(options) = destination;
+            [&options.token, &options.webhook]
+        });
+        let sources = self.sources.values().map(|source| {
+            let Source::GitHub(options) = source;
+            &options.token
+        });
+        let store = match &self.store {
+            Store::GitBranch(options) => options.token.as_ref(),
+            Store::RepoVariables(options) => Some(&options.token),
+            _ => None,
+        };
+        destinations
+            .chain(sources)
+            .flatten()
+            .chain(self.marker_key.as_ref())
+            .chain(store)
+            .map(|named| named.secret.as_str())
+            .collect()
+    }
 }
 
 /// Which store keeps herald's records, and its options.

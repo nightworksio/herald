@@ -27,7 +27,7 @@ fn a_release_kept_only_in_its_post_is_announced_once_and_poll_stops_without_curs
         (polled.code, polled.out.as_str()),
         (
             STOPPED,
-            "cli: stopped: this store keeps no cursors; choose a store that does. The next poll asks again.\n"
+            "::add-mask::discord-token\ncli: stopped: this store keeps no cursors; choose a store that does. The next poll asks again.\n"
         )
     );
     let housekept = herald(&setup, &world, &["housekeep"]);
