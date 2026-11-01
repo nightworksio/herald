@@ -1,0 +1,162 @@
+{
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "url": "https://discord.com/api/v10/users/@me",
+        "headers": {
+          "Authorization": "Bot «secret:HERALD_DISCORD_TOKEN»",
+          "User-Agent": "DiscordBot (https://github.com/nightworksio/herald, 0.0.0)"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "id": "1566190000000000099",
+          "username": "herald",
+          "bot": true
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "url": "https://discord.com/api/v10/channels/1566184281406177531/messages?limit=100",
+        "headers": {
+          "Authorization": "Bot «secret:HERALD_DISCORD_TOKEN»",
+          "User-Agent": "DiscordBot (https://github.com/nightworksio/herald, 0.0.0)"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": [
+          {
+            "id": "1566200000000000009",
+            "channel_id": "1566184281406177531",
+            "type": 0,
+            "content": "",
+            "author": {
+              "id": "1566190000000000099",
+              "username": "herald",
+              "bot": true
+            },
+            "embeds": [
+              {
+                "title": "📦 php-mutation-gate v0.1.0",
+                "description": "## Added",
+                "color": 14916134,
+                "timestamp": "2026-10-31T12:00:00Z",
+                "url": "https://github.com/nightworksio/php-mutation-gate/releases/tag/v0.1.0#herald-0000000000000000000000000000000000000000000000000000000000000000"
+              }
+            ],
+            "flags": 0,
+            "pinned": false,
+            "timestamp": "2026-10-31T12:00:01.000000+00:00"
+          },
+          {
+            "id": "1566200000000000001",
+            "channel_id": "1566184281406177531",
+            "type": 0,
+            "content": "<@&1566190000000000001>",
+            "author": {
+              "id": "1566190000000000099",
+              "username": "herald",
+              "bot": true
+            },
+            "embeds": [
+              {
+                "title": "📦 php-mutation-gate v0.1.0",
+                "description": "## Added",
+                "color": 14916134,
+                "timestamp": "2026-10-31T12:00:00Z",
+                "url": "https://github.com/nightworksio/php-mutation-gate/releases/tag/v0.1.0#herald-b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6.a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5"
+              }
+            ],
+            "flags": 1,
+            "pinned": true,
+            "timestamp": "2026-10-31T12:00:01.000000+00:00",
+            "thread": {
+              "id": "1566200000000000001",
+              "type": 11,
+              "name": "php-mutation-gate v0.1.0"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "url": "https://discord.com/api/v10/channels/1566200000000000001/messages?limit=100",
+        "headers": {
+          "Authorization": "Bot «secret:HERALD_DISCORD_TOKEN»",
+          "User-Agent": "DiscordBot (https://github.com/nightworksio/herald, 0.0.0)"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": [
+          {
+            "id": "1566200000000000003",
+            "channel_id": "1566200000000000001",
+            "type": 0,
+            "content": "",
+            "author": {
+              "id": "1566190000000000099",
+              "username": "herald",
+              "bot": true
+            },
+            "embeds": [],
+            "flags": 0,
+            "pinned": false,
+            "timestamp": "2026-10-31T12:00:01.000000+00:00"
+          },
+          {
+            "id": "1566200000000000099",
+            "channel_id": "1566200000000000001",
+            "type": 0,
+            "content": "",
+            "author": {
+              "id": "1566190000000000777",
+              "username": "someone"
+            },
+            "embeds": [],
+            "flags": 0,
+            "pinned": false,
+            "timestamp": "2026-10-31T12:00:01.000000+00:00"
+          },
+          {
+            "id": "1566200000000000002",
+            "channel_id": "1566200000000000001",
+            "type": 0,
+            "content": "",
+            "author": {
+              "id": "1566190000000000099",
+              "username": "herald",
+              "bot": true
+            },
+            "embeds": [],
+            "flags": 0,
+            "pinned": false,
+            "timestamp": "2026-10-31T12:00:01.000000+00:00"
+          },
+          {
+            "id": "1566200000000000004",
+            "channel_id": "1566200000000000001",
+            "type": 18,
+            "content": "",
+            "author": {
+              "id": "1566190000000000099",
+              "username": "herald",
+              "bot": true
+            },
+            "embeds": [],
+            "flags": 0,
+            "pinned": false,
+            "timestamp": "2026-10-31T12:00:01.000000+00:00"
+          }
+        ]
+      }
+    }
+  ]
+}

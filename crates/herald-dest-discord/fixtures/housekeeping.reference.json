@@ -1,0 +1,102 @@
+{
+  "exchanges": [
+    {
+      "request": {
+        "method": "PATCH",
+        "url": "https://discord.com/api/v10/channels/1566200000000000001",
+        "headers": {
+          "Authorization": "Bot «secret:HERALD_DISCORD_TOKEN»",
+          "Content-Type": "application/json",
+          "User-Agent": "DiscordBot (https://github.com/nightworksio/herald, 0.0.0)"
+        },
+        "body": {
+          "archived": true
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "id": "1566200000000000001",
+          "type": 11,
+          "thread_metadata": {
+            "archived": true,
+            "locked": false
+          }
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "PATCH",
+        "url": "https://discord.com/api/v10/channels/1566200000000000001",
+        "headers": {
+          "Authorization": "Bot «secret:HERALD_DISCORD_TOKEN»",
+          "Content-Type": "application/json",
+          "User-Agent": "DiscordBot (https://github.com/nightworksio/herald, 0.0.0)"
+        },
+        "body": {
+          "archived": false,
+          "locked": true
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "id": "1566200000000000001",
+          "type": 11,
+          "thread_metadata": {
+            "archived": false,
+            "locked": true
+          }
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "PATCH",
+        "url": "https://discord.com/api/v10/channels/1566200000000000001",
+        "headers": {
+          "Authorization": "Bot «secret:HERALD_DISCORD_TOKEN»",
+          "Content-Type": "application/json",
+          "User-Agent": "DiscordBot (https://github.com/nightworksio/herald, 0.0.0)"
+        },
+        "body": {
+          "archived": true
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "id": "1566200000000000001",
+          "type": 11,
+          "thread_metadata": {
+            "archived": true,
+            "locked": true
+          }
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "PATCH",
+        "url": "https://discord.com/api/v10/channels/1566200000000000002",
+        "headers": {
+          "Authorization": "Bot «secret:HERALD_DISCORD_TOKEN»",
+          "Content-Type": "application/json",
+          "User-Agent": "DiscordBot (https://github.com/nightworksio/herald, 0.0.0)"
+        },
+        "body": {
+          "archived": false,
+          "locked": true
+        }
+      },
+      "response": {
+        "status": 404,
+        "body": {
+          "message": "Unknown Channel",
+          "code": 10003
+        }
+      }
+    }
+  ]
+}

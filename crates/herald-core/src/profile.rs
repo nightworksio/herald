@@ -25,8 +25,10 @@ pub enum Measure {
 pub struct Limits {
     /// The longest title.
     pub title: usize,
-    /// The longest text of one message.
+    /// The longest text of the announcement itself.
     pub text: usize,
+    /// The longest text of each overflow message after it.
+    pub followup: usize,
     /// The longest thread name.
     pub thread_name: usize,
 }
@@ -40,6 +42,19 @@ pub enum Threads {
     FromMessage,
     /// A reply to a message is its thread, with no step to open it.
     Replies,
+}
+
+/// How a destination pins.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Pins {
+    /// It pins nothing.
+    None,
+    /// It holds many pins, so the new one is pinned before the route's
+    /// earlier one is unpinned.
+    Many,
+    /// It holds one pin, so the route's earlier one is unpinned before the
+    /// new one is pinned.
+    One,
 }
 
 /// How a destination mentions people.
@@ -61,8 +76,8 @@ pub struct Features {
     pub threads: Threads,
     /// Whether it crossposts.
     pub crosspost: bool,
-    /// Whether it pins.
-    pub pins: bool,
+    /// How it pins.
+    pub pins: Pins,
     /// Whether herald can read back its own posts, for destination markers.
     pub reads_back: bool,
     /// Whether it edits a post.

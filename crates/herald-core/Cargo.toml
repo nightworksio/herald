@@ -13,6 +13,7 @@ publish.workspace = true
 jiff.workspace = true
 minijinja.workspace = true
 pulldown-cmark.workspace = true
+schemars.workspace = true
 serde.workspace = true
 sha2.workspace = true
 unicode-segmentation.workspace = true

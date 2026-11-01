@@ -1,2 +1,4 @@
 # Every skip is written here with its reason beside it (ADR-0008).
 test_tool = "nextest"
+# The recorders run by hand against the real platforms, never in the suite.
+exclude_globs = ["crates/*/examples/**"]

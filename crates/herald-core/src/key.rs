@@ -1,4 +1,4 @@
-use std::fmt;
+use std::fmt::{self, Write as _};
 use std::str::FromStr;
 
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
@@ -60,12 +60,25 @@ impl Key {
         }
         Self(hasher.finalize().into())
     }
+
+    /// The key's bytes.
+    #[must_use]
+    pub fn as_bytes(&self) -> &[u8; 32] {
+        &self.0
+    }
 }
 
 impl fmt::Display for Key {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.0.iter().try_for_each(|byte| write!(f, "{byte:02x}"))
+        f.write_str(&hex(&self.0))
     }
+}
+
+pub(crate) fn hex(bytes: &[u8]) -> String {
+    bytes.iter().fold(String::new(), |mut text, byte| {
+        let _ = write!(text, "{byte:02x}");
+        text
+    })
 }
 
 /// A text that is not a key: anything but 64 lowercase hex digits.
@@ -142,6 +155,12 @@ mod tests {
     fn another_route_or_identity_gives_another_key() {
         assert_ne!(key("route", "identity"), key("other", "identity"));
         assert_ne!(key("route", "identity"), key("route", "other"));
+    }
+
+    #[test]
+    fn a_key_hands_out_the_bytes_it_displays() {
+        let key = key("route", "identity");
+        assert_eq!(hex(key.as_bytes()), key.to_string());
     }
 
     #[test]

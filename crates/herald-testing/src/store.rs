@@ -1,7 +1,9 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Mutex;
 
-use herald_core::{Cursor, DestinationName, Entry, Key, Schedule, SourceName, Subscription};
+use herald_core::{
+    Cursor, DestinationName, Entry, Key, RouteId, Schedule, SourceName, Subscription,
+};
 use herald_ports::{Capabilities, Store, StoreError, Version, Versioned, Written};
 
 use crate::lock;
@@ -12,6 +14,7 @@ struct State {
     cursors: BTreeMap<SourceName, Versioned<Cursor>>,
     schedules: Vec<Schedule>,
     subscriptions: BTreeSet<Subscription>,
+    pins: BTreeMap<RouteId, String>,
 }
 
 /// A store in memory, keeping everything a store can keep.
@@ -48,6 +51,7 @@ impl Store for FakeStore {
             cursors: true,
             schedules: true,
             subscriptions: true,
+            pins: true,
             concurrent: true,
         }
     }
@@ -128,6 +132,17 @@ impl Store for FakeStore {
 
     async fn unsubscribe(&self, subscription: &Subscription) -> Result<(), StoreError> {
         lock(&self.state).subscriptions.remove(subscription);
+        Ok(())
+    }
+
+    async fn pinned(&self, route: &RouteId) -> Result<Option<String>, StoreError> {
+        Ok(lock(&self.state).pins.get(route).cloned())
+    }
+
+    async fn put_pinned(&self, route: &RouteId, post: &str) -> Result<(), StoreError> {
+        lock(&self.state)
+            .pins
+            .insert(route.clone(), post.to_owned());
         Ok(())
     }
 }

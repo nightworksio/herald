@@ -2,7 +2,7 @@ use jiff::Timestamp;
 use serde::{Deserialize, Serialize};
 
 use crate::key::Key;
-use crate::profile::{Features, Threads};
+use crate::profile::{Features, Pins, Threads};
 use crate::route::Delivery;
 
 /// One step of an announcement, in the order a destination takes them.
@@ -19,6 +19,8 @@ pub enum Step {
     Chunk(u32),
     /// Pin it.
     Pin,
+    /// Unpin the route's earlier pin.
+    Unpin,
     /// Deliver it to one recipient's inbox.
     Deliver(String),
 }
@@ -162,8 +164,12 @@ pub fn steps(
         steps.push(Step::OpenThread);
     }
     steps.extend((1..parts).map(Step::Chunk));
-    if delivery.pin && features.pins {
-        steps.push(Step::Pin);
+    if delivery.pin.is_some() {
+        match features.pins {
+            Pins::None => {}
+            Pins::Many => steps.extend([Step::Pin, Step::Unpin]),
+            Pins::One => steps.extend([Step::Unpin, Step::Pin]),
+        }
     }
     steps.extend(recipients.iter().cloned().map(Step::Deliver));
     steps
@@ -177,6 +183,17 @@ pub struct Planned {
     pub step: Step,
     /// Whether an earlier attempt left it unknown.
     pub verify_first: bool,
+}
+
+/// What a destination answered to one step.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Sent {
+    /// The step landed, as these facts say.
+    Landed(Facts),
+    /// The destination asked to be asked again after this long.
+    RetryAfter(jiff::SignedDuration),
+    /// The destination refused the step, for this reason.
+    Refused(String),
 }
 
 /// What a run is to do with one announcement.
@@ -247,7 +264,7 @@ mod tests {
     use super::*;
     use crate::key::{Identity, RouteId};
     use crate::profile::MentionStyle;
-    use crate::route::Thread;
+    use crate::route::{Pinning, Thread};
 
     fn key() -> Key {
         Key::derive(&RouteId::new("route"), &Identity::new("identity"))
@@ -261,7 +278,7 @@ mod tests {
         Features {
             threads: Threads::FromMessage,
             crosspost: true,
-            pins: true,
+            pins: Pins::Many,
             reads_back: true,
             edits: true,
             mentions: MentionStyle::Roles,
@@ -277,7 +294,7 @@ mod tests {
                 archive_after: None,
                 lock_after: None,
             }),
-            pin: true,
+            pin: Some(Pinning::Markers),
             ..Delivery::default()
         }
     }
@@ -311,7 +328,26 @@ mod tests {
                 Step::Chunk(1),
                 Step::Chunk(2),
                 Step::Pin,
+                Step::Unpin,
                 Step::Deliver("https://a.example/inbox".to_owned()),
+            ]
+        );
+    }
+
+    #[test]
+    fn a_destination_holding_one_pin_unpins_before_it_pins() {
+        let features = Features {
+            pins: Pins::One,
+            ..discord()
+        };
+        assert_eq!(
+            steps(&everything(), &features, 1, &[]),
+            [
+                Step::Post,
+                Step::Crosspost,
+                Step::OpenThread,
+                Step::Unpin,
+                Step::Pin
             ]
         );
     }
@@ -329,7 +365,7 @@ mod tests {
         let features = Features {
             threads: Threads::Replies,
             crosspost: false,
-            pins: false,
+            pins: Pins::None,
             ..discord()
         };
         assert_eq!(
@@ -342,7 +378,7 @@ mod tests {
         };
         assert_eq!(
             steps(&everything(), &features, 1, &[]),
-            [Step::Post, Step::Crosspost, Step::Pin]
+            [Step::Post, Step::Crosspost, Step::Pin, Step::Unpin]
         );
     }
 

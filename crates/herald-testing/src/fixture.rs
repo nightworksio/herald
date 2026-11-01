@@ -9,6 +9,7 @@ use herald_ports::Segment;
 
 use crate::audit::{credentials, secret_header};
 use crate::lock;
+use crate::scrub::Scrub;
 
 /// A request as a fixture holds it: its secrets redacted, a JSON body as JSON.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -40,14 +41,6 @@ impl Recorded {
             body: body(&request.body),
         }
     }
-
-    fn scrubbed(self, scrub: &[(String, String)]) -> Self {
-        Self {
-            url: replaced(&self.url, scrub),
-            body: self.body.map(|body| scrubbed(&body, scrub)),
-            ..self
-        }
-    }
 }
 
 /// A response as a fixture holds it.
@@ -64,11 +57,11 @@ pub struct Answer {
 }
 
 impl Answer {
-    fn of(response: &Response, scrub: &[(String, String)]) -> Self {
+    fn of(response: &Response) -> Self {
         Self {
             status: response.status,
             headers: response.headers.iter().cloned().collect(),
-            body: body(&response.body).map(|body| scrubbed(&body, scrub)),
+            body: body(&response.body),
         }
     }
 
@@ -126,15 +119,9 @@ impl Fixture {
     /// Each credential found, by where it is and what it looks like, never
     /// by its value.
     pub fn audit(&self, secrets: &[String]) -> Result<(), String> {
-        let mut found = Vec::new();
+        let mut found = self.handed(secrets);
         for (index, exchange) in self.exchanges.iter().enumerate() {
             let text = serde_json::to_string(exchange).unwrap_or_default();
-            if secrets
-                .iter()
-                .any(|secret| !secret.is_empty() && text.contains(secret.as_str()))
-            {
-                found.push(format!("exchange {index} holds a secret it was handed"));
-            }
             found.extend(
                 credentials(&text)
                     .into_iter()
@@ -151,11 +138,21 @@ impl Fixture {
                     .map(|(name, _)| format!("exchange {index} has a {name} header in the clear")),
             );
         }
-        if found.is_empty() {
-            Ok(())
-        } else {
-            Err(found.join("\n"))
-        }
+        verdict(&found)
+    }
+
+    fn handed(&self, secrets: &[String]) -> Vec<String> {
+        self.exchanges
+            .iter()
+            .enumerate()
+            .filter(|(_, exchange)| {
+                let text = serde_json::to_string(exchange).unwrap_or_default();
+                secrets
+                    .iter()
+                    .any(|secret| !secret.is_empty() && text.contains(secret.as_str()))
+            })
+            .map(|(index, _)| format!("exchange {index} holds a secret it was handed"))
+            .collect()
     }
 
     /// The fixture as pretty JSON, ending in a newline.
@@ -172,34 +169,20 @@ impl Fixture {
     }
 }
 
+fn verdict(found: &[String]) -> Result<(), String> {
+    if found.is_empty() {
+        Ok(())
+    } else {
+        Err(found.join("\n"))
+    }
+}
+
 fn body(bytes: &[u8]) -> Option<Value> {
     if bytes.is_empty() {
         return None;
     }
     let text = String::from_utf8_lossy(bytes);
     Some(serde_json::from_str(&text).unwrap_or_else(|_| Value::String(text.into_owned())))
-}
-
-fn replaced(text: &str, scrub: &[(String, String)]) -> String {
-    scrub.iter().fold(text.to_owned(), |text, (from, to)| {
-        text.replace(from.as_str(), to)
-    })
-}
-
-fn scrubbed(value: &Value, scrub: &[(String, String)]) -> Value {
-    match value {
-        Value::String(text) => Value::String(replaced(text, scrub)),
-        Value::Array(items) => {
-            Value::Array(items.iter().map(|item| scrubbed(item, scrub)).collect())
-        }
-        Value::Object(fields) => Value::Object(
-            fields
-                .iter()
-                .map(|(name, field)| (name.clone(), scrubbed(field, scrub)))
-                .collect(),
-        ),
-        other => other.clone(),
-    }
 }
 
 fn secrets(request: &Request) -> Vec<String> {
@@ -282,52 +265,54 @@ impl Http for Replay {
     }
 }
 
-/// An `Http` that sends through another and records each exchange, with its
-/// secrets redacted and each scrubbed value replaced. It keeps the value of
+/// An `Http` that sends through another and records each exchange with its
+/// secrets redacted, scrubbed when it is handed over. It keeps the value of
 /// every secret it sends, and refuses to hand over a recording holding one.
 #[derive(Debug)]
 pub struct Recorder<H> {
     inner: H,
-    scrub: Vec<(String, String)>,
     exchanges: Mutex<Vec<Exchange>>,
     secrets: Mutex<Vec<String>>,
 }
 
 impl<H: Http> Recorder<H> {
-    /// A recorder sending through `inner`, replacing each `(from, to)` of
-    /// `scrub` in what it records.
+    /// A recorder sending through `inner`.
     #[must_use]
-    pub fn new(inner: H, scrub: Vec<(String, String)>) -> Self {
+    pub fn new(inner: H) -> Self {
         Self {
             inner,
-            scrub,
             exchanges: Mutex::new(Vec::new()),
             secrets: Mutex::new(Vec::new()),
         }
     }
 
-    /// What it recorded, once [`Fixture::audit`] finds no credential in it.
+    /// What it recorded, with `scrub` applied, once neither the recording nor
+    /// the scrubbed fixture holds a secret it sent and [`Fixture::audit`]
+    /// finds no credential in the scrubbed fixture.
     ///
     /// # Errors
     ///
     /// Each credential the recording holds, so it is never written.
-    pub fn fixture(&self) -> Result<Fixture, String> {
-        let fixture = Fixture {
+    pub fn fixture(&self, scrub: &Scrub) -> Result<Fixture, String> {
+        let recorded = Fixture {
             exchanges: lock(&self.exchanges).clone(),
         };
-        fixture.audit(&lock(&self.secrets))?;
-        Ok(fixture)
+        let secrets = lock(&self.secrets).clone();
+        verdict(&recorded.handed(&secrets))?;
+        let scrubbed = scrub.applied(&recorded);
+        scrubbed.audit(&secrets)?;
+        Ok(scrubbed)
     }
 }
 
 impl<H: Http> Http for Recorder<H> {
     async fn send(&self, request: Request) -> Result<Response, HttpError> {
-        let recorded = Recorded::of(&request).scrubbed(&self.scrub);
+        let recorded = Recorded::of(&request);
         lock(&self.secrets).extend(secrets(&request));
         let response = self.inner.send(request).await?;
         let exchange = Exchange {
             request: recorded,
-            response: Answer::of(&response, &self.scrub),
+            response: Answer::of(&response),
         };
         lock(&self.exchanges).push(exchange);
         Ok(response)

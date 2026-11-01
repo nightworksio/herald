@@ -1,0 +1,38 @@
+{
+  "exchanges": [
+    {
+      "request": {
+        "method": "DELETE",
+        "url": "https://discord.com/api/v10/channels/1566184281406177531/messages/pins/1566200000000000008",
+        "headers": {
+          "Authorization": "Bot «secret:HERALD_DISCORD_TOKEN»",
+          "User-Agent": "DiscordBot (https://github.com/nightworksio/herald, 0.0.0)"
+        }
+      },
+      "response": {
+        "status": 404,
+        "body": {
+          "message": "Unknown Message",
+          "code": 10008
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "DELETE",
+        "url": "https://discord.com/api/v10/channels/1566184281406177531/messages/pins/1566200000000000008",
+        "headers": {
+          "Authorization": "Bot «secret:HERALD_DISCORD_TOKEN»",
+          "User-Agent": "DiscordBot (https://github.com/nightworksio/herald, 0.0.0)"
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "message": "Missing Permissions",
+          "code": 50013
+        }
+      }
+    }
+  ]
+}

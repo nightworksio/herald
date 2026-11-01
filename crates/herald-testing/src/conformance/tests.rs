@@ -9,11 +9,14 @@ enum Fault {
     UndeclaredCursors,
     UndeclaredSchedules,
     UndeclaredSubscriptions,
+    UndeclaredPins,
     OverwritesEntries,
     RefusesWrites,
     OverwritesCursors,
     DuplicatesSchedules,
     IgnoresProjects,
+    KeepsTheFirstPin,
+    SharesPins,
     Broken,
     KeepsNothing,
 }
@@ -66,11 +69,13 @@ impl Store for Faulty {
                 subscriptions: false,
                 ..all
             },
+            Fault::UndeclaredPins => Capabilities { pins: false, ..all },
             Fault::KeepsNothing => Capabilities {
                 ledger: false,
                 cursors: false,
                 schedules: false,
                 subscriptions: false,
+                pins: false,
                 concurrent: false,
             },
             _ => all,
@@ -161,6 +166,28 @@ impl Store for Faulty {
         self.refuses("subscriptions")?;
         self.inner.unsubscribe(subscription).await
     }
+
+    async fn pinned(&self, route: &RouteId) -> Result<Option<String>, StoreError> {
+        self.refuses("pins")?;
+        let route = match self.fault {
+            Fault::SharesPins => RouteId::new("shared"),
+            _ => route.clone(),
+        };
+        self.inner.pinned(&route).await
+    }
+
+    async fn put_pinned(&self, route: &RouteId, post: &str) -> Result<(), StoreError> {
+        self.refuses("pins")?;
+        let route = match self.fault {
+            Fault::SharesPins => RouteId::new("shared"),
+            _ => route.clone(),
+        };
+        let kept = self.inner.pinned(&route).await?;
+        if self.fault == Fault::KeepsTheFirstPin && kept.is_some() {
+            return Ok(());
+        }
+        self.inner.put_pinned(&route, post).await
+    }
 }
 
 fn run(fault: Fault) -> Result<(), Failure> {
@@ -187,6 +214,7 @@ fn a_kind_kept_but_not_declared_is_refused() {
         (Fault::UndeclaredCursors, "cursors"),
         (Fault::UndeclaredSchedules, "schedules"),
         (Fault::UndeclaredSubscriptions, "subscriptions"),
+        (Fault::UndeclaredPins, "pins"),
     ];
     for (fault, what) in cases {
         assert_eq!(
@@ -220,6 +248,14 @@ fn a_store_that_breaks_its_promises_is_refused() {
         (
             Fault::IgnoresProjects,
             "the subscribers of a project on a destination were not those subscribed, once each",
+        ),
+        (
+            Fault::KeepsTheFirstPin,
+            "a route's pin was not the one written last",
+        ),
+        (
+            Fault::SharesPins,
+            "a route's pin was not the one written last",
         ),
     ];
     for (fault, failure) in cases {
