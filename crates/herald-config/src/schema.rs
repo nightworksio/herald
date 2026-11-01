@@ -23,7 +23,7 @@ enum StoreSchema {
     /// The destinations' own posts.
     Markers {},
     /// One file per record on a `herald-state` branch.
-    GitBranch {},
+    GitBranch(herald_store_git_branch::StoreOptions),
     /// Generations of the GitHub Actions cache.
     ActionsCache {},
     /// The repository's variables.

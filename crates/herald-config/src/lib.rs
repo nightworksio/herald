@@ -14,9 +14,7 @@ mod position;
 mod samples;
 mod schema;
 
-pub use config::{
-    App, Config, Destination, RouteConfig, RouteOptions, Schedule, Source, StoreKind,
-};
+pub use config::{App, Config, Destination, RouteConfig, RouteOptions, Schedule, Source, Store};
 pub use error::{ConfigError, Errors};
 pub use load::load;
 pub use schema::schema;

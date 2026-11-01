@@ -6,7 +6,7 @@ use serde::de::DeserializeOwned;
 use toml::Spanned;
 use toml::de::{DeTable, DeValue, ValueDeserializer};
 
-use crate::config::{App, Config, Destination, Schedule, Source, StoreKind};
+use crate::config::{App, Config, Destination, Schedule, Source, Store};
 use crate::error::{ConfigError, Errors};
 use crate::file::{AppFile, MarkersFile, NoOptions, ScheduleFile, TemplateFile};
 use crate::position::position;
@@ -253,7 +253,7 @@ impl Loader<'_> {
         }
     }
 
-    fn store(&mut self, value: Option<Value<'_>>) -> Option<StoreKind> {
+    fn store(&mut self, value: Option<Value<'_>>) -> Option<Store> {
         let Some(value) = value else {
             self.error(
                 &(0..0),
@@ -262,13 +262,26 @@ impl Loader<'_> {
             );
             return None;
         };
-        let names: Vec<&str> = StoreKind::ALL.iter().map(|(name, _)| *name).collect();
-        let (kind, rest) = self.kinded(value, "store", &names)?;
+        let (kind, rest) = self.kinded(value, "store", &Store::KINDS)?;
+        if kind == "git-branch" {
+            return self
+                .typed::<herald_store_git_branch::StoreOptions>(rest, "store")
+                .map(Store::GitBranch);
+        }
         self.typed::<NoOptions>(rest, "store")?;
-        StoreKind::ALL
-            .iter()
-            .find(|(name, _)| *name == kind)
-            .map(|(_, store)| *store)
+        [
+            ("sqlite", Store::Sqlite),
+            ("postgres", Store::Postgres),
+            ("d1", Store::D1),
+            ("dynamodb", Store::Dynamodb),
+            ("deno-kv", Store::DenoKv),
+            ("markers", Store::Markers),
+            ("actions-cache", Store::ActionsCache),
+            ("repo-variables", Store::RepoVariables),
+        ]
+        .into_iter()
+        .find(|(name, _)| *name == kind)
+        .map(|(_, store)| store)
     }
 
     fn destinations(

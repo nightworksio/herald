@@ -5,7 +5,9 @@
 //! changed since it was read: that refusal is the compare-and-set.
 
 mod contents;
+mod options;
 mod paths;
 mod store;
 
+pub use options::StoreOptions;
 pub use store::{GitBranch, GitBranchStore};

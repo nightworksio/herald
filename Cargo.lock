@@ -390,6 +390,7 @@ dependencies = [
  "herald-core",
  "herald-dest-discord",
  "herald-sources-forge",
+ "herald-store-git-branch",
  "jiff",
  "schemars",
  "serde",
@@ -490,6 +491,7 @@ dependencies = [
  "herald-ports",
  "herald-testing",
  "pollster",
+ "schemars",
  "serde",
  "serde_json",
 ]

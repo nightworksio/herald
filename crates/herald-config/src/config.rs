@@ -7,7 +7,7 @@ use jiff::SignedDuration;
 #[derive(Debug)]
 pub struct Config {
     /// The store the ledger and the rest are kept in (ADR-0005).
-    pub store: StoreKind,
+    pub store: Store,
     /// The installation's marker key, where it is set (ADR-0011).
     pub marker_key: Option<SecretRef>,
     /// The destinations, by name.
@@ -25,9 +25,9 @@ pub struct Config {
     pub schedule: Schedule,
 }
 
-/// Which store keeps herald's records.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum StoreKind {
+/// Which store keeps herald's records, and its options.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Store {
     /// A SQLite file.
     Sqlite,
     /// A Postgres database.
@@ -41,25 +41,25 @@ pub enum StoreKind {
     /// The destinations' own posts.
     Markers,
     /// A branch of the repository.
-    GitBranch,
+    GitBranch(herald_store_git_branch::StoreOptions),
     /// The GitHub Actions cache.
     ActionsCache,
     /// The repository's variables.
     RepoVariables,
 }
 
-impl StoreKind {
+impl Store {
     /// Every kind, as the config spells it.
-    pub const ALL: [(&'static str, Self); 9] = [
-        ("sqlite", Self::Sqlite),
-        ("postgres", Self::Postgres),
-        ("d1", Self::D1),
-        ("dynamodb", Self::Dynamodb),
-        ("deno-kv", Self::DenoKv),
-        ("markers", Self::Markers),
-        ("git-branch", Self::GitBranch),
-        ("actions-cache", Self::ActionsCache),
-        ("repo-variables", Self::RepoVariables),
+    pub const KINDS: [&'static str; 9] = [
+        "sqlite",
+        "postgres",
+        "d1",
+        "dynamodb",
+        "deno-kv",
+        "markers",
+        "git-branch",
+        "actions-cache",
+        "repo-variables",
     ];
 }
 

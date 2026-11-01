@@ -526,9 +526,41 @@
           "description": "One file per record on a `herald-state` branch.",
           "type": "object",
           "properties": {
+            "api": {
+              "description": "The API's base URL, for a GitHub Enterprise Server; GitHub's own API\nwhere absent.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "branch": {
+              "description": "The branch the records are kept on; `herald-state` where absent.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
             "kind": {
               "type": "string",
               "const": "git-branch"
+            },
+            "repository": {
+              "description": "The repository, as `owner/name`; the run's own where absent.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "token": {
+              "description": "The secret holding a token that may push to the branch;\n`GITHUB_TOKEN` where absent.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/SecretRef"
+                },
+                {
+                  "type": "null"
+                }
+              ]
             }
           },
           "additionalProperties": false,

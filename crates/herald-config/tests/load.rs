@@ -3,7 +3,7 @@
 
 #[cfg(test)]
 mod load {
-    use herald_config::{Destination, RouteOptions, Source, StoreKind, load, schema};
+    use herald_config::{Destination, RouteOptions, Source, Store, load, schema};
     use herald_core::{Kind, Pinning, Prereleases};
 
     const EXAMPLE: &str = r#"#:schema https://raw.githubusercontent.com/nightworksio/herald/main/herald.schema.json
@@ -47,7 +47,10 @@ body = "{{ event.body }}"
     #[test]
     fn the_documented_example_loads() {
         let config = load("herald.toml", EXAMPLE, &nothing).unwrap();
-        assert_eq!(config.store, StoreKind::GitBranch);
+        assert_eq!(
+            config.store,
+            Store::GitBranch(herald_store_git_branch::StoreOptions::default())
+        );
         assert_eq!(config.marker_key, None);
         assert!(matches!(
             config.destinations.values().next(),
@@ -309,9 +312,19 @@ body = "{{ event.body }}"
         );
         let extra = EXAMPLE.replace(
             "kind = \"git-branch\"",
-            "kind = \"git-branch\"\nbranch = \"x\"",
+            "kind = \"git-branch\"\nbrnach = \"x\"",
         );
-        assert!(errors(&extra).contains("store.branch: unknown field `branch`"));
+        assert!(errors(&extra).contains("store.brnach: unknown field `brnach`"));
+        let stray = EXAMPLE.replace(
+            "kind = \"git-branch\"",
+            "kind = \"markers\"\nbranch = \"x\"",
+        );
+        assert!(errors(&stray).contains("store.branch: unknown field `branch`"));
+        let markers = EXAMPLE.replace("kind = \"git-branch\"", "kind = \"markers\"");
+        assert_eq!(
+            load("herald.toml", &markers, &nothing).unwrap().store,
+            Store::Markers
+        );
         let pinned = EXAMPLE.replace("crosspost = true", "crosspost = true\npin = \"store\"");
         assert_eq!(
             load("herald.toml", &pinned, &nothing).unwrap().routes[0]
