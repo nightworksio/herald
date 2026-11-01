@@ -109,3 +109,23 @@ fn a_key_not_written_in_its_form_lets_nothing_through() {
         "the key the request is checked with is not written in its form, so no request is let through"
     );
 }
+
+#[test]
+fn a_matrix_transaction_holds_only_with_the_homeserver_token() {
+    assert_eq!(
+        checked(
+            Scheme::Matrix,
+            "hs-token",
+            &[("Authorization", "Bearer hs-token")]
+        ),
+        Ok(())
+    );
+    assert_eq!(
+        checked(
+            Scheme::Matrix,
+            "hs-token",
+            &[("Authorization", "Bearer as-token")]
+        ),
+        Err(Rejected::Forged)
+    );
+}

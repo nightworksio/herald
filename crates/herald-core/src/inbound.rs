@@ -40,6 +40,9 @@ pub enum Scheme {
     /// A Slack command or interaction: `X-Slack-Signature: v0=<hex>`, an
     /// HMAC-SHA256 of `v0:<X-Slack-Request-Timestamp>:<body>`.
     Slack,
+    /// A Matrix application-service transaction: `Authorization: Bearer
+    /// <hs_token>`, the homeserver token its registration names.
+    Matrix,
 }
 
 /// The kind of signature a scheme carries.
@@ -49,6 +52,8 @@ pub enum Signature {
     HmacSha256,
     /// Ed25519, checked with the sender's public key.
     Ed25519,
+    /// A token the sender presents, checked against the one herald holds.
+    Token,
 }
 
 /// What a request claims: that one of `signatures` signs `message` under
@@ -145,6 +150,18 @@ pub fn claim(
                 signature,
             ))
         }
+        Scheme::Matrix => {
+            const HEADER: &str = "Authorization";
+            let token = required(headers, HEADER)?
+                .strip_prefix("Bearer ")
+                .filter(|token| !token.is_empty())
+                .ok_or(Refusal::Malformed { header: HEADER })?;
+            Ok(Claim {
+                kind: Signature::Token,
+                message: Vec::new(),
+                signatures: vec![token.as_bytes().to_vec()],
+            })
+        }
         Scheme::GitLab => {
             const SIGNATURE: &str = "webhook-signature";
             let id = required(headers, "webhook-id")?;
@@ -185,10 +202,21 @@ pub fn key(scheme: Scheme, written: &str) -> Option<Vec<u8>> {
             .and_then(|encoded| STANDARD.decode(encoded).ok())
             .filter(|key| !key.is_empty()),
         Scheme::Discord => unhex(written),
-        Scheme::GitHub | Scheme::Forgejo | Scheme::Slack => {
+        Scheme::GitHub | Scheme::Forgejo | Scheme::Slack | Scheme::Matrix => {
             (!written.is_empty()).then(|| written.as_bytes().to_vec())
         }
     }
+}
+
+/// Whether `presented` is `held`, comparing every byte whatever the first
+/// difference, so the time taken says nothing of where they differ.
+#[must_use]
+pub fn same(held: &[u8], presented: &[u8]) -> bool {
+    let differs = held
+        .iter()
+        .zip(presented)
+        .fold(0_u8, |differs, (left, right)| differs | (left ^ right));
+    std::hint::black_box(differs) == 0 && held.len() == presented.len()
 }
 
 fn hmac(message: Vec<u8>, signature: Vec<u8>) -> Claim {

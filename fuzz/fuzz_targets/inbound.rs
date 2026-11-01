@@ -1,6 +1,7 @@
 //! Whatever headers and body a request carries, reading its claim answers a
-//! claim or a refusal, a claim's message holds the body it was read from, and
-//! it carries one to `MOST_SIGNATURES` signatures, none of them empty.
+//! claim or a refusal. A signed claim's message holds the body it was read
+//! from and a token's holds nothing, and each claim carries one to
+//! `MOST_SIGNATURES` signatures, none of them empty.
 
 #![no_main]
 
@@ -8,15 +9,16 @@ use herald_core::{Scheme, claim, key};
 use jiff::Timestamp;
 use libfuzzer_sys::fuzz_target;
 
-const SCHEMES: [Scheme; 5] = [
+const SCHEMES: [Scheme; 6] = [
     Scheme::GitHub,
     Scheme::Forgejo,
     Scheme::GitLab,
     Scheme::Discord,
     Scheme::Slack,
+    Scheme::Matrix,
 ];
 
-const HEADERS: [&str; 10] = [
+const HEADERS: [&str; 11] = [
     "X-Hub-Signature-256",
     "X-Forgejo-Signature",
     "X-Gitea-Signature",
@@ -27,6 +29,7 @@ const HEADERS: [&str; 10] = [
     "webhook-id",
     "webhook-timestamp",
     "webhook-signature",
+    "Authorization",
 ];
 
 fuzz_target!(|input: (Vec<String>, Vec<u8>, i64)| {
@@ -41,7 +44,11 @@ fuzz_target!(|input: (Vec<String>, Vec<u8>, i64)| {
         .collect();
     for scheme in SCHEMES {
         if let Ok(claim) = claim(scheme, &headers, &body, now) {
-            assert!(claim.message.ends_with(&body), "{scheme:?}");
+            if scheme == Scheme::Matrix {
+                assert!(claim.message.is_empty());
+            } else {
+                assert!(claim.message.ends_with(&body), "{scheme:?}");
+            }
             assert!((1..=herald_core::MOST_SIGNATURES).contains(&claim.signatures.len()), "{scheme:?}");
             assert!(claim.signatures.iter().all(|signature| !signature.is_empty()), "{scheme:?}");
         }

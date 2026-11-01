@@ -1,6 +1,6 @@
 use std::fmt;
 
-use herald_core::{Refusal, Scheme, Signature, claim, key};
+use herald_core::{Refusal, Scheme, Signature, claim, key, same};
 use herald_ports::{Algorithm, Verifier};
 use jiff::Timestamp;
 
@@ -48,6 +48,13 @@ pub async fn verified<V: Verifier>(
     let algorithm = match claim.kind {
         Signature::HmacSha256 => Algorithm::HmacSha256,
         Signature::Ed25519 => Algorithm::Ed25519,
+        Signature::Token => {
+            return if claim.signatures.iter().any(|token| same(&key, token)) {
+                Ok(())
+            } else {
+                Err(Rejected::Forged)
+            };
+        }
     };
     for signature in &claim.signatures {
         if verifier

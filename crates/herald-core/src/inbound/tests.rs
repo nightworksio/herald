@@ -332,3 +332,42 @@ fn a_gitlab_webhook_carrying_more_signatures_than_a_rotation_needs_is_refused_un
         );
     }
 }
+
+#[test]
+fn a_matrix_transaction_claims_the_homeserver_token_it_presents() {
+    let claim = claimed(Scheme::Matrix, &[("authorization", "Bearer hs-token")]).unwrap();
+    assert_eq!(claim.kind, Signature::Token);
+    assert_eq!(claim.message, Vec::<u8>::new());
+    assert_eq!(claim.signatures, [b"hs-token".to_vec()]);
+    for value in ["hs-token", "Bearer ", "Basic aHM6dG9rZW4="] {
+        assert_eq!(
+            claimed(Scheme::Matrix, &[("Authorization", value)]),
+            Err(Refusal::Malformed {
+                header: "Authorization"
+            }),
+            "{value}"
+        );
+    }
+    assert_eq!(
+        claimed(Scheme::Matrix, &[]),
+        Err(Refusal::Unsigned {
+            header: "Authorization"
+        })
+    );
+    assert_eq!(key(Scheme::Matrix, "hs-token"), Some(b"hs-token".to_vec()));
+}
+
+#[test]
+fn a_token_is_the_same_only_byte_for_byte() {
+    assert!(same(b"hs-token", b"hs-token"));
+    for presented in [
+        b"hs-tokeN".as_slice(),
+        b"sh-token",
+        b"Hs-token",
+        b"hs-token-",
+        b"hs-toke",
+        b"",
+    ] {
+        assert!(!same(b"hs-token", presented), "{presented:?}");
+    }
+}
