@@ -193,3 +193,17 @@ proptest! {
         }
     }
 }
+
+#[test]
+fn a_paragraph_that_only_looks_like_a_fence_is_cut_as_a_paragraph() {
+    let text = "```~\u{f}~~ea href=\u{b}`\n\0a->>\t   =\0\0\0\\F\0\u{f}\0\x30\0~";
+    let room = Room {
+        measure: Measure::Chars,
+        first: 68,
+        rest: 108,
+    };
+    for (index, part) in chunk(text, Dialect::Matrix, room).iter().enumerate() {
+        let limit = if index == 0 { room.first } else { room.rest };
+        assert!(size(part, room.measure) <= limit, "part {index}: {part:?}");
+    }
+}

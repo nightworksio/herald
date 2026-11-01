@@ -137,7 +137,7 @@ What is built on `main`, and the decision each part follows:
 |------|-----------|-------|
 | The workspace, its layering and CI | [ADR-0001](.docs/decisions/0001-a-sans-io-core-behind-ports.md), [ADR-0008](.docs/decisions/0008-every-line-is-covered-and-no-mutant-survives.md) | yes |
 | The core: events, routes, rendering, dialects, chunking, the never-twice plan | [ADR-0001](.docs/decisions/0001-a-sans-io-core-behind-ports.md) | yes |
-| The ports, fakes and the store conformance suite | [ADR-0001](.docs/decisions/0001-a-sans-io-core-behind-ports.md), [ADR-0005](.docs/decisions/0005-an-announcement-is-sent-once-and-finished-if-interrupted.md) | no |
+| The ports, fakes and the store conformance suite | [ADR-0001](.docs/decisions/0001-a-sans-io-core-behind-ports.md), [ADR-0005](.docs/decisions/0005-an-announcement-is-sent-once-and-finished-if-interrupted.md) | yes |
 | `herald.toml` and its JSON Schema | [ADR-0006](.docs/decisions/0006-one-herald-toml-with-sandboxed-templates-and-a-published-schema.md) | no |
 | Sources: forges, registries, feeds, apps | [ADR-0003](.docs/decisions/0003-every-source-becomes-one-neutral-event.md) | no |
 | Destinations: Discord, Matrix, Slack, Fediverse | [ADR-0004](.docs/decisions/0004-each-destination-gets-its-own-dialect-limits-and-features.md) | no |

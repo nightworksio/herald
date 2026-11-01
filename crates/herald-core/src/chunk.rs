@@ -1,4 +1,4 @@
-use pulldown_cmark::{Event, Parser};
+use pulldown_cmark::{CodeBlockKind, Event, Parser, Tag};
 use unicode_segmentation::UnicodeSegmentation;
 
 use crate::markup::{EXTENSIONS, Text, convert};
@@ -120,6 +120,13 @@ fn blocks(markdown: &str) -> Vec<String> {
 }
 
 fn fenced(block: &str) -> Option<(String, String, String)> {
+    let first = Parser::new_ext(block, EXTENSIONS).next();
+    if !matches!(
+        first,
+        Some(Event::Start(Tag::CodeBlock(CodeBlockKind::Fenced(_))))
+    ) {
+        return None;
+    }
     let (open, rest) = block.split_once('\n')?;
     let marker = ["```", "~~~"]
         .into_iter()
