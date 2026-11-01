@@ -9,6 +9,10 @@ yanked = "deny"
 multiple-versions = "deny"
 wildcards = "deny"
 allow-wildcard-paths = true
+skip = [
+  { crate = "syn@2", reason = "proc macros move from syn 2 to syn 3 crate by crate; jiff-static and jni still build on syn 2" },
+  { crate = "windows-sys@0.52", reason = "ring 0.17 builds on windows-sys 0.52, for Windows targets only" },
+]
 deny = [
   { crate = "amplitude", reason = "reports on the person running it" },
   { crate = "aptabase", reason = "reports on the person running it" },
@@ -59,6 +63,7 @@ allow = [
   "Apache-2.0 WITH LLVM-exception",
   "BSD-2-Clause",
   "BSD-3-Clause",
+  "CDLA-Permissive-2.0",
   "ISC",
   "Unicode-3.0",
   "Zlib",

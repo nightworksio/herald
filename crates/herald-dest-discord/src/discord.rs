@@ -40,6 +40,13 @@ impl Discord {
         }
     }
 
+    /// The base URL of the API it reaches, the only origin its `Http` may
+    /// reach (ADR-0007).
+    #[must_use]
+    pub fn api(&self) -> &str {
+        &self.api
+    }
+
     /// What the destination can do, as the core plans with it.
     #[must_use]
     pub fn profile(&self) -> Profile {
@@ -106,23 +113,30 @@ impl Discord {
         Ok(read(self, step_to_take, &http.send(request).await?))
     }
 
-    /// Does `housekeeping` to the thread `thread`.
+    /// Does `housekeeping` to the thread `thread`. A lock unarchives the
+    /// thread to lock it, as Discord changes no archived thread otherwise, and
+    /// archives it again.
     ///
     /// # Errors
     ///
-    /// When the request got no response at all.
+    /// When a request got no response at all.
     pub async fn housekeep<H: Http>(
         &self,
         http: &H,
         housekeeping: Chore,
         thread: &str,
     ) -> Result<Sent, HttpError> {
-        let request = match chore(self, housekeeping, thread) {
-            Ok(request) => request,
+        let requests = match chore(self, housekeeping, thread) {
+            Ok(requests) => requests,
             Err(refusal) => return Ok(Sent::Refused(refusal.to_string())),
         };
-        let response = http.send(request).await?;
-        let body = serde_json::from_slice(&response.body).unwrap_or(serde_json::Value::Null);
-        Ok(trouble(&response, &body).unwrap_or(Sent::Landed(herald_core::Facts::default())))
+        for request in requests {
+            let response = http.send(request).await?;
+            let body = serde_json::from_slice(&response.body).unwrap_or(serde_json::Value::Null);
+            if let Some(trouble) = trouble(&response, &body) {
+                return Ok(trouble);
+            }
+        }
+        Ok(Sent::Landed(herald_core::Facts::default()))
     }
 }

@@ -1,6 +1,7 @@
 //! What herald's tests share: a fake of every port, the `Http` that replays
-//! recorded fixtures and the recorder that makes them, and the conformance
-//! suite every store passes (ADR-0008).
+//! recorded fixtures and the recorder that makes them, the sample every
+//! destination's fixtures announce, and the conformance suite every store
+//! passes (ADR-0008).
 //!
 //! It is a dev-dependency only.
 
@@ -16,6 +17,8 @@ mod crypto;
 mod fixture;
 mod kv;
 mod markers;
+pub mod sample;
+mod scrub;
 mod secrets;
 mod sql;
 mod store;
@@ -29,6 +32,7 @@ pub use crypto::{FakeSigner, FakeVerifier};
 pub use fixture::{Answer, Exchange, Fixture, Recorded, Recorder, Replay};
 pub use kv::FakeKv;
 pub use markers::FakeMarkers;
+pub use scrub::{Ids, Scrub};
 pub use secrets::FakeSecrets;
 pub use sql::ScriptedSql;
 pub use store::FakeStore;

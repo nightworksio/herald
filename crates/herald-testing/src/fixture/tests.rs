@@ -2,6 +2,7 @@ use herald_ports::{Method, Secret, Text};
 use serde_json::json;
 
 use super::*;
+use crate::scrub::Ids;
 
 fn message(content: &str) -> Request {
     Request::new(
@@ -94,12 +95,14 @@ fn a_replay_past_its_fixture_refuses_everything() {
 
 #[test]
 fn a_recorder_records_what_it_sends_scrubbed() {
-    let recorder = Recorder::new(
-        Replay::of(fixture()),
-        vec![("9".to_owned(), "1000".to_owned())],
-    );
+    let recorder = Recorder::new(Replay::of(fixture()));
     pollster::block_on(recorder.send(message("hi"))).unwrap();
-    let made = recorder.fixture().unwrap();
+    let made = recorder
+        .fixture(&Scrub {
+            replace: vec![("9".to_owned(), "1000".to_owned())],
+            ..Scrub::default()
+        })
+        .unwrap();
     assert_eq!(made.exchanges.len(), 1);
     assert_eq!(made.exchanges[0].request, fixture().exchanges[0].request);
     assert_eq!(
@@ -109,31 +112,39 @@ fn a_recorder_records_what_it_sends_scrubbed() {
 }
 
 #[test]
-fn a_recorder_scrubs_urls_and_nested_bodies() {
+fn a_secret_that_scrubbing_would_hide_is_found_before_it_is_scrubbed() {
+    let digits = "12345678901234567";
     let request = Request::new(
-        Method::Put,
-        Text::plain("https://matrix.example/rooms/!real:example/send"),
+        Method::Post,
+        Text::plain("https://discord.com/api/v10/channels/1/messages"),
     )
-    .body(
-        json!({ "list": ["!real:example", 1], "nested": { "room": "!real:example" } }).to_string(),
-    );
-    let recorded = Recorded::of(&request)
-        .scrubbed(&[("!real:example".to_owned(), "!room:example".to_owned())]);
+    .header(
+        "Authorization",
+        Text::plain("Bot ").then_secret(Secret::new("TOKEN", digits)),
+    )
+    .body(json!({ "content": "hi" }).to_string());
+    let mut answered = echo(digits);
+    answered.exchanges[0].request = Recorded::of(&request);
+    let recorder = Recorder::new(Replay::of(answered));
+    pollster::block_on(recorder.send(request)).unwrap();
+    let ids = Scrub {
+        ids: Some(Ids {
+            digits: 17..=20,
+            first: 1,
+        }),
+        ..Scrub::default()
+    };
     assert_eq!(
-        recorded.url,
-        "https://matrix.example/rooms/!room:example/send"
-    );
-    assert_eq!(
-        recorded.body,
-        Some(json!({ "list": ["!room:example", 1], "nested": { "room": "!room:example" } }))
+        recorder.fixture(&ids),
+        Err("exchange 0 holds a secret it was handed".to_owned())
     );
 }
 
 #[test]
 fn a_failed_send_records_nothing() {
-    let recorder = Recorder::new(Replay::of(Fixture::default()), vec![]);
+    let recorder = Recorder::new(Replay::of(Fixture::default()));
     assert!(pollster::block_on(recorder.send(message("hi"))).is_err());
-    assert_eq!(recorder.fixture(), Ok(Fixture::default()));
+    assert_eq!(recorder.fixture(&Scrub::default()), Ok(Fixture::default()));
 }
 
 #[test]
@@ -170,19 +181,19 @@ fn echo(body: &str) -> Fixture {
 
 #[test]
 fn a_secret_sent_through_the_recorder_never_reaches_the_written_file() {
-    let recorder = Recorder::new(Replay::of(fixture()), vec![]);
+    let recorder = Recorder::new(Replay::of(fixture()));
     pollster::block_on(recorder.send(message("hi"))).unwrap();
-    let written = recorder.fixture().unwrap().to_json();
+    let written = recorder.fixture(&Scrub::default()).unwrap().to_json();
     assert!(!written.contains("hunter2"), "{written}");
     assert!(written.contains("«secret:TOKEN»"));
 }
 
 #[test]
 fn a_recording_that_echoes_a_secret_it_was_handed_is_refused() {
-    let recorder = Recorder::new(Replay::of(echo("hunter2")), vec![]);
+    let recorder = Recorder::new(Replay::of(echo("hunter2")));
     pollster::block_on(recorder.send(message("hi"))).unwrap();
     assert_eq!(
-        recorder.fixture(),
+        recorder.fixture(&Scrub::default()),
         Err("exchange 0 holds a secret it was handed".to_owned())
     );
 }
@@ -218,9 +229,9 @@ fn a_plain_secret_the_recorder_was_never_told_of_is_still_found_by_its_shape() {
         Method::Post,
         Text::plain(format!("https://api.github.com/x?token={token}")),
     );
-    let recorder = Recorder::new(Replay::of(Fixture::default()), vec![]);
+    let recorder = Recorder::new(Replay::of(Fixture::default()));
     let _ = pollster::block_on(recorder.send(leaky));
-    assert_eq!(recorder.fixture(), Ok(Fixture::default()));
+    assert_eq!(recorder.fixture(&Scrub::default()), Ok(Fixture::default()));
     let mut leaked = fixture();
     leaked.exchanges[0].request.url = format!("https://api.github.com/x?token={token}");
     assert_eq!(

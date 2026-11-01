@@ -10,7 +10,7 @@ use crate::route::Thread;
 pub enum Chore {
     /// Archive it.
     Archive,
-    /// Lock it.
+    /// Lock it: archived, and reopened only by a moderator.
     Lock,
 }
 

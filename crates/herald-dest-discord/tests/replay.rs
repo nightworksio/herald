@@ -4,11 +4,11 @@
 #[cfg(test)]
 mod replay {
     use herald_core::{
-        Announcement, Chore, Delivery, Entry, Facts, Identity, Key, Marker, Mentions, Plan,
-        Planned, RoleId, RouteId, Sent, Step, Text, Thread, plan,
+        Announcement, Chore, Delivery, Entry, Facts, Marker, Plan, Planned, Sent, Step, plan,
     };
     use herald_dest_discord::{Credential, Discord, DiscordMarkers, RouteOptions};
     use herald_ports::{Markers, MarkersError, Secret};
+    use herald_testing::sample::{self, announcement, marker};
     use herald_testing::{Fixture, Replay};
     use jiff::SignedDuration;
 
@@ -53,52 +53,10 @@ mod replay {
         )
     }
 
-    fn marker() -> Marker {
-        Marker::of(&[0xa5; 32])
-    }
-
-    fn announcement() -> Announcement {
-        Announcement {
-            key: Key::derive(
-                &RouteId::new("php-mutation-gate-releases"),
-                &Identity::new("github.com/1066469473/v0.1.0"),
-            ),
-            marker: marker(),
-            route: RouteId::new("php-mutation-gate-releases"),
-            title: "📦 php-mutation-gate v0.1.0".to_owned(),
-            parts: vec![
-                Text {
-                    body: "## Added".to_owned(),
-                    html: None,
-                },
-                Text {
-                    body: "- the gate".to_owned(),
-                    html: None,
-                },
-            ],
-            thread: Some("php-mutation-gate v0.1.0".to_owned()),
-            link: Some(
-                "https://github.com/nightworksio/php-mutation-gate/releases/tag/v0.1.0".to_owned(),
-            ),
-            prerelease: false,
-            occurred: "2026-10-31T12:00:00Z".parse().unwrap(),
-        }
-    }
+    const ROLE: &str = "1566190000000000001";
 
     fn delivery() -> Delivery {
-        Delivery {
-            crosspost: true,
-            thread: Some(Thread {
-                name: String::new(),
-                archive_after: None,
-                lock_after: None,
-            }),
-            pin: true,
-            mentions: Mentions {
-                roles: vec![RoleId::new("1566190000000000001")],
-                subscribers: false,
-            },
-        }
+        sample::delivery(ROLE)
     }
 
     fn landed(facts: Facts) -> Sent {
@@ -293,7 +251,7 @@ mod replay {
     }
 
     #[test]
-    fn housekeeping_archives_and_locks_threads() {
+    fn housekeeping_archives_a_thread_and_locks_one_by_unarchiving_it_first() {
         let replay = fixture!("housekeeping");
         let discord = bot(CHANNEL, false);
         assert_eq!(
@@ -303,6 +261,11 @@ mod replay {
         );
         assert_eq!(
             pollster::block_on(discord.housekeep(&replay, Chore::Lock, "1566200000000000001"))
+                .unwrap(),
+            Sent::Landed(Facts::default())
+        );
+        assert_eq!(
+            pollster::block_on(discord.housekeep(&replay, Chore::Lock, "1566200000000000002"))
                 .unwrap(),
             Sent::Refused("Discord refused it with 404: 10003 Unknown Channel".to_owned())
         );
@@ -451,6 +414,17 @@ mod replay {
             Sent::Refused("Discord's answer holds no id".to_owned())
         );
         replay.finish().unwrap();
+    }
+
+    #[test]
+    fn the_api_is_discord_s_own_unless_another_base_is_named() {
+        assert_eq!(bot(CHANNEL, false).api(), "https://discord.com/api/v10");
+        let local = Discord::new(
+            Credential::Bot(Secret::new("T", "t")),
+            RouteOptions::default(),
+            Some("http://127.0.0.1:8080/api/"),
+        );
+        assert_eq!(local.api(), "http://127.0.0.1:8080/api");
     }
 
     #[test]

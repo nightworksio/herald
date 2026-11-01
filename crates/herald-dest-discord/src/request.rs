@@ -314,19 +314,27 @@ pub(crate) fn chore(
     discord: &Discord,
     housekeeping: Chore,
     thread: &str,
-) -> Result<Request, Refusal> {
+) -> Result<Vec<Request>, Refusal> {
     let Credential::Bot(_) = &discord.credential else {
         return Err(Refusal::WebhookCannot("archive or lock a thread"));
     };
-    let field = match housekeeping {
-        Chore::Archive => "archived",
-        Chore::Lock => "locked",
+    let bodies = match housekeeping {
+        Chore::Archive => vec![json!({ "archived": true })],
+        Chore::Lock => vec![
+            json!({ "archived": false, "locked": true }),
+            json!({ "archived": true }),
+        ],
     };
-    let url = Text::plain(format!("{}/channels/{thread}", discord.api));
-    Ok(json(
-        Method::Patch,
-        url,
-        &discord.credential,
-        &json!({ field: true }),
-    ))
+    let url = format!("{}/channels/{thread}", discord.api);
+    Ok(bodies
+        .iter()
+        .map(|body| {
+            json(
+                Method::Patch,
+                Text::plain(url.clone()),
+                &discord.credential,
+                body,
+            )
+        })
+        .collect())
 }
