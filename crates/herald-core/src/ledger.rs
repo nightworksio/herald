@@ -2,7 +2,7 @@ use jiff::Timestamp;
 use serde::{Deserialize, Serialize};
 
 use crate::key::Key;
-use crate::profile::{Features, Threads};
+use crate::profile::{Features, Pins, Threads};
 use crate::route::Delivery;
 
 /// One step of an announcement, in the order a destination takes them.
@@ -164,8 +164,12 @@ pub fn steps(
         steps.push(Step::OpenThread);
     }
     steps.extend((1..parts).map(Step::Chunk));
-    if delivery.pin.is_some() && features.pins {
-        steps.extend([Step::Pin, Step::Unpin]);
+    if delivery.pin.is_some() {
+        match features.pins {
+            Pins::None => {}
+            Pins::Many => steps.extend([Step::Pin, Step::Unpin]),
+            Pins::One => steps.extend([Step::Unpin, Step::Pin]),
+        }
     }
     steps.extend(recipients.iter().cloned().map(Step::Deliver));
     steps
@@ -274,7 +278,7 @@ mod tests {
         Features {
             threads: Threads::FromMessage,
             crosspost: true,
-            pins: true,
+            pins: Pins::Many,
             reads_back: true,
             edits: true,
             mentions: MentionStyle::Roles,
@@ -331,6 +335,24 @@ mod tests {
     }
 
     #[test]
+    fn a_destination_holding_one_pin_unpins_before_it_pins() {
+        let features = Features {
+            pins: Pins::One,
+            ..discord()
+        };
+        assert_eq!(
+            steps(&everything(), &features, 1, &[]),
+            [
+                Step::Post,
+                Step::Crosspost,
+                Step::OpenThread,
+                Step::Unpin,
+                Step::Pin
+            ]
+        );
+    }
+
+    #[test]
     fn a_plain_delivery_of_one_part_only_posts() {
         assert_eq!(
             steps(&Delivery::default(), &discord(), 1, &[]),
@@ -343,7 +365,7 @@ mod tests {
         let features = Features {
             threads: Threads::Replies,
             crosspost: false,
-            pins: false,
+            pins: Pins::None,
             ..discord()
         };
         assert_eq!(

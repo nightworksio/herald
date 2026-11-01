@@ -4,7 +4,7 @@
 #[cfg(test)]
 mod replay {
     use herald_core::{
-        Announcement, Chore, Delivery, Entry, Facts, Marker, Plan, Planned, Sent, Step, plan,
+        Announcement, Chore, Delivery, Entry, Facts, Marker, Pins, Plan, Planned, Sent, Step, plan,
     };
     use herald_dest_discord::{Credential, Discord, DiscordMarkers, Refusal, RouteOptions};
     use herald_ports::{Markers, MarkersError, Secret};
@@ -123,7 +123,52 @@ mod replay {
             send(&discord, &replay, &Step::Chunk(1), &entry),
             landed(message("1566200000000000011"))
         );
+        for step in [Step::Unpin, Step::Pin] {
+            assert_eq!(
+                send(&discord, &replay, &step, &entry),
+                landed(Facts::default()),
+                "{step:?}"
+            );
+        }
         replay.finish().unwrap();
+    }
+
+    #[test]
+    fn a_forum_whose_pinned_posts_cannot_be_read_says_why() {
+        let replay = fixture!("forum-pin-unreadable");
+        let discord = bot(FORUM, true);
+        let entry = Entry::new(announcement().key).landed(
+            Step::Post,
+            Facts {
+                message: Some("1566200000000000010".to_owned()),
+                thread: Some("1566200000000000010".to_owned()),
+                permalink: None,
+            },
+        );
+        for _ in 0..3 {
+            assert_eq!(
+                unpin(&discord, &replay, &announcement(), &entry),
+                Sent::Refused("Discord refused it with 403: 50001 Missing Access".to_owned())
+            );
+        }
+        replay.finish().unwrap();
+    }
+
+    #[test]
+    fn a_forum_unpins_the_post_the_store_remembers_by_its_flag() {
+        let request = bot(FORUM, true)
+            .request(
+                &Step::Unpin,
+                &replacing("1566200000000000018"),
+                &delivery(),
+                &pinned(),
+            )
+            .unwrap();
+        assert_eq!(
+            request.url.redacted(),
+            "https://discord.com/api/v10/channels/1566200000000000018"
+        );
+        assert_eq!(request.body, br#"{"flags":0}"#);
     }
 
     #[test]
@@ -525,24 +570,15 @@ mod replay {
     fn a_bot_can_do_what_a_webhook_cannot() {
         let bot = bot(CHANNEL, false).profile();
         let hook = webhook(false).profile();
+        assert!(bot.features.crosspost && bot.features.reads_back && bot.features.interactions);
         assert!(
-            bot.features.crosspost
-                && bot.features.pins
-                && bot.features.reads_back
-                && bot.features.interactions
+            !hook.features.crosspost && !hook.features.reads_back && !hook.features.interactions
         );
-        assert!(
-            !hook.features.crosspost
-                && !hook.features.pins
-                && !hook.features.reads_back
-                && !hook.features.interactions
-        );
+        assert_eq!(bot.features.pins, Pins::Many);
+        assert_eq!(hook.features.pins, Pins::None);
         assert_eq!(bot.limits.title, 256);
-        assert!(
-            !super::replay::bot(FORUM, true)
-                .profile()
-                .features
-                .reads_back
-        );
+        let forum = super::replay::bot(FORUM, true).profile();
+        assert!(!forum.features.reads_back);
+        assert_eq!(forum.features.pins, Pins::One);
     }
 }

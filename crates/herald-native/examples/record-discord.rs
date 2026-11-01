@@ -119,6 +119,7 @@ async fn record(setup: &Setup) -> Result<Vec<(&'static str, Recorder<NativeHttp>
         Step::OpenThread,
         Step::Chunk(1),
         Step::Pin,
+        Step::Unpin,
     ];
     let entry = post(&bot, &recorder, &steps, &setup.role).await?;
     let thread = entry
@@ -144,7 +145,8 @@ async fn record(setup: &Setup) -> Result<Vec<(&'static str, Recorder<NativeHttp>
     let followed = [Step::Post, Step::Chunk(1)];
     if let Some(forum) = &setup.forum {
         let recorder = Recorder::new(http.clone());
-        post(&setup.bot(forum, true), &recorder, &followed, &setup.role).await?;
+        let steps = [Step::Post, Step::Chunk(1), Step::Unpin, Step::Pin];
+        post(&setup.bot(forum, true), &recorder, &steps, &setup.role).await?;
         recordings.push(("forum", recorder));
     }
     let hooks = [

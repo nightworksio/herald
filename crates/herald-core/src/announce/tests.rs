@@ -4,7 +4,7 @@ use super::*;
 use crate::event::Draft;
 use crate::event::tests::{draft, event};
 use crate::marker::Marker;
-use crate::profile::{Dialect, Features, Limits, MentionStyle, Threads};
+use crate::profile::{Dialect, Features, Limits, MentionStyle, Pins, Threads};
 use crate::render::Form;
 use crate::route::Thread;
 use crate::route::tests::route_for;
@@ -22,7 +22,7 @@ fn profile(title: usize, text: usize) -> Profile {
         features: Features {
             threads: Threads::FromMessage,
             crosspost: true,
-            pins: true,
+            pins: Pins::Many,
             reads_back: true,
             edits: true,
             mentions: MentionStyle::Roles,

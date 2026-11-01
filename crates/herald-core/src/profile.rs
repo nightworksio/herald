@@ -44,6 +44,19 @@ pub enum Threads {
     Replies,
 }
 
+/// How a destination pins.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Pins {
+    /// It pins nothing.
+    None,
+    /// It holds many pins, so the new one is pinned before the route's
+    /// earlier one is unpinned.
+    Many,
+    /// It holds one pin, so the route's earlier one is unpinned before the
+    /// new one is pinned.
+    One,
+}
+
 /// How a destination mentions people.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MentionStyle {
@@ -63,8 +76,8 @@ pub struct Features {
     pub threads: Threads,
     /// Whether it crossposts.
     pub crosspost: bool,
-    /// Whether it pins.
-    pub pins: bool,
+    /// How it pins.
+    pub pins: Pins,
     /// Whether herald can read back its own posts, for destination markers.
     pub reads_back: bool,
     /// Whether it edits a post.

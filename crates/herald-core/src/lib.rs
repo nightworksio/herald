@@ -29,7 +29,7 @@ pub use key::{Identity, Key, NotAKey, RouteId};
 pub use ledger::{Entry, Facts, Lease, Plan, Planned, Record, Sent, State, Step, plan, steps};
 pub use marker::{Marker, Marks};
 pub use markup::{Text, convert, literal};
-pub use profile::{Dialect, Features, Limits, Measure, MentionStyle, Profile, Threads};
+pub use profile::{Dialect, Features, Limits, Measure, MentionStyle, Pins, Profile, Threads};
 pub use render::{Context, Form, TemplateError, Templates};
 pub use route::{
     Delivery, DestinationName, Filter, Mentions, Pinning, Prereleases, RoleId, Route, SecretRef,

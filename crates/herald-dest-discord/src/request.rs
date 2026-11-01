@@ -12,6 +12,8 @@ const RELEASE: u32 = 0x00E3_9A26;
 const PRERELEASE: u32 = 0x008F_88C7;
 /// A week, the longest Discord keeps a quiet thread open.
 const ARCHIVE_MINUTES: u32 = 10_080;
+/// The flag of a forum post pinned to the top of its forum.
+pub(crate) const PINNED: u64 = 2;
 /// The longest nonce Discord takes.
 const NONCE: usize = 25;
 const USER_AGENT: &str = concat!(
@@ -298,6 +300,16 @@ fn bot(
                 &chunk(announcement, *index),
             ))
         }
+        Step::Pin if discord.route.forum => {
+            let post = posted(entry)?;
+            let url = Text::plain(format!("{api}/channels/{post}"));
+            Ok(json(
+                Method::Patch,
+                url,
+                credential,
+                &json!({ "flags": PINNED }),
+            ))
+        }
         Step::Pin => {
             let message = posted(entry)?;
             let url = Text::plain(format!("{api}/channels/{channel}/messages/pins/{message}"));
@@ -321,7 +333,17 @@ pub(crate) fn get(discord: &Discord, path: &str) -> Request {
 }
 
 pub(crate) fn unpin(discord: &Discord, channel: &str, message: &str) -> Request {
-    let url = format!("{}/channels/{channel}/messages/pins/{message}", discord.api);
+    let api = &discord.api;
+    if discord.route.forum {
+        let url = Text::plain(format!("{api}/channels/{message}"));
+        return json(
+            Method::Patch,
+            url,
+            &discord.credential,
+            &json!({ "flags": 0 }),
+        );
+    }
+    let url = format!("{api}/channels/{channel}/messages/pins/{message}");
     bare(Method::Delete, Text::plain(url), &discord.credential)
 }
 

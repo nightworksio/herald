@@ -1,5 +1,5 @@
 use herald_core::{
-    Announcement, Chore, Delivery, Dialect, Entry, Features, Limits, Measure, MentionStyle,
+    Announcement, Chore, Delivery, Dialect, Entry, Features, Limits, Measure, MentionStyle, Pins,
     Profile, Sent, Step, Threads,
 };
 use herald_ports::{Http, HttpError, Request, Secret};
@@ -68,7 +68,11 @@ impl Discord {
                     Threads::None
                 },
                 crosspost: bot,
-                pins: bot,
+                pins: match (bot, self.route.forum) {
+                    (false, _) => Pins::None,
+                    (true, false) => Pins::Many,
+                    (true, true) => Pins::One,
+                },
                 reads_back: bot && !self.route.forum,
                 edits: bot,
                 mentions: MentionStyle::Roles,
