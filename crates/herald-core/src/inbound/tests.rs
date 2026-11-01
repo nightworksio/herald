@@ -314,3 +314,21 @@ fn each_scheme_reads_its_key_as_it_is_written() {
         assert_eq!(key(scheme, ""), None, "{scheme:?}");
     }
 }
+
+#[test]
+fn a_gitlab_webhook_carrying_more_signatures_than_a_rotation_needs_is_refused_unchecked() {
+    let entries = |count: usize| vec!["v1,AAE="; count].join(" ");
+    assert_eq!(
+        gitlab(&entries(MOST_SIGNATURES)).map(|claim| claim.signatures.len()),
+        Ok(MOST_SIGNATURES)
+    );
+    for count in [MOST_SIGNATURES + 1, 10_000] {
+        assert_eq!(
+            gitlab(&entries(count)),
+            Err(Refusal::Malformed {
+                header: "webhook-signature"
+            }),
+            "{count}"
+        );
+    }
+}

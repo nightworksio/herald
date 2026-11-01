@@ -1,6 +1,6 @@
 //! Whatever headers and body a request carries, reading its claim answers a
 //! claim or a refusal, a claim's message holds the body it was read from, and
-//! it carries at least one signature, none of them empty.
+//! it carries one to `MOST_SIGNATURES` signatures, none of them empty.
 
 #![no_main]
 
@@ -42,7 +42,7 @@ fuzz_target!(|input: (Vec<String>, Vec<u8>, i64)| {
     for scheme in SCHEMES {
         if let Ok(claim) = claim(scheme, &headers, &body, now) {
             assert!(claim.message.ends_with(&body), "{scheme:?}");
-            assert!(!claim.signatures.is_empty(), "{scheme:?}");
+            assert!((1..=herald_core::MOST_SIGNATURES).contains(&claim.signatures.len()), "{scheme:?}");
             assert!(claim.signatures.iter().all(|signature| !signature.is_empty()), "{scheme:?}");
         }
         for value in &values {

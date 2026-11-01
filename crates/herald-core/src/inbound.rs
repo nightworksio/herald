@@ -15,6 +15,11 @@ use jiff::{SignedDuration, Timestamp};
 /// request is taken for a replay.
 pub const REPLAY_WINDOW: SignedDuration = SignedDuration::from_mins(5);
 
+/// The most signatures a request may carry. Each is checked in turn, so a
+/// request with more is refused before any is checked; a sender rotating its
+/// keys signs with two or three.
+pub const MOST_SIGNATURES: usize = 4;
+
 /// Who signs a kind of inbound request, and how.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Scheme {
@@ -153,8 +158,11 @@ pub fn claim(
                         .ok()
                         .filter(|signature| !signature.is_empty())
                 })
+                .take(MOST_SIGNATURES + 1)
                 .collect::<Option<_>>()
-                .filter(|signatures: &Vec<Vec<u8>>| !signatures.is_empty())
+                .filter(|signatures: &Vec<Vec<u8>>| {
+                    (1..=MOST_SIGNATURES).contains(&signatures.len())
+                })
                 .ok_or(Refusal::Malformed { header: SIGNATURE })?;
             Ok(Claim {
                 kind: Signature::HmacSha256,
