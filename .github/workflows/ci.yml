@@ -156,6 +156,63 @@ jobs:
           key: wasm-${{ hashFiles('rust-toolchain.toml', 'Cargo.lock') }}
       - run: cargo build --locked --target wasm32-unknown-unknown -p herald-core
 
+  # herald's own Action, built from this commit, announces a sample release
+  # twice against the recorded-fixture server, and the second run must send
+  # nothing (ADR-0010). The Actions cache's prefix is this run's own, so a
+  # re-run starts from no records.
+  dogfood:
+    name: dogfood ${{ matrix.store }}
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        store: [markers, actions-cache]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Start the recorded-fixture server
+        env:
+          STORE: ${{ matrix.store }}
+        run: |
+          set -euo pipefail
+          sed "s/prefix = \"dogfood\"/prefix = \"dogfood-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}\"/" \
+            ".github/dogfood/${STORE}.toml" > "${RUNNER_TEMP}/herald.toml"
+          nohup python3 .github/scripts/fixture_server.py ".github/dogfood/${STORE}.json" 8787 \
+            > "${RUNNER_TEMP}/fixtures.log" 2>&1 &
+          for _ in $(seq 50); do
+            if curl -s -o /dev/null http://127.0.0.1:8787/__done; then
+              exit 0
+            fi
+            sleep 0.2
+          done
+          echo "::error::The recorded-fixture server did not start."
+          exit 1
+      - name: Announce the sample release
+        uses: ./ # zizmor: ignore[self-repository]
+        env:
+          HERALD_DISCORD_TOKEN: ci-discord-token
+          HERALD_MARKER_SECRET: ci-marker-secret
+        with:
+          config: ${{ runner.temp }}/herald.toml
+          tag: v0.0.0-dogfood
+      - name: Announce it again, which sends nothing
+        uses: ./ # zizmor: ignore[self-repository]
+        env:
+          HERALD_DISCORD_TOKEN: ci-discord-token
+          HERALD_MARKER_SECRET: ci-marker-secret
+        with:
+          config: ${{ runner.temp }}/herald.toml
+          tag: v0.0.0-dogfood
+      - name: Check every exchange was made, and nothing else
+        run: |
+          if ! curl -fsS http://127.0.0.1:8787/__done; then
+            cat "${RUNNER_TEMP}/fixtures.log"
+            exit 1
+          fi
+
   # A pull request mutates what its diff touches; main and the weekly run
   # mutate the whole workspace. Any missed mutant fails its shard (ADR-0008).
   mutants-shard:

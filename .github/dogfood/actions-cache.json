@@ -1,0 +1,291 @@
+{
+  "exchanges": [
+    {
+      "body": null,
+      "method": "GET",
+      "path": "/github/repos/nightworksio/herald/releases/tags/v0.0.0-dogfood",
+      "response": {
+        "body": "## Added\n\n- The dogfood run.",
+        "draft": false,
+        "html_url": "https://github.com/nightworksio/herald/releases/tag/v0.0.0-dogfood",
+        "name": "herald v0.0.0-dogfood",
+        "prerelease": true,
+        "published_at": "2026-11-01T12:00:00Z",
+        "tag_name": "v0.0.0-dogfood"
+      },
+      "status": 200
+    },
+    {
+      "body": null,
+      "method": "GET",
+      "path": "/github/repos/nightworksio/herald",
+      "response": {
+        "id": 870000001,
+        "name": "herald"
+      },
+      "status": 200
+    },
+    {
+      "body": {
+        "allowed_mentions": {
+          "parse": [],
+          "roles": [
+            "1566190000000000555"
+          ]
+        },
+        "components": [
+          {
+            "components": [
+              {
+                "label": "Release",
+                "style": 5,
+                "type": 2,
+                "url": "https://github.com/nightworksio/herald/releases/tag/v0.0.0-dogfood"
+              }
+            ],
+            "type": 1
+          }
+        ],
+        "content": "<@&1566190000000000555>",
+        "embeds": [
+          {
+            "color": 9406663,
+            "description": "## Added\n\n- The dogfood run\\.",
+            "timestamp": "2026-11-01T12:00:00Z",
+            "title": "📦 herald v0.0.0-dogfood",
+            "url": "https://github.com/nightworksio/herald/releases/tag/v0.0.0-dogfood#herald-07648dad7145d1843298197b46a334521274cb688bc1237b8542cba746c64dfe.f4f279373f765746c30d127f628555e45c3b70130459faa5461a59ae03f9f96e"
+          }
+        ],
+        "enforce_nonce": true,
+        "nonce": "406b066b4c09a4b4be6defd27"
+      },
+      "method": "POST",
+      "path": "/discord/api/v10/channels/1566184281406177531/messages",
+      "response": {
+        "allowed_mentions": {
+          "parse": [],
+          "roles": [
+            "1566190000000000555"
+          ]
+        },
+        "author": {
+          "bot": true,
+          "id": "1566190000000000099",
+          "username": "herald"
+        },
+        "channel_id": "1566184281406177531",
+        "components": [
+          {
+            "components": [
+              {
+                "label": "Release",
+                "style": 5,
+                "type": 2,
+                "url": "https://github.com/nightworksio/herald/releases/tag/v0.0.0-dogfood"
+              }
+            ],
+            "type": 1
+          }
+        ],
+        "content": "<@&1566190000000000555>",
+        "embeds": [
+          {
+            "color": 9406663,
+            "description": "## Added\n\n- The dogfood run\\.",
+            "timestamp": "2026-11-01T12:00:00Z",
+            "title": "📦 herald v0.0.0-dogfood",
+            "url": "https://github.com/nightworksio/herald/releases/tag/v0.0.0-dogfood#herald-07648dad7145d1843298197b46a334521274cb688bc1237b8542cba746c64dfe.f4f279373f765746c30d127f628555e45c3b70130459faa5461a59ae03f9f96e"
+          }
+        ],
+        "enforce_nonce": true,
+        "flags": 0,
+        "id": "1566200000000000001",
+        "nonce": "406b066b4c09a4b4be6defd27",
+        "pinned": false,
+        "timestamp": "2026-11-01T12:00:01.000000+00:00",
+        "type": 0
+      },
+      "status": 200
+    },
+    {
+      "body": null,
+      "method": "POST",
+      "path": "/discord/api/v10/channels/1566184281406177531/messages/1566200000000000001/crosspost",
+      "response": {
+        "allowed_mentions": {
+          "parse": [],
+          "roles": [
+            "1566190000000000555"
+          ]
+        },
+        "author": {
+          "bot": true,
+          "id": "1566190000000000099",
+          "username": "herald"
+        },
+        "channel_id": "1566184281406177531",
+        "components": [
+          {
+            "components": [
+              {
+                "label": "Release",
+                "style": 5,
+                "type": 2,
+                "url": "https://github.com/nightworksio/herald/releases/tag/v0.0.0-dogfood"
+              }
+            ],
+            "type": 1
+          }
+        ],
+        "content": "<@&1566190000000000555>",
+        "embeds": [
+          {
+            "color": 9406663,
+            "description": "## Added\n\n- The dogfood run\\.",
+            "timestamp": "2026-11-01T12:00:00Z",
+            "title": "📦 herald v0.0.0-dogfood",
+            "url": "https://github.com/nightworksio/herald/releases/tag/v0.0.0-dogfood#herald-07648dad7145d1843298197b46a334521274cb688bc1237b8542cba746c64dfe.f4f279373f765746c30d127f628555e45c3b70130459faa5461a59ae03f9f96e"
+          }
+        ],
+        "enforce_nonce": true,
+        "flags": 1,
+        "id": "1566200000000000001",
+        "nonce": "406b066b4c09a4b4be6defd27",
+        "pinned": false,
+        "timestamp": "2026-11-01T12:00:01.000000+00:00",
+        "type": 0
+      },
+      "status": 200
+    },
+    {
+      "body": {
+        "auto_archive_duration": 10080,
+        "name": "herald v0.0.0-dogfood"
+      },
+      "method": "POST",
+      "path": "/discord/api/v10/channels/1566184281406177531/messages/1566200000000000001/threads",
+      "response": {
+        "id": "1566200000000000001",
+        "name": "herald v0.0.0-dogfood",
+        "parent_id": "1566184281406177531",
+        "thread_metadata": {
+          "archived": false,
+          "create_timestamp": "2026-11-01T12:00:02.000000+00:00",
+          "locked": false
+        },
+        "type": 11
+      },
+      "status": 200
+    },
+    {
+      "body": null,
+      "method": "PUT",
+      "path": "/discord/api/v10/channels/1566184281406177531/messages/pins/1566200000000000001",
+      "response": null,
+      "status": 204
+    },
+    {
+      "body": null,
+      "method": "GET",
+      "path": "/discord/api/v10/users/@me",
+      "response": {
+        "bot": true,
+        "id": "1566190000000000099",
+        "username": "herald"
+      },
+      "status": 200
+    },
+    {
+      "body": null,
+      "method": "GET",
+      "path": "/discord/api/v10/channels/1566184281406177531/messages/pins?limit=50",
+      "response": {
+        "items": [
+          {
+            "message": {
+              "allowed_mentions": {
+                "parse": [],
+                "roles": [
+                  "1566190000000000555"
+                ]
+              },
+              "author": {
+                "bot": true,
+                "id": "1566190000000000099",
+                "username": "herald"
+              },
+              "channel_id": "1566184281406177531",
+              "components": [
+                {
+                  "components": [
+                    {
+                      "label": "Release",
+                      "style": 5,
+                      "type": 2,
+                      "url": "https://github.com/nightworksio/herald/releases/tag/v0.0.0-dogfood"
+                    }
+                  ],
+                  "type": 1
+                }
+              ],
+              "content": "<@&1566190000000000555>",
+              "embeds": [
+                {
+                  "color": 9406663,
+                  "description": "## Added\n\n- The dogfood run\\.",
+                  "timestamp": "2026-11-01T12:00:00Z",
+                  "title": "📦 herald v0.0.0-dogfood",
+                  "url": "https://github.com/nightworksio/herald/releases/tag/v0.0.0-dogfood#herald-07648dad7145d1843298197b46a334521274cb688bc1237b8542cba746c64dfe.f4f279373f765746c30d127f628555e45c3b70130459faa5461a59ae03f9f96e"
+                }
+              ],
+              "enforce_nonce": true,
+              "flags": 1,
+              "id": "1566200000000000001",
+              "nonce": "406b066b4c09a4b4be6defd27",
+              "pinned": true,
+              "thread": {
+                "id": "1566200000000000001",
+                "name": "herald v0.0.0-dogfood",
+                "parent_id": "1566184281406177531",
+                "thread_metadata": {
+                  "archived": false,
+                  "create_timestamp": "2026-11-01T12:00:02.000000+00:00",
+                  "locked": false
+                },
+                "type": 11
+              },
+              "timestamp": "2026-11-01T12:00:01.000000+00:00",
+              "type": 0
+            }
+          }
+        ]
+      },
+      "status": 200
+    },
+    {
+      "body": null,
+      "method": "GET",
+      "path": "/github/repos/nightworksio/herald/releases/tags/v0.0.0-dogfood",
+      "response": {
+        "body": "## Added\n\n- The dogfood run.",
+        "draft": false,
+        "html_url": "https://github.com/nightworksio/herald/releases/tag/v0.0.0-dogfood",
+        "name": "herald v0.0.0-dogfood",
+        "prerelease": true,
+        "published_at": "2026-11-01T12:00:00Z",
+        "tag_name": "v0.0.0-dogfood"
+      },
+      "status": 200
+    },
+    {
+      "body": null,
+      "method": "GET",
+      "path": "/github/repos/nightworksio/herald",
+      "response": {
+        "id": 870000001,
+        "name": "herald"
+      },
+      "status": 200
+    }
+  ]
+}
