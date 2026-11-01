@@ -1,6 +1,7 @@
-# herald's Action (ADR-0009): at a release tag it downloads that release's
-# binary and checks it against the release's SHA256SUMS; at any other ref,
-# such as a commit SHA, it builds the CLI from its own checkout.
+# herald's Action (ADR-0009): at a release tag, or given a release, it
+# downloads that release's binary and checks it against the release's
+# SHA256SUMS; at any other ref, such as a commit SHA, it builds the CLI from
+# its own checkout.
 name: herald
 description: Announce every release to Discord, Matrix, Slack and the Fediverse, from one herald.toml.
 author: NightWorksIO
@@ -18,6 +19,9 @@ inputs:
   token:
     description: The token for the git-branch store and GitHub's API; the run's own where not given.
     default: ${{ github.token }}
+  release:
+    description: The release whose binary to run, such as v0.1.0; the ref the Action is called at where that names a release.
+    default: ""
 
 runs:
   using: composite
@@ -27,9 +31,16 @@ runs:
       shell: bash
       env:
         ACTION_REF: ${{ github.action_ref }}
+        RELEASE: ${{ inputs.release }}
       run: |
-        if [[ "$ACTION_REF" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.-]+)?$ ]]; then
-          echo "release=$ACTION_REF" >> "$GITHUB_OUTPUT"
+        version='^v[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.-]+)?$'
+        if [[ -n "$RELEASE" && ! "$RELEASE" =~ $version ]]; then
+          echo "::error::herald's release input names a release such as v0.1.0"
+          exit 1
+        fi
+        release="${RELEASE:-$ACTION_REF}"
+        if [[ "$release" =~ $version ]]; then
+          echo "release=$release" >> "$GITHUB_OUTPUT"
         else
           echo "release=" >> "$GITHUB_OUTPUT"
         fi
@@ -40,7 +51,7 @@ runs:
       shell: bash
       env:
         RELEASE: ${{ steps.source.outputs.release }}
-        ACTION_REPOSITORY: ${{ github.action_repository }}
+        ACTION_REPOSITORY: ${{ github.action_repository || github.repository }}
         GH_TOKEN: ${{ inputs.token }}
       run: |
         case "$RUNNER_OS/$RUNNER_ARCH" in
@@ -57,7 +68,11 @@ runs:
         gh release download "$RELEASE" --repo "$ACTION_REPOSITORY" \
           --pattern "herald-$target.*" --pattern SHA256SUMS --dir "$directory"
         cd "$directory"
-        sha256sum --check --ignore-missing --strict SHA256SUMS
+        if command -v sha256sum > /dev/null; then
+          sha256sum --check --ignore-missing --strict SHA256SUMS
+        else
+          shasum --algorithm 256 --check --ignore-missing --strict SHA256SUMS
+        fi
         archive=$(ls "herald-$target".*)
         tar -xf "$archive"
         binary="$directory/herald"
@@ -65,14 +80,32 @@ runs:
         echo "binary=$binary" >> "$GITHUB_OUTPUT"
         echo "herald $RELEASE, checked against the release's SHA256SUMS."
 
-    - name: Restore the build
+    - name: Key the build by its exact sources
+      id: sources
+      if: steps.source.outputs.release == ''
+      shell: bash
+      working-directory: ${{ github.action_path }}
+      run: |
+        if command -v sha256sum > /dev/null; then
+          sum=(sha256sum)
+        else
+          sum=(shasum --algorithm 256)
+        fi
+        tree=$(find Cargo.toml Cargo.lock rust-toolchain.toml crates -type f | LC_ALL=C sort \
+          | xargs "${sum[@]}" | "${sum[@]}" | cut -d ' ' -f 1)
+        echo "key=herald-build-$RUNNER_OS-$RUNNER_ARCH-$tree" >> "$GITHUB_OUTPUT"
+
+    # Only a build of these exact sources, toolchain and runner is restored,
+    # and never one by prefix.
+    - name: Restore the dependencies' build
       if: steps.source.outputs.release == ''
       uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: ${{ github.action_path }}/target
-        key: herald-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles(format('{0}/Cargo.lock', github.action_path), format('{0}/rust-toolchain.toml', github.action_path)) }}-${{ github.action_ref || github.sha }}
-        restore-keys: herald-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles(format('{0}/Cargo.lock', github.action_path), format('{0}/rust-toolchain.toml', github.action_path)) }}-
+        key: ${{ steps.sources.outputs.key }}
 
+    # Every workspace crate, and so the binary, compiles from the checkout:
+    # only the dependencies' build comes from the cache.
     - name: Build herald from source
       id: build
       if: steps.source.outputs.release == ''
@@ -80,6 +113,9 @@ runs:
       working-directory: ${{ github.action_path }}
       run: |
         echo "herald builds from source at this commit, as it is not pinned to a release."
+        packages=$(cargo metadata --locked --no-deps --format-version 1 | jq -r '.packages[] | "--package=" + .name')
+        # shellcheck disable=SC2086
+        cargo clean --locked --release $packages
         cargo build --locked --release --package herald
         binary="$PWD/target/release/herald"
         [[ "$RUNNER_OS" == Windows ]] && binary="$binary.exe"
@@ -97,6 +133,6 @@ runs:
           announce) set -- announce --from github ;;
           poll) set -- poll ;;
           housekeep) set -- housekeep ;;
-          *) echo "::error::herald's command is announce, poll or housekeep, not $COMMAND"; exit 1 ;;
+          *) echo "::error::herald's command input is announce, poll or housekeep"; exit 1 ;;
         esac
         "$HERALD" --config "$CONFIG" "$@"
