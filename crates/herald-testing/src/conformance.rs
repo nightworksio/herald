@@ -135,13 +135,7 @@ async fn ledger<S: Store>(store: &S) -> Result<(), Failure> {
         again == Written::Conflict,
         "an entry was written as new over one that exists",
     );
-    let landed = first.clone().landed(
-        Step::Post,
-        Facts {
-            message: Some("1".to_owned()),
-            ..Facts::default()
-        },
-    );
+    let landed = first.clone().landed(Step::Post, Facts::default());
     let v2 = checks.written(store.put_entry(&landed, Some(v1)).await?);
     checks.ensure(v2 != v1, "an entry rewritten kept its version");
     let stale = first.clone().landed(Step::Pin, Facts::default());
