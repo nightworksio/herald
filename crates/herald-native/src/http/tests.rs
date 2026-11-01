@@ -266,3 +266,18 @@ fn tls_without_a_cipher_suite_is_not_set_up() {
         "{error}"
     );
 }
+
+#[test]
+fn a_client_for_a_base_reaches_only_that_base_or_says_why_not() {
+    assert!(NativeHttp::reaching("https://discord.com/api/v10").is_ok());
+    let refused = NativeHttp::reaching("http://discord.com").unwrap_err();
+    assert_eq!(
+        refused.to_string(),
+        "http://discord.com is not HTTPS; plain HTTP is allowed only on a loopback host"
+    );
+    let unbuilt = ConnectError::Build(BuildError("no TLS".to_owned()));
+    assert_eq!(
+        unbuilt.to_string(),
+        "the HTTP client could not be built: no TLS"
+    );
+}

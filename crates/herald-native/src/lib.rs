@@ -8,5 +8,5 @@ mod reach;
 
 pub use crypto::{RingSigner, RingVerifier};
 pub use environment::{EnvSecrets, SystemClock};
-pub use http::{BuildError, NativeHttp};
+pub use http::{BuildError, ConnectError, NativeHttp};
 pub use reach::{Reach, ReachError};
