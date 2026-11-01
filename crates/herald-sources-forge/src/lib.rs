@@ -11,5 +11,5 @@ mod github;
 mod options;
 
 pub use error::ForgeError;
-pub use github::{GitHub, Polled, Repository};
+pub use github::{GitHub, Releases, Repository};
 pub use options::SourceOptions;

@@ -5,7 +5,7 @@
 
 use herald_core::Event;
 use herald_ports::Response;
-use herald_sources_forge::{GitHub, Polled, Repository};
+use herald_sources_forge::{GitHub, Releases, Repository};
 use libfuzzer_sys::fuzz_target;
 
 fn identified(event: &Event, id: Option<u64>) {
@@ -24,7 +24,7 @@ fuzz_target!(|bytes: &[u8]| {
     let response = Response { status: 200, headers: Vec::new(), body: bytes.to_vec() };
     let _ = GitHub::repository(&response);
     let repository = Repository { id: 7, name: "fuzzed".to_owned() };
-    if let Ok(Polled::Found { events, .. }) = GitHub::releases(&repository, &response) {
+    if let Ok(Releases { events, .. }) = GitHub::releases(&repository, &response) {
         for event in &events {
             identified(event, Some(repository.id));
         }

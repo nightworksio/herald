@@ -1,5 +1,5 @@
-//! herald's CLI (ADR-0009): `herald announce --from github` and
-//! `herald housekeep` on GitHub Actions, and `herald doctor` anywhere.
+//! herald's CLI (ADR-0009): `herald announce --from github`, `herald poll`
+//! and `herald housekeep` on GitHub Actions, and `herald doctor` anywhere.
 //!
 //! [`run`] is the whole CLI, handed its arguments, its environment and the
 //! way to reach each base URL, so it runs the same under test as on a runner.
@@ -15,18 +15,20 @@ use clap::{Parser, Subcommand, ValueEnum};
 use herald_config::{Config, Source, Store, load};
 use herald_core::{Chore, Schedule, SourceName, Step};
 use herald_flows::{
-    Announced, Chored, Connected, Kept, Outcome, Ports, Stop, announce, housekeep, prepare,
+    Announced, Chored, Connected, Kept, Outcome, Ports, Remembered, Stop, Sweep, Swept, announce,
+    housekeep, poll, prepare,
 };
 use herald_native::{EnvSecrets, RingSigner, SystemClock};
 use herald_ports::{Http, HttpError, Request, Response, Secrets};
 use herald_sources_forge::GitHub;
 use herald_store_git_branch::{GitBranch, GitBranchStore};
 
-/// Every route announced, already announced, or held by another run; or
-/// every chore that fell due done or dropped.
+/// Every route announced, already announced, or held by another run; every
+/// source polled and its cursor moved on; or every chore that fell due done
+/// or dropped.
 pub const DONE: u8 = 0;
-/// A route stopped part-way, a chore waits for the next run, or the run
-/// could not start.
+/// A route stopped part-way, a source waits for the next poll, a chore
+/// waits for the next run, or the run could not start.
 pub const STOPPED: u8 = 1;
 /// The config has mistakes.
 pub const MISTAKEN: u8 = 2;
@@ -89,6 +91,8 @@ enum Command {
         #[arg(long, value_enum)]
         from: From,
     },
+    /// Ask every source for what it has not seen, and announce it.
+    Poll,
     /// Archive and lock every announcement thread whose time has come.
     Housekeep,
     /// Check the config, and name what it asks for that herald cannot serve.
@@ -133,6 +137,7 @@ pub async fn run(
     let ran = match cli.command {
         Command::Doctor => return doctor(&cli.config, &config, out),
         Command::Announce { from: From::Github } => github(&config, vars, connect, out).await,
+        Command::Poll => polling(&config, vars, connect, out).await,
         Command::Housekeep => housekeeping(&config, vars, connect, out).await,
     };
     ran.unwrap_or_else(|message| {
@@ -223,10 +228,7 @@ async fn github(
         clock: &SystemClock,
         signer: &RingSigner,
     };
-    let run = match (vars.get("GITHUB_RUN_ID"), vars.get("GITHUB_RUN_ATTEMPT")) {
-        (Some(id), Some(attempt)) => format!("github/{id}/{attempt}"),
-        _ => "local".to_owned(),
-    };
+    let run = run_name(vars);
     let mut code = DONE;
     for source in sources {
         for announced in announce(config, &connected, &ports, source, &event, &run).await {
@@ -237,6 +239,92 @@ async fn github(
         }
     }
     Ok(code)
+}
+
+/// The name this run takes its leases under.
+fn run_name(vars: &BTreeMap<String, String>) -> String {
+    match (vars.get("GITHUB_RUN_ID"), vars.get("GITHUB_RUN_ATTEMPT")) {
+        (Some(id), Some(attempt)) => format!("github/{id}/{attempt}"),
+        _ => "local".to_owned(),
+    }
+}
+
+async fn polling(
+    config: &Config,
+    vars: &BTreeMap<String, String>,
+    connect: Connect<'_>,
+    out: &mut dyn Write,
+) -> Result<u8, String> {
+    let (store, connected) = reached(config, vars, connect).await?;
+    let ports = Ports {
+        store: &store,
+        clock: &SystemClock,
+        signer: &RingSigner,
+    };
+    let swept = poll(config, &connected, &ports, &run_name(vars)).await;
+    if swept.is_empty() {
+        let _ = writeln!(out, "The config names no source to poll.");
+    }
+    let mut code = DONE;
+    for swept in &swept {
+        if let Sweep::Stopped(_)
+        | Sweep::Polled {
+            cursor: Remembered::Kept | Remembered::Failed(_),
+            ..
+        } = swept.outcome
+        {
+            code = STOPPED;
+        }
+        for line in polled(swept) {
+            let _ = writeln!(out, "{line}");
+        }
+    }
+    Ok(code)
+}
+
+fn polled(swept: &Swept) -> Vec<String> {
+    let source = swept.source.as_str();
+    match &swept.outcome {
+        Sweep::Unchanged => vec![format!("{source}: unchanged since the last poll")],
+        Sweep::Stopped(stop) => vec![format!(
+            "{source}: stopped: {}. The next poll asks again.",
+            why(stop)
+        )],
+        Sweep::Polled {
+            first,
+            found,
+            announced,
+            cursor,
+        } => {
+            let new = announced.len();
+            let head = if *first {
+                format!("{source}: first poll found {found}; {new} announced, as backfill asks")
+            } else {
+                format!("{source}: {found} found, {new} new")
+            };
+            let tail = match cursor {
+                Remembered::Advanced => String::new(),
+                Remembered::Kept => {
+                    "; a route stopped, so the next poll offers them again".to_owned()
+                }
+                Remembered::Failed(stop) => format!(
+                    "; the cursor stays where it was: {}. The next poll offers them again",
+                    why(stop)
+                ),
+            };
+            let mut lines = vec![format!("{head}{tail}")];
+            for fresh in announced {
+                let event = fresh.event.version().unwrap_or(fresh.event.title());
+                lines.extend(
+                    fresh
+                        .announced
+                        .iter()
+                        .map(|announced| format!("{source} {event}: {}", report(announced))),
+                );
+            }
+            lines
+        }
+    }
 }
 
 /// The run's store, and every route's destination connected.
@@ -327,7 +415,8 @@ fn why(reason: &Stop) -> String {
         | Stop::Unreachable(reason)
         | Stop::Store(reason)
         | Stop::Template(reason)
-        | Stop::Marker(reason) => reason.clone(),
+        | Stop::Marker(reason)
+        | Stop::Source(reason) => reason.clone(),
     }
 }
 

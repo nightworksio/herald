@@ -4,7 +4,7 @@
 mod github {
     use herald_core::{Cursor, Kind, Problem, prerelease_version};
     use herald_ports::{Response, Secret};
-    use herald_sources_forge::{ForgeError, GitHub, Polled, Repository, SourceOptions};
+    use herald_sources_forge::{ForgeError, GitHub, Releases, Repository, SourceOptions};
     use proptest::prelude::*;
     use serde_json::{Value, json};
 
@@ -124,14 +124,11 @@ mod github {
                 name: "neovim".to_owned()
             }
         );
-        let Polled::Found {
+        let Releases {
             events,
             etag,
             last_modified,
-        } = GitHub::releases(&neovim(), &answer(200, RELEASES)).unwrap()
-        else {
-            panic!("nothing found");
-        };
+        } = GitHub::releases(&neovim(), &answer(200, RELEASES)).unwrap();
         let found: Vec<(&str, bool)> = events
             .iter()
             .map(|event| (event.identity().as_str(), event.prerelease()))
@@ -153,10 +150,8 @@ mod github {
 
     #[test]
     fn a_poll_with_nothing_new_or_a_refusal_says_so() {
-        assert_eq!(
-            GitHub::releases(&neovim(), &answer(304, "")),
-            Ok(Polled::Unchanged)
-        );
+        assert!(GitHub::unchanged(&answer(304, "")));
+        assert!(!GitHub::unchanged(&answer(200, RELEASES)));
         assert_eq!(
             GitHub::releases(&neovim(), &answer(403, "{}"))
                 .unwrap_err()
@@ -177,11 +172,8 @@ mod github {
         assert!(GitHub::releases(&neovim(), &answer(200, &body)).is_err());
         drafts[1]["draft"] = json!(true);
         let body = drafts.to_string();
-        let Ok(Polled::Found { events, .. }) = GitHub::releases(&neovim(), &answer(200, &body))
-        else {
-            panic!("the drafts were not skipped");
-        };
-        assert_eq!(events.len(), 1);
+        let releases = GitHub::releases(&neovim(), &answer(200, &body)).unwrap();
+        assert_eq!(releases.events.len(), 1);
     }
 
     #[test]
@@ -206,7 +198,10 @@ mod github {
             ]
             .join("\n")
         );
-        let plain = source(Some("https://ghe.example/api/v3/")).releases_request(None, None);
+        let enterprise = source(Some("https://ghe.example/api/v3/"));
+        assert_eq!(enterprise.api(), "https://ghe.example/api/v3");
+        assert_eq!(source(None).api(), "https://api.github.com");
+        let plain = enterprise.releases_request(None, None);
         assert_eq!(
             plain.url.redacted(),
             "https://ghe.example/api/v3/repos/neovim/neovim/releases?per_page=30"

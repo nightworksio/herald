@@ -10,7 +10,7 @@ branding:
 
 inputs:
   command:
-    description: What to run, announce (the run's release) or housekeep (archive and lock threads that fell due).
+    description: What to run, announce (the run's release), poll (every source for what it has not seen) or housekeep (archive and lock threads that fell due).
     default: announce
   config:
     description: The config to read.
@@ -95,7 +95,8 @@ runs:
       run: |
         case "$COMMAND" in
           announce) set -- announce --from github ;;
+          poll) set -- poll ;;
           housekeep) set -- housekeep ;;
-          *) echo "::error::herald's command is announce or housekeep, not $COMMAND"; exit 1 ;;
+          *) echo "::error::herald's command is announce, poll or housekeep, not $COMMAND"; exit 1 ;;
         esac
         "$HERALD" --config "$CONFIG" "$@"

@@ -1,10 +1,11 @@
 use std::collections::BTreeMap;
 use std::fmt;
 
-use herald_config::{Config, Destination, RouteConfig, RouteOptions};
-use herald_core::{DestinationName, RouteId, hex};
+use herald_config::{Config, Destination, RouteConfig, RouteOptions, Source};
+use herald_core::{DestinationName, RouteId, SourceName, hex};
 use herald_dest_discord::{Credential, Discord};
 use herald_ports::{Algorithm, CryptoError, Secret, SecretError, Secrets, Signer};
+use herald_sources_forge::GitHub;
 
 use crate::reached::Reached;
 
@@ -70,16 +71,28 @@ pub(crate) struct PreparedRoute {
     pub(crate) derived: bool,
 }
 
-/// A config's routes, each with its destination's credential resolved.
+/// A source ready to poll, with its token resolved.
+#[derive(Debug, Clone)]
+pub(crate) struct PreparedSource {
+    pub(crate) name: SourceName,
+    pub(crate) github: GitHub,
+    pub(crate) token: Option<Secret>,
+    pub(crate) backfill: usize,
+}
+
+/// A config's routes, each with its destination's credential resolved, and
+/// its sources, each with its token.
 #[derive(Debug, Clone)]
 pub struct Prepared {
     routes: Vec<PreparedRoute>,
+    sources: Vec<PreparedSource>,
 }
 
-/// The prepared routes, each with the `Http` its destination may reach.
+/// The prepared routes and sources, each with the `Http` that reaches it.
 #[derive(Debug)]
 pub struct Connected<H> {
     pub(crate) routes: Vec<(PreparedRoute, H)>,
+    pub(crate) sources: Vec<(PreparedSource, H)>,
 }
 
 impl Prepared {
@@ -94,7 +107,7 @@ impl Prepared {
             .collect()
     }
 
-    /// The routes, each with an `Http` made by `http` for its destination's
+    /// The routes and sources, each with an `Http` made by `http` for its
     /// base URL, one per base.
     ///
     /// # Errors
@@ -105,19 +118,25 @@ impl Prepared {
         mut http: impl FnMut(&str) -> Result<H, E>,
     ) -> Result<Connected<H>, E> {
         let mut made: BTreeMap<String, H> = BTreeMap::new();
+        let mut reach = |base: &str| -> Result<H, E> {
+            if let Some(reaching) = made.get(base) {
+                return Ok(reaching.clone());
+            }
+            let reaching = http(base)?;
+            made.insert(base.to_owned(), reaching.clone());
+            Ok(reaching)
+        };
         let mut routes = Vec::new();
         for route in self.routes {
-            let base = route.reached.api().to_owned();
-            let reaching = if let Some(reaching) = made.get(&base) {
-                reaching.clone()
-            } else {
-                let reaching = http(&base)?;
-                made.insert(base, reaching.clone());
-                reaching
-            };
+            let reaching = reach(route.reached.api())?;
             routes.push((route, reaching));
         }
-        Ok(Connected { routes })
+        let mut sources = Vec::new();
+        for source in self.sources {
+            let reaching = reach(source.github.api())?;
+            sources.push((source, reaching));
+        }
+        Ok(Connected { routes, sources })
     }
 }
 
@@ -128,8 +147,8 @@ struct Resolved {
     derived: bool,
 }
 
-/// `config`'s routes with every credential and marker key resolved through
-/// `secrets` and `signer`.
+/// `config`'s routes and sources with every credential, token and marker
+/// key resolved through `secrets` and `signer`.
 ///
 /// # Errors
 ///
@@ -196,5 +215,19 @@ pub async fn prepare<S: Secrets, G: Signer>(
             derived: destination.derived,
         });
     }
-    Ok(Prepared { routes })
+    let mut sources = Vec::new();
+    for (name, source) in &config.sources {
+        let Source::GitHub(options) = source;
+        let token = match &options.token {
+            Some(token) => Some(secrets.secret(&token.secret).await?),
+            None => None,
+        };
+        sources.push(PreparedSource {
+            name: name.clone(),
+            github: GitHub::new(options),
+            token,
+            backfill: options.backfill,
+        });
+    }
+    Ok(Prepared { routes, sources })
 }

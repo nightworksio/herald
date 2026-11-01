@@ -74,6 +74,8 @@ pub enum Stop {
     Template(String),
     /// A marker could not be computed.
     Marker(String),
+    /// A polled source could not be read.
+    Source(String),
 }
 
 struct Run<'a, S, C, G, H> {

@@ -556,6 +556,7 @@ dependencies = [
  "herald-core",
  "herald-dest-discord",
  "herald-ports",
+ "herald-sources-forge",
  "herald-testing",
  "jiff",
  "pollster",

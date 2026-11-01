@@ -55,21 +55,16 @@ pub struct Repository {
     pub name: String,
 }
 
-/// What a poll of the releases found.
+/// The published releases a poll found, the newest first, and the
+/// validators to send next time.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Polled {
-    /// Nothing changed since the cursor's validators.
-    Unchanged,
-    /// The published releases, the newest first, and the validators to send
-    /// next time.
-    Found {
-        /// The releases, as events.
-        events: Vec<Event>,
-        /// The `ETag` GitHub returned.
-        etag: Option<String>,
-        /// The `Last-Modified` GitHub returned.
-        last_modified: Option<String>,
-    },
+pub struct Releases {
+    /// The releases, as events.
+    pub events: Vec<Event>,
+    /// The `ETag` GitHub returned.
+    pub etag: Option<String>,
+    /// The `Last-Modified` GitHub returned.
+    pub last_modified: Option<String>,
 }
 
 /// One GitHub repository's releases.
@@ -143,6 +138,12 @@ fn release(
 }
 
 impl GitHub {
+    /// The base URL of everything it asks.
+    #[must_use]
+    pub fn api(&self) -> &str {
+        &self.api
+    }
+
     /// The repository `options` name.
     #[must_use]
     pub fn new(options: &SourceOptions) -> Self {
@@ -220,23 +221,27 @@ impl GitHub {
         request
     }
 
+    /// Whether GitHub's answer to [`GitHub::releases_request`] says nothing
+    /// changed since the cursor's validators.
+    #[must_use]
+    pub fn unchanged(response: &Response) -> bool {
+        response.status == NOT_MODIFIED
+    }
+
     /// The published releases of `repository` in GitHub's answer to
     /// [`GitHub::releases_request`].
     ///
     /// # Errors
     ///
     /// When GitHub did not answer with releases, or one makes no event.
-    pub fn releases(repository: &Repository, response: &Response) -> Result<Polled, ForgeError> {
-        if response.status == NOT_MODIFIED {
-            return Ok(Polled::Unchanged);
-        }
+    pub fn releases(repository: &Repository, response: &Response) -> Result<Releases, ForgeError> {
         answered(RELEASES, response)?;
         let releases: Vec<Release> = read(RELEASES, &response.body)?;
         let events = releases
             .into_iter()
             .filter_map(|found| release(RELEASES, repository, found).transpose())
             .collect::<Result<Vec<Event>, ForgeError>>()?;
-        Ok(Polled::Found {
+        Ok(Releases {
             events,
             etag: response.header("etag").map(ToOwned::to_owned),
             last_modified: response.header("last-modified").map(ToOwned::to_owned),

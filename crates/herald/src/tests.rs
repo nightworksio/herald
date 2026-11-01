@@ -25,6 +25,7 @@ struct State {
     discord: Vec<(String, u16, String)>,
     seen: Vec<String>,
     failing: Option<Method>,
+    forge: BTreeMap<String, (u16, String)>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -56,6 +57,9 @@ impl State {
             .map(|file| file.trim_end_matches("?ref=herald-state").to_owned());
         if self.failing == Some(method) {
             return answer(500, &json!({}));
+        }
+        if let Some((status, body)) = self.forge.get(path) {
+            return answer(*status, &serde_json::from_str(body).unwrap_or(Value::Null));
         }
         match (method, file) {
             (Method::Get, Some(file)) => match self.files.get(&file) {
@@ -619,5 +623,126 @@ fn housekeeping_that_must_wait_or_cannot_read_its_store_stops() {
     assert_eq!(
         unset.err,
         "GITHUB_REPOSITORY is not set; this command runs in GitHub Actions\n"
+    );
+}
+
+const RELEASES: &str = "/repos/cli/cli/releases?per_page=30";
+const REPOSITORY: &str = "/repos/cli/cli";
+
+fn forge(world: &World, releases: (u16, &[&str])) {
+    let (status, versions) = releases;
+    let listed: Vec<Value> = versions
+        .iter()
+        .map(|version| {
+            json!({
+                "tag_name": version,
+                "name": format!("GitHub CLI {version}"),
+                "body": "## What's Changed",
+                "draft": false,
+                "prerelease": false,
+                "published_at": "2026-10-31T12:00:00Z",
+                "html_url": format!("https://github.com/cli/cli/releases/tag/{version}"),
+            })
+        })
+        .collect();
+    let mut state = world.state.lock().unwrap();
+    state.forge.insert(
+        RELEASES.to_owned(),
+        (status, Value::Array(listed).to_string()),
+    );
+    state.forge.insert(
+        REPOSITORY.to_owned(),
+        (200, r#"{"id":212613049,"name":"cli"}"#.to_owned()),
+    );
+}
+
+const POLL: [&str; 1] = ["poll"];
+
+#[test]
+fn a_poll_remembers_what_it_first_finds_and_announces_what_is_new() {
+    let setup = setup(CONFIG);
+    let world = World::default();
+    forge(&world, (200, &["v1"]));
+    let first = run(&setup, &world, &POLL);
+    assert_eq!(
+        (first.code, first.out.as_str(), first.err.as_str()),
+        (
+            DONE,
+            "cli: first poll found 1; 0 announced, as backfill asks\n",
+            ""
+        )
+    );
+    forge(&world, (200, &["v2", "v1"]));
+    discord(&world, &[("/channels/100/messages", 200, r#"{"id":"1"}"#)]);
+    let later = run(&setup, &world, &POLL);
+    assert_eq!(
+        (later.code, later.out.as_str()),
+        (
+            DONE,
+            "cli: 2 found, 1 new\ncli v2: releases: announced (post)\n"
+        )
+    );
+    forge(&world, (304, &[]));
+    let unchanged = run(&setup, &world, &POLL);
+    assert_eq!(unchanged.out, "cli: unchanged since the last poll\n");
+}
+
+#[test]
+fn a_poll_that_stops_says_what_the_next_poll_does() {
+    let setup = setup(CONFIG);
+    let world = World::default();
+    forge(&world, (200, &["v1"]));
+    world.state.lock().unwrap().failing = Some(Method::Put);
+    let unkept = run(&setup, &world, &POLL);
+    assert_eq!(
+        (unkept.code, unkept.out.as_str()),
+        (
+            STOPPED,
+            "cli: first poll found 1; 0 announced, as backfill asks; the cursor stays where it was: the store could not be reached: GitHub answered 500. The next poll offers them again\n"
+        )
+    );
+    world.state.lock().unwrap().failing = None;
+    assert_eq!(run(&setup, &world, &POLL).code, DONE);
+    forge(&world, (200, &["v2", "v1"]));
+    discord(
+        &world,
+        &[(
+            "/channels/100/messages",
+            403,
+            r#"{"code":50013,"message":"Missing Permissions"}"#,
+        )],
+    );
+    let refused = run(&setup, &world, &POLL);
+    assert_eq!(refused.code, STOPPED);
+    assert!(
+        refused
+            .out
+            .starts_with("cli: 2 found, 1 new; a route stopped, so the next poll offers them again\ncli v2: releases: stopped: Discord refused it with 403"),
+        "{}",
+        refused.out
+    );
+    world
+        .state
+        .lock()
+        .unwrap()
+        .forge
+        .insert(REPOSITORY.to_owned(), (404, "{}".to_owned()));
+    let unread = run(&setup, &world, &POLL);
+    assert_eq!(
+        (unread.code, unread.out.as_str()),
+        (
+            STOPPED,
+            "cli: stopped: GitHub's repository was answered with 404. The next poll asks again.\n"
+        )
+    );
+}
+
+#[test]
+fn a_config_without_sources_has_nothing_to_poll() {
+    let sourceless = "version = 1\n[store]\nkind = \"git-branch\"\n[destinations.discord]\nkind = \"discord\"\ntoken = { secret = \"HERALD_DISCORD_TOKEN\" }\n";
+    let idle = run(&setup(sourceless), &World::default(), &POLL);
+    assert_eq!(
+        (idle.code, idle.out.as_str(), idle.err.as_str()),
+        (DONE, "The config names no source to poll.\n", "")
     );
 }
