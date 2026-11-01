@@ -109,7 +109,10 @@ mod github {
             GitHub::event(&huge).unwrap_err().to_string(),
             "GitHub's release event is larger than the 4194304 bytes herald reads"
         );
-        assert!(GitHub::event(&huge[..4_194_304]).is_err());
+        assert!(matches!(
+            GitHub::event(&huge[..4_194_304]),
+            Err(ForgeError::Unreadable { .. })
+        ));
     }
 
     #[test]
