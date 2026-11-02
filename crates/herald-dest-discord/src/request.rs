@@ -1,6 +1,6 @@
 use std::fmt;
 
-use herald_core::{Announcement, Chore, Delivery, Entry, Marks, Step};
+use herald_core::{Announcement, Chore, Delivery, Entry, Step};
 use herald_ports::{Method, Request, Text};
 use serde_json::{Map, Value, json};
 
@@ -82,11 +82,6 @@ fn authorised(request: Request, credential: &Credential) -> Request {
     }
 }
 
-fn marked(link: &str, marks: &Marks) -> String {
-    let page = link.split('#').next().unwrap_or(link);
-    format!("{page}#herald-{}.{}", marks.route, marks.announcement)
-}
-
 fn message(announcement: &Announcement, delivery: &Delivery, deduplicated: bool) -> Value {
     let roles: Vec<&str> = delivery
         .mentions
@@ -123,7 +118,7 @@ fn message(announcement: &Announcement, delivery: &Delivery, deduplicated: bool)
         announcement
             .link
             .iter()
-            .map(|link| ("url".to_owned(), json!(marked(link, &announcement.marks)))),
+            .map(|link| ("url".to_owned(), json!(announcement.marks.on(link)))),
     );
     let key = announcement.key.to_string();
     let mut body = Map::new();
