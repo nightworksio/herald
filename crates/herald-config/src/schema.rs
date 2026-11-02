@@ -40,6 +40,8 @@ enum DestinationSchema {
     Discord(herald_dest_discord::DestinationOptions),
     /// An account on a server speaking the Mastodon client API.
     Mastodon(herald_dest_fediverse::DestinationOptions),
+    /// A bot account on a Matrix homeserver.
+    Matrix(herald_dest_matrix::DestinationOptions),
 }
 
 /// A source, by its kind.
@@ -80,6 +82,8 @@ enum RouteSchema {
     Discord(DiscordRoute),
     /// A route to a Mastodon destination.
     Mastodon(MastodonRoute),
+    /// A route to a Matrix destination.
+    Matrix(MatrixRoute),
 }
 
 /// A route to a Discord destination.
@@ -91,6 +95,17 @@ struct DiscordRoute {
     common: RouteFile,
     #[serde(flatten)]
     discord: herald_dest_discord::RouteOptions,
+}
+
+/// A route to a Matrix destination.
+#[derive(JsonSchema)]
+#[schemars(deny_unknown_fields)]
+#[allow(dead_code, reason = "read only by the schema's derive")]
+struct MatrixRoute {
+    #[serde(flatten)]
+    common: RouteFile,
+    #[serde(flatten)]
+    matrix: herald_dest_matrix::RouteOptions,
 }
 
 /// A route to a Mastodon destination.

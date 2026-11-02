@@ -68,6 +68,7 @@ pub(crate) fn secrets() -> FakeSecrets {
 pub(crate) struct Script {
     pub(crate) answers: std::sync::Arc<Mutex<VecDeque<(String, u16, String)>>>,
     seen: std::sync::Arc<Mutex<Vec<String>>>,
+    bodies: std::sync::Arc<Mutex<Vec<Vec<u8>>>>,
     headers: Vec<(String, String)>,
 }
 
@@ -93,12 +94,17 @@ impl Script {
     pub(crate) fn seen(&self) -> Vec<String> {
         self.seen.lock().unwrap().clone()
     }
+
+    pub(crate) fn bodies(&self) -> Vec<Vec<u8>> {
+        self.bodies.lock().unwrap().clone()
+    }
 }
 
 impl Http for Script {
     async fn send(&self, request: Request) -> Result<Response, HttpError> {
         let line = format!("{} {}", request.method.as_str(), request.url.redacted());
         self.seen.lock().unwrap().push(line.clone());
+        self.bodies.lock().unwrap().push(request.body.clone());
         let Some((expected, status, body)) = self.answers.lock().unwrap().pop_front() else {
             return Err(HttpError::Unreachable {
                 reason: format!("nothing scripted for {line}"),
@@ -183,6 +189,7 @@ pub(crate) enum Fault {
     Pins,
     RemembersPins,
     Releases,
+    Subscribers,
 }
 
 pub(crate) struct Failing {
@@ -281,6 +288,9 @@ impl Store for Failing {
         destination: &DestinationName,
         project: &str,
     ) -> Result<Vec<String>, StoreError> {
+        if self.fault == Fault::Subscribers {
+            return Err(broken());
+        }
         self.inner.subscribers(destination, project).await
     }
 

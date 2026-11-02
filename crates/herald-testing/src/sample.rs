@@ -58,6 +58,7 @@ pub fn announcement() -> Announcement {
         prerelease: false,
         occurred: jiff::Timestamp::constant(1_793_448_000, 0),
         replaces: None,
+        mentioned: Vec::new(),
     }
 }
 

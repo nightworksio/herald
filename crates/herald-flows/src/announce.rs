@@ -1,6 +1,6 @@
 use herald_config::Config;
 use herald_core::{
-    Announcement, Entry, Event, Facts, Key, Marker, Marks, Pinning, Plan, RouteId, Sent,
+    Announcement, Entry, Event, Facts, Key, Marker, Marks, Pinning, Plan, Profile, RouteId, Sent,
     SourceName, Step, Templates, Threads, plan, schedules, steps,
 };
 use herald_ports::{Clock, Http, Secret, Signer, Store, Version, Written, marker};
@@ -222,6 +222,34 @@ impl<S: Store, C: Clock, G: Signer, H: Http> Run<'_, S, C, G, H> {
         }
     }
 
+    async fn rendered(
+        &self,
+        event: &Event,
+        templates: &Templates,
+        profile: &Profile,
+        marks: Marks,
+    ) -> Result<Announcement, Stop> {
+        let route = &self.route.config.route;
+        let mut announcement = herald_core::announce(
+            event,
+            route,
+            templates,
+            profile,
+            env!("CARGO_PKG_VERSION"),
+            marks,
+        )
+        .map_err(|error| Stop::Template(error.to_string()))?;
+        if route.delivery.mentions.subscribers {
+            announcement.mentioned = self
+                .ports
+                .store
+                .subscribers(&route.destination, event.project())
+                .await
+                .map_err(stored)?;
+        }
+        Ok(announcement)
+    }
+
     async fn announce(&self, event: &Event, templates: &Templates) -> Outcome {
         let route = &self.route.config.route;
         let key = Key::derive(&route.id, event.identity());
@@ -235,17 +263,9 @@ impl<S: Store, C: Clock, G: Signer, H: Http> Run<'_, S, C, G, H> {
             Err(reason) => return stopped(reason),
         };
         let profile = self.route.reached.profile();
-        let rendered = herald_core::announce(
-            event,
-            route,
-            templates,
-            &profile,
-            env!("CARGO_PKG_VERSION"),
-            marks,
-        );
-        let mut announcement = match rendered {
+        let mut announcement = match self.rendered(event, templates, &profile, marks).await {
             Ok(announcement) => announcement,
-            Err(error) => return stopped(Stop::Template(error.to_string())),
+            Err(reason) => return stopped(reason),
         };
         let parts = u32::try_from(announcement.parts.len()).unwrap_or(u32::MAX);
         let wanted = steps(&route.delivery, &profile.features, parts, &[]);

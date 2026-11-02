@@ -436,6 +436,99 @@ body = "{{ event.body }}"
         );
     }
 
+    const MATRIX: &str = r#"version = 1
+
+[store]
+kind = "sqlite"
+
+[destinations.room]
+kind = "matrix"
+homeserver = "https://matrix.example"
+token = { secret = "HERALD_MATRIX_TOKEN" }
+
+[sources.gate]
+kind = "github"
+repository = "nightworksio/php-mutation-gate"
+
+[[routes]]
+id = "roomed"
+sources = ["gate"]
+destination = "room"
+template = "t"
+room = "!releases:matrix.example"
+pin = "markers"
+mentions = { subscribers = true }
+thread = { name = "{{ event.version }}" }
+
+[templates.t]
+title = "{{ event.title }}"
+body = "{{ event.body }}"
+"#;
+
+    #[test]
+    fn a_matrix_destination_and_its_route_options_load() {
+        let config = load("herald.toml", MATRIX, &nothing).unwrap();
+        let Some(Destination::Matrix(room)) = config.destinations.values().next() else {
+            panic!("the destination is Matrix's");
+        };
+        assert_eq!(room.homeserver, "https://matrix.example");
+        assert_eq!(
+            config.destinations.values().next().map(Destination::kind),
+            Some("matrix")
+        );
+        let RouteOptions::Matrix(placed) = &config.routes[0].options else {
+            panic!("the route's options are Matrix's");
+        };
+        assert_eq!(placed.room, "!releases:matrix.example");
+        assert_eq!(config.routes[0].profile, herald_dest_matrix::profile());
+        assert_eq!(
+            config.secrets().into_iter().collect::<Vec<_>>(),
+            ["HERALD_MATRIX_TOKEN"]
+        );
+    }
+
+    #[test]
+    fn a_matrix_route_is_refused_what_matrix_cannot_do() {
+        let asking = MATRIX.replace(
+            "thread = { name = \"{{ event.version }}\" }",
+            "thread = { name = \"v\", archive_after = \"14d\" }\ncrosspost = true",
+        );
+        let error = errors(&asking);
+        for key in ["crosspost", "thread.archive_after"] {
+            assert!(
+                error.contains(&format!(
+                    "routes[0].{key}: the destination \"room\" cannot do this as it is reached; remove {key}, as Matrix has no way to do it"
+                )),
+                "{key}: {error}"
+            );
+        }
+        let aliased = MATRIX.replace("!releases:matrix.example", "#releases:matrix.example");
+        assert!(
+            errors(&aliased).contains("routes[0]: \"#releases:matrix.example\" is not a room id"),
+            "{}",
+            errors(&aliased)
+        );
+        for unsound in ["!:matrix.example", "!releases:", "!releases"] {
+            assert!(
+                errors(&MATRIX.replace("!releases:matrix.example", unsound))
+                    .contains("is not a room id"),
+                "{unsound}"
+            );
+        }
+        let roomless = MATRIX.replace("room = \"!releases:matrix.example\"\n", "");
+        assert!(
+            errors(&roomless).contains("routes[0]: missing field `room`"),
+            "{}",
+            errors(&roomless)
+        );
+        let homeless = MATRIX.replace("homeserver = \"https://matrix.example\"\n", "");
+        assert!(
+            errors(&homeless).contains("destinations.room: missing field `homeserver`"),
+            "{}",
+            errors(&homeless)
+        );
+    }
+
     #[test]
     fn a_template_that_does_not_compile_or_render_or_fit_is_found_at_load() {
         let broken = EXAMPLE.replace("body = \"{{ event.body }}\"", "body = \"{{ event.body \"");

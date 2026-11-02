@@ -60,6 +60,9 @@ pub struct Announcement {
     /// The route's earlier pinned post, where the store remembers it, for
     /// the unpin step to unpin.
     pub replaces: Option<String>,
+    /// The users it mentions: the subscribers herald keeps to its project on
+    /// its destination, where its route mentions them.
+    pub mentioned: Vec<String>,
 }
 
 /// `event` rendered by `route` for a destination described by `profile`,
@@ -109,6 +112,7 @@ pub fn announce(
         prerelease: event.prerelease(),
         occurred: event.occurred(),
         replaces: None,
+        mentioned: Vec::new(),
     })
 }
 
