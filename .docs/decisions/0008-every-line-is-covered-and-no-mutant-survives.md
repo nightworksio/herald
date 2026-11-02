@@ -106,8 +106,8 @@ on their platform.
      reference are in `.docs/`, and prose states current fact.
    - **Hygiene.** CI runs typos, lychee, markdownlint, actionlint and zizmor
      over the whole tree.
-   - **The line cap.** No tracked file is longer than 1000 lines, lockfiles
-     and images aside, which a check of this repository's own enforces.
+   - **The line cap.** No tracked file is longer than 1000 lines, lockfiles,
+     images and the generated `herald.schema.json` aside, which a check of this repository's own enforces.
 
 9. **Commits and merges.**
    - **Subjects.** Every commit subject and pull-request title is

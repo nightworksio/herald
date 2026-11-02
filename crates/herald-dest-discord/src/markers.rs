@@ -1,4 +1,4 @@
-use herald_core::{Entry, Facts, Key, Marker, Step};
+use herald_core::{Entry, Facts, Key, Marker, Marks, Step};
 use herald_ports::{Http, MarkedThread, Markers, MarkersError};
 use jiff::Timestamp;
 use serde_json::Value;
@@ -87,8 +87,7 @@ pub(crate) fn marks(message: &Value) -> Vec<(String, String)> {
         .into_iter()
         .flatten()
         .filter_map(|embed| embed.get("url").and_then(Value::as_str))
-        .filter_map(|url| url.rsplit_once("#herald-"))
-        .filter_map(|(_, fragment)| fragment.split_once('.'))
+        .filter_map(Marks::carried)
         .map(|(route, announcement)| (route.to_owned(), announcement.to_owned()))
         .collect()
 }

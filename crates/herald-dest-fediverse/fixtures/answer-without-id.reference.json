@@ -1,0 +1,26 @@
+{
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "url": "https://mastodon.example/api/v1/statuses",
+        "headers": {
+          "Authorization": "Bearer «secret:HERALD_MASTODON_TOKEN»",
+          "User-Agent": "herald/0.0.0 (+https://github.com/nightworksio/herald)",
+          "Content-Type": "application/json",
+          "Idempotency-Key": "da765393824b2f92d4e0df694048a62b994615c2ca027d5a69263e41b6828159"
+        },
+        "body": {
+          "status": "📦 php-mutation-gate v0.1.0\n\n## Added\n\nhttps://github.com/nightworksio/php-mutation-gate/releases/tag/v0.1.0#herald-b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6.a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5",
+          "visibility": "public"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "visibility": "public"
+        }
+      }
+    }
+  ]
+}

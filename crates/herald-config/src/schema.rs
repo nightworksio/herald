@@ -38,6 +38,8 @@ enum StoreSchema {
 enum DestinationSchema {
     /// Discord, by bot token or webhook.
     Discord(herald_dest_discord::DestinationOptions),
+    /// An account on a server speaking the Mastodon client API.
+    Mastodon(herald_dest_fediverse::DestinationOptions),
 }
 
 /// A source, by its kind.
@@ -68,15 +70,38 @@ enum SourceSchema {
 }
 
 /// A route: what it takes, where it announces, and its destination's own
-/// options.
+/// options, as its destination's kind defines them.
 #[derive(JsonSchema)]
-#[schemars(rename = "Route", deny_unknown_fields)]
+#[serde(untagged)]
+#[schemars(rename = "Route")]
 #[allow(dead_code, reason = "read only by the schema's derive")]
-struct RouteSchema {
+enum RouteSchema {
+    /// A route to a Discord destination.
+    Discord(DiscordRoute),
+    /// A route to a Mastodon destination.
+    Mastodon(MastodonRoute),
+}
+
+/// A route to a Discord destination.
+#[derive(JsonSchema)]
+#[schemars(deny_unknown_fields)]
+#[allow(dead_code, reason = "read only by the schema's derive")]
+struct DiscordRoute {
     #[serde(flatten)]
     common: RouteFile,
     #[serde(flatten)]
     discord: herald_dest_discord::RouteOptions,
+}
+
+/// A route to a Mastodon destination.
+#[derive(JsonSchema)]
+#[schemars(deny_unknown_fields)]
+#[allow(dead_code, reason = "read only by the schema's derive")]
+struct MastodonRoute {
+    #[serde(flatten)]
+    common: RouteFile,
+    #[serde(flatten)]
+    mastodon: herald_dest_fediverse::RouteOptions,
 }
 
 /// `herald.toml`: herald's whole config (ADR-0006).

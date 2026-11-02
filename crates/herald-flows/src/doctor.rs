@@ -1,6 +1,5 @@
-use herald_config::{Config, Destination, RouteConfig, RouteOptions, Source, Store};
+use herald_config::{Config, Destination, RouteConfig, Source, Store};
 use herald_core::Pinning;
-use herald_dest_discord::profile;
 
 /// A feature the config asks for that this herald cannot serve (ADR-0002).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -44,11 +43,10 @@ fn gap(feature: &str, key: String, why: String) -> Gap {
 }
 
 fn unkept(config: &Config, index: usize, route: &RouteConfig, gaps: &mut Vec<Gap>) {
-    let bot = config
-        .destinations
-        .get(&route.route.destination)
-        .is_some_and(|Destination::Discord(options)| options.token.is_some());
-    let RouteOptions::Discord(placed) = &route.options;
+    let bot = matches!(
+        config.destinations.get(&route.route.destination),
+        Some(Destination::Discord(options)) if options.token.is_some()
+    );
     let key = |field: &str| format!("routes[{index}].{field}");
     if route.route.delivery.pin == Some(Pinning::Store) {
         gaps.push(gap(
@@ -57,7 +55,7 @@ fn unkept(config: &Config, index: usize, route: &RouteConfig, gaps: &mut Vec<Gap
             "the markers store keeps no pins; set pin = \"markers\"".to_owned(),
         ));
     }
-    if !profile(bot, placed.forum).features.reads_back {
+    if !route.profile.features.reads_back {
         let cannot = if bot {
             "a forum's posts are not read back"
         } else {

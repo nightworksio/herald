@@ -307,10 +307,20 @@ fn credentials_and_marker_keys_that_cannot_be_resolved_say_why() {
     let mut orphan = config("");
     orphan.destinations.clear();
     let lost = pollster::block_on(prepare(&orphan, &secrets(), &FakeSigner)).unwrap_err();
-    assert_eq!(
-        lost.to_string(),
-        "the route \"releases\" names a destination the config does not have"
-    );
+    let unplaced = "the route \"releases\" names a destination the config does not have, or one of another kind";
+    assert_eq!(lost.to_string(), unplaced);
+    let mut crossed = config("");
+    for destination in crossed.destinations.values_mut() {
+        if let herald_config::Destination::Discord(options) = destination {
+            *destination =
+                herald_config::Destination::Mastodon(herald_dest_fediverse::DestinationOptions {
+                    server: "https://mastodon.example".to_owned(),
+                    token: options.token.clone().unwrap(),
+                });
+        }
+    }
+    let crossed = pollster::block_on(prepare(&crossed, &secrets(), &FakeSigner)).unwrap_err();
+    assert_eq!(crossed.to_string(), unplaced);
     let prepared = pollster::block_on(prepare(&loaded, &secrets(), &FakeSigner)).unwrap();
     assert_eq!(prepared.derived(), [&RouteId::new("releases")]);
     assert_eq!(

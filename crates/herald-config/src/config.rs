@@ -1,6 +1,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use herald_core::{DestinationName, Kind, Route, RouteId, SecretRef, SourceName, Templates};
+use herald_core::{
+    DestinationName, Kind, Profile, Route, RouteId, SecretRef, SourceName, Templates,
+};
 use herald_sources_forge::Forge;
 use herald_sources_registry::Registry;
 use jiff::SignedDuration;
@@ -31,14 +33,17 @@ impl Config {
     /// The name of every secret the config names, once each.
     #[must_use]
     pub fn secrets(&self) -> BTreeSet<&str> {
-        let destinations = self.destinations.values().flat_map(|destination| {
-            let Destination::Discord(options) = destination;
-            [&options.token, &options.webhook]
-        });
+        let destinations = self
+            .destinations
+            .values()
+            .flat_map(|destination| match destination {
+                Destination::Discord(options) => [options.token.as_ref(), options.webhook.as_ref()],
+                Destination::Mastodon(options) => [Some(&options.token), None],
+            });
         let sources = self.sources.values().map(|source| match source {
-            Source::Forge(_, options) => &options.token,
-            Source::Registry(_, options) => &options.token,
-            Source::Feed(_) => &None,
+            Source::Forge(_, options) => options.token.as_ref(),
+            Source::Registry(_, options) => options.token.as_ref(),
+            Source::Feed(_) => None,
         });
         let store = match &self.store {
             Store::GitBranch(options) => options.token.as_ref(),
@@ -79,34 +84,52 @@ pub enum Store {
 }
 
 impl Store {
+    /// The kind of a SQLite store, as the config spells it.
+    pub const SQLITE: &'static str = "sqlite";
+    /// The kind of a Postgres store.
+    pub const POSTGRES: &'static str = "postgres";
+    /// The kind of a Cloudflare D1 store.
+    pub const CLOUDFLARE_D1: &'static str = "d1";
+    /// The kind of a DynamoDB store.
+    pub const DYNAMODB: &'static str = "dynamodb";
+    /// The kind of a Deno KV store.
+    pub const DENO_KV: &'static str = "deno-kv";
+    /// The kind of the store kept in the destinations' own posts.
+    pub const MARKERS: &'static str = "markers";
+    /// The kind of a store on a branch of the repository.
+    pub const GIT_BRANCH: &'static str = "git-branch";
+    /// The kind of a store in the GitHub Actions cache.
+    pub const ACTIONS_CACHE: &'static str = "actions-cache";
+    /// The kind of a store in the repository's variables.
+    pub const REPO_VARIABLES: &'static str = "repo-variables";
+    /// Every kind, as the config spells it.
+    pub const KINDS: [&'static str; 9] = [
+        Self::SQLITE,
+        Self::POSTGRES,
+        Self::CLOUDFLARE_D1,
+        Self::DYNAMODB,
+        Self::DENO_KV,
+        Self::MARKERS,
+        Self::GIT_BRANCH,
+        Self::ACTIONS_CACHE,
+        Self::REPO_VARIABLES,
+    ];
+
     /// The kind's name, as `[store] kind` writes it.
     #[must_use]
     pub fn kind(&self) -> &'static str {
         match self {
-            Self::Sqlite => "sqlite",
-            Self::Postgres => "postgres",
-            Self::D1 => "d1",
-            Self::Dynamodb => "dynamodb",
-            Self::DenoKv => "deno-kv",
-            Self::Markers => "markers",
-            Self::GitBranch(_) => "git-branch",
-            Self::ActionsCache(_) => "actions-cache",
-            Self::RepoVariables(_) => "repo-variables",
+            Self::Sqlite => Self::SQLITE,
+            Self::Postgres => Self::POSTGRES,
+            Self::D1 => Self::CLOUDFLARE_D1,
+            Self::Dynamodb => Self::DYNAMODB,
+            Self::DenoKv => Self::DENO_KV,
+            Self::Markers => Self::MARKERS,
+            Self::GitBranch(_) => Self::GIT_BRANCH,
+            Self::ActionsCache(_) => Self::ACTIONS_CACHE,
+            Self::RepoVariables(_) => Self::REPO_VARIABLES,
         }
     }
-
-    /// Every kind, as the config spells it.
-    pub const KINDS: [&'static str; 9] = [
-        "sqlite",
-        "postgres",
-        "d1",
-        "dynamodb",
-        "deno-kv",
-        "markers",
-        "git-branch",
-        "actions-cache",
-        "repo-variables",
-    ];
 }
 
 /// A destination and its options, by its kind.
@@ -114,6 +137,26 @@ impl Store {
 pub enum Destination {
     /// Discord.
     Discord(herald_dest_discord::DestinationOptions),
+    /// An account on a server speaking the Mastodon client API.
+    Mastodon(herald_dest_fediverse::DestinationOptions),
+}
+
+impl Destination {
+    /// The kind of a Discord destination, as the config spells it.
+    pub const DISCORD: &'static str = "discord";
+    /// The kind of a Mastodon destination, as the config spells it.
+    pub const MASTODON: &'static str = "mastodon";
+    /// Every kind, as the config spells it.
+    pub const KINDS: [&'static str; 2] = [Self::DISCORD, Self::MASTODON];
+
+    /// The kind's name, as `[destinations.<name>] kind` writes it.
+    #[must_use]
+    pub fn kind(&self) -> &'static str {
+        match self {
+            Self::Discord(_) => Self::DISCORD,
+            Self::Mastodon(_) => Self::MASTODON,
+        }
+    }
 }
 
 /// A source and its options, by its kind.
@@ -128,27 +171,34 @@ pub enum Source {
 }
 
 impl Source {
+    /// The kind of a feed source, as the config spells it.
+    pub const FEED: &'static str = "feed";
+
     /// The kind's name, as `[sources.<name>] kind` writes it.
     #[must_use]
     pub fn kind(&self) -> &'static str {
         match self {
             Self::Forge(forge, _) => forge.kind(),
             Self::Registry(registry, _) => registry.kind(),
-            Self::Feed(_) => "feed",
+            Self::Feed(_) => Self::FEED,
         }
     }
 
     /// Every kind, as the config spells it.
-    pub const KINDS: [&'static str; 8] = [
-        "github",
-        "gitlab",
-        "forgejo",
-        "packagist",
-        "crates-io",
-        "npm",
-        "docker-hub",
-        "feed",
-    ];
+    pub const KINDS: [&'static str; 8] = {
+        let [github, gitlab, forgejo] = Forge::ALL;
+        let [packagist, crates_io, npm, docker_hub] = Registry::ALL;
+        [
+            github.kind(),
+            gitlab.kind(),
+            forgejo.kind(),
+            packagist.kind(),
+            crates_io.kind(),
+            npm.kind(),
+            docker_hub.kind(),
+            Self::FEED,
+        ]
+    };
 
     /// The kinds of event the source produces.
     #[must_use]
@@ -168,6 +218,8 @@ pub struct RouteConfig {
     pub route: Route,
     /// Its destination's own options.
     pub options: RouteOptions,
+    /// What its destination can do, as the core plans with it.
+    pub profile: Profile,
 }
 
 /// A route's options for its destination's kind.
@@ -175,6 +227,18 @@ pub struct RouteConfig {
 pub enum RouteOptions {
     /// Discord's.
     Discord(herald_dest_discord::RouteOptions),
+    /// Mastodon's.
+    Mastodon(herald_dest_fediverse::RouteOptions),
+}
+
+impl RouteOptions {
+    /// Whether every post opens a thread of its own, as a Discord forum's
+    /// does, so the route takes `thread` whatever its destination's features
+    /// say.
+    #[must_use]
+    pub fn threads_each_post(&self) -> bool {
+        matches!(self, Self::Discord(placed) if placed.forum)
+    }
 }
 
 /// An app of the HTTP API: its token's hash and what it may announce to.

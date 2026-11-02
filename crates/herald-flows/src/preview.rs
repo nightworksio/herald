@@ -1,6 +1,5 @@
-use herald_config::{Config, Destination, RouteOptions};
+use herald_config::Config;
 use herald_core::{Announcement, DestinationName, Event, Marker, Marks, RouteId};
-use herald_dest_discord::profile;
 
 /// One route's templates rendered against an event.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -29,16 +28,11 @@ pub fn preview(config: &Config, event: &Event, only: Option<&RouteId>) -> Vec<Pr
         .iter()
         .filter(|route| only.is_none_or(|only| *only == route.route.id))
         .map(|route| {
-            let bot = config
-                .destinations
-                .get(&route.route.destination)
-                .is_some_and(|Destination::Discord(options)| options.token.is_some());
-            let RouteOptions::Discord(placed) = &route.options;
             let rendered = herald_core::announce(
                 event,
                 &route.route,
                 &config.templates,
-                &profile(bot, placed.forum),
+                &route.profile,
                 env!("CARGO_PKG_VERSION"),
                 placeholder(),
             )

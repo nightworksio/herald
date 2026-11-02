@@ -1,0 +1,9 @@
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "An idempotency key in a recorded fixture is a hash of the announcement, not a credential."
+condition = "AND"
+regexTarget = "line"
+paths = ['''crates/[^/]+/fixtures/[^/]+\.reference\.json''']
+regexes = ['''Idempotency-Key"\s*:\s*"[0-9a-f]{64}(\.[0-9]+)?"''']

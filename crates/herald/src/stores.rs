@@ -49,7 +49,12 @@ impl Records<'_> {
 }
 
 /// The store kinds this herald keeps records in.
-pub(crate) const STORES: [&str; 4] = ["git-branch", "markers", "actions-cache", "repo-variables"];
+pub(crate) const STORES: [&str; 4] = [
+    Store::GIT_BRANCH,
+    Store::MARKERS,
+    Store::ACTIONS_CACHE,
+    Store::REPO_VARIABLES,
+];
 
 /// The run's records, and every route and source connected.
 pub(crate) async fn reached<'a>(

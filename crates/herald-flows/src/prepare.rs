@@ -4,6 +4,7 @@ use std::fmt;
 use herald_config::{Config, Destination, RouteConfig, RouteOptions, Source};
 use herald_core::{DestinationName, RouteId, SourceName, hex};
 use herald_dest_discord::{Credential, Discord};
+use herald_dest_fediverse::Mastodon;
 use herald_ports::{Algorithm, CryptoError, Http, Secret, SecretError, Secrets, Signer};
 use herald_sources_feed::Feed;
 use herald_sources_forge::{Origin, Token};
@@ -27,7 +28,8 @@ pub enum PrepareError {
         /// The destination.
         destination: String,
     },
-    /// A route names a destination the config does not have.
+    /// A route names a destination the config does not have, or one of
+    /// another kind than its options.
     NoDestination {
         /// The route.
         route: String,
@@ -45,7 +47,7 @@ impl fmt::Display for PrepareError {
             Self::NoDestination { route } => {
                 write!(
                     f,
-                    "the route \"{route}\" names a destination the config does not have"
+                    "the route \"{route}\" names a destination the config does not have, or one of another kind"
                 )
             }
         }
@@ -188,11 +190,37 @@ impl Prepared {
     }
 }
 
-struct Resolved {
-    credential: Credential,
-    api: Option<String>,
+struct Resolved<'a> {
+    destination: &'a Destination,
+    secret: Secret,
     marker_key: Secret,
     derived: bool,
+}
+
+impl Resolved<'_> {
+    /// The destination reached for a route with `options`, where they are
+    /// options of the destination's kind.
+    fn reached(&self, options: &RouteOptions) -> Option<Reached> {
+        let secret = self.secret.clone();
+        match (self.destination, options) {
+            (Destination::Discord(reached), RouteOptions::Discord(placed)) => {
+                let credential = if reached.token.is_some() {
+                    Credential::Bot(secret)
+                } else {
+                    Credential::Webhook(secret)
+                };
+                Some(Reached::Discord(Discord::new(
+                    credential,
+                    placed.clone(),
+                    reached.api.as_deref(),
+                )))
+            }
+            (Destination::Mastodon(reached), RouteOptions::Mastodon(placed)) => Some(
+                Reached::Mastodon(Mastodon::new(&reached.server, secret, placed.clone())),
+            ),
+            _ => None,
+        }
+    }
 }
 
 /// `config`'s routes and sources with every credential, token and marker
@@ -213,8 +241,11 @@ pub async fn prepare<S: Secrets, G: Signer>(
     };
     let mut resolved: BTreeMap<&DestinationName, Resolved> = BTreeMap::new();
     for (name, destination) in &config.destinations {
-        let Destination::Discord(options) = destination;
-        let Some(reference) = options.token.as_ref().or(options.webhook.as_ref()) else {
+        let named = match destination {
+            Destination::Discord(options) => options.token.as_ref().or(options.webhook.as_ref()),
+            Destination::Mastodon(options) => Some(&options.token),
+        };
+        let Some(reference) = named else {
             return Err(PrepareError::NoCredential {
                 destination: name.as_str().to_owned(),
             });
@@ -229,16 +260,11 @@ pub async fn prepare<S: Secrets, G: Signer>(
             let name = format!("the marker key of {}", name.as_str());
             (Secret::new(name, hex(&mac)), true)
         };
-        let credential = if options.token.is_some() {
-            Credential::Bot(secret)
-        } else {
-            Credential::Webhook(secret)
-        };
         resolved.insert(
             name,
             Resolved {
-                credential,
-                api: options.api.clone(),
+                destination,
+                secret,
                 marker_key,
                 derived,
             },
@@ -246,19 +272,17 @@ pub async fn prepare<S: Secrets, G: Signer>(
     }
     let mut routes = Vec::new();
     for route in &config.routes {
-        let RouteOptions::Discord(options) = &route.options;
-        let Some(destination) = resolved.get(&route.route.destination) else {
+        let found = resolved.get(&route.route.destination);
+        let Some((destination, reached)) =
+            found.and_then(|destination| Some((destination, destination.reached(&route.options)?)))
+        else {
             return Err(PrepareError::NoDestination {
                 route: route.route.id.as_str().to_owned(),
             });
         };
         routes.push(PreparedRoute {
             config: route.clone(),
-            reached: Reached::Discord(Discord::new(
-                destination.credential.clone(),
-                options.clone(),
-                destination.api.as_deref(),
-            )),
+            reached,
             marker_key: destination.marker_key.clone(),
             derived: destination.derived,
         });

@@ -57,6 +57,10 @@ body = "{{ event.body }}"
             config.destinations.values().next(),
             Some(Destination::Discord(options)) if options.token.is_some()
         ));
+        assert_eq!(
+            config.destinations.values().next().map(Destination::kind),
+            Some("discord")
+        );
         assert!(matches!(
             config.sources.values().next(),
             Some(Source::Forge(Forge::GitHub, options)) if options.repository == "nightworksio/php-mutation-gate"
@@ -327,6 +331,109 @@ body = "{{ event.body }}"
         );
         let unchannelled = EXAMPLE.replace("channel = \"1566184281406177531\"\n", "");
         assert!(errors(&unchannelled).contains("routes[0]: a Discord bot posts to a channel"));
+    }
+
+    const MASTODON: &str = r#"version = 1
+
+[store]
+kind = "sqlite"
+
+[destinations.social]
+kind = "mastodon"
+server = "https://mastodon.example"
+token = { secret = "HERALD_MASTODON_TOKEN" }
+
+[sources.gate]
+kind = "github"
+repository = "nightworksio/php-mutation-gate"
+
+[[routes]]
+id = "tooted"
+sources = ["gate"]
+destination = "social"
+template = "t"
+visibility = "unlisted"
+language = "en"
+content_warning = "Release notes"
+limit = 1000
+thread = { name = "{{ event.version }}" }
+
+[templates.t]
+title = "{{ event.title }}"
+body = "{{ event.body }}"
+"#;
+
+    #[test]
+    fn a_mastodon_destination_and_its_route_options_load() {
+        let config = load("herald.toml", MASTODON, &nothing).unwrap();
+        let Some(Destination::Mastodon(social)) = config.destinations.values().next() else {
+            panic!("the destination is Mastodon's");
+        };
+        assert_eq!(social.server, "https://mastodon.example");
+        assert_eq!(
+            config.destinations.values().next().map(Destination::kind),
+            Some("mastodon")
+        );
+        let RouteOptions::Mastodon(placed) = &config.routes[0].options else {
+            panic!("the route's options are Mastodon's");
+        };
+        assert_eq!(
+            placed.visibility,
+            herald_dest_fediverse::Visibility::Unlisted
+        );
+        assert_eq!(placed.language.as_deref(), Some("en"));
+        assert_eq!(placed.content_warning.as_deref(), Some("Release notes"));
+        assert_eq!(
+            config.routes[0].profile,
+            herald_dest_fediverse::profile(placed)
+        );
+        assert!(!config.routes[0].options.threads_each_post());
+        assert_eq!(
+            config.secrets().into_iter().collect::<Vec<_>>(),
+            ["HERALD_MASTODON_TOKEN"]
+        );
+    }
+
+    #[test]
+    fn a_mastodon_route_is_refused_what_mastodon_cannot_do() {
+        let asking = MASTODON.replace(
+            "thread = { name = \"{{ event.version }}\" }",
+            "thread = { name = \"v\", archive_after = \"14d\" }\ncrosspost = true\npin = \"markers\"\nmentions = { roles = [\"1\"] }",
+        );
+        let error = errors(&asking);
+        for key in ["crosspost", "pin", "mentions.roles", "thread.archive_after"] {
+            assert!(
+                error.contains(&format!(
+                    "routes[0].{key}: the destination \"social\" cannot do this as it is reached; remove {key}, as Mastodon has no way to do it"
+                )),
+                "{key}: {error}"
+            );
+        }
+        assert!(!error.contains("routes[0].thread:"), "{error}");
+        let misspoken = MASTODON.replace("language = \"en\"", "language = \"English\"");
+        assert!(
+            errors(&misspoken).contains("routes[0]: \"English\" is not an ISO 639 language code"),
+            "{}",
+            errors(&misspoken)
+        );
+        let cramped = MASTODON.replace("limit = 1000", "limit = 100");
+        assert!(
+            errors(&cramped).contains("routes[0]: a status needs at least 141 characters"),
+            "{}",
+            errors(&cramped)
+        );
+        let foreign = MASTODON.replace("visibility = \"unlisted\"", "channel = \"1\"");
+        assert!(
+            errors(&foreign).contains("routes[0].channel: unknown field `channel`"),
+            "{}",
+            errors(&foreign)
+        );
+        let serverless = MASTODON.replace("server = \"https://mastodon.example\"\n", "");
+        assert!(
+            errors(&serverless).contains("destinations.social: missing field `server`"),
+            "{}",
+            errors(&serverless)
+        );
     }
 
     #[test]
