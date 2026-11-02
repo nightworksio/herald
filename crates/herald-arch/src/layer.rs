@@ -7,6 +7,10 @@ pub enum Layer {
     Ports,
     /// The fakes, the replaying `Http` and the conformance suites.
     Testing,
+    /// What siblings of a later layer share: records kept one per path,
+    /// later the SQL the SQL stores run, and what every source reads its
+    /// answers with.
+    Kits,
     /// One crate per source family.
     Sources,
     /// One crate per destination.
@@ -34,6 +38,7 @@ impl Layer {
             "herald-core" => Some(Self::Core),
             "herald-ports" => Some(Self::Ports),
             "herald-testing" => Some(Self::Testing),
+            "herald-records" | "herald-sql" | "herald-wire" => Some(Self::Kits),
             "herald-config" => Some(Self::Config),
             "herald-flows" => Some(Self::Flows),
             "herald-native" => Some(Self::Native),
@@ -63,6 +68,7 @@ impl Layer {
 fn outside_allowed(layer: Layer) -> &'static [&'static str] {
     match layer {
         Layer::Core => &[
+            "base64",
             "jiff",
             "minijinja",
             "pulldown-cmark",
@@ -71,9 +77,11 @@ fn outside_allowed(layer: Layer) -> &'static [&'static str] {
             "sha2",
             "unicode-segmentation",
         ],
-        Layer::Ports => &["jiff"],
-        Layer::Testing => &["jiff", "serde", "serde_json"],
-        Layer::Sources | Layer::Destinations => &["jiff", "schemars", "serde", "serde_json"],
+        Layer::Ports | Layer::Flows => &["jiff"],
+        Layer::Testing | Layer::Kits => &["jiff", "serde", "serde_json"],
+        Layer::Sources => &["jiff", "quick-xml", "schemars", "serde", "serde_json"],
+        Layer::Destinations => &["jiff", "schemars", "serde", "serde_json"],
+        Layer::Stores => &["base64", "jiff", "schemars", "serde", "serde_json"],
         Layer::Config => &["jiff", "schemars", "serde", "serde_json", "toml"],
         _ => &[],
     }
@@ -96,6 +104,9 @@ mod tests {
             ("herald-core", Layer::Core),
             ("herald-ports", Layer::Ports),
             ("herald-testing", Layer::Testing),
+            ("herald-records", Layer::Kits),
+            ("herald-sql", Layer::Kits),
+            ("herald-wire", Layer::Kits),
             ("herald-sources-forge", Layer::Sources),
             ("herald-dest-discord", Layer::Destinations),
             ("herald-store-sqlite", Layer::Stores),
@@ -128,6 +139,7 @@ mod tests {
             Layer::Core,
             Layer::Ports,
             Layer::Testing,
+            Layer::Kits,
             Layer::Sources,
             Layer::Destinations,
             Layer::Stores,
@@ -146,15 +158,25 @@ mod tests {
     #[test]
     fn a_layer_before_the_io_layers_names_only_its_allowed_outside_crates() {
         assert!(Layer::Core.allows_outside("sha2"));
+        assert!(Layer::Core.allows_outside("base64"));
         assert!(!Layer::Core.allows_outside("tokio"));
         assert!(!Layer::Ports.allows_outside("sha2"));
         assert!(Layer::Sources.allows_outside("serde_json"));
         assert!(!Layer::Sources.allows_outside("reqwest"));
+        assert!(Layer::Sources.allows_outside("quick-xml"));
+        assert!(!Layer::Destinations.allows_outside("quick-xml"));
         assert!(Layer::Testing.allows_outside("serde_json"));
         assert!(Layer::Ports.allows_outside("jiff"));
         assert!(Layer::Destinations.allows_outside("schemars"));
         assert!(Layer::Config.allows_outside("toml"));
+        assert!(Layer::Stores.allows_outside("base64"));
+        assert!(!Layer::Stores.allows_outside("rusqlite"));
         assert!(!Layer::Config.allows_outside("tokio"));
+        assert!(Layer::Flows.allows_outside("jiff"));
+        assert!(!Layer::Flows.allows_outside("reqwest"));
+        assert!(Layer::Kits.allows_outside("serde_json"));
+        assert!(!Layer::Kits.allows_outside("base64"));
+        assert!(Layer::Testing < Layer::Kits && Layer::Kits < Layer::Sources);
     }
 
     #[test]
@@ -162,5 +184,8 @@ mod tests {
         assert!(Layer::Native.allows_outside("tokio"));
         assert!(Layer::Drivers.allows_outside("axum"));
         assert!(Layer::Tooling.allows_outside("cargo_metadata"));
+        for layer in [Layer::Native, Layer::Drivers, Layer::Tooling] {
+            assert_eq!(outside_allowed(layer), [] as [&str; 0]);
+        }
     }
 }

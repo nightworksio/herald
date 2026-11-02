@@ -1,7 +1,7 @@
 use jiff::{SignedDuration, Timestamp};
 use serde::{Deserialize, Serialize};
 
-use crate::key::Key;
+use crate::key::{Key, RouteId};
 use crate::route::Thread;
 
 /// What housekeeping does to a thread.
@@ -19,6 +19,8 @@ pub enum Chore {
 pub struct Schedule {
     /// The announcement whose thread it is.
     pub key: Key,
+    /// The route that announced it, whose destination keeps the thread.
+    pub route: RouteId,
     /// The destination's id of the thread.
     pub thread: String,
     /// What to do to it.
@@ -27,10 +29,16 @@ pub struct Schedule {
     pub due: Timestamp,
 }
 
-/// The chores a route's `thread` asks for on the thread `id`, opened at
+/// The chores `route`'s `thread` asks for on the thread `id`, opened at
 /// `opened` for the announcement `key`.
 #[must_use]
-pub fn schedules(key: Key, thread: &Thread, id: &str, opened: Timestamp) -> Vec<Schedule> {
+pub fn schedules(
+    key: Key,
+    route: &RouteId,
+    thread: &Thread,
+    id: &str,
+    opened: Timestamp,
+) -> Vec<Schedule> {
     [
         (Chore::Archive, thread.archive_after),
         (Chore::Lock, thread.lock_after),
@@ -39,6 +47,7 @@ pub fn schedules(key: Key, thread: &Thread, id: &str, opened: Timestamp) -> Vec<
     .filter_map(|(chore, after)| {
         after.map(|after| Schedule {
             key,
+            route: route.clone(),
             thread: id.to_owned(),
             chore,
             due: later(opened, after),
@@ -65,7 +74,11 @@ fn later(at: Timestamp, after: SignedDuration) -> Timestamp {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::key::{Identity, RouteId};
+    use crate::key::Identity;
+
+    fn route() -> RouteId {
+        RouteId::new("route")
+    }
 
     fn key() -> Key {
         Key::derive(&RouteId::new("route"), &Identity::new("identity"))
@@ -90,16 +103,18 @@ mod tests {
             Some(SignedDuration::from_hours(24 * 30)),
         );
         assert_eq!(
-            schedules(key(), &thread, "42", at("2026-10-31T12:00:00Z")),
+            schedules(key(), &route(), &thread, "42", at("2026-10-31T12:00:00Z")),
             [
                 Schedule {
                     key: key(),
+                    route: route(),
                     thread: "42".to_owned(),
                     chore: Chore::Archive,
                     due: at("2026-11-14T12:00:00Z")
                 },
                 Schedule {
                     key: key(),
+                    route: route(),
                     thread: "42".to_owned(),
                     chore: Chore::Lock,
                     due: at("2026-11-30T12:00:00Z")
@@ -111,7 +126,13 @@ mod tests {
     #[test]
     fn a_thread_with_no_durations_has_no_chores() {
         assert_eq!(
-            schedules(key(), &thread(None, None), "42", at("2026-10-31T12:00:00Z")),
+            schedules(
+                key(),
+                &route(),
+                &thread(None, None),
+                "42",
+                at("2026-10-31T12:00:00Z")
+            ),
             []
         );
     }
@@ -119,7 +140,7 @@ mod tests {
     #[test]
     fn a_duration_past_the_end_of_time_falls_due_at_the_end_of_time() {
         let thread = thread(Some(SignedDuration::MAX), None);
-        let due = schedules(key(), &thread, "42", at("2026-10-31T12:00:00Z"));
+        let due = schedules(key(), &route(), &thread, "42", at("2026-10-31T12:00:00Z"));
         assert_eq!(
             due.iter().map(|schedule| schedule.due).collect::<Vec<_>>(),
             [Timestamp::MAX]
@@ -130,6 +151,7 @@ mod tests {
     fn the_schedules_due_are_those_at_or_before_now_the_earliest_first() {
         let schedule = |chore, due: &str| Schedule {
             key: key(),
+            route: route(),
             thread: "42".to_owned(),
             chore,
             due: at(due),
@@ -148,6 +170,7 @@ mod tests {
     fn a_schedule_round_trips_through_json() {
         let schedule = Schedule {
             key: key(),
+            route: route(),
             thread: "42".to_owned(),
             chore: Chore::Lock,
             due: at("2026-11-01T00:00:00Z"),

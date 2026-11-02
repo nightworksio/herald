@@ -86,6 +86,18 @@ impl fmt::Display for Request {
     }
 }
 
+/// The most bytes of a response body herald reads: the npm registry's
+/// packument of a long-lived package is the largest answer it asks for.
+pub const BODY_LIMIT: usize = 33_554_432;
+
+/// The `User-Agent` every request herald sends carries: herald, its version
+/// and its repository (ADR-0003).
+pub const USER_AGENT: &str = concat!(
+    "herald/",
+    env!("CARGO_PKG_VERSION"),
+    " (+https://github.com/nightworksio/herald)"
+);
+
 /// One response, as a value.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Response {

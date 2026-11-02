@@ -1,12 +1,13 @@
 use std::collections::BTreeMap;
 
 use herald_core::{Entry, Key, Marker};
-use herald_ports::{Markers, MarkersError};
+use herald_ports::{MarkedThread, Markers, MarkersError};
 
 /// A destination's posts, as the entries their markers make.
 #[derive(Debug, Default)]
 pub struct FakeMarkers {
     entries: BTreeMap<Key, (Marker, Entry)>,
+    threads: Vec<(Marker, MarkedThread)>,
     unreadable: bool,
 }
 
@@ -18,28 +19,51 @@ impl FakeMarkers {
         self
     }
 
+    /// The posts with one more by herald, carrying the route marker `route`,
+    /// from which `thread` was opened.
+    #[must_use]
+    pub fn with_thread(mut self, route: Marker, thread: MarkedThread) -> Self {
+        self.threads.push((route, thread));
+        self
+    }
+
     /// Posts that cannot be read.
     #[must_use]
     pub fn unreadable() -> Self {
         Self {
-            entries: BTreeMap::new(),
             unreadable: true,
+            ..Self::default()
         }
     }
-}
 
-impl Markers for FakeMarkers {
-    async fn entry(&self, key: &Key, marker: &Marker) -> Result<Option<Entry>, MarkersError> {
+    fn readable(&self) -> Result<(), MarkersError> {
         if self.unreadable {
             return Err(MarkersError::Unreadable {
                 reason: "the fake destination is unreadable".to_owned(),
             });
         }
+        Ok(())
+    }
+}
+
+impl Markers for FakeMarkers {
+    async fn entry(&self, key: &Key, marker: &Marker) -> Result<Option<Entry>, MarkersError> {
+        self.readable()?;
         Ok(self
             .entries
             .get(key)
             .filter(|(carried, _)| carried == marker)
             .map(|(_, entry)| entry.clone()))
+    }
+
+    async fn threads(&self, route: &Marker) -> Result<Vec<MarkedThread>, MarkersError> {
+        self.readable()?;
+        Ok(self
+            .threads
+            .iter()
+            .filter(|(carried, _)| carried == route)
+            .map(|(_, thread)| thread.clone())
+            .collect())
     }
 }
 
@@ -64,6 +88,28 @@ mod tests {
             None
         );
         assert!(pollster::block_on(FakeMarkers::unreadable().entry(&key, &marker)).is_err());
+    }
+
+    #[test]
+    fn the_threads_of_posts_carrying_a_route_marker_are_listed() {
+        let thread = MarkedThread {
+            thread: "7".to_owned(),
+            opened: jiff::Timestamp::UNIX_EPOCH,
+            archived: false,
+            locked: false,
+        };
+        let markers = FakeMarkers::default().with_thread(Marker::of(b"route"), thread.clone());
+        assert_eq!(
+            pollster::block_on(markers.threads(&Marker::of(b"route"))).unwrap(),
+            [thread]
+        );
+        assert_eq!(
+            pollster::block_on(markers.threads(&Marker::of(b"other"))).unwrap(),
+            []
+        );
+        assert!(
+            pollster::block_on(FakeMarkers::unreadable().threads(&Marker::of(b"route"))).is_err()
+        );
     }
 
     #[test]

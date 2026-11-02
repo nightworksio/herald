@@ -78,19 +78,22 @@ pub(crate) const EXTENSIONS: Options =
 const BREAK: char = '\u{200B}';
 const SIGILS: [char; 4] = ['@', '\u{FF20}', '\u{FE6B}', '#'];
 const PILLS: &str = "https://matrix.to/";
+/// The schemes a link keeps its target with.
+pub const LINK_SCHEMES: [&str; 3] = ["https://", "http://", "mailto:"];
 
 fn parser(markdown: &str) -> Parser<'_> {
     Parser::new_ext(markdown, EXTENSIONS)
 }
 
 fn linkable(url: &str, dialect: Dialect) -> bool {
-    let web = ["https://", "http://", "mailto:"]
-        .iter()
-        .any(|scheme| url.starts_with(scheme));
+    let web = LINK_SCHEMES.iter().any(|scheme| url.starts_with(scheme));
     web && !(dialect == Dialect::Matrix && url.starts_with(PILLS))
 }
 
-fn safe_url(url: &str) -> String {
+/// `url` with every byte that could end a Markdown link or open markup in
+/// it percent-encoded.
+#[must_use]
+pub fn safe_url(url: &str) -> String {
     url.bytes()
         .map(|byte| {
             if byte.is_ascii_graphic() && !b"\"'<>\\^`{|}()[]".contains(&byte) {

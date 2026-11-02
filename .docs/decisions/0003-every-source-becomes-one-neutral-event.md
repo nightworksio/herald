@@ -41,14 +41,23 @@ GitHub release should render a Forgejo release unchanged.
      - GitLab's release hook and a GitLab CI tag pipeline;
      - Forgejo's and Gitea's `release` event and Forgejo Actions' event file.
 
-     A release event announces on `published` only, and a draft never
-     announces.
+     A release event announces a published release only: GitHub's and
+     Forgejo's `published`, and GitLab's `create`. A draft never announces,
+     nor does a release GitLab's API calls upcoming.
    - **`herald-sources-registry`** parses Packagist's `p2` metadata, crates.io's
-     versions API, the npm registry's packument, and Docker Hub's tags API. A
-     Docker Hub tag is announced when it matches the route's tag pattern, so
-     moving tags such as `latest` stay quiet.
-   - **`herald-sources-feed`** parses RSS 2.0 and Atom 1.0. An entry's HTML is
-     sanitised and converted to Markdown.
+     versions API, the npm registry's packument, and Docker Hub's tags API.
+     A poll reads a package's 30 newest versions. A yanked crate and an
+     unpublished npm version are not versions. A route's `versions` pattern,
+     such as `"*.*.*"`, takes only the versions that match it, so a Docker Hub
+     tag that moves, such as `latest`, stays quiet; doctor notes a route that
+     takes Docker Hub tags without one.
+   - **`herald-sources-feed`** parses RSS 2.0, RSS 1.0 and Atom 1.0. An
+     entry's HTML is converted to Markdown: paragraphs, headings, emphasis,
+     code, lists, quotes and links to the web or mail are kept, scripts,
+     styles and every other element are dropped with what they hold, and its
+     text is escaped so that nothing in it reads as markup. An entry that
+     gives no time of its own takes the time of the answer, and its link is
+     the event's `entry` link.
    - **`herald-sources-app`** parses herald's own event JSON, published as a
      JSON Schema beside the config's (ADR-0006). The CLI reads it from a file
      or standard input, and the HTTP API from a request body.
@@ -82,8 +91,10 @@ GitHub release should render a Forgejo release unchanged.
 
 5. **How each family reaches herald, by layer** (ADR-0002):
    - **Forge releases.** On Actions, `herald announce --from github` reads the
-     run's event, as do `--from gitlab` on GitLab CI and `--from forgejo` on
-     Forgejo Actions. At layer two and up, a verified webhook reaches the
+     run's event, as does `--from forgejo` on Forgejo Actions. On a GitLab CI
+     tag pipeline, `--from gitlab` asks the releases API for the pipeline's
+     tag with the job's token, and names the project from the pipeline's
+     variables. At layer two and up, a verified webhook reaches the
      endpoint (ADR-0007). At every layer, a scheduled poll of the releases
      API reaches repositories that are not the workflow's own.
    - **Registries and feeds** are polled on a schedule at every layer.
@@ -91,7 +102,9 @@ GitHub release should render a Forgejo release unchanged.
      through the HTTP API at layer two and up.
 
 6. **Parsers are bounded and refuse what they cannot read.** Each parser caps
-   the size it reads. The XML parser expands no entity it does not know.
+   the size it reads, and herald reads no response body past 32 MiB. The XML
+   parser expands no entity it does not know, and keeps an unknown reference
+   as text.
    Malformed input becomes an error naming the source and the field, never a
    panic. Every parser is fuzzed (ADR-0008).
 

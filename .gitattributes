@@ -17,6 +17,7 @@
 /CONTRIBUTING.md export-ignore
 /fuzz export-ignore
 /SECURITY.md export-ignore
+/cliff.toml export-ignore
 /clippy.toml export-ignore
 /deny.toml export-ignore
 /lychee.toml export-ignore

@@ -1,0 +1,203 @@
+{
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "url": "https://discord.com/api/v10/users/@me",
+        "headers": {
+          "Authorization": "Bot «secret:HERALD_DISCORD_TOKEN»",
+          "User-Agent": "DiscordBot (https://github.com/nightworksio/herald, 0.0.0)"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "id": "1566190000000000099",
+          "username": "herald",
+          "bot": true
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "url": "https://discord.com/api/v10/channels/1566184281406177531/messages?limit=100",
+        "headers": {
+          "Authorization": "Bot «secret:HERALD_DISCORD_TOKEN»",
+          "User-Agent": "DiscordBot (https://github.com/nightworksio/herald, 0.0.0)"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": [
+          {
+            "id": "1566200000000000061",
+            "channel_id": "1566184281406177531",
+            "type": 0,
+            "content": "",
+            "author": {
+              "id": "1566190000000000099",
+              "username": "herald",
+              "bot": true
+            },
+            "embeds": [
+              {
+                "title": "📦 php-mutation-gate v0.1.0",
+                "description": "## Added",
+                "color": 14916134,
+                "timestamp": "2026-10-31T12:00:00Z",
+                "url": "https://github.com/nightworksio/php-mutation-gate/releases/tag/v0.1.0#herald-b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6.a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5"
+              }
+            ],
+            "flags": 1,
+            "pinned": false,
+            "timestamp": "2026-10-31T12:00:01.000000+00:00",
+            "thread": {
+              "id": "1566200000000000061",
+              "type": 11,
+              "parent_id": "1566184281406177531",
+              "name": "v0.1.0",
+              "thread_metadata": {
+                "archived": false,
+                "locked": false,
+                "auto_archive_duration": 10080,
+                "archive_timestamp": "2026-10-31T12:00:02.000000+00:00",
+                "create_timestamp": "2026-10-31T12:00:02.000000+00:00"
+              }
+            }
+          },
+          {
+            "id": "1566200000000000062",
+            "channel_id": "1566184281406177531",
+            "type": 0,
+            "content": "",
+            "author": {
+              "id": "1566190000000000099",
+              "username": "herald",
+              "bot": true
+            },
+            "embeds": [
+              {
+                "title": "📦 php-mutation-gate v0.1.0",
+                "description": "## Added",
+                "color": 14916134,
+                "timestamp": "2026-10-31T12:00:00Z",
+                "url": "https://github.com/nightworksio/php-mutation-gate/releases/tag/v0.1.0#herald-b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6.a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5"
+              }
+            ],
+            "flags": 1,
+            "pinned": false,
+            "timestamp": "2026-10-24T12:00:01.000000+00:00",
+            "thread": {
+              "id": "1566200000000000062",
+              "type": 11,
+              "parent_id": "1566184281406177531",
+              "name": "v0.1.0",
+              "thread_metadata": {
+                "archived": true,
+                "locked": false,
+                "auto_archive_duration": 10080,
+                "archive_timestamp": "2026-10-31T12:00:02.000000+00:00"
+              }
+            }
+          },
+          {
+            "id": "1566200000000000063",
+            "channel_id": "1566184281406177531",
+            "type": 0,
+            "content": "",
+            "author": {
+              "id": "1566190000000000777",
+              "username": "someone",
+              "bot": false
+            },
+            "embeds": [
+              {
+                "title": "📦 php-mutation-gate v0.1.0",
+                "description": "## Added",
+                "color": 14916134,
+                "timestamp": "2026-10-31T12:00:00Z",
+                "url": "https://github.com/nightworksio/php-mutation-gate/releases/tag/v0.1.0#herald-b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6.a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5"
+              }
+            ],
+            "flags": 1,
+            "pinned": false,
+            "timestamp": "2026-10-31T12:00:01.000000+00:00",
+            "thread": {
+              "id": "1566200000000000063",
+              "type": 11,
+              "parent_id": "1566184281406177531",
+              "name": "v0.1.0",
+              "thread_metadata": {
+                "archived": false,
+                "locked": false,
+                "auto_archive_duration": 10080,
+                "archive_timestamp": "2026-10-31T12:00:02.000000+00:00",
+                "create_timestamp": "2026-10-31T12:00:02.000000+00:00"
+              }
+            }
+          },
+          {
+            "id": "1566200000000000064",
+            "channel_id": "1566184281406177531",
+            "type": 0,
+            "content": "",
+            "author": {
+              "id": "1566190000000000099",
+              "username": "herald",
+              "bot": true
+            },
+            "embeds": [
+              {
+                "title": "📦 php-mutation-gate v0.1.0",
+                "description": "## Added",
+                "color": 14916134,
+                "timestamp": "2026-10-31T12:00:00Z",
+                "url": "https://github.com/nightworksio/php-mutation-gate/releases/tag/v0.1.0#herald-c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7.a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5"
+              }
+            ],
+            "flags": 1,
+            "pinned": false,
+            "timestamp": "2026-10-31T12:00:01.000000+00:00",
+            "thread": {
+              "id": "1566200000000000064",
+              "type": 11,
+              "parent_id": "1566184281406177531",
+              "name": "v0.1.0",
+              "thread_metadata": {
+                "archived": false,
+                "locked": false,
+                "auto_archive_duration": 10080,
+                "archive_timestamp": "2026-10-31T12:00:02.000000+00:00",
+                "create_timestamp": "2026-10-31T12:00:02.000000+00:00"
+              }
+            }
+          },
+          {
+            "id": "1566200000000000065",
+            "channel_id": "1566184281406177531",
+            "type": 0,
+            "content": "",
+            "author": {
+              "id": "1566190000000000099",
+              "username": "herald",
+              "bot": true
+            },
+            "embeds": [
+              {
+                "title": "📦 php-mutation-gate v0.1.0",
+                "description": "## Added",
+                "color": 14916134,
+                "timestamp": "2026-10-31T12:00:00Z",
+                "url": "https://github.com/nightworksio/php-mutation-gate/releases/tag/v0.1.0#herald-b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6.a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5"
+              }
+            ],
+            "flags": 1,
+            "pinned": false,
+            "timestamp": "2026-10-31T12:00:01.000000+00:00"
+          }
+        ]
+      }
+    }
+  ]
+}

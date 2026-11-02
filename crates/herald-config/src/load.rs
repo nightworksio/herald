@@ -2,11 +2,13 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::ops::Range;
 
 use herald_core::{DestinationName, RouteId, SourceName, TemplateName};
+use herald_sources_forge::Forge;
+use herald_sources_registry::Registry;
 use serde::de::DeserializeOwned;
 use toml::Spanned;
 use toml::de::{DeTable, DeValue, ValueDeserializer};
 
-use crate::config::{App, Config, Destination, Schedule, Source, StoreKind};
+use crate::config::{App, Config, Destination, Schedule, Source, Store};
 use crate::error::{ConfigError, Errors};
 use crate::file::{AppFile, MarkersFile, NoOptions, ScheduleFile, TemplateFile};
 use crate::position::position;
@@ -28,7 +30,6 @@ const SECTIONS: [&str; 9] = [
     "schedule",
 ];
 const DESTINATION_KINDS: [&str; 1] = ["discord"];
-const SOURCE_KINDS: [&str; 1] = ["github"];
 /// The length of a SHA-256 in hex.
 const HASH_DIGITS: usize = 64;
 
@@ -253,7 +254,7 @@ impl Loader<'_> {
         }
     }
 
-    fn store(&mut self, value: Option<Value<'_>>) -> Option<StoreKind> {
+    fn store(&mut self, value: Option<Value<'_>>) -> Option<Store> {
         let Some(value) = value else {
             self.error(
                 &(0..0),
@@ -262,13 +263,33 @@ impl Loader<'_> {
             );
             return None;
         };
-        let names: Vec<&str> = StoreKind::ALL.iter().map(|(name, _)| *name).collect();
-        let (kind, rest) = self.kinded(value, "store", &names)?;
+        let (kind, rest) = self.kinded(value, "store", &Store::KINDS)?;
+        if kind == "git-branch" {
+            return self
+                .typed::<herald_store_git_branch::StoreOptions>(rest, "store")
+                .map(Store::GitBranch);
+        }
+        if kind == "actions-cache" {
+            return self
+                .typed::<herald_store_actions_cache::StoreOptions>(rest, "store")
+                .map(Store::ActionsCache);
+        }
+        if kind == "repo-variables" {
+            return self
+                .typed::<herald_store_repo_variables::StoreOptions>(rest, "store")
+                .map(Store::RepoVariables);
+        }
         self.typed::<NoOptions>(rest, "store")?;
-        StoreKind::ALL
-            .iter()
-            .find(|(name, _)| *name == kind)
-            .map(|(_, store)| *store)
+        [
+            Store::Sqlite,
+            Store::Postgres,
+            Store::D1,
+            Store::Dynamodb,
+            Store::DenoKv,
+            Store::Markers,
+        ]
+        .into_iter()
+        .find(|store| store.kind() == kind)
     }
 
     fn destinations(
@@ -302,11 +323,36 @@ impl Loader<'_> {
         let mut sources = BTreeMap::new();
         for (name, value) in self.named(value, "sources") {
             let path = format!("sources.{name}");
-            let Some((_, rest)) = self.kinded(value, &path, &SOURCE_KINDS) else {
+            let span = value.span();
+            let Some((kind, rest)) = self.kinded(value, &path, &Source::KINDS) else {
                 continue;
             };
-            if let Some(options) = self.typed::<herald_sources_forge::SourceOptions>(rest, &path) {
-                sources.insert(SourceName::new(name), Source::GitHub(options));
+            let source = if kind == "feed" {
+                self.typed::<herald_sources_feed::FeedOptions>(rest, &path)
+                    .map(Source::Feed)
+            } else if let Some(forge) = Forge::ALL.into_iter().find(|forge| forge.kind() == kind) {
+                self.typed::<herald_sources_forge::SourceOptions>(rest, &path)
+                    .map(|options| Source::Forge(forge, options))
+            } else {
+                let registry = Registry::ALL
+                    .into_iter()
+                    .find(|registry| registry.kind() == kind)
+                    .unwrap_or(Registry::Packagist);
+                let options = self.typed::<herald_sources_registry::RegistryOptions>(rest, &path);
+                match options {
+                    Some(options) if options.token.is_some() && !registry.takes_token() => {
+                        self.error(
+                            &span,
+                            &format!("{path}.token"),
+                            format!("the registry \"{kind}\" takes no token; remove token"),
+                        );
+                        None
+                    }
+                    options => options.map(|options| Source::Registry(registry, options)),
+                }
+            };
+            if let Some(source) = source {
+                sources.insert(SourceName::new(name), source);
             }
         }
         sources

@@ -93,3 +93,4 @@ release workflow is red.
 - [ADR-0004](0004-each-destination-gets-its-own-dialect-limits-and-features.md): crossposts, threads, roles and the fixture server's base URL
 - [ADR-0006](0006-one-herald-toml-with-sandboxed-templates-and-a-published-schema.md): the first user's config
 - [ADR-0009](0009-herald-ships-as-binaries-an-action-an-image-and-a-wasm-build.md): the Action's download and build paths
+- [ADR-0012](0012-a-release-is-drafted-by-the-bot-signed-by-the-maintainer-and-published-after-the-full-gate.md): the release workflow that announces itself

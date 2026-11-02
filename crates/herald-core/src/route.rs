@@ -2,6 +2,7 @@ use jiff::SignedDuration;
 
 use crate::event::{Event, Kind};
 use crate::key::RouteId;
+use crate::pattern::Pattern;
 
 macro_rules! name {
     ($(#[$doc:meta])* $name:ident) => {
@@ -112,6 +113,9 @@ pub struct Filter {
     pub kinds: Vec<Kind>,
     /// Which pre-releases it takes.
     pub prereleases: Prereleases,
+    /// The versions it takes; every event, with a version or without, where
+    /// absent.
+    pub versions: Option<Pattern>,
 }
 
 impl Filter {
@@ -123,9 +127,15 @@ impl Filter {
             Prereleases::Exclude => !event.prerelease(),
             Prereleases::Only => event.prerelease(),
         };
+        let version = self.versions.as_ref().is_none_or(|pattern| {
+            event
+                .version()
+                .is_some_and(|version| pattern.matches(version))
+        });
         self.sources.contains(source)
             && (self.kinds.is_empty() || self.kinds.contains(&event.kind()))
             && prerelease
+            && version
     }
 }
 
@@ -219,6 +229,7 @@ pub(crate) mod tests {
                 sources: vec![SourceName::new(source)],
                 kinds: vec![],
                 prereleases: Prereleases::Include,
+                versions: None,
             },
             destination: DestinationName::new("discord"),
             template: TemplateName::new("package-release"),
@@ -281,6 +292,25 @@ pub(crate) mod tests {
                 "{prereleases:?}"
             );
         }
+    }
+
+    #[test]
+    fn a_route_with_versions_takes_an_event_whose_version_matches_only() {
+        let mut route = route_for("r", "php-mutation-gate");
+        route.filter.versions = Some(Pattern::new("v*.*.*"));
+        assert!(route.filter.takes(&source(), &event()));
+        route.filter.versions = Some(Pattern::new("*-alpine"));
+        assert!(!route.filter.takes(&source(), &event()));
+        let unversioned = Event::normalise(Draft {
+            kind: Kind::FeedEntry,
+            version: None,
+            ..draft()
+        })
+        .unwrap();
+        route.filter.versions = Some(Pattern::new("*"));
+        assert!(!route.filter.takes(&source(), &unversioned));
+        route.filter.versions = None;
+        assert!(route.filter.takes(&source(), &unversioned));
     }
 
     #[test]

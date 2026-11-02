@@ -2,9 +2,9 @@ use std::fmt;
 
 use herald_core::Problem;
 
-/// Why a forge's answer could not become events.
+/// Why what a source was handed could not become events.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ForgeError {
+pub enum SourceError {
     /// The input is larger than a parser reads.
     TooLarge {
         /// What was read.
@@ -12,7 +12,7 @@ pub enum ForgeError {
         /// The most bytes read.
         limit: usize,
     },
-    /// The input is not what the forge sends.
+    /// The input is not what the source sends.
     Unreadable {
         /// What was read.
         what: &'static str,
@@ -26,7 +26,7 @@ pub enum ForgeError {
         /// Why it makes no event.
         problem: Problem,
     },
-    /// The forge answered with a status that is not an answer.
+    /// The source answered with a status that is not an answer.
     Answered {
         /// What was asked for.
         what: &'static str,
@@ -35,7 +35,7 @@ pub enum ForgeError {
     },
 }
 
-impl fmt::Display for ForgeError {
+impl fmt::Display for SourceError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::TooLarge { what, limit } => {

@@ -1,0 +1,173 @@
+# herald's Action (ADR-0009, ADR-0012): at a release tag, at a release line's
+# tag such as v0.1, or given a release, it downloads that release's binary
+# and checks it against the release's SHA256SUMS; at any other ref, such as
+# a commit SHA, it builds the CLI from its own checkout.
+name: herald
+description: Announce every release to Discord, Matrix, Slack and the Fediverse, from one herald.toml.
+author: NightWorksIO
+branding:
+  icon: volume-2
+  color: yellow
+
+inputs:
+  command:
+    description: What to run, announce (the run's release), poll (every source for what it has not seen) or housekeep (archive and lock threads that fell due).
+    default: announce
+  config:
+    description: The config to read.
+    default: herald.toml
+  token:
+    description: The token for the git-branch store and GitHub's API; the run's own where not given.
+    default: ${{ github.token }}
+  release:
+    description: The release whose binary to run, such as v0.1.0; the ref the Action is called at where that names a release or a release line.
+    default: ""
+  tag:
+    description: A release of the run's repository to announce, by its tag, where the run's event is not that release.
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    - name: Choose a release or a build
+      id: source
+      shell: bash
+      env:
+        ACTION_REF: ${{ github.action_ref }}
+        ACTION_REPOSITORY: ${{ github.action_repository || github.repository }}
+        RELEASE: ${{ inputs.release }}
+        GH_TOKEN: ${{ inputs.token }}
+      run: |
+        version='^v[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.-]+)?$'
+        line='^v[0-9]+(\.[0-9]+)?$'
+        if [[ -n "$RELEASE" && ! "$RELEASE" =~ $version ]]; then
+          echo "::error::herald's release input names a release such as v0.1.0"
+          exit 1
+        fi
+        release="${RELEASE:-$ACTION_REF}"
+        if [[ -z "$RELEASE" && "$ACTION_REF" =~ $line ]]; then
+          release=$(gh release list --repo "$ACTION_REPOSITORY" --limit 100 \
+            --exclude-drafts --exclude-pre-releases --json tagName \
+            | jq -r --arg line "$ACTION_REF." '[.[].tagName
+                | select(test("^v[0-9]+\\.[0-9]+\\.[0-9]+$") and startswith($line))]
+              | sort_by(ltrimstr("v") | split(".") | map(tonumber)) | last // empty')
+          if [[ -z "$release" ]]; then
+            echo "::error::herald has no release on the line $ACTION_REF"
+            exit 1
+          fi
+          echo "herald's line $ACTION_REF is at $release."
+        fi
+        if [[ "$release" =~ $version ]]; then
+          echo "release=$release" >> "$GITHUB_OUTPUT"
+        else
+          echo "release=" >> "$GITHUB_OUTPUT"
+        fi
+
+    - name: Download the release's binary and check it
+      id: download
+      if: steps.source.outputs.release != ''
+      shell: bash
+      env:
+        RELEASE: ${{ steps.source.outputs.release }}
+        ACTION_REPOSITORY: ${{ github.action_repository || github.repository }}
+        GH_TOKEN: ${{ inputs.token }}
+      run: |
+        case "$RUNNER_OS/$RUNNER_ARCH" in
+          Linux/X64) target=x86_64-unknown-linux-musl ;;
+          Linux/ARM64) target=aarch64-unknown-linux-musl ;;
+          macOS/X64) target=x86_64-apple-darwin ;;
+          macOS/ARM64) target=aarch64-apple-darwin ;;
+          Windows/X64) target=x86_64-pc-windows-msvc ;;
+          Windows/ARM64) target=aarch64-pc-windows-msvc ;;
+          *) echo "::error::herald has no binary for $RUNNER_OS on $RUNNER_ARCH"; exit 1 ;;
+        esac
+        directory="$RUNNER_TEMP/herald"
+        mkdir -p "$directory"
+        gh release download "$RELEASE" --repo "$ACTION_REPOSITORY" \
+          --pattern "herald-$target.*" --pattern SHA256SUMS --dir "$directory"
+        cd "$directory"
+        if command -v sha256sum > /dev/null; then
+          sha256sum --check --ignore-missing --strict SHA256SUMS
+        else
+          shasum --algorithm 256 --check --ignore-missing --strict SHA256SUMS
+        fi
+        archive=$(ls "herald-$target".*)
+        tar -xf "$archive"
+        binary="$directory/herald"
+        [[ "$RUNNER_OS" == Windows ]] && binary="$binary.exe"
+        echo "binary=$binary" >> "$GITHUB_OUTPUT"
+        echo "herald $RELEASE, checked against the release's SHA256SUMS."
+
+    - name: Key the build by its exact sources
+      id: sources
+      if: steps.source.outputs.release == ''
+      shell: bash
+      working-directory: ${{ github.action_path }}
+      run: |
+        if command -v sha256sum > /dev/null; then
+          sum=(sha256sum)
+        else
+          sum=(shasum --algorithm 256)
+        fi
+        tree=$(find Cargo.toml Cargo.lock rust-toolchain.toml crates -type f | LC_ALL=C sort \
+          | xargs "${sum[@]}" | "${sum[@]}" | cut -d ' ' -f 1)
+        echo "key=herald-build-$RUNNER_OS-$RUNNER_ARCH-$tree" >> "$GITHUB_OUTPUT"
+
+    # Only a build of these exact sources, toolchain and runner is restored,
+    # and never one by prefix.
+    - name: Restore the dependencies' build
+      if: steps.source.outputs.release == ''
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ${{ github.action_path }}/target
+        key: ${{ steps.sources.outputs.key }}
+
+    # Every workspace crate, and so the binary, compiles from the checkout:
+    # only the dependencies' build comes from the cache.
+    - name: Build herald from source
+      id: build
+      if: steps.source.outputs.release == ''
+      shell: bash
+      working-directory: ${{ github.action_path }}
+      run: |
+        echo "herald builds from source at this commit, as it is not pinned to a release."
+        packages=$(cargo metadata --locked --no-deps --format-version 1 | jq -r '.packages[] | "--package=" + .name')
+        # shellcheck disable=SC2086
+        cargo clean --locked --release $packages
+        cargo build --locked --release --package herald
+        binary="$PWD/target/release/herald"
+        [[ "$RUNNER_OS" == Windows ]] && binary="$binary.exe"
+        echo "binary=$binary" >> "$GITHUB_OUTPUT"
+
+    # The cache service's address and the run's token reach only JavaScript
+    # actions, so this step hands them on, masked, for the actions-cache store.
+    - name: Hand on the Actions cache's address and token
+      id: runtime
+      uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+      with:
+        script: |
+          const token = process.env.ACTIONS_RUNTIME_TOKEN ?? "";
+          if (token) {
+            core.setSecret(token);
+          }
+          core.setOutput("token", token);
+          core.setOutput("results", process.env.ACTIONS_RESULTS_URL ?? "");
+
+    - name: Run herald
+      shell: bash
+      env:
+        ACTIONS_RESULTS_URL: ${{ steps.runtime.outputs.results }}
+        ACTIONS_RUNTIME_TOKEN: ${{ steps.runtime.outputs.token }}
+        HERALD: ${{ steps.download.outputs.binary || steps.build.outputs.binary }}
+        GITHUB_TOKEN: ${{ inputs.token }}
+        COMMAND: ${{ inputs.command }}
+        CONFIG: ${{ inputs.config }}
+        TAG: ${{ inputs.tag }}
+      run: |
+        case "$COMMAND" in
+          announce) set -- announce --from github ${TAG:+--release "$TAG"} ;;
+          poll) set -- poll ;;
+          housekeep) set -- housekeep ;;
+          *) echo "::error::herald's command input is announce, poll or housekeep"; exit 1 ;;
+        esac
+        "$HERALD" --config "$CONFIG" "$@"

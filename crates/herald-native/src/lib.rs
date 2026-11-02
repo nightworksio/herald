@@ -1,8 +1,14 @@
 //! herald's ports implemented for native targets, which the CLI, the Lambda
 //! and the server construct theirs from (ADR-0001).
 
+mod crypto;
+mod environment;
 mod http;
+mod random;
 mod reach;
 
-pub use http::{BuildError, NativeHttp};
+pub use crypto::{RingSigner, RingVerifier};
+pub use environment::{EnvSecrets, SystemClock};
+pub use http::{BuildError, ConnectError, NativeHttp};
+pub use random::random_secret;
 pub use reach::{Reach, ReachError};

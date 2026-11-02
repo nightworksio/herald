@@ -103,11 +103,24 @@ pub struct Profile {
 
 impl Features {
     /// The options of `delivery` a destination with these features cannot do,
-    /// by the key a route writes each under.
+    /// by the key a route writes each under. A destination whose every post
+    /// opens a thread of its own, as a Discord forum's does, takes `thread`
+    /// whatever this says.
     #[must_use]
     pub fn lacking(&self, delivery: &crate::Delivery) -> Vec<&'static str> {
+        let threads = self.threads != Threads::None;
+        let thread = delivery.thread.as_ref();
         [
             (delivery.crosspost && !self.crosspost, "crosspost"),
+            (thread.is_some() && !threads, "thread"),
+            (
+                thread.is_some_and(|thread| thread.archive_after.is_some()) && !threads,
+                "thread.archive_after",
+            ),
+            (
+                thread.is_some_and(|thread| thread.lock_after.is_some()) && !threads,
+                "thread.lock_after",
+            ),
             (delivery.pin.is_some() && self.pins == Pins::None, "pin"),
             (
                 !delivery.mentions.roles.is_empty() && self.mentions != MentionStyle::Roles,
@@ -127,7 +140,9 @@ impl Features {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{Delivery, Mentions, Pinning, RoleId};
+    use jiff::SignedDuration;
+
+    use crate::{Delivery, Mentions, Pinning, RoleId, Thread};
 
     fn features(mentions: MentionStyle) -> Features {
         Features {
@@ -210,5 +225,39 @@ mod tests {
             ..features(MentionStyle::Roles)
         };
         assert_eq!(able.lacking(&delivery), Vec::<&str>::new());
+    }
+
+    #[test]
+    fn a_thread_and_its_chores_are_lacking_where_the_destination_has_no_threads() {
+        let after = Some(SignedDuration::from_hours(24));
+        let delivery = Delivery {
+            thread: Some(Thread {
+                name: "{{ event.version }}".to_owned(),
+                archive_after: after,
+                lock_after: after,
+            }),
+            ..asking(&[], false)
+        };
+        assert_eq!(
+            features(MentionStyle::Roles).lacking(&delivery),
+            ["thread", "thread.archive_after", "thread.lock_after"]
+        );
+        let threaded = Features {
+            threads: Threads::FromMessage,
+            ..features(MentionStyle::Roles)
+        };
+        assert_eq!(threaded.lacking(&delivery), Vec::<&str>::new());
+        let named_only = Delivery {
+            thread: Some(Thread {
+                name: "{{ event.version }}".to_owned(),
+                archive_after: None,
+                lock_after: None,
+            }),
+            ..asking(&[], false)
+        };
+        assert_eq!(
+            features(MentionStyle::Roles).lacking(&named_only),
+            ["thread"]
+        );
     }
 }

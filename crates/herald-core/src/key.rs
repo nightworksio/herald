@@ -8,7 +8,8 @@ const DOMAIN: &[u8] = b"herald/key/v1\0";
 const HEX_DIGITS: usize = 64;
 
 /// A route's stable id, as the config names it.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(transparent)]
 pub struct RouteId(String);
 
 impl RouteId {
@@ -74,11 +75,20 @@ impl fmt::Display for Key {
     }
 }
 
-pub(crate) fn hex(bytes: &[u8]) -> String {
+/// `bytes` in lowercase hex.
+#[must_use]
+pub fn hex(bytes: &[u8]) -> String {
     bytes.iter().fold(String::new(), |mut text, byte| {
         let _ = write!(text, "{byte:02x}");
         text
     })
+}
+
+/// The SHA-256 of `text`, in lowercase hex: what identifies a thing that
+/// names itself nowhere else.
+#[must_use]
+pub fn digest(text: &str) -> String {
+    hex(&Sha256::digest(text.as_bytes()))
 }
 
 /// A text that is not a key: anything but 64 lowercase hex digits.
@@ -131,6 +141,14 @@ mod tests {
 
     fn key(route: &str, identity: &str) -> Key {
         Key::derive(&RouteId::new(route), &Identity::new(identity))
+    }
+
+    #[test]
+    fn a_digest_is_the_sha_256_of_the_text_in_hex() {
+        assert_eq!(
+            digest("abc"),
+            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+        );
     }
 
     #[test]

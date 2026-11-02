@@ -126,6 +126,11 @@ pub(crate) struct RouteFile {
     /// Which pre-releases it takes.
     #[serde(default)]
     pub(crate) prereleases: Prereleases,
+    /// The versions it takes, as a pattern in which `*` stands for any run
+    /// of characters and `?` for any one, such as `"*.*.*"`, which leaves
+    /// out a Docker Hub tag such as `latest`; every version where absent.
+    #[schemars(with = "Option<String>")]
+    pub(crate) versions: Option<Spanned<String>>,
     /// The destination it announces to.
     #[schemars(with = "String")]
     pub(crate) destination: Spanned<String>,
@@ -146,11 +151,12 @@ pub(crate) struct RouteFile {
 }
 
 /// The keys every route may give, whatever its destination.
-pub(crate) const ROUTE_KEYS: [&str; 10] = [
+pub(crate) const ROUTE_KEYS: [&str; 11] = [
     "id",
     "sources",
     "kinds",
     "prereleases",
+    "versions",
     "destination",
     "template",
     "crosspost",

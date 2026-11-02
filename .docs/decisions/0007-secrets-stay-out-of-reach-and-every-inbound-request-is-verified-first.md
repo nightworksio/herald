@@ -34,6 +34,16 @@ part of theirs.
    - **Redaction.** Every error, log line and dry run redacts secrets by name,
      as `«secret:HERALD_DISCORD_TOKEN»`. Credentials that travel in a URL, a
      webhook's path or query, are redacted the same way.
+   - **Scrubbing.** Whatever reaches the CLI's output, a server's echo of a
+     credential included, passes through one writer. It knows every secret
+     the run may resolve: the config's, `GITHUB_TOKEN`,
+     `ACTIONS_RUNTIME_TOKEN` and `CI_JOB_TOKEN`, and each line of a value
+     that spans lines.
+     - **How it matches.** Line by line and in one pass, the longest value
+       first, it writes each as `«secret:NAME»`.
+     - **What it leaves.** A value shorter than 8 characters is left as it
+       is, since scrubbing it would rewrite ordinary words. On Actions the
+       masking still hides it.
 
 2. **Event data never reaches a shell.**
    - **The Action.** `action.yml` hands the CLI the event through the file

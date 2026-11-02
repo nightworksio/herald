@@ -23,11 +23,11 @@ enum StoreSchema {
     /// The destinations' own posts.
     Markers {},
     /// One file per record on a `herald-state` branch.
-    GitBranch {},
+    GitBranch(herald_store_git_branch::StoreOptions),
     /// Generations of the GitHub Actions cache.
-    ActionsCache {},
+    ActionsCache(herald_store_actions_cache::StoreOptions),
     /// The repository's variables.
-    RepoVariables {},
+    RepoVariables(herald_store_repo_variables::StoreOptions),
 }
 
 /// A destination, by its kind.
@@ -49,6 +49,22 @@ enum SourceSchema {
     /// A GitHub repository's releases.
     #[serde(rename = "github")]
     GitHub(herald_sources_forge::SourceOptions),
+    /// A GitLab project's releases.
+    #[serde(rename = "gitlab")]
+    GitLab(herald_sources_forge::SourceOptions),
+    /// A Forgejo or Gitea repository's releases.
+    Forgejo(herald_sources_forge::SourceOptions),
+    /// A package's versions on Packagist.
+    Packagist(herald_sources_registry::RegistryOptions),
+    /// A crate's versions on crates.io.
+    #[serde(rename = "crates-io")]
+    CratesIo(herald_sources_registry::RegistryOptions),
+    /// A package's versions on the npm registry.
+    Npm(herald_sources_registry::RegistryOptions),
+    /// A repository's tags on Docker Hub.
+    DockerHub(herald_sources_registry::RegistryOptions),
+    /// An RSS or Atom feed's entries.
+    Feed(herald_sources_feed::FeedOptions),
 }
 
 /// A route: what it takes, where it announces, and its destination's own

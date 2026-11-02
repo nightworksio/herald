@@ -16,6 +16,18 @@ pub struct Cursor {
     pub last_modified: Option<String>,
 }
 
+/// What one poll of a source found: its events, the newest first, and the
+/// validators the server returned.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Polled {
+    /// The events, the newest first.
+    pub events: Vec<Event>,
+    /// The `ETag` the server returned.
+    pub etag: Option<String>,
+    /// The `Last-Modified` the server returned.
+    pub last_modified: Option<String>,
+}
+
 impl Cursor {
     /// The cursor after a poll that found `found`, the newest first, with the
     /// validators the server returned. It remembers the newest identities

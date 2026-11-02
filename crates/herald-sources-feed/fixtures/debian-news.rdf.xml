@@ -1,0 +1,94 @@
+<?xml version="1.0" encoding="utf-8"?>
+<?xml-stylesheet href="../../english/security/dsa-rdf.css" type="text/css"?>
+<rdf:RDF
+  xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+  xmlns="http://purl.org/rss/1.0/"
+  xmlns:dc="http://purl.org/dc/elements/1.1/"
+  xml:lang="en"
+>
+<channel rdf:about="https://www.debian.org/News/news.rdf">
+  <title>Debian News</title>
+  <link>https://www.debian.org/News/</link>
+  <description>
+Debian Latest News
+  </description>
+  <dc:date>2026-10-13T03:28:22+00:00</dc:date>
+  <items>
+    <rdf:Seq>
+<rdf:li resource="https://www.debian.org/News/2026/20260912" />
+<rdf:li resource="https://www.debian.org/News/2026/20260831" />
+<rdf:li resource="https://www.debian.org/News/2026/20260807" />
+<rdf:li resource="https://www.debian.org/News/2026/20260712" />
+<rdf:li resource="https://www.debian.org/News/2026/2026071102" />
+<rdf:li resource="https://www.debian.org/News/2026/20260711" />
+    </rdf:Seq>
+  </items>
+</channel>
+<item rdf:about="https://www.debian.org/News/2026/20260912">
+  <title>Updated Debian 13: 13.7 released</title>
+  <link>https://www.debian.org/News/2026/20260912</link>
+  <description>
+    The Debian project is pleased to announce the seventh update of its
+stable distribution Debian 13 (codename &lt;q&gt;trixie&lt;/q&gt;).
+This point release mainly adds corrections for security issues,
+along with a few adjustments for serious problems. Security advisories
+have already been published separately and are referenced where available.
+  </description>
+  <dc:date>2026-09-12</dc:date>
+</item>
+<item rdf:about="https://www.debian.org/News/2026/20260831">
+  <title>Debian 11 Long Term Support reaches end-of-life</title>
+  <link>https://www.debian.org/News/2026/20260831</link>
+  <description>
+The Debian Long Term Support (LTS) Team hereby announces that Debian 11
+&lt;q&gt;bullseye&lt;/q&gt; support has reached its end-of-life today, 31 August 2026,
+five years after its initial release on 14 August 2021.
+  </description>
+  <dc:date>2026-08-31</dc:date>
+</item>
+<item rdf:about="https://www.debian.org/News/2026/20260807">
+  <title>DebConf26 closes in Santa Fe and DebConf27 announced</title>
+  <link>https://www.debian.org/News/2026/20260807</link>
+  <description>
+On Saturday 25 July 2026, the annual
+&lt;a href=&quot;https://debconf26.debconf.org/&quot;&gt;Debian Developers and Contributors Conference&lt;/a&gt;
+came to a close.
+  </description>
+  <dc:date>2026-08-07</dc:date>
+</item>
+<item rdf:about="https://www.debian.org/News/2026/20260712">
+  <title>Security support for Bookworm handed over to the LTS team</title>
+  <link>https://www.debian.org/News/2026/20260712</link>
+  <description>
+On 12 July 2026, three years after the initial release, the regular
+support for Debian 12, alias &lt;q&gt;bookworm&lt;/q&gt;, has come to an end. The
+Debian &lt;a href=&quot;https://wiki.debian.org/LTS/&quot;&gt;Long Term Support (LTS)&lt;/a&gt; Team
+is taking over security support from the Security and Release Teams.
+  </description>
+  <dc:date>2026-07-12</dc:date>
+</item>
+<item rdf:about="https://www.debian.org/News/2026/2026071102">
+  <title>Updated Debian 12: 12.15 released</title>
+  <link>https://www.debian.org/News/2026/2026071102</link>
+  <description>
+    The Debian project is pleased to announce the fifteenth and final update of its
+oldstable distribution Debian 12 (codename &lt;q&gt;bookworm&lt;/q&gt;).
+This point release mainly adds corrections for security issues,
+along with a few adjustments for serious problems. Security advisories
+have already been published separately and are referenced where available.
+  </description>
+  <dc:date>2026-07-11</dc:date>
+</item>
+<item rdf:about="https://www.debian.org/News/2026/20260711">
+  <title>Updated Debian 13: 13.6 released</title>
+  <link>https://www.debian.org/News/2026/20260711</link>
+  <description>
+    The Debian project is pleased to announce the sixth update of its
+stable distribution Debian 13 (codename &lt;q&gt;trixie&lt;/q&gt;).
+This point release mainly adds corrections for security issues,
+along with a few adjustments for serious problems. Security advisories
+have already been published separately and are referenced where available.
+  </description>
+  <dc:date>2026-07-11</dc:date>
+</item>
+</rdf:RDF>

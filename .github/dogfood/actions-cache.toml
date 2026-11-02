@@ -1,0 +1,36 @@
+#:schema ../../herald.schema.json
+# The config CI's dogfood job announces a sample release with, through
+# herald's own Action, against the recorded-fixture server (ADR-0010).
+version = 1
+
+[store]
+kind = "actions-cache"
+prefix = "dogfood"
+
+[markers]
+key = { secret = "HERALD_MARKER_SECRET" }
+
+[destinations.discord]
+kind = "discord"
+token = { secret = "HERALD_DISCORD_TOKEN" }
+api = "http://127.0.0.1:8787/discord/api/v10"
+
+[sources.herald]
+kind = "github"
+repository = "nightworksio/herald"
+api = "http://127.0.0.1:8787/github"
+
+[[routes]]
+id = "herald-releases"
+sources = ["herald"]
+destination = "discord"
+channel = "1566184281406177531"
+template = "package-release"
+crosspost = true
+thread = { name = "{{ event.project }} {{ event.version }}" }
+pin = "markers"
+mentions = { roles = ["1566190000000000555"] }
+
+[templates.package-release]
+title = "📦 {{ event.project }} {{ event.version }}"
+body = "{{ event.body }}"
