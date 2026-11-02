@@ -10,6 +10,7 @@ use std::fmt;
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD;
 use jiff::{SignedDuration, Timestamp};
+use sha2::Digest as _;
 
 /// How far a signed timestamp may lie from now, either way, before the
 /// request is taken for a replay.
@@ -46,6 +47,14 @@ pub enum Scheme {
     /// A Matrix application-service transaction: `Authorization: Bearer
     /// <hs_token>`, the homeserver token its registration names.
     Matrix,
+    /// An ActivityPub activity posted to herald's inbox, signed as HTTP
+    /// Signatures do: `Signature` names the signer's `keyId` and the headers
+    /// it signs, which must hold `(request-target)`, `host`, `date` and, with
+    /// a body, `digest`; `Digest: SHA-256=<base64>` is the body's. The driver
+    /// hands `(request-target)` in as `<method> <path>`, in lowercase, and
+    /// `(audience)` as its own host, which the signed `host` must be. It is
+    /// delivered as its signature.
+    ActivityPub,
 }
 
 impl Scheme {
@@ -59,6 +68,7 @@ impl Scheme {
             Self::Discord => "discord",
             Self::Slack => "slack",
             Self::Matrix => "matrix",
+            Self::ActivityPub => "activitypub",
         }
     }
 }
@@ -72,6 +82,8 @@ pub enum Signature {
     Ed25519,
     /// A token the sender presents, checked against the one herald holds.
     Token,
+    /// RSASSA-PKCS1-v1_5 over SHA-256, checked with the signer's public key.
+    RsaSha256,
 }
 
 /// What a request claims: that one of `signatures` signs `message` under
@@ -86,9 +98,14 @@ pub struct Claim {
     pub signatures: Vec<Vec<u8>>,
     /// What makes this delivery that delivery, as its signature covers it,
     /// which the store admits once (ADR-0013): the signed `webhook-id` of a
-    /// GitLab webhook, and the signature itself, in hex, of a GitHub or
-    /// Forgejo webhook, whose delivery ids no signature covers.
+    /// GitLab webhook, and the signature itself, in hex, of every other
+    /// signed request: a GitHub or Forgejo webhook, whose delivery ids no
+    /// signature covers, a Discord interaction, a Slack request and an
+    /// ActivityPub activity.
     pub delivery: Option<String>,
+    /// The key it names its signer by, where its scheme fetches the key it
+    /// is checked with: an ActivityPub actor's `keyId`.
+    pub signer: Option<String>,
 }
 
 /// Why a request is refused before its signature is checked.
@@ -106,6 +123,18 @@ pub enum Refusal {
     },
     /// The signed timestamp lies outside the replay window.
     Stale,
+    /// A header the scheme must sign is not among those signed.
+    Uncovered {
+        /// The header.
+        header: &'static str,
+    },
+    /// A header the scheme checks does not match the body it was sent with.
+    Unmatched {
+        /// The header.
+        header: &'static str,
+    },
+    /// It was signed for another host than this herald.
+    Misdirected,
 }
 
 impl fmt::Display for Refusal {
@@ -118,6 +147,13 @@ impl fmt::Display for Refusal {
                 "the request was signed more than {} minutes from now, so it is taken for a replay",
                 REPLAY_WINDOW.as_mins()
             ),
+            Self::Uncovered { header } => {
+                write!(f, "the request's signature does not cover its {header}")
+            }
+            Self::Unmatched { header } => {
+                write!(f, "the request's {header} does not match its body")
+            }
+            Self::Misdirected => f.write_str("the request was signed for another host"),
         }
     }
 }
@@ -155,24 +191,28 @@ pub fn claim(
             const SIGNATURE: &str = "X-Signature-Ed25519";
             const TIMESTAMP: &str = "X-Signature-Timestamp";
             let stamp = timestamp(headers, TIMESTAMP, now)?;
-            let signature = required(headers, SIGNATURE)?;
+            let signature = unhex(required(headers, SIGNATURE)?)
+                .ok_or(Refusal::Malformed { header: SIGNATURE })?;
             Ok(Claim {
                 kind: Signature::Ed25519,
                 message: [stamp.as_bytes(), body].concat(),
-                signatures: vec![unhex(signature).ok_or(Refusal::Malformed { header: SIGNATURE })?],
-                delivery: None,
+                delivery: Some(crate::hex(&signature)),
+                signatures: vec![signature],
+                signer: None,
             })
         }
         Scheme::Slack => {
             const TIMESTAMP: &str = "X-Slack-Request-Timestamp";
             let stamp = timestamp(headers, TIMESTAMP, now)?;
             let signature = prefixed(headers, "X-Slack-Signature", "v0=")?;
+            let delivery = crate::hex(&signature);
             Ok(hmac(
                 [b"v0:", stamp.as_bytes(), b":", body].concat(),
                 signature,
-                None,
+                Some(&delivery),
             ))
         }
+        Scheme::ActivityPub => activity(headers, body, now),
         Scheme::Matrix => {
             const HEADER: &str = "Authorization";
             let token = required(headers, HEADER)?
@@ -184,6 +224,7 @@ pub fn claim(
                 message: Vec::new(),
                 signatures: vec![token.as_bytes().to_vec()],
                 delivery: None,
+                signer: None,
             })
         }
         Scheme::GitLab => {
@@ -210,6 +251,7 @@ pub fn claim(
                 message: [id.as_bytes(), b".", stamp.as_bytes(), b".", body].concat(),
                 signatures,
                 delivery: Some(id.to_owned()),
+                signer: None,
             })
         }
     }
@@ -227,6 +269,7 @@ pub fn key(scheme: Scheme, written: &str) -> Option<Vec<u8>> {
             .and_then(|encoded| STANDARD.decode(encoded).ok())
             .filter(|key| !key.is_empty()),
         Scheme::Discord => unhex(written),
+        Scheme::ActivityPub => rsa_public_key(written),
         Scheme::GitHub | Scheme::Forgejo | Scheme::Slack | Scheme::Matrix => {
             (!written.is_empty()).then(|| written.as_bytes().to_vec())
         }
@@ -256,6 +299,7 @@ fn hmac(message: Vec<u8>, signature: Vec<u8>, delivery: Option<&str>) -> Claim {
         message,
         signatures: vec![signature],
         delivery: delivery.map(str::to_owned),
+        signer: None,
     }
 }
 
@@ -300,6 +344,157 @@ fn timestamp<'a>(
         return Err(Refusal::Stale);
     }
     Ok(written)
+}
+
+/// The headers an ActivityPub signature must cover, and `digest` beside
+/// them where a body is sent.
+const COVERED: [&str; 3] = ["(request-target)", "host", "date"];
+
+/// The most headers an ActivityPub signature may name. Each is read into the
+/// signing string before the signature is checked, so a request naming more
+/// is refused unread.
+pub const MOST_COVERED: usize = 16;
+
+/// The claim of an ActivityPub activity: the signing string of the headers
+/// its `Signature` names, with its `Date` inside the replay window and its
+/// `Digest` the body's.
+fn activity(headers: &[(&str, &str)], body: &[u8], now: Timestamp) -> Result<Claim, Refusal> {
+    const SIGNATURE: &str = "Signature";
+    const DATE: &str = "Date";
+    const DIGEST: &str = "Digest";
+    let malformed = Refusal::Malformed { header: SIGNATURE };
+    let params = parameters(required(headers, SIGNATURE)?).ok_or(malformed.clone())?;
+    let param = |name: &str| {
+        params
+            .iter()
+            .find(|(key, _)| *key == name)
+            .map(|(_, value)| *value)
+    };
+    if !matches!(param("algorithm"), None | Some("rsa-sha256" | "hs2019")) {
+        return Err(malformed);
+    }
+    let signer = param("keyId")
+        .filter(|signer| !signer.is_empty())
+        .ok_or(malformed.clone())?;
+    let signature = param("signature")
+        .and_then(|encoded| STANDARD.decode(encoded).ok())
+        .filter(|signature| !signature.is_empty())
+        .ok_or(malformed.clone())?;
+    let named = param("headers").unwrap_or("date");
+    if named.split(' ').filter(|name| !name.is_empty()).count() > MOST_COVERED {
+        return Err(malformed);
+    }
+    let covered: Vec<String> = named
+        .split(' ')
+        .filter(|name| !name.is_empty())
+        .map(str::to_ascii_lowercase)
+        .collect();
+    let digested = (!body.is_empty()).then_some("digest");
+    for header in COVERED.into_iter().chain(digested) {
+        if !covered.iter().any(|name| name == header) {
+            return Err(Refusal::Uncovered { header });
+        }
+    }
+    let audience = required(headers, "(audience)")?;
+    if !required(headers, "Host")?
+        .trim()
+        .eq_ignore_ascii_case(audience)
+    {
+        return Err(Refusal::Misdirected);
+    }
+    let date = required(headers, DATE)?;
+    let at = jiff::fmt::rfc2822::parse(date)
+        .map_err(|_| Refusal::Malformed { header: DATE })?
+        .timestamp();
+    if now.duration_since(at).abs() > REPLAY_WINDOW {
+        return Err(Refusal::Stale);
+    }
+    if digested.is_some() {
+        let written = required(headers, DIGEST)?;
+        let digest = written
+            .split(',')
+            .find_map(|entry| {
+                let (algorithm, value) = entry.trim().split_once('=')?;
+                algorithm.eq_ignore_ascii_case("SHA-256").then_some(value)
+            })
+            .ok_or(Refusal::Malformed { header: DIGEST })?;
+        let sent = STANDARD.encode(sha2::Sha256::digest(body));
+        if !same(sent.as_bytes(), digest.as_bytes()) {
+            return Err(Refusal::Unmatched { header: DIGEST });
+        }
+    }
+    let mut lines = Vec::with_capacity(covered.len());
+    for name in &covered {
+        let value = header_of(headers, name).ok_or(Refusal::Malformed { header: SIGNATURE })?;
+        lines.push(format!("{name}: {}", value.trim()));
+    }
+    let delivery = crate::hex(&signature);
+    Ok(Claim {
+        kind: Signature::RsaSha256,
+        message: lines.join("\n").into_bytes(),
+        signatures: vec![signature],
+        delivery: Some(delivery),
+        signer: Some(signer.to_owned()),
+    })
+}
+
+/// The `key="value"` pairs of a `Signature` header, each value quoted and
+/// the pairs apart by commas; nothing where it is not in that form.
+fn parameters(header: &str) -> Option<Vec<(&str, &str)>> {
+    let mut found = Vec::new();
+    let mut rest = header.trim();
+    while !rest.is_empty() {
+        let (key, after) = rest.split_once("=\"")?;
+        let (value, after) = after.split_once('"')?;
+        let key = key.trim();
+        if key.is_empty() || found.iter().any(|(seen, _)| *seen == key) {
+            return None;
+        }
+        found.push((key, value));
+        rest = after.trim_start();
+        match rest.strip_prefix(',') {
+            Some(next) => rest = next.trim_start(),
+            None if rest.is_empty() => {}
+            None => return None,
+        }
+    }
+    (!found.is_empty()).then_some(found)
+}
+
+/// The DER of the RSA public key an ActivityPub actor publishes as a PEM
+/// `PUBLIC KEY`, as PKCS #1 holds it; nothing where it is not one.
+fn rsa_public_key(pem: &str) -> Option<Vec<u8>> {
+    const RSA_ENCRYPTION: [u8; 11] = [
+        0x06, 0x09, 0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x01, 0x01,
+    ];
+    let encoded: String = pem
+        .trim()
+        .strip_prefix("-----BEGIN PUBLIC KEY-----")?
+        .strip_suffix("-----END PUBLIC KEY-----")?
+        .split_whitespace()
+        .collect();
+    let der = STANDARD.decode(encoded).ok()?;
+    let (info, rest) = element(&der, 0x30)?;
+    let (algorithm, info) = element(info, 0x30)?;
+    let (bits, after) = element(info, 0x03)?;
+    let key = bits.strip_prefix(&[0x00])?;
+    (rest.is_empty() && after.is_empty() && algorithm.starts_with(&RSA_ENCRYPTION))
+        .then(|| key.to_vec())
+        .filter(|key| element(key, 0x30).is_some_and(|(_, after)| after.is_empty()))
+}
+
+/// The contents of the DER element of tag `tag` that `der` opens with, and
+/// what follows it. A length is read in one byte, or in the one or two after
+/// `0x81` or `0x82`, which an RSA key's lengths fit.
+fn element(der: &[u8], tag: u8) -> Option<(&[u8], &[u8])> {
+    let (&found, rest) = der.split_first()?;
+    let (length, rest) = match rest {
+        [short @ 0..=0x7f, rest @ ..] => (usize::from(*short), rest),
+        [0x81, long, rest @ ..] => (usize::from(*long), rest),
+        [0x82, high, low, rest @ ..] => (usize::from(u16::from_be_bytes([*high, *low])), rest),
+        _ => return None,
+    };
+    (found == tag && rest.len() >= length).then(|| rest.split_at(length))
 }
 
 /// The bytes `text` spells in hex, in either case; nothing where it spells

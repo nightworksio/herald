@@ -21,9 +21,11 @@ herald-store-markers.workspace = true
 jiff.workspace = true
 
 [dev-dependencies]
+base64.workspace = true
 herald-testing.workspace = true
 pollster.workspace = true
 serde_json.workspace = true
+sha2.workspace = true
 
 [lints]
 workspace = true
