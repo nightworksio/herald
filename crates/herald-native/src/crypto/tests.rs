@@ -158,6 +158,7 @@ fn an_activity_signed_by_its_actors_key_verifies_through_the_pem_it_publishes() 
     );
     let headers = [
         ("(request-target)", "post /inbox"),
+        ("(audience)", "herald.example"),
         ("Host", "herald.example"),
         ("Date", date),
         ("Digest", digest.as_str()),

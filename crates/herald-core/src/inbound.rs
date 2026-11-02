@@ -51,7 +51,9 @@ pub enum Scheme {
     /// Signatures do: `Signature` names the signer's `keyId` and the headers
     /// it signs, which must hold `(request-target)`, `host`, `date` and, with
     /// a body, `digest`; `Digest: SHA-256=<base64>` is the body's. The driver
-    /// hands `(request-target)` in as `<method> <path>`, in lowercase.
+    /// hands `(request-target)` in as `<method> <path>`, in lowercase, and
+    /// `(audience)` as its own host, which the signed `host` must be. It is
+    /// delivered as its signature.
     ActivityPub,
 }
 
@@ -129,6 +131,8 @@ pub enum Refusal {
         /// The header.
         header: &'static str,
     },
+    /// It was signed for another host than this herald.
+    Misdirected,
 }
 
 impl fmt::Display for Refusal {
@@ -147,6 +151,7 @@ impl fmt::Display for Refusal {
             Self::Unmatched { header } => {
                 write!(f, "the request's {header} does not match its body")
             }
+            Self::Misdirected => f.write_str("the request was signed for another host"),
         }
     }
 }
@@ -341,6 +346,11 @@ fn timestamp<'a>(
 /// them where a body is sent.
 const COVERED: [&str; 3] = ["(request-target)", "host", "date"];
 
+/// The most headers an ActivityPub signature may name. Each is read into the
+/// signing string before the signature is checked, so a request naming more
+/// is refused unread.
+pub const MOST_COVERED: usize = 16;
+
 /// The claim of an ActivityPub activity: the signing string of the headers
 /// its `Signature` names, with its `Date` inside the replay window and its
 /// `Digest` the body's.
@@ -366,8 +376,11 @@ fn activity(headers: &[(&str, &str)], body: &[u8], now: Timestamp) -> Result<Cla
         .and_then(|encoded| STANDARD.decode(encoded).ok())
         .filter(|signature| !signature.is_empty())
         .ok_or(malformed.clone())?;
-    let covered: Vec<String> = param("headers")
-        .unwrap_or("date")
+    let named = param("headers").unwrap_or("date");
+    if named.split(' ').filter(|name| !name.is_empty()).count() > MOST_COVERED {
+        return Err(malformed);
+    }
+    let covered: Vec<String> = named
         .split(' ')
         .filter(|name| !name.is_empty())
         .map(str::to_ascii_lowercase)
@@ -377,6 +390,13 @@ fn activity(headers: &[(&str, &str)], body: &[u8], now: Timestamp) -> Result<Cla
         if !covered.iter().any(|name| name == header) {
             return Err(Refusal::Uncovered { header });
         }
+    }
+    let audience = required(headers, "(audience)")?;
+    if !required(headers, "Host")?
+        .trim()
+        .eq_ignore_ascii_case(audience)
+    {
+        return Err(Refusal::Misdirected);
     }
     let date = required(headers, DATE)?;
     let at = jiff::fmt::rfc2822::parse(date)
@@ -404,11 +424,12 @@ fn activity(headers: &[(&str, &str)], body: &[u8], now: Timestamp) -> Result<Cla
         let value = header_of(headers, name).ok_or(Refusal::Malformed { header: SIGNATURE })?;
         lines.push(format!("{name}: {}", value.trim()));
     }
+    let delivery = crate::hex(&signature);
     Ok(Claim {
         kind: Signature::RsaSha256,
         message: lines.join("\n").into_bytes(),
         signatures: vec![signature],
-        delivery: None,
+        delivery: Some(delivery),
         signer: Some(signer.to_owned()),
     })
 }

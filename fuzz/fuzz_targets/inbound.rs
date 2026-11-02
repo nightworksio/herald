@@ -20,7 +20,7 @@ const SCHEMES: [Scheme; 7] = [
     Scheme::ActivityPub,
 ];
 
-const HEADERS: [&str; 16] = [
+const HEADERS: [&str; 17] = [
     "X-Hub-Signature-256",
     "X-Forgejo-Signature",
     "X-Gitea-Signature",
@@ -33,6 +33,7 @@ const HEADERS: [&str; 16] = [
     "webhook-signature",
     "Authorization",
     "(request-target)",
+    "(audience)",
     "Host",
     "Date",
     "Digest",

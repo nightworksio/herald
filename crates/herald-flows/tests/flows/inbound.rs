@@ -312,6 +312,7 @@ fn an_activity_is_checked_as_rsa_and_names_its_signer() {
     let signing = |signature: &str| {
         vec![
             ("(request-target)", "post /inbox".to_owned()),
+            ("(audience)", "herald.example".to_owned()),
             ("Host", "herald.example".to_owned()),
             ("Date", "Fri, 15 Jan 2027 08:00:00 GMT".to_owned()),
             ("Digest", digest.clone()),

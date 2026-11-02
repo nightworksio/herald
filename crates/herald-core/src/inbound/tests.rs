@@ -447,6 +447,7 @@ fn activity_headers<'a>(
 ) -> Vec<(&'a str, &'a str)> {
     vec![
         ("(request-target)", "post /inbox"),
+        ("(audience)", "herald.example"),
         ("Host", "herald.example"),
         ("Date", date),
         ("Digest", digest),
@@ -490,7 +491,7 @@ fn an_activity_claims_rsa_over_the_headers_its_signature_names() {
         claim.signer.as_deref(),
         Some("https://social.example/users/ana#main-key")
     );
-    assert_eq!(claim.delivery, None);
+    assert_eq!(claim.delivery.as_deref(), Some("0001"));
 }
 
 #[test]
@@ -671,5 +672,52 @@ fn each_new_refusal_reads_as_a_sentence() {
     assert_eq!(
         Refusal::Unmatched { header: "Digest" }.to_string(),
         "the request's Digest does not match its body"
+    );
+}
+
+#[test]
+fn an_activity_signed_for_another_host_is_misdirected() {
+    let digest = digest();
+    let mut headers = activity_headers(SIGNED, DATE, &digest);
+    headers.retain(|(name, _)| *name != "Host");
+    headers.push(("Host", "HERALD.example "));
+    assert!(activitypub(&headers).is_ok());
+    headers.retain(|(name, _)| *name != "Host");
+    headers.push(("Host", "elsewhere.example"));
+    assert_eq!(activitypub(&headers), Err(Refusal::Misdirected));
+    assert_eq!(
+        Refusal::Misdirected.to_string(),
+        "the request was signed for another host"
+    );
+    headers.retain(|(name, _)| *name != "(audience)");
+    assert_eq!(
+        activitypub(&headers),
+        Err(Refusal::Unsigned {
+            header: "(audience)"
+        })
+    );
+}
+
+#[test]
+fn an_activity_naming_more_headers_than_it_may_is_refused_unread() {
+    let digest = digest();
+    let extra = ["x-extra"; MOST_COVERED - 4].join(" ");
+    let at_most = SIGNED.replace(
+        "(request-target) host date digest",
+        &format!("(request-target) host date digest {extra}"),
+    );
+    let mut headers = activity_headers(&at_most, DATE, &digest);
+    headers.push(("X-Extra", "1"));
+    assert!(activitypub(&headers).is_ok());
+    let over = SIGNED.replace(
+        "(request-target) host date digest",
+        &format!("(request-target) host date digest {extra} x-extra"),
+    );
+    let headers = activity_headers(&over, DATE, &digest);
+    assert_eq!(
+        activitypub(&headers),
+        Err(Refusal::Malformed {
+            header: "Signature"
+        })
     );
 }
