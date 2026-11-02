@@ -1,7 +1,11 @@
 use std::fmt;
 
-use herald_core::{Refusal, Scheme, Signature, claim, key, same};
-use herald_ports::{Admitted, Algorithm, Store, StoreError, Verifier};
+use herald_core::{Addressed, Claim, Refusal, Scheme, Signature, activity_claim, claim, key, same};
+use herald_dest_fediverse::{
+    ActorError, ActorKey, Found, activity_json, actor_key, actor_of, confirms, key_request,
+    same_origin,
+};
+use herald_ports::{Admitted, Algorithm, Http, Store, StoreError, Verifier};
 use jiff::Timestamp;
 
 /// Why an inbound request is not let through to a parser.
@@ -21,6 +25,15 @@ pub enum Rejected {
         /// Why the store could not answer.
         reason: String,
     },
+    /// The key its signature names could not be read from that key's
+    /// document.
+    Unfetched {
+        /// Why not.
+        reason: String,
+    },
+    /// It names an actor other than the owner of the key that signed it, or
+    /// has its own id on another origin than that actor.
+    Impersonated,
 }
 
 /// A request [`verified`] let through.
@@ -29,8 +42,9 @@ pub struct Verified {
     /// What it is delivered as, as its signature covers it, where its scheme
     /// names its deliveries.
     pub delivery: Option<String>,
-    /// The key it named its signer by, where its scheme names one: an
-    /// ActivityPub actor's `keyId`, which the activity's own actor must be.
+    /// Who signed it, where its scheme names a signer: the actor owning the
+    /// key an ActivityPub activity is signed with, which is the activity's
+    /// own actor.
     pub signer: Option<String>,
 }
 
@@ -47,6 +61,13 @@ impl fmt::Display for Rejected {
                 f,
                 "the store could not say whether the request was delivered before, so it is not let through: {reason}"
             ),
+            Self::Unfetched { reason } => write!(
+                f,
+                "the key the activity is signed with could not be read: {reason}"
+            ),
+            Self::Impersonated => f.write_str(
+                "the activity names an actor other than the owner of the key that signed it, or has its id on another origin",
+            ),
         }
     }
 }
@@ -54,7 +75,9 @@ impl fmt::Display for Rejected {
 /// Whether a request of `scheme`, with its `headers` and raw `body`, is
 /// signed by the holder of `written` at `now`: a shared secret for an HMAC,
 /// the sender's public key for Ed25519, each as [`key`] reads it
-/// (ADR-0007). Only a request this lets through may reach a parser.
+/// (ADR-0007). Only a request this lets through may reach a parser. An
+/// ActivityPub activity is checked by [`activity_verified`], which reads
+/// the key its signature names and holds its actor to that key's owner.
 ///
 /// # Errors
 ///
@@ -67,32 +90,110 @@ pub async fn verified<V: Verifier>(
     body: &[u8],
     now: Timestamp,
 ) -> Result<Verified, Rejected> {
-    let key = key(scheme, written).ok_or(Rejected::Unkeyed)?;
+    let key = key(scheme, written)
+        .filter(|_| scheme != Scheme::ActivityPub)
+        .ok_or(Rejected::Unkeyed)?;
     let claim = claim(scheme, headers, body, now).map_err(Rejected::Refused)?;
+    signed(verifier, &key, &claim).await?;
+    Ok(Verified {
+        delivery: claim.delivery,
+        signer: None,
+    })
+}
+
+/// Whether an ActivityPub activity sent to `addressed`, with its `headers`
+/// and raw `body`, is signed at `now` by the key its signature names, served
+/// as ActivityPub JSON read from that key's
+/// document through `http`, which reaches only public addresses, and
+/// names that key's owner as its actor, with its own id, where it has one,
+/// on that actor's origin (ADR-0007). A key whose own
+/// document names its owner is that owner's only where the owner's own
+/// document lists it. Only an activity this
+/// lets through may reach a parser.
+///
+/// # Errors
+///
+/// Why the activity is rejected.
+pub async fn activity_verified<V: Verifier, H: Http>(
+    verifier: &V,
+    http: &H,
+    addressed: Addressed<'_>,
+    headers: &[(&str, &str)],
+    body: &[u8],
+    now: Timestamp,
+) -> Result<Verified, Rejected> {
+    let claim = activity_claim(addressed, headers, body, now).map_err(Rejected::Refused)?;
+    let named = claim.signer.as_deref().unwrap_or_default();
+    let unfetched = |reason: String| Rejected::Unfetched { reason };
+    let found = actor_key(&fetched(http, named).await?, named)
+        .map_err(|error| unfetched(error.to_string()))?;
+    let owned = match found {
+        Found::Held(owned) => owned,
+        Found::Claimed { owner, pem } => {
+            if !confirms(&fetched(http, &owner).await?, &owner, named) {
+                return Err(unfetched(ActorError::Unconfirmed.to_string()));
+            }
+            ActorKey { actor: owner, pem }
+        }
+    };
+    let key = key(Scheme::ActivityPub, &owned.pem).ok_or(Rejected::Unkeyed)?;
+    signed(verifier, &key, &claim).await?;
+    let Some((actor, own)) = actor_of(body) else {
+        return Err(Rejected::Impersonated);
+    };
+    if actor != owned.actor || own.is_some_and(|own| !same_origin(&own, &actor)) {
+        return Err(Rejected::Impersonated);
+    }
+    Ok(Verified {
+        delivery: claim.delivery,
+        signer: Some(owned.actor),
+    })
+}
+
+/// The document `id` names, read through `http`.
+async fn fetched<H: Http>(http: &H, id: &str) -> Result<Vec<u8>, Rejected> {
+    let unfetched = |reason: String| Rejected::Unfetched { reason };
+    let request = key_request(id)
+        .ok_or_else(|| unfetched(format!("{id} is not an HTTPS URL naming a host")))?;
+    let response = http
+        .send(request)
+        .await
+        .map_err(|error| unfetched(error.to_string()))?;
+    if !response.succeeded() {
+        return Err(unfetched(format!(
+            "its server answered {}",
+            response.status
+        )));
+    }
+    if !activity_json(response.header("content-type")) {
+        return Err(unfetched(
+            "its server did not answer it as ActivityPub JSON".to_owned(),
+        ));
+    }
+    Ok(response.body)
+}
+
+/// Whether one of `claim`'s signatures holds under `key`.
+async fn signed<V: Verifier>(verifier: &V, key: &[u8], claim: &Claim) -> Result<(), Rejected> {
     let algorithm = match claim.kind {
         Signature::HmacSha256 => Algorithm::HmacSha256,
         Signature::Ed25519 => Algorithm::Ed25519,
         Signature::RsaSha256 => Algorithm::RsaSha256,
         Signature::Token => {
-            return if claim.signatures.iter().any(|token| same(&key, token)) {
-                Ok(Verified {
-                    delivery: claim.delivery,
-                    signer: claim.signer,
-                })
-            } else {
-                Err(Rejected::Forged)
-            };
+            return claim
+                .signatures
+                .iter()
+                .any(|token| same(key, token))
+                .then_some(())
+                .ok_or(Rejected::Forged);
         }
     };
     for signature in &claim.signatures {
         if verifier
-            .verify(algorithm, &key, &claim.message, signature)
+            .verify(algorithm, key, &claim.message, signature)
             .await
         {
-            return Ok(Verified {
-                delivery: claim.delivery,
-                signer: claim.signer,
-            });
+            return Ok(());
         }
     }
     Err(Rejected::Forged)

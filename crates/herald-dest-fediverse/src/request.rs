@@ -1,16 +1,10 @@
 use std::fmt;
 
 use herald_core::{Announcement, Entry, Step};
-use herald_ports::{Method, Request, Text};
+use herald_ports::{Method, Request, Text, USER_AGENT};
 use serde_json::{Map, Value, json};
 
 use crate::mastodon::Mastodon;
-
-const USER_AGENT: &str = concat!(
-    "herald/",
-    env!("CARGO_PKG_VERSION"),
-    " (+https://github.com/nightworksio/herald)"
-);
 
 /// Why a step cannot be asked of Mastodon.
 #[derive(Debug, Clone, PartialEq, Eq)]

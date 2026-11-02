@@ -471,8 +471,29 @@ fn digest() -> String {
 
 const SIGNED: &str = r#"keyId="https://social.example/users/ana#main-key",algorithm="rsa-sha256",headers="(request-target) host date digest",signature="AAE=""#;
 
+/// `body` claimed as sent where the pseudo-headers among `headers` say,
+/// with those taken out of the headers the sender sent.
+fn addressed(headers: &[(&str, &str)], body: &[u8]) -> Result<Claim, Refusal> {
+    let pseudo = |name: &str, otherwise: &'static str| {
+        headers
+            .iter()
+            .find(|(named, _)| *named == name)
+            .map_or(otherwise, |(_, value)| *value)
+    };
+    let sent: Vec<(&str, &str)> = headers
+        .iter()
+        .filter(|(name, _)| !name.starts_with('('))
+        .copied()
+        .collect();
+    let to = Addressed {
+        target: pseudo("(request-target)", "post /inbox"),
+        audience: pseudo("(audience)", "herald.example"),
+    };
+    activity_claim(to, &sent, body, activity_now())
+}
+
 fn activitypub(headers: &[(&str, &str)]) -> Result<Claim, Refusal> {
-    claim(Scheme::ActivityPub, headers, ACTIVITY, activity_now())
+    addressed(headers, ACTIVITY)
 }
 
 #[test]
@@ -523,7 +544,7 @@ fn an_activity_must_sign_its_target_host_date_and_digest() {
 fn an_activity_without_a_body_need_not_sign_a_digest() {
     let signature = SIGNED.replace(" digest", "");
     let headers = activity_headers(&signature, DATE, "");
-    let claim = claim(Scheme::ActivityPub, &headers, b"", activity_now()).unwrap();
+    let claim = addressed(&headers, b"").unwrap();
     assert!(!String::from_utf8(claim.message).unwrap().contains("digest"));
 }
 
@@ -694,9 +715,9 @@ fn an_activity_without_a_body_need_not_cover_a_digest() {
         "(request-target) host date",
     );
     let headers = activity_headers(&unsigned, DATE, "");
-    assert!(claim(Scheme::ActivityPub, &headers, b"", activity_now()).is_ok());
+    assert!(addressed(&headers, b"").is_ok());
     assert_eq!(
-        claim(Scheme::ActivityPub, &headers, ACTIVITY, activity_now()),
+        addressed(&headers, ACTIVITY),
         Err(Refusal::Uncovered { header: "digest" })
     );
 }
@@ -756,11 +777,49 @@ fn an_activity_signed_for_another_host_is_misdirected() {
         Refusal::Misdirected.to_string(),
         "the request was signed for another host"
     );
-    headers.retain(|(name, _)| *name != "(audience)");
     assert_eq!(
-        activitypub(&headers),
-        Err(Refusal::Unsigned {
-            header: "(audience)"
+        claim(Scheme::ActivityPub, &headers, ACTIVITY, activity_now()),
+        Err(Refusal::Unaddressed)
+    );
+    assert_eq!(
+        Refusal::Unaddressed.to_string(),
+        "an ActivityPub activity is claimed with where it was sent, which no header says"
+    );
+}
+
+#[test]
+fn a_pseudo_header_the_sender_sends_is_never_read() {
+    let digest = digest();
+    let mut headers: Vec<(&str, &str)> = activity_headers(SIGNED, DATE, &digest)
+        .into_iter()
+        .filter(|(name, _)| !name.starts_with('('))
+        .collect();
+    headers.push(("(request-target)", "get /elsewhere"));
+    headers.push(("(audience)", "elsewhere.example"));
+    let to = Addressed {
+        target: "post /inbox",
+        audience: "herald.example",
+    };
+    let claim = activity_claim(to, &headers, ACTIVITY, activity_now()).unwrap();
+    assert!(
+        String::from_utf8(claim.message)
+            .unwrap()
+            .starts_with("(request-target): post /inbox\n")
+    );
+    let created = SIGNED.replace(
+        "(request-target) host date digest",
+        "(request-target) (created) host date digest",
+    );
+    let mut stamped = activity_headers(&created, DATE, &digest);
+    stamped.push(("(created)", "1"));
+    let to = Addressed {
+        target: "post /inbox",
+        audience: "herald.example",
+    };
+    assert_eq!(
+        activity_claim(to, &stamped, ACTIVITY, activity_now()),
+        Err(Refusal::Malformed {
+            header: "Signature"
         })
     );
 }
