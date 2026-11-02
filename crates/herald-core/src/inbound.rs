@@ -98,8 +98,10 @@ pub struct Claim {
     pub signatures: Vec<Vec<u8>>,
     /// What makes this delivery that delivery, as its signature covers it,
     /// which the store admits once (ADR-0013): the signed `webhook-id` of a
-    /// GitLab webhook, and the signature itself, in hex, of a GitHub or
-    /// Forgejo webhook, whose delivery ids no signature covers.
+    /// GitLab webhook, and the signature itself, in hex, of every other
+    /// signed request: a GitHub or Forgejo webhook, whose delivery ids no
+    /// signature covers, a Discord interaction, a Slack request and an
+    /// ActivityPub activity.
     pub delivery: Option<String>,
     /// The key it names its signer by, where its scheme fetches the key it
     /// is checked with: an ActivityPub actor's `keyId`.
@@ -189,12 +191,13 @@ pub fn claim(
             const SIGNATURE: &str = "X-Signature-Ed25519";
             const TIMESTAMP: &str = "X-Signature-Timestamp";
             let stamp = timestamp(headers, TIMESTAMP, now)?;
-            let signature = required(headers, SIGNATURE)?;
+            let signature = unhex(required(headers, SIGNATURE)?)
+                .ok_or(Refusal::Malformed { header: SIGNATURE })?;
             Ok(Claim {
                 kind: Signature::Ed25519,
                 message: [stamp.as_bytes(), body].concat(),
-                signatures: vec![unhex(signature).ok_or(Refusal::Malformed { header: SIGNATURE })?],
-                delivery: None,
+                delivery: Some(crate::hex(&signature)),
+                signatures: vec![signature],
                 signer: None,
             })
         }
@@ -202,10 +205,11 @@ pub fn claim(
             const TIMESTAMP: &str = "X-Slack-Request-Timestamp";
             let stamp = timestamp(headers, TIMESTAMP, now)?;
             let signature = prefixed(headers, "X-Slack-Signature", "v0=")?;
+            let delivery = crate::hex(&signature);
             Ok(hmac(
                 [b"v0:", stamp.as_bytes(), b":", body].concat(),
                 signature,
-                None,
+                Some(&delivery),
             ))
         }
         Scheme::ActivityPub => activity(headers, body, now),

@@ -27,7 +27,13 @@ id it carried the first time.
      - a GitLab webhook by its `webhook-id`, which it signs;
      - a GitHub or Forgejo webhook by its signature itself, in hex. Their
        `X-GitHub-Delivery`, `X-Forgejo-Delivery` and `X-Gitea-Delivery`
-       headers are signed by nothing, and a replay could carry a fresh one.
+       headers are signed by nothing, and a replay could carry a fresh one;
+     - a Discord interaction, a Slack request and an ActivityPub activity
+       by their signature too, in hex. Their replay window alone would let
+       a copy through for five minutes.
+
+     A Matrix transaction presents a token and carries no signature, so its
+     claim names no delivery.
 
      The claim of a verified request names its delivery: the scheme, and
      that name.

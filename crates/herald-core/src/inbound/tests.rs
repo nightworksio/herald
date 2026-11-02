@@ -98,7 +98,7 @@ fn a_discord_interaction_claims_an_ed25519_signature_of_its_timestamp_and_body()
     let claim = claimed(
         Scheme::Discord,
         &[
-            ("X-Signature-Ed25519", "0a0b"),
+            ("X-Signature-Ed25519", "0A0b"),
             ("X-Signature-Timestamp", "1800000000"),
         ],
     )
@@ -106,7 +106,7 @@ fn a_discord_interaction_claims_an_ed25519_signature_of_its_timestamp_and_body()
     assert_eq!(claim.kind, Signature::Ed25519);
     assert_eq!(claim.message, [b"1800000000".as_slice(), BODY].concat());
     assert_eq!(claim.signatures, [[0x0a, 0x0b]]);
-    assert_eq!(claim.delivery, None);
+    assert_eq!(claim.delivery.as_deref(), Some("0a0b"));
     assert_eq!(
         claimed(Scheme::Discord, &[("X-Signature-Timestamp", "1800000000")]),
         Err(Refusal::Unsigned {
@@ -140,7 +140,7 @@ fn a_slack_request_claims_an_hmac_of_its_versioned_base_string() {
     assert_eq!(claim.kind, Signature::HmacSha256);
     assert_eq!(claim.message, [b"v0:1800000000:".as_slice(), BODY].concat());
     assert_eq!(claim.signatures, [[0xff]]);
-    assert_eq!(claim.delivery, None);
+    assert_eq!(claim.delivery.as_deref(), Some("ff"));
     assert_eq!(
         claimed(
             Scheme::Slack,

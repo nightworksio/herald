@@ -68,6 +68,33 @@ fn a_discord_interaction_is_checked_as_ed25519_over_its_timestamp_and_body() {
 }
 
 #[test]
+fn a_discord_interaction_delivered_twice_is_a_replay() {
+    let message = [b"1800000000".as_slice(), BODY].concat();
+    let signed = hex(&[b"Ed25519|\x0a\xff|".as_slice(), &message].concat());
+    let headers = [
+        ("X-Signature-Ed25519", signed.as_str()),
+        ("X-Signature-Timestamp", "1800000000"),
+    ];
+    let store = FakeStore::default();
+    let delivery = || {
+        pollster::block_on(async {
+            let verified = verified(
+                &FakeVerifier,
+                Scheme::Discord,
+                "0aff",
+                &headers,
+                BODY,
+                now(),
+            )
+            .await?;
+            admitted(&store, Scheme::Discord, &verified, now()).await
+        })
+    };
+    assert_eq!(delivery(), Ok(()));
+    assert_eq!(delivery(), Err(Rejected::Replayed));
+}
+
+#[test]
 fn a_refused_request_is_never_checked_and_says_why() {
     let rejected = checked(Scheme::Slack, "secret", &[]);
     assert_eq!(
