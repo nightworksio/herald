@@ -7,6 +7,7 @@
 use herald_ports::Response;
 use herald_sources_feed::{Feed, FeedOptions, markdown};
 use libfuzzer_sys::fuzz_target;
+use pulldown_cmark::{Event, Parser};
 
 const URL: &str = "https://feed.example/feed.xml";
 
@@ -21,6 +22,7 @@ fuzz_target!(|bytes: &[u8]| {
     }
     if let Ok(html) = std::str::from_utf8(bytes) {
         let converted = markdown(html);
-        assert!(!converted.contains("<script"), "{converted}");
+        let tag = Parser::new(&converted).find(|event| matches!(event, Event::Html(_) | Event::InlineHtml(_)));
+        assert!(tag.is_none(), "{tag:?} in {converted:?}");
     }
 });

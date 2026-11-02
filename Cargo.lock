@@ -625,6 +625,7 @@ dependencies = [
  "herald-wire",
  "jiff",
  "proptest",
+ "pulldown-cmark",
  "quick-xml",
  "schemars",
  "serde",

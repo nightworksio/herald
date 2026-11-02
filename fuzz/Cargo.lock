@@ -204,6 +204,7 @@ dependencies = [
  "herald-sources-registry",
  "jiff",
  "libfuzzer-sys",
+ "pulldown-cmark",
 ]
 
 [[package]]

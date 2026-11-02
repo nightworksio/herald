@@ -1,5 +1,15 @@
 use super::*;
 use proptest::prelude::*;
+use pulldown_cmark::{Event, Parser};
+
+fn tags(markdown: &str) -> Vec<String> {
+    Parser::new(markdown)
+        .filter_map(|event| match event {
+            Event::Html(tag) | Event::InlineHtml(tag) => Some(tag.into_string()),
+            _ => None,
+        })
+        .collect()
+}
 
 #[test]
 fn paragraphs_headings_and_emphasis_become_markdown() {
@@ -26,6 +36,32 @@ fn code_and_preformatted_text_keep_what_they_hold() {
     );
     assert_eq!(markdown("<pre>x\n</pre>"), "```\nx\n```");
     assert_eq!(markdown("</code></pre>text"), "text");
+    assert_eq!(markdown("<code>a</code>*b*"), "`a`\\*b\\*");
+    assert_eq!(markdown("<code>a<span>b</span>c</code>"), "`abc`");
+    assert_eq!(markdown("<code></code>x"), "x");
+}
+
+#[test]
+fn backticks_in_code_never_end_it_early() {
+    let converted = markdown("<code>a`&lt;b&gt;`</code>");
+    assert_eq!(converted, "`a`\\``<b>`\\`");
+    assert_eq!(tags(&converted), Vec::<String>::new());
+    let fenced = markdown("<pre>````\n&lt;b&gt;</pre>");
+    assert_eq!(fenced, "`````\n````\n<b>\n`````");
+    assert_eq!(tags(&fenced), Vec::<String>::new());
+}
+
+#[test]
+fn preformatted_text_is_one_block_of_its_text_and_line_breaks() {
+    assert_eq!(markdown("<pre>a<pre>b</pre>c</pre>d"), "```\nabc\n```\n\nd");
+    assert_eq!(
+        markdown("<pre><b>x</b><br>y<img alt=z></pre>"),
+        "```\nx\ny\n```"
+    );
+    assert_eq!(markdown("<pre>x"), "```\nx\n```");
+    let unended = markdown("<pre><pre><p");
+    assert_eq!(unended, "```\n<p\n```");
+    assert_eq!(tags(&unended), Vec::<String>::new());
 }
 
 #[test]
@@ -56,6 +92,9 @@ fn a_link_keeps_its_target_only_on_the_web_or_mail() {
         ),
         "[site](https://example.org/a%20b%29) [mail](mailto:x@example.org) bad none"
     );
+    let broken = markdown("<a href=\"https://example.org/a\nb<i>\">site</a>");
+    assert_eq!(broken, "[site](https://example.org/a%0Ab%3Ci%3E)");
+    assert_eq!(tags(&broken), Vec::<String>::new());
     assert_eq!(
         markdown("<a href=https://example.org>bare</a>"),
         "[bare](https://example.org)"
@@ -97,6 +136,10 @@ fn text_that_would_read_as_markup_is_escaped() {
     assert_eq!(markdown("a &lt;b&gt; &amp; c"), "a \\<b\\> & c");
     assert_eq!(markdown("<p>  </p> <p> spaced </p>"), "spaced");
     assert_eq!(markdown("a<b> </b>c"), "a** **c");
+    assert_eq!(markdown("a <br>b"), "a  \nb");
+    assert_eq!(markdown("a<br> b"), "a  \nb");
+    assert_eq!(markdown("a<br> <b>x</b>"), "a  \n**x**");
+    assert_eq!(markdown("a<div>b"), "a\n\nb");
 }
 
 #[test]
@@ -106,6 +149,12 @@ fn a_tag_that_never_ends_or_opens_nothing_is_text() {
     assert_eq!(markdown("<1>"), "\\<1\\>");
     assert_eq!(markdown("<p =x>y"), "y");
     assert_eq!(markdown("<input disabled value=\"v\"/>z"), "z");
+    assert_eq!(markdown("<p\u{3000}/ >x"), "x");
+    assert_eq!(markdown("<img title=\"t\"alt=\"pic\">"), "pic");
+    assert_eq!(markdown("<img alt=\"\" title>"), "");
+    let unended = markdown("\u{e}<script");
+    assert_eq!(unended, "\u{e}\\<script");
+    assert_eq!(tags(&unended), Vec::<String>::new());
 }
 
 #[test]
@@ -128,6 +177,16 @@ proptest! {
         let text = words.join(" ");
         prop_assert_eq!(markdown(&text), text.clone());
         prop_assert_eq!(markdown(&format!("<p>{text}</p>")), text);
+    }
+
+    #[test]
+    fn no_tag_survives(parts in proptest::collection::vec(proptest::sample::select(vec![
+        "<pre>", "</pre>", "<code>", "</code>", "`", "```", "&lt;b&gt;", "&#96;", "<b>", "</b>",
+        "\n", "<p>", "<br>", "<li>", "<ul>", "</ul>", "<ol>", "<blockquote>", "</blockquote>",
+        "<a href=\"https://e.org/\n<i>\">", "</a>", "<h2>", "<script", "<", "x", " ", "-",
+    ]), 0..16)) {
+        let converted = markdown(&parts.concat());
+        prop_assert_eq!(tags(&converted), Vec::<String>::new(), "{:?}", converted);
     }
 
     #[test]

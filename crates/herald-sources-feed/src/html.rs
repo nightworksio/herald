@@ -1,5 +1,7 @@
 use std::fmt::Write;
 
+use herald_core::{LINK_SCHEMES, safe_url};
+
 use crate::entity::decoded;
 
 /// Elements whose content is never text: it is dropped with them.
@@ -26,8 +28,8 @@ const BLOCKS: [&str; 15] = [
 ];
 /// What Markdown reads in text as markup, escaped wherever it appears.
 const MARKUP: [char; 11] = ['\\', '`', '*', '_', '[', ']', '<', '>', '#', '~', '|'];
-/// The schemes a link keeps its target with.
-const SCHEMES: [&str; 3] = ["https://", "http://", "mailto:"];
+/// The shortest fence around preformatted text.
+const FENCE: usize = 3;
 
 /// One piece of HTML.
 #[derive(Debug, PartialEq, Eq)]
@@ -193,7 +195,9 @@ struct Writer {
     links: Vec<Option<String>>,
     quotes: Vec<usize>,
     preformatted: usize,
+    held: String,
     code: usize,
+    span_end: Option<usize>,
 }
 
 impl Writer {
@@ -222,13 +226,13 @@ impl Writer {
     fn text(&mut self, raw: &str) {
         let text = decoded(raw);
         if self.preformatted > 0 {
-            self.out.push_str(&text);
+            self.held.push_str(&text);
             return;
         }
         let at_start = self.out.is_empty() || self.out.ends_with('\n');
         let mut words = text.split_whitespace().peekable();
         if words.peek().is_none() {
-            if !text.is_empty() && !at_start && !self.out.ends_with(' ') {
+            if !at_start && !self.out.ends_with(' ') {
                 self.out.push(' ');
             }
             return;
@@ -239,7 +243,7 @@ impl Writer {
         let joined: Vec<&str> = words.collect();
         let joined = joined.join(" ");
         if self.code > 0 {
-            self.out.push_str(&joined);
+            self.spans(&joined);
         } else {
             let mut written = escaped(&joined);
             if (self.out.is_empty() || self.out.ends_with('\n')) && written.starts_with(['-', '+'])
@@ -253,7 +257,50 @@ impl Writer {
         }
     }
 
+    fn spans(&mut self, code: &str) {
+        for (index, piece) in code.split('`').enumerate() {
+            if index > 0 {
+                self.out.push_str("\\`");
+            }
+            if piece.is_empty() {
+                continue;
+            }
+            if self.span_end == Some(self.out.len()) {
+                self.out.pop();
+            } else {
+                self.out.push('`');
+            }
+            self.out.push_str(piece);
+            self.out.push('`');
+            self.span_end = Some(self.out.len());
+        }
+    }
+
+    fn fenced(&mut self) {
+        let code = std::mem::take(&mut self.held);
+        let longest = code
+            .split(|character| character != '`')
+            .map(str::len)
+            .max()
+            .unwrap_or_default();
+        let fence = "`".repeat((longest + 1).max(FENCE));
+        let _ = write!(self.out, "{fence}\n{code}");
+        if !code.ends_with('\n') {
+            self.out.push('\n');
+        }
+        self.out.push_str(&fence);
+        self.block();
+    }
+
     fn open(&mut self, name: &str, attributes: &[(String, String)]) {
+        if self.preformatted > 0 {
+            match name {
+                "pre" => self.preformatted += 1,
+                "br" => self.held.push('\n'),
+                _ => {}
+            }
+            return;
+        }
         let attribute = |wanted: &str| {
             attributes
                 .iter()
@@ -281,14 +328,10 @@ impl Writer {
             "strong" | "b" => self.out.push_str("**"),
             "em" | "i" => self.out.push('*'),
             "del" | "s" | "strike" => self.out.push_str("~~"),
-            "code" if self.preformatted == 0 => {
-                self.code += 1;
-                self.out.push('`');
-            }
+            "code" => self.code += 1,
             "pre" => {
                 self.block();
-                self.preformatted += 1;
-                self.out.push_str("```\n");
+                self.preformatted = 1;
             }
             "ul" => {
                 self.line();
@@ -320,8 +363,8 @@ impl Writer {
             "a" => {
                 let target = attribute("href")
                     .map(str::trim)
-                    .filter(|href| SCHEMES.iter().any(|scheme| href.starts_with(scheme)))
-                    .map(ToOwned::to_owned);
+                    .filter(|href| LINK_SCHEMES.iter().any(|scheme| href.starts_with(scheme)))
+                    .map(safe_url);
                 if target.is_some() {
                     self.out.push('[');
                 }
@@ -339,6 +382,15 @@ impl Writer {
     }
 
     fn close(&mut self, name: &str) {
+        if self.preformatted > 0 {
+            if name == "pre" {
+                self.preformatted -= 1;
+                if self.preformatted == 0 {
+                    self.fenced();
+                }
+            }
+            return;
+        }
         match name {
             "h1" | "h2" | "h3" | "h4" | "h5" | "h6" | "ul" | "ol" => {
                 if matches!(name, "ul" | "ol") {
@@ -349,18 +401,7 @@ impl Writer {
             "strong" | "b" => self.out.push_str("**"),
             "em" | "i" => self.out.push('*'),
             "del" | "s" | "strike" => self.out.push_str("~~"),
-            "code" if self.code > 0 => {
-                self.code -= 1;
-                self.out.push('`');
-            }
-            "pre" if self.preformatted > 0 => {
-                self.preformatted -= 1;
-                if !self.out.ends_with('\n') {
-                    self.out.push('\n');
-                }
-                self.out.push_str("```");
-                self.block();
-            }
+            "code" => self.code = self.code.saturating_sub(1),
             "blockquote" => {
                 if let Some(start) = self.quotes.pop() {
                     let quoted = self.out.split_off(start.min(self.out.len()));
@@ -381,8 +422,7 @@ impl Writer {
             }
             "a" => {
                 if let Some(Some(target)) = self.links.pop() {
-                    let encoded = target.replace(' ', "%20").replace(')', "%29");
-                    let _ = write!(self.out, "]({encoded})");
+                    let _ = write!(self.out, "]({target})");
                 }
             }
             _ if BLOCKS.contains(&name) => self.block(),
@@ -404,6 +444,9 @@ pub fn markdown(html: &str) -> String {
             Token::Open { name, attributes } => writer.open(&name, &attributes),
             Token::Close(name) => writer.close(&name),
         }
+    }
+    if writer.preformatted > 0 {
+        writer.fenced();
     }
     writer.out.trim().to_owned()
 }

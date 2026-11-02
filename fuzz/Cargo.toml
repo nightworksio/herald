@@ -17,6 +17,7 @@ herald-sources-forge = { path = "../crates/herald-sources-forge" }
 herald-sources-registry = { path = "../crates/herald-sources-registry" }
 jiff = { version = "0.2", default-features = false, features = ["std"] }
 libfuzzer-sys = "0.4"
+pulldown-cmark = { version = "0.13", default-features = false }
 
 [workspace]
 members = ["."]
