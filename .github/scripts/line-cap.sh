@@ -7,7 +7,7 @@ cap=1000
 over=0
 while IFS= read -r -d '' file; do
   case "$file" in
-    *.lock | */package-lock.json | package-lock.json) continue ;;
+    *.lock | */package-lock.json | package-lock.json | herald.schema.json) continue ;;
     *.png | *.jpg | *.jpeg | *.gif | *.ico | *.svg | *.webp) continue ;;
   esac
   [ -f "$file" ] || continue

@@ -267,6 +267,21 @@ mod replay {
     }
 
     #[test]
+    fn an_account_that_cannot_be_reached_says_why() {
+        let mastodon = mastodon(RouteOptions::default());
+        let replay = fixture!("announcement");
+        let markers = MastodonMarkers::new(&mastodon, &replay);
+        assert_eq!(
+            pollster::block_on(markers.entry(&announcement().key, &marker())),
+            Err(MarkersError::Unreadable {
+                reason: format!(
+                    "{SERVER}/api/v1/accounts/verify_credentials is not a host this destination may reach"
+                )
+            })
+        );
+    }
+
+    #[test]
     fn a_status_fits_the_server_limit_with_its_title_link_and_warning() {
         let plain = profile(&RouteOptions::default());
         assert_eq!(plain.dialect, Dialect::Plain);

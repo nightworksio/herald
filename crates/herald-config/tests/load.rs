@@ -57,6 +57,10 @@ body = "{{ event.body }}"
             config.destinations.values().next(),
             Some(Destination::Discord(options)) if options.token.is_some()
         ));
+        assert_eq!(
+            config.destinations.values().next().map(Destination::kind),
+            Some("discord")
+        );
         assert!(matches!(
             config.sources.values().next(),
             Some(Source::Forge(Forge::GitHub, options)) if options.repository == "nightworksio/php-mutation-gate"
