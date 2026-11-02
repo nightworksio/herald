@@ -44,6 +44,8 @@ pub struct Request {
     pub headers: Vec<(String, Text)>,
     /// The body.
     pub body: Vec<u8>,
+    /// The most bytes of its response's body that are read.
+    pub most: usize,
 }
 
 impl Request {
@@ -55,6 +57,7 @@ impl Request {
             url,
             headers: Vec::new(),
             body: Vec::new(),
+            most: BODY_LIMIT,
         }
     }
 
@@ -69,6 +72,14 @@ impl Request {
     #[must_use]
     pub fn body(mut self, body: impl Into<Vec<u8>>) -> Self {
         self.body = body.into();
+        self
+    }
+
+    /// The request reading at most `bytes` of its response's body, and
+    /// none of a response that says it is longer.
+    #[must_use]
+    pub fn at_most(mut self, bytes: usize) -> Self {
+        self.most = bytes.min(BODY_LIMIT);
         self
     }
 }
@@ -86,8 +97,9 @@ impl fmt::Display for Request {
     }
 }
 
-/// The most bytes of a response body herald reads: the npm registry's
-/// packument of a long-lived package is the largest answer it asks for.
+/// The most bytes of a response body herald reads, unless a request reads
+/// fewer: the npm registry's packument of a long-lived package is the
+/// largest answer it asks for.
 pub const BODY_LIMIT: usize = 33_554_432;
 
 /// The `User-Agent` every request herald sends carries: herald, its version

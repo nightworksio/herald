@@ -80,7 +80,7 @@ fn outside_allowed(layer: Layer) -> &'static [&'static str] {
         Layer::Ports | Layer::Flows => &["jiff"],
         Layer::Testing | Layer::Kits => &["jiff", "serde", "serde_json"],
         Layer::Sources => &["jiff", "quick-xml", "schemars", "serde", "serde_json"],
-        Layer::Destinations => &["jiff", "schemars", "serde", "serde_json"],
+        Layer::Destinations => &["jiff", "schemars", "serde", "serde_json", "url"],
         Layer::Stores => &["base64", "jiff", "schemars", "serde", "serde_json"],
         Layer::Config => &["jiff", "schemars", "serde", "serde_json", "toml"],
         _ => &[],

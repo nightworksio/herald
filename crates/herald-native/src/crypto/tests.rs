@@ -157,8 +157,6 @@ fn an_activity_signed_by_its_actors_key_verifies_through_the_pem_it_publishes() 
         r#"keyId="https://social.example/users/ana#main-key",algorithm="rsa-sha256",headers="(request-target) host date digest",signature="{signed}""#
     );
     let headers = [
-        ("(request-target)", "post /inbox"),
-        ("(audience)", "herald.example"),
         ("Host", "herald.example"),
         ("Date", date),
         ("Digest", digest.as_str()),
@@ -167,7 +165,11 @@ fn an_activity_signed_by_its_actors_key_verifies_through_the_pem_it_publishes() 
     let now = "2027-01-15T08:00:00Z".parse().unwrap();
     let public = herald_core::key(herald_core::Scheme::ActivityPub, SPKI).unwrap();
     for (body, holds) in [(body.as_slice(), true), (b"{\"type\":\"Undo\"}", false)] {
-        match herald_core::claim(herald_core::Scheme::ActivityPub, &headers, body, now) {
+        let to = herald_core::Addressed {
+            target: "post /inbox",
+            audience: "herald.example",
+        };
+        match herald_core::activity_claim(to, &headers, body, now) {
             Ok(claim) => assert_eq!(
                 verify(
                     Algorithm::RsaSha256,

@@ -17,6 +17,7 @@ jiff.workspace = true
 ring.workspace = true
 reqwest.workspace = true
 rustls.workspace = true
+tokio = { workspace = true, features = ["net"] }
 url.workspace = true
 webpki-roots.workspace = true
 

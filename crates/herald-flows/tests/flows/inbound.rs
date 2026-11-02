@@ -1,5 +1,5 @@
 use herald_core::{Refusal, Scheme};
-use herald_flows::{Rejected, Verified, admitted, released, verified};
+use herald_flows::{Rejected, Verified, activity_verified, admitted, released, verified};
 use herald_ports::{Store, StoreError};
 use herald_testing::{FakeStore, FakeVerifier};
 use jiff::Timestamp;
@@ -329,53 +329,298 @@ fn a_store_that_cannot_answer_lets_nothing_through() {
 
 const ACTOR_KEY: &str = include_str!("../../../herald-native/fixtures/rsa-2048-spki.test.pem");
 
-#[test]
-fn an_activity_is_checked_as_rsa_and_names_its_signer() {
+const ANA: &str = "https://social.example/users/ana";
+const ANA_KEY: &str = "https://social.example/users/ana#main-key";
+const FOLLOW: &[u8] = br#"{"type":"Follow","actor":"https://social.example/users/ana"}"#;
+/// Where the activities here are sent: herald's inbox, on its own host.
+const TO: herald_core::Addressed<'static> = herald_core::Addressed {
+    target: "post /inbox",
+    audience: "herald.example",
+};
+
+fn at() -> Timestamp {
+    "2027-01-15T08:00:00Z".parse().unwrap()
+}
+
+/// The headers of `body` signed with `key_id` by the fake verifier's
+/// signature under the actor key, or with `signature` where it is given.
+fn activity(body: &[u8], key_id: &str, signature: Option<&str>) -> Vec<(String, String)> {
     use base64::Engine as _;
     use base64::engine::general_purpose::STANDARD;
     use sha2::Digest as _;
-    let digest = format!("SHA-256={}", STANDARD.encode(sha2::Sha256::digest(BODY)));
-    let at: Timestamp = "2027-01-15T08:00:00Z".parse().unwrap();
+    let digest = format!("SHA-256={}", STANDARD.encode(sha2::Sha256::digest(body)));
     let signing = |signature: &str| {
         vec![
-            ("(request-target)", "post /inbox".to_owned()),
-            ("(audience)", "herald.example".to_owned()),
-            ("Host", "herald.example".to_owned()),
-            ("Date", "Fri, 15 Jan 2027 08:00:00 GMT".to_owned()),
-            ("Digest", digest.clone()),
+            ("Host".to_owned(), "herald.example".to_owned()),
             (
-                "Signature",
+                "Date".to_owned(),
+                "Fri, 15 Jan 2027 08:00:00 GMT".to_owned(),
+            ),
+            ("Digest".to_owned(), digest.clone()),
+            (
+                "Signature".to_owned(),
                 format!(
-                    r#"keyId="https://social.example/users/ana#main-key",headers="(request-target) host date digest",signature="{signature}""#
+                    r#"keyId="{key_id}",headers="(request-target) host date digest",signature="{signature}""#
                 ),
             ),
         ]
     };
+    if let Some(signature) = signature {
+        return signing(signature);
+    }
     let probe = signing("AA==");
-    let probe: Vec<(&str, &str)> = probe
-        .iter()
-        .map(|(name, value)| (*name, value.as_str()))
-        .collect();
-    let message = herald_core::claim(Scheme::ActivityPub, &probe, BODY, at)
+    let message = herald_core::activity_claim(TO, &borrowed(&probe), body, at())
         .unwrap()
         .message;
     let public = herald_core::key(Scheme::ActivityPub, ACTOR_KEY).unwrap();
     let spelled = [b"RsaSha256|".as_slice(), &public, b"|", &message].concat();
-    let headers = signing(&STANDARD.encode(spelled));
-    let headers: Vec<(&str, &str)> = headers
+    signing(&STANDARD.encode(spelled))
+}
+
+fn borrowed(headers: &[(String, String)]) -> Vec<(&str, &str)> {
+    headers
         .iter()
-        .map(|(name, value)| (*name, value.as_str()))
-        .collect();
-    let verified = pollster::block_on(verified(
+        .map(|(name, value)| (name.as_str(), value.as_str()))
+        .collect()
+}
+
+fn document(owner: &str) -> String {
+    serde_json::json!({
+        "id": ANA,
+        "type": "Person",
+        "publicKey": { "id": ANA_KEY, "owner": owner, "publicKeyPem": ACTOR_KEY },
+    })
+    .to_string()
+}
+
+/// A scripted answer: the URL's end, its status and its body.
+type Answer<'a> = (&'a str, u16, &'a str);
+
+fn checked_activity(
+    body: &[u8],
+    headers: &[(String, String)],
+    answers: &[Answer],
+) -> (Result<Verified, Rejected>, Vec<String>) {
+    served(body, headers, answers, "application/activity+json")
+}
+
+fn served(
+    body: &[u8],
+    headers: &[(String, String)],
+    answers: &[Answer],
+    content_type: &str,
+) -> (Result<Verified, Rejected>, Vec<String>) {
+    let script =
+        crate::harness::Script::answering(answers).headed(&[("content-type", content_type)]);
+    let checked = pollster::block_on(activity_verified(
+        &FakeVerifier,
+        &script,
+        TO,
+        &borrowed(headers),
+        body,
+        at(),
+    ));
+    (checked, script.seen())
+}
+
+#[test]
+fn an_activity_is_checked_with_its_actor_s_key_and_names_that_actor() {
+    let owned = document(ANA);
+    let (checked, seen) = checked_activity(
+        FOLLOW,
+        &activity(FOLLOW, ANA_KEY, None),
+        &[(ANA, 200, owned.as_str())],
+    );
+    let verified = checked.unwrap();
+    assert_eq!(verified.signer.as_deref(), Some(ANA));
+    assert!(verified.delivery.is_some());
+    assert_eq!(seen, [format!("GET {ANA}")]);
+}
+
+#[test]
+fn an_activity_whose_actor_is_not_its_signer_is_impersonated() {
+    let owned = document(ANA);
+    let other = br#"{"type":"Follow","actor":"https://social.example/users/bob"}"#;
+    let (checked, _) = checked_activity(
+        other,
+        &activity(other, ANA_KEY, None),
+        &[(ANA, 200, owned.as_str())],
+    );
+    assert_eq!(checked, Err(Rejected::Impersonated));
+    assert_eq!(
+        Rejected::Impersonated.to_string(),
+        "the activity names an actor other than the owner of the key that signed it, or has its id on another origin"
+    );
+}
+
+#[test]
+fn an_activity_with_a_forged_signature_is_forged_before_its_actor_is_read() {
+    let owned = document(ANA);
+    let (checked, _) = checked_activity(
+        FOLLOW,
+        &activity(FOLLOW, ANA_KEY, Some("AAE=")),
+        &[(ANA, 200, owned.as_str())],
+    );
+    assert_eq!(checked, Err(Rejected::Forged));
+}
+
+#[test]
+fn a_key_that_cannot_be_read_lets_no_activity_through_and_says_why() {
+    let owned = document(ANA);
+    let elsewhere = document("https://victim.example/users/admin");
+    let unkeyed = serde_json::json!({
+        "id": ANA,
+        "type": "Person",
+        "publicKey": { "id": ANA_KEY, "owner": ANA, "publicKeyPem": "not a key" },
+    })
+    .to_string();
+    let cases: [(&str, Vec<Answer>, &str); 4] = [
+        (ANA_KEY, vec![(ANA, 410, "")], "its server answered 410"),
+        (
+            ANA_KEY,
+            vec![],
+            "the host could not be reached: nothing scripted for GET https://social.example/users/ana",
+        ),
+        (
+            ANA_KEY,
+            vec![(ANA, 200, elsewhere.as_str())],
+            "the document is not the one it was read from, or names another actor as the key's owner",
+        ),
+        (
+            "http://social.example/users/ana#main-key",
+            vec![(ANA, 200, owned.as_str())],
+            "http://social.example/users/ana#main-key is not an HTTPS URL naming a host",
+        ),
+    ];
+    for (key_id, answers, reason) in cases {
+        let (checked, _) =
+            checked_activity(FOLLOW, &activity(FOLLOW, key_id, Some("AAE=")), &answers);
+        let Err(Rejected::Unfetched { reason: said }) = checked else {
+            panic!("{key_id}: {checked:?}");
+        };
+        assert!(said.ends_with(reason), "{said}");
+        assert_eq!(
+            Rejected::Unfetched {
+                reason: said.clone()
+            }
+            .to_string(),
+            format!("the key the activity is signed with could not be read: {said}")
+        );
+    }
+    let (checked, _) = checked_activity(
+        FOLLOW,
+        &activity(FOLLOW, ANA_KEY, Some("AAE=")),
+        &[(ANA, 200, unkeyed.as_str())],
+    );
+    assert_eq!(checked, Err(Rejected::Unkeyed));
+    let (refused, seen) = checked_activity(FOLLOW, &[], &[]);
+    assert!(matches!(refused, Err(Rejected::Refused(_))), "{refused:?}");
+    assert_eq!(seen, Vec::<String>::new());
+}
+
+#[test]
+fn a_key_served_as_anything_but_activitypub_json_is_not_read() {
+    let owned = document(ANA);
+    for content_type in ["text/plain", "application/json"] {
+        let (checked, _) = served(
+            FOLLOW,
+            &activity(FOLLOW, ANA_KEY, None),
+            &[(ANA, 200, owned.as_str())],
+            content_type,
+        );
+        assert_eq!(
+            checked,
+            Err(Rejected::Unfetched {
+                reason: "its server did not answer it as ActivityPub JSON".to_owned()
+            }),
+            "{content_type}"
+        );
+    }
+}
+
+#[test]
+fn an_activity_is_never_checked_against_a_key_handed_in() {
+    let headers = activity(FOLLOW, ANA_KEY, None);
+    let handed = pollster::block_on(verified(
         &FakeVerifier,
         Scheme::ActivityPub,
         ACTOR_KEY,
-        &headers,
-        BODY,
-        at,
+        &borrowed(&headers),
+        FOLLOW,
+        at(),
     ));
-    assert_eq!(
-        verified.map(|verified| verified.signer),
-        Ok(Some("https://social.example/users/ana#main-key".to_owned()))
+    assert_eq!(handed, Err(Rejected::Unkeyed));
+}
+
+#[test]
+fn a_key_s_own_document_is_its_owner_s_only_where_the_owner_lists_it() {
+    let alone = "https://social.example/users/ana/main-key";
+    let key =
+        serde_json::json!({ "id": alone, "owner": ANA, "publicKeyPem": ACTOR_KEY }).to_string();
+    let listing = serde_json::json!({ "id": ANA, "type": "Person", "publicKey": { "id": alone, "owner": ANA } })
+        .to_string();
+    let elsewhere =
+        serde_json::json!({ "id": ANA, "type": "Person", "publicKey": { "id": ANA_KEY } })
+            .to_string();
+    let (checked, seen) = checked_activity(
+        FOLLOW,
+        &activity(FOLLOW, alone, None),
+        &[(alone, 200, key.as_str()), (ANA, 200, listing.as_str())],
     );
+    assert_eq!(
+        checked.map(|verified| verified.signer),
+        Ok(Some(ANA.to_owned()))
+    );
+    assert_eq!(seen, [format!("GET {alone}"), format!("GET {ANA}")]);
+    let (unlisted, _) = checked_activity(
+        FOLLOW,
+        &activity(FOLLOW, alone, None),
+        &[(alone, 200, key.as_str()), (ANA, 200, elsewhere.as_str())],
+    );
+    assert_eq!(
+        unlisted,
+        Err(Rejected::Unfetched {
+            reason: "the actor the key names as its owner does not list the key".to_owned()
+        })
+    );
+    let (gone, _) = checked_activity(
+        FOLLOW,
+        &activity(FOLLOW, alone, None),
+        &[(alone, 200, key.as_str()), (ANA, 404, "")],
+    );
+    assert_eq!(
+        gone,
+        Err(Rejected::Unfetched {
+            reason: "its server answered 404".to_owned()
+        })
+    );
+}
+
+#[test]
+fn an_activity_whose_own_id_is_on_another_origin_than_its_actor_is_impersonated() {
+    let owned = document(ANA);
+    let foreign = br#"{"type":"Follow","id":"https://elsewhere.example/f/1","actor":"https://social.example/users/ana"}"#;
+    let (checked, _) = checked_activity(
+        foreign,
+        &activity(foreign, ANA_KEY, None),
+        &[(ANA, 200, owned.as_str())],
+    );
+    assert_eq!(checked, Err(Rejected::Impersonated));
+    let homed = br#"{"type":"Follow","id":"https://social.example/f/1","actor":"https://social.example/users/ana"}"#;
+    let (checked, _) = checked_activity(
+        homed,
+        &activity(homed, ANA_KEY, None),
+        &[(ANA, 200, owned.as_str())],
+    );
+    assert_eq!(
+        checked.map(|verified| verified.signer),
+        Ok(Some(ANA.to_owned()))
+    );
+    let actorless = br#"{"type":"Follow"}"#;
+    let (checked, _) = checked_activity(
+        actorless,
+        &activity(actorless, ANA_KEY, None),
+        &[(ANA, 200, owned.as_str())],
+    );
+    assert_eq!(checked, Err(Rejected::Impersonated));
 }

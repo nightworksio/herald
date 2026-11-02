@@ -50,10 +50,9 @@ pub enum Scheme {
     /// An ActivityPub activity posted to herald's inbox, signed as HTTP
     /// Signatures do: `Signature` names the signer's `keyId` and the headers
     /// it signs, which must hold `(request-target)`, `host`, `date` and, with
-    /// a body, `digest`; `Digest: SHA-256=<base64>` is the body's. The driver
-    /// hands `(request-target)` in as `<method> <path>`, in lowercase, and
-    /// `(audience)` as its own host, which the signed `host` must be. It is
-    /// delivered as its signature.
+    /// a body, `digest`; `Digest: SHA-256=<base64>` is the body's. It is
+    /// claimed by [`activity_claim`], with where it was sent, and delivered
+    /// as its signature.
     ActivityPub,
 }
 
@@ -135,6 +134,8 @@ pub enum Refusal {
     },
     /// It was signed for another host than this herald.
     Misdirected,
+    /// An ActivityPub activity was claimed without where it was sent.
+    Unaddressed,
 }
 
 impl fmt::Display for Refusal {
@@ -154,6 +155,9 @@ impl fmt::Display for Refusal {
                 write!(f, "the request's {header} does not match its body")
             }
             Self::Misdirected => f.write_str("the request was signed for another host"),
+            Self::Unaddressed => f.write_str(
+                "an ActivityPub activity is claimed with where it was sent, which no header says",
+            ),
         }
     }
 }
@@ -212,7 +216,7 @@ pub fn claim(
                 Some(&delivery),
             ))
         }
-        Scheme::ActivityPub => activity(headers, body, now),
+        Scheme::ActivityPub => Err(Refusal::Unaddressed),
         Scheme::Matrix => {
             const HEADER: &str = "Authorization";
             let token = required(headers, HEADER)?
@@ -348,7 +352,9 @@ fn timestamp<'a>(
 
 /// The headers an ActivityPub signature must cover, and `digest` beside
 /// them where a body is sent.
-const COVERED: [&str; 3] = ["(request-target)", "host", "date"];
+/// The pseudo-header a signature names its request's method and path by.
+const TARGET: &str = "(request-target)";
+const COVERED: [&str; 3] = [TARGET, "host", "date"];
 
 /// The most headers an ActivityPub signature may name. Each is read into the
 /// signing string before the signature is checked, so a request naming more
@@ -358,7 +364,30 @@ pub const MOST_COVERED: usize = 16;
 /// The claim of an ActivityPub activity: the signing string of the headers
 /// its `Signature` names, with its `Date` inside the replay window and its
 /// `Digest` the body's.
-fn activity(headers: &[(&str, &str)], body: &[u8], now: Timestamp) -> Result<Claim, Refusal> {
+/// Where an ActivityPub request was sent, as the driver read it from the
+/// request itself and from its config, never from the sender's headers.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Addressed<'a> {
+    /// `<method> <path>`, the method in lowercase and the path with its
+    /// query, as `(request-target)` signs it.
+    pub target: &'a str,
+    /// The host herald serves, from its config, which the signed `host`
+    /// must be.
+    pub audience: &'a str,
+}
+
+/// The claim of an ActivityPub activity sent to `addressed`, with its
+/// `headers` and raw `body`, at `now` (ADR-0007).
+///
+/// # Errors
+///
+/// Why it is refused before any signature is checked.
+pub fn activity_claim(
+    addressed: Addressed<'_>,
+    headers: &[(&str, &str)],
+    body: &[u8],
+    now: Timestamp,
+) -> Result<Claim, Refusal> {
     const SIGNATURE: &str = "Signature";
     const DATE: &str = "Date";
     const DIGEST: &str = "Digest";
@@ -395,10 +424,9 @@ fn activity(headers: &[(&str, &str)], body: &[u8], now: Timestamp) -> Result<Cla
             return Err(Refusal::Uncovered { header });
         }
     }
-    let audience = required(headers, "(audience)")?;
     if !required(headers, "Host")?
         .trim()
-        .eq_ignore_ascii_case(audience)
+        .eq_ignore_ascii_case(addressed.audience)
     {
         return Err(Refusal::Misdirected);
     }
@@ -425,7 +453,12 @@ fn activity(headers: &[(&str, &str)], body: &[u8], now: Timestamp) -> Result<Cla
     }
     let mut lines = Vec::with_capacity(covered.len());
     for name in &covered {
-        let value = header_of(headers, name).ok_or(Refusal::Malformed { header: SIGNATURE })?;
+        let value = match name.as_str() {
+            TARGET => Some(addressed.target),
+            pseudo if pseudo.starts_with('(') => None,
+            name => header_of(headers, name),
+        }
+        .ok_or(Refusal::Malformed { header: SIGNATURE })?;
         lines.push(format!("{name}: {}", value.trim()));
     }
     let delivery = crate::hex(&signature);

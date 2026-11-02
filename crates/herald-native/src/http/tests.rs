@@ -1,59 +1,8 @@
-use herald_ports::{Secret, Text};
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::net::{TcpListener, TcpStream};
-use tokio::task::JoinHandle;
-
 use super::*;
+use tokio::net::TcpListener;
 
-async fn request_of(stream: &mut TcpStream) -> String {
-    let mut seen = Vec::new();
-    let mut buffer = [0_u8; 4096];
-    loop {
-        let read = stream.read(&mut buffer).await.unwrap();
-        seen.extend_from_slice(&buffer[..read]);
-        let text = String::from_utf8_lossy(&seen).into_owned();
-        if let Some(end) = text.find("\r\n\r\n") {
-            let length = text
-                .lines()
-                .find_map(|line| {
-                    line.to_ascii_lowercase()
-                        .strip_prefix("content-length: ")
-                        .map(str::to_owned)
-                })
-                .map_or(0, |length| length.parse::<usize>().unwrap());
-            if seen.len() >= end + 4 + length {
-                return text;
-            }
-        }
-        if read == 0 {
-            return text;
-        }
-    }
-}
-
-async fn serve(answers: Vec<Vec<u8>>) -> (String, JoinHandle<Vec<String>>) {
-    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let base = format!("http://{}", listener.local_addr().unwrap());
-    let server = tokio::spawn(async move {
-        let mut requests = Vec::new();
-        for answer in answers {
-            let (mut stream, _) = listener.accept().await.unwrap();
-            requests.push(request_of(&mut stream).await);
-            stream.write_all(&answer).await.unwrap();
-            stream.shutdown().await.unwrap();
-        }
-        requests
-    });
-    (base, server)
-}
-
-fn answer(status: &str, headers: &str, body: &[u8]) -> Vec<u8> {
-    let head = format!(
-        "HTTP/1.1 {status}\r\nConnection: close\r\nContent-Length: {}\r\n{headers}\r\n",
-        body.len()
-    );
-    [head.as_bytes(), body].concat()
-}
+use crate::serving::{answer, serve};
+use herald_ports::{BODY_LIMIT, Secret, Text};
 
 fn http(base: &str) -> NativeHttp {
     NativeHttp::new(Reach::new([base]).unwrap()).unwrap()
@@ -279,5 +228,39 @@ fn a_client_for_a_base_reaches_only_that_base_or_says_why_not() {
     assert_eq!(
         unbuilt.to_string(),
         "the HTTP client could not be built: no TLS"
+    );
+}
+
+#[tokio::test]
+async fn a_request_reads_at_most_its_own_cap_whether_or_not_the_length_is_said() {
+    let unsaid = |body: &[u8]| {
+        [
+            b"HTTP/1.1 200 OK\r\nConnection: close\r\n\r\n".as_slice(),
+            body,
+        ]
+        .concat()
+    };
+    let (base, server) = serve(vec![
+        answer("200 OK", "", b"abcd"),
+        answer("200 OK", "", b"abcde"),
+        unsaid(b"abcd"),
+        unsaid(b"abcde"),
+    ])
+    .await;
+    let http = http(&base);
+    let request = || Request::new(Method::Get, Text::plain(format!("{base}/"))).at_most(4);
+    let larger = Err(HttpError::Unreachable {
+        reason: "the response is larger than 4 bytes".to_owned(),
+    });
+    assert_eq!(http.send(request()).await.unwrap().body, b"abcd");
+    assert_eq!(http.send(request()).await, larger);
+    assert_eq!(http.send(request()).await.unwrap().body, b"abcd");
+    assert_eq!(http.send(request()).await, larger);
+    server.await.unwrap();
+    assert_eq!(
+        Request::new(Method::Get, Text::plain("x"))
+            .at_most(BODY_LIMIT + 1)
+            .most,
+        BODY_LIMIT
     );
 }

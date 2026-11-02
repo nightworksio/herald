@@ -63,10 +63,16 @@ part of theirs.
    | Discord interaction | Ed25519 over the timestamp and body, with the application's public key, inside a replay window |
    | Slack command or interaction | Slack's signing secret: HMAC-SHA256 over the version, timestamp and body, inside a five-minute replay window |
    | Matrix application-service transaction | the registration's homeserver token, compared in constant time |
-   | ActivityPub activity | the HTTP signature, checked against the key of the actor that signed it, with the body's digest. An activity naming an actor other than the signer is refused |
+   | ActivityPub activity | the HTTP signature, checked against the key of the actor that signed it, with the body's digest. `(request-target)` and the audience come from the request herald received and its own host, never from a header. The key is read from its `keyId`'s document, served as ActivityPub JSON: an actor's own document listing it, or the key's own document naming an owner on its origin, whose own document must list it. Every id is an HTTPS URL already written as a URL parser reads it. An activity naming an actor other than the key's owner, or an id on another origin, is refused |
    | HTTP API | a per-app bearer token (decision 4) |
 
    Every comparison of a secret or a signature takes constant time.
+
+   - **What a refusal tells the sender.** A refused request is answered with
+     a status that names no reason; the reason is logged where herald runs.
+   - **What a hostile key costs.** A key's document is read at most
+     256 KiB, through a connection given 5 seconds to open and 10 to
+     finish, and a request makes herald read at most two documents.
 
 4. **App tokens are scoped and stored hashed.**
    - **Minting.** `herald token new --app <name>` prints a new 256-bit random

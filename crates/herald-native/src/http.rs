@@ -3,7 +3,7 @@ use std::fmt;
 use std::sync::Arc;
 use std::time::Duration;
 
-use herald_ports::{BODY_LIMIT, Http, HttpError, Method, Request, Response};
+use herald_ports::{Http, HttpError, Method, Request, Response};
 use rustls::crypto::CryptoProvider;
 use rustls::{ClientConfig, RootCertStore};
 use url::Url;
@@ -11,13 +11,13 @@ use url::Url;
 use crate::reach::{Reach, ReachError};
 
 /// How long a connection may take to open.
-const CONNECT: Duration = Duration::from_secs(10);
+pub(crate) const CONNECT: Duration = Duration::from_secs(10);
 /// How long a request may take, from sending it to the end of its response.
-const TOTAL: Duration = Duration::from_secs(30);
+pub(crate) const TOTAL: Duration = Duration::from_secs(30);
 
 /// Why the HTTP client could not be built.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct BuildError(String);
+pub struct BuildError(pub(crate) String);
 
 impl fmt::Display for BuildError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -78,22 +78,32 @@ impl NativeHttp {
         connect: Duration,
         total: Duration,
     ) -> Result<Self, BuildError> {
-        let builder = reqwest::Client::builder();
-        let builder = match tls {
-            Some(tls) => builder.tls_backend_preconfigured(tls),
-            None => builder.tls_backend_preconfigured(()),
-        };
-        let client = builder
-            .redirect(reqwest::redirect::Policy::none())
-            .connect_timeout(connect)
-            .timeout(total)
-            .build()
-            .map_err(|error| BuildError(chain(&error)))?;
+        let client = client(reqwest::Client::builder(), tls, connect, total)?;
         Ok(Self { client, reach })
     }
 }
 
-fn tls(provider: CryptoProvider) -> Result<ClientConfig, BuildError> {
+/// A client from `builder` with `tls`, its timeouts, and no redirect
+/// followed (ADR-0007).
+pub(crate) fn client(
+    builder: reqwest::ClientBuilder,
+    tls: Option<ClientConfig>,
+    connect: Duration,
+    total: Duration,
+) -> Result<reqwest::Client, BuildError> {
+    let builder = match tls {
+        Some(tls) => builder.tls_backend_preconfigured(tls),
+        None => builder.tls_backend_preconfigured(()),
+    };
+    builder
+        .redirect(reqwest::redirect::Policy::none())
+        .connect_timeout(connect)
+        .timeout(total)
+        .build()
+        .map_err(|error| BuildError(chain(&error)))
+}
+
+pub(crate) fn tls(provider: CryptoProvider) -> Result<ClientConfig, BuildError> {
     let roots: RootCertStore = webpki_roots::TLS_SERVER_ROOTS.iter().cloned().collect();
     let config = ClientConfig::builder_with_provider(Arc::new(provider))
         .with_safe_default_protocol_versions()
@@ -131,7 +141,16 @@ fn failed(error: reqwest::Error) -> HttpError {
     }
 }
 
-async fn read(mut response: reqwest::Response) -> Result<Response, HttpError> {
+async fn read(mut response: reqwest::Response, most: usize) -> Result<Response, HttpError> {
+    let larger = || HttpError::Unreachable {
+        reason: format!("the response is larger than {most} bytes"),
+    };
+    if response
+        .content_length()
+        .is_some_and(|length| usize::try_from(length).map_or(true, |length| length > most))
+    {
+        return Err(larger());
+    }
     let status = response.status().as_u16();
     let headers = response
         .headers()
@@ -143,10 +162,8 @@ async fn read(mut response: reqwest::Response) -> Result<Response, HttpError> {
         .collect();
     let mut body = Vec::new();
     while let Some(chunk) = response.chunk().await.map_err(failed)? {
-        if body.len() + chunk.len() > BODY_LIMIT {
-            return Err(HttpError::Unreachable {
-                reason: format!("the response is larger than {BODY_LIMIT} bytes"),
-            });
+        if body.len() + chunk.len() > most {
+            return Err(larger());
         }
         body.extend_from_slice(&chunk);
     }
@@ -167,13 +184,23 @@ impl Http for NativeHttp {
                 url: request.url.redacted(),
             });
         };
-        let mut builder = self.client.request(method(request.method), url);
-        for (name, value) in &request.headers {
-            builder = builder.header(name.as_str(), value.expose());
-        }
-        let response = builder.body(request.body).send().await.map_err(failed)?;
-        read(response).await
+        sent(&self.client, request, url).await
     }
+}
+
+/// `request` sent to `url` through `client`, and its response read.
+pub(crate) async fn sent(
+    client: &reqwest::Client,
+    request: Request,
+    url: Url,
+) -> Result<Response, HttpError> {
+    let mut builder = client.request(method(request.method), url);
+    for (name, value) in &request.headers {
+        builder = builder.header(name.as_str(), value.expose());
+    }
+    let most = request.most;
+    let response = builder.body(request.body).send().await.map_err(failed)?;
+    read(response, most).await
 }
 
 #[cfg(test)]
