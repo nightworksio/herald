@@ -99,6 +99,14 @@ mod markers {
             pollster::block_on(store.put_pinned(&RouteId::new("r"), "1")),
             Err(unsupported("pins"))
         );
+        assert_eq!(
+            pollster::block_on(store.release(herald_core::Scheme::GitHub, "d")),
+            Err(unsupported("deliveries"))
+        );
+        assert_eq!(
+            pollster::block_on(store.expire_deliveries(OPENED)),
+            Err(unsupported("deliveries"))
+        );
     }
 
     fn opened(thread: &str, archived: bool, locked: bool) -> MarkedThread {

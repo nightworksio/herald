@@ -364,7 +364,6 @@ async fn pins<S: Store>(store: &S) -> Result<(), Failure> {
 async fn deliveries<S: Store>(store: &S) -> Result<(), Failure> {
     let mut checks = Checks::default();
     let later = NOON + jiff::SignedDuration::from_hours(1);
-    let latest = NOON + jiff::SignedDuration::from_hours(2);
     checks.ensure(
         store.admit(Scheme::GitHub, "one", NOON).await? == Admitted::Fresh,
         "a delivery arriving the first time was not fresh",
@@ -386,11 +385,11 @@ async fn deliveries<S: Store>(store: &S) -> Result<(), Failure> {
     store.admit(Scheme::Forgejo, "new", later).await?;
     store.expire_deliveries(later).await?;
     checks.ensure(
-        store.admit(Scheme::Forgejo, "old", latest).await? == Admitted::Fresh,
+        store.admit(Scheme::Forgejo, "old", later).await? == Admitted::Fresh,
         "a delivery admitted before the expiry was still seen",
     );
     checks.ensure(
-        store.admit(Scheme::Forgejo, "new", latest).await? == Admitted::Seen,
+        store.admit(Scheme::Forgejo, "new", later).await? == Admitted::Seen,
         "a delivery admitted at the expiry was forgotten",
     );
     checks.done()

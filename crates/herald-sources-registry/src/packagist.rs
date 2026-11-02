@@ -14,9 +14,6 @@ pub(crate) const API: Api = Api {
 
 /// The format whose entries leave out what the entry before gave.
 const MINIFIED: &str = "composer/2.0";
-/// What a minified entry gives for a key the entry before set and it does
-/// not.
-const UNSET: &str = "__unset";
 
 #[derive(Deserialize)]
 struct Metadata {
@@ -40,7 +37,8 @@ pub(crate) fn page(name: &str, version: &str) -> String {
 }
 
 /// Each tagged version of `name` with its time, a minified entry taking the
-/// time of the entry before where it gives none.
+/// time of the entry before where it gives none. A version whose time is not
+/// one, Composer's `__unset` among them, is left out.
 pub(crate) fn found(api: &Api, name: &str, body: &[u8]) -> Result<Vec<Found>, SourceError> {
     let metadata: Metadata = read(api.versions, api.limit, body)?;
     let minified = metadata.minified.as_deref() == Some(MINIFIED);
@@ -54,7 +52,6 @@ pub(crate) fn found(api: &Api, name: &str, body: &[u8]) -> Result<Vec<Found>, So
     let mut found = Vec::new();
     for entry in entries {
         match entry.time {
-            Some(given) if given == UNSET => time = None,
             Some(given) => time = Some(given),
             None if minified => {}
             None => time = None,

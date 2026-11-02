@@ -263,3 +263,13 @@ impl Origin {
         self.get(&path, token)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn each_forge_is_named_as_a_source_s_kind_writes_it() {
+        assert_eq!(Forge::ALL.map(Forge::kind), ["github", "gitlab", "forgejo"]);
+    }
+}

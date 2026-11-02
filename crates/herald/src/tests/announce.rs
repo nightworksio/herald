@@ -7,6 +7,21 @@ use crate::output::escaped;
 use crate::*;
 
 #[test]
+fn a_run_is_named_for_the_ci_job_it_runs_in() {
+    let vars = |pairs: &[(&str, &str)]| -> BTreeMap<String, String> {
+        pairs
+            .iter()
+            .map(|(name, value)| ((*name).to_owned(), (*value).to_owned()))
+            .collect()
+    };
+    let github = vars(&[("GITHUB_RUN_ID", "7"), ("GITHUB_RUN_ATTEMPT", "2")]);
+    assert_eq!(run_name(&github), "github/7/2");
+    let gitlab = vars(&[("CI_PIPELINE_ID", "11"), ("CI_JOB_ID", "12")]);
+    assert_eq!(run_name(&gitlab), "gitlab/11/12");
+    assert_eq!(run_name(&vars(&[("GITHUB_RUN_ID", "7")])), "local");
+}
+
+#[test]
 fn a_published_release_is_announced_once_and_kept_on_the_state_branch() {
     let setup = setup(CONFIG);
     let world = World::default();

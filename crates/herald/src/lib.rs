@@ -6,6 +6,7 @@
 //! way to reach each base URL, so it runs the same under test as on a runner.
 
 use std::collections::BTreeMap;
+use std::convert::Infallible;
 use std::future::Future;
 use std::io::Write;
 use std::path::Path;
@@ -475,11 +476,11 @@ async fn dry<'a>(
     let prepared = prepare(config, &secrets, &RingSigner)
         .await
         .map_err(|error| error.to_string())?;
-    let connected = prepared.connect(|_| {
-        Ok::<_, String>(Connection::new(Dry {
+    let Ok(connected) = prepared.connect(|_| {
+        Ok::<_, Infallible>(Connection::new(Dry {
             sent: Arc::clone(sent),
         }))
-    })?;
+    });
     Ok((
         Records::Memory(herald_records::Kept::new(Memory::default())),
         connected,

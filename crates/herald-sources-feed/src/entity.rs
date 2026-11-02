@@ -52,25 +52,18 @@ pub(crate) fn decoded(text: &str) -> Cow<'_, str> {
     }
     let mut out = String::with_capacity(text.len());
     let mut rest = text;
-    while let Some(at) = rest.find('&') {
-        let (before, from) = rest.split_at(at);
+    while let Some((before, after)) = rest.split_once('&') {
         out.push_str(before);
-        let named = from.get(1..).and_then(|after| {
-            after
-                .find(';')
-                .filter(|end| *end <= LONGEST)
-                .map(|end| (after, end))
-        });
-        let known = named.and_then(|(after, end)| {
-            let name = after.get(..end)?;
-            resolved(name).map(|character| (character, end))
-        });
-        if let Some((character, end)) = known {
+        let known = after
+            .split_once(';')
+            .filter(|(name, _)| name.len() <= LONGEST)
+            .and_then(|(name, tail)| resolved(name).map(|character| (character, tail)));
+        if let Some((character, tail)) = known {
             out.push_str(&character);
-            rest = from.get(end + 2..).unwrap_or_default();
+            rest = tail;
         } else {
             out.push('&');
-            rest = from.get(1..).unwrap_or_default();
+            rest = after;
         }
     }
     out.push_str(rest);
@@ -97,6 +90,7 @@ mod tests {
             decoded("&averyveryverylongname;"),
             "&averyveryverylongname;"
         );
+        assert_eq!(decoded("&#000000065; &#0000000065;"), "A &#0000000065;");
         assert!(matches!(decoded("plain"), Cow::Borrowed("plain")));
         for name in [
             "nbsp", "mdash", "ndash", "lsquo", "rsquo", "ldquo", "rdquo", "laquo", "raquo", "bull",

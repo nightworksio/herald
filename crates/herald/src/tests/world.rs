@@ -22,6 +22,7 @@ pub(super) struct State {
     pub(super) forge: BTreeMap<String, (u16, String)>,
     pub(super) cache: BTreeMap<String, Vec<u8>>,
     pub(super) variables: BTreeMap<String, String>,
+    pub(super) unanswered: Vec<String>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -163,6 +164,13 @@ impl Http for World {
         let url = request.url.expose();
         let line = format!("{} {}", request.method.as_str(), url);
         state.seen.push(line.clone());
+        if state
+            .unanswered
+            .iter()
+            .any(|path| url.ends_with(path.as_str()))
+        {
+            return Err(HttpError::TimedOut);
+        }
         let body: Value = serde_json::from_slice(&request.body).unwrap_or(Value::Null);
         if let Some(method) = url.strip_prefix(
             "https://results.example/twirp/github.actions.results.api.v1.CacheService/",

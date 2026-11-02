@@ -79,10 +79,13 @@ impl<'a> Scrubbing<'a> {
 impl Write for Scrubbing<'_> {
     fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
         self.line.extend_from_slice(bytes);
-        while let Some(end) = self.line.iter().position(|byte| *byte == b'\n') {
-            let rest = self.line.split_off(end + 1);
-            let line = std::mem::replace(&mut self.line, rest);
-            self.emit(&line)?;
+        let held = std::mem::take(&mut self.line);
+        for piece in held.split_inclusive(|byte| *byte == b'\n') {
+            if piece.ends_with(b"\n") {
+                self.emit(piece)?;
+            } else {
+                self.line = piece.to_vec();
+            }
         }
         Ok(bytes.len())
     }

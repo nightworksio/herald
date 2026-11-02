@@ -166,4 +166,18 @@ fn a_dry_run_prints_every_request_redacted_and_sends_and_keeps_nothing() {
         dry.out
     );
     assert_eq!(world.state.lock().unwrap().seen, Vec::<String>::new());
+    let mut unset = setup;
+    unset.vars.remove("HERALD_DISCORD_TOKEN");
+    let stopped = herald(
+        &unset,
+        &world,
+        &["announce", "--from", "github", "--dry-run"],
+    );
+    assert_eq!(
+        (stopped.code, stopped.err.as_str()),
+        (
+            STOPPED,
+            "no secret is named HERALD_DISCORD_TOKEN; set it where this platform keeps secrets\n"
+        )
+    );
 }

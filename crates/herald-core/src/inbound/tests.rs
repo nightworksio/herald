@@ -409,3 +409,19 @@ fn an_unsigned_delivery_header_changes_nothing_a_store_admits() {
         claimed(Scheme::GitHub, &renamed).map(|claim| claim.delivery)
     );
 }
+
+#[test]
+fn each_scheme_keeps_its_deliveries_under_its_own_name() {
+    let schemes = [
+        Scheme::GitHub,
+        Scheme::Forgejo,
+        Scheme::GitLab,
+        Scheme::Discord,
+        Scheme::Slack,
+        Scheme::Matrix,
+    ];
+    assert_eq!(
+        schemes.map(Scheme::name),
+        ["github", "forgejo", "gitlab", "discord", "slack", "matrix"]
+    );
+}

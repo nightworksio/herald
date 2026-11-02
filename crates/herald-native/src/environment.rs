@@ -86,7 +86,12 @@ mod tests {
                 }
             );
         }
-        let _ = EnvSecrets::from_env();
+    }
+
+    #[test]
+    fn the_environment_s_secrets_are_this_process_s_variables() {
+        let secret = pollster::block_on(EnvSecrets::from_env().secret("CARGO_MANIFEST_DIR"));
+        assert_eq!(secret.unwrap().expose(), env!("CARGO_MANIFEST_DIR"));
     }
 
     #[test]

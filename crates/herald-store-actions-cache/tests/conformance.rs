@@ -220,6 +220,18 @@ mod conformance {
     }
 
     #[test]
+    fn a_run_reads_what_it_wrote_without_asking_the_service_again() {
+        let cache = Cache::default();
+        let run = store(&cache);
+        let entry = Entry::new(key("a"));
+        pollster::block_on(run.put_entry(&entry, None)).unwrap();
+        cache.state.lock().unwrap().fail =
+            Some(("GetCacheEntryDownloadURL".to_owned(), 500, String::new()));
+        let read = pollster::block_on(run.entry(&key("a"))).unwrap().unwrap();
+        assert_eq!((read.value, read.version), (entry, Version(1)));
+    }
+
+    #[test]
     fn a_run_that_loses_a_generation_to_another_reads_it_and_loses_nothing() {
         let cache = Cache::default();
         let one = store(&cache);

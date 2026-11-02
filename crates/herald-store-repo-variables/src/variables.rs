@@ -75,6 +75,7 @@ struct Variable {
 
 #[derive(Deserialize)]
 struct Listed {
+    total_count: usize,
     variables: Vec<Variable>,
 }
 
@@ -156,6 +157,17 @@ impl<H: Http> VariableRecords<H> {
             EXISTS => Ok(Wrote::Conflict),
             _ => Err(answered(&response)),
         }
+    }
+
+    async fn page(&self, page: usize) -> Result<Listed, StoreError> {
+        let response = self
+            .send(Method::Get, &format!("?per_page={PAGE}&page={page}"), None)
+            .await?;
+        if !response.succeeded() {
+            return Err(answered(&response));
+        }
+        serde_json::from_slice(&response.body)
+            .map_err(|error| corrupt("the repository's variables", error))
     }
 
     async fn deleted(&self, name: &str) -> Result<Wrote, StoreError> {
@@ -251,29 +263,16 @@ impl<H: Http> Records for VariableRecords<H> {
 
     async fn list(&self, directory: &str) -> Result<Vec<String>, StoreError> {
         let inside = format!("{directory}/");
-        let mut found = Vec::new();
-        for page in 1.. {
-            let response = self
-                .send(Method::Get, &format!("?per_page={PAGE}&page={page}"), None)
-                .await?;
-            if !response.succeeded() {
-                return Err(answered(&response));
-            }
-            let listed: Listed = serde_json::from_slice(&response.body)
-                .map_err(|error| corrupt("the repository's variables", error))?;
-            let count = listed.variables.len();
-            found.extend(
-                listed
-                    .variables
-                    .iter()
-                    .filter_map(|variable| name::path(&variable.name))
-                    .filter(|path| path.starts_with(&inside)),
-            );
-            if count < PAGE {
-                break;
-            }
+        let first = self.page(1).await?;
+        let mut variables = first.variables;
+        for page in 2..=first.total_count.div_ceil(PAGE) {
+            variables.extend(self.page(page).await?.variables);
         }
-        Ok(found)
+        Ok(variables
+            .iter()
+            .filter_map(|variable| name::path(&variable.name))
+            .filter(|path| path.starts_with(&inside))
+            .collect())
     }
 
     async fn write(

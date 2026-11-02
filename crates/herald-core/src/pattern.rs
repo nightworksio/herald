@@ -22,33 +22,28 @@ impl Pattern {
     /// Whether `text` matches the whole pattern.
     #[must_use]
     pub fn matches(&self, text: &str) -> bool {
-        let pattern: Vec<char> = self.0.chars().collect();
         let text: Vec<char> = text.chars().collect();
-        let (mut at, mut from) = (0, 0);
-        let mut star: Option<(usize, usize)> = None;
-        while from < text.len() {
-            match pattern.get(at) {
-                Some('*') => {
-                    star = Some((at, from));
-                    at += 1;
-                }
-                Some(&wanted) if wanted == '?' || text.get(from) == Some(&wanted) => {
-                    at += 1;
-                    from += 1;
-                }
-                _ => match star {
-                    Some((starred, taken)) => {
-                        at = starred + 1;
-                        from = taken + 1;
-                        star = Some((starred, taken + 1));
-                    }
-                    None => return false,
-                },
-            }
+        let mut matched = vec![true];
+        matched.resize(text.len() + 1, false);
+        for wanted in self.0.chars() {
+            matched = if wanted == '*' {
+                let mut reached = false;
+                matched
+                    .iter()
+                    .map(|&before| {
+                        reached |= before;
+                        reached
+                    })
+                    .collect()
+            } else {
+                std::iter::once(false)
+                    .chain(matched.iter().zip(&text).map(|(&before, &character)| {
+                        before && (wanted == '?' || character == wanted)
+                    }))
+                    .collect()
+            };
         }
-        pattern
-            .get(at..)
-            .is_some_and(|rest| rest.iter().all(|&left| left == '*'))
+        matched.last().copied().unwrap_or_default()
     }
 }
 
@@ -82,6 +77,7 @@ mod tests {
         assert!(Pattern::new("").matches(""));
         assert!(!Pattern::new("").matches("1"));
         assert!(Pattern::new("**").matches(""));
+        assert!(Pattern::new("*a*").matches("aa"));
         assert!(Pattern::new("*-alpine").matches("2.11.7-builder-alpine"));
         assert!(!Pattern::new("*-alpine").matches("2.11.7-alpine3"));
         assert_eq!(Pattern::new("*.*").to_string(), "*.*");

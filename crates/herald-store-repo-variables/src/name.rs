@@ -21,7 +21,7 @@ pub(crate) fn of(path: &str) -> String {
     let mut buffer: u32 = 0;
     let mut bits = 0;
     for byte in path.bytes() {
-        buffer = (buffer << 8) | u32::from(byte);
+        buffer = (buffer << 8) + u32::from(byte);
         bits += 8;
         while bits >= 5 {
             bits -= 5;
@@ -43,7 +43,7 @@ pub(crate) fn path(name: &str) -> Option<String> {
     let mut bits = 0;
     for symbol in encoded.bytes() {
         let value = ALPHABET.iter().position(|letter| *letter == symbol)?;
-        buffer = (buffer << 5) | u32::try_from(value).ok()?;
+        buffer = (buffer << 5) + u32::try_from(value).ok()?;
         bits += 5;
         if bits >= 8 {
             bits -= 8;
@@ -77,6 +77,7 @@ mod tests {
         assert_eq!(of("f"), "HERALD_MY");
         assert_eq!(of("foob"), "HERALD_MZXW6YQ");
         assert_eq!(of("foo"), "HERALD_MZXW6");
+        assert_eq!(of("fooba"), "HERALD_MZXW6YTB");
     }
 
     #[test]

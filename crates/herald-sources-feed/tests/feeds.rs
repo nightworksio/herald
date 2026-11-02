@@ -112,6 +112,16 @@ mod feeds {
             "{}",
             newest.body()
         );
+        let moved = RDF.replace(
+            "<link>https://www.debian.org/News/2026/20260912</link>",
+            "<link>https://www.debian.org/News/2026/moved</link>",
+        );
+        assert_eq!(
+            debian.entries(&answer(200, &moved, true)).unwrap().events[0]
+                .identity()
+                .as_str(),
+            "https://www.debian.org/News/news#https://www.debian.org/News/2026/20260912"
+        );
     }
 
     #[test]
@@ -159,7 +169,7 @@ mod feeds {
         let body = atom(
             "<entry><id>1</id><title type=\"html\">&lt;b&gt;Bold&lt;/b&gt; news</title><updated>2026-10-31T12:00:00Z</updated>\
                <link rel=\"self\" href=\"https://notes.example/self\"/><link href=\"https://notes.example/1\"/><link href=\"https://notes.example/other\"/>\
-               <summary>not this</summary><content type=\"text\">1 &lt; 2 &amp; *star*</content></entry>\
+               <summary>not this</summary><content type=\"text\">1 &lt; 2 &amp; *star* &lt;b&gt;</content></entry>\
              <entry><id>2</id><title>Two</title><published>2026-10-30T12:00:00Z</published>\
                <content type=\"xhtml\"><div xmlns=\"http://www.w3.org/1999/xhtml\"><p>Hello <em>there</em></p></div></content></entry>\
              <entry><id>3</id><title></title><published>2026-10-29T12:00:00Z</published><link href=\"javascript:alert(1)\"/>\
@@ -169,7 +179,8 @@ mod feeds {
         let first = &polled.events[0];
         assert_eq!(first.project(), "A & B");
         assert_eq!(first.title(), "Bold news");
-        assert_eq!(first.body(), "1 \\< 2 & \\*star\\*");
+        assert_eq!(first.body(), "1 \\< 2 & \\*star\\* \\<b\\>");
+        assert_eq!(first.occurred().to_string(), "2026-10-31T12:00:00Z");
         assert_eq!(first.link("entry"), Some("https://notes.example/1"));
         assert_eq!(polled.events[1].body(), "Hello *there*");
         let third = &polled.events[2];
@@ -183,7 +194,7 @@ mod feeds {
         let notes = feed("https://notes.example/rss");
         let body = rss(
             "<item><guid>c</guid><title>T &#8211; x</title><description>short</description>\
-             <content:encoded><![CDATA[<p>Full <a href=\"https://notes.example\">story</a></p>]]></content:encoded>\
+             <content:encoded><![CDATA[<p>Full <a href=\"https://notes.example\">story</a></p>]]></content:encoded><media:encoded>not this</media:encoded>\
              <pubDate>Sat, 31 Oct 2026 12:00:00 GMT</pubDate></item>",
         );
         let polled = notes.entries(&answer(200, &body, true)).unwrap();
@@ -262,6 +273,13 @@ mod feeds {
                 what: "the feed",
                 limit: 4_194_304
             })
+        );
+        let padded = format!("<rss>{}</rss>", " ".repeat(4_194_304 - "<rss></rss>".len()));
+        assert_eq!(
+            notes
+                .entries(&answer(200, &padded, true))
+                .map(|polled| polled.events.len()),
+            Ok(0)
         );
         assert!(Feed::unchanged(&answer(304, "", true)));
         assert!(!Feed::unchanged(&answer(200, "", true)));

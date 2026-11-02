@@ -194,6 +194,38 @@ fn a_forgejo_run_announces_its_event_or_a_release_named_by_its_tag() {
 }
 
 #[test]
+fn a_release_or_a_repository_the_forge_cannot_give_stops_the_run() {
+    let tagged = ["announce", "--from", "forgejo", "--release", "v16.0.7"];
+    let (setup, world) = forgejo();
+    world
+        .state
+        .lock()
+        .unwrap()
+        .unanswered
+        .push("/releases/tags/v16.0.7".to_owned());
+    let unanswered = herald(&setup, &world, &tagged);
+    assert_eq!(
+        (unanswered.code, unanswered.err.as_str()),
+        (STOPPED, "the host did not answer in time\n")
+    );
+    let (setup, world) = forgejo();
+    world
+        .state
+        .lock()
+        .unwrap()
+        .forge
+        .insert("/repos/forgejo/forgejo".to_owned(), (200, "{}".to_owned()));
+    let garbled = herald(&setup, &world, &tagged);
+    assert_eq!(
+        (garbled.code, garbled.err.as_str()),
+        (
+            STOPPED,
+            "Forgejo's repository could not be read: missing field `id` at line 1 column 2\n"
+        )
+    );
+}
+
+#[test]
 fn preview_reads_the_event_file_of_the_forge_it_names() {
     let setup = setup(CONFIG);
     let world = World::default();

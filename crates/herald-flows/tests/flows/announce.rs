@@ -180,6 +180,34 @@ fn a_route_pinning_by_store_unpins_the_pin_the_store_remembers_and_remembers_its
     );
 }
 
+#[test]
+fn a_route_pinning_by_store_that_stops_before_it_unpins_remembers_the_pin_it_found() {
+    let store = healthy();
+    pollster::block_on(store.put_pinned(&RouteId::new("releases"), "0")).unwrap();
+    let config = pinned_by_store(config(""));
+    let script = Script::answering(&[
+        POSTED,
+        (
+            "/channels/100/messages/1/crosspost",
+            403,
+            r#"{"code":50013,"message":"Missing Permissions"}"#,
+        ),
+    ]);
+    let stopped = pollster::block_on(run(
+        &config,
+        &store,
+        &FakeClock::at(NOON),
+        &script,
+        "v1",
+        "r1",
+    ));
+    assert!(matches!(outcome(&stopped), Outcome::Stopped { .. }));
+    assert_eq!(
+        pollster::block_on(store.pinned(&RouteId::new("releases"))).unwrap(),
+        Some("0".to_owned())
+    );
+}
+
 fn pinned_by_store(mut config: Config) -> Config {
     config.routes[0].route.delivery.pin = Some(herald_core::Pinning::Store);
     config
@@ -342,6 +370,67 @@ title = "{{ event.title }}"
 body = "{{ event.body }}"
 "#;
     let config = load("herald.toml", text, &|_| Err(String::new())).unwrap();
+    let store = healthy();
+    let prepared = pollster::block_on(prepare(
+        &config,
+        &FakeSecrets::default().with("HOOK", "https://discord.com/api/webhooks/1/x"),
+        &FakeSigner,
+    ))
+    .unwrap();
+    let script = Script::answering(&[(
+        "«secret:HOOK»?wait=true&with_components=true",
+        200,
+        r#"{"id":"5","channel_id":"6"}"#,
+    )]);
+    let connected = prepared.connect(|_| Ok::<_, ()>(script.clone())).unwrap();
+    let ports = Ports {
+        store: &store,
+        clock: &FakeClock::at(NOON),
+        signer: &FakeSigner,
+    };
+    let announced = pollster::block_on(announce(
+        &config,
+        &connected,
+        &ports,
+        &SourceName::new("gate"),
+        &event("v1"),
+        "r1",
+    ));
+    assert_eq!(
+        outcome(&announced),
+        &Outcome::Sent {
+            steps: vec![Step::Post]
+        }
+    );
+    assert_eq!(pollster::block_on(store.schedules()).unwrap(), Vec::new());
+}
+
+#[test]
+fn a_webhook_posting_into_a_forum_keeps_no_thread_even_when_its_route_asks() {
+    let text = r#"version = 1
+[store]
+kind = "sqlite"
+[destinations.hook]
+kind = "discord"
+webhook = { secret = "HOOK" }
+[sources.gate]
+kind = "github"
+repository = "o/r"
+[[routes]]
+id = "hooked"
+sources = ["gate"]
+destination = "hook"
+template = "t"
+forum = true
+thread = { name = "{{ event.version }}" }
+[templates.t]
+title = "{{ event.title }}"
+body = "{{ event.body }}"
+"#;
+    let mut config = load("herald.toml", text, &|_| Err(String::new())).unwrap();
+    if let Some(thread) = config.routes[0].route.delivery.thread.as_mut() {
+        thread.archive_after = Some(SignedDuration::from_hours(24));
+    }
     let store = healthy();
     let prepared = pollster::block_on(prepare(
         &config,

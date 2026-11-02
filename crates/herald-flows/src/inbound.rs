@@ -110,7 +110,12 @@ pub async fn admitted<S: Store>(
     let Some(delivery) = &verified.delivery else {
         return Ok(());
     };
-    match store.admit(scheme, delivery, now).await {
+    admission(store.admit(scheme, delivery, now).await)
+}
+
+/// What a store's answer to admitting a delivery lets through.
+fn admission(answer: Result<Admitted, StoreError>) -> Result<(), Rejected> {
+    match answer {
         Ok(Admitted::Fresh) | Err(StoreError::Unsupported { .. }) => Ok(()),
         Ok(Admitted::Seen) => Err(Rejected::Replayed),
         Err(error) => Err(Rejected::Unadmitted {
@@ -131,11 +136,17 @@ pub async fn released<S: Store>(
     scheme: Scheme,
     verified: &Verified,
 ) -> Result<(), StoreError> {
-    match &verified.delivery {
-        Some(delivery) => match store.release(scheme, delivery).await {
-            Err(StoreError::Unsupported { .. }) => Ok(()),
-            released => released,
-        },
-        None => Ok(()),
+    let Some(delivery) = &verified.delivery else {
+        return Ok(());
+    };
+    forgotten(store.release(scheme, delivery).await)
+}
+
+/// What a store's answer to forgetting a delivery leaves to report: a store
+/// that keeps no deliveries has nothing to forget.
+fn forgotten(answer: Result<(), StoreError>) -> Result<(), StoreError> {
+    match answer {
+        Err(StoreError::Unsupported { .. }) => Ok(()),
+        answer => answer,
     }
 }

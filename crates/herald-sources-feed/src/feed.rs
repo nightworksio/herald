@@ -5,7 +5,7 @@ use herald_core::{Cursor, Draft, Event, Kind, Polled, digest};
 use herald_ports::{Method, Request, Response, Text, USER_AGENT};
 use herald_wire::{NOT_MODIFIED, PAGE, SourceError, answered, host};
 use jiff::Timestamp;
-use jiff::civil::{Date, DateTime};
+use jiff::civil::DateTime;
 use jiff::tz::TimeZone;
 use quick_xml::Reader;
 use quick_xml::events::{BytesStart, Event as Xml};
@@ -107,7 +107,6 @@ fn when(text: &str) -> Option<Timestamp> {
     let text = text.trim();
     let civil = || {
         text.parse::<DateTime>()
-            .or_else(|_| text.parse::<Date>().map(|date| date.at(0, 0, 0, 0)))
             .ok()
             .and_then(|civil| civil.to_zoned(TimeZone::UTC).ok())
             .map(|zoned| zoned.timestamp())
@@ -163,7 +162,15 @@ fn root(reader: &mut Reader<&[u8]>) -> Result<Format, SourceError> {
                 };
             }
             Xml::Eof => return Err(neither()),
-            _ => {}
+            Xml::End(_)
+            | Xml::Empty(_)
+            | Xml::Text(_)
+            | Xml::CData(_)
+            | Xml::Comment(_)
+            | Xml::Decl(_)
+            | Xml::PI(_)
+            | Xml::DocType(_)
+            | Xml::GeneralRef(_) => {}
         }
     }
 }
@@ -341,7 +348,7 @@ fn read(bytes: &[u8]) -> Result<(String, Vec<Entry>), SourceError> {
                 }
             }
             Xml::Eof => break,
-            _ => {}
+            Xml::Empty(_) | Xml::Comment(_) | Xml::Decl(_) | Xml::PI(_) | Xml::DocType(_) => {}
         }
     }
     Ok((reading.feed_title, reading.entries))

@@ -76,10 +76,11 @@ mod conformance {
                     .iter()
                     .map(|(name, (value, created))| shown(name, value, created.as_ref()))
                     .collect();
+                let total = all.len();
                 let listed: Vec<Value> = all.into_iter().skip((page - 1) * 30).take(30).collect();
                 return answer(
                     200,
-                    &json!({ "total_count": 0, "variables": listed }),
+                    &json!({ "total_count": total, "variables": listed }),
                     dated,
                 );
             }
@@ -200,6 +201,11 @@ mod conformance {
         let held = store(locked(Some("2026-11-01T11:55:00Z")));
         assert_eq!(
             pollster::block_on(held.put_entry(&entry, None)),
+            Ok(Written::Conflict)
+        );
+        let lapsing = store(locked(Some("2026-11-01T11:50:00Z")));
+        assert_eq!(
+            pollster::block_on(lapsing.put_entry(&entry, None)),
             Ok(Written::Conflict)
         );
         let abandoned = store(locked(Some("2026-11-01T11:40:00Z")));
