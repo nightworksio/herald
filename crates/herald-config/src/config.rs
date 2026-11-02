@@ -39,6 +39,7 @@ impl Config {
             .flat_map(|destination| match destination {
                 Destination::Discord(options) => [options.token.as_ref(), options.webhook.as_ref()],
                 Destination::Mastodon(options) => [Some(&options.token), None],
+                Destination::Matrix(options) => [Some(&options.token), None],
             });
         let sources = self.sources.values().map(|source| match source {
             Source::Forge(_, options) => options.token.as_ref(),
@@ -139,6 +140,8 @@ pub enum Destination {
     Discord(herald_dest_discord::DestinationOptions),
     /// An account on a server speaking the Mastodon client API.
     Mastodon(herald_dest_fediverse::DestinationOptions),
+    /// A bot account on a Matrix homeserver.
+    Matrix(herald_dest_matrix::DestinationOptions),
 }
 
 impl Destination {
@@ -146,8 +149,10 @@ impl Destination {
     pub const DISCORD: &'static str = "discord";
     /// The kind of a Mastodon destination, as the config spells it.
     pub const MASTODON: &'static str = "mastodon";
+    /// The kind of a Matrix destination, as the config spells it.
+    pub const MATRIX: &'static str = "matrix";
     /// Every kind, as the config spells it.
-    pub const KINDS: [&'static str; 2] = [Self::DISCORD, Self::MASTODON];
+    pub const KINDS: [&'static str; 3] = [Self::DISCORD, Self::MASTODON, Self::MATRIX];
 
     /// The kind's name, as `[destinations.<name>] kind` writes it.
     #[must_use]
@@ -155,6 +160,7 @@ impl Destination {
         match self {
             Self::Discord(_) => Self::DISCORD,
             Self::Mastodon(_) => Self::MASTODON,
+            Self::Matrix(_) => Self::MATRIX,
         }
     }
 }
@@ -229,6 +235,8 @@ pub enum RouteOptions {
     Discord(herald_dest_discord::RouteOptions),
     /// Mastodon's.
     Mastodon(herald_dest_fediverse::RouteOptions),
+    /// Matrix's.
+    Matrix(herald_dest_matrix::RouteOptions),
 }
 
 impl RouteOptions {

@@ -121,6 +121,17 @@ impl Loader<'_> {
                     "as Mastodon has no way to do it",
                 )
             }
+            Destination::Matrix(_) => {
+                let options = self.typed::<herald_dest_matrix::RouteOptions>(rest, &path)?;
+                if let Err(message) = options.check() {
+                    self.error(&span, &path, message);
+                    sound = false;
+                }
+                (
+                    RouteOptions::Matrix(options),
+                    "as Matrix has no way to do it",
+                )
+            }
         };
         let profile = match &options {
             RouteOptions::Discord(placed) => herald_dest_discord::profile(
@@ -128,6 +139,7 @@ impl Loader<'_> {
                 placed.forum,
             ),
             RouteOptions::Mastodon(placed) => herald_dest_fediverse::profile(placed),
+            RouteOptions::Matrix(_) => herald_dest_matrix::profile(),
         };
         let thread_name = route.thread.as_ref().map(|thread| thread.name.clone());
         let delivery = Delivery {

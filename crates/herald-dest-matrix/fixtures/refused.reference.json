@@ -1,0 +1,88 @@
+{
+  "exchanges": [
+    {
+      "request": {
+        "method": "PUT",
+        "url": "https://matrix.example/_matrix/client/v3/rooms/%21abcdefg%3Amatrix.example/send/m.room.message/da765393824b2f92d4e0df694048a62b994615c2ca027d5a69263e41b6828159",
+        "headers": {
+          "Authorization": "Bearer «secret:HERALD_MATRIX_TOKEN»",
+          "User-Agent": "herald/0.0.0 (+https://github.com/nightworksio/herald)",
+          "Content-Type": "application/json"
+        },
+        "body": {
+          "msgtype": "m.text",
+          "body": "📦 php-mutation-gate v0.1.0\n\nAdded\n\nhttps://github.com/nightworksio/php-mutation-gate/releases/tag/v0.1.0#herald-b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6.a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5\n\n@ana:matrix.example",
+          "format": "org.matrix.custom.html",
+          "formatted_body": "<h4>📦 php-mutation-gate v0.1.0</h4>\n<h2>Added</h2>\n<p><a href=\"https://github.com/nightworksio/php-mutation-gate/releases/tag/v0.1.0#herald-b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6.a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5\">https://github.com/nightworksio/php-mutation-gate/releases/tag/v0.1.0#herald-b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6.a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5</a></p>\n<p><a href=\"https://matrix.to/#/@ana:matrix.example\">@ana:matrix.example</a></p>",
+          "m.mentions": {
+            "user_ids": [
+              "@ana:matrix.example"
+            ]
+          },
+          "io.nightworks.herald.key": "b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6.a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5"
+        }
+      },
+      "response": {
+        "status": 403,
+        "body": {
+          "errcode": "M_FORBIDDEN",
+          "error": "User @herald:matrix.example not in room"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "PUT",
+        "url": "https://matrix.example/_matrix/client/v3/rooms/%21abcdefg%3Amatrix.example/send/m.room.message/da765393824b2f92d4e0df694048a62b994615c2ca027d5a69263e41b6828159",
+        "headers": {
+          "Authorization": "Bearer «secret:HERALD_MATRIX_TOKEN»",
+          "User-Agent": "herald/0.0.0 (+https://github.com/nightworksio/herald)",
+          "Content-Type": "application/json"
+        },
+        "body": {
+          "msgtype": "m.text",
+          "body": "📦 php-mutation-gate v0.1.0\n\nAdded\n\nhttps://github.com/nightworksio/php-mutation-gate/releases/tag/v0.1.0#herald-b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6.a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5\n\n@ana:matrix.example",
+          "format": "org.matrix.custom.html",
+          "formatted_body": "<h4>📦 php-mutation-gate v0.1.0</h4>\n<h2>Added</h2>\n<p><a href=\"https://github.com/nightworksio/php-mutation-gate/releases/tag/v0.1.0#herald-b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6.a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5\">https://github.com/nightworksio/php-mutation-gate/releases/tag/v0.1.0#herald-b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6.a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5</a></p>\n<p><a href=\"https://matrix.to/#/@ana:matrix.example\">@ana:matrix.example</a></p>",
+          "m.mentions": {
+            "user_ids": [
+              "@ana:matrix.example"
+            ]
+          },
+          "io.nightworks.herald.key": "b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6.a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5"
+        }
+      },
+      "response": {
+        "status": 401,
+        "body": null
+      }
+    },
+    {
+      "request": {
+        "method": "PUT",
+        "url": "https://matrix.example/_matrix/client/v3/rooms/%21abcdefg%3Amatrix.example/send/m.room.message/da765393824b2f92d4e0df694048a62b994615c2ca027d5a69263e41b6828159",
+        "headers": {
+          "Authorization": "Bearer «secret:HERALD_MATRIX_TOKEN»",
+          "User-Agent": "herald/0.0.0 (+https://github.com/nightworksio/herald)",
+          "Content-Type": "application/json"
+        },
+        "body": {
+          "msgtype": "m.text",
+          "body": "📦 php-mutation-gate v0.1.0\n\nAdded\n\nhttps://github.com/nightworksio/php-mutation-gate/releases/tag/v0.1.0#herald-b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6.a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5\n\n@ana:matrix.example",
+          "format": "org.matrix.custom.html",
+          "formatted_body": "<h4>📦 php-mutation-gate v0.1.0</h4>\n<h2>Added</h2>\n<p><a href=\"https://github.com/nightworksio/php-mutation-gate/releases/tag/v0.1.0#herald-b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6.a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5\">https://github.com/nightworksio/php-mutation-gate/releases/tag/v0.1.0#herald-b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6.a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5</a></p>\n<p><a href=\"https://matrix.to/#/@ana:matrix.example\">@ana:matrix.example</a></p>",
+          "m.mentions": {
+            "user_ids": [
+              "@ana:matrix.example"
+            ]
+          },
+          "io.nightworks.herald.key": "b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6.a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {}
+      }
+    }
+  ]
+}

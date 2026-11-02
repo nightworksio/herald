@@ -22,6 +22,8 @@ mod marked;
 #[cfg(test)]
 mod mastodon;
 #[cfg(test)]
+mod matrix;
+#[cfg(test)]
 mod poll;
 #[cfg(test)]
 mod preview;

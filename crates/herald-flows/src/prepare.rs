@@ -5,6 +5,7 @@ use herald_config::{Config, Destination, RouteConfig, RouteOptions, Source};
 use herald_core::{DestinationName, RouteId, SourceName, hex};
 use herald_dest_discord::{Credential, Discord};
 use herald_dest_fediverse::Mastodon;
+use herald_dest_matrix::Matrix;
 use herald_ports::{Algorithm, CryptoError, Http, Secret, SecretError, Secrets, Signer};
 use herald_sources_feed::Feed;
 use herald_sources_forge::{Origin, Token};
@@ -218,6 +219,9 @@ impl Resolved<'_> {
             (Destination::Mastodon(reached), RouteOptions::Mastodon(placed)) => Some(
                 Reached::Mastodon(Mastodon::new(&reached.server, secret, placed.clone())),
             ),
+            (Destination::Matrix(reached), RouteOptions::Matrix(placed)) => Some(Reached::Matrix(
+                Matrix::new(&reached.homeserver, secret, placed.clone()),
+            )),
             _ => None,
         }
     }
@@ -244,6 +248,7 @@ pub async fn prepare<S: Secrets, G: Signer>(
         let named = match destination {
             Destination::Discord(options) => options.token.as_ref().or(options.webhook.as_ref()),
             Destination::Mastodon(options) => Some(&options.token),
+            Destination::Matrix(options) => Some(&options.token),
         };
         let Some(reference) = named else {
             return Err(PrepareError::NoCredential {

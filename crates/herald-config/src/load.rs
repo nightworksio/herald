@@ -305,6 +305,9 @@ impl Loader<'_> {
             let destination = if kind == Destination::MASTODON {
                 self.typed::<herald_dest_fediverse::DestinationOptions>(rest, &path)
                     .map(Destination::Mastodon)
+            } else if kind == Destination::MATRIX {
+                self.typed::<herald_dest_matrix::DestinationOptions>(rest, &path)
+                    .map(Destination::Matrix)
             } else {
                 let Some(options) =
                     self.typed::<herald_dest_discord::DestinationOptions>(rest, &path)
