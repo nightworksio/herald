@@ -664,6 +664,30 @@ fn an_actors_pem_public_key_reads_as_its_pkcs1_der() {
 }
 
 #[test]
+fn a_der_length_reads_in_one_two_or_three_bytes() {
+    let body = [7u8; 0x180];
+    for (header, length) in [
+        (vec![0x30, 0x05], 5),
+        (vec![0x30, 0x81, 0x80], 0x80),
+        (vec![0x30, 0x81, 0xff], 0xff),
+        (vec![0x30, 0x82, 0x01, 0x80], 0x180),
+    ] {
+        let mut der = header;
+        der.extend_from_slice(&body[..length]);
+        der.push(0xaa);
+        assert_eq!(
+            element(&der, 0x30),
+            Some((&body[..length], &[0xaa][..])),
+            "{length}"
+        );
+    }
+    assert_eq!(element(&[0x30, 0x81], 0x30), None);
+    assert_eq!(element(&[0x30, 0x83, 0, 0, 1, 0], 0x30), None);
+    assert_eq!(element(&[0x31, 0x00], 0x30), None);
+    assert_eq!(element(&[0x30, 0x81, 0x80, 1], 0x30), None);
+}
+
+#[test]
 fn each_new_refusal_reads_as_a_sentence() {
     assert_eq!(
         Refusal::Uncovered { header: "digest" }.to_string(),
