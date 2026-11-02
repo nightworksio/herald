@@ -71,7 +71,7 @@ impl Loader<'_> {
     pub(super) fn dry_render(&mut self, templates: &Templates, read: &Read) {
         let route = &read.config.route;
         let template_path = format!("templates.{}", route.template.as_str());
-        let limits = read.profile.limits;
+        let limits = read.config.profile.limits;
         let parts = [
             (
                 title_template(&route.template),

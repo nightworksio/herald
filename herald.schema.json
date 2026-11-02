@@ -154,110 +154,35 @@
           "required": [
             "kind"
           ]
+        },
+        {
+          "description": "An account on a server speaking the Mastodon client API.",
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "mastodon"
+            },
+            "server": {
+              "description": "The server's base URL, such as `https://mastodon.social`.",
+              "type": "string"
+            },
+            "token": {
+              "description": "The secret holding the account's access token, granted\n`write:statuses` and `read:statuses`.",
+              "$ref": "#/$defs/SecretRef"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "server",
+            "token"
+          ]
         }
       ]
     },
-    "Duration": {
-      "description": "A length of time: a number and m, h, d or w, as \"14d\".",
-      "type": "string",
-      "pattern": "^[0-9]+[mhdw]$"
-    },
-    "Kind": {
-      "description": "What kind of thing an event announces.",
-      "oneOf": [
-        {
-          "description": "A release on a forge.",
-          "type": "string",
-          "const": "release"
-        },
-        {
-          "description": "A new version of a package on a registry.",
-          "type": "string",
-          "const": "package-version"
-        },
-        {
-          "description": "An entry in a feed.",
-          "type": "string",
-          "const": "feed-entry"
-        },
-        {
-          "description": "Anything an app says.",
-          "type": "string",
-          "const": "message"
-        }
-      ]
-    },
-    "Markers": {
-      "description": "`[markers]`: the installation's marker key (ADR-0011).",
-      "type": "object",
-      "properties": {
-        "key": {
-          "description": "The secret holding the marker key, such as `HERALD_MARKER_SECRET`.",
-          "$ref": "#/$defs/SecretRef"
-        }
-      },
-      "additionalProperties": false,
-      "required": [
-        "key"
-      ]
-    },
-    "Mentions": {
-      "description": "Who a route mentions.",
-      "type": "object",
-      "properties": {
-        "roles": {
-          "description": "The roles it pings, by the destination's ids for them.",
-          "type": "array",
-          "default": [],
-          "items": {
-            "type": "string"
-          }
-        },
-        "subscribers": {
-          "description": "Whether it mentions the subscribers herald keeps.",
-          "type": "boolean",
-          "default": false
-        }
-      },
-      "additionalProperties": false
-    },
-    "Pinning": {
-      "description": "How a route keeps its newest announcement pinned: each pin unpins the\nroute's earlier one, found as this says (ADR-0011).",
-      "oneOf": [
-        {
-          "description": "Among the destination's pins, by the route marker herald's own posts\ncarry. Every store serves it.",
-          "type": "string",
-          "const": "markers"
-        },
-        {
-          "description": "By the pinned message the store remembers for the route. Only a store\nthat keeps pins serves it.",
-          "type": "string",
-          "const": "store"
-        }
-      ]
-    },
-    "Prereleases": {
-      "description": "Which pre-releases a route takes.",
-      "oneOf": [
-        {
-          "description": "Releases and pre-releases alike.",
-          "type": "string",
-          "const": "include"
-        },
-        {
-          "description": "Releases only.",
-          "type": "string",
-          "const": "exclude"
-        },
-        {
-          "description": "Pre-releases only.",
-          "type": "string",
-          "const": "only"
-        }
-      ]
-    },
-    "Route": {
-      "description": "A route: what it takes, where it announces, and its destination's own\noptions.",
+    "DiscordRoute": {
+      "description": "A route to a Discord destination.",
       "type": "object",
       "properties": {
         "channel": {
@@ -348,6 +273,227 @@
         "sources",
         "destination",
         "template"
+      ]
+    },
+    "Duration": {
+      "description": "A length of time: a number and m, h, d or w, as \"14d\".",
+      "type": "string",
+      "pattern": "^[0-9]+[mhdw]$"
+    },
+    "Kind": {
+      "description": "What kind of thing an event announces.",
+      "oneOf": [
+        {
+          "description": "A release on a forge.",
+          "type": "string",
+          "const": "release"
+        },
+        {
+          "description": "A new version of a package on a registry.",
+          "type": "string",
+          "const": "package-version"
+        },
+        {
+          "description": "An entry in a feed.",
+          "type": "string",
+          "const": "feed-entry"
+        },
+        {
+          "description": "Anything an app says.",
+          "type": "string",
+          "const": "message"
+        }
+      ]
+    },
+    "Markers": {
+      "description": "`[markers]`: the installation's marker key (ADR-0011).",
+      "type": "object",
+      "properties": {
+        "key": {
+          "description": "The secret holding the marker key, such as `HERALD_MARKER_SECRET`.",
+          "$ref": "#/$defs/SecretRef"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "key"
+      ]
+    },
+    "MastodonRoute": {
+      "description": "A route to a Mastodon destination.",
+      "type": "object",
+      "properties": {
+        "content_warning": {
+          "description": "The content warning each status is shown behind.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "crosspost": {
+          "description": "Whether to crosspost each announcement.",
+          "type": "boolean",
+          "default": false
+        },
+        "destination": {
+          "description": "The destination it announces to.",
+          "type": "string"
+        },
+        "id": {
+          "description": "The route's stable id, part of every announcement's key.",
+          "type": "string"
+        },
+        "kinds": {
+          "description": "The kinds of event it takes; every kind where absent.",
+          "type": "array",
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/Kind"
+          }
+        },
+        "language": {
+          "description": "The language each status is written in, as an ISO 639 code.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "limit": {
+          "description": "The most characters the server takes in a status, Mastodon's own\n500 where it is not given.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint",
+          "minimum": 0
+        },
+        "mentions": {
+          "description": "Who it mentions.",
+          "$ref": "#/$defs/Mentions"
+        },
+        "pin": {
+          "description": "Whether to pin each announcement in place of the route's earlier pin,\nand how the earlier pin is found.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Pinning"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "prereleases": {
+          "description": "Which pre-releases it takes.",
+          "$ref": "#/$defs/Prereleases"
+        },
+        "sources": {
+          "description": "The sources it takes events from.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "template": {
+          "description": "The template it renders with.",
+          "type": "string"
+        },
+        "thread": {
+          "description": "The thread to open for each announcement.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Thread"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "versions": {
+          "description": "The versions it takes, as a pattern in which `*` stands for any run\nof characters and `?` for any one, such as `\"*.*.*\"`, which leaves\nout a Docker Hub tag such as `latest`; every version where absent.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "visibility": {
+          "description": "Who sees each status.",
+          "$ref": "#/$defs/Visibility"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "sources",
+        "destination",
+        "template"
+      ]
+    },
+    "Mentions": {
+      "description": "Who a route mentions.",
+      "type": "object",
+      "properties": {
+        "roles": {
+          "description": "The roles it pings, by the destination's ids for them.",
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "string"
+          }
+        },
+        "subscribers": {
+          "description": "Whether it mentions the subscribers herald keeps.",
+          "type": "boolean",
+          "default": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "Pinning": {
+      "description": "How a route keeps its newest announcement pinned: each pin unpins the\nroute's earlier one, found as this says (ADR-0011).",
+      "oneOf": [
+        {
+          "description": "Among the destination's pins, by the route marker herald's own posts\ncarry. Every store serves it.",
+          "type": "string",
+          "const": "markers"
+        },
+        {
+          "description": "By the pinned message the store remembers for the route. Only a store\nthat keeps pins serves it.",
+          "type": "string",
+          "const": "store"
+        }
+      ]
+    },
+    "Prereleases": {
+      "description": "Which pre-releases a route takes.",
+      "oneOf": [
+        {
+          "description": "Releases and pre-releases alike.",
+          "type": "string",
+          "const": "include"
+        },
+        {
+          "description": "Releases only.",
+          "type": "string",
+          "const": "exclude"
+        },
+        {
+          "description": "Pre-releases only.",
+          "type": "string",
+          "const": "only"
+        }
+      ]
+    },
+    "Route": {
+      "description": "A route: what it takes, where it announces, and its destination's own\noptions, as its destination's kind defines them.",
+      "anyOf": [
+        {
+          "description": "A route to a Discord destination.",
+          "$ref": "#/$defs/DiscordRoute"
+        },
+        {
+          "description": "A route to a Mastodon destination.",
+          "$ref": "#/$defs/MastodonRoute"
+        }
       ]
     },
     "Schedule": {
@@ -983,6 +1129,26 @@
       "additionalProperties": false,
       "required": [
         "name"
+      ]
+    },
+    "Visibility": {
+      "description": "Who sees a status.",
+      "oneOf": [
+        {
+          "description": "Everyone, on the public timelines too.",
+          "type": "string",
+          "const": "public"
+        },
+        {
+          "description": "Everyone, kept off the public timelines.",
+          "type": "string",
+          "const": "unlisted"
+        },
+        {
+          "description": "The account's followers alone.",
+          "type": "string",
+          "const": "private"
+        }
       ]
     }
   }

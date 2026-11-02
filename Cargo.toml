@@ -17,6 +17,7 @@ base64 = "0.23"
 herald-config = { path = "crates/herald-config" }
 herald-core = { path = "crates/herald-core" }
 herald-dest-discord = { path = "crates/herald-dest-discord" }
+herald-dest-fediverse = { path = "crates/herald-dest-fediverse" }
 herald-flows = { path = "crates/herald-flows" }
 herald-native = { path = "crates/herald-native" }
 herald-ports = { path = "crates/herald-ports" }

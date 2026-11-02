@@ -99,8 +99,7 @@ fn the_markers_store_names_the_pins_cursors_and_read_backs_it_lacks() {
     bare.sources.clear();
     assert_eq!(doctor(&bare, &STORES).notes.len(), 2);
     config.routes[0].route.delivery.pin = Some(herald_core::Pinning::Markers);
-    let herald_config::RouteOptions::Discord(placed) = &mut config.routes[0].options;
-    placed.forum = true;
+    config.routes[0].profile = herald_dest_discord::profile(true, true);
     let forum = doctor(&config, &STORES);
     assert_eq!(keys(&forum.gaps), ["routes[0].destination"]);
     assert!(
@@ -117,6 +116,7 @@ fn the_markers_store_names_the_pins_cursors_and_read_backs_it_lacks() {
     hooked.routes[0].route.delivery.pin = None;
     hooked.routes[0].route.delivery.crosspost = false;
     hooked.routes[0].route.delivery.thread = None;
+    hooked.routes[0].profile = herald_dest_discord::profile(false, false);
     let webhook = doctor(&hooked, &STORES);
     assert!(
         webhook.gaps[0]

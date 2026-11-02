@@ -1,5 +1,6 @@
 use herald_core::{Announcement, Chore, Delivery, Entry, Key, Marker, Profile, Sent, Step};
 use herald_dest_discord::{Discord, DiscordMarkers};
+use herald_dest_fediverse::{Mastodon, MastodonMarkers, Refusal};
 use herald_ports::{Http, HttpError, MarkedThread, Markers, MarkersError};
 
 /// One route's destination, with its credential resolved.
@@ -7,6 +8,8 @@ use herald_ports::{Http, HttpError, MarkedThread, Markers, MarkersError};
 pub enum Reached {
     /// Discord.
     Discord(Discord),
+    /// An account through the Mastodon client API.
+    Mastodon(Mastodon),
 }
 
 impl Reached {
@@ -15,6 +18,7 @@ impl Reached {
     pub fn profile(&self) -> Profile {
         match self {
             Self::Discord(discord) => discord.profile(),
+            Self::Mastodon(mastodon) => mastodon.profile(),
         }
     }
 
@@ -23,6 +27,7 @@ impl Reached {
     pub fn api(&self) -> &str {
         match self {
             Self::Discord(discord) => discord.api(),
+            Self::Mastodon(mastodon) => mastodon.api(),
         }
     }
 
@@ -40,6 +45,7 @@ impl Reached {
                     .send(http, step, announcement, delivery, entry)
                     .await
             }
+            Self::Mastodon(mastodon) => mastodon.send(http, step, announcement, entry).await,
         }
     }
 
@@ -51,6 +57,9 @@ impl Reached {
     ) -> Result<Sent, HttpError> {
         match self {
             Self::Discord(discord) => discord.housekeep(http, chore, thread).await,
+            Self::Mastodon(_) => Ok(Sent::Refused(
+                Refusal::Cannot("archive or lock a thread").to_string(),
+            )),
         }
     }
 
@@ -59,6 +68,7 @@ impl Reached {
     pub fn posts<'a, H: Http>(&'a self, http: &'a H) -> Posts<'a, H> {
         match self {
             Self::Discord(discord) => Posts::Discord(DiscordMarkers::new(discord, http)),
+            Self::Mastodon(mastodon) => Posts::Mastodon(MastodonMarkers::new(mastodon, http)),
         }
     }
 
@@ -78,18 +88,22 @@ impl Reached {
 pub enum Posts<'a, H> {
     /// A Discord channel's.
     Discord(DiscordMarkers<'a, H>),
+    /// A Mastodon account's.
+    Mastodon(MastodonMarkers<'a, H>),
 }
 
 impl<H: Http> Markers for Posts<'_, H> {
     async fn entry(&self, key: &Key, marker: &Marker) -> Result<Option<Entry>, MarkersError> {
         match self {
             Self::Discord(posts) => posts.entry(key, marker).await,
+            Self::Mastodon(posts) => posts.entry(key, marker).await,
         }
     }
 
     async fn threads(&self, route: &Marker) -> Result<Vec<MarkedThread>, MarkersError> {
         match self {
             Self::Discord(posts) => posts.threads(route).await,
+            Self::Mastodon(posts) => posts.threads(route).await,
         }
     }
 }

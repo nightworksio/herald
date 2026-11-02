@@ -2,8 +2,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::ops::Range;
 
 use herald_core::{
-    Delivery, DestinationName, Filter, Kind, Mentions, Pattern, Profile, Route, RouteId,
-    SourceName, TemplateName, Thread,
+    Delivery, DestinationName, Filter, Kind, Mentions, Pattern, Route, RouteId, SourceName,
+    TemplateName, Thread,
 };
 use toml::Spanned;
 use toml::de::{DeTable, DeValue};
@@ -18,7 +18,6 @@ pub(super) struct Read {
     pub(super) title_span: Range<usize>,
     pub(super) body_span: Range<usize>,
     pub(super) body_path: String,
-    pub(super) profile: Profile,
     pub(super) sample_kinds: BTreeSet<Kind>,
     pub(super) thread: Option<Spanned<String>>,
     pub(super) id_span: Range<usize>,
@@ -66,7 +65,7 @@ impl Loader<'_> {
             }
         }
         let destination = DestinationName::new(route.destination.get_ref());
-        let Some((Destination::Discord(reached), _)) = destinations.get(&destination) else {
+        let Some((reached, _)) = destinations.get(&destination) else {
             let names: Vec<&str> = destinations.keys().map(DestinationName::as_str).collect();
             self.error(
                 &route.destination.span(),
@@ -94,18 +93,42 @@ impl Loader<'_> {
             );
             sound = false;
         }
-        let options = self.typed::<herald_dest_discord::RouteOptions>(rest, &path)?;
-        let bot = reached.bot().unwrap_or_default();
-        let profile = herald_dest_discord::profile(bot, options.forum);
         let span = route.id.span();
-        if bot && options.channel.is_none() {
-            self.error(
-                &span,
-                &path,
-                "a Discord bot posts to a channel; give channel = \"<the channel's id>\"",
-            );
-            sound = false;
-        }
+        let (options, remedy) = match reached {
+            Destination::Discord(reached) => {
+                let options = self.typed::<herald_dest_discord::RouteOptions>(rest, &path)?;
+                if reached.token.is_some() && options.channel.is_none() {
+                    self.error(
+                        &span,
+                        &path,
+                        "a Discord bot posts to a channel; give channel = \"<the channel's id>\"",
+                    );
+                    sound = false;
+                }
+                (
+                    RouteOptions::Discord(options),
+                    "or reach it with a bot token",
+                )
+            }
+            Destination::Mastodon(_) => {
+                let options = self.typed::<herald_dest_fediverse::RouteOptions>(rest, &path)?;
+                if let Err(message) = options.check() {
+                    self.error(&span, &path, message);
+                    sound = false;
+                }
+                (
+                    RouteOptions::Mastodon(options),
+                    "as Mastodon has no way to do it",
+                )
+            }
+        };
+        let profile = match &options {
+            RouteOptions::Discord(placed) => herald_dest_discord::profile(
+                matches!(reached, Destination::Discord(reached) if reached.token.is_some()),
+                placed.forum,
+            ),
+            RouteOptions::Mastodon(placed) => herald_dest_fediverse::profile(placed),
+        };
         let thread_name = route.thread.as_ref().map(|thread| thread.name.clone());
         let delivery = Delivery {
             crosspost: route.crosspost,
@@ -128,13 +151,13 @@ impl Loader<'_> {
         let lacking = profile.features.lacking(&delivery);
         for key in lacking
             .into_iter()
-            .filter(|key| !(options.forum && *key == "thread"))
+            .filter(|key| !(options.threads_each_post() && *key == "thread"))
         {
             self.error(
                 &span,
                 &format!("{path}.{key}"),
                 format!(
-                    "the destination \"{}\" cannot do this as it is reached; remove {key}, or reach it with a bot token",
+                    "the destination \"{}\" cannot do this as it is reached; remove {key}, {remedy}",
                     destination.as_str()
                 ),
             );
@@ -182,14 +205,14 @@ impl Loader<'_> {
                 template,
                 delivery,
             },
-            options: RouteOptions::Discord(options),
+            options,
+            profile,
         };
         Some(Read {
             config,
             title_span: written.title.span(),
             body_span: written.body.span(),
             body_path: written.body_path.clone(),
-            profile,
             sample_kinds,
             thread: thread_name,
             id_span: route.id.span(),

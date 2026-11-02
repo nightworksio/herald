@@ -20,6 +20,8 @@ mod inbound;
 #[cfg(test)]
 mod marked;
 #[cfg(test)]
+mod mastodon;
+#[cfg(test)]
 mod poll;
 #[cfg(test)]
 mod preview;

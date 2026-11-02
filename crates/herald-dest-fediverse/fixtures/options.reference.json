@@ -1,0 +1,39 @@
+{
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "url": "https://mastodon.example/api/v1/statuses",
+        "headers": {
+          "Authorization": "Bearer «secret:HERALD_MASTODON_TOKEN»",
+          "User-Agent": "herald/0.0.0 (+https://github.com/nightworksio/herald)",
+          "Content-Type": "application/json",
+          "Idempotency-Key": "da765393824b2f92d4e0df694048a62b994615c2ca027d5a69263e41b6828159"
+        },
+        "body": {
+          "status": "📦 php-mutation-gate v0.1.0\n\n## Added\n\nhttps://github.com/nightworksio/php-mutation-gate/releases/tag/v0.1.0#herald-b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6.a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5",
+          "visibility": "unlisted",
+          "language": "en",
+          "spoiler_text": "Release notes"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "id": "113420000000000003",
+          "created_at": "2026-10-31T12:00:01.000Z",
+          "in_reply_to_id": null,
+          "visibility": "public",
+          "url": "https://mastodon.example/@herald/113420000000000003",
+          "uri": "https://mastodon.example/users/herald/statuses/113420000000000003",
+          "content": "<p>📦 php-mutation-gate v0.1.0</p><p>## Added</p><p><a href=\"https://github.com/nightworksio/php-mutation-gate/releases/tag/v0.1.0#herald-b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6.a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5\" rel=\"nofollow noopener\" target=\"_blank\"><span class=\"invisible\">https://</span><span class=\"ellipsis\">github.com/nightworksio/php-mu</span><span class=\"invisible\">tation-gate/releases/tag/v0.1.0#herald-b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6.a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5</span></a></p>",
+          "account": {
+            "id": "109000000000000001",
+            "username": "herald",
+            "acct": "herald"
+          }
+        }
+      }
+    }
+  ]
+}

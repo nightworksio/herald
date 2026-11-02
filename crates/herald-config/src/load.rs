@@ -29,7 +29,6 @@ const SECTIONS: [&str; 9] = [
     "apps",
     "schedule",
 ];
-const DESTINATION_KINDS: [&str; 1] = ["discord"];
 /// The length of a SHA-256 in hex.
 const HASH_DIGITS: usize = 64;
 
@@ -264,17 +263,17 @@ impl Loader<'_> {
             return None;
         };
         let (kind, rest) = self.kinded(value, "store", &Store::KINDS)?;
-        if kind == "git-branch" {
+        if kind == Store::GIT_BRANCH {
             return self
                 .typed::<herald_store_git_branch::StoreOptions>(rest, "store")
                 .map(Store::GitBranch);
         }
-        if kind == "actions-cache" {
+        if kind == Store::ACTIONS_CACHE {
             return self
                 .typed::<herald_store_actions_cache::StoreOptions>(rest, "store")
                 .map(Store::ActionsCache);
         }
-        if kind == "repo-variables" {
+        if kind == Store::REPO_VARIABLES {
             return self
                 .typed::<herald_store_repo_variables::StoreOptions>(rest, "store")
                 .map(Store::RepoVariables);
@@ -300,21 +299,28 @@ impl Loader<'_> {
         for (name, value) in self.named(value, "destinations") {
             let path = format!("destinations.{name}");
             let span = value.span();
-            let Some((_, rest)) = self.kinded(value, &path, &DESTINATION_KINDS) else {
+            let Some((kind, rest)) = self.kinded(value, &path, &Destination::KINDS) else {
                 continue;
             };
-            let Some(options) = self.typed::<herald_dest_discord::DestinationOptions>(rest, &path)
-            else {
+            let destination = if kind == Destination::MASTODON {
+                self.typed::<herald_dest_fediverse::DestinationOptions>(rest, &path)
+                    .map(Destination::Mastodon)
+            } else {
+                let Some(options) =
+                    self.typed::<herald_dest_discord::DestinationOptions>(rest, &path)
+                else {
+                    continue;
+                };
+                if let Err(message) = options.bot() {
+                    self.error(&span, &path, message);
+                    continue;
+                }
+                Some(Destination::Discord(options))
+            };
+            let Some(destination) = destination else {
                 continue;
             };
-            if let Err(message) = options.bot() {
-                self.error(&span, &path, message);
-                continue;
-            }
-            destinations.insert(
-                DestinationName::new(name),
-                (Destination::Discord(options), span),
-            );
+            destinations.insert(DestinationName::new(name), (destination, span));
         }
         destinations
     }
@@ -327,7 +333,7 @@ impl Loader<'_> {
             let Some((kind, rest)) = self.kinded(value, &path, &Source::KINDS) else {
                 continue;
             };
-            let source = if kind == "feed" {
+            let source = if kind == Source::FEED {
                 self.typed::<herald_sources_feed::FeedOptions>(rest, &path)
                     .map(Source::Feed)
             } else if let Some(forge) = Forge::ALL.into_iter().find(|forge| forge.kind() == kind) {

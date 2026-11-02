@@ -1,0 +1,36 @@
+{
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "url": "https://mastodon.example/api/v1/accounts/verify_credentials",
+        "headers": {
+          "Authorization": "Bearer «secret:HERALD_MASTODON_TOKEN»",
+          "User-Agent": "herald/0.0.0 (+https://github.com/nightworksio/herald)"
+        }
+      },
+      "response": {
+        "status": 401,
+        "body": {
+          "error": "The access token is invalid"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "url": "https://mastodon.example/api/v1/accounts/verify_credentials",
+        "headers": {
+          "Authorization": "Bearer «secret:HERALD_MASTODON_TOKEN»",
+          "User-Agent": "herald/0.0.0 (+https://github.com/nightworksio/herald)"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "username": "herald"
+        }
+      }
+    }
+  ]
+}
