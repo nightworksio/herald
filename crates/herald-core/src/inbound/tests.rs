@@ -717,6 +717,20 @@ fn signature_pairs_are_apart_by_commas_and_nothing_else() {
 }
 
 #[test]
+fn blank_names_do_not_count_toward_the_most_an_activity_may_name() {
+    let digest = digest();
+    let padded = SIGNED.replace(
+        "(request-target) host date digest",
+        &format!(
+            "(request-target) host date{}digest",
+            " ".repeat(MOST_COVERED + 2)
+        ),
+    );
+    let headers = activity_headers(&padded, DATE, &digest);
+    assert!(activitypub(&headers).is_ok());
+}
+
+#[test]
 fn each_new_refusal_reads_as_a_sentence() {
     assert_eq!(
         Refusal::Uncovered { header: "digest" }.to_string(),
