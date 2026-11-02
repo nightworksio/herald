@@ -491,7 +491,7 @@ fn element(der: &[u8], tag: u8) -> Option<(&[u8], &[u8])> {
     let (length, rest) = match rest {
         [short @ 0..=0x7f, rest @ ..] => (usize::from(*short), rest),
         [0x81, long, rest @ ..] => (usize::from(*long), rest),
-        [0x82, high, low, rest @ ..] => (usize::from(*high) << 8 | usize::from(*low), rest),
+        [0x82, high, low, rest @ ..] => (usize::from(u16::from_be_bytes([*high, *low])), rest),
         _ => return None,
     };
     (found == tag && rest.len() >= length).then(|| rest.split_at(length))

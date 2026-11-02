@@ -688,6 +688,35 @@ fn a_der_length_reads_in_one_two_or_three_bytes() {
 }
 
 #[test]
+fn an_activity_without_a_body_need_not_cover_a_digest() {
+    let unsigned = SIGNED.replace(
+        "(request-target) host date digest",
+        "(request-target) host date",
+    );
+    let headers = activity_headers(&unsigned, DATE, "");
+    assert!(claim(Scheme::ActivityPub, &headers, b"", activity_now()).is_ok());
+    assert_eq!(
+        claim(Scheme::ActivityPub, &headers, ACTIVITY, activity_now()),
+        Err(Refusal::Uncovered { header: "digest" })
+    );
+}
+
+#[test]
+fn signature_pairs_are_apart_by_commas_and_nothing_else() {
+    for written in [
+        r#"keyId="a" algorithm="rsa-sha256""#,
+        r#"keyId="a"algorithm="rsa-sha256""#,
+        r#"keyId="a",algorithm="rsa-sha256" x"#,
+    ] {
+        assert_eq!(parameters(written), None, "{written}");
+    }
+    assert_eq!(
+        parameters(r#"keyId="a" , algorithm="b""#),
+        Some(vec![("keyId", "a"), ("algorithm", "b")])
+    );
+}
+
+#[test]
 fn each_new_refusal_reads_as_a_sentence() {
     assert_eq!(
         Refusal::Uncovered { header: "digest" }.to_string(),
