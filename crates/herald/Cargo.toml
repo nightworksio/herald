@@ -28,6 +28,9 @@ herald-store-repo-variables.workspace = true
 tokio = { workspace = true, features = ["macros", "rt"] }
 
 [dev-dependencies]
+base64.workspace = true
+herald-dest-fediverse.workspace = true
+herald-testing.workspace = true
 jiff.workspace = true
 pollster.workspace = true
 serde_json.workspace = true

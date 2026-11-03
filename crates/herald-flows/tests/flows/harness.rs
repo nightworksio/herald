@@ -287,7 +287,7 @@ impl Store for Failing {
         &self,
         destination: &DestinationName,
         project: &str,
-    ) -> Result<Vec<String>, StoreError> {
+    ) -> Result<Vec<Subscription>, StoreError> {
         if self.fault == Fault::Subscribers {
             return Err(broken());
         }

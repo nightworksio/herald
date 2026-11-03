@@ -169,6 +169,7 @@ mod kept {
             destination: DestinationName::new("slack"),
             project: "p".to_owned(),
             subscriber: "u".to_owned(),
+            inbox: None,
         };
         let removing = Kept::new(Memory::default());
         pollster::block_on(removing.subscribe(&subscription)).unwrap();

@@ -82,6 +82,7 @@ mod markers {
             destination: DestinationName::new("discord"),
             project: "p".to_owned(),
             subscriber: "s".to_owned(),
+            inbox: None,
         };
         assert_eq!(
             pollster::block_on(store.put_cursor(&SourceName::new("s"), &Cursor::default(), None)),

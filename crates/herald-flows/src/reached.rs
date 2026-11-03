@@ -1,9 +1,10 @@
 use herald_core::{Announcement, Chore, Delivery, Entry, Key, Marker, Profile, Sent, Step};
 use herald_dest_discord::{Discord, DiscordMarkers};
-use herald_dest_fediverse::{Mastodon, MastodonMarkers};
+use herald_dest_fediverse::{ActivityPub, Mastodon, MastodonMarkers};
 use herald_dest_matrix::{Matrix, MatrixMarkers};
 use herald_dest_slack::{Slack, SlackMarkers};
-use herald_ports::{Http, HttpError, MarkedThread, Markers, MarkersError};
+use herald_ports::{Http, HttpError, MarkedThread, Markers, MarkersError, Signer};
+use jiff::Timestamp;
 
 /// One route's destination, with its credential resolved.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -16,9 +17,28 @@ pub enum Reached {
     Matrix(Matrix),
     /// Slack, as a bot or through a webhook.
     Slack(Slack),
+    /// herald's own ActivityPub actor.
+    ActivityPub(ActivityPub),
+}
+
+/// What a step is signed with, where its destination signs its requests.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct Signing<'a, G> {
+    pub(crate) signer: &'a G,
+    pub(crate) now: Timestamp,
 }
 
 impl Reached {
+    /// The actor whose followers each announcement is delivered to, where
+    /// the destination delivers to followers.
+    #[must_use]
+    pub fn follows(&self) -> Option<&str> {
+        match self {
+            Self::ActivityPub(actor) => Some(actor.actor()),
+            _ => None,
+        }
+    }
+
     /// What it can do.
     #[must_use]
     pub fn profile(&self) -> Profile {
@@ -27,6 +47,7 @@ impl Reached {
             Self::Mastodon(mastodon) => mastodon.profile(),
             Self::Matrix(matrix) => matrix.profile(),
             Self::Slack(slack) => slack.profile(),
+            Self::ActivityPub(actor) => actor.profile(),
         }
     }
 
@@ -38,12 +59,14 @@ impl Reached {
             Self::Mastodon(mastodon) => mastodon.api(),
             Self::Matrix(matrix) => matrix.api(),
             Self::Slack(slack) => slack.api(),
+            Self::ActivityPub(actor) => actor.api(),
         }
     }
 
-    pub(crate) async fn send<H: Http>(
+    pub(crate) async fn send<H: Http, G: Signer>(
         &self,
         http: &H,
+        signing: Signing<'_, G>,
         step: &Step,
         announcement: &Announcement,
         delivery: &Delivery,
@@ -58,6 +81,11 @@ impl Reached {
             Self::Mastodon(mastodon) => mastodon.send(http, step, announcement, entry).await,
             Self::Matrix(matrix) => matrix.send(http, step, announcement, entry).await,
             Self::Slack(slack) => slack.send(http, step, announcement, entry).await,
+            Self::ActivityPub(actor) => {
+                actor
+                    .send(http, signing.signer, signing.now, step, announcement, entry)
+                    .await
+            }
         }
     }
 
@@ -78,6 +106,9 @@ impl Reached {
             Self::Slack(_) => Ok(Sent::Refused(
                 herald_dest_slack::Refusal::Cannot("archive or lock a thread").to_string(),
             )),
+            Self::ActivityPub(_) => Ok(Sent::Refused(
+                "herald's ActivityPub actor cannot archive or lock a thread".to_owned(),
+            )),
         }
     }
 
@@ -89,6 +120,7 @@ impl Reached {
             Self::Mastodon(mastodon) => Posts::Mastodon(MastodonMarkers::new(mastodon, http)),
             Self::Matrix(matrix) => Posts::Matrix(MatrixMarkers::new(matrix, http)),
             Self::Slack(slack) => Posts::Slack(SlackMarkers::new(slack, http)),
+            Self::ActivityPub(_) => Posts::Unread(UNREAD),
         }
     }
 
@@ -103,6 +135,10 @@ impl Reached {
     }
 }
 
+/// Why herald's own actor reads nothing back: it serves its Notes rather
+/// than posting them somewhere it could read.
+const UNREAD: &str = "herald's ActivityPub actor reads no posts back";
+
 /// One route's destination's own posts, read back for their markers.
 #[derive(Debug)]
 pub enum Posts<'a, H> {
@@ -114,6 +150,8 @@ pub enum Posts<'a, H> {
     Matrix(MatrixMarkers<'a, H>),
     /// A Slack channel's.
     Slack(SlackMarkers<'a, H>),
+    /// None to read, and why.
+    Unread(&'static str),
 }
 
 impl<H: Http> Markers for Posts<'_, H> {
@@ -123,6 +161,9 @@ impl<H: Http> Markers for Posts<'_, H> {
             Self::Mastodon(posts) => posts.entry(key, marker).await,
             Self::Matrix(posts) => posts.entry(key, marker).await,
             Self::Slack(posts) => posts.entry(key, marker).await,
+            Self::Unread(why) => Err(MarkersError::Unreadable {
+                reason: (*why).to_owned(),
+            }),
         }
     }
 
@@ -132,6 +173,9 @@ impl<H: Http> Markers for Posts<'_, H> {
             Self::Mastodon(posts) => posts.threads(route).await,
             Self::Matrix(posts) => posts.threads(route).await,
             Self::Slack(posts) => posts.threads(route).await,
+            Self::Unread(why) => Err(MarkersError::Unreadable {
+                reason: (*why).to_owned(),
+            }),
         }
     }
 }

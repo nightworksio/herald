@@ -6,6 +6,7 @@
 //! status is posted under an idempotency key derived from the never-twice
 //! key, and the announcement's link carries its markers.
 
+mod activitypub;
 mod actor;
 mod markers;
 mod mastodon;
@@ -13,6 +14,10 @@ mod options;
 mod read;
 mod request;
 
+pub use activitypub::{
+    ActivityPub, ActorOptions, ActorRouteOptions, actor_document, actor_profile, create, note,
+    webfinger,
+};
 pub use actor::{
     ActorError, ActorKey, Found, activity_json, actor_key, actor_of, confirms, document,
     key_request, origin, same_origin,

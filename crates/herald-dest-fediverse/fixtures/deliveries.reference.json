@@ -1,0 +1,281 @@
+{
+  "exchanges": [
+    {
+      "request": {
+        "body": {
+          "@context": "https://www.w3.org/ns/activitystreams",
+          "actor": "https://herald.example/users/php-mutation-gate",
+          "cc": [
+            "https://herald.example/users/php-mutation-gate/followers"
+          ],
+          "id": "https://herald.example/users/php-mutation-gate/notes/da765393824b2f92d4e0df694048a62b994615c2ca027d5a69263e41b6828159/activity",
+          "object": {
+            "attributedTo": "https://herald.example/users/php-mutation-gate",
+            "cc": [
+              "https://herald.example/users/php-mutation-gate/followers"
+            ],
+            "content": "<p><strong>📦 php-mutation-gate v0.1.0</strong></p>\n<h2>Added</h2>\n<ul>\n<li>the gate</li>\n</ul>\n<p><a href=\"https://github.com/nightworksio/php-mutation-gate/releases/tag/v0.1.0\">https://github.com/nightworksio/php-mutation-gate/releases/tag/v0.1.0</a></p>",
+            "id": "https://herald.example/users/php-mutation-gate/notes/da765393824b2f92d4e0df694048a62b994615c2ca027d5a69263e41b6828159",
+            "published": "2026-10-31T12:00:00Z",
+            "sensitive": true,
+            "summary": "Release notes",
+            "to": [
+              "https://www.w3.org/ns/activitystreams#Public"
+            ],
+            "type": "Note",
+            "url": "https://github.com/nightworksio/php-mutation-gate/releases/tag/v0.1.0"
+          },
+          "published": "2026-10-31T12:00:00Z",
+          "to": [
+            "https://www.w3.org/ns/activitystreams#Public"
+          ],
+          "type": "Create"
+        },
+        "headers": {
+          "Content-Type": "application/activity+json",
+          "Date": "Tue, 03 Nov 2026 08:00:00 GMT",
+          "Digest": "SHA-256=bxY9zY2jTFijA170JEbdu5K7jqQ0yhBRNvl1hQnDQ00=",
+          "Signature": "keyId=\"https://herald.example/users/php-mutation-gate#main-key\",algorithm=\"rsa-sha256\",headers=\"(request-target) host date digest content-type\",signature=\"UnNhU2hhMjU2fHRoZS1rZXl8KHJlcXVlc3QtdGFyZ2V0KTogcG9zdCAvaW5ib3gKaG9zdDogc29jaWFsLmV4YW1wbGUKZGF0ZTogVHVlLCAwMyBOb3YgMjAyNiAwODowMDowMCBHTVQKZGlnZXN0OiBTSEEtMjU2PWJ4WTl6WTJqVEZpakExNzBKRWJkdTVLN2pxUTB5aEJSTnZsMWhRbkRRMDA9CmNvbnRlbnQtdHlwZTogYXBwbGljYXRpb24vYWN0aXZpdHkranNvbg==\"",
+          "User-Agent": "herald/0.0.0 (+https://github.com/nightworksio/herald)"
+        },
+        "method": "POST",
+        "url": "https://social.example/inbox"
+      },
+      "response": {
+        "status": 202
+      }
+    },
+    {
+      "request": {
+        "body": {
+          "@context": "https://www.w3.org/ns/activitystreams",
+          "actor": "https://herald.example/users/php-mutation-gate",
+          "cc": [
+            "https://herald.example/users/php-mutation-gate/followers"
+          ],
+          "id": "https://herald.example/users/php-mutation-gate/notes/da765393824b2f92d4e0df694048a62b994615c2ca027d5a69263e41b6828159/activity",
+          "object": {
+            "attributedTo": "https://herald.example/users/php-mutation-gate",
+            "cc": [
+              "https://herald.example/users/php-mutation-gate/followers"
+            ],
+            "content": "<p><strong>📦 php-mutation-gate v0.1.0</strong></p>\n<h2>Added</h2>\n<ul>\n<li>the gate</li>\n</ul>\n<p><a href=\"https://github.com/nightworksio/php-mutation-gate/releases/tag/v0.1.0\">https://github.com/nightworksio/php-mutation-gate/releases/tag/v0.1.0</a></p>",
+            "id": "https://herald.example/users/php-mutation-gate/notes/da765393824b2f92d4e0df694048a62b994615c2ca027d5a69263e41b6828159",
+            "published": "2026-10-31T12:00:00Z",
+            "sensitive": true,
+            "summary": "Release notes",
+            "to": [
+              "https://www.w3.org/ns/activitystreams#Public"
+            ],
+            "type": "Note",
+            "url": "https://github.com/nightworksio/php-mutation-gate/releases/tag/v0.1.0"
+          },
+          "published": "2026-10-31T12:00:00Z",
+          "to": [
+            "https://www.w3.org/ns/activitystreams#Public"
+          ],
+          "type": "Create"
+        },
+        "headers": {
+          "Content-Type": "application/activity+json",
+          "Date": "Tue, 03 Nov 2026 08:00:00 GMT",
+          "Digest": "SHA-256=bxY9zY2jTFijA170JEbdu5K7jqQ0yhBRNvl1hQnDQ00=",
+          "Signature": "keyId=\"https://herald.example/users/php-mutation-gate#main-key\",algorithm=\"rsa-sha256\",headers=\"(request-target) host date digest content-type\",signature=\"UnNhU2hhMjU2fHRoZS1rZXl8KHJlcXVlc3QtdGFyZ2V0KTogcG9zdCAvaW5ib3gKaG9zdDogZ29uZS5leGFtcGxlCmRhdGU6IFR1ZSwgMDMgTm92IDIwMjYgMDg6MDA6MDAgR01UCmRpZ2VzdDogU0hBLTI1Nj1ieFk5elkyalRGaWpBMTcwSkViZHU1SzdqcVEweWhCUk52bDFoUW5EUTAwPQpjb250ZW50LXR5cGU6IGFwcGxpY2F0aW9uL2FjdGl2aXR5K2pzb24=\"",
+          "User-Agent": "herald/0.0.0 (+https://github.com/nightworksio/herald)"
+        },
+        "method": "POST",
+        "url": "https://gone.example/inbox"
+      },
+      "response": {
+        "body": "Gone",
+        "status": 410
+      }
+    },
+    {
+      "request": {
+        "body": {
+          "@context": "https://www.w3.org/ns/activitystreams",
+          "actor": "https://herald.example/users/php-mutation-gate",
+          "cc": [
+            "https://herald.example/users/php-mutation-gate/followers"
+          ],
+          "id": "https://herald.example/users/php-mutation-gate/notes/da765393824b2f92d4e0df694048a62b994615c2ca027d5a69263e41b6828159/activity",
+          "object": {
+            "attributedTo": "https://herald.example/users/php-mutation-gate",
+            "cc": [
+              "https://herald.example/users/php-mutation-gate/followers"
+            ],
+            "content": "<p><strong>📦 php-mutation-gate v0.1.0</strong></p>\n<h2>Added</h2>\n<ul>\n<li>the gate</li>\n</ul>\n<p><a href=\"https://github.com/nightworksio/php-mutation-gate/releases/tag/v0.1.0\">https://github.com/nightworksio/php-mutation-gate/releases/tag/v0.1.0</a></p>",
+            "id": "https://herald.example/users/php-mutation-gate/notes/da765393824b2f92d4e0df694048a62b994615c2ca027d5a69263e41b6828159",
+            "published": "2026-10-31T12:00:00Z",
+            "sensitive": true,
+            "summary": "Release notes",
+            "to": [
+              "https://www.w3.org/ns/activitystreams#Public"
+            ],
+            "type": "Note",
+            "url": "https://github.com/nightworksio/php-mutation-gate/releases/tag/v0.1.0"
+          },
+          "published": "2026-10-31T12:00:00Z",
+          "to": [
+            "https://www.w3.org/ns/activitystreams#Public"
+          ],
+          "type": "Create"
+        },
+        "headers": {
+          "Content-Type": "application/activity+json",
+          "Date": "Tue, 03 Nov 2026 08:00:00 GMT",
+          "Digest": "SHA-256=bxY9zY2jTFijA170JEbdu5K7jqQ0yhBRNvl1hQnDQ00=",
+          "Signature": "keyId=\"https://herald.example/users/php-mutation-gate#main-key\",algorithm=\"rsa-sha256\",headers=\"(request-target) host date digest content-type\",signature=\"UnNhU2hhMjU2fHRoZS1rZXl8KHJlcXVlc3QtdGFyZ2V0KTogcG9zdCAvaW5ib3gKaG9zdDogYnVzeS5leGFtcGxlCmRhdGU6IFR1ZSwgMDMgTm92IDIwMjYgMDg6MDA6MDAgR01UCmRpZ2VzdDogU0hBLTI1Nj1ieFk5elkyalRGaWpBMTcwSkViZHU1SzdqcVEweWhCUk52bDFoUW5EUTAwPQpjb250ZW50LXR5cGU6IGFwcGxpY2F0aW9uL2FjdGl2aXR5K2pzb24=\"",
+          "User-Agent": "herald/0.0.0 (+https://github.com/nightworksio/herald)"
+        },
+        "method": "POST",
+        "url": "https://busy.example/inbox"
+      },
+      "response": {
+        "headers": {
+          "Retry-After": "9"
+        },
+        "status": 429
+      }
+    },
+    {
+      "request": {
+        "body": {
+          "@context": "https://www.w3.org/ns/activitystreams",
+          "actor": "https://herald.example/users/php-mutation-gate",
+          "cc": [
+            "https://herald.example/users/php-mutation-gate/followers"
+          ],
+          "id": "https://herald.example/users/php-mutation-gate/notes/da765393824b2f92d4e0df694048a62b994615c2ca027d5a69263e41b6828159/activity",
+          "object": {
+            "attributedTo": "https://herald.example/users/php-mutation-gate",
+            "cc": [
+              "https://herald.example/users/php-mutation-gate/followers"
+            ],
+            "content": "<p><strong>📦 php-mutation-gate v0.1.0</strong></p>\n<h2>Added</h2>\n<ul>\n<li>the gate</li>\n</ul>\n<p><a href=\"https://github.com/nightworksio/php-mutation-gate/releases/tag/v0.1.0\">https://github.com/nightworksio/php-mutation-gate/releases/tag/v0.1.0</a></p>",
+            "id": "https://herald.example/users/php-mutation-gate/notes/da765393824b2f92d4e0df694048a62b994615c2ca027d5a69263e41b6828159",
+            "published": "2026-10-31T12:00:00Z",
+            "sensitive": true,
+            "summary": "Release notes",
+            "to": [
+              "https://www.w3.org/ns/activitystreams#Public"
+            ],
+            "type": "Note",
+            "url": "https://github.com/nightworksio/php-mutation-gate/releases/tag/v0.1.0"
+          },
+          "published": "2026-10-31T12:00:00Z",
+          "to": [
+            "https://www.w3.org/ns/activitystreams#Public"
+          ],
+          "type": "Create"
+        },
+        "headers": {
+          "Content-Type": "application/activity+json",
+          "Date": "Tue, 03 Nov 2026 08:00:00 GMT",
+          "Digest": "SHA-256=bxY9zY2jTFijA170JEbdu5K7jqQ0yhBRNvl1hQnDQ00=",
+          "Signature": "keyId=\"https://herald.example/users/php-mutation-gate#main-key\",algorithm=\"rsa-sha256\",headers=\"(request-target) host date digest content-type\",signature=\"UnNhU2hhMjU2fHRoZS1rZXl8KHJlcXVlc3QtdGFyZ2V0KTogcG9zdCAvaW5ib3gKaG9zdDogZG93bi5leGFtcGxlCmRhdGU6IFR1ZSwgMDMgTm92IDIwMjYgMDg6MDA6MDAgR01UCmRpZ2VzdDogU0hBLTI1Nj1ieFk5elkyalRGaWpBMTcwSkViZHU1SzdqcVEweWhCUk52bDFoUW5EUTAwPQpjb250ZW50LXR5cGU6IGFwcGxpY2F0aW9uL2FjdGl2aXR5K2pzb24=\"",
+          "User-Agent": "herald/0.0.0 (+https://github.com/nightworksio/herald)"
+        },
+        "method": "POST",
+        "url": "https://down.example/inbox"
+      },
+      "response": {
+        "status": 503
+      }
+    },
+    {
+      "request": {
+        "body": {
+          "@context": "https://www.w3.org/ns/activitystreams",
+          "actor": "https://herald.example/users/php-mutation-gate",
+          "cc": [
+            "https://herald.example/users/php-mutation-gate/followers"
+          ],
+          "id": "https://herald.example/users/php-mutation-gate/notes/da765393824b2f92d4e0df694048a62b994615c2ca027d5a69263e41b6828159/activity",
+          "object": {
+            "attributedTo": "https://herald.example/users/php-mutation-gate",
+            "cc": [
+              "https://herald.example/users/php-mutation-gate/followers"
+            ],
+            "content": "<p><strong>📦 php-mutation-gate v0.1.0</strong></p>\n<h2>Added</h2>\n<ul>\n<li>the gate</li>\n</ul>\n<p><a href=\"https://github.com/nightworksio/php-mutation-gate/releases/tag/v0.1.0\">https://github.com/nightworksio/php-mutation-gate/releases/tag/v0.1.0</a></p>",
+            "id": "https://herald.example/users/php-mutation-gate/notes/da765393824b2f92d4e0df694048a62b994615c2ca027d5a69263e41b6828159",
+            "published": "2026-10-31T12:00:00Z",
+            "sensitive": true,
+            "summary": "Release notes",
+            "to": [
+              "https://www.w3.org/ns/activitystreams#Public"
+            ],
+            "type": "Note",
+            "url": "https://github.com/nightworksio/php-mutation-gate/releases/tag/v0.1.0"
+          },
+          "published": "2026-10-31T12:00:00Z",
+          "to": [
+            "https://www.w3.org/ns/activitystreams#Public"
+          ],
+          "type": "Create"
+        },
+        "headers": {
+          "Content-Type": "application/activity+json",
+          "Date": "Tue, 03 Nov 2026 08:00:00 GMT",
+          "Digest": "SHA-256=bxY9zY2jTFijA170JEbdu5K7jqQ0yhBRNvl1hQnDQ00=",
+          "Signature": "keyId=\"https://herald.example/users/php-mutation-gate#main-key\",algorithm=\"rsa-sha256\",headers=\"(request-target) host date digest content-type\",signature=\"UnNhU2hhMjU2fHRoZS1rZXl8KHJlcXVlc3QtdGFyZ2V0KTogcG9zdCAvdXNlcnMvYW5hL2luYm94Cmhvc3Q6IHN0cmljdC5leGFtcGxlCmRhdGU6IFR1ZSwgMDMgTm92IDIwMjYgMDg6MDA6MDAgR01UCmRpZ2VzdDogU0hBLTI1Nj1ieFk5elkyalRGaWpBMTcwSkViZHU1SzdqcVEweWhCUk52bDFoUW5EUTAwPQpjb250ZW50LXR5cGU6IGFwcGxpY2F0aW9uL2FjdGl2aXR5K2pzb24=\"",
+          "User-Agent": "herald/0.0.0 (+https://github.com/nightworksio/herald)"
+        },
+        "method": "POST",
+        "url": "https://strict.example/users/ana/inbox"
+      },
+      "response": {
+        "body": {
+          "error": "Verification failed"
+        },
+        "status": 401
+      }
+    },
+    {
+      "request": {
+        "body": {
+          "@context": "https://www.w3.org/ns/activitystreams",
+          "actor": "https://herald.example/users/php-mutation-gate",
+          "cc": [
+            "https://herald.example/users/php-mutation-gate/followers"
+          ],
+          "id": "https://herald.example/users/php-mutation-gate/notes/da765393824b2f92d4e0df694048a62b994615c2ca027d5a69263e41b6828159/activity",
+          "object": {
+            "attributedTo": "https://herald.example/users/php-mutation-gate",
+            "cc": [
+              "https://herald.example/users/php-mutation-gate/followers"
+            ],
+            "content": "<p><strong>📦 php-mutation-gate v0.1.0</strong></p>\n<h2>Added</h2>\n<ul>\n<li>the gate</li>\n</ul>\n<p><a href=\"https://github.com/nightworksio/php-mutation-gate/releases/tag/v0.1.0\">https://github.com/nightworksio/php-mutation-gate/releases/tag/v0.1.0</a></p>",
+            "id": "https://herald.example/users/php-mutation-gate/notes/da765393824b2f92d4e0df694048a62b994615c2ca027d5a69263e41b6828159",
+            "published": "2026-10-31T12:00:00Z",
+            "sensitive": true,
+            "summary": "Release notes",
+            "to": [
+              "https://www.w3.org/ns/activitystreams#Public"
+            ],
+            "type": "Note",
+            "url": "https://github.com/nightworksio/php-mutation-gate/releases/tag/v0.1.0"
+          },
+          "published": "2026-10-31T12:00:00Z",
+          "to": [
+            "https://www.w3.org/ns/activitystreams#Public"
+          ],
+          "type": "Create"
+        },
+        "headers": {
+          "Content-Type": "application/activity+json",
+          "Date": "Tue, 03 Nov 2026 08:00:00 GMT",
+          "Digest": "SHA-256=bxY9zY2jTFijA170JEbdu5K7jqQ0yhBRNvl1hQnDQ00=",
+          "Signature": "keyId=\"https://herald.example/users/php-mutation-gate#main-key\",algorithm=\"rsa-sha256\",headers=\"(request-target) host date digest content-type\",signature=\"UnNhU2hhMjU2fHRoZS1rZXl8KHJlcXVlc3QtdGFyZ2V0KTogcG9zdCAvaW5ib3g/c2hhcmVkPTEKaG9zdDogb2RkLmV4YW1wbGU6ODQ0MwpkYXRlOiBUdWUsIDAzIE5vdiAyMDI2IDA4OjAwOjAwIEdNVApkaWdlc3Q6IFNIQS0yNTY9YnhZOXpZMmpURmlqQTE3MEpFYmR1NUs3anFRMHloQlJOdmwxaFFuRFEwMD0KY29udGVudC10eXBlOiBhcHBsaWNhdGlvbi9hY3Rpdml0eStqc29u\"",
+          "User-Agent": "herald/0.0.0 (+https://github.com/nightworksio/herald)"
+        },
+        "method": "POST",
+        "url": "https://odd.example:8443/inbox?shared=1"
+      },
+      "response": {
+        "status": 200
+      }
+    }
+  ]
+}

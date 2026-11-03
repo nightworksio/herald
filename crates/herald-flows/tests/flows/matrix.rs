@@ -50,6 +50,7 @@ fn subscribed(store: &Failing) {
         destination: DestinationName::new("room"),
         project: "php-mutation-gate".to_owned(),
         subscriber: "@ana:matrix.example".to_owned(),
+        inbox: None,
     };
     pollster::block_on(store.subscribe(&subscription)).unwrap();
 }

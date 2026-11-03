@@ -41,6 +41,15 @@ pub trait Signer: Sync {
         key: &Secret,
         message: &[u8],
     ) -> impl Future<Output = Result<Vec<u8>, CryptoError>> + Send;
+
+    /// The public half of `key` under `algorithm`, as a DER
+    /// `SubjectPublicKeyInfo`: what an ActivityPub actor publishes as its
+    /// `publicKeyPem`.
+    fn public(
+        &self,
+        algorithm: Algorithm,
+        key: &Secret,
+    ) -> impl Future<Output = Result<Vec<u8>, CryptoError>> + Send;
 }
 
 /// Checks a signature against the key or secret it is handed.

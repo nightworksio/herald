@@ -72,6 +72,7 @@ fn a_slack_bot_mentions_the_subscribers_herald_keeps_and_records_its_permalink()
         destination: DestinationName::new("team"),
         project: "php-mutation-gate".to_owned(),
         subscriber: "U0123ABCD".to_owned(),
+        inbox: None,
     };
     pollster::block_on(store.subscribe(&subscription)).unwrap();
     let script = Script::answering(&[

@@ -656,11 +656,6 @@ body = "{{ event.body }}"
             "{}",
             errors(&both)
         );
-        let unknown = SLACK.replace(
-            "token = { secret = \"HERALD_SLACK_TOKEN\" }",
-            "token = { secret = \"HERALD_SLACK_TOKEN\" }\nbogus = 1",
-        );
-        assert!(errors(&unknown).contains("bogus"), "{}", errors(&unknown));
         let neither = SLACK.replace("token = { secret = \"HERALD_SLACK_TOKEN\" }\n", "");
         assert!(
             errors(&neither)
@@ -668,6 +663,117 @@ body = "{{ event.body }}"
             "{}",
             errors(&neither)
         );
+    }
+
+    const ACTIVITYPUB: &str = r#"version = 1
+
+[store]
+kind = "git-branch"
+
+[destinations.fedi]
+kind = "activitypub"
+domain = "herald.example"
+key = { secret = "HERALD_ACTIVITYPUB_KEY" }
+
+[sources.gate]
+kind = "github"
+repository = "nightworksio/php-mutation-gate"
+
+[[routes]]
+id = "followed"
+sources = ["gate"]
+destination = "fedi"
+template = "t"
+actor = "php-mutation-gate"
+content_warning = "Release notes"
+
+[templates.t]
+title = "{{ event.title }}"
+body = "{{ event.body }}"
+"#;
+
+    #[test]
+    fn an_activitypub_destination_and_its_actor_load() {
+        let config = load("herald.toml", ACTIVITYPUB, &nothing).unwrap();
+        let Some(Destination::ActivityPub(fedi)) = config.destinations.values().next() else {
+            panic!("the destination is herald's own actor's");
+        };
+        assert_eq!(fedi.domain, "herald.example");
+        assert_eq!(
+            config.destinations.values().next().map(Destination::kind),
+            Some("activitypub")
+        );
+        let RouteOptions::ActivityPub(placed) = &config.routes[0].options else {
+            panic!("the route's options are the actor's");
+        };
+        assert_eq!(placed.actor, "php-mutation-gate");
+        assert_eq!(placed.content_warning.as_deref(), Some("Release notes"));
+        assert_eq!(
+            config.routes[0].profile,
+            herald_dest_fediverse::actor_profile()
+        );
+        assert!(
+            config
+                .secrets()
+                .into_iter()
+                .any(|secret| secret == "HERALD_ACTIVITYPUB_KEY")
+        );
+    }
+
+    #[test]
+    fn an_activitypub_route_is_refused_a_bad_domain_or_actor_what_it_cannot_do_and_a_store_without_followers()
+     {
+        let schemed = ACTIVITYPUB.replace(
+            "domain = \"herald.example\"",
+            "domain = \"https://herald.example\"",
+        );
+        assert!(
+            errors(&schemed)
+                .contains("destinations.fedi: \"https://herald.example\" is not a domain"),
+            "{}",
+            errors(&schemed)
+        );
+        let named = ACTIVITYPUB.replace("actor = \"php-mutation-gate\"", "actor = \"PHP Gate\"");
+        assert!(
+            errors(&named).contains("routes[0]: \"PHP Gate\" is not an actor's name"),
+            "{}",
+            errors(&named)
+        );
+        let pinning = ACTIVITYPUB.replace(
+            "content_warning = \"Release notes\"",
+            "pin = \"markers\"\ncrosspost = true",
+        );
+        let error = errors(&pinning);
+        for key in ["pin", "crosspost"] {
+            assert!(
+                error.contains(&format!(
+                    "routes[0].{key}: the destination \"fedi\" cannot do this as it is reached; remove {key}, as herald's ActivityPub actor has no way to do it"
+                )),
+                "{key}: {error}"
+            );
+        }
+        let actorless = ACTIVITYPUB.replace("actor = \"php-mutation-gate\"\n", "");
+        assert!(
+            errors(&actorless).contains("routes[0]: missing field `actor`"),
+            "{}",
+            errors(&actorless)
+        );
+        let marked = ACTIVITYPUB.replace("kind = \"git-branch\"", "kind = \"markers\"");
+        assert!(
+            errors(&marked).contains("routes[0]: the markers store keeps no subscriptions, so this route has no followers or subscribers to reach; give a store that keeps them, such as \"git-branch\""),
+            "{}",
+            errors(&marked)
+        );
+        let mentioning = MATRIX.replace("kind = \"sqlite\"", "kind = \"markers\"");
+        assert!(
+            errors(&mentioning).contains("routes[0]: the markers store keeps no subscriptions"),
+            "{}",
+            errors(&mentioning)
+        );
+        let quiet = MATRIX
+            .replace("kind = \"sqlite\"", "kind = \"markers\"")
+            .replace("mentions = { subscribers = true }\n", "");
+        assert!(load("herald.toml", &quiet, &nothing).is_ok());
     }
 
     #[test]

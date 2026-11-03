@@ -129,6 +129,7 @@ fn subscription(destination: &str, project: &str, subscriber: &str) -> Subscript
         destination: DestinationName::new(destination),
         project: project.to_owned(),
         subscriber: subscriber.to_owned(),
+        inbox: None,
     }
 }
 
@@ -331,15 +332,35 @@ async fn subscriptions<S: Store>(store: &S) -> Result<(), Failure> {
     let mut held = store.subscribers(&slack, "herald").await?;
     held.sort();
     checks.ensure(
-        held == ["alice", "bob"],
+        held == [alice.clone(), bob.clone()],
         "the subscribers of a project on a destination were not those subscribed, once each",
     );
     store.unsubscribe(&alice).await?;
     store.unsubscribe(&alice).await?;
     let held = store.subscribers(&slack, "herald").await?;
     checks.ensure(
-        held == ["bob"],
+        held == [bob],
         "a subscriber removed was still held, or another went with them",
+    );
+    let fediverse = DestinationName::new("fediverse");
+    let follower = Subscription {
+        inbox: Some("https://social.example/inbox".to_owned()),
+        ..subscription("fediverse", "herald", "https://social.example/users/ana")
+    };
+    store.subscribe(&follower).await?;
+    let inboxes: Vec<Option<String>> = store
+        .subscribers(&fediverse, "herald")
+        .await?
+        .into_iter()
+        .map(|held| held.inbox)
+        .collect();
+    checks.ensure(
+        inboxes == [Some("https://social.example/inbox".to_owned())],
+        "a follower's inbox was not kept with them",
+    );
+    checks.ensure(
+        store.subscribers(&fediverse, "herald").await? == [follower],
+        "a follower's inbox was not kept with its subscription",
     );
     checks.done()
 }

@@ -79,6 +79,100 @@
     "store"
   ],
   "$defs": {
+    "ActivityPubRoute": {
+      "description": "A route announcing as one of herald's own ActivityPub actors.",
+      "type": "object",
+      "properties": {
+        "actor": {
+          "description": "The actor the route announces as, such as `php-mutation-gate`, which\nis followed as `@php-mutation-gate@<domain>`.",
+          "type": "string"
+        },
+        "content_warning": {
+          "description": "The content warning each Note is shown behind.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "crosspost": {
+          "description": "Whether to crosspost each announcement.",
+          "type": "boolean",
+          "default": false
+        },
+        "destination": {
+          "description": "The destination it announces to.",
+          "type": "string"
+        },
+        "id": {
+          "description": "The route's stable id, part of every announcement's key.",
+          "type": "string"
+        },
+        "kinds": {
+          "description": "The kinds of event it takes; every kind where absent.",
+          "type": "array",
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/Kind"
+          }
+        },
+        "mentions": {
+          "description": "Who it mentions.",
+          "$ref": "#/$defs/Mentions"
+        },
+        "pin": {
+          "description": "Whether to pin each announcement in place of the route's earlier pin,\nand how the earlier pin is found.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Pinning"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "prereleases": {
+          "description": "Which pre-releases it takes.",
+          "$ref": "#/$defs/Prereleases"
+        },
+        "sources": {
+          "description": "The sources it takes events from.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "template": {
+          "description": "The template it renders with.",
+          "type": "string"
+        },
+        "thread": {
+          "description": "The thread to open for each announcement.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Thread"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "versions": {
+          "description": "The versions it takes, as a pattern in which `*` stands for any run\nof characters and `?` for any one, such as `\"*.*.*\"`, which leaves\nout a Docker Hub tag such as `latest`; every version where absent.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "sources",
+        "destination",
+        "template",
+        "actor"
+      ]
+    },
     "App": {
       "description": "An app of the HTTP API (ADR-0007).",
       "type": "object",
@@ -244,6 +338,30 @@
           "additionalProperties": false,
           "required": [
             "kind"
+          ]
+        },
+        {
+          "description": "herald's own ActivityPub actors, on its domain.",
+          "type": "object",
+          "properties": {
+            "domain": {
+              "description": "The domain herald serves its actors on, such as `herald.example`:\na host alone, with no scheme, port or path.",
+              "type": "string"
+            },
+            "key": {
+              "description": "The secret holding the actors' RSA private key, as PKCS#8 PEM, which\n`herald activitypub keygen` writes.",
+              "$ref": "#/$defs/SecretRef"
+            },
+            "kind": {
+              "type": "string",
+              "const": "activitypub"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "domain",
+            "key"
           ]
         }
       ]
@@ -655,6 +773,10 @@
         {
           "description": "A route to a Slack destination.",
           "$ref": "#/$defs/SlackRoute"
+        },
+        {
+          "description": "A route announcing as one of herald's own ActivityPub actors.",
+          "$ref": "#/$defs/ActivityPubRoute"
         }
       ]
     },

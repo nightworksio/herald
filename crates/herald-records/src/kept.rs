@@ -227,13 +227,8 @@ impl<R: Records> Store for Kept<R> {
         &self,
         destination: &DestinationName,
         project: &str,
-    ) -> Result<Vec<String>, StoreError> {
-        let subscriptions: Vec<Subscription> =
-            self.all(&paths::subscribers(destination, project)).await?;
-        Ok(subscriptions
-            .into_iter()
-            .map(|subscription| subscription.subscriber)
-            .collect())
+    ) -> Result<Vec<Subscription>, StoreError> {
+        self.all(&paths::subscribers(destination, project)).await
     }
 
     async fn subscribe(&self, subscription: &Subscription) -> Result<(), StoreError> {

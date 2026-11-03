@@ -152,12 +152,12 @@ pub trait Store: Sync {
         remove: &[Schedule],
     ) -> impl Future<Output = Result<(), StoreError>> + Send;
 
-    /// The subscribers to `project` on `destination`.
+    /// The subscriptions to `project` on `destination`.
     fn subscribers(
         &self,
         destination: &DestinationName,
         project: &str,
-    ) -> impl Future<Output = Result<Vec<String>, StoreError>> + Send;
+    ) -> impl Future<Output = Result<Vec<Subscription>, StoreError>> + Send;
 
     /// Adds `subscription`.
     fn subscribe(

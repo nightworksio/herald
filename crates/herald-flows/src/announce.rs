@@ -1,3 +1,5 @@
+use std::collections::BTreeSet;
+
 use herald_config::Config;
 use herald_core::{
     Announcement, Entry, Event, Facts, Key, Marker, Marks, Pinning, Plan, Profile, RouteId, Sent,
@@ -7,6 +9,7 @@ use herald_ports::{Clock, Http, Secret, Signer, Store, Version, Written, marker}
 use jiff::{SignedDuration, Timestamp};
 
 use crate::prepare::{Connected, PreparedRoute};
+use crate::reached::Signing;
 
 /// How long a run holds an announcement before another may finish it.
 const LEASE: SignedDuration = SignedDuration::from_mins(10);
@@ -208,6 +211,10 @@ impl<S: Store, C: Clock, G: Signer, H: Http> Run<'_, S, C, G, H> {
             .reached
             .send(
                 self.http,
+                Signing {
+                    signer: self.ports.signer,
+                    now: self.ports.clock.now(),
+                },
                 step,
                 announcement,
                 &route.delivery,
@@ -220,6 +227,25 @@ impl<S: Store, C: Clock, G: Signer, H: Http> Run<'_, S, C, G, H> {
             Sent::RetryAfter(after) => Err(Stop::RetryAfter(after)),
             Sent::Refused(reason) => Err(Stop::Refused(reason)),
         }
+    }
+
+    /// The inboxes an announcement is delivered to: each distinct inbox of
+    /// the followers of the actor the route announces as, in order.
+    async fn recipients(&self) -> Result<Vec<String>, Stop> {
+        let Some(actor) = self.route.reached.follows() else {
+            return Ok(Vec::new());
+        };
+        let followers = self
+            .ports
+            .store
+            .subscribers(&self.route.config.route.destination, actor)
+            .await
+            .map_err(stored)?;
+        let inboxes: BTreeSet<String> = followers
+            .into_iter()
+            .filter_map(|follower| follower.inbox)
+            .collect();
+        Ok(inboxes.into_iter().collect())
     }
 
     async fn rendered(
@@ -245,7 +271,10 @@ impl<S: Store, C: Clock, G: Signer, H: Http> Run<'_, S, C, G, H> {
                 .store
                 .subscribers(&route.destination, event.project())
                 .await
-                .map_err(stored)?;
+                .map_err(stored)?
+                .into_iter()
+                .map(|subscription| subscription.subscriber)
+                .collect();
         }
         Ok(announcement)
     }
@@ -268,7 +297,11 @@ impl<S: Store, C: Clock, G: Signer, H: Http> Run<'_, S, C, G, H> {
             Err(reason) => return stopped(reason),
         };
         let parts = u32::try_from(announcement.parts.len()).unwrap_or(u32::MAX);
-        let wanted = steps(&route.delivery, &profile.features, parts, &[]);
+        let recipients = match self.recipients().await {
+            Ok(recipients) => recipients,
+            Err(reason) => return stopped(reason),
+        };
+        let wanted = steps(&route.delivery, &profile.features, parts, &recipients);
         let now = self.ports.clock.now();
         let record = match self.ports.store.entry(&key).await {
             Ok(record) => record,

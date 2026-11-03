@@ -44,6 +44,9 @@ enum DestinationSchema {
     Matrix(herald_dest_matrix::DestinationOptions),
     /// Slack, by bot token or webhook.
     Slack(herald_dest_slack::DestinationOptions),
+    /// herald's own ActivityPub actors, on its domain.
+    #[serde(rename = "activitypub")]
+    ActivityPub(herald_dest_fediverse::ActorOptions),
 }
 
 /// A source, by its kind.
@@ -88,6 +91,8 @@ enum RouteSchema {
     Matrix(MatrixRoute),
     /// A route to a Slack destination.
     Slack(SlackRoute),
+    /// A route announcing as one of herald's own ActivityPub actors.
+    ActivityPub(ActivityPubRoute),
 }
 
 /// A route to a Discord destination.
@@ -110,6 +115,17 @@ struct MatrixRoute {
     common: RouteFile,
     #[serde(flatten)]
     matrix: herald_dest_matrix::RouteOptions,
+}
+
+/// A route announcing as one of herald's own ActivityPub actors.
+#[derive(JsonSchema)]
+#[schemars(deny_unknown_fields)]
+#[allow(dead_code, reason = "read only by the schema's derive")]
+struct ActivityPubRoute {
+    #[serde(flatten)]
+    common: RouteFile,
+    #[serde(flatten)]
+    actor: herald_dest_fediverse::ActorRouteOptions,
 }
 
 /// A route to a Slack destination.

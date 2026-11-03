@@ -4,6 +4,7 @@
 //! randomness, and it is built for `wasm32-unknown-unknown` as well as native
 //! targets.
 
+mod activity;
 mod announce;
 mod chunk;
 mod cursor;
@@ -21,6 +22,9 @@ mod route;
 mod subscription;
 mod version;
 
+pub use activity::{
+    ACTIVITY_JSON, SIGNED, Signing, body_sha256, public_pem, signature_header, signing,
+};
 pub use announce::{
     Announcement, announce, body_template, shortened, thread_template, title_template,
 };

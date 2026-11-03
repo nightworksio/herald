@@ -291,6 +291,37 @@ impl Loader<'_> {
         .find(|store| store.kind() == kind)
     }
 
+    /// Whether every route that reaches followers or subscribers has a store
+    /// that keeps them.
+    fn followed(
+        &mut self,
+        store: Option<&Store>,
+        destinations: &BTreeMap<DestinationName, (Destination, Range<usize>)>,
+        routes: &[route::Read],
+    ) {
+        if !matches!(store, Some(Store::Markers)) {
+            return;
+        }
+        for read in routes {
+            let route = &read.config.route;
+            let follows = matches!(
+                destinations.get(&route.destination),
+                Some((Destination::ActivityPub(_), _))
+            );
+            if follows || route.delivery.mentions.subscribers {
+                self.error(
+                    &read.id_span,
+                    &read.path,
+                    format!(
+                        "the {} store keeps no subscriptions, so this route has no followers or subscribers to reach; give a store that keeps them, such as \"{}\"",
+                        Store::MARKERS,
+                        Store::GIT_BRANCH
+                    ),
+                );
+            }
+        }
+    }
+
     fn destinations(
         &mut self,
         value: Option<Value<'_>>,
@@ -308,6 +339,16 @@ impl Loader<'_> {
             } else if kind == Destination::MATRIX {
                 self.typed::<herald_dest_matrix::DestinationOptions>(rest, &path)
                     .map(Destination::Matrix)
+            } else if kind == Destination::ACTIVITYPUB {
+                let Some(options) = self.typed::<herald_dest_fediverse::ActorOptions>(rest, &path)
+                else {
+                    continue;
+                };
+                if let Err(message) = options.check() {
+                    self.error(&span, &path, message);
+                    continue;
+                }
+                Some(Destination::ActivityPub(options))
             } else if kind == Destination::SLACK {
                 let Some(options) =
                     self.typed::<herald_dest_slack::DestinationOptions>(rest, &path)
@@ -542,6 +583,7 @@ pub fn load(
             routes.push(read);
         }
     }
+    loader.followed(store.as_ref(), &destinations, &routes);
     let compiled = loader.compile(&templates, &routes);
     if let Some(compiled) = &compiled {
         for read in &routes {

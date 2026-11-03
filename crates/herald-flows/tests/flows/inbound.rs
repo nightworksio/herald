@@ -258,7 +258,7 @@ impl Store for Refusing {
         &self,
         _: &herald_core::DestinationName,
         _: &str,
-    ) -> Result<Vec<String>, StoreError> {
+    ) -> Result<Vec<herald_core::Subscription>, StoreError> {
         Err(self.0.clone())
     }
     async fn subscribe(&self, _: &herald_core::Subscription) -> Result<(), StoreError> {
