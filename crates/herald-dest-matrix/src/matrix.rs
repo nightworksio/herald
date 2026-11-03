@@ -1,12 +1,19 @@
 use herald_core::{
-    Announcement, Dialect, Entry, Features, Limits, Measure, MentionStyle, Pins, Profile, Sent,
-    Step, Threads,
+    Announcement, Dialect, Entry, Facts, Features, Limits, Marker, Measure, MentionStyle, Pins,
+    Profile, Sent, Step, Threads,
 };
 use herald_ports::{Http, HttpError, Request, Secret};
+use serde_json::Value;
 
 use crate::options::RouteOptions;
-use crate::read::{read, trouble};
-use crate::request::{Refusal, pin_target, pinned, pinning, step};
+use crate::read::{UNNAMED, json, read, text, trouble};
+use crate::request::{
+    NOT_FOUND, ROUTE, Refusal, Repin, event, get, pin_target, pinned, pins, repinned, step, with,
+    without,
+};
+
+/// An answer read, a reason to stop with, or no answer at all.
+type Read<T> = Result<Result<T, Sent>, HttpError>;
 
 /// The longest title and thread name, in bytes.
 const TITLE: usize = 256;
@@ -92,18 +99,75 @@ impl Matrix {
         announcement: &Announcement,
         entry: &Entry,
     ) -> Result<Sent, HttpError> {
-        let (post, earlier) = match pin_target(step_to_take, announcement, entry) {
+        let target = match pin_target(step_to_take, announcement, entry) {
             Ok(target) => target,
             Err(refusal) => return Ok(Sent::Refused(refusal.to_string())),
         };
-        let response = http.send(pinned(self)).await?;
-        let (held, landed) = pinning(self, post, earlier, &response);
-        let Some(request) = held else {
-            return Ok(landed);
+        let held = match pins(&http.send(pinned(self)).await?) {
+            Ok(held) => held,
+            Err(sent) => return Ok(sent),
         };
-        let answer = http.send(request).await?;
-        let body = serde_json::from_slice(&answer.body).unwrap_or(serde_json::Value::Null);
-        Ok(trouble(&answer, &body).unwrap_or(landed))
+        let wanted = match target {
+            Repin::Pin(post) => with(&held, post),
+            Repin::Unpin {
+                post,
+                remembered: Some(earlier),
+            } => without(&held, &[earlier.to_owned()], post),
+            Repin::Unpin {
+                post,
+                remembered: None,
+            } => match self
+                .routed(http, &held, post, &announcement.marks.route)
+                .await?
+            {
+                Ok(stale) => without(&held, &stale, post),
+                Err(sent) => return Ok(sent),
+            },
+        };
+        let landed = Sent::Landed(Facts::default());
+        if wanted == held {
+            return Ok(landed);
+        }
+        let answer = http.send(repinned(self, &wanted)).await?;
+        Ok(trouble(&answer, &json(&answer)).unwrap_or(landed))
+    }
+
+    /// The pins in `held`, other than `post`, that herald's own account sent
+    /// and that carry the route's marker `route`. A pin whose event is gone
+    /// is not counted.
+    async fn routed<H: Http>(
+        &self,
+        http: &H,
+        held: &[String],
+        post: &str,
+        route: &Marker,
+    ) -> Read<Vec<String>> {
+        let account = http.send(get(self, "/account/whoami")).await?;
+        let named = json(&account);
+        if let Some(sent) = trouble(&account, &named) {
+            return Ok(Err(sent));
+        }
+        let Some(herald) = text(&named, "user_id") else {
+            return Ok(Err(Sent::Refused(UNNAMED.to_owned())));
+        };
+        let mut stale = Vec::new();
+        for pin in held.iter().filter(|pin| *pin != post) {
+            let response = http.send(event(self, pin)).await?;
+            if response.status == NOT_FOUND {
+                continue;
+            }
+            let found = json(&response);
+            if let Some(sent) = trouble(&response, &found) {
+                return Ok(Err(sent));
+            }
+            let content = found.get("content").unwrap_or(&Value::Null);
+            if text(&found, "sender") == Some(herald)
+                && text(content, ROUTE) == Some(route.as_str())
+            {
+                stale.push(pin.clone());
+            }
+        }
+        Ok(Ok(stale))
     }
 }
 

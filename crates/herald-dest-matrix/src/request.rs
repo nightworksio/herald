@@ -1,15 +1,18 @@
 use std::fmt;
 use std::fmt::Write as _;
 
-use herald_core::{Announcement, Dialect, Entry, Facts, Sent, Step, literal, safe_url};
+use herald_core::{Announcement, Dialect, Entry, Sent, Step, literal, safe_url};
 use herald_ports::{Method, Request, Response, Text, USER_AGENT};
 use serde_json::{Map, Value, json};
 
 use crate::matrix::Matrix;
-use crate::read::trouble;
+use crate::read::{json, trouble};
 
-/// The field of a message's content its markers are carried in (ADR-0004).
-pub(crate) const MARKS: &str = "io.nightworks.herald.key";
+/// The field of a message's content carrying its route's marker (ADR-0011).
+pub(crate) const ROUTE: &str = "io.nightworks.herald.route";
+/// The field of a message's content carrying its announcement's marker
+/// (ADR-0011).
+pub(crate) const MARKER: &str = "io.nightworks.herald.marker";
 /// The format of a message's sanitised HTML.
 const HTML: &str = "org.matrix.custom.html";
 /// Where a mention links, as Matrix clients read it.
@@ -17,7 +20,7 @@ const PILL: &str = "https://matrix.to/#/";
 /// The state event holding a room's pinned events.
 const PINNED_EVENTS: &str = "m.room.pinned_events";
 /// The answer of a homeserver for state a room does not hold.
-const NOT_FOUND: u16 = 404;
+pub(crate) const NOT_FOUND: u16 = 404;
 
 /// Why a step cannot be asked of Matrix.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -135,12 +138,10 @@ fn announcement_content(announcement: &Announcement) -> Value {
     content.insert("format".to_owned(), json!(HTML));
     content.insert("formatted_body".to_owned(), json!(html.join("\n")));
     content.insert("m.mentions".to_owned(), json!({ "user_ids": mentioned }));
+    content.insert(ROUTE.to_owned(), json!(announcement.marks.route.as_str()));
     content.insert(
-        MARKS.to_owned(),
-        json!(format!(
-            "{}.{}",
-            announcement.marks.route, announcement.marks.announcement
-        )),
+        MARKER.to_owned(),
+        json!(announcement.marks.announcement.as_str()),
     );
     Value::Object(content)
 }
@@ -217,7 +218,7 @@ pub(crate) fn pinned(matrix: &Matrix) -> Request {
 /// The room's pinned events, as `response` holds them, or what the
 /// homeserver's trouble means.
 pub(crate) fn pins(response: &Response) -> Result<Vec<String>, Sent> {
-    let body: Value = serde_json::from_slice(&response.body).unwrap_or(Value::Null);
+    let body = json(response);
     if response.status == NOT_FOUND {
         return Ok(Vec::new());
     }
@@ -234,54 +235,63 @@ pub(crate) fn pins(response: &Response) -> Result<Vec<String>, Sent> {
         .collect())
 }
 
-/// What a pin or unpin acts on, before anything is read: the announcement's
-/// message, and for an unpin the route's earlier pin.
+/// What a pin or unpin acts on, read before anything is sent.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Repin<'a> {
+    /// The announcement's message is pinned.
+    Pin(&'a str),
+    /// The route's earlier pins are unpinned, the announcement's own kept:
+    /// the one the store remembers, or else each of herald's own pins that
+    /// carries the route's marker (ADR-0011).
+    Unpin {
+        post: &'a str,
+        remembered: Option<&'a str>,
+    },
+}
+
 pub(crate) fn pin_target<'a>(
     step: &Step,
     announcement: &'a Announcement,
     entry: &'a Entry,
-) -> Result<(&'a str, Option<&'a str>), Refusal> {
+) -> Result<Repin<'a>, Refusal> {
     let post = posted(entry, &Step::Post, "the announcement's message")?;
-    if *step == Step::Pin {
-        return Ok((post, None));
-    }
-    let earlier = announcement
-        .replaces
-        .as_deref()
-        .ok_or(Refusal::Missing("the route's earlier pin"))?;
-    Ok((post, Some(earlier)))
+    Ok(if *step == Step::Pin {
+        Repin::Pin(post)
+    } else {
+        Repin::Unpin {
+            post,
+            remembered: announcement.replaces.as_deref(),
+        }
+    })
 }
 
-/// The write a pin of `post`, or an unpin of `earlier`, takes, given the
-/// room's pinned events `response` read, and what is answered once it
-/// lands: no write where the pins already are as the step leaves them.
-pub(crate) fn pinning(
-    matrix: &Matrix,
-    post: &str,
-    earlier: Option<&str>,
-    response: &Response,
-) -> (Option<Request>, Sent) {
-    let mut held = match pins(response) {
-        Ok(held) => held,
-        Err(sent) => return (None, sent),
-    };
-    let changed = match earlier {
-        None => {
-            let fresh = !held.iter().any(|pinned| pinned == post);
-            if fresh {
-                held.push(post.to_owned());
-            }
-            fresh
-        }
-        Some(earlier) => {
-            let before = held.len();
-            held.retain(|pinned| pinned != earlier || pinned == post);
-            held.len() != before
-        }
-    };
+/// The room's pins with `post` added, where it is not pinned yet.
+pub(crate) fn with(held: &[String], post: &str) -> Vec<String> {
+    let mut pins = held.to_vec();
+    if !pins.iter().any(|pinned| pinned == post) {
+        pins.push(post.to_owned());
+    }
+    pins
+}
+
+/// The room's pins without `stale`, `post` kept whatever `stale` holds.
+pub(crate) fn without(held: &[String], stale: &[String], post: &str) -> Vec<String> {
+    held.iter()
+        .filter(|pinned| *pinned == post || !stale.contains(pinned))
+        .cloned()
+        .collect()
+}
+
+/// The write setting the room's pins to `pins`.
+pub(crate) fn repinned(matrix: &Matrix, pins: &[String]) -> Request {
     let path = format!("{}/state/{PINNED_EVENTS}", room(matrix));
-    (
-        changed.then(|| put(matrix, &path, &json!({ "pinned": held }))),
-        Sent::Landed(Facts::default()),
+    put(matrix, &path, &json!({ "pinned": pins }))
+}
+
+/// The request reading the event `event` of the room.
+pub(crate) fn event(matrix: &Matrix, event: &str) -> Request {
+    get(
+        matrix,
+        &format!("{}/event/{}", room(matrix), segment(event)),
     )
 }

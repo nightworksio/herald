@@ -170,7 +170,7 @@ fn a_matrix_route_keeps_no_thread_chores_and_its_room_lists_no_threads() {
         "event_id": "$post",
         "sender": "@herald:matrix.example",
         "type": "m.room.message",
-        "content": { "io.nightworks.herald.key": format!("{key}.{}", marker.as_str()) },
+        "content": { "io.nightworks.herald.marker": marker.as_str() },
     }] })
     .to_string();
     let cut_short = Script::answering(&[

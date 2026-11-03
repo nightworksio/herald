@@ -10,8 +10,15 @@ use crate::matrix::Matrix;
 const OUTAGE: SignedDuration = SignedDuration::from_secs(5);
 const TOO_MANY: u16 = 429;
 const SERVER: u16 = 500;
+/// What is said when the homeserver names no account for the token.
+pub(crate) const UNNAMED: &str = "the homeserver did not say which account the token is";
 /// Where a message's permalink starts, as Matrix clients read it.
 const PERMALINK: &str = "https://matrix.to/#/";
+
+/// The JSON `response` holds, or null where it holds none.
+pub(crate) fn json(response: &Response) -> Value {
+    serde_json::from_slice(&response.body).unwrap_or(Value::Null)
+}
 
 pub(crate) fn text<'a>(value: &'a Value, field: &str) -> Option<&'a str> {
     value.get(field).and_then(Value::as_str)
@@ -52,7 +59,7 @@ pub(crate) fn trouble(response: &Response, body: &Value) -> Option<Sent> {
 }
 
 pub(crate) fn read(matrix: &Matrix, response: &Response) -> Sent {
-    let body: Value = serde_json::from_slice(&response.body).unwrap_or(Value::Null);
+    let body = json(response);
     if let Some(sent) = trouble(response, &body) {
         return sent;
     }
