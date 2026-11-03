@@ -1,0 +1,194 @@
+{
+  "exchanges": [
+    {
+      "request": {
+        "body": {
+          "channel": "C0123456789",
+          "timestamp": "1793448000.000100"
+        },
+        "headers": {
+          "Authorization": "Bearer «secret:HERALD_SLACK_TOKEN»",
+          "Content-Type": "application/json; charset=utf-8",
+          "User-Agent": "herald/0.0.0 (+https://github.com/nightworksio/herald)"
+        },
+        "method": "POST",
+        "url": "https://slack.com/api/pins.add"
+      },
+      "response": {
+        "body": {
+          "error": "already_pinned",
+          "ok": false
+        },
+        "status": 200
+      }
+    },
+    {
+      "request": {
+        "body": {
+          "channel": "C0123456789",
+          "timestamp": "1793000000.000100"
+        },
+        "headers": {
+          "Authorization": "Bearer «secret:HERALD_SLACK_TOKEN»",
+          "Content-Type": "application/json; charset=utf-8",
+          "User-Agent": "herald/0.0.0 (+https://github.com/nightworksio/herald)"
+        },
+        "method": "POST",
+        "url": "https://slack.com/api/pins.remove"
+      },
+      "response": {
+        "body": {
+          "error": "no_pin",
+          "ok": false
+        },
+        "status": 200
+      }
+    },
+    {
+      "request": {
+        "body": {
+          "channel": "C0123456789",
+          "timestamp": "1793000000.000100"
+        },
+        "headers": {
+          "Authorization": "Bearer «secret:HERALD_SLACK_TOKEN»",
+          "Content-Type": "application/json; charset=utf-8",
+          "User-Agent": "herald/0.0.0 (+https://github.com/nightworksio/herald)"
+        },
+        "method": "POST",
+        "url": "https://slack.com/api/pins.remove"
+      },
+      "response": {
+        "body": {
+          "error": "message_not_found",
+          "ok": false
+        },
+        "status": 200
+      }
+    },
+    {
+      "request": {
+        "body": {
+          "channel": "C0123456789",
+          "timestamp": "1793448000.000100"
+        },
+        "headers": {
+          "Authorization": "Bearer «secret:HERALD_SLACK_TOKEN»",
+          "Content-Type": "application/json; charset=utf-8",
+          "User-Agent": "herald/0.0.0 (+https://github.com/nightworksio/herald)"
+        },
+        "method": "POST",
+        "url": "https://slack.com/api/pins.add"
+      },
+      "response": {
+        "body": {
+          "error": "not_in_channel",
+          "ok": false
+        },
+        "status": 200
+      }
+    },
+    {
+      "request": {
+        "body": {
+          "channel": "C0123456789",
+          "timestamp": "1793000000.000100"
+        },
+        "headers": {
+          "Authorization": "Bearer «secret:HERALD_SLACK_TOKEN»",
+          "Content-Type": "application/json; charset=utf-8",
+          "User-Agent": "herald/0.0.0 (+https://github.com/nightworksio/herald)"
+        },
+        "method": "POST",
+        "url": "https://slack.com/api/pins.remove"
+      },
+      "response": {
+        "body": {
+          "error": "channel_not_found",
+          "ok": false
+        },
+        "status": 200
+      }
+    },
+    {
+      "request": {
+        "body": {
+          "blocks": [
+            {
+              "text": {
+                "emoji": true,
+                "text": "📦 php-mutation-gate v0.1.0",
+                "type": "plain_text"
+              },
+              "type": "header"
+            },
+            {
+              "text": {
+                "text": "*Added*",
+                "type": "mrkdwn"
+              },
+              "type": "section"
+            },
+            {
+              "text": {
+                "text": "<https://github.com/nightworksio/php-mutation-gate/releases/tag/v0.1.0>",
+                "type": "mrkdwn"
+              },
+              "type": "section"
+            },
+            {
+              "text": {
+                "text": "<@U0123ABCD>",
+                "type": "mrkdwn"
+              },
+              "type": "section"
+            }
+          ],
+          "channel": "C0123456789",
+          "metadata": {
+            "event_payload": {
+              "marker": "a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5",
+              "route": "b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6"
+            },
+            "event_type": "herald_announcement"
+          },
+          "text": "📦 php-mutation-gate v0.1.0\n\n*Added*\n\n<https://github.com/nightworksio/php-mutation-gate/releases/tag/v0.1.0>\n\n<@U0123ABCD>",
+          "unfurl_links": false,
+          "unfurl_media": false
+        },
+        "headers": {
+          "Authorization": "Bearer «secret:HERALD_SLACK_TOKEN»",
+          "Content-Type": "application/json; charset=utf-8",
+          "User-Agent": "herald/0.0.0 (+https://github.com/nightworksio/herald)"
+        },
+        "method": "POST",
+        "url": "https://slack.com/api/chat.postMessage"
+      },
+      "response": {
+        "body": {
+          "channel": "C0123456789",
+          "ok": true,
+          "ts": "1793448000.000100"
+        },
+        "status": 200
+      }
+    },
+    {
+      "request": {
+        "headers": {
+          "Authorization": "Bearer «secret:HERALD_SLACK_TOKEN»",
+          "User-Agent": "herald/0.0.0 (+https://github.com/nightworksio/herald)"
+        },
+        "method": "GET",
+        "url": "https://slack.com/api/chat.getPermalink?channel=C0123456789&message_ts=1793448000.000100"
+      },
+      "response": {
+        "body": {
+          "error": "message_not_found",
+          "ok": false
+        },
+        "status": 200
+      }
+    }
+  ]
+}

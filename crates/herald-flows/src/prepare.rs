@@ -6,6 +6,7 @@ use herald_core::{DestinationName, RouteId, SourceName, hex};
 use herald_dest_discord::{Credential, Discord};
 use herald_dest_fediverse::Mastodon;
 use herald_dest_matrix::Matrix;
+use herald_dest_slack::Slack;
 use herald_ports::{Algorithm, CryptoError, Http, Secret, SecretError, Secrets, Signer};
 use herald_sources_feed::Feed;
 use herald_sources_forge::{Origin, Token};
@@ -222,6 +223,18 @@ impl Resolved<'_> {
             (Destination::Matrix(reached), RouteOptions::Matrix(placed)) => Some(Reached::Matrix(
                 Matrix::new(&reached.homeserver, secret, placed.clone()),
             )),
+            (Destination::Slack(reached), RouteOptions::Slack(placed)) => {
+                let credential = if reached.token.is_some() {
+                    herald_dest_slack::Credential::Bot(secret)
+                } else {
+                    herald_dest_slack::Credential::Webhook(secret)
+                };
+                Some(Reached::Slack(Slack::new(
+                    credential,
+                    placed.clone(),
+                    reached.api.as_deref(),
+                )))
+            }
             _ => None,
         }
     }
@@ -249,6 +262,7 @@ pub async fn prepare<S: Secrets, G: Signer>(
             Destination::Discord(options) => options.token.as_ref().or(options.webhook.as_ref()),
             Destination::Mastodon(options) => Some(&options.token),
             Destination::Matrix(options) => Some(&options.token),
+            Destination::Slack(options) => options.token.as_ref().or(options.webhook.as_ref()),
         };
         let Some(reference) = named else {
             return Err(PrepareError::NoCredential {

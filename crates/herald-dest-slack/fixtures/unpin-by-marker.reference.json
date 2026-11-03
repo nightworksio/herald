@@ -1,0 +1,677 @@
+{
+  "exchanges": [
+    {
+      "request": {
+        "headers": {
+          "Authorization": "Bearer «secret:HERALD_SLACK_TOKEN»",
+          "User-Agent": "herald/0.0.0 (+https://github.com/nightworksio/herald)"
+        },
+        "method": "GET",
+        "url": "https://slack.com/api/pins.list?channel=C0123456789"
+      },
+      "response": {
+        "body": {
+          "items": [
+            {
+              "channel": "C0123456789",
+              "message": {
+                "app_id": "A0123456789",
+                "bot_id": "B0123456789",
+                "text": "x",
+                "ts": "1793000000.000100",
+                "type": "message"
+              },
+              "type": "message"
+            },
+            {
+              "channel": "C0123456789",
+              "message": {
+                "app_id": "A0123456789",
+                "bot_id": "B0123456789",
+                "text": "x",
+                "ts": "1793100000.000100",
+                "type": "message"
+              },
+              "type": "message"
+            },
+            {
+              "channel": "C0123456789",
+              "message": {
+                "app_id": "A0SOMEONE01",
+                "bot_id": "B0SOMEONE01",
+                "ts": "1793200000.000100",
+                "type": "message"
+              },
+              "type": "message"
+            },
+            {
+              "channel": "C0123456789",
+              "message": {
+                "app_id": "A0SOMEONE01",
+                "bot_id": "B0123456789",
+                "ts": "1793300000.000100",
+                "type": "message"
+              },
+              "type": "message"
+            },
+            {
+              "channel": "C0123456789",
+              "message": {
+                "app_id": "A0123456789",
+                "bot_id": "B0123456789",
+                "text": "x",
+                "ts": "1793448000.000100",
+                "type": "message"
+              },
+              "type": "message"
+            },
+            {
+              "channel": "C0123456789",
+              "type": "file"
+            }
+          ],
+          "ok": true
+        },
+        "status": 200
+      }
+    },
+    {
+      "request": {
+        "headers": {
+          "Authorization": "Bearer «secret:HERALD_SLACK_TOKEN»",
+          "User-Agent": "herald/0.0.0 (+https://github.com/nightworksio/herald)"
+        },
+        "method": "GET",
+        "url": "https://slack.com/api/auth.test"
+      },
+      "response": {
+        "body": {
+          "bot_id": "B0123456789",
+          "ok": true,
+          "team": "NightWorks",
+          "team_id": "T0123456789",
+          "url": "https://nightworks.slack.com/",
+          "user": "herald",
+          "user_id": "U0HERALD01"
+        },
+        "status": 200
+      }
+    },
+    {
+      "request": {
+        "headers": {
+          "Authorization": "Bearer «secret:HERALD_SLACK_TOKEN»",
+          "User-Agent": "herald/0.0.0 (+https://github.com/nightworksio/herald)"
+        },
+        "method": "GET",
+        "url": "https://slack.com/api/bots.info?bot=B0123456789"
+      },
+      "response": {
+        "body": {
+          "bot": {
+            "app_id": "A0123456789",
+            "deleted": false,
+            "id": "B0123456789",
+            "name": "herald",
+            "user_id": "U0HERALD01"
+          },
+          "ok": true
+        },
+        "status": 200
+      }
+    },
+    {
+      "request": {
+        "headers": {
+          "Authorization": "Bearer «secret:HERALD_SLACK_TOKEN»",
+          "User-Agent": "herald/0.0.0 (+https://github.com/nightworksio/herald)"
+        },
+        "method": "GET",
+        "url": "https://slack.com/api/conversations.history?channel=C0123456789&latest=1793000000.000100&oldest=1793000000.000100&inclusive=true&limit=1&include_all_metadata=true"
+      },
+      "response": {
+        "body": {
+          "has_more": false,
+          "messages": [
+            {
+              "app_id": "A0123456789",
+              "bot_id": "B0123456789",
+              "metadata": {
+                "event_payload": {
+                  "marker": "c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3",
+                  "route": "b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6"
+                },
+                "event_type": "herald_announcement"
+              },
+              "text": "x",
+              "ts": "1793000000.000100",
+              "type": "message"
+            }
+          ],
+          "ok": true
+        },
+        "status": 200
+      }
+    },
+    {
+      "request": {
+        "headers": {
+          "Authorization": "Bearer «secret:HERALD_SLACK_TOKEN»",
+          "User-Agent": "herald/0.0.0 (+https://github.com/nightworksio/herald)"
+        },
+        "method": "GET",
+        "url": "https://slack.com/api/conversations.history?channel=C0123456789&latest=1793100000.000100&oldest=1793100000.000100&inclusive=true&limit=1&include_all_metadata=true"
+      },
+      "response": {
+        "body": {
+          "has_more": false,
+          "messages": [
+            {
+              "app_id": "A0123456789",
+              "bot_id": "B0123456789",
+              "metadata": {
+                "event_payload": {
+                  "marker": "a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5",
+                  "route": "d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4"
+                },
+                "event_type": "herald_announcement"
+              },
+              "text": "x",
+              "ts": "1793100000.000100",
+              "type": "message"
+            }
+          ],
+          "ok": true
+        },
+        "status": 200
+      }
+    },
+    {
+      "request": {
+        "body": {
+          "channel": "C0123456789",
+          "timestamp": "1793000000.000100"
+        },
+        "headers": {
+          "Authorization": "Bearer «secret:HERALD_SLACK_TOKEN»",
+          "Content-Type": "application/json; charset=utf-8",
+          "User-Agent": "herald/0.0.0 (+https://github.com/nightworksio/herald)"
+        },
+        "method": "POST",
+        "url": "https://slack.com/api/pins.remove"
+      },
+      "response": {
+        "body": {
+          "ok": true
+        },
+        "status": 200
+      }
+    },
+    {
+      "request": {
+        "headers": {
+          "Authorization": "Bearer «secret:HERALD_SLACK_TOKEN»",
+          "User-Agent": "herald/0.0.0 (+https://github.com/nightworksio/herald)"
+        },
+        "method": "GET",
+        "url": "https://slack.com/api/pins.list?channel=C0123456789"
+      },
+      "response": {
+        "body": {
+          "error": "ratelimited",
+          "ok": false
+        },
+        "headers": {
+          "Retry-After": "3"
+        },
+        "status": 429
+      }
+    },
+    {
+      "request": {
+        "headers": {
+          "Authorization": "Bearer «secret:HERALD_SLACK_TOKEN»",
+          "User-Agent": "herald/0.0.0 (+https://github.com/nightworksio/herald)"
+        },
+        "method": "GET",
+        "url": "https://slack.com/api/pins.list?channel=C0123456789"
+      },
+      "response": {
+        "body": {
+          "items": [
+            {
+              "channel": "C0123456789",
+              "message": {
+                "app_id": "A0123456789",
+                "bot_id": "B0123456789",
+                "text": "x",
+                "ts": "1793000000.000100",
+                "type": "message"
+              },
+              "type": "message"
+            }
+          ],
+          "ok": true
+        },
+        "status": 200
+      }
+    },
+    {
+      "request": {
+        "headers": {
+          "Authorization": "Bearer «secret:HERALD_SLACK_TOKEN»",
+          "User-Agent": "herald/0.0.0 (+https://github.com/nightworksio/herald)"
+        },
+        "method": "GET",
+        "url": "https://slack.com/api/auth.test"
+      },
+      "response": {
+        "body": {
+          "error": "invalid_auth",
+          "ok": false
+        },
+        "status": 200
+      }
+    },
+    {
+      "request": {
+        "headers": {
+          "Authorization": "Bearer «secret:HERALD_SLACK_TOKEN»",
+          "User-Agent": "herald/0.0.0 (+https://github.com/nightworksio/herald)"
+        },
+        "method": "GET",
+        "url": "https://slack.com/api/pins.list?channel=C0123456789"
+      },
+      "response": {
+        "body": {
+          "items": [
+            {
+              "channel": "C0123456789",
+              "message": {
+                "app_id": "A0123456789",
+                "bot_id": "B0123456789",
+                "text": "x",
+                "ts": "1793000000.000100",
+                "type": "message"
+              },
+              "type": "message"
+            }
+          ],
+          "ok": true
+        },
+        "status": 200
+      }
+    },
+    {
+      "request": {
+        "headers": {
+          "Authorization": "Bearer «secret:HERALD_SLACK_TOKEN»",
+          "User-Agent": "herald/0.0.0 (+https://github.com/nightworksio/herald)"
+        },
+        "method": "GET",
+        "url": "https://slack.com/api/auth.test"
+      },
+      "response": {
+        "body": {
+          "ok": true,
+          "user_id": "U0PERSON01"
+        },
+        "status": 200
+      }
+    },
+    {
+      "request": {
+        "headers": {
+          "Authorization": "Bearer «secret:HERALD_SLACK_TOKEN»",
+          "User-Agent": "herald/0.0.0 (+https://github.com/nightworksio/herald)"
+        },
+        "method": "GET",
+        "url": "https://slack.com/api/pins.list?channel=C0123456789"
+      },
+      "response": {
+        "body": {
+          "items": [
+            {
+              "channel": "C0123456789",
+              "message": {
+                "app_id": "A0123456789",
+                "bot_id": "B0123456789",
+                "text": "x",
+                "ts": "1793000000.000100",
+                "type": "message"
+              },
+              "type": "message"
+            }
+          ],
+          "ok": true
+        },
+        "status": 200
+      }
+    },
+    {
+      "request": {
+        "headers": {
+          "Authorization": "Bearer «secret:HERALD_SLACK_TOKEN»",
+          "User-Agent": "herald/0.0.0 (+https://github.com/nightworksio/herald)"
+        },
+        "method": "GET",
+        "url": "https://slack.com/api/auth.test"
+      },
+      "response": {
+        "body": {
+          "bot_id": "B0123456789",
+          "ok": true,
+          "team": "NightWorks",
+          "team_id": "T0123456789",
+          "url": "https://nightworks.slack.com/",
+          "user": "herald",
+          "user_id": "U0HERALD01"
+        },
+        "status": 200
+      }
+    },
+    {
+      "request": {
+        "headers": {
+          "Authorization": "Bearer «secret:HERALD_SLACK_TOKEN»",
+          "User-Agent": "herald/0.0.0 (+https://github.com/nightworksio/herald)"
+        },
+        "method": "GET",
+        "url": "https://slack.com/api/bots.info?bot=B0123456789"
+      },
+      "response": {
+        "body": {
+          "bot": {
+            "id": "B0123456789"
+          },
+          "ok": true
+        },
+        "status": 200
+      }
+    },
+    {
+      "request": {
+        "headers": {
+          "Authorization": "Bearer «secret:HERALD_SLACK_TOKEN»",
+          "User-Agent": "herald/0.0.0 (+https://github.com/nightworksio/herald)"
+        },
+        "method": "GET",
+        "url": "https://slack.com/api/pins.list?channel=C0123456789"
+      },
+      "response": {
+        "body": {
+          "items": [
+            {
+              "channel": "C0123456789",
+              "message": {
+                "app_id": "A0123456789",
+                "bot_id": "B0123456789",
+                "text": "x",
+                "ts": "1793000000.000100",
+                "type": "message"
+              },
+              "type": "message"
+            }
+          ],
+          "ok": true
+        },
+        "status": 200
+      }
+    },
+    {
+      "request": {
+        "headers": {
+          "Authorization": "Bearer «secret:HERALD_SLACK_TOKEN»",
+          "User-Agent": "herald/0.0.0 (+https://github.com/nightworksio/herald)"
+        },
+        "method": "GET",
+        "url": "https://slack.com/api/auth.test"
+      },
+      "response": {
+        "body": {
+          "bot_id": "B0123456789",
+          "ok": true,
+          "team": "NightWorks",
+          "team_id": "T0123456789",
+          "url": "https://nightworks.slack.com/",
+          "user": "herald",
+          "user_id": "U0HERALD01"
+        },
+        "status": 200
+      }
+    },
+    {
+      "request": {
+        "headers": {
+          "Authorization": "Bearer «secret:HERALD_SLACK_TOKEN»",
+          "User-Agent": "herald/0.0.0 (+https://github.com/nightworksio/herald)"
+        },
+        "method": "GET",
+        "url": "https://slack.com/api/bots.info?bot=B0123456789"
+      },
+      "response": {
+        "body": {
+          "error": "bot_not_found",
+          "ok": false
+        },
+        "status": 200
+      }
+    },
+    {
+      "request": {
+        "headers": {
+          "Authorization": "Bearer «secret:HERALD_SLACK_TOKEN»",
+          "User-Agent": "herald/0.0.0 (+https://github.com/nightworksio/herald)"
+        },
+        "method": "GET",
+        "url": "https://slack.com/api/pins.list?channel=C0123456789"
+      },
+      "response": {
+        "body": {
+          "items": [
+            {
+              "channel": "C0123456789",
+              "message": {
+                "app_id": "A0123456789",
+                "bot_id": "B0123456789",
+                "text": "x",
+                "ts": "1793000000.000100",
+                "type": "message"
+              },
+              "type": "message"
+            }
+          ],
+          "ok": true
+        },
+        "status": 200
+      }
+    },
+    {
+      "request": {
+        "headers": {
+          "Authorization": "Bearer «secret:HERALD_SLACK_TOKEN»",
+          "User-Agent": "herald/0.0.0 (+https://github.com/nightworksio/herald)"
+        },
+        "method": "GET",
+        "url": "https://slack.com/api/auth.test"
+      },
+      "response": {
+        "body": {
+          "bot_id": "B0123456789",
+          "ok": true,
+          "team": "NightWorks",
+          "team_id": "T0123456789",
+          "url": "https://nightworks.slack.com/",
+          "user": "herald",
+          "user_id": "U0HERALD01"
+        },
+        "status": 200
+      }
+    },
+    {
+      "request": {
+        "headers": {
+          "Authorization": "Bearer «secret:HERALD_SLACK_TOKEN»",
+          "User-Agent": "herald/0.0.0 (+https://github.com/nightworksio/herald)"
+        },
+        "method": "GET",
+        "url": "https://slack.com/api/bots.info?bot=B0123456789"
+      },
+      "response": {
+        "body": {
+          "bot": {
+            "app_id": "A0123456789",
+            "deleted": false,
+            "id": "B0123456789",
+            "name": "herald",
+            "user_id": "U0HERALD01"
+          },
+          "ok": true
+        },
+        "status": 200
+      }
+    },
+    {
+      "request": {
+        "headers": {
+          "Authorization": "Bearer «secret:HERALD_SLACK_TOKEN»",
+          "User-Agent": "herald/0.0.0 (+https://github.com/nightworksio/herald)"
+        },
+        "method": "GET",
+        "url": "https://slack.com/api/conversations.history?channel=C0123456789&latest=1793000000.000100&oldest=1793000000.000100&inclusive=true&limit=1&include_all_metadata=true"
+      },
+      "response": {
+        "status": 500
+      }
+    },
+    {
+      "request": {
+        "headers": {
+          "Authorization": "Bearer «secret:HERALD_SLACK_TOKEN»",
+          "User-Agent": "herald/0.0.0 (+https://github.com/nightworksio/herald)"
+        },
+        "method": "GET",
+        "url": "https://slack.com/api/pins.list?channel=C0123456789"
+      },
+      "response": {
+        "body": {
+          "items": [
+            {
+              "channel": "C0123456789",
+              "message": {
+                "app_id": "A0123456789",
+                "bot_id": "B0123456789",
+                "text": "x",
+                "ts": "1793000000.000100",
+                "type": "message"
+              },
+              "type": "message"
+            }
+          ],
+          "ok": true
+        },
+        "status": 200
+      }
+    },
+    {
+      "request": {
+        "headers": {
+          "Authorization": "Bearer «secret:HERALD_SLACK_TOKEN»",
+          "User-Agent": "herald/0.0.0 (+https://github.com/nightworksio/herald)"
+        },
+        "method": "GET",
+        "url": "https://slack.com/api/auth.test"
+      },
+      "response": {
+        "body": {
+          "bot_id": "B0123456789",
+          "ok": true,
+          "team": "NightWorks",
+          "team_id": "T0123456789",
+          "url": "https://nightworks.slack.com/",
+          "user": "herald",
+          "user_id": "U0HERALD01"
+        },
+        "status": 200
+      }
+    },
+    {
+      "request": {
+        "headers": {
+          "Authorization": "Bearer «secret:HERALD_SLACK_TOKEN»",
+          "User-Agent": "herald/0.0.0 (+https://github.com/nightworksio/herald)"
+        },
+        "method": "GET",
+        "url": "https://slack.com/api/bots.info?bot=B0123456789"
+      },
+      "response": {
+        "body": {
+          "bot": {
+            "app_id": "A0123456789",
+            "deleted": false,
+            "id": "B0123456789",
+            "name": "herald",
+            "user_id": "U0HERALD01"
+          },
+          "ok": true
+        },
+        "status": 200
+      }
+    },
+    {
+      "request": {
+        "headers": {
+          "Authorization": "Bearer «secret:HERALD_SLACK_TOKEN»",
+          "User-Agent": "herald/0.0.0 (+https://github.com/nightworksio/herald)"
+        },
+        "method": "GET",
+        "url": "https://slack.com/api/conversations.history?channel=C0123456789&latest=1793000000.000100&oldest=1793000000.000100&inclusive=true&limit=1&include_all_metadata=true"
+      },
+      "response": {
+        "body": {
+          "has_more": false,
+          "messages": [
+            {
+              "app_id": "A0123456789",
+              "bot_id": "B0123456789",
+              "metadata": {
+                "event_payload": {
+                  "marker": "a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5",
+                  "route": "b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6"
+                },
+                "event_type": "herald_announcement"
+              },
+              "text": "x",
+              "ts": "1793000000.000100",
+              "type": "message"
+            }
+          ],
+          "ok": true
+        },
+        "status": 200
+      }
+    },
+    {
+      "request": {
+        "body": {
+          "channel": "C0123456789",
+          "timestamp": "1793000000.000100"
+        },
+        "headers": {
+          "Authorization": "Bearer «secret:HERALD_SLACK_TOKEN»",
+          "Content-Type": "application/json; charset=utf-8",
+          "User-Agent": "herald/0.0.0 (+https://github.com/nightworksio/herald)"
+        },
+        "method": "POST",
+        "url": "https://slack.com/api/pins.remove"
+      },
+      "response": {
+        "body": {
+          "error": "not_in_channel",
+          "ok": false
+        },
+        "status": 200
+      }
+    }
+  ]
+}

@@ -27,3 +27,5 @@ mod matrix;
 mod poll;
 #[cfg(test)]
 mod preview;
+#[cfg(test)]
+mod slack;

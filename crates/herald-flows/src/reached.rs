@@ -2,6 +2,7 @@ use herald_core::{Announcement, Chore, Delivery, Entry, Key, Marker, Profile, Se
 use herald_dest_discord::{Discord, DiscordMarkers};
 use herald_dest_fediverse::{Mastodon, MastodonMarkers};
 use herald_dest_matrix::{Matrix, MatrixMarkers};
+use herald_dest_slack::{Slack, SlackMarkers};
 use herald_ports::{Http, HttpError, MarkedThread, Markers, MarkersError};
 
 /// One route's destination, with its credential resolved.
@@ -13,6 +14,8 @@ pub enum Reached {
     Mastodon(Mastodon),
     /// A bot account on a Matrix homeserver.
     Matrix(Matrix),
+    /// Slack, as a bot or through a webhook.
+    Slack(Slack),
 }
 
 impl Reached {
@@ -23,6 +26,7 @@ impl Reached {
             Self::Discord(discord) => discord.profile(),
             Self::Mastodon(mastodon) => mastodon.profile(),
             Self::Matrix(matrix) => matrix.profile(),
+            Self::Slack(slack) => slack.profile(),
         }
     }
 
@@ -33,6 +37,7 @@ impl Reached {
             Self::Discord(discord) => discord.api(),
             Self::Mastodon(mastodon) => mastodon.api(),
             Self::Matrix(matrix) => matrix.api(),
+            Self::Slack(slack) => slack.api(),
         }
     }
 
@@ -52,6 +57,7 @@ impl Reached {
             }
             Self::Mastodon(mastodon) => mastodon.send(http, step, announcement, entry).await,
             Self::Matrix(matrix) => matrix.send(http, step, announcement, entry).await,
+            Self::Slack(slack) => slack.send(http, step, announcement, entry).await,
         }
     }
 
@@ -69,6 +75,9 @@ impl Reached {
             Self::Matrix(_) => Ok(Sent::Refused(
                 herald_dest_matrix::Refusal::Cannot("archive or lock a thread").to_string(),
             )),
+            Self::Slack(_) => Ok(Sent::Refused(
+                herald_dest_slack::Refusal::Cannot("archive or lock a thread").to_string(),
+            )),
         }
     }
 
@@ -79,6 +88,7 @@ impl Reached {
             Self::Discord(discord) => Posts::Discord(DiscordMarkers::new(discord, http)),
             Self::Mastodon(mastodon) => Posts::Mastodon(MastodonMarkers::new(mastodon, http)),
             Self::Matrix(matrix) => Posts::Matrix(MatrixMarkers::new(matrix, http)),
+            Self::Slack(slack) => Posts::Slack(SlackMarkers::new(slack, http)),
         }
     }
 
@@ -102,6 +112,8 @@ pub enum Posts<'a, H> {
     Mastodon(MastodonMarkers<'a, H>),
     /// A Matrix room's.
     Matrix(MatrixMarkers<'a, H>),
+    /// A Slack channel's.
+    Slack(SlackMarkers<'a, H>),
 }
 
 impl<H: Http> Markers for Posts<'_, H> {
@@ -110,6 +122,7 @@ impl<H: Http> Markers for Posts<'_, H> {
             Self::Discord(posts) => posts.entry(key, marker).await,
             Self::Mastodon(posts) => posts.entry(key, marker).await,
             Self::Matrix(posts) => posts.entry(key, marker).await,
+            Self::Slack(posts) => posts.entry(key, marker).await,
         }
     }
 
@@ -118,6 +131,7 @@ impl<H: Http> Markers for Posts<'_, H> {
             Self::Discord(posts) => posts.threads(route).await,
             Self::Mastodon(posts) => posts.threads(route).await,
             Self::Matrix(posts) => posts.threads(route).await,
+            Self::Slack(posts) => posts.threads(route).await,
         }
     }
 }
