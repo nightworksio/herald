@@ -133,8 +133,6 @@ mod replay {
     fn a_step_needing_an_earlier_one_or_a_thing_matrix_has_not_is_refused_unsent() {
         let replay = Replay::of(Fixture::default());
         let bare = Entry::new(announcement().key);
-        let mut unremembered = announcement();
-        unremembered.replaces = None;
         assert_eq!(
             send(&replay, &Step::Chunk(1), &bare),
             Sent::Refused(
@@ -169,14 +167,6 @@ mod replay {
             send(&replay, &Step::Pin, &bare),
             Sent::Refused(
                 "the announcement's message is not recorded, so this step cannot be taken yet"
-                    .to_owned()
-            )
-        );
-        assert_eq!(
-            pollster::block_on(matrix().send(&replay, &Step::Unpin, &unremembered, &posted()))
-                .unwrap(),
-            Sent::Refused(
-                "the route's earlier pin is not recorded, so this step cannot be taken yet"
                     .to_owned()
             )
         );
@@ -256,6 +246,32 @@ mod replay {
                 .redacted()
                 .ends_with(&format!("/send/m.room.message/{}.2", announcement().key))
         );
+    }
+
+    #[test]
+    fn an_unpin_with_no_remembered_pin_unpins_herald_s_own_pins_of_the_route_and_no_others() {
+        let replay = fixture!("unpin-by-marker");
+        let mut unremembered = announcement();
+        unremembered.replaces = None;
+        let unpin = || {
+            pollster::block_on(matrix().send(&replay, &Step::Unpin, &unremembered, &posted()))
+                .unwrap()
+        };
+        let landed = Sent::Landed(Facts::default());
+        assert_eq!(unpin(), landed);
+        assert_eq!(unpin(), landed);
+        assert_eq!(
+            unpin(),
+            Sent::Refused("the homeserver did not say which account the token is".to_owned())
+        );
+        assert_eq!(
+            unpin(),
+            Sent::Refused(
+                "Matrix refused it with 401: M_UNKNOWN_TOKEN Invalid access token".to_owned()
+            )
+        );
+        assert_eq!(unpin(), Sent::RetryAfter(SignedDuration::from_secs(5)));
+        replay.finish().unwrap();
     }
 
     #[test]

@@ -1,0 +1,349 @@
+{
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "url": "https://matrix.example/_matrix/client/v3/rooms/%21abcdefg%3Amatrix.example/state/m.room.pinned_events",
+        "headers": {
+          "Authorization": "Bearer «secret:HERALD_MATRIX_TOKEN»",
+          "User-Agent": "herald/0.0.0 (+https://github.com/nightworksio/herald)"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "pinned": [
+            "$older",
+            "$someone",
+            "$gone",
+            "$post",
+            "$elsewhere",
+            "$plain"
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "url": "https://matrix.example/_matrix/client/v3/account/whoami",
+        "headers": {
+          "Authorization": "Bearer «secret:HERALD_MATRIX_TOKEN»",
+          "User-Agent": "herald/0.0.0 (+https://github.com/nightworksio/herald)"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "user_id": "@herald:matrix.example"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "url": "https://matrix.example/_matrix/client/v3/rooms/%21abcdefg%3Amatrix.example/event/%24older",
+        "headers": {
+          "Authorization": "Bearer «secret:HERALD_MATRIX_TOKEN»",
+          "User-Agent": "herald/0.0.0 (+https://github.com/nightworksio/herald)"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "event_id": "$older",
+          "sender": "@herald:matrix.example",
+          "type": "m.room.message",
+          "content": {
+            "msgtype": "m.text",
+            "body": "x",
+            "io.nightworks.herald.route": "b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6"
+          }
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "url": "https://matrix.example/_matrix/client/v3/rooms/%21abcdefg%3Amatrix.example/event/%24someone",
+        "headers": {
+          "Authorization": "Bearer «secret:HERALD_MATRIX_TOKEN»",
+          "User-Agent": "herald/0.0.0 (+https://github.com/nightworksio/herald)"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "event_id": "$someone",
+          "sender": "@someone:matrix.example",
+          "type": "m.room.message",
+          "content": {
+            "msgtype": "m.text",
+            "body": "x",
+            "io.nightworks.herald.route": "b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6"
+          }
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "url": "https://matrix.example/_matrix/client/v3/rooms/%21abcdefg%3Amatrix.example/event/%24gone",
+        "headers": {
+          "Authorization": "Bearer «secret:HERALD_MATRIX_TOKEN»",
+          "User-Agent": "herald/0.0.0 (+https://github.com/nightworksio/herald)"
+        }
+      },
+      "response": {
+        "status": 404,
+        "body": {
+          "errcode": "M_NOT_FOUND",
+          "error": "Event not found."
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "url": "https://matrix.example/_matrix/client/v3/rooms/%21abcdefg%3Amatrix.example/event/%24elsewhere",
+        "headers": {
+          "Authorization": "Bearer «secret:HERALD_MATRIX_TOKEN»",
+          "User-Agent": "herald/0.0.0 (+https://github.com/nightworksio/herald)"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "event_id": "$elsewhere",
+          "sender": "@herald:matrix.example",
+          "type": "m.room.message",
+          "content": {
+            "msgtype": "m.text",
+            "body": "x",
+            "io.nightworks.herald.route": "d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4"
+          }
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "url": "https://matrix.example/_matrix/client/v3/rooms/%21abcdefg%3Amatrix.example/event/%24plain",
+        "headers": {
+          "Authorization": "Bearer «secret:HERALD_MATRIX_TOKEN»",
+          "User-Agent": "herald/0.0.0 (+https://github.com/nightworksio/herald)"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "event_id": "$plain",
+          "sender": "@herald:matrix.example",
+          "type": "m.room.message",
+          "content": {
+            "msgtype": "m.text",
+            "body": "x"
+          }
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "PUT",
+        "url": "https://matrix.example/_matrix/client/v3/rooms/%21abcdefg%3Amatrix.example/state/m.room.pinned_events",
+        "headers": {
+          "Authorization": "Bearer «secret:HERALD_MATRIX_TOKEN»",
+          "User-Agent": "herald/0.0.0 (+https://github.com/nightworksio/herald)",
+          "Content-Type": "application/json"
+        },
+        "body": {
+          "pinned": [
+            "$someone",
+            "$gone",
+            "$post",
+            "$elsewhere",
+            "$plain"
+          ]
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "event_id": "$state"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "url": "https://matrix.example/_matrix/client/v3/rooms/%21abcdefg%3Amatrix.example/state/m.room.pinned_events",
+        "headers": {
+          "Authorization": "Bearer «secret:HERALD_MATRIX_TOKEN»",
+          "User-Agent": "herald/0.0.0 (+https://github.com/nightworksio/herald)"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "pinned": [
+            "$post",
+            "$someone"
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "url": "https://matrix.example/_matrix/client/v3/account/whoami",
+        "headers": {
+          "Authorization": "Bearer «secret:HERALD_MATRIX_TOKEN»",
+          "User-Agent": "herald/0.0.0 (+https://github.com/nightworksio/herald)"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "user_id": "@herald:matrix.example"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "url": "https://matrix.example/_matrix/client/v3/rooms/%21abcdefg%3Amatrix.example/event/%24someone",
+        "headers": {
+          "Authorization": "Bearer «secret:HERALD_MATRIX_TOKEN»",
+          "User-Agent": "herald/0.0.0 (+https://github.com/nightworksio/herald)"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "event_id": "$someone",
+          "sender": "@someone:matrix.example",
+          "type": "m.room.message",
+          "content": {
+            "msgtype": "m.text",
+            "body": "x",
+            "io.nightworks.herald.route": "b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6"
+          }
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "url": "https://matrix.example/_matrix/client/v3/rooms/%21abcdefg%3Amatrix.example/state/m.room.pinned_events",
+        "headers": {
+          "Authorization": "Bearer «secret:HERALD_MATRIX_TOKEN»",
+          "User-Agent": "herald/0.0.0 (+https://github.com/nightworksio/herald)"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "pinned": [
+            "$older"
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "url": "https://matrix.example/_matrix/client/v3/account/whoami",
+        "headers": {
+          "Authorization": "Bearer «secret:HERALD_MATRIX_TOKEN»",
+          "User-Agent": "herald/0.0.0 (+https://github.com/nightworksio/herald)"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {}
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "url": "https://matrix.example/_matrix/client/v3/rooms/%21abcdefg%3Amatrix.example/state/m.room.pinned_events",
+        "headers": {
+          "Authorization": "Bearer «secret:HERALD_MATRIX_TOKEN»",
+          "User-Agent": "herald/0.0.0 (+https://github.com/nightworksio/herald)"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "pinned": [
+            "$older"
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "url": "https://matrix.example/_matrix/client/v3/account/whoami",
+        "headers": {
+          "Authorization": "Bearer «secret:HERALD_MATRIX_TOKEN»",
+          "User-Agent": "herald/0.0.0 (+https://github.com/nightworksio/herald)"
+        }
+      },
+      "response": {
+        "status": 401,
+        "body": {
+          "errcode": "M_UNKNOWN_TOKEN",
+          "error": "Invalid access token"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "url": "https://matrix.example/_matrix/client/v3/rooms/%21abcdefg%3Amatrix.example/state/m.room.pinned_events",
+        "headers": {
+          "Authorization": "Bearer «secret:HERALD_MATRIX_TOKEN»",
+          "User-Agent": "herald/0.0.0 (+https://github.com/nightworksio/herald)"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "pinned": [
+            "$older"
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "url": "https://matrix.example/_matrix/client/v3/account/whoami",
+        "headers": {
+          "Authorization": "Bearer «secret:HERALD_MATRIX_TOKEN»",
+          "User-Agent": "herald/0.0.0 (+https://github.com/nightworksio/herald)"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "user_id": "@herald:matrix.example"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "url": "https://matrix.example/_matrix/client/v3/rooms/%21abcdefg%3Amatrix.example/event/%24older",
+        "headers": {
+          "Authorization": "Bearer «secret:HERALD_MATRIX_TOKEN»",
+          "User-Agent": "herald/0.0.0 (+https://github.com/nightworksio/herald)"
+        }
+      },
+      "response": {
+        "status": 502
+      }
+    }
+  ]
+}

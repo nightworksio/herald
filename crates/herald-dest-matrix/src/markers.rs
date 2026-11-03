@@ -3,8 +3,8 @@ use herald_ports::{Http, MarkedThread, Markers, MarkersError};
 use serde_json::Value;
 
 use crate::matrix::Matrix;
-use crate::read::text;
-use crate::request::{MARKS, get, pinned, pins, segment};
+use crate::read::{UNNAMED, json, text};
+use crate::request::{MARKER, get, pinned, pins, segment};
 
 /// The most events read back from a room's timeline.
 const PAGE: u8 = 100;
@@ -42,7 +42,7 @@ impl<'a, H: Http> MatrixMarkers<'a, H> {
                 response.status
             )));
         }
-        Ok(serde_json::from_slice(&response.body).unwrap_or(Value::Null))
+        Ok(json(&response))
     }
 
     /// The room's recent messages that herald's own account sent, newest
@@ -50,7 +50,7 @@ impl<'a, H: Http> MatrixMarkers<'a, H> {
     async fn own(&self) -> Result<Vec<Value>, MarkersError> {
         let account = self.read("/account/whoami").await?;
         let herald = text(&account, "user_id")
-            .ok_or_else(|| unreadable("the homeserver did not say which account the token is"))?
+            .ok_or_else(|| unreadable(UNNAMED))?
             .to_owned();
         let room = segment(&self.matrix.route.room);
         let page = self
@@ -73,9 +73,7 @@ fn content(event: &Value) -> &Value {
 }
 
 fn carries(event: &Value, marker: &Marker) -> bool {
-    text(content(event), MARKS)
-        .and_then(|marks| marks.split_once('.'))
-        .is_some_and(|(_, announcement)| announcement == marker.as_str())
+    text(content(event), MARKER) == Some(marker.as_str())
 }
 
 fn threaded_under(event: &Value, root: &str) -> bool {
