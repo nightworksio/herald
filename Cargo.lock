@@ -515,6 +515,7 @@ dependencies = [
  "herald-dest-discord",
  "herald-dest-fediverse",
  "herald-dest-matrix",
+ "herald-dest-slack",
  "herald-sources-feed",
  "herald-sources-forge",
  "herald-sources-registry",
@@ -588,6 +589,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "herald-dest-slack"
+version = "0.0.0"
+dependencies = [
+ "herald-core",
+ "herald-ports",
+ "herald-testing",
+ "jiff",
+ "pollster",
+ "schemars",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "herald-flows"
 version = "0.0.0"
 dependencies = [
@@ -597,6 +612,7 @@ dependencies = [
  "herald-dest-discord",
  "herald-dest-fediverse",
  "herald-dest-matrix",
+ "herald-dest-slack",
  "herald-ports",
  "herald-sources-feed",
  "herald-sources-forge",

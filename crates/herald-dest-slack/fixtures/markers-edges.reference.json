@@ -1,0 +1,147 @@
+{
+  "exchanges": [
+    {
+      "request": {
+        "headers": {
+          "Authorization": "Bearer «secret:HERALD_SLACK_TOKEN»",
+          "User-Agent": "herald/0.0.0 (+https://github.com/nightworksio/herald)"
+        },
+        "method": "GET",
+        "url": "https://slack.com/api/auth.test"
+      },
+      "response": {
+        "body": {
+          "bot_id": "B0123456789",
+          "ok": true,
+          "team": "NightWorks",
+          "team_id": "T0123456789",
+          "url": "https://nightworks.slack.com/",
+          "user": "herald",
+          "user_id": "U0HERALD01"
+        },
+        "status": 200
+      }
+    },
+    {
+      "request": {
+        "headers": {
+          "Authorization": "Bearer «secret:HERALD_SLACK_TOKEN»",
+          "User-Agent": "herald/0.0.0 (+https://github.com/nightworksio/herald)"
+        },
+        "method": "GET",
+        "url": "https://slack.com/api/bots.info?bot=B0123456789"
+      },
+      "response": {
+        "body": {
+          "bot": {
+            "app_id": "A0123456789",
+            "deleted": false,
+            "id": "B0123456789",
+            "name": "herald",
+            "user_id": "U0HERALD01"
+          },
+          "ok": true
+        },
+        "status": 200
+      }
+    },
+    {
+      "request": {
+        "headers": {
+          "Authorization": "Bearer «secret:HERALD_SLACK_TOKEN»",
+          "User-Agent": "herald/0.0.0 (+https://github.com/nightworksio/herald)"
+        },
+        "method": "GET",
+        "url": "https://slack.com/api/conversations.history?channel=C0123456789&limit=100&include_all_metadata=true"
+      },
+      "response": {
+        "body": {
+          "has_more": false,
+          "messages": [
+            {
+              "app_id": "A0123456789",
+              "bot_id": "B0123456789",
+              "metadata": {
+                "event_payload": {
+                  "marker": "a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5",
+                  "route": "b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6"
+                },
+                "event_type": "herald_announcement"
+              },
+              "pinned_to": [
+                "C0OTHER0001"
+              ],
+              "text": "x",
+              "type": "message"
+            }
+          ],
+          "ok": true
+        },
+        "status": 200
+      }
+    },
+    {
+      "request": {
+        "headers": {
+          "Authorization": "Bearer «secret:HERALD_SLACK_TOKEN»",
+          "User-Agent": "herald/0.0.0 (+https://github.com/nightworksio/herald)"
+        },
+        "method": "GET",
+        "url": "https://slack.com/api/auth.test"
+      },
+      "response": {
+        "body": {
+          "bot_id": "B0123456789",
+          "ok": true,
+          "team": "NightWorks",
+          "team_id": "T0123456789",
+          "url": "https://nightworks.slack.com/",
+          "user": "herald",
+          "user_id": "U0HERALD01"
+        },
+        "status": 200
+      }
+    },
+    {
+      "request": {
+        "headers": {
+          "Authorization": "Bearer «secret:HERALD_SLACK_TOKEN»",
+          "User-Agent": "herald/0.0.0 (+https://github.com/nightworksio/herald)"
+        },
+        "method": "GET",
+        "url": "https://slack.com/api/bots.info?bot=B0123456789"
+      },
+      "response": {
+        "body": {
+          "bot": {
+            "app_id": "A0123456789",
+            "deleted": false,
+            "id": "B0123456789",
+            "name": "herald",
+            "user_id": "U0HERALD01"
+          },
+          "ok": true
+        },
+        "status": 200
+      }
+    },
+    {
+      "request": {
+        "headers": {
+          "Authorization": "Bearer «secret:HERALD_SLACK_TOKEN»",
+          "User-Agent": "herald/0.0.0 (+https://github.com/nightworksio/herald)"
+        },
+        "method": "GET",
+        "url": "https://slack.com/api/conversations.history?channel=C0%201&limit=100&include_all_metadata=true"
+      },
+      "response": {
+        "body": {
+          "has_more": false,
+          "messages": [],
+          "ok": true
+        },
+        "status": 200
+      }
+    }
+  ]
+}

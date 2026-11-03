@@ -94,7 +94,7 @@ impl Loader<'_> {
             sound = false;
         }
         let span = route.id.span();
-        let (options, remedy) = match reached {
+        let (options, name) = match reached {
             Destination::Discord(reached) => {
                 let options = self.typed::<herald_dest_discord::RouteOptions>(rest, &path)?;
                 if reached.token.is_some() && options.channel.is_none() {
@@ -105,10 +105,7 @@ impl Loader<'_> {
                     );
                     sound = false;
                 }
-                (
-                    RouteOptions::Discord(options),
-                    "or reach it with a bot token",
-                )
+                (RouteOptions::Discord(options), "Discord")
             }
             Destination::Mastodon(_) => {
                 let options = self.typed::<herald_dest_fediverse::RouteOptions>(rest, &path)?;
@@ -116,10 +113,7 @@ impl Loader<'_> {
                     self.error(&span, &path, message);
                     sound = false;
                 }
-                (
-                    RouteOptions::Mastodon(options),
-                    "as Mastodon has no way to do it",
-                )
+                (RouteOptions::Mastodon(options), "Mastodon")
             }
             Destination::Matrix(_) => {
                 let options = self.typed::<herald_dest_matrix::RouteOptions>(rest, &path)?;
@@ -127,19 +121,36 @@ impl Loader<'_> {
                     self.error(&span, &path, message);
                     sound = false;
                 }
-                (
-                    RouteOptions::Matrix(options),
-                    "as Matrix has no way to do it",
-                )
+                (RouteOptions::Matrix(options), "Matrix")
+            }
+            Destination::Slack(reached) => {
+                let options = self.typed::<herald_dest_slack::RouteOptions>(rest, &path)?;
+                if let Err(message) = options.check() {
+                    self.error(&span, &path, message);
+                    sound = false;
+                }
+                if reached.token.is_some() && options.channel.is_none() {
+                    self.error(
+                        &span,
+                        &path,
+                        "a Slack bot posts to a channel; give channel = \"<the channel's id>\"",
+                    );
+                    sound = false;
+                }
+                (RouteOptions::Slack(options), "Slack")
             }
         };
-        let profile = match &options {
-            RouteOptions::Discord(placed) => herald_dest_discord::profile(
-                matches!(reached, Destination::Discord(reached) if reached.token.is_some()),
-                placed.forum,
+        let (profile, as_bot) = match (&options, reached) {
+            (RouteOptions::Discord(placed), Destination::Discord(reached)) => (
+                herald_dest_discord::profile(reached.token.is_some(), placed.forum),
+                Some(herald_dest_discord::profile(true, placed.forum)),
             ),
-            RouteOptions::Mastodon(placed) => herald_dest_fediverse::profile(placed),
-            RouteOptions::Matrix(_) => herald_dest_matrix::profile(),
+            (RouteOptions::Slack(_), Destination::Slack(reached)) => (
+                herald_dest_slack::profile(reached.token.is_some()),
+                Some(herald_dest_slack::profile(true)),
+            ),
+            (RouteOptions::Mastodon(placed), _) => (herald_dest_fediverse::profile(placed), None),
+            (_, _) => (herald_dest_matrix::profile(), None),
         };
         let thread_name = route.thread.as_ref().map(|thread| thread.name.clone());
         let delivery = Delivery {
@@ -161,10 +172,19 @@ impl Loader<'_> {
             },
         };
         let lacking = profile.features.lacking(&delivery);
+        let bot_lacks = as_bot.map(|bot| bot.features.lacking(&delivery));
         for key in lacking
             .into_iter()
             .filter(|key| !(options.threads_each_post() && *key == "thread"))
         {
+            let remedy = if bot_lacks
+                .as_ref()
+                .is_some_and(|lacks| !lacks.contains(&key))
+            {
+                "or reach it with a bot token".to_owned()
+            } else {
+                format!("as {name} has no way to do it")
+            };
             self.error(
                 &span,
                 &format!("{path}.{key}"),

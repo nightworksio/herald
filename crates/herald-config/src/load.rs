@@ -308,6 +308,17 @@ impl Loader<'_> {
             } else if kind == Destination::MATRIX {
                 self.typed::<herald_dest_matrix::DestinationOptions>(rest, &path)
                     .map(Destination::Matrix)
+            } else if kind == Destination::SLACK {
+                let Some(options) =
+                    self.typed::<herald_dest_slack::DestinationOptions>(rest, &path)
+                else {
+                    continue;
+                };
+                if let Err(message) = options.bot() {
+                    self.error(&span, &path, message);
+                    continue;
+                }
+                Some(Destination::Slack(options))
             } else {
                 let Some(options) =
                     self.typed::<herald_dest_discord::DestinationOptions>(rest, &path)

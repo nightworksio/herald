@@ -1,0 +1,315 @@
+{
+  "exchanges": [
+    {
+      "request": {
+        "body": {
+          "blocks": [
+            {
+              "text": {
+                "emoji": true,
+                "text": "📦 php-mutation-gate v0.1.0",
+                "type": "plain_text"
+              },
+              "type": "header"
+            },
+            {
+              "text": {
+                "text": "*Added*",
+                "type": "mrkdwn"
+              },
+              "type": "section"
+            },
+            {
+              "text": {
+                "text": "<https://github.com/nightworksio/php-mutation-gate/releases/tag/v0.1.0>",
+                "type": "mrkdwn"
+              },
+              "type": "section"
+            },
+            {
+              "text": {
+                "text": "<@U0123ABCD>",
+                "type": "mrkdwn"
+              },
+              "type": "section"
+            }
+          ],
+          "channel": "C0123456789",
+          "metadata": {
+            "event_payload": {
+              "marker": "a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5",
+              "route": "b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6"
+            },
+            "event_type": "herald_announcement"
+          },
+          "text": "📦 php-mutation-gate v0.1.0\n\n*Added*\n\n<https://github.com/nightworksio/php-mutation-gate/releases/tag/v0.1.0>\n\n<@U0123ABCD>",
+          "unfurl_links": false,
+          "unfurl_media": false
+        },
+        "headers": {
+          "Authorization": "Bearer «secret:HERALD_SLACK_TOKEN»",
+          "Content-Type": "application/json; charset=utf-8",
+          "User-Agent": "herald/0.0.0 (+https://github.com/nightworksio/herald)"
+        },
+        "method": "POST",
+        "url": "https://slack.com/api/chat.postMessage"
+      },
+      "response": {
+        "body": {
+          "error": "channel_not_found",
+          "ok": false
+        },
+        "status": 200
+      }
+    },
+    {
+      "request": {
+        "body": {
+          "blocks": [
+            {
+              "text": {
+                "emoji": true,
+                "text": "📦 php-mutation-gate v0.1.0",
+                "type": "plain_text"
+              },
+              "type": "header"
+            },
+            {
+              "text": {
+                "text": "*Added*",
+                "type": "mrkdwn"
+              },
+              "type": "section"
+            },
+            {
+              "text": {
+                "text": "<https://github.com/nightworksio/php-mutation-gate/releases/tag/v0.1.0>",
+                "type": "mrkdwn"
+              },
+              "type": "section"
+            },
+            {
+              "text": {
+                "text": "<@U0123ABCD>",
+                "type": "mrkdwn"
+              },
+              "type": "section"
+            }
+          ],
+          "channel": "C0123456789",
+          "metadata": {
+            "event_payload": {
+              "marker": "a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5",
+              "route": "b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6"
+            },
+            "event_type": "herald_announcement"
+          },
+          "text": "📦 php-mutation-gate v0.1.0\n\n*Added*\n\n<https://github.com/nightworksio/php-mutation-gate/releases/tag/v0.1.0>\n\n<@U0123ABCD>",
+          "unfurl_links": false,
+          "unfurl_media": false
+        },
+        "headers": {
+          "Authorization": "Bearer «secret:HERALD_SLACK_TOKEN»",
+          "Content-Type": "application/json; charset=utf-8",
+          "User-Agent": "herald/0.0.0 (+https://github.com/nightworksio/herald)"
+        },
+        "method": "POST",
+        "url": "https://slack.com/api/chat.postMessage"
+      },
+      "response": {
+        "body": {
+          "error": "missing_scope",
+          "needed": "chat:write",
+          "ok": false,
+          "provided": "channels:read"
+        },
+        "status": 200
+      }
+    },
+    {
+      "request": {
+        "body": {
+          "blocks": [
+            {
+              "text": {
+                "emoji": true,
+                "text": "📦 php-mutation-gate v0.1.0",
+                "type": "plain_text"
+              },
+              "type": "header"
+            },
+            {
+              "text": {
+                "text": "*Added*",
+                "type": "mrkdwn"
+              },
+              "type": "section"
+            },
+            {
+              "text": {
+                "text": "<https://github.com/nightworksio/php-mutation-gate/releases/tag/v0.1.0>",
+                "type": "mrkdwn"
+              },
+              "type": "section"
+            },
+            {
+              "text": {
+                "text": "<@U0123ABCD>",
+                "type": "mrkdwn"
+              },
+              "type": "section"
+            }
+          ],
+          "channel": "C0123456789",
+          "metadata": {
+            "event_payload": {
+              "marker": "a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5",
+              "route": "b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6"
+            },
+            "event_type": "herald_announcement"
+          },
+          "text": "📦 php-mutation-gate v0.1.0\n\n*Added*\n\n<https://github.com/nightworksio/php-mutation-gate/releases/tag/v0.1.0>\n\n<@U0123ABCD>",
+          "unfurl_links": false,
+          "unfurl_media": false
+        },
+        "headers": {
+          "Authorization": "Bearer «secret:HERALD_SLACK_TOKEN»",
+          "Content-Type": "application/json; charset=utf-8",
+          "User-Agent": "herald/0.0.0 (+https://github.com/nightworksio/herald)"
+        },
+        "method": "POST",
+        "url": "https://slack.com/api/chat.postMessage"
+      },
+      "response": {
+        "body": {
+          "ok": false
+        },
+        "status": 200
+      }
+    },
+    {
+      "request": {
+        "body": {
+          "blocks": [
+            {
+              "text": {
+                "emoji": true,
+                "text": "📦 php-mutation-gate v0.1.0",
+                "type": "plain_text"
+              },
+              "type": "header"
+            },
+            {
+              "text": {
+                "text": "*Added*",
+                "type": "mrkdwn"
+              },
+              "type": "section"
+            },
+            {
+              "text": {
+                "text": "<https://github.com/nightworksio/php-mutation-gate/releases/tag/v0.1.0>",
+                "type": "mrkdwn"
+              },
+              "type": "section"
+            },
+            {
+              "text": {
+                "text": "<@U0123ABCD>",
+                "type": "mrkdwn"
+              },
+              "type": "section"
+            }
+          ],
+          "channel": "C0123456789",
+          "metadata": {
+            "event_payload": {
+              "marker": "a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5",
+              "route": "b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6"
+            },
+            "event_type": "herald_announcement"
+          },
+          "text": "📦 php-mutation-gate v0.1.0\n\n*Added*\n\n<https://github.com/nightworksio/php-mutation-gate/releases/tag/v0.1.0>\n\n<@U0123ABCD>",
+          "unfurl_links": false,
+          "unfurl_media": false
+        },
+        "headers": {
+          "Authorization": "Bearer «secret:HERALD_SLACK_TOKEN»",
+          "Content-Type": "application/json; charset=utf-8",
+          "User-Agent": "herald/0.0.0 (+https://github.com/nightworksio/herald)"
+        },
+        "method": "POST",
+        "url": "https://slack.com/api/chat.postMessage"
+      },
+      "response": {
+        "body": {
+          "channel": "C0123456789",
+          "ok": true
+        },
+        "status": 200
+      }
+    },
+    {
+      "request": {
+        "body": {
+          "blocks": [
+            {
+              "text": {
+                "emoji": true,
+                "text": "📦 php-mutation-gate v0.1.0",
+                "type": "plain_text"
+              },
+              "type": "header"
+            },
+            {
+              "text": {
+                "text": "*Added*",
+                "type": "mrkdwn"
+              },
+              "type": "section"
+            },
+            {
+              "text": {
+                "text": "<https://github.com/nightworksio/php-mutation-gate/releases/tag/v0.1.0>",
+                "type": "mrkdwn"
+              },
+              "type": "section"
+            },
+            {
+              "text": {
+                "text": "<@U0123ABCD>",
+                "type": "mrkdwn"
+              },
+              "type": "section"
+            }
+          ],
+          "channel": "C0123456789",
+          "metadata": {
+            "event_payload": {
+              "marker": "a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5",
+              "route": "b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6"
+            },
+            "event_type": "herald_announcement"
+          },
+          "text": "📦 php-mutation-gate v0.1.0\n\n*Added*\n\n<https://github.com/nightworksio/php-mutation-gate/releases/tag/v0.1.0>\n\n<@U0123ABCD>",
+          "unfurl_links": false,
+          "unfurl_media": false
+        },
+        "headers": {
+          "Authorization": "Bearer «secret:HERALD_SLACK_TOKEN»",
+          "Content-Type": "application/json; charset=utf-8",
+          "User-Agent": "herald/0.0.0 (+https://github.com/nightworksio/herald)"
+        },
+        "method": "POST",
+        "url": "https://slack.com/api/chat.postMessage"
+      },
+      "response": {
+        "body": {
+          "error": "invalid_auth",
+          "ok": false
+        },
+        "status": 403
+      }
+    }
+  ]
+}

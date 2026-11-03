@@ -42,6 +42,8 @@ enum DestinationSchema {
     Mastodon(herald_dest_fediverse::DestinationOptions),
     /// A bot account on a Matrix homeserver.
     Matrix(herald_dest_matrix::DestinationOptions),
+    /// Slack, by bot token or webhook.
+    Slack(herald_dest_slack::DestinationOptions),
 }
 
 /// A source, by its kind.
@@ -84,6 +86,8 @@ enum RouteSchema {
     Mastodon(MastodonRoute),
     /// A route to a Matrix destination.
     Matrix(MatrixRoute),
+    /// A route to a Slack destination.
+    Slack(SlackRoute),
 }
 
 /// A route to a Discord destination.
@@ -106,6 +110,17 @@ struct MatrixRoute {
     common: RouteFile,
     #[serde(flatten)]
     matrix: herald_dest_matrix::RouteOptions,
+}
+
+/// A route to a Slack destination.
+#[derive(JsonSchema)]
+#[schemars(deny_unknown_fields)]
+#[allow(dead_code, reason = "read only by the schema's derive")]
+struct SlackRoute {
+    #[serde(flatten)]
+    common: RouteFile,
+    #[serde(flatten)]
+    slack: herald_dest_slack::RouteOptions,
 }
 
 /// A route to a Mastodon destination.

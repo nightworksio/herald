@@ -319,6 +319,17 @@ body = "{{ event.body }}"
             );
         }
         assert!(!error.contains("mentions.roles"), "{error}");
+        for (key, remedy) in [
+            ("crosspost", "or reach it with a bot token"),
+            ("pin", "or reach it with a bot token"),
+            ("thread", "or reach it with a bot token"),
+            ("mentions.subscribers", "as Discord has no way to do it"),
+        ] {
+            assert!(
+                error.contains(&format!("routes[0].{key}: the destination \"discord\" cannot do this as it is reached; remove {key}, {remedy}")),
+                "{key}: {error}"
+            );
+        }
         let forum = text
             .replace("crosspost = true\npin = \"markers\"\n", "forum = true\n")
             .replace("mentions = { roles = [\"1\"], subscribers = true }\n", "")
@@ -526,6 +537,136 @@ body = "{{ event.body }}"
             errors(&homeless).contains("destinations.room: missing field `homeserver`"),
             "{}",
             errors(&homeless)
+        );
+    }
+
+    const SLACK: &str = r#"version = 1
+
+[store]
+kind = "sqlite"
+
+[destinations.team]
+kind = "slack"
+token = { secret = "HERALD_SLACK_TOKEN" }
+
+[sources.gate]
+kind = "github"
+repository = "nightworksio/php-mutation-gate"
+
+[[routes]]
+id = "slacked"
+sources = ["gate"]
+destination = "team"
+template = "t"
+channel = "C0123456789"
+pin = "markers"
+mentions = { subscribers = true }
+thread = { name = "{{ event.version }}" }
+
+[templates.t]
+title = "{{ event.title }}"
+body = "{{ event.body }}"
+"#;
+
+    #[test]
+    fn a_slack_destination_and_its_route_options_load_as_a_bot_or_a_webhook() {
+        let config = load("herald.toml", SLACK, &nothing).unwrap();
+        let Some(Destination::Slack(team)) = config.destinations.values().next() else {
+            panic!("the destination is Slack's");
+        };
+        assert!(team.token.is_some());
+        assert_eq!(
+            config.destinations.values().next().map(Destination::kind),
+            Some("slack")
+        );
+        let RouteOptions::Slack(placed) = &config.routes[0].options else {
+            panic!("the route's options are Slack's");
+        };
+        assert_eq!(placed.channel.as_deref(), Some("C0123456789"));
+        assert_eq!(config.routes[0].profile, herald_dest_slack::profile(true));
+        assert_eq!(
+            config.secrets().into_iter().collect::<Vec<_>>(),
+            ["HERALD_SLACK_TOKEN"]
+        );
+        let hooked = SLACK
+            .replace("token = { secret = \"HERALD_SLACK_TOKEN\" }", "webhook = { secret = \"HERALD_SLACK_WEBHOOK\" }")
+            .replace("channel = \"C0123456789\"\npin = \"markers\"\nmentions = { subscribers = true }\nthread = { name = \"{{ event.version }}\" }\n", "");
+        let config = load("herald.toml", &hooked, &nothing).unwrap();
+        assert_eq!(config.routes[0].profile, herald_dest_slack::profile(false));
+        assert_eq!(
+            config.secrets().into_iter().collect::<Vec<_>>(),
+            ["HERALD_SLACK_WEBHOOK"]
+        );
+    }
+
+    #[test]
+    fn a_slack_route_is_refused_what_slack_cannot_do_as_it_is_reached() {
+        let asking = SLACK.replace(
+            "thread = { name = \"{{ event.version }}\" }",
+            "thread = { name = \"v\", archive_after = \"14d\" }\ncrosspost = true\nmentions.roles = [\"1\"]",
+        ).replace("mentions = { subscribers = true }\n", "");
+        let error = errors(&asking);
+        for key in ["crosspost", "thread.archive_after", "mentions.roles"] {
+            assert!(
+                error.contains(&format!(
+                    "routes[0].{key}: the destination \"team\" cannot do this as it is reached; remove {key}, as Slack has no way to do it"
+                )),
+                "{key}: {error}"
+            );
+        }
+        let hooked = SLACK.replace(
+            "token = { secret = \"HERALD_SLACK_TOKEN\" }",
+            "webhook = { secret = \"HERALD_SLACK_WEBHOOK\" }",
+        );
+        let error = errors(&hooked);
+        for key in ["pin", "thread"] {
+            assert!(
+                error.contains(&format!(
+                    "routes[0].{key}: the destination \"team\" cannot do this as it is reached; remove {key}, or reach it with a bot token"
+                )),
+                "{key}: {error}"
+            );
+        }
+        let hooked_crosspost = hooked.replace("pin = \"markers\"", "crosspost = true");
+        assert!(
+            errors(&hooked_crosspost).contains("routes[0].crosspost: the destination \"team\" cannot do this as it is reached; remove crosspost, as Slack has no way to do it"),
+            "{}",
+            errors(&hooked_crosspost)
+        );
+        let named = SLACK.replace("C0123456789", "#releases");
+        assert!(
+            errors(&named).contains("routes[0]: \"#releases\" is not a channel id"),
+            "{}",
+            errors(&named)
+        );
+        let unchannelled = SLACK.replace("channel = \"C0123456789\"\n", "");
+        assert!(
+            errors(&unchannelled).contains("routes[0]: a Slack bot posts to a channel"),
+            "{}",
+            errors(&unchannelled)
+        );
+        let both = SLACK.replace(
+            "token = { secret = \"HERALD_SLACK_TOKEN\" }",
+            "token = { secret = \"HERALD_SLACK_TOKEN\" }\nwebhook = { secret = \"HERALD_SLACK_WEBHOOK\" }",
+        );
+        assert!(
+            errors(&both).contains(
+                "destinations.team: a Slack destination takes a token or a webhook, not both"
+            ),
+            "{}",
+            errors(&both)
+        );
+        let unknown = SLACK.replace(
+            "token = { secret = \"HERALD_SLACK_TOKEN\" }",
+            "token = { secret = \"HERALD_SLACK_TOKEN\" }\nbogus = 1",
+        );
+        assert!(errors(&unknown).contains("bogus"), "{}", errors(&unknown));
+        let neither = SLACK.replace("token = { secret = \"HERALD_SLACK_TOKEN\" }\n", "");
+        assert!(
+            errors(&neither)
+                .contains("destinations.team: a Slack destination needs a token or a webhook"),
+            "{}",
+            errors(&neither)
         );
     }
 
