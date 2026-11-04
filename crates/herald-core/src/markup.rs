@@ -489,7 +489,7 @@ impl Writer {
         let bare = text.is_empty() || text == self.escape(&url);
         let link = match self.dialect {
             Dialect::Slack | Dialect::Discord if bare => format!("<{url}>"),
-            Dialect::Slack => format!("<{url}|{text}>"),
+            Dialect::Slack => format!("<{url}|{}>", text.replace('\n', " ")),
             Dialect::Discord => format!("{text} (<{url}>)"),
             _ if bare => url,
             _ => format!("{text} ({url})"),

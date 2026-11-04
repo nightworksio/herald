@@ -117,6 +117,9 @@ fn a_slack_link_cannot_end_early_or_split_on_its_url() {
         convert("[x](https://example.org/a|b>c)", Dialect::Slack).body,
         "<https://example.org/a%7Cb%3Ec|x>"
     );
+    let quoted = convert("> [a\nb](https://example.org)", Dialect::Slack);
+    assert_eq!(quoted.body, "> <https://example.org|a b>");
+    assert_eq!(inert::inert(&quoted, Dialect::Slack), Ok(()));
 }
 
 #[test]
