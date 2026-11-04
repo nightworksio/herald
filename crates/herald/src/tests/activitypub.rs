@@ -102,3 +102,72 @@ fn a_public_base_connects_to_any_public_address_and_another_to_its_origin_alone(
     assert!(native("https://discord.com/api/v10").is_ok());
     assert!(native("http://discord.com").is_err());
 }
+
+fn followed(key: Option<String>) -> super::world::Setup {
+    let mut setup = super::world::setup(&format!(
+        "{}{}",
+        super::world::CONFIG,
+        r#"[destinations.fedi]
+kind = "activitypub"
+domain = "herald.example"
+key = { secret = "HERALD_ACTIVITYPUB_KEY" }
+[[routes]]
+id = "followed"
+sources = ["cli"]
+destination = "fedi"
+template = "release"
+actor = "cli"
+"#
+    ));
+    if let Some(key) = key {
+        setup.vars.insert("HERALD_ACTIVITYPUB_KEY".to_owned(), key);
+    }
+    setup
+}
+
+const UNKEYED: &str = "the destination \"fedi\" signs with HERALD_ACTIVITYPUB_KEY, which is not an RSA private key of 2048 to 8192 bits in a PKCS#8 PEM";
+
+#[test]
+fn doctor_loads_the_actor_s_key_where_it_is_set() {
+    let world = super::world::World::default();
+    let keyed = super::world::herald(&followed(Some(pkcs8())), &world, &["doctor"]);
+    assert_eq!(keyed.code, DONE, "{}", keyed.out);
+    assert!(
+        !keyed.out.contains("HERALD_ACTIVITYPUB_KEY"),
+        "{}",
+        keyed.out
+    );
+    let unset = super::world::herald(&followed(None), &world, &["doctor"]);
+    assert_eq!(unset.code, DONE, "{}", unset.out);
+    assert!(
+        unset.out.contains(
+            "The key of the destination \"fedi\" is not checked, as HERALD_ACTIVITYPUB_KEY is not set here."
+        ),
+        "{}",
+        unset.out
+    );
+    let public = public_pem(
+        &pollster::block_on(herald_native::RingSigner.public(
+            Algorithm::RsaSha256,
+            &Secret::new("HERALD_ACTIVITYPUB_KEY", pkcs8()),
+        ))
+        .unwrap(),
+    );
+    for bad in ["not a key".to_owned(), public] {
+        let mistaken = super::world::herald(&followed(Some(bad)), &world, &["doctor"]);
+        assert_eq!(mistaken.code, MISTAKEN, "{}", mistaken.out);
+        assert!(mistaken.out.contains(UNKEYED), "{}", mistaken.out);
+    }
+}
+
+#[test]
+fn a_run_whose_actor_key_cannot_sign_sends_nothing() {
+    let world = super::world::World::default();
+    let ran = super::world::herald(
+        &followed(Some("not a key".to_owned())),
+        &world,
+        &super::world::ANNOUNCE,
+    );
+    assert_eq!(ran.code, STOPPED, "{}", ran.out);
+    assert!(ran.err.contains(UNKEYED), "{}", ran.err);
+}

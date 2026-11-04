@@ -125,12 +125,16 @@ pub async fn activity_verified<V: Verifier, H: Http>(
     let claim = activity_claim(addressed, headers, body, now).map_err(Rejected::Refused)?;
     let named = claim.signer.as_deref().unwrap_or_default();
     let unfetched = |reason: String| Rejected::Unfetched { reason };
-    let found = actor_key(&fetched(http, named).await?, named)
+    let found = actor_key(&fetched(http, named).await.map_err(unfetched)?, named)
         .map_err(|error| unfetched(error.to_string()))?;
     let owned = match found {
         Found::Held(owned) => owned,
         Found::Claimed { owner, pem } => {
-            if !confirms(&fetched(http, &owner).await?, &owner, named) {
+            if !confirms(
+                &fetched(http, &owner).await.map_err(unfetched)?,
+                &owner,
+                named,
+            ) {
                 return Err(unfetched(ActorError::Unconfirmed.to_string()));
             }
             ActorKey { actor: owner, pem }
@@ -151,24 +155,18 @@ pub async fn activity_verified<V: Verifier, H: Http>(
 }
 
 /// The document `id` names, read through `http`.
-async fn fetched<H: Http>(http: &H, id: &str) -> Result<Vec<u8>, Rejected> {
-    let unfetched = |reason: String| Rejected::Unfetched { reason };
-    let request = key_request(id)
-        .ok_or_else(|| unfetched(format!("{id} is not an HTTPS URL naming a host")))?;
+pub(crate) async fn fetched<H: Http>(http: &H, id: &str) -> Result<Vec<u8>, String> {
+    let request =
+        key_request(id).ok_or_else(|| format!("{id} is not an HTTPS URL naming a host"))?;
     let response = http
         .send(request)
         .await
-        .map_err(|error| unfetched(error.to_string()))?;
+        .map_err(|error| error.to_string())?;
     if !response.succeeded() {
-        return Err(unfetched(format!(
-            "its server answered {}",
-            response.status
-        )));
+        return Err(format!("its server answered {}", response.status));
     }
     if !activity_json(response.header("content-type")) {
-        return Err(unfetched(
-            "its server did not answer it as ActivityPub JSON".to_owned(),
-        ));
+        return Err("its server did not answer it as ActivityPub JSON".to_owned());
     }
     Ok(response.body)
 }

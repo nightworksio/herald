@@ -15,12 +15,12 @@ mod read;
 mod request;
 
 pub use activitypub::{
-    ActivityPub, ActorOptions, ActorRouteOptions, actor_document, actor_profile, create, note,
-    webfinger,
+    ActivityPub, ActorOptions, ActorRouteOptions, Asked, accept, actor_document, actor_profile,
+    asked, create, note, webfinger,
 };
 pub use actor::{
-    ActorError, ActorKey, Found, activity_json, actor_key, actor_of, confirms, document,
-    key_request, origin, same_origin,
+    ActorError, ActorKey, Found, Inboxes, activity_json, actor_key, actor_of, confirms, document,
+    inboxes, key_request, origin, same_origin,
 };
 pub use markers::MastodonMarkers;
 pub use mastodon::{LIMIT, Mastodon, profile, shortest};

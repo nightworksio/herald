@@ -36,6 +36,13 @@ pub enum PrepareError {
         /// The route.
         route: String,
     },
+    /// An ActivityPub destination's key cannot sign as its actor.
+    Unkeyed {
+        /// The destination.
+        destination: String,
+        /// The secret its key is read from.
+        secret: String,
+    },
 }
 
 impl fmt::Display for PrepareError {
@@ -52,6 +59,13 @@ impl fmt::Display for PrepareError {
                     "the route \"{route}\" names a destination the config does not have, or one of another kind"
                 )
             }
+            Self::Unkeyed {
+                destination,
+                secret,
+            } => write!(
+                f,
+                "the destination \"{destination}\" signs with {secret}, which is not an RSA private key of 2048 to 8192 bits in a PKCS#8 PEM; make one with `openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048`"
+            ),
         }
     }
 }
@@ -243,6 +257,27 @@ impl Resolved<'_> {
     }
 }
 
+/// Whether `key` signs as the actor of the ActivityPub destination
+/// `destination`.
+///
+/// # Errors
+///
+/// When it is no key `signer` can sign with.
+pub(crate) async fn keyed<G: Signer>(
+    signer: &G,
+    destination: &DestinationName,
+    key: &Secret,
+) -> Result<(), PrepareError> {
+    signer
+        .public(Algorithm::RsaSha256, key)
+        .await
+        .map(drop)
+        .map_err(|_| PrepareError::Unkeyed {
+            destination: destination.as_str().to_owned(),
+            secret: key.name().to_owned(),
+        })
+}
+
 /// `config`'s routes and sources with every credential, token and marker
 /// key resolved through `secrets` and `signer`.
 ///
@@ -274,6 +309,9 @@ pub async fn prepare<S: Secrets, G: Signer>(
             });
         };
         let secret = secrets.secret(&reference.secret).await?;
+        if matches!(destination, Destination::ActivityPub(_)) {
+            keyed(signer, name, &secret).await?;
+        }
         let (marker_key, derived) = if let Some(key) = &installation {
             (key.clone(), false)
         } else {

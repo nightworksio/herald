@@ -6,8 +6,8 @@
 mod activitypub {
     use herald_core::{Dialect, Entry, Facts, MentionStyle, Pins, Sent, Step, Text, Threads};
     use herald_dest_fediverse::{
-        ActivityPub, ActorOptions, ActorRouteOptions, actor_document, actor_profile, create, note,
-        webfinger,
+        ActivityPub, ActorOptions, ActorRouteOptions, Asked, accept, actor_document, actor_profile,
+        asked, create, note, webfinger,
     };
     use herald_ports::{PUBLIC, Secret};
     use herald_testing::sample;
@@ -248,5 +248,99 @@ mod activitypub {
         assert!(!profile.features.reads_back && !profile.features.edits);
         assert!(!profile.features.crosspost && !profile.features.interactions);
         assert_eq!((profile.limits.title, profile.limits.text), (500, 20_000));
+    }
+
+    const ANA: &str = "https://social.example/users/ana";
+
+    fn asking(activity: &serde_json::Value) -> Asked {
+        asked(activity.to_string().as_bytes(), ANA)
+    }
+
+    fn nothing(why: &str) -> Asked {
+        Asked::Nothing(why.to_owned())
+    }
+
+    #[test]
+    fn a_follow_names_the_actor_it_follows_and_is_carried_whole() {
+        let follow = json!({ "id": "https://social.example/f/1", "type": "Follow", "actor": ANA, "object": ACTOR });
+        assert_eq!(
+            asking(&follow),
+            Asked::Follow {
+                target: ACTOR.to_owned(),
+                follow: follow.clone(),
+            }
+        );
+        let embedded = json!({ "id": "https://social.example/f/2", "type": "Follow", "actor": ANA, "object": { "id": ACTOR } });
+        assert_eq!(
+            asking(&embedded),
+            Asked::Follow {
+                target: ACTOR.to_owned(),
+                follow: embedded.clone(),
+            }
+        );
+        let unnamed = json!({ "type": "Follow", "actor": ANA, "object": ACTOR });
+        assert_eq!(asking(&unnamed), nothing("it is a follow with no id"));
+        let aimless = json!({ "id": "https://social.example/f/3", "type": "Follow", "actor": ANA });
+        assert_eq!(asking(&aimless), nothing("it follows no one"));
+    }
+
+    #[test]
+    fn an_undo_takes_back_only_its_sender_s_own_follow() {
+        let undo = |actor: &str, object: serde_json::Value| json!({ "id": "https://social.example/u/1", "type": "Undo", "actor": ANA, "object": { "type": "Follow", "actor": actor, "object": object } });
+        assert_eq!(
+            asking(&undo(ANA, json!(ACTOR))),
+            Asked::Undo {
+                follower: ANA.to_owned(),
+                target: ACTOR.to_owned(),
+            }
+        );
+        assert_eq!(
+            asking(&undo("https://social.example/users/bo", json!(ACTOR))),
+            nothing("it undoes another actor's follow")
+        );
+        assert_eq!(
+            asking(&undo(ANA, json!(null))),
+            nothing("it undoes a follow of no one")
+        );
+        let liked = json!({ "type": "Undo", "actor": ANA, "object": { "type": "Like", "actor": ANA, "object": ACTOR } });
+        assert_eq!(asking(&liked), nothing("it undoes no follow it carries"));
+        let referenced =
+            json!({ "type": "Undo", "actor": ANA, "object": "https://social.example/f/1" });
+        assert_eq!(
+            asking(&referenced),
+            nothing("it undoes no follow it carries")
+        );
+    }
+
+    #[test]
+    fn anything_but_a_follow_or_its_undoing_is_left_alone() {
+        assert_eq!(
+            asking(&json!({ "type": "Like", "actor": ANA, "object": ACTOR })),
+            nothing("herald takes no Like")
+        );
+        assert_eq!(
+            asking(&json!({ "actor": ANA })),
+            nothing("it names no type")
+        );
+        assert_eq!(asked(b"{", ANA), nothing("it is not JSON"));
+    }
+
+    #[test]
+    fn an_accept_answers_the_follow_under_an_id_its_follow_alone_decides() {
+        let follow = json!({ "id": "https://social.example/f/1", "type": "Follow", "actor": ANA, "object": ACTOR });
+        let accepted = accept(DOMAIN, "php-mutation-gate", &follow);
+        assert_eq!(accepted["type"], "Accept");
+        assert_eq!(accepted["actor"], ACTOR);
+        assert_eq!(accepted["object"], follow);
+        assert_eq!(
+            accepted["@context"],
+            "https://www.w3.org/ns/activitystreams"
+        );
+        let id = accepted["id"].as_str().unwrap();
+        assert!(id.starts_with(&format!("{ACTOR}/accepts/")), "{id}");
+        assert_eq!(accept(DOMAIN, "php-mutation-gate", &follow)["id"], id);
+        let other = json!({ "id": "https://social.example/f/2", "type": "Follow", "actor": ANA, "object": ACTOR });
+        assert_ne!(accept(DOMAIN, "php-mutation-gate", &other)["id"], id);
+        assert_eq!(reached("HERALD_ACTIVITYPUB_KEY").accept(&follow), accepted);
     }
 }

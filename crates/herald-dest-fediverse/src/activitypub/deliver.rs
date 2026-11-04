@@ -6,8 +6,9 @@ use herald_ports::{
     Algorithm, Http, HttpError, Method, PUBLIC, Request, Response, Secret, Signer, Text, USER_AGENT,
 };
 use jiff::{SignedDuration, Timestamp};
+use serde_json::Value;
 
-use super::documents::{actor_id, create, key_id, note_id};
+use super::documents::{accept, actor_id, create, key_id, note_id};
 use super::options::ActorRouteOptions;
 
 /// The longest title, in characters.
@@ -123,18 +124,41 @@ impl ActivityPub {
         inbox: &str,
         announcement: &Announcement,
     ) -> Result<Sent, HttpError> {
+        let created = create(
+            &self.domain,
+            &self.route.actor,
+            announcement,
+            self.route.content_warning.as_deref(),
+        );
+        self.post(http, signer, now, inbox, &created).await
+    }
+
+    /// The `Accept` of `follow`, a `Follow` of this actor.
+    #[must_use]
+    pub fn accept(&self, follow: &Value) -> Value {
+        accept(&self.domain, &self.route.actor, follow)
+    }
+
+    /// Posts `activity` to `inbox`, signed by this actor at `now` through
+    /// `signer`, and reads the inbox's answer.
+    ///
+    /// # Errors
+    ///
+    /// When the inbox gave no response at all.
+    pub async fn post<H: Http, G: Signer>(
+        &self,
+        http: &H,
+        signer: &G,
+        now: Timestamp,
+        inbox: &str,
+        activity: &Value,
+    ) -> Result<Sent, HttpError> {
         let Some((host, target)) = addressed(inbox) else {
             return Ok(refused(format!(
                 "\"{inbox}\" is not an https inbox, so nothing was delivered to it"
             )));
         };
-        let body = create(
-            &self.domain,
-            &self.route.actor,
-            announcement,
-            self.route.content_warning.as_deref(),
-        )
-        .to_string();
+        let body = activity.to_string();
         let date = now.strftime(HTTP_DATE).to_string();
         let to = Addressed {
             target: &target,

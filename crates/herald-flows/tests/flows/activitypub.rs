@@ -3,14 +3,16 @@ use herald_core::{
     Chore, DestinationName, Identity, Key, Marker, RouteId, Schedule, SourceName, Step,
     Subscription,
 };
-use herald_flows::{Chored, Outcome, Ports, Reached, announce, housekeep, prepare};
+use herald_flows::{
+    Chored, Findings, Outcome, Ports, PrepareError, Reached, announce, housekeep, keys, prepare,
+};
 use herald_ports::{Markers as _, MarkersError, Store as _};
 use herald_testing::{FakeClock, FakeSecrets, FakeSigner};
 
 use crate::harness::*;
 
-fn activitypub() -> Config {
-    let text = r#"version = 1
+fn toml_text() -> &'static str {
+    r#"version = 1
 [store]
 kind = "sqlite"
 [destinations.fedi]
@@ -29,11 +31,14 @@ actor = "php-mutation-gate"
 [templates.t]
 title = "{{ event.title }}"
 body = "{{ event.body }}"
-"#;
-    load("herald.toml", text, &|_| Err(String::new())).unwrap()
+"#
 }
 
-fn follower(actor: &str, follower: &str, inbox: Option<&str>) -> Subscription {
+pub(crate) fn activitypub() -> Config {
+    load("herald.toml", toml_text(), &|_| Err(String::new())).unwrap()
+}
+
+pub(crate) fn follower(actor: &str, follower: &str, inbox: Option<&str>) -> Subscription {
     Subscription {
         destination: DestinationName::new("fedi"),
         project: actor.to_owned(),
@@ -193,4 +198,53 @@ fn an_actor_keeps_no_thread_chores() {
         Chored::Dropped("herald's ActivityPub actor cannot archive or lock a thread".to_owned())
     );
     assert_eq!(script.seen(), Vec::<String>::new());
+}
+
+fn keyed(secret: &str) -> Config {
+    let text = toml_text().replace("HERALD_ACTIVITYPUB_KEY", secret);
+    load("herald.toml", &text, &|_| Err(String::new())).unwrap()
+}
+
+#[test]
+fn an_actor_whose_key_cannot_sign_stops_every_run_before_it_starts() {
+    let secrets = FakeSecrets::default().with("BAD", "not a key");
+    let Err(unkeyed) = pollster::block_on(prepare(&keyed("BAD"), &secrets, &FakeSigner)) else {
+        panic!("the run stops");
+    };
+    assert_eq!(
+        unkeyed,
+        PrepareError::Unkeyed {
+            destination: "fedi".to_owned(),
+            secret: "BAD".to_owned(),
+        }
+    );
+    assert_eq!(
+        unkeyed.to_string(),
+        "the destination \"fedi\" signs with BAD, which is not an RSA private key of 2048 to 8192 bits in a PKCS#8 PEM; make one with `openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048`"
+    );
+}
+
+#[test]
+fn doctor_checks_each_actor_s_key_where_it_is_set_and_says_where_it_is_not() {
+    let found = |config: &Config, secrets: &FakeSecrets| {
+        pollster::block_on(keys(config, secrets, &FakeSigner))
+    };
+    let set = FakeSecrets::default().with("HERALD_ACTIVITYPUB_KEY", "the-key");
+    assert_eq!(found(&activitypub(), &set), Findings::default());
+    let unset = found(&activitypub(), &FakeSecrets::default());
+    assert_eq!(
+        unset.notes,
+        [
+            "The key of the destination \"fedi\" is not checked, as HERALD_ACTIVITYPUB_KEY is not set here."
+        ]
+    );
+    assert_eq!(unset.mistakes, Vec::<String>::new());
+    let bad = found(&keyed("BAD"), &FakeSecrets::default().with("BAD", "x"));
+    assert_eq!(bad.notes, Vec::<String>::new());
+    assert_eq!(bad.mistakes.len(), 1);
+    assert!(bad.mistakes[0].starts_with("the destination \"fedi\" signs with BAD,"));
+    assert_eq!(
+        found(&config(""), &FakeSecrets::default()),
+        Findings::default()
+    );
 }

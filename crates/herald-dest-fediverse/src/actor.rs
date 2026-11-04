@@ -256,3 +256,45 @@ pub fn actor_of(activity: &[u8]) -> Option<(String, Option<String>)> {
     };
     Some((actor.to_owned(), own))
 }
+
+/// Where a follower is delivered to, as its own document says.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Inboxes {
+    /// Its own inbox, which an `Accept` of its follow goes to.
+    pub personal: String,
+    /// Its server's shared inbox, where its server has one.
+    pub shared: Option<String>,
+}
+
+impl Inboxes {
+    /// Where announcements are delivered to it: its server's shared inbox,
+    /// or else its own.
+    #[must_use]
+    pub fn delivered(&self) -> &str {
+        self.shared.as_deref().unwrap_or(&self.personal)
+    }
+}
+
+/// The inboxes of the actor `follower`, read from `document`, its own: each
+/// on the follower's own origin, so no actor can have herald deliver
+/// elsewhere. None where the document is not the follower's, or names no
+/// inbox of its own origin.
+#[must_use]
+pub fn inboxes(document: &[u8], follower: &str) -> Option<Inboxes> {
+    let actor = object(document).ok()?;
+    if id(&actor) != Some(follower) || !acting(&actor) {
+        return None;
+    }
+    let own = |value: Option<&Value>| {
+        value
+            .and_then(Value::as_str)
+            .filter(|inbox| same_origin(inbox, follower))
+            .map(ToOwned::to_owned)
+    };
+    Some(Inboxes {
+        personal: own(actor.get("inbox"))?,
+        shared: own(actor
+            .get("endpoints")
+            .and_then(|endpoints| endpoints.get("sharedInbox"))),
+    })
+}
