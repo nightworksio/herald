@@ -187,6 +187,7 @@ mod conformance {
                 destination: DestinationName::new("slack"),
                 project: "p".to_owned(),
                 subscriber: subscriber.to_string(),
+                inbox: None,
             };
             pollster::block_on(store.subscribe(&subscription)).unwrap();
         }

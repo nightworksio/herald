@@ -314,6 +314,7 @@ mod conformance {
             destination: herald_core::DestinationName::new("slack"),
             project: "p".to_owned(),
             subscriber: "u".to_owned(),
+            inbox: None,
         };
         let deleting = failing("DELETE", 403, "{}");
         pollster::block_on(deleting.subscribe(&subscription)).unwrap();

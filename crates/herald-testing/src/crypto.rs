@@ -29,6 +29,16 @@ impl Signer for FakeSigner {
         }
         Ok(spelled(algorithm, key.expose().as_bytes(), message))
     }
+
+    /// `public|`, the algorithm and the key's value, joined by `|`.
+    async fn public(&self, algorithm: Algorithm, key: &Secret) -> Result<Vec<u8>, CryptoError> {
+        if key.name() == "BAD" {
+            return Err(CryptoError::BadKey {
+                name: key.name().to_owned(),
+            });
+        }
+        Ok(spelled(algorithm, b"public", key.expose().as_bytes()))
+    }
 }
 
 impl Verifier for FakeVerifier {
@@ -71,6 +81,22 @@ mod tests {
             b"m",
             &signature
         )));
+    }
+
+    #[test]
+    fn the_public_half_spells_the_algorithm_and_the_key_and_a_bad_key_has_none() {
+        let key = Secret::new("KEY", "k");
+        assert_eq!(
+            pollster::block_on(FakeSigner.public(Algorithm::Ed25519, &key)).unwrap(),
+            b"Ed25519|public|k"
+        );
+        let bad = Secret::new("BAD", "k");
+        assert_eq!(
+            pollster::block_on(FakeSigner.public(Algorithm::Ed25519, &bad)),
+            Err(CryptoError::BadKey {
+                name: "BAD".to_owned()
+            })
+        );
     }
 
     #[test]

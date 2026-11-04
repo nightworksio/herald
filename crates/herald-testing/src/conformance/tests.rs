@@ -188,7 +188,7 @@ impl Store for Faulty {
         &self,
         destination: &DestinationName,
         project: &str,
-    ) -> Result<Vec<String>, StoreError> {
+    ) -> Result<Vec<Subscription>, StoreError> {
         self.refuses("subscriptions")?;
         let mut held = self.inner.subscribers(destination, project).await?;
         if self.fault == Fault::IgnoresProjects {

@@ -102,6 +102,11 @@ impl fmt::Display for Request {
 /// largest answer it asks for.
 pub const BODY_LIMIT: usize = 33_554_432;
 
+/// The base a destination names when it reaches any public address rather
+/// than one origin, as an ActivityPub actor's deliveries to its followers'
+/// inboxes do. Its `Http` admits only public addresses (ADR-0007).
+pub const PUBLIC: &str = "public:";
+
 /// The `User-Agent` every request herald sends carries: herald, its version
 /// and its repository (ADR-0003).
 pub const USER_AGENT: &str = concat!(

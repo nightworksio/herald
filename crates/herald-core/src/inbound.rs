@@ -10,7 +10,6 @@ use std::fmt;
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD;
 use jiff::{SignedDuration, Timestamp};
-use sha2::Digest as _;
 
 /// How far a signed timestamp may lie from now, either way, before the
 /// request is taken for a replay.
@@ -446,7 +445,7 @@ pub fn activity_claim(
                 algorithm.eq_ignore_ascii_case("SHA-256").then_some(value)
             })
             .ok_or(Refusal::Malformed { header: DIGEST })?;
-        let sent = STANDARD.encode(sha2::Sha256::digest(body));
+        let sent = crate::activity::body_sha256(body);
         if !same(sent.as_bytes(), digest.as_bytes()) {
             return Err(Refusal::Unmatched { header: DIGEST });
         }

@@ -258,6 +258,7 @@ mod conformance {
             destination: herald_core::DestinationName::new("slack"),
             project: "p".to_owned(),
             subscriber: "u".to_owned(),
+            inbox: None,
         };
         pollster::block_on(one.subscribe(&subscription)).unwrap();
         pollster::block_on(other.unsubscribe(&subscription)).unwrap();

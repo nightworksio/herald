@@ -99,6 +99,14 @@ mod tests {
             };
             std::future::ready(signed)
         }
+
+        fn public(
+            &self,
+            _: Algorithm,
+            _: &Secret,
+        ) -> impl Future<Output = Result<Vec<u8>, CryptoError>> + Send {
+            std::future::ready(Ok(Vec::new()))
+        }
     }
 
     #[test]
@@ -110,6 +118,15 @@ mod tests {
         );
         let bad = Secret::new("K", "bad");
         assert!(pollster::block_on(marker(&Echo, &bad, b"m")).is_err());
+    }
+
+    #[test]
+    fn the_echo_has_no_public_half() {
+        let key = Secret::new("K", "k");
+        assert_eq!(
+            pollster::block_on(Echo.public(Algorithm::Ed25519, &key)),
+            Ok(Vec::new())
+        );
     }
 
     #[test]

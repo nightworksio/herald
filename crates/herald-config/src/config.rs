@@ -41,6 +41,7 @@ impl Config {
                 Destination::Mastodon(options) => [Some(&options.token), None],
                 Destination::Matrix(options) => [Some(&options.token), None],
                 Destination::Slack(options) => [options.token.as_ref(), options.webhook.as_ref()],
+                Destination::ActivityPub(options) => [Some(&options.key), None],
             });
         let sources = self.sources.values().map(|source| match source {
             Source::Forge(_, options) => options.token.as_ref(),
@@ -145,6 +146,8 @@ pub enum Destination {
     Matrix(herald_dest_matrix::DestinationOptions),
     /// Slack, by bot token or webhook.
     Slack(herald_dest_slack::DestinationOptions),
+    /// herald's own ActivityPub actors, on its domain.
+    ActivityPub(herald_dest_fediverse::ActorOptions),
 }
 
 impl Destination {
@@ -156,8 +159,16 @@ impl Destination {
     pub const MATRIX: &'static str = "matrix";
     /// The kind of a Slack destination, as the config spells it.
     pub const SLACK: &'static str = "slack";
+    /// The kind of herald's own ActivityPub actors, as the config spells it.
+    pub const ACTIVITYPUB: &'static str = "activitypub";
     /// Every kind, as the config spells it.
-    pub const KINDS: [&'static str; 4] = [Self::DISCORD, Self::MASTODON, Self::MATRIX, Self::SLACK];
+    pub const KINDS: [&'static str; 5] = [
+        Self::DISCORD,
+        Self::MASTODON,
+        Self::MATRIX,
+        Self::SLACK,
+        Self::ACTIVITYPUB,
+    ];
 
     /// The kind's name, as `[destinations.<name>] kind` writes it.
     #[must_use]
@@ -167,6 +178,7 @@ impl Destination {
             Self::Mastodon(_) => Self::MASTODON,
             Self::Matrix(_) => Self::MATRIX,
             Self::Slack(_) => Self::SLACK,
+            Self::ActivityPub(_) => Self::ACTIVITYPUB,
         }
     }
 }
@@ -245,6 +257,8 @@ pub enum RouteOptions {
     Matrix(herald_dest_matrix::RouteOptions),
     /// Slack's.
     Slack(herald_dest_slack::RouteOptions),
+    /// herald's own actor's.
+    ActivityPub(herald_dest_fediverse::ActorRouteOptions),
 }
 
 impl RouteOptions {

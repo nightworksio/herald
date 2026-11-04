@@ -139,6 +139,18 @@ impl Loader<'_> {
                 }
                 (RouteOptions::Slack(options), "Slack")
             }
+            Destination::ActivityPub(_) => {
+                let options =
+                    self.typed::<herald_dest_fediverse::ActorRouteOptions>(rest, &path)?;
+                if let Err(message) = options.check() {
+                    self.error(&span, &path, message);
+                    sound = false;
+                }
+                (
+                    RouteOptions::ActivityPub(options),
+                    "herald's ActivityPub actor",
+                )
+            }
         };
         let (profile, as_bot) = match (&options, reached) {
             (RouteOptions::Discord(placed), Destination::Discord(reached)) => (
@@ -150,6 +162,7 @@ impl Loader<'_> {
                 Some(herald_dest_slack::profile(true)),
             ),
             (RouteOptions::Mastodon(placed), _) => (herald_dest_fediverse::profile(placed), None),
+            (RouteOptions::ActivityPub(_), _) => (herald_dest_fediverse::actor_profile(), None),
             (_, _) => (herald_dest_matrix::profile(), None),
         };
         let thread_name = route.thread.as_ref().map(|thread| thread.name.clone());

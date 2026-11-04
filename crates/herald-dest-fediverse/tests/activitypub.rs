@@ -1,0 +1,252 @@
+//! herald's own ActivityPub actor: its documents, each delivery as the
+//! fixture holds it, and each inbox's answer read into what the ledger
+//! records.
+
+#[cfg(test)]
+mod activitypub {
+    use herald_core::{Dialect, Entry, Facts, MentionStyle, Pins, Sent, Step, Text, Threads};
+    use herald_dest_fediverse::{
+        ActivityPub, ActorOptions, ActorRouteOptions, actor_document, actor_profile, create, note,
+        webfinger,
+    };
+    use herald_ports::{PUBLIC, Secret};
+    use herald_testing::sample;
+    use herald_testing::{FakeSigner, Fixture, Replay};
+    use jiff::{SignedDuration, Timestamp};
+    use serde_json::json;
+
+    const DOMAIN: &str = "herald.example";
+    const ACTOR: &str = "https://herald.example/users/php-mutation-gate";
+
+    fn reached(key: &str) -> ActivityPub {
+        ActivityPub::new(
+            DOMAIN,
+            Secret::new(key, "the-key"),
+            ActorRouteOptions {
+                actor: "php-mutation-gate".to_owned(),
+                content_warning: Some("Release notes".to_owned()),
+            },
+        )
+    }
+
+    fn announcement() -> herald_core::Announcement {
+        let mut announcement = sample::announcement();
+        announcement.parts = vec![Text {
+            body: "Added".to_owned(),
+            html: Some("<h2>Added</h2>\n<ul>\n<li>the gate</li>\n</ul>".to_owned()),
+        }];
+        announcement
+    }
+
+    fn now() -> Timestamp {
+        "2026-11-03T08:00:00Z".parse().unwrap()
+    }
+
+    fn send(actor: &ActivityPub, replay: &Replay, step: &Step) -> Sent {
+        let announcement = announcement();
+        pollster::block_on(actor.send(
+            replay,
+            &FakeSigner,
+            now(),
+            step,
+            &announcement,
+            &Entry::new(announcement.key),
+        ))
+        .unwrap()
+    }
+
+    fn deliver(inbox: &str) -> Step {
+        Step::Deliver(inbox.to_owned())
+    }
+
+    #[test]
+    fn each_inbox_takes_the_signed_create_of_the_note_and_its_answer_is_read() {
+        let replay = Replay::of(
+            Fixture::from_json(include_str!("../fixtures/deliveries.reference.json")).unwrap(),
+        );
+        let actor = reached("HERALD_ACTIVITYPUB_KEY");
+        let landed = Sent::Landed(Facts::default());
+        for (inbox, sent) in [
+            ("https://social.example/inbox", landed.clone()),
+            ("https://gone.example/inbox", landed.clone()),
+            (
+                "https://busy.example/inbox",
+                Sent::RetryAfter(SignedDuration::from_secs(9)),
+            ),
+            (
+                "https://down.example/inbox",
+                Sent::RetryAfter(SignedDuration::from_secs(5)),
+            ),
+            (
+                "https://strict.example/users/ana/inbox",
+                Sent::Refused("the inbox refused it with 401".to_owned()),
+            ),
+            ("https://odd.example:8443/inbox?shared=1", landed),
+        ] {
+            assert_eq!(send(&actor, &replay, &deliver(inbox)), sent, "{inbox}");
+        }
+        replay.finish().unwrap();
+    }
+
+    #[test]
+    fn the_post_is_the_note_itself_and_nothing_else_is_asked() {
+        let replay = Replay::of(Fixture::default());
+        let actor = reached("HERALD_ACTIVITYPUB_KEY");
+        let note = format!("{ACTOR}/notes/{}", announcement().key);
+        assert_eq!(
+            send(&actor, &replay, &Step::Post),
+            Sent::Landed(Facts {
+                message: Some(note.clone()),
+                thread: None,
+                permalink: Some(note),
+            })
+        );
+        assert_eq!(
+            send(&actor, &replay, &Step::Chunk(1)),
+            Sent::Landed(Facts::default())
+        );
+        for (step, what) in [
+            (Step::Crosspost, "crosspost"),
+            (Step::OpenThread, "open a thread"),
+            (Step::Pin, "pin"),
+            (Step::Unpin, "pin"),
+        ] {
+            assert_eq!(
+                send(&actor, &replay, &step),
+                Sent::Refused(format!("herald's ActivityPub actor cannot {what}"))
+            );
+        }
+        for inbox in [
+            "http://social.example/inbox",
+            "not a url",
+            "ftp://social.example/inbox",
+        ] {
+            assert_eq!(
+                send(&actor, &replay, &deliver(inbox)),
+                Sent::Refused(format!(
+                    "\"{inbox}\" is not an https inbox, so nothing was delivered to it"
+                ))
+            );
+        }
+        assert_eq!(
+            send(
+                &reached("BAD"),
+                &replay,
+                &deliver("https://social.example/inbox")
+            ),
+            Sent::Refused("the secret BAD is not a key for this signature".to_owned())
+        );
+        replay.finish().unwrap();
+        assert_eq!(actor.api(), PUBLIC);
+        assert_eq!(actor.actor(), "php-mutation-gate");
+        assert_eq!(actor.id(), ACTOR);
+        assert_eq!(actor.profile(), actor_profile());
+    }
+
+    #[test]
+    fn its_documents_name_the_actor_its_key_and_its_inboxes() {
+        let document = actor_document(DOMAIN, "php-mutation-gate", &[1; 70]);
+        assert_eq!(document["id"], ACTOR);
+        assert_eq!(document["type"], "Service");
+        assert_eq!(document["preferredUsername"], "php-mutation-gate");
+        assert_eq!(document["inbox"], format!("{ACTOR}/inbox"));
+        assert_eq!(document["followers"], format!("{ACTOR}/followers"));
+        assert_eq!(
+            document["endpoints"]["sharedInbox"],
+            "https://herald.example/inbox"
+        );
+        assert_eq!(document["publicKey"]["id"], format!("{ACTOR}#main-key"));
+        assert_eq!(document["publicKey"]["owner"], ACTOR);
+        let pem = document["publicKey"]["publicKeyPem"].as_str().unwrap();
+        let lines: Vec<&str> = pem.lines().collect();
+        assert_eq!(lines[0], "-----BEGIN PUBLIC KEY-----");
+        assert_eq!(lines[1].len(), 64);
+        assert_eq!(lines[2].len(), 32);
+        assert_eq!(lines[3], "-----END PUBLIC KEY-----");
+        assert!(pem.ends_with('\n'));
+        assert_eq!(
+            webfinger(DOMAIN, "php-mutation-gate"),
+            json!({
+                "subject": "acct:php-mutation-gate@herald.example",
+                "aliases": [ACTOR],
+                "links": [{ "rel": "self", "type": "application/activity+json", "href": ACTOR }],
+            })
+        );
+        let mut bare = announcement();
+        bare.link = None;
+        bare.title = "a <b> & c".to_owned();
+        bare.parts.push(Text {
+            body: String::new(),
+            html: Some(String::new()),
+        });
+        let plain = note(DOMAIN, "php-mutation-gate", &bare, None);
+        assert_eq!(
+            plain["content"],
+            "<p><strong>a &lt;b&gt; &amp; c</strong></p>\n<h2>Added</h2>\n<ul>\n<li>the gate</li>\n</ul>"
+        );
+        assert_eq!(plain["sensitive"], false);
+        assert!(plain.get("summary").is_none() && plain.get("url").is_none());
+        let created = create(DOMAIN, "php-mutation-gate", &bare, None);
+        assert_eq!(
+            created["id"],
+            format!("{}/activity", plain["id"].as_str().unwrap())
+        );
+        assert_eq!(created["object"], plain);
+        assert_eq!(created["actor"], ACTOR);
+    }
+
+    #[test]
+    fn a_domain_and_an_actor_are_written_as_followers_write_them() {
+        let options = |domain: &str| ActorOptions {
+            domain: domain.to_owned(),
+            key: herald_core::SecretRef {
+                secret: "K".to_owned(),
+            },
+        };
+        for domain in ["herald.example", "a-b.c1.example"] {
+            assert_eq!(options(domain).check(), Ok(()), "{domain}");
+        }
+        for domain in [
+            "https://herald.example",
+            "herald.example:443",
+            "herald.example/users",
+            "herald",
+            "Herald.example",
+            "-herald.example",
+            "herald-.example",
+            "herald..example",
+        ] {
+            assert_eq!(
+                options(domain).check(),
+                Err(format!(
+                    "\"{domain}\" is not a domain; give the host herald serves its actors on, such as \"herald.example\", with no scheme, port or path"
+                )),
+                "{domain}"
+            );
+        }
+        let route = |actor: &str| ActorRouteOptions {
+            actor: actor.to_owned(),
+            content_warning: None,
+        };
+        for actor in ["php-mutation-gate", "herald", "a_b", "x", &"a".repeat(30)] {
+            assert_eq!(route(actor).check(), Ok(()), "{actor}");
+        }
+        for actor in ["", "PHP", "-gate", "gate-", "a.b", "a b", &"a".repeat(31)] {
+            assert_eq!(
+                route(actor).check(),
+                Err(format!(
+                    "\"{actor}\" is not an actor's name; give at most 30 lowercase letters, digits, `_` or a `-` within, such as \"php-mutation-gate\""
+                )),
+                "{actor:?}"
+            );
+        }
+        let profile = actor_profile();
+        assert_eq!(profile.dialect, Dialect::Matrix);
+        assert_eq!(profile.features.threads, Threads::None);
+        assert_eq!(profile.features.pins, Pins::None);
+        assert_eq!(profile.features.mentions, MentionStyle::None);
+        assert!(!profile.features.reads_back && !profile.features.edits);
+        assert!(!profile.features.crosspost && !profile.features.interactions);
+        assert_eq!((profile.limits.title, profile.limits.text), (500, 20_000));
+    }
+}

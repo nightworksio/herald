@@ -119,14 +119,14 @@ impl Store for FakeStore {
         &self,
         destination: &DestinationName,
         project: &str,
-    ) -> Result<Vec<String>, StoreError> {
+    ) -> Result<Vec<Subscription>, StoreError> {
         Ok(lock(&self.state)
             .subscriptions
             .iter()
             .filter(|subscription| {
                 &subscription.destination == destination && subscription.project == project
             })
-            .map(|subscription| subscription.subscriber.clone())
+            .cloned()
             .collect())
     }
 

@@ -173,7 +173,7 @@ impl<M: Markers, G: Signer> Store for MarkersStore<M, G> {
         &self,
         _destination: &DestinationName,
         _project: &str,
-    ) -> impl Future<Output = Result<Vec<String>, StoreError>> + Send {
+    ) -> impl Future<Output = Result<Vec<Subscription>, StoreError>> + Send {
         ready(unsupported("subscriptions"))
     }
 

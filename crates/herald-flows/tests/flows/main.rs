@@ -8,6 +8,8 @@
 )]
 
 #[cfg(test)]
+mod activitypub;
+#[cfg(test)]
 mod announce;
 #[cfg(test)]
 mod doctor;

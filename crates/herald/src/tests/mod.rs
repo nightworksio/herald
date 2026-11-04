@@ -3,6 +3,7 @@
     reason = "the model answers at once, and is written as the async trait it fakes"
 )]
 
+mod activitypub;
 mod announce;
 mod commands;
 mod doctor;

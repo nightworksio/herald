@@ -20,8 +20,10 @@ use herald_flows::{
     Announced, Chored, Connected, Findings, Gap, Kept, Outcome, Ports, Remembered, Stop, Sweep,
     Swept, announce, doctor, housekeep, poll, prepare, preview,
 };
-use herald_native::{EnvSecrets, RingSigner, SystemClock, random_secret};
-use herald_ports::{Http, HttpError, Request, Response, Secrets, Store as Keeps};
+use herald_native::{
+    ConnectError, EnvSecrets, NativeHttp, PublicHttp, RingSigner, SystemClock, random_secret,
+};
+use herald_ports::{Http, HttpError, PUBLIC, Request, Response, Secrets, Store as Keeps};
 use herald_records::Memory;
 use herald_sources_forge::{Forge, Origin, Repository, SourceOptions, Token};
 
@@ -86,6 +88,23 @@ impl Http for Connection {
 
 /// What makes the connection to a base URL.
 pub type Connect<'a> = &'a (dyn Fn(&str) -> Result<Connection, String> + Send + Sync);
+
+/// The native connection to `base`: one reaching only its origin, or, for
+/// [`PUBLIC`], one reaching any public address (ADR-0007).
+///
+/// # Errors
+///
+/// When `base` may not be reached, or the client cannot be built.
+pub fn native(base: &str) -> Result<Connection, String> {
+    let connection = if base == PUBLIC {
+        PublicHttp::new()
+            .map(Connection::new)
+            .map_err(ConnectError::Build)
+    } else {
+        NativeHttp::reaching(base).map(Connection::new)
+    };
+    connection.map_err(|error| error.to_string())
+}
 
 #[derive(Debug, Parser)]
 #[command(
