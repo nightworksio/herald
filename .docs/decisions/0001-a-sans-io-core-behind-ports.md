@@ -1,6 +1,6 @@
 # ADR-0001: A sans-IO core behind ports, in crates that each name only those before them
 
-**Status:** Accepted
+**Status:** Accepted; the place of `herald-server` and its HTTP stack superseded by [ADR-0014](0014-herald-server-answers-first-and-works-after-on-one-task-within-limits.md)
 **Date:** 2026-10-31
 
 ## Context
