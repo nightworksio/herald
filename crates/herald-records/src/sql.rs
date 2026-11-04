@@ -14,6 +14,21 @@ pub enum Dialect {
     Postgres,
 }
 
+impl Dialect {
+    /// The table records are kept in, its paths ordered byte by byte so a
+    /// directory is one range of them.
+    const fn records(self) -> &'static str {
+        match self {
+            Self::Sqlite => {
+                "CREATE TABLE IF NOT EXISTS herald_records (path TEXT PRIMARY KEY, body TEXT NOT NULL, version BIGINT NOT NULL)"
+            }
+            Self::Postgres => {
+                "CREATE TABLE IF NOT EXISTS herald_records (path TEXT COLLATE \"C\" PRIMARY KEY, body TEXT NOT NULL, version BIGINT NOT NULL)"
+            }
+        }
+    }
+}
+
 /// Records kept one row per path in a SQL database (ADR-0005): each row's
 /// version is the database's count of writes when it was written, so a
 /// path removed and written again never takes a version back.
@@ -73,7 +88,7 @@ impl<S: Sql> SqlRecords<S> {
             .run(&[
                 ("CREATE TABLE IF NOT EXISTS herald_meta (id INTEGER PRIMARY KEY CHECK (id = 1), layout BIGINT NOT NULL, made BIGINT NOT NULL)", vec![]),
                 ("INSERT INTO herald_meta (id, layout, made) VALUES (1, ?1, 0) ON CONFLICT (id) DO NOTHING", vec![Value::Integer(LAYOUT)]),
-                ("CREATE TABLE IF NOT EXISTS herald_records (path TEXT PRIMARY KEY, body TEXT NOT NULL, version BIGINT NOT NULL)", vec![]),
+                (records.dialect.records(), vec![]),
                 ("SELECT layout FROM herald_meta", vec![]),
             ])
             .await?;

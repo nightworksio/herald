@@ -6,11 +6,12 @@ use std::path::Path;
 
 use herald_config::{Config, Store};
 use herald_flows::{Connected, prepare, unserved};
-use herald_native::{EnvSecrets, NativeSqlite, RingSigner};
+use herald_native::{EnvSecrets, NativePostgres, NativeSqlite, RingSigner};
 use herald_ports::Secrets as _;
 use herald_records::Memory;
 use herald_store_actions_cache::{ActionsCache, ActionsCacheStore, StoreOptions as CacheOptions};
 use herald_store_git_branch::{GitBranch, GitBranchStore, StoreOptions as BranchOptions};
+use herald_store_postgres::{PostgresStore, StoreOptions as PostgresOptions};
 use herald_store_repo_variables::{
     RepoVariables, RepoVariablesStore, StoreOptions as VariablesOptions,
 };
@@ -28,6 +29,8 @@ pub(crate) enum Records<'a> {
     Variables(RepoVariablesStore<Connection>),
     /// In a SQLite file.
     Sqlite(SqliteStore<NativeSqlite>),
+    /// In a Postgres database.
+    Postgres(PostgresStore<NativePostgres>),
     /// In the routes' own posts.
     Posts,
     /// In memory, for a dry run.
@@ -47,6 +50,7 @@ impl Records<'_> {
             Self::Cache(store) => work.over(store).await,
             Self::Variables(store) => work.over(store).await,
             Self::Sqlite(store) => work.over(store).await,
+            Self::Postgres(store) => work.over(store).await,
             Self::Posts => work.over(&connected.marked(RingSigner)).await,
             Self::Memory(store) => work.over(store).await,
         }
@@ -54,8 +58,9 @@ impl Records<'_> {
 }
 
 /// The store kinds this herald keeps records in.
-pub(crate) const STORES: [&str; 5] = [
+pub(crate) const STORES: [&str; 6] = [
     Store::SQLITE,
+    Store::POSTGRES,
     Store::GIT_BRANCH,
     Store::MARKERS,
     Store::ACTIONS_CACHE,
@@ -80,6 +85,7 @@ pub(crate) async fn reached<'a>(
             Records::Variables(variables(options, vars, &secrets, connect).await?)
         }
         Store::Sqlite(options) => Records::Sqlite(sqlite(options).await?),
+        Store::Postgres(options) => Records::Postgres(postgres(options, &secrets).await?),
         Store::Markers => Records::Posts,
         _ => return Err(unserved(&STORES)),
     };
@@ -132,6 +138,24 @@ pub(crate) async fn sqlite(options: &SqliteOptions) -> Result<SqliteStore<Native
     };
     let sql = NativeSqlite::open(&file).map_err(|error| opened(error.to_string()))?;
     herald_store_sqlite::store(sql)
+        .await
+        .map_err(|error| opened(error.to_string()))
+}
+
+/// The store in the database whose connection URL `options` name.
+pub(crate) async fn postgres(
+    options: &PostgresOptions,
+    secrets: &EnvSecrets,
+) -> Result<PostgresStore<NativePostgres>, String> {
+    let name = options.url.secret.as_str();
+    let url = secrets.secret(name).await.map_err(|_| {
+        format!("{name} is not set; the postgres store reads its connection URL from it")
+    })?;
+    let opened = |error: String| format!("the postgres store could not be opened: {error}");
+    let sql = NativePostgres::connect(&url)
+        .await
+        .map_err(|error| opened(error.to_string()))?;
+    herald_store_postgres::store(sql)
         .await
         .map_err(|error| opened(error.to_string()))
 }

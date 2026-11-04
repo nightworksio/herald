@@ -282,7 +282,7 @@ pub(super) fn herald(setup: &Setup, world: &World, args: &[&str]) -> Run {
             Ok(Connection::new(world.clone()))
         }
     };
-    let code = pollster::block_on(crate::run(&all, &setup.vars, &connect, &mut out, &mut err));
+    let code = on_tokio(crate::run(&all, &setup.vars, &connect, &mut out, &mut err));
     Run {
         code,
         out: String::from_utf8(out).unwrap(),
@@ -375,4 +375,14 @@ pub(super) fn with_release(world: &World, status: u16, draft: bool) {
         "/repos/cli/cli/releases/tags/v1".to_owned(),
         (status, release.to_string()),
     );
+}
+
+/// `future` run to its end on a runtime like the binary's own, so what it
+/// spawns, such as a database connection, runs too.
+pub(super) fn on_tokio<F: std::future::Future>(future: F) -> F::Output {
+    tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap()
+        .block_on(future)
 }

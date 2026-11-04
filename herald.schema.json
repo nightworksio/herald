@@ -1282,11 +1282,16 @@
             "kind": {
               "type": "string",
               "const": "postgres"
+            },
+            "url": {
+              "description": "The secret holding the database's connection URL, such as\n`postgres://herald:…@db.example/herald`. herald reaches it over TLS\nunless the URL sets `sslmode=disable`.",
+              "$ref": "#/$defs/SecretRef"
             }
           },
           "additionalProperties": false,
           "required": [
-            "kind"
+            "kind",
+            "url"
           ]
         },
         {

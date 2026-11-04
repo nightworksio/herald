@@ -205,10 +205,10 @@ body = "{{ event.body }}"
     #[test]
     fn every_store_kind_loads_as_itself() {
         for kind in Store::KINDS {
-            let options = if kind == "repo-variables" {
-                "\ntoken = { secret = \"HERALD_STATE_TOKEN\" }"
-            } else {
-                ""
+            let options = match kind {
+                "repo-variables" => "\ntoken = { secret = \"HERALD_STATE_TOKEN\" }",
+                "postgres" => "\nurl = { secret = \"HERALD_POSTGRES_URL\" }",
+                _ => "",
             };
             let text = EXAMPLE.replace(
                 "kind = \"git-branch\"",

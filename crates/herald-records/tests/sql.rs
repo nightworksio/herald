@@ -81,6 +81,10 @@ mod sql {
             "{debug}"
         );
         assert!(!debug.contains("?1"), "{debug}");
+        assert!(
+            debug.contains("path TEXT COLLATE \\\"C\\\" PRIMARY KEY"),
+            "{debug}"
+        );
     }
 
     #[test]

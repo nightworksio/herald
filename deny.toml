@@ -12,6 +12,11 @@ allow-wildcard-paths = true
 skip = [
   { crate = "syn@2", reason = "proc macros move from syn 2 to syn 3 crate by crate; jiff-static and jni still build on syn 2" },
   { crate = "windows-sys@0.52", reason = "ring 0.17 builds on windows-sys 0.52, for Windows targets only" },
+  { crate = "base64@0.22", reason = "postgres-protocol 0.6, under tokio-postgres for the postgres store, still builds on base64 0.22" },
+  { crate = "fallible-iterator@0.2", reason = "tokio-postgres 0.7 and its protocol crates build on fallible-iterator 0.2; rusqlite has moved to 0.3" },
+  { crate = "const-oid@0.9", reason = "der 0.7 and x509-cert 0.2 build on const-oid 0.9; the RustCrypto 0.11 digests have moved to 0.10" },
+  { crate = "getrandom@0.2", reason = "ring 0.17 builds on getrandom 0.2" },
+  { crate = "wasi@0.11", reason = "getrandom 0.2, under ring 0.17, builds on wasi 0.11" },
 ]
 deny = [
   { crate = "amplitude", reason = "reports on the person running it" },

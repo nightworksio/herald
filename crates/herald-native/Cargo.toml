@@ -18,7 +18,9 @@ ring.workspace = true
 reqwest.workspace = true
 rusqlite.workspace = true
 rustls.workspace = true
-tokio = { workspace = true, features = ["net"] }
+tokio = { workspace = true, features = ["net", "rt", "sync"] }
+tokio-postgres.workspace = true
+tokio-postgres-rustls.workspace = true
 url.workspace = true
 webpki-roots.workspace = true
 
