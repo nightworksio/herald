@@ -195,6 +195,8 @@ pub(crate) enum Fault {
     KeepsNotes,
     ReadsNotes,
     Admits,
+    AttemptsDeliveries,
+    LandsDeliveries,
 }
 
 pub(crate) struct Failing {
@@ -248,7 +250,10 @@ impl Store for Failing {
         };
         match (self.fault, writes) {
             (Fault::Claims, 1) => Err(broken()),
-            (Fault::ClaimConflicts, 1) | (Fault::Writes, 2) => Ok(Written::Conflict),
+            (Fault::ClaimConflicts, 1)
+            | (Fault::Writes, 2)
+            | (Fault::AttemptsDeliveries, 4)
+            | (Fault::LandsDeliveries, 5) => Ok(Written::Conflict),
             (Fault::Releases, _) if entry.lease.is_none() => Err(broken()),
             _ => self.inner.put_entry(entry, expected).await,
         }

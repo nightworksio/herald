@@ -15,8 +15,8 @@ use herald_core::{
     SourceName, Subscription, Thread, schedules,
 };
 use herald_ports::{
-    Admitted, Capabilities, Keeping, Markers, Secret, Signer, Store, StoreError, Version,
-    Versioned, Written, marker,
+    Admitted, Capabilities, Keeping, Keyring, KnownKey, Markers, Secret, Signer, Store, StoreError,
+    Version, Versioned, Written, marker,
 };
 use jiff::Timestamp;
 
@@ -93,6 +93,30 @@ impl<M: Markers, G: Signer> MarkersStore<M, G> {
             );
         }
         Ok(derived)
+    }
+}
+
+impl<M: Markers, G: Signer> Keyring for MarkersStore<M, G> {
+    fn known(
+        &self,
+        _id: &str,
+    ) -> impl Future<Output = Result<Option<KnownKey>, StoreError>> + Send {
+        ready(unsupported("keys"))
+    }
+
+    fn know(
+        &self,
+        _id: &str,
+        _key: &KnownKey,
+    ) -> impl Future<Output = Result<(), StoreError>> + Send {
+        ready(unsupported("keys"))
+    }
+
+    fn forget_before(
+        &self,
+        _before: Timestamp,
+    ) -> impl Future<Output = Result<(), StoreError>> + Send {
+        ready(unsupported("keys"))
     }
 }
 

@@ -28,7 +28,7 @@ use herald_native::{
     ConnectError, EnvSecrets, NativeHttp, PublicHttp, RingSigner, SystemClock, random_secret,
 };
 use herald_ports::{Http, HttpError, Keyring, PUBLIC, Request, Response, Secrets, Store as Keeps};
-use herald_records::Memory;
+use herald_records::{Memory, MemoryKeyring};
 use herald_server::{Capped, Heard, Limits, serve};
 use herald_sources_forge::{Forge, Origin, Repository, SourceOptions, Token};
 
@@ -36,7 +36,7 @@ mod output;
 mod stores;
 
 use output::{Scrubbing, hidden, masked, say, warned};
-use stores::{Keyed, Records, SERVED, STORES, reached};
+use stores::{Records, SERVED, STORES, reached};
 
 /// Every route announced, already announced, or held by another run; every
 /// source polled and its cursor moved on; or every chore that fell due done
@@ -491,7 +491,7 @@ async fn announcing_from(
         event: &event,
         run: &run,
     };
-    let announced = records.serve(&connected, &announcing).await;
+    let announced = records.serve(&connected, announcing).await;
     if asked.dry_run {
         say(
             out,
@@ -735,7 +735,7 @@ trait Served {
     type Done;
 
     /// The work done over `store`.
-    fn over<S: Keeps>(&self, store: &S) -> impl Future<Output = Self::Done>;
+    fn over<S: Keeps + Keyring>(self, store: &S) -> impl Future<Output = Self::Done>;
 }
 
 /// An event, and the routes and sources it is announced through.
@@ -750,7 +750,7 @@ struct Announcing<'a> {
 impl Served for Announcing<'_> {
     type Done = Vec<Announced>;
 
-    async fn over<S: Keeps>(&self, store: &S) -> Vec<Announced> {
+    async fn over<S: Keeps + Keyring>(self, store: &S) -> Vec<Announced> {
         let ports = Ports {
             store,
             clock: &SystemClock,
@@ -784,7 +784,7 @@ struct Polling<'a> {
 impl Served for Polling<'_> {
     type Done = Vec<Swept>;
 
-    async fn over<S: Keeps>(&self, store: &S) -> Vec<Swept> {
+    async fn over<S: Keeps + Keyring>(self, store: &S) -> Vec<Swept> {
         let ports = Ports {
             store,
             clock: &SystemClock,
@@ -802,7 +802,7 @@ struct Housekeeping<'a> {
 impl Served for Housekeeping<'_> {
     type Done = Result<Vec<Kept>, Stop>;
 
-    async fn over<S: Keeps>(&self, store: &S) -> Self::Done {
+    async fn over<S: Keeps + Keyring>(self, store: &S) -> Self::Done {
         housekeep(self.connected, store, &SystemClock).await
     }
 }
@@ -819,10 +819,24 @@ struct Listening<'a, F> {
     stop: F,
 }
 
-impl<F: Future<Output = ()>> Keyed for Listening<'_, F> {
+impl<F: Future<Output = ()>> Served for Listening<'_, F> {
     type Done = u8;
 
-    async fn over<S: Keeps, K: Keyring>(self, store: &S, keyring: &K) -> u8 {
+    async fn over<S: Keeps + Keyring>(self, store: &S) -> u8 {
+        let server = &self.config.server;
+        if server.keys == KeyCache::Store {
+            self.keyed(store, store).await
+        } else {
+            let memory = MemoryKeyring::new(server.keys_most);
+            self.keyed(store, &memory).await
+        }
+    }
+}
+
+impl<F: Future<Output = ()>> Listening<'_, F> {
+    /// The server, over `store`, checking activities with the keys in
+    /// `keyring`.
+    async fn keyed<S: Keeps, K: Keyring>(self, store: &S, keyring: &K) -> u8 {
         let server = &self.config.server;
         let ports = Ports {
             store,
@@ -924,15 +938,7 @@ async fn serving(
         out: RefCell::new(out),
         stop,
     };
-    let server = &config.server;
-    Ok(records
-        .serve_keyed(
-            &connected,
-            listening,
-            server.keys == KeyCache::Store,
-            server.keys_most,
-        )
-        .await)
+    Ok(records.serve(&connected, listening).await)
 }
 
 /// The name this run takes its leases under.
@@ -960,7 +966,7 @@ async fn polling(
         connected: &connected,
         run: &run,
     };
-    let swept = records.serve(&connected, &polling).await;
+    let swept = records.serve(&connected, polling).await;
     if swept.is_empty() {
         say(out, "The config names no source to poll.");
     }
@@ -1037,7 +1043,7 @@ async fn housekeeping(
         connected: &connected,
     };
     let kept = records
-        .serve(&connected, &housekeeping)
+        .serve(&connected, housekeeping)
         .await
         .map_err(|stop| why(&stop))?;
     if kept.is_empty() {

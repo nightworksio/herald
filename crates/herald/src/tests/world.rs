@@ -290,6 +290,40 @@ pub(super) fn herald(setup: &Setup, world: &World, args: &[&str]) -> Run {
     }
 }
 
+/// What `herald` with `args` does in `world`, a server it runs stopped once
+/// `stop` completes.
+pub(super) fn herald_until(
+    setup: &Setup,
+    world: &World,
+    args: &[&str],
+    stop: impl std::future::Future<Output = ()>,
+) -> Run {
+    let config = setup
+        .directory
+        .path()
+        .join("herald.toml")
+        .display()
+        .to_string();
+    let mut all: Vec<String> = vec!["herald".to_owned(), "--config".to_owned(), config];
+    all.extend(args.iter().map(|arg| (*arg).to_owned()));
+    let mut out = Vec::new();
+    let mut err = Vec::new();
+    let connect = |_: &str| Ok(Connection::new(world.clone()));
+    let code = on_tokio(crate::run_until(
+        &all,
+        &setup.vars,
+        &connect,
+        &mut out,
+        &mut err,
+        stop,
+    ));
+    Run {
+        code,
+        out: String::from_utf8(out).unwrap(),
+        err: String::from_utf8(err).unwrap(),
+    }
+}
+
 pub(super) const ANNOUNCE: [&str; 3] = ["announce", "--from", "github"];
 
 pub(super) const MARKERS: &str = "kind = \"markers\"";

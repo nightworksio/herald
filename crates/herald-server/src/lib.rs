@@ -6,13 +6,15 @@
 //! health. The work a request leaves runs once it is answered, at most
 //! [`Limits::jobs`] at once, with as many again waiting; a request that
 //! could leave more is answered 503. At most [`Limits::connections`] are
-//! held, and each has its headers and its body read in time. Sources are polled, threads kept and
+//! held, each for one request whose headers and body are read in time.
+//! One round of each kind runs at a time. Sources are polled, threads kept and
 //! keys forgotten on the config's schedule. TLS is a reverse proxy's.
 
 use std::cell::{Cell, RefCell};
 use std::collections::VecDeque;
 use std::convert::Infallible;
 use std::future::Future;
+use std::io;
 use std::net::SocketAddr;
 use std::pin::{Pin, pin};
 use std::time::Duration;
@@ -29,6 +31,7 @@ use hyper::server::conn::http1;
 use hyper::service::service_fn;
 use hyper::{Method, StatusCode};
 use hyper_util::rt::{TokioIo, TokioTimer};
+use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{Notify, Semaphore};
 use tokio::time::{Instant, Interval, MissedTickBehavior, interval_at};
@@ -40,6 +43,11 @@ const BUSY_RETRY: &str = "30";
 /// How long a connection may take to send a request's headers, and then
 /// its body.
 const READ: Duration = Duration::from_secs(30);
+/// How long a connection is held at most, its one request answered.
+const HELD: Duration = Duration::from_secs(90);
+/// How long the server waits before taking connections again after one
+/// could not be taken, so a lack of file descriptors does not spin it.
+const ACCEPT_PAUSE: Duration = Duration::from_millis(100);
 /// What a reply in words is.
 const TEXT: &str = "text/plain; charset=utf-8";
 
@@ -99,6 +107,34 @@ impl<H: Http> Http for Capped<H> {
             let _permit = self.permits.acquire().await;
             self.http.send(request).await
         }
+    }
+}
+
+/// Where connections come from.
+pub trait Listener {
+    /// A connection.
+    type Stream: AsyncRead + AsyncWrite + Unpin;
+
+    /// The next connection.
+    fn take(&self) -> impl Future<Output = io::Result<Self::Stream>>;
+
+    /// Where it listens.
+    ///
+    /// # Errors
+    ///
+    /// When the address cannot be read.
+    fn address(&self) -> io::Result<SocketAddr>;
+}
+
+impl Listener for TcpListener {
+    type Stream = TcpStream;
+
+    async fn take(&self) -> io::Result<TcpStream> {
+        self.accept().await.map(|(stream, _)| stream)
+    }
+
+    fn address(&self) -> io::Result<SocketAddr> {
+        self.local_addr()
     }
 }
 
@@ -250,13 +286,14 @@ where
     ))
 }
 
-/// Every request `stream` carries, answered.
-async fn connection<S, C, G, V, H, P, K>(
+/// The one request `stream` carries, answered, within [`HELD`].
+async fn connection<S, C, G, V, H, P, K, T>(
     serving: &Serving<'_, S, C, G, V, H, P, K>,
-    stream: TcpStream,
+    stream: T,
     queue: &Queue,
     limits: Limits,
 ) where
+    T: AsyncRead + AsyncWrite + Unpin,
     S: Store,
     C: Clock,
     G: Signer,
@@ -265,11 +302,12 @@ async fn connection<S, C, G, V, H, P, K>(
     K: Keyring,
 {
     let service = service_fn(move |request| answered(serving, request, queue, limits));
-    let _ = http1::Builder::new()
+    let served = http1::Builder::new()
         .timer(TokioTimer::new())
         .header_read_timeout(READ)
-        .serve_connection(TokioIo::new(stream), service)
-        .await;
+        .keep_alive(false)
+        .serve_connection(TokioIo::new(stream), service);
+    let _ = tokio::time::timeout(HELD, served).await;
 }
 
 /// A round every `period`, the first a period from now.
@@ -295,13 +333,14 @@ async fn round(rounds: &mut Option<Interval>) {
 /// `limits`, each thing worth saying handed to `heard`, until `stop`
 /// completes. Then no request is taken, the work waiting is released to be
 /// delivered again (ADR-0013), and the work running is finished.
-pub async fn serve<S, C, G, V, H, P, K>(
+pub async fn serve<S, C, G, V, H, P, K, L>(
     serving: &Serving<'_, S, C, G, V, H, P, K>,
-    listener: TcpListener,
+    listener: L,
     limits: Limits,
     heard: &dyn Fn(Heard),
     stop: impl Future<Output = ()>,
 ) where
+    L: Listener,
     S: Store,
     C: Clock,
     G: Signer,
@@ -310,9 +349,12 @@ pub async fn serve<S, C, G, V, H, P, K>(
     P: Http,
     K: Keyring,
 {
-    if let Ok(address) = listener.local_addr() {
+    if let Ok(address) = listener.address() {
         heard(Heard::Listening(address));
     }
+    let polling = Cell::new(false);
+    let keeping = Cell::new(false);
+    let sweeping = Cell::new(false);
     let queue = Queue::new(limits.jobs);
     let mut connections = FuturesUnordered::new();
     let mut running: FuturesUnordered<Pin<Box<dyn Future<Output = Option<Heard>> + '_>>> =
@@ -332,11 +374,12 @@ pub async fn serve<S, C, G, V, H, P, K>(
         }
         tokio::select! {
             () = &mut stop => break,
-            accepted = listener.accept(), if connections.len() < limits.connections => match accepted {
-                Ok((stream, _)) => {
-                    connections.push(connection(serving, stream, &queue, limits));
+            accepted = listener.take(), if connections.len() < limits.connections => match accepted {
+                Ok(stream) => connections.push(connection(serving, stream, &queue, limits)),
+                Err(error) => {
+                    heard(Heard::Unaccepted(error.to_string()));
+                    tokio::time::sleep(ACCEPT_PAUSE).await;
                 }
-                Err(error) => heard(Heard::Unaccepted(error.to_string())),
             },
             () = queue.queued.notified() => {}
             Some(()) = connections.next(), if !connections.is_empty() => {}
@@ -345,26 +388,34 @@ pub async fn serve<S, C, G, V, H, P, K>(
                     heard(said);
                 }
             }
-            () = round(&mut polls) => running.push(Box::pin(async move {
-                Some(Heard::Polled(
-                    poll(serving.config, serving.connected, serving.ports, RUN).await,
-                ))
-            })),
-            () = round(&mut chores) => running.push(Box::pin(async move {
-                Some(Heard::Kept(
-                    housekeep(serving.connected, serving.ports.store, serving.ports.clock).await,
-                ))
-            })),
-            () = round(&mut sweeps) => running.push(Box::pin(async move {
-                let before = serving
-                    .ports
-                    .clock
-                    .now()
-                    .checked_sub(serving.keys.refreshed)
-                    .ok()?;
-                let _ = serving.keys.keyring.forget_before(before).await;
-                None
-            })),
+            () = round(&mut polls), if !polling.get() => {
+                polling.set(true);
+                running.push(Box::pin(async {
+                    let swept = poll(serving.config, serving.connected, serving.ports, RUN).await;
+                    polling.set(false);
+                    Some(Heard::Polled(swept))
+                }));
+            }
+            () = round(&mut chores), if !keeping.get() => {
+                keeping.set(true);
+                running.push(Box::pin(async {
+                    let ports = serving.ports;
+                    let kept = housekeep(serving.connected, ports.store, ports.clock).await;
+                    keeping.set(false);
+                    Some(Heard::Kept(kept))
+                }));
+            }
+            () = round(&mut sweeps), if !sweeping.get() => {
+                sweeping.set(true);
+                running.push(Box::pin(async {
+                    let now = serving.ports.clock.now();
+                    if let Ok(before) = now.checked_sub(serving.keys.refreshed) {
+                        let _ = serving.keys.keyring.forget_before(before).await;
+                    }
+                    sweeping.set(false);
+                    None
+                }));
+            }
         }
     }
     drop(connections);
