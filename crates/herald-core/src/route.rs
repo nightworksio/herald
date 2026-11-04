@@ -59,6 +59,10 @@ pub struct SecretRef {
 /// in its place.
 const SECRET_FORM: &str = "a secret is written as { secret = \"NAME\" }, naming where the platform keeps it, never as its value";
 
+/// How serde names a field the config leaves out, which holds no value to
+/// repeat.
+const MISSING: &str = "missing field";
+
 struct SecretVisitor;
 
 impl<'de> serde::de::Visitor<'de> for SecretVisitor {
@@ -85,9 +89,17 @@ impl<'de> serde::de::Visitor<'de> for SecretVisitor {
 
 impl<'de> serde::Deserialize<'de> for SecretRef {
     fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        deserializer
-            .deserialize_map(SecretVisitor)
-            .map_err(|_: D::Error| serde::de::Error::custom(SECRET_FORM))
+        deserializer.deserialize_map(SecretVisitor).map_err(kept)
+    }
+}
+
+/// `error` with anything it could repeat of the written value replaced by
+/// how a secret is written.
+fn kept<E: serde::de::Error>(error: E) -> E {
+    if error.to_string().starts_with(MISSING) {
+        error
+    } else {
+        E::custom(SECRET_FORM)
     }
 }
 
@@ -320,6 +332,7 @@ pub(crate) mod tests {
         assert_eq!(named.secret, "HERALD_DISCORD_TOKEN");
         for written in [
             r#""xoxb-not-a-name""#,
+            r#""missing field xoxb-not-a-name""#,
             r#"{"secret":""}"#,
             r#"{"secret":"A","secret":"B"}"#,
             r#"{"value":"xoxb-not-a-name"}"#,
@@ -333,6 +346,14 @@ pub(crate) mod tests {
             assert!(error.starts_with(SECRET_FORM), "{error}");
             assert!(!error.contains("xoxb"), "{error}");
         }
+    }
+
+    #[test]
+    fn a_secret_the_config_leaves_out_is_named_as_missing() {
+        let missing = <serde_json::Error as serde::de::Error>::missing_field("token");
+        assert_eq!(kept(missing).to_string(), "missing field `token`");
+        let written = <serde_json::Error as serde::de::Error>::custom("xoxb-not-a-name");
+        assert_eq!(kept(written).to_string(), SECRET_FORM);
     }
 
     #[test]

@@ -13,7 +13,7 @@ enum StoreSchema {
     /// A SQLite file, on a volume or a persistent disk.
     Sqlite(herald_store_sqlite::StoreOptions),
     /// A Postgres database.
-    Postgres {},
+    Postgres(herald_store_postgres::StoreOptions),
     /// Cloudflare D1, through the Worker's binding.
     D1 {},
     /// An AWS DynamoDB table.

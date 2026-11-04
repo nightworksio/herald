@@ -4,6 +4,7 @@
 mod crypto;
 mod environment;
 mod http;
+mod postgres;
 mod public;
 mod random;
 mod reach;
@@ -14,6 +15,7 @@ mod sqlite;
 pub use crypto::{RingSigner, RingVerifier};
 pub use environment::{EnvSecrets, SystemClock};
 pub use http::{BuildError, ConnectError, NativeHttp};
+pub use postgres::NativePostgres;
 pub use public::{PublicHttp, public};
 pub use random::random_secret;
 pub use reach::{Reach, ReachError};

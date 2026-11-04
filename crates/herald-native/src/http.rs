@@ -121,7 +121,7 @@ fn method(method: Method) -> reqwest::Method {
     }
 }
 
-fn chain(error: &dyn Error) -> String {
+pub(crate) fn chain(error: &dyn Error) -> String {
     let mut reason = error.to_string();
     let mut source = error.source();
     while let Some(cause) = source {

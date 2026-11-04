@@ -51,6 +51,7 @@ impl Config {
         let store = match &self.store {
             Store::GitBranch(options) => options.token.as_ref(),
             Store::RepoVariables(options) => Some(&options.token),
+            Store::Postgres(options) => Some(&options.url),
             _ => None,
         };
         destinations
@@ -69,7 +70,7 @@ pub enum Store {
     /// A SQLite file.
     Sqlite(herald_store_sqlite::StoreOptions),
     /// A Postgres database.
-    Postgres,
+    Postgres(herald_store_postgres::StoreOptions),
     /// Cloudflare D1.
     D1,
     /// An AWS DynamoDB table.
@@ -123,7 +124,7 @@ impl Store {
     pub fn kind(&self) -> &'static str {
         match self {
             Self::Sqlite(_) => Self::SQLITE,
-            Self::Postgres => Self::POSTGRES,
+            Self::Postgres(_) => Self::POSTGRES,
             Self::D1 => Self::CLOUDFLARE_D1,
             Self::Dynamodb => Self::DYNAMODB,
             Self::DenoKv => Self::DENO_KV,

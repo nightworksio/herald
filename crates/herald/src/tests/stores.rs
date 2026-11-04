@@ -200,3 +200,124 @@ fn a_sqlite_file_a_newer_herald_laid_out_stops_the_run() {
         )
     );
 }
+
+/// The URL of CI's Postgres service, scoped to a schema of `name`'s own,
+/// made empty; none where no Postgres is handed in, which CI refuses.
+fn postgres(name: &str) -> Option<String> {
+    use herald_ports::Sql as _;
+    let url = std::env::var("HERALD_TEST_POSTGRES")
+        .ok()
+        .filter(|url| !url.is_empty());
+    assert!(
+        url.is_some() || std::env::var_os("CI").is_none(),
+        "HERALD_TEST_POSTGRES is not set, and CI runs these tests against its Postgres service"
+    );
+    let url = url?;
+    let schema = format!("{name}_{}", std::process::id());
+    on_tokio(async {
+        let sql =
+            herald_native::NativePostgres::connect(&herald_ports::Secret::new("URL", url.as_str()))
+                .await
+                .unwrap();
+        sql.transaction(
+            [
+                format!("DROP SCHEMA IF EXISTS {schema} CASCADE"),
+                format!("CREATE SCHEMA {schema}"),
+            ]
+            .into_iter()
+            .map(|sql| herald_ports::Statement {
+                sql,
+                params: vec![],
+            })
+            .collect(),
+        )
+        .await
+        .unwrap();
+    });
+    let joined = if url.contains('?') { '&' } else { '?' };
+    Some(format!("{url}{joined}options=-c%20search_path%3D{schema}"))
+}
+
+fn kept_in_postgres(url: Option<&str>) -> Setup {
+    let mut setup = setup(&CONFIG.replace(
+        "kind = \"git-branch\"",
+        "kind = \"postgres\"\nurl = { secret = \"HERALD_POSTGRES_URL\" }",
+    ));
+    setup.vars.remove("GITHUB_TOKEN");
+    if let Some(url) = url {
+        setup
+            .vars
+            .insert("HERALD_POSTGRES_URL".to_owned(), url.to_owned());
+    }
+    setup
+}
+
+#[test]
+fn a_release_kept_in_postgres_is_announced_once() {
+    let Some(url) = postgres("cli_once") else {
+        return;
+    };
+    let setup = kept_in_postgres(Some(&url));
+    let world = World::default();
+    discord(&world, &[("/channels/100/messages", 200, r#"{"id":"1"}"#)]);
+    let first = herald(&setup, &world, &ANNOUNCE);
+    assert_eq!(
+        (first.code, first.out.as_str(), first.err.as_str()),
+        (DONE, "releases: announced (post)\n", "")
+    );
+    let again = herald(&setup, &world, &ANNOUNCE);
+    assert_eq!(again.out, "releases: already announced; nothing sent\n");
+}
+
+#[test]
+fn a_postgres_store_that_cannot_be_reached_or_read_stops_the_run() {
+    let unset = herald(&kept_in_postgres(None), &World::default(), &ANNOUNCE);
+    assert_eq!(unset.code, STOPPED);
+    assert_eq!(
+        unset.err,
+        "HERALD_POSTGRES_URL is not set; the postgres store reads its connection URL from it\n"
+    );
+    let unreachable = herald(
+        &kept_in_postgres(Some("postgres://herald@127.0.0.1:1/herald?sslmode=disable")),
+        &World::default(),
+        &ANNOUNCE,
+    );
+    assert_eq!(unreachable.code, STOPPED);
+    assert!(
+        unreachable.err.starts_with(
+            "the postgres store could not be opened: the database refused the statements: "
+        ),
+        "{}",
+        unreachable.err
+    );
+    let Some(url) = postgres("cli_newer") else {
+        return;
+    };
+    on_tokio(async {
+        use herald_ports::Sql as _;
+        let sql =
+            herald_native::NativePostgres::connect(&herald_ports::Secret::new("URL", url.as_str()))
+                .await
+                .unwrap();
+        sql.transaction(
+            [
+                "CREATE TABLE herald_meta (id INTEGER PRIMARY KEY, layout BIGINT, made BIGINT)",
+                "INSERT INTO herald_meta VALUES (1, 2, 0)",
+            ]
+            .into_iter()
+            .map(|sql| herald_ports::Statement {
+                sql: sql.to_owned(),
+                params: vec![],
+            })
+            .collect(),
+        )
+        .await
+        .unwrap();
+    });
+    let newer = herald(&kept_in_postgres(Some(&url)), &World::default(), &ANNOUNCE);
+    assert_eq!(newer.code, STOPPED);
+    assert_eq!(
+        newer.err,
+        "the postgres store could not be opened: a record in the store could not be read: a newer herald laid the database out; run that herald or a later one\n"
+    );
+}

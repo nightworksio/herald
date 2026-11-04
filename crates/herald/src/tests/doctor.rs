@@ -24,16 +24,16 @@ fn doctor_names_what_the_config_leaves_to_chance() {
         &["doctor"],
     );
     assert!(!keyed.out.contains("Rotating"), "{}", keyed.out);
-    let postgres = herald(
-        &setup(&CONFIG.replace("kind = \"git-branch\"", "kind = \"postgres\"")),
+    let d1 = herald(
+        &setup(&CONFIG.replace("kind = \"git-branch\"", "kind = \"d1\"")),
         &world,
         &["doctor"],
     );
-    assert_eq!(postgres.code, STOPPED);
+    assert_eq!(d1.code, STOPPED);
     assert!(
-        postgres.out.ends_with("store.kind: keeping records in postgres cannot be served: this herald keeps records in sqlite, git-branch, markers, actions-cache or repo-variables; set [store] kind to one of them.\n"),
+        d1.out.ends_with("store.kind: keeping records in d1 cannot be served: this herald keeps records in sqlite, postgres, git-branch, markers, actions-cache or repo-variables; set [store] kind to one of them.\n"),
         "{}",
-        postgres.out
+        d1.out
     );
 }
 

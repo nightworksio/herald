@@ -268,6 +268,11 @@ impl Loader<'_> {
                 .typed::<herald_store_sqlite::StoreOptions>(rest, "store")
                 .map(Store::Sqlite);
         }
+        if kind == Store::POSTGRES {
+            return self
+                .typed::<herald_store_postgres::StoreOptions>(rest, "store")
+                .map(Store::Postgres);
+        }
         if kind == Store::GIT_BRANCH {
             return self
                 .typed::<herald_store_git_branch::StoreOptions>(rest, "store")
@@ -284,15 +289,9 @@ impl Loader<'_> {
                 .map(Store::RepoVariables);
         }
         self.typed::<NoOptions>(rest, "store")?;
-        [
-            Store::Postgres,
-            Store::D1,
-            Store::Dynamodb,
-            Store::DenoKv,
-            Store::Markers,
-        ]
-        .into_iter()
-        .find(|store| store.kind() == kind)
+        [Store::D1, Store::Dynamodb, Store::DenoKv, Store::Markers]
+            .into_iter()
+            .find(|store| store.kind() == kind)
     }
 
     /// Whether every route that reaches followers or subscribers has a store

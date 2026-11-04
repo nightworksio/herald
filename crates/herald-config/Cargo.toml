@@ -20,6 +20,7 @@ herald-sources-forge.workspace = true
 herald-sources-registry.workspace = true
 herald-store-actions-cache.workspace = true
 herald-store-git-branch.workspace = true
+herald-store-postgres.workspace = true
 herald-store-repo-variables.workspace = true
 herald-store-sqlite.workspace = true
 jiff.workspace = true
