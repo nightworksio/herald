@@ -1,4 +1,4 @@
-use herald_core::{ACTIVITY_JSON, Announcement, Dialect, literal, public_pem, safe_url};
+use herald_core::{ACTIVITY_JSON, Announcement, Dialect, digest, literal, public_pem, safe_url};
 use serde_json::{Value, json};
 
 /// The `ActivityStreams` context.
@@ -136,4 +136,94 @@ pub fn create(
         "cc": [followers(&id)],
         "object": note(domain, actor, announcement, content_warning),
     })
+}
+
+/// The `Accept` of `follow`, a `Follow` of the actor `actor` on `domain`:
+/// its id is the follow's own, digested, so a follow accepted twice is
+/// accepted as one.
+#[must_use]
+pub fn accept(domain: &str, actor: &str, follow: &Value) -> Value {
+    let id = actor_id(domain, actor);
+    let followed = follow.get("id").and_then(Value::as_str).unwrap_or_default();
+    json!({
+        "@context": STREAMS,
+        "id": format!("{id}/accepts/{}", digest(followed)),
+        "type": "Accept",
+        "actor": id,
+        "object": follow,
+    })
+}
+
+/// What an activity sent to herald's inbox asks of one of its actors.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Asked {
+    /// A `Follow` of the actor `target`, as the follow itself.
+    Follow {
+        /// The id of the actor followed.
+        target: String,
+        /// The `Follow`, as an `Accept` answers it.
+        follow: Value,
+    },
+    /// An `Undo` of `follower`'s follow of the actor `target`.
+    Undo {
+        /// The actor whose follow is undone.
+        follower: String,
+        /// The id of the actor no longer followed.
+        target: String,
+    },
+    /// Nothing herald takes, and why.
+    Nothing(String),
+}
+
+fn named(value: Option<&Value>) -> Option<&str> {
+    value.and_then(|value| {
+        value
+            .as_str()
+            .or_else(|| value.get("id").and_then(Value::as_str))
+    })
+}
+
+fn nothing(why: &str) -> Asked {
+    Asked::Nothing(why.to_owned())
+}
+
+/// What `body`, an activity whose actor is `sender`, asks: a follow, or the
+/// undoing of `sender`'s own follow, carried whole.
+#[must_use]
+pub fn asked(body: &[u8], sender: &str) -> Asked {
+    let Ok(activity) = serde_json::from_slice::<Value>(body) else {
+        return nothing("it is not JSON");
+    };
+    match activity.get("type").and_then(Value::as_str) {
+        Some("Follow") if activity.get("id").and_then(Value::as_str).is_none() => {
+            nothing("it is a follow with no id")
+        }
+        Some("Follow") => match named(activity.get("object")) {
+            Some(target) => Asked::Follow {
+                target: target.to_owned(),
+                follow: activity.clone(),
+            },
+            None => nothing("it follows no one"),
+        },
+        Some("Undo") => {
+            let Some(follow) = activity
+                .get("object")
+                .filter(|follow| follow.get("type").and_then(Value::as_str) == Some("Follow"))
+            else {
+                return nothing("it undoes no follow it carries");
+            };
+            if named(follow.get("actor")) != Some(sender) {
+                return nothing("it undoes another actor's follow");
+            }
+            match named(follow.get("object")) {
+                Some(target) => Asked::Undo {
+                    follower: sender.to_owned(),
+                    target: target.to_owned(),
+                },
+                None => nothing("it undoes a follow of no one"),
+            }
+        }
+        Some(kind) => Asked::Nothing(format!("herald takes no {kind}")),
+        None => nothing("it names no type"),
+    }
 }

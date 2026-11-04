@@ -1,5 +1,8 @@
 use herald_config::{Config, Destination, RouteConfig, Source, Store};
 use herald_core::Pinning;
+use herald_ports::{Secrets, Signer};
+
+use crate::prepare::keyed;
 
 /// A feature the config asks for that this herald cannot serve (ADR-0002).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -20,6 +23,8 @@ pub struct Findings {
     pub gaps: Vec<Gap>,
     /// What holds, at a cost worth knowing.
     pub notes: Vec<String>,
+    /// What no run could get past.
+    pub mistakes: Vec<String>,
 }
 
 /// What a derived marker key costs (ADR-0011).
@@ -77,6 +82,30 @@ pub fn unserved(stores: &[&str]) -> String {
         _ => stores.join(""),
     };
     format!("this herald keeps records in {listed}; set [store] kind to one of them")
+}
+
+/// Each ActivityPub actor's key in `config`, read through `secrets` and
+/// loaded through `signer`: a mistake where it cannot sign as the actor,
+/// and a note where it is not set here to check.
+pub async fn keys<S: Secrets, G: Signer>(config: &Config, secrets: &S, signer: &G) -> Findings {
+    let mut findings = Findings::default();
+    for (name, destination) in &config.destinations {
+        let Destination::ActivityPub(options) = destination else {
+            continue;
+        };
+        let Ok(key) = secrets.secret(&options.key.secret).await else {
+            findings.notes.push(format!(
+                "The key of the destination \"{}\" is not checked, as {} is not set here.",
+                name.as_str(),
+                options.key.secret
+            ));
+            continue;
+        };
+        if let Err(unkeyed) = keyed(signer, name, &key).await {
+            findings.mistakes.push(unkeyed.to_string());
+        }
+    }
+    findings
 }
 
 /// What `config` asks for that a herald keeping records in the store kinds

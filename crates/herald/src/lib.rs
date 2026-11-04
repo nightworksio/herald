@@ -18,7 +18,7 @@ use herald_config::{Config, Source, load, samples};
 use herald_core::{Chore, Event, Kind, RouteId, Schedule, SourceName, Step};
 use herald_flows::{
     Announced, Chored, Connected, Findings, Gap, Kept, Outcome, Ports, Remembered, Stop, Sweep,
-    Swept, announce, doctor, housekeep, poll, prepare, preview,
+    Swept, announce, doctor, housekeep, keys, poll, prepare, preview,
 };
 use herald_native::{
     ConnectError, EnvSecrets, NativeHttp, PublicHttp, RingSigner, SystemClock, random_secret,
@@ -276,7 +276,11 @@ pub async fn run(
     };
     let serve = match reading {
         Reading::Doctor { layer } => {
-            return checked(&cli.config, &doctor(&config, layer.stores()), out);
+            let mut findings = doctor(&config, layer.stores());
+            let keyed = keys(&config, &EnvSecrets::from_vars(vars.clone()), &RingSigner).await;
+            findings.notes.extend(keyed.notes);
+            findings.mistakes.extend(keyed.mistakes);
+            return checked(&cli.config, &findings, out);
         }
         Reading::Preview { route, event, from } => {
             let event = event.as_deref().map(|path| (from.forge(), path));
@@ -335,7 +339,12 @@ fn checked(path: &str, findings: &Findings, out: &mut dyn Write) -> u8 {
     for gap in &findings.gaps {
         say(out, &gapped(gap));
     }
-    if findings.gaps.is_empty() {
+    for mistake in &findings.mistakes {
+        say(out, mistake);
+    }
+    if !findings.mistakes.is_empty() {
+        MISTAKEN
+    } else if findings.gaps.is_empty() {
         DONE
     } else {
         STOPPED

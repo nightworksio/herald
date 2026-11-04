@@ -14,6 +14,7 @@
 
 mod announce;
 mod doctor;
+mod following;
 mod housekeep;
 mod inbound;
 mod poll;
@@ -22,7 +23,8 @@ mod preview;
 mod reached;
 
 pub use announce::{Announced, Outcome, Ports, Stop, announce};
-pub use doctor::{Findings, Gap, doctor, unserved};
+pub use doctor::{Findings, Gap, doctor, keys, unserved};
+pub use following::{FollowError, Followed, followed};
 pub use housekeep::{Chored, Kept, housekeep};
 pub use inbound::{Rejected, Verified, activity_verified, admitted, released, verified};
 pub use poll::{Fresh, Remembered, Sweep, Swept, poll};

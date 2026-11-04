@@ -14,6 +14,8 @@ mod announce;
 #[cfg(test)]
 mod doctor;
 #[cfg(test)]
+mod following;
+#[cfg(test)]
 mod harness;
 #[cfg(test)]
 mod housekeep;

@@ -129,6 +129,36 @@ jobs:
 `contents: write` is for the `git-branch` store, which keeps herald's
 never-twice ledger on a `herald-state` branch.
 
+### herald's own ActivityPub actor
+
+A `kind = "activitypub"` destination announces as an actor on your own
+domain, which people follow per project. Each route names its actor:
+
+```toml
+[destinations.fediverse]
+kind = "activitypub"
+domain = "herald.example.org"
+key = { secret = "HERALD_ACTIVITYPUB_KEY" }
+
+[[routes]]
+id = "php-mutation-gate-notes"
+sources = ["php-mutation-gate"]
+destination = "fediverse"
+actor = "php-mutation-gate"
+template = "package-release"
+```
+
+The actor signs with an RSA private key of 2048 to 8192 bits in a PKCS#8
+PEM. Make one with:
+
+```sh
+openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out herald-activitypub.pem
+```
+
+Store the file's contents as `HERALD_ACTIVITYPUB_KEY`. Every run loads the
+key before it sends anything. `herald doctor` loads it too, wherever it is
+set.
+
 ## Status
 
 What is built on `main`, and the decision each part follows:
@@ -142,7 +172,7 @@ What is built on `main`, and the decision each part follows:
 | Sources: forges, registries, feeds, apps | [ADR-0003](.docs/decisions/0003-every-source-becomes-one-neutral-event.md) | forge releases from GitHub, GitLab and Forgejo, by their event and by polling; package versions from Packagist, crates.io, npm and Docker Hub, and RSS and Atom feed entries, by polling; apps no |
 | Destination: Discord | [ADR-0004](.docs/decisions/0004-each-destination-gets-its-own-dialect-limits-and-features.md), [ADR-0011](.docs/decisions/0011-markers-count-only-on-herald-s-own-posts-a-route-keeps-one-pin-and-a-lock-archives.md) | yes, against reference fixtures until recorded ones replace them |
 | Inbound requests verified before they are parsed | [ADR-0007](.docs/decisions/0007-secrets-stay-out-of-reach-and-every-inbound-request-is-verified-first.md) | the signatures of GitHub, GitLab and Forgejo webhooks, Discord interactions and Slack requests, with the replay window, and the homeserver token of a Matrix transaction, each webhook delivery admitted once ([ADR-0013](.docs/decisions/0013-a-webhook-delivery-is-admitted-once-released-when-it-fails-and-kept-for-a-week.md)), and an ActivityPub activity's HTTP signature and digest against its actor's key, read from a public address on the key's own origin, with the activity's actor held to that key's owner |
-| Destinations: Matrix, Slack, Fediverse | [ADR-0004](.docs/decisions/0004-each-destination-gets-its-own-dialect-limits-and-features.md) | the Fediverse through the Mastodon client API, Matrix through the client-server API, and Slack by bot token or incoming webhook, with subscribers mentioned, against reference fixtures; the ActivityPub actor's signed deliveries of each Note to its followers' shared inboxes, with following and its actor and WebFinger documents served by the server, not yet |
+| Destinations: Matrix, Slack, Fediverse | [ADR-0004](.docs/decisions/0004-each-destination-gets-its-own-dialect-limits-and-features.md) | the Fediverse through the Mastodon client API, Matrix through the client-server API, and Slack by bot token or incoming webhook, with subscribers mentioned, against reference fixtures; the ActivityPub actor's signed deliveries of each Note to its followers' shared inboxes, each follow kept and answered with a signed `Accept` and each undo forgetting its follower, and its key loaded by every run and by `herald doctor`; serving the inbox and the actor and WebFinger documents, not yet |
 | Stores: SQLite, Postgres, D1, DynamoDB, Deno KV, markers, git branch, Actions cache, repository variables | [ADR-0005](.docs/decisions/0005-an-announcement-is-sent-once-and-finished-if-interrupted.md) | the markers, the git branch, the Actions cache and repository variables; SQLite, Postgres, D1, DynamoDB and Deno KV, no |
 | The CLI, `herald doctor` and the Action | [ADR-0002](.docs/decisions/0002-three-layers-of-support-and-a-doctor-that-names-the-gaps.md), [ADR-0009](.docs/decisions/0009-herald-ships-as-binaries-an-action-an-image-and-a-wasm-build.md) | `announce`, `poll`, `housekeep`, `doctor`, `preview` and `init`, and the Action; no release carries them yet |
 | Serverless drivers and the container | [ADR-0002](.docs/decisions/0002-three-layers-of-support-and-a-doctor-that-names-the-gaps.md), [ADR-0009](.docs/decisions/0009-herald-ships-as-binaries-an-action-an-image-and-a-wasm-build.md) | no |

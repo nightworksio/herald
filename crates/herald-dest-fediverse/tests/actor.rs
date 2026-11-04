@@ -3,8 +3,8 @@
 #[cfg(test)]
 mod actor {
     use herald_dest_fediverse::{
-        ActorError, ActorKey, Found, activity_json, actor_key, actor_of, confirms, document,
-        key_request, origin, same_origin,
+        ActorError, ActorKey, Found, Inboxes, activity_json, actor_key, actor_of, confirms,
+        document, inboxes, key_request, origin, same_origin,
     };
     use serde_json::json;
 
@@ -277,5 +277,48 @@ mod actor {
         assert_eq!(read(&actor, dotted), Err(ActorError::Misnamed));
         let claimed = json!({ "id": ALONE, "owner": "https://social.example/users/%2e%2e/ana", "publicKeyPem": PEM });
         assert_eq!(read(&claimed, ALONE), Err(ActorError::Misnamed));
+    }
+
+    fn delivered(actor: &serde_json::Value) -> Option<Inboxes> {
+        inboxes(actor.to_string().as_bytes(), ANA)
+    }
+
+    #[test]
+    fn a_follower_is_delivered_to_at_its_server_s_shared_inbox_or_else_its_own() {
+        let shared = json!({
+            "id": ANA,
+            "type": "Person",
+            "inbox": "https://social.example/users/ana/inbox",
+            "endpoints": { "sharedInbox": "https://social.example/inbox" },
+        });
+        let found = delivered(&shared).unwrap();
+        assert_eq!(found.personal, "https://social.example/users/ana/inbox");
+        assert_eq!(found.delivered(), "https://social.example/inbox");
+        let alone = json!({ "id": ANA, "type": "Service", "inbox": "https://social.example/users/ana/inbox" });
+        let found = delivered(&alone).unwrap();
+        assert_eq!(found.shared, None);
+        assert_eq!(found.delivered(), "https://social.example/users/ana/inbox");
+    }
+
+    #[test]
+    fn a_follower_s_inboxes_are_read_only_from_its_own_document_on_its_own_origin() {
+        let foreign =
+            json!({ "id": ANA, "type": "Person", "inbox": "https://elsewhere.example/inbox" });
+        assert_eq!(delivered(&foreign), None);
+        let foreign_shared = json!({
+            "id": ANA,
+            "type": "Person",
+            "inbox": "https://social.example/users/ana/inbox",
+            "endpoints": { "sharedInbox": "https://elsewhere.example/inbox" },
+        });
+        assert_eq!(delivered(&foreign_shared).unwrap().shared, None);
+        let other = json!({ "id": "https://social.example/users/bo", "type": "Person", "inbox": "https://social.example/users/bo/inbox" });
+        assert_eq!(delivered(&other), None);
+        let note =
+            json!({ "id": ANA, "type": "Note", "inbox": "https://social.example/users/ana/inbox" });
+        assert_eq!(delivered(&note), None);
+        let boxless = json!({ "id": ANA, "type": "Person" });
+        assert_eq!(delivered(&boxless), None);
+        assert_eq!(inboxes(b"not json", ANA), None);
     }
 }

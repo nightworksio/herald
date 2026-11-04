@@ -8,5 +8,5 @@ mod documents;
 mod options;
 
 pub use deliver::{ActivityPub, actor_profile};
-pub use documents::{actor_document, create, note, webfinger};
+pub use documents::{Asked, accept, actor_document, asked, create, note, webfinger};
 pub use options::{ActorOptions, ActorRouteOptions};

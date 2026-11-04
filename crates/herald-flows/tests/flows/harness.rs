@@ -190,6 +190,8 @@ pub(crate) enum Fault {
     RemembersPins,
     Releases,
     Subscribers,
+    Subscribes,
+    Unsubscribes,
 }
 
 pub(crate) struct Failing {
@@ -295,10 +297,16 @@ impl Store for Failing {
     }
 
     async fn subscribe(&self, subscription: &Subscription) -> Result<(), StoreError> {
+        if self.fault == Fault::Subscribes {
+            return Err(broken());
+        }
         self.inner.subscribe(subscription).await
     }
 
     async fn unsubscribe(&self, subscription: &Subscription) -> Result<(), StoreError> {
+        if self.fault == Fault::Unsubscribes {
+            return Err(broken());
+        }
         self.inner.unsubscribe(subscription).await
     }
 
