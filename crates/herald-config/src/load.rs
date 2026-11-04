@@ -8,9 +8,11 @@ use serde::de::DeserializeOwned;
 use toml::Spanned;
 use toml::de::{DeTable, DeValue, ValueDeserializer};
 
-use crate::config::{App, Config, Destination, Schedule, Source, Store};
+use crate::config::{App, Config, Destination, KeyCache, Schedule, Server, Source, Store};
 use crate::error::{ConfigError, Errors};
-use crate::file::{AppFile, MarkersFile, NoOptions, ScheduleFile, TemplateFile};
+use crate::file::{
+    AppFile, KeyCacheFile, MarkersFile, NoOptions, ScheduleFile, ServerFile, TemplateFile,
+};
 use crate::position::position;
 
 type Value<'i> = Spanned<DeValue<'i>>;
@@ -18,7 +20,7 @@ type Value<'i> = Spanned<DeValue<'i>>;
 /// The version of the config this herald reads.
 const VERSION: i64 = 1;
 /// The top-level keys of `herald.toml`.
-const SECTIONS: [&str; 9] = [
+const SECTIONS: [&str; 10] = [
     "version",
     "store",
     "markers",
@@ -28,6 +30,7 @@ const SECTIONS: [&str; 9] = [
     "templates",
     "apps",
     "schedule",
+    "server",
 ];
 /// The length of a SHA-256 in hex.
 const HASH_DIGITS: usize = 64;
@@ -82,6 +85,7 @@ struct Sections<'i> {
     templates: Option<Value<'i>>,
     apps: Option<Value<'i>>,
     schedule: Option<Value<'i>>,
+    server: Option<Value<'i>>,
 }
 
 /// A template's sources, with where each is written.
@@ -221,6 +225,7 @@ impl Loader<'_> {
                 "templates" => &mut sections.templates,
                 "apps" => &mut sections.apps,
                 "schedule" => &mut sections.schedule,
+                "server" => &mut sections.server,
                 other => {
                     self.error(
                         &key.span(),
@@ -526,6 +531,59 @@ impl Loader<'_> {
     }
 }
 
+impl Loader<'_> {
+    /// `[server]` as `file` gives it, over the store `store`.
+    fn server(&mut self, file: ServerFile, store: Option<&Store>) -> Server {
+        let defaults = Server::default();
+        let listen = file.listen.map_or(defaults.listen, |listen| {
+            if listen.get_ref().parse::<std::net::SocketAddr>().is_err() {
+                self.error(
+                    &listen.span(),
+                    "server.listen",
+                    format!(
+                        "\"{}\" is not an address and a port; write one such as \"{}\"",
+                        listen.get_ref(),
+                        Server::LISTEN
+                    ),
+                );
+            }
+            listen.into_inner()
+        });
+        let keys = file.keys.cache.map_or(KeyCache::Memory, |cache| {
+            if *cache.get_ref() == KeyCacheFile::Memory {
+                return KeyCache::Memory;
+            }
+            if matches!(store, Some(Store::Markers)) {
+                self.error(
+                    &cache.span(),
+                    "server.keys.cache",
+                    format!(
+                        "the {} store keeps no keys; keep them in \"memory\", or give a store that keeps records",
+                        Store::MARKERS
+                    ),
+                );
+            }
+            KeyCache::Store
+        });
+        let count = |given: Option<std::num::NonZeroUsize>, default| {
+            given.map_or(default, std::num::NonZeroUsize::get)
+        };
+        Server {
+            listen,
+            jobs: count(file.jobs, defaults.jobs),
+            body: file.body.map_or(defaults.body, |body| body.0),
+            fetches: count(file.fetches, defaults.fetches),
+            deliveries: count(file.deliveries, defaults.deliveries),
+            keys,
+            keys_refreshed: file
+                .keys
+                .refresh_after
+                .map_or(defaults.keys_refreshed, |after| after.0),
+            keys_most: count(file.keys.most, defaults.keys_most),
+        }
+    }
+}
+
 /// The config `text` holds, read from the file named `file`, with each
 /// template file read through `read`.
 ///
@@ -598,6 +656,11 @@ pub fn load(
         .schedule
         .and_then(|value| loader.typed::<ScheduleFile>(value, "schedule"))
         .unwrap_or_default();
+    let server = sections
+        .server
+        .and_then(|value| loader.typed::<ServerFile>(value, "server"))
+        .map(|file| loader.server(file, store.as_ref()))
+        .unwrap_or_default();
     if let (true, Some(store), Some(templates)) = (loader.errors.is_empty(), store, compiled) {
         return Ok(Config {
             store,
@@ -614,6 +677,7 @@ pub fn load(
                 poll: schedule.poll.map(|poll| poll.0),
                 housekeep: schedule.housekeep.map(|housekeep| housekeep.0),
             },
+            server,
         });
     }
     let mut errors = loader.errors;

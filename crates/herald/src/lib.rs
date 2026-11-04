@@ -1,10 +1,13 @@
 //! herald's CLI (ADR-0009): `herald announce --from github`, `--from gitlab`
 //! or `--from forgejo` in a forge's CI, `herald poll` and `herald housekeep`
-//! on a schedule, and `herald doctor` anywhere.
+//! on a schedule, `herald server` as a long-running endpoint, and `herald
+//! doctor` anywhere.
 //!
-//! [`run`] is the whole CLI, handed its arguments, its environment and the
-//! way to reach each base URL, so it runs the same under test as on a runner.
+//! [`run_until`] is the whole CLI, handed its arguments, its environment, the
+//! way to reach each base URL and what stops a server, so it runs the same
+//! under test as on a runner.
 
+use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::convert::Infallible;
 use std::future::Future;
@@ -14,24 +17,26 @@ use std::pin::Pin;
 use std::sync::{Arc, Mutex, PoisonError};
 
 use clap::{Parser, Subcommand, ValueEnum};
-use herald_config::{Config, Source, load, samples};
+use herald_config::{Config, KeyCache, Source, load, samples};
 use herald_core::{Chore, Event, Kind, RouteId, Schedule, SourceName, Step};
 use herald_flows::{
-    Announced, Chored, Connected, Findings, Gap, Kept, Outcome, Ports, Remembered, Stop, Sweep,
-    Swept, announce, doctor, housekeep, keys, poll, prepare, preview,
+    Announced, Chored, Connected, Findings, FollowError, Followed, Gap, Kept, Keys, Outcome, Ports,
+    Remembered, Serving, Stop, Sweep, Swept, Webhooks, Worked, announce, doctor, housekeep, keys,
+    poll, prepare, preview, webhooks,
 };
 use herald_native::{
     ConnectError, EnvSecrets, NativeHttp, PublicHttp, RingSigner, SystemClock, random_secret,
 };
-use herald_ports::{Http, HttpError, PUBLIC, Request, Response, Secrets, Store as Keeps};
+use herald_ports::{Http, HttpError, Keyring, PUBLIC, Request, Response, Secrets, Store as Keeps};
 use herald_records::Memory;
+use herald_server::{Capped, Heard, Limits, serve};
 use herald_sources_forge::{Forge, Origin, Repository, SourceOptions, Token};
 
 mod output;
 mod stores;
 
 use output::{Scrubbing, hidden, masked, say, warned};
-use stores::{Records, STORES, reached};
+use stores::{Keyed, Records, SERVED, STORES, reached};
 
 /// Every route announced, already announced, or held by another run; every
 /// source polled and its cursor moved on; or every chore that fell due done
@@ -53,6 +58,8 @@ const RESULTS: &str = "ACTIONS_RESULTS_URL";
 const RUNTIME_TOKEN: &str = "ACTIONS_RUNTIME_TOKEN";
 /// A GitLab CI job's own token.
 const JOB_TOKEN: &str = "CI_JOB_TOKEN";
+/// Where `herald server` listens, in place of the config's.
+const LISTEN: &str = "HERALD_LISTEN";
 /// The fewest characters of a value scrubbed from output: a shorter one
 /// would rewrite ordinary words, and is no credential.
 const SCRUBBED: usize = 8;
@@ -160,6 +167,8 @@ enum Reading {
 enum Layer {
     /// The CLI, on GitHub Actions or anywhere else.
     Actions,
+    /// `herald server`, in a container or on any host.
+    Server,
 }
 
 impl Layer {
@@ -167,6 +176,7 @@ impl Layer {
     fn stores(self) -> &'static [&'static str] {
         match self {
             Self::Actions => &STORES,
+            Self::Server => &SERVED,
         }
     }
 }
@@ -192,6 +202,14 @@ enum Serve {
     Poll,
     /// Archive and lock every announcement thread whose time has come.
     Housekeep,
+    /// Serve forge webhooks and herald's ActivityPub actors over HTTP, and
+    /// poll and keep house on the config's schedule, until stopped.
+    Server {
+        /// The address and port to listen on, in place of `HERALD_LISTEN`
+        /// and the config's.
+        #[arg(long)]
+        listen: Option<String>,
+    },
 }
 
 #[derive(Debug, Clone, Copy, ValueEnum)]
@@ -243,13 +261,15 @@ impl Ci {
 
 /// The CLI, run with `args`, in an environment of `vars`, reaching each base
 /// URL through what `connect` makes for it, and writing to `out` and `err`.
-/// It answers the process's exit code.
-pub async fn run(
+/// It answers the process's exit code. A server it runs runs until `stop`
+/// completes.
+pub async fn run_until(
     args: &[String],
     vars: &BTreeMap<String, String>,
     connect: Connect<'_>,
     out: &mut dyn Write,
     err: &mut dyn Write,
+    stop: impl Future<Output = ()>,
 ) -> u8 {
     let cli = match Cli::try_parse_from(args) {
         Ok(cli) => cli,
@@ -292,7 +312,11 @@ pub async fn run(
     masked(&hidden, vars, out);
     let out = &mut Scrubbing::new(out, &hidden);
     let err = &mut Scrubbing::new(err, &hidden);
-    warned(&doctor(&config, Layer::Actions.stores()).gaps, vars, out);
+    let layer = match serve {
+        Serve::Server { .. } => Layer::Server,
+        _ => Layer::Actions,
+    };
+    warned(&doctor(&config, layer.stores()).gaps, vars, out);
     let ran = match serve {
         Serve::Announce {
             from,
@@ -308,6 +332,9 @@ pub async fn run(
         }
         Serve::Poll => polling(&config, vars, connect, out).await,
         Serve::Housekeep => housekeeping(&config, vars, connect, out).await,
+        Serve::Server { listen } => {
+            serving(&config, vars, connect, listen.as_deref(), out, stop).await
+        }
     };
     let code = ran.unwrap_or_else(|message| {
         say(err, &message);
@@ -316,6 +343,17 @@ pub async fn run(
     let _ = out.flush();
     let _ = err.flush();
     code
+}
+
+/// [`run_until`], with a server it runs running until the process ends.
+pub async fn run(
+    args: &[String],
+    vars: &BTreeMap<String, String>,
+    connect: Connect<'_>,
+    out: &mut dyn Write,
+    err: &mut dyn Write,
+) -> u8 {
+    run_until(args, vars, connect, out, err, std::future::pending()).await
 }
 
 fn read(path: &str) -> Result<Config, String> {
@@ -767,6 +805,133 @@ impl Served for Housekeeping<'_> {
     async fn over<S: Keeps>(&self, store: &S) -> Self::Done {
         housekeep(self.connected, store, &SystemClock).await
     }
+}
+
+/// A server's work, over whichever store the config names, and the keys
+/// it checks activities with.
+struct Listening<'a, F> {
+    config: &'a Config,
+    connected: &'a Connected<Connection>,
+    webhooks: &'a Webhooks,
+    public: &'a Capped<Connection>,
+    listener: tokio::net::TcpListener,
+    out: RefCell<&'a mut dyn Write>,
+    stop: F,
+}
+
+impl<F: Future<Output = ()>> Keyed for Listening<'_, F> {
+    type Done = u8;
+
+    async fn over<S: Keeps, K: Keyring>(self, store: &S, keyring: &K) -> u8 {
+        let server = &self.config.server;
+        let ports = Ports {
+            store,
+            clock: &SystemClock,
+            signer: &RingSigner,
+        };
+        let keys = Keys {
+            keyring,
+            refreshed: server.keys_refreshed,
+        };
+        let serving = Serving {
+            config: self.config,
+            connected: self.connected,
+            ports: &ports,
+            verifier: &RingSigner,
+            public: self.public,
+            keys: &keys,
+            webhooks: self.webhooks,
+        };
+        let period = |every: Option<jiff::SignedDuration>| {
+            every.and_then(|every| std::time::Duration::try_from(every).ok())
+        };
+        let limits = Limits {
+            jobs: server.jobs,
+            body: server.body,
+            poll: period(self.config.schedule.poll),
+            housekeep: period(self.config.schedule.housekeep),
+            keys: period(Some(server.keys_refreshed)).unwrap_or_default(),
+        };
+        let out = &self.out;
+        let heard = |heard: Heard| {
+            let mut out = out.borrow_mut();
+            for line in said(heard) {
+                say(&mut **out, &line);
+            }
+        };
+        serve(&serving, self.listener, limits, &heard, self.stop).await;
+        DONE
+    }
+}
+
+/// What a server says of what it heard.
+fn said(heard: Heard) -> Vec<String> {
+    match heard {
+        Heard::Listening(address) => vec![format!("herald serves on {address}")],
+        Heard::Worked(Worked::Announced(announced)) => announced.iter().map(report).collect(),
+        Heard::Worked(Worked::Followed(followed)) => vec![follow(followed)],
+        Heard::Polled(swept) => swept.iter().flat_map(polled).collect(),
+        Heard::Kept(Ok(kept)) => kept.iter().map(chored).collect(),
+        Heard::Kept(Err(stop)) => vec![format!(
+            "housekeeping stopped: {}. The next round tries again.",
+            why(&stop)
+        )],
+        Heard::Unaccepted(reason) => vec![format!("a connection could not be taken: {reason}")],
+    }
+}
+
+fn follow(followed: Result<Followed, FollowError>) -> String {
+    match followed {
+        Ok(Followed::Accepted {
+            follower, actor, ..
+        }) => format!("{actor}: {follower} follows it now"),
+        Ok(Followed::Undone { follower, actor }) => {
+            format!("{actor}: {follower} no longer follows it")
+        }
+        Ok(Followed::Ignored(why)) => format!("an activity was ignored: {why}"),
+        Err(error) => format!("an activity was not taken, and may be delivered again: {error}"),
+    }
+}
+
+async fn serving(
+    config: &Config,
+    vars: &BTreeMap<String, String>,
+    connect: Connect<'_>,
+    listen: Option<&str>,
+    out: &mut dyn Write,
+    stop: impl Future<Output = ()>,
+) -> Result<u8, String> {
+    let address = listen
+        .map(ToOwned::to_owned)
+        .or_else(|| vars.get(LISTEN).filter(|value| !value.is_empty()).cloned())
+        .unwrap_or_else(|| config.server.listen.clone());
+    let listener = tokio::net::TcpListener::bind(&address)
+        .await
+        .map_err(|error| format!("herald could not listen on {address}: {error}"))?;
+    let (records, connected) = reached(config, vars, connect).await?;
+    let secrets = EnvSecrets::from_vars(vars.clone());
+    let webhooks = webhooks(config, &secrets)
+        .await
+        .map_err(|error| error.to_string())?;
+    let public = Capped::new(connect(PUBLIC)?, config.server.fetches);
+    let listening = Listening {
+        config,
+        connected: &connected,
+        webhooks: &webhooks,
+        public: &public,
+        listener,
+        out: RefCell::new(out),
+        stop,
+    };
+    let server = &config.server;
+    Ok(records
+        .serve_keyed(
+            &connected,
+            listening,
+            server.keys == KeyCache::Store,
+            server.keys_most,
+        )
+        .await)
 }
 
 /// The name this run takes its leases under.

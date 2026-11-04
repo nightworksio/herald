@@ -19,6 +19,7 @@ struct State {
     subscriptions: BTreeSet<Subscription>,
     pins: BTreeMap<RouteId, String>,
     deliveries: BTreeMap<(&'static str, String), Timestamp>,
+    notes: BTreeMap<Key, String>,
 }
 
 /// A store in memory, keeping everything a store can keep.
@@ -57,6 +58,7 @@ impl Store for FakeStore {
             subscriptions: true,
             pins: true,
             deliveries: true,
+            notes: true,
             concurrent: true,
         }
     }
@@ -170,6 +172,15 @@ impl Store for FakeStore {
 
     async fn expire_deliveries(&self, before: Timestamp) -> Result<(), StoreError> {
         lock(&self.state).deliveries.retain(|_, at| *at >= before);
+        Ok(())
+    }
+
+    async fn note(&self, key: &Key) -> Result<Option<String>, StoreError> {
+        Ok(lock(&self.state).notes.get(key).cloned())
+    }
+
+    async fn put_note(&self, key: &Key, note: &str) -> Result<(), StoreError> {
+        lock(&self.state).notes.insert(*key, note.to_owned());
         Ok(())
     }
 }

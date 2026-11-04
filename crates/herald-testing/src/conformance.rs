@@ -4,7 +4,7 @@ use herald_core::{
 };
 use std::fmt;
 
-use herald_ports::{Admitted, Keeping, Store, StoreError, Version, Written};
+use herald_ports::{Admitted, Keeping, Keyring, KnownKey, Store, StoreError, Version, Written};
 use jiff::Timestamp;
 
 /// Whether `store`, empty, keeps every record its capabilities declare as a
@@ -63,7 +63,56 @@ pub async fn store_conformance<S: Store>(store: &S) -> Result<(), Failure> {
             "deliveries",
         )?;
     }
+    if capabilities.notes {
+        notes(store).await?;
+    } else {
+        unsupported(&store.note(&key("absent")).await.map(|_| ()), "notes")?;
+    }
     Ok(())
+}
+
+/// Whether `keyring`, empty, keeps each key by its id, the one known last,
+/// and forgets only what was read before it is asked to. Every keyring
+/// passes this suite.
+///
+/// # Errors
+///
+/// The first way the keyring fails, as a sentence.
+pub async fn keyring_conformance<K: Keyring>(keyring: &K) -> Result<(), Failure> {
+    let mut checks = Checks::default();
+    let later = NOON + jiff::SignedDuration::from_hours(1);
+    let main = "https://social.example/users/ana#main-key";
+    let known = |pem: &str, fetched| KnownKey {
+        owner: "https://social.example/users/ana".to_owned(),
+        pem: pem.to_owned(),
+        fetched,
+    };
+    checks.ensure(
+        keyring.known(main).await?.is_none(),
+        "a new keyring knows a key",
+    );
+    keyring.know(main, &known("first", NOON)).await?;
+    keyring.know(main, &known("second", NOON)).await?;
+    keyring
+        .know("https://other.example/users/bo#key", &known("other", later))
+        .await?;
+    checks.ensure(
+        keyring.known(main).await? == Some(known("second", NOON)),
+        "a key's id did not name the key known last",
+    );
+    keyring.forget_before(later).await?;
+    checks.ensure(
+        keyring.known(main).await?.is_none(),
+        "a key read before the expiry was still known",
+    );
+    checks.ensure(
+        keyring
+            .known("https://other.example/users/bo#key")
+            .await?
+            .is_some(),
+        "a key read at the expiry was forgotten",
+    );
+    checks.done()
 }
 
 /// The first way a store fails the conformance suite, as a sentence.
@@ -412,6 +461,23 @@ async fn deliveries<S: Store>(store: &S) -> Result<(), Failure> {
     checks.ensure(
         store.admit(Scheme::Forgejo, "new", later).await? == Admitted::Seen,
         "a delivery admitted at the expiry was forgotten",
+    );
+    checks.done()
+}
+
+async fn notes<S: Store>(store: &S) -> Result<(), Failure> {
+    let mut checks = Checks::default();
+    let published = key("published");
+    checks.ensure(
+        store.note(&published).await?.is_none(),
+        "a new store holds a note",
+    );
+    store.put_note(&published, "{\"n\":1}").await?;
+    store.put_note(&published, "{\"n\":2}").await?;
+    store.put_note(&key("other"), "{\"n\":3}").await?;
+    checks.ensure(
+        store.note(&published).await?.as_deref() == Some("{\"n\":2}"),
+        "an announcement's note was not the one written last",
     );
     checks.done()
 }

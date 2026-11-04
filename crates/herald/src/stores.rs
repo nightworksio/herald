@@ -2,13 +2,14 @@
 //! over the run's connections (ADR-0005).
 
 use std::collections::BTreeMap;
+use std::future::Future;
 use std::path::Path;
 
 use herald_config::{Config, Store};
 use herald_flows::{Connected, prepare, unserved};
 use herald_native::{EnvSecrets, NativePostgres, NativeSqlite, RingSigner};
-use herald_ports::Secrets as _;
-use herald_records::Memory;
+use herald_ports::{Keyring, Secrets as _, Store as Keeps};
+use herald_records::{Memory, MemoryKeyring};
 use herald_store_actions_cache::{ActionsCache, ActionsCacheStore, StoreOptions as CacheOptions};
 use herald_store_git_branch::{GitBranch, GitBranchStore, StoreOptions as BranchOptions};
 use herald_store_postgres::{PostgresStore, StoreOptions as PostgresOptions};
@@ -56,6 +57,65 @@ impl Records<'_> {
         }
     }
 }
+
+/// A server's work, over whichever store the config names and the keys it
+/// checks activities with.
+pub(crate) trait Keyed {
+    /// What the work did.
+    type Done;
+
+    /// The work done over `store`, with keys kept in `keyring`.
+    fn over<S: Keeps, K: Keyring>(self, store: &S, keyring: &K)
+    -> impl Future<Output = Self::Done>;
+}
+
+/// `work` done over `store`, with keys kept in `store` itself where `kept`
+/// says so, and in `memory` otherwise.
+async fn keyed<S: Keeps + Keyring, W: Keyed>(
+    store: &S,
+    kept: bool,
+    memory: &MemoryKeyring,
+    work: W,
+) -> W::Done {
+    if kept {
+        work.over(store, store).await
+    } else {
+        work.over(store, memory).await
+    }
+}
+
+impl Records<'_> {
+    /// `work` done over the store, with keys kept in the store where `kept`
+    /// says so, and otherwise in memory, at most `most` of them.
+    pub(crate) async fn serve_keyed<W: Keyed>(
+        &self,
+        connected: &Connected<Connection>,
+        work: W,
+        kept: bool,
+        most: usize,
+    ) -> W::Done {
+        let memory = MemoryKeyring::new(most);
+        match self {
+            Self::Branch(store) => keyed(store, kept, &memory, work).await,
+            Self::Cache(store) => keyed(store, kept, &memory, work).await,
+            Self::Variables(store) => keyed(store, kept, &memory, work).await,
+            Self::Sqlite(store) => keyed(store, kept, &memory, work).await,
+            Self::Postgres(store) => keyed(store, kept, &memory, work).await,
+            Self::Posts => work.over(&connected.marked(RingSigner), &memory).await,
+            Self::Memory(store) => keyed(store, kept, &memory, work).await,
+        }
+    }
+}
+
+/// The store kinds `herald server` keeps records in: every kind but the
+/// Actions cache, which only a workflow run reaches.
+pub(crate) const SERVED: [&str; 5] = [
+    Store::SQLITE,
+    Store::POSTGRES,
+    Store::GIT_BRANCH,
+    Store::MARKERS,
+    Store::REPO_VARIABLES,
+];
 
 /// The store kinds this herald keeps records in.
 pub(crate) const STORES: [&str; 6] = [

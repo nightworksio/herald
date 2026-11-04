@@ -2,14 +2,15 @@ use std::collections::BTreeSet;
 
 use herald_config::Config;
 use herald_core::{
-    Announcement, Entry, Event, Facts, Key, Marker, Marks, Pinning, Plan, Profile, RouteId, Sent,
-    SourceName, Step, Templates, Threads, plan, schedules, steps,
+    Announcement, Entry, Event, Facts, Key, Marker, Marks, Pinning, Plan, Planned, Profile,
+    RouteId, Sent, SourceName, Step, Templates, Threads, plan, schedules, steps,
 };
 use herald_ports::{Clock, Http, Secret, Signer, Store, Version, Written, marker};
 use jiff::{SignedDuration, Timestamp};
 
 use crate::prepare::{Connected, PreparedRoute};
 use crate::reached::Signing;
+use crate::together::together;
 
 /// How long a run holds an announcement before another may finish it.
 const LEASE: SignedDuration = SignedDuration::from_mins(10);
@@ -86,7 +87,12 @@ struct Run<'a, S, C, G, H> {
     route: &'a PreparedRoute,
     http: &'a H,
     holder: &'a str,
+    together: usize,
 }
+
+/// The steps a run took that did not land, and why the first of them did
+/// not.
+type Unlanded = (Vec<Step>, Stop);
 
 /// Where a route's announcement stands as it is sent.
 struct Progress {
@@ -223,10 +229,104 @@ impl<S: Store, C: Clock, G: Signer, H: Http> Run<'_, S, C, G, H> {
             .await
             .map_err(|error| Stop::Unreachable(error.to_string()))?;
         match sent {
-            Sent::Landed(facts) => self.landed(step, facts, progress).await,
+            Sent::Landed(facts) => {
+                if *step == Step::Post
+                    && let Some(published) = self.route.reached.published(announcement)
+                {
+                    self.ports
+                        .store
+                        .put_note(&progress.entry.key, &published)
+                        .await
+                        .map_err(stored)?;
+                }
+                self.landed(step, facts, progress).await
+            }
             Sent::RetryAfter(after) => Err(Stop::RetryAfter(after)),
             Sent::Refused(reason) => Err(Stop::Refused(reason)),
         }
+    }
+
+    /// Takes `batch`, each a delivery to one inbox, all at once, and writes
+    /// every delivery that landed to the ledger in one write.
+    async fn delivered(
+        &self,
+        batch: &[Step],
+        announcement: &Announcement,
+        progress: &mut Progress,
+    ) -> Result<(), Unlanded> {
+        let now = self.ports.clock.now();
+        let unlanded = |reason| (batch.to_vec(), reason);
+        for step in batch {
+            progress.entry = progress.entry.clone().attempted(step.clone(), now);
+        }
+        self.write(progress).await.map_err(unlanded)?;
+        let signing = Signing {
+            signer: self.ports.signer,
+            now,
+        };
+        let delivery = &self.route.config.route.delivery;
+        let entry = &progress.entry;
+        let sent = together(
+            batch
+                .iter()
+                .map(|step| {
+                    self.route
+                        .reached
+                        .send(self.http, signing, step, announcement, delivery, entry)
+                })
+                .collect(),
+        )
+        .await;
+        let mut landed = Vec::new();
+        let mut failed = Vec::new();
+        let mut first = None;
+        for (step, sent) in batch.iter().zip(sent) {
+            let reason = match sent {
+                Ok(Sent::Landed(facts)) => {
+                    progress.entry = progress.entry.clone().landed(step.clone(), facts);
+                    landed.push(step.clone());
+                    continue;
+                }
+                Ok(Sent::RetryAfter(after)) => Stop::RetryAfter(after),
+                Ok(Sent::Refused(reason)) => Stop::Refused(reason),
+                Err(error) => Stop::Unreachable(error.to_string()),
+            };
+            failed.push(step.clone());
+            first.get_or_insert(reason);
+        }
+        self.write(progress).await.map_err(unlanded)?;
+        progress.landed.extend(landed);
+        first.map_or(Ok(()), |reason| Err((failed, reason)))
+    }
+
+    /// Takes `step`, planned at `index`, or the deliveries from it on,
+    /// `together` at once, and answers how many steps it took.
+    async fn next(
+        &self,
+        planned: &[Planned],
+        index: usize,
+        step: &Planned,
+        announcement: &mut Announcement,
+        progress: &mut Progress,
+    ) -> (usize, Result<(), Unlanded>) {
+        let batch: Vec<Step> = planned
+            .iter()
+            .skip(index)
+            .map(|planned| planned.step.clone())
+            .take_while(|step| matches!(step, Step::Deliver(_)))
+            .take(self.together)
+            .collect();
+        if !batch.is_empty() {
+            return (
+                batch.len(),
+                self.delivered(&batch, announcement, progress).await,
+            );
+        }
+        let taken = self
+            .take(&step.step, step.verify_first, announcement, progress)
+            .await
+            .map_err(|reason| (vec![step.step.clone()], reason));
+        (1, taken)
     }
 
     /// The inboxes an announcement is delivered to: each distinct inbox of
@@ -339,18 +439,18 @@ impl<S: Store, C: Clock, G: Signer, H: Http> Run<'_, S, C, G, H> {
             landed: Vec::new(),
         };
         let mut stop = None;
-        for (index, step) in planned.iter().enumerate() {
-            if let Err(reason) = self
-                .take(
-                    &step.step,
-                    step.verify_first,
-                    &mut announcement,
-                    &mut progress,
-                )
-                .await
-            {
-                let remaining = planned.iter().skip(index).map(|step| step.step.clone());
-                stop = Some((remaining.collect::<Vec<Step>>(), reason));
+        let mut index = 0;
+        while let Some(step) = planned.get(index) {
+            let (taken, result) = self
+                .next(&planned, index, step, &mut announcement, &mut progress)
+                .await;
+            index += taken;
+            if let Err((unlanded, reason)) = result {
+                let rest = planned.iter().skip(index).map(|step| step.step.clone());
+                stop = Some((
+                    unlanded.into_iter().chain(rest).collect::<Vec<Step>>(),
+                    reason,
+                ));
                 break;
             }
         }
@@ -394,6 +494,7 @@ pub async fn announce<S: Store, C: Clock, G: Signer, H: Http>(
             route,
             http,
             holder: run,
+            together: config.server.deliveries,
         }
         .announce(event, &config.templates)
         .await;

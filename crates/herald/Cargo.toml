@@ -21,19 +21,20 @@ herald-flows.workspace = true
 herald-native.workspace = true
 herald-ports.workspace = true
 herald-records.workspace = true
+herald-server.workspace = true
 herald-sources-forge.workspace = true
 herald-store-actions-cache.workspace = true
 herald-store-git-branch.workspace = true
 herald-store-postgres.workspace = true
 herald-store-repo-variables.workspace = true
 herald-store-sqlite.workspace = true
-tokio = { workspace = true, features = ["macros", "rt"] }
+jiff.workspace = true
+tokio = { workspace = true, features = ["macros", "net", "rt", "signal"] }
 
 [dev-dependencies]
 base64.workspace = true
 herald-dest-fediverse.workspace = true
 herald-testing.workspace = true
-jiff.workspace = true
 pollster.workspace = true
 serde_json.workspace = true
 tempfile.workspace = true

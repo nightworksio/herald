@@ -56,6 +56,8 @@ pub struct Capabilities {
     pub pins: bool,
     /// The ids of webhook deliveries it admitted (ADR-0013).
     pub deliveries: bool,
+    /// The Notes herald's ActivityPub actors published, served by their id.
+    pub notes: bool,
     /// Compare-and-set that holds when runs write at the same time.
     pub concurrent: bool,
 }
@@ -205,6 +207,16 @@ pub trait Store: Sync {
     fn expire_deliveries(
         &self,
         before: Timestamp,
+    ) -> impl Future<Output = Result<(), StoreError>> + Send;
+
+    /// The Note the announcement `key` was published as, as its JSON.
+    fn note(&self, key: &Key) -> impl Future<Output = Result<Option<String>, StoreError>> + Send;
+
+    /// Keeps `note` as the Note the announcement `key` was published as.
+    fn put_note(
+        &self,
+        key: &Key,
+        note: &str,
     ) -> impl Future<Output = Result<(), StoreError>> + Send;
 }
 

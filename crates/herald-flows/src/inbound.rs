@@ -5,8 +5,8 @@ use herald_dest_fediverse::{
     ActorError, ActorKey, Found, activity_json, actor_key, actor_of, confirms, key_request,
     same_origin,
 };
-use herald_ports::{Admitted, Algorithm, Http, Store, StoreError, Verifier};
-use jiff::Timestamp;
+use herald_ports::{Admitted, Algorithm, Http, Keyring, KnownKey, Store, StoreError, Verifier};
+use jiff::{SignedDuration, Timestamp};
 
 /// Why an inbound request is not let through to a parser.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -34,6 +34,16 @@ pub enum Rejected {
     /// It names an actor other than the owner of the key that signed it, or
     /// has its own id on another origin than that actor.
     Impersonated,
+}
+
+/// Where the keys activities were checked with are kept, and how long one
+/// is used before its document is read again.
+#[derive(Debug)]
+pub struct Keys<'a, K> {
+    /// Where they are kept.
+    pub keyring: &'a K,
+    /// How long one is used before its document is read again.
+    pub refreshed: SignedDuration,
 }
 
 /// A request [`verified`] let through.
@@ -108,15 +118,18 @@ pub async fn verified<V: Verifier>(
 /// names that key's owner as its actor, with its own id, where it has one,
 /// on that actor's origin (ADR-0007). A key whose own
 /// document names its owner is that owner's only where the owner's own
-/// document lists it. Only an activity this
-/// lets through may reach a parser.
+/// document lists it. A key `keys` keeps, read within its refresh, is used
+/// without reading its document again; where the activity does not hold
+/// under it, its document is read again, as a key rotated since. Only an
+/// activity this lets through may reach a parser.
 ///
 /// # Errors
 ///
 /// Why the activity is rejected.
-pub async fn activity_verified<V: Verifier, H: Http>(
+pub async fn activity_verified<V: Verifier, H: Http, K: Keyring>(
     verifier: &V,
     http: &H,
+    keys: &Keys<'_, K>,
     addressed: Addressed<'_>,
     headers: &[(&str, &str)],
     body: &[u8],
@@ -124,11 +137,45 @@ pub async fn activity_verified<V: Verifier, H: Http>(
 ) -> Result<Verified, Rejected> {
     let claim = activity_claim(addressed, headers, body, now).map_err(Rejected::Refused)?;
     let named = claim.signer.as_deref().unwrap_or_default();
+    let kept = keys
+        .keyring
+        .known(named)
+        .await
+        .ok()
+        .flatten()
+        .filter(|known| {
+            known
+                .fetched
+                .checked_add(keys.refreshed)
+                .is_ok_and(|stale| stale > now)
+        });
+    if let Some(known) = kept {
+        let owned = ActorKey {
+            actor: known.owner,
+            pem: known.pem,
+        };
+        if let Ok(verified) = owned_by(verifier, &claim, owned, body).await {
+            return Ok(verified);
+        }
+    }
+    let owned = read_key(http, named).await?;
+    let known = KnownKey {
+        owner: owned.actor.clone(),
+        pem: owned.pem.clone(),
+        fetched: now,
+    };
+    let _ = keys.keyring.know(named, &known).await;
+    owned_by(verifier, &claim, owned, body).await
+}
+
+/// The key `named` names, read from its document through `http`, and its
+/// owner, confirmed by the owner's own document where the key's names it.
+async fn read_key<H: Http>(http: &H, named: &str) -> Result<ActorKey, Rejected> {
     let unfetched = |reason: String| Rejected::Unfetched { reason };
     let found = actor_key(&fetched(http, named).await.map_err(unfetched)?, named)
         .map_err(|error| unfetched(error.to_string()))?;
-    let owned = match found {
-        Found::Held(owned) => owned,
+    match found {
+        Found::Held(owned) => Ok(owned),
         Found::Claimed { owner, pem } => {
             if !confirms(
                 &fetched(http, &owner).await.map_err(unfetched)?,
@@ -137,11 +184,21 @@ pub async fn activity_verified<V: Verifier, H: Http>(
             ) {
                 return Err(unfetched(ActorError::Unconfirmed.to_string()));
             }
-            ActorKey { actor: owner, pem }
+            Ok(ActorKey { actor: owner, pem })
         }
-    };
+    }
+}
+
+/// Whether `claim` holds under `owned`, and the activity `body` names that
+/// key's owner as its actor, with its own id on that actor's origin.
+async fn owned_by<V: Verifier>(
+    verifier: &V,
+    claim: &Claim,
+    owned: ActorKey,
+    body: &[u8],
+) -> Result<Verified, Rejected> {
     let key = key(Scheme::ActivityPub, &owned.pem).ok_or(Rejected::Unkeyed)?;
-    signed(verifier, &key, &claim).await?;
+    signed(verifier, &key, claim).await?;
     let Some((actor, own)) = actor_of(body) else {
         return Err(Rejected::Impersonated);
     };
@@ -149,7 +206,7 @@ pub async fn activity_verified<V: Verifier, H: Http>(
         return Err(Rejected::Impersonated);
     }
     Ok(Verified {
-        delivery: claim.delivery,
+        delivery: claim.delivery.clone(),
         signer: Some(owned.actor),
     })
 }

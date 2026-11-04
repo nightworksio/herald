@@ -1,4 +1,4 @@
-use herald_ports::{Admitted, Capabilities, Keeping, Versioned};
+use herald_ports::{Admitted, Capabilities, Keeping, Keyring, KnownKey, Versioned};
 use jiff::Timestamp;
 
 use super::*;
@@ -12,6 +12,7 @@ enum Fault {
     UndeclaredSubscriptions,
     UndeclaredPins,
     UndeclaredDeliveries,
+    UndeclaredNotes,
     OverwritesEntries,
     RefusesWrites,
     OverwritesCursors,
@@ -24,6 +25,8 @@ enum Fault {
     KeepsReleased,
     ExpiresEverything,
     ExpiresNothing,
+    KeepsTheFirstNote,
+    SharesNotes,
     Broken,
     KeepsNothing,
     DerivesButKeeps,
@@ -98,6 +101,10 @@ impl Store for Faulty {
                 deliveries: false,
                 ..all
             },
+            Fault::UndeclaredNotes => Capabilities {
+                notes: false,
+                ..all
+            },
             Fault::KeepsNothing => Capabilities {
                 ledger: Keeping::None,
                 cursors: false,
@@ -105,6 +112,7 @@ impl Store for Faulty {
                 subscriptions: false,
                 pins: false,
                 deliveries: false,
+                notes: false,
                 concurrent: false,
             },
             _ => all,
@@ -258,6 +266,131 @@ impl Store for Faulty {
             _ => self.inner.expire_deliveries(before).await,
         }
     }
+
+    async fn note(&self, key: &Key) -> Result<Option<String>, StoreError> {
+        self.refuses("notes")?;
+        let key = match self.fault {
+            Fault::SharesNotes => super::key("shared"),
+            _ => *key,
+        };
+        self.inner.note(&key).await
+    }
+
+    async fn put_note(&self, key: &Key, note: &str) -> Result<(), StoreError> {
+        self.refuses("notes")?;
+        let key = match self.fault {
+            Fault::SharesNotes => super::key("shared"),
+            _ => *key,
+        };
+        let kept = self.inner.note(&key).await?;
+        if self.fault == Fault::KeepsTheFirstNote && kept.is_some() {
+            return Ok(());
+        }
+        self.inner.put_note(&key, note).await
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Forgetting {
+    Correctly,
+    Nothing,
+    Everything,
+    TheFirstKnown,
+    OneKeyForAll,
+    Broken,
+}
+
+struct FaultyKeyring {
+    fault: Forgetting,
+    keys: std::sync::Mutex<std::collections::BTreeMap<String, KnownKey>>,
+}
+
+impl FaultyKeyring {
+    fn new(fault: Forgetting) -> Self {
+        Self {
+            fault,
+            keys: std::sync::Mutex::default(),
+        }
+    }
+
+    fn id(&self, id: &str) -> String {
+        match self.fault {
+            Forgetting::OneKeyForAll => "one".to_owned(),
+            _ => id.to_owned(),
+        }
+    }
+
+    fn broken(&self) -> Result<(), StoreError> {
+        match self.fault {
+            Forgetting::Broken => Err(broken()),
+            _ => Ok(()),
+        }
+    }
+}
+
+impl Keyring for FaultyKeyring {
+    async fn known(&self, id: &str) -> Result<Option<KnownKey>, StoreError> {
+        self.broken()?;
+        Ok(crate::lock(&self.keys).get(&self.id(id)).cloned())
+    }
+
+    async fn know(&self, id: &str, key: &KnownKey) -> Result<(), StoreError> {
+        let mut keys = crate::lock(&self.keys);
+        let id = self.id(id);
+        if self.fault == Forgetting::TheFirstKnown && keys.contains_key(&id) {
+            return Ok(());
+        }
+        keys.insert(id, key.clone());
+        Ok(())
+    }
+
+    async fn forget_before(&self, before: Timestamp) -> Result<(), StoreError> {
+        let before = match self.fault {
+            Forgetting::Nothing => Timestamp::MIN,
+            Forgetting::Everything => Timestamp::MAX,
+            _ => before,
+        };
+        crate::lock(&self.keys).retain(|_, key| key.fetched >= before);
+        Ok(())
+    }
+}
+
+fn keyring(fault: Forgetting) -> Result<(), Failure> {
+    pollster::block_on(keyring_conformance(&FaultyKeyring::new(fault)))
+}
+
+#[test]
+fn a_keyring_that_keeps_its_promises_passes() {
+    assert_eq!(keyring(Forgetting::Correctly), Ok(()));
+}
+
+#[test]
+fn a_keyring_that_breaks_its_promises_is_refused() {
+    let cases = [
+        (
+            Forgetting::Nothing,
+            "a key read before the expiry was still known",
+        ),
+        (
+            Forgetting::Everything,
+            "a key read at the expiry was forgotten",
+        ),
+        (
+            Forgetting::TheFirstKnown,
+            "a key's id did not name the key known last",
+        ),
+        (
+            Forgetting::OneKeyForAll,
+            "a key's id did not name the key known last",
+        ),
+        (
+            Forgetting::Broken,
+            "the store failed: the store could not be reached: broken",
+        ),
+    ];
+    for (fault, failure) in cases {
+        assert_eq!(keyring(fault), Err(Failure(failure.to_owned())));
+    }
 }
 
 fn run(fault: Fault) -> Result<(), Failure> {
@@ -305,6 +438,7 @@ fn a_kind_kept_but_not_declared_is_refused() {
         (Fault::UndeclaredSubscriptions, "subscriptions"),
         (Fault::UndeclaredPins, "pins"),
         (Fault::UndeclaredDeliveries, "deliveries"),
+        (Fault::UndeclaredNotes, "notes"),
     ];
     for (fault, what) in cases {
         assert_eq!(
@@ -366,6 +500,14 @@ fn a_store_that_breaks_its_promises_is_refused() {
         (
             Fault::ExpiresEverything,
             "a delivery admitted at the expiry was forgotten",
+        ),
+        (
+            Fault::KeepsTheFirstNote,
+            "an announcement's note was not the one written last",
+        ),
+        (
+            Fault::SharesNotes,
+            "an announcement's note was not the one written last",
         ),
     ];
     for (fault, failure) in cases {

@@ -8,6 +8,7 @@
 mod clock;
 mod crypto;
 mod http;
+mod keyring;
 mod kv;
 mod markers;
 mod secret;
@@ -17,6 +18,7 @@ mod store;
 pub use clock::Clock;
 pub use crypto::{Algorithm, CryptoError, Signer, Verifier};
 pub use http::{BODY_LIMIT, Http, HttpError, Method, PUBLIC, Request, Response, USER_AGENT};
+pub use keyring::{Keyring, KnownKey};
 pub use kv::{Kv, KvError, Pair, Stamped, Versionstamp};
 pub use markers::{MarkedThread, Markers, MarkersError, marker};
 pub use secret::{Secret, SecretError, Secrets, Segment, Text};

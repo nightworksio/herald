@@ -1,6 +1,7 @@
 use herald_core::{Refusal, Scheme};
-use herald_flows::{Rejected, Verified, activity_verified, admitted, released, verified};
-use herald_ports::{Store, StoreError};
+use herald_flows::{Keys, Rejected, Verified, activity_verified, admitted, released, verified};
+use herald_ports::{Keyring, KnownKey, Store, StoreError};
+use herald_records::MemoryKeyring;
 use herald_testing::{FakeStore, FakeVerifier};
 use jiff::Timestamp;
 
@@ -287,6 +288,12 @@ impl Store for Refusing {
     async fn expire_deliveries(&self, _: Timestamp) -> Result<(), StoreError> {
         Err(self.0.clone())
     }
+    async fn note(&self, _: &herald_core::Key) -> Result<Option<String>, StoreError> {
+        Err(self.0.clone())
+    }
+    async fn put_note(&self, _: &herald_core::Key, _: &str) -> Result<(), StoreError> {
+        Err(self.0.clone())
+    }
 }
 
 #[test]
@@ -410,17 +417,160 @@ fn served(
     answers: &[Answer],
     content_type: &str,
 ) -> (Result<Verified, Rejected>, Vec<String>) {
+    kept_by(&MemoryKeyring::new(8), body, headers, answers, content_type)
+}
+
+/// How long a key is used before it is read again, in these tests.
+const REFRESHED: jiff::SignedDuration = jiff::SignedDuration::from_hours(1);
+
+fn kept_by<K: Keyring>(
+    keyring: &K,
+    body: &[u8],
+    headers: &[(String, String)],
+    answers: &[Answer],
+    content_type: &str,
+) -> (Result<Verified, Rejected>, Vec<String>) {
     let script =
         crate::harness::Script::answering(answers).headed(&[("content-type", content_type)]);
+    let keys = Keys {
+        keyring,
+        refreshed: REFRESHED,
+    };
     let checked = pollster::block_on(activity_verified(
         &FakeVerifier,
         &script,
+        &keys,
         TO,
         &borrowed(headers),
         body,
         at(),
     ));
     (checked, script.seen())
+}
+
+const JSON: &str = "application/activity+json";
+
+fn known(owner: &str, fetched: Timestamp) -> KnownKey {
+    KnownKey {
+        owner: owner.to_owned(),
+        pem: ACTOR_KEY.to_owned(),
+        fetched,
+    }
+}
+
+#[test]
+fn a_key_read_once_checks_the_next_activity_without_reading_it_again() {
+    let keyring = MemoryKeyring::new(8);
+    let owned = document(ANA);
+    let headers = activity(FOLLOW, ANA_KEY, None);
+    let (first, seen) = kept_by(
+        &keyring,
+        FOLLOW,
+        &headers,
+        &[(ANA, 200, owned.as_str())],
+        JSON,
+    );
+    assert!(first.is_ok());
+    assert_eq!(seen.len(), 1);
+    assert_eq!(
+        pollster::block_on(keyring.known(ANA_KEY)).unwrap(),
+        Some(known(ANA, at()))
+    );
+    let (again, seen) = kept_by(&keyring, FOLLOW, &headers, &[], JSON);
+    assert_eq!(again.unwrap().signer.as_deref(), Some(ANA));
+    assert_eq!(seen, [] as [String; 0]);
+}
+
+#[test]
+fn a_key_kept_as_long_as_its_refresh_is_read_again() {
+    let keyring = MemoryKeyring::new(8);
+    let stale = at().checked_sub(REFRESHED).unwrap();
+    pollster::block_on(keyring.know(ANA_KEY, &known(ANA, stale))).unwrap();
+    let owned = document(ANA);
+    let headers = activity(FOLLOW, ANA_KEY, None);
+    let (checked, seen) = kept_by(
+        &keyring,
+        FOLLOW,
+        &headers,
+        &[(ANA, 200, owned.as_str())],
+        JSON,
+    );
+    assert!(checked.is_ok());
+    assert_eq!(seen, [format!("GET {ANA}")]);
+    assert_eq!(
+        pollster::block_on(keyring.known(ANA_KEY)).unwrap(),
+        Some(known(ANA, at()))
+    );
+}
+
+#[test]
+fn a_key_kept_just_inside_its_refresh_is_used() {
+    let keyring = MemoryKeyring::new(8);
+    let fresh = at()
+        .checked_sub(REFRESHED)
+        .unwrap()
+        .checked_add(jiff::SignedDuration::from_secs(1))
+        .unwrap();
+    pollster::block_on(keyring.know(ANA_KEY, &known(ANA, fresh))).unwrap();
+    let headers = activity(FOLLOW, ANA_KEY, None);
+    let (checked, seen) = kept_by(&keyring, FOLLOW, &headers, &[], JSON);
+    assert!(checked.is_ok());
+    assert_eq!(seen, [] as [String; 0]);
+}
+
+#[test]
+fn a_kept_key_the_activity_does_not_hold_under_is_read_again() {
+    let keyring = MemoryKeyring::new(8);
+    let rotated = "https://social.example/users/bob";
+    pollster::block_on(keyring.know(ANA_KEY, &known(rotated, at()))).unwrap();
+    let owned = document(ANA);
+    let headers = activity(FOLLOW, ANA_KEY, None);
+    let (checked, seen) = kept_by(
+        &keyring,
+        FOLLOW,
+        &headers,
+        &[(ANA, 200, owned.as_str())],
+        JSON,
+    );
+    assert_eq!(checked.unwrap().signer.as_deref(), Some(ANA));
+    assert_eq!(seen, [format!("GET {ANA}")]);
+}
+
+/// A keyring that can neither read nor keep a key.
+struct Unkept;
+
+impl Keyring for Unkept {
+    async fn known(&self, _: &str) -> Result<Option<KnownKey>, StoreError> {
+        Err(StoreError::Unavailable {
+            reason: "down".to_owned(),
+        })
+    }
+
+    async fn know(&self, _: &str, _: &KnownKey) -> Result<(), StoreError> {
+        Err(StoreError::Unavailable {
+            reason: "down".to_owned(),
+        })
+    }
+
+    async fn forget_before(&self, _: Timestamp) -> Result<(), StoreError> {
+        Ok(())
+    }
+}
+
+#[test]
+fn a_keyring_that_cannot_answer_reads_every_key_from_its_document() {
+    let owned = document(ANA);
+    let headers = activity(FOLLOW, ANA_KEY, None);
+    let (checked, seen) = kept_by(
+        &Unkept,
+        FOLLOW,
+        &headers,
+        &[(ANA, 200, owned.as_str())],
+        JSON,
+    );
+    assert!(checked.is_ok());
+    assert_eq!(seen, [format!("GET {ANA}")]);
+    assert!(pollster::block_on(Unkept.forget_before(at())).is_ok());
 }
 
 #[test]

@@ -2,7 +2,8 @@ use herald_core::{
     Cursor, DestinationName, Entry, Key, RouteId, Schedule, Scheme, SourceName, Subscription,
 };
 use herald_ports::{
-    Admitted, Capabilities, Keeping, Store, StoreError, Version, Versioned, Written,
+    Admitted, Capabilities, Keeping, Keyring, KnownKey, Store, StoreError, Version, Versioned,
+    Written,
 };
 use jiff::Timestamp;
 use serde::de::DeserializeOwned;
@@ -20,6 +21,14 @@ const ATTEMPTS: usize = 3;
 struct Stored {
     version: u64,
     record: Value,
+}
+
+/// A key as it is kept.
+#[derive(Serialize, Deserialize)]
+struct Known {
+    owner: String,
+    pem: String,
+    fetched: Timestamp,
 }
 
 /// A record read, with what replacing it must name.
@@ -178,6 +187,7 @@ impl<R: Records> Store for Kept<R> {
             subscriptions: true,
             pins: true,
             deliveries: true,
+            notes: true,
             concurrent: true,
         }
     }
@@ -271,6 +281,49 @@ impl<R: Records> Store for Kept<R> {
         for path in self.records.list(paths::DELIVERIES).await? {
             let admitted = self.record::<Timestamp>(&path).await?;
             if admitted.is_some_and(|admitted| admitted.value < before) {
+                self.removed(&path).await?;
+            }
+        }
+        Ok(())
+    }
+
+    async fn note(&self, key: &Key) -> Result<Option<String>, StoreError> {
+        Ok(self
+            .record::<String>(&paths::note(key))
+            .await?
+            .map(|record| record.value))
+    }
+
+    async fn put_note(&self, key: &Key, note: &str) -> Result<(), StoreError> {
+        self.kept(&paths::note(key), &note).await
+    }
+}
+
+impl<R: Records> Keyring for Kept<R> {
+    async fn known(&self, id: &str) -> Result<Option<KnownKey>, StoreError> {
+        Ok(self
+            .record::<Known>(&paths::key(id))
+            .await?
+            .map(|record| KnownKey {
+                owner: record.value.owner,
+                pem: record.value.pem,
+                fetched: record.value.fetched,
+            }))
+    }
+
+    async fn know(&self, id: &str, key: &KnownKey) -> Result<(), StoreError> {
+        let known = Known {
+            owner: key.owner.clone(),
+            pem: key.pem.clone(),
+            fetched: key.fetched,
+        };
+        self.kept(&paths::key(id), &known).await
+    }
+
+    async fn forget_before(&self, before: Timestamp) -> Result<(), StoreError> {
+        for path in self.records.list(paths::KEYS).await? {
+            let known = self.record::<Known>(&path).await?;
+            if known.is_some_and(|known| known.value.fetched < before) {
                 self.removed(&path).await?;
             }
         }

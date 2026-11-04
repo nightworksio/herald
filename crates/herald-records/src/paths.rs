@@ -56,6 +56,16 @@ pub(crate) fn delivery(scheme: Scheme, id: &str) -> String {
     format!("{DELIVERIES}/{}.{}.json", scheme.name(), segment(id))
 }
 
+pub(crate) fn note(key: &Key) -> String {
+    format!("notes/{key}.json")
+}
+
+pub(crate) const KEYS: &str = "keys";
+
+pub(crate) fn key(id: &str) -> String {
+    format!("{KEYS}/{}.json", segment(id))
+}
+
 pub(crate) fn pin(route: &RouteId) -> String {
     format!("pins/{}.json", segment(route.as_str()))
 }

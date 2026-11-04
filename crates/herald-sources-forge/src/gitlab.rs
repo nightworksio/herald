@@ -92,6 +92,25 @@ pub(crate) fn project(api: &str, path: &str) -> String {
 
 /// The project and release a `create` release hook names, or nothing for
 /// any other action.
+/// A project as a webhook payload names it in full.
+#[derive(Deserialize)]
+struct Named {
+    path_with_namespace: String,
+}
+
+/// What a webhook payload is of.
+#[derive(Deserialize)]
+struct Located {
+    project: Named,
+}
+
+/// The full path of the project a webhook `payload` is of.
+pub(crate) fn path(what: &'static str, payload: &[u8]) -> Option<String> {
+    read::<Located>(what, payload)
+        .ok()
+        .map(|located| located.project.path_with_namespace)
+}
+
 pub(crate) fn published(
     what: &'static str,
     payload: &[u8],

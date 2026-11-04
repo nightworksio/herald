@@ -27,6 +27,8 @@ pub struct Config {
     pub apps: BTreeMap<String, App>,
     /// The cadence of polling and housekeeping.
     pub schedule: Schedule,
+    /// How `herald server` listens, and what it takes on at once.
+    pub server: Server,
 }
 
 impl Config {
@@ -43,10 +45,10 @@ impl Config {
                 Destination::Slack(options) => [options.token.as_ref(), options.webhook.as_ref()],
                 Destination::ActivityPub(options) => [Some(&options.key), None],
             });
-        let sources = self.sources.values().map(|source| match source {
-            Source::Forge(_, options) => options.token.as_ref(),
-            Source::Registry(_, options) => options.token.as_ref(),
-            Source::Feed(_) => None,
+        let sources = self.sources.values().flat_map(|source| match source {
+            Source::Forge(_, options) => [options.token.as_ref(), options.webhook.as_ref()],
+            Source::Registry(_, options) => [options.token.as_ref(), None],
+            Source::Feed(_) => [None, None],
         });
         let store = match &self.store {
             Store::GitBranch(options) => options.token.as_ref(),
@@ -290,4 +292,73 @@ pub struct Schedule {
     pub poll: Option<SignedDuration>,
     /// How often threads are kept.
     pub housekeep: Option<SignedDuration>,
+}
+
+/// Where the keys inbound activities are checked with are kept.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum KeyCache {
+    /// In the server's memory, lost when it stops.
+    #[default]
+    Memory,
+    /// In the store, kept across restarts and shared by every instance.
+    Store,
+}
+
+/// How `herald server` listens, and what it takes on at once.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Server {
+    /// The address it listens on.
+    pub listen: String,
+    /// How many announcements it works on at once; a webhook arriving while
+    /// as many more wait is answered 503.
+    pub jobs: usize,
+    /// The most bytes an inbound request's body may hold.
+    pub body: usize,
+    /// How many actor documents it reads at once.
+    pub fetches: usize,
+    /// How many of an announcement's inboxes are delivered to at once.
+    pub deliveries: usize,
+    /// Where the keys inbound activities are checked with are kept.
+    pub keys: KeyCache,
+    /// How long a key is used before its document is read again.
+    pub keys_refreshed: SignedDuration,
+    /// The most keys kept in memory.
+    pub keys_most: usize,
+}
+
+impl Server {
+    /// Where `herald server` listens where the config names nowhere: this
+    /// machine alone, as a reverse proxy in front of it reaches it.
+    pub const LISTEN: &'static str = "127.0.0.1:8080";
+    /// How many announcements it works on at once where the config says
+    /// nothing.
+    pub const JOBS: usize = 8;
+    /// The most bytes a body may hold where the config says nothing: 1 MiB.
+    pub const BODY: usize = 1 << 20;
+    /// How many actor documents it reads at once where the config says
+    /// nothing.
+    pub const FETCHES: usize = 4;
+    /// How many inboxes it delivers to at once where the config says
+    /// nothing.
+    pub const DELIVERIES: usize = 8;
+    /// How long a key is used before it is read again where the config says
+    /// nothing.
+    pub const KEYS_REFRESHED: SignedDuration = SignedDuration::from_hours(1);
+    /// The most keys kept in memory where the config says nothing.
+    pub const KEYS_MOST: usize = 1024;
+}
+
+impl Default for Server {
+    fn default() -> Self {
+        Self {
+            listen: Self::LISTEN.to_owned(),
+            jobs: Self::JOBS,
+            body: Self::BODY,
+            fetches: Self::FETCHES,
+            deliveries: Self::DELIVERIES,
+            keys: KeyCache::Memory,
+            keys_refreshed: Self::KEYS_REFRESHED,
+            keys_most: Self::KEYS_MOST,
+        }
+    }
 }

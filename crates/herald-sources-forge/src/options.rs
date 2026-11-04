@@ -19,4 +19,8 @@ pub struct SourceOptions {
     /// absent (ADR-0003).
     #[serde(default)]
     pub backfill: usize,
+    /// The secret the forge signs its webhook deliveries to `herald server`
+    /// with: GitHub's and Forgejo's webhook secret, or GitLab's signing
+    /// token (ADR-0007).
+    pub webhook: Option<SecretRef>,
 }

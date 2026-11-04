@@ -105,6 +105,7 @@ impl<M: Markers, G: Signer> Store for MarkersStore<M, G> {
             subscriptions: false,
             pins: false,
             deliveries: false,
+            notes: false,
             concurrent: false,
         }
     }
@@ -228,5 +229,17 @@ impl<M: Markers, G: Signer> Store for MarkersStore<M, G> {
         _before: Timestamp,
     ) -> impl Future<Output = Result<(), StoreError>> + Send {
         ready(unsupported("deliveries"))
+    }
+
+    fn note(&self, _key: &Key) -> impl Future<Output = Result<Option<String>, StoreError>> + Send {
+        ready(unsupported("notes"))
+    }
+
+    fn put_note(
+        &self,
+        _key: &Key,
+        _note: &str,
+    ) -> impl Future<Output = Result<(), StoreError>> + Send {
+        ready(unsupported("notes"))
     }
 }

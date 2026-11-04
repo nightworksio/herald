@@ -192,6 +192,7 @@ pub(crate) enum Fault {
     Subscribers,
     Subscribes,
     Unsubscribes,
+    KeepsNotes,
 }
 
 pub(crate) struct Failing {
@@ -346,6 +347,17 @@ impl Store for Failing {
             _ => {}
         }
         self.inner.expire_deliveries(before).await
+    }
+
+    async fn note(&self, key: &herald_core::Key) -> Result<Option<String>, StoreError> {
+        self.inner.note(key).await
+    }
+
+    async fn put_note(&self, key: &herald_core::Key, note: &str) -> Result<(), StoreError> {
+        if self.fault == Fault::KeepsNotes {
+            return Err(broken());
+        }
+        self.inner.put_note(key, note).await
     }
 }
 
