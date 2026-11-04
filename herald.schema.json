@@ -1261,6 +1261,13 @@
             "kind": {
               "type": "string",
               "const": "sqlite"
+            },
+            "path": {
+              "description": "The database file, relative to `herald.toml`; `herald.sqlite` beside\nit where absent.",
+              "type": [
+                "string",
+                "null"
+              ]
             }
           },
           "additionalProperties": false,

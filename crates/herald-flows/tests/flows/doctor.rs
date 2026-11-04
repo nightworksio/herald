@@ -50,6 +50,11 @@ fn the_actions_cache_and_repository_variables_note_what_they_cannot_hold() {
     .store;
     let noted = doctor(&variables, &ALL);
     assert!(noted.notes[1].starts_with("Each record is a repository variable"));
+    let filed = doctor(&on("sqlite", ""), &ALL);
+    assert_eq!(
+        filed.notes[1],
+        "Every record is kept in one SQLite file, so run herald where that file outlives the run: a CI runner's disk is gone when its job ends."
+    );
 }
 
 #[test]

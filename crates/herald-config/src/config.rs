@@ -67,7 +67,7 @@ impl Config {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Store {
     /// A SQLite file.
-    Sqlite,
+    Sqlite(herald_store_sqlite::StoreOptions),
     /// A Postgres database.
     Postgres,
     /// Cloudflare D1.
@@ -122,7 +122,7 @@ impl Store {
     #[must_use]
     pub fn kind(&self) -> &'static str {
         match self {
-            Self::Sqlite => Self::SQLITE,
+            Self::Sqlite(_) => Self::SQLITE,
             Self::Postgres => Self::POSTGRES,
             Self::D1 => Self::CLOUDFLARE_D1,
             Self::Dynamodb => Self::DYNAMODB,
