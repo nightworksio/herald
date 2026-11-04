@@ -310,6 +310,8 @@ pub(crate) struct ServerFile {
     /// How many announcements it works on at once; a webhook arriving while
     /// as many more wait is answered 503. 8 where absent.
     pub(crate) jobs: Option<NonZeroUsize>,
+    /// How many connections it holds at once; 256 where absent.
+    pub(crate) connections: Option<NonZeroUsize>,
     /// The most an inbound request's body may hold; "1MiB" where absent.
     pub(crate) body: Option<Size>,
     /// How many actor documents it reads at once; 4 where absent.

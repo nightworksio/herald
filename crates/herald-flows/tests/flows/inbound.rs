@@ -334,24 +334,29 @@ fn a_store_that_cannot_answer_lets_nothing_through() {
     );
 }
 
-const ACTOR_KEY: &str = include_str!("../../../herald-native/fixtures/rsa-2048-spki.test.pem");
+pub(crate) const ACTOR_KEY: &str =
+    include_str!("../../../herald-native/fixtures/rsa-2048-spki.test.pem");
 
-const ANA: &str = "https://social.example/users/ana";
-const ANA_KEY: &str = "https://social.example/users/ana#main-key";
-const FOLLOW: &[u8] = br#"{"type":"Follow","actor":"https://social.example/users/ana"}"#;
+pub(crate) const ANA: &str = "https://social.example/users/ana";
+pub(crate) const ANA_KEY: &str = "https://social.example/users/ana#main-key";
+pub(crate) const FOLLOW: &[u8] = br#"{"type":"Follow","actor":"https://social.example/users/ana"}"#;
 /// Where the activities here are sent: herald's inbox, on its own host.
 const TO: herald_core::Addressed<'static> = herald_core::Addressed {
     target: "post /inbox",
     audience: "herald.example",
 };
 
-fn at() -> Timestamp {
+pub(crate) fn at() -> Timestamp {
     "2027-01-15T08:00:00Z".parse().unwrap()
 }
 
 /// The headers of `body` signed with `key_id` by the fake verifier's
 /// signature under the actor key, or with `signature` where it is given.
-fn activity(body: &[u8], key_id: &str, signature: Option<&str>) -> Vec<(String, String)> {
+pub(crate) fn activity(
+    body: &[u8],
+    key_id: &str,
+    signature: Option<&str>,
+) -> Vec<(String, String)> {
     use base64::Engine as _;
     use base64::engine::general_purpose::STANDARD;
     use sha2::Digest as _;
@@ -384,14 +389,14 @@ fn activity(body: &[u8], key_id: &str, signature: Option<&str>) -> Vec<(String, 
     signing(&STANDARD.encode(spelled))
 }
 
-fn borrowed(headers: &[(String, String)]) -> Vec<(&str, &str)> {
+pub(crate) fn borrowed(headers: &[(String, String)]) -> Vec<(&str, &str)> {
     headers
         .iter()
         .map(|(name, value)| (name.as_str(), value.as_str()))
         .collect()
 }
 
-fn document(owner: &str) -> String {
+pub(crate) fn document(owner: &str) -> String {
     serde_json::json!({
         "id": ANA,
         "type": "Person",

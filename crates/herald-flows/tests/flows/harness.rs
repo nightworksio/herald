@@ -193,6 +193,8 @@ pub(crate) enum Fault {
     Subscribes,
     Unsubscribes,
     KeepsNotes,
+    ReadsNotes,
+    Admits,
 }
 
 pub(crate) struct Failing {
@@ -331,6 +333,9 @@ impl Store for Failing {
         id: &str,
         at: jiff::Timestamp,
     ) -> Result<herald_ports::Admitted, StoreError> {
+        if self.fault == Fault::Admits {
+            return Err(broken());
+        }
         self.inner.admit(scheme, id, at).await
     }
 
@@ -350,6 +355,9 @@ impl Store for Failing {
     }
 
     async fn note(&self, key: &herald_core::Key) -> Result<Option<String>, StoreError> {
+        if self.fault == Fault::ReadsNotes {
+            return Err(broken());
+        }
         self.inner.note(key).await
     }
 

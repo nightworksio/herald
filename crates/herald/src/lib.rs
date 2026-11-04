@@ -847,6 +847,7 @@ impl<F: Future<Output = ()>> Keyed for Listening<'_, F> {
         };
         let limits = Limits {
             jobs: server.jobs,
+            connections: server.connections,
             body: server.body,
             poll: period(self.config.schedule.poll),
             housekeep: period(self.config.schedule.housekeep),

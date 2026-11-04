@@ -125,6 +125,7 @@ impl Forge {
         if named != Some(release) {
             return Ok(Hooked::Nothing(OTHER_EVENT));
         }
+        let event = self.event(payload)?;
         let what = self.api().event;
         let path = match self {
             Self::GitHub | Self::Forgejo => github::path(what, payload),
@@ -136,9 +137,7 @@ impl Forge {
                 reason: format!("it is not of {repository}, the repository its source names"),
             });
         }
-        Ok(self
-            .event(payload)?
-            .map_or(Hooked::Nothing(UNPUBLISHED), Hooked::Release))
+        Ok(event.map_or(Hooked::Nothing(UNPUBLISHED), Hooked::Release))
     }
 
     /// The event a release event's payload announces, as a webhook or as

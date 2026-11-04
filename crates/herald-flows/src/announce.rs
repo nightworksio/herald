@@ -260,16 +260,16 @@ impl<S: Store, C: Clock, G: Signer, H: Http> Run<'_, S, C, G, H> {
             progress.entry = progress.entry.clone().attempted(step.clone(), now);
         }
         self.write(progress).await.map_err(unlanded)?;
-        let signing = Signing {
-            signer: self.ports.signer,
-            now,
-        };
         let delivery = &self.route.config.route.delivery;
         let entry = &progress.entry;
         let sent = together(
             batch
                 .iter()
                 .map(|step| {
+                    let signing = Signing {
+                        signer: self.ports.signer,
+                        now,
+                    };
                     self.route
                         .reached
                         .send(self.http, signing, step, announcement, delivery, entry)

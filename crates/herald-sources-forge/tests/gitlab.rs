@@ -4,7 +4,7 @@
 mod gitlab {
     use herald_core::{Cursor, Kind};
     use herald_ports::{Response, Secret};
-    use herald_sources_forge::{Forge, Origin, Repository, SourceOptions, Token};
+    use herald_sources_forge::{Forge, Hooked, Origin, Repository, SourceOptions, Token};
     use herald_wire::SourceError;
     use proptest::prelude::*;
     use serde_json::{Value, json};
@@ -43,6 +43,41 @@ mod gitlab {
                 ..SourceOptions::default()
             },
         )
+    }
+
+    #[test]
+    fn a_release_hook_of_the_source_s_project_announces_its_release() {
+        let release = [("X-Gitlab-Event", "Release Hook")];
+        assert_eq!(
+            Forge::GitLab.hooked(&release, HOOK.as_bytes(), "gitlab-org/cli"),
+            Ok(Hooked::Release(
+                Forge::GitLab.event(HOOK.as_bytes()).unwrap().unwrap()
+            ))
+        );
+        let updated = {
+            let mut hook: Value = serde_json::from_str(HOOK).unwrap();
+            hook["action"] = json!("update");
+            serde_json::to_vec(&hook).unwrap()
+        };
+        assert_eq!(
+            Forge::GitLab.hooked(&release, &updated, "gitlab-org/cli"),
+            Ok(Hooked::Nothing(
+                "the release is not published, or is a draft"
+            ))
+        );
+        assert_eq!(
+            Forge::GitLab.hooked(
+                &[("X-Gitlab-Event", "Push Hook")],
+                HOOK.as_bytes(),
+                "gitlab-org/cli"
+            ),
+            Ok(Hooked::Nothing("the delivery is not of a release"))
+        );
+        assert!(
+            Forge::GitLab
+                .hooked(&release, HOOK.as_bytes(), "gitlab-org/other")
+                .is_err()
+        );
     }
 
     #[test]

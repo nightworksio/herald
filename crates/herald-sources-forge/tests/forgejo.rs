@@ -4,7 +4,7 @@
 mod forgejo {
     use herald_core::Kind;
     use herald_ports::{Response, Secret};
-    use herald_sources_forge::{Forge, Origin, Repository, SourceOptions, Token};
+    use herald_sources_forge::{Forge, Hooked, Origin, Repository, SourceOptions, Token};
     use herald_wire::SourceError;
     use proptest::prelude::*;
     use serde_json::{Value, json};
@@ -34,6 +34,34 @@ mod forgejo {
                 ..SourceOptions::default()
             },
         )
+    }
+
+    #[test]
+    fn a_webhook_named_by_either_of_forgejo_s_event_headers_announces_its_release() {
+        let event = Forge::Forgejo.event(EVENT.as_bytes()).unwrap().unwrap();
+        for header in ["X-Forgejo-Event", "X-Gitea-Event"] {
+            assert_eq!(
+                Forge::Forgejo.hooked(&[(header, "release")], EVENT.as_bytes(), "forgejo/forgejo"),
+                Ok(Hooked::Release(event.clone()))
+            );
+        }
+        assert_eq!(
+            Forge::Forgejo.hooked(
+                &[("X-Gitea-Event", "push")],
+                EVENT.as_bytes(),
+                "forgejo/forgejo"
+            ),
+            Ok(Hooked::Nothing("the delivery is not of a release"))
+        );
+        assert!(
+            Forge::Forgejo
+                .hooked(
+                    &[("X-Forgejo-Event", "release")],
+                    EVENT.as_bytes(),
+                    "other/repo"
+                )
+                .is_err()
+        );
     }
 
     #[test]

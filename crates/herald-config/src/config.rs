@@ -312,6 +312,8 @@ pub struct Server {
     /// How many announcements it works on at once; a webhook arriving while
     /// as many more wait is answered 503.
     pub jobs: usize,
+    /// How many connections it holds at once.
+    pub connections: usize,
     /// The most bytes an inbound request's body may hold.
     pub body: usize,
     /// How many actor documents it reads at once.
@@ -333,6 +335,8 @@ impl Server {
     /// How many announcements it works on at once where the config says
     /// nothing.
     pub const JOBS: usize = 8;
+    /// How many connections it holds at once where the config says nothing.
+    pub const CONNECTIONS: usize = 256;
     /// The most bytes a body may hold where the config says nothing: 1 MiB.
     pub const BODY: usize = 1 << 20;
     /// How many actor documents it reads at once where the config says
@@ -353,6 +357,7 @@ impl Default for Server {
         Self {
             listen: Self::LISTEN.to_owned(),
             jobs: Self::JOBS,
+            connections: Self::CONNECTIONS,
             body: Self::BODY,
             fetches: Self::FETCHES,
             deliveries: Self::DELIVERIES,

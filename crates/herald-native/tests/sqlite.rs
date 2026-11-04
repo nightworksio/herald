@@ -6,7 +6,7 @@ mod sqlite {
     use herald_native::NativeSqlite;
     use herald_ports::{Sql as _, Statement, StoreError, Value};
     use herald_records::{Dialect, Kept, Records as _, SqlRecords, Wrote};
-    use herald_testing::store_conformance;
+    use herald_testing::{keyring_conformance, store_conformance};
 
     fn opened(sql: NativeSqlite) -> SqlRecords<NativeSqlite> {
         pollster::block_on(SqlRecords::open(sql, Dialect::Sqlite)).unwrap()
@@ -16,6 +16,8 @@ mod sqlite {
     fn a_sqlite_database_keeps_every_record_a_store_keeps() {
         let store = Kept::new(opened(NativeSqlite::in_memory().unwrap()));
         pollster::block_on(store_conformance(&store)).unwrap();
+        let keyring = Kept::new(opened(NativeSqlite::in_memory().unwrap()));
+        pollster::block_on(keyring_conformance(&keyring)).unwrap();
     }
 
     #[test]

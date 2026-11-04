@@ -5,10 +5,11 @@
 //! task: forge webhooks, herald's ActivityPub actors and their inboxes, and
 //! health. The work a request leaves runs once it is answered, at most
 //! [`Limits::jobs`] at once, with as many again waiting; a request that
-//! would leave more is answered 503. Sources are polled, threads kept and
+//! could leave more is answered 503. At most [`Limits::connections`] are
+//! held, and each has its headers and its body read in time. Sources are polled, threads kept and
 //! keys forgotten on the config's schedule. TLS is a reverse proxy's.
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::VecDeque;
 use std::convert::Infallible;
 use std::future::Future;
@@ -36,8 +37,9 @@ use tokio::time::{Instant, Interval, MissedTickBehavior, interval_at};
 const RUN: &str = "server";
 /// How many seconds a sender is asked to wait when the work queue is full.
 const BUSY_RETRY: &str = "30";
-/// How long a connection may take to send its request's headers.
-const HEADERS_READ: Duration = Duration::from_secs(30);
+/// How long a connection may take to send a request's headers, and then
+/// its body.
+const READ: Duration = Duration::from_secs(30);
 /// What a reply in words is.
 const TEXT: &str = "text/plain; charset=utf-8";
 
@@ -61,6 +63,8 @@ pub enum Heard {
 pub struct Limits {
     /// How many pieces of work run at once; as many again may wait.
     pub jobs: usize,
+    /// How many connections are held at once; the next waits to be taken.
+    pub connections: usize,
     /// The most bytes a request's body may hold.
     pub body: usize,
     /// How often sources are polled, where they are.
@@ -98,7 +102,58 @@ impl<H: Http> Http for Capped<H> {
     }
 }
 
-type Waiting = RefCell<VecDeque<Job>>;
+/// The work requests left, waiting to run, and the places held for the
+/// work of requests still being answered.
+struct Queue {
+    jobs: RefCell<VecDeque<Job>>,
+    held: Cell<usize>,
+    most: usize,
+    queued: Notify,
+}
+
+impl Queue {
+    fn new(most: usize) -> Self {
+        Self {
+            jobs: RefCell::new(VecDeque::new()),
+            held: Cell::new(0),
+            most,
+            queued: Notify::new(),
+        }
+    }
+
+    /// A place for one more piece of work, where the queue has one.
+    fn hold(&self) -> Option<Held<'_>> {
+        if self.jobs.borrow().len() + self.held.get() >= self.most {
+            return None;
+        }
+        self.held.set(self.held.get() + 1);
+        Some(Held(self))
+    }
+
+    fn next(&self) -> Option<Job> {
+        self.jobs.borrow_mut().pop_front()
+    }
+
+    fn left(&self) -> Vec<Job> {
+        self.jobs.borrow_mut().drain(..).collect()
+    }
+}
+
+/// A place held in the queue, given up when it is filled or dropped.
+struct Held<'a>(&'a Queue);
+
+impl Held<'_> {
+    fn fill(self, job: Job) {
+        self.0.jobs.borrow_mut().push_back(job);
+        self.0.queued.notify_one();
+    }
+}
+
+impl Drop for Held<'_> {
+    fn drop(&mut self) {
+        self.0.held.set(self.0.held.get().saturating_sub(1));
+    }
+}
 
 fn replied(status: u16, kind: &'static str, body: Vec<u8>) -> hyper::Response<Full<Bytes>> {
     let mut response = hyper::Response::new(Full::new(Bytes::from(body)));
@@ -122,13 +177,12 @@ fn busy() -> hyper::Response<Full<Bytes>> {
     response
 }
 
-/// The reply to `request`, its work left waiting in `waiting` and
-/// `queued` told.
+/// The reply to `request`, its work left waiting in `queue`: a request
+/// that may leave work is answered 503 where the queue has no place for it.
 async fn answered<S, C, G, V, H, P, K>(
     serving: &Serving<'_, S, C, G, V, H, P, K>,
     request: hyper::Request<Incoming>,
-    waiting: &Waiting,
-    queued: &Notify,
+    queue: &Queue,
     limits: Limits,
 ) -> Result<hyper::Response<Full<Bytes>>, Infallible>
 where
@@ -139,11 +193,24 @@ where
     P: Http,
     K: Keyring,
 {
-    if request.method() == Method::POST && waiting.borrow().len() >= limits.jobs {
-        return Ok(busy());
-    }
+    let held = if request.method() == Method::POST {
+        let Some(held) = queue.hold() else {
+            return Ok(busy());
+        };
+        Some(held)
+    } else {
+        None
+    };
     let (parts, body) = request.into_parts();
-    let Ok(collected) = Limited::new(body, limits.body).collect().await else {
+    let Ok(read) = tokio::time::timeout(READ, Limited::new(body, limits.body).collect()).await
+    else {
+        return Ok(replied(
+            408,
+            TEXT,
+            b"the request's body was not sent in time".to_vec(),
+        ));
+    };
+    let Ok(collected) = read else {
         return Ok(replied(
             413,
             TEXT,
@@ -173,9 +240,8 @@ where
         body: &body,
     };
     let answered = answer(serving, &inbound).await;
-    if let Some(job) = answered.job {
-        waiting.borrow_mut().push_back(job);
-        queued.notify_one();
+    if let (Some(job), Some(held)) = (answered.job, held) {
+        held.fill(job);
     }
     Ok(replied(
         answered.reply.status,
@@ -188,8 +254,7 @@ where
 async fn connection<S, C, G, V, H, P, K>(
     serving: &Serving<'_, S, C, G, V, H, P, K>,
     stream: TcpStream,
-    waiting: &Waiting,
-    queued: &Notify,
+    queue: &Queue,
     limits: Limits,
 ) where
     S: Store,
@@ -199,10 +264,10 @@ async fn connection<S, C, G, V, H, P, K>(
     P: Http,
     K: Keyring,
 {
-    let service = service_fn(move |request| answered(serving, request, waiting, queued, limits));
+    let service = service_fn(move |request| answered(serving, request, queue, limits));
     let _ = http1::Builder::new()
         .timer(TokioTimer::new())
-        .header_read_timeout(HEADERS_READ)
+        .header_read_timeout(READ)
         .serve_connection(TokioIo::new(stream), service)
         .await;
 }
@@ -248,8 +313,7 @@ pub async fn serve<S, C, G, V, H, P, K>(
     if let Ok(address) = listener.local_addr() {
         heard(Heard::Listening(address));
     }
-    let waiting: Waiting = RefCell::new(VecDeque::new());
-    let queued = Notify::new();
+    let queue = Queue::new(limits.jobs);
     let mut connections = FuturesUnordered::new();
     let mut running: FuturesUnordered<Pin<Box<dyn Future<Output = Option<Heard>> + '_>>> =
         FuturesUnordered::new();
@@ -259,7 +323,7 @@ pub async fn serve<S, C, G, V, H, P, K>(
     let mut stop = pin!(stop);
     loop {
         while running.len() < limits.jobs {
-            let Some(job) = waiting.borrow_mut().pop_front() else {
+            let Some(job) = queue.next() else {
                 break;
             };
             running.push(Box::pin(async move {
@@ -268,13 +332,13 @@ pub async fn serve<S, C, G, V, H, P, K>(
         }
         tokio::select! {
             () = &mut stop => break,
-            accepted = listener.accept() => match accepted {
+            accepted = listener.accept(), if connections.len() < limits.connections => match accepted {
                 Ok((stream, _)) => {
-                    connections.push(connection(serving, stream, &waiting, &queued, limits));
+                    connections.push(connection(serving, stream, &queue, limits));
                 }
                 Err(error) => heard(Heard::Unaccepted(error.to_string())),
             },
-            () = queued.notified() => {}
+            () = queue.queued.notified() => {}
             Some(()) = connections.next(), if !connections.is_empty() => {}
             Some(done) = running.next(), if !running.is_empty() => {
                 if let Some(said) = done {
@@ -304,8 +368,7 @@ pub async fn serve<S, C, G, V, H, P, K>(
         }
     }
     drop(connections);
-    let left: Vec<Job> = waiting.borrow_mut().drain(..).collect();
-    for job in &left {
+    for job in &queue.left() {
         unworked(serving, job).await;
     }
     while let Some(done) = running.next().await {

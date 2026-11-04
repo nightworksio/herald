@@ -571,6 +571,7 @@ impl Loader<'_> {
         Server {
             listen,
             jobs: count(file.jobs, defaults.jobs),
+            connections: count(file.connections, defaults.connections),
             body: file.body.map_or(defaults.body, |body| body.0),
             fetches: count(file.fetches, defaults.fetches),
             deliveries: count(file.deliveries, defaults.deliveries),
