@@ -11,7 +11,7 @@ use crate::file::{AppFile, MarkersFile, RouteFile, ScheduleFile, TemplateFile};
 #[allow(dead_code, reason = "read only by the schema's derive")]
 enum StoreSchema {
     /// A SQLite file, on a volume or a persistent disk.
-    Sqlite {},
+    Sqlite(herald_store_sqlite::StoreOptions),
     /// A Postgres database.
     Postgres {},
     /// Cloudflare D1, through the Worker's binding.

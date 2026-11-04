@@ -16,6 +16,7 @@ herald-ports.workspace = true
 jiff.workspace = true
 ring.workspace = true
 reqwest.workspace = true
+rusqlite.workspace = true
 rustls.workspace = true
 tokio = { workspace = true, features = ["net"] }
 url.workspace = true
@@ -23,9 +24,11 @@ webpki-roots.workspace = true
 
 [dev-dependencies]
 herald-dest-discord.workspace = true
+herald-records.workspace = true
 herald-testing.workspace = true
 pollster.workspace = true
 serde_json.workspace = true
+tempfile.workspace = true
 tokio = { workspace = true, features = ["io-util", "macros", "net", "rt", "time"] }
 
 [lints]

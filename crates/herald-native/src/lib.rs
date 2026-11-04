@@ -9,6 +9,7 @@ mod random;
 mod reach;
 #[cfg(test)]
 mod serving;
+mod sqlite;
 
 pub use crypto::{RingSigner, RingVerifier};
 pub use environment::{EnvSecrets, SystemClock};
@@ -16,3 +17,4 @@ pub use http::{BuildError, ConnectError, NativeHttp};
 pub use public::{PublicHttp, public};
 pub use random::random_secret;
 pub use reach::{Reach, ReachError};
+pub use sqlite::NativeSqlite;

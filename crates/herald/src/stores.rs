@@ -2,10 +2,11 @@
 //! over the run's connections (ADR-0005).
 
 use std::collections::BTreeMap;
+use std::path::Path;
 
 use herald_config::{Config, Store};
 use herald_flows::{Connected, prepare, unserved};
-use herald_native::{EnvSecrets, RingSigner};
+use herald_native::{EnvSecrets, NativeSqlite, RingSigner};
 use herald_ports::Secrets as _;
 use herald_records::Memory;
 use herald_store_actions_cache::{ActionsCache, ActionsCacheStore, StoreOptions as CacheOptions};
@@ -13,6 +14,7 @@ use herald_store_git_branch::{GitBranch, GitBranchStore, StoreOptions as BranchO
 use herald_store_repo_variables::{
     RepoVariables, RepoVariablesStore, StoreOptions as VariablesOptions,
 };
+use herald_store_sqlite::{SqliteStore, StoreOptions as SqliteOptions};
 
 use super::{Connect, Connection, GITHUB_TOKEN, RESULTS, RUNTIME_TOKEN, Served, variable};
 
@@ -24,6 +26,8 @@ pub(crate) enum Records<'a> {
     Cache(ActionsCacheStore<'a, Connection>),
     /// In the repository's variables.
     Variables(RepoVariablesStore<Connection>),
+    /// In a SQLite file.
+    Sqlite(SqliteStore<NativeSqlite>),
     /// In the routes' own posts.
     Posts,
     /// In memory, for a dry run.
@@ -42,6 +46,7 @@ impl Records<'_> {
             Self::Branch(store) => work.over(store).await,
             Self::Cache(store) => work.over(store).await,
             Self::Variables(store) => work.over(store).await,
+            Self::Sqlite(store) => work.over(store).await,
             Self::Posts => work.over(&connected.marked(RingSigner)).await,
             Self::Memory(store) => work.over(store).await,
         }
@@ -49,7 +54,8 @@ impl Records<'_> {
 }
 
 /// The store kinds this herald keeps records in.
-pub(crate) const STORES: [&str; 4] = [
+pub(crate) const STORES: [&str; 5] = [
+    Store::SQLITE,
     Store::GIT_BRANCH,
     Store::MARKERS,
     Store::ACTIONS_CACHE,
@@ -73,6 +79,7 @@ pub(crate) async fn reached<'a>(
         Store::RepoVariables(options) => {
             Records::Variables(variables(options, vars, &secrets, connect).await?)
         }
+        Store::Sqlite(options) => Records::Sqlite(sqlite(options).await?),
         Store::Markers => Records::Posts,
         _ => return Err(unserved(&STORES)),
     };
@@ -112,6 +119,21 @@ pub(crate) async fn branch(
     );
     let http = connect(branch.api())?;
     Ok(branch.store(http))
+}
+
+/// The store in the file `options` name, as [`crate::read`] placed it.
+pub(crate) async fn sqlite(options: &SqliteOptions) -> Result<SqliteStore<NativeSqlite>, String> {
+    let file = options.file(Path::new(""));
+    let opened = |error: String| {
+        format!(
+            "the sqlite store {} could not be opened: {error}",
+            file.display()
+        )
+    };
+    let sql = NativeSqlite::open(&file).map_err(|error| opened(error.to_string()))?;
+    herald_store_sqlite::store(sql)
+        .await
+        .map_err(|error| opened(error.to_string()))
 }
 
 pub(crate) async fn cache<'a>(

@@ -263,6 +263,11 @@ impl Loader<'_> {
             return None;
         };
         let (kind, rest) = self.kinded(value, "store", &Store::KINDS)?;
+        if kind == Store::SQLITE {
+            return self
+                .typed::<herald_store_sqlite::StoreOptions>(rest, "store")
+                .map(Store::Sqlite);
+        }
         if kind == Store::GIT_BRANCH {
             return self
                 .typed::<herald_store_git_branch::StoreOptions>(rest, "store")
@@ -280,7 +285,6 @@ impl Loader<'_> {
         }
         self.typed::<NoOptions>(rest, "store")?;
         [
-            Store::Sqlite,
             Store::Postgres,
             Store::D1,
             Store::Dynamodb,

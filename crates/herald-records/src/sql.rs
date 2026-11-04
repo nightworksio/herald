@@ -1,0 +1,197 @@
+use herald_ports::{Changed, Sql, Statement, StoreError, Value};
+
+use crate::records::{Blob, Records, Wrote};
+
+/// The layout of the tables this herald keeps records in.
+const LAYOUT: i64 = 1;
+
+/// How a database numbers a statement's parameters.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Dialect {
+    /// `?1`, `?2`, as SQLite and Cloudflare D1 write them.
+    Sqlite,
+    /// `$1`, `$2`, as Postgres writes them.
+    Postgres,
+}
+
+/// Records kept one row per path in a SQL database (ADR-0005): each row's
+/// version is the database's count of writes when it was written, so a
+/// path removed and written again never takes a version back.
+#[derive(Debug)]
+pub struct SqlRecords<S> {
+    sql: S,
+    dialect: Dialect,
+}
+
+fn unavailable(error: &impl ToString) -> StoreError {
+    StoreError::Unavailable {
+        reason: error.to_string(),
+    }
+}
+
+fn corrupt(reason: &str) -> StoreError {
+    StoreError::Corrupt {
+        reason: reason.to_owned(),
+    }
+}
+
+fn text(value: &str) -> Value {
+    Value::Text(value.to_owned())
+}
+
+fn changed(answers: &[Changed], index: usize) -> u64 {
+    answers.get(index).map_or(0, |answer| answer.changed)
+}
+
+fn rows(answers: Vec<Changed>, index: usize) -> Vec<Vec<Value>> {
+    answers
+        .into_iter()
+        .nth(index)
+        .map(|answer| answer.rows)
+        .unwrap_or_default()
+}
+
+fn written(wrote: bool) -> Wrote {
+    if wrote {
+        Wrote::Written
+    } else {
+        Wrote::Conflict
+    }
+}
+
+impl<S: Sql> SqlRecords<S> {
+    /// The records `sql` keeps, in `dialect`, with their tables made where
+    /// they are missing.
+    ///
+    /// # Errors
+    ///
+    /// When the database cannot be reached, or a newer herald laid its
+    /// tables out.
+    pub async fn open(sql: S, dialect: Dialect) -> Result<Self, StoreError> {
+        let records = Self { sql, dialect };
+        let answers = records
+            .run(&[
+                ("CREATE TABLE IF NOT EXISTS herald_meta (id INTEGER PRIMARY KEY CHECK (id = 1), layout BIGINT NOT NULL, made BIGINT NOT NULL)", vec![]),
+                ("INSERT INTO herald_meta (id, layout, made) VALUES (1, ?1, 0) ON CONFLICT (id) DO NOTHING", vec![Value::Integer(LAYOUT)]),
+                ("CREATE TABLE IF NOT EXISTS herald_records (path TEXT PRIMARY KEY, body TEXT NOT NULL, version BIGINT NOT NULL)", vec![]),
+                ("SELECT layout FROM herald_meta", vec![]),
+            ])
+            .await?;
+        match rows(answers, 3).as_slice() {
+            [row] if row.as_slice() == [Value::Integer(LAYOUT)] => Ok(records),
+            [row] if matches!(row.as_slice(), [Value::Integer(layout)] if *layout > LAYOUT) => Err(
+                corrupt("a newer herald laid the database out; run that herald or a later one"),
+            ),
+            _ => Err(corrupt("the database's herald_meta table is not herald's")),
+        }
+    }
+
+    async fn run(&self, statements: &[(&str, Vec<Value>)]) -> Result<Vec<Changed>, StoreError> {
+        let statements = statements
+            .iter()
+            .map(|(sql, params)| Statement {
+                sql: match self.dialect {
+                    Dialect::Sqlite => (*sql).to_owned(),
+                    Dialect::Postgres => sql.replace('?', "$"),
+                },
+                params: params.clone(),
+            })
+            .collect();
+        self.sql
+            .transaction(statements)
+            .await
+            .map_err(|error| unavailable(&error))
+    }
+}
+
+impl<S: Sql> Records for SqlRecords<S> {
+    async fn read(&self, path: &str) -> Result<Option<Blob>, StoreError> {
+        let answers = self
+            .run(&[(
+                "SELECT body, version FROM herald_records WHERE path = ?1",
+                vec![text(path)],
+            )])
+            .await?;
+        match rows(answers, 0).as_slice() {
+            [] => Ok(None),
+            [row] => match row.as_slice() {
+                [Value::Text(body), Value::Integer(version)] => Ok(Some(Blob {
+                    token: version.to_string(),
+                    bytes: body.clone().into_bytes(),
+                })),
+                _ => Err(corrupt("a record's row is not a body and a version")),
+            },
+            _ => Err(corrupt("a path holds more than one record")),
+        }
+    }
+
+    async fn list(&self, directory: &str) -> Result<Vec<String>, StoreError> {
+        let answers = self
+            .run(&[(
+                "SELECT path FROM herald_records WHERE path >= ?1 AND path < ?2 ORDER BY path",
+                vec![
+                    text(&format!("{directory}/")),
+                    text(&format!("{directory}0")),
+                ],
+            )])
+            .await?;
+        rows(answers, 0)
+            .into_iter()
+            .map(|row| match row.as_slice() {
+                [Value::Text(path)] => Ok(path.clone()),
+                _ => Err(corrupt("a record's path is not text")),
+            })
+            .collect()
+    }
+
+    async fn write(
+        &self,
+        path: &str,
+        bytes: &[u8],
+        replacing: Option<&str>,
+    ) -> Result<Wrote, StoreError> {
+        let body = std::str::from_utf8(bytes).map_err(|_| corrupt("a record is not UTF-8 text"))?;
+        let counted = ("UPDATE herald_meta SET made = made + 1", vec![]);
+        let answers = match replacing {
+            None => {
+                self.run(&[
+                    counted,
+                    ("INSERT INTO herald_records (path, body, version) SELECT ?1, ?2, made FROM herald_meta WHERE true ON CONFLICT (path) DO NOTHING", vec![text(path), text(body)]),
+                ])
+                .await?
+            }
+            Some(token) => {
+                let Ok(version) = token.parse::<i64>() else {
+                    return Ok(Wrote::Conflict);
+                };
+                self.run(&[
+                    counted,
+                    ("UPDATE herald_records SET body = ?2, version = (SELECT made FROM herald_meta) WHERE path = ?1 AND version = ?3", vec![text(path), text(body), Value::Integer(version)]),
+                ])
+                .await?
+            }
+        };
+        Ok(written(changed(&answers, 1) == 1))
+    }
+
+    async fn remove(&self, path: &str, replacing: &str) -> Result<Wrote, StoreError> {
+        let Ok(version) = replacing.parse::<i64>() else {
+            return Ok(Wrote::Conflict);
+        };
+        let answers = self
+            .run(&[
+                (
+                    "DELETE FROM herald_records WHERE path = ?1 AND version = ?2",
+                    vec![text(path), Value::Integer(version)],
+                ),
+                (
+                    "SELECT version FROM herald_records WHERE path = ?1",
+                    vec![text(path)],
+                ),
+            ])
+            .await?;
+        Ok(written(
+            changed(&answers, 0) == 1 || rows(answers, 1).is_empty(),
+        ))
+    }
+}
