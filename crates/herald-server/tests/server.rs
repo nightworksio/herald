@@ -31,6 +31,9 @@ mod server {
     const EVENT: &str =
         include_str!("../../herald-sources-forge/fixtures/github/release-event.reference.json");
 
+    /// How long a test lets the server run before failing it.
+    const BOUND: Duration = Duration::from_secs(5);
+
     fn config() -> Config {
         load(
             "herald.toml",
@@ -94,6 +97,7 @@ body = "{{ event.body }}"
         keyring: MemoryKeyring,
         public: Capped<Gate>,
         clock: FakeClock,
+        bound: Duration,
     }
 
     impl World {
@@ -110,6 +114,7 @@ body = "{{ event.body }}"
                 keyring: MemoryKeyring::new(8),
                 public: Capped::new(http, 2),
                 clock: FakeClock::at("2027-01-15T08:00:00Z".parse().unwrap()),
+                bound: BOUND,
             }
         }
 
@@ -138,7 +143,9 @@ body = "{{ event.body }}"
                 keys: &keys,
                 webhooks: &self.webhooks,
             };
-            serve(&serving, listener, limits, heard, stop).await;
+            tokio::time::timeout(self.bound, serve(&serving, listener, limits, heard, stop))
+                .await
+                .expect("the server stopped within its bound");
         }
     }
 
@@ -263,7 +270,10 @@ body = "{{ event.body }}"
 
     #[tokio::test(start_paused = true)]
     async fn a_body_that_is_not_sent_in_time_is_refused() {
-        let world = World::new(Gate::default()).await;
+        let world = World {
+            bound: Duration::from_secs(120),
+            ..World::new(Gate::default()).await
+        };
         let (listener, address) = listening().await;
         let stop = Notify::new();
         let client = async {

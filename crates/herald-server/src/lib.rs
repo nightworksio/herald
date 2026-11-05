@@ -31,6 +31,7 @@ use hyper::server::conn::http1;
 use hyper::service::service_fn;
 use hyper::{Method, StatusCode};
 use hyper_util::rt::{TokioIo, TokioTimer};
+use jiff::Timestamp;
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{Notify, Semaphore};
@@ -317,6 +318,15 @@ fn rounds(period: Option<Duration>) -> Option<Interval> {
     })
 }
 
+/// Every key read longer ago than its refresh, forgotten.
+async fn swept<S, C: Clock, G, V, H, P, K: Keyring>(serving: &Serving<'_, S, C, G, V, H, P, K>) {
+    let now = serving.ports.clock.now();
+    let before = now
+        .checked_sub(serving.keys.refreshed)
+        .unwrap_or(Timestamp::MIN);
+    let _ = serving.keys.keyring.forget_before(before).await;
+}
+
 /// The next of `rounds`, or never where there are none.
 async fn round(rounds: &mut Option<Interval>) {
     match rounds {
@@ -406,10 +416,7 @@ pub async fn serve<S, C, G, V, H, P, K, L>(
             () = round(&mut sweeps), if !sweeping.get() => {
                 sweeping.set(true);
                 running.push(Box::pin(async {
-                    let now = serving.ports.clock.now();
-                    if let Ok(before) = now.checked_sub(serving.keys.refreshed) {
-                        let _ = serving.keys.keyring.forget_before(before).await;
-                    }
+                    swept(serving).await;
                     sweeping.set(false);
                     None
                 }));
@@ -429,9 +436,12 @@ pub async fn serve<S, C, G, V, H, P, K, L>(
 
 #[cfg(test)]
 mod tests {
+    use std::time::Duration;
+
+    use futures_util::FutureExt as _;
     use herald_flows::{Job, Verified};
 
-    use super::Queue;
+    use super::{Queue, round, rounds};
 
     fn job(body: &[u8]) -> Job {
         Job::Follow {
@@ -468,5 +478,31 @@ mod tests {
     #[test]
     fn a_queue_with_no_places_holds_none() {
         assert!(Queue::new(0).hold().is_none());
+    }
+
+    #[test]
+    fn no_period_or_a_zero_one_has_no_rounds() {
+        assert!(rounds(None).is_none());
+        assert!(rounds(Some(Duration::ZERO)).is_none());
+    }
+
+    #[test]
+    fn without_rounds_a_round_never_comes() {
+        assert!(round(&mut None).now_or_never().is_none());
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn the_first_round_comes_a_period_from_now_and_each_next_a_period_after() {
+        let period = Duration::from_secs(60);
+        let mut every = rounds(Some(period));
+        assert!(every.is_some());
+        assert!(round(&mut every).now_or_never().is_none());
+        tokio::time::advance(period - Duration::from_secs(1)).await;
+        assert!(round(&mut every).now_or_never().is_none());
+        tokio::time::advance(Duration::from_secs(1)).await;
+        assert!(round(&mut every).now_or_never().is_some());
+        assert!(round(&mut every).now_or_never().is_none());
+        tokio::time::advance(period).await;
+        assert!(round(&mut every).now_or_never().is_some());
     }
 }

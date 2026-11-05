@@ -441,11 +441,11 @@ impl<S: Store, C: Clock, G: Signer, H: Http> Run<'_, S, C, G, H> {
         let mut stop = None;
         let mut index = 0;
         for _ in 0..planned.len() {
-            let Some(step) = planned.get(index) else {
+            let Some(current) = planned.get(index) else {
                 break;
             };
             let (taken, result) = self
-                .next(&planned, index, step, &mut announcement, &mut progress)
+                .next(&planned, index, current, &mut announcement, &mut progress)
                 .await;
             index += taken;
             if let Err((unlanded, reason)) = result {
