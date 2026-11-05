@@ -42,6 +42,12 @@ key = "{KEY}"
 [destinations.quiet]
 kind = "discord"
 token = {{ secret = "HERALD_DISCORD_TOKEN" }}
+[destinations.gatewayed]
+kind = "discord"
+token = {{ secret = "HERALD_DISCORD_TOKEN" }}
+[destinations.gatewayed.interactions]
+application = "{APPLICATION}"
+via = "gateway"
 [destinations.slack]
 kind = "slack"
 token = {{ secret = "HERALD_SLACK_TOKEN" }}
@@ -116,6 +122,9 @@ body = "{{{{ event.body }}}}"
 [templates.short]
 title = "Short {{{{ event.version }}}}"
 body = "Short notes"
+[templates.broken]
+title = "{{{{ event.missing }}}}"
+body = "{{{{ event.missing }}}}"
 "#
     );
     load("herald.toml", &text, &|_| Err(String::new())).unwrap()
@@ -432,6 +441,22 @@ fn a_store_that_cannot_list_or_an_unshowable_record_is_answered_as_unavailable()
         world.interact(&discord(Command::Latest)).trouble.as_deref(),
         Some("the event has no title")
     );
+    let unrendered =
+        World::new("template = \"broken\"", Script::default()).announced("gate", &["releases"]);
+    for command in [Command::Latest, Command::Changelog] {
+        let answer = unrendered.interact(&discord(command));
+        assert_eq!(
+            said(&answer),
+            "herald could not answer just now; try again later."
+        );
+        assert!(
+            answer
+                .trouble
+                .as_deref()
+                .is_some_and(|trouble| trouble.contains("broken")),
+            "{answer:?}"
+        );
+    }
 }
 
 fn role_world(answers: &[(&str, u16, &str)]) -> World {
@@ -611,6 +636,46 @@ fn only_a_run_that_answers_commands_reads_the_secrets_it_answers_with() {
         .unwrap();
     assert_eq!(unanswering.interactions().count(), 0);
     assert!(pollster::block_on(prepared.answering(&announcing)).is_err());
+}
+
+#[test]
+fn only_the_destinations_that_take_commands_are_answered_for() {
+    let config = crate::harness::config(
+        r#"[destinations.slack]
+kind = "slack"
+token = { secret = "HERALD_DISCORD_TOKEN" }
+[destinations.matrix]
+kind = "matrix"
+homeserver = "https://matrix.example"
+token = { secret = "HERALD_DISCORD_TOKEN" }
+[destinations.synced]
+kind = "matrix"
+homeserver = "https://matrix.example"
+token = { secret = "HERALD_DISCORD_TOKEN" }
+[destinations.synced.interactions]
+via = "sync"
+[destinations.fedi]
+kind = "mastodon"
+server = "https://social.example"
+token = { secret = "HERALD_DISCORD_TOKEN" }"#,
+    );
+    let secrets = crate::harness::secrets();
+    let prepared = pollster::block_on(async {
+        prepare(&config, &secrets, &FakeSigner)
+            .await
+            .unwrap()
+            .answering(&secrets)
+            .await
+    })
+    .unwrap();
+    let connected = prepared
+        .connect(|_| Ok::<_, ()>(Script::default()))
+        .unwrap();
+    let taking: Vec<&str> = connected
+        .interactions()
+        .map(|(name, ..)| name.as_str())
+        .collect();
+    assert_eq!(taking, ["synced"]);
 }
 
 #[test]

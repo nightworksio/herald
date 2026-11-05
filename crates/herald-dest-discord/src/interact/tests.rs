@@ -143,6 +143,13 @@ fn a_subcommand_of_the_group_is_read_and_a_command_outside_it_ignored() {
     assert_eq!(asked.project.as_deref(), Some("gate"));
     let outside = interaction(2, &json!({ "name": "latest" }));
     assert_eq!(received(&grouped, &outside), Ok(Received::Ignored));
+    let another = interaction(
+        2,
+        &json!({ "name": "other", "options": [
+            { "name": "latest", "type": 1 },
+        ]}),
+    );
+    assert_eq!(received(&grouped, &another), Ok(Received::Ignored));
     let empty = interaction(2, &json!({ "name": "herald", "options": [] }));
     assert_eq!(received(&grouped, &empty), Ok(Received::Ignored));
     let unknown = interaction(
@@ -496,6 +503,7 @@ fn responses_say_working_privately_or_publicly_and_list_choices() {
 
 #[test]
 fn the_destination_says_how_it_carries_and_answers_commands() {
+    assert_eq!(interacting(r#", "via": "gateway""#).via(), Via::Gateway);
     let interacting = interacting(r#", "replies": "public""#);
     assert_eq!(interacting.via(), Via::Http);
     assert_eq!(interacting.key(), Some(KEY));

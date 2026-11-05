@@ -102,12 +102,12 @@ body = "{{{{ event.body }}}}"
             );
         }
         let secrets = config.secrets();
-        for secret in [
+        for name in [
             "HERALD_SLACK_SIGNING",
             "HERALD_MATRIX_HS",
             "HERALD_MATRIX_AS",
         ] {
-            assert!(secrets.contains(secret), "{secret}");
+            assert!(secrets.contains(name), "{name}");
         }
     }
 

@@ -59,14 +59,13 @@ impl NativeSockets {
     }
 
     fn allows(&self, url: &Url) -> bool {
-        let Some(host) = url.host_str() else {
+        let (Some(host), Some(parsed)) = (url.host_str(), url.host()) else {
             return false;
         };
-        let loopback = match url.host() {
-            Some(Host::Ipv4(address)) => address.is_loopback(),
-            Some(Host::Ipv6(address)) => address.is_loopback(),
-            Some(Host::Domain(name)) => name == "localhost",
-            None => false,
+        let loopback = match parsed {
+            Host::Ipv4(address) => address.is_loopback(),
+            Host::Ipv6(address) => address.is_loopback(),
+            Host::Domain(name) => name == "localhost",
         };
         match url.scheme() {
             "wss" => self.domains.iter().any(|domain| {
@@ -132,14 +131,7 @@ impl Socket for NativeSocket {
                 Err(_) => {
                     self.pinged = true;
                     self.heard = Instant::now();
-                    if self
-                        .stream
-                        .send(Message::Ping(Vec::new().into()))
-                        .await
-                        .is_err()
-                    {
-                        return Frame::Closed(None);
-                    }
+                    let _ = self.stream.send(Message::Ping(Vec::new().into())).await;
                     continue;
                 }
                 Ok(Some(Ok(message))) => message,

@@ -30,6 +30,7 @@ mod sessions {
     const GUILD: &str = "223456789012345678";
     const ROLE: &str = "523456789012345678";
     const TOKEN: &str = "«secret:the interaction's token»";
+    const KEY: &str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 
     /// A config whose one destination, `kind`, holds a session.
     fn config(kind: &str) -> Config {
@@ -86,6 +87,12 @@ repository = "cli/cli"
 [templates.t]
 title = "{{{{ event.project }}}} {{{{ event.version }}}}"
 body = "{{{{ event.body }}}}"
+[destinations.posted]
+kind = "discord"
+token = {{ secret = "HERALD_DISCORD_TOKEN" }}
+[destinations.posted.interactions]
+application = "{APPLICATION}"
+key = "{KEY}"
 {destination}
 "#
         );
@@ -614,6 +621,33 @@ body = "{{{{ event.body }}}}"
     }
 
     #[tokio::test(start_paused = true)]
+    async fn socket_mode_that_refuses_an_acknowledgement_or_cannot_be_asked_for_reopens() {
+        let sockets =
+            ScriptedSockets::opening(vec![Ok(vec![envelope("latest")])]).refusing_after(0);
+        let answers = Answers::of(vec![answer(
+            "/apps.connections.open",
+            200,
+            r#"{"ok": true, "url": "wss://wss-primary.slack.com/link"}"#,
+        )]);
+        let world = World::new("slack", answers, sockets.clone()).await;
+        let heard = world
+            .served(4, |line| line.contains("could not be opened"))
+            .await;
+        assert_eq!(sockets.opened(), ["wss://wss-primary.slack.com/link"]);
+        assert!(sockets.sent().is_empty(), "{heard:?}");
+        assert!(
+            heard.iter().any(|line| line.starts_with(
+                "slack: Slack's Socket Mode could not be opened: the host could not be reached: nothing scripted"
+            )),
+            "{heard:?}"
+        );
+        assert!(
+            !heard.iter().any(|line| line.starts_with("answered")),
+            "{heard:?}"
+        );
+    }
+
+    #[tokio::test(start_paused = true)]
     async fn socket_mode_waits_longer_after_each_connection_slack_does_not_greet() {
         let closed = || Ok(vec![Frame::Closed(None)]);
         let greeted = Ok(vec![
@@ -654,7 +688,7 @@ body = "{{{{ event.body }}}}"
                 200,
                 r#"{"ok": true, "url": "wss://wss-primary.slack.com/link"}"#,
             ),
-            ("«secret:the command's response URL»".to_owned(), None),
+            answer("«secret:the command's response URL»", 200, "ok"),
         ]);
         let world = World::new("slack", answers, sockets).await;
         let heard = world

@@ -1,7 +1,7 @@
 use std::cell::RefCell;
 
-use herald_core::{RouteId, Step};
-use herald_flows::{Announced, FollowError, Followed, Outcome, Stop, Worked};
+use herald_core::{Asked, Command, DestinationName, Place, RouteId, Step};
+use herald_flows::{Announced, Answer, FollowError, Followed, Interacted, Outcome, Stop, Worked};
 use herald_server::Heard;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
@@ -149,6 +149,50 @@ fn doctor_names_the_stores_a_server_cannot_keep_records_in() {
         doctored.out.contains("store.kind: keeping records in actions-cache cannot be served: this herald keeps records in sqlite, postgres, git-branch, markers or repo-variables; set [store] kind to one of them."),
         "{}",
         doctored.out
+    );
+}
+
+#[test]
+fn the_server_says_how_each_command_was_answered_and_what_its_sessions_said() {
+    let asked = Asked {
+        destination: DestinationName::new("discord"),
+        place: Place::new("323456789012345678"),
+        user: "423456789012345678".to_owned(),
+        command: Command::Latest,
+        project: None,
+        share: false,
+        toggles: false,
+        member: None,
+    };
+    let interacted = |trouble: Option<&str>, sent: Result<(), String>| {
+        said(Heard::Worked(Worked::Interacted(vec![Interacted {
+            asked: asked.clone(),
+            answer: Answer {
+                said: String::new(),
+                public: false,
+                trouble: trouble.map(ToOwned::to_owned),
+            },
+            sent,
+        }])))
+    };
+    assert_eq!(
+        interacted(None, Ok(())),
+        ["discord: latest was answered in 323456789012345678"]
+    );
+    assert_eq!(
+        interacted(None, Err("refused".to_owned())),
+        ["discord: the answer to latest could not be sent: refused"]
+    );
+    assert_eq!(
+        interacted(Some("the store is down"), Ok(())),
+        ["discord: latest could not be answered: the store is down"]
+    );
+    assert_eq!(
+        said(Heard::Session {
+            destination: DestinationName::new("slack"),
+            said: "Slack's Socket Mode could not be opened: invalid_auth".to_owned(),
+        }),
+        ["slack: Slack's Socket Mode could not be opened: invalid_auth"]
     );
 }
 

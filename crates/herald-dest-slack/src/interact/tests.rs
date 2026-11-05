@@ -239,6 +239,12 @@ fn the_destination_says_where_it_reaches_and_how_it_answers() {
     );
     assert_eq!(plain.app(), None);
     assert_eq!(plain.answering().replies, Replies::Public);
+    let socket = interacting(r#", "via": "socket", "app": {"secret": "HERALD_SLACK_APP"}"#);
+    assert_eq!(socket.via(), Via::Socket);
+    assert_eq!(
+        socket.app().map(|secret| secret.secret.as_str()),
+        Some("HERALD_SLACK_APP")
+    );
     let recorded = Interacting::new(interactions(""), Some("http://127.0.0.1:9/"));
     assert_eq!(recorded.api(), "http://127.0.0.1:9");
     assert_eq!(recorded.hooks(), "http://127.0.0.1:9");

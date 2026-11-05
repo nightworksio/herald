@@ -23,6 +23,7 @@ fn only_secure_connections_under_the_domains_and_plain_ones_on_loopback_are_allo
     assert!(allowed("ws://localhost:9000"));
     assert!(!allowed("ws://10.0.0.1"));
     assert!(!allowed("wss://127.0.0.1"));
+    assert!(!allowed("data:text/plain,discord.gg"));
 }
 
 #[test]

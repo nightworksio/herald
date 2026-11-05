@@ -150,4 +150,8 @@ fn a_disconnect_reconnects_a_greeting_is_noted_and_noise_asks_nothing() {
         }
     );
     assert_eq!(interacting().envelope(&destination(), "not json"), quiet);
+    assert_eq!(
+        interacting().envelope(&destination(), r#"{"type": "slash_commands"}"#),
+        quiet
+    );
 }

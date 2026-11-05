@@ -196,6 +196,13 @@ token = {{ secret = "T" }}
 [destinations.quiet]
 kind = "discord"
 token = {{ secret = "T" }}
+[destinations.hushed]
+kind = "slack"
+token = {{ secret = "T" }}
+[destinations.still]
+kind = "matrix"
+homeserver = "https://matrix.example"
+token = {{ secret = "T" }}
 "#
     );
     load("herald.toml", &text, &|_| Err(String::new())).unwrap()

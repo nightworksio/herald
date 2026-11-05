@@ -121,6 +121,13 @@ fn a_discord_interaction_is_verified_then_pinged_completed_or_deferred_with_its_
             .status,
         400
     );
+    let garbled = b"not json";
+    assert_eq!(
+        post(&world, path, &signed_discord(garbled), garbled)
+            .reply
+            .status,
+        400
+    );
 }
 
 fn form(text: &str) -> Vec<u8> {
@@ -170,6 +177,7 @@ fn commands_for_a_destination_taking_none_over_http_are_not_served() {
     let world = world();
     for path in [
         "/interactions/quiet",
+        "/interactions/gatewayed",
         "/interactions/socket",
         "/interactions/nobody",
         "/interactions/matrix",

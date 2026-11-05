@@ -130,6 +130,13 @@ fn the_project_named_or_the_only_one_is_chosen() {
 }
 
 #[test]
+fn a_project_announced_here_clones_as_it_copies() {
+    let gate = [latest("gate", &["a"])];
+    let here = every(&gate)[0];
+    assert_eq!(Clone::clone(&here), here);
+}
+
+#[test]
 fn completions_hold_what_was_typed_those_starting_with_it_first_at_most_twenty_five() {
     let every_latest = [
         latest("php-mutation-gate", &["a"]),

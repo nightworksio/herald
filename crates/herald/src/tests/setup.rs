@@ -164,6 +164,14 @@ fn a_destination_that_cannot_be_chosen_or_has_no_bot_is_named() {
         unknown.err,
         "no discord destination named \"nope\" takes commands; the ones that do are discord\n"
     );
+    let twice = config(&format!(
+        "[destinations.other]\nkind = \"discord\"\ntoken = {{ secret = \"HERALD_DISCORD_TOKEN\" }}\n[destinations.other.interactions]\napplication = \"{APPLICATION}\"\nkey = \"{KEY}\""
+    ));
+    let both = herald(&setup(&twice), &world, &["discord", "commands"]);
+    assert_eq!(
+        both.err,
+        "more than one discord destination takes commands; name one of discord, other with --destination\n"
+    );
     let many = herald(&setup(&config("")), &world, &["slack", "manifest"]);
     assert_eq!(
         many.err,
@@ -185,11 +193,11 @@ fn a_destination_that_cannot_be_chosen_or_has_no_bot_is_named() {
     );
     let mut unset = setup(&config(""));
     unset.vars.remove("HERALD_DISCORD_TOKEN");
-    let secretless = herald(&unset, &world, &["discord", "commands"]);
+    let missing = herald(&unset, &world, &["discord", "commands"]);
     assert!(
-        secretless.err.contains("HERALD_DISCORD_TOKEN"),
+        missing.err.contains("HERALD_DISCORD_TOKEN"),
         "{}",
-        secretless.err
+        missing.err
     );
     let unreachable = config("").replace(
         "token = { secret = \"HERALD_DISCORD_TOKEN\" }\n[destinations.discord.interactions]",
@@ -332,6 +340,17 @@ fn a_matrix_registration_holds_two_new_tokens_and_reaches_herald_by_destination(
             &mut out
         ),
         Err("the system's random generator failed, so no token was made".to_owned())
+    );
+    assert!(
+        setup::matrix(
+            &config,
+            Some("nope"),
+            "https://herald.example",
+            &|| Some("t".to_owned()),
+            &mut out
+        )
+        .unwrap_err()
+        .starts_with("no matrix destination named \"nope\" takes commands")
     );
     assert!(
         setup::matrix(

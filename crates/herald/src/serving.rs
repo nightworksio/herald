@@ -17,7 +17,7 @@ use herald_server::{Capped, Heard, Limits, READ, serve};
 
 use super::output::{chored, polled, report, say, why};
 use super::stores::{Commands, reached};
-use super::{Connect, Connection, DONE, LISTEN, STOPPED, Served};
+use super::{Connect, Connection, DONE, LISTEN, Served};
 
 /// A server's work, over whichever store the config names, and the keys
 /// it checks activities with.
@@ -26,6 +26,7 @@ struct Listening<'a, F> {
     connected: &'a Connected<Connection>,
     webhooks: &'a Webhooks,
     public: &'a Capped<Connection>,
+    sockets: NativeSockets,
     listener: tokio::net::TcpListener,
     out: RefCell<&'a mut dyn Write>,
     stop: F,
@@ -87,17 +88,15 @@ impl<F: Future<Output = ()>> Listening<'_, F> {
                 say(&mut **out, &line);
             }
         };
-        let sockets = match NativeSockets::under(SESSIONS) {
-            Ok(sockets) => sockets.silent_for(period(Some(server.silence)).unwrap_or_default()),
-            Err(error) => {
-                say(
-                    &mut **out.borrow_mut(),
-                    &format!("no session can be opened: {error}"),
-                );
-                return STOPPED;
-            }
-        };
-        serve(&serving, self.listener, &sockets, limits, &heard, self.stop).await;
+        serve(
+            &serving,
+            self.listener,
+            &self.sockets,
+            limits,
+            &heard,
+            self.stop,
+        )
+        .await;
         DONE
     }
 }
@@ -174,11 +173,16 @@ pub(crate) async fn serving(
         .await
         .map_err(|error| error.to_string())?;
     let public = Capped::new(connect(PUBLIC)?, config.server.fetches);
+    let silence = std::time::Duration::try_from(config.server.silence).unwrap_or_default();
+    let sockets = NativeSockets::under(SESSIONS)
+        .map_err(|error| format!("no session can be opened: {error}"))?
+        .silent_for(silence);
     let listening = Listening {
         config,
         connected: &connected,
         webhooks: &webhooks,
         public: &public,
+        sockets,
         listener,
         out: RefCell::new(out),
         stop,

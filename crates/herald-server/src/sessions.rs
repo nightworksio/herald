@@ -10,6 +10,7 @@ use std::future::Future;
 use std::pin::{Pin, pin};
 use std::time::Duration;
 
+use futures_util::future::OptionFuture;
 use futures_util::stream::{FuturesUnordered, StreamExt};
 use herald_core::{Asked, DestinationName};
 use herald_dest_discord::{self as discord, Effect, Gateway};
@@ -207,7 +208,7 @@ impl<'s, S: Store, C, G, V, H: Http, P, K> Session<'s, '_, S, C, G, V, H, P, K> 
                             break next;
                         }
                     }
-                    () = beat(&mut beats) => match gateway.beat() {
+                    Some(_) = OptionFuture::from(beats.as_mut().map(Interval::tick)) => match gateway.beat() {
                         Effect::Send(frame) => {
                             if socket.send(frame).await.is_err() {
                                 break None;
@@ -370,14 +371,4 @@ fn beating(every: jiff::SignedDuration) -> Interval {
     let mut beats = interval_at(Instant::now() + every, every);
     beats.set_missed_tick_behavior(MissedTickBehavior::Delay);
     beats
-}
-
-/// The next beat, or never where none is due.
-async fn beat(beats: &mut Option<Interval>) {
-    match beats {
-        Some(beats) => {
-            beats.tick().await;
-        }
-        None => std::future::pending().await,
-    }
 }
