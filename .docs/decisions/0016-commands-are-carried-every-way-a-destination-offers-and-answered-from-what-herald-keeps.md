@@ -39,7 +39,8 @@ on where a channel carries several, and who sees each answer.
 
 3. **A command is answered first and worked after.** An endpoint answers a
    Discord interaction as being worked and edits that answer once it is
-   worked; a session defers it itself. Slack and Matrix are answered at once
+   worked; a session defers it itself as it takes it up. Its work is queued
+   with every other request's, within `herald server`'s limits. Slack and Matrix are answered at once
    and sent the answer once it is worked (ADR-0014). Autocompletion is
    answered at once.
 
@@ -50,13 +51,15 @@ on where a channel carries several, and who sees each answer.
    and the next run of the same event keeps it. `latest` answers the title
    of the route's template, linked to the release, with its day;
    `changelog` answers the template's body and a link to the changelog or
-   the release. `prereleases` and `template` change both. The markers store
-   keeps no such record, so a config answering either over it is refused.
+   the release. `prereleases` and `template` change both. Every command
+   finds what was announced where it was given in that record. The markers
+   store keeps none, so a config answering any command over it is refused.
 
 5. **A command acts on the project it names, or the only one announced
-   where it was given.** A Discord command completes the projects announced
-   in its channel. Where several are announced and none is named, herald
-   names them.
+   where it was given.** A command given in a Discord thread, a forum's post
+   among them, is given in the channel the thread is in too. A Discord
+   command completes the projects announced in its channel. Where several
+   are announced and none is named, herald names them.
 
 6. **Subscribing is by Discord's roles or herald's store.**
    - On Discord, a route's `subscribe = { role = "<id>" }` names the opt-in
@@ -71,7 +74,8 @@ on where a channel carries several, and who sees each answer.
 7. **Answers to `subscribe` and `unsubscribe` are the asker's alone.**
    `latest` and `changelog` are too unless `replies = "public"`, or the
    asker asks to `share`. Matrix has no answer one member sees alone, so it
-   answers in a thread under the command.
+   answers in a thread under the command, or in the thread the command was
+   given in.
 
 8. **Setting a destination up is a command of its own.**
    `herald discord commands` registers the commands, in one server or in

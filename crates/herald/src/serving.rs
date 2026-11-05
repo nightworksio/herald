@@ -16,7 +16,7 @@ use herald_records::MemoryKeyring;
 use herald_server::{Capped, Heard, Limits, READ, serve};
 
 use super::output::{chored, polled, report, say, why};
-use super::stores::reached;
+use super::stores::{Commands, reached};
 use super::{Connect, Connection, DONE, LISTEN, STOPPED, Served};
 
 /// A server's work, over whichever store the config names, and the keys
@@ -88,7 +88,7 @@ impl<F: Future<Output = ()>> Listening<'_, F> {
             }
         };
         let sockets = match NativeSockets::under(SESSIONS) {
-            Ok(sockets) => sockets,
+            Ok(sockets) => sockets.silent_for(period(Some(server.silence)).unwrap_or_default()),
             Err(error) => {
                 say(
                     &mut **out.borrow_mut(),
@@ -133,7 +133,10 @@ fn answered(interacted: &Interacted) -> String {
         (None, Err(error)) => {
             format!("{destination}: the answer to {command} could not be sent: {error}")
         }
-        (None, Ok(())) => format!("{destination}: {command} was answered in {}", asked.place),
+        (None, Ok(())) => format!(
+            "{destination}: {command} was answered in {}",
+            asked.place.id
+        ),
     }
 }
 
@@ -165,7 +168,7 @@ pub(crate) async fn serving(
     let listener = tokio::net::TcpListener::bind(&address)
         .await
         .map_err(|error| format!("herald could not listen on {address}: {error}"))?;
-    let (records, connected) = reached(config, vars, connect).await?;
+    let (records, connected) = reached(config, vars, connect, Commands::Answered).await?;
     let secrets = EnvSecrets::from_vars(vars.clone());
     let webhooks = webhooks(config, &secrets)
         .await

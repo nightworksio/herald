@@ -2,10 +2,10 @@
 //! driver serves.
 //!
 //! [`serve`] answers each request through [`herald_flows::answer`] on one
-//! task: forge webhooks, herald's ActivityPub actors and their inboxes, and
-//! health. The work a request leaves runs once it is answered, at most
-//! [`Limits::jobs`] at once, with as many again waiting; a request that
-//! could leave more is answered 503. At most [`Limits::connections`] are
+//! task: forge webhooks, commands, herald's ActivityPub actors and their
+//! inboxes, and health. The work a request or a command a session carries
+//! leaves runs once it is answered, at most [`Limits::jobs`] at once, with
+//! as many again waiting; a request that could leave more is answered 503. At most [`Limits::connections`] are
 //! held, each for one request whose headers and body are read in time.
 //! One round of each kind runs at a time. Sources are polled, threads kept and
 //! keys forgotten on the config's schedule. TLS is a reverse proxy's.
@@ -393,7 +393,7 @@ pub async fn serve<S, C, G, V, H, P, K, L, So>(
     let mut stop = pin!(stop);
     let session = Session {
         serving,
-        jobs: limits.jobs,
+        queue: &queue,
         heard,
     };
     let mut sessions = pin!(session.held(sockets));

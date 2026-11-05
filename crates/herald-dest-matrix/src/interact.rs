@@ -4,7 +4,7 @@
 
 use std::fmt;
 
-use herald_core::{Answering, Asked, Command, DestinationName, Text as Written, digest};
+use herald_core::{Answering, Asked, Command, DestinationName, Place, Text as Written, digest};
 use herald_ports::{Method, Request, Response, Secret, Text};
 use serde_json::{Value, json};
 
@@ -14,6 +14,8 @@ use crate::request::segment;
 /// The word after a project that asks for the answer to be posted to the
 /// room rather than in a thread.
 const SHARE: &str = "share";
+/// The relation of a message in a thread to the message it started under.
+const THREAD: &str = "m.thread";
 /// How long a sync waits for an event before it answers with none, in
 /// milliseconds: within the thirty seconds herald waits for any answer.
 pub const SYNC_WAIT: u32 = 20_000;
@@ -37,6 +39,9 @@ pub struct Replying {
     pub room: String,
     /// The message that gave the command.
     pub event: String,
+    /// The thread the message was given in, by the message it started
+    /// under, where it was given in one.
+    pub thread: Option<String>,
 }
 
 /// What a sync returned: the commands given since the last, and where the
@@ -60,6 +65,12 @@ impl fmt::Display for Unread {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str("the body is not a Matrix transaction or sync")
     }
+}
+
+/// Whether `id` is a Matrix id with the `sigil` its kind starts with, and
+/// a name after it.
+fn named(id: &str, sigil: char) -> bool {
+    id.strip_prefix(sigil).is_some_and(|name| !name.is_empty())
 }
 
 fn text<'a>(value: &'a Value, key: &str) -> Option<&'a str> {
@@ -166,7 +177,10 @@ impl Interacting {
         if text(content, "msgtype") != Some("m.text") {
             return None;
         }
-        let sender = text(event, "sender")?;
+        if !named(room, '!') {
+            return None;
+        }
+        let sender = text(event, "sender").filter(|sender| named(sender, '@'))?;
         if sender
             .strip_prefix('@')
             .and_then(|user| user.split_once(':'))
@@ -190,7 +204,7 @@ impl Interacting {
         Some((
             Asked {
                 destination: destination.clone(),
-                place: room.to_owned(),
+                place: Place::new(room),
                 user: sender.to_owned(),
                 command,
                 project: project.map(ToOwned::to_owned),
@@ -201,6 +215,11 @@ impl Interacting {
             Replying {
                 room: room.to_owned(),
                 event: text(event, "event_id")?.to_owned(),
+                thread: content
+                    .get("m.relates_to")
+                    .filter(|relates| text(relates, "rel_type") == Some(THREAD))
+                    .and_then(|relates| text(relates, "event_id"))
+                    .map(ToOwned::to_owned),
             },
         ))
     }
@@ -232,20 +251,26 @@ impl Interacting {
     }
 
     /// The requests that answer the command `replying` names with `parts`:
-    /// in a thread under it unless `public`, else in the room as a reply to
-    /// it. Each is sent once whatever retries it, by a transaction id drawn
-    /// from the command and the part.
+    /// as a reply to it in the thread it was given in, where it was given in
+    /// one, else in a thread under it unless `public`, else in the room as a
+    /// reply to it. Each is sent once whatever retries it, by a transaction
+    /// id drawn from the command and the part.
     #[must_use]
     pub fn answered(&self, replying: &Replying, parts: &[Written], public: bool) -> Vec<Request> {
-        let relates = if public {
-            json!({ "m.in_reply_to": { "event_id": replying.event } })
-        } else {
-            json!({
-                "rel_type": "m.thread",
+        let relates = match (&replying.thread, public) {
+            (Some(thread), _) => json!({
+                "rel_type": THREAD,
+                "event_id": thread,
+                "is_falling_back": false,
+                "m.in_reply_to": { "event_id": replying.event },
+            }),
+            (None, true) => json!({ "m.in_reply_to": { "event_id": replying.event } }),
+            (None, false) => json!({
+                "rel_type": THREAD,
                 "event_id": replying.event,
                 "is_falling_back": true,
                 "m.in_reply_to": { "event_id": replying.event },
-            })
+            }),
         };
         let drawn: String = digest(&replying.event).chars().take(32).collect();
         parts

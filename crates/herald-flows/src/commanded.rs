@@ -26,11 +26,10 @@ const JSON: &str = "application/json";
 /// What a homeserver is answered for a call that went through.
 const EMPTY: &str = "{}";
 
-fn job(destination: &DestinationName, asked: Vec<(Asked, Replying)>, deferred: bool) -> Job {
+fn job(destination: &DestinationName, asked: Vec<(Asked, Replying)>) -> Job {
     Job::Interact {
         destination: destination.clone(),
         asked,
-        deferred,
     }
 }
 
@@ -117,11 +116,7 @@ async fn interaction<S: Store, C: Clock, G, V: Verifier, H, P, K>(
                 .replies
                 .public(asked.command, asked.share);
             Answered {
-                job: Some(job(
-                    destination,
-                    vec![(asked, Replying::Discord(replying))],
-                    true,
-                )),
+                job: Some(job(destination, vec![(asked, Replying::Discord(replying))])),
                 ..replied(200, JSON, discord::deferred(public))
             }
         }
@@ -142,11 +137,7 @@ async fn slash<S: Store, C: Clock, G, V: Verifier, H, P, K>(
     }
     match interacting.received(destination, inbound.body) {
         Ok(slack::Received::Asked { asked, replying }) => Answered {
-            job: Some(job(
-                destination,
-                vec![(asked, Replying::Slack(replying))],
-                true,
-            )),
+            job: Some(job(destination, vec![(*asked, Replying::Slack(replying))])),
             ..replied(200, JSON, "")
         },
         Ok(slack::Received::Usage) => replied(200, JSON, interacting.usage()),
@@ -192,7 +183,7 @@ pub(crate) async fn appserviced<S: Store, C: Clock, G, V: Verifier, H, P, K>(
     match (inbound.method, parts.as_slice()) {
         ("PUT", ["_matrix", "app", "v1", "transactions", transaction]) => {
             let delivery = Verified {
-                delivery: Some((*transaction).to_owned()),
+                delivery: Some(format!("{name}/{transaction}")),
                 signer: None,
             };
             match admitted(serving.ports.store, Scheme::Matrix, &delivery, now).await {
@@ -209,7 +200,6 @@ pub(crate) async fn appserviced<S: Store, C: Clock, G, V: Verifier, H, P, K>(
                             .into_iter()
                             .map(|(asked, replying)| (asked, Replying::Matrix(replying)))
                             .collect(),
-                        true,
                     )),
                     ..replied(200, JSON, EMPTY)
                 },

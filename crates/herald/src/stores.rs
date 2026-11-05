@@ -77,11 +77,23 @@ pub(crate) const STORES: [&str; 6] = [
     Store::REPO_VARIABLES,
 ];
 
-/// The run's records, and every route and source connected.
+/// Whether a run answers the commands members give.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Commands {
+    /// It answers them, so it reads the secrets each destination answers
+    /// with.
+    Answered,
+    /// It answers none, and reads none of those secrets.
+    Unanswered,
+}
+
+/// The run's records, and every route and source connected, with every
+/// destination that takes commands where the run answers them.
 pub(crate) async fn reached<'a>(
     config: &Config,
     vars: &BTreeMap<String, String>,
     connect: Connect<'a>,
+    commands: Commands,
 ) -> Result<(Records<'a>, Connected<Connection>), String> {
     let secrets = EnvSecrets::from_vars(vars.clone());
     let records = match &config.store {
@@ -102,6 +114,13 @@ pub(crate) async fn reached<'a>(
     let prepared = prepare(config, &secrets, &RingSigner)
         .await
         .map_err(|error| error.to_string())?;
+    let prepared = match commands {
+        Commands::Answered => prepared
+            .answering(&secrets)
+            .await
+            .map_err(|error| error.to_string())?,
+        Commands::Unanswered => prepared,
+    };
     Ok((records, prepared.connect(connect)?))
 }
 

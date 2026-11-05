@@ -19,7 +19,7 @@ ring.workspace = true
 reqwest.workspace = true
 rusqlite.workspace = true
 rustls.workspace = true
-tokio = { workspace = true, features = ["net", "rt", "sync"] }
+tokio = { workspace = true, features = ["net", "rt", "sync", "time"] }
 tokio-postgres.workspace = true
 tokio-tungstenite = { version = "0.30", default-features = false, features = ["connect", "__rustls-tls"] }
 tokio-postgres-rustls.workspace = true

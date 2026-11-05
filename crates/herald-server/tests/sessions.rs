@@ -27,6 +27,8 @@ mod sessions {
 
     const APPLICATION: &str = "123456789012345678";
     const CHANNEL: &str = "323456789012345678";
+    const GUILD: &str = "223456789012345678";
+    const ROLE: &str = "523456789012345678";
     const TOKEN: &str = "«secret:the interaction's token»";
 
     /// A config whose one destination, `kind`, holds a session.
@@ -44,7 +46,8 @@ id = "discorded"
 sources = ["gate"]
 destination = "discord"
 channel = "{CHANNEL}"
-template = "t""#
+template = "t"
+subscribe = {{ role = "{ROLE}" }}"#
             ),
             "slack" => r#"[destinations.slack]
 kind = "slack"
@@ -107,7 +110,7 @@ body = "{{{{ event.body }}}}"
     #[derive(Debug, Clone, Default)]
     struct Answers {
         script: Arc<Mutex<VecDeque<Scripted>>>,
-        seen: Arc<Mutex<Vec<String>>>,
+        seen: Arc<Mutex<Vec<(String, tokio::time::Instant)>>>,
     }
 
     impl Answers {
@@ -119,14 +122,38 @@ body = "{{{{ event.body }}}}"
         }
 
         fn seen(&self) -> Vec<String> {
-            self.seen.lock().unwrap().clone()
+            self.seen
+                .lock()
+                .unwrap()
+                .iter()
+                .map(|(line, _)| line.clone())
+                .collect()
+        }
+
+        /// How long after the first request holding `path` each later one
+        /// was sent, in whole seconds.
+        fn spaced(&self, path: &str) -> Vec<u64> {
+            let at: Vec<tokio::time::Instant> = self
+                .seen
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|(line, _)| line.contains(path))
+                .map(|(_, at)| *at)
+                .collect();
+            at.windows(2)
+                .map(|pair| pair[1].duration_since(pair[0]).as_secs())
+                .collect()
         }
     }
 
     impl Http for Answers {
         async fn send(&self, request: Request) -> Result<Response, HttpError> {
             let line = format!("{} {}", request.method.as_str(), request.url.redacted());
-            self.seen.lock().unwrap().push(line.clone());
+            self.seen
+                .lock()
+                .unwrap()
+                .push((line.clone(), tokio::time::Instant::now()));
             let next = {
                 let mut script = self.script.lock().unwrap();
                 let found = script
@@ -177,7 +204,12 @@ body = "{{{{ event.body }}}}"
     impl World {
         async fn new(kind: &str, answers: Answers, sockets: ScriptedSockets) -> Self {
             let config = config(kind);
-            let prepared = prepare(&config, &secrets(), &FakeSigner).await.unwrap();
+            let prepared = prepare(&config, &secrets(), &FakeSigner)
+                .await
+                .unwrap()
+                .answering(&secrets())
+                .await
+                .unwrap();
             let connected = prepared.connect(|_| Ok::<_, ()>(answers.clone())).unwrap();
             let store = FakeStore::default();
             let shown = Shown {
@@ -283,6 +315,19 @@ body = "{{{{ event.body }}}}"
             "application_id": APPLICATION,
             "channel_id": CHANNEL,
             "user": { "id": "423456789012345678" },
+            "data": data,
+        }}))
+    }
+
+    fn in_guild(kind: u64, data: &Value) -> Frame {
+        text(&json!({ "op": 0, "s": 2, "t": "INTERACTION_CREATE", "d": {
+            "id": "900",
+            "token": "tok",
+            "type": kind,
+            "application_id": APPLICATION,
+            "channel_id": CHANNEL,
+            "guild_id": GUILD,
+            "member": { "user": { "id": "423456789012345678" }, "roles": [] },
             "data": data,
         }}))
     }
@@ -445,6 +490,90 @@ body = "{{{{ event.body }}}}"
         assert!(stopped < answered, "{heard:?}");
     }
 
+    #[tokio::test(start_paused = true)]
+    async fn the_gateway_defers_a_command_before_its_work_is_done() {
+        let sockets = ScriptedSockets::opening(vec![Ok(vec![
+            hello(60_000),
+            ready(),
+            in_guild(2, &json!({ "name": "subscribe" })),
+        ])]);
+        let answers = Answers::of(vec![
+            answer(&format!("/interactions/900/{TOKEN}/callback"), 204, ""),
+            answer(&format!("/guilds/{GUILD}/members/"), 204, ""),
+            answer(
+                &format!("/webhooks/{APPLICATION}/{TOKEN}/messages/@original"),
+                200,
+                "{}",
+            ),
+        ]);
+        let world = World::new("discord", answers, sockets).await;
+        let heard = world.served(4, |line| line.starts_with("answered")).await;
+        assert!(
+            heard.contains(&"answered subscribe: Ok(())".to_owned()),
+            "{heard:?}"
+        );
+        let seen = world.answers.seen();
+        assert!(seen[0].ends_with("/callback"), "{seen:?}");
+        assert!(
+            seen[1].starts_with("PUT ") && seen[1].contains("/roles/"),
+            "{seen:?}"
+        );
+        assert!(seen[2].contains("@original"), "{seen:?}");
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_command_the_gateway_cannot_defer_is_said_and_not_worked() {
+        let sockets = ScriptedSockets::opening(vec![Ok(vec![
+            hello(60_000),
+            interaction(2, &json!({ "name": "latest" })),
+        ])]);
+        let world = World::new("discord", Answers::default(), sockets).await;
+        let heard = world
+            .served(4, |line| line.contains("could not be deferred"))
+            .await;
+        assert!(
+            heard.iter().any(|line| line
+                .starts_with("discord: latest was not answered: it could not be deferred: ")),
+            "{heard:?}"
+        );
+        assert_eq!(world.answers.seen().len(), 1);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_command_taken_up_just_before_the_gateway_is_lost_is_deferred_while_it_reconnects() {
+        let sockets = ScriptedSockets::opening(vec![
+            Ok(vec![
+                hello(60_000),
+                interaction(2, &json!({ "name": "latest" })),
+                Frame::Closed(None),
+            ]),
+            Err(HttpError::TimedOut),
+        ]);
+        let answers = Answers::of(vec![
+            answer(&format!("/interactions/900/{TOKEN}/callback"), 204, ""),
+            answer(
+                &format!("/webhooks/{APPLICATION}/{TOKEN}/messages/@original"),
+                200,
+                "{}",
+            ),
+        ]);
+        let world = World::new("discord", answers, sockets).await;
+        let answered = std::cell::Cell::new(false);
+        let unreached = std::cell::Cell::new(false);
+        let heard = world
+            .served(4, |line| {
+                answered.set(answered.get() || line.starts_with("answered"));
+                unreached.set(unreached.get() || line.contains("could not be reached"));
+                answered.get() && unreached.get()
+            })
+            .await;
+        let answered = heard.iter().position(|line| line.starts_with("answered"));
+        let unreached = heard
+            .iter()
+            .position(|line| line.contains("could not be reached"));
+        assert!(answered < unreached, "{heard:?}");
+    }
+
     fn envelope(text: &str) -> Frame {
         Frame::Text(
             json!({ "envelope_id": "e1", "type": "slash_commands", "payload": {
@@ -482,6 +611,37 @@ body = "{{{{ event.body }}}}"
         assert_eq!(sockets.opened(), ["wss://wss-primary.slack.com/link"]);
         assert_eq!(sockets.sent(), [r#"{"envelope_id":"e1"}"#]);
         assert!(heard.contains(&"slack: Slack's Socket Mode could not be opened: Slack opened no Socket Mode connection: invalid_auth".to_owned()), "{heard:?}");
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn socket_mode_waits_longer_after_each_connection_slack_does_not_greet() {
+        let closed = || Ok(vec![Frame::Closed(None)]);
+        let greeted = Ok(vec![
+            Frame::Text(r#"{"type": "hello"}"#.to_owned()),
+            Frame::Closed(None),
+        ]);
+        let sockets = ScriptedSockets::opening(vec![closed(), closed(), greeted, closed()]);
+        let opening = || {
+            answer(
+                "/apps.connections.open",
+                200,
+                r#"{"ok": true, "url": "wss://wss-primary.slack.com/link"}"#,
+            )
+        };
+        let answers = Answers::of(vec![
+            opening(),
+            opening(),
+            opening(),
+            opening(),
+            answer(
+                "/apps.connections.open",
+                200,
+                r#"{"ok": false, "error": "invalid_auth"}"#,
+            ),
+        ]);
+        let world = World::new("slack", answers, sockets).await;
+        world.served(4, |line| line.contains("invalid_auth")).await;
+        assert_eq!(world.answers.spaced("/apps.connections.open"), [1, 2, 1, 2]);
     }
 
     #[tokio::test(start_paused = true)]

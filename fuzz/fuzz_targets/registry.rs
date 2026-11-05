@@ -16,8 +16,15 @@ const REGISTRIES: [Registry; 4] = [
 ];
 
 fuzz_target!(|bytes: &[u8]| {
-    let response = Response { status: 200, headers: Vec::new(), body: bytes.to_vec() };
-    let options = RegistryOptions { package: "fuzzed/package".to_owned(), ..RegistryOptions::default() };
+    let response = Response {
+        status: 200,
+        headers: Vec::new(),
+        body: bytes.to_vec(),
+    };
+    let options = RegistryOptions {
+        package: "fuzzed/package".to_owned(),
+        ..RegistryOptions::default()
+    };
     for registry in REGISTRIES {
         let package = Package::new(registry, &options);
         if let Ok(polled) = package.versions(&response) {
@@ -25,7 +32,10 @@ fuzz_target!(|bytes: &[u8]| {
             for event in &polled.events {
                 let identity = event.identity().as_str();
                 assert!(identity.contains("/fuzzed/package/"), "{identity}");
-                assert!(identity.ends_with(event.version().unwrap_or_default()), "{identity}");
+                assert!(
+                    identity.ends_with(event.version().unwrap_or_default()),
+                    "{identity}"
+                );
             }
         }
     }

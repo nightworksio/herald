@@ -37,7 +37,7 @@ fn asked(text: &str) -> Asked {
     match received(&form(text)) {
         Ok(Received::Asked { asked, replying }) => {
             assert_eq!(replying.url.expose(), HOOK);
-            asked
+            *asked
         }
         other => panic!("{other:?}"),
     }
@@ -49,7 +49,7 @@ fn a_slash_command_is_read_with_its_project_and_share() {
         asked("latest herald share"),
         Asked {
             destination: destination(),
-            place: "C0123456789".to_owned(),
+            place: Place::new("C0123456789"),
             user: "U0123456789".to_owned(),
             command: Command::Latest,
             project: Some("herald".to_owned()),
@@ -97,6 +97,12 @@ fn another_slash_command_is_ignored_and_a_form_without_one_unread() {
 }
 
 #[test]
+fn slack_checking_the_endpoint_s_certificate_is_answered_and_nothing_more() {
+    assert_eq!(received("ssl_check=1&token=t"), Ok(Received::Ignored));
+    assert_eq!(received("ssl_check=0"), Err(Unread::NotACommand));
+}
+
+#[test]
 fn a_command_missing_its_place_or_answered_elsewhere_than_slack_is_unread() {
     for (field, value) in [
         ("channel_id", "C0123456789"),
@@ -108,6 +114,8 @@ fn a_command_missing_its_place_or_answered_elsewhere_than_slack_is_unread() {
     ] {
         let missing = form("latest").replace(&format!("&{field}={value}"), "");
         assert_eq!(received(&missing), Err(Unread::Unplaced), "{field}");
+        let empty = form("latest").replace(&format!("&{field}={value}"), &format!("&{field}="));
+        assert_eq!(received(&empty), Err(Unread::Unplaced), "{field}");
     }
     let elsewhere = form("latest").replace("hooks.slack.com", "evil.example");
     assert_eq!(received(&elsewhere), Err(Unread::Unplaced));

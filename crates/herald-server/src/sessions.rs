@@ -1,8 +1,10 @@
 //! The sessions `herald server` holds for the destinations that carry
 //! commands without posting them to herald (ADR-0016): Discord's gateway,
-//! Slack's Socket Mode and a Matrix sync. Each answers its commands as they
-//! come, at most [`Limits::jobs`](crate::Limits) at once, and reconnects
-//! after a lost connection, waiting longer each time it fails.
+//! Slack's Socket Mode and a Matrix sync. Each takes up a command as it
+//! comes, deferring it where Discord waits for that, and queues its work
+//! with every other request's, answered within the server's limits. A
+//! session reconnects after a lost connection, waiting longer each time it
+//! connects and is not taken up.
 
 use std::future::Future;
 use std::pin::{Pin, pin};
@@ -13,21 +15,23 @@ use herald_core::{Asked, DestinationName};
 use herald_dest_discord::{self as discord, Effect, Gateway};
 use herald_dest_matrix::{self as matrix, SYNC_WAIT};
 use herald_dest_slack::{self as slack};
-use herald_flows::{Interacting, Job, Replying, Serving, Worked, completed, work};
-use herald_ports::{Clock, Frame, Http, Signer, Socket, Sockets, Store, Text};
+use herald_flows::{Interacting, Job, Replying, Serving, completed, deferral};
+use herald_ports::{Frame, Http, Socket, Sockets, Store, Text};
 use tokio::time::{Instant, Interval, MissedTickBehavior, interval_at, sleep};
 
-use crate::{Heard, RUN};
+use crate::{Heard, Queue};
 
 /// The first wait after a session fails to connect.
 const FIRST_WAIT: Duration = Duration::from_secs(1);
 /// The longest wait between attempts.
 const LONGEST_WAIT: Duration = Duration::from_secs(60);
 
-type Answering<'a> = FuturesUnordered<Pin<Box<dyn Future<Output = Worked> + 'a>>>;
+/// What a session does as it takes commands up: deferring each and queueing
+/// its work, and sending completions.
+type Taking<'a> = FuturesUnordered<Pin<Box<dyn Future<Output = ()> + 'a>>>;
 
 /// How long a session waits before it connects again, doubling each time it
-/// fails, up to [`LONGEST_WAIT`].
+/// is not taken up, up to [`LONGEST_WAIT`].
 struct Backoff(Duration);
 
 impl Backoff {
@@ -45,15 +49,27 @@ impl Backoff {
     }
 }
 
-/// What every session shares: the server's ports, what it may answer at
-/// once, and where it says what happened.
+/// `doing`, done while what `taking` holds goes on.
+async fn meanwhile<T>(taking: &mut Taking<'_>, doing: impl Future<Output = T>) -> T {
+    let mut doing = pin!(doing);
+    loop {
+        tokio::select! {
+            biased;
+            done = &mut doing => return done,
+            Some(()) = taking.next(), if !taking.is_empty() => {}
+        }
+    }
+}
+
+/// What every session shares: the server's ports, the queue its commands'
+/// work joins, and where it says what happened.
 pub(crate) struct Session<'s, 'a, S, C, G, V, H, P, K> {
     pub(crate) serving: &'s Serving<'a, S, C, G, V, H, P, K>,
-    pub(crate) jobs: usize,
+    pub(crate) queue: &'s Queue,
     pub(crate) heard: &'s dyn Fn(Heard),
 }
 
-impl<'s, S: Store, C: Clock, G: Signer, V, H: Http, P, K> Session<'s, '_, S, C, G, V, H, P, K> {
+impl<'s, S: Store, C, G, V, H: Http, P, K> Session<'s, '_, S, C, G, V, H, P, K> {
     fn said(&self, destination: &DestinationName, what: impl Into<String>) {
         (self.heard)(Heard::Session {
             destination: destination.clone(),
@@ -61,16 +77,16 @@ impl<'s, S: Store, C: Clock, G: Signer, V, H: Http, P, K> Session<'s, '_, S, C, 
         });
     }
 
-    /// Answers `asked` alongside what `answering` holds, or says it cannot
-    /// where that is already as much as the server answers at once.
-    fn answer(
+    /// Takes `asked` up: defers it where its destination waits for that, and
+    /// queues its work, or says it cannot where the queue is full.
+    fn take(
         &self,
-        answering: &mut Answering<'s>,
+        taking: &mut Taking<'s>,
         destination: &DestinationName,
         asked: Asked,
         replying: Replying,
     ) {
-        if answering.len() >= self.jobs {
+        let Some(held) = self.queue.hold() else {
             self.said(
                 destination,
                 format!(
@@ -79,20 +95,27 @@ impl<'s, S: Store, C: Clock, G: Signer, V, H: Http, P, K> Session<'s, '_, S, C, 
                 ),
             );
             return;
-        }
-        let serving = self.serving;
-        let job = Job::Interact {
-            destination: destination.clone(),
-            asked: vec![(asked, replying)],
-            deferred: false,
         };
-        answering.push(Box::pin(async move { work(serving, job, RUN).await }));
-    }
-
-    fn worked(&self, worked: Option<Worked>) {
-        if let Some(worked) = worked {
-            (self.heard)(Heard::Worked(worked));
-        }
+        let serving = self.serving;
+        let heard = self.heard;
+        let destination = destination.clone();
+        taking.push(Box::pin(async move {
+            if let Err(trouble) = deferral(serving.connected, &destination, &replying, &asked).await
+            {
+                heard(Heard::Session {
+                    said: format!(
+                        "{} was not answered: it could not be deferred: {trouble}",
+                        asked.command.name()
+                    ),
+                    destination,
+                });
+                return;
+            }
+            held.fill(Job::Interact {
+                destination,
+                asked: vec![(asked, replying)],
+            });
+        }));
     }
 
     /// Every session `serving`'s destinations hold, until each stops.
@@ -136,21 +159,21 @@ impl<'s, S: Store, C: Clock, G: Signer, V, H: Http, P, K> Session<'s, '_, S, C, 
         &self,
         sockets: &So,
         name: &DestinationName,
-        interacting: &discord::Interacting,
+        interacting: &'s discord::Interacting,
         mut gateway: Gateway,
-        http: &H,
+        http: &'s H,
     ) {
         let mut backoff = Backoff::new();
-        let mut answering: Answering<'s> = FuturesUnordered::new();
+        let mut taking: Taking<'s> = FuturesUnordered::new();
         loop {
-            let mut socket = match sockets.open(&gateway.url()).await {
+            let mut socket = match meanwhile(&mut taking, sockets.open(&gateway.url())).await {
                 Ok(socket) => socket,
                 Err(error) => {
                     self.said(
                         name,
                         format!("Discord's gateway could not be reached: {error}"),
                     );
-                    backoff.wait().await;
+                    meanwhile(&mut taking, backoff.wait()).await;
                     continue;
                 }
             };
@@ -171,12 +194,10 @@ impl<'s, S: Store, C: Clock, G: Signer, V, H: Http, P, K> Session<'s, '_, S, C, 
                                         next = Some(None);
                                     }
                                 }
-                                Effect::Beat(every) => {
-                                    backoff.reset();
-                                    beats = Some(beating(every));
-                                }
+                                Effect::Beat(every) => beats = Some(beating(every)),
+                                Effect::Ready => backoff.reset(),
                                 Effect::Received(received) => {
-                                    self.discord(&mut answering, name, interacting, http, received).await;
+                                    self.discord(&mut taking, name, interacting, http, *received);
                                 }
                                 Effect::Reconnect { .. } => next = Some(None),
                                 Effect::Stop(reason) => next = Some(Some(reason)),
@@ -194,31 +215,29 @@ impl<'s, S: Store, C: Clock, G: Signer, V, H: Http, P, K> Session<'s, '_, S, C, 
                         }
                         _ => break None,
                     },
-                    Some(worked) = answering.next(), if !answering.is_empty() => self.worked(Some(worked)),
+                    Some(()) = taking.next(), if !taking.is_empty() => {}
                 }
             };
             if let Some(reason) = stopped {
                 self.said(name, reason);
-                while let Some(worked) = answering.next().await {
-                    self.worked(Some(worked));
-                }
+                while taking.next().await.is_some() {}
                 return;
             }
-            backoff.wait().await;
+            meanwhile(&mut taking, backoff.wait()).await;
         }
     }
 
-    async fn discord(
+    fn discord(
         &self,
-        answering: &mut Answering<'s>,
+        taking: &mut Taking<'s>,
         name: &DestinationName,
-        interacting: &discord::Interacting,
-        http: &H,
+        interacting: &'s discord::Interacting,
+        http: &'s H,
         received: discord::Received,
     ) {
         match received {
             discord::Received::Asked { asked, replying } => {
-                self.answer(answering, name, asked, Replying::Discord(replying));
+                self.take(taking, name, asked, Replying::Discord(replying));
             }
             discord::Received::Completing {
                 place,
@@ -226,15 +245,22 @@ impl<'s, S: Store, C: Clock, G: Signer, V, H: Http, P, K> Session<'s, '_, S, C, 
                 replying,
             } => {
                 let serving = self.serving;
-                let projects =
-                    completed(serving.config, serving.ports.store, name, &place, &typed).await;
-                let sent = http.send(interacting.complete(&replying, &projects)).await;
-                if let Err(trouble) = sent
-                    .map_err(|error| error.to_string())
-                    .and_then(|response| discord::took(&response))
-                {
-                    self.said(name, format!("completions could not be sent: {trouble}"));
-                }
+                let heard = self.heard;
+                let name = name.clone();
+                taking.push(Box::pin(async move {
+                    let projects =
+                        completed(serving.config, serving.ports.store, &name, &place, &typed).await;
+                    let sent = http.send(interacting.complete(&replying, &projects)).await;
+                    if let Err(trouble) = sent
+                        .map_err(|error| error.to_string())
+                        .and_then(|response| discord::took(&response))
+                    {
+                        heard(Heard::Session {
+                            destination: name,
+                            said: format!("completions could not be sent: {trouble}"),
+                        });
+                    }
+                }));
             }
             discord::Received::Ping | discord::Received::Ignored => {}
         }
@@ -249,66 +275,63 @@ impl<'s, S: Store, C: Clock, G: Signer, V, H: Http, P, K> Session<'s, '_, S, C, 
         opening: &H,
     ) {
         let mut backoff = Backoff::new();
-        let mut answering: Answering<'s> = FuturesUnordered::new();
+        let mut taking: Taking<'s> = FuturesUnordered::new();
         loop {
-            let url = match opening.send(interacting.opening(app)).await {
-                Ok(response) => slack::opened(&response),
-                Err(error) => Err(error.to_string()),
-            };
-            let opened = match url {
-                Ok(url) => sockets.open(&url).await.map_err(|error| error.to_string()),
-                Err(trouble) => Err(trouble),
-            };
-            let mut socket = match opened {
-                Ok(socket) => socket,
-                Err(trouble) => {
-                    self.said(
-                        name,
-                        format!("Slack's Socket Mode could not be opened: {trouble}"),
-                    );
-                    backoff.wait().await;
-                    continue;
-                }
-            };
-            backoff.reset();
-            loop {
-                tokio::select! {
-                    frame = socket.receive() => {
-                        let Frame::Text(text) = frame else {
-                            break;
-                        };
-                        let enveloped = interacting.envelope(name, &text);
-                        if let Some(acknowledgement) = enveloped.acknowledgement
-                            && socket.send(Text::plain(acknowledgement)).await.is_err()
-                        {
-                            break;
+            let opened = meanwhile(&mut taking, async {
+                let url = match opening.send(interacting.opening(app)).await {
+                    Ok(response) => slack::opened(&response)?,
+                    Err(error) => return Err(error.to_string()),
+                };
+                sockets.open(&url).await.map_err(|error| error.to_string())
+            })
+            .await;
+            match opened {
+                Ok(mut socket) => loop {
+                    tokio::select! {
+                        biased;
+                        frame = socket.receive() => {
+                            let Frame::Text(text) = frame else {
+                                break;
+                            };
+                            let enveloped = interacting.envelope(name, &text);
+                            if enveloped.greeted {
+                                backoff.reset();
+                            }
+                            if let Some(acknowledgement) = enveloped.acknowledgement
+                                && socket.send(Text::plain(acknowledgement)).await.is_err()
+                            {
+                                break;
+                            }
+                            if let Some(slack::Received::Asked { asked, replying }) = enveloped.received {
+                                self.take(&mut taking, name, *asked, Replying::Slack(replying));
+                            }
+                            if enveloped.reconnect {
+                                break;
+                            }
                         }
-                        if let Some(slack::Received::Asked { asked, replying }) = enveloped.received {
-                            self.answer(&mut answering, name, asked, Replying::Slack(replying));
-                        }
-                        if enveloped.reconnect {
-                            break;
-                        }
+                        Some(()) = taking.next(), if !taking.is_empty() => {}
                     }
-                    Some(worked) = answering.next(), if !answering.is_empty() => self.worked(Some(worked)),
-                }
+                },
+                Err(trouble) => self.said(
+                    name,
+                    format!("Slack's Socket Mode could not be opened: {trouble}"),
+                ),
             }
+            meanwhile(&mut taking, backoff.wait()).await;
         }
     }
 
     async fn sync(&self, name: &DestinationName, interacting: &matrix::Interacting, http: &H) {
         let mut backoff = Backoff::new();
-        let mut answering: Answering<'s> = FuturesUnordered::new();
+        let mut taking: Taking<'s> = FuturesUnordered::new();
         let mut since: Option<String> = None;
         loop {
             let wait = if since.is_some() { SYNC_WAIT } else { 0 };
-            let mut sending = pin!(http.send(interacting.sync(since.as_deref(), wait)));
-            let synced = loop {
-                tokio::select! {
-                    synced = &mut sending => break synced,
-                    Some(worked) = answering.next(), if !answering.is_empty() => self.worked(Some(worked)),
-                }
-            };
+            let synced = meanwhile(
+                &mut taking,
+                http.send(interacting.sync(since.as_deref(), wait)),
+            )
+            .await;
             let read = synced
                 .map_err(|error| error.to_string())
                 .and_then(|response| {
@@ -322,7 +345,7 @@ impl<'s, S: Store, C: Clock, G: Signer, V, H: Http, P, K> Session<'s, '_, S, C, 
                     backoff.reset();
                     if since.is_some() {
                         for (asked, replying) in read.asked {
-                            self.answer(&mut answering, name, asked, Replying::Matrix(replying));
+                            self.take(&mut taking, name, asked, Replying::Matrix(replying));
                         }
                     }
                     since = Some(read.next);
@@ -332,7 +355,7 @@ impl<'s, S: Store, C: Clock, G: Signer, V, H: Http, P, K> Session<'s, '_, S, C, 
                         name,
                         format!("the homeserver could not be synced: {trouble}"),
                     );
-                    backoff.wait().await;
+                    meanwhile(&mut taking, backoff.wait()).await;
                 }
             }
         }

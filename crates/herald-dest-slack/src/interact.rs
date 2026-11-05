@@ -5,7 +5,7 @@
 use std::collections::BTreeMap;
 use std::fmt;
 
-use herald_core::{Answering, Asked, Command, DestinationName, SecretRef};
+use herald_core::{Answering, Asked, Command, DestinationName, Place, SecretRef};
 use herald_ports::{Method, Request, Response, Secret, Text};
 use serde_json::{Value, json};
 
@@ -44,7 +44,7 @@ pub enum Received {
     /// A command or a button press, to answer once it is worked.
     Asked {
         /// What was asked.
-        asked: Asked,
+        asked: Box<Asked>,
         /// Where the answer goes.
         replying: Replying,
     },
@@ -137,6 +137,9 @@ impl Interacting {
         let fields: BTreeMap<String, String> = url::form_urlencoded::parse(body)
             .map(|(name, value)| (name.into_owned(), value.into_owned()))
             .collect();
+        if fields.get("ssl_check").map(String::as_str) == Some("1") {
+            return Ok(Received::Ignored);
+        }
         if let Some(payload) = fields.get("payload") {
             let payload: Value = serde_json::from_str(payload).map_err(|_| Unread::NotACommand)?;
             return self.pressed(destination, &payload);
@@ -242,23 +245,25 @@ impl Interacting {
         share: bool,
         toggles: bool,
     ) -> Result<Received, Unread> {
-        let (Some(place), Some(user), Some(url)) = (placed.place, placed.user, placed.url) else {
+        let (Some(place), Some(user), Some(url)) =
+            (given(placed.place), given(placed.user), placed.url)
+        else {
             return Err(Unread::Unplaced);
         };
         if !url.starts_with(&format!("{}/", self.hooks)) {
             return Err(Unread::Unplaced);
         }
         Ok(Received::Asked {
-            asked: Asked {
+            asked: Box::new(Asked {
                 destination: destination.clone(),
-                place: place.to_owned(),
+                place: Place::new(place),
                 user: user.to_owned(),
                 command,
                 project,
                 share,
                 toggles,
                 member: None,
-            },
+            }),
             replying: Replying {
                 url: Secret::new("the command's response URL", url),
             },
@@ -360,6 +365,11 @@ impl Interacting {
         })
         .to_string()
     }
+}
+
+/// `field`, where it was given and is not empty.
+fn given(field: Option<&str>) -> Option<&str> {
+    field.filter(|field| !field.is_empty())
 }
 
 #[derive(Clone, Copy)]

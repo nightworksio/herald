@@ -186,7 +186,7 @@ listen = "127.0.0.1:8080"
 - herald answers each verified release with 202 and announces it after the reply.
 - An ActivityPub actor is served at `/users/<actor>`, with its Notes, its inbox, the shared inbox `/inbox` and WebFinger.
 - `--listen` or `HERALD_LISTEN` takes the place of `listen`.
-- `[server]` also sets `jobs`, `connections`, `body`, `fetches` and `deliveries`, and `[server.keys]` sets where inbound activities' keys are kept (`cache = "memory"` or `"store"`), `refresh_after` and `most` ([ADR-0014](.docs/decisions/0014-herald-server-answers-first-and-works-after-on-one-task-within-limits.md)).
+- `[server]` also sets `jobs`, `connections`, `body`, `fetches`, `deliveries` and `silence` (how long a session hears nothing before it checks its connection), and `[server.keys]` sets where inbound activities' keys are kept (`cache = "memory"` or `"store"`), `refresh_after` and `most` ([ADR-0014](.docs/decisions/0014-herald-server-answers-first-and-works-after-on-one-task-within-limits.md)).
 
 `herald doctor --layer server` names what the config asks for that the
 server cannot serve.

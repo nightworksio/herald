@@ -1222,6 +1222,17 @@
             "string",
             "null"
           ]
+        },
+        "silence": {
+          "description": "How long a session a destination holds hears nothing before it\nchecks the connection is alive, and then as long again before it\nopens another; \"30s\" where absent.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Duration"
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
       },
       "additionalProperties": false

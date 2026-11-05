@@ -134,6 +134,7 @@ pub(crate) struct PreparedSource {
 pub struct Prepared {
     routes: Vec<PreparedRoute>,
     sources: Vec<PreparedSource>,
+    destinations: Vec<(DestinationName, Destination, Secret)>,
     interacting: Vec<(DestinationName, Interacting)>,
 }
 
@@ -317,18 +318,13 @@ pub(crate) async fn keyed<G: Signer>(
         })
 }
 
-/// `config`'s routes and sources with every credential, token and marker
-/// key resolved through `secrets` and `signer`.
-///
-/// # Errors
-///
-/// The first secret that cannot be read, or marker key that cannot be
-/// derived.
-pub async fn prepare<S: Secrets, G: Signer>(
-    config: &Config,
+/// Each destination of `config` with its credential and marker key,
+/// resolved through `secrets` and `signer`.
+async fn resolved<'c, S: Secrets, G: Signer>(
+    config: &'c Config,
     secrets: &S,
     signer: &G,
-) -> Result<Prepared, PrepareError> {
+) -> Result<BTreeMap<&'c DestinationName, Resolved<'c>>, PrepareError> {
     let installation = match &config.marker_key {
         Some(key) => Some(secrets.secret(&key.secret).await?),
         None => None,
@@ -370,6 +366,22 @@ pub async fn prepare<S: Secrets, G: Signer>(
             },
         );
     }
+    Ok(resolved)
+}
+
+/// `config`'s routes and sources with every credential, token and marker
+/// key resolved through `secrets` and `signer`.
+///
+/// # Errors
+///
+/// The first secret that cannot be read, or marker key that cannot be
+/// derived.
+pub async fn prepare<S: Secrets, G: Signer>(
+    config: &Config,
+    secrets: &S,
+    signer: &G,
+) -> Result<Prepared, PrepareError> {
+    let resolved = resolved(config, secrets, signer).await?;
     let mut routes = Vec::new();
     for route in &config.routes {
         let found = resolved.get(&route.route.destination);
@@ -424,27 +436,33 @@ pub async fn prepare<S: Secrets, G: Signer>(
     Ok(Prepared {
         routes,
         sources,
-        interacting: interactions(config, &resolved, secrets).await?,
+        destinations: resolved
+            .into_iter()
+            .map(|(name, resolved)| (name.clone(), resolved.destination.clone(), resolved.secret))
+            .collect(),
+        interacting: Vec::new(),
     })
 }
 
-/// Every destination of `config` that takes commands, each reached with the
-/// credential `resolved` holds for it.
-async fn interactions<S: Secrets>(
-    config: &Config,
-    resolved: &BTreeMap<&DestinationName, Resolved<'_>>,
-    secrets: &S,
-) -> Result<Vec<(DestinationName, Interacting)>, PrepareError> {
-    let mut interacting = Vec::new();
-    for (name, destination) in &config.destinations {
-        let Some(resolved) = resolved.get(name) else {
-            continue;
-        };
-        if let Some(found) = interacts(destination, &resolved.secret, secrets).await? {
-            interacting.push((name.clone(), found));
+impl Prepared {
+    /// These routes and sources, with every destination that takes
+    /// commands, each with the secrets it answers with read through
+    /// `secrets`: what a run that answers commands needs, and no other run
+    /// reads.
+    ///
+    /// # Errors
+    ///
+    /// The first secret that cannot be read.
+    pub async fn answering<S: Secrets>(mut self, secrets: &S) -> Result<Self, PrepareError> {
+        let mut interacting = Vec::new();
+        for (name, destination, credential) in &self.destinations {
+            if let Some(found) = interacts(destination, credential, secrets).await? {
+                interacting.push((name.clone(), found));
+            }
         }
+        self.interacting = interacting;
+        Ok(self)
     }
-    Ok(interacting)
 }
 
 async fn optional<S: Secrets>(

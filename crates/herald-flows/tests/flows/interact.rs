@@ -2,7 +2,8 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use herald_config::{Config, load};
 use herald_core::{
-    Asked, Command, DestinationName, Kind, Latest, Member, RouteId, Scheme, Shown, Subscription,
+    Asked, Command, DestinationName, Kind, Latest, Member, Place, RouteId, Scheme, Shown,
+    Subscription,
 };
 use herald_flows::{
     Answer, Answered, Connected, Inbound, Interacted, Job, Keys, Ports, Replying, Serving,
@@ -61,6 +62,14 @@ token = {{ secret = "HERALD_MATRIX_TOKEN" }}
 [destinations.matrix.interactions]
 homeserver_token = {{ secret = "HERALD_MATRIX_HS" }}
 appservice_token = {{ secret = "HERALD_MATRIX_AS" }}
+[destinations.neighbour]
+kind = "matrix"
+homeserver = "https://matrix.example"
+token = {{ secret = "HERALD_MATRIX_TOKEN" }}
+[destinations.neighbour.interactions]
+homeserver_token = {{ secret = "HERALD_MATRIX_HS" }}
+appservice_token = {{ secret = "HERALD_MATRIX_AS" }}
+sender = "neighbour"
 [sources.gate]
 kind = "github"
 repository = "nightworksio/php-mutation-gate"
@@ -136,7 +145,14 @@ struct World {
 impl World {
     fn new(discord: &str, script: Script) -> Self {
         let config = config(discord);
-        let prepared = pollster::block_on(prepare(&config, &secrets(), &FakeSigner)).unwrap();
+        let prepared = pollster::block_on(async {
+            prepare(&config, &secrets(), &FakeSigner)
+                .await
+                .unwrap()
+                .answering(&secrets())
+                .await
+        })
+        .unwrap();
         let connected = prepared.connect(|_| Ok::<_, ()>(script.clone())).unwrap();
         Self {
             config,
@@ -232,7 +248,7 @@ fn world() -> World {
 fn discord(command: Command) -> Asked {
     Asked {
         destination: DestinationName::new("discord"),
-        place: CHANNEL.to_owned(),
+        place: Place::new(CHANNEL),
         user: USER.to_owned(),
         command,
         project: None,
@@ -248,7 +264,7 @@ fn discord(command: Command) -> Asked {
 fn slack(command: Command) -> Asked {
     Asked {
         destination: DestinationName::new("slack"),
-        place: SLACK_CHANNEL.to_owned(),
+        place: Place::new(SLACK_CHANNEL),
         user: "U0123456789".to_owned(),
         member: None,
         ..discord(command)
@@ -562,7 +578,7 @@ fn subscribing_on_slack_keeps_the_member_in_the_store_until_they_unsubscribe() {
 fn subscribing_where_no_route_mentions_subscribers_or_the_store_fails_is_said() {
     let world = World::new("", Script::default()).announced("gate", &["unmentioned"]);
     let elsewhere = Asked {
-        place: "C9999999999".to_owned(),
+        place: Place::new("C9999999999"),
         ..slack(Command::Subscribe)
     };
     assert_eq!(
@@ -584,6 +600,22 @@ fn subscribing_where_no_route_mentions_subscribers_or_the_store_fails_is_said() 
 }
 
 #[test]
+fn only_a_run_that_answers_commands_reads_the_secrets_it_answers_with() {
+    let config = config("");
+    let announcing = FakeSecrets::default()
+        .with("HERALD_DISCORD_TOKEN", "bot-token")
+        .with("HERALD_SLACK_TOKEN", "slack-token")
+        .with("HERALD_MATRIX_TOKEN", "matrix-token");
+    let prepared = pollster::block_on(prepare(&config, &announcing, &FakeSigner)).unwrap();
+    let unanswering = prepared
+        .clone()
+        .connect(|_| Ok::<_, ()>(Script::default()))
+        .unwrap();
+    assert_eq!(unanswering.interactions().count(), 0);
+    assert!(pollster::block_on(prepared.answering(&announcing)).is_err());
+}
+
+#[test]
 fn completions_list_what_was_announced_in_the_channel() {
     let world = world()
         .announced("herald", &["elsewhere"])
@@ -592,17 +624,28 @@ fn completions_list_what_was_announced_in_the_channel() {
         &world.config,
         &world.store,
         &DestinationName::new("discord"),
-        CHANNEL,
+        &Place::new(CHANNEL),
         "",
     ));
     assert_eq!(found, ["gate", "other"]);
+    let in_a_thread = pollster::block_on(completed(
+        &world.config,
+        &world.store,
+        &DestinationName::new("discord"),
+        &Place {
+            id: "923456789012345678".to_owned(),
+            parent: Some(CHANNEL.to_owned()),
+        },
+        "",
+    ));
+    assert_eq!(in_a_thread, ["gate", "other"]);
     let mut failing = world;
     failing.store.fault = Fault::ListsLatest;
     let none = pollster::block_on(completed(
         &failing.config,
         &failing.store,
         &DestinationName::new("discord"),
-        CHANNEL,
+        &Place::new(CHANNEL),
         "",
     ));
     assert_eq!(none, Vec::<String>::new());
@@ -819,16 +862,10 @@ fn a_discord_interaction_is_verified_then_pinged_completed_or_deferred_with_its_
     let deferred = post(&world, path, &signed_discord(&command), &command);
     assert_eq!(deferred.reply.status, 200);
     assert_eq!(deferred.reply.body, br#"{"data":{"flags":64},"type":5}"#);
-    let Some(Job::Interact {
-        destination,
-        asked,
-        deferred,
-    }) = deferred.job
-    else {
+    let Some(Job::Interact { destination, asked }) = deferred.job else {
         panic!("a command leaves its work");
     };
     assert_eq!(destination, DestinationName::new("discord"));
-    assert!(deferred);
     assert_eq!(asked[0].0.command, Command::Latest);
     let shared = interaction(
         2,
@@ -947,9 +984,20 @@ fn a_homeserver_s_transaction_is_checked_admitted_once_and_its_commands_left_to_
     let Some(Job::Interact { asked, .. }) = pushed.job else {
         panic!("a command leaves its work");
     };
-    assert_eq!(asked[0].0.place, ROOM);
+    assert_eq!(asked[0].0.place, Place::new(ROOM));
     let again = matrix(&world, "PUT", path, "hs-token", &body);
     assert_eq!((again.reply.status, again.job.is_none()), (200, true));
+    let neighbour = matrix(
+        &world,
+        "PUT",
+        "/matrix/neighbour/_matrix/app/v1/transactions/t1",
+        "hs-token",
+        &body,
+    );
+    assert!(
+        neighbour.job.is_some(),
+        "another application service numbers its transactions on its own"
+    );
     let quiet = matrix(
         &world,
         "PUT",
@@ -1063,23 +1111,19 @@ fn a_homeserver_asking_after_users_rooms_and_its_ping_is_answered() {
 }
 
 #[test]
-fn commands_left_to_answer_are_answered_and_sent_and_the_gateway_s_deferred_first() {
+fn commands_left_to_answer_are_answered_and_sent() {
     let world = World::new(
         "",
-        Script::answering(&[
-            (&format!("/interactions/900/{TOKEN}/callback"), 204, ""),
-            (
-                &format!("/webhooks/{APPLICATION}/{TOKEN}/messages/@original"),
-                200,
-                "{}",
-            ),
-        ]),
+        Script::answering(&[(
+            &format!("/webhooks/{APPLICATION}/{TOKEN}/messages/@original"),
+            200,
+            "{}",
+        )]),
     )
     .announced("gate", &["releases"]);
     let job = Job::Interact {
         destination: DestinationName::new("discord"),
         asked: vec![(discord(Command::Latest), discord_replying())],
-        deferred: false,
     };
     let Worked::Interacted(interacted) = world.work(job.clone()) else {
         panic!("commands are answered");
@@ -1092,9 +1136,9 @@ fn commands_left_to_answer_are_answered_and_sent_and_the_gateway_s_deferred_firs
             sent: Ok(()),
         }]
     );
-    assert_eq!(world.script.seen().len(), 2);
-    let undeferred = World::new("", Script::default()).announced("gate", &["releases"]);
-    let Worked::Interacted(failed) = undeferred.work(job) else {
+    assert_eq!(world.script.seen().len(), 1);
+    let unsent = World::new("", Script::default()).announced("gate", &["releases"]);
+    let Worked::Interacted(failed) = unsent.work(job) else {
         panic!("commands are answered");
     };
     assert!(
@@ -1104,22 +1148,12 @@ fn commands_left_to_answer_are_answered_and_sent_and_the_gateway_s_deferred_firs
             .unwrap_err()
             .contains("nothing scripted")
     );
-    let deferred = World::new("", Script::default()).announced("gate", &["releases"]);
-    let Worked::Interacted(unsent) = deferred.work(Job::Interact {
-        destination: DestinationName::new("discord"),
-        asked: vec![(discord(Command::Latest), discord_replying())],
-        deferred: true,
-    }) else {
-        panic!("commands are answered");
-    };
-    assert!(unsent[0].sent.is_err());
-    deferred.serving(|serving| {
+    unsent.serving(|serving| {
         pollster::block_on(unworked(
             serving,
             &Job::Interact {
                 destination: DestinationName::new("discord"),
                 asked: Vec::new(),
-                deferred: true,
             },
         ));
     });

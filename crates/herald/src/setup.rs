@@ -13,17 +13,18 @@ use herald_ports::{Http, Request, Response, Secret, Secrets};
 use super::output::say;
 use super::{Connect, DONE};
 
-/// The destination of `kind` named `named`, or the only one of that kind
-/// that takes commands where none is named.
-fn chosen<'a>(
+/// What `taken` takes of the destination named `named` among those of
+/// `kind` that take commands, or of the only one where none is named.
+fn chosen<'a, T: Copy>(
     config: &'a Config,
     kind: &str,
     named: Option<&str>,
-) -> Result<(DestinationName, &'a Destination), String> {
-    let taking: Vec<(&DestinationName, &Destination)> = config
+    taken: impl Fn(&'a Destination) -> Option<T>,
+) -> Result<(DestinationName, T), String> {
+    let taking: Vec<(&DestinationName, T)> = config
         .destinations
         .iter()
-        .filter(|(_, destination)| destination.kind() == kind && destination.answering().is_some())
+        .filter_map(|(name, destination)| Some((name, taken(destination)?)))
         .collect();
     let listed = || {
         taking
@@ -36,7 +37,7 @@ fn chosen<'a>(
         (_, []) => Err(format!(
             "no {kind} destination takes commands; give one [destinations.<name>.interactions]"
         )),
-        (None, [(name, destination)]) => Ok(((*name).clone(), destination)),
+        (None, [(name, destination)]) => Ok(((*name).clone(), *destination)),
         (None, _) => Err(format!(
             "more than one {kind} destination takes commands; name one of {} with --destination",
             listed()
@@ -88,11 +89,16 @@ pub(crate) async fn discord(
     asked: Discording<'_>,
     out: &mut dyn Write,
 ) -> Result<u8, String> {
-    let (name, destination) = chosen(config, Destination::DISCORD, named)?;
-    let Destination::Discord(options) = destination else {
-        return Err(format!("{} is not a Discord destination", name.as_str()));
-    };
-    let (Some(interactions), Some(token)) = (&options.interactions, &options.token) else {
+    let (name, (options, interactions)) = chosen(
+        config,
+        Destination::DISCORD,
+        named,
+        |destination| match destination {
+            Destination::Discord(options) => Some((options, options.interactions.as_ref()?)),
+            _ => None,
+        },
+    )?;
+    let Some(token) = &options.token else {
         return Err(format!(
             "{} has no bot token, which Discord's commands and roles are set up with",
             name.as_str()
@@ -157,13 +163,15 @@ pub(crate) fn slack(
     url: Option<&str>,
     out: &mut dyn Write,
 ) -> Result<u8, String> {
-    let (name, destination) = chosen(config, Destination::SLACK, named)?;
-    let Destination::Slack(options) = destination else {
-        return Err(format!("{} is not a Slack destination", name.as_str()));
-    };
-    let Some(interactions) = &options.interactions else {
-        return Err(format!("{} takes no commands", name.as_str()));
-    };
+    let (name, (options, interactions)) = chosen(
+        config,
+        Destination::SLACK,
+        named,
+        |destination| match destination {
+            Destination::Slack(options) => Some((options, options.interactions.as_ref()?)),
+            _ => None,
+        },
+    )?;
     let posted = interactions.via == herald_dest_slack::Via::Http;
     let url = match (posted, url) {
         (true, None) => {
@@ -209,20 +217,21 @@ pub(crate) fn matrix(
     random: &dyn Fn() -> Option<String>,
     out: &mut dyn Write,
 ) -> Result<u8, String> {
-    let (name, destination) = chosen(config, Destination::MATRIX, named)?;
-    let Destination::Matrix(options) = destination else {
-        return Err(format!("{} is not a Matrix destination", name.as_str()));
-    };
-    let Some(interactions) = options
-        .interactions
-        .as_ref()
-        .filter(|interactions| interactions.via == herald_dest_matrix::Via::Appservice)
-    else {
+    let (name, (options, interactions)) = chosen(
+        config,
+        Destination::MATRIX,
+        named,
+        |destination| match destination {
+            Destination::Matrix(options) => Some((options, options.interactions.as_ref()?)),
+            _ => None,
+        },
+    )?;
+    if interactions.via != herald_dest_matrix::Via::Appservice {
         return Err(format!(
             "{} reads commands by syncing, so the homeserver installs nothing",
             name.as_str()
         ));
-    };
+    }
     let url = web(url)?;
     let (Some(homeserver), Some(appservice)) = (random(), random()) else {
         return Err("the system's random generator failed, so no token was made".to_owned());

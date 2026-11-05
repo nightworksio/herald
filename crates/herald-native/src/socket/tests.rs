@@ -83,3 +83,38 @@ async fn a_connection_carries_text_frames_both_ways_and_says_how_it_closed() {
     assert!(matches!(unopened, Err(HttpError::Unreachable { .. })));
     refusing.await.unwrap();
 }
+
+#[tokio::test]
+async fn a_silent_connection_is_pinged_then_lost_and_one_that_never_opens_is_not_opened() {
+    let silence = Duration::from_millis(100);
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    let server = tokio::spawn(async move {
+        let (stream, _) = listener.accept().await.unwrap();
+        let mut socket = tokio_tungstenite::accept_async(stream).await.unwrap();
+        socket.send(Message::Pong(Vec::new().into())).await.unwrap();
+        let pinged = socket.next().await.unwrap().unwrap();
+        assert!(matches!(pinged, Message::Ping(_)), "{pinged:?}");
+        tokio::time::sleep(Duration::from_secs(5)).await;
+    });
+    let mut socket = sockets()
+        .silent_for(silence)
+        .open(&format!("ws://{address}/"))
+        .await
+        .unwrap();
+    let started = Instant::now();
+    assert_eq!(socket.receive().await, Frame::Closed(None));
+    assert!(started.elapsed() >= silence * 2, "{:?}", started.elapsed());
+    server.abort();
+    let mute = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let mute_address = mute.local_addr().unwrap();
+    let unopened = sockets()
+        .silent_for(silence)
+        .open(&format!("ws://{mute_address}/"))
+        .await;
+    assert!(
+        matches!(&unopened, Err(HttpError::Unreachable { reason }) if reason.contains("did not open")),
+        "{unopened:?}"
+    );
+    drop(mute);
+}

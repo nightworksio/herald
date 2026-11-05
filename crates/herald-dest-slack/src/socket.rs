@@ -19,6 +19,8 @@ pub struct Enveloped {
     pub received: Option<Received>,
     /// Whether Slack asked for the connection to be opened again.
     pub reconnect: bool,
+    /// Whether Slack greeted the connection, ready to carry commands.
+    pub greeted: bool,
 }
 
 impl Interacting {
@@ -48,16 +50,26 @@ impl Interacting {
             acknowledgement: None,
             received: None,
             reconnect: false,
+            greeted: false,
         };
         let Ok(value) = serde_json::from_str::<Value>(frame) else {
             return quiet;
         };
         let kind = value.get("type").and_then(Value::as_str);
-        if kind == Some("disconnect") {
-            return Enveloped {
-                reconnect: true,
-                ..quiet
-            };
+        match kind {
+            Some("disconnect") => {
+                return Enveloped {
+                    reconnect: true,
+                    ..quiet
+                };
+            }
+            Some("hello") => {
+                return Enveloped {
+                    greeted: true,
+                    ..quiet
+                };
+            }
+            _ => {}
         }
         let Some(id) = value.get("envelope_id").and_then(Value::as_str) else {
             return quiet;
@@ -89,6 +101,7 @@ impl Interacting {
             acknowledgement: Some(acknowledgement.to_string()),
             received,
             reconnect: false,
+            greeted: false,
         }
     }
 }

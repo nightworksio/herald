@@ -13,7 +13,7 @@ use crate::announce::{Announced, Outcome, Ports, announce, announce_within};
 use crate::commanded::{INTERACTIONS, MATRIX, appserviced, commanded};
 use crate::following::{FollowError, Followed, followed};
 use crate::inbound::{Keys, Rejected, Verified, activity_verified, admitted, released, verified};
-use crate::interact::{Answer, deferral, interact, replied as replied_to};
+use crate::interact::{Answer, interact, replied as replied_to};
 use crate::interacting::Replying;
 use crate::prepare::{Connected, PrepareError};
 use crate::reached::Reached;
@@ -109,11 +109,9 @@ pub enum Job {
     Interact {
         /// The destination they were given on.
         destination: DestinationName,
-        /// Each command, with where its answer goes.
+        /// Each command, with where its answer goes, each already answered
+        /// as being worked where its destination waits for that.
         asked: Vec<(Asked, Replying)>,
-        /// Whether each was already answered as being worked, as an endpoint
-        /// answers a Discord interaction; one carried by the gateway is not.
-        deferred: bool,
     },
 }
 
@@ -708,25 +706,12 @@ pub async fn work<S: Store, C: Clock, G: Signer, V, H: Http, P, K>(
             }
             Worked::Followed(taken)
         }
-        Job::Interact {
-            destination,
-            asked,
-            deferred,
-        } => {
+        Job::Interact { destination, asked } => {
             let mut interacted = Vec::new();
             for (asked, replying) in asked {
                 let answer =
                     interact(serving.config, serving.connected, serving.ports, &asked).await;
-                let sent = if deferred {
-                    replied_to(serving.connected, &destination, &replying, &answer).await
-                } else {
-                    match deferral(serving.connected, &destination, &replying, &asked).await {
-                        Ok(()) => {
-                            replied_to(serving.connected, &destination, &replying, &answer).await
-                        }
-                        Err(trouble) => Err(trouble),
-                    }
-                };
+                let sent = replied_to(serving.connected, &destination, &replying, &answer).await;
                 interacted.push(Interacted {
                     asked,
                     answer,

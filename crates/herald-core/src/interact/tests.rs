@@ -27,11 +27,25 @@ fn latest(project: &str, routes: &[&str]) -> Latest {
     }
 }
 
-fn names(every_latest: &[&Latest]) -> Vec<String> {
+fn names(announced: &[AnnouncedHere<'_, RouteId>]) -> Vec<String> {
+    announced
+        .iter()
+        .map(|here| here.latest.project.clone())
+        .collect()
+}
+
+fn every(every_latest: &[Latest]) -> Vec<AnnouncedHere<'_, RouteId>> {
     every_latest
         .iter()
-        .map(|latest| latest.project.clone())
+        .map(|latest| AnnouncedHere {
+            latest,
+            route: latest.routes.first().unwrap(),
+        })
         .collect()
+}
+
+fn same(id: &RouteId) -> &RouteId {
+    id
 }
 
 #[test]
@@ -74,25 +88,40 @@ fn what_was_announced_on_the_routes_is_listed_by_name() {
         latest("alpha", &["b", "a"]),
         latest("other", &["c"]),
     ];
-    let routes = [RouteId::new("a"), RouteId::new("b")];
-    assert_eq!(names(&announced(&every_latest, &routes)), ["alpha", "zeta"]);
-    assert_eq!(announced(&every_latest, &[]), Vec::<&Latest>::new());
+    let routes = [RouteId::new("b"), RouteId::new("a")];
+    let found = announced(&every_latest, &routes, same);
+    assert_eq!(names(&found), ["alpha", "zeta"]);
+    assert_eq!(
+        found
+            .iter()
+            .map(|here| here.route.as_str())
+            .collect::<Vec<_>>(),
+        ["b", "a"]
+    );
+    assert_eq!(announced(&every_latest, &[], same), []);
 }
 
 #[test]
 fn the_project_named_or_the_only_one_is_chosen() {
-    let herald = latest("herald", &["a"]);
-    let gate = latest("gate", &["a"]);
-    assert_eq!(chosen(None, &[]), Err(Unchosen::Nothing));
-    assert_eq!(chosen(Some("herald"), &[]), Err(Unchosen::Nothing));
-    assert_eq!(chosen(None, &[&herald]), Ok(&herald));
+    let both = [latest("gate", &["a"]), latest("herald", &["a"])];
+    let both = every(&both);
+    let only = &both[1..];
+    let project = |found: Result<AnnouncedHere<'_, RouteId>, Unchosen>| {
+        found.map(|here| here.latest.project.clone())
+    };
+    assert_eq!(project(chosen(None, &[])), Err(Unchosen::Nothing));
+    assert_eq!(project(chosen(Some("herald"), &[])), Err(Unchosen::Nothing));
+    assert_eq!(project(chosen(None, only)), Ok("herald".to_owned()));
     assert_eq!(
-        chosen(None, &[&gate, &herald]),
+        project(chosen(None, &both)),
         Err(Unchosen::Many(vec!["gate".to_owned(), "herald".to_owned()]))
     );
-    assert_eq!(chosen(Some("HERALD"), &[&gate, &herald]), Ok(&herald));
     assert_eq!(
-        chosen(Some("nope"), &[&gate, &herald]),
+        project(chosen(Some("HERALD"), &both)),
+        Ok("herald".to_owned())
+    );
+    assert_eq!(
+        project(chosen(Some("nope"), &both)),
         Err(Unchosen::Unknown {
             named: "nope".to_owned(),
             known: vec!["gate".to_owned(), "herald".to_owned()],
@@ -107,14 +136,13 @@ fn completions_hold_what_was_typed_those_starting_with_it_first_at_most_twenty_f
         latest("gate", &["a"]),
         latest("herald", &["a"]),
     ];
-    let announced: Vec<&Latest> = every_latest.iter().collect();
+    let announced = every(&every_latest);
     assert_eq!(completions("GA", &announced), ["gate", "php-mutation-gate"]);
     assert_eq!(completions("", &announced).len(), 3);
     let many: Vec<Latest> = (0..30)
         .map(|n| latest(&format!("p{n:02}"), &["a"]))
         .collect();
-    let many: Vec<&Latest> = many.iter().collect();
-    let listed = completions("p", &many);
+    let listed = completions("p", &every(&many));
     assert_eq!(listed.len(), MOST_COMPLETIONS);
     assert_eq!(listed.first().map(String::as_str), Some("p00"));
 }
@@ -170,6 +198,48 @@ fn everything_herald_says_reads_as_a_sentence() {
     for (said, sentence) in cases {
         assert_eq!(said.to_string(), sentence);
     }
+}
+
+#[test]
+fn every_name_herald_says_back_is_shown_as_written_not_read_as_markup() {
+    let link = || "[Free](https://evil.example)".to_owned();
+    let shown = r"\[Free\]\(https\:\/\/evil\.example\)";
+    assert_eq!(
+        Said::Unchosen(Unchosen::Unknown {
+            named: link(),
+            known: vec!["my_app".to_owned(), link()],
+        })
+        .to_string(),
+        format!("{shown} is not announced here; name one of my\\_app, {shown}.")
+    );
+    assert_eq!(
+        Said::Unchosen(Unchosen::Many(vec![link()])).to_string(),
+        format!("More than one project is announced here; name one of {shown}.")
+    );
+    for said in [
+        Said::Subscribed(link()),
+        Said::AlreadySubscribed(link()),
+        Said::Unsubscribed(link()),
+        Said::NotSubscribed(link()),
+        Said::Unoffered(link()),
+    ] {
+        let said = said.to_string();
+        assert!(said.contains(shown) && !said.contains("[Free]"), "{said}");
+    }
+}
+
+#[test]
+fn a_place_is_where_a_route_announces_in_it_or_in_the_channel_its_thread_is_in() {
+    let channel = Place::new("1");
+    assert!(channel.is("1"));
+    assert!(!channel.is("2"));
+    let thread = Place {
+        id: "3".to_owned(),
+        parent: Some("1".to_owned()),
+    };
+    assert!(thread.is("3"));
+    assert!(thread.is("1"));
+    assert!(!thread.is("2"));
 }
 
 #[test]

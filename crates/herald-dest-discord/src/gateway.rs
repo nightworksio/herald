@@ -34,6 +34,9 @@ const HEARTBEAT_ACK: u64 = 11;
 /// refused, the shard or the API version is wrong, or the intents are not
 /// allowed.
 const FATAL: [u16; 6] = [4004, 4010, 4011, 4012, 4013, 4014];
+/// The close codes after which the session cannot be taken up again: the
+/// sequence sent was wrong, or the session timed out.
+const UNRESUMABLE: [u16; 2] = [4007, 4009];
 
 /// What a driver does next, as the session tells it.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -43,7 +46,10 @@ pub enum Effect {
     /// Beat this often from now on.
     Beat(SignedDuration),
     /// Answer this interaction.
-    Received(Received),
+    Received(Box<Received>),
+    /// The session is identified, or taken up again: what a driver waits
+    /// before it reconnects starts over.
+    Ready,
     /// Close the connection and open another, taking the session up again
     /// where `resume`.
     Reconnect {
@@ -144,11 +150,12 @@ impl Gateway {
                     .get("resume_gateway_url")
                     .and_then(Value::as_str)
                     .map(ToOwned::to_owned);
-                Vec::new()
+                vec![Effect::Ready]
             }
+            Some("RESUMED") => vec![Effect::Ready],
             Some("INTERACTION_CREATE") => match interacting.read(destination, data) {
                 Ok(Received::Ignored) | Err(_) => Vec::new(),
-                Ok(received) => vec![Effect::Received(received)],
+                Ok(received) => vec![Effect::Received(Box::new(received))],
             },
             _ => Vec::new(),
         }
@@ -196,13 +203,15 @@ impl Gateway {
     }
 
     /// What a driver does once Discord closed the connection with `code`,
-    /// or it was lost with none: stops where reconnecting cannot help, and
-    /// otherwise takes the session up again.
+    /// or it was lost with none: stops where reconnecting cannot help,
+    /// starts a session afresh where this one cannot be taken up again, and
+    /// otherwise takes it up again.
     pub fn closed(&mut self, code: Option<u16>) -> Effect {
         match code {
             Some(code) if FATAL.contains(&code) => Effect::Stop(format!(
                 "Discord's gateway closed the connection with {code}, which reconnecting cannot help: check the bot token and the application's intents"
             )),
+            Some(code) if UNRESUMABLE.contains(&code) => self.reconnect(false),
             _ => self.reconnect(true),
         }
     }

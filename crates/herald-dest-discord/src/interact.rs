@@ -4,7 +4,7 @@
 
 use std::fmt;
 
-use herald_core::{Answering, Asked, Command, DestinationName, Member};
+use herald_core::{Answering, Asked, Command, DestinationName, Member, Place};
 use herald_ports::{Method, Request, Response, Secret, Text};
 use serde_json::{Value, json};
 
@@ -43,6 +43,9 @@ const PROJECT: &str = "project";
 const SHARE: &str = "share";
 /// The longest message Discord takes, in characters.
 pub const MESSAGE: usize = 2000;
+/// The kinds of channel that are threads: an announcement channel's, a
+/// public one and a private one.
+const THREADS: [u64; 3] = [10, 11, 12];
 
 /// How a Discord destination takes and answers commands, with the bot token
 /// it gives roles with.
@@ -78,8 +81,8 @@ pub enum Received {
     /// A member typing a project's name, to be answered at once with the
     /// projects it completes to.
     Completing {
-        /// The channel it is typed in.
-        place: String,
+        /// Where it is typed.
+        place: Place,
         /// What has been typed.
         typed: String,
         /// Where the completions go where no endpoint answers them.
@@ -106,6 +109,24 @@ impl fmt::Display for Unread {
             Self::Unplaced => "the interaction names no channel or no member",
         })
     }
+}
+
+/// Where the interaction `value` was given: its channel, and the channel
+/// that is in where it is a thread.
+fn placed(value: &Value) -> Option<Place> {
+    let id = text(value, "channel_id").filter(|id| snowflake(id))?;
+    let channel = value.get("channel");
+    let threaded = channel
+        .and_then(|channel| channel.get("type"))
+        .and_then(Value::as_u64)
+        .is_some_and(|kind| THREADS.contains(&kind));
+    let parent = channel
+        .and_then(|channel| text(channel, "parent_id"))
+        .filter(|parent| threaded && snowflake(parent));
+    Some(Place {
+        id: id.to_owned(),
+        parent: parent.map(ToOwned::to_owned),
+    })
 }
 
 fn text<'a>(value: &'a Value, key: &str) -> Option<&'a str> {
@@ -196,9 +217,7 @@ impl Interacting {
             return Ok(Received::Ignored);
         }
         let data = value.get("data").ok_or(Unread::NotAnInteraction)?;
-        let place = text(value, "channel_id")
-            .ok_or(Unread::Unplaced)?
-            .to_owned();
+        let place = placed(value).ok_or(Unread::Unplaced)?;
         let (command, given) = match kind {
             APPLICATION_COMMAND | AUTOCOMPLETE => match self.command(data) {
                 Some(found) => found,
@@ -266,7 +285,7 @@ impl Interacting {
     fn asked(
         destination: &DestinationName,
         value: &Value,
-        place: String,
+        place: Place,
         command: Command,
         project: Option<String>,
         share: bool,
@@ -279,6 +298,7 @@ impl Interacting {
             .and_then(|member| member.get("user"))
             .or_else(|| value.get("user"))
             .and_then(|user| text(user, "id"))
+            .filter(|user| snowflake(user))
             .ok_or(Unread::Unplaced)?;
         let member = match (member, text(value, "guild_id")) {
             (Some(member), Some(guild)) => Some(Member {

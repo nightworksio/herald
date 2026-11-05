@@ -37,7 +37,7 @@ mod stores;
 
 use output::{Scrubbing, chored, hidden, masked, polled, report, say, warned, why};
 use serving::serving;
-use stores::{Records, SERVED, STORES, reached};
+use stores::{Commands, Records, SERVED, STORES, reached};
 
 /// Every route announced, already announced, or held by another run; every
 /// source polled and its cursor moved on; or every chore that fell due done
@@ -677,7 +677,7 @@ async fn announcing(
     let (records, connected) = if dry_run {
         dry(config, vars, &sent).await?
     } else {
-        reached(config, vars, connect).await?
+        reached(config, vars, connect, Commands::Unanswered).await?
     };
     let run = run_name(vars);
     let announcing = Announcing {
@@ -1020,7 +1020,7 @@ async fn polling(
     connect: Connect<'_>,
     out: &mut dyn Write,
 ) -> Result<u8, String> {
-    let (records, connected) = reached(config, vars, connect).await?;
+    let (records, connected) = reached(config, vars, connect, Commands::Unanswered).await?;
     let run = run_name(vars);
     let polling = Polling {
         config,
@@ -1054,7 +1054,7 @@ async fn housekeeping(
     connect: Connect<'_>,
     out: &mut dyn Write,
 ) -> Result<u8, String> {
-    let (records, connected) = reached(config, vars, connect).await?;
+    let (records, connected) = reached(config, vars, connect, Commands::Unanswered).await?;
     let housekeeping = Housekeeping {
         connected: &connected,
     };

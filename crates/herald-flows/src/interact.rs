@@ -4,8 +4,8 @@
 
 use herald_config::{Config, RouteConfig};
 use herald_core::{
-    Answering, Asked, Command, Context, DestinationName, Draft, Event, Latest, RouteId, Said,
-    Subscription, announced, body_template, chosen, chunk, completions, escaped, safe_url,
+    Answering, Asked, Command, Context, DestinationName, Draft, Event, Latest, Place, RouteId,
+    Said, Subscription, announced, body_template, chosen, chunk, completions, escaped, safe_url,
     title_template,
 };
 use herald_ports::{Http, Store};
@@ -34,10 +34,12 @@ fn told(said: &Said) -> Answer {
     }
 }
 
-fn unavailable(trouble: impl Into<String>) -> Answer {
-    Answer {
-        trouble: Some(trouble.into()),
-        ..told(&Said::Unavailable)
+impl Answer {
+    fn unavailable(trouble: impl Into<String>) -> Self {
+        Self {
+            trouble: Some(trouble.into()),
+            ..told(&Said::Unavailable)
+        }
     }
 }
 
@@ -45,19 +47,23 @@ fn unavailable(trouble: impl Into<String>) -> Answer {
 fn placed<'a>(
     config: &'a Config,
     destination: &DestinationName,
-    place: &str,
+    place: &Place,
 ) -> Vec<&'a RouteConfig> {
     config
         .routes
         .iter()
         .filter(|route| {
-            &route.route.destination == destination && route.options.place() == Some(place)
+            &route.route.destination == destination
+                && route
+                    .options
+                    .place()
+                    .is_some_and(|channel| place.is(channel))
         })
         .collect()
 }
 
-fn ids(routes: &[&RouteConfig]) -> Vec<RouteId> {
-    routes.iter().map(|route| route.route.id.clone()).collect()
+fn id<'r>(route: &'r &RouteConfig) -> &'r RouteId {
+    &route.route.id
 }
 
 /// What herald answers `asked`, given on a destination of `connected`, with
@@ -79,22 +85,27 @@ pub async fn interact<S: Store, C, G, H: Http>(
     let placed = placed(config, &asked.destination, &asked.place);
     let every_latest = match ports.store.every_latest().await {
         Ok(every_latest) => every_latest,
-        Err(error) => return unavailable(error.to_string()),
+        Err(error) => return Answer::unavailable(error.to_string()),
     };
-    let announced = announced(&every_latest, &ids(&placed));
-    let latest = match chosen(asked.project.as_deref(), &announced) {
-        Ok(latest) => latest,
+    let here = match chosen(
+        asked.project.as_deref(),
+        &announced(&every_latest, &placed, id),
+    ) {
+        Ok(here) => here,
         Err(unchosen) => return told(&Said::Unchosen(unchosen)),
     };
-    let routes: Vec<&RouteConfig> = placed
-        .into_iter()
-        .filter(|route| latest.routes.contains(&route.route.id))
-        .collect();
     match asked.command {
         Command::Subscribe | Command::Unsubscribe => {
-            subscribing(interacting, http, ports.store, asked, latest, &routes).await
+            let routes: Vec<&RouteConfig> = placed
+                .iter()
+                .copied()
+                .filter(|route| here.latest.routes.contains(&route.route.id))
+                .collect();
+            subscribing(interacting, http, ports.store, asked, here.latest, &routes).await
         }
-        Command::Latest | Command::Changelog => shown(config, &answering, asked, latest, &routes),
+        Command::Latest | Command::Changelog => {
+            shown(config, &answering, asked, here.latest, here.route)
+        }
     }
 }
 
@@ -104,14 +115,12 @@ pub async fn completed<S: Store>(
     config: &Config,
     store: &S,
     destination: &DestinationName,
-    place: &str,
+    place: &Place,
     typed: &str,
 ) -> Vec<String> {
     let every_latest = store.every_latest().await.unwrap_or_default();
-    completions(
-        typed,
-        &announced(&every_latest, &ids(&placed(config, destination, place))),
-    )
+    let placed = placed(config, destination, place);
+    completions(typed, &announced(&every_latest, &placed, id))
 }
 
 /// Sends `answer` where `replying` names, on `destination` of `connected`, in
@@ -215,12 +224,12 @@ async fn subscribing<S: Store, H: Http>(
         };
         for role in &roles {
             let Some(request) = discord.role(&member.guild, &asked.user, role, give) else {
-                return unavailable(
+                return Answer::unavailable(
                     "a role could not be asked of Discord: an id is not written as Discord writes one",
                 );
             };
             if let Err(trouble) = interacting.sent(http, request).await {
-                return unavailable(trouble);
+                return Answer::unavailable(trouble);
             }
         }
         return done(give);
@@ -233,7 +242,7 @@ async fn subscribing<S: Store, H: Http>(
     }
     let subscribers = match store.subscribers(&asked.destination, &project).await {
         Ok(subscribers) => subscribers,
-        Err(error) => return unavailable(error.to_string()),
+        Err(error) => return Answer::unavailable(error.to_string()),
     };
     let holds = subscribers
         .iter()
@@ -255,7 +264,7 @@ async fn subscribing<S: Store, H: Http>(
     };
     match written {
         Ok(()) => done(give),
-        Err(error) => unavailable(error.to_string()),
+        Err(error) => Answer::unavailable(error.to_string()),
     }
 }
 
@@ -264,11 +273,8 @@ fn shown(
     answering: &Answering,
     asked: &Asked,
     latest: &Latest,
-    routes: &[&RouteConfig],
+    route: &RouteConfig,
 ) -> Answer {
-    let Some(route) = routes.first() else {
-        return unavailable("no route announced the project here");
-    };
     let shown = latest.shown(answering.prereleases);
     let event = match Event::normalise(Draft {
         identity: format!("latest/{}", latest.project),
@@ -282,7 +288,7 @@ fn shown(
         occurred: shown.occurred,
     }) {
         Ok(event) => event,
-        Err(problem) => return unavailable(problem.to_string()),
+        Err(problem) => return Answer::unavailable(problem.to_string()),
     };
     let template = answering
         .template
@@ -310,7 +316,7 @@ fn shown(
             public: answering.replies.public(asked.command, asked.share),
             trouble: None,
         },
-        Err(error) => unavailable(error.to_string()),
+        Err(error) => Answer::unavailable(error.to_string()),
     }
 }
 

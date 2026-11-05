@@ -40,13 +40,14 @@ fn hello(gateway: &mut Gateway) -> Vec<Effect> {
 }
 
 fn ready(gateway: &mut Gateway) {
-    received(
+    let effects = received(
         gateway,
         &json!({ "op": 0, "s": 1, "t": "READY", "d": {
             "session_id": "session",
             "resume_gateway_url": "wss://resume.discord.gg/",
         }}),
     );
+    assert_eq!(effects, [Effect::Ready]);
 }
 
 #[test]
@@ -143,6 +144,32 @@ fn a_close_reconnecting_cannot_help_stops_and_any_other_resumes() {
 }
 
 #[test]
+fn a_session_that_cannot_be_taken_up_again_starts_afresh_and_is_ready_once_resumed() {
+    for code in [4007, 4009] {
+        let mut gateway = Gateway::new(token());
+        hello(&mut gateway);
+        ready(&mut gateway);
+        assert_eq!(
+            gateway.closed(Some(code)),
+            Effect::Reconnect { resume: false },
+            "{code}"
+        );
+        assert_eq!(gateway.url(), GATEWAY);
+    }
+    let mut gateway = Gateway::new(token());
+    hello(&mut gateway);
+    ready(&mut gateway);
+    gateway.closed(None);
+    assert_eq!(
+        received(
+            &mut gateway,
+            &json!({ "op": 0, "s": 2, "t": "RESUMED", "d": {} })
+        ),
+        [Effect::Ready]
+    );
+}
+
+#[test]
 fn an_interaction_dispatched_is_handed_over_and_others_pass() {
     let mut gateway = Gateway::new(token());
     let interaction = json!({ "op": 0, "s": 5, "t": "INTERACTION_CREATE", "d": {
@@ -155,8 +182,11 @@ fn an_interaction_dispatched_is_handed_over_and_others_pass() {
         "data": { "name": "latest" },
     }});
     let effects = received(&mut gateway, &interaction);
-    let [Effect::Received(Received::Asked { asked, .. })] = effects.as_slice() else {
+    let [Effect::Received(handed)] = effects.as_slice() else {
         panic!("{effects:?}");
+    };
+    let Received::Asked { asked, .. } = handed.as_ref() else {
+        panic!("{handed:?}");
     };
     assert_eq!(asked.command, Command::Latest);
     let mut other = interaction.clone();

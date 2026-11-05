@@ -51,7 +51,7 @@ fn a_command_in_a_transaction_is_read_with_its_project_and_share() {
         [(
             Asked {
                 destination: destination(),
-                place: "!room:matrix.example".to_owned(),
+                place: Place::new("!room:matrix.example"),
                 user: "@ann:matrix.example".to_owned(),
                 command: Command::Latest,
                 project: Some("herald".to_owned()),
@@ -62,9 +62,19 @@ fn a_command_in_a_transaction_is_read_with_its_project_and_share() {
             Replying {
                 room: "!room:matrix.example".to_owned(),
                 event: "$command".to_owned(),
+                thread: None,
             }
         )]
     );
+    let mut threaded = message("!herald latest", "@ann:x");
+    threaded["content"]["m.relates_to"] = json!({ "rel_type": "m.thread", "event_id": "$root" });
+    let mut replied = message("!herald latest", "@ann:x");
+    replied["content"]["m.relates_to"] = json!({ "m.in_reply_to": { "event_id": "$other" } });
+    let threads: Vec<Option<String>> = pushed(&[threaded, replied])
+        .into_iter()
+        .map(|(_, replying)| replying.thread)
+        .collect();
+    assert_eq!(threads, [Some("$root".to_owned()), None]);
     let plain = pushed(&[message("!herald Subscribe", "@ann:x")]);
     assert_eq!(
         (
@@ -98,6 +108,10 @@ fn messages_that_are_not_commands_to_herald_are_passed_over() {
     idless.as_object_mut().unwrap().remove("event_id");
     let mut contentless = message("!herald latest", "@ann:x");
     contentless.as_object_mut().unwrap().remove("content");
+    let mut unnamed_room = message("!herald latest", "@ann:x");
+    unnamed_room["room_id"] = json!("!");
+    let mut aliased = message("!herald latest", "@ann:x");
+    aliased["room_id"] = json!("#room:x");
     let events = [
         message("hello", "@ann:x"),
         message("!heraldlatest", "@ann:x"),
@@ -105,6 +119,11 @@ fn messages_that_are_not_commands_to_herald_are_passed_over() {
         message("!herald deploy", "@ann:x"),
         message("!herald latest a b", "@ann:x"),
         message("!herald latest", "@herald:matrix.example"),
+        message("!herald latest", ""),
+        message("!herald latest", "@"),
+        message("!herald latest", "ann:x"),
+        unnamed_room,
+        aliased,
         notice,
         state,
         roomless,
@@ -145,7 +164,7 @@ fn a_sync_s_commands_are_read_from_each_joined_room_with_where_the_next_starts()
         .unwrap();
     assert_eq!(synced.next, "s2");
     assert_eq!(synced.asked.len(), 1);
-    assert_eq!(synced.asked[0].0.place, "!a:x");
+    assert_eq!(synced.asked[0].0.place, Place::new("!a:x"));
     assert_eq!(synced.asked[0].1.room, "!a:x");
     let quiet = interacting("")
         .synced(&destination(), br#"{"next_batch": "s3"}"#)
@@ -195,6 +214,7 @@ fn an_answer_is_threaded_under_the_command_unless_public_once_per_part() {
     let replying = Replying {
         room: "!room:matrix.example".to_owned(),
         event: "$command".to_owned(),
+        thread: None,
     };
     let parts = [
         Written {
@@ -240,6 +260,32 @@ fn an_answer_is_threaded_under_the_command_unless_public_once_per_part() {
         serde_json::from_slice::<Value>(&public[0].body).unwrap()["m.relates_to"],
         json!({ "m.in_reply_to": { "event_id": "$command" } })
     );
+}
+
+#[test]
+fn an_answer_to_a_command_given_in_a_thread_replies_to_it_in_that_thread_public_or_not() {
+    let replying = Replying {
+        room: "!room:matrix.example".to_owned(),
+        event: "$command".to_owned(),
+        thread: Some("$root".to_owned()),
+    };
+    let parts = [Written {
+        body: "one".to_owned(),
+        html: None,
+    }];
+    for public in [false, true] {
+        let answered = interacting("").answered(&replying, &parts, public);
+        assert_eq!(
+            serde_json::from_slice::<Value>(&answered[0].body).unwrap()["m.relates_to"],
+            json!({
+                "rel_type": "m.thread",
+                "event_id": "$root",
+                "is_falling_back": false,
+                "m.in_reply_to": { "event_id": "$command" },
+            }),
+            "{public}"
+        );
+    }
 }
 
 #[test]

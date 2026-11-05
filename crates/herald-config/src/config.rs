@@ -386,6 +386,10 @@ pub struct Server {
     pub fetches: usize,
     /// How many of an announcement's inboxes are delivered to at once.
     pub deliveries: usize,
+    /// How long a session a destination holds hears nothing before it
+    /// checks the connection is alive, and then as long again before it
+    /// opens another.
+    pub silence: SignedDuration,
     /// Where the keys inbound activities are checked with are kept.
     pub keys: KeyCache,
     /// How long a key is used before its document is read again.
@@ -416,6 +420,9 @@ impl Server {
     pub const KEYS_REFRESHED: SignedDuration = SignedDuration::from_hours(1);
     /// The most keys kept in memory where the config says nothing.
     pub const KEYS_MOST: usize = 1024;
+    /// How long a session hears nothing before it checks its connection
+    /// where the config says nothing.
+    pub const SILENCE: SignedDuration = SignedDuration::from_secs(30);
 }
 
 impl Server {
@@ -436,6 +443,7 @@ impl Default for Server {
             body: Self::BODY,
             fetches: Self::FETCHES,
             deliveries: Self::DELIVERIES,
+            silence: Self::SILENCE,
             keys: KeyCache::Memory,
             keys_refreshed: Self::KEYS_REFRESHED,
             keys_most: Self::KEYS_MOST,

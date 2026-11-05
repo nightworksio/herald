@@ -8,6 +8,7 @@ use serde::Deserialize;
 
 use crate::key::RouteId;
 use crate::latest::Latest;
+use crate::markup::escaped;
 use crate::route::{DestinationName, TemplateName};
 
 /// The most projects a destination lists as completions of what a member
@@ -149,6 +150,34 @@ impl Answering {
     }
 }
 
+/// Where a command was given: a channel, a thread or a room, and the
+/// channel a thread is in.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Place {
+    /// The channel, thread or room.
+    pub id: String,
+    /// The channel it is a thread of, where it is one.
+    pub parent: Option<String>,
+}
+
+impl Place {
+    /// A channel or room that is no thread.
+    #[must_use]
+    pub fn new(id: impl Into<String>) -> Self {
+        Self {
+            id: id.into(),
+            parent: None,
+        }
+    }
+
+    /// Whether a route announcing in `channel` announces here: in it, or in
+    /// the channel it is a thread of.
+    #[must_use]
+    pub fn is(&self, channel: &str) -> bool {
+        self.id == channel || self.parent.as_deref() == Some(channel)
+    }
+}
+
 /// What the member asking holds where a destination keeps subscriptions as
 /// roles: Discord's server and the roles the member holds in it.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -164,8 +193,8 @@ pub struct Member {
 pub struct Asked {
     /// The destination it was given on.
     pub destination: DestinationName,
-    /// The channel or room it was given in.
-    pub place: String,
+    /// Where it was given.
+    pub place: Place,
     /// The member who gave it.
     pub user: String,
     /// The command.
@@ -200,30 +229,67 @@ pub enum Unchosen {
 
 impl fmt::Display for Unchosen {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let listed = |known: &[String]| {
+            known
+                .iter()
+                .map(String::as_str)
+                .map(escaped)
+                .collect::<Vec<_>>()
+                .join(", ")
+        };
         match self {
             Self::Nothing => f.write_str("Nothing has been announced here yet."),
             Self::Many(known) => write!(
                 f,
                 "More than one project is announced here; name one of {}.",
-                known.join(", ")
+                listed(known)
             ),
             Self::Unknown { named, known } => write!(
                 f,
-                "{named} is not announced here; name one of {}.",
-                known.join(", ")
+                "{} is not announced here; name one of {}.",
+                escaped(named),
+                listed(known)
             ),
         }
     }
 }
 
-/// What has been announced on any of `routes`, by project name.
+/// A project announced where a command was given, and the first route that
+/// announced it there.
+#[derive(Debug, PartialEq, Eq)]
+pub struct AnnouncedHere<'a, R> {
+    /// What the project last announced.
+    pub latest: &'a Latest,
+    /// The first route that announced it here.
+    pub route: &'a R,
+}
+
+impl<R> Clone for AnnouncedHere<'_, R> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+impl<R> Copy for AnnouncedHere<'_, R> {}
+
+/// What has been announced on any of `routes`, each route named by `id`,
+/// with the first of them it was announced on, by project name.
 #[must_use]
-pub fn announced<'a>(every_latest: &'a [Latest], routes: &[RouteId]) -> Vec<&'a Latest> {
-    let mut found: Vec<&Latest> = every_latest
+pub fn announced<'a, R>(
+    every_latest: &'a [Latest],
+    routes: &'a [R],
+    id: impl Fn(&R) -> &RouteId,
+) -> Vec<AnnouncedHere<'a, R>> {
+    let mut found: Vec<AnnouncedHere<'a, R>> = every_latest
         .iter()
-        .filter(|latest| routes.iter().any(|route| latest.routes.contains(route)))
+        .filter_map(|latest| {
+            routes
+                .iter()
+                .find(|route| latest.routes.contains(id(route)))
+                .map(|route| AnnouncedHere { latest, route })
+        })
         .collect();
-    found.sort_by(|a, b| a.project.cmp(&b.project));
+    found.sort_by(|a, b| a.latest.project.cmp(&b.latest.project));
     found
 }
 
@@ -234,20 +300,23 @@ pub fn announced<'a>(every_latest: &'a [Latest], routes: &[RouteId]) -> Vec<&'a 
 ///
 /// When nothing was announced, when it named none among several, or when it
 /// named one not among them.
-pub fn chosen<'a>(named: Option<&str>, announced: &[&'a Latest]) -> Result<&'a Latest, Unchosen> {
+pub fn chosen<'a, R>(
+    named: Option<&str>,
+    announced: &[AnnouncedHere<'a, R>],
+) -> Result<AnnouncedHere<'a, R>, Unchosen> {
     let known = || {
         announced
             .iter()
-            .map(|latest| latest.project.clone())
+            .map(|here| here.latest.project.clone())
             .collect()
     };
     match (named, announced) {
         (_, []) => Err(Unchosen::Nothing),
-        (None, [only]) => Ok(only),
+        (None, [only]) => Ok(*only),
         (None, _) => Err(Unchosen::Many(known())),
         (Some(named), _) => announced
             .iter()
-            .find(|latest| latest.project.eq_ignore_ascii_case(named))
+            .find(|here| here.latest.project.eq_ignore_ascii_case(named))
             .copied()
             .ok_or_else(|| Unchosen::Unknown {
                 named: named.to_owned(),
@@ -259,11 +328,11 @@ pub fn chosen<'a>(named: Option<&str>, announced: &[&'a Latest]) -> Result<&'a L
 /// The projects among `announced` whose names hold `typed`, in any case,
 /// those starting with it first, at most [`MOST_COMPLETIONS`].
 #[must_use]
-pub fn completions(typed: &str, announced: &[&Latest]) -> Vec<String> {
+pub fn completions<R>(typed: &str, announced: &[AnnouncedHere<'_, R>]) -> Vec<String> {
     let typed = typed.to_lowercase();
     let (mut starting, holding): (Vec<String>, Vec<String>) = announced
         .iter()
-        .map(|latest| latest.project.clone())
+        .map(|here| here.latest.project.clone())
         .filter(|project| project.to_lowercase().contains(&typed))
         .partition(|project| project.to_lowercase().starts_with(&typed));
     starting.extend(holding);
@@ -298,29 +367,37 @@ impl fmt::Display for Said {
             Self::Subscribed(project) => {
                 write!(
                     f,
-                    "You will be mentioned when {project} announces a release."
+                    "You will be mentioned when {} announces a release.",
+                    escaped(project)
                 )
             }
             Self::AlreadySubscribed(project) => {
                 write!(
                     f,
-                    "You are already mentioned when {project} announces a release."
+                    "You are already mentioned when {} announces a release.",
+                    escaped(project)
                 )
             }
             Self::Unsubscribed(project) => {
                 write!(
                     f,
-                    "You will no longer be mentioned when {project} announces a release."
+                    "You will no longer be mentioned when {} announces a release.",
+                    escaped(project)
                 )
             }
             Self::NotSubscribed(project) => {
                 write!(
                     f,
-                    "You are not mentioned when {project} announces a release."
+                    "You are not mentioned when {} announces a release.",
+                    escaped(project)
                 )
             }
             Self::Unoffered(project) => {
-                write!(f, "Subscribing to {project} is not offered here.")
+                write!(
+                    f,
+                    "Subscribing to {} is not offered here.",
+                    escaped(project)
+                )
             }
             Self::Unchosen(unchosen) => unchosen.fmt(f),
             Self::Disabled(command) => {

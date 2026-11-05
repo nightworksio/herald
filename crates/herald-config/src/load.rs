@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::ops::Range;
 
-use herald_core::{Command, DestinationName, RouteId, SourceName, TemplateName};
+use herald_core::{DestinationName, RouteId, SourceName, TemplateName};
 use herald_sources_forge::Forge;
 use herald_sources_registry::Registry;
 use serde::de::DeserializeOwned;
@@ -355,15 +355,12 @@ impl Loader<'_> {
                     ),
                 );
             }
-            let keeps_nothing = matches!(store, Some(Store::Markers));
-            if keeps_nothing
-                && (answering.takes(Command::Latest) || answering.takes(Command::Changelog))
-            {
+            if matches!(store, Some(Store::Markers)) {
                 self.error(
                     span,
-                    &format!("{path}.commands"),
+                    &path,
                     format!(
-                        "the {} store keeps nothing latest and changelog answer with; give a store that keeps it, such as \"{}\", or leave them out of commands",
+                        "the {} store keeps nothing commands answer with; give a store that keeps what each project last announced, such as \"{}\"",
                         Store::MARKERS,
                         Store::GIT_BRANCH
                     ),
@@ -591,6 +588,7 @@ impl Loader<'_> {
             body: file.body.map_or(defaults.body, |body| body.0),
             fetches: count(file.fetches, defaults.fetches),
             deliveries: count(file.deliveries, defaults.deliveries),
+            silence: file.silence.map_or(defaults.silence, |silence| silence.0),
             keys,
             keys_refreshed: file
                 .keys

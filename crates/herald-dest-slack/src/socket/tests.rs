@@ -128,21 +128,26 @@ fn a_button_press_is_handed_over_and_other_envelopes_only_acknowledged() {
 }
 
 #[test]
-fn a_disconnect_reconnects_and_a_greeting_or_noise_asks_nothing() {
+fn a_disconnect_reconnects_a_greeting_is_noted_and_noise_asks_nothing() {
     let disconnect = interacting().envelope(
         &destination(),
         r#"{"type": "disconnect", "reason": "refresh_requested"}"#,
     );
     assert!(disconnect.reconnect);
+    assert!(!disconnect.greeted);
     assert_eq!(disconnect.acknowledgement, None);
-    for frame in [r#"{"type": "hello"}"#, "not json"] {
-        assert_eq!(
-            interacting().envelope(&destination(), frame),
-            Enveloped {
-                acknowledgement: None,
-                received: None,
-                reconnect: false,
-            }
-        );
-    }
+    let quiet = Enveloped {
+        acknowledgement: None,
+        received: None,
+        reconnect: false,
+        greeted: false,
+    };
+    assert_eq!(
+        interacting().envelope(&destination(), r#"{"type": "hello"}"#),
+        Enveloped {
+            greeted: true,
+            ..quiet.clone()
+        }
+    );
+    assert_eq!(interacting().envelope(&destination(), "not json"), quiet);
 }

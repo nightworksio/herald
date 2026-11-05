@@ -172,7 +172,7 @@ body = "{{{{ event.body }}}}"
         );
         refused(
             &config("markers", &bot(""), "channel = \"100\""),
-            "destinations.discord.interactions.commands: the markers store keeps nothing latest and changelog answer with",
+            "destinations.discord.interactions: the markers store keeps nothing commands answer with",
         );
         let slack = config("git-branch", &bot(""), "channel = \"100\"").replace(
             "signing = { secret = \"HERALD_SLACK_SIGNING\" }",
@@ -191,7 +191,21 @@ body = "{{{{ event.body }}}}"
     }
 
     #[test]
-    fn a_markers_store_may_answer_subscribing_alone() {
+    fn a_fediverse_route_announces_in_no_channel_and_offers_no_role() {
+        for options in [
+            RouteOptions::Mastodon(herald_dest_fediverse::RouteOptions::default()),
+            RouteOptions::ActivityPub(herald_dest_fediverse::ActorRouteOptions {
+                actor: "herald".to_owned(),
+                content_warning: None,
+            }),
+        ] {
+            assert_eq!(options.place(), None);
+            assert_eq!(options.opt_in_role(), None);
+        }
+    }
+
+    #[test]
+    fn a_markers_store_answers_no_command_not_even_subscribing() {
         let text = config(
             "markers",
             &bot("commands = [\"subscribe\"]"),
@@ -205,11 +219,15 @@ body = "{{{{ event.body }}}}"
             "[destinations.matrix.interactions]\n",
             "[destinations.matrix.interactions]\ncommands = [\"unsubscribe\"]\n",
         );
-        assert!(
-            load("herald.toml", &text, &nothing).is_ok(),
-            "{}",
-            errors(&text)
-        );
+        let errors = errors(&text);
+        for destination in ["discord", "slack", "matrix"] {
+            assert!(
+                errors.contains(&format!(
+                    "destinations.{destination}.interactions: the markers store keeps nothing commands answer with"
+                )),
+                "{errors}"
+            );
+        }
     }
 
     #[test]

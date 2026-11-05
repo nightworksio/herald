@@ -57,6 +57,31 @@ fn taken(received: Result<Received, Unread>) -> (Asked, Replying) {
 }
 
 #[test]
+fn a_command_in_a_thread_is_placed_in_the_channel_the_thread_is_in_too() {
+    const FORUM: &str = "723456789012345678";
+    let in_channel = |kind: u64, parent: &str| {
+        let mut value = interaction(2, &json!({ "name": "latest" }));
+        value.as_object_mut().unwrap().insert(
+            "channel".to_owned(),
+            json!({ "id": CHANNEL, "type": kind, "parent_id": parent }),
+        );
+        taken(received(&interacting(""), &value)).0.place
+    };
+    for thread in [10, 11, 12] {
+        assert_eq!(
+            in_channel(thread, FORUM),
+            Place {
+                id: CHANNEL.to_owned(),
+                parent: Some(FORUM.to_owned()),
+            },
+            "{thread}"
+        );
+    }
+    assert_eq!(in_channel(0, FORUM), Place::new(CHANNEL));
+    assert_eq!(in_channel(11, "forum"), Place::new(CHANNEL));
+}
+
+#[test]
 fn a_ping_is_read_whoever_sent_it_and_answered_with_a_pong() {
     let ping = json!({ "type": 1 });
     assert_eq!(received(&interacting(""), &ping), Ok(Received::Ping));
@@ -77,7 +102,7 @@ fn a_slash_command_is_read_with_its_project_share_and_the_member_s_roles() {
         asked,
         Asked {
             destination: destination(),
-            place: CHANNEL.to_owned(),
+            place: Place::new(CHANNEL),
             user: USER.to_owned(),
             command: Command::Latest,
             project: Some("herald".to_owned()),
@@ -145,7 +170,7 @@ fn typing_a_project_is_read_as_what_was_typed_in_its_channel() {
     assert_eq!(
         received(&interacting(""), &value),
         Ok(Received::Completing {
-            place: CHANNEL.to_owned(),
+            place: Place::new(CHANNEL),
             typed: "her".to_owned(),
             replying: replying.clone(),
         })
@@ -154,7 +179,7 @@ fn typing_a_project_is_read_as_what_was_typed_in_its_channel() {
     assert_eq!(
         received(&interacting(""), &nothing),
         Ok(Received::Completing {
-            place: CHANNEL.to_owned(),
+            place: Place::new(CHANNEL),
             typed: String::new(),
             replying: replying.clone(),
         })
@@ -254,6 +279,19 @@ fn an_interaction_missing_what_it_needs_is_unread() {
     let mut userless = interaction(2, &json!({ "name": "latest" }));
     userless.as_object_mut().unwrap().remove("member");
     assert_eq!(received(&interacting(""), &userless), Err(Unread::Unplaced));
+    for (key, unwritten) in [
+        ("/channel_id", ""),
+        ("/channel_id", "general"),
+        ("/member/user/id", ""),
+    ] {
+        let mut miswritten = interaction(2, &json!({ "name": "latest" }));
+        *miswritten.pointer_mut(key).unwrap() = json!(unwritten);
+        assert_eq!(
+            received(&interacting(""), &miswritten),
+            Err(Unread::Unplaced),
+            "{key} {unwritten:?}"
+        );
+    }
     for key in ["id", "token"] {
         let mut missing = interaction(2, &json!({ "name": "latest" }));
         missing.as_object_mut().unwrap().remove(key);
