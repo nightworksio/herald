@@ -680,8 +680,11 @@ key = "{KEY}"
 
     #[tokio::test(start_paused = true)]
     async fn a_command_beyond_what_the_server_answers_at_once_is_said_and_left() {
-        let sockets =
-            ScriptedSockets::opening(vec![Ok(vec![envelope("latest"), envelope("changelog")])]);
+        let sockets = ScriptedSockets::opening(vec![Ok(vec![
+            envelope("latest"),
+            envelope("changelog"),
+            envelope("subscribe"),
+        ])]);
         let answers = Answers::of(vec![
             answer(
                 "/apps.connections.open",
@@ -694,11 +697,16 @@ key = "{KEY}"
         let heard = world
             .served(1, |line| line.contains("was not answered"))
             .await;
+        let refused: Vec<&String> = heard
+            .iter()
+            .filter(|line| line.ends_with("was not answered: the server answers no more at once"))
+            .collect();
+        assert!(!refused.is_empty(), "{heard:?}");
         assert!(
-            heard.contains(
-                &"slack: changelog was not answered: the server answers no more at once".to_owned()
-            ),
-            "{heard:?}"
+            refused
+                .iter()
+                .all(|line| !line.starts_with("slack: latest")),
+            "the first command is taken: {heard:?}"
         );
     }
 
