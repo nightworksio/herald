@@ -8,7 +8,7 @@ use std::io::Write;
 
 use herald_config::Config;
 use herald_flows::{
-    Connected, FollowError, Followed, Keys, Ports, Serving, Webhooks, Worked, webhooks,
+    Connected, FollowError, Followed, Interacted, Keys, Ports, Serving, Webhooks, Worked, webhooks,
 };
 use herald_native::{EnvSecrets, RingSigner, RingVerifier, SystemClock};
 use herald_ports::{Keyring, PUBLIC, Store as Keeps};
@@ -98,6 +98,7 @@ pub(crate) fn said(heard: Heard) -> Vec<String> {
         Heard::Listening(address) => vec![format!("herald serves on {address}")],
         Heard::Worked(Worked::Announced(announced)) => announced.iter().map(report).collect(),
         Heard::Worked(Worked::Followed(followed)) => vec![follow(followed)],
+        Heard::Worked(Worked::Interacted(interacted)) => interacted.iter().map(answered).collect(),
         Heard::Polled(swept) => swept.iter().flat_map(polled).collect(),
         Heard::Kept(Ok(kept)) => kept.iter().map(chored).collect(),
         Heard::Kept(Err(stop)) => vec![format!(
@@ -105,6 +106,19 @@ pub(crate) fn said(heard: Heard) -> Vec<String> {
             why(&stop)
         )],
         Heard::Unaccepted(reason) => vec![format!("a connection could not be taken: {reason}")],
+    }
+}
+
+fn answered(interacted: &Interacted) -> String {
+    let asked = &interacted.asked;
+    let command = asked.command.name();
+    let destination = asked.destination.as_str();
+    match (&interacted.answer.trouble, &interacted.sent) {
+        (Some(trouble), _) => format!("{destination}: {command} could not be answered: {trouble}"),
+        (None, Err(error)) => {
+            format!("{destination}: the answer to {command} could not be sent: {error}")
+        }
+        (None, Ok(())) => format!("{destination}: {command} was answered in {}", asked.place),
     }
 }
 

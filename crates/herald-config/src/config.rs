@@ -313,6 +313,18 @@ impl RouteOptions {
         matches!(self, Self::Discord(placed) if placed.forum)
     }
 
+    /// The channel or room the route announces in, where its destination
+    /// names one, as a command given there names it.
+    #[must_use]
+    pub fn place(&self) -> Option<&str> {
+        match self {
+            Self::Discord(placed) => placed.channel.as_deref(),
+            Self::Slack(placed) => placed.channel.as_deref(),
+            Self::Matrix(placed) => Some(&placed.room),
+            Self::Mastodon(_) | Self::ActivityPub(_) => None,
+        }
+    }
+
     /// The opt-in role members subscribe to, which the route mentions with
     /// its announcements: a Discord route's alone.
     #[must_use]

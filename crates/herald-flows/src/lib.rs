@@ -14,10 +14,13 @@
 //! renders each route's templates as its destination would show them.
 
 mod announce;
+mod commanded;
 mod doctor;
 mod following;
 mod housekeep;
 mod inbound;
+mod interact;
+mod interacting;
 mod poll;
 mod prepare;
 mod preview;
@@ -26,15 +29,18 @@ mod serving;
 mod together;
 
 pub use announce::{Announced, Outcome, Ports, Stop, announce, announce_within};
+pub use commanded::{INTERACTIONS, MATRIX};
 pub use doctor::{Findings, Gap, doctor, keys, unserved};
 pub use following::{FollowError, Followed, followed};
 pub use housekeep::{Chored, Kept, housekeep};
 pub use inbound::{Keys, Rejected, Verified, activity_verified, admitted, released, verified};
+pub use interact::{Answer, completed, deferral, interact, replied};
+pub use interacting::{Interacting, Replying};
 pub use poll::{Fresh, Remembered, Sweep, Swept, poll};
 pub use prepare::{Connected, PrepareError, Prepared, prepare};
 pub use preview::{Previewed, preview};
 pub use reached::{Posts, Reached};
 pub use serving::{
-    Answered, HEALTH, HOOKS, Inbound, Job, Reply, Serving, Webhooks, Worked, answer, unworked,
-    webhooks, work,
+    Answered, HEALTH, HOOKS, Inbound, Interacted, Job, Reply, Serving, Webhooks, Worked, answer,
+    unworked, webhooks, work,
 };

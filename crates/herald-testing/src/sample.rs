@@ -34,6 +34,7 @@ pub fn announcement() -> Announcement {
             announcement: marker(),
         },
         route: RouteId::new(ROUTE),
+        project: "php-mutation-gate".to_owned(),
         title: "📦 php-mutation-gate v0.1.0".to_owned(),
         parts: vec![
             Text {

@@ -11,6 +11,7 @@ use minijinja::{
 
 use crate::event::Event;
 use crate::key::RouteId;
+use crate::markup::escaped;
 
 const FUEL: u64 = 100_000;
 const RECURSION: usize = 16;
@@ -157,20 +158,9 @@ fn format(
     let text = if value.is_safe() {
         text
     } else {
-        escape_markdown(&text)
+        escaped(&text)
     };
     output.write_str(&text).map_err(minijinja::Error::from)
-}
-
-fn escape_markdown(text: &str) -> String {
-    let mut escaped = String::with_capacity(text.len());
-    for character in text.chars() {
-        if character.is_ascii_punctuation() {
-            escaped.push('\\');
-        }
-        escaped.push(character);
-    }
-    escaped
 }
 
 fn failure(name: &str, error: &minijinja::Error) -> TemplateError {

@@ -48,7 +48,7 @@ pub use ledger::{
     Entry, Facts, Lease, Plan, Planned, Record, Sent, Standing, State, Step, plan, steps,
 };
 pub use marker::{Marker, Marks};
-pub use markup::{LINK_SCHEMES, Text, convert, literal, safe_url};
+pub use markup::{LINK_SCHEMES, Text, convert, escaped, literal, safe_url};
 pub use pattern::Pattern;
 pub use profile::{Dialect, Features, Limits, Measure, MentionStyle, Pins, Profile, Threads};
 pub use render::{Context, Form, TemplateError, Templates};

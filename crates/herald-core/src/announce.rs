@@ -39,6 +39,8 @@ pub struct Announcement {
     pub marks: Marks,
     /// The route that made it.
     pub route: RouteId,
+    /// The project the event is of.
+    pub project: String,
     /// The title, on one line, within the destination's limit.
     pub title: String,
     /// The body, cut into the parts the destination takes, the first part
@@ -99,6 +101,7 @@ pub fn announce(
         key: Key::derive(&route.id, event.identity()),
         marks,
         route: route.id.clone(),
+        project: event.project().to_owned(),
         title: shortened(&title, profile.limits.title, profile.measure),
         parts: chunk(&body, profile.dialect, room),
         thread: thread
