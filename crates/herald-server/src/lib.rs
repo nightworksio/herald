@@ -372,6 +372,7 @@ pub async fn serve<S, C, G, V, H, P, K, L>(
     let mut sweeps = rounds(Some(limits.keys));
     let mut stop = pin!(stop);
     loop {
+        tokio::task::coop::consume_budget().await;
         while running.len() < limits.jobs {
             let Some(job) = queue.next() else {
                 break;
