@@ -352,7 +352,6 @@ body = "{{ event.body }}"
             let first = asked(address, &release(EVENT.as_bytes())).await;
             let second = asked(address, &release(later.as_bytes())).await;
             stop.notify_one();
-            gate.open.notify_one();
             (first, second)
         };
         let one = Limits {
@@ -360,8 +359,12 @@ body = "{{ event.body }}"
             ..limits()
         };
         let hear = |said: Heard| heard.borrow_mut().push(named(&said));
+        let stopped = async {
+            stop.notified().await;
+            gate.open.notify_one();
+        };
         let ((first, second), ()) =
-            tokio::join!(client, world.serve(listener, one, &hear, stop.notified()));
+            tokio::join!(client, world.serve(listener, one, &hear, stopped));
         assert!(first.starts_with("HTTP/1.1 202 "), "{first}");
         assert!(second.starts_with("HTTP/1.1 202 "), "{second}");
         assert_eq!(said(&heard), ["listening", "worked"]);
