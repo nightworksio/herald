@@ -42,7 +42,9 @@ mod kv {
             pollster::block_on(records.list("ledger")),
             Ok(vec!["ledger/a".to_owned(), "ledger/b/c".to_owned()])
         );
-        let read = pollster::block_on(records.read("ledger/a")).unwrap().unwrap();
+        let read = pollster::block_on(records.read("ledger/a"))
+            .unwrap()
+            .unwrap();
         assert_eq!(read.bytes, b"{}");
         assert_eq!(
             pollster::block_on(records.write("ledger/a", b"[]", Some("stale"))),

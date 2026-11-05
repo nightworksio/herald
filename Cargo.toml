@@ -32,6 +32,7 @@ herald-sources-registry = { path = "crates/herald-sources-registry" }
 herald-store-actions-cache = { path = "crates/herald-store-actions-cache" }
 herald-store-d1 = { path = "crates/herald-store-d1" }
 herald-store-deno-kv = { path = "crates/herald-store-deno-kv" }
+herald-store-dynamodb = { path = "crates/herald-store-dynamodb" }
 herald-store-durable-object = { path = "crates/herald-store-durable-object" }
 herald-store-fastly-kv = { path = "crates/herald-store-fastly-kv" }
 herald-store-git-branch = { path = "crates/herald-store-git-branch" }

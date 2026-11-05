@@ -65,7 +65,10 @@ mod tests {
     #[test]
     fn the_binding_and_object_are_the_ones_named_or_else_herald_s() {
         let defaults = StoreOptions::default();
-        assert_eq!((defaults.binding(), defaults.object()), ("HERALD", "herald"));
+        assert_eq!(
+            (defaults.binding(), defaults.object()),
+            ("HERALD", "herald")
+        );
         let named: StoreOptions =
             serde_json::from_str(r#"{"binding": "NS", "object": "records"}"#).unwrap();
         assert_eq!((named.binding(), named.object()), ("NS", "records"));
