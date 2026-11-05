@@ -9,7 +9,7 @@ use herald_config::Config;
 use herald_core::{SourceName, digest};
 use herald_native::SystemClock;
 use herald_ports::Clock as _;
-use tokio::io::AsyncReadExt as _;
+use tokio::io::{AsyncRead, AsyncReadExt as _};
 
 use super::output::say;
 use super::{Connect, DONE, Routed, STOPPED, announcing};
@@ -69,18 +69,7 @@ pub(crate) async fn announcing_event(
             "no app in the config is named \"{app}\"; add [apps.{app}]"
         ));
     };
-    let bytes = if written.event == "-" {
-        let mut bytes = Vec::new();
-        tokio::io::stdin()
-            .read_to_end(&mut bytes)
-            .await
-            .map_err(|error| format!("standard input could not be read: {error}"))?;
-        bytes
-    } else {
-        tokio::fs::read(written.event)
-            .await
-            .map_err(|error| format!("{} could not be read: {error}", written.event))?
-    };
+    let bytes = read(written.event, &mut tokio::io::stdin()).await?;
     let event = herald_sources_app::event(app, &bytes, SystemClock.now())
         .map_err(|unread| unread.to_string())?;
     if !named
@@ -100,4 +89,23 @@ pub(crate) async fn announcing_event(
         event: &event,
     };
     announcing(config, vars, connect, routed, written.dry_run, out).await
+}
+
+/// The bytes of the event file `event` names, or of `stdin` when it is `-`.
+pub(crate) async fn read(
+    event: &str,
+    stdin: &mut (dyn AsyncRead + Send + Unpin),
+) -> Result<Vec<u8>, String> {
+    if event == "-" {
+        let mut bytes = Vec::new();
+        stdin
+            .read_to_end(&mut bytes)
+            .await
+            .map_err(|error| format!("standard input could not be read: {error}"))?;
+        Ok(bytes)
+    } else {
+        tokio::fs::read(event)
+            .await
+            .map_err(|error| format!("{event} could not be read: {error}"))
+    }
 }

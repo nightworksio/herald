@@ -189,3 +189,32 @@ fn an_event_needs_its_app_and_takes_the_place_of_a_forge() {
         assert_eq!(refused.code, MISTAKEN, "{args:?}: {}", refused.err);
     }
 }
+
+struct Closed;
+
+impl tokio::io::AsyncRead for Closed {
+    fn poll_read(
+        self: std::pin::Pin<&mut Self>,
+        _: &mut std::task::Context<'_>,
+        _: &mut tokio::io::ReadBuf<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        std::task::Poll::Ready(Err(std::io::Error::other("closed")))
+    }
+}
+
+#[test]
+fn an_event_named_dash_is_read_from_standard_input() {
+    let mut stdin: &[u8] = DEPLOYED.as_bytes();
+    assert_eq!(
+        pollster::block_on(apps::read("-", &mut stdin)),
+        Ok(DEPLOYED.as_bytes().to_vec())
+    );
+}
+
+#[test]
+fn standard_input_that_cannot_be_read_is_said_so() {
+    assert_eq!(
+        pollster::block_on(apps::read("-", &mut Closed)),
+        Err("standard input could not be read: closed".to_owned())
+    );
+}
