@@ -352,15 +352,22 @@ fn a_matrix_registration_holds_two_new_tokens_and_reaches_herald_by_destination(
         .unwrap_err()
         .starts_with("no matrix destination named \"nope\" takes commands")
     );
-    assert!(
-        setup::matrix(
-            &config,
-            Some("matrix"),
-            "ftp://x",
-            &|| Some("t".to_owned()),
-            &mut out
-        )
-        .unwrap_err()
-        .contains("is not an address herald is served at")
-    );
+    for unsound in [
+        "ftp://x",
+        "https://herald.example/a b",
+        "https://herald.example/'",
+    ] {
+        assert!(
+            setup::matrix(
+                &config,
+                Some("matrix"),
+                unsound,
+                &|| Some("t".to_owned()),
+                &mut out
+            )
+            .unwrap_err()
+            .contains("is not an address herald is served at"),
+            "{unsound}"
+        );
+    }
 }

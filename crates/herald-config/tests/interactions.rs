@@ -90,6 +90,7 @@ body = "{{{{ event.body }}}}"
         let route = &config.routes[0];
         assert_eq!(route.route.delivery.mentions.roles, [RoleId::new(ROLE)]);
         assert_eq!(route.options.opt_in_role().as_deref(), Some(ROLE));
+        assert_eq!(route.options.place(), Some("100"));
         assert!(
             matches!(&route.options, RouteOptions::Discord(placed) if placed.subscribe.as_ref().is_some_and(|subscribe| subscribe.button))
         );
@@ -187,6 +188,23 @@ body = "{{{{ event.body }}}}"
         refused(
             &matrix,
             "destinations.matrix.interactions: an application service holds two tokens",
+        );
+    }
+
+    #[test]
+    fn a_webhook_destination_takes_the_interactions_discord_posts() {
+        let text = config(
+            "git-branch",
+            &format!(
+                "webhook = {{ secret = \"HERALD_DISCORD_WEBHOOK\" }}\n\n[destinations.discord.interactions]\napplication = \"{APPLICATION}\"\nkey = \"{KEY}\""
+            ),
+            "",
+        );
+        let config = load("herald.toml", &text, &nothing).unwrap();
+        assert!(
+            config.destinations[&herald_core::DestinationName::new("discord")]
+                .answering()
+                .is_some()
         );
     }
 
