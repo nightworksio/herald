@@ -36,6 +36,7 @@ mod replay {
             RouteOptions {
                 channel: Some(channel.to_owned()),
                 forum,
+                subscribe: None,
             },
             None,
         )
@@ -50,6 +51,7 @@ mod replay {
             RouteOptions {
                 channel: None,
                 forum,
+                subscribe: None,
             },
             None,
         )
@@ -640,6 +642,7 @@ mod replay {
             token,
             webhook,
             api: None,
+            interactions: None,
         };
         assert_eq!(options(secret(), None).bot(), Ok(true));
         assert_eq!(options(None, secret()).bot(), Ok(false));

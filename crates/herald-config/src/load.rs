@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::ops::Range;
 
-use herald_core::{DestinationName, RouteId, SourceName, TemplateName};
+use herald_core::{Command, DestinationName, RouteId, SourceName, TemplateName};
 use herald_sources_forge::Forge;
 use herald_sources_registry::Registry;
 use serde::de::DeserializeOwned;
@@ -328,6 +328,50 @@ impl Loader<'_> {
         }
     }
 
+    /// Whether every destination that answers commands names a template
+    /// there is, and has a store that keeps what its commands answer with.
+    fn answered(
+        &mut self,
+        store: Option<&Store>,
+        destinations: &BTreeMap<DestinationName, (Destination, Range<usize>)>,
+        templates: &BTreeMap<TemplateName, Written>,
+    ) {
+        for (name, (destination, span)) in destinations {
+            let Some(answering) = destination.answering() else {
+                continue;
+            };
+            let path = format!("destinations.{}.interactions", name.as_str());
+            if let Some(template) = &answering.template
+                && !templates.contains_key(template)
+            {
+                let names: Vec<&str> = templates.keys().map(TemplateName::as_str).collect();
+                self.error(
+                    span,
+                    &format!("{path}.template"),
+                    format!(
+                        "no template is named \"{}\"; the templates are {}",
+                        template.as_str(),
+                        list(&names)
+                    ),
+                );
+            }
+            let keeps_nothing = matches!(store, Some(Store::Markers));
+            if keeps_nothing
+                && (answering.takes(Command::Latest) || answering.takes(Command::Changelog))
+            {
+                self.error(
+                    span,
+                    &format!("{path}.commands"),
+                    format!(
+                        "the {} store keeps nothing latest and changelog answer with; give a store that keeps it, such as \"{}\", or leave them out of commands",
+                        Store::MARKERS,
+                        Store::GIT_BRANCH
+                    ),
+                );
+            }
+        }
+    }
+
     fn destinations(
         &mut self,
         value: Option<Value<'_>>,
@@ -343,8 +387,15 @@ impl Loader<'_> {
                 self.typed::<herald_dest_fediverse::DestinationOptions>(rest, &path)
                     .map(Destination::Mastodon)
             } else if kind == Destination::MATRIX {
-                self.typed::<herald_dest_matrix::DestinationOptions>(rest, &path)
-                    .map(Destination::Matrix)
+                let Some(options) =
+                    self.typed::<herald_dest_matrix::DestinationOptions>(rest, &path)
+                else {
+                    continue;
+                };
+                if let Some(interactions) = &options.interactions {
+                    self.interactions(&span, &path, interactions.check());
+                }
+                Some(Destination::Matrix(options))
             } else if kind == Destination::ACTIVITYPUB {
                 let Some(options) = self.typed::<herald_dest_fediverse::ActorOptions>(rest, &path)
                 else {
@@ -365,6 +416,9 @@ impl Loader<'_> {
                     self.error(&span, &path, message);
                     continue;
                 }
+                if let Some(interactions) = &options.interactions {
+                    self.interactions(&span, &path, interactions.check());
+                }
                 Some(Destination::Slack(options))
             } else {
                 let Some(options) =
@@ -372,9 +426,22 @@ impl Loader<'_> {
                 else {
                     continue;
                 };
-                if let Err(message) = options.bot() {
-                    self.error(&span, &path, message);
-                    continue;
+                let bot = match options.bot() {
+                    Ok(bot) => bot,
+                    Err(message) => {
+                        self.error(&span, &path, message);
+                        continue;
+                    }
+                };
+                if let Some(interactions) = &options.interactions {
+                    let checked = interactions.check().and_then(|()| {
+                        if interactions.via == herald_dest_discord::Via::Gateway && !bot {
+                            Err("the gateway is joined as a bot; give the destination a token in place of its webhook".to_owned())
+                        } else {
+                            Ok(())
+                        }
+                    });
+                    self.interactions(&span, &path, checked);
                 }
                 Some(Destination::Discord(options))
             };
@@ -384,6 +451,12 @@ impl Loader<'_> {
             destinations.insert(DestinationName::new(name), (destination, span));
         }
         destinations
+    }
+
+    fn interactions(&mut self, span: &Range<usize>, path: &str, checked: Result<(), String>) {
+        if let Err(message) = checked {
+            self.error(span, &format!("{path}.interactions"), message);
+        }
     }
 
     fn sources(&mut self, value: Option<Value<'_>>) -> BTreeMap<SourceName, Source> {
@@ -591,6 +664,7 @@ pub fn load(
         }
     }
     loader.followed(store.as_ref(), &destinations, &routes);
+    loader.answered(store.as_ref(), &destinations, &templates);
     let compiled = loader.compile(&templates, &routes);
     if let Some(compiled) = &compiled {
         for read in &routes {

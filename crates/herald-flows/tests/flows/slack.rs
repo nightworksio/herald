@@ -153,6 +153,7 @@ fn a_slack_route_keeps_no_thread_chores_and_its_channel_lists_no_threads() {
         )),
         herald_dest_slack::RouteOptions {
             channel: Some("C0123456789".to_owned()),
+            subscribe: None,
         },
         None,
     ));

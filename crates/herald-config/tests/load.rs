@@ -293,7 +293,7 @@ body = "{{ event.body }}"
         let error = errors(&text);
         assert!(
             error.contains(
-                "routes[0].channel_id: unknown field `channel_id`, expected `channel` or `forum`"
+                "routes[0].channel_id: unknown field `channel_id`, expected one of `channel`, `forum`, `subscribe`"
             ),
             "{error}"
         );

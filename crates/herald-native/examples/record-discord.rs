@@ -57,6 +57,7 @@ impl Setup {
             RouteOptions {
                 channel: Some(channel.to_owned()),
                 forum,
+                subscribe: None,
             },
             None,
         )
@@ -73,6 +74,7 @@ fn webhook(url: &Secret, forum: bool) -> Discord {
         RouteOptions {
             channel: None,
             forum,
+            subscribe: None,
         },
         None,
     )

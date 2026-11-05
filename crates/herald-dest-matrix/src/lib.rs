@@ -8,12 +8,14 @@
 //! announcement is pinned through the room's pinned events, and each post
 //! carries its markers in a namespaced field of its content.
 
+mod interactions;
 mod markers;
 mod matrix;
 mod options;
 mod read;
 mod request;
 
+pub use interactions::{Interactions, Via};
 pub use markers::MatrixMarkers;
 pub use matrix::{Matrix, profile};
 pub use options::{DestinationOptions, RouteOptions};

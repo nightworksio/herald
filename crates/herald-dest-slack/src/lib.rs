@@ -8,12 +8,14 @@
 //! carries its markers in its message metadata (ADR-0011). An incoming
 //! webhook only posts.
 
+mod interactions;
 mod markers;
 mod options;
 mod read;
 mod request;
 mod slack;
 
+pub use interactions::{Interactions, Subscribe, Via};
 pub use markers::SlackMarkers;
 pub use options::{DestinationOptions, RouteOptions};
 pub use request::Refusal;

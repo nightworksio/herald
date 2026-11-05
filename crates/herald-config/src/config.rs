@@ -39,11 +39,31 @@ impl Config {
             .destinations
             .values()
             .flat_map(|destination| match destination {
-                Destination::Discord(options) => [options.token.as_ref(), options.webhook.as_ref()],
-                Destination::Mastodon(options) => [Some(&options.token), None],
-                Destination::Matrix(options) => [Some(&options.token), None],
-                Destination::Slack(options) => [options.token.as_ref(), options.webhook.as_ref()],
-                Destination::ActivityPub(options) => [Some(&options.key), None],
+                Destination::Discord(options) => {
+                    [options.token.as_ref(), options.webhook.as_ref(), None, None]
+                }
+                Destination::Mastodon(options) => [Some(&options.token), None, None, None],
+                Destination::Matrix(options) => {
+                    let interactions = options.interactions.as_ref();
+                    [
+                        Some(&options.token),
+                        interactions
+                            .and_then(|interactions| interactions.homeserver_token.as_ref()),
+                        interactions
+                            .and_then(|interactions| interactions.appservice_token.as_ref()),
+                        None,
+                    ]
+                }
+                Destination::Slack(options) => {
+                    let interactions = options.interactions.as_ref();
+                    [
+                        options.token.as_ref(),
+                        options.webhook.as_ref(),
+                        interactions.and_then(|interactions| interactions.signing.as_ref()),
+                        interactions.and_then(|interactions| interactions.app.as_ref()),
+                    ]
+                }
+                Destination::ActivityPub(options) => [Some(&options.key), None, None, None],
             });
         let sources = self.sources.values().flat_map(|source| match source {
             Source::Forge(_, options) => [options.token.as_ref(), options.webhook.as_ref()],
@@ -184,6 +204,26 @@ impl Destination {
             Self::ActivityPub(_) => Self::ACTIVITYPUB,
         }
     }
+
+    /// How it answers commands, where it takes any.
+    #[must_use]
+    pub fn answering(&self) -> Option<herald_core::Answering> {
+        match self {
+            Self::Discord(options) => options
+                .interactions
+                .as_ref()
+                .map(herald_dest_discord::Interactions::answering),
+            Self::Slack(options) => options
+                .interactions
+                .as_ref()
+                .map(herald_dest_slack::Interactions::answering),
+            Self::Matrix(options) => options
+                .interactions
+                .as_ref()
+                .map(herald_dest_matrix::Interactions::answering),
+            Self::Mastodon(_) | Self::ActivityPub(_) => None,
+        }
+    }
 }
 
 /// A source and its options, by its kind.
@@ -271,6 +311,19 @@ impl RouteOptions {
     #[must_use]
     pub fn threads_each_post(&self) -> bool {
         matches!(self, Self::Discord(placed) if placed.forum)
+    }
+
+    /// The opt-in role members subscribe to, which the route mentions with
+    /// its announcements: a Discord route's alone.
+    #[must_use]
+    pub fn opt_in_role(&self) -> Option<String> {
+        match self {
+            Self::Discord(placed) => placed
+                .subscribe
+                .as_ref()
+                .map(|subscribe| subscribe.role.clone()),
+            _ => None,
+        }
     }
 }
 

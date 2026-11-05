@@ -37,6 +37,7 @@ mod replay {
             Credential::Bot(Secret::new("HERALD_SLACK_TOKEN", "xoxb-test")),
             RouteOptions {
                 channel: Some(CHANNEL.to_owned()),
+                subscribe: None,
             },
             None,
         )
@@ -398,6 +399,7 @@ mod replay {
             Credential::Bot(Secret::new("HERALD_SLACK_TOKEN", "xoxb-test")),
             RouteOptions {
                 channel: Some("C0 1".to_owned()),
+                subscribe: None,
             },
             None,
         );
@@ -482,6 +484,7 @@ mod replay {
             token,
             webhook,
             api: None,
+            interactions: None,
         };
         assert_eq!(reached(secret(), None).bot(), Ok(true));
         assert_eq!(reached(None, secret()).bot(), Ok(false));
@@ -496,7 +499,8 @@ mod replay {
         for channel in ["C0123456789", "G01234567", "D0123ABCD"] {
             assert_eq!(
                 RouteOptions {
-                    channel: Some(channel.to_owned())
+                    channel: Some(channel.to_owned()),
+                    subscribe: None,
                 }
                 .check(),
                 Ok(()),
@@ -513,7 +517,8 @@ mod replay {
         ] {
             assert_eq!(
                 RouteOptions {
-                    channel: Some(channel.to_owned())
+                    channel: Some(channel.to_owned()),
+                    subscribe: None,
                 }
                 .check(),
                 Err(format!(
