@@ -66,15 +66,15 @@ impl StoreOptions {
         named(self.session_token.as_ref(), SESSION_TOKEN)
     }
 
-    /// The secrets the store is reached with, where the options name them.
-    pub fn secrets(&self) -> impl Iterator<Item = &SecretRef> {
+    /// The name of every secret the store is reached with, named or not,
+    /// so that each is hidden wherever herald writes.
+    #[must_use]
+    pub fn secrets(&self) -> [&str; 3] {
         [
-            self.access_key_id.as_ref(),
-            self.secret_access_key.as_ref(),
-            self.session_token.as_ref(),
+            self.access_key_id(),
+            self.secret_access_key(),
+            self.session_token(),
         ]
-        .into_iter()
-        .flatten()
     }
 }
 
@@ -99,7 +99,14 @@ mod tests {
                 "AWS_SESSION_TOKEN"
             )
         );
-        assert_eq!(defaults.secrets().count(), 0);
+        assert_eq!(
+            defaults.secrets(),
+            [
+                "AWS_ACCESS_KEY_ID",
+                "AWS_SECRET_ACCESS_KEY",
+                "AWS_SESSION_TOKEN"
+            ]
+        );
         let named: StoreOptions = serde_json::from_str(
             r#"{"table": "records", "access_key_id": {"secret": "ID"}, "secret_access_key": {"secret": "KEY"}, "session_token": {"secret": "TOKEN"}}"#,
         )
@@ -113,6 +120,6 @@ mod tests {
             ),
             ("records", "ID", "KEY", "TOKEN")
         );
-        assert_eq!(named.secrets().count(), 3);
+        assert_eq!(named.secrets(), ["ID", "KEY", "TOKEN"]);
     }
 }

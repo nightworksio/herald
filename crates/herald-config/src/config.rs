@@ -70,19 +70,23 @@ impl Config {
             Source::Registry(_, options) => [options.token.as_ref(), None],
             Source::Feed(_) => [None, None],
         });
-        let store: Vec<&SecretRef> = match &self.store {
-            Store::GitBranch(options) => options.token.iter().collect(),
-            Store::RepoVariables(options) => vec![&options.token],
-            Store::Postgres(options) => vec![&options.url],
-            Store::Dynamodb(options) => options.secrets().collect(),
+        let store: Vec<&str> = match &self.store {
+            Store::GitBranch(options) => options
+                .token
+                .iter()
+                .map(|named| named.secret.as_str())
+                .collect(),
+            Store::RepoVariables(options) => vec![options.token.secret.as_str()],
+            Store::Postgres(options) => vec![options.url.secret.as_str()],
+            Store::Dynamodb(options) => options.secrets().to_vec(),
             _ => Vec::new(),
         };
         destinations
             .chain(sources)
             .flatten()
             .chain(self.marker_key.as_ref())
-            .chain(store)
             .map(|named| named.secret.as_str())
+            .chain(store)
             .collect()
     }
 }

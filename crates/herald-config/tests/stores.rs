@@ -127,10 +127,19 @@ mod stores {
             secrets.contains(&"ID") && secrets.contains(&"KEY"),
             "{secrets:?}"
         );
+        let unnamed = kind("dynamodb", "").unwrap();
         assert_eq!(
-            kind("dynamodb", "").unwrap().store,
+            unnamed.store,
             Store::Dynamodb(herald_store_dynamodb::StoreOptions::default())
         );
+        let hidden = unnamed.secrets();
+        for name in [
+            "AWS_ACCESS_KEY_ID",
+            "AWS_SECRET_ACCESS_KEY",
+            "AWS_SESSION_TOKEN",
+        ] {
+            assert!(hidden.contains(&name), "{name}: {hidden:?}");
+        }
         assert_eq!(kind("markers", "").unwrap().store, Store::Markers);
     }
 }
