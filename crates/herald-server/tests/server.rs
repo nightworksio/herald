@@ -219,14 +219,10 @@ body = "{{ event.body }}"
             stop.notify_one();
             answer
         };
+        let hear = |said: Heard| heard.borrow_mut().push(named(&said));
         let (answer, ()) = tokio::join!(
             client,
-            world.serve(
-                listener,
-                limits(),
-                &|said| heard.borrow_mut().push(named(&said)),
-                stop.notified()
-            )
+            world.serve(listener, limits(), &hear, stop.notified())
         );
         assert!(answer.starts_with("HTTP/1.1 200 OK\r\n"), "{answer}");
         assert!(
@@ -308,20 +304,16 @@ body = "{{ event.body }}"
         let heard = RefCell::new(Vec::new());
         let stop = Notify::new();
         let client = async { asked(address, &release(EVENT.as_bytes())).await };
+        let hear = |said: Heard| {
+            let name = named(&said);
+            if name == "worked" {
+                stop.notify_one();
+            }
+            heard.borrow_mut().push(name);
+        };
         let (answer, ()) = tokio::join!(
             client,
-            world.serve(
-                listener,
-                limits(),
-                &|said| {
-                    let name = named(&said);
-                    if name == "worked" {
-                        stop.notify_one();
-                    }
-                    heard.borrow_mut().push(name);
-                },
-                stop.notified()
-            )
+            world.serve(listener, limits(), &hear, stop.notified())
         );
         assert!(answer.starts_with("HTTP/1.1 202 "), "{answer}");
         assert_eq!(said(&heard), ["listening", "worked"]);
@@ -360,15 +352,9 @@ body = "{{ event.body }}"
             jobs: 1,
             ..limits()
         };
-        let ((first, second), ()) = tokio::join!(
-            client,
-            world.serve(
-                listener,
-                one,
-                &|said| heard.borrow_mut().push(named(&said)),
-                stop.notified()
-            )
-        );
+        let hear = |said: Heard| heard.borrow_mut().push(named(&said));
+        let ((first, second), ()) =
+            tokio::join!(client, world.serve(listener, one, &hear, stop.notified()));
         assert!(first.starts_with("HTTP/1.1 202 "), "{first}");
         assert!(second.starts_with("HTTP/1.1 202 "), "{second}");
         assert_eq!(said(&heard), ["listening", "worked"]);
@@ -461,15 +447,9 @@ body = "{{ event.body }}"
             stop.notify_one();
             answer
         };
-        let (answer, ()) = tokio::join!(
-            client,
-            world.serve(
-                flaky,
-                limits(),
-                &|said| heard.borrow_mut().push(named(&said)),
-                stop.notified()
-            )
-        );
+        let hear = |said: Heard| heard.borrow_mut().push(named(&said));
+        let (answer, ()) =
+            tokio::join!(client, world.serve(flaky, limits(), &hear, stop.notified()));
         assert!(answer.starts_with("HTTP/1.1 200 OK"), "{answer}");
         assert_eq!(said(&heard), ["unaccepted: too many open files"]);
     }

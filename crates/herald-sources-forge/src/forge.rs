@@ -118,11 +118,11 @@ impl Forge {
             Self::Forgejo => (&["x-forgejo-event", "x-gitea-event"], "release"),
             Self::GitLab => (&["x-gitlab-event"], "Release Hook"),
         };
-        let named = headers
+        let kind = headers
             .iter()
-            .find(|(name, _)| names.iter().any(|named| name.eq_ignore_ascii_case(named)))
+            .find(|(name, _)| names.iter().any(|header| name.eq_ignore_ascii_case(header)))
             .map(|(_, value)| *value);
-        if named != Some(release) {
+        if kind != Some(release) {
             return Ok(Hooked::Nothing(OTHER_EVENT));
         }
         let event = self.event(payload)?;

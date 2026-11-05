@@ -177,8 +177,7 @@ impl ActivityPub {
     pub fn owns(&self, note: &str, key: &str) -> bool {
         let id = note_id(&self.domain, &self.route.actor, key);
         serde_json::from_str::<Value>(note)
-            .ok()
-            .is_some_and(|note| note.get("id").and_then(Value::as_str) == Some(id.as_str()))
+            .is_ok_and(|note| note.get("id").and_then(Value::as_str) == Some(id.as_str()))
     }
 
     /// The `Accept` of `follow`, a `Follow` of this actor.
