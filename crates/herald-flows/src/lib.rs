@@ -33,7 +33,9 @@ pub use commanded::{INTERACTIONS, MATRIX};
 pub use doctor::{Findings, Gap, Layer, doctor, keys, unserved};
 pub use following::{FollowError, Followed, followed};
 pub use housekeep::{Chored, Kept, housekeep};
-pub use inbound::{Keys, Rejected, Verified, activity_verified, admitted, released, verified};
+pub use inbound::{
+    Admission, Keys, Rejected, Verified, activity_verified, admitted, released, verified,
+};
 pub use interact::{Answer, completed, deferral, interact, replied};
 pub use interacting::{Interacting, Replying};
 pub use poll::{Fresh, Remembered, Sweep, Swept, poll};

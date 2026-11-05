@@ -145,6 +145,7 @@ body = "{{ event.body }}"
                 public: &self.public,
                 keys: &keys,
                 webhooks: &self.webhooks,
+                admission: herald_flows::Admission::Once,
             };
             let stop: Pin<Box<dyn Future<Output = ()> + '_>> = Box::pin(stop);
             tokio::time::timeout(

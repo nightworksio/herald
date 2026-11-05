@@ -265,6 +265,7 @@ async fn signed<V: Verifier>(verifier: &V, key: &[u8], claim: &Claim) -> Result<
 /// [`Rejected::Unadmitted`] where the store cannot answer.
 pub async fn admitted<S: Store>(
     store: &S,
+    admitting: Admission,
     scheme: Scheme,
     verified: &Verified,
     now: Timestamp,
@@ -272,13 +273,26 @@ pub async fn admitted<S: Store>(
     let Some(delivery) = &verified.delivery else {
         return Ok(());
     };
-    admission(store.admit(scheme, delivery, now).await)
+    admission(store.admit(scheme, delivery, now).await, admitting)
+}
+
+/// Whether a request's delivery is let through once, or again.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Admission {
+    /// Once: a delivery seen before is a replay, refused.
+    #[default]
+    Once,
+    /// Again: the request is one a driver answered and handed itself again
+    /// to work, as the Lambda does, so a delivery seen before is let
+    /// through.
+    Again,
 }
 
 /// What a store's answer to admitting a delivery lets through.
-fn admission(answer: Result<Admitted, StoreError>) -> Result<(), Rejected> {
+fn admission(answer: Result<Admitted, StoreError>, admitting: Admission) -> Result<(), Rejected> {
     match answer {
         Ok(Admitted::Fresh) | Err(StoreError::Unsupported { .. }) => Ok(()),
+        Ok(Admitted::Seen) if admitting == Admission::Again => Ok(()),
         Ok(Admitted::Seen) => Err(Rejected::Replayed),
         Err(error) => Err(Rejected::Unadmitted {
             reason: error.to_string(),

@@ -68,6 +68,7 @@ impl<F: Future<Output = ()>> Listening<'_, F> {
             public: self.public,
             keys: &keys,
             webhooks: self.webhooks,
+            admission: herald_flows::Admission::Once,
         };
         let period = |every: Option<jiff::SignedDuration>| {
             every.and_then(|every| std::time::Duration::try_from(every).ok())

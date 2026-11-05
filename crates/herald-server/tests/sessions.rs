@@ -288,6 +288,7 @@ appservice_token = {{ secret = "HERALD_MATRIX_AS" }}
                 public: &self.answers,
                 keys: &keys,
                 webhooks: &webhooks,
+                admission: herald_flows::Admission::Once,
             };
             let limits = Limits {
                 jobs,

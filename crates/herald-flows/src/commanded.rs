@@ -81,7 +81,14 @@ async fn admit<S: Store, C: Clock, G, V: Verifier, H, P, K>(
         now,
     )
     .await?;
-    admitted(serving.ports.store, scheme, &verified, now).await?;
+    admitted(
+        serving.ports.store,
+        serving.admission,
+        scheme,
+        &verified,
+        now,
+    )
+    .await?;
     Ok(verified)
 }
 
@@ -186,7 +193,15 @@ pub(crate) async fn appserviced<S: Store, C: Clock, G, V: Verifier, H, P, K>(
                 delivery: Some(format!("{name}/{transaction}")),
                 signer: None,
             };
-            match admitted(serving.ports.store, Scheme::Matrix, &delivery, now).await {
+            match admitted(
+                serving.ports.store,
+                serving.admission,
+                Scheme::Matrix,
+                &delivery,
+                now,
+            )
+            .await
+            {
                 Ok(()) => {}
                 Err(Rejected::Replayed) => return replied(200, JSON, EMPTY),
                 Err(rejected) => return rejection(&rejected),
