@@ -3,12 +3,13 @@
 //! to.
 
 use std::collections::BTreeMap;
-use std::io::{Read as _, Write};
+use std::io::Write;
 
 use herald_config::Config;
 use herald_core::{SourceName, digest};
 use herald_native::SystemClock;
 use herald_ports::Clock as _;
+use tokio::io::AsyncReadExt as _;
 
 use super::output::say;
 use super::{Connect, DONE, Routed, STOPPED, announcing};
@@ -70,12 +71,14 @@ pub(crate) async fn announcing_event(
     };
     let bytes = if written.event == "-" {
         let mut bytes = Vec::new();
-        std::io::stdin()
+        tokio::io::stdin()
             .read_to_end(&mut bytes)
+            .await
             .map_err(|error| format!("standard input could not be read: {error}"))?;
         bytes
     } else {
-        std::fs::read(written.event)
+        tokio::fs::read(written.event)
+            .await
             .map_err(|error| format!("{} could not be read: {error}", written.event))?
     };
     let event = herald_sources_app::event(app, &bytes, SystemClock.now())

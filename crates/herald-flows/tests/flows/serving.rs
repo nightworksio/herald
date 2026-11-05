@@ -846,3 +846,11 @@ fn where_an_event_stands_is_not_said_while_the_store_cannot_be_read() {
     };
     assert_eq!(world.answer(&asked).reply.status, 503);
 }
+
+#[test]
+fn an_app_s_event_the_store_cannot_admit_is_answered_so_and_left_undone() {
+    let world = World::failing(Fault::Admits);
+    let answered = world.answer(&posted("/api/projects/herald/events", BEARER, DEPLOYED));
+    assert_eq!(answered.reply.status, 503);
+    assert_eq!(answered.job, None);
+}
