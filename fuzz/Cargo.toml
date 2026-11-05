@@ -12,6 +12,7 @@ cargo-fuzz = true
 herald-config = { path = "../crates/herald-config" }
 herald-core = { path = "../crates/herald-core" }
 herald-ports = { path = "../crates/herald-ports" }
+herald-sources-app = { path = "../crates/herald-sources-app" }
 herald-sources-feed = { path = "../crates/herald-sources-feed" }
 herald-sources-forge = { path = "../crates/herald-sources-forge" }
 herald-sources-registry = { path = "../crates/herald-sources-registry" }
@@ -67,6 +68,13 @@ bench = false
 [[bin]]
 name = "inbound"
 path = "fuzz_targets/inbound.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "app"
+path = "fuzz_targets/app.rs"
 test = false
 doc = false
 bench = false

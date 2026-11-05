@@ -22,6 +22,7 @@ herald-native.workspace = true
 herald-ports.workspace = true
 herald-records.workspace = true
 herald-server.workspace = true
+herald-sources-app.workspace = true
 herald-sources-forge.workspace = true
 herald-store-actions-cache.workspace = true
 herald-store-git-branch.workspace = true
@@ -29,7 +30,7 @@ herald-store-postgres.workspace = true
 herald-store-repo-variables.workspace = true
 herald-store-sqlite.workspace = true
 jiff.workspace = true
-tokio = { workspace = true, features = ["macros", "net", "rt", "signal"] }
+tokio = { workspace = true, features = ["fs", "io-std", "io-util", "macros", "net", "rt", "signal"] }
 
 [dev-dependencies]
 base64.workspace = true

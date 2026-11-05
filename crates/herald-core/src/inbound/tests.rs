@@ -421,6 +421,7 @@ fn each_scheme_keeps_its_deliveries_under_its_own_name() {
         Scheme::Slack,
         Scheme::Matrix,
         Scheme::ActivityPub,
+        Scheme::App,
     ];
     assert_eq!(
         schemes.map(Scheme::name),
@@ -431,9 +432,20 @@ fn each_scheme_keeps_its_deliveries_under_its_own_name() {
             "discord",
             "slack",
             "matrix",
-            "activitypub"
+            "activitypub",
+            "app"
         ]
     );
+}
+
+#[test]
+fn an_app_s_event_is_claimed_by_its_token_and_not_by_a_signature() {
+    assert_eq!(
+        claim(Scheme::App, &[("authorization", "Bearer t")], b"{}", now()),
+        Err(Refusal::Unaddressed)
+    );
+    assert_eq!(key(Scheme::App, "t"), Some(b"t".to_vec()));
+    assert_eq!(key(Scheme::App, ""), None);
 }
 
 const PUBLIC_KEY: &str = "-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAtz228sa1z4u70xtqdZER\nBwxBvj+JP0V8SEK7SPdlULv1XbBcoI7T238LnlVGo4IN+C/TsW4tpwORACY7iOb2\npF8LZU0LBOFBV7U4fsd2JwwZa45m8U9wd5Q00xcqQoMZYfwQF3HonOlHwNt8DKpb\nmlKsH1WjhhCcjD5m1Q8LeEuGhVviBtrtAor81FzU106aGDYkMwcrUouxSPzDx8+I\nS7oicynJwyHgqqq8ImqZnqYGufaQuqxcOxNNL1GEMtwW6uylOyPIUb4aJ2wcoXTs\nt1dNhGrVFrSUYlad0nhHNuzF8n83Pj0cELoGmrBepQ8+LqI+Yj6sUIagTEi7P0tz\nowIDAQAB\n-----END PUBLIC KEY-----\n";

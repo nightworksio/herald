@@ -247,13 +247,17 @@ pub(crate) struct TemplateFile {
 #[serde(deny_unknown_fields)]
 #[serde(rename = "App")]
 pub(crate) struct AppFile {
-    /// The SHA-256 of the app's token, as `herald token new` prints it.
-    #[schemars(with = "String")]
-    pub(crate) token_sha256: Spanned<String>,
+    /// The SHA-256 of each of the app's tokens, written `sha256:` and 64
+    /// lowercase hex digits, as `herald token new` prints it. A token is
+    /// rotated by adding the new one before the old one is removed.
+    #[serde(default)]
+    #[schemars(with = "Vec<String>")]
+    pub(crate) tokens: Vec<Spanned<String>>,
     /// The projects it may announce.
     #[serde(default)]
     pub(crate) projects: Vec<String>,
-    /// The routes it may announce to.
+    /// The routes it announces to, each naming the app among its sources;
+    /// every such route where it names none.
     #[serde(default)]
     #[schemars(with = "Vec<String>")]
     pub(crate) routes: Vec<Spanned<String>>,

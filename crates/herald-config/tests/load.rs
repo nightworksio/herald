@@ -86,8 +86,7 @@ body = "{{ event.body }}"
     #[test]
     fn every_section_reads_into_its_type() {
         let text = format!(
-            "{EXAMPLE}\n[markers]\nkey = {{ secret = \"HERALD_MARKER_SECRET\" }}\n\n[schedule]\npoll = \"15m\"\nhousekeep = \"1h\"\n\n[apps.ci]\ntoken_sha256 = \"{}\"\nprojects = [\"php-mutation-gate\"]\nroutes = [\"php-mutation-gate-releases\"]\n\n[templates.from-file]\ntitle = \"{{{{ event.title }}}}\"\nfile = \"templates/body.md.j2\"\n",
-            "a".repeat(64)
+            "{EXAMPLE}\n[markers]\nkey = {{ secret = \"HERALD_MARKER_SECRET\" }}\n\n[schedule]\npoll = \"15m\"\nhousekeep = \"1h\"\n\n[templates.from-file]\ntitle = \"{{{{ event.title }}}}\"\nfile = \"templates/body.md.j2\"\n"
         );
         let read = |file: &str| {
             assert_eq!(file, "templates/body.md.j2");
@@ -97,10 +96,6 @@ body = "{{ event.body }}"
         assert_eq!(config.marker_key.unwrap().secret, "HERALD_MARKER_SECRET");
         assert_eq!(config.schedule.poll.unwrap().as_secs(), 900);
         assert_eq!(config.schedule.housekeep.unwrap().as_secs(), 3_600);
-        let app = &config.apps["ci"];
-        assert_eq!(app.routes[0].as_str(), "php-mutation-gate-releases");
-        assert_eq!(app.projects, ["php-mutation-gate"]);
-        assert_eq!(app.token_sha256.len(), 64);
     }
 
     #[test]
@@ -121,7 +116,7 @@ body = "{{ event.body }}"
             .replace("template = \"package-release\"", "template = \"other\"");
         assert_eq!(
             errors(&text),
-            "herald.toml:17:12 routes[0].sources: no source is named \"herald\"; the sources are \"php-mutation-gate\"\nherald.toml:21:12 routes[0].template: no template is named \"other\"; the templates are \"package-release\""
+            "herald.toml:17:12 routes[0].sources: no source or app is named \"herald\"; the sources and apps are \"php-mutation-gate\"\nherald.toml:21:12 routes[0].template: no template is named \"other\"; the templates are \"package-release\""
         );
     }
 
@@ -836,7 +831,7 @@ body = "{{ event.body }}"
     }
 
     #[test]
-    fn routes_and_apps_are_checked_against_each_other() {
+    fn two_routes_with_one_id_are_refused() {
         let twice = format!(
             "{EXAMPLE}\n{}",
             &EXAMPLE[EXAMPLE.find("[[routes]]").unwrap()..EXAMPLE.find("[templates").unwrap()]
@@ -845,27 +840,6 @@ body = "{{ event.body }}"
             errors(&twice)
                 .contains("routes[1].id: another route has the id \"php-mutation-gate-releases\"")
         );
-        let app = format!(
-            "{EXAMPLE}\n[apps.ci]\ntoken_sha256 = \"ABC\"\n[apps.cd]\ntoken_sha256 = \"{}\"\nroutes = [\"nowhere\"]\n",
-            "b".repeat(64)
-        );
-        let error = errors(&app);
-        assert!(
-            error.contains("apps.ci.token_sha256: a token's SHA-256 is 64 lowercase hex digits"),
-            "{error}"
-        );
-        assert!(
-            error.contains("apps.cd.routes: no route has the id \"nowhere\""),
-            "{error}"
-        );
-        for hash in ["g".repeat(64), "abc".to_owned()] {
-            let app = format!("{EXAMPLE}\n[apps.ci]\ntoken_sha256 = \"{hash}\"\n");
-            assert!(
-                errors(&app)
-                    .contains("apps.ci.token_sha256: a token's SHA-256 is 64 lowercase hex digits"),
-                "{hash}"
-            );
-        }
     }
 
     #[test]

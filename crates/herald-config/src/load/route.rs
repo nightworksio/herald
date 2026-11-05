@@ -8,6 +8,7 @@ use herald_core::{
 use toml::Spanned;
 use toml::de::{DeTable, DeValue};
 
+use super::apps::Named;
 use super::{Loader, Value, Written, list};
 use crate::config::{Destination, RouteConfig, RouteOptions, Source};
 use crate::file::{ROUTE_KEYS, RouteFile};
@@ -43,6 +44,7 @@ impl Loader<'_> {
         value: Value<'_>,
         destinations: &BTreeMap<DestinationName, (Destination, Range<usize>)>,
         sources: &BTreeMap<SourceName, Source>,
+        apps: &BTreeMap<String, Named>,
         templates: &BTreeMap<TemplateName, Written>,
     ) -> Option<Read> {
         let path = format!("routes[{index}]");
@@ -50,14 +52,19 @@ impl Loader<'_> {
         let route = self.typed::<RouteFile>(common, &path)?;
         let mut sound = true;
         for source in &route.sources {
-            if !sources.contains_key(&SourceName::new(source.get_ref())) {
-                let names: Vec<&str> = sources.keys().map(SourceName::as_str).collect();
+            let name = source.get_ref();
+            if !sources.contains_key(&SourceName::new(name)) && !apps.contains_key(name) {
+                let mut names: Vec<&str> = sources
+                    .keys()
+                    .map(SourceName::as_str)
+                    .chain(apps.keys().map(String::as_str))
+                    .collect();
+                names.sort_unstable();
                 self.error(
                     &source.span(),
                     &format!("{path}.sources"),
                     format!(
-                        "no source is named \"{}\"; the sources are {}",
-                        source.get_ref(),
+                        "no source or app is named \"{name}\"; the sources and apps are {}",
                         list(&names)
                     ),
                 );
@@ -215,8 +222,16 @@ impl Loader<'_> {
             route
                 .sources
                 .iter()
-                .filter_map(|source| sources.get(&SourceName::new(source.get_ref())))
-                .flat_map(|source| source.kinds().iter().copied())
+                .flat_map(|source| {
+                    let name = source.get_ref();
+                    let app = apps.contains_key(name).then_some(Kind::Message);
+                    sources
+                        .get(&SourceName::new(name))
+                        .map(|source| source.kinds().to_vec())
+                        .unwrap_or_default()
+                        .into_iter()
+                        .chain(app)
+                })
                 .collect()
         } else {
             route.kinds.iter().copied().collect()

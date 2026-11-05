@@ -37,7 +37,9 @@ pub use inbound::{
     Scheme, Signature, activity_claim, claim, key, same,
 };
 pub use key::{Identity, Key, NotAKey, RouteId, digest, hex};
-pub use ledger::{Entry, Facts, Lease, Plan, Planned, Record, Sent, State, Step, plan, steps};
+pub use ledger::{
+    Entry, Facts, Lease, Plan, Planned, Record, Sent, Standing, State, Step, plan, steps,
+};
 pub use marker::{Marker, Marks};
 pub use markup::{LINK_SCHEMES, Text, convert, literal, safe_url};
 pub use pattern::Pattern;

@@ -5,6 +5,7 @@
 
 mod activitypub;
 mod announce;
+mod apps;
 mod commands;
 mod doctor;
 mod forges;

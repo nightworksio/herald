@@ -53,6 +53,10 @@ pub enum Scheme {
     /// claimed by [`activity_claim`], with where it was sent, and delivered
     /// as its signature.
     ActivityPub,
+    /// An app's event posted to herald's HTTP API with `Authorization:
+    /// Bearer <token>`, checked against the hashes `[apps]` keeps and
+    /// delivered as the event's identity (ADR-0007).
+    App,
 }
 
 impl Scheme {
@@ -67,6 +71,7 @@ impl Scheme {
             Self::Slack => "slack",
             Self::Matrix => "matrix",
             Self::ActivityPub => "activitypub",
+            Self::App => "app",
         }
     }
 }
@@ -215,7 +220,7 @@ pub fn claim(
                 Some(&delivery),
             ))
         }
-        Scheme::ActivityPub => Err(Refusal::Unaddressed),
+        Scheme::ActivityPub | Scheme::App => Err(Refusal::Unaddressed),
         Scheme::Matrix => {
             const HEADER: &str = "Authorization";
             let token = required(headers, HEADER)?
@@ -273,7 +278,7 @@ pub fn key(scheme: Scheme, written: &str) -> Option<Vec<u8>> {
             .filter(|key| !key.is_empty()),
         Scheme::Discord => unhex(written),
         Scheme::ActivityPub => rsa_public_key(written),
-        Scheme::GitHub | Scheme::Forgejo | Scheme::Slack | Scheme::Matrix => {
+        Scheme::GitHub | Scheme::Forgejo | Scheme::Slack | Scheme::Matrix | Scheme::App => {
             (!written.is_empty()).then(|| written.as_bytes().to_vec())
         }
     }

@@ -70,6 +70,23 @@ pub struct Lease {
     pub until: Timestamp,
 }
 
+/// Where one announcement stands.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(tag = "standing", rename_all = "kebab-case")]
+pub enum Standing {
+    /// No run has claimed it: herald has not begun it, or never had it.
+    Pending,
+    /// A run holds it.
+    Announcing,
+    /// Every step it wants landed.
+    Announced,
+    /// The last run stopped with steps it wants still to land.
+    Stopped {
+        /// The steps still to land.
+        remaining: Vec<Step>,
+    },
+}
+
 /// The ledger's entry for one announcement.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Entry {
@@ -79,6 +96,10 @@ pub struct Entry {
     pub records: Vec<Record>,
     /// The run holding the announcement, if one is.
     pub lease: Option<Lease>,
+    /// The steps the run that last claimed it planned to have landed, where
+    /// that run said.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wanted: Option<Vec<Step>>,
 }
 
 impl Entry {
@@ -89,6 +110,40 @@ impl Entry {
             key,
             records: Vec::new(),
             lease: None,
+            wanted: None,
+        }
+    }
+
+    /// The entry wanting every step of `wanted` landed.
+    #[must_use]
+    pub fn wanting(mut self, wanted: &[Step]) -> Self {
+        self.wanted = Some(wanted.to_vec());
+        self
+    }
+
+    /// Where the announcement stands at `now`.
+    #[must_use]
+    pub fn standing(&self, now: Timestamp) -> Standing {
+        if self.lease.as_ref().is_some_and(|lease| lease.until > now) {
+            return Standing::Announcing;
+        }
+        let remaining: Vec<Step> = match &self.wanted {
+            Some(wanted) => wanted
+                .iter()
+                .filter(|step| self.facts(step).is_none())
+                .cloned()
+                .collect(),
+            None => self
+                .records
+                .iter()
+                .filter(|record| matches!(record.state, State::Attempted { .. }))
+                .map(|record| record.step.clone())
+                .collect(),
+        };
+        if remaining.is_empty() {
+            Standing::Announced
+        } else {
+            Standing::Stopped { remaining }
         }
     }
 
@@ -485,9 +540,71 @@ mod tests {
     }
 
     #[test]
+    fn an_entry_stands_by_its_lease_and_the_steps_it_wants_landed() {
+        let now = at("2026-10-31T12:00:00Z");
+        let held = Entry::new(key()).claimed("run", at("2026-10-31T12:00:01Z"));
+        assert_eq!(held.standing(now), Standing::Announcing);
+        let lapsed = Entry::new(key())
+            .claimed("run", now)
+            .wanting(&[Step::Post, Step::Pin])
+            .landed(Step::Post, Facts::default())
+            .attempted(Step::Pin, now);
+        assert_eq!(
+            lapsed.standing(now),
+            Standing::Stopped {
+                remaining: vec![Step::Pin]
+            }
+        );
+        let done = lapsed.landed(Step::Pin, Facts::default()).released();
+        assert_eq!(done.standing(now), Standing::Announced);
+        assert_eq!(done.wanted, Some(vec![Step::Post, Step::Pin]));
+    }
+
+    #[test]
+    fn an_entry_that_never_said_what_it_wants_stands_by_its_records() {
+        let now = at("2026-10-31T12:00:00Z");
+        let landed = Entry::new(key()).landed(Step::Post, Facts::default());
+        assert_eq!(landed.standing(now), Standing::Announced);
+        let attempted = landed.attempted(Step::Chunk(1), now);
+        assert_eq!(
+            attempted.standing(now),
+            Standing::Stopped {
+                remaining: vec![Step::Chunk(1)]
+            }
+        );
+    }
+
+    #[test]
+    fn a_standing_reads_as_its_name_and_what_remains() {
+        assert_eq!(
+            serde_json::to_string(&Standing::Stopped {
+                remaining: vec![Step::Post]
+            })
+            .unwrap(),
+            r#"{"standing":"stopped","remaining":["post"]}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&Standing::Pending).unwrap(),
+            r#"{"standing":"pending"}"#
+        );
+    }
+
+    #[test]
+    fn an_entry_written_before_it_said_what_it_wants_still_reads() {
+        let written = format!(r#"{{"key":"{}","records":[],"lease":null}}"#, key());
+        assert_eq!(
+            serde_json::from_str::<Entry>(&written).unwrap(),
+            Entry::new(key())
+        );
+        let json = serde_json::to_string(&Entry::new(key())).unwrap();
+        assert!(!json.contains("wanted"), "{json}");
+    }
+
+    #[test]
     fn an_entry_round_trips_through_json() {
         let entry = Entry::new(key())
             .claimed("run", at("2026-10-31T12:10:00Z"))
+            .wanting(&[Step::Post, Step::Chunk(2)])
             .attempted(Step::Chunk(2), at("2026-10-31T12:00:00Z"))
             .landed(
                 Step::Deliver("https://a.example/inbox".to_owned()),
