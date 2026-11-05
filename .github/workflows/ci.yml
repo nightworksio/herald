@@ -126,6 +126,11 @@ jobs:
       - run: .github/scripts/install-tool.sh cargo-nextest
       - run: .github/scripts/install-tool.sh cargo-llvm-cov
       - run: cargo llvm-cov nextest --workspace --locked --profile ci --fail-under-lines 100 --show-missing-lines
+      - name: Name every line the report counts as missed
+        if: failure()
+        run: |
+          cargo llvm-cov report --lcov --output-path lcov.info
+          awk -F'[:,]' '/^SF:/ { file = $2 } /^DA:/ && $3 == "0" { print file ":" $2 }' lcov.info
 
   deny:
     runs-on: ubuntu-latest
