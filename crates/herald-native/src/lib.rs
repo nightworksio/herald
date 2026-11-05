@@ -10,6 +10,7 @@ mod random;
 mod reach;
 #[cfg(test)]
 mod serving;
+mod socket;
 mod sqlite;
 
 pub use crypto::{RingSigner, RingVerifier};
@@ -19,4 +20,5 @@ pub use postgres::NativePostgres;
 pub use public::{PublicHttp, public};
 pub use random::random_secret;
 pub use reach::{Reach, ReachError};
+pub use socket::{NativeSocket, NativeSockets};
 pub use sqlite::NativeSqlite;
