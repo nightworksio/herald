@@ -1,12 +1,14 @@
 //! What the CLI prints: every secret the run may resolve masked on Actions
 //! and scrubbed from each line, warnings as workflow annotations, and every
-//! line kept to one (ADR-0007, ADR-0002).
+//! line kept to one (ADR-0007, ADR-0002); and what each command did, in
+//! words.
 
 use std::collections::BTreeMap;
 use std::io::Write;
 
 use herald_config::Config;
-use herald_flows::Gap;
+use herald_core::{Chore, Schedule, Step};
+use herald_flows::{Announced, Chored, Gap, Kept, Outcome, Remembered, Stop, Sweep, Swept};
 use herald_ports::Secret;
 
 use super::{GITHUB_TOKEN, JOB_TOKEN, RUNTIME_TOKEN, SCRUBBED, gapped};
@@ -147,4 +149,132 @@ pub(crate) fn escaped(message: &str) -> String {
         .replace('%', "%25")
         .replace('\r', "%0D")
         .replace('\n', "%0A")
+}
+
+pub(crate) fn polled(swept: &Swept) -> Vec<String> {
+    let source = swept.source.as_str();
+    match &swept.outcome {
+        Sweep::Unchanged => vec![format!("{source}: unchanged since the last poll")],
+        Sweep::Stopped(stop) => vec![format!(
+            "{source}: stopped: {}. The next poll asks again.",
+            why(stop)
+        )],
+        Sweep::Polled {
+            first,
+            found,
+            announced,
+            cursor,
+        } => {
+            let new = announced.len();
+            let head = if *first {
+                format!("{source}: first poll found {found}; {new} announced, as backfill asks")
+            } else {
+                format!("{source}: {found} found, {new} new")
+            };
+            let tail = match cursor {
+                Remembered::Advanced => String::new(),
+                Remembered::Kept => {
+                    "; a route stopped, so the next poll offers them again".to_owned()
+                }
+                Remembered::Failed(stop) => format!(
+                    "; the cursor stays where it was: {}. The next poll offers them again",
+                    why(stop)
+                ),
+            };
+            let mut lines = vec![format!("{head}{tail}")];
+            for fresh in announced {
+                let event = fresh.event.version().unwrap_or(fresh.event.title());
+                lines.extend(
+                    fresh
+                        .announced
+                        .iter()
+                        .map(|announced| format!("{source} {event}: {}", report(announced))),
+                );
+            }
+            lines
+        }
+    }
+}
+
+pub(crate) fn chored(kept: &Kept) -> String {
+    let Schedule {
+        route,
+        thread,
+        chore,
+        ..
+    } = &kept.schedule;
+    let route = route.as_str();
+    let done = match chore {
+        Chore::Archive => "archived",
+        Chore::Lock => "locked",
+    };
+    match &kept.outcome {
+        Chored::Done => format!("{route}: thread {thread} {done}"),
+        Chored::Dropped(reason) => {
+            format!("{route}: thread {thread} not {done}, and not tried again: {reason}")
+        }
+        Chored::Later(stop) => format!(
+            "{route}: thread {thread} not {done} yet: {}. The next run tries again.",
+            why(stop)
+        ),
+    }
+}
+
+pub(crate) fn why(reason: &Stop) -> String {
+    match reason {
+        Stop::RetryAfter(after) => format!("the destination asked to wait {after:#}"),
+        Stop::Refused(reason)
+        | Stop::Unreachable(reason)
+        | Stop::Store(reason)
+        | Stop::Template(reason)
+        | Stop::Marker(reason)
+        | Stop::Source(reason) => reason.clone(),
+    }
+}
+
+fn step(step: &Step) -> String {
+    match step {
+        Step::Post => "post".to_owned(),
+        Step::Crosspost => "crosspost".to_owned(),
+        Step::OpenThread => "thread".to_owned(),
+        Step::Chunk(index) => format!("chunk {index}"),
+        Step::Pin => "pin".to_owned(),
+        Step::Unpin => "unpin".to_owned(),
+        Step::Deliver(inbox) => format!("delivery to {inbox}"),
+    }
+}
+
+pub(crate) fn steps(steps: &[Step]) -> String {
+    steps.iter().map(step).collect::<Vec<_>>().join(", ")
+}
+
+pub(crate) fn report(announced: &Announced) -> String {
+    let route = announced.route.as_str();
+    match &announced.outcome {
+        Outcome::Sent { steps: sent } => format!("{route}: announced ({})", steps(sent)),
+        Outcome::AlreadyAnnounced => format!("{route}: already announced; nothing sent"),
+        Outcome::Held { by, until } => {
+            format!("{route}: run {by} holds it until {until}; nothing sent by this run")
+        }
+        Outcome::Stopped {
+            landed,
+            remaining,
+            reason,
+        } => {
+            format!(
+                "{route}: stopped: {}. Landed: {}. The next run sends what remains: {}.",
+                why(reason),
+                if landed.is_empty() {
+                    "nothing".to_owned()
+                } else {
+                    steps(landed)
+                },
+                if remaining.is_empty() {
+                    "nothing".to_owned()
+                } else {
+                    steps(remaining)
+                },
+            )
+        }
+    }
 }

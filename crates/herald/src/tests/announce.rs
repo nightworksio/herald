@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 use herald_core::RouteId;
 
 use super::world::*;
-use crate::output::escaped;
+use crate::output::{escaped, steps};
 use crate::*;
 
 #[test]

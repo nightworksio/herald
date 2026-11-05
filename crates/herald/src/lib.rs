@@ -7,7 +7,6 @@
 //! way to reach each base URL and what stops a server, so it runs the same
 //! under test as on a runner.
 
-use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::convert::Infallible;
 use std::future::Future;
@@ -17,25 +16,25 @@ use std::pin::Pin;
 use std::sync::{Arc, Mutex, PoisonError};
 
 use clap::{Parser, Subcommand, ValueEnum};
-use herald_config::{Config, KeyCache, Source, load, samples};
-use herald_core::{Chore, Event, Kind, RouteId, Schedule, SourceName, Step};
+use herald_config::{Config, Source, load, samples};
+use herald_core::{Event, Kind, RouteId, SourceName};
 use herald_flows::{
-    Announced, Chored, Connected, Findings, FollowError, Followed, Gap, Kept, Keys, Outcome, Ports,
-    Remembered, Serving, Stop, Sweep, Swept, Webhooks, Worked, announce, doctor, housekeep, keys,
-    poll, prepare, preview, webhooks,
+    Announced, Chored, Connected, Findings, Gap, Kept, Outcome, Ports, Remembered, Stop, Sweep,
+    Swept, announce, doctor, housekeep, keys, poll, prepare, preview,
 };
 use herald_native::{
     ConnectError, EnvSecrets, NativeHttp, PublicHttp, RingSigner, SystemClock, random_secret,
 };
 use herald_ports::{Http, HttpError, Keyring, PUBLIC, Request, Response, Secrets, Store as Keeps};
-use herald_records::{Memory, MemoryKeyring};
-use herald_server::{Capped, Heard, Limits, serve};
+use herald_records::Memory;
 use herald_sources_forge::{Forge, Origin, Repository, SourceOptions, Token};
 
 mod output;
+mod serving;
 mod stores;
 
-use output::{Scrubbing, hidden, masked, say, warned};
+use output::{Scrubbing, chored, hidden, masked, polled, report, say, warned, why};
+use serving::serving;
 use stores::{Records, SERVED, STORES, reached};
 
 /// Every route announced, already announced, or held by another run; every
@@ -807,140 +806,6 @@ impl Served for Housekeeping<'_> {
     }
 }
 
-/// A server's work, over whichever store the config names, and the keys
-/// it checks activities with.
-struct Listening<'a, F> {
-    config: &'a Config,
-    connected: &'a Connected<Connection>,
-    webhooks: &'a Webhooks,
-    public: &'a Capped<Connection>,
-    listener: tokio::net::TcpListener,
-    out: RefCell<&'a mut dyn Write>,
-    stop: F,
-}
-
-impl<F: Future<Output = ()>> Served for Listening<'_, F> {
-    type Done = u8;
-
-    async fn over<S: Keeps + Keyring>(self, store: &S) -> u8 {
-        let server = &self.config.server;
-        if server.keys == KeyCache::Store {
-            self.keyed(store, store).await
-        } else {
-            let memory = MemoryKeyring::new(server.keys_most);
-            self.keyed(store, &memory).await
-        }
-    }
-}
-
-impl<F: Future<Output = ()>> Listening<'_, F> {
-    /// The server, over `store`, checking activities with the keys in
-    /// `keyring`.
-    async fn keyed<S: Keeps, K: Keyring>(self, store: &S, keyring: &K) -> u8 {
-        let server = &self.config.server;
-        let ports = Ports {
-            store,
-            clock: &SystemClock,
-            signer: &RingSigner,
-        };
-        let keys = Keys {
-            keyring,
-            refreshed: server.keys_refreshed,
-        };
-        let serving = Serving {
-            config: self.config,
-            connected: self.connected,
-            ports: &ports,
-            verifier: &RingSigner,
-            public: self.public,
-            keys: &keys,
-            webhooks: self.webhooks,
-        };
-        let period = |every: Option<jiff::SignedDuration>| {
-            every.and_then(|every| std::time::Duration::try_from(every).ok())
-        };
-        let limits = Limits {
-            jobs: server.jobs,
-            connections: server.connections,
-            body: server.body,
-            poll: period(self.config.schedule.poll),
-            housekeep: period(self.config.schedule.housekeep),
-            keys: period(Some(server.keys_refreshed)).unwrap_or_default(),
-        };
-        let out = &self.out;
-        let heard = |heard: Heard| {
-            let mut out = out.borrow_mut();
-            for line in said(heard) {
-                say(&mut **out, &line);
-            }
-        };
-        serve(&serving, self.listener, limits, &heard, self.stop).await;
-        DONE
-    }
-}
-
-/// What a server says of what it heard.
-fn said(heard: Heard) -> Vec<String> {
-    match heard {
-        Heard::Listening(address) => vec![format!("herald serves on {address}")],
-        Heard::Worked(Worked::Announced(announced)) => announced.iter().map(report).collect(),
-        Heard::Worked(Worked::Followed(followed)) => vec![follow(followed)],
-        Heard::Polled(swept) => swept.iter().flat_map(polled).collect(),
-        Heard::Kept(Ok(kept)) => kept.iter().map(chored).collect(),
-        Heard::Kept(Err(stop)) => vec![format!(
-            "housekeeping stopped: {}. The next round tries again.",
-            why(&stop)
-        )],
-        Heard::Unaccepted(reason) => vec![format!("a connection could not be taken: {reason}")],
-    }
-}
-
-fn follow(followed: Result<Followed, FollowError>) -> String {
-    match followed {
-        Ok(Followed::Accepted {
-            follower, actor, ..
-        }) => format!("{actor}: {follower} follows it now"),
-        Ok(Followed::Undone { follower, actor }) => {
-            format!("{actor}: {follower} no longer follows it")
-        }
-        Ok(Followed::Ignored(why)) => format!("an activity was ignored: {why}"),
-        Err(error) => format!("an activity was not taken, and may be delivered again: {error}"),
-    }
-}
-
-async fn serving(
-    config: &Config,
-    vars: &BTreeMap<String, String>,
-    connect: Connect<'_>,
-    listen: Option<&str>,
-    out: &mut dyn Write,
-    stop: impl Future<Output = ()>,
-) -> Result<u8, String> {
-    let address = listen
-        .map(ToOwned::to_owned)
-        .or_else(|| vars.get(LISTEN).filter(|value| !value.is_empty()).cloned())
-        .unwrap_or_else(|| config.server.listen.clone());
-    let listener = tokio::net::TcpListener::bind(&address)
-        .await
-        .map_err(|error| format!("herald could not listen on {address}: {error}"))?;
-    let (records, connected) = reached(config, vars, connect).await?;
-    let secrets = EnvSecrets::from_vars(vars.clone());
-    let webhooks = webhooks(config, &secrets)
-        .await
-        .map_err(|error| error.to_string())?;
-    let public = Capped::new(connect(PUBLIC)?, config.server.fetches);
-    let listening = Listening {
-        config,
-        connected: &connected,
-        webhooks: &webhooks,
-        public: &public,
-        listener,
-        out: RefCell::new(out),
-        stop,
-    };
-    Ok(records.serve(&connected, listening).await)
-}
-
 /// The name this run takes its leases under.
 fn run_name(vars: &BTreeMap<String, String>) -> String {
     let pair = |first: &str, second: &str| vars.get(first).zip(vars.get(second));
@@ -987,51 +852,6 @@ async fn polling(
     Ok(code)
 }
 
-fn polled(swept: &Swept) -> Vec<String> {
-    let source = swept.source.as_str();
-    match &swept.outcome {
-        Sweep::Unchanged => vec![format!("{source}: unchanged since the last poll")],
-        Sweep::Stopped(stop) => vec![format!(
-            "{source}: stopped: {}. The next poll asks again.",
-            why(stop)
-        )],
-        Sweep::Polled {
-            first,
-            found,
-            announced,
-            cursor,
-        } => {
-            let new = announced.len();
-            let head = if *first {
-                format!("{source}: first poll found {found}; {new} announced, as backfill asks")
-            } else {
-                format!("{source}: {found} found, {new} new")
-            };
-            let tail = match cursor {
-                Remembered::Advanced => String::new(),
-                Remembered::Kept => {
-                    "; a route stopped, so the next poll offers them again".to_owned()
-                }
-                Remembered::Failed(stop) => format!(
-                    "; the cursor stays where it was: {}. The next poll offers them again",
-                    why(stop)
-                ),
-            };
-            let mut lines = vec![format!("{head}{tail}")];
-            for fresh in announced {
-                let event = fresh.event.version().unwrap_or(fresh.event.title());
-                lines.extend(
-                    fresh
-                        .announced
-                        .iter()
-                        .map(|announced| format!("{source} {event}: {}", report(announced))),
-                );
-            }
-            lines
-        }
-    }
-}
-
 async fn housekeeping(
     config: &Config,
     vars: &BTreeMap<String, String>,
@@ -1057,89 +877,6 @@ async fn housekeeping(
         say(out, &chored(kept));
     }
     Ok(code)
-}
-
-fn chored(kept: &Kept) -> String {
-    let Schedule {
-        route,
-        thread,
-        chore,
-        ..
-    } = &kept.schedule;
-    let route = route.as_str();
-    let done = match chore {
-        Chore::Archive => "archived",
-        Chore::Lock => "locked",
-    };
-    match &kept.outcome {
-        Chored::Done => format!("{route}: thread {thread} {done}"),
-        Chored::Dropped(reason) => {
-            format!("{route}: thread {thread} not {done}, and not tried again: {reason}")
-        }
-        Chored::Later(stop) => format!(
-            "{route}: thread {thread} not {done} yet: {}. The next run tries again.",
-            why(stop)
-        ),
-    }
-}
-
-fn why(reason: &Stop) -> String {
-    match reason {
-        Stop::RetryAfter(after) => format!("the destination asked to wait {after:#}"),
-        Stop::Refused(reason)
-        | Stop::Unreachable(reason)
-        | Stop::Store(reason)
-        | Stop::Template(reason)
-        | Stop::Marker(reason)
-        | Stop::Source(reason) => reason.clone(),
-    }
-}
-
-fn step(step: &Step) -> String {
-    match step {
-        Step::Post => "post".to_owned(),
-        Step::Crosspost => "crosspost".to_owned(),
-        Step::OpenThread => "thread".to_owned(),
-        Step::Chunk(index) => format!("chunk {index}"),
-        Step::Pin => "pin".to_owned(),
-        Step::Unpin => "unpin".to_owned(),
-        Step::Deliver(inbox) => format!("delivery to {inbox}"),
-    }
-}
-
-fn steps(steps: &[Step]) -> String {
-    steps.iter().map(step).collect::<Vec<_>>().join(", ")
-}
-
-fn report(announced: &Announced) -> String {
-    let route = announced.route.as_str();
-    match &announced.outcome {
-        Outcome::Sent { steps: sent } => format!("{route}: announced ({})", steps(sent)),
-        Outcome::AlreadyAnnounced => format!("{route}: already announced; nothing sent"),
-        Outcome::Held { by, until } => {
-            format!("{route}: run {by} holds it until {until}; nothing sent by this run")
-        }
-        Outcome::Stopped {
-            landed,
-            remaining,
-            reason,
-        } => {
-            format!(
-                "{route}: stopped: {}. Landed: {}. The next run sends what remains: {}.",
-                why(reason),
-                if landed.is_empty() {
-                    "nothing".to_owned()
-                } else {
-                    steps(landed)
-                },
-                if remaining.is_empty() {
-                    "nothing".to_owned()
-                } else {
-                    steps(remaining)
-                },
-            )
-        }
-    }
 }
 
 #[cfg(test)]
