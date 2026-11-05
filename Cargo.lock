@@ -919,6 +919,58 @@ dependencies = [
 ]
 
 [[package]]
+name = "herald-store-d1"
+version = "0.0.0"
+dependencies = [
+ "herald-ports",
+ "herald-records",
+ "herald-testing",
+ "pollster",
+ "schemars",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "herald-store-deno-kv"
+version = "0.0.0"
+dependencies = [
+ "herald-ports",
+ "herald-records",
+ "herald-testing",
+ "pollster",
+ "schemars",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "herald-store-durable-object"
+version = "0.0.0"
+dependencies = [
+ "herald-ports",
+ "herald-records",
+ "herald-testing",
+ "pollster",
+ "schemars",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "herald-store-fastly-kv"
+version = "0.0.0"
+dependencies = [
+ "herald-ports",
+ "herald-records",
+ "herald-testing",
+ "pollster",
+ "schemars",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "herald-store-git-branch"
 version = "0.0.0"
 dependencies = [
