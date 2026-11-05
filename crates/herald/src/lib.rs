@@ -270,6 +270,18 @@ pub async fn run_until(
     err: &mut dyn Write,
     stop: impl Future<Output = ()>,
 ) -> u8 {
+    stopping(args, vars, connect, out, err, Box::pin(stop)).await
+}
+
+/// [`run_until`] with `stop` boxed, so one CLI serves whatever stops it.
+async fn stopping(
+    args: &[String],
+    vars: &BTreeMap<String, String>,
+    connect: Connect<'_>,
+    out: &mut dyn Write,
+    err: &mut dyn Write,
+    stop: Pin<Box<dyn Future<Output = ()> + '_>>,
+) -> u8 {
     let cli = match Cli::try_parse_from(args) {
         Ok(cli) => cli,
         Err(error) => {

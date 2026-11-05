@@ -11,6 +11,7 @@ mod server {
     use std::fmt::Write as _;
     use std::io;
     use std::net::SocketAddr;
+    use std::pin::Pin;
     use std::time::Duration;
 
     use futures_util::FutureExt as _;
@@ -141,6 +142,7 @@ body = "{{ event.body }}"
                 keys: &keys,
                 webhooks: &self.webhooks,
             };
+            let stop: Pin<Box<dyn Future<Output = ()> + '_>> = Box::pin(stop);
             tokio::time::timeout(BOUND, serve(&serving, listener, limits, heard, stop))
                 .await
                 .expect("the server stopped within its bound");
