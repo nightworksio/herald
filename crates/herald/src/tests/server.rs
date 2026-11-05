@@ -118,6 +118,25 @@ fn a_server_that_cannot_listen_or_read_a_webhook_secret_stops_before_it_serves()
 }
 
 #[test]
+fn the_server_warns_of_what_a_server_cannot_serve_before_it_starts() {
+    let cached = CONFIG.replace("kind = \"git-branch\"", "kind = \"actions-cache\"");
+    let refused = herald_until(
+        &setup(&cached),
+        &World::default(),
+        &["server", "--listen", "127.0.0.1:0"],
+        std::future::ready(()),
+    );
+    assert_eq!(refused.code, STOPPED);
+    assert!(
+        refused
+            .out
+            .contains("keeping records in actions-cache cannot be served"),
+        "{}",
+        refused.out
+    );
+}
+
+#[test]
 fn doctor_names_the_stores_a_server_cannot_keep_records_in() {
     let cached = CONFIG.replace("kind = \"git-branch\"", "kind = \"actions-cache\"");
     let doctored = herald(

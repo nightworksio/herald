@@ -6,7 +6,7 @@ use std::collections::BTreeMap;
 use std::future::Future;
 use std::io::Write;
 
-use herald_config::{Config, KeyCache};
+use herald_config::Config;
 use herald_flows::{
     Connected, FollowError, Followed, Keys, Ports, Serving, Webhooks, Worked, webhooks,
 };
@@ -36,7 +36,7 @@ impl<F: Future<Output = ()>> Served for Listening<'_, F> {
 
     async fn over<S: Keeps + Keyring>(self, store: &S) -> u8 {
         let server = &self.config.server;
-        if server.keys == KeyCache::Store {
+        if server.keys_in_store() {
             self.keyed(store, store).await
         } else {
             let memory = MemoryKeyring::new(server.keys_most);

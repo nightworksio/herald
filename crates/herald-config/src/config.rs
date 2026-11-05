@@ -352,6 +352,15 @@ impl Server {
     pub const KEYS_MOST: usize = 1024;
 }
 
+impl Server {
+    /// Whether the keys inbound activities are checked with are kept in the
+    /// store, rather than in memory.
+    #[must_use]
+    pub fn keys_in_store(&self) -> bool {
+        self.keys == KeyCache::Store
+    }
+}
+
 impl Default for Server {
     fn default() -> Self {
         Self {

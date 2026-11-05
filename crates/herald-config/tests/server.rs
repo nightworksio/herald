@@ -55,6 +55,7 @@ body = "{{ event.body }}"
             (8, 256, 1_048_576, 4, 8, 1024)
         );
         assert_eq!(config.server.keys, KeyCache::Memory);
+        assert!(!config.server.keys_in_store());
         assert_eq!(config.server.keys_refreshed.as_secs(), 3_600);
     }
 
@@ -78,6 +79,7 @@ body = "{{ event.body }}"
                 keys_most: 7,
             }
         );
+        assert!(config.server.keys_in_store());
         let memory = format!("{EXAMPLE}\n[server.keys]\ncache = \"memory\"\n");
         let config = load("herald.toml", &memory, &nothing).unwrap();
         assert_eq!(config.server.keys, KeyCache::Memory);

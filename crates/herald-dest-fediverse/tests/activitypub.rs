@@ -343,4 +343,55 @@ mod activitypub {
         assert_ne!(accept(DOMAIN, "php-mutation-gate", &other)["id"], id);
         assert_eq!(reached("HERALD_ACTIVITYPUB_KEY").accept(&follow), accepted);
     }
+
+    #[test]
+    fn the_actor_serves_its_own_document_webfinger_and_notes() {
+        let actor = reached("HERALD_ACTIVITYPUB_KEY");
+        assert_eq!(actor.domain(), DOMAIN);
+        let document: serde_json::Value =
+            serde_json::from_str(&pollster::block_on(actor.document(&FakeSigner)).unwrap())
+                .unwrap();
+        assert_eq!(
+            document,
+            actor_document(
+                DOMAIN,
+                "php-mutation-gate",
+                &pollster::block_on(herald_ports::Signer::public(
+                    &FakeSigner,
+                    herald_ports::Algorithm::RsaSha256,
+                    &Secret::new("HERALD_ACTIVITYPUB_KEY", "the-key"),
+                ))
+                .unwrap(),
+            )
+        );
+        assert!(pollster::block_on(reached("BAD").document(&FakeSigner)).is_err());
+        let finger: serde_json::Value = serde_json::from_str(&actor.finger()).unwrap();
+        assert_eq!(finger, webfinger(DOMAIN, "php-mutation-gate"));
+        let announcement = announcement();
+        let published: serde_json::Value =
+            serde_json::from_str(&actor.note(&announcement)).unwrap();
+        assert_eq!(
+            published,
+            note(
+                DOMAIN,
+                "php-mutation-gate",
+                &announcement,
+                Some("Release notes")
+            )
+        );
+    }
+
+    #[test]
+    fn the_actor_owns_only_a_note_whose_id_is_its_own_note_of_that_key() {
+        let actor = reached("HERALD_ACTIVITYPUB_KEY");
+        let own = format!(r#"{{"id":"{ACTOR}/notes/k1"}}"#);
+        assert!(actor.owns(&own, "k1"));
+        assert!(!actor.owns(&own, "k2"));
+        assert!(!actor.owns(
+            r#"{"id":"https://herald.example/users/other/notes/k1"}"#,
+            "k1"
+        ));
+        assert!(!actor.owns(r#"{"type":"Note"}"#, "k1"));
+        assert!(!actor.owns("not json", "k1"));
+    }
 }

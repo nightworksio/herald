@@ -440,7 +440,10 @@ impl<S: Store, C: Clock, G: Signer, H: Http> Run<'_, S, C, G, H> {
         };
         let mut stop = None;
         let mut index = 0;
-        while let Some(step) = planned.get(index) {
+        for _ in 0..planned.len() {
+            let Some(step) = planned.get(index) else {
+                break;
+            };
             let (taken, result) = self
                 .next(&planned, index, step, &mut announcement, &mut progress)
                 .await;
