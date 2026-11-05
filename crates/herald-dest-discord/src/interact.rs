@@ -82,6 +82,8 @@ pub enum Received {
         place: String,
         /// What has been typed.
         typed: String,
+        /// Where the completions go where no endpoint answers them.
+        replying: Replying,
     },
     /// Something herald does not answer, such as another application's
     /// button.
@@ -228,7 +230,16 @@ impl Interacting {
                 .and_then(Value::as_str)
                 .unwrap_or_default()
                 .to_owned();
-            return Ok(Received::Completing { place, typed });
+            let id = text(value, "id").ok_or(Unread::NotAnInteraction)?;
+            let token = text(value, "token").ok_or(Unread::NotAnInteraction)?;
+            return Ok(Received::Completing {
+                place,
+                typed,
+                replying: Replying {
+                    id: id.to_owned(),
+                    token: Secret::new("the interaction's token", token),
+                },
+            });
         }
         let project = option(given, PROJECT)
             .and_then(Value::as_str)
@@ -457,6 +468,22 @@ impl Interacting {
         .header("Content-Type", Text::plain("application/json"))
         .header("User-Agent", Text::plain(crate::request::USER_AGENT))
         .body(deferred(public))
+    }
+
+    /// The request that answers the interaction `replying` names with
+    /// `projects` as the completions of what was typed, sent where the
+    /// gateway carried the interaction.
+    #[must_use]
+    pub fn complete(&self, replying: &Replying, projects: &[String]) -> Request {
+        Request::new(
+            Method::Post,
+            Text::plain(format!("{}/interactions/{}/", self.api, replying.id))
+                .then_secret(replying.token.clone())
+                .then("/callback"),
+        )
+        .header("Content-Type", Text::plain("application/json"))
+        .header("User-Agent", Text::plain(crate::request::USER_AGENT))
+        .body(choices(projects))
     }
 
     /// The requests that answer the interaction `replying` names with

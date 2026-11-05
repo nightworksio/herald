@@ -180,7 +180,7 @@ fn a_sync_waits_from_where_the_last_left_off_with_herald_s_filter() {
     );
     assert!(!url.contains("since"));
     let next = interacting("").sync(Some("s 2"), SYNC_WAIT).url.expose();
-    assert!(next.contains("timeout=30000"));
+    assert!(next.contains("timeout=20000"));
     assert!(next.ends_with("&since=s%202"), "{next}");
     let header = first
         .headers

@@ -100,7 +100,7 @@ async fn interaction<S: Store, C: Clock, G, V: Verifier, H, P, K>(
     }
     match interacting.received(destination, inbound.body) {
         Ok(discord::Received::Ping) => replied(200, JSON, discord::pong()),
-        Ok(discord::Received::Completing { place, typed }) => {
+        Ok(discord::Received::Completing { place, typed, .. }) => {
             let projects = completed(
                 serving.config,
                 serving.ports.store,

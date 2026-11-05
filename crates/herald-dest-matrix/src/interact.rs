@@ -15,8 +15,8 @@ use crate::request::segment;
 /// room rather than in a thread.
 const SHARE: &str = "share";
 /// How long a sync waits for an event before it answers with none, in
-/// milliseconds.
-pub const SYNC_WAIT: u32 = 30_000;
+/// milliseconds: within the thirty seconds herald waits for any answer.
+pub const SYNC_WAIT: u32 = 20_000;
 /// The filter a sync reads messages with: room messages alone, with no
 /// presence, account data or history before the sync began.
 const FILTER: &str = r#"{"presence":{"types":[]},"account_data":{"types":[]},"room":{"timeline":{"types":["m.room.message"],"limit":20},"state":{"types":[]},"ephemeral":{"types":[]},"account_data":{"types":[]}}}"#;

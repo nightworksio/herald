@@ -15,6 +15,7 @@ mod options;
 mod read;
 mod request;
 mod slack;
+mod socket;
 
 pub use interact::{
     Interacting, Received, Replying, SECTION, SUBSCRIBE, Unread, subscribe_block, took,
@@ -24,3 +25,4 @@ pub use markers::SlackMarkers;
 pub use options::{DestinationOptions, RouteOptions};
 pub use request::Refusal;
 pub use slack::{Credential, Slack, profile};
+pub use socket::{Enveloped, opened};

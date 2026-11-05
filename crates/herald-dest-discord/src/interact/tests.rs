@@ -138,11 +138,16 @@ fn typing_a_project_is_read_as_what_was_typed_in_its_channel() {
             { "name": "project", "type": 3, "value": "her", "focused": true },
         ]}),
     );
+    let replying = Replying {
+        id: "900".to_owned(),
+        token: Secret::new("the interaction's token", "interaction-token"),
+    };
     assert_eq!(
         received(&interacting(""), &value),
         Ok(Received::Completing {
             place: CHANNEL.to_owned(),
             typed: "her".to_owned(),
+            replying: replying.clone(),
         })
     );
     let nothing = interaction(4, &json!({ "name": "latest", "options": [] }));
@@ -151,7 +156,29 @@ fn typing_a_project_is_read_as_what_was_typed_in_its_channel() {
         Ok(Received::Completing {
             place: CHANNEL.to_owned(),
             typed: String::new(),
+            replying: replying.clone(),
         })
+    );
+    let mut tokenless_typing = interaction(4, &json!({ "name": "latest" }));
+    tokenless_typing.as_object_mut().unwrap().remove("token");
+    assert_eq!(
+        received(&interacting(""), &tokenless_typing),
+        Err(Unread::NotAnInteraction)
+    );
+    let mut idless = interaction(4, &json!({ "name": "latest" }));
+    idless.as_object_mut().unwrap().remove("id");
+    assert_eq!(
+        received(&interacting(""), &idless),
+        Err(Unread::NotAnInteraction)
+    );
+    let completing = interacting("").complete(&replying, &["herald".to_owned()]);
+    assert_eq!(
+        completing.url.expose(),
+        "https://discord.test/api/interactions/900/interaction-token/callback"
+    );
+    assert_eq!(
+        completing.body,
+        choices(&["herald".to_owned()]).into_bytes()
     );
 }
 
