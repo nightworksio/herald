@@ -164,14 +164,14 @@ body = "{{ event.body }}"
     }
 
     fn posted(path: &str, headers: &[(&str, &str)], body: &[u8]) -> Vec<u8> {
-        let mut request = format!(
-            "POST {path} HTTP/1.1\r\nHost: herald.example\r\nContent-Length: {}\r\n",
+        let lines: String = headers
+            .iter()
+            .map(|(name, value)| format!("{name}: {value}\r\n"))
+            .collect();
+        let request = format!(
+            "POST {path} HTTP/1.1\r\nHost: herald.example\r\nContent-Length: {}\r\n{lines}\r\n",
             body.len()
         );
-        for (name, value) in headers {
-            request.push_str(&format!("{name}: {value}\r\n"));
-        }
-        request.push_str("\r\n");
         [request.as_bytes(), body].concat()
     }
 
