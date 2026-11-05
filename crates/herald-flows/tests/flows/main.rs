@@ -22,6 +22,8 @@ mod housekeep;
 #[cfg(test)]
 mod inbound;
 #[cfg(test)]
+mod interact;
+#[cfg(test)]
 mod marked;
 #[cfg(test)]
 mod mastodon;

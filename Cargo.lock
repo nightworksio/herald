@@ -766,6 +766,7 @@ dependencies = [
  "pollster",
  "serde_json",
  "sha2",
+ "url",
 ]
 
 [[package]]

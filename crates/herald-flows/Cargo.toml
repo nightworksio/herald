@@ -31,6 +31,7 @@ herald-testing.workspace = true
 pollster.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
+url.workspace = true
 
 [lints]
 workspace = true

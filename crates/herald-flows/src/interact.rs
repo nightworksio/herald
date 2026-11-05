@@ -172,7 +172,6 @@ pub async fn deferral<H: Http>(
 fn decided(asked: &Asked, holds: bool) -> Result<bool, fn(String) -> Said> {
     match (asked.command, asked.toggles, holds) {
         (Command::Subscribe, _, false) => Ok(true),
-        (Command::Subscribe, true, true) => Ok(false),
         (Command::Subscribe, false, true) => Err(Said::AlreadySubscribed),
         (_, _, true) => Ok(false),
         (_, _, false) => Err(Said::NotSubscribed),

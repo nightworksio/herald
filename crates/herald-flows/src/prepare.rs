@@ -413,6 +413,20 @@ pub async fn prepare<S: Secrets, G: Signer>(
             backfill,
         });
     }
+    Ok(Prepared {
+        routes,
+        sources,
+        interacting: interactions(config, &resolved, secrets).await?,
+    })
+}
+
+/// Every destination of `config` that takes commands, each reached with the
+/// credential `resolved` holds for it.
+async fn interactions<S: Secrets>(
+    config: &Config,
+    resolved: &BTreeMap<&DestinationName, Resolved<'_>>,
+    secrets: &S,
+) -> Result<Vec<(DestinationName, Interacting)>, PrepareError> {
     let mut interacting = Vec::new();
     for (name, destination) in &config.destinations {
         let Some(resolved) = resolved.get(name) else {
@@ -422,11 +436,7 @@ pub async fn prepare<S: Secrets, G: Signer>(
             interacting.push((name.clone(), found));
         }
     }
-    Ok(Prepared {
-        routes,
-        sources,
-        interacting,
-    })
+    Ok(interacting)
 }
 
 async fn optional<S: Secrets>(
