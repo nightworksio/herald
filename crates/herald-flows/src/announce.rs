@@ -423,7 +423,8 @@ impl<S: Store, C: Clock, G: Signer, H: Http> Run<'_, S, C, G, H> {
             .claimed(
                 self.holder,
                 now.checked_add(LEASE).unwrap_or(Timestamp::MAX),
-            );
+            )
+            .wanting(&wanted);
         let version = match self.ports.store.put_entry(&claimed, expected).await {
             Ok(Written::Written(version)) => version,
             Ok(Written::Conflict) => {

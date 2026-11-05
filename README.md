@@ -214,6 +214,7 @@ projects = ["herald"]
 - An event is herald's event JSON, as [`herald-event.schema.json`](herald-event.schema.json) describes it: `{"id": "7", "project": "herald", "title": "Deployed"}`, with `version`, `body`, `links`, `prerelease` and `occurred` where there are any.
 - `herald announce --event deploy.json --app ci` announces it from a file, or from standard input with `--event -`.
 - `herald server` takes it at `POST /api/projects/herald/events` with `Authorization: Bearer <token>`: 202 for a new event, 200 for one it has already ([ADR-0015](.docs/decisions/0015-an-app-is-a-source-routes-name-announcing-with-hashed-tokens-scoped-to-its-projects.md)).
+- `GET /api/projects/herald/events/7`, with the same token, answers where its announcement stands on each of the app's routes: `pending`, `announcing`, `announced`, or `stopped` with the steps that remain.
 
 ## Status
 

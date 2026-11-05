@@ -5,10 +5,10 @@
 use std::collections::BTreeMap;
 use std::fmt;
 
-use herald_core::{Draft, Event, Kind, Problem};
+use herald_core::{Draft, Event, Kind, Problem, Standing};
 use jiff::Timestamp;
 use schemars::JsonSchema;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 /// One event as an app writes it.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, JsonSchema)]
@@ -93,6 +93,38 @@ pub fn event(app: &str, body: &[u8], now: Timestamp) -> Result<Event, Unread> {
         occurred: written.occurred.unwrap_or(now),
     })
     .map_err(Unread::Problem)
+}
+
+/// Where an app's event stands on each route it may go to, as the HTTP API
+/// answers it.
+#[derive(Debug, Serialize)]
+struct Stands<'a> {
+    id: &'a str,
+    project: &'a str,
+    routes: Vec<RouteStands<'a>>,
+}
+
+/// Where an app's event stands on one route.
+#[derive(Debug, Serialize)]
+struct RouteStands<'a> {
+    route: &'a str,
+    #[serde(flatten)]
+    standing: &'a Standing,
+}
+
+/// The HTTP API's answer to where the event `id` of `project` stands on
+/// each of `routes`, as JSON.
+#[must_use]
+pub fn standings(id: &str, project: &str, routes: &[(&str, Standing)]) -> String {
+    let stands = Stands {
+        id,
+        project,
+        routes: routes
+            .iter()
+            .map(|(route, standing)| RouteStands { route, standing })
+            .collect(),
+    };
+    serde_json::to_string(&stands).unwrap_or_default()
 }
 
 /// The JSON Schema of an app's event, as committed in

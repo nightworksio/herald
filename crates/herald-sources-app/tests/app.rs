@@ -3,8 +3,8 @@
 
 #[cfg(test)]
 mod app {
-    use herald_core::{Kind, Problem};
-    use herald_sources_app::{Unread, event, identity, schema};
+    use herald_core::{Kind, Problem, Standing, Step};
+    use herald_sources_app::{Unread, event, identity, schema, standings};
     use jiff::Timestamp;
 
     fn now() -> Timestamp {
@@ -130,6 +130,27 @@ mod app {
         assert_eq!(
             event("ci", br#"{"id": "7", "project": "p", "title": " "}"#, now()),
             Err(Unread::Problem(Problem::NoTitle))
+        );
+    }
+
+    #[test]
+    fn where_an_event_stands_reads_as_json_route_by_route() {
+        let answer = standings(
+            "7",
+            "herald",
+            &[
+                ("deployed", Standing::Announced),
+                (
+                    "elsewhere",
+                    Standing::Stopped {
+                        remaining: vec![Step::Post],
+                    },
+                ),
+            ],
+        );
+        assert_eq!(
+            answer,
+            r#"{"id":"7","project":"herald","routes":[{"route":"deployed","standing":"announced"},{"route":"elsewhere","standing":"stopped","remaining":["post"]}]}"#
         );
     }
 

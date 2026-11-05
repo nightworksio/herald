@@ -1,7 +1,9 @@
 use std::collections::BTreeMap;
 
 use herald_config::{App, Config, Source};
-use herald_core::{ACTIVITY_JSON, Addressed, Event, Key, Scheme, SourceName, digest, same};
+use herald_core::{
+    ACTIVITY_JSON, Addressed, Event, Identity, Key, Scheme, SourceName, Standing, digest, same,
+};
 use herald_dest_fediverse::ActivityPub;
 use herald_ports::{Clock, CryptoError, Http, Keyring, Secret, Secrets, Signer, Store, Verifier};
 use herald_sources_forge::{Forge, Hooked};
@@ -28,6 +30,8 @@ const USERS: &str = "/users/";
 const JRD: &str = "application/jrd+json";
 /// What a reply in words is.
 const TEXT: &str = "text/plain; charset=utf-8";
+/// The media type of the HTTP API's answers.
+const JSON: &str = "application/json";
 
 /// An inbound HTTP request, as a driver hands it over.
 #[derive(Debug, Clone, Copy)]
@@ -279,7 +283,10 @@ pub async fn answer<S: Store, C: Clock, G: Signer, V: Verifier, H, P: Http, K: K
             if let Some(rest) = path.strip_prefix(PROJECTS) {
                 return match (method, rest.split('/').collect::<Vec<_>>().as_slice()) {
                     ("POST", [project, "events"]) => posted(serving, project, inbound).await,
-                    (_, [_, "events"]) => unmethodical(),
+                    ("GET", [project, "events", id]) => {
+                        standing(serving, project, id, inbound).await
+                    }
+                    (_, [_, "events"] | [_, "events", _]) => unmethodical(),
                     _ => missing("such path"),
                 };
             }
@@ -402,16 +409,10 @@ async fn posted<S: Store, C: Clock, G, V, H, P, K>(
     project: &str,
     inbound: &Inbound<'_>,
 ) -> Answered {
-    let token = inbound
-        .header("authorization")
-        .and_then(|value| value.strip_prefix("Bearer "))
-        .filter(|token| !token.is_empty());
-    let Some((name, app)) = token.and_then(|token| holder(serving.config, token)) else {
-        return said(401, "herald knows no such token");
+    let (name, _) = match scoped(serving.config, project, inbound) {
+        Ok(scoped) => scoped,
+        Err(refused) => return refused.answered(),
     };
-    if !app.projects.iter().any(|named| named == project) {
-        return said(403, "the token may not announce this project");
-    }
     let now = serving.ports.clock.now();
     let event = match herald_sources_app::event(name, inbound.body, now) {
         Ok(event) => event,
@@ -442,6 +443,74 @@ async fn posted<S: Store, C: Clock, G, V, H, P, K>(
         Err(Rejected::Replayed) => said(200, "herald has this event already"),
         Err(rejected) => rejection(&rejected),
     }
+}
+
+/// Why an app's request is refused before it is read.
+enum Refused {
+    /// It presents no token herald knows.
+    Token,
+    /// Its token may not announce the project it names.
+    Project,
+}
+
+impl Refused {
+    fn answered(self) -> Answered {
+        match self {
+            Self::Token => said(401, "herald knows no such token"),
+            Self::Project => said(403, "the token may not announce this project"),
+        }
+    }
+}
+
+/// The app whose token `inbound` presents, where it may announce
+/// `project`, or why it is refused.
+fn scoped<'c>(
+    config: &'c Config,
+    project: &str,
+    inbound: &Inbound<'_>,
+) -> Result<(&'c str, &'c App), Refused> {
+    let token = inbound
+        .header("authorization")
+        .and_then(|value| value.strip_prefix("Bearer "))
+        .filter(|token| !token.is_empty());
+    let Some((name, app)) = token.and_then(|token| holder(config, token)) else {
+        return Err(Refused::Token);
+    };
+    if !app.projects.iter().any(|named| named == project) {
+        return Err(Refused::Project);
+    }
+    Ok((name, app))
+}
+
+/// Where the announcement of the event its app gave `id` stands on each
+/// route the app may announce to, read from the ledger (ADR-0015).
+async fn standing<S: Store, C: Clock, G, V, H, P, K>(
+    serving: &Serving<'_, S, C, G, V, H, P, K>,
+    project: &str,
+    id: &str,
+    inbound: &Inbound<'_>,
+) -> Answered {
+    let (name, app) = match scoped(serving.config, project, inbound) {
+        Ok(scoped) => scoped,
+        Err(refused) => return refused.answered(),
+    };
+    let identity = Identity::new(herald_sources_app::identity(name, id));
+    let now = serving.ports.clock.now();
+    let mut routes = Vec::new();
+    for route in &app.routes {
+        let key = Key::derive(route, &identity);
+        let standing = match serving.ports.store.entry(&key).await {
+            Ok(Some(entry)) => entry.value.standing(now),
+            Ok(None) => Standing::Pending,
+            Err(error) => return said(503, &error.to_string()),
+        };
+        routes.push((route.as_str(), standing));
+    }
+    replied(
+        200,
+        JSON,
+        herald_sources_app::standings(id, project, &routes),
+    )
 }
 
 /// The app one of whose tokens is `token`, its SHA-256 compared with every

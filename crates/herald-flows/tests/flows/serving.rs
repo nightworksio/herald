@@ -780,3 +780,69 @@ fn an_app_s_work_that_stops_or_will_not_be_done_releases_its_delivery() {
     world.serving(|serving| pollster::block_on(unworked(serving, &job())));
     assert_eq!(world.admits(Scheme::App, "app/ci/7"), Admitted::Fresh);
 }
+
+#[test]
+fn where_an_app_s_event_stands_is_read_route_by_route_from_the_ledger() {
+    let world = World::new(Script::default());
+    let asked = Inbound {
+        method: "GET",
+        headers: BEARER,
+        ..get("/api/projects/herald/events/7")
+    };
+    let (status, kind, body) = said(&world.answer(&asked));
+    assert_eq!((status, kind), (200, "application/json"));
+    assert_eq!(
+        body,
+        r#"{"id":"7","project":"herald","routes":[{"route":"deployed","standing":"pending"}]}"#
+    );
+    let event = herald_sources_app::event("ci", DEPLOYED, at()).unwrap();
+    let identity = event.identity().clone();
+    world.work(Job::App {
+        app: "ci".to_owned(),
+        event,
+        verified: herald_flows::Verified {
+            delivery: Some("app/ci/7".to_owned()),
+            signer: Some("ci".to_owned()),
+        },
+    });
+    let entry = pollster::block_on(
+        world
+            .store
+            .inner
+            .entry(&Key::derive(&RouteId::new("deployed"), &identity)),
+    )
+    .unwrap()
+    .unwrap();
+    assert_eq!(entry.value.wanted, Some(vec![Step::Post]));
+    assert_eq!(
+        said(&world.answer(&asked)).2,
+        r#"{"id":"7","project":"herald","routes":[{"route":"deployed","standing":"announced"}]}"#
+    );
+    for (headers, path, status) in [
+        (&[][..], "/api/projects/herald/events/7", 401),
+        (BEARER, "/api/projects/other/events/7", 403),
+    ] {
+        let refused = Inbound {
+            method: "GET",
+            headers,
+            ..get(path)
+        };
+        assert_eq!(world.answer(&refused).reply.status, status, "{path}");
+    }
+    let put = Inbound {
+        method: "PUT",
+        ..asked
+    };
+    assert_eq!(world.answer(&put).reply.status, 405);
+}
+
+#[test]
+fn where_an_event_stands_is_not_said_while_the_store_cannot_be_read() {
+    let world = World::failing(Fault::Reads);
+    let asked = Inbound {
+        method: "GET",
+        headers: BEARER,
+        ..get("/api/projects/herald/events/7")
+    };
+    assert_eq!(world.answer(&asked).reply.status, 503);
+}
