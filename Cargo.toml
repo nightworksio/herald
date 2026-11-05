@@ -25,6 +25,7 @@ herald-native = { path = "crates/herald-native" }
 herald-ports = { path = "crates/herald-ports" }
 herald-records = { path = "crates/herald-records" }
 herald-server = { path = "crates/herald-server" }
+herald-sources-app = { path = "crates/herald-sources-app" }
 herald-sources-feed = { path = "crates/herald-sources-feed" }
 herald-sources-forge = { path = "crates/herald-sources-forge" }
 herald-sources-registry = { path = "crates/herald-sources-registry" }

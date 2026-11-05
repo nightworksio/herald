@@ -1,12 +1,12 @@
 use std::collections::BTreeMap;
 
-use herald_config::{Config, Source};
-use herald_core::{ACTIVITY_JSON, Addressed, Event, Key, Scheme, SourceName};
+use herald_config::{App, Config, Source};
+use herald_core::{ACTIVITY_JSON, Addressed, Event, Key, Scheme, SourceName, digest, same};
 use herald_dest_fediverse::ActivityPub;
 use herald_ports::{Clock, CryptoError, Http, Keyring, Secret, Secrets, Signer, Store, Verifier};
 use herald_sources_forge::{Forge, Hooked};
 
-use crate::announce::{Announced, Outcome, Ports, announce};
+use crate::announce::{Announced, Outcome, Ports, announce, announce_within};
 use crate::following::{FollowError, Followed, followed};
 use crate::inbound::{Keys, Rejected, Verified, activity_verified, admitted, released, verified};
 use crate::prepare::{Connected, PrepareError};
@@ -16,6 +16,8 @@ use crate::reached::Reached;
 pub const HEALTH: &str = "/healthz";
 /// Where a forge delivers its webhooks, before the source's name.
 pub const HOOKS: &str = "/hooks/";
+/// Where apps post their projects' events: `/api/projects/<project>/events`.
+pub const PROJECTS: &str = "/api/projects/";
 /// Where WebFinger is asked.
 const WEBFINGER: &str = "/.well-known/webfinger";
 /// The inbox every actor herald serves shares.
@@ -75,6 +77,17 @@ pub enum Job {
         /// The scheme it is signed under.
         scheme: Scheme,
         /// What its signature names.
+        verified: Verified,
+    },
+    /// `event`, posted by the app named `app` to its HTTP API, to announce
+    /// to the routes the app may announce to; the delivery is released where
+    /// a route stops (ADR-0007, ADR-0013).
+    App {
+        /// The app's name.
+        app: String,
+        /// The event it posted.
+        event: Event,
+        /// What it is delivered as: the event's identity.
         verified: Verified,
     },
     /// An activity an inbox let through, to take.
@@ -263,6 +276,13 @@ pub async fn answer<S: Store, C: Clock, G: Signer, V: Verifier, H, P: Http, K: K
         ("POST", SHARED_INBOX) => inboxed(serving, inbound).await,
         (_, HEALTH | WEBFINGER | SHARED_INBOX) => unmethodical(),
         (method, path) => {
+            if let Some(rest) = path.strip_prefix(PROJECTS) {
+                return match (method, rest.split('/').collect::<Vec<_>>().as_slice()) {
+                    ("POST", [project, "events"]) => posted(serving, project, inbound).await,
+                    (_, [_, "events"]) => unmethodical(),
+                    _ => missing("such path"),
+                };
+            }
             if let Some(source) = path.strip_prefix(HOOKS) {
                 return if method == "POST" {
                     hooked(serving, source, inbound).await
@@ -374,6 +394,71 @@ async fn hooked<S: Store, C: Clock, G, V: Verifier, H, P, K>(
     }
 }
 
+/// An app's event posted to `project`: its token and the project are checked
+/// before the event is read, the event is admitted once, and its
+/// announcement is left to do (ADR-0007, ADR-0013).
+async fn posted<S: Store, C: Clock, G, V, H, P, K>(
+    serving: &Serving<'_, S, C, G, V, H, P, K>,
+    project: &str,
+    inbound: &Inbound<'_>,
+) -> Answered {
+    let token = inbound
+        .header("authorization")
+        .and_then(|value| value.strip_prefix("Bearer "))
+        .filter(|token| !token.is_empty());
+    let Some((name, app)) = token.and_then(|token| holder(serving.config, token)) else {
+        return said(401, "herald knows no such token");
+    };
+    if !app.projects.iter().any(|named| named == project) {
+        return said(403, "the token may not announce this project");
+    }
+    let now = serving.ports.clock.now();
+    let event = match herald_sources_app::event(name, inbound.body, now) {
+        Ok(event) => event,
+        Err(unread) => return said(400, &unread.to_string()),
+    };
+    if event.project() != project {
+        return said(
+            400,
+            &format!(
+                "the event names the project \"{}\", not \"{project}\"",
+                event.project()
+            ),
+        );
+    }
+    let verified = Verified {
+        delivery: Some(event.identity().as_str().to_owned()),
+        signer: Some(name.to_owned()),
+    };
+    match admitted(serving.ports.store, Scheme::App, &verified, now).await {
+        Ok(()) => Answered {
+            reply: said(202, "herald announces the event").reply,
+            job: Some(Job::App {
+                app: name.to_owned(),
+                event,
+                verified,
+            }),
+        },
+        Err(Rejected::Replayed) => said(200, "herald has this event already"),
+        Err(rejected) => rejection(&rejected),
+    }
+}
+
+/// The app one of whose tokens is `token`, its SHA-256 compared with every
+/// hash every app keeps, each in constant time (ADR-0007).
+fn holder<'c>(config: &'c Config, token: &str) -> Option<(&'c str, &'c App)> {
+    let presented = digest(token);
+    let mut found = None;
+    for (name, app) in &config.apps {
+        for held in &app.tokens {
+            if same(held.as_bytes(), presented.as_bytes()) {
+                found = Some((name.as_str(), app));
+            }
+        }
+    }
+    found
+}
+
 /// An activity delivered to an inbox herald serves, verified and admitted,
 /// and left to take.
 async fn inboxed<S: Store, C: Clock, G, V: Verifier, H, P: Http, K: Keyring>(
@@ -430,6 +515,7 @@ pub async fn unworked<S: Store, C, G, V, H, P, K>(
         Job::Announce {
             scheme, verified, ..
         } => (*scheme, verified),
+        Job::App { verified, .. } => (Scheme::App, verified),
         Job::Follow { verified, .. } => (Scheme::ActivityPub, verified),
     };
     let _ = released(serving.ports.store, scheme, verified).await;
@@ -465,6 +551,35 @@ pub async fn work<S: Store, C: Clock, G: Signer, V, H: Http, P, K>(
                 .any(|announced| matches!(announced.outcome, Outcome::Stopped { .. }))
             {
                 let _ = released(store, scheme, &verified).await;
+            }
+            Worked::Announced(announced)
+        }
+        Job::App {
+            app,
+            event,
+            verified,
+        } => {
+            let within = serving
+                .config
+                .apps
+                .get(&app)
+                .map(|app| app.routes.as_slice())
+                .unwrap_or_default();
+            let announced = announce_within(
+                serving.config,
+                serving.connected,
+                serving.ports,
+                &SourceName::new(&app),
+                &event,
+                Some(within),
+                run,
+            )
+            .await;
+            if announced
+                .iter()
+                .any(|announced| matches!(announced.outcome, Outcome::Stopped { .. }))
+            {
+                let _ = released(store, Scheme::App, &verified).await;
             }
             Worked::Announced(announced)
         }

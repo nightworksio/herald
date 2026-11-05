@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "herald event",
+  "description": "One event as an app writes it.",
+  "type": "object",
+  "properties": {
+    "body": {
+      "description": "The body, in Markdown.",
+      "type": "string",
+      "default": ""
+    },
+    "id": {
+      "description": "The app's own id for the event, which no other event of the app has.",
+      "type": "string"
+    },
+    "links": {
+      "description": "Named links, each an `https` or `http` URL: `release`, `changelog`,\n`comparison`, `download`.",
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      },
+      "default": {}
+    },
+    "occurred": {
+      "description": "When it happened, in RFC 3339; when herald read it where it is left\nout.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "default": null
+    },
+    "prerelease": {
+      "description": "Whether it is a pre-release.",
+      "type": "boolean",
+      "default": false
+    },
+    "project": {
+      "description": "The project it is about.",
+      "type": "string"
+    },
+    "title": {
+      "description": "A title, on one line.",
+      "type": "string"
+    },
+    "version": {
+      "description": "The version it announces, where it announces one.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "default": null
+    }
+  },
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "project",
+    "title"
+  ]
+}

@@ -8,11 +8,9 @@ use serde::de::DeserializeOwned;
 use toml::Spanned;
 use toml::de::{DeTable, DeValue, ValueDeserializer};
 
-use crate::config::{App, Config, Destination, KeyCache, Schedule, Server, Source, Store};
+use crate::config::{Config, Destination, KeyCache, Schedule, Server, Source, Store};
 use crate::error::{ConfigError, Errors};
-use crate::file::{
-    AppFile, KeyCacheFile, MarkersFile, NoOptions, ScheduleFile, ServerFile, TemplateFile,
-};
+use crate::file::{KeyCacheFile, MarkersFile, NoOptions, ScheduleFile, ServerFile, TemplateFile};
 use crate::position::position;
 
 type Value<'i> = Spanned<DeValue<'i>>;
@@ -477,61 +475,6 @@ impl Loader<'_> {
 }
 
 impl Loader<'_> {
-    fn apps(
-        &mut self,
-        value: Option<Value<'_>>,
-        routes: &BTreeSet<RouteId>,
-    ) -> BTreeMap<String, App> {
-        let mut apps = BTreeMap::new();
-        for (name, value) in self.named(value, "apps") {
-            let path = format!("apps.{name}");
-            let Some(app) = self.typed::<AppFile>(value, &path) else {
-                continue;
-            };
-            let hash = app.token_sha256.get_ref();
-            let hex = hash.len() == HASH_DIGITS
-                && hash
-                    .bytes()
-                    .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte));
-            if !hex {
-                self.error(
-                    &app.token_sha256.span(),
-                    &format!("{path}.token_sha256"),
-                    "a token's SHA-256 is 64 lowercase hex digits, as herald token new prints it",
-                );
-                continue;
-            }
-            let mut sound = true;
-            for route in &app.routes {
-                if !routes.contains(&RouteId::new(route.get_ref())) {
-                    self.error(
-                        &route.span(),
-                        &format!("{path}.routes"),
-                        format!("no route has the id \"{}\"", route.get_ref()),
-                    );
-                    sound = false;
-                }
-            }
-            if sound {
-                apps.insert(
-                    name,
-                    App {
-                        token_sha256: hash.clone(),
-                        projects: app.projects,
-                        routes: app
-                            .routes
-                            .iter()
-                            .map(|route| RouteId::new(route.get_ref()))
-                            .collect(),
-                    },
-                );
-            }
-        }
-        apps
-    }
-}
-
-impl Loader<'_> {
     /// `[server]` as `file` gives it, over the store `store`.
     fn server(&mut self, file: ServerFile, store: Option<&Store>) -> Server {
         let defaults = Server::default();
@@ -614,6 +557,7 @@ pub fn load(
     let destinations = loader.destinations(sections.destinations);
     let sources = loader.sources(sections.sources);
     let templates = loader.templates(sections.templates, read);
+    let listed = loader.apps(sections.apps, &sources);
     let mut routes = Vec::new();
     let mut ids: BTreeSet<RouteId> = BTreeSet::new();
     let mut values = Vec::new();
@@ -630,7 +574,8 @@ pub fn load(
         }
     }
     for (index, value) in values.into_iter().enumerate() {
-        if let Some(read) = loader.route(index, value, &destinations, &sources, &templates) {
+        if let Some(read) = loader.route(index, value, &destinations, &sources, &listed, &templates)
+        {
             if !ids.insert(read.config.route.id.clone()) {
                 loader.error(
                     &read.id_span,
@@ -652,7 +597,7 @@ pub fn load(
             loader.dry_render(compiled, read);
         }
     }
-    let apps = loader.apps(sections.apps, &ids);
+    let apps = loader.app_routes(listed, &routes);
     let schedule = sections
         .schedule
         .and_then(|value| loader.typed::<ScheduleFile>(value, "schedule"))
@@ -689,5 +634,6 @@ pub fn load(
     })
 }
 
+mod apps;
 mod route;
 mod templates;

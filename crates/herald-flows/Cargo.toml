@@ -18,6 +18,7 @@ herald-dest-matrix.workspace = true
 herald-dest-slack.workspace = true
 herald-ports.workspace = true
 herald-sources-feed.workspace = true
+herald-sources-app.workspace = true
 herald-sources-forge.workspace = true
 herald-sources-registry.workspace = true
 herald-store-markers.workspace = true

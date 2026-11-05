@@ -32,3 +32,4 @@ no separate requirements document, and there are no requirement IDs.
 | [0012](0012-a-release-is-drafted-by-the-bot-signed-by-the-maintainer-and-published-after-the-full-gate.md) | A release is drafted by the bot, signed by the maintainer, and published after the full gate | Accepted |
 | [0013](0013-a-webhook-delivery-is-admitted-once-released-when-it-fails-and-kept-for-a-week.md) | A webhook delivery is admitted once, released when it fails, and kept for a week | Accepted |
 | [0014](0014-herald-server-answers-first-and-works-after-on-one-task-within-limits.md) | herald server answers first and works after, on one task, within limits | Accepted |
+| [0015](0015-an-app-is-a-source-routes-name-announcing-with-hashed-tokens-scoped-to-its-projects.md) | An app is a source routes name, announcing with hashed tokens scoped to its projects | Accepted |

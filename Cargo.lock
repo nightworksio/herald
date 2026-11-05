@@ -622,6 +622,7 @@ dependencies = [
  "herald-ports",
  "herald-records",
  "herald-server",
+ "herald-sources-app",
  "herald-sources-forge",
  "herald-store-actions-cache",
  "herald-store-git-branch",
@@ -754,6 +755,7 @@ dependencies = [
  "herald-dest-slack",
  "herald-ports",
  "herald-records",
+ "herald-sources-app",
  "herald-sources-feed",
  "herald-sources-forge",
  "herald-sources-registry",
@@ -829,6 +831,17 @@ dependencies = [
  "jiff",
  "serde_json",
  "tokio",
+]
+
+[[package]]
+name = "herald-sources-app"
+version = "0.0.0"
+dependencies = [
+ "herald-core",
+ "jiff",
+ "schemars",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

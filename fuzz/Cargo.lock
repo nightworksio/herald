@@ -174,12 +174,16 @@ dependencies = [
  "herald-core",
  "herald-dest-discord",
  "herald-dest-fediverse",
+ "herald-dest-matrix",
+ "herald-dest-slack",
  "herald-sources-feed",
  "herald-sources-forge",
  "herald-sources-registry",
  "herald-store-actions-cache",
  "herald-store-git-branch",
+ "herald-store-postgres",
  "herald-store-repo-variables",
+ "herald-store-sqlite",
  "jiff",
  "schemars",
  "serde",
@@ -227,12 +231,37 @@ dependencies = [
 ]
 
 [[package]]
+name = "herald-dest-matrix"
+version = "0.0.0"
+dependencies = [
+ "herald-core",
+ "herald-ports",
+ "jiff",
+ "schemars",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "herald-dest-slack"
+version = "0.0.0"
+dependencies = [
+ "herald-core",
+ "herald-ports",
+ "jiff",
+ "schemars",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "herald-fuzz"
 version = "0.0.0"
 dependencies = [
  "herald-config",
  "herald-core",
  "herald-ports",
+ "herald-sources-app",
  "herald-sources-feed",
  "herald-sources-forge",
  "herald-sources-registry",
@@ -256,6 +285,17 @@ dependencies = [
  "herald-core",
  "herald-ports",
  "jiff",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "herald-sources-app"
+version = "0.0.0"
+dependencies = [
+ "herald-core",
+ "jiff",
+ "schemars",
  "serde",
  "serde_json",
 ]
@@ -325,6 +365,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "herald-store-postgres"
+version = "0.0.0"
+dependencies = [
+ "herald-core",
+ "herald-ports",
+ "herald-records",
+ "schemars",
+ "serde",
+]
+
+[[package]]
 name = "herald-store-repo-variables"
 version = "0.0.0"
 dependencies = [
@@ -335,6 +386,16 @@ dependencies = [
  "schemars",
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "herald-store-sqlite"
+version = "0.0.0"
+dependencies = [
+ "herald-ports",
+ "herald-records",
+ "schemars",
+ "serde",
 ]
 
 [[package]]

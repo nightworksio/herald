@@ -487,9 +487,25 @@ pub async fn announce<S: Store, C: Clock, G: Signer, H: Http>(
     event: &Event,
     run: &str,
 ) -> Vec<Announced> {
+    announce_within(config, connected, ports, source, event, None, run).await
+}
+
+/// [`announce`], to the routes `within` names alone where it names any: the
+/// routes an app may announce to (ADR-0007).
+pub async fn announce_within<S: Store, C: Clock, G: Signer, H: Http>(
+    config: &Config,
+    connected: &Connected<H>,
+    ports: &Ports<'_, S, C, G>,
+    source: &SourceName,
+    event: &Event,
+    within: Option<&[RouteId]>,
+    run: &str,
+) -> Vec<Announced> {
     let mut announced = Vec::new();
     for (route, http) in &connected.routes {
-        if !route.config.route.filter.takes(source, event) {
+        let id = &route.config.route.id;
+        let named = within.is_none_or(|within| within.contains(id));
+        if !named || !route.config.route.filter.takes(source, event) {
             continue;
         }
         let outcome = Run {

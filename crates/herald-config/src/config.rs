@@ -277,11 +277,12 @@ impl RouteOptions {
 /// An app of the HTTP API: its token's hash and what it may announce to.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct App {
-    /// The SHA-256 of its token, in lowercase hex.
-    pub token_sha256: String,
+    /// The SHA-256 of each of its tokens, in lowercase hex.
+    pub tokens: Vec<String>,
     /// The projects it may announce.
     pub projects: Vec<String>,
-    /// The routes it may announce to.
+    /// The routes it announces to: those it names, or every route that
+    /// names it among its sources.
     pub routes: Vec<RouteId>,
 }
 

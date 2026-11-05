@@ -20,7 +20,7 @@ use herald_config::{Config, Source, load, samples};
 use herald_core::{Event, Kind, RouteId, SourceName};
 use herald_flows::{
     Announced, Chored, Connected, Findings, Gap, Kept, Outcome, Ports, Remembered, Stop, Sweep,
-    Swept, announce, doctor, housekeep, keys, poll, prepare, preview,
+    Swept, announce_within, doctor, housekeep, keys, poll, prepare, preview,
 };
 use herald_native::{
     ConnectError, EnvSecrets, NativeHttp, PublicHttp, RingSigner, SystemClock, random_secret,
@@ -29,6 +29,7 @@ use herald_ports::{Http, HttpError, Keyring, PUBLIC, Request, Response, Secrets,
 use herald_records::Memory;
 use herald_sources_forge::{Forge, Origin, Repository, SourceOptions, Token};
 
+mod apps;
 mod output;
 mod serving;
 mod stores;
@@ -130,8 +131,22 @@ struct Cli {
 enum Command {
     /// Print a new marker secret, once, to store as `HERALD_MARKER_SECRET`.
     Init,
+    /// Make tokens for the HTTP API's apps.
+    #[command(subcommand)]
+    Token(Tokens),
     #[command(flatten)]
     Read(Reading),
+}
+
+/// The commands that make tokens.
+#[derive(Debug, Subcommand)]
+enum Tokens {
+    /// Print a new token for an app, once, with the hash herald.toml keeps.
+    New {
+        /// The app's name, as `[apps.<name>]` names it.
+        #[arg(long)]
+        app: String,
+    },
 }
 
 /// The commands that read the config.
@@ -186,12 +201,19 @@ enum Serve {
     /// Announce the run's event to every route that takes it.
     Announce {
         /// Where the event comes from.
-        #[arg(long, value_enum)]
-        from: From,
+        #[arg(long, value_enum, required_unless_present = "event")]
+        from: Option<From>,
         /// The release of the run's repository to announce, by its tag, in
         /// place of the run's own event.
-        #[arg(long)]
+        #[arg(long, conflicts_with = "event")]
         release: Option<String>,
+        /// An app's event, as herald's event JSON, from this file, or from
+        /// standard input where it is `-`.
+        #[arg(long, requires = "app", conflicts_with = "from")]
+        event: Option<String>,
+        /// The app the event is of, as `[apps.<name>]` names it.
+        #[arg(long, requires = "event")]
+        app: Option<String>,
         /// Print every request a first announcement sends, with every secret
         /// redacted, and send nothing and keep no record.
         #[arg(long)]
@@ -296,6 +318,7 @@ async fn stopping(
     };
     let reading = match cli.command {
         Command::Init => return init(random_secret(), out, err),
+        Command::Token(Tokens::New { app }) => return apps::token(&app, random_secret(), out, err),
         Command::Read(reading) => reading,
     };
     let config = match read(&cli.config) {
@@ -332,14 +355,25 @@ async fn stopping(
         Serve::Announce {
             from,
             release,
+            event,
+            app,
             dry_run,
         } => {
-            let announcing = Announce {
-                forge: from.forge(),
-                release: release.as_deref(),
-                dry_run,
-            };
-            announcing_from(&config, vars, connect, announcing, out).await
+            if let (Some(event), Some(app)) = (&event, &app) {
+                let written = apps::Written {
+                    app,
+                    event,
+                    dry_run,
+                };
+                apps::announcing_event(&config, vars, connect, written, out).await
+            } else {
+                let announcing = Announce {
+                    forge: from.map_or(Forge::GitHub, From::forge),
+                    release: release.as_deref(),
+                    dry_run,
+                };
+                announcing_from(&config, vars, connect, announcing, out).await
+            }
         }
         Serve::Poll => polling(&config, vars, connect, out).await,
         Serve::Housekeep => housekeeping(&config, vars, connect, out).await,
@@ -488,8 +522,36 @@ async fn announcing_from(
         return Ok(DONE);
     };
     let sources: Vec<&SourceName> = named.iter().map(|(name, _)| *name).collect();
+    let routed = Routed {
+        sources: &sources,
+        within: None,
+        event: &event,
+    };
+    announcing(config, vars, connect, routed, asked.dry_run, out).await
+}
+
+/// An event, and the sources and routes it is announced from and to.
+struct Routed<'a> {
+    /// The sources it comes from.
+    sources: &'a [&'a SourceName],
+    /// The routes it may go to, where only some may take it.
+    within: Option<&'a [RouteId]>,
+    /// The event.
+    event: &'a Event,
+}
+
+/// `routed` announced to every route that takes it, or, on a dry run, the
+/// requests a first announcement sends printed and nothing sent.
+async fn announcing(
+    config: &Config,
+    vars: &BTreeMap<String, String>,
+    connect: Connect<'_>,
+    routed: Routed<'_>,
+    dry_run: bool,
+    out: &mut dyn Write,
+) -> Result<u8, String> {
     let sent = Arc::new(Mutex::new(Vec::new()));
-    let (records, connected) = if asked.dry_run {
+    let (records, connected) = if dry_run {
         dry(config, vars, &sent).await?
     } else {
         reached(config, vars, connect).await?
@@ -498,12 +560,11 @@ async fn announcing_from(
     let announcing = Announcing {
         config,
         connected: &connected,
-        sources: &sources,
-        event: &event,
+        routed,
         run: &run,
     };
     let announced = records.serve(&connected, announcing).await;
-    if asked.dry_run {
+    if dry_run {
         say(
             out,
             "A dry run sends nothing and keeps no record: these are the requests a first announcement sends.",
@@ -753,8 +814,7 @@ trait Served {
 struct Announcing<'a> {
     config: &'a Config,
     connected: &'a Connected<Connection>,
-    sources: &'a [&'a SourceName],
-    event: &'a Event,
+    routed: Routed<'a>,
     run: &'a str,
 }
 
@@ -768,14 +828,15 @@ impl Served for Announcing<'_> {
             signer: &RingSigner,
         };
         let mut all = Vec::new();
-        for source in self.sources {
+        for source in self.routed.sources {
             all.extend(
-                announce(
+                announce_within(
                     self.config,
                     self.connected,
                     &ports,
                     source,
-                    self.event,
+                    self.routed.event,
+                    self.routed.within,
                     self.run,
                 )
                 .await,

@@ -59,6 +59,37 @@ body = "{{{{ event.body }}}}"
     }
 
     #[test]
+    fn an_app_s_event_is_read_from_standard_input() {
+        use std::io::Write as _;
+        use std::process::Stdio;
+        let directory = directory("http://127.0.0.1:1");
+        let config = directory.path().join("herald.toml");
+        let mut text = std::fs::read_to_string(&config).unwrap();
+        text.push_str("[apps.ci]\nprojects = [\"herald\"]\n");
+        std::fs::write(&config, text).unwrap();
+        let mut child = Command::new(env!("CARGO_BIN_EXE_herald"))
+            .args(["announce", "--event", "-", "--app", "ci"])
+            .current_dir(directory.path())
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .unwrap();
+        child
+            .stdin
+            .take()
+            .unwrap()
+            .write_all(br#"{"id": "7", "project": "other", "title": "Deployed"}"#)
+            .unwrap();
+        let output = child.wait_with_output().unwrap();
+        assert_eq!(output.status.code(), Some(1));
+        assert_eq!(
+            String::from_utf8(output.stderr).unwrap(),
+            "the app \"ci\" may not announce the project \"other\"; add it to [apps.ci] projects\n"
+        );
+    }
+
+    #[test]
     fn the_binary_says_its_version() {
         let directory = directory("http://127.0.0.1:1");
         let output = herald(&["--version"], directory.path());

@@ -197,22 +197,23 @@
           }
         },
         "routes": {
-          "description": "The routes it may announce to.",
+          "description": "The routes it announces to, each naming the app among its sources;\nevery such route where it names none.",
           "type": "array",
           "default": [],
           "items": {
             "type": "string"
           }
         },
-        "token_sha256": {
-          "description": "The SHA-256 of the app's token, as `herald token new` prints it.",
-          "type": "string"
+        "tokens": {
+          "description": "The SHA-256 of each of the app's tokens, written `sha256:` and 64\nlowercase hex digits, as `herald token new` prints it. A token is\nrotated by adding the new one before the old one is removed.",
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "string"
+          }
         }
       },
-      "additionalProperties": false,
-      "required": [
-        "token_sha256"
-      ]
+      "additionalProperties": false
     },
     "Destination": {
       "description": "A destination, by its kind.",

@@ -15,10 +15,10 @@ const EVENT: &str =
     include_str!("../../../herald-sources-forge/fixtures/github/release-event.reference.json");
 const ACTOR: &str = "https://herald.example/users/php-mutation-gate";
 
+const APP_TOKEN: &str = "app-token";
+
 fn config() -> Config {
-    load(
-        "herald.toml",
-        r#"version = 1
+    let text = r#"version = 1
 [store]
 kind = "sqlite"
 [destinations.fedi]
@@ -38,13 +38,28 @@ sources = ["gate"]
 destination = "fedi"
 template = "t"
 actor = "php-mutation-gate"
+[[routes]]
+id = "deployed"
+sources = ["ci"]
+destination = "fedi"
+template = "t"
+actor = "deploys"
+[[routes]]
+id = "elsewhere"
+sources = ["ci"]
+destination = "fedi"
+template = "t"
+actor = "deploys"
+[apps.ci]
+tokens = ["sha256:TOKEN_HASH"]
+projects = ["herald"]
+routes = ["deployed"]
 [templates.t]
 title = "{{ event.title }}"
 body = "{{ event.body }}"
-"#,
-        &|_| Err(String::new()),
-    )
-    .unwrap()
+"#
+    .replace("TOKEN_HASH", &herald_core::digest(APP_TOKEN));
+    load("herald.toml", &text, &|_| Err(String::new())).unwrap()
 }
 
 fn secrets() -> FakeSecrets {
@@ -615,4 +630,153 @@ fn a_webhook_secret_that_is_not_set_stops_the_server_before_it_serves() {
     let config = config();
     let unset = FakeSecrets::default().with("HERALD_ACTIVITYPUB_KEY", "the-key");
     assert!(pollster::block_on(webhooks(&config, &unset)).is_err());
+}
+
+fn posted<'a>(project: &'a str, headers: &'a [(&'a str, &'a str)], body: &'a [u8]) -> Inbound<'a> {
+    Inbound {
+        method: "POST",
+        path: project,
+        query: None,
+        headers,
+        body,
+    }
+}
+
+/// A post's path, its headers, its body and the status it is answered with.
+type Posted<'a> = (&'a str, &'a [(&'a str, &'a str)], &'a [u8], u16);
+
+const BEARER: &[(&str, &str)] = &[("Authorization", "Bearer app-token")];
+const DEPLOYED: &[u8] = br#"{"id": "7", "project": "herald", "title": "Deployed"}"#;
+
+#[test]
+fn an_app_s_event_is_answered_and_left_to_announce_once() {
+    let world = World::new(Script::default());
+    let first = world.answer(&posted("/api/projects/herald/events", BEARER, DEPLOYED));
+    assert_eq!(
+        said(&first),
+        (202, TEXT, "herald announces the event".to_owned())
+    );
+    let Some(Job::App {
+        app,
+        event,
+        verified,
+    }) = first.job
+    else {
+        panic!("the event is left to announce");
+    };
+    assert_eq!(app, "ci");
+    assert_eq!(event.identity().as_str(), "app/ci/7");
+    assert_eq!(event.project(), "herald");
+    assert_eq!(verified.delivery.as_deref(), Some("app/ci/7"));
+    assert_eq!(verified.signer.as_deref(), Some("ci"));
+    let again = world.answer(&posted("/api/projects/herald/events", BEARER, DEPLOYED));
+    assert_eq!(
+        said(&again),
+        (200, TEXT, "herald has this event already".to_owned())
+    );
+    assert_eq!(again.job, None);
+    assert_eq!(world.admits(Scheme::App, "app/ci/7"), Admitted::Seen);
+}
+
+#[test]
+fn an_app_s_event_its_token_or_scope_does_not_let_through_is_refused_unread() {
+    let world = World::new(Script::default());
+    let cases: [Posted<'_>; 9] = [
+        ("/api/projects/herald/events", &[], DEPLOYED, 401),
+        (
+            "/api/projects/herald/events",
+            &[("Authorization", "Bearer ")],
+            DEPLOYED,
+            401,
+        ),
+        (
+            "/api/projects/herald/events",
+            &[("Authorization", "app-token")],
+            DEPLOYED,
+            401,
+        ),
+        (
+            "/api/projects/herald/events",
+            &[("Authorization", "Bearer other")],
+            DEPLOYED,
+            401,
+        ),
+        ("/api/projects/other/events", BEARER, b"not json", 403),
+        ("/api/projects/herald/events", BEARER, b"not json", 400),
+        (
+            "/api/projects/herald/events",
+            BEARER,
+            br#"{"id": "7", "project": "other", "title": "Deployed"}"#,
+            400,
+        ),
+        (
+            "/api/projects/herald/events",
+            BEARER,
+            br#"{"id": " ", "project": "herald", "title": "Deployed"}"#,
+            400,
+        ),
+        ("/api/projects/herald", BEARER, DEPLOYED, 404),
+    ];
+    for (path, headers, body, status) in cases {
+        let answered = world.answer(&posted(path, headers, body));
+        assert_eq!(answered.reply.status, status, "{path} {headers:?}");
+        assert_eq!(answered.job, None, "{path}");
+    }
+    let mismatched = world.answer(&posted(
+        "/api/projects/herald/events",
+        BEARER,
+        br#"{"id": "7", "project": "other", "title": "Deployed"}"#,
+    ));
+    assert_eq!(
+        said(&mismatched).2,
+        "the event names the project \"other\", not \"herald\""
+    );
+    assert_eq!(world.admits(Scheme::App, "app/ci/7"), Admitted::Fresh);
+    let asked = Inbound {
+        method: "GET",
+        ..get("/api/projects/herald/events")
+    };
+    assert_eq!(world.answer(&asked).reply.status, 405);
+}
+
+#[test]
+fn an_app_s_event_is_announced_to_the_routes_the_app_may_announce_to_only() {
+    let world = World::new(Script::default());
+    let event = herald_sources_app::event("ci", DEPLOYED, at()).unwrap();
+    let Worked::Announced(announced) = world.work(Job::App {
+        app: "ci".to_owned(),
+        event,
+        verified: herald_flows::Verified {
+            delivery: Some("app/ci/7".to_owned()),
+            signer: Some("ci".to_owned()),
+        },
+    }) else {
+        panic!("the event is announced");
+    };
+    let routes: Vec<&str> = announced
+        .iter()
+        .map(|announced| announced.route.as_str())
+        .collect();
+    assert_eq!(routes, ["deployed"]);
+}
+
+#[test]
+fn an_app_s_work_that_stops_or_will_not_be_done_releases_its_delivery() {
+    let world = World::failing(Fault::Claims);
+    let job = || Job::App {
+        app: "ci".to_owned(),
+        event: herald_sources_app::event("ci", DEPLOYED, at()).unwrap(),
+        verified: herald_flows::Verified {
+            delivery: Some("app/ci/7".to_owned()),
+            signer: Some("ci".to_owned()),
+        },
+    };
+    assert_eq!(world.admits(Scheme::App, "app/ci/7"), Admitted::Fresh);
+    let Worked::Announced(announced) = world.work(job()) else {
+        panic!("the event is announced");
+    };
+    assert!(matches!(announced[0].outcome, Outcome::Stopped { .. }));
+    assert_eq!(world.admits(Scheme::App, "app/ci/7"), Admitted::Fresh);
+    world.serving(|serving| pollster::block_on(unworked(serving, &job())));
+    assert_eq!(world.admits(Scheme::App, "app/ci/7"), Admitted::Fresh);
 }

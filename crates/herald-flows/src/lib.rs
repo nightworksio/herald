@@ -25,7 +25,7 @@ mod reached;
 mod serving;
 mod together;
 
-pub use announce::{Announced, Outcome, Ports, Stop, announce};
+pub use announce::{Announced, Outcome, Ports, Stop, announce, announce_within};
 pub use doctor::{Findings, Gap, doctor, keys, unserved};
 pub use following::{FollowError, Followed, followed};
 pub use housekeep::{Chored, Kept, housekeep};

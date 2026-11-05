@@ -191,6 +191,30 @@ listen = "127.0.0.1:8080"
 `herald doctor --layer server` names what the config asks for that the
 server cannot serve.
 
+### An app's own events
+
+Any app can announce through herald: a deploy script, a CI step, a service
+of your own. A route names the app among its sources, and the app holds a
+token herald keeps only the hash of:
+
+```toml
+[[routes]]
+id = "deploys"
+sources = ["ci"]
+destination = "discord"
+channel = "1566184281406177531"
+template = "deploy"
+
+[apps.ci]
+tokens = ["sha256:…"]
+projects = ["herald"]
+```
+
+- `herald token new --app ci` prints a new token once, with the `tokens` line to keep. Add a second token before removing the first to rotate it.
+- An event is herald's event JSON, as [`herald-event.schema.json`](herald-event.schema.json) describes it: `{"id": "7", "project": "herald", "title": "Deployed"}`, with `version`, `body`, `links`, `prerelease` and `occurred` where there are any.
+- `herald announce --event deploy.json --app ci` announces it from a file, or from standard input with `--event -`.
+- `herald server` takes it at `POST /api/projects/herald/events` with `Authorization: Bearer <token>`: 202 for a new event, 200 for one it has already ([ADR-0015](.docs/decisions/0015-an-app-is-a-source-routes-name-announcing-with-hashed-tokens-scoped-to-its-projects.md)).
+
 ## Status
 
 What is built on `main`, and the decision each part follows:
@@ -201,12 +225,12 @@ What is built on `main`, and the decision each part follows:
 | The core: events, routes, rendering, dialects, chunking, the never-twice plan | [ADR-0001](.docs/decisions/0001-a-sans-io-core-behind-ports.md) | yes |
 | The ports, fakes and the store conformance suite | [ADR-0001](.docs/decisions/0001-a-sans-io-core-behind-ports.md), [ADR-0005](.docs/decisions/0005-an-announcement-is-sent-once-and-finished-if-interrupted.md) | yes |
 | `herald.toml` and its JSON Schema | [ADR-0006](.docs/decisions/0006-one-herald-toml-with-sandboxed-templates-and-a-published-schema.md) | yes |
-| Sources: forges, registries, feeds, apps | [ADR-0003](.docs/decisions/0003-every-source-becomes-one-neutral-event.md) | forge releases from GitHub, GitLab and Forgejo, by their event and by polling; package versions from Packagist, crates.io, npm and Docker Hub, and RSS and Atom feed entries, by polling; apps no |
+| Sources: forges, registries, feeds, apps | [ADR-0003](.docs/decisions/0003-every-source-becomes-one-neutral-event.md) | forge releases from GitHub, GitLab and Forgejo, by their event and by polling; package versions from Packagist, crates.io, npm and Docker Hub, and RSS and Atom feed entries, by polling; an app's events, through `herald announce --event` and `herald server` ([ADR-0015](.docs/decisions/0015-an-app-is-a-source-routes-name-announcing-with-hashed-tokens-scoped-to-its-projects.md)) |
 | Destination: Discord | [ADR-0004](.docs/decisions/0004-each-destination-gets-its-own-dialect-limits-and-features.md), [ADR-0011](.docs/decisions/0011-markers-count-only-on-herald-s-own-posts-a-route-keeps-one-pin-and-a-lock-archives.md) | yes, against reference fixtures until recorded ones replace them |
 | Inbound requests verified before they are parsed | [ADR-0007](.docs/decisions/0007-secrets-stay-out-of-reach-and-every-inbound-request-is-verified-first.md) | the signatures of GitHub, GitLab and Forgejo webhooks, Discord interactions and Slack requests, with the replay window, and the homeserver token of a Matrix transaction, each webhook delivery admitted once ([ADR-0013](.docs/decisions/0013-a-webhook-delivery-is-admitted-once-released-when-it-fails-and-kept-for-a-week.md)), and an ActivityPub activity's HTTP signature and digest against its actor's key, read from a public address on the key's own origin, with the activity's actor held to that key's owner |
 | Destinations: Matrix, Slack, Fediverse | [ADR-0004](.docs/decisions/0004-each-destination-gets-its-own-dialect-limits-and-features.md) | the Fediverse through the Mastodon client API, Matrix through the client-server API, and Slack by bot token or incoming webhook, with subscribers mentioned, against reference fixtures; the ActivityPub actor's signed deliveries of each Note to its followers' shared inboxes, each follow kept and answered with a signed `Accept` and each undo forgetting its follower, and its key loaded by every run and by `herald doctor`; `herald server` serving its inbox, its Notes and the actor and WebFinger documents ([ADR-0014](.docs/decisions/0014-herald-server-answers-first-and-works-after-on-one-task-within-limits.md)) |
 | Stores: SQLite, Postgres, D1, DynamoDB, Deno KV, markers, git branch, Actions cache, repository variables | [ADR-0005](.docs/decisions/0005-an-announcement-is-sent-once-and-finished-if-interrupted.md) | SQLite, Postgres, the markers, the git branch, the Actions cache and repository variables; D1, DynamoDB and Deno KV, no |
-| The CLI, `herald doctor` and the Action | [ADR-0002](.docs/decisions/0002-three-layers-of-support-and-a-doctor-that-names-the-gaps.md), [ADR-0009](.docs/decisions/0009-herald-ships-as-binaries-an-action-an-image-and-a-wasm-build.md) | `announce`, `poll`, `housekeep`, `server`, `doctor`, `preview` and `init`, and the Action; no release carries them yet |
+| The CLI, `herald doctor` and the Action | [ADR-0002](.docs/decisions/0002-three-layers-of-support-and-a-doctor-that-names-the-gaps.md), [ADR-0009](.docs/decisions/0009-herald-ships-as-binaries-an-action-an-image-and-a-wasm-build.md) | `announce`, `poll`, `housekeep`, `server`, `doctor`, `preview`, `init` and `token new`, and the Action; no release carries them yet |
 | Serverless drivers and the container | [ADR-0002](.docs/decisions/0002-three-layers-of-support-and-a-doctor-that-names-the-gaps.md), [ADR-0009](.docs/decisions/0009-herald-ships-as-binaries-an-action-an-image-and-a-wasm-build.md), [ADR-0014](.docs/decisions/0014-herald-server-answers-first-and-works-after-on-one-task-within-limits.md) | `herald server`, the container's command; the serverless drivers and the image, no |
 | herald announcing its own releases | [ADR-0010](.docs/decisions/0010-herald-announces-itself-with-itself.md) | no |
 
