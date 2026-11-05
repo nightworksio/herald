@@ -8,6 +8,7 @@
 )]
 mod server {
     use std::cell::{Cell, RefCell};
+    use std::fmt::Write as _;
     use std::io;
     use std::net::SocketAddr;
     use std::time::Duration;
@@ -164,10 +165,12 @@ body = "{{ event.body }}"
     }
 
     fn posted(path: &str, headers: &[(&str, &str)], body: &[u8]) -> Vec<u8> {
-        let lines: String = headers
+        let lines = headers
             .iter()
-            .map(|(name, value)| format!("{name}: {value}\r\n"))
-            .collect();
+            .fold(String::new(), |mut lines, (name, value)| {
+                let _ = write!(lines, "{name}: {value}\r\n");
+                lines
+            });
         let request = format!(
             "POST {path} HTTP/1.1\r\nHost: herald.example\r\nContent-Length: {}\r\n{lines}\r\n",
             body.len()
