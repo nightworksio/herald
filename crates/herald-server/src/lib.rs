@@ -102,11 +102,9 @@ impl<H> Capped<H> {
 }
 
 impl<H: Http> Http for Capped<H> {
-    fn send(&self, request: Request) -> impl Future<Output = Result<Response, HttpError>> + Send {
-        async move {
-            let _permit = self.permits.acquire().await;
-            self.http.send(request).await
-        }
+    async fn send(&self, request: Request) -> Result<Response, HttpError> {
+        let _permit = self.permits.acquire().await;
+        self.http.send(request).await
     }
 }
 
