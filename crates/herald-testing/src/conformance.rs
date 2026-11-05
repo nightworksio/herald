@@ -509,7 +509,7 @@ async fn latest<S: Store>(store: &S) -> Result<(), Failure> {
     let mut checks = Checks::default();
     let project = "@scope/herald";
     checks.ensure(
-        store.latest(project).await?.is_none() && store.latests().await?.is_empty(),
+        store.latest(project).await?.is_none() && store.every_latest().await?.is_empty(),
         "a new store holds what a project last announced",
     );
     let first = announced(project, "1.0.0");
@@ -535,7 +535,7 @@ async fn latest<S: Store>(store: &S) -> Result<(), Failure> {
     );
     let other = announced("other", "0.1.0");
     checks.written(store.put_latest(&other, None).await?);
-    let mut every = store.latests().await?;
+    let mut every = store.every_latest().await?;
     every.sort_by(|a, b| a.project.cmp(&b.project));
     checks.ensure(
         every == [second, other],

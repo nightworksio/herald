@@ -118,7 +118,7 @@ mod markers {
             Err(unsupported("latest"))
         );
         assert_eq!(
-            pollster::block_on(store.latests()),
+            pollster::block_on(store.every_latest()),
             Err(unsupported("latest"))
         );
         let latest = herald_core::Latest {

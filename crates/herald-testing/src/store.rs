@@ -191,7 +191,7 @@ impl Store for FakeStore {
         Ok(lock(&self.state).latest.get(project).cloned())
     }
 
-    async fn latests(&self) -> Result<Vec<Latest>, StoreError> {
+    async fn every_latest(&self) -> Result<Vec<Latest>, StoreError> {
         Ok(lock(&self.state)
             .latest
             .values()

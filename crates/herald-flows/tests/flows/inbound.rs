@@ -300,7 +300,7 @@ impl Store for Refusing {
     ) -> Result<Option<herald_ports::Versioned<herald_core::Latest>>, StoreError> {
         Err(self.0.clone())
     }
-    async fn latests(&self) -> Result<Vec<herald_core::Latest>, StoreError> {
+    async fn every_latest(&self) -> Result<Vec<herald_core::Latest>, StoreError> {
         Err(self.0.clone())
     }
     async fn put_latest(

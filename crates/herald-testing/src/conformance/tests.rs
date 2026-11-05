@@ -302,12 +302,12 @@ impl Store for Faulty {
         self.inner.latest(project).await
     }
 
-    async fn latests(&self) -> Result<Vec<Latest>, StoreError> {
+    async fn every_latest(&self) -> Result<Vec<Latest>, StoreError> {
         self.refuses("latest")?;
         if self.fault == Fault::ListsNoLatest {
             return Ok(Vec::new());
         }
-        self.inner.latests().await
+        self.inner.every_latest().await
     }
 
     async fn put_latest(

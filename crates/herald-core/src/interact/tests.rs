@@ -27,8 +27,8 @@ fn latest(project: &str, routes: &[&str]) -> Latest {
     }
 }
 
-fn names(latests: &[&Latest]) -> Vec<String> {
-    latests
+fn names(every_latest: &[&Latest]) -> Vec<String> {
+    every_latest
         .iter()
         .map(|latest| latest.project.clone())
         .collect()
@@ -69,14 +69,14 @@ fn only_latest_and_changelog_may_be_shared_and_public_replies_share_them() {
 
 #[test]
 fn what_was_announced_on_the_routes_is_listed_by_name() {
-    let latests = [
+    let every_latest = [
         latest("zeta", &["a"]),
         latest("alpha", &["b", "a"]),
         latest("other", &["c"]),
     ];
     let routes = [RouteId::new("a"), RouteId::new("b")];
-    assert_eq!(names(&announced(&latests, &routes)), ["alpha", "zeta"]);
-    assert_eq!(announced(&latests, &[]), Vec::<&Latest>::new());
+    assert_eq!(names(&announced(&every_latest, &routes)), ["alpha", "zeta"]);
+    assert_eq!(announced(&every_latest, &[]), Vec::<&Latest>::new());
 }
 
 #[test]
@@ -102,12 +102,12 @@ fn the_project_named_or_the_only_one_is_chosen() {
 
 #[test]
 fn completions_hold_what_was_typed_those_starting_with_it_first_at_most_twenty_five() {
-    let latests = [
+    let every_latest = [
         latest("php-mutation-gate", &["a"]),
         latest("gate", &["a"]),
         latest("herald", &["a"]),
     ];
-    let announced: Vec<&Latest> = latests.iter().collect();
+    let announced: Vec<&Latest> = every_latest.iter().collect();
     assert_eq!(completions("GA", &announced), ["gate", "php-mutation-gate"]);
     assert_eq!(completions("", &announced).len(), 3);
     let many: Vec<Latest> = (0..30)

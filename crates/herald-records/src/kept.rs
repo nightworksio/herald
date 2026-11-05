@@ -304,7 +304,7 @@ impl<R: Records> Store for Kept<R> {
         self.record(&paths::latest(project)).await
     }
 
-    async fn latests(&self) -> Result<Vec<Latest>, StoreError> {
+    async fn every_latest(&self) -> Result<Vec<Latest>, StoreError> {
         self.all(paths::LATEST).await
     }
 

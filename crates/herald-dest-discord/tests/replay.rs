@@ -708,23 +708,23 @@ mod subscribing {
         serde_json::from_slice(&request.body).unwrap()
     }
 
-    fn subscribing(button: bool) -> Option<Subscribe> {
-        Some(Subscribe {
+    fn subscribing(button: bool) -> Subscribe {
+        Subscribe {
             role: ROLE.to_owned(),
             button,
-        })
+        }
     }
 
     #[test]
     fn an_announcement_carries_a_subscribe_button_where_its_route_offers_one() {
         let announcement = sample::announcement();
-        let body = posted(subscribing(true), &announcement);
+        let body = posted(Some(subscribing(true)), &announcement);
         let buttons = body["components"][0]["components"].as_array().unwrap();
         let subscribe = buttons.last().unwrap();
         assert_eq!(subscribe["custom_id"], "herald:subscribe:php-mutation-gate");
         assert_eq!(subscribe["style"], 2);
         assert_eq!(subscribe["label"], "Subscribe");
-        for quiet in [subscribing(false), None] {
+        for quiet in [Some(subscribing(false)), None] {
             let body = posted(quiet, &announcement);
             let buttons = body["components"][0]["components"].as_array().unwrap();
             assert!(
@@ -739,6 +739,9 @@ mod subscribing {
             changelog: None,
             ..announcement
         };
-        assert_eq!(posted(subscribing(true), &long).get("components"), None);
+        assert_eq!(
+            posted(Some(subscribing(true)), &long).get("components"),
+            None
+        );
     }
 }

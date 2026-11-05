@@ -229,7 +229,7 @@ pub trait Store: Sync {
     ) -> impl Future<Output = Result<Option<Versioned<Latest>>, StoreError>> + Send;
 
     /// What every project last announced.
-    fn latests(&self) -> impl Future<Output = Result<Vec<Latest>, StoreError>> + Send;
+    fn every_latest(&self) -> impl Future<Output = Result<Vec<Latest>, StoreError>> + Send;
 
     /// Writes `latest` if the project's record is still at `expected`, or
     /// absent where `expected` is `None`.

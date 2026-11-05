@@ -392,11 +392,11 @@ impl Store for Failing {
         self.inner.latest(project).await
     }
 
-    async fn latests(&self) -> Result<Vec<herald_core::Latest>, StoreError> {
+    async fn every_latest(&self) -> Result<Vec<herald_core::Latest>, StoreError> {
         if self.fault == Fault::ListsLatest {
             return Err(broken());
         }
-        self.inner.latests().await
+        self.inner.every_latest().await
     }
 
     async fn put_latest(

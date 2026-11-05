@@ -77,11 +77,11 @@ pub async fn interact<S: Store, C, G, H: Http>(
         return disabled();
     }
     let placed = placed(config, &asked.destination, &asked.place);
-    let latests = match ports.store.latests().await {
-        Ok(latests) => latests,
+    let every_latest = match ports.store.every_latest().await {
+        Ok(every_latest) => every_latest,
         Err(error) => return unavailable(error.to_string()),
     };
-    let announced = announced(&latests, &ids(&placed));
+    let announced = announced(&every_latest, &ids(&placed));
     let latest = match chosen(asked.project.as_deref(), &announced) {
         Ok(latest) => latest,
         Err(unchosen) => return told(&Said::Unchosen(unchosen)),
@@ -107,10 +107,10 @@ pub async fn completed<S: Store>(
     place: &str,
     typed: &str,
 ) -> Vec<String> {
-    let latests = store.latests().await.unwrap_or_default();
+    let every_latest = store.every_latest().await.unwrap_or_default();
     completions(
         typed,
-        &announced(&latests, &ids(&placed(config, destination, place))),
+        &announced(&every_latest, &ids(&placed(config, destination, place))),
     )
 }
 

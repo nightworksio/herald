@@ -218,8 +218,8 @@ impl fmt::Display for Unchosen {
 
 /// What has been announced on any of `routes`, by project name.
 #[must_use]
-pub fn announced<'a>(latests: &'a [Latest], routes: &[RouteId]) -> Vec<&'a Latest> {
-    let mut found: Vec<&Latest> = latests
+pub fn announced<'a>(every_latest: &'a [Latest], routes: &[RouteId]) -> Vec<&'a Latest> {
+    let mut found: Vec<&Latest> = every_latest
         .iter()
         .filter(|latest| routes.iter().any(|route| latest.routes.contains(route)))
         .collect();

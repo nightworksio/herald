@@ -275,7 +275,7 @@ impl<M: Markers, G: Signer> Store for MarkersStore<M, G> {
         ready(unsupported("latest"))
     }
 
-    fn latests(&self) -> impl Future<Output = Result<Vec<Latest>, StoreError>> + Send {
+    fn every_latest(&self) -> impl Future<Output = Result<Vec<Latest>, StoreError>> + Send {
         ready(unsupported("latest"))
     }
 
