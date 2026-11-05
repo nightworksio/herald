@@ -141,6 +141,9 @@ fn said(answered: &Answered) -> (u16, &'static str, String) {
 }
 
 const TEXT: &str = "text/plain; charset=utf-8";
+
+/// A webhook's path, its headers and the status it is answered with.
+type Case<'a> = (&'a str, &'a [(&'a str, &'a str)], u16);
 const JSON: &str = "application/activity+json";
 
 #[test]
@@ -379,7 +382,7 @@ fn a_webhook_that_is_not_let_through_or_announces_nothing_is_answered_by_why() {
     let world = World::new(Script::default());
     let signature = signed("hook-secret", EVENT.as_bytes());
     let forged = signed("guessed", EVENT.as_bytes());
-    let cases: [(&str, &[(&str, &str)], u16); 4] = [
+    let cases: [Case<'_>; 4] = [
         ("/hooks/nowhere", &[], 404),
         ("/hooks/quiet", &[], 404),
         (

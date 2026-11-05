@@ -40,10 +40,10 @@ mod tests {
 
     use super::*;
 
-    /// A future that waits `turns` polls before it is ready with `value`,
+    /// A future that waits `left` polls before it is ready with `value`,
     /// waking itself each time.
     struct Turns<'a> {
-        turns: u32,
+        left: u32,
         value: u32,
         polled: &'a Cell<u32>,
     }
@@ -53,10 +53,10 @@ mod tests {
 
         fn poll(mut self: Pin<&mut Self>, context: &mut std::task::Context<'_>) -> Poll<u32> {
             self.polled.set(self.polled.get() + 1);
-            if self.turns == 0 {
+            if self.left == 0 {
                 return Poll::Ready(self.value);
             }
-            self.turns -= 1;
+            self.left -= 1;
             context.waker().wake_by_ref();
             Poll::Pending
         }
@@ -67,17 +67,17 @@ mod tests {
         let polled = Cell::new(0);
         let futures = vec![
             Turns {
-                turns: 2,
+                left: 2,
                 value: 1,
                 polled: &polled,
             },
             Turns {
-                turns: 0,
+                left: 0,
                 value: 2,
                 polled: &polled,
             },
             Turns {
-                turns: 1,
+                left: 1,
                 value: 3,
                 polled: &polled,
             },
