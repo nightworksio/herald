@@ -22,7 +22,7 @@ const BUTTON: u8 = 2;
 const LINK: u8 = 5;
 /// The longest deduplication key Discord takes, in a message's `nonce`.
 const KEY_LENGTH: usize = 25;
-const USER_AGENT: &str = concat!(
+pub(crate) const USER_AGENT: &str = concat!(
     "DiscordBot (https://github.com/nightworksio/herald, ",
     env!("CARGO_PKG_VERSION"),
     ")"

@@ -8,6 +8,7 @@
 //! announcement is pinned through the room's pinned events, and each post
 //! carries its markers in a namespaced field of its content.
 
+mod interact;
 mod interactions;
 mod markers;
 mod matrix;
@@ -15,6 +16,7 @@ mod options;
 mod read;
 mod request;
 
+pub use interact::{Interacting, Replying, SYNC_WAIT, Synced, Unread, took};
 pub use interactions::{Interactions, Via};
 pub use markers::MatrixMarkers;
 pub use matrix::{Matrix, profile};

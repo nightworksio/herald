@@ -8,6 +8,7 @@
 //! each response is read back into the facts the ledger records.
 
 mod discord;
+mod interact;
 mod interactions;
 mod markers;
 mod options;
@@ -16,6 +17,10 @@ mod request;
 mod unpin;
 
 pub use discord::{Credential, Discord, profile};
+pub use interact::{
+    Interacting, MESSAGE, Received, Replying, Unread, choices, deferred, listed, pong,
+    subscribe_button, took,
+};
 pub use interactions::{Interactions, Subscribe, Via};
 pub use markers::DiscordMarkers;
 pub use options::{DestinationOptions, RouteOptions};

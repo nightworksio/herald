@@ -174,6 +174,9 @@ pub struct Asked {
     pub project: Option<String>,
     /// Whether the member asked for the answer to be shown to the channel.
     pub share: bool,
+    /// Whether it came from a button that subscribes, or unsubscribes a
+    /// member already subscribed.
+    pub toggles: bool,
     /// The member's roles, where the destination keeps subscriptions as
     /// roles.
     pub member: Option<Member>,
