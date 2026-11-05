@@ -32,6 +32,7 @@ use herald_sources_forge::{Forge, Origin, Repository, SourceOptions, Token};
 mod apps;
 mod output;
 mod serving;
+mod setup;
 mod stores;
 
 use output::{Scrubbing, chored, hidden, masked, polled, report, say, warned, why};
@@ -160,6 +161,8 @@ enum Reading {
         #[arg(long, value_enum, default_value_t = Layer::Actions)]
         layer: Layer,
     },
+    #[command(flatten)]
+    Set(Setting),
     /// Render each route's templates as its destination would show them,
     /// against a sample event or a release event's file.
     Preview {
@@ -173,6 +176,74 @@ enum Reading {
         /// The forge whose release event the file is.
         #[arg(long, value_enum, default_value_t = From::Github)]
         from: From,
+    },
+}
+
+/// The commands that set a destination up to take commands.
+#[derive(Debug, Subcommand)]
+enum Setting {
+    /// Set a Discord destination up to take commands.
+    #[command(subcommand)]
+    Discord(Discording),
+    /// Set a Slack destination up to take commands.
+    #[command(subcommand)]
+    Slack(Slacking),
+    /// Set a Matrix destination up to take commands.
+    #[command(subcommand)]
+    Matrix(Matrixing),
+}
+
+/// The commands that set Discord up to take commands.
+#[derive(Debug, Subcommand)]
+enum Discording {
+    /// Register the commands the destination answers with Discord.
+    Commands {
+        /// The destination, where more than one takes commands.
+        #[arg(long)]
+        destination: Option<String>,
+    },
+    /// List a server's roles with their ids, or make a mentionable opt-in
+    /// role.
+    Roles {
+        /// The destination, where more than one takes commands.
+        #[arg(long)]
+        destination: Option<String>,
+        /// The server, by id.
+        #[arg(long)]
+        guild: String,
+        /// The name of a role to make.
+        #[arg(long)]
+        create: Option<String>,
+    },
+}
+
+/// The commands that set Slack up to take commands.
+#[derive(Debug, Subcommand)]
+enum Slacking {
+    /// Print the manifest of a Slack app that gives herald its commands.
+    Manifest {
+        /// The destination, where more than one takes commands.
+        #[arg(long)]
+        destination: Option<String>,
+        /// The address herald is served at, where Slack posts commands to
+        /// it.
+        #[arg(long)]
+        url: Option<String>,
+    },
+}
+
+/// The commands that set Matrix up to take commands.
+#[derive(Debug, Subcommand)]
+enum Matrixing {
+    /// Print the registration the homeserver installs, with two new tokens,
+    /// once.
+    Registration {
+        /// The destination, where more than one takes commands.
+        #[arg(long)]
+        destination: Option<String>,
+        /// The address herald is served at.
+        #[arg(long)]
+        url: String,
     },
 }
 
@@ -340,6 +411,9 @@ async fn stopping(
             let event = event.as_deref().map(|path| (from.forge(), path));
             return previewing(&config, route.as_deref(), event, out, err);
         }
+        Reading::Set(setting) => {
+            return finished(set_up(&config, vars, connect, setting, out).await, err);
+        }
         Reading::Serve(serve) => serve,
     };
     let hidden = hidden(&config, vars);
@@ -388,6 +462,47 @@ async fn stopping(
     let _ = out.flush();
     let _ = err.flush();
     code
+}
+
+/// `config`'s destination set up as `setting` asks.
+async fn set_up(
+    config: &Config,
+    vars: &BTreeMap<String, String>,
+    connect: Connect<'_>,
+    setting: Setting,
+    out: &mut dyn Write,
+) -> Result<u8, String> {
+    match setting {
+        Setting::Discord(Discording::Commands { destination }) => {
+            let asked = setup::Discording::Commands;
+            setup::discord(config, vars, connect, destination.as_deref(), asked, out).await
+        }
+        Setting::Discord(Discording::Roles {
+            destination,
+            guild,
+            create,
+        }) => {
+            let asked = setup::Discording::Roles {
+                guild: &guild,
+                create: create.as_deref(),
+            };
+            setup::discord(config, vars, connect, destination.as_deref(), asked, out).await
+        }
+        Setting::Slack(Slacking::Manifest { destination, url }) => {
+            setup::slack(config, destination.as_deref(), url.as_deref(), out)
+        }
+        Setting::Matrix(Matrixing::Registration { destination, url }) => {
+            setup::matrix(config, destination.as_deref(), &url, &random_secret, out)
+        }
+    }
+}
+
+/// The code a setup command ends with, saying why where it stopped.
+fn finished(done: Result<u8, String>, err: &mut dyn Write) -> u8 {
+    done.unwrap_or_else(|message| {
+        say(err, &message);
+        STOPPED
+    })
 }
 
 /// [`run_until`], with a server it runs running until the process ends.

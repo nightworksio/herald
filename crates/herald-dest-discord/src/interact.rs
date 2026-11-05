@@ -571,5 +571,19 @@ pub fn listed(response: &Response) -> Result<Vec<(String, String)>, String> {
         .unwrap_or_default())
 }
 
+/// The role a `POST /guilds/{guild}/roles` answer made, as its id and name.
+///
+/// # Errors
+///
+/// What Discord said, where it made none.
+pub fn made(response: &Response) -> Result<(String, String), String> {
+    took(response)?;
+    let body: Value = serde_json::from_slice(&response.body).unwrap_or(Value::Null);
+    match (text(&body, "id"), text(&body, "name")) {
+        (Some(id), Some(name)) => Ok((id.to_owned(), name.to_owned())),
+        _ => Err("Discord answered with no role".to_owned()),
+    }
+}
+
 #[cfg(test)]
 mod tests;

@@ -311,6 +311,57 @@ impl Interacting {
     }
 }
 
+impl Interacting {
+    /// The app manifest that sets a Slack app up to give herald its
+    /// commands: over Socket Mode, or posted to `url` where herald serves
+    /// them at `/interactions/<destination>`.
+    #[must_use]
+    pub fn manifest(&self, destination: &str, url: Option<&str>) -> String {
+        let endpoint =
+            url.map(|url| format!("{}/interactions/{destination}", url.trim_end_matches('/')));
+        let commands: Vec<&str> = self
+            .interactions
+            .commands
+            .iter()
+            .map(|command| command.name())
+            .collect();
+        let mut command = json!({
+            "command": self.interactions.command,
+            "description": "Ask herald about the projects it announces",
+            "usage_hint": format!("{} [project] [share]", commands.join(" | ")),
+            "should_escape": false,
+        });
+        let mut interactivity = json!({ "is_enabled": true });
+        if let (Some(endpoint), Some(command), Some(interactivity)) = (
+            &endpoint,
+            command.as_object_mut(),
+            interactivity.as_object_mut(),
+        ) {
+            command.insert("url".to_owned(), json!(endpoint));
+            interactivity.insert("request_url".to_owned(), json!(endpoint));
+        }
+        json!({
+            "display_information": { "name": "herald" },
+            "features": {
+                "bot_user": { "display_name": "herald", "always_online": false },
+                "slash_commands": [command],
+            },
+            "oauth_config": {
+                "scopes": {
+                    "bot": ["channels:history", "chat:write", "commands", "groups:history", "pins:write"],
+                },
+            },
+            "settings": {
+                "interactivity": interactivity,
+                "socket_mode_enabled": endpoint.is_none(),
+                "org_deploy_enabled": false,
+                "token_rotation_enabled": false,
+            },
+        })
+        .to_string()
+    }
+}
+
 #[derive(Clone, Copy)]
 struct Placed<'a> {
     place: Option<&'a str>,

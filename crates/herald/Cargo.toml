@@ -17,6 +17,9 @@ path = "src/main.rs"
 clap = { version = "4", features = ["derive"] }
 herald-config.workspace = true
 herald-core.workspace = true
+herald-dest-discord.workspace = true
+herald-dest-matrix.workspace = true
+herald-dest-slack.workspace = true
 herald-flows.workspace = true
 herald-native.workspace = true
 herald-ports.workspace = true

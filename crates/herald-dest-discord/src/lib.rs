@@ -18,7 +18,7 @@ mod unpin;
 
 pub use discord::{Credential, Discord, profile};
 pub use interact::{
-    Interacting, MESSAGE, Received, Replying, Unread, choices, deferred, listed, pong,
+    Interacting, MESSAGE, Received, Replying, Unread, choices, deferred, listed, made, pong,
     subscribe_button, took,
 };
 pub use interactions::{Interactions, Subscribe, Via};

@@ -336,10 +336,10 @@ fn roles_are_listed_and_made_mentionable_in_a_server_named_by_id() {
         format!("https://discord.test/api/guilds/{GUILD}/roles")
     );
     assert_eq!(interacting("").roles("x"), None);
-    let made = interacting("").make_role(GUILD, "herald updates").unwrap();
-    assert_eq!(made.method, Method::Post);
+    let making = interacting("").make_role(GUILD, "herald updates").unwrap();
+    assert_eq!(making.method, Method::Post);
     assert_eq!(
-        serde_json::from_slice::<Value>(&made.body).unwrap(),
+        serde_json::from_slice::<Value>(&making.body).unwrap(),
         json!({ "name": "herald updates", "mentionable": true })
     );
     assert_eq!(interacting("").make_role("x", "n"), None);
@@ -358,6 +358,18 @@ fn roles_are_listed_and_made_mentionable_in_a_server_named_by_id() {
         Err("Discord answered 403: Missing Permissions".to_owned())
     );
     assert_eq!(took(&answer(204, "")), Ok(()));
+    assert_eq!(
+        made(&answer(200, r#"{"id": "9", "name": "updates"}"#)),
+        Ok(("9".to_owned(), "updates".to_owned()))
+    );
+    assert_eq!(
+        made(&answer(200, "{}")),
+        Err("Discord answered with no role".to_owned())
+    );
+    assert_eq!(
+        made(&answer(403, "")),
+        Err("Discord answered 403".to_owned())
+    );
     assert_eq!(
         took(&answer(500, "")),
         Err("Discord answered 500".to_owned())

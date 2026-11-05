@@ -243,3 +243,29 @@ fn the_destination_says_where_it_reaches_and_how_it_answers() {
         "the request names no channel, member or Slack response URL of its own"
     );
 }
+
+#[test]
+fn the_manifest_points_the_command_and_buttons_at_herald_or_opens_socket_mode() {
+    let posted: Value = serde_json::from_str(
+        &interacting(r#", "commands": ["latest"]"#)
+            .manifest("slack", Some("https://herald.example/")),
+    )
+    .unwrap();
+    let command = &posted["features"]["slash_commands"][0];
+    assert_eq!(command["command"], "/herald");
+    assert_eq!(command["url"], "https://herald.example/interactions/slack");
+    assert_eq!(command["usage_hint"], "latest [project] [share]");
+    assert_eq!(
+        posted["settings"]["interactivity"],
+        json!({ "is_enabled": true, "request_url": "https://herald.example/interactions/slack" })
+    );
+    assert_eq!(posted["settings"]["socket_mode_enabled"], false);
+    assert_eq!(posted["oauth_config"]["scopes"]["bot"][2], "commands");
+    let socket: Value = serde_json::from_str(&interacting("").manifest("slack", None)).unwrap();
+    assert_eq!(socket["settings"]["socket_mode_enabled"], true);
+    assert_eq!(
+        socket["settings"]["interactivity"],
+        json!({ "is_enabled": true })
+    );
+    assert_eq!(socket["features"]["slash_commands"][0].get("url"), None);
+}
