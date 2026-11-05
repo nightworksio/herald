@@ -13,7 +13,7 @@ use herald_flows::{
 use herald_native::{EnvSecrets, RingSigner, RingVerifier, SystemClock};
 use herald_ports::{Keyring, PUBLIC, Store as Keeps};
 use herald_records::MemoryKeyring;
-use herald_server::{Capped, Heard, Limits, serve};
+use herald_server::{Capped, Heard, Limits, READ, serve};
 
 use super::output::{chored, polled, report, say, why};
 use super::stores::reached;
@@ -78,6 +78,7 @@ impl<F: Future<Output = ()>> Listening<'_, F> {
             poll: period(self.config.schedule.poll),
             housekeep: period(self.config.schedule.housekeep),
             keys: period(Some(server.keys_refreshed)).unwrap_or_default(),
+            read: READ,
         };
         let out = &self.out;
         let heard = |heard: Heard| {

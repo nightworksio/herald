@@ -42,8 +42,8 @@ const RUN: &str = "server";
 /// How many seconds a sender is asked to wait when the work queue is full.
 const BUSY_RETRY: &str = "30";
 /// How long a connection may take to send a request's headers, and then
-/// its body.
-const READ: Duration = Duration::from_secs(30);
+/// its body, unless its limits say otherwise.
+pub const READ: Duration = Duration::from_secs(30);
 /// How long a connection is held at most, its one request answered.
 const HELD: Duration = Duration::from_secs(90);
 /// How long the server waits before taking connections again after one
@@ -82,6 +82,9 @@ pub struct Limits {
     pub housekeep: Option<Duration>,
     /// How often keys read longer ago than this are forgotten.
     pub keys: Duration,
+    /// How long a connection may take to send a request's headers, and then
+    /// its body.
+    pub read: Duration,
 }
 
 /// An `Http` sending at most a number of requests at once.
@@ -237,7 +240,8 @@ where
         None
     };
     let (parts, body) = request.into_parts();
-    let Ok(read) = tokio::time::timeout(READ, Limited::new(body, limits.body).collect()).await
+    let Ok(read) =
+        tokio::time::timeout(limits.read, Limited::new(body, limits.body).collect()).await
     else {
         return Ok(replied(
             408,
@@ -303,7 +307,7 @@ async fn connection<S, C, G, V, H, P, K, T>(
     let service = service_fn(move |request| answered(serving, request, queue, limits));
     let served = http1::Builder::new()
         .timer(TokioTimer::new())
-        .header_read_timeout(READ)
+        .header_read_timeout(limits.read)
         .keep_alive(false)
         .serve_connection(TokioIo::new(stream), service);
     let _ = tokio::time::timeout(HELD, served).await;
@@ -495,10 +499,11 @@ mod tests {
     #[tokio::test(start_paused = true)]
     async fn the_first_round_comes_a_period_from_now_and_each_next_a_period_after() {
         let period = Duration::from_secs(60);
+        let short = Duration::from_secs(59);
         let mut every = rounds(Some(period));
         assert!(every.is_some());
         assert!(round(&mut every).now_or_never().is_none());
-        tokio::time::advance(period - Duration::from_secs(1)).await;
+        tokio::time::advance(short).await;
         assert!(round(&mut every).now_or_never().is_none());
         tokio::time::advance(Duration::from_secs(1)).await;
         assert!(round(&mut every).now_or_never().is_some());

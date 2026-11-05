@@ -126,11 +126,18 @@ jobs:
       - run: .github/scripts/install-tool.sh cargo-nextest
       - run: .github/scripts/install-tool.sh cargo-llvm-cov
       - run: cargo llvm-cov nextest --workspace --locked --profile ci --fail-under-lines 100 --show-missing-lines
-      - name: Name every line the report counts as missed
+      # The report counts a generic function's lines by its best-covered
+      # instance alone, so a line only another instance runs is missed.
+      - name: Name every line the report counts as missed, and the instance missing it
         if: failure()
         run: |
-          cargo llvm-cov report --lcov --output-path lcov.info
-          awk -F'[:,]' '/^SF:/ { file = $2 } /^DA:/ && $3 == "0" { print file ":" $2 }' lcov.info
+          cargo llvm-cov report --text --show-instantiations --output-path coverage.txt
+          awk -F'|' '
+            /^\/.*\.rs:$/ { file = $0; sub(/:$/, "", file) }
+            /^ *\| [^ |].*:$/ { instance = $0 }
+            /^ *[0-9]+\| *0\|/ { print file ":" $1+0 }
+            /^ *\| *[0-9]+\| *0\|/ { print file ":" $2+0 "  in " instance }
+          ' coverage.txt | sed 's#^.*/crates/#crates/#' | sort -u | head -300
 
   deny:
     runs-on: ubuntu-latest

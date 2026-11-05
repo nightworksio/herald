@@ -97,7 +97,6 @@ body = "{{ event.body }}"
         keyring: MemoryKeyring,
         public: Capped<Gate>,
         clock: FakeClock,
-        bound: Duration,
     }
 
     impl World {
@@ -114,13 +113,12 @@ body = "{{ event.body }}"
                 keyring: MemoryKeyring::new(8),
                 public: Capped::new(http, 2),
                 clock: FakeClock::at("2027-01-15T08:00:00Z".parse().unwrap()),
-                bound: BOUND,
             }
         }
 
-        async fn serve<L: Listener>(
+        async fn serve(
             &self,
-            listener: L,
+            listener: Taking,
             limits: Limits,
             heard: &dyn Fn(Heard),
             stop: impl Future<Output = ()>,
@@ -143,7 +141,7 @@ body = "{{ event.body }}"
                 keys: &keys,
                 webhooks: &self.webhooks,
             };
-            tokio::time::timeout(self.bound, serve(&serving, listener, limits, heard, stop))
+            tokio::time::timeout(BOUND, serve(&serving, listener, limits, heard, stop))
                 .await
                 .expect("the server stopped within its bound");
         }
@@ -157,12 +155,19 @@ body = "{{ event.body }}"
             poll: None,
             housekeep: None,
             keys: Duration::from_secs(3_600),
+            read: Duration::from_secs(2),
         }
     }
 
-    async fn listening() -> (TcpListener, SocketAddr) {
-        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let address = listener.local_addr().unwrap();
+    /// A listener on a free local port, and where it listens.
+    async fn listening() -> (Taking, SocketAddr) {
+        let inner = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = inner.local_addr().unwrap();
+        let listener = Taking {
+            inner,
+            failing: Cell::new(false),
+            addressed: true,
+        };
         (listener, address)
     }
 
@@ -268,12 +273,9 @@ body = "{{ event.body }}"
         assert!(answer.starts_with("HTTP/1.1 413 "), "{answer}");
     }
 
-    #[tokio::test(start_paused = true)]
+    #[tokio::test]
     async fn a_body_that_is_not_sent_in_time_is_refused() {
-        let world = World {
-            bound: Duration::from_secs(120),
-            ..World::new(Gate::default()).await
-        };
+        let world = World::new(Gate::default()).await;
         let (listener, address) = listening().await;
         let stop = Notify::new();
         let client = async {
@@ -285,9 +287,13 @@ body = "{{ event.body }}"
             stop.notify_one();
             answer
         };
+        let quick = Limits {
+            read: Duration::from_millis(100),
+            ..limits()
+        };
         let (answer, ()) = tokio::join!(
             client,
-            world.serve(listener, limits(), &|_| {}, stop.notified())
+            world.serve(listener, quick, &|_| {}, stop.notified())
         );
         assert!(answer.starts_with("HTTP/1.1 408 "), "{answer}");
     }
@@ -446,34 +452,42 @@ body = "{{ event.body }}"
         assert!(forgotten());
     }
 
-    /// A listener whose first connection cannot be taken.
-    struct Flaky {
+    /// A TCP listener whose next connection may fail to be taken, and
+    /// whose address may not be known: every test serves through it, so
+    /// one instance of `serve` takes every path.
+    struct Taking {
         inner: TcpListener,
-        failed: Cell<bool>,
+        failing: Cell<bool>,
+        addressed: bool,
     }
 
-    impl Listener for Flaky {
+    impl Listener for Taking {
         type Stream = TcpStream;
 
         async fn take(&self) -> io::Result<TcpStream> {
-            if !self.failed.replace(true) {
+            if self.failing.replace(false) {
                 return Err(io::Error::other("too many open files"));
             }
             self.inner.take().await
         }
 
         fn address(&self) -> io::Result<SocketAddr> {
-            Err(io::Error::other("no address"))
+            if self.addressed {
+                self.inner.address()
+            } else {
+                Err(io::Error::other("no address"))
+            }
         }
     }
 
     #[tokio::test]
     async fn a_connection_that_cannot_be_taken_is_said_and_the_next_is_taken() {
         let world = World::new(Gate::default()).await;
-        let (inner, address) = listening().await;
-        let flaky = Flaky {
-            inner,
-            failed: Cell::new(false),
+        let (listening, address) = listening().await;
+        let flaky = Taking {
+            failing: Cell::new(true),
+            addressed: false,
+            ..listening
         };
         let heard = RefCell::new(Vec::new());
         let stop = Notify::new();
