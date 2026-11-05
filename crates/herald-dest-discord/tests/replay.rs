@@ -676,3 +676,69 @@ mod replay {
         assert_eq!(forum.features.pins, Pins::One);
     }
 }
+
+#[cfg(test)]
+mod subscribing {
+    use herald_core::{Announcement, Entry, Step};
+    use herald_dest_discord::{Credential, Discord, RouteOptions, Subscribe};
+    use herald_ports::Secret;
+    use herald_testing::sample;
+    use serde_json::Value;
+
+    const ROLE: &str = "1566190000000000001";
+
+    fn posted(subscribe: Option<Subscribe>, announcement: &Announcement) -> Value {
+        let discord = Discord::new(
+            Credential::Bot(Secret::new("HERALD_DISCORD_TOKEN", "test-token")),
+            RouteOptions {
+                channel: Some("100".to_owned()),
+                forum: false,
+                subscribe,
+            },
+            None,
+        );
+        let request = discord
+            .request(
+                &Step::Post,
+                announcement,
+                &sample::delivery(ROLE),
+                &Entry::new(announcement.key),
+            )
+            .unwrap();
+        serde_json::from_slice(&request.body).unwrap()
+    }
+
+    fn subscribing(button: bool) -> Option<Subscribe> {
+        Some(Subscribe {
+            role: ROLE.to_owned(),
+            button,
+        })
+    }
+
+    #[test]
+    fn an_announcement_carries_a_subscribe_button_where_its_route_offers_one() {
+        let announcement = sample::announcement();
+        let body = posted(subscribing(true), &announcement);
+        let buttons = body["components"][0]["components"].as_array().unwrap();
+        let subscribe = buttons.last().unwrap();
+        assert_eq!(subscribe["custom_id"], "herald:subscribe:php-mutation-gate");
+        assert_eq!(subscribe["style"], 2);
+        assert_eq!(subscribe["label"], "Subscribe");
+        for quiet in [subscribing(false), None] {
+            let body = posted(quiet, &announcement);
+            let buttons = body["components"][0]["components"].as_array().unwrap();
+            assert!(
+                buttons
+                    .iter()
+                    .all(|button| button.get("custom_id").is_none())
+            );
+        }
+        let long = Announcement {
+            project: "p".repeat(90),
+            release: None,
+            changelog: None,
+            ..announcement
+        };
+        assert_eq!(posted(subscribing(true), &long).get("components"), None);
+    }
+}

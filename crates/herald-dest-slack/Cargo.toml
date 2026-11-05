@@ -21,6 +21,7 @@ url.workspace = true
 [dev-dependencies]
 herald-testing.workspace = true
 pollster.workspace = true
+serde_json.workspace = true
 
 [lints]
 workspace = true

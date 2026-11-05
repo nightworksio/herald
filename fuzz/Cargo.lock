@@ -252,6 +252,7 @@ dependencies = [
  "schemars",
  "serde",
  "serde_json",
+ "url",
 ]
 
 [[package]]
@@ -260,6 +261,9 @@ version = "0.0.0"
 dependencies = [
  "herald-config",
  "herald-core",
+ "herald-dest-discord",
+ "herald-dest-matrix",
+ "herald-dest-slack",
  "herald-ports",
  "herald-sources-app",
  "herald-sources-feed",
@@ -268,6 +272,7 @@ dependencies = [
  "jiff",
  "libfuzzer-sys",
  "pulldown-cmark",
+ "serde_json",
 ]
 
 [[package]]

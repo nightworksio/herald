@@ -557,3 +557,50 @@ mod replay {
         );
     }
 }
+
+#[cfg(test)]
+mod subscribing {
+    use herald_core::{Entry, Step};
+    use herald_dest_slack::{Credential, RouteOptions, Slack, Subscribe, subscribe_block};
+    use herald_ports::Secret;
+    use herald_testing::sample;
+    use serde_json::Value;
+
+    fn posted(credential: Credential, subscribe: Option<Subscribe>) -> Value {
+        let slack = Slack::new(
+            credential,
+            RouteOptions {
+                channel: Some("C0123456789".to_owned()),
+                subscribe,
+            },
+            None,
+        );
+        let announcement = sample::announcement();
+        let request = slack
+            .request(&Step::Post, &announcement, &Entry::new(announcement.key))
+            .unwrap();
+        serde_json::from_slice(&request.body).unwrap()
+    }
+
+    fn bot() -> Credential {
+        Credential::Bot(Secret::new("HERALD_SLACK_TOKEN", "xoxb-test"))
+    }
+
+    #[test]
+    fn an_announcement_ends_with_a_subscribe_button_where_its_route_offers_one() {
+        let hook = Credential::Webhook(Secret::new(
+            "HERALD_SLACK_WEBHOOK",
+            "https://hooks.slack.com/services/T0/B0/xyz",
+        ));
+        for credential in [bot(), hook] {
+            let body = posted(credential, Some(Subscribe { button: true }));
+            let blocks = body["blocks"].as_array().unwrap();
+            assert_eq!(blocks.last(), Some(&subscribe_block("php-mutation-gate")));
+        }
+        for quiet in [Some(Subscribe { button: false }), None] {
+            let body = posted(bot(), quiet);
+            let blocks = body["blocks"].as_array().unwrap();
+            assert!(blocks.iter().all(|block| block["type"] != "actions"));
+        }
+    }
+}
