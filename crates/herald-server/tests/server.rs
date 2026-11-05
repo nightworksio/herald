@@ -13,10 +13,14 @@ mod server {
     use std::net::SocketAddr;
     use std::time::Duration;
 
+    use futures_util::FutureExt as _;
     use herald_config::{Config, load};
     use herald_core::{DestinationName, Scheme, Subscription};
     use herald_flows::{Connected, Keys, Ports, Serving, Webhooks, prepare, webhooks};
-    use herald_ports::{Admitted, Clock as _, Http, HttpError, Request, Response, Store as _};
+    use herald_ports::{
+        Admitted, Clock as _, Http, HttpError, Keyring as _, KnownKey, Request, Response,
+        Store as _,
+    };
     use herald_records::MemoryKeyring;
     use herald_server::{Capped, Heard, Limits, Listener, serve};
     use herald_testing::{FakeClock, FakeSecrets, FakeSigner, FakeStore, FakeVerifier};
@@ -393,6 +397,20 @@ body = "{{ event.body }}"
             keys: Duration::from_millis(5),
             ..limits()
         };
+        let old = "https://social.example/users/ana#main-key";
+        world
+            .keyring
+            .know(
+                old,
+                &KnownKey {
+                    owner: "https://social.example/users/ana".to_owned(),
+                    pem: "pem".to_owned(),
+                    fetched: "2027-01-14T08:00:00Z".parse().unwrap(),
+                },
+            )
+            .await
+            .unwrap();
+        let forgotten = || matches!(world.keyring.known(old).now_or_never(), Some(Ok(None)));
         let seen = Cell::new((false, false));
         world
             .serve(
@@ -402,7 +420,7 @@ body = "{{ event.body }}"
                     let name = named(&said);
                     let (polled, kept) = seen.get();
                     seen.set((polled || name == "polled", kept || name == "kept"));
-                    if seen.get() == (true, true) {
+                    if seen.get() == (true, true) && forgotten() {
                         stop.notify_one();
                     }
                     heard.borrow_mut().push(name);
@@ -412,6 +430,7 @@ body = "{{ event.body }}"
             .await;
         assert!(said(&heard).contains(&"polled".to_owned()));
         assert!(said(&heard).contains(&"kept".to_owned()));
+        assert!(forgotten());
     }
 
     /// A listener whose first connection cannot be taken.
