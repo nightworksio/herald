@@ -54,6 +54,21 @@ impl Interacting {
         }
     }
 
+    /// The base URL a session herald holds is opened at, where it holds
+    /// one beside the answers it sends: Slack's API, where Socket Mode
+    /// connections are opened.
+    #[must_use]
+    pub fn sessions(&self) -> Option<&str> {
+        match self {
+            Self::Slack {
+                interacting,
+                app: Some(_),
+                ..
+            } => Some(interacting.api()),
+            _ => None,
+        }
+    }
+
     /// How it answers, whatever carries the commands.
     #[must_use]
     pub fn answering(&self) -> Answering {

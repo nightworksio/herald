@@ -142,7 +142,7 @@ pub struct Prepared {
 pub struct Connected<H> {
     pub(crate) routes: Vec<(PreparedRoute, H)>,
     pub(crate) sources: Vec<(PreparedSource, H)>,
-    pub(crate) interacting: Vec<(DestinationName, Interacting, H)>,
+    pub(crate) interacting: Vec<(DestinationName, Interacting, H, Option<H>)>,
 }
 
 impl<H> Connected<H> {
@@ -153,14 +153,18 @@ impl<H> Connected<H> {
         self.interacting
             .iter()
             .find(|(named, ..)| named == name)
-            .map(|(_, interacting, http)| (interacting, http))
+            .map(|(_, interacting, http, _)| (interacting, http))
     }
 
-    /// Every destination that takes commands, by name.
-    pub fn interactions(&self) -> impl Iterator<Item = (&DestinationName, &Interacting, &H)> {
+    /// Every destination that takes commands, by name, with the `Http` its
+    /// answers go through and the one its sessions open through, where it
+    /// holds any.
+    pub fn interactions(
+        &self,
+    ) -> impl Iterator<Item = (&DestinationName, &Interacting, &H, Option<&H>)> {
         self.interacting
             .iter()
-            .map(|(name, interacting, http)| (name, interacting, http))
+            .map(|(name, interacting, http, sessions)| (name, interacting, http, sessions.as_ref()))
     }
 }
 
@@ -227,7 +231,11 @@ impl Prepared {
         let mut interacting = Vec::new();
         for (name, destination) in self.interacting {
             let reaching = reach(destination.api())?;
-            interacting.push((name, destination, reaching));
+            let sessions = match destination.sessions() {
+                Some(base) => Some(reach(base)?),
+                None => None,
+            };
+            interacting.push((name, destination, reaching, sessions));
         }
         Ok(Connected {
             routes,

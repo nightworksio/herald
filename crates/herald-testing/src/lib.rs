@@ -20,6 +20,7 @@ mod markers;
 pub mod sample;
 mod scrub;
 mod secrets;
+mod socket;
 mod sql;
 mod store;
 
@@ -34,6 +35,7 @@ pub use kv::FakeKv;
 pub use markers::FakeMarkers;
 pub use scrub::{Ids, Scrub};
 pub use secrets::FakeSecrets;
+pub use socket::{ScriptedSocket, ScriptedSockets};
 pub use sql::ScriptedSql;
 pub use store::FakeStore;
 

@@ -10,14 +10,14 @@ use herald_config::Config;
 use herald_flows::{
     Connected, FollowError, Followed, Interacted, Keys, Ports, Serving, Webhooks, Worked, webhooks,
 };
-use herald_native::{EnvSecrets, RingSigner, RingVerifier, SystemClock};
+use herald_native::{EnvSecrets, NativeSockets, RingSigner, RingVerifier, SystemClock};
 use herald_ports::{Keyring, PUBLIC, Store as Keeps};
 use herald_records::MemoryKeyring;
 use herald_server::{Capped, Heard, Limits, READ, serve};
 
 use super::output::{chored, polled, report, say, why};
 use super::stores::reached;
-use super::{Connect, Connection, DONE, LISTEN, Served};
+use super::{Connect, Connection, DONE, LISTEN, STOPPED, Served};
 
 /// A server's work, over whichever store the config names, and the keys
 /// it checks activities with.
@@ -87,10 +87,24 @@ impl<F: Future<Output = ()>> Listening<'_, F> {
                 say(&mut **out, &line);
             }
         };
-        serve(&serving, self.listener, limits, &heard, self.stop).await;
+        let sockets = match NativeSockets::under(SESSIONS) {
+            Ok(sockets) => sockets,
+            Err(error) => {
+                say(
+                    &mut **out.borrow_mut(),
+                    &format!("no session can be opened: {error}"),
+                );
+                return STOPPED;
+            }
+        };
+        serve(&serving, self.listener, &sockets, limits, &heard, self.stop).await;
         DONE
     }
 }
+
+/// The domains the sessions herald holds open connections under: Discord's
+/// gateway and Slack's Socket Mode (ADR-0016).
+const SESSIONS: [&str; 2] = ["discord.gg", "slack.com"];
 
 /// What a server says of what it heard.
 pub(crate) fn said(heard: Heard) -> Vec<String> {
@@ -106,6 +120,7 @@ pub(crate) fn said(heard: Heard) -> Vec<String> {
             why(&stop)
         )],
         Heard::Unaccepted(reason) => vec![format!("a connection could not be taken: {reason}")],
+        Heard::Session { destination, said } => vec![format!("{}: {said}", destination.as_str())],
     }
 }
 

@@ -20,10 +20,13 @@ use std::pin::{Pin, pin};
 use std::time::Duration;
 
 use futures_util::stream::{FuturesUnordered, StreamExt};
+use herald_core::DestinationName;
 use herald_flows::{
     Inbound, Job, Kept, Serving, Stop, Swept, Worked, answer, housekeep, poll, unworked, work,
 };
-use herald_ports::{Clock, Http, HttpError, Keyring, Request, Response, Signer, Store, Verifier};
+use herald_ports::{
+    Clock, Http, HttpError, Keyring, Request, Response, Signer, Sockets, Store, Verifier,
+};
 use http_body_util::{BodyExt, Full, Limited};
 use hyper::body::{Bytes, Incoming};
 use hyper::header::{CONTENT_TYPE, HeaderValue, RETRY_AFTER};
@@ -37,8 +40,12 @@ use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{Notify, Semaphore};
 use tokio::time::{Instant, Interval, MissedTickBehavior, interval_at};
 
+use crate::sessions::Session;
+
+mod sessions;
+
 /// The name the server takes its leases under.
-const RUN: &str = "server";
+pub(crate) const RUN: &str = "server";
 /// How many seconds a sender is asked to wait when the work queue is full.
 const BUSY_RETRY: &str = "30";
 /// How long a connection may take to send a request's headers, and then
@@ -65,6 +72,13 @@ pub enum Heard {
     Kept(Result<Vec<Kept>, Stop>),
     /// A connection could not be taken, and why.
     Unaccepted(String),
+    /// A session a destination holds said this.
+    Session {
+        /// The destination.
+        destination: DestinationName,
+        /// What it said.
+        said: String,
+    },
 }
 
 /// What the server takes on at once, and how often it does its rounds.
@@ -345,14 +359,16 @@ async fn round(rounds: &mut Option<Interval>) {
 /// `limits`, each thing worth saying handed to `heard`, until `stop`
 /// completes. Then no request is taken, the work waiting is released to be
 /// delivered again (ADR-0013), and the work running is finished.
-pub async fn serve<S, C, G, V, H, P, K, L>(
+pub async fn serve<S, C, G, V, H, P, K, L, So>(
     serving: &Serving<'_, S, C, G, V, H, P, K>,
     listener: L,
+    sockets: &So,
     limits: Limits,
     heard: &dyn Fn(Heard),
     stop: impl Future<Output = ()>,
 ) where
     L: Listener,
+    So: Sockets,
     S: Store,
     C: Clock,
     G: Signer,
@@ -375,6 +391,13 @@ pub async fn serve<S, C, G, V, H, P, K, L>(
     let mut chores = rounds(limits.housekeep);
     let mut sweeps = rounds(Some(limits.keys));
     let mut stop = pin!(stop);
+    let session = Session {
+        serving,
+        jobs: limits.jobs,
+        heard,
+    };
+    let mut sessions = pin!(session.held(sockets));
+    let mut held = true;
     loop {
         tokio::task::coop::consume_budget().await;
         while running.len() < limits.jobs {
@@ -395,6 +418,7 @@ pub async fn serve<S, C, G, V, H, P, K, L>(
                 }
             },
             () = queue.queued.notified() => {}
+            () = &mut sessions, if held => held = false,
             Some(()) = connections.next(), if !connections.is_empty() => {}
             Some(done) = running.next(), if !running.is_empty() => {
                 if let Some(said) = done {
