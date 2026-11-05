@@ -296,11 +296,11 @@ async fn documented<S, C, G: Signer, V, H, P, K>(
     serving: &Serving<'_, S, C, G, V, H, P, K>,
     served: &ActivityPub,
 ) -> Answered {
-    actor(served.document(serving.ports.signer).await)
+    shown(served.document(serving.ports.signer).await)
 }
 
 /// The answer to an actor document that was or could not be built.
-fn actor(document: Result<String, CryptoError>) -> Answered {
+fn shown(document: Result<String, CryptoError>) -> Answered {
     match document {
         Ok(document) => replied(200, ACTIVITY_JSON, document),
         Err(error) => said(500, &format!("the actor's key cannot be read: {error}")),
