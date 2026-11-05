@@ -426,3 +426,47 @@ pub async fn serve<S, C, G, V, H, P, K, L>(
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use herald_flows::{Job, Verified};
+
+    use super::Queue;
+
+    fn job(body: &[u8]) -> Job {
+        Job::Follow {
+            verified: Verified {
+                delivery: None,
+                signer: None,
+            },
+            body: body.to_vec(),
+        }
+    }
+
+    #[test]
+    fn a_place_held_counts_until_it_is_filled_or_given_up() {
+        let queue = Queue::new(2);
+        let first = queue.hold().unwrap();
+        let second = queue.hold().unwrap();
+        assert!(queue.hold().is_none());
+        drop(second);
+        let third = queue.hold().unwrap();
+        assert!(queue.hold().is_none());
+        first.fill(job(b"1"));
+        assert!(queue.hold().is_none());
+        third.fill(job(b"2"));
+        assert!(queue.hold().is_none());
+        assert_eq!(queue.next(), Some(job(b"1")));
+        let fourth = queue.hold().unwrap();
+        assert!(queue.hold().is_none());
+        drop(fourth);
+        assert_eq!(queue.left(), vec![job(b"2")]);
+        assert_eq!(queue.next(), None);
+        assert!(queue.hold().is_some());
+    }
+
+    #[test]
+    fn a_queue_with_no_places_holds_none() {
+        assert!(Queue::new(0).hold().is_none());
+    }
+}

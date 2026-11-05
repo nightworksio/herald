@@ -56,7 +56,7 @@ impl Keyring for MemoryKeyring {
         self.with(|held| {
             held.used += 1;
             held.keys.insert(id.to_owned(), (held.used, key.clone()));
-            while held.keys.len() > most {
+            if held.keys.len() > most {
                 let oldest = held
                     .keys
                     .iter()

@@ -64,6 +64,19 @@ mod memory {
     }
 
     #[test]
+    fn the_key_known_longest_ago_is_forgotten_whatever_its_name() {
+        let keyring = MemoryKeyring::new(2);
+        pollster::block_on(keyring.know("b", &known("b"))).unwrap();
+        pollster::block_on(keyring.know("a", &known("a"))).unwrap();
+        pollster::block_on(keyring.know("c", &known("c"))).unwrap();
+        assert!(pollster::block_on(keyring.known("b")).unwrap().is_none());
+        assert_eq!(
+            pollster::block_on(keyring.known("a")).unwrap(),
+            Some(known("a"))
+        );
+    }
+
+    #[test]
     fn a_keyring_holding_no_keys_keeps_none() {
         let keyring = MemoryKeyring::new(0);
         pollster::block_on(keyring.know("a", &known("a"))).unwrap();
