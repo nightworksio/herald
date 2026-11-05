@@ -17,7 +17,7 @@ use herald_server::{Capped, Heard, Limits, READ, serve};
 
 use super::output::{chored, polled, report, say, why};
 use super::stores::{Commands, reached};
-use super::{Connect, Connection, DONE, LISTEN, Served};
+use super::{Connect, Connection, DONE, LISTEN, Served, worded};
 
 /// A server's work, over whichever store the config names, and the keys
 /// it checks activities with.
@@ -174,9 +174,7 @@ pub(crate) async fn serving(
         .map_err(|error| error.to_string())?;
     let public = Capped::new(connect(PUBLIC)?, config.server.fetches);
     let silence = std::time::Duration::try_from(config.server.silence).unwrap_or_default();
-    let sockets = NativeSockets::under(SESSIONS)
-        .map_err(|error| format!("no session can be opened: {error}"))?
-        .silent_for(silence);
+    let sockets = worded(NativeSockets::under(SESSIONS))?.silent_for(silence);
     let listening = Listening {
         config,
         connected: &connected,

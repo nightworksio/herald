@@ -9,6 +9,7 @@
 
 use std::collections::BTreeMap;
 use std::convert::Infallible;
+use std::fmt::Display;
 use std::future::Future;
 use std::io::Write;
 use std::path::Path;
@@ -115,7 +116,12 @@ pub fn native(base: &str) -> Result<Connection, String> {
     } else {
         NativeHttp::reaching(base).map(Connection::new)
     };
-    connection.map_err(|error| error.to_string())
+    worded(connection)
+}
+
+/// `made`, its error worded as herald says it.
+fn worded<T>(made: Result<T, impl Display>) -> Result<T, String> {
+    made.map_err(|error| error.to_string())
 }
 
 /// The variables a forge's CI names a run's repository, API and token in.

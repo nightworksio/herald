@@ -82,7 +82,7 @@ fn the_server_listens_where_its_environment_or_its_config_says() {
 }
 
 #[test]
-fn a_server_that_cannot_listen_or_read_a_webhook_secret_stops_before_it_serves() {
+fn a_server_that_cannot_listen_or_read_a_webhook_or_command_secret_stops_before_it_serves() {
     let taken = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
     let listen = taken.local_addr().unwrap().to_string();
     let refused = herald_until(
@@ -114,6 +114,21 @@ fn a_server_that_cannot_listen_or_read_a_webhook_secret_stops_before_it_serves()
         unkeyed.err.contains("HERALD_UNSET_WEBHOOK"),
         "{}",
         unkeyed.err
+    );
+    let unsigned = format!(
+        "{CONFIG}[destinations.slack]\nkind = \"slack\"\ntoken = {{ secret = \"HERALD_DISCORD_TOKEN\" }}\n[destinations.slack.interactions]\nsigning = {{ secret = \"HERALD_UNSET_SIGNING\" }}\n"
+    );
+    let unanswering = herald_until(
+        &setup(&unsigned),
+        &World::default(),
+        &["server", "--listen", "127.0.0.1:0"],
+        std::future::ready(()),
+    );
+    assert_eq!(unanswering.code, STOPPED);
+    assert!(
+        unanswering.err.contains("HERALD_UNSET_SIGNING"),
+        "{}",
+        unanswering.err
     );
 }
 

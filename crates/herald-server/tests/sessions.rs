@@ -621,30 +621,63 @@ key = "{KEY}"
     }
 
     #[tokio::test(start_paused = true)]
-    async fn socket_mode_that_refuses_an_acknowledgement_or_cannot_be_asked_for_reopens() {
+    async fn socket_mode_that_refuses_an_acknowledgement_or_cannot_be_opened_reopens() {
         let sockets =
-            ScriptedSockets::opening(vec![Ok(vec![envelope("latest")])]).refusing_after(0);
-        let answers = Answers::of(vec![answer(
-            "/apps.connections.open",
-            200,
-            r#"{"ok": true, "url": "wss://wss-primary.slack.com/link"}"#,
-        )]);
+            ScriptedSockets::opening(vec![Ok(vec![envelope("latest")]), Err(HttpError::TimedOut)])
+                .refusing_after(0);
+        let opening = || {
+            answer(
+                "/apps.connections.open",
+                200,
+                r#"{"ok": true, "url": "wss://wss-primary.slack.com/link"}"#,
+            )
+        };
+        let answers = Answers::of(vec![opening(), opening()]);
         let world = World::new("slack", answers, sockets.clone()).await;
         let heard = world
-            .served(4, |line| line.contains("could not be opened"))
+            .served(4, |line| line.contains("nothing scripted"))
             .await;
-        assert_eq!(sockets.opened(), ["wss://wss-primary.slack.com/link"]);
+        assert_eq!(sockets.opened().len(), 2, "{heard:?}");
         assert!(sockets.sent().is_empty(), "{heard:?}");
-        assert!(
-            heard.iter().any(|line| line.starts_with(
-                "slack: Slack's Socket Mode could not be opened: the host could not be reached: nothing scripted"
-            )),
+        let opened: Vec<&str> = heard
+            .iter()
+            .filter_map(|line| {
+                line.strip_prefix("slack: Slack's Socket Mode could not be opened: ")
+            })
+            .collect();
+        assert_eq!(
+            opened,
+            [
+                "the host did not answer in time",
+                "the host could not be reached: nothing scripted for POST https://slack.com/api/apps.connections.open",
+            ],
             "{heard:?}"
         );
         assert!(
             !heard.iter().any(|line| line.starts_with("answered")),
             "{heard:?}"
         );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_sync_the_homeserver_answers_unreadably_or_not_at_all_is_tried_again() {
+        let answers = Answers::of(vec![answer("sync?timeout=0", 200, "not json")]);
+        let world = World::new("matrix", answers, ScriptedSockets::default()).await;
+        let failures = std::cell::Cell::new(0);
+        let heard = world
+            .served(4, |line| {
+                if line.contains("could not be synced") {
+                    failures.set(failures.get() + 1);
+                }
+                failures.get() == 2
+            })
+            .await;
+        let failed: Vec<&String> = heard
+            .iter()
+            .filter(|line| line.starts_with("matrix: the homeserver could not be synced: "))
+            .collect();
+        assert_eq!(failed.len(), 2, "{heard:?}");
+        assert!(failed[1].contains("nothing scripted"), "{heard:?}");
     }
 
     #[tokio::test(start_paused = true)]

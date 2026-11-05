@@ -74,6 +74,14 @@ fn discord_s_commands_are_registered_in_every_server() {
     );
     assert_eq!(refused.code, STOPPED);
     assert_eq!(refused.err, "Discord answered 403: Missing Access\n");
+    world
+        .state
+        .lock()
+        .unwrap()
+        .unanswered
+        .push(format!("/applications/{APPLICATION}/commands"));
+    let silent = herald(&setup, &world, &["discord", "commands"]);
+    assert_eq!(silent.err, "the host did not answer in time\n");
 }
 
 #[test]
