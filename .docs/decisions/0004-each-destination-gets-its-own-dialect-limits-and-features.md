@@ -1,6 +1,6 @@
 # ADR-0004: Each destination gets its own dialect, limits and features, described as data
 
-**Status:** Accepted; decision 8 superseded in part by [ADR-0011](0011-markers-count-only-on-herald-s-own-posts-a-route-keeps-one-pin-and-a-lock-archives.md)
+**Status:** Accepted; decision 8 superseded in part by [ADR-0011](0011-markers-count-only-on-herald-s-own-posts-a-route-keeps-one-pin-and-a-lock-archives.md), and the interactions of decisions 4 to 6 by [ADR-0016](0016-commands-are-carried-every-way-a-destination-offers-and-answered-from-what-herald-keeps.md)
 **Date:** 2026-10-31
 
 ## Context
@@ -198,4 +198,5 @@ landing and the ledger recording it (ADR-0005).
 - [ADR-0005](0005-an-announcement-is-sent-once-and-finished-if-interrupted.md): markers, subscriptions and the ledger
 - [ADR-0006](0006-one-herald-toml-with-sandboxed-templates-and-a-published-schema.md): templates and route options
 - [ADR-0007](0007-secrets-stay-out-of-reach-and-every-inbound-request-is-verified-first.md): verifying interactions and signatures
+- [ADR-0016](0016-commands-are-carried-every-way-a-destination-offers-and-answered-from-what-herald-keeps.md): every transport a destination offers for its commands
 - [ADR-0011](0011-markers-count-only-on-herald-s-own-posts-a-route-keeps-one-pin-and-a-lock-archives.md): markers count only on herald's own posts, a route keeps one pin, and a lock archives

@@ -33,3 +33,4 @@ no separate requirements document, and there are no requirement IDs.
 | [0013](0013-a-webhook-delivery-is-admitted-once-released-when-it-fails-and-kept-for-a-week.md) | A webhook delivery is admitted once, released when it fails, and kept for a week | Accepted |
 | [0014](0014-herald-server-answers-first-and-works-after-on-one-task-within-limits.md) | herald server answers first and works after, on one task, within limits | Accepted |
 | [0015](0015-an-app-is-a-source-routes-name-announcing-with-hashed-tokens-scoped-to-its-projects.md) | An app is a source routes name, announcing with hashed tokens scoped to its projects | Accepted |
+| [0016](0016-commands-are-carried-every-way-a-destination-offers-and-answered-from-what-herald-keeps.md) | Commands are carried every way a destination offers, and answered from what herald keeps | Accepted |

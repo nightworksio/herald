@@ -216,6 +216,38 @@ projects = ["herald"]
 - `herald server` takes it at `POST /api/projects/herald/events` with `Authorization: Bearer <token>`: 202 for a new event, 200 for one it has already ([ADR-0015](.docs/decisions/0015-an-app-is-a-source-routes-name-announcing-with-hashed-tokens-scoped-to-its-projects.md)).
 - `GET /api/projects/herald/events/7`, with the same token, answers where its announcement stands on each of the app's routes: `pending`, `announcing`, `announced`, or `stopped` with the steps that remain.
 
+### Commands in your channels
+
+Members ask herald in the channel it announces in: `subscribe` and
+`unsubscribe` to be mentioned when a project announces, `latest` for what it
+announced last, and `changelog` for its notes. Each announcement can carry a
+button that subscribes.
+
+```toml
+[destinations.discord.interactions]
+application = "1566100000000000000"
+key = "<the application's public key>"
+
+[[routes]]
+id = "releases"
+sources = ["php-mutation-gate"]
+destination = "discord"
+channel = "1566184281406177531"
+template = "release"
+subscribe = { role = "1566190000000000001" }
+```
+
+- Each destination takes its commands every way it offers, set by `via` ([ADR-0016](.docs/decisions/0016-commands-are-carried-every-way-a-destination-offers-and-answered-from-what-herald-keeps.md)):
+  - Discord: `http`, posted to `/interactions/discord`, or `gateway`, held by `herald server`.
+  - Slack: `http`, posted to `/interactions/<destination>`, or `socket`, Socket Mode held by `herald server`.
+  - Matrix: `appservice`, pushed to `/matrix/<destination>`, or `sync`, as the bot.
+- `herald discord commands` registers the commands. `herald discord roles --guild <id>` lists a server's roles, and `--create <name>` makes an opt-in role.
+- `herald slack manifest --url https://<your host>` prints the Slack app's manifest. `herald matrix registration --url https://<your host>` prints the homeserver's registration with two new tokens, once.
+- On Discord, subscribing gives the route's opt-in role, which the route mentions. On Slack and Matrix, it keeps the member in the store, for a route with `mentions = { subscribers = true }`.
+- A command names a project, or acts on the only one announced in its channel; Discord completes the names.
+- Answers to `latest` and `changelog` are the asker's alone unless `replies = "public"` or the asker adds `share`. `commands`, `prereleases` and `template` set which commands are answered and what they show.
+- `herald doctor --layer server` names a transport a layer cannot carry.
+
 ## Status
 
 What is built on `main`, and the decision each part follows:
@@ -230,8 +262,9 @@ What is built on `main`, and the decision each part follows:
 | Destination: Discord | [ADR-0004](.docs/decisions/0004-each-destination-gets-its-own-dialect-limits-and-features.md), [ADR-0011](.docs/decisions/0011-markers-count-only-on-herald-s-own-posts-a-route-keeps-one-pin-and-a-lock-archives.md) | yes, against reference fixtures until recorded ones replace them |
 | Inbound requests verified before they are parsed | [ADR-0007](.docs/decisions/0007-secrets-stay-out-of-reach-and-every-inbound-request-is-verified-first.md) | the signatures of GitHub, GitLab and Forgejo webhooks, Discord interactions and Slack requests, with the replay window, and the homeserver token of a Matrix transaction, each webhook delivery admitted once ([ADR-0013](.docs/decisions/0013-a-webhook-delivery-is-admitted-once-released-when-it-fails-and-kept-for-a-week.md)), and an ActivityPub activity's HTTP signature and digest against its actor's key, read from a public address on the key's own origin, with the activity's actor held to that key's owner |
 | Destinations: Matrix, Slack, Fediverse | [ADR-0004](.docs/decisions/0004-each-destination-gets-its-own-dialect-limits-and-features.md) | the Fediverse through the Mastodon client API, Matrix through the client-server API, and Slack by bot token or incoming webhook, with subscribers mentioned, against reference fixtures; the ActivityPub actor's signed deliveries of each Note to its followers' shared inboxes, each follow kept and answered with a signed `Accept` and each undo forgetting its follower, and its key loaded by every run and by `herald doctor`; `herald server` serving its inbox, its Notes and the actor and WebFinger documents ([ADR-0014](.docs/decisions/0014-herald-server-answers-first-and-works-after-on-one-task-within-limits.md)) |
+| Commands: `subscribe`, `unsubscribe`, `latest` and `changelog`, and the subscribe button | [ADR-0004](.docs/decisions/0004-each-destination-gets-its-own-dialect-limits-and-features.md), [ADR-0016](.docs/decisions/0016-commands-are-carried-every-way-a-destination-offers-and-answered-from-what-herald-keeps.md) | on Discord over HTTP interactions and the gateway, on Slack over HTTP and Socket Mode, and on Matrix through an application service and a sync; each project's latest announcement kept by every store but markers |
 | Stores: SQLite, Postgres, D1, DynamoDB, Deno KV, markers, git branch, Actions cache, repository variables | [ADR-0005](.docs/decisions/0005-an-announcement-is-sent-once-and-finished-if-interrupted.md) | SQLite, Postgres, the markers, the git branch, the Actions cache and repository variables; D1, DynamoDB and Deno KV, no |
-| The CLI, `herald doctor` and the Action | [ADR-0002](.docs/decisions/0002-three-layers-of-support-and-a-doctor-that-names-the-gaps.md), [ADR-0009](.docs/decisions/0009-herald-ships-as-binaries-an-action-an-image-and-a-wasm-build.md) | `announce`, `poll`, `housekeep`, `server`, `doctor`, `preview`, `init` and `token new`, and the Action; no release carries them yet |
+| The CLI, `herald doctor` and the Action | [ADR-0002](.docs/decisions/0002-three-layers-of-support-and-a-doctor-that-names-the-gaps.md), [ADR-0009](.docs/decisions/0009-herald-ships-as-binaries-an-action-an-image-and-a-wasm-build.md) | `announce`, `poll`, `housekeep`, `server`, `doctor`, `preview`, `init`, `token new`, `discord commands`, `discord roles`, `slack manifest` and `matrix registration`, and the Action; no release carries them yet |
 | Serverless drivers and the container | [ADR-0002](.docs/decisions/0002-three-layers-of-support-and-a-doctor-that-names-the-gaps.md), [ADR-0009](.docs/decisions/0009-herald-ships-as-binaries-an-action-an-image-and-a-wasm-build.md), [ADR-0014](.docs/decisions/0014-herald-server-answers-first-and-works-after-on-one-task-within-limits.md) | `herald server`, the container's command; the serverless drivers and the image, no |
 | herald announcing its own releases | [ADR-0010](.docs/decisions/0010-herald-announces-itself-with-itself.md) | no |
 
