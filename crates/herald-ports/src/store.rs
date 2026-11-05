@@ -2,7 +2,8 @@ use std::fmt;
 use std::future::Future;
 
 use herald_core::{
-    Cursor, DestinationName, Entry, Key, RouteId, Schedule, Scheme, SourceName, Subscription,
+    Cursor, DestinationName, Entry, Key, Latest, RouteId, Schedule, Scheme, SourceName,
+    Subscription,
 };
 use jiff::Timestamp;
 
@@ -58,6 +59,8 @@ pub struct Capabilities {
     pub deliveries: bool,
     /// The Notes herald's ActivityPub actors published, served by their id.
     pub notes: bool,
+    /// What each project last announced, for commands to answer with.
+    pub latest: bool,
     /// Compare-and-set that holds when runs write at the same time.
     pub concurrent: bool,
 }
@@ -218,6 +221,23 @@ pub trait Store: Sync {
         key: &Key,
         note: &str,
     ) -> impl Future<Output = Result<(), StoreError>> + Send;
+
+    /// What `project` last announced, with its version.
+    fn latest(
+        &self,
+        project: &str,
+    ) -> impl Future<Output = Result<Option<Versioned<Latest>>, StoreError>> + Send;
+
+    /// What every project last announced.
+    fn latests(&self) -> impl Future<Output = Result<Vec<Latest>, StoreError>> + Send;
+
+    /// Writes `latest` if the project's record is still at `expected`, or
+    /// absent where `expected` is `None`.
+    fn put_latest(
+        &self,
+        latest: &Latest,
+        expected: Option<Version>,
+    ) -> impl Future<Output = Result<Written, StoreError>> + Send;
 }
 
 #[cfg(test)]

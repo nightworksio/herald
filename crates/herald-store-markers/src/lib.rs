@@ -11,8 +11,8 @@
 use std::future::{Future, ready};
 
 use herald_core::{
-    Chore, Cursor, DestinationName, Entry, Identity, Key, Marker, RouteId, Schedule, Scheme,
-    SourceName, Subscription, Thread, schedules,
+    Chore, Cursor, DestinationName, Entry, Identity, Key, Latest, Marker, RouteId, Schedule,
+    Scheme, SourceName, Subscription, Thread, schedules,
 };
 use herald_ports::{
     Admitted, Capabilities, Keeping, Keyring, KnownKey, Markers, Secret, Signer, Store, StoreError,
@@ -130,6 +130,7 @@ impl<M: Markers, G: Signer> Store for MarkersStore<M, G> {
             pins: false,
             deliveries: false,
             notes: false,
+            latest: false,
             concurrent: false,
         }
     }
@@ -265,5 +266,24 @@ impl<M: Markers, G: Signer> Store for MarkersStore<M, G> {
         _note: &str,
     ) -> impl Future<Output = Result<(), StoreError>> + Send {
         ready(unsupported("notes"))
+    }
+
+    fn latest(
+        &self,
+        _project: &str,
+    ) -> impl Future<Output = Result<Option<Versioned<Latest>>, StoreError>> + Send {
+        ready(unsupported("latest"))
+    }
+
+    fn latests(&self) -> impl Future<Output = Result<Vec<Latest>, StoreError>> + Send {
+        ready(unsupported("latest"))
+    }
+
+    fn put_latest(
+        &self,
+        _latest: &Latest,
+        _expected: Option<Version>,
+    ) -> impl Future<Output = Result<Written, StoreError>> + Send {
+        ready(unsupported("latest"))
     }
 }

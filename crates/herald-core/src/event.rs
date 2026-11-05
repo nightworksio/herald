@@ -193,6 +193,12 @@ impl Event {
         self.links.get(name).map(String::as_str)
     }
 
+    /// Every link, by name.
+    #[must_use]
+    pub fn links(&self) -> &BTreeMap<String, String> {
+        &self.links
+    }
+
     /// The first link, by name.
     #[must_use]
     pub fn first_link(&self) -> Option<&str> {

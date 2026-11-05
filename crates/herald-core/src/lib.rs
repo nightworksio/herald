@@ -12,6 +12,7 @@ mod event;
 mod housekeep;
 mod inbound;
 mod key;
+mod latest;
 mod ledger;
 mod marker;
 mod markup;
@@ -37,6 +38,7 @@ pub use inbound::{
     Scheme, Signature, activity_claim, claim, key, same,
 };
 pub use key::{Identity, Key, NotAKey, RouteId, digest, hex};
+pub use latest::{Latest, Shown};
 pub use ledger::{
     Entry, Facts, Lease, Plan, Planned, Record, Sent, Standing, State, Step, plan, steps,
 };

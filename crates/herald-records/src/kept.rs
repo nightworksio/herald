@@ -1,5 +1,6 @@
 use herald_core::{
-    Cursor, DestinationName, Entry, Key, RouteId, Schedule, Scheme, SourceName, Subscription,
+    Cursor, DestinationName, Entry, Key, Latest, RouteId, Schedule, Scheme, SourceName,
+    Subscription,
 };
 use herald_ports::{
     Admitted, Capabilities, Keeping, Keyring, KnownKey, Store, StoreError, Version, Versioned,
@@ -188,6 +189,7 @@ impl<R: Records> Store for Kept<R> {
             pins: true,
             deliveries: true,
             notes: true,
+            latest: true,
             concurrent: true,
         }
     }
@@ -296,6 +298,23 @@ impl<R: Records> Store for Kept<R> {
 
     async fn put_note(&self, key: &Key, note: &str) -> Result<(), StoreError> {
         self.kept(&paths::note(key), &note).await
+    }
+
+    async fn latest(&self, project: &str) -> Result<Option<Versioned<Latest>>, StoreError> {
+        self.record(&paths::latest(project)).await
+    }
+
+    async fn latests(&self) -> Result<Vec<Latest>, StoreError> {
+        self.all(paths::LATEST).await
+    }
+
+    async fn put_latest(
+        &self,
+        latest: &Latest,
+        expected: Option<Version>,
+    ) -> Result<Written, StoreError> {
+        self.compare_and_set(&paths::latest(&latest.project), latest, expected)
+            .await
     }
 }
 

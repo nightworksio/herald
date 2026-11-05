@@ -294,6 +294,22 @@ impl Store for Refusing {
     async fn put_note(&self, _: &herald_core::Key, _: &str) -> Result<(), StoreError> {
         Err(self.0.clone())
     }
+    async fn latest(
+        &self,
+        _: &str,
+    ) -> Result<Option<herald_ports::Versioned<herald_core::Latest>>, StoreError> {
+        Err(self.0.clone())
+    }
+    async fn latests(&self) -> Result<Vec<herald_core::Latest>, StoreError> {
+        Err(self.0.clone())
+    }
+    async fn put_latest(
+        &self,
+        _: &herald_core::Latest,
+        _: Option<herald_ports::Version>,
+    ) -> Result<herald_ports::Written, StoreError> {
+        Err(self.0.clone())
+    }
 }
 
 #[test]

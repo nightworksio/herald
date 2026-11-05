@@ -194,6 +194,11 @@ pub(crate) enum Fault {
     Unsubscribes,
     KeepsNotes,
     ReadsNotes,
+    ReadsLatest,
+    ListsLatest,
+    KeepsLatest,
+    LatestConflicts,
+    KeepsNoLatest,
     Admits,
     AttemptsDeliveries,
     LandsDeliveries,
@@ -222,13 +227,17 @@ pub(crate) fn broken() -> StoreError {
 impl Store for Failing {
     fn capabilities(&self) -> Capabilities {
         let all = self.inner.capabilities();
-        if self.fault == Fault::KeepsNoDeliveries {
-            return herald_ports::Capabilities {
+        match self.fault {
+            Fault::KeepsNoDeliveries => herald_ports::Capabilities {
                 deliveries: false,
                 ..all
-            };
+            },
+            Fault::KeepsNoLatest => herald_ports::Capabilities {
+                latest: false,
+                ..all
+            },
+            _ => all,
         }
-        all
     }
 
     async fn entry(&self, key: &Key) -> Result<Option<Versioned<Entry>>, StoreError> {
@@ -371,6 +380,35 @@ impl Store for Failing {
             return Err(broken());
         }
         self.inner.put_note(key, note).await
+    }
+
+    async fn latest(
+        &self,
+        project: &str,
+    ) -> Result<Option<Versioned<herald_core::Latest>>, StoreError> {
+        if self.fault == Fault::ReadsLatest {
+            return Err(broken());
+        }
+        self.inner.latest(project).await
+    }
+
+    async fn latests(&self) -> Result<Vec<herald_core::Latest>, StoreError> {
+        if self.fault == Fault::ListsLatest {
+            return Err(broken());
+        }
+        self.inner.latests().await
+    }
+
+    async fn put_latest(
+        &self,
+        latest: &herald_core::Latest,
+        expected: Option<herald_ports::Version>,
+    ) -> Result<Written, StoreError> {
+        match self.fault {
+            Fault::KeepsLatest => Err(broken()),
+            Fault::LatestConflicts => Ok(Written::Conflict),
+            _ => self.inner.put_latest(latest, expected).await,
+        }
     }
 }
 

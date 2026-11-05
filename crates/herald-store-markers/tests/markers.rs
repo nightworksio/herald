@@ -113,6 +113,32 @@ mod markers {
             pollster::block_on(store.put_note(&key, "{}")),
             Err(unsupported("notes"))
         );
+        assert_eq!(
+            pollster::block_on(store.latest("herald")),
+            Err(unsupported("latest"))
+        );
+        assert_eq!(
+            pollster::block_on(store.latests()),
+            Err(unsupported("latest"))
+        );
+        let latest = herald_core::Latest {
+            project: "herald".to_owned(),
+            newest: herald_core::Shown {
+                kind: herald_core::Kind::Release,
+                version: None,
+                title: "t".to_owned(),
+                body: String::new(),
+                links: std::collections::BTreeMap::new(),
+                prerelease: false,
+                occurred: OPENED,
+            },
+            stable: None,
+            routes: std::collections::BTreeSet::new(),
+        };
+        assert_eq!(
+            pollster::block_on(store.put_latest(&latest, None)),
+            Err(unsupported("latest"))
+        );
         let known = herald_ports::KnownKey {
             owner: "o".to_owned(),
             pem: "p".to_owned(),

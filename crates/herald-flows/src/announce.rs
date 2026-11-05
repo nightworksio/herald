@@ -2,7 +2,7 @@ use std::collections::BTreeSet;
 
 use herald_config::Config;
 use herald_core::{
-    Announcement, Entry, Event, Facts, Key, Marker, Marks, Pinning, Plan, Planned, Profile,
+    Announcement, Entry, Event, Facts, Key, Latest, Marker, Marks, Pinning, Plan, Planned, Profile,
     RouteId, Sent, SourceName, Step, Templates, Threads, plan, schedules, steps,
 };
 use herald_ports::{Clock, Http, Secret, Signer, Store, Version, Written, marker};
@@ -478,6 +478,54 @@ impl<S: Store, C: Clock, G: Signer, H: Http> Run<'_, S, C, G, H> {
     }
 }
 
+/// How often an announcement rewrites its project's latest record when
+/// another write lands between its read and its write.
+const LATEST_ATTEMPTS: usize = 3;
+
+/// `outcome`, once `event` is kept as what its project last announced on
+/// `route`, where it was sent or had been and the store keeps that, or
+/// stopped by why it could not be kept (ADR-0016). An announcement already
+/// complete keeps it again, so a run that could not keep it is made good by
+/// the next.
+async fn kept_latest<S: Store>(
+    store: &S,
+    event: &Event,
+    route: &RouteId,
+    outcome: Outcome,
+) -> Outcome {
+    let landed = match &outcome {
+        Outcome::Sent { steps } => steps.clone(),
+        Outcome::AlreadyAnnounced => Vec::new(),
+        Outcome::Held { .. } | Outcome::Stopped { .. } => return outcome,
+    };
+    if !store.capabilities().latest {
+        return outcome;
+    }
+    match keep_latest(store, event, route).await {
+        Ok(()) => outcome,
+        Err(reason) => Outcome::Stopped {
+            landed,
+            remaining: Vec::new(),
+            reason,
+        },
+    }
+}
+
+async fn keep_latest<S: Store>(store: &S, event: &Event, route: &RouteId) -> Result<(), Stop> {
+    for _ in 0..LATEST_ATTEMPTS {
+        let kept = store.latest(event.project()).await.map_err(stored)?;
+        let expected = kept.as_ref().map(|kept| kept.version);
+        let latest = Latest::after(kept.map(|kept| kept.value), event, route);
+        if store.put_latest(&latest, expected).await.map_err(stored)? != Written::Conflict {
+            return Ok(());
+        }
+    }
+    Err(Stop::Store(format!(
+        "what {} last announced changed under each of {LATEST_ATTEMPTS} writes",
+        event.project()
+    )))
+}
+
 /// `event`, from `source`, sent to every route of `connected` that takes it,
 /// each step once (ADR-0005). `run` names this run in the leases it takes.
 pub async fn announce<S: Store, C: Clock, G: Signer, H: Http>(
@@ -518,6 +566,7 @@ pub async fn announce_within<S: Store, C: Clock, G: Signer, H: Http>(
         }
         .announce(event, &config.templates)
         .await;
+        let outcome = kept_latest(ports.store, event, id, outcome).await;
         announced.push(Announced {
             route: route.config.route.id.clone(),
             outcome,
