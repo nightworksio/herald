@@ -23,6 +23,12 @@ pub(super) struct State {
     pub(super) cache: BTreeMap<String, Vec<u8>>,
     pub(super) variables: BTreeMap<String, String>,
     pub(super) items: BTreeMap<(String, String), Value>,
+    pub(super) invocations: std::collections::VecDeque<Value>,
+    pub(super) invoked: u32,
+    pub(super) given: Vec<(String, Value)>,
+    pub(super) handing: Option<u16>,
+    pub(super) runtime: Option<u16>,
+    pub(super) unheard: bool,
     pub(super) unanswered: Vec<String>,
 }
 
@@ -251,6 +257,38 @@ impl Http for World {
                 headers: Vec::new(),
                 body: held,
             });
+        }
+        if let Some(rest) = url.strip_prefix("http://127.0.0.1:9001/2018-06-01/runtime/invocation/")
+        {
+            if let (Some(status), "next") = (state.runtime, rest) {
+                return Ok(answer(status, &Value::Null));
+            }
+            if rest == "next" {
+                let Some(event) = state.invocations.pop_front() else {
+                    return Err(HttpError::TimedOut);
+                };
+                state.invoked += 1;
+                return Ok(Response {
+                    status: 200,
+                    headers: vec![(
+                        "Lambda-Runtime-Aws-Request-Id".to_owned(),
+                        format!("request-{}", state.invoked),
+                    )],
+                    body: event.to_string().into_bytes(),
+                });
+            }
+            if state.unheard {
+                return Err(HttpError::TimedOut);
+            }
+            state.given.push((rest.to_owned(), body));
+            return Ok(answer(202, &Value::Null));
+        }
+        if url == "https://lambda.eu-west-1.amazonaws.com/2015-03-31/functions/herald/invocations" {
+            if let Some(status) = state.handing {
+                return Ok(answer(status, &Value::Null));
+            }
+            state.invocations.push_back(body);
+            return Ok(answer(202, &Value::Null));
         }
         if url == "https://dynamodb.example/" {
             let target = request

@@ -32,6 +32,7 @@ use herald_sources_forge::{Forge, Origin, Repository, SourceOptions, Token};
 
 mod apps;
 mod cli;
+mod lambda;
 mod output;
 mod serving;
 mod setup;
@@ -113,6 +114,8 @@ pub fn native(base: &str) -> Result<Connection, String> {
         PublicHttp::new()
             .map(Connection::new)
             .map_err(ConnectError::Build)
+    } else if let Some(waiting) = base.strip_prefix(lambda::WAITING) {
+        NativeHttp::waiting(waiting).map(Connection::new)
     } else {
         NativeHttp::reaching(base).map(Connection::new)
     };
@@ -222,6 +225,7 @@ async fn stopping(
     let err = &mut Scrubbing::new(err, &hidden);
     let layer = match serve {
         Serve::Server { .. } => Layer::Server,
+        Serve::Lambda => Layer::Lambda,
         _ => Layer::Actions,
     };
     warned(&doctor(&config, layer.served()).gaps, vars, out);
@@ -254,6 +258,7 @@ async fn stopping(
         Serve::Server { listen } => {
             serving(&config, vars, connect, listen.as_deref(), out, stop).await
         }
+        Serve::Lambda => lambda::lambda(&config, vars, connect, out).await,
     };
     let code = ran.unwrap_or_else(|message| {
         say(err, &message);

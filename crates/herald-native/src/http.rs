@@ -59,7 +59,7 @@ impl NativeHttp {
     /// When TLS or the client cannot be set up.
     pub fn new(reach: Reach) -> Result<Self, BuildError> {
         let tls = tls(rustls::crypto::ring::default_provider())?;
-        Self::built(reach, Some(tls), CONNECT, TOTAL)
+        Self::built(reach, Some(tls), CONNECT, Some(TOTAL))
     }
 
     /// A client reaching only the origin of `base`.
@@ -72,11 +72,24 @@ impl NativeHttp {
         Self::new(reach).map_err(ConnectError::Build)
     }
 
+    /// A client reaching only the origin of `base`, with no bound on how
+    /// long an answer takes: for an API that holds a request open until it
+    /// has something to answer, as Lambda's runtime API does.
+    ///
+    /// # Errors
+    ///
+    /// When `base` may not be reached, or the client cannot be built.
+    pub fn waiting(base: &str) -> Result<Self, ConnectError> {
+        let reach = Reach::new([base]).map_err(ConnectError::Reach)?;
+        let tls = tls(rustls::crypto::ring::default_provider()).map_err(ConnectError::Build)?;
+        Self::built(reach, Some(tls), CONNECT, None).map_err(ConnectError::Build)
+    }
+
     pub(crate) fn built(
         reach: Reach,
         tls: Option<ClientConfig>,
         connect: Duration,
-        total: Duration,
+        total: Option<Duration>,
     ) -> Result<Self, BuildError> {
         let client = client(reqwest::Client::builder(), tls, connect, total)?;
         Ok(Self { client, reach })
@@ -89,16 +102,19 @@ pub(crate) fn client(
     builder: reqwest::ClientBuilder,
     tls: Option<ClientConfig>,
     connect: Duration,
-    total: Duration,
+    total: Option<Duration>,
 ) -> Result<reqwest::Client, BuildError> {
     let builder = match tls {
         Some(tls) => builder.tls_backend_preconfigured(tls),
         None => builder.tls_backend_preconfigured(()),
     };
+    let builder = match total {
+        Some(total) => builder.timeout(total),
+        None => builder,
+    };
     builder
         .redirect(reqwest::redirect::Policy::none())
         .connect_timeout(connect)
-        .timeout(total)
         .build()
         .map_err(|error| BuildError(chain(&error)))
 }

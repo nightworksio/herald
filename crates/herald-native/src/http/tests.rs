@@ -152,7 +152,7 @@ async fn a_host_that_does_not_answer_in_time_times_out() {
         Reach::new([base.as_str()]).unwrap(),
         Some(tls(rustls::crypto::ring::default_provider()).unwrap()),
         CONNECT,
-        Duration::from_millis(200),
+        Some(Duration::from_millis(200)),
     )
     .unwrap();
     assert_eq!(
@@ -184,13 +184,41 @@ async fn a_body_up_to_the_cap_is_read_and_a_larger_one_refused() {
     server.await.unwrap();
 }
 
+#[tokio::test]
+async fn a_waiting_client_waits_past_the_usual_bound_and_reaches_its_origin_alone() {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let base = format!("http://{}", listener.local_addr().unwrap());
+    let slow = tokio::spawn(async move {
+        use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
+        let (mut stream, _) = listener.accept().await.unwrap();
+        let mut buffer = [0_u8; 1024];
+        let _ = stream.read(&mut buffer).await.unwrap();
+        tokio::time::sleep(Duration::from_millis(300)).await;
+        stream
+            .write_all(b"HTTP/1.1 200 OK\r\ncontent-length: 2\r\n\r\nok")
+            .await
+            .unwrap();
+    });
+    let http = NativeHttp::waiting(&base).unwrap();
+    let answered = http
+        .send(Request::new(
+            Method::Get,
+            Text::plain(format!("{base}/next")),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(answered.body, b"ok");
+    slow.await.unwrap();
+    assert!(NativeHttp::waiting("http://10.0.0.1").is_err());
+}
+
 #[test]
 fn a_client_without_tls_is_not_built() {
     let error = NativeHttp::built(
         Reach::new(["https://discord.com"]).unwrap(),
         None,
         CONNECT,
-        TOTAL,
+        Some(TOTAL),
     )
     .unwrap_err();
     assert!(

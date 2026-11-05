@@ -72,6 +72,16 @@ pub(crate) const SERVED: [&str; 6] = [
     Store::REPO_VARIABLES,
 ];
 
+/// The store kinds a Lambda function keeps records in: every kind that
+/// outlives the function's file system and needs no workflow run.
+pub(crate) const LAMBDA: [&str; 5] = [
+    Store::POSTGRES,
+    Store::DYNAMODB,
+    Store::GIT_BRANCH,
+    Store::MARKERS,
+    Store::REPO_VARIABLES,
+];
+
 /// The store kinds this herald keeps records in.
 pub(crate) const STORES: [&str; 7] = [
     Store::SQLITE,

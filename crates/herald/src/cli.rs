@@ -4,7 +4,7 @@
 use clap::{Parser, Subcommand, ValueEnum};
 use herald_sources_forge::Forge;
 
-use super::stores::{SERVED, STORES};
+use super::stores::{LAMBDA, SERVED, STORES};
 
 #[derive(Debug, Parser)]
 #[command(
@@ -146,6 +146,8 @@ pub(crate) enum Layer {
     Actions,
     /// `herald server`, in a container or on any host.
     Server,
+    /// `herald lambda`, as an AWS Lambda function.
+    Lambda,
 }
 
 impl Layer {
@@ -161,6 +163,11 @@ impl Layer {
                 stores: &SERVED,
                 endpoint: true,
                 sessions: true,
+            },
+            Self::Lambda => herald_flows::Layer {
+                stores: &LAMBDA,
+                endpoint: true,
+                sessions: false,
             },
         }
     }
@@ -202,6 +209,10 @@ pub(crate) enum Serve {
         #[arg(long)]
         listen: Option<String>,
     },
+    /// Serve as an AWS Lambda function on a custom runtime: answer its URL's
+    /// requests, do the work they leave, and poll and keep house on its
+    /// schedule.
+    Lambda,
 }
 
 #[derive(Debug, Clone, Copy, ValueEnum)]

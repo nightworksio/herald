@@ -82,7 +82,7 @@ impl PublicHttp {
     /// When TLS or the client cannot be set up.
     pub fn new() -> Result<Self, BuildError> {
         let tls = tls(rustls::crypto::ring::default_provider())?;
-        Self::built(public, "https", Some(tls), CONNECT, TOTAL)
+        Self::built(public, "https", Some(tls), CONNECT, Some(TOTAL))
     }
 
     pub(crate) fn built(
@@ -90,7 +90,7 @@ impl PublicHttp {
         scheme: &'static str,
         tls: Option<ClientConfig>,
         connect: Duration,
-        total: Duration,
+        total: Option<Duration>,
     ) -> Result<Self, BuildError> {
         let builder = reqwest::Client::builder()
             .no_proxy()

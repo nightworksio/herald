@@ -5,7 +5,7 @@ use crate::serving::{answer, serve};
 
 fn admitting(scheme: &'static str, admits: fn(IpAddr) -> bool) -> PublicHttp {
     let tls = tls(rustls::crypto::ring::default_provider()).unwrap();
-    PublicHttp::built(admits, scheme, Some(tls), CONNECT, TOTAL).unwrap()
+    PublicHttp::built(admits, scheme, Some(tls), CONNECT, Some(TOTAL)).unwrap()
 }
 
 fn get(url: &str) -> Request {

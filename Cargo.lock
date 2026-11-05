@@ -620,6 +620,7 @@ version = "0.0.0"
 dependencies = [
  "base64 0.23.1",
  "clap",
+ "herald-aws",
  "herald-config",
  "herald-core",
  "herald-dest-discord",
