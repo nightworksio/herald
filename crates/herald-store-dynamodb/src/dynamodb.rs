@@ -5,8 +5,12 @@ use herald_records::{Blob, Kept, Records, Wrote};
 use serde_json::{Value, json};
 
 use crate::options::{REGION, StoreOptions};
-use crate::sigv4::{Signing, signed};
+use herald_aws::{Signing, signed};
 
+/// The service DynamoDB's requests are signed for.
+const SERVICE: &str = "dynamodb";
+/// What DynamoDB's requests and answers are.
+const JSON: &str = "application/x-amz-json-1.0";
 /// The version of DynamoDB's API every target names.
 const API: &str = "DynamoDB_20120810";
 /// The item that counts the table's writes, by its directory and name.
@@ -201,6 +205,7 @@ impl<H: Http, C: Clock> DynamodbRecords<H, C> {
             secret_access_key: &credentials.secret_access_key,
             session_token: credentials.session_token.as_ref(),
             region: &self.table.region,
+            service: SERVICE,
             host: &self.table.host,
         };
         let request = Request::new(
@@ -209,9 +214,12 @@ impl<H: Http, C: Clock> DynamodbRecords<H, C> {
         )
         .header("User-Agent", Text::plain(USER_AGENT))
         .body(body.to_string().into_bytes());
+        let target = format!("{API}.{action}");
         let request = signed(
             request,
-            &format!("{API}.{action}"),
+            "/",
+            JSON,
+            &[("Target", &target)],
             &signing,
             self.clock.now(),
         );

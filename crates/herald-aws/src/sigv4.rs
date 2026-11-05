@@ -6,19 +6,25 @@ use hmac::{Hmac, KeyInit, Mac};
 use jiff::Timestamp;
 use sha2::{Digest, Sha256};
 
-/// The service DynamoDB's requests are signed for.
-const SERVICE: &str = "dynamodb";
 /// The signature's algorithm, as AWS names it.
 const ALGORITHM: &str = "AWS4-HMAC-SHA256";
 
-/// What a request is signed with.
+/// What a request is signed with, and for which service where.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct Signing<'a> {
-    pub(crate) access_key_id: &'a Secret,
-    pub(crate) secret_access_key: &'a Secret,
-    pub(crate) session_token: Option<&'a Secret>,
-    pub(crate) region: &'a str,
-    pub(crate) host: &'a str,
+pub struct Signing<'a> {
+    /// The access key's id.
+    pub access_key_id: &'a Secret,
+    /// The secret access key.
+    pub secret_access_key: &'a Secret,
+    /// A session token, where the credentials are temporary.
+    pub session_token: Option<&'a Secret>,
+    /// The region, such as `eu-west-1`.
+    pub region: &'a str,
+    /// The service, as AWS names it in a signature's scope, such as
+    /// `dynamodb` or `lambda`.
+    pub service: &'a str,
+    /// The host the request is sent to.
+    pub host: &'a str,
 }
 
 fn hmac(key: &[u8], message: &[u8]) -> Vec<u8> {
@@ -34,34 +40,45 @@ fn hashed(bytes: &[u8]) -> String {
     hex(&Sha256::digest(bytes))
 }
 
-/// The key a day's requests in `region` are signed with, derived from
-/// `secret`.
-pub(crate) fn signing_key(secret: &str, day: &str, region: &str, service: &str) -> Vec<u8> {
+/// The key a day's requests to `service` in `region` are signed with,
+/// derived from `secret`.
+#[must_use]
+pub fn signing_key(secret: &str, day: &str, region: &str, service: &str) -> Vec<u8> {
     let dated = hmac(format!("AWS4{secret}").as_bytes(), day.as_bytes());
     let regional = hmac(&dated, region.as_bytes());
     let serviced = hmac(&regional, service.as_bytes());
     hmac(&serviced, b"aws4_request")
 }
 
-/// `request`, a POST to `/` whose `X-Amz-Target` is `target`, signed at
-/// `now` with AWS Signature Version 4.
-pub(crate) fn signed(
+/// `request`, a POST of `kind` to `path` with the `x-amz-` headers `amz`
+/// beside its date and token, signed at `now` with AWS Signature Version 4.
+/// `path` is written as AWS's canonical URI writes it.
+#[must_use]
+pub fn signed(
     request: Request,
-    target: &str,
+    path: &str,
+    kind: &str,
+    amz: &[(&str, &str)],
     signing: &Signing<'_>,
     now: Timestamp,
 ) -> Request {
     let stamp = now.strftime("%Y%m%dT%H%M%SZ").to_string();
     let day = now.strftime("%Y%m%d").to_string();
-    let mut headers = vec![
-        ("content-type", "application/x-amz-json-1.0".to_owned()),
-        ("host", signing.host.to_owned()),
-        ("x-amz-date", stamp.clone()),
+    let mut headers: Vec<(String, String)> = vec![
+        ("content-type".to_owned(), kind.to_owned()),
+        ("host".to_owned(), signing.host.to_owned()),
+        ("x-amz-date".to_owned(), stamp.clone()),
     ];
     if let Some(token) = signing.session_token {
-        headers.push(("x-amz-security-token", token.expose().to_owned()));
+        headers.push(("x-amz-security-token".to_owned(), token.expose().to_owned()));
     }
-    headers.push(("x-amz-target", target.to_owned()));
+    for (name, value) in amz {
+        headers.push((
+            format!("x-amz-{}", name.to_lowercase()),
+            (*value).to_owned(),
+        ));
+    }
+    headers.sort();
     let canonical_headers = headers
         .iter()
         .fold(String::new(), |mut lines, (name, value)| {
@@ -70,14 +87,14 @@ pub(crate) fn signed(
         });
     let signed_headers = headers
         .iter()
-        .map(|(name, _)| *name)
+        .map(|(name, _)| name.as_str())
         .collect::<Vec<_>>()
         .join(";");
     let canonical = format!(
-        "POST\n/\n\n{canonical_headers}\n{signed_headers}\n{}",
+        "POST\n{path}\n\n{canonical_headers}\n{signed_headers}\n{}",
         hashed(&request.body)
     );
-    let scope = format!("{day}/{}/{SERVICE}/aws4_request", signing.region);
+    let scope = format!("{day}/{}/{}/aws4_request", signing.region, signing.service);
     let to_sign = format!(
         "{ALGORITHM}\n{stamp}\n{scope}\n{}",
         hashed(canonical.as_bytes())
@@ -86,21 +103,23 @@ pub(crate) fn signed(
         signing.secret_access_key.expose(),
         &day,
         signing.region,
-        SERVICE,
+        signing.service,
     );
     let signature = hex(&hmac(&key, to_sign.as_bytes()));
     let mut request = request
-        .header("Content-Type", Text::plain("application/x-amz-json-1.0"))
-        .header("X-Amz-Date", Text::plain(stamp))
-        .header("X-Amz-Target", Text::plain(target))
-        .header(
-            "Authorization",
-            Text::plain(format!("{ALGORITHM} Credential="))
-                .then_secret(signing.access_key_id.clone())
-                .then(format!(
-                    "/{scope}, SignedHeaders={signed_headers}, Signature={signature}"
-                )),
-        );
+        .header("Content-Type", Text::plain(kind))
+        .header("X-Amz-Date", Text::plain(stamp));
+    for (name, value) in amz {
+        request = request.header(format!("X-Amz-{name}"), Text::plain(*value));
+    }
+    request = request.header(
+        "Authorization",
+        Text::plain(format!("{ALGORITHM} Credential="))
+            .then_secret(signing.access_key_id.clone())
+            .then(format!(
+                "/{scope}, SignedHeaders={signed_headers}, Signature={signature}"
+            )),
+    );
     if let Some(token) = signing.session_token {
         request = request.header(
             "X-Amz-Security-Token",
@@ -159,9 +178,12 @@ mod tests {
             secret_access_key: &key,
             session_token: None,
             region: "eu-west-1",
+            service: "dynamodb",
             host: "dynamodb.eu-west-1.amazonaws.com",
         };
-        let plain = signed(request(), "DynamoDB_20120810.GetItem", &signing, now);
+        let json = "application/x-amz-json-1.0";
+        let target = [("Target", "DynamoDB_20120810.GetItem")];
+        let plain = signed(request(), "/", json, &target, &signing, now);
         assert_eq!(header(&plain, "X-Amz-Date"), "20261105T230000Z");
         assert_eq!(header(&plain, "X-Amz-Target"), "DynamoDB_20120810.GetItem");
         let authorization = header(&plain, "Authorization");
@@ -170,7 +192,7 @@ mod tests {
         ), "{authorization}");
         assert_eq!(header(&plain, "X-Amz-Security-Token"), "");
         signing.session_token = Some(&token);
-        let tokened = signed(request(), "DynamoDB_20120810.GetItem", &signing, now);
+        let tokened = signed(request(), "/", json, &target, &signing, now);
         assert_eq!(header(&tokened, "X-Amz-Security-Token"), "session");
         let authorization = header(&tokened, "Authorization");
         assert!(
@@ -182,10 +204,29 @@ mod tests {
         assert!(!format!("{tokened:?}").contains("AKIDEXAMPLE"));
         let other = signed(
             request().body(b"{}".to_vec()),
-            "DynamoDB_20120810.GetItem",
+            "/",
+            json,
+            &target,
             &signing,
             now,
         );
         assert_ne!(header(&other, "Authorization"), authorization);
+        let invoked = signed(
+            request(),
+            "/2015-03-31/functions/herald/invocations",
+            "application/json",
+            &[("Invocation-Type", "Event")],
+            &Signing {
+                service: "lambda",
+                ..signing
+            },
+            now,
+        );
+        assert_eq!(header(&invoked, "X-Amz-Invocation-Type"), "Event");
+        let authorization = header(&invoked, "Authorization");
+        assert!(
+            authorization.contains("/lambda/aws4_request, SignedHeaders=content-type;host;x-amz-date;x-amz-invocation-type;x-amz-security-token, "),
+            "{authorization}"
+        );
     }
 }

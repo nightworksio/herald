@@ -10,7 +10,6 @@
 
 mod dynamodb;
 mod options;
-mod sigv4;
 
 pub use dynamodb::{Credentials, Dynamodb, DynamodbRecords, DynamodbStore};
 pub use options::{ACCESS_KEY_ID, REGION, SECRET_ACCESS_KEY, SESSION_TOKEN, StoreOptions, TABLE};
