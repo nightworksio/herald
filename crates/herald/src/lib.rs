@@ -257,11 +257,19 @@ enum Layer {
 }
 
 impl Layer {
-    /// The store kinds it keeps records in.
-    fn stores(self) -> &'static [&'static str] {
+    /// What it serves.
+    fn served(self) -> herald_flows::Layer<'static> {
         match self {
-            Self::Actions => &STORES,
-            Self::Server => &SERVED,
+            Self::Actions => herald_flows::Layer {
+                stores: &STORES,
+                endpoint: false,
+                sessions: false,
+            },
+            Self::Server => herald_flows::Layer {
+                stores: &SERVED,
+                endpoint: true,
+                sessions: true,
+            },
         }
     }
 }
@@ -401,7 +409,7 @@ async fn stopping(
     };
     let serve = match reading {
         Reading::Doctor { layer } => {
-            let mut findings = doctor(&config, layer.stores());
+            let mut findings = doctor(&config, layer.served());
             let keyed = keys(&config, &EnvSecrets::from_vars(vars.clone()), &RingSigner).await;
             findings.notes.extend(keyed.notes);
             findings.mistakes.extend(keyed.mistakes);
@@ -424,7 +432,7 @@ async fn stopping(
         Serve::Server { .. } => Layer::Server,
         _ => Layer::Actions,
     };
-    warned(&doctor(&config, layer.stores()).gaps, vars, out);
+    warned(&doctor(&config, layer.served()).gaps, vars, out);
     let ran = match serve {
         Serve::Announce {
             from,
