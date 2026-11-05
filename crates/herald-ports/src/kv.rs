@@ -43,7 +43,8 @@ impl fmt::Display for KvError {
     }
 }
 
-/// A key-value store with versioned reads and an atomic check: Deno KV.
+/// A key-value store with versioned reads and an atomic check: Deno KV or
+/// Fastly's KV Store.
 pub trait Kv: Sync {
     /// The value at `key`, and its versionstamp.
     fn get(&self, key: &[String]) -> impl Future<Output = Result<Option<Stamped>, KvError>> + Send;
@@ -58,8 +59,13 @@ pub trait Kv: Sync {
         expected: Option<Versionstamp>,
     ) -> impl Future<Output = Result<Option<Versionstamp>, KvError>> + Send;
 
-    /// Deletes `key`.
-    fn delete(&self, key: &[String]) -> impl Future<Output = Result<(), KvError>> + Send;
+    /// Deletes `key` if its versionstamp is `expected`. Answers whether it
+    /// did; nothing is deleted when the check failed or the key is absent.
+    fn delete_if(
+        &self,
+        key: &[String],
+        expected: Versionstamp,
+    ) -> impl Future<Output = Result<bool, KvError>> + Send;
 
     /// Every key under `prefix`, with its value.
     fn list(&self, prefix: &[String]) -> impl Future<Output = Result<Vec<Pair>, KvError>> + Send;

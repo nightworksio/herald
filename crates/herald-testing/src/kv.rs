@@ -39,9 +39,13 @@ impl Kv for FakeKv {
         Ok(Some(versionstamp))
     }
 
-    async fn delete(&self, key: &[String]) -> Result<(), KvError> {
-        lock(&self.state).1.remove(key);
-        Ok(())
+    async fn delete_if(&self, key: &[String], expected: Versionstamp) -> Result<bool, KvError> {
+        let mut state = lock(&self.state);
+        if state.1.get(key).map(|stamped| &stamped.versionstamp) != Some(&expected) {
+            return Ok(false);
+        }
+        state.1.remove(key);
+        Ok(true)
     }
 
     async fn list(&self, prefix: &[String]) -> Result<Vec<Pair>, KvError> {
@@ -85,7 +89,7 @@ mod tests {
     }
 
     #[test]
-    fn keys_are_listed_by_prefix_and_deleted() {
+    fn keys_are_listed_by_prefix_and_deleted_against_their_versionstamp() {
         let kv = FakeKv::default();
         for parts in [&["p", "1"][..], &["p", "2"], &["q", "1"]] {
             pollster::block_on(kv.set_if(&key(parts), parts.concat().into_bytes(), None)).unwrap();
@@ -98,7 +102,18 @@ mod tests {
                 .collect::<Vec<_>>(),
             [key(&["p", "1"]), key(&["p", "2"])]
         );
-        pollster::block_on(kv.delete(&key(&["p", "1"]))).unwrap();
+        let stamped = pollster::block_on(kv.get(&key(&["p", "1"])))
+            .unwrap()
+            .unwrap();
+        let stale = Versionstamp("stale".to_owned());
+        assert!(!pollster::block_on(kv.delete_if(&key(&["p", "1"]), stale)).unwrap());
+        assert!(
+            pollster::block_on(kv.delete_if(&key(&["p", "1"]), stamped.versionstamp.clone()))
+                .unwrap()
+        );
+        assert!(
+            !pollster::block_on(kv.delete_if(&key(&["p", "1"]), stamped.versionstamp)).unwrap()
+        );
         assert_eq!(pollster::block_on(kv.get(&key(&["p", "1"]))).unwrap(), None);
         assert_eq!(pollster::block_on(kv.list(&key(&["p"]))).unwrap().len(), 1);
     }
