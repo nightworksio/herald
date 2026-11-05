@@ -8,7 +8,8 @@
 //! each source for what it has not seen and announces it (ADR-0003); and
 //! [`housekeep`] does each thread's chores as they fall due. [`verified`]
 //! lets an inbound request through only once its signature is its sender's
-//! (ADR-0007). [`doctor`]
+//! (ADR-0007), and [`answer`] answers every request `herald server` and the
+//! serverless drivers take, leaving its work to [`work`]. [`doctor`]
 //! names what a config asks for that cannot be served, and [`preview`]
 //! renders each route's templates as its destination would show them.
 
@@ -21,13 +22,19 @@ mod poll;
 mod prepare;
 mod preview;
 mod reached;
+mod serving;
+mod together;
 
 pub use announce::{Announced, Outcome, Ports, Stop, announce};
 pub use doctor::{Findings, Gap, doctor, keys, unserved};
 pub use following::{FollowError, Followed, followed};
 pub use housekeep::{Chored, Kept, housekeep};
-pub use inbound::{Rejected, Verified, activity_verified, admitted, released, verified};
+pub use inbound::{Keys, Rejected, Verified, activity_verified, admitted, released, verified};
 pub use poll::{Fresh, Remembered, Sweep, Swept, poll};
 pub use prepare::{Connected, PrepareError, Prepared, prepare};
 pub use preview::{Previewed, preview};
 pub use reached::{Posts, Reached};
+pub use serving::{
+    Answered, HEALTH, HOOKS, Inbound, Job, Reply, Serving, Webhooks, Worked, answer, unworked,
+    webhooks, work,
+};

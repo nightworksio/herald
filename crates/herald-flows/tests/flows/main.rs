@@ -32,4 +32,6 @@ mod poll;
 #[cfg(test)]
 mod preview;
 #[cfg(test)]
+mod serving;
+#[cfg(test)]
 mod slack;

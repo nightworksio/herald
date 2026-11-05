@@ -11,5 +11,6 @@ mod forges;
 mod housekeep;
 mod poll;
 mod secrets;
+mod server;
 mod stores;
 mod world;

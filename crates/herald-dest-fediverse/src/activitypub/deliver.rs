@@ -3,12 +3,15 @@ use herald_core::{
     MentionStyle, Pins, Profile, Sent, Step, Threads, signature_header, signing,
 };
 use herald_ports::{
-    Algorithm, Http, HttpError, Method, PUBLIC, Request, Response, Secret, Signer, Text, USER_AGENT,
+    Algorithm, CryptoError, Http, HttpError, Method, PUBLIC, Request, Response, Secret, Signer,
+    Text, USER_AGENT,
 };
 use jiff::{SignedDuration, Timestamp};
 use serde_json::Value;
 
-use super::documents::{accept, actor_id, create, key_id, note_id};
+use super::documents::{
+    accept, actor_document, actor_id, create, key_id, note, note_id, webfinger,
+};
 use super::options::ActorRouteOptions;
 
 /// The longest title, in characters.
@@ -131,6 +134,50 @@ impl ActivityPub {
             self.route.content_warning.as_deref(),
         );
         self.post(http, signer, now, inbox, &created).await
+    }
+
+    /// The domain the actor is served on.
+    #[must_use]
+    pub fn domain(&self) -> &str {
+        &self.domain
+    }
+
+    /// The actor's document, as herald serves it at its id, its public key
+    /// read from its private key through `signer`.
+    ///
+    /// # Errors
+    ///
+    /// When `signer` cannot read the public key.
+    pub async fn document<G: Signer>(&self, signer: &G) -> Result<String, CryptoError> {
+        let public = signer.public(Algorithm::RsaSha256, &self.key).await?;
+        Ok(actor_document(&self.domain, &self.route.actor, &public).to_string())
+    }
+
+    /// What WebFinger answers for the actor.
+    #[must_use]
+    pub fn finger(&self) -> String {
+        webfinger(&self.domain, &self.route.actor).to_string()
+    }
+
+    /// `announcement`'s Note, as herald serves it at its id.
+    #[must_use]
+    pub fn note(&self, announcement: &Announcement) -> String {
+        note(
+            &self.domain,
+            &self.route.actor,
+            announcement,
+            self.route.content_warning.as_deref(),
+        )
+        .to_string()
+    }
+
+    /// Whether `note`, kept as the Note of the announcement `key`, is this
+    /// actor's.
+    #[must_use]
+    pub fn owns(&self, note: &str, key: &str) -> bool {
+        let id = note_id(&self.domain, &self.route.actor, key);
+        serde_json::from_str::<Value>(note)
+            .is_ok_and(|note| note.get("id").and_then(Value::as_str) == Some(id.as_str()))
     }
 
     /// The `Accept` of `follow`, a `Follow` of this actor.

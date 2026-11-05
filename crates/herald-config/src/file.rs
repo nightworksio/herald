@@ -1,4 +1,5 @@
 use std::fmt;
+use std::num::NonZeroUsize;
 
 use herald_core::{Kind, Pinning, Prereleases, SecretRef};
 use jiff::SignedDuration;
@@ -65,6 +66,66 @@ impl serde::de::Visitor<'_> for DurationVisitor {
 impl<'de> Deserialize<'de> for Duration {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         deserializer.deserialize_str(DurationVisitor)
+    }
+}
+
+/// A number of bytes, as `512KiB` or `1MiB`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct Size(pub(crate) usize);
+
+impl JsonSchema for Size {
+    fn schema_name() -> std::borrow::Cow<'static, str> {
+        "Size".into()
+    }
+
+    fn json_schema(_: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        schemars::json_schema!({
+            "description": "A number of bytes: a number and KiB or MiB, as \"1MiB\".",
+            "type": "string",
+            "pattern": "^[0-9]+(KiB|MiB)$"
+        })
+    }
+}
+
+const KIB: usize = 1 << 10;
+const MIB: usize = 1 << 20;
+
+impl Size {
+    fn parse(text: &str) -> Option<Self> {
+        let (number, unit) = if let Some(number) = text.strip_suffix("KiB") {
+            (number, KIB)
+        } else {
+            (text.strip_suffix("MiB")?, MIB)
+        };
+        if !number.bytes().all(|byte| byte.is_ascii_digit()) {
+            return None;
+        }
+        number
+            .parse::<usize>()
+            .ok()?
+            .checked_mul(unit)
+            .filter(|bytes| *bytes > 0)
+            .map(Self)
+    }
+}
+
+struct SizeVisitor;
+
+impl serde::de::Visitor<'_> for SizeVisitor {
+    type Value = Size;
+
+    fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("a number of bytes such as \"512KiB\" or \"1MiB\"")
+    }
+
+    fn visit_str<E: serde::de::Error>(self, text: &str) -> Result<Size, E> {
+        Size::parse(text).ok_or_else(|| E::invalid_value(serde::de::Unexpected::Str(text), &self))
+    }
+}
+
+impl<'de> Deserialize<'de> for Size {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        deserializer.deserialize_str(SizeVisitor)
     }
 }
 
@@ -209,9 +270,83 @@ pub(crate) struct ScheduleFile {
     pub(crate) housekeep: Option<Duration>,
 }
 
+/// Where `herald server` keeps the keys inbound activities are checked with.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, JsonSchema)]
+#[serde(rename_all = "lowercase")]
+#[serde(rename = "KeyCache")]
+pub(crate) enum KeyCacheFile {
+    /// In memory, lost when the server stops.
+    Memory,
+    /// In the store, kept across restarts and shared by every instance.
+    Store,
+}
+
+/// `[server.keys]`: the keys inbound activities are checked with.
+#[derive(Debug, Default, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+#[serde(rename = "Keys")]
+pub(crate) struct KeysFile {
+    /// Where they are kept: "memory", the default, or "store".
+    #[schemars(with = "Option<KeyCacheFile>")]
+    pub(crate) cache: Option<Spanned<KeyCacheFile>>,
+    /// How long a key is used before its document is read again; 1h where
+    /// absent.
+    pub(crate) refresh_after: Option<Duration>,
+    /// The most kept in memory, the one used longest ago forgotten first;
+    /// 1024 where absent.
+    pub(crate) most: Option<NonZeroUsize>,
+}
+
+/// `[server]`: how `herald server` listens, and what it takes on at once.
+#[derive(Debug, Default, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+#[serde(rename = "Server")]
+pub(crate) struct ServerFile {
+    /// The address and port it listens on; `--listen` and `HERALD_LISTEN`
+    /// take its place. "127.0.0.1:8080" where absent, for a reverse proxy
+    /// in front of it.
+    #[schemars(with = "Option<String>")]
+    pub(crate) listen: Option<Spanned<String>>,
+    /// How many announcements it works on at once; a webhook arriving while
+    /// as many more wait is answered 503. 8 where absent.
+    pub(crate) jobs: Option<NonZeroUsize>,
+    /// How many connections it holds at once; 256 where absent.
+    pub(crate) connections: Option<NonZeroUsize>,
+    /// The most an inbound request's body may hold; "1MiB" where absent.
+    pub(crate) body: Option<Size>,
+    /// How many actor documents it reads at once; 4 where absent.
+    pub(crate) fetches: Option<NonZeroUsize>,
+    /// How many of an announcement's inboxes are delivered to at once, by
+    /// every command; 8 where absent.
+    pub(crate) deliveries: Option<NonZeroUsize>,
+    /// The keys inbound activities are checked with.
+    #[serde(default)]
+    pub(crate) keys: KeysFile,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_size_is_a_number_and_a_binary_unit() {
+        assert_eq!(Size::parse("512KiB"), Some(Size(512 * 1024)));
+        assert_eq!(Size::parse("1MiB"), Some(Size(1024 * 1024)));
+        for text in [
+            "",
+            "1",
+            "1KB",
+            "1kib",
+            "0MiB",
+            "+1MiB",
+            "-1MiB",
+            "1.5MiB",
+            "MiB",
+            "99999999999999999999MiB",
+        ] {
+            assert_eq!(Size::parse(text), None, "{text}");
+        }
+    }
 
     #[test]
     fn a_duration_is_a_number_and_a_unit() {

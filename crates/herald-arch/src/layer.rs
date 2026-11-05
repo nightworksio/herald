@@ -23,6 +23,8 @@ pub enum Layer {
     Flows,
     /// The ports implemented for native targets.
     Native,
+    /// The HTTP endpoint the native drivers serve.
+    Serving,
     /// The composition roots.
     Drivers,
     /// Development tooling, outside the order: it names no layer and no layer
@@ -42,8 +44,9 @@ impl Layer {
             "herald-config" => Some(Self::Config),
             "herald-flows" => Some(Self::Flows),
             "herald-native" => Some(Self::Native),
+            "herald-server" => Some(Self::Serving),
             "herald" | "herald-worker" | "herald-lambda" | "herald-vercel" | "herald-netlify"
-            | "herald-deno" | "herald-server" => Some(Self::Drivers),
+            | "herald-deno" => Some(Self::Drivers),
             "herald-arch" => Some(Self::Tooling),
             _ if name.starts_with("herald-sources-") => Some(Self::Sources),
             _ if name.starts_with("herald-dest-") => Some(Self::Destinations),
@@ -55,7 +58,10 @@ impl Layer {
     /// Whether the layer may hold an async runtime and real I/O.
     #[must_use]
     pub fn does_io(self) -> bool {
-        matches!(self, Self::Native | Self::Drivers | Self::Tooling)
+        matches!(
+            self,
+            Self::Native | Self::Serving | Self::Drivers | Self::Tooling
+        )
     }
 
     /// Whether the layer may name an outside crate directly.
@@ -93,7 +99,12 @@ mod tests {
 
     #[test]
     fn an_io_layer_names_outside_crates_without_a_list() {
-        for layer in [Layer::Native, Layer::Drivers, Layer::Tooling] {
+        for layer in [
+            Layer::Native,
+            Layer::Serving,
+            Layer::Drivers,
+            Layer::Tooling,
+        ] {
             assert!(outside_allowed(layer).is_empty(), "{layer:?}");
         }
     }
@@ -119,7 +130,7 @@ mod tests {
             ("herald-vercel", Layer::Drivers),
             ("herald-netlify", Layer::Drivers),
             ("herald-deno", Layer::Drivers),
-            ("herald-server", Layer::Drivers),
+            ("herald-server", Layer::Serving),
             ("herald-arch", Layer::Tooling),
         ];
         for (name, layer) in cases {
@@ -134,7 +145,7 @@ mod tests {
     }
 
     #[test]
-    fn only_native_drivers_and_tooling_do_io() {
+    fn only_native_serving_drivers_and_tooling_do_io() {
         let io: Vec<Layer> = [
             Layer::Core,
             Layer::Ports,
@@ -146,13 +157,23 @@ mod tests {
             Layer::Config,
             Layer::Flows,
             Layer::Native,
+            Layer::Serving,
             Layer::Drivers,
             Layer::Tooling,
         ]
         .into_iter()
         .filter(|layer| layer.does_io())
         .collect();
-        assert_eq!(io, [Layer::Native, Layer::Drivers, Layer::Tooling]);
+        assert_eq!(
+            io,
+            [
+                Layer::Native,
+                Layer::Serving,
+                Layer::Drivers,
+                Layer::Tooling
+            ]
+        );
+        assert!(Layer::Native < Layer::Serving && Layer::Serving < Layer::Drivers);
     }
 
     #[test]
@@ -182,9 +203,15 @@ mod tests {
     #[test]
     fn the_io_layers_name_any_outside_crate() {
         assert!(Layer::Native.allows_outside("tokio"));
+        assert!(Layer::Serving.allows_outside("hyper"));
         assert!(Layer::Drivers.allows_outside("axum"));
         assert!(Layer::Tooling.allows_outside("cargo_metadata"));
-        for layer in [Layer::Native, Layer::Drivers, Layer::Tooling] {
+        for layer in [
+            Layer::Native,
+            Layer::Serving,
+            Layer::Drivers,
+            Layer::Tooling,
+        ] {
             assert_eq!(outside_allowed(layer), [] as [&str; 0]);
         }
     }

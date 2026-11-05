@@ -18,7 +18,7 @@ no separate requirements document, and there are no requirement IDs.
 
 | # | Decision | Status |
 |---|----------|--------|
-| [0001](0001-a-sans-io-core-behind-ports.md) | A sans-IO core behind ports, in crates that each name only those before them | Accepted |
+| [0001](0001-a-sans-io-core-behind-ports.md) | A sans-IO core behind ports, in crates that each name only those before them | Accepted; superseded in part by [0014](0014-herald-server-answers-first-and-works-after-on-one-task-within-limits.md) |
 | [0002](0002-three-layers-of-support-and-a-doctor-that-names-the-gaps.md) | Three layers of support, each a superset of the one before, and a doctor that names what a layer cannot serve | Accepted |
 | [0003](0003-every-source-becomes-one-neutral-event.md) | Every source becomes one neutral event, parsed without I/O | Accepted |
 | [0004](0004-each-destination-gets-its-own-dialect-limits-and-features.md) | Each destination gets its own dialect, limits and features, described as data | Accepted; superseded in part by [0011](0011-markers-count-only-on-herald-s-own-posts-a-route-keeps-one-pin-and-a-lock-archives.md) |
@@ -31,3 +31,4 @@ no separate requirements document, and there are no requirement IDs.
 | [0011](0011-markers-count-only-on-herald-s-own-posts-a-route-keeps-one-pin-and-a-lock-archives.md) | Markers count only on herald's own posts, a route keeps one pin, and a lock archives | Accepted |
 | [0012](0012-a-release-is-drafted-by-the-bot-signed-by-the-maintainer-and-published-after-the-full-gate.md) | A release is drafted by the bot, signed by the maintainer, and published after the full gate | Accepted |
 | [0013](0013-a-webhook-delivery-is-admitted-once-released-when-it-fails-and-kept-for-a-week.md) | A webhook delivery is admitted once, released when it fails, and kept for a week | Accepted |
+| [0014](0014-herald-server-answers-first-and-works-after-on-one-task-within-limits.md) | herald server answers first and works after, on one task, within limits | Accepted |

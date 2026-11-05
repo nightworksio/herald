@@ -13,5 +13,5 @@ mod gitlab;
 mod options;
 mod wire;
 
-pub use forge::{Forge, Origin, Repository, Token};
+pub use forge::{Forge, Hooked, Origin, Repository, Token};
 pub use options::SourceOptions;

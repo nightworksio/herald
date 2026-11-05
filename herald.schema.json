@@ -47,6 +47,17 @@
         }
       ]
     },
+    "server": {
+      "description": "How `herald server` listens, and what it takes on at once.",
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Server"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
     "sources": {
       "description": "What herald listens to, by name.",
       "type": "object",
@@ -465,6 +476,59 @@
       "type": "string",
       "pattern": "^[0-9]+[mhdw]$"
     },
+    "KeyCache": {
+      "description": "Where `herald server` keeps the keys inbound activities are checked with.",
+      "oneOf": [
+        {
+          "description": "In memory, lost when the server stops.",
+          "type": "string",
+          "const": "memory"
+        },
+        {
+          "description": "In the store, kept across restarts and shared by every instance.",
+          "type": "string",
+          "const": "store"
+        }
+      ]
+    },
+    "Keys": {
+      "description": "`[server.keys]`: the keys inbound activities are checked with.",
+      "type": "object",
+      "properties": {
+        "cache": {
+          "description": "Where they are kept: \"memory\", the default, or \"store\".",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/KeyCache"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "most": {
+          "description": "The most kept in memory, the one used longest ago forgotten first;\n1024 where absent.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint",
+          "minimum": 1
+        },
+        "refresh_after": {
+          "description": "How long a key is used before its document is read again; 1h where\nabsent.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Duration"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
     "Kind": {
       "description": "What kind of thing an event announces.",
       "oneOf": [
@@ -823,6 +887,76 @@
         "secret"
       ]
     },
+    "Server": {
+      "description": "`[server]`: how `herald server` listens, and what it takes on at once.",
+      "type": "object",
+      "properties": {
+        "body": {
+          "description": "The most an inbound request's body may hold; \"1MiB\" where absent.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Size"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "connections": {
+          "description": "How many connections it holds at once; 256 where absent.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint",
+          "minimum": 1
+        },
+        "deliveries": {
+          "description": "How many of an announcement's inboxes are delivered to at once, by\nevery command; 8 where absent.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint",
+          "minimum": 1
+        },
+        "fetches": {
+          "description": "How many actor documents it reads at once; 4 where absent.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint",
+          "minimum": 1
+        },
+        "jobs": {
+          "description": "How many announcements it works on at once; a webhook arriving while\nas many more wait is answered 503. 8 where absent.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint",
+          "minimum": 1
+        },
+        "keys": {
+          "description": "The keys inbound activities are checked with.",
+          "$ref": "#/$defs/Keys"
+        },
+        "listen": {
+          "description": "The address and port it listens on; `--listen` and `HERALD_LISTEN`\ntake its place. \"127.0.0.1:8080\" where absent, for a reverse proxy\nin front of it.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "Size": {
+      "description": "A number of bytes: a number and KiB or MiB, as \"1MiB\".",
+      "type": "string",
+      "pattern": "^[0-9]+(KiB|MiB)$"
+    },
     "SlackRoute": {
       "description": "A route to a Slack destination.",
       "type": "object",
@@ -951,6 +1085,17 @@
                   "type": "null"
                 }
               ]
+            },
+            "webhook": {
+              "description": "The secret the forge signs its webhook deliveries to `herald server`\nwith: GitHub's and Forgejo's webhook secret, or GitLab's signing\ntoken (ADR-0007).",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/SecretRef"
+                },
+                {
+                  "type": "null"
+                }
+              ]
             }
           },
           "additionalProperties": false,
@@ -995,6 +1140,17 @@
                   "type": "null"
                 }
               ]
+            },
+            "webhook": {
+              "description": "The secret the forge signs its webhook deliveries to `herald server`\nwith: GitHub's and Forgejo's webhook secret, or GitLab's signing\ntoken (ADR-0007).",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/SecretRef"
+                },
+                {
+                  "type": "null"
+                }
+              ]
             }
           },
           "additionalProperties": false,
@@ -1031,6 +1187,17 @@
             },
             "token": {
               "description": "A token that reaches a private repository or raises the API's rate\nlimit, such as the run's `GITHUB_TOKEN`.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/SecretRef"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "webhook": {
+              "description": "The secret the forge signs its webhook deliveries to `herald server`\nwith: GitHub's and Forgejo's webhook secret, or GitLab's signing\ntoken (ADR-0007).",
               "anyOf": [
                 {
                   "$ref": "#/$defs/SecretRef"

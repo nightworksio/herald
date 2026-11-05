@@ -35,6 +35,20 @@ pub(crate) struct Api {
     pub(crate) release: &'static str,
 }
 
+/// Why a webhook delivery of another event announces nothing.
+const OTHER_EVENT: &str = "the delivery is not of a release";
+/// Why a webhook delivery of an unpublished release announces nothing.
+const UNPUBLISHED: &str = "the release is not published, or is a draft";
+
+/// What a webhook delivery asks herald to announce.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Hooked {
+    /// The release it publishes.
+    Release(Event),
+    /// Nothing, and why.
+    Nothing(&'static str),
+}
+
 /// A repository, as its forge names it: its numeric id outlives a rename.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 pub struct Repository {
@@ -82,6 +96,48 @@ impl Forge {
             Self::GitLab => &gitlab::API,
             Self::Forgejo => &forgejo::API,
         }
+    }
+
+    /// What a webhook delivery with `headers` and `payload` asks herald to
+    /// announce for the source of `repository`: the release it publishes,
+    /// or nothing where it is of another event, or of an unpublished
+    /// release or a draft.
+    ///
+    /// # Errors
+    ///
+    /// When the payload is too large, is not the release event its headers
+    /// name, makes no event, or is of another repository than `repository`.
+    pub fn hooked(
+        self,
+        headers: &[(&str, &str)],
+        payload: &[u8],
+        repository: &str,
+    ) -> Result<Hooked, SourceError> {
+        let (names, release): (&[&str], &str) = match self {
+            Self::GitHub => (&["x-github-event"], "release"),
+            Self::Forgejo => (&["x-forgejo-event", "x-gitea-event"], "release"),
+            Self::GitLab => (&["x-gitlab-event"], "Release Hook"),
+        };
+        let kind = headers
+            .iter()
+            .find(|(name, _)| names.iter().any(|header| name.eq_ignore_ascii_case(header)))
+            .map(|(_, value)| *value);
+        if kind != Some(release) {
+            return Ok(Hooked::Nothing(OTHER_EVENT));
+        }
+        let event = self.event(payload)?;
+        let what = self.api().event;
+        let path = match self {
+            Self::GitHub | Self::Forgejo => github::path(what, payload),
+            Self::GitLab => gitlab::path(what, payload),
+        };
+        if !path.is_some_and(|path| path.eq_ignore_ascii_case(repository)) {
+            return Err(SourceError::Unreadable {
+                what,
+                reason: format!("it is not of {repository}, the repository its source names"),
+            });
+        }
+        Ok(event.map_or(Hooked::Nothing(UNPUBLISHED), Hooked::Release))
     }
 
     /// The event a release event's payload announces, as a webhook or as

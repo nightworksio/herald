@@ -48,9 +48,12 @@ pub(crate) fn follower(actor: &str, follower: &str, inbox: Option<&str>) -> Subs
 }
 
 fn announced(store: &Failing, script: &Script) -> Outcome {
-    let config = activitypub();
+    announced_with(&activitypub(), store, script)
+}
+
+fn announced_with(config: &Config, store: &Failing, script: &Script) -> Outcome {
     let secrets = FakeSecrets::default().with("HERALD_ACTIVITYPUB_KEY", "the-key");
-    let prepared = pollster::block_on(prepare(&config, &secrets, &FakeSigner)).unwrap();
+    let prepared = pollster::block_on(prepare(config, &secrets, &FakeSigner)).unwrap();
     let connected = prepared.connect(|_| Ok::<_, ()>(script.clone())).unwrap();
     let ports = Ports {
         store,
@@ -58,7 +61,7 @@ fn announced(store: &Failing, script: &Script) -> Outcome {
         signer: &FakeSigner,
     };
     let announced = pollster::block_on(announce(
-        &config,
+        config,
         &connected,
         &ports,
         &SourceName::new("gate"),
@@ -247,4 +250,141 @@ fn doctor_checks_each_actor_s_key_where_it_is_set_and_says_where_it_is_not() {
         found(&config(""), &FakeSecrets::default()),
         Findings::default()
     );
+}
+
+const CY: &str = "https://other.example/users/cy/inbox";
+const SOCIAL: &str = "https://social.example/inbox";
+const THIRD: &str = "https://third.example/inbox";
+
+fn followed_at(store: &Failing, inboxes: &[&str]) {
+    for (index, inbox) in inboxes.iter().enumerate() {
+        let follower = format!("https://f{index}.example/users/f");
+        pollster::block_on(store.subscribe(&self::follower(
+            "php-mutation-gate",
+            &follower,
+            Some(inbox),
+        )))
+        .unwrap();
+    }
+}
+
+fn deliver(inbox: &str) -> Step {
+    Step::Deliver(inbox.to_owned())
+}
+
+#[test]
+fn the_note_an_announcement_is_published_as_is_kept_to_be_served_by_its_id() {
+    let store = healthy();
+    let script = Script::default();
+    assert_eq!(
+        announced(&store, &script),
+        Outcome::Sent {
+            steps: vec![Step::Post]
+        }
+    );
+    let key = Key::derive(&RouteId::new("followed"), event("v1").identity());
+    let note: serde_json::Value =
+        serde_json::from_str(&pollster::block_on(store.inner.note(&key)).unwrap().unwrap())
+            .unwrap();
+    assert_eq!(note["type"], "Note");
+    assert_eq!(
+        note["id"],
+        format!("https://herald.example/users/php-mutation-gate/notes/{key}")
+    );
+}
+
+#[test]
+fn a_note_that_cannot_be_kept_stops_the_announcement_before_its_post_lands() {
+    let mut store = healthy();
+    store.fault = Fault::KeepsNotes;
+    let Outcome::Stopped {
+        landed,
+        remaining,
+        reason,
+    } = announced(&store, &Script::default())
+    else {
+        panic!("the announcement stops");
+    };
+    assert_eq!(landed, Vec::<Step>::new());
+    assert_eq!(remaining, vec![Step::Post]);
+    assert_eq!(
+        reason,
+        herald_flows::Stop::Store("the store could not be reached: broken".to_owned())
+    );
+}
+
+#[test]
+fn every_inbox_is_delivered_to_at_once_and_only_those_that_failed_remain() {
+    let store = healthy();
+    followed_at(&store, &[CY, SOCIAL, THIRD]);
+    let script = Script::answering(&[(CY, 500, ""), (SOCIAL, 202, ""), (THIRD, 403, "")]);
+    assert_eq!(
+        announced(&store, &script),
+        Outcome::Stopped {
+            landed: vec![Step::Post, deliver(SOCIAL)],
+            remaining: vec![deliver(CY), deliver(THIRD)],
+            reason: herald_flows::Stop::RetryAfter(jiff::SignedDuration::from_secs(5)),
+        }
+    );
+    assert_eq!(script.seen().len(), 3);
+    let again = Script::answering(&[(CY, 202, ""), (THIRD, 202, "")]);
+    assert_eq!(
+        announced(&store, &again),
+        Outcome::Sent {
+            steps: vec![deliver(CY), deliver(THIRD)]
+        }
+    );
+}
+
+#[test]
+fn deliveries_go_out_as_many_at_once_as_the_server_table_allows() {
+    let config = load(
+        "herald.toml",
+        &format!("{}\n[server]\ndeliveries = 1\n", toml_text()),
+        &|_| Err(String::new()),
+    )
+    .unwrap();
+    let store = healthy();
+    followed_at(&store, &[CY, SOCIAL]);
+    let script = Script::answering(&[(CY, 403, "")]);
+    let Outcome::Stopped {
+        landed, remaining, ..
+    } = announced_with(&config, &store, &script)
+    else {
+        panic!("the announcement stops");
+    };
+    assert_eq!(landed, vec![Step::Post]);
+    assert_eq!(remaining, vec![deliver(CY), deliver(SOCIAL)]);
+    assert_eq!(script.seen().len(), 1);
+}
+
+#[test]
+fn a_delivery_that_reaches_no_inbox_stops_as_unreachable() {
+    let store = healthy();
+    followed_at(&store, &[CY]);
+    let Outcome::Stopped { reason, .. } = announced(&store, &Script::default()) else {
+        panic!("the announcement stops");
+    };
+    assert!(matches!(reason, herald_flows::Stop::Unreachable(_)));
+}
+
+#[test]
+fn deliveries_the_ledger_cannot_record_stop_with_every_one_of_them_remaining() {
+    for fault in [Fault::AttemptsDeliveries, Fault::LandsDeliveries] {
+        let mut store = healthy();
+        store.fault = fault;
+        followed_at(&store, &[CY, SOCIAL]);
+        let script = Script::answering(&[(CY, 202, ""), (SOCIAL, 202, "")]);
+        let Outcome::Stopped {
+            landed,
+            remaining,
+            reason,
+        } = announced(&store, &script)
+        else {
+            panic!("the announcement stops");
+        };
+        assert_eq!(landed, vec![Step::Post], "{fault:?}");
+        assert_eq!(remaining, vec![deliver(CY), deliver(SOCIAL)], "{fault:?}");
+        assert!(matches!(reason, herald_flows::Stop::Store(_)), "{fault:?}");
+    }
 }

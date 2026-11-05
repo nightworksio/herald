@@ -1,7 +1,7 @@
 //! What herald's tests share: a fake of every port, the `Http` that replays
 //! recorded fixtures and the recorder that makes them, the sample every
-//! destination's fixtures announce, and the conformance suite every store
-//! passes (ADR-0008).
+//! destination's fixtures announce, and the conformance suites every store
+//! and every keyring pass (ADR-0008).
 //!
 //! It is a dev-dependency only.
 
@@ -27,7 +27,7 @@ use std::sync::{Mutex, MutexGuard, PoisonError};
 
 pub use audit::{credentials, secret_header};
 pub use clock::FakeClock;
-pub use conformance::{Failure, store_conformance};
+pub use conformance::{Failure, keyring_conformance, store_conformance};
 pub use crypto::{FakeSigner, FakeVerifier};
 pub use fixture::{Answer, Exchange, Fixture, Recorded, Recorder, Replay};
 pub use kv::FakeKv;

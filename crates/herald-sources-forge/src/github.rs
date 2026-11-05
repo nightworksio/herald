@@ -70,6 +70,25 @@ pub(crate) fn published(
     Ok((payload.action == "published").then(|| (payload.repository, payload.release.into())))
 }
 
+/// A repository as a webhook payload names it in full.
+#[derive(Deserialize)]
+struct Named {
+    full_name: String,
+}
+
+/// What a webhook payload is of.
+#[derive(Deserialize)]
+struct Located {
+    repository: Named,
+}
+
+/// The full path of the repository a webhook `payload` is of.
+pub(crate) fn path(what: &'static str, payload: &[u8]) -> Option<String> {
+    read::<Located>(what, payload)
+        .ok()
+        .map(|located| located.repository.full_name)
+}
+
 pub(crate) fn found(what: &'static str, body: &[u8]) -> Result<Found, SourceError> {
     read::<Release>(what, body).map(Found::from)
 }

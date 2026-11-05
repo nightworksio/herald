@@ -1,9 +1,11 @@
 //! herald's CLI (ADR-0009): `herald announce --from github`, `--from gitlab`
 //! or `--from forgejo` in a forge's CI, `herald poll` and `herald housekeep`
-//! on a schedule, and `herald doctor` anywhere.
+//! on a schedule, `herald server` as a long-running endpoint, and `herald
+//! doctor` anywhere.
 //!
-//! [`run`] is the whole CLI, handed its arguments, its environment and the
-//! way to reach each base URL, so it runs the same under test as on a runner.
+//! [`run_until`] is the whole CLI, handed its arguments, its environment, the
+//! way to reach each base URL and what stops a server, so it runs the same
+//! under test as on a runner.
 
 use std::collections::BTreeMap;
 use std::convert::Infallible;
@@ -15,7 +17,7 @@ use std::sync::{Arc, Mutex, PoisonError};
 
 use clap::{Parser, Subcommand, ValueEnum};
 use herald_config::{Config, Source, load, samples};
-use herald_core::{Chore, Event, Kind, RouteId, Schedule, SourceName, Step};
+use herald_core::{Event, Kind, RouteId, SourceName};
 use herald_flows::{
     Announced, Chored, Connected, Findings, Gap, Kept, Outcome, Ports, Remembered, Stop, Sweep,
     Swept, announce, doctor, housekeep, keys, poll, prepare, preview,
@@ -23,15 +25,17 @@ use herald_flows::{
 use herald_native::{
     ConnectError, EnvSecrets, NativeHttp, PublicHttp, RingSigner, SystemClock, random_secret,
 };
-use herald_ports::{Http, HttpError, PUBLIC, Request, Response, Secrets, Store as Keeps};
+use herald_ports::{Http, HttpError, Keyring, PUBLIC, Request, Response, Secrets, Store as Keeps};
 use herald_records::Memory;
 use herald_sources_forge::{Forge, Origin, Repository, SourceOptions, Token};
 
 mod output;
+mod serving;
 mod stores;
 
-use output::{Scrubbing, hidden, masked, say, warned};
-use stores::{Records, STORES, reached};
+use output::{Scrubbing, chored, hidden, masked, polled, report, say, warned, why};
+use serving::serving;
+use stores::{Records, SERVED, STORES, reached};
 
 /// Every route announced, already announced, or held by another run; every
 /// source polled and its cursor moved on; or every chore that fell due done
@@ -53,6 +57,8 @@ const RESULTS: &str = "ACTIONS_RESULTS_URL";
 const RUNTIME_TOKEN: &str = "ACTIONS_RUNTIME_TOKEN";
 /// A GitLab CI job's own token.
 const JOB_TOKEN: &str = "CI_JOB_TOKEN";
+/// Where `herald server` listens, in place of the config's.
+const LISTEN: &str = "HERALD_LISTEN";
 /// The fewest characters of a value scrubbed from output: a shorter one
 /// would rewrite ordinary words, and is no credential.
 const SCRUBBED: usize = 8;
@@ -160,6 +166,8 @@ enum Reading {
 enum Layer {
     /// The CLI, on GitHub Actions or anywhere else.
     Actions,
+    /// `herald server`, in a container or on any host.
+    Server,
 }
 
 impl Layer {
@@ -167,6 +175,7 @@ impl Layer {
     fn stores(self) -> &'static [&'static str] {
         match self {
             Self::Actions => &STORES,
+            Self::Server => &SERVED,
         }
     }
 }
@@ -192,6 +201,14 @@ enum Serve {
     Poll,
     /// Archive and lock every announcement thread whose time has come.
     Housekeep,
+    /// Serve forge webhooks and herald's ActivityPub actors over HTTP, and
+    /// poll and keep house on the config's schedule, until stopped.
+    Server {
+        /// The address and port to listen on, in place of `HERALD_LISTEN`
+        /// and the config's.
+        #[arg(long)]
+        listen: Option<String>,
+    },
 }
 
 #[derive(Debug, Clone, Copy, ValueEnum)]
@@ -243,13 +260,27 @@ impl Ci {
 
 /// The CLI, run with `args`, in an environment of `vars`, reaching each base
 /// URL through what `connect` makes for it, and writing to `out` and `err`.
-/// It answers the process's exit code.
-pub async fn run(
+/// It answers the process's exit code. A server it runs runs until `stop`
+/// completes.
+pub async fn run_until(
     args: &[String],
     vars: &BTreeMap<String, String>,
     connect: Connect<'_>,
     out: &mut dyn Write,
     err: &mut dyn Write,
+    stop: impl Future<Output = ()>,
+) -> u8 {
+    stopping(args, vars, connect, out, err, Box::pin(stop)).await
+}
+
+/// [`run_until`] with `stop` boxed, so one CLI serves whatever stops it.
+async fn stopping(
+    args: &[String],
+    vars: &BTreeMap<String, String>,
+    connect: Connect<'_>,
+    out: &mut dyn Write,
+    err: &mut dyn Write,
+    stop: Pin<Box<dyn Future<Output = ()> + '_>>,
 ) -> u8 {
     let cli = match Cli::try_parse_from(args) {
         Ok(cli) => cli,
@@ -292,7 +323,11 @@ pub async fn run(
     masked(&hidden, vars, out);
     let out = &mut Scrubbing::new(out, &hidden);
     let err = &mut Scrubbing::new(err, &hidden);
-    warned(&doctor(&config, Layer::Actions.stores()).gaps, vars, out);
+    let layer = match serve {
+        Serve::Server { .. } => Layer::Server,
+        _ => Layer::Actions,
+    };
+    warned(&doctor(&config, layer.stores()).gaps, vars, out);
     let ran = match serve {
         Serve::Announce {
             from,
@@ -308,6 +343,9 @@ pub async fn run(
         }
         Serve::Poll => polling(&config, vars, connect, out).await,
         Serve::Housekeep => housekeeping(&config, vars, connect, out).await,
+        Serve::Server { listen } => {
+            serving(&config, vars, connect, listen.as_deref(), out, stop).await
+        }
     };
     let code = ran.unwrap_or_else(|message| {
         say(err, &message);
@@ -316,6 +354,17 @@ pub async fn run(
     let _ = out.flush();
     let _ = err.flush();
     code
+}
+
+/// [`run_until`], with a server it runs running until the process ends.
+pub async fn run(
+    args: &[String],
+    vars: &BTreeMap<String, String>,
+    connect: Connect<'_>,
+    out: &mut dyn Write,
+    err: &mut dyn Write,
+) -> u8 {
+    run_until(args, vars, connect, out, err, std::future::pending()).await
 }
 
 fn read(path: &str) -> Result<Config, String> {
@@ -453,7 +502,7 @@ async fn announcing_from(
         event: &event,
         run: &run,
     };
-    let announced = records.serve(&connected, &announcing).await;
+    let announced = records.serve(&connected, announcing).await;
     if asked.dry_run {
         say(
             out,
@@ -697,7 +746,7 @@ trait Served {
     type Done;
 
     /// The work done over `store`.
-    fn over<S: Keeps>(&self, store: &S) -> impl Future<Output = Self::Done>;
+    fn over<S: Keeps + Keyring>(self, store: &S) -> impl Future<Output = Self::Done>;
 }
 
 /// An event, and the routes and sources it is announced through.
@@ -712,7 +761,7 @@ struct Announcing<'a> {
 impl Served for Announcing<'_> {
     type Done = Vec<Announced>;
 
-    async fn over<S: Keeps>(&self, store: &S) -> Vec<Announced> {
+    async fn over<S: Keeps + Keyring>(self, store: &S) -> Vec<Announced> {
         let ports = Ports {
             store,
             clock: &SystemClock,
@@ -746,7 +795,7 @@ struct Polling<'a> {
 impl Served for Polling<'_> {
     type Done = Vec<Swept>;
 
-    async fn over<S: Keeps>(&self, store: &S) -> Vec<Swept> {
+    async fn over<S: Keeps + Keyring>(self, store: &S) -> Vec<Swept> {
         let ports = Ports {
             store,
             clock: &SystemClock,
@@ -764,7 +813,7 @@ struct Housekeeping<'a> {
 impl Served for Housekeeping<'_> {
     type Done = Result<Vec<Kept>, Stop>;
 
-    async fn over<S: Keeps>(&self, store: &S) -> Self::Done {
+    async fn over<S: Keeps + Keyring>(self, store: &S) -> Self::Done {
         housekeep(self.connected, store, &SystemClock).await
     }
 }
@@ -794,7 +843,7 @@ async fn polling(
         connected: &connected,
         run: &run,
     };
-    let swept = records.serve(&connected, &polling).await;
+    let swept = records.serve(&connected, polling).await;
     if swept.is_empty() {
         say(out, "The config names no source to poll.");
     }
@@ -815,51 +864,6 @@ async fn polling(
     Ok(code)
 }
 
-fn polled(swept: &Swept) -> Vec<String> {
-    let source = swept.source.as_str();
-    match &swept.outcome {
-        Sweep::Unchanged => vec![format!("{source}: unchanged since the last poll")],
-        Sweep::Stopped(stop) => vec![format!(
-            "{source}: stopped: {}. The next poll asks again.",
-            why(stop)
-        )],
-        Sweep::Polled {
-            first,
-            found,
-            announced,
-            cursor,
-        } => {
-            let new = announced.len();
-            let head = if *first {
-                format!("{source}: first poll found {found}; {new} announced, as backfill asks")
-            } else {
-                format!("{source}: {found} found, {new} new")
-            };
-            let tail = match cursor {
-                Remembered::Advanced => String::new(),
-                Remembered::Kept => {
-                    "; a route stopped, so the next poll offers them again".to_owned()
-                }
-                Remembered::Failed(stop) => format!(
-                    "; the cursor stays where it was: {}. The next poll offers them again",
-                    why(stop)
-                ),
-            };
-            let mut lines = vec![format!("{head}{tail}")];
-            for fresh in announced {
-                let event = fresh.event.version().unwrap_or(fresh.event.title());
-                lines.extend(
-                    fresh
-                        .announced
-                        .iter()
-                        .map(|announced| format!("{source} {event}: {}", report(announced))),
-                );
-            }
-            lines
-        }
-    }
-}
-
 async fn housekeeping(
     config: &Config,
     vars: &BTreeMap<String, String>,
@@ -871,7 +875,7 @@ async fn housekeeping(
         connected: &connected,
     };
     let kept = records
-        .serve(&connected, &housekeeping)
+        .serve(&connected, housekeeping)
         .await
         .map_err(|stop| why(&stop))?;
     if kept.is_empty() {
@@ -885,89 +889,6 @@ async fn housekeeping(
         say(out, &chored(kept));
     }
     Ok(code)
-}
-
-fn chored(kept: &Kept) -> String {
-    let Schedule {
-        route,
-        thread,
-        chore,
-        ..
-    } = &kept.schedule;
-    let route = route.as_str();
-    let done = match chore {
-        Chore::Archive => "archived",
-        Chore::Lock => "locked",
-    };
-    match &kept.outcome {
-        Chored::Done => format!("{route}: thread {thread} {done}"),
-        Chored::Dropped(reason) => {
-            format!("{route}: thread {thread} not {done}, and not tried again: {reason}")
-        }
-        Chored::Later(stop) => format!(
-            "{route}: thread {thread} not {done} yet: {}. The next run tries again.",
-            why(stop)
-        ),
-    }
-}
-
-fn why(reason: &Stop) -> String {
-    match reason {
-        Stop::RetryAfter(after) => format!("the destination asked to wait {after:#}"),
-        Stop::Refused(reason)
-        | Stop::Unreachable(reason)
-        | Stop::Store(reason)
-        | Stop::Template(reason)
-        | Stop::Marker(reason)
-        | Stop::Source(reason) => reason.clone(),
-    }
-}
-
-fn step(step: &Step) -> String {
-    match step {
-        Step::Post => "post".to_owned(),
-        Step::Crosspost => "crosspost".to_owned(),
-        Step::OpenThread => "thread".to_owned(),
-        Step::Chunk(index) => format!("chunk {index}"),
-        Step::Pin => "pin".to_owned(),
-        Step::Unpin => "unpin".to_owned(),
-        Step::Deliver(inbox) => format!("delivery to {inbox}"),
-    }
-}
-
-fn steps(steps: &[Step]) -> String {
-    steps.iter().map(step).collect::<Vec<_>>().join(", ")
-}
-
-fn report(announced: &Announced) -> String {
-    let route = announced.route.as_str();
-    match &announced.outcome {
-        Outcome::Sent { steps: sent } => format!("{route}: announced ({})", steps(sent)),
-        Outcome::AlreadyAnnounced => format!("{route}: already announced; nothing sent"),
-        Outcome::Held { by, until } => {
-            format!("{route}: run {by} holds it until {until}; nothing sent by this run")
-        }
-        Outcome::Stopped {
-            landed,
-            remaining,
-            reason,
-        } => {
-            format!(
-                "{route}: stopped: {}. Landed: {}. The next run sends what remains: {}.",
-                why(reason),
-                if landed.is_empty() {
-                    "nothing".to_owned()
-                } else {
-                    steps(landed)
-                },
-                if remaining.is_empty() {
-                    "nothing".to_owned()
-                } else {
-                    steps(remaining)
-                },
-            )
-        }
-    }
 }
 
 #[cfg(test)]

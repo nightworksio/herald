@@ -43,7 +43,7 @@ impl Records<'_> {
     pub(crate) async fn serve<W: Served>(
         &self,
         connected: &Connected<Connection>,
-        work: &W,
+        work: W,
     ) -> W::Done {
         match self {
             Self::Branch(store) => work.over(store).await,
@@ -56,6 +56,16 @@ impl Records<'_> {
         }
     }
 }
+
+/// The store kinds `herald server` keeps records in: every kind but the
+/// Actions cache, which only a workflow run reaches.
+pub(crate) const SERVED: [&str; 5] = [
+    Store::SQLITE,
+    Store::POSTGRES,
+    Store::GIT_BRANCH,
+    Store::MARKERS,
+    Store::REPO_VARIABLES,
+];
 
 /// The store kinds this herald keeps records in.
 pub(crate) const STORES: [&str; 6] = [

@@ -4,7 +4,7 @@
 mod github {
     use herald_core::{Cursor, Kind, Polled, Problem, prerelease_version};
     use herald_ports::{Response, Secret};
-    use herald_sources_forge::{Forge, Origin, Repository, SourceOptions, Token};
+    use herald_sources_forge::{Forge, Hooked, Origin, Repository, SourceOptions, Token};
     use herald_wire::SourceError;
     use proptest::prelude::*;
     use serde_json::{Value, json};
@@ -46,6 +46,56 @@ mod github {
                 ..SourceOptions::default()
             },
         )
+    }
+
+    const RELEASE: (&str, &str) = ("X-GitHub-Event", "release");
+
+    #[test]
+    fn a_webhook_of_the_source_s_published_release_announces_it() {
+        let hooked = Forge::GitHub.hooked(&[RELEASE], EVENT.as_bytes(), "CLI/cli");
+        assert_eq!(
+            hooked,
+            Ok(Hooked::Release(
+                Forge::GitHub.event(EVENT.as_bytes()).unwrap().unwrap()
+            ))
+        );
+    }
+
+    #[test]
+    fn a_webhook_of_another_event_or_an_unpublished_release_announces_nothing() {
+        for headers in [&[("X-GitHub-Event", "ping")][..], &[]] {
+            assert_eq!(
+                Forge::GitHub.hooked(headers, b"{\"zen\":\"x\"}", "cli/cli"),
+                Ok(Hooked::Nothing("the delivery is not of a release"))
+            );
+        }
+        let created = edited(|payload| payload["action"] = json!("created"));
+        assert_eq!(
+            Forge::GitHub.hooked(&[RELEASE], &created, "cli/cli"),
+            Ok(Hooked::Nothing(
+                "the release is not published, or is a draft"
+            ))
+        );
+    }
+
+    #[test]
+    fn a_webhook_of_another_repository_or_of_no_release_is_refused() {
+        let elsewhere = Forge::GitHub.hooked(&[RELEASE], EVENT.as_bytes(), "other/repo");
+        assert_eq!(
+            elsewhere.unwrap_err().to_string(),
+            SourceError::Unreadable {
+                what: "GitHub's release event",
+                reason: "it is not of other/repo, the repository its source names".to_owned(),
+            }
+            .to_string()
+        );
+        let unnamed = edited(|payload| payload["repository"]["full_name"] = json!(7));
+        assert!(
+            Forge::GitHub
+                .hooked(&[RELEASE], &unnamed, "cli/cli")
+                .is_err()
+        );
+        assert!(Forge::GitHub.hooked(&[RELEASE], b"{}", "cli/cli").is_err());
     }
 
     #[test]

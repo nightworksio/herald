@@ -7,7 +7,7 @@ mod postgres {
     use herald_native::NativePostgres;
     use herald_ports::{Secret, Sql as _, SqlError, Statement, StoreError, Value};
     use herald_records::{Dialect, Kept, Records as _, SqlRecords, Wrote};
-    use herald_testing::store_conformance;
+    use herald_testing::{keyring_conformance, store_conformance};
 
     const URL: &str = "HERALD_TEST_POSTGRES";
 
@@ -55,6 +55,10 @@ mod postgres {
             return;
         };
         store_conformance(&Kept::new(records)).await.unwrap();
+        let Some(keys) = opened("keyring").await else {
+            return;
+        };
+        keyring_conformance(&Kept::new(keys)).await.unwrap();
     }
 
     #[tokio::test]

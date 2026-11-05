@@ -192,6 +192,11 @@ pub(crate) enum Fault {
     Subscribers,
     Subscribes,
     Unsubscribes,
+    KeepsNotes,
+    ReadsNotes,
+    Admits,
+    AttemptsDeliveries,
+    LandsDeliveries,
 }
 
 pub(crate) struct Failing {
@@ -245,7 +250,10 @@ impl Store for Failing {
         };
         match (self.fault, writes) {
             (Fault::Claims, 1) => Err(broken()),
-            (Fault::ClaimConflicts, 1) | (Fault::Writes, 2) => Ok(Written::Conflict),
+            (Fault::ClaimConflicts, 1)
+            | (Fault::Writes, 2)
+            | (Fault::AttemptsDeliveries, 4)
+            | (Fault::LandsDeliveries, 5) => Ok(Written::Conflict),
             (Fault::Releases, _) if entry.lease.is_none() => Err(broken()),
             _ => self.inner.put_entry(entry, expected).await,
         }
@@ -330,6 +338,9 @@ impl Store for Failing {
         id: &str,
         at: jiff::Timestamp,
     ) -> Result<herald_ports::Admitted, StoreError> {
+        if self.fault == Fault::Admits {
+            return Err(broken());
+        }
         self.inner.admit(scheme, id, at).await
     }
 
@@ -346,6 +357,20 @@ impl Store for Failing {
             _ => {}
         }
         self.inner.expire_deliveries(before).await
+    }
+
+    async fn note(&self, key: &herald_core::Key) -> Result<Option<String>, StoreError> {
+        if self.fault == Fault::ReadsNotes {
+            return Err(broken());
+        }
+        self.inner.note(key).await
+    }
+
+    async fn put_note(&self, key: &herald_core::Key, note: &str) -> Result<(), StoreError> {
+        if self.fault == Fault::KeepsNotes {
+            return Err(broken());
+        }
+        self.inner.put_note(key, note).await
     }
 }
 

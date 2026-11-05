@@ -1,9 +1,9 @@
 use std::collections::BTreeMap;
 
-use herald_core::RouteId;
+use herald_core::{RouteId, Step};
 
 use super::world::*;
-use crate::output::escaped;
+use crate::output::{escaped, steps};
 use crate::*;
 
 #[test]

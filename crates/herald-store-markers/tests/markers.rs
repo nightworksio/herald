@@ -108,6 +108,28 @@ mod markers {
             pollster::block_on(store.expire_deliveries(OPENED)),
             Err(unsupported("deliveries"))
         );
+        let key = Key::derive(&RouteId::new("r"), &Identity::new("1"));
+        assert_eq!(
+            pollster::block_on(store.put_note(&key, "{}")),
+            Err(unsupported("notes"))
+        );
+        let known = herald_ports::KnownKey {
+            owner: "o".to_owned(),
+            pem: "p".to_owned(),
+            fetched: OPENED,
+        };
+        assert_eq!(
+            pollster::block_on(herald_ports::Keyring::known(&store, "k")),
+            Err(unsupported("keys"))
+        );
+        assert_eq!(
+            pollster::block_on(herald_ports::Keyring::know(&store, "k", &known)),
+            Err(unsupported("keys"))
+        );
+        assert_eq!(
+            pollster::block_on(herald_ports::Keyring::forget_before(&store, OPENED)),
+            Err(unsupported("keys"))
+        );
     }
 
     fn opened(thread: &str, archived: bool, locked: bool) -> MarkedThread {

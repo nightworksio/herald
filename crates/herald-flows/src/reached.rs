@@ -39,6 +39,16 @@ impl Reached {
         }
     }
 
+    /// The document `announcement` is published as where the destination is
+    /// herald's own and serves it: an ActivityPub actor's Note.
+    #[must_use]
+    pub fn published(&self, announcement: &Announcement) -> Option<String> {
+        match self {
+            Self::ActivityPub(actor) => Some(actor.note(announcement)),
+            _ => None,
+        }
+    }
+
     /// What it can do.
     #[must_use]
     pub fn profile(&self) -> Profile {
