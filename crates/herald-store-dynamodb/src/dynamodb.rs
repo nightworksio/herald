@@ -1,7 +1,10 @@
-use herald_ports::{Clock, Http, Method, Request, Response, Secret, StoreError, Text, USER_AGENT};
+use herald_ports::{
+    Clock, Http, Method, Request, Response, Secret, Secrets, StoreError, Text, USER_AGENT,
+};
 use herald_records::{Blob, Kept, Records, Wrote};
 use serde_json::{Value, json};
 
+use crate::options::{REGION, StoreOptions};
 use crate::sigv4::{Signing, signed};
 
 /// The version of DynamoDB's API every target names.
@@ -63,6 +66,42 @@ impl Dynamodb {
             table: table.to_owned(),
             credentials,
         }
+    }
+
+    /// The table `options` name, in their region or the platform's, with
+    /// the credentials they name read through `secrets`.
+    ///
+    /// # Errors
+    ///
+    /// When no region is given or set, or a credential is not set.
+    pub async fn reached<S: Secrets>(options: &StoreOptions, secrets: &S) -> Result<Self, String> {
+        let region = match &options.region {
+            Some(region) => region.clone(),
+            None => secrets
+                .secret(REGION)
+                .await
+                .map(|region| region.expose().to_owned())
+                .map_err(|_| format!("{REGION} is not set; give the dynamodb store a region"))?,
+        };
+        let required = |name: &str| {
+            let name = name.to_owned();
+            async move {
+                secrets.secret(&name).await.map_err(|_| {
+                    format!("{name} is not set; the dynamodb store signs its requests with it")
+                })
+            }
+        };
+        let credentials = Credentials {
+            access_key_id: required(options.access_key_id()).await?,
+            secret_access_key: required(options.secret_access_key()).await?,
+            session_token: secrets.secret(options.session_token()).await.ok(),
+        };
+        Ok(Self::new(
+            options.table(),
+            &region,
+            options.endpoint.as_deref(),
+            credentials,
+        ))
     }
 
     /// The base URL it reaches.

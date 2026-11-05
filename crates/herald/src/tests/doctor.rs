@@ -31,7 +31,7 @@ fn doctor_names_what_the_config_leaves_to_chance() {
     );
     assert_eq!(d1.code, STOPPED);
     assert!(
-        d1.out.ends_with("store.kind: keeping records in d1 cannot be served: this herald keeps records in sqlite, postgres, git-branch, markers, actions-cache or repo-variables; set [store] kind to one of them.\n"),
+        d1.out.ends_with("store.kind: keeping records in d1 cannot be served: this herald keeps records in sqlite, postgres, dynamodb, git-branch, markers, actions-cache or repo-variables; set [store] kind to one of them.\n"),
         "{}",
         d1.out
     );

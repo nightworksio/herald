@@ -130,7 +130,7 @@ fn a_run_that_cannot_start_says_why() {
             "GITHUB_RUN_ID",
             None,
             &CONFIG.replace("kind = \"git-branch\"", "kind = \"d1\""),
-            "this herald keeps records in sqlite, postgres, git-branch, markers, actions-cache or repo-variables; set [store] kind to one of them",
+            "this herald keeps records in sqlite, postgres, dynamodb, git-branch, markers, actions-cache or repo-variables; set [store] kind to one of them",
         ),
         (
             "GITHUB_RUN_ID",

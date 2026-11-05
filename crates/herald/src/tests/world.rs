@@ -22,6 +22,7 @@ pub(super) struct State {
     pub(super) forge: BTreeMap<String, (u16, String)>,
     pub(super) cache: BTreeMap<String, Vec<u8>>,
     pub(super) variables: BTreeMap<String, String>,
+    pub(super) items: BTreeMap<(String, String), Value>,
     pub(super) unanswered: Vec<String>,
 }
 
@@ -148,6 +149,67 @@ impl State {
         }
     }
 
+    fn dynamodb(&mut self, target: &str, body: &Value) -> Response {
+        let at = |key: &str| {
+            let s = |attribute: &str| {
+                body.pointer(&format!("/{key}/{attribute}/S"))
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+                    .to_owned()
+            };
+            (s("directory"), s("name"))
+        };
+        let version =
+            |item: Option<&Value>| item.and_then(|item| item.pointer("/version/N")).cloned();
+        let holds =
+            |current: Option<&Value>| match body.get("ConditionExpression").and_then(Value::as_str)
+            {
+                Some("attribute_not_exists(#n)") => current.is_none(),
+                _ => version(current).as_ref() == body.pointer("/ExpressionAttributeValues/:v/N"),
+            };
+        let refused = || {
+            answer(
+                400,
+                &json!({ "__type": "x#ConditionalCheckFailedException" }),
+            )
+        };
+        match target
+            .strip_prefix("DynamoDB_20120810.")
+            .unwrap_or_default()
+        {
+            "GetItem" => match self.items.get(&at("Key")) {
+                Some(item) => answer(200, &json!({ "Item": item })),
+                None => answer(200, &json!({})),
+            },
+            "Query" => {
+                let directory = body.pointer("/ExpressionAttributeValues/:d/S");
+                let items: Vec<Value> = self
+                    .items
+                    .keys()
+                    .filter(|(d, _)| Some(&json!(d)) == directory)
+                    .map(|(_, name)| json!({ "name": { "S": name } }))
+                    .collect();
+                answer(200, &json!({ "Items": items }))
+            }
+            "UpdateItem" => {
+                self.made += 1;
+                answer(
+                    200,
+                    &json!({ "Attributes": { "made": { "N": self.made.to_string() } } }),
+                )
+            }
+            "PutItem" if holds(self.items.get(&at("Item"))) => {
+                self.items.insert(at("Item"), body["Item"].clone());
+                answer(200, &json!({}))
+            }
+            "DeleteItem" if holds(self.items.get(&at("Key"))) => {
+                self.items.remove(&at("Key"));
+                answer(200, &json!({}))
+            }
+            _ => refused(),
+        }
+    }
+
     fn discord(&mut self, line: &str) -> Response {
         if self.discord.is_empty() {
             return answer(500, &json!({}));
@@ -189,6 +251,15 @@ impl Http for World {
                 headers: Vec::new(),
                 body: held,
             });
+        }
+        if url == "https://dynamodb.example/" {
+            let target = request
+                .headers
+                .iter()
+                .find(|(name, _)| name == "X-Amz-Target")
+                .map(|(_, value)| value.expose())
+                .unwrap_or_default();
+            return Ok(state.dynamodb(&target, &body));
         }
         if let Some(name) =
             url.strip_prefix("https://api.github.com/repos/cli/cli/actions/variables")

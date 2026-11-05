@@ -117,6 +117,36 @@ fn a_release_is_announced_once_through_the_repository_s_variables() {
 }
 
 #[test]
+fn a_release_is_announced_once_through_a_dynamodb_table() {
+    let config = CONFIG.replace(
+        "kind = \"git-branch\"",
+        "kind = \"dynamodb\"\nregion = \"eu-west-1\"\nendpoint = \"https://dynamodb.example\"",
+    );
+    let mut setup = setup(&config);
+    let world = World::default();
+    discord(&world, &[("/channels/100/messages", 200, r#"{"id":"1"}"#)]);
+    let unset = herald(&setup, &world, &ANNOUNCE);
+    assert_eq!(
+        unset.err,
+        "AWS_ACCESS_KEY_ID is not set; the dynamodb store signs its requests with it\n"
+    );
+    for (name, value) in [
+        ("AWS_ACCESS_KEY_ID", "AKID"),
+        ("AWS_SECRET_ACCESS_KEY", "secret"),
+    ] {
+        setup.vars.insert(name.to_owned(), value.to_owned());
+    }
+    let first = herald(&setup, &world, &ANNOUNCE);
+    assert_eq!(
+        (first.code, first.out.as_str(), first.err.as_str()),
+        (DONE, "releases: announced (post)\n", "")
+    );
+    let again = herald(&setup, &world, &ANNOUNCE);
+    assert_eq!(again.out, "releases: already announced; nothing sent\n");
+    assert!(!world.state.lock().unwrap().items.is_empty());
+}
+
+#[test]
 fn a_release_kept_in_a_sqlite_file_beside_the_config_is_announced_once() {
     let mut setup = setup(&CONFIG.replace("kind = \"git-branch\"", "kind = \"sqlite\""));
     setup.vars.remove("GITHUB_TOKEN");

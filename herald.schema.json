@@ -1761,6 +1761,13 @@
           "description": "Cloudflare D1, through the Worker's binding.",
           "type": "object",
           "properties": {
+            "binding": {
+              "description": "The Worker's binding to the database, as `wrangler.toml` names it;\n`HERALD_DB` where absent.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
             "kind": {
               "type": "string",
               "const": "d1"
@@ -1772,12 +1779,26 @@
           ]
         },
         {
-          "description": "An AWS DynamoDB table.",
+          "description": "The storage of herald's Cloudflare Durable Object, through the\nWorker's binding.",
           "type": "object",
           "properties": {
+            "binding": {
+              "description": "The Worker's binding to herald's Durable Object namespace, as\n`wrangler.toml` names it; `HERALD` where absent.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
             "kind": {
               "type": "string",
-              "const": "dynamodb"
+              "const": "durable-object"
+            },
+            "object": {
+              "description": "The name of the object that keeps the records; `herald` where\nabsent.",
+              "type": [
+                "string",
+                "null"
+              ]
             }
           },
           "additionalProperties": false,
@@ -1786,12 +1807,122 @@
           ]
         },
         {
-          "description": "Deno KV, on Deno Deploy.",
+          "description": "An AWS DynamoDB table.",
+          "type": "object",
+          "properties": {
+            "access_key_id": {
+              "description": "The secret holding the access key's id; `AWS_ACCESS_KEY_ID` where\nabsent, as a Lambda's role provides it.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/SecretRef"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "endpoint": {
+              "description": "The endpoint's base URL, for DynamoDB Local or another endpoint;\nthe region's own where absent.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "kind": {
+              "type": "string",
+              "const": "dynamodb"
+            },
+            "region": {
+              "description": "The region, such as `eu-west-1`; the `AWS_REGION` the platform sets\nwhere absent.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "secret_access_key": {
+              "description": "The secret holding the secret access key; `AWS_SECRET_ACCESS_KEY`\nwhere absent.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/SecretRef"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "session_token": {
+              "description": "The secret holding a session token, sent where it is set;\n`AWS_SESSION_TOKEN` where absent.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/SecretRef"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "table": {
+              "description": "The table, with the string partition key `directory` and the string\nsort key `name`; `herald` where absent.",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind"
+          ]
+        },
+        {
+          "description": "Deno KV, on Deno Deploy or wherever a database is opened.",
           "type": "object",
           "properties": {
             "kind": {
               "type": "string",
               "const": "deno-kv"
+            },
+            "path": {
+              "description": "The database `Deno.openKv` opens: a path or a URL; the deployment's\nown where absent.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "prefix": {
+              "description": "The key every record is kept under, its parts split at `/`;\n`herald` where absent.",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind"
+          ]
+        },
+        {
+          "description": "A Fastly KV Store, on Fastly Compute.",
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "fastly-kv"
+            },
+            "prefix": {
+              "description": "The key every record is kept under, its parts split at `/`;\n`herald` where absent.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "store": {
+              "description": "The KV Store the service is linked to, by name; `herald` where\nabsent.",
+              "type": [
+                "string",
+                "null"
+              ]
             }
           },
           "additionalProperties": false,

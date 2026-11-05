@@ -70,11 +70,12 @@ impl Config {
             Source::Registry(_, options) => [options.token.as_ref(), None],
             Source::Feed(_) => [None, None],
         });
-        let store = match &self.store {
-            Store::GitBranch(options) => options.token.as_ref(),
-            Store::RepoVariables(options) => Some(&options.token),
-            Store::Postgres(options) => Some(&options.url),
-            _ => None,
+        let store: Vec<&SecretRef> = match &self.store {
+            Store::GitBranch(options) => options.token.iter().collect(),
+            Store::RepoVariables(options) => vec![&options.token],
+            Store::Postgres(options) => vec![&options.url],
+            Store::Dynamodb(options) => options.secrets().collect(),
+            _ => Vec::new(),
         };
         destinations
             .chain(sources)
@@ -94,11 +95,15 @@ pub enum Store {
     /// A Postgres database.
     Postgres(herald_store_postgres::StoreOptions),
     /// Cloudflare D1.
-    D1,
+    D1(herald_store_d1::StoreOptions),
+    /// A Cloudflare Durable Object's storage.
+    DurableObject(herald_store_durable_object::StoreOptions),
     /// An AWS DynamoDB table.
-    Dynamodb,
+    Dynamodb(herald_store_dynamodb::StoreOptions),
     /// Deno KV.
-    DenoKv,
+    DenoKv(herald_store_deno_kv::StoreOptions),
+    /// A Fastly KV Store.
+    FastlyKv(herald_store_fastly_kv::StoreOptions),
     /// The destinations' own posts.
     Markers,
     /// A branch of the repository.
@@ -116,10 +121,14 @@ impl Store {
     pub const POSTGRES: &'static str = "postgres";
     /// The kind of a Cloudflare D1 store.
     pub const CLOUDFLARE_D1: &'static str = "d1";
+    /// The kind of a store in a Cloudflare Durable Object.
+    pub const DURABLE_OBJECT: &'static str = "durable-object";
     /// The kind of a DynamoDB store.
     pub const DYNAMODB: &'static str = "dynamodb";
     /// The kind of a Deno KV store.
     pub const DENO_KV: &'static str = "deno-kv";
+    /// The kind of a Fastly KV Store store.
+    pub const FASTLY_KV: &'static str = "fastly-kv";
     /// The kind of the store kept in the destinations' own posts.
     pub const MARKERS: &'static str = "markers";
     /// The kind of a store on a branch of the repository.
@@ -129,12 +138,14 @@ impl Store {
     /// The kind of a store in the repository's variables.
     pub const REPO_VARIABLES: &'static str = "repo-variables";
     /// Every kind, as the config spells it.
-    pub const KINDS: [&'static str; 9] = [
+    pub const KINDS: [&'static str; 11] = [
         Self::SQLITE,
         Self::POSTGRES,
         Self::CLOUDFLARE_D1,
+        Self::DURABLE_OBJECT,
         Self::DYNAMODB,
         Self::DENO_KV,
+        Self::FASTLY_KV,
         Self::MARKERS,
         Self::GIT_BRANCH,
         Self::ACTIONS_CACHE,
@@ -147,9 +158,11 @@ impl Store {
         match self {
             Self::Sqlite(_) => Self::SQLITE,
             Self::Postgres(_) => Self::POSTGRES,
-            Self::D1 => Self::CLOUDFLARE_D1,
-            Self::Dynamodb => Self::DYNAMODB,
-            Self::DenoKv => Self::DENO_KV,
+            Self::D1(_) => Self::CLOUDFLARE_D1,
+            Self::DurableObject(_) => Self::DURABLE_OBJECT,
+            Self::Dynamodb(_) => Self::DYNAMODB,
+            Self::DenoKv(_) => Self::DENO_KV,
+            Self::FastlyKv(_) => Self::FASTLY_KV,
             Self::Markers => Self::MARKERS,
             Self::GitBranch(_) => Self::GIT_BRANCH,
             Self::ActionsCache(_) => Self::ACTIONS_CACHE,

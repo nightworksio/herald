@@ -161,7 +161,7 @@ fn doctor_names_the_stores_a_server_cannot_keep_records_in() {
     );
     assert_eq!(doctored.code, STOPPED);
     assert!(
-        doctored.out.contains("store.kind: keeping records in actions-cache cannot be served: this herald keeps records in sqlite, postgres, git-branch, markers or repo-variables; set [store] kind to one of them."),
+        doctored.out.contains("store.kind: keeping records in actions-cache cannot be served: this herald keeps records in sqlite, postgres, dynamodb, git-branch, markers or repo-variables; set [store] kind to one of them."),
         "{}",
         doctored.out
     );

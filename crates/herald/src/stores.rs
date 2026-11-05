@@ -6,10 +6,11 @@ use std::path::Path;
 
 use herald_config::{Config, Store};
 use herald_flows::{Connected, prepare, unserved};
-use herald_native::{EnvSecrets, NativePostgres, NativeSqlite, RingSigner};
+use herald_native::{EnvSecrets, NativePostgres, NativeSqlite, RingSigner, SystemClock};
 use herald_ports::Secrets as _;
 use herald_records::Memory;
 use herald_store_actions_cache::{ActionsCache, ActionsCacheStore, StoreOptions as CacheOptions};
+use herald_store_dynamodb::{Dynamodb, DynamodbStore, StoreOptions as DynamodbOptions};
 use herald_store_git_branch::{GitBranch, GitBranchStore, StoreOptions as BranchOptions};
 use herald_store_postgres::{PostgresStore, StoreOptions as PostgresOptions};
 use herald_store_repo_variables::{
@@ -31,6 +32,8 @@ pub(crate) enum Records<'a> {
     Sqlite(SqliteStore<NativeSqlite>),
     /// In a Postgres database.
     Postgres(PostgresStore<NativePostgres>),
+    /// In a DynamoDB table.
+    Dynamodb(DynamodbStore<Connection, SystemClock>),
     /// In the routes' own posts.
     Posts,
     /// In memory, for a dry run.
@@ -51,6 +54,7 @@ impl Records<'_> {
             Self::Variables(store) => work.over(store).await,
             Self::Sqlite(store) => work.over(store).await,
             Self::Postgres(store) => work.over(store).await,
+            Self::Dynamodb(store) => work.over(store).await,
             Self::Posts => work.over(&connected.marked(RingSigner)).await,
             Self::Memory(store) => work.over(store).await,
         }
@@ -59,18 +63,20 @@ impl Records<'_> {
 
 /// The store kinds `herald server` keeps records in: every kind but the
 /// Actions cache, which only a workflow run reaches.
-pub(crate) const SERVED: [&str; 5] = [
+pub(crate) const SERVED: [&str; 6] = [
     Store::SQLITE,
     Store::POSTGRES,
+    Store::DYNAMODB,
     Store::GIT_BRANCH,
     Store::MARKERS,
     Store::REPO_VARIABLES,
 ];
 
 /// The store kinds this herald keeps records in.
-pub(crate) const STORES: [&str; 6] = [
+pub(crate) const STORES: [&str; 7] = [
     Store::SQLITE,
     Store::POSTGRES,
+    Store::DYNAMODB,
     Store::GIT_BRANCH,
     Store::MARKERS,
     Store::ACTIONS_CACHE,
@@ -108,6 +114,7 @@ pub(crate) async fn reached<'a>(
         }
         Store::Sqlite(options) => Records::Sqlite(sqlite(options).await?),
         Store::Postgres(options) => Records::Postgres(postgres(options, &secrets).await?),
+        Store::Dynamodb(options) => Records::Dynamodb(dynamodb(options, &secrets, connect).await?),
         Store::Markers => Records::Posts,
         _ => return Err(unserved(&STORES)),
     };
@@ -187,6 +194,17 @@ pub(crate) async fn postgres(
     herald_store_postgres::store(sql)
         .await
         .map_err(|error| opened(error.to_string()))
+}
+
+/// The store in the DynamoDB table `options` name.
+pub(crate) async fn dynamodb(
+    options: &DynamodbOptions,
+    secrets: &EnvSecrets,
+    connect: Connect<'_>,
+) -> Result<DynamodbStore<Connection, SystemClock>, String> {
+    let table = Dynamodb::reached(options, secrets).await?;
+    let http = connect(table.api())?;
+    Ok(table.store(http, SystemClock))
 }
 
 pub(crate) async fn cache<'a>(

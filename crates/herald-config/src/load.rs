@@ -291,10 +291,33 @@ impl Loader<'_> {
                 .typed::<herald_store_repo_variables::StoreOptions>(rest, "store")
                 .map(Store::RepoVariables);
         }
+        if kind == Store::CLOUDFLARE_D1 {
+            return self
+                .typed::<herald_store_d1::StoreOptions>(rest, "store")
+                .map(Store::D1);
+        }
+        if kind == Store::DURABLE_OBJECT {
+            return self
+                .typed::<herald_store_durable_object::StoreOptions>(rest, "store")
+                .map(Store::DurableObject);
+        }
+        if kind == Store::DYNAMODB {
+            return self
+                .typed::<herald_store_dynamodb::StoreOptions>(rest, "store")
+                .map(Store::Dynamodb);
+        }
+        if kind == Store::DENO_KV {
+            return self
+                .typed::<herald_store_deno_kv::StoreOptions>(rest, "store")
+                .map(Store::DenoKv);
+        }
+        if kind == Store::FASTLY_KV {
+            return self
+                .typed::<herald_store_fastly_kv::StoreOptions>(rest, "store")
+                .map(Store::FastlyKv);
+        }
         self.typed::<NoOptions>(rest, "store")?;
-        [Store::D1, Store::Dynamodb, Store::DenoKv, Store::Markers]
-            .into_iter()
-            .find(|store| store.kind() == kind)
+        Some(Store::Markers)
     }
 
     /// Whether every route that reaches followers or subscribers has a store

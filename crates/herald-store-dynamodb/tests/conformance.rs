@@ -13,8 +13,9 @@ mod conformance {
 
     use herald_ports::{Http, HttpError, Request, Response, Secret, StoreError};
     use herald_records::{Records, Wrote};
+    use herald_store_dynamodb::StoreOptions;
     use herald_store_dynamodb::{Credentials, Dynamodb, DynamodbRecords, DynamodbStore};
-    use herald_testing::{FakeClock, store_conformance};
+    use herald_testing::{FakeClock, FakeSecrets, store_conformance};
     use serde_json::{Value, json};
 
     /// The most items the model answers a query with in one page.
@@ -384,6 +385,36 @@ mod conformance {
             Err(StoreError::Unavailable {
                 reason: "DynamoDB refused it: DynamoDB answered 503".to_owned()
             })
+        );
+    }
+
+    #[test]
+    fn a_table_is_reached_in_the_region_given_or_set_with_the_credentials_named() {
+        let credentials = || {
+            FakeSecrets::default()
+                .with("AWS_ACCESS_KEY_ID", "AKID")
+                .with("AWS_SECRET_ACCESS_KEY", "secret")
+        };
+        let secrets = credentials();
+        let given: StoreOptions = serde_json::from_str(r#"{"region": "eu-west-1"}"#).unwrap();
+        let reached = pollster::block_on(Dynamodb::reached(&given, &secrets)).unwrap();
+        assert_eq!(reached.api(), "https://dynamodb.eu-west-1.amazonaws.com");
+        let set = credentials()
+            .with("AWS_REGION", "us-east-2")
+            .with("AWS_SESSION_TOKEN", "t");
+        let reached =
+            pollster::block_on(Dynamodb::reached(&StoreOptions::default(), &set)).unwrap();
+        assert_eq!(reached.api(), "https://dynamodb.us-east-2.amazonaws.com");
+        assert_eq!(
+            pollster::block_on(Dynamodb::reached(&StoreOptions::default(), &secrets)).err(),
+            Some("AWS_REGION is not set; give the dynamodb store a region".to_owned())
+        );
+        assert_eq!(
+            pollster::block_on(Dynamodb::reached(&given, &FakeSecrets::default())).err(),
+            Some(
+                "AWS_ACCESS_KEY_ID is not set; the dynamodb store signs its requests with it"
+                    .to_owned()
+            )
         );
     }
 }
