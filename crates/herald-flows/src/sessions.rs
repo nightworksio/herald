@@ -80,6 +80,13 @@ async fn meanwhile<T>(taking: &mut Taking<'_>, doing: impl Future<Output = T>) -
     .await
 }
 
+/// A gateway's destination, as a session joined to it needs it.
+struct Joined<'a, 's, H> {
+    name: &'a DestinationName,
+    interacting: &'s discord::Interacting,
+    http: &'s H,
+}
+
 /// What a gateway session heard first.
 enum Heard {
     Frame(Frame),
@@ -219,64 +226,98 @@ where
                     continue;
                 }
             };
-            let mut every: Option<Duration> = None;
-            let mut beat: Option<Pin<Box<dyn Future<Output = ()> + Send + 's>>> = None;
-            let stopped = loop {
-                let heard = {
-                    let mut receiving = pin!(socket.receive());
-                    poll_fn(|context| {
-                        if let Poll::Ready(frame) = receiving.as_mut().poll(context) {
-                            return Poll::Ready(Heard::Frame(frame));
-                        }
-                        if let Some(due) = beat.as_mut()
-                            && due.as_mut().poll(context).is_ready()
-                        {
-                            return Poll::Ready(Heard::Beat);
-                        }
-                        while let Poll::Ready(Some(())) = taking.poll_next_unpin(context) {}
-                        Poll::Pending
-                    })
-                    .await
-                };
-                let effects = match heard {
-                    Heard::Frame(Frame::Text(text)) => gateway.received(interacting, name, &text),
-                    Heard::Frame(Frame::Closed(code)) => vec![gateway.closed(code)],
-                    Heard::Beat => {
-                        beat = every.map(|every| Box::pin(self.timer.sleep(every)) as _);
-                        vec![gateway.beat()]
-                    }
-                };
-                let mut next = None;
-                for effect in effects {
-                    match effect {
-                        Effect::Send(frame) => {
-                            if socket.send(frame).await.is_err() {
-                                next = Some(None);
-                            }
-                        }
-                        Effect::Beat(interval) => {
-                            let interval = beating(interval);
-                            every = Some(interval);
-                            beat = Some(Box::pin(self.timer.sleep(interval)));
-                        }
-                        Effect::Ready => backoff.reset(),
-                        Effect::Received(received) => {
-                            self.discord(&mut taking, name, interacting, http, *received);
-                        }
-                        Effect::Reconnect { .. } => next = Some(None),
-                        Effect::Stop(reason) => next = Some(Some(reason)),
-                    }
-                }
-                if let Some(next) = next {
-                    break next;
-                }
+            let joined = Joined {
+                name,
+                interacting,
+                http,
             };
+            let stopped = self
+                .joined(
+                    &joined,
+                    &mut socket,
+                    &mut gateway,
+                    &mut backoff,
+                    &mut taking,
+                )
+                .await;
             if let Some(reason) = stopped {
                 self.said(name, reason);
                 while taking.next().await.is_some() {}
                 return;
             }
             meanwhile(&mut taking, backoff.wait(self.timer)).await;
+        }
+    }
+
+    /// Hears a joined gateway until it is left: `None` to join again, or why
+    /// the session stops.
+    async fn joined<So: Socket>(
+        &self,
+        joined: &Joined<'_, 's, H>,
+        socket: &mut So,
+        gateway: &mut Gateway,
+        backoff: &mut Backoff,
+        taking: &mut Taking<'s>,
+    ) -> Option<String> {
+        let mut every: Option<Duration> = None;
+        let mut beat: Option<Pin<Box<dyn Future<Output = ()> + Send + 's>>> = None;
+        loop {
+            let heard = {
+                let mut receiving = pin!(socket.receive());
+                poll_fn(|context| {
+                    if let Poll::Ready(frame) = receiving.as_mut().poll(context) {
+                        return Poll::Ready(Heard::Frame(frame));
+                    }
+                    if let Some(due) = beat.as_mut()
+                        && due.as_mut().poll(context).is_ready()
+                    {
+                        return Poll::Ready(Heard::Beat);
+                    }
+                    while let Poll::Ready(Some(())) = taking.poll_next_unpin(context) {}
+                    Poll::Pending
+                })
+                .await
+            };
+            let effects = match heard {
+                Heard::Frame(Frame::Text(text)) => {
+                    gateway.received(joined.interacting, joined.name, &text)
+                }
+                Heard::Frame(Frame::Closed(code)) => vec![gateway.closed(code)],
+                Heard::Beat => {
+                    beat = every.map(|every| Box::pin(self.timer.sleep(every)) as _);
+                    vec![gateway.beat()]
+                }
+            };
+            let mut next = None;
+            for effect in effects {
+                match effect {
+                    Effect::Send(frame) => {
+                        if socket.send(frame).await.is_err() {
+                            next = Some(None);
+                        }
+                    }
+                    Effect::Beat(interval) => {
+                        let interval = beating(interval);
+                        every = Some(interval);
+                        beat = Some(Box::pin(self.timer.sleep(interval)));
+                    }
+                    Effect::Ready => backoff.reset(),
+                    Effect::Received(received) => {
+                        self.discord(
+                            taking,
+                            joined.name,
+                            joined.interacting,
+                            joined.http,
+                            *received,
+                        );
+                    }
+                    Effect::Reconnect { .. } => next = Some(None),
+                    Effect::Stop(reason) => next = Some(Some(reason)),
+                }
+            }
+            if let Some(next) = next {
+                return next;
+            }
         }
     }
 

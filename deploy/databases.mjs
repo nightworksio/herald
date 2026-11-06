@@ -47,13 +47,11 @@ export async function postgres(url) {
     async transaction(statements) {
       await client.query("BEGIN");
       try {
-        const answers = [];
-        for (const statement of statements) {
-          const result = await client.query({ text: statement.sql, values: statement.params, rowMode: "array" });
-          answers.push({ rows: result.rows ?? [], changed: result.rowCount ?? 0 });
-        }
+        const results = await Promise.all(
+          statements.map((statement) => client.query({ text: statement.sql, values: statement.params, rowMode: "array" })),
+        );
         await client.query("COMMIT");
-        return answers;
+        return results.map((result) => ({ rows: result.rows ?? [], changed: result.rowCount ?? 0 }));
       } catch (error) {
         await client.query("ROLLBACK");
         throw error;
