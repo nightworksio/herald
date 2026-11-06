@@ -32,6 +32,18 @@ async fn checked(port: u16, answer: &RefCell<String>) {
 }
 
 #[test]
+fn a_server_refuses_a_store_only_a_run_in_actions_reaches() {
+    let cached = CONFIG.replace("kind = \"git-branch\"", "kind = \"actions-cache\"");
+    let run = herald(&setup(&cached), &World::default(), &["server"]);
+    assert_eq!(run.code, STOPPED);
+    assert!(
+        run.err.contains("this herald keeps records in"),
+        "{}",
+        run.err
+    );
+}
+
+#[test]
 fn the_server_listens_where_it_is_told_until_it_is_stopped() {
     let port = free();
     let answer = RefCell::new(String::new());
