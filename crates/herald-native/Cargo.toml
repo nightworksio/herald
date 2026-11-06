@@ -13,7 +13,6 @@ publish.workspace = true
 futures-util = { version = "0.3", default-features = false, features = ["sink", "std"] }
 herald-core.workspace = true
 herald-compose.workspace = true
-herald-keys.workspace = true
 herald-ports.workspace = true
 jiff.workspace = true
 ring.workspace = true

@@ -25,6 +25,7 @@ herald-dest-discord.workspace = true
 herald-dest-matrix.workspace = true
 herald-dest-slack.workspace = true
 herald-flows.workspace = true
+herald-crypto.workspace = true
 herald-native.workspace = true
 herald-ports.workspace = true
 herald-records.workspace = true

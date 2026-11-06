@@ -3,7 +3,7 @@ use base64::engine::general_purpose::STANDARD;
 
 use super::*;
 
-const RSA: &str = include_str!("../../fixtures/rsa-2048-pkcs8.test.hex");
+const RSA: &str = include_str!("../fixtures/rsa-2048-pkcs8.test.hex");
 
 fn pem(der: &[u8]) -> String {
     format!(
@@ -139,7 +139,7 @@ fn githubs_documented_delivery_verifies_and_a_changed_body_does_not() {
     }
 }
 
-const SPKI: &str = include_str!("../../fixtures/rsa-2048-spki.test.pem");
+const SPKI: &str = include_str!("../fixtures/rsa-2048-spki.test.pem");
 
 #[test]
 fn an_activity_signed_by_its_actors_key_verifies_through_the_pem_it_publishes() {

@@ -1,7 +1,8 @@
 //! What each connection the host's `fetch` makes may reach, and what of
 //! its answer is read.
 
-use herald_compose::{Reach, public, reachable};
+use crate::public::{public, reachable};
+use crate::reach::Reach;
 use herald_ports::{HttpError, PUBLIC, Request, Response, Text};
 use url::Url;
 

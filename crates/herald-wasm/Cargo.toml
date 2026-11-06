@@ -20,7 +20,6 @@ herald-flows.workspace = true
 herald-keys.workspace = true
 herald-ports.workspace = true
 jiff.workspace = true
-url.workspace = true
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 js-sys = "0.3"

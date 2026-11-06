@@ -8,8 +8,9 @@ use std::io::Write;
 
 use herald_compose::{Capped, SESSIONS, Served};
 use herald_config::Config;
+use herald_crypto::{RingSigner, RingVerifier};
 use herald_flows::{Connected, Keys, Ports, Serving, Webhooks, webhooks};
-use herald_native::{EnvSecrets, NativeSockets, RingSigner, RingVerifier, SystemClock};
+use herald_native::{EnvSecrets, NativeSockets, SystemClock};
 use herald_ports::{Keyring, PUBLIC, Store as Keeps};
 use herald_records::MemoryKeyring;
 use herald_server::{Asked, Heard, Limits, READ, serve};

@@ -10,6 +10,7 @@ mod host;
 mod hosting;
 mod public;
 mod reach;
+mod reaching;
 mod records;
 pub mod told;
 
@@ -19,4 +20,5 @@ pub use host::{Host, KvAt, SqlAt, Unoffered};
 pub use hosting::Hosting;
 pub use public::{public, reachable};
 pub use reach::{Reach, ReachError, SESSIONS, SocketReach};
+pub use reaching::{Reaching, asked_query, public_address, received};
 pub use records::{GITHUB_REPOSITORY, GITHUB_TOKEN, Records, Served, reached};

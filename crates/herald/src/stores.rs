@@ -6,10 +6,9 @@ use std::future::{Future, ready};
 
 use herald_compose::{Host, KvAt, Served, SqlAt, Unoffered};
 use herald_config::{Config, Store};
+use herald_crypto::{RingSigner, RingVerifier};
 use herald_flows::{Connected, prepare};
-use herald_native::{
-    EnvSecrets, NativePostgres, NativeSql, NativeSqlite, RingSigner, RingVerifier, SystemClock,
-};
+use herald_native::{EnvSecrets, NativePostgres, NativeSql, NativeSqlite, SystemClock};
 use herald_ports::Secrets as _;
 use herald_records::Memory;
 use herald_store_actions_cache::{ActionsCache, ActionsCacheStore, StoreOptions as CacheOptions};
