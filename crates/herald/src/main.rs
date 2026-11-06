@@ -23,15 +23,16 @@ async fn main() -> ExitCode {
 fn stopped() -> impl std::future::Future<Output = ()> {
     #[cfg(unix)]
     let asked = {
+        use std::pin::pin;
+
+        use futures_util::future::select;
         use tokio::signal::unix::{SignalKind, signal};
+
         let mut terminate = signal(SignalKind::terminate());
         let mut interrupt = signal(SignalKind::interrupt());
         async move {
             if let (Ok(terminate), Ok(interrupt)) = (&mut terminate, &mut interrupt) {
-                tokio::select! {
-                    _ = terminate.recv() => {}
-                    _ = interrupt.recv() => {}
-                }
+                select(pin!(terminate.recv()), pin!(interrupt.recv())).await;
             }
         }
     };
