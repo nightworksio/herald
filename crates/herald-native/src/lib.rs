@@ -12,6 +12,7 @@ mod reach;
 mod serving;
 mod socket;
 mod sqlite;
+mod timer;
 
 pub use crypto::{RingSigner, RingVerifier};
 pub use environment::{EnvSecrets, SystemClock};
@@ -22,3 +23,4 @@ pub use random::random_secret;
 pub use reach::{Reach, ReachError};
 pub use socket::{NativeSocket, NativeSockets};
 pub use sqlite::NativeSqlite;
+pub use timer::TokioTimer;

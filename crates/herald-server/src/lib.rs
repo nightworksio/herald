@@ -22,8 +22,10 @@ use std::time::Duration;
 use futures_util::stream::{FuturesUnordered, StreamExt};
 use herald_core::DestinationName;
 use herald_flows::{
-    Inbound, Job, Kept, Serving, Stop, Swept, Worked, answer, housekeep, poll, unworked, work,
+    Inbound, Job, Kept, Serving, Sessions, Stop, Swept, Worked, answer, housekeep, poll, unworked,
+    work,
 };
+use herald_native::TokioTimer as Waiting;
 use herald_ports::{
     Clock, Http, HttpError, Keyring, Request, Response, Signer, Sockets, Store, Verifier,
 };
@@ -40,7 +42,7 @@ use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{Notify, Semaphore};
 use tokio::time::{Instant, Interval, MissedTickBehavior, interval_at};
 
-use crate::sessions::Session;
+use crate::sessions::Queued;
 
 mod sessions;
 
@@ -503,12 +505,12 @@ pub async fn serve<S, C, G, V, H, P, K, L, So>(
     let mut chores = rounds(limits.housekeep);
     let mut sweeps = rounds(Some(limits.keys));
     let mut stop = pin!(stop);
-    let session = Session {
-        serving,
+    let queued = Queued {
         queue: &queue,
         heard,
     };
-    let mut sessions = pin!(session.held(sockets));
+    let holding = Sessions::new(serving, &queued, &Waiting);
+    let mut sessions = pin!(holding.held(sockets));
     let mut held = true;
     loop {
         tokio::task::coop::consume_budget().await;

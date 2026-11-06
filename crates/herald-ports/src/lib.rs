@@ -15,6 +15,7 @@ mod secret;
 mod socket;
 mod sql;
 mod store;
+mod timer;
 
 pub use clock::Clock;
 pub use crypto::{Algorithm, CryptoError, Signer, Verifier};
@@ -26,3 +27,4 @@ pub use secret::{Secret, SecretError, Secrets, Segment, Text};
 pub use socket::{Frame, Socket, Sockets};
 pub use sql::{Changed, Sql, SqlError, Statement, Value};
 pub use store::{Admitted, Capabilities, Keeping, Store, StoreError, Version, Versioned, Written};
+pub use timer::Timer;

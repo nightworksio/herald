@@ -759,7 +759,7 @@ appservice_token = {{ secret = "HERALD_MATRIX_AS" }}
             .await;
         let refused: Vec<&String> = heard
             .iter()
-            .filter(|line| line.ends_with("was not answered: the server answers no more at once"))
+            .filter(|line| line.ends_with("was not answered: no more is answered at once"))
             .collect();
         assert!(!refused.is_empty(), "{heard:?}");
         assert!(

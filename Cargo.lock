@@ -775,6 +775,7 @@ name = "herald-flows"
 version = "0.0.0"
 dependencies = [
  "base64 0.23.1",
+ "futures-util",
  "herald-config",
  "herald-core",
  "herald-dest-discord",
@@ -856,6 +857,7 @@ dependencies = [
  "herald-dest-matrix",
  "herald-dest-slack",
  "herald-flows",
+ "herald-native",
  "herald-ports",
  "herald-records",
  "herald-testing",

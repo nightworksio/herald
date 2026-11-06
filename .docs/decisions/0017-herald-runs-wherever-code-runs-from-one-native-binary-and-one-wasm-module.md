@@ -64,6 +64,12 @@ and Azure's timers call the function to poll.
    ports, answers each request, leaves its work to the platform, and does
    each scheduled round.
 
+   **Sessions are a flow.** `herald_flows::Sessions` holds the gateway,
+   Socket Mode and a Matrix sync over `Sockets`, `Http` and a `Timer` port,
+   handing each command's work to a `Taker`: `herald server`'s queue, or
+   the Durable Object. Flows may name `futures-util`, which runs on no
+   runtime of its own.
+
 5. **Five stores join ADR-0005's.**
 
    | Store | Where | Compare-and-set |
