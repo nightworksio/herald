@@ -58,6 +58,8 @@ const HELD: Duration = Duration::from_secs(90);
 const ACCEPT_PAUSE: Duration = Duration::from_millis(100);
 /// What a reply in words is.
 const TEXT: &str = "text/plain; charset=utf-8";
+/// What an answer to a host asking for a round is.
+const JSON: &str = "application/json";
 
 /// What the server heard, for its driver to say.
 #[derive(Debug)]
@@ -99,6 +101,22 @@ pub struct Limits {
     /// How long a connection may take to send a request's headers, and then
     /// its body.
     pub read: Duration,
+    /// Where a host asks for rounds, where one does.
+    pub asked: Option<Asked>,
+}
+
+/// Where a host asks for rounds by posting to herald, as Azure Functions'
+/// timer triggers post to their functions, and what it is answered once a
+/// round is done.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Asked {
+    /// The path a poll is asked for at.
+    pub poll: &'static str,
+    /// The path housekeeping is asked for at; keys read longest ago are
+    /// forgotten with it.
+    pub housekeep: &'static str,
+    /// What the host is answered, as JSON.
+    pub reply: &'static str,
 }
 
 /// An `Http` sending at most a number of requests at once.
@@ -236,15 +254,22 @@ async fn answered<S, C, G, V, H, P, K>(
     request: hyper::Request<Incoming>,
     queue: &Queue,
     limits: Limits,
+    rounds: &Rounds<'_>,
 ) -> Result<hyper::Response<Full<Bytes>>, Infallible>
 where
     S: Store,
     C: Clock,
     G: Signer,
     V: Verifier,
+    H: Http,
     P: Http,
     K: Keyring,
 {
+    if let (Some(asked), &Method::POST) = (limits.asked, request.method())
+        && let Some(reply) = rounds.asked(serving, asked, request.uri().path()).await
+    {
+        return Ok(reply);
+    }
     let held = if request.method() == Method::POST {
         let Some(held) = queue.hold() else {
             return Ok(busy());
@@ -303,22 +328,106 @@ where
     ))
 }
 
+/// Which rounds are running, so that one of each kind runs at a time, and
+/// where what they did is said.
+struct Rounds<'a> {
+    polling: Cell<bool>,
+    keeping: Cell<bool>,
+    sweeping: Cell<bool>,
+    heard: &'a dyn Fn(Heard),
+}
+
+/// `round` done, where no round `running` marks is.
+async fn once(running: &Cell<bool>, round: impl Future<Output = Option<Heard>>) -> Option<Heard> {
+    if running.replace(true) {
+        return None;
+    }
+    let done = round.await;
+    running.set(false);
+    done
+}
+
+impl Rounds<'_> {
+    /// A poll, where none is running.
+    async fn polled<S: Store, C: Clock, G: Signer, V, H: Http, P, K>(
+        &self,
+        serving: &Serving<'_, S, C, G, V, H, P, K>,
+    ) -> Option<Heard> {
+        once(&self.polling, async {
+            Some(Heard::Polled(
+                poll(serving.config, serving.connected, serving.ports, RUN).await,
+            ))
+        })
+        .await
+    }
+
+    /// Housekeeping, where none is running.
+    async fn kept<S: Store, C: Clock, G, V, H: Http, P, K>(
+        &self,
+        serving: &Serving<'_, S, C, G, V, H, P, K>,
+    ) -> Option<Heard> {
+        let ports = serving.ports;
+        once(&self.keeping, async {
+            Some(Heard::Kept(
+                housekeep(serving.connected, ports.store, ports.clock).await,
+            ))
+        })
+        .await
+    }
+
+    /// The keys read longest ago forgotten, where no sweep is running.
+    async fn swept<S, C: Clock, G, V, H, P, K: Keyring>(
+        &self,
+        serving: &Serving<'_, S, C, G, V, H, P, K>,
+    ) -> Option<Heard> {
+        once(&self.sweeping, async {
+            swept(serving).await;
+            None
+        })
+        .await
+    }
+
+    /// The round `path` asks for of `asked`, done, and its answer; or none
+    /// where it asks for none.
+    async fn asked<S: Store, C: Clock, G: Signer, V, H: Http, P, K: Keyring>(
+        &self,
+        serving: &Serving<'_, S, C, G, V, H, P, K>,
+        asked: Asked,
+        path: &str,
+    ) -> Option<hyper::Response<Full<Bytes>>> {
+        let done = if path == asked.poll {
+            self.polled(serving).await
+        } else if path == asked.housekeep {
+            self.swept(serving).await;
+            self.kept(serving).await
+        } else {
+            return None;
+        };
+        if let Some(heard) = done {
+            (self.heard)(heard);
+        }
+        Some(replied(200, JSON, asked.reply.as_bytes().to_vec()))
+    }
+}
+
 /// The one request `stream` carries, answered, within [`HELD`].
 async fn connection<S, C, G, V, H, P, K, T>(
     serving: &Serving<'_, S, C, G, V, H, P, K>,
     stream: T,
     queue: &Queue,
     limits: Limits,
+    rounds: &Rounds<'_>,
 ) where
     T: AsyncRead + AsyncWrite + Unpin,
     S: Store,
     C: Clock,
     G: Signer,
     V: Verifier,
+    H: Http,
     P: Http,
     K: Keyring,
 {
-    let service = service_fn(move |request| answered(serving, request, queue, limits));
+    let service = service_fn(move |request| answered(serving, request, queue, limits, rounds));
     let served = http1::Builder::new()
         .timer(TokioTimer::new())
         .header_read_timeout(limits.read)
@@ -380,9 +489,12 @@ pub async fn serve<S, C, G, V, H, P, K, L, So>(
     if let Ok(address) = listener.address() {
         heard(Heard::Listening(address));
     }
-    let polling = Cell::new(false);
-    let keeping = Cell::new(false);
-    let sweeping = Cell::new(false);
+    let rounding = Rounds {
+        polling: Cell::new(false),
+        keeping: Cell::new(false),
+        sweeping: Cell::new(false),
+        heard,
+    };
     let queue = Queue::new(limits.jobs);
     let mut connections = FuturesUnordered::new();
     let mut running: FuturesUnordered<Pin<Box<dyn Future<Output = Option<Heard>> + '_>>> =
@@ -411,7 +523,7 @@ pub async fn serve<S, C, G, V, H, P, K, L, So>(
         tokio::select! {
             () = &mut stop => break,
             accepted = listener.take(), if connections.len() < limits.connections => match accepted {
-                Ok(stream) => connections.push(connection(serving, stream, &queue, limits)),
+                Ok(stream) => connections.push(connection(serving, stream, &queue, limits, &rounding)),
                 Err(error) => {
                     heard(Heard::Unaccepted(error.to_string()));
                     tokio::time::sleep(ACCEPT_PAUSE).await;
@@ -425,30 +537,14 @@ pub async fn serve<S, C, G, V, H, P, K, L, So>(
                     heard(said);
                 }
             }
-            () = round(&mut polls), if !polling.get() => {
-                polling.set(true);
-                running.push(Box::pin(async {
-                    let swept = poll(serving.config, serving.connected, serving.ports, RUN).await;
-                    polling.set(false);
-                    Some(Heard::Polled(swept))
-                }));
+            () = round(&mut polls), if !rounding.polling.get() => {
+                running.push(Box::pin(rounding.polled(serving)));
             }
-            () = round(&mut chores), if !keeping.get() => {
-                keeping.set(true);
-                running.push(Box::pin(async {
-                    let ports = serving.ports;
-                    let kept = housekeep(serving.connected, ports.store, ports.clock).await;
-                    keeping.set(false);
-                    Some(Heard::Kept(kept))
-                }));
+            () = round(&mut chores), if !rounding.keeping.get() => {
+                running.push(Box::pin(rounding.kept(serving)));
             }
-            () = round(&mut sweeps), if !sweeping.get() => {
-                sweeping.set(true);
-                running.push(Box::pin(async {
-                    swept(serving).await;
-                    sweeping.set(false);
-                    None
-                }));
+            () = round(&mut sweeps), if !rounding.sweeping.get() => {
+                running.push(Box::pin(rounding.swept(serving)));
             }
         }
     }

@@ -23,7 +23,7 @@ mod server {
         Store as _,
     };
     use herald_records::MemoryKeyring;
-    use herald_server::{Capped, Heard, Limits, Listener, serve};
+    use herald_server::{Asked, Capped, Heard, Limits, Listener, serve};
     use herald_testing::{
         FakeClock, FakeSecrets, FakeSigner, FakeStore, FakeVerifier, ScriptedSockets,
     };
@@ -166,6 +166,7 @@ body = "{{ event.body }}"
             housekeep: None,
             keys: Duration::from_secs(3_600),
             read: Duration::from_secs(2),
+            asked: None,
         }
     }
 
@@ -300,6 +301,7 @@ body = "{{ event.body }}"
         };
         let quick = Limits {
             read: Duration::from_millis(100),
+            asked: None,
             ..limits()
         };
         let (answer, ()) = tokio::join!(
@@ -461,6 +463,70 @@ body = "{{ event.body }}"
         assert!(said(&heard).contains(&"polled".to_owned()));
         assert!(said(&heard).contains(&"kept".to_owned()));
         assert!(forgotten());
+    }
+
+    #[tokio::test]
+    async fn a_host_asks_for_rounds_at_its_paths_and_each_runs_one_at_a_time() {
+        let gate = Gate {
+            open: std::sync::Arc::new(Notify::new()),
+            gated: true,
+        };
+        let world = World::new(gate.clone()).await;
+        let (listener, address) = listening().await;
+        let heard = RefCell::new(Vec::new());
+        let stop = Notify::new();
+        let asking = Limits {
+            asked: Some(Asked {
+                poll: "/poll",
+                housekeep: "/housekeep",
+                reply: r#"{"Outputs":{}}"#,
+            }),
+            ..limits()
+        };
+        let client = async {
+            let poll = posted("/poll", &[], b"{}");
+            let first = asked(address, &poll);
+            let rest = async {
+                tokio::time::sleep(Duration::from_millis(50)).await;
+                let again = asked(address, &posted("/poll", &[], b"{}")).await;
+                let kept = asked(address, &posted("/housekeep", &[], b"{}")).await;
+                let elsewhere = asked(address, &posted("/nowhere", &[], b"{}")).await;
+                (again, kept, elsewhere)
+            };
+            let opening = async {
+                loop {
+                    tokio::time::sleep(Duration::from_millis(100)).await;
+                    gate.open.notify_waiters();
+                }
+            };
+            let answers = tokio::select! {
+                answers = async { tokio::join!(first, rest) } => answers,
+                () = opening => unreachable!(),
+            };
+            stop.notify_one();
+            answers
+        };
+        let hear = |said: Heard| heard.borrow_mut().push(named(&said));
+        let ((first, (again, kept, elsewhere)), ()) = tokio::join!(
+            client,
+            world.serve(listener, asking, &hear, stop.notified())
+        );
+        for answer in [&first, &again, &kept] {
+            assert!(answer.starts_with("HTTP/1.1 200 OK\r\n"), "{answer}");
+            assert!(answer.ends_with(r#"{"Outputs":{}}"#), "{answer}");
+            assert!(
+                answer.contains("content-type: application/json"),
+                "{answer}"
+            );
+        }
+        assert!(elsewhere.starts_with("HTTP/1.1 404"), "{elsewhere}");
+        let said = said(&heard);
+        assert_eq!(
+            said.iter().filter(|name| *name == "polled").count(),
+            1,
+            "{said:?}"
+        );
+        assert!(said.contains(&"kept".to_owned()), "{said:?}");
     }
 
     /// A TCP listener whose next connection may fail to be taken, and

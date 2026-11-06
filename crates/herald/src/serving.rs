@@ -13,7 +13,7 @@ use herald_flows::{
 use herald_native::{EnvSecrets, NativeSockets, RingSigner, RingVerifier, SystemClock};
 use herald_ports::{Keyring, PUBLIC, Store as Keeps};
 use herald_records::MemoryKeyring;
-use herald_server::{Capped, Heard, Limits, READ, serve};
+use herald_server::{Asked, Capped, Heard, Limits, READ, serve};
 
 use super::output::{chored, polled, report, say, why};
 use super::stores::{Commands, reached};
@@ -28,6 +28,7 @@ struct Listening<'a, F> {
     public: &'a Capped<Connection>,
     sockets: NativeSockets,
     listener: tokio::net::TcpListener,
+    asked: Option<Asked>,
     out: RefCell<&'a mut dyn Write>,
     stop: F,
 }
@@ -81,6 +82,7 @@ impl<F: Future<Output = ()>> Listening<'_, F> {
             housekeep: period(self.config.schedule.housekeep),
             keys: period(Some(server.keys_refreshed)).unwrap_or_default(),
             read: READ,
+            asked: self.asked,
         };
         let out = &self.out;
         let heard = |heard: Heard| {
@@ -101,6 +103,16 @@ impl<F: Future<Output = ()>> Listening<'_, F> {
         DONE
     }
 }
+
+/// Where Azure Functions tells a custom handler to listen.
+const AZURE_PORT: &str = "FUNCTIONS_CUSTOMHANDLER_PORT";
+/// Where Azure Functions' timer triggers ask for rounds, by the functions
+/// `deploy/azure` names, and what each invocation is answered.
+const AZURE: Asked = Asked {
+    poll: "/poll",
+    housekeep: "/housekeep",
+    reply: r#"{"Outputs":{},"Logs":[],"ReturnValue":null}"#,
+};
 
 /// The domains the sessions herald holds open connections under: Discord's
 /// gateway and Slack's Socket Mode (ADR-0016).
@@ -161,9 +173,15 @@ pub(crate) async fn serving(
     out: &mut dyn Write,
     stop: impl Future<Output = ()>,
 ) -> Result<u8, String> {
+    let azure = vars
+        .get(AZURE_PORT)
+        .filter(|port| !port.is_empty())
+        .map(|port| format!("127.0.0.1:{port}"));
+    let asked = azure.is_some().then_some(AZURE);
     let address = listen
         .map(ToOwned::to_owned)
         .or_else(|| vars.get(LISTEN).filter(|value| !value.is_empty()).cloned())
+        .or(azure)
         .unwrap_or_else(|| config.server.listen.clone());
     let listener = tokio::net::TcpListener::bind(&address)
         .await
@@ -183,6 +201,7 @@ pub(crate) async fn serving(
         public: &public,
         sockets,
         listener,
+        asked,
         out: RefCell::new(out),
         stop,
     };

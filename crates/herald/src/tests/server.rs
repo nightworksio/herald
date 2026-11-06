@@ -81,6 +81,49 @@ fn the_server_listens_where_its_environment_or_its_config_says() {
     assert!(answer.borrow().starts_with("HTTP/1.1 200 OK"));
 }
 
+/// What the server on `port` answers an Azure timer's invocation at `path`,
+/// kept in `answer`.
+async fn timed(port: u16, path: &str, answer: &RefCell<String>) {
+    let mut stream = tokio::net::TcpStream::connect(("127.0.0.1", port))
+        .await
+        .unwrap();
+    let request = format!("POST {path} HTTP/1.1\r\nHost: x\r\nContent-Length: 2\r\n\r\n{{}}");
+    stream.write_all(request.as_bytes()).await.unwrap();
+    let mut read = String::new();
+    stream.read_to_string(&mut read).await.unwrap();
+    *answer.borrow_mut() = read;
+}
+
+#[test]
+fn under_azure_functions_the_server_listens_on_its_port_and_its_timers_ask_for_rounds() {
+    let port = free();
+    let answer = RefCell::new(String::new());
+    let mut azure = setup(CONFIG);
+    azure
+        .vars
+        .insert("FUNCTIONS_CUSTOMHANDLER_PORT".to_owned(), port.to_string());
+    let served = herald_until(
+        &azure,
+        &World::default(),
+        &["server"],
+        timed(port, "/housekeep", &answer),
+    );
+    assert_eq!(served.code, DONE, "{}", served.err);
+    assert!(
+        served
+            .out
+            .contains(&format!("herald serves on 127.0.0.1:{port}")),
+        "{}",
+        served.out
+    );
+    let answer = answer.borrow();
+    assert!(answer.starts_with("HTTP/1.1 200 OK"), "{answer}");
+    assert!(
+        answer.ends_with(r#"{"Outputs":{},"Logs":[],"ReturnValue":null}"#),
+        "{answer}"
+    );
+}
+
 #[test]
 fn a_server_that_cannot_listen_or_read_a_webhook_or_command_secret_stops_before_it_serves() {
     let taken = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
