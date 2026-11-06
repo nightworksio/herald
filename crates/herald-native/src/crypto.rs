@@ -1,7 +1,6 @@
 use std::future::{Future, ready};
 
-use base64::Engine as _;
-use base64::engine::general_purpose::STANDARD;
+use herald_keys::{Public, pem, subject};
 use herald_ports::{Algorithm, CryptoError, Secret, Signer, Verifier};
 use ring::hmac;
 use ring::rand::SystemRandom;
@@ -20,15 +19,6 @@ pub struct RingSigner;
 #[derive(Debug, Clone, Copy, Default)]
 pub struct RingVerifier;
 
-fn pkcs8(pem: &str) -> Option<Vec<u8>> {
-    let body: String = pem
-        .lines()
-        .filter(|line| !line.starts_with("-----"))
-        .map(str::trim)
-        .collect();
-    STANDARD.decode(body).ok()
-}
-
 fn signed(algorithm: Algorithm, key: &Secret, message: &[u8]) -> Option<Vec<u8>> {
     match algorithm {
         Algorithm::HmacSha256 => {
@@ -36,11 +26,11 @@ fn signed(algorithm: Algorithm, key: &Secret, message: &[u8]) -> Option<Vec<u8>>
             Some(hmac::sign(&key, message).as_ref().to_vec())
         }
         Algorithm::Ed25519 => {
-            let pair = Ed25519KeyPair::from_pkcs8_maybe_unchecked(&pkcs8(key.expose())?).ok()?;
+            let pair = Ed25519KeyPair::from_pkcs8_maybe_unchecked(&pem(key.expose())?).ok()?;
             Some(pair.sign(message).as_ref().to_vec())
         }
         Algorithm::RsaSha256 => {
-            let pair = RsaKeyPair::from_pkcs8(&pkcs8(key.expose())?).ok()?;
+            let pair = RsaKeyPair::from_pkcs8(&pem(key.expose())?).ok()?;
             let mut signature = vec![0; pair.public().modulus_len()];
             pair.sign(
                 &RSA_PKCS1_SHA256,
@@ -54,51 +44,16 @@ fn signed(algorithm: Algorithm, key: &Secret, message: &[u8]) -> Option<Vec<u8>>
     }
 }
 
-/// The DER `AlgorithmIdentifier` of `rsaEncryption`, with its null
-/// parameters.
-const RSA_ENCRYPTION: [u8; 15] = [
-    0x30, 0x0d, 0x06, 0x09, 0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x01, 0x01, 0x05, 0x00,
-];
-/// The DER `AlgorithmIdentifier` of Ed25519.
-const ED25519_ALGORITHM: [u8; 7] = [0x30, 0x05, 0x06, 0x03, 0x2b, 0x65, 0x70];
-const SEQUENCE: u8 = 0x30;
-const BIT_STRING: u8 = 0x03;
-
-/// `content` as one DER value of `tag`, with its length.
-fn der(tag: u8, content: &[u8]) -> Vec<u8> {
-    let length = content.len();
-    let mut value = vec![tag];
-    if length < 0x80 {
-        value.push(u8::try_from(length).unwrap_or_default());
-    } else {
-        let bytes: Vec<u8> = length
-            .to_be_bytes()
-            .into_iter()
-            .skip_while(|byte| *byte == 0)
-            .collect();
-        value.push(0x80 + u8::try_from(bytes.len()).unwrap_or_default());
-        value.extend(bytes);
-    }
-    value.extend_from_slice(content);
-    value
-}
-
-/// The `SubjectPublicKeyInfo` of the public key `key` of `algorithm`.
-fn subject(algorithm: &[u8], key: &[u8]) -> Vec<u8> {
-    let bits = der(BIT_STRING, &[&[0], key].concat());
-    der(SEQUENCE, &[algorithm, &bits].concat())
-}
-
 fn public_half(algorithm: Algorithm, key: &Secret) -> Option<Vec<u8>> {
     match algorithm {
         Algorithm::HmacSha256 => None,
         Algorithm::Ed25519 => {
-            let pair = Ed25519KeyPair::from_pkcs8_maybe_unchecked(&pkcs8(key.expose())?).ok()?;
-            Some(subject(&ED25519_ALGORITHM, pair.public_key().as_ref()))
+            let pair = Ed25519KeyPair::from_pkcs8_maybe_unchecked(&pem(key.expose())?).ok()?;
+            Some(subject(Public::Ed25519, pair.public_key().as_ref()))
         }
         Algorithm::RsaSha256 => {
-            let pair = RsaKeyPair::from_pkcs8(&pkcs8(key.expose())?).ok()?;
-            Some(subject(&RSA_ENCRYPTION, pair.public().as_ref()))
+            let pair = RsaKeyPair::from_pkcs8(&pem(key.expose())?).ok()?;
+            Some(subject(Public::Rsa, pair.public().as_ref()))
         }
     }
 }

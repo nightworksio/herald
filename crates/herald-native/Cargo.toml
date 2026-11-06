@@ -10,9 +10,10 @@ authors.workspace = true
 publish.workspace = true
 
 [dependencies]
-base64.workspace = true
 futures-util = { version = "0.3", default-features = false, features = ["sink", "std"] }
 herald-core.workspace = true
+herald-compose.workspace = true
+herald-keys.workspace = true
 herald-ports.workspace = true
 jiff.workspace = true
 ring.workspace = true
@@ -27,6 +28,7 @@ url.workspace = true
 webpki-roots.workspace = true
 
 [dev-dependencies]
+base64.workspace = true
 herald-dest-discord.workspace = true
 herald-records.workspace = true
 herald-testing.workspace = true

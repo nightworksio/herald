@@ -8,7 +8,7 @@ use rustls::crypto::CryptoProvider;
 use rustls::{ClientConfig, RootCertStore};
 use url::Url;
 
-use crate::reach::{Reach, ReachError};
+use herald_compose::{Reach, ReachError};
 
 /// How long a connection may take to open.
 pub(crate) const CONNECT: Duration = Duration::from_secs(10);

@@ -1,0 +1,16 @@
+[package]
+name = "herald-keys"
+description = "The encodings herald's keys travel in: PEM, PKCS#8 and SubjectPublicKeyInfo"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish.workspace = true
+
+[dependencies]
+base64.workspace = true
+
+[lints]
+workspace = true

@@ -42,7 +42,9 @@ impl Layer {
             "herald-core" => Some(Self::Core),
             "herald-ports" => Some(Self::Ports),
             "herald-testing" => Some(Self::Testing),
-            "herald-aws" | "herald-records" | "herald-sql" | "herald-wire" => Some(Self::Kits),
+            "herald-aws" | "herald-keys" | "herald-records" | "herald-sql" | "herald-wire" => {
+                Some(Self::Kits)
+            }
             "herald-config" => Some(Self::Config),
             "herald-flows" => Some(Self::Flows),
             "herald-compose" => Some(Self::Composition),
@@ -88,9 +90,9 @@ fn outside_allowed(layer: Layer) -> &'static [&'static str] {
         ],
         Layer::Ports => &["jiff"],
         Layer::Flows => &["futures-util", "jiff"],
-        Layer::Composition => &["async-lock", "jiff"],
+        Layer::Composition => &["async-lock", "jiff", "url"],
         Layer::Testing => &["jiff", "serde", "serde_json"],
-        Layer::Kits => &["hmac", "jiff", "serde", "serde_json", "sha2"],
+        Layer::Kits => &["base64", "hmac", "jiff", "serde", "serde_json", "sha2"],
         Layer::Sources => &["jiff", "quick-xml", "schemars", "serde", "serde_json"],
         Layer::Destinations => &["jiff", "schemars", "serde", "serde_json", "url"],
         Layer::Stores => &["base64", "jiff", "schemars", "serde", "serde_json"],
@@ -121,6 +123,7 @@ mod tests {
             ("herald-core", Layer::Core),
             ("herald-ports", Layer::Ports),
             ("herald-testing", Layer::Testing),
+            ("herald-keys", Layer::Kits),
             ("herald-records", Layer::Kits),
             ("herald-sql", Layer::Kits),
             ("herald-wire", Layer::Kits),
@@ -206,7 +209,8 @@ mod tests {
         assert!(Layer::Flows.allows_outside("jiff"));
         assert!(!Layer::Flows.allows_outside("reqwest"));
         assert!(Layer::Kits.allows_outside("serde_json"));
-        assert!(!Layer::Kits.allows_outside("base64"));
+        assert!(Layer::Kits.allows_outside("base64"));
+        assert!(!Layer::Kits.allows_outside("url"));
         assert!(Layer::Testing < Layer::Kits && Layer::Kits < Layer::Sources);
     }
 

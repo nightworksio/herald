@@ -1,3 +1,6 @@
+use base64::Engine as _;
+use base64::engine::general_purpose::STANDARD;
+
 use super::*;
 
 const RSA: &str = include_str!("../../fixtures/rsa-2048-pkcs8.test.hex");
@@ -22,18 +25,6 @@ fn sign(algorithm: Algorithm, key: &Secret, message: &[u8]) -> Result<Vec<u8>, C
 
 fn verify(algorithm: Algorithm, key: &[u8], message: &[u8], signature: &[u8]) -> bool {
     pollster::block_on(RingVerifier.verify(algorithm, key, message, signature))
-}
-
-#[test]
-fn a_der_length_is_short_below_128_bytes_and_long_from_there() {
-    let value = |length: usize| der(SEQUENCE, &vec![7; length]);
-    assert_eq!(value(0), [SEQUENCE, 0]);
-    assert_eq!(value(127)[..2], [SEQUENCE, 127]);
-    assert_eq!(value(128)[..3], [SEQUENCE, 0x81, 0x80]);
-    assert_eq!(value(255)[..3], [SEQUENCE, 0x81, 0xff]);
-    assert_eq!(value(256)[..4], [SEQUENCE, 0x82, 0x01, 0x00]);
-    assert_eq!(value(65_536)[..5], [SEQUENCE, 0x83, 0x01, 0x00, 0x00]);
-    assert_eq!(value(300).len(), 304);
 }
 
 #[test]
@@ -202,7 +193,11 @@ fn public(algorithm: Algorithm, key: &Secret) -> Result<Vec<u8>, CryptoError> {
 fn a_public_key_is_published_as_a_subject_public_key_info() {
     let der = unhex(RSA);
     let rsa = public(Algorithm::RsaSha256, &Secret::new("RSA", pem(&der))).unwrap();
-    assert_eq!(rsa, pkcs8(SPKI).unwrap(), "the key's own published PEM");
+    assert_eq!(
+        rsa,
+        herald_keys::pem(SPKI).unwrap(),
+        "the key's own published PEM"
+    );
     let seed = Ed25519KeyPair::generate_pkcs8(&SystemRandom::new()).unwrap();
     let ed = Ed25519KeyPair::from_pkcs8(seed.as_ref()).unwrap();
     let published = public(Algorithm::Ed25519, &Secret::new("ED", pem(seed.as_ref()))).unwrap();

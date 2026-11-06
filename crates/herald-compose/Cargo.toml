@@ -25,6 +25,7 @@ herald-store-postgres.workspace = true
 herald-store-repo-variables.workspace = true
 herald-store-sqlite.workspace = true
 jiff.workspace = true
+url.workspace = true
 
 [dev-dependencies]
 herald-core.workspace = true

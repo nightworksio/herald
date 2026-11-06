@@ -7,9 +7,13 @@
 mod capped;
 mod composed;
 mod host;
+mod public;
+mod reach;
 mod records;
 
 pub use capped::Capped;
 pub use composed::Composed;
 pub use host::{Host, KvAt, SqlAt, Unoffered};
+pub use public::{public, reachable};
+pub use reach::{Reach, ReachError};
 pub use records::{GITHUB_REPOSITORY, GITHUB_TOKEN, Records, Served, reached};
