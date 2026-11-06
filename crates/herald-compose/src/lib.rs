@@ -10,6 +10,7 @@ mod host;
 mod public;
 mod reach;
 mod records;
+pub mod told;
 
 pub use capped::Capped;
 pub use composed::Composed;

@@ -3,8 +3,9 @@ use std::collections::BTreeMap;
 use herald_core::{RouteId, Step};
 
 use super::world::*;
-use crate::output::{escaped, steps};
+use crate::output::escaped;
 use crate::*;
+use herald_compose::told::steps;
 
 #[test]
 fn a_run_is_named_for_the_ci_job_it_runs_in() {

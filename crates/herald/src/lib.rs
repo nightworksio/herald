@@ -41,8 +41,9 @@ mod stores;
 use cli::{
     Cli, Command, Discording, From, Layer, Matrixing, Reading, Serve, Setting, Slacking, Tokens,
 };
+use herald_compose::told::{chored, polled, report, why};
 use herald_compose::{GITHUB_TOKEN, Served};
-use output::{Scrubbing, chored, hidden, masked, polled, report, say, warned, why};
+use output::{Scrubbing, hidden, masked, say, warned};
 use serving::serving;
 use stores::{Commands, Records, STORES, reached};
 

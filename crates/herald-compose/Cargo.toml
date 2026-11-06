@@ -12,6 +12,7 @@ publish.workspace = true
 [dependencies]
 async-lock = { version = "3", default-features = false, features = ["std"] }
 herald-config.workspace = true
+herald-core.workspace = true
 herald-flows.workspace = true
 herald-ports.workspace = true
 herald-records.workspace = true
@@ -28,7 +29,6 @@ jiff.workspace = true
 url.workspace = true
 
 [dev-dependencies]
-herald-core.workspace = true
 herald-testing.workspace = true
 pollster.workspace = true
 

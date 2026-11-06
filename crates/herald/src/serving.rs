@@ -8,15 +8,15 @@ use std::io::Write;
 
 use herald_compose::{Capped, Served};
 use herald_config::Config;
-use herald_flows::{
-    Connected, FollowError, Followed, Interacted, Keys, Ports, Serving, Webhooks, Worked, webhooks,
-};
+use herald_flows::{Connected, Keys, Ports, Serving, Webhooks, webhooks};
 use herald_native::{EnvSecrets, NativeSockets, RingSigner, RingVerifier, SystemClock};
 use herald_ports::{Keyring, PUBLIC, Store as Keeps};
 use herald_records::MemoryKeyring;
 use herald_server::{Asked, Heard, Limits, READ, serve};
 
-use super::output::{chored, polled, report, say, why};
+use herald_compose::told;
+
+use super::output::say;
 use super::stores::{Commands, SERVED, reached};
 use super::{Connect, Connection, DONE, LISTEN, worded};
 
@@ -123,46 +123,11 @@ const SESSIONS: [&str; 2] = ["discord.gg", "slack.com"];
 pub(crate) fn said(heard: Heard) -> Vec<String> {
     match heard {
         Heard::Listening(address) => vec![format!("herald serves on {address}")],
-        Heard::Worked(Worked::Announced(announced)) => announced.iter().map(report).collect(),
-        Heard::Worked(Worked::Followed(followed)) => vec![follow(followed)],
-        Heard::Worked(Worked::Interacted(interacted)) => interacted.iter().map(answered).collect(),
-        Heard::Polled(swept) => swept.iter().flat_map(polled).collect(),
-        Heard::Kept(Ok(kept)) => kept.iter().map(chored).collect(),
-        Heard::Kept(Err(stop)) => vec![format!(
-            "housekeeping stopped: {}. The next round tries again.",
-            why(&stop)
-        )],
+        Heard::Worked(worked) => told::worked(&worked),
+        Heard::Polled(swept) => swept.iter().flat_map(told::polled).collect(),
+        Heard::Kept(kept) => told::kept(&kept),
         Heard::Unaccepted(reason) => vec![format!("a connection could not be taken: {reason}")],
         Heard::Session { destination, said } => vec![format!("{}: {said}", destination.as_str())],
-    }
-}
-
-fn answered(interacted: &Interacted) -> String {
-    let asked = &interacted.asked;
-    let command = asked.command.name();
-    let destination = asked.destination.as_str();
-    match (&interacted.answer.trouble, &interacted.sent) {
-        (Some(trouble), _) => format!("{destination}: {command} could not be answered: {trouble}"),
-        (None, Err(error)) => {
-            format!("{destination}: the answer to {command} could not be sent: {error}")
-        }
-        (None, Ok(())) => format!(
-            "{destination}: {command} was answered in {}",
-            asked.place.id
-        ),
-    }
-}
-
-fn follow(followed: Result<Followed, FollowError>) -> String {
-    match followed {
-        Ok(Followed::Accepted {
-            follower, actor, ..
-        }) => format!("{actor}: {follower} follows it now"),
-        Ok(Followed::Undone { follower, actor }) => {
-            format!("{actor}: {follower} no longer follows it")
-        }
-        Ok(Followed::Ignored(why)) => format!("an activity was ignored: {why}"),
-        Err(error) => format!("an activity was not taken, and may be delivered again: {error}"),
     }
 }
 
