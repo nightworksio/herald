@@ -24,7 +24,7 @@ pub struct Composed<H: Host> {
     webhooks: Webhooks,
     public: Capped<H::Http>,
     memory: MemoryKeyring,
-    run: &'static str,
+    run: String,
 }
 
 impl<H: Host> Composed<H> {
@@ -38,7 +38,7 @@ impl<H: Host> Composed<H> {
         host: H,
         config: Config,
         stores: &[&str],
-        run: &'static str,
+        run: impl Into<String>,
     ) -> Result<Self, String> {
         let records = reached(&host, &config.store, stores).await?;
         let prepared = prepare(&config, host.secrets(), host.signer())
@@ -61,7 +61,7 @@ impl<H: Host> Composed<H> {
             webhooks,
             public,
             memory,
-            run,
+            run: run.into(),
         })
     }
 
@@ -178,7 +178,7 @@ impl<H: Host, W: Keyed<H>> Through<'_, H, W> {
             webhooks: &composed.webhooks,
             admission: self.admission,
         };
-        self.work.keyed(&serving, composed.run).await
+        self.work.keyed(&serving, &composed.run).await
     }
 }
 

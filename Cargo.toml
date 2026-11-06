@@ -44,6 +44,7 @@ herald-store-postgres = { path = "crates/herald-store-postgres" }
 herald-store-repo-variables = { path = "crates/herald-store-repo-variables" }
 herald-store-sqlite = { path = "crates/herald-store-sqlite" }
 herald-testing = { path = "crates/herald-testing" }
+herald-wasm = { path = "crates/herald-wasm" }
 herald-wire = { path = "crates/herald-wire" }
 cargo_metadata = "0.23"
 minijinja = { version = "3", default-features = false, features = ["builtins", "fuel", "multi_template", "serde"] }

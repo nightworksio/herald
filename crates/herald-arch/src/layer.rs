@@ -50,8 +50,7 @@ impl Layer {
             "herald-compose" => Some(Self::Composition),
             "herald-native" => Some(Self::Native),
             "herald-server" => Some(Self::Serving),
-            "herald" | "herald-worker" | "herald-lambda" | "herald-vercel" | "herald-netlify"
-            | "herald-deno" => Some(Self::Drivers),
+            "herald" | "herald-wasm" => Some(Self::Drivers),
             "herald-arch" => Some(Self::Tooling),
             _ if name.starts_with("herald-sources-") => Some(Self::Sources),
             _ if name.starts_with("herald-dest-") => Some(Self::Destinations),
@@ -135,11 +134,7 @@ mod tests {
             ("herald-compose", Layer::Composition),
             ("herald-native", Layer::Native),
             ("herald", Layer::Drivers),
-            ("herald-worker", Layer::Drivers),
-            ("herald-lambda", Layer::Drivers),
-            ("herald-vercel", Layer::Drivers),
-            ("herald-netlify", Layer::Drivers),
-            ("herald-deno", Layer::Drivers),
+            ("herald-wasm", Layer::Drivers),
             ("herald-server", Layer::Serving),
             ("herald-arch", Layer::Tooling),
         ];

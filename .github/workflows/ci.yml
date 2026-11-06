@@ -215,7 +215,8 @@ jobs:
           key: msrv-${{ hashFiles('Cargo.toml', 'Cargo.lock') }}
       - run: cargo test --workspace --locked
 
-  # The core and everything the wasm drivers build on compile for wasm32.
+  # herald-wasm and everything it builds on compile for wasm32 without a
+  # warning, and its JavaScript glue passes its tests under Node.
   wasm:
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -231,7 +232,11 @@ jobs:
             ~/.cargo/registry/cache
             target
           key: wasm-${{ hashFiles('rust-toolchain.toml', 'Cargo.lock') }}
-      - run: cargo build --locked --target wasm32-unknown-unknown -p herald-core
+      - run: .github/scripts/install-tool.sh wasm-bindgen-test-runner
+      - run: cargo clippy --locked --target wasm32-unknown-unknown -p herald-wasm --all-targets -- -D warnings
+      - run: cargo test --locked --target wasm32-unknown-unknown -p herald-wasm
+        env:
+          CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUNNER: wasm-bindgen-test-runner
 
   # herald's own Action, built from this commit, announces a sample release
   # twice against the recorded-fixture server, and the second run must send
