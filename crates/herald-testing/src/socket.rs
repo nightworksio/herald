@@ -1,5 +1,8 @@
 use std::collections::VecDeque;
+use std::future::Future;
+use std::pin::Pin;
 use std::sync::{Arc, Mutex};
+use std::task::{Context, Poll};
 
 use herald_ports::{Frame, HttpError, Socket, Sockets, Text};
 
@@ -9,9 +12,10 @@ use crate::lock;
 /// opening it fails with.
 pub type Connection = Result<Vec<Frame>, HttpError>;
 
-/// Sockets that open one scripted connection after another: each the frames
-/// it receives in turn, after which it waits for ever, or the error opening
-/// it fails with. Once the script is spent, nothing can be reached.
+/// Sockets that open one scripted connection after another, each after
+/// giving the rest of its task a turn: each the frames it receives in turn,
+/// after which it waits for ever, or the error opening it fails with. Once
+/// the script is spent, nothing can be reached.
 #[derive(Debug, Clone, Default)]
 pub struct ScriptedSockets {
     connections: Arc<Mutex<VecDeque<Connection>>>,
@@ -61,10 +65,29 @@ impl ScriptedSockets {
     }
 }
 
+/// A future pending once, its task woken at once, then ready: the turn a
+/// real connection gives the rest of its task before it opens.
+#[derive(Default)]
+struct Turn(bool);
+
+impl Future for Turn {
+    type Output = ();
+
+    fn poll(mut self: Pin<&mut Self>, context: &mut Context<'_>) -> Poll<()> {
+        if self.0 {
+            return Poll::Ready(());
+        }
+        self.0 = true;
+        context.waker().wake_by_ref();
+        Poll::Pending
+    }
+}
+
 impl Sockets for ScriptedSockets {
     type Socket = ScriptedSocket;
 
     async fn open(&self, url: &str) -> Result<ScriptedSocket, HttpError> {
+        Turn::default().await;
         lock(&self.opened).push(url.to_owned());
         let next = lock(&self.connections).pop_front();
         let frames = next.unwrap_or_else(|| {
@@ -105,8 +128,6 @@ impl Socket for ScriptedSocket {
 
 #[cfg(test)]
 mod tests {
-    use std::future::Future as _;
-
     use super::*;
 
     #[test]

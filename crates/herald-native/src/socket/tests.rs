@@ -4,6 +4,15 @@ fn sockets() -> NativeSockets {
     NativeSockets::under(["discord.gg", "slack.com"]).unwrap()
 }
 
+/// How long a test waits for a frame before it takes the socket to hang.
+const LOST_BY: Duration = Duration::from_secs(3);
+
+async fn heard(socket: &mut NativeSocket) -> Frame {
+    timeout(LOST_BY, socket.receive())
+        .await
+        .expect("a frame or a close within the bound")
+}
+
 fn allowed(url: &str) -> bool {
     sockets().allows(&Url::parse(url).unwrap())
 }
@@ -64,9 +73,12 @@ async fn a_connection_carries_text_frames_both_ways_and_says_how_it_closed() {
     });
     let mut socket = sockets().open(&format!("ws://{address}/")).await.unwrap();
     socket.send(Text::plain("hello")).await.unwrap();
-    assert_eq!(socket.receive().await, Frame::Text("echo hello".to_owned()));
-    assert_eq!(socket.receive().await, Frame::Closed(Some(4004)));
-    assert_eq!(socket.receive().await, Frame::Closed(None));
+    assert_eq!(
+        heard(&mut socket).await,
+        Frame::Text("echo hello".to_owned())
+    );
+    assert_eq!(heard(&mut socket).await, Frame::Closed(Some(4004)));
+    assert_eq!(heard(&mut socket).await, Frame::Closed(None));
     assert!(socket.send(Text::plain("late")).await.is_err());
     server.await.unwrap();
     let raw = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -104,15 +116,20 @@ async fn a_silent_connection_is_pinged_then_lost_and_one_that_never_opens_is_not
         .await
         .unwrap();
     let started = Instant::now();
-    assert_eq!(socket.receive().await, Frame::Closed(None));
-    assert!(started.elapsed() >= silence * 2, "{:?}", started.elapsed());
+    assert_eq!(heard(&mut socket).await, Frame::Closed(None));
+    let lost = started.elapsed();
+    assert!(lost >= silence * 2 && lost < LOST_BY, "{lost:?}");
     server.abort();
     let mute = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let mute_address = mute.local_addr().unwrap();
-    let unopened = sockets()
-        .silent_for(silence)
-        .open(&format!("ws://{mute_address}/"))
-        .await;
+    let unopened = timeout(
+        LOST_BY,
+        sockets()
+            .silent_for(silence)
+            .open(&format!("ws://{mute_address}/")),
+    )
+    .await
+    .expect("an answer within the bound");
     assert!(
         matches!(&unopened, Err(HttpError::Unreachable { reason }) if reason.contains("did not open")),
         "{unopened:?}"

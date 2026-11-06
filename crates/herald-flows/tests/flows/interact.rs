@@ -639,6 +639,45 @@ fn only_a_run_that_answers_commands_reads_the_secrets_it_answers_with() {
 }
 
 #[test]
+fn each_destination_answers_through_its_own_base_and_socket_mode_opens_through_slack_s_api() {
+    let config = config("");
+    let prepared = pollster::block_on(async {
+        prepare(&config, &secrets(), &FakeSigner)
+            .await
+            .unwrap()
+            .answering(&secrets())
+            .await
+    })
+    .unwrap();
+    let connected = prepared
+        .connect(|base| Ok::<_, ()>(base.to_owned()))
+        .unwrap();
+    let bases: Vec<(&str, &str, Option<&str>)> = connected
+        .interactions()
+        .map(|(name, _, answers, sessions)| {
+            (
+                name.as_str(),
+                answers.as_str(),
+                sessions.map(String::as_str),
+            )
+        })
+        .collect();
+    let discord = "https://discord.com/api/v10";
+    let hooks = "https://hooks.slack.com";
+    assert_eq!(
+        bases,
+        [
+            ("discord", discord, None),
+            ("gatewayed", discord, None),
+            ("matrix", "https://matrix.example", None),
+            ("neighbour", "https://matrix.example", None),
+            ("slack", hooks, None),
+            ("socket", hooks, Some("https://slack.com/api")),
+        ]
+    );
+}
+
+#[test]
 fn only_the_destinations_that_take_commands_are_answered_for() {
     let config = crate::harness::config(
         r#"[destinations.slack]

@@ -30,6 +30,7 @@ enum Fault {
     SharesNotes,
     OverwritesLatest,
     ListsNoLatest,
+    ListsAnUnwrittenLatest,
     Broken,
     KeepsNothing,
     DerivesButKeeps,
@@ -307,6 +308,9 @@ impl Store for Faulty {
         if self.fault == Fault::ListsNoLatest {
             return Ok(Vec::new());
         }
+        if self.fault == Fault::ListsAnUnwrittenLatest {
+            return Ok(vec![announced("unwritten", "0.1.0")]);
+        }
         self.inner.every_latest().await
     }
 
@@ -555,6 +559,10 @@ fn a_store_that_breaks_its_promises_is_refused() {
         (
             Fault::ListsNoLatest,
             "every project's latest was not listed as written last",
+        ),
+        (
+            Fault::ListsAnUnwrittenLatest,
+            "a new store holds what a project last announced",
         ),
     ];
     for (fault, failure) in cases {

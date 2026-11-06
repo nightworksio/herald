@@ -93,6 +93,19 @@ token = {{ secret = "HERALD_DISCORD_TOKEN" }}
 [destinations.posted.interactions]
 application = "{APPLICATION}"
 key = "{KEY}"
+[destinations.hooked]
+kind = "slack"
+token = {{ secret = "HERALD_SLACK_TOKEN" }}
+[destinations.hooked.interactions]
+signing = {{ secret = "HERALD_SLACK_SIGNING" }}
+app = {{ secret = "HERALD_SLACK_APP" }}
+[destinations.pushed]
+kind = "matrix"
+homeserver = "https://matrix.example"
+token = {{ secret = "HERALD_MATRIX_TOKEN" }}
+[destinations.pushed.interactions]
+homeserver_token = {{ secret = "HERALD_MATRIX_HS" }}
+appservice_token = {{ secret = "HERALD_MATRIX_AS" }}
 {destination}
 "#
         );
@@ -105,15 +118,19 @@ key = "{KEY}"
             .with("HERALD_SLACK_TOKEN", "slack-token")
             .with("HERALD_SLACK_APP", "app-token")
             .with("HERALD_MATRIX_TOKEN", "matrix-token")
+            .with("HERALD_SLACK_SIGNING", "signing-secret")
+            .with("HERALD_MATRIX_HS", "hs-token")
+            .with("HERALD_MATRIX_AS", "as-token")
     }
 
     /// A path a request's URL holds, and the status and body it is answered
     /// with, or `None` where it hangs.
     type Scripted = (String, Option<(u16, String)>);
 
-    /// An `Http` answering each request with the first scripted answer whose
-    /// path its URL holds, or hanging where the answer is
-    /// `None`, and failing once the script is spent.
+    /// An `Http` answering each request, after giving the rest of its task a
+    /// turn, with the first scripted answer whose path its URL holds, or
+    /// hanging where the answer is `None`, and failing once the script is
+    /// spent.
     #[derive(Debug, Clone, Default)]
     struct Answers {
         script: Arc<Mutex<VecDeque<Scripted>>>,
@@ -156,6 +173,7 @@ key = "{KEY}"
 
     impl Http for Answers {
         async fn send(&self, request: Request) -> Result<Response, HttpError> {
+            tokio::task::yield_now().await;
             let line = format!("{} {}", request.method.as_str(), request.url.redacted());
             self.seen
                 .lock()
@@ -306,7 +324,14 @@ key = "{KEY}"
             )
             .await
             .expect("the server stopped within its bound");
-            heard.into_inner()
+            let heard = heard.into_inner();
+            assert!(
+                !heard
+                    .iter()
+                    .any(|line| line.starts_with("hooked:") || line.starts_with("pushed:")),
+                "a destination whose commands are posted holds no session: {heard:?}"
+            );
+            heard
         }
     }
 

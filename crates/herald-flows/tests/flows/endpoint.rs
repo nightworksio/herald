@@ -148,7 +148,14 @@ fn a_slack_command_is_verified_then_answered_at_once_with_its_work_or_its_usage(
     let latest = form("latest gate");
     let answered = post(&world, path, &signed_slack(&latest), &latest);
     assert_eq!((answered.reply.status, answered.reply.body.len()), (200, 0));
-    assert!(matches!(answered.job, Some(Job::Interact { .. })));
+    let Some(job) = answered.job else {
+        panic!("a command leaves its work");
+    };
+    world.work(job);
+    assert_eq!(
+        world.script.seen(),
+        ["POST «secret:the command's response URL»"]
+    );
     let usage = form("deploy");
     let explained = post(&world, path, &signed_slack(&usage), &usage);
     assert!(
@@ -223,10 +230,23 @@ fn a_homeserver_s_transaction_is_checked_admitted_once_and_its_commands_left_to_
         (pushed.reply.status, pushed.reply.body.as_slice()),
         (200, b"{}".as_slice())
     );
-    let Some(Job::Interact { asked, .. }) = pushed.job else {
+    let Some(job) = pushed.job else {
         panic!("a command leaves its work");
     };
-    assert_eq!(asked[0].0.place, Place::new(ROOM));
+    assert!(
+        matches!(&job, Job::Interact { asked, .. } if asked[0].0.place == Place::new(ROOM)),
+        "{job:?}"
+    );
+    world.work(job);
+    assert!(
+        world
+            .script
+            .seen()
+            .iter()
+            .any(|line| line.contains("/send/m.room.message/")),
+        "{:?}",
+        world.script.seen()
+    );
     let again = matrix(&world, "PUT", path, "hs-token", &body);
     assert_eq!((again.reply.status, again.job.is_none()), (200, true));
     let neighbour = matrix(
