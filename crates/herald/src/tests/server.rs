@@ -33,6 +33,20 @@ async fn checked(port: u16, answer: &RefCell<String>) {
 
 #[cfg(unix)]
 #[test]
+fn a_process_stops_when_it_is_asked_to() {
+    on_tokio(async {
+        let asked = crate::stopped();
+        let told = std::process::Command::new("kill")
+            .args(["-TERM", &std::process::id().to_string()])
+            .status()
+            .unwrap();
+        assert!(told.success());
+        asked.await;
+    });
+}
+
+#[cfg(unix)]
+#[test]
 fn a_process_that_cannot_listen_for_its_signals_stops_at_once() {
     let unheard = || Err(std::io::Error::other("no signals here"));
     on_tokio(crate::signalled(unheard(), unheard()));

@@ -177,6 +177,24 @@ mod tests {
         assert!(!reach.allows(&url("data:text/plain,discord.com")));
     }
 
+    #[test]
+    fn a_base_that_is_no_url_or_not_https_is_refused_by_name() {
+        assert_eq!(
+            Reach::new(["not a url"])
+                .map(|_| ())
+                .unwrap_err()
+                .to_string(),
+            "not a url is not a URL with a host"
+        );
+        assert_eq!(
+            Reach::new(["http://discord.com"])
+                .map(|_| ())
+                .unwrap_err()
+                .to_string(),
+            "http://discord.com is not HTTPS; plain HTTP is allowed only on a loopback host"
+        );
+    }
+
     fn allowed(text: &str) -> bool {
         SocketReach::under(SESSIONS).allows(&url(text))
     }

@@ -10,7 +10,7 @@ mod compose {
     use herald_compose::{Composed, Host, KvAt, Records, SqlAt, reached};
     use herald_config::{Config, Store, load};
     use herald_core::DestinationName;
-    use herald_flows::{Admission, Inbound, Job, Taker};
+    use herald_flows::{Admission, Inbound, Job, Taker, Worked};
     use herald_ports::{Changed, Frame, Http, HttpError, Request, Response, Value};
     use herald_testing::{
         FakeClock, FakeKv, FakeSecrets, FakeSigner, FakeTimer, FakeVerifier, ScriptedSockets,
@@ -400,6 +400,54 @@ template = "t"
             let sockets = ScriptedSockets::opening(vec![Ok(vec![Frame::Closed(Some(4004))])]);
             pollster::block_on(composed.hold(&sockets, &Untaken, &FakeTimer::default()));
             assert_eq!(sockets.opened().len(), 1);
+        }
+    }
+
+    #[test]
+    fn a_composed_herald_works_over_every_store_with_keys_kept_either_way() {
+        let stores = [
+            "kind = \"sqlite\"",
+            "kind = \"deno-kv\"",
+            "kind = \"git-branch\"",
+            "kind = \"repo-variables\"\ntoken = { secret = \"VARIABLES\" }",
+            "kind = \"dynamodb\"",
+            "kind = \"markers\"",
+        ];
+        for store in stores {
+            let kept: &[&str] = if store.contains("markers") {
+                &["memory"]
+            } else {
+                &["memory", "store"]
+            };
+            for keys in kept {
+                let text =
+                    format!("version = 1\n[store]\n{store}\n[server.keys]\ncache = \"{keys}\"\n");
+                let config = load("herald.toml", &text, &|_| Err(String::new())).unwrap();
+                let composed =
+                    pollster::block_on(Composed::new(github(), config, &EVERY, "test")).unwrap();
+                let health = Inbound {
+                    method: "GET",
+                    path: "/healthz",
+                    query: None,
+                    headers: &[],
+                    body: &[],
+                };
+                let answered = pollster::block_on(composed.answer(&health, Admission::Once));
+                assert_eq!(answered.reply.status, 200, "{store}");
+                assert_eq!(pollster::block_on(composed.poll()), Vec::new(), "{store}");
+                let _ = pollster::block_on(composed.housekeep());
+                let sockets = ScriptedSockets::default();
+                pollster::block_on(composed.hold(&sockets, &Untaken, &FakeTimer::default()));
+                let job = Job::Interact {
+                    destination: DestinationName::new("chat"),
+                    asked: Vec::new(),
+                };
+                assert_eq!(
+                    pollster::block_on(composed.work(job)),
+                    Worked::Interacted(Vec::new()),
+                    "{store}"
+                );
+            }
         }
     }
 
