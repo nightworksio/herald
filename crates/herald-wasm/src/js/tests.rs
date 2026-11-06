@@ -4,8 +4,9 @@ use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD;
 use herald_compose::{Host as _, KvAt, SqlAt};
 use herald_ports::{
-    Algorithm, Clock as _, CryptoError, Http as _, HttpError, Method, PUBLIC, Request, Secret,
-    SecretError, Secrets as _, Signer as _, Sql as _, Statement, Text, Value, Verifier as _,
+    Algorithm, Clock as _, CryptoError, Frame, Http as _, HttpError, Method, PUBLIC, Request,
+    Secret, SecretError, Secrets as _, Signer as _, Socket as _, Sockets as _, Sql as _, Statement,
+    Text, Timer as _, Value, Verifier as _,
 };
 use herald_records::{Kept, KvRecords};
 use herald_testing::store_conformance;
@@ -14,10 +15,11 @@ use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::JsFuture;
 use wasm_bindgen_test::wasm_bindgen_test;
 
-use super::bindings::HostObject;
+use super::bindings::{HostObject, SocketsObject};
 use super::crypto::{WebSigner, WebVerifier};
 use super::herald::Herald;
 use super::host::JsHost;
+use super::sessions::{JsSockets, JsTaker, JsTimer};
 use super::{bytes, member, object, strings, strings_of};
 
 #[wasm_bindgen(inline_js = r#"
@@ -84,6 +86,31 @@ export function host(vars) {
 "#)]
 extern "C" {
     fn host(vars: &JsValue) -> HostObject;
+}
+
+#[wasm_bindgen(inline_js = r#"
+export function sockets() {
+  return {
+    async open(url) {
+      if (url.includes("down")) throw new Error("down");
+      const frames = [{ text: `opened ${url}` }, { closed: 4000 }];
+      return {
+        async send(text) {
+          if (text === "refused") throw new Error("refused");
+          frames.unshift({ text: `echo ${text}` });
+        },
+        async receive() {
+          const frame = frames.shift();
+          if (!frame) throw new Error("gone");
+          return frame;
+        },
+      };
+    },
+  };
+}
+"#)]
+extern "C" {
+    fn sockets() -> SocketsObject;
 }
 
 const RSA: &str = include_str!("../../../herald-native/fixtures/rsa-2048-pkcs8.test.hex");
@@ -380,4 +407,65 @@ async fn a_config_with_mistakes_or_an_unkept_store_is_not_composed() {
     )
     .await;
     assert!(nowhere.is_err());
+}
+
+#[wasm_bindgen_test]
+async fn a_session_s_socket_carries_text_both_ways_and_says_how_it_closed() {
+    let opened = JsSockets {
+        opener: send_wrapper::SendWrapper::new(sockets()),
+        reach: herald_compose::SocketReach::under(herald_compose::SESSIONS),
+    };
+    assert!(matches!(
+        opened.open("wss://evil.example/?ticket=1").await,
+        Err(HttpError::Refused { .. })
+    ));
+    assert!(matches!(
+        opened.open("wss://down.discord.gg").await,
+        Err(HttpError::Unreachable { .. })
+    ));
+    let mut socket = opened.open("wss://gateway.discord.gg/?v=10").await.unwrap();
+    assert_eq!(
+        socket.receive().await,
+        Frame::Text("opened wss://gateway.discord.gg/?v=10".to_owned())
+    );
+    socket.send(Text::plain("hello")).await.unwrap();
+    assert!(socket.send(Text::plain("refused")).await.is_err());
+    assert_eq!(socket.receive().await, Frame::Text("echo hello".to_owned()));
+    assert_eq!(socket.receive().await, Frame::Closed(Some(4000)));
+    assert_eq!(socket.receive().await, Frame::Closed(None));
+}
+
+#[wasm_bindgen_test]
+async fn work_is_taken_up_to_the_most_at_once_and_done_on_the_event_loop() {
+    use herald_flows::Taker as _;
+
+    JsTimer.sleep(std::time::Duration::from_millis(1)).await;
+    let composed = Herald::compose(
+        host(&object(&[])),
+        "version = 1\n[store]\nkind = \"markers\"\n".to_owned(),
+        JsValue::UNDEFINED,
+        "worker".to_owned(),
+    )
+    .await
+    .unwrap_or_else(|_| panic!("composed"));
+    let taker = JsTaker {
+        composed: composed.composed(),
+        working: std::rc::Rc::default(),
+        most: 1,
+    };
+    assert_eq!(taker.place(), Some(()));
+    assert_eq!(taker.place(), None);
+    let destination = herald_core::DestinationName::new("chat");
+    taker.fill(
+        (),
+        herald_flows::Job::Interact {
+            destination: destination.clone(),
+            asked: Vec::new(),
+        },
+    );
+    taker.said(&destination, "heard".to_owned());
+    JsTimer.sleep(std::time::Duration::from_millis(5)).await;
+    assert_eq!(taker.working.get(), 0);
+    let held = JsFuture::from(composed.hold(sockets())).await.unwrap();
+    assert!(held.is_undefined());
 }

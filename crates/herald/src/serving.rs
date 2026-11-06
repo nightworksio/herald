@@ -6,7 +6,7 @@ use std::collections::BTreeMap;
 use std::future::Future;
 use std::io::Write;
 
-use herald_compose::{Capped, Served};
+use herald_compose::{Capped, SESSIONS, Served};
 use herald_config::Config;
 use herald_flows::{Connected, Keys, Ports, Serving, Webhooks, webhooks};
 use herald_native::{EnvSecrets, NativeSockets, RingSigner, RingVerifier, SystemClock};
@@ -114,10 +114,6 @@ const AZURE: Asked = Asked {
     housekeep: "/housekeep",
     reply: r#"{"Outputs":{},"Logs":[],"ReturnValue":null}"#,
 };
-
-/// The domains the sessions herald holds open connections under: Discord's
-/// gateway and Slack's Socket Mode (ADR-0016).
-const SESSIONS: [&str; 2] = ["discord.gg", "slack.com"];
 
 /// What a server says of what it heard.
 pub(crate) fn said(heard: Heard) -> Vec<String> {

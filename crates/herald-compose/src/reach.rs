@@ -1,5 +1,6 @@
 use std::fmt;
 
+use herald_ports::HttpError;
 use url::{Host, Url};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -89,6 +90,55 @@ impl Reach {
     }
 }
 
+/// The domains herald's sessions hold connections under: Discord's gateway
+/// and Slack's Socket Mode (ADR-0016).
+pub const SESSIONS: [&str; 2] = ["discord.gg", "slack.com"];
+
+/// What sockets may reach: `wss` under its domains alone, and plain `ws`
+/// only on a loopback host (ADR-0007).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SocketReach(Vec<String>);
+
+impl SocketReach {
+    /// Sockets reaching only hosts under `domains`.
+    pub fn under<'a>(domains: impl IntoIterator<Item = &'a str>) -> Self {
+        Self(domains.into_iter().map(ToOwned::to_owned).collect())
+    }
+
+    /// Whether `url` may be reached.
+    #[must_use]
+    pub fn allows(&self, url: &Url) -> bool {
+        let Some(host) = url.host_str() else {
+            return false;
+        };
+        match url.scheme() {
+            "wss" => self.0.iter().any(|domain| {
+                host == domain
+                    || host
+                        .strip_suffix(domain.as_str())
+                        .is_some_and(|rest| rest.ends_with('.'))
+            }),
+            "ws" => loopback(url),
+            _ => false,
+        }
+    }
+
+    /// The URL `url` names, where it may be reached.
+    ///
+    /// # Errors
+    ///
+    /// Where it may not, refused without its query, which can carry a
+    /// ticket.
+    pub fn admitted(&self, url: &str) -> Result<Url, HttpError> {
+        Url::parse(url)
+            .ok()
+            .filter(|parsed| self.allows(parsed))
+            .ok_or_else(|| HttpError::Refused {
+                url: url.split('?').next().unwrap_or_default().to_owned(),
+            })
+    }
+}
+
 fn loopback(url: &Url) -> bool {
     url.host().is_some_and(|host| match host {
         Host::Domain(domain) => domain == "localhost",
@@ -125,6 +175,46 @@ mod tests {
         assert!(!reach.allows(&url("https://discord.com@example.org/api")));
         assert!(!reach.allows(&url("http://127.0.0.1:8081/")));
         assert!(!reach.allows(&url("data:text/plain,discord.com")));
+    }
+
+    fn allowed(text: &str) -> bool {
+        SocketReach::under(SESSIONS).allows(&url(text))
+    }
+
+    #[test]
+    fn only_secure_sockets_under_the_domains_and_plain_ones_on_loopback_are_allowed() {
+        assert!(allowed("wss://gateway.discord.gg/?v=10"));
+        assert!(allowed("wss://gateway-us-east1-b.discord.gg"));
+        assert!(allowed("wss://discord.gg"));
+        assert!(allowed("wss://wss-primary.slack.com/link/?ticket=1"));
+        assert!(!allowed("wss://evildiscord.gg"));
+        assert!(!allowed("wss://discord.gg.evil.example"));
+        assert!(!allowed("ws://gateway.discord.gg"));
+        assert!(!allowed("https://gateway.discord.gg"));
+        assert!(allowed("ws://127.0.0.1:9000"));
+        assert!(allowed("ws://[::1]:9000"));
+        assert!(allowed("ws://localhost:9000"));
+        assert!(!allowed("ws://10.0.0.1"));
+        assert!(!allowed("wss://127.0.0.1"));
+        assert!(!allowed("data:text/plain,discord.gg"));
+    }
+
+    #[test]
+    fn a_socket_not_allowed_is_refused_without_its_query() {
+        let reach = SocketReach::under(SESSIONS);
+        assert_eq!(
+            reach.admitted("wss://evil.example/?ticket=secret"),
+            Err(HttpError::Refused {
+                url: "wss://evil.example/".to_owned()
+            })
+        );
+        assert!(reach.admitted("not a url").is_err());
+        assert_eq!(
+            reach
+                .admitted("wss://gateway.discord.gg/?v=10")
+                .map(String::from),
+            Ok("wss://gateway.discord.gg/?v=10".to_owned())
+        );
     }
 
     #[test]

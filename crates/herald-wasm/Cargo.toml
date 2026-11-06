@@ -15,6 +15,7 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 herald-compose.workspace = true
 herald-config.workspace = true
+herald-core.workspace = true
 herald-flows.workspace = true
 herald-keys.workspace = true
 herald-ports.workspace = true

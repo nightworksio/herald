@@ -47,6 +47,18 @@ export interface HeraldKv {
   list(prefix: string[]): Promise<{ key: string[]; value: Uint8Array }[]>;
 }
 
+/** One WebSocket connection herald holds, carrying text frames. */
+export interface HeraldSocket {
+  send(text: string): Promise<void>;
+  /** The next text frame, or how the connection closed: its code, or null where it was lost with none. */
+  receive(): Promise<{ text: string } | { closed: number | null }>;
+}
+
+/** What opens the WebSocket connections herald's sessions hold. */
+export interface HeraldSockets {
+  open(url: string): Promise<HeraldSocket>;
+}
+
 /** What a JavaScript host gives herald. */
 export interface HeraldHost {
   /** The variables the host sets, by name. */
@@ -113,6 +125,28 @@ extern "C" {
 
     #[wasm_bindgen(method, catch)]
     pub(crate) fn list(this: &KvObject, prefix: &Array) -> Result<Promise, JsValue>;
+
+    #[wasm_bindgen(typescript_type = "HeraldSockets")]
+    #[derive(Clone)]
+    pub type SocketsObject;
+
+    #[wasm_bindgen(method, catch)]
+    pub(crate) fn open(this: &SocketsObject, url: &str) -> Result<Promise, JsValue>;
+
+    #[derive(Clone)]
+    pub(crate) type SocketObject;
+
+    #[wasm_bindgen(method, catch)]
+    pub(crate) fn send(this: &SocketObject, text: &str) -> Result<Promise, JsValue>;
+
+    #[wasm_bindgen(method, catch)]
+    pub(crate) fn receive(this: &SocketObject) -> Result<Promise, JsValue>;
+
+    #[wasm_bindgen(js_name = setTimeout)]
+    pub(crate) fn set_timeout(handler: &js_sys::Function, milliseconds: f64) -> JsValue;
+
+    #[wasm_bindgen(js_namespace = console, js_name = log)]
+    pub(crate) fn log(line: &str);
 
     pub(crate) type Subtle;
 

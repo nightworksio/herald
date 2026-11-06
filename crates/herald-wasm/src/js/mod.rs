@@ -3,6 +3,7 @@ mod crypto;
 mod herald;
 mod host;
 mod ports;
+mod sessions;
 #[cfg(test)]
 mod tests;
 

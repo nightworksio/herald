@@ -2,10 +2,10 @@ use std::future::Future;
 
 use herald_config::Config;
 use herald_flows::{
-    Admission, Answered, Connected, Inbound, Job, Kept, Keys, Ports, Serving, Stop, Swept,
-    Webhooks, Worked, answer, housekeep, poll, prepare, webhooks, work,
+    Admission, Answered, Connected, Inbound, Job, Kept, Keys, Ports, Serving, Sessions, Stop,
+    Swept, Taker, Webhooks, Worked, answer, housekeep, poll, prepare, webhooks, work,
 };
-use herald_ports::{Clock as _, Keyring, PUBLIC, Store as Keeps};
+use herald_ports::{Clock as _, Keyring, PUBLIC, Sockets, Store as Keeps, Timer};
 use herald_records::MemoryKeyring;
 use jiff::Timestamp;
 
@@ -99,6 +99,23 @@ impl<H: Host> Composed<H> {
     /// Where housekeeping stopped, saying why.
     pub async fn housekeep(&self) -> Result<Vec<Kept>, Stop> {
         self.through(Admission::Once, Housekeeping).await
+    }
+
+    /// Every session the destinations hold, opened through `sockets`, each
+    /// command's work handed to `taker`, waiting with `timer`, until each
+    /// stops.
+    pub async fn hold<So: Sockets, T: Taker, Ti: Timer>(
+        &self,
+        sockets: &So,
+        taker: &T,
+        timer: &Ti,
+    ) {
+        let holding = Holding {
+            sockets,
+            taker,
+            timer,
+        };
+        self.through(Admission::Once, holding).await;
     }
 
     async fn through<W: Keyed<H>>(&self, admission: Admission, work: W) -> W::Done {
@@ -213,6 +230,22 @@ impl<H: Host> Keyed<H> for Polling {
         run: &str,
     ) -> Vec<Swept> {
         poll(serving.config, serving.connected, serving.ports, run).await
+    }
+}
+
+struct Holding<'h, So, T, Ti> {
+    sockets: &'h So,
+    taker: &'h T,
+    timer: &'h Ti,
+}
+
+impl<H: Host, So: Sockets, T: Taker, Ti: Timer> Keyed<H> for Holding<'_, So, T, Ti> {
+    type Done = ();
+
+    async fn keyed<S: Keeps, K: Keyring>(self, serving: &Hosted<'_, H, S, K>, _: &str) {
+        Sessions::new(serving, self.taker, self.timer)
+            .held(self.sockets)
+            .await;
     }
 }
 

@@ -9,9 +9,13 @@ mod compose {
 
     use herald_compose::{Composed, Host, KvAt, Records, SqlAt, reached};
     use herald_config::{Config, Store, load};
-    use herald_flows::{Admission, Inbound};
+    use herald_core::DestinationName;
+    use herald_flows::{Admission, Inbound, Job, Taker};
     use herald_ports::{Changed, Http, HttpError, Request, Response, Value};
-    use herald_testing::{FakeClock, FakeKv, FakeSecrets, FakeSigner, FakeVerifier, ScriptedSql};
+    use herald_testing::{
+        FakeClock, FakeKv, FakeSecrets, FakeSigner, FakeTimer, FakeVerifier, ScriptedSockets,
+        ScriptedSql,
+    };
 
     const EVERY: [&str; 11] = Store::KINDS;
 
@@ -129,6 +133,20 @@ mod compose {
         fn kv(&self, at: KvAt<'_>) -> impl Future<Output = Result<FakeKv, String>> {
             ready(self.ask(format!("{at:?}")).map(|()| FakeKv::default()))
         }
+    }
+
+    struct Untaken;
+
+    impl Taker for Untaken {
+        type Place = ();
+
+        fn place(&self) -> Option<()> {
+            None
+        }
+
+        fn fill(&self, (): (), _: Job) {}
+
+        fn said(&self, _: &DestinationName, _: String) {}
     }
 
     fn config(store: &str) -> Config {
@@ -323,6 +341,19 @@ mod compose {
             assert!(answered.job.is_none());
             assert_eq!(pollster::block_on(composed.poll()), Vec::new());
             assert_eq!(pollster::block_on(composed.housekeep()), Ok(Vec::new()));
+            let sockets = ScriptedSockets::default();
+            pollster::block_on(composed.hold(&sockets, &Untaken, &FakeTimer::default()));
+            assert_eq!(sockets.opened(), Vec::<String>::new());
+            let destination = DestinationName::new("chat");
+            assert_eq!(Untaken.place(), None);
+            Untaken.fill(
+                (),
+                Job::Interact {
+                    destination: destination.clone(),
+                    asked: Vec::new(),
+                },
+            );
+            Untaken.said(&destination, String::new());
         }
     }
 

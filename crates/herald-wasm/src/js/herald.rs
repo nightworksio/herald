@@ -1,14 +1,16 @@
 use std::rc::Rc;
 
-use herald_compose::{Composed, Hosting, told};
+use herald_compose::{Composed, Hosting, SESSIONS, SocketReach, told};
 use herald_config::load;
 use herald_flows::{Admission, Inbound};
 use js_sys::{Function, Promise, Uint8Array};
+use send_wrapper::SendWrapper;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::future_to_promise;
 
-use super::bindings::HostObject;
+use super::bindings::{HostObject, SocketsObject};
 use super::host::JsHost;
+use super::sessions::{JsSockets, JsTaker, JsTimer};
 use super::{bytes, member, object, pairs, strings};
 use crate::numbers::millis;
 use crate::reaching::public_address;
@@ -27,6 +29,13 @@ const CONFIG: &str = "herald.toml";
 #[wasm_bindgen]
 pub struct Herald {
     composed: Rc<Composed<JsHost>>,
+}
+
+#[cfg(test)]
+impl Herald {
+    pub(crate) fn composed(&self) -> Rc<Composed<JsHost>> {
+        Rc::clone(&self.composed)
+    }
 }
 
 #[wasm_bindgen]
@@ -132,6 +141,26 @@ impl Herald {
             ("poll", period(schedule.poll)),
             ("housekeep", period(schedule.housekeep)),
         ])
+    }
+
+    /// Every session the config's destinations hold, opened through
+    /// `sockets`, each command's work done here; settles once every session
+    /// has stopped.
+    pub fn hold(&self, sockets: SocketsObject) -> Promise {
+        let composed = Rc::clone(&self.composed);
+        future_to_promise(async move {
+            let sockets = JsSockets {
+                opener: SendWrapper::new(sockets),
+                reach: SocketReach::under(SESSIONS),
+            };
+            let taker = JsTaker {
+                most: composed.config().server.jobs,
+                composed: Rc::clone(&composed),
+                working: Rc::default(),
+            };
+            composed.hold(&sockets, &taker, &JsTimer).await;
+            Ok(JsValue::UNDEFINED)
+        })
     }
 
     /// Every source polled, settling to what each poll did, in words.
