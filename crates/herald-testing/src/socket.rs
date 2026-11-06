@@ -176,4 +176,16 @@ mod tests {
         let mut receiving = std::pin::pin!(socket.receive());
         assert!(receiving.as_mut().poll(&mut context).is_pending());
     }
+
+    #[test]
+    fn a_connection_opens_after_its_task_has_had_a_turn() {
+        let sockets = ScriptedSockets::opening(vec![Ok(Vec::new())]);
+        let waker = std::task::Waker::noop();
+        let mut context = std::task::Context::from_waker(waker);
+        let mut opening = std::pin::pin!(sockets.open("wss://one"));
+        assert!(opening.as_mut().poll(&mut context).is_pending());
+        assert_eq!(sockets.opened(), Vec::<String>::new());
+        assert!(opening.as_mut().poll(&mut context).is_ready());
+        assert_eq!(sockets.opened(), ["wss://one"]);
+    }
 }
