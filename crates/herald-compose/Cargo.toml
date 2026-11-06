@@ -29,6 +29,7 @@ jiff.workspace = true
 url.workspace = true
 
 [dev-dependencies]
+futures-util = { version = "0.3", default-features = false, features = ["std"] }
 herald-testing.workspace = true
 pollster.workspace = true
 

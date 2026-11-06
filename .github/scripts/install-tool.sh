@@ -4,7 +4,7 @@
 # one it lists; where it lists none, the one this repository first downloaded.
 set -euo pipefail
 
-tool="${1:?usage: install-tool.sh <cargo-nextest|cargo-llvm-cov|cargo-deny|cargo-audit|cargo-mutants|cargo-fuzz|gitleaks|wasm-bindgen|wasm-bindgen-test-runner>}"
+tool="${1:?usage: install-tool.sh <cargo-nextest|cargo-llvm-cov|cargo-deny|cargo-audit|cargo-mutants|cargo-fuzz|gitleaks|wasm-bindgen|wasm-bindgen-test-runner|deno>}"
 
 case "$tool" in
   cargo-nextest)
@@ -49,6 +49,12 @@ case "$tool" in
     sha256="9687f3bb551b9f66f37ed32a40d7913a00f7962db653054e56857bc306c3227f"
     member="wasm-bindgen-${version}-x86_64-unknown-linux-musl/${tool}"
     ;;
+  deno)
+    version="2.9.8"
+    url="https://github.com/denoland/deno/releases/download/v${version}/deno-x86_64-unknown-linux-gnu.zip"
+    sha256="e890975bc2549807bbcc0b584ffafda72cc7c93349dd99c80483dd784f6c4609"
+    member="deno"
+    ;;
   gitleaks)
     version="8.30.1"
     url="https://github.com/gitleaks/gitleaks/releases/download/v${version}/gitleaks_${version}_linux_x64.tar.gz"
@@ -61,10 +67,13 @@ case "$tool" in
     ;;
 esac
 
-archive="${RUNNER_TEMP:-/tmp}/${tool}.tar.gz"
+archive="${RUNNER_TEMP:-/tmp}/${tool}.${url##*.}"
 curl -sSfL --proto '=https' --tlsv1.2 --retry 3 --retry-delay 2 --retry-all-errors -o "$archive" "$url"
 sha256sum --check --strict <<<"${sha256}  ${archive}"
 mkdir -p "${HOME}/.cargo/bin"
-tar xzf "$archive" -C "${HOME}/.cargo/bin" --strip-components="$(tr -cd '/' <<<"$member" | wc -c)" "$member"
+case "$archive" in
+  *.zip) unzip -o -j "$archive" "$member" -d "${HOME}/.cargo/bin" ;;
+  *) tar xzf "$archive" -C "${HOME}/.cargo/bin" --strip-components="$(tr -cd '/' <<<"$member" | wc -c)" "$member" ;;
+esac
 rm -f "$archive"
 echo "${tool} ${version}"

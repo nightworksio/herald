@@ -222,3 +222,30 @@ fn a_body_that_is_not_text_is_answered_in_base64() {
         })
     );
 }
+
+#[test]
+fn a_request_that_leaves_no_work_is_answered_and_handed_nothing() {
+    let world = World::default();
+    let health = |handed: bool| {
+        let mut event = json!({
+            "version": "2.0",
+            "requestContext": { "http": { "method": "GET" } },
+            "rawPath": "/healthz",
+            "rawQueryString": "",
+            "headers": {},
+            "isBase64Encoded": false,
+        });
+        if handed {
+            event["herald"] = json!("work");
+        }
+        event
+    };
+    invoked(&world, vec![health(false), health(true)]);
+    herald(&function(CONFIG, true), &world, &LAMBDA);
+    let given = given(&world);
+    assert_eq!(given[0].0, "request-1/response");
+    assert_eq!(given[0].1["statusCode"], json!(200));
+    assert_eq!(given[1].0, "request-2/response");
+    assert_eq!(given[1].1, json!({}));
+    assert_eq!(given.len(), 2);
+}

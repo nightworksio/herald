@@ -244,9 +244,7 @@ jobs:
         with:
           node-version: 24
       - run: node --test deploy/tests/host.test.mjs
-      - uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
-        with:
-          deno-version: v2.x
+      - run: .github/scripts/install-tool.sh deno
       - run: deno test --allow-read --allow-net --allow-sys deploy/tests/vetted.deno.test.ts
       - run: deno check --unstable-cron deploy/deno/main.ts
 
@@ -361,7 +359,7 @@ jobs:
             git diff "$(git merge-base "$BASE" HEAD)" HEAD > "${RUNNER_TEMP}/change.diff"
             scope=(--in-diff "${RUNNER_TEMP}/change.diff")
           fi
-          cargo mutants --workspace --no-shuffle --shard "${SHARD}/${SHARDS}" "${scope[@]}"
+          cargo mutants --workspace --no-shuffle --shard "${SHARD}/${SHARDS}" --exclude 'crates/herald-wasm/src/js/**' "${scope[@]}"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: failure()
         with:
@@ -369,16 +367,57 @@ jobs:
           path: mutants.out
           retention-days: 7
 
+  # The wasm module's JavaScript glue builds for wasm32 alone, so its
+  # mutants are judged by its tests under Node.
+  mutants-wasm:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+          key: mutants-wasm-${{ hashFiles('rust-toolchain.toml', 'Cargo.lock') }}
+      - run: .github/scripts/install-tool.sh cargo-mutants
+      - run: .github/scripts/install-tool.sh wasm-bindgen-test-runner
+      - env:
+          EVENT: ${{ github.event_name }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+          CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUNNER: wasm-bindgen-test-runner
+        run: |
+          set -euo pipefail
+          scope=()
+          if [ "$EVENT" = "pull_request" ]; then
+            git diff "$(git merge-base "$BASE" HEAD)" HEAD > "${RUNNER_TEMP}/change.diff"
+            scope=(--in-diff "${RUNNER_TEMP}/change.diff")
+          fi
+          cargo mutants --package herald-wasm --no-shuffle --test-tool cargo \
+            --cargo-arg=--target=wasm32-unknown-unknown \
+            --file 'crates/herald-wasm/src/js/**' "${scope[@]}"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: failure()
+        with:
+          name: mutants-wasm
+          path: mutants.out
+          retention-days: 7
+
   mutants:
-    needs: mutants-shard
+    needs: [mutants-shard, mutants-wasm]
     if: ${{ always() }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - env:
-          RESULT: ${{ needs.mutants-shard.result }}
+          SHARDS: ${{ needs.mutants-shard.result }}
+          WASM: ${{ needs.mutants-wasm.result }}
         run: |
-          if [ "$RESULT" != "success" ]; then
-            echo "::error::A mutants shard ended ${RESULT}; its mutants.out artifact names each mutant that survived."
+          if [ "$SHARDS" != "success" ] || [ "$WASM" != "success" ]; then
+            echo "::error::A mutants job ended ${SHARDS}/${WASM}; its mutants.out artifact names each mutant that survived."
             exit 1
           fi
