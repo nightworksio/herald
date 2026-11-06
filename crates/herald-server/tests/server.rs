@@ -15,6 +15,7 @@ mod server {
     use std::time::Duration;
 
     use futures_util::FutureExt as _;
+    use herald_compose::Capped;
     use herald_config::{Config, load};
     use herald_core::{DestinationName, Scheme, Subscription};
     use herald_flows::{Connected, Keys, Ports, Serving, Webhooks, prepare, webhooks};
@@ -23,7 +24,7 @@ mod server {
         Store as _,
     };
     use herald_records::MemoryKeyring;
-    use herald_server::{Asked, Capped, Heard, Limits, Listener, serve};
+    use herald_server::{Asked, Heard, Limits, Listener, serve};
     use herald_testing::{
         FakeClock, FakeSecrets, FakeSigner, FakeStore, FakeVerifier, ScriptedSockets,
     };
@@ -578,20 +579,5 @@ body = "{{ event.body }}"
             tokio::join!(client, world.serve(flaky, limits(), &hear, stop.notified()));
         assert!(answer.starts_with("HTTP/1.1 200 OK"), "{answer}");
         assert_eq!(said(&heard), ["unaccepted: too many open files"]);
-    }
-
-    #[tokio::test]
-    async fn a_capped_http_sends_as_many_at_once_as_it_is_allowed() {
-        let capped = Capped::new(Gate::default(), 1);
-        let request = || Request {
-            method: herald_ports::Method::Get,
-            url: herald_ports::Text::plain("https://social.example/users/ana"),
-            headers: Vec::new(),
-            body: Vec::new(),
-            most: herald_ports::BODY_LIMIT,
-        };
-        let (first, second) = tokio::join!(capped.send(request()), capped.send(request()));
-        assert_eq!(first.unwrap().status, 202);
-        assert_eq!(second.unwrap().status, 202);
     }
 }

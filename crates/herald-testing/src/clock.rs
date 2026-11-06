@@ -1,14 +1,14 @@
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 use herald_ports::Clock;
 
 use crate::lock;
 use jiff::{SignedDuration, Timestamp};
 
-/// A clock that says what it is told.
-#[derive(Debug)]
+/// A clock that says what it is told; its clones tell the same time.
+#[derive(Debug, Clone)]
 pub struct FakeClock {
-    now: Mutex<Timestamp>,
+    now: Arc<Mutex<Timestamp>>,
 }
 
 impl FakeClock {
@@ -16,7 +16,7 @@ impl FakeClock {
     #[must_use]
     pub fn at(now: Timestamp) -> Self {
         Self {
-            now: Mutex::new(now),
+            now: Arc::new(Mutex::new(now)),
         }
     }
 

@@ -14,24 +14,19 @@ use std::io::Write;
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD;
 use herald_aws::{Signing, signed};
+use herald_compose::{Composed, Host as _};
 use herald_config::Config;
-use herald_flows::{
-    Admission, Connected, Inbound, Job, Keys, Ports, Serving, Webhooks, answer, housekeep, poll,
-    work,
-};
-use herald_native::{EnvSecrets, RingSigner, RingVerifier, SystemClock};
-use herald_ports::{
-    Clock as _, Http, Keyring, Method, PUBLIC, Request, Secret, Secrets as _, Store as Keeps, Text,
-};
-use herald_records::MemoryKeyring;
-use herald_server::{Capped, Heard};
+use herald_flows::{Admission, Inbound, Job};
+use herald_native::EnvSecrets;
+use herald_ports::{Clock as _, Http, Method, Request, Secret, Secrets as _, Text};
+use herald_server::Heard;
 use jiff::Timestamp;
 use serde_json::{Value, json};
 
 use super::output::say;
 use super::serving::said;
-use super::stores::{Commands, reached};
-use super::{Connect, Connection, STOPPED, Served};
+use super::stores::{LAMBDA, Native};
+use super::{Connect, Connection, STOPPED};
 
 /// Where Lambda's runtime API is, as Lambda sets it.
 const RUNTIME_API: &str = "AWS_LAMBDA_RUNTIME_API";
@@ -190,29 +185,14 @@ pub(crate) fn replied(status: u16, kind: &str, body: &[u8]) -> Value {
     })
 }
 
-/// The function's work, over whichever store the config names.
+/// The function: herald composed on the native host, and the runtime API
+/// it takes invocations from.
 struct Function<'a> {
-    config: &'a Config,
-    connected: &'a Connected<Connection>,
-    webhooks: &'a Webhooks,
-    public: &'a Capped<Connection>,
+    composed: Composed<Native<'a>>,
     runtime: Connection,
     api: String,
     handing: Option<(Handing, Connection)>,
     out: RefCell<&'a mut dyn Write>,
-}
-
-impl Served for Function<'_> {
-    type Done = u8;
-
-    async fn over<S: Keeps + Keyring>(self, store: &S) -> u8 {
-        if self.config.server.keys_in_store() {
-            self.keyed(store, store).await
-        } else {
-            let memory = MemoryKeyring::new(self.config.server.keys_most);
-            self.keyed(store, &memory).await
-        }
-    }
 }
 
 impl Function<'_> {
@@ -223,30 +203,13 @@ impl Function<'_> {
         }
     }
 
-    /// Every invocation taken from the runtime API and answered, over
-    /// `store`, checking activities with the keys in `keyring`, until the
+    fn said(&self, line: &str) {
+        say(&mut **self.out.borrow_mut(), line);
+    }
+
+    /// Every invocation taken from the runtime API and answered, until the
     /// runtime API cannot be reached.
-    async fn keyed<S: Keeps, K: Keyring>(self, store: &S, keyring: &K) -> u8 {
-        let ports = Ports {
-            store,
-            clock: &SystemClock,
-            signer: &RingSigner,
-        };
-        let keys = Keys {
-            keyring,
-            refreshed: self.config.server.keys_refreshed,
-        };
-        let serving = |admission| Serving {
-            config: self.config,
-            connected: self.connected,
-            ports: &ports,
-            verifier: &RingVerifier,
-            public: self.public,
-            keys: &keys,
-            webhooks: self.webhooks,
-            admission,
-        };
-        let (once, again) = (serving(Admission::Once), serving(Admission::Again));
+    async fn run(self) -> u8 {
         loop {
             let next = Request::new(
                 Method::Get,
@@ -273,7 +236,7 @@ impl Function<'_> {
                 .unwrap_or_default()
                 .to_owned();
             let event: Value = serde_json::from_slice(&invoked.body).unwrap_or(Value::Null);
-            let (path, body) = match self.invoked(&once, &again, &event).await {
+            let (path, body) = match self.invoked(&event).await {
                 Ok(answer) => ("response", answer),
                 Err(why) => {
                     self.said(&why);
@@ -298,35 +261,9 @@ impl Function<'_> {
         }
     }
 
-    fn said(&self, line: &str) {
-        say(&mut **self.out.borrow_mut(), line);
-    }
-
     /// What the function answers `event`.
-    async fn invoked<S: Keeps, K: Keyring>(
-        &self,
-        once: &Serving<
-            '_,
-            S,
-            SystemClock,
-            RingSigner,
-            RingVerifier,
-            Connection,
-            Capped<Connection>,
-            K,
-        >,
-        again: &Serving<
-            '_,
-            S,
-            SystemClock,
-            RingSigner,
-            RingVerifier,
-            Connection,
-            Capped<Connection>,
-            K,
-        >,
-        event: &Value,
-    ) -> Result<Value, String> {
+    async fn invoked(&self, event: &Value) -> Result<Value, String> {
+        let composed = &self.composed;
         let handed = event.get("herald").and_then(Value::as_str) == Some(WORK);
         if let Some(carried) = Carried::of(event) {
             let headers: Vec<(&str, &str)> = carried
@@ -336,14 +273,14 @@ impl Function<'_> {
                 .collect();
             let inbound = carried.answered(&headers);
             if handed {
-                if let Some(job) = answer(again, &inbound).await.job {
-                    self.heard(Heard::Worked(work(again, job, RUN).await));
+                if let Some(job) = composed.answer(&inbound, Admission::Again).await.job {
+                    self.heard(Heard::Worked(composed.work(job).await));
                 }
                 return Ok(json!({}));
             }
-            let answered = answer(once, &inbound).await;
+            let answered = composed.answer(&inbound, Admission::Once).await;
             if let Some(job) = answered.job {
-                self.leave(once, job, &carried).await;
+                self.leave(job, &carried).await;
             }
             let reply = answered.reply;
             return Ok(replied(reply.status, reply.kind, &reply.body));
@@ -357,42 +294,17 @@ impl Function<'_> {
                 "herald takes requests, its own work and scheduled events alone".to_owned(),
             );
         }
-        let config = once.config;
-        let ports = once.ports;
-        self.heard(Heard::Polled(
-            poll(config, once.connected, ports, RUN).await,
-        ));
-        self.heard(Heard::Kept(
-            housekeep(once.connected, ports.store, ports.clock).await,
-        ));
-        let before = ports
-            .clock
-            .now()
-            .checked_sub(once.keys.refreshed)
-            .unwrap_or(Timestamp::MIN);
-        let _ = once.keys.keyring.forget_before(before).await;
+        self.heard(Heard::Polled(composed.poll().await));
+        self.heard(Heard::Kept(composed.housekeep().await));
         Ok(json!({}))
     }
 
     /// Hands `job`, left by `carried`, to the function again, or does it
     /// now where it cannot be handed.
-    async fn leave<S: Keeps, K: Keyring>(
-        &self,
-        serving: &Serving<
-            '_,
-            S,
-            SystemClock,
-            RingSigner,
-            RingVerifier,
-            Connection,
-            Capped<Connection>,
-            K,
-        >,
-        job: Job,
-        carried: &Carried,
-    ) {
+    async fn leave(&self, job: Job, carried: &Carried) {
         if let Some((handing, http)) = &self.handing {
-            let invocation = handing.invocation(&carried.handed(), serving.ports.clock.now());
+            let now = self.composed.host().clock().now();
+            let invocation = handing.invocation(&carried.handed(), now);
             match http.send(invocation).await {
                 Ok(response) if response.succeeded() => return,
                 Ok(response) => self.said(&format!(
@@ -404,12 +316,12 @@ impl Function<'_> {
                 )),
             }
         }
-        self.heard(Heard::Worked(work(serving, job, RUN).await));
+        self.heard(Heard::Worked(self.composed.work(job).await));
     }
 }
 
 pub(crate) async fn lambda(
-    config: &Config,
+    config: Config,
     vars: &BTreeMap<String, String>,
     connect: Connect<'_>,
     out: &mut dyn Write,
@@ -422,12 +334,7 @@ pub(crate) async fn lambda(
             format!("{RUNTIME_API} is not set; herald lambda runs as a Lambda function's runtime")
         })?;
     let runtime = connect(&format!("{WAITING}{api}"))?;
-    let (records, connected) = reached(config, vars, connect, Commands::Answered).await?;
-    let secrets = EnvSecrets::from_vars(vars.clone());
-    let webhooks = herald_flows::webhooks(config, &secrets)
-        .await
-        .map_err(|error| error.to_string())?;
-    let public = Capped::new(connect(PUBLIC)?, config.server.fetches);
+    let composed = Composed::new(Native::new(vars, connect), config, &LAMBDA, RUN).await?;
     let handing = match Handing::read(vars).await {
         Some(handing) => {
             let http = connect(&format!("https://{}", handing.host))?;
@@ -436,14 +343,11 @@ pub(crate) async fn lambda(
         None => None,
     };
     let function = Function {
-        config,
-        connected: &connected,
-        webhooks: &webhooks,
-        public: &public,
+        composed,
         runtime,
         api,
         handing,
         out: RefCell::new(out),
     };
-    Ok(records.serve(&connected, function).await)
+    Ok(function.run().await)
 }

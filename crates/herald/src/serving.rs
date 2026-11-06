@@ -6,6 +6,7 @@ use std::collections::BTreeMap;
 use std::future::Future;
 use std::io::Write;
 
+use herald_compose::{Capped, Served};
 use herald_config::Config;
 use herald_flows::{
     Connected, FollowError, Followed, Interacted, Keys, Ports, Serving, Webhooks, Worked, webhooks,
@@ -13,11 +14,11 @@ use herald_flows::{
 use herald_native::{EnvSecrets, NativeSockets, RingSigner, RingVerifier, SystemClock};
 use herald_ports::{Keyring, PUBLIC, Store as Keeps};
 use herald_records::MemoryKeyring;
-use herald_server::{Asked, Capped, Heard, Limits, READ, serve};
+use herald_server::{Asked, Heard, Limits, READ, serve};
 
 use super::output::{chored, polled, report, say, why};
-use super::stores::{Commands, reached};
-use super::{Connect, Connection, DONE, LISTEN, Served, worded};
+use super::stores::{Commands, SERVED, reached};
+use super::{Connect, Connection, DONE, LISTEN, worded};
 
 /// A server's work, over whichever store the config names, and the keys
 /// it checks activities with.
@@ -186,7 +187,7 @@ pub(crate) async fn serving(
     let listener = tokio::net::TcpListener::bind(&address)
         .await
         .map_err(|error| format!("herald could not listen on {address}: {error}"))?;
-    let (records, connected) = reached(config, vars, connect, Commands::Answered).await?;
+    let (records, connected) = reached(config, vars, connect, Commands::Answered, &SERVED).await?;
     let secrets = EnvSecrets::from_vars(vars.clone());
     let webhooks = webhooks(config, &secrets)
         .await

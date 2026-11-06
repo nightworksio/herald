@@ -15,6 +15,7 @@ publish = false
 [workspace.dependencies]
 base64 = "0.23"
 herald-aws = { path = "crates/herald-aws" }
+herald-compose = { path = "crates/herald-compose" }
 herald-config = { path = "crates/herald-config" }
 herald-core = { path = "crates/herald-core" }
 herald-dest-discord = { path = "crates/herald-dest-discord" }

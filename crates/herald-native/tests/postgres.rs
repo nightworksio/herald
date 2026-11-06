@@ -4,7 +4,7 @@
 
 #[cfg(test)]
 mod postgres {
-    use herald_native::NativePostgres;
+    use herald_native::{NativePostgres, NativeSql};
     use herald_ports::{Secret, Sql as _, SqlError, Statement, StoreError, Value};
     use herald_records::{Dialect, Kept, Records as _, SqlRecords, Wrote};
     use herald_testing::{keyring_conformance, store_conformance};
@@ -59,6 +59,16 @@ mod postgres {
             return;
         };
         keyring_conformance(&Kept::new(keys)).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn the_native_database_keeps_a_postgres_database_s_records() {
+        let Some(sql) = fresh("native").await else {
+            return;
+        };
+        let sql = NativeSql::Postgres(sql);
+        let records = SqlRecords::open(sql, Dialect::Postgres).await.unwrap();
+        store_conformance(&Kept::new(records)).await.unwrap();
     }
 
     #[tokio::test]

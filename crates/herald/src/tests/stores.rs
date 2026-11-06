@@ -351,3 +351,31 @@ fn a_postgres_store_that_cannot_be_reached_or_read_stops_the_run() {
         "the postgres store could not be opened: a record in the store could not be read: a newer herald laid the database out; run that herald or a later one\n"
     );
 }
+
+#[test]
+fn the_native_binary_opens_no_database_or_key_value_store_of_another_platform() {
+    use herald_compose::{Host as _, KvAt, SqlAt};
+
+    let vars = BTreeMap::new();
+    let unreached = |base: &str| Err(format!("{base} is out of reach"));
+    let native = stores::Native::new(&vars, &unreached);
+    let unhosted = "only a Cloudflare Worker, Deno or Fastly Compute reaches it";
+    for at in [
+        SqlAt::D1("HERALD_DB"),
+        SqlAt::DurableObject {
+            binding: "HERALD",
+            object: "herald",
+        },
+    ] {
+        assert_eq!(
+            pollster::block_on(native.sql(at)).err().as_deref(),
+            Some(unhosted)
+        );
+    }
+    assert_eq!(
+        pollster::block_on(native.kv(KvAt::DenoKv(None)))
+            .err()
+            .as_deref(),
+        Some(unhosted)
+    );
+}

@@ -59,10 +59,17 @@ and Azure's timers call the function to poll.
    Postgres where the host offers them. Fastly Compute is served on
    Fastly's own ABI, with its KV Store.
 
-4. **Every non-native driver shares one composition.** A runtime-agnostic
-   kit reads the config from text, reaches its store over the platform's
-   ports, answers each request, leaves its work to the platform, and does
-   each scheduled round.
+4. **Every driver shares one composition.** `herald-compose`, a layer of
+   its own between flows and native, holds the `Host` trait a platform
+   implements: its `Http`, secrets, clock, signer and verifier, its
+   variables, and the databases and key-value stores it offers. Over a
+   host it reaches the store the config names, of the kinds the driver
+   serves, and `Composed` answers each request, does the work a request
+   leaves, polls and keeps house. Where a platform offers no database or
+   key-value store, it names `Unoffered`. The native binary reaches its
+   stores through it too, and keeps the Actions cache, which only a
+   workflow run reaches, to itself. It caps the requests sent to
+   ActivityPub servers with `async-lock`, which runs on no runtime.
 
    **Sessions are a flow.** `herald_flows::Sessions` holds the gateway,
    Socket Mode and a Matrix sync over `Sockets`, `Http` and a `Timer` port,

@@ -11,6 +11,7 @@ mod reach;
 #[cfg(test)]
 mod serving;
 mod socket;
+mod sql;
 mod sqlite;
 mod timer;
 
@@ -22,5 +23,6 @@ pub use public::{PublicHttp, public};
 pub use random::random_secret;
 pub use reach::{Reach, ReachError};
 pub use socket::{NativeSocket, NativeSockets};
+pub use sql::NativeSql;
 pub use sqlite::NativeSqlite;
 pub use timer::TokioTimer;

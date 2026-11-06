@@ -53,6 +53,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "async-lock"
+version = "3.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0876700b0d007ad25d5508865a4259c3af9af6d296bf663a0d586d0bc3369f6f"
+dependencies = [
+ "event-listener",
+ "event-listener-strategy",
+ "pin-project-lite",
+]
+
+[[package]]
 name = "async-trait"
 version = "0.1.92"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -470,6 +481,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "event-listener"
+version = "5.4.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5a23add41df1562121a9393cb065eab5146a1242410f23a644851e90cfd669d2"
+dependencies = [
+ "parking",
+ "pin-project-lite",
+]
+
+[[package]]
+name = "event-listener-strategy"
+version = "0.5.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8be9f3dfaaffdae2972880079a491a1a8bb7cbed0b8dd7a347f668b4150a3b93"
+dependencies = [
+ "event-listener",
+ "pin-project-lite",
+]
+
+[[package]]
 name = "fallible-iterator"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -621,6 +652,7 @@ dependencies = [
  "base64 0.23.1",
  "clap",
  "herald-aws",
+ "herald-compose",
  "herald-config",
  "herald-core",
  "herald-dest-discord",
@@ -665,6 +697,30 @@ dependencies = [
  "hmac",
  "jiff",
  "sha2",
+]
+
+[[package]]
+name = "herald-compose"
+version = "0.0.0"
+dependencies = [
+ "async-lock",
+ "herald-config",
+ "herald-core",
+ "herald-flows",
+ "herald-ports",
+ "herald-records",
+ "herald-store-d1",
+ "herald-store-deno-kv",
+ "herald-store-durable-object",
+ "herald-store-dynamodb",
+ "herald-store-fastly-kv",
+ "herald-store-git-branch",
+ "herald-store-postgres",
+ "herald-store-repo-variables",
+ "herald-store-sqlite",
+ "herald-testing",
+ "jiff",
+ "pollster",
 ]
 
 [[package]]
@@ -851,6 +907,7 @@ name = "herald-server"
 version = "0.0.0"
 dependencies = [
  "futures-util",
+ "herald-compose",
  "herald-config",
  "herald-core",
  "herald-dest-discord",
@@ -1578,6 +1635,12 @@ name = "openssl-probe"
 version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7e036b411754132fd6b74e94b74e9a13c5cf606fa93d1885c35860d3060820b1"
+
+[[package]]
+name = "parking"
+version = "2.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f38d5652c16fde515bb1ecef450ab0f6a219d619a7274976324d5e377f7dceba"
 
 [[package]]
 name = "parking_lot"

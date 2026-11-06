@@ -21,6 +21,8 @@ pub enum Layer {
     Config,
     /// The commands as flows over the ports.
     Flows,
+    /// What every driver composes over a host's ports.
+    Composition,
     /// The ports implemented for native targets.
     Native,
     /// The HTTP endpoint the native drivers serve.
@@ -43,6 +45,7 @@ impl Layer {
             "herald-aws" | "herald-records" | "herald-sql" | "herald-wire" => Some(Self::Kits),
             "herald-config" => Some(Self::Config),
             "herald-flows" => Some(Self::Flows),
+            "herald-compose" => Some(Self::Composition),
             "herald-native" => Some(Self::Native),
             "herald-server" => Some(Self::Serving),
             "herald" | "herald-worker" | "herald-lambda" | "herald-vercel" | "herald-netlify"
@@ -85,6 +88,7 @@ fn outside_allowed(layer: Layer) -> &'static [&'static str] {
         ],
         Layer::Ports => &["jiff"],
         Layer::Flows => &["futures-util", "jiff"],
+        Layer::Composition => &["async-lock", "jiff"],
         Layer::Testing => &["jiff", "serde", "serde_json"],
         Layer::Kits => &["hmac", "jiff", "serde", "serde_json", "sha2"],
         Layer::Sources => &["jiff", "quick-xml", "schemars", "serde", "serde_json"],
@@ -125,6 +129,7 @@ mod tests {
             ("herald-store-sqlite", Layer::Stores),
             ("herald-config", Layer::Config),
             ("herald-flows", Layer::Flows),
+            ("herald-compose", Layer::Composition),
             ("herald-native", Layer::Native),
             ("herald", Layer::Drivers),
             ("herald-worker", Layer::Drivers),
@@ -158,6 +163,7 @@ mod tests {
             Layer::Stores,
             Layer::Config,
             Layer::Flows,
+            Layer::Composition,
             Layer::Native,
             Layer::Serving,
             Layer::Drivers,
@@ -192,6 +198,8 @@ mod tests {
         assert!(Layer::Ports.allows_outside("jiff"));
         assert!(Layer::Destinations.allows_outside("schemars"));
         assert!(Layer::Config.allows_outside("toml"));
+        assert!(Layer::Composition.allows_outside("async-lock"));
+        assert!(!Layer::Composition.allows_outside("tokio"));
         assert!(Layer::Stores.allows_outside("base64"));
         assert!(!Layer::Stores.allows_outside("rusqlite"));
         assert!(!Layer::Config.allows_outside("tokio"));

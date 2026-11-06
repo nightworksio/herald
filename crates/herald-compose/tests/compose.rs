@@ -1,0 +1,343 @@
+//! herald composed on a host made of fakes: every store kind reached
+//! through the host's ports, and requests and rounds served over it.
+
+#[cfg(test)]
+mod compose {
+    use std::collections::BTreeMap;
+    use std::future::{Future, ready};
+    use std::sync::Mutex;
+
+    use herald_compose::{Composed, Host, KvAt, Records, SqlAt, reached};
+    use herald_config::{Config, Store, load};
+    use herald_flows::{Admission, Inbound};
+    use herald_ports::{Changed, Http, HttpError, Request, Response, Value};
+    use herald_testing::{FakeClock, FakeKv, FakeSecrets, FakeSigner, FakeVerifier, ScriptedSql};
+
+    const EVERY: [&str; 11] = Store::KINDS;
+
+    #[derive(Debug, Clone, Default)]
+    struct Answering;
+
+    impl Http for Answering {
+        fn send(&self, _: Request) -> impl Future<Output = Result<Response, HttpError>> + Send {
+            ready(Ok(Response {
+                status: 200,
+                headers: Vec::new(),
+                body: b"{}".to_vec(),
+            }))
+        }
+    }
+
+    struct Hosting {
+        vars: BTreeMap<String, String>,
+        secrets: FakeSecrets,
+        clock: FakeClock,
+        asked: Mutex<Vec<String>>,
+        refusing: bool,
+        unreached: bool,
+        unlaid: bool,
+    }
+
+    impl Default for Hosting {
+        fn default() -> Self {
+            Self {
+                vars: BTreeMap::new(),
+                secrets: FakeSecrets::default(),
+                clock: FakeClock::at(jiff::Timestamp::UNIX_EPOCH),
+                asked: Mutex::default(),
+                refusing: false,
+                unreached: false,
+                unlaid: false,
+            }
+        }
+    }
+
+    impl Hosting {
+        fn asked(&self) -> Vec<String> {
+            self.asked.lock().unwrap().clone()
+        }
+
+        fn ask(&self, at: String) -> Result<(), String> {
+            self.asked.lock().unwrap().push(at);
+            if self.refusing {
+                Err("refused".to_owned())
+            } else {
+                Ok(())
+            }
+        }
+    }
+
+    fn opening() -> ScriptedSql {
+        ScriptedSql::default().answering(Ok(vec![
+            Changed::default(),
+            Changed::default(),
+            Changed::default(),
+            Changed {
+                rows: vec![vec![Value::Integer(1)]],
+                changed: 0,
+            },
+        ]))
+    }
+
+    impl Host for Hosting {
+        type Http = Answering;
+        type Secrets = FakeSecrets;
+        type Clock = FakeClock;
+        type Signer = FakeSigner;
+        type Verifier = FakeVerifier;
+        type Sql = ScriptedSql;
+        type Kv = FakeKv;
+
+        fn connect(&self, base: &str) -> Result<Answering, String> {
+            if self.unreached {
+                Err(format!("{base} is out of reach"))
+            } else {
+                Ok(Answering)
+            }
+        }
+
+        fn var(&self, name: &str) -> Option<&str> {
+            self.vars.get(name).map(String::as_str)
+        }
+
+        fn secrets(&self) -> &FakeSecrets {
+            &self.secrets
+        }
+
+        fn clock(&self) -> &FakeClock {
+            &self.clock
+        }
+
+        fn signer(&self) -> &FakeSigner {
+            &FakeSigner
+        }
+
+        fn verifier(&self) -> &FakeVerifier {
+            &FakeVerifier
+        }
+
+        fn sql(&self, at: SqlAt<'_>) -> impl Future<Output = Result<ScriptedSql, String>> {
+            ready(self.ask(format!("{at:?}")).map(|()| {
+                if self.unlaid {
+                    ScriptedSql::default()
+                } else {
+                    opening()
+                }
+            }))
+        }
+
+        fn kv(&self, at: KvAt<'_>) -> impl Future<Output = Result<FakeKv, String>> {
+            ready(self.ask(format!("{at:?}")).map(|()| FakeKv::default()))
+        }
+    }
+
+    fn config(store: &str) -> Config {
+        let text = format!("version = 1\n[store]\n{store}\n");
+        load("herald.toml", &text, &|_| Err(String::new())).unwrap()
+    }
+
+    fn kept(host: &Hosting, store: &str) -> Result<&'static str, String> {
+        let config = config(store);
+        let records = pollster::block_on(reached(host, &config.store, &EVERY))?;
+        Ok(match records {
+            Records::Sql(_) => "sql",
+            Records::Kv(_) => "kv",
+            Records::Branch(_) => "branch",
+            Records::Variables(_) => "variables",
+            Records::Dynamodb(_) => "dynamodb",
+            Records::Posts => "posts",
+        })
+    }
+
+    fn github() -> Hosting {
+        Hosting {
+            vars: BTreeMap::from([("GITHUB_REPOSITORY".to_owned(), "cli/cli".to_owned())]),
+            secrets: FakeSecrets::default()
+                .with("GITHUB_TOKEN", "t")
+                .with("VARIABLES", "v")
+                .with("DATABASE_URL", "postgres://db")
+                .with("AWS_ACCESS_KEY_ID", "id")
+                .with("AWS_SECRET_ACCESS_KEY", "key")
+                .with("AWS_REGION", "eu-west-1"),
+            ..Hosting::default()
+        }
+    }
+
+    #[test]
+    fn each_store_is_reached_through_what_the_host_offers() {
+        let host = github();
+        let kinds = [
+            ("kind = \"sqlite\"", "sql"),
+            (
+                "kind = \"postgres\"\nurl = { secret = \"DATABASE_URL\" }",
+                "sql",
+            ),
+            ("kind = \"d1\"\nbinding = \"DB\"", "sql"),
+            ("kind = \"durable-object\"", "sql"),
+            ("kind = \"deno-kv\"\npath = \"/data/kv\"", "kv"),
+            ("kind = \"fastly-kv\"", "kv"),
+            ("kind = \"git-branch\"", "branch"),
+            (
+                "kind = \"repo-variables\"\ntoken = { secret = \"VARIABLES\" }",
+                "variables",
+            ),
+            ("kind = \"dynamodb\"", "dynamodb"),
+            ("kind = \"markers\"", "posts"),
+        ];
+        for (store, records) in kinds {
+            assert_eq!(kept(&host, store), Ok(records), "{store}");
+        }
+        assert_eq!(
+            host.asked(),
+            [
+                "Sqlite(\"herald.sqlite\")",
+                "Postgres(«secret:DATABASE_URL»)",
+                "D1(\"DB\")",
+                "DurableObject { binding: \"HERALD\", object: \"herald\" }",
+                "DenoKv(Some(\"/data/kv\"))",
+                "FastlyKv(\"herald\")",
+            ]
+        );
+    }
+
+    #[test]
+    fn a_store_the_host_cannot_open_or_reach_says_which_and_why() {
+        let refusing = Hosting {
+            refusing: true,
+            ..github()
+        };
+        assert_eq!(
+            kept(&refusing, "kind = \"sqlite\"\npath = \"kept.sqlite\""),
+            Err("the sqlite store kept.sqlite could not be opened: refused".to_owned())
+        );
+        for kind in ["d1", "durable-object", "deno-kv", "fastly-kv"] {
+            assert_eq!(
+                kept(&refusing, &format!("kind = \"{kind}\"")),
+                Err(format!("the {kind} store could not be opened: refused"))
+            );
+        }
+        assert_eq!(
+            kept(
+                &refusing,
+                "kind = \"postgres\"\nurl = { secret = \"DATABASE_URL\" }"
+            ),
+            Err("the postgres store could not be opened: refused".to_owned())
+        );
+        let unreached = Hosting {
+            unreached: true,
+            ..github()
+        };
+        assert_eq!(
+            kept(&unreached, "kind = \"git-branch\""),
+            Err("https://api.github.com is out of reach".to_owned())
+        );
+        let bare = Hosting::default();
+        assert_eq!(
+            kept(
+                &bare,
+                "kind = \"postgres\"\nurl = { secret = \"DATABASE_URL\" }"
+            ),
+            Err(
+                "DATABASE_URL is not set; the postgres store reads its connection URL from it"
+                    .to_owned()
+            )
+        );
+        assert_eq!(
+            kept(&bare, "kind = \"git-branch\"\nrepository = \"cli/cli\""),
+            Err(
+                "GITHUB_TOKEN is not set; the git-branch store needs a token that may push"
+                    .to_owned()
+            )
+        );
+        assert_eq!(
+            kept(&bare, "kind = \"repo-variables\"\ntoken = { secret = \"VARIABLES\" }"),
+            Err("GITHUB_REPOSITORY is not set; name the store's repository, or run herald in the repository's CI".to_owned())
+        );
+    }
+
+    #[test]
+    fn a_database_whose_tables_cannot_be_laid_out_opens_no_store() {
+        let host = Hosting {
+            unlaid: true,
+            ..github()
+        };
+        let laid = "could not be opened: the store could not be reached: the database refused the statements: no answer was scripted";
+        for store in [
+            "kind = \"postgres\"\nurl = { secret = \"DATABASE_URL\" }",
+            "kind = \"d1\"",
+            "kind = \"durable-object\"",
+        ] {
+            let refused = kept(&host, store).unwrap_err();
+            assert!(refused.ends_with(laid), "{refused}");
+        }
+        assert!(
+            kept(&host, "kind = \"sqlite\"")
+                .unwrap_err()
+                .starts_with("the sqlite store herald.sqlite could not be opened: ")
+        );
+    }
+
+    #[test]
+    fn a_kind_the_host_does_not_keep_records_in_is_refused_by_name() {
+        let host = github();
+        let d1 = config("kind = \"d1\"");
+        let refused = pollster::block_on(reached(&host, &d1.store, &[Store::MARKERS]));
+        assert_eq!(
+            refused.err(),
+            Some(
+                "this herald keeps records in markers; set [store] kind to one of them".to_owned()
+            )
+        );
+        let cached = config("kind = \"actions-cache\"");
+        let unkept = pollster::block_on(reached(&host, &cached.store, &EVERY));
+        assert!(
+            unkept
+                .err()
+                .unwrap()
+                .starts_with("this herald keeps records in sqlite")
+        );
+        assert_eq!(host.asked(), Vec::<String>::new());
+    }
+
+    #[test]
+    fn a_composed_herald_answers_polls_and_keeps_house_with_keys_kept_either_way() {
+        for keys in ["memory", "store"] {
+            let text = format!(
+                "version = 1\n[store]\nkind = \"deno-kv\"\n[server.keys]\ncache = \"{keys}\"\n"
+            );
+            let config = load("herald.toml", &text, &|_| Err(String::new())).unwrap();
+            let composed =
+                pollster::block_on(Composed::new(Hosting::default(), config, &EVERY, "test"))
+                    .unwrap();
+            assert_eq!(composed.config().store.kind(), Store::DENO_KV);
+            assert_eq!(composed.host().asked(), ["DenoKv(None)"]);
+            let health = Inbound {
+                method: "GET",
+                path: "/healthz",
+                query: None,
+                headers: &[],
+                body: &[],
+            };
+            let answered = pollster::block_on(composed.answer(&health, Admission::Once));
+            assert_eq!(answered.reply.status, 200);
+            assert!(answered.job.is_none());
+            assert_eq!(pollster::block_on(composed.poll()), Vec::new());
+            assert_eq!(pollster::block_on(composed.housekeep()), Ok(Vec::new()));
+        }
+    }
+
+    #[test]
+    fn a_herald_whose_store_cannot_be_reached_is_not_composed() {
+        let unreached = Hosting {
+            unreached: true,
+            ..Hosting::default()
+        };
+        let composed = pollster::block_on(Composed::new(
+            unreached,
+            config("kind = \"markers\""),
+            &EVERY,
+            "test",
+        ));
+        assert_eq!(composed.err(), Some("public: is out of reach".to_owned()));
+    }
+}

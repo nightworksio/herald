@@ -41,9 +41,10 @@ mod stores;
 use cli::{
     Cli, Command, Discording, From, Layer, Matrixing, Reading, Serve, Setting, Slacking, Tokens,
 };
+use herald_compose::{GITHUB_TOKEN, Served};
 use output::{Scrubbing, chored, hidden, masked, polled, report, say, warned, why};
 use serving::serving;
-use stores::{Commands, Records, reached};
+use stores::{Commands, Records, STORES, reached};
 
 /// Every route announced, already announced, or held by another run; every
 /// source polled and its cursor moved on; or every chore that fell due done
@@ -55,9 +56,6 @@ pub const STOPPED: u8 = 1;
 /// The config has mistakes.
 pub const MISTAKEN: u8 = 2;
 
-/// The secret a git-branch store's token is read from where the config names
-/// none.
-const GITHUB_TOKEN: &str = "GITHUB_TOKEN";
 /// Where the Actions cache's results service is, as herald's Action hands
 /// it on.
 const RESULTS: &str = "ACTIONS_RESULTS_URL";
@@ -258,7 +256,7 @@ async fn stopping(
         Serve::Server { listen } => {
             serving(&config, vars, connect, listen.as_deref(), out, stop).await
         }
-        Serve::Lambda => lambda::lambda(&config, vars, connect, out).await,
+        Serve::Lambda => lambda::lambda(config, vars, connect, out).await,
     };
     let code = ran.unwrap_or_else(|message| {
         say(err, &message);
@@ -474,7 +472,7 @@ async fn announcing(
     let (records, connected) = if dry_run {
         dry(config, vars, &sent).await?
     } else {
-        reached(config, vars, connect, Commands::Unanswered).await?
+        reached(config, vars, connect, Commands::Unanswered, &STORES).await?
     };
     let run = run_name(vars);
     let announcing = Announcing {
@@ -721,15 +719,6 @@ async fn tagged(
     Ok(event)
 }
 
-/// A command's work, over whichever store the config names.
-trait Served {
-    /// What the work did.
-    type Done;
-
-    /// The work done over `store`.
-    fn over<S: Keeps + Keyring>(self, store: &S) -> impl Future<Output = Self::Done>;
-}
-
 /// An event, and the routes and sources it is announced through.
 struct Announcing<'a> {
     config: &'a Config,
@@ -817,7 +806,8 @@ async fn polling(
     connect: Connect<'_>,
     out: &mut dyn Write,
 ) -> Result<u8, String> {
-    let (records, connected) = reached(config, vars, connect, Commands::Unanswered).await?;
+    let (records, connected) =
+        reached(config, vars, connect, Commands::Unanswered, &STORES).await?;
     let run = run_name(vars);
     let polling = Polling {
         config,
@@ -851,7 +841,8 @@ async fn housekeeping(
     connect: Connect<'_>,
     out: &mut dyn Write,
 ) -> Result<u8, String> {
-    let (records, connected) = reached(config, vars, connect, Commands::Unanswered).await?;
+    let (records, connected) =
+        reached(config, vars, connect, Commands::Unanswered, &STORES).await?;
     let housekeeping = Housekeeping {
         connected: &connected,
     };

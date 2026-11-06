@@ -26,6 +26,7 @@ jiff.workspace = true
 tokio = { workspace = true, features = ["macros", "net", "rt", "sync", "time"] }
 
 [dev-dependencies]
+herald-compose.workspace = true
 herald-records.workspace = true
 herald-testing.workspace = true
 serde_json.workspace = true

@@ -17,6 +17,7 @@ path = "src/main.rs"
 base64.workspace = true
 clap = { version = "4", features = ["derive"] }
 herald-aws.workspace = true
+herald-compose.workspace = true
 herald-config.workspace = true
 herald-core.workspace = true
 herald-dest-discord.workspace = true

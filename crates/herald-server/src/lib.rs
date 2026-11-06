@@ -26,9 +26,7 @@ use herald_flows::{
     work,
 };
 use herald_native::TokioTimer as Waiting;
-use herald_ports::{
-    Clock, Http, HttpError, Keyring, Request, Response, Signer, Sockets, Store, Verifier,
-};
+use herald_ports::{Clock, Http, Keyring, Signer, Sockets, Store, Verifier};
 use http_body_util::{BodyExt, Full, Limited};
 use hyper::body::{Bytes, Incoming};
 use hyper::header::{CONTENT_TYPE, HeaderValue, RETRY_AFTER};
@@ -39,7 +37,7 @@ use hyper_util::rt::{TokioIo, TokioTimer};
 use jiff::Timestamp;
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::net::{TcpListener, TcpStream};
-use tokio::sync::{Notify, Semaphore};
+use tokio::sync::Notify;
 use tokio::time::{Instant, Interval, MissedTickBehavior, interval_at};
 
 use crate::sessions::Queued;
@@ -119,31 +117,6 @@ pub struct Asked {
     pub housekeep: &'static str,
     /// What the host is answered, as JSON.
     pub reply: &'static str,
-}
-
-/// An `Http` sending at most a number of requests at once.
-#[derive(Debug)]
-pub struct Capped<H> {
-    http: H,
-    permits: Semaphore,
-}
-
-impl<H> Capped<H> {
-    /// `http`, sending at most `most` requests at once.
-    #[must_use]
-    pub fn new(http: H, most: usize) -> Self {
-        Self {
-            http,
-            permits: Semaphore::new(most),
-        }
-    }
-}
-
-impl<H: Http> Http for Capped<H> {
-    async fn send(&self, request: Request) -> Result<Response, HttpError> {
-        let _permit = self.permits.acquire().await;
-        self.http.send(request).await
-    }
 }
 
 /// Where connections come from.

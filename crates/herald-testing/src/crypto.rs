@@ -3,7 +3,7 @@ use herald_ports::{Algorithm, CryptoError, Secret, Signer, Verifier};
 /// A signer whose signature spells out what was signed, with which key: the
 /// algorithm, the key's value and the message, joined by `|`. A key named
 /// `BAD` is refused.
-#[derive(Debug, Default)]
+#[derive(Debug, Clone, Copy, Default)]
 pub struct FakeSigner;
 
 /// A verifier that accepts exactly the signatures [`FakeSigner`] makes for
