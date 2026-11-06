@@ -1,4 +1,6 @@
 use herald_core::SecretRef;
+
+use crate::interactions::{Interactions, Subscribe};
 use schemars::JsonSchema;
 use serde::Deserialize;
 
@@ -13,6 +15,8 @@ pub struct DestinationOptions {
     pub webhook: Option<SecretRef>,
     /// Another base URL for Slack's API, such as a recorded-fixture server.
     pub api: Option<String>,
+    /// How it takes commands, where it takes any.
+    pub interactions: Option<Interactions>,
 }
 
 impl DestinationOptions {
@@ -40,6 +44,8 @@ pub struct RouteOptions {
     /// The channel's id, such as `C0123456789`, which the bot has joined. A
     /// bot needs one; a webhook posts where it was made.
     pub channel: Option<String>,
+    /// How the route offers subscribing, where it mentions its subscribers.
+    pub subscribe: Option<Subscribe>,
 }
 
 impl RouteOptions {

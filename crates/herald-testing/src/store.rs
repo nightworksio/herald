@@ -2,7 +2,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Mutex;
 
 use herald_core::{
-    Cursor, DestinationName, Entry, Key, RouteId, Schedule, Scheme, SourceName, Subscription,
+    Cursor, DestinationName, Entry, Key, Latest, RouteId, Schedule, Scheme, SourceName,
+    Subscription,
 };
 use herald_ports::{
     Admitted, Capabilities, Keeping, Store, StoreError, Version, Versioned, Written,
@@ -20,6 +21,7 @@ struct State {
     pins: BTreeMap<RouteId, String>,
     deliveries: BTreeMap<(&'static str, String), Timestamp>,
     notes: BTreeMap<Key, String>,
+    latest: BTreeMap<String, Versioned<Latest>>,
 }
 
 /// A store in memory, keeping everything a store can keep.
@@ -59,6 +61,7 @@ impl Store for FakeStore {
             pins: true,
             deliveries: true,
             notes: true,
+            latest: true,
             concurrent: true,
         }
     }
@@ -182,5 +185,30 @@ impl Store for FakeStore {
     async fn put_note(&self, key: &Key, note: &str) -> Result<(), StoreError> {
         lock(&self.state).notes.insert(*key, note.to_owned());
         Ok(())
+    }
+
+    async fn latest(&self, project: &str) -> Result<Option<Versioned<Latest>>, StoreError> {
+        Ok(lock(&self.state).latest.get(project).cloned())
+    }
+
+    async fn every_latest(&self) -> Result<Vec<Latest>, StoreError> {
+        Ok(lock(&self.state)
+            .latest
+            .values()
+            .map(|kept| kept.value.clone())
+            .collect())
+    }
+
+    async fn put_latest(
+        &self,
+        latest: &Latest,
+        expected: Option<Version>,
+    ) -> Result<Written, StoreError> {
+        Ok(compare_and_set(
+            &mut lock(&self.state).latest,
+            latest.project.clone(),
+            latest,
+            expected,
+        ))
     }
 }

@@ -13,5 +13,6 @@ mod housekeep;
 mod poll;
 mod secrets;
 mod server;
+mod setup;
 mod stores;
 mod world;

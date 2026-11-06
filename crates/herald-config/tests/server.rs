@@ -57,12 +57,13 @@ body = "{{ event.body }}"
         assert_eq!(config.server.keys, KeyCache::Memory);
         assert!(!config.server.keys_in_store());
         assert_eq!(config.server.keys_refreshed.as_secs(), 3_600);
+        assert_eq!(config.server.silence.as_secs(), 30);
     }
 
     #[test]
     fn the_server_table_sets_every_limit() {
         let text = format!(
-            "{EXAMPLE}\n[server]\nlisten = \"0.0.0.0:9000\"\njobs = 2\nconnections = 3\nbody = \"64KiB\"\nfetches = 5\ndeliveries = 6\n\n[server.keys]\ncache = \"store\"\nrefresh_after = \"30m\"\nmost = 7\n"
+            "{EXAMPLE}\n[server]\nlisten = \"0.0.0.0:9000\"\njobs = 2\nconnections = 3\nbody = \"64KiB\"\nfetches = 5\ndeliveries = 6\nsilence = \"45s\"\n\n[server.keys]\ncache = \"store\"\nrefresh_after = \"30m\"\nmost = 7\n"
         );
         let config = load("herald.toml", &text, &nothing).unwrap();
         assert_eq!(
@@ -74,6 +75,7 @@ body = "{{ event.body }}"
                 body: 65_536,
                 fetches: 5,
                 deliveries: 6,
+                silence: jiff::SignedDuration::from_secs(45),
                 keys: KeyCache::Store,
                 keys_refreshed: jiff::SignedDuration::from_mins(30),
                 keys_most: 7,

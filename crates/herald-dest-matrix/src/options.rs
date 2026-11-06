@@ -1,4 +1,6 @@
 use herald_core::SecretRef;
+
+use crate::interactions::Interactions;
 use schemars::JsonSchema;
 use serde::Deserialize;
 
@@ -10,6 +12,8 @@ pub struct DestinationOptions {
     pub homeserver: String,
     /// The secret holding the bot account's access token.
     pub token: SecretRef,
+    /// How it takes commands, where it takes any.
+    pub interactions: Option<Interactions>,
 }
 
 /// What a route says about Matrix alone.

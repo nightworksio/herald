@@ -14,6 +14,8 @@ mod announce;
 #[cfg(test)]
 mod doctor;
 #[cfg(test)]
+mod endpoint;
+#[cfg(test)]
 mod following;
 #[cfg(test)]
 mod harness;
@@ -21,6 +23,8 @@ mod harness;
 mod housekeep;
 #[cfg(test)]
 mod inbound;
+#[cfg(test)]
+mod interact;
 #[cfg(test)]
 mod marked;
 #[cfg(test)]

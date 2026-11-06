@@ -12,6 +12,7 @@ mod keyring;
 mod kv;
 mod markers;
 mod secret;
+mod socket;
 mod sql;
 mod store;
 
@@ -22,5 +23,6 @@ pub use keyring::{Keyring, KnownKey};
 pub use kv::{Kv, KvError, Pair, Stamped, Versionstamp};
 pub use markers::{MarkedThread, Markers, MarkersError, marker};
 pub use secret::{Secret, SecretError, Secrets, Segment, Text};
+pub use socket::{Frame, Socket, Sockets};
 pub use sql::{Changed, Sql, SqlError, Statement, Value};
 pub use store::{Admitted, Capabilities, Keeping, Store, StoreError, Version, Versioned, Written};

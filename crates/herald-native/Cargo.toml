@@ -11,6 +11,7 @@ publish.workspace = true
 
 [dependencies]
 base64.workspace = true
+futures-util = { version = "0.3", default-features = false, features = ["sink", "std"] }
 herald-core.workspace = true
 herald-ports.workspace = true
 jiff.workspace = true
@@ -18,8 +19,9 @@ ring.workspace = true
 reqwest.workspace = true
 rusqlite.workspace = true
 rustls.workspace = true
-tokio = { workspace = true, features = ["net", "rt", "sync"] }
+tokio = { workspace = true, features = ["net", "rt", "sync", "time"] }
 tokio-postgres.workspace = true
+tokio-tungstenite = { version = "0.30", default-features = false, features = ["connect", "__rustls-tls"] }
 tokio-postgres-rustls.workspace = true
 url.workspace = true
 webpki-roots.workspace = true

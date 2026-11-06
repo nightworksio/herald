@@ -5,6 +5,8 @@ use herald_ports::{Method, Request, Text};
 use serde_json::{Map, Value, json};
 
 use crate::discord::{Credential, Discord};
+use crate::interact::subscribe_button;
+use crate::interactions::Subscribe;
 
 /// The colour of a release's embed: the gold of herald's trumpet.
 const RELEASE: u32 = 0x00E3_9A26;
@@ -20,9 +22,11 @@ const ACTION_ROW: u8 = 1;
 const BUTTON: u8 = 2;
 /// The style of a button that opens a link.
 const LINK: u8 = 5;
+/// The style of a button that asks something of herald.
+const SECONDARY: u8 = 2;
 /// The longest deduplication key Discord takes, in a message's `nonce`.
 const KEY_LENGTH: usize = 25;
-const USER_AGENT: &str = concat!(
+pub(crate) const USER_AGENT: &str = concat!(
     "DiscordBot (https://github.com/nightworksio/herald, ",
     env!("CARGO_PKG_VERSION"),
     ")"
@@ -82,7 +86,12 @@ fn authorised(request: Request, credential: &Credential) -> Request {
     }
 }
 
-fn message(announcement: &Announcement, delivery: &Delivery, deduplicated: bool) -> Value {
+fn message(
+    announcement: &Announcement,
+    delivery: &Delivery,
+    deduplicated: bool,
+    subscribe: Option<&Subscribe>,
+) -> Value {
     let roles: Vec<&str> = delivery
         .mentions
         .roles
@@ -124,7 +133,9 @@ fn message(announcement: &Announcement, delivery: &Delivery, deduplicated: bool)
     let mut body = Map::new();
     body.insert("content".to_owned(), json!(content.join(" ")));
     body.insert("embeds".to_owned(), json!([embed]));
-    body.extend(buttons(announcement).map(|components| ("components".to_owned(), components)));
+    body.extend(
+        buttons(announcement, subscribe).map(|components| ("components".to_owned(), components)),
+    );
     body.insert(
         "allowed_mentions".to_owned(),
         json!({ "parse": [], "roles": roles }),
@@ -139,17 +150,22 @@ fn message(announcement: &Announcement, delivery: &Delivery, deduplicated: bool)
     Value::Object(body)
 }
 
-fn buttons(announcement: &Announcement) -> Option<Value> {
+fn buttons(announcement: &Announcement, subscribe: Option<&Subscribe>) -> Option<Value> {
     let links = [
         ("Release", &announcement.release),
         ("Changelog", &announcement.changelog),
     ];
+    let subscribing = subscribe
+        .filter(|subscribe| subscribe.button)
+        .and_then(|_| subscribe_button(&announcement.project))
+        .map(|id| json!({ "type": BUTTON, "style": SECONDARY, "label": "Subscribe", "custom_id": id }));
     let buttons: Vec<Value> = links
         .into_iter()
         .filter_map(|(label, url)| {
             url.as_ref()
                 .map(|url| json!({ "type": BUTTON, "style": LINK, "label": label, "url": url }))
         })
+        .chain(subscribing)
         .collect();
     (!buttons.is_empty()).then(|| json!([{ "type": ACTION_ROW, "components": buttons }]))
 }
@@ -224,7 +240,7 @@ fn webhook(
     let credential = Credential::Webhook(url.clone());
     match step {
         Step::Post => {
-            let mut body = message(announcement, delivery, false);
+            let mut body = message(announcement, delivery, false, None);
             if let (true, Value::Object(fields)) = (forum, &mut body) {
                 fields.insert("thread_name".to_owned(), json!(thread_name(announcement)));
             }
@@ -273,7 +289,7 @@ fn bot(
             let body = json!({
                 "name": name,
                 "auto_archive_duration": ARCHIVE_MINUTES,
-                "message": message(announcement, delivery, false),
+                "message": message(announcement, delivery, false, discord.route.subscribe.as_ref()),
             });
             Ok(json(
                 Method::Post,
@@ -288,7 +304,12 @@ fn bot(
                 Method::Post,
                 url,
                 credential,
-                &message(announcement, delivery, true),
+                &message(
+                    announcement,
+                    delivery,
+                    true,
+                    discord.route.subscribe.as_ref(),
+                ),
             ))
         }
         Step::Crosspost => {

@@ -293,7 +293,7 @@ body = "{{ event.body }}"
         let error = errors(&text);
         assert!(
             error.contains(
-                "routes[0].channel_id: unknown field `channel_id`, expected `channel` or `forum`"
+                "routes[0].channel_id: unknown field `channel_id`, expected one of `channel`, `forum`, `subscribe`"
             ),
             "{error}"
         );
@@ -892,13 +892,13 @@ body = "{{ event.body }}"
     fn a_mistake_inside_a_section_is_named_by_its_key_path() {
         let text = EXAMPLE
             .replace("kinds = [\"release\"]", "kinds = [\"release\", \"tweet\"]")
-            .replace("archive_after = \"14d\"", "archive_after = \"14s\"");
+            .replace("archive_after = \"14d\"", "archive_after = \"14y\"");
         let error = errors(&text);
         assert!(
             error.contains("routes[0].kinds[1]: unknown variant `tweet`"),
             "{error}"
         );
-        assert!(error.contains("routes[0].thread.archive_after: invalid value: string \"14s\", expected a length of time such as \"30m\""), "{error}");
+        assert!(error.contains("routes[0].thread.archive_after: invalid value: string \"14y\", expected a length of time such as \"30s\""), "{error}");
         let unnamed = EXAMPLE.replace(
             "thread = { name = \"{{ event.project }} {{ event.version }}\", archive_after = \"14d\" }",
             "thread = { archive_after = \"14d\" }",

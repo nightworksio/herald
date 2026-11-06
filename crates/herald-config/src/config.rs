@@ -39,11 +39,31 @@ impl Config {
             .destinations
             .values()
             .flat_map(|destination| match destination {
-                Destination::Discord(options) => [options.token.as_ref(), options.webhook.as_ref()],
-                Destination::Mastodon(options) => [Some(&options.token), None],
-                Destination::Matrix(options) => [Some(&options.token), None],
-                Destination::Slack(options) => [options.token.as_ref(), options.webhook.as_ref()],
-                Destination::ActivityPub(options) => [Some(&options.key), None],
+                Destination::Discord(options) => {
+                    [options.token.as_ref(), options.webhook.as_ref(), None, None]
+                }
+                Destination::Mastodon(options) => [Some(&options.token), None, None, None],
+                Destination::Matrix(options) => {
+                    let interactions = options.interactions.as_ref();
+                    [
+                        Some(&options.token),
+                        interactions
+                            .and_then(|interactions| interactions.homeserver_token.as_ref()),
+                        interactions
+                            .and_then(|interactions| interactions.appservice_token.as_ref()),
+                        None,
+                    ]
+                }
+                Destination::Slack(options) => {
+                    let interactions = options.interactions.as_ref();
+                    [
+                        options.token.as_ref(),
+                        options.webhook.as_ref(),
+                        interactions.and_then(|interactions| interactions.signing.as_ref()),
+                        interactions.and_then(|interactions| interactions.app.as_ref()),
+                    ]
+                }
+                Destination::ActivityPub(options) => [Some(&options.key), None, None, None],
             });
         let sources = self.sources.values().flat_map(|source| match source {
             Source::Forge(_, options) => [options.token.as_ref(), options.webhook.as_ref()],
@@ -184,6 +204,26 @@ impl Destination {
             Self::ActivityPub(_) => Self::ACTIVITYPUB,
         }
     }
+
+    /// How it answers commands, where it takes any.
+    #[must_use]
+    pub fn answering(&self) -> Option<herald_core::Answering> {
+        match self {
+            Self::Discord(options) => options
+                .interactions
+                .as_ref()
+                .map(herald_dest_discord::Interactions::answering),
+            Self::Slack(options) => options
+                .interactions
+                .as_ref()
+                .map(herald_dest_slack::Interactions::answering),
+            Self::Matrix(options) => options
+                .interactions
+                .as_ref()
+                .map(herald_dest_matrix::Interactions::answering),
+            Self::Mastodon(_) | Self::ActivityPub(_) => None,
+        }
+    }
 }
 
 /// A source and its options, by its kind.
@@ -272,6 +312,31 @@ impl RouteOptions {
     pub fn threads_each_post(&self) -> bool {
         matches!(self, Self::Discord(placed) if placed.forum)
     }
+
+    /// The channel or room the route announces in, where its destination
+    /// names one, as a command given there names it.
+    #[must_use]
+    pub fn place(&self) -> Option<&str> {
+        match self {
+            Self::Discord(placed) => placed.channel.as_deref(),
+            Self::Slack(placed) => placed.channel.as_deref(),
+            Self::Matrix(placed) => Some(&placed.room),
+            Self::Mastodon(_) | Self::ActivityPub(_) => None,
+        }
+    }
+
+    /// The opt-in role members subscribe to, which the route mentions with
+    /// its announcements: a Discord route's alone.
+    #[must_use]
+    pub fn opt_in_role(&self) -> Option<String> {
+        match self {
+            Self::Discord(placed) => placed
+                .subscribe
+                .as_ref()
+                .map(|subscribe| subscribe.role.clone()),
+            _ => None,
+        }
+    }
 }
 
 /// An app of the HTTP API: its token's hash and what it may announce to.
@@ -321,6 +386,10 @@ pub struct Server {
     pub fetches: usize,
     /// How many of an announcement's inboxes are delivered to at once.
     pub deliveries: usize,
+    /// How long a session a destination holds hears nothing before it
+    /// checks the connection is alive, and then as long again before it
+    /// opens another.
+    pub silence: SignedDuration,
     /// Where the keys inbound activities are checked with are kept.
     pub keys: KeyCache,
     /// How long a key is used before its document is read again.
@@ -351,6 +420,9 @@ impl Server {
     pub const KEYS_REFRESHED: SignedDuration = SignedDuration::from_hours(1);
     /// The most keys kept in memory where the config says nothing.
     pub const KEYS_MOST: usize = 1024;
+    /// How long a session hears nothing before it checks its connection
+    /// where the config says nothing.
+    pub const SILENCE: SignedDuration = SignedDuration::from_secs(30);
 }
 
 impl Server {
@@ -371,6 +443,7 @@ impl Default for Server {
             body: Self::BODY,
             fetches: Self::FETCHES,
             deliveries: Self::DELIVERIES,
+            silence: Self::SILENCE,
             keys: KeyCache::Memory,
             keys_refreshed: Self::KEYS_REFRESHED,
             keys_most: Self::KEYS_MOST,

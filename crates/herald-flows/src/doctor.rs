@@ -110,11 +110,76 @@ pub async fn keys<S: Secrets, G: Signer>(config: &Config, secrets: &S, signer: &
     findings
 }
 
-/// What `config` asks for that a herald keeping records in the store kinds
-/// `stores` cannot serve, and what it leaves to chance (ADR-0002).
+/// What a layer of support serves (ADR-0002).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Layer<'a> {
+    /// The store kinds it keeps records in.
+    pub stores: &'a [&'a str],
+    /// Whether it serves herald's endpoint, where commands are posted.
+    pub endpoint: bool,
+    /// Whether it holds sessions open, which carry commands to it.
+    pub sessions: bool,
+}
+
+/// The commands `config`'s destinations take that `layer` cannot carry to
+/// herald (ADR-0016).
+fn unanswered(config: &Config, layer: Layer<'_>, gaps: &mut Vec<Gap>) {
+    for (name, destination) in &config.destinations {
+        let (posted, how) = match destination {
+            Destination::Discord(options) => match &options.interactions {
+                Some(interactions) => (
+                    interactions.via == herald_dest_discord::Via::Http,
+                    (
+                        "interactions Discord posts",
+                        "the gateway with via = \"gateway\"",
+                    ),
+                ),
+                None => continue,
+            },
+            Destination::Slack(options) => match &options.interactions {
+                Some(interactions) => (
+                    interactions.via == herald_dest_slack::Via::Http,
+                    ("commands Slack posts", "Socket Mode with via = \"socket\""),
+                ),
+                None => continue,
+            },
+            Destination::Matrix(options) => match &options.interactions {
+                Some(interactions) => (
+                    interactions.via == herald_dest_matrix::Via::Appservice,
+                    (
+                        "transactions the homeserver pushes",
+                        "a sync with via = \"sync\"",
+                    ),
+                ),
+                None => continue,
+            },
+            Destination::Mastodon(_) | Destination::ActivityPub(_) => continue,
+        };
+        let key = format!("destinations.{}.interactions.via", name.as_str());
+        let (carried, session) = how;
+        if posted && !layer.endpoint {
+            gaps.push(gap(
+                &format!("the {carried}"),
+                key,
+                format!("they are posted to herald's endpoint, which herald server and the serverless drivers serve; run one of them, or carry them over {session} in herald server"),
+            ));
+        } else if !posted && !layer.sessions {
+            gaps.push(gap(
+                "a session carrying commands",
+                key,
+                "only herald server holds a session open; run it, or have the commands posted to herald's endpoint".to_owned(),
+            ));
+        }
+    }
+}
+
+/// What `config` asks for that `layer` cannot serve, and what it leaves to
+/// chance (ADR-0002).
 #[must_use]
-pub fn doctor(config: &Config, stores: &[&str]) -> Findings {
+pub fn doctor(config: &Config, layer: Layer<'_>) -> Findings {
+    let stores = layer.stores;
     let mut findings = Findings::default();
+    unanswered(config, layer, &mut findings.gaps);
     if config.marker_key.is_none() {
         findings.notes.push(DERIVED_KEY.to_owned());
     }

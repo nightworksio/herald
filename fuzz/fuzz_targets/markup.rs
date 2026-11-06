@@ -9,7 +9,12 @@ use libfuzzer_sys::fuzz_target;
 #[path = "../../crates/herald-core/src/markup/inert.rs"]
 mod inert;
 
-const DIALECTS: [Dialect; 4] = [Dialect::Discord, Dialect::Slack, Dialect::Matrix, Dialect::Plain];
+const DIALECTS: [Dialect; 4] = [
+    Dialect::Discord,
+    Dialect::Slack,
+    Dialect::Matrix,
+    Dialect::Plain,
+];
 
 fuzz_target!(|text: &str| {
     for dialect in DIALECTS {

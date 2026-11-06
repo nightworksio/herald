@@ -60,6 +60,12 @@ pub(crate) fn note(key: &Key) -> String {
     format!("notes/{key}.json")
 }
 
+pub(crate) const LATEST: &str = "latest";
+
+pub(crate) fn latest(project: &str) -> String {
+    format!("{LATEST}/{}.json", segment(project))
+}
+
 pub(crate) const KEYS: &str = "keys";
 
 pub(crate) fn key(id: &str) -> String {

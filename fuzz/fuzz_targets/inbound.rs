@@ -55,7 +55,12 @@ fuzz_target!(|input: (Vec<String>, Vec<u8>, i64, String, String)| {
     if let Ok(claim) = activity_claim(to, &headers, &body, now) {
         assert!(claim.signer.is_some());
         assert_eq!(claim.signatures.len(), 1);
-        assert!(claim.signatures.iter().all(|signature| !signature.is_empty()));
+        assert!(
+            claim
+                .signatures
+                .iter()
+                .all(|signature| !signature.is_empty())
+        );
     }
     for scheme in SCHEMES {
         if let Ok(claim) = claim(scheme, &headers, &body, now) {
@@ -65,12 +70,27 @@ fuzz_target!(|input: (Vec<String>, Vec<u8>, i64, String, String)| {
             } else {
                 assert!(claim.message.ends_with(&body), "{scheme:?}");
             }
-            assert!((1..=herald_core::MOST_SIGNATURES).contains(&claim.signatures.len()), "{scheme:?}");
-            assert!(claim.signatures.iter().all(|signature| !signature.is_empty()), "{scheme:?}");
+            assert!(
+                (1..=herald_core::MOST_SIGNATURES).contains(&claim.signatures.len()),
+                "{scheme:?}"
+            );
+            assert!(
+                claim
+                    .signatures
+                    .iter()
+                    .all(|signature| !signature.is_empty()),
+                "{scheme:?}"
+            );
         }
         for value in &values {
             let _ = key(scheme, value);
         }
-        let _ = key(scheme, &format!("-----BEGIN PUBLIC KEY-----{}-----END PUBLIC KEY-----", String::from_utf8_lossy(&body)));
+        let _ = key(
+            scheme,
+            &format!(
+                "-----BEGIN PUBLIC KEY-----{}-----END PUBLIC KEY-----",
+                String::from_utf8_lossy(&body)
+            ),
+        );
     }
 });

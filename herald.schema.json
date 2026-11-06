@@ -215,6 +215,31 @@
       },
       "additionalProperties": false
     },
+    "Command": {
+      "description": "A command a member gives herald.",
+      "oneOf": [
+        {
+          "description": "Be mentioned when the project announces.",
+          "type": "string",
+          "const": "subscribe"
+        },
+        {
+          "description": "Stop being mentioned when the project announces.",
+          "type": "string",
+          "const": "unsubscribe"
+        },
+        {
+          "description": "What the project announced last.",
+          "type": "string",
+          "const": "latest"
+        },
+        {
+          "description": "The notes of what the project announced last.",
+          "type": "string",
+          "const": "changelog"
+        }
+      ]
+    },
     "Destination": {
       "description": "A destination, by its kind.",
       "oneOf": [
@@ -227,6 +252,17 @@
               "type": [
                 "string",
                 "null"
+              ]
+            },
+            "interactions": {
+              "description": "How it takes commands, where it takes any.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Interactions"
+                },
+                {
+                  "type": "null"
+                }
               ]
             },
             "kind": {
@@ -293,6 +329,17 @@
               "description": "The homeserver's base URL, such as `https://matrix.org`.",
               "type": "string"
             },
+            "interactions": {
+              "description": "How it takes commands, where it takes any.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Interactions2"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
             "kind": {
               "type": "string",
               "const": "matrix"
@@ -318,6 +365,17 @@
               "type": [
                 "string",
                 "null"
+              ]
+            },
+            "interactions": {
+              "description": "How it takes commands, where it takes any.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Interactions3"
+                },
+                {
+                  "type": "null"
+                }
               ]
             },
             "kind": {
@@ -441,6 +499,17 @@
             "type": "string"
           }
         },
+        "subscribe": {
+          "description": "The opt-in role members subscribe to, where the route offers one.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Subscribe"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "template": {
           "description": "The template it renders with.",
           "type": "string"
@@ -476,6 +545,195 @@
       "description": "A length of time: a number and m, h, d or w, as \"14d\".",
       "type": "string",
       "pattern": "^[0-9]+[mhdw]$"
+    },
+    "Interactions": {
+      "description": "How a Discord destination takes commands.",
+      "type": "object",
+      "properties": {
+        "application": {
+          "description": "The application's id, from its General Information page.",
+          "type": "string"
+        },
+        "commands": {
+          "description": "The commands it answers.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Command"
+          }
+        },
+        "group": {
+          "description": "Registers the commands as subcommands of `/<group>`, such as\n`/herald latest`, in place of commands of their own.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "guild": {
+          "description": "The server the commands are registered in alone, by id; where none is\nnamed, they are registered in every server the application is in.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "key": {
+          "description": "The application's public key, in hex, from the same page. Each\ninteraction posted to herald is checked against it.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "prereleases": {
+          "description": "Whether `latest` and `changelog` answer with a pre-release newer than\nevery release.",
+          "type": "boolean",
+          "default": false
+        },
+        "replies": {
+          "description": "Who sees the answers to `latest` and `changelog`.",
+          "$ref": "#/$defs/Replies"
+        },
+        "template": {
+          "description": "The template `latest` takes its title from and `changelog` its body,\nin place of the route's own.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "via": {
+          "description": "How Discord carries them.",
+          "$ref": "#/$defs/Via"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "application"
+      ]
+    },
+    "Interactions2": {
+      "description": "How a Matrix destination takes commands.",
+      "type": "object",
+      "properties": {
+        "appservice_token": {
+          "description": "The secret holding the token herald acts with as the application\nservice (`as_token`).",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SecretRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "commands": {
+          "description": "The commands it answers.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Command"
+          }
+        },
+        "homeserver_token": {
+          "description": "The secret holding the token the homeserver presents with each\ntransaction it pushes (`hs_token`).",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SecretRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "prefix": {
+          "description": "What a message starts with to be a command to herald:\n`!herald latest php-mutation-gate`.",
+          "type": "string",
+          "default": "!herald"
+        },
+        "prereleases": {
+          "description": "Whether `latest` and `changelog` answer with a pre-release newer than\nevery release.",
+          "type": "boolean",
+          "default": false
+        },
+        "replies": {
+          "description": "Whether answers to `latest` and `changelog` are posted to the room;\nMatrix has no answer seen by one member alone, so `ephemeral` answers\nin a thread under the command.",
+          "$ref": "#/$defs/Replies"
+        },
+        "sender": {
+          "description": "The application service's user, by its localpart.",
+          "type": "string",
+          "default": "herald"
+        },
+        "template": {
+          "description": "The template `latest` takes its title from and `changelog` its body,\nin place of the route's own.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "via": {
+          "description": "How the homeserver carries them.",
+          "$ref": "#/$defs/Via2"
+        }
+      },
+      "additionalProperties": false
+    },
+    "Interactions3": {
+      "description": "How a Slack destination takes commands.",
+      "type": "object",
+      "properties": {
+        "app": {
+          "description": "The secret holding an app-level token (`xapp-…`) with\n`connections:write`, which opens Socket Mode connections.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SecretRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "command": {
+          "description": "The slash command members give, followed by a command and a project:\n`/herald latest php-mutation-gate`.",
+          "type": "string",
+          "default": "/herald"
+        },
+        "commands": {
+          "description": "The commands it answers.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Command"
+          }
+        },
+        "prereleases": {
+          "description": "Whether `latest` and `changelog` answer with a pre-release newer than\nevery release.",
+          "type": "boolean",
+          "default": false
+        },
+        "replies": {
+          "description": "Who sees the answers to `latest` and `changelog`.",
+          "$ref": "#/$defs/Replies"
+        },
+        "signing": {
+          "description": "The secret holding the app's signing secret, which each request\nposted to herald is checked against.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SecretRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "template": {
+          "description": "The template `latest` takes its title from and `changelog` its body,\nin place of the route's own.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "via": {
+          "description": "How Slack carries them.",
+          "$ref": "#/$defs/Via3"
+        }
+      },
+      "additionalProperties": false
     },
     "KeyCache": {
       "description": "Where `herald server` keeps the keys inbound activities are checked with.",
@@ -820,6 +1078,21 @@
         }
       ]
     },
+    "Replies": {
+      "description": "Who sees herald's answers to `latest` and `changelog`; the answers to\n`subscribe` and `unsubscribe` are always the asker's alone.",
+      "oneOf": [
+        {
+          "description": "The asker alone, unless they ask to share it.",
+          "type": "string",
+          "const": "ephemeral"
+        },
+        {
+          "description": "The channel.",
+          "type": "string",
+          "const": "public"
+        }
+      ]
+    },
     "Route": {
       "description": "A route: what it takes, where it announces, and its destination's own\noptions, as its destination's kind defines them.",
       "anyOf": [
@@ -949,6 +1222,17 @@
             "string",
             "null"
           ]
+        },
+        "silence": {
+          "description": "How long a session a destination holds hears nothing before it\nchecks the connection is alive, and then as long again before it\nopens another; \"30s\" where absent.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Duration"
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
       },
       "additionalProperties": false
@@ -1015,6 +1299,17 @@
           "items": {
             "type": "string"
           }
+        },
+        "subscribe": {
+          "description": "How the route offers subscribing, where it mentions its subscribers.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Subscribe2"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "template": {
           "description": "The template it renders with.",
@@ -1620,6 +1915,37 @@
         }
       ]
     },
+    "Subscribe": {
+      "description": "What a route says about subscribing on Discord.",
+      "type": "object",
+      "properties": {
+        "button": {
+          "description": "Whether each announcement carries a button that subscribes, or\nunsubscribes a member already subscribed.",
+          "type": "boolean",
+          "default": true
+        },
+        "role": {
+          "description": "The opt-in role `subscribe` gives a member and `unsubscribe` takes\naway, by id. The route mentions it with its announcements.",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "role"
+      ]
+    },
+    "Subscribe2": {
+      "description": "What a route says about subscribing on Slack, where it mentions its\nsubscribers.",
+      "type": "object",
+      "properties": {
+        "button": {
+          "description": "Whether each announcement carries a button that subscribes, or\nunsubscribes a member already subscribed.",
+          "type": "boolean",
+          "default": true
+        }
+      },
+      "additionalProperties": false
+    },
     "Template": {
       "description": "A template: its title, and its body inline or in a file beside the config.",
       "type": "object",
@@ -1682,6 +2008,51 @@
       "additionalProperties": false,
       "required": [
         "name"
+      ]
+    },
+    "Via": {
+      "description": "How Discord carries commands to herald.",
+      "oneOf": [
+        {
+          "description": "Discord posts each interaction to herald's endpoint, signed with the\napplication's key: served by `herald server` and by a serverless\ndriver.",
+          "type": "string",
+          "const": "http"
+        },
+        {
+          "description": "herald holds a connection to Discord's gateway and takes each\ninteraction from it: served by `herald server`, with no public\nendpoint.",
+          "type": "string",
+          "const": "gateway"
+        }
+      ]
+    },
+    "Via2": {
+      "description": "How the homeserver carries commands to herald.",
+      "oneOf": [
+        {
+          "description": "The homeserver pushes each room event to herald as an application\nservice, with the registration `herald matrix registration` writes:\nserved by `herald server` and by a serverless driver.",
+          "type": "string",
+          "const": "appservice"
+        },
+        {
+          "description": "herald syncs as the bot account and reads each message in the rooms\nit has joined: served by `herald server`, with no public endpoint and\nnothing for the homeserver's administrator to install.",
+          "type": "string",
+          "const": "sync"
+        }
+      ]
+    },
+    "Via3": {
+      "description": "How Slack carries commands to herald.",
+      "oneOf": [
+        {
+          "description": "Slack posts each command and button press to herald's endpoint,\nsigned with the app's signing secret: served by `herald server` and\nby a serverless driver.",
+          "type": "string",
+          "const": "http"
+        },
+        {
+          "description": "herald holds a Socket Mode connection, opened with the app-level\ntoken, and takes each one from it: served by `herald server`, with no\npublic endpoint.",
+          "type": "string",
+          "const": "socket"
+        }
       ]
     },
     "Visibility": {

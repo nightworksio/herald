@@ -40,6 +40,20 @@ pub fn convert(markdown: &str, dialect: Dialect) -> Text {
     }
 }
 
+/// `text` as Markdown that shows it literally: every ASCII punctuation
+/// mark escaped, so nothing in it is read as markup.
+#[must_use]
+pub fn escaped(text: &str) -> String {
+    let mut escaped = String::with_capacity(text.len());
+    for character in text.chars() {
+        if character.is_ascii_punctuation() {
+            escaped.push('\\');
+        }
+        escaped.push(character);
+    }
+    escaped
+}
+
 /// `text` shown literally in `dialect`: nothing in it is read as markup, a
 /// mention or a link. For a title or a name placed where markup is read.
 #[must_use]

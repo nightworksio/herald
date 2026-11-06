@@ -1,7 +1,7 @@
 use std::cell::RefCell;
 
-use herald_core::{RouteId, Step};
-use herald_flows::{Announced, FollowError, Followed, Outcome, Stop, Worked};
+use herald_core::{Asked, Command, DestinationName, Place, RouteId, Step};
+use herald_flows::{Announced, Answer, FollowError, Followed, Interacted, Outcome, Stop, Worked};
 use herald_server::Heard;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
@@ -82,7 +82,7 @@ fn the_server_listens_where_its_environment_or_its_config_says() {
 }
 
 #[test]
-fn a_server_that_cannot_listen_or_read_a_webhook_secret_stops_before_it_serves() {
+fn a_server_that_cannot_listen_or_read_a_webhook_or_command_secret_stops_before_it_serves() {
     let taken = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
     let listen = taken.local_addr().unwrap().to_string();
     let refused = herald_until(
@@ -114,6 +114,21 @@ fn a_server_that_cannot_listen_or_read_a_webhook_secret_stops_before_it_serves()
         unkeyed.err.contains("HERALD_UNSET_WEBHOOK"),
         "{}",
         unkeyed.err
+    );
+    let unsigned = format!(
+        "{CONFIG}[destinations.slack]\nkind = \"slack\"\ntoken = {{ secret = \"HERALD_DISCORD_TOKEN\" }}\n[destinations.slack.interactions]\nsigning = {{ secret = \"HERALD_UNSET_SIGNING\" }}\n"
+    );
+    let unanswering = herald_until(
+        &setup(&unsigned),
+        &World::default(),
+        &["server", "--listen", "127.0.0.1:0"],
+        std::future::ready(()),
+    );
+    assert_eq!(unanswering.code, STOPPED);
+    assert!(
+        unanswering.err.contains("HERALD_UNSET_SIGNING"),
+        "{}",
+        unanswering.err
     );
 }
 
@@ -149,6 +164,50 @@ fn doctor_names_the_stores_a_server_cannot_keep_records_in() {
         doctored.out.contains("store.kind: keeping records in actions-cache cannot be served: this herald keeps records in sqlite, postgres, git-branch, markers or repo-variables; set [store] kind to one of them."),
         "{}",
         doctored.out
+    );
+}
+
+#[test]
+fn the_server_says_how_each_command_was_answered_and_what_its_sessions_said() {
+    let asked = Asked {
+        destination: DestinationName::new("discord"),
+        place: Place::new("323456789012345678"),
+        user: "423456789012345678".to_owned(),
+        command: Command::Latest,
+        project: None,
+        share: false,
+        toggles: false,
+        member: None,
+    };
+    let interacted = |trouble: Option<&str>, sent: Result<(), String>| {
+        said(Heard::Worked(Worked::Interacted(vec![Interacted {
+            asked: asked.clone(),
+            answer: Answer {
+                said: String::new(),
+                public: false,
+                trouble: trouble.map(ToOwned::to_owned),
+            },
+            sent,
+        }])))
+    };
+    assert_eq!(
+        interacted(None, Ok(())),
+        ["discord: latest was answered in 323456789012345678"]
+    );
+    assert_eq!(
+        interacted(None, Err("refused".to_owned())),
+        ["discord: the answer to latest could not be sent: refused"]
+    );
+    assert_eq!(
+        interacted(Some("the store is down"), Ok(())),
+        ["discord: latest could not be answered: the store is down"]
+    );
+    assert_eq!(
+        said(Heard::Session {
+            destination: DestinationName::new("slack"),
+            said: "Slack's Socket Mode could not be opened: invalid_auth".to_owned(),
+        }),
+        ["slack: Slack's Socket Mode could not be opened: invalid_auth"]
     );
 }
 

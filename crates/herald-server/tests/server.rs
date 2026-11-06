@@ -24,7 +24,9 @@ mod server {
     };
     use herald_records::MemoryKeyring;
     use herald_server::{Capped, Heard, Limits, Listener, serve};
-    use herald_testing::{FakeClock, FakeSecrets, FakeSigner, FakeStore, FakeVerifier};
+    use herald_testing::{
+        FakeClock, FakeSecrets, FakeSigner, FakeStore, FakeVerifier, ScriptedSockets,
+    };
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::net::{TcpListener, TcpStream};
     use tokio::sync::Notify;
@@ -98,6 +100,7 @@ body = "{{ event.body }}"
         keyring: MemoryKeyring,
         public: Capped<Gate>,
         clock: FakeClock,
+        sockets: ScriptedSockets,
     }
 
     impl World {
@@ -114,6 +117,7 @@ body = "{{ event.body }}"
                 keyring: MemoryKeyring::new(8),
                 public: Capped::new(http, 2),
                 clock: FakeClock::at("2027-01-15T08:00:00Z".parse().unwrap()),
+                sockets: ScriptedSockets::default(),
             }
         }
 
@@ -143,9 +147,12 @@ body = "{{ event.body }}"
                 webhooks: &self.webhooks,
             };
             let stop: Pin<Box<dyn Future<Output = ()> + '_>> = Box::pin(stop);
-            tokio::time::timeout(BOUND, serve(&serving, listener, limits, heard, stop))
-                .await
-                .expect("the server stopped within its bound");
+            tokio::time::timeout(
+                BOUND,
+                serve(&serving, listener, &self.sockets, limits, heard, stop),
+            )
+            .await
+            .expect("the server stopped within its bound");
         }
     }
 
@@ -226,6 +233,7 @@ body = "{{ event.body }}"
             Heard::Polled(_) => "polled".to_owned(),
             Heard::Kept(_) => "kept".to_owned(),
             Heard::Unaccepted(reason) => format!("unaccepted: {reason}"),
+            Heard::Session { destination, said } => format!("{}: {said}", destination.as_str()),
         }
     }
 

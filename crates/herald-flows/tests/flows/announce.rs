@@ -555,3 +555,96 @@ fn a_store_that_fails_or_is_written_by_another_run_stops_the_run_and_says_where(
         "another run wrote the announcement's ledger entry first"
     );
 }
+
+fn latest_after(store: &Failing) -> Option<herald_core::Latest> {
+    pollster::block_on(store.latest("php-mutation-gate"))
+        .unwrap()
+        .map(|kept| kept.value)
+}
+
+fn announced_by(store: &Failing) -> Outcome {
+    let script = Script::answering(&[POSTED, CROSSPOSTED, THREADED, PINNED, WHO, NO_PINS]);
+    let announced = pollster::block_on(run(
+        &config(""),
+        store,
+        &FakeClock::at(NOON),
+        &script,
+        "v1",
+        "r1",
+    ));
+    announced[0].outcome.clone()
+}
+
+#[test]
+fn an_announced_event_is_kept_as_what_its_project_last_announced_on_its_route() {
+    let store = healthy();
+    assert_eq!(announced_by(&store), Outcome::Sent { steps: all() });
+    let latest = latest_after(&store).unwrap();
+    assert_eq!(latest.newest, herald_core::Shown::of(&event("v1")));
+    assert_eq!(latest.stable, Some(latest.newest.clone()));
+    assert_eq!(
+        latest.routes,
+        std::collections::BTreeSet::from([RouteId::new("releases")])
+    );
+}
+
+#[test]
+fn what_cannot_be_kept_stops_a_sent_run_and_the_next_run_keeps_it() {
+    let mut store = healthy();
+    store.fault = Fault::LatestConflicts;
+    assert_eq!(
+        announced_by(&store),
+        Outcome::Stopped {
+            landed: all(),
+            remaining: Vec::new(),
+            reason: Stop::Store(
+                "what php-mutation-gate last announced changed under each of 3 writes".to_owned()
+            ),
+        }
+    );
+    assert_eq!(latest_after(&store), None);
+    store.fault = Fault::ReadsLatest;
+    assert_eq!(
+        announced_by(&store),
+        Outcome::Stopped {
+            landed: Vec::new(),
+            remaining: Vec::new(),
+            reason: Stop::Store("the store could not be reached: broken".to_owned()),
+        }
+    );
+    store.fault = Fault::KeepsLatest;
+    assert!(matches!(announced_by(&store), Outcome::Stopped { .. }));
+    store.fault = Fault::Nothing;
+    assert_eq!(announced_by(&store), Outcome::AlreadyAnnounced);
+    assert!(latest_after(&store).is_some());
+}
+
+#[test]
+fn a_store_that_keeps_no_latest_is_not_asked_to() {
+    let mut store = healthy();
+    store.fault = Fault::KeepsNoLatest;
+    assert_eq!(announced_by(&store), Outcome::Sent { steps: all() });
+    assert_eq!(latest_after(&store), None);
+}
+
+#[test]
+fn a_held_run_keeps_nothing_as_latest() {
+    let store = healthy();
+    let clock = FakeClock::at(NOON);
+    let key = Key::derive(&RouteId::new("releases"), &Identity::new("github.com/1/v1"));
+    let held = Entry::new(key).claimed(
+        "other",
+        NOON.checked_add(SignedDuration::from_mins(5)).unwrap(),
+    );
+    pollster::block_on(store.put_entry(&held, None)).unwrap();
+    let announced = pollster::block_on(run(
+        &config(""),
+        &store,
+        &clock,
+        &Script::default(),
+        "v1",
+        "r1",
+    ));
+    assert!(matches!(announced[0].outcome, Outcome::Held { .. }));
+    assert_eq!(latest_after(&store), None);
+}

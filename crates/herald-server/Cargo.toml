@@ -12,6 +12,10 @@ publish.workspace = true
 [dependencies]
 futures-util = { version = "0.3", default-features = false, features = ["std"] }
 herald-config.workspace = true
+herald-core.workspace = true
+herald-dest-discord.workspace = true
+herald-dest-matrix.workspace = true
+herald-dest-slack.workspace = true
 herald-flows.workspace = true
 herald-ports.workspace = true
 http-body-util = "0.1"
@@ -21,7 +25,6 @@ jiff.workspace = true
 tokio = { workspace = true, features = ["macros", "net", "rt", "sync", "time"] }
 
 [dev-dependencies]
-herald-core.workspace = true
 herald-records.workspace = true
 herald-testing.workspace = true
 serde_json.workspace = true

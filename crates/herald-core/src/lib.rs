@@ -11,7 +11,9 @@ mod cursor;
 mod event;
 mod housekeep;
 mod inbound;
+mod interact;
 mod key;
+mod latest;
 mod ledger;
 mod marker;
 mod markup;
@@ -36,12 +38,17 @@ pub use inbound::{
     Addressed, Claim, DELIVERIES_KEPT, MOST_COVERED, MOST_SIGNATURES, REPLAY_WINDOW, Refusal,
     Scheme, Signature, activity_claim, claim, key, same,
 };
+pub use interact::{
+    AnnouncedHere, Answering, Asked, Command, MOST_COMPLETIONS, Member, Place, Replies, Said,
+    Unchosen, announced, chosen, completions, every_command,
+};
 pub use key::{Identity, Key, NotAKey, RouteId, digest, hex};
+pub use latest::{Latest, Shown};
 pub use ledger::{
     Entry, Facts, Lease, Plan, Planned, Record, Sent, Standing, State, Step, plan, steps,
 };
 pub use marker::{Marker, Marks};
-pub use markup::{LINK_SCHEMES, Text, convert, literal, safe_url};
+pub use markup::{LINK_SCHEMES, Text, convert, escaped, literal, safe_url};
 pub use pattern::Pattern;
 pub use profile::{Dialect, Features, Limits, Measure, MentionStyle, Pins, Profile, Threads};
 pub use render::{Context, Form, TemplateError, Templates};

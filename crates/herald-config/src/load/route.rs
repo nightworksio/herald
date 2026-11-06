@@ -112,6 +112,12 @@ impl Loader<'_> {
                     );
                     sound = false;
                 }
+                if let Some(subscribe) = &options.subscribe
+                    && let Err(message) = discord_subscribe(reached, subscribe, &destination)
+                {
+                    self.error(&span, &format!("{path}.subscribe"), message);
+                    sound = false;
+                }
                 (RouteOptions::Discord(options), "Discord")
             }
             Destination::Mastodon(_) => {
@@ -142,6 +148,13 @@ impl Loader<'_> {
                         &path,
                         "a Slack bot posts to a channel; give channel = \"<the channel's id>\"",
                     );
+                    sound = false;
+                }
+                if options.subscribe.is_some()
+                    && let Err(message) =
+                        slack_subscribe(reached, route.mentions.subscribers, &destination)
+                {
+                    self.error(&span, &format!("{path}.subscribe"), message);
                     sound = false;
                 }
                 (RouteOptions::Slack(options), "Slack")
@@ -185,6 +198,14 @@ impl Loader<'_> {
                 roles: route
                     .mentions
                     .roles
+                    .into_iter()
+                    .chain(options.opt_in_role())
+                    .fold(Vec::new(), |mut roles, role| {
+                        if !roles.contains(&role) {
+                            roles.push(role);
+                        }
+                        roles
+                    })
                     .into_iter()
                     .map(herald_core::RoleId::new)
                     .collect(),
@@ -279,4 +300,57 @@ impl Loader<'_> {
             path,
         })
     }
+}
+
+fn answers_subscribing(
+    answering: Option<herald_core::Answering>,
+    destination: &DestinationName,
+) -> Result<(), String> {
+    if answering.is_some_and(|answering| answering.takes(herald_core::Command::Subscribe)) {
+        Ok(())
+    } else {
+        Err(format!(
+            "subscribing is answered through the destination's interactions; give [destinations.{}.interactions] answering subscribe",
+            destination.as_str()
+        ))
+    }
+}
+
+fn discord_subscribe(
+    reached: &herald_dest_discord::DestinationOptions,
+    subscribe: &herald_dest_discord::Subscribe,
+    destination: &DestinationName,
+) -> Result<(), String> {
+    subscribe.check()?;
+    if reached.token.is_none() {
+        return Err(
+            "a member is given the opt-in role by a bot; give the destination a token in place of its webhook".to_owned(),
+        );
+    }
+    answers_subscribing(
+        reached
+            .interactions
+            .as_ref()
+            .map(herald_dest_discord::Interactions::answering),
+        destination,
+    )
+}
+
+fn slack_subscribe(
+    reached: &herald_dest_slack::DestinationOptions,
+    mentions_subscribers: bool,
+    destination: &DestinationName,
+) -> Result<(), String> {
+    if !mentions_subscribers {
+        return Err(
+            "a member subscribes to be mentioned; add mentions = { subscribers = true } to the route".to_owned(),
+        );
+    }
+    answers_subscribing(
+        reached
+            .interactions
+            .as_ref()
+            .map(herald_dest_slack::Interactions::answering),
+        destination,
+    )
 }

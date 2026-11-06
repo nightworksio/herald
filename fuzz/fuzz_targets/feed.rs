@@ -12,8 +12,15 @@ use pulldown_cmark::{Event, Parser};
 const URL: &str = "https://feed.example/feed.xml";
 
 fuzz_target!(|bytes: &[u8]| {
-    let response = Response { status: 200, headers: Vec::new(), body: bytes.to_vec() };
-    let feed = Feed::new(&FeedOptions { url: URL.to_owned(), backfill: 0 });
+    let response = Response {
+        status: 200,
+        headers: Vec::new(),
+        body: bytes.to_vec(),
+    };
+    let feed = Feed::new(&FeedOptions {
+        url: URL.to_owned(),
+        backfill: 0,
+    });
     if let Ok(polled) = feed.entries(&response) {
         assert!(polled.events.len() <= 30);
         for event in &polled.events {
@@ -22,7 +29,8 @@ fuzz_target!(|bytes: &[u8]| {
     }
     if let Ok(html) = std::str::from_utf8(bytes) {
         let converted = markdown(html);
-        let tag = Parser::new(&converted).find(|event| matches!(event, Event::Html(_) | Event::InlineHtml(_)));
+        let tag = Parser::new(&converted)
+            .find(|event| matches!(event, Event::Html(_) | Event::InlineHtml(_)));
         assert!(tag.is_none(), "{tag:?} in {converted:?}");
     }
 });

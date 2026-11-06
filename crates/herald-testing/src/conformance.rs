@@ -1,6 +1,6 @@
 use herald_core::{
-    Chore, Cursor, DestinationName, Entry, Facts, Identity, Key, RouteId, Schedule, Scheme,
-    SourceName, Step, Subscription,
+    Chore, Cursor, DestinationName, Entry, Facts, Identity, Key, Kind, Latest, RouteId, Schedule,
+    Scheme, Shown, SourceName, Step, Subscription,
 };
 use std::fmt;
 
@@ -67,6 +67,11 @@ pub async fn store_conformance<S: Store>(store: &S) -> Result<(), Failure> {
         notes(store).await?;
     } else {
         unsupported(&store.note(&key("absent")).await.map(|_| ()), "notes")?;
+    }
+    if capabilities.latest {
+        latest(store).await?;
+    } else {
+        unsupported(&store.latest("absent").await.map(|_| ()), "latest")?;
     }
     Ok(())
 }
@@ -478,6 +483,63 @@ async fn notes<S: Store>(store: &S) -> Result<(), Failure> {
     checks.ensure(
         store.note(&published).await?.as_deref() == Some("{\"n\":2}"),
         "an announcement's note was not the one written last",
+    );
+    checks.done()
+}
+
+fn announced(project: &str, version: &str) -> Latest {
+    let shown = Shown {
+        kind: Kind::Release,
+        version: Some(version.to_owned()),
+        title: format!("{project} {version}"),
+        body: "Notes".to_owned(),
+        links: std::iter::once(("release".to_owned(), "https://example.org".to_owned())).collect(),
+        prerelease: false,
+        occurred: NOON,
+    };
+    Latest {
+        project: project.to_owned(),
+        newest: shown.clone(),
+        stable: Some(shown),
+        routes: std::iter::once(RouteId::new("deploys")).collect(),
+    }
+}
+
+async fn latest<S: Store>(store: &S) -> Result<(), Failure> {
+    let mut checks = Checks::default();
+    let project = "@scope/herald";
+    checks.ensure(
+        store.latest(project).await?.is_none() && store.every_latest().await?.is_empty(),
+        "a new store holds what a project last announced",
+    );
+    let first = announced(project, "1.0.0");
+    let v1 = checks.written(store.put_latest(&first, None).await?);
+    let read = store.latest(project).await?;
+    checks.ensure(
+        read.as_ref().map(|record| (&record.value, record.version)) == Some((&first, v1)),
+        "what a project last announced was not read back as written, at its version",
+    );
+    let second = announced(project, "1.1.0");
+    let v2 = checks.written(store.put_latest(&second, Some(v1)).await?);
+    checks.ensure(
+        v2 != v1,
+        "what a project last announced kept its version when rewritten",
+    );
+    checks.ensure(
+        store.put_latest(&first, Some(v1)).await? == Written::Conflict,
+        "what a project last announced was written over a version it did not expect",
+    );
+    checks.ensure(
+        store.put_latest(&first, None).await? == Written::Conflict,
+        "what a project last announced was written as new over what exists",
+    );
+    let other = announced("other", "0.1.0");
+    checks.written(store.put_latest(&other, None).await?);
+    let mut every = store.every_latest().await?;
+    every.sort_by(|a, b| a.project.cmp(&b.project));
+    checks.ensure(
+        every == [second, other],
+        "every project's latest was not listed as written last",
     );
     checks.done()
 }

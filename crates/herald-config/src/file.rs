@@ -25,6 +25,7 @@ impl JsonSchema for Duration {
     }
 }
 
+const SECOND: i64 = 1;
 const MINUTE: i64 = 60;
 const HOUR: i64 = 3_600;
 const DAY: i64 = 86_400;
@@ -35,6 +36,7 @@ impl Duration {
         let unit = text.chars().last()?;
         let number: i64 = text.get(..text.len() - 1)?.parse().ok()?;
         let seconds = match unit {
+            's' => SECOND,
             'm' => MINUTE,
             'h' => HOUR,
             'd' => DAY,
@@ -54,7 +56,7 @@ impl serde::de::Visitor<'_> for DurationVisitor {
     type Value = Duration;
 
     fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str("a length of time such as \"30m\", \"12h\", \"14d\" or \"2w\"")
+        formatter.write_str("a length of time such as \"30s\", \"30m\", \"12h\", \"14d\" or \"2w\"")
     }
 
     fn visit_str<E: serde::de::Error>(self, text: &str) -> Result<Duration, E> {
@@ -323,6 +325,10 @@ pub(crate) struct ServerFile {
     /// How many of an announcement's inboxes are delivered to at once, by
     /// every command; 8 where absent.
     pub(crate) deliveries: Option<NonZeroUsize>,
+    /// How long a session a destination holds hears nothing before it
+    /// checks the connection is alive, and then as long again before it
+    /// opens another; "30s" where absent.
+    pub(crate) silence: Option<Duration>,
     /// The keys inbound activities are checked with.
     #[serde(default)]
     pub(crate) keys: KeysFile,
@@ -355,6 +361,7 @@ mod tests {
     #[test]
     fn a_duration_is_a_number_and_a_unit() {
         let cases = [
+            ("45s", 45),
             ("30m", 1_800),
             ("12h", 43_200),
             ("14d", 1_209_600),
@@ -371,7 +378,7 @@ mod tests {
             "",
             "d",
             "14",
-            "14s",
+            "14y",
             "0d",
             "-1d",
             "1.5h",

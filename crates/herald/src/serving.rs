@@ -8,16 +8,16 @@ use std::io::Write;
 
 use herald_config::Config;
 use herald_flows::{
-    Connected, FollowError, Followed, Keys, Ports, Serving, Webhooks, Worked, webhooks,
+    Connected, FollowError, Followed, Interacted, Keys, Ports, Serving, Webhooks, Worked, webhooks,
 };
-use herald_native::{EnvSecrets, RingSigner, RingVerifier, SystemClock};
+use herald_native::{EnvSecrets, NativeSockets, RingSigner, RingVerifier, SystemClock};
 use herald_ports::{Keyring, PUBLIC, Store as Keeps};
 use herald_records::MemoryKeyring;
 use herald_server::{Capped, Heard, Limits, READ, serve};
 
 use super::output::{chored, polled, report, say, why};
-use super::stores::reached;
-use super::{Connect, Connection, DONE, LISTEN, Served};
+use super::stores::{Commands, reached};
+use super::{Connect, Connection, DONE, LISTEN, Served, worded};
 
 /// A server's work, over whichever store the config names, and the keys
 /// it checks activities with.
@@ -26,6 +26,7 @@ struct Listening<'a, F> {
     connected: &'a Connected<Connection>,
     webhooks: &'a Webhooks,
     public: &'a Capped<Connection>,
+    sockets: NativeSockets,
     listener: tokio::net::TcpListener,
     out: RefCell<&'a mut dyn Write>,
     stop: F,
@@ -87,10 +88,22 @@ impl<F: Future<Output = ()>> Listening<'_, F> {
                 say(&mut **out, &line);
             }
         };
-        serve(&serving, self.listener, limits, &heard, self.stop).await;
+        serve(
+            &serving,
+            self.listener,
+            &self.sockets,
+            limits,
+            &heard,
+            self.stop,
+        )
+        .await;
         DONE
     }
 }
+
+/// The domains the sessions herald holds open connections under: Discord's
+/// gateway and Slack's Socket Mode (ADR-0016).
+const SESSIONS: [&str; 2] = ["discord.gg", "slack.com"];
 
 /// What a server says of what it heard.
 pub(crate) fn said(heard: Heard) -> Vec<String> {
@@ -98,6 +111,7 @@ pub(crate) fn said(heard: Heard) -> Vec<String> {
         Heard::Listening(address) => vec![format!("herald serves on {address}")],
         Heard::Worked(Worked::Announced(announced)) => announced.iter().map(report).collect(),
         Heard::Worked(Worked::Followed(followed)) => vec![follow(followed)],
+        Heard::Worked(Worked::Interacted(interacted)) => interacted.iter().map(answered).collect(),
         Heard::Polled(swept) => swept.iter().flat_map(polled).collect(),
         Heard::Kept(Ok(kept)) => kept.iter().map(chored).collect(),
         Heard::Kept(Err(stop)) => vec![format!(
@@ -105,6 +119,23 @@ pub(crate) fn said(heard: Heard) -> Vec<String> {
             why(&stop)
         )],
         Heard::Unaccepted(reason) => vec![format!("a connection could not be taken: {reason}")],
+        Heard::Session { destination, said } => vec![format!("{}: {said}", destination.as_str())],
+    }
+}
+
+fn answered(interacted: &Interacted) -> String {
+    let asked = &interacted.asked;
+    let command = asked.command.name();
+    let destination = asked.destination.as_str();
+    match (&interacted.answer.trouble, &interacted.sent) {
+        (Some(trouble), _) => format!("{destination}: {command} could not be answered: {trouble}"),
+        (None, Err(error)) => {
+            format!("{destination}: the answer to {command} could not be sent: {error}")
+        }
+        (None, Ok(())) => format!(
+            "{destination}: {command} was answered in {}",
+            asked.place.id
+        ),
     }
 }
 
@@ -136,17 +167,20 @@ pub(crate) async fn serving(
     let listener = tokio::net::TcpListener::bind(&address)
         .await
         .map_err(|error| format!("herald could not listen on {address}: {error}"))?;
-    let (records, connected) = reached(config, vars, connect).await?;
+    let (records, connected) = reached(config, vars, connect, Commands::Answered).await?;
     let secrets = EnvSecrets::from_vars(vars.clone());
     let webhooks = webhooks(config, &secrets)
         .await
         .map_err(|error| error.to_string())?;
     let public = Capped::new(connect(PUBLIC)?, config.server.fetches);
+    let silence = std::time::Duration::try_from(config.server.silence).unwrap_or_default();
+    let sockets = worded(NativeSockets::under(SESSIONS))?.silent_for(silence);
     let listening = Listening {
         config,
         connected: &connected,
         webhooks: &webhooks,
         public: &public,
+        sockets,
         listener,
         out: RefCell::new(out),
         stop,

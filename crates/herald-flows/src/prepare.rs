@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 use std::fmt;
 
 use herald_config::{Config, Destination, RouteConfig, RouteOptions, Source};
-use herald_core::{DestinationName, RouteId, SourceName, hex};
+use herald_core::{DestinationName, RouteId, SecretRef, SourceName, hex};
 use herald_dest_discord::{Credential, Discord};
 use herald_dest_fediverse::{ActivityPub, Mastodon};
 use herald_dest_matrix::Matrix;
@@ -13,6 +13,7 @@ use herald_sources_forge::{Origin, Token};
 use herald_sources_registry::Package;
 use herald_store_markers::{MarkedRoute, MarkersStore};
 
+use crate::interacting::Interacting;
 use crate::reached::{Posts, Reached};
 
 /// What a marker key is derived from a credential under (ADR-0011).
@@ -133,6 +134,8 @@ pub(crate) struct PreparedSource {
 pub struct Prepared {
     routes: Vec<PreparedRoute>,
     sources: Vec<PreparedSource>,
+    destinations: Vec<(DestinationName, Destination, Secret)>,
+    interacting: Vec<(DestinationName, Interacting)>,
 }
 
 /// The prepared routes and sources, each with the `Http` that reaches it.
@@ -140,6 +143,30 @@ pub struct Prepared {
 pub struct Connected<H> {
     pub(crate) routes: Vec<(PreparedRoute, H)>,
     pub(crate) sources: Vec<(PreparedSource, H)>,
+    pub(crate) interacting: Vec<(DestinationName, Interacting, H, Option<H>)>,
+}
+
+impl<H> Connected<H> {
+    /// The destination named `name`, where it takes commands, with the
+    /// `Http` its answers go through.
+    #[must_use]
+    pub fn interacting(&self, name: &DestinationName) -> Option<(&Interacting, &H)> {
+        self.interacting
+            .iter()
+            .find(|(named, ..)| named == name)
+            .map(|(_, interacting, http, _)| (interacting, http))
+    }
+
+    /// Every destination that takes commands, by name, with the `Http` its
+    /// answers go through and the one its sessions open through, where it
+    /// holds any.
+    pub fn interactions(
+        &self,
+    ) -> impl Iterator<Item = (&DestinationName, &Interacting, &H, Option<&H>)> {
+        self.interacting
+            .iter()
+            .map(|(name, interacting, http, sessions)| (name, interacting, http, sessions.as_ref()))
+    }
 }
 
 impl<H: Http> Connected<H> {
@@ -202,7 +229,20 @@ impl Prepared {
             let reaching = reach(source.asked.api())?;
             sources.push((source, reaching));
         }
-        Ok(Connected { routes, sources })
+        let mut interacting = Vec::new();
+        for (name, destination) in self.interacting {
+            let reaching = reach(destination.api())?;
+            let sessions = match destination.sessions() {
+                Some(base) => Some(reach(base)?),
+                None => None,
+            };
+            interacting.push((name, destination, reaching, sessions));
+        }
+        Ok(Connected {
+            routes,
+            sources,
+            interacting,
+        })
     }
 }
 
@@ -278,18 +318,13 @@ pub(crate) async fn keyed<G: Signer>(
         })
 }
 
-/// `config`'s routes and sources with every credential, token and marker
-/// key resolved through `secrets` and `signer`.
-///
-/// # Errors
-///
-/// The first secret that cannot be read, or marker key that cannot be
-/// derived.
-pub async fn prepare<S: Secrets, G: Signer>(
-    config: &Config,
+/// Each destination of `config` with its credential and marker key,
+/// resolved through `secrets` and `signer`.
+async fn resolved<'c, S: Secrets, G: Signer>(
+    config: &'c Config,
     secrets: &S,
     signer: &G,
-) -> Result<Prepared, PrepareError> {
+) -> Result<BTreeMap<&'c DestinationName, Resolved<'c>>, PrepareError> {
     let installation = match &config.marker_key {
         Some(key) => Some(secrets.secret(&key.secret).await?),
         None => None,
@@ -331,6 +366,22 @@ pub async fn prepare<S: Secrets, G: Signer>(
             },
         );
     }
+    Ok(resolved)
+}
+
+/// `config`'s routes and sources with every credential, token and marker
+/// key resolved through `secrets` and `signer`.
+///
+/// # Errors
+///
+/// The first secret that cannot be read, or marker key that cannot be
+/// derived.
+pub async fn prepare<S: Secrets, G: Signer>(
+    config: &Config,
+    secrets: &S,
+    signer: &G,
+) -> Result<Prepared, PrepareError> {
+    let resolved = resolved(config, secrets, signer).await?;
     let mut routes = Vec::new();
     for route in &config.routes {
         let found = resolved.get(&route.route.destination);
@@ -382,5 +433,95 @@ pub async fn prepare<S: Secrets, G: Signer>(
             backfill,
         });
     }
-    Ok(Prepared { routes, sources })
+    Ok(Prepared {
+        routes,
+        sources,
+        destinations: resolved
+            .into_iter()
+            .map(|(name, resolved)| (name.clone(), resolved.destination.clone(), resolved.secret))
+            .collect(),
+        interacting: Vec::new(),
+    })
+}
+
+impl Prepared {
+    /// These routes and sources, with every destination that takes
+    /// commands, each with the secrets it answers with read through
+    /// `secrets`: what a run that answers commands needs, and no other run
+    /// reads.
+    ///
+    /// # Errors
+    ///
+    /// The first secret that cannot be read.
+    pub async fn answering<S: Secrets>(mut self, secrets: &S) -> Result<Self, PrepareError> {
+        let mut interacting = Vec::new();
+        for (name, destination, credential) in &self.destinations {
+            if let Some(found) = interacts(destination, credential, secrets).await? {
+                interacting.push((name.clone(), found));
+            }
+        }
+        self.interacting = interacting;
+        Ok(self)
+    }
+}
+
+async fn optional<S: Secrets>(
+    secrets: &S,
+    named: Option<&SecretRef>,
+) -> Result<Option<Secret>, PrepareError> {
+    match named {
+        Some(named) => Ok(Some(secrets.secret(&named.secret).await?)),
+        None => Ok(None),
+    }
+}
+
+/// How `destination`, reached with `credential`, takes commands, where it
+/// takes any, with its secrets read through `secrets`.
+async fn interacts<S: Secrets>(
+    destination: &Destination,
+    credential: &Secret,
+    secrets: &S,
+) -> Result<Option<Interacting>, PrepareError> {
+    Ok(match destination {
+        Destination::Discord(options) => options.interactions.as_ref().map(|interactions| {
+            let bot = options.token.is_some().then(|| credential.clone());
+            Interacting::Discord(herald_dest_discord::Interacting::new(
+                interactions.clone(),
+                bot,
+                options.api.as_deref(),
+            ))
+        }),
+        Destination::Slack(options) => match &options.interactions {
+            Some(interactions) => Some(Interacting::Slack {
+                interacting: herald_dest_slack::Interacting::new(
+                    interactions.clone(),
+                    options.api.as_deref(),
+                ),
+                signing: optional(secrets, interactions.signing.as_ref()).await?,
+                app: optional(secrets, interactions.app.as_ref()).await?,
+            }),
+            None => None,
+        },
+        Destination::Matrix(options) => match &options.interactions {
+            Some(interactions) => {
+                let acting = match interactions.via {
+                    herald_dest_matrix::Via::Appservice => {
+                        optional(secrets, interactions.appservice_token.as_ref()).await?
+                    }
+                    herald_dest_matrix::Via::Sync => None,
+                };
+                Some(Interacting::Matrix {
+                    interacting: herald_dest_matrix::Interacting::new(
+                        &options.homeserver,
+                        interactions.clone(),
+                        acting.unwrap_or_else(|| credential.clone()),
+                    ),
+                    homeserver_token: optional(secrets, interactions.homeserver_token.as_ref())
+                        .await?,
+                })
+            }
+            None => None,
+        },
+        Destination::Mastodon(_) | Destination::ActivityPub(_) => None,
+    })
 }

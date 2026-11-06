@@ -11,11 +11,15 @@ cargo-fuzz = true
 [dependencies]
 herald-config = { path = "../crates/herald-config" }
 herald-core = { path = "../crates/herald-core" }
+herald-dest-discord = { path = "../crates/herald-dest-discord" }
+herald-dest-matrix = { path = "../crates/herald-dest-matrix" }
+herald-dest-slack = { path = "../crates/herald-dest-slack" }
 herald-ports = { path = "../crates/herald-ports" }
 herald-sources-app = { path = "../crates/herald-sources-app" }
 herald-sources-feed = { path = "../crates/herald-sources-feed" }
 herald-sources-forge = { path = "../crates/herald-sources-forge" }
 herald-sources-registry = { path = "../crates/herald-sources-registry" }
+serde_json = "1"
 jiff = { version = "0.2", default-features = false, features = ["std"] }
 libfuzzer-sys = "0.4"
 pulldown-cmark = { version = "0.13", default-features = false }
@@ -75,6 +79,13 @@ bench = false
 [[bin]]
 name = "app"
 path = "fuzz_targets/app.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "commands"
+path = "fuzz_targets/commands.rs"
 test = false
 doc = false
 bench = false

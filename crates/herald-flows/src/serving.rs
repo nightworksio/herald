@@ -2,15 +2,19 @@ use std::collections::BTreeMap;
 
 use herald_config::{App, Config, Source};
 use herald_core::{
-    ACTIVITY_JSON, Addressed, Event, Identity, Key, Scheme, SourceName, Standing, digest, same,
+    ACTIVITY_JSON, Addressed, Asked, DestinationName, Event, Identity, Key, Scheme, SourceName,
+    Standing, digest, same,
 };
 use herald_dest_fediverse::ActivityPub;
 use herald_ports::{Clock, CryptoError, Http, Keyring, Secret, Secrets, Signer, Store, Verifier};
 use herald_sources_forge::{Forge, Hooked};
 
 use crate::announce::{Announced, Outcome, Ports, announce, announce_within};
+use crate::commanded::{INTERACTIONS, MATRIX, appserviced, commanded};
 use crate::following::{FollowError, Followed, followed};
 use crate::inbound::{Keys, Rejected, Verified, activity_verified, admitted, released, verified};
+use crate::interact::{Answer, interact, replied as replied_to};
+use crate::interacting::Replying;
 use crate::prepare::{Connected, PrepareError};
 use crate::reached::Reached;
 
@@ -101,6 +105,14 @@ pub enum Job {
         /// The activity.
         body: Vec<u8>,
     },
+    /// Commands given on `destination`, each to answer where it says.
+    Interact {
+        /// The destination they were given on.
+        destination: DestinationName,
+        /// Each command, with where its answer goes, each already answered
+        /// as being worked where its destination waits for that.
+        asked: Vec<(Asked, Replying)>,
+    },
 }
 
 /// A request's reply, and the work it leaves.
@@ -119,6 +131,19 @@ pub enum Worked {
     Announced(Vec<Announced>),
     /// What the activity did.
     Followed(Result<Followed, FollowError>),
+    /// What each command was answered, and whether the answer was sent.
+    Interacted(Vec<Interacted>),
+}
+
+/// One command, answered.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Interacted {
+    /// The command.
+    pub asked: Asked,
+    /// What herald answered.
+    pub answer: Answer,
+    /// Whether the answer was sent, or else why not.
+    pub sent: Result<(), String>,
 }
 
 /// The secret each forge source's webhooks are signed with, by the source.
@@ -162,11 +187,11 @@ pub struct Serving<'a, S, C, G, V, H, P, K> {
     pub webhooks: &'a Webhooks,
 }
 
-fn said(status: u16, text: &str) -> Answered {
+pub(crate) fn said(status: u16, text: &str) -> Answered {
     replied(status, TEXT, text)
 }
 
-fn replied(status: u16, kind: &'static str, body: impl Into<Vec<u8>>) -> Answered {
+pub(crate) fn replied(status: u16, kind: &'static str, body: impl Into<Vec<u8>>) -> Answered {
     Answered {
         reply: Reply {
             status,
@@ -177,16 +202,16 @@ fn replied(status: u16, kind: &'static str, body: impl Into<Vec<u8>>) -> Answere
     }
 }
 
-fn missing(what: &str) -> Answered {
+pub(crate) fn missing(what: &str) -> Answered {
     said(404, &format!("herald serves no {what} here"))
 }
 
-fn unmethodical() -> Answered {
+pub(crate) fn unmethodical() -> Answered {
     said(405, "herald does not answer this method here")
 }
 
 /// The reply to a request `rejected` keeps from its parser.
-fn rejection(rejected: &Rejected) -> Answered {
+pub(crate) fn rejection(rejected: &Rejected) -> Answered {
     let status = match rejected {
         Rejected::Replayed => 409,
         Rejected::Unadmitted { .. } => 503,
@@ -289,6 +314,19 @@ pub async fn answer<S: Store, C: Clock, G: Signer, V: Verifier, H, P: Http, K: K
                     (_, [_, "events"] | [_, "events", _]) => unmethodical(),
                     _ => missing("such path"),
                 };
+            }
+            if let Some(destination) = path.strip_prefix(INTERACTIONS) {
+                return if method == "POST" {
+                    commanded(serving, destination, inbound).await
+                } else {
+                    unmethodical()
+                };
+            }
+            if let Some((destination, rest)) = path
+                .strip_prefix(MATRIX)
+                .and_then(|rest| rest.split_once('/'))
+            {
+                return appserviced(serving, destination, rest, inbound).await;
             }
             if let Some(source) = path.strip_prefix(HOOKS) {
                 return if method == "POST" {
@@ -586,6 +624,7 @@ pub async fn unworked<S: Store, C, G, V, H, P, K>(
         } => (*scheme, verified),
         Job::App { verified, .. } => (Scheme::App, verified),
         Job::Follow { verified, .. } => (Scheme::ActivityPub, verified),
+        Job::Interact { .. } => return,
     };
     let _ = released(serving.ports.store, scheme, verified).await;
 }
@@ -666,6 +705,20 @@ pub async fn work<S: Store, C: Clock, G: Signer, V, H: Http, P, K>(
                 let _ = released(store, Scheme::ActivityPub, &verified).await;
             }
             Worked::Followed(taken)
+        }
+        Job::Interact { destination, asked } => {
+            let mut interacted = Vec::new();
+            for (asked, replying) in asked {
+                let answer =
+                    interact(serving.config, serving.connected, serving.ports, &asked).await;
+                let sent = replied_to(serving.connected, &destination, &replying, &answer).await;
+                interacted.push(Interacted {
+                    asked,
+                    answer,
+                    sent,
+                });
+            }
+            Worked::Interacted(interacted)
         }
     }
 }

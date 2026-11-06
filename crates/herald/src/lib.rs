@@ -9,13 +9,14 @@
 
 use std::collections::BTreeMap;
 use std::convert::Infallible;
+use std::fmt::Display;
 use std::future::Future;
 use std::io::Write;
 use std::path::Path;
 use std::pin::Pin;
 use std::sync::{Arc, Mutex, PoisonError};
 
-use clap::{Parser, Subcommand, ValueEnum};
+use clap::Parser as _;
 use herald_config::{Config, Source, load, samples};
 use herald_core::{Event, Kind, RouteId, SourceName};
 use herald_flows::{
@@ -30,13 +31,18 @@ use herald_records::Memory;
 use herald_sources_forge::{Forge, Origin, Repository, SourceOptions, Token};
 
 mod apps;
+mod cli;
 mod output;
 mod serving;
+mod setup;
 mod stores;
 
+use cli::{
+    Cli, Command, Discording, From, Layer, Matrixing, Reading, Serve, Setting, Slacking, Tokens,
+};
 use output::{Scrubbing, chored, hidden, masked, polled, report, say, warned, why};
 use serving::serving;
-use stores::{Records, SERVED, STORES, reached};
+use stores::{Commands, Records, reached};
 
 /// Every route announced, already announced, or held by another run; every
 /// source polled and its cursor moved on; or every chore that fell due done
@@ -110,147 +116,12 @@ pub fn native(base: &str) -> Result<Connection, String> {
     } else {
         NativeHttp::reaching(base).map(Connection::new)
     };
-    connection.map_err(|error| error.to_string())
+    worded(connection)
 }
 
-#[derive(Debug, Parser)]
-#[command(
-    name = "herald",
-    version,
-    about = "Announce what happened to the places people gather."
-)]
-struct Cli {
-    /// The config to read.
-    #[arg(long, global = true, default_value = "herald.toml")]
-    config: String,
-    #[command(subcommand)]
-    command: Command,
-}
-
-#[derive(Debug, Subcommand)]
-enum Command {
-    /// Print a new marker secret, once, to store as `HERALD_MARKER_SECRET`.
-    Init,
-    /// Make tokens for the HTTP API's apps.
-    #[command(subcommand)]
-    Token(Tokens),
-    #[command(flatten)]
-    Read(Reading),
-}
-
-/// The commands that make tokens.
-#[derive(Debug, Subcommand)]
-enum Tokens {
-    /// Print a new token for an app, once, with the hash herald.toml keeps.
-    New {
-        /// The app's name, as `[apps.<name>]` names it.
-        #[arg(long)]
-        app: String,
-    },
-}
-
-/// The commands that read the config.
-#[derive(Debug, Subcommand)]
-enum Reading {
-    #[command(flatten)]
-    Serve(Serve),
-    /// Check the config, and name what it asks for that herald cannot serve.
-    Doctor {
-        /// The layer to check the config for.
-        #[arg(long, value_enum, default_value_t = Layer::Actions)]
-        layer: Layer,
-    },
-    /// Render each route's templates as its destination would show them,
-    /// against a sample event or a release event's file.
-    Preview {
-        /// Only this route.
-        #[arg(long)]
-        route: Option<String>,
-        /// A release event's file, as the forge sends it, in place of a
-        /// sample event.
-        #[arg(long)]
-        event: Option<String>,
-        /// The forge whose release event the file is.
-        #[arg(long, value_enum, default_value_t = From::Github)]
-        from: From,
-    },
-}
-
-/// A layer of support (ADR-0002).
-#[derive(Debug, Clone, Copy, ValueEnum)]
-enum Layer {
-    /// The CLI, on GitHub Actions or anywhere else.
-    Actions,
-    /// `herald server`, in a container or on any host.
-    Server,
-}
-
-impl Layer {
-    /// The store kinds it keeps records in.
-    fn stores(self) -> &'static [&'static str] {
-        match self {
-            Self::Actions => &STORES,
-            Self::Server => &SERVED,
-        }
-    }
-}
-
-/// The commands that serve a config, each warning first of what it cannot.
-#[derive(Debug, Subcommand)]
-enum Serve {
-    /// Announce the run's event to every route that takes it.
-    Announce {
-        /// Where the event comes from.
-        #[arg(long, value_enum, required_unless_present = "event")]
-        from: Option<From>,
-        /// The release of the run's repository to announce, by its tag, in
-        /// place of the run's own event.
-        #[arg(long, conflicts_with = "event")]
-        release: Option<String>,
-        /// An app's event, as herald's event JSON, from this file, or from
-        /// standard input where it is `-`.
-        #[arg(long, requires = "app", conflicts_with = "from")]
-        event: Option<String>,
-        /// The app the event is of, as `[apps.<name>]` names it.
-        #[arg(long, requires = "event")]
-        app: Option<String>,
-        /// Print every request a first announcement sends, with every secret
-        /// redacted, and send nothing and keep no record.
-        #[arg(long)]
-        dry_run: bool,
-    },
-    /// Ask every source for what it has not seen, and announce it.
-    Poll,
-    /// Archive and lock every announcement thread whose time has come.
-    Housekeep,
-    /// Serve forge webhooks and herald's ActivityPub actors over HTTP, and
-    /// poll and keep house on the config's schedule, until stopped.
-    Server {
-        /// The address and port to listen on, in place of `HERALD_LISTEN`
-        /// and the config's.
-        #[arg(long)]
-        listen: Option<String>,
-    },
-}
-
-#[derive(Debug, Clone, Copy, ValueEnum)]
-enum From {
-    /// The GitHub Actions run's own event.
-    Github,
-    /// The GitLab CI pipeline's tag.
-    Gitlab,
-    /// The Forgejo Actions run's own event.
-    Forgejo,
-}
-
-impl From {
-    const fn forge(self) -> Forge {
-        match self {
-            Self::Github => Forge::GitHub,
-            Self::Gitlab => Forge::GitLab,
-            Self::Forgejo => Forge::Forgejo,
-        }
-    }
+/// `made`, its error worded as herald says it.
+fn worded<T>(made: Result<T, impl Display>) -> Result<T, String> {
+    made.map_err(|error| error.to_string())
 }
 
 /// The variables a forge's CI names a run's repository, API and token in.
@@ -330,7 +201,7 @@ async fn stopping(
     };
     let serve = match reading {
         Reading::Doctor { layer } => {
-            let mut findings = doctor(&config, layer.stores());
+            let mut findings = doctor(&config, layer.served());
             let keyed = keys(&config, &EnvSecrets::from_vars(vars.clone()), &RingSigner).await;
             findings.notes.extend(keyed.notes);
             findings.mistakes.extend(keyed.mistakes);
@@ -339,6 +210,9 @@ async fn stopping(
         Reading::Preview { route, event, from } => {
             let event = event.as_deref().map(|path| (from.forge(), path));
             return previewing(&config, route.as_deref(), event, out, err);
+        }
+        Reading::Set(setting) => {
+            return finished(set_up(&config, vars, connect, setting, out).await, err);
         }
         Reading::Serve(serve) => serve,
     };
@@ -350,7 +224,7 @@ async fn stopping(
         Serve::Server { .. } => Layer::Server,
         _ => Layer::Actions,
     };
-    warned(&doctor(&config, layer.stores()).gaps, vars, out);
+    warned(&doctor(&config, layer.served()).gaps, vars, out);
     let ran = match serve {
         Serve::Announce {
             from,
@@ -388,6 +262,47 @@ async fn stopping(
     let _ = out.flush();
     let _ = err.flush();
     code
+}
+
+/// `config`'s destination set up as `setting` asks.
+async fn set_up(
+    config: &Config,
+    vars: &BTreeMap<String, String>,
+    connect: Connect<'_>,
+    setting: Setting,
+    out: &mut dyn Write,
+) -> Result<u8, String> {
+    match setting {
+        Setting::Discord(Discording::Commands { destination }) => {
+            let asked = setup::Discording::Commands;
+            setup::discord(config, vars, connect, destination.as_deref(), asked, out).await
+        }
+        Setting::Discord(Discording::Roles {
+            destination,
+            guild,
+            create,
+        }) => {
+            let asked = setup::Discording::Roles {
+                guild: &guild,
+                create: create.as_deref(),
+            };
+            setup::discord(config, vars, connect, destination.as_deref(), asked, out).await
+        }
+        Setting::Slack(Slacking::Manifest { destination, url }) => {
+            setup::slack(config, destination.as_deref(), url.as_deref(), out)
+        }
+        Setting::Matrix(Matrixing::Registration { destination, url }) => {
+            setup::matrix(config, destination.as_deref(), &url, &random_secret, out)
+        }
+    }
+}
+
+/// The code a setup command ends with, saying why where it stopped.
+fn finished(done: Result<u8, String>, err: &mut dyn Write) -> u8 {
+    done.unwrap_or_else(|message| {
+        say(err, &message);
+        STOPPED
+    })
 }
 
 /// [`run_until`], with a server it runs running until the process ends.
@@ -554,7 +469,7 @@ async fn announcing(
     let (records, connected) = if dry_run {
         dry(config, vars, &sent).await?
     } else {
-        reached(config, vars, connect).await?
+        reached(config, vars, connect, Commands::Unanswered).await?
     };
     let run = run_name(vars);
     let announcing = Announcing {
@@ -897,7 +812,7 @@ async fn polling(
     connect: Connect<'_>,
     out: &mut dyn Write,
 ) -> Result<u8, String> {
-    let (records, connected) = reached(config, vars, connect).await?;
+    let (records, connected) = reached(config, vars, connect, Commands::Unanswered).await?;
     let run = run_name(vars);
     let polling = Polling {
         config,
@@ -931,7 +846,7 @@ async fn housekeeping(
     connect: Connect<'_>,
     out: &mut dyn Write,
 ) -> Result<u8, String> {
-    let (records, connected) = reached(config, vars, connect).await?;
+    let (records, connected) = reached(config, vars, connect, Commands::Unanswered).await?;
     let housekeeping = Housekeeping {
         connected: &connected,
     };

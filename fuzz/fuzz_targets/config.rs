@@ -14,9 +14,15 @@ fuzz_target!(|text: &str| {
         let lines = text.lines().count().max(1) + 1;
         let mut previous = (0, 0);
         for error in &errors.errors {
-            assert!(error.line >= 1 && error.line <= lines, "{error:?} is outside {lines} lines");
+            assert!(
+                error.line >= 1 && error.line <= lines,
+                "{error:?} is outside {lines} lines"
+            );
             assert!(error.column >= 1, "{error:?}");
-            assert!((error.line, error.column) >= previous, "{error:?} is out of file order");
+            assert!(
+                (error.line, error.column) >= previous,
+                "{error:?} is out of file order"
+            );
             previous = (error.line, error.column);
         }
     }

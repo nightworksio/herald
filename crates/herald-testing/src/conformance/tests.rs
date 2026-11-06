@@ -13,6 +13,7 @@ enum Fault {
     UndeclaredPins,
     UndeclaredDeliveries,
     UndeclaredNotes,
+    UndeclaredLatest,
     OverwritesEntries,
     RefusesWrites,
     OverwritesCursors,
@@ -27,6 +28,9 @@ enum Fault {
     ExpiresNothing,
     KeepsTheFirstNote,
     SharesNotes,
+    OverwritesLatest,
+    ListsNoLatest,
+    ListsAnUnwrittenLatest,
     Broken,
     KeepsNothing,
     DerivesButKeeps,
@@ -105,6 +109,10 @@ impl Store for Faulty {
                 notes: false,
                 ..all
             },
+            Fault::UndeclaredLatest => Capabilities {
+                latest: false,
+                ..all
+            },
             Fault::KeepsNothing => Capabilities {
                 ledger: Keeping::None,
                 cursors: false,
@@ -113,6 +121,7 @@ impl Store for Faulty {
                 pins: false,
                 deliveries: false,
                 notes: false,
+                latest: false,
                 concurrent: false,
             },
             _ => all,
@@ -288,6 +297,39 @@ impl Store for Faulty {
         }
         self.inner.put_note(&key, note).await
     }
+
+    async fn latest(&self, project: &str) -> Result<Option<Versioned<Latest>>, StoreError> {
+        self.refuses("latest")?;
+        self.inner.latest(project).await
+    }
+
+    async fn every_latest(&self) -> Result<Vec<Latest>, StoreError> {
+        self.refuses("latest")?;
+        if self.fault == Fault::ListsNoLatest {
+            return Ok(Vec::new());
+        }
+        if self.fault == Fault::ListsAnUnwrittenLatest {
+            return Ok(vec![announced("unwritten", "0.1.0")]);
+        }
+        self.inner.every_latest().await
+    }
+
+    async fn put_latest(
+        &self,
+        latest: &Latest,
+        expected: Option<Version>,
+    ) -> Result<Written, StoreError> {
+        self.refuses("latest")?;
+        let expected = match self.fault {
+            Fault::OverwritesLatest => self
+                .inner
+                .latest(&latest.project)
+                .await?
+                .map(|kept| kept.version),
+            _ => expected,
+        };
+        self.inner.put_latest(latest, expected).await
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -439,6 +481,7 @@ fn a_kind_kept_but_not_declared_is_refused() {
         (Fault::UndeclaredPins, "pins"),
         (Fault::UndeclaredDeliveries, "deliveries"),
         (Fault::UndeclaredNotes, "notes"),
+        (Fault::UndeclaredLatest, "latest"),
     ];
     for (fault, what) in cases {
         assert_eq!(
@@ -508,6 +551,18 @@ fn a_store_that_breaks_its_promises_is_refused() {
         (
             Fault::SharesNotes,
             "an announcement's note was not the one written last",
+        ),
+        (
+            Fault::OverwritesLatest,
+            "what a project last announced was written over a version it did not expect",
+        ),
+        (
+            Fault::ListsNoLatest,
+            "every project's latest was not listed as written last",
+        ),
+        (
+            Fault::ListsAnUnwrittenLatest,
+            "a new store holds what a project last announced",
         ),
     ];
     for (fault, failure) in cases {

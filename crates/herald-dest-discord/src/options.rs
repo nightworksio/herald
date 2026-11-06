@@ -1,4 +1,6 @@
 use herald_core::SecretRef;
+
+use crate::interactions::{Interactions, Subscribe};
 use schemars::JsonSchema;
 use serde::Deserialize;
 
@@ -13,6 +15,8 @@ pub struct DestinationOptions {
     pub webhook: Option<SecretRef>,
     /// Another base URL for Discord's API, such as a recorded-fixture server.
     pub api: Option<String>,
+    /// How it takes commands, where it takes any.
+    pub interactions: Option<Interactions>,
 }
 
 impl DestinationOptions {
@@ -44,4 +48,6 @@ pub struct RouteOptions {
     /// its own.
     #[serde(default)]
     pub forum: bool,
+    /// The opt-in role members subscribe to, where the route offers one.
+    pub subscribe: Option<Subscribe>,
 }
