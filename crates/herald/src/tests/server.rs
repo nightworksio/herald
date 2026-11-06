@@ -31,6 +31,13 @@ async fn checked(port: u16, answer: &RefCell<String>) {
     *answer.borrow_mut() = read;
 }
 
+#[cfg(unix)]
+#[test]
+fn a_process_that_cannot_listen_for_its_signals_stops_at_once() {
+    let unheard = || Err(std::io::Error::other("no signals here"));
+    on_tokio(crate::signalled(unheard(), unheard()));
+}
+
 #[test]
 fn a_server_refuses_a_store_only_a_run_in_actions_reaches() {
     let cached = CONFIG.replace("kind = \"git-branch\"", "kind = \"actions-cache\"");
