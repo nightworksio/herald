@@ -1,16 +1,24 @@
-use std::collections::BTreeMap;
 use std::rc::Rc;
 
-use herald_compose::{Composed, told};
+use herald_compose::{Composed, Hosting, told};
 use herald_config::load;
 use herald_flows::{Admission, Inbound};
-use js_sys::{Promise, Uint8Array};
+use js_sys::{Function, Promise, Uint8Array};
 use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::future_to_promise;
 
 use super::bindings::HostObject;
 use super::host::JsHost;
-use super::{bytes, entries, member, object, pairs, strings};
+use super::{bytes, member, object, pairs, strings};
+use crate::numbers::millis;
+use crate::reaching::public_address;
+
+/// Whether `address` is on the public internet: what a host that resolves
+/// names itself checks before it connects on others' behalf.
+#[wasm_bindgen(js_name = publicAddress)]
+pub fn public(address: &str) -> bool {
+    public_address(address)
+}
 
 /// The file a config is read as, for the places its mistakes are named.
 const CONFIG: &str = "herald.toml";
@@ -24,9 +32,9 @@ pub struct Herald {
 #[wasm_bindgen]
 impl Herald {
     /// herald composed on `host` from the config `config`, each template
-    /// file it names read from `files`, keeping its records in a store of
-    /// one of the kinds in `stores`, and taking leases under the run name
-    /// `run`.
+    /// file it names read from `files`, an object of texts by name or a
+    /// function answering each name with its text, serving as the host
+    /// named `hosting`: `worker`, `deno`, `node`, `vercel` or `netlify`.
     ///
     /// # Errors
     ///
@@ -36,20 +44,26 @@ impl Herald {
         host: HostObject,
         config: String,
         files: JsValue,
-        stores: Vec<String>,
-        run: String,
+        hosting: String,
     ) -> Result<Herald, JsError> {
-        let files: BTreeMap<String, String> = entries(&files).into_iter().collect();
+        let hosting = Hosting::of(&hosting).ok_or_else(|| {
+            let named: Vec<&str> = Hosting::ALL.iter().map(|hosting| hosting.name()).collect();
+            JsError::new(&format!(
+                "{hosting} is no host herald knows; it runs on {}",
+                named.join(", ")
+            ))
+        })?;
         let read = |name: &str| {
-            files
-                .get(name)
-                .cloned()
+            let read = match files.dyn_ref::<Function>() {
+                Some(reader) => reader.call1(&JsValue::NULL, &JsValue::from_str(name)).ok(),
+                None => Some(member(&files, name)),
+            };
+            read.and_then(|text| text.as_string())
                 .ok_or_else(|| format!("{name} is not among the files herald was given"))
         };
         let loaded =
             load(CONFIG, &config, &read).map_err(|errors| JsError::new(&errors.to_string()))?;
-        let stores: Vec<&str> = stores.iter().map(String::as_str).collect();
-        let composed = Composed::new(JsHost::new(host), loaded, &stores, run)
+        let composed = Composed::new(JsHost::new(host), loaded, hosting.stores(), hosting.name())
             .await
             .map_err(|error| JsError::new(&error))?;
         Ok(Self {
@@ -102,6 +116,22 @@ impl Herald {
                 ("work", work),
             ]))
         })
+    }
+
+    /// The periods the config asks rounds at, in milliseconds: `{ poll?,
+    /// housekeep? }`.
+    #[must_use]
+    pub fn schedule(&self) -> JsValue {
+        let schedule = self.composed.config().schedule;
+        let period = |every: Option<jiff::SignedDuration>| {
+            every
+                .and_then(millis)
+                .map_or(JsValue::UNDEFINED, JsValue::from)
+        };
+        object(&[
+            ("poll", period(schedule.poll)),
+            ("housekeep", period(schedule.housekeep)),
+        ])
     }
 
     /// Every source polled, settling to what each poll did, in words.

@@ -328,8 +328,7 @@ async fn a_composed_herald_answers_polls_and_keeps_house() {
         host(&object(&[])),
         "version = 1\n[store]\nkind = \"deno-kv\"\n".to_owned(),
         JsValue::UNDEFINED,
-        vec!["deno-kv".to_owned()],
-        "test".to_owned(),
+        "deno".to_owned(),
     )
     .await
     .unwrap_or_else(|_| panic!("composed"));
@@ -350,6 +349,9 @@ async fn a_composed_herald_answers_polls_and_keeps_house() {
     let kept = JsFuture::from(composed.housekeep()).await.unwrap();
     assert_eq!(strings_of(&kept), Vec::<String>::new());
     assert_eq!(strings(&["a"]).length(), 1);
+    let schedule = composed.schedule();
+    assert!(member(&schedule, "poll").is_undefined());
+    assert!(super::herald::public("1.1.1.1"));
 }
 
 #[wasm_bindgen_test]
@@ -358,8 +360,7 @@ async fn a_config_with_mistakes_or_an_unkept_store_is_not_composed() {
         host(&object(&[])),
         "version = 1\n[store]\nkind = \"nowhere\"\n".to_owned(),
         JsValue::UNDEFINED,
-        vec!["deno-kv".to_owned()],
-        "test".to_owned(),
+        "deno".to_owned(),
     )
     .await;
     assert!(mistaken.is_err());
@@ -367,9 +368,16 @@ async fn a_config_with_mistakes_or_an_unkept_store_is_not_composed() {
         host(&object(&[])),
         "version = 1\n[store]\nkind = \"sqlite\"\n".to_owned(),
         JsValue::UNDEFINED,
-        vec!["deno-kv".to_owned()],
-        "test".to_owned(),
+        "deno".to_owned(),
     )
     .await;
     assert!(unkept.is_err());
+    let nowhere = Herald::compose(
+        host(&object(&[])),
+        "version = 1\n[store]\nkind = \"markers\"\n".to_owned(),
+        JsValue::UNDEFINED,
+        "elsewhere".to_owned(),
+    )
+    .await;
+    assert!(nowhere.is_err());
 }

@@ -54,6 +54,13 @@ impl Reaching {
     }
 }
 
+/// Whether `text` is an address on the public internet, as a host that
+/// resolves names itself checks each address a name resolves to.
+#[must_use]
+pub fn public_address(text: &str) -> bool {
+    text.parse().is_ok_and(public)
+}
+
 /// The response the host answered `request` with, where its body is no
 /// larger than the request reads.
 ///
@@ -116,6 +123,15 @@ mod tests {
         for refused in ["https://10.0.0.1/", "http://social.example/", "not a url"] {
             assert!(reaching.admitted(&plain(refused)).is_err(), "{refused}");
         }
+    }
+
+    #[test]
+    fn only_a_public_address_is_public() {
+        assert!(public_address("93.184.216.34"));
+        assert!(public_address("2606:4700::1111"));
+        assert!(!public_address("10.0.0.1"));
+        assert!(!public_address("::1"));
+        assert!(!public_address("social.example"));
     }
 
     #[test]

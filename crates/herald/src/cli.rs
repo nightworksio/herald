@@ -4,6 +4,8 @@
 use clap::{Parser, Subcommand, ValueEnum};
 use herald_sources_forge::Forge;
 
+use herald_compose::Hosting;
+
 use super::stores::{LAMBDA, SERVED, STORES};
 
 #[derive(Debug, Parser)]
@@ -148,6 +150,16 @@ pub(crate) enum Layer {
     Server,
     /// `herald lambda`, as an AWS Lambda function.
     Lambda,
+    /// The wasm module on a Cloudflare Worker.
+    Worker,
+    /// The wasm module on Deno.
+    Deno,
+    /// The wasm module on Node or Bun.
+    Node,
+    /// The wasm module as a Vercel function.
+    Vercel,
+    /// The wasm module as a Netlify function.
+    Netlify,
 }
 
 impl Layer {
@@ -169,6 +181,11 @@ impl Layer {
                 endpoint: true,
                 sessions: false,
             },
+            Self::Worker => Hosting::Worker.layer(),
+            Self::Deno => Hosting::Deno.layer(),
+            Self::Node => Hosting::Node.layer(),
+            Self::Vercel => Hosting::Vercel.layer(),
+            Self::Netlify => Hosting::Netlify.layer(),
         }
     }
 }

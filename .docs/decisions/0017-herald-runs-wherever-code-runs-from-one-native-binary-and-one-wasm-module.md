@@ -51,7 +51,10 @@ and Azure's timers call the function to poll.
      client.
 
    It signs and verifies with the host's Web Crypto. The native binary
-   keeps ring.
+   keeps ring. `herald_compose::Hosting` names each JavaScript host and the
+   store kinds it keeps records in, and the shim names its host to the
+   module. Where a host resolves names itself, it connects on others'
+   behalf only where every address a name resolves to is public.
 
 3. **`wasm32-wasip2` and Fastly Compute get a driver each.** A `wasi:http`
    component serves Spin, `wasmtime serve`, wasmCloud and any other

@@ -1,0 +1,26 @@
+name = "herald"
+main = "worker.mjs"
+compatibility_date = "2026-11-01"
+rules = [
+  { type = "Text", globs = ["**/*.toml"], fallthrough = true },
+  { type = "CompiledWasm", globs = ["**/*.wasm"], fallthrough = true },
+]
+
+[triggers]
+crons = ["*/5 * * * *", "17 * * * *"]
+
+[vars]
+HERALD_HOUSEKEEP_CRON = "17 * * * *"
+
+[[d1_databases]]
+binding = "HERALD_DB"
+database_name = "herald"
+database_id = "00000000-0000-0000-0000-000000000000"
+
+[[durable_objects.bindings]]
+name = "HERALD"
+class_name = "HeraldObject"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["HeraldObject"]

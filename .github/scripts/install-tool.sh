@@ -4,7 +4,7 @@
 # one it lists; where it lists none, the one this repository first downloaded.
 set -euo pipefail
 
-tool="${1:?usage: install-tool.sh <cargo-nextest|cargo-llvm-cov|cargo-deny|cargo-audit|cargo-mutants|cargo-fuzz|gitleaks|wasm-bindgen-test-runner>}"
+tool="${1:?usage: install-tool.sh <cargo-nextest|cargo-llvm-cov|cargo-deny|cargo-audit|cargo-mutants|cargo-fuzz|gitleaks|wasm-bindgen|wasm-bindgen-test-runner>}"
 
 case "$tool" in
   cargo-nextest)
@@ -43,11 +43,11 @@ case "$tool" in
     sha256="b5b704018b63e0f151c17a057ac53b5111e1db545d1b9f72fee79f08a545931c"
     member="cargo-fuzz"
     ;;
-  wasm-bindgen-test-runner)
+  wasm-bindgen | wasm-bindgen-test-runner)
     version="0.2.130"
     url="https://github.com/wasm-bindgen/wasm-bindgen/releases/download/${version}/wasm-bindgen-${version}-x86_64-unknown-linux-musl.tar.gz"
     sha256="9687f3bb551b9f66f37ed32a40d7913a00f7962db653054e56857bc306c3227f"
-    member="wasm-bindgen-${version}-x86_64-unknown-linux-musl/wasm-bindgen-test-runner"
+    member="wasm-bindgen-${version}-x86_64-unknown-linux-musl/${tool}"
     ;;
   gitleaks)
     version="8.30.1"

@@ -18,20 +18,25 @@ async fn main() -> ExitCode {
     ExitCode::from(code)
 }
 
-/// When the process is asked to stop: Ctrl-C, or `SIGTERM` as a container
-/// runtime sends it.
-async fn stopped() {
-    #[cfg(unix)]
-    let terminated = async {
-        tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
-            .ok()?
-            .recv()
-            .await
-    };
-    #[cfg(not(unix))]
-    let terminated = std::future::pending::<Option<()>>();
-    tokio::select! {
-        Ok(()) = tokio::signal::ctrl_c() => {}
-        Some(()) = terminated => {}
+/// When the process is asked to stop, listened for from this call on: Ctrl-C,
+/// or `SIGTERM` as a container runtime sends it.
+#[cfg(unix)]
+fn stopped() -> impl std::future::Future<Output = ()> {
+    use tokio::signal::unix::{SignalKind, signal};
+    let mut terminate = signal(SignalKind::terminate());
+    let mut interrupt = signal(SignalKind::interrupt());
+    async move {
+        if let (Ok(terminate), Ok(interrupt)) = (&mut terminate, &mut interrupt) {
+            tokio::select! {
+                _ = terminate.recv() => {}
+                _ = interrupt.recv() => {}
+            }
+        }
     }
+}
+
+/// When the process is asked to stop: Ctrl-C.
+#[cfg(not(unix))]
+async fn stopped() {
+    let _ = tokio::signal::ctrl_c().await;
 }

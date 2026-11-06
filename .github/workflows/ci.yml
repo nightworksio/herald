@@ -216,10 +216,11 @@ jobs:
       - run: cargo test --workspace --locked
 
   # herald-wasm and everything it builds on compile for wasm32 without a
-  # warning, and its JavaScript glue passes its tests under Node.
+  # warning, its JavaScript glue passes its tests under Node, and every
+  # JavaScript host in deploy/ passes its own under Node and Deno.
   wasm:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -237,6 +238,17 @@ jobs:
       - run: cargo test --locked --target wasm32-unknown-unknown -p herald-wasm
         env:
           CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUNNER: wasm-bindgen-test-runner
+      - run: .github/scripts/install-tool.sh wasm-bindgen
+      - run: deploy/build.sh
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+      - run: node --test deploy/tests/host.test.mjs
+      - uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
+        with:
+          deno-version: v2.x
+      - run: deno test --allow-read --allow-net --allow-sys deploy/tests/vetted.deno.test.ts
+      - run: deno check --unstable-cron deploy/deno/main.ts
 
   # herald's own Action, built from this commit, announces a sample release
   # twice against the recorded-fixture server, and the second run must send

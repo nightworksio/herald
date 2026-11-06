@@ -1,0 +1,8 @@
+{
+  "rewrites": [{ "source": "/(.*)", "destination": "/api/herald" }],
+  "crons": [
+    { "path": "/api/herald/rounds/poll", "schedule": "*/5 * * * *" },
+    { "path": "/api/herald/rounds/housekeep", "schedule": "17 * * * *" }
+  ],
+  "functions": { "api/herald.mjs": { "includeFiles": "{herald.toml,pkg/**}" } }
+}

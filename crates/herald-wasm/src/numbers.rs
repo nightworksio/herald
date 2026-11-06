@@ -24,6 +24,13 @@ pub fn number(integer: i64) -> Option<f64> {
     (integer.unsigned_abs() <= 9_007_199_254_740_991).then_some(integer as f64)
 }
 
+/// `duration` in whole milliseconds, as a JavaScript number, where it is
+/// one exactly.
+#[must_use]
+pub fn millis(duration: jiff::SignedDuration) -> Option<f64> {
+    i64::try_from(duration.as_millis()).ok().and_then(number)
+}
+
 /// The count `number` is, where it is a whole number no less than zero.
 #[must_use]
 pub fn count(number: f64) -> Option<u64> {
@@ -44,6 +51,8 @@ mod tests {
         assert_eq!(number(-7), Some(-7.0));
         assert_eq!(number(9_007_199_254_740_992), None);
         assert_eq!(count(200.0), Some(200));
+        assert_eq!(millis(jiff::SignedDuration::from_secs(90)), Some(90_000.0));
+        assert_eq!(millis(jiff::SignedDuration::MAX), None);
         assert_eq!(count(-1.0), None);
     }
 }
