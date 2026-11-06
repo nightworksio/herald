@@ -347,7 +347,19 @@ appservice_token = {{ secret = "HERALD_MATRIX_AS" }}
             ),
         ]);
         let world = World::new("slack", answers, sockets.clone()).await;
-        let heard = world.served(4, |line| line.contains("invalid_auth")).await;
+        let awaited = std::cell::Cell::new(2);
+        let heard = world
+            .served(4, |line| {
+                if line.contains("invalid_auth") || line.starts_with("answered") {
+                    awaited.set(awaited.get() - 1);
+                }
+                awaited.get() == 0
+            })
+            .await;
+        assert!(
+            heard.contains(&"answered latest: Ok(())".to_owned()),
+            "{heard:?}"
+        );
         assert_eq!(sockets.opened(), ["wss://wss-primary.slack.com/link"]);
         assert_eq!(sockets.sent(), [r#"{"envelope_id":"e1"}"#]);
         assert!(heard.contains(&"slack: Slack's Socket Mode could not be opened: Slack opened no Socket Mode connection: invalid_auth".to_owned()), "{heard:?}");
