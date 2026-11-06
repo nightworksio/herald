@@ -29,10 +29,10 @@ export function composed() {
   return composing;
 }
 
-export default async (request, context) => {
+export default async function herald(request, context) {
   const { response, work } = await answered(await composed(), request);
   if (work) context.waitUntil(work);
   return response;
-};
+}
 
 export const config = { path: "/*" };

@@ -139,7 +139,7 @@ mod tests {
     fn the_signing_key_is_the_one_aws_documents() {
         assert_eq!(
             hex(&signing_key(
-                "wJalrXUtnFEMI/K7MDENG+bPxRfiCYEXAMPLEKEY",
+                include_str!("../fixtures/aws-documented-secret.test.txt").trim(),
                 "20120215",
                 "us-east-1",
                 "iam"

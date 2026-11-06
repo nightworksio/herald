@@ -13,7 +13,7 @@ use super::host::JsHost;
 use super::sessions::{JsSockets, JsTaker, JsTimer};
 use super::{bytes, member, object, pairs, strings};
 use crate::numbers::millis;
-use crate::reaching::public_address;
+use crate::reaching::{asked_query, public_address};
 
 /// Whether `address` is on the public internet: what a host that resolves
 /// names itself checks before it connects on others' behalf.
@@ -88,9 +88,7 @@ impl Herald {
         future_to_promise(async move {
             let method = member(&request, "method").as_string().unwrap_or_default();
             let path = member(&request, "path").as_string().unwrap_or_default();
-            let query = member(&request, "query")
-                .as_string()
-                .filter(|query| !query.is_empty());
+            let query = asked_query(member(&request, "query").as_string());
             let headers = pairs(&member(&request, "headers"));
             let headers: Vec<(&str, &str)> = headers
                 .iter()

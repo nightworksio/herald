@@ -11,7 +11,7 @@ mod compose {
     use herald_config::{Config, Store, load};
     use herald_core::DestinationName;
     use herald_flows::{Admission, Inbound, Job, Taker};
-    use herald_ports::{Changed, Http, HttpError, Request, Response, Value};
+    use herald_ports::{Changed, Frame, Http, HttpError, Request, Response, Value};
     use herald_testing::{
         FakeClock, FakeKv, FakeSecrets, FakeSigner, FakeTimer, FakeVerifier, ScriptedSockets,
         ScriptedSql,
@@ -354,6 +354,52 @@ mod compose {
                 },
             );
             Untaken.said(&destination, String::new());
+        }
+    }
+
+    #[test]
+    fn a_composed_herald_polls_its_sources_stops_keeping_house_and_holds_its_sessions() {
+        for keys in ["memory", "store"] {
+            let text = format!(
+                r#"version = 1
+[store]
+kind = "sqlite"
+[server.keys]
+cache = "{keys}"
+[sources.gate]
+kind = "github"
+repository = "cli/cli"
+[templates.t]
+title = "t"
+body = "b"
+[destinations.chat]
+kind = "discord"
+token = {{ secret = "TOKEN" }}
+[destinations.chat.interactions]
+application = "123456789012345678"
+via = "gateway"
+[[routes]]
+id = "announced"
+sources = ["gate"]
+destination = "chat"
+channel = "323456789012345678"
+template = "t"
+"#
+            );
+            let config = load("herald.toml", &text, &|_| Err(String::new())).unwrap();
+            let host = Hosting {
+                secrets: FakeSecrets::default().with("TOKEN", "t"),
+                ..Hosting::default()
+            };
+            let composed = pollster::block_on(Composed::new(host, config, &EVERY, "test")).unwrap();
+            let swept = pollster::block_on(composed.poll());
+            assert_eq!(swept.len(), 1);
+            assert_eq!(swept[0].source.as_str(), "gate");
+            let kept = pollster::block_on(composed.housekeep());
+            assert!(kept.is_err(), "{kept:?}");
+            let sockets = ScriptedSockets::opening(vec![Ok(vec![Frame::Closed(Some(4004))])]);
+            pollster::block_on(composed.hold(&sockets, &Untaken, &FakeTimer::default()));
+            assert_eq!(sockets.opened().len(), 1);
         }
     }
 

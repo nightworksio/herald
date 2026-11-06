@@ -120,29 +120,29 @@ pub enum Store {
 
 impl Store {
     /// The kind of a SQLite store, as the config spells it.
-    pub const SQLITE: &'static str = "sqlite";
+    pub const SQLITE: &str = "sqlite";
     /// The kind of a Postgres store.
-    pub const POSTGRES: &'static str = "postgres";
+    pub const POSTGRES: &str = "postgres";
     /// The kind of a Cloudflare D1 store.
-    pub const CLOUDFLARE_D1: &'static str = "d1";
+    pub const CLOUDFLARE_D1: &str = "d1";
     /// The kind of a store in a Cloudflare Durable Object.
-    pub const DURABLE_OBJECT: &'static str = "durable-object";
+    pub const DURABLE_OBJECT: &str = "durable-object";
     /// The kind of a DynamoDB store.
-    pub const DYNAMODB: &'static str = "dynamodb";
+    pub const DYNAMODB: &str = "dynamodb";
     /// The kind of a Deno KV store.
-    pub const DENO_KV: &'static str = "deno-kv";
+    pub const DENO_KV: &str = "deno-kv";
     /// The kind of a Fastly KV Store store.
-    pub const FASTLY_KV: &'static str = "fastly-kv";
+    pub const FASTLY_KV: &str = "fastly-kv";
     /// The kind of the store kept in the destinations' own posts.
-    pub const MARKERS: &'static str = "markers";
+    pub const MARKERS: &str = "markers";
     /// The kind of a store on a branch of the repository.
-    pub const GIT_BRANCH: &'static str = "git-branch";
+    pub const GIT_BRANCH: &str = "git-branch";
     /// The kind of a store in the GitHub Actions cache.
-    pub const ACTIONS_CACHE: &'static str = "actions-cache";
+    pub const ACTIONS_CACHE: &str = "actions-cache";
     /// The kind of a store in the repository's variables.
-    pub const REPO_VARIABLES: &'static str = "repo-variables";
+    pub const REPO_VARIABLES: &str = "repo-variables";
     /// Every kind, as the config spells it.
-    pub const KINDS: [&'static str; 11] = [
+    pub const KINDS: [&str; 11] = [
         Self::SQLITE,
         Self::POSTGRES,
         Self::CLOUDFLARE_D1,
@@ -192,15 +192,15 @@ pub enum Destination {
 
 impl Destination {
     /// The kind of a Discord destination, as the config spells it.
-    pub const DISCORD: &'static str = "discord";
+    pub const DISCORD: &str = "discord";
     /// The kind of a Mastodon destination, as the config spells it.
-    pub const MASTODON: &'static str = "mastodon";
+    pub const MASTODON: &str = "mastodon";
     /// The kind of a Matrix destination, as the config spells it.
-    pub const MATRIX: &'static str = "matrix";
+    pub const MATRIX: &str = "matrix";
     /// The kind of a Slack destination, as the config spells it.
-    pub const SLACK: &'static str = "slack";
+    pub const SLACK: &str = "slack";
     /// The kind of herald's own ActivityPub actors, as the config spells it.
-    pub const ACTIVITYPUB: &'static str = "activitypub";
+    pub const ACTIVITYPUB: &str = "activitypub";
     /// Every kind, as the config spells it.
     pub const KINDS: [&'static str; 5] = [
         Self::DISCORD,
@@ -256,7 +256,7 @@ pub enum Source {
 
 impl Source {
     /// The kind of a feed source, as the config spells it.
-    pub const FEED: &'static str = "feed";
+    pub const FEED: &str = "feed";
 
     /// The kind's name, as `[sources.<name>] kind` writes it.
     #[must_use]
@@ -418,7 +418,7 @@ pub struct Server {
 impl Server {
     /// Where `herald server` listens where the config names nowhere: this
     /// machine alone, as a reverse proxy in front of it reaches it.
-    pub const LISTEN: &'static str = "127.0.0.1:8080";
+    pub const LISTEN: &str = "127.0.0.1:8080";
     /// How many announcements it works on at once where the config says
     /// nothing.
     pub const JOBS: usize = 8;

@@ -179,9 +179,6 @@ impl Kv for JsKv {
         let key = strings(key);
         SendWrapper::new(async move {
             let found = settled(kv.get(&key)).await.map_err(unreached)?;
-            if found.is_null() || found.is_undefined() {
-                return Ok(None);
-            }
             Ok(
                 stamp(&member(&found, "versionstamp")).map(|versionstamp| Stamped {
                     value: bytes(&member(&found, "value")),

@@ -25,7 +25,7 @@ export function publicly(url, init) {
   });
 }
 
-export function guarded(fetcher = globalThis.fetch, timeout) {
+export function guarded(timeout, fetcher = globalThis.fetch) {
   const direct = fetching(fetcher, timeout);
   const vettedly = fetching(publicly, timeout);
   return (asked) => (asked.public ? vettedly(asked) : direct(asked));

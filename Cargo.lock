@@ -858,6 +858,7 @@ dependencies = [
  "pollster",
  "serde_json",
  "sha2",
+ "tokio",
  "url",
 ]
 
@@ -1164,6 +1165,7 @@ dependencies = [
  "base64 0.23.1",
  "herald-compose",
  "herald-config",
+ "herald-core",
  "herald-flows",
  "herald-keys",
  "herald-ports",

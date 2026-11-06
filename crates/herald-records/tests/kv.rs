@@ -12,6 +12,19 @@ mod kv {
     use herald_testing::{FakeKv, keyring_conformance, store_conformance};
 
     #[test]
+    fn a_directory_lists_what_it_holds_and_not_a_record_of_its_own_name() {
+        let records = KvRecords::new(FakeKv::default(), "herald");
+        pollster::block_on(async {
+            records.write("notes", b"named", None).await.unwrap();
+            records.write("notes/one", b"held", None).await.unwrap();
+            assert_eq!(
+                records.list("notes").await,
+                Ok(vec!["notes/one".to_owned()])
+            );
+        });
+    }
+
+    #[test]
     fn a_key_value_store_passes_the_conformance_suites() {
         assert_eq!(
             pollster::block_on(store_conformance(&Kept::new(KvRecords::new(

@@ -260,10 +260,10 @@ impl Http for World {
         }
         if let Some(rest) = url.strip_prefix("http://127.0.0.1:9001/2018-06-01/runtime/invocation/")
         {
-            if let (Some(status), "next") = (state.runtime, rest) {
-                return Ok(answer(status, &Value::Null));
-            }
             if rest == "next" {
+                if let Some(status) = state.runtime.take() {
+                    return Ok(answer(status, &Value::Null));
+                }
                 let Some(event) = state.invocations.pop_front() else {
                     return Err(HttpError::TimedOut);
                 };

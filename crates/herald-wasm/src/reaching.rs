@@ -76,11 +76,27 @@ pub fn received(request: &Request, response: Response) -> Result<Response, HttpE
     Ok(response)
 }
 
+/// The query a request asked with, where it asked with one.
+#[must_use]
+pub fn asked_query(query: Option<String>) -> Option<String> {
+    query.filter(|query| !query.is_empty())
+}
+
 #[cfg(test)]
 mod tests {
     use herald_ports::Method;
 
     use super::*;
+
+    #[test]
+    fn a_request_asks_with_a_query_only_where_it_has_one() {
+        assert_eq!(
+            asked_query(Some("page=2".to_owned())).as_deref(),
+            Some("page=2")
+        );
+        assert_eq!(asked_query(Some(String::new())), None);
+        assert_eq!(asked_query(None), None);
+    }
 
     fn plain(url: &str) -> Text {
         Text::plain(url)

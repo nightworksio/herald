@@ -86,6 +86,7 @@ fn a_webhook_is_answered_its_work_handed_to_the_function_and_announced_there_onc
     );
     assert_eq!(given[0].1["statusCode"], json!(202), "{}", run.out);
     assert_eq!(given[0].1["isBase64Encoded"], json!(false));
+    assert!(!run.out.contains("could not be handed on"), "{}", run.out);
     assert!(
         run.out.contains("releases: announced (post)"),
         "{}",
@@ -143,6 +144,29 @@ fn an_event_herald_does_not_take_is_answered_as_an_error() {
         json!("herald takes requests, its own work and scheduled events alone")
     );
     assert!(run.out.contains("herald takes requests"), "{}", run.out);
+}
+
+#[test]
+fn a_function_serves_the_endpoint_commands_are_posted_to_and_keeps_only_its_stores() {
+    let posted = CONFIG.replace(
+        "[sources.cli]",
+        "[destinations.discord.interactions]\napplication = \"123456789012345678\"\nkey = \"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\"\n[sources.cli]",
+    );
+    let run = herald(&function(&posted, false), &World::default(), &LAMBDA);
+    assert_eq!(run.code, STOPPED, "{}{}", run.out, run.err);
+    assert!(
+        !run.out.contains("posted to herald's endpoint"),
+        "{}",
+        run.out
+    );
+    let cached = CONFIG.replace("kind = \"git-branch\"", "kind = \"actions-cache\"");
+    let run = herald(&function(&cached, false), &World::default(), &LAMBDA);
+    assert_eq!(run.code, STOPPED);
+    assert!(
+        run.err.contains("this herald keeps records in"),
+        "{}",
+        run.err
+    );
 }
 
 #[test]

@@ -351,3 +351,23 @@ pub(crate) async fn lambda(
     };
     Ok(function.run().await)
 }
+
+#[cfg(test)]
+mod tests {
+    use serde_json::json;
+
+    use super::*;
+
+    #[test]
+    fn a_request_carries_its_query_only_where_it_has_one() {
+        let carried = |query: &str| {
+            let event = json!({
+                "requestContext": { "http": { "method": "GET" } },
+                "rawQueryString": query,
+            });
+            Carried::of(&event).unwrap().query
+        };
+        assert_eq!(carried("page=2").as_deref(), Some("page=2"));
+        assert_eq!(carried(""), None);
+    }
+}

@@ -2,3 +2,7 @@
 test_tool = "nextest"
 # The recorders run by hand against the real platforms, never in the suite.
 exclude_globs = ["crates/*/examples/**"]
+# A host's clock, signer and verifier hold nothing, so a fresh one is the same one.
+exclude_re = [
+    "impl Host for (Native<'_>|JsHost)>::(clock|signer|verifier) ",
+]

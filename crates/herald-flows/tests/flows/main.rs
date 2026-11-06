@@ -38,4 +38,6 @@ mod preview;
 #[cfg(test)]
 mod serving;
 #[cfg(test)]
+mod sessions;
+#[cfg(test)]
 mod slack;

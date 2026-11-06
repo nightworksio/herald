@@ -1,6 +1,6 @@
-import init, { Herald, publicAddress } from "./pkg/herald_wasm.js";
+import init from "./pkg/herald_wasm.js";
 
-export { Herald, publicAddress };
+export { Herald, publicAddress } from "./pkg/herald_wasm.js";
 
 let loading;
 
@@ -15,18 +15,12 @@ export async function capped(response, most) {
   const larger = () => new Error(`the response is larger than ${most} bytes`);
   if (Number(response.headers.get("content-length") ?? 0) > most) throw larger();
   if (!response.body) return new Uint8Array();
-  const reader = response.body.getReader();
   const chunks = [];
   let read = 0;
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    read += value.length;
-    if (read > most) {
-      await reader.cancel();
-      throw larger();
-    }
-    chunks.push(value);
+  for await (const chunk of response.body) {
+    read += chunk.length;
+    if (read > most) throw larger();
+    chunks.push(chunk);
   }
   const body = new Uint8Array(read);
   let at = 0;
@@ -78,18 +72,8 @@ export function denoKv(kv) {
   };
 }
 
-export async function answered(herald, request) {
-  const url = new URL(request.url);
-  const answer = await herald.answer(
-    {
-      method: request.method,
-      path: url.pathname,
-      query: url.search.slice(1),
-      headers: [...request.headers],
-      body: new Uint8Array(await request.arrayBuffer()),
-    },
-    false,
-  );
+export async function answering(herald, asked) {
+  const answer = await herald.answer(asked, false);
   const response = new Response(answer.body.length ? answer.body : null, {
     status: answer.status,
     headers: { "content-type": answer.kind },
@@ -97,8 +81,20 @@ export async function answered(herald, request) {
   return { response, work: answer.work?.then(said) };
 }
 
-export async function rounds(herald, rounds = ["poll", "housekeep"]) {
-  for (const round of rounds) said(await herald[round]());
+export async function answered(herald, request) {
+  const url = new URL(request.url);
+  return answering(herald, {
+    method: request.method,
+    path: url.pathname,
+    query: url.search.slice(1),
+    headers: [...request.headers],
+    body: new Uint8Array(await request.arrayBuffer()),
+  });
+}
+
+export async function rounds(herald, names = ["poll", "housekeep"]) {
+  const lines = await Promise.all(names.map((round) => herald[round]()));
+  lines.forEach(said);
 }
 
 export function said(lines) {

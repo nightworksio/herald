@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { dirname, join } from "node:path";
-import { Herald, TIMEOUT, answered, denoKv, load, rounds, said } from "../host.mjs";
+import { Herald, TIMEOUT, answering, denoKv, load, rounds, said } from "../host.mjs";
 import { postgres, sqlite } from "../databases.mjs";
 import { guarded } from "../vetted.mjs";
 
@@ -10,7 +10,7 @@ export function host(env = process.env, directory = process.cwd()) {
   return {
     vars: Object.fromEntries(Object.entries(env).filter(([, value]) => typeof value === "string")),
     secret: (name) => env[name],
-    fetch: guarded(globalThis.fetch, Number(env.HERALD_TIMEOUT_MS ?? TIMEOUT)),
+    fetch: guarded(Number(env.HERALD_TIMEOUT_MS ?? TIMEOUT)),
     async sql(at) {
       if (at.kind === "sqlite") return sqlite(join(directory, at.file));
       if (at.kind === "postgres") return postgres(at.url);
@@ -44,12 +44,14 @@ export async function serve({ env = process.env, path = env.HERALD_CONFIG ?? "he
   const server = createServer(async (incoming, outgoing) => {
     const chunks = [];
     for await (const chunk of incoming) chunks.push(chunk);
-    const request = new Request(`http://${incoming.headers.host ?? listen}${incoming.url}`, {
+    const [path, query = ""] = incoming.url.split(/\?(.*)/s);
+    const { response, work } = await answering(herald, {
       method: incoming.method,
+      path,
+      query,
       headers: Object.entries(incoming.headers).flatMap(([name, value]) => [value].flat().map((each) => [name, String(each)])),
-      body: ["GET", "HEAD"].includes(incoming.method) ? undefined : Buffer.concat(chunks),
+      body: Buffer.concat(chunks),
     });
-    const { response, work } = await answered(herald, request);
     work?.catch(console.error);
     outgoing.writeHead(response.status, Object.fromEntries(response.headers));
     outgoing.end(Buffer.from(await response.arrayBuffer()));

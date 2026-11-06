@@ -11,8 +11,14 @@ Parameters:
     Default: herald
 
 Resources:
+  Logs:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${AWS::StackName}
+      RetentionInDays: 30
   Herald:
     Type: AWS::Serverless::Function
+    DependsOn: Logs
     Properties:
       FunctionName: !Ref AWS::StackName
       CodeUri: .

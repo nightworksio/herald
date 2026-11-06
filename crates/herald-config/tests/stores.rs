@@ -123,10 +123,7 @@ mod stores {
             ("records", Some("eu-west-1"), Some("http://localhost:8000"))
         );
         let secrets = config.secrets();
-        assert!(
-            secrets.contains(&"ID") && secrets.contains(&"KEY"),
-            "{secrets:?}"
-        );
+        assert!(secrets.contains(&"ID") && secrets.contains(&"KEY"));
         let unnamed = kind("dynamodb", "").unwrap();
         assert_eq!(
             unnamed.store,
@@ -138,7 +135,7 @@ mod stores {
             "AWS_SECRET_ACCESS_KEY",
             "AWS_SESSION_TOKEN",
         ] {
-            assert!(hidden.contains(&name), "{name}: {hidden:?}");
+            assert!(hidden.contains(&name), "{name} is hidden");
         }
         assert_eq!(kind("markers", "").unwrap().store, Store::Markers);
     }

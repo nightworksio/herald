@@ -4,9 +4,9 @@ use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD;
 use herald_compose::{Host as _, KvAt, SqlAt};
 use herald_ports::{
-    Algorithm, Clock as _, CryptoError, Frame, Http as _, HttpError, Method, PUBLIC, Request,
-    Secret, SecretError, Secrets as _, Signer as _, Socket as _, Sockets as _, Sql as _, Statement,
-    Text, Timer as _, Value, Verifier as _,
+    Algorithm, Clock as _, CryptoError, Frame, Http as _, HttpError, Kv as _, Method, PUBLIC,
+    Request, Secret, SecretError, Secrets as _, Signer as _, Socket as _, Sockets as _, Sql as _,
+    Statement, Text, Timer as _, Value, Verifier as _, Versionstamp,
 };
 use herald_records::{Kept, KvRecords};
 use herald_testing::store_conformance;
@@ -86,6 +86,24 @@ export function host(vars) {
 "#)]
 extern "C" {
     fn host(vars: &JsValue) -> HostObject;
+}
+
+#[wasm_bindgen(inline_js = r#"
+let log;
+let lines;
+export function hear() {
+  lines = [];
+  log = console.log;
+  console.log = (line) => lines.push(line);
+}
+export function heard() {
+  console.log = log;
+  return lines;
+}
+"#)]
+extern "C" {
+    fn hear();
+    fn heard() -> JsValue;
 }
 
 #[wasm_bindgen(inline_js = r#"
@@ -379,6 +397,36 @@ async fn a_composed_herald_answers_polls_and_keeps_house() {
     let schedule = composed.schedule();
     assert!(member(&schedule, "poll").is_undefined());
     assert!(super::herald::public("1.1.1.1"));
+    assert!(!super::herald::public("10.0.0.1"));
+    assert_eq!(bytes(&JsValue::NULL), Vec::<u8>::new());
+    assert_eq!(bytes(&JsValue::UNDEFINED), Vec::<u8>::new());
+    let scheduled = Herald::compose(
+        host(&object(&[])),
+        "version = 1\n[store]\nkind = \"deno-kv\"\n[schedule]\npoll = \"1m\"\n".to_owned(),
+        JsValue::UNDEFINED,
+        "deno".to_owned(),
+    )
+    .await
+    .unwrap_or_else(|_| panic!("composed"));
+    assert_eq!(
+        member(&scheduled.schedule(), "poll").as_f64(),
+        Some(60_000.0)
+    );
+}
+
+#[wasm_bindgen_test]
+async fn a_key_value_store_deletes_only_at_the_stamp_it_was_given() {
+    let kv = hosted().kv(KvAt::DenoKv(None)).await.unwrap();
+    let key = ["held".to_owned()];
+    let stamp = kv
+        .set_if(&key, b"value".to_vec(), None)
+        .await
+        .unwrap()
+        .unwrap();
+    let stale = Versionstamp("stale".to_owned());
+    assert_eq!(kv.delete_if(&key, stale).await, Ok(false));
+    assert_eq!(kv.delete_if(&key, stamp).await, Ok(true));
+    assert_eq!(kv.get(&key).await, Ok(None));
 }
 
 #[wasm_bindgen_test]
@@ -463,7 +511,10 @@ async fn work_is_taken_up_to_the_most_at_once_and_done_on_the_event_loop() {
             asked: Vec::new(),
         },
     );
+    hear();
     taker.said(&destination, "heard".to_owned());
+    let said = heard();
+    assert_eq!(strings_of(&said), ["chat: heard"]);
     JsTimer.sleep(std::time::Duration::from_millis(5)).await;
     assert_eq!(taker.working.get(), 0);
     let held = JsFuture::from(composed.hold(sockets())).await.unwrap();

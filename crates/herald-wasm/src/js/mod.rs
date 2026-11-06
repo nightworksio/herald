@@ -70,16 +70,9 @@ fn strings_of(value: &JsValue) -> Vec<String> {
 
 /// The bytes of a `Uint8Array` or `ArrayBuffer`, or of a string's UTF-8.
 fn bytes(value: &JsValue) -> Vec<u8> {
-    value.as_string().map_or_else(
-        || {
-            if value.is_undefined() || value.is_null() {
-                Vec::new()
-            } else {
-                Uint8Array::new(value).to_vec()
-            }
-        },
-        String::into_bytes,
-    )
+    value
+        .as_string()
+        .map_or_else(|| Uint8Array::new(value).to_vec(), String::into_bytes)
 }
 
 /// The name and value pairs of the array of pairs `value`.
