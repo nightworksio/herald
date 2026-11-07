@@ -1041,6 +1041,8 @@ dependencies = [
  "herald-crypto",
  "herald-environment",
  "herald-ports",
+ "herald-records",
+ "herald-testing",
  "pollster",
 ]
 

@@ -1,0 +1,22 @@
+manifest_version = 3
+name = "herald"
+language = "rust"
+
+[scripts]
+build = "cargo build --release --target wasm32-wasip1 -p herald-fastly"
+
+[local_server.config_stores.herald]
+format = "inline-toml"
+
+[local_server.config_stores.herald.contents]
+"herald.toml" = "version = 1\n[store]\nkind = \"fastly-kv\"\n"
+
+[local_server.secret_stores]
+[[local_server.secret_stores.herald]]
+key = "HERALD_ROUND_SECRET"
+data = "local-round-secret"
+
+[local_server.kv_stores]
+[[local_server.kv_stores.herald]]
+key = "seed"
+data = "seed"

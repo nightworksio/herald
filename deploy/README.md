@@ -1,8 +1,9 @@
 # Deploying herald
 
-herald runs as one native binary or one wasm module (ADR-0017). The native
-binary is the CLI, `herald server` and `herald lambda`. The wasm module runs
-behind a thin shim on each JavaScript host below.
+herald runs as one native binary, one wasm module, one `wasi:http` component
+or one Fastly Compute service (ADR-0017). The native binary is the CLI,
+`herald server` and `herald lambda`. The wasm module runs behind a thin shim
+on each JavaScript host below.
 
 `herald doctor --layer <host>` names what a config asks for that a host
 cannot serve.
@@ -16,6 +17,9 @@ cannot serve.
 | Netlify | `netlify/` | `postgres`, `dynamodb`, `git-branch`, `markers`, `repo-variables` | scheduled functions |
 | AWS Lambda | `lambda/` | `postgres`, `dynamodb`, `git-branch`, `markers`, `repo-variables` | an EventBridge schedule |
 | Azure Functions | `azure/` | the stores `herald server` keeps records in | timer triggers |
+| `wasmtime serve`, wasmCloud and other `wasi:http` hosts | `component/` | `dynamodb`, `git-branch`, `markers`, `repo-variables` | `POST /herald/round/*` |
+| Spin | `spin/` | `sqlite`, `postgres`, `dynamodb`, `git-branch`, `markers`, `repo-variables` | `POST /herald/round/*` |
+| Fastly Compute | `fastly/` | `fastly-kv`, `dynamodb`, `git-branch`, `markers`, `repo-variables` | `POST /herald/round/*` |
 
 ## Building the wasm module
 
@@ -35,7 +39,9 @@ process environment on Node and Bun.
 herald fetches ActivityPub actors' keys and delivers to their inboxes only on
 public HTTPS origins. The Node, Bun, Deno, Vercel and Netlify shims resolve
 each such host themselves, and connect only where every address it resolves
-to is public. A Worker's `fetch` reaches no private network.
+to is public. A Worker's `fetch` reaches no private network. The component and
+the Fastly service refuse a private address written literally, and leave names
+to the host's own egress policy, since they resolve nothing themselves.
 
 ## Cloudflare Workers
 
@@ -92,6 +98,41 @@ beside `lambda/bootstrap`, and deploy `lambda/template.yaml` with SAM.
 - The `Rounds` schedule polls, keeps house and forgets the keys read longest
   ago.
 - `Table` names the DynamoDB table the function may read and write.
+
+## Hosts with no timer of their own
+
+The `wasi:http` component, Spin and Fastly Compute run a round when asked over
+HTTP: `POST /herald/round/poll` or `/herald/round/housekeep`, carrying
+`Authorization: Bearer` and the secret `HERALD_ROUND_SECRET`. With that secret
+unset, no request runs a round. Call them from any scheduler.
+
+## `wasi:http` hosts
+
+Build with `cargo build --release --target wasm32-wasip2 -p herald-wasi`, which
+needs a clang that targets wasm. Run `wasmtime serve -Scli --dir=. herald_wasi.wasm`
+beside `herald.toml`, passing secrets with `--env`. `HERALD_CONFIG` names another
+config file, and `HERALD_TIMEOUT_MS` bounds each request herald sends, 10 seconds
+where unset.
+
+## Spin
+
+Build with `--features spin` as well, and run `spin up` from `spin/`. `sqlite`
+keeps records in Spin's database `default`, or the one `HERALD_SPIN_DATABASE`
+names, and `postgres` connects to the store's URL. `allowed_outbound_hosts` in
+`spin.toml` decides what herald may reach. A component built with this feature
+runs on Spin alone.
+
+## Fastly Compute
+
+Build with `fastly compute build` from `fastly/`, which needs a clang that
+targets wasm, and enable dynamic backends on the service.
+
+- The Config Store `herald` holds `herald.toml`, each template file by its name,
+  and `GITHUB_REPOSITORY`. An item holds at most 8 KB.
+- The Secret Store `herald` holds every secret `herald.toml` names.
+- `[store] kind = "fastly-kv"` needs the service linked to the KV Store it names.
+  A delete first claims the item at its generation, as Fastly's delete takes
+  none.
 
 ## Azure Functions
 
