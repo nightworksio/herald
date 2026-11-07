@@ -61,6 +61,10 @@ impl Inbound<'_> {
             .find(|(named, _)| named.eq_ignore_ascii_case(name))
             .map(|(_, value)| *value)
     }
+
+    fn host(&self) -> &str {
+        self.header("host").unwrap_or_default()
+    }
 }
 
 /// What herald answers a request.
@@ -285,21 +289,28 @@ fn decoded(text: &str) -> Option<String> {
 }
 
 /// The actor herald serves as `name`.
-fn actor<'a, H>(connected: &'a Connected<H>, name: &str) -> Option<&'a ActivityPub> {
+fn actor<'a, H>(connected: &'a Connected<H>, name: &str, host: &str) -> Option<&'a ActivityPub> {
     connected
         .routes
         .iter()
         .find_map(|(route, _)| match &route.reached {
-            Reached::ActivityPub(actor) if actor.actor() == name => Some(actor),
+            Reached::ActivityPub(actor) if actor.actor() == name && actor.domain() == host => {
+                Some(actor)
+            }
             _ => None,
         })
 }
 
-/// Whether herald serves an actor on `host`.
-fn hosts<H>(connected: &Connected<H>, host: &str) -> bool {
-    connected.routes.iter().any(|(route, _)| {
-        matches!(&route.reached, Reached::ActivityPub(actor) if actor.domain() == host)
-    })
+/// The domain from herald's config that is `host`, when herald serves an
+/// actor on it.
+fn domain<'a, H>(connected: &'a Connected<H>, host: &str) -> Option<&'a str> {
+    connected
+        .routes
+        .iter()
+        .find_map(|(route, _)| match &route.reached {
+            Reached::ActivityPub(actor) if actor.domain() == host => Some(actor.domain()),
+            _ => None,
+        })
 }
 
 /// What WebFinger answers for the resource `query` asks for: an actor herald
@@ -341,7 +352,10 @@ pub async fn answer<S: Store, C: Clock, G: Signer, V: Verifier, H, P: Http, K: K
     match (inbound.method, inbound.path) {
         ("GET", HEALTH) => said(200, "herald is up"),
         ("GET", WEBFINGER) => fingered(serving.connected, inbound.query),
-        ("POST", SHARED_INBOX) => inboxed(serving, inbound).await,
+        ("POST", SHARED_INBOX) => match domain(serving.connected, inbound.host()) {
+            Some(audience) => inboxed(serving, inbound, audience).await,
+            None => missing("actor on this host"),
+        },
         (_, HEALTH | WEBFINGER | SHARED_INBOX) => unmethodical(),
         (method, path) => {
             if let Some(rest) = path.strip_prefix(PROJECTS) {
@@ -380,13 +394,13 @@ pub async fn answer<S: Store, C: Clock, G: Signer, V: Verifier, H, P: Http, K: K
             let parts: Vec<&str> = rest.split('/').collect();
             let Some(served) = parts
                 .first()
-                .and_then(|name| actor(serving.connected, name))
+                .and_then(|name| actor(serving.connected, name, inbound.host()))
             else {
                 return missing("such actor");
             };
             match (method, parts.as_slice()) {
                 ("GET", [_]) => documented(serving, served).await,
-                ("POST", [_, "inbox"]) => inboxed(serving, inbound).await,
+                ("POST", [_, "inbox"]) => inboxed(serving, inbound, served.domain()).await,
                 ("GET", [_, "notes", key]) => noted(serving, served, key).await,
                 (_, [_] | [_, "inbox"] | [_, "notes", _]) => unmethodical(),
                 _ => missing("such path"),
@@ -616,18 +630,15 @@ fn holder<'c>(config: &'c Config, token: &str) -> Option<(&'c str, &'c App)> {
 async fn inboxed<S: Store, C: Clock, G, V: Verifier, H, P: Http, K: Keyring>(
     serving: &Serving<'_, S, C, G, V, H, P, K>,
     inbound: &Inbound<'_>,
+    audience: &str,
 ) -> Answered {
-    let host = inbound.header("host").unwrap_or_default();
-    if !hosts(serving.connected, host) {
-        return missing("actor on this host");
-    }
     let target = match inbound.query {
         Some(query) => format!("post {}?{query}", inbound.path),
         None => format!("post {}", inbound.path),
     };
     let addressed = Addressed {
         target: &target,
-        audience: host,
+        audience,
     };
     let now = serving.ports.clock.now();
     let checked = activity_verified(

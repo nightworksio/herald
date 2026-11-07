@@ -18,7 +18,11 @@ const ACTOR: &str = "https://herald.example/users/php-mutation-gate";
 const APP_TOKEN: &str = "app-token";
 
 fn config() -> Config {
-    let text = r#"version = 1
+    load("herald.toml", &config_text(), &|_| Err(String::new())).unwrap()
+}
+
+fn config_text() -> String {
+    r#"version = 1
 [store]
 kind = "sqlite"
 [destinations.fedi]
@@ -58,8 +62,7 @@ routes = ["deployed"]
 title = "{{ event.title }}"
 body = "{{ event.body }}"
 "#
-    .replace("TOKEN_HASH", &herald_core::digest(APP_TOKEN));
-    load("herald.toml", &text, &|_| Err(String::new())).unwrap()
+    .replace("TOKEN_HASH", &herald_core::digest(APP_TOKEN))
 }
 
 fn secrets() -> FakeSecrets {
@@ -82,7 +85,10 @@ type Served<'a> =
 
 impl World {
     fn new(script: Script) -> Self {
-        let config = config();
+        Self::with(config(), script)
+    }
+
+    fn with(config: Config, script: Script) -> Self {
         let prepared = pollster::block_on(prepare(&config, &secrets(), &FakeSigner)).unwrap();
         let connected = prepared.connect(|_| Ok::<_, ()>(script.clone())).unwrap();
         let webhooks = pollster::block_on(webhooks(&config, &secrets())).unwrap();
@@ -143,7 +149,7 @@ fn get(path: &str) -> Inbound<'_> {
         method: "GET",
         path,
         query: None,
-        headers: &[],
+        headers: &[("Host", "herald.example")],
         body: &[],
     }
 }
@@ -477,6 +483,33 @@ fn keyed() -> Script {
     let owned = document(ANA);
     Script::answering(&[(ANA, 200, owned.as_str())])
         .headed(&[("content-type", "application/activity+json")])
+}
+
+#[test]
+fn an_actor_is_served_on_its_own_domain_only() {
+    let text = config_text().replace(
+        "[sources.gate]",
+        "[destinations.other]\nkind = \"activitypub\"\ndomain = \"other.example\"\nkey = { secret = \"HERALD_ACTIVITYPUB_KEY\" }\n[sources.gate]",
+    ) + "[[routes]]\nid = \"other\"\nsources = [\"gate\"]\ndestination = \"other\"\ntemplate = \"t\"\nactor = \"releases\"\n";
+    let world = World::with(
+        load("herald.toml", &text, &|_| Err(String::new())).unwrap(),
+        keyed(),
+    );
+    let signed = activity(FOLLOW, ANA_KEY, None);
+    let mut other: Vec<(&str, &str)> = borrowed(&signed);
+    other[0] = ("Host", "other.example");
+    let status = |path| world.answer(&inboxed(path, None, &other)).reply.status;
+    assert_eq!(status("/users/php-mutation-gate/inbox"), 404);
+    assert_eq!(status("/users/releases/inbox"), 401);
+    assert_eq!(status("/inbox"), 401);
+    for (host, status) in [("other.example", 200), ("herald.example", 404)] {
+        let headers = [("Host", host)];
+        let fetched = Inbound {
+            headers: &headers,
+            ..get("/users/releases")
+        };
+        assert_eq!(world.answer(&fetched).reply.status, status);
+    }
 }
 
 #[test]
