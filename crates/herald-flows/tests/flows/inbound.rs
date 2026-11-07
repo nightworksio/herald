@@ -384,7 +384,7 @@ fn a_store_that_cannot_answer_lets_nothing_through() {
 }
 
 pub(crate) const ACTOR_KEY: &str =
-    include_str!("../../../herald-native/fixtures/rsa-2048-spki.test.pem");
+    include_str!("../../../herald-crypto/fixtures/rsa-2048-spki.test.pem");
 
 pub(crate) const ANA: &str = "https://social.example/users/ana";
 pub(crate) const ANA_KEY: &str = "https://social.example/users/ana#main-key";

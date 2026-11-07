@@ -1,5 +1,6 @@
 use std::future::Future;
 
+use herald_compose::{Reaching, received};
 use herald_ports::{
     Changed, Clock, Http, HttpError, Kv, KvError, Pair, Request, Response, Secret, SecretError,
     Secrets, Sql, SqlError, Stamped, Statement, Value, Versionstamp,
@@ -12,7 +13,6 @@ use wasm_bindgen::{JsCast as _, JsValue};
 use super::bindings::{HostObject, KvObject, SqlObject};
 use super::{bytes, member, object, pairs, resolved, settled, strings, strings_of};
 use crate::numbers::{count, integer, number};
-use crate::reaching::{Reaching, received};
 
 /// `Http` through the host's `fetch`, reaching what one base may.
 #[derive(Clone)]

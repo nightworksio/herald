@@ -7,7 +7,7 @@ use std::io::Write;
 
 use herald_config::Config;
 use herald_core::{SourceName, digest};
-use herald_native::SystemClock;
+use herald_environment::SystemClock;
 use herald_ports::Clock as _;
 use tokio::io::{AsyncRead, AsyncReadExt as _};
 

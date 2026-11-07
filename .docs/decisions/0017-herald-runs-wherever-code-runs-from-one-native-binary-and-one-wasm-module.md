@@ -54,14 +54,20 @@ and Azure's timers call the function to poll.
    keeps ring. `herald_compose::Hosting` names each JavaScript host and the
    store kinds it keeps records in, and the shim names its host to the
    module. Where a host resolves names itself, it connects on others'
-   behalf only where every address a name resolves to is public.
+   behalf only where every address a name resolves to is public. Where it
+   resolves them out of herald's sight, as `wasi:http`, Spin and Fastly do, it
+   connects on others' behalf only once `HERALD_EGRESS_GUARDED` says its own
+   egress refuses private addresses.
 
-3. **`wasm32-wasip2` and Fastly Compute get a driver each.** A `wasi:http`
-   component serves Spin, `wasmtime serve`, wasmCloud and any other
-   `wasi:http` host, with the stores that need only `Http`, and SQLite or
-   Postgres where the host offers them. Fastly Compute is served on
-   Fastly's own ABI, with its KV Store.
-
+3. **`wasm32-wasip2` and Fastly Compute get a driver each.** `herald-wasi` is
+   a `wasi:http` component, serving `wasmtime serve`, wasmCloud and any other
+   `wasi:http` host with the stores that need only `Http`. Built with its `spin`
+   feature it also keeps records in the SQLite and Postgres Spin offers, through
+   `herald-spin`, which holds the generated bindings apart from the code that
+   forbids `unsafe`. `herald-fastly` serves Fastly Compute on Fastly's own ABI,
+   with its KV Store. Both sign with `herald-crypto`, on `ring`. Neither has a
+   timer, so each runs a round when an HTTP request holding `HERALD_ROUND_SECRET`
+   asks; with the secret unset no request does.
 4. **Every driver shares one composition.** `herald-compose`, a layer of
    its own between flows and native, holds the `Host` trait a platform
    implements: its `Http`, secrets, clock, signer and verifier, its

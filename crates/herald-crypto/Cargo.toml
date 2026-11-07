@@ -1,0 +1,25 @@
+[package]
+name = "herald-crypto"
+description = "herald's signing and verifying on ring, for each driver that compiles it"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish.workspace = true
+
+[dependencies]
+herald-keys.workspace = true
+herald-ports.workspace = true
+ring.workspace = true
+
+[dev-dependencies]
+base64.workspace = true
+herald-core.workspace = true
+herald-testing.workspace = true
+jiff.workspace = true
+pollster.workspace = true
+
+[lints]
+workspace = true

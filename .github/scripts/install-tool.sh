@@ -4,7 +4,7 @@
 # one it lists; where it lists none, the one this repository first downloaded.
 set -euo pipefail
 
-tool="${1:?usage: install-tool.sh <cargo-nextest|cargo-llvm-cov|cargo-deny|cargo-audit|cargo-mutants|cargo-fuzz|gitleaks|wasm-bindgen|wasm-bindgen-test-runner|deno>}"
+tool="${1:?usage: install-tool.sh <cargo-nextest|cargo-llvm-cov|cargo-deny|cargo-audit|cargo-mutants|cargo-fuzz|gitleaks|wasm-bindgen|wasm-bindgen-test-runner|deno|wasmtime|viceroy|spin>}"
 
 case "$tool" in
   cargo-nextest)
@@ -55,6 +55,24 @@ case "$tool" in
     sha256="e890975bc2549807bbcc0b584ffafda72cc7c93349dd99c80483dd784f6c4609"
     member="deno"
     ;;
+  wasmtime)
+    version="50.0.1"
+    url="https://github.com/bytecodealliance/wasmtime/releases/download/v${version}/wasmtime-v${version}-x86_64-linux.tar.xz"
+    sha256="685466455dd42a14774a86c36c8f2e45cbb9bd6d92a850139315df60a75498a5"
+    member="wasmtime-v${version}-x86_64-linux/wasmtime"
+    ;;
+  viceroy)
+    version="0.22.0"
+    url="https://github.com/fastly/Viceroy/releases/download/v${version}/viceroy_v${version}_linux-amd64.tar.gz"
+    sha256="03f66f27275e8adc0c1857c4f571bd6f5ae997e38cc43760b19c6840a92b298d"
+    member="viceroy"
+    ;;
+  spin)
+    version="4.3.0"
+    url="https://github.com/spinframework/spin/releases/download/v${version}/spin-v${version}-linux-amd64.tar.gz"
+    sha256="3fa861347fa3da44f4350d937a8e3d3749b5a3309717104f858ea5c627db5ac7"
+    member="spin"
+    ;;
   gitleaks)
     version="8.30.1"
     url="https://github.com/gitleaks/gitleaks/releases/download/v${version}/gitleaks_${version}_linux_x64.tar.gz"
@@ -73,6 +91,7 @@ sha256sum --check --strict <<<"${sha256}  ${archive}"
 mkdir -p "${HOME}/.cargo/bin"
 case "$archive" in
   *.zip) unzip -o -j "$archive" "$member" -d "${HOME}/.cargo/bin" ;;
+  *.xz) tar xJf "$archive" -C "${HOME}/.cargo/bin" --strip-components="$(tr -cd '/' <<<"$member" | wc -c)" "$member" ;;
   *) tar xzf "$archive" -C "${HOME}/.cargo/bin" --strip-components="$(tr -cd '/' <<<"$member" | wc -c)" "$member" ;;
 esac
 rm -f "$archive"

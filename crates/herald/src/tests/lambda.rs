@@ -1,4 +1,4 @@
-use herald_native::RingSigner;
+use herald_crypto::RingSigner;
 use herald_ports::{Algorithm, Secret, Signer as _};
 use serde_json::{Value, json};
 

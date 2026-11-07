@@ -7,7 +7,7 @@ use std::io::Write;
 
 use herald_config::{Config, Destination};
 use herald_core::{DestinationName, SecretRef};
-use herald_native::EnvSecrets;
+use herald_environment::EnvSecrets;
 use herald_ports::{Http, Request, Response, Secret, Secrets};
 
 use super::output::say;

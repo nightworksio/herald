@@ -1,3 +1,6 @@
+//! The ports any target with a process implements: secrets from its
+//! environment, and the time from its clock.
+
 use std::collections::BTreeMap;
 use std::fmt;
 use std::future::{Future, ready};

@@ -37,19 +37,13 @@ impl Loader<'_> {
         ))
     }
 
-    #[allow(clippy::too_many_lines)]
-    pub(super) fn route(
+    fn sources_named(
         &mut self,
-        index: usize,
-        value: Value<'_>,
-        destinations: &BTreeMap<DestinationName, (Destination, Range<usize>)>,
+        route: &RouteFile,
+        path: &str,
         sources: &BTreeMap<SourceName, Source>,
         apps: &BTreeMap<String, Named>,
-        templates: &BTreeMap<TemplateName, Written>,
-    ) -> Option<Read> {
-        let path = format!("routes[{index}]");
-        let (common, rest) = self.split(value, &path)?;
-        let route = self.typed::<RouteFile>(common, &path)?;
+    ) -> bool {
         let mut sound = true;
         for source in &route.sources {
             let name = source.get_ref();
@@ -71,6 +65,105 @@ impl Loader<'_> {
                 sound = false;
             }
         }
+        sound
+    }
+
+    fn placed(
+        &mut self,
+        reached: &Destination,
+        rest: Value<'_>,
+        route: &RouteFile,
+        path: &str,
+        destination: &DestinationName,
+        sound: &mut bool,
+    ) -> Option<(RouteOptions, &'static str)> {
+        let span = route.id.span();
+        Some(match reached {
+            Destination::Discord(reached) => {
+                let options = self.typed::<herald_dest_discord::RouteOptions>(rest, path)?;
+                if reached.token.is_some() && options.channel.is_none() {
+                    self.error(
+                        &span,
+                        path,
+                        "a Discord bot posts to a channel; give channel = \"<the channel's id>\"",
+                    );
+                    *sound = false;
+                }
+                if let Some(subscribe) = &options.subscribe
+                    && let Err(message) = discord_subscribe(reached, subscribe, destination)
+                {
+                    self.error(&span, &format!("{path}.subscribe"), message);
+                    *sound = false;
+                }
+                (RouteOptions::Discord(options), "Discord")
+            }
+            Destination::Mastodon(_) => {
+                let options = self.typed::<herald_dest_fediverse::RouteOptions>(rest, path)?;
+                if let Err(message) = options.check() {
+                    self.error(&span, path, message);
+                    *sound = false;
+                }
+                (RouteOptions::Mastodon(options), "Mastodon")
+            }
+            Destination::Matrix(_) => {
+                let options = self.typed::<herald_dest_matrix::RouteOptions>(rest, path)?;
+                if let Err(message) = options.check() {
+                    self.error(&span, path, message);
+                    *sound = false;
+                }
+                (RouteOptions::Matrix(options), "Matrix")
+            }
+            Destination::Slack(reached) => {
+                let options = self.typed::<herald_dest_slack::RouteOptions>(rest, path)?;
+                if let Err(message) = options.check() {
+                    self.error(&span, path, message);
+                    *sound = false;
+                }
+                if reached.token.is_some() && options.channel.is_none() {
+                    self.error(
+                        &span,
+                        path,
+                        "a Slack bot posts to a channel; give channel = \"<the channel's id>\"",
+                    );
+                    *sound = false;
+                }
+                if options.subscribe.is_some()
+                    && let Err(message) =
+                        slack_subscribe(reached, route.mentions.subscribers, destination)
+                {
+                    self.error(&span, &format!("{path}.subscribe"), message);
+                    *sound = false;
+                }
+                (RouteOptions::Slack(options), "Slack")
+            }
+            Destination::ActivityPub(_) => {
+                let options = self.typed::<herald_dest_fediverse::ActorRouteOptions>(rest, path)?;
+                if let Err(message) = options.check() {
+                    self.error(&span, path, message);
+                    *sound = false;
+                }
+                (
+                    RouteOptions::ActivityPub(options),
+                    "herald's ActivityPub actor",
+                )
+            }
+        })
+    }
+
+    #[allow(clippy::too_many_lines)]
+    pub(super) fn route(
+        &mut self,
+        index: usize,
+        value: Value<'_>,
+        destinations: &BTreeMap<DestinationName, (Destination, Range<usize>)>,
+        sources: &BTreeMap<SourceName, Source>,
+        apps: &BTreeMap<String, Named>,
+        templates: &BTreeMap<TemplateName, Written>,
+    ) -> Option<Read> {
+        let path = format!("routes[{index}]");
+        let (common, rest) = self.split(value, &path)?;
+        let route = self.typed::<RouteFile>(common, &path)?;
+        let mut sound = self.sources_named(&route, &path, sources, apps);
         let destination = DestinationName::new(route.destination.get_ref());
         let Some((reached, _)) = destinations.get(&destination) else {
             let names: Vec<&str> = destinations.keys().map(DestinationName::as_str).collect();
@@ -101,77 +194,8 @@ impl Loader<'_> {
             sound = false;
         }
         let span = route.id.span();
-        let (options, name) = match reached {
-            Destination::Discord(reached) => {
-                let options = self.typed::<herald_dest_discord::RouteOptions>(rest, &path)?;
-                if reached.token.is_some() && options.channel.is_none() {
-                    self.error(
-                        &span,
-                        &path,
-                        "a Discord bot posts to a channel; give channel = \"<the channel's id>\"",
-                    );
-                    sound = false;
-                }
-                if let Some(subscribe) = &options.subscribe
-                    && let Err(message) = discord_subscribe(reached, subscribe, &destination)
-                {
-                    self.error(&span, &format!("{path}.subscribe"), message);
-                    sound = false;
-                }
-                (RouteOptions::Discord(options), "Discord")
-            }
-            Destination::Mastodon(_) => {
-                let options = self.typed::<herald_dest_fediverse::RouteOptions>(rest, &path)?;
-                if let Err(message) = options.check() {
-                    self.error(&span, &path, message);
-                    sound = false;
-                }
-                (RouteOptions::Mastodon(options), "Mastodon")
-            }
-            Destination::Matrix(_) => {
-                let options = self.typed::<herald_dest_matrix::RouteOptions>(rest, &path)?;
-                if let Err(message) = options.check() {
-                    self.error(&span, &path, message);
-                    sound = false;
-                }
-                (RouteOptions::Matrix(options), "Matrix")
-            }
-            Destination::Slack(reached) => {
-                let options = self.typed::<herald_dest_slack::RouteOptions>(rest, &path)?;
-                if let Err(message) = options.check() {
-                    self.error(&span, &path, message);
-                    sound = false;
-                }
-                if reached.token.is_some() && options.channel.is_none() {
-                    self.error(
-                        &span,
-                        &path,
-                        "a Slack bot posts to a channel; give channel = \"<the channel's id>\"",
-                    );
-                    sound = false;
-                }
-                if options.subscribe.is_some()
-                    && let Err(message) =
-                        slack_subscribe(reached, route.mentions.subscribers, &destination)
-                {
-                    self.error(&span, &format!("{path}.subscribe"), message);
-                    sound = false;
-                }
-                (RouteOptions::Slack(options), "Slack")
-            }
-            Destination::ActivityPub(_) => {
-                let options =
-                    self.typed::<herald_dest_fediverse::ActorRouteOptions>(rest, &path)?;
-                if let Err(message) = options.check() {
-                    self.error(&span, &path, message);
-                    sound = false;
-                }
-                (
-                    RouteOptions::ActivityPub(options),
-                    "herald's ActivityPub actor",
-                )
-            }
-        };
+        let (options, name) =
+            self.placed(reached, rest, &route, &path, &destination, &mut sound)?;
         let (profile, as_bot) = match (&options, reached) {
             (RouteOptions::Discord(placed), Destination::Discord(reached)) => (
                 herald_dest_discord::profile(reached.token.is_some(), placed.forum),

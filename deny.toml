@@ -4,6 +4,9 @@ all-features = true
 [advisories]
 version = 2
 yanked = "deny"
+ignore = [
+  { id = "RUSTSEC-2024-0384", reason = "instant is unmaintained, with no flaw reported; wstd 0.6.8, the newest, holds it through futures-lite 1 and fastrand 1, in herald-wasi's wasm32-wasip2 build alone" },
+]
 
 [bans]
 multiple-versions = "deny"
@@ -17,6 +20,17 @@ skip = [
   { crate = "const-oid@0.9", reason = "der 0.7 and x509-cert 0.2 build on const-oid 0.9; the RustCrypto 0.11 digests have moved to 0.10" },
   { crate = "getrandom@0.2", reason = "ring 0.17 builds on getrandom 0.2" },
   { crate = "wasi@0.11", reason = "getrandom 0.2, under ring 0.17, builds on wasi 0.11" },
+  { crate = "bitflags@1", reason = "fastly-shared and fastly-sys 0.13 build on bitflags 1; only herald-fastly's wasm32-wasip1 build holds it" },
+  { crate = "sha2@0.9", reason = "fastly 0.13 builds on sha2 0.9; only herald-fastly's wasm32-wasip1 build holds it" },
+  { crate = "digest@0.9", reason = "sha2 0.9, under fastly 0.13, builds on digest 0.9" },
+  { crate = "block-buffer@0.9", reason = "sha2 0.9, under fastly 0.13, builds on block-buffer 0.9" },
+  { crate = "cpufeatures@0.2", reason = "sha2 0.9, under fastly 0.13, builds on cpufeatures 0.2" },
+  { crate = "syn@1", reason = "fastly-macros 0.13 builds on syn 1" },
+  { crate = "thiserror@1", reason = "fastly 0.13 builds on thiserror 1" },
+  { crate = "thiserror-impl@1", reason = "thiserror 1, under fastly 0.13, builds on thiserror-impl 1" },
+  { crate = "wit-bindgen@0.61", reason = "fastly-sys 0.13 builds on wit-bindgen 0.61" },
+  { crate = "wasip2@1", reason = "wstd 0.6 builds on wasip2 1, and fastly-sys on wasip2 2" },
+  { crate = "wit-bindgen@0.57", reason = "wasip2 1, under wstd 0.6, builds on wit-bindgen 0.57" },
 ]
 deny = [
   { crate = "amplitude", reason = "reports on the person running it" },

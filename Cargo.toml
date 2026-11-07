@@ -23,7 +23,10 @@ herald-dest-fediverse = { path = "crates/herald-dest-fediverse" }
 herald-dest-matrix = { path = "crates/herald-dest-matrix" }
 herald-dest-slack = { path = "crates/herald-dest-slack" }
 herald-flows = { path = "crates/herald-flows" }
+herald-crypto = { path = "crates/herald-crypto" }
+herald-environment = { path = "crates/herald-environment" }
 herald-keys = { path = "crates/herald-keys" }
+herald-spin = { path = "crates/herald-spin" }
 herald-native = { path = "crates/herald-native" }
 herald-ports = { path = "crates/herald-ports" }
 herald-records = { path = "crates/herald-records" }

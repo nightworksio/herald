@@ -8,12 +8,12 @@ set -euo pipefail
 : "${COMMIT:?COMMIT is the commit of this run, which verify proved TAG names}"
 
 checked_out="$(git rev-parse HEAD)"
-if [ "${checked_out}" != "${COMMIT}" ]; then
+if [[ "${checked_out}" != "${COMMIT}" ]]; then
   echo "::error::the checkout is ${checked_out}, not ${COMMIT}, the commit verify proved ${TAG} names."
   exit 1
 fi
 tagged="$(gh api "repos/${GITHUB_REPOSITORY}/commits/refs/tags/${TAG}" --jq .sha)"
-if [ "${tagged}" != "${COMMIT}" ]; then
+if [[ "${tagged}" != "${COMMIT}" ]]; then
   echo "::error::${TAG} is at ${tagged} now, not at ${COMMIT}, the commit verify proved it named."
   exit 1
 fi

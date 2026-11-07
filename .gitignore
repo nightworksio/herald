@@ -8,3 +8,5 @@
 .DS_Store
 __pycache__/
 /deploy/pkg/
+/deploy/component/*.wasm
+/deploy/spin/.spin/

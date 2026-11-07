@@ -1,0 +1,33 @@
+# herald holds no open SonarCloud issue. A pull request answers for the issues
+# on it; a push to main answers for the whole of main, which is what notices a
+# scan that failed or a rule that changed.
+name: sonar
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions: {}
+
+concurrency:
+  group: sonar-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  sonar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    permissions:
+      contents: read
+      checks: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          PROJECT: nightworksio_herald
+          COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
+          PULL_REQUEST: ${{ github.event.pull_request.number }}
+        run: .github/scripts/sonar-open.sh

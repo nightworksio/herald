@@ -11,6 +11,9 @@ fn doctor_names_the_stores_each_host_keeps_records_in() {
         ("deno", false),
         ("vercel", false),
         ("netlify", false),
+        ("wasi", false),
+        ("spin", true),
+        ("fastly", false),
     ] {
         let run = herald(&sqlite, &world, &["doctor", "--layer", host]);
         assert_eq!(
@@ -25,6 +28,8 @@ fn doctor_names_the_stores_each_host_keeps_records_in() {
     assert!(!worker.out.contains("deno-kv"), "{}", worker.out);
     let deno = herald(&sqlite, &world, &["doctor", "--layer", "deno"]);
     assert!(deno.out.contains("deno-kv"), "{}", deno.out);
+    let fastly = herald(&sqlite, &world, &["doctor", "--layer", "fastly"]);
+    assert!(fastly.out.contains("fastly-kv"), "{}", fastly.out);
 }
 
 #[test]

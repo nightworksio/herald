@@ -131,8 +131,8 @@ extern "C" {
     fn sockets() -> SocketsObject;
 }
 
-const RSA: &str = include_str!("../../../herald-native/fixtures/rsa-2048-pkcs8.test.hex");
-const RSA_SPKI: &str = include_str!("../../../herald-native/fixtures/rsa-2048-spki.test.pem");
+const RSA: &str = include_str!("../../../herald-crypto/fixtures/rsa-2048-pkcs8.test.hex");
+const RSA_SPKI: &str = include_str!("../../../herald-crypto/fixtures/rsa-2048-spki.test.pem");
 /// RFC 8410's example Ed25519 private key, as PKCS#8, and the public key
 /// it publishes.
 const ED25519: &str = include_str!("../../fixtures/ed25519-rfc8410-pkcs8.test.hex");

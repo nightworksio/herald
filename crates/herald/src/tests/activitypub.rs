@@ -1,14 +1,14 @@
 use std::sync::Mutex;
 
 use herald_core::{Addressed, Entry, Scheme, Sent, Step, activity_claim, key, public_pem};
+use herald_crypto::RingVerifier;
 use herald_dest_fediverse::{ActivityPub, ActorRouteOptions};
-use herald_native::RingVerifier;
 use herald_ports::{Algorithm, Secret, Signer as _, Verifier as _};
 use herald_testing::sample;
 
 use crate::*;
 
-const RSA: &str = include_str!("../../../herald-native/fixtures/rsa-2048-pkcs8.test.hex");
+const RSA: &str = include_str!("../../../herald-crypto/fixtures/rsa-2048-pkcs8.test.hex");
 
 #[derive(Default)]
 struct Kept(Mutex<Option<Request>>);
@@ -149,7 +149,7 @@ fn doctor_loads_the_actor_s_key_where_it_is_set() {
         unset.out
     );
     let public = public_pem(
-        &pollster::block_on(herald_native::RingSigner.public(
+        &pollster::block_on(herald_crypto::RingSigner.public(
             Algorithm::RsaSha256,
             &Secret::new("HERALD_ACTIVITYPUB_KEY", pkcs8()),
         ))

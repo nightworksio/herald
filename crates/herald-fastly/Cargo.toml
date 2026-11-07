@@ -1,0 +1,26 @@
+[package]
+name = "herald-fastly"
+description = "herald on Fastly Compute, on Fastly's own ABI, keeping its records in a KV Store"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish.workspace = true
+
+[target.'cfg(all(target_arch = "wasm32", target_os = "wasi"))'.dependencies]
+fastly = "0.13"
+herald-compose.workspace = true
+herald-config.workspace = true
+herald-crypto.workspace = true
+herald-environment.workspace = true
+herald-ports.workspace = true
+pollster.workspace = true
+
+[target.'cfg(all(target_arch = "wasm32", target_os = "wasi"))'.dev-dependencies]
+herald-records.workspace = true
+herald-testing.workspace = true
+
+[lints]
+workspace = true
