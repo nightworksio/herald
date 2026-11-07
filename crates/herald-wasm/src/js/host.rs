@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use herald_compose::{Host, KvAt, SqlAt};
+use herald_compose::{Host, KvAt, Reaching, SqlAt};
 use send_wrapper::SendWrapper;
 use wasm_bindgen::{JsCast as _, JsValue};
 
@@ -8,7 +8,6 @@ use super::bindings::HostObject;
 use super::crypto::{WebSigner, WebVerifier};
 use super::ports::{JsClock, JsHttp, JsKv, JsSecrets, JsSql};
 use super::{entries, object, settled};
-use crate::reaching::Reaching;
 
 /// A JavaScript host, as herald composes over it.
 pub(crate) struct JsHost {

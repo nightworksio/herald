@@ -23,7 +23,7 @@ pub enum Layer {
     Flows,
     /// What every driver composes over a host's ports.
     Composition,
-    /// The ports implemented for native targets.
+    /// The ports implemented on the crates of the targets that compile them.
     Native,
     /// The HTTP endpoint the native drivers serve.
     Serving,
@@ -48,9 +48,11 @@ impl Layer {
             "herald-config" => Some(Self::Config),
             "herald-flows" => Some(Self::Flows),
             "herald-compose" => Some(Self::Composition),
-            "herald-native" => Some(Self::Native),
+            "herald-crypto" | "herald-environment" | "herald-native" | "herald-spin" => {
+                Some(Self::Native)
+            }
             "herald-server" => Some(Self::Serving),
-            "herald" | "herald-wasm" => Some(Self::Drivers),
+            "herald" | "herald-fastly" | "herald-wasi" | "herald-wasm" => Some(Self::Drivers),
             "herald-arch" => Some(Self::Tooling),
             _ if name.starts_with("herald-sources-") => Some(Self::Sources),
             _ if name.starts_with("herald-dest-") => Some(Self::Destinations),
@@ -91,7 +93,15 @@ fn outside_allowed(layer: Layer) -> &'static [&'static str] {
         Layer::Flows => &["futures-util", "jiff"],
         Layer::Composition => &["async-lock", "jiff", "url"],
         Layer::Testing => &["jiff", "serde", "serde_json"],
-        Layer::Kits => &["base64", "hmac", "jiff", "serde", "serde_json", "sha2"],
+        Layer::Kits => &[
+            "base64",
+            "hmac",
+            "jiff",
+            "ring",
+            "serde",
+            "serde_json",
+            "sha2",
+        ],
         Layer::Sources => &["jiff", "quick-xml", "schemars", "serde", "serde_json"],
         Layer::Destinations => &["jiff", "schemars", "serde", "serde_json", "url"],
         Layer::Stores => &["base64", "jiff", "schemars", "serde", "serde_json"],
@@ -122,6 +132,7 @@ mod tests {
             ("herald-core", Layer::Core),
             ("herald-ports", Layer::Ports),
             ("herald-testing", Layer::Testing),
+            ("herald-crypto", Layer::Native),
             ("herald-keys", Layer::Kits),
             ("herald-records", Layer::Kits),
             ("herald-sql", Layer::Kits),

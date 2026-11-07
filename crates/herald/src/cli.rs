@@ -160,6 +160,12 @@ pub(crate) enum Layer {
     Vercel,
     /// The wasm module as a Netlify function.
     Netlify,
+    /// The WASI component on a `wasi:http` host.
+    Wasi,
+    /// The WASI component on Spin.
+    Spin,
+    /// herald on Fastly Compute.
+    Fastly,
 }
 
 impl Layer {
@@ -186,6 +192,9 @@ impl Layer {
             Self::Node => Hosting::Node.layer(),
             Self::Vercel => Hosting::Vercel.layer(),
             Self::Netlify => Hosting::Netlify.layer(),
+            Self::Wasi => Hosting::Wasi.layer(),
+            Self::Spin => Hosting::Spin.layer(),
+            Self::Fastly => Hosting::Fastly.layer(),
         }
     }
 }

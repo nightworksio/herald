@@ -1,8 +1,19 @@
 # Every skip is written here with its reason beside it (ADR-0008).
 test_tool = "nextest"
 # The recorders run by hand against the real platforms, never in the suite.
-exclude_globs = ["crates/*/examples/**"]
+exclude_globs = [
+    "crates/*/examples/**",
+    # A component's and a service's wire handling is proven end to end on its host
+    # by deploy/tests/compute.test.mjs, which cargo-mutants has no way to run. What
+    # they decide lives in herald-compose, whose tests judge it.
+    "crates/herald-wasi/src/component/handler.rs",
+    "crates/herald-wasi/src/component/served.rs",
+    "crates/herald-wasi/src/component/spin.rs",
+    "crates/herald-fastly/src/compute/mod.rs",
+]
 # A host's clock, signer and verifier hold nothing, so a fresh one is the same one.
 exclude_re = [
-    "impl Host for (Native<'_>|JsHost)>::(clock|signer|verifier) ",
+    "impl Host for (Native<'_>|JsHost|WasiHost|FastlyHost)>::(clock|signer|verifier) ",
+    # A Compute service's secrets are a unit struct reading one store, so a fresh one is the same one.
+    "impl Host for FastlyHost>::secrets ",
 ]

@@ -1,3 +1,6 @@
+//! herald's signing and verifying on ring (ADR-0007), for each driver that
+//! compiles it: the native binary, the WASI component and Fastly Compute.
+
 use std::future::{Future, ready};
 
 use herald_keys::{Public, pem, subject};

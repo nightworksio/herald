@@ -407,63 +407,13 @@ impl Loader<'_> {
                 self.typed::<herald_dest_fediverse::DestinationOptions>(rest, &path)
                     .map(Destination::Mastodon)
             } else if kind == Destination::MATRIX {
-                let Some(options) =
-                    self.typed::<herald_dest_matrix::DestinationOptions>(rest, &path)
-                else {
-                    continue;
-                };
-                if let Some(interactions) = &options.interactions {
-                    self.interactions(&span, &path, interactions.check());
-                }
-                Some(Destination::Matrix(options))
+                self.matrix(rest, &path, &span)
             } else if kind == Destination::ACTIVITYPUB {
-                let Some(options) = self.typed::<herald_dest_fediverse::ActorOptions>(rest, &path)
-                else {
-                    continue;
-                };
-                if let Err(message) = options.check() {
-                    self.error(&span, &path, message);
-                    continue;
-                }
-                Some(Destination::ActivityPub(options))
+                self.actor(rest, &path, &span)
             } else if kind == Destination::SLACK {
-                let Some(options) =
-                    self.typed::<herald_dest_slack::DestinationOptions>(rest, &path)
-                else {
-                    continue;
-                };
-                if let Err(message) = options.bot() {
-                    self.error(&span, &path, message);
-                    continue;
-                }
-                if let Some(interactions) = &options.interactions {
-                    self.interactions(&span, &path, interactions.check());
-                }
-                Some(Destination::Slack(options))
+                self.slack(rest, &path, &span)
             } else {
-                let Some(options) =
-                    self.typed::<herald_dest_discord::DestinationOptions>(rest, &path)
-                else {
-                    continue;
-                };
-                let bot = match options.bot() {
-                    Ok(bot) => bot,
-                    Err(message) => {
-                        self.error(&span, &path, message);
-                        continue;
-                    }
-                };
-                if let Some(interactions) = &options.interactions {
-                    let checked = interactions.check().and_then(|()| {
-                        if interactions.via == herald_dest_discord::Via::Gateway && !bot {
-                            Err("the gateway is joined as a bot; give the destination a token in place of its webhook".to_owned())
-                        } else {
-                            Ok(())
-                        }
-                    });
-                    self.interactions(&span, &path, checked);
-                }
-                Some(Destination::Discord(options))
+                self.discord(rest, &path, &span)
             };
             let Some(destination) = destination else {
                 continue;
@@ -471,6 +421,57 @@ impl Loader<'_> {
             destinations.insert(DestinationName::new(name), (destination, span));
         }
         destinations
+    }
+
+    fn matrix(&mut self, rest: Value<'_>, path: &str, span: &Range<usize>) -> Option<Destination> {
+        let options = self.typed::<herald_dest_matrix::DestinationOptions>(rest, path)?;
+        if let Some(interactions) = &options.interactions {
+            self.interactions(span, path, interactions.check());
+        }
+        Some(Destination::Matrix(options))
+    }
+
+    fn actor(&mut self, rest: Value<'_>, path: &str, span: &Range<usize>) -> Option<Destination> {
+        let options = self.typed::<herald_dest_fediverse::ActorOptions>(rest, path)?;
+        if let Err(message) = options.check() {
+            self.error(span, path, message);
+            return None;
+        }
+        Some(Destination::ActivityPub(options))
+    }
+
+    fn slack(&mut self, rest: Value<'_>, path: &str, span: &Range<usize>) -> Option<Destination> {
+        let options = self.typed::<herald_dest_slack::DestinationOptions>(rest, path)?;
+        if let Err(message) = options.bot() {
+            self.error(span, path, message);
+            return None;
+        }
+        if let Some(interactions) = &options.interactions {
+            self.interactions(span, path, interactions.check());
+        }
+        Some(Destination::Slack(options))
+    }
+
+    fn discord(&mut self, rest: Value<'_>, path: &str, span: &Range<usize>) -> Option<Destination> {
+        let options = self.typed::<herald_dest_discord::DestinationOptions>(rest, path)?;
+        let bot = match options.bot() {
+            Ok(bot) => bot,
+            Err(message) => {
+                self.error(span, path, message);
+                return None;
+            }
+        };
+        if let Some(interactions) = &options.interactions {
+            let checked = interactions.check().and_then(|()| {
+                if interactions.via == herald_dest_discord::Via::Gateway && !bot {
+                    Err("the gateway is joined as a bot; give the destination a token in place of its webhook".to_owned())
+                } else {
+                    Ok(())
+                }
+            });
+            self.interactions(span, path, checked);
+        }
+        Some(Destination::Discord(options))
     }
 
     fn interactions(&mut self, span: &Range<usize>, path: &str, checked: Result<(), String>) {

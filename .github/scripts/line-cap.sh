@@ -9,10 +9,11 @@ while IFS= read -r -d '' file; do
   case "$file" in
     *.lock | */package-lock.json | package-lock.json | herald.schema.json) continue ;;
     *.png | *.jpg | *.jpeg | *.gif | *.ico | *.svg | *.webp) continue ;;
+    *) ;;
   esac
-  [ -f "$file" ] || continue
+  [[ -f "$file" ]] || continue
   lines=$(wc -l < "$file")
-  if [ "$lines" -gt "$cap" ]; then
+  if [[ "$lines" -gt "$cap" ]]; then
     echo "::error file=${file}::${file} has ${lines} lines; the cap is ${cap}"
     over=1
   fi

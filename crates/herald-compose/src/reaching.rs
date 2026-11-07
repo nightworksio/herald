@@ -1,9 +1,14 @@
 //! What each connection the host's `fetch` makes may reach, and what of
 //! its answer is read.
 
-use herald_compose::{Reach, public, reachable};
+use crate::public::{public, reachable};
+use crate::reach::Reach;
 use herald_ports::{HttpError, PUBLIC, Request, Response, Text};
 use url::Url;
+
+/// The setting that says, with `true`, that a host's own egress refuses
+/// private addresses, on a host herald cannot check them on.
+pub const EGRESS_GUARDED: &str = "HERALD_EGRESS_GUARDED";
 
 /// What one connection may reach: the origins of its base, or any public
 /// HTTPS origin, on others' behalf (ADR-0007).
@@ -13,6 +18,8 @@ pub enum Reaching {
     Base(Reach),
     /// Any public HTTPS origin.
     Public,
+    /// Nothing, on a host that may not fetch on others' behalf.
+    Nothing,
 }
 
 impl Reaching {
@@ -28,6 +35,21 @@ impl Reaching {
         Reach::new([base])
             .map(Self::Base)
             .map_err(|error| error.to_string())
+    }
+
+    /// What a connection to `base` may reach on a host that resolves names
+    /// out of herald's sight: nothing on others' behalf, as any name may
+    /// resolve to a private address, unless `guarded` is [`EGRESS_GUARDED`]'s
+    /// `true`.
+    ///
+    /// # Errors
+    ///
+    /// Where `base` is not a URL a connection may be bound to, saying why.
+    pub fn unresolved(base: &str, guarded: Option<&str>) -> Result<Self, String> {
+        Self::of(base).map(|reaching| match reaching {
+            Self::Public if guarded != Some("true") => Self::Nothing,
+            reaching => reaching,
+        })
     }
 
     /// Whether the connection reaches on others' behalf.
@@ -47,6 +69,7 @@ impl Reaching {
             .filter(|parsed| match self {
                 Self::Base(reach) => reach.allows(parsed),
                 Self::Public => reachable(parsed, "https", public),
+                Self::Nothing => false,
             })
             .ok_or_else(|| HttpError::Refused {
                 url: url.redacted(),
@@ -84,7 +107,7 @@ pub fn asked_query(query: Option<String>) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use herald_ports::Method;
+    use herald_ports::{Method, PUBLIC};
 
     use super::*;
 
@@ -100,6 +123,30 @@ mod tests {
 
     fn plain(url: &str) -> Text {
         Text::plain(url)
+    }
+
+    #[test]
+    fn a_host_out_of_sight_of_names_fetches_on_others_behalf_only_where_guarded() {
+        let name = plain("https://social.example/actor");
+        for unguarded in [None, Some(""), Some("false"), Some("TRUE")] {
+            let reaching = Reaching::unresolved(PUBLIC, unguarded).unwrap();
+            assert_eq!(reaching, Reaching::Nothing);
+            assert!(!reaching.public());
+            assert!(matches!(
+                reaching.admitted(&name),
+                Err(HttpError::Refused { .. })
+            ));
+        }
+        let guarded = Reaching::unresolved(PUBLIC, Some("true")).unwrap();
+        assert_eq!(guarded, Reaching::Public);
+        assert!(guarded.admitted(&name).is_ok());
+    }
+
+    #[test]
+    fn a_host_out_of_sight_of_names_still_reaches_a_base() {
+        let base = "https://discord.com/api/v10";
+        assert_eq!(Reaching::unresolved(base, None), Reaching::of(base));
+        assert!(Reaching::unresolved("not a url", None).is_err());
     }
 
     #[test]

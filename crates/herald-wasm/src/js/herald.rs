@@ -1,6 +1,6 @@
 use std::rc::Rc;
 
-use herald_compose::{Composed, Hosting, SESSIONS, SocketReach, told};
+use herald_compose::{Composed, Hosting, SESSIONS, SocketReach, asked_query, public_address, told};
 use herald_config::load;
 use herald_flows::{Admission, Inbound};
 use js_sys::{Function, Promise, Uint8Array};
@@ -13,7 +13,6 @@ use super::host::JsHost;
 use super::sessions::{JsSockets, JsTaker, JsTimer};
 use super::{bytes, member, object, pairs, strings};
 use crate::numbers::millis;
-use crate::reaching::{asked_query, public_address};
 
 /// Whether `address` is on the public internet: what a host that resolves
 /// names itself checks before it connects on others' behalf.
