@@ -31,6 +31,57 @@ fn init_prints_a_new_marker_secret_once_and_needs_no_config() {
     );
 }
 
+fn answering_once() -> String {
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let address = listener.local_addr().unwrap().to_string();
+    std::thread::spawn(move || {
+        use std::io::{Read, Write};
+        let (mut stream, _) = listener.accept().unwrap();
+        let _ = stream.read(&mut [0; 1024]);
+        let _ = stream.write_all(b"HTTP/1.1 200 OK\r\ncontent-length: 0\r\n\r\n");
+    });
+    address
+}
+
+fn closed_port() -> u16 {
+    std::net::TcpListener::bind("127.0.0.1:0")
+        .unwrap()
+        .local_addr()
+        .unwrap()
+        .port()
+}
+
+#[test]
+fn health_asks_the_listen_variable_then_the_config_and_needs_no_config() {
+    let world = World::default();
+    let mut listening = setup("not toml");
+    let address = answering_once();
+    listening
+        .vars
+        .insert("HERALD_LISTEN".to_owned(), address.clone());
+    let healthy = herald(&listening, &world, &["health"]);
+    assert_eq!(
+        (healthy.code, healthy.out.as_str()),
+        (
+            DONE,
+            format!("herald answers at http://{address}/healthz\n").as_str()
+        )
+    );
+    let port = closed_port();
+    let configured = setup(&format!(
+        "{CONFIG}[server]\nlisten = \"127.0.0.1:{port}\"\n"
+    ));
+    let down = herald(&configured, &world, &["health", "--timeout", "1000"]);
+    assert_eq!(down.code, STOPPED);
+    assert!(
+        down.err.starts_with(&format!(
+            "herald does not answer at http://127.0.0.1:{port}/healthz: "
+        )),
+        "{}",
+        down.err
+    );
+}
+
 #[test]
 fn preview_renders_each_route_against_a_sample_or_a_release_event() {
     let setup = setup(CONFIG);
