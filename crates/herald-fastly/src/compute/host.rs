@@ -38,9 +38,9 @@ impl Secrets for StoreSecrets {
 
 /// A Compute service: its stores, and what reaches out through it.
 pub(super) struct FastlyHost {
-    config: Option<ConfigStore>,
-    vars: BTreeMap<&'static str, String>,
-    secrets: StoreSecrets,
+    pub(super) config: Option<ConfigStore>,
+    pub(super) vars: BTreeMap<&'static str, String>,
+    pub(super) secrets: StoreSecrets,
 }
 
 impl FastlyHost {

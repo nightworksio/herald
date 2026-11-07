@@ -1,9 +1,54 @@
+use std::collections::BTreeMap;
+
 use herald_compose::{Host as _, KvAt};
-use herald_ports::{Http as _, HttpError, Kv as _, Method, PUBLIC, Request, Text, Versionstamp};
+use herald_ports::{
+    Http as _, HttpError, Kv as _, Method, PUBLIC, Request, SecretError, Secrets as _, Text,
+    Versionstamp,
+};
 use herald_records::{Kept, KvRecords};
 use herald_testing::store_conformance;
 
-use super::host::FastlyHost;
+use super::host::{FastlyHost, StoreSecrets};
+
+#[test]
+fn the_service_reads_its_config_store_and_secret_store() {
+    let host = FastlyHost::new();
+    assert!(host.item("herald.toml").unwrap().contains("fastly-kv"));
+    assert_eq!(host.item("ABSENT"), None);
+    let held = pollster::block_on(host.secrets_for_round("HERALD_ROUND_SECRET")).unwrap();
+    assert_eq!(held.expose(), "local-round-secret");
+    assert!(pollster::block_on(host.secrets_for_round("ABSENT")).is_none());
+    assert!(matches!(
+        pollster::block_on(StoreSecrets.secret("EMPTY")),
+        Err(SecretError::Missing { .. })
+    ));
+}
+
+#[test]
+fn the_service_gives_the_variables_it_holds_and_not_an_empty_one() {
+    let host = FastlyHost {
+        config: None,
+        vars: BTreeMap::from([
+            ("GITHUB_REPOSITORY", "cli/cli".to_owned()),
+            ("EMPTY", String::new()),
+        ]),
+        secrets: StoreSecrets,
+    };
+    assert_eq!(host.var("GITHUB_REPOSITORY"), Some("cli/cli"));
+    assert_eq!(host.var("EMPTY"), None);
+    assert_eq!(host.var("UNSET"), None);
+}
+
+#[test]
+fn a_connection_fetches_plain_http_on_loopback_without_tls() {
+    const BASE: &str = "http://127.0.0.1:8099";
+    let http = FastlyHost::new().connect(BASE).unwrap();
+    let mut asked = Request::new(Method::Post, Text::plain(format!("{BASE}/said")));
+    asked.body = b"hello".to_vec();
+    let answer = pollster::block_on(http.send(asked)).unwrap();
+    assert_eq!(answer.status, 200);
+    assert_eq!(answer.body, b"POST /said hello");
+}
 
 #[test]
 fn a_connection_refuses_what_it_may_not_reach() {

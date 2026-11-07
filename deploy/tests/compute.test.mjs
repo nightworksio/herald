@@ -23,6 +23,11 @@ const KEY = [
   ).toString("base64"),
   `-----END ${PEM_LABEL}-----`,
 ].join("\n");
+const ENV = {
+  HERALD_ACTIVITYPUB_KEY: KEY,
+  GITHUB_TOKEN: "local-token",
+  GITHUB_REPOSITORY: "nightworksio/herald",
+};
 const started = [];
 
 after(() => started.forEach((child) => child.kill()));
@@ -58,6 +63,10 @@ async function answers(base) {
 function run(command, args, cwd) {
   const child = spawn(command, args, { cwd, stdio: "inherit" });
   started.push(child);
+}
+
+function spinEnv() {
+  return Object.entries(ENV).flatMap(([name, value]) => ["--env", `${name}=${value}`]);
 }
 
 function posted(port, keyOn) {
@@ -108,7 +117,7 @@ test("the component refuses a name on others' behalf where nothing guards its ho
       "-Scli",
       "--addr=127.0.0.1:8104",
       "--dir=.",
-      `--env=HERALD_ACTIVITYPUB_KEY=${KEY}`,
+      ...Object.entries(ENV).map(([name, value]) => `--env=${name}=${value}`),
       COMPONENT,
     ],
     EGRESS,
@@ -123,8 +132,7 @@ test("Spin told it is guarded reaches a name resolving to loopback without its b
     [
       "up",
       "--listen=127.0.0.1:8105",
-      "--env",
-      `HERALD_ACTIVITYPUB_KEY=${KEY}`,
+      ...spinEnv(),
       "--env",
       "HERALD_EGRESS_GUARDED=true",
     ],
@@ -142,8 +150,7 @@ test("Spin's shipped block refuses a name resolving to loopback", async () => {
       "--listen=127.0.0.1:8106",
       "--runtime-config-file",
       RUNTIME_CONFIG,
-      "--env",
-      `HERALD_ACTIVITYPUB_KEY=${KEY}`,
+      ...spinEnv(),
       "--env",
       "HERALD_EGRESS_GUARDED=true",
     ],

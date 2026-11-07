@@ -70,6 +70,8 @@ mod tests {
         assert!(Round::allowed(Some("Bearer s3cret"), Some(&secret)));
         assert!(!Round::allowed(Some("Bearer s3cres"), Some(&secret)));
         assert!(!Round::allowed(Some("Bearer s3cre"), Some(&secret)));
+        let doubled = Secret::new("HERALD_ROUND_SECRET", "aa");
+        assert!(!Round::allowed(Some("Bearer bb"), Some(&doubled)));
         assert!(!Round::allowed(Some("s3cret"), Some(&secret)));
         assert!(!Round::allowed(None, Some(&secret)));
         assert!(!Round::allowed(Some("Bearer s3cret"), None));
