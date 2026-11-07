@@ -40,8 +40,9 @@ herald fetches ActivityPub actors' keys and delivers to their inboxes only on
 public HTTPS origins. The Node, Bun, Deno, Vercel and Netlify shims resolve
 each such host themselves, and connect only where every address it resolves
 to is public. A Worker's `fetch` reaches no private network. The component and
-the Fastly service refuse a private address written literally, and leave names
-to the host's own egress policy, since they resolve nothing themselves.
+the Fastly service resolve nothing themselves, so they fetch nothing of this
+until told their host's egress is guarded, as
+[below](#fetching-on-others-behalf-where-herald-cannot-resolve-names) says.
 
 ## Cloudflare Workers
 
@@ -114,13 +115,31 @@ beside `herald.toml`, passing secrets with `--env`. `HERALD_CONFIG` names anothe
 config file, and `HERALD_TIMEOUT_MS` bounds each request herald sends, 10 seconds
 where unset.
 
+## Fetching on others' behalf where herald cannot resolve names
+
+ActivityPub fetches and delivers to whatever origin an actor names. The
+`wasi:http` component, Spin and Fastly Compute resolve names out of herald's
+sight, so herald can refuse a private address written literally but not a name
+that resolves to one. These hosts refuse every such fetch, and ActivityPub with
+it, until `HERALD_EGRESS_GUARDED` is `true`. Set it, in the environment or
+Fastly's Config Store, only once the host's own egress refuses private,
+loopback and link-local addresses. Routes to configured origins are unaffected.
+
 ## Spin
 
 Build with `--features spin` as well, and run `spin up` from `spin/`. `sqlite`
 keeps records in Spin's database `default`, or the one `HERALD_SPIN_DATABASE`
-names, and `postgres` connects to the store's URL. `allowed_outbound_hosts` in
-`spin.toml` decides what herald may reach. A component built with this feature
-runs on Spin alone.
+names, and `postgres` connects to the store's URL. A component built with this
+feature runs on Spin alone.
+
+`allowed_outbound_hosts` in `spin.toml` admits any HTTPS origin, as the origins
+a config names are not known here. List yours in its place where nothing fetches
+on others' behalf. For ActivityPub, keep it and have Spin refuse private addresses,
+which it checks after resolving a name:
+
+```sh
+spin up --runtime-config-file runtime-config.toml --env HERALD_EGRESS_GUARDED=true
+```
 
 ## Fastly Compute
 

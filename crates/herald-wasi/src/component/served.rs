@@ -1,5 +1,5 @@
 use herald_compose::{Asked, Composed, Hosting, ROUND_SECRET, plain, told};
-use herald_config::load;
+use herald_config::{Config, load};
 use herald_flows::{Job, Reply};
 use herald_ports::Secret;
 
@@ -16,16 +16,21 @@ fn named(vars: &[(String, String)], name: &str) -> Option<String> {
         .map(|(_, value)| value.clone())
 }
 
+/// The config at `path`, and the files it names.
+fn configured(path: &str) -> Result<Config, String> {
+    let read =
+        |name: &str| std::fs::read_to_string(name).map_err(|error| format!("{name}: {error}"));
+    let text = read(path)?;
+    load(path, &text, &read).map_err(|errors| errors.to_string())
+}
+
 /// herald composed from the host's environment and files.
 async fn composed(vars: Vec<(String, String)>) -> Result<Composed<WasiHost>, String> {
     let path = named(&vars, "HERALD_CONFIG").unwrap_or_else(|| CONFIG.to_owned());
     let hosting = named(&vars, "HERALD_HOST").unwrap_or_else(|| HOST.to_owned());
     let hosting =
         Hosting::of(&hosting).ok_or_else(|| format!("{hosting} is no host herald knows"))?;
-    let text = std::fs::read_to_string(&path).map_err(|error| format!("{path}: {error}"))?;
-    let read =
-        |name: &str| std::fs::read_to_string(name).map_err(|error| format!("{name}: {error}"));
-    let config = load(&path, &text, &read).map_err(|errors| errors.to_string())?;
+    let config = configured(&path)?;
     Composed::new(
         WasiHost::new(vars),
         config,

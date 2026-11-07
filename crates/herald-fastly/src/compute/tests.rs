@@ -1,5 +1,5 @@
 use herald_compose::{Host as _, KvAt};
-use herald_ports::{Http as _, Kv as _, Method, Request, Text, Versionstamp};
+use herald_ports::{Http as _, HttpError, Kv as _, Method, PUBLIC, Request, Text, Versionstamp};
 use herald_records::{Kept, KvRecords};
 use herald_testing::store_conformance;
 
@@ -12,6 +12,16 @@ fn a_connection_refuses_what_it_may_not_reach() {
     let elsewhere = Request::new(Method::Get, Text::plain("https://example.org/"));
     assert!(pollster::block_on(http.send(elsewhere)).is_err());
     assert!(host.connect("not a url").is_err());
+}
+
+#[test]
+fn a_public_connection_refuses_a_name_on_a_service_not_said_to_be_guarded() {
+    let http = FastlyHost::new().connect(PUBLIC).unwrap();
+    let asked = Request::new(Method::Get, Text::plain("https://localhost:9/"));
+    assert!(matches!(
+        pollster::block_on(http.send(asked)),
+        Err(HttpError::Refused { .. })
+    ));
 }
 
 fn kv() -> super::kv::FastlyKv {

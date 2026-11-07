@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 use std::future::{Future, ready};
 
 use fastly::{ConfigStore, SecretStore};
-use herald_compose::{GITHUB_REPOSITORY, Host, KvAt, Reaching, SqlAt, Unoffered};
+use herald_compose::{EGRESS_GUARDED, GITHUB_REPOSITORY, Host, KvAt, Reaching, SqlAt, Unoffered};
 use herald_crypto::{RingSigner, RingVerifier};
 use herald_environment::SystemClock;
 use herald_ports::{Secret, SecretError, Secrets};
@@ -81,7 +81,7 @@ impl Host for FastlyHost {
     type Kv = FastlyKv;
 
     fn connect(&self, base: &str) -> Result<FastlyHttp, String> {
-        Reaching::of(base).map(FastlyHttp::new)
+        Reaching::unresolved(base, self.item(EGRESS_GUARDED).as_deref()).map(FastlyHttp::new)
     }
 
     fn var(&self, name: &str) -> Option<&str> {

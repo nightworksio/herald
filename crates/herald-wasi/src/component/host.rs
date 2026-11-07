@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 use std::future::{Future, ready};
 
-use herald_compose::{Host, KvAt, Reaching, SqlAt, Unoffered};
+use herald_compose::{EGRESS_GUARDED, Host, KvAt, Reaching, SqlAt, Unoffered};
 use herald_crypto::{RingSigner, RingVerifier};
 use herald_environment::{EnvSecrets, SystemClock};
 
@@ -50,7 +50,8 @@ impl Host for WasiHost {
     type Kv = Unoffered;
 
     fn connect(&self, base: &str) -> Result<WasiHttp, String> {
-        Reaching::of(base).map(|reaching| WasiHttp::new(reaching, self.timeout))
+        Reaching::unresolved(base, self.var(EGRESS_GUARDED))
+            .map(|reaching| WasiHttp::new(reaching, self.timeout))
     }
 
     fn var(&self, name: &str) -> Option<&str> {

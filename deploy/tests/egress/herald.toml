@@ -1,0 +1,24 @@
+version = 1
+
+[store]
+kind = "markers"
+
+[destinations.fedi]
+kind = "activitypub"
+domain = "herald.example"
+key = { secret = "HERALD_ACTIVITYPUB_KEY" }
+
+[sources.gate]
+kind = "github"
+repository = "nightworksio/herald"
+
+[[routes]]
+id = "followed"
+sources = ["gate"]
+destination = "fedi"
+template = "t"
+actor = "herald"
+
+[templates.t]
+title = "{{ event.title }}"
+body = "{{ event.body }}"

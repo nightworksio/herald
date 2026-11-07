@@ -1,5 +1,5 @@
-use herald_compose::Host as _;
-use herald_ports::{Http as _, Method, Request, Text};
+use herald_compose::{EGRESS_GUARDED, Host as _};
+use herald_ports::{Http as _, HttpError, Method, PUBLIC, Request, Text};
 
 use super::host::WasiHost;
 
@@ -26,6 +26,25 @@ fn a_connection_refuses_what_it_may_not_reach() {
     let elsewhere = Request::new(Method::Get, Text::plain("https://example.org/"));
     assert!(wstd::runtime::block_on(http.send(elsewhere)).is_err());
     assert!(hosted().connect("not a url").is_err());
+}
+
+#[test]
+fn a_public_connection_refuses_a_name_until_the_host_is_said_to_be_guarded() {
+    let asked = || Request::new(Method::Get, Text::plain("https://localhost:9/"));
+    let http = hosted().connect(PUBLIC).unwrap();
+    assert!(matches!(
+        wstd::runtime::block_on(http.send(asked())),
+        Err(HttpError::Refused { .. })
+    ));
+    if std::env::var("HERALD_TEST_BASE").is_err() {
+        return;
+    }
+    let guarded = WasiHost::new([(EGRESS_GUARDED.to_owned(), "true".to_owned())]);
+    let http = guarded.connect(PUBLIC).unwrap();
+    assert!(!matches!(
+        wstd::runtime::block_on(http.send(asked())),
+        Err(HttpError::Refused { .. })
+    ));
 }
 
 #[test]

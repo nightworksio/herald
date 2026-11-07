@@ -1,10 +1,28 @@
 // The component on wasmtime and on Spin, and the service on Viceroy, each
 // answering real requests: herald's health, a round without and with its secret.
+// An activity whose key lies on a name resolving to loopback shows what each
+// reaches on others' behalf.
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
+import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
+import { request } from "node:http";
+import { createServer } from "node:net";
 import { after, test } from "node:test";
 
 const SECRET = "local-round-secret";
+const EGRESS = "deploy/tests/egress";
+const COMPONENT = "../../component/herald_wasi.wasm";
+const RUNTIME_CONFIG = "../../spin/runtime-config.toml";
+const PEM_LABEL = ["PRIVATE", "KEY"].join(" ");
+const KEY = [
+  `-----BEGIN ${PEM_LABEL}-----`,
+  Buffer.from(
+    readFileSync("crates/herald-crypto/fixtures/rsa-2048-pkcs8.test.hex", "utf8").trim(),
+    "hex",
+  ).toString("base64"),
+  `-----END ${PEM_LABEL}-----`,
+].join("\n");
 const started = [];
 
 after(() => started.forEach((child) => child.kill()));
@@ -41,6 +59,99 @@ function run(command, args, cwd) {
   const child = spawn(command, args, { cwd, stdio: "inherit" });
   started.push(child);
 }
+
+function posted(port, keyOn) {
+  const body = "{}";
+  const digest = createHash("sha256").update(body).digest("base64");
+  return new Promise((resolve, reject) => {
+    const asked = request(
+      {
+        host: "127.0.0.1",
+        port,
+        path: "/inbox",
+        method: "POST",
+        headers: {
+          host: "herald.example",
+          date: new Date().toUTCString(),
+          digest: `SHA-256=${digest}`,
+          signature: `keyId="https://localhost:${keyOn}/actor",headers="(request-target) host date digest",signature="AAAA"`,
+        },
+      },
+      (answer) => {
+        answer.resume();
+        answer.on("end", () => resolve(answer.statusCode));
+      },
+    );
+    asked.on("error", reject);
+    asked.end(body);
+  });
+}
+
+async function reachedLoopback(port) {
+  let connections = 0;
+  const listener = createServer((socket) => {
+    connections += 1;
+    socket.destroy();
+  });
+  await new Promise((resolve) => listener.listen(0, resolve));
+  const status = await posted(port, listener.address().port);
+  listener.close();
+  assert.equal(status, 401);
+  return connections > 0;
+}
+
+test("the component refuses a name on others' behalf where nothing guards its host", async () => {
+  run(
+    "wasmtime",
+    [
+      "serve",
+      "-Scli",
+      "--addr=127.0.0.1:8104",
+      "--dir=.",
+      `--env=HERALD_ACTIVITYPUB_KEY=${KEY}`,
+      COMPONENT,
+    ],
+    EGRESS,
+  );
+  await up("http://127.0.0.1:8104");
+  assert.equal(await reachedLoopback(8104), false);
+});
+
+test("Spin told it is guarded reaches a name resolving to loopback without its block", async () => {
+  run(
+    "spin",
+    [
+      "up",
+      "--listen=127.0.0.1:8105",
+      "--env",
+      `HERALD_ACTIVITYPUB_KEY=${KEY}`,
+      "--env",
+      "HERALD_EGRESS_GUARDED=true",
+    ],
+    EGRESS,
+  );
+  await up("http://127.0.0.1:8105");
+  assert.equal(await reachedLoopback(8105), true);
+});
+
+test("Spin's shipped block refuses a name resolving to loopback", async () => {
+  run(
+    "spin",
+    [
+      "up",
+      "--listen=127.0.0.1:8106",
+      "--runtime-config-file",
+      RUNTIME_CONFIG,
+      "--env",
+      `HERALD_ACTIVITYPUB_KEY=${KEY}`,
+      "--env",
+      "HERALD_EGRESS_GUARDED=true",
+    ],
+    EGRESS,
+  );
+  await up("http://127.0.0.1:8106");
+  assert.equal(await reachedLoopback(8106), false);
+});
 
 test("the component answers on wasmtime", async () => {
   run(

@@ -54,7 +54,10 @@ and Azure's timers call the function to poll.
    keeps ring. `herald_compose::Hosting` names each JavaScript host and the
    store kinds it keeps records in, and the shim names its host to the
    module. Where a host resolves names itself, it connects on others'
-   behalf only where every address a name resolves to is public.
+   behalf only where every address a name resolves to is public. Where it
+   resolves them out of herald's sight, as `wasi:http`, Spin and Fastly do, it
+   connects on others' behalf only once `HERALD_EGRESS_GUARDED` says its own
+   egress refuses private addresses.
 
 3. **`wasm32-wasip2` and Fastly Compute get a driver each.** `herald-wasi` is
    a `wasi:http` component, serving `wasmtime serve`, wasmCloud and any other
