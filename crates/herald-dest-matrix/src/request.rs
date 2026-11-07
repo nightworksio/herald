@@ -104,12 +104,7 @@ fn announcement_content(announcement: &Announcement) -> Value {
         .link
         .as_deref()
         .map(|link| announcement.marks.on(link));
-    let mentioned: Vec<&str> = announcement
-        .mentioned
-        .iter()
-        .map(String::as_str)
-        .filter(|user| user_id(user))
-        .collect();
+    let mentioned = mentionable(&announcement.mentioned);
     let mut body = vec![title.body.clone()];
     let mut html = vec![format!(
         "<h4>{}</h4>",
@@ -125,12 +120,9 @@ fn announcement_content(announcement: &Announcement) -> Value {
         html.push(format!("<p><a href=\"{href}\">{href}</a></p>"));
     }
     if !mentioned.is_empty() {
-        body.push(mentioned.join(" "));
-        let pills: Vec<String> = mentioned
-            .iter()
-            .map(|user| format!("<a href=\"{PILL}{user}\">{user}</a>"))
-            .collect();
-        html.push(format!("<p>{}</p>", pills.join(" ")));
+        let (text, pills) = mentions(&mentioned);
+        body.push(text);
+        html.push(pills);
     }
     let mut content = Map::new();
     content.insert("msgtype".to_owned(), json!("m.text"));
@@ -146,16 +138,50 @@ fn announcement_content(announcement: &Announcement) -> Value {
     Value::Object(content)
 }
 
+/// The users of `users` written as Matrix user ids, which can be mentioned.
+fn mentionable(users: &[String]) -> Vec<&str> {
+    users
+        .iter()
+        .map(String::as_str)
+        .filter(|user| user_id(user))
+        .collect()
+}
+
+/// `users` mentioned: as the plain body writes them, and as pills.
+fn mentions(users: &[&str]) -> (String, String) {
+    let pills: Vec<String> = users
+        .iter()
+        .map(|user| format!("<a href=\"{PILL}{user}\">{user}</a>"))
+        .collect();
+    (users.join(" "), format!("<p>{}</p>", pills.join(" ")))
+}
+
 fn chunk_content(announcement: &Announcement, index: u32, root: &str, before: &str) -> Value {
-    let part = usize::try_from(index)
-        .ok()
-        .and_then(|index| announcement.parts.get(index));
+    let index = usize::try_from(index).unwrap_or(usize::MAX);
+    let mentioned = announcement
+        .mentioned_in(index)
+        .map(mentionable)
+        .unwrap_or_default();
+    let (body, html) = if mentioned.is_empty() {
+        let part = announcement.parts.get(index);
+        (
+            part.map(|part| part.body.clone()).unwrap_or_default(),
+            part.and_then(|part| part.html.clone()).unwrap_or_default(),
+        )
+    } else {
+        mentions(&mentioned)
+    };
+    let mentioning = if mentioned.is_empty() {
+        json!({})
+    } else {
+        json!({ "user_ids": mentioned })
+    };
     json!({
         "msgtype": "m.text",
-        "body": part.map(|part| part.body.as_str()).unwrap_or_default(),
+        "body": body,
         "format": HTML,
-        "formatted_body": part.and_then(|part| part.html.as_deref()).unwrap_or_default(),
-        "m.mentions": {},
+        "formatted_body": html,
+        "m.mentions": mentioning,
         "m.relates_to": {
             "rel_type": "m.thread",
             "event_id": root,

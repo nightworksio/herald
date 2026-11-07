@@ -324,6 +324,25 @@ mod replay {
     }
 
     #[test]
+    fn mentions_past_the_announcement_s_room_go_in_messages_after_its_parts() {
+        let mut many = announcement();
+        many.mentioned_after = vec![vec!["U0123ABCD".to_owned(), "ana".to_owned()]];
+        let after = u32::try_from(many.parts.len()).unwrap();
+        let posted = Entry::new(many.key).landed(
+            Step::Post,
+            herald_core::Facts {
+                message: Some("1700000000.000100".to_owned()),
+                ..herald_core::Facts::default()
+            },
+        );
+        let request = bot().request(&Step::Chunk(after), &many, &posted).unwrap();
+        let content: serde_json::Value = serde_json::from_slice(&request.body).unwrap();
+        assert_eq!(content["text"], "<@U0123ABCD>");
+        assert_eq!(content["blocks"][0]["text"]["text"], "<@U0123ABCD>");
+        assert_eq!(many.messages(), many.parts.len() + 1);
+    }
+
+    #[test]
     fn only_a_user_written_as_a_slack_user_id_is_mentioned_and_a_link_is_read_whole() {
         let mut mentioning = announcement();
         mentioning.mentioned = [
@@ -533,7 +552,7 @@ mod replay {
         assert_eq!(as_bot.dialect, Dialect::Slack);
         assert_eq!(as_bot.features.threads, Threads::Replies);
         assert_eq!(as_bot.features.pins, Pins::Many);
-        assert_eq!(as_bot.features.mentions, MentionStyle::Users);
+        assert!(matches!(as_bot.features.mentions, MentionStyle::Users(_)));
         assert!(
             as_bot.features.reads_back && as_bot.features.edits && as_bot.features.interactions
         );

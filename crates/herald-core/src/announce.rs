@@ -90,8 +90,31 @@ pub struct Announcement {
     /// the unpin step to unpin.
     pub replaces: Option<String>,
     /// The users it mentions: the subscribers herald keeps to its project on
-    /// its destination, where its route mentions them.
+    /// its destination, where its route mentions them, as many as its room
+    /// holds.
     pub mentioned: Vec<String>,
+    /// The users its room does not hold, each list mentioned in a message of
+    /// its own after its parts.
+    pub mentioned_after: Vec<Vec<String>>,
+}
+
+impl Announcement {
+    /// How many messages it takes: its parts, then a message for each list
+    /// of users mentioned after them.
+    #[must_use]
+    pub fn messages(&self) -> usize {
+        self.parts.len() + self.mentioned_after.len()
+    }
+
+    /// The users mentioned in its message `index`, where that message is one
+    /// of those after its parts.
+    #[must_use]
+    pub fn mentioned_in(&self, index: usize) -> Option<&[String]> {
+        index
+            .checked_sub(self.parts.len())
+            .and_then(|after| self.mentioned_after.get(after))
+            .map(Vec::as_slice)
+    }
 }
 
 /// `event` rendered by `route` for a destination described by `profile`,
@@ -143,6 +166,7 @@ pub fn announce(
         occurred: event.occurred(),
         replaces: None,
         mentioned: Vec::new(),
+        mentioned_after: Vec::new(),
     })
 }
 

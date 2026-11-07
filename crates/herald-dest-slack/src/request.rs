@@ -129,12 +129,7 @@ fn announcement_body(announcement: &Announcement, subscribe: Option<&Subscribe>)
         .map(|part| part.body.as_str())
         .filter(|text| !text.is_empty());
     let link = announcement.link.as_deref().map(link);
-    let mentions: Vec<String> = announcement
-        .mentioned
-        .iter()
-        .filter(|user| user_id(user))
-        .map(|user| format!("<@{user}>"))
-        .collect();
+    let mentions = mentioning(&announcement.mentioned);
     let mut blocks = vec![json!({
         "type": "header",
         "text": { "type": "plain_text", "text": announcement.title.plain(), "emoji": true },
@@ -144,7 +139,7 @@ fn announcement_body(announcement: &Announcement, subscribe: Option<&Subscribe>)
         .map(ToOwned::to_owned)
         .into_iter()
         .chain(link)
-        .chain((!mentions.is_empty()).then(|| mentions.join(" ")))
+        .chain(mentions)
     {
         blocks.push(section(&text));
         fallback.push(text);
@@ -160,12 +155,29 @@ fn announcement_body(announcement: &Announcement, subscribe: Option<&Subscribe>)
     })
 }
 
+/// `users` as one `mrkdwn` text that mentions each, where any is a user id.
+fn mentioning(users: &[String]) -> Option<String> {
+    let mentions: Vec<String> = users
+        .iter()
+        .filter(|user| user_id(user))
+        .map(|user| format!("<@{user}>"))
+        .collect();
+    (!mentions.is_empty()).then(|| mentions.join(" "))
+}
+
 fn chunk_body(announcement: &Announcement, index: u32) -> Value {
-    let text = usize::try_from(index)
-        .ok()
-        .and_then(|index| announcement.parts.get(index))
-        .map(|part| part.body.as_str())
-        .unwrap_or_default();
+    let index = usize::try_from(index).unwrap_or(usize::MAX);
+    let text = announcement.mentioned_in(index).map_or_else(
+        || {
+            announcement
+                .parts
+                .get(index)
+                .map(|part| part.body.clone())
+                .unwrap_or_default()
+        },
+        |users| mentioning(users).unwrap_or_default(),
+    );
+    let text = text.as_str();
     json!({
         "text": text,
         "blocks": [section(text)],

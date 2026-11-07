@@ -185,6 +185,39 @@ mod replay {
     }
 
     #[test]
+    fn mentions_past_the_announcement_s_room_go_in_messages_after_its_parts() {
+        let mut many = announcement();
+        many.mentioned_after = vec![vec!["@ana:matrix.example".to_owned(), "ana".to_owned()]];
+        let after = u32::try_from(many.parts.len()).unwrap();
+        let landed = |message: &str| herald_core::Facts {
+            message: Some(message.to_owned()),
+            ..herald_core::Facts::default()
+        };
+        let posted = (1..after).fold(
+            Entry::new(many.key).landed(Step::Post, landed("$root")),
+            |entry, index| entry.landed(Step::Chunk(index), landed(&format!("$chunk{index}"))),
+        );
+        let request = matrix()
+            .request(&Step::Chunk(after), &many, &posted)
+            .unwrap();
+        let content: serde_json::Value = serde_json::from_slice(&request.body).unwrap();
+        assert_eq!(content["body"], "@ana:matrix.example");
+        assert_eq!(
+            content["m.mentions"]["user_ids"],
+            serde_json::json!(["@ana:matrix.example"])
+        );
+        assert!(
+            content["formatted_body"]
+                .as_str()
+                .unwrap()
+                .contains("<a href=\"https://matrix.to/#/@ana:matrix.example\">")
+        );
+        let chunk = matrix().request(&Step::Chunk(1), &many, &posted).unwrap();
+        let chunk: serde_json::Value = serde_json::from_slice(&chunk.body).unwrap();
+        assert_eq!(chunk["m.mentions"], serde_json::json!({}));
+    }
+
+    #[test]
     fn only_a_user_written_as_a_matrix_user_id_is_mentioned() {
         let mut mentioning = announcement();
         mentioning.mentioned = [
@@ -400,7 +433,7 @@ mod replay {
         assert_eq!(profile.dialect, Dialect::Matrix);
         assert_eq!(profile.features.threads, Threads::Replies);
         assert_eq!(profile.features.pins, Pins::Many);
-        assert_eq!(profile.features.mentions, MentionStyle::Users);
+        assert!(matches!(profile.features.mentions, MentionStyle::Users(_)));
         assert!(profile.features.reads_back);
         assert!(profile.features.edits);
         assert!(!profile.features.crosspost);

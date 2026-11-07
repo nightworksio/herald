@@ -64,8 +64,55 @@ pub enum MentionStyle {
     None,
     /// It pings roles the platform keeps.
     Roles,
-    /// It mentions users, from the subscribers herald keeps.
-    Users,
+    /// It mentions users, from the subscribers herald keeps, as many in a
+    /// message as its room holds.
+    Users(MentionRoom),
+}
+
+/// How many mentions of users a destination's messages hold, in bytes: the
+/// announcement keeps `first` for them and each message after it `rest`, and
+/// a mention writes its user id `copies` times with `overhead` more.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct MentionRoom {
+    /// The bytes the announcement keeps for its mentions.
+    pub first: usize,
+    /// The bytes each message of mentions after it holds.
+    pub rest: usize,
+    /// How many times a mention writes its user id.
+    pub copies: usize,
+    /// The bytes a mention writes beyond its user id's copies.
+    pub overhead: usize,
+}
+
+impl MentionRoom {
+    /// The bytes mentioning `user` takes.
+    #[must_use]
+    pub fn cost(&self, user: &str) -> usize {
+        self.copies
+            .saturating_mul(user.len())
+            .saturating_add(self.overhead)
+    }
+
+    /// `users` spread over messages: the announcement's first, then as many
+    /// messages as the rest need, each within its room. A mention too long
+    /// for any room takes a message alone.
+    #[must_use]
+    pub fn spread(&self, users: Vec<String>) -> Vec<Vec<String>> {
+        let mut messages = Vec::new();
+        let mut current = Vec::new();
+        let mut left = self.first;
+        for user in users {
+            let cost = self.cost(&user);
+            if cost > left && (!current.is_empty() || messages.is_empty()) {
+                messages.push(std::mem::take(&mut current));
+                left = self.rest;
+            }
+            left = left.saturating_sub(cost);
+            current.push(user);
+        }
+        messages.push(current);
+        messages
+    }
 }
 
 /// What a destination can do beyond posting.
@@ -129,7 +176,7 @@ impl Features {
                 "mentions.roles",
             ),
             (
-                delivery.mentions.subscribers && self.mentions != MentionStyle::Users,
+                delivery.mentions.subscribers && !matches!(self.mentions, MentionStyle::Users(_)),
                 "mentions.subscribers",
             ),
         ]
@@ -145,6 +192,39 @@ mod tests {
     use jiff::SignedDuration;
 
     use crate::{Delivery, Mentions, Pinning, RoleId, Thread};
+
+    const ROOM: MentionRoom = MentionRoom {
+        first: 10,
+        rest: 20,
+        copies: 2,
+        overhead: 1,
+    };
+
+    fn users(names: &[&str]) -> Vec<String> {
+        names.iter().map(|name| (*name).to_owned()).collect()
+    }
+
+    #[test]
+    fn mentions_spread_over_messages_each_within_its_room() {
+        assert_eq!(ROOM.cost("abc"), 7);
+        assert_eq!(ROOM.spread(Vec::new()), [Vec::<String>::new()]);
+        assert_eq!(
+            ROOM.spread(users(&["ab", "cd", "ef", "gh", "ij", "kl"])),
+            [users(&["ab", "cd"]), users(&["ef", "gh", "ij", "kl"])]
+        );
+        assert_eq!(
+            ROOM.spread(users(&["abcdefgh", "ab"])),
+            [Vec::<String>::new(), users(&["abcdefgh"]), users(&["ab"])]
+        );
+        assert_eq!(
+            ROOM.spread(users(&["a".repeat(30).as_str(), "ab"])),
+            [
+                Vec::<String>::new(),
+                users(&["a".repeat(30).as_str()]),
+                users(&["ab"])
+            ]
+        );
+    }
 
     fn features(mentions: MentionStyle) -> Features {
         Features {
@@ -172,7 +252,11 @@ mod tests {
 
     #[test]
     fn a_delivery_asking_nothing_lacks_nothing_anywhere() {
-        for style in [MentionStyle::None, MentionStyle::Roles, MentionStyle::Users] {
+        for style in [
+            MentionStyle::None,
+            MentionStyle::Roles,
+            MentionStyle::Users(ROOM),
+        ] {
             assert_eq!(
                 features(style).lacking(&asking(&[], false)),
                 Vec::<&str>::new()
@@ -188,7 +272,7 @@ mod tests {
             Vec::<&str>::new()
         );
         assert_eq!(
-            features(MentionStyle::Users).lacking(&roles),
+            features(MentionStyle::Users(ROOM)).lacking(&roles),
             ["mentions.roles"]
         );
         assert_eq!(
@@ -201,7 +285,7 @@ mod tests {
     fn subscribers_are_lacking_only_where_the_destination_mentions_no_users() {
         let subscribers = asking(&[], true);
         assert_eq!(
-            features(MentionStyle::Users).lacking(&subscribers),
+            features(MentionStyle::Users(ROOM)).lacking(&subscribers),
             Vec::<&str>::new()
         );
         assert_eq!(

@@ -60,6 +60,7 @@ pub fn announcement() -> Announcement {
         occurred: jiff::Timestamp::constant(1_793_448_000, 0),
         replaces: None,
         mentioned: Vec::new(),
+        mentioned_after: Vec::new(),
     }
 }
 
