@@ -173,6 +173,12 @@ beside `lambda/bootstrap`, and deploy `lambda/template.yaml` with SAM.
 - The `Rounds` schedule polls, keeps house and forgets the keys read longest
   ago.
 - `Table` names the DynamoDB table the function may read and write.
+- `Memory`, `Timeout` and `LogRetention` size the function and its logs: 256
+  MB, 900 seconds and 30 days where not given.
+- `Concurrency` reserves how many invocations may run at once; none is
+  reserved where it is empty. An announcement's lease outlasts the longest
+  invocation, so two invocations never send one announcement's steps
+  twice.
 
 ## Hosts with no timer of their own
 

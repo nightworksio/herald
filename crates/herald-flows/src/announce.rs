@@ -12,8 +12,10 @@ use crate::prepare::{Connected, PreparedRoute};
 use crate::reached::Signing;
 use crate::together::together;
 
-/// How long a run holds an announcement before another may finish it.
-const LEASE: SignedDuration = SignedDuration::from_mins(10);
+/// How long a run holds an announcement past its last write before another
+/// may finish it: longer than the longest a host lets one run go on, a
+/// Lambda's 15 minutes.
+const LEASE: SignedDuration = SignedDuration::from_mins(20);
 
 /// The ports an announcement goes through, beside each route's `Http`.
 #[derive(Debug)]
@@ -122,6 +124,13 @@ impl<S: Store, C: Clock, G: Signer, H: Http> Run<'_, S, C, G, H> {
     }
 
     async fn write(&self, progress: &mut Progress) -> Result<(), Stop> {
+        let until = self
+            .ports
+            .clock
+            .now()
+            .checked_add(LEASE)
+            .unwrap_or(Timestamp::MAX);
+        progress.entry = progress.entry.clone().renewed(self.holder, until);
         let written = self
             .ports
             .store
