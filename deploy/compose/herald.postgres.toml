@@ -1,0 +1,8 @@
+version = 1
+
+[store]
+kind = "postgres"
+url = { secret = "HERALD_POSTGRES_URL" }
+
+[markers]
+key = { secret = "HERALD_MARKER_SECRET" }

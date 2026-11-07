@@ -4,7 +4,7 @@
 # one it lists; where it lists none, the one this repository first downloaded.
 set -euo pipefail
 
-tool="${1:?usage: install-tool.sh <cargo-nextest|cargo-llvm-cov|cargo-deny|cargo-audit|cargo-mutants|cargo-fuzz|gitleaks|wasm-bindgen|wasm-bindgen-test-runner|deno|wasmtime|viceroy|spin>}"
+tool="${1:?usage: install-tool.sh <cargo-nextest|cargo-llvm-cov|cargo-deny|cargo-audit|cargo-mutants|cargo-fuzz|gitleaks|cosign|syft|wkg|kind|kubectl|helm|kubeconform|wasm-bindgen|wasm-bindgen-test-runner|deno|wasmtime|viceroy|spin>}"
 
 case "$tool" in
   cargo-nextest)
@@ -79,17 +79,64 @@ case "$tool" in
     sha256="551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb"
     member="gitleaks"
     ;;
+  cosign)
+    version="3.1.4"
+    url="https://github.com/sigstore/cosign/releases/download/v${version}/cosign-linux-amd64"
+    sha256="424e2c97d0b45fd7a6b608a87f090f35633f4c23ece5f092d48bba11aaf4bbfa"
+    member=""
+    ;;
+  syft)
+    version="1.57.0"
+    url="https://github.com/anchore/syft/releases/download/v${version}/syft_${version}_linux_amd64.tar.gz"
+    sha256="9c077a7d43029b3b13e98a8db720661e700c4d58db6352153a06395ae4a2a704"
+    member="syft"
+    ;;
+  wkg)
+    version="0.16.1"
+    url="https://github.com/bytecodealliance/wasm-pkg-tools/releases/download/v${version}/wkg-x86_64-unknown-linux-gnu"
+    sha256="235ecf455e11b8b146e00f24f24c95b573cfe6a432f332358463b229311cec57"
+    member=""
+    ;;
+  kind)
+    version="0.33.0"
+    url="https://github.com/kubernetes-sigs/kind/releases/download/v${version}/kind-linux-amd64"
+    sha256="aee6151561422756b764a4ae28e7f44cda5af5a9eead3cc9985112b1de8d8e0d"
+    member=""
+    ;;
+  kubectl)
+    version="1.37.2"
+    url="https://dl.k8s.io/release/v${version}/bin/linux/amd64/kubectl"
+    sha256="c04487523e7aa7d1493f7808174c899db93d7a9cf57531420cd76b9bd415f8f4"
+    member=""
+    ;;
+  helm)
+    version="4.3.1"
+    url="https://get.helm.sh/helm-v${version}-linux-amd64.tar.gz"
+    sha256="0403a88ae20913d11b10a2467b50087721fea7581736da6b9d3992f5357fe54b"
+    member="linux-amd64/helm"
+    ;;
+  kubeconform)
+    version="0.8.0"
+    url="https://github.com/yannh/kubeconform/releases/download/v${version}/kubeconform-linux-amd64.tar.gz"
+    sha256="9bc2bffbf71f261128533edaf912153948b7ff238f9a531ae6d34466ec287883"
+    member="kubeconform"
+    ;;
   *)
     echo "no pin for ${tool}" >&2
     exit 2
     ;;
 esac
 
-archive="${RUNNER_TEMP:-/tmp}/${tool}.${url##*.}"
+if [ -z "$member" ]; then
+  archive="${RUNNER_TEMP:-/tmp}/${tool}"
+else
+  archive="${RUNNER_TEMP:-/tmp}/${tool}.${url##*.}"
+fi
 curl -sSfL --proto '=https' --tlsv1.2 --retry 3 --retry-delay 2 --retry-all-errors -o "$archive" "$url"
 sha256sum --check --strict <<<"${sha256}  ${archive}"
 mkdir -p "${HOME}/.cargo/bin"
 case "$archive" in
+  "${RUNNER_TEMP:-/tmp}/${tool}") install -m 0755 "$archive" "${HOME}/.cargo/bin/${tool}" ;;
   *.zip) unzip -o -j "$archive" "$member" -d "${HOME}/.cargo/bin" ;;
   *.xz) tar xJf "$archive" -C "${HOME}/.cargo/bin" --strip-components="$(tr -cd '/' <<<"$member" | wc -c)" "$member" ;;
   *) tar xzf "$archive" -C "${HOME}/.cargo/bin" --strip-components="$(tr -cd '/' <<<"$member" | wc -c)" "$member" ;;

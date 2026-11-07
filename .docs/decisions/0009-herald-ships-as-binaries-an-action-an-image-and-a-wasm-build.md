@@ -45,11 +45,26 @@ destination, store and layer is built before the first tag.
      a non-root user on a distroless static base, pinned by digest.
    - **Signing.** It is signed with cosign keyless, and carries build
      provenance and an SBOM.
-   - **Configuration.** It reads `herald.toml` from a mounted path, keeps
-     SQLite on a volume or uses Postgres, and reads secrets from mounted files
-     or the environment.
+   - **Configuration.** It reads `herald.toml` from the path `HERALD_CONFIG`
+     names, keeps SQLite on a volume or uses Postgres, and reads secrets from
+     the environment, from the file a `<NAME>_FILE` variable names, or from
+     the file named as the secret is in `HERALD_SECRETS_DIR`, which is
+     `/run/secrets` in the image. A secret given more than one way is refused.
+   - **Health.** Its health check is `herald health`, which asks the server's
+     `/healthz`, as the image holds no shell or HTTP client.
+   - **Where it runs.** `deploy/` holds a Compose file with SQLite and one with
+     Postgres, plain Kubernetes manifests, and a Helm chart with each
+     `[server]` and `[schedule]` key as a value. CI runs each of them on every
+     pull request. Each release pushes the chart to
+     `oci://ghcr.io/nightworksio/charts/herald`, signed and attested as the
+     image is.
 
-4. **The wasm build, and the deploy templates.**
+4. **The wasm build, the components, and the deploy templates.**
+   - **The components.** Each release pushes the `wasi:http` component
+     (ADR-0017) to GHCR as an OCI artifact, `herald-component`, and its Spin
+     build as `herald-component-spin`, signed and attested as the image is,
+     for wasmCloud, Spin and the other hosts that pull components from a
+     registry.
    - **The wasm build.** It serves Deno Deploy, Vercel and Netlify. Each
      release attaches it as an archive per platform: the module, the
      platform's thin entry point, and its attestation.

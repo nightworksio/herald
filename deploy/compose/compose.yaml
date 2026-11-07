@@ -1,0 +1,23 @@
+name: herald
+
+services:
+  herald:
+    image: ${HERALD_IMAGE:-ghcr.io/nightworksio/herald:0}
+    restart: unless-stopped
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    ports:
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - ./herald.toml:/etc/herald/herald.toml:ro
+      - herald-state:/var/lib/herald
+    secrets:
+      - HERALD_MARKER_SECRET
+
+secrets:
+  HERALD_MARKER_SECRET:
+    file: ./secrets/HERALD_MARKER_SECRET
+
+volumes:
+  herald-state:

@@ -289,6 +289,37 @@ jobs:
       - run: sudo sysctl -w net.ipv4.ip_unprivileged_port_start=443
       - run: node --test deploy/tests/compute.test.mjs
 
+  # The image, built from this commit's static binary, answers healthy alone,
+  # under Compose with SQLite and with Postgres, and on a kind cluster from
+  # the manifests and from the chart (ADR-0009).
+  image:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            target
+          key: image-${{ hashFiles('rust-toolchain.toml', 'Cargo.lock') }}
+      - run: sudo apt-get update && sudo apt-get install --yes musl-tools
+      - run: rustup target add x86_64-unknown-linux-musl
+      - run: cargo build --locked --release --package herald --target x86_64-unknown-linux-musl
+      - run: |
+          mkdir -p dist/amd64
+          cp target/x86_64-unknown-linux-musl/release/herald dist/amd64/herald
+      - run: docker build --platform linux/amd64 --file Containerfile --tag herald:ci .
+      - run: .github/scripts/install-tool.sh kind
+      - run: .github/scripts/install-tool.sh kubectl
+      - run: .github/scripts/install-tool.sh helm
+      - run: .github/scripts/install-tool.sh kubeconform
+      - run: .github/scripts/image-smoke.sh
+
   # herald's own Action, built from this commit, announces a sample release
   # twice against the recorded-fixture server, and the second run must send
   # nothing (ADR-0010). The Actions cache's prefix is this run's own, so a

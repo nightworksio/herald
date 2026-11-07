@@ -16,7 +16,12 @@ use super::stores::{LAMBDA, SERVED, STORES};
 )]
 pub(crate) struct Cli {
     /// The config to read.
-    #[arg(long, global = true, default_value = "herald.toml")]
+    #[arg(
+        long,
+        global = true,
+        env = "HERALD_CONFIG",
+        default_value = "herald.toml"
+    )]
     pub(crate) config: String,
     #[command(subcommand)]
     pub(crate) command: Command,

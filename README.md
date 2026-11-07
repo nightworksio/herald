@@ -51,7 +51,7 @@ enough to start.
 |-------|---------|------|
 | Actions-only | the CLI in GitHub Actions | announcements from forge events, scheduled polling and thread housekeeping |
 | Serverless | Cloudflare Workers, AWS Lambda, Vercel, Netlify or Deno Deploy | the HTTP API, verified webhooks, slash commands and buttons, Matrix commands, the ActivityPub actor |
-| Container | a signed multi-arch image on GHCR | the same endpoint, with SQLite on a volume or Postgres |
+| Container | a signed multi-arch image on GHCR, under Compose, Kubernetes or Helm | the same endpoint, with SQLite on a volume or Postgres |
 
 `herald doctor` names every feature a config asks for that the layer it runs
 in cannot serve, before anything posts.
@@ -265,7 +265,7 @@ What is built on `main`, and the decision each part follows:
 | Commands: `subscribe`, `unsubscribe`, `latest` and `changelog`, and the subscribe button | [ADR-0004](.docs/decisions/0004-each-destination-gets-its-own-dialect-limits-and-features.md), [ADR-0016](.docs/decisions/0016-commands-are-carried-every-way-a-destination-offers-and-answered-from-what-herald-keeps.md) | on Discord over HTTP interactions and the gateway, on Slack over HTTP and Socket Mode, and on Matrix through an application service and a sync; each project's latest announcement kept by every store but markers |
 | Stores: SQLite, Postgres, D1, DynamoDB, Deno KV, markers, git branch, Actions cache, repository variables | [ADR-0005](.docs/decisions/0005-an-announcement-is-sent-once-and-finished-if-interrupted.md) | SQLite, Postgres, the markers, the git branch, the Actions cache and repository variables; D1, DynamoDB and Deno KV, no |
 | The CLI, `herald doctor` and the Action | [ADR-0002](.docs/decisions/0002-three-layers-of-support-and-a-doctor-that-names-the-gaps.md), [ADR-0009](.docs/decisions/0009-herald-ships-as-binaries-an-action-an-image-and-a-wasm-build.md) | `announce`, `poll`, `housekeep`, `server`, `doctor`, `preview`, `init`, `token new`, `discord commands`, `discord roles`, `slack manifest` and `matrix registration`, and the Action; no release carries them yet |
-| Serverless drivers and the container | [ADR-0002](.docs/decisions/0002-three-layers-of-support-and-a-doctor-that-names-the-gaps.md), [ADR-0009](.docs/decisions/0009-herald-ships-as-binaries-an-action-an-image-and-a-wasm-build.md), [ADR-0014](.docs/decisions/0014-herald-server-answers-first-and-works-after-on-one-task-within-limits.md) | `herald server`, the container's command, `herald lambda`, Azure Functions' custom handler, and the wasm module on Cloudflare Workers, Deno, Node, Bun, Vercel and Netlify ([deploy](deploy/README.md)); the image, no |
+| Serverless drivers and the container | [ADR-0002](.docs/decisions/0002-three-layers-of-support-and-a-doctor-that-names-the-gaps.md), [ADR-0009](.docs/decisions/0009-herald-ships-as-binaries-an-action-an-image-and-a-wasm-build.md), [ADR-0014](.docs/decisions/0014-herald-server-answers-first-and-works-after-on-one-task-within-limits.md) | `herald server`, the container's command, `herald lambda`, Azure Functions' custom handler, the wasm module on Cloudflare Workers, Deno, Node, Bun, Vercel and Netlify, the `wasi:http` component on wasmtime, Spin and Fastly, and the image with its Compose, Kubernetes and Helm templates, each run in CI ([deploy](deploy/README.md)) |
 | herald announcing its own releases | [ADR-0010](.docs/decisions/0010-herald-announces-itself-with-itself.md) | no |
 
 ## How it is designed

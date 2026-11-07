@@ -1,0 +1,9 @@
+apiVersion: v2
+name: herald
+description: Announce what happened to the places people gather.
+type: application
+version: 0.0.0
+appVersion: "0"
+home: https://github.com/nightworksio/herald
+sources:
+  - https://github.com/nightworksio/herald

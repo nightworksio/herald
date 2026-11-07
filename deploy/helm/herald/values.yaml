@@ -1,0 +1,97 @@
+image:
+  repository: ghcr.io/nightworksio/herald
+  tag: ""
+  digest: ""
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+
+config: |
+  version = 1
+
+  [store]
+  kind = "sqlite"
+  path = "/var/lib/herald/herald.sqlite"
+
+  [markers]
+  key = { secret = "HERALD_MARKER_SECRET" }
+
+server:
+  jobs: null
+  connections: null
+  body: null
+  fetches: null
+  deliveries: null
+  silence: null
+  keys:
+    cache: null
+    most: null
+    refresh_after: null
+
+schedule:
+  poll: null
+  housekeep: null
+
+secrets:
+  existingSecret: ""
+  values: {}
+
+persistence:
+  enabled: true
+  existingClaim: ""
+  storageClass: ""
+  accessModes: [ReadWriteOnce]
+  size: 1Gi
+
+service:
+  type: ClusterIP
+  port: 8080
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts: []
+  tls: []
+
+podAnnotations: {}
+podLabels: {}
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 65532
+  runAsGroup: 65532
+  fsGroup: 65532
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop: [ALL]
+
+readinessProbe:
+  httpGet:
+    path: /healthz
+    port: http
+  periodSeconds: 10
+
+livenessProbe:
+  httpGet:
+    path: /healthz
+    port: http
+  periodSeconds: 30
+  failureThreshold: 3
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    memory: 256Mi
+
+extraEnv: []
+nodeSelector: {}
+tolerations: []
+affinity: {}
