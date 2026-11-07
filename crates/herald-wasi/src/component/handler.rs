@@ -71,12 +71,19 @@ fn respond(out: ResponseOutparam, status: u16, kind: &str, body: &[u8]) {
 pub(super) async fn handled(request: IncomingRequest, out: ResponseOutparam) {
     let method = method_of(&request.method());
     let target = request.path_with_query().unwrap_or_else(|| "/".to_owned());
-    let headers = request
+    let mut headers: Vec<(String, String)> = request
         .headers()
         .entries()
         .into_iter()
         .filter_map(|(name, value)| Some((name, String::from_utf8(value).ok()?)))
         .collect();
+    if !headers
+        .iter()
+        .any(|(name, _)| name.eq_ignore_ascii_case("host"))
+        && let Some(authority) = request.authority()
+    {
+        headers.push(("host".to_owned(), authority));
+    }
     let Some(body) = request.consume().ok().and_then(read) else {
         respond(
             out,
