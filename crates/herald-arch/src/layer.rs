@@ -48,7 +48,7 @@ impl Layer {
             "herald-config" => Some(Self::Config),
             "herald-flows" => Some(Self::Flows),
             "herald-compose" => Some(Self::Composition),
-            "herald-crypto" | "herald-native" => Some(Self::Native),
+            "herald-crypto" | "herald-environment" | "herald-native" => Some(Self::Native),
             "herald-server" => Some(Self::Serving),
             "herald" | "herald-fastly" | "herald-wasi" | "herald-wasm" => Some(Self::Drivers),
             "herald-arch" => Some(Self::Tooling),

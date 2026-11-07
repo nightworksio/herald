@@ -1,7 +1,7 @@
 use herald_config::Store;
 use herald_flows::Layer;
 
-/// A JavaScript host herald's wasm module runs on, and what it serves there.
+/// A host herald runs on as WebAssembly, and what it serves there.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Hosting {
     /// A Cloudflare Worker.
@@ -14,6 +14,13 @@ pub enum Hosting {
     Vercel,
     /// A Netlify function.
     Netlify,
+    /// A `wasi:http` component host with no database: `wasmtime serve`,
+    /// wasmCloud and the like.
+    Wasi,
+    /// Spin, whose component host offers SQLite and Postgres.
+    Spin,
+    /// Fastly Compute.
+    Fastly,
 }
 
 const WORKER: [&str; 6] = [
@@ -48,14 +55,39 @@ const FUNCTIONS: [&str; 5] = [
     Store::REPO_VARIABLES,
 ];
 
+const WASI: [&str; 4] = [
+    Store::DYNAMODB,
+    Store::GIT_BRANCH,
+    Store::MARKERS,
+    Store::REPO_VARIABLES,
+];
+const SPIN: [&str; 6] = [
+    Store::SQLITE,
+    Store::POSTGRES,
+    Store::DYNAMODB,
+    Store::GIT_BRANCH,
+    Store::MARKERS,
+    Store::REPO_VARIABLES,
+];
+const FASTLY: [&str; 5] = [
+    Store::FASTLY_KV,
+    Store::DYNAMODB,
+    Store::GIT_BRANCH,
+    Store::MARKERS,
+    Store::REPO_VARIABLES,
+];
+
 impl Hosting {
     /// Every host.
-    pub const ALL: [Self; 5] = [
+    pub const ALL: [Self; 8] = [
         Self::Worker,
         Self::Deno,
         Self::Node,
         Self::Vercel,
         Self::Netlify,
+        Self::Wasi,
+        Self::Spin,
+        Self::Fastly,
     ];
 
     /// The host's name, as its shim names it and runs take leases under.
@@ -67,6 +99,9 @@ impl Hosting {
             Self::Node => "node",
             Self::Vercel => "vercel",
             Self::Netlify => "netlify",
+            Self::Wasi => "wasi",
+            Self::Spin => "spin",
+            Self::Fastly => "fastly",
         }
     }
 
@@ -84,6 +119,9 @@ impl Hosting {
             Self::Deno => &DENO,
             Self::Node => &NODE,
             Self::Vercel | Self::Netlify => &FUNCTIONS,
+            Self::Wasi => &WASI,
+            Self::Spin => &SPIN,
+            Self::Fastly => &FASTLY,
         }
     }
 

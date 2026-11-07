@@ -1,0 +1,20 @@
+[package]
+name = "herald-environment"
+description = "Secrets from a process's environment and the time from its clock, on any target with a process"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish.workspace = true
+
+[dependencies]
+herald-ports.workspace = true
+jiff.workspace = true
+
+[dev-dependencies]
+pollster.workspace = true
+
+[lints]
+workspace = true

@@ -20,11 +20,12 @@ use clap::Parser as _;
 use herald_config::{Config, Source, load, samples};
 use herald_core::{Event, Kind, RouteId, SourceName};
 use herald_crypto::RingSigner;
+use herald_environment::{EnvSecrets, SystemClock};
 use herald_flows::{
     Announced, Chored, Connected, Findings, Gap, Kept, Outcome, Ports, Remembered, Stop, Sweep,
     Swept, announce_within, doctor, housekeep, keys, poll, prepare, preview,
 };
-use herald_native::{ConnectError, EnvSecrets, NativeHttp, PublicHttp, SystemClock, random_secret};
+use herald_native::{ConnectError, NativeHttp, PublicHttp, random_secret};
 use herald_ports::{Http, HttpError, Keyring, PUBLIC, Request, Response, Secrets, Store as Keeps};
 use herald_records::Memory;
 use herald_sources_forge::{Forge, Origin, Repository, SourceOptions, Token};

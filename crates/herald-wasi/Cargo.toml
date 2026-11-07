@@ -1,0 +1,28 @@
+[package]
+name = "herald-wasi"
+description = "herald as a wasi:http component: Spin, wasmtime serve, wasmCloud and any other wasi:http host"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[target.'cfg(all(target_arch = "wasm32", target_os = "wasi"))'.dependencies]
+futures-util = { version = "0.3", default-features = false, features = ["std"] }
+herald-compose.workspace = true
+herald-config.workspace = true
+herald-crypto.workspace = true
+herald-environment.workspace = true
+herald-flows.workspace = true
+herald-ports.workspace = true
+send_wrapper = { version = "0.6", features = ["futures"] }
+wasip2 = "2"
+wstd = "0.6"
+
+[lints]
+workspace = true

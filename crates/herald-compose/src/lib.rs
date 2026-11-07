@@ -2,7 +2,8 @@
 //! reached over the ports a [`Host`] gives, and every route, source and
 //! destination connected, to answer requests, do the work they leave, and
 //! run each scheduled round. It names no runtime: the native binary, the
-//! wasm module and the WASI component each give it their ports.
+//! wasm module, the WASI component and Fastly Compute each give it their
+//! ports.
 
 mod capped;
 mod composed;
@@ -12,6 +13,7 @@ mod public;
 mod reach;
 mod reaching;
 mod records;
+mod round;
 pub mod told;
 
 pub use capped::Capped;
@@ -22,3 +24,4 @@ pub use public::{public, reachable};
 pub use reach::{Reach, ReachError, SESSIONS, SocketReach};
 pub use reaching::{Reaching, asked_query, public_address, received};
 pub use records::{GITHUB_REPOSITORY, GITHUB_TOKEN, Records, Served, reached};
+pub use round::{ROUND_SECRET, Round};
