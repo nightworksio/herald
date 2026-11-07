@@ -83,6 +83,15 @@ fn health_asks_the_listen_variable_then_the_config_and_needs_no_config() {
 }
 
 #[test]
+fn store_prints_the_kind_of_store_the_config_names() {
+    let world = World::default();
+    let kept = herald(&setup(CONFIG), &world, &["store"]);
+    assert_eq!((kept.code, kept.out.as_str()), (DONE, "git-branch\n"));
+    let broken = herald(&setup("not toml"), &world, &["store"]);
+    assert_eq!(broken.code, MISTAKEN);
+}
+
+#[test]
 fn preview_renders_each_route_against_a_sample_or_a_release_event() {
     let setup = setup(CONFIG);
     let world = World::default();

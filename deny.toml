@@ -89,6 +89,10 @@ allow = [
 ]
 confidence-threshold = 0.9
 unused-allowed-license = "allow"
+# LLVM's libFuzzer, which the fuzz targets alone link; no herald build ships it.
+exceptions = [
+  { crate = "libfuzzer-sys", allow = ["NCSA"] },
+]
 
 [sources]
 unknown-registry = "deny"

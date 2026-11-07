@@ -70,34 +70,37 @@ and
 [ADR-0009](.docs/decisions/0009-herald-ships-as-binaries-an-action-an-image-and-a-wasm-build.md)
 fix. No release of herald exists yet, so the Action has no binary to download.
 
-`herald.toml`, announcing php-mutation-gate's releases into a Discord
-announcement channel:
+`herald.toml`, herald's own, announcing its releases and pre-releases into
+the NightWorksIO Discord's `package-releases` announcement channel:
 
 ```toml
 #:schema https://raw.githubusercontent.com/nightworksio/herald/main/herald.schema.json
 version = 1
 
 [store]
-kind = "git-branch"
+kind = "markers"
+
+[markers]
+key = { secret = "HERALD_MARKER_SECRET" }
 
 [destinations.discord]
 kind = "discord"
 token = { secret = "HERALD_DISCORD_TOKEN" }
 
-[sources.php-mutation-gate]
+[sources.herald]
 kind = "github"
-repository = "nightworksio/php-mutation-gate"
+repository = "nightworksio/herald"
 
 [[routes]]
-id = "php-mutation-gate-releases"
-sources = ["php-mutation-gate"]
+id = "herald-releases"
+sources = ["herald"]
 kinds = ["release"]
 destination = "discord"
 channel = "1566184281406177531"
 template = "package-release"
 crosspost = true
 thread = { name = "{{ event.project }} {{ event.version }}", archive_after = "14d" }
-mentions = { roles = ["<the php-mutation-gate role's id>"] }
+pin = "markers"
 
 [templates.package-release]
 title = "📦 {{ event.project }} {{ event.version }}{% if event.prerelease %} · pre-release{% endif %}"
@@ -112,11 +115,15 @@ on:
     types: [published]
 
 permissions:
-  contents: write
+  contents: read
+
+concurrency:
+  group: herald
 
 jobs:
   announce:
     runs-on: ubuntu-latest
+    environment: announce
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -124,10 +131,13 @@ jobs:
       - uses: nightworksio/herald@<commit-sha>
         env:
           HERALD_DISCORD_TOKEN: ${{ secrets.HERALD_DISCORD_TOKEN }}
+          HERALD_MARKER_SECRET: ${{ secrets.HERALD_MARKER_SECRET }}
 ```
 
-`contents: write` is for the `git-branch` store, which keeps herald's
-never-twice ledger on a `herald-state` branch.
+The `markers` store keeps herald's never-twice ledger in the posts herald
+makes, so the run writes nothing to the repository. It has no compare-and-set,
+so the `concurrency` group keeps to one herald run at a time. `herald init`
+prints a new `HERALD_MARKER_SECRET`, once.
 
 ### herald's own ActivityPub actor
 
@@ -141,10 +151,10 @@ domain = "herald.example.org"
 key = { secret = "HERALD_ACTIVITYPUB_KEY" }
 
 [[routes]]
-id = "php-mutation-gate-notes"
-sources = ["php-mutation-gate"]
+id = "herald-notes"
+sources = ["herald"]
 destination = "fediverse"
-actor = "php-mutation-gate"
+actor = "herald"
 template = "package-release"
 ```
 
@@ -169,9 +179,9 @@ listens on `127.0.0.1:8080`, for a reverse proxy in front of it that
 terminates TLS:
 
 ```toml
-[sources.php-mutation-gate]
+[sources.herald]
 kind = "github"
-repository = "nightworksio/php-mutation-gate"
+repository = "nightworksio/herald"
 webhook = { secret = "HERALD_GITHUB_WEBHOOK" }
 
 [schedule]
@@ -182,7 +192,7 @@ housekeep = "12h"
 listen = "127.0.0.1:8080"
 ```
 
-- Point the repository's release webhook at `https://<your host>/hooks/php-mutation-gate`, with the secret stored as `HERALD_GITHUB_WEBHOOK`.
+- Point the repository's release webhook at `https://<your host>/hooks/herald`, with the secret stored as `HERALD_GITHUB_WEBHOOK`.
 - herald answers each verified release with 202 and announces it after the reply.
 - An ActivityPub actor is served at `/users/<actor>`, with its Notes, its inbox, the shared inbox `/inbox` and WebFinger.
 - `--listen` or `HERALD_LISTEN` takes the place of `listen`.
@@ -230,7 +240,7 @@ key = "<the application's public key>"
 
 [[routes]]
 id = "releases"
-sources = ["php-mutation-gate"]
+sources = ["herald"]
 destination = "discord"
 channel = "1566184281406177531"
 template = "release"
@@ -264,7 +274,7 @@ What is built on `main`, and the decision each part follows:
 | Destinations: Matrix, Slack, Fediverse | [ADR-0004](.docs/decisions/0004-each-destination-gets-its-own-dialect-limits-and-features.md) | the Fediverse through the Mastodon client API, Matrix through the client-server API, and Slack by bot token or incoming webhook, with subscribers mentioned, against reference fixtures; the ActivityPub actor's signed deliveries of each Note to its followers' shared inboxes, each follow kept and answered with a signed `Accept` and each undo forgetting its follower, and its key loaded by every run and by `herald doctor`; `herald server` serving its inbox, its Notes and the actor and WebFinger documents ([ADR-0014](.docs/decisions/0014-herald-server-answers-first-and-works-after-on-one-task-within-limits.md)) |
 | Commands: `subscribe`, `unsubscribe`, `latest` and `changelog`, and the subscribe button | [ADR-0004](.docs/decisions/0004-each-destination-gets-its-own-dialect-limits-and-features.md), [ADR-0016](.docs/decisions/0016-commands-are-carried-every-way-a-destination-offers-and-answered-from-what-herald-keeps.md) | on Discord over HTTP interactions and the gateway, on Slack over HTTP and Socket Mode, and on Matrix through an application service and a sync; each project's latest announcement kept by every store but markers |
 | Stores: SQLite, Postgres, D1, DynamoDB, Deno KV, markers, git branch, Actions cache, repository variables | [ADR-0005](.docs/decisions/0005-an-announcement-is-sent-once-and-finished-if-interrupted.md) | SQLite, Postgres, the markers, the git branch, the Actions cache and repository variables; D1, DynamoDB and Deno KV, no |
-| The CLI, `herald doctor` and the Action | [ADR-0002](.docs/decisions/0002-three-layers-of-support-and-a-doctor-that-names-the-gaps.md), [ADR-0009](.docs/decisions/0009-herald-ships-as-binaries-an-action-an-image-and-a-wasm-build.md) | `announce`, `poll`, `housekeep`, `server`, `doctor`, `preview`, `init`, `token new`, `discord commands`, `discord roles`, `slack manifest` and `matrix registration`, and the Action; no release carries them yet |
+| The CLI, `herald doctor` and the Action | [ADR-0002](.docs/decisions/0002-three-layers-of-support-and-a-doctor-that-names-the-gaps.md), [ADR-0009](.docs/decisions/0009-herald-ships-as-binaries-an-action-an-image-and-a-wasm-build.md) | `announce`, `poll`, `housekeep`, `server`, `health`, `doctor`, `store`, `preview`, `init`, `token new`, `discord commands`, `discord roles`, `slack manifest` and `matrix registration`, and the Action; no release carries them yet |
 | Serverless drivers and the container | [ADR-0002](.docs/decisions/0002-three-layers-of-support-and-a-doctor-that-names-the-gaps.md), [ADR-0009](.docs/decisions/0009-herald-ships-as-binaries-an-action-an-image-and-a-wasm-build.md), [ADR-0014](.docs/decisions/0014-herald-server-answers-first-and-works-after-on-one-task-within-limits.md) | `herald server`, the container's command, `herald lambda`, Azure Functions' custom handler, the wasm module on Cloudflare Workers, Deno, Node, Bun, Vercel and Netlify, the `wasi:http` component on wasmtime, Spin and Fastly, and the image with its Compose, Kubernetes and Helm templates, each run in CI ([deploy](deploy/README.md)) |
 | herald announcing its own releases | [ADR-0010](.docs/decisions/0010-herald-announces-itself-with-itself.md) | no |
 

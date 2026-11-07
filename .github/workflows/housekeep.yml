@@ -1,0 +1,46 @@
+# herald keeps its own release threads (ADR-0010): each day it archives the
+# threads past the config's archive_after and pins the newest release. Until
+# the announce environment holds its secrets, a run says so and succeeds.
+name: housekeep
+
+on:
+  schedule:
+    - cron: "17 5 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  housekeep:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: announce
+    # The markers store has no compare-and-set, so a release's announcement
+    # waits.
+    concurrency:
+      group: herald
+      cancel-in-progress: false
+    steps:
+      - name: Check the environment's secrets are set
+        id: ready
+        env:
+          HERALD_DISCORD_TOKEN: ${{ secrets.HERALD_DISCORD_TOKEN }}
+          HERALD_MARKER_SECRET: ${{ secrets.HERALD_MARKER_SECRET }}
+        run: |
+          if [[ -n "${HERALD_DISCORD_TOKEN}" && -n "${HERALD_MARKER_SECRET}" ]]; then
+            echo "ready=true" >> "${GITHUB_OUTPUT}"
+          else
+            echo "::notice::No housekeeping until the announce environment's secrets HERALD_DISCORD_TOKEN and HERALD_MARKER_SECRET are set (ADR-0010)."
+          fi
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: steps.ready.outputs.ready == 'true'
+        with:
+          persist-credentials: false
+      - uses: ./ # zizmor: ignore[self-repository]
+        if: steps.ready.outputs.ready == 'true'
+        env:
+          HERALD_DISCORD_TOKEN: ${{ secrets.HERALD_DISCORD_TOKEN }}
+          HERALD_MARKER_SECRET: ${{ secrets.HERALD_MARKER_SECRET }}
+        with:
+          command: housekeep

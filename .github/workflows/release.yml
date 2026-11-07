@@ -14,8 +14,8 @@ name: release
 #   gate runs; the six targets build and are attested; the server image, the
 #   wasi:http component and its Spin build, and the Helm chart are pushed to GHCR,
 #   signed and attested; the release takes the
-#   version's section as its notes and the archives and SHA256SUMS as its
-#   assets; the tag of its release line moves to it; and the release announces
+#   version's section as its notes, and the archives, the two components and
+#   SHA256SUMS as its assets, all attested; the tag of its release line moves to it; and the release announces
 #   itself through herald's own Action (ADR-0010).
 #
 # This workflow never creates a version tag.
@@ -269,7 +269,7 @@ jobs:
         run: .github/scripts/still-tagged.sh
       - name: Install musl
         if: contains(matrix.target, 'musl')
-        run: sudo apt-get update && sudo apt-get install --yes musl-tools
+        run: sudo apt-get update && sudo apt-get install --yes musl-tools=1.2.4-2
       - name: Build
         shell: bash
         env:
@@ -357,6 +357,11 @@ jobs:
       - name: Build and push the wasi:http component and its Spin build
         id: component
         run: .github/scripts/publish-image.sh component
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: herald-wasm32-wasip2
+          path: dist/herald-component*.wasm
+          retention-days: 7
       - name: Package and push the Helm chart
         id: chart
         run: .github/scripts/publish-image.sh chart
@@ -428,7 +433,9 @@ jobs:
           cat SHA256SUMS
       - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
-          subject-path: dist/herald-*
+          subject-path: |
+            dist/herald-*
+            dist/SHA256SUMS
       - name: Check the tag is still at the verified commit, before publishing
         shell: bash
         env:
@@ -473,8 +480,13 @@ jobs:
     needs: [verify, publish]
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    environment: announce
     permissions:
-      contents: write
+      contents: read
+    # The markers store has no compare-and-set, so housekeeping waits.
+    concurrency:
+      group: herald
+      cancel-in-progress: false
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
