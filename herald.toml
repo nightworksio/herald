@@ -1,0 +1,31 @@
+#:schema https://raw.githubusercontent.com/nightworksio/herald/main/herald.schema.json
+version = 1
+
+[store]
+kind = "markers"
+
+[markers]
+key = { secret = "HERALD_MARKER_SECRET" }
+
+[destinations.discord]
+kind = "discord"
+token = { secret = "HERALD_DISCORD_TOKEN" }
+
+[sources.herald]
+kind = "github"
+repository = "nightworksio/herald"
+
+[[routes]]
+id = "herald-releases"
+sources = ["herald"]
+kinds = ["release"]
+destination = "discord"
+channel = "1566184281406177531"
+template = "package-release"
+crosspost = true
+thread = { name = "{{ event.project }} {{ event.version }}", archive_after = "14d" }
+pin = "markers"
+
+[templates.package-release]
+title = "📦 {{ event.project }} {{ event.version }}{% if event.prerelease %} · pre-release{% endif %}"
+body = "{{ event.body }}"

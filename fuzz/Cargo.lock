@@ -54,6 +54,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4e7648175b45a9a48536d676f68d918270699102aa8dab5496df06904c914600"
 
 [[package]]
+name = "cmov"
+version = "0.5.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0c9ea0ac24bc397ab3c98583a3c9ba74fa56b09a4449bbe172b9b1ddb016027a"
+
+[[package]]
 name = "cpufeatures"
 version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -69,6 +75,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ce6e4c961d6cd6c9a86db418387425e8bdeaf05b3c8bc1411e6dca4c252f1453"
 dependencies = [
  "hybrid-array",
+]
+
+[[package]]
+name = "ctutils"
+version = "0.4.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "261af4dc7a06ea8a527a8717d8cbba3417530d6ea14e1edb3de6b67806be474f"
+dependencies = [
+ "cmov",
 ]
 
 [[package]]
@@ -110,6 +125,7 @@ checksum = "f1dd6dbb5841937940781866fa1281a1ff7bd3bf827091440879f9994983d5c2"
 dependencies = [
  "block-buffer",
  "crypto-common",
+ "ctutils",
 ]
 
 [[package]]
@@ -168,6 +184,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ed5909b6e89a2db4456e54cd5f673791d7eca6732202bbf2a9cc504fe2f9b84a"
 
 [[package]]
+name = "herald-aws"
+version = "0.0.0"
+dependencies = [
+ "herald-core",
+ "herald-ports",
+ "hmac",
+ "jiff",
+ "sha2",
+]
+
+[[package]]
 name = "herald-config"
 version = "0.0.0"
 dependencies = [
@@ -180,6 +207,11 @@ dependencies = [
  "herald-sources-forge",
  "herald-sources-registry",
  "herald-store-actions-cache",
+ "herald-store-d1",
+ "herald-store-deno-kv",
+ "herald-store-durable-object",
+ "herald-store-dynamodb",
+ "herald-store-fastly-kv",
  "herald-store-git-branch",
  "herald-store-postgres",
  "herald-store-repo-variables",
@@ -357,6 +389,59 @@ dependencies = [
 ]
 
 [[package]]
+name = "herald-store-d1"
+version = "0.0.0"
+dependencies = [
+ "herald-ports",
+ "herald-records",
+ "schemars",
+ "serde",
+]
+
+[[package]]
+name = "herald-store-deno-kv"
+version = "0.0.0"
+dependencies = [
+ "herald-ports",
+ "herald-records",
+ "schemars",
+ "serde",
+]
+
+[[package]]
+name = "herald-store-durable-object"
+version = "0.0.0"
+dependencies = [
+ "herald-ports",
+ "herald-records",
+ "schemars",
+ "serde",
+]
+
+[[package]]
+name = "herald-store-dynamodb"
+version = "0.0.0"
+dependencies = [
+ "herald-aws",
+ "herald-core",
+ "herald-ports",
+ "herald-records",
+ "schemars",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "herald-store-fastly-kv"
+version = "0.0.0"
+dependencies = [
+ "herald-ports",
+ "herald-records",
+ "schemars",
+ "serde",
+]
+
+[[package]]
 name = "herald-store-git-branch"
 version = "0.0.0"
 dependencies = [
@@ -411,6 +496,15 @@ dependencies = [
  "herald-ports",
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "hmac"
+version = "0.13.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6303bc9732ae41b04cb554b844a762b4115a61bfaa81e3e83050991eeb56863f"
+dependencies = [
+ "digest",
 ]
 
 [[package]]

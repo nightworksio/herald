@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Pushes one of herald's GHCR artefacts for the release TAG and signs it with
 # cosign: `server`, the multi-arch image; `component`, the wasi:http component
-# and its Spin build; `chart`, the Helm chart. Each digest, and the server's
+# and its Spin build, each also left in dist/ as a release asset; `chart`, the
+# Helm chart. Each digest, and the server's
 # SBOM, is written to GITHUB_OUTPUT. A prerelease takes its own version's tag
 # alone; a release also moves its minor and major tags.
 set -euo pipefail
@@ -38,10 +39,12 @@ case "${artefact}" in
     printf 'digest=%s\nsbom=%s\n' "${digest}" "${sbom}" >> "${GITHUB_OUTPUT}"
     ;;
   component)
+    mkdir -p dist
     for variant in component component-spin; do
       features=()
       [[ "${variant}" == "component-spin" ]] && features=(--features spin)
       cargo build --locked --release --target wasm32-wasip2 --package herald-wasi "${features[@]}"
+      cp target/wasm32-wasip2/release/herald_wasi.wasm "dist/herald-${variant}.wasm"
       for tag in "${tags[@]}"; do
         wkg oci push "${REGISTRY}/herald-${variant}:${tag}" target/wasm32-wasip2/release/herald_wasi.wasm
       done
