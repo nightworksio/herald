@@ -1142,6 +1142,7 @@ dependencies = [
  "herald-dest-discord",
  "herald-dest-matrix",
  "herald-dest-slack",
+ "herald-environment",
  "herald-flows",
  "herald-native",
  "herald-ports",

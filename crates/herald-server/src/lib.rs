@@ -46,6 +46,12 @@ mod sessions;
 
 /// The name the server takes its leases under.
 pub(crate) const RUN: &str = "server";
+
+/// The name a job of this server takes its leases under: `server`, then a
+/// nonce no other job takes (ADR-0005).
+fn named() -> String {
+    format!("{RUN}/{}", herald_environment::nonce())
+}
 /// How many seconds a sender is asked to wait when the work queue is full.
 const BUSY_RETRY: &str = "30";
 /// How long a connection may take to send a request's headers, and then
@@ -330,7 +336,7 @@ impl Rounds<'_> {
     ) -> Option<Heard> {
         once(&self.polling, async {
             Some(Heard::Polled(
-                poll(serving.config, serving.connected, serving.ports, RUN).await,
+                poll(serving.config, serving.connected, serving.ports, &named()).await,
             ))
         })
         .await
@@ -492,7 +498,7 @@ pub async fn serve<S, C, G, V, H, P, K, L, So>(
                 break;
             };
             running.push(Box::pin(async move {
-                Some(Heard::Worked(work(serving, job, RUN).await))
+                Some(Heard::Worked(work(serving, job, &named()).await))
             }));
         }
         tokio::select! {

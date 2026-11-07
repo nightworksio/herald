@@ -61,6 +61,10 @@ pub trait Host: Sync {
     /// Where the platform offers no such store, or it cannot be opened,
     /// saying why.
     fn kv(&self, at: KvAt<'_>) -> impl Future<Output = Result<Self::Kv, String>>;
+
+    /// A nonce no other run or job takes, which keeps each job's name for
+    /// its leases its own (ADR-0005).
+    fn nonce(&self) -> String;
 }
 
 /// Where a store's database is.

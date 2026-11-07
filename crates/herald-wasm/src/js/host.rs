@@ -91,6 +91,10 @@ impl Host for JsHost {
         &JsClock
     }
 
+    fn nonce(&self) -> String {
+        format!("{:016x}", js_sys::Math::random().to_bits())
+    }
+
     fn signer(&self) -> &WebSigner {
         &WebSigner
     }
