@@ -26,6 +26,7 @@ mod poll;
 mod prepare;
 mod preview;
 mod reached;
+mod room;
 mod serving;
 mod sessions;
 mod together;
@@ -44,8 +45,9 @@ pub use poll::{Fresh, Remembered, Sweep, Swept, poll};
 pub use prepare::{Connected, PrepareError, Prepared, prepare};
 pub use preview::{Previewed, preview};
 pub use reached::{Posts, Reached};
+pub use room::{Place, Room, Running};
 pub use serving::{
-    Answered, HEALTH, HOOKS, Inbound, Interacted, Job, Reply, Serving, Webhooks, Worked, answer,
-    unworked, webhooks, work,
+    Answered, BUSY_RETRY, HEALTH, HOOKS, Inbound, Interacted, Job, Reply, Serving, Webhooks,
+    Worked, answer, busy, refusal, unworked, webhooks, work,
 };
 pub use sessions::{Sessions, Taker};

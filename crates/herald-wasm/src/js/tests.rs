@@ -499,7 +499,7 @@ async fn work_is_taken_up_to_the_most_at_once_and_done_on_the_event_loop() {
     JsTimer.sleep(std::time::Duration::from_millis(1)).await;
     let composed = Herald::compose(
         host(&object(&[])),
-        "version = 1\n[store]\nkind = \"markers\"\n".to_owned(),
+        "version = 1\n[store]\nkind = \"markers\"\n[server]\njobs = 1\n".to_owned(),
         JsValue::UNDEFINED,
         "worker".to_owned(),
     )
@@ -507,14 +507,12 @@ async fn work_is_taken_up_to_the_most_at_once_and_done_on_the_event_loop() {
     .unwrap_or_else(|_| panic!("composed"));
     let taker = JsTaker {
         composed: composed.composed(),
-        working: std::rc::Rc::default(),
-        most: 1,
     };
-    assert_eq!(taker.place(), Some(()));
-    assert_eq!(taker.place(), None);
+    let place = taker.place().expect("a place in an empty room");
+    assert!(taker.place().is_none());
     let destination = herald_core::DestinationName::new("chat");
     taker.fill(
-        (),
+        place,
         herald_flows::Job::Interact {
             destination: destination.clone(),
             asked: Vec::new(),
@@ -525,7 +523,7 @@ async fn work_is_taken_up_to_the_most_at_once_and_done_on_the_event_loop() {
     let said = heard();
     assert_eq!(strings_of(&said), ["chat: heard"]);
     JsTimer.sleep(std::time::Duration::from_millis(5)).await;
-    assert_eq!(taker.working.get(), 0);
+    assert!(taker.place().is_some());
     let held = JsFuture::from(composed.hold(sockets())).await.unwrap();
     assert!(held.is_undefined());
 }

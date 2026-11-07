@@ -14,20 +14,8 @@ export const TIMEOUT = 10_000;
 export async function capped(response, most) {
   const larger = () => new Error(`the response is larger than ${most} bytes`);
   if (Number(response.headers.get("content-length") ?? 0) > most) throw larger();
-  if (!response.body) return new Uint8Array();
-  const chunks = [];
-  let read = 0;
-  for await (const chunk of response.body) {
-    read += chunk.length;
-    if (read > most) throw larger();
-    chunks.push(chunk);
-  }
-  const body = new Uint8Array(read);
-  let at = 0;
-  for (const chunk of chunks) {
-    body.set(chunk, at);
-    at += chunk.length;
-  }
+  const body = await upTo(response.body, most);
+  if (body.length > most) throw larger();
   return body;
 }
 
@@ -75,11 +63,27 @@ export function denoKv(kv) {
 export async function answering(herald, asked) {
   const answer = await herald.answer(asked, false);
   if (answer.refused) console.warn(answer.refused);
-  const response = new Response(answer.body.length ? answer.body : null, {
-    status: answer.status,
-    headers: { "content-type": answer.kind },
-  });
+  const headers = { "content-type": answer.kind };
+  if (answer.retryAfter !== undefined) headers["retry-after"] = String(answer.retryAfter);
+  const response = new Response(answer.body.length ? answer.body : null, { status: answer.status, headers });
   return { response, work: answer.work?.then(said) };
+}
+
+export async function upTo(chunks, most) {
+  const read = [];
+  let length = 0;
+  for await (const chunk of chunks ?? []) {
+    read.push(chunk);
+    length += chunk.length;
+    if (length > most) break;
+  }
+  const body = new Uint8Array(length);
+  let at = 0;
+  for (const chunk of read) {
+    body.set(chunk, at);
+    at += chunk.length;
+  }
+  return body;
 }
 
 export async function answered(herald, request) {
@@ -89,7 +93,7 @@ export async function answered(herald, request) {
     path: url.pathname,
     query: url.search.slice(1),
     headers: [...request.headers],
-    body: new Uint8Array(await request.arrayBuffer()),
+    body: await upTo(request.body, herald.limits().body),
   });
 }
 

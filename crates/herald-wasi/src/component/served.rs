@@ -1,6 +1,6 @@
-use herald_compose::{Asked, Composed, Hosting, ROUND_SECRET, plain, told};
+use herald_compose::{Asked, Composed, Hosting, Left, ROUND_SECRET, told};
 use herald_config::{Config, load};
-use herald_flows::{Job, Reply};
+use herald_flows::{Reply, refusal};
 use herald_ports::Secret;
 
 use super::host::WasiHost;
@@ -40,32 +40,48 @@ async fn composed(vars: Vec<(String, String)>) -> Result<Composed<WasiHost>, Str
     .await
 }
 
-fn said(lines: impl IntoIterator<Item = String>) {
+pub(super) fn said(lines: impl IntoIterator<Item = String>) {
     for line in lines {
         eprintln!("{line}");
     }
 }
 
-/// The answer to `asked` over `vars`, the environment, and the work it leaves
-/// with what it runs on.
-pub(super) async fn answered(
-    asked: &Asked,
-    vars: Vec<(String, String)>,
-) -> (Reply, Option<(Composed<WasiHost>, Job)>) {
-    let secret = named(&vars, ROUND_SECRET).map(|value| Secret::new(ROUND_SECRET, value));
-    let composed = match composed(vars).await {
-        Ok(composed) => composed,
-        Err(error) => {
-            eprintln!("herald could not start: {error}");
-            return (plain(500, "herald could not start"), None);
-        }
-    };
-    let reached = composed.reached(asked, secret.as_ref()).await;
-    said(reached.said);
-    (reached.reply, reached.job.map(|job| (composed, job)))
+/// herald composed for one request, with the secret its rounds are asked
+/// with.
+pub(super) struct Started {
+    composed: Composed<WasiHost>,
+    secret: Option<Secret>,
 }
 
-/// The work a request left, done.
-pub(super) async fn worked(composed: &Composed<WasiHost>, job: Job) {
-    said(told::worked(&composed.work(job).await));
+impl Started {
+    /// herald composed over `vars`, the environment, or the reply that says
+    /// it could not start, the reason logged.
+    pub(super) async fn new(vars: Vec<(String, String)>) -> Result<Self, Reply> {
+        let secret = named(&vars, ROUND_SECRET).map(|value| Secret::new(ROUND_SECRET, value));
+        match composed(vars).await {
+            Ok(composed) => Ok(Self { composed, secret }),
+            Err(error) => {
+                let refused = refusal(500, format!("herald could not start: {error}"));
+                said(refused.refused.as_deref().map(told::refused));
+                Err(refused.reply)
+            }
+        }
+    }
+
+    /// The most of a body that is read.
+    pub(super) fn body(&self) -> usize {
+        self.composed.config().server.body
+    }
+
+    /// The answer to `asked`, and the work it leaves.
+    pub(super) async fn answered(&self, asked: &Asked) -> (Reply, Option<Left>) {
+        let reached = self.composed.reached(asked, self.secret.as_ref()).await;
+        said(reached.said);
+        (reached.reply, reached.left)
+    }
+
+    /// The work a request left, done.
+    pub(super) async fn worked(&self, left: Left) {
+        said(told::worked(&self.composed.work(left).await));
+    }
 }

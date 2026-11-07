@@ -1,11 +1,10 @@
-use std::cell::Cell;
 use std::future::Future;
 use std::rc::Rc;
 use std::time::Duration;
 
-use herald_compose::{Composed, SocketReach, told};
+use herald_compose::{Composed, Left, SocketReach, told};
 use herald_core::DestinationName;
-use herald_flows::{Job, Taker};
+use herald_flows::{Job, Place, Taker};
 use herald_ports::{Frame, HttpError, Socket, Sockets, Text, Timer};
 use js_sys::Promise;
 use send_wrapper::SendWrapper;
@@ -94,26 +93,21 @@ impl Timer for JsTimer {
 /// loop, at most so many at once.
 pub(crate) struct JsTaker {
     pub(crate) composed: Rc<Composed<JsHost>>,
-    pub(crate) working: Rc<Cell<usize>>,
-    pub(crate) most: usize,
 }
 
 impl Taker for JsTaker {
-    type Place = ();
+    type Place = Place;
 
-    fn place(&self) -> Option<()> {
-        let working = self.working.get();
-        (working < self.most).then(|| self.working.set(working + 1))
+    fn place(&self) -> Option<Place> {
+        self.composed.place()
     }
 
-    fn fill(&self, (): (), job: Job) {
+    fn fill(&self, place: Place, job: Job) {
         let composed = Rc::clone(&self.composed);
-        let working = Rc::clone(&self.working);
         spawn_local(async move {
-            for line in told::worked(&composed.work(job).await) {
+            for line in told::worked(&composed.work(Left::new(job, place)).await) {
                 log(&line);
             }
-            working.set(working.get().saturating_sub(1));
         });
     }
 

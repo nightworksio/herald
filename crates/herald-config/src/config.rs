@@ -446,6 +446,11 @@ impl Server {
     /// How long a session hears nothing before it checks its connection
     /// where the config says nothing.
     pub const SILENCE: SignedDuration = SignedDuration::from_secs(30);
+    /// How long a connection may take to send a request's headers, and then
+    /// its body.
+    pub const READ: SignedDuration = SignedDuration::from_secs(30);
+    /// How long a connection is held at most, its one request answered.
+    pub const HELD: SignedDuration = SignedDuration::from_secs(90);
 }
 
 impl Server {

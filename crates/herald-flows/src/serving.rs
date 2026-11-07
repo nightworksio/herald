@@ -76,6 +76,9 @@ pub struct Reply {
     pub kind: &'static str,
     /// The body.
     pub body: Vec<u8>,
+    /// How many seconds the sender is asked to wait before it asks again,
+    /// as `Retry-After` names them.
+    pub retry_after: Option<u32>,
 }
 
 /// Work a request leaves to be done once it is answered.
@@ -221,7 +224,9 @@ pub(crate) async fn unread<S: Store>(
 /// The reply to a request refused for `reason`: a body that names no
 /// reason, the same for every refusal of its kind, and the reason kept for
 /// the log (ADR-0007).
-pub(crate) fn refusal(status: u16, reason: impl Into<String>) -> Answered {
+/// A refusal answered `status` with herald's fixed body for it, its
+/// `reason` kept for the log (ADR-0007).
+pub fn refusal(status: u16, reason: impl Into<String>) -> Answered {
     let body = match status {
         409 => "herald has taken this request already",
         500.. => "herald cannot answer this request now",
@@ -233,12 +238,30 @@ pub(crate) fn refusal(status: u16, reason: impl Into<String>) -> Answered {
     }
 }
 
+/// How many seconds a request whose work found no place is asked to wait.
+pub const BUSY_RETRY: u32 = 30;
+
+/// The refusal of a request whose work found no place, asking its sender
+/// to wait [`BUSY_RETRY`] seconds.
+#[must_use]
+pub fn busy() -> Answered {
+    let refused = refusal(503, "the queue has no place for the work it leaves");
+    Answered {
+        reply: Reply {
+            retry_after: Some(BUSY_RETRY),
+            ..refused.reply
+        },
+        ..refused
+    }
+}
+
 pub(crate) fn replied(status: u16, kind: &'static str, body: impl Into<Vec<u8>>) -> Answered {
     Answered {
         reply: Reply {
             status,
             kind,
             body: body.into(),
+            retry_after: None,
         },
         job: None,
         refused: None,

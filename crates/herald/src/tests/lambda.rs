@@ -258,7 +258,12 @@ fn work_whose_hand_off_times_out_is_done_now_and_an_unread_body_is_not_a_request
 #[test]
 fn a_body_that_is_not_text_is_answered_in_base64() {
     assert_eq!(
-        crate::lambda::replied(200, "application/octet-stream", &[0xff, 0x00]),
+        crate::lambda::replied(&herald_flows::Reply {
+            status: 200,
+            kind: "application/octet-stream",
+            body: vec![0xff, 0x00],
+            retry_after: None,
+        }),
         json!({
             "statusCode": 200,
             "headers": { "content-type": "application/octet-stream" },

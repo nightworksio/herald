@@ -1,14 +1,17 @@
 use std::future::Future;
+use std::sync::atomic::AtomicBool;
 
 use herald_config::Config;
 use herald_flows::{
-    Admission, Answered, Connected, Inbound, Job, Kept, Keys, Ports, Serving, Sessions, Stop,
-    Swept, Taker, Webhooks, Worked, answer, housekeep, poll, prepare, webhooks, work,
+    Admission, Connected, Inbound, Job, Kept, Keys, Place, Ports, Room, Running, Serving, Sessions,
+    Stop, Swept, Taker, Webhooks, Worked, answer, busy, housekeep, poll, prepare, refusal,
+    unworked, webhooks, work,
 };
 use herald_ports::{Clock as _, Keyring, PUBLIC, Sockets, Store as Keeps, Timer};
 use herald_records::MemoryKeyring;
 use jiff::Timestamp;
 
+use crate::answer::{Answer, Left};
 use crate::capped::Capped;
 use crate::host::Host;
 use crate::records::{Records, Served, reached};
@@ -24,6 +27,9 @@ pub struct Composed<H: Host> {
     webhooks: Webhooks,
     public: Capped<H::Http>,
     memory: MemoryKeyring,
+    room: Room,
+    polling: AtomicBool,
+    housekeeping: AtomicBool,
     run: String,
 }
 
@@ -53,6 +59,7 @@ impl<H: Host> Composed<H> {
             .map_err(|error| error.to_string())?;
         let public = Capped::new(host.connect(PUBLIC)?, config.server.fetches);
         let memory = MemoryKeyring::new(config.server.keys_most);
+        let room = Room::new(config.server.jobs);
         Ok(Self {
             host,
             config,
@@ -61,6 +68,9 @@ impl<H: Host> Composed<H> {
             webhooks,
             public,
             memory,
+            room,
+            polling: AtomicBool::new(false),
+            housekeeping: AtomicBool::new(false),
             run: run.into(),
         })
     }
@@ -77,27 +87,56 @@ impl<H: Host> Composed<H> {
 
     /// The reply to `inbound`, and the work it leaves, its delivery admitted
     /// as `admission` says.
-    pub async fn answer(&self, inbound: &Inbound<'_>, admission: Admission) -> Answered {
-        self.through(admission, Answering(inbound)).await
+    pub async fn answer(&self, inbound: &Inbound<'_>, admission: Admission) -> Answer {
+        if inbound.body.len() > self.config.server.body {
+            return refusal(
+                413,
+                format!(
+                    "its body is larger than [server] body, {} bytes",
+                    self.config.server.body
+                ),
+            )
+            .into();
+        }
+        let answering = Answering {
+            inbound,
+            room: &self.room,
+        };
+        self.through(admission, answering).await
     }
 
-    /// `job` done.
-    pub async fn work(&self, job: Job) -> Worked {
-        self.through(Admission::Once, Working(job)).await
+    /// A place for one more piece of work, where `[server] jobs` leaves one.
+    #[must_use]
+    pub fn place(&self) -> Option<Place> {
+        self.room.place()
     }
 
-    /// Every source polled.
+    /// The work `left` done, its place given up after.
+    pub async fn work(&self, left: Left) -> Worked {
+        let Left { job, place } = left;
+        let worked = self.through(Admission::Once, Working(job)).await;
+        drop(place);
+        worked
+    }
+
+    /// Every source polled, where no poll is running; none where one is.
     pub async fn poll(&self) -> Vec<Swept> {
+        let Some(_running) = Running::start(&self.polling) else {
+            return Vec::new();
+        };
         self.through(Admission::Once, Polling).await
     }
 
     /// The store's housekeeping done, and the keys read longest ago
-    /// forgotten.
+    /// forgotten, where no housekeeping is running; nothing where it is.
     ///
     /// # Errors
     ///
     /// Where housekeeping stopped, saying why.
     pub async fn housekeep(&self) -> Result<Vec<Kept>, Stop> {
+        let Some(_running) = Running::start(&self.housekeeping) else {
+            return Ok(Vec::new());
+        };
         self.through(Admission::Once, Housekeeping).await
     }
 
@@ -200,13 +239,27 @@ impl<H: Host, W: Keyed<H>> Through<'_, H, W> {
     }
 }
 
-struct Answering<'i, 'a>(&'i Inbound<'a>);
+struct Answering<'i, 'a> {
+    inbound: &'i Inbound<'a>,
+    room: &'i Room,
+}
 
 impl<H: Host> Keyed<H> for Answering<'_, '_> {
-    type Done = Answered;
+    type Done = Answer;
 
-    async fn keyed<S: Keeps, K: Keyring>(self, serving: &Hosted<'_, H, S, K>, _: &str) -> Answered {
-        answer(serving, self.0).await
+    async fn keyed<S: Keeps, K: Keyring>(self, serving: &Hosted<'_, H, S, K>, _: &str) -> Answer {
+        let mut answered = answer(serving, self.inbound).await;
+        let Some(job) = answered.job.take() else {
+            return answered.into();
+        };
+        let Some(place) = self.room.place() else {
+            unworked(serving, &job).await;
+            return busy().into();
+        };
+        Answer {
+            left: Some(Left { job, place }),
+            ..answered.into()
+        }
     }
 }
 

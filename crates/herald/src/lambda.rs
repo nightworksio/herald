@@ -14,10 +14,10 @@ use std::io::Write;
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD;
 use herald_aws::{Signing, signed};
-use herald_compose::{Composed, Host as _};
+use herald_compose::{Composed, Host as _, Left};
 use herald_config::Config;
 use herald_environment::EnvSecrets;
-use herald_flows::{Admission, Inbound, Job};
+use herald_flows::{Admission, Inbound, Reply};
 use herald_ports::{Clock as _, Http, Method, Request, Secret, Secrets as _, Text};
 use herald_server::Heard;
 use jiff::Timestamp;
@@ -171,15 +171,20 @@ impl Carried {
     }
 }
 
-/// What an HTTP API answers for `status`, `kind` and `body`.
-pub(crate) fn replied(status: u16, kind: &str, body: &[u8]) -> Value {
-    let (body, encoded) = match std::str::from_utf8(body) {
+/// What an HTTP API answers for `reply`.
+pub(crate) fn replied(reply: &Reply) -> Value {
+    let (body, encoded) = match std::str::from_utf8(&reply.body) {
         Ok(text) => (text.to_owned(), false),
-        Err(_) => (STANDARD.encode(body), true),
+        Err(_) => (STANDARD.encode(&reply.body), true),
     };
+    let mut headers = serde_json::Map::new();
+    headers.insert("content-type".to_owned(), reply.kind.into());
+    if let Some(after) = reply.retry_after {
+        headers.insert("retry-after".to_owned(), after.to_string().into());
+    }
     json!({
-        "statusCode": status,
-        "headers": { "content-type": kind },
+        "statusCode": reply.status,
+        "headers": headers,
         "body": body,
         "isBase64Encoded": encoded,
     })
@@ -273,8 +278,8 @@ impl Function<'_> {
                 .collect();
             let inbound = carried.answered(&headers);
             if handed {
-                if let Some(job) = composed.answer(&inbound, Admission::Again).await.job {
-                    self.heard(Heard::Worked(composed.work(job).await));
+                if let Some(left) = composed.answer(&inbound, Admission::Again).await.left {
+                    self.heard(Heard::Worked(composed.work(left).await));
                 }
                 return Ok(json!({}));
             }
@@ -282,11 +287,10 @@ impl Function<'_> {
             if let Some(reason) = answered.refused {
                 self.heard(Heard::Refused(reason));
             }
-            if let Some(job) = answered.job {
-                self.leave(job, &carried).await;
+            if let Some(left) = answered.left {
+                self.leave(left, &carried).await;
             }
-            let reply = answered.reply;
-            return Ok(replied(reply.status, reply.kind, &reply.body));
+            return Ok(replied(&answered.reply));
         }
         let scheduled = matches!(
             event.get("source").and_then(Value::as_str),
@@ -302,9 +306,9 @@ impl Function<'_> {
         Ok(json!({}))
     }
 
-    /// Hands `job`, left by `carried`, to the function again, or does it
+    /// Hands `left`, left by `carried`, to the function again, or does it
     /// now where it cannot be handed.
-    async fn leave(&self, job: Job, carried: &Carried) {
+    async fn leave(&self, left: Left, carried: &Carried) {
         if let Some((handing, http)) = &self.handing {
             let now = self.composed.host().clock().now();
             let invocation = handing.invocation(&carried.handed(), now);
@@ -319,7 +323,7 @@ impl Function<'_> {
                 )),
             }
         }
-        self.heard(Heard::Worked(self.composed.work(job).await));
+        self.heard(Heard::Worked(self.composed.work(left).await));
     }
 }
 

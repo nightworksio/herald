@@ -5,8 +5,10 @@
 //! task: forge webhooks, commands, herald's ActivityPub actors and their
 //! inboxes, and health. The work a request or a command a session carries
 //! leaves runs once it is answered, at most [`Limits::jobs`] at once, with
-//! as many again waiting; a request that could leave more is answered 503. At most [`Limits::connections`] are
-//! held, each for one request whose headers and body are read in time.
+//! as many again waiting. A request is read and verified before its work
+//! takes a place; work the queue has no place for is released and answered
+//! 503. At most [`Limits::connections`] are held, each for one request whose
+//! headers and body are read in time.
 //! One round of each kind runs at a time. Sources are polled, threads kept and
 //! keys forgotten on the config's schedule. TLS is a reverse proxy's.
 
@@ -17,13 +19,15 @@ use std::future::Future;
 use std::io;
 use std::net::SocketAddr;
 use std::pin::{Pin, pin};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use futures_util::stream::{FuturesUnordered, StreamExt};
+use herald_config::Server;
 use herald_core::DestinationName;
 use herald_flows::{
-    Inbound, Job, Kept, Serving, Sessions, Stop, Swept, Worked, answer, housekeep, poll, unworked,
-    work,
+    Answered, Inbound, Job, Kept, Running, Serving, Sessions, Stop, Swept, Worked, answer, busy,
+    housekeep, poll, refusal, unworked, work,
 };
 use herald_native::TokioTimer as Waiting;
 use herald_ports::{Clock, Http, Keyring, Signer, Sockets, Store, Verifier};
@@ -53,18 +57,14 @@ fn named() -> String {
     format!("{RUN}/{}", herald_environment::nonce())
 }
 
-/// How many seconds a sender is asked to wait when the work queue is full.
-const BUSY_RETRY: &str = "30";
 /// How long a connection may take to send a request's headers, and then
 /// its body, unless its limits say otherwise.
-pub const READ: Duration = Duration::from_secs(30);
+pub const READ: Duration = Duration::from_secs(Server::READ.as_secs().unsigned_abs());
 /// How long a connection is held at most, its one request answered.
-const HELD: Duration = Duration::from_secs(90);
+const HELD: Duration = Duration::from_secs(Server::HELD.as_secs().unsigned_abs());
 /// How long the server waits before taking connections again after one
 /// could not be taken, so a lack of file descriptors does not spin it.
 const ACCEPT_PAUSE: Duration = Duration::from_millis(100);
-/// What a reply in words is.
-const TEXT: &str = "text/plain; charset=utf-8";
 /// What an answer to a host asking for a round is.
 const JSON: &str = "application/json";
 
@@ -219,15 +219,21 @@ fn replied(status: u16, kind: &'static str, body: Vec<u8>) -> hyper::Response<Fu
     response
 }
 
-fn busy() -> hyper::Response<Full<Bytes>> {
+/// The reply `answered` gives, a refusal's reason said through `rounds`.
+fn sent(rounds: &Rounds<'_>, answered: Answered) -> hyper::Response<Full<Bytes>> {
+    if let Some(reason) = answered.refused {
+        (rounds.heard)(Heard::Refused(reason));
+    }
     let mut response = replied(
-        503,
-        TEXT,
-        b"herald has as much work waiting as it takes; ask again later".to_vec(),
+        answered.reply.status,
+        answered.reply.kind,
+        answered.reply.body,
     );
-    response
-        .headers_mut()
-        .insert(RETRY_AFTER, HeaderValue::from_static(BUSY_RETRY));
+    if let Some(after) = answered.reply.retry_after {
+        response
+            .headers_mut()
+            .insert(RETRY_AFTER, HeaderValue::from(after));
+    }
     response
 }
 
@@ -254,29 +260,22 @@ where
     {
         return Ok(reply);
     }
-    let held = if request.method() == Method::POST {
-        let Some(held) = queue.hold() else {
-            return Ok(busy());
-        };
-        Some(held)
-    } else {
-        None
-    };
     let (parts, body) = request.into_parts();
     let Ok(read) =
         tokio::time::timeout(limits.read, Limited::new(body, limits.body).collect()).await
     else {
-        return Ok(replied(
-            408,
-            TEXT,
-            b"the request's body was not sent in time".to_vec(),
-        ));
+        return Ok(sent(rounds, refusal(408, "its body was not sent in time")));
     };
     let Ok(collected) = read else {
-        return Ok(replied(
-            413,
-            TEXT,
-            b"the request's body is larger than herald takes, or could not be read".to_vec(),
+        return Ok(sent(
+            rounds,
+            refusal(
+                413,
+                format!(
+                    "its body is larger than [server] body, {} bytes, or could not be read",
+                    limits.body
+                ),
+            ),
         ));
     };
     let body = collected.to_bytes();
@@ -301,37 +300,30 @@ where
         headers: &borrowed,
         body: &body,
     };
-    let answered = answer(serving, &inbound).await;
-    if let Some(reason) = answered.refused {
-        (rounds.heard)(Heard::Refused(reason));
-    }
-    if let (Some(job), Some(held)) = (answered.job, held) {
+    let mut answered = answer(serving, &inbound).await;
+    if let Some(job) = answered.job.take() {
+        let Some(held) = queue.hold() else {
+            unworked(serving, &job).await;
+            return Ok(sent(rounds, busy()));
+        };
         held.fill(job);
     }
-    Ok(replied(
-        answered.reply.status,
-        answered.reply.kind,
-        answered.reply.body,
-    ))
+    Ok(sent(rounds, answered))
 }
 
 /// Which rounds are running, so that one of each kind runs at a time, and
 /// where what they did is said.
 struct Rounds<'a> {
-    polling: Cell<bool>,
-    keeping: Cell<bool>,
-    sweeping: Cell<bool>,
+    polling: AtomicBool,
+    keeping: AtomicBool,
+    sweeping: AtomicBool,
     heard: &'a dyn Fn(Heard),
 }
 
 /// `round` done, where no round `running` marks is.
-async fn once(running: &Cell<bool>, round: impl Future<Output = Option<Heard>>) -> Option<Heard> {
-    if running.replace(true) {
-        return None;
-    }
-    let done = round.await;
-    running.set(false);
-    done
+async fn once(running: &AtomicBool, round: impl Future<Output = Option<Heard>>) -> Option<Heard> {
+    let _running = Running::start(running)?;
+    round.await
 }
 
 impl Rounds<'_> {
@@ -477,9 +469,9 @@ pub async fn serve<S, C, G, V, H, P, K, L, So>(
         heard(Heard::Listening(address));
     }
     let rounding = Rounds {
-        polling: Cell::new(false),
-        keeping: Cell::new(false),
-        sweeping: Cell::new(false),
+        polling: AtomicBool::new(false),
+        keeping: AtomicBool::new(false),
+        sweeping: AtomicBool::new(false),
         heard,
     };
     let queue = Queue::new(limits.jobs);
@@ -524,13 +516,13 @@ pub async fn serve<S, C, G, V, H, P, K, L, So>(
                     heard(said);
                 }
             }
-            () = round(&mut polls), if !rounding.polling.get() => {
+            () = round(&mut polls), if !rounding.polling.load(Ordering::Acquire) => {
                 running.push(Box::pin(rounding.polled(serving)));
             }
-            () = round(&mut chores), if !rounding.keeping.get() => {
+            () = round(&mut chores), if !rounding.keeping.load(Ordering::Acquire) => {
                 running.push(Box::pin(rounding.kept(serving)));
             }
-            () = round(&mut sweeps), if !rounding.sweeping.get() => {
+            () = round(&mut sweeps), if !rounding.sweeping.load(Ordering::Acquire) => {
                 running.push(Box::pin(rounding.swept(serving)));
             }
         }

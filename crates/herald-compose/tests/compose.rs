@@ -7,7 +7,7 @@ mod compose {
     use std::future::{Future, ready};
     use std::sync::Mutex;
 
-    use herald_compose::{Asked, Composed, Host, KvAt, Records, SqlAt, reached};
+    use herald_compose::{Asked, Composed, Host, KvAt, Left, Records, SqlAt, reached};
     use herald_config::{Config, Store, load};
     use herald_core::DestinationName;
     use herald_flows::{Admission, Inbound, Job, Taker, Worked};
@@ -345,7 +345,7 @@ mod compose {
             };
             let answered = pollster::block_on(composed.answer(&health, Admission::Once));
             assert_eq!(answered.reply.status, 200);
-            assert!(answered.job.is_none());
+            assert!(answered.left.is_none());
             assert_eq!(pollster::block_on(composed.poll()), Vec::new());
             assert_eq!(pollster::block_on(composed.housekeep()), Ok(Vec::new()));
             let sockets = ScriptedSockets::default();
@@ -449,8 +449,9 @@ template = "t"
                     destination: DestinationName::new("chat"),
                     asked: Vec::new(),
                 };
+                let place = composed.place().expect("a place in an empty room");
                 assert_eq!(
-                    pollster::block_on(composed.work(job)),
+                    pollster::block_on(composed.work(Left::new(job, place))),
                     Worked::Interacted(Vec::new()),
                     "{store}"
                 );
@@ -495,7 +496,7 @@ template = "t"
             );
             assert_eq!(held.reply.status, 200, "{round}");
             assert_eq!(held.reply.body, b"the round ran");
-            assert!(held.job.is_none());
+            assert!(held.left.is_none());
         }
     }
 
@@ -535,6 +536,75 @@ body = "{{ event.body }}"
             .push(("host".to_owned(), "herald.example".to_owned()));
         let addressed = pollster::block_on(composed.reached(&inbox, None));
         assert_eq!(addressed.reply.status, 401);
+    }
+
+    #[test]
+    fn a_body_or_work_past_the_server_s_limits_is_refused_and_its_delivery_released() {
+        let text = format!(
+            r#"version = 1
+[store]
+kind = "deno-kv"
+[server]
+jobs = 1
+body = "1KiB"
+[destinations.chat]
+kind = "slack"
+token = {{ secret = "TOKEN" }}
+[[routes]]
+id = "deployed"
+sources = ["ci"]
+destination = "chat"
+channel = "C0123456789"
+template = "t"
+[apps.ci]
+tokens = ["sha256:{}"]
+projects = ["herald"]
+routes = ["deployed"]
+[templates.t]
+title = "{{{{ event.title }}}}"
+body = "{{{{ event.body }}}}"
+"#,
+            herald_core::digest("app-token")
+        );
+        let config = load("herald.toml", &text, &|_| Err(String::new())).unwrap();
+        let host = Hosting {
+            secrets: FakeSecrets::default().with("TOKEN", "t"),
+            ..Hosting::default()
+        };
+        let composed = pollster::block_on(Composed::new(host, config, &EVERY, "test")).unwrap();
+        let headers = [("Authorization", "Bearer app-token")];
+        let event =
+            |id: &str| format!(r#"{{"id": "{id}", "project": "herald", "title": "Deployed"}}"#);
+        let post = |body: &str| {
+            let inbound = Inbound {
+                method: "POST",
+                path: "/api/projects/herald/events",
+                query: None,
+                headers: &headers,
+                body: body.as_bytes(),
+            };
+            pollster::block_on(composed.answer(&inbound, Admission::Once))
+        };
+        let large = post(&"0".repeat(1025));
+        assert_eq!(
+            (large.reply.status, large.reply.body.as_slice()),
+            (413, b"herald does not take this request".as_slice())
+        );
+        let first = post(&event("1"));
+        assert_eq!(first.reply.status, 202);
+        assert!(first.left.is_some());
+        let busy = post(&event("2"));
+        assert_eq!(
+            (
+                busy.reply.status,
+                busy.reply.retry_after,
+                busy.left.is_none()
+            ),
+            (503, Some(30), true)
+        );
+        drop(first);
+        let again = post(&event("2"));
+        assert_eq!(again.reply.status, 202);
     }
 
     #[test]

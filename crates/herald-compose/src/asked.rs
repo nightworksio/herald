@@ -1,6 +1,7 @@
-use herald_flows::{Admission, Inbound, Job, Reply};
+use herald_flows::{Admission, Inbound, Reply, refusal};
 use herald_ports::Secret;
 
+use crate::answer::Left;
 use crate::composed::Composed;
 use crate::host::Host;
 use crate::reaching::asked_query;
@@ -16,6 +17,7 @@ pub fn plain(status: u16, text: &str) -> Reply {
         status,
         kind: PLAIN,
         body: text.as_bytes().to_vec(),
+        retry_after: None,
     }
 }
 
@@ -38,8 +40,8 @@ pub struct Asked {
 pub struct Reached {
     /// The reply.
     pub reply: Reply,
-    /// The work to do once the reply is sent.
-    pub job: Option<Job>,
+    /// The work to do once the reply is sent, holding its place.
+    pub left: Option<Left>,
     /// What a round did.
     pub said: Vec<String>,
 }
@@ -70,7 +72,7 @@ impl<H: Host> Composed<H> {
         let answered = self.answer(&inbound, Admission::Once).await;
         Reached {
             reply: answered.reply,
-            job: answered.job,
+            left: answered.left,
             said: answered
                 .refused
                 .as_deref()
@@ -87,10 +89,16 @@ impl<H: Host> Composed<H> {
             .find(|(name, _)| name.eq_ignore_ascii_case("authorization"))
             .map(|(_, value)| value.as_str());
         if !Round::allowed(authorization, secret) {
+            let refused = refusal(401, "a round was asked without its secret");
             return Reached {
-                reply: plain(401, "a round needs its secret"),
-                job: None,
-                said: Vec::new(),
+                reply: refused.reply,
+                left: None,
+                said: refused
+                    .refused
+                    .as_deref()
+                    .map(told::refused)
+                    .into_iter()
+                    .collect(),
             };
         }
         let said = match round {
@@ -99,7 +107,7 @@ impl<H: Host> Composed<H> {
         };
         Reached {
             reply: plain(200, "the round ran"),
-            job: None,
+            left: None,
             said,
         }
     }

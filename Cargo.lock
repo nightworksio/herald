@@ -1040,6 +1040,7 @@ dependencies = [
  "herald-config",
  "herald-crypto",
  "herald-environment",
+ "herald-flows",
  "herald-ports",
  "herald-records",
  "herald-testing",

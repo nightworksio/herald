@@ -2,12 +2,11 @@ use wasip2::exports::http::incoming_handler::{IncomingRequest, ResponseOutparam}
 use wasip2::http::types::{Fields, IncomingBody, Method, OutgoingBody, OutgoingResponse};
 use wasip2::io::streams::StreamError;
 
-use herald_compose::Asked;
+use herald_compose::{Asked, told};
+use herald_flows::{Reply, refusal};
 
-use super::served::{answered, worked};
+use super::served::{Started, said};
 
-/// The most of a request's body that is read.
-const MOST: usize = 1 << 20;
 const CHUNK: u64 = 64 * 1024;
 
 fn method_of(method: &Method) -> String {
@@ -25,8 +24,9 @@ fn method_of(method: &Method) -> String {
     }
 }
 
-/// The body of `incoming`, or `None` where it is larger than [`MOST`].
-fn read(incoming: IncomingBody) -> Option<Vec<u8>> {
+/// The body of `incoming`, read no further than one byte past `most`, or
+/// `None` where it cannot be read.
+fn read(incoming: IncomingBody, most: usize) -> Option<Vec<u8>> {
     let mut body = Vec::new();
     {
         let stream = incoming.stream().ok()?;
@@ -34,8 +34,8 @@ fn read(incoming: IncomingBody) -> Option<Vec<u8>> {
             match stream.blocking_read(CHUNK) {
                 Ok(chunk) => {
                     body.extend_from_slice(&chunk);
-                    if body.len() > MOST {
-                        return None;
+                    if body.len() > most {
+                        return Some(body);
                     }
                 }
                 Err(StreamError::Closed) => break,
@@ -47,12 +47,16 @@ fn read(incoming: IncomingBody) -> Option<Vec<u8>> {
     Some(body)
 }
 
-fn respond(out: ResponseOutparam, status: u16, kind: &str, body: &[u8]) {
+fn respond(out: ResponseOutparam, reply: &Reply) {
+    let body = &reply.body;
     let headers = Fields::new();
-    let _ = headers.set("content-type", &[kind.as_bytes().to_vec()]);
+    let _ = headers.set("content-type", &[reply.kind.as_bytes().to_vec()]);
     let _ = headers.set("content-length", &[body.len().to_string().into_bytes()]);
+    if let Some(after) = reply.retry_after {
+        let _ = headers.set("retry-after", &[after.to_string().into_bytes()]);
+    }
     let response = OutgoingResponse::new(headers);
-    let _ = response.set_status_code(status);
+    let _ = response.set_status_code(reply.status);
     let Ok(outgoing) = response.body() else {
         return;
     };
@@ -84,13 +88,22 @@ pub(super) async fn handled(request: IncomingRequest, out: ResponseOutparam) {
     {
         headers.push(("host".to_owned(), authority));
     }
-    let Some(body) = request.consume().ok().and_then(read) else {
-        respond(
-            out,
-            413,
-            "text/plain; charset=utf-8",
-            b"the body is too large",
-        );
+    let started = match Started::new(std::env::vars().collect()).await {
+        Ok(started) => started,
+        Err(reply) => {
+            respond(out, &reply);
+            return;
+        }
+    };
+    let most = started.body();
+    let Some(body) = request
+        .consume()
+        .ok()
+        .and_then(|incoming| read(incoming, most))
+    else {
+        let refused = refusal(400, "its body could not be read");
+        said(refused.refused.as_deref().map(told::refused));
+        respond(out, &refused.reply);
         return;
     };
     let asked = Asked {
@@ -99,9 +112,9 @@ pub(super) async fn handled(request: IncomingRequest, out: ResponseOutparam) {
         headers,
         body,
     };
-    let (reply, left) = answered(&asked, std::env::vars().collect()).await;
-    respond(out, reply.status, reply.kind, &reply.body);
-    if let Some((composed, job)) = left {
-        worked(&composed, job).await;
+    let (reply, left) = started.answered(&asked).await;
+    respond(out, &reply);
+    if let Some(left) = left {
+        started.worked(left).await;
     }
 }

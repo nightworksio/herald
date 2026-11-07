@@ -314,25 +314,55 @@ body = "{{ event.body }}"
     }
 
     #[tokio::test]
-    async fn a_request_that_could_leave_work_is_refused_while_the_queue_is_full() {
+    async fn work_the_queue_has_no_place_for_is_refused_and_its_delivery_released() {
         let world = World::new(Gate::default()).await;
-        let (listener, address) = listening().await;
-        let stop = Notify::new();
-        let client = async {
-            let answer = asked(address, &posted("/inbox", &[], b"{}")).await;
-            stop.notify_one();
-            answer
-        };
-        let none = Limits {
+        let heard = RefCell::new(Vec::new());
+        let hear = |said: Heard| heard.borrow_mut().push(named(&said));
+        let unsigned = Limits {
             jobs: 0,
             ..limits()
         };
+        let (listener, address) = listening().await;
+        let stop = Notify::new();
+        let client = async {
+            let answers = (
+                asked(address, &posted("/inbox", &[], b"{}")).await,
+                asked(address, &release(EVENT.as_bytes())).await,
+            );
+            stop.notify_one();
+            answers
+        };
+        let ((unread, busy), ()) = tokio::join!(
+            client,
+            world.serve(listener, unsigned, &hear, stop.notified())
+        );
+        assert!(unread.starts_with("HTTP/1.1 401 "), "{unread}");
+        assert!(busy.starts_with("HTTP/1.1 503 "), "{busy}");
+        assert!(busy.contains("retry-after: 30"), "{busy}");
+        assert!(
+            busy.ends_with("herald cannot answer this request now"),
+            "{busy}"
+        );
+        assert_eq!(
+            said(&heard),
+            [
+                "listening",
+                "refused: the request carries no Signature",
+                "refused: the queue has no place for the work it leaves",
+            ]
+        );
+        let (listener, address) = listening().await;
+        let stop = Notify::new();
+        let client = async {
+            let answer = asked(address, &release(EVENT.as_bytes())).await;
+            stop.notify_one();
+            answer
+        };
         let (answer, ()) = tokio::join!(
             client,
-            world.serve(listener, none, &|_| {}, stop.notified())
+            world.serve(listener, limits(), &|_| {}, stop.notified())
         );
-        assert!(answer.starts_with("HTTP/1.1 503 "), "{answer}");
-        assert!(answer.contains("retry-after: 30"), "{answer}");
+        assert!(answer.starts_with("HTTP/1.1 202 "), "{answer}");
     }
 
     #[tokio::test]
