@@ -521,8 +521,7 @@ fn scoped<'c>(
 ) -> Result<(&'c str, &'c App), Refused> {
     let token = inbound
         .header("authorization")
-        .and_then(|value| value.strip_prefix("Bearer "))
-        .filter(|token| !token.is_empty());
+        .and_then(herald_core::bearer);
     let Some((name, app)) = token.and_then(|token| holder(config, token)) else {
         return Err(Refused::Token);
     };

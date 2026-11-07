@@ -223,10 +223,8 @@ pub fn claim(
         Scheme::ActivityPub | Scheme::App => Err(Refusal::Unaddressed),
         Scheme::Matrix => {
             const HEADER: &str = "Authorization";
-            let token = required(headers, HEADER)?
-                .strip_prefix("Bearer ")
-                .filter(|token| !token.is_empty())
-                .ok_or(Refusal::Malformed { header: HEADER })?;
+            let token =
+                bearer(required(headers, HEADER)?).ok_or(Refusal::Malformed { header: HEADER })?;
             Ok(Claim {
                 kind: Signature::Token,
                 message: Vec::new(),
@@ -282,6 +280,16 @@ pub fn key(scheme: Scheme, written: &str) -> Option<Vec<u8>> {
             (!written.is_empty()).then(|| written.as_bytes().to_vec())
         }
     }
+}
+
+/// The token an `Authorization` header's value carries under the bearer
+/// scheme, its scheme named in any case, where it carries one that is not
+/// empty.
+#[must_use]
+pub fn bearer(authorization: &str) -> Option<&str> {
+    let (scheme, token) = authorization.split_once(' ')?;
+    let token = token.trim();
+    (scheme.eq_ignore_ascii_case("bearer") && !token.is_empty()).then_some(token)
 }
 
 /// Whether `presented` is `held`, comparing every byte whatever the first

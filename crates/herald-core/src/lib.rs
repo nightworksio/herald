@@ -38,7 +38,7 @@ pub use event::{Draft, Event, Kind, Problem};
 pub use housekeep::{Chore, Schedule, due, schedules};
 pub use inbound::{
     Addressed, Claim, DELIVERIES_KEPT, MOST_COVERED, MOST_SIGNATURES, REPLAY_WINDOW, Refusal,
-    Scheme, Signature, activity_claim, claim, key, same,
+    Scheme, Signature, activity_claim, bearer, claim, key, same,
 };
 pub use interact::{
     AnnouncedHere, Answering, Asked, Command, MOST_COMPLETIONS, Member, Place, Replies, Said,

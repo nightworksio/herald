@@ -859,3 +859,13 @@ fn an_activity_naming_more_headers_than_it_may_is_refused_unread() {
         })
     );
 }
+
+#[test]
+fn a_bearer_token_is_read_whatever_case_its_scheme_is_written_in() {
+    assert_eq!(bearer("Bearer abc"), Some("abc"));
+    assert_eq!(bearer("bearer abc"), Some("abc"));
+    assert_eq!(bearer("BEARER  abc "), Some("abc"));
+    assert_eq!(bearer("Basic abc"), None);
+    assert_eq!(bearer("Bearer "), None);
+    assert_eq!(bearer("Bearer"), None);
+}

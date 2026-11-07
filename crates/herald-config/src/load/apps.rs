@@ -29,6 +29,7 @@ impl Loader<'_> {
         sources: &BTreeMap<SourceName, Source>,
     ) -> BTreeMap<String, Named> {
         let mut apps = BTreeMap::new();
+        let mut held: BTreeMap<String, String> = BTreeMap::new();
         for (name, value) in self.named(value, "apps") {
             let path = format!("apps.{name}");
             let span = value.span();
@@ -49,6 +50,16 @@ impl Loader<'_> {
             let mut tokens = Vec::new();
             for token in &app.tokens {
                 if let Some(hash) = hash(token.get_ref()) {
+                    if let Some(holder) = held.insert(hash.to_owned(), path.clone()) {
+                        self.error(
+                            &token.span(),
+                            &format!("{path}.tokens"),
+                            format!(
+                                "{holder}.tokens lists this token too; give each app a token of its own, as herald token new prints it"
+                            ),
+                        );
+                        sound = false;
+                    }
                     tokens.push(hash.to_owned());
                 } else {
                     self.error(

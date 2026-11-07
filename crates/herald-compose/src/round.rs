@@ -1,3 +1,4 @@
+use herald_core::{bearer, same};
 use herald_ports::Secret;
 
 /// The variable naming the secret a request for a round carries, on a host
@@ -30,19 +31,10 @@ impl Round {
     /// secret set no request is one, and the comparison reads every byte.
     #[must_use]
     pub fn allowed(authorization: Option<&str>, secret: Option<&Secret>) -> bool {
-        let (Some(given), Some(secret)) = (
-            authorization.and_then(|header| header.strip_prefix("Bearer ")),
-            secret,
-        ) else {
-            return false;
-        };
-        let (given, kept) = (given.as_bytes(), secret.expose().as_bytes());
-        given.len() == kept.len()
-            && given
-                .iter()
-                .zip(kept)
-                .fold(0, |differ, (one, other)| differ | (one ^ other))
-                == 0
+        authorization
+            .and_then(bearer)
+            .zip(secret)
+            .is_some_and(|(given, secret)| same(secret.expose().as_bytes(), given.as_bytes()))
     }
 }
 

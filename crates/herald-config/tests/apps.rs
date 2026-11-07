@@ -81,6 +81,20 @@ body = "{{ event.body }}"
     }
 
     #[test]
+    fn a_token_listed_by_two_apps_is_refused_naming_both() {
+        let text = with(&format!(
+            "[apps.ci]\ntokens = [\"{}\"]\n[apps.cd]\ntokens = [\"{}\"]\n",
+            token('a'),
+            token('a')
+        ));
+        let refused = errors(&text);
+        assert!(
+            refused.contains("apps.ci.tokens: apps.cd.tokens lists this token too"),
+            "{refused}"
+        );
+    }
+
+    #[test]
     fn an_app_naming_its_routes_announces_to_those_only() {
         let text = with(&format!(
             "[apps.ci]\ntokens = [\"{}\"]\nroutes = [\"everything\"]\n",
