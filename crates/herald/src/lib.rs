@@ -637,7 +637,7 @@ fn previewing(
             match shown.rendered {
                 Ok(announcement) => {
                     say(out, &format!("{head}:"));
-                    say(out, &format!("  title: {}", announcement.title));
+                    say(out, &format!("  title: {}", announcement.title.plain()));
                     if let Some(thread) = &announcement.thread {
                         say(out, &format!("  thread: {thread}"));
                     }

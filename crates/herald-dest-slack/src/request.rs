@@ -1,6 +1,6 @@
 use std::fmt;
 
-use herald_core::{Announcement, Dialect, Entry, Step, literal, safe_url};
+use herald_core::{Announcement, Dialect, Entry, Step, safe_url};
 use herald_ports::{Method, Request, Text, USER_AGENT};
 use serde_json::{Value, json};
 
@@ -131,9 +131,9 @@ fn announcement_body(announcement: &Announcement, subscribe: Option<&Subscribe>)
         .collect();
     let mut blocks = vec![json!({
         "type": "header",
-        "text": { "type": "plain_text", "text": announcement.title, "emoji": true },
+        "text": { "type": "plain_text", "text": announcement.title.plain(), "emoji": true },
     })];
-    let mut fallback = vec![literal(&announcement.title, Dialect::Slack).body];
+    let mut fallback = vec![announcement.title.shown(Dialect::Slack).body];
     for text in first
         .map(ToOwned::to_owned)
         .into_iter()

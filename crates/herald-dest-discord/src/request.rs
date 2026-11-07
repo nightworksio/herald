@@ -100,7 +100,7 @@ fn message(
         .collect();
     let content: Vec<String> = roles.iter().map(|role| format!("<@&{role}>")).collect();
     let mut embed = Map::new();
-    embed.insert("title".to_owned(), json!(announcement.title));
+    embed.insert("title".to_owned(), json!(announcement.title.plain()));
     embed.insert(
         "description".to_owned(),
         json!(
@@ -174,7 +174,7 @@ fn thread_name(announcement: &Announcement) -> String {
     announcement
         .thread
         .clone()
-        .unwrap_or_else(|| announcement.title.clone())
+        .unwrap_or_else(|| announcement.title.plain().to_owned())
 }
 
 fn chunk(announcement: &Announcement, index: u32) -> Value {

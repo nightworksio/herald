@@ -11,7 +11,7 @@ fn each_route_renders_the_event_as_its_destination_would_show_it() {
     assert_eq!(previewed[0].route, RouteId::new("releases"));
     assert_eq!(previewed[0].destination.as_str(), "discord");
     let announcement = previewed[0].rendered.as_ref().unwrap();
-    assert_eq!(announcement.title, "📦 php-mutation-gate v1");
+    assert_eq!(announcement.title.plain(), "📦 php-mutation-gate v1");
     assert_eq!(announcement.thread.as_deref(), Some("v1"));
     assert_eq!(announcement.parts[0].body, "## Added");
     assert_eq!(

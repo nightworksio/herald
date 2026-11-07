@@ -28,7 +28,7 @@ def tools(script: str) -> list[Pin]:
     """Each tool's pinned version, the repository it is released from, and the
     shape of that repository's tags, `{}` standing for the version."""
     pins: dict[tuple[str, str], Pin] = {}
-    for block in re.finditer(r"^  ([\w| -]+)\)\n(.*?)\n    ;;", script, re.M | re.S):
+    for block in re.finditer(r"^ {2}([\w| -]+)\)\n(.*?)\n {4};;", script, re.M | re.S):
         version = re.search(r'version="([^"]+)"', block.group(2))
         url = re.search(r'url="([^"]+)"', block.group(2))
         if not (version and url):

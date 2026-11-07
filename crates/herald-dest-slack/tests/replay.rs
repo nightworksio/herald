@@ -349,7 +349,7 @@ mod replay {
         quiet.mentioned = Vec::new();
         quiet.link = None;
         quiet.parts[0].body = String::new();
-        quiet.title = "a <b> & c".to_owned();
+        quiet.title = herald_core::Title::new("a <b> & c");
         let content = body(&bot(), &quiet);
         assert_eq!(content["blocks"].as_array().unwrap().len(), 1);
         assert_eq!(content["blocks"][0]["text"]["text"], "a <b> & c");

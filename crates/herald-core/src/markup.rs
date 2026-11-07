@@ -544,6 +544,6 @@ fn discord_escape(text: &str) -> String {
 }
 
 #[cfg(test)]
-mod inert;
+pub(crate) mod inert;
 #[cfg(test)]
 mod tests;

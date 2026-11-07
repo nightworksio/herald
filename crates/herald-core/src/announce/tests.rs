@@ -85,7 +85,7 @@ fn an_event_is_announced_with_its_key_title_parts_thread_and_link() {
     assert_eq!(announcement.marks, marks());
     assert_eq!(announcement.replaces, None);
     assert_eq!(announcement.route, route.id);
-    assert_eq!(announcement.title, "📦 php-mutation-gate v0.1.0");
+    assert_eq!(announcement.title.plain(), "📦 php-mutation-gate v0.1.0");
     assert_eq!(
         announcement
             .parts
@@ -124,7 +124,7 @@ fn a_route_without_a_thread_names_none_and_a_long_body_is_cut() {
     )
     .unwrap();
     assert_eq!(announcement.thread, None);
-    assert_eq!(announcement.title, "📦 php-mut…");
+    assert_eq!(announcement.title.plain(), "📦 php-mut…");
     assert_eq!(announcement.parts.len(), 3);
     assert!(announcement.prerelease);
 }
@@ -227,4 +227,30 @@ fn template_names_are_namespaced_by_part() {
     assert_eq!(title_template(&TemplateName::new("t")), "t/title");
     assert_eq!(body_template(&TemplateName::new("t")), "t/body");
     assert_eq!(thread_template(&RouteId::new("r")), "route/r/thread");
+}
+
+#[test]
+fn a_title_is_plain_as_written_and_shown_inert_in_every_dialect() {
+    use crate::markup::inert::literal_inert;
+    for written in [
+        "v2 @alice@mastodon.social #tag",
+        "<@123> <!everyone> **bold** [a](https://evil.example) @room",
+        "a <b> & c",
+    ] {
+        let title = Title::new(written);
+        assert_eq!(title.plain(), written);
+        for dialect in [
+            Dialect::Discord,
+            Dialect::Slack,
+            Dialect::Matrix,
+            Dialect::Plain,
+        ] {
+            let shown = title.shown(dialect);
+            assert_eq!(
+                literal_inert(&shown, dialect),
+                Ok(()),
+                "{written:?} in {dialect:?}"
+            );
+        }
+    }
 }

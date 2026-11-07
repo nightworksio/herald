@@ -2,7 +2,7 @@
 
 use herald_core::{
     Announcement, Delivery, Identity, Key, Marker, Marks, Mentions, Pinning, RoleId, RouteId, Text,
-    Thread,
+    Thread, Title,
 };
 
 /// The route every destination's fixtures announce through.
@@ -35,7 +35,7 @@ pub fn announcement() -> Announcement {
         },
         route: RouteId::new(ROUTE),
         project: "php-mutation-gate".to_owned(),
-        title: "📦 php-mutation-gate v0.1.0".to_owned(),
+        title: Title::new("📦 php-mutation-gate v0.1.0"),
         parts: vec![
             Text {
                 body: "## Added".to_owned(),

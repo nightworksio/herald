@@ -28,7 +28,7 @@ pub use activity::{
     ACTIVITY_JSON, SIGNED, Signing, body_sha256, public_pem, signature_header, signing,
 };
 pub use announce::{
-    Announcement, announce, body_template, shortened, thread_template, title_template,
+    Announcement, Title, announce, body_template, shortened, thread_template, title_template,
 };
 pub use chunk::{Room, chunk, size};
 pub use cursor::{Cursor, Polled, fresh};

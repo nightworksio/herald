@@ -137,7 +137,7 @@ mod replay {
             .unwrap();
         let body: serde_json::Value = serde_json::from_slice(&request.body).unwrap();
         let link = bare.marks.on(bare.link.as_deref().unwrap());
-        assert_eq!(body["status"], format!("{}\n\n{link}", bare.title));
+        assert_eq!(body["status"], format!("{}\n\n{link}", bare.title.plain()));
         let mut blank = announcement();
         blank.parts.truncate(1);
         blank.parts[0].body.clear();
@@ -145,7 +145,22 @@ mod replay {
             .request(&Step::Post, &blank, &Entry::new(blank.key))
             .unwrap();
         let body: serde_json::Value = serde_json::from_slice(&request.body).unwrap();
-        assert_eq!(body["status"], format!("{}\n\n{link}", blank.title));
+        assert_eq!(body["status"], format!("{}\n\n{link}", blank.title.plain()));
+    }
+
+    #[test]
+    fn a_title_mentions_and_tags_nobody() {
+        let mut tagged = announcement();
+        tagged.title = herald_core::Title::new("v2 @a@b.c #x");
+        let request = mastodon(RouteOptions::default())
+            .request(&Step::Post, &tagged, &Entry::new(tagged.key))
+            .unwrap();
+        let body: serde_json::Value = serde_json::from_slice(&request.body).unwrap();
+        let status = body["status"].as_str().unwrap();
+        assert!(
+            status.starts_with("v2 @\u{200B}a@\u{200B}b.c #\u{200B}x\n\n"),
+            "{status:?}"
+        );
     }
 
     #[test]

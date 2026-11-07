@@ -1,7 +1,7 @@
 use std::fmt;
 use std::fmt::Write as _;
 
-use herald_core::{Announcement, Dialect, Entry, Sent, Step, literal, safe_url};
+use herald_core::{Announcement, Dialect, Entry, Sent, Step, safe_url};
 use herald_ports::{Method, Request, Response, Text, USER_AGENT};
 use serde_json::{Map, Value, json};
 
@@ -99,7 +99,7 @@ fn user_id(user: &str) -> bool {
 
 fn announcement_content(announcement: &Announcement) -> Value {
     let first = announcement.parts.first();
-    let title = literal(&announcement.title, Dialect::Matrix);
+    let title = announcement.title.shown(Dialect::Matrix);
     let link = announcement
         .link
         .as_deref()
