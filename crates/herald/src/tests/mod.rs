@@ -10,6 +10,7 @@ mod commands;
 mod doctor;
 mod forges;
 mod housekeep;
+mod lambda;
 mod poll;
 mod secrets;
 mod server;

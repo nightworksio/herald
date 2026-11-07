@@ -32,6 +32,7 @@ use herald_sources_forge::{Forge, Origin, Repository, SourceOptions, Token};
 
 mod apps;
 mod cli;
+mod lambda;
 mod output;
 mod serving;
 mod setup;
@@ -40,9 +41,11 @@ mod stores;
 use cli::{
     Cli, Command, Discording, From, Layer, Matrixing, Reading, Serve, Setting, Slacking, Tokens,
 };
-use output::{Scrubbing, chored, hidden, masked, polled, report, say, warned, why};
+use herald_compose::told::{chored, polled, report, why};
+use herald_compose::{GITHUB_TOKEN, Served};
+use output::{Scrubbing, hidden, masked, say, warned};
 use serving::serving;
-use stores::{Commands, Records, reached};
+use stores::{Commands, Records, STORES, reached};
 
 /// Every route announced, already announced, or held by another run; every
 /// source polled and its cursor moved on; or every chore that fell due done
@@ -54,9 +57,6 @@ pub const STOPPED: u8 = 1;
 /// The config has mistakes.
 pub const MISTAKEN: u8 = 2;
 
-/// The secret a git-branch store's token is read from where the config names
-/// none.
-const GITHUB_TOKEN: &str = "GITHUB_TOKEN";
 /// Where the Actions cache's results service is, as herald's Action hands
 /// it on.
 const RESULTS: &str = "ACTIONS_RESULTS_URL";
@@ -113,6 +113,8 @@ pub fn native(base: &str) -> Result<Connection, String> {
         PublicHttp::new()
             .map(Connection::new)
             .map_err(ConnectError::Build)
+    } else if let Some(waiting) = base.strip_prefix(lambda::WAITING) {
+        NativeHttp::waiting(waiting).map(Connection::new)
     } else {
         NativeHttp::reaching(base).map(Connection::new)
     };
@@ -222,6 +224,7 @@ async fn stopping(
     let err = &mut Scrubbing::new(err, &hidden);
     let layer = match serve {
         Serve::Server { .. } => Layer::Server,
+        Serve::Lambda => Layer::Lambda,
         _ => Layer::Actions,
     };
     warned(&doctor(&config, layer.served()).gaps, vars, out);
@@ -254,6 +257,7 @@ async fn stopping(
         Serve::Server { listen } => {
             serving(&config, vars, connect, listen.as_deref(), out, stop).await
         }
+        Serve::Lambda => lambda::lambda(config, vars, connect, out).await,
     };
     let code = ran.unwrap_or_else(|message| {
         say(err, &message);
@@ -469,7 +473,7 @@ async fn announcing(
     let (records, connected) = if dry_run {
         dry(config, vars, &sent).await?
     } else {
-        reached(config, vars, connect, Commands::Unanswered).await?
+        reached(config, vars, connect, Commands::Unanswered, &STORES).await?
     };
     let run = run_name(vars);
     let announcing = Announcing {
@@ -716,15 +720,6 @@ async fn tagged(
     Ok(event)
 }
 
-/// A command's work, over whichever store the config names.
-trait Served {
-    /// What the work did.
-    type Done;
-
-    /// The work done over `store`.
-    fn over<S: Keeps + Keyring>(self, store: &S) -> impl Future<Output = Self::Done>;
-}
-
 /// An event, and the routes and sources it is announced through.
 struct Announcing<'a> {
     config: &'a Config,
@@ -812,7 +807,8 @@ async fn polling(
     connect: Connect<'_>,
     out: &mut dyn Write,
 ) -> Result<u8, String> {
-    let (records, connected) = reached(config, vars, connect, Commands::Unanswered).await?;
+    let (records, connected) =
+        reached(config, vars, connect, Commands::Unanswered, &STORES).await?;
     let run = run_name(vars);
     let polling = Polling {
         config,
@@ -846,7 +842,8 @@ async fn housekeeping(
     connect: Connect<'_>,
     out: &mut dyn Write,
 ) -> Result<u8, String> {
-    let (records, connected) = reached(config, vars, connect, Commands::Unanswered).await?;
+    let (records, connected) =
+        reached(config, vars, connect, Commands::Unanswered, &STORES).await?;
     let housekeeping = Housekeeping {
         connected: &connected,
     };
@@ -865,6 +862,40 @@ async fn housekeeping(
         say(out, &chored(kept));
     }
     Ok(code)
+}
+
+/// When the process is asked to stop, listened for from this call on: Ctrl-C,
+/// or `SIGTERM` as a container runtime sends it where there are signals.
+pub fn stopped() -> impl Future<Output = ()> {
+    #[cfg(unix)]
+    let asked = {
+        use tokio::signal::unix::{SignalKind, signal};
+        signalled(
+            signal(SignalKind::terminate()),
+            signal(SignalKind::interrupt()),
+        )
+    };
+    #[cfg(not(unix))]
+    let asked = async {
+        let _ = tokio::signal::ctrl_c().await;
+    };
+    asked
+}
+
+/// When either signal arrives, or at once where either cannot be listened
+/// for.
+#[cfg(unix)]
+async fn signalled(
+    terminate: std::io::Result<tokio::signal::unix::Signal>,
+    interrupt: std::io::Result<tokio::signal::unix::Signal>,
+) {
+    if let (Ok(mut terminate), Ok(mut interrupt)) = (terminate, interrupt) {
+        futures_util::future::select(
+            std::pin::pin!(terminate.recv()),
+            std::pin::pin!(interrupt.recv()),
+        )
+        .await;
+    }
 }
 
 #[cfg(test)]

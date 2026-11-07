@@ -1,11 +1,12 @@
 use std::fmt;
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
+use std::net::{IpAddr, SocketAddr};
 use std::time::Duration;
 
+use herald_compose::{public, reachable};
 use herald_ports::{Http, HttpError, Request, Response};
 use reqwest::dns::{Addrs, Name, Resolve, Resolving};
 use rustls::ClientConfig;
-use url::{Host, Url};
+use url::Url;
 
 use crate::http::{BuildError, client, sent, tls};
 
@@ -82,7 +83,7 @@ impl PublicHttp {
     /// When TLS or the client cannot be set up.
     pub fn new() -> Result<Self, BuildError> {
         let tls = tls(rustls::crypto::ring::default_provider())?;
-        Self::built(public, "https", Some(tls), CONNECT, TOTAL)
+        Self::built(public, "https", Some(tls), CONNECT, Some(TOTAL))
     }
 
     pub(crate) fn built(
@@ -90,7 +91,7 @@ impl PublicHttp {
         scheme: &'static str,
         tls: Option<ClientConfig>,
         connect: Duration,
-        total: Duration,
+        total: Option<Duration>,
     ) -> Result<Self, BuildError> {
         let builder = reqwest::Client::builder()
             .no_proxy()
@@ -103,15 +104,7 @@ impl PublicHttp {
     }
 
     fn reachable(&self, url: &Url) -> bool {
-        url.scheme() == self.scheme
-            && url.username().is_empty()
-            && url.password().is_none()
-            && match url.host() {
-                Some(Host::Domain(_)) => true,
-                Some(Host::Ipv4(address)) => (self.admits)(IpAddr::V4(address)),
-                Some(Host::Ipv6(address)) => (self.admits)(IpAddr::V6(address)),
-                None => false,
-            }
+        reachable(url, self.scheme, self.admits)
     }
 }
 
@@ -126,52 +119,6 @@ impl Http for PublicHttp {
             });
         };
         sent(&self.client, request, url).await
-    }
-}
-
-/// Whether `address` is on the public internet. An IPv4 address is not
-/// loopback, private, shared, link-local, documentation, benchmarking,
-/// reserved, multicast or unspecified. An IPv6 address is a global unicast
-/// one, in `2000::/3`, outside its IETF protocol assignments and
-/// documentation ranges, or carries such an IPv4 address.
-#[must_use]
-pub fn public(address: IpAddr) -> bool {
-    match address {
-        IpAddr::V4(address) => public_v4(address),
-        IpAddr::V6(address) => public_v6(address),
-    }
-}
-
-fn public_v4(address: Ipv4Addr) -> bool {
-    let [first, second, third, _] = address.octets();
-    !(address.is_unspecified()
-        || address.is_loopback()
-        || address.is_private()
-        || address.is_link_local()
-        || address.is_broadcast()
-        || address.is_documentation()
-        || address.is_multicast()
-        || first == 0
-        || first >= 240
-        || (first == 100 && (64..=127).contains(&second))
-        || (first == 192 && second == 0 && third == 0)
-        || (first == 198 && (second == 18 || second == 19)))
-}
-
-fn public_v6(address: Ipv6Addr) -> bool {
-    let segments = address.segments();
-    let carried = |high: u16, low: u16| {
-        let [a, b] = high.to_be_bytes();
-        let [c, d] = low.to_be_bytes();
-        public_v4(Ipv4Addr::new(a, b, c, d))
-    };
-    match segments {
-        [0, 0, 0, 0, 0, 0xffff, high, low]
-        | [0, 0, 0, 0, 0xffff, 0, high, low]
-        | [0x64, 0xff9b, 0, 0, 0, 0, high, low]
-        | [0x2002, high, low, ..] => carried(high, low),
-        [0x2001, 0..=0x1ff | 0xdb8, ..] => false,
-        [first, ..] => first & 0xe000 == 0x2000 && first & 0xfff0 != 0x3ff0,
     }
 }
 

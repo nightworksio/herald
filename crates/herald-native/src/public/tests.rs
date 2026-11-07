@@ -5,84 +5,11 @@ use crate::serving::{answer, serve};
 
 fn admitting(scheme: &'static str, admits: fn(IpAddr) -> bool) -> PublicHttp {
     let tls = tls(rustls::crypto::ring::default_provider()).unwrap();
-    PublicHttp::built(admits, scheme, Some(tls), CONNECT, TOTAL).unwrap()
+    PublicHttp::built(admits, scheme, Some(tls), CONNECT, Some(TOTAL)).unwrap()
 }
 
 fn get(url: &str) -> Request {
     Request::new(Method::Get, Text::plain(url))
-}
-
-#[test]
-fn only_addresses_on_the_public_internet_are_public() {
-    for address in [
-        "93.184.216.34",
-        "1.1.1.1",
-        "100.63.255.255",
-        "100.128.0.1",
-        "192.0.1.1",
-        "198.17.0.1",
-        "198.20.0.1",
-        "2606:4700::1111",
-        "::ffff:93.184.216.34",
-        "::ffff:0:5db8:d822",
-        "2001:200::1",
-        "3fef::1",
-        "64:ff9b::5db8:d822",
-        "2002:5db8:d822::1",
-    ] {
-        assert!(public(address.parse().unwrap()), "{address}");
-    }
-    for address in [
-        "0.0.0.0",
-        "0.1.2.3",
-        "127.0.0.1",
-        "10.0.0.1",
-        "172.16.0.1",
-        "192.168.1.1",
-        "169.254.169.254",
-        "255.255.255.255",
-        "192.0.2.1",
-        "224.0.0.1",
-        "240.0.0.1",
-        "100.64.0.1",
-        "100.127.255.255",
-        "192.0.0.8",
-        "198.18.0.1",
-        "198.19.255.255",
-        "::",
-        "::1",
-        "::127.0.0.1",
-        "::ffff:127.0.0.1",
-        "::ffff:10.0.0.1",
-        "64:ff9b::a00:1",
-        "2002:a00:1::1",
-        "100::1",
-        "2001::1",
-        "2001:2::1",
-        "2001:10::1",
-        "2001:1ff::1",
-        "::ffff:0:a00:1",
-        "::ffff:0:7f00:1",
-        "2001:db8::1",
-        "fc00::1",
-        "fd12:3456::1",
-        "fe80::1",
-        "febf::1",
-        "fec0::1",
-        "3fff::1",
-        "3ffe::1",
-        "3fff:fff::1",
-        "5f00::1",
-        "100:1::1",
-        "4000::1",
-        "1fff::1",
-        "c000::1",
-        "feff::1",
-        "64:ff9b:1::5db8:d822",
-        "ff02::1",
-    ] {
-        assert!(!public(address.parse().unwrap()), "{address}");
-    }
 }
 
 #[tokio::test]

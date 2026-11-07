@@ -6,18 +6,19 @@ use std::collections::BTreeMap;
 use std::future::Future;
 use std::io::Write;
 
+use herald_compose::{Capped, SESSIONS, Served};
 use herald_config::Config;
-use herald_flows::{
-    Connected, FollowError, Followed, Interacted, Keys, Ports, Serving, Webhooks, Worked, webhooks,
-};
+use herald_flows::{Connected, Keys, Ports, Serving, Webhooks, webhooks};
 use herald_native::{EnvSecrets, NativeSockets, RingSigner, RingVerifier, SystemClock};
 use herald_ports::{Keyring, PUBLIC, Store as Keeps};
 use herald_records::MemoryKeyring;
-use herald_server::{Capped, Heard, Limits, READ, serve};
+use herald_server::{Asked, Heard, Limits, READ, serve};
 
-use super::output::{chored, polled, report, say, why};
-use super::stores::{Commands, reached};
-use super::{Connect, Connection, DONE, LISTEN, Served, worded};
+use herald_compose::told;
+
+use super::output::say;
+use super::stores::{Commands, SERVED, reached};
+use super::{Connect, Connection, DONE, LISTEN, worded};
 
 /// A server's work, over whichever store the config names, and the keys
 /// it checks activities with.
@@ -28,6 +29,7 @@ struct Listening<'a, F> {
     public: &'a Capped<Connection>,
     sockets: NativeSockets,
     listener: tokio::net::TcpListener,
+    asked: Option<Asked>,
     out: RefCell<&'a mut dyn Write>,
     stop: F,
 }
@@ -68,6 +70,7 @@ impl<F: Future<Output = ()>> Listening<'_, F> {
             public: self.public,
             keys: &keys,
             webhooks: self.webhooks,
+            admission: herald_flows::Admission::Once,
         };
         let period = |every: Option<jiff::SignedDuration>| {
             every.and_then(|every| std::time::Duration::try_from(every).ok())
@@ -80,6 +83,7 @@ impl<F: Future<Output = ()>> Listening<'_, F> {
             housekeep: period(self.config.schedule.housekeep),
             keys: period(Some(server.keys_refreshed)).unwrap_or_default(),
             read: READ,
+            asked: self.asked,
         };
         let out = &self.out;
         let heard = |heard: Heard| {
@@ -101,54 +105,25 @@ impl<F: Future<Output = ()>> Listening<'_, F> {
     }
 }
 
-/// The domains the sessions herald holds open connections under: Discord's
-/// gateway and Slack's Socket Mode (ADR-0016).
-const SESSIONS: [&str; 2] = ["discord.gg", "slack.com"];
+/// Where Azure Functions tells a custom handler to listen.
+const AZURE_PORT: &str = "FUNCTIONS_CUSTOMHANDLER_PORT";
+/// Where Azure Functions' timer triggers ask for rounds, by the functions
+/// `deploy/azure` names, and what each invocation is answered.
+const AZURE: Asked = Asked {
+    poll: "/poll",
+    housekeep: "/housekeep",
+    reply: r#"{"Outputs":{},"Logs":[],"ReturnValue":null}"#,
+};
 
 /// What a server says of what it heard.
 pub(crate) fn said(heard: Heard) -> Vec<String> {
     match heard {
         Heard::Listening(address) => vec![format!("herald serves on {address}")],
-        Heard::Worked(Worked::Announced(announced)) => announced.iter().map(report).collect(),
-        Heard::Worked(Worked::Followed(followed)) => vec![follow(followed)],
-        Heard::Worked(Worked::Interacted(interacted)) => interacted.iter().map(answered).collect(),
-        Heard::Polled(swept) => swept.iter().flat_map(polled).collect(),
-        Heard::Kept(Ok(kept)) => kept.iter().map(chored).collect(),
-        Heard::Kept(Err(stop)) => vec![format!(
-            "housekeeping stopped: {}. The next round tries again.",
-            why(&stop)
-        )],
+        Heard::Worked(worked) => told::worked(&worked),
+        Heard::Polled(swept) => swept.iter().flat_map(told::polled).collect(),
+        Heard::Kept(kept) => told::kept(&kept),
         Heard::Unaccepted(reason) => vec![format!("a connection could not be taken: {reason}")],
         Heard::Session { destination, said } => vec![format!("{}: {said}", destination.as_str())],
-    }
-}
-
-fn answered(interacted: &Interacted) -> String {
-    let asked = &interacted.asked;
-    let command = asked.command.name();
-    let destination = asked.destination.as_str();
-    match (&interacted.answer.trouble, &interacted.sent) {
-        (Some(trouble), _) => format!("{destination}: {command} could not be answered: {trouble}"),
-        (None, Err(error)) => {
-            format!("{destination}: the answer to {command} could not be sent: {error}")
-        }
-        (None, Ok(())) => format!(
-            "{destination}: {command} was answered in {}",
-            asked.place.id
-        ),
-    }
-}
-
-fn follow(followed: Result<Followed, FollowError>) -> String {
-    match followed {
-        Ok(Followed::Accepted {
-            follower, actor, ..
-        }) => format!("{actor}: {follower} follows it now"),
-        Ok(Followed::Undone { follower, actor }) => {
-            format!("{actor}: {follower} no longer follows it")
-        }
-        Ok(Followed::Ignored(why)) => format!("an activity was ignored: {why}"),
-        Err(error) => format!("an activity was not taken, and may be delivered again: {error}"),
     }
 }
 
@@ -160,14 +135,20 @@ pub(crate) async fn serving(
     out: &mut dyn Write,
     stop: impl Future<Output = ()>,
 ) -> Result<u8, String> {
+    let azure = vars
+        .get(AZURE_PORT)
+        .filter(|port| !port.is_empty())
+        .map(|port| format!("127.0.0.1:{port}"));
+    let asked = azure.is_some().then_some(AZURE);
     let address = listen
         .map(ToOwned::to_owned)
         .or_else(|| vars.get(LISTEN).filter(|value| !value.is_empty()).cloned())
+        .or(azure)
         .unwrap_or_else(|| config.server.listen.clone());
     let listener = tokio::net::TcpListener::bind(&address)
         .await
         .map_err(|error| format!("herald could not listen on {address}: {error}"))?;
-    let (records, connected) = reached(config, vars, connect, Commands::Answered).await?;
+    let (records, connected) = reached(config, vars, connect, Commands::Answered, &SERVED).await?;
     let secrets = EnvSecrets::from_vars(vars.clone());
     let webhooks = webhooks(config, &secrets)
         .await
@@ -182,6 +163,7 @@ pub(crate) async fn serving(
         public: &public,
         sockets,
         listener,
+        asked,
         out: RefCell::new(out),
         stop,
     };

@@ -232,6 +232,7 @@ impl World {
                 public: &self.script,
                 keys: &keys,
                 webhooks: &webhooks,
+                admission: herald_flows::Admission::Once,
             })
         })
     }

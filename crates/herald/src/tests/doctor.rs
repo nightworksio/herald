@@ -2,6 +2,32 @@ use super::world::*;
 use crate::*;
 
 #[test]
+fn doctor_names_the_stores_each_host_keeps_records_in() {
+    let world = World::default();
+    let sqlite = setup(&CONFIG.replace("kind = \"git-branch\"", "kind = \"sqlite\""));
+    for (host, keeps) in [
+        ("node", true),
+        ("worker", false),
+        ("deno", false),
+        ("vercel", false),
+        ("netlify", false),
+    ] {
+        let run = herald(&sqlite, &world, &["doctor", "--layer", host]);
+        assert_eq!(
+            !run.out.contains("this herald keeps records in"),
+            keeps,
+            "{host}: {}",
+            run.out
+        );
+    }
+    let worker = herald(&sqlite, &world, &["doctor", "--layer", "worker"]);
+    assert!(worker.out.contains("d1"), "{}", worker.out);
+    assert!(!worker.out.contains("deno-kv"), "{}", worker.out);
+    let deno = herald(&sqlite, &world, &["doctor", "--layer", "deno"]);
+    assert!(deno.out.contains("deno-kv"), "{}", deno.out);
+}
+
+#[test]
 fn doctor_names_what_the_config_leaves_to_chance() {
     let world = World::default();
     let derived = herald(&setup(CONFIG), &world, &["doctor", "--layer", "actions"]);
@@ -31,7 +57,7 @@ fn doctor_names_what_the_config_leaves_to_chance() {
     );
     assert_eq!(d1.code, STOPPED);
     assert!(
-        d1.out.ends_with("store.kind: keeping records in d1 cannot be served: this herald keeps records in sqlite, postgres, git-branch, markers, actions-cache or repo-variables; set [store] kind to one of them.\n"),
+        d1.out.ends_with("store.kind: keeping records in d1 cannot be served: this herald keeps records in sqlite, postgres, dynamodb, git-branch, markers, actions-cache or repo-variables; set [store] kind to one of them.\n"),
         "{}",
         d1.out
     );

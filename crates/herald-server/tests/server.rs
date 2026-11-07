@@ -15,6 +15,7 @@ mod server {
     use std::time::Duration;
 
     use futures_util::FutureExt as _;
+    use herald_compose::Capped;
     use herald_config::{Config, load};
     use herald_core::{DestinationName, Scheme, Subscription};
     use herald_flows::{Connected, Keys, Ports, Serving, Webhooks, prepare, webhooks};
@@ -23,7 +24,7 @@ mod server {
         Store as _,
     };
     use herald_records::MemoryKeyring;
-    use herald_server::{Capped, Heard, Limits, Listener, serve};
+    use herald_server::{Asked, Heard, Limits, Listener, serve};
     use herald_testing::{
         FakeClock, FakeSecrets, FakeSigner, FakeStore, FakeVerifier, ScriptedSockets,
     };
@@ -145,6 +146,7 @@ body = "{{ event.body }}"
                 public: &self.public,
                 keys: &keys,
                 webhooks: &self.webhooks,
+                admission: herald_flows::Admission::Once,
             };
             let stop: Pin<Box<dyn Future<Output = ()> + '_>> = Box::pin(stop);
             tokio::time::timeout(
@@ -165,6 +167,7 @@ body = "{{ event.body }}"
             housekeep: None,
             keys: Duration::from_secs(3_600),
             read: Duration::from_secs(2),
+            asked: None,
         }
     }
 
@@ -299,6 +302,7 @@ body = "{{ event.body }}"
         };
         let quick = Limits {
             read: Duration::from_millis(100),
+            asked: None,
             ..limits()
         };
         let (answer, ()) = tokio::join!(
@@ -462,6 +466,70 @@ body = "{{ event.body }}"
         assert!(forgotten());
     }
 
+    #[tokio::test]
+    async fn a_host_asks_for_rounds_at_its_paths_and_each_runs_one_at_a_time() {
+        let gate = Gate {
+            open: std::sync::Arc::new(Notify::new()),
+            gated: true,
+        };
+        let world = World::new(gate.clone()).await;
+        let (listener, address) = listening().await;
+        let heard = RefCell::new(Vec::new());
+        let stop = Notify::new();
+        let asking = Limits {
+            asked: Some(Asked {
+                poll: "/poll",
+                housekeep: "/housekeep",
+                reply: r#"{"Outputs":{}}"#,
+            }),
+            ..limits()
+        };
+        let client = async {
+            let poll = posted("/poll", &[], b"{}");
+            let first = asked(address, &poll);
+            let rest = async {
+                tokio::time::sleep(Duration::from_millis(50)).await;
+                let again = asked(address, &posted("/poll", &[], b"{}")).await;
+                let kept = asked(address, &posted("/housekeep", &[], b"{}")).await;
+                let elsewhere = asked(address, &posted("/nowhere", &[], b"{}")).await;
+                (again, kept, elsewhere)
+            };
+            let opening = async {
+                loop {
+                    tokio::time::sleep(Duration::from_millis(100)).await;
+                    gate.open.notify_waiters();
+                }
+            };
+            let answers = tokio::select! {
+                answers = async { tokio::join!(first, rest) } => answers,
+                () = opening => unreachable!(),
+            };
+            stop.notify_one();
+            answers
+        };
+        let hear = |said: Heard| heard.borrow_mut().push(named(&said));
+        let ((first, (again, kept, elsewhere)), ()) = tokio::join!(
+            client,
+            world.serve(listener, asking, &hear, stop.notified())
+        );
+        for answer in [&first, &again, &kept] {
+            assert!(answer.starts_with("HTTP/1.1 200 OK\r\n"), "{answer}");
+            assert!(answer.ends_with(r#"{"Outputs":{}}"#), "{answer}");
+            assert!(
+                answer.contains("content-type: application/json"),
+                "{answer}"
+            );
+        }
+        assert!(elsewhere.starts_with("HTTP/1.1 404"), "{elsewhere}");
+        let said = said(&heard);
+        assert_eq!(
+            said.iter().filter(|name| *name == "polled").count(),
+            1,
+            "{said:?}"
+        );
+        assert!(said.contains(&"kept".to_owned()), "{said:?}");
+    }
+
     /// A TCP listener whose next connection may fail to be taken, and
     /// whose address may not be known: every test serves through it, so
     /// one instance of `serve` takes every path.
@@ -511,20 +579,5 @@ body = "{{ event.body }}"
             tokio::join!(client, world.serve(flaky, limits(), &hear, stop.notified()));
         assert!(answer.starts_with("HTTP/1.1 200 OK"), "{answer}");
         assert_eq!(said(&heard), ["unaccepted: too many open files"]);
-    }
-
-    #[tokio::test]
-    async fn a_capped_http_sends_as_many_at_once_as_it_is_allowed() {
-        let capped = Capped::new(Gate::default(), 1);
-        let request = || Request {
-            method: herald_ports::Method::Get,
-            url: herald_ports::Text::plain("https://social.example/users/ana"),
-            headers: Vec::new(),
-            body: Vec::new(),
-            most: herald_ports::BODY_LIMIT,
-        };
-        let (first, second) = tokio::join!(capped.send(request()), capped.send(request()));
-        assert_eq!(first.unwrap().status, 202);
-        assert_eq!(second.unwrap().status, 202);
     }
 }

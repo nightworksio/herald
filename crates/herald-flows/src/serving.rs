@@ -12,7 +12,9 @@ use herald_sources_forge::{Forge, Hooked};
 use crate::announce::{Announced, Outcome, Ports, announce, announce_within};
 use crate::commanded::{INTERACTIONS, MATRIX, appserviced, commanded};
 use crate::following::{FollowError, Followed, followed};
-use crate::inbound::{Keys, Rejected, Verified, activity_verified, admitted, released, verified};
+use crate::inbound::{
+    Admission, Keys, Rejected, Verified, activity_verified, admitted, released, verified,
+};
 use crate::interact::{Answer, interact, replied as replied_to};
 use crate::interacting::Replying;
 use crate::prepare::{Connected, PrepareError};
@@ -185,6 +187,8 @@ pub struct Serving<'a, S, C, G, V, H, P, K> {
     pub keys: &'a Keys<'a, K>,
     /// The secret each forge source's webhooks are signed with.
     pub webhooks: &'a Webhooks,
+    /// Whether a request's delivery is let through once, or again.
+    pub admission: Admission,
 }
 
 pub(crate) fn said(status: u16, text: &str) -> Answered {
@@ -418,7 +422,7 @@ async fn hooked<S: Store, C: Clock, G, V: Verifier, H, P, K>(
         Ok(verified) => verified,
         Err(rejected) => return rejection(&rejected),
     };
-    if let Err(rejected) = admitted(store, scheme, &verified, now).await {
+    if let Err(rejected) = admitted(store, serving.admission, scheme, &verified, now).await {
         return rejection(&rejected);
     }
     match forge.hooked(inbound.headers, inbound.body, &options.repository) {
@@ -469,7 +473,15 @@ async fn posted<S: Store, C: Clock, G, V, H, P, K>(
         delivery: Some(event.identity().as_str().to_owned()),
         signer: Some(name.to_owned()),
     };
-    match admitted(serving.ports.store, Scheme::App, &verified, now).await {
+    match admitted(
+        serving.ports.store,
+        serving.admission,
+        Scheme::App,
+        &verified,
+        now,
+    )
+    .await
+    {
         Ok(()) => Answered {
             reply: said(202, "herald announces the event").reply,
             job: Some(Job::App {
@@ -599,7 +611,14 @@ async fn inboxed<S: Store, C: Clock, G, V: Verifier, H, P: Http, K: Keyring>(
         Ok(verified) => verified,
         Err(rejected) => return rejection(&rejected),
     };
-    if let Err(rejected) = admitted(serving.ports.store, Scheme::ActivityPub, &verified, now).await
+    if let Err(rejected) = admitted(
+        serving.ports.store,
+        serving.admission,
+        Scheme::ActivityPub,
+        &verified,
+        now,
+    )
+    .await
     {
         return rejection(&rejected);
     }

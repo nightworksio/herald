@@ -1,0 +1,27 @@
+[package]
+name = "herald-store-dynamodb"
+description = "herald's records kept one item per record in an AWS DynamoDB table"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish.workspace = true
+
+[dependencies]
+herald-aws.workspace = true
+herald-core.workspace = true
+herald-ports.workspace = true
+herald-records.workspace = true
+schemars.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+herald-testing.workspace = true
+pollster.workspace = true
+serde_json.workspace = true
+
+[lints]
+workspace = true

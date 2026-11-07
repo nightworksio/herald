@@ -1,6 +1,6 @@
 # ADR-0005: An announcement is sent once, finished if interrupted, and kept in any of nine stores
 
-**Status:** Accepted; decisions 5 and 7 superseded in part by [ADR-0011](0011-markers-count-only-on-herald-s-own-posts-a-route-keeps-one-pin-and-a-lock-archives.md)
+**Status:** Accepted; decisions 5 and 7 superseded in part by [ADR-0011](0011-markers-count-only-on-herald-s-own-posts-a-route-keeps-one-pin-and-a-lock-archives.md); the stores extended by [ADR-0017](0017-herald-runs-wherever-code-runs-from-one-native-binary-and-one-wasm-module.md)
 **Date:** 2026-10-31
 
 ## Context

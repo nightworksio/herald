@@ -1,5 +1,7 @@
 use herald_core::{Refusal, Scheme};
-use herald_flows::{Keys, Rejected, Verified, activity_verified, admitted, released, verified};
+use herald_flows::{
+    Admission, Keys, Rejected, Verified, activity_verified, admitted, released, verified,
+};
 use herald_ports::{Keyring, KnownKey, Store, StoreError};
 use herald_records::MemoryKeyring;
 use herald_testing::{FakeStore, FakeVerifier};
@@ -88,7 +90,7 @@ fn a_discord_interaction_delivered_twice_is_a_replay() {
                 now(),
             )
             .await?;
-            admitted(&store, Scheme::Discord, &verified, now()).await
+            admitted(&store, Admission::Once, Scheme::Discord, &verified, now()).await
         })
     };
     assert_eq!(delivery(), Ok(()));
@@ -187,10 +189,29 @@ fn a_github_webhook_is_delivered_as_its_signature() {
 #[test]
 fn a_delivery_is_admitted_once_until_it_is_released() {
     let store = FakeStore::default();
-    let admit =
-        |verified: &Verified| pollster::block_on(admitted(&store, Scheme::GitHub, verified, now()));
+    let admit = |verified: &Verified| {
+        pollster::block_on(admitted(
+            &store,
+            Admission::Once,
+            Scheme::GitHub,
+            verified,
+            now(),
+        ))
+    };
     assert_eq!(admit(&delivered("1")), Ok(()));
     assert_eq!(admit(&delivered("1")), Err(Rejected::Replayed));
+    assert_eq!(
+        pollster::block_on(admitted(
+            &store,
+            Admission::Again,
+            Scheme::GitHub,
+            &delivered("1"),
+            now()
+        )),
+        Ok(()),
+        "a request handed in again is let through"
+    );
+    assert_eq!(Admission::default(), Admission::Once);
     assert_eq!(
         Rejected::Replayed.to_string(),
         "the request was delivered before, so it is taken for a replay"
@@ -317,7 +338,13 @@ fn a_store_keeping_no_deliveries_admits_every_one_and_the_ledger_skips_replays()
     let store = Refusing(StoreError::Unsupported { what: "deliveries" });
     let verified = delivered("1");
     assert_eq!(
-        pollster::block_on(admitted(&store, Scheme::GitHub, &verified, now())),
+        pollster::block_on(admitted(
+            &store,
+            Admission::Once,
+            Scheme::GitHub,
+            &verified,
+            now()
+        )),
         Ok(())
     );
     assert_eq!(
@@ -333,7 +360,13 @@ fn a_store_that_cannot_answer_lets_nothing_through() {
     };
     let store = Refusing(down.clone());
     let verified = delivered("1");
-    let rejected = pollster::block_on(admitted(&store, Scheme::GitHub, &verified, now()));
+    let rejected = pollster::block_on(admitted(
+        &store,
+        Admission::Once,
+        Scheme::GitHub,
+        &verified,
+        now(),
+    ));
     assert_eq!(
         rejected,
         Err(Rejected::Unadmitted {

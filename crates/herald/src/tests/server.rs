@@ -31,6 +31,39 @@ async fn checked(port: u16, answer: &RefCell<String>) {
     *answer.borrow_mut() = read;
 }
 
+#[cfg(unix)]
+#[test]
+fn a_process_stops_when_it_is_asked_to() {
+    on_tokio(async {
+        let asked = crate::stopped();
+        let told = std::process::Command::new("kill")
+            .args(["-TERM", &std::process::id().to_string()])
+            .status()
+            .unwrap();
+        assert!(told.success());
+        asked.await;
+    });
+}
+
+#[cfg(unix)]
+#[test]
+fn a_process_that_cannot_listen_for_its_signals_stops_at_once() {
+    let unheard = || Err(std::io::Error::other("no signals here"));
+    on_tokio(crate::signalled(unheard(), unheard()));
+}
+
+#[test]
+fn a_server_refuses_a_store_only_a_run_in_actions_reaches() {
+    let cached = CONFIG.replace("kind = \"git-branch\"", "kind = \"actions-cache\"");
+    let run = herald(&setup(&cached), &World::default(), &["server"]);
+    assert_eq!(run.code, STOPPED);
+    assert!(
+        run.err.contains("this herald keeps records in"),
+        "{}",
+        run.err
+    );
+}
+
 #[test]
 fn the_server_listens_where_it_is_told_until_it_is_stopped() {
     let port = free();
@@ -79,6 +112,49 @@ fn the_server_listens_where_its_environment_or_its_config_says() {
     );
     assert_eq!(served.code, DONE, "{}", served.err);
     assert!(answer.borrow().starts_with("HTTP/1.1 200 OK"));
+}
+
+/// What the server on `port` answers an Azure timer's invocation at `path`,
+/// kept in `answer`.
+async fn timed(port: u16, path: &str, answer: &RefCell<String>) {
+    let mut stream = tokio::net::TcpStream::connect(("127.0.0.1", port))
+        .await
+        .unwrap();
+    let request = format!("POST {path} HTTP/1.1\r\nHost: x\r\nContent-Length: 2\r\n\r\n{{}}");
+    stream.write_all(request.as_bytes()).await.unwrap();
+    let mut read = String::new();
+    stream.read_to_string(&mut read).await.unwrap();
+    *answer.borrow_mut() = read;
+}
+
+#[test]
+fn under_azure_functions_the_server_listens_on_its_port_and_its_timers_ask_for_rounds() {
+    let port = free();
+    let answer = RefCell::new(String::new());
+    let mut azure = setup(CONFIG);
+    azure
+        .vars
+        .insert("FUNCTIONS_CUSTOMHANDLER_PORT".to_owned(), port.to_string());
+    let served = herald_until(
+        &azure,
+        &World::default(),
+        &["server"],
+        timed(port, "/housekeep", &answer),
+    );
+    assert_eq!(served.code, DONE, "{}", served.err);
+    assert!(
+        served
+            .out
+            .contains(&format!("herald serves on 127.0.0.1:{port}")),
+        "{}",
+        served.out
+    );
+    let answer = answer.borrow();
+    assert!(answer.starts_with("HTTP/1.1 200 OK"), "{answer}");
+    assert!(
+        answer.ends_with(r#"{"Outputs":{},"Logs":[],"ReturnValue":null}"#),
+        "{answer}"
+    );
 }
 
 #[test]
@@ -161,7 +237,7 @@ fn doctor_names_the_stores_a_server_cannot_keep_records_in() {
     );
     assert_eq!(doctored.code, STOPPED);
     assert!(
-        doctored.out.contains("store.kind: keeping records in actions-cache cannot be served: this herald keeps records in sqlite, postgres, git-branch, markers or repo-variables; set [store] kind to one of them."),
+        doctored.out.contains("store.kind: keeping records in actions-cache cannot be served: this herald keeps records in sqlite, postgres, dynamodb, git-branch, markers or repo-variables; set [store] kind to one of them."),
         "{}",
         doctored.out
     );

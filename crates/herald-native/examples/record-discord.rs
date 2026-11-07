@@ -9,9 +9,10 @@ use std::fs;
 use std::path::PathBuf;
 use std::process::ExitCode;
 
+use herald_compose::Reach;
 use herald_core::{Chore, Entry, Facts, Sent, Step};
 use herald_dest_discord::{Credential, Discord, DiscordMarkers, RouteOptions};
-use herald_native::{NativeHttp, Reach};
+use herald_native::NativeHttp;
 use herald_ports::{HttpError, Markers, Secret};
 use herald_testing::sample::{announcement, delivery, marker, route_marker};
 use herald_testing::{Ids, Recorder, Scrub};

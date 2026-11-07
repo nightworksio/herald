@@ -15,11 +15,16 @@ enum StoreSchema {
     /// A Postgres database.
     Postgres(herald_store_postgres::StoreOptions),
     /// Cloudflare D1, through the Worker's binding.
-    D1 {},
+    D1(herald_store_d1::StoreOptions),
+    /// The storage of herald's Cloudflare Durable Object, through the
+    /// Worker's binding.
+    DurableObject(herald_store_durable_object::StoreOptions),
     /// An AWS DynamoDB table.
-    Dynamodb {},
-    /// Deno KV, on Deno Deploy.
-    DenoKv {},
+    Dynamodb(herald_store_dynamodb::StoreOptions),
+    /// Deno KV, on Deno Deploy or wherever a database is opened.
+    DenoKv(herald_store_deno_kv::StoreOptions),
+    /// A Fastly KV Store, on Fastly Compute.
+    FastlyKv(herald_store_fastly_kv::StoreOptions),
     /// The destinations' own posts.
     Markers {},
     /// One file per record on a `herald-state` branch.

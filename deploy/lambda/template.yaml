@@ -1,0 +1,48 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: herald as an AWS Lambda function on its own runtime
+
+Parameters:
+  Rounds:
+    Type: String
+    Default: rate(5 minutes)
+  Table:
+    Type: String
+    Default: herald
+
+Resources:
+  Logs:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${AWS::StackName}
+      RetentionInDays: 30
+  Herald:
+    Type: AWS::Serverless::Function
+    DependsOn: Logs
+    Properties:
+      FunctionName: !Ref AWS::StackName
+      CodeUri: .
+      Handler: bootstrap
+      Runtime: provided.al2023
+      Architectures: [arm64]
+      MemorySize: 256
+      Timeout: 900
+      FunctionUrlConfig:
+        AuthType: NONE
+        InvokeMode: BUFFERED
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref Table
+        - Statement:
+            - Effect: Allow
+              Action: lambda:InvokeFunction
+              Resource: !Sub arn:${AWS::Partition}:lambda:${AWS::Region}:${AWS::AccountId}:function:${AWS::StackName}
+      Events:
+        Rounds:
+          Type: ScheduleV2
+          Properties:
+            ScheduleExpression: !Ref Rounds
+
+Outputs:
+  Url:
+    Value: !GetAtt HeraldUrl.FunctionUrl

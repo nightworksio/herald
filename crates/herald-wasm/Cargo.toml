@@ -1,0 +1,38 @@
+[package]
+name = "herald-wasm"
+description = "herald as one wasm module behind a JavaScript host: Cloudflare Workers, Vercel, Netlify, Deno, Node and Bun"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+herald-compose.workspace = true
+herald-config.workspace = true
+herald-core.workspace = true
+herald-flows.workspace = true
+herald-keys.workspace = true
+herald-ports.workspace = true
+jiff.workspace = true
+url.workspace = true
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+js-sys = "0.3"
+send_wrapper = { version = "0.6", features = ["futures"] }
+wasm-bindgen = "0.2.130"
+wasm-bindgen-futures = "0.4"
+
+[target.'cfg(target_arch = "wasm32")'.dev-dependencies]
+base64.workspace = true
+herald-records.workspace = true
+herald-testing.workspace = true
+wasm-bindgen-test = "0.3"
+
+[lints]
+workspace = true

@@ -7,18 +7,20 @@ mod http;
 mod postgres;
 mod public;
 mod random;
-mod reach;
 #[cfg(test)]
 mod serving;
 mod socket;
+mod sql;
 mod sqlite;
+mod timer;
 
 pub use crypto::{RingSigner, RingVerifier};
 pub use environment::{EnvSecrets, SystemClock};
 pub use http::{BuildError, ConnectError, NativeHttp};
 pub use postgres::NativePostgres;
-pub use public::{PublicHttp, public};
+pub use public::PublicHttp;
 pub use random::random_secret;
-pub use reach::{Reach, ReachError};
 pub use socket::{NativeSocket, NativeSockets};
+pub use sql::NativeSql;
 pub use sqlite::NativeSqlite;
+pub use timer::TokioTimer;

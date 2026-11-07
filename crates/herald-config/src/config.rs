@@ -70,18 +70,23 @@ impl Config {
             Source::Registry(_, options) => [options.token.as_ref(), None],
             Source::Feed(_) => [None, None],
         });
-        let store = match &self.store {
-            Store::GitBranch(options) => options.token.as_ref(),
-            Store::RepoVariables(options) => Some(&options.token),
-            Store::Postgres(options) => Some(&options.url),
-            _ => None,
+        let store: Vec<&str> = match &self.store {
+            Store::GitBranch(options) => options
+                .token
+                .iter()
+                .map(|named| named.secret.as_str())
+                .collect(),
+            Store::RepoVariables(options) => vec![options.token.secret.as_str()],
+            Store::Postgres(options) => vec![options.url.secret.as_str()],
+            Store::Dynamodb(options) => options.secrets().to_vec(),
+            _ => Vec::new(),
         };
         destinations
             .chain(sources)
             .flatten()
             .chain(self.marker_key.as_ref())
-            .chain(store)
             .map(|named| named.secret.as_str())
+            .chain(store)
             .collect()
     }
 }
@@ -94,11 +99,15 @@ pub enum Store {
     /// A Postgres database.
     Postgres(herald_store_postgres::StoreOptions),
     /// Cloudflare D1.
-    D1,
+    D1(herald_store_d1::StoreOptions),
+    /// A Cloudflare Durable Object's storage.
+    DurableObject(herald_store_durable_object::StoreOptions),
     /// An AWS DynamoDB table.
-    Dynamodb,
+    Dynamodb(herald_store_dynamodb::StoreOptions),
     /// Deno KV.
-    DenoKv,
+    DenoKv(herald_store_deno_kv::StoreOptions),
+    /// A Fastly KV Store.
+    FastlyKv(herald_store_fastly_kv::StoreOptions),
     /// The destinations' own posts.
     Markers,
     /// A branch of the repository.
@@ -111,30 +120,36 @@ pub enum Store {
 
 impl Store {
     /// The kind of a SQLite store, as the config spells it.
-    pub const SQLITE: &'static str = "sqlite";
+    pub const SQLITE: &str = "sqlite";
     /// The kind of a Postgres store.
-    pub const POSTGRES: &'static str = "postgres";
+    pub const POSTGRES: &str = "postgres";
     /// The kind of a Cloudflare D1 store.
-    pub const CLOUDFLARE_D1: &'static str = "d1";
+    pub const CLOUDFLARE_D1: &str = "d1";
+    /// The kind of a store in a Cloudflare Durable Object.
+    pub const DURABLE_OBJECT: &str = "durable-object";
     /// The kind of a DynamoDB store.
-    pub const DYNAMODB: &'static str = "dynamodb";
+    pub const DYNAMODB: &str = "dynamodb";
     /// The kind of a Deno KV store.
-    pub const DENO_KV: &'static str = "deno-kv";
+    pub const DENO_KV: &str = "deno-kv";
+    /// The kind of a Fastly KV Store store.
+    pub const FASTLY_KV: &str = "fastly-kv";
     /// The kind of the store kept in the destinations' own posts.
-    pub const MARKERS: &'static str = "markers";
+    pub const MARKERS: &str = "markers";
     /// The kind of a store on a branch of the repository.
-    pub const GIT_BRANCH: &'static str = "git-branch";
+    pub const GIT_BRANCH: &str = "git-branch";
     /// The kind of a store in the GitHub Actions cache.
-    pub const ACTIONS_CACHE: &'static str = "actions-cache";
+    pub const ACTIONS_CACHE: &str = "actions-cache";
     /// The kind of a store in the repository's variables.
-    pub const REPO_VARIABLES: &'static str = "repo-variables";
+    pub const REPO_VARIABLES: &str = "repo-variables";
     /// Every kind, as the config spells it.
-    pub const KINDS: [&'static str; 9] = [
+    pub const KINDS: [&str; 11] = [
         Self::SQLITE,
         Self::POSTGRES,
         Self::CLOUDFLARE_D1,
+        Self::DURABLE_OBJECT,
         Self::DYNAMODB,
         Self::DENO_KV,
+        Self::FASTLY_KV,
         Self::MARKERS,
         Self::GIT_BRANCH,
         Self::ACTIONS_CACHE,
@@ -147,9 +162,11 @@ impl Store {
         match self {
             Self::Sqlite(_) => Self::SQLITE,
             Self::Postgres(_) => Self::POSTGRES,
-            Self::D1 => Self::CLOUDFLARE_D1,
-            Self::Dynamodb => Self::DYNAMODB,
-            Self::DenoKv => Self::DENO_KV,
+            Self::D1(_) => Self::CLOUDFLARE_D1,
+            Self::DurableObject(_) => Self::DURABLE_OBJECT,
+            Self::Dynamodb(_) => Self::DYNAMODB,
+            Self::DenoKv(_) => Self::DENO_KV,
+            Self::FastlyKv(_) => Self::FASTLY_KV,
             Self::Markers => Self::MARKERS,
             Self::GitBranch(_) => Self::GIT_BRANCH,
             Self::ActionsCache(_) => Self::ACTIONS_CACHE,
@@ -175,15 +192,15 @@ pub enum Destination {
 
 impl Destination {
     /// The kind of a Discord destination, as the config spells it.
-    pub const DISCORD: &'static str = "discord";
+    pub const DISCORD: &str = "discord";
     /// The kind of a Mastodon destination, as the config spells it.
-    pub const MASTODON: &'static str = "mastodon";
+    pub const MASTODON: &str = "mastodon";
     /// The kind of a Matrix destination, as the config spells it.
-    pub const MATRIX: &'static str = "matrix";
+    pub const MATRIX: &str = "matrix";
     /// The kind of a Slack destination, as the config spells it.
-    pub const SLACK: &'static str = "slack";
+    pub const SLACK: &str = "slack";
     /// The kind of herald's own ActivityPub actors, as the config spells it.
-    pub const ACTIVITYPUB: &'static str = "activitypub";
+    pub const ACTIVITYPUB: &str = "activitypub";
     /// Every kind, as the config spells it.
     pub const KINDS: [&'static str; 5] = [
         Self::DISCORD,
@@ -239,7 +256,7 @@ pub enum Source {
 
 impl Source {
     /// The kind of a feed source, as the config spells it.
-    pub const FEED: &'static str = "feed";
+    pub const FEED: &str = "feed";
 
     /// The kind's name, as `[sources.<name>] kind` writes it.
     #[must_use]
@@ -401,7 +418,7 @@ pub struct Server {
 impl Server {
     /// Where `herald server` listens where the config names nowhere: this
     /// machine alone, as a reverse proxy in front of it reaches it.
-    pub const LISTEN: &'static str = "127.0.0.1:8080";
+    pub const LISTEN: &str = "127.0.0.1:8080";
     /// How many announcements it works on at once where the config says
     /// nothing.
     pub const JOBS: usize = 8;

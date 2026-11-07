@@ -13,28 +13,6 @@ async fn heard(socket: &mut NativeSocket) -> Frame {
         .expect("a frame or a close within the bound")
 }
 
-fn allowed(url: &str) -> bool {
-    sockets().allows(&Url::parse(url).unwrap())
-}
-
-#[test]
-fn only_secure_connections_under_the_domains_and_plain_ones_on_loopback_are_allowed() {
-    assert!(allowed("wss://gateway.discord.gg/?v=10"));
-    assert!(allowed("wss://gateway-us-east1-b.discord.gg"));
-    assert!(allowed("wss://discord.gg"));
-    assert!(allowed("wss://wss-primary.slack.com/link/?ticket=1"));
-    assert!(!allowed("wss://evildiscord.gg"));
-    assert!(!allowed("wss://discord.gg.evil.example"));
-    assert!(!allowed("ws://gateway.discord.gg"));
-    assert!(!allowed("https://gateway.discord.gg"));
-    assert!(allowed("ws://127.0.0.1:9000"));
-    assert!(allowed("ws://[::1]:9000"));
-    assert!(allowed("ws://localhost:9000"));
-    assert!(!allowed("ws://10.0.0.1"));
-    assert!(!allowed("wss://127.0.0.1"));
-    assert!(!allowed("data:text/plain,discord.gg"));
-}
-
 #[test]
 fn a_url_not_allowed_is_refused_without_its_query() {
     let refused = pollster::block_on(sockets().open("wss://evil.example/?ticket=secret"));

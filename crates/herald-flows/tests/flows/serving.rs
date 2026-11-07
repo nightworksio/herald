@@ -121,6 +121,7 @@ impl World {
             public: &self.script,
             keys: &keys,
             webhooks: &self.webhooks,
+            admission: herald_flows::Admission::Once,
         })
     }
 
@@ -281,6 +282,7 @@ fn an_actor_whose_key_cannot_be_read_is_not_served() {
         public: &world.script,
         keys: &keys,
         webhooks: &world.webhooks,
+        admission: herald_flows::Admission::Once,
     };
     let answered = pollster::block_on(answer(&serving, &get("/users/php-mutation-gate")));
     assert_eq!(answered.reply.status, 500);

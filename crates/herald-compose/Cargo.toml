@@ -1,0 +1,37 @@
+[package]
+name = "herald-compose"
+description = "What every herald driver composes: the config's store reached over a host's ports, and requests, jobs and rounds served over it"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish.workspace = true
+
+[dependencies]
+async-lock = { version = "3", default-features = false, features = ["std"] }
+herald-config.workspace = true
+herald-core.workspace = true
+herald-flows.workspace = true
+herald-ports.workspace = true
+herald-records.workspace = true
+herald-store-d1.workspace = true
+herald-store-deno-kv.workspace = true
+herald-store-durable-object.workspace = true
+herald-store-dynamodb.workspace = true
+herald-store-fastly-kv.workspace = true
+herald-store-git-branch.workspace = true
+herald-store-postgres.workspace = true
+herald-store-repo-variables.workspace = true
+herald-store-sqlite.workspace = true
+jiff.workspace = true
+url.workspace = true
+
+[dev-dependencies]
+futures-util = { version = "0.3", default-features = false, features = ["std"] }
+herald-testing.workspace = true
+pollster.workspace = true
+
+[lints]
+workspace = true

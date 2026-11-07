@@ -9,7 +9,8 @@
 //! [`housekeep`] does each thread's chores as they fall due. [`verified`]
 //! lets an inbound request through only once its signature is its sender's
 //! (ADR-0007), and [`answer`] answers every request `herald server` and the
-//! serverless drivers take, leaving its work to [`work`]. [`doctor`]
+//! serverless drivers take, leaving its work to [`work`]. [`Sessions`]
+//! holds the sessions a destination carries commands over. [`doctor`]
 //! names what a config asks for that cannot be served, and [`preview`]
 //! renders each route's templates as its destination would show them.
 
@@ -26,6 +27,7 @@ mod prepare;
 mod preview;
 mod reached;
 mod serving;
+mod sessions;
 mod together;
 
 pub use announce::{Announced, Outcome, Ports, Stop, announce, announce_within};
@@ -33,7 +35,9 @@ pub use commanded::{INTERACTIONS, MATRIX};
 pub use doctor::{Findings, Gap, Layer, doctor, keys, unserved};
 pub use following::{FollowError, Followed, followed};
 pub use housekeep::{Chored, Kept, housekeep};
-pub use inbound::{Keys, Rejected, Verified, activity_verified, admitted, released, verified};
+pub use inbound::{
+    Admission, Keys, Rejected, Verified, activity_verified, admitted, released, verified,
+};
 pub use interact::{Answer, completed, deferral, interact, replied};
 pub use interacting::{Interacting, Replying};
 pub use poll::{Fresh, Remembered, Sweep, Swept, poll};
@@ -44,3 +48,4 @@ pub use serving::{
     Answered, HEALTH, HOOKS, Inbound, Interacted, Job, Reply, Serving, Webhooks, Worked, answer,
     unworked, webhooks, work,
 };
+pub use sessions::{Sessions, Taker};

@@ -70,6 +70,6 @@ fn housekeeping_that_must_wait_or_cannot_read_its_store_stops() {
     let unset = herald(&outside, &world, &["housekeep"]);
     assert_eq!(
         unset.err,
-        "GITHUB_REPOSITORY is not set; herald reads it from the CI run\n"
+        "GITHUB_REPOSITORY is not set; name the store's repository, or run herald in the repository's CI\n"
     );
 }

@@ -4,7 +4,9 @@
 use clap::{Parser, Subcommand, ValueEnum};
 use herald_sources_forge::Forge;
 
-use super::stores::{SERVED, STORES};
+use herald_compose::Hosting;
+
+use super::stores::{LAMBDA, SERVED, STORES};
 
 #[derive(Debug, Parser)]
 #[command(
@@ -146,6 +148,18 @@ pub(crate) enum Layer {
     Actions,
     /// `herald server`, in a container or on any host.
     Server,
+    /// `herald lambda`, as an AWS Lambda function.
+    Lambda,
+    /// The wasm module on a Cloudflare Worker.
+    Worker,
+    /// The wasm module on Deno.
+    Deno,
+    /// The wasm module on Node or Bun.
+    Node,
+    /// The wasm module as a Vercel function.
+    Vercel,
+    /// The wasm module as a Netlify function.
+    Netlify,
 }
 
 impl Layer {
@@ -162,6 +176,16 @@ impl Layer {
                 endpoint: true,
                 sessions: true,
             },
+            Self::Lambda => herald_flows::Layer {
+                stores: &LAMBDA,
+                endpoint: true,
+                sessions: false,
+            },
+            Self::Worker => Hosting::Worker.layer(),
+            Self::Deno => Hosting::Deno.layer(),
+            Self::Node => Hosting::Node.layer(),
+            Self::Vercel => Hosting::Vercel.layer(),
+            Self::Netlify => Hosting::Netlify.layer(),
         }
     }
 }
@@ -202,6 +226,10 @@ pub(crate) enum Serve {
         #[arg(long)]
         listen: Option<String>,
     },
+    /// Serve as an AWS Lambda function on a custom runtime: answer its URL's
+    /// requests, do the work they leave, and poll and keep house on its
+    /// schedule.
+    Lambda,
 }
 
 #[derive(Debug, Clone, Copy, ValueEnum)]

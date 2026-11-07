@@ -7,11 +7,13 @@
 //! is the `Store` over it: the paths each kind of record is kept at, the
 //! version kept beside each record, and the compare-and-set built on the
 //! backend's. [`SqlRecords`] is the backend over the `Sql` port, which the
-//! SQL stores share. [`Kept`] is also a `Keyring`, and [`MemoryKeyring`]
+//! SQL stores share, and [`KvRecords`] the one over the `Kv` port, which
+//! the key-value stores share. [`Kept`] is also a `Keyring`, and [`MemoryKeyring`]
 //! keeps keys in memory alone.
 
 mod kept;
 mod keyring;
+mod kv;
 mod memory;
 mod paths;
 mod records;
@@ -19,6 +21,7 @@ mod sql;
 
 pub use kept::Kept;
 pub use keyring::MemoryKeyring;
+pub use kv::KvRecords;
 pub use memory::Memory;
 pub use records::{Blob, Records, Wrote};
 pub use sql::{Dialect, SqlRecords};

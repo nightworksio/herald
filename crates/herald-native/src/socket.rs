@@ -2,13 +2,13 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use futures_util::{SinkExt as _, StreamExt as _};
+use herald_compose::SocketReach;
 use herald_ports::{Frame, HttpError, Socket, Sockets, Text};
 use rustls::ClientConfig;
 use tokio::net::TcpStream;
 use tokio::time::{Instant, timeout, timeout_at};
 use tokio_tungstenite::tungstenite::Message;
 use tokio_tungstenite::{Connector, MaybeTlsStream, WebSocketStream};
-use url::{Host, Url};
 
 use crate::http::{BuildError, tls};
 
@@ -23,7 +23,7 @@ const SILENCE: Duration = Duration::from_secs(30);
 /// as long again; one that does not open within its silence is not opened.
 #[derive(Debug, Clone)]
 pub struct NativeSockets {
-    domains: Vec<String>,
+    reach: SocketReach,
     tls: Arc<ClientConfig>,
     silence: Duration,
 }
@@ -45,7 +45,7 @@ impl NativeSockets {
     /// When TLS cannot be set up.
     pub fn under<'a>(domains: impl IntoIterator<Item = &'a str>) -> Result<Self, BuildError> {
         Ok(Self {
-            domains: domains.into_iter().map(ToOwned::to_owned).collect(),
+            reach: SocketReach::under(domains),
             tls: Arc::new(tls(rustls::crypto::ring::default_provider())?),
             silence: SILENCE,
         })
@@ -57,40 +57,13 @@ impl NativeSockets {
     pub fn silent_for(self, silence: Duration) -> Self {
         Self { silence, ..self }
     }
-
-    fn allows(&self, url: &Url) -> bool {
-        let (Some(host), Some(parsed)) = (url.host_str(), url.host()) else {
-            return false;
-        };
-        let loopback = match parsed {
-            Host::Ipv4(address) => address.is_loopback(),
-            Host::Ipv6(address) => address.is_loopback(),
-            Host::Domain(name) => name == "localhost",
-        };
-        match url.scheme() {
-            "wss" => self.domains.iter().any(|domain| {
-                host == domain
-                    || host
-                        .strip_suffix(domain.as_str())
-                        .is_some_and(|rest| rest.ends_with('.'))
-            }),
-            "ws" => loopback,
-            _ => false,
-        }
-    }
 }
 
 impl Sockets for NativeSockets {
     type Socket = NativeSocket;
 
     async fn open(&self, url: &str) -> Result<NativeSocket, HttpError> {
-        let refused = || HttpError::Refused {
-            url: url.split('?').next().unwrap_or_default().to_owned(),
-        };
-        let parsed = Url::parse(url).map_err(|_| refused())?;
-        if !self.allows(&parsed) {
-            return Err(refused());
-        }
+        let parsed = self.reach.admitted(url)?;
         let connecting = tokio_tungstenite::connect_async_tls_with_config(
             parsed.as_str(),
             None,

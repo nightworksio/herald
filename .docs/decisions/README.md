@@ -18,11 +18,11 @@ no separate requirements document, and there are no requirement IDs.
 
 | # | Decision | Status |
 |---|----------|--------|
-| [0001](0001-a-sans-io-core-behind-ports.md) | A sans-IO core behind ports, in crates that each name only those before them | Accepted; superseded in part by [0014](0014-herald-server-answers-first-and-works-after-on-one-task-within-limits.md) |
+| [0001](0001-a-sans-io-core-behind-ports.md) | A sans-IO core behind ports, in crates that each name only those before them | Accepted; superseded in part by [0014](0014-herald-server-answers-first-and-works-after-on-one-task-within-limits.md) and [0017](0017-herald-runs-wherever-code-runs-from-one-native-binary-and-one-wasm-module.md) |
 | [0002](0002-three-layers-of-support-and-a-doctor-that-names-the-gaps.md) | Three layers of support, each a superset of the one before, and a doctor that names what a layer cannot serve | Accepted |
 | [0003](0003-every-source-becomes-one-neutral-event.md) | Every source becomes one neutral event, parsed without I/O | Accepted |
 | [0004](0004-each-destination-gets-its-own-dialect-limits-and-features.md) | Each destination gets its own dialect, limits and features, described as data | Accepted; superseded in part by [0011](0011-markers-count-only-on-herald-s-own-posts-a-route-keeps-one-pin-and-a-lock-archives.md) |
-| [0005](0005-an-announcement-is-sent-once-and-finished-if-interrupted.md) | An announcement is sent once, finished if interrupted, and kept in any of nine stores | Accepted; superseded in part by [0011](0011-markers-count-only-on-herald-s-own-posts-a-route-keeps-one-pin-and-a-lock-archives.md) |
+| [0005](0005-an-announcement-is-sent-once-and-finished-if-interrupted.md) | An announcement is sent once, finished if interrupted, and kept in any of nine stores | Accepted; superseded in part by [0011](0011-markers-count-only-on-herald-s-own-posts-a-route-keeps-one-pin-and-a-lock-archives.md) and [0017](0017-herald-runs-wherever-code-runs-from-one-native-binary-and-one-wasm-module.md) |
 | [0006](0006-one-herald-toml-with-sandboxed-templates-and-a-published-schema.md) | One `herald.toml`, with sandboxed templates and a published JSON Schema, validated before anything posts | Accepted |
 | [0007](0007-secrets-stay-out-of-reach-and-every-inbound-request-is-verified-first.md) | Secrets stay out of argv, templates and logs, every inbound request is verified before it is parsed, and the supply chain is pinned and signed | Accepted |
 | [0008](0008-every-line-is-covered-and-no-mutant-survives.md) | Every line is covered, no mutant survives, and every parser is fuzzed | Accepted |
@@ -34,3 +34,4 @@ no separate requirements document, and there are no requirement IDs.
 | [0014](0014-herald-server-answers-first-and-works-after-on-one-task-within-limits.md) | herald server answers first and works after, on one task, within limits | Accepted |
 | [0015](0015-an-app-is-a-source-routes-name-announcing-with-hashed-tokens-scoped-to-its-projects.md) | An app is a source routes name, announcing with hashed tokens scoped to its projects | Accepted |
 | [0016](0016-commands-are-carried-every-way-a-destination-offers-and-answered-from-what-herald-keeps.md) | Commands are carried every way a destination offers, and answered from what herald keeps | Accepted |
+| [0017](0017-herald-runs-wherever-code-runs-from-one-native-binary-and-one-wasm-module.md) | herald runs wherever code runs, from one native binary and one wasm module | Accepted |

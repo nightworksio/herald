@@ -1,0 +1,2 @@
+#!/bin/sh
+exec "${LAMBDA_TASK_ROOT}/herald" --config "${LAMBDA_TASK_ROOT}/herald.toml" lambda

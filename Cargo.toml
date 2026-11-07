@@ -14,6 +14,8 @@ publish = false
 
 [workspace.dependencies]
 base64 = "0.23"
+herald-aws = { path = "crates/herald-aws" }
+herald-compose = { path = "crates/herald-compose" }
 herald-config = { path = "crates/herald-config" }
 herald-core = { path = "crates/herald-core" }
 herald-dest-discord = { path = "crates/herald-dest-discord" }
@@ -21,6 +23,7 @@ herald-dest-fediverse = { path = "crates/herald-dest-fediverse" }
 herald-dest-matrix = { path = "crates/herald-dest-matrix" }
 herald-dest-slack = { path = "crates/herald-dest-slack" }
 herald-flows = { path = "crates/herald-flows" }
+herald-keys = { path = "crates/herald-keys" }
 herald-native = { path = "crates/herald-native" }
 herald-ports = { path = "crates/herald-ports" }
 herald-records = { path = "crates/herald-records" }
@@ -30,12 +33,18 @@ herald-sources-feed = { path = "crates/herald-sources-feed" }
 herald-sources-forge = { path = "crates/herald-sources-forge" }
 herald-sources-registry = { path = "crates/herald-sources-registry" }
 herald-store-actions-cache = { path = "crates/herald-store-actions-cache" }
+herald-store-d1 = { path = "crates/herald-store-d1" }
+herald-store-deno-kv = { path = "crates/herald-store-deno-kv" }
+herald-store-dynamodb = { path = "crates/herald-store-dynamodb" }
+herald-store-durable-object = { path = "crates/herald-store-durable-object" }
+herald-store-fastly-kv = { path = "crates/herald-store-fastly-kv" }
 herald-store-git-branch = { path = "crates/herald-store-git-branch" }
 herald-store-markers = { path = "crates/herald-store-markers" }
 herald-store-postgres = { path = "crates/herald-store-postgres" }
 herald-store-repo-variables = { path = "crates/herald-store-repo-variables" }
 herald-store-sqlite = { path = "crates/herald-store-sqlite" }
 herald-testing = { path = "crates/herald-testing" }
+herald-wasm = { path = "crates/herald-wasm" }
 herald-wire = { path = "crates/herald-wire" }
 cargo_metadata = "0.23"
 minijinja = { version = "3", default-features = false, features = ["builtins", "fuel", "multi_template", "serde"] }

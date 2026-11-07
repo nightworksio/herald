@@ -23,6 +23,7 @@ mod secrets;
 mod socket;
 mod sql;
 mod store;
+mod timer;
 
 use std::sync::{Mutex, MutexGuard, PoisonError};
 
@@ -38,6 +39,7 @@ pub use secrets::FakeSecrets;
 pub use socket::{ScriptedSocket, ScriptedSockets};
 pub use sql::ScriptedSql;
 pub use store::FakeStore;
+pub use timer::FakeTimer;
 
 fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
     mutex.lock().unwrap_or_else(PoisonError::into_inner)
