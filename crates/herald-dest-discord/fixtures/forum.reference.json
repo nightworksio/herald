@@ -97,7 +97,9 @@
           "content": "- the gate",
           "allowed_mentions": {
             "parse": []
-          }
+          },
+          "nonce": "5b96fb84465ead32a076c69d8",
+          "enforce_nonce": true
         }
       },
       "response": {

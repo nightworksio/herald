@@ -1,6 +1,6 @@
 use std::fmt;
 
-use herald_core::{Announcement, Chore, Delivery, Entry, Step};
+use herald_core::{Announcement, Chore, Delivery, Entry, Step, digest};
 use herald_ports::{Method, Request, Text};
 use serde_json::{Map, Value, json};
 
@@ -177,14 +177,33 @@ fn thread_name(announcement: &Announcement) -> String {
         .unwrap_or_else(|| announcement.title.plain().to_owned())
 }
 
-fn chunk(announcement: &Announcement, index: u32) -> Value {
+/// The overflow chunk `index` of `announcement`. A bot's chunk carries a
+/// nonce of its own, so Discord takes it once however often it is sent; a
+/// webhook takes none.
+fn chunk(announcement: &Announcement, index: u32, deduplicated: bool) -> Value {
     let part = usize::try_from(index)
         .ok()
         .and_then(|index| announcement.parts.get(index));
-    json!({
-        "content": part.map(|part| part.body.as_str()).unwrap_or_default(),
-        "allowed_mentions": { "parse": [] },
-    })
+    let mut body = Map::new();
+    body.insert(
+        "content".to_owned(),
+        json!(part.map(|part| part.body.as_str()).unwrap_or_default()),
+    );
+    body.insert("allowed_mentions".to_owned(), json!({ "parse": [] }));
+    if deduplicated {
+        body.insert("nonce".to_owned(), json!(chunk_nonce(announcement, index)));
+        body.insert("enforce_nonce".to_owned(), json!(true));
+    }
+    Value::Object(body)
+}
+
+/// The nonce of a bot's overflow chunk `index`: a digest of the
+/// announcement's key and the index, as long as Discord takes.
+fn chunk_nonce(announcement: &Announcement, index: u32) -> String {
+    digest(&format!("{}/{index}", announcement.key))
+        .chars()
+        .take(KEY_LENGTH)
+        .collect()
 }
 
 fn landed<'a>(
@@ -262,7 +281,7 @@ fn webhook(
                 Method::Post,
                 target,
                 &credential,
-                &chunk(announcement, *index),
+                &chunk(announcement, *index, false),
             ))
         }
         Step::Crosspost => Err(Refusal::WebhookCannot("crosspost")),
@@ -335,7 +354,7 @@ fn bot(
                 Method::Post,
                 url,
                 credential,
-                &chunk(announcement, *index),
+                &chunk(announcement, *index, true),
             ))
         }
         Step::Pin if discord.route.forum => {
