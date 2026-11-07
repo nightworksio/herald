@@ -105,6 +105,14 @@ mod told {
     }
 
     #[test]
+    fn a_refused_request_says_why() {
+        assert_eq!(
+            told::refused("the signature does not match"),
+            "a request was refused: the signature does not match"
+        );
+    }
+
+    #[test]
     fn a_route_says_what_it_did_with_an_announcement() {
         assert_eq!(
             told::report(&announced(Outcome::Sent {

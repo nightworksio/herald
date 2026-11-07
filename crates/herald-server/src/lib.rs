@@ -52,6 +52,7 @@ pub(crate) const RUN: &str = "server";
 fn named() -> String {
     format!("{RUN}/{}", herald_environment::nonce())
 }
+
 /// How many seconds a sender is asked to wait when the work queue is full.
 const BUSY_RETRY: &str = "30";
 /// How long a connection may take to send a request's headers, and then

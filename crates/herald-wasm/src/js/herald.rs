@@ -115,9 +115,10 @@ impl Herald {
                 .into()
             });
             let reply = answered.reply;
-            let refused = answered.refused.map_or(JsValue::UNDEFINED, |reason| {
-                format!("a request was refused: {reason}").into()
-            });
+            let refused = answered
+                .refused
+                .as_deref()
+                .map_or(JsValue::UNDEFINED, |reason| told::refused(reason).into());
             Ok(object(&[
                 ("status", reply.status.into()),
                 ("kind", reply.kind.into()),

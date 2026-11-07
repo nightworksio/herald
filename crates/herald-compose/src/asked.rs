@@ -73,7 +73,8 @@ impl<H: Host> Composed<H> {
             job: answered.job,
             said: answered
                 .refused
-                .map(|reason| format!("a request was refused: {reason}"))
+                .as_deref()
+                .map(told::refused)
                 .into_iter()
                 .collect(),
         }
