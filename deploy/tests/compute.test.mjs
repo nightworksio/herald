@@ -1,7 +1,8 @@
 // The component on wasmtime and on Spin, and the service on Viceroy, each
 // answering real requests: herald's health, a round without and with its secret.
 // An activity whose key lies on a name resolving to loopback shows what each
-// reaches on others' behalf.
+// reaches on others' behalf. A key id names no port, so the key's listener binds
+// 443, which needs net.ipv4.ip_unprivileged_port_start at 443 or below.
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
@@ -12,6 +13,7 @@ import { after, test } from "node:test";
 
 const SECRET = "local-round-secret";
 const EGRESS = "deploy/tests/egress";
+const KEY_PORT = 443;
 const COMPONENT = "../../component/herald_wasi.wasm";
 const RUNTIME_CONFIG = "../../spin/runtime-config.toml";
 const PEM_LABEL = ["PRIVATE", "KEY"].join(" ");
@@ -69,7 +71,7 @@ function spinEnv() {
   return Object.entries(ENV).flatMap(([name, value]) => ["--env", `${name}=${value}`]);
 }
 
-function posted(port, keyOn) {
+function posted(port) {
   const body = "{}";
   const digest = createHash("sha256").update(body).digest("base64");
   return new Promise((resolve, reject) => {
@@ -83,7 +85,7 @@ function posted(port, keyOn) {
           host: "herald.example",
           date: new Date().toUTCString(),
           digest: `SHA-256=${digest}`,
-          signature: `keyId="https://localhost:${keyOn}/actor",headers="(request-target) host date digest",signature="AAAA"`,
+          signature: `keyId="https://localhost/actor",headers="(request-target) host date digest",signature="AAAA"`,
         },
       },
       (answer) => {
@@ -102,8 +104,8 @@ async function reachedLoopback(port) {
     connections += 1;
     socket.destroy();
   });
-  await new Promise((resolve) => listener.listen(0, resolve));
-  const status = await posted(port, listener.address().port);
+  await new Promise((resolve) => listener.listen(KEY_PORT, resolve));
+  const status = await posted(port);
   listener.close();
   assert.equal(status, 401);
   return connections > 0;

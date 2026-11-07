@@ -286,6 +286,7 @@ jobs:
       - run: cargo build --locked --release --target wasm32-wasip1 -p herald-fastly
       - run: cp target/wasm32-wasip2/release/herald_wasi.wasm deploy/component/herald_wasi.wasm
       - run: cargo build --locked --release --target wasm32-wasip2 -p herald-wasi --features spin
+      - run: sudo sysctl -w net.ipv4.ip_unprivileged_port_start=443
       - run: node --test deploy/tests/compute.test.mjs
 
   # herald's own Action, built from this commit, announces a sample release
