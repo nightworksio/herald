@@ -8,6 +8,9 @@ use serde_json::Value;
 use crate::options::RouteOptions;
 use crate::read::{json, read, text, trouble};
 use crate::request::{EVENT, ROUTE, Refusal, channel, get, pin, posted, query, step};
+use crate::web_api::{
+    AUTH_TEST, BOTS_INFO, CHAT_GET_PERMALINK, CONVERSATIONS_HISTORY, PINS_REMOVE,
+};
 
 /// The Web API herald speaks.
 pub(crate) const API: &str = "https://slack.com/api";
@@ -145,7 +148,7 @@ impl Slack {
             return Ok(facts);
         };
         let asked = format!("channel={}&message_ts={}", query(channel), query(ts));
-        let answer = http.send(get(self, "chat.getPermalink", &asked)).await?;
+        let answer = http.send(get(self, CHAT_GET_PERMALINK, &asked)).await?;
         let body = json(&answer);
         let permalink = trouble(&answer, &body)
             .is_none()
@@ -182,7 +185,7 @@ impl Slack {
             },
         };
         for ts in stale.iter().filter(|ts| *ts != post) {
-            let answer = http.send(pin(self, "pins.remove", channel, ts)).await?;
+            let answer = http.send(pin(self, PINS_REMOVE, channel, ts)).await?;
             let body = json(&answer);
             if text(&body, "error").is_some_and(|error| UNPINNED.contains(&error)) {
                 continue;
@@ -231,9 +234,7 @@ impl Slack {
                 query(channel),
                 ts = query(ts)
             );
-            let answer = http
-                .send(get(self, "conversations.history", &asked))
-                .await?;
+            let answer = http.send(get(self, CONVERSATIONS_HISTORY, &asked)).await?;
             let found = json(&answer);
             if let Some(sent) = trouble(&answer, &found) {
                 return Ok(Err(sent));
@@ -269,7 +270,7 @@ pub(crate) fn carried<'a>(message: &'a Value, field: &str) -> Option<&'a str> {
 /// Who the bot token is: its bot, from `auth.test`, and that bot's app,
 /// from `bots.info`.
 pub(crate) async fn identity<H: Http>(slack: &Slack, http: &H) -> Read<Identity> {
-    let answer = http.send(get(slack, "auth.test", "")).await?;
+    let answer = http.send(get(slack, AUTH_TEST, "")).await?;
     let tested = json(&answer);
     if let Some(sent) = trouble(&answer, &tested) {
         return Ok(Err(sent));
@@ -280,7 +281,7 @@ pub(crate) async fn identity<H: Http>(slack: &Slack, http: &H) -> Read<Identity>
         )));
     };
     let answer = http
-        .send(get(slack, "bots.info", &format!("bot={}", query(bot))))
+        .send(get(slack, BOTS_INFO, &format!("bot={}", query(bot))))
         .await?;
     let info = json(&answer);
     if let Some(sent) = trouble(&answer, &info) {

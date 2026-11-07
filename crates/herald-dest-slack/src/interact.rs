@@ -10,7 +10,9 @@ use herald_ports::{Method, Request, Response, Secret, Text};
 use serde_json::{Value, json};
 
 use crate::interactions::{Interactions, Via};
+use crate::read::quoted;
 use crate::slack::{API, HOOKS};
+use crate::web_api;
 
 /// The action id of the button that subscribes to a project.
 pub const SUBSCRIBE: &str = "herald_subscribe";
@@ -353,7 +355,7 @@ impl Interacting {
             },
             "oauth_config": {
                 "scopes": {
-                    "bot": ["channels:history", "chat:write", "commands", "groups:history", "pins:write"],
+                    "bot": web_api::bot_scopes(),
                 },
             },
             "settings": {
@@ -406,7 +408,7 @@ pub fn took(response: &Response) -> Result<(), String> {
         Err(format!(
             "Slack answered {}: {}",
             response.status,
-            String::from_utf8_lossy(&response.body)
+            quoted(&String::from_utf8_lossy(&response.body))
         )
         .trim_end_matches([' ', ':'])
         .to_owned())

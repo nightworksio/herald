@@ -20,6 +20,10 @@ pub enum Forge {
     Forgejo,
 }
 
+/// The most names a GitLab project's path holds: its top group, 20
+/// subgroups and its own name.
+const GITLAB_DEPTH: usize = 22;
+
 /// How a forge's API is asked, and what each of its answers is called in
 /// an error.
 pub(crate) struct Api {
@@ -77,6 +81,24 @@ pub struct Origin {
 }
 
 impl Forge {
+    /// How many names a repository's path holds on the forge.
+    #[must_use]
+    pub const fn names(self) -> std::ops::RangeInclusive<usize> {
+        match self {
+            Self::GitHub | Self::Forgejo => 2..=2,
+            Self::GitLab => 2..=GITLAB_DEPTH,
+        }
+    }
+
+    /// How a repository is written on the forge.
+    #[must_use]
+    pub const fn shape(self) -> &'static str {
+        match self {
+            Self::GitHub | Self::Forgejo => "owner/name",
+            Self::GitLab => "the project's full path, such as group/subgroup/name",
+        }
+    }
+
     /// Every forge.
     pub const ALL: [Self; 3] = [Self::GitHub, Self::GitLab, Self::Forgejo];
 

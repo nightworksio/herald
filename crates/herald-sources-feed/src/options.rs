@@ -9,3 +9,21 @@ pub struct FeedOptions {
     #[serde(default)]
     pub backfill: usize,
 }
+
+impl FeedOptions {
+    /// Whether the options are sound.
+    ///
+    /// # Errors
+    ///
+    /// When `url` is not a web address.
+    pub fn check(&self) -> Result<(), String> {
+        if herald_core::web_url(&self.url) {
+            Ok(())
+        } else {
+            Err(format!(
+                "\"{}\" is not a web address; give the feed's https:// URL",
+                self.url
+            ))
+        }
+    }
+}

@@ -31,7 +31,7 @@ repository = "nightworksio/php-mutation-gate"
 id = "releases"
 sources = ["gate"]
 destination = "discord"
-channel = "100"
+channel = "1566200000000000100"
 template = "release"
 crosspost = true
 thread = {{ name = "{{{{ event.version }}}}", archive_after = "14d" }}
@@ -119,15 +119,26 @@ impl Http for Script {
     }
 }
 
-pub(crate) const POSTED: (&str, u16, &str) = ("/channels/100/messages", 200, r#"{"id":"1"}"#);
-pub(crate) const CROSSPOSTED: (&str, u16, &str) =
-    ("/channels/100/messages/1/crosspost", 200, r#"{"id":"1"}"#);
-pub(crate) const THREADED: (&str, u16, &str) =
-    ("/channels/100/messages/1/threads", 200, r#"{"id":"7"}"#);
-pub(crate) const PINNED: (&str, u16, &str) = ("/channels/100/messages/pins/1", 204, "");
+pub(crate) const POSTED: (&str, u16, &str) = (
+    "/channels/1566200000000000100/messages",
+    200,
+    r#"{"id":"1"}"#,
+);
+pub(crate) const CROSSPOSTED: (&str, u16, &str) = (
+    "/channels/1566200000000000100/messages/1/crosspost",
+    200,
+    r#"{"id":"1"}"#,
+);
+pub(crate) const THREADED: (&str, u16, &str) = (
+    "/channels/1566200000000000100/messages/1/threads",
+    200,
+    r#"{"id":"7"}"#,
+);
+pub(crate) const PINNED: (&str, u16, &str) =
+    ("/channels/1566200000000000100/messages/pins/1", 204, "");
 pub(crate) const WHO: (&str, u16, &str) = ("/users/@me", 200, r#"{"id":"99"}"#);
 pub(crate) const NO_PINS: (&str, u16, &str) = (
-    "/channels/100/messages/pins?limit=50",
+    "/channels/1566200000000000100/messages/pins?limit=50",
     200,
     r#"{"items":[]}"#,
 );

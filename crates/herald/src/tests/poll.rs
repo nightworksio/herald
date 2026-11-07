@@ -18,7 +18,14 @@ fn a_poll_remembers_what_it_first_finds_and_announces_what_is_new() {
         )
     );
     forge(&world, (200, &["v2", "v1"]));
-    discord(&world, &[("/channels/100/messages", 200, r#"{"id":"1"}"#)]);
+    discord(
+        &world,
+        &[(
+            "/channels/1566200000000000100/messages",
+            200,
+            r#"{"id":"1"}"#,
+        )],
+    );
     let later = herald(&setup, &world, &POLL);
     assert_eq!(
         (later.code, later.out.as_str()),
@@ -52,7 +59,7 @@ fn a_poll_that_stops_says_what_the_next_poll_does() {
     discord(
         &world,
         &[(
-            "/channels/100/messages",
+            "/channels/1566200000000000100/messages",
             403,
             r#"{"code":50013,"message":"Missing Permissions"}"#,
         )],

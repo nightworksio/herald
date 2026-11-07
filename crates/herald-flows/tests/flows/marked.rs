@@ -7,7 +7,11 @@ use jiff::SignedDuration;
 
 use crate::harness::*;
 
-const NO_MESSAGES: (&str, u16, &str) = ("/channels/100/messages?limit=100", 200, "[]");
+const NO_MESSAGES: (&str, u16, &str) = (
+    "/channels/1566200000000000100/messages?limit=100",
+    200,
+    "[]",
+);
 
 fn posted_by_herald() -> String {
     serde_json::json!([{
@@ -52,10 +56,18 @@ fn an_announcement_kept_only_in_its_post_is_found_there_by_the_next_run() {
             WHO,
             NO_PINS,
             WHO,
-            ("/channels/100/messages?limit=100", 200, posted.as_str()),
+            (
+                "/channels/1566200000000000100/messages?limit=100",
+                200,
+                posted.as_str(),
+            ),
             ("/channels/7/messages?limit=100", 200, "[]"),
             WHO,
-            ("/channels/100/messages?limit=100", 200, posted.as_str()),
+            (
+                "/channels/1566200000000000100/messages?limit=100",
+                200,
+                posted.as_str(),
+            ),
         ]
         .map(|(line, status, body)| (line.to_owned(), status, body.to_owned())),
     );

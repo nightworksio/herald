@@ -17,6 +17,11 @@ pub(crate) fn json(response: &Response) -> Value {
         .unwrap_or_else(|_| Value::String(String::from_utf8_lossy(&response.body).into_owned()))
 }
 
+/// `said` trimmed, and cut to the most of an answer a refusal quotes.
+pub(crate) fn quoted(said: &str) -> String {
+    said.trim().chars().take(QUOTED).collect()
+}
+
 pub(crate) fn text<'a>(value: &'a Value, field: &str) -> Option<&'a str> {
     value.get(field).and_then(Value::as_str)
 }
@@ -33,16 +38,10 @@ pub(crate) fn trouble(response: &Response, body: &Value) -> Option<Sent> {
         return Some(Sent::RetryAfter(after.unwrap_or(OUTAGE)));
     }
     if !response.succeeded() {
-        let said: String = body
-            .as_str()
-            .map_or_else(
-                || text(body, "error").unwrap_or_default().to_owned(),
-                ToOwned::to_owned,
-            )
-            .trim()
-            .chars()
-            .take(QUOTED)
-            .collect();
+        let said = quoted(
+            body.as_str()
+                .unwrap_or_else(|| text(body, "error").unwrap_or_default()),
+        );
         let status = response.status;
         return Some(Sent::Refused(if said.is_empty() {
             format!("Slack refused it with {status}")

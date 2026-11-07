@@ -227,8 +227,17 @@ body = "{{ event.body }}"
                     )
                     .replace("kinds = [\"release\"]", "kinds = [\"feed-entry\"]");
             } else if !forge {
+                let package = match kind {
+                    "crates-io" => "herald",
+                    "npm" => "@nightworksio/herald",
+                    "docker-hub" => "library/caddy",
+                    _ => "nightworksio/php-mutation-gate",
+                };
                 text = text
-                    .replace("repository = ", "package = ")
+                    .replace(
+                        "repository = \"nightworksio/php-mutation-gate\"",
+                        &format!("package = \"{package}\""),
+                    )
                     .replace("kinds = [\"release\"]", "kinds = [\"package-version\"]");
             }
             let config = load("herald.toml", &text, &|_| Err(String::new())).unwrap();
@@ -265,13 +274,80 @@ body = "{{ event.body }}"
     }
 
     #[test]
+    fn a_source_naming_what_would_move_its_path_is_refused() {
+        let source = |kind: &str, options: &str| {
+            EXAMPLE
+                .replace("kind = \"github\"", &format!("kind = \"{kind}\""))
+                .replace("repository = \"nightworksio/php-mutation-gate\"", options)
+        };
+        for (kind, options, said) in [
+            (
+                "github",
+                "repository = \"a/../b\"",
+                "\"a/../b\" is not a repository; give it as owner/name",
+            ),
+            (
+                "forgejo",
+                "repository = \"a/b?x=1\"",
+                "\"a/b?x=1\" is not a repository",
+            ),
+            (
+                "gitlab",
+                "repository = \"group\"",
+                "\"group\" is not a repository; give it as the project's full path",
+            ),
+            (
+                "github",
+                "repository = \"a/b\"\napi = \"ftp://forge.example\"",
+                "\"ftp://forge.example\" is not a web address",
+            ),
+            (
+                "crates-io",
+                "package = \"a/b\"",
+                "\"a/b\" is not a package; give it as the crate's name",
+            ),
+            ("npm", "package = \"@scope\"", "\"@scope\" is not a package"),
+            (
+                "packagist",
+                "package = \"a/b\"\napi = \"repo.example\"",
+                "\"repo.example\" is not a web address",
+            ),
+            (
+                "feed",
+                "url = \"file:///etc/passwd\"",
+                "\"file:///etc/passwd\" is not a web address",
+            ),
+        ] {
+            let refused = errors(&source(kind, options));
+            assert!(
+                refused.contains(&format!("sources.php-mutation-gate: {said}")),
+                "{kind}: {refused}"
+            );
+        }
+        let gitlab = source("gitlab", "repository = \"group/sub/name\"");
+        assert!(load("herald.toml", &gitlab, &|_| Err(String::new())).is_ok());
+    }
+
+    #[test]
+    fn a_discord_route_names_its_channel_by_id() {
+        for channel in ["#releases", "100", "1566184281406177531/../1"] {
+            let named = EXAMPLE.replace("1566184281406177531", channel);
+            assert!(
+                errors(&named).contains(&format!("routes[0]: \"{channel}\" is not a channel id; give the channel's id, 17 to 20 digits")),
+                "{channel}: {}",
+                errors(&named)
+            );
+        }
+    }
+
+    #[test]
     fn only_npm_takes_a_token_among_the_registries() {
         let registry = |kind: &str| {
             EXAMPLE
                 .replace("kind = \"github\"", &format!("kind = \"{kind}\""))
                 .replace(
                     "repository = \"nightworksio/php-mutation-gate\"",
-                    "package = \"nightworksio/php-mutation-gate\"\ntoken = { secret = \"REGISTRY_TOKEN\" }",
+                    "package = \"@nightworksio/herald\"\ntoken = { secret = \"REGISTRY_TOKEN\" }",
                 )
                 .replace("kinds = [\"release\"]", "kinds = [\"package-version\"]")
         };

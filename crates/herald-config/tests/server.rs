@@ -22,7 +22,7 @@ repository = "nightworksio/php-mutation-gate"
 id = "releases"
 sources = ["gate"]
 destination = "discord"
-channel = "100"
+channel = "1566200000000000100"
 template = "release"
 
 [templates.release]

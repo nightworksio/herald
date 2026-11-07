@@ -225,6 +225,11 @@ fn slack_taking_an_answer_or_not_is_read_from_its_status() {
         Err("Slack answered 404: expired_url".to_owned())
     );
     assert_eq!(took(&answer(500, "")), Err("Slack answered 500".to_owned()));
+    let long = "x".repeat(1000);
+    assert_eq!(
+        took(&answer(502, &long)),
+        Err(format!("Slack answered 502: {}", "x".repeat(200)))
+    );
 }
 
 #[test]

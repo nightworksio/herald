@@ -46,6 +46,27 @@ pub struct Package {
 }
 
 impl Registry {
+    /// How many names a package's name holds on the registry.
+    #[must_use]
+    pub const fn names(self) -> std::ops::RangeInclusive<usize> {
+        match self {
+            Self::Packagist => 2..=2,
+            Self::CratesIo | Self::Npm => 1..=1,
+            Self::DockerHub => 1..=2,
+        }
+    }
+
+    /// How a package is written on the registry.
+    #[must_use]
+    pub const fn shape(self) -> &'static str {
+        match self {
+            Self::Packagist => "vendor/name",
+            Self::CratesIo => "the crate's name",
+            Self::Npm => "the package's name, or @scope/name",
+            Self::DockerHub => "the repository, such as library/caddy or caddy",
+        }
+    }
+
     /// Every registry.
     pub const ALL: [Self; 4] = [Self::Packagist, Self::CratesIo, Self::Npm, Self::DockerHub];
 

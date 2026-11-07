@@ -1,4 +1,6 @@
-use herald_core::SecretRef;
+use herald_core::{SecretRef, path_of_names, web_url};
+
+use crate::Forge;
 
 /// A forge source's options in `herald.toml` (ADR-0006).
 #[derive(Debug, Clone, PartialEq, Eq, Default, serde::Deserialize, schemars::JsonSchema)]
@@ -23,4 +25,28 @@ pub struct SourceOptions {
     /// with: GitHub's and Forgejo's webhook secret, or GitLab's signing
     /// token (ADR-0007).
     pub webhook: Option<SecretRef>,
+}
+
+impl SourceOptions {
+    /// Whether the options are sound for a source on `forge`.
+    ///
+    /// # Errors
+    ///
+    /// When `repository` is not a path the forge names a repository by, or
+    /// `api` is not a web address.
+    pub fn check(&self, forge: Forge) -> Result<(), String> {
+        if !path_of_names(&self.repository, forge.names()) {
+            return Err(format!(
+                "\"{}\" is not a repository; give it as {}, of letters, digits, '.', '_' and '-'",
+                self.repository,
+                forge.shape()
+            ));
+        }
+        match &self.api {
+            Some(api) if !web_url(api) => Err(format!(
+                "\"{api}\" is not a web address; give the API's base URL, such as https://forge.example/api/v1"
+            )),
+            _ => Ok(()),
+        }
+    }
 }

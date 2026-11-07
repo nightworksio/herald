@@ -211,7 +211,7 @@ fn a_dry_run_prints_every_request_redacted_and_sends_and_keeps_nothing() {
     );
     assert_eq!(dry.code, DONE, "{}", dry.err);
     assert!(
-        dry.out.starts_with("A dry run sends nothing and keeps no record: these are the requests a first announcement sends.\n\nPOST https://discord.com/api/v10/channels/100/messages\n"),
+        dry.out.starts_with("A dry run sends nothing and keeps no record: these are the requests a first announcement sends.\n\nPOST https://discord.com/api/v10/channels/1566200000000000100/messages\n"),
         "{}",
         dry.out
     );

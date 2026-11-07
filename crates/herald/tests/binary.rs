@@ -42,7 +42,7 @@ repository = "cli/cli"
 id = "releases"
 sources = ["cli"]
 destination = "discord"
-channel = "100"
+channel = "1566200000000000100"
 template = "t"
 [templates.t]
 title = "{{{{ event.title }}}}"
