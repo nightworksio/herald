@@ -302,14 +302,18 @@ jobs:
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
+      - run: sudo apt-get update && sudo apt-get install --yes musl-tools=1.2.4-2
+      - id: host
+        run: |
+          . /etc/os-release
+          echo "key=${ID}-${VERSION_ID}-musl-tools-$(dpkg-query --showformat='${Version}' --show musl-tools)" >> "${GITHUB_OUTPUT}"
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
             target
-          key: image-${{ hashFiles('rust-toolchain.toml', 'Cargo.lock') }}
-      - run: sudo apt-get update && sudo apt-get install --yes musl-tools=1.2.4-2
+          key: image-${{ steps.host.outputs.key }}-${{ hashFiles('rust-toolchain.toml', 'Cargo.lock') }}
       - run: rustup target add x86_64-unknown-linux-musl
       - run: cargo build --locked --release --package herald --target x86_64-unknown-linux-musl
       - run: |
