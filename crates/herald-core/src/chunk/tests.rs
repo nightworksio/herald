@@ -207,3 +207,29 @@ fn a_paragraph_that_only_looks_like_a_fence_is_cut_as_a_paragraph() {
         assert!(size(part, room.measure) <= limit, "part {index}: {part:?}");
     }
 }
+
+#[test]
+#[allow(
+    clippy::disallowed_methods,
+    reason = "the test times the chunker itself, which no Clock stands in for"
+)]
+fn a_long_body_on_one_line_is_cut_in_time_near_linear_in_its_length() {
+    for body in ["x".repeat(262_144), "word ".repeat(52_429)] {
+        let started = std::time::Instant::now();
+        let parts = chunk(&body, Dialect::Discord, room(2_000, 2_000));
+        assert!(parts.iter().all(|part| part.body.chars().count() <= 2_000));
+        assert!(
+            started.elapsed() < std::time::Duration::from_secs(10),
+            "{:?}",
+            started.elapsed()
+        );
+    }
+}
+
+#[test]
+fn the_longest_count_that_fits_is_found_whatever_the_count() {
+    for fitting in 0..=9 {
+        assert_eq!(longest(9, &|count| count <= fitting), fitting);
+    }
+    assert_eq!(longest(0, &|_| false), 0);
+}

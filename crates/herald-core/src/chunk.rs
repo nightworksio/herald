@@ -177,30 +177,79 @@ impl Level {
     }
 }
 
+/// `text` cut at `level`, then finer where a unit alone does not fit, into
+/// the fewest pieces that each fit, each holding as many units as it can.
 fn split(text: &str, fits: &dyn Fn(&str) -> bool, level: Level) -> Vec<String> {
+    let units = level.units(text);
+    let separator = level.separator();
+    let joined = |head: Option<&str>, run: &[&str]| {
+        let run = run.join(separator);
+        head.map_or_else(|| run.clone(), |head| format!("{head}{separator}{run}"))
+    };
     let mut pieces = Vec::new();
     let mut current: Option<String> = None;
-    for unit in level.units(text) {
-        let joined = current
-            .as_ref()
-            .map(|text| format!("{text}{}{unit}", level.separator()));
-        match (current.take(), joined) {
-            (Some(_), Some(joined)) if fits(&joined) => current = Some(joined),
-            (previous, _) => {
-                pieces.extend(previous);
-                match level.finer().filter(|_| !fits(unit)) {
-                    Some(finer) => {
-                        let mut finer_pieces = split(unit, fits, finer);
-                        current = finer_pieces.pop();
-                        pieces.extend(finer_pieces);
-                    }
-                    None => current = Some(unit.to_owned()),
+    let mut start = 0;
+    while let Some(unit) = units.get(start) {
+        let rest = units.get(start..).unwrap_or_default();
+        let most = longest(rest.len(), &|count| {
+            fits(&joined(
+                current.as_deref(),
+                rest.get(..count).unwrap_or_default(),
+            ))
+        });
+        if most > 0 {
+            current = Some(joined(
+                current.as_deref(),
+                rest.get(..most).unwrap_or_default(),
+            ));
+            start += most;
+        } else if let Some(previous) = current.take() {
+            pieces.push(previous);
+        } else {
+            match level.finer() {
+                Some(finer) => {
+                    let mut finer_pieces = split(unit, fits, finer);
+                    current = finer_pieces.pop();
+                    pieces.extend(finer_pieces);
                 }
+                None => current = Some((*unit).to_owned()),
             }
+            start += 1;
         }
     }
     pieces.extend(current);
     pieces
+}
+
+/// The most of `available` units for which `fits` holds, where it holds for
+/// every count up to one it fails at: found by doubling, then halving, so
+/// each try measures at most about twice what fits.
+fn longest(available: usize, fits: &dyn Fn(usize) -> bool) -> usize {
+    let mut good = 0;
+    let mut step = 1;
+    let mut bad = None;
+    while good < available {
+        let probe = good.saturating_add(step).min(available);
+        if fits(probe) {
+            good = probe;
+            step = step.saturating_mul(2);
+        } else {
+            bad = Some(probe);
+            break;
+        }
+    }
+    let Some(mut bad) = bad else {
+        return good;
+    };
+    while bad - good > 1 {
+        let middle = good + (bad - good) / 2;
+        if fits(middle) {
+            good = middle;
+        } else {
+            bad = middle;
+        }
+    }
+    good
 }
 
 #[cfg(test)]
