@@ -325,6 +325,7 @@ mod feeds {
             .join("\n")
         );
         assert_eq!(notes.request(None).headers.len(), 2);
+        assert_eq!(notes.request(None).most, herald_wire::PARSE_LIMIT);
     }
 
     proptest! {

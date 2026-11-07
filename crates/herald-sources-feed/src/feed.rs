@@ -15,7 +15,7 @@ use crate::html::{markdown, plain};
 use crate::options::FeedOptions;
 
 /// The most bytes a feed may hold.
-const LIMIT: usize = 4_194_304;
+const LIMIT: usize = herald_wire::PARSE_LIMIT;
 /// What a feed is called in an error.
 const WHAT: &str = "the feed";
 /// What herald asks a feed's server for.
@@ -375,6 +375,7 @@ impl Feed {
     #[must_use]
     pub fn request(&self, cursor: Option<&Cursor>) -> Request {
         let mut request = Request::new(Method::Get, Text::plain(self.url.clone()))
+            .at_most(LIMIT)
             .header("Accept", Text::plain(ACCEPT))
             .header("User-Agent", Text::plain(USER_AGENT));
         if let Some(etag) = cursor.and_then(|cursor| cursor.etag.as_deref()) {

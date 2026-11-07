@@ -12,6 +12,19 @@ mod app {
     }
 
     #[test]
+    fn an_event_longer_than_an_app_may_send_is_refused_unread() {
+        let long = vec![b' '; herald_sources_app::MOST + 1];
+        let refused = event("ci", &long, jiff::Timestamp::UNIX_EPOCH).unwrap_err();
+        assert_eq!(
+            refused.to_string(),
+            format!(
+                "the event is longer than {} bytes; send a shorter one",
+                herald_sources_app::MOST
+            )
+        );
+    }
+
+    #[test]
     fn a_whole_event_is_read_with_every_field_it_names() {
         let read = event(
             "ci",

@@ -15,6 +15,10 @@ pub const NOT_MODIFIED: u16 = 304;
 /// The newest releases or versions one poll reads (ADR-0003).
 pub const PAGE: usize = 30;
 
+/// The most bytes of an answer a source reads and parses, where its answers
+/// are not known to run larger (ADR-0003).
+pub const PARSE_LIMIT: usize = 4_194_304;
+
 /// `bytes` read as JSON, refused where they are more than `limit` bytes.
 ///
 /// # Errors

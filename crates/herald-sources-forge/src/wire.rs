@@ -9,7 +9,7 @@ use serde::de::DeserializeOwned;
 use crate::forge::Repository;
 
 /// The most bytes a parser reads.
-pub(crate) const LIMIT: usize = 4_194_304;
+pub(crate) const LIMIT: usize = herald_wire::PARSE_LIMIT;
 
 /// A release, as any forge describes it.
 pub(crate) struct Found {

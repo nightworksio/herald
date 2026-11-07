@@ -26,6 +26,8 @@ const TOO_MANY: u16 = 429;
 const SERVER: u16 = 500;
 /// What an inbox answers when its actor or server is gone for good.
 const GONE: u16 = 410;
+/// The most of an inbox's answer read: only its status is used.
+const ANSWER: usize = 65_536;
 /// An HTTP date, as `Date` carries it.
 const HTTP_DATE: &str = "%a, %d %b %Y %H:%M:%S GMT";
 
@@ -221,6 +223,7 @@ impl ActivityPub {
         };
         let header = signature_header(&key_id(&self.domain, &self.route.actor), &signature);
         let request = Request::new(Method::Post, Text::plain(inbox))
+            .at_most(ANSWER)
             .header("User-Agent", Text::plain(USER_AGENT))
             .header("Content-Type", Text::plain(ACTIVITY_JSON))
             .header("Date", Text::plain(date))

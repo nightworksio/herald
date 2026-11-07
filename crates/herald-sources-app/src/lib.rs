@@ -48,6 +48,8 @@ pub enum Unread {
     NotAnEvent(String),
     /// The event has no id.
     NoId,
+    /// The event is longer than an app's event may be.
+    TooLarge,
     /// A field of the event cannot be part of one.
     Problem(Problem),
 }
@@ -57,10 +59,17 @@ impl fmt::Display for Unread {
         match self {
             Self::NotAnEvent(why) => write!(f, "the event is not herald's event JSON: {why}"),
             Self::NoId => f.write_str("the event has no id; an app gives every event one"),
+            Self::TooLarge => write!(
+                f,
+                "the event is longer than {MOST} bytes; send a shorter one"
+            ),
             Self::Problem(problem) => problem.fmt(f),
         }
     }
 }
+
+/// The most bytes an app's event may hold (ADR-0003).
+pub const MOST: usize = herald_wire::PARSE_LIMIT;
 
 /// The identity of the event `app` gave `id`.
 #[must_use]
@@ -75,6 +84,9 @@ pub fn identity(app: &str, id: &str) -> String {
 ///
 /// The [`Unread`] that keeps `body` from being an event.
 pub fn event(app: &str, body: &[u8], now: Timestamp) -> Result<Event, Unread> {
+    if body.len() > MOST {
+        return Err(Unread::TooLarge);
+    }
     let written: AppEvent =
         serde_json::from_slice(body).map_err(|error| Unread::NotAnEvent(error.to_string()))?;
     let id = written.id.trim();
