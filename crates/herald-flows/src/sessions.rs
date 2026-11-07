@@ -8,6 +8,8 @@
 
 use std::future::{Future, poll_fn};
 use std::pin::{Pin, pin};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::task::Poll;
 use std::time::Duration;
 
@@ -87,6 +89,33 @@ struct Joined<'a, 's, H> {
     http: &'s H,
 }
 
+/// One autocompletion being answered, counted in its session's
+/// [`Completing`] until it is dropped.
+struct Completion(Arc<AtomicUsize>);
+
+impl Drop for Completion {
+    fn drop(&mut self) {
+        self.0.fetch_sub(1, Ordering::AcqRel);
+    }
+}
+
+/// How many autocompletions are being answered, up to `most`.
+struct Completing {
+    answering: Arc<AtomicUsize>,
+    most: usize,
+}
+
+impl Completing {
+    fn place(&self) -> Option<Completion> {
+        self.answering
+            .try_update(Ordering::AcqRel, Ordering::Acquire, |answering| {
+                (answering < self.most).then_some(answering + 1)
+            })
+            .ok()
+            .map(|_| Completion(Arc::clone(&self.answering)))
+    }
+}
+
 /// What a gateway session heard first.
 enum Heard {
     Frame(Frame),
@@ -99,6 +128,7 @@ pub struct Sessions<'s, 'a, S, C, G, V, H, P, K, T, Ti> {
     serving: &'s Serving<'a, S, C, G, V, H, P, K>,
     taker: &'s T,
     timer: &'s Ti,
+    completing: Completing,
 }
 
 impl<'s, 'a, S, C, G, V, H, P, K, T, Ti> Sessions<'s, 'a, S, C, G, V, H, P, K, T, Ti>
@@ -115,6 +145,10 @@ where
             serving,
             taker,
             timer,
+            completing: Completing {
+                answering: Arc::new(AtomicUsize::new(0)),
+                most: serving.config.server.completions,
+            },
         }
     }
 
@@ -338,10 +372,18 @@ where
                 typed,
                 replying,
             } => {
+                let Some(completion) = self.completing.place() else {
+                    self.said(
+                        name,
+                        "a completion was dropped: no more are answered at once",
+                    );
+                    return;
+                };
                 let serving = self.serving;
                 let taker = self.taker;
                 let name = name.clone();
                 taking.push(Box::pin(async move {
+                    let _completion = completion;
                     let projects =
                         completed(serving.config, serving.ports.store, &name, &place, &typed).await;
                     let sent = http.send(interacting.complete(&replying, &projects)).await;
@@ -457,4 +499,23 @@ fn beating(every: jiff::SignedDuration) -> Duration {
     Duration::try_from(every)
         .unwrap_or(FIRST_WAIT)
         .max(FIRST_WAIT)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_completion_holds_its_place_until_it_is_dropped() {
+        let completing = Completing {
+            answering: Arc::new(AtomicUsize::new(0)),
+            most: 2,
+        };
+        let first = completing.place();
+        let second = completing.place();
+        assert!(first.is_some() && second.is_some());
+        assert!(completing.place().is_none());
+        drop(first);
+        assert!(completing.place().is_some());
+    }
 }

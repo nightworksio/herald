@@ -21,6 +21,7 @@ server:
   connections: null
   body: null
   fetches: null
+  completions: null
   deliveries: null
   silence: null
   keys:

@@ -635,6 +635,7 @@ impl Loader<'_> {
             connections: count(file.connections, defaults.connections),
             body: file.body.map_or(defaults.body, |body| body.0),
             fetches: count(file.fetches, defaults.fetches),
+            completions: count(file.completions, defaults.completions),
             deliveries: count(file.deliveries, defaults.deliveries),
             silence: file.silence.map_or(defaults.silence, |silence| silence.0),
             keys,
