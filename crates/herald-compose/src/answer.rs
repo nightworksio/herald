@@ -25,6 +25,8 @@ pub struct Answer {
     pub refused: Option<String>,
     /// The work to do once the reply is sent.
     pub left: Option<Left>,
+    /// What a round it asked for did, in words.
+    pub said: Vec<String>,
 }
 
 impl From<Answered> for Answer {
@@ -33,6 +35,7 @@ impl From<Answered> for Answer {
             reply: answered.reply,
             refused: answered.refused,
             left: None,
+            said: Vec::new(),
         }
     }
 }

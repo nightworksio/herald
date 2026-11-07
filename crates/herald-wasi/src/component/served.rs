@@ -1,7 +1,6 @@
-use herald_compose::{Asked, Composed, Hosting, Left, ROUND_SECRET, told};
+use herald_compose::{Asked, Composed, Hosting, Left, told};
 use herald_config::{Config, load};
 use herald_flows::{Reply, refusal};
-use herald_ports::Secret;
 
 use super::host::WasiHost;
 
@@ -46,20 +45,17 @@ pub(super) fn said(lines: impl IntoIterator<Item = String>) {
     }
 }
 
-/// herald composed for one request, with the secret its rounds are asked
-/// with.
+/// herald composed for one request.
 pub(super) struct Started {
     composed: Composed<WasiHost>,
-    secret: Option<Secret>,
 }
 
 impl Started {
     /// herald composed over `vars`, the environment, or the reply that says
     /// it could not start, the reason logged.
     pub(super) async fn new(vars: Vec<(String, String)>) -> Result<Self, Reply> {
-        let secret = named(&vars, ROUND_SECRET).map(|value| Secret::new(ROUND_SECRET, value));
         match composed(vars).await {
-            Ok(composed) => Ok(Self { composed, secret }),
+            Ok(composed) => Ok(Self { composed }),
             Err(error) => {
                 let refused = refusal(500, format!("herald could not start: {error}"));
                 said(refused.refused.as_deref().map(told::refused));
@@ -75,9 +71,10 @@ impl Started {
 
     /// The answer to `asked`, and the work it leaves.
     pub(super) async fn answered(&self, asked: &Asked) -> (Reply, Option<Left>) {
-        let reached = self.composed.reached(asked, self.secret.as_ref()).await;
-        said(reached.said);
-        (reached.reply, reached.left)
+        let answer = self.composed.reached(asked).await;
+        said(answer.refused.as_deref().map(told::refused));
+        said(answer.said);
+        (answer.reply, answer.left)
     }
 
     /// The work a request left, done.

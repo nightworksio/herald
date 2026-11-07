@@ -10,10 +10,9 @@ use fastly::http::Method;
 use fastly::{Request, Response};
 use std::io::Read as _;
 
-use herald_compose::{Asked, Composed, Hosting, ROUND_SECRET, told};
+use herald_compose::{Asked, Composed, Hosting, told};
 use herald_config::load;
 use herald_flows::{Answered, Reply, refusal};
-use herald_ports::Secret;
 use host::{FastlyHost, STORE};
 
 /// The Config Store item holding `herald.toml`.
@@ -104,12 +103,11 @@ pub(crate) fn serve() {
             return;
         }
     };
-    let secret: Option<Secret> =
-        pollster::block_on(composed.host().secrets_for_round(ROUND_SECRET));
-    let reached = pollster::block_on(composed.reached(&asked, secret.as_ref()));
-    said(reached.said);
-    send(reached.reply, is_head);
-    if let Some(left) = reached.left {
+    let answer = pollster::block_on(composed.reached(&asked));
+    said(answer.refused.as_deref().map(told::refused));
+    said(answer.said);
+    send(answer.reply, is_head);
+    if let Some(left) = answer.left {
         said(told::worked(&pollster::block_on(composed.work(left))));
     }
 }

@@ -26,14 +26,14 @@ use futures_util::stream::{FuturesUnordered, StreamExt};
 use herald_config::Server;
 use herald_core::DestinationName;
 use herald_flows::{
-    Answered, Inbound, Job, Kept, Running, Serving, Sessions, Stop, Swept, Worked, answer, busy,
-    housekeep, poll, refusal, unworked, work,
+    Answered, Inbound, Job, Kept, Round, Running, Serving, Sessions, Stop, Swept, Worked, answer,
+    busy, housekeep, poll, refusal, unworked, work,
 };
 use herald_native::TokioTimer as Waiting;
-use herald_ports::{Clock, Http, Keyring, Signer, Sockets, Store, Verifier};
+use herald_ports::{Clock, Http, Keyring, Secret, Signer, Sockets, Store, Verifier};
 use http_body_util::{BodyExt, Full, Limited};
 use hyper::body::{Bytes, Incoming};
-use hyper::header::{CONTENT_TYPE, HeaderValue, RETRY_AFTER};
+use hyper::header::{AUTHORIZATION, CONTENT_TYPE, HeaderValue, RETRY_AFTER};
 use hyper::server::conn::http1;
 use hyper::service::service_fn;
 use hyper::{Method, StatusCode};
@@ -65,6 +65,8 @@ const HELD: Duration = Duration::from_secs(Server::HELD.as_secs().unsigned_abs()
 /// How long the server waits before taking connections again after one
 /// could not be taken, so a lack of file descriptors does not spin it.
 const ACCEPT_PAUSE: Duration = Duration::from_millis(100);
+/// What a reply in words is.
+const TEXT: &str = "text/plain; charset=utf-8";
 /// What an answer to a host asking for a round is.
 const JSON: &str = "application/json";
 
@@ -94,7 +96,7 @@ pub enum Heard {
 
 /// What the server takes on at once, and how often it does its rounds.
 #[derive(Debug, Clone, Copy)]
-pub struct Limits {
+pub struct Limits<'a> {
     /// How many pieces of work run at once; as many again may wait.
     pub jobs: usize,
     /// How many connections are held at once; the next waits to be taken.
@@ -110,15 +112,18 @@ pub struct Limits {
     /// How long a connection may take to send a request's headers, and then
     /// its body.
     pub read: Duration,
-    /// Where a host asks for rounds, where one does.
-    pub asked: Option<Asked>,
+    /// Where a host's own timers ask for rounds, where they do.
+    pub asked: Option<Asked<'a>>,
+    /// The secret a request for a round at `/herald/round/<kind>` carries;
+    /// with none, no request runs a round.
+    pub secret: Option<&'a Secret>,
 }
 
 /// Where a host asks for rounds by posting to herald, as Azure Functions'
 /// timer triggers post to their functions, and what it is answered once a
 /// round is done.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Asked {
+pub struct Asked<'a> {
     /// The path a poll is asked for at.
     pub poll: &'static str,
     /// The path housekeeping is asked for at; keys read longest ago are
@@ -126,6 +131,33 @@ pub struct Asked {
     pub housekeep: &'static str,
     /// What the host is answered, as JSON.
     pub reply: &'static str,
+    /// The first segment of every path the host forwards from outside, so
+    /// no request from outside reaches the timers' paths.
+    pub prefix: &'a str,
+}
+
+impl Asked<'_> {
+    /// The round the host's timer asks for at `path`, where it asks for one.
+    fn round(&self, path: &str) -> Option<Round> {
+        if path == self.poll {
+            Some(Round::Poll)
+        } else if path == self.housekeep {
+            Some(Round::Housekeep)
+        } else {
+            None
+        }
+    }
+
+    /// `path` from outside within [`Asked::prefix`], the prefix taken off;
+    /// none where it lies outside it.
+    fn within<'p>(&self, path: &'p str) -> Option<&'p str> {
+        let rest = path.strip_prefix('/')?.strip_prefix(self.prefix)?;
+        match rest {
+            "" => Some("/"),
+            rest if rest.starts_with('/') => Some(rest),
+            _ => None,
+        }
+    }
 }
 
 /// Where connections come from.
@@ -243,7 +275,7 @@ async fn answered<S, C, G, V, H, P, K>(
     serving: &Serving<'_, S, C, G, V, H, P, K>,
     request: hyper::Request<Incoming>,
     queue: &Queue,
-    limits: Limits,
+    limits: Limits<'_>,
     rounds: &Rounds<'_>,
 ) -> Result<hyper::Response<Full<Bytes>>, Infallible>
 where
@@ -255,10 +287,39 @@ where
     P: Http,
     K: Keyring,
 {
-    if let (Some(asked), &Method::POST) = (limits.asked, request.method())
-        && let Some(reply) = rounds.asked(serving, asked, request.uri().path()).await
+    let posted = request.method() == Method::POST;
+    if let Some(asked) = limits.asked
+        && posted
+        && let Some(round) = asked.round(request.uri().path())
     {
-        return Ok(reply);
+        rounds.ran(serving, round).await;
+        return Ok(replied(200, JSON, asked.reply.as_bytes().to_vec()));
+    }
+    let path = match limits.asked {
+        Some(asked) => match asked.within(request.uri().path()) {
+            Some(path) => path.to_owned(),
+            None => {
+                return Ok(sent(
+                    rounds,
+                    refusal(404, "its path lies outside the host's prefix"),
+                ));
+            }
+        },
+        None => request.uri().path().to_owned(),
+    };
+    if let Some(round) = Round::named(request.method().as_str(), &path) {
+        let authorization = request
+            .headers()
+            .get(AUTHORIZATION)
+            .and_then(|value| value.to_str().ok());
+        if !Round::allowed(authorization, limits.secret) {
+            return Ok(sent(
+                rounds,
+                refusal(401, "a round was asked without its secret"),
+            ));
+        }
+        rounds.ran(serving, round).await;
+        return Ok(replied(200, TEXT, b"the round ran".to_vec()));
     }
     let (parts, body) = request.into_parts();
     let Ok(read) =
@@ -295,7 +356,7 @@ where
         .collect();
     let inbound = Inbound {
         method: parts.method.as_str(),
-        path: parts.uri.path(),
+        path: &path,
         query: parts.uri.query(),
         headers: &borrowed,
         body: &body,
@@ -366,26 +427,23 @@ impl Rounds<'_> {
         .await
     }
 
-    /// The round `path` asks for of `asked`, done, and its answer; or none
-    /// where it asks for none.
-    async fn asked<S: Store, C: Clock, G: Signer, V, H: Http, P, K: Keyring>(
+    /// `round` done, where none of its kind is running, and what it did
+    /// said.
+    async fn ran<S: Store, C: Clock, G: Signer, V, H: Http, P, K: Keyring>(
         &self,
         serving: &Serving<'_, S, C, G, V, H, P, K>,
-        asked: Asked,
-        path: &str,
-    ) -> Option<hyper::Response<Full<Bytes>>> {
-        let done = if path == asked.poll {
-            self.polled(serving).await
-        } else if path == asked.housekeep {
-            self.swept(serving).await;
-            self.kept(serving).await
-        } else {
-            return None;
+        round: Round,
+    ) {
+        let done = match round {
+            Round::Poll => self.polled(serving).await,
+            Round::Housekeep => {
+                self.swept(serving).await;
+                self.kept(serving).await
+            }
         };
         if let Some(heard) = done {
             (self.heard)(heard);
         }
-        Some(replied(200, JSON, asked.reply.as_bytes().to_vec()))
     }
 }
 
@@ -394,7 +452,7 @@ async fn connection<S, C, G, V, H, P, K, T>(
     serving: &Serving<'_, S, C, G, V, H, P, K>,
     stream: T,
     queue: &Queue,
-    limits: Limits,
+    limits: Limits<'_>,
     rounds: &Rounds<'_>,
 ) where
     T: AsyncRead + AsyncWrite + Unpin,
@@ -451,7 +509,7 @@ pub async fn serve<S, C, G, V, H, P, K, L, So>(
     serving: &Serving<'_, S, C, G, V, H, P, K>,
     listener: L,
     sockets: &So,
-    limits: Limits,
+    limits: Limits<'_>,
     heard: &dyn Fn(Heard),
     stop: impl Future<Output = ()>,
 ) where

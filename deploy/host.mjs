@@ -63,6 +63,7 @@ export function denoKv(kv) {
 export async function answering(herald, asked) {
   const answer = await herald.answer(asked, false);
   if (answer.refused) console.warn(answer.refused);
+  said(answer.said);
   const headers = { "content-type": answer.kind };
   if (answer.retryAfter !== undefined) headers["retry-after"] = String(answer.retryAfter);
   const response = new Response(answer.body.length ? answer.body : null, { status: answer.status, headers });

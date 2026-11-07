@@ -27,6 +27,7 @@ mod prepare;
 mod preview;
 mod reached;
 mod room;
+mod round;
 mod serving;
 mod sessions;
 mod together;
@@ -46,6 +47,7 @@ pub use prepare::{Connected, PrepareError, Prepared, prepare};
 pub use preview::{Previewed, preview};
 pub use reached::{Posts, Reached};
 pub use room::{Place, Room, Running};
+pub use round::{ROUND_SECRET, Round};
 pub use serving::{
     Answered, BUSY_RETRY, HEALTH, HOOKS, Inbound, Interacted, Job, Reply, Serving, Webhooks,
     Worked, answer, busy, refusal, unworked, webhooks, work,

@@ -3,9 +3,9 @@ use std::sync::atomic::AtomicBool;
 
 use herald_config::Config;
 use herald_flows::{
-    Admission, Connected, Inbound, Job, Kept, Keys, Place, Ports, Room, Running, Serving, Sessions,
-    Stop, Swept, Taker, Webhooks, Worked, answer, busy, housekeep, poll, prepare, refusal,
-    unworked, webhooks, work,
+    Admission, Connected, Inbound, Job, Kept, Keys, Place, Ports, Room, Round, Running, Serving,
+    Sessions, Stop, Swept, Taker, Webhooks, Worked, answer, busy, housekeep, poll, prepare,
+    refusal, unworked, webhooks, work,
 };
 use herald_ports::{Clock as _, Keyring, PUBLIC, Sockets, Store as Keeps, Timer};
 use herald_records::MemoryKeyring;
@@ -86,8 +86,12 @@ impl<H: Host> Composed<H> {
     }
 
     /// The reply to `inbound`, and the work it leaves, its delivery admitted
-    /// as `admission` says.
+    /// as `admission` says; a round it asks for with the round secret is
+    /// run.
     pub async fn answer(&self, inbound: &Inbound<'_>, admission: Admission) -> Answer {
+        if let Some(round) = Round::named(inbound.method, inbound.path) {
+            return self.round(round, inbound.header("authorization")).await;
+        }
         if inbound.body.len() > self.config.server.body {
             return refusal(
                 413,

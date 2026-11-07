@@ -55,7 +55,9 @@ pub struct Inbound<'a> {
 }
 
 impl Inbound<'_> {
-    fn header(&self, name: &str) -> Option<&str> {
+    /// The value of the header `name`, in any case.
+    #[must_use]
+    pub fn header(&self, name: &str) -> Option<&str> {
         self.headers
             .iter()
             .find(|(named, _)| named.eq_ignore_ascii_case(name))

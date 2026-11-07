@@ -29,8 +29,11 @@ and Azure's timers call the function to poll.
    - **Azure Functions** runs `herald server` as its custom handler.
      `herald server` listens on `FUNCTIONS_CUSTOMHANDLER_PORT`, and Azure's
      timer functions `poll` and `housekeep` ask for a round by posting to
-     `/poll` and `/housekeep`. A host asks for rounds through
-     `Limits::asked`, and each kind of round runs one at a time.
+     `/poll` and `/housekeep`. Outside HTTP is served under the app's route
+     prefix, `api` by default, so no request from outside reaches those
+     paths; with an empty prefix herald runs no round there. A host's own
+     timers ask for rounds through `Limits::asked`, and each kind of round
+     runs one at a time.
    - **AWS Lambda** runs `herald lambda` as its custom runtime. It answers
      each request to the function's URL at once, and hands the work a
      request leaves to the function again as an event invocation. That
@@ -67,7 +70,8 @@ and Azure's timers call the function to poll.
    forbids `unsafe`. `herald-fastly` serves Fastly Compute on Fastly's own ABI,
    with its KV Store. Both sign with `herald-crypto`, on `ring`. Neither has a
    timer, so each runs a round when an HTTP request holding `HERALD_ROUND_SECRET`
-   asks; with the secret unset no request does.
+   asks; with the secret unset no request does. Every other host answers
+   that request too, at `POST /herald/round/<kind>`.
 4. **Every driver shares one composition.** `herald-compose`, a layer of
    its own between flows and native, holds the `Host` trait a platform
    implements: its `Http`, secrets, clock, signer and verifier, its

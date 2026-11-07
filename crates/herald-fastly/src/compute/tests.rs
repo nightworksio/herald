@@ -15,9 +15,9 @@ fn the_service_reads_its_config_store_and_secret_store() {
     let host = FastlyHost::new();
     assert!(host.item("herald.toml").unwrap().contains("fastly-kv"));
     assert_eq!(host.item("ABSENT"), None);
-    let held = pollster::block_on(host.secrets_for_round("HERALD_ROUND_SECRET")).unwrap();
+    let held = pollster::block_on(host.secrets().secret("HERALD_ROUND_SECRET")).unwrap();
     assert_eq!(held.expose(), "local-round-secret");
-    assert!(pollster::block_on(host.secrets_for_round("ABSENT")).is_none());
+    assert!(pollster::block_on(host.secrets().secret("ABSENT")).is_err());
     assert!(matches!(
         pollster::block_on(StoreSecrets.secret("EMPTY")),
         Err(SecretError::Missing { .. })

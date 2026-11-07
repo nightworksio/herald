@@ -11,7 +11,7 @@ mod compose {
     use herald_config::{Config, Store, load};
     use herald_core::DestinationName;
     use herald_flows::{Admission, Inbound, Job, Taker, Worked};
-    use herald_ports::{Changed, Frame, Http, HttpError, Request, Response, Secret, Value};
+    use herald_ports::{Changed, Frame, Http, HttpError, Request, Response, Value};
     use herald_testing::{
         FakeClock, FakeKv, FakeSecrets, FakeSigner, FakeTimer, FakeVerifier, ScriptedSockets,
         ScriptedSql,
@@ -473,26 +473,45 @@ template = "t"
 
     #[test]
     fn a_request_is_answered_or_runs_the_round_it_holds_the_secret_for() {
-        let config = config("kind = \"deno-kv\"");
-        let composed =
-            pollster::block_on(Composed::new(Hosting::default(), config, &EVERY, "test")).unwrap();
-        let secret = Secret::new("HERALD_ROUND_SECRET", "s3cret");
-        let reach = |asked: &Asked, secret: Option<&Secret>| {
-            pollster::block_on(composed.reached(asked, secret))
+        let unset = pollster::block_on(Composed::new(
+            Hosting::default(),
+            config("kind = \"deno-kv\""),
+            &EVERY,
+            "test",
+        ))
+        .unwrap();
+        let reach = |composed: &Composed<Hosting>, asked: &Asked| {
+            pollster::block_on(composed.reached(asked))
         };
-        let health = reach(&asked("GET", "/healthz?x=1", None), None);
+        let health = reach(&unset, &asked("GET", "/healthz?x=1", None));
         assert_eq!(health.reply.status, 200);
         assert_eq!(health.said, Vec::<String>::new());
-        let unheld = reach(&asked("POST", "/herald/round/poll", None), Some(&secret));
-        assert_eq!(unheld.reply.status, 401);
+        let round = asked("POST", "/herald/round/poll", Some("Bearer s3cret"));
+        assert_eq!(reach(&unset, &round).reply.status, 401);
+        let host = Hosting {
+            secrets: FakeSecrets::default().with("HERALD_ROUND_SECRET", "s3cret"),
+            ..Hosting::default()
+        };
+        let composed = pollster::block_on(Composed::new(
+            host,
+            config("kind = \"deno-kv\""),
+            &EVERY,
+            "test",
+        ))
+        .unwrap();
+        let unheld = reach(&composed, &asked("POST", "/herald/round/poll", None));
+        assert_eq!(
+            (unheld.reply.status, unheld.refused.as_deref()),
+            (401, Some("a round was asked without its secret"))
+        );
         for round in ["poll", "housekeep"] {
             let held = reach(
+                &composed,
                 &asked(
                     "POST",
                     &format!("/herald/round/{round}"),
                     Some("Bearer s3cret"),
                 ),
-                Some(&secret),
             );
             assert_eq!(held.reply.status, 200, "{round}");
             assert_eq!(held.reply.body, b"the round ran");
@@ -529,12 +548,12 @@ body = "{{ event.body }}"
         };
         let composed = pollster::block_on(Composed::new(host, config, &EVERY, "test")).unwrap();
         let mut inbox = asked("POST", "/inbox", None);
-        let unaddressed = pollster::block_on(composed.reached(&inbox, None));
+        let unaddressed = pollster::block_on(composed.reached(&inbox));
         assert_eq!(unaddressed.reply.status, 404);
         inbox
             .headers
             .push(("host".to_owned(), "herald.example".to_owned()));
-        let addressed = pollster::block_on(composed.reached(&inbox, None));
+        let addressed = pollster::block_on(composed.reached(&inbox));
         assert_eq!(addressed.reply.status, 401);
     }
 

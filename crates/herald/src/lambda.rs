@@ -287,6 +287,9 @@ impl Function<'_> {
             if let Some(reason) = answered.refused {
                 self.heard(Heard::Refused(reason));
             }
+            for line in &answered.said {
+                self.said(line);
+            }
             if let Some(left) = answered.left {
                 self.leave(left, &carried).await;
             }

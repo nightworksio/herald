@@ -15,11 +15,10 @@ mod public;
 mod reach;
 mod reaching;
 mod records;
-mod round;
 pub mod told;
 
 pub use answer::{Answer, Left};
-pub use asked::{Asked, Reached, plain};
+pub use asked::Asked;
 pub use capped::Capped;
 pub use composed::Composed;
 pub use host::{Host, KvAt, SqlAt, Unoffered};
@@ -28,4 +27,3 @@ pub use public::{public, reachable};
 pub use reach::{Reach, ReachError, SESSIONS, SocketReach};
 pub use reaching::{EGRESS_GUARDED, Reaching, asked_query, public_address, received};
 pub use records::{GITHUB_REPOSITORY, GITHUB_TOKEN, Records, Served, reached};
-pub use round::{ROUND_SECRET, Round};

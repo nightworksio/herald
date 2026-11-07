@@ -368,3 +368,24 @@ fn the_server_says_what_it_heard_in_a_line_each() {
         ]
     );
 }
+
+#[test]
+fn azure_s_route_prefix_is_its_app_setting_else_host_json_else_api() {
+    use crate::serving::{azure_prefix, timers};
+
+    let set = |value: &str| {
+        BTreeMap::from([(
+            "AzureFunctionsJobHost__extensions__http__routePrefix".to_owned(),
+            value.to_owned(),
+        )])
+    };
+    let host = r#"{"extensions": {"http": {"routePrefix": "/hooks/"}}}"#;
+    assert_eq!(azure_prefix(&set("/edge"), Some(host)), "edge");
+    assert_eq!(azure_prefix(&set(""), Some(host)), "");
+    assert_eq!(azure_prefix(&BTreeMap::new(), Some(host)), "hooks");
+    assert_eq!(azure_prefix(&BTreeMap::new(), Some("{}")), "api");
+    assert_eq!(azure_prefix(&BTreeMap::new(), Some("not json")), "api");
+    assert_eq!(azure_prefix(&BTreeMap::new(), None), "api");
+    assert_eq!(timers("api").map(|asked| asked.prefix), Some("api"));
+    assert!(timers("").is_none());
+}

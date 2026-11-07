@@ -81,7 +81,9 @@ impl Herald {
 
     /// The answer to `request`, `{ method, path, query?, headers, body }`,
     /// its delivery admitted again where `again`: `{ status, kind, body,
-    /// work? }`, `work` settling to what the work it leaves did, in words.
+    /// retryAfter?, work?, refused?, said }`, `work` settling to what the
+    /// work it leaves did, in words, and `said` what a round it asked for
+    /// did.
     pub fn answer(&self, request: JsValue, again: bool) -> Promise {
         let composed = Rc::clone(&self.composed);
         future_to_promise(async move {
@@ -129,6 +131,7 @@ impl Herald {
                 ),
                 ("work", work),
                 ("refused", refused),
+                ("said", strings(&answered.said).into()),
             ]))
         })
     }
