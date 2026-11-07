@@ -452,6 +452,42 @@ template = "t"
     }
 
     #[test]
+    fn a_herald_missing_a_secret_is_not_composed_and_says_which() {
+        const CHAT: &str =
+            "[destinations.chat]\nkind = \"slack\"\ntoken = { secret = \"TOKEN\" }\n";
+        for (rest, missing) in [
+            (CHAT.to_owned(), "TOKEN"),
+            (
+                format!(
+                    "{CHAT}[destinations.chat.interactions]\nsigning = {{ secret = \"SIGNING\" }}\n"
+                ),
+                "SIGNING",
+            ),
+            (
+                "[sources.gate]\nkind = \"github\"\nrepository = \"cli/cli\"\nwebhook = { secret = \"HOOK\" }\n"
+                    .to_owned(),
+                "HOOK",
+            ),
+        ] {
+            let text = format!("version = 1\n[store]\nkind = \"deno-kv\"\n{rest}");
+            let config = load("herald.toml", &text, &|_| Err(String::new())).unwrap();
+            let host = Hosting {
+                secrets: if missing == "TOKEN" {
+                    FakeSecrets::default()
+                } else {
+                    FakeSecrets::default().with("TOKEN", "t")
+                },
+                ..Hosting::default()
+            };
+            let refused = pollster::block_on(Composed::new(host, config, &EVERY, "test")).err();
+            assert!(
+                refused.as_deref().is_some_and(|said| said.contains(missing)),
+                "{missing}: {refused:?}"
+            );
+        }
+    }
+
+    #[test]
     fn a_herald_whose_store_cannot_be_reached_is_not_composed() {
         let unreached = Hosting {
             unreached: true,

@@ -179,6 +179,7 @@ mod tests {
 
     #[test]
     fn a_base_that_is_no_url_or_not_https_is_refused_by_name() {
+        assert!(Reach::new(["https://discord.com"]).is_ok());
         assert_eq!(
             Reach::new(["not a url"])
                 .map(|_| ())
