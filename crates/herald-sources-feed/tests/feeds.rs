@@ -20,6 +20,25 @@ mod feeds {
         })
     }
 
+    #[test]
+    fn a_feed_is_given_by_its_web_address() {
+        let options = |url: &str| FeedOptions {
+            url: url.to_owned(),
+            backfill: 0,
+        };
+        assert_eq!(
+            options("https://blog.rust-lang.org/feed.xml").check(),
+            Ok(())
+        );
+        assert_eq!(
+            options("file:///etc/passwd").check(),
+            Err(
+                "\"file:///etc/passwd\" is not a web address; give the feed's https:// URL"
+                    .to_owned()
+            )
+        );
+    }
+
     fn answer(status: u16, body: &str, date: bool) -> Response {
         let mut headers = vec![
             ("ETag".to_owned(), "\"6ae08b67-18539\"".to_owned()),
