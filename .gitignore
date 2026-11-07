@@ -10,3 +10,5 @@ __pycache__/
 /deploy/pkg/
 /deploy/component/*.wasm
 /deploy/spin/.spin/
+/dist/
+/deploy/tests/egress/.spin/

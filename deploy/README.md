@@ -20,6 +20,74 @@ cannot serve.
 | `wasmtime serve`, wasmCloud and other `wasi:http` hosts | `component/` | `dynamodb`, `git-branch`, `markers`, `repo-variables` | `POST /herald/round/*` |
 | Spin | `spin/` | `sqlite`, `postgres`, `dynamodb`, `git-branch`, `markers`, `repo-variables` | `POST /herald/round/*` |
 | Fastly Compute | `fastly/` | `fastly-kv`, `dynamodb`, `git-branch`, `markers`, `repo-variables` | `POST /herald/round/*` |
+| A container, Compose, Kubernetes and Helm | `compose/`, `kubernetes/`, `helm/herald/` | the stores `herald server` keeps records in | the config's `[schedule]` |
+
+## The container image
+
+`ghcr.io/nightworksio/herald` runs `herald server` as user 65532 on a
+distroless static base, for `linux/amd64` and `linux/arm64`. Each release tags
+it with its version, and a release that is not a prerelease also with its minor
+and major versions. It is signed with cosign keylessly and carries an
+attestation of its provenance and of its SBOM:
+
+```sh
+cosign verify ghcr.io/nightworksio/herald:0 \
+  --certificate-identity-regexp '^https://github.com/nightworksio/herald/' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com
+gh attestation verify oci://ghcr.io/nightworksio/herald:0 --owner nightworksio
+```
+
+| Path or setting | What it holds |
+|-----------------|---------------|
+| `/etc/herald/herald.toml` | the config, as `HERALD_CONFIG` names it |
+| `/run/secrets` | a file per secret, as `HERALD_SECRETS_DIR` names it |
+| `/var/lib/herald` | the volume SQLite keeps its file in, named in the config as `path = "/var/lib/herald/herald.sqlite"` |
+| `HERALD_LISTEN` | `0.0.0.0:8080`, where the server listens |
+
+Its health check is `herald health`, which asks the server's `/healthz` and
+exits 0 where it answers.
+
+## Compose
+
+`compose/compose.yaml` runs the image with SQLite on a volume, reading
+`compose/herald.toml` and each secret from a file under `compose/secrets/`.
+`compose/compose.postgres.yaml`, added with `-f`, keeps records in a Postgres
+beside it, reading `compose/herald.postgres.toml`. Its
+`secrets/HERALD_POSTGRES_URL` is
+`postgres://herald:<password>@postgres/herald?sslmode=disable`, with the
+password `secrets/POSTGRES_PASSWORD` holds. The port is published on
+`127.0.0.1` alone, for a reverse proxy in front of it to reach.
+
+```sh
+docker run --rm ghcr.io/nightworksio/herald:0 init | head -n 1 | cut -d= -f2- > secrets/HERALD_MARKER_SECRET
+docker compose up -d --wait
+docker compose -f compose.yaml -f compose.postgres.yaml up -d --wait
+```
+
+## Kubernetes
+
+`kubernetes/` is a kustomization: one replica with a volume claim for SQLite,
+the config as a ConfigMap made from `kubernetes/herald.toml`, and secrets from
+the Secret `herald-secrets`, mounted at `/run/secrets`.
+
+```sh
+kubectl create secret generic herald-secrets --from-file=HERALD_MARKER_SECRET=./marker
+kubectl apply -k kubernetes/
+```
+
+## Helm
+
+The chart in `helm/herald/` is pushed with each release to
+`oci://ghcr.io/nightworksio/charts/herald`, signed and attested as the image
+is. `config` holds `herald.toml` but for its `[server]` and `[schedule]`
+tables, which `server.*` and `schedule.*` write, each key the config's own.
+`secrets.values` makes the Secret, or `secrets.existingSecret` names one.
+
+```sh
+helm install herald oci://ghcr.io/nightworksio/charts/herald --version 0.1.0 \
+  --set-file config=herald.toml --set server.jobs=16 --set schedule.poll=10m \
+  --set secrets.existingSecret=herald-secrets
+```
 
 ## Building the wasm module
 
@@ -33,6 +101,12 @@ Every shim reads the secrets `herald.toml` names from the host's own
 environment or secret store: `wrangler secret put` on a Worker, the
 project's environment variables on Deno Deploy, Vercel and Netlify, and the
 process environment on Node and Bun.
+
+A process reads a secret from its environment, from the file its
+`<NAME>_FILE` variable names, or from the file named as it is in the directory
+`HERALD_SECRETS_DIR` names. Each file is read when the secret is asked for,
+less one line ending. A secret given more than one way is refused, naming the
+clash.
 
 ## Requests herald makes on others' behalf
 
@@ -109,7 +183,10 @@ unset, no request runs a round. Call them from any scheduler.
 
 ## `wasi:http` hosts
 
-Build with `cargo build --release --target wasm32-wasip2 -p herald-wasi`, which
+Each release pushes the component as an OCI artifact,
+`ghcr.io/nightworksio/herald-component`, and its Spin build as
+`ghcr.io/nightworksio/herald-component-spin`, each signed and attested as the
+image is. Fetch one with `wkg oci pull`, or build it with `cargo build --release --target wasm32-wasip2 -p herald-wasi`, which
 needs a clang that targets wasm. Run `wasmtime serve -Scli --dir=. herald_wasi.wasm`
 beside `herald.toml`, passing secrets with `--env`. `HERALD_CONFIG` names another
 config file, and `HERALD_TIMEOUT_MS` bounds each request herald sends, 10 seconds

@@ -202,7 +202,7 @@ impl Destination {
     /// The kind of herald's own ActivityPub actors, as the config spells it.
     pub const ACTIVITYPUB: &str = "activitypub";
     /// Every kind, as the config spells it.
-    pub const KINDS: [&'static str; 5] = [
+    pub const KINDS: [&str; 5] = [
         Self::DISCORD,
         Self::MASTODON,
         Self::MATRIX,
@@ -269,7 +269,7 @@ impl Source {
     }
 
     /// Every kind, as the config spells it.
-    pub const KINDS: [&'static str; 8] = {
+    pub const KINDS: [&str; 8] = {
         let [github, gitlab, forgejo] = Forge::ALL;
         let [packagist, crates_io, npm, docker_hub] = Registry::ALL;
         [

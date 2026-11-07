@@ -1,0 +1,37 @@
+services:
+  herald:
+    volumes:
+      - ./herald.postgres.toml:/etc/herald/herald.toml:ro
+      - herald-state:/var/lib/herald
+    secrets:
+      - HERALD_MARKER_SECRET
+      - HERALD_POSTGRES_URL
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  postgres:
+    image: postgres:17-alpine@sha256:266d3c257594e195b309ae9d1805e54c788f1d7b375f56bf6c367aac6c917e7b
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: herald
+      POSTGRES_DB: herald
+      POSTGRES_PASSWORD_FILE: /run/secrets/POSTGRES_PASSWORD
+    secrets:
+      - POSTGRES_PASSWORD
+    volumes:
+      - herald-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "herald", "-d", "herald"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+secrets:
+  HERALD_POSTGRES_URL:
+    file: ./secrets/HERALD_POSTGRES_URL
+  POSTGRES_PASSWORD:
+    file: ./secrets/POSTGRES_PASSWORD
+
+volumes:
+  herald-postgres:

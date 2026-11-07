@@ -15,6 +15,7 @@ use std::io::Write;
 use std::path::Path;
 use std::pin::Pin;
 use std::sync::{Arc, Mutex, PoisonError};
+use std::time::Duration;
 
 use clap::Parser as _;
 use herald_config::{Config, Source, load, samples};
@@ -32,6 +33,7 @@ use herald_sources_forge::{Forge, Origin, Repository, SourceOptions, Token};
 
 mod apps;
 mod cli;
+mod health;
 mod lambda;
 mod output;
 mod serving;
@@ -192,6 +194,12 @@ async fn stopping(
     let reading = match cli.command {
         Command::Init => return init(random_secret(), out, err),
         Command::Token(Tokens::New { app }) => return apps::token(&app, random_secret(), out, err),
+        Command::Health { url, timeout } => {
+            let listen = vars.get(LISTEN).map(String::as_str);
+            let configured = || read(&cli.config).ok().map(|config| config.server.listen);
+            let url = health::url(url, listen, configured);
+            return health::health(&url, Duration::from_millis(timeout), out, err).await;
+        }
         Command::Read(reading) => reading,
     };
     let config = match read(&cli.config) {

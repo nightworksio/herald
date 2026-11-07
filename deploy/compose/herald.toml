@@ -1,0 +1,8 @@
+version = 1
+
+[store]
+kind = "sqlite"
+path = "/var/lib/herald/herald.sqlite"
+
+[markers]
+key = { secret = "HERALD_MARKER_SECRET" }
