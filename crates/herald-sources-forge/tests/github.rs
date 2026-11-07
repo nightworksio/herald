@@ -297,6 +297,7 @@ mod github {
             ]
             .join("\n")
         );
+        assert_eq!(request.most, herald_wire::PARSE_LIMIT);
         let enterprise = source(Some("https://ghe.example/api/v3/"));
         assert_eq!(enterprise.api(), "https://ghe.example/api/v3");
         assert_eq!(source(None).api(), "https://api.github.com");

@@ -27,6 +27,7 @@ herald-flows.workspace = true
 herald-ports.workspace = true
 herald-spin = { workspace = true, optional = true }
 send_wrapper = { version = "0.6", features = ["futures"] }
+http-body-util = "0.1"
 wasip2 = "2"
 wstd = "0.6"
 

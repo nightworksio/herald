@@ -3,10 +3,13 @@ use std::time::Duration;
 
 use herald_compose::{Reaching, received};
 use herald_ports::{Http, HttpError, Request, Response};
+use http_body_util::BodyExt as _;
 use send_wrapper::SendWrapper;
-use wstd::http::{Client, Method};
+use wstd::future::FutureExt as _;
+use wstd::http::{Body, Client, Method};
 
-/// How long a request herald sends may take where `HERALD_TIMEOUT_MS` is unset.
+/// How long a request herald sends may take, from its connection to the last
+/// byte of its answer, where `HERALD_TIMEOUT_MS` is unset.
 pub(super) const TIMEOUT: Duration = Duration::from_secs(10);
 
 /// An `Http` over `wasi:http`, reaching what one connection may. The component
@@ -30,6 +33,23 @@ fn unreachable(reason: &impl ToString) -> HttpError {
     }
 }
 
+/// `body` read frame by frame to at most one byte past `most`, which
+/// `received` then refuses, so a larger answer is never held whole.
+async fn read(body: Body, most: usize) -> Result<Vec<u8>, HttpError> {
+    let mut stream = body.into_boxed_body();
+    let mut bytes = Vec::new();
+    while bytes.len() <= most {
+        let Some(frame) = stream.frame().await else {
+            break;
+        };
+        if let Ok(data) = frame.map_err(|error| unreachable(&error))?.into_data() {
+            let room = most.saturating_add(1).saturating_sub(bytes.len());
+            bytes.extend_from_slice(data.get(..room.min(data.len())).unwrap_or_default());
+        }
+    }
+    Ok(bytes)
+}
+
 fn method(request: &Request) -> Result<Method, HttpError> {
     Method::from_bytes(request.method.as_str().as_bytes()).map_err(|error| unreachable(&error))
 }
@@ -38,7 +58,7 @@ impl Http for WasiHttp {
     fn send(&self, request: Request) -> impl Future<Output = Result<Response, HttpError>> + Send {
         let reaching = self.reaching.clone();
         let timeout = self.timeout;
-        SendWrapper::new(async move {
+        let exchange = async move {
             let url = reaching.admitted(&request.url)?;
             let mut asked = wstd::http::Request::builder()
                 .method(method(&request)?)
@@ -53,16 +73,12 @@ impl Http for WasiHttp {
             client.set_connect_timeout(timeout);
             client.set_first_byte_timeout(timeout);
             client.set_between_bytes_timeout(timeout);
-            let (head, mut body) = client
+            let (head, body) = client
                 .send(asked)
                 .await
                 .map_err(|error| unreachable(&error))?
                 .into_parts();
-            let bytes = body
-                .contents()
-                .await
-                .map_err(|error| unreachable(&error))?
-                .to_vec();
+            let bytes = read(body, request.most).await?;
             let headers = head
                 .headers
                 .iter()
@@ -78,6 +94,12 @@ impl Http for WasiHttp {
                     body: bytes,
                 },
             )
+        };
+        SendWrapper::new(async move {
+            exchange
+                .timeout(wstd::time::Duration::from(timeout))
+                .await
+                .map_err(|_| HttpError::TimedOut)?
         })
     }
 }

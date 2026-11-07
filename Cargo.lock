@@ -1389,6 +1389,7 @@ dependencies = [
  "herald-flows",
  "herald-ports",
  "herald-spin",
+ "http-body-util",
  "send_wrapper",
  "wasip2 2.0.1+wasi-0.2.12",
  "wstd",
