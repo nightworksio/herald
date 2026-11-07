@@ -80,6 +80,8 @@ pub enum Heard {
     Kept(Result<Vec<Kept>, Stop>),
     /// A connection could not be taken, and why.
     Unaccepted(String),
+    /// A request was refused, and why; its reply named no reason.
+    Refused(String),
     /// A session a destination holds said this.
     Session {
         /// The destination.
@@ -299,6 +301,9 @@ where
         body: &body,
     };
     let answered = answer(serving, &inbound).await;
+    if let Some(reason) = answered.refused {
+        (rounds.heard)(Heard::Refused(reason));
+    }
     if let (Some(job), Some(held)) = (answered.job, held) {
         held.fill(job);
     }

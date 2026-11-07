@@ -124,6 +124,9 @@ pub struct Answered {
     pub reply: Reply,
     /// The work to do once the reply is sent.
     pub job: Option<Job>,
+    /// Why the request was refused, for the log where herald runs; its
+    /// reply names no reason (ADR-0007).
+    pub refused: Option<String>,
 }
 
 /// What a job did.
@@ -195,6 +198,21 @@ pub(crate) fn said(status: u16, text: &str) -> Answered {
     replied(status, TEXT, text)
 }
 
+/// The reply to a request refused for `reason`: a body that names no
+/// reason, the same for every refusal of its kind, and the reason kept for
+/// the log (ADR-0007).
+pub(crate) fn refusal(status: u16, reason: impl Into<String>) -> Answered {
+    let body = match status {
+        409 => "herald has taken this request already",
+        500.. => "herald cannot answer this request now",
+        _ => "herald does not take this request",
+    };
+    Answered {
+        refused: Some(reason.into()),
+        ..said(status, body)
+    }
+}
+
 pub(crate) fn replied(status: u16, kind: &'static str, body: impl Into<Vec<u8>>) -> Answered {
     Answered {
         reply: Reply {
@@ -203,6 +221,7 @@ pub(crate) fn replied(status: u16, kind: &'static str, body: impl Into<Vec<u8>>)
             body: body.into(),
         },
         job: None,
+        refused: None,
     }
 }
 
@@ -221,7 +240,7 @@ pub(crate) fn rejection(rejected: &Rejected) -> Answered {
         Rejected::Unadmitted { .. } => 503,
         _ => 401,
     };
-    said(status, &rejected.to_string())
+    refusal(status, rejected.to_string())
 }
 
 /// The scheme `forge` signs its webhooks under.
@@ -372,7 +391,7 @@ async fn documented<S, C, G: Signer, V, H, P, K>(
 fn shown(document: Result<String, CryptoError>) -> Answered {
     match document {
         Ok(document) => replied(200, ACTIVITY_JSON, document),
-        Err(error) => said(500, &format!("the actor's key cannot be read: {error}")),
+        Err(error) => refusal(500, format!("the actor's key cannot be read: {error}")),
     }
 }
 
@@ -388,7 +407,7 @@ async fn noted<S: Store, C, G, V, H, P, K>(
     match serving.ports.store.note(&parsed).await {
         Ok(Some(note)) if served.owns(&note, key) => replied(200, ACTIVITY_JSON, note),
         Ok(_) => missing("such note"),
-        Err(error) => said(503, &error.to_string()),
+        Err(error) => refusal(503, error.to_string()),
     }
 }
 
@@ -428,6 +447,7 @@ async fn hooked<S: Store, C: Clock, G, V: Verifier, H, P, K>(
     match forge.hooked(inbound.headers, inbound.body, &options.repository) {
         Ok(Hooked::Release(event)) => Answered {
             reply: said(202, "herald announces the release").reply,
+            refused: None,
             job: Some(Job::Announce {
                 source,
                 event,
@@ -438,7 +458,7 @@ async fn hooked<S: Store, C: Clock, G, V: Verifier, H, P, K>(
         Ok(Hooked::Nothing(why)) => said(200, why),
         Err(error) => {
             let _ = released(store, scheme, &verified).await;
-            said(400, &error.to_string())
+            refusal(400, error.to_string())
         }
     }
 }
@@ -458,12 +478,12 @@ async fn posted<S: Store, C: Clock, G, V, H, P, K>(
     let now = serving.ports.clock.now();
     let event = match herald_sources_app::event(name, inbound.body, now) {
         Ok(event) => event,
-        Err(unread) => return said(400, &unread.to_string()),
+        Err(unread) => return refusal(400, unread.to_string()),
     };
     if event.project() != project {
-        return said(
+        return refusal(
             400,
-            &format!(
+            format!(
                 "the event names the project \"{}\", not \"{project}\"",
                 event.project()
             ),
@@ -484,6 +504,7 @@ async fn posted<S: Store, C: Clock, G, V, H, P, K>(
     {
         Ok(()) => Answered {
             reply: said(202, "herald announces the event").reply,
+            refused: None,
             job: Some(Job::App {
                 app: name.to_owned(),
                 event,
@@ -506,8 +527,8 @@ enum Refused {
 impl Refused {
     fn answered(self) -> Answered {
         match self {
-            Self::Token => said(401, "herald knows no such token"),
-            Self::Project => said(403, "the token may not announce this project"),
+            Self::Token => refusal(401, "the request presents no token herald knows"),
+            Self::Project => refusal(403, "the token may not announce this project"),
         }
     }
 }
@@ -551,7 +572,7 @@ async fn standing<S: Store, C: Clock, G, V, H, P, K>(
         let standing = match serving.ports.store.entry(&key).await {
             Ok(Some(entry)) => entry.value.standing(now),
             Ok(None) => Standing::Pending,
-            Err(error) => return said(503, &error.to_string()),
+            Err(error) => return refusal(503, error.to_string()),
         };
         routes.push((route.as_str(), standing));
     }
@@ -623,6 +644,7 @@ async fn inboxed<S: Store, C: Clock, G, V: Verifier, H, P: Http, K: Keyring>(
     }
     Answered {
         reply: said(202, "herald takes the activity").reply,
+        refused: None,
         job: Some(Job::Follow {
             verified,
             body: inbound.body.to_vec(),

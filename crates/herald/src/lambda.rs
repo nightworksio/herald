@@ -279,6 +279,9 @@ impl Function<'_> {
                 return Ok(json!({}));
             }
             let answered = composed.answer(&inbound, Admission::Once).await;
+            if let Some(reason) = answered.refused {
+                self.heard(Heard::Refused(reason));
+            }
             if let Some(job) = answered.job {
                 self.leave(job, &carried).await;
             }

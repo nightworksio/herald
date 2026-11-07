@@ -286,8 +286,13 @@ fn an_actor_whose_key_cannot_be_read_is_not_served() {
     };
     let answered = pollster::block_on(answer(&serving, &get("/users/php-mutation-gate")));
     assert_eq!(answered.reply.status, 500);
+    assert_eq!(
+        String::from_utf8(answered.reply.body).unwrap(),
+        "herald cannot answer this request now"
+    );
     assert!(
-        String::from_utf8(answered.reply.body)
+        answered
+            .refused
             .unwrap()
             .starts_with("the actor's key cannot be read:")
     );
@@ -723,6 +728,13 @@ fn an_app_s_event_its_token_or_scope_does_not_let_through_is_refused_unread() {
         let answered = world.answer(&posted(path, headers, body));
         assert_eq!(answered.reply.status, status, "{path} {headers:?}");
         assert_eq!(answered.job, None, "{path}");
+        if status != 404 {
+            assert_eq!(
+                String::from_utf8(answered.reply.body).unwrap(),
+                "herald does not take this request",
+                "{path} {headers:?}"
+            );
+        }
     }
     let mismatched = world.answer(&posted(
         "/api/projects/herald/events",
@@ -730,8 +742,8 @@ fn an_app_s_event_its_token_or_scope_does_not_let_through_is_refused_unread() {
         br#"{"id": "7", "project": "other", "title": "Deployed"}"#,
     ));
     assert_eq!(
-        said(&mismatched).2,
-        "the event names the project \"other\", not \"herald\""
+        mismatched.refused.as_deref(),
+        Some("the event names the project \"other\", not \"herald\"")
     );
     assert_eq!(world.admits(Scheme::App, "app/ci/7"), Admitted::Fresh);
     let asked = Inbound {

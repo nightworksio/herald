@@ -74,6 +74,7 @@ export function denoKv(kv) {
 
 export async function answering(herald, asked) {
   const answer = await herald.answer(asked, false);
+  if (answer.refused) console.warn(answer.refused);
   const response = new Response(answer.body.length ? answer.body : null, {
     status: answer.status,
     headers: { "content-type": answer.kind },

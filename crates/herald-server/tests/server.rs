@@ -236,6 +236,7 @@ body = "{{ event.body }}"
             Heard::Polled(_) => "polled".to_owned(),
             Heard::Kept(_) => "kept".to_owned(),
             Heard::Unaccepted(reason) => format!("unaccepted: {reason}"),
+            Heard::Refused(reason) => format!("refused: {reason}"),
             Heard::Session { destination, said } => format!("{}: {said}", destination.as_str()),
         }
     }

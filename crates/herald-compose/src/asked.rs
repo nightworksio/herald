@@ -71,7 +71,11 @@ impl<H: Host> Composed<H> {
         Reached {
             reply: answered.reply,
             job: answered.job,
-            said: Vec::new(),
+            said: answered
+                .refused
+                .map(|reason| format!("a request was refused: {reason}"))
+                .into_iter()
+                .collect(),
         }
     }
 

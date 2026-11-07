@@ -13,7 +13,7 @@ use crate::inbound::{Rejected, Verified, admitted, verified};
 use crate::interact::completed;
 use crate::interacting::{Interacting, Replying};
 use crate::serving::{
-    Answered, Inbound, Job, Serving, missing, rejection, replied, said, unmethodical,
+    Answered, Inbound, Job, Serving, missing, refusal, rejection, replied, said, unmethodical,
 };
 
 /// Where Discord and Slack post commands, before the destination's name.
@@ -128,7 +128,7 @@ async fn interaction<S: Store, C: Clock, G, V: Verifier, H, P, K>(
             }
         }
         Ok(discord::Received::Ignored) => said(400, "herald does not answer this interaction"),
-        Err(unread) => said(400, &unread.to_string()),
+        Err(unread) => refusal(400, unread.to_string()),
     }
 }
 
@@ -149,7 +149,7 @@ async fn slash<S: Store, C: Clock, G, V: Verifier, H, P, K>(
         },
         Ok(slack::Received::Usage) => replied(200, JSON, interacting.usage()),
         Ok(slack::Received::Ignored) => replied(200, JSON, ""),
-        Err(unread) => said(400, &unread.to_string()),
+        Err(unread) => refusal(400, unread.to_string()),
     }
 }
 
@@ -218,7 +218,7 @@ pub(crate) async fn appserviced<S: Store, C: Clock, G, V: Verifier, H, P, K>(
                     )),
                     ..replied(200, JSON, EMPTY)
                 },
-                Err(unread) => said(400, &unread.to_string()),
+                Err(unread) => refusal(400, unread.to_string()),
             }
         }
         ("GET", ["_matrix", "app", "v1", "users", user]) => {

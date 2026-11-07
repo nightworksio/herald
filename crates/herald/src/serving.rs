@@ -125,6 +125,7 @@ pub(crate) fn said(heard: Heard) -> Vec<String> {
         Heard::Polled(swept) => swept.iter().flat_map(told::polled).collect(),
         Heard::Kept(kept) => told::kept(&kept),
         Heard::Unaccepted(reason) => vec![format!("a connection could not be taken: {reason}")],
+        Heard::Refused(reason) => vec![format!("a request was refused: {reason}")],
         Heard::Session { destination, said } => vec![format!("{}: {said}", destination.as_str())],
     }
 }

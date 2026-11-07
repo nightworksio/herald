@@ -337,6 +337,10 @@ fn the_server_says_what_it_heard_in_a_line_each() {
         said(Heard::Unaccepted("too many open files".to_owned())),
         ["a connection could not be taken: too many open files"]
     );
+    assert_eq!(
+        said(Heard::Refused("the signature does not match".to_owned())),
+        ["a request was refused: the signature does not match"]
+    );
     let followed = |followed| said(Heard::Worked(Worked::Followed(followed)));
     assert_eq!(
         followed(Ok(Followed::Accepted {
