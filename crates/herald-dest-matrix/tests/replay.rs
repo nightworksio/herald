@@ -4,7 +4,8 @@
 #[cfg(test)]
 mod replay {
     use herald_core::{
-        Announcement, Dialect, Entry, Facts, MentionStyle, Pins, Sent, Step, Text, Threads,
+        Announcement, Dialect, Entry, Facts, MentionRoom, MentionStyle, Pins, Sent, Step, Text,
+        Threads,
     };
     use herald_dest_matrix::{Matrix, MatrixMarkers, Refusal, RouteOptions, profile};
     use herald_ports::{Markers, MarkersError, Method, Secret};
@@ -433,7 +434,15 @@ mod replay {
         assert_eq!(profile.dialect, Dialect::Matrix);
         assert_eq!(profile.features.threads, Threads::Replies);
         assert_eq!(profile.features.pins, Pins::Many);
-        assert!(matches!(profile.features.mentions, MentionStyle::Users(_)));
+        assert_eq!(
+            profile.features.mentions,
+            MentionStyle::Users(MentionRoom {
+                first: 24_576,
+                rest: 57_344,
+                copies: 4,
+                overhead: 64,
+            })
+        );
         assert!(profile.features.reads_back);
         assert!(profile.features.edits);
         assert!(!profile.features.crosspost);

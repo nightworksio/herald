@@ -189,7 +189,10 @@ fn split(text: &str, fits: &dyn Fn(&str) -> bool, level: Level) -> Vec<String> {
     let mut pieces = Vec::new();
     let mut current: Option<String> = None;
     let mut start = 0;
-    while let Some(unit) = units.get(start) {
+    for _ in 0..2 * units.len() {
+        let Some(unit) = units.get(start) else {
+            break;
+        };
         let rest = units.get(start..).unwrap_or_default();
         let most = longest(rest.len(), &|count| {
             fits(&joined(
@@ -226,13 +229,14 @@ fn split(text: &str, fits: &dyn Fn(&str) -> bool, level: Level) -> Vec<String> {
 /// each try measures at most about twice what fits.
 fn longest(available: usize, fits: &dyn Fn(usize) -> bool) -> usize {
     let mut good = 0;
-    let mut step = 1;
     let mut bad = None;
-    while good < available {
-        let probe = good.saturating_add(step).min(available);
+    for doubling in 0..usize::BITS {
+        if good == available {
+            break;
+        }
+        let probe = good.saturating_add(1 << doubling).min(available);
         if fits(probe) {
             good = probe;
-            step = step.saturating_mul(2);
         } else {
             bad = Some(probe);
             break;
@@ -241,7 +245,10 @@ fn longest(available: usize, fits: &dyn Fn(usize) -> bool) -> usize {
     let Some(mut bad) = bad else {
         return good;
     };
-    while bad - good > 1 {
+    for _ in 0..usize::BITS {
+        if bad - good <= 1 {
+            break;
+        }
         let middle = good + (bad - good) / 2;
         if fits(middle) {
             good = middle;

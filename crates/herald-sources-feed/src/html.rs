@@ -86,22 +86,16 @@ fn tokens(html: &str) -> Vec<Token<'_>> {
 /// never closes. The tag's name is matched without regard to case, and
 /// nothing is copied, so a document of many dropped elements is read once.
 fn skipped<'a>(html: &'a str, name: &str) -> &'a str {
-    let mut from = 0;
-    while let Some(at) = html.get(from..).and_then(|rest| rest.find("</")) {
-        let close = from + at;
-        let named = html
-            .as_bytes()
-            .get(close + 2..close + 2 + name.len())
-            .is_some_and(|candidate| candidate.eq_ignore_ascii_case(name.as_bytes()));
-        if named {
-            let rest = html.get(close..).unwrap_or_default();
-            return rest
-                .find('>')
-                .map_or("", |end| rest.get(end + 1..).unwrap_or_default());
-        }
-        from = close + 2;
-    }
-    ""
+    html.match_indices("</")
+        .map(|(close, _)| close)
+        .find(|close| {
+            html.as_bytes()
+                .get(close + 2..close + 2 + name.len())
+                .is_some_and(|candidate| candidate.eq_ignore_ascii_case(name.as_bytes()))
+        })
+        .and_then(|close| html.get(close..))
+        .and_then(|rest| rest.find('>').and_then(|end| rest.get(end + 1..)))
+        .unwrap_or_default()
 }
 
 fn name_end(text: &str) -> usize {

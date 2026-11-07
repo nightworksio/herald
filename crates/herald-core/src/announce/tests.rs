@@ -106,6 +106,29 @@ fn an_event_is_announced_with_its_key_title_parts_thread_and_link() {
 }
 
 #[test]
+fn each_list_of_users_past_the_room_is_a_message_after_the_parts() {
+    let route = threaded();
+    let mut announcement = announce(
+        &event(),
+        &route,
+        &templates(&route),
+        &profile(256, 4096),
+        "0.1.0",
+        marks(),
+    )
+    .unwrap();
+    announcement.mentioned_after = vec![vec!["a".to_owned()], vec!["b".to_owned(), "c".to_owned()]];
+    assert_eq!(announcement.messages(), 3);
+    assert_eq!(announcement.mentioned_in(0), None);
+    assert_eq!(announcement.mentioned_in(1), Some(&["a".to_owned()][..]));
+    assert_eq!(
+        announcement.mentioned_in(2),
+        Some(&["b".to_owned(), "c".to_owned()][..])
+    );
+    assert_eq!(announcement.mentioned_in(3), None);
+}
+
+#[test]
 fn a_route_without_a_thread_names_none_and_a_long_body_is_cut() {
     let route = route_for("r", "php-mutation-gate");
     let long = Event::normalise(Draft {
