@@ -200,6 +200,7 @@ pub(crate) enum Fault {
     Pins,
     RemembersPins,
     Releases,
+    ReleasesDeliveries,
     Subscribers,
     Subscribes,
     Unsubscribes,
@@ -365,6 +366,9 @@ impl Store for Failing {
     }
 
     async fn release(&self, scheme: herald_core::Scheme, id: &str) -> Result<(), StoreError> {
+        if self.fault == Fault::ReleasesDeliveries {
+            return Err(broken());
+        }
         self.inner.release(scheme, id).await
     }
 

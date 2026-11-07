@@ -384,6 +384,10 @@ fn a_signed_webhook_of_a_release_is_answered_and_left_to_announce() {
     let delivery = verified.delivery.clone().unwrap();
     let again = world.answer(&hooked("/hooks/gate", &headers, EVENT.as_bytes()));
     assert_eq!(again.reply.status, 409);
+    assert_eq!(
+        String::from_utf8(again.reply.body).unwrap(),
+        "herald has taken this request already"
+    );
     let Some(job) = answered.job else {
         panic!("the release is left to announce");
     };
@@ -462,7 +466,22 @@ fn a_webhook_of_another_repository_is_refused_and_its_delivery_released() {
     for _ in 0..2 {
         let answered = world.answer(&hooked("/hooks/gate", &headers, elsewhere.as_bytes()));
         assert_eq!(answered.reply.status, 400);
+        assert_eq!(
+            String::from_utf8(answered.reply.body).unwrap(),
+            "herald does not take this request"
+        );
     }
+    let unreleased = World::failing(Fault::ReleasesDeliveries).answer(&hooked(
+        "/hooks/gate",
+        &headers,
+        elsewhere.as_bytes(),
+    ));
+    assert_eq!(unreleased.reply.status, 400);
+    assert!(
+        unreleased.refused.unwrap().ends_with(
+            "; its delivery could not be released: the store could not be reached: broken"
+        ),
+    );
 }
 
 fn inboxed<'a>(

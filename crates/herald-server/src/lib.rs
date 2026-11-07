@@ -553,7 +553,7 @@ mod tests {
     use futures_util::FutureExt as _;
     use herald_flows::{Job, Verified};
 
-    use super::{Queue, round, rounds};
+    use super::{Queue, RUN, named, round, rounds};
 
     fn job(body: &[u8]) -> Job {
         Job::Follow {
@@ -585,6 +585,13 @@ mod tests {
         assert_eq!(queue.left(), vec![job(b"2")]);
         assert_eq!(queue.next(), None);
         assert!(queue.hold().is_some());
+    }
+
+    #[test]
+    fn each_job_takes_its_leases_under_the_server_s_name_and_a_nonce_of_its_own() {
+        let first = named();
+        assert!(first.starts_with(&format!("{RUN}/")), "{first}");
+        assert_ne!(named(), first);
     }
 
     #[test]

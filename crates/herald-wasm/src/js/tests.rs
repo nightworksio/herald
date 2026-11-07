@@ -168,6 +168,15 @@ fn hosted() -> JsHost {
 }
 
 #[wasm_bindgen_test]
+fn each_nonce_the_host_gives_is_16_hex_digits_and_new() {
+    let host = hosted();
+    let first = host.nonce();
+    assert_eq!(first.len(), 16);
+    assert!(first.bytes().all(|byte| byte.is_ascii_hexdigit()));
+    assert_ne!(host.nonce(), first);
+}
+
+#[wasm_bindgen_test]
 async fn an_hmac_is_rfc_4231_s_and_verifies_only_for_its_message() {
     let message = b"what do ya want for nothing?";
     let mac = WebSigner

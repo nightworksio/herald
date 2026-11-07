@@ -358,6 +358,40 @@ body = "{{ event.body }}"
     }
 
     #[tokio::test]
+    async fn a_refused_request_is_answered_without_its_reason_and_the_reason_is_said() {
+        let world = World::new(Gate::default()).await;
+        let (listener, address) = listening().await;
+        let heard = RefCell::new(Vec::new());
+        let stop = Notify::new();
+        let forged = posted(
+            "/hooks/gate",
+            &[
+                ("X-Hub-Signature-256", "sha256=00"),
+                ("X-GitHub-Event", "release"),
+            ],
+            EVENT.as_bytes(),
+        );
+        let client = async {
+            let answer = asked(address, &forged).await;
+            stop.notify_one();
+            answer
+        };
+        let hear = |said: Heard| heard.borrow_mut().push(named(&said));
+        let (answer, ()) = tokio::join!(
+            client,
+            world.serve(listener, limits(), &hear, stop.notified())
+        );
+        assert!(answer.starts_with("HTTP/1.1 401 "), "{answer}");
+        assert!(
+            answer.ends_with("herald does not take this request"),
+            "{answer}"
+        );
+        let said = said(&heard);
+        assert_eq!(said.len(), 2, "{said:?}");
+        assert!(said[1].starts_with("refused: "), "{said:?}");
+    }
+
+    #[tokio::test]
     async fn stopping_releases_the_work_waiting_and_finishes_the_work_running() {
         let gate = Gate {
             gated: true,

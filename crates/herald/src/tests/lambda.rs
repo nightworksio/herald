@@ -294,3 +294,20 @@ fn a_request_that_leaves_no_work_is_answered_and_handed_nothing() {
     assert_eq!(given[1].1, json!({}));
     assert_eq!(given.len(), 2);
 }
+
+#[test]
+fn a_refused_request_is_answered_without_its_reason_and_the_reason_is_said() {
+    let world = World::default();
+    let mut forged = webhook();
+    forged["headers"]["x-hub-signature-256"] = json!("sha256=00");
+    invoked(&world, vec![forged]);
+    let run = herald(&function(&hooked(), true), &world, &LAMBDA);
+    let given = given(&world);
+    assert_eq!(given[0].0, "request-1/response");
+    assert_eq!(given[0].1["statusCode"], json!(401));
+    assert_eq!(
+        given[0].1["body"],
+        json!("herald does not take this request")
+    );
+    assert!(run.out.contains("a request was refused: "), "{}", run.out);
+}

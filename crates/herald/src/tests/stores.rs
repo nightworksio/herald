@@ -422,3 +422,13 @@ fn the_native_binary_opens_no_database_or_key_value_store_of_another_platform() 
         Some(unhosted)
     );
 }
+
+#[test]
+fn each_nonce_the_native_binary_gives_is_new() {
+    use herald_compose::Host as _;
+
+    let vars = BTreeMap::new();
+    let unreached = |base: &str| Err(format!("{base} is out of reach"));
+    let native = stores::Native::new(&vars, &unreached);
+    assert_ne!(native.nonce(), native.nonce());
+}
