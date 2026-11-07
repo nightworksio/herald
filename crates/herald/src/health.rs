@@ -4,7 +4,7 @@
 use std::io::Write;
 use std::time::Duration;
 
-use herald_config::{Config, Server};
+use herald_config::Server;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 
@@ -13,7 +13,7 @@ use super::{STOPPED, say};
 /// The path the server answers its health on.
 const HEALTH: &str = "/healthz";
 /// The most of an answer read.
-const MOST: u64 = 16 * 1024;
+const MOST: u64 = 16_384;
 
 /// The URL `listen` is reached at from this machine: an address that listens
 /// everywhere is asked on loopback.
@@ -29,15 +29,16 @@ pub(crate) fn url_of(listen: &str) -> String {
 }
 
 /// The URL to ask: `asked` where given, and otherwise `/healthz` on the
-/// address `listen` names, the config's, or the server's own default.
+/// address `listen` names where it names one, the config's, or the server's
+/// own default.
 pub(crate) fn url(
     asked: Option<String>,
-    listen: Option<&String>,
-    config: impl FnOnce() -> Option<Config>,
+    listen: Option<&str>,
+    configured: impl FnOnce() -> Option<String>,
 ) -> String {
     asked
-        .or_else(|| listen.map(|listen| url_of(listen)))
-        .or_else(|| config().map(|config| url_of(&config.server.listen)))
+        .or_else(|| listen.filter(|listen| !listen.is_empty()).map(url_of))
+        .or_else(|| configured().map(|listen| url_of(&listen)))
         .unwrap_or_else(|| url_of(Server::LISTEN))
 }
 
@@ -156,24 +157,24 @@ mod tests {
 
     #[test]
     fn the_url_asked_comes_first_then_the_listen_variable_then_the_config() {
-        let listen = "0.0.0.0:9000".to_owned();
-        let config = || {
-            herald_config::load(
-                "herald.toml",
-                "version = 1\n[store]\nkind = \"sqlite\"\n[server]\nlisten = \"10.0.0.1:7000\"\n",
-                &|_| Err(String::new()),
-            )
-            .ok()
-        };
+        let configured = || Some("10.0.0.1:7000".to_owned());
         assert_eq!(
-            url(Some("http://a/b".to_owned()), Some(&listen), config),
+            url(
+                Some("http://a/b".to_owned()),
+                Some("0.0.0.0:9000"),
+                configured
+            ),
             "http://a/b"
         );
         assert_eq!(
-            url(None, Some(&listen), config),
+            url(None, Some("0.0.0.0:9000"), configured),
             "http://127.0.0.1:9000/healthz"
         );
-        assert_eq!(url(None, None, config), "http://10.0.0.1:7000/healthz");
+        assert_eq!(
+            url(None, Some(""), configured),
+            "http://10.0.0.1:7000/healthz"
+        );
+        assert_eq!(url(None, None, configured), "http://10.0.0.1:7000/healthz");
         assert_eq!(url(None, None, || None), "http://127.0.0.1:8080/healthz");
     }
 

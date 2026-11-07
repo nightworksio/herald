@@ -1,4 +1,4 @@
-FROM gcr.io/distroless/static-debian12:nonroot@sha256:afa5c872c891853ca7fcf1f12c3edb23f7eeef36189728842dd51042ff57f7ab
+FROM gcr.io/distroless/static-debian12@sha256:afa5c872c891853ca7fcf1f12c3edb23f7eeef36189728842dd51042ff57f7ab
 ARG TARGETARCH
 LABEL org.opencontainers.image.title="herald" \
       org.opencontainers.image.description="Announce what happened to the places people gather." \

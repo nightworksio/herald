@@ -12,7 +12,7 @@ healthy() {
   local container="$1" status
   for _ in $(seq 1 60); do
     status="$(docker inspect --format '{{.State.Health.Status}}' "${container}")"
-    [ "${status}" = "healthy" ] && return 0
+    [[ "${status}" == "healthy" ]] && return 0
     sleep 2
   done
   docker logs "${container}" >&2
@@ -31,8 +31,8 @@ docker run -d --name herald-smoke \
   -v "${work}/secrets:/run/secrets:ro" \
   --read-only "${image}"
 healthy herald-smoke
-[ "$(docker exec herald-smoke herald health)" = "herald answers at http://127.0.0.1:8080/healthz" ]
-[ "$(docker inspect --format '{{.Config.User}}' "${image}")" = "65532:65532" ]
+[[ "$(docker exec herald-smoke herald health)" == "herald answers at http://127.0.0.1:8080/healthz" ]]
+[[ "$(docker inspect --format '{{.Config.User}}' "${image}")" == "65532:65532" ]]
 docker rm -fv herald-smoke >/dev/null
 
 echo "Compose with SQLite, then with Postgres"

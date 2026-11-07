@@ -127,7 +127,7 @@ case "$tool" in
     ;;
 esac
 
-if [ -z "$member" ]; then
+if [[ -z "$member" ]]; then
   archive="${RUNNER_TEMP:-/tmp}/${tool}"
 else
   archive="${RUNNER_TEMP:-/tmp}/${tool}.${url##*.}"

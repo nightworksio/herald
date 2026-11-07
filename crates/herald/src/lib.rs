@@ -195,8 +195,9 @@ async fn stopping(
         Command::Init => return init(random_secret(), out, err),
         Command::Token(Tokens::New { app }) => return apps::token(&app, random_secret(), out, err),
         Command::Health { url, timeout } => {
-            let listen = vars.get(LISTEN).filter(|value| !value.is_empty());
-            let url = health::url(url, listen, || read(&cli.config).ok());
+            let listen = vars.get(LISTEN).map(String::as_str);
+            let configured = || read(&cli.config).ok().map(|config| config.server.listen);
+            let url = health::url(url, listen, configured);
             return health::health(&url, Duration::from_millis(timeout), out, err).await;
         }
         Command::Read(reading) => reading,

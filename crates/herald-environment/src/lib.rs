@@ -82,9 +82,10 @@ impl EnvSecrets {
     }
 }
 
-/// Whether `name` can be a file's name in the secrets directory.
+/// Whether `name` names a file in the secrets directory itself, and not one
+/// under or above it.
 fn filed(name: &str) -> bool {
-    !name.is_empty() && name != "." && name != ".." && !name.contains(['/', '\\'])
+    !name.contains(['/', '\\'])
 }
 
 /// The secret in the file at `path`, less one line ending, where it holds
@@ -244,6 +245,24 @@ mod tests {
             "sub/TOKEN",
             "sub\\TOKEN",
         ] {
+            assert_eq!(
+                read(&secrets, name).unwrap_err(),
+                SecretError::Missing {
+                    name: name.to_owned()
+                },
+                "{name}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_secret_named_outside_the_secrets_directory_is_not_read() {
+        let outer = Dir::new("outside").with("TOKEN", "above\n");
+        let held = outer.0.join("held");
+        std::fs::create_dir_all(held.join("sub")).unwrap();
+        std::fs::write(held.join("sub").join("TOKEN"), "below\n").unwrap();
+        let secrets = vars(&[(SECRETS_DIR, &held.display().to_string())]);
+        for name in ["../TOKEN", "sub/TOKEN", "sub\\TOKEN"] {
             assert_eq!(
                 read(&secrets, name).unwrap_err(),
                 SecretError::Missing {

@@ -10,15 +10,17 @@ set -euo pipefail
 : "${TAG:?TAG names the release tag, such as v0.1.0}"
 version="${TAG#v}"
 tags=("${version}")
-if [ "${PRERELEASE:-false}" != "true" ]; then
+if [[ "${PRERELEASE:-false}" != "true" ]]; then
   tags+=("${version%.*}" "${version%%.*}")
 fi
 
 digest_of() {
-  docker buildx imagetools inspect --format '{{json .Manifest}}' "$1" | jq -r .digest
+  local reference="$1"
+  docker buildx imagetools inspect --format '{{json .Manifest}}' "${reference}" | jq -r .digest
 }
 
-case "${1:?usage: publish-image.sh <server|component|chart>}" in
+artefact="${1:?usage: publish-image.sh <server|component|chart>}"
+case "${artefact}" in
   server)
     : "${COMMIT:?COMMIT is the verified commit}"
     named=()
@@ -38,7 +40,7 @@ case "${1:?usage: publish-image.sh <server|component|chart>}" in
   component)
     for variant in component component-spin; do
       features=()
-      [ "${variant}" = "component-spin" ] && features=(--features spin)
+      [[ "${variant}" == "component-spin" ]] && features=(--features spin)
       cargo build --locked --release --target wasm32-wasip2 --package herald-wasi "${features[@]}"
       for tag in "${tags[@]}"; do
         wkg oci push "${REGISTRY}/herald-${variant}:${tag}" target/wasm32-wasip2/release/herald_wasi.wasm
