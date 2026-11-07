@@ -54,27 +54,19 @@ async fn asked(url: &str, within: Duration) -> Result<(), String> {
     let (authority, path) =
         parts(url).ok_or_else(|| format!("{url} is not an http:// URL naming a host"))?;
     let exchange = async {
-        let mut stream = TcpStream::connect(authority)
-            .await
-            .map_err(|error| error.to_string())?;
+        let mut stream = TcpStream::connect(authority).await?;
         let request = format!(
             "GET {path} HTTP/1.1\r\nHost: {authority}\r\nUser-Agent: herald\r\nConnection: close\r\n\r\n"
         );
-        stream
-            .write_all(request.as_bytes())
-            .await
-            .map_err(|error| error.to_string())?;
+        stream.write_all(request.as_bytes()).await?;
         let mut answer = Vec::new();
-        stream
-            .take(MOST)
-            .read_to_end(&mut answer)
-            .await
-            .map_err(|error| error.to_string())?;
-        Ok::<_, String>(answer)
+        stream.take(MOST).read_to_end(&mut answer).await?;
+        Ok::<_, std::io::Error>(answer)
     };
     let answer = tokio::time::timeout(within, exchange)
         .await
-        .map_err(|_| format!("no answer within {} ms", within.as_millis()))??;
+        .map_err(|_| format!("no answer within {} ms", within.as_millis()))?
+        .map_err(|error| error.to_string())?;
     let line = String::from_utf8_lossy(&answer);
     let status = line.lines().next().unwrap_or_default();
     let healthy = status.split(' ').nth(1) == Some("200");
