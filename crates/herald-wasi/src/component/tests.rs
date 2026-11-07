@@ -1,5 +1,5 @@
 use herald_compose::{EGRESS_GUARDED, Host as _};
-use herald_ports::{Http as _, HttpError, Method, PUBLIC, Request, Text};
+use herald_ports::{Http as _, HttpError, Method, PUBLIC, Request, Secrets as _, Text};
 
 use super::host::WasiHost;
 
@@ -18,6 +18,13 @@ fn the_host_gives_its_variables_and_refuses_a_database() {
     assert_eq!(host.var("EMPTY"), None);
     assert_eq!(host.var("UNSET"), None);
     assert!(wstd::runtime::block_on(host.kv(herald_compose::KvAt::DenoKv(None))).is_err());
+}
+
+#[test]
+fn the_host_reads_its_secrets_from_its_environment() {
+    let host = hosted();
+    let secret = wstd::runtime::block_on(host.secrets().secret("GITHUB_REPOSITORY")).unwrap();
+    assert_eq!(secret.expose(), "cli/cli");
 }
 
 #[test]

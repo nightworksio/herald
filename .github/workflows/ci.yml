@@ -125,7 +125,7 @@ jobs:
           key: coverage-${{ hashFiles('rust-toolchain.toml', 'Cargo.lock') }}
       - run: .github/scripts/install-tool.sh cargo-nextest
       - run: .github/scripts/install-tool.sh cargo-llvm-cov
-      - run: cargo llvm-cov nextest --workspace --locked --profile ci --fail-under-lines 100 --show-missing-lines
+      - run: cargo llvm-cov nextest --workspace --exclude herald-fastly --locked --profile ci --fail-under-lines 100 --show-missing-lines
       # The report counts a generic function's lines by its best-covered
       # instance alone, so a line only another instance runs is missed.
       - name: Name every line the report counts as missed, and the instance missing it
@@ -281,7 +281,7 @@ jobs:
           CARGO_TARGET_WASM32_WASIP2_RUNNER: wasmtime run -Shttp --env HERALD_TEST_BASE=http://127.0.0.1:8099
       - run: cargo test --locked --target wasm32-wasip1 -p herald-fastly
         env:
-          CARGO_TARGET_WASM32_WASIP1_RUNNER: viceroy run -C deploy/fastly/fastly.toml --
+          CARGO_TARGET_WASM32_WASIP1_RUNNER: viceroy run -C ${{ github.workspace }}/deploy/fastly/fastly.toml --
       - run: cargo build --locked --release --target wasm32-wasip2 -p herald-wasi
       - run: cargo build --locked --release --target wasm32-wasip1 -p herald-fastly
       - run: cp target/wasm32-wasip2/release/herald_wasi.wasm deploy/component/herald_wasi.wasm

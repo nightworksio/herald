@@ -493,6 +493,44 @@ template = "t"
     }
 
     #[test]
+    fn a_request_carries_its_headers_to_the_answer() {
+        let text = r#"version = 1
+[store]
+kind = "deno-kv"
+[destinations.fedi]
+kind = "activitypub"
+domain = "herald.example"
+key = { secret = "KEY" }
+[sources.gate]
+kind = "github"
+repository = "cli/cli"
+[[routes]]
+id = "followed"
+sources = ["gate"]
+destination = "fedi"
+template = "t"
+actor = "herald"
+[templates.t]
+title = "{{ event.title }}"
+body = "{{ event.body }}"
+"#;
+        let config = load("herald.toml", text, &|_| Err(String::new())).unwrap();
+        let host = Hosting {
+            secrets: FakeSecrets::default().with("KEY", "k"),
+            ..Hosting::default()
+        };
+        let composed = pollster::block_on(Composed::new(host, config, &EVERY, "test")).unwrap();
+        let mut inbox = asked("POST", "/inbox", None);
+        let unaddressed = pollster::block_on(composed.reached(&inbox, None));
+        assert_eq!(unaddressed.reply.status, 404);
+        inbox
+            .headers
+            .push(("host".to_owned(), "herald.example".to_owned()));
+        let addressed = pollster::block_on(composed.reached(&inbox, None));
+        assert_eq!(addressed.reply.status, 401);
+    }
+
+    #[test]
     fn a_herald_missing_a_secret_is_not_composed_and_says_which() {
         const CHAT: &str =
             "[destinations.chat]\nkind = \"slack\"\ntoken = { secret = \"TOKEN\" }\n";
