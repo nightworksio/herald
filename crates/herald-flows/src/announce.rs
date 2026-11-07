@@ -2,8 +2,8 @@ use std::collections::BTreeSet;
 
 use herald_config::Config;
 use herald_core::{
-    Announcement, Entry, Event, Facts, Key, Latest, Marker, Marks, Pinning, Plan, Planned, Profile,
-    RouteId, Sent, SourceName, Step, Templates, Threads, plan, schedules, steps,
+    Announcement, Entry, Event, Facts, Key, Latest, Marker, Marks, MentionStyle, Pinning, Plan,
+    Planned, Profile, RouteId, Sent, SourceName, Step, Templates, Threads, plan, schedules, steps,
 };
 use herald_ports::{Clock, Http, Secret, Signer, Store, Version, Written, marker};
 use jiff::{SignedDuration, Timestamp};
@@ -365,8 +365,10 @@ impl<S: Store, C: Clock, G: Signer, H: Http> Run<'_, S, C, G, H> {
             marks,
         )
         .map_err(|error| Stop::Template(error.to_string()))?;
-        if route.delivery.mentions.subscribers {
-            announcement.mentioned = self
+        if route.delivery.mentions.subscribers
+            && let MentionStyle::Users(room) = profile.features.mentions
+        {
+            let subscribers = self
                 .ports
                 .store
                 .subscribers(&route.destination, event.project())
@@ -375,6 +377,9 @@ impl<S: Store, C: Clock, G: Signer, H: Http> Run<'_, S, C, G, H> {
                 .into_iter()
                 .map(|subscription| subscription.subscriber)
                 .collect();
+            let mut messages = room.spread(subscribers).into_iter();
+            announcement.mentioned = messages.next().unwrap_or_default();
+            announcement.mentioned_after = messages.collect();
         }
         Ok(announcement)
     }
@@ -396,7 +401,7 @@ impl<S: Store, C: Clock, G: Signer, H: Http> Run<'_, S, C, G, H> {
             Ok(announcement) => announcement,
             Err(reason) => return stopped(reason),
         };
-        let parts = u32::try_from(announcement.parts.len()).unwrap_or(u32::MAX);
+        let parts = u32::try_from(announcement.messages()).unwrap_or(u32::MAX);
         let recipients = match self.recipients().await {
             Ok(recipients) => recipients,
             Err(reason) => return stopped(reason),

@@ -51,6 +51,10 @@ fn a_long_paragraph_is_cut_at_lines_then_words() {
         bodies(&chunk("one two three", Dialect::Plain, room(7, 7))),
         ["one two", "three"]
     );
+    assert_eq!(
+        bodies(&chunk("aaaa bbbb cccc dddd", Dialect::Plain, room(4, 4))),
+        ["aaaa", "bbbb", "cccc", "dddd"]
+    );
 }
 
 #[test]
@@ -72,6 +76,11 @@ fn a_grapheme_longer_than_a_part_is_cut_between_its_characters() {
             .collect::<Vec<_>>(),
         [4, 4, 2]
     );
+}
+
+#[test]
+fn a_character_wider_than_a_part_is_a_part_of_its_own() {
+    assert_eq!(bodies(&chunk("ab", Dialect::Plain, room(0, 0))), ["a", "b"]);
 }
 
 #[test]
@@ -205,5 +214,49 @@ fn a_paragraph_that_only_looks_like_a_fence_is_cut_as_a_paragraph() {
     for (index, part) in chunk(text, Dialect::Matrix, room).iter().enumerate() {
         let limit = if index == 0 { room.first } else { room.rest };
         assert!(size(part, room.measure) <= limit, "part {index}: {part:?}");
+    }
+}
+
+#[test]
+#[allow(
+    clippy::disallowed_methods,
+    reason = "each body is cut on a thread of its own, so a chunker slower than near linear fails at the deadline instead of running on"
+)]
+fn a_long_body_on_one_line_is_cut_in_time_near_linear_in_its_length() {
+    for body in ["x".repeat(262_144), "word ".repeat(52_429)] {
+        let (done, cut) = std::sync::mpsc::channel();
+        std::thread::spawn(move || done.send(chunk(&body, Dialect::Discord, room(2_000, 2_000))));
+        let parts = cut
+            .recv_timeout(std::time::Duration::from_secs(10))
+            .unwrap();
+        assert!(parts.iter().all(|part| part.body.chars().count() <= 2_000));
+    }
+}
+
+#[test]
+fn the_longest_count_that_fits_is_found_whatever_the_count() {
+    for fitting in 0..=9 {
+        assert_eq!(longest(9, &|count| count <= fitting), fitting);
+    }
+    assert_eq!(longest(0, &|_| false), 0);
+}
+
+#[test]
+fn the_longest_count_is_found_in_tries_logarithmic_in_the_count() {
+    for available in [1, 9, 1_000, 1 << 40] {
+        for fitting in [0, 1, available / 3, available - 1, available] {
+            let tries = std::cell::Cell::new(0);
+            let found = longest(available, &|count| {
+                tries.set(tries.get() + 1);
+                count <= fitting
+            });
+            assert_eq!(found, fitting);
+            let bits = usize::BITS - available.leading_zeros();
+            assert!(
+                tries.get() <= 2 * bits + 1,
+                "{available} {fitting}: {}",
+                tries.get()
+            );
+        }
     }
 }

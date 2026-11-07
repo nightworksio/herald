@@ -112,23 +112,26 @@ impl Templates {
             .environment
             .get_template(name)
             .map_err(|error| failure(name, &error))?;
-        let output = template
-            .render(context! {
+        let mut capped = Capped::default();
+        let rendered = template.render_captured_to(
+            context! {
                 event => merge_maps([
                     Value::from(Serde(context.event)),
                     context! { body => Value::from_safe_string(context.event.body().to_owned()) },
                 ]),
                 route => context.route.as_str(),
                 herald => context.herald,
-            })
-            .map_err(|error| failure(name, &error))?;
-        if output.len() > OUTPUT_CAP {
+            },
+            &mut capped,
+        );
+        if capped.passed {
             return Err(TemplateError {
                 name: name.to_owned(),
                 reason: format!("its output passes the cap of {OUTPUT_CAP} bytes"),
             });
         }
-        Ok(output)
+        rendered.map_err(|error| failure(name, &error))?;
+        Ok(String::from_utf8_lossy(&capped.written).into_owned())
     }
 
     /// The template `name` rendered with `context`, on one line.
@@ -142,6 +145,29 @@ impl Templates {
             .split_whitespace()
             .collect::<Vec<_>>()
             .join(" "))
+    }
+}
+
+/// A template's output, refused once it passes the cap, so a template is
+/// stopped there and not after building all it would print.
+#[derive(Default)]
+struct Capped {
+    written: Vec<u8>,
+    passed: bool,
+}
+
+impl std::io::Write for Capped {
+    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+        if self.written.len().saturating_add(bytes.len()) > OUTPUT_CAP {
+            self.passed = true;
+            return Err(std::io::Error::other("the output passes its cap"));
+        }
+        self.written.extend_from_slice(bytes);
+        Ok(bytes.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
     }
 }
 

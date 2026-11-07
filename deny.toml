@@ -20,6 +20,7 @@ skip = [
   { crate = "const-oid@0.9", reason = "der 0.7 and x509-cert 0.2 build on const-oid 0.9; the RustCrypto 0.11 digests have moved to 0.10" },
   { crate = "getrandom@0.2", reason = "ring 0.17 builds on getrandom 0.2" },
   { crate = "wasi@0.11", reason = "getrandom 0.2, under ring 0.17, builds on wasi 0.11" },
+  { crate = "wit-bindgen@0.62", reason = "wasip2 2.0.1, under herald-wasi and fastly-sys, still builds on wit-bindgen 0.62; herald-spin's bindings have moved to 0.63" },
   { crate = "bitflags@1", reason = "fastly-shared and fastly-sys 0.13 build on bitflags 1; only herald-fastly's wasm32-wasip1 build holds it" },
   { crate = "sha2@0.9", reason = "fastly 0.13 builds on sha2 0.9; only herald-fastly's wasm32-wasip1 build holds it" },
   { crate = "digest@0.9", reason = "sha2 0.9, under fastly 0.13, builds on digest 0.9" },

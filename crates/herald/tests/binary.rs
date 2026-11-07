@@ -138,34 +138,52 @@ body = "{{{{ event.body }}}}"
         assert!(err.contains("http://example.org is not HTTPS"), "{err}");
     }
 
+    /// The tries a server gets at a free port, where another test takes the
+    /// port between its choice and the server's listening on it.
+    #[cfg(unix)]
+    const TRIES: usize = 5;
+
     #[cfg(unix)]
     #[test]
     fn a_server_stops_when_the_process_is_terminated() {
         let directory = directory("http://127.0.0.1:1");
-        let port = std::net::TcpListener::bind("127.0.0.1:0")
-            .unwrap()
-            .local_addr()
-            .unwrap()
-            .port();
-        let mut command = Command::new(env!("CARGO_BIN_EXE_herald"));
-        command.env_clear();
-        if let Ok(profile) = std::env::var("LLVM_PROFILE_FILE") {
-            command.env("LLVM_PROFILE_FILE", profile);
-        }
-        let server = command
-            .args(["server", "--listen", &format!("127.0.0.1:{port}")])
-            .current_dir(directory.path())
-            .env("GITHUB_REPOSITORY", "cli/cli")
-            .env("GITHUB_TOKEN", "t")
-            .env("HERALD_DISCORD_TOKEN", "d")
-            .stdout(std::process::Stdio::piped())
-            .spawn()
-            .unwrap();
-        let listening = (0..200).any(|_| {
-            std::thread::sleep(std::time::Duration::from_millis(50));
-            std::net::TcpStream::connect(("127.0.0.1", port)).is_ok()
-        });
-        assert!(listening, "the server never listened");
+        let serving = |port: u16| {
+            let mut command = Command::new(env!("CARGO_BIN_EXE_herald"));
+            command.env_clear();
+            if let Ok(profile) = std::env::var("LLVM_PROFILE_FILE") {
+                command.env("LLVM_PROFILE_FILE", profile);
+            }
+            command
+                .args(["server", "--listen", &format!("127.0.0.1:{port}")])
+                .current_dir(directory.path())
+                .env("GITHUB_REPOSITORY", "cli/cli")
+                .env("GITHUB_TOKEN", "t")
+                .env("HERALD_DISCORD_TOKEN", "d")
+                .stdout(std::process::Stdio::piped())
+                .spawn()
+                .unwrap()
+        };
+        let (port, server) = (0..TRIES)
+            .find_map(|_| {
+                let port = std::net::TcpListener::bind("127.0.0.1:0")
+                    .unwrap()
+                    .local_addr()
+                    .unwrap()
+                    .port();
+                let mut server = serving(port);
+                (0..200)
+                    .find_map(|_| {
+                        std::thread::sleep(std::time::Duration::from_millis(50));
+                        if std::net::TcpStream::connect(("127.0.0.1", port)).is_ok() {
+                            Some(true)
+                        } else {
+                            server.try_wait().unwrap().map(|_| false)
+                        }
+                    })
+                    .filter(|listening| *listening)
+                    .map(|_| (port, server))
+            })
+            .expect("the server never listened");
         let killed = Command::new("kill")
             .args(["-TERM", &server.id().to_string()])
             .status()

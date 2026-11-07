@@ -146,6 +146,7 @@ fn text_that_would_read_as_markup_is_escaped() {
 fn a_tag_that_never_ends_or_opens_nothing_is_text() {
     assert_eq!(markdown("a < b"), "a \\< b");
     assert_eq!(markdown("<p class=\"x"), "\\<p class=\"x");
+    assert_eq!(markdown("<a href=\"x\" <i>e</i>"), "\\<a href=\"x\" *e*");
     assert_eq!(markdown("<1>"), "\\<1\\>");
     assert_eq!(markdown("<p =x>y"), "y");
     assert_eq!(markdown("<input disabled value=\"v\"/>z"), "z");
@@ -194,4 +195,37 @@ proptest! {
         let html = format!("<p>a</p><script>{inner}</script><p>b</p>");
         prop_assert_eq!(markdown(&html), "a\n\nb");
     }
+}
+
+#[test]
+#[allow(
+    clippy::disallowed_methods,
+    reason = "each document is read on a thread of its own, so a reader slower than linear fails at the deadline instead of running on"
+)]
+fn crafted_html_is_read_in_time_linear_in_its_length() {
+    let mib = 1 << 20;
+    for crafted in [
+        "<svg></svg>".repeat(mib / 11),
+        "<SVG>x</Svg >".repeat(mib / 13),
+        "<a href=\"x\" ".repeat(mib / 12),
+        "<".repeat(mib),
+        "<b".repeat(mib / 2),
+    ] {
+        let head = crafted.get(..12).map(ToOwned::to_owned);
+        let (done, read) = std::sync::mpsc::channel();
+        std::thread::spawn(move || done.send(markdown(&crafted)));
+        assert!(
+            read.recv_timeout(std::time::Duration::from_secs(10))
+                .is_ok(),
+            "{head:?} took longer than 10 seconds"
+        );
+    }
+}
+
+#[test]
+fn a_dropped_element_closes_whatever_case_it_is_written_in() {
+    assert_eq!(markdown("<p>a</p><SVG><p>b</p></sVg >c"), "a\n\nc");
+    assert_eq!(markdown("<p>a</p><script>never closed"), "a");
+    assert_eq!(markdown("<script>a</b><b></script>after"), "after");
+    assert_eq!(markdown("a <b c=d then <i>e</i>"), "a \\<b c=d then *e*");
 }

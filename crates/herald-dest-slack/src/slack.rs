@@ -1,6 +1,6 @@
 use herald_core::{
-    Announcement, Dialect, Entry, Facts, Features, Limits, Marker, Measure, MentionStyle, Pins,
-    Profile, Sent, Step, Threads,
+    Announcement, Dialect, Entry, Facts, Features, Limits, Marker, Measure, MentionRoom,
+    MentionStyle, Pins, Profile, Sent, Step, Threads,
 };
 use herald_ports::{Http, HttpError, Request, Secret};
 use serde_json::Value;
@@ -298,6 +298,16 @@ pub(crate) async fn identity<H: Http>(slack: &Slack, http: &H) -> Read<Identity>
     }))
 }
 
+/// The most characters a section's text holds.
+const SECTION: usize = 3_000;
+/// The mentions a message holds: one section of them, each `<@USER> `.
+const MENTION_ROOM: MentionRoom = MentionRoom {
+    first: SECTION,
+    rest: SECTION,
+    copies: 1,
+    overhead: 4,
+};
+
 /// What a Slack destination can do: as a bot, or through a webhook.
 #[must_use]
 pub fn profile(bot: bool) -> Profile {
@@ -316,7 +326,7 @@ pub fn profile(bot: bool) -> Profile {
             pins: if bot { Pins::Many } else { Pins::None },
             reads_back: bot,
             edits: bot,
-            mentions: MentionStyle::Users,
+            mentions: MentionStyle::Users(MENTION_ROOM),
             interactions: bot,
         },
     }

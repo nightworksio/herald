@@ -17,6 +17,25 @@ fn free() -> u16 {
         .port()
 }
 
+/// The tries a server gets at a free port, where another test takes the port
+/// between its choice and the server's listening on it.
+const TRIES: usize = 5;
+
+/// `served` on a free port, and the port: another free one is tried where
+/// the one chosen was taken before the server listened on it.
+fn on_free_port(served: impl Fn(u16) -> Run) -> (u16, Run) {
+    let mut tried = 0;
+    loop {
+        let port = free();
+        let run = served(port);
+        tried += 1;
+        let taken = run.err.contains("could not listen on") && run.err.contains("in use");
+        if !taken || tried == TRIES {
+            return (port, run);
+        }
+    }
+}
+
 /// What the server on `port` answers a health check, kept in `answer`.
 async fn checked(port: u16, answer: &RefCell<String>) {
     let mut stream = tokio::net::TcpStream::connect(("127.0.0.1", port))
@@ -66,15 +85,16 @@ fn a_server_refuses_a_store_only_a_run_in_actions_reaches() {
 
 #[test]
 fn the_server_listens_where_it_is_told_until_it_is_stopped() {
-    let port = free();
     let answer = RefCell::new(String::new());
+    let (port, served) = on_free_port(|port| {
+        herald_until(
+            &setup(CONFIG),
+            &World::default(),
+            &["server", "--listen", &format!("127.0.0.1:{port}")],
+            checked(port, &answer),
+        )
+    });
     let listen = format!("127.0.0.1:{port}");
-    let served = herald_until(
-        &setup(CONFIG),
-        &World::default(),
-        &["server", "--listen", &listen],
-        checked(port, &answer),
-    );
     assert_eq!(served.code, DONE, "{}", served.err);
     assert!(
         served.out.contains(&format!("herald serves on {listen}")),
@@ -86,30 +106,32 @@ fn the_server_listens_where_it_is_told_until_it_is_stopped() {
 
 #[test]
 fn the_server_listens_where_its_environment_or_its_config_says() {
-    let port = free();
     let answer = RefCell::new(String::new());
-    let mut told = setup(CONFIG);
-    told.vars
-        .insert("HERALD_LISTEN".to_owned(), format!("127.0.0.1:{port}"));
-    let served = herald_until(
-        &told,
-        &World::default(),
-        &["server"],
-        checked(port, &answer),
-    );
+    let (_, served) = on_free_port(|port| {
+        let mut told = setup(CONFIG);
+        told.vars
+            .insert("HERALD_LISTEN".to_owned(), format!("127.0.0.1:{port}"));
+        herald_until(
+            &told,
+            &World::default(),
+            &["server"],
+            checked(port, &answer),
+        )
+    });
     assert_eq!(served.code, DONE, "{}", served.err);
     assert!(answer.borrow().starts_with("HTTP/1.1 200 OK"));
-    let port = free();
     let answer = RefCell::new(String::new());
-    let configured = format!(
-        "{CONFIG}[server]\nlisten = \"127.0.0.1:{port}\"\n[server.keys]\ncache = \"store\"\n"
-    );
-    let served = herald_until(
-        &setup(&configured),
-        &World::default(),
-        &["server"],
-        checked(port, &answer),
-    );
+    let (_, served) = on_free_port(|port| {
+        let configured = format!(
+            "{CONFIG}[server]\nlisten = \"127.0.0.1:{port}\"\n[server.keys]\ncache = \"store\"\n"
+        );
+        herald_until(
+            &setup(&configured),
+            &World::default(),
+            &["server"],
+            checked(port, &answer),
+        )
+    });
     assert_eq!(served.code, DONE, "{}", served.err);
     assert!(answer.borrow().starts_with("HTTP/1.1 200 OK"));
 }
@@ -129,18 +151,19 @@ async fn timed(port: u16, path: &str, answer: &RefCell<String>) {
 
 #[test]
 fn under_azure_functions_the_server_listens_on_its_port_and_its_timers_ask_for_rounds() {
-    let port = free();
     let answer = RefCell::new(String::new());
-    let mut azure = setup(CONFIG);
-    azure
-        .vars
-        .insert("FUNCTIONS_CUSTOMHANDLER_PORT".to_owned(), port.to_string());
-    let served = herald_until(
-        &azure,
-        &World::default(),
-        &["server"],
-        timed(port, "/housekeep", &answer),
-    );
+    let (port, served) = on_free_port(|port| {
+        let mut azure = setup(CONFIG);
+        azure
+            .vars
+            .insert("FUNCTIONS_CUSTOMHANDLER_PORT".to_owned(), port.to_string());
+        herald_until(
+            &azure,
+            &World::default(),
+            &["server"],
+            timed(port, "/housekeep", &answer),
+        )
+    });
     assert_eq!(served.code, DONE, "{}", served.err);
     assert!(
         served

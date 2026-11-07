@@ -12,6 +12,27 @@ mod app {
     }
 
     #[test]
+    fn an_event_longer_than_an_app_may_send_is_refused_unread() {
+        let long = vec![b' '; herald_sources_app::MOST + 1];
+        let refused = event("ci", &long, jiff::Timestamp::UNIX_EPOCH).unwrap_err();
+        assert_eq!(
+            refused.to_string(),
+            format!(
+                "the event is longer than {} bytes; send a shorter one",
+                herald_sources_app::MOST
+            )
+        );
+    }
+
+    #[test]
+    fn an_event_as_long_as_an_app_may_send_is_read() {
+        let mut longest = br#"{"id": "build-42", "project": "herald", "title": "herald"}"#.to_vec();
+        longest.resize(herald_sources_app::MOST, b' ');
+        let read = event("ci", &longest, now()).unwrap();
+        assert_eq!(read.identity().as_str(), identity("ci", "build-42"));
+    }
+
+    #[test]
     fn a_whole_event_is_read_with_every_field_it_names() {
         let read = event(
             "ci",

@@ -1,6 +1,6 @@
 use herald_core::{
-    Announcement, Dialect, Entry, Facts, Features, Limits, Marker, Measure, MentionStyle, Pins,
-    Profile, Sent, Step, Threads,
+    Announcement, Dialect, Entry, Facts, Features, Limits, Marker, Measure, MentionRoom,
+    MentionStyle, Pins, Profile, Sent, Step, Threads,
 };
 use herald_ports::{Http, HttpError, Request, Secret};
 use serde_json::Value;
@@ -20,6 +20,22 @@ const TITLE: usize = 256;
 /// The longest text of one message, in bytes. A message carries its text
 /// twice, as its body and its HTML, within an event's 65,536 bytes.
 const TEXT: usize = 16_384;
+
+/// The most bytes an event holds.
+const EVENT: usize = 65_536;
+/// The bytes an announcement keeps beside its text and its mentions: its
+/// title and link, each written twice, its markers and the event's own keys.
+const KEPT: usize = 8_192;
+/// The mentions an event holds. The announcement keeps what its text, written
+/// twice, and `KEPT` leave; each message after it all but `KEPT`. A mention
+/// writes its user id four times: in the body, twice in its pill, and in
+/// `m.mentions`.
+const MENTION_ROOM: MentionRoom = MentionRoom {
+    first: EVENT - 2 * TEXT - KEPT,
+    rest: EVENT - KEPT,
+    copies: 4,
+    overhead: 64,
+};
 
 /// One Matrix destination, for one route.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -189,7 +205,7 @@ pub fn profile() -> Profile {
             pins: Pins::Many,
             reads_back: true,
             edits: true,
-            mentions: MentionStyle::Users,
+            mentions: MentionStyle::Users(MENTION_ROOM),
             interactions: false,
         },
     }

@@ -6,7 +6,7 @@ use crate::options::SourceOptions;
 use herald_wire::SourceError;
 use herald_wire::{NOT_MODIFIED, PAGE, answered, segment};
 
-use crate::wire::{Found, event, read};
+use crate::wire::{self, Found, event, read};
 use crate::{forgejo, github, gitlab};
 
 /// A forge whose releases herald announces.
@@ -287,7 +287,8 @@ impl Origin {
             Forge::GitHub | Forge::Forgejo => format!("{}/repos/{}", self.api, self.repository),
             Forge::GitLab => gitlab::project(&self.api, &self.repository),
         };
-        let request = Request::new(Method::Get, Text::plain(format!("{base}{path}")));
+        let request =
+            Request::new(Method::Get, Text::plain(format!("{base}{path}"))).at_most(wire::LIMIT);
         let request = match self.forge {
             Forge::GitHub => github::headed(request),
             Forge::GitLab | Forge::Forgejo => {

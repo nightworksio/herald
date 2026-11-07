@@ -187,6 +187,11 @@ fn an_output_past_the_cap_is_refused() {
         error.reason,
         format!("its output passes the cap of {OUTPUT_CAP} bytes")
     );
+    let looped = "{% for i in range(500) %}{{ ' ' * 1000 }}{% endfor %}";
+    assert_eq!(
+        render(looped, &event()).unwrap_err().reason,
+        format!("its output passes the cap of {OUTPUT_CAP} bytes")
+    );
 }
 
 #[test]
@@ -236,5 +241,17 @@ fn a_markdown_template_prints_numbers_and_absent_values_as_a_line_template_does(
                 }
             )
             .is_err()
+    );
+}
+
+#[test]
+fn the_capped_output_holds_what_was_written_and_flushes_nothing() {
+    use std::io::Write as _;
+    let mut capped = Capped::default();
+    assert_eq!(capped.write(b"ab").unwrap(), 2);
+    capped.flush().unwrap();
+    assert_eq!(
+        (capped.written.as_slice(), capped.passed),
+        (&b"ab"[..], false)
     );
 }

@@ -52,7 +52,9 @@ pub use ledger::{
 pub use marker::{Marker, Marks};
 pub use markup::{LINK_SCHEMES, Text, convert, escaped, literal, safe_url};
 pub use pattern::Pattern;
-pub use profile::{Dialect, Features, Limits, Measure, MentionStyle, Pins, Profile, Threads};
+pub use profile::{
+    Dialect, Features, Limits, Measure, MentionRoom, MentionStyle, Pins, Profile, Threads,
+};
 pub use render::{Context, Form, TemplateError, Templates};
 pub use route::{
     Delivery, DestinationName, Filter, Mentions, Pinning, Prereleases, RoleId, Route, SecretRef,

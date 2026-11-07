@@ -6,7 +6,7 @@ use crate::package::{Api, Found};
 
 pub(crate) const API: Api = Api {
     url: "https://hub.docker.com/v2",
-    limit: 4_194_304,
+    limit: herald_wire::PARSE_LIMIT,
     versions: "Docker Hub's tags",
 };
 

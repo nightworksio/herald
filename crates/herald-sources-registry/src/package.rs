@@ -175,6 +175,7 @@ impl Package {
             Registry::DockerHub => docker_hub::path(&self.name),
         };
         let mut request = Request::new(Method::Get, Text::plain(format!("{}{path}", self.api)))
+            .at_most(self.registry.api().limit)
             .header("Accept", Text::plain("application/json"))
             .header("User-Agent", Text::plain(USER_AGENT));
         if let Some(token) = token.filter(|_| self.registry.takes_token()) {

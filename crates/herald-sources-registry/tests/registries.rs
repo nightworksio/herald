@@ -250,6 +250,9 @@ mod registries {
             plain.to_string(),
             head("https://registry.npmjs.org/left-pad")
         );
+        assert_eq!(plain.most, herald_ports::BODY_LIMIT);
+        let crate_read = package(Registry::CratesIo, "herald", None).versions_request(None, None);
+        assert_eq!(crate_read.most, herald_wire::PARSE_LIMIT);
     }
 
     #[test]

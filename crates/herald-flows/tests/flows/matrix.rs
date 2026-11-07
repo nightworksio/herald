@@ -104,6 +104,37 @@ fn a_matrix_route_mentions_the_subscribers_herald_keeps() {
 }
 
 #[test]
+fn subscribers_past_the_announcement_s_room_are_mentioned_in_a_message_after_it() {
+    let store = healthy();
+    for index in 0..300 {
+        let subscription = Subscription {
+            destination: DestinationName::new("room"),
+            project: "php-mutation-gate".to_owned(),
+            subscriber: format!("@user{index:03}:matrix.example"),
+            inbox: None,
+        };
+        pollster::block_on(store.subscribe(&subscription)).unwrap();
+    }
+    let posted = sent();
+    let after = format!("{posted}.1");
+    let script = Script::answering(&[
+        (posted.as_str(), 200, r#"{"event_id":"$e1"}"#),
+        (after.as_str(), 200, r#"{"event_id":"$e2"}"#),
+    ]);
+    assert_eq!(
+        announced(&matrix(true), &store, &script),
+        Outcome::Sent {
+            steps: vec![Step::Post, Step::Chunk(1)]
+        }
+    );
+    let bodies = script.bodies();
+    let first = mentioned(&bodies[0]).as_array().unwrap().len();
+    let rest = mentioned(&bodies[1]).as_array().unwrap().len();
+    assert_eq!((first + rest, first > 100, rest > 100), (300, true, true));
+    assert!(bodies.iter().all(|body| body.len() < 65_536));
+}
+
+#[test]
 fn a_matrix_route_that_asks_for_no_subscribers_mentions_none() {
     let store = healthy();
     subscribed(&store);

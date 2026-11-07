@@ -4,7 +4,8 @@
 #[cfg(test)]
 mod replay {
     use herald_core::{
-        Announcement, Dialect, Entry, Facts, MentionStyle, Pins, Sent, Step, Text, Threads,
+        Announcement, Dialect, Entry, Facts, MentionRoom, MentionStyle, Pins, Sent, Step, Text,
+        Threads,
     };
     use herald_dest_matrix::{Matrix, MatrixMarkers, Refusal, RouteOptions, profile};
     use herald_ports::{Markers, MarkersError, Method, Secret};
@@ -182,6 +183,39 @@ mod replay {
             .request(&Step::Post, announcement, &Entry::new(announcement.key))
             .unwrap();
         serde_json::from_slice(&request.body).unwrap()
+    }
+
+    #[test]
+    fn mentions_past_the_announcement_s_room_go_in_messages_after_its_parts() {
+        let mut many = announcement();
+        many.mentioned_after = vec![vec!["@ana:matrix.example".to_owned(), "ana".to_owned()]];
+        let after = u32::try_from(many.parts.len()).unwrap();
+        let landed = |message: &str| herald_core::Facts {
+            message: Some(message.to_owned()),
+            ..herald_core::Facts::default()
+        };
+        let posted = (1..after).fold(
+            Entry::new(many.key).landed(Step::Post, landed("$root")),
+            |entry, index| entry.landed(Step::Chunk(index), landed(&format!("$chunk{index}"))),
+        );
+        let request = matrix()
+            .request(&Step::Chunk(after), &many, &posted)
+            .unwrap();
+        let content: serde_json::Value = serde_json::from_slice(&request.body).unwrap();
+        assert_eq!(content["body"], "@ana:matrix.example");
+        assert_eq!(
+            content["m.mentions"]["user_ids"],
+            serde_json::json!(["@ana:matrix.example"])
+        );
+        assert!(
+            content["formatted_body"]
+                .as_str()
+                .unwrap()
+                .contains("<a href=\"https://matrix.to/#/@ana:matrix.example\">")
+        );
+        let chunk = matrix().request(&Step::Chunk(1), &many, &posted).unwrap();
+        let chunk: serde_json::Value = serde_json::from_slice(&chunk.body).unwrap();
+        assert_eq!(chunk["m.mentions"], serde_json::json!({}));
     }
 
     #[test]
@@ -400,7 +434,15 @@ mod replay {
         assert_eq!(profile.dialect, Dialect::Matrix);
         assert_eq!(profile.features.threads, Threads::Replies);
         assert_eq!(profile.features.pins, Pins::Many);
-        assert_eq!(profile.features.mentions, MentionStyle::Users);
+        assert_eq!(
+            profile.features.mentions,
+            MentionStyle::Users(MentionRoom {
+                first: 24_576,
+                rest: 57_344,
+                copies: 4,
+                overhead: 64,
+            })
+        );
         assert!(profile.features.reads_back);
         assert!(profile.features.edits);
         assert!(!profile.features.crosspost);
