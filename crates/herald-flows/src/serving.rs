@@ -198,6 +198,22 @@ pub(crate) fn said(status: u16, text: &str) -> Answered {
     replied(status, TEXT, text)
 }
 
+/// The refusal of a request admitted as `verified` whose body could not be
+/// read for `reason`. Its delivery is released first, so the sender's next
+/// delivery of it is admitted, not refused as a replay (ADR-0013).
+pub(crate) async fn unread<S: Store>(
+    store: &S,
+    scheme: Scheme,
+    verified: &Verified,
+    reason: impl std::fmt::Display,
+) -> Answered {
+    let reason = match released(store, scheme, verified).await {
+        Ok(()) => reason.to_string(),
+        Err(error) => format!("{reason}; its delivery could not be released: {error}"),
+    };
+    refusal(400, reason)
+}
+
 /// The reply to a request refused for `reason`: a body that names no
 /// reason, the same for every refusal of its kind, and the reason kept for
 /// the log (ADR-0007).
@@ -456,10 +472,7 @@ async fn hooked<S: Store, C: Clock, G, V: Verifier, H, P, K>(
             }),
         },
         Ok(Hooked::Nothing(why)) => said(200, why),
-        Err(error) => {
-            let _ = released(store, scheme, &verified).await;
-            refusal(400, error.to_string())
-        }
+        Err(error) => unread(store, scheme, &verified, error).await,
     }
 }
 
