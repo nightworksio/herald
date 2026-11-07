@@ -29,6 +29,17 @@ pub(crate) enum Command {
     /// Make tokens for the HTTP API's apps.
     #[command(subcommand)]
     Token(Tokens),
+    /// Ask a running `herald server` whether it is healthy, as a container's
+    /// health check does: exit 0 where it answers, 1 where it does not.
+    Health {
+        /// The URL to ask, in place of `/healthz` on the address
+        /// `HERALD_LISTEN` or the config names.
+        #[arg(long)]
+        url: Option<String>,
+        /// How many milliseconds the server has to answer.
+        #[arg(long, default_value_t = 5000)]
+        timeout: u64,
+    },
     #[command(flatten)]
     Read(Reading),
 }

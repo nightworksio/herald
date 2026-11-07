@@ -123,6 +123,20 @@ pub enum SecretError {
         /// The name asked for.
         name: String,
     },
+    /// The secret is given more than one way, so which is meant is unclear.
+    Clashing {
+        /// The name asked for.
+        name: String,
+    },
+    /// The file the secret is named in could not be read.
+    Unreadable {
+        /// The name asked for.
+        name: String,
+        /// The file.
+        path: String,
+        /// Why it could not be read.
+        reason: String,
+    },
 }
 
 impl fmt::Display for SecretError {
@@ -132,6 +146,16 @@ impl fmt::Display for SecretError {
                 f,
                 "no secret is named {name}; set it where this platform keeps secrets"
             ),
+            Self::Clashing { name } => write!(
+                f,
+                "{name} is given more than one way, among {name}, {name}_FILE and the secrets directory; keep one"
+            ),
+            Self::Unreadable { name, path, reason } => {
+                write!(
+                    f,
+                    "{name} is named in {path}, which could not be read: {reason}"
+                )
+            }
         }
     }
 }
@@ -185,6 +209,26 @@ mod tests {
         assert_eq!(
             error.to_string(),
             "no secret is named HERALD_DISCORD_TOKEN; set it where this platform keeps secrets"
+        );
+    }
+
+    #[test]
+    fn a_clashing_or_unreadable_secret_names_itself_and_the_fix() {
+        let clashing = SecretError::Clashing {
+            name: "TOKEN".to_owned(),
+        };
+        assert_eq!(
+            clashing.to_string(),
+            "TOKEN is given more than one way, among TOKEN, TOKEN_FILE and the secrets directory; keep one"
+        );
+        let unreadable = SecretError::Unreadable {
+            name: "TOKEN".to_owned(),
+            path: "/run/secrets/token".to_owned(),
+            reason: "permission denied".to_owned(),
+        };
+        assert_eq!(
+            unreadable.to_string(),
+            "TOKEN is named in /run/secrets/token, which could not be read: permission denied"
         );
     }
 }
