@@ -1,0 +1,13 @@
+[package]
+name = "herald-spin"
+description = "Bindings to the databases Spin offers, generated from Spin's own interfaces"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish.workspace = true
+
+[target.'cfg(all(target_arch = "wasm32", target_os = "wasi"))'.dependencies]
+wit-bindgen = "0.62"

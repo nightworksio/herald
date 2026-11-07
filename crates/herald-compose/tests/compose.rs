@@ -7,11 +7,11 @@ mod compose {
     use std::future::{Future, ready};
     use std::sync::Mutex;
 
-    use herald_compose::{Composed, Host, KvAt, Records, SqlAt, reached};
+    use herald_compose::{Asked, Composed, Host, KvAt, Records, SqlAt, reached};
     use herald_config::{Config, Store, load};
     use herald_core::DestinationName;
     use herald_flows::{Admission, Inbound, Job, Taker, Worked};
-    use herald_ports::{Changed, Frame, Http, HttpError, Request, Response, Value};
+    use herald_ports::{Changed, Frame, Http, HttpError, Request, Response, Secret, Value};
     use herald_testing::{
         FakeClock, FakeKv, FakeSecrets, FakeSigner, FakeTimer, FakeVerifier, ScriptedSockets,
         ScriptedSql,
@@ -448,6 +448,47 @@ template = "t"
                     "{store}"
                 );
             }
+        }
+    }
+
+    fn asked(method: &str, target: &str, authorization: Option<&str>) -> Asked {
+        Asked {
+            method: method.to_owned(),
+            target: target.to_owned(),
+            headers: authorization
+                .map(|value| ("Authorization".to_owned(), value.to_owned()))
+                .into_iter()
+                .collect(),
+            body: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn a_request_is_answered_or_runs_the_round_it_holds_the_secret_for() {
+        let config = config("kind = \"deno-kv\"");
+        let composed =
+            pollster::block_on(Composed::new(Hosting::default(), config, &EVERY, "test")).unwrap();
+        let secret = Secret::new("HERALD_ROUND_SECRET", "s3cret");
+        let reach = |asked: &Asked, secret: Option<&Secret>| {
+            pollster::block_on(composed.reached(asked, secret))
+        };
+        let health = reach(&asked("GET", "/healthz?x=1", None), None);
+        assert_eq!(health.reply.status, 200);
+        assert_eq!(health.said, Vec::<String>::new());
+        let unheld = reach(&asked("POST", "/herald/round/poll", None), Some(&secret));
+        assert_eq!(unheld.reply.status, 401);
+        for round in ["poll", "housekeep"] {
+            let held = reach(
+                &asked(
+                    "POST",
+                    &format!("/herald/round/{round}"),
+                    Some("Bearer s3cret"),
+                ),
+                Some(&secret),
+            );
+            assert_eq!(held.reply.status, 200, "{round}");
+            assert_eq!(held.reply.body, b"the round ran");
+            assert!(held.job.is_none());
         }
     }
 

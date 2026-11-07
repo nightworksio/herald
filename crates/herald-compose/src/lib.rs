@@ -5,6 +5,7 @@
 //! wasm module, the WASI component and Fastly Compute each give it their
 //! ports.
 
+mod asked;
 mod capped;
 mod composed;
 mod host;
@@ -16,6 +17,7 @@ mod records;
 mod round;
 pub mod told;
 
+pub use asked::{Asked, Reached, plain};
 pub use capped::Capped;
 pub use composed::Composed;
 pub use host::{Host, KvAt, SqlAt, Unoffered};

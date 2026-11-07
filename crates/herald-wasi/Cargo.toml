@@ -12,6 +12,11 @@ publish.workspace = true
 [lib]
 crate-type = ["cdylib", "rlib"]
 
+[features]
+# The databases Spin offers. A component built with it runs on Spin alone,
+# since no other host gives it these imports.
+spin = ["dep:herald-spin"]
+
 [target.'cfg(all(target_arch = "wasm32", target_os = "wasi"))'.dependencies]
 futures-util = { version = "0.3", default-features = false, features = ["std"] }
 herald-compose.workspace = true
@@ -20,6 +25,7 @@ herald-crypto.workspace = true
 herald-environment.workspace = true
 herald-flows.workspace = true
 herald-ports.workspace = true
+herald-spin = { workspace = true, optional = true }
 send_wrapper = { version = "0.6", features = ["futures"] }
 wasip2 = "2"
 wstd = "0.6"

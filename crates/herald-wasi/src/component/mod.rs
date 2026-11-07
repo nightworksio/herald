@@ -4,6 +4,8 @@ mod handler;
 mod host;
 mod http;
 mod served;
+#[cfg(feature = "spin")]
+mod spin;
 #[cfg(test)]
 mod tests;
 

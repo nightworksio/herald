@@ -31,6 +31,14 @@ impl WasiHost {
 }
 
 const NO_DATABASE: &str = "this host offers no database herald keeps records in";
+/// The variable naming Spin's SQLite database where `default` is not the one.
+#[cfg(feature = "spin")]
+const SPIN_DATABASE: &str = "HERALD_SPIN_DATABASE";
+
+#[cfg(feature = "spin")]
+type Database = super::spin::SpinSql;
+#[cfg(not(feature = "spin"))]
+type Database = Unoffered;
 
 impl Host for WasiHost {
     type Http = WasiHttp;
@@ -38,7 +46,7 @@ impl Host for WasiHost {
     type Clock = SystemClock;
     type Signer = RingSigner;
     type Verifier = RingVerifier;
-    type Sql = Unoffered;
+    type Sql = Database;
     type Kv = Unoffered;
 
     fn connect(&self, base: &str) -> Result<WasiHttp, String> {
@@ -68,7 +76,19 @@ impl Host for WasiHost {
         &RingVerifier
     }
 
-    fn sql(&self, _: SqlAt<'_>) -> impl Future<Output = Result<Unoffered, String>> {
+    #[cfg(feature = "spin")]
+    fn sql(&self, at: SqlAt<'_>) -> impl Future<Output = Result<Database, String>> {
+        ready(match at {
+            SqlAt::Sqlite(_) => Ok(Database::Sqlite(
+                self.var(SPIN_DATABASE).unwrap_or("default").to_owned(),
+            )),
+            SqlAt::Postgres(url) => Ok(Database::Postgres(url.expose().to_owned())),
+            SqlAt::D1(_) | SqlAt::DurableObject { .. } => Err(NO_DATABASE.to_owned()),
+        })
+    }
+
+    #[cfg(not(feature = "spin"))]
+    fn sql(&self, _: SqlAt<'_>) -> impl Future<Output = Result<Database, String>> {
         ready(Err(NO_DATABASE.to_owned()))
     }
 

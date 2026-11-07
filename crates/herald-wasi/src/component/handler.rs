@@ -2,7 +2,9 @@ use wasip2::exports::http::incoming_handler::{IncomingRequest, ResponseOutparam}
 use wasip2::http::types::{Fields, IncomingBody, Method, OutgoingBody, OutgoingResponse};
 use wasip2::io::streams::StreamError;
 
-use super::served::{Asked, answered, worked};
+use herald_compose::Asked;
+
+use super::served::{answered, worked};
 
 /// The most of a request's body that is read.
 const MOST: usize = 1 << 20;
