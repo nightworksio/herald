@@ -195,3 +195,35 @@ proptest! {
         prop_assert_eq!(markdown(&html), "a\n\nb");
     }
 }
+
+#[test]
+#[allow(
+    clippy::disallowed_methods,
+    reason = "the test times the reader itself, which no Clock stands in for"
+)]
+fn crafted_html_is_read_in_time_linear_in_its_length() {
+    let mib = 1 << 20;
+    for crafted in [
+        "<svg></svg>".repeat(mib / 11),
+        "<SVG>x</Svg >".repeat(mib / 13),
+        "<a href=\"x\" ".repeat(mib / 12),
+        "<".repeat(mib),
+        "<b".repeat(mib / 2),
+    ] {
+        let started = std::time::Instant::now();
+        let _ = markdown(&crafted);
+        assert!(
+            started.elapsed() < std::time::Duration::from_secs(10),
+            "{:?} took {:?}",
+            crafted.get(..12),
+            started.elapsed()
+        );
+    }
+}
+
+#[test]
+fn a_dropped_element_closes_whatever_case_it_is_written_in() {
+    assert_eq!(markdown("<p>a</p><SVG><p>b</p></sVg >c"), "a\n\nc");
+    assert_eq!(markdown("<p>a</p><script>never closed"), "a");
+    assert_eq!(markdown("a <b c=d then <i>e</i>"), "a \\<b c=d then *e*");
+}

@@ -83,18 +83,25 @@ fn tokens(html: &str) -> Vec<Token<'_>> {
 }
 
 /// What follows the closing tag of `name` in `html`, or nothing where it
-/// never closes.
+/// never closes. The tag's name is matched without regard to case, and
+/// nothing is copied, so a document of many dropped elements is read once.
 fn skipped<'a>(html: &'a str, name: &str) -> &'a str {
-    let lower = html.to_ascii_lowercase();
-    let close = format!("</{name}");
-    match lower.find(&close) {
-        Some(at) => {
-            let from = html.get(at..).unwrap_or_default();
-            from.find('>')
-                .map_or("", |end| from.get(end + 1..).unwrap_or_default())
+    let mut from = 0;
+    while let Some(at) = html.get(from..).and_then(|rest| rest.find("</")) {
+        let close = from + at;
+        let named = html
+            .as_bytes()
+            .get(close + 2..close + 2 + name.len())
+            .is_some_and(|candidate| candidate.eq_ignore_ascii_case(name.as_bytes()));
+        if named {
+            let rest = html.get(close..).unwrap_or_default();
+            return rest
+                .find('>')
+                .map_or("", |end| rest.get(end + 1..).unwrap_or_default());
         }
-        None => "",
+        from = close + 2;
     }
+    ""
 }
 
 fn name_end(text: &str) -> usize {
@@ -102,8 +109,33 @@ fn name_end(text: &str) -> usize {
         .unwrap_or(text.len())
 }
 
-/// The tag `html` starts with, and what follows it.
+/// The tag `html` starts with, and what follows it. A tag ends before the
+/// next `<` outside a quoted value, so one never closed is text, found by
+/// reading only that far.
 fn tag(html: &str) -> Option<(Token<'_>, &str)> {
+    let bound = tag_bound(html);
+    let (token, after) = tag_within(html.get(..bound)?)?;
+    let read = bound - after.len();
+    Some((token, html.get(read..)?))
+}
+
+/// Where the tag `html` starts with can end at the latest: the next `<`
+/// outside a quoted value, or the end of `html`.
+fn tag_bound(html: &str) -> usize {
+    let mut quote = None;
+    for (at, byte) in html.bytes().enumerate().skip(1) {
+        match quote {
+            None if byte == b'<' => return at,
+            None if matches!(byte, b'"' | b'\'') => quote = Some(byte),
+            Some(open) if byte == open => quote = None,
+            _ => {}
+        }
+    }
+    html.len()
+}
+
+/// The tag `html` starts with and ends within, and what of `html` follows it.
+fn tag_within(html: &str) -> Option<(Token<'_>, &str)> {
     let body = html.get(1..)?;
     let (closing, body) = match body.strip_prefix('/') {
         Some(body) => (true, body),
