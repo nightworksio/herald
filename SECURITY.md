@@ -24,6 +24,30 @@ No version is tagged yet; the first release is 0.1.0. Until it is tagged, a
 fix lands on `main`, and a project that pins herald by commit takes it by
 moving its pin.
 
+## Verifying a release
+
+Every release asset, the archives, the two WebAssembly components and
+`SHA256SUMS`, carries a provenance attestation from herald's release workflow.
+Check one with the GitHub CLI:
+
+```sh
+gh attestation verify herald-x86_64-unknown-linux-musl.tar.gz --repo nightworksio/herald \
+  --signer-workflow nightworksio/herald/.github/workflows/release.yml
+```
+
+The image, the components on GHCR and the Helm chart are signed keylessly
+with cosign, and attested too. With `<version>` such as `0.1.0`:
+
+```sh
+cosign verify ghcr.io/nightworksio/herald:<version> \
+  --certificate-identity-regexp '^https://github.com/nightworksio/herald/\.github/workflows/release\.yml@refs/tags/v' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com
+gh attestation verify oci://ghcr.io/nightworksio/herald:<version> --repo nightworksio/herald
+```
+
+`herald-component`, `herald-component-spin` and `charts/herald` verify the
+same way. herald's Action verifies the archive it downloads before it runs it.
+
 ## Scope
 
 In scope is what this repository ships:

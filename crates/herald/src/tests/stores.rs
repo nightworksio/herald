@@ -10,8 +10,16 @@ fn a_release_kept_only_in_its_post_is_announced_once_and_poll_stops_without_curs
         &world,
         &[
             ("/users/@me", 200, r#"{"id":"99"}"#),
-            ("/channels/100/messages?limit=100", 200, "[]"),
-            ("/channels/100/messages", 200, r#"{"id":"1"}"#),
+            (
+                "/channels/1566200000000000100/messages?limit=100",
+                200,
+                "[]",
+            ),
+            (
+                "/channels/1566200000000000100/messages",
+                200,
+                r#"{"id":"1"}"#,
+            ),
         ],
     );
     let announced = herald(&setup, &world, &ANNOUNCE);
@@ -45,7 +53,14 @@ fn a_release_is_announced_once_through_the_actions_cache() {
         "kind = \"actions-cache\"\nprefix = \"run-7\"",
     ));
     let world = World::default();
-    discord(&world, &[("/channels/100/messages", 200, r#"{"id":"1"}"#)]);
+    discord(
+        &world,
+        &[(
+            "/channels/1566200000000000100/messages",
+            200,
+            r#"{"id":"1"}"#,
+        )],
+    );
     let unset = herald(&setup, &world, &ANNOUNCE);
     assert_eq!(
         unset.err,
@@ -89,7 +104,14 @@ fn a_release_is_announced_once_through_the_repository_s_variables() {
     );
     let mut setup = setup(&config);
     let world = World::default();
-    discord(&world, &[("/channels/100/messages", 200, r#"{"id":"1"}"#)]);
+    discord(
+        &world,
+        &[(
+            "/channels/1566200000000000100/messages",
+            200,
+            r#"{"id":"1"}"#,
+        )],
+    );
     let unset = herald(&setup, &world, &ANNOUNCE);
     assert_eq!(
         unset.err,
@@ -124,7 +146,14 @@ fn a_release_is_announced_once_through_a_dynamodb_table() {
     );
     let mut setup = setup(&config);
     let world = World::default();
-    discord(&world, &[("/channels/100/messages", 200, r#"{"id":"1"}"#)]);
+    discord(
+        &world,
+        &[(
+            "/channels/1566200000000000100/messages",
+            200,
+            r#"{"id":"1"}"#,
+        )],
+    );
     let unset = herald(&setup, &world, &ANNOUNCE);
     assert_eq!(
         unset.err,
@@ -151,7 +180,14 @@ fn a_release_kept_in_a_sqlite_file_beside_the_config_is_announced_once() {
     let mut setup = setup(&CONFIG.replace("kind = \"git-branch\"", "kind = \"sqlite\""));
     setup.vars.remove("GITHUB_TOKEN");
     let world = World::default();
-    discord(&world, &[("/channels/100/messages", 200, r#"{"id":"1"}"#)]);
+    discord(
+        &world,
+        &[(
+            "/channels/1566200000000000100/messages",
+            200,
+            r#"{"id":"1"}"#,
+        )],
+    );
     let first = herald(&setup, &world, &ANNOUNCE);
     assert_eq!(
         (first.code, first.out.as_str(), first.err.as_str()),
@@ -289,7 +325,14 @@ fn a_release_kept_in_postgres_is_announced_once() {
     };
     let setup = kept_in_postgres(Some(&url));
     let world = World::default();
-    discord(&world, &[("/channels/100/messages", 200, r#"{"id":"1"}"#)]);
+    discord(
+        &world,
+        &[(
+            "/channels/1566200000000000100/messages",
+            200,
+            r#"{"id":"1"}"#,
+        )],
+    );
     let first = herald(&setup, &world, &ANNOUNCE);
     assert_eq!(
         (first.code, first.out.as_str(), first.err.as_str()),

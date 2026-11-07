@@ -1,4 +1,6 @@
-use herald_core::SecretRef;
+use herald_core::{SecretRef, path_of_names, web_url};
+
+use crate::Registry;
 
 /// A registry source's options in `herald.toml` (ADR-0006).
 #[derive(Debug, Clone, PartialEq, Eq, Default, serde::Deserialize, schemars::JsonSchema)]
@@ -19,4 +21,32 @@ pub struct RegistryOptions {
     /// absent (ADR-0003).
     #[serde(default)]
     pub backfill: usize,
+}
+
+impl RegistryOptions {
+    /// Whether the options are sound for a source on `registry`.
+    ///
+    /// # Errors
+    ///
+    /// When `package` is not a name the registry gives a package, or `api`
+    /// is not a web address.
+    pub fn check(&self, registry: Registry) -> Result<(), String> {
+        let (path, count) = match (registry, self.package.strip_prefix('@')) {
+            (Registry::Npm, Some(scoped)) => (scoped, 2..=2),
+            _ => (self.package.as_str(), registry.names()),
+        };
+        if !path_of_names(path, count) {
+            return Err(format!(
+                "\"{}\" is not a package; give it as {}, of letters, digits, '.', '_' and '-'",
+                self.package,
+                registry.shape()
+            ));
+        }
+        match &self.api {
+            Some(api) if !web_url(api) => Err(format!(
+                "\"{api}\" is not a web address; give the registry's base URL, such as https://registry.example"
+            )),
+            _ => Ok(()),
+        }
+    }
 }

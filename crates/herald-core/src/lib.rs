@@ -5,6 +5,7 @@
 //! targets.
 
 mod activity;
+mod address;
 mod announce;
 mod chunk;
 mod cursor;
@@ -27,8 +28,9 @@ mod version;
 pub use activity::{
     ACTIVITY_JSON, SIGNED, Signing, body_sha256, public_pem, signature_header, signing,
 };
+pub use address::{WEB_SCHEMES, path_of_names, web_url};
 pub use announce::{
-    Announcement, announce, body_template, shortened, thread_template, title_template,
+    Announcement, Title, announce, body_template, shortened, thread_template, title_template,
 };
 pub use chunk::{Room, chunk, size};
 pub use cursor::{Cursor, Polled, fresh};

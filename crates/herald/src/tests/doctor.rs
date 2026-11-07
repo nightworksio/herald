@@ -105,6 +105,9 @@ fn doctor_names_what_the_markers_store_cannot_serve() {
             "routes[0].destination: sending each announcement once cannot be served: the markers store reads announcements back from their posts, and a webhook cannot read back its posts; post through a bot to a text or announcement channel, or choose a store that keeps records."
         ]
     );
-    let forum = markers.replace("channel = \"100\"", "channel = \"100\"\nforum = true");
+    let forum = markers.replace(
+        "channel = \"1566200000000000100\"",
+        "channel = \"1566200000000000100\"\nforum = true",
+    );
     assert!(gaps(&forum)[0].contains("and a forum's posts are not read back"));
 }

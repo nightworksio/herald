@@ -227,7 +227,7 @@ fn links(links: BTreeMap<String, String>) -> Result<BTreeMap<String, String>, Pr
             if name.is_empty() {
                 return Err(Problem::UnnamedLink);
             }
-            if !(url.starts_with("https://") || url.starts_with("http://")) {
+            if !crate::address::web_url(&url) {
                 return Err(Problem::LinkNotWeb);
             }
             Ok((name, url))

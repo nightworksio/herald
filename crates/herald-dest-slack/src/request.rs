@@ -1,12 +1,13 @@
 use std::fmt;
 
-use herald_core::{Announcement, Dialect, Entry, Step, literal, safe_url};
+use herald_core::{Announcement, Dialect, Entry, Step, safe_url};
 use herald_ports::{Method, Request, Text, USER_AGENT};
 use serde_json::{Value, json};
 
 use crate::interact::subscribe_block;
 use crate::interactions::Subscribe;
 use crate::slack::{Credential, Slack};
+use crate::web_api::{CHAT_POST_MESSAGE, PINS_ADD, PINS_LIST, WebMethod};
 
 /// The type of the metadata event herald's posts carry their markers in
 /// (ADR-0011).
@@ -60,11 +61,12 @@ fn authorised(request: Request, slack: &Slack) -> Request {
 }
 
 /// A call of the Web API method `method`, with `query` already encoded.
-pub(crate) fn get(slack: &Slack, method: &str, query: &str) -> Request {
+pub(crate) fn get(slack: &Slack, method: WebMethod, query: &str) -> Request {
+    let name = method.name;
     let url = if query.is_empty() {
-        format!("{}/{method}", slack.api)
+        format!("{}/{name}", slack.api)
     } else {
-        format!("{}/{method}?{query}", slack.api)
+        format!("{}/{name}?{query}", slack.api)
     };
     authorised(Request::new(Method::Get, Text::plain(url)), slack)
 }
@@ -79,8 +81,12 @@ fn posted_json(slack: &Slack, url: Text, body: &Value) -> Request {
 }
 
 /// A call of the Web API method `method` with the JSON `body`.
-pub(crate) fn call(slack: &Slack, method: &str, body: &Value) -> Request {
-    posted_json(slack, Text::plain(format!("{}/{method}", slack.api)), body)
+pub(crate) fn call(slack: &Slack, method: WebMethod, body: &Value) -> Request {
+    posted_json(
+        slack,
+        Text::plain(format!("{}/{}", slack.api, method.name)),
+        body,
+    )
 }
 
 /// `text` as one part of a URL's query: every byte but the unreserved ones
@@ -131,9 +137,9 @@ fn announcement_body(announcement: &Announcement, subscribe: Option<&Subscribe>)
         .collect();
     let mut blocks = vec![json!({
         "type": "header",
-        "text": { "type": "plain_text", "text": announcement.title, "emoji": true },
+        "text": { "type": "plain_text", "text": announcement.title.plain(), "emoji": true },
     })];
-    let mut fallback = vec![literal(&announcement.title, Dialect::Slack).body];
+    let mut fallback = vec![announcement.title.shown(Dialect::Slack).body];
     for text in first
         .map(ToOwned::to_owned)
         .into_iter()
@@ -236,7 +242,7 @@ pub(crate) fn step(
                     ),
                 ],
             );
-            Ok(call(slack, "chat.postMessage", &body))
+            Ok(call(slack, CHAT_POST_MESSAGE, &body))
         }
         (Credential::Bot(_), Step::Chunk(index)) => {
             let channel = channel(slack)?;
@@ -245,19 +251,19 @@ pub(crate) fn step(
                 chunk_body(announcement, *index),
                 &[("channel", json!(channel)), ("thread_ts", json!(root))],
             );
-            Ok(call(slack, "chat.postMessage", &body))
+            Ok(call(slack, CHAT_POST_MESSAGE, &body))
         }
         (Credential::Bot(_), Step::Pin) => {
             let channel = channel(slack)?;
             let post = posted(entry, &Step::Post, "the announcement's message")?;
-            Ok(pin(slack, "pins.add", channel, post))
+            Ok(pin(slack, PINS_ADD, channel, post))
         }
         (Credential::Bot(_), Step::Unpin) => Ok(pins(slack, channel(slack)?)),
     }
 }
 
 /// The call pinning or unpinning, as `method` says, the message `ts`.
-pub(crate) fn pin(slack: &Slack, method: &str, channel: &str, ts: &str) -> Request {
+pub(crate) fn pin(slack: &Slack, method: WebMethod, channel: &str, ts: &str) -> Request {
     call(
         slack,
         method,
@@ -267,5 +273,5 @@ pub(crate) fn pin(slack: &Slack, method: &str, channel: &str, ts: &str) -> Reque
 
 /// The read of the channel's pins.
 pub(crate) fn pins(slack: &Slack, channel: &str) -> Request {
-    get(slack, "pins.list", &format!("channel={}", query(channel)))
+    get(slack, PINS_LIST, &format!("channel={}", query(channel)))
 }

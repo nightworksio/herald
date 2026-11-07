@@ -12,6 +12,7 @@ use std::convert::Infallible;
 use std::fmt::Display;
 use std::future::Future;
 use std::io::Write;
+use std::ops::ControlFlow;
 use std::path::Path;
 use std::pin::Pin;
 use std::sync::{Arc, Mutex, PoisonError};
@@ -209,22 +210,9 @@ async fn stopping(
             return MISTAKEN;
         }
     };
-    let serve = match reading {
-        Reading::Doctor { layer } => {
-            let mut findings = doctor(&config, layer.served());
-            let keyed = keys(&config, &EnvSecrets::from_vars(vars.clone()), &RingSigner).await;
-            findings.notes.extend(keyed.notes);
-            findings.mistakes.extend(keyed.mistakes);
-            return checked(&cli.config, &findings, out);
-        }
-        Reading::Preview { route, event, from } => {
-            let event = event.as_deref().map(|path| (from.forge(), path));
-            return previewing(&config, route.as_deref(), event, out, err);
-        }
-        Reading::Set(setting) => {
-            return finished(set_up(&config, vars, connect, setting, out).await, err);
-        }
-        Reading::Serve(serve) => serve,
+    let serve = match answered(reading, &config, &cli.config, vars, connect, out, err).await {
+        ControlFlow::Continue(serve) => serve,
+        ControlFlow::Break(code) => return code,
     };
     let hidden = hidden(&config, vars);
     masked(&hidden, vars, out);
@@ -314,6 +302,38 @@ fn finished(done: Result<u8, String>, err: &mut dyn Write) -> u8 {
     done.unwrap_or_else(|message| {
         say(err, &message);
         STOPPED
+    })
+}
+
+/// Answers a command that reads the config at `path` and finishes, breaking
+/// with its exit code, or continues with the command that serves.
+async fn answered(
+    reading: Reading,
+    config: &Config,
+    path: &str,
+    vars: &BTreeMap<String, String>,
+    connect: Connect<'_>,
+    out: &mut dyn Write,
+    err: &mut dyn Write,
+) -> ControlFlow<u8, Serve> {
+    ControlFlow::Break(match reading {
+        Reading::Doctor { layer } => {
+            let mut findings = doctor(config, layer.served());
+            let keyed = keys(config, &EnvSecrets::from_vars(vars.clone()), &RingSigner).await;
+            findings.notes.extend(keyed.notes);
+            findings.mistakes.extend(keyed.mistakes);
+            checked(path, &findings, out)
+        }
+        Reading::Store => {
+            say(out, config.store.kind());
+            DONE
+        }
+        Reading::Preview { route, event, from } => {
+            let event = event.as_deref().map(|path| (from.forge(), path));
+            previewing(config, route.as_deref(), event, out, err)
+        }
+        Reading::Set(setting) => finished(set_up(config, vars, connect, setting, out).await, err),
+        Reading::Serve(serve) => return ControlFlow::Continue(serve),
     })
 }
 
@@ -617,7 +637,7 @@ fn previewing(
             match shown.rendered {
                 Ok(announcement) => {
                     say(out, &format!("{head}:"));
-                    say(out, &format!("  title: {}", announcement.title));
+                    say(out, &format!("  title: {}", announcement.title.plain()));
                     if let Some(thread) = &announcement.thread {
                         say(out, &format!("  thread: {thread}"));
                     }

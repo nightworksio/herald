@@ -174,7 +174,7 @@ mod activitypub {
         );
         let mut bare = announcement();
         bare.link = None;
-        bare.title = "a <b> & c".to_owned();
+        bare.title = herald_core::Title::new("a <b> & c");
         bare.parts.push(Text {
             body: String::new(),
             html: Some(String::new()),

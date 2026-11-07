@@ -15,7 +15,14 @@ const FORGEJO_REPOSITORY: &str =
 const GITLAB_RELEASE: &str = "/projects/gitlab-org%2Fcli/releases/v1.126.0";
 
 fn posted(world: &World) {
-    discord(world, &[("/channels/100/messages", 200, r#"{"id":"1"}"#)]);
+    discord(
+        world,
+        &[(
+            "/channels/1566200000000000100/messages",
+            200,
+            r#"{"id":"1"}"#,
+        )],
+    );
 }
 
 fn gitlab() -> (Setup, World) {

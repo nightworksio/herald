@@ -20,6 +20,10 @@ pub enum Forge {
     Forgejo,
 }
 
+/// The most names a GitLab project's path holds: its top group, 20
+/// subgroups and its own name.
+const GITLAB_DEPTH: usize = 22;
+
 /// How a forge's API is asked, and what each of its answers is called in
 /// an error.
 pub(crate) struct Api {
@@ -77,6 +81,24 @@ pub struct Origin {
 }
 
 impl Forge {
+    /// How many names a repository's path holds on the forge.
+    #[must_use]
+    pub const fn names(self) -> std::ops::RangeInclusive<usize> {
+        match self {
+            Self::GitHub | Self::Forgejo => 2..=2,
+            Self::GitLab => 2..=GITLAB_DEPTH,
+        }
+    }
+
+    /// How a repository is written on the forge.
+    #[must_use]
+    pub const fn shape(self) -> &'static str {
+        match self {
+            Self::GitHub | Self::Forgejo => "owner/name",
+            Self::GitLab => "the project's full path, such as group/subgroup/name",
+        }
+    }
+
     /// Every forge.
     pub const ALL: [Self; 3] = [Self::GitHub, Self::GitLab, Self::Forgejo];
 
@@ -327,5 +349,45 @@ mod tests {
     #[test]
     fn each_forge_is_named_as_a_source_s_kind_writes_it() {
         assert_eq!(Forge::ALL.map(Forge::kind), ["github", "gitlab", "forgejo"]);
+    }
+
+    #[test]
+    fn each_forge_takes_a_repository_in_its_shape_and_an_api_at_a_web_address() {
+        let options = |repository: &str, api: Option<&str>| crate::SourceOptions {
+            repository: repository.to_owned(),
+            api: api.map(ToOwned::to_owned),
+            ..crate::SourceOptions::default()
+        };
+        for forge in Forge::ALL {
+            assert_eq!(
+                options("nightworksio/herald", Some("https://forge.example/api/v1")).check(forge),
+                Ok(())
+            );
+            assert_eq!(
+                options("a/b", Some("ftp://forge.example")).check(forge),
+                Err("\"ftp://forge.example\" is not a web address; give the API's base URL, such as https://forge.example/api/v1".to_owned())
+            );
+        }
+        assert_eq!(options("group/sub/name", None).check(Forge::GitLab), Ok(()));
+        assert!(
+            options("group/sub/name", None)
+                .check(Forge::GitHub)
+                .is_err()
+        );
+        for (forge, shape) in [
+            (Forge::GitHub, "owner/name"),
+            (
+                Forge::GitLab,
+                "the project's full path, such as group/subgroup/name",
+            ),
+            (Forge::Forgejo, "owner/name"),
+        ] {
+            assert_eq!(
+                options("a/../b", None).check(forge),
+                Err(format!(
+                    "\"a/../b\" is not a repository; give it as {shape}, of letters, digits, '.', '_' and '-'"
+                ))
+            );
+        }
     }
 }

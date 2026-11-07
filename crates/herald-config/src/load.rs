@@ -490,9 +490,11 @@ impl Loader<'_> {
             };
             let source = if kind == Source::FEED {
                 self.typed::<herald_sources_feed::FeedOptions>(rest, &path)
+                    .and_then(|options| self.sound(&span, &path, options.check(), options))
                     .map(Source::Feed)
             } else if let Some(forge) = Forge::ALL.into_iter().find(|forge| forge.kind() == kind) {
                 self.typed::<herald_sources_forge::SourceOptions>(rest, &path)
+                    .and_then(|options| self.sound(&span, &path, options.check(forge), options))
                     .map(|options| Source::Forge(forge, options))
             } else {
                 let registry = Registry::ALL
@@ -509,7 +511,11 @@ impl Loader<'_> {
                         );
                         None
                     }
-                    options => options.map(|options| Source::Registry(registry, options)),
+                    options => options
+                        .and_then(|options| {
+                            self.sound(&span, &path, options.check(registry), options)
+                        })
+                        .map(|options| Source::Registry(registry, options)),
                 }
             };
             if let Some(source) = source {
@@ -517,6 +523,24 @@ impl Loader<'_> {
             }
         }
         sources
+    }
+
+    /// `options`, where `checked` found them sound, and otherwise nothing,
+    /// with the reason recorded at `path`.
+    fn sound<T>(
+        &mut self,
+        span: &Range<usize>,
+        path: &str,
+        checked: Result<(), String>,
+        options: T,
+    ) -> Option<T> {
+        match checked {
+            Ok(()) => Some(options),
+            Err(message) => {
+                self.error(span, path, message);
+                None
+            }
+        }
     }
 
     fn templates(

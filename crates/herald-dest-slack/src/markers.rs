@@ -5,6 +5,7 @@ use serde_json::Value;
 use crate::read::{json, text, trouble};
 use crate::request::{MARKER, get, query};
 use crate::slack::{Credential, Identity, Slack, carried, identity};
+use crate::web_api::{CONVERSATIONS_HISTORY, CONVERSATIONS_REPLIES, WebMethod};
 
 /// The most messages read back from a channel, or from a thread.
 const PAGE: u8 = 100;
@@ -52,7 +53,7 @@ impl<'a, H: Http> SlackMarkers<'a, H> {
         Self { slack, http }
     }
 
-    async fn read(&self, method: &str, asked: &str) -> Result<Value, MarkersError> {
+    async fn read(&self, method: WebMethod, asked: &str) -> Result<Value, MarkersError> {
         let response = self
             .http
             .send(get(self.slack, method, asked))
@@ -94,7 +95,7 @@ impl<H: Http> Markers for SlackMarkers<'_, H> {
         let identity = self.identity().await?;
         let history = self
             .read(
-                "conversations.history",
+                CONVERSATIONS_HISTORY,
                 &format!(
                     "channel={}&limit={PAGE}&include_all_metadata=true",
                     query(channel)
@@ -112,7 +113,7 @@ impl<H: Http> Markers for SlackMarkers<'_, H> {
         let mut entry = Entry::new(*key).landed(Step::Post, landed(post));
         let thread = self
             .read(
-                "conversations.replies",
+                CONVERSATIONS_REPLIES,
                 &format!("channel={}&ts={}&limit={PAGE}", query(channel), query(root)),
             )
             .await?;

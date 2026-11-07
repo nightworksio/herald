@@ -81,6 +81,10 @@ impl Loader<'_> {
         Some(match reached {
             Destination::Discord(reached) => {
                 let options = self.typed::<herald_dest_discord::RouteOptions>(rest, path)?;
+                if let Err(message) = options.check() {
+                    self.error(&span, path, message);
+                    *sound = false;
+                }
                 if reached.token.is_some() && options.channel.is_none() {
                     self.error(
                         &span,

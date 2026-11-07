@@ -1,6 +1,6 @@
 use std::fmt;
 
-use herald_core::{Announcement, Entry, Step};
+use herald_core::{Announcement, Dialect, Entry, Step};
 use herald_ports::{Method, Request, Text, USER_AGENT};
 use serde_json::{Map, Value, json};
 
@@ -67,12 +67,13 @@ fn status(mastodon: &Mastodon, text: &str, reply_to: Option<&str>, key: String) 
 }
 
 fn first(announcement: &Announcement) -> String {
+    let title = announcement.title.shown(Dialect::Plain).body;
     let text = announcement.parts.first().map(|part| part.body.as_str());
     let link = announcement
         .link
         .as_deref()
         .map(|link| announcement.marks.on(link));
-    [Some(announcement.title.as_str()), text, link.as_deref()]
+    [Some(title.as_str()), text, link.as_deref()]
         .into_iter()
         .flatten()
         .filter(|part| !part.is_empty())

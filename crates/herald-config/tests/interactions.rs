@@ -79,7 +79,7 @@ body = "{{{{ event.body }}}}"
         let text = config(
             "git-branch",
             &bot("replies = \"public\"\ncommands = [\"subscribe\", \"latest\"]"),
-            &format!("channel = \"100\"\nsubscribe = {{ role = \"{ROLE}\" }}"),
+            &format!("channel = \"1566200000000000100\"\nsubscribe = {{ role = \"{ROLE}\" }}"),
         );
         let config = load("herald.toml", &text, &nothing).unwrap();
         let answering = config.destinations[&herald_core::DestinationName::new("discord")]
@@ -90,7 +90,7 @@ body = "{{{{ event.body }}}}"
         let route = &config.routes[0];
         assert_eq!(route.route.delivery.mentions.roles, [RoleId::new(ROLE)]);
         assert_eq!(route.options.opt_in_role().as_deref(), Some(ROLE));
-        assert_eq!(route.options.place(), Some("100"));
+        assert_eq!(route.options.place(), Some("1566200000000000100"));
         assert!(
             matches!(&route.options, RouteOptions::Discord(placed) if placed.subscribe.as_ref().is_some_and(|subscribe| subscribe.button))
         );
@@ -118,7 +118,7 @@ body = "{{{{ event.body }}}}"
             "git-branch",
             &bot(""),
             &format!(
-                "channel = \"100\"\nmentions = {{ roles = [\"{ROLE}\"] }}\nsubscribe = {{ role = \"{ROLE}\" }}"
+                "channel = \"1566200000000000100\"\nmentions = {{ roles = [\"{ROLE}\"] }}\nsubscribe = {{ role = \"{ROLE}\" }}"
             ),
         );
         let config = load("herald.toml", &text, &nothing).unwrap();
@@ -133,7 +133,7 @@ body = "{{{{ event.body }}}}"
         let text = config(
             "git-branch",
             "token = { secret = \"HERALD_DISCORD_TOKEN\" }",
-            "channel = \"100\"",
+            "channel = \"1566200000000000100\"",
         );
         let config = load("herald.toml", &text, &nothing).unwrap();
         assert_eq!(
@@ -150,7 +150,11 @@ body = "{{{{ event.body }}}}"
     #[test]
     fn interactions_written_wrongly_are_refused_by_key() {
         refused(
-            &config("git-branch", &bot("guild = \"1\""), "channel = \"100\""),
+            &config(
+                "git-branch",
+                &bot("guild = \"1\""),
+                "channel = \"1566200000000000100\"",
+            ),
             "destinations.discord.interactions: \"1\" is not a server id",
         );
         refused(
@@ -167,15 +171,15 @@ body = "{{{{ event.body }}}}"
             &config(
                 "git-branch",
                 &bot("template = \"missing\""),
-                "channel = \"100\"",
+                "channel = \"1566200000000000100\"",
             ),
             "destinations.discord.interactions.template: no template is named \"missing\"; the templates are \"t\"",
         );
         refused(
-            &config("markers", &bot(""), "channel = \"100\""),
+            &config("markers", &bot(""), "channel = \"1566200000000000100\""),
             "destinations.discord.interactions: the markers store keeps nothing commands answer with",
         );
-        let slack = config("git-branch", &bot(""), "channel = \"100\"").replace(
+        let slack = config("git-branch", &bot(""), "channel = \"1566200000000000100\"").replace(
             "signing = { secret = \"HERALD_SLACK_SIGNING\" }",
             "command = \"herald\"\nsigning = { secret = \"S\" }",
         );
@@ -183,7 +187,7 @@ body = "{{{{ event.body }}}}"
             &slack,
             "destinations.slack.interactions: \"herald\" is not a slash command",
         );
-        let matrix = config("git-branch", &bot(""), "channel = \"100\"")
+        let matrix = config("git-branch", &bot(""), "channel = \"1566200000000000100\"")
             .replace("homeserver_token = { secret = \"HERALD_MATRIX_HS\" }\n", "");
         refused(
             &matrix,
@@ -227,7 +231,7 @@ body = "{{{{ event.body }}}}"
         let text = config(
             "markers",
             &bot("commands = [\"subscribe\"]"),
-            "channel = \"100\"",
+            "channel = \"1566200000000000100\"",
         )
         .replace(
             "[destinations.slack.interactions]\n",
@@ -254,7 +258,7 @@ body = "{{{{ event.body }}}}"
             &config(
                 "git-branch",
                 &bot(""),
-                "channel = \"100\"\nsubscribe = { role = \"updates\" }",
+                "channel = \"1566200000000000100\"\nsubscribe = { role = \"updates\" }",
             ),
             "routes[0].subscribe: \"updates\" is not a role id",
         );
@@ -270,7 +274,7 @@ body = "{{{{ event.body }}}}"
             &config(
                 "git-branch",
                 "token = { secret = \"HERALD_DISCORD_TOKEN\" }",
-                &format!("channel = \"100\"\nsubscribe = {{ role = \"{ROLE}\" }}"),
+                &format!("channel = \"1566200000000000100\"\nsubscribe = {{ role = \"{ROLE}\" }}"),
             ),
             "routes[0].subscribe: subscribing is answered through the destination's interactions; give [destinations.discord.interactions] answering subscribe",
         );
@@ -278,14 +282,14 @@ body = "{{{{ event.body }}}}"
             &config(
                 "git-branch",
                 &bot("commands = [\"latest\"]"),
-                &format!("channel = \"100\"\nsubscribe = {{ role = \"{ROLE}\" }}"),
+                &format!("channel = \"1566200000000000100\"\nsubscribe = {{ role = \"{ROLE}\" }}"),
             ),
             "routes[0].subscribe: subscribing is answered through the destination's interactions",
         );
     }
 
     fn slack_route(route: &str) -> String {
-        config("git-branch", &bot(""), "channel = \"100\"").replace(
+        config("git-branch", &bot(""), "channel = \"1566200000000000100\"").replace(
             "[templates.t]",
             &format!(
                 "[[routes]]\nid = \"slack\"\nsources = [\"gate\"]\ndestination = \"slack\"\ntemplate = \"t\"\nchannel = \"C0123456789\"\n{route}\n\n[templates.t]"

@@ -5,8 +5,8 @@ use crate::chunk::{Room, chunk};
 use crate::event::Event;
 use crate::key::{Key, RouteId};
 use crate::marker::Marks;
-use crate::markup::Text;
-use crate::profile::{Measure, Profile};
+use crate::markup::{Text, literal};
+use crate::profile::{Dialect, Measure, Profile};
 use crate::render::{Context, TemplateError, Templates};
 use crate::route::{Route, TemplateName};
 
@@ -30,6 +30,33 @@ pub fn thread_template(route: &RouteId) -> String {
     format!("route/{}/thread", route.as_str())
 }
 
+/// An announcement's title, rendered with nothing escaped. It is read plain
+/// only where the destination reads no markup, and shown literally wherever
+/// it does, so a title never mentions, tags or links.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Title(String);
+
+impl Title {
+    /// The title `text`.
+    #[must_use]
+    pub fn new(text: impl Into<String>) -> Self {
+        Self(text.into())
+    }
+
+    /// The title as written, for a field the destination reads no markup in.
+    #[must_use]
+    pub fn plain(&self) -> &str {
+        &self.0
+    }
+
+    /// The title shown literally in `dialect`, for a field the destination
+    /// reads markup in.
+    #[must_use]
+    pub fn shown(&self, dialect: Dialect) -> Text {
+        literal(&self.0, dialect)
+    }
+}
+
 /// An event rendered for one route on one destination.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Announcement {
@@ -42,7 +69,7 @@ pub struct Announcement {
     /// The project the event is of.
     pub project: String,
     /// The title, on one line, within the destination's limit.
-    pub title: String,
+    pub title: Title,
     /// The body, cut into the parts the destination takes, the first part
     /// first.
     pub parts: Vec<Text>,
@@ -102,7 +129,7 @@ pub fn announce(
         marks,
         route: route.id.clone(),
         project: event.project().to_owned(),
-        title: shortened(&title, profile.limits.title, profile.measure),
+        title: Title::new(shortened(&title, profile.limits.title, profile.measure)),
         parts: chunk(&body, profile.dialect, room),
         thread: thread
             .map(|thread| shortened(&thread, profile.limits.thread_name, profile.measure)),

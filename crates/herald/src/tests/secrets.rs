@@ -21,7 +21,7 @@ fn a_failing_run_never_prints_a_token_even_where_a_server_echoes_it() {
     discord(
         &world,
         &[(
-            "/channels/100/messages",
+            "/channels/1566200000000000100/messages",
             401,
             r#"{"code":0,"message":"401: Unauthorized for Bot discord-token"}"#,
         )],

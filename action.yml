@@ -1,7 +1,8 @@
 # herald's Action (ADR-0009, ADR-0012): at a release tag, at a release line's
-# tag such as v0.1, or given a release, it downloads that release's binary
-# and checks it against the release's SHA256SUMS; at any other ref, such as
-# a commit SHA, it builds the CLI from its own checkout.
+# tag such as v0.1, or given a release, it downloads that release's binary,
+# checks it against the release's SHA256SUMS and verifies its provenance was
+# attested by herald's release workflow; at any other ref, such as a commit
+# SHA, it builds the CLI from its own checkout.
 name: herald
 description: Announce every release to Discord, Matrix, Slack and the Fediverse, from one herald.toml.
 author: NightWorksIO
@@ -46,9 +47,9 @@ runs:
         fi
         release="${RELEASE:-$ACTION_REF}"
         if [[ -z "$RELEASE" && "$ACTION_REF" =~ $line ]]; then
-          release=$(gh release list --repo "$ACTION_REPOSITORY" --limit 100 \
-            --exclude-drafts --exclude-pre-releases --json tagName \
-            | jq -r --arg line "$ACTION_REF." '[.[].tagName
+          release=$(gh api --paginate "repos/$ACTION_REPOSITORY/releases?per_page=100" \
+            --jq '.[] | select(.draft or .prerelease | not) | .tag_name' \
+            | jq -R -s -r --arg line "$ACTION_REF." '[split("\n")[]
                 | select(test("^v[0-9]+\\.[0-9]+\\.[0-9]+$") and startswith($line))]
               | sort_by(ltrimstr("v") | split(".") | map(tonumber)) | last // empty')
           if [[ -z "$release" ]]; then
@@ -92,11 +93,13 @@ runs:
           shasum --algorithm 256 --check --ignore-missing --strict SHA256SUMS
         fi
         archive=$(ls "herald-$target".*)
+        gh attestation verify "$archive" --repo "$ACTION_REPOSITORY" \
+          --signer-workflow "$ACTION_REPOSITORY/.github/workflows/release.yml"
         tar -xf "$archive"
         binary="$directory/herald"
         [[ "$RUNNER_OS" == Windows ]] && binary="$binary.exe"
         echo "binary=$binary" >> "$GITHUB_OUTPUT"
-        echo "herald $RELEASE, checked against the release's SHA256SUMS."
+        echo "herald $RELEASE, checked against the release's SHA256SUMS and its attested provenance."
 
     - name: Key the build by its exact sources
       id: sources
@@ -139,10 +142,22 @@ runs:
         [[ "$RUNNER_OS" == Windows ]] && binary="$binary.exe"
         echo "binary=$binary" >> "$GITHUB_OUTPUT"
 
+    - name: Name the config's store
+      id: store
+      shell: bash
+      env:
+        HERALD: ${{ steps.download.outputs.binary || steps.build.outputs.binary }}
+        CONFIG: ${{ inputs.config }}
+      run: |
+        kind=$("$HERALD" --config "$CONFIG" store)
+        echo "kind=$kind" >> "$GITHUB_OUTPUT"
+
     # The cache service's address and the run's token reach only JavaScript
-    # actions, so this step hands them on, masked, for the actions-cache store.
+    # actions, so this step hands them on, masked, to the actions-cache store
+    # alone.
     - name: Hand on the Actions cache's address and token
       id: runtime
+      if: steps.store.outputs.kind == 'actions-cache'
       uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
       with:
         script: |

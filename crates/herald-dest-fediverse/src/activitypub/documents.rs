@@ -1,4 +1,4 @@
-use herald_core::{ACTIVITY_JSON, Announcement, Dialect, digest, literal, public_pem, safe_url};
+use herald_core::{ACTIVITY_JSON, Announcement, Dialect, digest, public_pem, safe_url};
 use serde_json::{Value, json};
 
 /// The `ActivityStreams` context.
@@ -63,7 +63,7 @@ pub fn webfinger(domain: &str, actor: &str) -> Value {
 
 /// The HTML of `announcement`: its title in bold, every part, and its link.
 fn content(announcement: &Announcement) -> String {
-    let title = literal(&announcement.title, Dialect::Matrix);
+    let title = announcement.title.shown(Dialect::Matrix);
     let mut html = vec![format!(
         "<p><strong>{}</strong></p>",
         title.html.as_deref().unwrap_or_default().trim_end()

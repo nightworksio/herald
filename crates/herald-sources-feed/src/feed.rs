@@ -134,10 +134,6 @@ fn html(element: &BytesStart<'_>) -> bool {
     attribute(element, "type").is_some_and(|kind| kind == "html" || kind == "xhtml")
 }
 
-fn web(url: &str) -> bool {
-    url.starts_with("https://") || url.starts_with("http://")
-}
-
 fn unreadable(reason: impl std::fmt::Display) -> SourceError {
     SourceError::Unreadable {
         what: WHAT,
@@ -443,7 +439,7 @@ impl Feed {
         let Some(occurred) = own.or(answered_at) else {
             return Ok(None);
         };
-        let link = entry.link.filter(|link| web(link));
+        let link = entry.link.filter(|link| herald_core::web_url(link));
         let title = entry.title.unwrap_or_default();
         let named = entry
             .id

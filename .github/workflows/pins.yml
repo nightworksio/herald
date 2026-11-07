@@ -1,0 +1,29 @@
+# The pins Dependabot does not move: the CI tools, the images pinned by digest
+# and the musl-tools package. A run is red while any of them has a newer
+# release (ADR-0007).
+name: pins
+
+on:
+  schedule:
+    - cron: "0 4 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: true
+
+jobs:
+  pins:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: sudo apt-get update
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 .github/scripts/pins.py

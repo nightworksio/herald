@@ -7,13 +7,13 @@ fn config() -> String {
 id = "deploys"
 sources = ["ci"]
 destination = "discord"
-channel = "200"
+channel = "1566200000000000200"
 template = "release"
 [[routes]]
 id = "elsewhere"
 sources = ["ci"]
 destination = "discord"
-channel = "300"
+channel = "1566200000000000300"
 template = "release"
 [apps.ci]
 projects = ["herald"]
@@ -79,12 +79,20 @@ fn an_app_s_event_is_announced_to_the_routes_the_app_may_announce_to_only() {
     assert!(
         announced
             .out
-            .contains("POST https://discord.com/api/v10/channels/200/messages\n"),
+            .contains("POST https://discord.com/api/v10/channels/1566200000000000200/messages\n"),
         "{}",
         announced.out
     );
-    assert!(!announced.out.contains("channels/300"), "{}", announced.out);
-    assert!(!announced.out.contains("channels/100"), "{}", announced.out);
+    assert!(
+        !announced.out.contains("channels/1566200000000000300"),
+        "{}",
+        announced.out
+    );
+    assert!(
+        !announced.out.contains("channels/1566200000000000100"),
+        "{}",
+        announced.out
+    );
     assert!(
         announced.out.ends_with("\ndeploys: announced (post)\n"),
         "{}",

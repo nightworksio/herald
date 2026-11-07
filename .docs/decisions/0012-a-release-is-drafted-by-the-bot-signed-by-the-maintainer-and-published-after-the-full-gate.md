@@ -59,17 +59,22 @@ releases this way, and herald follows it.
      whole workspace (ADR-0008).
    - **builds and attests.** Each of the six targets builds with
      `cargo build --locked --release`, into `herald-<target>.tar.gz`, or
-     `.zip` on Windows. One `SHA256SUMS` lists every archive, and each
-     archive carries its build provenance attestation (ADR-0009).
+     `.zip` on Windows. The wasi:http component and its Spin build join
+     them as `herald-component.wasm` and `herald-component-spin.wasm`. One
+     `SHA256SUMS` lists every asset, and each asset and `SHA256SUMS` carry
+     their build provenance attestation (ADR-0009).
    - **publishes.** In the environment `release`, whose deployment policy
      allows `v*` tags only, and only while the tag still points at the commit
      the gate passed, the release takes the version's section as its notes
-     and the archives and `SHA256SUMS` as its assets. A pre-release is marked
+     and the archives, the two components and `SHA256SUMS` as its assets. A pre-release is marked
      as one.
    - **moves the release line.** The tag of the version's line moves to it:
      `vMAJOR.MINOR` while the major is 0 (`v0.1`), and `vMAJOR` from 1.0.0. A
      pre-release moves no line.
-   - **announces itself.** It runs `uses: ./` at the tag, with the Action's
+   - **announces itself.** In the environment `announce`, which alone holds
+     `HERALD_DISCORD_TOKEN` and `HERALD_MARKER_SECRET` and whose deployment
+     policy allows `main` and `v*.*.*` tags, so the daily housekeeping of
+     ADR-0010 reads them too, it runs `uses: ./` at the tag, with the Action's
      `release` input naming the release, so the Action downloads the binary
      just published and checks it, and its `tag` input naming it, so
      `herald announce --from github --release vX.Y.Z` announces it
@@ -106,7 +111,8 @@ edited by a person in a pull request.
 fixes without rebuilding from source.
 
 **Three settings are made once, by the maintainer:** the App with its key and
-client id, the environments `bot` and `release`, and the tag ruleset.
+client id, the environments `bot`, `release` and `announce` with their
+secrets, and the tag ruleset.
 
 ## Related
 

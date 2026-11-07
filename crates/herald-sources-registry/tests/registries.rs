@@ -282,6 +282,51 @@ mod registries {
     }
 
     #[test]
+    fn each_registry_takes_a_package_in_its_shape_and_an_api_at_a_web_address() {
+        let options = |name: &str, api: Option<&str>| RegistryOptions {
+            package: name.to_owned(),
+            api: api.map(ToOwned::to_owned),
+            ..RegistryOptions::default()
+        };
+        let names = [
+            "monolog/monolog",
+            "jiff",
+            "@nightworksio/herald",
+            "library/caddy",
+        ];
+        for (registry, name) in REGISTRIES.into_iter().zip(names) {
+            assert_eq!(
+                options(name, Some("https://registry.example")).check(registry),
+                Ok(()),
+                "{name}"
+            );
+            assert_eq!(
+                options(name, Some("registry.example")).check(registry),
+                Err("\"registry.example\" is not a web address; give the registry's base URL, such as https://registry.example".to_owned())
+            );
+        }
+        assert_eq!(options("left-pad", None).check(Registry::Npm), Ok(()));
+        assert_eq!(options("caddy", None).check(Registry::DockerHub), Ok(()));
+        assert!(options("@scope", None).check(Registry::Npm).is_err());
+        let refused: Vec<String> = REGISTRIES
+            .iter()
+            .map(|registry| options("a/../b", None).check(*registry).unwrap_err())
+            .collect();
+        let shapes = [
+            "vendor/name",
+            "the crate's name",
+            "the package's name, or @scope/name",
+            "the repository, such as library/caddy or caddy",
+        ];
+        assert_eq!(
+            refused,
+            shapes.map(|shape| format!(
+                "\"a/../b\" is not a package; give it as {shape}, of letters, digits, '.', '_' and '-'"
+            ))
+        );
+    }
+
+    #[test]
     fn an_unchanged_refused_or_unreadable_answer_says_so() {
         assert!(Registry::unchanged(&answer(304, "")));
         assert!(!Registry::unchanged(&answer(200, NPM)));

@@ -27,7 +27,7 @@ fn a_published_release_is_announced_once_and_kept_on_the_state_branch() {
     let setup = setup(CONFIG);
     let world = World::default();
     world.state.lock().unwrap().discord.push((
-        "/channels/100/messages".to_owned(),
+        "/channels/1566200000000000100/messages".to_owned(),
         200,
         r#"{"id":"1"}"#.to_owned(),
     ));
@@ -46,7 +46,7 @@ fn a_refusal_stops_the_run_and_says_what_remains() {
     let setup = setup(CONFIG);
     let world = World::default();
     world.state.lock().unwrap().discord.push((
-        "/channels/100/messages".to_owned(),
+        "/channels/1566200000000000100/messages".to_owned(),
         403,
         r#"{"code":50013,"message":"Missing Permissions"}"#.to_owned(),
     ));
@@ -173,7 +173,7 @@ fn a_destination_that_cannot_be_reached_or_a_run_without_ids_still_answers() {
     local.vars.remove("GITHUB_RUN_ID");
     let world = World::default();
     world.state.lock().unwrap().discord.push((
-        "/channels/100/messages".to_owned(),
+        "/channels/1566200000000000100/messages".to_owned(),
         200,
         r#"{"id":"1"}"#.to_owned(),
     ));
@@ -351,7 +351,14 @@ fn a_release_named_by_its_tag_is_announced_in_place_of_the_run_s_event() {
         .insert("GITHUB_EVENT_NAME".to_owned(), "push".to_owned());
     let world = World::default();
     with_release(&world, 200, false);
-    discord(&world, &[("/channels/100/messages", 200, r#"{"id":"1"}"#)]);
+    discord(
+        &world,
+        &[(
+            "/channels/1566200000000000100/messages",
+            200,
+            r#"{"id":"1"}"#,
+        )],
+    );
     let released = ["announce", "--from", "github", "--release", "v1"];
     let announced = herald(&evented, &world, &released);
     assert_eq!(

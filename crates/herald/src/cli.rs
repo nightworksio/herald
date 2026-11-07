@@ -71,6 +71,9 @@ pub(crate) enum Reading {
         #[arg(long, value_enum, default_value_t = Layer::Actions)]
         layer: Layer,
     },
+    /// Print the kind of store the config keeps its records in, as
+    /// `[store] kind` writes it.
+    Store,
     #[command(flatten)]
     Set(Setting),
     /// Render each route's templates as its destination would show them,

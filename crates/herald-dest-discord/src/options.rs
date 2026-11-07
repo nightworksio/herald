@@ -1,6 +1,6 @@
 use herald_core::SecretRef;
 
-use crate::interactions::{Interactions, Subscribe};
+use crate::interactions::{Interactions, Subscribe, snowflake};
 use schemars::JsonSchema;
 use serde::Deserialize;
 
@@ -50,4 +50,20 @@ pub struct RouteOptions {
     pub forum: bool,
     /// The opt-in role members subscribe to, where the route offers one.
     pub subscribe: Option<Subscribe>,
+}
+
+impl RouteOptions {
+    /// Whether the options are sound.
+    ///
+    /// # Errors
+    ///
+    /// When `channel` is not written as Discord writes an id.
+    pub fn check(&self) -> Result<(), String> {
+        match &self.channel {
+            Some(channel) if !snowflake(channel) => Err(format!(
+                "\"{channel}\" is not a channel id; give the channel's id, 17 to 20 digits, from Copy Channel ID"
+            )),
+            _ => Ok(()),
+        }
+    }
 }

@@ -266,7 +266,7 @@ pub(crate) fn matrix(
 /// `url` with no trailing slash, where it is an `https` or `http` address
 /// with nothing a YAML or JSON string could be broken by.
 fn web(url: &str) -> Result<&str, String> {
-    let sound = (url.starts_with("https://") || url.starts_with("http://"))
+    let sound = herald_core::web_url(url)
         && !url
             .contains(|character: char| character.is_whitespace() || "\"'\\".contains(character));
     if sound {

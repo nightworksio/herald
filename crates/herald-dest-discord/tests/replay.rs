@@ -661,6 +661,20 @@ mod replay {
     }
 
     #[test]
+    fn a_route_names_its_channel_by_id_or_not_at_all() {
+        let options = |channel: Option<&str>| RouteOptions {
+            channel: channel.map(ToOwned::to_owned),
+            ..RouteOptions::default()
+        };
+        assert_eq!(options(None).check(), Ok(()));
+        assert_eq!(options(Some(CHANNEL)).check(), Ok(()));
+        assert_eq!(
+            options(Some("#releases")).check(),
+            Err("\"#releases\" is not a channel id; give the channel's id, 17 to 20 digits, from Copy Channel ID".to_owned())
+        );
+    }
+
+    #[test]
     fn a_bot_can_do_what_a_webhook_cannot() {
         let bot = bot(CHANNEL, false).profile();
         let hook = webhook(false).profile();

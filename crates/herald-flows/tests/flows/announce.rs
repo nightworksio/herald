@@ -31,7 +31,10 @@ fn an_event_is_announced_once_and_a_rerun_sends_nothing() {
     let again = pollster::block_on(run(&config, &store, &clock, &script, "v1", "r2"));
     assert_eq!(outcome(&again), &Outcome::AlreadyAnnounced);
     assert_eq!(script.seen().len(), 6);
-    assert!(script.seen()[0].starts_with("POST https://discord.com/api/v10/channels/100/messages"));
+    assert!(
+        script.seen()[0]
+            .starts_with("POST https://discord.com/api/v10/channels/1566200000000000100/messages")
+    );
 }
 
 #[test]
@@ -91,7 +94,7 @@ fn a_run_stopped_by_a_rate_limit_is_finished_by_the_next_after_it_asks_what_land
     let limited = Script::answering(&[
         POSTED,
         (
-            "/channels/100/messages/1/crosspost",
+            "/channels/1566200000000000100/messages/1/crosspost",
             429,
             r#"{"retry_after":2.5}"#,
         ),
@@ -109,7 +112,11 @@ fn a_run_stopped_by_a_rate_limit_is_finished_by_the_next_after_it_asks_what_land
     let marked = readback.replace("ROUTE.MARK", &marks());
     let finishing = Script::answering(&[
         WHO,
-        ("/channels/100/messages?limit=100", 200, &marked),
+        (
+            "/channels/1566200000000000100/messages?limit=100",
+            200,
+            &marked,
+        ),
         THREADED,
         PINNED,
         WHO,
@@ -130,7 +137,7 @@ fn a_refusal_or_an_unreachable_destination_stops_the_run() {
     let clock = FakeClock::at(NOON);
     let config = config("");
     let refused = Script::answering(&[(
-        "/channels/100/messages",
+        "/channels/1566200000000000100/messages",
         403,
         r#"{"code":50013,"message":"Missing Permissions"}"#,
     )]);
@@ -163,7 +170,7 @@ fn a_route_pinning_by_store_unpins_the_pin_the_store_remembers_and_remembers_its
         CROSSPOSTED,
         THREADED,
         PINNED,
-        ("/channels/100/messages/pins/0", 204, ""),
+        ("/channels/1566200000000000100/messages/pins/0", 204, ""),
     ]);
     let announced = pollster::block_on(run(
         &config,
@@ -188,7 +195,7 @@ fn a_route_pinning_by_store_that_stops_before_it_unpins_remembers_the_pin_it_fou
     let script = Script::answering(&[
         POSTED,
         (
-            "/channels/100/messages/1/crosspost",
+            "/channels/1566200000000000100/messages/1/crosspost",
             403,
             r#"{"code":50013,"message":"Missing Permissions"}"#,
         ),
@@ -347,7 +354,11 @@ fn a_post_an_earlier_run_attempted_and_the_channel_does_not_show_is_sent_again()
     ));
     let resending = Script::answering(&[
         WHO,
-        ("/channels/100/messages?limit=100", 200, "[]"),
+        (
+            "/channels/1566200000000000100/messages?limit=100",
+            200,
+            "[]",
+        ),
         POSTED,
         CROSSPOSTED,
         THREADED,
@@ -479,7 +490,7 @@ body = "{{ event.body }}"
 #[test]
 fn routes_and_sources_on_one_base_share_its_http() {
     let config = config(
-        "[[routes]]\nid = \"second\"\nsources = [\"gate\"]\ndestination = \"discord\"\nchannel = \"200\"\ntemplate = \"release\"\n[sources.cli]\nkind = \"github\"\nrepository = \"cli/cli\"\n",
+        "[[routes]]\nid = \"second\"\nsources = [\"gate\"]\ndestination = \"discord\"\nchannel = \"1566200000000000200\"\ntemplate = \"release\"\n[sources.cli]\nkind = \"github\"\nrepository = \"cli/cli\"\n",
     );
     let prepared = pollster::block_on(prepare(&config, &secrets(), &FakeSigner)).unwrap();
     let mut made = Vec::new();
