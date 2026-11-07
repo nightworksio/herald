@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
+import { connect } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { before, test } from "node:test";
@@ -69,5 +70,27 @@ test("herald serves on Node, keeping its records in a SQLite file", async () => 
   assert.equal(await health.text(), "herald is up");
   const unknown = await fetch(`http://127.0.0.1:${port}/nowhere`);
   assert.equal(unknown.status, 404);
+  await running.close();
+});
+
+test("a request aborted mid-body is dropped and the next is answered", async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "herald-node-"));
+  const path = join(directory, "herald.toml");
+  await writeFile(path, 'version = 1\n[store]\nkind = "sqlite"\n');
+  const warned = t.mock.method(console, "warn", () => {});
+  const running = await serve({ env: {}, path, listen: "127.0.0.1:0" });
+  const { port } = running.server.address();
+  await new Promise((resolve, reject) => {
+    const socket = connect(port, "127.0.0.1", () => {
+      socket.write("POST /inbox HTTP/1.1\r\nHost: herald.example\r\nContent-Length: 100\r\n\r\npart");
+      setTimeout(() => socket.destroy(), 50);
+    });
+    socket.on("close", resolve);
+    socket.on("error", reject);
+  });
+  while (warned.mock.callCount() === 0) await new Promise((resolve) => setTimeout(resolve, 10));
+  assert.match(warned.mock.calls[0].arguments[0], /^herald dropped POST \/inbox: its body did not arrive/);
+  const health = await fetch(`http://127.0.0.1:${port}/healthz`);
+  assert.equal(health.status, 200);
   await running.close();
 });
