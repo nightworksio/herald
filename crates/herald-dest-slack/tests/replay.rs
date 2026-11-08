@@ -5,7 +5,7 @@
 mod replay {
     use herald_core::{
         Announcement, Dialect, Entry, Facts, MentionStyle, Pins, ReadBack, Sent, Step, Text,
-        Threads,
+        Threads, Waits,
     };
     use herald_dest_slack::{
         Credential, DestinationOptions, Domain, Interacting, Interactions, Refusal, RouteOptions,
@@ -206,18 +206,31 @@ mod replay {
         );
     }
 
-    #[test]
-    fn a_limit_or_an_outage_is_asked_again_after_the_wait_it_names_or_its_own() {
+    fn limited(slack: &Slack, waits: [i64; 4]) {
         let replay = fixture!("rate-limited");
         let announcement = announcement();
         let bare = Entry::new(announcement.key);
-        for wait in [7, 5, 5, 30] {
+        for wait in waits {
             assert_eq!(
-                send(&bot(), &replay, &Step::Post, &announcement, &bare),
+                send(slack, &replay, &Step::Post, &announcement, &bare),
                 Sent::RetryAfter(SignedDuration::from_secs(wait))
             );
         }
         replay.finish().unwrap();
+    }
+
+    #[test]
+    fn a_limit_or_an_outage_is_asked_again_after_the_wait_it_names_or_its_own() {
+        limited(&bot(), [7, 5, 5, 30]);
+    }
+
+    #[test]
+    fn a_limit_or_an_outage_that_names_no_wait_waits_as_long_as_the_destination_says() {
+        let waiting = bot().waiting(Waits {
+            outage: SignedDuration::from_secs(40),
+            limited: SignedDuration::from_secs(90),
+        });
+        limited(&waiting, [7, 90, 40, 30]);
     }
 
     #[test]
@@ -609,6 +622,7 @@ mod replay {
         let reached = |token, webhook| DestinationOptions {
             token,
             symbols: None,
+            waits: None,
             webhook,
             api: None,
             domain: None,

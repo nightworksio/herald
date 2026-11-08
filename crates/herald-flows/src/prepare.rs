@@ -278,6 +278,7 @@ impl Resolved<'_> {
                 Some(Reached::Discord(
                     Discord::new(credential, placed.clone(), reached.api.as_deref())
                         .reading_back(reached.read_back.unwrap_or_default())
+                        .waiting(self.destination.waits())
                         .looking(reached.look())
                         .worded(
                             reached
@@ -291,20 +292,20 @@ impl Resolved<'_> {
             (Destination::Mastodon(reached), RouteOptions::Mastodon(placed)) => {
                 Some(Reached::Mastodon(
                     Mastodon::new(&reached.server, secret, placed.clone())
-                        .reading_back(reached.read_back.unwrap_or_default()),
+                        .reading_back(reached.read_back.unwrap_or_default())
+                        .waiting(self.destination.waits()),
                 ))
             }
             (Destination::Matrix(reached), RouteOptions::Matrix(placed)) => Some(Reached::Matrix(
                 Matrix::new(&reached.homeserver, secret, placed.clone())
-                    .reading_back(reached.read_back.unwrap_or_default()),
+                    .reading_back(reached.read_back.unwrap_or_default())
+                    .waiting(self.destination.waits()),
             )),
             (Destination::ActivityPub(reached), RouteOptions::ActivityPub(placed)) => {
-                Some(Reached::ActivityPub(ActivityPub::new(
-                    &reached.domain,
-                    self.base,
-                    secret,
-                    placed.clone(),
-                )))
+                Some(Reached::ActivityPub(
+                    ActivityPub::new(&reached.domain, self.base, secret, placed.clone())
+                        .waiting(self.destination.waits()),
+                ))
             }
             (Destination::Slack(reached), RouteOptions::Slack(placed)) => {
                 let credential = if reached.token.is_some() {
@@ -317,6 +318,7 @@ impl Resolved<'_> {
                         .on(reached.domain.unwrap_or_default())
                         .in_team(reached.team.as_deref())
                         .reading_back(reached.read_back.unwrap_or_default())
+                        .waiting(self.destination.waits())
                         .worded(
                             reached
                                 .interactions
@@ -655,6 +657,69 @@ mod tests {
                     herald_dest_fediverse::RouteOptions::default()
                 )
                 .reading_back(pages)
+            ))
+        );
+    }
+
+    #[test]
+    fn each_destination_waits_as_its_config_says_and_its_platform_elsewhere() {
+        let token = json!({ "secret": "HERALD_TOKEN" });
+        let secret = || Secret::new("HERALD_TOKEN", "token");
+        let outage = jiff::SignedDuration::from_secs(40);
+        let waits = json!({ "outage": "40s" });
+        let matrix = Destination::Matrix(
+            serde_json::from_value(
+                json!({ "homeserver": "https://matrix.example", "token": token, "waits": waits }),
+            )
+            .unwrap(),
+        );
+        let mastodon = Destination::Mastodon(
+            serde_json::from_value(
+                json!({ "server": "https://mastodon.example", "token": token, "waits": waits }),
+            )
+            .unwrap(),
+        );
+        let actor = Destination::ActivityPub(
+            serde_json::from_value(
+                json!({ "domain": "herald.example", "key": token, "waits": waits }),
+            )
+            .unwrap(),
+        );
+        let room = herald_dest_matrix::RouteOptions {
+            room: "!abcdefg:matrix.example".to_owned(),
+        };
+        let toot = herald_dest_fediverse::RouteOptions::default();
+        let named: herald_dest_fediverse::ActorRouteOptions =
+            serde_json::from_value(json!({ "actor": "herald" })).unwrap();
+        assert_eq!(
+            reached(&matrix, &RouteOptions::Matrix(room.clone())),
+            Some(Reached::Matrix(
+                Matrix::new("https://matrix.example", secret(), room).waiting(herald_core::Waits {
+                    outage,
+                    ..herald_core::Waits::DEFAULT
+                })
+            ))
+        );
+        assert_eq!(
+            reached(&mastodon, &RouteOptions::Mastodon(toot.clone())),
+            Some(Reached::Mastodon(
+                Mastodon::new("https://mastodon.example", secret(), toot).waiting(
+                    herald_core::Waits {
+                        outage,
+                        ..Mastodon::WAITS
+                    }
+                )
+            ))
+        );
+        assert_eq!(
+            reached(&actor, &RouteOptions::ActivityPub(named.clone())),
+            Some(Reached::ActivityPub(
+                ActivityPub::new("herald.example", "", secret(), named).waiting(
+                    herald_core::Waits {
+                        outage,
+                        ..herald_core::Waits::DEFAULT
+                    }
+                )
             ))
         );
     }

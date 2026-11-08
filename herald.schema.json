@@ -469,6 +469,17 @@
                 }
               ]
             },
+            "waits": {
+              "description": "How long it waits before sending again where Discord answers that it\nis unwell or limited and names no wait.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/WaitOptions"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
             "webhook": {
               "description": "The secret holding an incoming webhook's URL. A webhook only posts.",
               "anyOf": [
@@ -523,6 +534,17 @@
             "token": {
               "description": "The secret holding the account's access token, granted\n`write:statuses` and `read:statuses`.",
               "$ref": "#/$defs/SecretRef"
+            },
+            "waits": {
+              "description": "How long it waits before sending again where the server answers that it\nis unwell or limited and names no wait.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/WaitOptions"
+                },
+                {
+                  "type": "null"
+                }
+              ]
             }
           },
           "additionalProperties": false,
@@ -580,6 +602,17 @@
             "token": {
               "description": "The secret holding the bot account's access token.",
               "$ref": "#/$defs/SecretRef"
+            },
+            "waits": {
+              "description": "How long it waits before sending again where the homeserver answers that it\nis unwell or limited and names no wait.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/WaitOptions"
+                },
+                {
+                  "type": "null"
+                }
+              ]
             }
           },
           "additionalProperties": false,
@@ -666,6 +699,17 @@
                 }
               ]
             },
+            "waits": {
+              "description": "How long it waits before sending again where Slack answers that it\nis unwell or limited and names no wait.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/WaitOptions"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
             "webhook": {
               "description": "The secret holding an incoming webhook's URL. A webhook only posts.",
               "anyOf": [
@@ -704,6 +748,17 @@
               "anyOf": [
                 {
                   "$ref": "#/$defs/Symbols"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "waits": {
+              "description": "How long it waits before sending again where an inbox answers that it\nis unwell or limited and names no wait.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/WaitOptions"
                 },
                 {
                   "type": "null"
@@ -3720,6 +3775,35 @@
           "const": "private"
         }
       ]
+    },
+    "WaitOptions": {
+      "description": "The waits as `[destinations.*] waits` writes them, each a length of time\nof at least a second.",
+      "type": "object",
+      "properties": {
+        "limited": {
+          "description": "After the platform answers that herald sends too often; the\nplatform's own window where unset: \"5m\" on Mastodon, \"5s\" elsewhere.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Duration"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "outage": {
+          "description": "After the platform answers that it is unwell; \"5s\" where unset.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Duration"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
     }
   }
 }

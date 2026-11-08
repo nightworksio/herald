@@ -1,6 +1,6 @@
 use herald_core::{
     Announcement, Dialect, Entry, Facts, Features, Limits, Marker, Measure, MentionRoom,
-    MentionStyle, Pins, Profile, ReadBack, Sent, Step, Threads, Wording,
+    MentionStyle, Pins, Profile, ReadBack, Sent, Step, Threads, Waits, Wording,
 };
 use herald_ports::{Http, HttpError, Request, Secret, unreserved};
 use serde_json::Value;
@@ -72,6 +72,7 @@ pub struct Slack {
     pub(crate) read_back: ReadBack,
     pub(crate) team: Option<String>,
     pub(crate) wording: Wording,
+    pub(crate) waits: Waits,
 }
 
 impl Slack {
@@ -89,7 +90,14 @@ impl Slack {
             read_back: ReadBack::DEFAULT,
             team: None,
             wording: Wording::default(),
+            waits: Waits::DEFAULT,
         }
+    }
+
+    /// The destination, waiting `waits` where Slack names no wait.
+    #[must_use]
+    pub fn waiting(self, waits: Waits) -> Self {
+        Self { waits, ..self }
     }
 
     /// The destination, its subscribe button labelled as `wording` words
@@ -177,13 +185,13 @@ impl Slack {
                 if text(&body, "error") == Some(ALREADY_PINNED) {
                     return Ok(Sent::Landed(Facts::default()));
                 }
-                Ok(trouble(&answer, &body).unwrap_or(Sent::Landed(Facts::default())))
+                Ok(trouble(&answer, &body, self.waits).unwrap_or(Sent::Landed(Facts::default())))
             }
-            Step::Post => match read(&http.send(request).await?) {
+            Step::Post => match read(&http.send(request).await?, self.waits) {
                 Sent::Landed(facts) => Ok(Sent::Landed(self.linked(http, facts).await?)),
                 sent => Ok(sent),
             },
-            _ => Ok(read(&http.send(request).await?)),
+            _ => Ok(read(&http.send(request).await?, self.waits)),
         }
     }
 
@@ -200,7 +208,7 @@ impl Slack {
         );
         let answer = http.send(get(self, CHAT_GET_PERMALINK, &asked)).await?;
         let body = json(&answer);
-        let permalink = trouble(&answer, &body)
+        let permalink = trouble(&answer, &body, self.waits)
             .is_none()
             .then(|| text(&body, "permalink").map(ToOwned::to_owned))
             .flatten();
@@ -240,7 +248,7 @@ impl Slack {
             if text(&body, "error").is_some_and(|error| UNPINNED.contains(&error)) {
                 continue;
             }
-            if let Some(sent) = trouble(&answer, &body) {
+            if let Some(sent) = trouble(&answer, &body, self.waits) {
                 return Ok(sent);
             }
         }
@@ -260,7 +268,7 @@ impl Slack {
     ) -> Read<Vec<String>> {
         let answer = http.send(listing).await?;
         let listed = json(&answer);
-        if let Some(sent) = trouble(&answer, &listed) {
+        if let Some(sent) = trouble(&answer, &listed, self.waits) {
             return Ok(Err(sent));
         }
         let identity = match identity(self, http).await? {
@@ -286,7 +294,7 @@ impl Slack {
             );
             let answer = http.send(get(self, CONVERSATIONS_HISTORY, &asked)).await?;
             let found = json(&answer);
-            if let Some(sent) = trouble(&answer, &found) {
+            if let Some(sent) = trouble(&answer, &found, self.waits) {
                 return Ok(Err(sent));
             }
             let routed = found
@@ -322,7 +330,7 @@ pub(crate) fn carried<'a>(message: &'a Value, field: &str) -> Option<&'a str> {
 pub(crate) async fn identity<H: Http>(slack: &Slack, http: &H) -> Read<Identity> {
     let answer = http.send(get(slack, AUTH_TEST, "")).await?;
     let tested = json(&answer);
-    if let Some(sent) = trouble(&answer, &tested) {
+    if let Some(sent) = trouble(&answer, &tested, slack.waits) {
         return Ok(Err(sent));
     }
     let Some(bot) = text(&tested, "bot_id") else {
@@ -334,7 +342,7 @@ pub(crate) async fn identity<H: Http>(slack: &Slack, http: &H) -> Read<Identity>
         .send(get(slack, BOTS_INFO, &format!("bot={}", unreserved(bot))))
         .await?;
     let info = json(&answer);
-    if let Some(sent) = trouble(&answer, &info) {
+    if let Some(sent) = trouble(&answer, &info, slack.waits) {
         return Ok(Err(sent));
     }
     let Some(app) = info.get("bot").and_then(|bot| text(bot, "app_id")) else {

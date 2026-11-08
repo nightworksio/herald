@@ -31,6 +31,7 @@ mod size;
 mod subscription;
 mod symbols;
 mod version;
+mod waits;
 mod wording;
 
 pub use activity::{
@@ -76,4 +77,5 @@ pub use size::Size;
 pub use subscription::Subscription;
 pub use symbols::Symbols;
 pub use version::prerelease_version;
+pub use waits::{WaitOptions, Waits};
 pub use wording::{Phrase, Wording};

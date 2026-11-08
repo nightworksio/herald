@@ -388,8 +388,8 @@ impl Loader<'_> {
             .map(Store::FastlyKv)
     }
 
-    /// Whether every route that reaches followers or subscribers has a store
-    /// that keeps them.
+    /// Whether every Matrix sync waits less than `[http] total` allows any
+    /// answer.
     fn synced(
         &mut self,
         destinations: &BTreeMap<DestinationName, (Destination, Range<usize>)>,
@@ -416,6 +416,20 @@ impl Loader<'_> {
         }
     }
 
+    /// Whether every wait a destination sets is long enough.
+    fn waited(&mut self, destinations: &BTreeMap<DestinationName, (Destination, Range<usize>)>) {
+        for (name, (destination, span)) in destinations {
+            if let Some(Err(error)) = destination
+                .waits_written()
+                .map(|set| herald_core::Waits::check(&set))
+            {
+                self.error(span, &format!("destinations.{}", name.as_str()), error);
+            }
+        }
+    }
+
+    /// Whether every route that reaches followers or subscribers has a store
+    /// that keeps them.
     fn followed(
         &mut self,
         store: Option<&Store>,
@@ -791,6 +805,7 @@ pub fn load(
         .map(|file| loader.http(file, read))
         .unwrap_or_default();
     loader.synced(&destinations, &http);
+    loader.waited(&destinations);
     let announce = loader.announce(sections.announce);
     if let (true, Some(store), Some(templates)) = (loader.errors.is_empty(), store, compiled) {
         return Ok(Config {

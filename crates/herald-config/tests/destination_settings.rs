@@ -1,10 +1,11 @@
-//! Each destination's `read_back`: the pages it reads back of its own posts,
-//! five where unset, and refused outside one to twenty.
+//! Each destination's own settings: the pages it reads back of its own
+//! posts, the symbols it writes and how long it waits to send again.
 
 #[cfg(test)]
-mod read_back {
+mod destination_settings {
     use herald_config::{Destination, load};
-    use herald_core::{DestinationName, ReadBack};
+    use herald_core::{DestinationName, ReadBack, Waits};
+    use jiff::SignedDuration;
 
     fn config(destination: &str) -> Result<herald_config::Config, String> {
         let text = format!(
@@ -87,5 +88,46 @@ body = "{{{{ event.body }}}}"
         );
         let refused = config("symbols = { rule = \"==\" }").unwrap_err();
         assert!(refused.contains("is not one character"), "{refused}");
+    }
+
+    fn waits(config: &herald_config::Config) -> Waits {
+        config.destinations[&DestinationName::new("discord")].waits()
+    }
+
+    #[test]
+    fn a_destination_waits_as_long_as_it_says_and_its_platform_s_own_elsewhere() {
+        assert_eq!(waits(&config("").unwrap()), Waits::DEFAULT);
+        assert_eq!(
+            waits(&config("waits = { outage = \"30s\" }").unwrap()),
+            Waits {
+                outage: SignedDuration::from_secs(30),
+                limited: Waits::DEFAULT.limited,
+            }
+        );
+        let mastodon = |written: &str| {
+            let options = toml::from_str::<herald_dest_fediverse::DestinationOptions>(&format!(
+                "server = \"https://mastodon.example\"\ntoken = {{ secret = \"T\" }}\n{written}"
+            ))
+            .unwrap();
+            Destination::Mastodon(options).waits()
+        };
+        assert_eq!(mastodon("").limited, SignedDuration::from_mins(5));
+        assert_eq!(mastodon("").outage, Waits::DEFAULT.outage);
+        assert_eq!(
+            mastodon("waits = { limited = \"15m\" }").limited,
+            SignedDuration::from_mins(15)
+        );
+    }
+
+    #[test]
+    fn a_wait_shorter_than_a_second_is_refused() {
+        let refused = config("waits = { limited = \"500ms\" }").unwrap_err();
+        assert!(
+            refused.contains("waits.limited of 500ms would ask again at once; wait at least 1s"),
+            "{refused}"
+        );
+        assert!(config("waits = { outage = \"1s\", limited = \"1s\" }").is_ok());
+        let unknown = config("waits = { forever = \"1s\" }").unwrap_err();
+        assert!(unknown.contains("forever"), "{unknown}");
     }
 }

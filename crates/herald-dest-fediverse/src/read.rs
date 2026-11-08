@@ -1,16 +1,7 @@
-use herald_core::{Facts, Sent};
+use herald_core::{Facts, Sent, Waits};
 use herald_ports::Response;
-use jiff::SignedDuration;
+use jiff::Timestamp;
 use serde_json::Value;
-
-/// How long to wait when the server is unwell and says nothing of when to
-/// ask again.
-const OUTAGE: SignedDuration = SignedDuration::from_secs(5);
-/// How long to wait on a `429` that names no wait: Mastodon's limits are
-/// counted in windows of five minutes.
-const LIMITED: SignedDuration = SignedDuration::from_mins(5);
-const TOO_MANY: u16 = 429;
-const SERVER: u16 = 500;
 
 pub(crate) fn text(value: &Value, field: &str) -> Option<String> {
     value
@@ -21,16 +12,14 @@ pub(crate) fn text(value: &Value, field: &str) -> Option<String> {
 
 /// What a failed response means: when to ask again, or why the server
 /// refused.
-pub(crate) fn trouble(response: &Response, body: &Value) -> Option<Sent> {
-    let after = response
-        .header("retry-after")
-        .and_then(|after| after.parse::<u32>().ok())
-        .map(|seconds| SignedDuration::from_secs(i64::from(seconds)));
-    if response.status == TOO_MANY {
-        return Some(Sent::RetryAfter(after.unwrap_or(LIMITED)));
-    }
-    if response.status >= SERVER {
-        return Some(Sent::RetryAfter(after.unwrap_or(OUTAGE)));
+pub(crate) fn trouble(response: &Response, body: &Value, waits: Waits) -> Option<Sent> {
+    let reset = response
+        .header("x-ratelimit-reset")
+        .and_then(|reset| reset.trim().parse::<Timestamp>().ok())
+        .and_then(|reset| response.until(reset));
+    let named = response.retry_after().or(reset);
+    if let Some(wait) = waits.after(response.status, named) {
+        return Some(Sent::RetryAfter(wait));
     }
     if response.succeeded() {
         return None;
@@ -44,9 +33,9 @@ pub(crate) fn trouble(response: &Response, body: &Value) -> Option<Sent> {
     ))
 }
 
-pub(crate) fn read(response: &Response) -> Sent {
+pub(crate) fn read(response: &Response, waits: Waits) -> Sent {
     let body: Value = serde_json::from_slice(&response.body).unwrap_or(Value::Null);
-    if let Some(sent) = trouble(response, &body) {
+    if let Some(sent) = trouble(response, &body, waits) {
         return sent;
     }
     text(&body, "id").map_or_else(

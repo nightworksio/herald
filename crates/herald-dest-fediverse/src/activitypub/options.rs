@@ -1,4 +1,4 @@
-use herald_core::{SecretRef, Symbols};
+use herald_core::{SecretRef, Symbols, WaitOptions};
 use schemars::JsonSchema;
 use serde::Deserialize;
 
@@ -18,6 +18,9 @@ pub struct ActorOptions {
     /// The characters its posts write where its markup has none: a task
     /// done and to do, a rule and a text list's bullet.
     pub symbols: Option<Symbols>,
+    /// How long it waits before sending again where an inbox answers that it
+    /// is unwell or limited and names no wait.
+    pub waits: Option<WaitOptions>,
 }
 
 impl ActorOptions {

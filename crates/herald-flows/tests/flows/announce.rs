@@ -324,6 +324,7 @@ fn credentials_and_marker_keys_that_cannot_be_resolved_say_why() {
                     token: options.token.clone().unwrap(),
                     read_back: None,
                     symbols: None,
+                    waits: None,
                 });
         }
     }

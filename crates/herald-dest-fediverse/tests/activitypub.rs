@@ -4,7 +4,9 @@
 
 #[cfg(test)]
 mod activitypub {
-    use herald_core::{Dialect, Entry, Facts, MentionStyle, Pins, Sent, Step, Text, Threads};
+    use herald_core::{
+        Dialect, Entry, Facts, MentionStyle, Pins, Sent, Step, Text, Threads, Waits,
+    };
     use herald_dest_fediverse::{
         ActivityPub, ActorOptions, ActorRouteOptions, Asked, accept, actor_document, actor_profile,
         asked, create, note, webfinger,
@@ -132,6 +134,32 @@ mod activitypub {
     }
 
     #[test]
+    fn an_inbox_that_names_no_wait_is_asked_again_as_long_as_the_actor_says() {
+        let replay = Replay::of(
+            Fixture::from_json(include_str!("../fixtures/deliveries.reference.json")).unwrap(),
+        );
+        let actor = reached("HERALD_ACTIVITYPUB_KEY").waiting(Waits {
+            outage: SignedDuration::from_secs(40),
+            limited: SignedDuration::from_secs(90),
+        });
+        let mut waited = Vec::new();
+        for inbox in [
+            "https://social.example/inbox",
+            "https://gone.example/inbox",
+            "https://busy.example/inbox",
+            "https://down.example/inbox",
+        ] {
+            if let Sent::RetryAfter(wait) = send(&actor, &replay, &deliver(inbox)) {
+                waited.push(wait);
+            }
+        }
+        assert_eq!(
+            waited,
+            [SignedDuration::from_secs(9), SignedDuration::from_secs(40)]
+        );
+    }
+
+    #[test]
     fn the_post_is_the_note_itself_and_nothing_else_is_asked() {
         let replay = Replay::of(Fixture::default());
         let actor = reached("HERALD_ACTIVITYPUB_KEY");
@@ -244,6 +272,7 @@ mod activitypub {
         let options = |domain: &str| ActorOptions {
             domain: domain.to_owned(),
             symbols: None,
+            waits: None,
             key: herald_core::SecretRef {
                 secret: "K".to_owned(),
             },

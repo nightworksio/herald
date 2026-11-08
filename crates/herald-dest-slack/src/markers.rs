@@ -60,7 +60,7 @@ impl<'a, H: Http> SlackMarkers<'a, H> {
             .await
             .map_err(|error| unreadable(error.to_string()))?;
         let body = json(&response);
-        trouble(&response, &body).map_or(Ok(body), |sent| Err(said(sent)))
+        trouble(&response, &body, self.slack.waits).map_or(Ok(body), |sent| Err(said(sent)))
     }
 
     /// What `method` lists for `asked`, read page by page until a page

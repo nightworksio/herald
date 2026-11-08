@@ -1,13 +1,6 @@
-use herald_core::{Facts, Sent};
+use herald_core::{Facts, Sent, Waits};
 use herald_ports::Response;
-use jiff::SignedDuration;
 use serde_json::Value;
-
-/// How long to wait when Slack is unwell or limits herald and says nothing
-/// of when to ask again.
-const OUTAGE: SignedDuration = SignedDuration::from_secs(5);
-const TOO_MANY: u16 = 429;
-const SERVER: u16 = 500;
 /// The most of an answer that is not JSON a refusal quotes.
 const QUOTED: usize = 200;
 
@@ -29,13 +22,9 @@ pub(crate) fn text<'a>(value: &'a Value, field: &str) -> Option<&'a str> {
 /// What a failed answer means: when to ask again, or why Slack refused.
 /// Slack's Web API answers a refusal with `200` and `"ok": false`; an
 /// incoming webhook answers one with a status and a word.
-pub(crate) fn trouble(response: &Response, body: &Value) -> Option<Sent> {
-    if response.status == TOO_MANY || response.status >= SERVER {
-        let after = response
-            .header("retry-after")
-            .and_then(|after| after.parse::<u32>().ok())
-            .map(|seconds| SignedDuration::from_secs(i64::from(seconds)));
-        return Some(Sent::RetryAfter(after.unwrap_or(OUTAGE)));
+pub(crate) fn trouble(response: &Response, body: &Value, waits: Waits) -> Option<Sent> {
+    if let Some(wait) = waits.after(response.status, response.retry_after()) {
+        return Some(Sent::RetryAfter(wait));
     }
     if !response.succeeded() {
         let said = quoted(
@@ -61,9 +50,9 @@ pub(crate) fn trouble(response: &Response, body: &Value) -> Option<Sent> {
 
 /// What a message posted answers: its timestamp, as Slack names a message,
 /// where a bot posted it, or nothing more from a webhook.
-pub(crate) fn read(response: &Response) -> Sent {
+pub(crate) fn read(response: &Response, waits: Waits) -> Sent {
     let body = json(response);
-    if let Some(sent) = trouble(response, &body) {
+    if let Some(sent) = trouble(response, &body, waits) {
         return sent;
     }
     if body.is_string() {

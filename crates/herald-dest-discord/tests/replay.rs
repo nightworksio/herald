@@ -5,7 +5,7 @@
 mod replay {
     use herald_core::{
         Announcement, Chore, Delivery, Entry, Facts, Marker, Pins, Plan, Planned, ReadBack, Sent,
-        Step, plan,
+        Step, Waits, plan,
     };
     use herald_dest_discord::{
         ArchiveAfter, Colour, Credential, DestinationOptions, Discord, DiscordMarkers, Look,
@@ -439,6 +439,23 @@ mod replay {
     }
 
     #[test]
+    fn an_outage_that_names_no_wait_waits_as_long_as_the_destination_says() {
+        let entry = Entry::new(announcement().key);
+        let replay = fixture!("outage");
+        let waiting = bot(CHANNEL, false).waiting(Waits {
+            outage: SignedDuration::from_secs(40),
+            limited: SignedDuration::from_secs(90),
+        });
+        for wait in [30, 40] {
+            assert_eq!(
+                send(&waiting, &replay, &Step::Post, &entry),
+                Sent::RetryAfter(SignedDuration::from_secs(wait))
+            );
+        }
+        replay.finish().unwrap();
+    }
+
+    #[test]
     fn a_refusal_says_what_discord_said() {
         let replay = fixture!("refused");
         assert_eq!(
@@ -746,6 +763,7 @@ mod replay {
         let options = |token, webhook| DestinationOptions {
             token,
             symbols: None,
+            waits: None,
             webhook,
             api: None,
             interactions: None,

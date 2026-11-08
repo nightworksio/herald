@@ -1,6 +1,6 @@
 use herald_core::{
     Announcement, Chore, Delivery, Dialect, Entry, Features, Limits, Measure, MentionStyle, Pins,
-    Profile, ReadBack, Sent, Step, Threads, Wording,
+    Profile, ReadBack, Sent, Step, Threads, Waits, Wording,
 };
 use herald_ports::{Http, HttpError, Request, Secret};
 
@@ -31,6 +31,7 @@ pub struct Discord {
     pub(crate) read_back: ReadBack,
     pub(crate) look: Look,
     pub(crate) wording: Wording,
+    pub(crate) waits: Waits,
 }
 
 impl Discord {
@@ -45,7 +46,14 @@ impl Discord {
             read_back: ReadBack::DEFAULT,
             look: Look::DEFAULT,
             wording: Wording::default(),
+            waits: Waits::DEFAULT,
         }
+    }
+
+    /// The destination, waiting `waits` where Discord names no wait.
+    #[must_use]
+    pub fn waiting(self, waits: Waits) -> Self {
+        Self { waits, ..self }
     }
 
     /// The destination, reading back `read_back` pages of its own posts.
@@ -143,7 +151,7 @@ impl Discord {
         for request in requests {
             let response = http.send(request).await?;
             let body = serde_json::from_slice(&response.body).unwrap_or(serde_json::Value::Null);
-            if let Some(trouble) = trouble(&response, &body) {
+            if let Some(trouble) = trouble(&response, &body, self.waits) {
                 return Ok(trouble);
             }
         }

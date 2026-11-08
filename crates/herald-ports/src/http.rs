@@ -1,6 +1,8 @@
 use std::fmt;
 use std::future::Future;
 
+use jiff::{SignedDuration, Timestamp};
+
 use crate::outbound::Outbound;
 use crate::secret::Text;
 
@@ -208,6 +210,39 @@ impl Response {
     pub fn succeeded(&self) -> bool {
         (200..300).contains(&self.status)
     }
+
+    /// When the response was sent, as its `Date` names it.
+    #[must_use]
+    pub fn date(&self) -> Option<Timestamp> {
+        http_date(self.header("date")?)
+    }
+
+    /// How long its `Retry-After` asks to wait: the seconds it names, or the
+    /// time from the response's `Date` to the date it names.
+    #[must_use]
+    pub fn retry_after(&self) -> Option<SignedDuration> {
+        let after = self.header("retry-after")?.trim();
+        if let Ok(seconds) = after.parse::<f64>() {
+            return SignedDuration::try_from_secs_f64(seconds)
+                .ok()
+                .filter(|wait| !wait.is_negative());
+        }
+        self.until(http_date(after)?)
+    }
+
+    /// The time from the response's `Date` to `at`, where `at` is not before
+    /// it: a wait measured by the server's own clock.
+    #[must_use]
+    pub fn until(&self, at: Timestamp) -> Option<SignedDuration> {
+        Some(at.duration_since(self.date()?)).filter(|wait| !wait.is_negative())
+    }
+}
+
+/// The time an HTTP date names.
+fn http_date(text: &str) -> Option<Timestamp> {
+    jiff::fmt::rfc2822::parse(text)
+        .ok()
+        .map(|zoned| zoned.timestamp())
 }
 
 /// Why a request got no response.
@@ -272,6 +307,59 @@ mod tests {
         assert_eq!(request().within(Outbound::BODY).most, Outbound::BODY);
         assert_eq!(request().at_most(10).within(20).most, 10);
         assert_eq!(request().at_most(20).within(10).most, 10);
+    }
+
+    fn answered(headers: &[(&str, &str)]) -> Response {
+        Response {
+            status: 429,
+            headers: headers
+                .iter()
+                .map(|(name, value)| ((*name).to_owned(), (*value).to_owned()))
+                .collect(),
+            body: Vec::new(),
+        }
+    }
+
+    const SENT: (&str, &str) = ("Date", "Sun, 08 Nov 2026 22:00:00 GMT");
+
+    #[test]
+    fn retry_after_names_seconds_or_a_date_measured_from_the_answer_s_own() {
+        let after = |value| answered(&[SENT, ("Retry-After", value)]).retry_after();
+        assert_eq!(after("120"), Some(SignedDuration::from_secs(120)));
+        assert_eq!(after(" 1.5 "), Some(SignedDuration::from_millis(1_500)));
+        assert_eq!(after("0"), Some(SignedDuration::ZERO));
+        assert_eq!(
+            after("Sun, 08 Nov 2026 22:05:00 GMT"),
+            Some(SignedDuration::from_mins(5))
+        );
+        for unread in ["-1", "NaN", "inf", "soon", "Sun, 08 Nov 2026 21:59:59 GMT"] {
+            assert_eq!(after(unread), None, "{unread}");
+        }
+        assert_eq!(answered(&[]).retry_after(), None);
+        let undated = answered(&[("retry-after", "Sun, 08 Nov 2026 22:05:00 GMT")]);
+        assert_eq!(undated.retry_after(), None);
+        assert_eq!(
+            answered(&[("retry-after", "7")]).retry_after(),
+            Some(SignedDuration::from_secs(7))
+        );
+    }
+
+    #[test]
+    fn a_wait_until_a_time_is_measured_from_the_answer_s_date() {
+        let sent = answered(&[SENT]);
+        let at = |text: &str| text.parse::<Timestamp>().unwrap();
+        assert_eq!(sent.date(), Some(at("2026-11-08T22:00:00Z")));
+        assert_eq!(
+            sent.until(at("2026-11-08T22:00:30Z")),
+            Some(SignedDuration::from_secs(30))
+        );
+        assert_eq!(
+            sent.until(at("2026-11-08T22:00:00Z")),
+            Some(SignedDuration::ZERO)
+        );
+        assert_eq!(sent.until(at("2026-11-08T21:00:00Z")), None);
+        assert_eq!(answered(&[]).until(at("2026-11-08T22:00:30Z")), None);
+        assert_eq!(answered(&[("Date", "yesterday")]).date(), None);
     }
 
     #[test]

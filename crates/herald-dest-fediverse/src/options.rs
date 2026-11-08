@@ -1,6 +1,6 @@
 use std::num::NonZeroUsize;
 
-use herald_core::{ReadBack, SecretRef, Symbols};
+use herald_core::{ReadBack, SecretRef, Symbols, WaitOptions};
 use schemars::JsonSchema;
 use serde::Deserialize;
 
@@ -19,6 +19,9 @@ pub struct DestinationOptions {
     /// The characters its posts write where its markup has none: a task
     /// done and to do, a rule and a text list's bullet.
     pub symbols: Option<Symbols>,
+    /// How long it waits before sending again where the server answers that it
+    /// is unwell or limited and names no wait.
+    pub waits: Option<WaitOptions>,
 }
 
 /// Who sees a status.

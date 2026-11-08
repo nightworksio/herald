@@ -1,6 +1,6 @@
 use herald_core::{
     Announcement, Dialect, Entry, Facts, Features, Limits, Marker, Measure, MentionRoom,
-    MentionStyle, Pins, Profile, ReadBack, Sent, Step, Threads,
+    MentionStyle, Pins, Profile, ReadBack, Sent, Step, Threads, Waits,
 };
 use herald_ports::{Http, HttpError, Request, Secret};
 use serde_json::Value;
@@ -44,6 +44,7 @@ pub struct Matrix {
     pub(crate) token: Secret,
     pub(crate) route: RouteOptions,
     pub(crate) read_back: ReadBack,
+    pub(crate) waits: Waits,
 }
 
 impl Matrix {
@@ -56,7 +57,15 @@ impl Matrix {
             token,
             route,
             read_back: ReadBack::DEFAULT,
+            waits: Waits::DEFAULT,
         }
+    }
+
+    /// The destination, waiting `waits` where the homeserver names no
+    /// wait.
+    #[must_use]
+    pub fn waiting(self, waits: Waits) -> Self {
+        Self { waits, ..self }
     }
 
     /// The destination, reading back `read_back` pages of its own posts.
@@ -127,7 +136,7 @@ impl Matrix {
             Ok(target) => target,
             Err(refusal) => return Ok(Sent::Refused(refusal.to_string())),
         };
-        let held = match pins(&http.send(pinned(self)).await?) {
+        let held = match pins(&http.send(pinned(self)).await?, self.waits) {
             Ok(held) => held,
             Err(sent) => return Ok(sent),
         };
@@ -153,7 +162,7 @@ impl Matrix {
             return Ok(landed);
         }
         let answer = http.send(repinned(self, &wanted)).await?;
-        Ok(trouble(&answer, &json(&answer)).unwrap_or(landed))
+        Ok(trouble(&answer, &json(&answer), self.waits).unwrap_or(landed))
     }
 
     /// The pins in `held`, other than `post`, that herald's own account sent
@@ -168,7 +177,7 @@ impl Matrix {
     ) -> Read<Vec<String>> {
         let account = http.send(get(self, "/account/whoami")).await?;
         let named = json(&account);
-        if let Some(sent) = trouble(&account, &named) {
+        if let Some(sent) = trouble(&account, &named, self.waits) {
             return Ok(Err(sent));
         }
         let Some(herald) = text(&named, "user_id") else {
@@ -181,7 +190,7 @@ impl Matrix {
                 continue;
             }
             let found = json(&response);
-            if let Some(sent) = trouble(&response, &found) {
+            if let Some(sent) = trouble(&response, &found, self.waits) {
                 return Ok(Err(sent));
             }
             let content = found.get("content").unwrap_or(&Value::Null);

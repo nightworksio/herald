@@ -1,15 +1,9 @@
-use herald_core::{Facts, Sent, Step};
+use herald_core::{Facts, Sent, Step, Waits};
 use herald_ports::Response;
 use jiff::SignedDuration;
 use serde_json::Value;
 
 use crate::discord::{Credential, Discord};
-
-/// How long to wait when Discord is unwell and says nothing of when to ask
-/// again.
-const OUTAGE: SignedDuration = SignedDuration::from_secs(5);
-const TOO_MANY: u16 = 429;
-const SERVER: u16 = 500;
 
 fn id(value: &Value) -> Option<String> {
     value
@@ -18,22 +12,19 @@ fn id(value: &Value) -> Option<String> {
         .map(ToOwned::to_owned)
 }
 
-fn seconds(seconds: f64) -> SignedDuration {
-    SignedDuration::try_from_secs_f64(seconds).unwrap_or(OUTAGE)
+/// The wait a `429`'s body names, in seconds.
+fn named(body: &Value) -> Option<SignedDuration> {
+    body.get("retry_after")
+        .and_then(Value::as_f64)
+        .and_then(|seconds| SignedDuration::try_from_secs_f64(seconds).ok())
+        .filter(|wait| !wait.is_negative())
 }
 
 /// What a failed response means: when to ask again, or why Discord refused.
-pub(crate) fn trouble(response: &Response, body: &Value) -> Option<Sent> {
-    let after = response
-        .header("retry-after")
-        .and_then(|after| after.parse::<f64>().ok())
-        .map(seconds);
-    if response.status == TOO_MANY {
-        let wait = body.get("retry_after").and_then(Value::as_f64).map(seconds);
-        return Some(Sent::RetryAfter(wait.or(after).unwrap_or(OUTAGE)));
-    }
-    if response.status >= SERVER {
-        return Some(Sent::RetryAfter(after.unwrap_or(OUTAGE)));
+pub(crate) fn trouble(response: &Response, body: &Value, waits: Waits) -> Option<Sent> {
+    let named = named(body).or_else(|| response.retry_after());
+    if let Some(wait) = waits.after(response.status, named) {
+        return Some(Sent::RetryAfter(wait));
     }
     if response.succeeded() {
         return None;
@@ -55,7 +46,7 @@ pub(crate) fn trouble(response: &Response, body: &Value) -> Option<Sent> {
 
 pub(crate) fn read(discord: &Discord, step: &Step, response: &Response) -> Sent {
     let body: Value = serde_json::from_slice(&response.body).unwrap_or(Value::Null);
-    if let Some(sent) = trouble(response, &body) {
+    if let Some(sent) = trouble(response, &body, discord.waits) {
         return sent;
     }
     let webhook = matches!(discord.credential, Credential::Webhook(_));
