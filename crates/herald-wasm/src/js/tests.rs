@@ -250,7 +250,10 @@ async fn an_ed25519_key_publishes_rfc_8410_s_public_key_and_verifies_its_own_sig
 async fn an_rsa_key_publishes_its_spki_and_verifies_through_its_pkcs1() {
     let key = Secret::new("RSA", pem(&unhex(RSA)));
     let public = WebSigner.public(Algorithm::RsaSha256, &key).await.unwrap();
-    assert_eq!(public, herald_keys::pem(RSA_SPKI).unwrap());
+    assert_eq!(
+        public,
+        herald_keys::pem(RSA_SPKI, herald_keys::PUBLIC_KEY).unwrap()
+    );
     let signature = WebSigner
         .sign(Algorithm::RsaSha256, &key, b"(request-target): post /inbox")
         .await

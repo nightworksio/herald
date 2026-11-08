@@ -87,7 +87,10 @@ fn an_undefined_value_may_be_tested_but_not_printed() {
 #[test]
 fn an_undefined_value_is_refused_wherever_it_is_used_as_a_value() {
     let tested = [
-        ("{% if event.missing is defined %}yes{% else %}no{% endif %}", "no"),
+        (
+            "{% if event.missing is defined %}yes{% else %}no{% endif %}",
+            "no",
+        ),
         ("{% if not event.missing %}absent{% endif %}", "absent"),
         ("{{ event.missing | default('none') }}", "none"),
     ];
@@ -102,7 +105,11 @@ fn an_undefined_value_is_refused_wherever_it_is_used_as_a_value() {
         "{{ event.missing | upper }}",
     ] {
         let error = render(refused, &event()).unwrap_err();
-        assert!(error.reason.contains("undefined"), "{refused}: {}", error.reason);
+        assert!(
+            error.reason.contains("undefined"),
+            "{refused}: {}",
+            error.reason
+        );
     }
 }
 

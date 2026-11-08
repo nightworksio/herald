@@ -1,6 +1,6 @@
 //! How Web Crypto takes herald's keys, and the keys it publishes.
 
-use herald_keys::{Public, jwk_bytes, pem, rsa_public, subject};
+use herald_keys::{PRIVATE_KEY, Public, jwk_bytes, pem, rsa_public, subject};
 use herald_ports::{Algorithm, Secret};
 
 /// How Web Crypto takes one key: the format its bytes are in, the
@@ -37,7 +37,7 @@ pub fn signing(algorithm: Algorithm, key: &Secret) -> Option<Imported> {
     let (name, hash) = named(algorithm);
     let (format, data) = match algorithm {
         Algorithm::HmacSha256 => ("raw", key.expose().as_bytes().to_vec()),
-        Algorithm::Ed25519 | Algorithm::RsaSha256 => ("pkcs8", pem(key.expose())?),
+        Algorithm::Ed25519 | Algorithm::RsaSha256 => ("pkcs8", pem(key.expose(), PRIVATE_KEY)?),
     };
     Some(Imported {
         format,

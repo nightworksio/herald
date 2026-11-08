@@ -3,7 +3,7 @@
 
 use std::future::{Future, ready};
 
-use herald_keys::{Public, pem, subject};
+use herald_keys::{PRIVATE_KEY, Public, pem, subject};
 use herald_ports::{Algorithm, CryptoError, Secret, Signer, Verifier};
 use ring::hmac;
 use ring::rand::SystemRandom;
@@ -29,11 +29,12 @@ fn signed(algorithm: Algorithm, key: &Secret, message: &[u8]) -> Option<Vec<u8>>
             Some(hmac::sign(&key, message).as_ref().to_vec())
         }
         Algorithm::Ed25519 => {
-            let pair = Ed25519KeyPair::from_pkcs8_maybe_unchecked(&pem(key.expose())?).ok()?;
+            let pair = Ed25519KeyPair::from_pkcs8_maybe_unchecked(&pem(key.expose(), PRIVATE_KEY)?)
+                .ok()?;
             Some(pair.sign(message).as_ref().to_vec())
         }
         Algorithm::RsaSha256 => {
-            let pair = RsaKeyPair::from_pkcs8(&pem(key.expose())?).ok()?;
+            let pair = RsaKeyPair::from_pkcs8(&pem(key.expose(), PRIVATE_KEY)?).ok()?;
             let mut signature = vec![0; pair.public().modulus_len()];
             pair.sign(
                 &RSA_PKCS1_SHA256,
@@ -51,11 +52,12 @@ fn public_half(algorithm: Algorithm, key: &Secret) -> Option<Vec<u8>> {
     match algorithm {
         Algorithm::HmacSha256 => None,
         Algorithm::Ed25519 => {
-            let pair = Ed25519KeyPair::from_pkcs8_maybe_unchecked(&pem(key.expose())?).ok()?;
+            let pair = Ed25519KeyPair::from_pkcs8_maybe_unchecked(&pem(key.expose(), PRIVATE_KEY)?)
+                .ok()?;
             Some(subject(Public::Ed25519, pair.public_key().as_ref()))
         }
         Algorithm::RsaSha256 => {
-            let pair = RsaKeyPair::from_pkcs8(&pem(key.expose())?).ok()?;
+            let pair = RsaKeyPair::from_pkcs8(&pem(key.expose(), PRIVATE_KEY)?).ok()?;
             Some(subject(Public::Rsa, pair.public().as_ref()))
         }
     }

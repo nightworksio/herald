@@ -195,7 +195,7 @@ fn a_public_key_is_published_as_a_subject_public_key_info() {
     let rsa = public(Algorithm::RsaSha256, &Secret::new("RSA", pem(&der))).unwrap();
     assert_eq!(
         rsa,
-        herald_keys::pem(SPKI).unwrap(),
+        herald_keys::pem(SPKI, herald_keys::PUBLIC_KEY).unwrap(),
         "the key's own published PEM"
     );
     let seed = Ed25519KeyPair::generate_pkcs8(&SystemRandom::new()).unwrap();
