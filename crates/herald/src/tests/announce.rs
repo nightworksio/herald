@@ -337,10 +337,17 @@ fn a_warning_on_actions_stays_one_workflow_command() {
         escaped("100% done\r\n::error::forged"),
         "100%25 done%0D%0A::error::forged"
     );
-    let mut setup = setup(&CONFIG.replace("kind = \"git-branch\"", MARKERS).replace(
-        "template = \"release\"\n",
-        "template = \"release\"\npin = \"store\"\n",
-    ));
+    let mut setup = setup(
+        &CONFIG
+            .replace(
+                "kind = \"git-branch\"\nkey = { secret = \"HERALD_STORE_KEY\" }",
+                MARKERS,
+            )
+            .replace(
+                "template = \"release\"\n",
+                "template = \"release\"\npin = \"store\"\n",
+            ),
+    );
     setup
         .vars
         .insert("GITHUB_ACTIONS".to_owned(), "true".to_owned());
@@ -437,6 +444,7 @@ fn on_actions_every_secret_is_masked_before_anything_is_printed() {
             "::add-mask::github-token",
             "::add-mask::second 100%25",
             "::add-mask::first line",
+            "::add-mask::store-key",
             "The run's event is push, not a release; nothing to announce.",
             "",
         ]

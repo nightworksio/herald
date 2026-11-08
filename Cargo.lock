@@ -1124,13 +1124,16 @@ dependencies = [
 name = "herald-records"
 version = "0.0.0"
 dependencies = [
+ "base64 0.23.1",
  "herald-core",
  "herald-ports",
  "herald-testing",
+ "hmac",
  "jiff",
  "pollster",
  "serde",
  "serde_json",
+ "sha2 0.11.1",
 ]
 
 [[package]]
@@ -1239,6 +1242,7 @@ dependencies = [
 name = "herald-store-d1"
 version = "0.0.0"
 dependencies = [
+ "herald-core",
  "herald-ports",
  "herald-records",
  "herald-testing",
@@ -1252,6 +1256,7 @@ dependencies = [
 name = "herald-store-deno-kv"
 version = "0.0.0"
 dependencies = [
+ "herald-core",
  "herald-ports",
  "herald-records",
  "herald-testing",
@@ -1265,6 +1270,7 @@ dependencies = [
 name = "herald-store-durable-object"
 version = "0.0.0"
 dependencies = [
+ "herald-core",
  "herald-ports",
  "herald-records",
  "herald-testing",
@@ -1293,6 +1299,7 @@ dependencies = [
 name = "herald-store-fastly-kv"
 version = "0.0.0"
 dependencies = [
+ "herald-core",
  "herald-ports",
  "herald-records",
  "herald-testing",

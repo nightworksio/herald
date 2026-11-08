@@ -219,6 +219,7 @@ mod dogfood {
             ("GITHUB_TOKEN", "the run's token"),
             ("HERALD_DISCORD_TOKEN", "ci-discord-token"),
             ("HERALD_MARKER_SECRET", "ci-marker-secret"),
+            ("HERALD_STORE_KEY", "ci-store-key"),
             ("ACTIONS_RESULTS_URL", "https://results.example"),
             ("ACTIONS_RUNTIME_TOKEN", "ci-runtime-token"),
         ]

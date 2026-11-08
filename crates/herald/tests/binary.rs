@@ -18,6 +18,7 @@ mod binary {
             .env("GITHUB_REPOSITORY", "cli/cli")
             .env("GITHUB_TOKEN", "t")
             .env("HERALD_DISCORD_TOKEN", "d")
+            .env("HERALD_STORE_KEY", "k")
             .output()
             .unwrap()
     }
@@ -30,6 +31,7 @@ mod binary {
             r#"version = 1
 [store]
 kind = "git-branch"
+key = {{ secret = "HERALD_STORE_KEY" }}
 api = "{store_api}"
 [destinations.discord]
 kind = "discord"
@@ -159,6 +161,7 @@ body = "{{{{ event.body }}}}"
                 .env("GITHUB_REPOSITORY", "cli/cli")
                 .env("GITHUB_TOKEN", "t")
                 .env("HERALD_DISCORD_TOKEN", "d")
+                .env("HERALD_STORE_KEY", "k")
                 .stdout(std::process::Stdio::piped())
                 .spawn()
                 .unwrap()

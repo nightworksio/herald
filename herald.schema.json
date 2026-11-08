@@ -1798,6 +1798,17 @@
                 }
               ]
             },
+            "key": {
+              "description": "The secret holding a key to seal every record with, such as\n`HERALD_STORE_KEY`, so a record herald did not seal reads as corrupt\n(ADR-0005); records are not sealed where absent.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/SecretRef"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
             "kind": {
               "type": "string",
               "const": "sqlite"
@@ -1824,6 +1835,17 @@
               "anyOf": [
                 {
                   "$ref": "#/$defs/Duration"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "key": {
+              "description": "The secret holding a key to seal every record with, such as\n`HERALD_STORE_KEY`, so a record herald did not seal reads as corrupt\n(ADR-0005); records are not sealed where absent.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/SecretRef"
                 },
                 {
                   "type": "null"
@@ -1867,6 +1889,17 @@
                 "null"
               ]
             },
+            "key": {
+              "description": "The secret holding a key to seal every record with, such as\n`HERALD_STORE_KEY`, so a record herald did not seal reads as corrupt\n(ADR-0005); records are not sealed where absent.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/SecretRef"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
             "kind": {
               "type": "string",
               "const": "d1"
@@ -1886,6 +1919,17 @@
               "type": [
                 "string",
                 "null"
+              ]
+            },
+            "key": {
+              "description": "The secret holding a key to seal every record with, such as\n`HERALD_STORE_KEY`, so a record herald did not seal reads as corrupt\n(ADR-0005); records are not sealed where absent.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/SecretRef"
+                },
+                {
+                  "type": "null"
+                }
               ]
             },
             "kind": {
@@ -1925,6 +1969,17 @@
               "type": [
                 "string",
                 "null"
+              ]
+            },
+            "key": {
+              "description": "The secret holding a key to seal every record with, such as\n`HERALD_STORE_KEY`, so a record herald did not seal reads as corrupt\n(ADR-0005); records are not sealed where absent.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/SecretRef"
+                },
+                {
+                  "type": "null"
+                }
               ]
             },
             "kind": {
@@ -1977,6 +2032,17 @@
           "description": "Deno KV, on Deno Deploy or wherever a database is opened.",
           "type": "object",
           "properties": {
+            "key": {
+              "description": "The secret holding a key to seal every record with, such as\n`HERALD_STORE_KEY`, so a record herald did not seal reads as corrupt\n(ADR-0005); records are not sealed where absent.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/SecretRef"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
             "kind": {
               "type": "string",
               "const": "deno-kv"
@@ -2005,6 +2071,17 @@
           "description": "A Fastly KV Store, on Fastly Compute.",
           "type": "object",
           "properties": {
+            "key": {
+              "description": "The secret holding a key to seal every record with, such as\n`HERALD_STORE_KEY`, so a record herald did not seal reads as corrupt\n(ADR-0005); records are not sealed where absent.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/SecretRef"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
             "kind": {
               "type": "string",
               "const": "fastly-kv"
@@ -2061,6 +2138,10 @@
                 "null"
               ]
             },
+            "key": {
+              "description": "The secret holding the key every record is sealed with, such as\n`HERALD_STORE_KEY`: whoever can write the repository could otherwise\nforge records herald trusts (ADR-0005).",
+              "$ref": "#/$defs/SecretRef"
+            },
             "kind": {
               "type": "string",
               "const": "git-branch"
@@ -2086,7 +2167,8 @@
           },
           "additionalProperties": false,
           "required": [
-            "kind"
+            "kind",
+            "key"
           ]
         },
         {
@@ -2099,6 +2181,10 @@
               "items": {
                 "$ref": "#/$defs/RecordKind"
               }
+            },
+            "key": {
+              "description": "The secret holding the key every record is sealed with, such as\n`HERALD_STORE_KEY`: whoever can write the repository could otherwise\nforge records herald trusts (ADR-0005).",
+              "$ref": "#/$defs/SecretRef"
             },
             "kind": {
               "type": "string",
@@ -2114,7 +2200,8 @@
           },
           "additionalProperties": false,
           "required": [
-            "kind"
+            "kind",
+            "key"
           ]
         },
         {
@@ -2127,6 +2214,10 @@
                 "string",
                 "null"
               ]
+            },
+            "key": {
+              "description": "The secret holding the key every record is sealed with, such as\n`HERALD_STORE_KEY`: whoever can write the repository could otherwise\nforge records herald trusts (ADR-0005).",
+              "$ref": "#/$defs/SecretRef"
             },
             "kind": {
               "type": "string",
@@ -2147,7 +2238,8 @@
           "additionalProperties": false,
           "required": [
             "kind",
-            "token"
+            "token",
+            "key"
           ]
         }
       ]

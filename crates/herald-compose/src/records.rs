@@ -4,7 +4,7 @@ use std::path::Path;
 use herald_config::Store;
 use herald_flows::{Connected, unserved};
 use herald_ports::{Keyring, Secret, Secrets as _, Store as Keeps};
-use herald_records::{Kept, KvRecords, SqlRecords};
+use herald_records::{Kept, KvRecords, Seal, SqlRecords};
 use herald_store_dynamodb::{Dynamodb, DynamodbStore};
 use herald_store_git_branch::{GitBranch, GitBranchStore, StoreOptions as BranchOptions};
 use herald_store_repo_variables::{
@@ -77,6 +77,33 @@ pub async fn reached<H: Host>(
     if !stores.contains(&store.kind()) {
         return Err(unserved(stores));
     }
+    let seal = match store.key() {
+        Some(key) => Some(Seal::new(
+            secret(host, &key.secret, "the store seals its records with it").await?,
+        )),
+        None => None,
+    };
+    let records = opening(host, store, stores).await?;
+    Ok(match seal {
+        Some(seal) => records.sealed(seal),
+        None => records,
+    })
+}
+
+impl<H: Host> Records<H> {
+    fn sealed(self, seal: Seal) -> Self {
+        match self {
+            Self::Sql(store) => Self::Sql(store.sealed(seal)),
+            Self::Kv(store) => Self::Kv(store.sealed(seal)),
+            Self::Branch(store) => Self::Branch(store.sealed(seal)),
+            Self::Variables(store) => Self::Variables(store.sealed(seal)),
+            Self::Dynamodb(store) => Self::Dynamodb(store.sealed(seal)),
+            Self::Posts => Self::Posts,
+        }
+    }
+}
+
+async fn opening<H: Host>(host: &H, store: &Store, stores: &[&str]) -> Result<Records<H>, String> {
     let kind = store.kind();
     let opened = |error: String| format!("the {kind} store could not be opened: {error}");
     let migrated = |error: herald_ports::StoreError| opened(error.to_string());

@@ -424,6 +424,7 @@ jobs:
         env:
           HERALD_DISCORD_TOKEN: ci-discord-token
           HERALD_MARKER_SECRET: ci-marker-secret
+          HERALD_STORE_KEY: ci-store-key
         with:
           config: ${{ runner.temp }}/herald.toml
           tag: v0.0.0-dogfood
@@ -432,6 +433,7 @@ jobs:
         env:
           HERALD_DISCORD_TOKEN: ci-discord-token
           HERALD_MARKER_SECRET: ci-marker-secret
+          HERALD_STORE_KEY: ci-store-key
         with:
           config: ${{ runner.temp }}/herald.toml
           tag: v0.0.0-dogfood

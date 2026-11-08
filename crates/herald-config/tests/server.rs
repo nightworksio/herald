@@ -9,6 +9,7 @@ mod server {
 
 [store]
 kind = "git-branch"
+key = { secret = "HERALD_STORE_KEY" }
 
 [destinations.discord]
 kind = "discord"
@@ -107,7 +108,10 @@ body = "{{ event.body }}"
         assert!(huge.contains("\"512KiB\" or \"1MiB\""), "{huge}");
         let unkept = errors(&format!(
             "{}\n[server.keys]\ncache = \"store\"\n",
-            EXAMPLE.replace("kind = \"git-branch\"", "kind = \"markers\"")
+            EXAMPLE.replace(
+                "kind = \"git-branch\"\nkey = { secret = \"HERALD_STORE_KEY\" }",
+                "kind = \"markers\""
+            )
         ));
         assert!(
             unkept.contains(

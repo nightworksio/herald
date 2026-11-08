@@ -99,9 +99,33 @@ pub enum Store {
 }
 
 impl Store {
+    /// The secret it seals its records with, where it names one (ADR-0005).
+    #[must_use]
+    pub fn key(&self) -> Option<&SecretRef> {
+        match self {
+            Self::GitBranch(options) => Some(&options.key),
+            Self::RepoVariables(options) => Some(&options.key),
+            Self::ActionsCache(options) => Some(&options.key),
+            Self::Sqlite(options) => options.key.as_ref(),
+            Self::Postgres(options) => options.key.as_ref(),
+            Self::D1(options) => options.key.as_ref(),
+            Self::DurableObject(options) => options.key.as_ref(),
+            Self::DenoKv(options) => options.key.as_ref(),
+            Self::FastlyKv(options) => options.key.as_ref(),
+            Self::Dynamodb(options) => options.key.as_ref(),
+            Self::Markers => None,
+        }
+    }
+
     /// The name of every secret it names.
     #[must_use]
     pub fn secrets(&self) -> Vec<&str> {
+        let mut named = self.named();
+        named.extend(self.key().map(|key| key.secret.as_str()));
+        named
+    }
+
+    fn named(&self) -> Vec<&str> {
         match self {
             Self::GitBranch(options) => options
                 .token

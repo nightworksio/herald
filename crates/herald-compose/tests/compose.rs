@@ -67,7 +67,7 @@ mod compose {
         fn default() -> Self {
             Self {
                 vars: BTreeMap::new(),
-                secrets: FakeSecrets::default(),
+                secrets: FakeSecrets::default().with("HERALD_STORE_KEY", "k"),
                 clock: FakeClock::at(jiff::Timestamp::UNIX_EPOCH),
                 asked: Mutex::default(),
                 refusing: false,
@@ -177,8 +177,21 @@ mod compose {
         fn said(&self, _: &DestinationName, _: String) {}
     }
 
+    /// The store table `store`, with the key a store in a shared repository
+    /// seals its records with.
+    fn sealed(store: &str) -> String {
+        let shared = ["git-branch", "repo-variables", "actions-cache"]
+            .iter()
+            .any(|kind| store.starts_with(&format!("kind = \"{kind}\"")));
+        if shared {
+            format!("{store}\nkey = {{ secret = \"HERALD_STORE_KEY\" }}")
+        } else {
+            store.to_owned()
+        }
+    }
+
     fn config(store: &str) -> Config {
-        let text = format!("version = 1\n[store]\n{store}\n");
+        let text = format!("version = 1\n[store]\n{}\n", sealed(store));
         load("herald.toml", &text, &|_| Err(String::new())).unwrap()
     }
 
@@ -199,6 +212,7 @@ mod compose {
         Hosting {
             vars: BTreeMap::from([("GITHUB_REPOSITORY".to_owned(), "cli/cli".to_owned())]),
             secrets: FakeSecrets::default()
+                .with("HERALD_STORE_KEY", "k")
                 .with("GITHUB_TOKEN", "t")
                 .with("VARIABLES", "v")
                 .with("DATABASE_URL", "postgres://db")
@@ -276,6 +290,14 @@ mod compose {
         assert_eq!(
             kept(&unreached, "kind = \"git-branch\""),
             Err("https://api.github.com is out of reach".to_owned())
+        );
+        let keyless = Hosting {
+            secrets: FakeSecrets::default().with("GITHUB_TOKEN", "t"),
+            ..github()
+        };
+        assert_eq!(
+            kept(&keyless, "kind = \"git-branch\""),
+            Err("HERALD_STORE_KEY is not set; the store seals its records with it".to_owned())
         );
         let bare = Hosting::default();
         assert_eq!(
@@ -436,7 +458,7 @@ template = "t"
 
     #[test]
     fn a_round_asked_while_one_of_its_kind_runs_does_nothing() {
-        let text = "version = 1\n[store]\nkind = \"git-branch\"\n[sources.gate]\nkind = \"github\"\nrepository = \"cli/cli\"\n";
+        let text = "version = 1\n[store]\nkind = \"git-branch\"\nkey = { secret = \"HERALD_STORE_KEY\" }\n[sources.gate]\nkind = \"github\"\nrepository = \"cli/cli\"\n";
         let config = load("herald.toml", text, &|_| Err(String::new())).unwrap();
         let composed = pollster::block_on(Composed::new(github(), config, &EVERY, "test")).unwrap();
         let (swept, unswept) =
@@ -469,8 +491,10 @@ template = "t"
                 &["memory", "store"]
             };
             for keys in kept {
-                let text =
-                    format!("version = 1\n[store]\n{store}\n[server.keys]\ncache = \"{keys}\"\n");
+                let text = format!(
+                    "version = 1\n[store]\n{}\n[server.keys]\ncache = \"{keys}\"\n",
+                    sealed(store)
+                );
                 let config = load("herald.toml", &text, &|_| Err(String::new())).unwrap();
                 let composed =
                     pollster::block_on(Composed::new(github(), config, &EVERY, "test")).unwrap();

@@ -15,11 +15,17 @@ mod interactions {
     }
 
     fn config(store: &str, discord: &str, route: &str) -> String {
+        let key = if store == "markers" {
+            ""
+        } else {
+            "key = { secret = \"HERALD_STORE_KEY\" }"
+        };
         format!(
             r#"version = 1
 
 [store]
 kind = "{store}"
+{key}
 
 [destinations.discord]
 kind = "discord"

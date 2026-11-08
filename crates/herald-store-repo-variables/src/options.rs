@@ -14,4 +14,8 @@ pub struct StoreOptions {
     /// The API's base URL, for a GitHub Enterprise Server; GitHub's own API
     /// where absent.
     pub api: Option<String>,
+    /// The secret holding the key every record is sealed with, such as
+    /// `HERALD_STORE_KEY`: whoever can write the repository could otherwise
+    /// forge records herald trusts (ADR-0005).
+    pub key: SecretRef,
 }

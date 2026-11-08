@@ -332,6 +332,7 @@ pub(super) struct Run {
 pub(super) const CONFIG: &str = r#"version = 1
 [store]
 kind = "git-branch"
+key = { secret = "HERALD_STORE_KEY" }
 [destinations.discord]
 kind = "discord"
 token = { secret = "HERALD_DISCORD_TOKEN" }
@@ -370,6 +371,7 @@ pub(super) fn setup(config: &str) -> Setup {
         ("GITHUB_RUN_ID", "7".to_owned()),
         ("GITHUB_RUN_ATTEMPT", "1".to_owned()),
         ("HERALD_DISCORD_TOKEN", "discord-token".to_owned()),
+        ("HERALD_STORE_KEY", "store-key".to_owned()),
     ]
     .into_iter()
     .map(|(name, value)| (name.to_owned(), value))
@@ -458,7 +460,11 @@ pub(super) fn scheduled(world: &World, schedules: &[(&str, &str, Chore, &str)]) 
         None,
         None,
     )
-    .store(Connection::new(world.clone()));
+    .store(Connection::new(world.clone()))
+    .sealed(herald_records::Seal::new(Secret::new(
+        "HERALD_STORE_KEY",
+        "store-key",
+    )));
     let schedules: Vec<Schedule> = schedules
         .iter()
         .map(|&(route, thread, chore, due)| Schedule {

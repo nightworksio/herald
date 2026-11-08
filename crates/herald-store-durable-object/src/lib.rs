@@ -5,6 +5,7 @@
 //! it replaces in a transaction of the object's storage: that is the
 //! compare-and-set.
 
+use herald_core::SecretRef;
 use herald_ports::{Sql, StoreError};
 use herald_records::{Dialect, Kept, SqlRecords};
 use schemars::JsonSchema;
@@ -26,6 +27,10 @@ pub struct StoreOptions {
     /// The name of the object that keeps the records; `herald` where
     /// absent.
     pub object: Option<String>,
+    /// The secret holding a key to seal every record with, such as
+    /// `HERALD_STORE_KEY`, so a record herald did not seal reads as corrupt
+    /// (ADR-0005); records are not sealed where absent.
+    pub key: Option<SecretRef>,
 }
 
 impl StoreOptions {

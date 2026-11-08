@@ -16,6 +16,7 @@ use serde_json::Value;
 
 use crate::paths;
 use crate::records::{Blob, Records, Wrote};
+use crate::seal::Seal;
 
 /// How often a write that lost a race to an unrelated write is tried again.
 const ATTEMPTS: usize = 3;
@@ -48,6 +49,7 @@ pub struct Kept<R> {
     records: R,
     skipped: Arc<Mutex<BTreeSet<String>>>,
     capabilities: Capabilities,
+    seal: Option<Seal>,
 }
 
 fn corrupt(path: &str, error: impl std::fmt::Display) -> StoreError {
@@ -84,7 +86,16 @@ impl<R: Records> Kept<R> {
                 latest: true,
                 concurrent: true,
             },
+            seal: None,
         }
+    }
+
+    /// The store, sealing every record it writes with `seal`, and reading as
+    /// corrupt every record that is not sealed with it (ADR-0005).
+    #[must_use]
+    pub fn sealed(mut self, seal: Seal) -> Self {
+        self.seal = Some(seal);
+        self
     }
 
     /// The store, keeping besides its ledger, cursors, schedules and
@@ -126,6 +137,10 @@ impl<R: Records> Kept<R> {
         let Some(Blob { token, bytes }) = self.records.read(path).await? else {
             return Ok(None);
         };
+        let bytes = match &self.seal {
+            Some(seal) => seal.opened(path, &bytes)?,
+            None => bytes,
+        };
         let stored: Stored =
             serde_json::from_slice(&bytes).map_err(|error| corrupt(path, error))?;
         Ok(Some(Read {
@@ -147,6 +162,10 @@ impl<R: Records> Kept<R> {
             record: record.clone(),
         };
         let bytes = encoded(path, &stored)?.to_string().into_bytes();
+        let bytes = match &self.seal {
+            Some(seal) => seal.sealed(path, &bytes),
+            None => bytes,
+        };
         self.records.write(path, &bytes, replacing).await
     }
 
@@ -418,6 +437,43 @@ mod tests {
         StoreError::Corrupt {
             reason: reason.to_owned(),
         }
+    }
+
+    #[test]
+    fn a_sealed_store_keeps_every_record_and_trusts_none_it_did_not_seal() {
+        let seal = || Seal::new(herald_ports::Secret::new("HERALD_STORE_KEY", "k"));
+        let sealed = Kept::new(Memory::default()).sealed(seal());
+        pollster::block_on(async {
+            herald_testing::store_conformance(&sealed).await.unwrap();
+            herald_testing::keyring_conformance(&Kept::new(Memory::default()).sealed(seal()))
+                .await
+                .unwrap();
+            let subscription = Subscription {
+                destination: DestinationName::new("slack"),
+                project: "p".to_owned(),
+                subscriber: "u".to_owned(),
+                inbox: None,
+            };
+            let path = paths::subscribed(&subscription);
+            let planted = br#"{"version":1,"record":{"destination":"slack","project":"p","subscriber":"mallory"}}"#;
+            assert_eq!(
+                sealed.records.write(&path, planted, None).await,
+                Ok(Wrote::Written)
+            );
+            assert_eq!(
+                sealed
+                    .subscribers(&DestinationName::new("slack"), "p")
+                    .await,
+                Ok(vec![])
+            );
+            assert_eq!(sealed.skipped(), std::slice::from_ref(&path));
+            assert_eq!(
+                sealed.record::<Subscription>(&path).await.err(),
+                Some(StoreError::Corrupt {
+                    reason: format!("{path} is not sealed by this store's key")
+                })
+            );
+        });
     }
 
     #[test]

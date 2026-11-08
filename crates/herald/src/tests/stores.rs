@@ -3,7 +3,10 @@ use crate::*;
 
 #[test]
 fn a_release_kept_only_in_its_post_is_announced_once_and_poll_stops_without_cursors() {
-    let mut setup = setup(&CONFIG.replace("kind = \"git-branch\"", MARKERS));
+    let mut setup = setup(&CONFIG.replace(
+        "kind = \"git-branch\"\nkey = { secret = \"HERALD_STORE_KEY\" }",
+        MARKERS,
+    ));
     setup.vars.remove("GITHUB_TOKEN");
     let world = World::default();
     discord(

@@ -35,6 +35,10 @@ pub struct StoreOptions {
     /// The secret holding a session token, sent where it is set;
     /// `AWS_SESSION_TOKEN` where absent.
     pub session_token: Option<SecretRef>,
+    /// The secret holding a key to seal every record with, such as
+    /// `HERALD_STORE_KEY`, so a record herald did not seal reads as corrupt
+    /// (ADR-0005); records are not sealed where absent.
+    pub key: Option<SecretRef>,
 }
 
 fn named<'a>(given: Option<&'a SecretRef>, otherwise: &'a str) -> &'a str {

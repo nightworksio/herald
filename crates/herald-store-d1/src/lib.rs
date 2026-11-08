@@ -5,6 +5,7 @@
 //! transaction changes the row only where it still has that version: that
 //! is the compare-and-set.
 
+use herald_core::SecretRef;
 use herald_ports::{Sql, StoreError};
 use herald_records::{Dialect, Kept, SqlRecords};
 use schemars::JsonSchema;
@@ -21,6 +22,10 @@ pub struct StoreOptions {
     /// The Worker's binding to the database, as `wrangler.toml` names it;
     /// `HERALD_DB` where absent.
     pub binding: Option<String>,
+    /// The secret holding a key to seal every record with, such as
+    /// `HERALD_STORE_KEY`, so a record herald did not seal reads as corrupt
+    /// (ADR-0005); records are not sealed where absent.
+    pub key: Option<SecretRef>,
 }
 
 impl StoreOptions {

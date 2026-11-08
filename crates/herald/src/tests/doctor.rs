@@ -111,7 +111,10 @@ fn doctor_names_what_the_markers_store_cannot_serve() {
             .map(ToOwned::to_owned)
             .collect::<Vec<_>>()
     };
-    let markers = CONFIG.replace("kind = \"git-branch\"", MARKERS);
+    let markers = CONFIG.replace(
+        "kind = \"git-branch\"\nkey = { secret = \"HERALD_STORE_KEY\" }",
+        MARKERS,
+    );
     assert_eq!(
         gaps(&markers.replace(
             "template = \"release\"\n",

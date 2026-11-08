@@ -17,6 +17,7 @@ mod kv;
 mod memory;
 mod paths;
 mod records;
+mod seal;
 mod sql;
 
 pub use kept::Kept;
@@ -24,4 +25,5 @@ pub use keyring::MemoryKeyring;
 pub use kv::KvRecords;
 pub use memory::Memory;
 pub use records::{Blob, Records, Wrote};
+pub use seal::Seal;
 pub use sql::{Dialect, LAYOUT, SqlRecords};
