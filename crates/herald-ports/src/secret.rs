@@ -1,12 +1,28 @@
 use std::fmt;
 use std::future::Future;
 
+use zeroize::Zeroize as _;
+
 /// A secret's value, with the name the config gives it. Its `Debug` prints the
-/// name alone, and it has no `Display`.
-#[derive(Clone, PartialEq, Eq)]
+/// name alone, and it has no `Display`. Two secrets compare equal in time
+/// that does not depend on where their values differ, and a value is
+/// overwritten with zeroes when it is dropped.
+#[derive(Clone, Eq)]
 pub struct Secret {
     name: String,
     value: String,
+}
+
+impl PartialEq for Secret {
+    fn eq(&self, other: &Self) -> bool {
+        self.name == other.name && herald_core::same(self.value.as_bytes(), other.value.as_bytes())
+    }
+}
+
+impl Drop for Secret {
+    fn drop(&mut self) {
+        self.value.zeroize();
+    }
 }
 
 impl Secret {
@@ -173,6 +189,14 @@ mod tests {
 
     fn token() -> Secret {
         Secret::new("HERALD_DISCORD_TOKEN", "hunter2")
+    }
+
+    #[test]
+    fn secrets_are_equal_by_their_name_and_their_whole_value() {
+        assert_eq!(token(), token());
+        assert_ne!(token(), Secret::new("HERALD_DISCORD_TOKEN", "hunter3"));
+        assert_ne!(token(), Secret::new("HERALD_DISCORD_TOKEN", "hunter"));
+        assert_ne!(token(), Secret::new("OTHER", "hunter2"));
     }
 
     #[test]

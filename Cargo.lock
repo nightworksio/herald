@@ -1117,6 +1117,7 @@ dependencies = [
  "herald-core",
  "jiff",
  "pollster",
+ "zeroize",
 ]
 
 [[package]]
