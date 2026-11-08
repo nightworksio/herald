@@ -79,6 +79,7 @@ mod replay {
             language: Some("en".to_owned()),
             content_warning: Some("Release notes".to_owned()),
             limit: None,
+            ..RouteOptions::default()
         });
         let replay = fixture!("options");
         assert_eq!(
@@ -344,6 +345,25 @@ mod replay {
             ..RouteOptions::default()
         };
         assert_eq!(shortest(&accented), 138);
+        let server = RouteOptions {
+            limit: Some(1000),
+            title: std::num::NonZeroUsize::new(60),
+            link_length: Some(30),
+            ..RouteOptions::default()
+        };
+        let Profile { limits, .. } = profile(&server);
+        assert_eq!(
+            (limits.title, limits.thread_name, limits.text),
+            (60, 60, 1000 - 60 - 4 - 30)
+        );
+        assert_eq!(shortest(&server), 60 + 4 + 30 + 1);
+        assert_eq!(
+            (
+                RouteOptions::default().title(),
+                RouteOptions::default().link_length()
+            ),
+            (100, 23)
+        );
         let tight = RouteOptions {
             limit: Some(10),
             content_warning: Some("a long warning".to_owned()),

@@ -159,6 +159,13 @@
             "$ref": "#/$defs/Kind"
           }
         },
+        "language": {
+          "description": "The language each Note is written in, as an ISO 639 code.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "mentions": {
           "description": "Who it mentions.",
           "$ref": "#/$defs/Mentions"
@@ -206,6 +213,10 @@
             "string",
             "null"
           ]
+        },
+        "visibility": {
+          "description": "Who sees each Note on the timelines.",
+          "$ref": "#/$defs/Audience"
         }
       },
       "additionalProperties": false,
@@ -297,6 +308,21 @@
           "description": "A week, the longest Discord keeps a quiet thread open.",
           "type": "string",
           "const": "1w"
+        }
+      ]
+    },
+    "Audience": {
+      "description": "Who sees an actor's Notes on the timelines. Followers see every Note.",
+      "oneOf": [
+        {
+          "description": "Everyone, on the public timelines too.",
+          "type": "string",
+          "const": "public"
+        },
+        {
+          "description": "Everyone who looks, kept off the public timelines.",
+          "type": "string",
+          "const": "unlisted"
         }
       ]
     },
@@ -1267,6 +1293,15 @@
           "format": "uint",
           "minimum": 0
         },
+        "link_length": {
+          "description": "The characters the server counts a link as, however long it is: its\n`characters_reserved_per_url`, Mastodon's own 23 where unset.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint",
+          "minimum": 0
+        },
         "mentions": {
           "description": "Who it mentions.",
           "$ref": "#/$defs/Mentions"
@@ -1307,6 +1342,15 @@
               "type": "null"
             }
           ]
+        },
+        "title": {
+          "description": "The longest title, a status's first line, in characters; 100 where\nunset.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint",
+          "minimum": 1
         },
         "versions": {
           "description": "The versions it takes, as a pattern in which `*` stands for any run\nof characters and `?` for any one, such as `\"*.*.*\"`, which leaves\nout a Docker Hub tag such as `latest`; every version where absent.",

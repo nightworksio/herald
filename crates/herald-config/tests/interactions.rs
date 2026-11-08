@@ -262,6 +262,8 @@ body = "{{{{ event.body }}}}"
             RouteOptions::ActivityPub(herald_dest_fediverse::ActorRouteOptions {
                 actor: "herald".to_owned(),
                 content_warning: None,
+                visibility: herald_dest_fediverse::Audience::Public,
+                language: None,
             }),
         ] {
             assert_eq!(options.place(), None);

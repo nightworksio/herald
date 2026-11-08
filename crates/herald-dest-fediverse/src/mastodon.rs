@@ -11,10 +11,6 @@ use crate::request::{Refusal, step};
 /// The most characters Mastodon takes in a status, where a route gives no
 /// limit of its server's own.
 pub const LIMIT: usize = 500;
-/// The longest title, the status's first line.
-const TITLE: usize = 100;
-/// The length Mastodon counts a link as, however long it is.
-const LINK: usize = 23;
 /// The two blank lines between the title, the text and the link.
 const BREAKS: usize = 4;
 
@@ -100,7 +96,7 @@ impl Mastodon {
 /// content warning, which the server counts with the status.
 #[must_use]
 pub fn shortest(route: &RouteOptions) -> usize {
-    TITLE + BREAKS + LINK + 1 + warning(route)
+    route.title() + BREAKS + route.link_length() + 1 + warning(route)
 }
 
 fn warning(route: &RouteOptions) -> usize {
@@ -119,10 +115,12 @@ pub fn profile(route: &RouteOptions) -> Profile {
         dialect: Dialect::Plain,
         measure: Measure::Chars,
         limits: Limits {
-            title: TITLE,
-            text: each.saturating_sub(TITLE + BREAKS + LINK).max(1),
+            title: route.title(),
+            text: each
+                .saturating_sub(route.title() + BREAKS + route.link_length())
+                .max(1),
             followup: each.max(1),
-            thread_name: TITLE,
+            thread_name: route.title(),
         },
         features: Features {
             threads: Threads::Replies,

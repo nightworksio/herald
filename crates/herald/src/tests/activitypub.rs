@@ -46,6 +46,8 @@ fn a_delivery_herald_signs_is_one_its_own_inbox_takes_under_the_key_its_actor_pu
         ActorRouteOptions {
             actor: "php-mutation-gate".to_owned(),
             content_warning: None,
+            visibility: herald_dest_fediverse::Audience::Public,
+            language: None,
         },
     );
     let now: jiff::Timestamp = "2026-11-03T08:00:00Z".parse().unwrap();

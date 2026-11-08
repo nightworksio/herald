@@ -133,12 +133,7 @@ impl ActivityPub {
         inbox: &str,
         announcement: &Announcement,
     ) -> Result<Sent, HttpError> {
-        let created = create(
-            &self.origin,
-            &self.route.actor,
-            announcement,
-            self.route.content_warning.as_deref(),
-        );
+        let created = create(&self.origin, announcement, &self.route);
         self.post(http, signer, now, inbox, &created).await
     }
 
@@ -168,13 +163,7 @@ impl ActivityPub {
     /// `announcement`'s Note, as herald serves it at its id.
     #[must_use]
     pub fn note(&self, announcement: &Announcement) -> String {
-        note(
-            &self.origin,
-            &self.route.actor,
-            announcement,
-            self.route.content_warning.as_deref(),
-        )
-        .to_string()
+        note(&self.origin, announcement, &self.route).to_string()
     }
 
     /// Whether `note`, kept as the Note of the announcement `key`, is this

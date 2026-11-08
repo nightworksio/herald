@@ -18,6 +18,15 @@ mod activitypub {
     const DOMAIN: &str = "herald.example";
     const ACTOR: &str = "https://herald.example/users/php-mutation-gate";
 
+    fn plain_route() -> ActorRouteOptions {
+        ActorRouteOptions {
+            actor: "php-mutation-gate".to_owned(),
+            content_warning: None,
+            visibility: herald_dest_fediverse::Audience::Public,
+            language: None,
+        }
+    }
+
     fn reached(key: &str) -> ActivityPub {
         ActivityPub::new(
             DOMAIN,
@@ -26,6 +35,8 @@ mod activitypub {
             ActorRouteOptions {
                 actor: "php-mutation-gate".to_owned(),
                 content_warning: Some("Release notes".to_owned()),
+                visibility: herald_dest_fediverse::Audience::Public,
+                language: None,
             },
         )
     }
@@ -39,6 +50,8 @@ mod activitypub {
             ActorRouteOptions {
                 actor: "php-mutation-gate".to_owned(),
                 content_warning: None,
+                visibility: herald_dest_fediverse::Audience::Public,
+                language: None,
             },
         );
         assert_eq!(
@@ -210,14 +223,14 @@ mod activitypub {
             body: String::new(),
             html: Some(String::new()),
         });
-        let plain = note(DOMAIN, "php-mutation-gate", &bare, None);
+        let plain = note(DOMAIN, &bare, &plain_route());
         assert_eq!(
             plain["content"],
             "<p><strong>a &lt;b&gt; &amp; c</strong></p>\n<h2>Added</h2>\n<ul>\n<li>the gate</li>\n</ul>"
         );
         assert_eq!(plain["sensitive"], false);
         assert!(plain.get("summary").is_none() && plain.get("url").is_none());
-        let created = create(DOMAIN, "php-mutation-gate", &bare, None);
+        let created = create(DOMAIN, &bare, &plain_route());
         assert_eq!(
             created["id"],
             format!("{}/activity", plain["id"].as_str().unwrap())
@@ -258,6 +271,8 @@ mod activitypub {
         let route = |actor: &str| ActorRouteOptions {
             actor: actor.to_owned(),
             content_warning: None,
+            visibility: herald_dest_fediverse::Audience::Public,
+            language: None,
         };
         for actor in ["php-mutation-gate", "herald", "a_b", "x", &"a".repeat(30)] {
             assert_eq!(route(actor).check(), Ok(()), "{actor}");
@@ -405,11 +420,60 @@ mod activitypub {
             published,
             note(
                 DOMAIN,
-                "php-mutation-gate",
                 &announcement,
-                Some("Release notes")
+                &ActorRouteOptions {
+                    content_warning: Some("Release notes".to_owned()),
+                    ..plain_route()
+                }
             )
         );
+    }
+
+    #[test]
+    fn an_unlisted_note_is_addressed_to_followers_and_a_language_maps_its_content() {
+        let shown = announcement();
+        let public = note(DOMAIN, &shown, &plain_route());
+        let followers = format!("{ACTOR}/followers");
+        let everyone = "https://www.w3.org/ns/activitystreams#Public";
+        assert_eq!(
+            (&public["to"], &public["cc"]),
+            (
+                &serde_json::json!([everyone]),
+                &serde_json::json!([followers])
+            )
+        );
+        assert!(public.get("contentMap").is_none());
+        let unlisted = ActorRouteOptions {
+            visibility: herald_dest_fediverse::Audience::Unlisted,
+            language: Some("nl".to_owned()),
+            ..plain_route()
+        };
+        let quiet = note(DOMAIN, &shown, &unlisted);
+        assert_eq!(
+            (&quiet["to"], &quiet["cc"]),
+            (
+                &serde_json::json!([followers]),
+                &serde_json::json!([everyone])
+            )
+        );
+        assert_eq!(quiet["contentMap"]["nl"], quiet["content"]);
+        let created = create(DOMAIN, &shown, &unlisted);
+        assert_eq!(
+            (&created["to"], &created["cc"]),
+            (&quiet["to"], &quiet["cc"])
+        );
+        for language in ["english", "EN", "e"] {
+            assert_eq!(
+                ActorRouteOptions {
+                    language: Some(language.to_owned()),
+                    ..plain_route()
+                }
+                .check(),
+                Err(format!(
+                    "\"{language}\" is not an ISO 639 language code; give two or three lowercase letters, such as \"en\""
+                ))
+            );
+        }
     }
 
     #[test]
