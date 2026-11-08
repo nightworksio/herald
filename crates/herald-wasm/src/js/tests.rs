@@ -427,6 +427,32 @@ async fn a_composed_herald_answers_polls_and_keeps_house() {
 }
 
 #[wasm_bindgen_test]
+async fn a_host_keeps_the_limits_server_sets() {
+    use herald_config::Server;
+
+    let composed = Herald::compose(
+        host(&object(&[])),
+        "version = 1\n[store]\nkind = \"deno-kv\"\n[server]\nconnections = 3\nbody = \"64KiB\"\n"
+            .to_owned(),
+        JsValue::UNDEFINED,
+        "deno".to_owned(),
+    )
+    .await
+    .unwrap_or_else(|_| panic!("composed"));
+    let limits = composed.limits();
+    assert_eq!(member(&limits, "body").as_f64(), Some(65_536.0));
+    assert_eq!(member(&limits, "connections").as_f64(), Some(3.0));
+    assert_eq!(
+        member(&limits, "read").as_f64(),
+        crate::numbers::millis(Server::READ)
+    );
+    assert_eq!(
+        member(&limits, "held").as_f64(),
+        crate::numbers::millis(Server::HELD)
+    );
+}
+
+#[wasm_bindgen_test]
 async fn a_key_value_store_deletes_only_at_the_stamp_it_was_given() {
     let kv = hosted().kv(KvAt::DenoKv(None)).await.unwrap();
     let key = ["held".to_owned()];
@@ -521,6 +547,7 @@ async fn work_is_taken_up_to_the_most_at_once_and_done_on_the_event_loop() {
             asked: Vec::new(),
         },
     );
+    assert!(taker.place().is_none());
     hear();
     taker.said(&destination, "heard".to_owned());
     let said = heard();
