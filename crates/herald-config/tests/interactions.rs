@@ -210,6 +210,35 @@ body = "{{{{ event.body }}}}"
     }
 
     #[test]
+    fn a_sync_reads_within_the_http_total_and_from_one_to_a_hundred_messages() {
+        let base = config("git-branch", &bot(""), "channel = \"1566200000000000100\"");
+        let with = |line: &str| {
+            base.replace(
+                "appservice_token = { secret = \"HERALD_MATRIX_AS\" }\n",
+                &format!("appservice_token = {{ secret = \"HERALD_MATRIX_AS\" }}\n{line}\n"),
+            )
+        };
+        assert!(
+            load(
+                "herald.toml",
+                &with("sync_wait = \"29s\"\ntimeline = 100"),
+                &nothing
+            )
+            .is_ok()
+        );
+        refused(
+            &with("sync_wait = \"30s\""),
+            "destinations.matrix.interactions: a sync that waits 30s outlasts the 30s [http] total allows any answer",
+        );
+        for timeline in [0, 101] {
+            refused(
+                &with(&format!("timeline = {timeline}")),
+                &format!("a sync reads 1 to 100 messages from each room, not {timeline}"),
+            );
+        }
+    }
+
+    #[test]
     fn a_webhook_destination_takes_the_interactions_discord_posts() {
         let text = config(
             "git-branch",

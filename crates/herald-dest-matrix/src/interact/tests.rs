@@ -192,14 +192,17 @@ fn a_sync_waits_from_where_the_last_left_off_with_herald_s_filter() {
     assert_eq!(first.method, Method::Get);
     let url = first.url.expose();
     assert!(
-        url.starts_with(
-            "https://matrix.example/_matrix/client/v3/sync?timeout=0&filter=%7B%22presence%22"
-        ),
+        url.starts_with("https://matrix.example/_matrix/client/v3/sync?timeout=0&filter=%7B")
+            && url.contains("%22presence%22%3A%7B%22types%22%3A%5B%5D%7D")
+            && url.contains("%22types%22%3A%5B%22m.room.message%22%5D"),
         "{url}"
     );
     assert!(!url.contains("since"));
-    let next = interacting("").sync(Some("s 2"), SYNC_WAIT).url.expose();
+    let synced = interacting("");
+    assert_eq!(synced.sync_wait(), 20_000);
+    let next = synced.sync(Some("s 2"), synced.sync_wait()).url.expose();
     assert!(next.contains("timeout=20000"));
+    assert!(next.contains("%22limit%22%3A20%2C"), "{next}");
     assert!(next.ends_with("&since=s%202"), "{next}");
     let header = first
         .headers
@@ -207,6 +210,15 @@ fn a_sync_waits_from_where_the_last_left_off_with_herald_s_filter() {
         .find(|(name, _)| name == "Authorization")
         .map(|(_, value)| value.expose());
     assert_eq!(header.as_deref(), Some("Bearer as-token"));
+}
+
+#[test]
+fn a_sync_waits_and_reads_as_long_and_as_far_as_the_config_says() {
+    let set = interacting(r#", "sync_wait": "5s", "timeline": 50"#);
+    assert_eq!(set.sync_wait(), 5_000);
+    let url = set.sync(Some("s"), set.sync_wait()).url.expose();
+    assert!(url.contains("timeout=5000"), "{url}");
+    assert!(url.contains("%22limit%22%3A50%2C"), "{url}");
 }
 
 #[test]

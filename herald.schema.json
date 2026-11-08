@@ -983,12 +983,33 @@
           "type": "string",
           "default": "herald"
         },
+        "sync_wait": {
+          "description": "How long a sync waits for a message before it answers with none,\n\"20s\" where unset; shorter than `[http] total`, which bounds every\nanswer.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Duration"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "template": {
           "description": "The template `latest` takes its title from and `changelog` its body,\nin place of the route's own.",
           "type": [
             "string",
             "null"
           ]
+        },
+        "timeline": {
+          "description": "The most messages one sync reads from each room, from 1 to 100; 20\nwhere unset.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint8",
+          "maximum": 255,
+          "minimum": 0
         },
         "via": {
           "description": "How the homeserver carries them.",

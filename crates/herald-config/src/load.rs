@@ -390,6 +390,32 @@ impl Loader<'_> {
 
     /// Whether every route that reaches followers or subscribers has a store
     /// that keeps them.
+    fn synced(
+        &mut self,
+        destinations: &BTreeMap<DestinationName, (Destination, Range<usize>)>,
+        http: &herald_ports::Outbound,
+    ) {
+        for (name, (destination, span)) in destinations {
+            let Destination::Matrix(options) = destination else {
+                continue;
+            };
+            let Some(interactions) = &options.interactions else {
+                continue;
+            };
+            let wait = interactions.sync_wait();
+            if wait >= http.total {
+                self.error(
+                    span,
+                    &format!("destinations.{}.interactions", name.as_str()),
+                    format!(
+                        "a sync that waits {wait:#} outlasts the {:#} [http] total allows any answer; make sync_wait shorter, or total longer",
+                        http.total
+                    ),
+                );
+            }
+        }
+    }
+
     fn followed(
         &mut self,
         store: Option<&Store>,
@@ -764,6 +790,7 @@ pub fn load(
         .and_then(|value| loader.typed::<HttpFile>(value, "http"))
         .map(|file| loader.http(file, read))
         .unwrap_or_default();
+    loader.synced(&destinations, &http);
     let announce = loader.announce(sections.announce);
     if let (true, Some(store), Some(templates)) = (loader.errors.is_empty(), store, compiled) {
         return Ok(Config {

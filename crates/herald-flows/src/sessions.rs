@@ -15,7 +15,7 @@ use futures_util::stream::{FuturesUnordered, StreamExt};
 use herald_config::Reconnecting;
 use herald_core::{Asked, DestinationName};
 use herald_dest_discord::{self as discord, Effect, Gateway};
-use herald_dest_matrix::{self as matrix, SYNC_WAIT};
+use herald_dest_matrix as matrix;
 use herald_dest_slack::{self as slack};
 use herald_ports::{Clock, Frame, Http, Secret, Socket, Sockets, Store, Text, Timer};
 
@@ -475,7 +475,11 @@ where
         let mut taking: Taking<'s> = FuturesUnordered::new();
         let mut since: Option<String> = None;
         loop {
-            let wait = if since.is_some() { SYNC_WAIT } else { 0 };
+            let wait = if since.is_some() {
+                interacting.sync_wait()
+            } else {
+                0
+            };
             let synced = meanwhile(
                 &mut taking,
                 http.send(interacting.sync(since.as_deref(), wait)),

@@ -16,8 +16,8 @@ mod options;
 mod read;
 mod request;
 
-pub use interact::{Interacting, Replying, SYNC_WAIT, Synced, Unread, took};
-pub use interactions::{Interactions, Via};
+pub use interact::{Interacting, Replying, Synced, Unread, took};
+pub use interactions::{Interactions, SYNC_WAIT, Via};
 pub use markers::MatrixMarkers;
 pub use matrix::{Matrix, profile};
 pub use options::{DestinationOptions, RouteOptions};
