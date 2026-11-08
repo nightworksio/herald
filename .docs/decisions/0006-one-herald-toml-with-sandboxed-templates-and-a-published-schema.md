@@ -107,8 +107,11 @@ template.
    - **Limits.** Rendering runs on a fuel limit, a recursion limit and a cap
      on output size. A template that loops forever runs out of fuel and
      fails at load, when it is dry-rendered.
-   - **Undefined values.** Undefined is strict, so `{{ event.release_notes }}` is an
-     error at load, not an empty string in the channel.
+   - **Undefined values.** Undefined is semi-strict, so `{{ event.release_notes }}`
+     is an error at load, not an empty string in the channel. An undefined
+     value may be tested, as in `{% if event.links.changelog %}`, `is
+     defined` or `not`, and given a `default`; used as a value anywhere
+     else, printed, iterated, joined, filtered or read into, it is an error.
    - **The context.** The context holds `event`, `route` and `herald`, the
      running version. It holds no secret, no environment variable and no
      config value beyond the route's own id.
