@@ -60,58 +60,13 @@ impl Config {
     /// The name of every secret the config names, once each.
     #[must_use]
     pub fn secrets(&self) -> BTreeSet<&str> {
-        let destinations = self
-            .destinations
+        self.destinations
             .values()
-            .flat_map(|destination| match destination {
-                Destination::Discord(options) => {
-                    [options.token.as_ref(), options.webhook.as_ref(), None, None]
-                }
-                Destination::Mastodon(options) => [Some(&options.token), None, None, None],
-                Destination::Matrix(options) => {
-                    let interactions = options.interactions.as_ref();
-                    [
-                        Some(&options.token),
-                        interactions
-                            .and_then(|interactions| interactions.homeserver_token.as_ref()),
-                        interactions
-                            .and_then(|interactions| interactions.appservice_token.as_ref()),
-                        None,
-                    ]
-                }
-                Destination::Slack(options) => {
-                    let interactions = options.interactions.as_ref();
-                    [
-                        options.token.as_ref(),
-                        options.webhook.as_ref(),
-                        interactions.and_then(|interactions| interactions.signing.as_ref()),
-                        interactions.and_then(|interactions| interactions.app.as_ref()),
-                    ]
-                }
-                Destination::ActivityPub(options) => [Some(&options.key), None, None, None],
-            });
-        let sources = self.sources.values().flat_map(|source| match source {
-            Source::Forge(_, options) => [options.token.as_ref(), options.webhook.as_ref()],
-            Source::Registry(_, options) => [options.token.as_ref(), None],
-            Source::Feed(_) => [None, None],
-        });
-        let store: Vec<&str> = match &self.store {
-            Store::GitBranch(options) => options
-                .token
-                .iter()
-                .map(|named| named.secret.as_str())
-                .collect(),
-            Store::RepoVariables(options) => vec![options.token.secret.as_str()],
-            Store::Postgres(options) => vec![options.url.secret.as_str()],
-            Store::Dynamodb(options) => options.secrets().to_vec(),
-            _ => Vec::new(),
-        };
-        destinations
-            .chain(sources)
-            .flatten()
+            .flat_map(Destination::secret_refs)
+            .chain(self.sources.values().flat_map(Source::secret_refs))
             .chain(self.marker_key.as_ref())
             .map(|named| named.secret.as_str())
-            .chain(store)
+            .chain(self.store.secrets())
             .collect()
     }
 }
@@ -144,6 +99,22 @@ pub enum Store {
 }
 
 impl Store {
+    /// The name of every secret it names.
+    #[must_use]
+    pub fn secrets(&self) -> Vec<&str> {
+        match self {
+            Self::GitBranch(options) => options
+                .token
+                .iter()
+                .map(|named| named.secret.as_str())
+                .collect(),
+            Self::RepoVariables(options) => vec![options.token.secret.as_str()],
+            Self::Postgres(options) => vec![options.url.secret.as_str()],
+            Self::Dynamodb(options) => options.secrets().to_vec(),
+            _ => Vec::new(),
+        }
+    }
+
     /// The kind of a SQLite store, as the config spells it.
     pub const SQLITE: &str = "sqlite";
     /// The kind of a Postgres store.
@@ -216,6 +187,50 @@ pub enum Destination {
 }
 
 impl Destination {
+    /// The secret it reaches its platform with: its token, else its webhook,
+    /// or its key.
+    #[must_use]
+    pub fn credential(&self) -> Option<&SecretRef> {
+        match self {
+            Self::Discord(options) => options.token.as_ref().or(options.webhook.as_ref()),
+            Self::Mastodon(options) => Some(&options.token),
+            Self::Matrix(options) => Some(&options.token),
+            Self::Slack(options) => options.token.as_ref().or(options.webhook.as_ref()),
+            Self::ActivityPub(options) => Some(&options.key),
+        }
+    }
+
+    /// Every secret it names.
+    #[must_use]
+    pub fn secret_refs(&self) -> Vec<&SecretRef> {
+        let named: [Option<&SecretRef>; 4] = match self {
+            Self::Discord(options) => {
+                [options.token.as_ref(), options.webhook.as_ref(), None, None]
+            }
+            Self::Mastodon(options) => [Some(&options.token), None, None, None],
+            Self::Matrix(options) => {
+                let interactions = options.interactions.as_ref();
+                [
+                    Some(&options.token),
+                    interactions.and_then(|interactions| interactions.homeserver_token.as_ref()),
+                    interactions.and_then(|interactions| interactions.appservice_token.as_ref()),
+                    None,
+                ]
+            }
+            Self::Slack(options) => {
+                let interactions = options.interactions.as_ref();
+                [
+                    options.token.as_ref(),
+                    options.webhook.as_ref(),
+                    interactions.and_then(|interactions| interactions.signing.as_ref()),
+                    interactions.and_then(|interactions| interactions.app.as_ref()),
+                ]
+            }
+            Self::ActivityPub(options) => [Some(&options.key), None, None, None],
+        };
+        named.into_iter().flatten().collect()
+    }
+
     /// The kind of a Discord destination, as the config spells it.
     pub const DISCORD: &str = "discord";
     /// The kind of a Mastodon destination, as the config spells it.
@@ -280,6 +295,31 @@ pub enum Source {
 }
 
 impl Source {
+    /// The token it reads its platform with, where it names one.
+    #[must_use]
+    pub fn token(&self) -> Option<&SecretRef> {
+        match self {
+            Self::Forge(_, options) => options.token.as_ref(),
+            Self::Registry(_, options) => options.token.as_ref(),
+            Self::Feed(_) => None,
+        }
+    }
+
+    /// The secret its webhooks are signed with, where it takes them.
+    #[must_use]
+    pub fn webhook(&self) -> Option<&SecretRef> {
+        match self {
+            Self::Forge(_, options) => options.webhook.as_ref(),
+            Self::Registry(..) | Self::Feed(_) => None,
+        }
+    }
+
+    /// Every secret it names.
+    #[must_use]
+    pub fn secret_refs(&self) -> Vec<&SecretRef> {
+        self.token().into_iter().chain(self.webhook()).collect()
+    }
+
     /// The kind of a feed source, as the config spells it.
     pub const FEED: &str = "feed";
 

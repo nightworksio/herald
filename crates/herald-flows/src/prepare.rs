@@ -331,14 +331,7 @@ async fn resolved<'c, S: Secrets, G: Signer>(
     };
     let mut resolved: BTreeMap<&DestinationName, Resolved> = BTreeMap::new();
     for (name, destination) in &config.destinations {
-        let named = match destination {
-            Destination::Discord(options) => options.token.as_ref().or(options.webhook.as_ref()),
-            Destination::Mastodon(options) => Some(&options.token),
-            Destination::Matrix(options) => Some(&options.token),
-            Destination::Slack(options) => options.token.as_ref().or(options.webhook.as_ref()),
-            Destination::ActivityPub(options) => Some(&options.key),
-        };
-        let Some(reference) = named else {
+        let Some(reference) = destination.credential() else {
             return Err(PrepareError::NoCredential {
                 destination: name.as_str().to_owned(),
             });
@@ -401,15 +394,7 @@ pub async fn prepare<S: Secrets, G: Signer>(
     }
     let mut sources = Vec::new();
     for (name, source) in &config.sources {
-        let named = match source {
-            Source::Forge(_, options) => options.token.as_ref(),
-            Source::Registry(_, options) => options.token.as_ref(),
-            Source::Feed(_) => None,
-        };
-        let token = match named {
-            Some(named) => Some(secrets.secret(&named.secret).await?),
-            None => None,
-        };
+        let token = optional(secrets, source.token()).await?;
         let (asked, backfill) = match source {
             Source::Forge(forge, options) => (
                 Asked::Forge {
