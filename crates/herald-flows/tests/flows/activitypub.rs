@@ -308,7 +308,7 @@ fn a_note_that_cannot_be_kept_stops_the_announcement_before_its_post_lands() {
         panic!("the announcement stops");
     };
     assert_eq!(landed, Vec::<Step>::new());
-    assert_eq!(remaining, vec![Step::Post]);
+    assert_eq!(remaining, vec![Step::Post, Step::Deliveries]);
     assert_eq!(
         reason,
         herald_flows::Stop::Store("the store could not be reached: broken".to_owned())
@@ -389,4 +389,29 @@ fn deliveries_the_ledger_cannot_record_stop_with_every_one_of_them_remaining() {
         assert_eq!(remaining, vec![deliver(CY), deliver(SOCIAL)], "{fault:?}");
         assert!(matches!(reason, herald_flows::Stop::Store(_)), "{fault:?}");
     }
+}
+
+#[test]
+fn a_run_resumed_delivers_only_to_the_inboxes_it_kept_no_landing_for() {
+    let mut store = healthy();
+    store.fault = Fault::LandsOneDelivery;
+    followed_at(&store, &[CY, SOCIAL]);
+    let script = Script::answering(&[(CY, 202, ""), (SOCIAL, 202, "")]);
+    let Outcome::Stopped {
+        landed, remaining, ..
+    } = announced(&store, &script)
+    else {
+        panic!("the announcement stops");
+    };
+    assert_eq!(landed, vec![Step::Post]);
+    assert_eq!(remaining, vec![deliver(CY), deliver(SOCIAL)]);
+    store.fault = Fault::Nothing;
+    let again = Script::answering(&[(SOCIAL, 202, "")]);
+    assert_eq!(
+        announced(&store, &again),
+        Outcome::Sent {
+            steps: vec![deliver(SOCIAL)]
+        }
+    );
+    assert_eq!(again.seen().len(), 1);
 }

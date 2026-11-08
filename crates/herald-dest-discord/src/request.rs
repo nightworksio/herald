@@ -288,7 +288,7 @@ fn webhook(
         Step::OpenThread => Err(Refusal::WebhookCannot("open a thread from a message")),
         Step::Pin => Err(Refusal::WebhookCannot("pin")),
         Step::Unpin => Err(Refusal::WebhookCannot("unpin")),
-        Step::Deliver(_) => Err(Refusal::NoInbox),
+        Step::Deliver(_) | Step::Deliveries => Err(Refusal::NoInbox),
     }
 }
 
@@ -380,7 +380,7 @@ fn bot(
                 .ok_or(Refusal::Missing("the route's earlier pin"))?;
             Ok(unpin(discord, channel, earlier))
         }
-        Step::Deliver(_) => Err(Refusal::NoInbox),
+        Step::Deliver(_) | Step::Deliveries => Err(Refusal::NoInbox),
     }
 }
 

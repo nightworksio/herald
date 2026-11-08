@@ -1,6 +1,6 @@
 use herald_core::{
     Chore, Cursor, DestinationName, Entry, Facts, Identity, Key, Kind, Latest, RouteId, Schedule,
-    Scheme, Shown, SourceName, Step, Subscription,
+    Scheme, Shown, SourceName, State, Step, Subscription,
 };
 use std::fmt;
 
@@ -40,6 +40,7 @@ pub async fn store_conformance<S: Store>(store: &S) -> Result<(), Failure> {
     }
     if capabilities.subscriptions {
         subscriptions(store).await?;
+        inboxes(store).await?;
     } else {
         unsupported(
             &store
@@ -419,6 +420,38 @@ async fn subscriptions<S: Store>(store: &S) -> Result<(), Failure> {
     checks.ensure(
         store.subscribers(&fediverse, "herald").await? == [follower],
         "a follower's inbox was not kept with its subscription",
+    );
+    checks.done()
+}
+
+async fn inboxes<S: Store>(store: &S) -> Result<(), Failure> {
+    let mut checks = Checks::default();
+    let published = key("delivered");
+    let inbox = "https://social.example/inbox";
+    let landed = State::Landed {
+        facts: Facts::default(),
+    };
+    checks.ensure(
+        store.delivery(&published, inbox).await?.is_none(),
+        "a new store holds a delivery to an inbox",
+    );
+    store
+        .put_delivery(&published, inbox, &State::Attempted { at: NOON })
+        .await?;
+    store.put_delivery(&published, inbox, &landed).await?;
+    store
+        .put_delivery(
+            &published,
+            "https://other.example/inbox",
+            &State::Attempted { at: NOON },
+        )
+        .await?;
+    store
+        .put_delivery(&key("other"), inbox, &State::Attempted { at: NOON })
+        .await?;
+    checks.ensure(
+        store.delivery(&published, inbox).await? == Some(landed),
+        "a delivery to an inbox was not the state written last",
     );
     checks.done()
 }

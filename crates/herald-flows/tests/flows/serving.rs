@@ -900,7 +900,7 @@ fn where_an_app_s_event_stands_is_read_route_by_route_from_the_ledger() {
     )
     .unwrap()
     .unwrap();
-    assert_eq!(entry.value.wanted, Some(vec![Step::Post]));
+    assert_eq!(entry.value.wanted, Some(vec![Step::Post, Step::Deliveries]));
     assert_eq!(
         said(&world.answer(&asked)).2,
         r#"{"id":"7","project":"herald","routes":[{"route":"deployed","standing":"announced"}]}"#

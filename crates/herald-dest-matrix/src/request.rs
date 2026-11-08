@@ -232,7 +232,7 @@ pub(crate) fn step(
         Step::Pin | Step::Unpin => Ok(pinned(matrix)),
         Step::Crosspost => Err(Refusal::Cannot("crosspost")),
         Step::OpenThread => Err(Refusal::Cannot("open a thread; its replies are the thread")),
-        Step::Deliver(_) => Err(Refusal::Cannot("deliver to an inbox")),
+        Step::Deliver(_) | Step::Deliveries => Err(Refusal::Cannot("deliver to an inbox")),
     }
 }
 

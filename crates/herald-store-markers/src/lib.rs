@@ -12,11 +12,11 @@ use std::future::{Future, ready};
 
 use herald_core::{
     Chore, Cursor, DestinationName, Entry, Identity, Key, Latest, Marker, RouteId, Schedule,
-    Scheme, SourceName, Subscription, Thread, schedules,
+    Scheme, SourceName, State, Subscription, Thread, schedules,
 };
 use herald_ports::{
-    Admitted, Capabilities, Keeping, Keyring, KnownKey, Markers, Secret, Signer, Store, StoreError,
-    Version, Versioned, Written, marker,
+    Admitted, Capabilities, Inboxes, Keeping, Keyring, KnownKey, Markers, Secret, Signer, Store,
+    StoreError, Version, Versioned, Written, marker,
 };
 use jiff::Timestamp;
 
@@ -117,6 +117,25 @@ impl<M: Markers, G: Signer> Keyring for MarkersStore<M, G> {
         _before: Timestamp,
     ) -> impl Future<Output = Result<(), StoreError>> + Send {
         ready(unsupported("keys"))
+    }
+}
+
+impl<M: Markers, G: Signer> Inboxes for MarkersStore<M, G> {
+    fn delivery(
+        &self,
+        _key: &Key,
+        _inbox: &str,
+    ) -> impl Future<Output = Result<Option<State>, StoreError>> + Send {
+        ready(unsupported("deliveries to followers"))
+    }
+
+    fn put_delivery(
+        &self,
+        _key: &Key,
+        _inbox: &str,
+        _state: &State,
+    ) -> impl Future<Output = Result<(), StoreError>> + Send {
+        ready(unsupported("deliveries to followers"))
     }
 }
 

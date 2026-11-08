@@ -21,7 +21,11 @@ pub enum Step {
     Pin,
     /// Unpin the route's earlier pin.
     Unpin,
-    /// Deliver it to one recipient's inbox.
+    /// Deliver it to every follower's inbox. Each delivery is kept as its
+    /// own record, so an entry does not grow with its followers.
+    Deliveries,
+    /// Deliver it to one follower's inbox: what a destination is asked to
+    /// send, never kept in the ledger.
     Deliver(String),
 }
 
@@ -214,14 +218,9 @@ impl Entry {
 }
 
 /// The steps a route's delivery asks of a destination with `features`, for an
-/// announcement of `parts` parts and the inboxes of `recipients`.
+/// announcement of `parts` parts, delivered to followers where it `follows`.
 #[must_use]
-pub fn steps(
-    delivery: &Delivery,
-    features: &Features,
-    parts: u32,
-    recipients: &[String],
-) -> Vec<Step> {
+pub fn steps(delivery: &Delivery, features: &Features, parts: u32, follows: bool) -> Vec<Step> {
     let mut steps = vec![Step::Post];
     if delivery.crosspost && features.crosspost {
         steps.push(Step::Crosspost);
@@ -237,7 +236,9 @@ pub fn steps(
             Pins::One => steps.extend([Step::Unpin, Step::Pin]),
         }
     }
-    steps.extend(recipients.iter().cloned().map(Step::Deliver));
+    if follows {
+        steps.push(Step::Deliveries);
+    }
     steps
 }
 
@@ -379,12 +380,7 @@ mod tests {
 
     #[test]
     fn a_full_delivery_on_a_destination_with_every_feature_takes_every_step_in_order() {
-        let steps = steps(
-            &everything(),
-            &discord(),
-            3,
-            &["https://a.example/inbox".to_owned()],
-        );
+        let steps = steps(&everything(), &discord(), 3, true);
         assert_eq!(
             steps,
             [
@@ -395,7 +391,7 @@ mod tests {
                 Step::Chunk(2),
                 Step::Pin,
                 Step::Unpin,
-                Step::Deliver("https://a.example/inbox".to_owned()),
+                Step::Deliveries,
             ]
         );
     }
@@ -407,7 +403,7 @@ mod tests {
             ..discord()
         };
         assert_eq!(
-            steps(&everything(), &features, 1, &[]),
+            steps(&everything(), &features, 1, false),
             [
                 Step::Post,
                 Step::Crosspost,
@@ -421,7 +417,7 @@ mod tests {
     #[test]
     fn a_plain_delivery_of_one_part_only_posts() {
         assert_eq!(
-            steps(&Delivery::default(), &discord(), 1, &[]),
+            steps(&Delivery::default(), &discord(), 1, false),
             [Step::Post]
         );
     }
@@ -435,7 +431,7 @@ mod tests {
             ..discord()
         };
         assert_eq!(
-            steps(&everything(), &features, 2, &[]),
+            steps(&everything(), &features, 2, false),
             [Step::Post, Step::Chunk(1)]
         );
         let features = Features {
@@ -443,7 +439,7 @@ mod tests {
             ..discord()
         };
         assert_eq!(
-            steps(&everything(), &features, 1, &[]),
+            steps(&everything(), &features, 1, false),
             [Step::Post, Step::Crosspost, Step::Pin, Step::Unpin]
         );
     }

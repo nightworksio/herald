@@ -1,4 +1,5 @@
-use herald_ports::{Admitted, Capabilities, Keeping, Keyring, KnownKey, Versioned};
+use herald_core::State;
+use herald_ports::{Admitted, Capabilities, Inboxes, Keeping, Keyring, KnownKey, Versioned};
 use jiff::Timestamp;
 
 use super::*;
@@ -65,6 +66,18 @@ impl Faulty {
             Fault::KeepsNothing => Err(StoreError::Unsupported { what }),
             _ => Ok(()),
         }
+    }
+}
+
+impl Inboxes for Faulty {
+    async fn delivery(&self, key: &Key, inbox: &str) -> Result<Option<State>, StoreError> {
+        self.refuses("deliveries to followers")?;
+        self.inner.delivery(key, inbox).await
+    }
+
+    async fn put_delivery(&self, key: &Key, inbox: &str, state: &State) -> Result<(), StoreError> {
+        self.refuses("deliveries to followers")?;
+        self.inner.put_delivery(key, inbox, state).await
     }
 }
 

@@ -1,12 +1,10 @@
-use std::sync::Mutex;
-
 use herald_config::{Config, Source};
 use herald_core::{Cursor, Identity, SourceName};
 use herald_flows::{Fresh, Outcome, Ports, PrepareError, Remembered, Stop, Sweep, poll, prepare};
 use herald_ports::Store as _;
 use herald_sources_feed::FeedOptions;
 use herald_sources_registry::{Registry, RegistryOptions};
-use herald_testing::{FakeClock, FakeSigner, FakeStore};
+use herald_testing::{FakeClock, FakeSigner};
 
 use crate::harness::*;
 
@@ -186,11 +184,7 @@ fn a_route_that_stops_leaves_the_cursor_so_the_next_poll_offers_the_event_again(
 }
 
 fn faulty(fault: Fault) -> Failing {
-    Failing {
-        fault,
-        inner: FakeStore::default(),
-        writes: Mutex::new(0),
-    }
+    Failing { fault, ..healthy() }
 }
 
 #[test]

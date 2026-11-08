@@ -223,7 +223,7 @@ pub(crate) fn step(
     match (&slack.credential, step) {
         (_, Step::Crosspost) => Err(Refusal::Cannot("crosspost")),
         (_, Step::OpenThread) => Err(Refusal::Cannot("open a thread; its replies are the thread")),
-        (_, Step::Deliver(_)) => Err(Refusal::Cannot("deliver to an inbox")),
+        (_, Step::Deliver(_) | Step::Deliveries) => Err(Refusal::Cannot("deliver to an inbox")),
         (Credential::Webhook(url), Step::Post) => Ok(posted_json(
             slack,
             Text::secret(url.clone()),

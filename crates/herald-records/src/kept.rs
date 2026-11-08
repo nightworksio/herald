@@ -3,11 +3,11 @@ use std::sync::{Arc, Mutex, PoisonError};
 
 use herald_core::{
     Cursor, DestinationName, Entry, Key, Latest, RecordKind, RouteId, Schedule, Scheme, SourceName,
-    Subscription,
+    State, Subscription,
 };
 use herald_ports::{
-    Admitted, Capabilities, Keeping, Keyring, KnownKey, Store, StoreError, Version, Versioned,
-    Written,
+    Admitted, Capabilities, Inboxes, Keeping, Keyring, KnownKey, Store, StoreError, Version,
+    Versioned, Written,
 };
 use jiff::Timestamp;
 use serde::de::DeserializeOwned;
@@ -247,6 +247,19 @@ impl<R: Records> Kept<R> {
             }
         }
         Ok(found)
+    }
+}
+
+impl<R: Records> Inboxes for Kept<R> {
+    async fn delivery(&self, key: &Key, inbox: &str) -> Result<Option<State>, StoreError> {
+        Ok(self
+            .record::<State>(&paths::inbox(key, inbox))
+            .await?
+            .map(|record| record.value))
+    }
+
+    async fn put_delivery(&self, key: &Key, inbox: &str, state: &State) -> Result<(), StoreError> {
+        self.kept(&paths::inbox(key, inbox), state).await
     }
 }
 
