@@ -353,6 +353,7 @@ body = "{{ event.body }}"
 
 [store]
 kind = "git-branch"
+key = { secret = "HERALD_STORE_KEY" }
 
 [destinations.fedi]
 kind = "activitypub"
@@ -443,7 +444,10 @@ body = "{{ event.body }}"
             "{}",
             errors(&actorless)
         );
-        let marked = ACTIVITYPUB.replace("kind = \"git-branch\"", "kind = \"markers\"");
+        let marked = ACTIVITYPUB.replace(
+            "kind = \"git-branch\"\nkey = { secret = \"HERALD_STORE_KEY\" }",
+            "kind = \"markers\"",
+        );
         assert!(
             errors(&marked).contains("routes[0]: the markers store keeps no subscriptions, so this route has no followers or subscribers to reach; give a store that keeps them, such as \"git-branch\""),
             "{}",

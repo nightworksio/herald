@@ -3,7 +3,8 @@ use std::collections::BTreeSet;
 use herald_config::Config;
 use herald_core::{
     Announcement, Entry, Event, Facts, Key, Latest, Marker, Marks, MentionStyle, Pinning, Plan,
-    Planned, Profile, RouteId, Sent, SourceName, Step, Templates, Threads, plan, schedules, steps,
+    Planned, Profile, RouteId, Sent, SourceName, State, Step, Templates, Threads, plan, schedules,
+    steps,
 };
 use herald_ports::{Clock, Http, Secret, Signer, Store, Version, Written, marker};
 use jiff::{SignedDuration, Timestamp};
@@ -255,24 +256,31 @@ impl<S: Store, C: Clock, G: Signer, H: Http> Run<'_, S, C, G, H> {
         }
     }
 
-    /// Takes `batch`, each a delivery to one inbox, all at once, and writes
-    /// every delivery that landed to the ledger in one write.
+    /// Delivers to each inbox in `batch` all at once, once the run still
+    /// holds the announcement, and keeps where each delivery stands as its
+    /// own record.
     async fn delivered(
         &self,
-        batch: &[Step],
+        batch: &[String],
         announcement: &Announcement,
         progress: &mut Progress,
     ) -> Result<(), Unlanded> {
         let now = self.ports.clock.now();
-        let unlanded = |reason| (batch.to_vec(), reason);
-        for step in batch {
-            progress.entry = progress.entry.clone().attempted(step.clone(), now);
-        }
+        let steps: Vec<Step> = batch.iter().cloned().map(Step::Deliver).collect();
+        let unlanded = |reason| (steps.clone(), reason);
         self.write(progress).await.map_err(unlanded)?;
+        let key = progress.entry.key;
+        for inbox in batch {
+            self.ports
+                .store
+                .put_delivery(&key, inbox, &State::Attempted { at: now })
+                .await
+                .map_err(|error| unlanded(stored(error)))?;
+        }
         let delivery = &self.route.config.route.delivery;
         let entry = &progress.entry;
         let sent = together(
-            batch
+            steps
                 .iter()
                 .map(|step| {
                     let signing = Signing {
@@ -289,10 +297,14 @@ impl<S: Store, C: Clock, G: Signer, H: Http> Run<'_, S, C, G, H> {
         let mut landed = Vec::new();
         let mut failed = Vec::new();
         let mut first = None;
-        for (step, sent) in batch.iter().zip(sent) {
+        for ((inbox, step), sent) in batch.iter().zip(&steps).zip(sent) {
             let reason = match sent {
                 Ok(Sent::Landed(facts)) => {
-                    progress.entry = progress.entry.clone().landed(step.clone(), facts);
+                    self.ports
+                        .store
+                        .put_delivery(&key, inbox, &State::Landed { facts })
+                        .await
+                        .map_err(|error| unlanded(stored(error)))?;
                     landed.push(step.clone());
                     continue;
                 }
@@ -303,47 +315,66 @@ impl<S: Store, C: Clock, G: Signer, H: Http> Run<'_, S, C, G, H> {
             failed.push(step.clone());
             first.get_or_insert(reason);
         }
-        self.write(progress).await.map_err(unlanded)?;
         progress.landed.extend(landed);
         first.map_or(Ok(()), |reason| Err((failed, reason)))
     }
 
-    /// Takes `step`, planned at `index`, or the deliveries from it on,
-    /// `together` at once, and answers how many steps it took.
+    /// Delivers the announcement to the inbox of each follower of `actor` it
+    /// has not landed in, `together` at once, and lands the deliveries once
+    /// every one has.
+    async fn deliveries(
+        &self,
+        actor: &str,
+        announcement: &Announcement,
+        progress: &mut Progress,
+    ) -> Result<(), Unlanded> {
+        let whole = |reason| (vec![Step::Deliveries], reason);
+        let key = progress.entry.key;
+        let mut pending = Vec::new();
+        for inbox in self.recipients(actor).await.map_err(whole)? {
+            let state = self
+                .ports
+                .store
+                .delivery(&key, &inbox)
+                .await
+                .map_err(|error| whole(stored(error)))?;
+            if !matches!(state, Some(State::Landed { .. })) {
+                pending.push(inbox);
+            }
+        }
+        let mut batches = pending.chunks(self.together.max(1));
+        while let Some(batch) = batches.next() {
+            if let Err((mut failed, reason)) = self.delivered(batch, announcement, progress).await {
+                failed.extend(batches.flatten().cloned().map(Step::Deliver));
+                return Err((failed, reason));
+            }
+        }
+        progress.entry = progress
+            .entry
+            .clone()
+            .landed(Step::Deliveries, Facts::default());
+        self.write(progress).await.map_err(whole)
+    }
+
+    /// Takes `step`, delivering to each follower's inbox where it is the
+    /// deliveries.
     async fn next(
         &self,
-        planned: &[Planned],
-        index: usize,
         step: &Planned,
         announcement: &mut Announcement,
         progress: &mut Progress,
-    ) -> (usize, Result<(), Unlanded>) {
-        let batch: Vec<Step> = planned
-            .iter()
-            .skip(index)
-            .map(|planned| planned.step.clone())
-            .take_while(|step| matches!(step, Step::Deliver(_)))
-            .take(self.together)
-            .collect();
-        if !batch.is_empty() {
-            return (
-                batch.len(),
-                self.delivered(&batch, announcement, progress).await,
-            );
+    ) -> Result<(), Unlanded> {
+        if let (Step::Deliveries, Some(actor)) = (&step.step, self.route.reached.follows()) {
+            return self.deliveries(actor, announcement, progress).await;
         }
-        let taken = self
-            .take(&step.step, step.verify_first, announcement, progress)
+        self.take(&step.step, step.verify_first, announcement, progress)
             .await
-            .map_err(|reason| (vec![step.step.clone()], reason));
-        (1, taken)
+            .map_err(|reason| (vec![step.step.clone()], reason))
     }
 
     /// The inboxes an announcement is delivered to: each distinct inbox of
-    /// the followers of the actor the route announces as, in order.
-    async fn recipients(&self) -> Result<Vec<String>, Stop> {
-        let Some(actor) = self.route.reached.follows() else {
-            return Ok(Vec::new());
-        };
+    /// the followers of `actor`, in order.
+    async fn recipients(&self, actor: &str) -> Result<Vec<String>, Stop> {
         let followers = self
             .ports
             .store
@@ -411,11 +442,8 @@ impl<S: Store, C: Clock, G: Signer, H: Http> Run<'_, S, C, G, H> {
             Err(reason) => return stopped(reason),
         };
         let parts = u32::try_from(announcement.messages()).unwrap_or(u32::MAX);
-        let recipients = match self.recipients().await {
-            Ok(recipients) => recipients,
-            Err(reason) => return stopped(reason),
-        };
-        let wanted = steps(&route.delivery, &profile.features, parts, &recipients);
+        let follows = self.route.reached.follows().is_some();
+        let wanted = steps(&route.delivery, &profile.features, parts, follows);
         let now = self.ports.clock.now();
         let record = match self.ports.store.entry(&key).await {
             Ok(record) => record,
@@ -454,17 +482,11 @@ impl<S: Store, C: Clock, G: Signer, H: Http> Run<'_, S, C, G, H> {
             landed: Vec::new(),
         };
         let mut stop = None;
-        let mut index = 0;
-        for _ in 0..planned.len() {
-            let Some(current) = planned.get(index) else {
-                break;
-            };
-            let (taken, result) = self
-                .next(&planned, index, current, &mut announcement, &mut progress)
-                .await;
-            index += taken;
-            if let Err((unlanded, reason)) = result {
-                let rest = planned.iter().skip(index).map(|step| step.step.clone());
+        for (index, current) in planned.iter().enumerate() {
+            if let Err((unlanded, reason)) =
+                self.next(current, &mut announcement, &mut progress).await
+            {
+                let rest = planned.iter().skip(index + 1).map(|step| step.step.clone());
                 stop = Some((
                     unlanded.into_iter().chain(rest).collect::<Vec<Step>>(),
                     reason,

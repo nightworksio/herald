@@ -2,7 +2,7 @@ use std::fmt;
 use std::future::Future;
 
 use herald_core::{
-    Cursor, DestinationName, Entry, Key, Latest, RouteId, Schedule, Scheme, SourceName,
+    Cursor, DestinationName, Entry, Key, Latest, RouteId, Schedule, Scheme, SourceName, State,
     Subscription,
 };
 use jiff::Timestamp;
@@ -108,13 +108,34 @@ impl fmt::Display for StoreError {
     }
 }
 
+/// Where each delivery of an announcement to a follower's inbox stands
+/// (ADR-0005), kept apart from the announcement's ledger entry so the entry
+/// does not grow with its followers. Only the run holding the entry's lease
+/// writes them, so the last write is kept.
+pub trait Inboxes: Sync {
+    /// Where the delivery of the announcement `key` to `inbox` stands.
+    fn delivery(
+        &self,
+        key: &Key,
+        inbox: &str,
+    ) -> impl Future<Output = Result<Option<State>, StoreError>> + Send;
+
+    /// Keeps `state` as where the delivery of `key` to `inbox` stands.
+    fn put_delivery(
+        &self,
+        key: &Key,
+        inbox: &str,
+        state: &State,
+    ) -> impl Future<Output = Result<(), StoreError>> + Send;
+}
+
 /// The ledger, cursors, schedules, subscriptions and pins (ADR-0005,
-/// ADR-0011).
+/// ADR-0011), and every kind of record each narrower trait keeps.
 ///
 /// Entries and cursors are written with compare-and-set. Schedules and
 /// subscriptions are sets, and adding or removing one twice is the same as
 /// once. A route's pin is one value, and the last written is kept.
-pub trait Store: Sync {
+pub trait Store: Inboxes {
     /// What the store keeps.
     fn capabilities(&self) -> Capabilities;
 

@@ -19,6 +19,12 @@ pub(crate) fn entry(key: &Key) -> String {
     format!("ledger/{key}.json")
 }
 
+/// Where the delivery of `key` to `inbox` is kept: under the inbox's
+/// digest, so a long inbox URL makes no long path.
+pub(crate) fn inbox(key: &Key, inbox: &str) -> String {
+    format!("inboxes/{key}/{}.json", herald_core::digest(inbox))
+}
+
 pub(crate) fn cursor(source: &SourceName) -> String {
     format!("cursors/{}.json", segment(source.as_str()))
 }

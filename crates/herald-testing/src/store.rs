@@ -2,18 +2,18 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Mutex;
 
 use herald_core::{
-    Cursor, DestinationName, Entry, Key, Latest, RouteId, Schedule, Scheme, SourceName,
+    Cursor, DestinationName, Entry, Key, Latest, RouteId, Schedule, Scheme, SourceName, State,
     Subscription,
 };
 use herald_ports::{
-    Admitted, Capabilities, Keeping, Store, StoreError, Version, Versioned, Written,
+    Admitted, Capabilities, Inboxes, Keeping, Store, StoreError, Version, Versioned, Written,
 };
 use jiff::Timestamp;
 
 use crate::lock;
 
 #[derive(Debug, Default)]
-struct State {
+struct Held {
     entries: BTreeMap<Key, Versioned<Entry>>,
     cursors: BTreeMap<SourceName, Versioned<Cursor>>,
     schedules: Vec<Schedule>,
@@ -22,12 +22,13 @@ struct State {
     deliveries: BTreeMap<(&'static str, String), Timestamp>,
     notes: BTreeMap<Key, String>,
     latest: BTreeMap<String, Versioned<Latest>>,
+    inboxes: BTreeMap<(Key, String), State>,
 }
 
 /// A store in memory, keeping everything a store can keep.
 #[derive(Debug, Default)]
 pub struct FakeStore {
-    state: Mutex<State>,
+    state: Mutex<Held>,
 }
 
 fn compare_and_set<K: Ord, T: Clone>(
@@ -49,6 +50,22 @@ fn compare_and_set<K: Ord, T: Clone>(
         },
     );
     Written::Written(version)
+}
+
+impl Inboxes for FakeStore {
+    async fn delivery(&self, key: &Key, inbox: &str) -> Result<Option<State>, StoreError> {
+        Ok(lock(&self.state)
+            .inboxes
+            .get(&(*key, inbox.to_owned()))
+            .cloned())
+    }
+
+    async fn put_delivery(&self, key: &Key, inbox: &str, state: &State) -> Result<(), StoreError> {
+        lock(&self.state)
+            .inboxes
+            .insert((*key, inbox.to_owned()), state.clone());
+        Ok(())
+    }
 }
 
 impl Store for FakeStore {

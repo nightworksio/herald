@@ -103,6 +103,7 @@ fn step(step: &Step) -> String {
         Step::Pin => "pin".to_owned(),
         Step::Unpin => "unpin".to_owned(),
         Step::Deliver(inbox) => format!("delivery to {inbox}"),
+        Step::Deliveries => "deliveries to followers".to_owned(),
     }
 }
 

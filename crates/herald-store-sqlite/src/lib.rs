@@ -7,7 +7,7 @@
 
 use std::path::{Path, PathBuf};
 
-use herald_core::Duration;
+use herald_core::{Duration, SecretRef};
 use herald_ports::{Sql, StoreError};
 use herald_records::{Dialect, Kept, SqlRecords};
 use jiff::SignedDuration;
@@ -32,6 +32,10 @@ pub struct StoreOptions {
     /// How long a transaction waits for another process to let go of the
     /// file; 5s where absent.
     pub busy: Option<Duration>,
+    /// The secret holding a key to seal every record with, such as
+    /// `HERALD_STORE_KEY`, so a record herald did not seal reads as corrupt
+    /// (ADR-0005); records are not sealed where absent.
+    pub key: Option<SecretRef>,
 }
 
 impl StoreOptions {
@@ -77,6 +81,7 @@ mod tests {
             Path::new("/srv/herald/herald.sqlite")
         );
         let named = StoreOptions {
+            key: None,
             path: Some("state/records.db".to_owned()),
             busy: None,
         };
@@ -90,6 +95,7 @@ mod tests {
     fn a_transaction_waits_the_time_named_or_else_five_seconds() {
         assert_eq!(StoreOptions::default().busy(), BUSY);
         let named = StoreOptions {
+            key: None,
             path: None,
             busy: Some(Duration(SignedDuration::from_secs(30))),
         };

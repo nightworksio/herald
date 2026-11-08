@@ -31,6 +31,10 @@ pub struct StoreOptions {
     /// How long one statement may run before the database cancels it; 30s
     /// where absent.
     pub statement_timeout: Option<Duration>,
+    /// The secret holding a key to seal every record with, such as
+    /// `HERALD_STORE_KEY`, so a record herald did not seal reads as corrupt
+    /// (ADR-0005); records are not sealed where absent.
+    pub key: Option<SecretRef>,
 }
 
 impl StoreOptions {
@@ -131,6 +135,7 @@ mod tests {
             secret: "HERALD_POSTGRES_URL".to_owned(),
         };
         let unnamed = StoreOptions {
+            key: None,
             url: url.clone(),
             connect_timeout: None,
             statement_timeout: None,
@@ -138,6 +143,7 @@ mod tests {
         assert_eq!(unnamed.connect_timeout(), CONNECT_TIMEOUT);
         assert_eq!(unnamed.statement_timeout(), STATEMENT_TIMEOUT);
         let named = StoreOptions {
+            key: None,
             url,
             connect_timeout: Some(Duration(SignedDuration::from_secs(3))),
             statement_timeout: Some(Duration(SignedDuration::from_secs(4))),

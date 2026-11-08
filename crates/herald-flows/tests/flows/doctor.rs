@@ -14,11 +14,22 @@ fn layer<'a>(stores: &'a [&'a str]) -> Layer<'a> {
 const STORES: [&str; 2] = ["git-branch", "markers"];
 const KEY: &str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 
+fn sealed(store: &str) -> &'static str {
+    if store == "markers" {
+        ""
+    } else {
+        "key = { secret = \"HERALD_STORE_KEY\" }\n"
+    }
+}
+
 fn on(store: &str, extra: &str) -> herald_config::Config {
     let mut config = config(extra);
     config.store = load(
         "herald.toml",
-        &format!("version = 1\n[store]\nkind = \"{store}\"\n"),
+        &format!(
+            "version = 1\n[store]\nkind = \"{store}\"\n{}",
+            sealed(store)
+        ),
         &|_| Err(String::new()),
     )
     .unwrap()
@@ -52,7 +63,7 @@ fn the_actions_cache_and_repository_variables_note_what_they_cannot_hold() {
     let mut variables = on("git-branch", "");
     variables.store = load(
         "herald.toml",
-        "version = 1\n[store]\nkind = \"repo-variables\"\ntoken = { secret = \"T\" }\n",
+        "version = 1\n[store]\nkind = \"repo-variables\"\ntoken = { secret = \"T\" }\nkey = { secret = \"K\" }\n",
         &|_| Err(String::new()),
     )
     .unwrap()
@@ -144,7 +155,7 @@ fn the_markers_store_names_the_pins_cursors_and_read_backs_it_lacks() {
 fn a_route_taking_docker_hub_tags_without_versions_is_noted() {
     let text = |versions: &str| {
         format!(
-            "version = 1\n[store]\nkind = \"git-branch\"\n[markers]\nkey = {{ secret = \"K\" }}\n[destinations.discord]\nkind = \"discord\"\ntoken = {{ secret = \"T\" }}\n[sources.caddy]\nkind = \"docker-hub\"\npackage = \"caddy\"\n[[routes]]\nid = \"images\"\nsources = [\"caddy\"]\ndestination = \"discord\"\nchannel = \"1566200000000000100\"\ntemplate = \"t\"\n{versions}\n[templates.t]\ntitle = \"{{{{ event.version }}}}\"\nbody = \"\"\n"
+            "version = 1\n[store]\nkind = \"git-branch\"\nkey = {{ secret = \"S\" }}\n[markers]\nkey = {{ secret = \"K\" }}\n[destinations.discord]\nkind = \"discord\"\ntoken = {{ secret = \"T\" }}\n[sources.caddy]\nkind = \"docker-hub\"\npackage = \"caddy\"\n[[routes]]\nid = \"images\"\nsources = [\"caddy\"]\ndestination = \"discord\"\nchannel = \"1566200000000000100\"\ntemplate = \"t\"\n{versions}\n[templates.t]\ntitle = \"{{{{ event.version }}}}\"\nbody = \"\"\n"
         )
     };
     let loaded =
@@ -167,6 +178,7 @@ fn interacting(discord: &str, slack: &str, matrix: &str) -> herald_config::Confi
         r#"version = 1
 [store]
 kind = "git-branch"
+key = {{ secret = "HERALD_STORE_KEY" }}
 [destinations.discord]
 kind = "discord"
 token = {{ secret = "T" }}

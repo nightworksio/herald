@@ -33,6 +33,7 @@ template.
 
    [store]
    kind = "git-branch"
+   key = { secret = "HERALD_STORE_KEY" }
 
    [destinations.discord]
    kind = "discord"

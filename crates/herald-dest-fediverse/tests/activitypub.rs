@@ -110,6 +110,7 @@ mod activitypub {
             (Step::OpenThread, "open a thread"),
             (Step::Pin, "pin"),
             (Step::Unpin, "pin"),
+            (Step::Deliveries, "deliver to every inbox in one request"),
         ] {
             assert_eq!(
                 send(&actor, &replay, &step),

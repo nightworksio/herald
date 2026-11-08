@@ -4,12 +4,12 @@ use std::sync::Mutex;
 use herald_config::{Config, load};
 use herald_core::{
     Cursor, DestinationName, Draft, Entry, Event, Identity, Key, Kind, RouteId, Schedule,
-    SourceName, Step, Subscription,
+    SourceName, State, Step, Subscription,
 };
 use herald_flows::{Announced, Outcome, Ports, announce, prepare};
 use herald_ports::{
-    Capabilities, Http, HttpError, Request, Response, Store, StoreError, Version, Versioned,
-    Written,
+    Capabilities, Http, HttpError, Inboxes, Request, Response, Store, StoreError, Version,
+    Versioned, Written,
 };
 use herald_testing::{FakeClock, FakeSecrets, FakeSigner, FakeStore};
 use jiff::Timestamp;
@@ -213,14 +213,17 @@ pub(crate) enum Fault {
     LatestConflicts,
     KeepsNoLatest,
     Admits,
+    ReadsDeliveries,
     AttemptsDeliveries,
     LandsDeliveries,
+    LandsOneDelivery,
 }
 
 pub(crate) struct Failing {
     pub(crate) fault: Fault,
     pub(crate) inner: FakeStore,
     pub(crate) writes: Mutex<u32>,
+    pub(crate) landings: Mutex<u32>,
 }
 
 pub(crate) fn healthy() -> Failing {
@@ -228,12 +231,38 @@ pub(crate) fn healthy() -> Failing {
         fault: Fault::Nothing,
         inner: FakeStore::default(),
         writes: Mutex::new(0),
+        landings: Mutex::new(0),
     }
 }
 
 pub(crate) fn broken() -> StoreError {
     StoreError::Unavailable {
         reason: "broken".to_owned(),
+    }
+}
+
+impl Inboxes for Failing {
+    async fn delivery(&self, key: &Key, inbox: &str) -> Result<Option<State>, StoreError> {
+        if self.fault == Fault::ReadsDeliveries {
+            return Err(broken());
+        }
+        self.inner.delivery(key, inbox).await
+    }
+
+    async fn put_delivery(&self, key: &Key, inbox: &str, state: &State) -> Result<(), StoreError> {
+        let landings = {
+            let mut landings = self.landings.lock().unwrap();
+            if matches!(state, State::Landed { .. }) {
+                *landings += 1;
+            }
+            *landings
+        };
+        match (self.fault, state) {
+            (Fault::AttemptsDeliveries, State::Attempted { .. })
+            | (Fault::LandsDeliveries, State::Landed { .. }) => Err(broken()),
+            (Fault::LandsOneDelivery, State::Landed { .. }) if landings > 1 => Err(broken()),
+            _ => self.inner.put_delivery(key, inbox, state).await,
+        }
     }
 }
 
@@ -280,10 +309,7 @@ impl Store for Failing {
         };
         match (self.fault, writes) {
             (Fault::Claims, 1) => Err(broken()),
-            (Fault::ClaimConflicts, 1)
-            | (Fault::Writes, 2)
-            | (Fault::AttemptsDeliveries, 4)
-            | (Fault::LandsDeliveries, 5) => Ok(Written::Conflict),
+            (Fault::ClaimConflicts, 1) | (Fault::Writes, 2) => Ok(Written::Conflict),
             (Fault::Releases, _) if entry.lease.is_none() => Err(broken()),
             _ => self.inner.put_entry(entry, expected).await,
         }

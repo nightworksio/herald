@@ -2,6 +2,7 @@ version = 1
 
 [store]
 kind = "git-branch"
+key = { secret = "HERALD_STORE_KEY" }
 
 [destinations.fedi]
 kind = "activitypub"

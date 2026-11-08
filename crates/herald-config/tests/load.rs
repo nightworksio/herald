@@ -12,6 +12,7 @@ version = 1
 
 [store]
 kind = "git-branch"
+key = { secret = "HERALD_STORE_KEY" }
 
 [destinations.discord]
 kind = "discord"
@@ -50,7 +51,15 @@ body = "{{ event.body }}"
         let config = load("herald.toml", EXAMPLE, &nothing).unwrap();
         assert_eq!(
             config.store,
-            Store::GitBranch(herald_store_git_branch::StoreOptions::default())
+            Store::GitBranch(herald_store_git_branch::StoreOptions {
+                repository: None,
+                branch: None,
+                token: None,
+                api: None,
+                key: herald_core::SecretRef {
+                    secret: "HERALD_STORE_KEY".to_owned()
+                },
+            })
         );
         assert_eq!(config.marker_key, None);
         assert!(matches!(
@@ -106,7 +115,7 @@ body = "{{ event.body }}"
         );
         assert_eq!(
             errors(&text),
-            "herald.toml:19:15 routes[0].destination: no destination is named \"announcements\"; the destinations are \"discord\""
+            "herald.toml:20:15 routes[0].destination: no destination is named \"announcements\"; the destinations are \"discord\""
         );
         let text = EXAMPLE
             .replace(
@@ -116,7 +125,7 @@ body = "{{ event.body }}"
             .replace("template = \"package-release\"", "template = \"other\"");
         assert_eq!(
             errors(&text),
-            "herald.toml:17:12 routes[0].sources: no source or app is named \"herald\"; the sources and apps are \"php-mutation-gate\"\nherald.toml:21:12 routes[0].template: no template is named \"other\"; the templates are \"package-release\""
+            "herald.toml:18:12 routes[0].sources: no source or app is named \"herald\"; the sources and apps are \"php-mutation-gate\"\nherald.toml:22:12 routes[0].template: no template is named \"other\"; the templates are \"package-release\""
         );
     }
 
@@ -127,7 +136,7 @@ body = "{{ event.body }}"
             "token = \"a-token-written-plainly\"",
         );
         let error = errors(&text);
-        assert!(error.starts_with("herald.toml:9:9 destinations.discord.token: a secret is written as { secret = \"NAME\" }"), "{error}");
+        assert!(error.starts_with("herald.toml:10:9 destinations.discord.token: a secret is written as { secret = \"NAME\" }"), "{error}");
         assert!(!error.contains("written-plainly"), "{error}");
     }
 
@@ -182,7 +191,10 @@ body = "{{ event.body }}"
             );
         let config = load("herald.toml", &text, &|_| Err(String::new())).unwrap();
         let secrets: Vec<&str> = config.secrets().into_iter().collect();
-        assert_eq!(secrets, ["HERALD_DISCORD_TOKEN", "STATE_TOKEN"]);
+        assert_eq!(
+            secrets,
+            ["HERALD_DISCORD_TOKEN", "HERALD_STORE_KEY", "STATE_TOKEN"]
+        );
         let variables = EXAMPLE.replace(
             "kind = \"git-branch\"",
             "kind = \"repo-variables\"\ntoken = { secret = \"VARIABLES_TOKEN\" }",
@@ -192,7 +204,10 @@ body = "{{ event.body }}"
         let config = load("herald.toml", &keyed, &|_| Err(String::new())).unwrap();
         assert!(config.secrets().contains("VARIABLES_TOKEN"));
         assert!(config.secrets().contains("HERALD_MARKER_SECRET"));
-        let marked = EXAMPLE.replace("kind = \"git-branch\"", "kind = \"markers\"");
+        let marked = EXAMPLE.replace(
+            "kind = \"git-branch\"\nkey = { secret = \"HERALD_STORE_KEY\" }",
+            "kind = \"markers\"",
+        );
         let config = load("herald.toml", &marked, &|_| Err(String::new())).unwrap();
         assert_eq!(config.secrets().len(), 1);
     }
@@ -201,12 +216,15 @@ body = "{{ event.body }}"
     fn every_store_kind_loads_as_itself() {
         for kind in Store::KINDS {
             let options = match kind {
-                "repo-variables" => "\ntoken = { secret = \"HERALD_STATE_TOKEN\" }",
+                "repo-variables" => {
+                    "\ntoken = { secret = \"HERALD_STATE_TOKEN\" }\nkey = { secret = \"HERALD_STORE_KEY\" }"
+                }
+                "git-branch" | "actions-cache" => "\nkey = { secret = \"HERALD_STORE_KEY\" }",
                 "postgres" => "\nurl = { secret = \"HERALD_POSTGRES_URL\" }",
                 _ => "",
             };
             let text = EXAMPLE.replace(
-                "kind = \"git-branch\"",
+                "kind = \"git-branch\"\nkey = { secret = \"HERALD_STORE_KEY\" }",
                 &format!("kind = \"{kind}\"{options}"),
             );
             let config = load("herald.toml", &text, &|_| Err(String::new())).unwrap();
@@ -268,7 +286,7 @@ body = "{{ event.body }}"
         );
         let refused = errors(&feeds);
         assert!(
-            refused.starts_with("herald.toml:19:12 routes[0].versions: feed entries and app messages carry no version"),
+            refused.starts_with("herald.toml:20:12 routes[0].versions: feed entries and app messages carry no version"),
             "{refused}"
         );
     }
@@ -355,7 +373,7 @@ body = "{{ event.body }}"
         assert!(config.secrets().contains("REGISTRY_TOKEN"));
         let refused = errors(&registry("crates-io"));
         assert!(
-            refused.starts_with("herald.toml:11:1 sources.php-mutation-gate.token: the registry \"crates-io\" takes no token; remove token\n"),
+            refused.starts_with("herald.toml:12:1 sources.php-mutation-gate.token: the registry \"crates-io\" takes no token; remove token\n"),
             "{refused}"
         );
     }
@@ -421,7 +439,7 @@ body = "{{ event.body }}"
         let error = errors(&broken);
         assert!(
             error.starts_with(
-                "herald.toml:28:8 templates.package-release.body: the template does not compile:"
+                "herald.toml:29:8 templates.package-release.body: the template does not compile:"
             ),
             "{error}"
         );
@@ -430,7 +448,7 @@ body = "{{ event.body }}"
             "body = \"{{ event.release_notes }}\"",
         );
         let error = errors(&undefined);
-        assert!(error.starts_with("herald.toml:28:8 templates.package-release.body: it does not render a sample Release event:"), "{error}");
+        assert!(error.starts_with("herald.toml:29:8 templates.package-release.body: it does not render a sample Release event:"), "{error}");
         let long = EXAMPLE.replace("title = \"📦", &format!("title = \"{}", "x".repeat(300)));
         let error = errors(&long);
         assert!(
@@ -517,7 +535,10 @@ body = "{{ event.body }}"
             "kind = \"markers\"\nbranch = \"x\"",
         );
         assert!(errors(&stray).contains("store.branch: unknown field `branch`"));
-        let markers = EXAMPLE.replace("kind = \"git-branch\"", "kind = \"markers\"");
+        let markers = EXAMPLE.replace(
+            "kind = \"git-branch\"\nkey = { secret = \"HERALD_STORE_KEY\" }",
+            "kind = \"markers\"",
+        );
         assert_eq!(
             load("herald.toml", &markers, &nothing).unwrap().store,
             Store::Markers

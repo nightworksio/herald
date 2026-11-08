@@ -29,6 +29,7 @@ const ENV = {
   HERALD_ACTIVITYPUB_KEY: KEY,
   GITHUB_TOKEN: "local-token",
   GITHUB_REPOSITORY: "nightworksio/herald",
+  HERALD_STORE_KEY: "local-store-key",
 };
 const started = [];
 

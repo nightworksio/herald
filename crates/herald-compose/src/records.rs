@@ -4,12 +4,13 @@ use std::path::Path;
 use herald_config::Store;
 use herald_flows::{Connected, unserved};
 use herald_ports::{Keyring, Secret, Secrets as _, Store as Keeps};
-use herald_records::{Kept, KvRecords, SqlRecords};
+use herald_records::{Kept, KvRecords, Seal, SqlRecords};
 use herald_store_dynamodb::{Dynamodb, DynamodbStore};
 use herald_store_git_branch::{GitBranch, GitBranchStore, StoreOptions as BranchOptions};
 use herald_store_repo_variables::{
     RepoVariables, RepoVariablesStore, StoreOptions as VariablesOptions,
 };
+use herald_store_sqlite::{SqliteStore, StoreOptions as SqliteOptions};
 
 use crate::host::{Host, KvAt, SqlAt};
 
@@ -77,29 +78,26 @@ pub async fn reached<H: Host>(
     if !stores.contains(&store.kind()) {
         return Err(unserved(stores));
     }
+    let seal = match store.key() {
+        Some(key) => Some(Seal::new(
+            secret(host, &key.secret, "the store seals its records with it").await?,
+        )),
+        None => None,
+    };
+    opening(host, store, stores, seal).await
+}
+
+async fn opening<H: Host>(
+    host: &H,
+    store: &Store,
+    stores: &[&str],
+    seal: Option<Seal>,
+) -> Result<Records<H>, String> {
     let kind = store.kind();
     let opened = |error: String| format!("the {kind} store could not be opened: {error}");
     let migrated = |error: herald_ports::StoreError| opened(error.to_string());
     Ok(match store {
-        Store::Sqlite(options) => {
-            let file = options.file(Path::new(""));
-            let filed = |error: String| {
-                format!(
-                    "the sqlite store {} could not be opened: {error}",
-                    file.display()
-                )
-            };
-            let at = SqlAt::Sqlite {
-                file: &file,
-                busy: options.busy(),
-            };
-            let sql = host.sql(at).await.map_err(filed)?;
-            Records::Sql(
-                herald_store_sqlite::store(sql)
-                    .await
-                    .map_err(|error| filed(error.to_string()))?,
-            )
-        }
+        Store::Sqlite(options) => Records::Sql(sqlite(host, options).await?.sealed(seal)),
         Store::Postgres(options) => {
             let name = options.url.secret.as_str();
             let url = secret(
@@ -114,14 +112,24 @@ pub async fn reached<H: Host>(
                 statement: options.statement_timeout(),
             };
             let sql = host.sql(at).await.map_err(opened)?;
-            Records::Sql(herald_store_postgres::store(sql).await.map_err(migrated)?)
+            Records::Sql(
+                herald_store_postgres::store(sql)
+                    .await
+                    .map_err(migrated)?
+                    .sealed(seal),
+            )
         }
         Store::D1(options) => {
             let sql = host
                 .sql(SqlAt::D1(options.binding()))
                 .await
                 .map_err(opened)?;
-            Records::Sql(herald_store_d1::store(sql).await.map_err(migrated)?)
+            Records::Sql(
+                herald_store_d1::store(sql)
+                    .await
+                    .map_err(migrated)?
+                    .sealed(seal),
+            )
         }
         Store::DurableObject(options) => {
             let at = SqlAt::DurableObject {
@@ -132,7 +140,8 @@ pub async fn reached<H: Host>(
             Records::Sql(
                 herald_store_durable_object::store(sql)
                     .await
-                    .map_err(migrated)?,
+                    .map_err(migrated)?
+                    .sealed(seal),
             )
         }
         Store::DenoKv(options) => {
@@ -140,25 +149,49 @@ pub async fn reached<H: Host>(
                 .kv(KvAt::DenoKv(options.path.as_deref()))
                 .await
                 .map_err(opened)?;
-            Records::Kv(herald_store_deno_kv::store(kv, options))
+            Records::Kv(herald_store_deno_kv::store(kv, options).sealed(seal))
         }
         Store::FastlyKv(options) => {
             let kv = host
                 .kv(KvAt::FastlyKv(options.store()))
                 .await
                 .map_err(opened)?;
-            Records::Kv(herald_store_fastly_kv::store(kv, options))
+            Records::Kv(herald_store_fastly_kv::store(kv, options).sealed(seal))
         }
-        Store::GitBranch(options) => Records::Branch(branch(host, options).await?),
-        Store::RepoVariables(options) => Records::Variables(variables(host, options).await?),
+        Store::GitBranch(options) => Records::Branch(branch(host, options).await?.sealed(seal)),
+        Store::RepoVariables(options) => {
+            Records::Variables(variables(host, options).await?.sealed(seal))
+        }
         Store::Dynamodb(options) => {
             let table = Dynamodb::reached(options, host.secrets()).await?;
             let http = host.connect(table.api())?;
-            Records::Dynamodb(table.store(http, host.clock().clone(), host.nonce()))
+            Records::Dynamodb(
+                table
+                    .store(http, host.clock().clone(), host.nonce())
+                    .sealed(seal),
+            )
         }
         Store::Markers => Records::Posts,
         Store::ActionsCache(_) => return Err(unserved(stores)),
     })
+}
+
+async fn sqlite<H: Host>(host: &H, options: &SqliteOptions) -> Result<SqliteStore<H::Sql>, String> {
+    let file = options.file(Path::new(""));
+    let filed = |error: String| {
+        format!(
+            "the sqlite store {} could not be opened: {error}",
+            file.display()
+        )
+    };
+    let at = SqlAt::Sqlite {
+        file: &file,
+        busy: options.busy(),
+    };
+    let sql = host.sql(at).await.map_err(filed)?;
+    herald_store_sqlite::store(sql)
+        .await
+        .map_err(|error| filed(error.to_string()))
 }
 
 async fn branch<H: Host>(

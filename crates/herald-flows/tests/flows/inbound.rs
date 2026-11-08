@@ -235,6 +235,25 @@ fn a_delivery_is_admitted_once_until_it_is_released() {
 
 struct Refusing(StoreError);
 
+impl herald_ports::Inboxes for Refusing {
+    async fn delivery(
+        &self,
+        _: &herald_core::Key,
+        _: &str,
+    ) -> Result<Option<herald_core::State>, StoreError> {
+        Err(self.0.clone())
+    }
+
+    async fn put_delivery(
+        &self,
+        _: &herald_core::Key,
+        _: &str,
+        _: &herald_core::State,
+    ) -> Result<(), StoreError> {
+        Err(self.0.clone())
+    }
+}
+
 impl Store for Refusing {
     fn capabilities(&self) -> herald_ports::Capabilities {
         FakeStore::default().capabilities()

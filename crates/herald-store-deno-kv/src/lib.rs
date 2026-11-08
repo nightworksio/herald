@@ -5,6 +5,7 @@
 //! check of versionstamps sets the value only where it still has that one:
 //! that is the compare-and-set.
 
+use herald_core::SecretRef;
 use herald_ports::Kv;
 use herald_records::{Kept, KvRecords};
 use schemars::JsonSchema;
@@ -23,6 +24,10 @@ pub struct StoreOptions {
     /// The key every record is kept under, its parts split at `/`;
     /// `herald` where absent.
     pub prefix: Option<String>,
+    /// The secret holding a key to seal every record with, such as
+    /// `HERALD_STORE_KEY`, so a record herald did not seal reads as corrupt
+    /// (ADR-0005); records are not sealed where absent.
+    pub key: Option<SecretRef>,
 }
 
 impl StoreOptions {

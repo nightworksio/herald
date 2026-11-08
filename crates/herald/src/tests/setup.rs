@@ -10,6 +10,7 @@ fn config(extra: &str) -> String {
         r#"version = 1
 [store]
 kind = "git-branch"
+key = {{ secret = "HERALD_STORE_KEY" }}
 [destinations.discord]
 kind = "discord"
 token = {{ secret = "HERALD_DISCORD_TOKEN" }}

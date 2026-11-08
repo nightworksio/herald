@@ -1,9 +1,7 @@
-use std::sync::Mutex;
-
 use herald_core::{Chore, DELIVERIES_KEPT, Identity, Key, RouteId, Schedule, Scheme};
 use herald_flows::{Chored, Stop, housekeep, prepare};
 use herald_ports::{Admitted, Store as _};
-use herald_testing::{FakeClock, FakeSigner, FakeStore};
+use herald_testing::{FakeClock, FakeSigner};
 use jiff::SignedDuration;
 
 use crate::harness::*;
@@ -121,8 +119,7 @@ fn housekeeping_that_cannot_reach_its_destination_or_its_store_keeps_its_schedul
     ));
     let failing = Failing {
         fault: Fault::Schedules,
-        inner: FakeStore::default(),
-        writes: Mutex::new(0),
+        ..healthy()
     };
     pollster::block_on(
         failing
@@ -138,8 +135,7 @@ fn housekeeping_that_cannot_reach_its_destination_or_its_store_keeps_its_schedul
     );
     let listing = Failing {
         fault: Fault::ListsSchedules,
-        inner: FakeStore::default(),
-        writes: Mutex::new(0),
+        ..healthy()
     };
     assert_eq!(
         kept(&listing, &Script::default()),

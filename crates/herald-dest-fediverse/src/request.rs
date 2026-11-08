@@ -117,6 +117,6 @@ pub(crate) fn step(
         Step::Crosspost => Err(Refusal::Cannot("crosspost")),
         Step::OpenThread => Err(Refusal::Cannot("open a thread; its replies are the thread")),
         Step::Pin | Step::Unpin => Err(Refusal::Cannot("pin a route's announcement")),
-        Step::Deliver(_) => Err(Refusal::Cannot("deliver to an inbox")),
+        Step::Deliver(_) | Step::Deliveries => Err(Refusal::Cannot("deliver to an inbox")),
     }
 }

@@ -7,10 +7,16 @@ use herald_testing::{FakeClock, FakeSecrets, FakeSigner};
 use crate::harness::*;
 
 fn mastodon(store: &str, limit: usize) -> Config {
+    let key = if store == "markers" {
+        ""
+    } else {
+        "key = { secret = \"HERALD_STORE_KEY\" }"
+    };
     let text = format!(
         r#"version = 1
 [store]
 kind = "{store}"
+{key}
 [destinations.social]
 kind = "mastodon"
 server = "https://mastodon.example"

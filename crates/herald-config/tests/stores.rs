@@ -21,6 +21,7 @@ mod stores {
         assert_eq!(
             store("path = \"/var/lib/herald/records.db\"\n"),
             Ok(Store::Sqlite(StoreOptions {
+                key: None,
                 path: Some("/var/lib/herald/records.db".to_owned()),
                 busy: None,
             }))
@@ -49,6 +50,7 @@ mod stores {
         assert_eq!(
             named.store,
             Store::Postgres(herald_store_postgres::StoreOptions {
+                key: None,
                 url: herald_core::SecretRef {
                     secret: "HERALD_POSTGRES_URL".to_owned()
                 },
@@ -98,6 +100,7 @@ mod stores {
         assert_eq!(
             kind("d1", "binding = \"DB\"\n").unwrap().store,
             Store::D1(herald_store_d1::StoreOptions {
+                key: None,
                 binding: Some("DB".to_owned())
             })
         );
@@ -106,6 +109,7 @@ mod stores {
                 .unwrap()
                 .store,
             Store::DurableObject(herald_store_durable_object::StoreOptions {
+                key: None,
                 binding: None,
                 object: Some("records".to_owned())
             })
@@ -113,6 +117,7 @@ mod stores {
         assert_eq!(
             kind("deno-kv", "prefix = \"apps/herald\"\n").unwrap().store,
             Store::DenoKv(herald_store_deno_kv::StoreOptions {
+                key: None,
                 path: None,
                 prefix: Some("apps/herald".to_owned())
             })
@@ -120,6 +125,7 @@ mod stores {
         assert_eq!(
             kind("fastly-kv", "store = \"records\"\n").unwrap().store,
             Store::FastlyKv(herald_store_fastly_kv::StoreOptions {
+                key: None,
                 store: Some("records".to_owned()),
                 prefix: None
             })

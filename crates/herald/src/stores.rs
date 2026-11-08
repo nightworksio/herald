@@ -11,7 +11,7 @@ use herald_environment::{EnvSecrets, SystemClock};
 use herald_flows::{Connected, prepare};
 use herald_native::{NativePostgres, NativeSql, NativeSqlite, Timeouts};
 use herald_ports::Secrets as _;
-use herald_records::Memory;
+use herald_records::{Memory, Seal};
 use herald_store_actions_cache::{ActionsCache, ActionsCacheStore, StoreOptions as CacheOptions};
 
 use super::{Connect, Connection, RESULTS, RUNTIME_TOKEN, variable};
@@ -201,11 +201,19 @@ pub(crate) async fn cache<'a>(
     connect: Connect<'a>,
 ) -> Result<ActionsCacheStore<'a, Connection>, String> {
     let results = variable(vars, RESULTS)?;
+    let key = secrets.secret(&options.key.secret).await.map_err(|_| {
+        format!(
+            "{} is not set; the store seals its records with it",
+            options.key.secret
+        )
+    })?;
     let token = secrets.secret(RUNTIME_TOKEN).await.map_err(|_| {
         format!("{RUNTIME_TOKEN} is not set; the actions-cache store runs through herald's Action")
     })?;
     let cache =
         ActionsCache::new(results, token, options.prefix.as_deref()).keeping(&options.keeps);
     let http = connect.reach(cache.results())?;
-    Ok(cache.store(http, Box::new(move |base: &str| connect.reach(base))))
+    Ok(cache
+        .store(http, Box::new(move |base: &str| connect.reach(base)))
+        .sealed(Seal::new(key)))
 }

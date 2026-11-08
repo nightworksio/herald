@@ -31,8 +31,11 @@ all still has the destination, and the destination holds the posts.
    lands.** The plan for a route's destination lists the steps in order, for
    example: post the announcement, crosspost it, open its thread, post each
    overflow chunk, and pin it. For the ActivityPub actor there is also one
-   delivery step per follower inbox. A landed step is recorded with what the
-   destination answered: the message id, the thread id and the permalink.
+   step that delivers it to every follower's inbox. Each delivery is kept as
+   its own record, under the announcement's key and the inbox, so an entry
+   does not grow with the followers; the step lands once every delivery has.
+   A landed step is recorded with what the destination answered: the message
+   id, the thread id and the permalink.
 
 3. **The plan reads the ledger.**
    - With no entry for the key, it plans every step.
@@ -71,6 +74,17 @@ all still has the destination, and the destination holds the posts.
    DynamoDB) counts each record's writes. Each record draws a random epoch
    when it is made, so a record removed and written again never takes an
    earlier token back, and no write waits on any other record's.
+
+   **Sealed records.** `git-branch`, `repo-variables` and `actions-cache` live
+   where others can write: whoever can push to the branch, write variables or
+   save a cache entry under the prefix. Each of these stores therefore names a
+   store `key`, and every record is sealed with an HMAC-SHA256 under it, over
+   the record's path and bytes. A record herald did not seal, or one moved to
+   another path, reads as corrupt. A listing skips it and housekeeping names
+   it. Every other store that keeps records seals them too when its options
+   name a `key`. A seal does not tell an earlier record herald sealed at the
+   same path from the current one, so whoever can write the store can still
+   put back what herald wrote there before.
 
 6. **Nine stores, each where it can run.**
 

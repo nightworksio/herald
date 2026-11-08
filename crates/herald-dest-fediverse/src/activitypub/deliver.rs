@@ -118,6 +118,7 @@ impl ActivityPub {
             Step::Crosspost => Ok(cannot("crosspost")),
             Step::OpenThread => Ok(cannot("open a thread")),
             Step::Pin | Step::Unpin => Ok(cannot("pin")),
+            Step::Deliveries => Ok(cannot("deliver to every inbox in one request")),
         }
     }
 

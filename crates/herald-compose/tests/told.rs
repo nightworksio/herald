@@ -105,8 +105,13 @@ mod told {
     fn a_stop_says_why_and_steps_are_named() {
         assert_eq!(told::why(&Stop::Source("down".to_owned())), "down");
         assert_eq!(
-            told::steps(&[Step::Post, Step::Chunk(2), Step::OpenThread]),
-            "post, chunk 2, thread"
+            told::steps(&[
+                Step::Post,
+                Step::Chunk(2),
+                Step::OpenThread,
+                Step::Deliveries
+            ]),
+            "post, chunk 2, thread, deliveries to followers"
         );
     }
 

@@ -156,6 +156,18 @@ mod markers {
             pollster::block_on(herald_ports::Keyring::forget_before(&store, OPENED)),
             Err(unsupported("keys"))
         );
+        let inbox = "https://social.example/inbox";
+        assert_eq!(
+            pollster::block_on(herald_ports::Inboxes::delivery(&store, &key, inbox)),
+            Err(unsupported("deliveries to followers"))
+        );
+        let attempted = herald_core::State::Attempted { at: OPENED };
+        assert_eq!(
+            pollster::block_on(herald_ports::Inboxes::put_delivery(
+                &store, &key, inbox, &attempted
+            )),
+            Err(unsupported("deliveries to followers"))
+        );
     }
 
     fn opened(thread: &str, archived: bool, locked: bool) -> MarkedThread {

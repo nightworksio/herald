@@ -1,10 +1,8 @@
-use std::sync::Mutex;
-
 use herald_config::{Config, load};
 use herald_core::{Chore, Entry, Identity, Key, RouteId, SourceName, Step};
 use herald_flows::{Outcome, Ports, PrepareError, Stop, announce, prepare};
 use herald_ports::Store as _;
-use herald_testing::{FakeClock, FakeSecrets, FakeSigner, FakeStore};
+use herald_testing::{FakeClock, FakeSecrets, FakeSigner};
 use jiff::SignedDuration;
 
 use crate::harness::*;
@@ -516,11 +514,7 @@ fn routes_and_sources_on_one_base_share_its_http() {
 }
 
 fn failing(fault: Fault) -> Outcome {
-    let store = Failing {
-        fault,
-        inner: FakeStore::default(),
-        writes: Mutex::new(0),
-    };
+    let store = Failing { fault, ..healthy() };
     let script = Script::answering(&[POSTED, CROSSPOSTED, THREADED, PINNED]);
     let config = pinned_by_store(config(""));
     let announced = pollster::block_on(run(

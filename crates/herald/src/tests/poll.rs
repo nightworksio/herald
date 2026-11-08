@@ -91,7 +91,7 @@ fn a_poll_that_stops_says_what_the_next_poll_does() {
 
 #[test]
 fn a_config_without_sources_has_nothing_to_poll() {
-    let sourceless = "version = 1\n[store]\nkind = \"git-branch\"\n[destinations.discord]\nkind = \"discord\"\ntoken = { secret = \"HERALD_DISCORD_TOKEN\" }\n";
+    let sourceless = "version = 1\n[store]\nkind = \"git-branch\"\nkey = { secret = \"HERALD_STORE_KEY\" }\n[destinations.discord]\nkind = \"discord\"\ntoken = { secret = \"HERALD_DISCORD_TOKEN\" }\n";
     let idle = herald(&setup(sourceless), &World::default(), &POLL);
     assert_eq!(
         (idle.code, idle.out.as_str(), idle.err.as_str()),
