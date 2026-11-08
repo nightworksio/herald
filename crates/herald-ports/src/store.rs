@@ -1,5 +1,5 @@
 use std::fmt;
-use std::future::Future;
+use std::future::{Future, ready};
 
 use herald_core::{
     Cursor, DestinationName, Entry, Key, Latest, RouteId, Schedule, Scheme, SourceName, State,
@@ -315,7 +315,7 @@ impl<T: Ledger> Ledger for Option<&T> {
     async fn entry(&self, key: &Key) -> Result<Option<Versioned<Entry>>, StoreError> {
         match self {
             Some(kept) => kept.entry(key).await,
-            None => Err(Kind::Ledger.unsupported()),
+            None => Unkept.entry(key).await,
         }
     }
 
@@ -326,7 +326,7 @@ impl<T: Ledger> Ledger for Option<&T> {
     ) -> Result<Written, StoreError> {
         match self {
             Some(kept) => kept.put_entry(entry, expected).await,
-            None => Err(Kind::Ledger.unsupported()),
+            None => Unkept.put_entry(entry, expected).await,
         }
     }
 }
@@ -335,7 +335,7 @@ impl<T: Cursors> Cursors for Option<&T> {
     async fn cursor(&self, source: &SourceName) -> Result<Option<Versioned<Cursor>>, StoreError> {
         match self {
             Some(kept) => kept.cursor(source).await,
-            None => Err(Kind::Cursors.unsupported()),
+            None => Unkept.cursor(source).await,
         }
     }
 
@@ -347,7 +347,7 @@ impl<T: Cursors> Cursors for Option<&T> {
     ) -> Result<Written, StoreError> {
         match self {
             Some(kept) => kept.put_cursor(source, cursor, expected).await,
-            None => Err(Kind::Cursors.unsupported()),
+            None => Unkept.put_cursor(source, cursor, expected).await,
         }
     }
 }
@@ -360,14 +360,14 @@ impl<T: Schedules> Schedules for Option<&T> {
     async fn every_schedule(&self) -> Result<Vec<Schedule>, StoreError> {
         match self {
             Some(kept) => kept.every_schedule().await,
-            None => Err(Kind::Schedules.unsupported()),
+            None => Unkept.every_schedule().await,
         }
     }
 
     async fn put_schedules(&self, add: &[Schedule], remove: &[Schedule]) -> Result<(), StoreError> {
         match self {
             Some(kept) => kept.put_schedules(add, remove).await,
-            None => Err(Kind::Schedules.unsupported()),
+            None => Unkept.put_schedules(add, remove).await,
         }
     }
 }
@@ -380,21 +380,21 @@ impl<T: Subscriptions> Subscriptions for Option<&T> {
     ) -> Result<Vec<Subscription>, StoreError> {
         match self {
             Some(kept) => kept.subscribers(destination, project).await,
-            None => Err(Kind::Subscriptions.unsupported()),
+            None => Unkept.subscribers(destination, project).await,
         }
     }
 
     async fn subscribe(&self, subscription: &Subscription) -> Result<(), StoreError> {
         match self {
             Some(kept) => kept.subscribe(subscription).await,
-            None => Err(Kind::Subscriptions.unsupported()),
+            None => Unkept.subscribe(subscription).await,
         }
     }
 
     async fn unsubscribe(&self, subscription: &Subscription) -> Result<(), StoreError> {
         match self {
             Some(kept) => kept.unsubscribe(subscription).await,
-            None => Err(Kind::Subscriptions.unsupported()),
+            None => Unkept.unsubscribe(subscription).await,
         }
     }
 }
@@ -403,14 +403,14 @@ impl<T: Pins> Pins for Option<&T> {
     async fn pinned(&self, route: &RouteId) -> Result<Option<String>, StoreError> {
         match self {
             Some(kept) => kept.pinned(route).await,
-            None => Err(Kind::Pins.unsupported()),
+            None => Unkept.pinned(route).await,
         }
     }
 
     async fn put_pinned(&self, route: &RouteId, post: &str) -> Result<(), StoreError> {
         match self {
             Some(kept) => kept.put_pinned(route, post).await,
-            None => Err(Kind::Pins.unsupported()),
+            None => Unkept.put_pinned(route, post).await,
         }
     }
 }
@@ -419,21 +419,21 @@ impl<T: Deliveries> Deliveries for Option<&T> {
     async fn admit(&self, scheme: Scheme, id: &str, at: Timestamp) -> Result<Admitted, StoreError> {
         match self {
             Some(kept) => kept.admit(scheme, id, at).await,
-            None => Err(Kind::Deliveries.unsupported()),
+            None => Unkept.admit(scheme, id, at).await,
         }
     }
 
     async fn release(&self, scheme: Scheme, id: &str) -> Result<(), StoreError> {
         match self {
             Some(kept) => kept.release(scheme, id).await,
-            None => Err(Kind::Deliveries.unsupported()),
+            None => Unkept.release(scheme, id).await,
         }
     }
 
     async fn expire_deliveries(&self, before: Timestamp) -> Result<(), StoreError> {
         match self {
             Some(kept) => kept.expire_deliveries(before).await,
-            None => Err(Kind::Deliveries.unsupported()),
+            None => Unkept.expire_deliveries(before).await,
         }
     }
 }
@@ -442,14 +442,14 @@ impl<T: Notes> Notes for Option<&T> {
     async fn note(&self, key: &Key) -> Result<Option<String>, StoreError> {
         match self {
             Some(kept) => kept.note(key).await,
-            None => Err(Kind::Notes.unsupported()),
+            None => Unkept.note(key).await,
         }
     }
 
     async fn put_note(&self, key: &Key, note: &str) -> Result<(), StoreError> {
         match self {
             Some(kept) => kept.put_note(key, note).await,
-            None => Err(Kind::Notes.unsupported()),
+            None => Unkept.put_note(key, note).await,
         }
     }
 }
@@ -458,14 +458,14 @@ impl<T: Announcements> Announcements for Option<&T> {
     async fn latest(&self, project: &str) -> Result<Option<Versioned<Latest>>, StoreError> {
         match self {
             Some(kept) => kept.latest(project).await,
-            None => Err(Kind::Latest.unsupported()),
+            None => Unkept.latest(project).await,
         }
     }
 
     async fn every_latest(&self) -> Result<Vec<Latest>, StoreError> {
         match self {
             Some(kept) => kept.every_latest().await,
-            None => Err(Kind::Latest.unsupported()),
+            None => Unkept.every_latest().await,
         }
     }
 
@@ -476,7 +476,7 @@ impl<T: Announcements> Announcements for Option<&T> {
     ) -> Result<Written, StoreError> {
         match self {
             Some(kept) => kept.put_latest(latest, expected).await,
-            None => Err(Kind::Latest.unsupported()),
+            None => Unkept.put_latest(latest, expected).await,
         }
     }
 }
@@ -485,29 +485,29 @@ impl<T: Inboxes> Inboxes for Option<&T> {
     async fn delivery(&self, key: &Key, inbox: &str) -> Result<Option<State>, StoreError> {
         match self {
             Some(kept) => kept.delivery(key, inbox).await,
-            None => Err(Kind::Inboxes.unsupported()),
+            None => Unkept.delivery(key, inbox).await,
         }
     }
 
     async fn put_delivery(&self, key: &Key, inbox: &str, state: &State) -> Result<(), StoreError> {
         match self {
             Some(kept) => kept.put_delivery(key, inbox, state).await,
-            None => Err(Kind::Inboxes.unsupported()),
+            None => Unkept.put_delivery(key, inbox, state).await,
         }
     }
 }
 
-/// The records of a kind a store never keeps: there are none to hold.
+/// The records of a kind a store never keeps: asking for one is refused as
+/// unsupported, naming the kind.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Unkept {}
+pub struct Unkept;
 
 impl Ledger for Unkept {
     fn entry(
         &self,
         _: &Key,
     ) -> impl Future<Output = Result<Option<Versioned<Entry>>, StoreError>> + Send {
-        let never = *self;
-        async move { match never {} }
+        ready(Err(Kind::Ledger.unsupported()))
     }
 
     fn put_entry(
@@ -515,8 +515,7 @@ impl Ledger for Unkept {
         _: &Entry,
         _: Option<Version>,
     ) -> impl Future<Output = Result<Written, StoreError>> + Send {
-        let never = *self;
-        async move { match never {} }
+        ready(Err(Kind::Ledger.unsupported()))
     }
 }
 
@@ -525,8 +524,7 @@ impl Cursors for Unkept {
         &self,
         _: &SourceName,
     ) -> impl Future<Output = Result<Option<Versioned<Cursor>>, StoreError>> + Send {
-        let never = *self;
-        async move { match never {} }
+        ready(Err(Kind::Cursors.unsupported()))
     }
 
     fn put_cursor(
@@ -535,15 +533,13 @@ impl Cursors for Unkept {
         _: &Cursor,
         _: Option<Version>,
     ) -> impl Future<Output = Result<Written, StoreError>> + Send {
-        let never = *self;
-        async move { match never {} }
+        ready(Err(Kind::Cursors.unsupported()))
     }
 }
 
 impl Schedules for Unkept {
     fn every_schedule(&self) -> impl Future<Output = Result<Vec<Schedule>, StoreError>> + Send {
-        let never = *self;
-        async move { match never {} }
+        ready(Err(Kind::Schedules.unsupported()))
     }
 
     fn put_schedules(
@@ -551,8 +547,7 @@ impl Schedules for Unkept {
         _: &[Schedule],
         _: &[Schedule],
     ) -> impl Future<Output = Result<(), StoreError>> + Send {
-        let never = *self;
-        async move { match never {} }
+        ready(Err(Kind::Schedules.unsupported()))
     }
 }
 
@@ -562,18 +557,15 @@ impl Subscriptions for Unkept {
         _: &DestinationName,
         _: &str,
     ) -> impl Future<Output = Result<Vec<Subscription>, StoreError>> + Send {
-        let never = *self;
-        async move { match never {} }
+        ready(Err(Kind::Subscriptions.unsupported()))
     }
 
     fn subscribe(&self, _: &Subscription) -> impl Future<Output = Result<(), StoreError>> + Send {
-        let never = *self;
-        async move { match never {} }
+        ready(Err(Kind::Subscriptions.unsupported()))
     }
 
     fn unsubscribe(&self, _: &Subscription) -> impl Future<Output = Result<(), StoreError>> + Send {
-        let never = *self;
-        async move { match never {} }
+        ready(Err(Kind::Subscriptions.unsupported()))
     }
 }
 
@@ -582,8 +574,7 @@ impl Pins for Unkept {
         &self,
         _: &RouteId,
     ) -> impl Future<Output = Result<Option<String>, StoreError>> + Send {
-        let never = *self;
-        async move { match never {} }
+        ready(Err(Kind::Pins.unsupported()))
     }
 
     fn put_pinned(
@@ -591,8 +582,7 @@ impl Pins for Unkept {
         _: &RouteId,
         _: &str,
     ) -> impl Future<Output = Result<(), StoreError>> + Send {
-        let never = *self;
-        async move { match never {} }
+        ready(Err(Kind::Pins.unsupported()))
     }
 }
 
@@ -603,33 +593,28 @@ impl Deliveries for Unkept {
         _: &str,
         _: Timestamp,
     ) -> impl Future<Output = Result<Admitted, StoreError>> + Send {
-        let never = *self;
-        async move { match never {} }
+        ready(Err(Kind::Deliveries.unsupported()))
     }
 
     fn release(&self, _: Scheme, _: &str) -> impl Future<Output = Result<(), StoreError>> + Send {
-        let never = *self;
-        async move { match never {} }
+        ready(Err(Kind::Deliveries.unsupported()))
     }
 
     fn expire_deliveries(
         &self,
         _: Timestamp,
     ) -> impl Future<Output = Result<(), StoreError>> + Send {
-        let never = *self;
-        async move { match never {} }
+        ready(Err(Kind::Deliveries.unsupported()))
     }
 }
 
 impl Notes for Unkept {
     fn note(&self, _: &Key) -> impl Future<Output = Result<Option<String>, StoreError>> + Send {
-        let never = *self;
-        async move { match never {} }
+        ready(Err(Kind::Notes.unsupported()))
     }
 
     fn put_note(&self, _: &Key, _: &str) -> impl Future<Output = Result<(), StoreError>> + Send {
-        let never = *self;
-        async move { match never {} }
+        ready(Err(Kind::Notes.unsupported()))
     }
 }
 
@@ -638,13 +623,11 @@ impl Announcements for Unkept {
         &self,
         _: &str,
     ) -> impl Future<Output = Result<Option<Versioned<Latest>>, StoreError>> + Send {
-        let never = *self;
-        async move { match never {} }
+        ready(Err(Kind::Latest.unsupported()))
     }
 
     fn every_latest(&self) -> impl Future<Output = Result<Vec<Latest>, StoreError>> + Send {
-        let never = *self;
-        async move { match never {} }
+        ready(Err(Kind::Latest.unsupported()))
     }
 
     fn put_latest(
@@ -652,8 +635,7 @@ impl Announcements for Unkept {
         _: &Latest,
         _: Option<Version>,
     ) -> impl Future<Output = Result<Written, StoreError>> + Send {
-        let never = *self;
-        async move { match never {} }
+        ready(Err(Kind::Latest.unsupported()))
     }
 }
 
@@ -663,8 +645,7 @@ impl Inboxes for Unkept {
         _: &Key,
         _: &str,
     ) -> impl Future<Output = Result<Option<State>, StoreError>> + Send {
-        let never = *self;
-        async move { match never {} }
+        ready(Err(Kind::Inboxes.unsupported()))
     }
 
     fn put_delivery(
@@ -673,8 +654,7 @@ impl Inboxes for Unkept {
         _: &str,
         _: &State,
     ) -> impl Future<Output = Result<(), StoreError>> + Send {
-        let never = *self;
-        async move { match never {} }
+        ready(Err(Kind::Inboxes.unsupported()))
     }
 }
 
@@ -730,9 +710,9 @@ pub trait Store: Sync {
 mod tests {
     use super::*;
 
-    struct Derived;
+    struct Keeper;
 
-    impl Ledger for Derived {
+    impl Ledger for Keeper {
         fn keeping(&self) -> Keeping {
             Keeping::Derived
         }
@@ -741,7 +721,7 @@ mod tests {
             &self,
             _: &Key,
         ) -> impl Future<Output = Result<Option<Versioned<Entry>>, StoreError>> + Send {
-            std::future::ready(Ok(None))
+            ready(Ok(None))
         }
 
         fn put_entry(
@@ -749,17 +729,17 @@ mod tests {
             _: &Entry,
             _: Option<Version>,
         ) -> impl Future<Output = Result<Written, StoreError>> + Send {
-            std::future::ready(Ok(Written::Written(Version(7))))
+            ready(Ok(Written::Written(Version(7))))
         }
     }
 
-    impl Schedules for Derived {
+    impl Schedules for Keeper {
         fn keeping(&self) -> Keeping {
             Keeping::Derived
         }
 
         fn every_schedule(&self) -> impl Future<Output = Result<Vec<Schedule>, StoreError>> + Send {
-            std::future::ready(Ok(Vec::new()))
+            ready(Ok(Vec::new()))
         }
 
         fn put_schedules(
@@ -767,22 +747,87 @@ mod tests {
             _: &[Schedule],
             _: &[Schedule],
         ) -> impl Future<Output = Result<(), StoreError>> + Send {
-            std::future::ready(Ok(()))
+            ready(Ok(()))
         }
     }
 
-    fn unsupported<T: fmt::Debug>(
-        answer: impl Future<Output = Result<T, StoreError>>,
-    ) -> &'static str {
-        match pollster::block_on(answer) {
-            Err(StoreError::Unsupported { what }) => what,
-            other => panic!("answered {other:?}"),
+    impl Deliveries for Keeper {
+        fn admit(
+            &self,
+            _: Scheme,
+            _: &str,
+            _: Timestamp,
+        ) -> impl Future<Output = Result<Admitted, StoreError>> + Send {
+            ready(Ok(Admitted::Seen))
         }
+
+        fn release(
+            &self,
+            _: Scheme,
+            _: &str,
+        ) -> impl Future<Output = Result<(), StoreError>> + Send {
+            ready(Ok(()))
+        }
+
+        fn expire_deliveries(
+            &self,
+            _: Timestamp,
+        ) -> impl Future<Output = Result<(), StoreError>> + Send {
+            ready(Ok(()))
+        }
+    }
+
+    impl Announcements for Keeper {
+        fn latest(
+            &self,
+            _: &str,
+        ) -> impl Future<Output = Result<Option<Versioned<Latest>>, StoreError>> + Send {
+            ready(Ok(None))
+        }
+
+        fn every_latest(&self) -> impl Future<Output = Result<Vec<Latest>, StoreError>> + Send {
+            ready(Ok(Vec::new()))
+        }
+
+        fn put_latest(
+            &self,
+            _: &Latest,
+            _: Option<Version>,
+        ) -> impl Future<Output = Result<Written, StoreError>> + Send {
+            ready(Ok(Written::Conflict))
+        }
+    }
+
+    fn latest() -> Latest {
+        Latest {
+            project: "p".to_owned(),
+            newest: herald_core::Shown {
+                kind: herald_core::Kind::Release,
+                version: None,
+                title: "t".to_owned(),
+                body: String::new(),
+                links: std::collections::BTreeMap::new(),
+                prerelease: false,
+                occurred: Timestamp::UNIX_EPOCH,
+            },
+            stable: None,
+            routes: std::collections::BTreeSet::new(),
+        }
+    }
+
+    fn unsupported<T>(
+        answer: impl Future<Output = Result<T, StoreError>>,
+    ) -> Result<(), StoreError> {
+        pollster::block_on(answer).map(drop)
+    }
+
+    const fn naming(what: &'static str) -> Result<(), StoreError> {
+        Err(StoreError::Unsupported { what })
     }
 
     #[test]
     fn a_kind_kept_somewhere_answers_as_its_keeper_does() {
-        let kept = Some(&Derived);
+        let kept = Some(&Keeper);
         assert_eq!(Ledger::keeping(&kept), Keeping::Derived);
         assert_eq!(Schedules::keeping(&kept), Keeping::Derived);
         let key = Key::derive(&RouteId::new("r"), &herald_core::Identity::new("1"));
@@ -793,6 +838,22 @@ mod tests {
         );
         assert_eq!(pollster::block_on(kept.every_schedule()), Ok(Vec::new()));
         assert_eq!(pollster::block_on(kept.put_schedules(&[], &[])), Ok(()));
+        let at = Timestamp::UNIX_EPOCH;
+        assert_eq!(
+            pollster::block_on(kept.admit(Scheme::GitHub, "1", at)),
+            Ok(Admitted::Seen)
+        );
+        assert_eq!(
+            pollster::block_on(kept.release(Scheme::GitHub, "1")),
+            Ok(())
+        );
+        assert_eq!(pollster::block_on(kept.expire_deliveries(at)), Ok(()));
+        assert_eq!(pollster::block_on(kept.latest("p")), Ok(None));
+        assert_eq!(pollster::block_on(kept.every_latest()), Ok(Vec::new()));
+        assert_eq!(
+            pollster::block_on(kept.put_latest(&latest(), None)),
+            Ok(Written::Conflict)
+        );
     }
 
     #[test]
@@ -808,29 +869,35 @@ mod tests {
             subscriber: "s".to_owned(),
             inbox: None,
         };
-        assert_eq!(unsupported(none.entry(&key)), "ledger");
+        assert_eq!(unsupported(none.entry(&key)), naming("ledger"));
         assert_eq!(
             unsupported(none.put_entry(&Entry::new(key), None)),
-            "ledger"
+            naming("ledger")
         );
-        assert_eq!(unsupported(none.cursor(&source)), "cursors");
+        assert_eq!(unsupported(none.cursor(&source)), naming("cursors"));
         assert_eq!(
             unsupported(none.put_cursor(&source, &Cursor::default(), None)),
-            "cursors"
+            naming("cursors")
         );
-        assert_eq!(unsupported(none.every_schedule()), "schedules");
-        assert_eq!(unsupported(none.put_schedules(&[], &[])), "schedules");
+        assert_eq!(unsupported(none.every_schedule()), naming("schedules"));
+        assert_eq!(
+            unsupported(none.put_schedules(&[], &[])),
+            naming("schedules")
+        );
         assert_eq!(
             unsupported(none.subscribers(&destination, "p")),
-            "subscriptions"
+            naming("subscriptions")
         );
-        assert_eq!(unsupported(none.subscribe(&subscription)), "subscriptions");
+        assert_eq!(
+            unsupported(none.subscribe(&subscription)),
+            naming("subscriptions")
+        );
         assert_eq!(
             unsupported(none.unsubscribe(&subscription)),
-            "subscriptions"
+            naming("subscriptions")
         );
-        assert_eq!(unsupported(none.pinned(&route)), "pins");
-        assert_eq!(unsupported(none.put_pinned(&route, "1")), "pins");
+        assert_eq!(unsupported(none.pinned(&route)), naming("pins"));
+        assert_eq!(unsupported(none.put_pinned(&route, "1")), naming("pins"));
     }
 
     #[test]
@@ -843,36 +910,31 @@ mod tests {
         let at = Timestamp::UNIX_EPOCH;
         assert_eq!(
             unsupported(none.admit(Scheme::GitHub, "1", at)),
-            "deliveries"
+            naming("deliveries")
         );
-        assert_eq!(unsupported(none.release(Scheme::GitHub, "1")), "deliveries");
-        assert_eq!(unsupported(none.expire_deliveries(at)), "deliveries");
-        assert_eq!(unsupported(none.note(&key)), "notes");
-        assert_eq!(unsupported(none.put_note(&key, "{}")), "notes");
-        assert_eq!(unsupported(none.latest("p")), "latest");
-        assert_eq!(unsupported(none.every_latest()), "latest");
-        let latest = Latest {
-            project: "p".to_owned(),
-            newest: herald_core::Shown {
-                kind: herald_core::Kind::Release,
-                version: None,
-                title: "t".to_owned(),
-                body: String::new(),
-                links: std::collections::BTreeMap::new(),
-                prerelease: false,
-                occurred: at,
-            },
-            stable: None,
-            routes: std::collections::BTreeSet::new(),
-        };
-        assert_eq!(unsupported(none.put_latest(&latest, None)), "latest");
+        assert_eq!(
+            unsupported(none.release(Scheme::GitHub, "1")),
+            naming("deliveries")
+        );
+        assert_eq!(
+            unsupported(none.expire_deliveries(at)),
+            naming("deliveries")
+        );
+        assert_eq!(unsupported(none.note(&key)), naming("notes"));
+        assert_eq!(unsupported(none.put_note(&key, "{}")), naming("notes"));
+        assert_eq!(unsupported(none.latest("p")), naming("latest"));
+        assert_eq!(unsupported(none.every_latest()), naming("latest"));
+        assert_eq!(
+            unsupported(none.put_latest(&latest(), None)),
+            naming("latest")
+        );
         assert_eq!(
             unsupported(none.delivery(&key, "i")),
-            "deliveries to followers"
+            naming("deliveries to followers")
         );
         assert_eq!(
             unsupported(none.put_delivery(&key, "i", &state)),
-            "deliveries to followers"
+            naming("deliveries to followers")
         );
         assert_eq!(Ledger::keeping(&none), Keeping::Kept);
     }
