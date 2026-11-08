@@ -37,6 +37,22 @@ updates:
       prefix: build
       include: scope
 
+  - package-ecosystem: npm
+    directory: /deploy/tests
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    cooldown:
+      default-days: 7
+    groups:
+      npm:
+        patterns: ['*']
+        update-types: ['minor', 'patch']
+    commit-message:
+      prefix: build
+      include: scope
+
   - package-ecosystem: github-actions
     directory: /
     schedule:

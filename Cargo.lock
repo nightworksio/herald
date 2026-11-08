@@ -1410,6 +1410,7 @@ dependencies = [
  "herald-keys",
  "herald-ports",
  "herald-records",
+ "herald-store-durable-object",
  "herald-testing",
  "jiff",
  "js-sys",

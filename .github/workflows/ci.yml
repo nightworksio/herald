@@ -171,6 +171,10 @@ jobs:
       - run: .github/scripts/install-tool.sh cargo-audit
       - run: cargo audit --deny warnings
       - run: cargo audit --deny warnings --file fuzz/Cargo.lock
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+      - run: npm audit --prefix deploy/tests
 
   # The oldest toolchain the workspace promises, `rust-version` in Cargo.toml.
   # RUSTUP_TOOLCHAIN takes precedence over rust-toolchain.toml, which would
@@ -218,8 +222,10 @@ jobs:
       - run: cargo test --workspace --locked
 
   # herald-wasm and everything it builds on compile for wasm32 without a
-  # warning, its JavaScript glue passes its tests under Node, and every
-  # JavaScript host in deploy/ passes its own under Node and Deno.
+  # warning, its JavaScript glue passes its tests under Node, every
+  # JavaScript host in deploy/ passes its own under Node and Deno, and the
+  # Durable Object store passes the store conformance on a real Durable
+  # Object's SQLite storage under Miniflare.
   wasm:
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -237,6 +243,7 @@ jobs:
           key: wasm-${{ hashFiles('rust-toolchain.toml', 'Cargo.lock') }}
       - run: .github/scripts/install-tool.sh wasm-bindgen-test-runner
       - run: cargo clippy --locked --target wasm32-unknown-unknown -p herald-wasm --all-targets -- -D warnings
+      - run: cargo clippy --locked --target wasm32-unknown-unknown -p herald-wasm --features conformance --all-targets -- -D warnings
       - run: cargo test --locked --target wasm32-unknown-unknown -p herald-wasm
         env:
           CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUNNER: wasm-bindgen-test-runner
@@ -246,6 +253,9 @@ jobs:
         with:
           node-version: 24
       - run: node --test deploy/tests/host.test.mjs
+      - run: deploy/build.sh deploy/tests/pkg-conformance conformance
+      - run: npm ci --ignore-scripts --prefix deploy/tests
+      - run: node --test deploy/tests/worker.test.mjs
       - run: .github/scripts/install-tool.sh deno
       - run: deno test --allow-read --allow-net --allow-sys deploy/tests/vetted.deno.test.ts
       - run: deno check --unstable-cron deploy/deno/main.ts
