@@ -16,6 +16,15 @@ pub(super) struct FastlyHttp {
     reaching: Reaching,
 }
 
+/// The dynamic backend's name for an origin: one name per scheme, host and
+/// port, and never the same name for two of them.
+pub(super) fn backend_name(scheme: &str, host: &str, port: u16) -> String {
+    format!(
+        "h_{}",
+        herald_core::digest(&format!("{scheme}://{host}:{port}"))
+    )
+}
+
 impl FastlyHttp {
     pub(super) fn new(reaching: Reaching) -> Self {
         Self { reaching }
@@ -26,22 +35,14 @@ impl FastlyHttp {
         let url = self.reaching.admitted(&request.url)?;
         let host = url.host_str().unwrap_or_default();
         let port = url.port_or_known_default().unwrap_or(443);
-        let name: String = format!("h_{host}_{port}")
-            .chars()
-            .map(|one| {
-                if one.is_ascii_alphanumeric() {
-                    one
-                } else {
-                    '_'
-                }
-            })
-            .collect();
+        let secure = url.scheme() == "https";
+        let name = backend_name(url.scheme(), host, port);
         let backend = Backend::builder(&name, format!("{host}:{port}"))
             .override_host(host)
             .connect_timeout(TIMEOUT)
             .first_byte_timeout(TIMEOUT)
             .between_bytes_timeout(TIMEOUT);
-        let backend = if url.scheme() == "https" {
+        let backend = if secure {
             backend.enable_ssl().sni_hostname(host)
         } else {
             backend
@@ -49,7 +50,14 @@ impl FastlyHttp {
         let backend = match backend.finish() {
             Ok(backend) => backend,
             Err(fastly::backend::BackendCreationError::NameInUse) => {
-                Backend::from_name(&name).map_err(|error| unreachable(error.to_string()))?
+                let kept =
+                    Backend::from_name(&name).map_err(|error| unreachable(error.to_string()))?;
+                if kept.get_host() != host || kept.get_port() != port || kept.is_ssl() != secure {
+                    return Err(unreachable(format!(
+                        "the backend {name} reaches another origin than {host}:{port}"
+                    )));
+                }
+                kept
             }
             Err(error) => return Err(unreachable(error.to_string())),
         };

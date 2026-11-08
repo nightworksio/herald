@@ -9,6 +9,22 @@ use herald_records::{Kept, KvRecords};
 use herald_testing::store_conformance;
 
 use super::host::{FastlyHost, StoreSecrets};
+use super::http::backend_name;
+
+#[test]
+fn every_origin_has_its_own_backend_name() {
+    let names = [
+        backend_name("https", "hooks.slack.com", 443),
+        backend_name("https", "hooks-slack.com", 443),
+        backend_name("http", "hooks.slack.com", 443),
+        backend_name("https", "hooks.slack.com", 8443),
+    ];
+    for (index, name) in names.iter().enumerate() {
+        assert!(name.starts_with("h_") && name.len() == 66, "{name}");
+        assert!(!names[index + 1..].contains(name), "{name}");
+    }
+    assert_eq!(names[0], backend_name("https", "hooks.slack.com", 443));
+}
 
 #[test]
 fn the_service_reads_its_config_store_and_secret_store() {
