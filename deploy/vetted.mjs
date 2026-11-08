@@ -14,9 +14,9 @@ export function vetted(hostname, options, callback) {
   });
 }
 
-export function publicly(url, init) {
+export function publicly(url, init, lookup = vetted) {
   return new Promise((resolve, reject) => {
-    const sent = request(url, { method: init.method, headers: Object.fromEntries(init.headers), lookup: vetted, signal: init.signal }, (answer) => {
+    const sent = request(url, { method: init.method, headers: Object.fromEntries(init.headers), lookup, signal: init.signal }, (answer) => {
       const headers = Object.entries(answer.headers).flatMap(([name, value]) => [value].flat().map((each) => [name, String(each)]));
       resolve(new Response(Readable.toWeb(answer), { status: answer.statusCode, headers }));
     });
