@@ -63,7 +63,7 @@ async fn secret(vars: &BTreeMap<String, String>, named: &SecretRef) -> Result<Se
 }
 
 async fn sent(connect: Connect<'_>, base: &str, request: Request) -> Result<Response, String> {
-    let http = connect(base)?;
+    let http = connect.reach(base)?;
     http.send(request).await.map_err(|error| error.to_string())
 }
 

@@ -10,7 +10,7 @@ fn init_prints_a_new_marker_secret_once_and_needs_no_config() {
     let code = pollster::block_on(crate::run(
         &args,
         &BTreeMap::new(),
-        &|_| Err(String::new()),
+        &Connector::new(&|_| Err(String::new()), &|_| Err(String::new())),
         &mut out,
         &mut Vec::new(),
     ));

@@ -46,9 +46,6 @@ const VERSION: &str = "2018-06-01";
 const RUN: &str = "lambda";
 /// What an event handing the function its own work says it is.
 const WORK: &str = "work";
-/// What a base asking for a connection with no bound on an answer starts
-/// with, before the base itself.
-pub(crate) const WAITING: &str = "waiting+";
 
 /// How the function hands itself work: its name, its region, and its
 /// role's credentials.
@@ -343,11 +340,11 @@ pub(crate) async fn lambda(
         .ok_or_else(|| {
             format!("{RUNTIME_API} is not set; herald lambda runs as a Lambda function's runtime")
         })?;
-    let runtime = connect(&format!("{WAITING}{api}"))?;
+    let runtime = connect.wait(&api)?;
     let composed = Composed::new(Native::new(vars, connect), config, &LAMBDA, RUN).await?;
     let handing = match Handing::read(vars).await {
         Some(handing) => {
-            let http = connect(&format!("https://{}", handing.host))?;
+            let http = connect.reach(&format!("https://{}", handing.host))?;
             Some((handing, http))
         }
         None => None,

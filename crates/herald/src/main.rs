@@ -9,7 +9,7 @@ async fn main() -> ExitCode {
     let code = herald::run_until(
         &args,
         &vars,
-        &herald::native,
+        &herald::NATIVE,
         &mut std::io::stdout(),
         &mut std::io::stderr(),
         herald::stopped(),

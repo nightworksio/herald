@@ -102,8 +102,55 @@ impl Http for Connection {
     }
 }
 
-/// What makes the connection to a base URL.
-pub type Connect<'a> = &'a (dyn Fn(&str) -> Result<Connection, String> + Send + Sync);
+/// A function making a connection to a base URL.
+type Making<'a> = &'a (dyn Fn(&str) -> Result<Connection, String> + Send + Sync);
+
+/// What makes connections: to a base URL's origin, each request bounded in
+/// time, and to Lambda's runtime API, which holds a request open until an
+/// invocation arrives.
+pub struct Connector<'a> {
+    reaching: Making<'a>,
+    waiting: Making<'a>,
+}
+
+impl<'a> Connector<'a> {
+    /// Connections made by `reaching`, and by `waiting` for Lambda's
+    /// runtime API.
+    #[must_use]
+    pub const fn new(reaching: Making<'a>, waiting: Making<'a>) -> Self {
+        Self { reaching, waiting }
+    }
+
+    /// The connection to `base`.
+    ///
+    /// # Errors
+    ///
+    /// When `base` may not be reached.
+    pub fn reach(&self, base: &str) -> Result<Connection, String> {
+        (self.reaching)(base)
+    }
+
+    fn wait(&self, base: &str) -> Result<Connection, String> {
+        (self.waiting)(base)
+    }
+}
+
+/// The native binary's connections.
+pub const NATIVE: Connector<'static> = Connector::new(&native, &waiting);
+
+/// What makes the connections a run needs.
+pub type Connect<'a> = &'a Connector<'a>;
+
+/// The native connection to Lambda's runtime API at `base`, which bounds
+/// no answer's time, as the runtime holds a request until an invocation
+/// arrives.
+///
+/// # Errors
+///
+/// When `base` may not be reached, or the client cannot be built.
+pub fn waiting(base: &str) -> Result<Connection, String> {
+    worded(NativeHttp::waiting(base).map(Connection::new))
+}
 
 /// The native connection to `base`: one reaching only its origin, or, for
 /// [`PUBLIC`], one reaching any public address (ADR-0007).
@@ -116,8 +163,6 @@ pub fn native(base: &str) -> Result<Connection, String> {
         PublicHttp::new()
             .map(Connection::new)
             .map_err(ConnectError::Build)
-    } else if let Some(waiting) = base.strip_prefix(lambda::WAITING) {
-        NativeHttp::waiting(waiting).map(Connection::new)
     } else {
         NativeHttp::reaching(base).map(Connection::new)
     };
@@ -725,7 +770,7 @@ async fn tagged(
             .map(Token::Run),
     };
     let origin = Origin::new(forge, options);
-    let http = connect(origin.api())?;
+    let http = connect.reach(origin.api())?;
     let asked = |request| async { http.send(request).await.map_err(|error| error.to_string()) };
     let answer = asked(origin.release_request(tag, token.as_ref())).await?;
     let repository = if let Some(repository) = known {

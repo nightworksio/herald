@@ -193,7 +193,7 @@ pub(crate) async fn serving(
     let webhooks = webhooks(config, &secrets)
         .await
         .map_err(|error| error.to_string())?;
-    let public = Capped::new(connect(PUBLIC)?, config.server.fetches);
+    let public = Capped::new(connect.reach(PUBLIC)?, config.server.fetches);
     let silence = std::time::Duration::try_from(config.server.silence).unwrap_or_default();
     let sockets = worded(NativeSockets::under(config.session_domains()))?.silent_for(silence);
     let listening = Listening {

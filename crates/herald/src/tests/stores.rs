@@ -401,7 +401,8 @@ fn the_native_binary_opens_no_database_or_key_value_store_of_another_platform() 
 
     let vars = BTreeMap::new();
     let unreached = |base: &str| Err(format!("{base} is out of reach"));
-    let native = stores::Native::new(&vars, &unreached);
+    let connector = Connector::new(&unreached, &unreached);
+    let native = stores::Native::new(&vars, &connector);
     let unhosted = "only a Cloudflare Worker, Deno or Fastly Compute reaches it";
     for at in [
         SqlAt::D1("HERALD_DB"),

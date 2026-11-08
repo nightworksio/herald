@@ -101,8 +101,9 @@ fn a_public_base_connects_to_any_public_address_and_another_to_its_origin_alone(
     assert!(native(herald_ports::PUBLIC).is_ok());
     assert!(native("https://discord.com/api/v10").is_ok());
     assert!(native("http://discord.com").is_err());
-    assert!(native("waiting+http://127.0.0.1:9001").is_ok());
-    assert!(native("waiting+http://discord.com").is_err());
+    assert!(native("waiting+http://127.0.0.1:9001").is_err());
+    assert!(waiting("http://127.0.0.1:9001").is_ok());
+    assert!(waiting("http://discord.com").is_err());
 }
 
 fn followed(key: Option<String>) -> super::world::Setup {

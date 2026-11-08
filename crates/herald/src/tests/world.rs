@@ -391,7 +391,13 @@ pub(super) fn herald(setup: &Setup, world: &World, args: &[&str]) -> Run {
             Ok(Connection::new(world.clone()))
         }
     };
-    let code = on_tokio(crate::run(&all, &setup.vars, &connect, &mut out, &mut err));
+    let code = on_tokio(crate::run(
+        &all,
+        &setup.vars,
+        &Connector::new(&connect, &connect),
+        &mut out,
+        &mut err,
+    ));
     Run {
         code,
         out: String::from_utf8(out).unwrap(),
@@ -421,7 +427,7 @@ pub(super) fn herald_until(
     let code = on_tokio(crate::run_until(
         &all,
         &setup.vars,
-        &connect,
+        &Connector::new(&connect, &connect),
         &mut out,
         &mut err,
         stop,
