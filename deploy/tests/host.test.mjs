@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { before, test } from "node:test";
 import { answering, capped, fetching, load, publicAddress, upTo } from "../host.mjs";
+import { beside } from "../files.mjs";
 import { serve } from "../node/server.mjs";
 import { guarded, vetted } from "../vetted.mjs";
 
@@ -86,6 +87,17 @@ test("Node listens where the config says, an IPv6 address too, and keeps an abso
   assert.equal(health.status, 200);
   await running.close();
   assert.ok((await stat(file)).isFile());
+});
+
+test("a config's files are read beside it, an absolute name as itself", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "herald-files-"));
+  await writeFile(join(directory, "post.md"), "beside");
+  const elsewhere = join(await mkdtemp(join(tmpdir(), "herald-files-")), "away.md");
+  await writeFile(elsewhere, "away");
+  const files = beside(join(directory, "herald.toml"));
+  assert.equal(files("post.md"), "beside");
+  assert.equal(files(elsewhere), "away");
+  assert.equal(files("absent.md"), undefined);
 });
 
 test("a request aborted mid-body is dropped and the next is answered", async (t) => {

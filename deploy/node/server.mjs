@@ -1,9 +1,9 @@
-import { readFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { dirname, resolve as absolute } from "node:path";
 import { Herald, TIMEOUT, answering, denoKv, load, rounds, said } from "../host.mjs";
 import { postgres, sqlite } from "../databases.mjs";
+import { beside } from "../files.mjs";
 import { guarded } from "../vetted.mjs";
 
 export function host(env = process.env, directory = process.cwd()) {
@@ -50,14 +50,7 @@ export async function serve({ env = process.env, path = env.HERALD_CONFIG ?? "he
   await load(await readFile(new URL("../pkg/herald_wasm_bg.wasm", import.meta.url)));
   const directory = dirname(path);
   const config = await readFile(path, "utf8");
-  const files = (name) => {
-    try {
-      return readFileSync(absolute(directory, name), "utf8");
-    } catch {
-      return undefined;
-    }
-  };
-  const herald = await Herald.compose(host(env, directory), config, files, "node");
+  const herald = await Herald.compose(host(env, directory), config, beside(path), "node");
   const schedule = herald.schedule();
   const timers = ["poll", "housekeep"]
     .filter((round) => schedule[round])

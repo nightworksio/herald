@@ -163,7 +163,9 @@ names another config file; files it names are read beside it.
 
 ## Vercel
 
-Deploy `vercel/` with `herald.toml` and `pkg/` included. `vercel.json` sends
+Deploy `vercel/` with `herald.toml` and `pkg/` included; add any template
+file the config names to `includeFiles` in `vercel.json`, which herald reads
+beside the config. `vercel.json` sends
 every path to the function and schedules both rounds at `/herald/round/*`.
 Vercel calls them with the project's `CRON_SECRET`, which herald takes as
 `HERALD_ROUND_SECRET` where that is unset; a round asked for without it is
@@ -171,7 +173,9 @@ refused.
 
 ## Netlify
 
-Deploy `netlify/` with `herald.toml` and `pkg/` included. The `poll` and
+Deploy `netlify/` with `herald.toml` and `pkg/` included; add any template
+file the config names to `included_files` in `netlify.toml`, which herald
+reads beside the config. The `poll` and
 `housekeep` scheduled functions run the rounds.
 
 ## AWS Lambda

@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import { waitUntil } from "@vercel/functions";
 import { Herald, answered, load } from "../../host.mjs";
 import { postgres } from "../../databases.mjs";
+import { beside } from "../../files.mjs";
 import { guarded } from "../../vetted.mjs";
 
 const ROUNDS = "/herald/round/";
@@ -23,8 +24,8 @@ let composing;
 function composed() {
   composing ??= (async () => {
     await load(await readFile(new URL("../../pkg/herald_wasm_bg.wasm", import.meta.url)));
-    const config = await readFile(process.env.HERALD_CONFIG ?? "herald.toml", "utf8");
-    return Herald.compose(host(process.env), config, {}, "vercel");
+    const path = process.env.HERALD_CONFIG ?? "herald.toml";
+    return Herald.compose(host(process.env), await readFile(path, "utf8"), beside(path), "vercel");
   })().catch((error) => {
     composing = undefined;
     throw error;
