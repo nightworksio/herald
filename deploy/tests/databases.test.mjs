@@ -50,6 +50,21 @@ test("CI runs the Postgres tests against its Postgres service", () => {
 const pg = () => import("pg");
 const within = { connect: 5_000, statement: 30_000 };
 
+test("a Postgres transaction answers each statement in order", { skip: !url }, async () => {
+  const db = await postgres({ url, ...within }, pg);
+  const answers = await db.transaction([
+    said("CREATE TEMP TABLE t (a INTEGER) ON COMMIT DROP"),
+    said("INSERT INTO t VALUES ($1), ($1)", [7]),
+    said("SELECT a FROM t"),
+  ]);
+  assert.deepEqual(answers, [
+    { rows: [], changed: 0 },
+    { rows: [], changed: 2 },
+    { rows: [[7], [7]], changed: 0 },
+  ]);
+  await assert.rejects(db.transaction([said("NOT SQL"), said("SELECT 1")]), /syntax error/);
+});
+
 test("a Postgres statement past its timeout is cancelled", { skip: !url }, async () => {
   const db = await postgres({ url, ...within, statement: 200 }, pg);
   await assert.rejects(db.transaction([said("SELECT pg_sleep(2)")]), /statement timeout/);

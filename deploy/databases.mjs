@@ -3,8 +3,8 @@ import { chmod, open } from "node:fs/promises";
 async function rolledBack(rollback, error) {
   try {
     await rollback();
-  } catch (failed) {
-    console.error(`herald: the rollback after a failed transaction failed too: ${failed?.message ?? failed}`);
+  } catch (error_) {
+    console.error(`herald: the rollback after a failed transaction failed too: ${error_?.message ?? error_}`);
   }
   throw error;
 }
@@ -50,6 +50,9 @@ export async function sqlite(file, busy) {
   };
 }
 
+const answered = (result) =>
+  result.fields?.length ? { rows: result.rows, changed: 0 } : { rows: [], changed: result.rowCount ?? 0 };
+
 export async function postgres({ url, connect, statement }, driver = () => import("pg")) {
   const { default: pg } = await driver();
   const pool = new pg.Pool({
@@ -66,12 +69,13 @@ export async function postgres({ url, connect, statement }, driver = () => impor
       let broken;
       try {
         await client.query("BEGIN");
-        const answers = [];
-        for (const statement of statements) {
-          const result = await client.query({ text: statement.sql, values: statement.params, rowMode: "array" });
-          const rows = result.fields?.length ? result.rows : [];
-          answers.push({ rows, changed: result.fields?.length ? 0 : (result.rowCount ?? 0) });
-        }
+        const answers = await statements.reduce(
+          async (earlier, statement) => [
+            ...(await earlier),
+            answered(await client.query({ text: statement.sql, values: statement.params, rowMode: "array" })),
+          ],
+          Promise.resolve([]),
+        );
         await client.query("COMMIT");
         return answers;
       } catch (error) {
