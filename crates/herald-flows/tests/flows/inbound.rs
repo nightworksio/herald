@@ -239,6 +239,9 @@ impl Store for Refusing {
     fn capabilities(&self) -> herald_ports::Capabilities {
         FakeStore::default().capabilities()
     }
+    fn skipped(&self) -> Vec<String> {
+        Vec::new()
+    }
     async fn entry(
         &self,
         _: &herald_core::Key,

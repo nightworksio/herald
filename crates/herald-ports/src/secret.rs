@@ -1,7 +1,7 @@
 use std::fmt;
 use std::future::Future;
 
-use zeroize::Zeroize as _;
+use zeroize::Zeroizing;
 
 /// A secret's value, with the name the config gives it. Its `Debug` prints the
 /// name alone, and it has no `Display`. Two secrets compare equal in time
@@ -10,18 +10,12 @@ use zeroize::Zeroize as _;
 #[derive(Clone, Eq)]
 pub struct Secret {
     name: String,
-    value: String,
+    value: Zeroizing<String>,
 }
 
 impl PartialEq for Secret {
     fn eq(&self, other: &Self) -> bool {
         self.name == other.name && herald_core::same(self.value.as_bytes(), other.value.as_bytes())
-    }
-}
-
-impl Drop for Secret {
-    fn drop(&mut self) {
-        self.value.zeroize();
     }
 }
 
@@ -31,7 +25,7 @@ impl Secret {
     pub fn new(name: impl Into<String>, value: impl Into<String>) -> Self {
         Self {
             name: name.into(),
-            value: value.into(),
+            value: Zeroizing::new(value.into()),
         }
     }
 

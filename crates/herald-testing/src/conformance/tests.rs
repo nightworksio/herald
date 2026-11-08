@@ -37,6 +37,7 @@ enum Fault {
     DerivesSchedulesButKeeps,
     DerivesAtOneVersion,
     Derives,
+    SkipsWhatItNeverHeld,
 }
 
 struct Faulty {
@@ -68,6 +69,14 @@ impl Faulty {
 }
 
 impl Store for Faulty {
+    fn skipped(&self) -> Vec<String> {
+        if self.fault == Fault::SkipsWhatItNeverHeld {
+            vec!["corrupt.json".to_owned()]
+        } else {
+            self.inner.skipped()
+        }
+    }
+
     fn capabilities(&self) -> Capabilities {
         let all = self.inner.capabilities();
         match self.fault {
@@ -496,6 +505,10 @@ fn a_kind_kept_but_not_declared_is_refused() {
 #[test]
 fn a_store_that_breaks_its_promises_is_refused() {
     let cases = [
+        (
+            Fault::SkipsWhatItNeverHeld,
+            "a store holding no record skipped one",
+        ),
         (
             Fault::OverwritesEntries,
             "an entry was written as new over one that exists",

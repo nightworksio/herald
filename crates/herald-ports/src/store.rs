@@ -121,9 +121,7 @@ pub trait Store: Sync {
     /// The paths of the records a listing skipped as corrupt since this was
     /// last asked, each once, so one bad record stops no listing and is
     /// still reported.
-    fn skipped(&self) -> Vec<String> {
-        Vec::new()
-    }
+    fn skipped(&self) -> Vec<String>;
 
     /// The ledger's entry for `key`.
     fn entry(
