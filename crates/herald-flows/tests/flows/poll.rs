@@ -1,7 +1,7 @@
 use herald_config::{Config, Source};
 use herald_core::{Cursor, Identity, SourceName};
 use herald_flows::{Fresh, Outcome, Ports, PrepareError, Remembered, Stop, Sweep, poll, prepare};
-use herald_ports::Store as _;
+use herald_ports::Cursors;
 use herald_sources_feed::FeedOptions;
 use herald_sources_registry::{Registry, RegistryOptions};
 use herald_testing::{FakeClock, FakeSigner};

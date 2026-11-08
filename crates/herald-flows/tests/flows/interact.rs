@@ -8,7 +8,7 @@ use herald_flows::{
     Answer, Answered, Connected, Inbound, Job, Keys, Ports, Replying, Serving, Webhooks, Worked,
     answer, completed, deferral, interact, prepare, replied, work,
 };
-use herald_ports::{Secret, Store as _};
+use herald_ports::{Announcements, Secret, Subscriptions};
 use herald_records::MemoryKeyring;
 use herald_testing::{FakeClock, FakeSecrets, FakeSigner, FakeVerifier};
 

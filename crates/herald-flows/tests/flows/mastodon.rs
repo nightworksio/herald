@@ -1,7 +1,7 @@
 use herald_config::{Config, load};
 use herald_core::{Chore, Identity, Key, Marker, RouteId, Schedule, SourceName, Step};
 use herald_flows::{Chored, Outcome, Ports, Reached, announce, housekeep, prepare};
-use herald_ports::{Markers as _, Store as _};
+use herald_ports::{Markers as _, Schedules};
 use herald_testing::{FakeClock, FakeSecrets, FakeSigner};
 
 use crate::harness::*;

@@ -4,7 +4,10 @@
 #[cfg(test)]
 mod markers {
     use herald_core::{Chore, Entry, Identity, Key, Marker, RouteId, Schedule, Step, Thread};
-    use herald_ports::{MarkedThread, Secret, Store, StoreError, Version, Versioned, marker};
+    use herald_ports::{
+        Announcements, Cursors, Deliveries, Ledger, MarkedThread, Notes, Pins, Schedules, Secret,
+        Store, StoreError, Subscriptions, Version, Versioned, marker,
+    };
     use herald_store_markers::{MarkedRoute, MarkersStore};
     use herald_testing::{FakeMarkers, FakeSigner, store_conformance};
     use jiff::{SignedDuration, Timestamp};
@@ -55,7 +58,7 @@ mod markers {
             FakeSigner,
         );
         assert_eq!(
-            pollster::block_on(store.entry(&key)),
+            pollster::block_on(store.ledger().entry(&key)),
             Ok(Some(Versioned {
                 value: landed,
                 version: Version(1),
@@ -85,40 +88,48 @@ mod markers {
             inbox: None,
         };
         assert_eq!(
-            pollster::block_on(store.put_cursor(&SourceName::new("s"), &Cursor::default(), None)),
+            pollster::block_on(store.cursors().put_cursor(
+                &SourceName::new("s"),
+                &Cursor::default(),
+                None
+            )),
             Err(unsupported("cursors"))
         );
         assert_eq!(
-            pollster::block_on(store.subscribers(&DestinationName::new("discord"), "p")),
+            pollster::block_on(
+                store
+                    .subscriptions()
+                    .subscribers(&DestinationName::new("discord"), "p")
+            ),
             Err(unsupported("subscriptions"))
         );
         assert_eq!(
-            pollster::block_on(store.unsubscribe(&subscription)),
+            pollster::block_on(store.subscriptions().unsubscribe(&subscription)),
             Err(unsupported("subscriptions"))
         );
         assert_eq!(
-            pollster::block_on(store.put_pinned(&RouteId::new("r"), "1")),
+            pollster::block_on(store.pins().put_pinned(&RouteId::new("r"), "1")),
             Err(unsupported("pins"))
         );
         assert_eq!(
-            pollster::block_on(store.release(herald_core::Scheme::GitHub, "d")),
+            pollster::block_on(store.deliveries().release(herald_core::Scheme::GitHub, "d")),
             Err(unsupported("deliveries"))
         );
         assert_eq!(
-            pollster::block_on(store.expire_deliveries(OPENED)),
+            pollster::block_on(store.deliveries().expire_deliveries(OPENED)),
             Err(unsupported("deliveries"))
         );
         let key = Key::derive(&RouteId::new("r"), &Identity::new("1"));
         assert_eq!(
-            pollster::block_on(store.put_note(&key, "{}")),
+            pollster::block_on(store.notes().put_note(&key, "{}")),
             Err(unsupported("notes"))
         );
         assert_eq!(
-            pollster::block_on(store.latest("herald")),
+            pollster::block_on(store.announcements().latest("herald")),
             Err(unsupported("latest"))
         );
         assert_eq!(
-            pollster::block_on(store.every_latest()),
+            pollster::block_on(store.announcements().every_latest()),
             Err(unsupported("latest"))
         );
         let latest = herald_core::Latest {
@@ -136,9 +147,16 @@ mod markers {
             routes: std::collections::BTreeSet::new(),
         };
         assert_eq!(
-            pollster::block_on(store.put_latest(&latest, None)),
+            pollster::block_on(store.announcements().put_latest(&latest, None)),
             Err(unsupported("latest"))
         );
+    }
+
+    #[test]
+    fn neither_keys_nor_deliveries_to_followers_are_kept_by_posts() {
+        let store = MarkersStore::new(Vec::<MarkedRoute<FakeMarkers>>::new(), FakeSigner);
+        let unsupported = |what| StoreError::Unsupported { what };
+        let key = Key::derive(&RouteId::new("r"), &Identity::new("1"));
         let known = herald_ports::KnownKey {
             owner: "o".to_owned(),
             pem: "p".to_owned(),
@@ -158,13 +176,20 @@ mod markers {
         );
         let inbox = "https://social.example/inbox";
         assert_eq!(
-            pollster::block_on(herald_ports::Inboxes::delivery(&store, &key, inbox)),
+            pollster::block_on(herald_ports::Inboxes::delivery(
+                &store.inboxes(),
+                &key,
+                inbox
+            )),
             Err(unsupported("deliveries to followers"))
         );
         let attempted = herald_core::State::Attempted { at: OPENED };
         assert_eq!(
             pollster::block_on(herald_ports::Inboxes::put_delivery(
-                &store, &key, inbox, &attempted
+                &store.inboxes(),
+                &key,
+                inbox,
+                &attempted
             )),
             Err(unsupported("deliveries to followers"))
         );
@@ -213,7 +238,7 @@ mod markers {
             due: OPENED.checked_add(after).unwrap(),
         };
         assert_eq!(
-            pollster::block_on(store.schedules()),
+            pollster::block_on(store.schedules().every_schedule()),
             Ok(vec![
                 schedule("1", Chore::Archive, DAY),
                 schedule("1", Chore::Lock, DAY * 7),
@@ -244,7 +269,7 @@ mod markers {
             unavailable
         );
         assert_eq!(
-            pollster::block_on(unreadable.schedules()),
+            pollster::block_on(unreadable.every_schedule()),
             unavailable.map(|_| Vec::new())
         );
         let mut bad = route("releases", FakeMarkers::default(), None);

@@ -6,8 +6,8 @@ use herald_core::{
     State, Subscription,
 };
 use herald_ports::{
-    Admitted, Capabilities, Inboxes, Keeping, Keyring, KnownKey, Store, StoreError, Version,
-    Versioned, Written,
+    Admitted, Announcements, Cursors, Deliveries, Inboxes, Keyring, KnownKey, Ledger, Notes, Pins,
+    Schedules, Store, StoreError, Subscriptions, Version, Versioned, Written,
 };
 use jiff::Timestamp;
 use serde::de::DeserializeOwned;
@@ -48,7 +48,7 @@ struct Read {
 pub struct Kept<R> {
     records: R,
     skipped: Arc<Mutex<BTreeSet<String>>>,
-    capabilities: Capabilities,
+    keeps: BTreeSet<RecordKind>,
     seal: Option<Seal>,
 }
 
@@ -89,17 +89,13 @@ impl<R: Records> Kept<R> {
         Self {
             records,
             skipped: Arc::default(),
-            capabilities: Capabilities {
-                ledger: Keeping::Kept,
-                cursors: true,
-                schedules: Keeping::Kept,
-                subscriptions: true,
-                pins: true,
-                deliveries: true,
-                notes: true,
-                latest: true,
-                concurrent: true,
-            },
+            keeps: [
+                RecordKind::Subscriptions,
+                RecordKind::Pins,
+                RecordKind::Notes,
+                RecordKind::Latest,
+            ]
+            .into(),
             seal: None,
         }
     }
@@ -114,14 +110,17 @@ impl<R: Records> Kept<R> {
     }
 
     /// The store, keeping besides its ledger, cursors, schedules and
-    /// deliveries only the kinds `keeps` lets it.
+    /// deliveries only the kinds `keeps` lets it. Deliveries to followers'
+    /// inboxes are kept with subscriptions.
     #[must_use]
     pub fn keeping(mut self, keeps: impl Fn(RecordKind) -> bool) -> Self {
-        self.capabilities.subscriptions = keeps(RecordKind::Subscriptions);
-        self.capabilities.pins = keeps(RecordKind::Pins);
-        self.capabilities.notes = keeps(RecordKind::Notes);
-        self.capabilities.latest = keeps(RecordKind::Latest);
+        self.keeps.retain(|kind| keeps(*kind));
         self
+    }
+
+    /// The store itself where it keeps records of `kind`.
+    fn held(&self, kind: RecordKind) -> Option<&Self> {
+        self.keeps.contains(&kind).then_some(self)
     }
 
     /// The record at `path` as a listing reads it: one that cannot be read
@@ -275,17 +274,7 @@ impl<R: Records> Inboxes for Kept<R> {
     }
 }
 
-impl<R: Records> Store for Kept<R> {
-    fn capabilities(&self) -> Capabilities {
-        self.capabilities
-    }
-
-    fn skipped(&self) -> Vec<String> {
-        std::mem::take(&mut *self.skipped.lock().unwrap_or_else(PoisonError::into_inner))
-            .into_iter()
-            .collect()
-    }
-
+impl<R: Records> Ledger for Kept<R> {
     async fn entry(&self, key: &Key) -> Result<Option<Versioned<Entry>>, StoreError> {
         self.record(&paths::entry(key)).await
     }
@@ -298,7 +287,9 @@ impl<R: Records> Store for Kept<R> {
         self.compare_and_set(&paths::entry(&entry.key), entry, expected)
             .await
     }
+}
 
+impl<R: Records> Cursors for Kept<R> {
     async fn cursor(&self, source: &SourceName) -> Result<Option<Versioned<Cursor>>, StoreError> {
         self.record(&paths::cursor(source)).await
     }
@@ -312,8 +303,10 @@ impl<R: Records> Store for Kept<R> {
         self.compare_and_set(&paths::cursor(source), cursor, expected)
             .await
     }
+}
 
-    async fn schedules(&self) -> Result<Vec<Schedule>, StoreError> {
+impl<R: Records> Schedules for Kept<R> {
+    async fn every_schedule(&self) -> Result<Vec<Schedule>, StoreError> {
         self.all(paths::SCHEDULES).await
     }
 
@@ -326,7 +319,9 @@ impl<R: Records> Store for Kept<R> {
         }
         Ok(())
     }
+}
 
+impl<R: Records> Subscriptions for Kept<R> {
     async fn subscribers(
         &self,
         destination: &DestinationName,
@@ -343,7 +338,9 @@ impl<R: Records> Store for Kept<R> {
     async fn unsubscribe(&self, subscription: &Subscription) -> Result<(), StoreError> {
         self.removed(&paths::subscribed(subscription)).await
     }
+}
 
+impl<R: Records> Pins for Kept<R> {
     async fn pinned(&self, route: &RouteId) -> Result<Option<String>, StoreError> {
         Ok(self
             .record::<String>(&paths::pin(route))
@@ -354,7 +351,9 @@ impl<R: Records> Store for Kept<R> {
     async fn put_pinned(&self, route: &RouteId, post: &str) -> Result<(), StoreError> {
         self.kept(&paths::pin(route), &post).await
     }
+}
 
+impl<R: Records> Deliveries for Kept<R> {
     async fn admit(&self, scheme: Scheme, id: &str, at: Timestamp) -> Result<Admitted, StoreError> {
         Ok(
             match self
@@ -380,7 +379,9 @@ impl<R: Records> Store for Kept<R> {
         }
         Ok(())
     }
+}
 
+impl<R: Records> Notes for Kept<R> {
     async fn note(&self, key: &Key) -> Result<Option<String>, StoreError> {
         Ok(self
             .record::<String>(&paths::note(key))
@@ -391,7 +392,9 @@ impl<R: Records> Store for Kept<R> {
     async fn put_note(&self, key: &Key, note: &str) -> Result<(), StoreError> {
         self.kept(&paths::note(key), &note).await
     }
+}
 
+impl<R: Records> Announcements for Kept<R> {
     async fn latest(&self, project: &str) -> Result<Option<Versioned<Latest>>, StoreError> {
         self.record(&paths::latest(project)).await
     }
@@ -407,6 +410,60 @@ impl<R: Records> Store for Kept<R> {
     ) -> Result<Written, StoreError> {
         self.compare_and_set(&paths::latest(&latest.project), latest, expected)
             .await
+    }
+}
+
+impl<R: Records> Store for Kept<R> {
+    type Ledger = Self;
+    type Cursors = Self;
+    type Schedules = Self;
+    type Subscriptions = Self;
+    type Pins = Self;
+    type Deliveries = Self;
+    type Notes = Self;
+    type Announcements = Self;
+    type Inboxes = Self;
+
+    fn ledger(&self) -> Option<&Self> {
+        Some(self)
+    }
+
+    fn cursors(&self) -> Option<&Self> {
+        Some(self)
+    }
+
+    fn schedules(&self) -> Option<&Self> {
+        Some(self)
+    }
+
+    fn subscriptions(&self) -> Option<&Self> {
+        self.held(RecordKind::Subscriptions)
+    }
+
+    fn pins(&self) -> Option<&Self> {
+        self.held(RecordKind::Pins)
+    }
+
+    fn deliveries(&self) -> Option<&Self> {
+        Some(self)
+    }
+
+    fn notes(&self) -> Option<&Self> {
+        self.held(RecordKind::Notes)
+    }
+
+    fn announcements(&self) -> Option<&Self> {
+        self.held(RecordKind::Latest)
+    }
+
+    fn inboxes(&self) -> Option<&Self> {
+        self.held(RecordKind::Subscriptions)
+    }
+
+    fn skipped(&self) -> Vec<String> {
+        std::mem::take(&mut *self.skipped.lock().unwrap_or_else(PoisonError::into_inner))
+            .into_iter()
+            .collect()
     }
 }
 

@@ -1,5 +1,5 @@
 use herald_core::{DELIVERIES_KEPT, Schedule, Sent, due};
-use herald_ports::{Clock, Http, Store};
+use herald_ports::{Clock, Deliveries, Http, Schedules, Store};
 
 use crate::announce::Stop;
 use crate::prepare::Connected;
@@ -49,14 +49,15 @@ pub async fn housekeep<S: Store, C: Clock, H: Http>(
     store: &S,
     clock: &C,
 ) -> Result<Housekept, Stop> {
-    if store.capabilities().deliveries {
-        store
+    if let Some(deliveries) = store.deliveries() {
+        deliveries
             .expire_deliveries(clock.now() - DELIVERIES_KEPT)
             .await
             .map_err(|error| Stop::Store(error.to_string()))?;
     }
     let schedules = store
         .schedules()
+        .every_schedule()
         .await
         .map_err(|error| Stop::Store(error.to_string()))?;
     let mut kept = Vec::new();
@@ -94,6 +95,7 @@ pub async fn housekeep<S: Store, C: Clock, H: Http>(
         let outcome = match outcome {
             Chored::Later(stop) => Chored::Later(stop),
             settled => match store
+                .schedules()
                 .put_schedules(&[], std::slice::from_ref(schedule))
                 .await
             {

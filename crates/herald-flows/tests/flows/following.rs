@@ -1,6 +1,6 @@
 use herald_core::{DestinationName, Facts, Sent};
 use herald_flows::{FollowError, Followed, Verified, followed, prepare};
-use herald_ports::Store as _;
+use herald_ports::Subscriptions;
 use herald_testing::{FakeSecrets, FakeSigner};
 
 use crate::activitypub::{activitypub, follower};

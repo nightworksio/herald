@@ -13,7 +13,10 @@ mod conformance {
     use base64::Engine as _;
     use base64::engine::general_purpose::STANDARD;
     use herald_core::{Identity, Key, RouteId};
-    use herald_ports::{Http, HttpError, Method, Request, Response, Secret, Store, StoreError};
+    use herald_ports::{
+        Http, HttpError, Ledger, Method, Pins, Request, Response, Schedules, Secret, StoreError,
+        Subscriptions,
+    };
     use herald_store_git_branch::{GitBranch, GitBranchStore};
     use herald_testing::store_conformance;
     use serde_json::{Value, json};
@@ -319,7 +322,7 @@ mod conformance {
             Err(unavailable("GitHub answered 500"))
         );
         assert_eq!(
-            pollster::block_on(failing("GET", 500, "{}").schedules()),
+            pollster::block_on(failing("GET", 500, "{}").every_schedule()),
             Err(unavailable("GitHub answered 500"))
         );
         assert!(matches!(
@@ -359,7 +362,7 @@ mod conformance {
             "{error}"
         );
         assert!(matches!(
-            pollster::block_on(failing("GET", 200, "{}").schedules()),
+            pollster::block_on(failing("GET", 200, "{}").every_schedule()),
             Err(StoreError::Corrupt { .. })
         ));
         let entry = herald_core::Entry::new(key());

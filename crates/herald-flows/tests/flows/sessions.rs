@@ -14,7 +14,7 @@ use herald_core::{DestinationName, Kind, Latest, RouteId, Shown};
 use herald_flows::{
     Connected, Job, Keys, Ports, Serving, Sessions, Taker, Webhooks, Worked, prepare, work,
 };
-use herald_ports::{Frame, Http, HttpError, Request, Response, Store as _, Timer};
+use herald_ports::{Announcements, Frame, Http, HttpError, Request, Response, Timer};
 use herald_records::MemoryKeyring;
 use herald_testing::{
     FakeClock, FakeSecrets, FakeSigner, FakeStore, FakeVerifier, ScriptedSockets,

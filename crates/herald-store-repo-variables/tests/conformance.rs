@@ -13,7 +13,8 @@ mod conformance {
 
     use herald_core::{DestinationName, Entry, Identity, Key, RouteId, Subscription};
     use herald_ports::{
-        Http, HttpError, Method, Request, Response, Secret, Store, StoreError, Written,
+        Http, HttpError, Ledger, Method, Pins, Request, Response, Schedules, Secret, StoreError,
+        Subscriptions, Written,
     };
     use herald_records::{Records, Wrote};
     use herald_store_repo_variables::{RepoVariables, RepoVariablesStore};
@@ -481,11 +482,11 @@ mod conformance {
             Err(StoreError::Corrupt { .. })
         ));
         assert!(matches!(
-            pollster::block_on(failing("GET", 200).schedules()),
+            pollster::block_on(failing("GET", 200).every_schedule()),
             Err(StoreError::Corrupt { .. })
         ));
         assert!(matches!(
-            pollster::block_on(failing("GET", 502).schedules()),
+            pollster::block_on(failing("GET", 502).every_schedule()),
             Err(StoreError::Unavailable { .. })
         ));
         assert!(matches!(

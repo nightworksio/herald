@@ -86,8 +86,8 @@ mod tests {
         assert!(
             pollster::block_on(store(opened))
                 .unwrap()
-                .capabilities()
-                .cursors
+                .cursors()
+                .is_some()
         );
     }
 }

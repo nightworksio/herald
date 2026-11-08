@@ -1,7 +1,7 @@
 use herald_config::{Config, load};
 use herald_core::{Chore, Entry, Identity, Key, RouteId, SourceName, Step};
 use herald_flows::{Outcome, Ports, PrepareError, Stop, announce, prepare};
-use herald_ports::Store as _;
+use herald_ports::{Announcements, Ledger, Pins, Schedules};
 use herald_testing::{FakeClock, FakeSecrets, FakeSigner};
 use jiff::SignedDuration;
 
@@ -22,7 +22,7 @@ fn an_event_is_announced_once_and_a_rerun_sends_nothing() {
         .unwrap()
         .value;
     assert_eq!(entry.lease, None);
-    let schedules = pollster::block_on(store.schedules()).unwrap();
+    let schedules = pollster::block_on(store.every_schedule()).unwrap();
     assert_eq!(schedules.len(), 1);
     assert_eq!(schedules[0].chore, Chore::Archive);
     assert_eq!(schedules[0].thread, "7");
@@ -421,7 +421,10 @@ body = "{{ event.body }}"
             steps: vec![Step::Post]
         }
     );
-    assert_eq!(pollster::block_on(store.schedules()).unwrap(), Vec::new());
+    assert_eq!(
+        pollster::block_on(store.every_schedule()).unwrap(),
+        Vec::new()
+    );
 }
 
 #[test]
@@ -482,7 +485,10 @@ body = "{{ event.body }}"
             steps: vec![Step::Post]
         }
     );
-    assert_eq!(pollster::block_on(store.schedules()).unwrap(), Vec::new());
+    assert_eq!(
+        pollster::block_on(store.every_schedule()).unwrap(),
+        Vec::new()
+    );
 }
 
 #[test]

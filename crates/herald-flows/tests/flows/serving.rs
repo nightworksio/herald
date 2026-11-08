@@ -4,7 +4,7 @@ use herald_flows::{
     Answered, BUSY_RETRY, Connected, FollowError, Followed, Inbound, Job, Keys, Outcome, Ports,
     Serving, Webhooks, Worked, answer, busy, prepare, unworked, webhooks, work,
 };
-use herald_ports::{Admitted, Algorithm, CryptoError, Secret, Signer, Store as _};
+use herald_ports::{Admitted, Algorithm, CryptoError, Deliveries, Ledger, Notes, Secret, Signer};
 use herald_records::MemoryKeyring;
 use herald_testing::{FakeClock, FakeSecrets, FakeSigner, FakeVerifier};
 

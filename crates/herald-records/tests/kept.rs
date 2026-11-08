@@ -11,7 +11,10 @@ mod kept {
     use std::sync::Mutex;
 
     use herald_core::{DestinationName, Entry, Identity, Key, RouteId, Subscription};
-    use herald_ports::{Store, StoreError, Version, Written};
+    use herald_ports::{
+        Announcements, Deliveries, Ledger, Pins, Schedules, Store, StoreError, Subscriptions,
+        Version, Written,
+    };
     use herald_records::{Blob, Kept, Records, Wrote};
     use herald_testing::store_conformance;
 
@@ -247,7 +250,7 @@ mod kept {
             ..Memory::default()
         };
         assert_eq!(
-            pollster::block_on(Kept::new(vanished).schedules()),
+            pollster::block_on(Kept::new(vanished).every_schedule()),
             Ok(Vec::new())
         );
     }

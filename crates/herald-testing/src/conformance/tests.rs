@@ -1,5 +1,8 @@
 use herald_core::State;
-use herald_ports::{Admitted, Capabilities, Inboxes, Keeping, Keyring, KnownKey, Versioned};
+use herald_ports::{
+    Admitted, Announcements, Cursors, Deliveries, Inboxes, Keeping, Keyring, KnownKey, Ledger,
+    Notes, Pins, Schedules, Subscriptions, Versioned,
+};
 use jiff::Timestamp;
 
 use super::*;
@@ -7,14 +10,6 @@ use crate::FakeStore;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Fault {
-    UndeclaredLedger,
-    UndeclaredCursors,
-    UndeclaredSchedules,
-    UndeclaredSubscriptions,
-    UndeclaredPins,
-    UndeclaredDeliveries,
-    UndeclaredNotes,
-    UndeclaredLatest,
     OverwritesEntries,
     RefusesWrites,
     OverwritesCursors,
@@ -63,12 +58,15 @@ impl Faulty {
         }
     }
 
-    fn refuses(&self, what: &'static str) -> Result<(), StoreError> {
+    fn refuses(&self) -> Result<(), StoreError> {
         match self.fault {
             Fault::Broken => Err(broken()),
-            Fault::KeepsNothing => Err(StoreError::Unsupported { what }),
             _ => Ok(()),
         }
+    }
+
+    fn keeps(&self) -> Option<&Self> {
+        (self.fault != Fault::KeepsNothing).then_some(self)
     }
 }
 
@@ -83,7 +81,7 @@ impl Faulty {
 
 impl Inboxes for Faulty {
     async fn delivery(&self, key: &Key, inbox: &str) -> Result<Option<State>, StoreError> {
-        self.refuses("deliveries to followers")?;
+        self.refuses()?;
         let kept = self.inner.delivery(key, self.inbox(inbox)).await?;
         if self.fault == Fault::HoldsAnUnwrittenDelivery && kept.is_none() {
             return Ok(Some(State::Attempted { at: NOON }));
@@ -92,7 +90,7 @@ impl Inboxes for Faulty {
     }
 
     async fn put_delivery(&self, key: &Key, inbox: &str, state: &State) -> Result<(), StoreError> {
-        self.refuses("deliveries to followers")?;
+        self.refuses()?;
         let inbox = self.inbox(inbox);
         let kept = self.inner.delivery(key, inbox).await?;
         if self.fault == Fault::KeepsTheFirstDeliveryState && kept.is_some() {
@@ -102,77 +100,18 @@ impl Inboxes for Faulty {
     }
 }
 
-impl Store for Faulty {
-    fn skipped(&self) -> Vec<String> {
-        if self.fault == Fault::SkipsWhatItNeverHeld {
-            vec!["corrupt.json".to_owned()]
-        } else {
-            self.inner.skipped()
-        }
-    }
-
-    fn capabilities(&self) -> Capabilities {
-        let all = self.inner.capabilities();
+impl Ledger for Faulty {
+    fn keeping(&self) -> Keeping {
         match self.fault {
-            Fault::UndeclaredLedger => Capabilities {
-                ledger: Keeping::None,
-                ..all
-            },
-            Fault::UndeclaredCursors => Capabilities {
-                cursors: false,
-                ..all
-            },
-            Fault::UndeclaredSchedules => Capabilities {
-                schedules: Keeping::None,
-                ..all
-            },
-            Fault::DerivesButKeeps | Fault::DerivesAtOneVersion => Capabilities {
-                ledger: Keeping::Derived,
-                ..all
-            },
-            Fault::DerivesSchedulesButKeeps => Capabilities {
-                schedules: Keeping::Derived,
-                ..all
-            },
-            Fault::Derives => Capabilities {
-                ledger: Keeping::Derived,
-                schedules: Keeping::Derived,
-                ..all
-            },
-            Fault::UndeclaredSubscriptions => Capabilities {
-                subscriptions: false,
-                ..all
-            },
-            Fault::UndeclaredPins => Capabilities { pins: false, ..all },
-            Fault::UndeclaredDeliveries => Capabilities {
-                deliveries: false,
-                ..all
-            },
-            Fault::UndeclaredNotes => Capabilities {
-                notes: false,
-                ..all
-            },
-            Fault::UndeclaredLatest => Capabilities {
-                latest: false,
-                ..all
-            },
-            Fault::KeepsNothing => Capabilities {
-                ledger: Keeping::None,
-                cursors: false,
-                schedules: Keeping::None,
-                subscriptions: false,
-                pins: false,
-                deliveries: false,
-                notes: false,
-                latest: false,
-                concurrent: false,
-            },
-            _ => all,
+            Fault::DerivesButKeeps | Fault::DerivesAtOneVersion | Fault::Derives => {
+                Keeping::Derived
+            }
+            _ => Keeping::Kept,
         }
     }
 
     async fn entry(&self, key: &Key) -> Result<Option<Versioned<Entry>>, StoreError> {
-        self.refuses("ledger")?;
+        self.refuses()?;
         if self.fault == Fault::Derives {
             return Ok(None);
         }
@@ -184,7 +123,7 @@ impl Store for Faulty {
         entry: &Entry,
         expected: Option<Version>,
     ) -> Result<Written, StoreError> {
-        self.refuses("ledger")?;
+        self.refuses()?;
         match self.fault {
             Fault::RefusesWrites => return Ok(Written::Conflict),
             Fault::DerivesAtOneVersion => return Ok(Written::Written(Version(1))),
@@ -203,9 +142,11 @@ impl Store for Faulty {
         };
         self.inner.put_entry(entry, expected).await
     }
+}
 
+impl Cursors for Faulty {
     async fn cursor(&self, source: &SourceName) -> Result<Option<Versioned<Cursor>>, StoreError> {
-        self.refuses("cursors")?;
+        self.refuses()?;
         self.inner.cursor(source).await
     }
 
@@ -215,7 +156,7 @@ impl Store for Faulty {
         cursor: &Cursor,
         expected: Option<Version>,
     ) -> Result<Written, StoreError> {
-        self.refuses("cursors")?;
+        self.refuses()?;
         let expected = match self.fault {
             Fault::OverwritesCursors => self
                 .inner
@@ -226,13 +167,22 @@ impl Store for Faulty {
         };
         self.inner.put_cursor(source, cursor, expected).await
     }
+}
 
-    async fn schedules(&self) -> Result<Vec<Schedule>, StoreError> {
-        self.refuses("schedules")?;
+impl Schedules for Faulty {
+    fn keeping(&self) -> Keeping {
+        match self.fault {
+            Fault::DerivesSchedulesButKeeps | Fault::Derives => Keeping::Derived,
+            _ => Keeping::Kept,
+        }
+    }
+
+    async fn every_schedule(&self) -> Result<Vec<Schedule>, StoreError> {
+        self.refuses()?;
         if self.fault == Fault::Derives {
             return Ok(Vec::new());
         }
-        let held = self.inner.schedules().await?;
+        let held = self.inner.every_schedule().await?;
         Ok(match self.fault {
             Fault::DuplicatesSchedules => held.iter().chain(&held).cloned().collect(),
             _ => held,
@@ -240,16 +190,18 @@ impl Store for Faulty {
     }
 
     async fn put_schedules(&self, add: &[Schedule], remove: &[Schedule]) -> Result<(), StoreError> {
-        self.refuses("schedules")?;
+        self.refuses()?;
         self.inner.put_schedules(add, remove).await
     }
+}
 
+impl Subscriptions for Faulty {
     async fn subscribers(
         &self,
         destination: &DestinationName,
         project: &str,
     ) -> Result<Vec<Subscription>, StoreError> {
-        self.refuses("subscriptions")?;
+        self.refuses()?;
         let mut held = self.inner.subscribers(destination, project).await?;
         if self.fault == Fault::IgnoresProjects {
             held.extend(self.inner.subscribers(destination, "other").await?);
@@ -258,17 +210,19 @@ impl Store for Faulty {
     }
 
     async fn subscribe(&self, subscription: &Subscription) -> Result<(), StoreError> {
-        self.refuses("subscriptions")?;
+        self.refuses()?;
         self.inner.subscribe(subscription).await
     }
 
     async fn unsubscribe(&self, subscription: &Subscription) -> Result<(), StoreError> {
-        self.refuses("subscriptions")?;
+        self.refuses()?;
         self.inner.unsubscribe(subscription).await
     }
+}
 
+impl Pins for Faulty {
     async fn pinned(&self, route: &RouteId) -> Result<Option<String>, StoreError> {
-        self.refuses("pins")?;
+        self.refuses()?;
         let route = match self.fault {
             Fault::SharesPins => RouteId::new("shared"),
             _ => route.clone(),
@@ -277,7 +231,7 @@ impl Store for Faulty {
     }
 
     async fn put_pinned(&self, route: &RouteId, post: &str) -> Result<(), StoreError> {
-        self.refuses("pins")?;
+        self.refuses()?;
         let route = match self.fault {
             Fault::SharesPins => RouteId::new("shared"),
             _ => route.clone(),
@@ -288,9 +242,11 @@ impl Store for Faulty {
         }
         self.inner.put_pinned(&route, post).await
     }
+}
 
+impl Deliveries for Faulty {
     async fn admit(&self, scheme: Scheme, id: &str, at: Timestamp) -> Result<Admitted, StoreError> {
-        self.refuses("deliveries")?;
+        self.refuses()?;
         let scheme = match self.fault {
             Fault::SharesDeliveries => Scheme::GitHub,
             _ => scheme,
@@ -303,7 +259,7 @@ impl Store for Faulty {
     }
 
     async fn release(&self, scheme: Scheme, id: &str) -> Result<(), StoreError> {
-        self.refuses("deliveries")?;
+        self.refuses()?;
         if self.fault == Fault::KeepsReleased {
             return Ok(());
         }
@@ -311,16 +267,18 @@ impl Store for Faulty {
     }
 
     async fn expire_deliveries(&self, before: Timestamp) -> Result<(), StoreError> {
-        self.refuses("deliveries")?;
+        self.refuses()?;
         match self.fault {
             Fault::ExpiresNothing => Ok(()),
             Fault::ExpiresEverything => self.inner.expire_deliveries(Timestamp::MAX).await,
             _ => self.inner.expire_deliveries(before).await,
         }
     }
+}
 
+impl Notes for Faulty {
     async fn note(&self, key: &Key) -> Result<Option<String>, StoreError> {
-        self.refuses("notes")?;
+        self.refuses()?;
         let key = match self.fault {
             Fault::SharesNotes => super::key("shared"),
             _ => *key,
@@ -329,7 +287,7 @@ impl Store for Faulty {
     }
 
     async fn put_note(&self, key: &Key, note: &str) -> Result<(), StoreError> {
-        self.refuses("notes")?;
+        self.refuses()?;
         let key = match self.fault {
             Fault::SharesNotes => super::key("shared"),
             _ => *key,
@@ -340,14 +298,16 @@ impl Store for Faulty {
         }
         self.inner.put_note(&key, note).await
     }
+}
 
+impl Announcements for Faulty {
     async fn latest(&self, project: &str) -> Result<Option<Versioned<Latest>>, StoreError> {
-        self.refuses("latest")?;
+        self.refuses()?;
         self.inner.latest(project).await
     }
 
     async fn every_latest(&self) -> Result<Vec<Latest>, StoreError> {
-        self.refuses("latest")?;
+        self.refuses()?;
         if self.fault == Fault::ListsNoLatest {
             return Ok(Vec::new());
         }
@@ -362,7 +322,7 @@ impl Store for Faulty {
         latest: &Latest,
         expected: Option<Version>,
     ) -> Result<Written, StoreError> {
-        self.refuses("latest")?;
+        self.refuses()?;
         let expected = match self.fault {
             Fault::OverwritesLatest => self
                 .inner
@@ -372,6 +332,62 @@ impl Store for Faulty {
             _ => expected,
         };
         self.inner.put_latest(latest, expected).await
+    }
+}
+
+impl Store for Faulty {
+    type Ledger = Self;
+    type Cursors = Self;
+    type Schedules = Self;
+    type Subscriptions = Self;
+    type Pins = Self;
+    type Deliveries = Self;
+    type Notes = Self;
+    type Announcements = Self;
+    type Inboxes = Self;
+
+    fn ledger(&self) -> Option<&Self> {
+        self.keeps()
+    }
+
+    fn cursors(&self) -> Option<&Self> {
+        self.keeps()
+    }
+
+    fn schedules(&self) -> Option<&Self> {
+        self.keeps()
+    }
+
+    fn subscriptions(&self) -> Option<&Self> {
+        self.keeps()
+    }
+
+    fn pins(&self) -> Option<&Self> {
+        self.keeps()
+    }
+
+    fn deliveries(&self) -> Option<&Self> {
+        self.keeps()
+    }
+
+    fn notes(&self) -> Option<&Self> {
+        self.keeps()
+    }
+
+    fn announcements(&self) -> Option<&Self> {
+        self.keeps()
+    }
+
+    fn inboxes(&self) -> Option<&Self> {
+        self.keeps()
+    }
+
+    fn skipped(&self) -> Vec<String> {
+        if self.fault == Fault::SkipsWhatItNeverHeld {
+            vec!["corrupt.json".to_owned()]
+        } else {
+            self.inner.skipped()
+        }
     }
 }
 
@@ -512,28 +528,6 @@ fn a_store_deriving_its_ledger_and_schedules_passes_when_it_keeps_neither() {
 #[test]
 fn a_store_keeping_nothing_passes_when_it_says_so() {
     assert_eq!(run(Fault::KeepsNothing), Ok(()));
-}
-
-#[test]
-fn a_kind_kept_but_not_declared_is_refused() {
-    let cases = [
-        (Fault::UndeclaredLedger, "ledger"),
-        (Fault::UndeclaredCursors, "cursors"),
-        (Fault::UndeclaredSchedules, "schedules"),
-        (Fault::UndeclaredSubscriptions, "subscriptions"),
-        (Fault::UndeclaredPins, "pins"),
-        (Fault::UndeclaredDeliveries, "deliveries"),
-        (Fault::UndeclaredNotes, "notes"),
-        (Fault::UndeclaredLatest, "latest"),
-    ];
-    for (fault, what) in cases {
-        assert_eq!(
-            run(fault),
-            Err(Failure(format!(
-                "a store that does not declare {what} must answer unsupported"
-            )))
-        );
-    }
 }
 
 #[test]

@@ -6,7 +6,9 @@ use herald_core::{
     Standing, digest, same,
 };
 use herald_dest_fediverse::ActivityPub;
-use herald_ports::{Clock, CryptoError, Http, Keyring, Secret, Secrets, Signer, Store, Verifier};
+use herald_ports::{
+    Clock, CryptoError, Http, Keyring, Ledger, Notes, Secret, Secrets, Signer, Store, Verifier,
+};
 use herald_sources_forge::{Forge, Hooked};
 
 use crate::announce::{Announced, Outcome, Ports, announce, announce_within};
@@ -488,7 +490,7 @@ async fn noted<S: Store, C, G, V, H, P, K>(
     let Ok(parsed) = key.parse::<Key>() else {
         return missing("such note");
     };
-    match serving.ports.store.note(&parsed).await {
+    match serving.ports.store.notes().note(&parsed).await {
         Ok(Some(note)) if served.owns(&note, key) => replied(200, ACTIVITY_JSON, note),
         Ok(_) => missing("such note"),
         Err(error) => refusal(503, error.to_string()),
@@ -650,7 +652,7 @@ async fn standing<S: Store, C: Clock, G, V, H, P, K>(
     let mut routes = Vec::new();
     for route in &app.routes {
         let key = Key::derive(route, &identity);
-        let standing = match serving.ports.store.entry(&key).await {
+        let standing = match serving.ports.store.ledger().entry(&key).await {
             Ok(Some(entry)) => entry.value.standing(now),
             Ok(None) => Standing::Pending,
             Err(error) => return refusal(503, error.to_string()),

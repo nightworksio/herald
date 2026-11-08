@@ -126,11 +126,15 @@ all still has the destination, and the destination holds the posts.
      cannot read back its posts, such as a webhook.
 
 8. **One conformance suite holds every store.**
-   - **Where it lives.** The suite is in `herald-testing` and is parameterised
-     by the capabilities a store declares: ledger, cursors, schedules,
-     subscriptions, and compare-and-set under concurrency.
-   - **What passing means.** Every store passes every case for every
-     capability it declares, and the fake store passes all of them.
+   - **Where it lives.** The suite is in `herald-testing`. The `Store` port
+     has one narrow trait per kind of record (the ledger, cursors,
+     schedules, subscriptions, pins, admitted deliveries, Notes, what each
+     project last announced, and deliveries to followers' inboxes), and one
+     accessor per kind that answers `None` where the store keeps none. A
+     store names `Unkept` for a kind it never keeps, and implements nothing
+     for it. The suite runs the cases of every kind a store answers.
+   - **What passing means.** Every store passes every case for every kind
+     it answers, and the fake store passes all of them.
    - **Where it runs.** In CI the suite runs against each store's real
      backend or the platform's local emulator: SQLite in process, Postgres in
      a service container, DynamoDB Local, D1 and Deno KV in their local

@@ -2,7 +2,7 @@ use std::fmt;
 
 use herald_core::{Sent, Subscription};
 use herald_dest_fediverse::{ActivityPub, Asked, asked, inboxes};
-use herald_ports::{Http, Signer, Store};
+use herald_ports::{Http, Signer, Store, Subscriptions};
 use jiff::Timestamp;
 
 use crate::inbound::{Verified, fetched};
@@ -111,6 +111,7 @@ pub async fn followed<S: Store, G: Signer, H: Http>(
                 inbox: Some(inboxes.delivered().to_owned()),
             };
             store
+                .subscriptions()
                 .subscribe(&subscription)
                 .await
                 .map_err(|error| FollowError::Store(error.to_string()))?;
@@ -130,11 +131,13 @@ pub async fn followed<S: Store, G: Signer, H: Http>(
             };
             let destination = &route.config.route.destination;
             let kept = store
+                .subscriptions()
                 .subscribers(destination, actor.actor())
                 .await
                 .map_err(|error| FollowError::Store(error.to_string()))?;
             for subscription in kept.iter().filter(|kept| kept.subscriber == follower) {
                 store
+                    .subscriptions()
                     .unsubscribe(subscription)
                     .await
                     .map_err(|error| FollowError::Store(error.to_string()))?;

@@ -1,6 +1,6 @@
 use herald_core::{Chore, DELIVERIES_KEPT, Identity, Key, RouteId, Schedule, Scheme};
 use herald_flows::{Chored, Stop, housekeep, prepare};
-use herald_ports::{Admitted, Store as _};
+use herald_ports::{Admitted, Deliveries, Schedules};
 use herald_testing::{FakeClock, FakeSigner};
 use jiff::SignedDuration;
 
@@ -56,7 +56,7 @@ fn chores_that_fall_due_are_done_through_their_route_and_their_schedules_removed
             ),
         ]
     );
-    assert_eq!(pollster::block_on(store.schedules()).unwrap(), [later]);
+    assert_eq!(pollster::block_on(store.every_schedule()).unwrap(), [later]);
 }
 
 #[test]
@@ -104,7 +104,7 @@ fn a_chore_refused_is_dropped_and_one_asked_to_wait_holds_the_rest_for_later() {
             ("5".to_owned(), Chored::Later(wait)),
         ]
     );
-    assert_eq!(pollster::block_on(store.schedules()).unwrap().len(), 2);
+    assert_eq!(pollster::block_on(store.every_schedule()).unwrap().len(), 2);
 }
 
 #[test]

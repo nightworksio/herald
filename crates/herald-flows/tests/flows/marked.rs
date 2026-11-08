@@ -1,7 +1,7 @@
 use herald_config::load;
 use herald_core::{Chore, SourceName};
 use herald_flows::{Outcome, Ports, announce, prepare};
-use herald_ports::Store as _;
+use herald_ports::{Ledger, Schedules};
 use herald_testing::{FakeClock, FakeSigner};
 use jiff::SignedDuration;
 
@@ -89,7 +89,7 @@ fn an_announcement_kept_only_in_its_post_is_found_there_by_the_next_run() {
         "r2",
     ));
     assert_eq!(again[0].outcome, Outcome::AlreadyAnnounced);
-    let schedules = pollster::block_on(store.schedules()).unwrap();
+    let schedules = pollster::block_on(store.every_schedule()).unwrap();
     assert_eq!(schedules.len(), 1);
     assert_eq!(
         (schedules[0].thread.as_str(), schedules[0].chore),
@@ -136,6 +136,6 @@ body = "b"
         &herald_core::Identity::new("github.com/1/v1"),
     );
     assert_eq!(pollster::block_on(store.entry(&key)), Ok(None));
-    assert_eq!(pollster::block_on(store.schedules()), Ok(Vec::new()));
+    assert_eq!(pollster::block_on(store.every_schedule()), Ok(Vec::new()));
     assert_eq!(script.seen(), Vec::<String>::new());
 }

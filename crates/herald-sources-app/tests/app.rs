@@ -180,7 +180,7 @@ mod app {
         assert_eq!(
             schema(),
             include_str!("../../../herald-event.schema.json"),
-            "regenerate it: cargo run -p herald-sources-app --example schema > herald-event.schema.json"
+            "regenerate it: cargo run -p herald-sources-app --example event-schema > herald-event.schema.json"
         );
     }
 }
