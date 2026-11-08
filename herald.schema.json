@@ -542,9 +542,9 @@
       ]
     },
     "Duration": {
-      "description": "A length of time: a number and m, h, d or w, as \"14d\".",
+      "description": "A length of time: a number and s, m, h, d or w, as \"14d\".",
       "type": "string",
-      "pattern": "^[0-9]+[mhdw]$"
+      "pattern": "^[0-9]+[smhdw]$"
     },
     "Interactions": {
       "description": "How a Discord destination takes commands.",
@@ -1102,6 +1102,36 @@
           "description": "Pre-releases only.",
           "type": "string",
           "const": "only"
+        }
+      ]
+    },
+    "RecordKind": {
+      "description": "A kind of record a store may keep beside its ledger, cursors, schedules\nand deliveries, which every store that keeps records keeps.",
+      "oneOf": [
+        {
+          "description": "Who follows or subscribes to a project.",
+          "type": "string",
+          "const": "subscriptions"
+        },
+        {
+          "description": "Each route's pinned post.",
+          "type": "string",
+          "const": "pins"
+        },
+        {
+          "description": "The Notes herald's ActivityPub actors published.",
+          "type": "string",
+          "const": "notes"
+        },
+        {
+          "description": "What each project last announced, for commands to answer with.",
+          "type": "string",
+          "const": "latest"
+        },
+        {
+          "description": "The keys inbound activities are checked with, under\n`[server.keys] cache = \"store\"`.",
+          "type": "string",
+          "const": "keys"
         }
       ]
     },
@@ -1757,6 +1787,17 @@
           "description": "A SQLite file, on a volume or a persistent disk.",
           "type": "object",
           "properties": {
+            "busy": {
+              "description": "How long a transaction waits for another process to let go of the\nfile; 5s where absent.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Duration"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
             "kind": {
               "type": "string",
               "const": "sqlite"
@@ -1778,9 +1819,31 @@
           "description": "A Postgres database.",
           "type": "object",
           "properties": {
+            "connect_timeout": {
+              "description": "How long making a connection may take; 10s where absent.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Duration"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
             "kind": {
               "type": "string",
               "const": "postgres"
+            },
+            "statement_timeout": {
+              "description": "How long one statement may run before the database cancels it; 30s\nwhere absent.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Duration"
+                },
+                {
+                  "type": "null"
+                }
+              ]
             },
             "url": {
               "description": "The secret holding the database's connection URL, such as\n`postgres://herald:…@db.example/herald`. herald reaches it over TLS\nunless the URL sets `sslmode=disable`.",
@@ -2030,6 +2093,13 @@
           "description": "Generations of the GitHub Actions cache.",
           "type": "object",
           "properties": {
+            "keeps": {
+              "description": "What it keeps besides the ledger, cursors, schedules and deliveries:\nany of \"subscriptions\", \"pins\", \"notes\", \"latest\" and \"keys\". Each\nis rewritten with every other record on every write, and counts\nagainst the cache's quota; none where absent.",
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/RecordKind"
+              }
+            },
             "kind": {
               "type": "string",
               "const": "actions-cache"

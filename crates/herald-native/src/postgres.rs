@@ -1,4 +1,7 @@
+use std::sync::{Arc, PoisonError};
+
 use herald_ports::{Changed, Secret, Sql, SqlError, Statement, Value};
+use jiff::SignedDuration;
 use tokio::sync::Mutex;
 use tokio_postgres::config::SslMode;
 use tokio_postgres::types::{ToSql, Type};
@@ -10,10 +13,48 @@ use crate::http::{chain, tls};
 /// A Postgres database, through which the `postgres` store keeps its records
 /// (ADR-0005). The connection is TLS unless its URL sets `sslmode=disable`:
 /// `prefer`, which falls back to plain text unasked, is held to `require`.
-/// Each transaction runs on the one connection, one after the other.
-#[derive(Debug)]
+/// Each transaction runs on the one connection, one after the other, and a
+/// connection the database closed is made again before the next one.
 pub struct NativePostgres {
-    client: Mutex<Client>,
+    config: Config,
+    tls: MakeRustlsConnect,
+    held: Mutex<Held>,
+}
+
+impl std::fmt::Debug for NativePostgres {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("NativePostgres")
+            .finish_non_exhaustive()
+    }
+}
+
+/// The connection, and why it closed once it has.
+struct Held {
+    client: Client,
+    closed: Arc<std::sync::Mutex<Option<String>>>,
+}
+
+impl Held {
+    async fn made(config: &Config, tls: &MakeRustlsConnect) -> Result<Self, SqlError> {
+        let (client, connection) = config.connect(tls.clone()).await.map_err(failed)?;
+        let closed = Arc::new(std::sync::Mutex::new(None));
+        let said = Arc::clone(&closed);
+        tokio::spawn(async move {
+            if let Err(error) = connection.await {
+                *said.lock().unwrap_or_else(PoisonError::into_inner) = Some(chain(&error));
+            }
+        });
+        Ok(Self { client, closed })
+    }
+
+    fn why_closed(&self) -> String {
+        self.closed
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .take()
+            .unwrap_or_else(|| "the database closed it".to_owned())
+    }
 }
 
 #[allow(
@@ -72,14 +113,23 @@ fn read(row: &Row, column: usize) -> Result<Value, SqlError> {
         .map_err(failed)
 }
 
+/// How long making a connection and running one statement may take.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Timeouts {
+    /// Making a connection.
+    pub connect: SignedDuration,
+    /// One statement, after which the database cancels it.
+    pub statement: SignedDuration,
+}
+
 impl NativePostgres {
     /// The database the connection URL in `url` names, reached over TLS
-    /// unless the URL sets `sslmode=disable`.
+    /// unless the URL sets `sslmode=disable`, within `timeouts`.
     ///
     /// # Errors
     ///
     /// When the URL cannot be read, or the database cannot be reached.
-    pub async fn connect(url: &Secret) -> Result<Self, SqlError> {
+    pub async fn connect(url: &Secret, timeouts: Timeouts) -> Result<Self, SqlError> {
         let mut config: Config = url.expose().parse().map_err(|_| {
             refused(format!(
                 "the secret {} is not a Postgres connection URL",
@@ -89,22 +139,37 @@ impl NativePostgres {
         if config.get_ssl_mode() == SslMode::Prefer {
             config.ssl_mode(SslMode::Require);
         }
-        let tls = tls(rustls::crypto::ring::default_provider()).map_err(refused)?;
-        let (client, connection) = config
-            .connect(MakeRustlsConnect::new(tls))
-            .await
-            .map_err(failed)?;
-        tokio::spawn(connection);
-        Ok(Self {
-            client: Mutex::new(client),
-        })
+        config.connect_timeout(timeouts.connect.unsigned_abs());
+        let limit = format!(
+            "-c statement_timeout={}",
+            timeouts.statement.unsigned_abs().as_millis()
+        );
+        let options = match config.get_options() {
+            Some(options) => format!("{options} {limit}"),
+            None => limit,
+        };
+        config.options(options);
+        let tls =
+            MakeRustlsConnect::new(tls(rustls::crypto::ring::default_provider()).map_err(refused)?);
+        let held = Mutex::new(Box::pin(Held::made(&config, &tls)).await?);
+        Ok(Self { config, tls, held })
     }
 }
 
 impl Sql for NativePostgres {
     async fn transaction(&self, statements: Vec<Statement>) -> Result<Vec<Changed>, SqlError> {
-        let mut client = self.client.lock().await;
-        let transaction = client.transaction().await.map_err(failed)?;
+        let mut held = self.held.lock().await;
+        if held.client.is_closed() {
+            let why = held.why_closed();
+            *held = Box::pin(Held::made(&self.config, &self.tls))
+                .await
+                .map_err(|SqlError::Unavailable { reason }| {
+                    refused(format!(
+                        "the connection closed ({why}) and could not be made again: {reason}"
+                    ))
+                })?;
+        }
+        let transaction = held.client.transaction().await.map_err(failed)?;
         let mut answers = Vec::with_capacity(statements.len());
         for statement in &statements {
             let prepared = transaction.prepare(&statement.sql).await.map_err(failed)?;

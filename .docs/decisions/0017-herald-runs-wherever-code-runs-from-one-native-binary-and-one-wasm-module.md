@@ -96,7 +96,7 @@ and Azure's timers call the function to poll.
    |-------|-------|-----------------|
    | `d1` | Cloudflare D1, through the Worker's binding | conditional statements in one batch over `Sql` |
    | `durable-object` | the storage of herald's Durable Object | a transaction of the object's storage over `Sql` |
-   | `dynamodb` | an AWS DynamoDB table, for the Lambda, the CLI and the server | conditional writes over `Http`, signed with Signature Version 4, each taking the table's next write count |
+   | `dynamodb` | an AWS DynamoDB table, for the Lambda, the CLI and the server | conditional writes over `Http`, signed with Signature Version 4, each naming the epoch and the version it replaces |
    | `deno-kv` | Deno KV | an atomic check of versionstamps over `Kv` |
    | `fastly-kv` | a Fastly KV Store | a generation match over `Kv` |
 

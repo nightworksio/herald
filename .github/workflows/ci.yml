@@ -171,6 +171,10 @@ jobs:
       - run: .github/scripts/install-tool.sh cargo-audit
       - run: cargo audit --deny warnings
       - run: cargo audit --deny warnings --file fuzz/Cargo.lock
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+      - run: npm audit --prefix deploy/tests
 
   # The oldest toolchain the workspace promises, `rust-version` in Cargo.toml.
   # RUSTUP_TOOLCHAIN takes precedence over rust-toolchain.toml, which would
@@ -218,11 +222,30 @@ jobs:
       - run: cargo test --workspace --locked
 
   # herald-wasm and everything it builds on compile for wasm32 without a
-  # warning, its JavaScript glue passes its tests under Node, and every
-  # JavaScript host in deploy/ passes its own under Node and Deno.
+  # warning, its JavaScript glue passes its tests under Node, every
+  # JavaScript host in deploy/ passes its own under Node and Deno, and the
+  # Durable Object store passes the store conformance on a real Durable
+  # Object's SQLite storage under Miniflare, and the JavaScript hosts' SQLite
+  # and Postgres databases keep their waits on real databases.
   wasm:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:17-alpine@sha256:266d3c257594e195b309ae9d1805e54c788f1d7b375f56bf6c367aac6c917e7b
+        env:
+          POSTGRES_USER: herald
+          POSTGRES_DB: herald
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U herald"
+          --health-interval 2s
+          --health-timeout 5s
+          --health-retries 30
+    env:
+      HERALD_TEST_POSTGRES: postgres://herald@localhost:5432/herald?sslmode=disable
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -237,6 +260,7 @@ jobs:
           key: wasm-${{ hashFiles('rust-toolchain.toml', 'Cargo.lock') }}
       - run: .github/scripts/install-tool.sh wasm-bindgen-test-runner
       - run: cargo clippy --locked --target wasm32-unknown-unknown -p herald-wasm --all-targets -- -D warnings
+      - run: cargo clippy --locked --target wasm32-unknown-unknown -p herald-wasm --features conformance --all-targets -- -D warnings
       - run: cargo test --locked --target wasm32-unknown-unknown -p herald-wasm
         env:
           CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUNNER: wasm-bindgen-test-runner
@@ -246,16 +270,36 @@ jobs:
         with:
           node-version: 24
       - run: node --test deploy/tests/host.test.mjs
+      - run: deploy/build.sh deploy/tests/pkg-conformance conformance
+      - run: npm ci --ignore-scripts --prefix deploy/tests
+      - run: node --test deploy/tests/worker.test.mjs
+      - run: node --test deploy/tests/databases.test.mjs
       - run: .github/scripts/install-tool.sh deno
       - run: deno test --allow-read --allow-net --allow-sys deploy/tests/vetted.deno.test.ts
       - run: deno check --unstable-cron deploy/deno/main.ts
 
   # The WASI component and the Fastly service build without a warning, their
   # ports pass under wasmtime and Viceroy, and each answers real requests on
-  # its host, Spin's databases included.
+  # its host, Spin's databases included, which pass the store conformance.
   compute:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:17-alpine@sha256:266d3c257594e195b309ae9d1805e54c788f1d7b375f56bf6c367aac6c917e7b
+        env:
+          POSTGRES_USER: herald
+          POSTGRES_DB: herald
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U herald"
+          --health-interval 2s
+          --health-timeout 5s
+          --health-retries 30
+    env:
+      HERALD_TEST_POSTGRES: postgres://herald@localhost:5432/herald?sslmode=disable
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -273,6 +317,7 @@ jobs:
       - run: .github/scripts/install-tool.sh spin
       - run: cargo clippy --locked --target wasm32-wasip2 -p herald-wasi --all-targets -- -D warnings
       - run: cargo clippy --locked --target wasm32-wasip2 -p herald-wasi --features spin --all-targets -- -D warnings
+      - run: cargo clippy --locked --target wasm32-wasip2 -p herald-wasi --features conformance --all-targets -- -D warnings
       - run: cargo clippy --locked --target wasm32-wasip1 -p herald-fastly --all-targets -- -D warnings
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
@@ -297,6 +342,8 @@ jobs:
       - run: cargo build --locked --release --target wasm32-wasip2 -p herald-wasi
       - run: cargo build --locked --release --target wasm32-wasip1 -p herald-fastly
       - run: cp target/wasm32-wasip2/release/herald_wasi.wasm deploy/component/herald_wasi.wasm
+      - run: cargo build --locked --release --target wasm32-wasip2 -p herald-wasi --features conformance
+      - run: cp target/wasm32-wasip2/release/herald_wasi.wasm deploy/tests/spin-conformance/herald_wasi.wasm
       - run: cargo build --locked --release --target wasm32-wasip2 -p herald-wasi --features spin
       - run: sudo sysctl -w net.ipv4.ip_unprivileged_port_start=443
       - run: node --test deploy/tests/compute.test.mjs

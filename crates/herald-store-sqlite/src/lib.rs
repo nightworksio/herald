@@ -7,14 +7,20 @@
 
 use std::path::{Path, PathBuf};
 
+use herald_core::Duration;
 use herald_ports::{Sql, StoreError};
 use herald_records::{Dialect, Kept, SqlRecords};
+use jiff::SignedDuration;
 use schemars::JsonSchema;
 use serde::Deserialize;
 
 /// The file a store keeps its records in where its options name none, beside
 /// `herald.toml`.
 pub const FILE: &str = "herald.sqlite";
+
+/// How long a transaction waits for another process to let go of the file
+/// where the options name no time.
+pub const BUSY: SignedDuration = SignedDuration::from_secs(5);
 
 /// The sqlite store's options in `herald.toml` (ADR-0006).
 #[derive(Debug, Clone, PartialEq, Eq, Default, Deserialize, JsonSchema)]
@@ -23,6 +29,9 @@ pub struct StoreOptions {
     /// The database file, relative to `herald.toml`; `herald.sqlite` beside
     /// it where absent.
     pub path: Option<String>,
+    /// How long a transaction waits for another process to let go of the
+    /// file; 5s where absent.
+    pub busy: Option<Duration>,
 }
 
 impl StoreOptions {
@@ -30,6 +39,13 @@ impl StoreOptions {
     #[must_use]
     pub fn file(&self, directory: &Path) -> PathBuf {
         directory.join(self.path.as_deref().unwrap_or(FILE))
+    }
+
+    /// How long a transaction waits for another process to let go of the
+    /// file.
+    #[must_use]
+    pub fn busy(&self) -> SignedDuration {
+        self.busy.map_or(BUSY, |Duration(busy)| busy)
     }
 }
 
@@ -62,11 +78,22 @@ mod tests {
         );
         let named = StoreOptions {
             path: Some("state/records.db".to_owned()),
+            busy: None,
         };
         assert_eq!(
             named.file(directory),
             Path::new("/srv/herald/state/records.db")
         );
+    }
+
+    #[test]
+    fn a_transaction_waits_the_time_named_or_else_five_seconds() {
+        assert_eq!(StoreOptions::default().busy(), BUSY);
+        let named = StoreOptions {
+            path: None,
+            busy: Some(Duration(SignedDuration::from_secs(30))),
+        };
+        assert_eq!(named.busy(), SignedDuration::from_secs(30));
     }
 
     #[test]
@@ -81,7 +108,7 @@ mod tests {
             })
         );
         let laid_out = Changed {
-            rows: vec![vec![Value::Integer(1)]],
+            rows: vec![vec![Value::Integer(herald_records::LAYOUT)]],
             changed: 0,
         };
         let opened = ScriptedSql::default().answering(Ok(vec![

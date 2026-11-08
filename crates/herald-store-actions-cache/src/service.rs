@@ -1,7 +1,7 @@
 use herald_ports::{Http, Method, Request, Response, Secret, StoreError, Text, USER_AGENT};
 use herald_records::Wrote;
-use serde::Deserialize;
 use serde::de::DeserializeOwned;
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 use crate::cache::{CacheRecords, Generation};
@@ -51,6 +51,10 @@ fn corrupt(what: &str, error: impl std::fmt::Display) -> StoreError {
     StoreError::Corrupt {
         reason: format!("{what}: {error}"),
     }
+}
+
+fn encoded(what: &str, value: &impl Serialize) -> Result<Vec<u8>, StoreError> {
+    serde_json::to_vec(value).map_err(|error| corrupt(what, error))
 }
 
 fn read<T: DeserializeOwned>(what: &str, response: &Response) -> Result<T, StoreError> {
@@ -132,7 +136,7 @@ impl<H: Http + Send> CacheRecords<'_, H> {
         if !reserved.ok {
             return Ok(Wrote::Conflict);
         }
-        let bytes = serde_json::to_vec(generation).unwrap_or_default();
+        let bytes = encoded("the cache's generation", generation)?;
         let size = bytes.len();
         let url = Secret::new(SIGNED, reserved.signed_upload_url);
         let request = Request::new(Method::Put, Text::secret(url.clone()))
@@ -151,5 +155,29 @@ impl<H: Http + Send> CacheRecords<'_, H> {
         } else {
             Err(unavailable(format!("the Actions cache did not keep {key}")))
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use serde::Serializer;
+    use serde::ser::Error;
+
+    use super::*;
+
+    struct Unwritable;
+
+    impl Serialize for Unwritable {
+        fn serialize<S: Serializer>(&self, _: S) -> Result<S::Ok, S::Error> {
+            Err(S::Error::custom("no JSON for this"))
+        }
+    }
+
+    #[test]
+    fn a_value_with_no_json_is_refused_as_corrupt() {
+        assert!(matches!(
+            encoded("the generation", &Unwritable),
+            Err(StoreError::Corrupt { reason }) if reason == "the generation: no JSON for this"
+        ));
     }
 }

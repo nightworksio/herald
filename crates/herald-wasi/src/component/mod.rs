@@ -1,5 +1,7 @@
 //! The component: what a request asks of herald, and the ports the host gives.
 
+#[cfg(feature = "conformance")]
+mod conformance;
 mod handler;
 mod host;
 mod http;

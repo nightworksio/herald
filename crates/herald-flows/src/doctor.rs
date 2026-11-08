@@ -1,5 +1,5 @@
 use herald_config::{Config, Destination, RouteConfig, Source, Store};
-use herald_core::Pinning;
+use herald_core::{Pinning, RecordKind};
 use herald_ports::{Secrets, Signer};
 
 use crate::prepare::keyed;
@@ -49,19 +49,30 @@ fn gap(feature: &str, key: String, why: String) -> Gap {
     }
 }
 
+fn unpinned(config: &Config, index: usize, route: &RouteConfig, gaps: &mut Vec<Gap>) {
+    if route.route.delivery.pin != Some(Pinning::Store) || config.store.keeps(RecordKind::Pins) {
+        return;
+    }
+    let or = config
+        .store
+        .kept_by(RecordKind::Pins)
+        .map_or_else(String::new, |hint| format!("{hint}, or "));
+    gaps.push(gap(
+        "a pin the store remembers",
+        format!("routes[{index}].pin"),
+        format!(
+            "the {} store keeps no pins; {or}set pin = \"markers\"",
+            config.store.kind()
+        ),
+    ));
+}
+
 fn unkept(config: &Config, index: usize, route: &RouteConfig, gaps: &mut Vec<Gap>) {
     let bot = matches!(
         config.destinations.get(&route.route.destination),
         Some(Destination::Discord(options)) if options.token.is_some()
     );
     let key = |field: &str| format!("routes[{index}].{field}");
-    if route.route.delivery.pin == Some(Pinning::Store) {
-        gaps.push(gap(
-            "a pin the store remembers",
-            key("pin"),
-            "the markers store keeps no pins; set pin = \"markers\"".to_owned(),
-        ));
-    }
     if !route.profile.features.reads_back {
         let cannot = if bot {
             "a forum's posts are not read back"
@@ -208,6 +219,9 @@ pub fn doctor(config: &Config, layer: Layer<'_>) -> Findings {
         Store::RepoVariables(_) => findings.notes.push(CROWDED.to_owned()),
         Store::Sqlite(_) => findings.notes.push(FILED.to_owned()),
         _ => {}
+    }
+    for (index, route) in config.routes.iter().enumerate() {
+        unpinned(config, index, route, &mut findings.gaps);
     }
     if matches!(config.store, Store::Markers) {
         for (index, route) in config.routes.iter().enumerate() {

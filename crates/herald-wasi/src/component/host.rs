@@ -84,10 +84,18 @@ impl Host for WasiHost {
     #[cfg(feature = "spin")]
     fn sql(&self, at: SqlAt<'_>) -> impl Future<Output = Result<Database, String>> {
         ready(match at {
-            SqlAt::Sqlite(_) => Ok(Database::Sqlite(
-                self.var(SPIN_DATABASE).unwrap_or("default").to_owned(),
-            )),
-            SqlAt::Postgres(url) => Ok(Database::Postgres(url.clone())),
+            SqlAt::Sqlite { busy, .. } => Ok(Database::Sqlite {
+                label: self.var(SPIN_DATABASE).unwrap_or("default").to_owned(),
+                busy,
+            }),
+            SqlAt::Postgres {
+                url,
+                connect,
+                statement,
+            } => Ok(Database::Postgres(herald_ports::Secret::new(
+                url.name(),
+                herald_store_postgres::within(url.expose(), connect, statement),
+            ))),
             SqlAt::D1(_) | SqlAt::DurableObject { .. } => Err(NO_DATABASE.to_owned()),
         })
     }

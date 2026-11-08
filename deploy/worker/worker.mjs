@@ -2,6 +2,7 @@ import { DurableObject } from "cloudflare:workers";
 import module from "../pkg/herald_wasm_bg.wasm";
 import { Herald, answered, fetching, load, rounds } from "../host.mjs";
 import files from "./files.mjs";
+import { transacted } from "./sql.mjs";
 import config from "./herald.toml";
 
 function d1(db) {
@@ -103,13 +104,6 @@ export class HeraldObject extends DurableObject {
   }
 
   transaction(statements) {
-    const sql = this.ctx.storage.sql;
-    return this.ctx.storage.transactionSync(() =>
-      statements.map((statement) => {
-        const cursor = sql.exec(statement.sql, ...statement.params);
-        const rows = cursor.raw().toArray();
-        return { rows, changed: cursor.rowsWritten };
-      }),
-    );
+    return transacted(this.ctx.storage, statements);
   }
 }

@@ -13,7 +13,7 @@ mod sqlite;
 mod timer;
 
 pub use http::{BuildError, ConnectError, NativeHttp};
-pub use postgres::NativePostgres;
+pub use postgres::{NativePostgres, Timeouts};
 pub use public::PublicHttp;
 pub use random::random_secret;
 pub use socket::{NativeSocket, NativeSockets};

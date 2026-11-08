@@ -10,7 +10,7 @@
 mod conformance {
     use std::sync::{Arc, Mutex};
 
-    use herald_core::{Entry, Identity, Key, RouteId, Subscription};
+    use herald_core::{Entry, Identity, Key, RecordKind, RouteId, Subscription};
     use herald_ports::{
         Http, HttpError, Method, Request, Response, Secret, Store, StoreError, Version, Written,
     };
@@ -174,8 +174,17 @@ mod conformance {
         })
     }
 
+    const EVERY: [RecordKind; 5] = [
+        RecordKind::Subscriptions,
+        RecordKind::Pins,
+        RecordKind::Notes,
+        RecordKind::Latest,
+        RecordKind::Keys,
+    ];
+
     fn store(cache: &Cache) -> ActionsCacheStore<'static, Cache> {
         ActionsCache::new(RESULTS, Secret::new("ACTIONS_RUNTIME_TOKEN", "t"), None)
+            .keeping(&EVERY)
             .store(cache.clone(), blobs(cache))
     }
 
@@ -190,6 +199,23 @@ mod conformance {
             pollster::block_on(store_conformance(&store(&cache))),
             Ok(())
         );
+    }
+
+    #[test]
+    fn the_store_keeps_only_its_ledger_cursors_schedules_and_deliveries_unless_told() {
+        let cache = Cache::default();
+        let plain = ActionsCache::new(RESULTS, Secret::new("ACTIONS_RUNTIME_TOKEN", "t"), None)
+            .store(cache.clone(), blobs(&cache))
+            .capabilities();
+        assert!(plain.cursors && plain.deliveries);
+        assert!(!plain.subscriptions && !plain.pins && !plain.notes && !plain.latest);
+        let told = ActionsCache::new(RESULTS, Secret::new("ACTIONS_RUNTIME_TOKEN", "t"), None)
+            .keeping(&[RecordKind::Pins])
+            .store(cache.clone(), blobs(&cache))
+            .capabilities();
+        assert!(told.pins && !told.notes);
+        let every = store(&cache).capabilities();
+        assert!(every.subscriptions && every.pins && every.notes && every.latest);
     }
 
     #[test]

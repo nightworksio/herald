@@ -18,7 +18,7 @@ use wasm_bindgen_test::wasm_bindgen_test;
 use super::bindings::{HostObject, SocketsObject};
 use super::crypto::{WebSigner, WebVerifier};
 use super::herald::Herald;
-use super::host::JsHost;
+use super::host::{JsHost, sql_at};
 use super::sessions::{JsSockets, JsTaker, JsTimer};
 use super::{bytes, member, object, strings, strings_of};
 
@@ -343,15 +343,15 @@ async fn a_database_the_host_offers_runs_statements_and_one_it_does_not_is_refus
     let sql = hosted.sql(SqlAt::D1("HERALD_DB")).await.unwrap();
     let big = 1_i64 << 60;
     let answered = sql
-        .transaction(vec![Statement {
-            sql: "SELECT ?1, ?2, ?3, ?4".to_owned(),
-            params: vec![
+        .transaction(vec![Statement::query(
+            "SELECT ?1, ?2, ?3, ?4",
+            vec![
                 Value::Null,
                 Value::Integer(-5),
                 Value::Integer(big),
                 Value::Text("t".to_owned()),
             ],
-        }])
+        )])
         .await
         .unwrap();
     assert_eq!(
@@ -366,10 +366,44 @@ async fn a_database_the_host_offers_runs_statements_and_one_it_does_not_is_refus
     );
     assert_eq!(answered[0].changed, 0);
     let refused = hosted
-        .sql(SqlAt::Sqlite(std::path::Path::new("herald.sqlite")))
+        .sql(SqlAt::Sqlite {
+            file: std::path::Path::new("herald.sqlite"),
+            busy: jiff::SignedDuration::from_secs(5),
+        })
         .await;
     assert_eq!(refused.err().as_deref(), Some("no sqlite here"));
     assert!(hosted.kv(KvAt::FastlyKv("herald")).await.is_err());
+}
+
+#[wasm_bindgen_test]
+fn a_database_is_asked_for_with_its_waits_in_milliseconds() {
+    let file = std::path::Path::new("herald.sqlite");
+    let sqlite = sql_at(SqlAt::Sqlite {
+        file,
+        busy: jiff::SignedDuration::from_secs(5),
+    });
+    assert_eq!(
+        member(&sqlite, "file").as_string().as_deref(),
+        Some("herald.sqlite")
+    );
+    assert_eq!(member(&sqlite, "busy").as_f64(), Some(5_000.0));
+    let url = herald_ports::Secret::new("HERALD_POSTGRES_URL", "postgres://db/herald");
+    let postgres = sql_at(SqlAt::Postgres {
+        url: &url,
+        connect: jiff::SignedDuration::from_secs(10),
+        statement: jiff::SignedDuration::from_mins(2),
+    });
+    assert_eq!(
+        member(&postgres, "kind").as_string().as_deref(),
+        Some("postgres")
+    );
+    assert_eq!(member(&postgres, "connect").as_f64(), Some(10_000.0));
+    assert_eq!(member(&postgres, "statement").as_f64(), Some(120_000.0));
+    let endless = sql_at(SqlAt::Sqlite {
+        file,
+        busy: jiff::SignedDuration::MAX,
+    });
+    assert!(member(&endless, "busy").is_undefined());
 }
 
 #[wasm_bindgen_test]

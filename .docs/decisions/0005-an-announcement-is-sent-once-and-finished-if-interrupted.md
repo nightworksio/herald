@@ -67,6 +67,11 @@ all still has the destination, and the destination holds the posts.
    Every record carries a schema version, and a store reads the versions
    before its own.
 
+   A store with no version of its own per record (the SQL stores and
+   DynamoDB) counts each record's writes. Each record draws a random epoch
+   when it is made, so a record removed and written again never takes an
+   earlier token back, and no write waits on any other record's.
+
 6. **Nine stores, each where it can run.**
 
    | Store | Kept in | Usable from | Compare-and-set by |
@@ -84,6 +89,12 @@ all still has the destination, and the destination holds the posts.
    SQLite, Postgres and D1 stores are written over the `Sql` port, Deno KV over
    `Kv`, and the rest over `Http`. The driver supplies the connection
    (ADR-0001).
+
+   Every write to `actions-cache` uploads every record it keeps, and each
+   generation counts against the cache's quota. So by default it keeps only
+   the ledger, cursors, schedules and deliveries. Its `keeps` setting adds any
+   of subscriptions, pins, notes, latest and keys. The config refuses, and
+   doctor names, a feature that needs a kind the store does not keep.
 
 7. **The `markers` store reads the destination's own posts.**
    - **Where the key goes.** Each announcement carries its key in the most

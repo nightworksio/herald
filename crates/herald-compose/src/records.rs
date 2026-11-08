@@ -89,7 +89,11 @@ pub async fn reached<H: Host>(
                     file.display()
                 )
             };
-            let sql = host.sql(SqlAt::Sqlite(&file)).await.map_err(filed)?;
+            let at = SqlAt::Sqlite {
+                file: &file,
+                busy: options.busy(),
+            };
+            let sql = host.sql(at).await.map_err(filed)?;
             Records::Sql(
                 herald_store_sqlite::store(sql)
                     .await
@@ -104,7 +108,12 @@ pub async fn reached<H: Host>(
                 "the postgres store reads its connection URL from it",
             )
             .await?;
-            let sql = host.sql(SqlAt::Postgres(&url)).await.map_err(opened)?;
+            let at = SqlAt::Postgres {
+                url: &url,
+                connect: options.connect_timeout(),
+                statement: options.statement_timeout(),
+            };
+            let sql = host.sql(at).await.map_err(opened)?;
             Records::Sql(herald_store_postgres::store(sql).await.map_err(migrated)?)
         }
         Store::D1(options) => {
@@ -145,7 +154,7 @@ pub async fn reached<H: Host>(
         Store::Dynamodb(options) => {
             let table = Dynamodb::reached(options, host.secrets()).await?;
             let http = host.connect(table.api())?;
-            Records::Dynamodb(table.store(http, host.clock().clone()))
+            Records::Dynamodb(table.store(http, host.clock().clone(), host.nonce()))
         }
         Store::Markers => Records::Posts,
         Store::ActionsCache(_) => return Err(unserved(stores)),

@@ -28,19 +28,20 @@ pub fn chunk(markdown: &str, dialect: Dialect, room: Room) -> Vec<Text> {
             if fits(&block, narrowest) {
                 vec![block]
             } else if let Some((open, close, code)) = fenced(&block) {
-                let open = if fits(&format!("{open}\n{close}"), narrowest) {
-                    open
-                } else {
-                    close.clone()
+                let fenced = |open: &str| {
+                    let wrap = |piece: &str| format!("{open}\n{piece}\n{close}");
+                    let pieces: Vec<String> =
+                        split(&code, &|piece| fits(&wrap(piece), narrowest), Level::Lines)
+                            .iter()
+                            .map(|piece| wrap(piece))
+                            .collect();
+                    let whole = pieces.iter().all(|piece| fits(piece, narrowest));
+                    (pieces, whole)
                 };
-                split(
-                    &code,
-                    &|piece| fits(&format!("{open}\n{piece}\n{close}"), narrowest),
-                    Level::Lines,
-                )
-                .into_iter()
-                .map(|piece| format!("{open}\n{piece}\n{close}"))
-                .collect()
+                match fenced(&open) {
+                    (pieces, true) => pieces,
+                    _ => fenced(&close).0,
+                }
             } else {
                 split(&block, &|piece| fits(piece, narrowest), Level::Lines)
             }

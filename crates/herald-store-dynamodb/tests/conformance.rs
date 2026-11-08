@@ -58,20 +58,21 @@ mod conformance {
         (s("directory"), s("name"))
     }
 
-    fn version(item: Option<&Value>) -> Option<String> {
-        item?.pointer("/version/N")?.as_str().map(ToOwned::to_owned)
-    }
-
     fn holds(condition: &str, body: &Value, current: Option<&Value>) -> bool {
+        let held = |attribute: &str, kind: &str| {
+            current.and_then(|item| item.pointer(&format!("/{attribute}/{kind}")))
+        };
+        let asked = |value: &str, kind: &str| {
+            body.pointer(&format!("/ExpressionAttributeValues/{value}/{kind}"))
+        };
         match condition {
             "attribute_not_exists(#n)" => current.is_none(),
-            "#v = :v" => {
-                version(current).as_deref()
-                    == body
-                        .pointer("/ExpressionAttributeValues/:v/N")
-                        .and_then(Value::as_str)
+            "#e = :e AND #v = :v" => {
+                current.is_some()
+                    && held("epoch", "S") == asked(":e", "S")
+                    && held("version", "N") == asked(":v", "N")
             }
-            _ => true,
+            _ => false,
         }
     }
 
@@ -123,23 +124,6 @@ mod conformance {
                         );
                     }
                     reply(200, &answer)
-                }
-                "UpdateItem" => {
-                    let counted = self
-                        .items
-                        .entry(key(body, "Key"))
-                        .or_insert_with(|| json!({ "made": { "N": "0" } }));
-                    if counted.pointer("/made/N").is_none() {
-                        return reply(200, &json!({ "Attributes": counted }));
-                    }
-                    let made: i64 = counted
-                        .pointer("/made/N")
-                        .and_then(Value::as_str)
-                        .and_then(|made| made.parse::<i64>().ok())
-                        .unwrap_or_default()
-                        + 1;
-                    *counted = json!({ "made": { "N": made.to_string() } });
-                    reply(200, &json!({ "Attributes": counted }))
                 }
                 "PutItem" => {
                     let at = key(body, "Item");
@@ -214,7 +198,7 @@ mod conformance {
     }
 
     fn store(model: &Table) -> DynamodbStore<&Table, FakeClock> {
-        table().store(model, clock())
+        table().store(model, clock(), "seed".to_owned())
     }
 
     #[test]
@@ -275,6 +259,35 @@ mod conformance {
             Ok(Wrote::Written)
         );
         assert_eq!(
+            pollster::block_on(records.write("ledger/a.json", b"{}", None)),
+            Ok(Wrote::Written)
+        );
+        let remade = pollster::block_on(records.read("ledger/a.json"))
+            .unwrap()
+            .unwrap();
+        assert_ne!(remade.token, read.token);
+        assert_eq!(
+            pollster::block_on(records.remove("ledger/a.json", &read.token)),
+            Ok(Wrote::Conflict)
+        );
+        assert_eq!(
+            pollster::block_on(records.write("ledger/a.json", b"[1]", Some(&remade.token))),
+            Ok(Wrote::Written)
+        );
+        let updated = pollster::block_on(records.read("ledger/a.json"))
+            .unwrap()
+            .unwrap();
+        let epoch = remade.token.strip_suffix(".1").unwrap();
+        assert_eq!(updated.token, format!("{epoch}.2"));
+        assert_eq!(
+            pollster::block_on(records.write("ledger/a.json", b"[2]", Some(&remade.token))),
+            Ok(Wrote::Conflict)
+        );
+        assert_eq!(
+            pollster::block_on(records.write("ledger/a.json", b"[]", Some(&read.token))),
+            Ok(Wrote::Conflict)
+        );
+        assert_eq!(
             pollster::block_on(records.write("top", b"{}", None)),
             Ok(Wrote::Written)
         );
@@ -316,7 +329,7 @@ mod conformance {
             400,
             "AccessDeniedException".to_owned(),
         ));
-        assert!(pollster::block_on(records.remove("ledger/a.json", "1")).is_err());
+        assert!(pollster::block_on(records.remove("ledger/a.json", "e.1")).is_err());
         model.model.lock().unwrap().fail = None;
         model.model.lock().unwrap().items.insert(
             ("ledger".to_owned(), "x.json".to_owned()),
@@ -325,7 +338,7 @@ mod conformance {
         assert_eq!(
             pollster::block_on(records.read("ledger/x.json")),
             Err(StoreError::Corrupt {
-                reason: "a record's item is not a body and a version".to_owned()
+                reason: "a record's item is not a body, an epoch and a version".to_owned()
             })
         );
         model.model.lock().unwrap().items.insert(
@@ -338,16 +351,16 @@ mod conformance {
                 reason: "a record's name is not text".to_owned()
             })
         );
-        model.model.lock().unwrap().items.insert(
-            ("~herald".to_owned(), "made".to_owned()),
-            json!({ "made": { "S": "many" } }),
-        );
-        assert_eq!(
-            pollster::block_on(records.write("ledger/z.json", b"{}", None)),
-            Err(StoreError::Corrupt {
-                reason: "the table's write count is not a number".to_owned()
-            })
-        );
+        for unparsed in ["1", "e.x"] {
+            assert_eq!(
+                pollster::block_on(records.write("ledger/z.json", b"{}", Some(unparsed))),
+                Ok(Wrote::Conflict)
+            );
+            assert_eq!(
+                pollster::block_on(records.remove("ledger/z.json", unparsed)),
+                Ok(Wrote::Conflict)
+            );
+        }
     }
 
     #[derive(Debug)]
@@ -374,12 +387,12 @@ mod conformance {
 
     #[test]
     fn a_table_that_cannot_be_reached_or_answers_nothing_is_unavailable() {
-        let unreachable = table().store(Unreachable, clock());
+        let unreachable = table().store(Unreachable, clock(), "seed".to_owned());
         assert!(matches!(
             pollster::block_on(unreachable.records().read("ledger/a.json")),
             Err(StoreError::Unavailable { .. })
         ));
-        let blank = table().store(Blank, clock());
+        let blank = table().store(Blank, clock(), "seed".to_owned());
         assert_eq!(
             pollster::block_on(blank.records().list("ledger")),
             Err(StoreError::Unavailable {

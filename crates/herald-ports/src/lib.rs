@@ -27,6 +27,6 @@ pub use kv::{Kv, KvError, Pair, Stamped, Versionstamp};
 pub use markers::{MarkedThread, Markers, MarkersError, marker};
 pub use secret::{Secret, SecretError, Secrets, Segment, Text};
 pub use socket::{Frame, Socket, Sockets};
-pub use sql::{Changed, Sql, SqlError, Statement, Value};
+pub use sql::{Answers, Changed, Sql, SqlError, Statement, Value};
 pub use store::{Admitted, Capabilities, Keeping, Store, StoreError, Version, Versioned, Written};
 pub use timer::Timer;

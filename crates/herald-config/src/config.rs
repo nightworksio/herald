@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use herald_core::{
-    DestinationName, Kind, Profile, Route, RouteId, SecretRef, SourceName, Templates,
+    DestinationName, Kind, Profile, RecordKind, Route, RouteId, SecretRef, SourceName, Templates,
 };
 use herald_sources_forge::Forge;
 use herald_sources_registry::Registry;
@@ -157,6 +157,24 @@ impl Store {
         Self::ACTIONS_CACHE,
         Self::REPO_VARIABLES,
     ];
+
+    /// Whether it keeps records of `kind`.
+    #[must_use]
+    pub fn keeps(&self, kind: RecordKind) -> bool {
+        match self {
+            Self::Markers => false,
+            Self::ActionsCache(options) => options.keeps(kind),
+            _ => true,
+        }
+    }
+
+    /// How it would keep records of `kind`, where its own options can make
+    /// it.
+    #[must_use]
+    pub fn kept_by(&self, kind: RecordKind) -> Option<String> {
+        matches!(self, Self::ActionsCache(_))
+            .then(|| format!("add \"{}\" to its keeps", kind.name()))
+    }
 
     /// The kind's name, as `[store] kind` writes it.
     #[must_use]

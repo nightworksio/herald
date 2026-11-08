@@ -9,7 +9,7 @@ use herald_config::{Config, Store};
 use herald_crypto::{RingSigner, RingVerifier};
 use herald_environment::{EnvSecrets, SystemClock};
 use herald_flows::{Connected, prepare};
-use herald_native::{NativePostgres, NativeSql, NativeSqlite};
+use herald_native::{NativePostgres, NativeSql, NativeSqlite, Timeouts};
 use herald_ports::Secrets as _;
 use herald_records::Memory;
 use herald_store_actions_cache::{ActionsCache, ActionsCacheStore, StoreOptions as CacheOptions};
@@ -78,8 +78,14 @@ impl Host for Native<'_> {
 
     async fn sql(&self, at: SqlAt<'_>) -> Result<NativeSql, String> {
         match at {
-            SqlAt::Sqlite(file) => NativeSqlite::open(file).map(NativeSql::Sqlite),
-            SqlAt::Postgres(url) => NativePostgres::connect(url).await.map(NativeSql::Postgres),
+            SqlAt::Sqlite { file, busy } => NativeSqlite::open(file, busy).map(NativeSql::Sqlite),
+            SqlAt::Postgres {
+                url,
+                connect,
+                statement,
+            } => NativePostgres::connect(url, Timeouts { connect, statement })
+                .await
+                .map(|sql| NativeSql::Postgres(Box::new(sql))),
             SqlAt::D1(_) | SqlAt::DurableObject { .. } => return Err(UNHOSTED.to_owned()),
         }
         .map_err(|error| error.to_string())
@@ -198,7 +204,8 @@ pub(crate) async fn cache<'a>(
     let token = secrets.secret(RUNTIME_TOKEN).await.map_err(|_| {
         format!("{RUNTIME_TOKEN} is not set; the actions-cache store runs through herald's Action")
     })?;
-    let cache = ActionsCache::new(results, token, options.prefix.as_deref());
+    let cache =
+        ActionsCache::new(results, token, options.prefix.as_deref()).keeping(&options.keeps);
     let http = connect.reach(cache.results())?;
     Ok(cache.store(http, Box::new(move |base: &str| connect.reach(base))))
 }

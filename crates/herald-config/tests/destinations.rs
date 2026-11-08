@@ -449,6 +449,31 @@ body = "{{ event.body }}"
             "{}",
             errors(&marked)
         );
+        let cached = ACTIVITYPUB.replace("kind = \"git-branch\"", "kind = \"actions-cache\"");
+        assert!(
+            errors(&cached).contains("routes[0]: the actions-cache store keeps no subscriptions, so this route has no followers or subscribers to reach; add \"subscriptions\" to its keeps"),
+            "{}",
+            errors(&cached)
+        );
+        let subscribed = ACTIVITYPUB.replace(
+            "kind = \"git-branch\"",
+            "kind = \"actions-cache\"\nkeeps = [\"subscriptions\"]",
+        );
+        assert!(
+            errors(&subscribed).contains("routes[0]: the actions-cache store keeps no notes, which this route's actor serves its announcements as; add \"notes\" to its keeps"),
+            "{}",
+            errors(&subscribed)
+        );
+        let noted = ACTIVITYPUB.replace(
+            "kind = \"git-branch\"",
+            "kind = \"actions-cache\"\nkeeps = [\"subscriptions\", \"notes\"]",
+        );
+        assert!(load("herald.toml", &noted, &nothing).is_ok());
+        let unheard = ACTIVITYPUB.replace(
+            "kind = \"git-branch\"",
+            "kind = \"actions-cache\"\nkeeps = [\"everything\"]",
+        );
+        assert!(errors(&unheard).contains("store"), "{}", errors(&unheard));
         let mentioning = MATRIX.replace("kind = \"sqlite\"", "kind = \"markers\"");
         assert!(
             errors(&mentioning).contains("routes[0]: the markers store keeps no subscriptions"),

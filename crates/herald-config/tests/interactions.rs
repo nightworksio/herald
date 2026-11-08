@@ -179,6 +179,14 @@ body = "{{{{ event.body }}}}"
             &config("markers", &bot(""), "channel = \"1566200000000000100\""),
             "destinations.discord.interactions: the markers store keeps nothing commands answer with",
         );
+        refused(
+            &config(
+                "actions-cache",
+                &bot(""),
+                "channel = \"1566200000000000100\"",
+            ),
+            "destinations.discord.interactions: the actions-cache store keeps nothing commands answer with; add \"latest\" to its keeps",
+        );
         let slack = config("git-branch", &bot(""), "channel = \"1566200000000000100\"").replace(
             "signing = { secret = \"HERALD_SLACK_SIGNING\" }",
             "command = \"herald\"\nsigning = { secret = \"S\" }",

@@ -9,10 +9,12 @@ mod address;
 mod announce;
 mod chunk;
 mod cursor;
+mod duration;
 mod event;
 mod housekeep;
 mod inbound;
 mod interact;
+mod kept;
 mod key;
 mod latest;
 mod ledger;
@@ -34,6 +36,7 @@ pub use announce::{
 };
 pub use chunk::{Room, chunk, size};
 pub use cursor::{Cursor, Polled, fresh};
+pub use duration::Duration;
 pub use event::{Draft, Event, Kind, Problem};
 pub use housekeep::{Chore, Schedule, due, schedules};
 pub use inbound::{
@@ -44,6 +47,7 @@ pub use interact::{
     AnnouncedHere, Answering, Asked, Command, MOST_COMPLETIONS, Member, Place, Replies, Said,
     Unchosen, announced, chosen, completions, every_command,
 };
+pub use kept::RecordKind;
 pub use key::{Identity, Key, NotAKey, RouteId, digest, hex};
 pub use latest::{Latest, Shown};
 pub use ledger::{

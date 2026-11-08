@@ -12,13 +12,47 @@ pub enum Value {
     Text(String),
 }
 
-/// One statement and the values bound to its parameters, in order.
+/// What a statement answers with.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Answers {
+    /// The rows it returns.
+    Rows,
+    /// How many rows it changed.
+    Changes,
+}
+
+/// One statement, the values bound to its parameters, in order, and what it
+/// answers with.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Statement {
     /// The SQL, with numbered parameters.
     pub sql: String,
     /// The values bound to them.
     pub params: Vec<Value>,
+    /// What it answers with.
+    pub answers: Answers,
+}
+
+impl Statement {
+    /// A statement that returns rows.
+    #[must_use]
+    pub fn query(sql: impl Into<String>, params: Vec<Value>) -> Self {
+        Self {
+            sql: sql.into(),
+            params,
+            answers: Answers::Rows,
+        }
+    }
+
+    /// A statement that changes rows and returns none.
+    #[must_use]
+    pub fn change(sql: impl Into<String>, params: Vec<Value>) -> Self {
+        Self {
+            sql: sql.into(),
+            params,
+            answers: Answers::Changes,
+        }
+    }
 }
 
 /// What one statement of a transaction answered.

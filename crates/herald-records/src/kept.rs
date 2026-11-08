@@ -2,7 +2,7 @@ use std::collections::BTreeSet;
 use std::sync::{Arc, Mutex, PoisonError};
 
 use herald_core::{
-    Cursor, DestinationName, Entry, Key, Latest, RouteId, Schedule, Scheme, SourceName,
+    Cursor, DestinationName, Entry, Key, Latest, RecordKind, RouteId, Schedule, Scheme, SourceName,
     Subscription,
 };
 use herald_ports::{
@@ -47,12 +47,17 @@ struct Read {
 pub struct Kept<R> {
     records: R,
     skipped: Arc<Mutex<BTreeSet<String>>>,
+    capabilities: Capabilities,
 }
 
 fn corrupt(path: &str, error: impl std::fmt::Display) -> StoreError {
     StoreError::Corrupt {
         reason: format!("{path}: {error}"),
     }
+}
+
+fn encoded(path: &str, value: &impl Serialize) -> Result<Value, StoreError> {
+    serde_json::to_value(value).map_err(|error| corrupt(path, error))
 }
 
 fn changing(path: &str, doing: &str) -> StoreError {
@@ -62,13 +67,35 @@ fn changing(path: &str, doing: &str) -> StoreError {
 }
 
 impl<R: Records> Kept<R> {
-    /// The store kept in `records`.
+    /// The store kept in `records`, keeping every kind of record.
     #[must_use]
     pub fn new(records: R) -> Self {
         Self {
             records,
             skipped: Arc::default(),
+            capabilities: Capabilities {
+                ledger: Keeping::Kept,
+                cursors: true,
+                schedules: Keeping::Kept,
+                subscriptions: true,
+                pins: true,
+                deliveries: true,
+                notes: true,
+                latest: true,
+                concurrent: true,
+            },
         }
+    }
+
+    /// The store, keeping besides its ledger, cursors, schedules and
+    /// deliveries only the kinds `keeps` lets it.
+    #[must_use]
+    pub fn keeping(mut self, keeps: impl Fn(RecordKind) -> bool) -> Self {
+        self.capabilities.subscriptions = keeps(RecordKind::Subscriptions);
+        self.capabilities.pins = keeps(RecordKind::Pins);
+        self.capabilities.notes = keeps(RecordKind::Notes);
+        self.capabilities.latest = keeps(RecordKind::Latest);
+        self
     }
 
     /// The record at `path` as a listing reads it: one that cannot be read
@@ -119,7 +146,7 @@ impl<R: Records> Kept<R> {
             version: version.0,
             record: record.clone(),
         };
-        let bytes = serde_json::to_vec(&stored).unwrap_or_default();
+        let bytes = encoded(path, &stored)?.to_string().into_bytes();
         self.records.write(path, &bytes, replacing).await
     }
 
@@ -143,7 +170,7 @@ impl<R: Records> Kept<R> {
         value: &T,
         expected: Option<Version>,
     ) -> Result<Written, StoreError> {
-        let record = serde_json::to_value(value).unwrap_or(Value::Null);
+        let record = encoded(path, value)?;
         for _ in 0..ATTEMPTS {
             let read = self.read(path).await?;
             if read.as_ref().map(|read| read.version) != expected {
@@ -159,7 +186,7 @@ impl<R: Records> Kept<R> {
     }
 
     async fn kept<T: Serialize>(&self, path: &str, value: &T) -> Result<(), StoreError> {
-        let record = serde_json::to_value(value).unwrap_or(Value::Null);
+        let record = encoded(path, value)?;
         for _ in 0..ATTEMPTS {
             let read = self.read(path).await?;
             let version = read.as_ref().map_or(Version(1), |read| read.version);
@@ -175,7 +202,7 @@ impl<R: Records> Kept<R> {
         if self.records.read(path).await?.is_some() {
             return Ok(());
         }
-        let record = serde_json::to_value(value).unwrap_or(Value::Null);
+        let record = encoded(path, value)?;
         self.write(path, Version(1), &record, None)
             .await
             .map(|_| ())
@@ -206,17 +233,7 @@ impl<R: Records> Kept<R> {
 
 impl<R: Records> Store for Kept<R> {
     fn capabilities(&self) -> Capabilities {
-        Capabilities {
-            ledger: Keeping::Kept,
-            cursors: true,
-            schedules: Keeping::Kept,
-            subscriptions: true,
-            pins: true,
-            deliveries: true,
-            notes: true,
-            latest: true,
-            concurrent: true,
-        }
+        self.capabilities
     }
 
     fn skipped(&self) -> Vec<String> {
@@ -378,5 +395,52 @@ impl<R: Records> Keyring for Kept<R> {
             }
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use serde::Serializer;
+    use serde::ser::Error;
+
+    use super::*;
+    use crate::Memory;
+
+    struct Unwritable;
+
+    impl Serialize for Unwritable {
+        fn serialize<S: Serializer>(&self, _: S) -> Result<S::Ok, S::Error> {
+            Err(S::Error::custom("no JSON for this"))
+        }
+    }
+
+    fn corrupted(reason: &str) -> StoreError {
+        StoreError::Corrupt {
+            reason: reason.to_owned(),
+        }
+    }
+
+    #[test]
+    fn a_value_with_no_json_is_refused_as_corrupt_and_nothing_is_written() {
+        let kept = Kept::new(Memory::default());
+        pollster::block_on(async {
+            assert_eq!(
+                kept.compare_and_set("a.json", &Unwritable, None)
+                    .await
+                    .err(),
+                Some(corrupted("a.json: no JSON for this"))
+            );
+            assert_eq!(
+                kept.kept("b.json", &Unwritable).await.err(),
+                Some(corrupted("b.json: no JSON for this"))
+            );
+            assert_eq!(
+                kept.added("c.json", &Unwritable).await.err(),
+                Some(corrupted("c.json: no JSON for this"))
+            );
+            for path in ["a.json", "b.json", "c.json"] {
+                assert!(kept.records.read(path).await.unwrap().is_none());
+            }
+        });
     }
 }

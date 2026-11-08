@@ -10,8 +10,10 @@ authors.workspace = true
 publish.workspace = true
 
 [dependencies]
+herald-core.workspace = true
 herald-ports.workspace = true
 herald-records.workspace = true
+jiff.workspace = true
 schemars.workspace = true
 serde.workspace = true
 

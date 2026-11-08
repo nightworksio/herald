@@ -1,4 +1,6 @@
 mod bindings;
+#[cfg(feature = "conformance")]
+mod conformance;
 mod crypto;
 mod herald;
 mod host;

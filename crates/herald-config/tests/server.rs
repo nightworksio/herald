@@ -115,6 +115,23 @@ body = "{{ event.body }}"
             ),
             "{unkept}"
         );
+        let cached = |keeps: &str| {
+            format!(
+                "{}\n[server.keys]\ncache = \"store\"\n",
+                EXAMPLE.replace(
+                    "kind = \"git-branch\"",
+                    &format!("kind = \"actions-cache\"\n{keeps}")
+                )
+            )
+        };
+        let uncached = errors(&cached(""));
+        assert!(
+            uncached.contains(
+                "server.keys.cache: the actions-cache store keeps no keys; keep them in \"memory\", or add \"keys\" to its keeps"
+            ),
+            "{uncached}"
+        );
+        assert!(load("herald.toml", &cached("keeps = [\"keys\"]"), &nothing).is_ok());
         let stray = errors(&format!("{EXAMPLE}\n[server]\nport = 80\n"));
         assert!(stray.contains("server.port"), "{stray}");
     }

@@ -3,6 +3,7 @@ use std::sync::{Mutex, PoisonError};
 
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD;
+use herald_core::RecordKind;
 use herald_ports::{Http, Secret, StoreError};
 use herald_records::{Blob, Kept, Records, Wrote};
 use serde::{Deserialize, Serialize};
@@ -20,6 +21,7 @@ pub struct ActionsCache {
     pub(crate) results: String,
     pub(crate) token: Secret,
     pub(crate) prefix: String,
+    keeps: Vec<RecordKind>,
 }
 
 impl ActionsCache {
@@ -31,7 +33,16 @@ impl ActionsCache {
             results: results.trim_end_matches('/').to_owned(),
             token,
             prefix: prefix.unwrap_or(PREFIX).to_owned(),
+            keeps: Vec::new(),
         }
+    }
+
+    /// The cache, keeping besides its ledger, cursors, schedules and
+    /// deliveries the kinds `keeps` names.
+    #[must_use]
+    pub fn keeping(mut self, keeps: &[RecordKind]) -> Self {
+        self.keeps = keeps.to_vec();
+        self
     }
 
     /// The base URL of the results service.
@@ -49,12 +60,14 @@ impl ActionsCache {
         service: H,
         blobs: Blobs<'_, H>,
     ) -> ActionsCacheStore<'_, H> {
+        let keeps = self.keeps.clone();
         Kept::new(CacheRecords {
             cache: self,
             service,
             blobs,
             current: Mutex::new(None),
         })
+        .keeping(|kind| keeps.contains(&kind))
     }
 }
 

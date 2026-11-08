@@ -75,6 +75,11 @@ fn respond(out: ResponseOutparam, reply: &Reply) {
 pub(super) async fn handled(request: IncomingRequest, out: ResponseOutparam) {
     let method = method_of(&request.method());
     let target = request.path_with_query().unwrap_or_else(|| "/".to_owned());
+    #[cfg(feature = "conformance")]
+    if let Some(reply) = super::conformance::answered(&target).await {
+        respond(out, &reply);
+        return;
+    }
     let mut headers: Vec<(String, String)> = request
         .headers()
         .entries()

@@ -12,7 +12,7 @@ function host(env) {
     secret: (name) => (name === "HERALD_ROUND_SECRET" ? env[name] || env.CRON_SECRET : env[name]),
     fetch: guarded(),
     async sql(at) {
-      if (at.kind === "postgres") return postgres(at.url);
+      if (at.kind === "postgres") return postgres(at);
       throw new Error(`this function offers no ${at.kind} database`);
     },
   };

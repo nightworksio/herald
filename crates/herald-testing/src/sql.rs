@@ -51,10 +51,7 @@ mod tests {
             rows: vec![vec![Value::Integer(1)]],
             changed: 0,
         }]));
-        let statement = Statement {
-            sql: "SELECT 1".to_owned(),
-            params: vec![],
-        };
+        let statement = Statement::query("SELECT 1", vec![]);
         let answer = pollster::block_on(sql.transaction(vec![statement.clone()])).unwrap();
         assert_eq!(answer[0].rows, [[Value::Integer(1)]]);
         assert!(pollster::block_on(sql.transaction(vec![])).is_err());
