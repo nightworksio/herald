@@ -329,6 +329,7 @@ mod postgres {
         };
         assert!(reason.starts_with("the connection closed ("), "{reason}");
         assert!(reason.contains("could not be made again"), "{reason}");
+        assert!(reason.contains("administrator command"), "{reason}");
         assert!(reason.contains("not permitted to log in"), "{reason}");
         ran(&admin, "ALTER ROLE herald_reconnecting LOGIN")
             .await
@@ -351,6 +352,7 @@ mod postgres {
         let sql = NativePostgres::connect(&Secret::new(URL, url), timeouts)
             .await
             .unwrap();
+        assert_eq!(format!("{sql:?}"), "NativePostgres { .. }");
         let Err(SqlError::Unavailable { reason }) = ran(&sql, "SELECT pg_sleep(2)::text").await
         else {
             panic!("a statement past its timeout is cancelled");

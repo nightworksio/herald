@@ -383,6 +383,7 @@ name = "herald-store-actions-cache"
 version = "0.0.0"
 dependencies = [
  "base64",
+ "herald-core",
  "herald-ports",
  "herald-records",
  "schemars",
@@ -463,6 +464,7 @@ dependencies = [
  "herald-core",
  "herald-ports",
  "herald-records",
+ "jiff",
  "schemars",
  "serde",
 ]
@@ -484,8 +486,10 @@ dependencies = [
 name = "herald-store-sqlite"
 version = "0.0.0"
 dependencies = [
+ "herald-core",
  "herald-ports",
  "herald-records",
+ "jiff",
  "schemars",
  "serde",
 ]

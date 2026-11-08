@@ -267,6 +267,23 @@ mod conformance {
             .unwrap();
         assert_ne!(remade.token, read.token);
         assert_eq!(
+            pollster::block_on(records.remove("ledger/a.json", &read.token)),
+            Ok(Wrote::Conflict)
+        );
+        assert_eq!(
+            pollster::block_on(records.write("ledger/a.json", b"[1]", Some(&remade.token))),
+            Ok(Wrote::Written)
+        );
+        let updated = pollster::block_on(records.read("ledger/a.json"))
+            .unwrap()
+            .unwrap();
+        let epoch = remade.token.strip_suffix(".1").unwrap();
+        assert_eq!(updated.token, format!("{epoch}.2"));
+        assert_eq!(
+            pollster::block_on(records.write("ledger/a.json", b"[2]", Some(&remade.token))),
+            Ok(Wrote::Conflict)
+        );
+        assert_eq!(
             pollster::block_on(records.write("ledger/a.json", b"[]", Some(&read.token))),
             Ok(Wrote::Conflict)
         );

@@ -18,6 +18,9 @@ test("a Durable Object's own SQLite storage keeps every record a store keeps", a
     const answered = await worker.dispatchFetch("http://localhost/");
     assert.equal(await answered.text(), "conforms");
     assert.equal(answered.status, 200);
+    const refused = await worker.dispatchFetch("http://localhost/refusing");
+    assert.match(await refused.text(), /the database refused/);
+    assert.equal(refused.status, 500);
   } finally {
     await worker.dispose();
   }

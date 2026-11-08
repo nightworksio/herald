@@ -414,10 +414,9 @@ mod tests {
         }
     }
 
-    fn corrupted(result: Result<impl std::fmt::Debug, StoreError>) -> String {
-        match result {
-            Err(StoreError::Corrupt { reason }) => reason,
-            other => panic!("expected a corrupt record, got {other:?}"),
+    fn corrupted(reason: &str) -> StoreError {
+        StoreError::Corrupt {
+            reason: reason.to_owned(),
         }
     }
 
@@ -426,16 +425,18 @@ mod tests {
         let kept = Kept::new(Memory::default());
         pollster::block_on(async {
             assert_eq!(
-                corrupted(kept.compare_and_set("a.json", &Unwritable, None).await),
-                "a.json: no JSON for this"
+                kept.compare_and_set("a.json", &Unwritable, None)
+                    .await
+                    .err(),
+                Some(corrupted("a.json: no JSON for this"))
             );
             assert_eq!(
-                corrupted(kept.kept("b.json", &Unwritable).await),
-                "b.json: no JSON for this"
+                kept.kept("b.json", &Unwritable).await.err(),
+                Some(corrupted("b.json: no JSON for this"))
             );
             assert_eq!(
-                corrupted(kept.added("c.json", &Unwritable).await),
-                "c.json: no JSON for this"
+                kept.added("c.json", &Unwritable).await.err(),
+                Some(corrupted("c.json: no JSON for this"))
             );
             for path in ["a.json", "b.json", "c.json"] {
                 assert!(kept.records.read(path).await.unwrap().is_none());

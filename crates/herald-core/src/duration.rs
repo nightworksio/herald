@@ -101,4 +101,31 @@ mod tests {
             assert_eq!(Duration::parse(text), None, "{text}");
         }
     }
+
+    #[test]
+    fn a_duration_is_read_from_its_text_and_a_wrong_one_says_what_was_expected() {
+        assert_eq!(
+            serde_json::from_str::<Duration>(r#""2w""#).unwrap(),
+            Duration(SignedDuration::from_secs(1_209_600))
+        );
+        assert_eq!(
+            serde_json::from_str::<Duration>(r#""2y""#)
+                .unwrap_err()
+                .to_string(),
+            "invalid value: string \"2y\", expected a length of time such as \"30s\", \"30m\", \"12h\", \"14d\" or \"2w\" at line 1 column 4"
+        );
+    }
+
+    #[test]
+    fn the_schema_holds_a_duration_to_its_pattern() {
+        let schema = schemars::schema_for!(Duration);
+        assert_eq!(
+            schema.get("pattern").and_then(|pattern| pattern.as_str()),
+            Some("^[0-9]+[smhdw]$")
+        );
+        assert_eq!(
+            schema.get("type").and_then(|kind| kind.as_str()),
+            Some("string")
+        );
+    }
 }

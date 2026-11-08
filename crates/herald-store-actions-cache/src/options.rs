@@ -24,3 +24,19 @@ impl StoreOptions {
         self.keeps.contains(&kind)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn it_keeps_only_the_kinds_it_names() {
+        let options = StoreOptions {
+            prefix: None,
+            keeps: vec![RecordKind::Pins],
+        };
+        assert!(options.keeps(RecordKind::Pins));
+        assert!(!options.keeps(RecordKind::Notes));
+        assert!(!StoreOptions::default().keeps(RecordKind::Pins));
+    }
+}

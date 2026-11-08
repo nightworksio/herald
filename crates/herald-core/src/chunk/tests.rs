@@ -93,6 +93,22 @@ fn a_code_block_whose_opening_does_not_fit_loses_its_language() {
 }
 
 #[test]
+fn a_code_block_whose_opening_fits_only_with_no_code_loses_its_language() {
+    let markdown = format!("```{}\nlet a = 1;\nlet b = 2;\n```", "x".repeat(21));
+    let parts = chunk(&markdown, Dialect::Matrix, room(64, 64));
+    assert_eq!(bodies(&parts), ["let a = 1;", "let b = 2;"]);
+    assert_eq!(
+        parts[0].html.as_deref(),
+        Some("<pre><code>let a = 1;\n</code></pre>")
+    );
+    assert!(parts.iter().all(|part| size(part, Measure::Chars) <= 64));
+    let markdown = format!("```{}\na\n<\n```", "x".repeat(18));
+    let parts = chunk(&markdown, Dialect::Matrix, room(64, 64));
+    assert_eq!(bodies(&parts), ["a\n<"]);
+    assert!(parts.iter().all(|part| size(part, Measure::Chars) <= 64));
+}
+
+#[test]
 fn a_code_block_cut_in_two_is_fenced_on_both_sides() {
     let markdown = "```rust\nlet a = 1;\nlet b = 2;\n```";
     let parts = chunk(markdown, Dialect::Discord, room(24, 24));
