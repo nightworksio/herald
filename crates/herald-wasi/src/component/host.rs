@@ -1,31 +1,27 @@
 use std::collections::BTreeMap;
 use std::future::{Future, ready};
 
-use herald_compose::{EGRESS_GUARDED, Host, KvAt, Reaching, SqlAt, Unoffered};
+use herald_compose::{EGRESS_GUARDED, Host, KvAt, Reaching, SqlAt, Unoffered, plain};
 use herald_crypto::{RingSigner, RingVerifier};
 use herald_environment::{EnvSecrets, SystemClock};
 
-use super::http::{TIMEOUT, WasiHttp};
+use herald_ports::Outbound;
+
+use super::http::WasiHttp;
 
 /// A `wasi:http` host: its environment, and what reaches out through it.
 pub(super) struct WasiHost {
     vars: BTreeMap<String, String>,
     secrets: EnvSecrets,
-    timeout: std::time::Duration,
 }
 
 impl WasiHost {
     /// The host whose environment is `vars`, as `(name, value)`.
     pub(super) fn new(vars: impl IntoIterator<Item = (String, String)>) -> Self {
         let vars: BTreeMap<String, String> = vars.into_iter().collect();
-        let timeout = vars
-            .get("HERALD_TIMEOUT_MS")
-            .and_then(|millis| millis.parse().ok())
-            .map_or(TIMEOUT, std::time::Duration::from_millis);
         Self {
             secrets: EnvSecrets::from_vars(vars.clone()),
             vars,
-            timeout,
         }
     }
 }
@@ -49,9 +45,10 @@ impl Host for WasiHost {
     type Sql = Database;
     type Kv = Unoffered;
 
-    fn connect(&self, base: &str) -> Result<WasiHttp, String> {
+    fn connect(&self, base: &str, outbound: &Outbound) -> Result<WasiHttp, String> {
+        plain(outbound, "a WASI component")?;
         Reaching::unresolved(base, self.var(EGRESS_GUARDED))
-            .map(|reaching| WasiHttp::new(reaching, self.timeout))
+            .map(|reaching| WasiHttp::new(reaching, outbound.total.unsigned_abs()))
     }
 
     fn var(&self, name: &str) -> Option<&str> {

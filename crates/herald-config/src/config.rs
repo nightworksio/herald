@@ -29,6 +29,8 @@ pub struct Config {
     pub schedule: Schedule,
     /// How `herald server` listens, and what it takes on at once.
     pub server: Server,
+    /// How herald's own requests reach the services the config names.
+    pub http: herald_ports::Outbound,
 }
 
 impl Config {

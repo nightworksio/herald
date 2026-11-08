@@ -241,6 +241,31 @@ pub(crate) struct KeysFile {
     pub(crate) most: Option<NonZeroUsize>,
 }
 
+/// `[http]`: how herald's own requests reach the services a config names.
+/// None of it applies to the hosts herald reaches on others' behalf, an
+/// `ActivityPub` actor's key or a follower's inbox (ADR-0007).
+#[derive(Debug, Default, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+#[serde(rename = "Http")]
+pub(crate) struct HttpFile {
+    /// How long a connection may take to open; "10s" where absent.
+    #[schemars(with = "Option<Duration>")]
+    pub(crate) connect: Option<Spanned<Duration>>,
+    /// How long a request may take, from sending it to the end of its
+    /// answer; "30s" where absent. `HERALD_TIMEOUT_MS` takes its place.
+    pub(crate) total: Option<Duration>,
+    /// The proxy herald's own requests go through: "environment", the
+    /// host's `HTTPS_PROXY` and `NO_PROXY` where it honours them; "none";
+    /// or a proxy's http or https URL. "environment" where absent.
+    #[schemars(with = "Option<String>")]
+    pub(crate) proxy: Option<Spanned<String>>,
+    /// A PEM file of the certificate authorities herald's own requests trust
+    /// beside the Mozilla roots, read beside the config, such as a GitHub
+    /// Enterprise Server's private CA.
+    #[schemars(with = "Option<String>")]
+    pub(crate) ca_file: Option<Spanned<String>>,
+}
+
 /// `[server]`: how `herald server` listens, and what it takes on at once.
 #[derive(Debug, Default, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]

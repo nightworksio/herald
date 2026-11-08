@@ -37,7 +37,7 @@ mod guide {
         let code = pollster::block_on(run(
             &args,
             &BTreeMap::new(),
-            &Connector::new(&|_| Err(String::new()), &|_| Err(String::new())),
+            &Connector::new(&|_, _| Err(String::new()), &|_, _| Err(String::new())),
             &mut out,
             &mut err,
         ));

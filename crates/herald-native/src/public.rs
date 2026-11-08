@@ -3,19 +3,19 @@ use std::net::{IpAddr, SocketAddr};
 use std::time::Duration;
 
 use herald_compose::{public, reachable};
-use herald_ports::{Http, HttpError, Request, Response};
+use herald_ports::{Http, HttpError, Outbound, Request, Response};
 use reqwest::dns::{Addrs, Name, Resolve, Resolving};
 use rustls::ClientConfig;
 use url::Url;
 
-use crate::http::{BuildError, client, sent, tls};
+use crate::http::{BuildError, client, duration, sent, tls};
 
-/// How long a connection to a host reached on others' behalf may take to
+/// The most a connection to a host reached on others' behalf may take to
 /// open.
-const CONNECT: Duration = Duration::from_secs(5);
-/// How long a request to such a host may take, from sending it to the end
+const CONNECT: Duration = duration(Outbound::PUBLIC_CONNECT);
+/// The most a request to such a host may take, from sending it to the end
 /// of its response.
-const TOTAL: Duration = Duration::from_secs(10);
+const TOTAL: Duration = duration(Outbound::PUBLIC_TOTAL);
 
 /// `Http` for the hosts herald reaches on others' behalf, an `ActivityPub`
 /// actor's key and a follower's inbox: any HTTPS origin, connected to only
@@ -76,14 +76,22 @@ fn admitted(found: &[SocketAddr], admits: fn(IpAddr) -> bool) -> bool {
 }
 
 impl PublicHttp {
-    /// A client reaching public HTTPS origins.
+    /// A client reaching public HTTPS origins within `outbound`'s bounds,
+    /// which never pass ADR-0007's ceilings; it goes through no proxy and
+    /// trusts only the Mozilla roots, whatever `outbound` names.
     ///
     /// # Errors
     ///
     /// When TLS or the client cannot be set up.
-    pub fn new() -> Result<Self, BuildError> {
+    pub fn new(outbound: &Outbound) -> Result<Self, BuildError> {
         let tls = tls(rustls::crypto::ring::default_provider())?;
-        Self::built(public, "https", Some(tls), CONNECT, Some(TOTAL))
+        Self::built(
+            public,
+            "https",
+            Some(tls),
+            duration(outbound.connect).min(CONNECT),
+            Some(duration(outbound.total).min(TOTAL)),
+        )
     }
 
     pub(crate) fn built(

@@ -3,8 +3,8 @@ use std::collections::BTreeMap;
 use fastly::Backend;
 use herald_compose::{Host as _, KvAt};
 use herald_ports::{
-    Http as _, HttpError, Kv as _, Method, PUBLIC, Request, SecretError, Secrets as _, Text,
-    Versionstamp,
+    Http as _, HttpError, Kv as _, Method, Outbound, PUBLIC, Request, SecretError, Secrets as _,
+    Text, Versionstamp,
 };
 use herald_records::{Kept, KvRecords};
 use herald_testing::store_conformance;
@@ -69,7 +69,9 @@ fn each_nonce_the_service_gives_is_new() {
 #[test]
 fn a_connection_fetches_plain_http_on_loopback_without_tls() {
     const BASE: &str = "http://127.0.0.1:8099";
-    let http = FastlyHost::new().connect(BASE).unwrap();
+    let http = FastlyHost::new()
+        .connect(BASE, &Outbound::default())
+        .unwrap();
     let mut asked = Request::new(Method::Post, Text::plain(format!("{BASE}/said")));
     asked.body = b"hello".to_vec();
     let answer = pollster::block_on(http.send(asked)).unwrap();
@@ -115,15 +117,19 @@ fn a_connection_refuses_a_backend_under_its_origin_s_name_that_reaches_elsewhere
 #[test]
 fn a_connection_refuses_what_it_may_not_reach() {
     let host = FastlyHost::new();
-    let http = host.connect("https://discord.com/api").unwrap();
+    let http = host
+        .connect("https://discord.com/api", &Outbound::default())
+        .unwrap();
     let elsewhere = Request::new(Method::Get, Text::plain("https://example.org/"));
     assert!(pollster::block_on(http.send(elsewhere)).is_err());
-    assert!(host.connect("not a url").is_err());
+    assert!(host.connect("not a url", &Outbound::default()).is_err());
 }
 
 #[test]
 fn a_public_connection_refuses_a_name_on_a_service_not_said_to_be_guarded() {
-    let http = FastlyHost::new().connect(PUBLIC).unwrap();
+    let http = FastlyHost::new()
+        .connect(PUBLIC, &Outbound::default())
+        .unwrap();
     let asked = Request::new(Method::Get, Text::plain("https://localhost:9/"));
     assert!(matches!(
         pollster::block_on(http.send(asked)),

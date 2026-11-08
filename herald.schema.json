@@ -18,6 +18,17 @@
         "$ref": "#/$defs/Destination"
       }
     },
+    "http": {
+      "description": "How herald's own requests reach the services the config names.",
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Http"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
     "markers": {
       "description": "The installation's marker key.",
       "anyOf": [
@@ -545,6 +556,49 @@
       "description": "A length of time: a number and s, m, h, d or w, as \"14d\".",
       "type": "string",
       "pattern": "^[0-9]+[smhdw]$"
+    },
+    "Http": {
+      "description": "`[http]`: how herald's own requests reach the services a config names.\nNone of it applies to the hosts herald reaches on others' behalf, an\n`ActivityPub` actor's key or a follower's inbox (ADR-0007).",
+      "type": "object",
+      "properties": {
+        "ca_file": {
+          "description": "A PEM file of the certificate authorities herald's own requests trust\nbeside the Mozilla roots, read beside the config, such as a GitHub\nEnterprise Server's private CA.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "connect": {
+          "description": "How long a connection may take to open; \"10s\" where absent.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Duration"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "proxy": {
+          "description": "The proxy herald's own requests go through: \"environment\", the\nhost's `HTTPS_PROXY` and `NO_PROXY` where it honours them; \"none\";\nor a proxy's http or https URL. \"environment\" where absent.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "total": {
+          "description": "How long a request may take, from sending it to the end of its\nanswer; \"30s\" where absent. `HERALD_TIMEOUT_MS` takes its place.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Duration"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
     },
     "Interactions": {
       "description": "How a Discord destination takes commands.",

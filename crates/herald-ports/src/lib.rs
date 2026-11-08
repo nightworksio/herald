@@ -11,6 +11,7 @@ mod http;
 mod keyring;
 mod kv;
 mod markers;
+mod outbound;
 mod secret;
 mod socket;
 mod sql;
@@ -25,6 +26,7 @@ pub use http::{
 pub use keyring::{Keyring, KnownKey};
 pub use kv::{Kv, KvError, Pair, Stamped, Versionstamp};
 pub use markers::{MarkedThread, Markers, MarkersError, marker};
+pub use outbound::{Outbound, Proxy, Roots};
 pub use secret::{Secret, SecretError, Secrets, Segment, Text};
 pub use socket::{Frame, Socket, Sockets};
 pub use sql::{Answers, Changed, Sql, SqlError, Statement, Value};

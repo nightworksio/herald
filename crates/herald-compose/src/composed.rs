@@ -16,6 +16,10 @@ use crate::capped::Capped;
 use crate::host::Host;
 use crate::records::{Records, Served, reached};
 
+/// The variable that bounds a request's whole time, in milliseconds, in
+/// place of the config's `[http] total`.
+const TIMEOUT_MS: &str = "HERALD_TIMEOUT_MS";
+
 /// herald composed on a host: the config, the store it names, and every
 /// route, source and destination connected, ready to answer requests, do
 /// the work they leave, and run each scheduled round.
@@ -46,18 +50,22 @@ impl<H: Host> Composed<H> {
         stores: &[&str],
         run: impl Into<String>,
     ) -> Result<Self, String> {
-        let records = reached(&host, &config.store, stores).await?;
+        let outbound = config.http.clone().timed(host.var(TIMEOUT_MS));
+        let records = reached(&host, &config.store, &outbound, stores).await?;
         let prepared = prepare(&config, host.secrets(), host.signer())
             .await
             .map_err(|error| error.to_string())?
             .answering(host.secrets())
             .await
             .map_err(|error| error.to_string())?;
-        let connected = prepared.connect(|base| host.connect(base))?;
+        let connected = prepared.connect(|base| host.connect(base, &outbound))?;
         let webhooks = webhooks(&config, host.secrets())
             .await
             .map_err(|error| error.to_string())?;
-        let public = Capped::new(host.connect(PUBLIC)?, config.server.fetches);
+        let public = Capped::new(
+            host.connect(PUBLIC, &outbound.public())?,
+            config.server.fetches,
+        );
         let memory = MemoryKeyring::new(config.server.keys_most);
         let room = Room::new(config.server.jobs);
         Ok(Self {

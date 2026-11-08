@@ -159,8 +159,8 @@ names another config file; files it names are read beside it.
   The file is readable by its owner alone.
 - `postgres` needs the `pg` package installed beside the shim.
 - `deno-kv` needs the `@deno/kv` package installed beside the shim.
-- `HERALD_TIMEOUT_MS` bounds each request herald sends, 10 seconds where
-  unset.
+- `HERALD_TIMEOUT_MS` bounds each request herald sends in place of the
+  config's `[http] total`.
 
 ## Vercel
 
@@ -212,8 +212,8 @@ Each release pushes the component as an OCI artifact,
 image is. Fetch one with `wkg oci pull`, or build it with `cargo build --release --target wasm32-wasip2 -p herald-wasi`, which
 needs a clang that targets wasm. Run `wasmtime serve -Scli --dir=. herald_wasi.wasm`
 beside `herald.toml`, passing secrets with `--env`. `HERALD_CONFIG` names another
-config file, and `HERALD_TIMEOUT_MS` bounds each request herald sends, 10 seconds
-where unset.
+config file, and `HERALD_TIMEOUT_MS` bounds each request herald sends in place
+of the config's `[http] total`.
 
 ## Fetching on others' behalf where herald cannot resolve names
 

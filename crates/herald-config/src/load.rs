@@ -10,15 +10,18 @@ use toml::de::{DeTable, DeValue, ValueDeserializer};
 
 use crate::config::{Config, Destination, KeyCache, Schedule, Server, Source, Store};
 use crate::error::{ConfigError, Errors};
-use crate::file::{KeyCacheFile, MarkersFile, NoOptions, ScheduleFile, ServerFile, TemplateFile};
+use crate::file::{
+    HttpFile, KeyCacheFile, MarkersFile, NoOptions, ScheduleFile, ServerFile, TemplateFile,
+};
 use crate::position::position;
+use herald_ports::{Outbound, Proxy, Roots};
 
 type Value<'i> = Spanned<DeValue<'i>>;
 
 /// The version of the config this herald reads.
 const VERSION: i64 = 1;
 /// The top-level keys of `herald.toml`.
-const SECTIONS: [&str; 10] = [
+const SECTIONS: [&str; 11] = [
     "version",
     "store",
     "markers",
@@ -29,6 +32,7 @@ const SECTIONS: [&str; 10] = [
     "apps",
     "schedule",
     "server",
+    "http",
 ];
 /// The length of a SHA-256 in hex.
 const HASH_DIGITS: usize = 64;
@@ -84,6 +88,7 @@ struct Sections<'i> {
     apps: Option<Value<'i>>,
     schedule: Option<Value<'i>>,
     server: Option<Value<'i>>,
+    http: Option<Value<'i>>,
 }
 
 /// A template's sources, with where each is written.
@@ -224,6 +229,7 @@ impl Loader<'_> {
                 "apps" => &mut sections.apps,
                 "schedule" => &mut sections.schedule,
                 "server" => &mut sections.server,
+                "http" => &mut sections.http,
                 other => {
                     self.error(
                         &key.span(),
@@ -620,6 +626,67 @@ impl Loader<'_> {
 }
 
 impl Loader<'_> {
+    /// `[http]` as `file` gives it, its CA file read through `read`.
+    fn http(&mut self, file: HttpFile, read: &dyn Fn(&str) -> Result<String, String>) -> Outbound {
+        let defaults = Outbound::default();
+        let total = file.total.map_or(defaults.total, |total| total.0);
+        let connect = file.connect.map_or(defaults.connect, |connect| {
+            if connect.get_ref().0 > total {
+                self.error(
+                    &connect.span(),
+                    "http.connect",
+                    "a connection may take no longer than the whole request; make connect at most total",
+                );
+            }
+            connect.into_inner().0
+        });
+        let proxy = file.proxy.map_or(Proxy::Environment, |proxy| {
+            match proxy.get_ref().as_str() {
+                "environment" => Proxy::Environment,
+                "none" => Proxy::None,
+                url if url.starts_with("http://") || url.starts_with("https://") => {
+                    Proxy::At(url.to_owned())
+                }
+                other => {
+                    self.error(
+                        &proxy.span(),
+                        "http.proxy",
+                        format!(
+                            "\"{other}\" is no proxy; write \"environment\", \"none\" or a proxy's http or https URL"
+                        ),
+                    );
+                    Proxy::None
+                }
+            }
+        });
+        let roots = file
+            .ca_file
+            .and_then(|ca_file| match read(ca_file.get_ref()) {
+                Ok(pem) if pem.contains("-----BEGIN CERTIFICATE-----") => Some(Roots {
+                    file: ca_file.get_ref().clone(),
+                    pem,
+                }),
+                Ok(_) => {
+                    self.error(
+                        &ca_file.span(),
+                        "http.ca_file",
+                        format!("{} holds no PEM certificate", ca_file.get_ref()),
+                    );
+                    None
+                }
+                Err(error) => {
+                    self.error(&ca_file.span(), "http.ca_file", error);
+                    None
+                }
+            });
+        Outbound {
+            connect,
+            total,
+            proxy,
+            roots,
+        }
+    }
+
     /// `[server]` as `file` gives it, over the store `store`.
     fn server(&mut self, file: ServerFile, store: Option<&Store>) -> Server {
         let defaults = Server::default();
@@ -764,6 +831,11 @@ pub fn load(
         .and_then(|value| loader.typed::<ServerFile>(value, "server"))
         .map(|file| loader.server(file, store.as_ref()))
         .unwrap_or_default();
+    let http = sections
+        .http
+        .and_then(|value| loader.typed::<HttpFile>(value, "http"))
+        .map(|file| loader.http(file, read))
+        .unwrap_or_default();
     if let (true, Some(store), Some(templates)) = (loader.errors.is_empty(), store, compiled) {
         return Ok(Config {
             store,
@@ -781,6 +853,7 @@ pub fn load(
                 housekeep: schedule.housekeep.map(|housekeep| housekeep.0),
             },
             server,
+            http,
         });
     }
     let mut errors = loader.errors;

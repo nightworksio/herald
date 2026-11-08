@@ -28,7 +28,9 @@ use herald_flows::{
     Sweep, Swept, announce_within, doctor, housekeep, keys, poll, prepare, preview,
 };
 use herald_native::{ConnectError, NativeHttp, PublicHttp, random_secret};
-use herald_ports::{Http, HttpError, Keyring, PUBLIC, Request, Response, Secrets, Store as Keeps};
+use herald_ports::{
+    Http, HttpError, Keyring, Outbound, PUBLIC, Request, Response, Secrets, Store as Keeps,
+};
 use herald_records::Memory;
 use herald_sources_forge::{Forge, Origin, Repository, SourceOptions, Token};
 
@@ -69,6 +71,9 @@ const RUNTIME_TOKEN: &str = "ACTIONS_RUNTIME_TOKEN";
 const JOB_TOKEN: &str = "CI_JOB_TOKEN";
 /// Where `herald server` listens, in place of the config's.
 const LISTEN: &str = "HERALD_LISTEN";
+/// What bounds a request's whole time, in milliseconds, in place of the
+/// config's `[http] total`.
+const TIMEOUT_MS: &str = "HERALD_TIMEOUT_MS";
 /// The fewest characters of a value scrubbed from output: a shorter one
 /// would rewrite ordinary words, and is no credential.
 const SCRUBBED: usize = 8;
@@ -102,8 +107,8 @@ impl Http for Connection {
     }
 }
 
-/// A function making a connection to a base URL.
-type Making<'a> = &'a (dyn Fn(&str) -> Result<Connection, String> + Send + Sync);
+/// A function making a connection to a base URL within outbound bounds.
+type Making<'a> = &'a (dyn Fn(&str, &Outbound) -> Result<Connection, String> + Send + Sync);
 
 /// What makes connections: to a base URL's origin, each request bounded in
 /// time, and to Lambda's runtime API, which holds a request open until an
@@ -111,14 +116,35 @@ type Making<'a> = &'a (dyn Fn(&str) -> Result<Connection, String> + Send + Sync)
 pub struct Connector<'a> {
     reaching: Making<'a>,
     waiting: Making<'a>,
+    outbound: Outbound,
 }
 
 impl<'a> Connector<'a> {
     /// Connections made by `reaching`, and by `waiting` for Lambda's
-    /// runtime API.
+    /// runtime API, within the bounds no config sets.
     #[must_use]
     pub const fn new(reaching: Making<'a>, waiting: Making<'a>) -> Self {
-        Self { reaching, waiting }
+        Self {
+            reaching,
+            waiting,
+            outbound: Outbound::STANDARD,
+        }
+    }
+
+    /// The same connections, within `outbound`.
+    #[must_use]
+    pub fn within(&self, outbound: Outbound) -> Self {
+        Self {
+            reaching: self.reaching,
+            waiting: self.waiting,
+            outbound,
+        }
+    }
+
+    /// The bounds, proxy and roots its connections keep.
+    #[must_use]
+    pub const fn outbound(&self) -> &Outbound {
+        &self.outbound
     }
 
     /// The connection to `base`.
@@ -127,11 +153,20 @@ impl<'a> Connector<'a> {
     ///
     /// When `base` may not be reached.
     pub fn reach(&self, base: &str) -> Result<Connection, String> {
-        (self.reaching)(base)
+        self.reach_within(base, &self.outbound)
+    }
+
+    /// The connection to `base`, within `outbound`.
+    ///
+    /// # Errors
+    ///
+    /// When `base` may not be reached.
+    pub fn reach_within(&self, base: &str, outbound: &Outbound) -> Result<Connection, String> {
+        (self.reaching)(base, outbound)
     }
 
     fn wait(&self, base: &str) -> Result<Connection, String> {
-        (self.waiting)(base)
+        (self.waiting)(base, &self.outbound)
     }
 }
 
@@ -148,23 +183,23 @@ pub type Connect<'a> = &'a Connector<'a>;
 /// # Errors
 ///
 /// When `base` may not be reached, or the client cannot be built.
-pub fn waiting(base: &str) -> Result<Connection, String> {
+pub fn waiting(base: &str, _: &Outbound) -> Result<Connection, String> {
     worded(NativeHttp::waiting(base).map(Connection::new))
 }
 
-/// The native connection to `base`: one reaching only its origin, or, for
-/// [`PUBLIC`], one reaching any public address (ADR-0007).
+/// The native connection to `base` within `outbound`: one reaching only its
+/// origin, or, for [`PUBLIC`], one reaching any public address (ADR-0007).
 ///
 /// # Errors
 ///
 /// When `base` may not be reached, or the client cannot be built.
-pub fn native(base: &str) -> Result<Connection, String> {
+pub fn native(base: &str, outbound: &Outbound) -> Result<Connection, String> {
     let connection = if base == PUBLIC {
-        PublicHttp::new()
+        PublicHttp::new(outbound)
             .map(Connection::new)
             .map_err(ConnectError::Build)
     } else {
-        NativeHttp::reaching(base).map(Connection::new)
+        NativeHttp::reaching(base, outbound).map(Connection::new)
     };
     worded(connection)
 }
@@ -255,6 +290,13 @@ async fn stopping(
             return MISTAKEN;
         }
     };
+    let within = connect.within(
+        config
+            .http
+            .clone()
+            .timed(vars.get(TIMEOUT_MS).map(String::as_str)),
+    );
+    let connect = &within;
     let hidden = hidden(&config, vars);
     masked(&hidden, vars, out);
     let out = &mut Scrubbing::new(out, &hidden);

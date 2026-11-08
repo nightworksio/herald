@@ -21,7 +21,7 @@ pub use answer::{Answer, Left};
 pub use asked::Asked;
 pub use capped::Capped;
 pub use composed::Composed;
-pub use host::{Host, KvAt, SqlAt, Unoffered};
+pub use host::{Host, KvAt, SqlAt, Unoffered, plain};
 pub use hosting::Hosting;
 pub use public::{public, reachable};
 pub use reach::{Reach, ReachError, SocketReach};

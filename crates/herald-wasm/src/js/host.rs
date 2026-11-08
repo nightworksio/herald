@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 
-use herald_compose::{Host, KvAt, Reaching, SqlAt};
+use herald_compose::{Host, KvAt, Reaching, SqlAt, plain};
+use herald_ports::Outbound;
 use jiff::SignedDuration;
 use send_wrapper::SendWrapper;
 use wasm_bindgen::{JsCast as _, JsValue};
@@ -85,10 +86,12 @@ impl Host for JsHost {
     type Sql = JsSql;
     type Kv = JsKv;
 
-    fn connect(&self, base: &str) -> Result<JsHttp, String> {
+    fn connect(&self, base: &str, outbound: &Outbound) -> Result<JsHttp, String> {
+        plain(outbound, "this JavaScript host")?;
         Reaching::of(base).map(|reaching| JsHttp {
             host: self.host.clone(),
             reaching,
+            timeout: crate::numbers::millis(outbound.total).unwrap_or(f64::MAX),
         })
     }
 

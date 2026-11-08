@@ -3,7 +3,7 @@ use std::path::Path;
 
 use herald_config::Store;
 use herald_flows::{Connected, unserved};
-use herald_ports::{Keyring, Secret, Secrets as _, Store as Keeps};
+use herald_ports::{Keyring, Outbound, Secret, Secrets as _, Store as Keeps};
 use herald_records::{Kept, KvRecords, Seal, SqlRecords};
 use herald_store_dynamodb::{Dynamodb, DynamodbStore};
 use herald_store_git_branch::{GitBranch, GitBranchStore, StoreOptions as BranchOptions};
@@ -73,6 +73,7 @@ impl<H: Host> Records<H> {
 pub async fn reached<H: Host>(
     host: &H,
     store: &Store,
+    outbound: &Outbound,
     stores: &[&str],
 ) -> Result<Records<H>, String> {
     if !stores.contains(&store.kind()) {
@@ -84,12 +85,13 @@ pub async fn reached<H: Host>(
         )),
         None => None,
     };
-    opening(host, store, stores, seal).await
+    opening(host, store, outbound, stores, seal).await
 }
 
 async fn opening<H: Host>(
     host: &H,
     store: &Store,
+    outbound: &Outbound,
     stores: &[&str],
     seal: Option<Seal>,
 ) -> Result<Records<H>, String> {
@@ -158,13 +160,15 @@ async fn opening<H: Host>(
                 .map_err(opened)?;
             Records::Kv(herald_store_fastly_kv::store(kv, options).sealed(seal))
         }
-        Store::GitBranch(options) => Records::Branch(branch(host, options).await?.sealed(seal)),
+        Store::GitBranch(options) => {
+            Records::Branch(branch(host, options, outbound).await?.sealed(seal))
+        }
         Store::RepoVariables(options) => {
-            Records::Variables(variables(host, options).await?.sealed(seal))
+            Records::Variables(variables(host, options, outbound).await?.sealed(seal))
         }
         Store::Dynamodb(options) => {
             let table = Dynamodb::reached(options, host.secrets()).await?;
-            let http = host.connect(table.api())?;
+            let http = host.connect(table.api(), outbound)?;
             Records::Dynamodb(
                 table
                     .store(http, host.clock().clone(), host.nonce())
@@ -197,6 +201,7 @@ async fn sqlite<H: Host>(host: &H, options: &SqliteOptions) -> Result<SqliteStor
 async fn branch<H: Host>(
     host: &H,
     options: &BranchOptions,
+    outbound: &Outbound,
 ) -> Result<GitBranchStore<H::Http>, String> {
     let repository = repository(host, options.repository.as_deref())?;
     let name = options
@@ -215,13 +220,14 @@ async fn branch<H: Host>(
         options.branch.as_deref(),
         options.api.as_deref(),
     );
-    let http = host.connect(branch.api())?;
+    let http = host.connect(branch.api(), outbound)?;
     Ok(branch.store(http))
 }
 
 async fn variables<H: Host>(
     host: &H,
     options: &VariablesOptions,
+    outbound: &Outbound,
 ) -> Result<RepoVariablesStore<H::Http>, String> {
     let repository = repository(host, options.repository.as_deref())?;
     let token = secret(
@@ -231,7 +237,7 @@ async fn variables<H: Host>(
     )
     .await?;
     let variables = RepoVariables::new(repository, token, options.api.as_deref());
-    let http = host.connect(variables.api())?;
+    let http = host.connect(variables.api(), outbound)?;
     Ok(variables.store(http, host.nonce()))
 }
 

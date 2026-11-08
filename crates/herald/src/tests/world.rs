@@ -390,7 +390,7 @@ pub(super) fn herald(setup: &Setup, world: &World, args: &[&str]) -> Run {
     all.extend(args.iter().map(|arg| (*arg).to_owned()));
     let mut out = Vec::new();
     let mut err = Vec::new();
-    let connect = |base: &str| {
+    let connect = |base: &str, _: &herald_ports::Outbound| {
         if base.contains("unreachable") {
             Err(format!("{base} cannot be reached"))
         } else {
@@ -429,7 +429,7 @@ pub(super) fn herald_until(
     all.extend(args.iter().map(|arg| (*arg).to_owned()));
     let mut out = Vec::new();
     let mut err = Vec::new();
-    let connect = |_: &str| Ok(Connection::new(world.clone()));
+    let connect = |_: &str, _: &herald_ports::Outbound| Ok(Connection::new(world.clone()));
     let code = on_tokio(crate::run_until(
         &all,
         &setup.vars,

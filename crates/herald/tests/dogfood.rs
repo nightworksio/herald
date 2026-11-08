@@ -242,7 +242,7 @@ mod dogfood {
         ]
         .map(ToOwned::to_owned)
         .to_vec();
-        let connect = |_: &str| Ok(Connection::new(platform.clone()));
+        let connect = |_: &str, _: &herald_ports::Outbound| Ok(Connection::new(platform.clone()));
         let outputs = (0..2)
             .map(|_| {
                 let mut out = Vec::new();

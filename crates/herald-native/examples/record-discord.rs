@@ -112,7 +112,8 @@ async fn post(
 async fn record(setup: &Setup) -> Result<Vec<(&'static str, Recorder<NativeHttp>)>, String> {
     let bot = setup.bot(&setup.channel, false);
     let reach = Reach::new([bot.api()]).map_err(|error| error.to_string())?;
-    let http = NativeHttp::new(reach).map_err(|error| error.to_string())?;
+    let http = NativeHttp::new(reach, &herald_ports::Outbound::default())
+        .map_err(|error| error.to_string())?;
     let mut recordings = Vec::new();
 
     let recorder = Recorder::new(http.clone());

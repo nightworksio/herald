@@ -8,10 +8,6 @@ use send_wrapper::SendWrapper;
 use wstd::future::FutureExt as _;
 use wstd::http::{Body, Client, Method};
 
-/// How long a request herald sends may take, from its connection to the last
-/// byte of its answer, where `HERALD_TIMEOUT_MS` is unset.
-pub(super) const TIMEOUT: Duration = Duration::from_secs(10);
-
 /// An `Http` over `wasi:http`, reaching what one connection may. The component
 /// host's own policy decides what else it may reach; an address the component
 /// cannot resolve is not vetted here, as on a Worker.

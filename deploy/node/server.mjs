@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { dirname, resolve as absolute } from "node:path";
-import { Herald, TIMEOUT, answering, denoKv, load, rounds, said } from "../host.mjs";
+import { Herald, answering, denoKv, load, rounds, said } from "../host.mjs";
 import { postgres, sqlite } from "../databases.mjs";
 import { beside } from "../files.mjs";
 import { guarded } from "../vetted.mjs";
@@ -10,7 +10,7 @@ export function host(env = process.env, directory = process.cwd()) {
   return {
     vars: Object.fromEntries(Object.entries(env).filter(([, value]) => typeof value === "string")),
     secret: (name) => env[name],
-    fetch: guarded(Number(env.HERALD_TIMEOUT_MS ?? TIMEOUT)),
+    fetch: guarded(),
     async sql(at) {
       if (at.kind === "sqlite") return sqlite(absolute(directory, at.file), at.busy);
       if (at.kind === "postgres") return postgres(at);

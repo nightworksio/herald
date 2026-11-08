@@ -914,6 +914,7 @@ dependencies = [
  "herald-dest-fediverse",
  "herald-dest-matrix",
  "herald-dest-slack",
+ "herald-ports",
  "herald-sources-feed",
  "herald-sources-forge",
  "herald-sources-registry",

@@ -5,7 +5,7 @@ use crate::serving::{answer, serve};
 use herald_ports::{BODY_LIMIT, Secret, Text};
 
 fn http(base: &str) -> NativeHttp {
-    NativeHttp::new(Reach::new([base]).unwrap()).unwrap()
+    NativeHttp::new(Reach::new([base]).unwrap(), &Outbound::default()).unwrap()
 }
 
 #[tokio::test]
@@ -218,7 +218,7 @@ fn a_client_without_tls_is_not_built() {
         Reach::new(["https://discord.com"]).unwrap(),
         None,
         CONNECT,
-        Some(TOTAL),
+        Some(duration(Outbound::TOTAL)),
     )
     .unwrap_err();
     assert!(
@@ -246,8 +246,8 @@ fn tls_without_a_cipher_suite_is_not_set_up() {
 
 #[test]
 fn a_client_for_a_base_reaches_only_that_base_or_says_why_not() {
-    assert!(NativeHttp::reaching("https://discord.com/api/v10").is_ok());
-    let refused = NativeHttp::reaching("http://discord.com").unwrap_err();
+    assert!(NativeHttp::reaching("https://discord.com/api/v10", &Outbound::default()).is_ok());
+    let refused = NativeHttp::reaching("http://discord.com", &Outbound::default()).unwrap_err();
     assert_eq!(
         refused.to_string(),
         "http://discord.com is not HTTPS; plain HTTP is allowed only on a loopback host"
@@ -290,5 +290,45 @@ async fn a_request_reads_at_most_its_own_cap_whether_or_not_the_length_is_said()
             .at_most(BODY_LIMIT + 1)
             .most,
         BODY_LIMIT
+    );
+}
+
+#[test]
+fn a_config_s_roots_are_trusted_beside_the_mozilla_roots() {
+    let mozilla = trusted(None).unwrap().len();
+    let roots = Roots {
+        file: "test-ca.pem".to_owned(),
+        pem: include_str!("../../fixtures/test-ca.pem").to_owned(),
+    };
+    assert_eq!(trusted(Some(&roots)).unwrap().len(), mozilla + 1);
+    let broken = Roots {
+        file: "broken.pem".to_owned(),
+        pem: "-----BEGIN CERTIFICATE-----\nAAAA\n-----END CERTIFICATE-----\n".to_owned(),
+    };
+    let refused = trusted(Some(&broken)).unwrap_err();
+    assert!(refused.0.starts_with("broken.pem: "), "{refused}");
+}
+
+#[tokio::test]
+async fn a_request_goes_through_the_proxy_a_config_names() {
+    let (proxy, server) = serve(vec![answer("200 OK", "", b"proxied")]).await;
+    let outbound = Outbound {
+        proxy: Proxy::At(proxy),
+        ..Outbound::default()
+    };
+    let http = NativeHttp::new(Reach::new(["http://127.0.0.1:9"]).unwrap(), &outbound).unwrap();
+    let answer = http
+        .send(Request::new(
+            Method::Get,
+            Text::plain("http://127.0.0.1:9/path"),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(answer.body, b"proxied");
+    let asked = server.await.unwrap();
+    assert!(
+        asked[0].starts_with("GET http://127.0.0.1:9/path HTTP/1.1"),
+        "{}",
+        asked[0]
     );
 }

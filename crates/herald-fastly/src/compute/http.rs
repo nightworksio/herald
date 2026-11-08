@@ -5,15 +5,15 @@ use std::time::Duration;
 use fastly::Backend;
 use fastly::http::Method;
 use herald_compose::{Reaching, received};
-use herald_ports::{Http, HttpError, Request, Response};
-
-const TIMEOUT: Duration = Duration::from_secs(10);
+use herald_ports::{Http, HttpError, Outbound, Request, Response};
 
 /// An `Http` over a dynamic backend per origin, reaching what one connection
 /// may. The service must have dynamic backends enabled.
 #[derive(Debug, Clone)]
 pub(super) struct FastlyHttp {
     reaching: Reaching,
+    connect: Duration,
+    total: Duration,
 }
 
 /// The dynamic backend's name for an origin: one name per scheme, host and
@@ -26,8 +26,12 @@ pub(super) fn backend_name(scheme: &str, host: &str, port: u16) -> String {
 }
 
 impl FastlyHttp {
-    pub(super) fn new(reaching: Reaching) -> Self {
-        Self { reaching }
+    pub(super) fn new(reaching: Reaching, outbound: &Outbound) -> Self {
+        Self {
+            reaching,
+            connect: outbound.connect.unsigned_abs(),
+            total: outbound.total.unsigned_abs(),
+        }
     }
 
     fn sent(&self, request: &Request) -> Result<Response, HttpError> {
@@ -39,9 +43,9 @@ impl FastlyHttp {
         let name = backend_name(url.scheme(), host, port);
         let backend = Backend::builder(&name, format!("{host}:{port}"))
             .override_host(host)
-            .connect_timeout(TIMEOUT)
-            .first_byte_timeout(TIMEOUT)
-            .between_bytes_timeout(TIMEOUT);
+            .connect_timeout(self.connect)
+            .first_byte_timeout(self.total)
+            .between_bytes_timeout(self.total);
         let backend = if secure {
             backend.enable_ssl().sni_hostname(host)
         } else {

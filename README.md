@@ -201,6 +201,16 @@ listen = "127.0.0.1:8080"
 `herald doctor --layer server` names what the config asks for that the
 server cannot serve.
 
+`[http]` sets how herald's own requests reach the services the config names:
+`connect` ("10s") and `total` ("30s", or `HERALD_TIMEOUT_MS` in its place),
+`proxy` (`"environment"`, the default, which honours `HTTPS_PROXY` and
+`NO_PROXY` where the host does; `"none"`; or a proxy's URL), and `ca_file`, a
+PEM file of certificate authorities trusted beside the Mozilla roots, such as
+a GitHub Enterprise Server's private CA. A proxy URL and `ca_file` are for the
+native binary, the image and Lambda; other hosts refuse them, naming why. None
+of it applies to the hosts herald reaches on others' behalf, which keep
+ADR-0007's 5 and 10 seconds at most, no proxy and the Mozilla roots alone.
+
 ### An app's own events
 
 Any app can announce through herald: a deploy script, a CI step, a service
