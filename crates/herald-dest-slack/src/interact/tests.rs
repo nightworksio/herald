@@ -1,6 +1,7 @@
 use herald_core::Replies;
 
 use super::*;
+use crate::SESSION_DOMAIN;
 
 const HOOK: &str = "https://hooks.slack.com/commands/T1/2/abc";
 
@@ -238,6 +239,10 @@ fn the_destination_says_where_it_reaches_and_how_it_answers() {
     assert_eq!(plain.api(), "https://slack.com/api");
     assert_eq!(plain.hooks(), "https://hooks.slack.com");
     assert_eq!(plain.via(), Via::Http);
+    assert_eq!(
+        interacting(r#", "domains": ["proxy.example"]"#).session_domains(),
+        [SESSION_DOMAIN, "proxy.example"]
+    );
     assert_eq!(
         plain.signing().map(|secret| secret.secret.as_str()),
         Some("HERALD_SLACK_SIGNING")

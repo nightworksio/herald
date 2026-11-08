@@ -5,7 +5,9 @@
 mod compose {
     use std::collections::BTreeMap;
     use std::future::{Future, ready};
+    use std::pin::Pin;
     use std::sync::Mutex;
+    use std::task::{Context, Poll};
 
     use herald_compose::{Asked, Composed, Host, KvAt, Left, Records, SqlAt, reached};
     use herald_config::{Config, Store, load};
@@ -22,13 +24,32 @@ mod compose {
     #[derive(Debug, Clone, Default)]
     struct Answering;
 
+    /// A future that is pending once, so that another may run before it
+    /// is done.
+    struct Yielding(bool);
+
+    impl Future for Yielding {
+        type Output = ();
+
+        fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<()> {
+            if self.0 {
+                Poll::Ready(())
+            } else {
+                self.0 = true;
+                cx.waker().wake_by_ref();
+                Poll::Pending
+            }
+        }
+    }
+
     impl Http for Answering {
-        fn send(&self, _: Request) -> impl Future<Output = Result<Response, HttpError>> + Send {
-            ready(Ok(Response {
+        async fn send(&self, _: Request) -> Result<Response, HttpError> {
+            Yielding(false).await;
+            Ok(Response {
                 status: 200,
                 headers: Vec::new(),
                 body: b"{}".to_vec(),
-            }))
+            })
         }
     }
 
@@ -414,6 +435,24 @@ template = "t"
     }
 
     #[test]
+    fn a_round_asked_while_one_of_its_kind_runs_does_nothing() {
+        let text = "version = 1\n[store]\nkind = \"git-branch\"\n[sources.gate]\nkind = \"github\"\nrepository = \"cli/cli\"\n";
+        let config = load("herald.toml", text, &|_| Err(String::new())).unwrap();
+        let composed = pollster::block_on(Composed::new(github(), config, &EVERY, "test")).unwrap();
+        let (swept, unswept) =
+            pollster::block_on(futures_util::future::join(composed.poll(), composed.poll()));
+        assert_eq!(swept.len(), 1);
+        assert_eq!(unswept, Vec::new());
+        let (kept, unkept) = pollster::block_on(futures_util::future::join(
+            composed.housekeep(),
+            composed.housekeep(),
+        ));
+        assert_ne!(kept, Ok(Housekept::default()));
+        assert_eq!(unkept, Ok(Housekept::default()));
+        assert_eq!(pollster::block_on(composed.poll()).len(), 1);
+    }
+
+    #[test]
     fn a_composed_herald_works_over_every_store_with_keys_kept_either_way() {
         let stores = [
             "kind = \"sqlite\"",
@@ -612,6 +651,9 @@ body = "{{{{ event.body }}}}"
             (large.reply.status, large.reply.body.as_slice()),
             (413, b"herald does not take this request".as_slice())
         );
+        let most = post(&format!("{:<1024}", event("0")));
+        assert_eq!(most.reply.status, 202);
+        drop(most);
         let first = post(&event("1"));
         assert_eq!(first.reply.status, 202);
         assert!(first.left.is_some());
@@ -622,7 +664,7 @@ body = "{{{{ event.body }}}}"
                 busy.reply.retry_after,
                 busy.left.is_none()
             ),
-            (503, Some(30), true)
+            (503, Some(herald_flows::BUSY_RETRY), true)
         );
         drop(first);
         let again = post(&event("2"));

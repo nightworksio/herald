@@ -274,6 +274,47 @@ fn a_body_that_is_not_text_is_answered_in_base64() {
 }
 
 #[test]
+fn a_reply_with_no_place_for_its_work_asks_its_sender_to_wait() {
+    let busy = herald_flows::busy();
+    let replied = crate::lambda::replied(&busy.reply);
+    assert_eq!(replied["statusCode"], json!(503));
+    assert_eq!(
+        replied["headers"]["retry-after"],
+        json!(herald_flows::BUSY_RETRY.to_string())
+    );
+}
+
+#[test]
+fn a_round_asked_with_its_secret_runs_and_says_what_it_did() {
+    let world = World::default();
+    let round = json!({
+        "version": "2.0",
+        "requestContext": { "http": { "method": "POST" } },
+        "rawPath": "/herald/round/poll",
+        "rawQueryString": "",
+        "headers": { "authorization": "Bearer round-secret" },
+        "isBase64Encoded": false,
+    });
+    invoked(&world, vec![round]);
+    let mut asking = function(CONFIG, false);
+    asking.vars.insert(
+        herald_flows::ROUND_SECRET.to_owned(),
+        "round-secret".to_owned(),
+    );
+    let run = herald(&asking, &world, &LAMBDA);
+    let given = given(&world);
+    assert_eq!(given[0].0, "request-1/response");
+    assert_eq!(given[0].1["statusCode"], json!(200));
+    assert_eq!(given[0].1["body"], json!("the round ran"));
+    assert!(
+        run.out
+            .starts_with("cli: stopped: GitHub's repository was answered with 400."),
+        "{}",
+        run.out
+    );
+}
+
+#[test]
 fn a_request_that_leaves_no_work_is_answered_and_handed_nothing() {
     let world = World::default();
     let health = |handed: bool| {

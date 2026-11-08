@@ -23,14 +23,37 @@ mod conformance {
     const PREFIX: &str = "https://api.github.com/repos/o/r/actions/variables";
     const NOW: &str = "Sun, 01 Nov 2026 12:00:00 GMT";
     const LOCK: &str = "HERALDLOCK";
+    /// The holder this run's store writes into the lock.
+    const THIS_RUN: &str = "run-1";
+    /// The holder another run writes into the lock.
+    const OTHER_RUN: &str = "run-2";
+    /// When a variable written in the model was created, a minute before
+    /// [`NOW`].
+    const RECENT: &str = "2026-11-01T11:59:00Z";
+
+    /// What another run does to the lock once this run has read it.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    enum OnRead {
+        Replaced,
+        Released,
+    }
+
+    /// What befalls the lock once this run has written a record under it.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    enum OnWrite {
+        Stolen,
+        Unreadable,
+    }
 
     #[derive(Debug, Default)]
     struct Model {
         variables: BTreeMap<String, (String, Option<String>)>,
         fail: Option<(String, u16)>,
         undated: bool,
-        lock_refused_once: bool,
+        lock_refusals: usize,
         stolen: bool,
+        on_read: Option<OnRead>,
+        on_write: Option<OnWrite>,
     }
 
     #[derive(Debug, Default)]
@@ -87,32 +110,8 @@ mod conformance {
             }
             let name = path.trim_start_matches('/').to_ascii_uppercase();
             match method {
-                Method::Get => match self.variables.get(&name) {
-                    Some((value, created)) => {
-                        answer(200, &shown(&name, value, created.as_ref()), dated)
-                    }
-                    None => answer(404, &Value::Null, dated),
-                },
-                Method::Post => {
-                    let name = body["name"]
-                        .as_str()
-                        .unwrap_or_default()
-                        .to_ascii_uppercase();
-                    if name == LOCK && self.lock_refused_once {
-                        self.lock_refused_once = false;
-                        return answer(409, &json!({ "message": "Already exists" }), dated);
-                    }
-                    if self.variables.contains_key(&name) {
-                        return answer(409, &json!({ "message": "Already exists" }), dated);
-                    }
-                    let mut value = body["value"].as_str().unwrap_or_default().to_owned();
-                    if name == LOCK && self.stolen {
-                        value = "run-2".to_owned();
-                    }
-                    self.variables
-                        .insert(name, (value, Some("2026-11-01T11:59:00Z".to_owned())));
-                    answer(201, &Value::Null, dated)
-                }
+                Method::Get => self.read(&name, dated),
+                Method::Post => self.posted(body, dated),
                 Method::Patch => match self.variables.get_mut(&name) {
                     Some(held) => {
                         held.0 = body["value"].as_str().unwrap_or_default().to_owned();
@@ -130,6 +129,63 @@ mod conformance {
                 }
                 Method::Put => answer(400, &Value::Null, dated),
             }
+        }
+
+        fn read(&mut self, name: &str, dated: bool) -> Response {
+            let read = match self.variables.get(name) {
+                Some((value, created)) => answer(200, &shown(name, value, created.as_ref()), dated),
+                None => answer(404, &Value::Null, dated),
+            };
+            if name == LOCK {
+                match self.on_read.take() {
+                    Some(OnRead::Replaced) => {
+                        self.variables.insert(
+                            LOCK.to_owned(),
+                            (OTHER_RUN.to_owned(), Some(RECENT.to_owned())),
+                        );
+                    }
+                    Some(OnRead::Released) => {
+                        self.variables.remove(LOCK);
+                    }
+                    None => {}
+                }
+            }
+            read
+        }
+
+        fn posted(&mut self, body: &Value, dated: bool) -> Response {
+            let name = body["name"]
+                .as_str()
+                .unwrap_or_default()
+                .to_ascii_uppercase();
+            if name == LOCK && self.lock_refusals > 0 {
+                self.lock_refusals -= 1;
+                return answer(409, &json!({ "message": "Already exists" }), dated);
+            }
+            if self.variables.contains_key(&name) {
+                return answer(409, &json!({ "message": "Already exists" }), dated);
+            }
+            let mut value = body["value"].as_str().unwrap_or_default().to_owned();
+            if name == LOCK && self.stolen {
+                value = OTHER_RUN.to_owned();
+            }
+            let befalls = if name == LOCK {
+                None
+            } else {
+                self.on_write.take()
+            };
+            self.variables
+                .insert(name, (value, Some(RECENT.to_owned())));
+            match befalls {
+                Some(OnWrite::Stolen) => {
+                    if let Some(lock) = self.variables.get_mut(LOCK) {
+                        lock.0 = OTHER_RUN.to_owned();
+                    }
+                }
+                Some(OnWrite::Unreadable) => self.fail = Some((format!("/{LOCK}"), 500)),
+                None => {}
+            }
+            answer(201, &Value::Null, dated)
         }
     }
 
@@ -167,8 +223,30 @@ mod conformance {
             GitHub {
                 model: Mutex::new(model),
             },
-            "run-1",
+            THIS_RUN,
         )
+    }
+
+    /// A store over `model`, and the model, to change or read while the
+    /// store runs.
+    fn shared(model: Model) -> (std::sync::Arc<GitHub>, RepoVariablesStore<Shared>) {
+        let github = std::sync::Arc::new(GitHub {
+            model: Mutex::new(model),
+        });
+        let store = RepoVariables::new("o/r", Secret::new("HERALD_STATE_TOKEN", "t"), None)
+            .store(Shared(std::sync::Arc::clone(&github)), THIS_RUN);
+        (github, store)
+    }
+
+    /// Who holds the lock in `github`, where anyone does.
+    fn holder(github: &GitHub) -> Option<String> {
+        github
+            .model
+            .lock()
+            .unwrap()
+            .variables
+            .get(LOCK)
+            .map(|(value, _)| value.clone())
     }
 
     fn key() -> Key {
@@ -240,13 +318,60 @@ mod conformance {
             Ok(Written::Conflict)
         );
         let released = store(Model {
-            lock_refused_once: true,
+            lock_refusals: 1,
             ..Model::default()
         });
         assert_eq!(
             pollster::block_on(released.put_entry(&entry, None)),
             Ok(Written::Written(herald_ports::Version(1)))
         );
+        let raced = store(Model {
+            lock_refusals: 2,
+            ..Model::default()
+        });
+        assert_eq!(
+            pollster::block_on(raced.records().write("pins/r.json", b"one", None)),
+            Ok(Wrote::Conflict)
+        );
+    }
+
+    #[test]
+    fn an_abandoned_lock_is_deleted_only_while_it_is_still_the_one_found() {
+        let entry = Entry::new(key());
+        let replaced = store(Model {
+            on_read: Some(OnRead::Replaced),
+            ..locked(Some("2026-11-01T11:40:00Z"))
+        });
+        assert_eq!(
+            pollster::block_on(replaced.put_entry(&entry, None)),
+            Ok(Written::Conflict)
+        );
+        let released = store(Model {
+            on_read: Some(OnRead::Released),
+            ..locked(Some("2026-11-01T11:40:00Z"))
+        });
+        assert_eq!(
+            pollster::block_on(released.put_entry(&entry, None)),
+            Ok(Written::Written(herald_ports::Version(1)))
+        );
+    }
+
+    #[test]
+    fn a_lock_that_changes_between_looks_is_never_taken_as_abandoned() {
+        let entry = Entry::new(key());
+        let mut undated = locked(None);
+        undated.undated = true;
+        let (github, store) = shared(undated);
+        for look in 0..30 {
+            assert_eq!(
+                pollster::block_on(store.put_entry(&entry, None)),
+                Ok(Written::Conflict),
+                "{look}"
+            );
+            if let Some(lock) = github.model.lock().unwrap().variables.get_mut(LOCK) {
+                lock.0 = format!("held-{look}");
+            }
+        }
     }
 
     #[test]
@@ -264,30 +389,39 @@ mod conformance {
     }
 
     #[test]
+    fn a_lock_taken_from_this_run_while_it_writes_is_left_and_one_unread_stops_the_write() {
+        let entry = Entry::new(key());
+        let (github, stolen) = shared(Model {
+            on_write: Some(OnWrite::Stolen),
+            ..Model::default()
+        });
+        assert_eq!(
+            pollster::block_on(stolen.put_entry(&entry, None)),
+            Ok(Written::Written(herald_ports::Version(1)))
+        );
+        assert_eq!(holder(&github).as_deref(), Some(OTHER_RUN));
+        let unread = store(Model {
+            on_write: Some(OnWrite::Unreadable),
+            ..Model::default()
+        });
+        assert!(matches!(
+            pollster::block_on(unread.put_entry(&entry, None)),
+            Err(StoreError::Unavailable { .. })
+        ));
+    }
+
+    #[test]
     fn a_lock_is_released_only_where_it_is_still_this_run_s() {
         let entry = Entry::new(key());
-        let github = std::sync::Arc::new(GitHub {
-            model: Mutex::new(Model {
-                stolen: true,
-                ..Model::default()
-            }),
+        let (github, store) = shared(Model {
+            stolen: true,
+            ..Model::default()
         });
-        let store = RepoVariables::new("o/r", Secret::new("HERALD_STATE_TOKEN", "t"), None)
-            .store(Shared(std::sync::Arc::clone(&github)), "run-1");
         assert_eq!(
             pollster::block_on(store.put_entry(&entry, None)),
             Ok(Written::Conflict)
         );
-        assert_eq!(
-            github
-                .model
-                .lock()
-                .unwrap()
-                .variables
-                .get(LOCK)
-                .map(|(value, _)| value.as_str()),
-            Some("run-2")
-        );
+        assert_eq!(holder(&github).as_deref(), Some(OTHER_RUN));
     }
 
     #[test]
@@ -384,7 +518,7 @@ mod conformance {
         );
         assert_eq!(variables.api(), "https://ghe.example/api/v3");
         assert_eq!(
-            pollster::block_on(variables.store(Unreachable, "run-1").entry(&key())),
+            pollster::block_on(variables.store(Unreachable, THIS_RUN).entry(&key())),
             Err(StoreError::Unavailable {
                 reason: "the host did not answer in time".to_owned()
             })

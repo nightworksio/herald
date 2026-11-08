@@ -7,6 +7,21 @@ fn read(json: &str) -> Interactions {
 const SIGNED: &str = r#"{"signing": {"secret": "HERALD_SLACK_SIGNING"}"#;
 
 #[test]
+fn a_socket_mode_session_connects_under_slack_com_and_the_domains_added() {
+    let proxied = read(&format!(r#"{SIGNED}, "domains": ["proxy.example"]}}"#));
+    assert_eq!(proxied.check(), Ok(()));
+    assert_eq!(proxied.session_domains(), [SESSION_DOMAIN, "proxy.example"]);
+    assert_eq!(
+        read(&format!("{SIGNED}}}")).session_domains(),
+        [SESSION_DOMAIN]
+    );
+    assert_eq!(
+        read(&format!(r#"{SIGNED}, "domains": ["https://proxy.example"]}}"#)).check(),
+        Err("\"https://proxy.example\" is not a domain; give a host such as \"proxy.example\", with no scheme, port or path".to_owned())
+    );
+}
+
+#[test]
 fn interactions_default_to_http_the_herald_command_and_every_command() {
     let interactions = read(&format!("{SIGNED}}}"));
     assert_eq!(interactions.via, Via::Http);

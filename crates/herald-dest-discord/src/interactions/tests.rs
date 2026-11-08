@@ -41,6 +41,18 @@ fn interactions_default_to_http_every_command_and_ephemeral_replies() {
 }
 
 #[test]
+fn a_gateway_session_connects_under_discord_gg_and_the_domains_added() {
+    let proxied = written(r#", "domains": ["proxy.example"]"#);
+    assert_eq!(proxied.check(), Ok(()));
+    assert_eq!(proxied.session_domains(), [SESSION_DOMAIN, "proxy.example"]);
+    assert_eq!(written("").session_domains(), [SESSION_DOMAIN]);
+    assert_eq!(
+        written(r#", "domains": ["https://proxy.example"]"#).check(),
+        Err("\"https://proxy.example\" is not a domain; give a host such as \"proxy.example\", with no scheme, port or path".to_owned())
+    );
+}
+
+#[test]
 fn the_gateway_needs_no_key_and_http_does() {
     let gateway = read(&format!(
         r#"{{"application": "{APPLICATION}", "via": "gateway"}}"#

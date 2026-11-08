@@ -603,7 +603,7 @@ mod tests {
     use futures_util::FutureExt as _;
     use herald_flows::{Job, Verified};
 
-    use super::{Queue, RUN, named, round, rounds};
+    use super::{Asked, Queue, RUN, named, round, rounds};
 
     fn job(body: &[u8]) -> Job {
         Job::Follow {
@@ -613,6 +613,21 @@ mod tests {
             },
             body: body.to_vec(),
         }
+    }
+
+    #[test]
+    fn a_path_from_outside_lies_within_the_prefix_or_nowhere() {
+        let asked = Asked {
+            poll: "/poll",
+            housekeep: "/housekeep",
+            reply: "{}",
+            prefix: "api",
+        };
+        assert_eq!(asked.within("/api"), Some("/"));
+        assert_eq!(asked.within("/api/healthz"), Some("/healthz"));
+        assert_eq!(asked.within("/apis/healthz"), None);
+        assert_eq!(asked.within("api/healthz"), None);
+        assert_eq!(asked.within("/other/healthz"), None);
     }
 
     #[test]

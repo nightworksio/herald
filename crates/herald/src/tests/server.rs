@@ -180,6 +180,49 @@ fn under_azure_functions_the_server_listens_on_its_port_and_its_timers_ask_for_r
     );
 }
 
+/// What the server on `port` answers a request for a housekeeping round
+/// carrying `secret` as its bearer token, kept in `answer`.
+async fn rounded(port: u16, secret: &str, answer: &RefCell<String>) {
+    let mut stream = tokio::net::TcpStream::connect(("127.0.0.1", port))
+        .await
+        .unwrap();
+    let request = format!(
+        "POST /herald/round/housekeep HTTP/1.1\r\nHost: x\r\nAuthorization: Bearer {secret}\r\nContent-Length: 0\r\n\r\n"
+    );
+    stream.write_all(request.as_bytes()).await.unwrap();
+    let mut read = String::new();
+    stream.read_to_string(&mut read).await.unwrap();
+    *answer.borrow_mut() = read;
+}
+
+/// What the server answers a round asked with `given` where its
+/// `HERALD_ROUND_SECRET` is `set`.
+fn round_answered(set: &str, given: &str) -> String {
+    let answer = RefCell::new(String::new());
+    let (port, served) = on_free_port(|port| {
+        let mut told = setup(CONFIG);
+        told.vars
+            .insert(herald_flows::ROUND_SECRET.to_owned(), set.to_owned());
+        herald_until(
+            &told,
+            &World::default(),
+            &["server", "--listen", &format!("127.0.0.1:{port}")],
+            rounded(port, given, &answer),
+        )
+    });
+    assert_eq!(served.code, DONE, "{} on {port}", served.err);
+    answer.into_inner()
+}
+
+#[test]
+fn a_round_runs_when_asked_with_the_round_secret_and_an_empty_one_is_none() {
+    let ran = round_answered("s3cret", "s3cret");
+    assert!(ran.starts_with("HTTP/1.1 200 OK"), "{ran}");
+    assert!(ran.ends_with("the round ran"), "{ran}");
+    let unset = round_answered("", "");
+    assert!(unset.starts_with("HTTP/1.1 401"), "{unset}");
+}
+
 #[test]
 fn a_server_that_cannot_listen_or_read_a_webhook_or_command_secret_stops_before_it_serves() {
     let taken = std::net::TcpListener::bind("127.0.0.1:0").unwrap();

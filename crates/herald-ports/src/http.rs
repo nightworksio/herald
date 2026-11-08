@@ -248,6 +248,7 @@ mod tests {
     fn a_request_without_a_body_displays_no_blank_line() {
         let request = Request::new(Method::Get, Text::plain("https://example.org"));
         assert_eq!(request.to_string(), "GET https://example.org");
+        assert_eq!(request.with_body().to_string(), "GET https://example.org");
     }
 
     #[test]

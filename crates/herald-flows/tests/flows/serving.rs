@@ -1,8 +1,8 @@
 use herald_config::{Config, load};
 use herald_core::{Key, RouteId, Scheme, Step};
 use herald_flows::{
-    Answered, Connected, FollowError, Followed, Inbound, Job, Keys, Outcome, Ports, Serving,
-    Webhooks, Worked, answer, prepare, unworked, webhooks, work,
+    Answered, BUSY_RETRY, Connected, FollowError, Followed, Inbound, Job, Keys, Outcome, Ports,
+    Serving, Webhooks, Worked, answer, busy, prepare, unworked, webhooks, work,
 };
 use herald_ports::{Admitted, Algorithm, CryptoError, Secret, Signer, Store as _};
 use herald_records::MemoryKeyring;
@@ -202,6 +202,25 @@ fn health_is_answered_and_every_path_herald_does_not_serve_is_not_found() {
         };
         assert_eq!(world.answer(&asked).reply.status, 405, "{method} {path}");
     }
+}
+
+#[test]
+fn work_with_no_place_is_refused_and_asked_to_wait() {
+    let refused = busy();
+    assert_eq!(
+        said(&refused),
+        (
+            503,
+            TEXT,
+            "herald cannot answer this request now".to_owned()
+        )
+    );
+    assert_eq!(refused.reply.retry_after, Some(BUSY_RETRY));
+    assert_eq!(
+        refused.refused.as_deref(),
+        Some("the queue has no place for the work it leaves")
+    );
+    assert!(refused.job.is_none());
 }
 
 #[test]
