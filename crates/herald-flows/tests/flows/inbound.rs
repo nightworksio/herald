@@ -252,6 +252,10 @@ impl herald_ports::Inboxes for Refusing {
     ) -> Result<(), StoreError> {
         Err(self.0.clone())
     }
+
+    async fn forget_deliveries(&self, _: &herald_core::Key) -> Result<(), StoreError> {
+        Err(self.0.clone())
+    }
 }
 
 impl herald_ports::Ledger for Refusing {
@@ -267,6 +271,10 @@ impl herald_ports::Ledger for Refusing {
         _: &herald_core::Entry,
         _: Option<herald_ports::Version>,
     ) -> Result<herald_ports::Written, StoreError> {
+        Err(self.0.clone())
+    }
+
+    async fn expire_entries(&self, _: Timestamp) -> Result<Vec<herald_core::Key>, StoreError> {
         Err(self.0.clone())
     }
 }
@@ -355,7 +363,16 @@ impl herald_ports::Notes for Refusing {
         Err(self.0.clone())
     }
 
-    async fn put_note(&self, _: &herald_core::Key, _: &str) -> Result<(), StoreError> {
+    async fn put_note(
+        &self,
+        _: &herald_core::Key,
+        _: &str,
+        _: Timestamp,
+    ) -> Result<(), StoreError> {
+        Err(self.0.clone())
+    }
+
+    async fn expire_notes(&self, _: Timestamp) -> Result<(), StoreError> {
         Err(self.0.clone())
     }
 }

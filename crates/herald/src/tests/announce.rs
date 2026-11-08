@@ -33,7 +33,7 @@ fn a_run_is_named_for_the_ci_job_it_runs_in() {
     );
     let now = jiff::Timestamp::UNIX_EPOCH;
     let until = now + jiff::SignedDuration::from_mins(10);
-    let racing = herald_core::Entry::new(key).claimed(&run_name(&github), until);
+    let racing = herald_core::Entry::new(key).claimed_by(&run_name(&github), now, until);
     assert!(matches!(
         herald_core::plan(
             Some(&racing),

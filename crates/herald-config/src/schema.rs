@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 use schemars::JsonSchema;
 
 use crate::file::{
-    AppFile, HttpFile, MarkersFile, RouteFile, ScheduleFile, ServerFile, TemplateFile,
+    AppFile, HttpFile, KeepFile, MarkersFile, RouteFile, ScheduleFile, ServerFile, TemplateFile,
 };
 
 /// `[store]`: one store, by its kind.
@@ -13,26 +13,71 @@ use crate::file::{
 #[allow(dead_code, reason = "read only by the schema's derive")]
 enum StoreSchema {
     /// A SQLite file, on a volume or a persistent disk.
-    Sqlite(herald_store_sqlite::StoreOptions),
+    Sqlite {
+        #[serde(flatten)]
+        options: herald_store_sqlite::StoreOptions,
+        #[serde(flatten)]
+        keep: KeepFile,
+    },
     /// A Postgres database.
-    Postgres(herald_store_postgres::StoreOptions),
+    Postgres {
+        #[serde(flatten)]
+        options: herald_store_postgres::StoreOptions,
+        #[serde(flatten)]
+        keep: KeepFile,
+    },
     /// Cloudflare D1, through the Worker's binding.
-    D1(herald_store_d1::StoreOptions),
+    D1 {
+        #[serde(flatten)]
+        options: herald_store_d1::StoreOptions,
+        #[serde(flatten)]
+        keep: KeepFile,
+    },
     /// The storage of herald's Cloudflare Durable Object, through the
     /// Worker's binding.
-    DurableObject(herald_store_durable_object::StoreOptions),
+    DurableObject {
+        #[serde(flatten)]
+        options: herald_store_durable_object::StoreOptions,
+        #[serde(flatten)]
+        keep: KeepFile,
+    },
     /// An AWS DynamoDB table.
-    Dynamodb(herald_store_dynamodb::StoreOptions),
+    Dynamodb {
+        #[serde(flatten)]
+        options: herald_store_dynamodb::StoreOptions,
+        #[serde(flatten)]
+        keep: KeepFile,
+    },
     /// Deno KV, on Deno Deploy or wherever a database is opened.
-    DenoKv(herald_store_deno_kv::StoreOptions),
+    DenoKv {
+        #[serde(flatten)]
+        options: herald_store_deno_kv::StoreOptions,
+        #[serde(flatten)]
+        keep: KeepFile,
+    },
     /// A Fastly KV Store, on Fastly Compute.
-    FastlyKv(herald_store_fastly_kv::StoreOptions),
+    FastlyKv {
+        #[serde(flatten)]
+        options: herald_store_fastly_kv::StoreOptions,
+        #[serde(flatten)]
+        keep: KeepFile,
+    },
     /// The destinations' own posts.
     Markers {},
     /// One file per record on a `herald-state` branch.
-    GitBranch(herald_store_git_branch::StoreOptions),
+    GitBranch {
+        #[serde(flatten)]
+        options: herald_store_git_branch::StoreOptions,
+        #[serde(flatten)]
+        keep: KeepFile,
+    },
     /// Generations of the GitHub Actions cache.
-    ActionsCache(herald_store_actions_cache::StoreOptions),
+    ActionsCache {
+        #[serde(flatten)]
+        options: herald_store_actions_cache::StoreOptions,
+        #[serde(flatten)]
+        keep: KeepFile,
+    },
     /// The repository's variables.
     RepoVariables(herald_store_repo_variables::StoreOptions),
 }

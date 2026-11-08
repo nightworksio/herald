@@ -344,12 +344,30 @@ fn a_note_is_served_by_its_id_where_its_actor_published_it() {
     let path = format!("/users/php-mutation-gate/notes/{key}");
     assert_eq!(world.answer(&get(&path)).reply.status, 404);
     let note = format!(r#"{{"id":"{ACTOR}/notes/{key}","type":"Note"}}"#);
-    pollster::block_on(world.store.inner.put_note(&key, &note)).unwrap();
+    pollster::block_on(
+        world
+            .store
+            .inner
+            .put_note(&key, &note, crate::harness::NOON),
+    )
+    .unwrap();
     assert_eq!(said(&world.answer(&get(&path))), (200, JSON, note));
     let other = format!(r#"{{"id":"https://herald.example/users/other/notes/{key}"}}"#);
-    pollster::block_on(world.store.inner.put_note(&key, &other)).unwrap();
+    pollster::block_on(
+        world
+            .store
+            .inner
+            .put_note(&key, &other, crate::harness::NOON),
+    )
+    .unwrap();
     assert_eq!(world.answer(&get(&path)).reply.status, 404);
-    pollster::block_on(world.store.inner.put_note(&key, "not json")).unwrap();
+    pollster::block_on(
+        world
+            .store
+            .inner
+            .put_note(&key, "not json", crate::harness::NOON),
+    )
+    .unwrap();
     assert_eq!(world.answer(&get(&path)).reply.status, 404);
     assert_eq!(
         world

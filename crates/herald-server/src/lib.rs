@@ -409,7 +409,13 @@ impl Rounds<'_> {
         let ports = serving.ports;
         once(&self.keeping, async {
             Some(Heard::Kept(
-                housekeep(serving.connected, ports.store, ports.clock).await,
+                housekeep(
+                    serving.connected,
+                    ports.store,
+                    ports.clock,
+                    &serving.config.retention,
+                )
+                .await,
             ))
         })
         .await

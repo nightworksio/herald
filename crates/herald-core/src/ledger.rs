@@ -104,6 +104,9 @@ pub struct Entry {
     /// that run said.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub wanted: Option<Vec<Step>>,
+    /// When a run last claimed it, which housekeeping expires it by.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub claimed: Option<Timestamp>,
 }
 
 impl Entry {
@@ -115,6 +118,7 @@ impl Entry {
             records: Vec::new(),
             lease: None,
             wanted: None,
+            claimed: None,
         }
     }
 
@@ -151,14 +155,11 @@ impl Entry {
         }
     }
 
-    /// The entry held by `run` until `until`.
+    /// The entry claimed by `run` at `at`, and held by it until `until`.
     #[must_use]
-    pub fn claimed(mut self, run: &str, until: Timestamp) -> Self {
-        self.lease = Some(Lease {
-            holder: run.to_owned(),
-            until,
-        });
-        self
+    pub fn claimed_by(mut self, run: &str, at: Timestamp, until: Timestamp) -> Self {
+        self.claimed = Some(at);
+        self.held(run, until)
     }
 
     /// The entry with its lease held on until `until`, where `run` holds it;
@@ -166,10 +167,25 @@ impl Entry {
     #[must_use]
     pub fn renewed(self, run: &str, until: Timestamp) -> Self {
         if self.lease.as_ref().is_some_and(|lease| lease.holder == run) {
-            self.claimed(run, until)
+            self.held(run, until)
         } else {
             self
         }
+    }
+
+    /// Whether housekeeping forgets it when it keeps entries no run claimed
+    /// since `before`: one no run ever claimed is kept.
+    #[must_use]
+    pub fn expired(&self, before: Timestamp) -> bool {
+        self.claimed.is_some_and(|claimed| claimed < before)
+    }
+
+    fn held(mut self, run: &str, until: Timestamp) -> Self {
+        self.lease = Some(Lease {
+            holder: run.to_owned(),
+            until,
+        });
+        self
     }
 
     /// The entry with no run holding it.
@@ -490,7 +506,11 @@ mod tests {
 
     #[test]
     fn another_runs_live_lease_holds_the_announcement() {
-        let entry = Entry::new(key()).claimed("other", at("2026-10-31T12:10:00Z"));
+        let entry = Entry::new(key()).claimed_by(
+            "other",
+            at("2026-10-31T12:00:00Z"),
+            at("2026-10-31T12:10:00Z"),
+        );
         assert_eq!(
             plan(
                 Some(&entry),
@@ -508,7 +528,11 @@ mod tests {
     #[test]
     fn a_run_renews_only_the_lease_it_holds() {
         let later = at("2026-10-31T12:30:00Z");
-        let held = Entry::new(key()).claimed("run", at("2026-10-31T12:10:00Z"));
+        let held = Entry::new(key()).claimed_by(
+            "run",
+            at("2026-10-31T12:00:00Z"),
+            at("2026-10-31T12:10:00Z"),
+        );
         assert_eq!(
             held.clone()
                 .renewed("run", later)
@@ -523,7 +547,11 @@ mod tests {
 
     #[test]
     fn a_lapsed_lease_or_the_runs_own_holds_nothing() {
-        let lapsed = Entry::new(key()).claimed("other", at("2026-10-31T12:10:00Z"));
+        let lapsed = Entry::new(key()).claimed_by(
+            "other",
+            at("2026-10-31T12:00:00Z"),
+            at("2026-10-31T12:10:00Z"),
+        );
         assert_eq!(
             plan(
                 Some(&lapsed),
@@ -533,7 +561,11 @@ mod tests {
             ),
             sending(&[Step::Post])
         );
-        let own = Entry::new(key()).claimed("run", at("2026-10-31T12:10:00Z"));
+        let own = Entry::new(key()).claimed_by(
+            "run",
+            at("2026-10-31T12:00:00Z"),
+            at("2026-10-31T12:10:00Z"),
+        );
         assert_eq!(
             plan(Some(&own), &[Step::Post], "run", at("2026-10-31T12:05:00Z")),
             sending(&[Step::Post])
@@ -548,7 +580,11 @@ mod tests {
             permalink: Some("https://discord.com/channels/3/4/1".to_owned()),
         };
         let entry = Entry::new(key())
-            .claimed("run", at("2026-10-31T12:10:00Z"))
+            .claimed_by(
+                "run",
+                at("2026-10-31T12:00:00Z"),
+                at("2026-10-31T12:10:00Z"),
+            )
             .attempted(Step::Post, at("2026-10-31T12:00:00Z"));
         assert_eq!(entry.facts(&Step::Post), None);
         let entry = entry.landed(Step::Post, facts.clone());
@@ -563,12 +599,30 @@ mod tests {
     }
 
     #[test]
+    fn an_entry_expires_once_no_run_has_claimed_it_since() {
+        let claimed = Entry::new(key()).claimed_by(
+            "run",
+            at("2026-10-31T12:00:00Z"),
+            at("2026-10-31T12:10:00Z"),
+        );
+        assert!(claimed.expired(at("2026-10-31T12:00:01Z")));
+        assert!(!claimed.expired(at("2026-10-31T12:00:00Z")));
+        assert!(!Entry::new(key()).expired(at("2099-01-01T00:00:00Z")));
+        let renewed = claimed.renewed("run", at("2026-11-01T00:00:00Z"));
+        assert_eq!(renewed.claimed, Some(at("2026-10-31T12:00:00Z")));
+    }
+
+    #[test]
     fn an_entry_stands_by_its_lease_and_the_steps_it_wants_landed() {
         let now = at("2026-10-31T12:00:00Z");
-        let held = Entry::new(key()).claimed("run", at("2026-10-31T12:00:01Z"));
+        let held = Entry::new(key()).claimed_by(
+            "run",
+            at("2026-10-31T12:00:00Z"),
+            at("2026-10-31T12:00:01Z"),
+        );
         assert_eq!(held.standing(now), Standing::Announcing);
         let lapsed = Entry::new(key())
-            .claimed("run", now)
+            .claimed_by("run", now, now)
             .wanting(&[Step::Post, Step::Pin])
             .landed(Step::Post, Facts::default())
             .attempted(Step::Pin, now);
@@ -626,7 +680,11 @@ mod tests {
     #[test]
     fn an_entry_round_trips_through_json() {
         let entry = Entry::new(key())
-            .claimed("run", at("2026-10-31T12:10:00Z"))
+            .claimed_by(
+                "run",
+                at("2026-10-31T12:00:00Z"),
+                at("2026-10-31T12:10:00Z"),
+            )
             .wanting(&[Step::Post, Step::Chunk(2)])
             .attempted(Step::Chunk(2), at("2026-10-31T12:00:00Z"))
             .landed(

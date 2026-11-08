@@ -1,6 +1,8 @@
-use herald_core::{Chore, DELIVERIES_KEPT, Identity, Key, RouteId, Schedule, Scheme};
+use herald_core::{
+    Chore, Entry, Facts, Identity, Key, Retention, RouteId, Schedule, Scheme, State,
+};
 use herald_flows::{Chored, Stop, housekeep, prepare};
-use herald_ports::{Admitted, Deliveries, Schedules};
+use herald_ports::{Admitted, Deliveries, Inboxes, Ledger, Notes, Schedules};
 use herald_testing::{FakeClock, FakeSigner};
 use jiff::SignedDuration;
 
@@ -19,11 +21,19 @@ fn schedule(route: &str, thread: &str, chore: Chore, minutes: i64) -> Schedule {
 }
 
 fn kept(store: &Failing, script: &Script) -> Result<Vec<(String, Chored)>, Stop> {
+    kept_for(store, script, &Retention::default())
+}
+
+fn kept_for(
+    store: &Failing,
+    script: &Script,
+    retention: &Retention,
+) -> Result<Vec<(String, Chored)>, Stop> {
     let config = config("");
     let prepared = pollster::block_on(prepare(&config, &secrets(), &FakeSigner)).unwrap();
     let connected = prepared.connect(|_| Ok::<_, ()>(script.clone())).unwrap();
     let clock = FakeClock::at(NOON);
-    pollster::block_on(housekeep(&connected, store, &clock)).map(|kept| {
+    pollster::block_on(housekeep(&connected, store, &clock, retention)).map(|kept| {
         kept.kept
             .into_iter()
             .map(|kept| (kept.schedule.thread, kept.outcome))
@@ -70,8 +80,13 @@ fn a_round_reports_the_records_the_store_skipped() {
     let connected = prepared
         .connect(|_| Ok::<_, ()>(Script::default()))
         .unwrap();
-    let housekept =
-        pollster::block_on(housekeep(&connected, &store, &FakeClock::at(NOON))).unwrap();
+    let housekept = pollster::block_on(housekeep(
+        &connected,
+        &store,
+        &FakeClock::at(NOON),
+        &herald_core::Retention::default(),
+    ))
+    .unwrap();
     assert_eq!(housekept.skipped, ["latest/bad.json"]);
 }
 
@@ -149,8 +164,8 @@ fn housekeeping_that_cannot_reach_its_destination_or_its_store_keeps_its_schedul
 fn housekeeping_forgets_a_delivery_admitted_more_than_a_week_ago_and_keeps_the_rest() {
     let store = healthy();
     let day = SignedDuration::from_hours(24);
-    let week_and_a_day = NOON.checked_sub(DELIVERIES_KEPT + day).unwrap();
-    let six_days = NOON.checked_sub(DELIVERIES_KEPT - day).unwrap();
+    let week_and_a_day = NOON.checked_sub(Retention::DELIVERIES + day).unwrap();
+    let six_days = NOON.checked_sub(Retention::DELIVERIES - day).unwrap();
     pollster::block_on(store.admit(Scheme::GitHub, "old", week_and_a_day)).unwrap();
     pollster::block_on(store.admit(Scheme::GitHub, "recent", six_days)).unwrap();
     assert_eq!(kept(&store, &Script::answering(&[])).unwrap(), []);
@@ -183,4 +198,138 @@ fn a_store_keeping_no_deliveries_is_never_asked_to_expire_them() {
         ..healthy()
     };
     assert_eq!(kept(&store, &Script::answering(&[])), Ok(Vec::new()));
+}
+
+fn days(count: i64) -> SignedDuration {
+    SignedDuration::from_hours(24 * count)
+}
+
+fn ago(count: i64) -> jiff::Timestamp {
+    NOON.checked_sub(days(count)).unwrap()
+}
+
+fn claimed(identity: &str, days_ago: i64) -> Entry {
+    Entry::new(Key::derive(
+        &RouteId::new("releases"),
+        &Identity::new(identity),
+    ))
+    .claimed_by("run", ago(days_ago), ago(days_ago))
+}
+
+#[test]
+fn housekeeping_forgets_deliveries_as_long_ago_as_the_store_is_set_to_keep_them() {
+    let store = healthy();
+    pollster::block_on(store.admit(Scheme::GitHub, "old", ago(4))).unwrap();
+    pollster::block_on(store.admit(Scheme::GitHub, "recent", ago(2))).unwrap();
+    let retention = Retention {
+        deliveries: days(3),
+        ..Retention::default()
+    };
+    assert_eq!(
+        kept_for(&store, &Script::default(), &retention).unwrap(),
+        []
+    );
+    assert_eq!(
+        pollster::block_on(store.admit(Scheme::GitHub, "old", NOON)).unwrap(),
+        Admitted::Fresh
+    );
+    assert_eq!(
+        pollster::block_on(store.admit(Scheme::GitHub, "recent", NOON)).unwrap(),
+        Admitted::Seen
+    );
+}
+
+#[test]
+fn housekeeping_forgets_entries_no_run_claimed_for_90_days_with_their_deliveries_to_inboxes() {
+    let store = healthy();
+    let old = claimed("old", 91);
+    let recent = claimed("recent", 89);
+    let landed = State::Landed {
+        facts: Facts::default(),
+    };
+    for entry in [&old, &recent] {
+        pollster::block_on(store.put_entry(entry, None)).unwrap();
+        pollster::block_on(store.put_delivery(&entry.key, "https://a.example/inbox", &landed))
+            .unwrap();
+    }
+    assert_eq!(kept(&store, &Script::default()).unwrap(), []);
+    assert_eq!(pollster::block_on(store.entry(&old.key)).unwrap(), None);
+    assert_eq!(
+        pollster::block_on(store.delivery(&old.key, "https://a.example/inbox")).unwrap(),
+        None
+    );
+    assert!(
+        pollster::block_on(store.entry(&recent.key))
+            .unwrap()
+            .is_some()
+    );
+    assert_eq!(
+        pollster::block_on(store.delivery(&recent.key, "https://a.example/inbox")).unwrap(),
+        Some(landed)
+    );
+}
+
+#[test]
+fn housekeeping_keeps_every_entry_and_note_where_they_are_kept_for_ever() {
+    let store = healthy();
+    let old = claimed("old", 10_000);
+    pollster::block_on(store.put_entry(&old, None)).unwrap();
+    pollster::block_on(store.put_note(&old.key, "{}", ago(10_000))).unwrap();
+    let retention = Retention {
+        ledger: None,
+        ..Retention::default()
+    };
+    assert_eq!(
+        kept_for(&store, &Script::default(), &retention).unwrap(),
+        []
+    );
+    assert!(pollster::block_on(store.entry(&old.key)).unwrap().is_some());
+    assert_eq!(
+        pollster::block_on(store.note(&old.key)).unwrap().as_deref(),
+        Some("{}")
+    );
+}
+
+#[test]
+fn housekeeping_forgets_notes_published_longer_ago_than_the_store_keeps_them() {
+    let store = healthy();
+    let old = claimed("old", 10);
+    let recent = claimed("recent", 5);
+    pollster::block_on(store.put_note(&old.key, "{\"n\":1}", ago(10))).unwrap();
+    pollster::block_on(store.put_note(&recent.key, "{\"n\":2}", ago(5))).unwrap();
+    let retention = Retention {
+        notes: Some(days(7)),
+        ..Retention::default()
+    };
+    assert_eq!(
+        kept_for(&store, &Script::default(), &retention).unwrap(),
+        []
+    );
+    assert_eq!(pollster::block_on(store.note(&old.key)).unwrap(), None);
+    assert_eq!(
+        pollster::block_on(store.note(&recent.key))
+            .unwrap()
+            .as_deref(),
+        Some("{\"n\":2}")
+    );
+}
+
+#[test]
+fn what_cannot_be_expired_stops_housekeeping() {
+    let retention = Retention {
+        notes: Some(days(7)),
+        ..Retention::default()
+    };
+    for fault in [
+        Fault::ExpiresEntries,
+        Fault::ForgetsDeliveries,
+        Fault::ExpiresNotes,
+    ] {
+        let store = Failing { fault, ..healthy() };
+        pollster::block_on(store.put_entry(&claimed("old", 91), None)).unwrap();
+        assert_eq!(
+            kept_for(&store, &Script::default(), &retention),
+            Err(Stop::Store(broken().to_string()))
+        );
+    }
 }

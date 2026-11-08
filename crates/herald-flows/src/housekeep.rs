@@ -1,5 +1,6 @@
-use herald_core::{DELIVERIES_KEPT, Schedule, Sent, due};
-use herald_ports::{Clock, Deliveries, Http, Schedules, Store};
+use herald_core::{Retention, Schedule, Sent, due};
+use herald_ports::{Clock, Deliveries, Http, Inboxes, Ledger, Notes, Schedules, Store};
+use jiff::{SignedDuration, Timestamp};
 
 use crate::announce::Stop;
 use crate::prepare::Connected;
@@ -37,24 +38,23 @@ pub enum Chored {
 
 /// Every chore due at the clock's time done through the route that
 /// scheduled it, each schedule removed once its chore is done or cannot be
-/// (ADR-0005), after every delivery the store admitted more than
-/// [`DELIVERIES_KEPT`] ago is forgotten (ADR-0013).
+/// (ADR-0005), after what the store keeps longer than `retention` says is
+/// forgotten: each delivery's id (ADR-0013), each ledger entry with its
+/// deliveries to followers' inboxes, and each Note.
 ///
 /// # Errors
 ///
-/// When the store's schedules cannot be read, or its deliveries cannot be
+/// When the store's schedules cannot be read, or what it keeps cannot be
 /// expired.
 pub async fn housekeep<S: Store, C: Clock, H: Http>(
     connected: &Connected<H>,
     store: &S,
     clock: &C,
+    retention: &Retention,
 ) -> Result<Housekept, Stop> {
-    if let Some(deliveries) = store.deliveries() {
-        deliveries
-            .expire_deliveries(clock.now() - DELIVERIES_KEPT)
-            .await
-            .map_err(|error| Stop::Store(error.to_string()))?;
-    }
+    expire(store, clock.now(), retention)
+        .await
+        .map_err(|error| Stop::Store(error.to_string()))?;
     let schedules = store
         .schedules()
         .every_schedule()
@@ -112,4 +112,28 @@ pub async fn housekeep<S: Store, C: Clock, H: Http>(
         kept,
         skipped: store.skipped(),
     })
+}
+
+async fn expire<S: Store>(
+    store: &S,
+    now: Timestamp,
+    retention: &Retention,
+) -> Result<(), herald_ports::StoreError> {
+    let before = |kept: SignedDuration| now.checked_sub(kept).unwrap_or(Timestamp::MIN);
+    if let Some(deliveries) = store.deliveries() {
+        deliveries
+            .expire_deliveries(before(retention.deliveries))
+            .await?;
+    }
+    if let (Some(ledger), Some(kept)) = (store.ledger(), retention.ledger) {
+        for key in ledger.expire_entries(before(kept)).await? {
+            if let Some(inboxes) = store.inboxes() {
+                inboxes.forget_deliveries(&key).await?;
+            }
+        }
+    }
+    if let (Some(notes), Some(kept)) = (store.notes(), retention.notes) {
+        notes.expire_notes(before(kept)).await?;
+    }
+    Ok(())
 }

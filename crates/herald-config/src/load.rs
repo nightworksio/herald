@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::ops::Range;
 
-use herald_core::{DestinationName, RecordKind, RouteId, SourceName, TemplateName};
+use herald_core::{DestinationName, RecordKind, Retention, RouteId, SourceName, TemplateName};
 use herald_sources_forge::Forge;
 use herald_sources_registry::Registry;
 use serde::de::DeserializeOwned;
@@ -11,7 +11,8 @@ use toml::de::{DeTable, DeValue, ValueDeserializer};
 use crate::config::{Config, Destination, KeyCache, Schedule, Server, Source, Store};
 use crate::error::{ConfigError, Errors};
 use crate::file::{
-    HttpFile, KeyCacheFile, MarkersFile, NoOptions, ScheduleFile, ServerFile, TemplateFile,
+    HttpFile, Keep, KeepFile, KeyCacheFile, MarkersFile, NoOptions, ScheduleFile, ServerFile,
+    TemplateFile,
 };
 use crate::position::position;
 use herald_ports::{Outbound, Proxy, Roots};
@@ -262,7 +263,7 @@ impl Loader<'_> {
         }
     }
 
-    fn store(&mut self, value: Option<Value<'_>>) -> Option<Store> {
+    fn store(&mut self, value: Option<Value<'_>>) -> Option<(Store, Retention)> {
         let Some(value) = value else {
             self.error(
                 &(0..0),
@@ -272,6 +273,56 @@ impl Loader<'_> {
             return None;
         };
         let (kind, rest) = self.kinded(value, "store", &Store::KINDS)?;
+        if kind == Store::MARKERS {
+            self.typed::<NoOptions>(rest, "store")?;
+            return Some((Store::Markers, Retention::default()));
+        }
+        let (rest, keep) = kept(rest);
+        let retention = self.retention(keep);
+        let store = self.options(&kind, rest)?;
+        Some((store, retention?))
+    }
+
+    fn routes<'i>(&mut self, value: Option<Value<'i>>) -> Vec<Value<'i>> {
+        let Some(value) = value else {
+            return Vec::new();
+        };
+        let span = value.span();
+        if let DeValue::Array(items) = value.into_inner() {
+            return items.into_iter().collect();
+        }
+        self.error(
+            &span,
+            "routes",
+            "routes are an array of tables; write each as [[routes]]",
+        );
+        Vec::new()
+    }
+
+    fn retention(&mut self, keep: Value<'_>) -> Option<Retention> {
+        let file = self.typed::<KeepFile>(keep, "store")?;
+        let defaults = Retention::default();
+        let deliveries = file.deliveries.map_or(defaults.deliveries, |kept| {
+            if kept.get_ref().0 < Retention::LONGEST_RETRY {
+                self.error(
+                    &kept.span(),
+                    "store.keep_deliveries",
+                    format!(
+                        "keep a delivery's id at least \"{}d\", longer than any sender goes on retrying it",
+                        Retention::LONGEST_RETRY.as_hours() / 24
+                    ),
+                );
+            }
+            kept.into_inner().0
+        });
+        Some(Retention {
+            deliveries,
+            ledger: file.ledger.map_or(defaults.ledger, Keep::kept),
+            notes: file.notes.map_or(defaults.notes, Keep::kept),
+        })
+    }
+
+    fn options(&mut self, kind: &str, rest: Value<'_>) -> Option<Store> {
         if kind == Store::SQLITE {
             return self
                 .typed::<herald_store_sqlite::StoreOptions>(rest, "store")
@@ -317,13 +368,8 @@ impl Loader<'_> {
                 .typed::<herald_store_deno_kv::StoreOptions>(rest, "store")
                 .map(Store::DenoKv);
         }
-        if kind == Store::FASTLY_KV {
-            return self
-                .typed::<herald_store_fastly_kv::StoreOptions>(rest, "store")
-                .map(Store::FastlyKv);
-        }
-        self.typed::<NoOptions>(rest, "store")?;
-        Some(Store::Markers)
+        self.typed::<herald_store_fastly_kv::StoreOptions>(rest, "store")
+            .map(Store::FastlyKv)
     }
 
     /// Whether every route that reaches followers or subscribers has a store
@@ -772,7 +818,7 @@ pub fn load(
     }
     let sections = loader.sections(root.into_inner());
     loader.version(sections.version);
-    let store = loader.store(sections.store);
+    let (store, retention) = loader.store(sections.store).unzip();
     let marker_key = sections
         .markers
         .and_then(|value| loader.typed::<MarkersFile>(value, "markers"))
@@ -783,20 +829,7 @@ pub fn load(
     let listed = loader.apps(sections.apps, &sources);
     let mut routes = Vec::new();
     let mut ids: BTreeSet<RouteId> = BTreeSet::new();
-    let mut values = Vec::new();
-    if let Some(value) = sections.routes {
-        let span = value.span();
-        if let DeValue::Array(items) = value.into_inner() {
-            values.extend(items);
-        } else {
-            loader.error(
-                &span,
-                "routes",
-                "routes are an array of tables; write each as [[routes]]",
-            );
-        }
-    }
-    for (index, value) in values.into_iter().enumerate() {
+    for (index, value) in loader.routes(sections.routes).into_iter().enumerate() {
         if let Some(read) = loader.route(index, value, &destinations, &sources, &listed, &templates)
         {
             if !ids.insert(read.config.route.id.clone()) {
@@ -839,6 +872,7 @@ pub fn load(
     if let (true, Some(store), Some(templates)) = (loader.errors.is_empty(), store, compiled) {
         return Ok(Config {
             store,
+            retention: retention.unwrap_or_default(),
             marker_key,
             destinations: destinations
                 .into_iter()
@@ -862,6 +896,28 @@ pub fn load(
         file: file.to_owned(),
         errors,
     })
+}
+
+/// `rest`, a store's options, apart from how long it keeps what herald
+/// records.
+fn kept(rest: Value<'_>) -> (Value<'_>, Value<'_>) {
+    let span = rest.span();
+    let mut keep = DeTable::new();
+    let options = match rest.into_inner() {
+        DeValue::Table(mut table) => {
+            for key in KeepFile::KEYS {
+                if let Some((name, value)) = table.remove_entry(key) {
+                    keep.insert(name, value);
+                }
+            }
+            DeValue::Table(table)
+        }
+        other => other,
+    };
+    (
+        Spanned::new(span.clone(), options),
+        Spanned::new(span, DeValue::Table(keep)),
+    )
 }
 
 mod apps;

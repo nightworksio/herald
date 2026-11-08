@@ -2,6 +2,7 @@ use std::future::Future;
 use std::sync::atomic::AtomicBool;
 
 use herald_config::Config;
+use herald_core::Retention;
 use herald_flows::{
     Admission, Connected, Housekept, Inbound, Job, Keys, Place, Ports, Room, Round, Running,
     Serving, Sessions, Stop, Swept, Taker, Webhooks, Worked, answer, busy, housekeep, poll,
@@ -149,7 +150,8 @@ impl<H: Host> Composed<H> {
         let Some(_running) = Running::start(&self.housekeeping) else {
             return Ok(Housekept::default());
         };
-        self.through(Admission::Once, Housekeeping).await
+        self.through(Admission::Once, Housekeeping(self.config.retention))
+            .await
     }
 
     /// Every session the destinations hold, opened through `sockets`, each
@@ -316,7 +318,7 @@ impl<H: Host, So: Sockets, T: Taker, Ti: Timer> Keyed<H> for Holding<'_, So, T, 
     }
 }
 
-struct Housekeeping;
+struct Housekeeping(Retention);
 
 impl<H: Host> Keyed<H> for Housekeeping {
     type Done = Result<Housekept, Stop>;
@@ -333,6 +335,6 @@ impl<H: Host> Keyed<H> for Housekeeping {
             .checked_sub(serving.keys.refreshed)
             .unwrap_or(Timestamp::MIN);
         let _ = serving.keys.keyring.forget_before(before).await;
-        housekeep(serving.connected, ports.store, ports.clock).await
+        housekeep(serving.connected, ports.store, ports.clock, &self.0).await
     }
 }

@@ -148,6 +148,13 @@ pub trait Ledger: Sync {
         entry: &Entry,
         expected: Option<Version>,
     ) -> impl Future<Output = Result<Written, StoreError>> + Send;
+
+    /// Forgets every entry no run has claimed since `before`, answering the
+    /// key of each.
+    fn expire_entries(
+        &self,
+        before: Timestamp,
+    ) -> impl Future<Output = Result<Vec<Key>, StoreError>> + Send;
 }
 
 /// Each source's cursor, written with compare-and-set.
@@ -258,11 +265,19 @@ pub trait Notes: Sync {
     /// The Note the announcement `key` was published as, as its JSON.
     fn note(&self, key: &Key) -> impl Future<Output = Result<Option<String>, StoreError>> + Send;
 
-    /// Keeps `note` as the Note the announcement `key` was published as.
+    /// Keeps `note` as the Note the announcement `key` was published as,
+    /// at `at`.
     fn put_note(
         &self,
         key: &Key,
         note: &str,
+        at: Timestamp,
+    ) -> impl Future<Output = Result<(), StoreError>> + Send;
+
+    /// Forgets every Note published before `before`.
+    fn expire_notes(
+        &self,
+        before: Timestamp,
     ) -> impl Future<Output = Result<(), StoreError>> + Send;
 }
 
@@ -305,6 +320,9 @@ pub trait Inboxes: Sync {
         inbox: &str,
         state: &State,
     ) -> impl Future<Output = Result<(), StoreError>> + Send;
+
+    /// Forgets where every delivery of the announcement `key` stands.
+    fn forget_deliveries(&self, key: &Key) -> impl Future<Output = Result<(), StoreError>> + Send;
 }
 
 impl<T: Ledger> Ledger for Option<&T> {
@@ -327,6 +345,13 @@ impl<T: Ledger> Ledger for Option<&T> {
         match self {
             Some(kept) => kept.put_entry(entry, expected).await,
             None => Unkept.put_entry(entry, expected).await,
+        }
+    }
+
+    async fn expire_entries(&self, before: Timestamp) -> Result<Vec<Key>, StoreError> {
+        match self {
+            Some(kept) => kept.expire_entries(before).await,
+            None => Unkept.expire_entries(before).await,
         }
     }
 }
@@ -446,10 +471,17 @@ impl<T: Notes> Notes for Option<&T> {
         }
     }
 
-    async fn put_note(&self, key: &Key, note: &str) -> Result<(), StoreError> {
+    async fn put_note(&self, key: &Key, note: &str, at: Timestamp) -> Result<(), StoreError> {
         match self {
-            Some(kept) => kept.put_note(key, note).await,
-            None => Unkept.put_note(key, note).await,
+            Some(kept) => kept.put_note(key, note, at).await,
+            None => Unkept.put_note(key, note, at).await,
+        }
+    }
+
+    async fn expire_notes(&self, before: Timestamp) -> Result<(), StoreError> {
+        match self {
+            Some(kept) => kept.expire_notes(before).await,
+            None => Unkept.expire_notes(before).await,
         }
     }
 }
@@ -495,6 +527,13 @@ impl<T: Inboxes> Inboxes for Option<&T> {
             None => Unkept.put_delivery(key, inbox, state).await,
         }
     }
+
+    async fn forget_deliveries(&self, key: &Key) -> Result<(), StoreError> {
+        match self {
+            Some(kept) => kept.forget_deliveries(key).await,
+            None => Unkept.forget_deliveries(key).await,
+        }
+    }
 }
 
 /// The records of a kind a store never keeps: asking for one is refused as
@@ -515,6 +554,13 @@ impl Ledger for Unkept {
         _: &Entry,
         _: Option<Version>,
     ) -> impl Future<Output = Result<Written, StoreError>> + Send {
+        ready(Err(Held::Ledger.unsupported()))
+    }
+
+    fn expire_entries(
+        &self,
+        _: Timestamp,
+    ) -> impl Future<Output = Result<Vec<Key>, StoreError>> + Send {
         ready(Err(Held::Ledger.unsupported()))
     }
 }
@@ -613,7 +659,16 @@ impl Notes for Unkept {
         ready(Err(Held::Notes.unsupported()))
     }
 
-    fn put_note(&self, _: &Key, _: &str) -> impl Future<Output = Result<(), StoreError>> + Send {
+    fn put_note(
+        &self,
+        _: &Key,
+        _: &str,
+        _: Timestamp,
+    ) -> impl Future<Output = Result<(), StoreError>> + Send {
+        ready(Err(Held::Notes.unsupported()))
+    }
+
+    fn expire_notes(&self, _: Timestamp) -> impl Future<Output = Result<(), StoreError>> + Send {
         ready(Err(Held::Notes.unsupported()))
     }
 }
@@ -654,6 +709,10 @@ impl Inboxes for Unkept {
         _: &str,
         _: &State,
     ) -> impl Future<Output = Result<(), StoreError>> + Send {
+        ready(Err(Held::Inboxes.unsupported()))
+    }
+
+    fn forget_deliveries(&self, _: &Key) -> impl Future<Output = Result<(), StoreError>> + Send {
         ready(Err(Held::Inboxes.unsupported()))
     }
 }

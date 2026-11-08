@@ -197,7 +197,40 @@ async fn ledger<S: Ledger>(store: &S) -> Result<(), Failure> {
     );
     let other = store.entry(&key("other")).await?;
     checks.ensure(other.is_none(), "writing one entry made another appear");
+    expired_entries(store, &mut checks, &first.key).await?;
     checks.done()
+}
+
+/// Whether expiring forgets each entry no run claimed since, keeps the rest
+/// and answers the key of each it forgot.
+async fn expired_entries<S: Ledger>(
+    store: &S,
+    checks: &mut Checks,
+    unclaimed: &Key,
+) -> Result<(), Failure> {
+    let later = NOON + jiff::SignedDuration::from_hours(1);
+    let old = Entry::new(key("old")).claimed_by("run", NOON, later);
+    let new = Entry::new(key("new")).claimed_by("run", later, later);
+    checks.written(store.put_entry(&old, None).await?);
+    checks.written(store.put_entry(&new, None).await?);
+    let expired = store.expire_entries(later).await?;
+    checks.ensure(
+        store.entry(&old.key).await?.is_none(),
+        "an entry no run has claimed since the expiry was kept",
+    );
+    checks.ensure(
+        store.entry(&new.key).await?.is_some(),
+        "an entry claimed at the expiry was forgotten",
+    );
+    checks.ensure(
+        store.entry(unclaimed).await?.is_some(),
+        "an entry no run ever claimed was forgotten",
+    );
+    checks.ensure(
+        expired == [old.key],
+        "expiring entries did not answer the key of each entry it forgot",
+    );
+    Ok(())
 }
 
 async fn derived_ledger<S: Ledger>(store: &S) -> Result<(), Failure> {
@@ -420,6 +453,21 @@ async fn inboxes<S: Inboxes>(store: &S) -> Result<(), Failure> {
         store.delivery(&published, inbox).await? == Some(landed),
         "a delivery to an inbox was not the state written last",
     );
+    store.forget_deliveries(&published).await?;
+    let mut kept = Vec::new();
+    for inbox in [inbox, "https://other.example/inbox"] {
+        if store.delivery(&published, inbox).await?.is_some() {
+            kept.push(inbox);
+        }
+    }
+    checks.ensure(
+        kept.is_empty(),
+        "a delivery of an announcement whose deliveries were forgotten was kept",
+    );
+    checks.ensure(
+        store.delivery(&key("other"), inbox).await?.is_some(),
+        "forgetting one announcement's deliveries forgot another's",
+    );
     checks.done()
 }
 
@@ -481,12 +529,22 @@ async fn notes<S: Notes>(store: &S) -> Result<(), Failure> {
         store.note(&published).await?.is_none(),
         "a new store holds a note",
     );
-    store.put_note(&published, "{\"n\":1}").await?;
-    store.put_note(&published, "{\"n\":2}").await?;
-    store.put_note(&key("other"), "{\"n\":3}").await?;
+    let later = NOON + jiff::SignedDuration::from_hours(1);
+    store.put_note(&published, "{\"n\":1}", NOON).await?;
+    store.put_note(&published, "{\"n\":2}", NOON).await?;
+    store.put_note(&key("other"), "{\"n\":3}", later).await?;
     checks.ensure(
         store.note(&published).await?.as_deref() == Some("{\"n\":2}"),
         "an announcement's note was not the one written last",
+    );
+    store.expire_notes(later).await?;
+    checks.ensure(
+        store.note(&published).await?.is_none(),
+        "a note published before the expiry was kept",
+    );
+    checks.ensure(
+        store.note(&key("other")).await?.as_deref() == Some("{\"n\":3}"),
+        "a note published at the expiry was forgotten",
     );
     checks.done()
 }

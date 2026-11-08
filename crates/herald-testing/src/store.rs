@@ -21,7 +21,7 @@ struct Records {
     subscriptions: BTreeSet<Subscription>,
     pins: BTreeMap<RouteId, String>,
     deliveries: BTreeMap<(&'static str, String), Timestamp>,
-    notes: BTreeMap<Key, String>,
+    notes: BTreeMap<Key, (String, Timestamp)>,
     latest: BTreeMap<String, Versioned<Latest>>,
     inboxes: BTreeMap<(Key, String), State>,
 }
@@ -67,6 +67,13 @@ impl Inboxes for FakeStore {
             .insert((*key, inbox.to_owned()), state.clone());
         Ok(())
     }
+
+    async fn forget_deliveries(&self, key: &Key) -> Result<(), StoreError> {
+        lock(&self.state)
+            .inboxes
+            .retain(|(delivered, _), _| delivered != key);
+        Ok(())
+    }
 }
 
 impl Ledger for FakeStore {
@@ -86,6 +93,18 @@ impl Ledger for FakeStore {
             entry,
             expected,
         ))
+    }
+
+    async fn expire_entries(&self, before: Timestamp) -> Result<Vec<Key>, StoreError> {
+        let mut state = lock(&self.state);
+        let expired: Vec<Key> = state
+            .entries
+            .values()
+            .filter(|entry| entry.value.expired(before))
+            .map(|entry| entry.value.key)
+            .collect();
+        state.entries.retain(|key, _| !expired.contains(key));
+        Ok(expired)
     }
 }
 
@@ -195,11 +214,19 @@ impl Deliveries for FakeStore {
 
 impl Notes for FakeStore {
     async fn note(&self, key: &Key) -> Result<Option<String>, StoreError> {
-        Ok(lock(&self.state).notes.get(key).cloned())
+        Ok(lock(&self.state)
+            .notes
+            .get(key)
+            .map(|(note, _)| note.clone()))
     }
 
-    async fn put_note(&self, key: &Key, note: &str) -> Result<(), StoreError> {
-        lock(&self.state).notes.insert(*key, note.to_owned());
+    async fn put_note(&self, key: &Key, note: &str, at: Timestamp) -> Result<(), StoreError> {
+        lock(&self.state).notes.insert(*key, (note.to_owned(), at));
+        Ok(())
+    }
+
+    async fn expire_notes(&self, before: Timestamp) -> Result<(), StoreError> {
+        lock(&self.state).notes.retain(|_, (_, at)| *at >= before);
         Ok(())
     }
 }

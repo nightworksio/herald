@@ -23,6 +23,7 @@ mod markup;
 mod pattern;
 mod profile;
 mod render;
+mod retention;
 mod route;
 mod subscription;
 mod version;
@@ -40,8 +41,8 @@ pub use duration::Duration;
 pub use event::{Draft, Event, Kind, Problem};
 pub use housekeep::{Chore, Schedule, due, schedules};
 pub use inbound::{
-    Addressed, Claim, DELIVERIES_KEPT, MOST_COVERED, MOST_SIGNATURES, REPLAY_WINDOW, Refusal,
-    Scheme, Signature, activity_claim, bearer, claim, key, same,
+    Addressed, Claim, MOST_COVERED, MOST_SIGNATURES, REPLAY_WINDOW, Refusal, Scheme, Signature,
+    activity_claim, bearer, claim, key, same,
 };
 pub use interact::{
     AnnouncedHere, Answering, Asked, Command, MOST_COMPLETIONS, Member, Place, Replies, Said,
@@ -60,6 +61,7 @@ pub use profile::{
     Dialect, Features, Limits, Measure, MentionRoom, MentionStyle, Pins, Profile, Threads,
 };
 pub use render::{Context, Form, TemplateError, Templates};
+pub use retention::Retention;
 pub use route::{
     Delivery, DestinationName, Filter, Mentions, Pinning, Prereleases, RoleId, Route, SecretRef,
     SourceName, TemplateName, Thread, route,

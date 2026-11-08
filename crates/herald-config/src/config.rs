@@ -1,7 +1,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use herald_core::{
-    DestinationName, Kind, Profile, RecordKind, Route, RouteId, SecretRef, SourceName, Templates,
+    DestinationName, Kind, Profile, RecordKind, Retention, Route, RouteId, SecretRef, SourceName,
+    Templates,
 };
 use herald_sources_forge::Forge;
 use herald_sources_registry::Registry;
@@ -12,6 +13,8 @@ use jiff::SignedDuration;
 pub struct Config {
     /// The store the ledger and the rest are kept in (ADR-0005).
     pub store: Store,
+    /// How long the store keeps what herald records.
+    pub retention: Retention,
     /// The installation's marker key, where it is set (ADR-0011).
     pub marker_key: Option<SecretRef>,
     /// The destinations, by name.

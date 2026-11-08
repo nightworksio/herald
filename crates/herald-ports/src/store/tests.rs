@@ -21,6 +21,16 @@ impl Ledger for Derived {
     ) -> impl Future<Output = Result<Written, StoreError>> + Send {
         ready(Ok(Written::Written(Version(7))))
     }
+
+    fn expire_entries(
+        &self,
+        _: Timestamp,
+    ) -> impl Future<Output = Result<Vec<Key>, StoreError>> + Send {
+        ready(Ok(vec![Key::derive(
+            &RouteId::new("r"),
+            &herald_core::Identity::new("1"),
+        )]))
+    }
 }
 
 impl Schedules for Derived {
@@ -92,6 +102,10 @@ fn a_kind_kept_somewhere_answers_as_its_keeper_does() {
         pollster::block_on(kept.put_entry(&Entry::new(key), None)),
         Ok(Written::Written(Version(7)))
     );
+    assert_eq!(
+        pollster::block_on(kept.expire_entries(Timestamp::UNIX_EPOCH)),
+        Ok(vec![key])
+    );
     assert_eq!(pollster::block_on(kept.every_schedule()), Ok(Vec::new()));
     assert_eq!(pollster::block_on(kept.put_schedules(&[], &[])), Ok(()));
 }
@@ -112,6 +126,10 @@ fn the_run_s_kinds_kept_nowhere_answer_unsupported_naming_them() {
         assert_eq!(unsupported(unkept.entry(&key)), naming("ledger"));
         assert_eq!(
             unsupported(unkept.put_entry(&Entry::new(key), None)),
+            naming("ledger")
+        );
+        assert_eq!(
+            unsupported(unkept.expire_entries(Timestamp::UNIX_EPOCH)),
             naming("ledger")
         );
         assert_eq!(unsupported(unkept.cursor(&source)), naming("cursors"));
@@ -176,7 +194,11 @@ fn the_served_kinds_kept_nowhere_answer_unsupported_naming_them() {
             naming("deliveries")
         );
         assert_eq!(unsupported(unkept.note(&key)), naming("notes"));
-        assert_eq!(unsupported(unkept.put_note(&key, "{}")), naming("notes"));
+        assert_eq!(
+            unsupported(unkept.put_note(&key, "{}", at)),
+            naming("notes")
+        );
+        assert_eq!(unsupported(unkept.expire_notes(at)), naming("notes"));
         assert_eq!(unsupported(unkept.latest("p")), naming("latest"));
         assert_eq!(unsupported(unkept.every_latest()), naming("latest"));
         assert_eq!(
@@ -189,6 +211,10 @@ fn the_served_kinds_kept_nowhere_answer_unsupported_naming_them() {
         );
         assert_eq!(
             unsupported(unkept.put_delivery(&key, "i", &state)),
+            naming("deliveries to followers")
+        );
+        assert_eq!(
+            unsupported(unkept.forget_deliveries(&key)),
             naming("deliveries to followers")
         );
         assert_eq!(Ledger::keeping(&unkept), Keeping::Kept);

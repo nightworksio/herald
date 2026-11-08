@@ -64,7 +64,8 @@ fn a_run_held_by_another_sends_nothing() {
     let store = healthy();
     let key = Key::derive(&RouteId::new("releases"), &Identity::new("github.com/1/v1"));
     let until = NOON.checked_add(SignedDuration::from_mins(5)).unwrap();
-    pollster::block_on(store.put_entry(&Entry::new(key).claimed("other", until), None)).unwrap();
+    pollster::block_on(store.put_entry(&Entry::new(key).claimed_by("other", NOON, until), None))
+        .unwrap();
     let script = Script::default();
     let held = pollster::block_on(run(
         &config(""),
@@ -643,8 +644,9 @@ fn a_held_run_keeps_nothing_as_latest() {
     let store = healthy();
     let clock = FakeClock::at(NOON);
     let key = Key::derive(&RouteId::new("releases"), &Identity::new("github.com/1/v1"));
-    let held = Entry::new(key).claimed(
+    let held = Entry::new(key).claimed_by(
         "other",
+        NOON,
         NOON.checked_add(SignedDuration::from_mins(5)).unwrap(),
     );
     pollster::block_on(store.put_entry(&held, None)).unwrap();

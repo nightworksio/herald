@@ -211,6 +211,13 @@ native binary, the image and Lambda; other hosts refuse them, naming why. None
 of it applies to the hosts herald reaches on others' behalf, which keep
 ADR-0007's 5 and 10 seconds at most, no proxy and the Mozilla roots alone.
 
+Housekeeping also forgets what the store keeps past `[store]`'s
+`keep_deliveries` (each webhook delivery's id, "7d", and at least "3d"),
+`keep_ledger` (each ledger entry and its deliveries to followers' inboxes,
+"90d" after a run last claimed it) and `keep_notes` (each Note herald's
+actors published, "forever"). `keep_ledger` and `keep_notes` also take
+`"forever"`.
+
 ### An app's own events
 
 Any app can announce through herald: a deploy script, a CI step, a service

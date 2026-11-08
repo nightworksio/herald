@@ -805,6 +805,17 @@
       },
       "additionalProperties": false
     },
+    "Keep": {
+      "description": "A length of time, or \"forever\".",
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Duration"
+        },
+        {
+          "const": "forever"
+        }
+      ]
+    },
     "KeyCache": {
       "description": "Where `herald server` keeps the keys inbound activities are checked with.",
       "oneOf": [
@@ -1852,6 +1863,39 @@
                 }
               ]
             },
+            "keep_deliveries": {
+              "description": "How long a webhook delivery's id is kept after it was admitted, so a\nreplay of it is refused (ADR-0013); \"7d\" where absent, and at least\n\"3d\", longer than any sender goes on retrying a delivery.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Duration"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "keep_ledger": {
+              "description": "How long a ledger entry, and where each of its deliveries to a\nfollower's inbox stands, is kept after a run last claimed it; \"90d\"\nwhere absent.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Keep"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "keep_notes": {
+              "description": "How long a Note herald's ActivityPub actors published is kept, and\nserved by its id; \"forever\" where absent.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Keep"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
             "key": {
               "description": "The secret holding a key to seal every record with, such as\n`HERALD_STORE_KEY`, so a record herald did not seal reads as corrupt\n(ADR-0005); records are not sealed where absent.",
               "anyOf": [
@@ -1889,6 +1933,39 @@
               "anyOf": [
                 {
                   "$ref": "#/$defs/Duration"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "keep_deliveries": {
+              "description": "How long a webhook delivery's id is kept after it was admitted, so a\nreplay of it is refused (ADR-0013); \"7d\" where absent, and at least\n\"3d\", longer than any sender goes on retrying a delivery.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Duration"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "keep_ledger": {
+              "description": "How long a ledger entry, and where each of its deliveries to a\nfollower's inbox stands, is kept after a run last claimed it; \"90d\"\nwhere absent.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Keep"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "keep_notes": {
+              "description": "How long a Note herald's ActivityPub actors published is kept, and\nserved by its id; \"forever\" where absent.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Keep"
                 },
                 {
                   "type": "null"
@@ -1943,6 +2020,39 @@
                 "null"
               ]
             },
+            "keep_deliveries": {
+              "description": "How long a webhook delivery's id is kept after it was admitted, so a\nreplay of it is refused (ADR-0013); \"7d\" where absent, and at least\n\"3d\", longer than any sender goes on retrying a delivery.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Duration"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "keep_ledger": {
+              "description": "How long a ledger entry, and where each of its deliveries to a\nfollower's inbox stands, is kept after a run last claimed it; \"90d\"\nwhere absent.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Keep"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "keep_notes": {
+              "description": "How long a Note herald's ActivityPub actors published is kept, and\nserved by its id; \"forever\" where absent.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Keep"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
             "key": {
               "description": "The secret holding a key to seal every record with, such as\n`HERALD_STORE_KEY`, so a record herald did not seal reads as corrupt\n(ADR-0005); records are not sealed where absent.",
               "anyOf": [
@@ -1973,6 +2083,39 @@
               "type": [
                 "string",
                 "null"
+              ]
+            },
+            "keep_deliveries": {
+              "description": "How long a webhook delivery's id is kept after it was admitted, so a\nreplay of it is refused (ADR-0013); \"7d\" where absent, and at least\n\"3d\", longer than any sender goes on retrying a delivery.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Duration"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "keep_ledger": {
+              "description": "How long a ledger entry, and where each of its deliveries to a\nfollower's inbox stands, is kept after a run last claimed it; \"90d\"\nwhere absent.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Keep"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "keep_notes": {
+              "description": "How long a Note herald's ActivityPub actors published is kept, and\nserved by its id; \"forever\" where absent.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Keep"
+                },
+                {
+                  "type": "null"
+                }
               ]
             },
             "key": {
@@ -2023,6 +2166,39 @@
               "type": [
                 "string",
                 "null"
+              ]
+            },
+            "keep_deliveries": {
+              "description": "How long a webhook delivery's id is kept after it was admitted, so a\nreplay of it is refused (ADR-0013); \"7d\" where absent, and at least\n\"3d\", longer than any sender goes on retrying a delivery.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Duration"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "keep_ledger": {
+              "description": "How long a ledger entry, and where each of its deliveries to a\nfollower's inbox stands, is kept after a run last claimed it; \"90d\"\nwhere absent.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Keep"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "keep_notes": {
+              "description": "How long a Note herald's ActivityPub actors published is kept, and\nserved by its id; \"forever\" where absent.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Keep"
+                },
+                {
+                  "type": "null"
+                }
               ]
             },
             "key": {
@@ -2086,6 +2262,39 @@
           "description": "Deno KV, on Deno Deploy or wherever a database is opened.",
           "type": "object",
           "properties": {
+            "keep_deliveries": {
+              "description": "How long a webhook delivery's id is kept after it was admitted, so a\nreplay of it is refused (ADR-0013); \"7d\" where absent, and at least\n\"3d\", longer than any sender goes on retrying a delivery.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Duration"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "keep_ledger": {
+              "description": "How long a ledger entry, and where each of its deliveries to a\nfollower's inbox stands, is kept after a run last claimed it; \"90d\"\nwhere absent.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Keep"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "keep_notes": {
+              "description": "How long a Note herald's ActivityPub actors published is kept, and\nserved by its id; \"forever\" where absent.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Keep"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
             "key": {
               "description": "The secret holding a key to seal every record with, such as\n`HERALD_STORE_KEY`, so a record herald did not seal reads as corrupt\n(ADR-0005); records are not sealed where absent.",
               "anyOf": [
@@ -2125,6 +2334,39 @@
           "description": "A Fastly KV Store, on Fastly Compute.",
           "type": "object",
           "properties": {
+            "keep_deliveries": {
+              "description": "How long a webhook delivery's id is kept after it was admitted, so a\nreplay of it is refused (ADR-0013); \"7d\" where absent, and at least\n\"3d\", longer than any sender goes on retrying a delivery.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Duration"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "keep_ledger": {
+              "description": "How long a ledger entry, and where each of its deliveries to a\nfollower's inbox stands, is kept after a run last claimed it; \"90d\"\nwhere absent.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Keep"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "keep_notes": {
+              "description": "How long a Note herald's ActivityPub actors published is kept, and\nserved by its id; \"forever\" where absent.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Keep"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
             "key": {
               "description": "The secret holding a key to seal every record with, such as\n`HERALD_STORE_KEY`, so a record herald did not seal reads as corrupt\n(ADR-0005); records are not sealed where absent.",
               "anyOf": [
@@ -2192,6 +2434,39 @@
                 "null"
               ]
             },
+            "keep_deliveries": {
+              "description": "How long a webhook delivery's id is kept after it was admitted, so a\nreplay of it is refused (ADR-0013); \"7d\" where absent, and at least\n\"3d\", longer than any sender goes on retrying a delivery.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Duration"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "keep_ledger": {
+              "description": "How long a ledger entry, and where each of its deliveries to a\nfollower's inbox stands, is kept after a run last claimed it; \"90d\"\nwhere absent.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Keep"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "keep_notes": {
+              "description": "How long a Note herald's ActivityPub actors published is kept, and\nserved by its id; \"forever\" where absent.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Keep"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
             "key": {
               "description": "The secret holding the key every record is sealed with, such as\n`HERALD_STORE_KEY`: whoever can write the repository could otherwise\nforge records herald trusts (ADR-0005).",
               "$ref": "#/$defs/SecretRef"
@@ -2229,6 +2504,39 @@
           "description": "Generations of the GitHub Actions cache.",
           "type": "object",
           "properties": {
+            "keep_deliveries": {
+              "description": "How long a webhook delivery's id is kept after it was admitted, so a\nreplay of it is refused (ADR-0013); \"7d\" where absent, and at least\n\"3d\", longer than any sender goes on retrying a delivery.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Duration"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "keep_ledger": {
+              "description": "How long a ledger entry, and where each of its deliveries to a\nfollower's inbox stands, is kept after a run last claimed it; \"90d\"\nwhere absent.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Keep"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "keep_notes": {
+              "description": "How long a Note herald's ActivityPub actors published is kept, and\nserved by its id; \"forever\" where absent.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Keep"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
             "keeps": {
               "description": "What it keeps besides the ledger, cursors, schedules and deliveries:\nany of \"subscriptions\", \"pins\", \"notes\", \"latest\" and \"keys\". Each\nis rewritten with every other record on every write, and counts\nagainst the cache's quota; none where absent.",
               "type": "array",

@@ -70,8 +70,8 @@ source of `[sources]`: nothing is polled or hooked for it.
 prerelease as any source's events are. An app's events carry no version a
 route's `versions` can match, as feed entries do not.
 
-**The store keeps an app's deliveries under `app`** for a week (ADR-0013),
-beside the forges' and ActivityPub's.
+**The store keeps an app's deliveries under `app`** for `keep_deliveries`
+(ADR-0013), beside the forges' and ActivityPub's.
 
 ## Related
 

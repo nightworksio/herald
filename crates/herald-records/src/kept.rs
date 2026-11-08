@@ -36,6 +36,13 @@ struct Known {
     fetched: Timestamp,
 }
 
+/// A Note as it is kept: when it was published beside it.
+#[derive(Serialize, Deserialize)]
+struct Published {
+    note: String,
+    at: Timestamp,
+}
+
 /// A record read, with what replacing it must name.
 struct Read {
     token: String,
@@ -267,6 +274,13 @@ impl<R: Records> Inboxes for Kept<R> {
     async fn put_delivery(&self, key: &Key, inbox: &str, state: &State) -> Result<(), StoreError> {
         self.kept(&paths::inbox(key, inbox), state).await
     }
+
+    async fn forget_deliveries(&self, key: &Key) -> Result<(), StoreError> {
+        for path in self.records.list(&paths::inboxes(key)).await? {
+            self.removed(&path).await?;
+        }
+        Ok(())
+    }
 }
 
 impl<R: Records> Ledger for Kept<R> {
@@ -281,6 +295,20 @@ impl<R: Records> Ledger for Kept<R> {
     ) -> Result<Written, StoreError> {
         self.compare_and_set(&paths::entry(&entry.key), entry, expected)
             .await
+    }
+
+    async fn expire_entries(&self, before: Timestamp) -> Result<Vec<Key>, StoreError> {
+        let mut expired = Vec::new();
+        for path in self.records.list(paths::LEDGER).await? {
+            let Some(entry) = self.listed::<Entry>(&path).await? else {
+                continue;
+            };
+            if entry.value.expired(before) {
+                self.removed(&path).await?;
+                expired.push(entry.value.key);
+            }
+        }
+        Ok(expired)
     }
 }
 
@@ -379,13 +407,27 @@ impl<R: Records> Deliveries for Kept<R> {
 impl<R: Records> Notes for Kept<R> {
     async fn note(&self, key: &Key) -> Result<Option<String>, StoreError> {
         Ok(self
-            .record::<String>(&paths::note(key))
+            .record::<Published>(&paths::note(key))
             .await?
-            .map(|record| record.value))
+            .map(|record| record.value.note))
     }
 
-    async fn put_note(&self, key: &Key, note: &str) -> Result<(), StoreError> {
-        self.kept(&paths::note(key), &note).await
+    async fn put_note(&self, key: &Key, note: &str, at: Timestamp) -> Result<(), StoreError> {
+        let published = Published {
+            note: note.to_owned(),
+            at,
+        };
+        self.kept(&paths::note(key), &published).await
+    }
+
+    async fn expire_notes(&self, before: Timestamp) -> Result<(), StoreError> {
+        for path in self.records.list(paths::NOTES).await? {
+            let published = self.listed::<Published>(&path).await?;
+            if published.is_some_and(|published| published.value.at < before) {
+                self.removed(&path).await?;
+            }
+        }
+        Ok(())
     }
 }
 

@@ -258,7 +258,7 @@ impl<S: Store, C: Clock, G: Signer, H: Http> Run<'_, S, C, G, H> {
                     self.ports
                         .store
                         .notes()
-                        .put_note(&progress.entry.key, &published)
+                        .put_note(&progress.entry.key, &published, self.ports.clock.now())
                         .await
                         .map_err(stored)?;
                 }
@@ -480,8 +480,9 @@ impl<S: Store, C: Clock, G: Signer, H: Http> Run<'_, S, C, G, H> {
         let expected = record.as_ref().map(|record| record.version);
         let claimed = record
             .map_or_else(|| Entry::new(key), |record| record.value)
-            .claimed(
+            .claimed_by(
                 self.holder,
+                now,
                 now.checked_add(LEASE).unwrap_or(Timestamp::MAX),
             )
             .wanting(&wanted);

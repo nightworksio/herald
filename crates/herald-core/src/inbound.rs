@@ -20,9 +20,6 @@ pub const REPLAY_WINDOW: SignedDuration = SignedDuration::from_mins(5);
 /// keys signs with two or three.
 pub const MOST_SIGNATURES: usize = 4;
 
-/// How long a store keeps a delivery id it admitted: a week (ADR-0013).
-pub const DELIVERIES_KEPT: SignedDuration = SignedDuration::from_hours(168);
-
 /// Who signs a kind of inbound request, and how.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Scheme {

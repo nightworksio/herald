@@ -891,16 +891,18 @@ impl Served for Polling<'_> {
     }
 }
 
-/// Every chore that fell due, done through the routes connected.
+/// Every chore that fell due, done through the routes connected, after
+/// what the store keeps longer than `retention` says is forgotten.
 struct Housekeeping<'a> {
     connected: &'a Connected<Connection>,
+    retention: herald_core::Retention,
 }
 
 impl Served for Housekeeping<'_> {
     type Done = Result<Housekept, Stop>;
 
     async fn over<S: Keeps + Keyring>(self, store: &S) -> Self::Done {
-        housekeep(self.connected, store, &SystemClock).await
+        housekeep(self.connected, store, &SystemClock, &self.retention).await
     }
 }
 
@@ -963,6 +965,7 @@ async fn housekeeping(
         reached(config, vars, connect, Commands::Unanswered, &STORES).await?;
     let housekeeping = Housekeeping {
         connected: &connected,
+        retention: config.retention,
     };
     let kept = records
         .serve(&connected, housekeeping)
