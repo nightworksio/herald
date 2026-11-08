@@ -29,6 +29,7 @@ mod conformance {
         race: u32,
         fail: Option<(String, u16, String)>,
         refs: Option<u16>,
+        truncated: bool,
     }
 
     #[derive(Debug, Default)]
@@ -64,16 +65,23 @@ mod conformance {
             if let Some((sha, content)) = self.files.get(path) {
                 return answer(200, &json!({ "sha": sha, "content": content }));
             }
+            answer(404, &json!({}))
+        }
+
+        fn tree(&self, reference: &str) -> Response {
+            let Some(directory) = reference.strip_prefix("herald-state:") else {
+                return answer(400, &json!({}));
+            };
             let inside: Vec<Value> = self
                 .files
                 .keys()
-                .filter(|file| file.starts_with(&format!("{path}/")))
-                .map(|file| json!({ "path": file }))
+                .filter_map(|file| file.strip_prefix(&format!("{directory}/")))
+                .map(|name| json!({ "path": name, "type": "blob" }))
                 .collect();
-            if inside.is_empty() {
+            if !self.branch || inside.is_empty() {
                 answer(404, &json!({}))
             } else {
-                answer(200, &Value::Array(inside))
+                answer(200, &json!({ "tree": inside, "truncated": self.truncated }))
             }
         }
 
@@ -154,6 +162,11 @@ mod conformance {
             );
             let body: Value = serde_json::from_slice(&request.body).unwrap_or(Value::Null);
             let file = path.strip_prefix("/contents/").map(ToOwned::to_owned);
+            if let (Method::Get, Some(reference)) =
+                (request.method, path.strip_prefix("/git/trees/"))
+            {
+                return Ok(model.tree(reference));
+            }
             Ok(match (request.method, file) {
                 (Method::Get, Some(file)) => model.get(&file),
                 (Method::Put, Some(file)) => model.put(&file, &body),
@@ -176,6 +189,50 @@ mod conformance {
     fn the_store_passes_the_conformance_suite_and_makes_its_branch_on_first_write() {
         let github = store(GitHub::default());
         assert_eq!(pollster::block_on(store_conformance(&github)), Ok(()));
+    }
+
+    #[test]
+    fn a_directory_lists_past_a_thousand_records_and_a_part_listing_is_refused() {
+        let files: BTreeMap<String, (String, String)> = (0..1_001)
+            .map(|index| {
+                (
+                    format!("deliveries/app.{index}.json"),
+                    (format!("sha{index}"), String::new()),
+                )
+            })
+            .collect();
+        let model = Model {
+            branch: true,
+            files: files.clone(),
+            ..Model::default()
+        };
+        let github = store(GitHub {
+            model: Mutex::new(model),
+        });
+        let listed = pollster::block_on(herald_records::Records::list(
+            github.records(),
+            "deliveries",
+        ))
+        .unwrap();
+        assert_eq!(listed.len(), 1_001);
+        assert!(listed.contains(&"deliveries/app.1000.json".to_owned()));
+        let truncated = store(GitHub {
+            model: Mutex::new(Model {
+                branch: true,
+                files,
+                truncated: true,
+                ..Model::default()
+            }),
+        });
+        assert_eq!(
+            pollster::block_on(herald_records::Records::list(
+                truncated.records(),
+                "deliveries",
+            )),
+            Err(StoreError::Unavailable {
+                reason: "GitHub listed deliveries only in part".to_owned()
+            })
+        );
     }
 
     #[test]

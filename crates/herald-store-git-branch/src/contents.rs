@@ -12,6 +12,8 @@ const OK: u16 = 200;
 const MISSING: u16 = 404;
 const CONFLICT: u16 = 409;
 const UNPROCESSABLE: u16 = 422;
+/// What a file is, among a tree's entries.
+const BLOB: &str = "blob";
 /// What the branch's first commit holds, so the branch has a tree.
 const README: &str = "herald keeps its records on this branch, one file per record.\n";
 
@@ -21,9 +23,18 @@ struct Content {
     content: String,
 }
 
+/// A directory's tree, as the Git Trees API answers it.
+#[derive(Deserialize)]
+struct Tree {
+    tree: Vec<Listed>,
+    truncated: bool,
+}
+
 #[derive(Deserialize)]
 struct Listed {
     path: String,
+    #[serde(rename = "type")]
+    kind: String,
 }
 
 #[derive(Deserialize)]
@@ -132,7 +143,10 @@ impl<H: Http> Records for BranchRecords<H> {
 
     async fn list(&self, directory: &str) -> Result<Vec<String>, StoreError> {
         let branch = &self.branch;
-        let request = branch.contents(Method::Get, &format!("{directory}?ref={}", branch.branch));
+        let request = branch.request(
+            Method::Get,
+            &format!("/git/trees/{}:{directory}", branch.branch),
+        );
         let response = branch.send(&self.http, request).await?;
         if response.status == MISSING {
             return Ok(Vec::new());
@@ -140,9 +154,19 @@ impl<H: Http> Records for BranchRecords<H> {
         if response.status != OK {
             return Err(answered(&response));
         }
-        let listed: Vec<Listed> =
+        let tree: Tree =
             serde_json::from_slice(&response.body).map_err(|error| corrupt(directory, error))?;
-        Ok(listed.into_iter().map(|listed| listed.path).collect())
+        if tree.truncated {
+            return Err(unavailable(format!(
+                "GitHub listed {directory} only in part"
+            )));
+        }
+        Ok(tree
+            .tree
+            .into_iter()
+            .filter(|listed| listed.kind == BLOB)
+            .map(|listed| format!("{directory}/{}", listed.path))
+            .collect())
     }
 
     async fn write(

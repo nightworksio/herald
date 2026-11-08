@@ -65,24 +65,28 @@ impl State {
         if let Some((status, body)) = self.forge.get(path) {
             return answer(*status, &serde_json::from_str(body).unwrap_or(Value::Null));
         }
+        if let (Method::Get, Some(directory)) = (
+            method,
+            path.strip_prefix("/repos/cli/cli/git/trees/herald-state:"),
+        ) {
+            let inside: Vec<Value> = self
+                .files
+                .keys()
+                .filter_map(|path| path.strip_prefix(&format!("{directory}/")))
+                .map(|name| json!({ "path": name, "type": "blob" }))
+                .collect();
+            return if inside.is_empty() {
+                answer(404, &json!({}))
+            } else {
+                answer(200, &json!({ "tree": inside, "truncated": false }))
+            };
+        }
         match (method, file) {
             (Method::Get, Some(file)) => match self.files.get(&file) {
                 Some((sha, content)) if self.branch => {
                     answer(200, &json!({ "sha": sha, "content": content }))
                 }
-                _ => {
-                    let inside: Vec<Value> = self
-                        .files
-                        .keys()
-                        .filter(|path| path.starts_with(&format!("{file}/")))
-                        .map(|path| json!({ "path": path }))
-                        .collect();
-                    if inside.is_empty() {
-                        answer(404, &json!({}))
-                    } else {
-                        answer(200, &Value::Array(inside))
-                    }
-                }
+                _ => answer(404, &json!({})),
             },
             (Method::Delete, Some(file)) => {
                 self.files.remove(&file);
