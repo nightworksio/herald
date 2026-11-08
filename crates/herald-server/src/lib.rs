@@ -23,7 +23,6 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use futures_util::stream::{FuturesUnordered, StreamExt};
-use herald_config::Server;
 use herald_core::DestinationName;
 use herald_flows::{
     Answered, Housekept, Inbound, Job, Round, Running, Serving, Sessions, Stop, Swept, Worked,
@@ -57,14 +56,6 @@ fn named() -> String {
     format!("{RUN}/{}", herald_environment::nonce())
 }
 
-/// How long a connection may take to send a request's headers, and then
-/// its body, unless its limits say otherwise.
-pub const READ: Duration = Duration::from_secs(Server::READ.as_secs().unsigned_abs());
-/// How long a connection is held at most, its one request answered.
-const HELD: Duration = Duration::from_secs(Server::HELD.as_secs().unsigned_abs());
-/// How long the server waits before taking connections again after one
-/// could not be taken, so a lack of file descriptors does not spin it.
-const ACCEPT_PAUSE: Duration = Duration::from_millis(100);
 /// What a reply in words is.
 const TEXT: &str = "text/plain; charset=utf-8";
 /// What an answer to a host asking for a round is.
@@ -97,8 +88,10 @@ pub enum Heard {
 /// What the server takes on at once, and how often it does its rounds.
 #[derive(Debug, Clone, Copy)]
 pub struct Limits<'a> {
-    /// How many pieces of work run at once; as many again may wait.
+    /// How many pieces of work run at once.
     pub jobs: usize,
+    /// How many pieces of work may wait for a place.
+    pub queue: usize,
     /// How many connections are held at once; the next waits to be taken.
     pub connections: usize,
     /// The most bytes a request's body may hold.
@@ -112,6 +105,11 @@ pub struct Limits<'a> {
     /// How long a connection may take to send a request's headers, and then
     /// its body.
     pub read: Duration,
+    /// How long a connection is held at most, its one request answered.
+    pub held: Duration,
+    /// How long the server waits before taking connections again after one
+    /// could not be taken, so a lack of file descriptors does not spin it.
+    pub accept_pause: Duration,
     /// Where a host's own timers ask for rounds, where they do.
     pub asked: Option<Asked<'a>>,
     /// The secret a request for a round at `/herald/round/<kind>` carries;
@@ -365,7 +363,7 @@ where
     if let Some(job) = answered.job.take() {
         let Some(held) = queue.hold() else {
             unworked(serving, &job).await;
-            return Ok(sent(rounds, busy()));
+            return Ok(sent(rounds, busy(serving.config.server.busy_retry)));
         };
         held.fill(job);
     }
@@ -409,7 +407,13 @@ impl Rounds<'_> {
         let ports = serving.ports;
         once(&self.keeping, async {
             Some(Heard::Kept(
-                housekeep(serving.connected, ports.store, ports.clock).await,
+                housekeep(
+                    serving.connected,
+                    ports.store,
+                    ports.clock,
+                    &serving.config.retention,
+                )
+                .await,
             ))
         })
         .await
@@ -447,7 +451,7 @@ impl Rounds<'_> {
     }
 }
 
-/// The one request `stream` carries, answered, within [`HELD`].
+/// The one request `stream` carries, answered, within `limits.held`.
 async fn connection<S, C, G, V, H, P, K, T>(
     serving: &Serving<'_, S, C, G, V, H, P, K>,
     stream: T,
@@ -470,7 +474,7 @@ async fn connection<S, C, G, V, H, P, K, T>(
         .header_read_timeout(limits.read)
         .keep_alive(false)
         .serve_connection(TokioIo::new(stream), service);
-    let _ = tokio::time::timeout(HELD, served).await;
+    let _ = tokio::time::timeout(limits.held, served).await;
 }
 
 /// A round every `period`, the first a period from now.
@@ -532,7 +536,7 @@ pub async fn serve<S, C, G, V, H, P, K, L, So>(
         sweeping: AtomicBool::new(false),
         heard,
     };
-    let queue = Queue::new(limits.jobs);
+    let queue = Queue::new(limits.queue);
     let mut connections = FuturesUnordered::new();
     let mut running: FuturesUnordered<Pin<Box<dyn Future<Output = Option<Heard>> + '_>>> =
         FuturesUnordered::new();
@@ -563,7 +567,7 @@ pub async fn serve<S, C, G, V, H, P, K, L, So>(
                 Ok(stream) => connections.push(connection(serving, stream, &queue, limits, &rounding)),
                 Err(error) => {
                     heard(Heard::Unaccepted(error.to_string()));
-                    tokio::time::sleep(ACCEPT_PAUSE).await;
+                    tokio::time::sleep(limits.accept_pause).await;
                 }
             },
             () = queue.queued.notified() => {}

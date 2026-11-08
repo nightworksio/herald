@@ -3,17 +3,23 @@ use std::fmt;
 use std::sync::Arc;
 use std::time::Duration;
 
-use herald_ports::{Http, HttpError, Method, Request, Response};
+use herald_ports::{Http, HttpError, Method, Outbound, Proxy, Request, Response, Roots};
+use jiff::SignedDuration;
 use rustls::crypto::CryptoProvider;
+use rustls::pki_types::CertificateDer;
+use rustls::pki_types::pem::PemObject as _;
 use rustls::{ClientConfig, RootCertStore};
 use url::Url;
 
 use herald_compose::{Reach, ReachError};
 
-/// How long a connection may take to open.
-pub(crate) const CONNECT: Duration = Duration::from_secs(10);
-/// How long a request may take, from sending it to the end of its response.
-pub(crate) const TOTAL: Duration = Duration::from_secs(30);
+/// How long a connection may take to open where no config says.
+pub(crate) const CONNECT: Duration = duration(Outbound::CONNECT);
+
+/// `span` as a standard duration, its sign dropped.
+pub(crate) const fn duration(span: SignedDuration) -> Duration {
+    span.unsigned_abs()
+}
 
 /// Why the HTTP client could not be built.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -49,27 +55,43 @@ impl fmt::Display for ConnectError {
 pub struct NativeHttp {
     client: reqwest::Client,
     reach: Reach,
+    body: usize,
 }
 
 impl NativeHttp {
-    /// A client reaching only `reach`.
+    /// A client reaching only `reach`, within `outbound`'s bounds, through
+    /// its proxy and trusting its roots beside the Mozilla roots.
     ///
     /// # Errors
     ///
-    /// When TLS or the client cannot be set up.
-    pub fn new(reach: Reach) -> Result<Self, BuildError> {
-        let tls = tls(rustls::crypto::ring::default_provider())?;
-        Self::built(reach, Some(tls), CONNECT, Some(TOTAL))
+    /// When TLS, the proxy or the client cannot be set up.
+    pub fn new(reach: Reach, outbound: &Outbound) -> Result<Self, BuildError> {
+        let tls = trusting(
+            rustls::crypto::ring::default_provider(),
+            outbound.roots.as_ref(),
+        )?;
+        let builder = proxied(reqwest::Client::builder(), &outbound.proxy)?;
+        client(
+            builder,
+            Some(tls),
+            duration(outbound.connect),
+            Some(duration(outbound.total)),
+        )
+        .map(|client| Self {
+            client,
+            reach,
+            body: outbound.body,
+        })
     }
 
-    /// A client reaching only the origin of `base`.
+    /// A client reaching only the origin of `base`, within `outbound`.
     ///
     /// # Errors
     ///
     /// When `base` may not be reached, or the client cannot be built.
-    pub fn reaching(base: &str) -> Result<Self, ConnectError> {
+    pub fn reaching(base: &str, outbound: &Outbound) -> Result<Self, ConnectError> {
         let reach = Reach::new([base]).map_err(ConnectError::Reach)?;
-        Self::new(reach).map_err(ConnectError::Build)
+        Self::new(reach, outbound).map_err(ConnectError::Build)
     }
 
     /// A client reaching only the origin of `base`, with no bound on how
@@ -92,7 +114,11 @@ impl NativeHttp {
         total: Option<Duration>,
     ) -> Result<Self, BuildError> {
         let client = client(reqwest::Client::builder(), tls, connect, total)?;
-        Ok(Self { client, reach })
+        Ok(Self {
+            client,
+            reach,
+            body: Outbound::BODY,
+        })
     }
 }
 
@@ -119,12 +145,47 @@ pub(crate) fn client(
         .map_err(|error| BuildError(chain(&error)))
 }
 
+/// `builder` going through `proxy`.
+fn proxied(
+    builder: reqwest::ClientBuilder,
+    proxy: &Proxy,
+) -> Result<reqwest::ClientBuilder, BuildError> {
+    match proxy {
+        Proxy::Environment => Ok(builder),
+        Proxy::None => Ok(builder.no_proxy()),
+        Proxy::At(url) => reqwest::Proxy::all(url)
+            .map(|proxy| builder.proxy(proxy))
+            .map_err(|error| BuildError(chain(&error))),
+    }
+}
+
 pub(crate) fn tls(provider: CryptoProvider) -> Result<ClientConfig, BuildError> {
-    let roots: RootCertStore = webpki_roots::TLS_SERVER_ROOTS.iter().cloned().collect();
+    trusting(provider, None)
+}
+
+/// TLS trusting the Mozilla roots, and `roots` beside them.
+pub(crate) fn trusting(
+    provider: CryptoProvider,
+    roots: Option<&Roots>,
+) -> Result<ClientConfig, BuildError> {
+    let trusted = trusted(roots)?;
     let config = ClientConfig::builder_with_provider(Arc::new(provider))
         .with_safe_default_protocol_versions()
         .map_err(|error| BuildError(error.to_string()))?;
-    Ok(config.with_root_certificates(roots).with_no_client_auth())
+    Ok(config.with_root_certificates(trusted).with_no_client_auth())
+}
+
+/// The Mozilla roots, and `roots` beside them.
+pub(crate) fn trusted(roots: Option<&Roots>) -> Result<RootCertStore, BuildError> {
+    let mut trusted: RootCertStore = webpki_roots::TLS_SERVER_ROOTS.iter().cloned().collect();
+    if let Some(roots) = roots {
+        let unread = |error: &dyn fmt::Display| BuildError(format!("{}: {error}", roots.file));
+        for certificate in CertificateDer::pem_slice_iter(roots.pem.as_bytes()) {
+            let certificate = certificate.map_err(|error| unread(&error))?;
+            trusted.add(certificate).map_err(|error| unread(&error))?;
+        }
+    }
+    Ok(trusted)
 }
 
 fn method(method: Method) -> reqwest::Method {
@@ -200,7 +261,7 @@ impl Http for NativeHttp {
                 url: request.url.redacted(),
             });
         };
-        sent(&self.client, request, url).await
+        sent(&self.client, request.within(self.body), url).await
     }
 }
 

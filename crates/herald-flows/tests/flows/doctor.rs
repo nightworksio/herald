@@ -266,3 +266,52 @@ fn commands_posted_to_herald_need_an_endpoint_and_sessions_need_herald_server() 
     );
     assert_eq!(gap_keys(&doctor(&held, served)), Vec::<String>::new());
 }
+
+/// A change to a config that sets one bound above its default.
+type Loosening = fn(&mut herald_config::Config);
+
+#[test]
+fn each_bound_set_above_its_default_is_noted_by_its_key() {
+    let keyed = || {
+        on(
+            "git-branch",
+            "[markers]\nkey = { secret = \"HERALD_MARKER_SECRET\" }\n",
+        )
+    };
+    let loosen: [(&str, Loosening); 9] = [
+        ("server.body", |config| config.server.body += 1),
+        ("server.inbound.replay_window", |config| {
+            config.server.inbound.replay_window += jiff::SignedDuration::from_secs(1);
+        }),
+        ("server.inbound.signatures", |config| {
+            config.server.inbound.signatures += 1;
+        }),
+        ("server.inbound.covered", |config| {
+            config.server.inbound.covered += 1;
+        }),
+        ("server.keys.document", |config| {
+            config.server.inbound.document += 1;
+        }),
+        ("http.body", |config| config.http.body += 1),
+        ("render.fuel", |config| config.render.fuel += 1),
+        ("render.recursion", |config| config.render.recursion += 1),
+        ("render.output", |config| config.render.output += 1),
+    ];
+    for (key, loosened) in loosen {
+        let mut config = keyed();
+        loosened(&mut config);
+        let notes = doctor(&config, layer(&STORES)).notes;
+        assert_eq!(notes.len(), 1, "{key}: {notes:?}");
+        assert!(
+            notes[0].starts_with(&format!("{key} is set above its default, so ")),
+            "{notes:?}"
+        );
+    }
+    let mut tightened = keyed();
+    tightened.server.inbound.replay_window = jiff::SignedDuration::from_mins(1);
+    tightened.render.output = 1024;
+    assert_eq!(
+        doctor(&tightened, layer(&STORES)).notes,
+        Vec::<String>::new()
+    );
+}

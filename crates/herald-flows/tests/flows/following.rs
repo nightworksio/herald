@@ -1,5 +1,5 @@
 use herald_core::{DestinationName, Facts, Sent};
-use herald_flows::{FollowError, Followed, Verified, followed, prepare};
+use herald_flows::{Checking, FollowError, Followed, Verified, followed, prepare};
 use herald_ports::Subscriptions;
 use herald_testing::{FakeSecrets, FakeSigner};
 
@@ -59,7 +59,10 @@ fn taken(
         &connected,
         store,
         &FakeSigner,
-        NOON,
+        Checking {
+            now: NOON,
+            bounds: &herald_core::Inbound::DEFAULT,
+        },
         verified,
         body,
     ))

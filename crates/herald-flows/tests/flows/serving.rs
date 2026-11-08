@@ -1,8 +1,8 @@
 use herald_config::{Config, load};
 use herald_core::{Key, RouteId, Scheme, Step};
 use herald_flows::{
-    Answered, BUSY_RETRY, Connected, FollowError, Followed, Inbound, Job, Keys, Outcome, Ports,
-    Serving, Webhooks, Worked, answer, busy, prepare, unworked, webhooks, work,
+    Answered, Connected, FollowError, Followed, Inbound, Job, Keys, Outcome, Ports, Serving,
+    Webhooks, Worked, answer, busy, prepare, unworked, webhooks, work,
 };
 use herald_ports::{Admitted, Algorithm, CryptoError, Deliveries, Ledger, Notes, Secret, Signer};
 use herald_records::MemoryKeyring;
@@ -205,8 +205,22 @@ fn health_is_answered_and_every_path_herald_does_not_serve_is_not_found() {
 }
 
 #[test]
+fn every_path_is_served_under_the_base_and_none_outside_it() {
+    let mut world = World::new(Script::default());
+    world.config.server.base = "/tools/herald".to_owned();
+    assert_eq!(
+        said(&world.answer(&get("/tools/herald/healthz"))),
+        (200, "text/plain; charset=utf-8", "herald is up".to_owned())
+    );
+    for outside in ["/healthz", "/tools/heraldry/healthz", "/tools"] {
+        assert_eq!(said(&world.answer(&get(outside))).0, 404, "{outside}");
+    }
+    assert_eq!(said(&world.answer(&get("/tools/herald"))).0, 404);
+}
+
+#[test]
 fn work_with_no_place_is_refused_and_asked_to_wait() {
-    let refused = busy();
+    let refused = busy(jiff::SignedDuration::from_secs(30));
     assert_eq!(
         said(&refused),
         (
@@ -215,7 +229,15 @@ fn work_with_no_place_is_refused_and_asked_to_wait() {
             "herald cannot answer this request now".to_owned()
         )
     );
-    assert_eq!(refused.reply.retry_after, Some(BUSY_RETRY));
+    assert_eq!(refused.reply.retry_after, Some(30));
+    for (after, asked) in [
+        (jiff::SignedDuration::from_millis(1_500), 2),
+        (jiff::SignedDuration::from_millis(1), 1),
+        (jiff::SignedDuration::ZERO, 1),
+        (jiff::SignedDuration::from_hours(24 * 365 * 1_000), u32::MAX),
+    ] {
+        assert_eq!(busy(after).reply.retry_after, Some(asked), "{after:?}");
+    }
     assert_eq!(
         refused.refused.as_deref(),
         Some("the queue has no place for the work it leaves")
@@ -344,12 +366,30 @@ fn a_note_is_served_by_its_id_where_its_actor_published_it() {
     let path = format!("/users/php-mutation-gate/notes/{key}");
     assert_eq!(world.answer(&get(&path)).reply.status, 404);
     let note = format!(r#"{{"id":"{ACTOR}/notes/{key}","type":"Note"}}"#);
-    pollster::block_on(world.store.inner.put_note(&key, &note)).unwrap();
+    pollster::block_on(
+        world
+            .store
+            .inner
+            .put_note(&key, &note, crate::harness::NOON),
+    )
+    .unwrap();
     assert_eq!(said(&world.answer(&get(&path))), (200, JSON, note));
     let other = format!(r#"{{"id":"https://herald.example/users/other/notes/{key}"}}"#);
-    pollster::block_on(world.store.inner.put_note(&key, &other)).unwrap();
+    pollster::block_on(
+        world
+            .store
+            .inner
+            .put_note(&key, &other, crate::harness::NOON),
+    )
+    .unwrap();
     assert_eq!(world.answer(&get(&path)).reply.status, 404);
-    pollster::block_on(world.store.inner.put_note(&key, "not json")).unwrap();
+    pollster::block_on(
+        world
+            .store
+            .inner
+            .put_note(&key, "not json", crate::harness::NOON),
+    )
+    .unwrap();
     assert_eq!(world.answer(&get(&path)).reply.status, 404);
     assert_eq!(
         world

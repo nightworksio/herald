@@ -1,7 +1,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use herald_core::{
-    DestinationName, Kind, Profile, RecordKind, Route, RouteId, SecretRef, SourceName, Templates,
+    DestinationName, Inbound, Kind, Profile, RecordKind, Retention, Route, RouteId, Sandbox,
+    SecretRef, SourceName, Templates,
 };
 use herald_sources_forge::Forge;
 use herald_sources_registry::Registry;
@@ -12,6 +13,10 @@ use jiff::SignedDuration;
 pub struct Config {
     /// The store the ledger and the rest are kept in (ADR-0005).
     pub store: Store,
+    /// How long the store keeps what herald records.
+    pub retention: Retention,
+    /// How far a template may go as it renders.
+    pub render: Sandbox,
     /// The installation's marker key, where it is set (ADR-0011).
     pub marker_key: Option<SecretRef>,
     /// The destinations, by name.
@@ -27,8 +32,12 @@ pub struct Config {
     pub apps: BTreeMap<String, App>,
     /// The cadence of polling and housekeeping.
     pub schedule: Schedule,
+    /// How a run holds and keeps an announcement.
+    pub announce: Announce,
     /// How `herald server` listens, and what it takes on at once.
     pub server: Server,
+    /// How herald's own requests reach the services the config names.
+    pub http: herald_ports::Outbound,
 }
 
 impl Config {
@@ -481,6 +490,34 @@ pub struct App {
     pub routes: Vec<RouteId>,
 }
 
+/// How a run holds and keeps an announcement.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Announce {
+    /// How long a run holds an announcement it claimed before another run
+    /// may take it over.
+    pub lease: SignedDuration,
+    /// How often a run writes what a project last announced again when
+    /// another write lands between its read and its write.
+    pub latest_attempts: usize,
+}
+
+impl Announce {
+    /// The lease where the config says nothing.
+    pub const LEASE: SignedDuration = SignedDuration::from_mins(20);
+    /// How often what a project last announced is written where the config
+    /// says nothing.
+    pub const LATEST_ATTEMPTS: usize = 3;
+}
+
+impl Default for Announce {
+    fn default() -> Self {
+        Self {
+            lease: Self::LEASE,
+            latest_attempts: Self::LATEST_ATTEMPTS,
+        }
+    }
+}
+
 /// How often a driver that keeps its own schedule polls and keeps house.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct Schedule {
@@ -505,9 +542,14 @@ pub enum KeyCache {
 pub struct Server {
     /// The address it listens on.
     pub listen: String,
-    /// How many announcements it works on at once; a webhook arriving while
-    /// as many more wait is answered 503.
+    /// The path every endpoint is served under, as `/herald`; empty where
+    /// they are served at the root.
+    pub base: String,
+    /// How many announcements it works on at once.
     pub jobs: usize,
+    /// How many announcements may wait for a place; a webhook arriving while
+    /// as many wait is answered 503.
+    pub queue: usize,
     /// How many connections it holds at once.
     pub connections: usize,
     /// The most bytes an inbound request's body may hold.
@@ -532,6 +574,48 @@ pub struct Server {
     pub keys_reread: SignedDuration,
     /// The most keys kept in memory.
     pub keys_most: usize,
+    /// What a signed inbound request may carry and still be checked.
+    pub inbound: Inbound,
+    /// How long a request whose work found no place is asked to wait.
+    pub busy_retry: SignedDuration,
+    /// How long a connection may take to send a request's headers.
+    pub read: SignedDuration,
+    /// How long a connection is held at most, its one request answered.
+    pub held: SignedDuration,
+    /// How long the server waits after a connection could not be accepted.
+    pub accept_pause: SignedDuration,
+    /// How a session a destination holds waits before it connects again.
+    pub sessions: Reconnecting,
+}
+
+/// How a session a destination holds waits before it connects again: the
+/// first wait, doubled each time it is not taken up, up to the longest.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Reconnecting {
+    /// The first wait after a session fails to connect.
+    pub first_wait: SignedDuration,
+    /// The longest wait between attempts.
+    pub longest_wait: SignedDuration,
+    /// Whether each wait is between half of it and all of it, so sessions
+    /// that failed together do not all connect again at once.
+    pub jitter: bool,
+}
+
+impl Reconnecting {
+    /// The first wait where the config says nothing.
+    pub const FIRST_WAIT: SignedDuration = SignedDuration::from_secs(1);
+    /// The longest wait where the config says nothing.
+    pub const LONGEST_WAIT: SignedDuration = SignedDuration::from_mins(1);
+}
+
+impl Default for Reconnecting {
+    fn default() -> Self {
+        Self {
+            first_wait: Self::FIRST_WAIT,
+            longest_wait: Self::LONGEST_WAIT,
+            jitter: true,
+        }
+    }
 }
 
 impl Server {
@@ -545,6 +629,8 @@ impl Server {
     pub const CONNECTIONS: usize = 256;
     /// The most bytes a body may hold where the config says nothing: 1 MiB.
     pub const BODY: usize = 1 << 20;
+    /// The most bytes a config may let a body hold: four times the default.
+    pub const BODY_MOST: usize = Self::BODY * 4;
     /// How many actor documents it reads at once where the config says
     /// nothing.
     pub const FETCHES: usize = 4;
@@ -570,6 +656,12 @@ impl Server {
     pub const READ: SignedDuration = SignedDuration::from_secs(30);
     /// How long a connection is held at most, its one request answered.
     pub const HELD: SignedDuration = SignedDuration::from_secs(90);
+    /// How long a request whose work found no place is asked to wait where
+    /// the config says nothing.
+    pub const BUSY_RETRY: SignedDuration = SignedDuration::from_secs(30);
+    /// How long the server waits after a connection could not be accepted
+    /// where the config says nothing.
+    pub const ACCEPT_PAUSE: SignedDuration = SignedDuration::from_millis(100);
 }
 
 impl Server {
@@ -585,7 +677,9 @@ impl Default for Server {
     fn default() -> Self {
         Self {
             listen: Self::LISTEN.to_owned(),
+            base: String::new(),
             jobs: Self::JOBS,
+            queue: Self::JOBS,
             connections: Self::CONNECTIONS,
             body: Self::BODY,
             fetches: Self::FETCHES,
@@ -596,6 +690,12 @@ impl Default for Server {
             keys_refreshed: Self::KEYS_REFRESHED,
             keys_reread: Self::KEYS_REREAD,
             keys_most: Self::KEYS_MOST,
+            inbound: Inbound::DEFAULT,
+            busy_retry: Self::BUSY_RETRY,
+            read: Self::READ,
+            held: Self::HELD,
+            accept_pause: Self::ACCEPT_PAUSE,
+            sessions: Reconnecting::default(),
         }
     }
 }

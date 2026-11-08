@@ -45,9 +45,12 @@ id it carried the first time.
 2. **A delivery that fails is released.** When processing a fresh delivery
    fails, its id is released, so the sender's next delivery of it is
    admitted. A delivery that succeeded stays admitted.
-3. **An id is kept for a week.** Housekeeping expires every id admitted more
-   than `DELIVERIES_KEPT`, seven days, before it runs. A replay older than
-   that verifies, is admitted, and is skipped by the ledger.
+3. **An id is kept for a week.** Housekeeping expires every id admitted
+   longer ago than `[store] keep_deliveries`, seven days where it is
+   absent, before it runs. A replay older than that verifies, is admitted,
+   and is skipped by the ledger. `keep_deliveries` is at least three days,
+   longer than any sender herald admits from goes on retrying a delivery:
+   Mastodon's sixteen retries span about two.
 4. **A store that keeps no deliveries says so.** A store answers its
    deliveries through `Store::deliveries`, and `None` where it keeps none.
    Every store built on the records kit keeps them, and the markers store

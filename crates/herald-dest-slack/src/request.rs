@@ -1,7 +1,7 @@
 use std::fmt;
 
 use herald_core::{Announcement, Dialect, Entry, Step, safe_url};
-use herald_ports::{Method, Request, Text, USER_AGENT};
+use herald_ports::{Method, Request, Text, USER_AGENT, unreserved};
 use serde_json::{Value, json};
 
 use crate::interact::subscribe_block;
@@ -87,20 +87,6 @@ pub(crate) fn call(slack: &Slack, method: WebMethod, body: &Value) -> Request {
         Text::plain(format!("{}/{}", slack.api, method.name)),
         body,
     )
-}
-
-/// `text` as one part of a URL's query: every byte but the unreserved ones
-/// percent-encoded.
-pub(crate) fn query(text: &str) -> String {
-    use std::fmt::Write as _;
-    text.bytes().fold(String::new(), |mut encoded, byte| {
-        if byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'.' | b'_' | b'~') {
-            encoded.push(char::from(byte));
-        } else {
-            let _ = write!(encoded, "%{byte:02X}");
-        }
-        encoded
-    })
 }
 
 /// Whether `user` is written as a Slack user id, so it can be mentioned.
@@ -285,5 +271,9 @@ pub(crate) fn pin(slack: &Slack, method: WebMethod, channel: &str, ts: &str) -> 
 
 /// The read of the channel's pins.
 pub(crate) fn pins(slack: &Slack, channel: &str) -> Request {
-    get(slack, PINS_LIST, &format!("channel={}", query(channel)))
+    get(
+        slack,
+        PINS_LIST,
+        &format!("channel={}", unreserved(channel)),
+    )
 }

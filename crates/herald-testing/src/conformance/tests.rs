@@ -11,6 +11,14 @@ use crate::FakeStore;
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Fault {
     OverwritesEntries,
+    KeepsExpiredEntries,
+    ExpiresEveryClaimedEntry,
+    ExpiresUnclaimedEntries,
+    AnswersNoExpiredKey,
+    KeepsForgottenDeliveries,
+    ForgetsEveryAnnouncement,
+    KeepsExpiredNotes,
+    ExpiresEveryNote,
     RefusesWrites,
     OverwritesCursors,
     DuplicatesSchedules,
@@ -42,6 +50,7 @@ enum Fault {
 struct Faulty {
     fault: Fault,
     inner: FakeStore,
+    hidden: std::sync::Mutex<Vec<Key>>,
 }
 
 fn broken() -> StoreError {
@@ -55,6 +64,7 @@ impl Faulty {
         Self {
             fault,
             inner: FakeStore::default(),
+            hidden: std::sync::Mutex::default(),
         }
     }
 
@@ -94,6 +104,18 @@ impl Inboxes for Faulty {
         }
         self.inner.put_delivery(key, inbox, state).await
     }
+
+    async fn forget_deliveries(&self, key: &Key) -> Result<(), StoreError> {
+        self.refuses()?;
+        match self.fault {
+            Fault::KeepsForgottenDeliveries => Ok(()),
+            Fault::ForgetsEveryAnnouncement => {
+                self.inner.forget_deliveries(key).await?;
+                self.inner.forget_deliveries(&super::key("other")).await
+            }
+            _ => self.inner.forget_deliveries(key).await,
+        }
+    }
 }
 
 impl Ledger for Faulty {
@@ -108,7 +130,7 @@ impl Ledger for Faulty {
 
     async fn entry(&self, key: &Key) -> Result<Option<Versioned<Entry>>, StoreError> {
         self.refuses()?;
-        if self.fault == Fault::Derives {
+        if self.fault == Fault::Derives || crate::lock(&self.hidden).contains(key) {
             return Ok(None);
         }
         self.inner.entry(key).await
@@ -137,6 +159,23 @@ impl Ledger for Faulty {
             _ => expected,
         };
         self.inner.put_entry(entry, expected).await
+    }
+
+    async fn expire_entries(&self, before: Timestamp) -> Result<Vec<Key>, StoreError> {
+        self.refuses()?;
+        match self.fault {
+            Fault::KeepsExpiredEntries => Ok(Vec::new()),
+            Fault::ExpiresEveryClaimedEntry => self.inner.expire_entries(Timestamp::MAX).await,
+            Fault::AnswersNoExpiredKey => {
+                self.inner.expire_entries(before).await?;
+                Ok(Vec::new())
+            }
+            Fault::ExpiresUnclaimedEntries => {
+                crate::lock(&self.hidden).push(super::key("first"));
+                self.inner.expire_entries(before).await
+            }
+            _ => self.inner.expire_entries(before).await,
+        }
     }
 }
 
@@ -282,7 +321,7 @@ impl Notes for Faulty {
         self.inner.note(&key).await
     }
 
-    async fn put_note(&self, key: &Key, note: &str) -> Result<(), StoreError> {
+    async fn put_note(&self, key: &Key, note: &str, at: Timestamp) -> Result<(), StoreError> {
         self.refuses()?;
         let key = match self.fault {
             Fault::SharesNotes => super::key("shared"),
@@ -292,7 +331,16 @@ impl Notes for Faulty {
         if self.fault == Fault::KeepsTheFirstNote && kept.is_some() {
             return Ok(());
         }
-        self.inner.put_note(&key, note).await
+        self.inner.put_note(&key, note, at).await
+    }
+
+    async fn expire_notes(&self, before: Timestamp) -> Result<(), StoreError> {
+        self.refuses()?;
+        match self.fault {
+            Fault::KeepsExpiredNotes => Ok(()),
+            Fault::ExpiresEveryNote => self.inner.expire_notes(Timestamp::MAX).await,
+            _ => self.inner.expire_notes(before).await,
+        }
     }
 }
 
@@ -484,9 +532,15 @@ fn a_store_keeping_nothing_passes_when_it_says_so() {
     assert_eq!(run(Fault::KeepsNothing), Ok(()));
 }
 
+fn refused(cases: &[(Fault, &str)]) {
+    for (fault, failure) in cases {
+        assert_eq!(run(*fault), Err(Failure((*failure).to_owned())));
+    }
+}
+
 #[test]
-fn a_store_that_breaks_its_promises_is_refused() {
-    let cases = [
+fn a_store_that_breaks_its_promises_on_the_run_s_records_is_refused() {
+    refused(&[
         (
             Fault::SkipsWhatItNeverHeld,
             "a store holding no record skipped one",
@@ -494,6 +548,22 @@ fn a_store_that_breaks_its_promises_is_refused() {
         (
             Fault::OverwritesEntries,
             "an entry was written as new over one that exists",
+        ),
+        (
+            Fault::KeepsExpiredEntries,
+            "an entry no run has claimed since the expiry was kept",
+        ),
+        (
+            Fault::ExpiresEveryClaimedEntry,
+            "an entry claimed at the expiry was forgotten",
+        ),
+        (
+            Fault::ExpiresUnclaimedEntries,
+            "an entry no run ever claimed was forgotten",
+        ),
+        (
+            Fault::AnswersNoExpiredKey,
+            "expiring entries did not answer the key of each entry it forgot",
         ),
         (
             Fault::RefusesWrites,
@@ -532,6 +602,20 @@ fn a_store_that_breaks_its_promises_is_refused() {
             "a delivery to an inbox was not the state written last",
         ),
         (
+            Fault::KeepsForgottenDeliveries,
+            "a delivery of an announcement whose deliveries were forgotten was kept",
+        ),
+        (
+            Fault::ForgetsEveryAnnouncement,
+            "forgetting one announcement's deliveries forgot another's",
+        ),
+    ]);
+}
+
+#[test]
+fn a_store_that_breaks_its_promises_on_the_served_records_is_refused() {
+    refused(&[
+        (
             Fault::AdmitsTwice,
             "a delivery admitted before was fresh again",
         ),
@@ -560,6 +644,14 @@ fn a_store_that_breaks_its_promises_is_refused() {
             "an announcement's note was not the one written last",
         ),
         (
+            Fault::KeepsExpiredNotes,
+            "a note published before the expiry was kept",
+        ),
+        (
+            Fault::ExpiresEveryNote,
+            "a note published at the expiry was forgotten",
+        ),
+        (
             Fault::OverwritesLatest,
             "what a project last announced was written over a version it did not expect",
         ),
@@ -571,10 +663,7 @@ fn a_store_that_breaks_its_promises_is_refused() {
             Fault::ListsAnUnwrittenLatest,
             "a new store holds what a project last announced",
         ),
-    ];
-    for (fault, failure) in cases {
-        assert_eq!(run(fault), Err(Failure(failure.to_owned())));
-    }
+    ]);
 }
 
 #[test]

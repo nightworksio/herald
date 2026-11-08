@@ -27,19 +27,22 @@ use herald_flows::{
     Announced, Chored, Connected, Findings, Gap, Housekept, Outcome, Ports, Remembered, Stop,
     Sweep, Swept, announce_within, doctor, housekeep, keys, poll, prepare, preview,
 };
-use herald_native::{ConnectError, NativeHttp, PublicHttp, random_secret};
-use herald_ports::{Http, HttpError, Keyring, PUBLIC, Request, Response, Secrets, Store as Keeps};
+use herald_native::random_secret;
+use herald_ports::{Http, HttpError, Keyring, Request, Response, Secrets, Store as Keeps};
 use herald_records::Memory;
 use herald_sources_forge::{Forge, Origin, Repository, SourceOptions, Token};
 
 mod apps;
 mod cli;
+mod connect;
 mod health;
 mod lambda;
 mod output;
 mod serving;
 mod setup;
 mod stores;
+
+pub use connect::{Connect, Connection, Connector, NATIVE, native, waiting};
 
 use cli::{
     Cli, Command, Discording, From, Layer, Matrixing, Reading, Serve, Setting, Slacking, Tokens,
@@ -69,105 +72,12 @@ const RUNTIME_TOKEN: &str = "ACTIONS_RUNTIME_TOKEN";
 const JOB_TOKEN: &str = "CI_JOB_TOKEN";
 /// Where `herald server` listens, in place of the config's.
 const LISTEN: &str = "HERALD_LISTEN";
+/// What bounds a request's whole time, in milliseconds, in place of the
+/// config's `[http] total`.
+const TIMEOUT_MS: &str = "HERALD_TIMEOUT_MS";
 /// The fewest characters of a value scrubbed from output: a shorter one
 /// would rewrite ordinary words, and is no credential.
 const SCRUBBED: usize = 8;
-
-type Sending<'a> = Pin<Box<dyn Future<Output = Result<Response, HttpError>> + Send + 'a>>;
-
-trait Sends: Send + Sync {
-    fn sending(&self, request: Request) -> Sending<'_>;
-}
-
-impl<H: Http + Send> Sends for H {
-    fn sending(&self, request: Request) -> Sending<'_> {
-        Box::pin(self.send(request))
-    }
-}
-
-/// One base URL's `Http`, whatever reaches it.
-#[derive(Clone)]
-pub struct Connection(Arc<dyn Sends>);
-
-impl Connection {
-    /// The connection `http` makes.
-    pub fn new(http: impl Http + Send + 'static) -> Self {
-        Self(Arc::new(http))
-    }
-}
-
-impl Http for Connection {
-    fn send(&self, request: Request) -> impl Future<Output = Result<Response, HttpError>> + Send {
-        self.0.sending(request)
-    }
-}
-
-/// A function making a connection to a base URL.
-type Making<'a> = &'a (dyn Fn(&str) -> Result<Connection, String> + Send + Sync);
-
-/// What makes connections: to a base URL's origin, each request bounded in
-/// time, and to Lambda's runtime API, which holds a request open until an
-/// invocation arrives.
-pub struct Connector<'a> {
-    reaching: Making<'a>,
-    waiting: Making<'a>,
-}
-
-impl<'a> Connector<'a> {
-    /// Connections made by `reaching`, and by `waiting` for Lambda's
-    /// runtime API.
-    #[must_use]
-    pub const fn new(reaching: Making<'a>, waiting: Making<'a>) -> Self {
-        Self { reaching, waiting }
-    }
-
-    /// The connection to `base`.
-    ///
-    /// # Errors
-    ///
-    /// When `base` may not be reached.
-    pub fn reach(&self, base: &str) -> Result<Connection, String> {
-        (self.reaching)(base)
-    }
-
-    fn wait(&self, base: &str) -> Result<Connection, String> {
-        (self.waiting)(base)
-    }
-}
-
-/// The native binary's connections.
-pub const NATIVE: Connector<'static> = Connector::new(&native, &waiting);
-
-/// What makes the connections a run needs.
-pub type Connect<'a> = &'a Connector<'a>;
-
-/// The native connection to Lambda's runtime API at `base`, which bounds
-/// no answer's time, as the runtime holds a request until an invocation
-/// arrives.
-///
-/// # Errors
-///
-/// When `base` may not be reached, or the client cannot be built.
-pub fn waiting(base: &str) -> Result<Connection, String> {
-    worded(NativeHttp::waiting(base).map(Connection::new))
-}
-
-/// The native connection to `base`: one reaching only its origin, or, for
-/// [`PUBLIC`], one reaching any public address (ADR-0007).
-///
-/// # Errors
-///
-/// When `base` may not be reached, or the client cannot be built.
-pub fn native(base: &str) -> Result<Connection, String> {
-    let connection = if base == PUBLIC {
-        PublicHttp::new()
-            .map(Connection::new)
-            .map_err(ConnectError::Build)
-    } else {
-        NativeHttp::reaching(base).map(Connection::new)
-    };
-    worded(connection)
-}
 
 /// `made`, its error worded as herald says it.
 fn worded<T>(made: Result<T, impl Display>) -> Result<T, String> {
@@ -213,7 +123,7 @@ pub async fn run_until(
     err: &mut dyn Write,
     stop: impl Future<Output = ()>,
 ) -> u8 {
-    stopping(args, vars, connect, out, err, Box::pin(stop)).await
+    Box::pin(stopping(args, vars, connect, out, err, Box::pin(stop))).await
 }
 
 /// [`run_until`] with `stop` boxed, so one CLI serves whatever stops it.
@@ -255,6 +165,13 @@ async fn stopping(
             return MISTAKEN;
         }
     };
+    let within = connect.within(
+        config
+            .http
+            .clone()
+            .timed(vars.get(TIMEOUT_MS).map(String::as_str)),
+    );
+    let connect = &within;
     let hidden = hidden(&config, vars);
     masked(&hidden, vars, out);
     let out = &mut Scrubbing::new(out, &hidden);
@@ -390,7 +307,15 @@ pub async fn run(
     out: &mut dyn Write,
     err: &mut dyn Write,
 ) -> u8 {
-    run_until(args, vars, connect, out, err, std::future::pending()).await
+    Box::pin(run_until(
+        args,
+        vars,
+        connect,
+        out,
+        err,
+        std::future::pending(),
+    ))
+    .await
 }
 
 fn read(path: &str) -> Result<Config, String> {
@@ -849,16 +774,18 @@ impl Served for Polling<'_> {
     }
 }
 
-/// Every chore that fell due, done through the routes connected.
+/// Every chore that fell due, done through the routes connected, after
+/// what the store keeps longer than `retention` says is forgotten.
 struct Housekeeping<'a> {
     connected: &'a Connected<Connection>,
+    retention: herald_core::Retention,
 }
 
 impl Served for Housekeeping<'_> {
     type Done = Result<Housekept, Stop>;
 
     async fn over<S: Keeps + Keyring>(self, store: &S) -> Self::Done {
-        housekeep(self.connected, store, &SystemClock).await
+        housekeep(self.connected, store, &SystemClock, &self.retention).await
     }
 }
 
@@ -921,6 +848,7 @@ async fn housekeeping(
         reached(config, vars, connect, Commands::Unanswered, &STORES).await?;
     let housekeeping = Housekeeping {
         connected: &connected,
+        retention: config.retention,
     };
     let kept = records
         .serve(&connected, housekeeping)

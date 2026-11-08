@@ -1,6 +1,7 @@
 use std::fmt;
 use std::future::Future;
 
+use crate::outbound::Outbound;
 use crate::secret::Text;
 
 /// An HTTP method.
@@ -57,7 +58,7 @@ impl Request {
             url,
             headers: Vec::new(),
             body: Vec::new(),
-            most: BODY_LIMIT,
+            most: Outbound::BODY_MOST,
         }
     }
 
@@ -79,7 +80,15 @@ impl Request {
     /// none of a response that says it is longer.
     #[must_use]
     pub fn at_most(mut self, bytes: usize) -> Self {
-        self.most = bytes.min(BODY_LIMIT);
+        self.most = bytes.min(Outbound::BODY_MOST);
+        self
+    }
+
+    /// The request reading no more than `body` bytes of its response's
+    /// body, nor more than it already reads.
+    #[must_use]
+    pub fn within(mut self, body: usize) -> Self {
+        self.most = self.most.min(body);
         self
     }
 }
@@ -124,11 +133,6 @@ impl fmt::Display for Request {
         Ok(())
     }
 }
-
-/// The most bytes of a response body herald reads, unless a request reads
-/// fewer: the npm registry's packument of a long-lived package is the
-/// largest answer it asks for.
-pub const BODY_LIMIT: usize = 33_554_432;
 
 /// The base a destination names when it reaches any public address rather
 /// than one origin, as an ActivityPub actor's deliveries to its followers'
@@ -204,10 +208,43 @@ pub trait Http: Sync {
     fn send(&self, request: Request) -> impl Future<Output = Result<Response, HttpError>> + Send;
 }
 
+/// `text` with every byte but a URL's unreserved ones percent-encoded, fit
+/// for one segment of a path or one value of a query.
+#[must_use]
+pub fn unreserved(text: &str) -> String {
+    use std::fmt::Write as _;
+    text.bytes().fold(String::new(), |mut encoded, byte| {
+        if byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'.' | b'_' | b'~') {
+            encoded.push(char::from(byte));
+        } else {
+            let _ = write!(encoded, "%{byte:02X}");
+        }
+        encoded
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::secret::Secret;
+
+    #[test]
+    fn a_request_reads_no_more_than_its_cap_its_ask_and_the_ceiling() {
+        let request = || Request::new(Method::Get, Text::plain("https://example.org"));
+        assert_eq!(request().most, Outbound::BODY_MOST);
+        assert_eq!(request().at_most(usize::MAX).most, Outbound::BODY_MOST);
+        assert_eq!(request().at_most(10).most, 10);
+        assert_eq!(request().within(Outbound::BODY).most, Outbound::BODY);
+        assert_eq!(request().at_most(10).within(20).most, 10);
+        assert_eq!(request().at_most(20).within(10).most, 10);
+    }
+
+    #[test]
+    fn every_byte_but_a_url_s_unreserved_ones_is_percent_encoded() {
+        assert_eq!(unreserved("aZ09-._~"), "aZ09-._~");
+        assert_eq!(unreserved("a b/c?d&é"), "a%20b%2Fc%3Fd%26%C3%A9");
+        assert_eq!(unreserved(""), "");
+    }
 
     #[test]
     fn each_method_is_spelled_as_http_spells_it() {

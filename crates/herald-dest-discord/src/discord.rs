@@ -1,6 +1,6 @@
 use herald_core::{
     Announcement, Chore, Delivery, Dialect, Entry, Features, Limits, Measure, MentionStyle, Pins,
-    Profile, Sent, Step, Threads,
+    Profile, ReadBack, Sent, Step, Threads,
 };
 use herald_ports::{Http, HttpError, Request, Secret};
 
@@ -27,6 +27,7 @@ pub struct Discord {
     pub(crate) api: String,
     pub(crate) credential: Credential,
     pub(crate) route: RouteOptions,
+    pub(crate) read_back: ReadBack,
 }
 
 impl Discord {
@@ -38,7 +39,14 @@ impl Discord {
             api: api.unwrap_or(API).trim_end_matches('/').to_owned(),
             credential,
             route,
+            read_back: ReadBack::DEFAULT,
         }
+    }
+
+    /// The destination, reading back `read_back` pages of its own posts.
+    #[must_use]
+    pub fn reading_back(self, read_back: ReadBack) -> Self {
+        Self { read_back, ..self }
     }
 
     /// The base URL of the API it reaches, the only origin its `Http` may

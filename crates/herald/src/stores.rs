@@ -10,7 +10,7 @@ use herald_crypto::{RingSigner, RingVerifier};
 use herald_environment::{EnvSecrets, SystemClock};
 use herald_flows::{Connected, prepare};
 use herald_native::{NativePostgres, NativeSql, NativeSqlite, Timeouts};
-use herald_ports::Secrets as _;
+use herald_ports::{Outbound, Secrets as _};
 use herald_records::{Memory, Seal};
 use herald_store_actions_cache::{ActionsCache, ActionsCacheStore, StoreOptions as CacheOptions};
 
@@ -45,8 +45,8 @@ impl Host for Native<'_> {
     type Sql = NativeSql;
     type Kv = Unoffered;
 
-    fn connect(&self, base: &str) -> Result<Connection, String> {
-        self.connect.reach(base)
+    fn connect(&self, base: &str, outbound: &Outbound) -> Result<Connection, String> {
+        self.connect.reach_within(base, outbound)
     }
 
     fn var(&self, name: &str) -> Option<&str> {
@@ -179,7 +179,9 @@ pub(crate) async fn reached<'a>(
         Store::ActionsCache(options) if stores.contains(&Store::ACTIONS_CACHE) => {
             Records::Cache(cache(options, vars, &native.secrets, connect).await?)
         }
-        store => Records::Hosted(herald_compose::reached(&native, store, stores).await?),
+        store => Records::Hosted(
+            herald_compose::reached(&native, store, connect.outbound(), stores).await?,
+        ),
     };
     let prepared = prepare(config, &native.secrets, &RingSigner)
         .await

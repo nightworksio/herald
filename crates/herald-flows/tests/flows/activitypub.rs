@@ -153,6 +153,7 @@ fn an_actor_whose_followers_cannot_be_read_stops_before_anything_is_sent() {
 fn an_actor_reads_no_posts_back_and_delivers_to_its_own_followers() {
     let reached = Reached::ActivityPub(herald_dest_fediverse::ActivityPub::new(
         "herald.example",
+        "",
         herald_ports::Secret::new("HERALD_ACTIVITYPUB_KEY", "the-key"),
         herald_dest_fediverse::ActorRouteOptions {
             actor: "php-mutation-gate".to_owned(),
@@ -195,9 +196,14 @@ fn an_actor_keeps_no_thread_chores() {
     let secrets = FakeSecrets::default().with("HERALD_ACTIVITYPUB_KEY", "the-key");
     let prepared = pollster::block_on(prepare(&config, &secrets, &FakeSigner)).unwrap();
     let connected = prepared.connect(|_| Ok::<_, ()>(script.clone())).unwrap();
-    let kept = pollster::block_on(housekeep(&connected, &store, &FakeClock::at(NOON)))
-        .unwrap()
-        .kept;
+    let kept = pollster::block_on(housekeep(
+        &connected,
+        &store,
+        &FakeClock::at(NOON),
+        &herald_core::Retention::default(),
+    ))
+    .unwrap()
+    .kept;
     assert_eq!(
         kept[0].outcome,
         Chored::Dropped("herald's ActivityPub actor cannot archive or lock a thread".to_owned())

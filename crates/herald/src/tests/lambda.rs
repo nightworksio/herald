@@ -275,13 +275,10 @@ fn a_body_that_is_not_text_is_answered_in_base64() {
 
 #[test]
 fn a_reply_with_no_place_for_its_work_asks_its_sender_to_wait() {
-    let busy = herald_flows::busy();
+    let busy = herald_flows::busy(jiff::SignedDuration::from_secs(30));
     let replied = crate::lambda::replied(&busy.reply);
     assert_eq!(replied["statusCode"], json!(503));
-    assert_eq!(
-        replied["headers"]["retry-after"],
-        json!(herald_flows::BUSY_RETRY.to_string())
-    );
+    assert_eq!(replied["headers"]["retry-after"], json!("30"));
 }
 
 #[test]

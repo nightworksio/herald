@@ -1,4 +1,4 @@
-use herald_ports::{Method, Text};
+use herald_ports::{Method, Outbound, Text};
 
 use super::*;
 use crate::serving::{answer, serve};
@@ -14,7 +14,7 @@ fn get(url: &str) -> Request {
 
 #[tokio::test]
 async fn a_url_off_https_with_a_user_or_on_a_private_address_is_refused_unsent() {
-    let http = PublicHttp::new().unwrap();
+    let http = PublicHttp::new(&Outbound::default()).unwrap();
     for url in [
         "http://social.example/users/ana",
         "https://ana@social.example/users/ana",

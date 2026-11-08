@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 use std::fmt;
 
-use herald_ports::BODY_LIMIT;
+use herald_ports::Outbound;
 use herald_wire::{SourceError, read, segment};
 use jiff::Timestamp;
 use serde::de::{IgnoredAny, MapAccess, Visitor};
@@ -11,7 +11,7 @@ use crate::package::{Api, Found};
 
 pub(crate) const API: Api = Api {
     url: "https://registry.npmjs.org",
-    limit: BODY_LIMIT,
+    limit: Outbound::BODY,
     versions: "npm's packument",
 };
 
@@ -61,8 +61,8 @@ pub(crate) fn page(name: &str, version: &str) -> String {
 
 /// Each published version with its time; a version unpublished since keeps
 /// its time but leaves the versions, and is not found.
-pub(crate) fn found(api: &Api, body: &[u8]) -> Result<Vec<Found>, SourceError> {
-    let packument: Packument = read(api.versions, api.limit, body)?;
+pub(crate) fn found(api: &Api, limit: usize, body: &[u8]) -> Result<Vec<Found>, SourceError> {
+    let packument: Packument = read(api.versions, limit, body)?;
     let time = packument.time;
     Ok(packument
         .versions

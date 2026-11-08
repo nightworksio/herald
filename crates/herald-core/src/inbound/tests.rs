@@ -1,4 +1,5 @@
 use super::*;
+use crate::bounds::Inbound;
 
 const BODY: &[u8] = b"{\"action\":\"published\"}";
 
@@ -7,7 +8,7 @@ fn now() -> Timestamp {
 }
 
 fn claimed(scheme: Scheme, headers: &[(&str, &str)]) -> Result<Claim, Refusal> {
-    claim(scheme, headers, BODY, now())
+    claim(scheme, headers, BODY, now(), &Inbound::DEFAULT)
 }
 
 #[test]
@@ -177,7 +178,9 @@ fn a_timestamp_outside_the_window_is_a_replay() {
         ];
         assert_eq!(
             claimed(Scheme::Discord, &headers),
-            Err(Refusal::Stale),
+            Err(Refusal::Stale {
+                window: Inbound::DEFAULT.replay_window,
+            }),
             "{offset}"
         );
     }
@@ -244,7 +247,10 @@ fn each_refusal_reads_as_a_sentence() {
         "the request's X-Hub-Signature-256 is not in its form"
     );
     assert_eq!(
-        Refusal::Stale.to_string(),
+        Refusal::Stale {
+            window: Inbound::DEFAULT.replay_window,
+        }
+        .to_string(),
         "the request was signed more than 5 minutes from now, so it is taken for a replay"
     );
 }
@@ -318,7 +324,9 @@ fn a_gitlab_webhook_names_what_it_lacks() {
                 ("webhook-signature", "v1,AA==")
             ],
         ),
-        Err(Refusal::Stale)
+        Err(Refusal::Stale {
+            window: Inbound::DEFAULT.replay_window,
+        })
     );
 }
 
@@ -344,10 +352,10 @@ fn each_scheme_reads_its_key_as_it_is_written() {
 fn a_gitlab_webhook_carrying_more_signatures_than_a_rotation_needs_is_refused_unchecked() {
     let entries = |count: usize| vec!["v1,AAE="; count].join(" ");
     assert_eq!(
-        gitlab(&entries(MOST_SIGNATURES)).map(|claim| claim.signatures.len()),
-        Ok(MOST_SIGNATURES)
+        gitlab(&entries(Inbound::DEFAULT.signatures)).map(|claim| claim.signatures.len()),
+        Ok(Inbound::DEFAULT.signatures)
     );
-    for count in [MOST_SIGNATURES + 1, 10_000] {
+    for count in [Inbound::DEFAULT.signatures + 1, 10_000] {
         assert_eq!(
             gitlab(&entries(count)),
             Err(Refusal::Malformed {
@@ -441,7 +449,13 @@ fn each_scheme_keeps_its_deliveries_under_its_own_name() {
 #[test]
 fn an_app_s_event_is_claimed_by_its_token_and_not_by_a_signature() {
     assert_eq!(
-        claim(Scheme::App, &[("authorization", "Bearer t")], b"{}", now()),
+        claim(
+            Scheme::App,
+            &[("authorization", "Bearer t")],
+            b"{}",
+            now(),
+            &Inbound::DEFAULT
+        ),
         Err(Refusal::Unaddressed)
     );
     assert_eq!(key(Scheme::App, "t"), Some(b"t".to_vec()));
@@ -501,7 +515,7 @@ fn addressed(headers: &[(&str, &str)], body: &[u8]) -> Result<Claim, Refusal> {
         target: pseudo("(request-target)", "post /inbox"),
         audience: pseudo("(audience)", "herald.example"),
     };
-    activity_claim(to, &sent, body, activity_now())
+    activity_claim(to, &sent, body, activity_now(), &Inbound::DEFAULT)
 }
 
 fn activitypub(headers: &[(&str, &str)]) -> Result<Claim, Refusal> {
@@ -587,7 +601,9 @@ fn an_activity_dated_outside_the_window_or_undated_is_refused() {
             "Fri, 15 Jan 2027 07:54:59 GMT",
             &digest
         )),
-        Err(Refusal::Stale)
+        Err(Refusal::Stale {
+            window: Inbound::DEFAULT.replay_window,
+        })
     );
     assert!(
         activitypub(&activity_headers(
@@ -603,7 +619,9 @@ fn an_activity_dated_outside_the_window_or_undated_is_refused() {
             "Fri, 15 Jan 2027 08:05:01 GMT",
             &digest
         )),
-        Err(Refusal::Stale)
+        Err(Refusal::Stale {
+            window: Inbound::DEFAULT.replay_window,
+        })
     );
     assert_eq!(
         activitypub(&activity_headers(SIGNED, "yesterday", &digest)),
@@ -756,7 +774,7 @@ fn blank_names_do_not_count_toward_the_most_an_activity_may_name() {
         "(request-target) host date digest",
         &format!(
             "(request-target) host date{}digest",
-            " ".repeat(MOST_COVERED + 2)
+            " ".repeat(Inbound::DEFAULT.covered + 2)
         ),
     );
     let headers = activity_headers(&padded, DATE, &digest);
@@ -790,7 +808,13 @@ fn an_activity_signed_for_another_host_is_misdirected() {
         "the request was signed for another host"
     );
     assert_eq!(
-        claim(Scheme::ActivityPub, &headers, ACTIVITY, activity_now()),
+        claim(
+            Scheme::ActivityPub,
+            &headers,
+            ACTIVITY,
+            activity_now(),
+            &Inbound::DEFAULT
+        ),
         Err(Refusal::Unaddressed)
     );
     assert_eq!(
@@ -812,7 +836,7 @@ fn a_pseudo_header_the_sender_sends_is_never_read() {
         target: "post /inbox",
         audience: "herald.example",
     };
-    let claim = activity_claim(to, &headers, ACTIVITY, activity_now()).unwrap();
+    let claim = activity_claim(to, &headers, ACTIVITY, activity_now(), &Inbound::DEFAULT).unwrap();
     assert!(
         String::from_utf8(claim.message)
             .unwrap()
@@ -829,7 +853,7 @@ fn a_pseudo_header_the_sender_sends_is_never_read() {
         audience: "herald.example",
     };
     assert_eq!(
-        activity_claim(to, &stamped, ACTIVITY, activity_now()),
+        activity_claim(to, &stamped, ACTIVITY, activity_now(), &Inbound::DEFAULT),
         Err(Refusal::Malformed {
             header: "Signature"
         })
@@ -839,7 +863,7 @@ fn a_pseudo_header_the_sender_sends_is_never_read() {
 #[test]
 fn an_activity_naming_more_headers_than_it_may_is_refused_unread() {
     let digest = digest();
-    let extra = ["x-extra"; MOST_COVERED - 4].join(" ");
+    let extra = ["x-extra"; Inbound::DEFAULT.covered - 4].join(" ");
     let at_most = SIGNED.replace(
         "(request-target) host date digest",
         &format!("(request-target) host date digest {extra}"),
@@ -884,5 +908,77 @@ fn a_claim_debugs_without_its_message_or_signatures() {
     assert_eq!(
         shown,
         r#"Claim { kind: HmacSha256, message: 8 bytes, signatures: 1 held back, delivery: Some("txn-1"), signer: None }"#
+    );
+}
+
+#[test]
+fn a_request_is_held_to_the_bounds_it_is_claimed_within() {
+    let narrow = Inbound {
+        replay_window: SignedDuration::from_mins(1),
+        signatures: 1,
+        covered: 4,
+        ..Inbound::DEFAULT
+    };
+    let stamp = (1_800_000_000 + 61).to_string();
+    let discord = [
+        ("X-Signature-Ed25519", "00"),
+        ("X-Signature-Timestamp", stamp.as_str()),
+    ];
+    assert!(claimed(Scheme::Discord, &discord).is_ok());
+    assert_eq!(
+        claim(Scheme::Discord, &discord, BODY, now(), &narrow),
+        Err(Refusal::Stale {
+            window: SignedDuration::from_mins(1),
+        })
+    );
+    let rotating = [
+        ("webhook-id", "msg_2KWPBgLlAfxdpx2AI54pPJ85f4W"),
+        ("webhook-timestamp", "1800000000"),
+        ("webhook-signature", "v1,AAE= v1,/w=="),
+    ];
+    assert!(claimed(Scheme::GitLab, &rotating).is_ok());
+    assert_eq!(
+        claim(Scheme::GitLab, &rotating, BODY, now(), &narrow),
+        Err(Refusal::Malformed {
+            header: "webhook-signature"
+        })
+    );
+    let digest = digest();
+    let headers = activity_headers(SIGNED, DATE, &digest);
+    let to = Addressed {
+        target: "post /inbox",
+        audience: "herald.example",
+    };
+    assert!(activity_claim(to, &headers, ACTIVITY, activity_now(), &Inbound::DEFAULT).is_ok());
+    assert_eq!(
+        activity_claim(
+            to,
+            &headers,
+            ACTIVITY,
+            activity_now(),
+            &Inbound {
+                covered: 3,
+                ..narrow
+            }
+        ),
+        Err(Refusal::Malformed {
+            header: "Signature"
+        })
+    );
+    assert_eq!(
+        Refusal::Stale {
+            window: SignedDuration::from_mins(20),
+        }
+        .to_string(),
+        "the request was signed more than 20 minutes from now, so it is taken for a replay"
+    );
+    assert_eq!(
+        Inbound::MOST,
+        Inbound {
+            replay_window: SignedDuration::from_mins(20),
+            signatures: 16,
+            covered: 64,
+            document: 1_048_576,
+        }
     );
 }

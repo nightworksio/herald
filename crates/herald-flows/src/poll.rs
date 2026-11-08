@@ -97,7 +97,7 @@ async fn polled<H: Http>(
             let forge = origin.forge();
             let repository = forge.repository(&described).map_err(unreadable)?;
             forge
-                .releases(&repository, &answer)
+                .releases(&repository, &answer, origin.reading().parse)
                 .map(Some)
                 .map_err(unreadable)
         }
@@ -159,6 +159,7 @@ async fn sweep<S: Store, C: Clock, G: Signer, H: Http>(
             &releases.events,
             releases.etag,
             releases.last_modified,
+            source.asked.reading().remembered,
         );
         let expected = record.as_ref().map(|record| record.version);
         match ports

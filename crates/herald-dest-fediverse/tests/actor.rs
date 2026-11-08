@@ -154,9 +154,9 @@ mod actor {
             "https:///users/ana",
             "social.example/users/ana",
         ] {
-            assert!(key_request(refused).is_none(), "{refused}");
+            assert!(key_request(refused, 262_144).is_none(), "{refused}");
         }
-        let request = key_request(KEY).unwrap();
+        let request = key_request(KEY, 262_144).unwrap();
         assert_eq!(request.url.redacted(), ANA);
         assert_eq!(request.method, herald_ports::Method::Get);
         let accept = request

@@ -15,14 +15,21 @@ pub(crate) fn segment(name: &str) -> String {
     })
 }
 
+pub(crate) const LEDGER: &str = "ledger";
+
 pub(crate) fn entry(key: &Key) -> String {
-    format!("ledger/{key}.json")
+    format!("{LEDGER}/{key}.json")
+}
+
+/// The directory of every delivery of `key` to a follower's inbox.
+pub(crate) fn inboxes(key: &Key) -> String {
+    format!("inboxes/{key}")
 }
 
 /// Where the delivery of `key` to `inbox` is kept: under the inbox's
 /// digest, so a long inbox URL makes no long path.
 pub(crate) fn inbox(key: &Key, inbox: &str) -> String {
-    format!("inboxes/{key}/{}.json", herald_core::digest(inbox))
+    format!("{}/{}.json", inboxes(key), herald_core::digest(inbox))
 }
 
 pub(crate) fn cursor(source: &SourceName) -> String {
@@ -62,8 +69,10 @@ pub(crate) fn delivery(scheme: Scheme, id: &str) -> String {
     format!("{DELIVERIES}/{}.{}.json", scheme.name(), segment(id))
 }
 
+pub(crate) const NOTES: &str = "notes";
+
 pub(crate) fn note(key: &Key) -> String {
-    format!("notes/{key}.json")
+    format!("{NOTES}/{key}.json")
 }
 
 pub(crate) const LATEST: &str = "latest";

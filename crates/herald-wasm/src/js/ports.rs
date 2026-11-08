@@ -19,12 +19,16 @@ use crate::numbers::{count, integer, number};
 pub(crate) struct JsHttp {
     pub(crate) host: SendWrapper<HostObject>,
     pub(crate) reaching: Reaching,
+    pub(crate) timeout: f64,
+    pub(crate) body: usize,
 }
 
 impl Http for JsHttp {
     fn send(&self, request: Request) -> impl Future<Output = Result<Response, HttpError>> + Send {
         let host = self.host.clone();
         let reaching = self.reaching.clone();
+        let timeout = self.timeout;
+        let request = request.within(self.body);
         SendWrapper::new(async move {
             let url = reaching.admitted(&request.url)?;
             let headers: Array = request
@@ -45,6 +49,7 @@ impl Http for JsHttp {
                 ("body", Uint8Array::from(request.body.as_slice()).into()),
                 ("most", most.into()),
                 ("public", reaching.public().into()),
+                ("timeout", timeout.into()),
             ]);
             let answered = settled(host.fetch(&asked))
                 .await

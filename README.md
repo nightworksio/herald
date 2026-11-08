@@ -137,7 +137,9 @@ jobs:
 The `markers` store keeps herald's never-twice ledger in the posts herald
 makes, so the run writes nothing to the repository. It has no compare-and-set,
 so the `concurrency` group keeps to one herald run at a time. `herald init`
-prints a new `HERALD_MARKER_SECRET`, once.
+prints a new `HERALD_MARKER_SECRET`, once. Each destination reads back up to
+`read_back` pages of its own posts, 5 by default and at most 20, and stops at
+the page holding the post it looks for.
 
 ### herald's own ActivityPub actor
 
@@ -196,10 +198,50 @@ listen = "127.0.0.1:8080"
 - herald answers each verified release with 202 and announces it after the reply.
 - An ActivityPub actor is served at `/users/<actor>`, with its Notes, its inbox, the shared inbox `/inbox` and WebFinger.
 - `--listen` or `HERALD_LISTEN` takes the place of `listen`.
-- `[server]` also sets `jobs`, `connections`, `body`, `fetches`, `completions` (how many autocompletions a session answers at once), `deliveries` and `silence` (how long a session hears nothing before it checks its connection), and `[server.keys]` sets where inbound activities' keys are kept (`cache = "memory"` or `"store"`), `refresh_after`, `reread_after` and `most` ([ADR-0014](.docs/decisions/0014-herald-server-answers-first-and-works-after-on-one-task-within-limits.md)).
+- `busy_retry` ("30s") is how long a request whose work found no place is asked to wait, `read` ("30s") and `held` ("90s") how long a connection may take to send its headers and how long it is held at most, and `accept_pause` ("100ms") how long the server waits after a connection could not be accepted.
+- `[server.sessions]` sets how a session a destination holds connects again: `first_wait` ("1s"), doubled up to `longest_wait` ("1m"), each wait between half of it and all of it unless `jitter = false`.
+- `base`, such as `"/herald"`, serves every endpoint under that path, for a reverse proxy that serves herald beside other things; the ActivityPub actors' ids, and the addresses `slack manifest` and `matrix registration` print, are under it too.
+- `[server]` also sets `jobs`, `queue` (how many announcements may wait for a place, as many as `jobs` where absent), `connections`, `body`, `fetches`, `completions` (how many autocompletions a session answers at once), `deliveries` and `silence` (how long a session hears nothing before it checks its connection), and `[server.keys]` sets where inbound activities' keys are kept (`cache = "memory"` or `"store"`), `refresh_after`, `reread_after`, `most` and `document` (the most of a key's document read) ([ADR-0014](.docs/decisions/0014-herald-server-answers-first-and-works-after-on-one-task-within-limits.md)).
 
 `herald doctor --layer server` names what the config asks for that the
 server cannot serve.
+
+`[http]` sets how herald's own requests reach the services the config names:
+`connect` ("10s"), `total` ("30s", or `HERALD_TIMEOUT_MS` in its place),
+`proxy` (`"environment"`, the default, which honours `HTTPS_PROXY` and
+`NO_PROXY` where the host does; `"none"`; or a proxy's URL), `ca_file`, a
+PEM file of certificate authorities trusted beside the Mozilla roots, such as
+a GitHub Enterprise Server's private CA, and `body` ("32MiB", at most
+"128MiB"), the most of a response herald reads. A proxy URL and `ca_file` are for the
+native binary, the image and Lambda; other hosts refuse them, naming why. None
+of it applies to the hosts herald reaches on others' behalf, which keep
+ADR-0007's 5 and 10 seconds at most, read no more than "32MiB", go through no
+proxy and trust the Mozilla roots alone.
+
+`[server.inbound]` sets what a signed request may carry and still be
+checked: `replay_window` ("5m"), `signatures` (4) and `covered` (16, the
+headers one ActivityPub signature may name). `[render]` sets how far a
+template may go: `fuel` (100000), `recursion` (16) and `output` ("256KiB").
+Each of these, `[server] body`, `[server.keys] document` and `[http] body` may be at most four times its default,
+and `herald doctor` names any set above it.
+
+`[announce]` sets `lease` ("20m"), how long a run holds an announcement it
+claimed before another may finish it, and `latest_attempts` (3), how often a
+run writes what a project last announced again when another write lands
+first.
+
+Each source sets how a poll reads it: `page` (30), how many of the newest
+releases, versions or entries one poll reads; `remembered` (500, at least
+`page`), how many its cursor remembers; and `parse` ("4MiB", "16MiB" on
+Packagist and "32MiB" on npm, and at most four times that), the most of an
+answer it parses.
+
+Housekeeping also forgets what the store keeps past `[store]`'s
+`keep_deliveries` (each webhook delivery's id, "7d", and at least "3d"),
+`keep_ledger` (each ledger entry and its deliveries to followers' inboxes,
+"90d" after a run last claimed it) and `keep_notes` (each Note herald's
+actors published, "forever"). `keep_ledger` and `keep_notes` also take
+`"forever"`.
 
 ### An app's own events
 

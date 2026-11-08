@@ -380,3 +380,48 @@ fn a_matrix_registration_holds_two_new_tokens_and_reaches_herald_by_destination(
         );
     }
 }
+
+#[test]
+fn a_manifest_and_a_registration_reach_herald_under_its_base() {
+    let world = World::default();
+    let setup = setup(&config("[server]\nbase = \"/tools/herald\"\n"));
+    let posted = herald(
+        &setup,
+        &world,
+        &[
+            "slack",
+            "manifest",
+            "--destination",
+            "slack",
+            "--url",
+            "https://herald.example/",
+        ],
+    );
+    assert_eq!(posted.code, DONE, "{}", posted.err);
+    let manifest: serde_json::Value =
+        serde_json::from_str(posted.out.lines().next().unwrap()).unwrap();
+    assert_eq!(
+        manifest["settings"]["interactivity"]["request_url"],
+        "https://herald.example/tools/herald/interactions/slack"
+    );
+    let registered = herald(
+        &setup,
+        &world,
+        &[
+            "matrix",
+            "registration",
+            "--destination",
+            "matrix",
+            "--url",
+            "https://herald.example",
+        ],
+    );
+    assert_eq!(registered.code, DONE, "{}", registered.err);
+    assert!(
+        registered
+            .out
+            .contains("url: 'https://herald.example/tools/herald/matrix/matrix'\n"),
+        "{}",
+        registered.out
+    );
+}

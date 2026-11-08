@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 
 use herald_core::{Cursor, Draft, Event, Kind, Polled, prerelease_version};
 use herald_ports::{Method, Request, Response, Secret, Text, USER_AGENT};
-use herald_wire::{PAGE, SourceError, answered, host};
+use herald_wire::{Reading, SourceError, answered, host};
 use jiff::Timestamp;
 
 use crate::options::RegistryOptions;
@@ -43,6 +43,7 @@ pub struct Package {
     registry: Registry,
     api: String,
     name: String,
+    reading: Reading,
 }
 
 impl Registry {
@@ -81,7 +82,7 @@ impl Registry {
         }
     }
 
-    const fn api(self) -> &'static Api {
+    pub(crate) const fn api(self) -> &'static Api {
         match self {
             Self::Packagist => &packagist::API,
             Self::CratesIo => &crates_io::API,
@@ -130,7 +131,14 @@ impl Package {
                 .trim_end_matches('/')
                 .to_owned(),
             name,
+            reading: options.reading(registry),
         }
+    }
+
+    /// How a poll of it reads.
+    #[must_use]
+    pub const fn reading(&self) -> Reading {
+        self.reading
     }
 
     /// The registry.
@@ -170,12 +178,12 @@ impl Package {
     pub fn versions_request(&self, cursor: Option<&Cursor>, token: Option<&Secret>) -> Request {
         let path = match self.registry {
             Registry::Packagist => packagist::path(&self.name),
-            Registry::CratesIo => crates_io::path(&self.name),
+            Registry::CratesIo => crates_io::path(&self.name, self.reading.page),
             Registry::Npm => npm::path(&self.name),
-            Registry::DockerHub => docker_hub::path(&self.name),
+            Registry::DockerHub => docker_hub::path(&self.name, self.reading.page),
         };
         let mut request = Request::new(Method::Get, Text::plain(format!("{}{path}", self.api)))
-            .at_most(self.registry.api().limit)
+            .at_most(self.reading.parse)
             .header("Accept", Text::plain("application/json"))
             .header("User-Agent", Text::plain(USER_AGENT));
         if let Some(token) = token.filter(|_| self.registry.takes_token()) {
@@ -205,13 +213,13 @@ impl Package {
         answered(api.versions, response)?;
         let body = &response.body;
         let mut found = match self.registry {
-            Registry::Packagist => packagist::found(api, &self.name, body)?,
-            Registry::CratesIo => crates_io::found(api, body)?,
-            Registry::Npm => npm::found(api, body)?,
-            Registry::DockerHub => docker_hub::found(api, body)?,
+            Registry::Packagist => packagist::found(api, self.reading.parse, &self.name, body)?,
+            Registry::CratesIo => crates_io::found(api, self.reading.parse, body)?,
+            Registry::Npm => npm::found(api, self.reading.parse, body)?,
+            Registry::DockerHub => docker_hub::found(api, self.reading.parse, body)?,
         };
         found.sort_by_key(|found| std::cmp::Reverse(found.published));
-        found.truncate(PAGE);
+        found.truncate(self.reading.page);
         let events = found
             .into_iter()
             .map(|found| self.event(api.versions, found))

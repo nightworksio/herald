@@ -1,5 +1,5 @@
 use herald_core::{Entry, Facts, Key, Marker, Marks, Step};
-use herald_ports::{Http, MarkedThread, Markers, MarkersError};
+use herald_ports::{Http, MarkedThread, Markers, MarkersError, unreserved};
 use serde_json::Value;
 
 use crate::mastodon::Mastodon;
@@ -43,28 +43,42 @@ impl<'a, H: Http> MastodonMarkers<'a, H> {
         Ok(serde_json::from_slice(&response.body).unwrap_or(Value::Null))
     }
 
-    async fn statuses(&self) -> Result<Vec<Value>, MarkersError> {
+    /// The account's own statuses, newest first, read back page by page
+    /// until a page holds one `sought`, or none is left.
+    async fn statuses(&self, sought: impl Fn(&Value) -> bool) -> Result<Vec<Value>, MarkersError> {
         let account = self.read("/api/v1/accounts/verify_credentials").await?;
         let herald = text(&account, "id").ok_or_else(|| MarkersError::Unreadable {
             reason: "Mastodon did not say which account the token is".to_owned(),
         })?;
-        let page = self
-            .read(&format!(
-                "/api/v1/accounts/{herald}/statuses?limit={PAGE}&exclude_reblogs=true"
-            ))
-            .await?;
-        Ok(page
-            .as_array()
-            .into_iter()
-            .flatten()
-            .filter(|status| {
-                status
-                    .get("account")
-                    .and_then(|account| text(account, "id"))
-                    .is_some_and(|author| author == herald)
-            })
-            .cloned()
-            .collect())
+        let listing =
+            format!("/api/v1/accounts/{herald}/statuses?limit={PAGE}&exclude_reblogs=true");
+        let mut own = Vec::new();
+        let mut older: Option<String> = None;
+        for _ in 0..self.mastodon.read_back.pages() {
+            let path = older.as_deref().map_or_else(
+                || listing.clone(),
+                |id| format!("{listing}&max_id={}", unreserved(id)),
+            );
+            let page = self.read(&path).await?;
+            let listed = page.as_array().map(Vec::as_slice).unwrap_or_default();
+            let mine: Vec<Value> = listed
+                .iter()
+                .filter(|status| {
+                    status
+                        .get("account")
+                        .and_then(|account| text(account, "id"))
+                        .is_some_and(|author| author == herald)
+                })
+                .cloned()
+                .collect();
+            let found = mine.iter().any(&sought);
+            own.extend(mine);
+            older = listed.last().and_then(|status| text(status, "id"));
+            if found || listed.len() < usize::from(PAGE) || older.is_none() {
+                break;
+            }
+        }
+        Ok(own)
     }
 }
 
@@ -104,12 +118,13 @@ impl<H: Http> Markers for MastodonMarkers<'_, H> {
     }
 
     async fn entry(&self, key: &Key, marker: &Marker) -> Result<Option<Entry>, MarkersError> {
-        let statuses = self.statuses().await?;
-        let Some(post) = statuses.iter().find(|status| {
+        let carrying = |status: &Value| {
             carried(status)
                 .iter()
                 .any(|carried| carried == marker.as_str())
-        }) else {
+        };
+        let statuses = self.statuses(carrying).await?;
+        let Some(post) = statuses.iter().find(|status| carrying(status)) else {
             return Ok(None);
         };
         let mut entry = Entry::new(*key).landed(Step::Post, landed(post));

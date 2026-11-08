@@ -35,6 +35,7 @@ const HTTP_DATE: &str = "%a, %d %b %Y %H:%M:%S GMT";
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ActivityPub {
     domain: String,
+    origin: String,
     key: Secret,
     route: ActorRouteOptions,
 }
@@ -48,11 +49,13 @@ fn cannot(what: &str) -> Sent {
 }
 
 impl ActivityPub {
-    /// The actor `route` names on `domain`, signing with `key`.
+    /// The actor `route` names on `domain`, served under the path `base`,
+    /// signing with `key`.
     #[must_use]
-    pub fn new(domain: &str, key: Secret, route: ActorRouteOptions) -> Self {
+    pub fn new(domain: &str, base: &str, key: Secret, route: ActorRouteOptions) -> Self {
         Self {
             domain: domain.to_owned(),
+            origin: format!("{domain}{base}"),
             key,
             route,
         }
@@ -74,7 +77,7 @@ impl ActivityPub {
     /// The actor's id.
     #[must_use]
     pub fn id(&self) -> String {
-        actor_id(&self.domain, &self.route.actor)
+        actor_id(&self.origin, &self.route.actor)
     }
 
     /// What the destination can do, as the core plans with it.
@@ -103,7 +106,7 @@ impl ActivityPub {
         match step {
             Step::Post => {
                 let note = note_id(
-                    &self.domain,
+                    &self.origin,
                     &self.route.actor,
                     &announcement.key.to_string(),
                 );
@@ -131,7 +134,7 @@ impl ActivityPub {
         announcement: &Announcement,
     ) -> Result<Sent, HttpError> {
         let created = create(
-            &self.domain,
+            &self.origin,
             &self.route.actor,
             announcement,
             self.route.content_warning.as_deref(),
@@ -153,20 +156,20 @@ impl ActivityPub {
     /// When `signer` cannot read the public key.
     pub async fn document<G: Signer>(&self, signer: &G) -> Result<String, CryptoError> {
         let public = signer.public(Algorithm::RsaSha256, &self.key).await?;
-        Ok(actor_document(&self.domain, &self.route.actor, &public).to_string())
+        Ok(actor_document(&self.origin, &self.route.actor, &public).to_string())
     }
 
     /// What WebFinger answers for the actor.
     #[must_use]
     pub fn finger(&self) -> String {
-        webfinger(&self.domain, &self.route.actor).to_string()
+        webfinger(&self.domain, &self.origin, &self.route.actor).to_string()
     }
 
     /// `announcement`'s Note, as herald serves it at its id.
     #[must_use]
     pub fn note(&self, announcement: &Announcement) -> String {
         note(
-            &self.domain,
+            &self.origin,
             &self.route.actor,
             announcement,
             self.route.content_warning.as_deref(),
@@ -178,7 +181,7 @@ impl ActivityPub {
     /// actor's.
     #[must_use]
     pub fn owns(&self, note: &str, key: &str) -> bool {
-        let id = note_id(&self.domain, &self.route.actor, key);
+        let id = note_id(&self.origin, &self.route.actor, key);
         serde_json::from_str::<Value>(note)
             .is_ok_and(|note| note.get("id").and_then(Value::as_str) == Some(id.as_str()))
     }
@@ -186,7 +189,7 @@ impl ActivityPub {
     /// The `Accept` of `follow`, a `Follow` of this actor.
     #[must_use]
     pub fn accept(&self, follow: &Value) -> Value {
-        accept(&self.domain, &self.route.actor, follow)
+        accept(&self.origin, &self.route.actor, follow)
     }
 
     /// Posts `activity` to `inbox`, signed by this actor at `now` through
@@ -222,7 +225,7 @@ impl ActivityPub {
             Ok(signature) => signature,
             Err(error) => return Ok(refused(error.to_string())),
         };
-        let header = signature_header(&key_id(&self.domain, &self.route.actor), &signature);
+        let header = signature_header(&key_id(&self.origin, &self.route.actor), &signature);
         let request = Request::new(Method::Post, Text::plain(inbox))
             .at_most(ANSWER)
             .header("User-Agent", Text::plain(USER_AGENT))

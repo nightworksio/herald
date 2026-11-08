@@ -112,6 +112,11 @@ impl Http for Script {
             });
         };
         assert!(line.ends_with(&expected), "{line} is not {expected}");
+        if body.len() > request.most {
+            return Err(HttpError::Unreachable {
+                reason: format!("the response is larger than {} bytes", request.most),
+            });
+        }
         Ok(Response {
             status,
             headers: self.headers.clone(),
@@ -189,7 +194,11 @@ pub(crate) enum Fault {
     Nothing,
     Skipped,
     ExpiresDeliveries,
+    ExpiresEntries,
+    ForgetsDeliveries,
+    ExpiresNotes,
     KeepsNoDeliveries,
+    KeepsNoInboxes,
     Cursors,
     WritesCursors,
     CursorConflicts,
@@ -265,6 +274,13 @@ impl Inboxes for Failing {
             _ => self.inner.put_delivery(key, inbox, state).await,
         }
     }
+
+    async fn forget_deliveries(&self, key: &Key) -> Result<(), StoreError> {
+        if self.fault == Fault::ForgetsDeliveries {
+            return Err(broken());
+        }
+        self.inner.forget_deliveries(key).await
+    }
 }
 
 impl Ledger for Failing {
@@ -291,6 +307,13 @@ impl Ledger for Failing {
             (Fault::Releases, _) if entry.lease.is_none() => Err(broken()),
             _ => self.inner.put_entry(entry, expected).await,
         }
+    }
+
+    async fn expire_entries(&self, before: jiff::Timestamp) -> Result<Vec<Key>, StoreError> {
+        if self.fault == Fault::ExpiresEntries {
+            return Err(broken());
+        }
+        self.inner.expire_entries(before).await
     }
 }
 
@@ -411,11 +434,23 @@ impl Notes for Failing {
         self.inner.note(key).await
     }
 
-    async fn put_note(&self, key: &herald_core::Key, note: &str) -> Result<(), StoreError> {
+    async fn put_note(
+        &self,
+        key: &herald_core::Key,
+        note: &str,
+        at: jiff::Timestamp,
+    ) -> Result<(), StoreError> {
         if self.fault == Fault::KeepsNotes {
             return Err(broken());
         }
-        self.inner.put_note(key, note).await
+        self.inner.put_note(key, note, at).await
+    }
+
+    async fn expire_notes(&self, before: jiff::Timestamp) -> Result<(), StoreError> {
+        if self.fault == Fault::ExpiresNotes {
+            return Err(broken());
+        }
+        self.inner.expire_notes(before).await
     }
 }
 
@@ -454,6 +489,7 @@ impl Keeper for Failing {
     fn holds(&self, kind: Held) -> bool {
         match kind {
             Held::Deliveries => self.fault != Fault::KeepsNoDeliveries,
+            Held::Inboxes => self.fault != Fault::KeepsNoInboxes,
             Held::Latest => self.fault != Fault::KeepsNoLatest,
             _ => true,
         }

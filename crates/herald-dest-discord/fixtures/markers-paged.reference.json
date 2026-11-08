@@ -1,0 +1,410 @@
+{
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "url": "https://discord.com/api/v10/users/@me",
+        "headers": {
+          "Authorization": "Bot «secret:HERALD_DISCORD_TOKEN»",
+          "User-Agent": "DiscordBot (https://github.com/nightworksio/herald, 0.0.0)"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "id": "1566190000000000099",
+          "username": "herald",
+          "bot": true
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "url": "https://discord.com/api/v10/channels/1566184281406177531/messages?limit=100",
+        "headers": {
+          "Authorization": "Bot «secret:HERALD_DISCORD_TOKEN»",
+          "User-Agent": "DiscordBot (https://github.com/nightworksio/herald, 0.0.0)"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": [
+          {"id": "1566200000000000300", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000299", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000298", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000297", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000296", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000295", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000294", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000293", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000292", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000291", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000290", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000289", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000288", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000287", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000286", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000285", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000284", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000283", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000282", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000281", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000280", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000279", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000278", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000277", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000276", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000275", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000274", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000273", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000272", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000271", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000270", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000269", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000268", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000267", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000266", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000265", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000264", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000263", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000262", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000261", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000260", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000259", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000258", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000257", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000256", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000255", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000254", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000253", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000252", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000251", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000250", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000099", "username": "herald", "bot": true}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000249", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000248", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000247", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000246", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000245", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000244", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000243", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000242", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000241", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000240", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000239", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000238", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000237", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000236", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000235", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000234", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000233", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000232", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000231", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000230", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000229", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000228", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000227", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000226", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000225", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000224", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000223", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000222", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000221", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000220", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000219", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000218", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000217", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000216", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000215", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000214", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000213", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000212", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000211", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000210", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000209", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000208", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000207", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000206", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000205", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000204", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000203", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000202", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000201", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"}
+        ]
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "url": "https://discord.com/api/v10/channels/1566184281406177531/messages?limit=100&before=1566200000000000201",
+        "headers": {
+          "Authorization": "Bot «secret:HERALD_DISCORD_TOKEN»",
+          "User-Agent": "DiscordBot (https://github.com/nightworksio/herald, 0.0.0)"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": [
+          {
+            "id": "1566200000000000009",
+            "channel_id": "1566184281406177531",
+            "type": 0,
+            "content": "",
+            "author": {
+              "id": "1566190000000000099",
+              "username": "herald",
+              "bot": true
+            },
+            "embeds": [
+              {
+                "title": "📦 php-mutation-gate v0.1.0",
+                "description": "## Added",
+                "color": 14916134,
+                "timestamp": "2026-10-31T12:00:00Z",
+                "url": "https://github.com/nightworksio/php-mutation-gate/releases/tag/v0.1.0#herald-0000000000000000000000000000000000000000000000000000000000000000"
+              }
+            ],
+            "flags": 0,
+            "pinned": false,
+            "timestamp": "2026-10-31T12:00:01.000000+00:00"
+          },
+          {
+            "id": "1566200000000000001",
+            "channel_id": "1566184281406177531",
+            "type": 0,
+            "content": "<@&1566190000000000001>",
+            "author": {
+              "id": "1566190000000000099",
+              "username": "herald",
+              "bot": true
+            },
+            "embeds": [
+              {
+                "title": "📦 php-mutation-gate v0.1.0",
+                "description": "## Added",
+                "color": 14916134,
+                "timestamp": "2026-10-31T12:00:00Z",
+                "url": "https://github.com/nightworksio/php-mutation-gate/releases/tag/v0.1.0#herald-b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6.a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5"
+              }
+            ],
+            "flags": 1,
+            "pinned": true,
+            "timestamp": "2026-10-31T12:00:01.000000+00:00",
+            "thread": {
+              "id": "1566200000000000001",
+              "type": 11,
+              "name": "php-mutation-gate v0.1.0"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "url": "https://discord.com/api/v10/channels/1566200000000000001/messages?limit=100",
+        "headers": {
+          "Authorization": "Bot «secret:HERALD_DISCORD_TOKEN»",
+          "User-Agent": "DiscordBot (https://github.com/nightworksio/herald, 0.0.0)"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": [
+          {
+            "id": "1566200000000000003",
+            "channel_id": "1566200000000000001",
+            "type": 0,
+            "content": "",
+            "author": {
+              "id": "1566190000000000099",
+              "username": "herald",
+              "bot": true
+            },
+            "embeds": [],
+            "flags": 0,
+            "pinned": false,
+            "timestamp": "2026-10-31T12:00:01.000000+00:00"
+          },
+          {
+            "id": "1566200000000000099",
+            "channel_id": "1566200000000000001",
+            "type": 0,
+            "content": "",
+            "author": {
+              "id": "1566190000000000777",
+              "username": "someone"
+            },
+            "embeds": [],
+            "flags": 0,
+            "pinned": false,
+            "timestamp": "2026-10-31T12:00:01.000000+00:00"
+          },
+          {
+            "id": "1566200000000000002",
+            "channel_id": "1566200000000000001",
+            "type": 0,
+            "content": "",
+            "author": {
+              "id": "1566190000000000099",
+              "username": "herald",
+              "bot": true
+            },
+            "embeds": [],
+            "flags": 0,
+            "pinned": false,
+            "timestamp": "2026-10-31T12:00:01.000000+00:00"
+          },
+          {
+            "id": "1566200000000000004",
+            "channel_id": "1566200000000000001",
+            "type": 18,
+            "content": "",
+            "author": {
+              "id": "1566190000000000099",
+              "username": "herald",
+              "bot": true
+            },
+            "embeds": [],
+            "flags": 0,
+            "pinned": false,
+            "timestamp": "2026-10-31T12:00:01.000000+00:00"
+          }
+        ]
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "url": "https://discord.com/api/v10/users/@me",
+        "headers": {
+          "Authorization": "Bot «secret:HERALD_DISCORD_TOKEN»",
+          "User-Agent": "DiscordBot (https://github.com/nightworksio/herald, 0.0.0)"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "id": "1566190000000000099",
+          "username": "herald",
+          "bot": true
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "url": "https://discord.com/api/v10/channels/1566184281406177531/messages?limit=100",
+        "headers": {
+          "Authorization": "Bot «secret:HERALD_DISCORD_TOKEN»",
+          "User-Agent": "DiscordBot (https://github.com/nightworksio/herald, 0.0.0)"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": [
+          {"id": "1566200000000000300", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000299", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000298", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000297", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000296", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000295", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000294", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000293", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000292", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000291", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000290", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000289", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000288", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000287", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000286", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000285", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000284", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000283", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000282", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000281", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000280", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000279", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000278", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000277", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000276", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000275", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000274", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000273", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000272", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000271", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000270", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000269", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000268", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000267", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000266", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000265", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000264", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000263", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000262", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000261", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000260", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000259", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000258", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000257", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000256", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000255", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000254", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000253", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000252", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000251", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000250", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000099", "username": "herald", "bot": true}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000249", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000248", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000247", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000246", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000245", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000244", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000243", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000242", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000241", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000240", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000239", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000238", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000237", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000236", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000235", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000234", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000233", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000232", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000231", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000230", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000229", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000228", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000227", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000226", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000225", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000224", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000223", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000222", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000221", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000220", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000219", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000218", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000217", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000216", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000215", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000214", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000213", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000212", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000211", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000210", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000209", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000208", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000207", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000206", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000205", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000204", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000203", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000202", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"},
+          {"id": "1566200000000000201", "channel_id": "1566184281406177531", "type": 0, "content": "", "author": {"id": "1566190000000000777", "username": "someone"}, "embeds": [], "flags": 0, "timestamp": "2026-10-31T12:00:00.000000+00:00"}
+        ]
+      }
+    }
+  ]
+}

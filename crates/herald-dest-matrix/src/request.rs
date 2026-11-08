@@ -1,8 +1,7 @@
 use std::fmt;
-use std::fmt::Write as _;
 
 use herald_core::{Announcement, Dialect, Entry, Sent, Step, safe_url};
-use herald_ports::{Method, Request, Response, Text, USER_AGENT};
+use herald_ports::{Method, Request, Response, Text, USER_AGENT, unreserved};
 use serde_json::{Map, Value, json};
 
 use crate::matrix::Matrix;
@@ -43,19 +42,6 @@ impl fmt::Display for Refusal {
     }
 }
 
-/// `text` as one segment of a URL's path: every byte but the unreserved
-/// ones percent-encoded.
-pub(crate) fn segment(text: &str) -> String {
-    text.bytes().fold(String::new(), |mut encoded, byte| {
-        if byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'.' | b'_' | b'~') {
-            encoded.push(char::from(byte));
-        } else {
-            let _ = write!(encoded, "%{byte:02X}");
-        }
-        encoded
-    })
-}
-
 fn authorised(request: Request, matrix: &Matrix) -> Request {
     request
         .header("User-Agent", Text::plain(USER_AGENT))
@@ -78,7 +64,7 @@ fn put(matrix: &Matrix, path: &str, body: &Value) -> Request {
 }
 
 fn room(matrix: &Matrix) -> String {
-    format!("/rooms/{}", segment(&matrix.route.room))
+    format!("/rooms/{}", unreserved(&matrix.route.room))
 }
 
 /// Whether `user` is written as a Matrix user id, so it can be mentioned.
@@ -206,7 +192,7 @@ fn sent(matrix: &Matrix, transaction: &str, content: &Value) -> Request {
     let path = format!(
         "{}/send/m.room.message/{}",
         room(matrix),
-        segment(transaction)
+        unreserved(transaction)
     );
     put(matrix, &path, content)
 }
@@ -318,6 +304,6 @@ pub(crate) fn repinned(matrix: &Matrix, pins: &[String]) -> Request {
 pub(crate) fn event(matrix: &Matrix, event: &str) -> Request {
     get(
         matrix,
-        &format!("{}/event/{}", room(matrix), segment(event)),
+        &format!("{}/event/{}", room(matrix), unreserved(event)),
     )
 }

@@ -1,9 +1,9 @@
 use herald_core::{Entry, Facts, Key, Marker, Sent, Step};
-use herald_ports::{Http, MarkedThread, Markers, MarkersError};
+use herald_ports::{Http, MarkedThread, Markers, MarkersError, unreserved};
 use serde_json::Value;
 
 use crate::read::{json, text, trouble};
-use crate::request::{MARKER, get, query};
+use crate::request::{MARKER, get};
 use crate::slack::{Credential, Identity, Slack, carried, identity};
 use crate::web_api::{CONVERSATIONS_HISTORY, CONVERSATIONS_REPLIES, WebMethod};
 
@@ -63,6 +63,36 @@ impl<'a, H: Http> SlackMarkers<'a, H> {
         trouble(&response, &body).map_or(Ok(body), |sent| Err(said(sent)))
     }
 
+    /// What `method` lists for `asked`, read page by page until a page
+    /// holds a message `sought`, or none is left.
+    async fn paged(
+        &self,
+        method: WebMethod,
+        asked: &str,
+        sought: impl Fn(&Value) -> bool,
+    ) -> Result<Vec<Value>, MarkersError> {
+        let mut listed = Vec::new();
+        let mut cursor: Option<String> = None;
+        for _ in 0..self.slack.read_back.pages() {
+            let paging = cursor.as_deref().map_or_else(
+                || asked.to_owned(),
+                |cursor| format!("{asked}&cursor={}", unreserved(cursor)),
+            );
+            let page = self.read(method, &paging).await?;
+            let found = messages(&page).any(&sought);
+            listed.extend(messages(&page).cloned());
+            cursor = page
+                .get("response_metadata")
+                .and_then(|metadata| text(metadata, "next_cursor"))
+                .filter(|next| !next.is_empty())
+                .map(ToOwned::to_owned);
+            if found || cursor.is_none() {
+                break;
+            }
+        }
+        Ok(listed)
+    }
+
     fn channel(&self) -> Result<&str, MarkersError> {
         if let Credential::Webhook(_) = self.slack.credential {
             return Err(unreadable("a webhook cannot read a channel's messages"));
@@ -93,18 +123,20 @@ impl<H: Http> Markers for SlackMarkers<'_, H> {
     async fn entry(&self, key: &Key, marker: &Marker) -> Result<Option<Entry>, MarkersError> {
         let channel = self.channel()?;
         let identity = self.identity().await?;
+        let posted = |message: &Value| {
+            identity.posted(message) && carried(message, MARKER) == Some(marker.as_str())
+        };
         let history = self
-            .read(
+            .paged(
                 CONVERSATIONS_HISTORY,
                 &format!(
                     "channel={}&limit={PAGE}&include_all_metadata=true",
-                    query(channel)
+                    unreserved(channel)
                 ),
+                posted,
             )
             .await?;
-        let Some(post) = messages(&history).find(|message| {
-            identity.posted(message) && carried(message, MARKER) == Some(marker.as_str())
-        }) else {
+        let Some(post) = history.iter().find(|message| posted(message)) else {
             return Ok(None);
         };
         let Some(root) = text(post, "ts") else {
@@ -112,12 +144,18 @@ impl<H: Http> Markers for SlackMarkers<'_, H> {
         };
         let mut entry = Entry::new(*key).landed(Step::Post, landed(post));
         let thread = self
-            .read(
+            .paged(
                 CONVERSATIONS_REPLIES,
-                &format!("channel={}&ts={}&limit={PAGE}", query(channel), query(root)),
+                &format!(
+                    "channel={}&ts={}&limit={PAGE}",
+                    unreserved(channel),
+                    unreserved(root)
+                ),
+                |_| false,
             )
             .await?;
-        let replies = messages(&thread)
+        let replies = thread
+            .iter()
             .filter(|reply| text(reply, "ts") != Some(root))
             .filter(|reply| text(reply, "thread_ts") == Some(root))
             .filter(|reply| identity.posted(reply));

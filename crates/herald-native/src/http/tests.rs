@@ -2,10 +2,10 @@ use super::*;
 use tokio::net::TcpListener;
 
 use crate::serving::{answer, serve};
-use herald_ports::{BODY_LIMIT, Secret, Text};
+use herald_ports::{Secret, Text};
 
 fn http(base: &str) -> NativeHttp {
-    NativeHttp::new(Reach::new([base]).unwrap()).unwrap()
+    NativeHttp::new(Reach::new([base]).unwrap(), &Outbound::default()).unwrap()
 }
 
 #[tokio::test]
@@ -165,8 +165,8 @@ async fn a_host_that_does_not_answer_in_time_times_out() {
 
 #[tokio::test]
 async fn a_body_up_to_the_cap_is_read_and_a_larger_one_refused() {
-    let full = vec![b'a'; BODY_LIMIT];
-    let over = vec![b'a'; BODY_LIMIT + 1];
+    let full = vec![b'a'; Outbound::BODY];
+    let over = vec![b'a'; Outbound::BODY + 1];
     let (base, server) = serve(vec![
         answer("200 OK", "", &full),
         answer("200 OK", "", &over),
@@ -174,7 +174,10 @@ async fn a_body_up_to_the_cap_is_read_and_a_larger_one_refused() {
     .await;
     let http = http(&base);
     let request = || Request::new(Method::Get, Text::plain(format!("{base}/")));
-    assert_eq!(http.send(request()).await.unwrap().body.len(), BODY_LIMIT);
+    assert_eq!(
+        http.send(request()).await.unwrap().body.len(),
+        Outbound::BODY
+    );
     assert_eq!(
         http.send(request()).await,
         Err(HttpError::Unreachable {
@@ -218,7 +221,7 @@ fn a_client_without_tls_is_not_built() {
         Reach::new(["https://discord.com"]).unwrap(),
         None,
         CONNECT,
-        Some(TOTAL),
+        Some(duration(Outbound::TOTAL)),
     )
     .unwrap_err();
     assert!(
@@ -246,8 +249,8 @@ fn tls_without_a_cipher_suite_is_not_set_up() {
 
 #[test]
 fn a_client_for_a_base_reaches_only_that_base_or_says_why_not() {
-    assert!(NativeHttp::reaching("https://discord.com/api/v10").is_ok());
-    let refused = NativeHttp::reaching("http://discord.com").unwrap_err();
+    assert!(NativeHttp::reaching("https://discord.com/api/v10", &Outbound::default()).is_ok());
+    let refused = NativeHttp::reaching("http://discord.com", &Outbound::default()).unwrap_err();
     assert_eq!(
         refused.to_string(),
         "http://discord.com is not HTTPS; plain HTTP is allowed only on a loopback host"
@@ -287,8 +290,114 @@ async fn a_request_reads_at_most_its_own_cap_whether_or_not_the_length_is_said()
     server.await.unwrap();
     assert_eq!(
         Request::new(Method::Get, Text::plain("x"))
-            .at_most(BODY_LIMIT + 1)
+            .at_most(Outbound::BODY_MOST + 1)
             .most,
-        BODY_LIMIT
+        Outbound::BODY_MOST
     );
+}
+
+#[tokio::test]
+async fn a_response_is_read_no_further_than_the_config_s_body() {
+    let (base, server) = serve(vec![
+        answer("200 OK", "", b"abcd"),
+        answer("200 OK", "", b"abcde"),
+    ])
+    .await;
+    let outbound = Outbound {
+        body: 4,
+        ..Outbound::default()
+    };
+    let http = NativeHttp::new(Reach::new([base.as_str()]).unwrap(), &outbound).unwrap();
+    let request = || Request::new(Method::Get, Text::plain(format!("{base}/")));
+    assert_eq!(http.send(request()).await.unwrap().body, b"abcd");
+    assert_eq!(
+        http.send(request()).await,
+        Err(HttpError::Unreachable {
+            reason: "the response is larger than 4 bytes".to_owned(),
+        })
+    );
+    server.await.unwrap();
+}
+
+#[test]
+fn a_config_s_roots_are_trusted_beside_the_mozilla_roots() {
+    let mozilla = trusted(None).unwrap().len();
+    let roots = Roots {
+        file: "test-ca.pem".to_owned(),
+        pem: include_str!("../../fixtures/test-ca.pem").to_owned(),
+    };
+    assert_eq!(trusted(Some(&roots)).unwrap().len(), mozilla + 1);
+    let broken = Roots {
+        file: "broken.pem".to_owned(),
+        pem: "-----BEGIN CERTIFICATE-----\nAAAA\n-----END CERTIFICATE-----\n".to_owned(),
+    };
+    let refused = trusted(Some(&broken)).unwrap_err();
+    assert!(refused.0.starts_with("broken.pem: "), "{refused}");
+    let unencoded = Roots {
+        file: "unencoded.pem".to_owned(),
+        pem: "-----BEGIN CERTIFICATE-----\n!!!!\n-----END CERTIFICATE-----\n".to_owned(),
+    };
+    let unread = trusted(Some(&unencoded)).unwrap_err();
+    assert!(unread.0.starts_with("unencoded.pem: "), "{unread}");
+    let outbound = Outbound {
+        roots: Some(broken),
+        ..Outbound::default()
+    };
+    assert_eq!(
+        NativeHttp::new(Reach::new(["https://a.example"]).unwrap(), &outbound).err(),
+        Some(refused)
+    );
+}
+
+#[tokio::test]
+async fn a_request_goes_through_the_proxy_a_config_names() {
+    let (proxy, server) = serve(vec![answer("200 OK", "", b"proxied")]).await;
+    let outbound = Outbound {
+        proxy: Proxy::At(proxy),
+        ..Outbound::default()
+    };
+    let http = NativeHttp::new(Reach::new(["http://127.0.0.1:9"]).unwrap(), &outbound).unwrap();
+    let answer = http
+        .send(Request::new(
+            Method::Get,
+            Text::plain("http://127.0.0.1:9/path"),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(answer.body, b"proxied");
+    let asked = server.await.unwrap();
+    assert!(
+        asked[0].starts_with("GET http://127.0.0.1:9/path HTTP/1.1"),
+        "{}",
+        asked[0]
+    );
+}
+
+#[test]
+fn a_proxy_that_is_no_url_is_refused() {
+    let outbound = Outbound {
+        proxy: Proxy::At("http://exa mple:3128".to_owned()),
+        ..Outbound::default()
+    };
+    assert!(NativeHttp::new(Reach::new(["https://a.example"]).unwrap(), &outbound).is_err());
+}
+
+#[tokio::test]
+async fn a_request_set_to_no_proxy_goes_straight_to_its_origin() {
+    let (base, server) = serve(vec![answer("200 OK", "", b"direct")]).await;
+    let outbound = Outbound {
+        proxy: Proxy::None,
+        ..Outbound::default()
+    };
+    let http = NativeHttp::new(Reach::new([base.as_str()]).unwrap(), &outbound).unwrap();
+    let answer = http
+        .send(Request::new(
+            Method::Get,
+            Text::plain(format!("{base}/path")),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(answer.body, b"direct");
+    let asked = server.await.unwrap();
+    assert!(asked[0].starts_with("GET /path HTTP/1.1"), "{}", asked[0]);
 }

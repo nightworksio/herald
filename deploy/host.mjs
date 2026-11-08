@@ -9,7 +9,7 @@ export function load(module) {
   return loading;
 }
 
-export const TIMEOUT = 10_000;
+export const TIMEOUT = 30_000;
 
 export async function capped(response, most) {
   const larger = () => new Error(`the response is larger than ${most} bytes`);
@@ -19,14 +19,14 @@ export async function capped(response, most) {
   return body;
 }
 
-export function fetching(fetcher = globalThis.fetch, timeout = TIMEOUT) {
+export function fetching(fetcher = globalThis.fetch) {
   return async (asked) => {
     const response = await fetcher(asked.url, {
       method: asked.method,
       headers: asked.headers,
       body: ["GET", "HEAD"].includes(asked.method) ? undefined : asked.body,
       redirect: "manual",
-      signal: AbortSignal.timeout(timeout),
+      signal: AbortSignal.timeout(asked.timeout ?? TIMEOUT),
     });
     return {
       status: response.status,

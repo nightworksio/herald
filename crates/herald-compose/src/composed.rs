@@ -2,6 +2,7 @@ use std::future::Future;
 use std::sync::atomic::AtomicBool;
 
 use herald_config::Config;
+use herald_core::Retention;
 use herald_flows::{
     Admission, Connected, Housekept, Inbound, Job, Keys, Place, Ports, Room, Round, Running,
     Serving, Sessions, Stop, Swept, Taker, Webhooks, Worked, answer, busy, housekeep, poll,
@@ -15,6 +16,10 @@ use crate::answer::{Answer, Left};
 use crate::capped::Capped;
 use crate::host::Host;
 use crate::records::{Records, Served, reached};
+
+/// The variable that bounds a request's whole time, in milliseconds, in
+/// place of the config's `[http] total`.
+const TIMEOUT_MS: &str = "HERALD_TIMEOUT_MS";
 
 /// herald composed on a host: the config, the store it names, and every
 /// route, source and destination connected, ready to answer requests, do
@@ -46,18 +51,22 @@ impl<H: Host> Composed<H> {
         stores: &[&str],
         run: impl Into<String>,
     ) -> Result<Self, String> {
-        let records = reached(&host, &config.store, stores).await?;
+        let outbound = config.http.clone().timed(host.var(TIMEOUT_MS));
+        let records = reached(&host, &config.store, &outbound, stores).await?;
         let prepared = prepare(&config, host.secrets(), host.signer())
             .await
             .map_err(|error| error.to_string())?
             .answering(host.secrets())
             .await
             .map_err(|error| error.to_string())?;
-        let connected = prepared.connect(|base| host.connect(base))?;
+        let connected = prepared.connect(|base| host.connect(base, &outbound))?;
         let webhooks = webhooks(&config, host.secrets())
             .await
             .map_err(|error| error.to_string())?;
-        let public = Capped::new(host.connect(PUBLIC)?, config.server.fetches);
+        let public = Capped::new(
+            host.connect(PUBLIC, &outbound.public())?,
+            config.server.fetches,
+        );
         let memory = MemoryKeyring::new(config.server.keys_most);
         let room = Room::new(config.server.jobs);
         Ok(Self {
@@ -141,7 +150,8 @@ impl<H: Host> Composed<H> {
         let Some(_running) = Running::start(&self.housekeeping) else {
             return Ok(Housekept::default());
         };
-        self.through(Admission::Once, Housekeeping).await
+        self.through(Admission::Once, Housekeeping(self.config.retention))
+            .await
     }
 
     /// Every session the destinations hold, opened through `sockets`, each
@@ -259,7 +269,7 @@ impl<H: Host> Keyed<H> for Answering<'_, '_> {
         };
         let Some(place) = self.room.place() else {
             unworked(serving, &job).await;
-            return busy().into();
+            return busy(serving.config.server.busy_retry).into();
         };
         Answer {
             left: Some(Left { job, place }),
@@ -308,7 +318,7 @@ impl<H: Host, So: Sockets, T: Taker, Ti: Timer> Keyed<H> for Holding<'_, So, T, 
     }
 }
 
-struct Housekeeping;
+struct Housekeeping(Retention);
 
 impl<H: Host> Keyed<H> for Housekeeping {
     type Done = Result<Housekept, Stop>;
@@ -325,6 +335,6 @@ impl<H: Host> Keyed<H> for Housekeeping {
             .checked_sub(serving.keys.refreshed)
             .unwrap_or(Timestamp::MIN);
         let _ = serving.keys.keyring.forget_before(before).await;
-        housekeep(serving.connected, ports.store, ports.clock).await
+        housekeep(serving.connected, ports.store, ports.clock, &self.0).await
     }
 }

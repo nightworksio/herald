@@ -64,7 +64,8 @@ fn a_run_held_by_another_sends_nothing() {
     let store = healthy();
     let key = Key::derive(&RouteId::new("releases"), &Identity::new("github.com/1/v1"));
     let until = NOON.checked_add(SignedDuration::from_mins(5)).unwrap();
-    pollster::block_on(store.put_entry(&Entry::new(key).claimed("other", until), None)).unwrap();
+    pollster::block_on(store.put_entry(&Entry::new(key).claimed_by("other", NOON, until), None))
+        .unwrap();
     let script = Script::default();
     let held = pollster::block_on(run(
         &config(""),
@@ -321,6 +322,7 @@ fn credentials_and_marker_keys_that_cannot_be_resolved_say_why() {
                 herald_config::Destination::Mastodon(herald_dest_fediverse::DestinationOptions {
                     server: "https://mastodon.example".to_owned(),
                     token: options.token.clone().unwrap(),
+                    read_back: None,
                 });
         }
     }
@@ -643,8 +645,9 @@ fn a_held_run_keeps_nothing_as_latest() {
     let store = healthy();
     let clock = FakeClock::at(NOON);
     let key = Key::derive(&RouteId::new("releases"), &Identity::new("github.com/1/v1"));
-    let held = Entry::new(key).claimed(
+    let held = Entry::new(key).claimed_by(
         "other",
+        NOON,
         NOON.checked_add(SignedDuration::from_mins(5)).unwrap(),
     );
     pollster::block_on(store.put_entry(&held, None)).unwrap();
@@ -658,4 +661,57 @@ fn a_held_run_keeps_nothing_as_latest() {
     ));
     assert!(matches!(announced[0].outcome, Outcome::Held { .. }));
     assert_eq!(latest_after(&store), None);
+}
+
+#[test]
+fn a_run_holds_its_claim_for_the_config_s_lease_and_writes_the_latest_as_often_as_it_says() {
+    let store = Failing {
+        fault: Fault::Releases,
+        ..healthy()
+    };
+    let script = Script::answering(&[POSTED, CROSSPOSTED, THREADED, PINNED, WHO, NO_PINS]);
+    let config = config("[announce]\nlease = \"1m\"\nlatest_attempts = 1\n");
+    assert_eq!(config.announce.lease, SignedDuration::from_mins(1));
+    pollster::block_on(run(
+        &config,
+        &store,
+        &FakeClock::at(NOON),
+        &script,
+        "v1",
+        "r1",
+    ));
+    let key = Key::derive(&RouteId::new("releases"), &Identity::new("github.com/1/v1"));
+    let held = pollster::block_on(store.entry(&key))
+        .unwrap()
+        .unwrap()
+        .value;
+    assert_eq!(
+        held.lease.map(|lease| lease.until),
+        Some(NOON.checked_add(SignedDuration::from_mins(1)).unwrap())
+    );
+    assert_eq!(held.claimed, Some(NOON));
+    let conflicting = Failing {
+        fault: Fault::LatestConflicts,
+        ..healthy()
+    };
+    let script = Script::answering(&[POSTED, CROSSPOSTED, THREADED, PINNED, WHO, NO_PINS]);
+    let announced = pollster::block_on(run(
+        &config,
+        &conflicting,
+        &FakeClock::at(NOON),
+        &script,
+        "v1",
+        "r1",
+    ));
+    let Outcome::Stopped {
+        reason: Stop::Store(reason),
+        ..
+    } = &announced[0].outcome
+    else {
+        panic!("{announced:?}");
+    };
+    assert_eq!(
+        reason,
+        "what php-mutation-gate last announced changed under each of 1 writes"
+    );
 }

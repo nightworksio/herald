@@ -1,6 +1,6 @@
 use herald_core::{Refusal, Scheme};
 use herald_flows::{
-    Admission, Keys, Rejected, Verified, activity_verified, admitted, released, verified,
+    Admission, Checking, Keys, Rejected, Verified, activity_verified, admitted, released, verified,
 };
 use herald_ports::{Held, Keeper, Keyring, KnownKey, StoreError};
 use herald_records::MemoryKeyring;
@@ -17,12 +17,27 @@ fn now() -> Timestamp {
     Timestamp::from_second(1_800_000_000).unwrap()
 }
 
+fn checking(now: Timestamp) -> Checking<'static> {
+    Checking {
+        now,
+        bounds: &herald_core::Inbound::DEFAULT,
+    }
+}
+
 fn hex(bytes: &[u8]) -> String {
     herald_core::hex(bytes)
 }
 
 fn checked(scheme: Scheme, key: &str, headers: &[(&str, &str)]) -> Result<(), Rejected> {
-    pollster::block_on(verified(&FakeVerifier, scheme, key, headers, BODY, now())).map(|_| ())
+    pollster::block_on(verified(
+        &FakeVerifier,
+        scheme,
+        key,
+        headers,
+        BODY,
+        checking(now()),
+    ))
+    .map(|_| ())
 }
 
 #[test]
@@ -87,7 +102,7 @@ fn a_discord_interaction_delivered_twice_is_a_replay() {
                 "0aff",
                 &headers,
                 BODY,
-                now(),
+                checking(now()),
             )
             .await?;
             admitted(&store, Admission::Once, Scheme::Discord, &verified, now()).await
@@ -180,7 +195,7 @@ fn a_github_webhook_is_delivered_as_its_signature() {
         "secret",
         &[("X-Hub-Signature-256", &signed)],
         BODY,
-        now(),
+        checking(now()),
     ))
     .unwrap();
     assert_eq!(verified, delivered(&signed["sha256=".len()..]));
@@ -252,6 +267,10 @@ impl herald_ports::Inboxes for Refusing {
     ) -> Result<(), StoreError> {
         Err(self.0.clone())
     }
+
+    async fn forget_deliveries(&self, _: &herald_core::Key) -> Result<(), StoreError> {
+        Err(self.0.clone())
+    }
 }
 
 impl herald_ports::Ledger for Refusing {
@@ -267,6 +286,10 @@ impl herald_ports::Ledger for Refusing {
         _: &herald_core::Entry,
         _: Option<herald_ports::Version>,
     ) -> Result<herald_ports::Written, StoreError> {
+        Err(self.0.clone())
+    }
+
+    async fn expire_entries(&self, _: Timestamp) -> Result<Vec<herald_core::Key>, StoreError> {
         Err(self.0.clone())
     }
 }
@@ -355,7 +378,16 @@ impl herald_ports::Notes for Refusing {
         Err(self.0.clone())
     }
 
-    async fn put_note(&self, _: &herald_core::Key, _: &str) -> Result<(), StoreError> {
+    async fn put_note(
+        &self,
+        _: &herald_core::Key,
+        _: &str,
+        _: Timestamp,
+    ) -> Result<(), StoreError> {
+        Err(self.0.clone())
+    }
+
+    async fn expire_notes(&self, _: Timestamp) -> Result<(), StoreError> {
         Err(self.0.clone())
     }
 }
@@ -488,9 +520,15 @@ pub(crate) fn activity(
         return signing(signature);
     }
     let probe = signing("AA==");
-    let message = herald_core::activity_claim(TO, &borrowed(&probe), body, at())
-        .unwrap()
-        .message;
+    let message = herald_core::activity_claim(
+        TO,
+        &borrowed(&probe),
+        body,
+        at(),
+        &herald_core::Inbound::DEFAULT,
+    )
+    .unwrap()
+    .message;
     let public = herald_core::key(Scheme::ActivityPub, ACTOR_KEY).unwrap();
     let spelled = [b"RsaSha256|".as_slice(), &public, b"|", &message].concat();
     signing(&STANDARD.encode(spelled))
@@ -557,7 +595,7 @@ fn kept_by<K: Keyring>(
         TO,
         &borrowed(headers),
         body,
-        at(),
+        checking(at()),
     ));
     (checked, script.seen())
 }
@@ -593,6 +631,46 @@ fn a_key_read_once_checks_the_next_activity_without_reading_it_again() {
     let (again, seen) = kept_by(&keyring, FOLLOW, &headers, &[], JSON);
     assert_eq!(again.unwrap().signer.as_deref(), Some(ANA));
     assert_eq!(seen, [] as [String; 0]);
+}
+
+#[test]
+fn a_key_s_document_is_read_no_further_than_the_bounds_let_it() {
+    let owned = document(ANA);
+    let headers = activity(FOLLOW, ANA_KEY, None);
+    let script = crate::harness::Script::answering(&[(ANA, 200, owned.as_str())])
+        .headed(&[("content-type", JSON)]);
+    let keyring = MemoryKeyring::new(8);
+    let keys = Keys {
+        keyring: &keyring,
+        refreshed: REFRESHED,
+        reread: REREAD,
+    };
+    let bounds = herald_core::Inbound {
+        document: owned.len() - 1,
+        ..herald_core::Inbound::DEFAULT
+    };
+    let checked = pollster::block_on(activity_verified(
+        &FakeVerifier,
+        &script,
+        &keys,
+        TO,
+        &borrowed(&headers),
+        FOLLOW,
+        Checking {
+            now: at(),
+            bounds: &bounds,
+        },
+    ));
+    let Err(Rejected::Unfetched { reason }) = checked else {
+        panic!("{checked:?}");
+    };
+    assert!(
+        reason.contains(&format!(
+            "the response is larger than {} bytes",
+            owned.len() - 1
+        )),
+        "{reason}"
+    );
 }
 
 #[test]
@@ -835,7 +913,7 @@ fn an_activity_is_never_checked_against_a_key_handed_in() {
         ACTOR_KEY,
         &borrowed(&headers),
         FOLLOW,
-        at(),
+        checking(at()),
     ));
     assert_eq!(handed, Err(Rejected::Unkeyed));
 }

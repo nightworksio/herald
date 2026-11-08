@@ -1,16 +1,18 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::ops::Range;
 
-use herald_core::{DestinationName, RecordKind, RouteId, SourceName, TemplateName};
+use herald_core::{DestinationName, RecordKind, Retention, RouteId, SourceName, TemplateName};
 use herald_sources_forge::Forge;
 use herald_sources_registry::Registry;
 use serde::de::DeserializeOwned;
 use toml::Spanned;
 use toml::de::{DeTable, DeValue, ValueDeserializer};
 
-use crate::config::{Config, Destination, KeyCache, Schedule, Server, Source, Store};
+use crate::config::{Config, Destination, Schedule, Source, Store};
 use crate::error::{ConfigError, Errors};
-use crate::file::{KeyCacheFile, MarkersFile, NoOptions, ScheduleFile, ServerFile, TemplateFile};
+use crate::file::{
+    HttpFile, Keep, KeepFile, MarkersFile, NoOptions, ScheduleFile, ServerFile, TemplateFile,
+};
 use crate::position::position;
 
 type Value<'i> = Spanned<DeValue<'i>>;
@@ -18,7 +20,7 @@ type Value<'i> = Spanned<DeValue<'i>>;
 /// The version of the config this herald reads.
 const VERSION: i64 = 1;
 /// The top-level keys of `herald.toml`.
-const SECTIONS: [&str; 10] = [
+const SECTIONS: [&str; 13] = [
     "version",
     "store",
     "markers",
@@ -29,6 +31,9 @@ const SECTIONS: [&str; 10] = [
     "apps",
     "schedule",
     "server",
+    "http",
+    "render",
+    "announce",
 ];
 /// The length of a SHA-256 in hex.
 const HASH_DIGITS: usize = 64;
@@ -84,6 +89,9 @@ struct Sections<'i> {
     apps: Option<Value<'i>>,
     schedule: Option<Value<'i>>,
     server: Option<Value<'i>>,
+    http: Option<Value<'i>>,
+    render: Option<Value<'i>>,
+    announce: Option<Value<'i>>,
 }
 
 /// A template's sources, with where each is written.
@@ -163,6 +171,18 @@ impl Loader<'_> {
         path: &str,
         kinds: &[&str],
     ) -> Option<(String, Value<'i>)> {
+        self.kinded_table(value, path, kinds)
+            .map(|(kind, span, table)| (kind, Spanned::new(span, DeValue::Table(table))))
+    }
+
+    /// The kind `value`'s table names, one of `kinds`, and the rest of the
+    /// table with where it is written.
+    fn kinded_table<'i>(
+        &mut self,
+        value: Value<'i>,
+        path: &str,
+        kinds: &[&str],
+    ) -> Option<(String, Range<usize>, DeTable<'i>)> {
         let (span, mut table) = self.table(value, path)?;
         let Some(kind) = table.remove("kind") else {
             self.error(
@@ -176,7 +196,7 @@ impl Loader<'_> {
         let kind_path = format!("{path}.kind");
         match kind.into_inner() {
             DeValue::String(name) if kinds.contains(&name.as_ref()) => {
-                Some((name.into_owned(), Spanned::new(span, DeValue::Table(table))))
+                Some((name.into_owned(), span, table))
             }
             DeValue::String(name) => {
                 self.error(
@@ -224,6 +244,9 @@ impl Loader<'_> {
                 "apps" => &mut sections.apps,
                 "schedule" => &mut sections.schedule,
                 "server" => &mut sections.server,
+                "http" => &mut sections.http,
+                "render" => &mut sections.render,
+                "announce" => &mut sections.announce,
                 other => {
                     self.error(
                         &key.span(),
@@ -256,7 +279,7 @@ impl Loader<'_> {
         }
     }
 
-    fn store(&mut self, value: Option<Value<'_>>) -> Option<Store> {
+    fn store(&mut self, value: Option<Value<'_>>) -> Option<(Store, Retention)> {
         let Some(value) = value else {
             self.error(
                 &(0..0),
@@ -265,7 +288,57 @@ impl Loader<'_> {
             );
             return None;
         };
-        let (kind, rest) = self.kinded(value, "store", &Store::KINDS)?;
+        let (kind, span, table) = self.kinded_table(value, "store", &Store::KINDS)?;
+        if kind == Store::MARKERS {
+            self.typed::<NoOptions>(Spanned::new(span, DeValue::Table(table)), "store")?;
+            return Some((Store::Markers, Retention::default()));
+        }
+        let (rest, keep) = kept(span, table);
+        let retention = self.retention(keep);
+        let store = self.options(&kind, rest)?;
+        Some((store, retention?))
+    }
+
+    fn routes<'i>(&mut self, value: Option<Value<'i>>) -> Vec<Value<'i>> {
+        let Some(value) = value else {
+            return Vec::new();
+        };
+        let span = value.span();
+        if let DeValue::Array(items) = value.into_inner() {
+            return items.into_iter().collect();
+        }
+        self.error(
+            &span,
+            "routes",
+            "routes are an array of tables; write each as [[routes]]",
+        );
+        Vec::new()
+    }
+
+    fn retention(&mut self, keep: Value<'_>) -> Option<Retention> {
+        let file = self.typed::<KeepFile>(keep, "store")?;
+        let defaults = Retention::default();
+        let deliveries = file.deliveries.map_or(defaults.deliveries, |kept| {
+            if kept.get_ref().0 < Retention::LONGEST_RETRY {
+                self.error(
+                    &kept.span(),
+                    "store.keep_deliveries",
+                    format!(
+                        "keep a delivery's id at least \"{}d\", longer than any sender goes on retrying it",
+                        Retention::LONGEST_RETRY.as_hours() / 24
+                    ),
+                );
+            }
+            kept.into_inner().0
+        });
+        Some(Retention {
+            deliveries,
+            ledger: file.ledger.map_or(defaults.ledger, Keep::kept),
+            notes: file.notes.map_or(defaults.notes, Keep::kept),
+        })
+    }
+
+    fn options(&mut self, kind: &str, rest: Value<'_>) -> Option<Store> {
         if kind == Store::SQLITE {
             return self
                 .typed::<herald_store_sqlite::StoreOptions>(rest, "store")
@@ -311,13 +384,8 @@ impl Loader<'_> {
                 .typed::<herald_store_deno_kv::StoreOptions>(rest, "store")
                 .map(Store::DenoKv);
         }
-        if kind == Store::FASTLY_KV {
-            return self
-                .typed::<herald_store_fastly_kv::StoreOptions>(rest, "store")
-                .map(Store::FastlyKv);
-        }
-        self.typed::<NoOptions>(rest, "store")?;
-        Some(Store::Markers)
+        self.typed::<herald_store_fastly_kv::StoreOptions>(rest, "store")
+            .map(Store::FastlyKv)
     }
 
     /// Whether every route that reaches followers or subscribers has a store
@@ -619,71 +687,6 @@ impl Loader<'_> {
     }
 }
 
-impl Loader<'_> {
-    /// `[server]` as `file` gives it, over the store `store`.
-    fn server(&mut self, file: ServerFile, store: Option<&Store>) -> Server {
-        let defaults = Server::default();
-        let listen = file.listen.map_or(defaults.listen, |listen| {
-            if listen.get_ref().parse::<std::net::SocketAddr>().is_err() {
-                self.error(
-                    &listen.span(),
-                    "server.listen",
-                    format!(
-                        "\"{}\" is not an address and a port; write one such as \"{}\"",
-                        listen.get_ref(),
-                        Server::LISTEN
-                    ),
-                );
-            }
-            listen.into_inner()
-        });
-        let keys = file.keys.cache.map_or(KeyCache::Memory, |cache| {
-            if *cache.get_ref() == KeyCacheFile::Memory {
-                return KeyCache::Memory;
-            }
-            if let Some(store) = store
-                && !store.keeps(RecordKind::Keys)
-            {
-                let hint = store
-                    .kept_by(RecordKind::Keys)
-                    .unwrap_or_else(|| "give a store that keeps records".to_owned());
-                self.error(
-                    &cache.span(),
-                    "server.keys.cache",
-                    format!(
-                        "the {} store keeps no keys; keep them in \"memory\", or {hint}",
-                        store.kind()
-                    ),
-                );
-            }
-            KeyCache::Store
-        });
-        let count = |given: Option<std::num::NonZeroUsize>, default| {
-            given.map_or(default, std::num::NonZeroUsize::get)
-        };
-        Server {
-            listen,
-            jobs: count(file.jobs, defaults.jobs),
-            connections: count(file.connections, defaults.connections),
-            body: file.body.map_or(defaults.body, |body| body.0),
-            fetches: count(file.fetches, defaults.fetches),
-            completions: count(file.completions, defaults.completions),
-            deliveries: count(file.deliveries, defaults.deliveries),
-            silence: file.silence.map_or(defaults.silence, |silence| silence.0),
-            keys,
-            keys_refreshed: file
-                .keys
-                .refresh_after
-                .map_or(defaults.keys_refreshed, |after| after.0),
-            keys_reread: file
-                .keys
-                .reread_after
-                .map_or(defaults.keys_reread, |after| after.0),
-            keys_most: count(file.keys.most, defaults.keys_most),
-        }
-    }
-}
-
 /// The config `text` holds, read from the file named `file`, with each
 /// template file read through `read`.
 ///
@@ -705,7 +708,7 @@ pub fn load(
     }
     let sections = loader.sections(root.into_inner());
     loader.version(sections.version);
-    let store = loader.store(sections.store);
+    let (store, retention) = loader.store(sections.store).unzip();
     let marker_key = sections
         .markers
         .and_then(|value| loader.typed::<MarkersFile>(value, "markers"))
@@ -716,20 +719,7 @@ pub fn load(
     let listed = loader.apps(sections.apps, &sources);
     let mut routes = Vec::new();
     let mut ids: BTreeSet<RouteId> = BTreeSet::new();
-    let mut values = Vec::new();
-    if let Some(value) = sections.routes {
-        let span = value.span();
-        if let DeValue::Array(items) = value.into_inner() {
-            values.extend(items);
-        } else {
-            loader.error(
-                &span,
-                "routes",
-                "routes are an array of tables; write each as [[routes]]",
-            );
-        }
-    }
-    for (index, value) in values.into_iter().enumerate() {
+    for (index, value) in loader.routes(sections.routes).into_iter().enumerate() {
         if let Some(read) = loader.route(index, value, &destinations, &sources, &listed, &templates)
         {
             if !ids.insert(read.config.route.id.clone()) {
@@ -748,7 +738,8 @@ pub fn load(
     }
     loader.followed(store.as_ref(), &destinations, &routes);
     loader.answered(store.as_ref(), &destinations, &templates);
-    let compiled = loader.compile(&templates, &routes);
+    let render = loader.render(sections.render);
+    let compiled = loader.compile(&templates, &routes, render);
     if let Some(compiled) = &compiled {
         for read in &routes {
             loader.dry_render(compiled, read);
@@ -764,9 +755,17 @@ pub fn load(
         .and_then(|value| loader.typed::<ServerFile>(value, "server"))
         .map(|file| loader.server(file, store.as_ref()))
         .unwrap_or_default();
+    let http = sections
+        .http
+        .and_then(|value| loader.typed::<HttpFile>(value, "http"))
+        .map(|file| loader.http(file, read))
+        .unwrap_or_default();
+    let announce = loader.announce(sections.announce);
     if let (true, Some(store), Some(templates)) = (loader.errors.is_empty(), store, compiled) {
         return Ok(Config {
             store,
+            retention: retention.unwrap_or_default(),
+            render,
             marker_key,
             destinations: destinations
                 .into_iter()
@@ -781,6 +780,8 @@ pub fn load(
                 housekeep: schedule.housekeep.map(|housekeep| housekeep.0),
             },
             server,
+            http,
+            announce,
         });
     }
     let mut errors = loader.errors;
@@ -791,6 +792,22 @@ pub fn load(
     })
 }
 
+/// `options`, a store's table written at `span`, apart from how long it
+/// keeps what herald records.
+fn kept(span: Range<usize>, mut options: DeTable<'_>) -> (Value<'_>, Value<'_>) {
+    let mut keep = DeTable::new();
+    for key in KeepFile::KEYS {
+        if let Some((name, value)) = options.remove_entry(key) {
+            keep.insert(name, value);
+        }
+    }
+    (
+        Spanned::new(span.clone(), DeValue::Table(options)),
+        Spanned::new(span, DeValue::Table(keep)),
+    )
+}
+
 mod apps;
 mod route;
+mod settings;
 mod templates;

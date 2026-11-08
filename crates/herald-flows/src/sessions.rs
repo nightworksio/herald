@@ -12,21 +12,22 @@ use std::task::Poll;
 use std::time::Duration;
 
 use futures_util::stream::{FuturesUnordered, StreamExt};
+use herald_config::Reconnecting;
 use herald_core::{Asked, DestinationName};
 use herald_dest_discord::{self as discord, Effect, Gateway};
 use herald_dest_matrix::{self as matrix, SYNC_WAIT};
 use herald_dest_slack::{self as slack};
-use herald_ports::{Frame, Http, Secret, Socket, Sockets, Store, Text, Timer};
+use herald_ports::{Clock, Frame, Http, Secret, Socket, Sockets, Store, Text, Timer};
 
 use crate::interact::{completed, deferral};
 use crate::interacting::{Interacting, Replying};
 use crate::room::Room;
 use crate::serving::{Job, Serving};
 
-/// The first wait after a session fails to connect.
-const FIRST_WAIT: Duration = Duration::from_secs(1);
-/// The longest wait between attempts.
-const LONGEST_WAIT: Duration = Duration::from_secs(60);
+/// The shortest a heartbeat's interval is taken to be.
+const LEAST_BEAT: Duration = Duration::from_secs(1);
+/// The nanoseconds in a second, which a jittered wait's seed counts.
+const NANOS: u32 = 1_000_000_000;
 
 /// What a session does as it takes commands up: deferring each and handing
 /// on its work, and sending completions.
@@ -50,22 +51,53 @@ pub trait Taker {
 }
 
 /// How long a session waits before it connects again, doubling each time it
-/// is not taken up, up to [`LONGEST_WAIT`].
-struct Backoff(Duration);
+/// is not taken up, up to the longest wait `reconnecting` sets.
+struct Backoff {
+    now: Duration,
+    first: Duration,
+    longest: Duration,
+    jitter: bool,
+}
 
 impl Backoff {
-    fn new() -> Self {
-        Self(FIRST_WAIT)
+    fn new(reconnecting: &Reconnecting) -> Self {
+        let first = Duration::try_from(reconnecting.first_wait).unwrap_or(LEAST_BEAT);
+        Self {
+            now: first,
+            first,
+            longest: Duration::try_from(reconnecting.longest_wait)
+                .unwrap_or(first)
+                .max(first),
+            jitter: reconnecting.jitter,
+        }
     }
 
-    async fn wait<T: Timer>(&mut self, timer: &T) {
-        timer.sleep(self.0).await;
-        self.0 = (self.0 * 2).min(LONGEST_WAIT);
+    /// The wait now: all of it, or with jitter between half of it and all
+    /// of it, as far along as `seed` nanoseconds are of a second.
+    fn pause(&self, seed: u32) -> Duration {
+        if !self.jitter {
+            return self.now;
+        }
+        let half = self.now / 2;
+        let along = u128::from(seed.min(NANOS - 1));
+        let spread = along * half.as_nanos() / u128::from(NANOS);
+        half + Duration::from_nanos(u64::try_from(spread).unwrap_or(u64::MAX))
+    }
+
+    async fn wait<T: Timer>(&mut self, timer: &T, clock: &impl Clock) {
+        timer.sleep(self.pause(seed(clock))).await;
+        self.now = (self.now * 2).min(self.longest);
     }
 
     fn reset(&mut self) {
-        self.0 = FIRST_WAIT;
+        self.now = self.first;
     }
+}
+
+/// Where between half of a wait and all of it this one falls, from
+/// `clock`'s nanoseconds.
+fn seed(clock: &impl Clock) -> u32 {
+    clock.now().subsec_nanosecond().unsigned_abs()
 }
 
 /// `doing`, done while what `taking` holds goes on.
@@ -106,6 +138,7 @@ pub struct Sessions<'s, 'a, S, C, G, V, H, P, K, T, Ti> {
 impl<'s, 'a, S, C, G, V, H, P, K, T, Ti> Sessions<'s, 'a, S, C, G, V, H, P, K, T, Ti>
 where
     S: Store,
+    C: Clock,
     H: Http,
     T: Taker,
     Ti: Timer,
@@ -215,7 +248,7 @@ where
         mut gateway: Gateway,
         http: &'s H,
     ) {
-        let mut backoff = Backoff::new();
+        let mut backoff = Backoff::new(&self.serving.config.server.sessions);
         let mut taking: Taking<'s> = FuturesUnordered::new();
         loop {
             let mut socket = match meanwhile(&mut taking, sockets.open(&gateway.url())).await {
@@ -225,7 +258,11 @@ where
                         name,
                         format!("Discord's gateway could not be reached: {error}"),
                     );
-                    meanwhile(&mut taking, backoff.wait(self.timer)).await;
+                    meanwhile(
+                        &mut taking,
+                        backoff.wait(self.timer, self.serving.ports.clock),
+                    )
+                    .await;
                     continue;
                 }
             };
@@ -248,7 +285,11 @@ where
                 while taking.next().await.is_some() {}
                 return;
             }
-            meanwhile(&mut taking, backoff.wait(self.timer)).await;
+            meanwhile(
+                &mut taking,
+                backoff.wait(self.timer, self.serving.ports.clock),
+            )
+            .await;
         }
     }
 
@@ -376,7 +417,7 @@ where
         app: &Secret,
         opening: &H,
     ) {
-        let mut backoff = Backoff::new();
+        let mut backoff = Backoff::new(&self.serving.config.server.sessions);
         let mut taking: Taking<'s> = FuturesUnordered::new();
         loop {
             let opened = meanwhile(&mut taking, async {
@@ -417,12 +458,16 @@ where
                     format!("Slack's Socket Mode could not be opened: {trouble}"),
                 ),
             }
-            meanwhile(&mut taking, backoff.wait(self.timer)).await;
+            meanwhile(
+                &mut taking,
+                backoff.wait(self.timer, self.serving.ports.clock),
+            )
+            .await;
         }
     }
 
     async fn sync(&self, name: &DestinationName, interacting: &matrix::Interacting, http: &H) {
-        let mut backoff = Backoff::new();
+        let mut backoff = Backoff::new(&self.serving.config.server.sessions);
         let mut taking: Taking<'s> = FuturesUnordered::new();
         let mut since: Option<String> = None;
         loop {
@@ -455,7 +500,11 @@ where
                         name,
                         format!("the homeserver could not be synced: {trouble}"),
                     );
-                    meanwhile(&mut taking, backoff.wait(self.timer)).await;
+                    meanwhile(
+                        &mut taking,
+                        backoff.wait(self.timer, self.serving.ports.clock),
+                    )
+                    .await;
                 }
             }
         }
@@ -463,9 +512,70 @@ where
 }
 
 /// How often to beat for `every`, Discord's interval: at least
-/// [`FIRST_WAIT`].
+/// [`LEAST_BEAT`].
 fn beating(every: jiff::SignedDuration) -> Duration {
     Duration::try_from(every)
-        .unwrap_or(FIRST_WAIT)
-        .max(FIRST_WAIT)
+        .unwrap_or(LEAST_BEAT)
+        .max(LEAST_BEAT)
+}
+
+#[cfg(test)]
+mod tests {
+    use herald_testing::{FakeClock, FakeTimer};
+
+    use super::*;
+
+    fn reconnecting(jitter: bool) -> Reconnecting {
+        Reconnecting {
+            first_wait: jiff::SignedDuration::from_secs(2),
+            longest_wait: jiff::SignedDuration::from_secs(5),
+            jitter,
+        }
+    }
+
+    #[test]
+    fn a_wait_doubles_up_to_the_longest_and_starts_again_once_taken_up() {
+        let timer = FakeTimer::default();
+        let clock = FakeClock::at("2027-01-15T08:00:00.5Z".parse().unwrap());
+        let mut backoff = Backoff::new(&reconnecting(false));
+        pollster::block_on(async {
+            for _ in 0..3 {
+                backoff.wait(&timer, &clock).await;
+            }
+            backoff.reset();
+            backoff.wait(&timer, &clock).await;
+        });
+        assert_eq!(
+            timer.waited(),
+            [2, 4, 5, 2].map(Duration::from_secs).to_vec()
+        );
+    }
+
+    #[test]
+    fn a_jittered_wait_falls_between_half_of_it_and_all_of_it() {
+        let backoff = Backoff::new(&reconnecting(true));
+        assert_eq!(backoff.pause(0), Duration::from_secs(1));
+        assert_eq!(backoff.pause(NANOS / 2), Duration::from_millis(1_500));
+        assert_eq!(backoff.pause(u32::MAX), Duration::from_nanos(1_999_999_999));
+        assert_eq!(
+            Backoff::new(&reconnecting(false)).pause(NANOS / 2),
+            Duration::from_secs(2)
+        );
+    }
+
+    #[test]
+    fn a_wait_s_seed_is_the_nanoseconds_of_the_clock_s_second() {
+        let clock = FakeClock::at("2027-01-15T08:00:00.25Z".parse().unwrap());
+        assert_eq!(seed(&clock), 250_000_000);
+    }
+
+    #[test]
+    fn a_heartbeat_is_at_least_a_second_apart() {
+        assert_eq!(beating(jiff::SignedDuration::from_millis(10)), LEAST_BEAT);
+        assert_eq!(
+            beating(jiff::SignedDuration::from_secs(41)),
+            Duration::from_secs(41)
+        );
+        assert_eq!(beating(jiff::SignedDuration::from_secs(-1)), LEAST_BEAT);
+    }
 }

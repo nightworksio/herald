@@ -94,7 +94,7 @@ mod forgejo {
             }
         );
         let releases = Forge::Forgejo
-            .releases(&forgejo(), &answer(200, RELEASES))
+            .releases(&forgejo(), &answer(200, RELEASES), herald_wire::PARSE_LIMIT)
             .unwrap();
         let found: Vec<&str> = releases
             .events
@@ -112,7 +112,7 @@ mod forgejo {
         assert_eq!(releases.etag, None);
         assert_eq!(
             Forge::Forgejo
-                .releases(&forgejo(), &answer(500, "{}"))
+                .releases(&forgejo(), &answer(500, "{}"), herald_wire::PARSE_LIMIT)
                 .unwrap_err(),
             SourceError::Answered {
                 what: "Forgejo's releases",
@@ -161,7 +161,7 @@ mod forgejo {
         fn any_bytes_are_an_event_nothing_or_an_error(bytes in proptest::collection::vec(any::<u8>(), 0..512)) {
             let _ = Forge::Forgejo.event(&bytes);
             let response = Response { status: 200, headers: Vec::new(), body: bytes };
-            let _ = Forge::Forgejo.releases(&forgejo(), &response);
+            let _ = Forge::Forgejo.releases(&forgejo(), &response, herald_wire::PARSE_LIMIT);
             let _ = Forge::Forgejo.release(&forgejo(), &response);
         }
     }

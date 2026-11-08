@@ -1,10 +1,10 @@
 use herald_core::{Entry, Facts, Key, Marker, Step};
-use herald_ports::{Http, MarkedThread, Markers, MarkersError};
+use herald_ports::{Http, MarkedThread, Markers, MarkersError, unreserved};
 use serde_json::Value;
 
 use crate::matrix::Matrix;
 use crate::read::{UNNAMED, json, text};
-use crate::request::{MARKER, get, pinned, pins, segment};
+use crate::request::{MARKER, get, pinned, pins};
 
 /// The most events read back from a room's timeline.
 const PAGE: u8 = 100;
@@ -46,25 +46,46 @@ impl<'a, H: Http> MatrixMarkers<'a, H> {
     }
 
     /// The room's recent messages that herald's own account sent, newest
-    /// first.
-    async fn own(&self) -> Result<Vec<Value>, MarkersError> {
+    /// first, read back page by page until a page holds one `sought`, or
+    /// none is left.
+    async fn own(&self, sought: impl Fn(&Value) -> bool) -> Result<Vec<Value>, MarkersError> {
         let account = self.read("/account/whoami").await?;
         let herald = text(&account, "user_id")
             .ok_or_else(|| unreadable(UNNAMED))?
             .to_owned();
-        let room = segment(&self.matrix.route.room);
-        let page = self
-            .read(&format!("/rooms/{room}/messages?dir=b&limit={PAGE}"))
-            .await?;
-        Ok(page
-            .get("chunk")
-            .and_then(Value::as_array)
-            .into_iter()
-            .flatten()
-            .filter(|event| text(event, "type") == Some("m.room.message"))
-            .filter(|event| text(event, "sender") == Some(herald.as_str()))
-            .cloned()
-            .collect())
+        let room = unreserved(&self.matrix.route.room);
+        let mut own = Vec::new();
+        let mut from: Option<String> = None;
+        for _ in 0..self.matrix.read_back.pages() {
+            let path = from.as_deref().map_or_else(
+                || format!("/rooms/{room}/messages?dir=b&limit={PAGE}"),
+                |from| {
+                    format!(
+                        "/rooms/{room}/messages?dir=b&limit={PAGE}&from={}",
+                        unreserved(from)
+                    )
+                },
+            );
+            let page = self.read(&path).await?;
+            let chunk = page
+                .get("chunk")
+                .and_then(Value::as_array)
+                .map(Vec::as_slice)
+                .unwrap_or_default();
+            let mine: Vec<Value> = chunk
+                .iter()
+                .filter(|event| text(event, "type") == Some("m.room.message"))
+                .filter(|event| text(event, "sender") == Some(herald.as_str()))
+                .cloned()
+                .collect();
+            let found = mine.iter().any(&sought);
+            own.extend(mine);
+            from = text(&page, "end").map(ToOwned::to_owned);
+            if found || from.is_none() {
+                break;
+            }
+        }
+        Ok(own)
     }
 }
 
@@ -97,7 +118,7 @@ impl<H: Http> Markers for MatrixMarkers<'_, H> {
     }
 
     async fn entry(&self, key: &Key, marker: &Marker) -> Result<Option<Entry>, MarkersError> {
-        let events = self.own().await?;
+        let events = self.own(|event| carries(event, marker)).await?;
         let Some(post) = events.iter().find(|event| carries(event, marker)) else {
             return Ok(None);
         };

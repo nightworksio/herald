@@ -14,7 +14,7 @@ use herald_flows::{Connected, Keys, Ports, ROUND_SECRET, Serving, Webhooks, webh
 use herald_native::NativeSockets;
 use herald_ports::{Keyring, PUBLIC, Secret, Store as Keeps};
 use herald_records::MemoryKeyring;
-use herald_server::{Asked, Heard, Limits, READ, serve};
+use herald_server::{Asked, Heard, Limits, serve};
 
 use herald_compose::told;
 
@@ -81,12 +81,15 @@ impl<F: Future<Output = ()>> Listening<'_, F> {
         };
         let limits = Limits {
             jobs: server.jobs,
+            queue: server.queue,
             connections: server.connections,
             body: server.body,
             poll: period(self.config.schedule.poll),
             housekeep: period(self.config.schedule.housekeep),
             keys: period(Some(server.keys_refreshed)).unwrap_or_default(),
-            read: READ,
+            read: period(Some(server.read)).unwrap_or_default(),
+            held: period(Some(server.held)).unwrap_or_default(),
+            accept_pause: period(Some(server.accept_pause)).unwrap_or_default(),
             asked: self.asked,
             secret: self.secret.as_ref(),
         };

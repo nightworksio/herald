@@ -15,7 +15,8 @@ mod samples;
 mod schema;
 
 pub use config::{
-    App, Config, Destination, KeyCache, RouteConfig, RouteOptions, Schedule, Server, Source, Store,
+    Announce, App, Config, Destination, KeyCache, Reconnecting, RouteConfig, RouteOptions,
+    Schedule, Server, Source, Store,
 };
 pub use error::{ConfigError, Errors};
 pub use load::load;

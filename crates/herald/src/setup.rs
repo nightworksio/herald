@@ -156,7 +156,8 @@ pub(crate) async fn discord(
 }
 
 /// The app manifest of the Slack destination `named`, its commands posted to
-/// herald at `url` or carried over Socket Mode.
+/// herald at `url`, under the config's `[server] base`, or carried over
+/// Socket Mode.
 pub(crate) fn slack(
     config: &Config,
     named: Option<&str>,
@@ -179,12 +180,12 @@ pub(crate) fn slack(
                 "Slack posts commands to herald's address; give it with --url, such as --url https://herald.example".to_owned(),
             );
         }
-        (true, Some(url)) => Some(web(url)?),
+        (true, Some(url)) => Some(format!("{}{}", web(url)?, config.server.base)),
         (false, _) => None,
     };
     let interacting =
         herald_dest_slack::Interacting::new(interactions.clone(), options.api.as_deref());
-    say(out, &interacting.manifest(name.as_str(), url));
+    say(out, &interacting.manifest(name.as_str(), url.as_deref()));
     let kept = if posted {
         interactions
             .signing
@@ -209,7 +210,8 @@ pub(crate) fn slack(
 }
 
 /// The registration a homeserver installs for the Matrix destination
-/// `named`, reaching herald at `url`, with two tokens made by `random`.
+/// `named`, reaching herald at `url` under the config's `[server] base`, with
+/// two tokens made by `random`.
 pub(crate) fn matrix(
     config: &Config,
     named: Option<&str>,
@@ -252,7 +254,7 @@ pub(crate) fn matrix(
         ),
     );
     let registration = interacting.registration(
-        &format!("{url}/matrix/{}", name.as_str()),
+        &format!("{url}{}/matrix/{}", config.server.base, name.as_str()),
         &homeserver,
         &appservice,
     );

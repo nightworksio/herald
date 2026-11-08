@@ -2,8 +2,8 @@ use std::future::{Future, ready};
 use std::path::Path;
 
 use herald_ports::{
-    Changed, Clock, Http, Kv, KvError, Pair, Secret, Secrets, Signer, Sql, SqlError, Stamped,
-    Statement, Verifier, Versionstamp,
+    Changed, Clock, Http, Kv, KvError, Outbound, Pair, Proxy, Secret, Secrets, Signer, Sql,
+    SqlError, Stamped, Statement, Verifier, Versionstamp,
 };
 use jiff::SignedDuration;
 
@@ -25,12 +25,14 @@ pub trait Host: Sync {
     /// A key-value store the platform offers.
     type Kv: Kv;
 
-    /// What reaches `base`.
+    /// What reaches `base`, within `outbound`'s bounds, through its proxy
+    /// and trusting its roots.
     ///
     /// # Errors
     ///
-    /// Where `base` cannot be reached from here, saying why.
-    fn connect(&self, base: &str) -> Result<Self::Http, String>;
+    /// Where `base` cannot be reached from here, or this host cannot go
+    /// through `outbound`'s proxy or trust its roots, saying why.
+    fn connect(&self, base: &str, outbound: &Outbound) -> Result<Self::Http, String>;
 
     /// The variable `name`, where the platform sets it and it is not empty.
     fn var(&self, name: &str) -> Option<&str>;
@@ -158,9 +160,59 @@ impl Kv for Unoffered {
     }
 }
 
+/// `outbound`, where `host` can keep it: refused where it names a proxy or
+/// certificate authorities `host` cannot use. The proxy's URL is never
+/// repeated, as it may hold its credentials.
+///
+/// # Errors
+///
+/// `outbound` names a proxy or roots, saying which and what to write.
+pub fn plain(outbound: &Outbound, host: &str) -> Result<(), String> {
+    if matches!(outbound.proxy, Proxy::At(_)) {
+        return Err(format!(
+            "{host} cannot send herald's requests through the proxy [http] proxy names; set it to \"environment\" or \"none\""
+        ));
+    }
+    if let Some(roots) = &outbound.roots {
+        return Err(format!(
+            "{host} cannot trust the certificate authorities in {}; remove [http] ca_file",
+            roots.file
+        ));
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_proxy_or_roots_a_host_cannot_use_are_refused_without_the_proxy_s_url() {
+        assert_eq!(plain(&Outbound::default(), "this host"), Ok(()));
+        let proxied = Outbound {
+            proxy: Proxy::At("https://user:secret@proxy.example".to_owned()),
+            ..Outbound::default()
+        };
+        let refused = plain(&proxied, "this host").unwrap_err();
+        assert!(refused.starts_with("this host cannot send"), "{refused}");
+        assert!(!refused.contains("secret"), "{refused}");
+        let rooted = Outbound {
+            roots: Some(herald_ports::Roots {
+                file: "ca.pem".to_owned(),
+                pem: String::new(),
+            }),
+            ..Outbound::default()
+        };
+        assert_eq!(
+            plain(&rooted, "this host"),
+            Err("this host cannot trust the certificate authorities in ca.pem; remove [http] ca_file".to_owned())
+        );
+        let unproxied = Outbound {
+            proxy: Proxy::None,
+            ..Outbound::default()
+        };
+        assert_eq!(plain(&unproxied, "this host"), Ok(()));
+    }
 
     #[test]
     fn what_a_host_does_not_offer_refuses_everything() {

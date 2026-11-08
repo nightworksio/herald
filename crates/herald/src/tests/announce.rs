@@ -33,7 +33,7 @@ fn a_run_is_named_for_the_ci_job_it_runs_in() {
     );
     let now = jiff::Timestamp::UNIX_EPOCH;
     let until = now + jiff::SignedDuration::from_mins(10);
-    let racing = herald_core::Entry::new(key).claimed(&run_name(&github), until);
+    let racing = herald_core::Entry::new(key).claimed_by(&run_name(&github), now, until);
     assert!(matches!(
         herald_core::plan(
             Some(&racing),
@@ -225,7 +225,7 @@ fn a_config_that_cannot_be_read_or_has_mistakes_is_reported() {
     let missing = pollster::block_on(crate::run(
         &args,
         &BTreeMap::new(),
-        &Connector::new(&|_| Ok(Connection::new(world.clone())), &|_| {
+        &Connector::new(&|_, _| Ok(Connection::new(world.clone())), &|_, _| {
             Ok(Connection::new(world.clone()))
         }),
         &mut Vec::new(),

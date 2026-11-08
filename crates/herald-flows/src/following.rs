@@ -3,9 +3,8 @@ use std::fmt;
 use herald_core::{Sent, Subscription};
 use herald_dest_fediverse::{ActivityPub, Asked, asked, inboxes};
 use herald_ports::{Http, Signer, Store, Subscriptions};
-use jiff::Timestamp;
 
-use crate::inbound::{Verified, fetched};
+use crate::inbound::{Checking, Verified, fetched};
 use crate::prepare::{Connected, PreparedRoute};
 use crate::reached::Reached;
 
@@ -73,7 +72,7 @@ fn serving<'a, H>(
 /// Takes `body`, an activity [`crate::activity_verified`] let through as
 /// `verified`: a `Follow` of one of herald's actors keeps its follower,
 /// delivered to at the inbox its own document names, and is answered with
-/// an `Accept` signed at `now` through `signer`; an `Undo` of such a follow
+/// an `Accept` signed at `checking`'s time through `signer`; an `Undo` of such a follow
 /// forgets the follower (ADR-0004, decision 7).
 ///
 /// # Errors
@@ -84,7 +83,7 @@ pub async fn followed<S: Store, G: Signer, H: Http>(
     connected: &Connected<H>,
     store: &S,
     signer: &G,
-    now: Timestamp,
+    checking: Checking<'_>,
     verified: &Verified,
     body: &[u8],
 ) -> Result<Followed, FollowError> {
@@ -96,7 +95,7 @@ pub async fn followed<S: Store, G: Signer, H: Http>(
             let Some((route, actor, http)) = serving(connected, &target) else {
                 return Ok(ignored("it follows no actor herald serves"));
             };
-            let document = fetched(http, follower)
+            let document = fetched(http, follower, checking.bounds)
                 .await
                 .map_err(FollowError::Unfetched)?;
             let Some(inboxes) = inboxes(&document, follower) else {
@@ -116,7 +115,13 @@ pub async fn followed<S: Store, G: Signer, H: Http>(
                 .await
                 .map_err(|error| FollowError::Store(error.to_string()))?;
             let answered = actor
-                .post(http, signer, now, &inboxes.personal, &actor.accept(&follow))
+                .post(
+                    http,
+                    signer,
+                    checking.now,
+                    &inboxes.personal,
+                    &actor.accept(&follow),
+                )
                 .await
                 .unwrap_or_else(|error| Sent::Refused(error.to_string()));
             Ok(Followed::Accepted {

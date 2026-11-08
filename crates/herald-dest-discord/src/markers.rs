@@ -1,5 +1,5 @@
 use herald_core::{Entry, Facts, Key, Marker, Marks, Step};
-use herald_ports::{Http, MarkedThread, Markers, MarkersError};
+use herald_ports::{Http, MarkedThread, Markers, MarkersError, unreserved};
 use jiff::Timestamp;
 use serde_json::Value;
 
@@ -57,17 +57,41 @@ impl<'a, H: Http> DiscordMarkers<'a, H> {
         })
     }
 
-    async fn messages(&self, channel: &str, author: &str) -> Result<Vec<Value>, MarkersError> {
-        let page = self
-            .read(&format!("/channels/{channel}/messages?limit={PAGE}"))
-            .await?;
-        Ok(page
-            .as_array()
-            .into_iter()
-            .flatten()
-            .filter(|message| self::author(message) == Some(author))
-            .cloned()
-            .collect())
+    /// The messages `author` posted in `channel`, newest first, read back
+    /// page by page until a page holds one `sought`, or none is left.
+    async fn messages(
+        &self,
+        channel: &str,
+        author: &str,
+        sought: impl Fn(&Value) -> bool,
+    ) -> Result<Vec<Value>, MarkersError> {
+        let mut own = Vec::new();
+        let mut before: Option<String> = None;
+        for _ in 0..self.discord.read_back.pages() {
+            let path = before.as_deref().map_or_else(
+                || format!("/channels/{channel}/messages?limit={PAGE}"),
+                |id| {
+                    format!(
+                        "/channels/{channel}/messages?limit={PAGE}&before={}",
+                        unreserved(id)
+                    )
+                },
+            );
+            let page = self.read(&path).await?;
+            let listed = page.as_array().map(Vec::as_slice).unwrap_or_default();
+            let mine: Vec<Value> = listed
+                .iter()
+                .filter(|message| self::author(message) == Some(author))
+                .cloned()
+                .collect();
+            let done = listed.len() < usize::from(PAGE) || mine.iter().any(&sought);
+            own.extend(mine);
+            before = listed.last().and_then(|message| text(message, "id"));
+            if done || before.is_none() {
+                break;
+            }
+        }
+        Ok(own)
     }
 }
 
@@ -134,7 +158,7 @@ impl<H: Http> Markers for DiscordMarkers<'_, H> {
         let channel = self.discord.route.channel.as_deref().unwrap_or_default();
         let herald = self.herald().await?;
         Ok(self
-            .messages(channel, &herald)
+            .messages(channel, &herald, |_| false)
             .await?
             .iter()
             .filter(|post| {
@@ -149,7 +173,9 @@ impl<H: Http> Markers for DiscordMarkers<'_, H> {
     async fn entry(&self, key: &Key, marker: &Marker) -> Result<Option<Entry>, MarkersError> {
         let channel = self.discord.route.channel.as_deref().unwrap_or_default();
         let herald = self.herald().await?;
-        let messages = self.messages(channel, &herald).await?;
+        let messages = self
+            .messages(channel, &herald, |message| carries(message, marker))
+            .await?;
         let Some(post) = messages.iter().find(|message| carries(message, marker)) else {
             return Ok(None);
         };
@@ -191,7 +217,7 @@ impl<H: Http> Markers for DiscordMarkers<'_, H> {
             },
         );
         let chunks = self
-            .messages(&thread, &herald)
+            .messages(&thread, &herald, |_| false)
             .await?
             .iter()
             .filter(|chunk| chunk.get("type").and_then(Value::as_u64) == Some(DEFAULT_TYPE))

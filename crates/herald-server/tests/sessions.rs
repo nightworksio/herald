@@ -266,12 +266,15 @@ appservice_token = {{ secret = "HERALD_MATRIX_AS" }}
             };
             let limits = Limits {
                 jobs,
+                queue: jobs,
                 connections: 1,
                 body: 1 << 20,
                 poll: None,
                 housekeep: None,
                 keys: Duration::from_secs(3_600),
                 read: Duration::from_secs(2),
+                held: Duration::from_secs(90),
+                accept_pause: Duration::from_millis(100),
                 asked: None,
                 secret: None,
             };

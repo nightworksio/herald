@@ -1,75 +1,92 @@
-use std::fmt;
-use std::num::NonZeroUsize;
+use std::num::{NonZeroU64, NonZeroUsize};
 
-use herald_core::{Duration, Kind, Pinning, Prereleases, SecretRef};
+use herald_core::{Duration, Kind, Pinning, Prereleases, SecretRef, Size};
 use schemars::JsonSchema;
 use serde::{Deserialize, Deserializer};
 use toml::Spanned;
-
-/// A number of bytes, as `512KiB` or `1MiB`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct Size(pub(crate) usize);
-
-impl JsonSchema for Size {
-    fn schema_name() -> std::borrow::Cow<'static, str> {
-        "Size".into()
-    }
-
-    fn json_schema(_: &mut schemars::SchemaGenerator) -> schemars::Schema {
-        schemars::json_schema!({
-            "description": "A number of bytes: a number and KiB or MiB, as \"1MiB\".",
-            "type": "string",
-            "pattern": "^[0-9]+(KiB|MiB)$"
-        })
-    }
-}
-
-const KIB: usize = 1 << 10;
-const MIB: usize = 1 << 20;
-
-impl Size {
-    fn parse(text: &str) -> Option<Self> {
-        let (number, unit) = if let Some(number) = text.strip_suffix("KiB") {
-            (number, KIB)
-        } else {
-            (text.strip_suffix("MiB")?, MIB)
-        };
-        if !number.bytes().all(|byte| byte.is_ascii_digit()) {
-            return None;
-        }
-        number
-            .parse::<usize>()
-            .ok()?
-            .checked_mul(unit)
-            .filter(|bytes| *bytes > 0)
-            .map(Self)
-    }
-}
-
-struct SizeVisitor;
-
-impl serde::de::Visitor<'_> for SizeVisitor {
-    type Value = Size;
-
-    fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str("a number of bytes such as \"512KiB\" or \"1MiB\"")
-    }
-
-    fn visit_str<E: serde::de::Error>(self, text: &str) -> Result<Size, E> {
-        Size::parse(text).ok_or_else(|| E::invalid_value(serde::de::Unexpected::Str(text), &self))
-    }
-}
-
-impl<'de> Deserialize<'de> for Size {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        deserializer.deserialize_str(SizeVisitor)
-    }
-}
 
 /// A section that takes no options beside its kind.
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields, rename = "Options")]
 pub(crate) struct NoOptions {}
+
+/// How long a store keeps what herald records, beside its kind's own
+/// options.
+#[derive(Debug, Default, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct KeepFile {
+    /// How long a webhook delivery's id is kept after it was admitted, so a
+    /// replay of it is refused (ADR-0013); "7d" where absent, and at least
+    /// "3d", longer than any sender goes on retrying a delivery.
+    #[serde(rename = "keep_deliveries")]
+    #[schemars(with = "Option<Duration>")]
+    pub(crate) deliveries: Option<Spanned<Duration>>,
+    /// How long a ledger entry, and where each of its deliveries to a
+    /// follower's inbox stands, is kept after a run last claimed it; "90d"
+    /// where absent.
+    #[serde(rename = "keep_ledger")]
+    pub(crate) ledger: Option<Keep>,
+    /// How long a Note herald's ActivityPub actors published is kept, and
+    /// served by its id; "forever" where absent.
+    #[serde(rename = "keep_notes")]
+    pub(crate) notes: Option<Keep>,
+}
+
+impl KeepFile {
+    /// Its keys, as the config spells them.
+    pub(crate) const KEYS: [&str; 3] = ["keep_deliveries", "keep_ledger", "keep_notes"];
+}
+
+/// How long a store keeps a kind of record: a length of time, or for ever.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Keep {
+    /// For ever.
+    Forever,
+    /// For this long.
+    For(Duration),
+}
+
+impl Keep {
+    const FOREVER: &str = "forever";
+
+    /// How long, or `None` for ever.
+    pub(crate) const fn kept(self) -> Option<jiff::SignedDuration> {
+        match self {
+            Self::Forever => None,
+            Self::For(duration) => Some(duration.0),
+        }
+    }
+}
+
+impl JsonSchema for Keep {
+    fn schema_name() -> std::borrow::Cow<'static, str> {
+        "Keep".into()
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        schemars::json_schema!({
+            "description": "A length of time, or \"forever\".",
+            "anyOf": [generator.subschema_for::<Duration>(), { "const": Self::FOREVER }]
+        })
+    }
+}
+
+impl<'de> Deserialize<'de> for Keep {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let text = String::deserialize(deserializer)?;
+        if text == Self::FOREVER {
+            return Ok(Self::Forever);
+        }
+        Duration::deserialize(serde::de::value::StrDeserializer::<D::Error>::new(&text))
+            .map(Self::For)
+            .map_err(|_: D::Error| {
+                serde::de::Error::invalid_value(
+                    serde::de::Unexpected::Str(&text),
+                    &"a length of time such as \"90d\", or \"forever\"",
+                )
+            })
+    }
+}
 
 /// `[markers]`: the installation's marker key (ADR-0011).
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -211,6 +228,20 @@ pub(crate) struct ScheduleFile {
     pub(crate) housekeep: Option<Duration>,
 }
 
+/// `[announce]`: how a run holds and keeps an announcement.
+#[derive(Debug, Default, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+#[serde(rename = "Announce")]
+pub(crate) struct AnnounceFile {
+    /// How long a run holds an announcement past its last write before
+    /// another may finish it; "20m" where absent, longer than the longest a
+    /// host lets one run go on, a Lambda's 15 minutes.
+    pub(crate) lease: Option<Duration>,
+    /// How often a run writes what a project last announced again when
+    /// another write lands between its read and its write; 3 where absent.
+    pub(crate) latest_attempts: Option<NonZeroUsize>,
+}
+
 /// Where `herald server` keeps the keys inbound activities are checked with.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, JsonSchema)]
 #[serde(rename_all = "lowercase")]
@@ -239,6 +270,40 @@ pub(crate) struct KeysFile {
     /// The most kept in memory, the one used longest ago forgotten first;
     /// 1024 where absent.
     pub(crate) most: Option<NonZeroUsize>,
+    /// The most of a key's or an actor's document read; "256KiB" where
+    /// absent, and at most "1MiB".
+    #[schemars(with = "Option<Size>")]
+    pub(crate) document: Option<Spanned<Size>>,
+}
+
+/// `[http]`: how herald's own requests reach the services a config names.
+/// None of it applies to the hosts herald reaches on others' behalf, an
+/// `ActivityPub` actor's key or a follower's inbox (ADR-0007).
+#[derive(Debug, Default, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+#[serde(rename = "Http")]
+pub(crate) struct HttpFile {
+    /// How long a connection may take to open; "10s" where absent.
+    #[schemars(with = "Option<Duration>")]
+    pub(crate) connect: Option<Spanned<Duration>>,
+    /// How long a request may take, from sending it to the end of its
+    /// answer; "30s" where absent. `HERALD_TIMEOUT_MS` takes its place.
+    pub(crate) total: Option<Duration>,
+    /// The proxy herald's own requests go through: "environment", the
+    /// host's `HTTPS_PROXY` and `NO_PROXY` where it honours them; "none";
+    /// or a proxy's http or https URL. "environment" where absent.
+    #[schemars(with = "Option<String>")]
+    pub(crate) proxy: Option<Spanned<String>>,
+    /// A PEM file of the certificate authorities herald's own requests trust
+    /// beside the Mozilla roots, read beside the config, such as a GitHub
+    /// Enterprise Server's private CA.
+    #[schemars(with = "Option<String>")]
+    pub(crate) ca_file: Option<Spanned<String>>,
+    /// The most bytes of a response's body herald reads; "32MiB" where
+    /// absent, and at most "128MiB". A host reached on others' behalf is
+    /// read no further than "32MiB" whatever this says.
+    #[schemars(with = "Option<Size>")]
+    pub(crate) body: Option<Spanned<Size>>,
 }
 
 /// `[server]`: how `herald server` listens, and what it takes on at once.
@@ -251,13 +316,22 @@ pub(crate) struct ServerFile {
     /// in front of it.
     #[schemars(with = "Option<String>")]
     pub(crate) listen: Option<Spanned<String>>,
-    /// How many announcements it works on at once; a webhook arriving while
-    /// as many more wait is answered 503. 8 where absent.
+    /// The path every endpoint is served under, for a reverse proxy that
+    /// serves herald beside other things, as "/herald"; the root where
+    /// absent. herald's ActivityPub actors' ids are under it too.
+    #[schemars(with = "Option<String>")]
+    pub(crate) base: Option<Spanned<String>>,
+    /// How many announcements it works on at once; 8 where absent.
     pub(crate) jobs: Option<NonZeroUsize>,
+    /// How many announcements may wait for a place; a webhook arriving while
+    /// as many wait is answered 503. As many as `jobs` where absent.
+    pub(crate) queue: Option<NonZeroUsize>,
     /// How many connections it holds at once; 256 where absent.
     pub(crate) connections: Option<NonZeroUsize>,
-    /// The most an inbound request's body may hold; "1MiB" where absent.
-    pub(crate) body: Option<Size>,
+    /// The most an inbound request's body may hold; "1MiB" where absent,
+    /// and at most "4MiB".
+    #[schemars(with = "Option<Size>")]
+    pub(crate) body: Option<Spanned<Size>>,
     /// How many actor documents it reads at once; 4 where absent.
     pub(crate) fetches: Option<NonZeroUsize>,
     /// How many autocompletions a session answers at once; one arriving
@@ -273,29 +347,81 @@ pub(crate) struct ServerFile {
     /// The keys inbound activities are checked with.
     #[serde(default)]
     pub(crate) keys: KeysFile,
+    /// What a signed inbound request may carry and still be checked.
+    #[serde(default)]
+    pub(crate) inbound: InboundFile,
+    /// How long a request whose work found no place is asked to wait, in
+    /// its `Retry-After`; "30s" where absent.
+    pub(crate) busy_retry: Option<Duration>,
+    /// How long a connection may take to send a request's headers; "30s"
+    /// where absent.
+    pub(crate) read: Option<Duration>,
+    /// How long a connection is held at most, its one request answered;
+    /// "90s", or `read` where that is longer, where absent; at least `read`.
+    #[schemars(with = "Option<Duration>")]
+    pub(crate) held: Option<Spanned<Duration>>,
+    /// How long the server waits after a connection could not be accepted;
+    /// "100ms" where absent.
+    pub(crate) accept_pause: Option<Duration>,
+    /// How a session a destination holds waits before it connects again.
+    #[serde(default)]
+    pub(crate) sessions: SessionsFile,
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+/// `[server.sessions]`: how a session a destination holds waits before it
+/// connects again, each wait double the last up to the longest.
+#[derive(Debug, Default, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+#[serde(rename = "Sessions")]
+pub(crate) struct SessionsFile {
+    /// The first wait after a session fails to connect; "1s" where absent.
+    pub(crate) first_wait: Option<Duration>,
+    /// The longest wait between attempts; "1m" where absent, and at least
+    /// `first_wait`.
+    #[schemars(with = "Option<Duration>")]
+    pub(crate) longest_wait: Option<Spanned<Duration>>,
+    /// Whether each wait is between half of it and all of it, so sessions
+    /// that failed together do not all connect again at once; true where
+    /// absent.
+    pub(crate) jitter: Option<bool>,
+}
 
-    #[test]
-    fn a_size_is_a_number_and_a_binary_unit() {
-        assert_eq!(Size::parse("512KiB"), Some(Size(512 * 1024)));
-        assert_eq!(Size::parse("1MiB"), Some(Size(1024 * 1024)));
-        for text in [
-            "",
-            "1",
-            "1KB",
-            "1kib",
-            "0MiB",
-            "+1MiB",
-            "-1MiB",
-            "1.5MiB",
-            "MiB",
-            "99999999999999999999MiB",
-        ] {
-            assert_eq!(Size::parse(text), None, "{text}");
-        }
-    }
+/// `[server.inbound]`: what a signed inbound request may carry and still be
+/// checked. Each bound may be at most four times its default, and doctor
+/// names one set above it.
+#[derive(Debug, Default, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+#[serde(rename = "Inbound")]
+pub(crate) struct InboundFile {
+    /// How far a signed timestamp may lie from now, either way, before the
+    /// request is taken for a replay; "5m" where absent, and at most "20m".
+    #[schemars(with = "Option<Duration>")]
+    pub(crate) replay_window: Option<Spanned<Duration>>,
+    /// The most signatures a request may carry, each checked in turn; 4
+    /// where absent, and at most 16.
+    #[schemars(with = "Option<NonZeroUsize>")]
+    pub(crate) signatures: Option<Spanned<NonZeroUsize>>,
+    /// The most headers one ActivityPub signature may cover; 16 where
+    /// absent, at least the 4 it must cover, and at most 64.
+    #[schemars(with = "Option<NonZeroUsize>")]
+    pub(crate) covered: Option<Spanned<NonZeroUsize>>,
+}
+
+/// `[render]`: how far a template may go as it renders. Each bound may be
+/// at most four times its default, and doctor names one set above it.
+#[derive(Debug, Default, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+#[serde(rename = "Render")]
+pub(crate) struct RenderFile {
+    /// The fuel one render may burn; 100000 where absent, and at most
+    /// 400000.
+    #[schemars(with = "Option<NonZeroU64>")]
+    pub(crate) fuel: Option<Spanned<NonZeroU64>>,
+    /// How deep its loops and calls may nest; 16 where absent, and at most
+    /// 64.
+    #[schemars(with = "Option<NonZeroUsize>")]
+    pub(crate) recursion: Option<Spanned<NonZeroUsize>>,
+    /// The most it may write; "256KiB" where absent, and at most "1MiB".
+    #[schemars(with = "Option<Size>")]
+    pub(crate) output: Option<Spanned<Size>>,
 }

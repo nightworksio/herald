@@ -4,9 +4,9 @@ use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD;
 use herald_compose::{Host as _, KvAt, SqlAt};
 use herald_ports::{
-    Algorithm, Clock as _, CryptoError, Frame, Http as _, HttpError, Kv as _, Method, PUBLIC,
-    Request, Secret, SecretError, Secrets as _, Signer as _, Socket as _, Sockets as _, Sql as _,
-    Statement, Text, Timer as _, Value, Verifier as _, Versionstamp,
+    Algorithm, Clock as _, CryptoError, Frame, Http as _, HttpError, Kv as _, Method, Outbound,
+    PUBLIC, Request, Secret, SecretError, Secrets as _, Signer as _, Socket as _, Sockets as _,
+    Sql as _, Statement, Text, Timer as _, Value, Verifier as _, Versionstamp,
 };
 use herald_records::{Kept, KvRecords};
 use herald_testing::store_conformance;
@@ -292,7 +292,9 @@ async fn the_host_gives_its_variables_secrets_and_time() {
 #[wasm_bindgen_test]
 async fn a_connection_fetches_through_the_host_only_what_it_may_reach() {
     let hosted = hosted();
-    let http = hosted.connect("https://api.example/v1").unwrap();
+    let http = hosted
+        .connect("https://api.example/v1", &Outbound::default())
+        .unwrap();
     let request = Request::new(Method::Post, Text::plain("https://api.example/v1/x"))
         .header("Accept", Text::plain("*/*"))
         .body(b"hi".to_vec());
@@ -325,7 +327,7 @@ async fn a_connection_fetches_through_the_host_only_what_it_may_reach() {
         http.send(small).await,
         Err(HttpError::Unreachable { .. })
     ));
-    let public = hosted.connect(PUBLIC).unwrap();
+    let public = hosted.connect(PUBLIC, &Outbound::default()).unwrap();
     let fetched = public
         .send(Request::new(
             Method::Get,
@@ -334,7 +336,11 @@ async fn a_connection_fetches_through_the_host_only_what_it_may_reach() {
         .await
         .unwrap();
     assert_eq!(fetched.header("x-public"), Some("true"));
-    assert!(hosted.connect("http://api.example").is_err());
+    assert!(
+        hosted
+            .connect("http://api.example", &Outbound::default())
+            .is_err()
+    );
 }
 
 #[wasm_bindgen_test]

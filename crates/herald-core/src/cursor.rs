@@ -3,8 +3,6 @@ use serde::{Deserialize, Serialize};
 use crate::event::Event;
 use crate::key::Identity;
 
-const REMEMBERED: usize = 500;
-
 /// What a polled source has seen, and the validators its server last returned.
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct Cursor {
@@ -30,14 +28,15 @@ pub struct Polled {
 
 impl Cursor {
     /// The cursor after a poll that found `found`, the newest first, with the
-    /// validators the server returned. It remembers the newest identities
-    /// only, enough to cover any one poll.
+    /// validators the server returned. It remembers the newest `remembered`
+    /// identities only, enough to cover any one poll.
     #[must_use]
     pub fn advanced(
         &self,
         found: &[Event],
         etag: Option<String>,
         last_modified: Option<String>,
+        remembered: usize,
     ) -> Self {
         let mut seen: Vec<Identity> = found.iter().map(|event| event.identity().clone()).collect();
         seen.extend(
@@ -46,7 +45,7 @@ impl Cursor {
                 .filter(|identity| !seen_in(found, identity))
                 .cloned(),
         );
-        seen.truncate(REMEMBERED);
+        seen.truncate(remembered);
         Self {
             seen,
             etag,
@@ -124,6 +123,7 @@ mod tests {
             &[event("c"), event("b")],
             Some("new".to_owned()),
             Some("then".to_owned()),
+            500,
         );
         assert_eq!(
             advanced,
@@ -137,12 +137,11 @@ mod tests {
 
     #[test]
     fn a_cursor_remembers_a_bounded_number_of_identities() {
-        let found: Vec<Event> = (0..REMEMBERED + 10)
-            .map(|index| event(&index.to_string()))
-            .collect();
-        let advanced = Cursor::default().advanced(&found, None, None);
-        assert_eq!(advanced.seen.len(), REMEMBERED);
+        let found: Vec<Event> = (0..30).map(|index| event(&index.to_string())).collect();
+        let advanced = Cursor::default().advanced(&found, None, None, 20);
+        assert_eq!(advanced.seen.len(), 20);
         assert_eq!(advanced.seen.first().map(Identity::as_str), Some("0"));
+        assert_eq!(advanced.seen.last().map(Identity::as_str), Some("19"));
     }
 
     #[test]

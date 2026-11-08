@@ -71,8 +71,10 @@ part of theirs.
    - **What a refusal tells the sender.** A refused request is answered with
      a status that names no reason; the reason is logged where herald runs.
    - **What a hostile key costs.** A key's document is read at most
-     256 KiB, through a connection given 5 seconds to open and 10 to
-     finish, and a request makes herald read at most two documents.
+     256 KiB, through a connection given at most 5 seconds to open and 10 to
+     finish, and a request makes herald read at most two documents. The
+     config's `[http]` bounds may only shorten these, and its proxy and
+     certificate authorities never apply to such a request.
 
 4. **App tokens are scoped and stored hashed.**
    - **Minting.** `herald token new --app <name>` prints a new 256-bit random

@@ -10,12 +10,12 @@ fn templates(sources: &[(&str, &str)]) -> Templates {
         .iter()
         .map(|&(name, source)| (name, source, Form::Line))
         .collect();
-    Templates::compile(&lines).unwrap()
+    Templates::compile(&lines, Sandbox::DEFAULT).unwrap()
 }
 
 fn markdown(source: &str, event: &Event) -> String {
     let route = RouteId::new("r");
-    Templates::compile(&[("t", source, Form::Markdown)])
+    Templates::compile(&[("t", source, Form::Markdown)], Sandbox::DEFAULT)
         .unwrap()
         .render(
             "t",
@@ -142,11 +142,14 @@ fn a_render_line_is_on_one_line() {
 
 #[test]
 fn every_template_that_does_not_compile_is_named() {
-    let errors = Templates::compile(&[
-        ("good", "{{ event.title }}", Form::Line),
-        ("bad", "{% if %}", Form::Markdown),
-        ("worse", "{{", Form::Line),
-    ])
+    let errors = Templates::compile(
+        &[
+            ("good", "{{ event.title }}", Form::Line),
+            ("bad", "{% if %}", Form::Markdown),
+            ("worse", "{{", Form::Line),
+        ],
+        Sandbox::DEFAULT,
+    )
     .unwrap_err();
     let names: Vec<&str> = errors.iter().map(|error| error.name.as_str()).collect();
     assert_eq!(names, ["bad", "worse"]);
@@ -205,21 +208,22 @@ fn a_template_that_runs_too_long_runs_out_of_fuel() {
 
 #[test]
 fn an_output_past_the_cap_is_refused() {
-    let at_cap = format!("{{{{ ' ' * {OUTPUT_CAP} }}}}");
+    let cap = Sandbox::DEFAULT.output;
+    let at_cap = format!("{{{{ ' ' * {cap} }}}}");
     assert_eq!(
         render(&at_cap, &event()).map(|output| output.len()),
-        Ok(OUTPUT_CAP)
+        Ok(cap)
     );
-    let past_cap = format!("{{{{ ' ' * {} }}}}", OUTPUT_CAP + 1);
+    let past_cap = format!("{{{{ ' ' * {} }}}}", cap + 1);
     let error = render(&past_cap, &event()).unwrap_err();
     assert_eq!(
         error.reason,
-        format!("its output passes the cap of {OUTPUT_CAP} bytes")
+        format!("its output passes the cap of {cap} bytes")
     );
     let looped = "{% for i in range(500) %}{{ ' ' * 1000 }}{% endfor %}";
     assert_eq!(
         render(looped, &event()).unwrap_err().reason,
-        format!("its output passes the cap of {OUTPUT_CAP} bytes")
+        format!("its output passes the cap of {cap} bytes")
     );
 }
 
@@ -259,28 +263,93 @@ fn a_markdown_template_prints_numbers_and_absent_values_as_a_line_template_does(
         render("{{ 1 + 1 }} {{ event.version }}", &unversioned).unwrap()
     );
     assert!(
-        Templates::compile(&[("t", "{{ event.nope }}", Form::Markdown)])
-            .unwrap()
-            .render(
-                "t",
-                &Context {
-                    event: &event(),
-                    route: &RouteId::new("r"),
-                    herald: "0.1.0"
-                }
-            )
-            .is_err()
+        Templates::compile(
+            &[("t", "{{ event.nope }}", Form::Markdown)],
+            Sandbox::DEFAULT
+        )
+        .unwrap()
+        .render(
+            "t",
+            &Context {
+                event: &event(),
+                route: &RouteId::new("r"),
+                herald: "0.1.0"
+            }
+        )
+        .is_err()
     );
 }
 
 #[test]
 fn the_capped_output_holds_what_was_written_and_flushes_nothing() {
     use std::io::Write as _;
-    let mut capped = Capped::default();
+    let mut capped = Capped {
+        written: Vec::new(),
+        passed: false,
+        cap: 2,
+    };
     assert_eq!(capped.write(b"ab").unwrap(), 2);
     capped.flush().unwrap();
     assert_eq!(
         (capped.written.as_slice(), capped.passed),
         (&b"ab"[..], false)
+    );
+    assert!(capped.write(b"c").is_err());
+    assert_eq!(
+        (capped.written.as_slice(), capped.passed),
+        (&b"ab"[..], true)
+    );
+}
+
+#[test]
+fn a_template_is_held_to_the_sandbox_it_was_compiled_into() {
+    let route = RouteId::new("r");
+    let sandbox = Sandbox {
+        fuel: 1_000,
+        recursion: 2,
+        output: 4,
+    };
+    let templates = Templates::compile(
+        &[
+            ("short", "abcd", Form::Line),
+            ("long", "abcde", Form::Line),
+            ("busy", "{% for i in range(500) %}{% endfor %}", Form::Line),
+            (
+                "deep",
+                "{% for a in [1] %}{% for b in [1] %}{% for c in [1] %}x{% endfor %}{% endfor %}{% endfor %}",
+                Form::Line,
+            ),
+        ],
+        sandbox,
+    )
+    .unwrap();
+    let event = event();
+    let context = Context {
+        event: &event,
+        route: &route,
+        herald: "0.1.0",
+    };
+    assert_eq!(templates.render("short", &context).as_deref(), Ok("abcd"));
+    assert_eq!(
+        templates.render("long", &context).unwrap_err().reason,
+        "its output passes the cap of 4 bytes"
+    );
+    assert_eq!(
+        templates.render("busy", &context).unwrap_err().reason,
+        "it runs too long: it ran out of fuel"
+    );
+    assert_eq!(
+        templates
+            .render("deep", &context)
+            .map_err(|error| error.reason),
+        Err("invalid operation: recursion limit exceeded (in deep:1)".to_owned())
+    );
+    assert_eq!(
+        Sandbox::MOST,
+        Sandbox {
+            fuel: 400_000,
+            recursion: 64,
+            output: 1_048_576,
+        }
     );
 }

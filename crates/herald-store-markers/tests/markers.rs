@@ -121,8 +121,12 @@ mod markers {
         );
         let key = Key::derive(&RouteId::new("r"), &Identity::new("1"));
         assert_eq!(
-            pollster::block_on(store.notes().put_note(&key, "{}")),
+            pollster::block_on(store.notes().put_note(&key, "{}", OPENED)),
             Err(unsupported("notes"))
+        );
+        assert_eq!(
+            pollster::block_on(store.ledger().expire_entries(OPENED)),
+            Ok(Vec::new())
         );
         assert_eq!(
             pollster::block_on(store.announcements().latest("herald")),

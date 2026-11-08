@@ -13,7 +13,7 @@ mod compose {
     use herald_config::{Config, Store, load};
     use herald_core::DestinationName;
     use herald_flows::{Admission, Housekept, Inbound, Job, Taker, Worked};
-    use herald_ports::{Changed, Frame, Http, HttpError, Request, Response, Value};
+    use herald_ports::{Changed, Frame, Http, HttpError, Outbound, Request, Response, Value};
     use herald_testing::{
         FakeClock, FakeKv, FakeSecrets, FakeSigner, FakeTimer, FakeVerifier, ScriptedSockets,
         ScriptedSql,
@@ -113,7 +113,7 @@ mod compose {
         type Sql = ScriptedSql;
         type Kv = FakeKv;
 
-        fn connect(&self, base: &str) -> Result<Answering, String> {
+        fn connect(&self, base: &str, _: &Outbound) -> Result<Answering, String> {
             if self.unreached {
                 Err(format!("{base} is out of reach"))
             } else {
@@ -197,7 +197,8 @@ mod compose {
 
     fn kept(host: &Hosting, store: &str) -> Result<&'static str, String> {
         let config = config(store);
-        let records = pollster::block_on(reached(host, &config.store, &EVERY))?;
+        let records =
+            pollster::block_on(reached(host, &config.store, &Outbound::default(), &EVERY))?;
         Ok(match records {
             Records::Sql(_) => "sql",
             Records::Kv(_) => "kv",
@@ -349,7 +350,12 @@ mod compose {
     fn a_kind_the_host_does_not_keep_records_in_is_refused_by_name() {
         let host = github();
         let d1 = config("kind = \"d1\"");
-        let refused = pollster::block_on(reached(&host, &d1.store, &[Store::MARKERS]));
+        let refused = pollster::block_on(reached(
+            &host,
+            &d1.store,
+            &Outbound::default(),
+            &[Store::MARKERS],
+        ));
         assert_eq!(
             refused.err(),
             Some(
@@ -357,7 +363,8 @@ mod compose {
             )
         );
         let cached = config("kind = \"actions-cache\"");
-        let unkept = pollster::block_on(reached(&host, &cached.store, &EVERY));
+        let unkept =
+            pollster::block_on(reached(&host, &cached.store, &Outbound::default(), &EVERY));
         assert!(
             unkept
                 .err()
@@ -688,7 +695,7 @@ body = "{{{{ event.body }}}}"
                 busy.reply.retry_after,
                 busy.left.is_none()
             ),
-            (503, Some(herald_flows::BUSY_RETRY), true)
+            (503, Some(30), true)
         );
         drop(first);
         let again = post(&event("2"));

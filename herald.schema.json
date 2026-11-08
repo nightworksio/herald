@@ -4,6 +4,17 @@
   "description": "`herald.toml`: herald's whole config (ADR-0006).",
   "type": "object",
   "properties": {
+    "announce": {
+      "description": "How a run holds and keeps an announcement.",
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Announce"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
     "apps": {
       "description": "The HTTP API's apps, by name.",
       "type": "object",
@@ -18,11 +29,33 @@
         "$ref": "#/$defs/Destination"
       }
     },
+    "http": {
+      "description": "How herald's own requests reach the services the config names.",
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Http"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
     "markers": {
       "description": "The installation's marker key.",
       "anyOf": [
         {
           "$ref": "#/$defs/Markers"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "render": {
+      "description": "How far a template may go as it renders.",
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Render"
         },
         {
           "type": "null"
@@ -184,6 +217,33 @@
         "actor"
       ]
     },
+    "Announce": {
+      "description": "`[announce]`: how a run holds and keeps an announcement.",
+      "type": "object",
+      "properties": {
+        "latest_attempts": {
+          "description": "How often a run writes what a project last announced again when\nanother write lands between its read and its write; 3 where absent.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint",
+          "minimum": 1
+        },
+        "lease": {
+          "description": "How long a run holds an announcement past its last write before\nanother may finish it; \"20m\" where absent, longer than the longest a\nhost lets one run go on, a Lambda's 15 minutes.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Duration"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
     "App": {
       "description": "An app of the HTTP API (ADR-0007).",
       "type": "object",
@@ -269,6 +329,17 @@
               "type": "string",
               "const": "discord"
             },
+            "read_back": {
+              "description": "How many pages of its own posts it reads back for their markers,\nfrom 1 to 20; 5 where unset.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/ReadBack"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
             "token": {
               "description": "The secret holding a bot token. A bot crossposts, threads, pins and\nreads back its posts.",
               "anyOf": [
@@ -304,6 +375,17 @@
             "kind": {
               "type": "string",
               "const": "mastodon"
+            },
+            "read_back": {
+              "description": "How many pages of its own posts it reads back for their markers,\nfrom 1 to 20; 5 where unset.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/ReadBack"
+                },
+                {
+                  "type": "null"
+                }
+              ]
             },
             "server": {
               "description": "The server's base URL, such as `https://mastodon.social`.",
@@ -344,6 +426,17 @@
               "type": "string",
               "const": "matrix"
             },
+            "read_back": {
+              "description": "How many pages of its own posts it reads back for their markers,\nfrom 1 to 20; 5 where unset.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/ReadBack"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
             "token": {
               "description": "The secret holding the bot account's access token.",
               "$ref": "#/$defs/SecretRef"
@@ -381,6 +474,17 @@
             "kind": {
               "type": "string",
               "const": "slack"
+            },
+            "read_back": {
+              "description": "How many pages of its own posts it reads back for their markers,\nfrom 1 to 20; 5 where unset.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/ReadBack"
+                },
+                {
+                  "type": "null"
+                }
+              ]
             },
             "token": {
               "description": "The secret holding a bot token (`xoxb-…`). A bot threads, pins and\nreads back its posts.",
@@ -542,9 +646,99 @@
       ]
     },
     "Duration": {
-      "description": "A length of time: a number and s, m, h, d or w, as \"14d\".",
+      "description": "A length of time: a number and ms, s, m, h, d or w, as \"14d\".",
       "type": "string",
-      "pattern": "^[0-9]+[smhdw]$"
+      "pattern": "^[0-9]+(ms|[smhdw])$"
+    },
+    "Http": {
+      "description": "`[http]`: how herald's own requests reach the services a config names.\nNone of it applies to the hosts herald reaches on others' behalf, an\n`ActivityPub` actor's key or a follower's inbox (ADR-0007).",
+      "type": "object",
+      "properties": {
+        "body": {
+          "description": "The most bytes of a response's body herald reads; \"32MiB\" where\nabsent, and at most \"128MiB\". A host reached on others' behalf is\nread no further than \"32MiB\" whatever this says.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Size"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "ca_file": {
+          "description": "A PEM file of the certificate authorities herald's own requests trust\nbeside the Mozilla roots, read beside the config, such as a GitHub\nEnterprise Server's private CA.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "connect": {
+          "description": "How long a connection may take to open; \"10s\" where absent.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Duration"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "proxy": {
+          "description": "The proxy herald's own requests go through: \"environment\", the\nhost's `HTTPS_PROXY` and `NO_PROXY` where it honours them; \"none\";\nor a proxy's http or https URL. \"environment\" where absent.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "total": {
+          "description": "How long a request may take, from sending it to the end of its\nanswer; \"30s\" where absent. `HERALD_TIMEOUT_MS` takes its place.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Duration"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "Inbound": {
+      "description": "`[server.inbound]`: what a signed inbound request may carry and still be\nchecked. Each bound may be at most four times its default, and doctor\nnames one set above it.",
+      "type": "object",
+      "properties": {
+        "covered": {
+          "description": "The most headers one ActivityPub signature may cover; 16 where\nabsent, at least the 4 it must cover, and at most 64.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint",
+          "minimum": 1
+        },
+        "replay_window": {
+          "description": "How far a signed timestamp may lie from now, either way, before the\nrequest is taken for a replay; \"5m\" where absent, and at most \"20m\".",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Duration"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "signatures": {
+          "description": "The most signatures a request may carry, each checked in turn; 4\nwhere absent, and at most 16.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint",
+          "minimum": 1
+        }
+      },
+      "additionalProperties": false
     },
     "Interactions": {
       "description": "How a Discord destination takes commands.",
@@ -751,6 +945,17 @@
       },
       "additionalProperties": false
     },
+    "Keep": {
+      "description": "A length of time, or \"forever\".",
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Duration"
+        },
+        {
+          "const": "forever"
+        }
+      ]
+    },
     "KeyCache": {
       "description": "Where `herald server` keeps the keys inbound activities are checked with.",
       "oneOf": [
@@ -775,6 +980,17 @@
           "anyOf": [
             {
               "$ref": "#/$defs/KeyCache"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "document": {
+          "description": "The most of a key's or an actor's document read; \"256KiB\" where\nabsent, and at most \"1MiB\".",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Size"
             },
             {
               "type": "null"
@@ -1105,6 +1321,12 @@
         }
       ]
     },
+    "ReadBack": {
+      "description": "How many pages of its own posts the destination reads back, 5 by default.",
+      "type": "integer",
+      "maximum": 20,
+      "minimum": 1
+    },
     "RecordKind": {
       "description": "A kind of record a store may keep beside its ledger, cursors, schedules\nand deliveries, which every store that keeps records keeps.",
       "oneOf": [
@@ -1134,6 +1356,42 @@
           "const": "keys"
         }
       ]
+    },
+    "Render": {
+      "description": "`[render]`: how far a template may go as it renders. Each bound may be\nat most four times its default, and doctor names one set above it.",
+      "type": "object",
+      "properties": {
+        "fuel": {
+          "description": "The fuel one render may burn; 100000 where absent, and at most\n400000.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 1
+        },
+        "output": {
+          "description": "The most it may write; \"256KiB\" where absent, and at most \"1MiB\".",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Size"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "recursion": {
+          "description": "How deep its loops and calls may nest; 16 where absent, and at most\n64.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint",
+          "minimum": 1
+        }
+      },
+      "additionalProperties": false
     },
     "Replies": {
       "description": "Who sees herald's answers to `latest` and `changelog`; the answers to\n`subscribe` and `unsubscribe` are always the asker's alone.",
@@ -1222,11 +1480,40 @@
       "description": "`[server]`: how `herald server` listens, and what it takes on at once.",
       "type": "object",
       "properties": {
+        "accept_pause": {
+          "description": "How long the server waits after a connection could not be accepted;\n\"100ms\" where absent.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Duration"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "base": {
+          "description": "The path every endpoint is served under, for a reverse proxy that\nserves herald beside other things, as \"/herald\"; the root where\nabsent. herald's ActivityPub actors' ids are under it too.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "body": {
-          "description": "The most an inbound request's body may hold; \"1MiB\" where absent.",
+          "description": "The most an inbound request's body may hold; \"1MiB\" where absent,\nand at most \"4MiB\".",
           "anyOf": [
             {
               "$ref": "#/$defs/Size"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "busy_retry": {
+          "description": "How long a request whose work found no place is asked to wait, in\nits `Retry-After`; \"30s\" where absent.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Duration"
             },
             {
               "type": "null"
@@ -1269,8 +1556,23 @@
           "format": "uint",
           "minimum": 1
         },
+        "held": {
+          "description": "How long a connection is held at most, its one request answered;\n\"90s\", or `read` where that is longer, where absent; at least `read`.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Duration"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "inbound": {
+          "description": "What a signed inbound request may carry and still be checked.",
+          "$ref": "#/$defs/Inbound"
+        },
         "jobs": {
-          "description": "How many announcements it works on at once; a webhook arriving while\nas many more wait is answered 503. 8 where absent.",
+          "description": "How many announcements it works on at once; 8 where absent.",
           "type": [
             "integer",
             "null"
@@ -1289,8 +1591,68 @@
             "null"
           ]
         },
+        "queue": {
+          "description": "How many announcements may wait for a place; a webhook arriving while\nas many wait is answered 503. As many as `jobs` where absent.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint",
+          "minimum": 1
+        },
+        "read": {
+          "description": "How long a connection may take to send a request's headers; \"30s\"\nwhere absent.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Duration"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "sessions": {
+          "description": "How a session a destination holds waits before it connects again.",
+          "$ref": "#/$defs/Sessions"
+        },
         "silence": {
           "description": "How long a session a destination holds hears nothing before it\nchecks the connection is alive, and then as long again before it\nopens another; \"30s\" where absent.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Duration"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "Sessions": {
+      "description": "`[server.sessions]`: how a session a destination holds waits before it\nconnects again, each wait double the last up to the longest.",
+      "type": "object",
+      "properties": {
+        "first_wait": {
+          "description": "The first wait after a session fails to connect; \"1s\" where absent.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Duration"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "jitter": {
+          "description": "Whether each wait is between half of it and all of it, so sessions\nthat failed together do not all connect again at once; true where\nabsent.",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "longest_wait": {
+          "description": "The longest wait between attempts; \"1m\" where absent, and at least\n`first_wait`.",
           "anyOf": [
             {
               "$ref": "#/$defs/Duration"
@@ -1433,6 +1795,35 @@
               "type": "string",
               "const": "github"
             },
+            "page": {
+              "description": "How many of the newest releases one poll reads; 30 where absent.",
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "uint",
+              "minimum": 1
+            },
+            "parse": {
+              "description": "The most of an answer parsed; \"4MiB\" where absent, and at most four\ntimes that.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Size"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "remembered": {
+              "description": "How many identities the cursor remembers, newest first; 500 where\nabsent, and at least `page`.",
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "uint",
+              "minimum": 1
+            },
             "repository": {
               "description": "The repository, as `owner/name`, or a GitLab project's full path,\nsuch as `group/subgroup/name`.",
               "type": "string"
@@ -1488,6 +1879,35 @@
               "type": "string",
               "const": "gitlab"
             },
+            "page": {
+              "description": "How many of the newest releases one poll reads; 30 where absent.",
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "uint",
+              "minimum": 1
+            },
+            "parse": {
+              "description": "The most of an answer parsed; \"4MiB\" where absent, and at most four\ntimes that.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Size"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "remembered": {
+              "description": "How many identities the cursor remembers, newest first; 500 where\nabsent, and at least `page`.",
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "uint",
+              "minimum": 1
+            },
             "repository": {
               "description": "The repository, as `owner/name`, or a GitLab project's full path,\nsuch as `group/subgroup/name`.",
               "type": "string"
@@ -1542,6 +1962,35 @@
             "kind": {
               "type": "string",
               "const": "forgejo"
+            },
+            "page": {
+              "description": "How many of the newest releases one poll reads; 30 where absent.",
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "uint",
+              "minimum": 1
+            },
+            "parse": {
+              "description": "The most of an answer parsed; \"4MiB\" where absent, and at most four\ntimes that.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Size"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "remembered": {
+              "description": "How many identities the cursor remembers, newest first; 500 where\nabsent, and at least `page`.",
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "uint",
+              "minimum": 1
             },
             "repository": {
               "description": "The repository, as `owner/name`, or a GitLab project's full path,\nsuch as `group/subgroup/name`.",
@@ -1602,6 +2051,35 @@
               "description": "The package, as the registry names it: `vendor/name` on Packagist,\na crate's name, an npm package's name such as `@scope/name`, or a\nDocker Hub repository such as `library/caddy`, where an official\nimage may leave out `library/`.",
               "type": "string"
             },
+            "page": {
+              "description": "How many of the newest versions one poll reads; 30 where absent.",
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "uint",
+              "minimum": 1
+            },
+            "parse": {
+              "description": "The most of an answer parsed; \"4MiB\", \"16MiB\" on Packagist and \"32MiB\" on npm, where absent, and at most four\ntimes that.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Size"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "remembered": {
+              "description": "How many identities the cursor remembers, newest first; 500 where\nabsent, and at least `page`.",
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "uint",
+              "minimum": 1
+            },
             "token": {
               "description": "A token for a private npm package, sent as a bearer token; the other\nregistries take none.",
               "anyOf": [
@@ -1645,6 +2123,35 @@
             "package": {
               "description": "The package, as the registry names it: `vendor/name` on Packagist,\na crate's name, an npm package's name such as `@scope/name`, or a\nDocker Hub repository such as `library/caddy`, where an official\nimage may leave out `library/`.",
               "type": "string"
+            },
+            "page": {
+              "description": "How many of the newest versions one poll reads; 30 where absent.",
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "uint",
+              "minimum": 1
+            },
+            "parse": {
+              "description": "The most of an answer parsed; \"4MiB\", \"16MiB\" on Packagist and \"32MiB\" on npm, where absent, and at most four\ntimes that.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Size"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "remembered": {
+              "description": "How many identities the cursor remembers, newest first; 500 where\nabsent, and at least `page`.",
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "uint",
+              "minimum": 1
             },
             "token": {
               "description": "A token for a private npm package, sent as a bearer token; the other\nregistries take none.",
@@ -1690,6 +2197,35 @@
               "description": "The package, as the registry names it: `vendor/name` on Packagist,\na crate's name, an npm package's name such as `@scope/name`, or a\nDocker Hub repository such as `library/caddy`, where an official\nimage may leave out `library/`.",
               "type": "string"
             },
+            "page": {
+              "description": "How many of the newest versions one poll reads; 30 where absent.",
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "uint",
+              "minimum": 1
+            },
+            "parse": {
+              "description": "The most of an answer parsed; \"4MiB\", \"16MiB\" on Packagist and \"32MiB\" on npm, where absent, and at most four\ntimes that.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Size"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "remembered": {
+              "description": "How many identities the cursor remembers, newest first; 500 where\nabsent, and at least `page`.",
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "uint",
+              "minimum": 1
+            },
             "token": {
               "description": "A token for a private npm package, sent as a bearer token; the other\nregistries take none.",
               "anyOf": [
@@ -1734,6 +2270,35 @@
               "description": "The package, as the registry names it: `vendor/name` on Packagist,\na crate's name, an npm package's name such as `@scope/name`, or a\nDocker Hub repository such as `library/caddy`, where an official\nimage may leave out `library/`.",
               "type": "string"
             },
+            "page": {
+              "description": "How many of the newest versions one poll reads; 30 where absent.",
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "uint",
+              "minimum": 1
+            },
+            "parse": {
+              "description": "The most of an answer parsed; \"4MiB\", \"16MiB\" on Packagist and \"32MiB\" on npm, where absent, and at most four\ntimes that.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Size"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "remembered": {
+              "description": "How many identities the cursor remembers, newest first; 500 where\nabsent, and at least `page`.",
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "uint",
+              "minimum": 1
+            },
             "token": {
               "description": "A token for a private npm package, sent as a bearer token; the other\nregistries take none.",
               "anyOf": [
@@ -1767,6 +2332,35 @@
               "type": "string",
               "const": "feed"
             },
+            "page": {
+              "description": "How many of the newest entries one poll reads; 30 where absent.",
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "uint",
+              "minimum": 1
+            },
+            "parse": {
+              "description": "The most of an answer parsed; \"4MiB\" where absent, and at most four\ntimes that.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Size"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "remembered": {
+              "description": "How many identities the cursor remembers, newest first; 500 where\nabsent, and at least `page`.",
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "uint",
+              "minimum": 1
+            },
             "url": {
               "description": "The feed's URL, RSS 2.0 or Atom 1.0.",
               "type": "string"
@@ -1792,6 +2386,39 @@
               "anyOf": [
                 {
                   "$ref": "#/$defs/Duration"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "keep_deliveries": {
+              "description": "How long a webhook delivery's id is kept after it was admitted, so a\nreplay of it is refused (ADR-0013); \"7d\" where absent, and at least\n\"3d\", longer than any sender goes on retrying a delivery.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Duration"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "keep_ledger": {
+              "description": "How long a ledger entry, and where each of its deliveries to a\nfollower's inbox stands, is kept after a run last claimed it; \"90d\"\nwhere absent.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Keep"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "keep_notes": {
+              "description": "How long a Note herald's ActivityPub actors published is kept, and\nserved by its id; \"forever\" where absent.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Keep"
                 },
                 {
                   "type": "null"
@@ -1835,6 +2462,39 @@
               "anyOf": [
                 {
                   "$ref": "#/$defs/Duration"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "keep_deliveries": {
+              "description": "How long a webhook delivery's id is kept after it was admitted, so a\nreplay of it is refused (ADR-0013); \"7d\" where absent, and at least\n\"3d\", longer than any sender goes on retrying a delivery.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Duration"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "keep_ledger": {
+              "description": "How long a ledger entry, and where each of its deliveries to a\nfollower's inbox stands, is kept after a run last claimed it; \"90d\"\nwhere absent.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Keep"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "keep_notes": {
+              "description": "How long a Note herald's ActivityPub actors published is kept, and\nserved by its id; \"forever\" where absent.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Keep"
                 },
                 {
                   "type": "null"
@@ -1889,6 +2549,39 @@
                 "null"
               ]
             },
+            "keep_deliveries": {
+              "description": "How long a webhook delivery's id is kept after it was admitted, so a\nreplay of it is refused (ADR-0013); \"7d\" where absent, and at least\n\"3d\", longer than any sender goes on retrying a delivery.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Duration"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "keep_ledger": {
+              "description": "How long a ledger entry, and where each of its deliveries to a\nfollower's inbox stands, is kept after a run last claimed it; \"90d\"\nwhere absent.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Keep"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "keep_notes": {
+              "description": "How long a Note herald's ActivityPub actors published is kept, and\nserved by its id; \"forever\" where absent.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Keep"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
             "key": {
               "description": "The secret holding a key to seal every record with, such as\n`HERALD_STORE_KEY`, so a record herald did not seal reads as corrupt\n(ADR-0005); records are not sealed where absent.",
               "anyOf": [
@@ -1919,6 +2612,39 @@
               "type": [
                 "string",
                 "null"
+              ]
+            },
+            "keep_deliveries": {
+              "description": "How long a webhook delivery's id is kept after it was admitted, so a\nreplay of it is refused (ADR-0013); \"7d\" where absent, and at least\n\"3d\", longer than any sender goes on retrying a delivery.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Duration"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "keep_ledger": {
+              "description": "How long a ledger entry, and where each of its deliveries to a\nfollower's inbox stands, is kept after a run last claimed it; \"90d\"\nwhere absent.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Keep"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "keep_notes": {
+              "description": "How long a Note herald's ActivityPub actors published is kept, and\nserved by its id; \"forever\" where absent.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Keep"
+                },
+                {
+                  "type": "null"
+                }
               ]
             },
             "key": {
@@ -1969,6 +2695,39 @@
               "type": [
                 "string",
                 "null"
+              ]
+            },
+            "keep_deliveries": {
+              "description": "How long a webhook delivery's id is kept after it was admitted, so a\nreplay of it is refused (ADR-0013); \"7d\" where absent, and at least\n\"3d\", longer than any sender goes on retrying a delivery.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Duration"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "keep_ledger": {
+              "description": "How long a ledger entry, and where each of its deliveries to a\nfollower's inbox stands, is kept after a run last claimed it; \"90d\"\nwhere absent.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Keep"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "keep_notes": {
+              "description": "How long a Note herald's ActivityPub actors published is kept, and\nserved by its id; \"forever\" where absent.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Keep"
+                },
+                {
+                  "type": "null"
+                }
               ]
             },
             "key": {
@@ -2032,6 +2791,39 @@
           "description": "Deno KV, on Deno Deploy or wherever a database is opened.",
           "type": "object",
           "properties": {
+            "keep_deliveries": {
+              "description": "How long a webhook delivery's id is kept after it was admitted, so a\nreplay of it is refused (ADR-0013); \"7d\" where absent, and at least\n\"3d\", longer than any sender goes on retrying a delivery.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Duration"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "keep_ledger": {
+              "description": "How long a ledger entry, and where each of its deliveries to a\nfollower's inbox stands, is kept after a run last claimed it; \"90d\"\nwhere absent.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Keep"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "keep_notes": {
+              "description": "How long a Note herald's ActivityPub actors published is kept, and\nserved by its id; \"forever\" where absent.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Keep"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
             "key": {
               "description": "The secret holding a key to seal every record with, such as\n`HERALD_STORE_KEY`, so a record herald did not seal reads as corrupt\n(ADR-0005); records are not sealed where absent.",
               "anyOf": [
@@ -2071,6 +2863,39 @@
           "description": "A Fastly KV Store, on Fastly Compute.",
           "type": "object",
           "properties": {
+            "keep_deliveries": {
+              "description": "How long a webhook delivery's id is kept after it was admitted, so a\nreplay of it is refused (ADR-0013); \"7d\" where absent, and at least\n\"3d\", longer than any sender goes on retrying a delivery.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Duration"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "keep_ledger": {
+              "description": "How long a ledger entry, and where each of its deliveries to a\nfollower's inbox stands, is kept after a run last claimed it; \"90d\"\nwhere absent.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Keep"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "keep_notes": {
+              "description": "How long a Note herald's ActivityPub actors published is kept, and\nserved by its id; \"forever\" where absent.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Keep"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
             "key": {
               "description": "The secret holding a key to seal every record with, such as\n`HERALD_STORE_KEY`, so a record herald did not seal reads as corrupt\n(ADR-0005); records are not sealed where absent.",
               "anyOf": [
@@ -2138,6 +2963,39 @@
                 "null"
               ]
             },
+            "keep_deliveries": {
+              "description": "How long a webhook delivery's id is kept after it was admitted, so a\nreplay of it is refused (ADR-0013); \"7d\" where absent, and at least\n\"3d\", longer than any sender goes on retrying a delivery.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Duration"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "keep_ledger": {
+              "description": "How long a ledger entry, and where each of its deliveries to a\nfollower's inbox stands, is kept after a run last claimed it; \"90d\"\nwhere absent.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Keep"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "keep_notes": {
+              "description": "How long a Note herald's ActivityPub actors published is kept, and\nserved by its id; \"forever\" where absent.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Keep"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
             "key": {
               "description": "The secret holding the key every record is sealed with, such as\n`HERALD_STORE_KEY`: whoever can write the repository could otherwise\nforge records herald trusts (ADR-0005).",
               "$ref": "#/$defs/SecretRef"
@@ -2175,6 +3033,39 @@
           "description": "Generations of the GitHub Actions cache.",
           "type": "object",
           "properties": {
+            "keep_deliveries": {
+              "description": "How long a webhook delivery's id is kept after it was admitted, so a\nreplay of it is refused (ADR-0013); \"7d\" where absent, and at least\n\"3d\", longer than any sender goes on retrying a delivery.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Duration"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "keep_ledger": {
+              "description": "How long a ledger entry, and where each of its deliveries to a\nfollower's inbox stands, is kept after a run last claimed it; \"90d\"\nwhere absent.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Keep"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "keep_notes": {
+              "description": "How long a Note herald's ActivityPub actors published is kept, and\nserved by its id; \"forever\" where absent.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Keep"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
             "keeps": {
               "description": "What it keeps besides the ledger, cursors, schedules and deliveries:\nany of \"subscriptions\", \"pins\", \"notes\", \"latest\" and \"keys\". Each\nis rewritten with every other record on every write, and counts\nagainst the cache's quota; none where absent.",
               "type": "array",

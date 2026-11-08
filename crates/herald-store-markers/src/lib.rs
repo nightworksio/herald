@@ -147,6 +147,13 @@ impl<M: Markers, G: Signer> Ledger for MarkersStore<M, G> {
     ) -> impl Future<Output = Result<Written, StoreError>> + Send {
         ready(Ok(after(expected)))
     }
+
+    fn expire_entries(
+        &self,
+        _before: Timestamp,
+    ) -> impl Future<Output = Result<Vec<Key>, StoreError>> + Send {
+        ready(Ok(Vec::new()))
+    }
 }
 
 impl<M: Markers, G: Signer> Schedules for MarkersStore<M, G> {

@@ -162,12 +162,15 @@ body = "{{ event.body }}"
     fn limits() -> Limits<'static> {
         Limits {
             jobs: 4,
+            queue: 4,
             connections: 4,
             body: 1 << 20,
             poll: None,
             housekeep: None,
             keys: Duration::from_secs(3_600),
             read: Duration::from_secs(2),
+            held: Duration::from_secs(90),
+            accept_pause: Duration::from_millis(100),
             asked: None,
             secret: None,
         }
@@ -316,12 +319,42 @@ body = "{{ event.body }}"
     }
 
     #[tokio::test]
+    async fn a_connection_is_held_no_longer_than_its_limit_whatever_it_still_sends() {
+        let world = World::new(Gate::default()).await;
+        let (listener, address) = listening().await;
+        let stop = Notify::new();
+        let client = async {
+            let answer = asked(
+                address,
+                b"POST /inbox HTTP/1.1\r\nHost: x\r\nContent-Length: 10\r\n\r\n01",
+            )
+            .await;
+            stop.notify_one();
+            answer
+        };
+        let brief = Limits {
+            read: Duration::from_secs(30),
+            held: Duration::from_millis(100),
+            asked: None,
+            ..limits()
+        };
+        let started = std::time::Instant::now();
+        let (answer, ()) = tokio::join!(
+            client,
+            world.serve(listener, brief, &|_| {}, stop.notified())
+        );
+        assert_eq!(answer, "");
+        assert!(started.elapsed() < Duration::from_secs(10));
+    }
+
+    #[tokio::test]
     async fn work_the_queue_has_no_place_for_is_refused_and_its_delivery_released() {
         let world = World::new(Gate::default()).await;
         let heard = RefCell::new(Vec::new());
         let hear = |said: Heard| heard.borrow_mut().push(named(&said));
         let unsigned = Limits {
-            jobs: 0,
+            jobs: 4,
+            queue: 0,
             ..limits()
         };
         let (listener, address) = listening().await;
@@ -453,6 +486,7 @@ body = "{{ event.body }}"
         };
         let one = Limits {
             jobs: 1,
+            queue: 1,
             ..limits()
         };
         let hear = |said: Heard| heard.borrow_mut().push(named(&said));

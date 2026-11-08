@@ -1,0 +1,176 @@
+{
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "url": "https://discord.com/api/v10/users/@me",
+        "headers": {
+          "Authorization": "Bot «secret:HERALD_DISCORD_TOKEN»",
+          "User-Agent": "DiscordBot (https://github.com/nightworksio/herald, 0.0.0)"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "id": "1566190000000000099",
+          "username": "herald",
+          "bot": true
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "url": "https://discord.com/api/v10/channels/1566184281406177531/messages/pins?limit=50",
+        "headers": {
+          "Authorization": "Bot «secret:HERALD_DISCORD_TOKEN»",
+          "User-Agent": "DiscordBot (https://github.com/nightworksio/herald, 0.0.0)"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "items": [
+            {
+              "pinned_at": "2026-10-31T12:00:02.000000+00:00",
+              "message": {
+                "id": "1566200000000000001",
+                "channel_id": "1566184281406177531",
+                "type": 0,
+                "content": "",
+                "author": {
+                  "id": "1566190000000000099",
+                  "username": "herald",
+                  "bot": true
+                },
+                "embeds": [
+                  {
+                    "title": "📦 php-mutation-gate v0.1.0",
+                    "url": "https://github.com/nightworksio/php-mutation-gate/releases/tag/v0.1.0#herald-b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6.a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5"
+                  }
+                ],
+                "flags": 0,
+                "pinned": true,
+                "timestamp": "2026-10-31T12:00:01.000000+00:00"
+              }
+            }
+          ],
+          "has_more": true
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "url": "https://discord.com/api/v10/channels/1566184281406177531/messages/pins?limit=50&before=2026-10-31T12%3A00%3A02.000000%2B00%3A00",
+        "headers": {
+          "Authorization": "Bot «secret:HERALD_DISCORD_TOKEN»",
+          "User-Agent": "DiscordBot (https://github.com/nightworksio/herald, 0.0.0)"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "items": [
+            {
+              "pinned_at": "2026-10-30T12:00:00.000000+00:00",
+              "message": {
+                "id": "1566200000000000008",
+                "channel_id": "1566184281406177531",
+                "type": 0,
+                "content": "",
+                "author": {
+                  "id": "1566190000000000099",
+                  "username": "herald",
+                  "bot": true
+                },
+                "embeds": [
+                  {
+                    "title": "📦 php-mutation-gate v0.0.9",
+                    "url": "https://github.com/nightworksio/php-mutation-gate/releases/tag/v0.0.9#herald-b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6.c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7"
+                  }
+                ],
+                "flags": 0,
+                "pinned": true,
+                "timestamp": "2026-10-31T12:00:01.000000+00:00"
+              }
+            }
+          ],
+          "has_more": false
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "DELETE",
+        "url": "https://discord.com/api/v10/channels/1566184281406177531/messages/pins/1566200000000000008",
+        "headers": {
+          "Authorization": "Bot «secret:HERALD_DISCORD_TOKEN»",
+          "User-Agent": "DiscordBot (https://github.com/nightworksio/herald, 0.0.0)"
+        }
+      },
+      "response": {
+        "status": 204
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "url": "https://discord.com/api/v10/users/@me",
+        "headers": {
+          "Authorization": "Bot «secret:HERALD_DISCORD_TOKEN»",
+          "User-Agent": "DiscordBot (https://github.com/nightworksio/herald, 0.0.0)"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "id": "1566190000000000099",
+          "username": "herald",
+          "bot": true
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "url": "https://discord.com/api/v10/channels/1566184281406177531/messages/pins?limit=50",
+        "headers": {
+          "Authorization": "Bot «secret:HERALD_DISCORD_TOKEN»",
+          "User-Agent": "DiscordBot (https://github.com/nightworksio/herald, 0.0.0)"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "items": [
+            {
+              "pinned_at": "2026-10-31T12:00:02.000000+00:00",
+              "message": {
+                "id": "1566200000000000001",
+                "channel_id": "1566184281406177531",
+                "type": 0,
+                "content": "",
+                "author": {
+                  "id": "1566190000000000099",
+                  "username": "herald",
+                  "bot": true
+                },
+                "embeds": [
+                  {
+                    "title": "📦 php-mutation-gate v0.1.0",
+                    "url": "https://github.com/nightworksio/php-mutation-gate/releases/tag/v0.1.0#herald-b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6.a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5"
+                  }
+                ],
+                "flags": 0,
+                "pinned": true,
+                "timestamp": "2026-10-31T12:00:01.000000+00:00"
+              }
+            }
+          ],
+          "has_more": true
+        }
+      }
+    }
+  ]
+}

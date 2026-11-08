@@ -16,11 +16,6 @@ use crate::prepare::{Connected, PreparedRoute};
 use crate::reached::Signing;
 use crate::together::together;
 
-/// How long a run holds an announcement past its last write before another
-/// may finish it: longer than the longest a host lets one run go on, a
-/// Lambda's 15 minutes.
-const LEASE: SignedDuration = SignedDuration::from_mins(20);
-
 /// The ports an announcement goes through, beside each route's `Http`.
 #[derive(Debug)]
 pub struct Ports<'a, S, C, G> {
@@ -94,6 +89,7 @@ struct Run<'a, S, C, G, H> {
     http: &'a H,
     holder: &'a str,
     together: usize,
+    lease: SignedDuration,
 }
 
 /// The steps a run took that did not land, and why the first of them did
@@ -132,7 +128,7 @@ impl<S: Store, C: Clock, G: Signer, H: Http> Run<'_, S, C, G, H> {
             .ports
             .clock
             .now()
-            .checked_add(LEASE)
+            .checked_add(self.lease)
             .unwrap_or(Timestamp::MAX);
         progress.entry = progress.entry.clone().renewed(self.holder, until);
         let written = self
@@ -258,7 +254,7 @@ impl<S: Store, C: Clock, G: Signer, H: Http> Run<'_, S, C, G, H> {
                     self.ports
                         .store
                         .notes()
-                        .put_note(&progress.entry.key, &published)
+                        .put_note(&progress.entry.key, &published, self.ports.clock.now())
                         .await
                         .map_err(stored)?;
                 }
@@ -480,9 +476,10 @@ impl<S: Store, C: Clock, G: Signer, H: Http> Run<'_, S, C, G, H> {
         let expected = record.as_ref().map(|record| record.version);
         let claimed = record
             .map_or_else(|| Entry::new(key), |record| record.value)
-            .claimed(
+            .claimed_by(
                 self.holder,
-                now.checked_add(LEASE).unwrap_or(Timestamp::MAX),
+                now,
+                now.checked_add(self.lease).unwrap_or(Timestamp::MAX),
             )
             .wanting(&wanted);
         let version = match self
@@ -538,10 +535,6 @@ impl<S: Store, C: Clock, G: Signer, H: Http> Run<'_, S, C, G, H> {
     }
 }
 
-/// How often an announcement rewrites its project's latest record when
-/// another write lands between its read and its write.
-const LATEST_ATTEMPTS: usize = 3;
-
 /// `outcome`, once `event` is kept as what its project last announced on
 /// `route`, where it was sent or had been and the store keeps that, or
 /// stopped by why it could not be kept (ADR-0016). An announcement already
@@ -552,6 +545,7 @@ async fn kept_latest<S: Store>(
     event: &Event,
     route: &RouteId,
     outcome: Outcome,
+    attempts: usize,
 ) -> Outcome {
     let landed = match &outcome {
         Outcome::Sent { steps } => steps.clone(),
@@ -561,7 +555,7 @@ async fn kept_latest<S: Store>(
     let Some(announcements) = store.announcements() else {
         return outcome;
     };
-    match keep_latest(announcements, event, route).await {
+    match keep_latest(announcements, event, route, attempts).await {
         Ok(()) => outcome,
         Err(reason) => Outcome::Stopped {
             landed,
@@ -575,8 +569,9 @@ async fn keep_latest<A: Announcements>(
     announcements: &A,
     event: &Event,
     route: &RouteId,
+    attempts: usize,
 ) -> Result<(), Stop> {
-    for _ in 0..LATEST_ATTEMPTS {
+    for _ in 0..attempts {
         let kept = announcements
             .latest(event.project())
             .await
@@ -593,7 +588,7 @@ async fn keep_latest<A: Announcements>(
         }
     }
     Err(Stop::Store(format!(
-        "what {} last announced changed under each of {LATEST_ATTEMPTS} writes",
+        "what {} last announced changed under each of {attempts} writes",
         event.project()
     )))
 }
@@ -635,10 +630,18 @@ pub async fn announce_within<S: Store, C: Clock, G: Signer, H: Http>(
             http,
             holder: run,
             together: config.server.deliveries,
+            lease: config.announce.lease,
         }
         .announce(event, &config.templates)
         .await;
-        let outcome = kept_latest(ports.store, event, id, outcome).await;
+        let outcome = kept_latest(
+            ports.store,
+            event,
+            id,
+            outcome,
+            config.announce.latest_attempts,
+        )
+        .await;
         announced.push(Announced {
             route: route.config.route.id.clone(),
             outcome,

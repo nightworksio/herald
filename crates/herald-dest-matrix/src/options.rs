@@ -1,4 +1,4 @@
-use herald_core::SecretRef;
+use herald_core::{ReadBack, SecretRef};
 
 use crate::interactions::Interactions;
 use schemars::JsonSchema;
@@ -14,6 +14,9 @@ pub struct DestinationOptions {
     pub token: SecretRef,
     /// How it takes commands, where it takes any.
     pub interactions: Option<Interactions>,
+    /// How many pages of its own posts it reads back for their markers,
+    /// from 1 to 20; 5 where unset.
+    pub read_back: Option<ReadBack>,
 }
 
 /// What a route says about Matrix alone.

@@ -147,7 +147,7 @@ body = "{{ event.body }}"
             errors(text),
             [
                 "herald.toml:1:11 version: this herald reads version 1 of the config; write version = 1",
-                "herald.toml:2:1 unknown: herald.toml has no key \"unknown\"; the keys are \"version\", \"store\", \"markers\", \"destinations\", \"sources\", \"routes\", \"templates\", \"apps\", \"schedule\", \"server\"",
+                "herald.toml:2:1 unknown: herald.toml has no key \"unknown\"; the keys are \"version\", \"store\", \"markers\", \"destinations\", \"sources\", \"routes\", \"templates\", \"apps\", \"schedule\", \"server\", \"http\", \"render\", \"announce\"",
                 "herald.toml:4:8 store.kind: there is no kind \"nowhere\"; the kinds are \"sqlite\", \"postgres\", \"d1\", \"durable-object\", \"dynamodb\", \"deno-kv\", \"fastly-kv\", \"markers\", \"git-branch\", \"actions-cache\", \"repo-variables\"",
                 "herald.toml:5:1 destinations.d: a Discord destination needs a token or a webhook; give one",
                 "herald.toml:8:8 sources.s.kind: there is no kind \"bitbucket\"; the kinds are \"github\", \"gitlab\", \"forgejo\", \"packagist\", \"crates-io\", \"npm\", \"docker-hub\", \"feed\"",
@@ -563,7 +563,7 @@ body = "{{ event.body }}"
             error.contains("routes[0].kinds[1]: unknown variant `tweet`"),
             "{error}"
         );
-        assert!(error.contains("routes[0].thread.archive_after: invalid value: string \"14y\", expected a length of time such as \"30s\""), "{error}");
+        assert!(error.contains("routes[0].thread.archive_after: invalid value: string \"14y\", expected a length of time such as \"250ms\", \"30s\""), "{error}");
         let unnamed = EXAMPLE.replace(
             "thread = { name = \"{{ event.project }} {{ event.version }}\", archive_after = \"14d\" }",
             "thread = { archive_after = \"14d\" }",

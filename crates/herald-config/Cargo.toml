@@ -11,6 +11,7 @@ publish.workspace = true
 
 [dependencies]
 herald-core.workspace = true
+herald-ports.workspace = true
 herald-dest-discord.workspace = true
 herald-dest-fediverse.workspace = true
 herald-dest-matrix.workspace = true

@@ -39,8 +39,13 @@ pub(crate) fn page(name: &str, version: &str) -> String {
 /// Each tagged version of `name` with its time, a minified entry taking the
 /// time of the entry before where it gives none. A version whose time is not
 /// one, Composer's `__unset` among them, is left out.
-pub(crate) fn found(api: &Api, name: &str, body: &[u8]) -> Result<Vec<Found>, SourceError> {
-    let metadata: Metadata = read(api.versions, api.limit, body)?;
+pub(crate) fn found(
+    api: &Api,
+    limit: usize,
+    name: &str,
+    body: &[u8],
+) -> Result<Vec<Found>, SourceError> {
+    let metadata: Metadata = read(api.versions, limit, body)?;
     let minified = metadata.minified.as_deref() == Some(MINIFIED);
     let entries = metadata
         .packages

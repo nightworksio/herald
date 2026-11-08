@@ -8,27 +8,28 @@ const SECURITY: &str = "https://w3id.org/security/v1";
 /// Everyone, as `ActivityStreams` addresses them.
 const PUBLIC: &str = "https://www.w3.org/ns/activitystreams#Public";
 
-/// The id of the actor `actor` on `domain`.
-pub(crate) fn actor_id(domain: &str, actor: &str) -> String {
-    format!("https://{domain}/users/{actor}")
+/// The id of the actor `actor` served at `origin`: its domain, and the path
+/// herald is served under.
+pub(crate) fn actor_id(origin: &str, actor: &str) -> String {
+    format!("https://{origin}/users/{actor}")
 }
 
 /// The id of the key the actor `actor` signs with.
-pub(crate) fn key_id(domain: &str, actor: &str) -> String {
-    format!("{}#main-key", actor_id(domain, actor))
+pub(crate) fn key_id(origin: &str, actor: &str) -> String {
+    format!("{}#main-key", actor_id(origin, actor))
 }
 
 /// The id of the Note an announcement under `key` is.
-pub(crate) fn note_id(domain: &str, actor: &str, key: &str) -> String {
-    format!("{}/notes/{key}", actor_id(domain, actor))
+pub(crate) fn note_id(origin: &str, actor: &str, key: &str) -> String {
+    format!("{}/notes/{key}", actor_id(origin, actor))
 }
 
-/// The actor `actor` on `domain`, as its document is served: a `Service`,
+/// The actor `actor` served at `origin`, as its document is served: a `Service`,
 /// with its inbox, its server's shared inbox, and its public key as
 /// `public` (a DER `SubjectPublicKeyInfo`) publishes it.
 #[must_use]
-pub fn actor_document(domain: &str, actor: &str, public: &[u8]) -> Value {
-    let id = actor_id(domain, actor);
+pub fn actor_document(origin: &str, actor: &str, public: &[u8]) -> Value {
+    let id = actor_id(origin, actor);
     json!({
         "@context": [STREAMS, SECURITY],
         "id": id,
@@ -41,19 +42,20 @@ pub fn actor_document(domain: &str, actor: &str, public: &[u8]) -> Value {
         "followers": followers(&id),
         "manuallyApprovesFollowers": false,
         "discoverable": true,
-        "endpoints": { "sharedInbox": format!("https://{domain}/inbox") },
+        "endpoints": { "sharedInbox": format!("https://{origin}/inbox") },
         "publicKey": {
-            "id": key_id(domain, actor),
+            "id": key_id(origin, actor),
             "owner": id,
             "publicKeyPem": public_pem(public),
         },
     })
 }
 
-/// What WebFinger answers for `acct:<actor>@<domain>`.
+/// What WebFinger answers for `acct:<actor>@<domain>`, of the actor served
+/// at `origin`.
 #[must_use]
-pub fn webfinger(domain: &str, actor: &str) -> Value {
-    let id = actor_id(domain, actor);
+pub fn webfinger(domain: &str, origin: &str, actor: &str) -> Value {
+    let id = actor_id(origin, actor);
     json!({
         "subject": format!("acct:{actor}@{domain}"),
         "aliases": [id],
@@ -82,18 +84,18 @@ fn content(announcement: &Announcement) -> String {
     html.join("\n")
 }
 
-/// `announcement` as the actor `actor` on `domain` publishes it: a public
+/// `announcement` as the actor `actor` served at `origin` publishes it: a public
 /// `Note`, behind `content_warning` where it is given.
 #[must_use]
 pub fn note(
-    domain: &str,
+    origin: &str,
     actor: &str,
     announcement: &Announcement,
     content_warning: Option<&str>,
 ) -> Value {
-    let id = actor_id(domain, actor);
+    let id = actor_id(origin, actor);
     let mut note = json!({
-        "id": note_id(domain, actor, &announcement.key.to_string()),
+        "id": note_id(origin, actor, &announcement.key.to_string()),
         "type": "Note",
         "attributedTo": id,
         "published": announcement.occurred.to_string(),
@@ -120,30 +122,30 @@ fn followers(actor: &str) -> String {
 /// The `Create` of `announcement`'s Note, as each follower's inbox takes it.
 #[must_use]
 pub fn create(
-    domain: &str,
+    origin: &str,
     actor: &str,
     announcement: &Announcement,
     content_warning: Option<&str>,
 ) -> Value {
-    let id = actor_id(domain, actor);
+    let id = actor_id(origin, actor);
     json!({
         "@context": STREAMS,
-        "id": format!("{}/activity", note_id(domain, actor, &announcement.key.to_string())),
+        "id": format!("{}/activity", note_id(origin, actor, &announcement.key.to_string())),
         "type": "Create",
         "actor": id,
         "published": announcement.occurred.to_string(),
         "to": [PUBLIC],
         "cc": [followers(&id)],
-        "object": note(domain, actor, announcement, content_warning),
+        "object": note(origin, actor, announcement, content_warning),
     })
 }
 
-/// The `Accept` of `follow`, a `Follow` of the actor `actor` on `domain`:
+/// The `Accept` of `follow`, a `Follow` of the actor `actor` served at `origin`:
 /// its id is the follow's own, digested, so a follow accepted twice is
 /// accepted as one.
 #[must_use]
-pub fn accept(domain: &str, actor: &str, follow: &Value) -> Value {
-    let id = actor_id(domain, actor);
+pub fn accept(origin: &str, actor: &str, follow: &Value) -> Value {
+    let id = actor_id(origin, actor);
     let followed = follow.get("id").and_then(Value::as_str).unwrap_or_default();
     json!({
         "@context": STREAMS,

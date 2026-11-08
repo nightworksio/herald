@@ -21,12 +21,42 @@ mod activitypub {
     fn reached(key: &str) -> ActivityPub {
         ActivityPub::new(
             DOMAIN,
+            "",
             Secret::new(key, "the-key"),
             ActorRouteOptions {
                 actor: "php-mutation-gate".to_owned(),
                 content_warning: Some("Release notes".to_owned()),
             },
         )
+    }
+
+    #[test]
+    fn an_actor_served_under_a_base_names_every_id_under_it_and_keeps_its_handle() {
+        let based = ActivityPub::new(
+            DOMAIN,
+            "/herald",
+            Secret::new("HERALD_ACTIVITYPUB_KEY", "the-key"),
+            ActorRouteOptions {
+                actor: "php-mutation-gate".to_owned(),
+                content_warning: None,
+            },
+        );
+        assert_eq!(
+            based.id(),
+            "https://herald.example/herald/users/php-mutation-gate"
+        );
+        assert_eq!(based.domain(), DOMAIN);
+        let finger: serde_json::Value = serde_json::from_str(&based.finger()).unwrap();
+        assert_eq!(finger["subject"], "acct:php-mutation-gate@herald.example");
+        assert_eq!(
+            finger["links"][0]["href"],
+            "https://herald.example/herald/users/php-mutation-gate"
+        );
+        let document = actor_document("herald.example/herald", "php-mutation-gate", &[1; 70]);
+        assert_eq!(
+            document["endpoints"]["sharedInbox"],
+            "https://herald.example/herald/inbox"
+        );
     }
 
     fn announcement() -> herald_core::Announcement {
@@ -166,7 +196,7 @@ mod activitypub {
         assert_eq!(lines[3], "-----END PUBLIC KEY-----");
         assert!(pem.ends_with('\n'));
         assert_eq!(
-            webfinger(DOMAIN, "php-mutation-gate"),
+            webfinger(DOMAIN, DOMAIN, "php-mutation-gate"),
             json!({
                 "subject": "acct:php-mutation-gate@herald.example",
                 "aliases": [ACTOR],
@@ -367,7 +397,7 @@ mod activitypub {
         );
         assert!(pollster::block_on(reached("BAD").document(&FakeSigner)).is_err());
         let finger: serde_json::Value = serde_json::from_str(&actor.finger()).unwrap();
-        assert_eq!(finger, webfinger(DOMAIN, "php-mutation-gate"));
+        assert_eq!(finger, webfinger(DOMAIN, DOMAIN, "php-mutation-gate"));
         let announcement = announcement();
         let published: serde_json::Value =
             serde_json::from_str(&actor.note(&announcement)).unwrap();
