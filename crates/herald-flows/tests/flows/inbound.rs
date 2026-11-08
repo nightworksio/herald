@@ -2,7 +2,7 @@ use herald_core::{Refusal, Scheme};
 use herald_flows::{
     Admission, Keys, Rejected, Verified, activity_verified, admitted, released, verified,
 };
-use herald_ports::{Keyring, KnownKey, Store, StoreError};
+use herald_ports::{Held, Keeper, Keyring, KnownKey, StoreError};
 use herald_records::MemoryKeyring;
 use herald_testing::{FakeStore, FakeVerifier};
 use jiff::Timestamp;
@@ -254,19 +254,14 @@ impl herald_ports::Inboxes for Refusing {
     }
 }
 
-impl Store for Refusing {
-    fn capabilities(&self) -> herald_ports::Capabilities {
-        FakeStore::default().capabilities()
-    }
-    fn skipped(&self) -> Vec<String> {
-        Vec::new()
-    }
+impl herald_ports::Ledger for Refusing {
     async fn entry(
         &self,
         _: &herald_core::Key,
     ) -> Result<Option<herald_ports::Versioned<herald_core::Entry>>, StoreError> {
         Err(self.0.clone())
     }
+
     async fn put_entry(
         &self,
         _: &herald_core::Entry,
@@ -274,12 +269,16 @@ impl Store for Refusing {
     ) -> Result<herald_ports::Written, StoreError> {
         Err(self.0.clone())
     }
+}
+
+impl herald_ports::Cursors for Refusing {
     async fn cursor(
         &self,
         _: &herald_core::SourceName,
     ) -> Result<Option<herald_ports::Versioned<herald_core::Cursor>>, StoreError> {
         Err(self.0.clone())
     }
+
     async fn put_cursor(
         &self,
         _: &herald_core::SourceName,
@@ -288,9 +287,13 @@ impl Store for Refusing {
     ) -> Result<herald_ports::Written, StoreError> {
         Err(self.0.clone())
     }
-    async fn schedules(&self) -> Result<Vec<herald_core::Schedule>, StoreError> {
+}
+
+impl herald_ports::Schedules for Refusing {
+    async fn every_schedule(&self) -> Result<Vec<herald_core::Schedule>, StoreError> {
         Err(self.0.clone())
     }
+
     async fn put_schedules(
         &self,
         _: &[herald_core::Schedule],
@@ -298,6 +301,9 @@ impl Store for Refusing {
     ) -> Result<(), StoreError> {
         Err(self.0.clone())
     }
+}
+
+impl herald_ports::Subscriptions for Refusing {
     async fn subscribers(
         &self,
         _: &herald_core::DestinationName,
@@ -305,18 +311,27 @@ impl Store for Refusing {
     ) -> Result<Vec<herald_core::Subscription>, StoreError> {
         Err(self.0.clone())
     }
+
     async fn subscribe(&self, _: &herald_core::Subscription) -> Result<(), StoreError> {
         Err(self.0.clone())
     }
+
     async fn unsubscribe(&self, _: &herald_core::Subscription) -> Result<(), StoreError> {
         Err(self.0.clone())
     }
+}
+
+impl herald_ports::Pins for Refusing {
     async fn pinned(&self, _: &herald_core::RouteId) -> Result<Option<String>, StoreError> {
         Err(self.0.clone())
     }
+
     async fn put_pinned(&self, _: &herald_core::RouteId, _: &str) -> Result<(), StoreError> {
         Err(self.0.clone())
     }
+}
+
+impl herald_ports::Deliveries for Refusing {
     async fn admit(
         &self,
         _: Scheme,
@@ -325,33 +340,54 @@ impl Store for Refusing {
     ) -> Result<herald_ports::Admitted, StoreError> {
         Err(self.0.clone())
     }
+
     async fn release(&self, _: Scheme, _: &str) -> Result<(), StoreError> {
         Err(self.0.clone())
     }
+
     async fn expire_deliveries(&self, _: Timestamp) -> Result<(), StoreError> {
         Err(self.0.clone())
     }
+}
+
+impl herald_ports::Notes for Refusing {
     async fn note(&self, _: &herald_core::Key) -> Result<Option<String>, StoreError> {
         Err(self.0.clone())
     }
+
     async fn put_note(&self, _: &herald_core::Key, _: &str) -> Result<(), StoreError> {
         Err(self.0.clone())
     }
+}
+
+impl herald_ports::Announcements for Refusing {
     async fn latest(
         &self,
         _: &str,
     ) -> Result<Option<herald_ports::Versioned<herald_core::Latest>>, StoreError> {
         Err(self.0.clone())
     }
+
     async fn every_latest(&self) -> Result<Vec<herald_core::Latest>, StoreError> {
         Err(self.0.clone())
     }
+
     async fn put_latest(
         &self,
         _: &herald_core::Latest,
         _: Option<herald_ports::Version>,
     ) -> Result<herald_ports::Written, StoreError> {
         Err(self.0.clone())
+    }
+}
+
+impl Keeper for Refusing {
+    fn holds(&self, _: Held) -> bool {
+        true
+    }
+
+    fn skipped(&self) -> Vec<String> {
+        Vec::new()
     }
 }
 

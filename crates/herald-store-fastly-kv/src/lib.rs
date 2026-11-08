@@ -74,7 +74,7 @@ mod tests {
     #[test]
     fn the_store_keeps_every_record_under_its_prefix() {
         let kept = store(FakeKv::default(), &StoreOptions::default());
-        assert!(kept.capabilities().cursors);
+        assert!(kept.cursors().is_some());
         assert_eq!(pollster::block_on(store_conformance(&kept)), Ok(()));
     }
 }

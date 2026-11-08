@@ -11,7 +11,10 @@ mod kept {
     use std::sync::Mutex;
 
     use herald_core::{DestinationName, Entry, Identity, Key, RouteId, Subscription};
-    use herald_ports::{Store, StoreError, Version, Written};
+    use herald_ports::{
+        Announcements, Deliveries, Ledger, Pins, Schedules, Store, StoreError, Subscriptions,
+        Version, Written,
+    };
     use herald_records::{Blob, Kept, Records, Wrote};
     use herald_testing::store_conformance;
 
@@ -122,6 +125,29 @@ mod kept {
             pollster::block_on(store_conformance(&Kept::new(Memory::default()))),
             Ok(())
         );
+    }
+
+    #[test]
+    fn the_store_answers_every_kind_itself_and_drops_the_kinds_it_is_told_not_to_keep() {
+        let store = Kept::new(Memory::default());
+        let itself = |answered: Option<&Kept<Memory>>| {
+            answered.is_some_and(|kept| std::ptr::eq(kept, &raw const store))
+        };
+        assert!(itself(store.ledger()));
+        assert!(itself(store.cursors()));
+        assert!(itself(store.schedules()));
+        assert!(itself(store.subscriptions()));
+        assert!(itself(store.pins()));
+        assert!(itself(store.deliveries()));
+        assert!(itself(store.notes()));
+        assert!(itself(store.announcements()));
+        assert!(itself(store.inboxes()));
+        let bare = Kept::new(Memory::default()).keeping(|_| false);
+        assert!(bare.ledger().is_some() && bare.cursors().is_some());
+        assert!(bare.schedules().is_some() && bare.deliveries().is_some());
+        assert!(bare.subscriptions().is_none() && bare.inboxes().is_none());
+        assert!(bare.pins().is_none() && bare.notes().is_none());
+        assert!(bare.announcements().is_none());
     }
 
     #[test]
@@ -247,7 +273,7 @@ mod kept {
             ..Memory::default()
         };
         assert_eq!(
-            pollster::block_on(Kept::new(vanished).schedules()),
+            pollster::block_on(Kept::new(vanished).every_schedule()),
             Ok(Vec::new())
         );
     }

@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { Herald, answered, load } from "../../host.mjs";
 import { postgres } from "../../databases.mjs";
+import { beside } from "../../files.mjs";
 import { guarded } from "../../vetted.mjs";
 
 function host(env) {
@@ -20,8 +21,8 @@ let composing;
 export function composed() {
   composing ??= (async () => {
     await load(await readFile(new URL("../../pkg/herald_wasm_bg.wasm", import.meta.url)));
-    const config = await readFile(process.env.HERALD_CONFIG ?? "herald.toml", "utf8");
-    return Herald.compose(host(process.env), config, {}, "netlify");
+    const path = process.env.HERALD_CONFIG ?? "herald.toml";
+    return Herald.compose(host(process.env), await readFile(path, "utf8"), beside(path), "netlify");
   })().catch((error) => {
     composing = undefined;
     throw error;

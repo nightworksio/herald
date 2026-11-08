@@ -8,7 +8,7 @@ use herald_core::{
     Said, Subscription, announced, body_template, chosen, chunk, completions, escaped, safe_url,
     title_template,
 };
-use herald_ports::{Http, Store};
+use herald_ports::{Announcements, Http, Store, Subscriptions};
 
 use crate::announce::Ports;
 use crate::interacting::{Interacting, Replying};
@@ -83,7 +83,7 @@ pub async fn interact<S: Store, C, G, H: Http>(
         return disabled();
     }
     let placed = placed(config, &asked.destination, &asked.place);
-    let every_latest = match ports.store.every_latest().await {
+    let every_latest = match ports.store.announcements().every_latest().await {
         Ok(every_latest) => every_latest,
         Err(error) => return Answer::unavailable(error.to_string()),
     };
@@ -118,7 +118,11 @@ pub async fn completed<S: Store>(
     place: &Place,
     typed: &str,
 ) -> Vec<String> {
-    let every_latest = store.every_latest().await.unwrap_or_default();
+    let every_latest = store
+        .announcements()
+        .every_latest()
+        .await
+        .unwrap_or_default();
     let placed = placed(config, destination, place);
     completions(typed, &announced(&every_latest, &placed, id))
 }
@@ -240,7 +244,11 @@ async fn subscribing<S: Store, H: Http>(
     {
         return unoffered();
     }
-    let subscribers = match store.subscribers(&asked.destination, &project).await {
+    let subscribers = match store
+        .subscriptions()
+        .subscribers(&asked.destination, &project)
+        .await
+    {
         Ok(subscribers) => subscribers,
         Err(error) => return Answer::unavailable(error.to_string()),
     };
@@ -258,9 +266,9 @@ async fn subscribing<S: Store, H: Http>(
         inbox: None,
     };
     let written = if give {
-        store.subscribe(&subscription).await
+        store.subscriptions().subscribe(&subscription).await
     } else {
-        store.unsubscribe(&subscription).await
+        store.subscriptions().unsubscribe(&subscription).await
     };
     match written {
         Ok(()) => done(give),

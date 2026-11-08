@@ -11,8 +11,8 @@ use fastly::{Request, Response};
 use std::io::Read as _;
 
 use herald_compose::{Asked, Composed, Hosting, told};
-use herald_config::load;
-use herald_flows::{Answered, Reply, refusal};
+use herald_config::{Config, load};
+use herald_flows::{Answered, Reply, refusal, uncomposed};
 use host::{FastlyHost, STORE};
 
 /// The Config Store item holding `herald.toml`.
@@ -48,7 +48,8 @@ fn asked(mut request: Request, most: usize) -> std::io::Result<Asked> {
     })
 }
 
-fn composed() -> Result<Composed<FastlyHost>, String> {
+/// The service's host and the config its Config Store holds.
+fn configured() -> Result<(FastlyHost, Config), String> {
     let host = FastlyHost::new();
     let text = host
         .item(CONFIG)
@@ -58,6 +59,10 @@ fn composed() -> Result<Composed<FastlyHost>, String> {
             .ok_or_else(|| format!("{name} is not in the Config Store {STORE}"))
     };
     let config = load(CONFIG, &text, &read).map_err(|errors| errors.to_string())?;
+    Ok((host, config))
+}
+
+fn composed(host: FastlyHost, config: Config) -> Result<Composed<FastlyHost>, String> {
     let hosting = Hosting::Fastly;
     pollster::block_on(Composed::new(
         host,
@@ -89,8 +94,19 @@ fn refused(answered: Answered) {
 pub(crate) fn serve() {
     let request = Request::from_client();
     let is_head = request.get_method() == Method::HEAD;
-    let composed = match composed() {
-        Ok(composed) => composed,
+    let started = configured().and_then(|(host, config)| {
+        let target = request.get_url().path();
+        match uncomposed(request.get_method_str(), target) {
+            Some(reply) => Ok(Err(reply)),
+            None => composed(host, config).map(Ok),
+        }
+    });
+    let composed = match started {
+        Ok(Ok(composed)) => composed,
+        Ok(Err(reply)) => {
+            send(reply, is_head);
+            return;
+        }
         Err(error) => {
             refused(refusal(500, format!("herald could not start: {error}")));
             return;

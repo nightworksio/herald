@@ -124,6 +124,6 @@ mod tests {
             laid_out,
         ]));
         let kept = pollster::block_on(store(opened)).unwrap();
-        assert!(kept.capabilities().cursors);
+        assert!(kept.cursors().is_some());
     }
 }

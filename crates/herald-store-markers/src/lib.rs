@@ -10,13 +10,10 @@
 
 use std::future::{Future, ready};
 
-use herald_core::{
-    Chore, Cursor, DestinationName, Entry, Identity, Key, Latest, Marker, RouteId, Schedule,
-    Scheme, SourceName, State, Subscription, Thread, schedules,
-};
+use herald_core::{Chore, Entry, Identity, Key, Marker, RouteId, Schedule, Thread, schedules};
 use herald_ports::{
-    Admitted, Capabilities, Inboxes, Keeping, Keyring, KnownKey, Markers, Secret, Signer, Store,
-    StoreError, Version, Versioned, Written, marker,
+    Keeping, Keyring, KnownKey, Ledger, Markers, Schedules, Secret, Signer, Store, StoreError,
+    Unkept, Version, Versioned, Written, marker,
 };
 use jiff::Timestamp;
 
@@ -120,42 +117,9 @@ impl<M: Markers, G: Signer> Keyring for MarkersStore<M, G> {
     }
 }
 
-impl<M: Markers, G: Signer> Inboxes for MarkersStore<M, G> {
-    fn delivery(
-        &self,
-        _key: &Key,
-        _inbox: &str,
-    ) -> impl Future<Output = Result<Option<State>, StoreError>> + Send {
-        ready(unsupported("deliveries to followers"))
-    }
-
-    fn put_delivery(
-        &self,
-        _key: &Key,
-        _inbox: &str,
-        _state: &State,
-    ) -> impl Future<Output = Result<(), StoreError>> + Send {
-        ready(unsupported("deliveries to followers"))
-    }
-}
-
-impl<M: Markers, G: Signer> Store for MarkersStore<M, G> {
-    fn capabilities(&self) -> Capabilities {
-        Capabilities {
-            ledger: Keeping::Derived,
-            cursors: false,
-            schedules: Keeping::Derived,
-            subscriptions: false,
-            pins: false,
-            deliveries: false,
-            notes: false,
-            latest: false,
-            concurrent: false,
-        }
-    }
-
-    fn skipped(&self) -> Vec<String> {
-        vec![]
+impl<M: Markers, G: Signer> Ledger for MarkersStore<M, G> {
+    fn keeping(&self) -> Keeping {
+        Keeping::Derived
     }
 
     async fn entry(&self, key: &Key) -> Result<Option<Versioned<Entry>>, StoreError> {
@@ -183,24 +147,14 @@ impl<M: Markers, G: Signer> Store for MarkersStore<M, G> {
     ) -> impl Future<Output = Result<Written, StoreError>> + Send {
         ready(Ok(after(expected)))
     }
+}
 
-    fn cursor(
-        &self,
-        _source: &SourceName,
-    ) -> impl Future<Output = Result<Option<Versioned<Cursor>>, StoreError>> + Send {
-        ready(unsupported("cursors"))
+impl<M: Markers, G: Signer> Schedules for MarkersStore<M, G> {
+    fn keeping(&self) -> Keeping {
+        Keeping::Derived
     }
 
-    fn put_cursor(
-        &self,
-        _source: &SourceName,
-        _cursor: &Cursor,
-        _expected: Option<Version>,
-    ) -> impl Future<Output = Result<Written, StoreError>> + Send {
-        ready(unsupported("cursors"))
-    }
-
-    async fn schedules(&self) -> Result<Vec<Schedule>, StoreError> {
+    async fn every_schedule(&self) -> Result<Vec<Schedule>, StoreError> {
         let mut derived = Vec::new();
         for route in &self.routes {
             if let Some(thread) = &route.thread {
@@ -217,96 +171,56 @@ impl<M: Markers, G: Signer> Store for MarkersStore<M, G> {
     ) -> impl Future<Output = Result<(), StoreError>> + Send {
         ready(Ok(()))
     }
+}
 
-    fn subscribers(
-        &self,
-        _destination: &DestinationName,
-        _project: &str,
-    ) -> impl Future<Output = Result<Vec<Subscription>, StoreError>> + Send {
-        ready(unsupported("subscriptions"))
+impl<M: Markers, G: Signer> Store for MarkersStore<M, G> {
+    type Ledger = Self;
+    type Cursors = Unkept;
+    type Schedules = Self;
+    type Subscriptions = Unkept;
+    type Pins = Unkept;
+    type Deliveries = Unkept;
+    type Notes = Unkept;
+    type Announcements = Unkept;
+    type Inboxes = Unkept;
+
+    fn ledger(&self) -> Option<&Self> {
+        Some(self)
     }
 
-    fn subscribe(
-        &self,
-        _subscription: &Subscription,
-    ) -> impl Future<Output = Result<(), StoreError>> + Send {
-        ready(unsupported("subscriptions"))
+    fn cursors(&self) -> Option<&Unkept> {
+        None
     }
 
-    fn unsubscribe(
-        &self,
-        _subscription: &Subscription,
-    ) -> impl Future<Output = Result<(), StoreError>> + Send {
-        ready(unsupported("subscriptions"))
+    fn schedules(&self) -> Option<&Self> {
+        Some(self)
     }
 
-    fn pinned(
-        &self,
-        _route: &RouteId,
-    ) -> impl Future<Output = Result<Option<String>, StoreError>> + Send {
-        ready(unsupported("pins"))
+    fn subscriptions(&self) -> Option<&Unkept> {
+        None
     }
 
-    fn put_pinned(
-        &self,
-        _route: &RouteId,
-        _post: &str,
-    ) -> impl Future<Output = Result<(), StoreError>> + Send {
-        ready(unsupported("pins"))
+    fn pins(&self) -> Option<&Unkept> {
+        None
     }
 
-    fn admit(
-        &self,
-        _scheme: Scheme,
-        _id: &str,
-        _at: Timestamp,
-    ) -> impl Future<Output = Result<Admitted, StoreError>> + Send {
-        ready(unsupported("deliveries"))
+    fn deliveries(&self) -> Option<&Unkept> {
+        None
     }
 
-    fn release(
-        &self,
-        _scheme: Scheme,
-        _id: &str,
-    ) -> impl Future<Output = Result<(), StoreError>> + Send {
-        ready(unsupported("deliveries"))
+    fn notes(&self) -> Option<&Unkept> {
+        None
     }
 
-    fn expire_deliveries(
-        &self,
-        _before: Timestamp,
-    ) -> impl Future<Output = Result<(), StoreError>> + Send {
-        ready(unsupported("deliveries"))
+    fn announcements(&self) -> Option<&Unkept> {
+        None
     }
 
-    fn note(&self, _key: &Key) -> impl Future<Output = Result<Option<String>, StoreError>> + Send {
-        ready(unsupported("notes"))
+    fn inboxes(&self) -> Option<&Unkept> {
+        None
     }
 
-    fn put_note(
-        &self,
-        _key: &Key,
-        _note: &str,
-    ) -> impl Future<Output = Result<(), StoreError>> + Send {
-        ready(unsupported("notes"))
-    }
-
-    fn latest(
-        &self,
-        _project: &str,
-    ) -> impl Future<Output = Result<Option<Versioned<Latest>>, StoreError>> + Send {
-        ready(unsupported("latest"))
-    }
-
-    fn every_latest(&self) -> impl Future<Output = Result<Vec<Latest>, StoreError>> + Send {
-        ready(unsupported("latest"))
-    }
-
-    fn put_latest(
-        &self,
-        _latest: &Latest,
-        _expected: Option<Version>,
-    ) -> impl Future<Output = Result<Written, StoreError>> + Send {
-        ready(unsupported("latest"))
+    fn skipped(&self) -> Vec<String> {
+        vec![]
     }
 }

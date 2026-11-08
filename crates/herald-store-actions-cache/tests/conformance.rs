@@ -12,7 +12,8 @@ mod conformance {
 
     use herald_core::{Entry, Identity, Key, RecordKind, RouteId, Subscription};
     use herald_ports::{
-        Http, HttpError, Method, Request, Response, Secret, Store, StoreError, Version, Written,
+        Http, HttpError, Ledger, Method, Request, Response, Secret, Store, StoreError,
+        Subscriptions, Version, Written,
     };
     use herald_store_actions_cache::{ActionsCache, ActionsCacheStore, Blobs};
     use herald_testing::store_conformance;
@@ -205,17 +206,19 @@ mod conformance {
     fn the_store_keeps_only_its_ledger_cursors_schedules_and_deliveries_unless_told() {
         let cache = Cache::default();
         let plain = ActionsCache::new(RESULTS, Secret::new("ACTIONS_RUNTIME_TOKEN", "t"), None)
-            .store(cache.clone(), blobs(&cache))
-            .capabilities();
-        assert!(plain.cursors && plain.deliveries);
-        assert!(!plain.subscriptions && !plain.pins && !plain.notes && !plain.latest);
+            .store(cache.clone(), blobs(&cache));
+        assert!(plain.cursors().is_some() && plain.deliveries().is_some());
+        assert!(plain.subscriptions().is_none() && plain.inboxes().is_none());
+        assert!(plain.pins().is_none() && plain.notes().is_none());
+        assert!(plain.announcements().is_none());
         let told = ActionsCache::new(RESULTS, Secret::new("ACTIONS_RUNTIME_TOKEN", "t"), None)
             .keeping(&[RecordKind::Pins])
-            .store(cache.clone(), blobs(&cache))
-            .capabilities();
-        assert!(told.pins && !told.notes);
-        let every = store(&cache).capabilities();
-        assert!(every.subscriptions && every.pins && every.notes && every.latest);
+            .store(cache.clone(), blobs(&cache));
+        assert!(told.pins().is_some() && told.notes().is_none());
+        let every = store(&cache);
+        assert!(every.subscriptions().is_some() && every.inboxes().is_some());
+        assert!(every.pins().is_some() && every.notes().is_some());
+        assert!(every.announcements().is_some());
     }
 
     #[test]

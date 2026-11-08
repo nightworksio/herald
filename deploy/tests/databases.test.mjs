@@ -33,6 +33,14 @@ test("a SQLite transaction waits for the lock no longer than it was given", asyn
   assert.deepEqual(answers[2].rows, [[7], [7]]);
 });
 
+test("a SQLite file is kept in write-ahead mode, as the native store keeps it", async (t) => {
+  const file = join(await directory(t), "herald.sqlite");
+  await sqlite(file, 300);
+  const reader = new DatabaseSync(file);
+  assert.equal(reader.prepare("PRAGMA journal_mode").get().journal_mode, "wal");
+  reader.close();
+});
+
 test("a failed SQLite transaction answers its statement's error, even when the rollback fails", async (t) => {
   const db = await sqlite(join(await directory(t), "herald.sqlite"), 300);
   await assert.rejects(db.transaction([said("NOT SQL")]), /syntax error/);

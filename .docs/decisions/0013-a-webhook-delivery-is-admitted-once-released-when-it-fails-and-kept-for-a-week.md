@@ -48,10 +48,11 @@ id it carried the first time.
 3. **An id is kept for a week.** Housekeeping expires every id admitted more
    than `DELIVERIES_KEPT`, seven days, before it runs. A replay older than
    that verifies, is admitted, and is skipped by the ledger.
-4. **A store that keeps no deliveries says so.** `Capabilities` names
-   whether a store keeps deliveries. Every store built on the records kit
-   keeps them, and the markers store does not. A store that does not answers
-   unsupported, and doctor names it as a gap where a config serves webhooks:
+4. **A store that keeps no deliveries says so.** A store answers its
+   deliveries through `Store::deliveries`, and `None` where it keeps none.
+   Every store built on the records kit keeps them, and the markers store
+   does not. Asking one that keeps none is answered unsupported, and doctor
+   names it as a gap where a config serves webhooks:
    its replays reach the parser, and the ledger is what skips them.
 5. **The conformance suite holds every store to it.** A store that keeps
    deliveries admits each once, admits a released one again, and expires

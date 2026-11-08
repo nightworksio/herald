@@ -15,7 +15,7 @@ mod sessions {
     use herald_config::{Config, load};
     use herald_core::{Kind, Latest, RouteId, Shown};
     use herald_flows::{Connected, Keys, Ports, Serving, Webhooks, Worked, prepare};
-    use herald_ports::{Frame, Http, HttpError, Request, Response, Store as _};
+    use herald_ports::{Announcements, Frame, Http, HttpError, Request, Response};
     use herald_records::MemoryKeyring;
     use herald_server::{Heard, Limits, Listener, serve};
     use herald_testing::{

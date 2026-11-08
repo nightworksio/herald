@@ -5,7 +5,9 @@ use herald_dest_fediverse::{
     ActorError, ActorKey, Found, activity_json, actor_key, actor_of, confirms, key_request,
     same_origin,
 };
-use herald_ports::{Admitted, Algorithm, Http, Keyring, KnownKey, Store, StoreError, Verifier};
+use herald_ports::{
+    Admitted, Algorithm, Deliveries, Http, Keyring, KnownKey, Store, StoreError, Verifier,
+};
 use jiff::{SignedDuration, Timestamp};
 
 /// Why an inbound request is not let through to a parser.
@@ -282,7 +284,10 @@ pub async fn admitted<S: Store>(
     let Some(delivery) = &verified.delivery else {
         return Ok(());
     };
-    admission(store.admit(scheme, delivery, now).await, admitting)
+    admission(
+        store.deliveries().admit(scheme, delivery, now).await,
+        admitting,
+    )
 }
 
 /// Whether a request's delivery is let through once, or again.
@@ -324,7 +329,7 @@ pub async fn released<S: Store>(
     let Some(delivery) = &verified.delivery else {
         return Ok(());
     };
-    forgotten(store.release(scheme, delivery).await)
+    forgotten(store.deliveries().release(scheme, delivery).await)
 }
 
 /// What a store's answer to forgetting a delivery leaves to report: a store

@@ -6,7 +6,7 @@ use herald_core::{
 use herald_flows::{
     Chored, Findings, Outcome, Ports, PrepareError, Reached, announce, housekeep, keys, prepare,
 };
-use herald_ports::{Markers as _, MarkersError, Store as _};
+use herald_ports::{Markers as _, MarkersError, Notes, Schedules, Subscriptions};
 use herald_testing::{FakeClock, FakeSecrets, FakeSigner};
 
 use crate::harness::*;

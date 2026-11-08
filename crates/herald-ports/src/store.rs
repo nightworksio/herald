@@ -1,5 +1,5 @@
 use std::fmt;
-use std::future::Future;
+use std::future::{Future, ready};
 
 use herald_core::{
     Cursor, DestinationName, Entry, Key, Latest, RouteId, Schedule, Scheme, SourceName, State,
@@ -32,37 +32,11 @@ pub enum Written {
 /// How a store holds a kind of record.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Keeping {
-    /// It holds none, and answers unsupported.
-    None,
     /// It keeps what is written, and reads it back.
     Kept,
     /// It reads them from the destinations' own posts, and takes each write
     /// without keeping it, as the post is the record (ADR-0005).
     Derived,
-}
-
-/// What a store keeps, for doctor to compare with what a config needs.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[allow(clippy::struct_excessive_bools)]
-pub struct Capabilities {
-    /// The ledger.
-    pub ledger: Keeping,
-    /// Cursors.
-    pub cursors: bool,
-    /// Schedules.
-    pub schedules: Keeping,
-    /// Subscriptions.
-    pub subscriptions: bool,
-    /// Each route's pinned post.
-    pub pins: bool,
-    /// The ids of webhook deliveries it admitted (ADR-0013).
-    pub deliveries: bool,
-    /// The Notes herald's ActivityPub actors published, served by their id.
-    pub notes: bool,
-    /// What each project last announced, for commands to answer with.
-    pub latest: bool,
-    /// Compare-and-set that holds when runs write at the same time.
-    pub concurrent: bool,
 }
 
 /// What admitting a delivery came to.
@@ -108,41 +82,58 @@ impl fmt::Display for StoreError {
     }
 }
 
-/// Where each delivery of an announcement to a follower's inbox stands
-/// (ADR-0005), kept apart from the announcement's ledger entry so the entry
-/// does not grow with its followers. Only the run holding the entry's lease
-/// writes them, so the last write is kept.
-pub trait Inboxes: Sync {
-    /// Where the delivery of the announcement `key` to `inbox` stands.
-    fn delivery(
-        &self,
-        key: &Key,
-        inbox: &str,
-    ) -> impl Future<Output = Result<Option<State>, StoreError>> + Send;
-
-    /// Keeps `state` as where the delivery of `key` to `inbox` stands.
-    fn put_delivery(
-        &self,
-        key: &Key,
-        inbox: &str,
-        state: &State,
-    ) -> impl Future<Output = Result<(), StoreError>> + Send;
+/// A kind of record a store may hold.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Held {
+    /// The ledger.
+    Ledger,
+    /// Cursors.
+    Cursors,
+    /// Schedules.
+    Schedules,
+    /// Subscriptions.
+    Subscriptions,
+    /// Each route's pinned post.
+    Pins,
+    /// The ids of webhook deliveries it admitted.
+    Deliveries,
+    /// The Notes herald's ActivityPub actors published.
+    Notes,
+    /// What each project last announced.
+    Latest,
+    /// Where each delivery to a follower's inbox stands.
+    Inboxes,
 }
 
-/// The ledger, cursors, schedules, subscriptions and pins (ADR-0005,
-/// ADR-0011), and every kind of record each narrower trait keeps.
-///
-/// Entries and cursors are written with compare-and-set. Schedules and
-/// subscriptions are sets, and adding or removing one twice is the same as
-/// once. A route's pin is one value, and the last written is kept.
-pub trait Store: Inboxes {
-    /// What the store keeps.
-    fn capabilities(&self) -> Capabilities;
+impl Held {
+    /// The kind as an error names it.
+    const fn what(self) -> &'static str {
+        match self {
+            Self::Ledger => "ledger",
+            Self::Cursors => "cursors",
+            Self::Schedules => "schedules",
+            Self::Subscriptions => "subscriptions",
+            Self::Pins => "pins",
+            Self::Deliveries => "deliveries",
+            Self::Notes => "notes",
+            Self::Latest => "latest",
+            Self::Inboxes => "deliveries to followers",
+        }
+    }
 
-    /// The paths of the records a listing skipped as corrupt since this was
-    /// last asked, each once, so one bad record stops no listing and is
-    /// still reported.
-    fn skipped(&self) -> Vec<String>;
+    /// The error a store keeping none of this kind answers.
+    const fn unsupported(self) -> StoreError {
+        StoreError::Unsupported { what: self.what() }
+    }
+}
+
+/// The ledger (ADR-0005). Entries are written with compare-and-set.
+pub trait Ledger: Sync {
+    /// Whether it keeps entries or derives them from the destinations'
+    /// posts.
+    fn keeping(&self) -> Keeping {
+        Keeping::Kept
+    }
 
     /// The ledger's entry for `key`.
     fn entry(
@@ -157,7 +148,10 @@ pub trait Store: Inboxes {
         entry: &Entry,
         expected: Option<Version>,
     ) -> impl Future<Output = Result<Written, StoreError>> + Send;
+}
 
+/// Each source's cursor, written with compare-and-set.
+pub trait Cursors: Sync {
     /// The cursor of `source`.
     fn cursor(
         &self,
@@ -172,9 +166,19 @@ pub trait Store: Inboxes {
         cursor: &Cursor,
         expected: Option<Version>,
     ) -> impl Future<Output = Result<Written, StoreError>> + Send;
+}
+
+/// The schedules (ADR-0011), a set: adding or removing one twice is the
+/// same as once.
+pub trait Schedules: Sync {
+    /// Whether it keeps schedules or derives them from the destinations'
+    /// posts.
+    fn keeping(&self) -> Keeping {
+        Keeping::Kept
+    }
 
     /// Every schedule.
-    fn schedules(&self) -> impl Future<Output = Result<Vec<Schedule>, StoreError>> + Send;
+    fn every_schedule(&self) -> impl Future<Output = Result<Vec<Schedule>, StoreError>> + Send;
 
     /// Adds `add` and removes `remove`.
     fn put_schedules(
@@ -182,7 +186,11 @@ pub trait Store: Inboxes {
         add: &[Schedule],
         remove: &[Schedule],
     ) -> impl Future<Output = Result<(), StoreError>> + Send;
+}
 
+/// The subscriptions, a set: adding or removing one twice is the same as
+/// once.
+pub trait Subscriptions: Sync {
     /// The subscriptions to `project` on `destination`.
     fn subscribers(
         &self,
@@ -201,7 +209,10 @@ pub trait Store: Inboxes {
         &self,
         subscription: &Subscription,
     ) -> impl Future<Output = Result<(), StoreError>> + Send;
+}
 
+/// Each route's pinned post, one value: the last written is kept.
+pub trait Pins: Sync {
     /// The post `route` last pinned.
     fn pinned(
         &self,
@@ -214,7 +225,10 @@ pub trait Store: Inboxes {
         route: &RouteId,
         post: &str,
     ) -> impl Future<Output = Result<(), StoreError>> + Send;
+}
 
+/// The ids of the webhook deliveries it admitted (ADR-0013).
+pub trait Deliveries: Sync {
     /// Admits the delivery `id` of `scheme`, arriving `at`: fresh the first
     /// time, and seen every later time until it is released or expires. Two
     /// admitting the same delivery at once admit one.
@@ -237,7 +251,10 @@ pub trait Store: Inboxes {
         &self,
         before: Timestamp,
     ) -> impl Future<Output = Result<(), StoreError>> + Send;
+}
 
+/// The Notes herald's ActivityPub actors published, served by their id.
+pub trait Notes: Sync {
     /// The Note the announcement `key` was published as, as its JSON.
     fn note(&self, key: &Key) -> impl Future<Output = Result<Option<String>, StoreError>> + Send;
 
@@ -247,7 +264,10 @@ pub trait Store: Inboxes {
         key: &Key,
         note: &str,
     ) -> impl Future<Output = Result<(), StoreError>> + Send;
+}
 
+/// What each project last announced, for commands to answer with.
+pub trait Announcements: Sync {
     /// What `project` last announced, with its version.
     fn latest(
         &self,
@@ -266,29 +286,490 @@ pub trait Store: Inboxes {
     ) -> impl Future<Output = Result<Written, StoreError>> + Send;
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+/// Where each delivery of an announcement to a follower's inbox stands
+/// (ADR-0005), kept apart from the announcement's ledger entry so the entry
+/// does not grow with its followers. Only the run holding the entry's lease
+/// writes them, so the last write is kept.
+pub trait Inboxes: Sync {
+    /// Where the delivery of the announcement `key` to `inbox` stands.
+    fn delivery(
+        &self,
+        key: &Key,
+        inbox: &str,
+    ) -> impl Future<Output = Result<Option<State>, StoreError>> + Send;
 
-    #[test]
-    fn every_store_error_reads_as_a_sentence() {
-        assert_eq!(
-            StoreError::Unavailable {
-                reason: "down".to_owned()
-            }
-            .to_string(),
-            "the store could not be reached: down"
-        );
-        assert_eq!(
-            StoreError::Corrupt {
-                reason: "bad json".to_owned()
-            }
-            .to_string(),
-            "a record in the store could not be read: bad json"
-        );
-        assert_eq!(
-            StoreError::Unsupported { what: "cursors" }.to_string(),
-            "this store keeps no cursors; choose a store that does"
-        );
+    /// Keeps `state` as where the delivery of `key` to `inbox` stands.
+    fn put_delivery(
+        &self,
+        key: &Key,
+        inbox: &str,
+        state: &State,
+    ) -> impl Future<Output = Result<(), StoreError>> + Send;
+}
+
+impl<T: Ledger> Ledger for Option<&T> {
+    fn keeping(&self) -> Keeping {
+        self.map_or(Keeping::Kept, Ledger::keeping)
+    }
+
+    async fn entry(&self, key: &Key) -> Result<Option<Versioned<Entry>>, StoreError> {
+        match self {
+            Some(kept) => kept.entry(key).await,
+            None => Unkept.entry(key).await,
+        }
+    }
+
+    async fn put_entry(
+        &self,
+        entry: &Entry,
+        expected: Option<Version>,
+    ) -> Result<Written, StoreError> {
+        match self {
+            Some(kept) => kept.put_entry(entry, expected).await,
+            None => Unkept.put_entry(entry, expected).await,
+        }
     }
 }
+
+impl<T: Cursors> Cursors for Option<&T> {
+    async fn cursor(&self, source: &SourceName) -> Result<Option<Versioned<Cursor>>, StoreError> {
+        match self {
+            Some(kept) => kept.cursor(source).await,
+            None => Unkept.cursor(source).await,
+        }
+    }
+
+    async fn put_cursor(
+        &self,
+        source: &SourceName,
+        cursor: &Cursor,
+        expected: Option<Version>,
+    ) -> Result<Written, StoreError> {
+        match self {
+            Some(kept) => kept.put_cursor(source, cursor, expected).await,
+            None => Unkept.put_cursor(source, cursor, expected).await,
+        }
+    }
+}
+
+impl<T: Schedules> Schedules for Option<&T> {
+    fn keeping(&self) -> Keeping {
+        self.map_or(Keeping::Kept, Schedules::keeping)
+    }
+
+    async fn every_schedule(&self) -> Result<Vec<Schedule>, StoreError> {
+        match self {
+            Some(kept) => kept.every_schedule().await,
+            None => Unkept.every_schedule().await,
+        }
+    }
+
+    async fn put_schedules(&self, add: &[Schedule], remove: &[Schedule]) -> Result<(), StoreError> {
+        match self {
+            Some(kept) => kept.put_schedules(add, remove).await,
+            None => Unkept.put_schedules(add, remove).await,
+        }
+    }
+}
+
+impl<T: Subscriptions> Subscriptions for Option<&T> {
+    async fn subscribers(
+        &self,
+        destination: &DestinationName,
+        project: &str,
+    ) -> Result<Vec<Subscription>, StoreError> {
+        match self {
+            Some(kept) => kept.subscribers(destination, project).await,
+            None => Unkept.subscribers(destination, project).await,
+        }
+    }
+
+    async fn subscribe(&self, subscription: &Subscription) -> Result<(), StoreError> {
+        match self {
+            Some(kept) => kept.subscribe(subscription).await,
+            None => Unkept.subscribe(subscription).await,
+        }
+    }
+
+    async fn unsubscribe(&self, subscription: &Subscription) -> Result<(), StoreError> {
+        match self {
+            Some(kept) => kept.unsubscribe(subscription).await,
+            None => Unkept.unsubscribe(subscription).await,
+        }
+    }
+}
+
+impl<T: Pins> Pins for Option<&T> {
+    async fn pinned(&self, route: &RouteId) -> Result<Option<String>, StoreError> {
+        match self {
+            Some(kept) => kept.pinned(route).await,
+            None => Unkept.pinned(route).await,
+        }
+    }
+
+    async fn put_pinned(&self, route: &RouteId, post: &str) -> Result<(), StoreError> {
+        match self {
+            Some(kept) => kept.put_pinned(route, post).await,
+            None => Unkept.put_pinned(route, post).await,
+        }
+    }
+}
+
+impl<T: Deliveries> Deliveries for Option<&T> {
+    async fn admit(&self, scheme: Scheme, id: &str, at: Timestamp) -> Result<Admitted, StoreError> {
+        match self {
+            Some(kept) => kept.admit(scheme, id, at).await,
+            None => Unkept.admit(scheme, id, at).await,
+        }
+    }
+
+    async fn release(&self, scheme: Scheme, id: &str) -> Result<(), StoreError> {
+        match self {
+            Some(kept) => kept.release(scheme, id).await,
+            None => Unkept.release(scheme, id).await,
+        }
+    }
+
+    async fn expire_deliveries(&self, before: Timestamp) -> Result<(), StoreError> {
+        match self {
+            Some(kept) => kept.expire_deliveries(before).await,
+            None => Unkept.expire_deliveries(before).await,
+        }
+    }
+}
+
+impl<T: Notes> Notes for Option<&T> {
+    async fn note(&self, key: &Key) -> Result<Option<String>, StoreError> {
+        match self {
+            Some(kept) => kept.note(key).await,
+            None => Unkept.note(key).await,
+        }
+    }
+
+    async fn put_note(&self, key: &Key, note: &str) -> Result<(), StoreError> {
+        match self {
+            Some(kept) => kept.put_note(key, note).await,
+            None => Unkept.put_note(key, note).await,
+        }
+    }
+}
+
+impl<T: Announcements> Announcements for Option<&T> {
+    async fn latest(&self, project: &str) -> Result<Option<Versioned<Latest>>, StoreError> {
+        match self {
+            Some(kept) => kept.latest(project).await,
+            None => Unkept.latest(project).await,
+        }
+    }
+
+    async fn every_latest(&self) -> Result<Vec<Latest>, StoreError> {
+        match self {
+            Some(kept) => kept.every_latest().await,
+            None => Unkept.every_latest().await,
+        }
+    }
+
+    async fn put_latest(
+        &self,
+        latest: &Latest,
+        expected: Option<Version>,
+    ) -> Result<Written, StoreError> {
+        match self {
+            Some(kept) => kept.put_latest(latest, expected).await,
+            None => Unkept.put_latest(latest, expected).await,
+        }
+    }
+}
+
+impl<T: Inboxes> Inboxes for Option<&T> {
+    async fn delivery(&self, key: &Key, inbox: &str) -> Result<Option<State>, StoreError> {
+        match self {
+            Some(kept) => kept.delivery(key, inbox).await,
+            None => Unkept.delivery(key, inbox).await,
+        }
+    }
+
+    async fn put_delivery(&self, key: &Key, inbox: &str, state: &State) -> Result<(), StoreError> {
+        match self {
+            Some(kept) => kept.put_delivery(key, inbox, state).await,
+            None => Unkept.put_delivery(key, inbox, state).await,
+        }
+    }
+}
+
+/// The records of a kind a store never keeps: asking for one is refused as
+/// unsupported, naming the kind.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Unkept;
+
+impl Ledger for Unkept {
+    fn entry(
+        &self,
+        _: &Key,
+    ) -> impl Future<Output = Result<Option<Versioned<Entry>>, StoreError>> + Send {
+        ready(Err(Held::Ledger.unsupported()))
+    }
+
+    fn put_entry(
+        &self,
+        _: &Entry,
+        _: Option<Version>,
+    ) -> impl Future<Output = Result<Written, StoreError>> + Send {
+        ready(Err(Held::Ledger.unsupported()))
+    }
+}
+
+impl Cursors for Unkept {
+    fn cursor(
+        &self,
+        _: &SourceName,
+    ) -> impl Future<Output = Result<Option<Versioned<Cursor>>, StoreError>> + Send {
+        ready(Err(Held::Cursors.unsupported()))
+    }
+
+    fn put_cursor(
+        &self,
+        _: &SourceName,
+        _: &Cursor,
+        _: Option<Version>,
+    ) -> impl Future<Output = Result<Written, StoreError>> + Send {
+        ready(Err(Held::Cursors.unsupported()))
+    }
+}
+
+impl Schedules for Unkept {
+    fn every_schedule(&self) -> impl Future<Output = Result<Vec<Schedule>, StoreError>> + Send {
+        ready(Err(Held::Schedules.unsupported()))
+    }
+
+    fn put_schedules(
+        &self,
+        _: &[Schedule],
+        _: &[Schedule],
+    ) -> impl Future<Output = Result<(), StoreError>> + Send {
+        ready(Err(Held::Schedules.unsupported()))
+    }
+}
+
+impl Subscriptions for Unkept {
+    fn subscribers(
+        &self,
+        _: &DestinationName,
+        _: &str,
+    ) -> impl Future<Output = Result<Vec<Subscription>, StoreError>> + Send {
+        ready(Err(Held::Subscriptions.unsupported()))
+    }
+
+    fn subscribe(&self, _: &Subscription) -> impl Future<Output = Result<(), StoreError>> + Send {
+        ready(Err(Held::Subscriptions.unsupported()))
+    }
+
+    fn unsubscribe(&self, _: &Subscription) -> impl Future<Output = Result<(), StoreError>> + Send {
+        ready(Err(Held::Subscriptions.unsupported()))
+    }
+}
+
+impl Pins for Unkept {
+    fn pinned(
+        &self,
+        _: &RouteId,
+    ) -> impl Future<Output = Result<Option<String>, StoreError>> + Send {
+        ready(Err(Held::Pins.unsupported()))
+    }
+
+    fn put_pinned(
+        &self,
+        _: &RouteId,
+        _: &str,
+    ) -> impl Future<Output = Result<(), StoreError>> + Send {
+        ready(Err(Held::Pins.unsupported()))
+    }
+}
+
+impl Deliveries for Unkept {
+    fn admit(
+        &self,
+        _: Scheme,
+        _: &str,
+        _: Timestamp,
+    ) -> impl Future<Output = Result<Admitted, StoreError>> + Send {
+        ready(Err(Held::Deliveries.unsupported()))
+    }
+
+    fn release(&self, _: Scheme, _: &str) -> impl Future<Output = Result<(), StoreError>> + Send {
+        ready(Err(Held::Deliveries.unsupported()))
+    }
+
+    fn expire_deliveries(
+        &self,
+        _: Timestamp,
+    ) -> impl Future<Output = Result<(), StoreError>> + Send {
+        ready(Err(Held::Deliveries.unsupported()))
+    }
+}
+
+impl Notes for Unkept {
+    fn note(&self, _: &Key) -> impl Future<Output = Result<Option<String>, StoreError>> + Send {
+        ready(Err(Held::Notes.unsupported()))
+    }
+
+    fn put_note(&self, _: &Key, _: &str) -> impl Future<Output = Result<(), StoreError>> + Send {
+        ready(Err(Held::Notes.unsupported()))
+    }
+}
+
+impl Announcements for Unkept {
+    fn latest(
+        &self,
+        _: &str,
+    ) -> impl Future<Output = Result<Option<Versioned<Latest>>, StoreError>> + Send {
+        ready(Err(Held::Latest.unsupported()))
+    }
+
+    fn every_latest(&self) -> impl Future<Output = Result<Vec<Latest>, StoreError>> + Send {
+        ready(Err(Held::Latest.unsupported()))
+    }
+
+    fn put_latest(
+        &self,
+        _: &Latest,
+        _: Option<Version>,
+    ) -> impl Future<Output = Result<Written, StoreError>> + Send {
+        ready(Err(Held::Latest.unsupported()))
+    }
+}
+
+impl Inboxes for Unkept {
+    fn delivery(
+        &self,
+        _: &Key,
+        _: &str,
+    ) -> impl Future<Output = Result<Option<State>, StoreError>> + Send {
+        ready(Err(Held::Inboxes.unsupported()))
+    }
+
+    fn put_delivery(
+        &self,
+        _: &Key,
+        _: &str,
+        _: &State,
+    ) -> impl Future<Output = Result<(), StoreError>> + Send {
+        ready(Err(Held::Inboxes.unsupported()))
+    }
+}
+
+/// Where herald keeps its records (ADR-0005, ADR-0011): each kind it keeps,
+/// through the narrow trait for that kind, and [`Unkept`] for each kind it
+/// never keeps. What it keeps is read from which kinds it answers.
+pub trait Store: Sync {
+    /// Its ledger.
+    type Ledger: Ledger;
+    /// Its cursors.
+    type Cursors: Cursors;
+    /// Its schedules.
+    type Schedules: Schedules;
+    /// Its subscriptions.
+    type Subscriptions: Subscriptions;
+    /// Its pins.
+    type Pins: Pins;
+    /// Its admitted webhook deliveries.
+    type Deliveries: Deliveries;
+    /// Its Notes.
+    type Notes: Notes;
+    /// What its projects last announced.
+    type Announcements: Announcements;
+    /// Its deliveries to followers' inboxes.
+    type Inboxes: Inboxes;
+
+    /// The ledger, where it keeps or derives one.
+    fn ledger(&self) -> Option<&Self::Ledger>;
+    /// The cursors, where it keeps them.
+    fn cursors(&self) -> Option<&Self::Cursors>;
+    /// The schedules, where it keeps or derives them.
+    fn schedules(&self) -> Option<&Self::Schedules>;
+    /// The subscriptions, where it keeps them.
+    fn subscriptions(&self) -> Option<&Self::Subscriptions>;
+    /// The pins, where it keeps them.
+    fn pins(&self) -> Option<&Self::Pins>;
+    /// The admitted webhook deliveries, where it keeps them.
+    fn deliveries(&self) -> Option<&Self::Deliveries>;
+    /// The Notes, where it keeps them.
+    fn notes(&self) -> Option<&Self::Notes>;
+    /// What projects last announced, where it keeps it.
+    fn announcements(&self) -> Option<&Self::Announcements>;
+    /// The deliveries to followers' inboxes, where it keeps them.
+    fn inboxes(&self) -> Option<&Self::Inboxes>;
+
+    /// The paths of the records a listing skipped as corrupt since this was
+    /// last asked, each once, so one bad record stops no listing and is
+    /// still reported.
+    fn skipped(&self) -> Vec<String>;
+}
+
+/// A store holding every kind of record it keeps itself, and saying which
+/// kinds it holds.
+pub trait Keeper:
+    Ledger + Cursors + Schedules + Subscriptions + Pins + Deliveries + Notes + Announcements + Inboxes
+{
+    /// Whether it holds records of `kind`.
+    fn holds(&self, kind: Held) -> bool;
+
+    /// The paths of the records a listing skipped as corrupt since this was
+    /// last asked, each once.
+    fn skipped(&self) -> Vec<String>;
+}
+
+impl<K: Keeper> Store for K {
+    type Ledger = Self;
+    type Cursors = Self;
+    type Schedules = Self;
+    type Subscriptions = Self;
+    type Pins = Self;
+    type Deliveries = Self;
+    type Notes = Self;
+    type Announcements = Self;
+    type Inboxes = Self;
+
+    fn ledger(&self) -> Option<&Self> {
+        self.holds(Held::Ledger).then_some(self)
+    }
+
+    fn cursors(&self) -> Option<&Self> {
+        self.holds(Held::Cursors).then_some(self)
+    }
+
+    fn schedules(&self) -> Option<&Self> {
+        self.holds(Held::Schedules).then_some(self)
+    }
+
+    fn subscriptions(&self) -> Option<&Self> {
+        self.holds(Held::Subscriptions).then_some(self)
+    }
+
+    fn pins(&self) -> Option<&Self> {
+        self.holds(Held::Pins).then_some(self)
+    }
+
+    fn deliveries(&self) -> Option<&Self> {
+        self.holds(Held::Deliveries).then_some(self)
+    }
+
+    fn notes(&self) -> Option<&Self> {
+        self.holds(Held::Notes).then_some(self)
+    }
+
+    fn announcements(&self) -> Option<&Self> {
+        self.holds(Held::Latest).then_some(self)
+    }
+
+    fn inboxes(&self) -> Option<&Self> {
+        self.holds(Held::Inboxes).then_some(self)
+    }
+
+    fn skipped(&self) -> Vec<String> {
+        Keeper::skipped(self)
+    }
+}
+
+#[cfg(test)]
+mod tests;

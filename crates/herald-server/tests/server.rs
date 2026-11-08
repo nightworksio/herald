@@ -20,8 +20,8 @@ mod server {
     use herald_core::{DestinationName, Scheme, Subscription};
     use herald_flows::{Connected, Keys, Ports, Serving, Webhooks, prepare, webhooks};
     use herald_ports::{
-        Admitted, Clock as _, Http, HttpError, Keyring as _, KnownKey, Request, Response, Secret,
-        Store as _,
+        Admitted, Clock as _, Deliveries, Http, HttpError, Keyring as _, KnownKey, Request,
+        Response, Secret, Subscriptions,
     };
     use herald_records::MemoryKeyring;
     use herald_server::{Asked, Heard, Limits, Listener, serve};

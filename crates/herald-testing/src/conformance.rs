@@ -4,13 +4,15 @@ use herald_core::{
 };
 use std::fmt;
 
-use herald_ports::{Admitted, Keeping, Keyring, KnownKey, Store, StoreError, Version, Written};
+use herald_ports::{
+    Admitted, Announcements, Cursors, Deliveries, Inboxes, Keeping, Keyring, KnownKey, Ledger,
+    Notes, Pins, Schedules, Store, StoreError, Subscriptions, Version, Written,
+};
 use jiff::Timestamp;
 
-/// Whether `store`, empty, skips no record, keeps every record its
-/// capabilities declare as a store must (ADR-0005), and refuses as
-/// unsupported every kind it does not declare. Every store passes this
-/// suite, and so does [`crate::FakeStore`].
+/// Whether `store`, empty, skips no record and keeps every kind of record
+/// it answers as a store must (ADR-0005). Every store passes this suite,
+/// and so does [`crate::FakeStore`].
 ///
 /// # Errors
 ///
@@ -19,64 +21,38 @@ pub async fn store_conformance<S: Store>(store: &S) -> Result<(), Failure> {
     if !store.skipped().is_empty() {
         return Err(Failure("a store holding no record skipped one".to_owned()));
     }
-    let capabilities = store.capabilities();
-    match capabilities.ledger {
-        Keeping::Kept => ledger(store).await?,
-        Keeping::Derived => derived_ledger(store).await?,
-        Keeping::None => unsupported(&store.entry(&key("absent")).await.map(|_| ()), "ledger")?,
+    if let Some(kept) = store.ledger() {
+        match kept.keeping() {
+            Keeping::Derived => derived_ledger(kept).await?,
+            Keeping::Kept => ledger(kept).await?,
+        }
     }
-    if capabilities.cursors {
-        cursors(store).await?;
-    } else {
-        unsupported(
-            &store.cursor(&SourceName::new("absent")).await.map(|_| ()),
-            "cursors",
-        )?;
+    if let Some(kept) = store.cursors() {
+        cursors(kept).await?;
     }
-    match capabilities.schedules {
-        Keeping::Kept => schedules(store).await?,
-        Keeping::Derived => derived_schedules(store).await?,
-        Keeping::None => unsupported(&store.schedules().await.map(|_| ()), "schedules")?,
+    if let Some(kept) = store.schedules() {
+        match kept.keeping() {
+            Keeping::Derived => derived_schedules(kept).await?,
+            Keeping::Kept => schedules(kept).await?,
+        }
     }
-    if capabilities.subscriptions {
-        subscriptions(store).await?;
-        inboxes(store).await?;
-    } else {
-        unsupported(
-            &store
-                .subscribe(&subscription("discord", "project", "user"))
-                .await,
-            "subscriptions",
-        )?;
+    if let Some(kept) = store.subscriptions() {
+        subscriptions(kept).await?;
     }
-    if capabilities.pins {
-        pins(store).await?;
-    } else {
-        unsupported(
-            &store.pinned(&RouteId::new("absent")).await.map(|_| ()),
-            "pins",
-        )?;
+    if let Some(kept) = store.inboxes() {
+        inboxes(kept).await?;
     }
-    if capabilities.deliveries {
-        deliveries(store).await?;
-    } else {
-        unsupported(
-            &store
-                .admit(Scheme::GitHub, "absent", NOON)
-                .await
-                .map(|_| ()),
-            "deliveries",
-        )?;
+    if let Some(kept) = store.pins() {
+        pins(kept).await?;
     }
-    if capabilities.notes {
-        notes(store).await?;
-    } else {
-        unsupported(&store.note(&key("absent")).await.map(|_| ()), "notes")?;
+    if let Some(kept) = store.deliveries() {
+        deliveries(kept).await?;
     }
-    if capabilities.latest {
-        latest(store).await?;
-    } else {
-        unsupported(&store.latest("absent").await.map(|_| ()), "latest")?;
+    if let Some(kept) = store.notes() {
+        notes(kept).await?;
+    }
+    if let Some(kept) = store.announcements() {
+        latest(kept).await?;
     }
     Ok(())
 }
@@ -168,15 +144,6 @@ impl Checks {
     }
 }
 
-fn unsupported(answer: &Result<(), StoreError>, what: &str) -> Result<(), Failure> {
-    let mut checks = Checks::default();
-    checks.ensure(
-        matches!(answer, Err(StoreError::Unsupported { .. })),
-        &format!("a store that does not declare {what} must answer unsupported"),
-    );
-    checks.done()
-}
-
 fn key(identity: &str) -> Key {
     Key::derive(&RouteId::new("conformance"), &Identity::new(identity))
 }
@@ -192,7 +159,7 @@ fn subscription(destination: &str, project: &str, subscriber: &str) -> Subscript
     }
 }
 
-async fn ledger<S: Store>(store: &S) -> Result<(), Failure> {
+async fn ledger<S: Ledger>(store: &S) -> Result<(), Failure> {
     let mut checks = Checks::default();
     let first = Entry::new(key("first")).attempted(Step::Post, NOON);
     checks.ensure(
@@ -233,7 +200,7 @@ async fn ledger<S: Store>(store: &S) -> Result<(), Failure> {
     checks.done()
 }
 
-async fn derived_ledger<S: Store>(store: &S) -> Result<(), Failure> {
+async fn derived_ledger<S: Ledger>(store: &S) -> Result<(), Failure> {
     let mut checks = Checks::default();
     let first = Entry::new(key("first")).attempted(Step::Post, NOON);
     checks.ensure(
@@ -253,7 +220,7 @@ async fn derived_ledger<S: Store>(store: &S) -> Result<(), Failure> {
     checks.done()
 }
 
-async fn derived_schedules<S: Store>(store: &S) -> Result<(), Failure> {
+async fn derived_schedules<S: Schedules>(store: &S) -> Result<(), Failure> {
     let mut checks = Checks::default();
     let schedule = Schedule {
         key: key("1"),
@@ -263,7 +230,7 @@ async fn derived_schedules<S: Store>(store: &S) -> Result<(), Failure> {
         due: NOON,
     };
     checks.ensure(
-        store.schedules().await?.is_empty(),
+        store.every_schedule().await?.is_empty(),
         "schedules no post carries were found",
     );
     store
@@ -276,13 +243,13 @@ async fn derived_schedules<S: Store>(store: &S) -> Result<(), Failure> {
         .put_schedules(std::slice::from_ref(&schedule), &[])
         .await?;
     checks.ensure(
-        store.schedules().await?.is_empty(),
+        store.every_schedule().await?.is_empty(),
         "a store deriving schedules kept one written",
     );
     checks.done()
 }
 
-async fn cursors<S: Store>(store: &S) -> Result<(), Failure> {
+async fn cursors<S: Cursors>(store: &S) -> Result<(), Failure> {
     let mut checks = Checks::default();
     let source = SourceName::new("feed");
     let cursor = Cursor {
@@ -331,7 +298,7 @@ async fn cursors<S: Store>(store: &S) -> Result<(), Failure> {
     checks.done()
 }
 
-async fn schedules<S: Store>(store: &S) -> Result<(), Failure> {
+async fn schedules<S: Schedules>(store: &S) -> Result<(), Failure> {
     let mut checks = Checks::default();
     let schedule = |thread: &str, chore| Schedule {
         key: key(thread),
@@ -343,7 +310,7 @@ async fn schedules<S: Store>(store: &S) -> Result<(), Failure> {
     let archive = schedule("1", Chore::Archive);
     let lock = schedule("2", Chore::Lock);
     checks.ensure(
-        store.schedules().await?.is_empty(),
+        store.every_schedule().await?.is_empty(),
         "a new store holds schedules",
     );
     store
@@ -352,7 +319,7 @@ async fn schedules<S: Store>(store: &S) -> Result<(), Failure> {
     store
         .put_schedules(std::slice::from_ref(&archive), &[])
         .await?;
-    let mut held = store.schedules().await?;
+    let mut held = store.every_schedule().await?;
     held.sort_by(|left, right| left.thread.cmp(&right.thread));
     checks.ensure(
         held == [archive.clone(), lock.clone()],
@@ -364,7 +331,7 @@ async fn schedules<S: Store>(store: &S) -> Result<(), Failure> {
     store
         .put_schedules(&[], std::slice::from_ref(&archive))
         .await?;
-    let held = store.schedules().await?;
+    let held = store.every_schedule().await?;
     checks.ensure(
         held == [lock],
         "a schedule removed was still held, or another went with it",
@@ -372,7 +339,7 @@ async fn schedules<S: Store>(store: &S) -> Result<(), Failure> {
     checks.done()
 }
 
-async fn subscriptions<S: Store>(store: &S) -> Result<(), Failure> {
+async fn subscriptions<S: Subscriptions>(store: &S) -> Result<(), Failure> {
     let mut checks = Checks::default();
     let slack = DestinationName::new("slack");
     let alice = subscription("slack", "herald", "alice");
@@ -424,7 +391,7 @@ async fn subscriptions<S: Store>(store: &S) -> Result<(), Failure> {
     checks.done()
 }
 
-async fn inboxes<S: Store>(store: &S) -> Result<(), Failure> {
+async fn inboxes<S: Inboxes>(store: &S) -> Result<(), Failure> {
     let mut checks = Checks::default();
     let published = key("delivered");
     let inbox = "https://social.example/inbox";
@@ -456,7 +423,7 @@ async fn inboxes<S: Store>(store: &S) -> Result<(), Failure> {
     checks.done()
 }
 
-async fn pins<S: Store>(store: &S) -> Result<(), Failure> {
+async fn pins<S: Pins>(store: &S) -> Result<(), Failure> {
     let mut checks = Checks::default();
     let releases = RouteId::new("releases");
     checks.ensure(
@@ -473,7 +440,7 @@ async fn pins<S: Store>(store: &S) -> Result<(), Failure> {
     checks.done()
 }
 
-async fn deliveries<S: Store>(store: &S) -> Result<(), Failure> {
+async fn deliveries<S: Deliveries>(store: &S) -> Result<(), Failure> {
     let mut checks = Checks::default();
     let later = NOON + jiff::SignedDuration::from_hours(1);
     checks.ensure(
@@ -507,7 +474,7 @@ async fn deliveries<S: Store>(store: &S) -> Result<(), Failure> {
     checks.done()
 }
 
-async fn notes<S: Store>(store: &S) -> Result<(), Failure> {
+async fn notes<S: Notes>(store: &S) -> Result<(), Failure> {
     let mut checks = Checks::default();
     let published = key("published");
     checks.ensure(
@@ -542,7 +509,7 @@ fn announced(project: &str, version: &str) -> Latest {
     }
 }
 
-async fn latest<S: Store>(store: &S) -> Result<(), Failure> {
+async fn latest<S: Announcements>(store: &S) -> Result<(), Failure> {
     let mut checks = Checks::default();
     let project = "@scope/herald";
     checks.ensure(

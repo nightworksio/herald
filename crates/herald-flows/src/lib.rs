@@ -50,6 +50,6 @@ pub use room::{Place, Room, Running};
 pub use round::{ROUND_SECRET, Round};
 pub use serving::{
     Answered, BUSY_RETRY, HEALTH, HOOKS, Inbound, Interacted, Job, Reply, Serving, Webhooks,
-    Worked, answer, busy, refusal, unworked, webhooks, work,
+    Worked, answer, busy, refusal, uncomposed, unworked, webhooks, work,
 };
 pub use sessions::{Sessions, Taker};

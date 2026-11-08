@@ -1,6 +1,6 @@
 use herald_config::Config;
 use herald_core::{Cursor, Event, Polled, SourceName, fresh};
-use herald_ports::{Clock, Http, Signer, Store, Written};
+use herald_ports::{Clock, Cursors, Http, Signer, Store, Written};
 use herald_sources_feed::Feed;
 use herald_sources_forge::Forge;
 use herald_sources_registry::Registry;
@@ -128,7 +128,12 @@ async fn sweep<S: Store, C: Clock, G: Signer, H: Http>(
     (source, http): &(PreparedSource, H),
     run: &str,
 ) -> Result<Sweep, Stop> {
-    let record = ports.store.cursor(&source.name).await.map_err(stored)?;
+    let record = ports
+        .store
+        .cursors()
+        .cursor(&source.name)
+        .await
+        .map_err(stored)?;
     let cursor = record.as_ref().map(|record| &record.value);
     let Some(releases) = polled(&source.asked, http, cursor).await? else {
         return Ok(Sweep::Unchanged);
@@ -158,6 +163,7 @@ async fn sweep<S: Store, C: Clock, G: Signer, H: Http>(
         let expected = record.as_ref().map(|record| record.version);
         match ports
             .store
+            .cursors()
             .put_cursor(&source.name, &advanced, expected)
             .await
         {

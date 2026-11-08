@@ -6,7 +6,9 @@ use herald_core::{
     Standing, digest, same,
 };
 use herald_dest_fediverse::ActivityPub;
-use herald_ports::{Clock, CryptoError, Http, Keyring, Secret, Secrets, Signer, Store, Verifier};
+use herald_ports::{
+    Clock, CryptoError, Http, Keyring, Ledger, Notes, Secret, Secrets, Signer, Store, Verifier,
+};
 use herald_sources_forge::{Forge, Hooked};
 
 use crate::announce::{Announced, Outcome, Ports, announce, announce_within};
@@ -22,6 +24,8 @@ use crate::reached::Reached;
 
 /// Where the server answers whether it is up.
 pub const HEALTH: &str = "/healthz";
+/// What the server answers at [`HEALTH`].
+const UP: &str = "herald is up";
 /// Where a forge delivers its webhooks, before the source's name.
 pub const HOOKS: &str = "/hooks/";
 /// Where apps post their projects' events: `/api/projects/<project>/events`.
@@ -232,6 +236,15 @@ pub struct Serving<'a, S, C, G, V, H, P, K> {
     pub admission: Admission,
 }
 
+/// The reply to `method` on `target` that needs no composed herald, where
+/// there is one: whether it is up. A host that composes herald per request
+/// answers it once its config loads, before it opens a store.
+#[must_use]
+pub fn uncomposed(method: &str, target: &str) -> Option<Reply> {
+    let path = target.split_once('?').map_or(target, |(path, _)| path);
+    (method == "GET" && path == HEALTH).then(|| said(200, UP).reply)
+}
+
 pub(crate) fn said(status: u16, text: &str) -> Answered {
     replied(status, TEXT, text)
 }
@@ -404,7 +417,7 @@ pub async fn answer<S: Store, C: Clock, G: Signer, V: Verifier, H, P: Http, K: K
     inbound: &Inbound<'_>,
 ) -> Answered {
     match (inbound.method, inbound.path) {
-        ("GET", HEALTH) => said(200, "herald is up"),
+        ("GET", HEALTH) => said(200, UP),
         ("GET", WEBFINGER) => fingered(serving.connected, inbound.query),
         ("POST", SHARED_INBOX) => match domain(serving.connected, inbound.host()) {
             Some(audience) => inboxed(serving, inbound, audience).await,
@@ -488,7 +501,7 @@ async fn noted<S: Store, C, G, V, H, P, K>(
     let Ok(parsed) = key.parse::<Key>() else {
         return missing("such note");
     };
-    match serving.ports.store.note(&parsed).await {
+    match serving.ports.store.notes().note(&parsed).await {
         Ok(Some(note)) if served.owns(&note, key) => replied(200, ACTIVITY_JSON, note),
         Ok(_) => missing("such note"),
         Err(error) => refusal(503, error.to_string()),
@@ -650,7 +663,7 @@ async fn standing<S: Store, C: Clock, G, V, H, P, K>(
     let mut routes = Vec::new();
     for route in &app.routes {
         let key = Key::derive(route, &identity);
-        let standing = match serving.ports.store.entry(&key).await {
+        let standing = match serving.ports.store.ledger().entry(&key).await {
             Ok(Some(entry)) => entry.value.standing(now),
             Ok(None) => Standing::Pending,
             Err(error) => return refusal(503, error.to_string()),
@@ -823,6 +836,16 @@ pub async fn work<S: Store, C: Clock, G: Signer, V, H: Http, P, K>(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_whether_it_is_up_is_answered_uncomposed() {
+        let up = uncomposed("GET", "/healthz").unwrap();
+        assert_eq!((up.status, up.body.as_slice()), (200, UP.as_bytes()));
+        assert_eq!(uncomposed("GET", "/healthz?probe=1"), Some(up));
+        assert_eq!(uncomposed("POST", "/healthz"), None);
+        assert_eq!(uncomposed("GET", "/healthz/more"), None);
+        assert_eq!(uncomposed("GET", "/inbox"), None);
+    }
 
     #[test]
     fn a_percent_and_two_hex_digits_read_as_their_byte() {

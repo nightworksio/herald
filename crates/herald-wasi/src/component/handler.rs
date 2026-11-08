@@ -93,7 +93,7 @@ pub(super) async fn handled(request: IncomingRequest, out: ResponseOutparam) {
     {
         headers.push(("host".to_owned(), authority));
     }
-    let started = match Started::new(std::env::vars().collect()).await {
+    let started = match Started::new(std::env::vars().collect(), method.as_str(), &target).await {
         Ok(started) => started,
         Err(reply) => {
             respond(out, &reply);

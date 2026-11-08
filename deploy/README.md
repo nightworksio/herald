@@ -141,16 +141,19 @@ names in `worker/files.mjs`, and run `wrangler deploy` from `worker/`.
 
 Run `deno run --allow-read --allow-net --allow-env --allow-sys
 --unstable-cron --unstable-kv deploy/deno/main.ts` beside `herald.toml`, or
-deploy it to Deno Deploy. `HERALD_CONFIG` names another config file.
-`HERALD_POLL_CRON` and `HERALD_HOUSEKEEP_CRON` set the rounds' crons, every
-five minutes and hourly where unset.
+deploy it to Deno Deploy. `HERALD_CONFIG` names another config file. It
+listens on `HERALD_LISTEN`, or where unset on the config's `[server]
+listen`; Deno Deploy chooses its own. `HERALD_POLL_CRON` and
+`HERALD_HOUSEKEEP_CRON` set the rounds' crons, every five minutes and hourly
+where unset.
 
 ## Node and Bun
 
 Run `node deploy/node/server.mjs` or `bun deploy/node/server.mjs` beside
-`herald.toml`. The server listens on `HERALD_LISTEN` (`127.0.0.1:8080`
-where unset) and runs each round at the period the config's `[schedule]`
-names.
+`herald.toml`. The server listens on `HERALD_LISTEN`, or where unset on
+the config's `[server] listen` (`127.0.0.1:8080` by default), and runs
+each round at the period the config's `[schedule]` names. `HERALD_CONFIG`
+names another config file; files it names are read beside it.
 
 - `sqlite` uses `node:sqlite` on Node 24 or newer, and `bun:sqlite` on Bun.
   The file is readable by its owner alone.
@@ -161,16 +164,20 @@ names.
 
 ## Vercel
 
-Deploy `vercel/` with `herald.toml` and `pkg/` included. `vercel.json` sends
-every path to the function and schedules both rounds at `/herald/round/*`.
+Deploy `vercel/` with `herald.toml` and `pkg/` included; add any template
+file the config names to `includeFiles` in `vercel.json`, which herald reads
+beside the config. `vercel.json` sends every path to the function and
+schedules both rounds at `/herald/round/*`.
 Vercel calls them with the project's `CRON_SECRET`, which herald takes as
 `HERALD_ROUND_SECRET` where that is unset; a round asked for without it is
 refused.
 
 ## Netlify
 
-Deploy `netlify/` with `herald.toml` and `pkg/` included. The `poll` and
-`housekeep` scheduled functions run the rounds.
+Deploy `netlify/` with `herald.toml` and `pkg/` included; add any template
+file the config names to `included_files` in `netlify.toml`, which herald
+reads beside the config. The `poll` and `housekeep` scheduled functions run
+the rounds.
 
 ## AWS Lambda
 

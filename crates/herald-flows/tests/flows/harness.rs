@@ -8,8 +8,9 @@ use herald_core::{
 };
 use herald_flows::{Announced, Outcome, Ports, announce, prepare};
 use herald_ports::{
-    Capabilities, Http, HttpError, Inboxes, Request, Response, Store, StoreError, Version,
-    Versioned, Written,
+    Announcements, Cursors, Deliveries, Held, Http, HttpError, Inboxes, Keeper, Ledger, Notes,
+    Pins, Request, Response, Schedules, Store, StoreError, Subscriptions, Version, Versioned,
+    Written,
 };
 use herald_testing::{FakeClock, FakeSecrets, FakeSigner, FakeStore};
 use jiff::Timestamp;
@@ -266,30 +267,7 @@ impl Inboxes for Failing {
     }
 }
 
-impl Store for Failing {
-    fn capabilities(&self) -> Capabilities {
-        let all = self.inner.capabilities();
-        match self.fault {
-            Fault::KeepsNoDeliveries => herald_ports::Capabilities {
-                deliveries: false,
-                ..all
-            },
-            Fault::KeepsNoLatest => herald_ports::Capabilities {
-                latest: false,
-                ..all
-            },
-            _ => all,
-        }
-    }
-
-    fn skipped(&self) -> Vec<String> {
-        if self.fault == Fault::Skipped {
-            vec!["latest/bad.json".to_owned()]
-        } else {
-            Vec::new()
-        }
-    }
-
+impl Ledger for Failing {
     async fn entry(&self, key: &Key) -> Result<Option<Versioned<Entry>>, StoreError> {
         if self.fault == Fault::Reads {
             return Err(broken());
@@ -314,7 +292,9 @@ impl Store for Failing {
             _ => self.inner.put_entry(entry, expected).await,
         }
     }
+}
 
+impl Cursors for Failing {
     async fn cursor(&self, source: &SourceName) -> Result<Option<Versioned<Cursor>>, StoreError> {
         if self.fault == Fault::Cursors {
             return Err(broken());
@@ -334,12 +314,14 @@ impl Store for Failing {
             _ => self.inner.put_cursor(source, cursor, expected).await,
         }
     }
+}
 
-    async fn schedules(&self) -> Result<Vec<Schedule>, StoreError> {
+impl Schedules for Failing {
+    async fn every_schedule(&self) -> Result<Vec<Schedule>, StoreError> {
         if self.fault == Fault::ListsSchedules {
             return Err(broken());
         }
-        self.inner.schedules().await
+        self.inner.every_schedule().await
     }
 
     async fn put_schedules(&self, add: &[Schedule], remove: &[Schedule]) -> Result<(), StoreError> {
@@ -348,7 +330,9 @@ impl Store for Failing {
         }
         self.inner.put_schedules(add, remove).await
     }
+}
 
+impl Subscriptions for Failing {
     async fn subscribers(
         &self,
         destination: &DestinationName,
@@ -373,7 +357,9 @@ impl Store for Failing {
         }
         self.inner.unsubscribe(subscription).await
     }
+}
 
+impl Pins for Failing {
     async fn pinned(&self, route: &RouteId) -> Result<Option<String>, StoreError> {
         if self.fault == Fault::Pins {
             return Err(broken());
@@ -387,7 +373,9 @@ impl Store for Failing {
         }
         self.inner.put_pinned(route, post).await
     }
+}
 
+impl Deliveries for Failing {
     async fn admit(
         &self,
         scheme: herald_core::Scheme,
@@ -408,16 +396,14 @@ impl Store for Failing {
     }
 
     async fn expire_deliveries(&self, before: jiff::Timestamp) -> Result<(), StoreError> {
-        match self.fault {
-            Fault::ExpiresDeliveries => return Err(broken()),
-            Fault::KeepsNoDeliveries => {
-                return Err(StoreError::Unsupported { what: "deliveries" });
-            }
-            _ => {}
+        if self.fault == Fault::ExpiresDeliveries {
+            return Err(broken());
         }
         self.inner.expire_deliveries(before).await
     }
+}
 
+impl Notes for Failing {
     async fn note(&self, key: &herald_core::Key) -> Result<Option<String>, StoreError> {
         if self.fault == Fault::ReadsNotes {
             return Err(broken());
@@ -431,7 +417,9 @@ impl Store for Failing {
         }
         self.inner.put_note(key, note).await
     }
+}
 
+impl Announcements for Failing {
     async fn latest(
         &self,
         project: &str,
@@ -458,6 +446,24 @@ impl Store for Failing {
             Fault::KeepsLatest => Err(broken()),
             Fault::LatestConflicts => Ok(Written::Conflict),
             _ => self.inner.put_latest(latest, expected).await,
+        }
+    }
+}
+
+impl Keeper for Failing {
+    fn holds(&self, kind: Held) -> bool {
+        match kind {
+            Held::Deliveries => self.fault != Fault::KeepsNoDeliveries,
+            Held::Latest => self.fault != Fault::KeepsNoLatest,
+            _ => true,
+        }
+    }
+
+    fn skipped(&self) -> Vec<String> {
+        if self.fault == Fault::Skipped {
+            vec!["latest/bad.json".to_owned()]
+        } else {
+            Vec::new()
         }
     }
 }

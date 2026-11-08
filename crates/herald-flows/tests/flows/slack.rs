@@ -4,7 +4,7 @@ use herald_core::{
     Subscription,
 };
 use herald_flows::{Chored, Outcome, Ports, Reached, announce, housekeep, prepare};
-use herald_ports::{Markers as _, Store as _};
+use herald_ports::{Markers as _, Schedules, Subscriptions};
 use herald_testing::{FakeClock, FakeSecrets, FakeSigner};
 
 use crate::harness::*;

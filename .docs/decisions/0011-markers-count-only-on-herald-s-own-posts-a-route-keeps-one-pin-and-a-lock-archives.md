@@ -92,8 +92,8 @@ after a month.
    - **`store`.** The store keeps each route's pinned post, and the unpin
      step unpins the one it remembers. The `Store` port holds a fifth kind
      of record, a pin per route, with the last written kept. A store
-     declares it as a capability, and the conformance suite holds every store
-     that declares it (ADR-0005, decision 8). Doctor refuses `"store"` on a
+     answers its pins through `Store::pins`, and the conformance suite holds
+     every store that answers them (ADR-0005, decision 8). Doctor refuses `"store"` on a
      store that keeps no pins, such as `markers`, and says to use
      `"markers"` or a store that keeps them.
    - **An earlier pin already gone** counts as unpinned.

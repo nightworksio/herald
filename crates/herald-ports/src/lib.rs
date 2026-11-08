@@ -29,6 +29,7 @@ pub use secret::{Secret, SecretError, Secrets, Segment, Text};
 pub use socket::{Frame, Socket, Sockets};
 pub use sql::{Answers, Changed, Sql, SqlError, Statement, Value};
 pub use store::{
-    Admitted, Capabilities, Inboxes, Keeping, Store, StoreError, Version, Versioned, Written,
+    Admitted, Announcements, Cursors, Deliveries, Held, Inboxes, Keeper, Keeping, Ledger, Notes,
+    Pins, Schedules, Store, StoreError, Subscriptions, Unkept, Version, Versioned, Written,
 };
 pub use timer::Timer;

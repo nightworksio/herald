@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, stat, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { connect } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { before, test } from "node:test";
 import { answering, capped, fetching, load, publicAddress, upTo } from "../host.mjs";
+import { beside } from "../files.mjs";
 import { serve } from "../node/server.mjs";
 import { guarded, vetted } from "../vetted.mjs";
 
@@ -71,6 +72,32 @@ test("herald serves on Node, keeping its records in a SQLite file", async () => 
   const unknown = await fetch(`http://127.0.0.1:${port}/nowhere`);
   assert.equal(unknown.status, 404);
   await running.close();
+});
+
+test("Node listens where the config says, an IPv6 address too, and keeps an absolute store path", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "herald-node-"));
+  const elsewhere = await mkdtemp(join(tmpdir(), "herald-store-"));
+  const file = join(elsewhere, "kept.db");
+  const path = join(directory, "herald.toml");
+  await writeFile(path, `version = 1\n[store]\nkind = "sqlite"\npath = ${JSON.stringify(file)}\n[server]\nlisten = "[::1]:0"\n`);
+  const running = await serve({ env: {}, path });
+  const { address, port } = running.server.address();
+  assert.equal(address, "::1");
+  const health = await fetch(`http://[::1]:${port}/healthz`);
+  assert.equal(health.status, 200);
+  await running.close();
+  assert.ok((await stat(file)).isFile());
+});
+
+test("a config's files are read beside it, an absolute name as itself", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "herald-files-"));
+  await writeFile(join(directory, "post.md"), "beside");
+  const elsewhere = join(await mkdtemp(join(tmpdir(), "herald-files-")), "away.md");
+  await writeFile(elsewhere, "away");
+  const files = beside(join(directory, "herald.toml"));
+  assert.equal(files("post.md"), "beside");
+  assert.equal(files(elsewhere), "away");
+  assert.equal(files("absent.md"), undefined);
 });
 
 test("a request aborted mid-body is dropped and the next is answered", async (t) => {

@@ -6,14 +6,15 @@ use herald_core::{
     Subscription,
 };
 use herald_ports::{
-    Admitted, Capabilities, Inboxes, Keeping, Store, StoreError, Version, Versioned, Written,
+    Admitted, Announcements, Cursors, Deliveries, Held, Inboxes, Keeper, Ledger, Notes, Pins,
+    Schedules, StoreError, Subscriptions, Version, Versioned, Written,
 };
 use jiff::Timestamp;
 
 use crate::lock;
 
 #[derive(Debug, Default)]
-struct Held {
+struct Records {
     entries: BTreeMap<Key, Versioned<Entry>>,
     cursors: BTreeMap<SourceName, Versioned<Cursor>>,
     schedules: Vec<Schedule>,
@@ -28,7 +29,7 @@ struct Held {
 /// A store in memory, keeping everything a store can keep.
 #[derive(Debug, Default)]
 pub struct FakeStore {
-    state: Mutex<Held>,
+    state: Mutex<Records>,
 }
 
 fn compare_and_set<K: Ord, T: Clone>(
@@ -68,25 +69,7 @@ impl Inboxes for FakeStore {
     }
 }
 
-impl Store for FakeStore {
-    fn capabilities(&self) -> Capabilities {
-        Capabilities {
-            ledger: Keeping::Kept,
-            cursors: true,
-            schedules: Keeping::Kept,
-            subscriptions: true,
-            pins: true,
-            deliveries: true,
-            notes: true,
-            latest: true,
-            concurrent: true,
-        }
-    }
-
-    fn skipped(&self) -> Vec<String> {
-        vec![]
-    }
-
+impl Ledger for FakeStore {
     async fn entry(&self, key: &Key) -> Result<Option<Versioned<Entry>>, StoreError> {
         Ok(lock(&self.state).entries.get(key).cloned())
     }
@@ -104,7 +87,9 @@ impl Store for FakeStore {
             expected,
         ))
     }
+}
 
+impl Cursors for FakeStore {
     async fn cursor(&self, source: &SourceName) -> Result<Option<Versioned<Cursor>>, StoreError> {
         Ok(lock(&self.state).cursors.get(source).cloned())
     }
@@ -123,8 +108,10 @@ impl Store for FakeStore {
             expected,
         ))
     }
+}
 
-    async fn schedules(&self) -> Result<Vec<Schedule>, StoreError> {
+impl Schedules for FakeStore {
+    async fn every_schedule(&self) -> Result<Vec<Schedule>, StoreError> {
         Ok(lock(&self.state).schedules.clone())
     }
 
@@ -140,7 +127,9 @@ impl Store for FakeStore {
         }
         Ok(())
     }
+}
 
+impl Subscriptions for FakeStore {
     async fn subscribers(
         &self,
         destination: &DestinationName,
@@ -165,7 +154,9 @@ impl Store for FakeStore {
         lock(&self.state).subscriptions.remove(subscription);
         Ok(())
     }
+}
 
+impl Pins for FakeStore {
     async fn pinned(&self, route: &RouteId) -> Result<Option<String>, StoreError> {
         Ok(lock(&self.state).pins.get(route).cloned())
     }
@@ -176,7 +167,9 @@ impl Store for FakeStore {
             .insert(route.clone(), post.to_owned());
         Ok(())
     }
+}
 
+impl Deliveries for FakeStore {
     async fn admit(&self, scheme: Scheme, id: &str, at: Timestamp) -> Result<Admitted, StoreError> {
         let mut state = lock(&self.state);
         let delivery = (scheme.name(), id.to_owned());
@@ -198,7 +191,9 @@ impl Store for FakeStore {
         lock(&self.state).deliveries.retain(|_, at| *at >= before);
         Ok(())
     }
+}
 
+impl Notes for FakeStore {
     async fn note(&self, key: &Key) -> Result<Option<String>, StoreError> {
         Ok(lock(&self.state).notes.get(key).cloned())
     }
@@ -207,7 +202,9 @@ impl Store for FakeStore {
         lock(&self.state).notes.insert(*key, note.to_owned());
         Ok(())
     }
+}
 
+impl Announcements for FakeStore {
     async fn latest(&self, project: &str) -> Result<Option<Versioned<Latest>>, StoreError> {
         Ok(lock(&self.state).latest.get(project).cloned())
     }
@@ -231,5 +228,38 @@ impl Store for FakeStore {
             latest,
             expected,
         ))
+    }
+}
+
+impl Keeper for FakeStore {
+    fn holds(&self, _: Held) -> bool {
+        true
+    }
+
+    fn skipped(&self) -> Vec<String> {
+        vec![]
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use herald_ports::Store;
+
+    #[test]
+    fn the_store_answers_every_kind_itself() {
+        let store = FakeStore::default();
+        let itself = |answered: Option<&FakeStore>| {
+            answered.is_some_and(|kept| std::ptr::eq(kept, &raw const store))
+        };
+        assert!(itself(store.ledger()));
+        assert!(itself(store.cursors()));
+        assert!(itself(store.schedules()));
+        assert!(itself(store.subscriptions()));
+        assert!(itself(store.pins()));
+        assert!(itself(store.deliveries()));
+        assert!(itself(store.notes()));
+        assert!(itself(store.announcements()));
+        assert!(itself(store.inboxes()));
     }
 }

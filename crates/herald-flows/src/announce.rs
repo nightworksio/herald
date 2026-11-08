@@ -6,7 +6,10 @@ use herald_core::{
     Planned, Profile, RouteId, Sent, SourceName, State, Step, Templates, Threads, plan, schedules,
     steps,
 };
-use herald_ports::{Clock, Http, Secret, Signer, Store, Version, Written, marker};
+use herald_ports::{
+    Announcements, Clock, Http, Inboxes, Ledger, Notes, Pins, Schedules, Secret, Signer, Store,
+    Subscriptions, Version, Written, marker,
+};
 use jiff::{SignedDuration, Timestamp};
 
 use crate::prepare::{Connected, PreparedRoute};
@@ -135,6 +138,7 @@ impl<S: Store, C: Clock, G: Signer, H: Http> Run<'_, S, C, G, H> {
         let written = self
             .ports
             .store
+            .ledger()
             .put_entry(&progress.entry, Some(progress.version))
             .await
             .map_err(stored)?;
@@ -169,6 +173,7 @@ impl<S: Store, C: Clock, G: Signer, H: Http> Run<'_, S, C, G, H> {
             );
             self.ports
                 .store
+                .schedules()
                 .put_schedules(&due, &[])
                 .await
                 .map_err(stored)?;
@@ -182,6 +187,7 @@ impl<S: Store, C: Clock, G: Signer, H: Http> Run<'_, S, C, G, H> {
         {
             self.ports
                 .store
+                .pins()
                 .put_pinned(&route.id, &post)
                 .await
                 .map_err(stored)?;
@@ -212,7 +218,13 @@ impl<S: Store, C: Clock, G: Signer, H: Http> Run<'_, S, C, G, H> {
             }
         }
         if *step == Step::Unpin && route.delivery.pin == Some(Pinning::Store) {
-            announcement.replaces = self.ports.store.pinned(&route.id).await.map_err(stored)?;
+            announcement.replaces = self
+                .ports
+                .store
+                .pins()
+                .pinned(&route.id)
+                .await
+                .map_err(stored)?;
             if announcement.replaces.is_none() {
                 return self.landed(step, Facts::default(), progress).await;
             }
@@ -245,6 +257,7 @@ impl<S: Store, C: Clock, G: Signer, H: Http> Run<'_, S, C, G, H> {
                 {
                     self.ports
                         .store
+                        .notes()
                         .put_note(&progress.entry.key, &published)
                         .await
                         .map_err(stored)?;
@@ -273,6 +286,7 @@ impl<S: Store, C: Clock, G: Signer, H: Http> Run<'_, S, C, G, H> {
         for inbox in batch {
             self.ports
                 .store
+                .inboxes()
                 .put_delivery(&key, inbox, &State::Attempted { at: now })
                 .await
                 .map_err(|error| unlanded(stored(error)))?;
@@ -302,6 +316,7 @@ impl<S: Store, C: Clock, G: Signer, H: Http> Run<'_, S, C, G, H> {
                 Ok(Sent::Landed(facts)) => {
                     self.ports
                         .store
+                        .inboxes()
                         .put_delivery(&key, inbox, &State::Landed { facts })
                         .await
                         .map_err(|error| unlanded(stored(error)))?;
@@ -335,6 +350,7 @@ impl<S: Store, C: Clock, G: Signer, H: Http> Run<'_, S, C, G, H> {
             let state = self
                 .ports
                 .store
+                .inboxes()
                 .delivery(&key, &inbox)
                 .await
                 .map_err(|error| whole(stored(error)))?;
@@ -378,6 +394,7 @@ impl<S: Store, C: Clock, G: Signer, H: Http> Run<'_, S, C, G, H> {
         let followers = self
             .ports
             .store
+            .subscriptions()
             .subscribers(&self.route.config.route.destination, actor)
             .await
             .map_err(stored)?;
@@ -411,6 +428,7 @@ impl<S: Store, C: Clock, G: Signer, H: Http> Run<'_, S, C, G, H> {
             let subscribers = self
                 .ports
                 .store
+                .subscriptions()
                 .subscribers(&route.destination, event.project())
                 .await
                 .map_err(stored)?
@@ -445,7 +463,7 @@ impl<S: Store, C: Clock, G: Signer, H: Http> Run<'_, S, C, G, H> {
         let follows = self.route.reached.follows().is_some();
         let wanted = steps(&route.delivery, &profile.features, parts, follows);
         let now = self.ports.clock.now();
-        let record = match self.ports.store.entry(&key).await {
+        let record = match self.ports.store.ledger().entry(&key).await {
             Ok(record) => record,
             Err(error) => return stopped(stored(error)),
         };
@@ -467,7 +485,13 @@ impl<S: Store, C: Clock, G: Signer, H: Http> Run<'_, S, C, G, H> {
                 now.checked_add(LEASE).unwrap_or(Timestamp::MAX),
             )
             .wanting(&wanted);
-        let version = match self.ports.store.put_entry(&claimed, expected).await {
+        let version = match self
+            .ports
+            .store
+            .ledger()
+            .put_entry(&claimed, expected)
+            .await
+        {
             Ok(Written::Written(version)) => version,
             Ok(Written::Conflict) => {
                 return stopped(Stop::Store(
@@ -534,10 +558,10 @@ async fn kept_latest<S: Store>(
         Outcome::AlreadyAnnounced => Vec::new(),
         Outcome::Held { .. } | Outcome::Stopped { .. } => return outcome,
     };
-    if !store.capabilities().latest {
+    let Some(announcements) = store.announcements() else {
         return outcome;
-    }
-    match keep_latest(store, event, route).await {
+    };
+    match keep_latest(announcements, event, route).await {
         Ok(()) => outcome,
         Err(reason) => Outcome::Stopped {
             landed,
@@ -547,12 +571,24 @@ async fn kept_latest<S: Store>(
     }
 }
 
-async fn keep_latest<S: Store>(store: &S, event: &Event, route: &RouteId) -> Result<(), Stop> {
+async fn keep_latest<A: Announcements>(
+    announcements: &A,
+    event: &Event,
+    route: &RouteId,
+) -> Result<(), Stop> {
     for _ in 0..LATEST_ATTEMPTS {
-        let kept = store.latest(event.project()).await.map_err(stored)?;
+        let kept = announcements
+            .latest(event.project())
+            .await
+            .map_err(stored)?;
         let expected = kept.as_ref().map(|kept| kept.version);
         let latest = Latest::after(kept.map(|kept| kept.value), event, route);
-        if store.put_latest(&latest, expected).await.map_err(stored)? != Written::Conflict {
+        if announcements
+            .put_latest(&latest, expected)
+            .await
+            .map_err(stored)?
+            != Written::Conflict
+        {
             return Ok(());
         }
     }
