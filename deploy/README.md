@@ -143,8 +143,9 @@ Run `deno run --allow-read --allow-net --allow-env --allow-sys
 --unstable-cron --unstable-kv deploy/deno/main.ts` beside `herald.toml`, or
 deploy it to Deno Deploy. `HERALD_CONFIG` names another config file. It
 listens on `HERALD_LISTEN`, or where unset on the config's `[server]
-listen`; Deno Deploy chooses its own. `HERALD_POLL_CRON` and `HERALD_HOUSEKEEP_CRON` set the rounds' crons, every
-five minutes and hourly where unset.
+listen`; Deno Deploy chooses its own. `HERALD_POLL_CRON` and
+`HERALD_HOUSEKEEP_CRON` set the rounds' crons, every five minutes and hourly
+where unset.
 
 ## Node and Bun
 
@@ -165,8 +166,8 @@ names another config file; files it names are read beside it.
 
 Deploy `vercel/` with `herald.toml` and `pkg/` included; add any template
 file the config names to `includeFiles` in `vercel.json`, which herald reads
-beside the config. `vercel.json` sends
-every path to the function and schedules both rounds at `/herald/round/*`.
+beside the config. `vercel.json` sends every path to the function and
+schedules both rounds at `/herald/round/*`.
 Vercel calls them with the project's `CRON_SECRET`, which herald takes as
 `HERALD_ROUND_SECRET` where that is unset; a round asked for without it is
 refused.
@@ -175,8 +176,8 @@ refused.
 
 Deploy `netlify/` with `herald.toml` and `pkg/` included; add any template
 file the config names to `included_files` in `netlify.toml`, which herald
-reads beside the config. The `poll` and
-`housekeep` scheduled functions run the rounds.
+reads beside the config. The `poll` and `housekeep` scheduled functions run
+the rounds.
 
 ## AWS Lambda
 
