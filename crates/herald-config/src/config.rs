@@ -32,6 +32,8 @@ pub struct Config {
     pub apps: BTreeMap<String, App>,
     /// The cadence of polling and housekeeping.
     pub schedule: Schedule,
+    /// How a run holds and keeps an announcement.
+    pub announce: Announce,
     /// How `herald server` listens, and what it takes on at once.
     pub server: Server,
     /// How herald's own requests reach the services the config names.
@@ -486,6 +488,34 @@ pub struct App {
     /// The routes it announces to: those it names, or every route that
     /// names it among its sources.
     pub routes: Vec<RouteId>,
+}
+
+/// How a run holds and keeps an announcement.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Announce {
+    /// How long a run holds an announcement it claimed before another run
+    /// may take it over.
+    pub lease: SignedDuration,
+    /// How often a run writes what a project last announced again when
+    /// another write lands between its read and its write.
+    pub latest_attempts: usize,
+}
+
+impl Announce {
+    /// The lease where the config says nothing.
+    pub const LEASE: SignedDuration = SignedDuration::from_mins(20);
+    /// How often what a project last announced is written where the config
+    /// says nothing.
+    pub const LATEST_ATTEMPTS: usize = 3;
+}
+
+impl Default for Announce {
+    fn default() -> Self {
+        Self {
+            lease: Self::LEASE,
+            latest_attempts: Self::LATEST_ATTEMPTS,
+        }
+    }
 }
 
 /// How often a driver that keeps its own schedule polls and keeps house.

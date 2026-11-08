@@ -289,6 +289,20 @@ pub(crate) struct ScheduleFile {
     pub(crate) housekeep: Option<Duration>,
 }
 
+/// `[announce]`: how a run holds and keeps an announcement.
+#[derive(Debug, Default, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+#[serde(rename = "Announce")]
+pub(crate) struct AnnounceFile {
+    /// How long a run holds an announcement past its last write before
+    /// another may finish it; "20m" where absent, longer than the longest a
+    /// host lets one run go on, a Lambda's 15 minutes.
+    pub(crate) lease: Option<Duration>,
+    /// How often a run writes what a project last announced again when
+    /// another write lands between its read and its write; 3 where absent.
+    pub(crate) latest_attempts: Option<NonZeroUsize>,
+}
+
 /// Where `herald server` keeps the keys inbound activities are checked with.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, JsonSchema)]
 #[serde(rename_all = "lowercase")]

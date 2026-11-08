@@ -3,7 +3,8 @@ use std::collections::BTreeMap;
 use schemars::JsonSchema;
 
 use crate::file::{
-    AppFile, HttpFile, KeepFile, MarkersFile, RouteFile, ScheduleFile, ServerFile, TemplateFile,
+    AnnounceFile, AppFile, HttpFile, KeepFile, MarkersFile, RenderFile, RouteFile, ScheduleFile,
+    ServerFile, TemplateFile,
 };
 
 /// `[store]`: one store, by its kind.
@@ -235,6 +236,10 @@ struct FileSchema {
     server: Option<ServerFile>,
     /// How herald's own requests reach the services the config names.
     http: Option<HttpFile>,
+    /// How far a template may go as it renders.
+    render: Option<RenderFile>,
+    /// How a run holds and keeps an announcement.
+    announce: Option<AnnounceFile>,
 }
 
 /// The JSON Schema of `herald.toml`, as committed in `herald.schema.json`.

@@ -220,6 +220,11 @@ template may go: `fuel` (100000), `recursion` (16) and `output` ("256KiB").
 Each of these, `[server] body`, `[server.keys] document` and `[http] body` may be at most four times its default,
 and `herald doctor` names any set above it.
 
+`[announce]` sets `lease` ("20m"), how long a run holds an announcement it
+claimed before another may finish it, and `latest_attempts` (3), how often a
+run writes what a project last announced again when another write lands
+first.
+
 Housekeeping also forgets what the store keeps past `[store]`'s
 `keep_deliveries` (each webhook delivery's id, "7d", and at least "3d"),
 `keep_ledger` (each ledger entry and its deliveries to followers' inboxes,

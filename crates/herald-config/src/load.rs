@@ -1,4 +1,5 @@
 use std::collections::{BTreeMap, BTreeSet};
+use std::num::NonZeroUsize;
 use std::ops::Range;
 
 use herald_core::{
@@ -10,11 +11,11 @@ use serde::de::DeserializeOwned;
 use toml::Spanned;
 use toml::de::{DeTable, DeValue, ValueDeserializer};
 
-use crate::config::{Config, Destination, KeyCache, Schedule, Server, Source, Store};
+use crate::config::{Announce, Config, Destination, KeyCache, Schedule, Server, Source, Store};
 use crate::error::{ConfigError, Errors};
 use crate::file::{
-    HttpFile, InboundFile, Keep, KeepFile, KeyCacheFile, MarkersFile, NoOptions, RenderFile,
-    ScheduleFile, ServerFile, Size, TemplateFile,
+    AnnounceFile, HttpFile, InboundFile, Keep, KeepFile, KeyCacheFile, MarkersFile, NoOptions,
+    RenderFile, ScheduleFile, ServerFile, Size, TemplateFile,
 };
 use crate::position::position;
 use herald_ports::{Outbound, Proxy, Roots};
@@ -24,7 +25,7 @@ type Value<'i> = Spanned<DeValue<'i>>;
 /// The version of the config this herald reads.
 const VERSION: i64 = 1;
 /// The top-level keys of `herald.toml`.
-const SECTIONS: [&str; 12] = [
+const SECTIONS: [&str; 13] = [
     "version",
     "store",
     "markers",
@@ -37,6 +38,7 @@ const SECTIONS: [&str; 12] = [
     "server",
     "http",
     "render",
+    "announce",
 ];
 /// The length of a SHA-256 in hex.
 const HASH_DIGITS: usize = 64;
@@ -94,6 +96,7 @@ struct Sections<'i> {
     server: Option<Value<'i>>,
     http: Option<Value<'i>>,
     render: Option<Value<'i>>,
+    announce: Option<Value<'i>>,
 }
 
 /// A template's sources, with where each is written.
@@ -236,6 +239,7 @@ impl Loader<'_> {
                 "server" => &mut sections.server,
                 "http" => &mut sections.http,
                 "render" => &mut sections.render,
+                "announce" => &mut sections.announce,
                 other => {
                     self.error(
                         &key.span(),
@@ -894,6 +898,23 @@ impl Loader<'_> {
         }
     }
 
+    fn announce(&mut self, value: Option<Value<'_>>) -> Announce {
+        value
+            .and_then(|value| self.typed::<AnnounceFile>(value, "announce"))
+            .map_or_else(Announce::default, |file| Announce {
+                lease: file.lease.map_or(Announce::LEASE, |lease| lease.0),
+                latest_attempts: file
+                    .latest_attempts
+                    .map_or(Announce::LATEST_ATTEMPTS, NonZeroUsize::get),
+            })
+    }
+
+    fn render(&mut self, value: Option<Value<'_>>) -> Sandbox {
+        value
+            .and_then(|value| self.typed::<RenderFile>(value, "render"))
+            .map_or(Sandbox::DEFAULT, |file| self.sandbox(file))
+    }
+
     fn sandbox(&mut self, file: RenderFile) -> Sandbox {
         let defaults = Sandbox::DEFAULT;
         let most = Sandbox::MOST;
@@ -976,10 +997,7 @@ pub fn load(
     }
     loader.followed(store.as_ref(), &destinations, &routes);
     loader.answered(store.as_ref(), &destinations, &templates);
-    let render = sections
-        .render
-        .and_then(|value| loader.typed::<RenderFile>(value, "render"))
-        .map_or(Sandbox::DEFAULT, |file| loader.sandbox(file));
+    let render = loader.render(sections.render);
     let compiled = loader.compile(&templates, &routes, render);
     if let Some(compiled) = &compiled {
         for read in &routes {
@@ -1001,6 +1019,7 @@ pub fn load(
         .and_then(|value| loader.typed::<HttpFile>(value, "http"))
         .map(|file| loader.http(file, read))
         .unwrap_or_default();
+    let announce = loader.announce(sections.announce);
     if let (true, Some(store), Some(templates)) = (loader.errors.is_empty(), store, compiled) {
         return Ok(Config {
             store,
@@ -1021,6 +1040,7 @@ pub fn load(
             },
             server,
             http,
+            announce,
         });
     }
     let mut errors = loader.errors;

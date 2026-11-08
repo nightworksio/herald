@@ -4,6 +4,17 @@
   "description": "`herald.toml`: herald's whole config (ADR-0006).",
   "type": "object",
   "properties": {
+    "announce": {
+      "description": "How a run holds and keeps an announcement.",
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Announce"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
     "apps": {
       "description": "The HTTP API's apps, by name.",
       "type": "object",
@@ -34,6 +45,17 @@
       "anyOf": [
         {
           "$ref": "#/$defs/Markers"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "render": {
+      "description": "How far a template may go as it renders.",
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Render"
         },
         {
           "type": "null"
@@ -194,6 +216,33 @@
         "template",
         "actor"
       ]
+    },
+    "Announce": {
+      "description": "`[announce]`: how a run holds and keeps an announcement.",
+      "type": "object",
+      "properties": {
+        "latest_attempts": {
+          "description": "How often a run writes what a project last announced again when\nanother write lands between its read and its write; 3 where absent.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint",
+          "minimum": 1
+        },
+        "lease": {
+          "description": "How long a run holds an announcement past its last write before\nanother may finish it; \"20m\" where absent, longer than the longest a\nhost lets one run go on, a Lambda's 15 minutes.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Duration"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
     },
     "App": {
       "description": "An app of the HTTP API (ADR-0007).",
@@ -1257,6 +1306,42 @@
           "const": "keys"
         }
       ]
+    },
+    "Render": {
+      "description": "`[render]`: how far a template may go as it renders. Each bound may be\nat most four times its default, and doctor names one set above it.",
+      "type": "object",
+      "properties": {
+        "fuel": {
+          "description": "The fuel one render may burn; 100000 where absent, and at most\n400000.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 1
+        },
+        "output": {
+          "description": "The most it may write; \"256KiB\" where absent, and at most \"1MiB\".",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Size"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "recursion": {
+          "description": "How deep its loops and calls may nest; 16 where absent, and at most\n64.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint",
+          "minimum": 1
+        }
+      },
+      "additionalProperties": false
     },
     "Replies": {
       "description": "Who sees herald's answers to `latest` and `changelog`; the answers to\n`subscribe` and `unsubscribe` are always the asker's alone.",
