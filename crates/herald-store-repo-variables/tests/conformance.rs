@@ -391,7 +391,7 @@ mod conformance {
     #[test]
     fn a_lock_taken_from_this_run_while_it_writes_is_left_and_one_unread_stops_the_write() {
         let entry = Entry::new(key());
-        let (github, stolen) = shared(Model {
+        let stolen = store(Model {
             on_write: Some(OnWrite::Stolen),
             ..Model::default()
         });
@@ -399,7 +399,11 @@ mod conformance {
             pollster::block_on(stolen.put_entry(&entry, None)),
             Ok(Written::Written(herald_ports::Version(1)))
         );
-        assert_eq!(holder(&github).as_deref(), Some(OTHER_RUN));
+        let later = Entry::new(Key::derive(&RouteId::new("r"), &Identity::new("later")));
+        assert_eq!(
+            pollster::block_on(stolen.put_entry(&later, None)),
+            Ok(Written::Conflict)
+        );
         let unread = store(Model {
             on_write: Some(OnWrite::Unreadable),
             ..Model::default()
