@@ -8,7 +8,7 @@ import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { request } from "node:http";
-import { createServer } from "node:net";
+import { connect as connectTo, createServer } from "node:net";
 import { after, test } from "node:test";
 
 const SECRET = "local-round-secret";
@@ -61,6 +61,16 @@ async function answers(base) {
     assert.equal(held.status, 200, round);
     assert.equal(await held.text(), "the round ran");
   }
+}
+
+function raw(port, text) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    const socket = connectTo(port, "127.0.0.1", () => socket.write(text));
+    socket.on("data", (chunk) => chunks.push(chunk));
+    socket.on("end", () => resolve(Buffer.concat(chunks).toString("latin1")));
+    socket.on("error", reject);
+  });
 }
 
 function run(command, args, cwd) {
@@ -195,6 +205,11 @@ test("the component says it is up from its config alone, before it opens a store
     headers: { authorization: `Bearer ${SECRET}` },
   });
   assert.equal(round.status, 500);
+  const head = await raw(8108, "HEAD /herald/round/poll HTTP/1.1\r\nHost: herald.example\r\nConnection: close\r\n\r\n");
+  const [lines, rest] = head.split("\r\n\r\n");
+  assert.match(lines, /^HTTP\/1\.1 500/);
+  assert.match(lines, /content-length: [1-9]/i);
+  assert.equal(rest, "");
 });
 
 test("the component keeps records in Spin's SQLite", async () => {

@@ -1,5 +1,7 @@
 import { chmod, open } from "node:fs/promises";
 
+const JOURNAL = "PRAGMA journal_mode = WAL";
+
 async function rolledBack(rollback, error) {
   try {
     await rollback();
@@ -17,6 +19,7 @@ export async function sqlite(file, busy) {
   if (globalThis.Bun) {
     const { Database } = await import("bun:sqlite");
     const db = new Database(file);
+    db.exec(JOURNAL);
     if (waiting) db.exec(waiting);
     const run = (statement) => {
       const prepared = db.prepare(statement.sql);
@@ -27,6 +30,7 @@ export async function sqlite(file, busy) {
   }
   const { DatabaseSync } = await import("node:sqlite");
   const db = new DatabaseSync(file);
+  db.exec(JOURNAL);
   if (waiting) db.exec(waiting);
   const run = (statement) => {
     const prepared = db.prepare(statement.sql);
