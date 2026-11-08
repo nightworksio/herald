@@ -94,7 +94,8 @@ export async function serve({ env = process.env, path = env.HERALD_CONFIG ?? "he
   server.requestTimeout = limits.read * 2;
   server.setTimeout(limits.held);
   await new Promise((resolve) => server.listen(port, hostname, resolve));
-  said([`herald serves on ${hostname.includes(":") ? `[${hostname}]` : hostname}:${server.address().port}`]);
+  const shown = hostname.includes(":") ? `[${hostname}]` : hostname;
+  said([`herald serves on ${shown}:${server.address().port}`]);
   return {
     server,
     close: () => {
