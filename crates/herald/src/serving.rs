@@ -189,9 +189,6 @@ pub(crate) async fn serving(
         .or_else(|| vars.get(LISTEN).filter(|value| !value.is_empty()).cloned())
         .or(azure)
         .unwrap_or_else(|| config.server.listen.clone());
-    let listener = tokio::net::TcpListener::bind(&address)
-        .await
-        .map_err(|error| format!("herald could not listen on {address}: {error}"))?;
     let (records, connected) = reached(config, vars, connect, Commands::Answered, &SERVED).await?;
     let secrets = EnvSecrets::from_vars(vars.clone());
     let webhooks = webhooks(config, &secrets)
@@ -200,6 +197,9 @@ pub(crate) async fn serving(
     let public = Capped::new(connect.reach(PUBLIC)?, config.server.fetches);
     let silence = std::time::Duration::try_from(config.server.silence).unwrap_or_default();
     let sockets = worded(NativeSockets::under(config.session_domains()))?.silent_for(silence);
+    let listener = tokio::net::TcpListener::bind(&address)
+        .await
+        .map_err(|error| format!("herald could not listen on {address}: {error}"))?;
     let listening = Listening {
         config,
         connected: &connected,
