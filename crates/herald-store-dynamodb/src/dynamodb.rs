@@ -1,3 +1,6 @@
+use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
+
 use herald_ports::{
     Clock, Http, Method, Request, Response, Secret, Secrets, StoreError, Text, USER_AGENT,
 };
@@ -13,8 +16,6 @@ const SERVICE: &str = "dynamodb";
 const JSON: &str = "application/x-amz-json-1.0";
 /// The version of DynamoDB's API every target names.
 const API: &str = "DynamoDB_20120810";
-/// The item that counts the table's writes, by its directory and name.
-const COUNT: (&str, &str) = ("~herald", "made");
 /// What DynamoDB names a condition that did not hold.
 const CONDITION_FAILED: &str = "ConditionalCheckFailedException";
 /// What DynamoDB names a table that does not exist.
@@ -116,12 +117,17 @@ impl Dynamodb {
 
     /// The store kept in the table, reached through `http` and signed at the
     /// time `clock` tells.
+    ///
+    /// Each record it makes draws its epoch from `seed`, a nonce no other
+    /// run takes, and a count of the records this store has made.
     #[must_use]
-    pub fn store<H: Http, C: Clock>(self, http: H, clock: C) -> DynamodbStore<H, C> {
+    pub fn store<H: Http, C: Clock>(self, http: H, clock: C, seed: String) -> DynamodbStore<H, C> {
         Kept::new(DynamodbRecords {
             table: self,
             http,
             clock,
+            seed,
+            made: Arc::default(),
         })
     }
 }
@@ -133,6 +139,8 @@ pub struct DynamodbRecords<H, C> {
     table: Dynamodb,
     http: H,
     clock: C,
+    seed: String,
+    made: Arc<AtomicU64>,
 }
 
 /// The store a [`Dynamodb`] table keeps.
@@ -252,27 +260,38 @@ impl<H: Http, C: Clock> DynamodbRecords<H, C> {
         }
     }
 
-    /// The next number of the table's write count.
-    async fn counted(&self) -> Result<i64, StoreError> {
-        let (directory, name) = COUNT;
-        let answered = self
-            .done(
-                "UpdateItem",
-                json!({
-                    "Key": { "directory": { "S": directory }, "name": { "S": name } },
-                    "UpdateExpression": "ADD #m :one",
-                    "ExpressionAttributeNames": { "#m": "made" },
-                    "ExpressionAttributeValues": { ":one": { "N": "1" } },
-                    "ReturnValues": "UPDATED_NEW",
-                }),
-            )
-            .await?;
-        answered
-            .pointer("/Attributes/made/N")
-            .and_then(Value::as_str)
-            .and_then(|made| made.parse().ok())
-            .ok_or_else(|| corrupt("the table's write count is not a number"))
+    /// A new epoch for a record this store makes.
+    fn epoch(&self) -> String {
+        format!(
+            "{}-{}",
+            self.seed,
+            self.made.fetch_add(1, Ordering::Relaxed)
+        )
     }
+}
+
+/// A record's token: the epoch it drew when it was made, and how many
+/// times it has been written since.
+fn token(epoch: &str, version: &str) -> String {
+    format!("{epoch}.{version}")
+}
+
+/// The epoch and the version a token names, where it names them.
+fn parsed(token: &str) -> Option<(&str, u64)> {
+    let (epoch, version) = token.split_once('.')?;
+    Some((epoch, version.parse().ok()?))
+}
+
+/// The condition that the item at a key still holds `epoch` and `version`.
+fn holding(epoch: &str, version: u64) -> Value {
+    json!({
+        "ConditionExpression": "#e = :e AND #v = :v",
+        "ExpressionAttributeNames": { "#e": "epoch", "#v": "version" },
+        "ExpressionAttributeValues": {
+            ":e": { "S": epoch },
+            ":v": { "N": version.to_string() },
+        },
+    })
 }
 
 impl<H: Http, C: Clock> Records for DynamodbRecords<H, C> {
@@ -286,12 +305,18 @@ impl<H: Http, C: Clock> Records for DynamodbRecords<H, C> {
         let Some(item) = answered.get("Item") else {
             return Ok(None);
         };
-        match (text(item, "body", "S"), text(item, "version", "N")) {
-            (Some(body), Some(version)) => Ok(Some(Blob {
-                token: version.to_owned(),
+        match (
+            text(item, "body", "S"),
+            text(item, "epoch", "S"),
+            text(item, "version", "N"),
+        ) {
+            (Some(body), Some(epoch), Some(version)) => Ok(Some(Blob {
+                token: token(epoch, version),
                 bytes: body.as_bytes().to_vec(),
             })),
-            _ => Err(corrupt("a record's item is not a body and a version")),
+            _ => Err(corrupt(
+                "a record's item is not a body, an epoch and a version",
+            )),
         }
     }
 
@@ -336,25 +361,32 @@ impl<H: Http, C: Clock> Records for DynamodbRecords<H, C> {
         replacing: Option<&str>,
     ) -> Result<Wrote, StoreError> {
         let body = std::str::from_utf8(bytes).map_err(|_| corrupt("a record is not UTF-8 text"))?;
-        let version = self.counted().await?;
+        let (epoch, version, condition) = match replacing {
+            None => (
+                self.epoch(),
+                1,
+                json!({
+                    "ConditionExpression": "attribute_not_exists(#n)",
+                    "ExpressionAttributeNames": { "#n": "name" },
+                }),
+            ),
+            Some(replaced) => {
+                let Some((epoch, version)) = parsed(replaced) else {
+                    return Ok(Wrote::Conflict);
+                };
+                (epoch.to_owned(), version + 1, holding(epoch, version))
+            }
+        };
         let (directory, name) = split(path);
         let mut item = json!({
             "Item": {
                 "directory": { "S": directory },
                 "name": { "S": name },
                 "body": { "S": body },
+                "epoch": { "S": epoch },
                 "version": { "N": version.to_string() },
             },
-            "ExpressionAttributeNames": { "#n": "name" },
         });
-        let condition = match replacing {
-            None => json!({ "ConditionExpression": "attribute_not_exists(#n)" }),
-            Some(token) => json!({
-                "ConditionExpression": "#v = :v",
-                "ExpressionAttributeNames": { "#n": "name", "#v": "version" },
-                "ExpressionAttributeValues": { ":v": { "N": token } },
-            }),
-        };
         if let (Some(item), Value::Object(condition)) = (item.as_object_mut(), condition) {
             item.extend(condition);
         }
@@ -362,17 +394,16 @@ impl<H: Http, C: Clock> Records for DynamodbRecords<H, C> {
     }
 
     async fn remove(&self, path: &str, replacing: &str) -> Result<Wrote, StoreError> {
-        let removed = self
-            .conditional(
-                "DeleteItem",
-                json!({
-                    "Key": keyed(path),
-                    "ConditionExpression": "#v = :v",
-                    "ExpressionAttributeNames": { "#v": "version" },
-                    "ExpressionAttributeValues": { ":v": { "N": replacing } },
-                }),
-            )
-            .await?;
+        let Some((epoch, version)) = parsed(replacing) else {
+            return Ok(Wrote::Conflict);
+        };
+        let mut asked = json!({ "Key": keyed(path) });
+        if let (Some(asked), Value::Object(condition)) =
+            (asked.as_object_mut(), holding(epoch, version))
+        {
+            asked.extend(condition);
+        }
+        let removed = self.conditional("DeleteItem", asked).await?;
         if removed == Wrote::Written || self.read(path).await?.is_none() {
             return Ok(Wrote::Written);
         }

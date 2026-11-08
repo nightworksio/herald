@@ -154,7 +154,7 @@ pub async fn reached<H: Host>(
         Store::Dynamodb(options) => {
             let table = Dynamodb::reached(options, host.secrets()).await?;
             let http = host.connect(table.api())?;
-            Records::Dynamodb(table.store(http, host.clock().clone()))
+            Records::Dynamodb(table.store(http, host.clock().clone(), host.nonce()))
         }
         Store::Markers => Records::Posts,
         Store::ActionsCache(_) => return Err(unserved(stores)),

@@ -128,6 +128,12 @@ mod postgres {
                 .await,
             Ok(Wrote::Conflict)
         );
+        assert_eq!(
+            records
+                .write("ledger/a.json", b"[4]", Some(&first.token))
+                .await,
+            Ok(Wrote::Conflict)
+        );
     }
 
     #[tokio::test]
@@ -164,7 +170,7 @@ mod postgres {
                 "CREATE TABLE herald_meta (id INTEGER PRIMARY KEY, layout BIGINT, made BIGINT)",
                 vec![],
             ),
-            statement("INSERT INTO herald_meta VALUES (1, 2, 0)", vec![]),
+            statement("INSERT INTO herald_meta VALUES (1, 3, 0)", vec![]),
         ])
         .await
         .unwrap();

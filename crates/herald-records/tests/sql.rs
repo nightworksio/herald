@@ -8,7 +8,7 @@
 )]
 mod sql {
     use herald_ports::{Changed, SqlError, StoreError, Value};
-    use herald_records::{Dialect, Records as _, SqlRecords, Wrote};
+    use herald_records::{Dialect, LAYOUT, Records as _, SqlRecords, Wrote};
     use herald_testing::ScriptedSql;
 
     fn laid_out(layout: Value) -> Result<Vec<Changed>, SqlError> {
@@ -42,7 +42,7 @@ mod sql {
         answers: Vec<Result<Vec<Changed>, SqlError>>,
     ) -> SqlRecords<ScriptedSql> {
         let sql = answers.into_iter().fold(
-            ScriptedSql::default().answering(laid_out(Value::Integer(1))),
+            ScriptedSql::default().answering(laid_out(Value::Integer(LAYOUT))),
             ScriptedSql::answering,
         );
         pollster::block_on(SqlRecords::open(sql, dialect)).unwrap()
@@ -61,23 +61,36 @@ mod sql {
     #[test]
     fn postgres_is_sent_its_own_numbered_parameters() {
         let sql = ScriptedSql::default()
-            .answering(laid_out(Value::Integer(1)))
-            .answering(rows(vec![vec![text("{}"), Value::Integer(4)]]));
+            .answering(laid_out(Value::Integer(LAYOUT)))
+            .answering(rows(vec![vec![
+                text("{}"),
+                text("0f3a"),
+                Value::Integer(4),
+            ]]))
+            .answering(changed(&[1]));
         let records = pollster::block_on(SqlRecords::open(sql, Dialect::Postgres)).unwrap();
         let blob = pollster::block_on(records.read("ledger/a.json"))
             .unwrap()
             .unwrap();
         assert_eq!(
             (blob.token.as_str(), blob.bytes.as_slice()),
-            ("4", b"{}".as_slice())
+            ("0f3a.4", b"{}".as_slice())
+        );
+        assert_eq!(
+            pollster::block_on(records.write("ledger/b.json", b"{}", None)),
+            Ok(Wrote::Written)
         );
         let debug = format!("{records:?}");
         assert!(
-            debug.contains("SELECT body, version FROM herald_records WHERE path = $1"),
+            debug.contains("SELECT body, epoch, version FROM herald_records WHERE path = $1"),
             "{debug}"
         );
         assert!(
-            debug.contains("VALUES (1, $1, 0) ON CONFLICT (id) DO NOTHING"),
+            debug.contains("SELECT 1, $1 WHERE NOT EXISTS (SELECT 1 FROM herald_meta) ON CONFLICT (id) DO NOTHING"),
+            "{debug}"
+        );
+        assert!(
+            debug.contains("VALUES ($1, $2, replace(gen_random_uuid()::text, '-', ''), 1)"),
             "{debug}"
         );
         assert!(!debug.contains("?1"), "{debug}");
@@ -96,7 +109,14 @@ mod sql {
                 Some(corrupt("the database's herald_meta table is not herald's"))
             );
         }
-        let newer = ScriptedSql::default().answering(laid_out(Value::Integer(2)));
+        let preview = ScriptedSql::default().answering(laid_out(Value::Integer(LAYOUT - 1)));
+        assert_eq!(
+            pollster::block_on(SqlRecords::open(preview, Dialect::Sqlite)).err(),
+            Some(corrupt(
+                "a preview of herald laid the database out; give this herald an empty database"
+            ))
+        );
+        let newer = ScriptedSql::default().answering(laid_out(Value::Integer(LAYOUT + 1)));
         assert_eq!(
             pollster::block_on(SqlRecords::open(newer, Dialect::Sqlite)).err(),
             Some(corrupt(
@@ -116,10 +136,10 @@ mod sql {
             Dialect::Sqlite,
             vec![
                 rows(vec![]),
-                rows(vec![vec![text("{}"), text("4")]]),
+                rows(vec![vec![text("{}"), text("e"), text("4")]]),
                 rows(vec![
-                    vec![text("{}"), Value::Integer(1)],
-                    vec![text("{}"), Value::Integer(2)],
+                    vec![text("{}"), text("e"), Value::Integer(1)],
+                    vec![text("{}"), text("e"), Value::Integer(2)],
                 ]),
                 rows(vec![vec![Value::Integer(1)]]),
                 rows(vec![
@@ -135,7 +155,9 @@ mod sql {
         assert_eq!(read(), Ok(None));
         assert_eq!(
             read(),
-            Err(corrupt("a record's row is not a body and a version"))
+            Err(corrupt(
+                "a record's row is not a body, an epoch and a version"
+            ))
         );
         assert_eq!(read(), Err(corrupt("a path holds more than one record")));
         assert_eq!(
@@ -159,9 +181,8 @@ mod sql {
         let records = opened(
             Dialect::Sqlite,
             vec![
-                changed(&[1, 1]),
-                changed(&[1, 0]),
                 changed(&[1]),
+                changed(&[0]),
                 changed(&[1]),
                 Ok(vec![
                     Changed::default(),
@@ -170,30 +191,43 @@ mod sql {
                         changed: 0,
                     },
                 ]),
+                changed(&[1, 0]),
                 changed(&[0, 0]),
             ],
         );
         let write =
             |replacing: Option<&str>| pollster::block_on(records.write("a/b", b"{}", replacing));
-        assert_eq!(write(Some("3")), Ok(Wrote::Written));
+        assert_eq!(write(Some("e.3")), Ok(Wrote::Written));
         assert_eq!(write(None), Ok(Wrote::Conflict));
-        assert_eq!(write(Some("x")), Ok(Wrote::Conflict));
+        for unparsed in ["3", "e.x", "e"] {
+            assert_eq!(write(Some(unparsed)), Ok(Wrote::Conflict), "{unparsed}");
+            assert_eq!(
+                pollster::block_on(records.remove("a/b", unparsed)),
+                Ok(Wrote::Conflict),
+                "{unparsed}"
+            );
+        }
+        assert_eq!(write(None), Ok(Wrote::Written));
         assert_eq!(
-            pollster::block_on(records.remove("a/b", "x")),
+            pollster::block_on(records.remove("a/b", "e.3")),
             Ok(Wrote::Conflict)
         );
-        assert_eq!(write(None), Ok(Wrote::Conflict));
         assert_eq!(
-            pollster::block_on(records.remove("a/b", "3")),
+            pollster::block_on(records.remove("a/b", "e.3")),
             Ok(Wrote::Written)
         );
         assert_eq!(
-            pollster::block_on(records.remove("a/b", "3")),
-            Ok(Wrote::Conflict)
-        );
-        assert_eq!(
-            pollster::block_on(records.remove("a/b", "3")),
+            pollster::block_on(records.remove("a/b", "e.3")),
             Ok(Wrote::Written)
+        );
+        let debug = format!("{records:?}");
+        assert!(
+            debug.contains("VALUES (?1, ?2, lower(hex(randomblob(16))), 1)"),
+            "{debug}"
+        );
+        assert!(
+            debug.contains("SET body = ?2, version = version + 1 WHERE path = ?1 AND epoch = ?3 AND version = ?4"),
+            "{debug}"
         );
     }
 }

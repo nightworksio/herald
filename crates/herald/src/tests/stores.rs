@@ -254,7 +254,7 @@ fn a_sqlite_file_a_newer_herald_laid_out_stops_the_run() {
             statement(
                 "CREATE TABLE herald_meta (id INTEGER PRIMARY KEY, layout BIGINT, made BIGINT)",
             ),
-            statement("INSERT INTO herald_meta VALUES (1, 2, 0)"),
+            statement("INSERT INTO herald_meta VALUES (1, 3, 0)"),
         ]))
         .unwrap();
     drop(newer);
@@ -384,7 +384,7 @@ fn a_postgres_store_that_cannot_be_reached_or_read_stops_the_run() {
         sql.transaction(
             [
                 "CREATE TABLE herald_meta (id INTEGER PRIMARY KEY, layout BIGINT, made BIGINT)",
-                "INSERT INTO herald_meta VALUES (1, 2, 0)",
+                "INSERT INTO herald_meta VALUES (1, 3, 0)",
             ]
             .into_iter()
             .map(|sql| herald_ports::Statement::change(sql, vec![]))

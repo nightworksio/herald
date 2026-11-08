@@ -108,7 +108,7 @@ mod tests {
             })
         );
         let laid_out = Changed {
-            rows: vec![vec![Value::Integer(1)]],
+            rows: vec![vec![Value::Integer(herald_records::LAYOUT)]],
             changed: 0,
         };
         let opened = ScriptedSql::default().answering(Ok(vec![

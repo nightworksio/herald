@@ -162,7 +162,7 @@ mod tests {
             Changed::default(),
             Changed::default(),
             Changed {
-                rows: vec![vec![Value::Integer(1)]],
+                rows: vec![vec![Value::Integer(herald_records::LAYOUT)]],
                 changed: 0,
             },
         ]));

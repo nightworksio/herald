@@ -67,6 +67,11 @@ all still has the destination, and the destination holds the posts.
    Every record carries a schema version, and a store reads the versions
    before its own.
 
+   A store with no version of its own per record (the SQL stores and
+   DynamoDB) counts each record's writes. Each record draws a random epoch
+   when it is made, so a record removed and written again never takes an
+   earlier token back, and no write waits on any other record's.
+
 6. **Nine stores, each where it can run.**
 
    | Store | Kept in | Usable from | Compare-and-set by |

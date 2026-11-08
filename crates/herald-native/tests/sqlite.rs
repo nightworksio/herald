@@ -66,6 +66,7 @@ mod sqlite {
             Wrote::Written
         );
         assert_eq!(write(b"[3]", None), Wrote::Written);
+        assert_eq!(write(b"[4]", Some(&first.token)), Wrote::Conflict);
         assert_eq!(write(b"[4]", Some(&second.token)), Wrote::Conflict);
         assert_eq!(
             run(records.write("ledger/b.json", &[0xff], None)),
@@ -161,7 +162,7 @@ mod sqlite {
             statement(
                 "CREATE TABLE herald_meta (id INTEGER PRIMARY KEY, layout BIGINT, made BIGINT)",
             ),
-            statement("INSERT INTO herald_meta VALUES (1, 2, 0)"),
+            statement("INSERT INTO herald_meta VALUES (1, 3, 0)"),
         ]))
         .unwrap();
         assert_eq!(

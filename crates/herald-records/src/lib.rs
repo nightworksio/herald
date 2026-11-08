@@ -24,4 +24,4 @@ pub use keyring::MemoryKeyring;
 pub use kv::KvRecords;
 pub use memory::Memory;
 pub use records::{Blob, Records, Wrote};
-pub use sql::{Dialect, SqlRecords};
+pub use sql::{Dialect, LAYOUT, SqlRecords};
