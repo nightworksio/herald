@@ -96,7 +96,7 @@ fn a_connection_refuses_a_backend_under_its_origin_s_name_that_reaches_elsewhere
         ("https", 8094, "127.0.0.1:8094"),
     ];
     for (scheme, port, target) in elsewhere {
-        Backend::builder(&backend_name(scheme, "127.0.0.1", port), target)
+        Backend::builder(backend_name(scheme, "127.0.0.1", port), target)
             .finish()
             .unwrap();
         let origin = format!("{scheme}://127.0.0.1:{port}");
