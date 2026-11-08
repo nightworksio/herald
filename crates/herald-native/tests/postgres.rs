@@ -349,10 +349,19 @@ mod postgres {
             statement: SignedDuration::from_millis(200),
             ..TIMEOUTS
         };
-        let sql = NativePostgres::connect(&Secret::new(URL, url), timeouts)
+        let separator = if url.contains('?') { '&' } else { '?' };
+        let with_options = format!("{url}{separator}options=-c%20lock_timeout%3D1234");
+        let sql = NativePostgres::connect(&Secret::new(URL, with_options), timeouts)
             .await
             .unwrap();
         assert_eq!(format!("{sql:?}"), "NativePostgres { .. }");
+        assert_eq!(
+            ran(&sql, "SELECT current_setting('lock_timeout')")
+                .await
+                .unwrap()[0]
+                .rows,
+            [[Value::Text("1234ms".to_owned())]]
+        );
         let Err(SqlError::Unavailable { reason }) = ran(&sql, "SELECT pg_sleep(2)::text").await
         else {
             panic!("a statement past its timeout is cancelled");
