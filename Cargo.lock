@@ -1336,6 +1336,7 @@ dependencies = [
  "herald-ports",
  "herald-records",
  "herald-testing",
+ "jiff",
  "pollster",
  "schemars",
  "serde",
@@ -1360,9 +1361,11 @@ dependencies = [
 name = "herald-store-sqlite"
 version = "0.0.0"
 dependencies = [
+ "herald-core",
  "herald-ports",
  "herald-records",
  "herald-testing",
+ "jiff",
  "pollster",
  "schemars",
  "serde",
@@ -1392,7 +1395,9 @@ dependencies = [
  "herald-flows",
  "herald-ports",
  "herald-spin",
+ "herald-store-postgres",
  "http-body-util",
+ "jiff",
  "send_wrapper",
  "wasip2 2.0.1+wasi-0.2.12",
  "wstd",

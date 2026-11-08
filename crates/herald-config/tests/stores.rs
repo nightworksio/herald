@@ -21,9 +21,15 @@ mod stores {
         assert_eq!(
             store("path = \"/var/lib/herald/records.db\"\n"),
             Ok(Store::Sqlite(StoreOptions {
-                path: Some("/var/lib/herald/records.db".to_owned())
+                path: Some("/var/lib/herald/records.db".to_owned()),
+                busy: None,
             }))
         );
+        let waiting = store("busy = \"30s\"\n").unwrap();
+        let Store::Sqlite(options) = waiting else {
+            panic!("expected a sqlite store, got {waiting:?}");
+        };
+        assert_eq!(options.busy(), jiff::SignedDuration::from_secs(30));
         let unknown = store("file = \"x\"\n").unwrap_err();
         assert!(unknown.contains("store"), "{unknown}");
         assert!(unknown.contains("file"), "{unknown}");
@@ -45,8 +51,33 @@ mod stores {
             Store::Postgres(herald_store_postgres::StoreOptions {
                 url: herald_core::SecretRef {
                     secret: "HERALD_POSTGRES_URL".to_owned()
-                }
+                },
+                connect_timeout: None,
+                statement_timeout: None,
             })
+        );
+        let Store::Postgres(defaults) = &named.store else {
+            panic!("expected a postgres store");
+        };
+        assert_eq!(
+            defaults.connect_timeout(),
+            herald_store_postgres::CONNECT_TIMEOUT
+        );
+        assert_eq!(
+            defaults.statement_timeout(),
+            herald_store_postgres::STATEMENT_TIMEOUT
+        );
+        let timed = config(
+            "url = { secret = \"HERALD_POSTGRES_URL\" }\nconnect_timeout = \"5s\"\nstatement_timeout = \"2m\"\n",
+        )
+        .unwrap();
+        let Store::Postgres(timed) = timed.store else {
+            panic!("expected a postgres store");
+        };
+        assert_eq!(timed.connect_timeout(), jiff::SignedDuration::from_secs(5));
+        assert_eq!(
+            timed.statement_timeout(),
+            jiff::SignedDuration::from_mins(2)
         );
         assert!(named.secrets().contains(&"HERALD_POSTGRES_URL"));
         let missing = config("").unwrap_err();

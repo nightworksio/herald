@@ -4,12 +4,18 @@
 
 #[cfg(test)]
 mod postgres {
-    use herald_native::{NativePostgres, NativeSql};
+    use herald_native::{NativePostgres, NativeSql, Timeouts};
     use herald_ports::{Secret, Sql as _, SqlError, Statement, StoreError, Value};
     use herald_records::{Dialect, Kept, Records as _, SqlRecords, Wrote};
     use herald_testing::{keyring_conformance, store_conformance};
+    use jiff::SignedDuration;
 
     const URL: &str = "HERALD_TEST_POSTGRES";
+
+    const TIMEOUTS: Timeouts = Timeouts {
+        connect: SignedDuration::from_secs(10),
+        statement: SignedDuration::from_secs(30),
+    };
 
     fn url() -> Option<String> {
         let url = std::env::var(URL).ok().filter(|url| !url.is_empty());
@@ -28,7 +34,7 @@ mod postgres {
     }
 
     async fn fresh(schema: &str) -> Option<NativePostgres> {
-        let sql = NativePostgres::connect(&Secret::new(URL, url()?))
+        let sql = NativePostgres::connect(&Secret::new(URL, url()?), TIMEOUTS)
             .await
             .unwrap();
         sql.transaction(vec![
@@ -66,7 +72,7 @@ mod postgres {
         let Some(sql) = fresh("native").await else {
             return;
         };
-        let sql = NativeSql::Postgres(sql);
+        let sql = NativeSql::Postgres(Box::new(sql));
         let records = SqlRecords::open(sql, Dialect::Postgres).await.unwrap();
         store_conformance(&Kept::new(records)).await.unwrap();
     }
@@ -236,7 +242,7 @@ mod postgres {
             format!("{base}?application_name=sslmode"),
         ] {
             let Err(SqlError::Unavailable { reason }) =
-                NativePostgres::connect(&Secret::new(URL, plain.as_str())).await
+                NativePostgres::connect(&Secret::new(URL, plain.as_str()), TIMEOUTS).await
             else {
                 panic!("a server without TLS is refused for {plain}");
             };
@@ -246,12 +252,103 @@ mod postgres {
             );
         }
         assert_eq!(
-            NativePostgres::connect(&Secret::new(URL, "not a url"))
+            NativePostgres::connect(&Secret::new(URL, "not a url"), TIMEOUTS)
                 .await
                 .err(),
             Some(SqlError::Unavailable {
                 reason: format!("the secret {URL} is not a Postgres connection URL")
             })
         );
+    }
+
+    fn as_role(url: &str, role: &str) -> String {
+        let mut url = url::Url::parse(url).unwrap();
+        url.set_username(role).unwrap();
+        url.to_string()
+    }
+
+    async fn ran(sql: &NativePostgres, text: &str) -> Result<Vec<herald_ports::Changed>, SqlError> {
+        sql.transaction(vec![statement(text, vec![])]).await
+    }
+
+    /// The answer to the first transaction once the connection's closing
+    /// has been seen: a transaction already on the closed connection fails
+    /// with what the database said, and is never run again.
+    async fn after_closing(sql: &NativePostgres) -> Result<Vec<herald_ports::Changed>, SqlError> {
+        for _ in 0..100 {
+            let answered = ran(sql, "SELECT 1").await;
+            match &answered {
+                Err(SqlError::Unavailable { reason })
+                    if !reason.starts_with("the connection closed (") =>
+                {
+                    tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+                }
+                _ => return answered,
+            }
+        }
+        panic!("the closed connection was never seen");
+    }
+
+    #[tokio::test]
+    async fn a_connection_the_database_closed_is_made_again_or_said_why_not() {
+        let Some(url) = url() else {
+            return;
+        };
+        let admin = NativePostgres::connect(&Secret::new(URL, url.clone()), TIMEOUTS)
+            .await
+            .unwrap();
+        ran(&admin, "DROP ROLE IF EXISTS herald_reconnecting")
+            .await
+            .unwrap();
+        ran(&admin, "CREATE ROLE herald_reconnecting LOGIN")
+            .await
+            .unwrap();
+        let reconnecting = Secret::new(URL, as_role(&url, "herald_reconnecting"));
+        let sql = NativePostgres::connect(&reconnecting, TIMEOUTS)
+            .await
+            .unwrap();
+        let ended = "SELECT count(pg_terminate_backend(pid)) FROM pg_stat_activity WHERE usename = 'herald_reconnecting'";
+        ran(&admin, ended).await.unwrap();
+        assert_eq!(
+            after_closing(&sql).await.unwrap()[0].rows,
+            [[Value::Integer(1)]]
+        );
+        ran(&admin, "ALTER ROLE herald_reconnecting NOLOGIN")
+            .await
+            .unwrap();
+        ran(&admin, ended).await.unwrap();
+        let Err(SqlError::Unavailable { reason }) = after_closing(&sql).await else {
+            panic!("a role that may not log in cannot connect again");
+        };
+        assert!(reason.starts_with("the connection closed ("), "{reason}");
+        assert!(reason.contains("could not be made again"), "{reason}");
+        assert!(reason.contains("not permitted to log in"), "{reason}");
+        ran(&admin, "ALTER ROLE herald_reconnecting LOGIN")
+            .await
+            .unwrap();
+        assert!(ran(&sql, "SELECT 1").await.is_ok());
+        drop(sql);
+        ran(&admin, ended).await.unwrap();
+        ran(&admin, "DROP ROLE herald_reconnecting").await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn a_statement_that_runs_past_its_timeout_is_cancelled() {
+        let Some(url) = url() else {
+            return;
+        };
+        let timeouts = Timeouts {
+            statement: SignedDuration::from_millis(200),
+            ..TIMEOUTS
+        };
+        let sql = NativePostgres::connect(&Secret::new(URL, url), timeouts)
+            .await
+            .unwrap();
+        let Err(SqlError::Unavailable { reason }) = ran(&sql, "SELECT pg_sleep(2)::text").await
+        else {
+            panic!("a statement past its timeout is cancelled");
+        };
+        assert!(reason.contains("statement timeout"), "{reason}");
+        assert!(ran(&sql, "SELECT 1").await.is_ok());
     }
 }

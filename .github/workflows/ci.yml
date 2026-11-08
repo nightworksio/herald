@@ -225,10 +225,27 @@ jobs:
   # warning, its JavaScript glue passes its tests under Node, every
   # JavaScript host in deploy/ passes its own under Node and Deno, and the
   # Durable Object store passes the store conformance on a real Durable
-  # Object's SQLite storage under Miniflare.
+  # Object's SQLite storage under Miniflare, and the JavaScript hosts' SQLite
+  # and Postgres databases keep their waits on real databases.
   wasm:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:17-alpine@sha256:266d3c257594e195b309ae9d1805e54c788f1d7b375f56bf6c367aac6c917e7b
+        env:
+          POSTGRES_USER: herald
+          POSTGRES_DB: herald
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U herald"
+          --health-interval 2s
+          --health-timeout 5s
+          --health-retries 30
+    env:
+      HERALD_TEST_POSTGRES: postgres://herald@localhost:5432/herald?sslmode=disable
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -256,6 +273,7 @@ jobs:
       - run: deploy/build.sh deploy/tests/pkg-conformance conformance
       - run: npm ci --ignore-scripts --prefix deploy/tests
       - run: node --test deploy/tests/worker.test.mjs
+      - run: node --test deploy/tests/databases.test.mjs
       - run: .github/scripts/install-tool.sh deno
       - run: deno test --allow-read --allow-net --allow-sys deploy/tests/vetted.deno.test.ts
       - run: deno check --unstable-cron deploy/deno/main.ts

@@ -9,6 +9,7 @@ mod address;
 mod announce;
 mod chunk;
 mod cursor;
+mod duration;
 mod event;
 mod housekeep;
 mod inbound;
@@ -34,6 +35,7 @@ pub use announce::{
 };
 pub use chunk::{Room, chunk, size};
 pub use cursor::{Cursor, Polled, fresh};
+pub use duration::Duration;
 pub use event::{Draft, Event, Kind, Problem};
 pub use housekeep::{Chore, Schedule, due, schedules};
 pub use inbound::{

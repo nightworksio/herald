@@ -8,7 +8,7 @@ pub enum NativeSql {
     /// A SQLite file.
     Sqlite(NativeSqlite),
     /// A Postgres database.
-    Postgres(NativePostgres),
+    Postgres(Box<NativePostgres>),
 }
 
 impl Sql for NativeSql {

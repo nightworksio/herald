@@ -2,7 +2,8 @@
   "private": true,
   "type": "module",
   "devDependencies": {
-    "miniflare": "4.20260730.0"
+    "miniflare": "4.20260730.0",
+    "pg": "8.23.1"
   },
   "overrides": {
     "sharp": "0.35.5",

@@ -1,12 +1,23 @@
 import { chmod, open } from "node:fs/promises";
 
-export async function sqlite(file) {
+async function rolledBack(rollback, error) {
+  try {
+    await rollback();
+  } catch (failed) {
+    console.error(`herald: the rollback after a failed transaction failed too: ${failed?.message ?? failed}`);
+  }
+  throw error;
+}
+
+export async function sqlite(file, busy) {
   const handle = await open(file, "a", 0o600);
   await handle.close();
   await chmod(file, 0o600);
+  const waiting = Number.isSafeInteger(busy) ? `PRAGMA busy_timeout = ${busy}` : undefined;
   if (globalThis.Bun) {
     const { Database } = await import("bun:sqlite");
     const db = new Database(file);
+    if (waiting) db.exec(waiting);
     const run = (statement) => {
       const prepared = db.prepare(statement.sql);
       if (prepared.columnNames.length) return { rows: prepared.values(...statement.params), changed: 0 };
@@ -16,6 +27,7 @@ export async function sqlite(file) {
   }
   const { DatabaseSync } = await import("node:sqlite");
   const db = new DatabaseSync(file);
+  if (waiting) db.exec(waiting);
   const run = (statement) => {
     const prepared = db.prepare(statement.sql);
     if (prepared.columns().length) {
@@ -32,29 +44,41 @@ export async function sqlite(file) {
         db.exec("COMMIT");
         return answers;
       } catch (error) {
-        db.exec("ROLLBACK");
-        throw error;
+        return rolledBack(() => db.exec("ROLLBACK"), error);
       }
     },
   };
 }
 
-export async function postgres(url) {
-  const { default: pg } = await import("pg");
-  const client = new pg.Client({ connectionString: url });
-  await client.connect();
+export async function postgres({ url, connect, statement }, driver = () => import("pg")) {
+  const { default: pg } = await driver();
+  const pool = new pg.Pool({
+    connectionString: url,
+    max: 1,
+    connectionTimeoutMillis: connect,
+    statement_timeout: statement,
+    allowExitOnIdle: true,
+  });
+  pool.on("error", (error) => console.error(`herald: the database closed its connection: ${error.message}`));
   return {
     async transaction(statements) {
-      await client.query("BEGIN");
+      const client = await pool.connect();
+      let broken;
       try {
-        const results = await Promise.all(
-          statements.map((statement) => client.query({ text: statement.sql, values: statement.params, rowMode: "array" })),
-        );
+        await client.query("BEGIN");
+        const answers = [];
+        for (const statement of statements) {
+          const result = await client.query({ text: statement.sql, values: statement.params, rowMode: "array" });
+          const rows = result.fields?.length ? result.rows : [];
+          answers.push({ rows, changed: result.fields?.length ? 0 : (result.rowCount ?? 0) });
+        }
         await client.query("COMMIT");
-        return results.map((result) => ({ rows: result.rows ?? [], changed: result.rowCount ?? 0 }));
+        return answers;
       } catch (error) {
-        await client.query("ROLLBACK");
-        throw error;
+        broken = error;
+        return await rolledBack(() => client.query("ROLLBACK"), error);
+      } finally {
+        client.release(broken);
       }
     },
   };

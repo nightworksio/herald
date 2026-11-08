@@ -1,24 +1,22 @@
 use std::fs::OpenOptions;
-use std::future::{Future, ready};
+use std::future::Future;
 use std::io::ErrorKind;
 use std::path::Path;
-use std::sync::{Mutex, PoisonError};
-use std::time::Duration;
+use std::sync::{Arc, Mutex, PoisonError};
 
 use herald_ports::{Changed, Sql, SqlError, Statement, Value};
+use jiff::SignedDuration;
 use rusqlite::types::{ToSqlOutput, ValueRef};
 use rusqlite::{Connection, TransactionBehavior, params_from_iter};
-
-/// How long a transaction waits for another process to let go of the file.
-const BUSY: Duration = Duration::from_secs(5);
 
 /// A SQLite database in one file, or in memory, through which the `sqlite`
 /// store keeps its records (ADR-0005). Each transaction takes the write
 /// lock as it begins, so two processes on one file run theirs one after
-/// the other.
+/// the other, and runs on a blocking thread, so waiting for the lock holds
+/// up no other work.
 #[derive(Debug)]
 pub struct NativeSqlite {
-    connection: Mutex<Connection>,
+    connection: Arc<Mutex<Connection>>,
 }
 
 #[allow(
@@ -101,19 +99,23 @@ fn transact(
 
 impl NativeSqlite {
     /// The database in the file at `path`, made readable by its owner alone
-    /// where it is new.
+    /// where it is new, whose transactions wait up to `busy` for another
+    /// process to let go of it.
     ///
     /// # Errors
     ///
     /// When the file cannot be made or opened as a SQLite database.
-    pub fn open(path: &Path) -> Result<Self, SqlError> {
+    pub fn open(path: &Path, busy: SignedDuration) -> Result<Self, SqlError> {
         made(path)
             .map_err(|error| refused(format!("{} could not be made: {error}", path.display())))?;
         let connection = Connection::open(path).map_err(refused)?;
         connection
             .pragma_update(None, "journal_mode", "WAL")
             .map_err(refused)?;
-        Self::kept(connection)
+        connection
+            .busy_timeout(busy.unsigned_abs())
+            .map_err(refused)?;
+        Ok(Self::kept(connection))
     }
 
     /// A database in memory, gone when it is dropped.
@@ -122,14 +124,13 @@ impl NativeSqlite {
     ///
     /// When SQLite cannot open one.
     pub fn in_memory() -> Result<Self, SqlError> {
-        Self::kept(Connection::open_in_memory().map_err(refused)?)
+        Ok(Self::kept(Connection::open_in_memory().map_err(refused)?))
     }
 
-    fn kept(connection: Connection) -> Result<Self, SqlError> {
-        connection.busy_timeout(BUSY).map_err(refused)?;
-        Ok(Self {
-            connection: Mutex::new(connection),
-        })
+    fn kept(connection: Connection) -> Self {
+        Self {
+            connection: Arc::new(Mutex::new(connection)),
+        }
     }
 }
 
@@ -138,10 +139,14 @@ impl Sql for NativeSqlite {
         &self,
         statements: Vec<Statement>,
     ) -> impl Future<Output = Result<Vec<Changed>, SqlError>> + Send {
-        let mut connection = self
-            .connection
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner);
-        ready(transact(&mut connection, &statements))
+        let connection = Arc::clone(&self.connection);
+        async move {
+            tokio::task::spawn_blocking(move || {
+                let mut connection = connection.lock().unwrap_or_else(PoisonError::into_inner);
+                transact(&mut connection, &statements)
+            })
+            .await
+            .map_err(refused)?
+        }
     }
 }

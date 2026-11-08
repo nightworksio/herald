@@ -7,33 +7,44 @@ mod sqlite {
     use herald_ports::{Sql as _, Statement, StoreError, Value};
     use herald_records::{Dialect, Kept, Records as _, SqlRecords, Wrote};
     use herald_testing::{keyring_conformance, store_conformance};
+    use jiff::SignedDuration;
+
+    const BUSY: SignedDuration = SignedDuration::from_secs(5);
+
+    fn run<F: std::future::Future>(future: F) -> F::Output {
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(future)
+    }
 
     fn opened(sql: NativeSqlite) -> SqlRecords<NativeSqlite> {
-        pollster::block_on(SqlRecords::open(sql, Dialect::Sqlite)).unwrap()
+        run(SqlRecords::open(sql, Dialect::Sqlite)).unwrap()
     }
 
     #[test]
     fn a_sqlite_database_keeps_every_record_a_store_keeps() {
         let store = Kept::new(opened(NativeSqlite::in_memory().unwrap()));
-        pollster::block_on(store_conformance(&store)).unwrap();
+        run(store_conformance(&store)).unwrap();
         let keyring = Kept::new(opened(NativeSqlite::in_memory().unwrap()));
-        pollster::block_on(keyring_conformance(&keyring)).unwrap();
+        run(keyring_conformance(&keyring)).unwrap();
     }
 
     #[test]
     fn the_native_database_keeps_a_sqlite_file_s_records() {
         let sql = NativeSql::Sqlite(NativeSqlite::in_memory().unwrap());
-        let store = Kept::new(pollster::block_on(SqlRecords::open(sql, Dialect::Sqlite)).unwrap());
-        pollster::block_on(store_conformance(&store)).unwrap();
+        let store = Kept::new(run(SqlRecords::open(sql, Dialect::Sqlite)).unwrap());
+        run(store_conformance(&store)).unwrap();
     }
 
     #[test]
     fn a_record_is_replaced_only_as_it_was_read_and_never_takes_a_version_back() {
         let records = opened(NativeSqlite::in_memory().unwrap());
         let write = |bytes: &[u8], replacing: Option<&str>| {
-            pollster::block_on(records.write("ledger/a.json", bytes, replacing)).unwrap()
+            run(records.write("ledger/a.json", bytes, replacing)).unwrap()
         };
-        let read = || pollster::block_on(records.read("ledger/a.json")).unwrap();
+        let read = || run(records.read("ledger/a.json")).unwrap();
         assert_eq!(write(b"{}", None), Wrote::Written);
         assert_eq!(write(b"{}", None), Wrote::Conflict);
         let first = read().unwrap();
@@ -43,21 +54,21 @@ mod sqlite {
         let second = read().unwrap();
         assert_eq!(second.bytes, b"[1]");
         assert_eq!(
-            pollster::block_on(records.remove("ledger/a.json", &first.token)).unwrap(),
+            run(records.remove("ledger/a.json", &first.token)).unwrap(),
             Wrote::Conflict
         );
         assert_eq!(
-            pollster::block_on(records.remove("ledger/a.json", &second.token)).unwrap(),
+            run(records.remove("ledger/a.json", &second.token)).unwrap(),
             Wrote::Written
         );
         assert_eq!(
-            pollster::block_on(records.remove("ledger/a.json", &second.token)).unwrap(),
+            run(records.remove("ledger/a.json", &second.token)).unwrap(),
             Wrote::Written
         );
         assert_eq!(write(b"[3]", None), Wrote::Written);
         assert_eq!(write(b"[4]", Some(&second.token)), Wrote::Conflict);
         assert_eq!(
-            pollster::block_on(records.write("ledger/b.json", &[0xff], None)),
+            run(records.write("ledger/b.json", &[0xff], None)),
             Err(StoreError::Corrupt {
                 reason: "a record is not UTF-8 text".to_owned()
             })
@@ -74,27 +85,24 @@ mod sqlite {
             "subscriptions/slack/p_/c.json",
             "subscriptions/slack/p.json",
         ] {
-            pollster::block_on(records.write(path, b"{}", None)).unwrap();
+            run(records.write(path, b"{}", None)).unwrap();
         }
         assert_eq!(
-            pollster::block_on(records.list("subscriptions/slack/p")).unwrap(),
+            run(records.list("subscriptions/slack/p")).unwrap(),
             [
                 "subscriptions/slack/p/a.json",
                 "subscriptions/slack/p/b.json"
             ]
         );
-        assert_eq!(
-            pollster::block_on(records.list("cursors")).unwrap(),
-            Vec::<String>::new()
-        );
+        assert_eq!(run(records.list("cursors")).unwrap(), Vec::<String>::new());
     }
 
     #[test]
     fn a_database_file_is_its_owner_s_alone_and_keeps_its_records_when_reopened() {
         let directory = tempfile::tempdir().unwrap();
         let path = directory.path().join("herald.sqlite");
-        let records = opened(NativeSqlite::open(&path).unwrap());
-        pollster::block_on(records.write("cursors/a.json", b"{}", None)).unwrap();
+        let records = opened(NativeSqlite::open(&path, BUSY).unwrap());
+        run(records.write("cursors/a.json", b"{}", None)).unwrap();
         drop(records);
         #[cfg(unix)]
         {
@@ -102,16 +110,13 @@ mod sqlite {
             let mode = std::fs::metadata(&path).unwrap().permissions().mode();
             assert_eq!(mode & 0o777, 0o600);
         }
-        let reopened = opened(NativeSqlite::open(&path).unwrap());
+        let reopened = opened(NativeSqlite::open(&path, BUSY).unwrap());
         assert_eq!(
-            pollster::block_on(reopened.read("cursors/a.json"))
-                .unwrap()
-                .unwrap()
-                .bytes,
+            run(reopened.read("cursors/a.json")).unwrap().unwrap().bytes,
             b"{}"
         );
         let missing = directory.path().join("missing/herald.sqlite");
-        let Err(unmade) = NativeSqlite::open(&missing) else {
+        let Err(unmade) = NativeSqlite::open(&missing, BUSY) else {
             panic!("a file in a missing directory cannot be made");
         };
         assert!(
@@ -123,13 +128,42 @@ mod sqlite {
     }
 
     #[test]
+    fn a_transaction_waits_for_the_lock_no_longer_than_it_was_given_and_holds_up_nothing() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("herald.sqlite");
+        let sql = NativeSqlite::open(&path, SignedDuration::from_millis(600)).unwrap();
+        let holder = rusqlite::Connection::open(&path).unwrap();
+        holder.execute_batch("BEGIN IMMEDIATE").unwrap();
+        let statement = Statement {
+            sql: "CREATE TABLE t (a INTEGER)".to_owned(),
+            params: vec![],
+        };
+        let started = std::time::Instant::now();
+        let (waited, ticked) = run(async {
+            tokio::join!(sql.transaction(vec![statement.clone()]), async {
+                tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+                started.elapsed()
+            })
+        });
+        let waited_for = started.elapsed();
+        assert!(waited.unwrap_err().to_string().contains("locked"));
+        assert!(
+            waited_for >= std::time::Duration::from_millis(600),
+            "{waited_for:?}"
+        );
+        assert!(ticked < std::time::Duration::from_millis(500), "{ticked:?}");
+        holder.execute_batch("COMMIT").unwrap();
+        assert!(run(sql.transaction(vec![statement])).is_ok());
+    }
+
+    #[test]
     fn a_database_another_herald_laid_out_is_refused() {
         let statement = |sql: &str| Statement {
             sql: sql.to_owned(),
             params: vec![],
         };
         let newer = NativeSqlite::in_memory().unwrap();
-        pollster::block_on(newer.transaction(vec![
+        run(newer.transaction(vec![
             statement(
                 "CREATE TABLE herald_meta (id INTEGER PRIMARY KEY, layout BIGINT, made BIGINT)",
             ),
@@ -137,14 +171,14 @@ mod sqlite {
         ]))
         .unwrap();
         assert_eq!(
-            pollster::block_on(SqlRecords::open(newer, Dialect::Sqlite)).err(),
+            run(SqlRecords::open(newer, Dialect::Sqlite)).err(),
             Some(StoreError::Corrupt {
                 reason: "a newer herald laid the database out; run that herald or a later one"
                     .to_owned()
             })
         );
         let foreign = NativeSqlite::in_memory().unwrap();
-        pollster::block_on(foreign.transaction(vec![
+        run(foreign.transaction(vec![
             statement(
                 "CREATE TABLE herald_meta (id INTEGER PRIMARY KEY, layout TEXT, made BIGINT)",
             ),
@@ -152,7 +186,7 @@ mod sqlite {
         ]))
         .unwrap();
         assert_eq!(
-            pollster::block_on(SqlRecords::open(foreign, Dialect::Sqlite)).err(),
+            run(SqlRecords::open(foreign, Dialect::Sqlite)).err(),
             Some(StoreError::Corrupt {
                 reason: "the database's herald_meta table is not herald's".to_owned()
             })
@@ -166,7 +200,7 @@ mod sqlite {
             sql: sql.to_owned(),
             params,
         };
-        let answers = pollster::block_on(sql.transaction(vec![
+        let answers = run(sql.transaction(vec![
             statement("CREATE TABLE t (a INTEGER, b TEXT)", vec![]),
             statement(
                 "INSERT INTO t VALUES (?1, ?2), (?1, ?3)",
@@ -185,15 +219,14 @@ mod sqlite {
                 vec![Value::Integer(7), Value::Text("x".to_owned())],
             ]
         );
-        let refused = pollster::block_on(sql.transaction(vec![
+        let refused = run(sql.transaction(vec![
             statement("INSERT INTO t VALUES (1, 'kept?')", vec![]),
             statement("SELECT 1.5", vec![]),
         ]));
         assert!(refused.is_err());
         let count =
-            pollster::block_on(sql.transaction(vec![statement("SELECT count(*) FROM t", vec![])]))
-                .unwrap();
+            run(sql.transaction(vec![statement("SELECT count(*) FROM t", vec![])])).unwrap();
         assert_eq!(count[0].rows, [[Value::Integer(2)]]);
-        assert!(pollster::block_on(sql.transaction(vec![statement("NOT SQL", vec![])])).is_err());
+        assert!(run(sql.transaction(vec![statement("NOT SQL", vec![])])).is_err());
     }
 }

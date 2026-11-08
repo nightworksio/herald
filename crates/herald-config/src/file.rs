@@ -1,75 +1,10 @@
 use std::fmt;
 use std::num::NonZeroUsize;
 
-use herald_core::{Kind, Pinning, Prereleases, SecretRef};
-use jiff::SignedDuration;
+use herald_core::{Duration, Kind, Pinning, Prereleases, SecretRef};
 use schemars::JsonSchema;
 use serde::{Deserialize, Deserializer};
 use toml::Spanned;
-
-/// A length of time, as `30m`, `12h`, `14d` or `2w`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct Duration(pub(crate) SignedDuration);
-
-impl JsonSchema for Duration {
-    fn schema_name() -> std::borrow::Cow<'static, str> {
-        "Duration".into()
-    }
-
-    fn json_schema(_: &mut schemars::SchemaGenerator) -> schemars::Schema {
-        schemars::json_schema!({
-            "description": "A length of time: a number and m, h, d or w, as \"14d\".",
-            "type": "string",
-            "pattern": "^[0-9]+[mhdw]$"
-        })
-    }
-}
-
-const SECOND: i64 = 1;
-const MINUTE: i64 = 60;
-const HOUR: i64 = 3_600;
-const DAY: i64 = 86_400;
-const WEEK: i64 = 604_800;
-
-impl Duration {
-    fn parse(text: &str) -> Option<Self> {
-        let unit = text.chars().last()?;
-        let number: i64 = text.get(..text.len() - 1)?.parse().ok()?;
-        let seconds = match unit {
-            's' => SECOND,
-            'm' => MINUTE,
-            'h' => HOUR,
-            'd' => DAY,
-            'w' => WEEK,
-            _ => return None,
-        };
-        number
-            .checked_mul(seconds)
-            .filter(|seconds| *seconds > 0)
-            .map(|seconds| Self(SignedDuration::from_secs(seconds)))
-    }
-}
-
-struct DurationVisitor;
-
-impl serde::de::Visitor<'_> for DurationVisitor {
-    type Value = Duration;
-
-    fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str("a length of time such as \"30s\", \"30m\", \"12h\", \"14d\" or \"2w\"")
-    }
-
-    fn visit_str<E: serde::de::Error>(self, text: &str) -> Result<Duration, E> {
-        Duration::parse(text)
-            .ok_or_else(|| E::invalid_value(serde::de::Unexpected::Str(text), &self))
-    }
-}
-
-impl<'de> Deserialize<'de> for Duration {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        deserializer.deserialize_str(DurationVisitor)
-    }
-}
 
 /// A number of bytes, as `512KiB` or `1MiB`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -361,36 +296,6 @@ mod tests {
             "99999999999999999999MiB",
         ] {
             assert_eq!(Size::parse(text), None, "{text}");
-        }
-    }
-
-    #[test]
-    fn a_duration_is_a_number_and_a_unit() {
-        let cases = [
-            ("45s", 45),
-            ("30m", 1_800),
-            ("12h", 43_200),
-            ("14d", 1_209_600),
-            ("2w", 1_209_600),
-        ];
-        for (text, seconds) in cases {
-            assert_eq!(
-                Duration::parse(text),
-                Some(Duration(SignedDuration::from_secs(seconds))),
-                "{text}"
-            );
-        }
-        for text in [
-            "",
-            "d",
-            "14",
-            "14y",
-            "0d",
-            "-1d",
-            "1.5h",
-            "99999999999999999w",
-        ] {
-            assert_eq!(Duration::parse(text), None, "{text}");
         }
     }
 }

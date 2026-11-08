@@ -22,6 +22,13 @@ cannot serve.
 | Fastly Compute | `fastly/` | `fastly-kv`, `dynamodb`, `git-branch`, `markers`, `repo-variables` | `POST /herald/round/*` |
 | A container, Compose, Kubernetes and Helm | `compose/`, `kubernetes/`, `helm/herald/` | the stores `herald server` keeps records in | the config's `[schedule]` |
 
+On every host that keeps `sqlite`, a transaction waits up to the store's
+`busy` (5s) for the file's lock. On every host that keeps `postgres`, making a
+connection gives up after the store's `connect_timeout` (10s), and the database
+cancels a statement after `statement_timeout` (30s). herald keeps one
+connection, and makes it again when the database closes it. A transaction that
+was already on that connection fails and is not run again.
+
 ## The container image
 
 `ghcr.io/nightworksio/herald` runs `herald server` as user 65532 on a

@@ -3,6 +3,7 @@
 use std::future::{Future, ready};
 
 use herald_ports::{Changed, Secret, Sql, SqlError, Statement, Value};
+use jiff::SignedDuration;
 
 use herald_spin::postgres as pg;
 use herald_spin::sqlite;
@@ -111,14 +112,14 @@ fn postgres_ran(connection: &pg::Connection, statement: Statement) -> Result<Cha
 /// A database Spin offers. A connection lasts one transaction.
 #[derive(Debug)]
 pub(super) enum SpinSql {
-    Sqlite(String),
+    Sqlite { label: String, busy: SignedDuration },
     Postgres(Secret),
 }
 
 impl SpinSql {
     fn ran(&self, statements: Vec<Statement>) -> Result<Vec<Changed>, SqlError> {
         match self {
-            Self::Sqlite(label) => {
+            Self::Sqlite { label, busy } => {
                 let connection = sqlite::Connection::open(label)
                     .map_err(|error| failed(&format!("{error:?}")))?;
                 let simple = |sql: &str| {
@@ -127,6 +128,10 @@ impl SpinSql {
                         .map(|_| ())
                         .map_err(|error| failed(&format!("{error:?}")))
                 };
+                simple(&format!(
+                    "PRAGMA busy_timeout = {}",
+                    busy.unsigned_abs().as_millis()
+                ))?;
                 simple("BEGIN IMMEDIATE")?;
                 let done: Result<Vec<_>, _> = statements
                     .into_iter()

@@ -245,16 +245,21 @@ fn a_sqlite_file_a_newer_herald_laid_out_stops_the_run() {
     use herald_ports::Sql as _;
     let setup = setup(&CONFIG.replace("kind = \"git-branch\"", "kind = \"sqlite\""));
     let file = setup.directory.path().join("herald.sqlite");
-    let newer = herald_native::NativeSqlite::open(&file).unwrap();
+    let newer = herald_native::NativeSqlite::open(&file, herald_store_sqlite::BUSY).unwrap();
     let statement = |sql: &str| herald_ports::Statement {
         sql: sql.to_owned(),
         params: vec![],
     };
-    pollster::block_on(newer.transaction(vec![
-        statement("CREATE TABLE herald_meta (id INTEGER PRIMARY KEY, layout BIGINT, made BIGINT)"),
-        statement("INSERT INTO herald_meta VALUES (1, 2, 0)"),
-    ]))
-    .unwrap();
+    tokio::runtime::Builder::new_current_thread()
+        .build()
+        .unwrap()
+        .block_on(newer.transaction(vec![
+            statement(
+                "CREATE TABLE herald_meta (id INTEGER PRIMARY KEY, layout BIGINT, made BIGINT)",
+            ),
+            statement("INSERT INTO herald_meta VALUES (1, 2, 0)"),
+        ]))
+        .unwrap();
     drop(newer);
     let stopped = herald(&setup, &World::default(), &ANNOUNCE);
     assert_eq!(stopped.code, STOPPED);
@@ -281,10 +286,15 @@ fn postgres(name: &str) -> Option<String> {
     let url = url?;
     let schema = format!("{name}_{}", std::process::id());
     on_tokio(async {
-        let sql =
-            herald_native::NativePostgres::connect(&herald_ports::Secret::new("URL", url.as_str()))
-                .await
-                .unwrap();
+        let sql = herald_native::NativePostgres::connect(
+            &herald_ports::Secret::new("URL", url.as_str()),
+            herald_native::Timeouts {
+                connect: herald_store_postgres::CONNECT_TIMEOUT,
+                statement: herald_store_postgres::STATEMENT_TIMEOUT,
+            },
+        )
+        .await
+        .unwrap();
         sql.transaction(
             [
                 format!("DROP SCHEMA IF EXISTS {schema} CASCADE"),
@@ -368,10 +378,15 @@ fn a_postgres_store_that_cannot_be_reached_or_read_stops_the_run() {
     };
     on_tokio(async {
         use herald_ports::Sql as _;
-        let sql =
-            herald_native::NativePostgres::connect(&herald_ports::Secret::new("URL", url.as_str()))
-                .await
-                .unwrap();
+        let sql = herald_native::NativePostgres::connect(
+            &herald_ports::Secret::new("URL", url.as_str()),
+            herald_native::Timeouts {
+                connect: herald_store_postgres::CONNECT_TIMEOUT,
+                statement: herald_store_postgres::STATEMENT_TIMEOUT,
+            },
+        )
+        .await
+        .unwrap();
         sql.transaction(
             [
                 "CREATE TABLE herald_meta (id INTEGER PRIMARY KEY, layout BIGINT, made BIGINT)",

@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 
 use herald_compose::{Host, KvAt, Reaching, SqlAt};
+use jiff::SignedDuration;
 use send_wrapper::SendWrapper;
 use wasm_bindgen::{JsCast as _, JsValue};
 
@@ -8,6 +9,7 @@ use super::bindings::HostObject;
 use super::crypto::{WebSigner, WebVerifier};
 use super::ports::{JsClock, JsHttp, JsKv, JsSecrets, JsSql};
 use super::{entries, object, settled};
+use crate::numbers::millis;
 
 /// A JavaScript host, as herald composes over it.
 pub(crate) struct JsHost {
@@ -29,15 +31,29 @@ impl JsHost {
     }
 }
 
-fn sql_at(at: SqlAt<'_>) -> JsValue {
+/// `duration` in milliseconds, or undefined where no JavaScript number holds
+/// it exactly, which leaves the host's own default.
+fn waited(duration: SignedDuration) -> JsValue {
+    millis(duration).map_or(JsValue::UNDEFINED, JsValue::from)
+}
+
+pub(super) fn sql_at(at: SqlAt<'_>) -> JsValue {
     match at {
-        SqlAt::Sqlite(file) => object(&[
+        SqlAt::Sqlite { file, busy } => object(&[
             ("kind", "sqlite".into()),
             ("file", file.display().to_string().into()),
+            ("busy", waited(busy)),
         ]),
-        SqlAt::Postgres(url) => {
-            object(&[("kind", "postgres".into()), ("url", url.expose().into())])
-        }
+        SqlAt::Postgres {
+            url,
+            connect,
+            statement,
+        } => object(&[
+            ("kind", "postgres".into()),
+            ("url", url.expose().into()),
+            ("connect", waited(connect)),
+            ("statement", waited(statement)),
+        ]),
         SqlAt::D1(binding) => object(&[("kind", "d1".into()), ("binding", binding.into())]),
         SqlAt::DurableObject {
             binding,

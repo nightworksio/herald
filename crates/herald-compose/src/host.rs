@@ -5,6 +5,7 @@ use herald_ports::{
     Changed, Clock, Http, Kv, KvError, Pair, Secret, Secrets, Signer, Sql, SqlError, Stamped,
     Statement, Verifier, Versionstamp,
 };
+use jiff::SignedDuration;
 
 /// What a platform gives herald: its ports, its variables, and the
 /// databases it offers.
@@ -71,9 +72,21 @@ pub trait Host: Sync {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SqlAt<'a> {
     /// A SQLite file.
-    Sqlite(&'a Path),
+    Sqlite {
+        /// The file.
+        file: &'a Path,
+        /// How long a transaction waits for another process to let go of it.
+        busy: SignedDuration,
+    },
     /// A Postgres database, by its connection URL.
-    Postgres(&'a Secret),
+    Postgres {
+        /// The connection URL.
+        url: &'a Secret,
+        /// How long making a connection may take.
+        connect: SignedDuration,
+        /// How long one statement may run before the database cancels it.
+        statement: SignedDuration,
+    },
     /// A Cloudflare D1 database, by the Worker's binding to it.
     D1(&'a str),
     /// The storage of a Durable Object.

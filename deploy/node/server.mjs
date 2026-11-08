@@ -12,8 +12,8 @@ export function host(env = process.env, directory = process.cwd()) {
     secret: (name) => env[name],
     fetch: guarded(Number(env.HERALD_TIMEOUT_MS ?? TIMEOUT)),
     async sql(at) {
-      if (at.kind === "sqlite") return sqlite(join(directory, at.file));
-      if (at.kind === "postgres") return postgres(at.url);
+      if (at.kind === "sqlite") return sqlite(join(directory, at.file), at.busy);
+      if (at.kind === "postgres") return postgres(at);
       throw new Error(`Node offers no ${at.kind} database`);
     },
     async kv(at) {

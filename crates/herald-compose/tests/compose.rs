@@ -236,8 +236,8 @@ mod compose {
         assert_eq!(
             host.asked(),
             [
-                "Sqlite(\"herald.sqlite\")",
-                "Postgres(«secret:DATABASE_URL»)",
+                "Sqlite { file: \"herald.sqlite\", busy: 5s }",
+                "Postgres { url: «secret:DATABASE_URL», connect: 10s, statement: 30s }",
                 "D1(\"DB\")",
                 "DurableObject { binding: \"HERALD\", object: \"herald\" }",
                 "DenoKv(Some(\"/data/kv\"))",
