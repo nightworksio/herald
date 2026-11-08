@@ -6,8 +6,8 @@ use herald_core::{
     State, Subscription,
 };
 use herald_ports::{
-    Admitted, Announcements, Cursors, Deliveries, Inboxes, Keyring, KnownKey, Ledger, Notes, Pins,
-    Schedules, Store, StoreError, Subscriptions, Version, Versioned, Written,
+    Admitted, Announcements, Cursors, Deliveries, Held, Inboxes, Keeper, Keyring, KnownKey, Ledger,
+    Notes, Pins, Schedules, StoreError, Subscriptions, Version, Versioned, Written,
 };
 use jiff::Timestamp;
 use serde::de::DeserializeOwned;
@@ -116,11 +116,6 @@ impl<R: Records> Kept<R> {
     pub fn keeping(mut self, keeps: impl Fn(RecordKind) -> bool) -> Self {
         self.keeps.retain(|kind| keeps(*kind));
         self
-    }
-
-    /// The store itself where it keeps records of `kind`.
-    fn held(&self, kind: RecordKind) -> Option<&Self> {
-        self.keeps.contains(&kind).then_some(self)
     }
 
     /// The record at `path` as a listing reads it: one that cannot be read
@@ -413,51 +408,15 @@ impl<R: Records> Announcements for Kept<R> {
     }
 }
 
-impl<R: Records> Store for Kept<R> {
-    type Ledger = Self;
-    type Cursors = Self;
-    type Schedules = Self;
-    type Subscriptions = Self;
-    type Pins = Self;
-    type Deliveries = Self;
-    type Notes = Self;
-    type Announcements = Self;
-    type Inboxes = Self;
-
-    fn ledger(&self) -> Option<&Self> {
-        Some(self)
-    }
-
-    fn cursors(&self) -> Option<&Self> {
-        Some(self)
-    }
-
-    fn schedules(&self) -> Option<&Self> {
-        Some(self)
-    }
-
-    fn subscriptions(&self) -> Option<&Self> {
-        self.held(RecordKind::Subscriptions)
-    }
-
-    fn pins(&self) -> Option<&Self> {
-        self.held(RecordKind::Pins)
-    }
-
-    fn deliveries(&self) -> Option<&Self> {
-        Some(self)
-    }
-
-    fn notes(&self) -> Option<&Self> {
-        self.held(RecordKind::Notes)
-    }
-
-    fn announcements(&self) -> Option<&Self> {
-        self.held(RecordKind::Latest)
-    }
-
-    fn inboxes(&self) -> Option<&Self> {
-        self.held(RecordKind::Subscriptions)
+impl<R: Records> Keeper for Kept<R> {
+    fn holds(&self, kind: Held) -> bool {
+        match kind {
+            Held::Ledger | Held::Cursors | Held::Schedules | Held::Deliveries => true,
+            Held::Subscriptions | Held::Inboxes => self.keeps.contains(&RecordKind::Subscriptions),
+            Held::Pins => self.keeps.contains(&RecordKind::Pins),
+            Held::Notes => self.keeps.contains(&RecordKind::Notes),
+            Held::Latest => self.keeps.contains(&RecordKind::Latest),
+        }
     }
 
     fn skipped(&self) -> Vec<String> {

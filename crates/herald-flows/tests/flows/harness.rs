@@ -8,8 +8,9 @@ use herald_core::{
 };
 use herald_flows::{Announced, Outcome, Ports, announce, prepare};
 use herald_ports::{
-    Announcements, Cursors, Deliveries, Http, HttpError, Inboxes, Ledger, Notes, Pins, Request,
-    Response, Schedules, Store, StoreError, Subscriptions, Version, Versioned, Written,
+    Announcements, Cursors, Deliveries, Held, Http, HttpError, Inboxes, Keeper, Ledger, Notes,
+    Pins, Request, Response, Schedules, Store, StoreError, Subscriptions, Version, Versioned,
+    Written,
 };
 use herald_testing::{FakeClock, FakeSecrets, FakeSigner, FakeStore};
 use jiff::Timestamp;
@@ -449,51 +450,13 @@ impl Announcements for Failing {
     }
 }
 
-impl Store for Failing {
-    type Ledger = Self;
-    type Cursors = Self;
-    type Schedules = Self;
-    type Subscriptions = Self;
-    type Pins = Self;
-    type Deliveries = Self;
-    type Notes = Self;
-    type Announcements = Self;
-    type Inboxes = Self;
-
-    fn ledger(&self) -> Option<&Self> {
-        Some(self)
-    }
-
-    fn cursors(&self) -> Option<&Self> {
-        Some(self)
-    }
-
-    fn schedules(&self) -> Option<&Self> {
-        Some(self)
-    }
-
-    fn subscriptions(&self) -> Option<&Self> {
-        Some(self)
-    }
-
-    fn pins(&self) -> Option<&Self> {
-        Some(self)
-    }
-
-    fn deliveries(&self) -> Option<&Self> {
-        (self.fault != Fault::KeepsNoDeliveries).then_some(self)
-    }
-
-    fn notes(&self) -> Option<&Self> {
-        Some(self)
-    }
-
-    fn announcements(&self) -> Option<&Self> {
-        (self.fault != Fault::KeepsNoLatest).then_some(self)
-    }
-
-    fn inboxes(&self) -> Option<&Self> {
-        Some(self)
+impl Keeper for Failing {
+    fn holds(&self, kind: Held) -> bool {
+        match kind {
+            Held::Deliveries => self.fault != Fault::KeepsNoDeliveries,
+            Held::Latest => self.fault != Fault::KeepsNoLatest,
+            _ => true,
+        }
     }
 
     fn skipped(&self) -> Vec<String> {

@@ -2,7 +2,7 @@ use herald_core::{Refusal, Scheme};
 use herald_flows::{
     Admission, Keys, Rejected, Verified, activity_verified, admitted, released, verified,
 };
-use herald_ports::{Keyring, KnownKey, Store, StoreError};
+use herald_ports::{Held, Keeper, Keyring, KnownKey, StoreError};
 use herald_records::MemoryKeyring;
 use herald_testing::{FakeStore, FakeVerifier};
 use jiff::Timestamp;
@@ -381,51 +381,9 @@ impl herald_ports::Announcements for Refusing {
     }
 }
 
-impl Store for Refusing {
-    type Ledger = Self;
-    type Cursors = Self;
-    type Schedules = Self;
-    type Subscriptions = Self;
-    type Pins = Self;
-    type Deliveries = Self;
-    type Notes = Self;
-    type Announcements = Self;
-    type Inboxes = Self;
-
-    fn ledger(&self) -> Option<&Self> {
-        Some(self)
-    }
-
-    fn cursors(&self) -> Option<&Self> {
-        Some(self)
-    }
-
-    fn schedules(&self) -> Option<&Self> {
-        Some(self)
-    }
-
-    fn subscriptions(&self) -> Option<&Self> {
-        Some(self)
-    }
-
-    fn pins(&self) -> Option<&Self> {
-        Some(self)
-    }
-
-    fn deliveries(&self) -> Option<&Self> {
-        Some(self)
-    }
-
-    fn notes(&self) -> Option<&Self> {
-        Some(self)
-    }
-
-    fn announcements(&self) -> Option<&Self> {
-        Some(self)
-    }
-
-    fn inboxes(&self) -> Option<&Self> {
-        Some(self)
+impl Keeper for Refusing {
+    fn holds(&self, _: Held) -> bool {
+        true
     }
 
     fn skipped(&self) -> Vec<String> {

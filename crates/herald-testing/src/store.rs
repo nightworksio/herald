@@ -6,15 +6,15 @@ use herald_core::{
     Subscription,
 };
 use herald_ports::{
-    Admitted, Announcements, Cursors, Deliveries, Inboxes, Ledger, Notes, Pins, Schedules, Store,
-    StoreError, Subscriptions, Version, Versioned, Written,
+    Admitted, Announcements, Cursors, Deliveries, Held, Inboxes, Keeper, Ledger, Notes, Pins,
+    Schedules, StoreError, Subscriptions, Version, Versioned, Written,
 };
 use jiff::Timestamp;
 
 use crate::lock;
 
 #[derive(Debug, Default)]
-struct Held {
+struct Records {
     entries: BTreeMap<Key, Versioned<Entry>>,
     cursors: BTreeMap<SourceName, Versioned<Cursor>>,
     schedules: Vec<Schedule>,
@@ -29,7 +29,7 @@ struct Held {
 /// A store in memory, keeping everything a store can keep.
 #[derive(Debug, Default)]
 pub struct FakeStore {
-    state: Mutex<Held>,
+    state: Mutex<Records>,
 }
 
 fn compare_and_set<K: Ord, T: Clone>(
@@ -231,51 +231,9 @@ impl Announcements for FakeStore {
     }
 }
 
-impl Store for FakeStore {
-    type Ledger = Self;
-    type Cursors = Self;
-    type Schedules = Self;
-    type Subscriptions = Self;
-    type Pins = Self;
-    type Deliveries = Self;
-    type Notes = Self;
-    type Announcements = Self;
-    type Inboxes = Self;
-
-    fn ledger(&self) -> Option<&Self> {
-        Some(self)
-    }
-
-    fn cursors(&self) -> Option<&Self> {
-        Some(self)
-    }
-
-    fn schedules(&self) -> Option<&Self> {
-        Some(self)
-    }
-
-    fn subscriptions(&self) -> Option<&Self> {
-        Some(self)
-    }
-
-    fn pins(&self) -> Option<&Self> {
-        Some(self)
-    }
-
-    fn deliveries(&self) -> Option<&Self> {
-        Some(self)
-    }
-
-    fn notes(&self) -> Option<&Self> {
-        Some(self)
-    }
-
-    fn announcements(&self) -> Option<&Self> {
-        Some(self)
-    }
-
-    fn inboxes(&self) -> Option<&Self> {
-        Some(self)
+impl Keeper for FakeStore {
+    fn holds(&self, _: Held) -> bool {
+        true
     }
 
     fn skipped(&self) -> Vec<String> {
@@ -286,6 +244,7 @@ impl Store for FakeStore {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use herald_ports::Store;
 
     #[test]
     fn the_store_answers_every_kind_itself() {

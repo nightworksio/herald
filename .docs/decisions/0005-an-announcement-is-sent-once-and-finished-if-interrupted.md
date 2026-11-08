@@ -131,8 +131,10 @@ all still has the destination, and the destination holds the posts.
      schedules, subscriptions, pins, admitted deliveries, Notes, what each
      project last announced, and deliveries to followers' inboxes), and one
      accessor per kind that answers `None` where the store keeps none. A
-     store names `Unkept` for a kind it never keeps, and implements nothing
-     for it. The suite runs the cases of every kind a store answers.
+     store holding its records itself is a `Keeper`, which says which kinds
+     it holds. A store names `Unkept` for a kind it never keeps, and
+     implements nothing for it. The suite runs the cases of every kind a
+     store answers.
    - **What passing means.** Every store passes every case for every kind
      it answers, and the fake store passes all of them.
    - **Where it runs.** In CI the suite runs against each store's real

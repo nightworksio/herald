@@ -1,7 +1,7 @@
 use herald_core::State;
 use herald_ports::{
-    Admitted, Announcements, Cursors, Deliveries, Inboxes, Keeping, Keyring, KnownKey, Ledger,
-    Notes, Pins, Schedules, Subscriptions, Versioned,
+    Admitted, Announcements, Cursors, Deliveries, Held, Inboxes, Keeper, Keeping, Keyring,
+    KnownKey, Ledger, Notes, Pins, Schedules, Subscriptions, Versioned,
 };
 use jiff::Timestamp;
 
@@ -63,10 +63,6 @@ impl Faulty {
             Fault::Broken => Err(broken()),
             _ => Ok(()),
         }
-    }
-
-    fn keeps(&self) -> Option<&Self> {
-        (self.fault != Fault::KeepsNothing).then_some(self)
     }
 }
 
@@ -335,58 +331,16 @@ impl Announcements for Faulty {
     }
 }
 
-impl Store for Faulty {
-    type Ledger = Self;
-    type Cursors = Self;
-    type Schedules = Self;
-    type Subscriptions = Self;
-    type Pins = Self;
-    type Deliveries = Self;
-    type Notes = Self;
-    type Announcements = Self;
-    type Inboxes = Self;
-
-    fn ledger(&self) -> Option<&Self> {
-        self.keeps()
-    }
-
-    fn cursors(&self) -> Option<&Self> {
-        self.keeps()
-    }
-
-    fn schedules(&self) -> Option<&Self> {
-        self.keeps()
-    }
-
-    fn subscriptions(&self) -> Option<&Self> {
-        self.keeps()
-    }
-
-    fn pins(&self) -> Option<&Self> {
-        self.keeps()
-    }
-
-    fn deliveries(&self) -> Option<&Self> {
-        self.keeps()
-    }
-
-    fn notes(&self) -> Option<&Self> {
-        self.keeps()
-    }
-
-    fn announcements(&self) -> Option<&Self> {
-        self.keeps()
-    }
-
-    fn inboxes(&self) -> Option<&Self> {
-        self.keeps()
+impl Keeper for Faulty {
+    fn holds(&self, _: Held) -> bool {
+        self.fault != Fault::KeepsNothing
     }
 
     fn skipped(&self) -> Vec<String> {
         if self.fault == Fault::SkipsWhatItNeverHeld {
             vec!["corrupt.json".to_owned()]
         } else {
-            self.inner.skipped()
+            Keeper::skipped(&self.inner)
         }
     }
 }
