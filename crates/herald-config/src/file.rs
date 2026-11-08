@@ -298,6 +298,9 @@ pub(crate) struct KeysFile {
     /// How long a key is used before its document is read again; 1h where
     /// absent.
     pub(crate) refresh_after: Option<Duration>,
+    /// How long after a key is read an activity that does not hold under it
+    /// is refused rather than having it read again; 1m where absent.
+    pub(crate) reread_after: Option<Duration>,
     /// The most kept in memory, the one used longest ago forgotten first;
     /// 1024 where absent.
     pub(crate) most: Option<NonZeroUsize>,

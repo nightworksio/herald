@@ -64,6 +64,7 @@ impl<F: Future<Output = ()>> Listening<'_, F> {
         let keys = Keys {
             keyring,
             refreshed: server.keys_refreshed,
+            reread: server.keys_reread,
         };
         let serving = Serving {
             config: self.config,

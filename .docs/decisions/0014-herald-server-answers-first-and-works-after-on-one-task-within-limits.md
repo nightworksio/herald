@@ -75,7 +75,9 @@ does. Nothing herald keeps today holds its content.
      owner and when it was read. A key read within `[server.keys]
      refresh_after` (1 hour) checks the next activity signed with it without
      reading its document again. An activity that does not hold under a kept
-     key has the key read again, as one rotated since.
+     key has the key read again, as one rotated since, once `[server.keys]
+     reread_after` (1 minute) has passed since it was read; within it the
+     activity is refused, so forgeries naming a kept key read nothing.
    - `cache = "memory"`, the default, keeps at most `most` (1024) keys and
      forgets the one used longest ago. `cache = "store"` keeps them in the
      store, across restarts and shared by every instance, and every store

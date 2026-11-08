@@ -137,6 +137,7 @@ body = "{{ event.body }}"
             let keys = Keys {
                 keyring: &self.keyring,
                 refreshed: jiff::SignedDuration::from_hours(1),
+                reread: jiff::SignedDuration::from_mins(1),
             };
             let serving = Serving {
                 config: &self.config,

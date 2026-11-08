@@ -118,6 +118,7 @@ impl World {
         let keys = Keys {
             keyring: &self.keyring,
             refreshed: jiff::SignedDuration::from_hours(1),
+            reread: jiff::SignedDuration::from_mins(1),
         };
         act(&Serving {
             config: &self.config,
@@ -279,6 +280,7 @@ fn an_actor_whose_key_cannot_be_read_is_not_served() {
     let keys = Keys {
         keyring: &world.keyring,
         refreshed: jiff::SignedDuration::from_hours(1),
+        reread: jiff::SignedDuration::from_mins(1),
     };
     let serving = Serving {
         config: &world.config,

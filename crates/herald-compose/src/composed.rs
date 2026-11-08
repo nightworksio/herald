@@ -227,6 +227,7 @@ impl<H: Host, W: Keyed<H>> Through<'_, H, W> {
         let keys = Keys {
             keyring,
             refreshed: composed.config.server.keys_refreshed,
+            reread: composed.config.server.keys_reread,
         };
         let serving = Serving {
             config: &composed.config,

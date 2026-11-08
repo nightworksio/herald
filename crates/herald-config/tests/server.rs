@@ -58,13 +58,14 @@ body = "{{ event.body }}"
         assert_eq!(config.server.keys, KeyCache::Memory);
         assert!(!config.server.keys_in_store());
         assert_eq!(config.server.keys_refreshed.as_secs(), 3_600);
+        assert_eq!(config.server.keys_reread.as_secs(), 60);
         assert_eq!(config.server.silence.as_secs(), 30);
     }
 
     #[test]
     fn the_server_table_sets_every_limit() {
         let text = format!(
-            "{EXAMPLE}\n[server]\nlisten = \"0.0.0.0:9000\"\njobs = 2\nconnections = 3\nbody = \"64KiB\"\nfetches = 5\ncompletions = 9\ndeliveries = 6\nsilence = \"45s\"\n\n[server.keys]\ncache = \"store\"\nrefresh_after = \"30m\"\nmost = 7\n"
+            "{EXAMPLE}\n[server]\nlisten = \"0.0.0.0:9000\"\njobs = 2\nconnections = 3\nbody = \"64KiB\"\nfetches = 5\ncompletions = 9\ndeliveries = 6\nsilence = \"45s\"\n\n[server.keys]\ncache = \"store\"\nrefresh_after = \"30m\"\nreread_after = \"5m\"\nmost = 7\n"
         );
         let config = load("herald.toml", &text, &nothing).unwrap();
         assert_eq!(
@@ -80,6 +81,7 @@ body = "{{ event.body }}"
                 silence: jiff::SignedDuration::from_secs(45),
                 keys: KeyCache::Store,
                 keys_refreshed: jiff::SignedDuration::from_mins(30),
+                keys_reread: jiff::SignedDuration::from_mins(5),
                 keys_most: 7,
             }
         );

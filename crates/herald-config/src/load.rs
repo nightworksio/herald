@@ -643,6 +643,10 @@ impl Loader<'_> {
                 .keys
                 .refresh_after
                 .map_or(defaults.keys_refreshed, |after| after.0),
+            keys_reread: file
+                .keys
+                .reread_after
+                .map_or(defaults.keys_reread, |after| after.0),
             keys_most: count(file.keys.most, defaults.keys_most),
         }
     }

@@ -28,6 +28,7 @@ server:
     cache: null
     most: null
     refresh_after: null
+    reread_after: null
 
 schedule:
   poll: null

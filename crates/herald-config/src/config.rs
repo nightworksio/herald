@@ -414,6 +414,9 @@ pub struct Server {
     pub keys: KeyCache,
     /// How long a key is used before its document is read again.
     pub keys_refreshed: SignedDuration,
+    /// How long after a key is read an activity that does not hold under it
+    /// is refused rather than having it read again.
+    pub keys_reread: SignedDuration,
     /// The most keys kept in memory.
     pub keys_most: usize,
 }
@@ -441,6 +444,9 @@ impl Server {
     /// How long a key is used before it is read again where the config says
     /// nothing.
     pub const KEYS_REFRESHED: SignedDuration = SignedDuration::from_hours(1);
+    /// How long after a key is read an activity that does not hold under it
+    /// is refused, where the config says nothing.
+    pub const KEYS_REREAD: SignedDuration = SignedDuration::from_mins(1);
     /// The most keys kept in memory where the config says nothing.
     pub const KEYS_MOST: usize = 1024;
     /// How long a session hears nothing before it checks its connection
@@ -475,6 +481,7 @@ impl Default for Server {
             silence: Self::SILENCE,
             keys: KeyCache::Memory,
             keys_refreshed: Self::KEYS_REFRESHED,
+            keys_reread: Self::KEYS_REREAD,
             keys_most: Self::KEYS_MOST,
         }
     }
