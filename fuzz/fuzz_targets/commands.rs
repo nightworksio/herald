@@ -6,7 +6,7 @@
 
 use herald_core::{Asked, DestinationName};
 use herald_dest_discord::{
-    Effect, Gateway, Interacting as Discord, Interactions as DiscordInteractions,
+    Effect, Gateway, Interacting as Discord, Interactions as DiscordInteractions, SESSION_DOMAIN,
 };
 use herald_dest_matrix::{Interacting as Matrix, Interactions as MatrixInteractions};
 use herald_dest_slack::{Interacting as Slack, Interactions as SlackInteractions, Received};
@@ -41,7 +41,7 @@ fuzz_target!(|bytes: &[u8]| {
             {
                 placed(&asked);
             }
-            let mut gateway = Gateway::new(Secret::new("T", "token"));
+            let mut gateway = Gateway::new(Secret::new("T", "token"), &[SESSION_DOMAIN]);
             for frame in String::from_utf8_lossy(body).split('\n') {
                 for effect in gateway.received(&discord, &destination, frame) {
                     if let Effect::Received(received) = effect
