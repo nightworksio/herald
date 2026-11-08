@@ -3,7 +3,7 @@ use std::fmt::Write;
 
 use herald_core::{Cursor, Draft, Event, Kind, Polled, digest};
 use herald_ports::{Method, Request, Response, Text, USER_AGENT};
-use herald_wire::{NOT_MODIFIED, PAGE, SourceError, answered, host};
+use herald_wire::{NOT_MODIFIED, SourceError, answered, host};
 use jiff::Timestamp;
 use jiff::civil::DateTime;
 use jiff::tz::TimeZone;
@@ -14,8 +14,6 @@ use crate::entity::{decoded, resolved};
 use crate::html::{markdown, plain};
 use crate::options::FeedOptions;
 
-/// The most bytes a feed may hold.
-const LIMIT: usize = herald_wire::PARSE_LIMIT;
 /// What a feed is called in an error.
 const WHAT: &str = "the feed";
 /// What herald asks a feed's server for.
@@ -26,6 +24,7 @@ const ACCEPT: &str =
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Feed {
     url: String,
+    reading: herald_wire::Reading,
 }
 
 /// Which format a feed is in.
@@ -361,7 +360,14 @@ impl Feed {
     pub fn new(options: &FeedOptions) -> Self {
         Self {
             url: options.url.trim().to_owned(),
+            reading: options.reading(),
         }
+    }
+
+    /// How a poll of it reads.
+    #[must_use]
+    pub const fn reading(&self) -> herald_wire::Reading {
+        self.reading
     }
 
     /// The base URL of everything it asks: the feed's own.
@@ -375,7 +381,7 @@ impl Feed {
     #[must_use]
     pub fn request(&self, cursor: Option<&Cursor>) -> Request {
         let mut request = Request::new(Method::Get, Text::plain(self.url.clone()))
-            .at_most(LIMIT)
+            .at_most(self.reading.parse)
             .header("Accept", Text::plain(ACCEPT))
             .header("User-Agent", Text::plain(USER_AGENT));
         if let Some(etag) = cursor.and_then(|cursor| cursor.etag.as_deref()) {
@@ -404,10 +410,10 @@ impl Feed {
     /// no event.
     pub fn entries(&self, response: &Response) -> Result<Polled, SourceError> {
         answered(WHAT, response)?;
-        if response.body.len() > LIMIT {
+        if response.body.len() > self.reading.parse {
             return Err(SourceError::TooLarge {
                 what: WHAT,
-                limit: LIMIT,
+                limit: self.reading.parse,
             });
         }
         let (feed_title, entries) = read(&response.body)?;
@@ -422,7 +428,7 @@ impl Feed {
             .filter_map(|entry| self.event(&project, entry, answered_at).transpose())
             .collect::<Result<Vec<Event>, SourceError>>()?;
         events.sort_by_key(|event| std::cmp::Reverse(event.occurred()));
-        events.truncate(PAGE);
+        events.truncate(self.reading.page);
         Ok(Polled {
             events,
             etag: response.header("etag").map(ToOwned::to_owned),

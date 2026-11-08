@@ -1,70 +1,9 @@
-use std::fmt;
 use std::num::{NonZeroU64, NonZeroUsize};
 
-use herald_core::{Duration, Kind, Pinning, Prereleases, SecretRef};
+use herald_core::{Duration, Kind, Pinning, Prereleases, SecretRef, Size};
 use schemars::JsonSchema;
 use serde::{Deserialize, Deserializer};
 use toml::Spanned;
-
-/// A number of bytes, as `512KiB` or `1MiB`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct Size(pub(crate) usize);
-
-impl JsonSchema for Size {
-    fn schema_name() -> std::borrow::Cow<'static, str> {
-        "Size".into()
-    }
-
-    fn json_schema(_: &mut schemars::SchemaGenerator) -> schemars::Schema {
-        schemars::json_schema!({
-            "description": "A number of bytes: a number and KiB or MiB, as \"1MiB\".",
-            "type": "string",
-            "pattern": "^[0-9]+(KiB|MiB)$"
-        })
-    }
-}
-
-pub(crate) const KIB: usize = 1 << 10;
-pub(crate) const MIB: usize = 1 << 20;
-
-impl Size {
-    fn parse(text: &str) -> Option<Self> {
-        let (number, unit) = if let Some(number) = text.strip_suffix("KiB") {
-            (number, KIB)
-        } else {
-            (text.strip_suffix("MiB")?, MIB)
-        };
-        if !number.bytes().all(|byte| byte.is_ascii_digit()) {
-            return None;
-        }
-        number
-            .parse::<usize>()
-            .ok()?
-            .checked_mul(unit)
-            .filter(|bytes| *bytes > 0)
-            .map(Self)
-    }
-}
-
-struct SizeVisitor;
-
-impl serde::de::Visitor<'_> for SizeVisitor {
-    type Value = Size;
-
-    fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str("a number of bytes such as \"512KiB\" or \"1MiB\"")
-    }
-
-    fn visit_str<E: serde::de::Error>(self, text: &str) -> Result<Size, E> {
-        Size::parse(text).ok_or_else(|| E::invalid_value(serde::de::Unexpected::Str(text), &self))
-    }
-}
-
-impl<'de> Deserialize<'de> for Size {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        deserializer.deserialize_str(SizeVisitor)
-    }
-}
 
 /// A section that takes no options beside its kind.
 #[derive(Debug, Deserialize)]
@@ -483,29 +422,4 @@ pub(crate) struct RenderFile {
     /// The most it may write; "256KiB" where absent, and at most "1MiB".
     #[schemars(with = "Option<Size>")]
     pub(crate) output: Option<Spanned<Size>>,
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn a_size_is_a_number_and_a_binary_unit() {
-        assert_eq!(Size::parse("512KiB"), Some(Size(512 * 1024)));
-        assert_eq!(Size::parse("1MiB"), Some(Size(1024 * 1024)));
-        for text in [
-            "",
-            "1",
-            "1KB",
-            "1kib",
-            "0MiB",
-            "+1MiB",
-            "-1MiB",
-            "1.5MiB",
-            "MiB",
-            "99999999999999999999MiB",
-        ] {
-            assert_eq!(Size::parse(text), None, "{text}");
-        }
-    }
 }

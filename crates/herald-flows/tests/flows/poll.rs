@@ -330,6 +330,7 @@ fn a_feed_is_polled_with_one_request_and_its_entries_announced() {
         Source::Feed(FeedOptions {
             url: "https://blog.example/feed.xml".to_owned(),
             backfill: 1,
+            ..FeedOptions::default()
         }),
     );
     let feed = "<feed xmlns=\"http://www.w3.org/2005/Atom\"><title>Blog</title>\
@@ -350,4 +351,33 @@ fn a_feed_is_polled_with_one_request_and_its_entries_announced() {
     assert_eq!(announced[0].event.title(), "Second");
     let unchanged = Script::answering(&[(FEED, 304, "")]);
     assert_eq!(swept(&config, &store, &unchanged), Sweep::Unchanged);
+}
+
+#[test]
+fn a_poll_reads_as_many_as_the_source_s_page_and_remembers_as_many_as_it_says() {
+    let store = healthy();
+    let mut config = config("");
+    if let Some(Source::Forge(_, options)) = config.sources.values_mut().next() {
+        options.page = std::num::NonZeroUsize::new(2);
+        options.remembered = std::num::NonZeroUsize::new(2);
+    }
+    let three = releases(&["v3", "v2", "v1"]);
+    let paged = "/repos/nightworksio/php-mutation-gate/releases?per_page=2";
+    let first = Script::answering(&[(paged, 200, &three), REPOSITORY]);
+    assert!(matches!(
+        swept(&config, &store, &first),
+        Sweep::Polled { found: 3, .. }
+    ));
+    assert_eq!(cursor(&store).unwrap().seen, seen(&["v3", "v2"]));
+    if let Some(Source::Forge(_, options)) = config.sources.values_mut().next() {
+        options.parse = Some(herald_core::Size(three.len() - 1));
+    }
+    let large = Script::answering(&[(paged, 200, &three), REPOSITORY]);
+    let Sweep::Stopped(Stop::Unreachable(reason)) = swept(&config, &healthy(), &large) else {
+        panic!("a releases answer past parse was read");
+    };
+    assert!(
+        reason.contains(&format!("larger than {} bytes", three.len() - 1)),
+        "{reason}"
+    );
 }

@@ -111,6 +111,15 @@ pub(crate) enum Asked {
 }
 
 impl Asked {
+    /// How a poll of it reads.
+    pub(crate) const fn reading(&self) -> herald_wire::Reading {
+        match self {
+            Self::Forge { origin, .. } => origin.reading(),
+            Self::Registry { package, .. } => package.reading(),
+            Self::Feed(feed) => feed.reading(),
+        }
+    }
+
     fn api(&self) -> &str {
         match self {
             Self::Forge { origin, .. } => origin.api(),

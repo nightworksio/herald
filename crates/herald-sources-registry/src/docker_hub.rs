@@ -1,4 +1,4 @@
-use herald_wire::{PAGE, SourceError, read, segment};
+use herald_wire::{SourceError, read, segment};
 use jiff::Timestamp;
 use serde::Deserialize;
 
@@ -38,10 +38,10 @@ pub(crate) fn project(name: &str) -> &str {
     }
 }
 
-pub(crate) fn path(name: &str) -> String {
+pub(crate) fn path(name: &str, page: usize) -> String {
     let (namespace, repository) = split(name);
     format!(
-        "/namespaces/{}/repositories/{}/tags?page_size={PAGE}&ordering=last_updated",
+        "/namespaces/{}/repositories/{}/tags?page_size={page}&ordering=last_updated",
         segment(namespace),
         segment(repository)
     )
@@ -55,8 +55,8 @@ pub(crate) fn page(name: &str, tag: &str) -> String {
 }
 
 /// Each tag with the time it was last pushed.
-pub(crate) fn found(api: &Api, body: &[u8]) -> Result<Vec<Found>, SourceError> {
-    let tags: Tags = read(api.versions, api.limit, body)?;
+pub(crate) fn found(api: &Api, limit: usize, body: &[u8]) -> Result<Vec<Found>, SourceError> {
+    let tags: Tags = read(api.versions, limit, body)?;
     Ok(tags
         .results
         .into_iter()

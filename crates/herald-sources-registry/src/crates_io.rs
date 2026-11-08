@@ -1,4 +1,4 @@
-use herald_wire::{PAGE, SourceError, read, segment};
+use herald_wire::{SourceError, read, segment};
 use jiff::Timestamp;
 use serde::Deserialize;
 
@@ -22,9 +22,9 @@ struct Version {
     yanked: bool,
 }
 
-pub(crate) fn path(name: &str) -> String {
+pub(crate) fn path(name: &str, page: usize) -> String {
     format!(
-        "/crates/{}/versions?per_page={PAGE}&sort=date",
+        "/crates/{}/versions?per_page={page}&sort=date",
         segment(name)
     )
 }
@@ -34,8 +34,8 @@ pub(crate) fn page(name: &str, version: &str) -> String {
 }
 
 /// Each version of the crate that is not yanked.
-pub(crate) fn found(api: &Api, body: &[u8]) -> Result<Vec<Found>, SourceError> {
-    let versions: Versions = read(api.versions, api.limit, body)?;
+pub(crate) fn found(api: &Api, limit: usize, body: &[u8]) -> Result<Vec<Found>, SourceError> {
+    let versions: Versions = read(api.versions, limit, body)?;
     Ok(versions
         .versions
         .into_iter()

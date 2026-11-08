@@ -93,7 +93,11 @@ pub(crate) fn found(what: &'static str, body: &[u8]) -> Result<Found, SourceErro
     read::<Release>(what, body).map(Found::from)
 }
 
-pub(crate) fn all_found(what: &'static str, body: &[u8]) -> Result<Vec<Found>, SourceError> {
-    let releases: Vec<Release> = read(what, body)?;
+pub(crate) fn all_found(
+    what: &'static str,
+    limit: usize,
+    body: &[u8],
+) -> Result<Vec<Found>, SourceError> {
+    let releases: Vec<Release> = herald_wire::read(what, limit, body)?;
     Ok(releases.into_iter().map(Found::from).collect())
 }

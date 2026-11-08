@@ -1,4 +1,7 @@
-use herald_core::{SecretRef, path_of_names, web_url};
+use std::num::NonZeroUsize;
+
+use herald_core::{SecretRef, Size, path_of_names, web_url};
+use herald_wire::{PARSE_LIMIT, Reading};
 
 use crate::Forge;
 
@@ -25,6 +28,16 @@ pub struct SourceOptions {
     /// with: GitHub's and Forgejo's webhook secret, or GitLab's signing
     /// token (ADR-0007).
     pub webhook: Option<SecretRef>,
+    /// How many of the newest releases one poll reads; 30 where absent.
+    #[schemars(with = "Option<NonZeroUsize>")]
+    pub page: Option<NonZeroUsize>,
+    /// How many identities the cursor remembers, newest first; 500 where
+    /// absent, and at least `page`.
+    #[schemars(with = "Option<NonZeroUsize>")]
+    pub remembered: Option<NonZeroUsize>,
+    /// The most of an answer parsed; "4MiB" where absent, and at most four
+    /// times that.
+    pub parse: Option<Size>,
 }
 
 impl SourceOptions {
@@ -46,7 +59,13 @@ impl SourceOptions {
             Some(api) if !web_url(api) => Err(format!(
                 "\"{api}\" is not a web address; give the API's base URL, such as https://forge.example/api/v1"
             )),
-            _ => Ok(()),
+            _ => self.reading().check(PARSE_LIMIT),
         }
+    }
+
+    /// How a poll of the source reads.
+    #[must_use]
+    pub fn reading(&self) -> Reading {
+        Reading::of(self.page, self.remembered, self.parse, PARSE_LIMIT)
     }
 }

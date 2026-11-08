@@ -153,7 +153,7 @@ mod gitlab {
             }
         );
         let releases = Forge::GitLab
-            .releases(&cli(), &answer(200, RELEASES))
+            .releases(&cli(), &answer(200, RELEASES), herald_wire::PARSE_LIMIT)
             .unwrap();
         let found: Vec<&str> = releases
             .events
@@ -180,7 +180,11 @@ mod gitlab {
         let mut upcoming: Value = serde_json::from_str(RELEASES).unwrap();
         upcoming[0]["upcoming_release"] = json!(true);
         let releases = Forge::GitLab
-            .releases(&cli(), &answer(200, &upcoming.to_string()))
+            .releases(
+                &cli(),
+                &answer(200, &upcoming.to_string()),
+                herald_wire::PARSE_LIMIT,
+            )
             .unwrap();
         assert_eq!(releases.events.len(), 2);
         assert_eq!(
@@ -260,7 +264,7 @@ mod gitlab {
         fn any_bytes_are_an_event_nothing_or_an_error(bytes in proptest::collection::vec(any::<u8>(), 0..512)) {
             let _ = Forge::GitLab.event(&bytes);
             let response = Response { status: 200, headers: Vec::new(), body: bytes };
-            let _ = Forge::GitLab.releases(&cli(), &response);
+            let _ = Forge::GitLab.releases(&cli(), &response, herald_wire::PARSE_LIMIT);
             let _ = Forge::GitLab.release(&cli(), &response);
             let _ = Forge::GitLab.repository(&response);
         }

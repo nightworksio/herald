@@ -22,6 +22,7 @@ herald-sources-feed.workspace = true
 herald-sources-app.workspace = true
 herald-sources-forge.workspace = true
 herald-sources-registry.workspace = true
+herald-wire.workspace = true
 herald-store-markers.workspace = true
 jiff.workspace = true
 

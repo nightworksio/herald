@@ -228,6 +228,12 @@ claimed before another may finish it, and `latest_attempts` (3), how often a
 run writes what a project last announced again when another write lands
 first.
 
+Each source sets how a poll reads it: `page` (30), how many of the newest
+releases, versions or entries one poll reads; `remembered` (500, at least
+`page`), how many its cursor remembers; and `parse` ("4MiB", "16MiB" on
+Packagist and "32MiB" on npm, and at most four times that), the most of an
+answer it parses.
+
 Housekeeping also forgets what the store keeps past `[store]`'s
 `keep_deliveries` (each webhook delivery's id, "7d", and at least "3d"),
 `keep_ledger` (each ledger entry and its deliveries to followers' inboxes,

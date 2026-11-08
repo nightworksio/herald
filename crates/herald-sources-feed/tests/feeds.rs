@@ -16,7 +16,7 @@ mod feeds {
     fn feed(url: &str) -> Feed {
         Feed::new(&FeedOptions {
             url: url.to_owned(),
-            backfill: 0,
+            ..FeedOptions::default()
         })
     }
 
@@ -24,7 +24,7 @@ mod feeds {
     fn a_feed_is_given_by_its_web_address() {
         let options = |url: &str| FeedOptions {
             url: url.to_owned(),
-            backfill: 0,
+            ..FeedOptions::default()
         };
         assert_eq!(
             options("https://blog.rust-lang.org/feed.xml").check(),

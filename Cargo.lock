@@ -1069,6 +1069,7 @@ dependencies = [
  "herald-sources-registry",
  "herald-store-markers",
  "herald-testing",
+ "herald-wire",
  "jiff",
  "pollster",
  "serde_json",

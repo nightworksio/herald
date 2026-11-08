@@ -4,9 +4,9 @@ use serde::Deserialize;
 
 use crate::options::SourceOptions;
 use herald_wire::SourceError;
-use herald_wire::{NOT_MODIFIED, PAGE, answered, segment};
+use herald_wire::{NOT_MODIFIED, Reading, answered, segment};
 
-use crate::wire::{self, Found, event, read};
+use crate::wire::{Found, event, read};
 use crate::{forgejo, github, gitlab};
 
 /// A forge whose releases herald announces.
@@ -78,6 +78,7 @@ pub struct Origin {
     forge: Forge,
     api: String,
     repository: String,
+    reading: Reading,
 }
 
 impl Forge {
@@ -201,10 +202,15 @@ impl Forge {
         }
     }
 
-    fn all_found(self, what: &'static str, body: &[u8]) -> Result<Vec<Found>, SourceError> {
+    fn all_found(
+        self,
+        what: &'static str,
+        limit: usize,
+        body: &[u8],
+    ) -> Result<Vec<Found>, SourceError> {
         match self {
-            Self::GitHub | Self::Forgejo => github::all_found(what, body),
-            Self::GitLab => gitlab::all_found(what, body),
+            Self::GitHub | Self::Forgejo => github::all_found(what, limit, body),
+            Self::GitLab => gitlab::all_found(what, limit, body),
         }
     }
 
@@ -226,7 +232,7 @@ impl Forge {
     }
 
     /// The published releases of `repository` in the forge's answer to
-    /// [`Origin::releases_request`].
+    /// [`Origin::releases_request`], parsing no more than `limit` bytes.
     ///
     /// # Errors
     ///
@@ -235,11 +241,12 @@ impl Forge {
         self,
         repository: &Repository,
         response: &Response,
+        limit: usize,
     ) -> Result<Polled, SourceError> {
         let what = self.api().releases;
         answered(what, response)?;
         let events = self
-            .all_found(what, &response.body)?
+            .all_found(what, limit, &response.body)?
             .into_iter()
             .filter_map(|found| event(what, repository, found).transpose())
             .collect::<Result<Vec<Event>, SourceError>>()?;
@@ -267,7 +274,14 @@ impl Origin {
             forge,
             api: api.trim_end_matches('/').to_owned(),
             repository: options.repository.clone(),
+            reading: options.reading(),
         }
+    }
+
+    /// How a poll of it reads.
+    #[must_use]
+    pub const fn reading(&self) -> Reading {
+        self.reading
     }
 
     /// The forge.
@@ -287,8 +301,8 @@ impl Origin {
             Forge::GitHub | Forge::Forgejo => format!("{}/repos/{}", self.api, self.repository),
             Forge::GitLab => gitlab::project(&self.api, &self.repository),
         };
-        let request =
-            Request::new(Method::Get, Text::plain(format!("{base}{path}"))).at_most(wire::LIMIT);
+        let request = Request::new(Method::Get, Text::plain(format!("{base}{path}")))
+            .at_most(self.reading.parse);
         let request = match self.forge {
             Forge::GitHub => github::headed(request),
             Forge::GitLab | Forge::Forgejo => {
@@ -325,7 +339,7 @@ impl Origin {
     #[must_use]
     pub fn releases_request(&self, cursor: Option<&Cursor>, token: Option<&Token>) -> Request {
         let page = self.forge.api().page;
-        let mut request = self.get(&format!("/releases?{page}={PAGE}"), token);
+        let mut request = self.get(&format!("/releases?{page}={}", self.reading.page), token);
         if let Some(etag) = cursor.and_then(|cursor| cursor.etag.as_deref()) {
             request = request.header("If-None-Match", Text::plain(etag));
         }

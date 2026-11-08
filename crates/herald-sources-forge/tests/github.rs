@@ -185,7 +185,7 @@ mod github {
             etag,
             last_modified,
         } = Forge::GitHub
-            .releases(&neovim(), &answer(200, RELEASES))
+            .releases(&neovim(), &answer(200, RELEASES), herald_wire::PARSE_LIMIT)
             .unwrap();
         let found: Vec<(&str, bool)> = events
             .iter()
@@ -246,7 +246,7 @@ mod github {
         assert!(!Forge::unchanged(&answer(200, RELEASES)));
         assert_eq!(
             Forge::GitHub
-                .releases(&neovim(), &answer(403, "{}"))
+                .releases(&neovim(), &answer(403, "{}"), herald_wire::PARSE_LIMIT)
                 .unwrap_err()
                 .to_string(),
             "GitHub's releases was answered with 403"
@@ -264,13 +264,13 @@ mod github {
         let body = drafts.to_string();
         assert!(
             Forge::GitHub
-                .releases(&neovim(), &answer(200, &body))
+                .releases(&neovim(), &answer(200, &body), herald_wire::PARSE_LIMIT)
                 .is_err()
         );
         drafts[1]["draft"] = json!(true);
         let body = drafts.to_string();
         let releases = Forge::GitHub
-            .releases(&neovim(), &answer(200, &body))
+            .releases(&neovim(), &answer(200, &body), herald_wire::PARSE_LIMIT)
             .unwrap();
         assert_eq!(releases.events.len(), 1);
     }
@@ -327,7 +327,7 @@ mod github {
         #[test]
         fn any_bytes_are_an_event_nothing_or_an_error(bytes in proptest::collection::vec(any::<u8>(), 0..512)) {
             let _ = Forge::GitHub.event(&bytes);
-            let _ = Forge::GitHub.releases(&neovim(), &Response { status: 200, headers: Vec::new(), body: bytes.clone() });
+            let _ = Forge::GitHub.releases(&neovim(), &Response { status: 200, headers: Vec::new(), body: bytes.clone() }, herald_wire::PARSE_LIMIT);
             let _ = Forge::GitHub.repository(&Response { status: 200, headers: Vec::new(), body: bytes });
         }
 

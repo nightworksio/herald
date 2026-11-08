@@ -3,7 +3,7 @@ use std::num::NonZeroUsize;
 use std::ops::Range;
 
 use herald_core::{
-    DestinationName, Duration, Inbound, RecordKind, Retention, RouteId, Sandbox, SourceName,
+    DestinationName, Duration, Inbound, RecordKind, Retention, RouteId, Sandbox, Size, SourceName,
     TemplateName,
 };
 use herald_sources_forge::Forge;
@@ -19,7 +19,7 @@ use crate::config::{
 use crate::error::{ConfigError, Errors};
 use crate::file::{
     AnnounceFile, HttpFile, InboundFile, Keep, KeepFile, KeyCacheFile, MarkersFile, NoOptions,
-    RenderFile, ScheduleFile, ServerFile, SessionsFile, Size, TemplateFile,
+    RenderFile, ScheduleFile, ServerFile, SessionsFile, TemplateFile,
 };
 use crate::position::position;
 use herald_ports::{Outbound, Proxy, Roots};
@@ -743,7 +743,7 @@ impl Loader<'_> {
             defaults.body,
             Outbound::BODY_MOST,
             "http.body",
-            &size(Outbound::BODY_MOST),
+            &Size::written(Outbound::BODY_MOST),
         );
         Outbound {
             connect,
@@ -822,7 +822,7 @@ impl Loader<'_> {
                 defaults.body,
                 Server::BODY_MOST,
                 "server.body",
-                &size(Server::BODY_MOST),
+                &Size::written(Server::BODY_MOST),
             ),
             fetches: count(file.fetches, defaults.fetches),
             completions: count(file.completions, defaults.completions),
@@ -922,7 +922,7 @@ impl Loader<'_> {
                 defaults.document,
                 most.document,
                 "server.keys.document",
-                &size(most.document),
+                &Size::written(most.document),
             ),
         }
     }
@@ -1010,7 +1010,7 @@ impl Loader<'_> {
                 defaults.output,
                 most.output,
                 "render.output",
-                &size(most.output),
+                &Size::written(most.output),
             ),
         }
     }
@@ -1119,16 +1119,6 @@ pub fn load(
         file: file.to_owned(),
         errors,
     })
-}
-
-/// `bytes` as a config writes a size, in quotes.
-fn size(bytes: usize) -> String {
-    use crate::file::{KIB, MIB};
-    if bytes.is_multiple_of(MIB) {
-        format!("\"{}MiB\"", bytes / MIB)
-    } else {
-        format!("\"{}KiB\"", bytes / KIB)
-    }
 }
 
 /// `rest`, a store's options, apart from how long it keeps what herald

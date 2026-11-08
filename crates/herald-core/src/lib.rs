@@ -26,6 +26,7 @@ mod profile;
 mod render;
 mod retention;
 mod route;
+mod size;
 mod subscription;
 mod version;
 
@@ -67,5 +68,6 @@ pub use route::{
     Delivery, DestinationName, Filter, Mentions, Pinning, Prereleases, RoleId, Route, SecretRef,
     SourceName, TemplateName, Thread, route,
 };
+pub use size::Size;
 pub use subscription::Subscription;
 pub use version::prerelease_version;

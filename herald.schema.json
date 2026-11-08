@@ -1736,6 +1736,35 @@
               "type": "string",
               "const": "github"
             },
+            "page": {
+              "description": "How many of the newest releases one poll reads; 30 where absent.",
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "uint",
+              "minimum": 1
+            },
+            "parse": {
+              "description": "The most of an answer parsed; \"4MiB\" where absent, and at most four\ntimes that.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Size"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "remembered": {
+              "description": "How many identities the cursor remembers, newest first; 500 where\nabsent, and at least `page`.",
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "uint",
+              "minimum": 1
+            },
             "repository": {
               "description": "The repository, as `owner/name`, or a GitLab project's full path,\nsuch as `group/subgroup/name`.",
               "type": "string"
@@ -1791,6 +1820,35 @@
               "type": "string",
               "const": "gitlab"
             },
+            "page": {
+              "description": "How many of the newest releases one poll reads; 30 where absent.",
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "uint",
+              "minimum": 1
+            },
+            "parse": {
+              "description": "The most of an answer parsed; \"4MiB\" where absent, and at most four\ntimes that.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Size"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "remembered": {
+              "description": "How many identities the cursor remembers, newest first; 500 where\nabsent, and at least `page`.",
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "uint",
+              "minimum": 1
+            },
             "repository": {
               "description": "The repository, as `owner/name`, or a GitLab project's full path,\nsuch as `group/subgroup/name`.",
               "type": "string"
@@ -1845,6 +1903,35 @@
             "kind": {
               "type": "string",
               "const": "forgejo"
+            },
+            "page": {
+              "description": "How many of the newest releases one poll reads; 30 where absent.",
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "uint",
+              "minimum": 1
+            },
+            "parse": {
+              "description": "The most of an answer parsed; \"4MiB\" where absent, and at most four\ntimes that.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Size"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "remembered": {
+              "description": "How many identities the cursor remembers, newest first; 500 where\nabsent, and at least `page`.",
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "uint",
+              "minimum": 1
             },
             "repository": {
               "description": "The repository, as `owner/name`, or a GitLab project's full path,\nsuch as `group/subgroup/name`.",
@@ -1905,6 +1992,35 @@
               "description": "The package, as the registry names it: `vendor/name` on Packagist,\na crate's name, an npm package's name such as `@scope/name`, or a\nDocker Hub repository such as `library/caddy`, where an official\nimage may leave out `library/`.",
               "type": "string"
             },
+            "page": {
+              "description": "How many of the newest versions one poll reads; 30 where absent.",
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "uint",
+              "minimum": 1
+            },
+            "parse": {
+              "description": "The most of an answer parsed; \"4MiB\", \"16MiB\" on Packagist and \"32MiB\" on npm, where absent, and at most four\ntimes that.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Size"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "remembered": {
+              "description": "How many identities the cursor remembers, newest first; 500 where\nabsent, and at least `page`.",
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "uint",
+              "minimum": 1
+            },
             "token": {
               "description": "A token for a private npm package, sent as a bearer token; the other\nregistries take none.",
               "anyOf": [
@@ -1948,6 +2064,35 @@
             "package": {
               "description": "The package, as the registry names it: `vendor/name` on Packagist,\na crate's name, an npm package's name such as `@scope/name`, or a\nDocker Hub repository such as `library/caddy`, where an official\nimage may leave out `library/`.",
               "type": "string"
+            },
+            "page": {
+              "description": "How many of the newest versions one poll reads; 30 where absent.",
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "uint",
+              "minimum": 1
+            },
+            "parse": {
+              "description": "The most of an answer parsed; \"4MiB\", \"16MiB\" on Packagist and \"32MiB\" on npm, where absent, and at most four\ntimes that.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Size"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "remembered": {
+              "description": "How many identities the cursor remembers, newest first; 500 where\nabsent, and at least `page`.",
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "uint",
+              "minimum": 1
             },
             "token": {
               "description": "A token for a private npm package, sent as a bearer token; the other\nregistries take none.",
@@ -1993,6 +2138,35 @@
               "description": "The package, as the registry names it: `vendor/name` on Packagist,\na crate's name, an npm package's name such as `@scope/name`, or a\nDocker Hub repository such as `library/caddy`, where an official\nimage may leave out `library/`.",
               "type": "string"
             },
+            "page": {
+              "description": "How many of the newest versions one poll reads; 30 where absent.",
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "uint",
+              "minimum": 1
+            },
+            "parse": {
+              "description": "The most of an answer parsed; \"4MiB\", \"16MiB\" on Packagist and \"32MiB\" on npm, where absent, and at most four\ntimes that.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Size"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "remembered": {
+              "description": "How many identities the cursor remembers, newest first; 500 where\nabsent, and at least `page`.",
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "uint",
+              "minimum": 1
+            },
             "token": {
               "description": "A token for a private npm package, sent as a bearer token; the other\nregistries take none.",
               "anyOf": [
@@ -2037,6 +2211,35 @@
               "description": "The package, as the registry names it: `vendor/name` on Packagist,\na crate's name, an npm package's name such as `@scope/name`, or a\nDocker Hub repository such as `library/caddy`, where an official\nimage may leave out `library/`.",
               "type": "string"
             },
+            "page": {
+              "description": "How many of the newest versions one poll reads; 30 where absent.",
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "uint",
+              "minimum": 1
+            },
+            "parse": {
+              "description": "The most of an answer parsed; \"4MiB\", \"16MiB\" on Packagist and \"32MiB\" on npm, where absent, and at most four\ntimes that.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Size"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "remembered": {
+              "description": "How many identities the cursor remembers, newest first; 500 where\nabsent, and at least `page`.",
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "uint",
+              "minimum": 1
+            },
             "token": {
               "description": "A token for a private npm package, sent as a bearer token; the other\nregistries take none.",
               "anyOf": [
@@ -2069,6 +2272,35 @@
             "kind": {
               "type": "string",
               "const": "feed"
+            },
+            "page": {
+              "description": "How many of the newest entries one poll reads; 30 where absent.",
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "uint",
+              "minimum": 1
+            },
+            "parse": {
+              "description": "The most of an answer parsed; \"4MiB\" where absent, and at most four\ntimes that.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Size"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "remembered": {
+              "description": "How many identities the cursor remembers, newest first; 500 where\nabsent, and at least `page`.",
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "uint",
+              "minimum": 1
             },
             "url": {
               "description": "The feed's URL, RSS 2.0 or Atom 1.0.",
