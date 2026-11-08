@@ -50,6 +50,16 @@ fn a_failing_run_never_prints_a_token_even_where_a_server_echoes_it() {
 }
 
 #[test]
+fn a_command_that_reads_the_config_writes_through_the_scrubber() {
+    let mut setup = setup(CONFIG);
+    setup
+        .vars
+        .insert("HERALD_ROUND_SECRET".to_owned(), "git-branch".to_owned());
+    let stored = herald(&setup, &World::default(), &["store"]);
+    assert_eq!(stored.out, "«secret:HERALD_ROUND_SECRET»\n");
+}
+
+#[test]
 fn a_line_left_unfinished_is_scrubbed_when_the_writer_is_flushed() {
     let hidden = vec![
         Secret::new("LONG", "secret-value-long"),
@@ -85,6 +95,8 @@ fn every_secret_the_run_may_resolve_is_hidden_the_longest_first_line_by_line() {
         ("HERALD_DISCORD_TOKEN", "first\nsecond-line"),
         ("GITHUB_TOKEN", "  "),
         ("CI_JOB_TOKEN", "job"),
+        ("HERALD_ROUND_SECRET", "round-secret"),
+        ("AWS_SECRET_ACCESS_KEY", "aws-secret-key"),
         ("UNRELATED", "kept"),
     ]
     .into_iter()
@@ -99,6 +111,8 @@ fn every_secret_the_run_may_resolve_is_hidden_the_longest_first_line_by_line() {
         named,
         [
             ("HERALD_DISCORD_TOKEN", "first\nsecond-line"),
+            ("AWS_SECRET_ACCESS_KEY", "aws-secret-key"),
+            ("HERALD_ROUND_SECRET", "round-secret"),
             ("HERALD_DISCORD_TOKEN", "second-line"),
             ("HERALD_DISCORD_TOKEN", "first"),
             ("CI_JOB_TOKEN", "job"),

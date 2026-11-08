@@ -111,7 +111,13 @@ impl Store {
             Self::RepoVariables(options) => vec![options.token.secret.as_str()],
             Self::Postgres(options) => vec![options.url.secret.as_str()],
             Self::Dynamodb(options) => options.secrets().to_vec(),
-            _ => Vec::new(),
+            Self::Sqlite(_)
+            | Self::D1(_)
+            | Self::DurableObject(_)
+            | Self::DenoKv(_)
+            | Self::FastlyKv(_)
+            | Self::Markers
+            | Self::ActionsCache(_) => Vec::new(),
         }
     }
 

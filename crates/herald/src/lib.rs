@@ -210,14 +210,14 @@ async fn stopping(
             return MISTAKEN;
         }
     };
-    let serve = match answered(reading, &config, &cli.config, vars, connect, out, err).await {
-        ControlFlow::Continue(serve) => serve,
-        ControlFlow::Break(code) => return code,
-    };
     let hidden = hidden(&config, vars);
     masked(&hidden, vars, out);
     let out = &mut Scrubbing::new(out, &hidden);
     let err = &mut Scrubbing::new(err, &hidden);
+    let serve = match answered(reading, &config, &cli.config, vars, connect, out, err).await {
+        ControlFlow::Continue(serve) => serve,
+        ControlFlow::Break(code) => return code,
+    };
     let layer = match serve {
         Serve::Server { .. } => Layer::Server,
         Serve::Lambda => Layer::Lambda,

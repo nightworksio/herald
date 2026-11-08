@@ -35,7 +35,7 @@ const FUNCTION: &str = "AWS_LAMBDA_FUNCTION_NAME";
 /// The region the function runs in, as Lambda sets it.
 const REGION: &str = "AWS_REGION";
 /// The credentials of the function's role, as Lambda sets them.
-const CREDENTIALS: [&str; 3] = [
+pub(crate) const CREDENTIALS: [&str; 3] = [
     "AWS_ACCESS_KEY_ID",
     "AWS_SECRET_ACCESS_KEY",
     "AWS_SESSION_TOKEN",
