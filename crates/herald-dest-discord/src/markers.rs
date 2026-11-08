@@ -58,13 +58,12 @@ impl<'a, H: Http> DiscordMarkers<'a, H> {
     }
 
     /// The messages `author` posted in `channel`, newest first, read back
-    /// page by page until a page holds one `sought`, where one is sought,
-    /// or none is left.
+    /// page by page until a page holds one `sought`, or none is left.
     async fn messages(
         &self,
         channel: &str,
         author: &str,
-        sought: Option<&(dyn Fn(&Value) -> bool + Sync)>,
+        sought: impl Fn(&Value) -> bool,
     ) -> Result<Vec<Value>, MarkersError> {
         let mut own = Vec::new();
         let mut before: Option<String> = None;
@@ -85,8 +84,7 @@ impl<'a, H: Http> DiscordMarkers<'a, H> {
                 .filter(|message| self::author(message) == Some(author))
                 .cloned()
                 .collect();
-            let done = listed.len() < usize::from(PAGE)
-                || sought.is_some_and(|sought| mine.iter().any(sought));
+            let done = listed.len() < usize::from(PAGE) || mine.iter().any(&sought);
             own.extend(mine);
             before = listed.last().and_then(|message| text(message, "id"));
             if done || before.is_none() {
@@ -160,7 +158,7 @@ impl<H: Http> Markers for DiscordMarkers<'_, H> {
         let channel = self.discord.route.channel.as_deref().unwrap_or_default();
         let herald = self.herald().await?;
         Ok(self
-            .messages(channel, &herald, None)
+            .messages(channel, &herald, |_| false)
             .await?
             .iter()
             .filter(|post| {
@@ -176,7 +174,7 @@ impl<H: Http> Markers for DiscordMarkers<'_, H> {
         let channel = self.discord.route.channel.as_deref().unwrap_or_default();
         let herald = self.herald().await?;
         let messages = self
-            .messages(channel, &herald, Some(&|message| carries(message, marker)))
+            .messages(channel, &herald, |message| carries(message, marker))
             .await?;
         let Some(post) = messages.iter().find(|message| carries(message, marker)) else {
             return Ok(None);
@@ -219,7 +217,7 @@ impl<H: Http> Markers for DiscordMarkers<'_, H> {
             },
         );
         let chunks = self
-            .messages(&thread, &herald, None)
+            .messages(&thread, &herald, |_| false)
             .await?
             .iter()
             .filter(|chunk| chunk.get("type").and_then(Value::as_u64) == Some(DEFAULT_TYPE))
