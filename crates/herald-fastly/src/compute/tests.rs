@@ -1,5 +1,6 @@
 use std::collections::BTreeMap;
 
+use fastly::Backend;
 use herald_compose::{Host as _, KvAt};
 use herald_ports::{
     Http as _, HttpError, Kv as _, Method, PUBLIC, Request, SecretError, Secrets as _, Text,
@@ -74,6 +75,41 @@ fn a_connection_fetches_plain_http_on_loopback_without_tls() {
     let answer = pollster::block_on(http.send(asked)).unwrap();
     assert_eq!(answer.status, 200);
     assert_eq!(answer.body, b"POST /said hello");
+}
+
+#[test]
+fn a_connection_uses_the_backend_its_origin_already_has() {
+    const BASE: &str = "http://127.0.0.1:8099";
+    let http = FastlyHost::new().connect(BASE).unwrap();
+    for path in ["first", "again"] {
+        let asked = Request::new(Method::Get, Text::plain(format!("{BASE}/{path}")));
+        let answer = pollster::block_on(http.send(asked)).unwrap();
+        assert_eq!(answer.body, format!("GET /{path} ").into_bytes());
+    }
+}
+
+#[test]
+fn a_connection_refuses_a_backend_under_its_origin_s_name_that_reaches_elsewhere() {
+    let elsewhere = [
+        ("http", 8091, "127.0.0.2:8091"),
+        ("http", 8092, "127.0.0.1:8093"),
+        ("https", 8094, "127.0.0.1:8094"),
+    ];
+    for (scheme, port, target) in elsewhere {
+        Backend::builder(&backend_name(scheme, "127.0.0.1", port), target)
+            .finish()
+            .unwrap();
+        let origin = format!("{scheme}://127.0.0.1:{port}");
+        let http = FastlyHost::new().connect(&origin).unwrap();
+        let asked = Request::new(Method::Get, Text::plain(format!("{origin}/")));
+        assert!(
+            matches!(
+                pollster::block_on(http.send(asked)),
+                Err(HttpError::Unreachable { reason }) if reason.contains("another origin")
+            ),
+            "{origin}"
+        );
+    }
 }
 
 #[test]
