@@ -204,7 +204,8 @@ pub(crate) async fn cache<'a>(
     let token = secrets.secret(RUNTIME_TOKEN).await.map_err(|_| {
         format!("{RUNTIME_TOKEN} is not set; the actions-cache store runs through herald's Action")
     })?;
-    let cache = ActionsCache::new(results, token, options.prefix.as_deref());
+    let cache =
+        ActionsCache::new(results, token, options.prefix.as_deref()).keeping(&options.keeps);
     let http = connect.reach(cache.results())?;
     Ok(cache.store(http, Box::new(move |base: &str| connect.reach(base))))
 }

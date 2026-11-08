@@ -1105,6 +1105,36 @@
         }
       ]
     },
+    "RecordKind": {
+      "description": "A kind of record a store may keep beside its ledger, cursors, schedules\nand deliveries, which every store that keeps records keeps.",
+      "oneOf": [
+        {
+          "description": "Who follows or subscribes to a project.",
+          "type": "string",
+          "const": "subscriptions"
+        },
+        {
+          "description": "Each route's pinned post.",
+          "type": "string",
+          "const": "pins"
+        },
+        {
+          "description": "The Notes herald's ActivityPub actors published.",
+          "type": "string",
+          "const": "notes"
+        },
+        {
+          "description": "What each project last announced, for commands to answer with.",
+          "type": "string",
+          "const": "latest"
+        },
+        {
+          "description": "The keys inbound activities are checked with, under\n`[server.keys] cache = \"store\"`.",
+          "type": "string",
+          "const": "keys"
+        }
+      ]
+    },
     "Replies": {
       "description": "Who sees herald's answers to `latest` and `changelog`; the answers to\n`subscribe` and `unsubscribe` are always the asker's alone.",
       "oneOf": [
@@ -2063,6 +2093,13 @@
           "description": "Generations of the GitHub Actions cache.",
           "type": "object",
           "properties": {
+            "keeps": {
+              "description": "What it keeps besides the ledger, cursors, schedules and deliveries:\nany of \"subscriptions\", \"pins\", \"notes\", \"latest\" and \"keys\". Each\nis rewritten with every other record on every write, and counts\nagainst the cache's quota; none where absent.",
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/RecordKind"
+              }
+            },
             "kind": {
               "type": "string",
               "const": "actions-cache"

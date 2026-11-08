@@ -69,6 +69,32 @@ fn doctor_names_what_the_config_leaves_to_chance() {
 }
 
 #[test]
+fn doctor_names_a_pin_the_actions_cache_keeps_only_when_told() {
+    let pinned = |keeps: &str| {
+        let config = CONFIG
+            .replace(
+                "kind = \"git-branch\"",
+                &format!("kind = \"actions-cache\"\n{keeps}"),
+            )
+            .replace(
+                "template = \"release\"\n",
+                "template = \"release\"\npin = \"store\"\n",
+            );
+        herald(&setup(&config), &World::default(), &["doctor"]).out
+    };
+    assert!(
+        pinned("").contains("routes[0].pin: a pin the store remembers cannot be served: the actions-cache store keeps no pins; add \"pins\" to its keeps, or set pin = \"markers\"."),
+        "{}",
+        pinned("")
+    );
+    assert!(
+        !pinned("keeps = [\"pins\"]").contains("routes[0].pin"),
+        "{}",
+        pinned("keeps = [\"pins\"]")
+    );
+}
+
+#[test]
 fn doctor_names_what_the_markers_store_cannot_serve() {
     let gaps = |config: &str| {
         let doctored = herald(&setup(config), &World::default(), &["doctor"]);

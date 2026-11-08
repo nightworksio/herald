@@ -2,7 +2,7 @@ use std::collections::BTreeSet;
 use std::sync::{Arc, Mutex, PoisonError};
 
 use herald_core::{
-    Cursor, DestinationName, Entry, Key, Latest, RouteId, Schedule, Scheme, SourceName,
+    Cursor, DestinationName, Entry, Key, Latest, RecordKind, RouteId, Schedule, Scheme, SourceName,
     Subscription,
 };
 use herald_ports::{
@@ -47,6 +47,7 @@ struct Read {
 pub struct Kept<R> {
     records: R,
     skipped: Arc<Mutex<BTreeSet<String>>>,
+    capabilities: Capabilities,
 }
 
 fn corrupt(path: &str, error: impl std::fmt::Display) -> StoreError {
@@ -66,13 +67,35 @@ fn changing(path: &str, doing: &str) -> StoreError {
 }
 
 impl<R: Records> Kept<R> {
-    /// The store kept in `records`.
+    /// The store kept in `records`, keeping every kind of record.
     #[must_use]
     pub fn new(records: R) -> Self {
         Self {
             records,
             skipped: Arc::default(),
+            capabilities: Capabilities {
+                ledger: Keeping::Kept,
+                cursors: true,
+                schedules: Keeping::Kept,
+                subscriptions: true,
+                pins: true,
+                deliveries: true,
+                notes: true,
+                latest: true,
+                concurrent: true,
+            },
         }
+    }
+
+    /// The store, keeping besides its ledger, cursors, schedules and
+    /// deliveries only the kinds `keeps` lets it.
+    #[must_use]
+    pub fn keeping(mut self, keeps: impl Fn(RecordKind) -> bool) -> Self {
+        self.capabilities.subscriptions = keeps(RecordKind::Subscriptions);
+        self.capabilities.pins = keeps(RecordKind::Pins);
+        self.capabilities.notes = keeps(RecordKind::Notes);
+        self.capabilities.latest = keeps(RecordKind::Latest);
+        self
     }
 
     /// The record at `path` as a listing reads it: one that cannot be read
@@ -210,17 +233,7 @@ impl<R: Records> Kept<R> {
 
 impl<R: Records> Store for Kept<R> {
     fn capabilities(&self) -> Capabilities {
-        Capabilities {
-            ledger: Keeping::Kept,
-            cursors: true,
-            schedules: Keeping::Kept,
-            subscriptions: true,
-            pins: true,
-            deliveries: true,
-            notes: true,
-            latest: true,
-            concurrent: true,
-        }
+        self.capabilities
     }
 
     fn skipped(&self) -> Vec<String> {

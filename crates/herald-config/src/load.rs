@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::ops::Range;
 
-use herald_core::{DestinationName, RouteId, SourceName, TemplateName};
+use herald_core::{DestinationName, RecordKind, RouteId, SourceName, TemplateName};
 use herald_sources_forge::Forge;
 use herald_sources_registry::Registry;
 use serde::de::DeserializeOwned;
@@ -328,23 +328,43 @@ impl Loader<'_> {
         destinations: &BTreeMap<DestinationName, (Destination, Range<usize>)>,
         routes: &[route::Read],
     ) {
-        if !matches!(store, Some(Store::Markers)) {
+        let Some(store) = store else {
             return;
-        }
+        };
+        let elsewhere = |kind| {
+            store.kept_by(kind).unwrap_or_else(|| {
+                format!(
+                    "give a store that keeps them, such as \"{}\"",
+                    Store::GIT_BRANCH
+                )
+            })
+        };
         for read in routes {
             let route = &read.config.route;
             let follows = matches!(
                 destinations.get(&route.destination),
                 Some((Destination::ActivityPub(_), _))
             );
-            if follows || route.delivery.mentions.subscribers {
+            if (follows || route.delivery.mentions.subscribers)
+                && !store.keeps(RecordKind::Subscriptions)
+            {
                 self.error(
                     &read.id_span,
                     &read.path,
                     format!(
-                        "the {} store keeps no subscriptions, so this route has no followers or subscribers to reach; give a store that keeps them, such as \"{}\"",
-                        Store::MARKERS,
-                        Store::GIT_BRANCH
+                        "the {} store keeps no subscriptions, so this route has no followers or subscribers to reach; {}",
+                        store.kind(),
+                        elsewhere(RecordKind::Subscriptions)
+                    ),
+                );
+            } else if follows && !store.keeps(RecordKind::Notes) {
+                self.error(
+                    &read.id_span,
+                    &read.path,
+                    format!(
+                        "the {} store keeps no notes, which this route's actor serves its announcements as; {}",
+                        store.kind(),
+                        elsewhere(RecordKind::Notes)
                     ),
                 );
             }
@@ -378,14 +398,21 @@ impl Loader<'_> {
                     ),
                 );
             }
-            if matches!(store, Some(Store::Markers)) {
+            if let Some(store) = store
+                && !store.keeps(RecordKind::Latest)
+            {
+                let hint = store.kept_by(RecordKind::Latest).unwrap_or_else(|| {
+                    format!(
+                        "give a store that keeps what each project last announced, such as \"{}\"",
+                        Store::GIT_BRANCH
+                    )
+                });
                 self.error(
                     span,
                     &path,
                     format!(
-                        "the {} store keeps nothing commands answer with; give a store that keeps what each project last announced, such as \"{}\"",
-                        Store::MARKERS,
-                        Store::GIT_BRANCH
+                        "the {} store keeps nothing commands answer with; {hint}",
+                        store.kind()
                     ),
                 );
             }
@@ -614,13 +641,18 @@ impl Loader<'_> {
             if *cache.get_ref() == KeyCacheFile::Memory {
                 return KeyCache::Memory;
             }
-            if matches!(store, Some(Store::Markers)) {
+            if let Some(store) = store
+                && !store.keeps(RecordKind::Keys)
+            {
+                let hint = store
+                    .kept_by(RecordKind::Keys)
+                    .unwrap_or_else(|| "give a store that keeps records".to_owned());
                 self.error(
                     &cache.span(),
                     "server.keys.cache",
                     format!(
-                        "the {} store keeps no keys; keep them in \"memory\", or give a store that keeps records",
-                        Store::MARKERS
+                        "the {} store keeps no keys; keep them in \"memory\", or {hint}",
+                        store.kind()
                     ),
                 );
             }

@@ -85,6 +85,12 @@ all still has the destination, and the destination holds the posts.
    `Kv`, and the rest over `Http`. The driver supplies the connection
    (ADR-0001).
 
+   Every write to `actions-cache` uploads every record it keeps, and each
+   generation counts against the cache's quota. So by default it keeps only
+   the ledger, cursors, schedules and deliveries. Its `keeps` setting adds any
+   of subscriptions, pins, notes, latest and keys. The config refuses, and
+   doctor names, a feature that needs a kind the store does not keep.
+
 7. **The `markers` store reads the destination's own posts.**
    - **Where the key goes.** Each announcement carries its key in the most
      invisible place the platform keeps (ADR-0004).

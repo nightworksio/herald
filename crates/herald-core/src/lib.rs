@@ -14,6 +14,7 @@ mod event;
 mod housekeep;
 mod inbound;
 mod interact;
+mod kept;
 mod key;
 mod latest;
 mod ledger;
@@ -46,6 +47,7 @@ pub use interact::{
     AnnouncedHere, Answering, Asked, Command, MOST_COMPLETIONS, Member, Place, Replies, Said,
     Unchosen, announced, chosen, completions, every_command,
 };
+pub use kept::RecordKind;
 pub use key::{Identity, Key, NotAKey, RouteId, digest, hex};
 pub use latest::{Latest, Shown};
 pub use ledger::{
