@@ -91,7 +91,7 @@ pub enum Signature {
 
 /// What a request claims: that one of `signatures` signs `message` under
 /// `kind`. A sender rotating its key signs with each key it holds.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct Claim {
     /// The kind of signature.
     pub kind: Signature,
@@ -109,6 +109,21 @@ pub struct Claim {
     /// The key it names its signer by, where its scheme fetches the key it
     /// is checked with: an ActivityPub actor's `keyId`.
     pub signer: Option<String>,
+}
+
+impl fmt::Debug for Claim {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Claim")
+            .field("kind", &self.kind)
+            .field("message", &format_args!("{} bytes", self.message.len()))
+            .field(
+                "signatures",
+                &format_args!("{} held back", self.signatures.len()),
+            )
+            .field("delivery", &self.delivery)
+            .field("signer", &self.signer)
+            .finish()
+    }
 }
 
 /// Why a request is refused before its signature is checked.

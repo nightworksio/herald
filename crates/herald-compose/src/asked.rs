@@ -1,3 +1,5 @@
+use std::fmt;
+
 use herald_flows::{Admission, Inbound, ROUND_SECRET, Reply, Round, refusal};
 use herald_ports::Secrets as _;
 
@@ -20,7 +22,7 @@ fn plain(status: u16, text: &str) -> Reply {
 }
 
 /// What a request asked, as a host with no script of its own read it.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct Asked {
     /// The method, in capitals.
     pub method: String,
@@ -30,6 +32,24 @@ pub struct Asked {
     pub headers: Vec<(String, String)>,
     /// The raw body.
     pub body: Vec<u8>,
+}
+
+impl fmt::Debug for Asked {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let headers: Vec<&str> = self.headers.iter().map(|(name, _)| name.as_str()).collect();
+        f.debug_struct("Asked")
+            .field("method", &self.method)
+            .field(
+                "path",
+                &self
+                    .target
+                    .split_once('?')
+                    .map_or(self.target.as_str(), |(path, _)| path),
+            )
+            .field("headers", &headers)
+            .field("body", &format_args!("{} bytes", self.body.len()))
+            .finish()
+    }
 }
 
 impl<H: Host> Composed<H> {
@@ -72,5 +92,25 @@ impl<H: Host> Composed<H> {
             left: None,
             said,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_request_debugs_without_its_query_header_values_or_body() {
+        let asked = Asked {
+            method: "POST".to_owned(),
+            target: "/matrix/chat/transactions/1?access_token=hs-secret".to_owned(),
+            headers: vec![("Authorization".to_owned(), "Bearer round-secret".to_owned())],
+            body: b"{}".to_vec(),
+        };
+        let shown = format!("{asked:?}");
+        assert_eq!(
+            shown,
+            r#"Asked { method: "POST", path: "/matrix/chat/transactions/1", headers: ["Authorization"], body: 2 bytes }"#
+        );
     }
 }

@@ -84,14 +84,42 @@ impl Request {
     }
 }
 
-impl fmt::Display for Request {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl Request {
+    fn head(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{} {}", self.method.as_str(), self.url.redacted())?;
         for (name, value) in &self.headers {
             write!(f, "\n{name}: {}", value.redacted())?;
         }
+        Ok(())
+    }
+
+    /// The request as [`fmt::Display`] shows it, with its body in full in
+    /// place of its length: for a dry run, which shows what would be sent.
+    #[must_use]
+    pub fn with_body(&self) -> WithBody<'_> {
+        WithBody(self)
+    }
+}
+
+/// A request shown with its body in full, its secrets still redacted.
+#[derive(Debug)]
+pub struct WithBody<'r>(&'r Request);
+
+impl fmt::Display for WithBody<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.head(f)?;
+        if !self.0.body.is_empty() {
+            write!(f, "\n\n{}", String::from_utf8_lossy(&self.0.body))?;
+        }
+        Ok(())
+    }
+}
+
+impl fmt::Display for Request {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.head(f)?;
         if !self.body.is_empty() {
-            write!(f, "\n\n{}", String::from_utf8_lossy(&self.body))?;
+            write!(f, "\n\n{} bytes", self.body.len())?;
         }
         Ok(())
     }
@@ -207,8 +235,12 @@ mod tests {
         .header("Content-Type", Text::plain("application/json"))
         .body(r#"{"content":"hi"}"#);
         assert_eq!(
-            request.to_string(),
+            request.with_body().to_string(),
             "POST https://discord.com/api/v10/channels/1/messages\nAuthorization: Bot «secret:TOKEN»\nContent-Type: application/json\n\n{\"content\":\"hi\"}"
+        );
+        assert_eq!(
+            request.to_string(),
+            "POST https://discord.com/api/v10/channels/1/messages\nAuthorization: Bot «secret:TOKEN»\nContent-Type: application/json\n\n16 bytes"
         );
     }
 

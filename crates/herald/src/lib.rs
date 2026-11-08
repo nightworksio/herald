@@ -545,7 +545,7 @@ impl Http for Dry {
         self.sent
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
-            .push(request.to_string());
+            .push(request.with_body().to_string());
         std::future::ready(Ok(Response {
             status: 200,
             headers: Vec::new(),
