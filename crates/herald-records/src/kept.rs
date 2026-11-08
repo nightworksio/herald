@@ -55,6 +55,10 @@ fn corrupt(path: &str, error: impl std::fmt::Display) -> StoreError {
     }
 }
 
+fn encoded(path: &str, value: &impl Serialize) -> Result<Value, StoreError> {
+    serde_json::to_value(value).map_err(|error| corrupt(path, error))
+}
+
 fn changing(path: &str, doing: &str) -> StoreError {
     StoreError::Unavailable {
         reason: format!("{path} kept changing while herald {doing} it"),
@@ -119,7 +123,7 @@ impl<R: Records> Kept<R> {
             version: version.0,
             record: record.clone(),
         };
-        let bytes = serde_json::to_vec(&stored).unwrap_or_default();
+        let bytes = encoded(path, &stored)?.to_string().into_bytes();
         self.records.write(path, &bytes, replacing).await
     }
 
@@ -143,7 +147,7 @@ impl<R: Records> Kept<R> {
         value: &T,
         expected: Option<Version>,
     ) -> Result<Written, StoreError> {
-        let record = serde_json::to_value(value).unwrap_or(Value::Null);
+        let record = encoded(path, value)?;
         for _ in 0..ATTEMPTS {
             let read = self.read(path).await?;
             if read.as_ref().map(|read| read.version) != expected {
@@ -159,7 +163,7 @@ impl<R: Records> Kept<R> {
     }
 
     async fn kept<T: Serialize>(&self, path: &str, value: &T) -> Result<(), StoreError> {
-        let record = serde_json::to_value(value).unwrap_or(Value::Null);
+        let record = encoded(path, value)?;
         for _ in 0..ATTEMPTS {
             let read = self.read(path).await?;
             let version = read.as_ref().map_or(Version(1), |read| read.version);
@@ -175,7 +179,7 @@ impl<R: Records> Kept<R> {
         if self.records.read(path).await?.is_some() {
             return Ok(());
         }
-        let record = serde_json::to_value(value).unwrap_or(Value::Null);
+        let record = encoded(path, value)?;
         self.write(path, Version(1), &record, None)
             .await
             .map(|_| ())
@@ -378,5 +382,51 @@ impl<R: Records> Keyring for Kept<R> {
             }
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use serde::Serializer;
+    use serde::ser::Error;
+
+    use super::*;
+    use crate::Memory;
+
+    struct Unwritable;
+
+    impl Serialize for Unwritable {
+        fn serialize<S: Serializer>(&self, _: S) -> Result<S::Ok, S::Error> {
+            Err(S::Error::custom("no JSON for this"))
+        }
+    }
+
+    fn corrupted(result: Result<impl std::fmt::Debug, StoreError>) -> String {
+        match result {
+            Err(StoreError::Corrupt { reason }) => reason,
+            other => panic!("expected a corrupt record, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_value_with_no_json_is_refused_as_corrupt_and_nothing_is_written() {
+        let kept = Kept::new(Memory::default());
+        pollster::block_on(async {
+            assert_eq!(
+                corrupted(kept.compare_and_set("a.json", &Unwritable, None).await),
+                "a.json: no JSON for this"
+            );
+            assert_eq!(
+                corrupted(kept.kept("b.json", &Unwritable).await),
+                "b.json: no JSON for this"
+            );
+            assert_eq!(
+                corrupted(kept.added("c.json", &Unwritable).await),
+                "c.json: no JSON for this"
+            );
+            for path in ["a.json", "b.json", "c.json"] {
+                assert!(kept.records.read(path).await.unwrap().is_none());
+            }
+        });
     }
 }
