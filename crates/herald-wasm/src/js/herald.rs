@@ -1,6 +1,6 @@
 use std::rc::Rc;
 
-use herald_compose::{Composed, Hosting, SESSIONS, SocketReach, asked_query, public_address, told};
+use herald_compose::{Composed, Hosting, SocketReach, asked_query, public_address, told};
 use herald_config::{Server, load};
 use herald_flows::{Admission, Inbound};
 use js_sys::{Function, Promise, Uint8Array};
@@ -177,7 +177,7 @@ impl Herald {
         future_to_promise(async move {
             let sockets = JsSockets {
                 opener: SendWrapper::new(sockets),
-                reach: SocketReach::under(SESSIONS),
+                reach: SocketReach::under(composed.config().session_domains()),
             };
             let taker = JsTaker {
                 composed: Rc::clone(&composed),

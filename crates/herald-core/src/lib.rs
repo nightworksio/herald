@@ -28,7 +28,7 @@ mod version;
 pub use activity::{
     ACTIVITY_JSON, SIGNED, Signing, body_sha256, public_pem, signature_header, signing,
 };
-pub use address::{WEB_SCHEMES, path_of_names, web_url};
+pub use address::{WEB_SCHEMES, domain, path_of_names, socket_under, under_domain, web_url};
 pub use announce::{
     Announcement, Title, announce, body_template, shortened, thread_template, title_template,
 };

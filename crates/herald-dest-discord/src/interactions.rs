@@ -51,6 +51,9 @@ pub struct Interactions {
     /// The template `latest` takes its title from and `changelog` its body,
     /// in place of the route's own.
     pub template: Option<String>,
+    /// Domains beside `discord.gg` a gateway session may connect under, such as a proxy's.
+    #[serde(default)]
+    pub domains: Vec<String>,
 }
 
 impl Interactions {
@@ -105,9 +108,30 @@ impl Interactions {
                 "\"{guild}\" is not a server id; give the server's id"
             ));
         }
+        if let Some(unsound) = self
+            .domains
+            .iter()
+            .find(|domain| !herald_core::domain(domain))
+        {
+            return Err(format!(
+                "\"{unsound}\" is not a domain; give a host such as \"proxy.example\", with no scheme, port or path"
+            ));
+        }
         Answering::check(&self.commands)
     }
+
+    /// The domains a gateway session may connect under: `discord.gg` and those the
+    /// config adds.
+    #[must_use]
+    pub fn session_domains(&self) -> Vec<&str> {
+        std::iter::once(SESSION_DOMAIN)
+            .chain(self.domains.iter().map(String::as_str))
+            .collect()
+    }
 }
+
+/// The domain Discord's gateway hosts lie under.
+pub const SESSION_DOMAIN: &str = "discord.gg";
 
 /// What a route says about subscribing on Discord.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, JsonSchema)]

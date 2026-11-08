@@ -24,6 +24,6 @@ pub use composed::Composed;
 pub use host::{Host, KvAt, SqlAt, Unoffered};
 pub use hosting::Hosting;
 pub use public::{public, reachable};
-pub use reach::{Reach, ReachError, SESSIONS, SocketReach};
+pub use reach::{Reach, ReachError, SocketReach};
 pub use reaching::{EGRESS_GUARDED, Reaching, asked_query, public_address, received};
 pub use records::{GITHUB_REPOSITORY, GITHUB_TOKEN, Records, Served, reached};

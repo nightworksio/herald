@@ -6,7 +6,7 @@ use std::collections::BTreeMap;
 use std::future::Future;
 use std::io::Write;
 
-use herald_compose::{Capped, SESSIONS, Served};
+use herald_compose::{Capped, Served};
 use herald_config::Config;
 use herald_crypto::{RingSigner, RingVerifier};
 use herald_environment::{EnvSecrets, SystemClock};
@@ -195,7 +195,7 @@ pub(crate) async fn serving(
         .map_err(|error| error.to_string())?;
     let public = Capped::new(connect(PUBLIC)?, config.server.fetches);
     let silence = std::time::Duration::try_from(config.server.silence).unwrap_or_default();
-    let sockets = worded(NativeSockets::under(SESSIONS))?.silent_for(silence);
+    let sockets = worded(NativeSockets::under(config.session_domains()))?.silent_for(silence);
     let listening = Listening {
         config,
         connected: &connected,

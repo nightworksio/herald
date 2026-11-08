@@ -180,7 +180,7 @@ where
                     if discord.via() == herald_dest_discord::Via::Gateway =>
                 {
                     if let Some(bot) = discord.bot() {
-                        let gateway = Gateway::new(bot.clone());
+                        let gateway = Gateway::new(bot.clone(), &discord.session_domains());
                         sessions.push(Box::pin(
                             self.gateway(sockets, name, discord, gateway, http),
                         ));
@@ -381,7 +381,7 @@ where
         loop {
             let opened = meanwhile(&mut taking, async {
                 let url = match opening.send(interacting.opening(app)).await {
-                    Ok(response) => slack::opened(&response)?,
+                    Ok(response) => slack::opened(&response, &interacting.session_domains())?,
                     Err(error) => return Err(error.to_string()),
                 };
                 sockets.open(&url).await.map_err(|error| error.to_string())

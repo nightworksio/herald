@@ -1,7 +1,7 @@
 use herald_core::Command;
 
 use super::*;
-use crate::interactions::Interactions;
+use crate::interactions::{Interactions, SESSION_DOMAIN};
 
 const HOOK: &str = "https://hooks.slack.com/commands/T1/2/abc";
 
@@ -51,19 +51,38 @@ fn a_connection_is_opened_with_the_app_level_token_at_the_address_slack_answers(
         body: body.as_bytes().to_vec(),
     };
     assert_eq!(
-        opened(&answer(
-            r#"{"ok": true, "url": "wss://wss-primary.slack.com/link"}"#
-        )),
+        opened(
+            &answer(r#"{"ok": true, "url": "wss://wss-primary.slack.com/link"}"#),
+            &[SESSION_DOMAIN]
+        ),
         Ok("wss://wss-primary.slack.com/link".to_owned())
     );
     assert_eq!(
-        opened(&answer(r#"{"ok": false, "error": "invalid_auth"}"#)),
+        opened(
+            &answer(r#"{"ok": true, "url": "wss://wss.evil.example/link?ticket=1"}"#),
+            &[SESSION_DOMAIN]
+        ),
+        Err("Slack opened a Socket Mode connection on a host outside slack.com; add its domain to the destination's interactions domains to take it".to_owned())
+    );
+    assert_eq!(
+        opened(
+            &answer(r#"{"ok": true, "url": "wss://wss.proxy.example/link"}"#),
+            &[SESSION_DOMAIN, "proxy.example"]
+        ),
+        Ok("wss://wss.proxy.example/link".to_owned())
+    );
+    assert_eq!(
+        opened(
+            &answer(r#"{"ok": false, "error": "invalid_auth"}"#),
+            &[SESSION_DOMAIN]
+        ),
         Err("Slack opened no Socket Mode connection: invalid_auth".to_owned())
     );
     assert_eq!(
-        opened(&answer(
-            r#"{"ok": true, "url": "https://elsewhere.example"}"#
-        )),
+        opened(
+            &answer(r#"{"ok": true, "url": "https://elsewhere.example"}"#),
+            &[SESSION_DOMAIN]
+        ),
         Err("Slack opened no Socket Mode connection: it answered with no address".to_owned())
     );
 }

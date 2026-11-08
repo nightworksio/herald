@@ -109,6 +109,12 @@ impl Interacting {
         self.interactions.via
     }
 
+    /// The domains its sessions may connect under.
+    #[must_use]
+    pub fn session_domains(&self) -> Vec<&str> {
+        self.interactions.session_domains()
+    }
+
     /// The secret holding the signing secret each request posted to herald
     /// is checked against.
     #[must_use]

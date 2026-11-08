@@ -171,6 +171,12 @@ impl Interacting {
         self.interactions.via
     }
 
+    /// The domains its sessions may connect under.
+    #[must_use]
+    pub fn session_domains(&self) -> Vec<&str> {
+        self.interactions.session_domains()
+    }
+
     /// The application's public key, in hex, which each interaction posted
     /// to herald is checked against.
     #[must_use]

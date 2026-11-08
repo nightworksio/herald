@@ -23,7 +23,7 @@ pub use interact::{
     Interacting, MESSAGE, Received, Replying, Unread, choices, deferred, listed, made, pong,
     subscribe_button, took,
 };
-pub use interactions::{Interactions, Subscribe, Via};
+pub use interactions::{Interactions, SESSION_DOMAIN, Subscribe, Via};
 pub use markers::DiscordMarkers;
 pub use options::{DestinationOptions, RouteOptions};
 pub use request::Refusal;

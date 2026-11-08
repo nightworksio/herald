@@ -316,4 +316,42 @@ body = "{{{{ event.body }}}}"
             "routes[1].subscribe: subscribing is answered through the destination's interactions; give [destinations.slack.interactions] answering subscribe",
         );
     }
+
+    #[test]
+    fn sessions_connect_under_their_own_domains_and_those_their_destination_adds() {
+        let http = config("git-branch", &bot(""), "channel = \"1566200000000000100\"");
+        let config_of = |text: &str| load("herald.toml", text, &nothing).unwrap();
+        assert!(config_of(&http).session_domains().is_empty());
+        let gateway = config(
+            "git-branch",
+            &bot("via = \"gateway\"\ndomains = [\"proxy.example\"]"),
+            "channel = \"1566200000000000100\"",
+        );
+        assert_eq!(
+            config_of(&gateway)
+                .session_domains()
+                .into_iter()
+                .collect::<Vec<_>>(),
+            ["discord.gg", "proxy.example"]
+        );
+        let socket = http.replace(
+            "signing = { secret = \"HERALD_SLACK_SIGNING\" }",
+            "via = \"socket\"\napp = { secret = \"HERALD_SLACK_APP\" }",
+        );
+        assert_eq!(
+            config_of(&socket)
+                .session_domains()
+                .into_iter()
+                .collect::<Vec<_>>(),
+            ["slack.com"]
+        );
+        refused(
+            &config(
+                "git-branch",
+                &bot("via = \"gateway\"\ndomains = [\"https://proxy.example\"]"),
+                "channel = \"1566200000000000100\"",
+            ),
+            "destinations.discord.interactions: \"https://proxy.example\" is not a domain",
+        );
+    }
 }

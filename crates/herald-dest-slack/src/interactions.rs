@@ -50,6 +50,9 @@ pub struct Interactions {
     /// The template `latest` takes its title from and `changelog` its body,
     /// in place of the route's own.
     pub template: Option<String>,
+    /// Domains beside `slack.com` a Socket Mode session may connect under, such as a proxy's.
+    #[serde(default)]
+    pub domains: Vec<String>,
 }
 
 fn slash() -> String {
@@ -94,9 +97,30 @@ impl Interactions {
                 self.command
             ));
         }
+        if let Some(unsound) = self
+            .domains
+            .iter()
+            .find(|domain| !herald_core::domain(domain))
+        {
+            return Err(format!(
+                "\"{unsound}\" is not a domain; give a host such as \"proxy.example\", with no scheme, port or path"
+            ));
+        }
         Answering::check(&self.commands)
     }
+
+    /// The domains a Socket Mode session may connect under: `slack.com` and those the
+    /// config adds.
+    #[must_use]
+    pub fn session_domains(&self) -> Vec<&str> {
+        std::iter::once(SESSION_DOMAIN)
+            .chain(self.domains.iter().map(String::as_str))
+            .collect()
+    }
 }
+
+/// The domain Slack's Socket Mode hosts lie under.
+pub const SESSION_DOMAIN: &str = "slack.com";
 
 /// What a route says about subscribing on Slack, where it mentions its
 /// subscribers.

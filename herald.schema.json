@@ -561,6 +561,14 @@
             "$ref": "#/$defs/Command"
           }
         },
+        "domains": {
+          "description": "Domains beside `discord.gg` a gateway session may connect under, such as a proxy's.",
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "string"
+          }
+        },
         "group": {
           "description": "Registers the commands as subcommands of `/<group>`, such as\n`/herald latest`, in place of commands of their own.",
           "type": [
@@ -699,6 +707,14 @@
           "type": "array",
           "items": {
             "$ref": "#/$defs/Command"
+          }
+        },
+        "domains": {
+          "description": "Domains beside `slack.com` a Socket Mode session may connect under, such as a proxy's.",
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "string"
           }
         },
         "prereleases": {

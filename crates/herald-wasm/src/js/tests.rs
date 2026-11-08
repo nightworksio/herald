@@ -470,7 +470,7 @@ async fn a_config_with_mistakes_or_an_unkept_store_is_not_composed() {
 async fn a_session_s_socket_carries_text_both_ways_and_says_how_it_closed() {
     let opened = JsSockets {
         opener: send_wrapper::SendWrapper::new(sockets()),
-        reach: herald_compose::SocketReach::under(herald_compose::SESSIONS),
+        reach: herald_compose::SocketReach::under(["discord.gg", "slack.com"]),
     };
     assert!(matches!(
         opened.open("wss://evil.example/?ticket=1").await,

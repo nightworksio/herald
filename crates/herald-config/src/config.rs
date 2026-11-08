@@ -32,6 +32,31 @@ pub struct Config {
 }
 
 impl Config {
+    /// The domains herald's sessions may connect under: each Discord
+    /// gateway's and Slack Socket Mode session's own, and those its
+    /// destination adds (ADR-0016).
+    #[must_use]
+    pub fn session_domains(&self) -> BTreeSet<&str> {
+        self.destinations
+            .values()
+            .flat_map(|destination| match destination {
+                Destination::Discord(options) => options
+                    .interactions
+                    .as_ref()
+                    .filter(|interactions| interactions.via == herald_dest_discord::Via::Gateway)
+                    .map(herald_dest_discord::Interactions::session_domains)
+                    .unwrap_or_default(),
+                Destination::Slack(options) => options
+                    .interactions
+                    .as_ref()
+                    .filter(|interactions| interactions.via == herald_dest_slack::Via::Socket)
+                    .map(herald_dest_slack::Interactions::session_domains)
+                    .unwrap_or_default(),
+                _ => Vec::new(),
+            })
+            .collect()
+    }
+
     /// The name of every secret the config names, once each.
     #[must_use]
     pub fn secrets(&self) -> BTreeSet<&str> {
