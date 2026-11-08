@@ -3,9 +3,9 @@ use std::sync::atomic::AtomicBool;
 
 use herald_config::Config;
 use herald_flows::{
-    Admission, Connected, Inbound, Job, Kept, Keys, Place, Ports, Room, Round, Running, Serving,
-    Sessions, Stop, Swept, Taker, Webhooks, Worked, answer, busy, housekeep, poll, prepare,
-    refusal, unworked, webhooks, work,
+    Admission, Connected, Housekept, Inbound, Job, Keys, Place, Ports, Room, Round, Running,
+    Serving, Sessions, Stop, Swept, Taker, Webhooks, Worked, answer, busy, housekeep, poll,
+    prepare, refusal, unworked, webhooks, work,
 };
 use herald_ports::{Clock as _, Keyring, PUBLIC, Sockets, Store as Keeps, Timer};
 use herald_records::MemoryKeyring;
@@ -137,9 +137,9 @@ impl<H: Host> Composed<H> {
     /// # Errors
     ///
     /// Where housekeeping stopped, saying why.
-    pub async fn housekeep(&self) -> Result<Vec<Kept>, Stop> {
+    pub async fn housekeep(&self) -> Result<Housekept, Stop> {
         let Some(_running) = Running::start(&self.housekeeping) else {
-            return Ok(Vec::new());
+            return Ok(Housekept::default());
         };
         self.through(Admission::Once, Housekeeping).await
     }
@@ -311,21 +311,20 @@ impl<H: Host, So: Sockets, T: Taker, Ti: Timer> Keyed<H> for Holding<'_, So, T, 
 struct Housekeeping;
 
 impl<H: Host> Keyed<H> for Housekeeping {
-    type Done = Result<Vec<Kept>, Stop>;
+    type Done = Result<Housekept, Stop>;
 
     async fn keyed<S: Keeps, K: Keyring>(
         self,
         serving: &Hosted<'_, H, S, K>,
         _: &str,
-    ) -> Result<Vec<Kept>, Stop> {
+    ) -> Result<Housekept, Stop> {
         let ports = serving.ports;
-        let kept = housekeep(serving.connected, ports.store, ports.clock).await;
         let before = ports
             .clock
             .now()
             .checked_sub(serving.keys.refreshed)
             .unwrap_or(Timestamp::MIN);
         let _ = serving.keys.keyring.forget_before(before).await;
-        kept
+        housekeep(serving.connected, ports.store, ports.clock).await
     }
 }

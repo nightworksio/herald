@@ -26,8 +26,8 @@ use futures_util::stream::{FuturesUnordered, StreamExt};
 use herald_config::Server;
 use herald_core::DestinationName;
 use herald_flows::{
-    Answered, Inbound, Job, Kept, Round, Running, Serving, Sessions, Stop, Swept, Worked, answer,
-    busy, housekeep, poll, refusal, unworked, work,
+    Answered, Housekept, Inbound, Job, Round, Running, Serving, Sessions, Stop, Swept, Worked,
+    answer, busy, housekeep, poll, refusal, unworked, work,
 };
 use herald_native::TokioTimer as Waiting;
 use herald_ports::{Clock, Http, Keyring, Secret, Signer, Sockets, Store, Verifier};
@@ -80,7 +80,7 @@ pub enum Heard {
     /// The sources were polled.
     Polled(Vec<Swept>),
     /// The threads whose chores fell due were kept.
-    Kept(Result<Vec<Kept>, Stop>),
+    Kept(Result<Housekept, Stop>),
     /// A connection could not be taken, and why.
     Unaccepted(String),
     /// A request was refused, and why; its reply named no reason.

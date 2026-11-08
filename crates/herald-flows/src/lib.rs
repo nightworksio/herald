@@ -36,7 +36,7 @@ pub use announce::{Announced, Outcome, Ports, Stop, announce, announce_within};
 pub use commanded::{INTERACTIONS, MATRIX};
 pub use doctor::{Findings, Gap, Layer, doctor, keys, unserved};
 pub use following::{FollowError, Followed, followed};
-pub use housekeep::{Chored, Kept, housekeep};
+pub use housekeep::{Chored, Housekept, Kept, housekeep};
 pub use inbound::{
     Admission, Keys, Rejected, Verified, activity_verified, admitted, released, verified,
 };

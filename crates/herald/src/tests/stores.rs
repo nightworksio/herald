@@ -430,6 +430,7 @@ fn each_nonce_the_native_binary_gives_is_new() {
 
     let vars = BTreeMap::new();
     let unreached = |base: &str| Err(format!("{base} is out of reach"));
-    let native = stores::Native::new(&vars, &unreached);
+    let connector = Connector::new(&unreached, &unreached);
+    let native = stores::Native::new(&vars, &connector);
     assert_ne!(native.nonce(), native.nonce());
 }

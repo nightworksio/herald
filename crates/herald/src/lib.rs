@@ -24,8 +24,8 @@ use herald_core::{Event, Kind, RouteId, SourceName};
 use herald_crypto::RingSigner;
 use herald_environment::{EnvSecrets, SystemClock};
 use herald_flows::{
-    Announced, Chored, Connected, Findings, Gap, Kept, Outcome, Ports, Remembered, Stop, Sweep,
-    Swept, announce_within, doctor, housekeep, keys, poll, prepare, preview,
+    Announced, Chored, Connected, Findings, Gap, Housekept, Outcome, Ports, Remembered, Stop,
+    Sweep, Swept, announce_within, doctor, housekeep, keys, poll, prepare, preview,
 };
 use herald_native::{ConnectError, NativeHttp, PublicHttp, random_secret};
 use herald_ports::{Http, HttpError, Keyring, PUBLIC, Request, Response, Secrets, Store as Keeps};
@@ -44,7 +44,7 @@ mod stores;
 use cli::{
     Cli, Command, Discording, From, Layer, Matrixing, Reading, Serve, Setting, Slacking, Tokens,
 };
-use herald_compose::told::{chored, polled, report, why};
+use herald_compose::told::{chored, polled, report, skipped, why};
 use herald_compose::{GITHUB_TOKEN, Served};
 use output::{Scrubbing, hidden, masked, say, warned};
 use serving::serving;
@@ -855,7 +855,7 @@ struct Housekeeping<'a> {
 }
 
 impl Served for Housekeeping<'_> {
-    type Done = Result<Vec<Kept>, Stop>;
+    type Done = Result<Housekept, Stop>;
 
     async fn over<S: Keeps + Keyring>(self, store: &S) -> Self::Done {
         housekeep(self.connected, store, &SystemClock).await
@@ -926,15 +926,18 @@ async fn housekeeping(
         .serve(&connected, housekeeping)
         .await
         .map_err(|stop| why(&stop))?;
-    if kept.is_empty() {
+    if kept.kept.is_empty() {
         say(out, "No chore is due.");
     }
     let mut code = DONE;
-    for kept in &kept {
-        if matches!(kept.outcome, Chored::Later(_)) {
+    for chore in &kept.kept {
+        if matches!(chore.outcome, Chored::Later(_)) {
             code = STOPPED;
         }
-        say(out, &chored(kept));
+        say(out, &chored(chore));
+    }
+    for path in &kept.skipped {
+        say(out, &skipped(path));
     }
     Ok(code)
 }

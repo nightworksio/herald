@@ -26,7 +26,8 @@ fn kept(store: &Failing, script: &Script) -> Result<Vec<(String, Chored)>, Stop>
     let connected = prepared.connect(|_| Ok::<_, ()>(script.clone())).unwrap();
     let clock = FakeClock::at(NOON);
     pollster::block_on(housekeep(&connected, store, &clock)).map(|kept| {
-        kept.into_iter()
+        kept.kept
+            .into_iter()
             .map(|kept| (kept.schedule.thread, kept.outcome))
             .collect()
     })
@@ -58,6 +59,22 @@ fn chores_that_fall_due_are_done_through_their_route_and_their_schedules_removed
         ]
     );
     assert_eq!(pollster::block_on(store.schedules()).unwrap(), [later]);
+}
+
+#[test]
+fn a_round_reports_the_records_the_store_skipped() {
+    let store = Failing {
+        fault: Fault::Skipped,
+        ..healthy()
+    };
+    let config = config("");
+    let prepared = pollster::block_on(prepare(&config, &secrets(), &FakeSigner)).unwrap();
+    let connected = prepared
+        .connect(|_| Ok::<_, ()>(Script::default()))
+        .unwrap();
+    let housekept =
+        pollster::block_on(housekeep(&connected, &store, &FakeClock::at(NOON))).unwrap();
+    assert_eq!(housekept.skipped, ["latest/bad.json"]);
 }
 
 #[test]

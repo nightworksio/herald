@@ -328,7 +328,10 @@ fn the_server_says_what_it_heard_in_a_line_each() {
         ["releases: announced (post)"]
     );
     assert_eq!(said(Heard::Polled(Vec::new())), [] as [String; 0]);
-    assert_eq!(said(Heard::Kept(Ok(Vec::new()))), [] as [String; 0]);
+    assert_eq!(
+        said(Heard::Kept(Ok(herald_flows::Housekept::default()))),
+        [] as [String; 0]
+    );
     assert_eq!(
         said(Heard::Kept(Err(Stop::Refused("no".to_owned())))),
         ["housekeeping stopped: no. The next round tries again."]

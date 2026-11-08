@@ -10,7 +10,7 @@ mod compose {
     use herald_compose::{Asked, Composed, Host, KvAt, Left, Records, SqlAt, reached};
     use herald_config::{Config, Store, load};
     use herald_core::DestinationName;
-    use herald_flows::{Admission, Inbound, Job, Taker, Worked};
+    use herald_flows::{Admission, Housekept, Inbound, Job, Taker, Worked};
     use herald_ports::{Changed, Frame, Http, HttpError, Request, Response, Value};
     use herald_testing::{
         FakeClock, FakeKv, FakeSecrets, FakeSigner, FakeTimer, FakeVerifier, ScriptedSockets,
@@ -347,7 +347,10 @@ mod compose {
             assert_eq!(answered.reply.status, 200);
             assert!(answered.left.is_none());
             assert_eq!(pollster::block_on(composed.poll()), Vec::new());
-            assert_eq!(pollster::block_on(composed.housekeep()), Ok(Vec::new()));
+            assert_eq!(
+                pollster::block_on(composed.housekeep()),
+                Ok(Housekept::default())
+            );
             let sockets = ScriptedSockets::default();
             pollster::block_on(composed.hold(&sockets, &Untaken, &FakeTimer::default()));
             assert_eq!(sockets.opened(), Vec::<String>::new());

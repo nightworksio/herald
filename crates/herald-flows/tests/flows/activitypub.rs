@@ -195,7 +195,9 @@ fn an_actor_keeps_no_thread_chores() {
     let secrets = FakeSecrets::default().with("HERALD_ACTIVITYPUB_KEY", "the-key");
     let prepared = pollster::block_on(prepare(&config, &secrets, &FakeSigner)).unwrap();
     let connected = prepared.connect(|_| Ok::<_, ()>(script.clone())).unwrap();
-    let kept = pollster::block_on(housekeep(&connected, &store, &FakeClock::at(NOON))).unwrap();
+    let kept = pollster::block_on(housekeep(&connected, &store, &FakeClock::at(NOON)))
+        .unwrap()
+        .kept;
     assert_eq!(
         kept[0].outcome,
         Chored::Dropped("herald's ActivityPub actor cannot archive or lock a thread".to_owned())

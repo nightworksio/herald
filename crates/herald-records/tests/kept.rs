@@ -209,6 +209,38 @@ mod kept {
     }
 
     #[test]
+    fn a_corrupt_record_is_skipped_by_a_listing_and_reported_once() {
+        let store = Kept::new(Memory::holding("deliveries/app.bad.json", b"not json"));
+        let now: jiff::Timestamp = "2027-01-15T08:00:00Z".parse().unwrap();
+        assert_eq!(
+            pollster::block_on(store.admit(herald_core::Scheme::App, "old", now)),
+            Ok(herald_ports::Admitted::Fresh)
+        );
+        let later = now
+            .checked_add(jiff::SignedDuration::from_hours(1))
+            .unwrap();
+        assert_eq!(pollster::block_on(store.expire_deliveries(later)), Ok(()));
+        assert_eq!(
+            pollster::block_on(store.admit(herald_core::Scheme::App, "old", later)),
+            Ok(herald_ports::Admitted::Fresh)
+        );
+        assert_eq!(store.skipped(), ["deliveries/app.bad.json"]);
+        assert_eq!(store.skipped(), Vec::<String>::new());
+        let latest = Kept::new(Memory::holding(
+            "latest/gate.json",
+            br#"{"version":1,"record":7}"#,
+        ));
+        assert_eq!(pollster::block_on(latest.every_latest()), Ok(Vec::new()));
+        assert_eq!(latest.skipped(), ["latest/gate.json"]);
+        let keys = Kept::new(Memory::holding("keys/bad.json", b"[]"));
+        assert_eq!(
+            pollster::block_on(herald_ports::Keyring::forget_before(&keys, later)),
+            Ok(())
+        );
+        assert_eq!(keys.skipped(), ["keys/bad.json"]);
+    }
+
+    #[test]
     fn a_record_listed_but_gone_by_the_time_it_is_read_is_left_out() {
         let vanished = Memory {
             listed: vec!["schedules/gone.json".to_owned()],

@@ -186,6 +186,7 @@ pub(crate) fn outcome(announced: &[Announced]) -> &Outcome {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Fault {
     Nothing,
+    Skipped,
     ExpiresDeliveries,
     KeepsNoDeliveries,
     Cursors,
@@ -249,6 +250,14 @@ impl Store for Failing {
                 ..all
             },
             _ => all,
+        }
+    }
+
+    fn skipped(&self) -> Vec<String> {
+        if self.fault == Fault::Skipped {
+            vec!["latest/bad.json".to_owned()]
+        } else {
+            Vec::new()
         }
     }
 

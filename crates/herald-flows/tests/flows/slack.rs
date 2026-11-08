@@ -140,7 +140,9 @@ fn a_slack_route_keeps_no_thread_chores_and_its_channel_lists_no_threads() {
     let script = Script::default();
     let prepared = pollster::block_on(prepare(&config, &secrets(), &FakeSigner)).unwrap();
     let connected = prepared.connect(|_| Ok::<_, ()>(script.clone())).unwrap();
-    let kept = pollster::block_on(housekeep(&connected, &store, &FakeClock::at(NOON))).unwrap();
+    let kept = pollster::block_on(housekeep(&connected, &store, &FakeClock::at(NOON)))
+        .unwrap()
+        .kept;
     assert_eq!(
         kept[0].outcome,
         Chored::Dropped("Slack cannot archive or lock a thread".to_owned())
