@@ -392,6 +392,26 @@ fn deliveries_the_ledger_cannot_record_stop_with_every_one_of_them_remaining() {
 }
 
 #[test]
+fn deliveries_whose_records_cannot_be_read_stop_before_any_is_sent() {
+    let mut store = healthy();
+    store.fault = Fault::ReadsDeliveries;
+    followed_at(&store, &[CY, SOCIAL]);
+    let script = Script::answering(&[(CY, 202, ""), (SOCIAL, 202, "")]);
+    let Outcome::Stopped {
+        landed,
+        remaining,
+        reason,
+    } = announced(&store, &script)
+    else {
+        panic!("the announcement stops");
+    };
+    assert_eq!(landed, vec![Step::Post]);
+    assert_eq!(remaining, vec![Step::Deliveries]);
+    assert!(matches!(reason, herald_flows::Stop::Store(_)));
+    assert_eq!(script.seen(), Vec::<String>::new());
+}
+
+#[test]
 fn a_run_resumed_delivers_only_to_the_inboxes_it_kept_no_landing_for() {
     let mut store = healthy();
     store.fault = Fault::LandsOneDelivery;

@@ -256,32 +256,31 @@ impl<S: Store, C: Clock, G: Signer, H: Http> Run<'_, S, C, G, H> {
         }
     }
 
-    /// Takes `batch`, each a delivery to one inbox, all at once, once the
-    /// run still holds the announcement, and keeps where each delivery
-    /// stands as its own record.
+    /// Delivers to each inbox in `batch` all at once, once the run still
+    /// holds the announcement, and keeps where each delivery stands as its
+    /// own record.
     async fn delivered(
         &self,
-        batch: &[Step],
+        batch: &[String],
         announcement: &Announcement,
         progress: &mut Progress,
     ) -> Result<(), Unlanded> {
         let now = self.ports.clock.now();
-        let unlanded = |reason| (batch.to_vec(), reason);
+        let steps: Vec<Step> = batch.iter().cloned().map(Step::Deliver).collect();
+        let unlanded = |reason| (steps.clone(), reason);
         self.write(progress).await.map_err(unlanded)?;
         let key = progress.entry.key;
-        for step in batch {
-            if let Step::Deliver(inbox) = step {
-                self.ports
-                    .store
-                    .put_delivery(&key, inbox, &State::Attempted { at: now })
-                    .await
-                    .map_err(|error| unlanded(stored(error)))?;
-            }
+        for inbox in batch {
+            self.ports
+                .store
+                .put_delivery(&key, inbox, &State::Attempted { at: now })
+                .await
+                .map_err(|error| unlanded(stored(error)))?;
         }
         let delivery = &self.route.config.route.delivery;
         let entry = &progress.entry;
         let sent = together(
-            batch
+            steps
                 .iter()
                 .map(|step| {
                     let signing = Signing {
@@ -298,16 +297,14 @@ impl<S: Store, C: Clock, G: Signer, H: Http> Run<'_, S, C, G, H> {
         let mut landed = Vec::new();
         let mut failed = Vec::new();
         let mut first = None;
-        for (step, sent) in batch.iter().zip(sent) {
+        for ((inbox, step), sent) in batch.iter().zip(&steps).zip(sent) {
             let reason = match sent {
                 Ok(Sent::Landed(facts)) => {
-                    if let Step::Deliver(inbox) = step {
-                        self.ports
-                            .store
-                            .put_delivery(&key, inbox, &State::Landed { facts })
-                            .await
-                            .map_err(|error| unlanded(stored(error)))?;
-                    }
+                    self.ports
+                        .store
+                        .put_delivery(&key, inbox, &State::Landed { facts })
+                        .await
+                        .map_err(|error| unlanded(stored(error)))?;
                     landed.push(step.clone());
                     continue;
                 }
@@ -322,17 +319,19 @@ impl<S: Store, C: Clock, G: Signer, H: Http> Run<'_, S, C, G, H> {
         first.map_or(Ok(()), |reason| Err((failed, reason)))
     }
 
-    /// Delivers the announcement to each follower's inbox it has not landed
-    /// in, `together` at once, and lands the deliveries once every one has.
+    /// Delivers the announcement to the inbox of each follower of `actor` it
+    /// has not landed in, `together` at once, and lands the deliveries once
+    /// every one has.
     async fn deliveries(
         &self,
+        actor: &str,
         announcement: &Announcement,
         progress: &mut Progress,
     ) -> Result<(), Unlanded> {
         let whole = |reason| (vec![Step::Deliveries], reason);
         let key = progress.entry.key;
         let mut pending = Vec::new();
-        for inbox in self.recipients().await.map_err(whole)? {
+        for inbox in self.recipients(actor).await.map_err(whole)? {
             let state = self
                 .ports
                 .store
@@ -340,13 +339,13 @@ impl<S: Store, C: Clock, G: Signer, H: Http> Run<'_, S, C, G, H> {
                 .await
                 .map_err(|error| whole(stored(error)))?;
             if !matches!(state, Some(State::Landed { .. })) {
-                pending.push(Step::Deliver(inbox));
+                pending.push(inbox);
             }
         }
         let mut batches = pending.chunks(self.together.max(1));
         while let Some(batch) = batches.next() {
             if let Err((mut failed, reason)) = self.delivered(batch, announcement, progress).await {
-                failed.extend(batches.flatten().cloned());
+                failed.extend(batches.flatten().cloned().map(Step::Deliver));
                 return Err((failed, reason));
             }
         }
@@ -357,15 +356,16 @@ impl<S: Store, C: Clock, G: Signer, H: Http> Run<'_, S, C, G, H> {
         self.write(progress).await.map_err(whole)
     }
 
-    /// Takes `step`, planned at `index`.
+    /// Takes `step`, delivering to each follower's inbox where it is the
+    /// deliveries.
     async fn next(
         &self,
         step: &Planned,
         announcement: &mut Announcement,
         progress: &mut Progress,
     ) -> Result<(), Unlanded> {
-        if step.step == Step::Deliveries {
-            return self.deliveries(announcement, progress).await;
+        if let (Step::Deliveries, Some(actor)) = (&step.step, self.route.reached.follows()) {
+            return self.deliveries(actor, announcement, progress).await;
         }
         self.take(&step.step, step.verify_first, announcement, progress)
             .await
@@ -373,11 +373,8 @@ impl<S: Store, C: Clock, G: Signer, H: Http> Run<'_, S, C, G, H> {
     }
 
     /// The inboxes an announcement is delivered to: each distinct inbox of
-    /// the followers of the actor the route announces as, in order.
-    async fn recipients(&self) -> Result<Vec<String>, Stop> {
-        let Some(actor) = self.route.reached.follows() else {
-            return Ok(Vec::new());
-        };
+    /// the followers of `actor`, in order.
+    async fn recipients(&self, actor: &str) -> Result<Vec<String>, Stop> {
         let followers = self
             .ports
             .store

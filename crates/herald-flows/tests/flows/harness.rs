@@ -213,6 +213,7 @@ pub(crate) enum Fault {
     LatestConflicts,
     KeepsNoLatest,
     Admits,
+    ReadsDeliveries,
     AttemptsDeliveries,
     LandsDeliveries,
     LandsOneDelivery,
@@ -242,6 +243,9 @@ pub(crate) fn broken() -> StoreError {
 
 impl Inboxes for Failing {
     async fn delivery(&self, key: &Key, inbox: &str) -> Result<Option<State>, StoreError> {
+        if self.fault == Fault::ReadsDeliveries {
+            return Err(broken());
+        }
         self.inner.delivery(key, inbox).await
     }
 

@@ -73,6 +73,13 @@ fn a_release_is_announced_once_through_the_actions_cache() {
         "ACTIONS_RESULTS_URL".to_owned(),
         "https://results.example".to_owned(),
     );
+    let key = setup.vars.remove("HERALD_STORE_KEY").unwrap();
+    let keyless = herald(&setup, &world, &ANNOUNCE);
+    assert_eq!(
+        keyless.err,
+        "HERALD_STORE_KEY is not set; the store seals its records with it\n"
+    );
+    setup.vars.insert("HERALD_STORE_KEY".to_owned(), key);
     let tokenless = herald(&setup, &world, &ANNOUNCE);
     assert_eq!(
         tokenless.err,

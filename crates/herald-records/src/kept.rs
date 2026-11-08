@@ -52,6 +52,20 @@ pub struct Kept<R> {
     seal: Option<Seal>,
 }
 
+fn opened(seal: Option<&Seal>, path: &str, bytes: Vec<u8>) -> Result<Vec<u8>, StoreError> {
+    match seal {
+        Some(seal) => seal.opened(path, &bytes),
+        None => Ok(bytes),
+    }
+}
+
+fn sealed(seal: Option<&Seal>, path: &str, bytes: Vec<u8>) -> Vec<u8> {
+    match seal {
+        Some(seal) => seal.sealed(path, &bytes),
+        None => bytes,
+    }
+}
+
 fn corrupt(path: &str, error: impl std::fmt::Display) -> StoreError {
     StoreError::Corrupt {
         reason: format!("{path}: {error}"),
@@ -90,11 +104,12 @@ impl<R: Records> Kept<R> {
         }
     }
 
-    /// The store, sealing every record it writes with `seal`, and reading as
-    /// corrupt every record that is not sealed with it (ADR-0005).
+    /// The store, sealing every record it writes with `seal` where there is
+    /// one, and reading as corrupt every record that is not sealed with it
+    /// (ADR-0005).
     #[must_use]
-    pub fn sealed(mut self, seal: Seal) -> Self {
-        self.seal = Some(seal);
+    pub fn sealed(mut self, seal: impl Into<Option<Seal>>) -> Self {
+        self.seal = seal.into();
         self
     }
 
@@ -137,10 +152,7 @@ impl<R: Records> Kept<R> {
         let Some(Blob { token, bytes }) = self.records.read(path).await? else {
             return Ok(None);
         };
-        let bytes = match &self.seal {
-            Some(seal) => seal.opened(path, &bytes)?,
-            None => bytes,
-        };
+        let bytes = opened(self.seal.as_ref(), path, bytes)?;
         let stored: Stored =
             serde_json::from_slice(&bytes).map_err(|error| corrupt(path, error))?;
         Ok(Some(Read {
@@ -161,11 +173,11 @@ impl<R: Records> Kept<R> {
             version: version.0,
             record: record.clone(),
         };
-        let bytes = encoded(path, &stored)?.to_string().into_bytes();
-        let bytes = match &self.seal {
-            Some(seal) => seal.sealed(path, &bytes),
-            None => bytes,
-        };
+        let bytes = sealed(
+            self.seal.as_ref(),
+            path,
+            encoded(path, &stored)?.to_string().into_bytes(),
+        );
         self.records.write(path, &bytes, replacing).await
     }
 
