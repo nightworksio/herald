@@ -545,9 +545,11 @@ pub struct Server {
     /// The path every endpoint is served under, as `/herald`; empty where
     /// they are served at the root.
     pub base: String,
-    /// How many announcements it works on at once; a webhook arriving while
-    /// as many more wait is answered 503.
+    /// How many announcements it works on at once.
     pub jobs: usize,
+    /// How many announcements may wait for a place; a webhook arriving while
+    /// as many wait is answered 503.
+    pub queue: usize,
     /// How many connections it holds at once.
     pub connections: usize,
     /// The most bytes an inbound request's body may hold.
@@ -677,6 +679,7 @@ impl Default for Server {
             listen: Self::LISTEN.to_owned(),
             base: String::new(),
             jobs: Self::JOBS,
+            queue: Self::JOBS,
             connections: Self::CONNECTIONS,
             body: Self::BODY,
             fetches: Self::FETCHES,

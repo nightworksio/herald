@@ -47,6 +47,7 @@ body = "{{ event.body }}"
         assert_eq!(
             (
                 config.server.jobs,
+                config.server.queue,
                 config.server.connections,
                 config.server.body,
                 config.server.fetches,
@@ -54,7 +55,7 @@ body = "{{ event.body }}"
                 config.server.deliveries,
                 config.server.keys_most,
             ),
-            (8, 256, 1_048_576, 4, 4, 8, 1024)
+            (8, 8, 256, 1_048_576, 4, 4, 8, 1024)
         );
         assert_eq!(config.server.keys, KeyCache::Memory);
         assert!(!config.server.keys_in_store());
@@ -83,7 +84,7 @@ body = "{{ event.body }}"
     #[test]
     fn the_server_table_sets_every_limit() {
         let text = format!(
-            "{EXAMPLE}\n[server]\nlisten = \"0.0.0.0:9000\"\nbase = \"/tools/herald\"\njobs = 2\nconnections = 3\nbody = \"64KiB\"\nfetches = 5\ncompletions = 9\ndeliveries = 6\nsilence = \"45s\"\nbusy_retry = \"2m\"\nread = \"10s\"\nheld = \"20s\"\naccept_pause = \"250ms\"\n\n[server.sessions]\nfirst_wait = \"2s\"\nlongest_wait = \"5m\"\njitter = false\n\n[server.keys]\ncache = \"store\"\nrefresh_after = \"30m\"\nreread_after = \"5m\"\nmost = 7\ndocument = \"1MiB\"\n\n[server.inbound]\nreplay_window = \"20m\"\nsignatures = 2\ncovered = 4\n"
+            "{EXAMPLE}\n[server]\nlisten = \"0.0.0.0:9000\"\nbase = \"/tools/herald\"\njobs = 2\nqueue = 5\nconnections = 3\nbody = \"64KiB\"\nfetches = 5\ncompletions = 9\ndeliveries = 6\nsilence = \"45s\"\nbusy_retry = \"2m\"\nread = \"10s\"\nheld = \"20s\"\naccept_pause = \"250ms\"\n\n[server.sessions]\nfirst_wait = \"2s\"\nlongest_wait = \"5m\"\njitter = false\n\n[server.keys]\ncache = \"store\"\nrefresh_after = \"30m\"\nreread_after = \"5m\"\nmost = 7\ndocument = \"1MiB\"\n\n[server.inbound]\nreplay_window = \"20m\"\nsignatures = 2\ncovered = 4\n"
         );
         let config = load("herald.toml", &text, &nothing).unwrap();
         assert_eq!(
@@ -92,6 +93,7 @@ body = "{{ event.body }}"
                 listen: "0.0.0.0:9000".to_owned(),
                 base: "/tools/herald".to_owned(),
                 jobs: 2,
+                queue: 5,
                 connections: 3,
                 body: 65_536,
                 fetches: 5,

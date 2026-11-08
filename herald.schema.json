@@ -1522,7 +1522,7 @@
           "$ref": "#/$defs/Inbound"
         },
         "jobs": {
-          "description": "How many announcements it works on at once; a webhook arriving while\nas many more wait is answered 503. 8 where absent.",
+          "description": "How many announcements it works on at once; 8 where absent.",
           "type": [
             "integer",
             "null"
@@ -1540,6 +1540,15 @@
             "string",
             "null"
           ]
+        },
+        "queue": {
+          "description": "How many announcements may wait for a place; a webhook arriving while\nas many wait is answered 503. As many as `jobs` where absent.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint",
+          "minimum": 1
         },
         "read": {
           "description": "How long a connection may take to send a request's headers; \"30s\"\nwhere absent.",

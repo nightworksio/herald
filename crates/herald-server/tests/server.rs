@@ -162,6 +162,7 @@ body = "{{ event.body }}"
     fn limits() -> Limits<'static> {
         Limits {
             jobs: 4,
+            queue: 4,
             connections: 4,
             body: 1 << 20,
             poll: None,
@@ -352,7 +353,8 @@ body = "{{ event.body }}"
         let heard = RefCell::new(Vec::new());
         let hear = |said: Heard| heard.borrow_mut().push(named(&said));
         let unsigned = Limits {
-            jobs: 0,
+            jobs: 4,
+            queue: 0,
             ..limits()
         };
         let (listener, address) = listening().await;
@@ -484,6 +486,7 @@ body = "{{ event.body }}"
         };
         let one = Limits {
             jobs: 1,
+            queue: 1,
             ..limits()
         };
         let hear = |said: Heard| heard.borrow_mut().push(named(&said));

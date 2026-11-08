@@ -816,6 +816,7 @@ impl Loader<'_> {
             listen,
             base,
             jobs: count(file.jobs, defaults.jobs),
+            queue: count(file.queue, count(file.jobs, defaults.jobs)),
             connections: count(file.connections, defaults.connections),
             body: self.most(
                 file.body.map(|body| (body.span(), body.into_inner().0)),

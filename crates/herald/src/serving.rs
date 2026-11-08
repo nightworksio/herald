@@ -81,6 +81,7 @@ impl<F: Future<Output = ()>> Listening<'_, F> {
         };
         let limits = Limits {
             jobs: server.jobs,
+            queue: server.queue,
             connections: server.connections,
             body: server.body,
             poll: period(self.config.schedule.poll),

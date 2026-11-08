@@ -88,8 +88,10 @@ pub enum Heard {
 /// What the server takes on at once, and how often it does its rounds.
 #[derive(Debug, Clone, Copy)]
 pub struct Limits<'a> {
-    /// How many pieces of work run at once; as many again may wait.
+    /// How many pieces of work run at once.
     pub jobs: usize,
+    /// How many pieces of work may wait for a place.
+    pub queue: usize,
     /// How many connections are held at once; the next waits to be taken.
     pub connections: usize,
     /// The most bytes a request's body may hold.
@@ -534,7 +536,7 @@ pub async fn serve<S, C, G, V, H, P, K, L, So>(
         sweeping: AtomicBool::new(false),
         heard,
     };
-    let queue = Queue::new(limits.jobs);
+    let queue = Queue::new(limits.queue);
     let mut connections = FuturesUnordered::new();
     let mut running: FuturesUnordered<Pin<Box<dyn Future<Output = Option<Heard>> + '_>>> =
         FuturesUnordered::new();

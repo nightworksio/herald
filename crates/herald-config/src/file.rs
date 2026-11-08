@@ -321,9 +321,11 @@ pub(crate) struct ServerFile {
     /// absent. herald's ActivityPub actors' ids are under it too.
     #[schemars(with = "Option<String>")]
     pub(crate) base: Option<Spanned<String>>,
-    /// How many announcements it works on at once; a webhook arriving while
-    /// as many more wait is answered 503. 8 where absent.
+    /// How many announcements it works on at once; 8 where absent.
     pub(crate) jobs: Option<NonZeroUsize>,
+    /// How many announcements may wait for a place; a webhook arriving while
+    /// as many wait is answered 503. As many as `jobs` where absent.
+    pub(crate) queue: Option<NonZeroUsize>,
     /// How many connections it holds at once; 256 where absent.
     pub(crate) connections: Option<NonZeroUsize>,
     /// The most an inbound request's body may hold; "1MiB" where absent,
