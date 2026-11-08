@@ -157,6 +157,17 @@ impl Entry {
         self
     }
 
+    /// The entry with its lease held on until `until`, where `run` holds it;
+    /// as it was where another run, or none, holds it.
+    #[must_use]
+    pub fn renewed(self, run: &str, until: Timestamp) -> Self {
+        if self.lease.as_ref().is_some_and(|lease| lease.holder == run) {
+            self.claimed(run, until)
+        } else {
+            self
+        }
+    }
+
     /// The entry with no run holding it.
     #[must_use]
     pub fn released(mut self) -> Self {
@@ -496,6 +507,22 @@ mod tests {
                 until: at("2026-10-31T12:10:00Z")
             }
         );
+    }
+
+    #[test]
+    fn a_run_renews_only_the_lease_it_holds() {
+        let later = at("2026-10-31T12:30:00Z");
+        let held = Entry::new(key()).claimed("run", at("2026-10-31T12:10:00Z"));
+        assert_eq!(
+            held.clone()
+                .renewed("run", later)
+                .lease
+                .map(|lease| lease.until),
+            Some(later)
+        );
+        assert_eq!(held.clone().renewed("other", later), held);
+        let released = held.released();
+        assert_eq!(released.clone().renewed("run", later), released);
     }
 
     #[test]

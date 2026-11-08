@@ -9,13 +9,34 @@ Parameters:
   Table:
     Type: String
     Default: herald
+  Memory:
+    Type: Number
+    Default: 256
+    MinValue: 128
+    MaxValue: 10240
+  Timeout:
+    Type: Number
+    Default: 900
+    MinValue: 1
+    MaxValue: 900
+  LogRetention:
+    Type: Number
+    Default: 30
+    AllowedValues: [1, 3, 5, 7, 14, 30, 60, 90, 120, 150, 180, 365, 400, 545, 731, 1096, 1827, 2192, 2557, 2922, 3288, 3653]
+  Concurrency:
+    Type: String
+    Default: ""
+    Description: The invocations that may run at once; unreserved where empty.
+
+Conditions:
+  Reserved: !Not [!Equals [!Ref Concurrency, ""]]
 
 Resources:
   Logs:
     Type: AWS::Logs::LogGroup
     Properties:
       LogGroupName: !Sub /aws/lambda/${Herald}
-      RetentionInDays: 30
+      RetentionInDays: !Ref LogRetention
   Herald:
     Type: AWS::Serverless::Function
     Properties:
@@ -24,8 +45,9 @@ Resources:
       Handler: bootstrap
       Runtime: provided.al2023
       Architectures: [arm64]
-      MemorySize: 256
-      Timeout: 900
+      MemorySize: !Ref Memory
+      Timeout: !Ref Timeout
+      ReservedConcurrentExecutions: !If [Reserved, !Ref Concurrency, !Ref AWS::NoValue]
       FunctionUrlConfig:
         AuthType: NONE
         InvokeMode: BUFFERED

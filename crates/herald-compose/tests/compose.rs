@@ -133,6 +133,13 @@ mod compose {
         fn kv(&self, at: KvAt<'_>) -> impl Future<Output = Result<FakeKv, String>> {
             ready(self.ask(format!("{at:?}")).map(|()| FakeKv::default()))
         }
+
+        fn nonce(&self) -> String {
+            static NONCES: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+            NONCES
+                .fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+                .to_string()
+        }
     }
 
     struct Untaken;

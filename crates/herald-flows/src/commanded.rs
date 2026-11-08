@@ -13,7 +13,7 @@ use crate::inbound::{Rejected, Verified, admitted, verified};
 use crate::interact::completed;
 use crate::interacting::{Interacting, Replying};
 use crate::serving::{
-    Answered, Inbound, Job, Serving, missing, rejection, replied, said, unmethodical,
+    Answered, Inbound, Job, Serving, missing, refusal, rejection, replied, unmethodical, unread,
 };
 
 /// Where Discord and Slack post commands, before the destination's name.
@@ -101,9 +101,10 @@ async fn interaction<S: Store, C: Clock, G, V: Verifier, H, P, K>(
     let Some(key) = interacting.key() else {
         return missing("interactions for such a destination");
     };
-    if let Err(rejected) = admit(serving, Scheme::Discord, key, inbound).await {
-        return rejection(&rejected);
-    }
+    let verified = match admit(serving, Scheme::Discord, key, inbound).await {
+        Ok(verified) => verified,
+        Err(rejected) => return rejection(&rejected),
+    };
     match interacting.received(destination, inbound.body) {
         Ok(discord::Received::Ping) => replied(200, JSON, discord::pong()),
         Ok(discord::Received::Completing { place, typed, .. }) => {
@@ -127,8 +128,10 @@ async fn interaction<S: Store, C: Clock, G, V: Verifier, H, P, K>(
                 ..replied(200, JSON, discord::deferred(public))
             }
         }
-        Ok(discord::Received::Ignored) => said(400, "herald does not answer this interaction"),
-        Err(unread) => said(400, &unread.to_string()),
+        Ok(discord::Received::Ignored) => {
+            refusal(400, "the interaction is of a kind herald does not answer")
+        }
+        Err(reason) => unread(serving.ports.store, Scheme::Discord, &verified, reason).await,
     }
 }
 
@@ -139,9 +142,10 @@ async fn slash<S: Store, C: Clock, G, V: Verifier, H, P, K>(
     signing: &str,
     inbound: &Inbound<'_>,
 ) -> Answered {
-    if let Err(rejected) = admit(serving, Scheme::Slack, signing, inbound).await {
-        return rejection(&rejected);
-    }
+    let verified = match admit(serving, Scheme::Slack, signing, inbound).await {
+        Ok(verified) => verified,
+        Err(rejected) => return rejection(&rejected),
+    };
     match interacting.received(destination, inbound.body) {
         Ok(slack::Received::Asked { asked, replying }) => Answered {
             job: Some(job(destination, vec![(*asked, Replying::Slack(replying))])),
@@ -149,7 +153,7 @@ async fn slash<S: Store, C: Clock, G, V: Verifier, H, P, K>(
         },
         Ok(slack::Received::Usage) => replied(200, JSON, interacting.usage()),
         Ok(slack::Received::Ignored) => replied(200, JSON, ""),
-        Err(unread) => said(400, &unread.to_string()),
+        Err(reason) => unread(serving.ports.store, Scheme::Slack, &verified, reason).await,
     }
 }
 
@@ -218,7 +222,7 @@ pub(crate) async fn appserviced<S: Store, C: Clock, G, V: Verifier, H, P, K>(
                     )),
                     ..replied(200, JSON, EMPTY)
                 },
-                Err(unread) => said(400, &unread.to_string()),
+                Err(reason) => unread(serving.ports.store, Scheme::Matrix, &delivery, reason).await,
             }
         }
         ("GET", ["_matrix", "app", "v1", "users", user]) => {

@@ -64,6 +64,10 @@ impl Host for Native<'_> {
         &SystemClock
     }
 
+    fn nonce(&self) -> String {
+        herald_environment::nonce()
+    }
+
     fn signer(&self) -> &RingSigner {
         &RingSigner
     }

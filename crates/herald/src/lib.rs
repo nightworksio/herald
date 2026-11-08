@@ -817,16 +817,18 @@ impl Served for Housekeeping<'_> {
     }
 }
 
-/// The name this run takes its leases under.
+/// The name this run takes its leases under: where it runs, then a nonce no
+/// other run takes, so two jobs of one CI run never share it.
 fn run_name(vars: &BTreeMap<String, String>) -> String {
     let pair = |first: &str, second: &str| vars.get(first).zip(vars.get(second));
-    if let Some((id, attempt)) = pair("GITHUB_RUN_ID", "GITHUB_RUN_ATTEMPT") {
+    let place = if let Some((id, attempt)) = pair("GITHUB_RUN_ID", "GITHUB_RUN_ATTEMPT") {
         format!("github/{id}/{attempt}")
     } else if let Some((pipeline, job)) = pair("CI_PIPELINE_ID", "CI_JOB_ID") {
         format!("gitlab/{pipeline}/{job}")
     } else {
         "local".to_owned()
-    }
+    };
+    format!("{place}/{}", herald_environment::nonce())
 }
 
 async fn polling(

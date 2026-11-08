@@ -401,6 +401,9 @@ pub struct Server {
     pub body: usize,
     /// How many actor documents it reads at once.
     pub fetches: usize,
+    /// How many autocompletions a session answers at once; one arriving
+    /// while as many are answered is dropped.
+    pub completions: usize,
     /// How many of an announcement's inboxes are delivered to at once.
     pub deliveries: usize,
     /// How long a session a destination holds hears nothing before it
@@ -429,6 +432,9 @@ impl Server {
     /// How many actor documents it reads at once where the config says
     /// nothing.
     pub const FETCHES: usize = 4;
+    /// How many autocompletions a session answers at once where the config
+    /// says nothing.
+    pub const COMPLETIONS: usize = 4;
     /// How many inboxes it delivers to at once where the config says
     /// nothing.
     pub const DELIVERIES: usize = 8;
@@ -459,6 +465,7 @@ impl Default for Server {
             connections: Self::CONNECTIONS,
             body: Self::BODY,
             fetches: Self::FETCHES,
+            completions: Self::COMPLETIONS,
             deliveries: Self::DELIVERIES,
             silence: Self::SILENCE,
             keys: KeyCache::Memory,

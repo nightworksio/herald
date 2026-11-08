@@ -1176,6 +1176,15 @@
             }
           ]
         },
+        "completions": {
+          "description": "How many autocompletions a session answers at once; one arriving\nwhile as many are answered is dropped. 4 where absent.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint",
+          "minimum": 1
+        },
         "connections": {
           "description": "How many connections it holds at once; 256 where absent.",
           "type": [

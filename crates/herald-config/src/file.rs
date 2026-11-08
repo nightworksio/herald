@@ -322,6 +322,9 @@ pub(crate) struct ServerFile {
     pub(crate) body: Option<Size>,
     /// How many actor documents it reads at once; 4 where absent.
     pub(crate) fetches: Option<NonZeroUsize>,
+    /// How many autocompletions a session answers at once; one arriving
+    /// while as many are answered is dropped. 4 where absent.
+    pub(crate) completions: Option<NonZeroUsize>,
     /// How many of an announcement's inboxes are delivered to at once, by
     /// every command; 8 where absent.
     pub(crate) deliveries: Option<NonZeroUsize>,

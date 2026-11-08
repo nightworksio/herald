@@ -1,10 +1,14 @@
 //! The ports any target with a process implements: secrets from its
-//! environment and the files it names, and the time from its clock.
+//! environment and the files it names, the time from its clock, and the
+//! nonce that keeps each run's name its own.
 
 use std::collections::BTreeMap;
+use std::collections::hash_map::RandomState;
 use std::fmt;
 use std::future::{Future, ready};
+use std::hash::{BuildHasher, Hasher};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use herald_ports::{Clock, Secret, SecretError, Secrets};
 use jiff::Timestamp;
@@ -108,6 +112,19 @@ impl Secrets for EnvSecrets {
     }
 }
 
+/// How many nonces this process has made.
+static NONCES: AtomicU64 = AtomicU64::new(0);
+
+/// A nonce no other run takes, in 16 hex digits: the process's random hash
+/// keys over a count of the nonces it has made, so two runs on one host, or
+/// two jobs of one run, never share a name to take leases under (ADR-0005).
+#[must_use]
+pub fn nonce() -> String {
+    let mut hasher = RandomState::new().build_hasher();
+    hasher.write_u64(NONCES.fetch_add(1, Ordering::Relaxed));
+    format!("{:016x}", hasher.finish())
+}
+
 /// The system's clock.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct SystemClock;
@@ -121,6 +138,14 @@ impl Clock for SystemClock {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn each_nonce_is_16_hex_digits_and_new() {
+        let first = nonce();
+        assert_eq!(first.len(), 16);
+        assert!(first.bytes().all(|byte| byte.is_ascii_hexdigit()));
+        assert_ne!(nonce(), first);
+    }
 
     #[test]
     fn debug_names_the_variables_and_shows_no_value() {

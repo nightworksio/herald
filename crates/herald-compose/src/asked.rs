@@ -71,7 +71,12 @@ impl<H: Host> Composed<H> {
         Reached {
             reply: answered.reply,
             job: answered.job,
-            said: Vec::new(),
+            said: answered
+                .refused
+                .as_deref()
+                .map(told::refused)
+                .into_iter()
+                .collect(),
         }
     }
 

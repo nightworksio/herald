@@ -537,6 +537,25 @@ async fn completions_that_cannot_be_sent_are_said_and_a_ping_passes() {
 }
 
 #[tokio::test(start_paused = true)]
+async fn completions_past_the_bound_are_dropped_and_said() {
+    let completing = interaction(4, &json!({ "name": "latest", "options": [] }));
+    let mut frames = vec![hello(60_000)];
+    frames.extend(std::iter::repeat_n(completing, 5));
+    let sockets = ScriptedSockets::opening(vec![Ok(frames)]);
+    let hanging = (0..4)
+        .map(|_| (format!("/interactions/900/{TOKEN}/callback"), None))
+        .collect();
+    let world = World::new("discord", Answers::of(hanging), sockets).await;
+    let heard = world
+        .served(4, |line| line.contains("a completion was dropped"))
+        .await;
+    assert_eq!(
+        heard,
+        ["discord: a completion was dropped: no more are answered at once"]
+    );
+}
+
+#[tokio::test(start_paused = true)]
 async fn a_gateway_that_stops_finishes_the_answers_it_was_giving() {
     let sockets = ScriptedSockets::opening(vec![Ok(vec![
         hello(60_000),

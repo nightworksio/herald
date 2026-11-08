@@ -155,6 +155,12 @@ pub fn worked(worked: &Worked) -> Vec<String> {
     }
 }
 
+/// What a request refused for `reason` is logged as.
+#[must_use]
+pub fn refused(reason: &str) -> String {
+    format!("a request was refused: {reason}")
+}
+
 /// What housekeeping did, or why it stopped.
 #[must_use]
 pub fn kept(kept: &Result<Vec<Kept>, Stop>) -> Vec<String> {

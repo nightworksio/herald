@@ -40,6 +40,16 @@ fn the_service_gives_the_variables_it_holds_and_not_an_empty_one() {
 }
 
 #[test]
+fn each_nonce_the_service_gives_is_new() {
+    let host = FastlyHost {
+        config: None,
+        vars: BTreeMap::new(),
+        secrets: StoreSecrets,
+    };
+    assert_ne!(host.nonce(), host.nonce());
+}
+
+#[test]
 fn a_connection_fetches_plain_http_on_loopback_without_tls() {
     const BASE: &str = "http://127.0.0.1:8099";
     let http = FastlyHost::new().connect(BASE).unwrap();

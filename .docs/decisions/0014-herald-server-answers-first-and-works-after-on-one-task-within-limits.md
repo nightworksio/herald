@@ -57,6 +57,8 @@ does. Nothing herald keeps today holds its content.
      headers and then body must arrive within 30 seconds, and is closed
      after 90. A body is at most `body` (1 MiB).
    - `fetches` (4) actor documents are read at once.
+   - `completions` (4) autocompletions are answered at once by each
+     session; one arriving while as many are answered is dropped and said.
    - `deliveries` (8) of an announcement's inboxes are delivered to at once,
      each still one step of the ledger. The CLI honours it too.
    - Sources are polled and threads kept on `[schedule]`, and keys read

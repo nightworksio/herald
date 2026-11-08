@@ -195,7 +195,8 @@ impl<H: Host, W: Keyed<H>> Through<'_, H, W> {
             webhooks: &composed.webhooks,
             admission: self.admission,
         };
-        self.work.keyed(&serving, &composed.run).await
+        let run = format!("{}/{}", composed.run, host.nonce());
+        self.work.keyed(&serving, &run).await
     }
 }
 

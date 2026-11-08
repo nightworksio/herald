@@ -18,7 +18,11 @@ const ACTOR: &str = "https://herald.example/users/php-mutation-gate";
 const APP_TOKEN: &str = "app-token";
 
 fn config() -> Config {
-    let text = r#"version = 1
+    load("herald.toml", &config_text(), &|_| Err(String::new())).unwrap()
+}
+
+fn config_text() -> String {
+    r#"version = 1
 [store]
 kind = "sqlite"
 [destinations.fedi]
@@ -58,8 +62,7 @@ routes = ["deployed"]
 title = "{{ event.title }}"
 body = "{{ event.body }}"
 "#
-    .replace("TOKEN_HASH", &herald_core::digest(APP_TOKEN));
-    load("herald.toml", &text, &|_| Err(String::new())).unwrap()
+    .replace("TOKEN_HASH", &herald_core::digest(APP_TOKEN))
 }
 
 fn secrets() -> FakeSecrets {
@@ -82,7 +85,10 @@ type Served<'a> =
 
 impl World {
     fn new(script: Script) -> Self {
-        let config = config();
+        Self::with(config(), script)
+    }
+
+    fn with(config: Config, script: Script) -> Self {
         let prepared = pollster::block_on(prepare(&config, &secrets(), &FakeSigner)).unwrap();
         let connected = prepared.connect(|_| Ok::<_, ()>(script.clone())).unwrap();
         let webhooks = pollster::block_on(webhooks(&config, &secrets())).unwrap();
@@ -143,7 +149,7 @@ fn get(path: &str) -> Inbound<'_> {
         method: "GET",
         path,
         query: None,
-        headers: &[],
+        headers: &[("Host", "herald.example")],
         body: &[],
     }
 }
@@ -286,8 +292,13 @@ fn an_actor_whose_key_cannot_be_read_is_not_served() {
     };
     let answered = pollster::block_on(answer(&serving, &get("/users/php-mutation-gate")));
     assert_eq!(answered.reply.status, 500);
+    assert_eq!(
+        String::from_utf8(answered.reply.body).unwrap(),
+        "herald cannot answer this request now"
+    );
     assert!(
-        String::from_utf8(answered.reply.body)
+        answered
+            .refused
             .unwrap()
             .starts_with("the actor's key cannot be read:")
     );
@@ -373,6 +384,10 @@ fn a_signed_webhook_of_a_release_is_answered_and_left_to_announce() {
     let delivery = verified.delivery.clone().unwrap();
     let again = world.answer(&hooked("/hooks/gate", &headers, EVENT.as_bytes()));
     assert_eq!(again.reply.status, 409);
+    assert_eq!(
+        String::from_utf8(again.reply.body).unwrap(),
+        "herald has taken this request already"
+    );
     let Some(job) = answered.job else {
         panic!("the release is left to announce");
     };
@@ -451,7 +466,22 @@ fn a_webhook_of_another_repository_is_refused_and_its_delivery_released() {
     for _ in 0..2 {
         let answered = world.answer(&hooked("/hooks/gate", &headers, elsewhere.as_bytes()));
         assert_eq!(answered.reply.status, 400);
+        assert_eq!(
+            String::from_utf8(answered.reply.body).unwrap(),
+            "herald does not take this request"
+        );
     }
+    let unreleased = World::failing(Fault::ReleasesDeliveries).answer(&hooked(
+        "/hooks/gate",
+        &headers,
+        elsewhere.as_bytes(),
+    ));
+    assert_eq!(unreleased.reply.status, 400);
+    assert!(
+        unreleased.refused.unwrap().ends_with(
+            "; its delivery could not be released: the store could not be reached: broken"
+        ),
+    );
 }
 
 fn inboxed<'a>(
@@ -472,6 +502,33 @@ fn keyed() -> Script {
     let owned = document(ANA);
     Script::answering(&[(ANA, 200, owned.as_str())])
         .headed(&[("content-type", "application/activity+json")])
+}
+
+#[test]
+fn an_actor_is_served_on_its_own_domain_only() {
+    let text = config_text().replace(
+        "[sources.gate]",
+        "[destinations.other]\nkind = \"activitypub\"\ndomain = \"other.example\"\nkey = { secret = \"HERALD_ACTIVITYPUB_KEY\" }\n[sources.gate]",
+    ) + "[[routes]]\nid = \"other\"\nsources = [\"gate\"]\ndestination = \"other\"\ntemplate = \"t\"\nactor = \"releases\"\n";
+    let world = World::with(
+        load("herald.toml", &text, &|_| Err(String::new())).unwrap(),
+        keyed(),
+    );
+    let signed = activity(FOLLOW, ANA_KEY, None);
+    let mut other: Vec<(&str, &str)> = borrowed(&signed);
+    other[0] = ("Host", "other.example");
+    let status = |path| world.answer(&inboxed(path, None, &other)).reply.status;
+    assert_eq!(status("/users/php-mutation-gate/inbox"), 404);
+    assert_eq!(status("/users/releases/inbox"), 401);
+    assert_eq!(status("/inbox"), 401);
+    for (host, status) in [("other.example", 200), ("herald.example", 404)] {
+        let headers = [("Host", host)];
+        let fetched = Inbound {
+            headers: &headers,
+            ..get("/users/releases")
+        };
+        assert_eq!(world.answer(&fetched).reply.status, status);
+    }
 }
 
 #[test]
@@ -723,6 +780,13 @@ fn an_app_s_event_its_token_or_scope_does_not_let_through_is_refused_unread() {
         let answered = world.answer(&posted(path, headers, body));
         assert_eq!(answered.reply.status, status, "{path} {headers:?}");
         assert_eq!(answered.job, None, "{path}");
+        if status != 404 {
+            assert_eq!(
+                String::from_utf8(answered.reply.body).unwrap(),
+                "herald does not take this request",
+                "{path} {headers:?}"
+            );
+        }
     }
     let mismatched = world.answer(&posted(
         "/api/projects/herald/events",
@@ -730,8 +794,8 @@ fn an_app_s_event_its_token_or_scope_does_not_let_through_is_refused_unread() {
         br#"{"id": "7", "project": "other", "title": "Deployed"}"#,
     ));
     assert_eq!(
-        said(&mismatched).2,
-        "the event names the project \"other\", not \"herald\""
+        mismatched.refused.as_deref(),
+        Some("the event names the project \"other\", not \"herald\"")
     );
     assert_eq!(world.admits(Scheme::App, "app/ci/7"), Admitted::Fresh);
     let asked = Inbound {

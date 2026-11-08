@@ -46,6 +46,13 @@ mod sessions;
 
 /// The name the server takes its leases under.
 pub(crate) const RUN: &str = "server";
+
+/// The name a job of this server takes its leases under: `server`, then a
+/// nonce no other job takes (ADR-0005).
+fn named() -> String {
+    format!("{RUN}/{}", herald_environment::nonce())
+}
+
 /// How many seconds a sender is asked to wait when the work queue is full.
 const BUSY_RETRY: &str = "30";
 /// How long a connection may take to send a request's headers, and then
@@ -74,6 +81,8 @@ pub enum Heard {
     Kept(Result<Vec<Kept>, Stop>),
     /// A connection could not be taken, and why.
     Unaccepted(String),
+    /// A request was refused, and why; its reply named no reason.
+    Refused(String),
     /// A session a destination holds said this.
     Session {
         /// The destination.
@@ -293,6 +302,9 @@ where
         body: &body,
     };
     let answered = answer(serving, &inbound).await;
+    if let Some(reason) = answered.refused {
+        (rounds.heard)(Heard::Refused(reason));
+    }
     if let (Some(job), Some(held)) = (answered.job, held) {
         held.fill(job);
     }
@@ -330,7 +342,7 @@ impl Rounds<'_> {
     ) -> Option<Heard> {
         once(&self.polling, async {
             Some(Heard::Polled(
-                poll(serving.config, serving.connected, serving.ports, RUN).await,
+                poll(serving.config, serving.connected, serving.ports, &named()).await,
             ))
         })
         .await
@@ -492,7 +504,7 @@ pub async fn serve<S, C, G, V, H, P, K, L, So>(
                 break;
             };
             running.push(Box::pin(async move {
-                Some(Heard::Worked(work(serving, job, RUN).await))
+                Some(Heard::Worked(work(serving, job, &named()).await))
             }));
         }
         tokio::select! {
@@ -541,7 +553,7 @@ mod tests {
     use futures_util::FutureExt as _;
     use herald_flows::{Job, Verified};
 
-    use super::{Queue, round, rounds};
+    use super::{Queue, RUN, named, round, rounds};
 
     fn job(body: &[u8]) -> Job {
         Job::Follow {
@@ -573,6 +585,13 @@ mod tests {
         assert_eq!(queue.left(), vec![job(b"2")]);
         assert_eq!(queue.next(), None);
         assert!(queue.hold().is_some());
+    }
+
+    #[test]
+    fn each_job_takes_its_leases_under_the_server_s_name_and_a_nonce_of_its_own() {
+        let first = named();
+        assert!(first.starts_with(&format!("{RUN}/")), "{first}");
+        assert_ne!(named(), first);
     }
 
     #[test]
