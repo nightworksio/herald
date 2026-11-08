@@ -196,6 +196,8 @@ listen = "127.0.0.1:8080"
 - herald answers each verified release with 202 and announces it after the reply.
 - An ActivityPub actor is served at `/users/<actor>`, with its Notes, its inbox, the shared inbox `/inbox` and WebFinger.
 - `--listen` or `HERALD_LISTEN` takes the place of `listen`.
+- `busy_retry` ("30s") is how long a request whose work found no place is asked to wait, `read` ("30s") and `held` ("90s") how long a connection may take to send its headers and how long it is held at most, and `accept_pause` ("100ms") how long the server waits after a connection could not be accepted.
+- `[server.sessions]` sets how a session a destination holds connects again: `first_wait` ("1s"), doubled up to `longest_wait` ("1m"), each wait between half of it and all of it unless `jitter = false`.
 - `base`, such as `"/herald"`, serves every endpoint under that path, for a reverse proxy that serves herald beside other things; the ActivityPub actors' ids, and the addresses `slack manifest` and `matrix registration` print, are under it too.
 - `[server]` also sets `jobs`, `connections`, `body`, `fetches`, `completions` (how many autocompletions a session answers at once), `deliveries` and `silence` (how long a session hears nothing before it checks its connection), and `[server.keys]` sets where inbound activities' keys are kept (`cache = "memory"` or `"store"`), `refresh_after`, `reread_after`, `most` and `document` (the most of a key's document read) ([ADR-0014](.docs/decisions/0014-herald-server-answers-first-and-works-after-on-one-task-within-limits.md)).
 

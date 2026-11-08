@@ -602,9 +602,9 @@
       ]
     },
     "Duration": {
-      "description": "A length of time: a number and s, m, h, d or w, as \"14d\".",
+      "description": "A length of time: a number and ms, s, m, h, d or w, as \"14d\".",
       "type": "string",
-      "pattern": "^[0-9]+[smhdw]$"
+      "pattern": "^[0-9]+(ms|[smhdw])$"
     },
     "Http": {
       "description": "`[http]`: how herald's own requests reach the services a config names.\nNone of it applies to the hosts herald reaches on others' behalf, an\n`ActivityPub` actor's key or a follower's inbox (ADR-0007).",
@@ -1430,6 +1430,17 @@
       "description": "`[server]`: how `herald server` listens, and what it takes on at once.",
       "type": "object",
       "properties": {
+        "accept_pause": {
+          "description": "How long the server waits after a connection could not be accepted;\n\"100ms\" where absent.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Duration"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "base": {
           "description": "The path every endpoint is served under, for a reverse proxy that\nserves herald beside other things, as \"/herald\"; the root where\nabsent. herald's ActivityPub actors' ids are under it too.",
           "type": [
@@ -1442,6 +1453,17 @@
           "anyOf": [
             {
               "$ref": "#/$defs/Size"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "busy_retry": {
+          "description": "How long a request whose work found no place is asked to wait, in\nits `Retry-After`; \"30s\" where absent.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Duration"
             },
             {
               "type": "null"
@@ -1484,6 +1506,17 @@
           "format": "uint",
           "minimum": 1
         },
+        "held": {
+          "description": "How long a connection is held at most, its one request answered;\n\"90s\", or `read` where that is longer, where absent; at least `read`.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Duration"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "inbound": {
           "description": "What a signed inbound request may carry and still be checked.",
           "$ref": "#/$defs/Inbound"
@@ -1508,8 +1541,59 @@
             "null"
           ]
         },
+        "read": {
+          "description": "How long a connection may take to send a request's headers; \"30s\"\nwhere absent.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Duration"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "sessions": {
+          "description": "How a session a destination holds waits before it connects again.",
+          "$ref": "#/$defs/Sessions"
+        },
         "silence": {
           "description": "How long a session a destination holds hears nothing before it\nchecks the connection is alive, and then as long again before it\nopens another; \"30s\" where absent.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Duration"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "Sessions": {
+      "description": "`[server.sessions]`: how a session a destination holds waits before it\nconnects again, each wait double the last up to the longest.",
+      "type": "object",
+      "properties": {
+        "first_wait": {
+          "description": "The first wait after a session fails to connect; \"1s\" where absent.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Duration"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "jitter": {
+          "description": "Whether each wait is between half of it and all of it, so sessions\nthat failed together do not all connect again at once; true where\nabsent.",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "longest_wait": {
+          "description": "The longest wait between attempts; \"1m\" where absent, and at least\n`first_wait`.",
           "anyOf": [
             {
               "$ref": "#/$defs/Duration"

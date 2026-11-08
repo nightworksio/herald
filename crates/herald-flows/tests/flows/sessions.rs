@@ -106,7 +106,9 @@ appservice_token = {{ secret = "HERALD_MATRIX_AS" }}
 {destination}
 "#
     );
-    load("herald.toml", &text, &|_| Err(String::new())).unwrap()
+    let mut config = load("herald.toml", &text, &|_| Err(String::new())).unwrap();
+    config.server.sessions.jitter = false;
+    config
 }
 
 fn secrets() -> FakeSecrets {

@@ -3,19 +3,23 @@ use std::num::NonZeroUsize;
 use std::ops::Range;
 
 use herald_core::{
-    DestinationName, Inbound, RecordKind, Retention, RouteId, Sandbox, SourceName, TemplateName,
+    DestinationName, Duration, Inbound, RecordKind, Retention, RouteId, Sandbox, SourceName,
+    TemplateName,
 };
 use herald_sources_forge::Forge;
 use herald_sources_registry::Registry;
+use jiff::SignedDuration;
 use serde::de::DeserializeOwned;
 use toml::Spanned;
 use toml::de::{DeTable, DeValue, ValueDeserializer};
 
-use crate::config::{Announce, Config, Destination, KeyCache, Schedule, Server, Source, Store};
+use crate::config::{
+    Announce, Config, Destination, KeyCache, Reconnecting, Schedule, Server, Source, Store,
+};
 use crate::error::{ConfigError, Errors};
 use crate::file::{
     AnnounceFile, HttpFile, InboundFile, Keep, KeepFile, KeyCacheFile, MarkersFile, NoOptions,
-    RenderFile, ScheduleFile, ServerFile, Size, TemplateFile,
+    RenderFile, ScheduleFile, ServerFile, SessionsFile, Size, TemplateFile,
 };
 use crate::position::position;
 use herald_ports::{Outbound, Proxy, Roots};
@@ -835,6 +839,13 @@ impl Loader<'_> {
                 .map_or(defaults.keys_reread, |after| after.0),
             keys_most: count(file.keys.most, defaults.keys_most),
             inbound: self.inbound(file.inbound, file.keys.document),
+            busy_retry: file.busy_retry.map_or(Server::BUSY_RETRY, |after| after.0),
+            read: file.read.map_or(Server::READ, |read| read.0),
+            held: self.held(file.held, file.read),
+            accept_pause: file
+                .accept_pause
+                .map_or(Server::ACCEPT_PAUSE, |pause| pause.0),
+            sessions: self.reconnecting(file.sessions),
         }
     }
 
@@ -913,6 +924,47 @@ impl Loader<'_> {
                 "server.keys.document",
                 &size(most.document),
             ),
+        }
+    }
+
+    /// `[server] held`, where a connection is held at least as long as it
+    /// may take to send its headers.
+    fn held(&mut self, held: Option<Spanned<Duration>>, read: Option<Duration>) -> SignedDuration {
+        let read = read.map_or(Server::READ, |read| read.0);
+        let Some(held) = held else {
+            return Server::HELD.max(read);
+        };
+        if held.get_ref().0 < read {
+            self.error(
+                &held.span(),
+                "server.held",
+                "a connection is held at least as long as it may take to send its headers; make held at least read",
+            );
+        }
+        held.into_inner().0
+    }
+
+    fn reconnecting(&mut self, file: SessionsFile) -> Reconnecting {
+        let first_wait = file
+            .first_wait
+            .map_or(Reconnecting::FIRST_WAIT, |first| first.0);
+        let longest_wait = file.longest_wait.map_or_else(
+            || Reconnecting::LONGEST_WAIT.max(first_wait),
+            |longest| {
+                if longest.get_ref().0 < first_wait {
+                    self.error(
+                        &longest.span(),
+                        "server.sessions.longest_wait",
+                        "the longest wait is at least the first; make longest_wait at least first_wait",
+                    );
+                }
+                longest.into_inner().0
+            },
+        );
+        Reconnecting {
+            first_wait,
+            longest_wait,
+            jitter: file.jitter.unwrap_or(true),
         }
     }
 

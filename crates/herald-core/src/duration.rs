@@ -4,7 +4,8 @@ use jiff::SignedDuration;
 use schemars::JsonSchema;
 use serde::{Deserialize, Deserializer};
 
-/// A length of time in a config, as `45s`, `30m`, `12h`, `14d` or `2w`.
+/// A length of time in a config, as `250ms`, `45s`, `30m`, `12h`, `14d` or
+/// `2w`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Duration(pub SignedDuration);
 
@@ -15,9 +16,9 @@ impl JsonSchema for Duration {
 
     fn json_schema(_: &mut schemars::SchemaGenerator) -> schemars::Schema {
         schemars::json_schema!({
-            "description": "A length of time: a number and s, m, h, d or w, as \"14d\".",
+            "description": "A length of time: a number and ms, s, m, h, d or w, as \"14d\".",
             "type": "string",
-            "pattern": "^[0-9]+[smhdw]$"
+            "pattern": "^[0-9]+(ms|[smhdw])$"
         })
     }
 }
@@ -30,6 +31,13 @@ const WEEK: i64 = 604_800;
 
 impl Duration {
     fn parse(text: &str) -> Option<Self> {
+        if let Some(number) = text.strip_suffix("ms") {
+            return number
+                .parse::<i64>()
+                .ok()
+                .filter(|millis| *millis > 0)
+                .map(|millis| Self(SignedDuration::from_millis(millis)));
+        }
         let unit = text.chars().last()?;
         let number: i64 = text.get(..text.len() - 1)?.parse().ok()?;
         let seconds = match unit {
@@ -53,7 +61,9 @@ impl serde::de::Visitor<'_> for DurationVisitor {
     type Value = Duration;
 
     fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str("a length of time such as \"30s\", \"30m\", \"12h\", \"14d\" or \"2w\"")
+        formatter.write_str(
+            "a length of time such as \"250ms\", \"30s\", \"30m\", \"12h\", \"14d\" or \"2w\"",
+        )
     }
 
     fn visit_str<E: serde::de::Error>(self, text: &str) -> Result<Duration, E> {
@@ -81,6 +91,13 @@ mod tests {
             ("14d", 1_209_600),
             ("2w", 1_209_600),
         ];
+        assert_eq!(
+            Duration::parse("250ms"),
+            Some(Duration(SignedDuration::from_millis(250)))
+        );
+        for text in ["ms", "0ms", "-5ms", "1.5ms"] {
+            assert_eq!(Duration::parse(text), None, "{text}");
+        }
         for (text, seconds) in cases {
             assert_eq!(
                 Duration::parse(text),
@@ -112,7 +129,7 @@ mod tests {
             serde_json::from_str::<Duration>(r#""2y""#)
                 .unwrap_err()
                 .to_string(),
-            "invalid value: string \"2y\", expected a length of time such as \"30s\", \"30m\", \"12h\", \"14d\" or \"2w\" at line 1 column 4"
+            "invalid value: string \"2y\", expected a length of time such as \"250ms\", \"30s\", \"30m\", \"12h\", \"14d\" or \"2w\" at line 1 column 4"
         );
     }
 
@@ -121,7 +138,7 @@ mod tests {
         let schema = schemars::schema_for!(Duration);
         assert_eq!(
             schema.get("pattern").and_then(|pattern| pattern.as_str()),
-            Some("^[0-9]+[smhdw]$")
+            Some("^[0-9]+(ms|[smhdw])$")
         );
         assert_eq!(
             schema.get("type").and_then(|kind| kind.as_str()),

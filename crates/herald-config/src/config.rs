@@ -574,6 +574,46 @@ pub struct Server {
     pub keys_most: usize,
     /// What a signed inbound request may carry and still be checked.
     pub inbound: Inbound,
+    /// How long a request whose work found no place is asked to wait.
+    pub busy_retry: SignedDuration,
+    /// How long a connection may take to send a request's headers.
+    pub read: SignedDuration,
+    /// How long a connection is held at most, its one request answered.
+    pub held: SignedDuration,
+    /// How long the server waits after a connection could not be accepted.
+    pub accept_pause: SignedDuration,
+    /// How a session a destination holds waits before it connects again.
+    pub sessions: Reconnecting,
+}
+
+/// How a session a destination holds waits before it connects again: the
+/// first wait, doubled each time it is not taken up, up to the longest.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Reconnecting {
+    /// The first wait after a session fails to connect.
+    pub first_wait: SignedDuration,
+    /// The longest wait between attempts.
+    pub longest_wait: SignedDuration,
+    /// Whether each wait is between half of it and all of it, so sessions
+    /// that failed together do not all connect again at once.
+    pub jitter: bool,
+}
+
+impl Reconnecting {
+    /// The first wait where the config says nothing.
+    pub const FIRST_WAIT: SignedDuration = SignedDuration::from_secs(1);
+    /// The longest wait where the config says nothing.
+    pub const LONGEST_WAIT: SignedDuration = SignedDuration::from_mins(1);
+}
+
+impl Default for Reconnecting {
+    fn default() -> Self {
+        Self {
+            first_wait: Self::FIRST_WAIT,
+            longest_wait: Self::LONGEST_WAIT,
+            jitter: true,
+        }
+    }
 }
 
 impl Server {
@@ -614,6 +654,12 @@ impl Server {
     pub const READ: SignedDuration = SignedDuration::from_secs(30);
     /// How long a connection is held at most, its one request answered.
     pub const HELD: SignedDuration = SignedDuration::from_secs(90);
+    /// How long a request whose work found no place is asked to wait where
+    /// the config says nothing.
+    pub const BUSY_RETRY: SignedDuration = SignedDuration::from_secs(30);
+    /// How long the server waits after a connection could not be accepted
+    /// where the config says nothing.
+    pub const ACCEPT_PAUSE: SignedDuration = SignedDuration::from_millis(100);
 }
 
 impl Server {
@@ -642,6 +688,11 @@ impl Default for Server {
             keys_reread: Self::KEYS_REREAD,
             keys_most: Self::KEYS_MOST,
             inbound: Inbound::DEFAULT,
+            busy_retry: Self::BUSY_RETRY,
+            read: Self::READ,
+            held: Self::HELD,
+            accept_pause: Self::ACCEPT_PAUSE,
+            sessions: Reconnecting::default(),
         }
     }
 }

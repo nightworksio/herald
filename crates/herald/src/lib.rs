@@ -248,7 +248,7 @@ pub async fn run_until(
     err: &mut dyn Write,
     stop: impl Future<Output = ()>,
 ) -> u8 {
-    stopping(args, vars, connect, out, err, Box::pin(stop)).await
+    Box::pin(stopping(args, vars, connect, out, err, Box::pin(stop))).await
 }
 
 /// [`run_until`] with `stop` boxed, so one CLI serves whatever stops it.
@@ -432,7 +432,15 @@ pub async fn run(
     out: &mut dyn Write,
     err: &mut dyn Write,
 ) -> u8 {
-    run_until(args, vars, connect, out, err, std::future::pending()).await
+    Box::pin(run_until(
+        args,
+        vars,
+        connect,
+        out,
+        err,
+        std::future::pending(),
+    ))
+    .await
 }
 
 fn read(path: &str) -> Result<Config, String> {

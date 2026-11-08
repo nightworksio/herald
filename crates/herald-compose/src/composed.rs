@@ -269,7 +269,7 @@ impl<H: Host> Keyed<H> for Answering<'_, '_> {
         };
         let Some(place) = self.room.place() else {
             unworked(serving, &job).await;
-            return busy().into();
+            return busy(serving.config.server.busy_retry).into();
         };
         Answer {
             left: Some(Left { job, place }),

@@ -409,6 +409,40 @@ pub(crate) struct ServerFile {
     /// What a signed inbound request may carry and still be checked.
     #[serde(default)]
     pub(crate) inbound: InboundFile,
+    /// How long a request whose work found no place is asked to wait, in
+    /// its `Retry-After`; "30s" where absent.
+    pub(crate) busy_retry: Option<Duration>,
+    /// How long a connection may take to send a request's headers; "30s"
+    /// where absent.
+    pub(crate) read: Option<Duration>,
+    /// How long a connection is held at most, its one request answered;
+    /// "90s", or `read` where that is longer, where absent; at least `read`.
+    #[schemars(with = "Option<Duration>")]
+    pub(crate) held: Option<Spanned<Duration>>,
+    /// How long the server waits after a connection could not be accepted;
+    /// "100ms" where absent.
+    pub(crate) accept_pause: Option<Duration>,
+    /// How a session a destination holds waits before it connects again.
+    #[serde(default)]
+    pub(crate) sessions: SessionsFile,
+}
+
+/// `[server.sessions]`: how a session a destination holds waits before it
+/// connects again, each wait double the last up to the longest.
+#[derive(Debug, Default, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+#[serde(rename = "Sessions")]
+pub(crate) struct SessionsFile {
+    /// The first wait after a session fails to connect; "1s" where absent.
+    pub(crate) first_wait: Option<Duration>,
+    /// The longest wait between attempts; "1m" where absent, and at least
+    /// `first_wait`.
+    #[schemars(with = "Option<Duration>")]
+    pub(crate) longest_wait: Option<Spanned<Duration>>,
+    /// Whether each wait is between half of it and all of it, so sessions
+    /// that failed together do not all connect again at once; true where
+    /// absent.
+    pub(crate) jitter: Option<bool>,
 }
 
 /// `[server.inbound]`: what a signed inbound request may carry and still be

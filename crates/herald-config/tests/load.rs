@@ -563,7 +563,7 @@ body = "{{ event.body }}"
             error.contains("routes[0].kinds[1]: unknown variant `tweet`"),
             "{error}"
         );
-        assert!(error.contains("routes[0].thread.archive_after: invalid value: string \"14y\", expected a length of time such as \"30s\""), "{error}");
+        assert!(error.contains("routes[0].thread.archive_after: invalid value: string \"14y\", expected a length of time such as \"250ms\", \"30s\""), "{error}");
         let unnamed = EXAMPLE.replace(
             "thread = { name = \"{{ event.project }} {{ event.version }}\", archive_after = \"14d\" }",
             "thread = { archive_after = \"14d\" }",

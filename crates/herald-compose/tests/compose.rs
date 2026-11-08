@@ -695,7 +695,7 @@ body = "{{{{ event.body }}}}"
                 busy.reply.retry_after,
                 busy.left.is_none()
             ),
-            (503, Some(herald_flows::BUSY_RETRY), true)
+            (503, Some(30), true)
         );
         drop(first);
         let again = post(&event("2"));

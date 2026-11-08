@@ -296,17 +296,17 @@ pub fn refusal(status: u16, reason: impl Into<String>) -> Answered {
     }
 }
 
-/// How many seconds a request whose work found no place is asked to wait.
-pub const BUSY_RETRY: u32 = 30;
-
 /// The refusal of a request whose work found no place, asking its sender
-/// to wait [`BUSY_RETRY`] seconds.
+/// to wait `after`, in whole seconds rounded up.
 #[must_use]
-pub fn busy() -> Answered {
+pub fn busy(after: jiff::SignedDuration) -> Answered {
     let refused = refusal(503, "the queue has no place for the work it leaves");
+    let whole = after
+        .as_secs()
+        .saturating_add(i64::from(after.subsec_nanos() > 0));
     Answered {
         reply: Reply {
-            retry_after: Some(BUSY_RETRY),
+            retry_after: Some(u32::try_from(whole.max(1)).unwrap_or(u32::MAX)),
             ..refused.reply
         },
         ..refused

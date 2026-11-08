@@ -61,12 +61,29 @@ body = "{{ event.body }}"
         assert_eq!(config.server.keys_refreshed.as_secs(), 3_600);
         assert_eq!(config.server.keys_reread.as_secs(), 60);
         assert_eq!(config.server.silence.as_secs(), 30);
+        assert_eq!(
+            config.server.sessions,
+            herald_config::Reconnecting {
+                first_wait: jiff::SignedDuration::from_secs(1),
+                longest_wait: jiff::SignedDuration::from_mins(1),
+                jitter: true,
+            }
+        );
+        assert_eq!(
+            (
+                config.server.busy_retry.as_secs(),
+                config.server.read.as_secs(),
+                config.server.held.as_secs(),
+                config.server.accept_pause.as_millis()
+            ),
+            (30, 30, 90, 100)
+        );
     }
 
     #[test]
     fn the_server_table_sets_every_limit() {
         let text = format!(
-            "{EXAMPLE}\n[server]\nlisten = \"0.0.0.0:9000\"\nbase = \"/tools/herald\"\njobs = 2\nconnections = 3\nbody = \"64KiB\"\nfetches = 5\ncompletions = 9\ndeliveries = 6\nsilence = \"45s\"\n\n[server.keys]\ncache = \"store\"\nrefresh_after = \"30m\"\nreread_after = \"5m\"\nmost = 7\ndocument = \"1MiB\"\n\n[server.inbound]\nreplay_window = \"20m\"\nsignatures = 2\ncovered = 4\n"
+            "{EXAMPLE}\n[server]\nlisten = \"0.0.0.0:9000\"\nbase = \"/tools/herald\"\njobs = 2\nconnections = 3\nbody = \"64KiB\"\nfetches = 5\ncompletions = 9\ndeliveries = 6\nsilence = \"45s\"\nbusy_retry = \"2m\"\nread = \"10s\"\nheld = \"20s\"\naccept_pause = \"250ms\"\n\n[server.sessions]\nfirst_wait = \"2s\"\nlongest_wait = \"5m\"\njitter = false\n\n[server.keys]\ncache = \"store\"\nrefresh_after = \"30m\"\nreread_after = \"5m\"\nmost = 7\ndocument = \"1MiB\"\n\n[server.inbound]\nreplay_window = \"20m\"\nsignatures = 2\ncovered = 4\n"
         );
         let config = load("herald.toml", &text, &nothing).unwrap();
         assert_eq!(
@@ -91,6 +108,15 @@ body = "{{ event.body }}"
                     covered: 4,
                     document: 1_048_576,
                 },
+                busy_retry: jiff::SignedDuration::from_mins(2),
+                read: jiff::SignedDuration::from_secs(10),
+                held: jiff::SignedDuration::from_secs(20),
+                accept_pause: jiff::SignedDuration::from_millis(250),
+                sessions: herald_config::Reconnecting {
+                    first_wait: jiff::SignedDuration::from_secs(2),
+                    longest_wait: jiff::SignedDuration::from_mins(5),
+                    jitter: false,
+                },
             }
         );
         assert!(config.server.keys_in_store());
@@ -100,19 +126,7 @@ body = "{{ event.body }}"
     }
 
     #[test]
-    fn a_server_table_that_cannot_be_served_is_refused_by_key() {
-        let unbound = errors(&format!("{EXAMPLE}\n[server]\nlisten = \"localhost\"\n"));
-        assert!(
-            unbound.contains(
-                "server.listen: \"localhost\" is not an address and a port; write one such as \"127.0.0.1:8080\""
-            ),
-            "{unbound}"
-        );
-        let idle = errors(&format!("{EXAMPLE}\n[server]\njobs = 0\n"));
-        assert!(idle.contains("server.jobs"), "{idle}");
-        let huge = errors(&format!("{EXAMPLE}\n[server]\nbody = \"1GB\"\n"));
-        assert!(huge.contains("server.body"), "{huge}");
-        assert!(huge.contains("\"512KiB\" or \"1MiB\""), "{huge}");
+    fn a_server_bound_or_wait_that_cannot_be_kept_is_refused_by_key() {
         let wide = errors(&format!("{EXAMPLE}\n[server]\nbody = \"5MiB\"\n"));
         assert!(
             wide.contains("server.body: make it at most \"4MiB\", four times its default"),
@@ -143,6 +157,28 @@ body = "{{ event.body }}"
                 "{wrong}"
             );
         }
+        let short = errors(&format!(
+            "{EXAMPLE}\n[server]\nread = \"2m\"\nheld = \"1m\"\n"
+        ));
+        assert!(
+            short.contains("server.held: a connection is held at least as long as it may take to send its headers"),
+            "{short}"
+        );
+        let slow = load(
+            "herald.toml",
+            &format!("{EXAMPLE}\n[server]\nread = \"2m\"\n"),
+            &nothing,
+        )
+        .unwrap();
+        assert_eq!(slow.server.held, jiff::SignedDuration::from_mins(2));
+        let backwards = errors(&format!(
+            "{EXAMPLE}\n[server.sessions]\nfirst_wait = \"2m\"\nlongest_wait = \"1m\"\n"
+        ));
+        assert!(
+            backwards
+                .contains("server.sessions.longest_wait: the longest wait is at least the first"),
+            "{backwards}"
+        );
         let bare = errors(&format!("{EXAMPLE}\n[server.inbound]\ncovered = 3\n"));
         assert!(
             bare.contains(
@@ -150,6 +186,22 @@ body = "{{ event.body }}"
             ),
             "{bare}"
         );
+    }
+
+    #[test]
+    fn a_server_table_that_cannot_be_served_is_refused_by_key() {
+        let unbound = errors(&format!("{EXAMPLE}\n[server]\nlisten = \"localhost\"\n"));
+        assert!(
+            unbound.contains(
+                "server.listen: \"localhost\" is not an address and a port; write one such as \"127.0.0.1:8080\""
+            ),
+            "{unbound}"
+        );
+        let idle = errors(&format!("{EXAMPLE}\n[server]\njobs = 0\n"));
+        assert!(idle.contains("server.jobs"), "{idle}");
+        let huge = errors(&format!("{EXAMPLE}\n[server]\nbody = \"1GB\"\n"));
+        assert!(huge.contains("server.body"), "{huge}");
+        assert!(huge.contains("\"512KiB\" or \"1MiB\""), "{huge}");
         let unkept = errors(&format!(
             "{}\n[server.keys]\ncache = \"store\"\n",
             EXAMPLE.replace(

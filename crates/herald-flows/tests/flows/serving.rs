@@ -1,8 +1,8 @@
 use herald_config::{Config, load};
 use herald_core::{Key, RouteId, Scheme, Step};
 use herald_flows::{
-    Answered, BUSY_RETRY, Connected, FollowError, Followed, Inbound, Job, Keys, Outcome, Ports,
-    Serving, Webhooks, Worked, answer, busy, prepare, unworked, webhooks, work,
+    Answered, Connected, FollowError, Followed, Inbound, Job, Keys, Outcome, Ports, Serving,
+    Webhooks, Worked, answer, busy, prepare, unworked, webhooks, work,
 };
 use herald_ports::{Admitted, Algorithm, CryptoError, Deliveries, Ledger, Notes, Secret, Signer};
 use herald_records::MemoryKeyring;
@@ -220,7 +220,7 @@ fn every_path_is_served_under_the_base_and_none_outside_it() {
 
 #[test]
 fn work_with_no_place_is_refused_and_asked_to_wait() {
-    let refused = busy();
+    let refused = busy(jiff::SignedDuration::from_secs(30));
     assert_eq!(
         said(&refused),
         (
@@ -229,7 +229,15 @@ fn work_with_no_place_is_refused_and_asked_to_wait() {
             "herald cannot answer this request now".to_owned()
         )
     );
-    assert_eq!(refused.reply.retry_after, Some(BUSY_RETRY));
+    assert_eq!(refused.reply.retry_after, Some(30));
+    for (after, asked) in [
+        (jiff::SignedDuration::from_millis(1_500), 2),
+        (jiff::SignedDuration::from_millis(1), 1),
+        (jiff::SignedDuration::ZERO, 1),
+        (jiff::SignedDuration::from_hours(24 * 365 * 1_000), u32::MAX),
+    ] {
+        assert_eq!(busy(after).reply.retry_after, Some(asked), "{after:?}");
+    }
     assert_eq!(
         refused.refused.as_deref(),
         Some("the queue has no place for the work it leaves")
