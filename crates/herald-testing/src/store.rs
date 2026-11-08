@@ -282,3 +282,25 @@ impl Store for FakeStore {
         vec![]
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_store_answers_every_kind_itself() {
+        let store = FakeStore::default();
+        let itself = |answered: Option<&FakeStore>| {
+            answered.is_some_and(|kept| std::ptr::eq(kept, &raw const store))
+        };
+        assert!(itself(store.ledger()));
+        assert!(itself(store.cursors()));
+        assert!(itself(store.schedules()));
+        assert!(itself(store.subscriptions()));
+        assert!(itself(store.pins()));
+        assert!(itself(store.deliveries()));
+        assert!(itself(store.notes()));
+        assert!(itself(store.announcements()));
+        assert!(itself(store.inboxes()));
+    }
+}

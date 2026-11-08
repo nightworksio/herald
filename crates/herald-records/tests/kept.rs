@@ -128,6 +128,29 @@ mod kept {
     }
 
     #[test]
+    fn the_store_answers_every_kind_itself_and_drops_the_kinds_it_is_told_not_to_keep() {
+        let store = Kept::new(Memory::default());
+        let itself = |answered: Option<&Kept<Memory>>| {
+            answered.is_some_and(|kept| std::ptr::eq(kept, &raw const store))
+        };
+        assert!(itself(store.ledger()));
+        assert!(itself(store.cursors()));
+        assert!(itself(store.schedules()));
+        assert!(itself(store.subscriptions()));
+        assert!(itself(store.pins()));
+        assert!(itself(store.deliveries()));
+        assert!(itself(store.notes()));
+        assert!(itself(store.announcements()));
+        assert!(itself(store.inboxes()));
+        let bare = Kept::new(Memory::default()).keeping(|_| false);
+        assert!(bare.ledger().is_some() && bare.cursors().is_some());
+        assert!(bare.schedules().is_some() && bare.deliveries().is_some());
+        assert!(bare.subscriptions().is_none() && bare.inboxes().is_none());
+        assert!(bare.pins().is_none() && bare.notes().is_none());
+        assert!(bare.announcements().is_none());
+    }
+
+    #[test]
     fn each_write_of_a_record_counts_its_version_up_by_one() {
         let store = Kept::new(Memory::default());
         let entry = Entry::new(key());
