@@ -87,7 +87,7 @@ impl Host for WasiHost {
             SqlAt::Sqlite(_) => Ok(Database::Sqlite(
                 self.var(SPIN_DATABASE).unwrap_or("default").to_owned(),
             )),
-            SqlAt::Postgres(url) => Ok(Database::Postgres(url.expose().to_owned())),
+            SqlAt::Postgres(url) => Ok(Database::Postgres(url.clone())),
             SqlAt::D1(_) | SqlAt::DurableObject { .. } => Err(NO_DATABASE.to_owned()),
         })
     }
