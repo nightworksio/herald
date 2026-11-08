@@ -172,9 +172,13 @@ pub(crate) async fn serving(
         .get(AZURE_PORT)
         .filter(|port| !port.is_empty())
         .map(|port| format!("127.0.0.1:{port}"));
-    let prefix = azure
-        .is_some()
-        .then(|| azure_prefix(vars, std::fs::read_to_string(AZURE_HOST).ok().as_deref()));
+    let prefix = match azure {
+        Some(_) => {
+            let host = tokio::fs::read_to_string(AZURE_HOST).await.ok();
+            Some(azure_prefix(vars, host.as_deref()))
+        }
+        None => None,
+    };
     let asked = prefix.as_deref().and_then(timers);
     let secret = vars
         .get(ROUND_SECRET)
