@@ -87,10 +87,8 @@ impl Request {
     /// The request reading no more than `body` bytes of its response's
     /// body, nor more than it already reads.
     #[must_use]
-    pub const fn within(mut self, body: usize) -> Self {
-        if body < self.most {
-            self.most = body;
-        }
+    pub fn within(mut self, body: usize) -> Self {
+        self.most = self.most.min(body);
         self
     }
 }
@@ -239,6 +237,13 @@ mod tests {
         assert_eq!(request().within(Outbound::BODY).most, Outbound::BODY);
         assert_eq!(request().at_most(10).within(20).most, 10);
         assert_eq!(request().at_most(20).within(10).most, 10);
+    }
+
+    #[test]
+    fn every_byte_but_a_url_s_unreserved_ones_is_percent_encoded() {
+        assert_eq!(unreserved("aZ09-._~"), "aZ09-._~");
+        assert_eq!(unreserved("a b/c?d&é"), "a%20b%2Fc%3Fd%26%C3%A9");
+        assert_eq!(unreserved(""), "");
     }
 
     #[test]

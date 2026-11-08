@@ -82,7 +82,9 @@ fn a_connection_fetches_plain_http_on_loopback_without_tls() {
 #[test]
 fn a_connection_uses_the_backend_its_origin_already_has() {
     const BASE: &str = "http://127.0.0.1:8099";
-    let http = FastlyHost::new().connect(BASE).unwrap();
+    let http = FastlyHost::new()
+        .connect(BASE, &Outbound::default())
+        .unwrap();
     for path in ["first", "again"] {
         let asked = Request::new(Method::Get, Text::plain(format!("{BASE}/{path}")));
         let answer = pollster::block_on(http.send(asked)).unwrap();
@@ -102,7 +104,9 @@ fn a_connection_refuses_a_backend_under_its_origin_s_name_that_reaches_elsewhere
             .finish()
             .unwrap();
         let origin = format!("{scheme}://127.0.0.1:{port}");
-        let http = FastlyHost::new().connect(&origin).unwrap();
+        let http = FastlyHost::new()
+            .connect(&origin, &Outbound::default())
+            .unwrap();
         let asked = Request::new(Method::Get, Text::plain(format!("{origin}/")));
         assert!(
             matches!(

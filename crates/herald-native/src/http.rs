@@ -71,13 +71,13 @@ impl NativeHttp {
             outbound.roots.as_ref(),
         )?;
         let builder = proxied(reqwest::Client::builder(), &outbound.proxy)?;
-        let client = client(
+        client(
             builder,
             Some(tls),
             duration(outbound.connect),
             Some(duration(outbound.total)),
-        )?;
-        Ok(Self {
+        )
+        .map(|client| Self {
             client,
             reach,
             body: outbound.body,

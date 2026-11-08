@@ -30,12 +30,6 @@ impl Sandbox {
     };
 }
 
-impl Default for Sandbox {
-    fn default() -> Self {
-        Self::DEFAULT
-    }
-}
-
 /// What a signed inbound request may carry and still be checked: how far
 /// its signing time may lie from now, how many signatures it carries, and
 /// how many fields one HTTP signature covers.
@@ -74,12 +68,6 @@ impl Inbound {
         covered: Self::DEFAULT.covered * 4,
         document: Self::DEFAULT.document * 4,
     };
-}
-
-impl Default for Inbound {
-    fn default() -> Self {
-        Self::DEFAULT
-    }
 }
 
 /// How many pages of its own posts a destination reads back for the markers
@@ -131,10 +119,51 @@ impl JsonSchema for ReadBack {
 
     fn json_schema(_: &mut schemars::SchemaGenerator) -> schemars::Schema {
         schemars::json_schema!({
-            "description": "How many pages of its own posts the destination reads back, 5 by default.",
+            "description": format!(
+                "How many pages of its own posts the destination reads back, {} by default.",
+                Self::DEFAULT.0
+            ),
             "type": "integer",
             "minimum": 1,
             "maximum": Self::MOST.0
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_destination_reads_back_1_to_20_pages_and_5_by_default() {
+        assert_eq!(ReadBack::default().pages(), 5);
+        assert_eq!(ReadBack::MOST.pages(), 20);
+        assert_eq!(ReadBack::new(3).map(ReadBack::pages), Some(3));
+        assert_eq!(ReadBack::new(0), None);
+        assert_eq!(ReadBack::new(21), None);
+    }
+
+    #[test]
+    fn read_back_is_read_as_its_pages_and_refused_outside_them() {
+        assert_eq!(
+            serde_json::from_str::<ReadBack>("7")
+                .map(ReadBack::pages)
+                .ok(),
+            Some(7)
+        );
+        let refused = serde_json::from_str::<ReadBack>("21").unwrap_err();
+        assert_eq!(refused.to_string(), "read_back reads 1 to 20 pages, not 21");
+    }
+
+    #[test]
+    fn read_back_s_schema_bounds_it_and_names_its_default() {
+        let schema = serde_json::to_value(schemars::schema_for!(ReadBack)).unwrap();
+        assert_eq!(schema["type"], "integer");
+        assert_eq!(schema["minimum"], 1);
+        assert_eq!(schema["maximum"], 20);
+        assert_eq!(
+            schema["description"],
+            "How many pages of its own posts the destination reads back, 5 by default."
+        );
     }
 }

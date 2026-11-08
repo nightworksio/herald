@@ -35,3 +35,25 @@ impl Default for Retention {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const DAY: i64 = 86_400;
+
+    #[test]
+    fn deliveries_are_kept_a_week_entries_90_days_and_notes_for_ever() {
+        assert_eq!(Retention::DELIVERIES.as_secs(), 7 * DAY);
+        assert_eq!(Retention::LEDGER.as_secs(), 90 * DAY);
+        assert_eq!(Retention::LONGEST_RETRY.as_secs(), 3 * DAY);
+        assert_eq!(
+            Retention::default(),
+            Retention {
+                deliveries: Retention::DELIVERIES,
+                ledger: Some(Retention::LEDGER),
+                notes: None,
+            }
+        );
+    }
+}

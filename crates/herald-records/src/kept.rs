@@ -300,10 +300,8 @@ impl<R: Records> Ledger for Kept<R> {
     async fn expire_entries(&self, before: Timestamp) -> Result<Vec<Key>, StoreError> {
         let mut expired = Vec::new();
         for path in self.records.list(paths::LEDGER).await? {
-            let Some(entry) = self.listed::<Entry>(&path).await? else {
-                continue;
-            };
-            if entry.value.expired(before) {
+            let listed = self.listed::<Entry>(&path).await?;
+            if let Some(entry) = listed.filter(|entry| entry.value.expired(before)) {
                 self.removed(&path).await?;
                 expired.push(entry.value.key);
             }

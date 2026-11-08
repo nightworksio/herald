@@ -333,6 +333,14 @@ fn a_config_s_roots_are_trusted_beside_the_mozilla_roots() {
     };
     let refused = trusted(Some(&broken)).unwrap_err();
     assert!(refused.0.starts_with("broken.pem: "), "{refused}");
+    let outbound = Outbound {
+        roots: Some(broken),
+        ..Outbound::default()
+    };
+    assert_eq!(
+        NativeHttp::new(Reach::new(["https://a.example"]).unwrap(), &outbound).err(),
+        Some(refused)
+    );
 }
 
 #[tokio::test]
@@ -357,4 +365,24 @@ async fn a_request_goes_through_the_proxy_a_config_names() {
         "{}",
         asked[0]
     );
+}
+
+#[tokio::test]
+async fn a_request_set_to_no_proxy_goes_straight_to_its_origin() {
+    let (base, server) = serve(vec![answer("200 OK", "", b"direct")]).await;
+    let outbound = Outbound {
+        proxy: Proxy::None,
+        ..Outbound::default()
+    };
+    let http = NativeHttp::new(Reach::new([base.as_str()]).unwrap(), &outbound).unwrap();
+    let answer = http
+        .send(Request::new(
+            Method::Get,
+            Text::plain(format!("{base}/path")),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(answer.body, b"direct");
+    let asked = server.await.unwrap();
+    assert!(asked[0].starts_with("GET /path HTTP/1.1"), "{}", asked[0]);
 }

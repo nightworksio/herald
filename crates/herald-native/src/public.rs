@@ -86,15 +86,17 @@ impl PublicHttp {
     /// When TLS or the client cannot be set up.
     pub fn new(outbound: &Outbound) -> Result<Self, BuildError> {
         let tls = tls(rustls::crypto::ring::default_provider())?;
-        let mut built = Self::built(
+        Self::built(
             public,
             "https",
             Some(tls),
             duration(outbound.connect).min(CONNECT),
             Some(duration(outbound.total).min(TOTAL)),
-        )?;
-        built.body = outbound.public().body;
-        Ok(built)
+        )
+        .map(|built| Self {
+            body: outbound.public().body,
+            ..built
+        })
     }
 
     pub(crate) fn built(

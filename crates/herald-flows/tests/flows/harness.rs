@@ -198,6 +198,7 @@ pub(crate) enum Fault {
     ForgetsDeliveries,
     ExpiresNotes,
     KeepsNoDeliveries,
+    KeepsNoInboxes,
     Cursors,
     WritesCursors,
     CursorConflicts,
@@ -488,6 +489,7 @@ impl Keeper for Failing {
     fn holds(&self, kind: Held) -> bool {
         match kind {
             Held::Deliveries => self.fault != Fault::KeepsNoDeliveries,
+            Held::Inboxes => self.fault != Fault::KeepsNoInboxes,
             Held::Latest => self.fault != Fault::KeepsNoLatest,
             _ => true,
         }

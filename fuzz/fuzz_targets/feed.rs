@@ -20,9 +20,12 @@ fuzz_target!(|bytes: &[u8]| {
     let feed = Feed::new(&FeedOptions {
         url: URL.to_owned(),
         backfill: 0,
+        page: None,
+        remembered: None,
+        parse: None,
     });
     if let Ok(polled) = feed.entries(&response) {
-        assert!(polled.events.len() <= 30);
+        assert!(polled.events.len() <= feed.reading().page);
         for event in &polled.events {
             assert!(event.identity().as_str().starts_with(&format!("{URL}#")));
         }

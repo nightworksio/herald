@@ -173,6 +173,17 @@ body = "{{ event.body }}"
         )
         .unwrap();
         assert_eq!(slow.server.held, jiff::SignedDuration::from_mins(2));
+        let even = load(
+            "herald.toml",
+            &format!("{EXAMPLE}\n[server]\nread = \"1m\"\nheld = \"1m\"\n\n[server.sessions]\nfirst_wait = \"1m\"\nlongest_wait = \"1m\"\n"),
+            &nothing,
+        )
+        .unwrap();
+        assert_eq!(even.server.held, even.server.read);
+        assert_eq!(
+            even.server.sessions.longest_wait,
+            even.server.sessions.first_wait
+        );
         let backwards = errors(&format!(
             "{EXAMPLE}\n[server.sessions]\nfirst_wait = \"2m\"\nlongest_wait = \"1m\"\n"
         ));

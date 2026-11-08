@@ -19,6 +19,7 @@ herald-sources-app = { path = "../crates/herald-sources-app" }
 herald-sources-feed = { path = "../crates/herald-sources-feed" }
 herald-sources-forge = { path = "../crates/herald-sources-forge" }
 herald-sources-registry = { path = "../crates/herald-sources-registry" }
+herald-wire = { path = "../crates/herald-wire" }
 serde_json = "1"
 jiff = { version = "0.2", default-features = false, features = ["std"] }
 libfuzzer-sys = "0.4"

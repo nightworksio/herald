@@ -101,6 +101,30 @@ mod tests {
     }
 
     #[test]
+    fn a_size_is_read_from_a_string_and_anything_else_refused_with_what_it_takes() {
+        assert_eq!(
+            serde_json::from_str::<Size>("\"2KiB\"").ok(),
+            Some(Size(2 << 10))
+        );
+        for written in ["1024", "\"2KB\""] {
+            let refused = serde_json::from_str::<Size>(written).unwrap_err();
+            assert!(
+                refused
+                    .to_string()
+                    .contains("expected a number of bytes such as \"512KiB\" or \"1MiB\""),
+                "{refused}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_size_s_schema_is_a_string_of_a_number_and_a_binary_unit() {
+        let schema = serde_json::to_value(schemars::schema_for!(Size)).unwrap();
+        assert_eq!(schema["type"], "string");
+        assert_eq!(schema["pattern"], "^[0-9]+(KiB|MiB)$");
+    }
+
+    #[test]
     fn a_size_is_written_in_whole_mib_or_kib() {
         assert_eq!(Size::written(4 << 20), "\"4MiB\"");
         assert_eq!(Size::written(256 << 10), "\"256KiB\"");

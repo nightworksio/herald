@@ -270,6 +270,18 @@ fn housekeeping_forgets_entries_no_run_claimed_for_90_days_with_their_deliveries
 }
 
 #[test]
+fn a_store_keeping_no_inboxes_forgets_entries_without_asking_after_their_deliveries() {
+    let store = Failing {
+        fault: Fault::KeepsNoInboxes,
+        ..healthy()
+    };
+    let old = claimed("old", 91);
+    pollster::block_on(store.put_entry(&old, None)).unwrap();
+    assert_eq!(kept(&store, &Script::default()).unwrap(), []);
+    assert_eq!(pollster::block_on(store.entry(&old.key)).unwrap(), None);
+}
+
+#[test]
 fn housekeeping_keeps_every_entry_and_note_where_they_are_kept_for_ever() {
     let store = healthy();
     let old = claimed("old", 10_000);

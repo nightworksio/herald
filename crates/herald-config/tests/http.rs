@@ -97,6 +97,13 @@ body = "{{ event.body }}"
         ));
         assert!(slow.contains("http.connect"), "{slow}");
         assert!(slow.contains("make connect at most total"), "{slow}");
+        let even = load(
+            "herald.toml",
+            &format!("{EXAMPLE}\n[http]\nconnect = \"30s\"\ntotal = \"30s\"\n"),
+            &files,
+        )
+        .unwrap();
+        assert_eq!(even.http.connect, even.http.total);
         let socks = errors(&format!("{EXAMPLE}\n[http]\nproxy = \"socks5://proxy\"\n"));
         assert!(socks.contains("http.proxy"), "{socks}");
         assert!(socks.contains("socks5://proxy\" is no proxy"), "{socks}");

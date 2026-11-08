@@ -2,11 +2,12 @@
 //! reading its claim answers a claim or a refusal. A signed claim's message
 //! holds the body it was read from, a token's holds nothing, an activity's
 //! names its signer and is claimed only with where it was sent, and each
-//! claim carries one to `MOST_SIGNATURES` signatures, none of them empty.
+//! claim carries one to as many signatures as `Inbound::DEFAULT` allows,
+//! none of them empty.
 
 #![no_main]
 
-use herald_core::{Addressed, Scheme, activity_claim, claim, key};
+use herald_core::{Addressed, Inbound, Scheme, activity_claim, claim, key};
 use jiff::Timestamp;
 use libfuzzer_sys::fuzz_target;
 
@@ -52,7 +53,7 @@ fuzz_target!(|input: (Vec<String>, Vec<u8>, i64, String, String)| {
         target: &target,
         audience: &audience,
     };
-    if let Ok(claim) = activity_claim(to, &headers, &body, now) {
+    if let Ok(claim) = activity_claim(to, &headers, &body, now, &Inbound::DEFAULT) {
         assert!(claim.signer.is_some());
         assert_eq!(claim.signatures.len(), 1);
         assert!(
@@ -63,7 +64,7 @@ fuzz_target!(|input: (Vec<String>, Vec<u8>, i64, String, String)| {
         );
     }
     for scheme in SCHEMES {
-        if let Ok(claim) = claim(scheme, &headers, &body, now) {
+        if let Ok(claim) = claim(scheme, &headers, &body, now, &Inbound::DEFAULT) {
             assert_ne!(scheme, Scheme::ActivityPub);
             if scheme == Scheme::Matrix {
                 assert!(claim.message.is_empty());
@@ -71,7 +72,7 @@ fuzz_target!(|input: (Vec<String>, Vec<u8>, i64, String, String)| {
                 assert!(claim.message.ends_with(&body), "{scheme:?}");
             }
             assert!(
-                (1..=herald_core::MOST_SIGNATURES).contains(&claim.signatures.len()),
+                (1..=Inbound::DEFAULT.signatures).contains(&claim.signatures.len()),
                 "{scheme:?}"
             );
             assert!(
