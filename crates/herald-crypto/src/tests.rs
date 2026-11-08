@@ -126,7 +126,14 @@ fn githubs_documented_delivery_verifies_and_a_changed_body_does_not() {
         (b"Hello, World!".as_slice(), true),
         (b"Hello, World?", false),
     ] {
-        let claim = herald_core::claim(herald_core::Scheme::GitHub, &headers, body, now).unwrap();
+        let claim = herald_core::claim(
+            herald_core::Scheme::GitHub,
+            &headers,
+            body,
+            now,
+            &herald_core::Inbound::DEFAULT,
+        )
+        .unwrap();
         assert_eq!(
             verify(
                 Algorithm::HmacSha256,
@@ -170,7 +177,7 @@ fn an_activity_signed_by_its_actors_key_verifies_through_the_pem_it_publishes() 
             target: "post /inbox",
             audience: "herald.example",
         };
-        match herald_core::activity_claim(to, &headers, body, now) {
+        match herald_core::activity_claim(to, &headers, body, now, &herald_core::Inbound::DEFAULT) {
             Ok(claim) => assert_eq!(
                 verify(
                     Algorithm::RsaSha256,

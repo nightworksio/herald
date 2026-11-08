@@ -11,14 +11,7 @@ use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD;
 use jiff::{SignedDuration, Timestamp};
 
-/// How far a signed timestamp may lie from now, either way, before the
-/// request is taken for a replay.
-pub const REPLAY_WINDOW: SignedDuration = SignedDuration::from_mins(5);
-
-/// The most signatures a request may carry. Each is checked in turn, so a
-/// request with more is refused before any is checked; a sender rotating its
-/// keys signs with two or three.
-pub const MOST_SIGNATURES: usize = 4;
+use crate::bounds::Inbound;
 
 /// Who signs a kind of inbound request, and how.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -136,8 +129,12 @@ pub enum Refusal {
         /// The header.
         header: &'static str,
     },
-    /// The signed timestamp lies outside the replay window.
-    Stale,
+    /// The signed timestamp lies outside the replay window, this wide
+    /// either way.
+    Stale {
+        /// The replay window.
+        window: SignedDuration,
+    },
     /// A header the scheme must sign is not among those signed.
     Uncovered {
         /// The header.
@@ -159,10 +156,10 @@ impl fmt::Display for Refusal {
         match self {
             Self::Unsigned { header } => write!(f, "the request carries no {header}"),
             Self::Malformed { header } => write!(f, "the request's {header} is not in its form"),
-            Self::Stale => write!(
+            Self::Stale { window } => write!(
                 f,
                 "the request was signed more than {} minutes from now, so it is taken for a replay",
-                REPLAY_WINDOW.as_mins()
+                window.as_mins()
             ),
             Self::Uncovered { header } => {
                 write!(f, "the request's signature does not cover its {header}")
@@ -179,17 +176,19 @@ impl fmt::Display for Refusal {
 }
 
 /// The claim a request of `scheme` makes, from its `headers` and raw `body`,
-/// with `now` bounding any signed timestamp. Header names match in any case.
+/// with `now` and `bounds` bounding any signed timestamp and how many
+/// signatures it carries. Header names match in any case.
 ///
 /// # Errors
 ///
 /// The refusal, where a header is missing or malformed, or the signed
-/// timestamp lies outside [`REPLAY_WINDOW`].
+/// timestamp lies outside the replay window.
 pub fn claim(
     scheme: Scheme,
     headers: &[(&str, &str)],
     body: &[u8],
     now: Timestamp,
+    bounds: &Inbound,
 ) -> Result<Claim, Refusal> {
     match scheme {
         Scheme::GitHub => {
@@ -210,7 +209,7 @@ pub fn claim(
         Scheme::Discord => {
             const SIGNATURE: &str = "X-Signature-Ed25519";
             const TIMESTAMP: &str = "X-Signature-Timestamp";
-            let stamp = timestamp(headers, TIMESTAMP, now)?;
+            let stamp = timestamp(headers, TIMESTAMP, now, bounds.replay_window)?;
             let signature = unhex(required(headers, SIGNATURE)?)
                 .ok_or(Refusal::Malformed { header: SIGNATURE })?;
             Ok(Claim {
@@ -223,7 +222,7 @@ pub fn claim(
         }
         Scheme::Slack => {
             const TIMESTAMP: &str = "X-Slack-Request-Timestamp";
-            let stamp = timestamp(headers, TIMESTAMP, now)?;
+            let stamp = timestamp(headers, TIMESTAMP, now, bounds.replay_window)?;
             let signature = prefixed(headers, "X-Slack-Signature", "v0=")?;
             let delivery = crate::hex(&signature);
             Ok(hmac(
@@ -248,7 +247,7 @@ pub fn claim(
         Scheme::GitLab => {
             const SIGNATURE: &str = "webhook-signature";
             let id = required(headers, "webhook-id")?;
-            let stamp = timestamp(headers, "webhook-timestamp", now)?;
+            let stamp = timestamp(headers, "webhook-timestamp", now, bounds.replay_window)?;
             let signatures: Vec<Vec<u8>> = required(headers, SIGNATURE)?
                 .split(' ')
                 .filter_map(|entry| entry.strip_prefix("v1,"))
@@ -258,10 +257,10 @@ pub fn claim(
                         .ok()
                         .filter(|signature| !signature.is_empty())
                 })
-                .take(MOST_SIGNATURES + 1)
+                .take(bounds.signatures.saturating_add(1))
                 .collect::<Option<_>>()
                 .filter(|signatures: &Vec<Vec<u8>>| {
-                    (1..=MOST_SIGNATURES).contains(&signatures.len())
+                    (1..=bounds.signatures).contains(&signatures.len())
                 })
                 .ok_or(Refusal::Malformed { header: SIGNATURE })?;
             Ok(Claim {
@@ -355,11 +354,12 @@ fn prefixed(
 }
 
 /// The Unix-seconds timestamp in `header`, as written, where it lies within
-/// [`REPLAY_WINDOW`] of `now`.
+/// `window` of `now`.
 fn timestamp<'a>(
     headers: &[(&str, &'a str)],
     header: &'static str,
     now: Timestamp,
+    window: SignedDuration,
 ) -> Result<&'a str, Refusal> {
     let written = required(headers, header)?;
     let seconds: i64 = written
@@ -368,8 +368,8 @@ fn timestamp<'a>(
         .filter(|_| written.bytes().all(|byte| byte.is_ascii_digit()))
         .ok_or(Refusal::Malformed { header })?;
     let at = Timestamp::from_second(seconds).map_err(|_| Refusal::Malformed { header })?;
-    if now.duration_since(at).abs() > REPLAY_WINDOW {
-        return Err(Refusal::Stale);
+    if now.duration_since(at).abs() > window {
+        return Err(Refusal::Stale { window });
     }
     Ok(written)
 }
@@ -379,11 +379,6 @@ fn timestamp<'a>(
 /// The pseudo-header a signature names its request's method and path by.
 const TARGET: &str = "(request-target)";
 const COVERED: [&str; 3] = [TARGET, "host", "date"];
-
-/// The most headers an ActivityPub signature may name. Each is read into the
-/// signing string before the signature is checked, so a request naming more
-/// is refused unread.
-pub const MOST_COVERED: usize = 16;
 
 /// The claim of an ActivityPub activity: the signing string of the headers
 /// its `Signature` names, with its `Date` inside the replay window and its
@@ -401,7 +396,7 @@ pub struct Addressed<'a> {
 }
 
 /// The claim of an ActivityPub activity sent to `addressed`, with its
-/// `headers` and raw `body`, at `now` (ADR-0007).
+/// `headers` and raw `body`, at `now`, within `bounds` (ADR-0007).
 ///
 /// # Errors
 ///
@@ -411,6 +406,7 @@ pub fn activity_claim(
     headers: &[(&str, &str)],
     body: &[u8],
     now: Timestamp,
+    bounds: &Inbound,
 ) -> Result<Claim, Refusal> {
     const SIGNATURE: &str = "Signature";
     const DATE: &str = "Date";
@@ -434,7 +430,7 @@ pub fn activity_claim(
         .filter(|signature| !signature.is_empty())
         .ok_or(malformed.clone())?;
     let named = param("headers").unwrap_or("date");
-    if named.split(' ').filter(|name| !name.is_empty()).count() > MOST_COVERED {
+    if named.split(' ').filter(|name| !name.is_empty()).count() > bounds.covered {
         return Err(malformed);
     }
     let covered: Vec<String> = named
@@ -458,8 +454,10 @@ pub fn activity_claim(
     let at = jiff::fmt::rfc2822::parse(date)
         .map_err(|_| Refusal::Malformed { header: DATE })?
         .timestamp();
-    if now.duration_since(at).abs() > REPLAY_WINDOW {
-        return Err(Refusal::Stale);
+    if now.duration_since(at).abs() > bounds.replay_window {
+        return Err(Refusal::Stale {
+            window: bounds.replay_window,
+        });
     }
     if digested.is_some() {
         let written = required(headers, DIGEST)?;

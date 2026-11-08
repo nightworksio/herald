@@ -1,6 +1,6 @@
 use herald_core::{Refusal, Scheme};
 use herald_flows::{
-    Admission, Keys, Rejected, Verified, activity_verified, admitted, released, verified,
+    Admission, Checking, Keys, Rejected, Verified, activity_verified, admitted, released, verified,
 };
 use herald_ports::{Held, Keeper, Keyring, KnownKey, StoreError};
 use herald_records::MemoryKeyring;
@@ -17,12 +17,27 @@ fn now() -> Timestamp {
     Timestamp::from_second(1_800_000_000).unwrap()
 }
 
+fn checking(now: Timestamp) -> Checking<'static> {
+    Checking {
+        now,
+        bounds: &herald_core::Inbound::DEFAULT,
+    }
+}
+
 fn hex(bytes: &[u8]) -> String {
     herald_core::hex(bytes)
 }
 
 fn checked(scheme: Scheme, key: &str, headers: &[(&str, &str)]) -> Result<(), Rejected> {
-    pollster::block_on(verified(&FakeVerifier, scheme, key, headers, BODY, now())).map(|_| ())
+    pollster::block_on(verified(
+        &FakeVerifier,
+        scheme,
+        key,
+        headers,
+        BODY,
+        checking(now()),
+    ))
+    .map(|_| ())
 }
 
 #[test]
@@ -87,7 +102,7 @@ fn a_discord_interaction_delivered_twice_is_a_replay() {
                 "0aff",
                 &headers,
                 BODY,
-                now(),
+                checking(now()),
             )
             .await?;
             admitted(&store, Admission::Once, Scheme::Discord, &verified, now()).await
@@ -180,7 +195,7 @@ fn a_github_webhook_is_delivered_as_its_signature() {
         "secret",
         &[("X-Hub-Signature-256", &signed)],
         BODY,
-        now(),
+        checking(now()),
     ))
     .unwrap();
     assert_eq!(verified, delivered(&signed["sha256=".len()..]));
@@ -505,9 +520,15 @@ pub(crate) fn activity(
         return signing(signature);
     }
     let probe = signing("AA==");
-    let message = herald_core::activity_claim(TO, &borrowed(&probe), body, at())
-        .unwrap()
-        .message;
+    let message = herald_core::activity_claim(
+        TO,
+        &borrowed(&probe),
+        body,
+        at(),
+        &herald_core::Inbound::DEFAULT,
+    )
+    .unwrap()
+    .message;
     let public = herald_core::key(Scheme::ActivityPub, ACTOR_KEY).unwrap();
     let spelled = [b"RsaSha256|".as_slice(), &public, b"|", &message].concat();
     signing(&STANDARD.encode(spelled))
@@ -574,7 +595,7 @@ fn kept_by<K: Keyring>(
         TO,
         &borrowed(headers),
         body,
-        at(),
+        checking(at()),
     ));
     (checked, script.seen())
 }
@@ -852,7 +873,7 @@ fn an_activity_is_never_checked_against_a_key_handed_in() {
         ACTOR_KEY,
         &borrowed(&headers),
         FOLLOW,
-        at(),
+        checking(at()),
     ));
     assert_eq!(handed, Err(Rejected::Unkeyed));
 }

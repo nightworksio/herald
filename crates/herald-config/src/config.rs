@@ -1,8 +1,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use herald_core::{
-    DestinationName, Kind, Profile, RecordKind, Retention, Route, RouteId, SecretRef, SourceName,
-    Templates,
+    DestinationName, Inbound, Kind, Profile, RecordKind, Retention, Route, RouteId, Sandbox,
+    SecretRef, SourceName, Templates,
 };
 use herald_sources_forge::Forge;
 use herald_sources_registry::Registry;
@@ -15,6 +15,8 @@ pub struct Config {
     pub store: Store,
     /// How long the store keeps what herald records.
     pub retention: Retention,
+    /// How far a template may go as it renders.
+    pub render: Sandbox,
     /// The installation's marker key, where it is set (ADR-0011).
     pub marker_key: Option<SecretRef>,
     /// The destinations, by name.
@@ -537,6 +539,8 @@ pub struct Server {
     pub keys_reread: SignedDuration,
     /// The most keys kept in memory.
     pub keys_most: usize,
+    /// What a signed inbound request may carry and still be checked.
+    pub inbound: Inbound,
 }
 
 impl Server {
@@ -550,6 +554,8 @@ impl Server {
     pub const CONNECTIONS: usize = 256;
     /// The most bytes a body may hold where the config says nothing: 1 MiB.
     pub const BODY: usize = 1 << 20;
+    /// The most bytes a config may let a body hold: four times the default.
+    pub const BODY_MOST: usize = Self::BODY * 4;
     /// How many actor documents it reads at once where the config says
     /// nothing.
     pub const FETCHES: usize = 4;
@@ -601,6 +607,7 @@ impl Default for Server {
             keys_refreshed: Self::KEYS_REFRESHED,
             keys_reread: Self::KEYS_REREAD,
             keys_most: Self::KEYS_MOST,
+            inbound: Inbound::DEFAULT,
         }
     }
 }

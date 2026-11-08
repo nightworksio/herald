@@ -66,7 +66,7 @@ body = "{{ event.body }}"
     #[test]
     fn the_server_table_sets_every_limit() {
         let text = format!(
-            "{EXAMPLE}\n[server]\nlisten = \"0.0.0.0:9000\"\njobs = 2\nconnections = 3\nbody = \"64KiB\"\nfetches = 5\ncompletions = 9\ndeliveries = 6\nsilence = \"45s\"\n\n[server.keys]\ncache = \"store\"\nrefresh_after = \"30m\"\nreread_after = \"5m\"\nmost = 7\n"
+            "{EXAMPLE}\n[server]\nlisten = \"0.0.0.0:9000\"\njobs = 2\nconnections = 3\nbody = \"64KiB\"\nfetches = 5\ncompletions = 9\ndeliveries = 6\nsilence = \"45s\"\n\n[server.keys]\ncache = \"store\"\nrefresh_after = \"30m\"\nreread_after = \"5m\"\nmost = 7\n\n[server.inbound]\nreplay_window = \"20m\"\nsignatures = 2\ncovered = 4\n"
         );
         let config = load("herald.toml", &text, &nothing).unwrap();
         assert_eq!(
@@ -84,6 +84,11 @@ body = "{{ event.body }}"
                 keys_refreshed: jiff::SignedDuration::from_mins(30),
                 keys_reread: jiff::SignedDuration::from_mins(5),
                 keys_most: 7,
+                inbound: herald_core::Inbound {
+                    replay_window: jiff::SignedDuration::from_mins(20),
+                    signatures: 2,
+                    covered: 4,
+                },
             }
         );
         assert!(config.server.keys_in_store());
@@ -106,6 +111,29 @@ body = "{{ event.body }}"
         let huge = errors(&format!("{EXAMPLE}\n[server]\nbody = \"1GB\"\n"));
         assert!(huge.contains("server.body"), "{huge}");
         assert!(huge.contains("\"512KiB\" or \"1MiB\""), "{huge}");
+        let wide = errors(&format!("{EXAMPLE}\n[server]\nbody = \"5MiB\"\n"));
+        assert!(
+            wide.contains("server.body: make it at most \"4MiB\", four times its default"),
+            "{wide}"
+        );
+        for (key, value, most) in [
+            ("replay_window", "\"21m\"", "\"20m\""),
+            ("signatures", "17", "16"),
+            ("covered", "65", "64"),
+        ] {
+            let past = errors(&format!("{EXAMPLE}\n[server.inbound]\n{key} = {value}\n"));
+            assert!(
+                past.contains(&format!("server.inbound.{key}: make it at most {most}")),
+                "{past}"
+            );
+        }
+        let bare = errors(&format!("{EXAMPLE}\n[server.inbound]\ncovered = 3\n"));
+        assert!(
+            bare.contains(
+                "server.inbound.covered: an ActivityPub signature covers at least 4 headers"
+            ),
+            "{bare}"
+        );
         let unkept = errors(&format!(
             "{}\n[server.keys]\ncache = \"store\"\n",
             EXAMPLE.replace(

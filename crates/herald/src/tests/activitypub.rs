@@ -75,7 +75,14 @@ fn a_delivery_herald_signs_is_one_its_own_inbox_takes_under_the_key_its_actor_pu
         target: "post /inbox",
         audience: "social.example:8443",
     };
-    let claim = activity_claim(to, &named, &request.body, now).unwrap();
+    let claim = activity_claim(
+        to,
+        &named,
+        &request.body,
+        now,
+        &herald_core::Inbound::DEFAULT,
+    )
+    .unwrap();
     assert_eq!(
         claim.signer.as_deref(),
         Some("https://herald.example/users/php-mutation-gate#main-key")
@@ -90,7 +97,7 @@ fn a_delivery_herald_signs_is_one_its_own_inbox_takes_under_the_key_its_actor_pu
                 &claim.message,
                 signature,
             ))
-        }) && activity_claim(to, &named, body, now).is_ok()
+        }) && activity_claim(to, &named, body, now, &herald_core::Inbound::DEFAULT).is_ok()
     };
     assert!(holds(&request.body));
     assert!(!holds(b"{\"type\":\"Undo\"}"));

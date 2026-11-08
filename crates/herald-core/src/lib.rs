@@ -7,6 +7,7 @@
 mod activity;
 mod address;
 mod announce;
+mod bounds;
 mod chunk;
 mod cursor;
 mod duration;
@@ -35,14 +36,14 @@ pub use address::{WEB_SCHEMES, domain, path_of_names, socket_under, under_domain
 pub use announce::{
     Announcement, Title, announce, body_template, shortened, thread_template, title_template,
 };
+pub use bounds::{Inbound, Sandbox};
 pub use chunk::{Room, chunk, size};
 pub use cursor::{Cursor, Polled, fresh};
 pub use duration::Duration;
 pub use event::{Draft, Event, Kind, Problem};
 pub use housekeep::{Chore, Schedule, due, schedules};
 pub use inbound::{
-    Addressed, Claim, MOST_COVERED, MOST_SIGNATURES, REPLAY_WINDOW, Refusal, Scheme, Signature,
-    activity_claim, bearer, claim, key, same,
+    Addressed, Claim, Refusal, Scheme, Signature, activity_claim, bearer, claim, key, same,
 };
 pub use interact::{
     AnnouncedHere, Answering, Asked, Command, MOST_COMPLETIONS, Member, Place, Replies, Said,

@@ -383,7 +383,7 @@ mod hostile {
                 "body",
                 "## {{ event.title }}\n\n[release]({{ event.links.release }}) {{ event.project }}\n\n{{ event.body }}",
                 Form::Markdown,
-            )])
+            )], crate::Sandbox::DEFAULT)
             .unwrap();
             let route = RouteId::new("r");
             let markdown = templates.render("body", &Context { event: &event, route: &route, herald: "0" }).unwrap();

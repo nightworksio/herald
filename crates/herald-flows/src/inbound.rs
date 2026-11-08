@@ -1,6 +1,8 @@
 use std::fmt;
 
-use herald_core::{Addressed, Claim, Refusal, Scheme, Signature, activity_claim, claim, key, same};
+use herald_core::{
+    Addressed, Claim, Inbound, Refusal, Scheme, Signature, activity_claim, claim, key, same,
+};
 use herald_dest_fediverse::{
     ActorError, ActorKey, Found, activity_json, actor_key, actor_of, confirms, key_request,
     same_origin,
@@ -9,6 +11,15 @@ use herald_ports::{
     Admitted, Algorithm, Deliveries, Http, Keyring, KnownKey, Store, StoreError, Verifier,
 };
 use jiff::{SignedDuration, Timestamp};
+
+/// When an inbound request is checked, and the bounds it is held to.
+#[derive(Debug, Clone, Copy)]
+pub struct Checking<'a> {
+    /// The time it is checked at.
+    pub now: Timestamp,
+    /// What it may carry and still be checked.
+    pub bounds: &'a Inbound,
+}
 
 /// Why an inbound request is not let through to a parser.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -88,7 +99,7 @@ impl fmt::Display for Rejected {
 }
 
 /// Whether a request of `scheme`, with its `headers` and raw `body`, is
-/// signed by the holder of `written` at `now`: a shared secret for an HMAC,
+/// signed by the holder of `written` as `checking` holds it: a shared secret for an HMAC,
 /// the sender's public key for Ed25519, each as [`key`] reads it
 /// (ADR-0007). Only a request this lets through may reach a parser. An
 /// ActivityPub activity is checked by [`activity_verified`], which reads
@@ -103,12 +114,13 @@ pub async fn verified<V: Verifier>(
     written: &str,
     headers: &[(&str, &str)],
     body: &[u8],
-    now: Timestamp,
+    checking: Checking<'_>,
 ) -> Result<Verified, Rejected> {
     let key = key(scheme, written)
         .filter(|_| scheme != Scheme::ActivityPub)
         .ok_or(Rejected::Unkeyed)?;
-    let claim = claim(scheme, headers, body, now).map_err(Rejected::Refused)?;
+    let claim =
+        claim(scheme, headers, body, checking.now, checking.bounds).map_err(Rejected::Refused)?;
     signed(verifier, &key, &claim).await?;
     Ok(Verified {
         delivery: claim.delivery,
@@ -117,7 +129,7 @@ pub async fn verified<V: Verifier>(
 }
 
 /// Whether an ActivityPub activity sent to `addressed`, with its `headers`
-/// and raw `body`, is signed at `now` by the key its signature names, served
+/// and raw `body`, is signed as `checking` holds it by the key its signature names, served
 /// as ActivityPub JSON read from that key's
 /// document through `http`, which reaches only public addresses, and
 /// names that key's owner as its actor, with its own id, where it has one,
@@ -139,9 +151,11 @@ pub async fn activity_verified<V: Verifier, H: Http, K: Keyring>(
     addressed: Addressed<'_>,
     headers: &[(&str, &str)],
     body: &[u8],
-    now: Timestamp,
+    checking: Checking<'_>,
 ) -> Result<Verified, Rejected> {
-    let claim = activity_claim(addressed, headers, body, now).map_err(Rejected::Refused)?;
+    let now = checking.now;
+    let claim = activity_claim(addressed, headers, body, now, checking.bounds)
+        .map_err(Rejected::Refused)?;
     let named = claim.signer.as_deref().unwrap_or_default();
     let kept = keys
         .keyring

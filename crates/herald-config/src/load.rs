@@ -1,7 +1,9 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::ops::Range;
 
-use herald_core::{DestinationName, RecordKind, Retention, RouteId, SourceName, TemplateName};
+use herald_core::{
+    DestinationName, Inbound, RecordKind, Retention, RouteId, Sandbox, SourceName, TemplateName,
+};
 use herald_sources_forge::Forge;
 use herald_sources_registry::Registry;
 use serde::de::DeserializeOwned;
@@ -11,8 +13,8 @@ use toml::de::{DeTable, DeValue, ValueDeserializer};
 use crate::config::{Config, Destination, KeyCache, Schedule, Server, Source, Store};
 use crate::error::{ConfigError, Errors};
 use crate::file::{
-    HttpFile, Keep, KeepFile, KeyCacheFile, MarkersFile, NoOptions, ScheduleFile, ServerFile,
-    TemplateFile,
+    HttpFile, InboundFile, Keep, KeepFile, KeyCacheFile, MarkersFile, NoOptions, RenderFile,
+    ScheduleFile, ServerFile, TemplateFile,
 };
 use crate::position::position;
 use herald_ports::{Outbound, Proxy, Roots};
@@ -22,7 +24,7 @@ type Value<'i> = Spanned<DeValue<'i>>;
 /// The version of the config this herald reads.
 const VERSION: i64 = 1;
 /// The top-level keys of `herald.toml`.
-const SECTIONS: [&str; 11] = [
+const SECTIONS: [&str; 12] = [
     "version",
     "store",
     "markers",
@@ -34,6 +36,7 @@ const SECTIONS: [&str; 11] = [
     "schedule",
     "server",
     "http",
+    "render",
 ];
 /// The length of a SHA-256 in hex.
 const HASH_DIGITS: usize = 64;
@@ -90,6 +93,7 @@ struct Sections<'i> {
     schedule: Option<Value<'i>>,
     server: Option<Value<'i>>,
     http: Option<Value<'i>>,
+    render: Option<Value<'i>>,
 }
 
 /// A template's sources, with where each is written.
@@ -231,6 +235,7 @@ impl Loader<'_> {
                 "schedule" => &mut sections.schedule,
                 "server" => &mut sections.server,
                 "http" => &mut sections.http,
+                "render" => &mut sections.render,
                 other => {
                     self.error(
                         &key.span(),
@@ -778,7 +783,13 @@ impl Loader<'_> {
             listen,
             jobs: count(file.jobs, defaults.jobs),
             connections: count(file.connections, defaults.connections),
-            body: file.body.map_or(defaults.body, |body| body.0),
+            body: self.most(
+                file.body.map(|body| (body.span(), body.into_inner().0)),
+                defaults.body,
+                Server::BODY_MOST,
+                "server.body",
+                &size(Server::BODY_MOST),
+            ),
             fetches: count(file.fetches, defaults.fetches),
             completions: count(file.completions, defaults.completions),
             deliveries: count(file.deliveries, defaults.deliveries),
@@ -793,6 +804,108 @@ impl Loader<'_> {
                 .reread_after
                 .map_or(defaults.keys_reread, |after| after.0),
             keys_most: count(file.keys.most, defaults.keys_most),
+            inbound: self.inbound(file.inbound),
+        }
+    }
+
+    /// `given`, where it is no more than `most`; a value past it is named
+    /// as a mistake by `path`, with `most` written as `shown`.
+    fn most<T: PartialOrd + Copy>(
+        &mut self,
+        given: Option<(Range<usize>, T)>,
+        default: T,
+        most: T,
+        path: &str,
+        shown: &str,
+    ) -> T {
+        let Some((span, given)) = given else {
+            return default;
+        };
+        if given > most {
+            self.error(
+                &span,
+                path,
+                format!(
+                    "make it at most {shown}, four times its default; a wider bound loosens what herald holds a request or a template to"
+                ),
+            );
+        }
+        given
+    }
+
+    fn inbound(&mut self, file: InboundFile) -> Inbound {
+        let defaults = Inbound::DEFAULT;
+        let most = Inbound::MOST;
+        let covered = file
+            .covered
+            .map(|covered| (covered.span(), covered.into_inner().get()));
+        if let Some((span, given)) = &covered
+            && *given < Inbound::LEAST_COVERED
+        {
+            self.error(
+                span,
+                "server.inbound.covered",
+                format!(
+                    "an ActivityPub signature covers at least {} headers; make it at least that",
+                    Inbound::LEAST_COVERED
+                ),
+            );
+        }
+        let covered = self.most(
+            covered,
+            defaults.covered,
+            most.covered,
+            "server.inbound.covered",
+            &most.covered.to_string(),
+        );
+        Inbound {
+            replay_window: self.most(
+                file.replay_window
+                    .map(|window| (window.span(), window.into_inner().0)),
+                defaults.replay_window,
+                most.replay_window,
+                "server.inbound.replay_window",
+                &format!("\"{}m\"", most.replay_window.as_mins()),
+            ),
+            signatures: self.most(
+                file.signatures
+                    .map(|signatures| (signatures.span(), signatures.into_inner().get())),
+                defaults.signatures,
+                most.signatures,
+                "server.inbound.signatures",
+                &most.signatures.to_string(),
+            ),
+            covered,
+        }
+    }
+
+    fn sandbox(&mut self, file: RenderFile) -> Sandbox {
+        let defaults = Sandbox::DEFAULT;
+        let most = Sandbox::MOST;
+        Sandbox {
+            fuel: self.most(
+                file.fuel.map(|fuel| (fuel.span(), fuel.into_inner().get())),
+                defaults.fuel,
+                most.fuel,
+                "render.fuel",
+                &most.fuel.to_string(),
+            ),
+            recursion: self.most(
+                file.recursion
+                    .map(|recursion| (recursion.span(), recursion.into_inner().get())),
+                defaults.recursion,
+                most.recursion,
+                "render.recursion",
+                &most.recursion.to_string(),
+            ),
+            output: self.most(
+                file.output
+                    .map(|output| (output.span(), output.into_inner().0)),
+                defaults.output,
+                most.output,
+                "render.output",
+                &size(most.output),
+            ),
         }
     }
 }
@@ -848,7 +961,11 @@ pub fn load(
     }
     loader.followed(store.as_ref(), &destinations, &routes);
     loader.answered(store.as_ref(), &destinations, &templates);
-    let compiled = loader.compile(&templates, &routes);
+    let render = sections
+        .render
+        .and_then(|value| loader.typed::<RenderFile>(value, "render"))
+        .map_or(Sandbox::DEFAULT, |file| loader.sandbox(file));
+    let compiled = loader.compile(&templates, &routes, render);
     if let Some(compiled) = &compiled {
         for read in &routes {
             loader.dry_render(compiled, read);
@@ -873,6 +990,7 @@ pub fn load(
         return Ok(Config {
             store,
             retention: retention.unwrap_or_default(),
+            render,
             marker_key,
             destinations: destinations
                 .into_iter()
@@ -896,6 +1014,16 @@ pub fn load(
         file: file.to_owned(),
         errors,
     })
+}
+
+/// `bytes` as a config writes a size, in quotes.
+fn size(bytes: usize) -> String {
+    use crate::file::{KIB, MIB};
+    if bytes.is_multiple_of(MIB) {
+        format!("\"{}MiB\"", bytes / MIB)
+    } else {
+        format!("\"{}KiB\"", bytes / KIB)
+    }
 }
 
 /// `rest`, a store's options, apart from how long it keeps what herald

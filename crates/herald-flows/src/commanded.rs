@@ -9,7 +9,7 @@ use herald_dest_discord as discord;
 use herald_dest_slack as slack;
 use herald_ports::{Clock, Keyring, Store, Verifier};
 
-use crate::inbound::{Rejected, Verified, admitted, verified};
+use crate::inbound::{Checking, Rejected, Verified, admitted, verified};
 use crate::interact::completed;
 use crate::interacting::{Interacting, Replying};
 use crate::serving::{
@@ -78,7 +78,10 @@ async fn admit<S: Store, C: Clock, G, V: Verifier, H, P, K>(
         written,
         inbound.headers,
         inbound.body,
-        now,
+        Checking {
+            now,
+            bounds: &serving.config.server.inbound,
+        },
     )
     .await?;
     admitted(
@@ -184,7 +187,10 @@ pub(crate) async fn appserviced<S: Store, C: Clock, G, V: Verifier, H, P, K>(
         token.expose(),
         inbound.headers,
         inbound.body,
-        now,
+        Checking {
+            now,
+            bounds: &serving.config.server.inbound,
+        },
     )
     .await;
     if let Err(rejected) = checked {

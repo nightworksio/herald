@@ -9,13 +9,11 @@ use minijinja::{
     escape_formatter,
 };
 
+use crate::bounds::Sandbox;
 use crate::event::Event;
 use crate::key::RouteId;
 use crate::markup::escaped;
 
-const FUEL: u64 = 100_000;
-const RECURSION: usize = 16;
-const OUTPUT_CAP: usize = 262_144;
 const MARKDOWN: &str = "markdown";
 
 /// What a template renders.
@@ -59,23 +57,28 @@ impl fmt::Display for TemplateError {
 #[derive(Debug)]
 pub struct Templates {
     environment: Environment<'static>,
+    output: usize,
 }
 
 impl Templates {
-    /// The templates `sources` holds, by name, each compiled.
+    /// The templates `sources` holds, by name, each compiled into
+    /// `sandbox`.
     ///
     /// # Errors
     ///
     /// Every template that does not compile, with minijinja's reason.
-    pub fn compile(sources: &[(&str, &str, Form)]) -> Result<Self, Vec<TemplateError>> {
+    pub fn compile(
+        sources: &[(&str, &str, Form)],
+        sandbox: Sandbox,
+    ) -> Result<Self, Vec<TemplateError>> {
         let markdown: BTreeSet<String> = sources
             .iter()
             .filter(|(_, _, form)| *form == Form::Markdown)
             .map(|(name, _, _)| (*name).to_owned())
             .collect();
         let mut environment = Environment::new();
-        environment.set_fuel(Some(FUEL));
-        environment.set_recursion_limit(RECURSION);
+        environment.set_fuel(Some(sandbox.fuel));
+        environment.set_recursion_limit(sandbox.recursion);
         environment.set_undefined_behavior(UndefinedBehavior::SemiStrict);
         environment.set_auto_escape_callback(move |name| {
             if markdown.contains(name) {
@@ -95,7 +98,10 @@ impl Templates {
             })
             .collect();
         if errors.is_empty() {
-            Ok(Self { environment })
+            Ok(Self {
+                environment,
+                output: sandbox.output,
+            })
         } else {
             Err(errors)
         }
@@ -112,7 +118,11 @@ impl Templates {
             .environment
             .get_template(name)
             .map_err(|error| failure(name, &error))?;
-        let mut capped = Capped::default();
+        let mut capped = Capped {
+            written: Vec::new(),
+            passed: false,
+            cap: self.output,
+        };
         let rendered = template.render_captured_to(
             context! {
                 event => merge_maps([
@@ -127,7 +137,7 @@ impl Templates {
         if capped.passed {
             return Err(TemplateError {
                 name: name.to_owned(),
-                reason: format!("its output passes the cap of {OUTPUT_CAP} bytes"),
+                reason: format!("its output passes the cap of {} bytes", self.output),
             });
         }
         rendered.map_err(|error| failure(name, &error))?;
@@ -150,15 +160,15 @@ impl Templates {
 
 /// A template's output, refused once it passes the cap, so a template is
 /// stopped there and not after building all it would print.
-#[derive(Default)]
 struct Capped {
     written: Vec<u8>,
     passed: bool,
+    cap: usize,
 }
 
 impl std::io::Write for Capped {
     fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
-        if self.written.len().saturating_add(bytes.len()) > OUTPUT_CAP {
+        if self.written.len().saturating_add(bytes.len()) > self.cap {
             self.passed = true;
             return Err(std::io::Error::other("the output passes its cap"));
         }

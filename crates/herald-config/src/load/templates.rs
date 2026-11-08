@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 use std::ops::Range;
 
 use herald_core::{
-    Context, Form, TemplateName, Templates, body_template, thread_template, title_template,
+    Context, Form, Sandbox, TemplateName, Templates, body_template, thread_template, title_template,
 };
 
 use super::route::Read;
@@ -14,6 +14,7 @@ impl Loader<'_> {
         &mut self,
         templates: &BTreeMap<TemplateName, Written>,
         routes: &[Read],
+        sandbox: Sandbox,
     ) -> Option<Templates> {
         let mut sources: Vec<(String, String, Form, Range<usize>, String)> = Vec::new();
         for (name, written) in templates {
@@ -48,7 +49,7 @@ impl Loader<'_> {
             .iter()
             .map(|(name, source, form, _, _)| (name.as_str(), source.as_str(), *form))
             .collect();
-        match Templates::compile(&compiled) {
+        match Templates::compile(&compiled, sandbox) {
             Ok(templates) => Some(templates),
             Err(failures) => {
                 for failure in failures {

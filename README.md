@@ -211,6 +211,13 @@ native binary, the image and Lambda; other hosts refuse them, naming why. None
 of it applies to the hosts herald reaches on others' behalf, which keep
 ADR-0007's 5 and 10 seconds at most, no proxy and the Mozilla roots alone.
 
+`[server.inbound]` sets what a signed request may carry and still be
+checked: `replay_window` ("5m"), `signatures` (4) and `covered` (16, the
+headers one ActivityPub signature may name). `[render]` sets how far a
+template may go: `fuel` (100000), `recursion` (16) and `output` ("256KiB").
+Each of these, and `[server] body`, may be at most four times its default,
+and `herald doctor` names any set above it.
+
 Housekeeping also forgets what the store keeps past `[store]`'s
 `keep_deliveries` (each webhook delivery's id, "7d", and at least "3d"),
 `keep_ledger` (each ledger entry and its deliveries to followers' inboxes,

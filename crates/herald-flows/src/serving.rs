@@ -15,7 +15,7 @@ use crate::announce::{Announced, Outcome, Ports, announce, announce_within};
 use crate::commanded::{INTERACTIONS, MATRIX, appserviced, commanded};
 use crate::following::{FollowError, Followed, followed};
 use crate::inbound::{
-    Admission, Keys, Rejected, Verified, activity_verified, admitted, released, verified,
+    Admission, Checking, Keys, Rejected, Verified, activity_verified, admitted, released, verified,
 };
 use crate::interact::{Answer, interact, replied as replied_to};
 use crate::interacting::Replying;
@@ -531,7 +531,10 @@ async fn hooked<S: Store, C: Clock, G, V: Verifier, H, P, K>(
         secret.expose(),
         inbound.headers,
         inbound.body,
-        now,
+        Checking {
+            now,
+            bounds: &serving.config.server.inbound,
+        },
     )
     .await;
     let verified = match checked {
@@ -715,7 +718,10 @@ async fn inboxed<S: Store, C: Clock, G, V: Verifier, H, P: Http, K: Keyring>(
         addressed,
         inbound.headers,
         inbound.body,
-        now,
+        Checking {
+            now,
+            bounds: &serving.config.server.inbound,
+        },
     )
     .await;
     let verified = match checked {

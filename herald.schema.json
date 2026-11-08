@@ -600,6 +600,42 @@
       },
       "additionalProperties": false
     },
+    "Inbound": {
+      "description": "`[server.inbound]`: what a signed inbound request may carry and still be\nchecked. Each bound may be at most four times its default, and doctor\nnames one set above it.",
+      "type": "object",
+      "properties": {
+        "covered": {
+          "description": "The most headers one ActivityPub signature may cover; 16 where\nabsent, at least the 4 it must cover, and at most 64.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint",
+          "minimum": 1
+        },
+        "replay_window": {
+          "description": "How far a signed timestamp may lie from now, either way, before the\nrequest is taken for a replay; \"5m\" where absent, and at most \"20m\".",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Duration"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "signatures": {
+          "description": "The most signatures a request may carry, each checked in turn; 4\nwhere absent, and at most 16.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint",
+          "minimum": 1
+        }
+      },
+      "additionalProperties": false
+    },
     "Interactions": {
       "description": "How a Discord destination takes commands.",
       "type": "object",
@@ -1288,7 +1324,7 @@
       "type": "object",
       "properties": {
         "body": {
-          "description": "The most an inbound request's body may hold; \"1MiB\" where absent.",
+          "description": "The most an inbound request's body may hold; \"1MiB\" where absent,\nand at most \"4MiB\".",
           "anyOf": [
             {
               "$ref": "#/$defs/Size"
@@ -1333,6 +1369,10 @@
           ],
           "format": "uint",
           "minimum": 1
+        },
+        "inbound": {
+          "description": "What a signed inbound request may carry and still be checked.",
+          "$ref": "#/$defs/Inbound"
         },
         "jobs": {
           "description": "How many announcements it works on at once; a webhook arriving while\nas many more wait is answered 503. 8 where absent.",

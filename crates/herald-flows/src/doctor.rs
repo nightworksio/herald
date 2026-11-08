@@ -1,5 +1,5 @@
-use herald_config::{Config, Destination, RouteConfig, Source, Store};
-use herald_core::{Pinning, RecordKind};
+use herald_config::{Config, Destination, RouteConfig, Server, Source, Store};
+use herald_core::{Inbound, Pinning, RecordKind, Sandbox};
 use herald_ports::{Secrets, Signer};
 
 use crate::prepare::keyed;
@@ -40,6 +40,57 @@ const SCOPED: &str = "The Actions cache keeps records apart for each ref a run i
 const FILED: &str = "Every record is kept in one SQLite file, so run herald where that file outlives the run: a CI runner's disk is gone when its job ends.";
 /// What repository variables hold at most (ADR-0005).
 const CROWDED: &str = "Each record is a repository variable: a repository holds at most 500, and a run is handed at most 256 KB of them, so many records can crowd out the repository's own variables.";
+
+/// Each soundness bound the config sets above its default, as a note: what
+/// herald holds a request or a template to is looser than it ships with.
+fn loosened(config: &Config, notes: &mut Vec<String>) {
+    let inbound = &config.server.inbound;
+    let render = &config.render;
+    let bounds = [
+        (
+            "server.body",
+            config.server.body > Server::BODY,
+            "an inbound request's body may hold more",
+        ),
+        (
+            "server.inbound.replay_window",
+            inbound.replay_window > Inbound::DEFAULT.replay_window,
+            "a copy of a signed request is let through for longer",
+        ),
+        (
+            "server.inbound.signatures",
+            inbound.signatures > Inbound::DEFAULT.signatures,
+            "a request may make herald check more signatures",
+        ),
+        (
+            "server.inbound.covered",
+            inbound.covered > Inbound::DEFAULT.covered,
+            "a signature may make herald read more headers",
+        ),
+        (
+            "render.fuel",
+            render.fuel > Sandbox::DEFAULT.fuel,
+            "a template may run longer",
+        ),
+        (
+            "render.recursion",
+            render.recursion > Sandbox::DEFAULT.recursion,
+            "a template may nest deeper",
+        ),
+        (
+            "render.output",
+            render.output > Sandbox::DEFAULT.output,
+            "a template may write more",
+        ),
+    ];
+    for (key, above, cost) in bounds {
+        if above {
+            notes.push(format!(
+                "{key} is set above its default, so {cost}; set it back where nothing needs it."
+            ));
+        }
+    }
+}
 
 fn gap(feature: &str, key: String, why: String) -> Gap {
     Gap {
@@ -194,6 +245,7 @@ pub fn doctor(config: &Config, layer: Layer<'_>) -> Findings {
     if config.marker_key.is_none() {
         findings.notes.push(DERIVED_KEY.to_owned());
     }
+    loosened(config, &mut findings.notes);
     let kind = config.store.kind();
     if !stores.contains(&kind) {
         findings.gaps.push(gap(

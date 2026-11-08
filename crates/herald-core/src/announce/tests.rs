@@ -39,23 +39,26 @@ fn marks() -> Marks {
 }
 
 fn templates(route: &Route) -> Templates {
-    Templates::compile(&[
-        (
-            &title_template(&route.template),
-            "📦 {{ event.project }} {{ event.version }}",
-            Form::Line,
-        ),
-        (
-            &body_template(&route.template),
-            "{{ event.body }}",
-            Form::Markdown,
-        ),
-        (
-            &thread_template(&route.id),
-            "{{ event.project }} {{ event.version }}",
-            Form::Line,
-        ),
-    ])
+    Templates::compile(
+        &[
+            (
+                &title_template(&route.template),
+                "📦 {{ event.project }} {{ event.version }}",
+                Form::Line,
+            ),
+            (
+                &body_template(&route.template),
+                "{{ event.body }}",
+                Form::Markdown,
+            ),
+            (
+                &thread_template(&route.id),
+                "{{ event.project }} {{ event.version }}",
+                Form::Line,
+            ),
+        ],
+        crate::Sandbox::DEFAULT,
+    )
     .unwrap()
 }
 
@@ -201,10 +204,13 @@ fn without_a_release_link_the_first_link_is_used_and_the_changelog_kept() {
 #[test]
 fn a_template_that_fails_fails_the_announcement() {
     let route = threaded();
-    let broken = Templates::compile(&[]).unwrap();
+    let broken = Templates::compile(&[], crate::Sandbox::DEFAULT).unwrap();
     assert!(announce(&event(), &route, &broken, &profile(256, 4096), "0", marks()).is_err());
-    let no_body =
-        Templates::compile(&[(&title_template(&route.template), "t", Form::Line)]).unwrap();
+    let no_body = Templates::compile(
+        &[(&title_template(&route.template), "t", Form::Line)],
+        crate::Sandbox::DEFAULT,
+    )
+    .unwrap();
     assert!(
         announce(
             &event(),
@@ -216,10 +222,13 @@ fn a_template_that_fails_fails_the_announcement() {
         )
         .is_err()
     );
-    let no_thread = Templates::compile(&[
-        (&title_template(&route.template), "t", Form::Line),
-        (&body_template(&route.template), "b", Form::Markdown),
-    ])
+    let no_thread = Templates::compile(
+        &[
+            (&title_template(&route.template), "t", Form::Line),
+            (&body_template(&route.template), "b", Form::Markdown),
+        ],
+        crate::Sandbox::DEFAULT,
+    )
     .unwrap();
     assert!(
         announce(

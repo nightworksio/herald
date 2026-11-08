@@ -38,7 +38,7 @@ pub use doctor::{Findings, Gap, Layer, doctor, keys, unserved};
 pub use following::{FollowError, Followed, followed};
 pub use housekeep::{Chored, Housekept, Kept, housekeep};
 pub use inbound::{
-    Admission, Keys, Rejected, Verified, activity_verified, admitted, released, verified,
+    Admission, Checking, Keys, Rejected, Verified, activity_verified, admitted, released, verified,
 };
 pub use interact::{Answer, completed, deferral, interact, replied};
 pub use interacting::{Interacting, Replying};

@@ -1,5 +1,5 @@
 use std::fmt;
-use std::num::NonZeroUsize;
+use std::num::{NonZeroU64, NonZeroUsize};
 
 use herald_core::{Duration, Kind, Pinning, Prereleases, SecretRef};
 use schemars::JsonSchema;
@@ -24,8 +24,8 @@ impl JsonSchema for Size {
     }
 }
 
-const KIB: usize = 1 << 10;
-const MIB: usize = 1 << 20;
+pub(crate) const KIB: usize = 1 << 10;
+pub(crate) const MIB: usize = 1 << 20;
 
 impl Size {
     fn parse(text: &str) -> Option<Self> {
@@ -359,8 +359,10 @@ pub(crate) struct ServerFile {
     pub(crate) jobs: Option<NonZeroUsize>,
     /// How many connections it holds at once; 256 where absent.
     pub(crate) connections: Option<NonZeroUsize>,
-    /// The most an inbound request's body may hold; "1MiB" where absent.
-    pub(crate) body: Option<Size>,
+    /// The most an inbound request's body may hold; "1MiB" where absent,
+    /// and at most "4MiB".
+    #[schemars(with = "Option<Size>")]
+    pub(crate) body: Option<Spanned<Size>>,
     /// How many actor documents it reads at once; 4 where absent.
     pub(crate) fetches: Option<NonZeroUsize>,
     /// How many autocompletions a session answers at once; one arriving
@@ -376,6 +378,49 @@ pub(crate) struct ServerFile {
     /// The keys inbound activities are checked with.
     #[serde(default)]
     pub(crate) keys: KeysFile,
+    /// What a signed inbound request may carry and still be checked.
+    #[serde(default)]
+    pub(crate) inbound: InboundFile,
+}
+
+/// `[server.inbound]`: what a signed inbound request may carry and still be
+/// checked. Each bound may be at most four times its default, and doctor
+/// names one set above it.
+#[derive(Debug, Default, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+#[serde(rename = "Inbound")]
+pub(crate) struct InboundFile {
+    /// How far a signed timestamp may lie from now, either way, before the
+    /// request is taken for a replay; "5m" where absent, and at most "20m".
+    #[schemars(with = "Option<Duration>")]
+    pub(crate) replay_window: Option<Spanned<Duration>>,
+    /// The most signatures a request may carry, each checked in turn; 4
+    /// where absent, and at most 16.
+    #[schemars(with = "Option<NonZeroUsize>")]
+    pub(crate) signatures: Option<Spanned<NonZeroUsize>>,
+    /// The most headers one ActivityPub signature may cover; 16 where
+    /// absent, at least the 4 it must cover, and at most 64.
+    #[schemars(with = "Option<NonZeroUsize>")]
+    pub(crate) covered: Option<Spanned<NonZeroUsize>>,
+}
+
+/// `[render]`: how far a template may go as it renders. Each bound may be
+/// at most four times its default, and doctor names one set above it.
+#[derive(Debug, Default, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+#[serde(rename = "Render")]
+pub(crate) struct RenderFile {
+    /// The fuel one render may burn; 100000 where absent, and at most
+    /// 400000.
+    #[schemars(with = "Option<NonZeroU64>")]
+    pub(crate) fuel: Option<Spanned<NonZeroU64>>,
+    /// How deep its loops and calls may nest; 16 where absent, and at most
+    /// 64.
+    #[schemars(with = "Option<NonZeroUsize>")]
+    pub(crate) recursion: Option<Spanned<NonZeroUsize>>,
+    /// The most it may write; "256KiB" where absent, and at most "1MiB".
+    #[schemars(with = "Option<Size>")]
+    pub(crate) output: Option<Spanned<Size>>,
 }
 
 #[cfg(test)]
