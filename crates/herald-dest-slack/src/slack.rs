@@ -1,13 +1,13 @@
 use herald_core::{
     Announcement, Dialect, Entry, Facts, Features, Limits, Marker, Measure, MentionRoom,
-    MentionStyle, Pins, Profile, Sent, Step, Threads,
+    MentionStyle, Pins, Profile, ReadBack, Sent, Step, Threads,
 };
-use herald_ports::{Http, HttpError, Request, Secret};
+use herald_ports::{Http, HttpError, Request, Secret, unreserved};
 use serde_json::Value;
 
 use crate::options::RouteOptions;
 use crate::read::{json, read, text, trouble};
-use crate::request::{EVENT, ROUTE, Refusal, channel, get, pin, posted, query, step};
+use crate::request::{EVENT, ROUTE, Refusal, channel, get, pin, posted, step};
 use crate::web_api::{
     AUTH_TEST, BOTS_INFO, CHAT_GET_PERMALINK, CONVERSATIONS_HISTORY, PINS_REMOVE,
 };
@@ -59,6 +59,7 @@ pub struct Slack {
     pub(crate) api: String,
     pub(crate) credential: Credential,
     pub(crate) route: RouteOptions,
+    pub(crate) read_back: ReadBack,
 }
 
 impl Slack {
@@ -75,7 +76,14 @@ impl Slack {
             api: api.unwrap_or(own).trim_end_matches('/').to_owned(),
             credential,
             route,
+            read_back: ReadBack::DEFAULT,
         }
+    }
+
+    /// The destination, reading back `read_back` pages of its own posts.
+    #[must_use]
+    pub fn reading_back(self, read_back: ReadBack) -> Self {
+        Self { read_back, ..self }
     }
 
     /// The base URL it reaches, the only origin its `Http` may reach
@@ -147,7 +155,11 @@ impl Slack {
         let (Some(ts), Ok(channel)) = (facts.message.as_deref(), channel(self)) else {
             return Ok(facts);
         };
-        let asked = format!("channel={}&message_ts={}", query(channel), query(ts));
+        let asked = format!(
+            "channel={}&message_ts={}",
+            unreserved(channel),
+            unreserved(ts)
+        );
         let answer = http.send(get(self, CHAT_GET_PERMALINK, &asked)).await?;
         let body = json(&answer);
         let permalink = trouble(&answer, &body)
@@ -231,8 +243,8 @@ impl Slack {
         for ts in own {
             let asked = format!(
                 "channel={}&latest={ts}&oldest={ts}&inclusive=true&limit=1&include_all_metadata=true",
-                query(channel),
-                ts = query(ts)
+                unreserved(channel),
+                ts = unreserved(ts)
             );
             let answer = http.send(get(self, CONVERSATIONS_HISTORY, &asked)).await?;
             let found = json(&answer);
@@ -281,7 +293,7 @@ pub(crate) async fn identity<H: Http>(slack: &Slack, http: &H) -> Read<Identity>
         )));
     };
     let answer = http
-        .send(get(slack, BOTS_INFO, &format!("bot={}", query(bot))))
+        .send(get(slack, BOTS_INFO, &format!("bot={}", unreserved(bot))))
         .await?;
     let info = json(&answer);
     if let Some(sent) = trouble(&answer, &info) {

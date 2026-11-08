@@ -4,8 +4,8 @@
 #[cfg(test)]
 mod replay {
     use herald_core::{
-        Announcement, Dialect, Entry, Facts, MentionRoom, MentionStyle, Pins, Sent, Step, Text,
-        Threads,
+        Announcement, Dialect, Entry, Facts, MentionRoom, MentionStyle, Pins, ReadBack, Sent, Step,
+        Text, Threads,
     };
     use herald_dest_matrix::{Matrix, MatrixMarkers, Refusal, RouteOptions, profile};
     use herald_ports::{Markers, MarkersError, Method, Secret};
@@ -378,6 +378,29 @@ mod replay {
         assert_eq!(
             pollster::block_on(markers.threads(&route_marker())).unwrap(),
             []
+        );
+        replay.finish().unwrap();
+    }
+
+    #[test]
+    fn the_timeline_is_read_back_page_by_page_until_the_post_and_no_further_than_read_back() {
+        let matrix = matrix();
+        let replay = fixture!("markers-paged");
+        let key = announcement().key;
+        let message = |id: &str| Facts {
+            message: Some(id.to_owned()),
+            ..Facts::default()
+        };
+        assert_eq!(
+            pollster::block_on(MatrixMarkers::new(&matrix, &replay).entry(&key, &marker()))
+                .unwrap(),
+            Some(Entry::new(key).landed(Step::Post, message("$post")))
+        );
+        let one_page = matrix.reading_back(ReadBack::new(1).unwrap());
+        assert_eq!(
+            pollster::block_on(MatrixMarkers::new(&one_page, &replay).entry(&key, &marker()))
+                .unwrap(),
+            None
         );
         replay.finish().unwrap();
     }

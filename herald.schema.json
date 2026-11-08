@@ -329,6 +329,17 @@
               "type": "string",
               "const": "discord"
             },
+            "read_back": {
+              "description": "How many pages of its own posts it reads back for their markers,\nfrom 1 to 20; 5 where unset.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/ReadBack"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
             "token": {
               "description": "The secret holding a bot token. A bot crossposts, threads, pins and\nreads back its posts.",
               "anyOf": [
@@ -364,6 +375,17 @@
             "kind": {
               "type": "string",
               "const": "mastodon"
+            },
+            "read_back": {
+              "description": "How many pages of its own posts it reads back for their markers,\nfrom 1 to 20; 5 where unset.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/ReadBack"
+                },
+                {
+                  "type": "null"
+                }
+              ]
             },
             "server": {
               "description": "The server's base URL, such as `https://mastodon.social`.",
@@ -404,6 +426,17 @@
               "type": "string",
               "const": "matrix"
             },
+            "read_back": {
+              "description": "How many pages of its own posts it reads back for their markers,\nfrom 1 to 20; 5 where unset.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/ReadBack"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
             "token": {
               "description": "The secret holding the bot account's access token.",
               "$ref": "#/$defs/SecretRef"
@@ -441,6 +474,17 @@
             "kind": {
               "type": "string",
               "const": "slack"
+            },
+            "read_back": {
+              "description": "How many pages of its own posts it reads back for their markers,\nfrom 1 to 20; 5 where unset.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/ReadBack"
+                },
+                {
+                  "type": "null"
+                }
+              ]
             },
             "token": {
               "description": "The secret holding a bot token (`xoxb-…`). A bot threads, pins and\nreads back its posts.",
@@ -1276,6 +1320,12 @@
           "const": "only"
         }
       ]
+    },
+    "ReadBack": {
+      "description": "How many pages of its own posts the destination reads back, 5 by default.",
+      "type": "integer",
+      "maximum": 20,
+      "minimum": 1
     },
     "RecordKind": {
       "description": "A kind of record a store may keep beside its ledger, cursors, schedules\nand deliveries, which every store that keeps records keeps.",

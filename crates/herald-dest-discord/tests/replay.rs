@@ -4,7 +4,8 @@
 #[cfg(test)]
 mod replay {
     use herald_core::{
-        Announcement, Chore, Delivery, Entry, Facts, Marker, Pins, Plan, Planned, Sent, Step, plan,
+        Announcement, Chore, Delivery, Entry, Facts, Marker, Pins, Plan, Planned, ReadBack, Sent,
+        Step, plan,
     };
     use herald_dest_discord::{
         Credential, DestinationOptions, Discord, DiscordMarkers, Refusal, RouteOptions,
@@ -457,6 +458,51 @@ mod replay {
     }
 
     #[test]
+    fn the_channel_is_read_back_page_by_page_until_the_post_and_no_further_than_read_back() {
+        let replay = fixture!("markers-paged");
+        let discord = bot(CHANNEL, false);
+        let thread = Facts {
+            thread: Some("1566200000000000001".to_owned()),
+            ..Facts::default()
+        };
+        assert_eq!(
+            read_back(&discord, &replay, &marker()).unwrap(),
+            Some(
+                Entry::new(announcement().key)
+                    .landed(Step::Post, message("1566200000000000001"))
+                    .landed(Step::Crosspost, message("1566200000000000001"))
+                    .landed(Step::Pin, Facts::default())
+                    .landed(Step::Unpin, Facts::default())
+                    .landed(Step::OpenThread, thread.clone())
+                    .landed(Step::Chunk(1), thread.clone())
+                    .landed(Step::Chunk(2), thread)
+            )
+        );
+        let one_page = discord.reading_back(ReadBack::new(1).unwrap());
+        assert_eq!(read_back(&one_page, &replay, &marker()).unwrap(), None);
+        replay.finish().unwrap();
+    }
+
+    #[test]
+    fn pins_are_read_page_by_page_and_no_further_than_read_back() {
+        let replay = fixture!("unpin-paged");
+        let discord = bot(CHANNEL, false);
+        let entry = Entry::new(announcement().key)
+            .landed(Step::Post, message("1566200000000000001"))
+            .landed(Step::Pin, Facts::default());
+        for discord in [
+            discord.clone(),
+            discord.reading_back(ReadBack::new(1).unwrap()),
+        ] {
+            assert_eq!(
+                send(&discord, &replay, &Step::Unpin, &entry),
+                landed(Facts::default())
+            );
+        }
+        replay.finish().unwrap();
+    }
+
+    #[test]
     fn markers_without_a_thread_or_a_match_say_so() {
         let discord = bot(CHANNEL, false);
         let replay = fixture!("markers-unthreaded");
@@ -643,6 +689,7 @@ mod replay {
             webhook,
             api: None,
             interactions: None,
+            read_back: None,
         };
         assert_eq!(options(secret(), None).bot(), Ok(true));
         assert_eq!(options(None, secret()).bot(), Ok(false));

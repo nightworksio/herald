@@ -1,5 +1,5 @@
 use herald_core::{Announcement, Entry, Facts, Marker, Sent};
-use herald_ports::{Http, HttpError};
+use herald_ports::{Http, HttpError, unreserved};
 use serde_json::Value;
 
 use crate::discord::{Credential, Discord};
@@ -49,21 +49,44 @@ async fn pinned_messages<H: Http>(
     bot: &str,
     route: &Marker,
 ) -> Read<Vec<String>> {
-    let path = format!("/channels/{channel}/messages/pins?limit={PINS}");
-    let pins = match read(discord, http, &path).await? {
-        Ok(pins) => pins,
-        Err(sent) => return Ok(Err(sent)),
-    };
-    Ok(Ok(pins
-        .get("items")
-        .and_then(Value::as_array)
-        .into_iter()
-        .flatten()
-        .filter_map(|pin| pin.get("message"))
-        .filter(|message| routed(message, bot, route))
-        .filter_map(|message| field(message, "id"))
-        .map(ToOwned::to_owned)
-        .collect()))
+    let mut routed_pins = Vec::new();
+    let mut before = None;
+    for _ in 0..discord.read_back.pages() {
+        let path = before.as_deref().map_or_else(
+            || format!("/channels/{channel}/messages/pins?limit={PINS}"),
+            |at| {
+                format!(
+                    "/channels/{channel}/messages/pins?limit={PINS}&before={}",
+                    unreserved(at)
+                )
+            },
+        );
+        let pins = match read(discord, http, &path).await? {
+            Ok(pins) => pins,
+            Err(sent) => return Ok(Err(sent)),
+        };
+        let items = pins
+            .get("items")
+            .and_then(Value::as_array)
+            .map(Vec::as_slice)
+            .unwrap_or_default();
+        routed_pins.extend(
+            items
+                .iter()
+                .filter_map(|pin| pin.get("message"))
+                .filter(|message| routed(message, bot, route))
+                .filter_map(|message| field(message, "id"))
+                .map(ToOwned::to_owned),
+        );
+        before = items
+            .last()
+            .and_then(|pin| field(pin, "pinned_at"))
+            .map(ToOwned::to_owned);
+        if pins.get("has_more").and_then(Value::as_bool) != Some(true) || before.is_none() {
+            break;
+        }
+    }
+    Ok(Ok(routed_pins))
 }
 
 async fn pinned_posts<H: Http>(

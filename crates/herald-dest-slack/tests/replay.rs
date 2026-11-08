@@ -4,7 +4,8 @@
 #[cfg(test)]
 mod replay {
     use herald_core::{
-        Announcement, Dialect, Entry, Facts, MentionStyle, Pins, Sent, Step, Text, Threads,
+        Announcement, Dialect, Entry, Facts, MentionStyle, Pins, ReadBack, Sent, Step, Text,
+        Threads,
     };
     use herald_dest_slack::{
         Credential, DestinationOptions, Refusal, RouteOptions, Slack, SlackMarkers, profile,
@@ -450,6 +451,29 @@ mod replay {
     }
 
     #[test]
+    fn history_and_replies_are_read_back_page_by_page_until_the_post_and_no_further_than_read_back()
+    {
+        let slack = bot();
+        let replay = fixture!("markers-paged");
+        let key = announcement().key;
+        assert_eq!(
+            pollster::block_on(SlackMarkers::new(&slack, &replay).entry(&key, &marker())).unwrap(),
+            Some(
+                Entry::new(key)
+                    .landed(Step::Post, message(POST))
+                    .landed(Step::Chunk(1), message(REPLY))
+            )
+        );
+        let one_page = slack.reading_back(ReadBack::new(1).unwrap());
+        assert_eq!(
+            pollster::block_on(SlackMarkers::new(&one_page, &replay).entry(&key, &marker()))
+                .unwrap(),
+            None
+        );
+        replay.finish().unwrap();
+    }
+
+    #[test]
     fn a_channel_that_cannot_be_read_says_why() {
         let slack = bot();
         let replay = fixture!("markers-unreadable");
@@ -504,6 +528,7 @@ mod replay {
             webhook,
             api: None,
             interactions: None,
+            read_back: None,
         };
         assert_eq!(reached(secret(), None).bot(), Ok(true));
         assert_eq!(reached(None, secret()).bot(), Ok(false));

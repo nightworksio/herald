@@ -322,6 +322,7 @@ fn credentials_and_marker_keys_that_cannot_be_resolved_say_why() {
                 herald_config::Destination::Mastodon(herald_dest_fediverse::DestinationOptions {
                     server: "https://mastodon.example".to_owned(),
                     token: options.token.clone().unwrap(),
+                    read_back: None,
                 });
         }
     }

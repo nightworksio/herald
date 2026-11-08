@@ -1,4 +1,7 @@
 use jiff::SignedDuration;
+use schemars::JsonSchema;
+use serde::de::Error as _;
+use serde::{Deserialize, Deserializer};
 
 /// How far a template may go as it renders: the fuel its instructions burn,
 /// how deep its calls nest, and how many bytes it writes.
@@ -76,5 +79,62 @@ impl Inbound {
 impl Default for Inbound {
     fn default() -> Self {
         Self::DEFAULT
+    }
+}
+
+/// How many pages of its own posts a destination reads back for the markers
+/// they carry.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub struct ReadBack(u8);
+
+impl ReadBack {
+    /// The pages read where a config sets none.
+    pub const DEFAULT: Self = Self(5);
+    /// The most pages a config may set: four times the default.
+    pub const MOST: Self = Self(Self::DEFAULT.0 * 4);
+
+    /// `pages` as a setting, where it lies from 1 to [`Self::MOST`].
+    #[must_use]
+    pub fn new(pages: u8) -> Option<Self> {
+        (1..=Self::MOST.0).contains(&pages).then_some(Self(pages))
+    }
+
+    /// The pages read.
+    #[must_use]
+    pub fn pages(self) -> u8 {
+        self.0
+    }
+}
+
+impl Default for ReadBack {
+    fn default() -> Self {
+        Self::DEFAULT
+    }
+}
+
+impl<'de> Deserialize<'de> for ReadBack {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let pages = u8::deserialize(deserializer)?;
+        Self::new(pages).ok_or_else(|| {
+            D::Error::custom(format!(
+                "read_back reads 1 to {} pages, not {pages}",
+                Self::MOST.0
+            ))
+        })
+    }
+}
+
+impl JsonSchema for ReadBack {
+    fn schema_name() -> std::borrow::Cow<'static, str> {
+        "ReadBack".into()
+    }
+
+    fn json_schema(_: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        schemars::json_schema!({
+            "description": "How many pages of its own posts the destination reads back, 5 by default.",
+            "type": "integer",
+            "minimum": 1,
+            "maximum": Self::MOST.0
+        })
     }
 }

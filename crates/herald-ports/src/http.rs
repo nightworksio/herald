@@ -210,6 +210,21 @@ pub trait Http: Sync {
     fn send(&self, request: Request) -> impl Future<Output = Result<Response, HttpError>> + Send;
 }
 
+/// `text` with every byte but a URL's unreserved ones percent-encoded, fit
+/// for one segment of a path or one value of a query.
+#[must_use]
+pub fn unreserved(text: &str) -> String {
+    use std::fmt::Write as _;
+    text.bytes().fold(String::new(), |mut encoded, byte| {
+        if byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'.' | b'_' | b'~') {
+            encoded.push(char::from(byte));
+        } else {
+            let _ = write!(encoded, "%{byte:02X}");
+        }
+        encoded
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

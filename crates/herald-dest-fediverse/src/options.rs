@@ -1,4 +1,4 @@
-use herald_core::SecretRef;
+use herald_core::{ReadBack, SecretRef};
 use schemars::JsonSchema;
 use serde::Deserialize;
 
@@ -11,6 +11,9 @@ pub struct DestinationOptions {
     /// The secret holding the account's access token, granted
     /// `write:statuses` and `read:statuses`.
     pub token: SecretRef,
+    /// How many pages of its own posts it reads back for their markers,
+    /// from 1 to 20; 5 where unset.
+    pub read_back: Option<ReadBack>,
 }
 
 /// Who sees a status.

@@ -20,7 +20,9 @@ mod timer;
 
 pub use clock::Clock;
 pub use crypto::{Algorithm, CryptoError, Signer, Verifier};
-pub use http::{Http, HttpError, Method, PUBLIC, Request, Response, USER_AGENT, WithBody};
+pub use http::{
+    Http, HttpError, Method, PUBLIC, Request, Response, USER_AGENT, WithBody, unreserved,
+};
 pub use keyring::{Keyring, KnownKey};
 pub use kv::{Kv, KvError, Pair, Stamped, Versionstamp};
 pub use markers::{MarkedThread, Markers, MarkersError, marker};

@@ -5,11 +5,10 @@
 use std::fmt;
 
 use herald_core::{Answering, Asked, Command, DestinationName, Place, Text as Written, digest};
-use herald_ports::{Method, Request, Response, Secret, Text};
+use herald_ports::{Method, Request, Response, Secret, Text, unreserved};
 use serde_json::{Value, json};
 
 use crate::interactions::{Interactions, Via};
-use crate::request::segment;
 
 /// The word after a project that asks for the answer to be posted to the
 /// room rather than in a thread.
@@ -241,11 +240,11 @@ impl Interacting {
         let mut url = format!(
             "{}/_matrix/client/v3/sync?timeout={wait}&filter={}",
             self.homeserver,
-            segment(FILTER)
+            unreserved(FILTER)
         );
         if let Some(since) = since {
             url.push_str("&since=");
-            url.push_str(&segment(since));
+            url.push_str(&unreserved(since));
         }
         self.authorised(Request::new(Method::Get, Text::plain(url)))
     }
@@ -290,7 +289,7 @@ impl Interacting {
                 let url = format!(
                     "{}/_matrix/client/v3/rooms/{}/send/m.room.message/herald.{drawn}.{index}",
                     self.homeserver,
-                    segment(&replying.room)
+                    unreserved(&replying.room)
                 );
                 self.authorised(Request::new(Method::Put, Text::plain(url)))
                     .header("Content-Type", Text::plain("application/json"))

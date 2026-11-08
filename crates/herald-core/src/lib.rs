@@ -37,7 +37,7 @@ pub use address::{WEB_SCHEMES, domain, path_of_names, socket_under, under_domain
 pub use announce::{
     Announcement, Title, announce, body_template, shortened, thread_template, title_template,
 };
-pub use bounds::{Inbound, Sandbox};
+pub use bounds::{Inbound, ReadBack, Sandbox};
 pub use chunk::{Room, chunk, size};
 pub use cursor::{Cursor, Polled, fresh};
 pub use duration::Duration;

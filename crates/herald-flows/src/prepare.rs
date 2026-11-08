@@ -275,17 +275,20 @@ impl Resolved<'_> {
                 } else {
                     Credential::Webhook(secret)
                 };
-                Some(Reached::Discord(Discord::new(
-                    credential,
-                    placed.clone(),
-                    reached.api.as_deref(),
-                )))
+                Some(Reached::Discord(
+                    Discord::new(credential, placed.clone(), reached.api.as_deref())
+                        .reading_back(reached.read_back.unwrap_or_default()),
+                ))
             }
-            (Destination::Mastodon(reached), RouteOptions::Mastodon(placed)) => Some(
-                Reached::Mastodon(Mastodon::new(&reached.server, secret, placed.clone())),
-            ),
+            (Destination::Mastodon(reached), RouteOptions::Mastodon(placed)) => {
+                Some(Reached::Mastodon(
+                    Mastodon::new(&reached.server, secret, placed.clone())
+                        .reading_back(reached.read_back.unwrap_or_default()),
+                ))
+            }
             (Destination::Matrix(reached), RouteOptions::Matrix(placed)) => Some(Reached::Matrix(
-                Matrix::new(&reached.homeserver, secret, placed.clone()),
+                Matrix::new(&reached.homeserver, secret, placed.clone())
+                    .reading_back(reached.read_back.unwrap_or_default()),
             )),
             (Destination::ActivityPub(reached), RouteOptions::ActivityPub(placed)) => {
                 Some(Reached::ActivityPub(ActivityPub::new(
@@ -301,11 +304,10 @@ impl Resolved<'_> {
                 } else {
                     herald_dest_slack::Credential::Webhook(secret)
                 };
-                Some(Reached::Slack(Slack::new(
-                    credential,
-                    placed.clone(),
-                    reached.api.as_deref(),
-                )))
+                Some(Reached::Slack(
+                    Slack::new(credential, placed.clone(), reached.api.as_deref())
+                        .reading_back(reached.read_back.unwrap_or_default()),
+                ))
             }
             _ => None,
         }
@@ -525,4 +527,99 @@ async fn interacts<S: Secrets>(
         },
         Destination::Mastodon(_) | Destination::ActivityPub(_) => None,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use herald_core::ReadBack;
+    use serde_json::json;
+
+    use super::*;
+
+    fn reached(destination: &Destination, options: &RouteOptions) -> Option<Reached> {
+        Resolved {
+            destination,
+            base: "",
+            secret: Secret::new("HERALD_TOKEN", "token"),
+            marker_key: Secret::new("HERALD_MARKERS_KEY", "key"),
+            derived: false,
+        }
+        .reached(options)
+    }
+
+    #[test]
+    fn each_destination_reads_back_the_pages_its_config_names() {
+        let pages = ReadBack::new(9).unwrap();
+        let token = json!({ "secret": "HERALD_TOKEN" });
+        let secret = || Secret::new("HERALD_TOKEN", "token");
+        let discord = Destination::Discord(
+            serde_json::from_value(json!({ "token": token, "read_back": 9 })).unwrap(),
+        );
+        let slack = Destination::Slack(
+            serde_json::from_value(json!({ "token": token, "read_back": 9 })).unwrap(),
+        );
+        let matrix = Destination::Matrix(
+            serde_json::from_value(json!({
+                "homeserver": "https://matrix.example", "token": token, "read_back": 9
+            }))
+            .unwrap(),
+        );
+        let mastodon = Destination::Mastodon(
+            serde_json::from_value(json!({
+                "server": "https://mastodon.example", "token": token, "read_back": 9
+            }))
+            .unwrap(),
+        );
+        let room = herald_dest_matrix::RouteOptions {
+            room: "!abcdefg:matrix.example".to_owned(),
+        };
+        assert_eq!(
+            reached(
+                &discord,
+                &RouteOptions::Discord(herald_dest_discord::RouteOptions::default())
+            ),
+            Some(Reached::Discord(
+                Discord::new(
+                    Credential::Bot(secret()),
+                    herald_dest_discord::RouteOptions::default(),
+                    None
+                )
+                .reading_back(pages)
+            ))
+        );
+        assert_eq!(
+            reached(
+                &slack,
+                &RouteOptions::Slack(herald_dest_slack::RouteOptions::default())
+            ),
+            Some(Reached::Slack(
+                Slack::new(
+                    herald_dest_slack::Credential::Bot(secret()),
+                    herald_dest_slack::RouteOptions::default(),
+                    None
+                )
+                .reading_back(pages)
+            ))
+        );
+        assert_eq!(
+            reached(&matrix, &RouteOptions::Matrix(room.clone())),
+            Some(Reached::Matrix(
+                Matrix::new("https://matrix.example", secret(), room).reading_back(pages)
+            ))
+        );
+        assert_eq!(
+            reached(
+                &mastodon,
+                &RouteOptions::Mastodon(herald_dest_fediverse::RouteOptions::default())
+            ),
+            Some(Reached::Mastodon(
+                Mastodon::new(
+                    "https://mastodon.example",
+                    secret(),
+                    herald_dest_fediverse::RouteOptions::default()
+                )
+                .reading_back(pages)
+            ))
+        );
+    }
 }

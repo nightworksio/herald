@@ -137,7 +137,9 @@ jobs:
 The `markers` store keeps herald's never-twice ledger in the posts herald
 makes, so the run writes nothing to the repository. It has no compare-and-set,
 so the `concurrency` group keeps to one herald run at a time. `herald init`
-prints a new `HERALD_MARKER_SECRET`, once.
+prints a new `HERALD_MARKER_SECRET`, once. Each destination reads back up to
+`read_back` pages of its own posts, 5 by default and at most 20, and stops at
+the page holding the post it looks for.
 
 ### herald's own ActivityPub actor
 

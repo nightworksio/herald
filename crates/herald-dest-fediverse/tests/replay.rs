@@ -3,7 +3,9 @@
 
 #[cfg(test)]
 mod replay {
-    use herald_core::{Dialect, Entry, Facts, MentionStyle, Pins, Profile, Sent, Step, Threads};
+    use herald_core::{
+        Dialect, Entry, Facts, MentionStyle, Pins, Profile, ReadBack, Sent, Step, Threads,
+    };
     use herald_dest_fediverse::{
         LIMIT, Mastodon, MastodonMarkers, Refusal, RouteOptions, Visibility, profile, shortest,
     };
@@ -257,6 +259,25 @@ mod replay {
         assert_eq!(
             pollster::block_on(markers.threads(&route_marker())).unwrap(),
             []
+        );
+        replay.finish().unwrap();
+    }
+
+    #[test]
+    fn statuses_are_read_back_page_by_page_until_the_post_and_no_further_than_read_back() {
+        let mastodon = mastodon(RouteOptions::default());
+        let replay = fixture!("markers-paged");
+        let key = announcement().key;
+        assert_eq!(
+            pollster::block_on(MastodonMarkers::new(&mastodon, &replay).entry(&key, &marker()))
+                .unwrap(),
+            Some(posted().landed(Step::Chunk(1), status(REPLY)))
+        );
+        let one_page = mastodon.reading_back(ReadBack::new(1).unwrap());
+        assert_eq!(
+            pollster::block_on(MastodonMarkers::new(&one_page, &replay).entry(&key, &marker()))
+                .unwrap(),
+            None
         );
         replay.finish().unwrap();
     }
