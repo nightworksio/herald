@@ -30,6 +30,7 @@ mod conformance {
         fail: Option<(String, u16)>,
         undated: bool,
         lock_refused_once: bool,
+        stolen: bool,
     }
 
     #[derive(Debug, Default)]
@@ -104,7 +105,10 @@ mod conformance {
                     if self.variables.contains_key(&name) {
                         return answer(409, &json!({ "message": "Already exists" }), dated);
                     }
-                    let value = body["value"].as_str().unwrap_or_default().to_owned();
+                    let mut value = body["value"].as_str().unwrap_or_default().to_owned();
+                    if name == LOCK && self.stolen {
+                        value = "run-2".to_owned();
+                    }
                     self.variables
                         .insert(name, (value, Some("2026-11-01T11:59:00Z".to_owned())));
                     answer(201, &Value::Null, dated)
@@ -150,10 +154,21 @@ mod conformance {
         }
     }
 
+    struct Shared(std::sync::Arc<GitHub>);
+
+    impl Http for Shared {
+        async fn send(&self, request: Request) -> Result<Response, HttpError> {
+            self.0.send(request).await
+        }
+    }
+
     fn store(model: Model) -> RepoVariablesStore<GitHub> {
-        RepoVariables::new("o/r", Secret::new("HERALD_STATE_TOKEN", "t"), None).store(GitHub {
-            model: Mutex::new(model),
-        })
+        RepoVariables::new("o/r", Secret::new("HERALD_STATE_TOKEN", "t"), None).store(
+            GitHub {
+                model: Mutex::new(model),
+            },
+            "run-1",
+        )
     }
 
     fn key() -> Key {
@@ -231,6 +246,47 @@ mod conformance {
         assert_eq!(
             pollster::block_on(released.put_entry(&entry, None)),
             Ok(Written::Written(herald_ports::Version(1)))
+        );
+    }
+
+    #[test]
+    fn a_lock_with_no_time_to_judge_it_by_is_taken_once_found_unchanged_often_enough() {
+        let entry = Entry::new(key());
+        let store = store(locked(None));
+        assert_eq!(
+            pollster::block_on(store.put_entry(&entry, None)),
+            Ok(Written::Conflict)
+        );
+        let written = (0..10)
+            .map(|_| pollster::block_on(store.put_entry(&entry, None)))
+            .position(|written| written == Ok(Written::Written(herald_ports::Version(1))));
+        assert!(written.is_some());
+    }
+
+    #[test]
+    fn a_lock_is_released_only_where_it_is_still_this_run_s() {
+        let entry = Entry::new(key());
+        let github = std::sync::Arc::new(GitHub {
+            model: Mutex::new(Model {
+                stolen: true,
+                ..Model::default()
+            }),
+        });
+        let store = RepoVariables::new("o/r", Secret::new("HERALD_STATE_TOKEN", "t"), None)
+            .store(Shared(std::sync::Arc::clone(&github)), "run-1");
+        assert_eq!(
+            pollster::block_on(store.put_entry(&entry, None)),
+            Ok(Written::Conflict)
+        );
+        assert_eq!(
+            github
+                .model
+                .lock()
+                .unwrap()
+                .variables
+                .get(LOCK)
+                .map(|(value, _)| value.as_str()),
+            Some("run-2")
         );
     }
 
@@ -328,7 +384,7 @@ mod conformance {
         );
         assert_eq!(variables.api(), "https://ghe.example/api/v3");
         assert_eq!(
-            pollster::block_on(variables.store(Unreachable).entry(&key())),
+            pollster::block_on(variables.store(Unreachable, "run-1").entry(&key())),
             Err(StoreError::Unavailable {
                 reason: "the host did not answer in time".to_owned()
             })

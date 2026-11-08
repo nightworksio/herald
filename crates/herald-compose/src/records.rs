@@ -190,7 +190,7 @@ async fn variables<H: Host>(
     .await?;
     let variables = RepoVariables::new(repository, token, options.api.as_deref());
     let http = host.connect(variables.api())?;
-    Ok(variables.store(http))
+    Ok(variables.store(http, host.nonce()))
 }
 
 /// The repository a store names, or else the one the host runs for.
