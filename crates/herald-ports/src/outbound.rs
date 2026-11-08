@@ -17,6 +17,8 @@ pub struct Outbound {
     /// The certificate authorities trusted beside the Mozilla roots, where
     /// the config names a file of them.
     pub roots: Option<Roots>,
+    /// The most bytes of a response's body read.
+    pub body: usize,
 }
 
 impl Outbound {
@@ -25,12 +27,20 @@ impl Outbound {
     pub const CONNECT: SignedDuration = SignedDuration::from_secs(10);
     /// How long a request may take where the config says nothing.
     pub const TOTAL: SignedDuration = SignedDuration::from_secs(30);
+    /// The most bytes of a response's body read where the config says
+    /// nothing: the npm registry's packument of a long-lived package is the
+    /// largest answer herald asks for.
+    pub const BODY: usize = 32 << 20;
+    /// The most bytes of a response's body a config may let herald read:
+    /// four times the default.
+    pub const BODY_MOST: usize = Self::BODY * 4;
     /// The settings where the config says nothing.
     pub const STANDARD: Self = Self {
         connect: Self::CONNECT,
         total: Self::TOTAL,
         proxy: Proxy::Environment,
         roots: None,
+        body: Self::BODY,
     };
     /// The most a connection to a host reached on others' behalf may take
     /// to open, whatever the config says (ADR-0007).
@@ -63,6 +73,7 @@ impl Outbound {
             total: self.total.min(Self::PUBLIC_TOTAL),
             proxy: Proxy::None,
             roots: None,
+            body: self.body.min(Self::BODY),
         }
     }
 }
@@ -121,6 +132,7 @@ mod tests {
                 file: "ca.pem".to_owned(),
                 pem: String::new(),
             }),
+            body: Outbound::BODY_MOST,
         };
         assert_eq!(
             generous.public(),
@@ -129,6 +141,7 @@ mod tests {
                 total: Outbound::PUBLIC_TOTAL,
                 proxy: Proxy::None,
                 roots: None,
+                body: Outbound::BODY,
             }
         );
         let brisk = Outbound {
@@ -137,6 +150,12 @@ mod tests {
             ..Outbound::STANDARD
         };
         assert_eq!(brisk.public().connect, SignedDuration::from_secs(1));
+        let small = Outbound {
+            body: 1024,
+            ..Outbound::STANDARD
+        };
+        assert_eq!(small.public().body, 1024);
+        assert_eq!(Outbound::BODY_MOST, 128 << 20);
         assert_eq!(brisk.public().total, SignedDuration::from_secs(2));
     }
 }

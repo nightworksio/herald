@@ -278,7 +278,7 @@ fn each_bound_set_above_its_default_is_noted_by_its_key() {
             "[markers]\nkey = { secret = \"HERALD_MARKER_SECRET\" }\n",
         )
     };
-    let loosen: [(&str, Loosening); 7] = [
+    let loosen: [(&str, Loosening); 8] = [
         ("server.body", |config| config.server.body += 1),
         ("server.inbound.replay_window", |config| {
             config.server.inbound.replay_window += jiff::SignedDuration::from_secs(1);
@@ -289,6 +289,7 @@ fn each_bound_set_above_its_default_is_noted_by_its_key() {
         ("server.inbound.covered", |config| {
             config.server.inbound.covered += 1;
         }),
+        ("http.body", |config| config.http.body += 1),
         ("render.fuel", |config| config.render.fuel += 1),
         ("render.recursion", |config| config.render.recursion += 1),
         ("render.output", |config| config.render.output += 1),

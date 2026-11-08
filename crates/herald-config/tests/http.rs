@@ -55,13 +55,14 @@ body = "{{ event.body }}"
         assert_eq!(config.http.total, SignedDuration::from_secs(30));
         assert_eq!(config.http.proxy, Proxy::Environment);
         assert_eq!(config.http.roots, None);
+        assert_eq!(config.http.body, 32 << 20);
     }
 
     #[test]
     fn every_http_setting_is_read() {
         let config = load(
             "herald.toml",
-            &format!("{EXAMPLE}\n[http]\nconnect = \"3s\"\ntotal = \"1m\"\nproxy = \"https://proxy.example:3128\"\nca_file = \"ca.pem\"\n"),
+            &format!("{EXAMPLE}\n[http]\nconnect = \"3s\"\ntotal = \"1m\"\nproxy = \"https://proxy.example:3128\"\nca_file = \"ca.pem\"\nbody = \"64MiB\"\n"),
             &files,
         )
         .unwrap();
@@ -75,6 +76,7 @@ body = "{{ event.body }}"
                     file: "ca.pem".to_owned(),
                     pem: CA.to_owned(),
                 }),
+                body: 64 << 20,
             }
         );
         for (written, proxy) in [("environment", Proxy::Environment), ("none", Proxy::None)] {
@@ -105,6 +107,11 @@ body = "{{ event.body }}"
         assert!(
             plain.contains("notes.txt holds no PEM certificate"),
             "{plain}"
+        );
+        let wide = errors(&format!("{EXAMPLE}\n[http]\nbody = \"129MiB\"\n"));
+        assert!(
+            wide.contains("http.body: make it at most \"128MiB\", four times its default"),
+            "{wide}"
         );
         let unknown = errors(&format!("{EXAMPLE}\n[http]\nretries = 3\n"));
         assert!(unknown.contains("retries"), "{unknown}");

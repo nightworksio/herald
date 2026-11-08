@@ -2,7 +2,7 @@ use super::*;
 use tokio::net::TcpListener;
 
 use crate::serving::{answer, serve};
-use herald_ports::{BODY_LIMIT, Secret, Text};
+use herald_ports::{Secret, Text};
 
 fn http(base: &str) -> NativeHttp {
     NativeHttp::new(Reach::new([base]).unwrap(), &Outbound::default()).unwrap()
@@ -165,8 +165,8 @@ async fn a_host_that_does_not_answer_in_time_times_out() {
 
 #[tokio::test]
 async fn a_body_up_to_the_cap_is_read_and_a_larger_one_refused() {
-    let full = vec![b'a'; BODY_LIMIT];
-    let over = vec![b'a'; BODY_LIMIT + 1];
+    let full = vec![b'a'; Outbound::BODY];
+    let over = vec![b'a'; Outbound::BODY + 1];
     let (base, server) = serve(vec![
         answer("200 OK", "", &full),
         answer("200 OK", "", &over),
@@ -174,7 +174,10 @@ async fn a_body_up_to_the_cap_is_read_and_a_larger_one_refused() {
     .await;
     let http = http(&base);
     let request = || Request::new(Method::Get, Text::plain(format!("{base}/")));
-    assert_eq!(http.send(request()).await.unwrap().body.len(), BODY_LIMIT);
+    assert_eq!(
+        http.send(request()).await.unwrap().body.len(),
+        Outbound::BODY
+    );
     assert_eq!(
         http.send(request()).await,
         Err(HttpError::Unreachable {
@@ -287,10 +290,33 @@ async fn a_request_reads_at_most_its_own_cap_whether_or_not_the_length_is_said()
     server.await.unwrap();
     assert_eq!(
         Request::new(Method::Get, Text::plain("x"))
-            .at_most(BODY_LIMIT + 1)
+            .at_most(Outbound::BODY_MOST + 1)
             .most,
-        BODY_LIMIT
+        Outbound::BODY_MOST
     );
+}
+
+#[tokio::test]
+async fn a_response_is_read_no_further_than_the_config_s_body() {
+    let (base, server) = serve(vec![
+        answer("200 OK", "", b"abcd"),
+        answer("200 OK", "", b"abcde"),
+    ])
+    .await;
+    let outbound = Outbound {
+        body: 4,
+        ..Outbound::default()
+    };
+    let http = NativeHttp::new(Reach::new([base.as_str()]).unwrap(), &outbound).unwrap();
+    let request = || Request::new(Method::Get, Text::plain(format!("{base}/")));
+    assert_eq!(http.send(request()).await.unwrap().body, b"abcd");
+    assert_eq!(
+        http.send(request()).await,
+        Err(HttpError::Unreachable {
+            reason: "the response is larger than 4 bytes".to_owned(),
+        })
+    );
+    server.await.unwrap();
 }
 
 #[test]

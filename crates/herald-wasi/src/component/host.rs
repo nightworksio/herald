@@ -48,7 +48,7 @@ impl Host for WasiHost {
     fn connect(&self, base: &str, outbound: &Outbound) -> Result<WasiHttp, String> {
         plain(outbound, "a WASI component")?;
         Reaching::unresolved(base, self.var(EGRESS_GUARDED))
-            .map(|reaching| WasiHttp::new(reaching, outbound.total.unsigned_abs()))
+            .map(|reaching| WasiHttp::new(reaching, outbound))
     }
 
     fn var(&self, name: &str) -> Option<&str> {

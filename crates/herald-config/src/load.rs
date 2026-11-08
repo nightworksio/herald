@@ -730,11 +730,19 @@ impl Loader<'_> {
                     None
                 }
             });
+        let body = self.most(
+            file.body.map(|body| (body.span(), body.into_inner().0)),
+            defaults.body,
+            Outbound::BODY_MOST,
+            "http.body",
+            &size(Outbound::BODY_MOST),
+        );
         Outbound {
             connect,
             total,
             proxy,
             roots,
+            body,
         }
     }
 

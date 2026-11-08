@@ -1,6 +1,7 @@
 use std::fmt;
 use std::future::Future;
 
+use crate::outbound::Outbound;
 use crate::secret::Text;
 
 /// An HTTP method.
@@ -57,7 +58,7 @@ impl Request {
             url,
             headers: Vec::new(),
             body: Vec::new(),
-            most: BODY_LIMIT,
+            most: Outbound::BODY_MOST,
         }
     }
 
@@ -79,7 +80,17 @@ impl Request {
     /// none of a response that says it is longer.
     #[must_use]
     pub fn at_most(mut self, bytes: usize) -> Self {
-        self.most = bytes.min(BODY_LIMIT);
+        self.most = bytes.min(Outbound::BODY_MOST);
+        self
+    }
+
+    /// The request reading no more than `body` bytes of its response's
+    /// body, nor more than it already reads.
+    #[must_use]
+    pub const fn within(mut self, body: usize) -> Self {
+        if body < self.most {
+            self.most = body;
+        }
         self
     }
 }
@@ -124,11 +135,6 @@ impl fmt::Display for Request {
         Ok(())
     }
 }
-
-/// The most bytes of a response body herald reads, unless a request reads
-/// fewer: the npm registry's packument of a long-lived package is the
-/// largest answer it asks for.
-pub const BODY_LIMIT: usize = 33_554_432;
 
 /// The base a destination names when it reaches any public address rather
 /// than one origin, as an ActivityPub actor's deliveries to its followers'
@@ -208,6 +214,17 @@ pub trait Http: Sync {
 mod tests {
     use super::*;
     use crate::secret::Secret;
+
+    #[test]
+    fn a_request_reads_no_more_than_its_cap_its_ask_and_the_ceiling() {
+        let request = || Request::new(Method::Get, Text::plain("https://example.org"));
+        assert_eq!(request().most, Outbound::BODY_MOST);
+        assert_eq!(request().at_most(usize::MAX).most, Outbound::BODY_MOST);
+        assert_eq!(request().at_most(10).most, 10);
+        assert_eq!(request().within(Outbound::BODY).most, Outbound::BODY);
+        assert_eq!(request().at_most(10).within(20).most, 10);
+        assert_eq!(request().at_most(20).within(10).most, 10);
+    }
 
     #[test]
     fn each_method_is_spelled_as_http_spells_it() {

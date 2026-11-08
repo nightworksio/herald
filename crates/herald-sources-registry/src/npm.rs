@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 use std::fmt;
 
-use herald_ports::BODY_LIMIT;
+use herald_ports::Outbound;
 use herald_wire::{SourceError, read, segment};
 use jiff::Timestamp;
 use serde::de::{IgnoredAny, MapAccess, Visitor};
@@ -11,7 +11,7 @@ use crate::package::{Api, Found};
 
 pub(crate) const API: Api = Api {
     url: "https://registry.npmjs.org",
-    limit: BODY_LIMIT,
+    limit: Outbound::BODY,
     versions: "npm's packument",
 };
 

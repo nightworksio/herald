@@ -26,6 +26,7 @@ pub struct PublicHttp {
     client: reqwest::Client,
     admits: fn(IpAddr) -> bool,
     scheme: &'static str,
+    body: usize,
 }
 
 /// A host that resolves to an address no request may reach.
@@ -85,13 +86,15 @@ impl PublicHttp {
     /// When TLS or the client cannot be set up.
     pub fn new(outbound: &Outbound) -> Result<Self, BuildError> {
         let tls = tls(rustls::crypto::ring::default_provider())?;
-        Self::built(
+        let mut built = Self::built(
             public,
             "https",
             Some(tls),
             duration(outbound.connect).min(CONNECT),
             Some(duration(outbound.total).min(TOTAL)),
-        )
+        )?;
+        built.body = outbound.public().body;
+        Ok(built)
     }
 
     pub(crate) fn built(
@@ -108,6 +111,7 @@ impl PublicHttp {
             client: client(builder, tls, connect, total)?,
             admits,
             scheme,
+            body: Outbound::BODY,
         })
     }
 
@@ -126,7 +130,7 @@ impl Http for PublicHttp {
                 url: request.url.redacted(),
             });
         };
-        sent(&self.client, request, url).await
+        sent(&self.client, request.within(self.body), url).await
     }
 }
 

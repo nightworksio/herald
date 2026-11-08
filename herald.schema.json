@@ -561,6 +561,17 @@
       "description": "`[http]`: how herald's own requests reach the services a config names.\nNone of it applies to the hosts herald reaches on others' behalf, an\n`ActivityPub` actor's key or a follower's inbox (ADR-0007).",
       "type": "object",
       "properties": {
+        "body": {
+          "description": "The most bytes of a response's body herald reads; \"32MiB\" where\nabsent, and at most \"128MiB\". A host reached on others' behalf is\nread no further than \"32MiB\" whatever this says.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Size"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "ca_file": {
           "description": "A PEM file of the certificate authorities herald's own requests trust\nbeside the Mozilla roots, read beside the config, such as a GitHub\nEnterprise Server's private CA.",
           "type": [

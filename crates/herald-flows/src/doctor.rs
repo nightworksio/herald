@@ -68,6 +68,11 @@ fn loosened(config: &Config, notes: &mut Vec<String>) {
             "a signature may make herald read more headers",
         ),
         (
+            "http.body",
+            config.http.body > herald_ports::Outbound::BODY,
+            "a response herald reads may hold more",
+        ),
+        (
             "render.fuel",
             render.fuel > Sandbox::DEFAULT.fuel,
             "a template may run longer",

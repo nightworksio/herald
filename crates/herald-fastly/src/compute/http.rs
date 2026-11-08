@@ -14,6 +14,7 @@ pub(super) struct FastlyHttp {
     reaching: Reaching,
     connect: Duration,
     total: Duration,
+    body: usize,
 }
 
 /// The dynamic backend's name for an origin: one name per scheme, host and
@@ -31,6 +32,7 @@ impl FastlyHttp {
             reaching,
             connect: outbound.connect.unsigned_abs(),
             total: outbound.total.unsigned_abs(),
+            body: outbound.body,
         }
     }
 
@@ -104,6 +106,6 @@ impl FastlyHttp {
 
 impl Http for FastlyHttp {
     fn send(&self, request: Request) -> impl Future<Output = Result<Response, HttpError>> + Send {
-        ready(self.sent(&request))
+        ready(self.sent(&request.within(self.body)))
     }
 }

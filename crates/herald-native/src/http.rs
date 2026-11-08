@@ -55,6 +55,7 @@ impl fmt::Display for ConnectError {
 pub struct NativeHttp {
     client: reqwest::Client,
     reach: Reach,
+    body: usize,
 }
 
 impl NativeHttp {
@@ -76,7 +77,11 @@ impl NativeHttp {
             duration(outbound.connect),
             Some(duration(outbound.total)),
         )?;
-        Ok(Self { client, reach })
+        Ok(Self {
+            client,
+            reach,
+            body: outbound.body,
+        })
     }
 
     /// A client reaching only the origin of `base`, within `outbound`.
@@ -109,7 +114,11 @@ impl NativeHttp {
         total: Option<Duration>,
     ) -> Result<Self, BuildError> {
         let client = client(reqwest::Client::builder(), tls, connect, total)?;
-        Ok(Self { client, reach })
+        Ok(Self {
+            client,
+            reach,
+            body: Outbound::BODY,
+        })
     }
 }
 
@@ -252,7 +261,7 @@ impl Http for NativeHttp {
                 url: request.url.redacted(),
             });
         };
-        sent(&self.client, request, url).await
+        sent(&self.client, request.within(self.body), url).await
     }
 }
 

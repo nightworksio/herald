@@ -20,6 +20,7 @@ pub(crate) struct JsHttp {
     pub(crate) host: SendWrapper<HostObject>,
     pub(crate) reaching: Reaching,
     pub(crate) timeout: f64,
+    pub(crate) body: usize,
 }
 
 impl Http for JsHttp {
@@ -27,6 +28,7 @@ impl Http for JsHttp {
         let host = self.host.clone();
         let reaching = self.reaching.clone();
         let timeout = self.timeout;
+        let request = request.within(self.body);
         SendWrapper::new(async move {
             let url = reaching.admitted(&request.url)?;
             let headers: Array = request

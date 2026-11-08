@@ -92,6 +92,7 @@ impl Host for JsHost {
             host: self.host.clone(),
             reaching,
             timeout: crate::numbers::millis(outbound.total).unwrap_or(f64::MAX),
+            body: outbound.body,
         })
     }
 

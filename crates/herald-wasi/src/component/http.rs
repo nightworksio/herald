@@ -2,7 +2,7 @@ use std::future::Future;
 use std::time::Duration;
 
 use herald_compose::{Reaching, received};
-use herald_ports::{Http, HttpError, Request, Response};
+use herald_ports::{Http, HttpError, Outbound, Request, Response};
 use http_body_util::BodyExt as _;
 use send_wrapper::SendWrapper;
 use wstd::future::FutureExt as _;
@@ -15,11 +15,16 @@ use wstd::http::{Body, Client, Method};
 pub(super) struct WasiHttp {
     reaching: Reaching,
     timeout: Duration,
+    body: usize,
 }
 
 impl WasiHttp {
-    pub(super) fn new(reaching: Reaching, timeout: Duration) -> Self {
-        Self { reaching, timeout }
+    pub(super) fn new(reaching: Reaching, outbound: &Outbound) -> Self {
+        Self {
+            reaching,
+            timeout: outbound.total.unsigned_abs(),
+            body: outbound.body,
+        }
     }
 }
 
@@ -54,6 +59,7 @@ impl Http for WasiHttp {
     fn send(&self, request: Request) -> impl Future<Output = Result<Response, HttpError>> + Send {
         let reaching = self.reaching.clone();
         let timeout = self.timeout;
+        let request = request.within(self.body);
         let exchange = async move {
             let url = reaching.admitted(&request.url)?;
             let mut asked = wstd::http::Request::builder()

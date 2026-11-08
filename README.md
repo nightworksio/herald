@@ -202,20 +202,22 @@ listen = "127.0.0.1:8080"
 server cannot serve.
 
 `[http]` sets how herald's own requests reach the services the config names:
-`connect` ("10s") and `total` ("30s", or `HERALD_TIMEOUT_MS` in its place),
+`connect` ("10s"), `total` ("30s", or `HERALD_TIMEOUT_MS` in its place),
 `proxy` (`"environment"`, the default, which honours `HTTPS_PROXY` and
-`NO_PROXY` where the host does; `"none"`; or a proxy's URL), and `ca_file`, a
+`NO_PROXY` where the host does; `"none"`; or a proxy's URL), `ca_file`, a
 PEM file of certificate authorities trusted beside the Mozilla roots, such as
-a GitHub Enterprise Server's private CA. A proxy URL and `ca_file` are for the
+a GitHub Enterprise Server's private CA, and `body` ("32MiB", at most
+"128MiB"), the most of a response herald reads. A proxy URL and `ca_file` are for the
 native binary, the image and Lambda; other hosts refuse them, naming why. None
 of it applies to the hosts herald reaches on others' behalf, which keep
-ADR-0007's 5 and 10 seconds at most, no proxy and the Mozilla roots alone.
+ADR-0007's 5 and 10 seconds at most, read no more than "32MiB", go through no
+proxy and trust the Mozilla roots alone.
 
 `[server.inbound]` sets what a signed request may carry and still be
 checked: `replay_window` ("5m"), `signatures` (4) and `covered` (16, the
 headers one ActivityPub signature may name). `[render]` sets how far a
 template may go: `fuel` (100000), `recursion` (16) and `output` ("256KiB").
-Each of these, and `[server] body`, may be at most four times its default,
+Each of these, `[server] body` and `[http] body` may be at most four times its default,
 and `herald doctor` names any set above it.
 
 Housekeeping also forgets what the store keeps past `[store]`'s

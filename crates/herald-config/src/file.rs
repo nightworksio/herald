@@ -342,6 +342,11 @@ pub(crate) struct HttpFile {
     /// Enterprise Server's private CA.
     #[schemars(with = "Option<String>")]
     pub(crate) ca_file: Option<Spanned<String>>,
+    /// The most bytes of a response's body herald reads; "32MiB" where
+    /// absent, and at most "128MiB". A host reached on others' behalf is
+    /// read no further than "32MiB" whatever this says.
+    #[schemars(with = "Option<Size>")]
+    pub(crate) body: Option<Spanned<Size>>,
 }
 
 /// `[server]`: how `herald server` listens, and what it takes on at once.
