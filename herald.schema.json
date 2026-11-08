@@ -1430,6 +1430,13 @@
       "description": "`[server]`: how `herald server` listens, and what it takes on at once.",
       "type": "object",
       "properties": {
+        "base": {
+          "description": "The path every endpoint is served under, for a reverse proxy that\nserves herald beside other things, as \"/herald\"; the root where\nabsent. herald's ActivityPub actors' ids are under it too.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "body": {
           "description": "The most an inbound request's body may hold; \"1MiB\" where absent,\nand at most \"4MiB\".",
           "anyOf": [

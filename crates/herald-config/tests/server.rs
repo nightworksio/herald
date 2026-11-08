@@ -66,13 +66,14 @@ body = "{{ event.body }}"
     #[test]
     fn the_server_table_sets_every_limit() {
         let text = format!(
-            "{EXAMPLE}\n[server]\nlisten = \"0.0.0.0:9000\"\njobs = 2\nconnections = 3\nbody = \"64KiB\"\nfetches = 5\ncompletions = 9\ndeliveries = 6\nsilence = \"45s\"\n\n[server.keys]\ncache = \"store\"\nrefresh_after = \"30m\"\nreread_after = \"5m\"\nmost = 7\ndocument = \"1MiB\"\n\n[server.inbound]\nreplay_window = \"20m\"\nsignatures = 2\ncovered = 4\n"
+            "{EXAMPLE}\n[server]\nlisten = \"0.0.0.0:9000\"\nbase = \"/tools/herald\"\njobs = 2\nconnections = 3\nbody = \"64KiB\"\nfetches = 5\ncompletions = 9\ndeliveries = 6\nsilence = \"45s\"\n\n[server.keys]\ncache = \"store\"\nrefresh_after = \"30m\"\nreread_after = \"5m\"\nmost = 7\ndocument = \"1MiB\"\n\n[server.inbound]\nreplay_window = \"20m\"\nsignatures = 2\ncovered = 4\n"
         );
         let config = load("herald.toml", &text, &nothing).unwrap();
         assert_eq!(
             config.server,
             Server {
                 listen: "0.0.0.0:9000".to_owned(),
+                base: "/tools/herald".to_owned(),
                 jobs: 2,
                 connections: 3,
                 body: 65_536,
@@ -133,6 +134,15 @@ body = "{{ event.body }}"
             heavy.contains("server.keys.document: make it at most \"1MiB\""),
             "{heavy}"
         );
+        for base in ["herald", "/herald/", "/", "/a//b", "/../x", "/he rald"] {
+            let wrong = errors(&format!("{EXAMPLE}\n[server]\nbase = \"{base}\"\n"));
+            assert!(
+                wrong.contains(&format!(
+                    "server.base: \"{base}\" is not a path to serve under"
+                )),
+                "{wrong}"
+            );
+        }
         let bare = errors(&format!("{EXAMPLE}\n[server.inbound]\ncovered = 3\n"));
         assert!(
             bare.contains(

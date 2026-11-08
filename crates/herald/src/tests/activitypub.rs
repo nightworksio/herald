@@ -41,6 +41,7 @@ fn a_delivery_herald_signs_is_one_its_own_inbox_takes_under_the_key_its_actor_pu
     let secret = Secret::new("HERALD_ACTIVITYPUB_KEY", pkcs8());
     let actor = ActivityPub::new(
         "herald.example",
+        "",
         secret.clone(),
         ActorRouteOptions {
             actor: "php-mutation-gate".to_owned(),

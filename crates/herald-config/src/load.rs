@@ -767,6 +767,23 @@ impl Loader<'_> {
             }
             listen.into_inner()
         });
+        let base = file.base.map_or_else(String::new, |base| {
+            if !base
+                .get_ref()
+                .strip_prefix('/')
+                .is_some_and(|rest| herald_core::path_of_names(rest, 1..=usize::MAX))
+            {
+                self.error(
+                    &base.span(),
+                    "server.base",
+                    format!(
+                        "\"{}\" is not a path to serve under; write one such as \"/herald\", starting with / and ending without one",
+                        base.get_ref()
+                    ),
+                );
+            }
+            base.into_inner()
+        });
         let keys = file.keys.cache.map_or(KeyCache::Memory, |cache| {
             if *cache.get_ref() == KeyCacheFile::Memory {
                 return KeyCache::Memory;
@@ -793,6 +810,7 @@ impl Loader<'_> {
         };
         Server {
             listen,
+            base,
             jobs: count(file.jobs, defaults.jobs),
             connections: count(file.connections, defaults.connections),
             body: self.most(

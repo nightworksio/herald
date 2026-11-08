@@ -205,6 +205,20 @@ fn health_is_answered_and_every_path_herald_does_not_serve_is_not_found() {
 }
 
 #[test]
+fn every_path_is_served_under_the_base_and_none_outside_it() {
+    let mut world = World::new(Script::default());
+    world.config.server.base = "/tools/herald".to_owned();
+    assert_eq!(
+        said(&world.answer(&get("/tools/herald/healthz"))),
+        (200, "text/plain; charset=utf-8", "herald is up".to_owned())
+    );
+    for outside in ["/healthz", "/tools/heraldry/healthz", "/tools"] {
+        assert_eq!(said(&world.answer(&get(outside))).0, 404, "{outside}");
+    }
+    assert_eq!(said(&world.answer(&get("/tools/herald"))).0, 404);
+}
+
+#[test]
 fn work_with_no_place_is_refused_and_asked_to_wait() {
     let refused = busy();
     assert_eq!(

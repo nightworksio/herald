@@ -542,6 +542,9 @@ pub enum KeyCache {
 pub struct Server {
     /// The address it listens on.
     pub listen: String,
+    /// The path every endpoint is served under, as `/herald`; empty where
+    /// they are served at the root.
+    pub base: String,
     /// How many announcements it works on at once; a webhook arriving while
     /// as many more wait is answered 503.
     pub jobs: usize,
@@ -626,6 +629,7 @@ impl Default for Server {
     fn default() -> Self {
         Self {
             listen: Self::LISTEN.to_owned(),
+            base: String::new(),
             jobs: Self::JOBS,
             connections: Self::CONNECTIONS,
             body: Self::BODY,

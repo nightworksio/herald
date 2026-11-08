@@ -96,7 +96,7 @@ pub(crate) fn serve() {
     let is_head = request.get_method() == Method::HEAD;
     let started = configured().and_then(|(host, config)| {
         let target = request.get_url().path();
-        match uncomposed(request.get_method_str(), target) {
+        match uncomposed(request.get_method_str(), target, &config.server.base) {
             Some(reply) => Ok(Err(reply)),
             None => composed(host, config).map(Ok),
         }

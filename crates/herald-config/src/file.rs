@@ -377,6 +377,11 @@ pub(crate) struct ServerFile {
     /// in front of it.
     #[schemars(with = "Option<String>")]
     pub(crate) listen: Option<Spanned<String>>,
+    /// The path every endpoint is served under, for a reverse proxy that
+    /// serves herald beside other things, as "/herald"; the root where
+    /// absent. herald's ActivityPub actors' ids are under it too.
+    #[schemars(with = "Option<String>")]
+    pub(crate) base: Option<Spanned<String>>,
     /// How many announcements it works on at once; a webhook arriving while
     /// as many more wait is answered 503. 8 where absent.
     pub(crate) jobs: Option<NonZeroUsize>,

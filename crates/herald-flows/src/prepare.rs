@@ -248,6 +248,7 @@ impl Prepared {
 
 struct Resolved<'a> {
     destination: &'a Destination,
+    base: &'a str,
     secret: Secret,
     marker_key: Secret,
     derived: bool,
@@ -277,9 +278,14 @@ impl Resolved<'_> {
             (Destination::Matrix(reached), RouteOptions::Matrix(placed)) => Some(Reached::Matrix(
                 Matrix::new(&reached.homeserver, secret, placed.clone()),
             )),
-            (Destination::ActivityPub(reached), RouteOptions::ActivityPub(placed)) => Some(
-                Reached::ActivityPub(ActivityPub::new(&reached.domain, secret, placed.clone())),
-            ),
+            (Destination::ActivityPub(reached), RouteOptions::ActivityPub(placed)) => {
+                Some(Reached::ActivityPub(ActivityPub::new(
+                    &reached.domain,
+                    self.base,
+                    secret,
+                    placed.clone(),
+                )))
+            }
             (Destination::Slack(reached), RouteOptions::Slack(placed)) => {
                 let credential = if reached.token.is_some() {
                     herald_dest_slack::Credential::Bot(secret)
@@ -353,6 +359,7 @@ async fn resolved<'c, S: Secrets, G: Signer>(
             name,
             Resolved {
                 destination,
+                base: &config.server.base,
                 secret,
                 marker_key,
                 derived,

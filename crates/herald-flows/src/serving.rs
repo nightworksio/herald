@@ -237,12 +237,26 @@ pub struct Serving<'a, S, C, G, V, H, P, K> {
 }
 
 /// The reply to `method` on `target` that needs no composed herald, where
-/// there is one: whether it is up. A host that composes herald per request
-/// answers it once its config loads, before it opens a store.
+/// there is one: whether it is up, at [`HEALTH`] under `base`. A host that
+/// composes herald per request answers it once its config loads, before it
+/// opens a store.
 #[must_use]
-pub fn uncomposed(method: &str, target: &str) -> Option<Reply> {
+pub fn uncomposed(method: &str, target: &str, base: &str) -> Option<Reply> {
     let path = target.split_once('?').map_or(target, |(path, _)| path);
-    (method == "GET" && path == HEALTH).then(|| said(200, UP).reply)
+    (method == "GET" && under(base, path) == Some(HEALTH)).then(|| said(200, UP).reply)
+}
+
+/// `path` as herald routes it, where it lies under `base`, the path every
+/// endpoint is served under: `base` taken off, and the root where nothing
+/// is left.
+#[must_use]
+pub fn under<'a>(base: &str, path: &'a str) -> Option<&'a str> {
+    let rest = path.strip_prefix(base)?;
+    match rest {
+        "" => Some("/"),
+        rest if rest.starts_with('/') => Some(rest),
+        _ => None,
+    }
 }
 
 pub(crate) fn said(status: u16, text: &str) -> Answered {
@@ -416,7 +430,10 @@ pub async fn answer<S: Store, C: Clock, G: Signer, V: Verifier, H, P: Http, K: K
     serving: &Serving<'_, S, C, G, V, H, P, K>,
     inbound: &Inbound<'_>,
 ) -> Answered {
-    match (inbound.method, inbound.path) {
+    let Some(path) = under(&serving.config.server.base, inbound.path) else {
+        return missing("such path");
+    };
+    match (inbound.method, path) {
         ("GET", HEALTH) => said(200, UP),
         ("GET", WEBFINGER) => fingered(serving.connected, inbound.query),
         ("POST", SHARED_INBOX) => match domain(serving.connected, inbound.host()) {
@@ -848,12 +865,24 @@ mod tests {
 
     #[test]
     fn only_whether_it_is_up_is_answered_uncomposed() {
-        let up = uncomposed("GET", "/healthz").unwrap();
+        let up = uncomposed("GET", "/healthz", "").unwrap();
         assert_eq!((up.status, up.body.as_slice()), (200, UP.as_bytes()));
-        assert_eq!(uncomposed("GET", "/healthz?probe=1"), Some(up));
-        assert_eq!(uncomposed("POST", "/healthz"), None);
-        assert_eq!(uncomposed("GET", "/healthz/more"), None);
-        assert_eq!(uncomposed("GET", "/inbox"), None);
+        assert_eq!(uncomposed("GET", "/healthz?probe=1", ""), Some(up.clone()));
+        assert_eq!(uncomposed("POST", "/healthz", ""), None);
+        assert_eq!(uncomposed("GET", "/healthz/more", ""), None);
+        assert_eq!(uncomposed("GET", "/inbox", ""), None);
+        assert_eq!(uncomposed("GET", "/herald/healthz", "/herald"), Some(up));
+        assert_eq!(uncomposed("GET", "/healthz", "/herald"), None);
+        assert_eq!(uncomposed("GET", "/heraldhealthz", "/herald"), None);
+    }
+
+    #[test]
+    fn a_path_is_routed_where_it_lies_under_the_base() {
+        assert_eq!(under("", "/hooks/gate"), Some("/hooks/gate"));
+        assert_eq!(under("/herald", "/herald/hooks/gate"), Some("/hooks/gate"));
+        assert_eq!(under("/herald", "/herald"), Some("/"));
+        assert_eq!(under("/herald", "/heraldry/hooks"), None);
+        assert_eq!(under("/herald", "/hooks/gate"), None);
     }
 
     #[test]

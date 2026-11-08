@@ -36,7 +36,7 @@ async fn composed(
     let hosting =
         Hosting::of(&hosting).ok_or_else(|| format!("{hosting} is no host herald knows"))?;
     let config = configured(&path)?;
-    if let Some(reply) = uncomposed(method, target) {
+    if let Some(reply) = uncomposed(method, target, &config.server.base) {
         return Ok(Err(reply));
     }
     Composed::new(
