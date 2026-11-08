@@ -183,7 +183,7 @@ pub async fn activity_verified<V: Verifier, H: Http, K: Keyring>(
             return checked;
         }
     }
-    let owned = read_key(http, named).await?;
+    let owned = read_key(http, named, checking.bounds).await?;
     let known = KnownKey {
         owner: owned.actor.clone(),
         pem: owned.pem.clone(),
@@ -195,15 +195,18 @@ pub async fn activity_verified<V: Verifier, H: Http, K: Keyring>(
 
 /// The key `named` names, read from its document through `http`, and its
 /// owner, confirmed by the owner's own document where the key's names it.
-async fn read_key<H: Http>(http: &H, named: &str) -> Result<ActorKey, Rejected> {
+async fn read_key<H: Http>(http: &H, named: &str, bounds: &Inbound) -> Result<ActorKey, Rejected> {
     let unfetched = |reason: String| Rejected::Unfetched { reason };
-    let found = actor_key(&fetched(http, named).await.map_err(unfetched)?, named)
-        .map_err(|error| unfetched(error.to_string()))?;
+    let found = actor_key(
+        &fetched(http, named, bounds).await.map_err(unfetched)?,
+        named,
+    )
+    .map_err(|error| unfetched(error.to_string()))?;
     match found {
         Found::Held(owned) => Ok(owned),
         Found::Claimed { owner, pem } => {
             if !confirms(
-                &fetched(http, &owner).await.map_err(unfetched)?,
+                &fetched(http, &owner, bounds).await.map_err(unfetched)?,
                 &owner,
                 named,
             ) {
@@ -236,10 +239,15 @@ async fn owned_by<V: Verifier>(
     })
 }
 
-/// The document `id` names, read through `http`.
-pub(crate) async fn fetched<H: Http>(http: &H, id: &str) -> Result<Vec<u8>, String> {
-    let request =
-        key_request(id).ok_or_else(|| format!("{id} is not an HTTPS URL naming a host"))?;
+/// The document `id` names, read through `http`, no further than `bounds`
+/// let a document be read.
+pub(crate) async fn fetched<H: Http>(
+    http: &H,
+    id: &str,
+    bounds: &Inbound,
+) -> Result<Vec<u8>, String> {
+    let request = key_request(id, bounds.document)
+        .ok_or_else(|| format!("{id} is not an HTTPS URL naming a host"))?;
     let response = http
         .send(request)
         .await

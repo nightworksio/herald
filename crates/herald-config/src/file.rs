@@ -317,6 +317,10 @@ pub(crate) struct KeysFile {
     /// The most kept in memory, the one used longest ago forgotten first;
     /// 1024 where absent.
     pub(crate) most: Option<NonZeroUsize>,
+    /// The most of a key's or an actor's document read; "256KiB" where
+    /// absent, and at most "1MiB".
+    #[schemars(with = "Option<Size>")]
+    pub(crate) document: Option<Spanned<Size>>,
 }
 
 /// `[http]`: how herald's own requests reach the services a config names.

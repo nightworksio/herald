@@ -68,6 +68,11 @@ fn loosened(config: &Config, notes: &mut Vec<String>) {
             "a signature may make herald read more headers",
         ),
         (
+            "server.keys.document",
+            inbound.document > Inbound::DEFAULT.document,
+            "a key's or an actor's document herald reads may hold more",
+        ),
+        (
             "http.body",
             config.http.body > herald_ports::Outbound::BODY,
             "a response herald reads may hold more",

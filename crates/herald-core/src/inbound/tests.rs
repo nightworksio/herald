@@ -917,6 +917,7 @@ fn a_request_is_held_to_the_bounds_it_is_claimed_within() {
         replay_window: SignedDuration::from_mins(1),
         signatures: 1,
         covered: 4,
+        ..Inbound::DEFAULT
     };
     let stamp = (1_800_000_000 + 61).to_string();
     let discord = [
@@ -977,6 +978,7 @@ fn a_request_is_held_to_the_bounds_it_is_claimed_within() {
             replay_window: SignedDuration::from_mins(20),
             signatures: 16,
             covered: 64,
+            document: 1_048_576,
         }
     );
 }

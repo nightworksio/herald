@@ -66,7 +66,7 @@ body = "{{ event.body }}"
     #[test]
     fn the_server_table_sets_every_limit() {
         let text = format!(
-            "{EXAMPLE}\n[server]\nlisten = \"0.0.0.0:9000\"\njobs = 2\nconnections = 3\nbody = \"64KiB\"\nfetches = 5\ncompletions = 9\ndeliveries = 6\nsilence = \"45s\"\n\n[server.keys]\ncache = \"store\"\nrefresh_after = \"30m\"\nreread_after = \"5m\"\nmost = 7\n\n[server.inbound]\nreplay_window = \"20m\"\nsignatures = 2\ncovered = 4\n"
+            "{EXAMPLE}\n[server]\nlisten = \"0.0.0.0:9000\"\njobs = 2\nconnections = 3\nbody = \"64KiB\"\nfetches = 5\ncompletions = 9\ndeliveries = 6\nsilence = \"45s\"\n\n[server.keys]\ncache = \"store\"\nrefresh_after = \"30m\"\nreread_after = \"5m\"\nmost = 7\ndocument = \"1MiB\"\n\n[server.inbound]\nreplay_window = \"20m\"\nsignatures = 2\ncovered = 4\n"
         );
         let config = load("herald.toml", &text, &nothing).unwrap();
         assert_eq!(
@@ -88,6 +88,7 @@ body = "{{ event.body }}"
                     replay_window: jiff::SignedDuration::from_mins(20),
                     signatures: 2,
                     covered: 4,
+                    document: 1_048_576,
                 },
             }
         );
@@ -127,6 +128,11 @@ body = "{{ event.body }}"
                 "{past}"
             );
         }
+        let heavy = errors(&format!("{EXAMPLE}\n[server.keys]\ndocument = \"2MiB\"\n"));
+        assert!(
+            heavy.contains("server.keys.document: make it at most \"1MiB\""),
+            "{heavy}"
+        );
         let bare = errors(&format!("{EXAMPLE}\n[server.inbound]\ncovered = 3\n"));
         assert!(
             bare.contains(

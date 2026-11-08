@@ -8,10 +8,6 @@ use url::{Host, Url};
 const ACTIVITY_JSON: &str = "application/activity+json";
 /// The profile of JSON-LD that is `ActivityStreams`.
 const STREAMS: &str = "https://www.w3.org/ns/activitystreams";
-/// The most bytes of a key's or an actor's document read: far past any
-/// actor's, and small enough that a request naming a hostile key costs
-/// herald little.
-const DOCUMENT: usize = 262_144;
 /// The types of the actors whose documents list their keys.
 const ACTORS: [&str; 5] = ["Person", "Service", "Application", "Group", "Organization"];
 
@@ -79,16 +75,16 @@ pub fn document(key_id: &str) -> &str {
 }
 
 /// The request for the document of `key_id`, where it is written as
-/// [`origin`] reads it. The `Http` it is sent through reaches only public
-/// addresses (ADR-0007).
+/// [`origin`] reads it, reading at most `most` bytes of it. The `Http` it is
+/// sent through reaches only public addresses (ADR-0007).
 #[must_use]
-pub fn key_request(key_id: &str) -> Option<Request> {
+pub fn key_request(key_id: &str, most: usize) -> Option<Request> {
     origin(key_id)?;
     Some(
         Request::new(Method::Get, Text::plain(document(key_id)))
             .header("Accept", Text::plain(ACTIVITY_JSON))
             .header("User-Agent", Text::plain(USER_AGENT))
-            .at_most(DOCUMENT),
+            .at_most(most),
     )
 }
 

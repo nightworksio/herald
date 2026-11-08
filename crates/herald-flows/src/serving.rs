@@ -809,7 +809,10 @@ pub async fn work<S: Store, C: Clock, G: Signer, V, H: Http, P, K>(
                 serving.connected,
                 store,
                 serving.ports.signer,
-                serving.ports.clock.now(),
+                Checking {
+                    now: serving.ports.clock.now(),
+                    bounds: &serving.config.server.inbound,
+                },
                 &verified,
                 &body,
             )

@@ -14,7 +14,7 @@ use crate::config::{Config, Destination, KeyCache, Schedule, Server, Source, Sto
 use crate::error::{ConfigError, Errors};
 use crate::file::{
     HttpFile, InboundFile, Keep, KeepFile, KeyCacheFile, MarkersFile, NoOptions, RenderFile,
-    ScheduleFile, ServerFile, TemplateFile,
+    ScheduleFile, ServerFile, Size, TemplateFile,
 };
 use crate::position::position;
 use herald_ports::{Outbound, Proxy, Roots};
@@ -812,7 +812,7 @@ impl Loader<'_> {
                 .reread_after
                 .map_or(defaults.keys_reread, |after| after.0),
             keys_most: count(file.keys.most, defaults.keys_most),
-            inbound: self.inbound(file.inbound),
+            inbound: self.inbound(file.inbound, file.keys.document),
         }
     }
 
@@ -841,7 +841,7 @@ impl Loader<'_> {
         given
     }
 
-    fn inbound(&mut self, file: InboundFile) -> Inbound {
+    fn inbound(&mut self, file: InboundFile, document: Option<Spanned<Size>>) -> Inbound {
         let defaults = Inbound::DEFAULT;
         let most = Inbound::MOST;
         let covered = file
@@ -884,6 +884,13 @@ impl Loader<'_> {
                 &most.signatures.to_string(),
             ),
             covered,
+            document: self.most(
+                document.map(|document| (document.span(), document.into_inner().0)),
+                defaults.document,
+                most.document,
+                "server.keys.document",
+                &size(most.document),
+            ),
         }
     }
 

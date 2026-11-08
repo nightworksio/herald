@@ -634,6 +634,46 @@ fn a_key_read_once_checks_the_next_activity_without_reading_it_again() {
 }
 
 #[test]
+fn a_key_s_document_is_read_no_further_than_the_bounds_let_it() {
+    let owned = document(ANA);
+    let headers = activity(FOLLOW, ANA_KEY, None);
+    let script = crate::harness::Script::answering(&[(ANA, 200, owned.as_str())])
+        .headed(&[("content-type", JSON)]);
+    let keyring = MemoryKeyring::new(8);
+    let keys = Keys {
+        keyring: &keyring,
+        refreshed: REFRESHED,
+        reread: REREAD,
+    };
+    let bounds = herald_core::Inbound {
+        document: owned.len() - 1,
+        ..herald_core::Inbound::DEFAULT
+    };
+    let checked = pollster::block_on(activity_verified(
+        &FakeVerifier,
+        &script,
+        &keys,
+        TO,
+        &borrowed(&headers),
+        FOLLOW,
+        Checking {
+            now: at(),
+            bounds: &bounds,
+        },
+    ));
+    let Err(Rejected::Unfetched { reason }) = checked else {
+        panic!("{checked:?}");
+    };
+    assert!(
+        reason.contains(&format!(
+            "the response is larger than {} bytes",
+            owned.len() - 1
+        )),
+        "{reason}"
+    );
+}
+
+#[test]
 fn a_key_kept_as_long_as_its_refresh_is_read_again() {
     let keyring = MemoryKeyring::new(8);
     let stale = at().checked_sub(REFRESHED).unwrap();

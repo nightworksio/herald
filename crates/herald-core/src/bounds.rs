@@ -47,6 +47,10 @@ pub struct Inbound {
     pub signatures: usize,
     /// The most fields one HTTP signature may cover.
     pub covered: usize,
+    /// The most bytes of a key's or an actor's document read: far past any
+    /// actor's, and small enough that a request naming a hostile key costs
+    /// herald little.
+    pub document: usize,
 }
 
 impl Inbound {
@@ -58,12 +62,14 @@ impl Inbound {
         replay_window: SignedDuration::from_mins(5),
         signatures: 4,
         covered: 16,
+        document: 262_144,
     };
     /// The widest bounds a config may set: four times the default.
     pub const MOST: Self = Self {
         replay_window: SignedDuration::from_mins(20),
         signatures: Self::DEFAULT.signatures * 4,
         covered: Self::DEFAULT.covered * 4,
+        document: Self::DEFAULT.document * 4,
     };
 }
 

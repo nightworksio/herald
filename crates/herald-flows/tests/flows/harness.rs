@@ -112,6 +112,11 @@ impl Http for Script {
             });
         };
         assert!(line.ends_with(&expected), "{line} is not {expected}");
+        if body.len() > request.most {
+            return Err(HttpError::Unreachable {
+                reason: format!("the response is larger than {} bytes", request.most),
+            });
+        }
         Ok(Response {
             status,
             headers: self.headers.clone(),

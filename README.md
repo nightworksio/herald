@@ -196,7 +196,7 @@ listen = "127.0.0.1:8080"
 - herald answers each verified release with 202 and announces it after the reply.
 - An ActivityPub actor is served at `/users/<actor>`, with its Notes, its inbox, the shared inbox `/inbox` and WebFinger.
 - `--listen` or `HERALD_LISTEN` takes the place of `listen`.
-- `[server]` also sets `jobs`, `connections`, `body`, `fetches`, `completions` (how many autocompletions a session answers at once), `deliveries` and `silence` (how long a session hears nothing before it checks its connection), and `[server.keys]` sets where inbound activities' keys are kept (`cache = "memory"` or `"store"`), `refresh_after`, `reread_after` and `most` ([ADR-0014](.docs/decisions/0014-herald-server-answers-first-and-works-after-on-one-task-within-limits.md)).
+- `[server]` also sets `jobs`, `connections`, `body`, `fetches`, `completions` (how many autocompletions a session answers at once), `deliveries` and `silence` (how long a session hears nothing before it checks its connection), and `[server.keys]` sets where inbound activities' keys are kept (`cache = "memory"` or `"store"`), `refresh_after`, `reread_after`, `most` and `document` (the most of a key's document read) ([ADR-0014](.docs/decisions/0014-herald-server-answers-first-and-works-after-on-one-task-within-limits.md)).
 
 `herald doctor --layer server` names what the config asks for that the
 server cannot serve.
@@ -217,7 +217,7 @@ proxy and trust the Mozilla roots alone.
 checked: `replay_window` ("5m"), `signatures` (4) and `covered` (16, the
 headers one ActivityPub signature may name). `[render]` sets how far a
 template may go: `fuel` (100000), `recursion` (16) and `output` ("256KiB").
-Each of these, `[server] body` and `[http] body` may be at most four times its default,
+Each of these, `[server] body`, `[server.keys] document` and `[http] body` may be at most four times its default,
 and `herald doctor` names any set above it.
 
 Housekeeping also forgets what the store keeps past `[store]`'s

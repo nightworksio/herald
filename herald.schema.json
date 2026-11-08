@@ -893,6 +893,17 @@
             }
           ]
         },
+        "document": {
+          "description": "The most of a key's or an actor's document read; \"256KiB\" where\nabsent, and at most \"1MiB\".",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Size"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "most": {
           "description": "The most kept in memory, the one used longest ago forgotten first;\n1024 where absent.",
           "type": [
