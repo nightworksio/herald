@@ -22,6 +22,9 @@ enum Fault {
     IgnoresProjects,
     KeepsTheFirstPin,
     SharesPins,
+    HoldsAnUnwrittenDelivery,
+    KeepsTheFirstDeliveryState,
+    SharesInboxes,
     AdmitsTwice,
     SharesDeliveries,
     KeepsReleased,
@@ -69,14 +72,32 @@ impl Faulty {
     }
 }
 
+impl Faulty {
+    fn inbox<'a>(&self, inbox: &'a str) -> &'a str {
+        match self.fault {
+            Fault::SharesInboxes => "shared",
+            _ => inbox,
+        }
+    }
+}
+
 impl Inboxes for Faulty {
     async fn delivery(&self, key: &Key, inbox: &str) -> Result<Option<State>, StoreError> {
         self.refuses("deliveries to followers")?;
-        self.inner.delivery(key, inbox).await
+        let kept = self.inner.delivery(key, self.inbox(inbox)).await?;
+        if self.fault == Fault::HoldsAnUnwrittenDelivery && kept.is_none() {
+            return Ok(Some(State::Attempted { at: NOON }));
+        }
+        Ok(kept)
     }
 
     async fn put_delivery(&self, key: &Key, inbox: &str, state: &State) -> Result<(), StoreError> {
         self.refuses("deliveries to followers")?;
+        let inbox = self.inbox(inbox);
+        let kept = self.inner.delivery(key, inbox).await?;
+        if self.fault == Fault::KeepsTheFirstDeliveryState && kept.is_some() {
+            return Ok(());
+        }
         self.inner.put_delivery(key, inbox, state).await
     }
 }
@@ -549,6 +570,18 @@ fn a_store_that_breaks_its_promises_is_refused() {
         (
             Fault::SharesPins,
             "a route's pin was not the one written last",
+        ),
+        (
+            Fault::HoldsAnUnwrittenDelivery,
+            "a new store holds a delivery to an inbox",
+        ),
+        (
+            Fault::KeepsTheFirstDeliveryState,
+            "a delivery to an inbox was not the state written last",
+        ),
+        (
+            Fault::SharesInboxes,
+            "a delivery to an inbox was not the state written last",
         ),
         (
             Fault::AdmitsTwice,
