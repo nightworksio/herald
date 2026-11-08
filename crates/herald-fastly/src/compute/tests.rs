@@ -113,6 +113,23 @@ fn a_kv_store_writes_and_deletes_only_at_the_generation_it_was_given() {
 }
 
 #[test]
+fn a_deleted_record_is_absent_and_written_again_once() {
+    let kv = kv();
+    let key = ["held".to_owned(), "deleted".to_owned()];
+    pollster::block_on(async {
+        let first = kv.set_if(&key, b"first".to_vec(), None).await.unwrap();
+        assert_eq!(kv.delete_if(&key, first.unwrap()).await, Ok(true));
+        assert_eq!(kv.get(&key).await, Ok(None));
+        assert_eq!(kv.list(&["held".to_owned()]).await, Ok(Vec::new()));
+        let again = kv.set_if(&key, b"again".to_vec(), None).await.unwrap();
+        assert!(again.is_some());
+        assert_eq!(kv.get(&key).await.unwrap().unwrap().value, b"again");
+        assert_eq!(kv.set_if(&key, b"twice".to_vec(), None).await, Ok(None));
+        assert_eq!(kv.delete_if(&key, again.unwrap()).await, Ok(true));
+    });
+}
+
+#[test]
 fn a_kv_store_the_service_is_not_linked_to_is_refused_by_name() {
     let refused = pollster::block_on(FastlyHost::new().kv(KvAt::FastlyKv("elsewhere"))).err();
     assert!(refused.is_some_and(|said| said.contains("elsewhere")));

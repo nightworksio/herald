@@ -1,11 +1,23 @@
 use std::future::{Future, ready};
+use std::time::Duration;
 
 use fastly::kv_store::{InsertMode, KVStore, KVStoreError};
 use herald_ports::{Kv, KvError, Pair, Stamped, Versionstamp};
 
-/// The metadata of an item being deleted: Fastly's delete takes no generation,
-/// so a delete first claims the item at its generation under this mark.
+/// The metadata of a deleted item. Fastly's delete takes no generation, so a
+/// delete replaces the item at its generation with an empty item under this
+/// mark, which reads as absent and which a write replaces at its generation.
 const GONE: &str = "herald:gone";
+
+/// How long a deleted item's mark is kept before Fastly expires it.
+const GONE_FOR: Duration = Duration::from_secs(3_600);
+
+/// An item as the store holds it: a record, or a record being deleted.
+struct Held {
+    value: Vec<u8>,
+    generation: u64,
+    gone: bool,
+}
 
 /// A Fastly KV Store, keys joined with `/`, its generation as the versionstamp.
 #[derive(Debug)]
@@ -40,21 +52,36 @@ impl FastlyKv {
             })
     }
 
-    fn read(&self, key: &str) -> Result<Option<(Vec<u8>, u64)>, KvError> {
+    fn held(&self, key: &str) -> Result<Option<Held>, KvError> {
         match self.store()?.lookup(key) {
-            Ok(mut found) => {
-                if found.metadata().as_deref() == Some(GONE.as_bytes()) {
-                    return Ok(None);
-                }
-                let generation = found.current_generation();
-                Ok(Some((found.take_body_bytes(), generation)))
-            }
+            Ok(mut found) => Ok(Some(Held {
+                gone: found.metadata().as_deref() == Some(GONE.as_bytes()),
+                generation: found.current_generation(),
+                value: found.take_body_bytes(),
+            })),
             Err(KVStoreError::ItemNotFound) => Ok(None),
             Err(error) => Err(unavailable(&error)),
         }
     }
 
+    fn read(&self, key: &str) -> Result<Option<(Vec<u8>, u64)>, KvError> {
+        Ok(self
+            .held(key)?
+            .filter(|held| !held.gone)
+            .map(|held| (held.value, held.generation)))
+    }
+
+    /// Writes `value` at `key` if the key holds the record at `expected`, or
+    /// holds none: a deleted record's mark is replaced at its generation.
     fn written(&self, key: &str, value: Vec<u8>, expected: Option<u64>) -> Result<bool, KvError> {
+        let expected = match expected {
+            Some(generation) => Some(generation),
+            None => match self.held(key)? {
+                Some(held) if held.gone => Some(held.generation),
+                Some(_) => return Ok(false),
+                None => None,
+            },
+        };
         let store = self.store()?;
         let insert = store.build_insert();
         let insert = match expected {
@@ -63,7 +90,7 @@ impl FastlyKv {
         };
         match insert.execute(key, value) {
             Ok(()) => Ok(true),
-            Err(KVStoreError::ItemPreconditionFailed) => Ok(false),
+            Err(KVStoreError::ItemPreconditionFailed | KVStoreError::ItemNotFound) => Ok(false),
             Err(error) => Err(unavailable(&error)),
         }
     }
@@ -118,21 +145,18 @@ impl Kv for FastlyKv {
             let Some(generation) = generation_of(&expected) else {
                 return Ok(false);
             };
-            let store = self.store()?;
-            let claimed = store
+            let marked = self
+                .store()?
                 .build_insert()
                 .if_generation_match(generation)
                 .metadata(GONE)
+                .time_to_live(GONE_FOR)
                 .execute(&key, Vec::new());
-            match claimed {
-                Ok(()) => {}
-                Err(KVStoreError::ItemPreconditionFailed | KVStoreError::ItemNotFound) => {
-                    return Ok(false);
-                }
-                Err(error) => return Err(unavailable(&error)),
+            match marked {
+                Ok(()) => Ok(true),
+                Err(KVStoreError::ItemPreconditionFailed | KVStoreError::ItemNotFound) => Ok(false),
+                Err(error) => Err(unavailable(&error)),
             }
-            store.delete(&key).map_err(|error| unavailable(&error))?;
-            Ok(true)
         })();
         ready(done)
     }
