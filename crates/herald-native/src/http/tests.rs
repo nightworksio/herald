@@ -333,6 +333,12 @@ fn a_config_s_roots_are_trusted_beside_the_mozilla_roots() {
     };
     let refused = trusted(Some(&broken)).unwrap_err();
     assert!(refused.0.starts_with("broken.pem: "), "{refused}");
+    let unencoded = Roots {
+        file: "unencoded.pem".to_owned(),
+        pem: "-----BEGIN CERTIFICATE-----\n!!!!\n-----END CERTIFICATE-----\n".to_owned(),
+    };
+    let unread = trusted(Some(&unencoded)).unwrap_err();
+    assert!(unread.0.starts_with("unencoded.pem: "), "{unread}");
     let outbound = Outbound {
         roots: Some(broken),
         ..Outbound::default()
@@ -365,6 +371,15 @@ async fn a_request_goes_through_the_proxy_a_config_names() {
         "{}",
         asked[0]
     );
+}
+
+#[test]
+fn a_proxy_that_is_no_url_is_refused() {
+    let outbound = Outbound {
+        proxy: Proxy::At("http://exa mple:3128".to_owned()),
+        ..Outbound::default()
+    };
+    assert!(NativeHttp::new(Reach::new(["https://a.example"]).unwrap(), &outbound).is_err());
 }
 
 #[tokio::test]
