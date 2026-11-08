@@ -84,14 +84,20 @@ impl Backoff {
         half + Duration::from_nanos(u64::try_from(spread).unwrap_or(u64::MAX))
     }
 
-    async fn wait<T: Timer>(&mut self, timer: &T, seed: u32) {
-        timer.sleep(self.pause(seed)).await;
+    async fn wait<T: Timer>(&mut self, timer: &T, clock: &impl Clock) {
+        timer.sleep(self.pause(seed(clock))).await;
         self.now = (self.now * 2).min(self.longest);
     }
 
     fn reset(&mut self) {
         self.now = self.first;
     }
+}
+
+/// Where between half of a wait and all of it this one falls, from
+/// `clock`'s nanoseconds.
+fn seed(clock: &impl Clock) -> u32 {
+    clock.now().subsec_nanosecond().unsigned_abs()
 }
 
 /// `doing`, done while what `taking` holds goes on.
@@ -146,17 +152,6 @@ where
             timer,
             completing: Room::new(serving.config.server.completions),
         }
-    }
-
-    /// Where between half of a wait and all of it this one falls, from the
-    /// clock's nanoseconds.
-    fn seed(&self) -> u32 {
-        self.serving
-            .ports
-            .clock
-            .now()
-            .subsec_nanosecond()
-            .unsigned_abs()
     }
 
     fn said(&self, destination: &DestinationName, what: impl Into<String>) {
@@ -263,7 +258,11 @@ where
                         name,
                         format!("Discord's gateway could not be reached: {error}"),
                     );
-                    meanwhile(&mut taking, backoff.wait(self.timer, self.seed())).await;
+                    meanwhile(
+                        &mut taking,
+                        backoff.wait(self.timer, self.serving.ports.clock),
+                    )
+                    .await;
                     continue;
                 }
             };
@@ -286,7 +285,11 @@ where
                 while taking.next().await.is_some() {}
                 return;
             }
-            meanwhile(&mut taking, backoff.wait(self.timer, self.seed())).await;
+            meanwhile(
+                &mut taking,
+                backoff.wait(self.timer, self.serving.ports.clock),
+            )
+            .await;
         }
     }
 
@@ -455,7 +458,11 @@ where
                     format!("Slack's Socket Mode could not be opened: {trouble}"),
                 ),
             }
-            meanwhile(&mut taking, backoff.wait(self.timer, self.seed())).await;
+            meanwhile(
+                &mut taking,
+                backoff.wait(self.timer, self.serving.ports.clock),
+            )
+            .await;
         }
     }
 
@@ -493,7 +500,11 @@ where
                         name,
                         format!("the homeserver could not be synced: {trouble}"),
                     );
-                    meanwhile(&mut taking, backoff.wait(self.timer, self.seed())).await;
+                    meanwhile(
+                        &mut taking,
+                        backoff.wait(self.timer, self.serving.ports.clock),
+                    )
+                    .await;
                 }
             }
         }
@@ -510,7 +521,7 @@ fn beating(every: jiff::SignedDuration) -> Duration {
 
 #[cfg(test)]
 mod tests {
-    use herald_testing::FakeTimer;
+    use herald_testing::{FakeClock, FakeTimer};
 
     use super::*;
 
@@ -525,13 +536,14 @@ mod tests {
     #[test]
     fn a_wait_doubles_up_to_the_longest_and_starts_again_once_taken_up() {
         let timer = FakeTimer::default();
+        let clock = FakeClock::at("2027-01-15T08:00:00.5Z".parse().unwrap());
         let mut backoff = Backoff::new(&reconnecting(false));
         pollster::block_on(async {
             for _ in 0..3 {
-                backoff.wait(&timer, 0).await;
+                backoff.wait(&timer, &clock).await;
             }
             backoff.reset();
-            backoff.wait(&timer, 0).await;
+            backoff.wait(&timer, &clock).await;
         });
         assert_eq!(
             timer.waited(),
@@ -549,6 +561,12 @@ mod tests {
             Backoff::new(&reconnecting(false)).pause(NANOS / 2),
             Duration::from_secs(2)
         );
+    }
+
+    #[test]
+    fn a_wait_s_seed_is_the_nanoseconds_of_the_clock_s_second() {
+        let clock = FakeClock::at("2027-01-15T08:00:00.25Z".parse().unwrap());
+        assert_eq!(seed(&clock), 250_000_000);
     }
 
     #[test]

@@ -171,6 +171,18 @@ impl Loader<'_> {
         path: &str,
         kinds: &[&str],
     ) -> Option<(String, Value<'i>)> {
+        self.kinded_table(value, path, kinds)
+            .map(|(kind, span, table)| (kind, Spanned::new(span, DeValue::Table(table))))
+    }
+
+    /// The kind `value`'s table names, one of `kinds`, and the rest of the
+    /// table with where it is written.
+    fn kinded_table<'i>(
+        &mut self,
+        value: Value<'i>,
+        path: &str,
+        kinds: &[&str],
+    ) -> Option<(String, Range<usize>, DeTable<'i>)> {
         let (span, mut table) = self.table(value, path)?;
         let Some(kind) = table.remove("kind") else {
             self.error(
@@ -184,7 +196,7 @@ impl Loader<'_> {
         let kind_path = format!("{path}.kind");
         match kind.into_inner() {
             DeValue::String(name) if kinds.contains(&name.as_ref()) => {
-                Some((name.into_owned(), Spanned::new(span, DeValue::Table(table))))
+                Some((name.into_owned(), span, table))
             }
             DeValue::String(name) => {
                 self.error(
@@ -276,12 +288,12 @@ impl Loader<'_> {
             );
             return None;
         };
-        let (kind, rest) = self.kinded(value, "store", &Store::KINDS)?;
+        let (kind, span, table) = self.kinded_table(value, "store", &Store::KINDS)?;
         if kind == Store::MARKERS {
-            self.typed::<NoOptions>(rest, "store")?;
+            self.typed::<NoOptions>(Spanned::new(span, DeValue::Table(table)), "store")?;
             return Some((Store::Markers, Retention::default()));
         }
-        let (rest, keep) = kept(rest);
+        let (rest, keep) = kept(span, table);
         let retention = self.retention(keep);
         let store = self.options(&kind, rest)?;
         Some((store, retention?))
@@ -780,21 +792,17 @@ pub fn load(
     })
 }
 
-/// `rest`, a store's options, apart from how long it keeps what herald
-/// records.
-fn kept(rest: Value<'_>) -> (Value<'_>, Value<'_>) {
-    let span = rest.span();
+/// `options`, a store's table written at `span`, apart from how long it
+/// keeps what herald records.
+fn kept(span: Range<usize>, mut options: DeTable<'_>) -> (Value<'_>, Value<'_>) {
     let mut keep = DeTable::new();
-    let mut options = rest.into_inner();
-    if let DeValue::Table(table) = &mut options {
-        for key in KeepFile::KEYS {
-            if let Some((name, value)) = table.remove_entry(key) {
-                keep.insert(name, value);
-            }
+    for key in KeepFile::KEYS {
+        if let Some((name, value)) = options.remove_entry(key) {
+            keep.insert(name, value);
         }
     }
     (
-        Spanned::new(span.clone(), options),
+        Spanned::new(span.clone(), DeValue::Table(options)),
         Spanned::new(span, DeValue::Table(keep)),
     )
 }
