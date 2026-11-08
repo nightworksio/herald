@@ -745,6 +745,7 @@ mod replay {
         };
         let options = |token, webhook| DestinationOptions {
             token,
+            symbols: None,
             webhook,
             api: None,
             interactions: None,

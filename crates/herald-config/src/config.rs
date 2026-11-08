@@ -246,6 +246,19 @@ pub enum Destination {
 }
 
 impl Destination {
+    /// The characters its posts write where its markup has none.
+    #[must_use]
+    pub fn symbols(&self) -> herald_core::Symbols {
+        match self {
+            Self::Discord(options) => options.symbols,
+            Self::Mastodon(options) => options.symbols,
+            Self::Matrix(options) => options.symbols,
+            Self::Slack(options) => options.symbols,
+            Self::ActivityPub(options) => options.symbols,
+        }
+        .unwrap_or_default()
+    }
+
     /// The secret it reaches its platform with: its token, else its webhook,
     /// or its key.
     #[must_use]

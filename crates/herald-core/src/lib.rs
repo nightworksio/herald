@@ -29,6 +29,7 @@ mod retention;
 mod route;
 mod size;
 mod subscription;
+mod symbols;
 mod version;
 mod wording;
 
@@ -40,7 +41,7 @@ pub use announce::{
     Announcement, Title, announce, body_template, shortened, thread_template, title_template,
 };
 pub use bounds::{Inbound, ReadBack, Sandbox};
-pub use chunk::{Room, chunk, size};
+pub use chunk::{Room, chunk, chunk_in, size};
 pub use credentials::basic;
 pub use cursor::{Cursor, Polled, fresh};
 pub use duration::Duration;
@@ -60,7 +61,7 @@ pub use ledger::{
     Entry, Facts, Lease, Plan, Planned, Record, Sent, Standing, State, Step, plan, steps,
 };
 pub use marker::{Marker, Marks};
-pub use markup::{LINK_SCHEMES, Text, convert, escaped, literal, safe_url};
+pub use markup::{LINK_SCHEMES, Text, convert, convert_in, escaped, literal, safe_url};
 pub use pattern::Pattern;
 pub use profile::{
     Dialect, Features, Limits, Measure, MentionRoom, MentionStyle, Pins, Profile, Threads,
@@ -73,5 +74,6 @@ pub use route::{
 };
 pub use size::Size;
 pub use subscription::Subscription;
+pub use symbols::Symbols;
 pub use version::prerelease_version;
 pub use wording::{Phrase, Wording};

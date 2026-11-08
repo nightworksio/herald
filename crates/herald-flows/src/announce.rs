@@ -450,7 +450,10 @@ impl<S: Store, C: Clock, G: Signer, H: Http> Run<'_, S, C, G, H> {
             Ok(marks) => marks,
             Err(reason) => return stopped(reason),
         };
-        let profile = self.route.reached.profile();
+        let profile = Profile {
+            symbols: self.route.config.profile.symbols,
+            ..self.route.reached.profile()
+        };
         let mut announcement = match self.rendered(event, templates, &profile, marks).await {
             Ok(announcement) => announcement,
             Err(reason) => return stopped(reason),

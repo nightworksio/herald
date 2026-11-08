@@ -379,5 +379,6 @@ pub fn profile(bot: bool) -> Profile {
             mentions: MentionStyle::Users(MENTION_ROOM),
             interactions: bot,
         },
+        symbols: herald_core::Symbols::DEFAULT,
     }
 }

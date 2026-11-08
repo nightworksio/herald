@@ -1,4 +1,4 @@
-use herald_core::SecretRef;
+use herald_core::{SecretRef, Symbols};
 use schemars::JsonSchema;
 use serde::Deserialize;
 
@@ -15,6 +15,9 @@ pub struct ActorOptions {
     /// The secret holding the actors' RSA private key, as PKCS#8 PEM, which
     /// `herald activitypub keygen` writes.
     pub key: SecretRef,
+    /// The characters its posts write where its markup has none: a task
+    /// done and to do, a rule and a text list's bullet.
+    pub symbols: Option<Symbols>,
 }
 
 impl ActorOptions {

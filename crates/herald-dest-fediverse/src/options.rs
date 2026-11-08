@@ -1,6 +1,6 @@
 use std::num::NonZeroUsize;
 
-use herald_core::{ReadBack, SecretRef};
+use herald_core::{ReadBack, SecretRef, Symbols};
 use schemars::JsonSchema;
 use serde::Deserialize;
 
@@ -16,6 +16,9 @@ pub struct DestinationOptions {
     /// How many pages of its own posts it reads back for their markers,
     /// from 1 to 20; 5 where unset.
     pub read_back: Option<ReadBack>,
+    /// The characters its posts write where its markup has none: a task
+    /// done and to do, a rule and a text list's bullet.
+    pub symbols: Option<Symbols>,
 }
 
 /// Who sees a status.

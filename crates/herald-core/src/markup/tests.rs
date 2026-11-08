@@ -479,3 +479,34 @@ fn literal_text_is_escaped_for_each_dialect() {
     assert_eq!(matrix.body, "a*b @\u{200B}c <d>");
     assert_eq!(matrix.html.as_deref(), Some("a*b @\u{200B}c &lt;d&gt;"));
 }
+
+#[test]
+fn a_destination_s_symbols_mark_tasks_draw_rules_and_bullet_its_text_lists() {
+    let markdown = "- [x] done\n- [ ] open\n\n---\n\n- one";
+    let symbols = crate::Symbols {
+        done: 'v',
+        todo: 'o',
+        rule: '=',
+        bullet: Some('*'),
+    };
+    assert_eq!(
+        convert_in(markdown, Dialect::Plain, symbols).body,
+        "* v done\n* o open\n\n===\n\n* one"
+    );
+    assert_eq!(
+        convert_in(markdown, Dialect::Slack, symbols).body,
+        "* v done\n* o open\n\n===\n\n* one"
+    );
+    assert_eq!(
+        convert_in(markdown, Dialect::Discord, symbols).body,
+        "- v done\n- o open\n\n===\n\n- one"
+    );
+    assert_eq!(
+        convert_in(markdown, Dialect::Slack, crate::Symbols::DEFAULT).body,
+        convert(markdown, Dialect::Slack).body
+    );
+    assert_eq!(
+        convert(markdown, Dialect::Plain).body,
+        "- ☑ done\n- ☐ open\n\n───\n\n- one"
+    );
+}

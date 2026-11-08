@@ -131,5 +131,6 @@ pub fn profile(route: &RouteOptions) -> Profile {
             mentions: MentionStyle::None,
             interactions: false,
         },
+        symbols: herald_core::Symbols::DEFAULT,
     }
 }

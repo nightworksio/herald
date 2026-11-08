@@ -608,6 +608,7 @@ mod replay {
         };
         let reached = |token, webhook| DestinationOptions {
             token,
+            symbols: None,
             webhook,
             api: None,
             domain: None,

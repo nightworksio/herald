@@ -146,6 +146,8 @@ pub struct Profile {
     pub limits: Limits,
     /// What it can do beyond posting.
     pub features: Features,
+    /// The characters it writes where its markup has none.
+    pub symbols: crate::symbols::Symbols,
 }
 
 impl Features {

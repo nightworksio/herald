@@ -323,6 +323,7 @@ fn credentials_and_marker_keys_that_cannot_be_resolved_say_why() {
                     server: "https://mastodon.example".to_owned(),
                     token: options.token.clone().unwrap(),
                     read_back: None,
+                    symbols: None,
                 });
         }
     }

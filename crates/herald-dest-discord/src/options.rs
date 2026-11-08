@@ -1,4 +1,4 @@
-use herald_core::{ReadBack, SecretRef};
+use herald_core::{ReadBack, SecretRef, Symbols};
 
 use crate::interactions::{Interactions, Subscribe, snowflake};
 use crate::look::{ArchiveAfter, Colours, Look};
@@ -26,6 +26,9 @@ pub struct DestinationOptions {
     /// How long a quiet thread stays open: `1h`, `1d`, `3d` or `1w`, the
     /// week where unset.
     pub archive_after: Option<ArchiveAfter>,
+    /// The characters its posts write where its markup has none: a task
+    /// done and to do, a rule and a text list's bullet.
+    pub symbols: Option<Symbols>,
 }
 
 impl DestinationOptions {

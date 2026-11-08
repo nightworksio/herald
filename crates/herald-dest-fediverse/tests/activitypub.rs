@@ -243,6 +243,7 @@ mod activitypub {
     fn a_domain_and_an_actor_are_written_as_followers_write_them() {
         let options = |domain: &str| ActorOptions {
             domain: domain.to_owned(),
+            symbols: None,
             key: herald_core::SecretRef {
                 secret: "K".to_owned(),
             },

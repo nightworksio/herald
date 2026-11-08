@@ -283,5 +283,6 @@ pub fn actor_profile() -> Profile {
             mentions: MentionStyle::None,
             interactions: false,
         },
+        symbols: herald_core::Symbols::DEFAULT,
     }
 }

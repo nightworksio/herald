@@ -216,5 +216,6 @@ pub fn profile() -> Profile {
             mentions: MentionStyle::Users(MENTION_ROOM),
             interactions: false,
         },
+        symbols: herald_core::Symbols::DEFAULT,
     }
 }

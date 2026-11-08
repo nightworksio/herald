@@ -73,4 +73,19 @@ body = "{{{{ event.body }}}}"
         assert_eq!(ReadBack::new(21), None);
         assert_eq!(ReadBack::MOST.pages(), 20);
     }
+
+    #[test]
+    fn a_destination_s_symbols_reach_each_of_its_routes() {
+        let set = config("symbols = { rule = \"=\", bullet = \"*\" }").unwrap();
+        let symbols = set.routes[0].profile.symbols;
+        assert_eq!((symbols.rule, symbols.bullet), ('=', Some('*')));
+        assert_eq!(symbols.done, herald_core::Symbols::DEFAULT.done);
+        let unset = config("").unwrap();
+        assert_eq!(
+            unset.routes[0].profile.symbols,
+            herald_core::Symbols::DEFAULT
+        );
+        let refused = config("symbols = { rule = \"==\" }").unwrap_err();
+        assert!(refused.contains("is not one character"), "{refused}");
+    }
 }

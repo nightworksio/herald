@@ -28,6 +28,7 @@ fn profile(title: usize, text: usize) -> Profile {
             mentions: MentionStyle::Roles,
             interactions: true,
         },
+        symbols: crate::Symbols::DEFAULT,
     }
 }
 
@@ -199,6 +200,28 @@ fn without_a_release_link_the_first_link_is_used_and_the_changelog_kept() {
         .link,
         None
     );
+}
+
+#[test]
+fn an_announcement_is_written_with_its_destination_s_symbols() {
+    let route = threaded();
+    let profile = Profile {
+        symbols: crate::Symbols {
+            bullet: Some('*'),
+            ..crate::Symbols::DEFAULT
+        },
+        ..profile(256, 4096)
+    };
+    let announcement = announce(
+        &event(),
+        &route,
+        &templates(&route),
+        &profile,
+        "0.1.0",
+        marks(),
+    )
+    .unwrap();
+    assert_eq!(announcement.parts[0].body, "Added\n\n* the gate");
 }
 
 #[test]

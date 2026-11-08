@@ -447,6 +447,17 @@
                 }
               ]
             },
+            "symbols": {
+              "description": "The characters its posts write where its markup has none: a task\ndone and to do, a rule and a text list's bullet.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Symbols"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
             "token": {
               "description": "The secret holding a bot token. A bot crossposts, threads, pins and\nreads back its posts.",
               "anyOf": [
@@ -498,6 +509,17 @@
               "description": "The server's base URL, such as `https://mastodon.social`.",
               "type": "string"
             },
+            "symbols": {
+              "description": "The characters its posts write where its markup has none: a task\ndone and to do, a rule and a text list's bullet.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Symbols"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
             "token": {
               "description": "The secret holding the account's access token, granted\n`write:statuses` and `read:statuses`.",
               "$ref": "#/$defs/SecretRef"
@@ -538,6 +560,17 @@
               "anyOf": [
                 {
                   "$ref": "#/$defs/ReadBack"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "symbols": {
+              "description": "The characters its posts write where its markup has none: a task\ndone and to do, a rule and a text list's bullet.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Symbols"
                 },
                 {
                   "type": "null"
@@ -604,6 +637,17 @@
                 }
               ]
             },
+            "symbols": {
+              "description": "The characters its posts write where its markup has none: a task\ndone and to do, a rule and a text list's bullet.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Symbols"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
             "team": {
               "description": "The workspace's id, such as `T0123456789`, where the token is an\nEnterprise Grid org-wide app's: each Web API call names it.",
               "type": [
@@ -654,6 +698,17 @@
             "kind": {
               "type": "string",
               "const": "activitypub"
+            },
+            "symbols": {
+              "description": "The characters its posts write where its markup has none: a task\ndone and to do, a rule and a text list's bullet.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Symbols"
+                },
+                {
+                  "type": "null"
+                }
+              ]
             }
           },
           "additionalProperties": false,
@@ -1508,6 +1563,12 @@
         }
       },
       "additionalProperties": false
+    },
+    "OneCharacter": {
+      "description": "One character, as a config writes it.",
+      "type": "string",
+      "maxLength": 1,
+      "minLength": 1
     },
     "Pinning": {
       "description": "How a route keeps its newest announcement pinned: each pin unpins the\nroute's earlier one, found as this says (ADR-0011).",
@@ -3457,6 +3518,61 @@
           "description": "Whether each announcement carries a button that subscribes, or\nunsubscribes a member already subscribed.",
           "type": "boolean",
           "default": true
+        }
+      },
+      "additionalProperties": false
+    },
+    "Symbols": {
+      "description": "The characters a destination writes where its markup has none: a task\ndone and to do, a rule (drawn three wide), and a list's bullet where a\nlist is written as text, in Slack and in plain text.",
+      "type": "object",
+      "properties": {
+        "bullet": {
+          "description": "A list's bullet where a list is written as text: `•` in Slack and\n`-` in plain text where unset.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/OneCharacter"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "done": {
+          "description": "A task done; `☑` where unset.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/OneCharacter"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": "☑"
+        },
+        "rule": {
+          "description": "A rule's character, drawn three wide; `─` where unset.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/OneCharacter"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": "─"
+        },
+        "todo": {
+          "description": "A task to do; `☐` where unset.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/OneCharacter"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": "☐"
         }
       },
       "additionalProperties": false

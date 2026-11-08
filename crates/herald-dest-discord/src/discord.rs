@@ -181,5 +181,6 @@ pub fn profile(bot: bool, forum: bool) -> Profile {
             mentions: MentionStyle::Roles,
             interactions: bot,
         },
+        symbols: herald_core::Symbols::DEFAULT,
     }
 }
