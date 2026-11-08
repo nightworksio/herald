@@ -1,6 +1,7 @@
 use herald_core::{ReadBack, SecretRef};
 
 use crate::interactions::{Interactions, Subscribe, snowflake};
+use crate::look::{ArchiveAfter, Colours, Look};
 use schemars::JsonSchema;
 use serde::Deserialize;
 
@@ -20,6 +21,19 @@ pub struct DestinationOptions {
     /// How many pages of its own posts it reads back for their markers,
     /// from 1 to 20; 5 where unset.
     pub read_back: Option<ReadBack>,
+    /// The colours of its embeds.
+    pub colours: Option<Colours>,
+    /// How long a quiet thread stays open: `1h`, `1d`, `3d` or `1w`, the
+    /// week where unset.
+    pub archive_after: Option<ArchiveAfter>,
+}
+
+impl DestinationOptions {
+    /// How its posts look.
+    #[must_use]
+    pub fn look(&self) -> Look {
+        Look::of(self.colours, self.archive_after)
+    }
 }
 
 impl DestinationOptions {

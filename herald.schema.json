@@ -275,6 +275,65 @@
       },
       "additionalProperties": false
     },
+    "ArchiveAfter": {
+      "description": "How long a quiet thread stays open before Discord archives it: one of the\nfour lengths Discord takes.",
+      "oneOf": [
+        {
+          "description": "An hour.",
+          "type": "string",
+          "const": "1h"
+        },
+        {
+          "description": "A day.",
+          "type": "string",
+          "const": "1d"
+        },
+        {
+          "description": "Three days.",
+          "type": "string",
+          "const": "3d"
+        },
+        {
+          "description": "A week, the longest Discord keeps a quiet thread open.",
+          "type": "string",
+          "const": "1w"
+        }
+      ]
+    },
+    "Colour": {
+      "description": "A colour, written \"#rrggbb\".",
+      "type": "string",
+      "pattern": "^#[0-9A-Fa-f]{6}$"
+    },
+    "Colours": {
+      "description": "The colours of an announcement's embed, each where the config sets one.",
+      "type": "object",
+      "properties": {
+        "prerelease": {
+          "description": "A pre-release's colour; the violet of herald's banner, `#8f88c7`,\nwhere unset.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Colour"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "release": {
+          "description": "A release's colour; the gold of herald's trumpet, `#e39a26`, where\nunset.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Colour"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
     "Command": {
       "description": "A command a member gives herald.",
       "oneOf": [
@@ -312,6 +371,28 @@
               "type": [
                 "string",
                 "null"
+              ]
+            },
+            "archive_after": {
+              "description": "How long a quiet thread stays open: `1h`, `1d`, `3d` or `1w`, the\nweek where unset.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/ArchiveAfter"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "colours": {
+              "description": "The colours of its embeds.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Colours"
+                },
+                {
+                  "type": "null"
+                }
               ]
             },
             "interactions": {
@@ -779,6 +860,13 @@
         },
         "key": {
           "description": "The application's public key, in hex, from the same page. Each\ninteraction posted to herald is checked against it.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "os": {
+          "description": "The operating system the gateway session identifies as, in place of\nthe host's own.",
           "type": [
             "string",
             "null"

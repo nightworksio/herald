@@ -177,6 +177,13 @@ impl Interacting {
         self.interactions.session_domains()
     }
 
+    /// The operating system its gateway session identifies as, where the
+    /// config names one.
+    #[must_use]
+    pub fn os(&self) -> Option<&str> {
+        self.interactions.os.as_deref()
+    }
+
     /// The application's public key, in hex, which each interaction posted
     /// to herald is checked against.
     #[must_use]

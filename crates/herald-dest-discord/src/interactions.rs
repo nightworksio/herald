@@ -54,6 +54,9 @@ pub struct Interactions {
     /// Domains beside `discord.gg` a gateway session may connect under, such as a proxy's.
     #[serde(default)]
     pub domains: Vec<String>,
+    /// The operating system the gateway session identifies as, in place of
+    /// the host's own.
+    pub os: Option<String>,
 }
 
 impl Interactions {

@@ -7,13 +7,8 @@ use serde_json::{Map, Value, json};
 use crate::discord::{Credential, Discord};
 use crate::interact::subscribe_button;
 use crate::interactions::Subscribe;
+use crate::look::Look;
 
-/// The colour of a release's embed: the gold of herald's trumpet.
-const RELEASE: u32 = 0x00E3_9A26;
-/// The colour of a pre-release's embed: the violet of herald's banner.
-const PRERELEASE: u32 = 0x008F_88C7;
-/// A week, the longest Discord keeps a quiet thread open.
-const ARCHIVE_MINUTES: u32 = 10_080;
 /// The flag of a forum post pinned to the top of its forum.
 pub(crate) const PINNED: u64 = 2;
 /// A row of message components.
@@ -89,6 +84,7 @@ fn authorised(request: Request, credential: &Credential) -> Request {
 fn message(
     announcement: &Announcement,
     delivery: &Delivery,
+    look: Look,
     deduplicated: bool,
     subscribe: Option<&Subscribe>,
 ) -> Value {
@@ -113,11 +109,14 @@ fn message(
     );
     embed.insert(
         "color".to_owned(),
-        json!(if announcement.prerelease {
-            PRERELEASE
-        } else {
-            RELEASE
-        }),
+        json!(
+            if announcement.prerelease {
+                look.prerelease
+            } else {
+                look.release
+            }
+            .0
+        ),
     );
     embed.insert(
         "timestamp".to_owned(),
@@ -236,30 +235,24 @@ pub(crate) fn step(
     entry: &Entry,
 ) -> Result<Request, Refusal> {
     match &discord.credential {
-        Credential::Webhook(url) => webhook(
-            url,
-            step,
-            announcement,
-            delivery,
-            entry,
-            discord.route.forum,
-        ),
+        Credential::Webhook(url) => webhook(discord, url, step, announcement, delivery, entry),
         Credential::Bot(_) => bot(discord, step, announcement, delivery, entry),
     }
 }
 
 fn webhook(
+    discord: &Discord,
     url: &herald_ports::Secret,
     step: &Step,
     announcement: &Announcement,
     delivery: &Delivery,
     entry: &Entry,
-    forum: bool,
 ) -> Result<Request, Refusal> {
+    let forum = discord.route.forum;
     let credential = Credential::Webhook(url.clone());
     match step {
         Step::Post => {
-            let mut body = message(announcement, delivery, false, None);
+            let mut body = message(announcement, delivery, discord.look, false, None);
             if let (true, Value::Object(fields)) = (forum, &mut body) {
                 fields.insert("thread_name".to_owned(), json!(thread_name(announcement)));
             }
@@ -307,8 +300,8 @@ fn bot(
             let name = thread_name(announcement);
             let body = json!({
                 "name": name,
-                "auto_archive_duration": ARCHIVE_MINUTES,
-                "message": message(announcement, delivery, false, discord.route.subscribe.as_ref()),
+                "auto_archive_duration": discord.look.archive_after.minutes(),
+                "message": message(announcement, delivery, discord.look, false, discord.route.subscribe.as_ref()),
             });
             Ok(json(
                 Method::Post,
@@ -326,6 +319,7 @@ fn bot(
                 &message(
                     announcement,
                     delivery,
+                    discord.look,
                     true,
                     discord.route.subscribe.as_ref(),
                 ),
@@ -341,7 +335,7 @@ fn bot(
         Step::OpenThread => {
             let message = posted(entry)?;
             let name = thread_name(announcement);
-            let body = json!({ "name": name, "auto_archive_duration": ARCHIVE_MINUTES });
+            let body = json!({ "name": name, "auto_archive_duration": discord.look.archive_after.minutes() });
             let url = Text::plain(format!(
                 "{api}/channels/{channel}/messages/{message}/threads"
             ));

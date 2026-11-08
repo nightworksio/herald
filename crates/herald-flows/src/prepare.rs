@@ -277,7 +277,8 @@ impl Resolved<'_> {
                 };
                 Some(Reached::Discord(
                     Discord::new(credential, placed.clone(), reached.api.as_deref())
-                        .reading_back(reached.read_back.unwrap_or_default()),
+                        .reading_back(reached.read_back.unwrap_or_default())
+                        .looking(reached.look()),
                 ))
             }
             (Destination::Mastodon(reached), RouteOptions::Mastodon(placed)) => {
@@ -548,12 +549,16 @@ mod tests {
     }
 
     #[test]
-    fn each_destination_reads_back_the_pages_its_config_names() {
+    fn each_destination_reads_back_and_looks_as_its_config_says() {
         let pages = ReadBack::new(9).unwrap();
         let token = json!({ "secret": "HERALD_TOKEN" });
         let secret = || Secret::new("HERALD_TOKEN", "token");
         let discord = Destination::Discord(
-            serde_json::from_value(json!({ "token": token, "read_back": 9 })).unwrap(),
+            serde_json::from_value(json!({
+                "token": token, "read_back": 9,
+                "colours": { "release": "#112233" }, "archive_after": "1d"
+            }))
+            .unwrap(),
         );
         let slack = Destination::Slack(
             serde_json::from_value(json!({ "token": token, "read_back": 9 })).unwrap(),
@@ -585,6 +590,11 @@ mod tests {
                     None
                 )
                 .reading_back(pages)
+                .looking(herald_dest_discord::Look {
+                    release: herald_dest_discord::Colour(0x0011_2233),
+                    archive_after: herald_dest_discord::ArchiveAfter::Day,
+                    ..herald_dest_discord::Look::DEFAULT
+                })
             ))
         );
         assert_eq!(

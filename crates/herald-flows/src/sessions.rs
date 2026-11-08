@@ -214,6 +214,10 @@ where
                 {
                     if let Some(bot) = discord.bot() {
                         let gateway = Gateway::new(bot.clone(), &discord.session_domains());
+                        let gateway = match discord.os() {
+                            Some(os) => gateway.identifying_as(os),
+                            None => gateway,
+                        };
                         sessions.push(Box::pin(
                             self.gateway(sockets, name, discord, gateway, http),
                         ));
