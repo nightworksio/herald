@@ -116,6 +116,13 @@ mod replay {
         assert_eq!(colour(&webhook(false).looking(look), &release), 0x0011_2233);
         assert_eq!(colour(&bot(CHANNEL, false), &release), 0x00E3_9A26);
         assert_eq!(colour(&bot(CHANNEL, false), &prerelease), 0x008F_88C7);
+        let mut worded = std::collections::BTreeMap::new();
+        worded.insert(herald_core::Phrase::ReleaseLink, "Uitgave".to_owned());
+        let labelled = bot(CHANNEL, false).worded(herald_core::Wording::of(Some(&worded)));
+        let buttons =
+            body(&labelled, &Step::Post, &release, &fresh)["components"][0]["components"].clone();
+        assert_eq!(buttons[0]["label"], "Uitgave");
+        assert_eq!(buttons[1]["label"], "Changelog");
         assert_eq!(
             body(&discord, &Step::OpenThread, &release, &posted)["auto_archive_duration"],
             1_440

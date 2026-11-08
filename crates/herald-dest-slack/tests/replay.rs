@@ -724,8 +724,34 @@ mod subscribing {
         for credential in [bot(), hook] {
             let body = posted(credential, Some(Subscribe { button: true }));
             let blocks = body["blocks"].as_array().unwrap();
-            assert_eq!(blocks.last(), Some(&subscribe_block("php-mutation-gate")));
+            assert_eq!(
+                blocks.last(),
+                Some(&subscribe_block("php-mutation-gate", "Subscribe"))
+            );
         }
+        let mut worded = std::collections::BTreeMap::new();
+        worded.insert(herald_core::Phrase::SubscribeButton, "Volgen".to_owned());
+        let announcement = sample::announcement();
+        let labelled = Slack::new(
+            bot(),
+            RouteOptions {
+                channel: Some("C0123456789".to_owned()),
+                subscribe: Some(Subscribe { button: true }),
+            },
+            None,
+        )
+        .worded(herald_core::Wording::of(Some(&worded)));
+        let body: Value = serde_json::from_slice(
+            &labelled
+                .request(&Step::Post, &announcement, &Entry::new(announcement.key))
+                .unwrap()
+                .body,
+        )
+        .unwrap();
+        assert_eq!(
+            body["blocks"].as_array().unwrap().last(),
+            Some(&subscribe_block("php-mutation-gate", "Volgen"))
+        );
         for quiet in [Some(Subscribe { button: false }), None] {
             let body = posted(bot(), quiet);
             let blocks = body["blocks"].as_array().unwrap();

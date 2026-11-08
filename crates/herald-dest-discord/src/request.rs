@@ -1,13 +1,12 @@
 use std::fmt;
 
-use herald_core::{Announcement, Chore, Delivery, Entry, Step, digest};
+use herald_core::{Announcement, Chore, Delivery, Entry, Phrase, Step, Wording, digest};
 use herald_ports::{Method, Request, Text};
 use serde_json::{Map, Value, json};
 
 use crate::discord::{Credential, Discord};
 use crate::interact::subscribe_button;
 use crate::interactions::Subscribe;
-use crate::look::Look;
 
 /// The flag of a forum post pinned to the top of its forum.
 pub(crate) const PINNED: u64 = 2;
@@ -82,12 +81,13 @@ fn authorised(request: Request, credential: &Credential) -> Request {
 }
 
 fn message(
+    discord: &Discord,
     announcement: &Announcement,
     delivery: &Delivery,
-    look: Look,
     deduplicated: bool,
     subscribe: Option<&Subscribe>,
 ) -> Value {
+    let look = discord.look;
     let roles: Vec<&str> = delivery
         .mentions
         .roles
@@ -133,7 +133,8 @@ fn message(
     body.insert("content".to_owned(), json!(content.join(" ")));
     body.insert("embeds".to_owned(), json!([embed]));
     body.extend(
-        buttons(announcement, subscribe).map(|components| ("components".to_owned(), components)),
+        buttons(&discord.wording, announcement, subscribe)
+            .map(|components| ("components".to_owned(), components)),
     );
     body.insert(
         "allowed_mentions".to_owned(),
@@ -149,15 +150,19 @@ fn message(
     Value::Object(body)
 }
 
-fn buttons(announcement: &Announcement, subscribe: Option<&Subscribe>) -> Option<Value> {
+fn buttons(
+    wording: &Wording,
+    announcement: &Announcement,
+    subscribe: Option<&Subscribe>,
+) -> Option<Value> {
     let links = [
-        ("Release", &announcement.release),
-        ("Changelog", &announcement.changelog),
+        (wording.text(Phrase::ReleaseLink), &announcement.release),
+        (wording.text(Phrase::ChangelogLink), &announcement.changelog),
     ];
     let subscribing = subscribe
         .filter(|subscribe| subscribe.button)
         .and_then(|_| subscribe_button(&announcement.project))
-        .map(|id| json!({ "type": BUTTON, "style": SECONDARY, "label": "Subscribe", "custom_id": id }));
+        .map(|id| json!({ "type": BUTTON, "style": SECONDARY, "label": wording.text(Phrase::SubscribeButton), "custom_id": id }));
     let buttons: Vec<Value> = links
         .into_iter()
         .filter_map(|(label, url)| {
@@ -252,7 +257,7 @@ fn webhook(
     let credential = Credential::Webhook(url.clone());
     match step {
         Step::Post => {
-            let mut body = message(announcement, delivery, discord.look, false, None);
+            let mut body = message(discord, announcement, delivery, false, None);
             if let (true, Value::Object(fields)) = (forum, &mut body) {
                 fields.insert("thread_name".to_owned(), json!(thread_name(announcement)));
             }
@@ -301,7 +306,7 @@ fn bot(
             let body = json!({
                 "name": name,
                 "auto_archive_duration": discord.look.archive_after.minutes(),
-                "message": message(announcement, delivery, discord.look, false, discord.route.subscribe.as_ref()),
+                "message": message(discord, announcement, delivery, false, discord.route.subscribe.as_ref()),
             });
             Ok(json(
                 Method::Post,
@@ -317,9 +322,9 @@ fn bot(
                 url,
                 credential,
                 &message(
+                    discord,
                     announcement,
                     delivery,
-                    discord.look,
                     true,
                     discord.route.subscribe.as_ref(),
                 ),

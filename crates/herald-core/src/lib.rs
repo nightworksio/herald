@@ -30,6 +30,7 @@ mod route;
 mod size;
 mod subscription;
 mod version;
+mod wording;
 
 pub use activity::{
     ACTIVITY_JSON, SIGNED, Signing, body_sha256, public_pem, signature_header, signing,
@@ -73,3 +74,4 @@ pub use route::{
 pub use size::Size;
 pub use subscription::Subscription;
 pub use version::prerelease_version;
+pub use wording::{Phrase, Wording};

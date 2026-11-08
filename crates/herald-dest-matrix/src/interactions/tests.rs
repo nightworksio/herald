@@ -24,6 +24,7 @@ fn interactions_default_to_an_appservice_answering_herald_s_prefix() {
             replies: Replies::Public,
             prereleases: true,
             template: Some(TemplateName::new("t")),
+            wording: herald_core::Wording::default(),
         }
     );
 }

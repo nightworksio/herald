@@ -26,6 +26,7 @@ fn interactions_default_to_http_every_command_and_ephemeral_replies() {
             replies: Replies::Ephemeral,
             prereleases: false,
             template: None,
+            wording: herald_core::Wording::default(),
         }
     );
     let chosen = written(r#", "replies": "public", "prereleases": true, "template": "short""#);
@@ -36,6 +37,7 @@ fn interactions_default_to_http_every_command_and_ephemeral_replies() {
             replies: Replies::Public,
             prereleases: true,
             template: Some(TemplateName::new("short")),
+            wording: herald_core::Wording::default(),
         }
     );
 }

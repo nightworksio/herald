@@ -210,6 +210,30 @@ body = "{{{{ event.body }}}}"
     }
 
     #[test]
+    fn a_wording_that_cannot_be_said_or_names_no_phrase_is_refused() {
+        let base = config("git-branch", &bot(""), "channel = \"1566200000000000100\"");
+        let worded = |line: &str| {
+            base.replace(
+                "signing = { secret = \"HERALD_SLACK_SIGNING\" }",
+                &format!("signing = {{ secret = \"HERALD_SLACK_SIGNING\" }}\n{line}"),
+            )
+        };
+        assert!(
+            load(
+                "herald.toml",
+                &worded(r#"wording = { subscribed = "Ja {{ project }}.", date = "%d-%m" }"#),
+                &nothing
+            )
+            .is_ok()
+        );
+        refused(
+            &worded(r#"wording = { subscribed = "{{ project" }"#),
+            "destinations.slack.interactions: wording.subscribed is not a template",
+        );
+        refused(&worded(r#"wording = { greeting = "Hoi" }"#), "greeting");
+    }
+
+    #[test]
     fn a_sync_reads_within_the_http_total_and_from_one_to_a_hundred_messages() {
         let base = config("git-branch", &bot(""), "channel = \"1566200000000000100\"");
         let with = |line: &str| {

@@ -1,6 +1,6 @@
 use std::fmt;
 
-use herald_core::{Announcement, Dialect, Entry, Step, safe_url};
+use herald_core::{Announcement, Dialect, Entry, Phrase, Step, safe_url};
 use herald_ports::{Method, Request, Text, USER_AGENT, unreserved};
 use serde_json::{Value, json};
 
@@ -122,7 +122,11 @@ fn section(text: &str) -> Value {
     json!({ "type": "section", "text": { "type": "mrkdwn", "text": text } })
 }
 
-fn announcement_body(announcement: &Announcement, subscribe: Option<&Subscribe>) -> Value {
+fn announcement_body(
+    slack: &Slack,
+    announcement: &Announcement,
+    subscribe: Option<&Subscribe>,
+) -> Value {
     let first = announcement
         .parts
         .first()
@@ -145,7 +149,10 @@ fn announcement_body(announcement: &Announcement, subscribe: Option<&Subscribe>)
         fallback.push(text);
     }
     if subscribe.is_some_and(|subscribe| subscribe.button) {
-        blocks.push(subscribe_block(&announcement.project));
+        blocks.push(subscribe_block(
+            &announcement.project,
+            slack.wording.text(Phrase::SubscribeButton),
+        ));
     }
     json!({
         "text": fallback.join("\n\n"),
@@ -227,7 +234,7 @@ pub(crate) fn step(
         (Credential::Webhook(url), Step::Post) => Ok(posted_json(
             slack,
             Text::secret(url.clone()),
-            &announcement_body(announcement, slack.route.subscribe.as_ref()),
+            &announcement_body(slack, announcement, slack.route.subscribe.as_ref()),
         )),
         (Credential::Webhook(url), Step::Chunk(index)) => Ok(posted_json(
             slack,
@@ -239,7 +246,7 @@ pub(crate) fn step(
         (Credential::Bot(_), Step::Post) => {
             let marks = &announcement.marks;
             let body = with(
-                announcement_body(announcement, slack.route.subscribe.as_ref()),
+                announcement_body(slack, announcement, slack.route.subscribe.as_ref()),
                 &[
                     ("channel", json!(channel(slack)?)),
                     (

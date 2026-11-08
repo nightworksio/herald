@@ -1,7 +1,9 @@
 //! How a Discord destination takes commands, as
 //! `[destinations.*.interactions]` writes it (ADR-0016).
 
-use herald_core::{Answering, Command, Replies, TemplateName, every_command};
+use std::collections::BTreeMap;
+
+use herald_core::{Answering, Command, Phrase, Replies, TemplateName, Wording, every_command};
 use schemars::JsonSchema;
 use serde::Deserialize;
 
@@ -51,6 +53,10 @@ pub struct Interactions {
     /// The template `latest` takes its title from and `changelog` its body,
     /// in place of the route's own.
     pub template: Option<String>,
+    /// What it says back and how it describes its commands, phrase by
+    /// phrase, each a template over `project`, `projects`, `named` and
+    /// `command`; herald's own words for every phrase left out.
+    pub wording: Option<BTreeMap<Phrase, String>>,
     /// Domains beside `discord.gg` a gateway session may connect under, such as a proxy's.
     #[serde(default)]
     pub domains: Vec<String>,
@@ -60,6 +66,12 @@ pub struct Interactions {
 }
 
 impl Interactions {
+    /// What it says, as the config words it.
+    #[must_use]
+    pub fn wording(&self) -> Wording {
+        Wording::of(self.wording.as_ref())
+    }
+
     /// How it answers, whatever carries the commands.
     #[must_use]
     pub fn answering(&self) -> Answering {
@@ -68,6 +80,7 @@ impl Interactions {
             replies: self.replies,
             prereleases: self.prereleases,
             template: self.template.as_deref().map(TemplateName::new),
+            wording: self.wording(),
         }
     }
 
@@ -78,6 +91,9 @@ impl Interactions {
     ///
     /// The first that is not, naming the fix.
     pub fn check(&self) -> Result<(), String> {
+        if let Some(worded) = &self.wording {
+            Wording::check(worded)?;
+        }
         if !snowflake(&self.application) {
             return Err(format!(
                 "\"{}\" is not an application id; give the id from the application's General Information page",

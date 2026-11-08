@@ -950,6 +950,16 @@
         "via": {
           "description": "How Discord carries them.",
           "$ref": "#/$defs/Via"
+        },
+        "wording": {
+          "description": "What it says back and how it describes its commands, phrase by\nphrase, each a template over `project`, `projects`, `named` and\n`command`; herald's own words for every phrase left out.",
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": {
+            "type": "string"
+          }
         }
       },
       "additionalProperties": false,
@@ -1040,6 +1050,16 @@
         "via": {
           "description": "How the homeserver carries them.",
           "$ref": "#/$defs/Via2"
+        },
+        "wording": {
+          "description": "What it says back and how it describes its commands, phrase by\nphrase, each a template over `project`, `projects`, `named` and\n`command`; herald's own words for every phrase left out.",
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": {
+            "type": "string"
+          }
         }
       },
       "additionalProperties": false
@@ -1116,6 +1136,16 @@
         "via": {
           "description": "How Slack carries them.",
           "$ref": "#/$defs/Via3"
+        },
+        "wording": {
+          "description": "What it says back and how it describes its commands, phrase by\nphrase, each a template over `project`, `projects`, `named` and\n`command`; herald's own words for every phrase left out.",
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": {
+            "type": "string"
+          }
         }
       },
       "additionalProperties": false

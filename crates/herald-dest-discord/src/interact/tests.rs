@@ -328,7 +328,19 @@ fn the_commands_are_registered_on_their_own_or_as_the_group_s_subcommands() {
     assert_eq!(registered[0]["options"][0]["autocomplete"], true);
     assert_eq!(registered[1]["name"], "latest");
     assert_eq!(registered[1]["options"][1]["name"], "share");
-    assert_eq!(registered[1]["description"], Command::Latest.description());
+    assert_eq!(
+        registered[1]["description"],
+        herald_core::Wording::default().describe(Command::Latest)
+    );
+    let dutch = interacting(
+        r#", "group": "herald", "wording": {"describe_latest": "Toon de laatste", "describe_group": "Vraag herald", "describe_project": "Het project", "describe_share": "Toon iedereen"}"#,
+    )
+    .commands();
+    assert_eq!(dutch[0]["description"], "Vraag herald");
+    let latest = &dutch[0]["options"][2];
+    assert_eq!(latest["description"], "Toon de laatste");
+    assert_eq!(latest["options"][0]["description"], "Het project");
+    assert_eq!(latest["options"][1]["description"], "Toon iedereen");
     let grouped = interacting(r#", "group": "herald""#).commands();
     assert_eq!(grouped[0]["name"], "herald");
     assert_eq!(grouped[0]["options"].as_array().map(Vec::len), Some(4));
@@ -390,6 +402,13 @@ fn a_role_is_given_and_taken_by_the_bot_with_a_reason_and_ids_checked() {
     assert_eq!(
         header(&taken, "X-Audit-Log-Reason").as_deref(),
         Some("Unsubscribed through herald")
+    );
+    let worded = interacting(r#", "wording": {"audit_subscribed": "Via herald aangemeld"}"#)
+        .role(GUILD, USER, ROLE, true)
+        .unwrap();
+    assert_eq!(
+        header(&worded, "X-Audit-Log-Reason").as_deref(),
+        Some("Via herald aangemeld")
     );
     assert_eq!(interacting("").role("../x", USER, ROLE, true), None);
     assert_eq!(interacting("").role(GUILD, "1", ROLE, true), None);

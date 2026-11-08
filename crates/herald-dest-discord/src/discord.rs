@@ -1,6 +1,6 @@
 use herald_core::{
     Announcement, Chore, Delivery, Dialect, Entry, Features, Limits, Measure, MentionStyle, Pins,
-    Profile, ReadBack, Sent, Step, Threads,
+    Profile, ReadBack, Sent, Step, Threads, Wording,
 };
 use herald_ports::{Http, HttpError, Request, Secret};
 
@@ -30,6 +30,7 @@ pub struct Discord {
     pub(crate) route: RouteOptions,
     pub(crate) read_back: ReadBack,
     pub(crate) look: Look,
+    pub(crate) wording: Wording,
 }
 
 impl Discord {
@@ -43,6 +44,7 @@ impl Discord {
             route,
             read_back: ReadBack::DEFAULT,
             look: Look::DEFAULT,
+            wording: Wording::default(),
         }
     }
 
@@ -50,6 +52,13 @@ impl Discord {
     #[must_use]
     pub fn reading_back(self, read_back: ReadBack) -> Self {
         Self { read_back, ..self }
+    }
+
+    /// The destination, its posts' buttons labelled as `wording` words
+    /// them.
+    #[must_use]
+    pub fn worded(self, wording: Wording) -> Self {
+        Self { wording, ..self }
     }
 
     /// The destination, its posts looking as `look` says.

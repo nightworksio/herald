@@ -1,6 +1,6 @@
 use herald_core::{
     Announcement, Dialect, Entry, Facts, Features, Limits, Marker, Measure, MentionRoom,
-    MentionStyle, Pins, Profile, ReadBack, Sent, Step, Threads,
+    MentionStyle, Pins, Profile, ReadBack, Sent, Step, Threads, Wording,
 };
 use herald_ports::{Http, HttpError, Request, Secret, unreserved};
 use serde_json::Value;
@@ -71,6 +71,7 @@ pub struct Slack {
     pub(crate) route: RouteOptions,
     pub(crate) read_back: ReadBack,
     pub(crate) team: Option<String>,
+    pub(crate) wording: Wording,
 }
 
 impl Slack {
@@ -87,7 +88,15 @@ impl Slack {
             route,
             read_back: ReadBack::DEFAULT,
             team: None,
+            wording: Wording::default(),
         }
+    }
+
+    /// The destination, its subscribe button labelled as `wording` words
+    /// it.
+    #[must_use]
+    pub fn worded(self, wording: Wording) -> Self {
+        Self { wording, ..self }
     }
 
     /// The destination, as an Enterprise Grid org-wide app installed in the

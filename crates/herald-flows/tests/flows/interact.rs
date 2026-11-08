@@ -322,6 +322,31 @@ fn a_destination_answering_pre_releases_shows_the_newest_with_its_own_template()
 }
 
 #[test]
+fn a_destination_s_wording_words_its_replies_its_days_and_its_links() {
+    let worded = r#"wording = { subscribed = "Je krijgt een melding bij {{ project }}.", date = "%d-%m-%Y", changelog_link = "Wijzigingen", unavailable = "Even niet." }"#;
+    let dutch = World::new(worded, Script::answering(&[(ROLE_PATH, 204, "")]))
+        .announced("gate", &["releases"]);
+    assert_eq!(
+        said(&dutch.interact(&discord(Command::Latest))),
+        "**[gate 1\\.0\\.0](https://example.org/1.0.0)**\n15-01-2027"
+    );
+    assert_eq!(
+        said(&dutch.interact(&discord(Command::Changelog))),
+        "## Added\n\nA thing.\n\n[Wijzigingen](https://example.org/changes)"
+    );
+    assert_eq!(
+        said(&dutch.interact(&discord(Command::Subscribe))),
+        "Je krijgt een melding bij gate."
+    );
+    let unworded = world().interact(&slack(Command::Latest));
+    assert!(
+        said(&unworded).ends_with("2027-01-15"),
+        "{}",
+        said(&unworded)
+    );
+}
+
+#[test]
 fn changelog_shows_the_notes_with_a_link_to_the_changelog_or_the_release() {
     assert_eq!(
         said(&world().interact(&discord(Command::Changelog))),

@@ -278,7 +278,14 @@ impl Resolved<'_> {
                 Some(Reached::Discord(
                     Discord::new(credential, placed.clone(), reached.api.as_deref())
                         .reading_back(reached.read_back.unwrap_or_default())
-                        .looking(reached.look()),
+                        .looking(reached.look())
+                        .worded(
+                            reached
+                                .interactions
+                                .as_ref()
+                                .map(herald_dest_discord::Interactions::wording)
+                                .unwrap_or_default(),
+                        ),
                 ))
             }
             (Destination::Mastodon(reached), RouteOptions::Mastodon(placed)) => {
@@ -309,7 +316,14 @@ impl Resolved<'_> {
                     Slack::new(credential, placed.clone(), reached.api.as_deref())
                         .on(reached.domain.unwrap_or_default())
                         .in_team(reached.team.as_deref())
-                        .reading_back(reached.read_back.unwrap_or_default()),
+                        .reading_back(reached.read_back.unwrap_or_default())
+                        .worded(
+                            reached
+                                .interactions
+                                .as_ref()
+                                .map(herald_dest_slack::Interactions::wording)
+                                .unwrap_or_default(),
+                        ),
                 ))
             }
             _ => None,
@@ -535,7 +549,7 @@ async fn interacts<S: Secrets>(
 
 #[cfg(test)]
 mod tests {
-    use herald_core::ReadBack;
+    use herald_core::{Phrase, ReadBack, Wording};
     use serde_json::json;
 
     use super::*;
@@ -559,7 +573,8 @@ mod tests {
         let discord = Destination::Discord(
             serde_json::from_value(json!({
                 "token": token, "read_back": 9,
-                "colours": { "release": "#112233" }, "archive_after": "1d"
+                "colours": { "release": "#112233" }, "archive_after": "1d",
+                "interactions": { "application": "1566184281406177000", "wording": { "release_link": "Uitgave" } }
             }))
             .unwrap(),
         );
@@ -601,6 +616,9 @@ mod tests {
                     archive_after: herald_dest_discord::ArchiveAfter::Day,
                     ..herald_dest_discord::Look::DEFAULT
                 })
+                .worded(Wording::of(Some(
+                    &[(Phrase::ReleaseLink, "Uitgave".to_owned())].into()
+                )))
             ))
         );
         assert_eq!(

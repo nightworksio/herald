@@ -5,7 +5,7 @@
 use std::collections::BTreeMap;
 use std::fmt;
 
-use herald_core::{Answering, Asked, Command, DestinationName, Place, SecretRef};
+use herald_core::{Answering, Asked, Command, DestinationName, Phrase, Place, SecretRef};
 use herald_ports::{Method, Request, Response, Secret, Text};
 use serde_json::{Value, json};
 
@@ -357,7 +357,7 @@ impl Interacting {
             .collect();
         let mut command = json!({
             "command": self.interactions.command,
-            "description": "Ask herald about the projects it announces",
+            "description": self.interactions.wording().text(Phrase::DescribeGroup),
             "usage_hint": format!("{} [project] [share]", commands.join(" | ")),
             "should_escape": false,
         });
@@ -405,17 +405,17 @@ struct Placed<'a> {
     url: Option<&'a str>,
 }
 
-/// The block holding the button that subscribes to `project`, or
-/// unsubscribes a member already subscribed.
+/// The block holding the button, labelled `label`, that subscribes to
+/// `project`, or unsubscribes a member already subscribed.
 #[must_use]
-pub fn subscribe_block(project: &str) -> Value {
+pub fn subscribe_block(project: &str, label: &str) -> Value {
     json!({
         "type": "actions",
         "elements": [{
             "type": "button",
             "action_id": SUBSCRIBE,
             "value": project,
-            "text": { "type": "plain_text", "text": "Subscribe" },
+            "text": { "type": "plain_text", "text": label },
         }],
     })
 }

@@ -200,7 +200,7 @@ fn an_answer_is_one_message_of_sections_seen_by_the_asker_unless_public() {
 #[test]
 fn the_subscribe_block_holds_one_button_valued_by_its_project() {
     assert_eq!(
-        subscribe_block("herald"),
+        subscribe_block("herald", "Subscribe"),
         json!({
             "type": "actions",
             "elements": [{

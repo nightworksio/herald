@@ -8,7 +8,6 @@ use serde::Deserialize;
 
 use crate::key::RouteId;
 use crate::latest::Latest;
-use crate::markup::escaped;
 use crate::route::{DestinationName, TemplateName};
 
 /// The most projects a destination lists as completions of what a member
@@ -55,17 +54,6 @@ impl Command {
         Self::ALL
             .into_iter()
             .find(|command| command.name().eq_ignore_ascii_case(name))
-    }
-
-    /// What the command does, as a destination lists it.
-    #[must_use]
-    pub const fn description(self) -> &'static str {
-        match self {
-            Self::Subscribe => "Be mentioned when a project announces a release",
-            Self::Unsubscribe => "Stop being mentioned when a project announces a release",
-            Self::Latest => "Show what a project announced last",
-            Self::Changelog => "Show the notes of what a project announced last",
-        }
     }
 
     /// Whether a member may ask for the command's answer to be shown to the
@@ -116,6 +104,8 @@ pub struct Answering {
     /// The template `latest` takes its title from and `changelog` its body,
     /// in place of the route's own.
     pub template: Option<TemplateName>,
+    /// What it says, as the config words it.
+    pub wording: crate::wording::Wording,
 }
 
 impl Answering {
@@ -229,28 +219,7 @@ pub enum Unchosen {
 
 impl fmt::Display for Unchosen {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let listed = |known: &[String]| {
-            known
-                .iter()
-                .map(String::as_str)
-                .map(escaped)
-                .collect::<Vec<_>>()
-                .join(", ")
-        };
-        match self {
-            Self::Nothing => f.write_str("Nothing has been announced here yet."),
-            Self::Many(known) => write!(
-                f,
-                "More than one project is announced here; name one of {}.",
-                listed(known)
-            ),
-            Self::Unknown { named, known } => write!(
-                f,
-                "{} is not announced here; name one of {}.",
-                escaped(named),
-                listed(known)
-            ),
-        }
+        f.write_str(&crate::wording::Wording::default().say(&Said::Unchosen(self.clone())))
     }
 }
 
@@ -363,48 +332,7 @@ pub enum Said {
 
 impl fmt::Display for Said {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Subscribed(project) => {
-                write!(
-                    f,
-                    "You will be mentioned when {} announces a release.",
-                    escaped(project)
-                )
-            }
-            Self::AlreadySubscribed(project) => {
-                write!(
-                    f,
-                    "You are already mentioned when {} announces a release.",
-                    escaped(project)
-                )
-            }
-            Self::Unsubscribed(project) => {
-                write!(
-                    f,
-                    "You will no longer be mentioned when {} announces a release.",
-                    escaped(project)
-                )
-            }
-            Self::NotSubscribed(project) => {
-                write!(
-                    f,
-                    "You are not mentioned when {} announces a release.",
-                    escaped(project)
-                )
-            }
-            Self::Unoffered(project) => {
-                write!(
-                    f,
-                    "Subscribing to {} is not offered here.",
-                    escaped(project)
-                )
-            }
-            Self::Unchosen(unchosen) => unchosen.fmt(f),
-            Self::Disabled(command) => {
-                write!(f, "The command {} is not answered here.", command.name())
-            }
-            Self::Unavailable => f.write_str("herald could not answer just now; try again later."),
-        }
+        f.write_str(&crate::wording::Wording::default().say(self))
     }
 }
 

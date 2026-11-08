@@ -41,6 +41,7 @@ fn interactions_default_to_http_the_herald_command_and_every_command() {
             replies: Replies::Public,
             prereleases: true,
             template: Some(TemplateName::new("t")),
+            wording: herald_core::Wording::default(),
         }
     );
 }
