@@ -2240,6 +2240,17 @@
               "type": "string",
               "const": "packagist"
             },
+            "ordering": {
+              "description": "How Docker Hub lists a repository's tags for a poll:\n`last_updated`, the most recently pushed first, where unset, or\n`name`.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/TagOrdering"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
             "package": {
               "description": "The package, as the registry names it: `vendor/name` on Packagist,\na crate's name, an npm package's name such as `@scope/name`, or a\nDocker Hub repository such as `library/caddy`, where an official\nimage may leave out `library/`.",
               "type": "string"
@@ -2274,7 +2285,7 @@
               "minimum": 1
             },
             "token": {
-              "description": "A token for a private npm package, sent as a bearer token; the other\nregistries take none.",
+              "description": "A token for a private package: npm's, sent as a bearer token;\nPrivate Packagist's Composer token, sent as HTTP Basic with the user\n`token`; or a Docker Hub personal access token, exchanged with\n`username` for a bearer token. crates.io takes none.",
               "anyOf": [
                 {
                   "$ref": "#/$defs/SecretRef"
@@ -2282,6 +2293,13 @@
                 {
                   "type": "null"
                 }
+              ]
+            },
+            "username": {
+              "description": "The Docker Hub account `token` belongs to.",
+              "type": [
+                "string",
+                "null"
               ]
             }
           },
@@ -2313,6 +2331,17 @@
               "type": "string",
               "const": "crates-io"
             },
+            "ordering": {
+              "description": "How Docker Hub lists a repository's tags for a poll:\n`last_updated`, the most recently pushed first, where unset, or\n`name`.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/TagOrdering"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
             "package": {
               "description": "The package, as the registry names it: `vendor/name` on Packagist,\na crate's name, an npm package's name such as `@scope/name`, or a\nDocker Hub repository such as `library/caddy`, where an official\nimage may leave out `library/`.",
               "type": "string"
@@ -2347,7 +2376,7 @@
               "minimum": 1
             },
             "token": {
-              "description": "A token for a private npm package, sent as a bearer token; the other\nregistries take none.",
+              "description": "A token for a private package: npm's, sent as a bearer token;\nPrivate Packagist's Composer token, sent as HTTP Basic with the user\n`token`; or a Docker Hub personal access token, exchanged with\n`username` for a bearer token. crates.io takes none.",
               "anyOf": [
                 {
                   "$ref": "#/$defs/SecretRef"
@@ -2355,6 +2384,13 @@
                 {
                   "type": "null"
                 }
+              ]
+            },
+            "username": {
+              "description": "The Docker Hub account `token` belongs to.",
+              "type": [
+                "string",
+                "null"
               ]
             }
           },
@@ -2386,6 +2422,17 @@
               "type": "string",
               "const": "npm"
             },
+            "ordering": {
+              "description": "How Docker Hub lists a repository's tags for a poll:\n`last_updated`, the most recently pushed first, where unset, or\n`name`.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/TagOrdering"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
             "package": {
               "description": "The package, as the registry names it: `vendor/name` on Packagist,\na crate's name, an npm package's name such as `@scope/name`, or a\nDocker Hub repository such as `library/caddy`, where an official\nimage may leave out `library/`.",
               "type": "string"
@@ -2420,7 +2467,7 @@
               "minimum": 1
             },
             "token": {
-              "description": "A token for a private npm package, sent as a bearer token; the other\nregistries take none.",
+              "description": "A token for a private package: npm's, sent as a bearer token;\nPrivate Packagist's Composer token, sent as HTTP Basic with the user\n`token`; or a Docker Hub personal access token, exchanged with\n`username` for a bearer token. crates.io takes none.",
               "anyOf": [
                 {
                   "$ref": "#/$defs/SecretRef"
@@ -2428,6 +2475,13 @@
                 {
                   "type": "null"
                 }
+              ]
+            },
+            "username": {
+              "description": "The Docker Hub account `token` belongs to.",
+              "type": [
+                "string",
+                "null"
               ]
             }
           },
@@ -2459,6 +2513,17 @@
               "type": "string",
               "const": "docker-hub"
             },
+            "ordering": {
+              "description": "How Docker Hub lists a repository's tags for a poll:\n`last_updated`, the most recently pushed first, where unset, or\n`name`.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/TagOrdering"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
             "package": {
               "description": "The package, as the registry names it: `vendor/name` on Packagist,\na crate's name, an npm package's name such as `@scope/name`, or a\nDocker Hub repository such as `library/caddy`, where an official\nimage may leave out `library/`.",
               "type": "string"
@@ -2493,7 +2558,7 @@
               "minimum": 1
             },
             "token": {
-              "description": "A token for a private npm package, sent as a bearer token; the other\nregistries take none.",
+              "description": "A token for a private package: npm's, sent as a bearer token;\nPrivate Packagist's Composer token, sent as HTTP Basic with the user\n`token`; or a Docker Hub personal access token, exchanged with\n`username` for a bearer token. crates.io takes none.",
               "anyOf": [
                 {
                   "$ref": "#/$defs/SecretRef"
@@ -2501,6 +2566,13 @@
                 {
                   "type": "null"
                 }
+              ]
+            },
+            "username": {
+              "description": "The Docker Hub account `token` belongs to.",
+              "type": [
+                "string",
+                "null"
               ]
             }
           },
@@ -3358,6 +3430,21 @@
         }
       },
       "additionalProperties": false
+    },
+    "TagOrdering": {
+      "description": "How Docker Hub lists a repository's tags.",
+      "oneOf": [
+        {
+          "description": "The most recently pushed first.",
+          "type": "string",
+          "const": "last_updated"
+        },
+        {
+          "description": "By name.",
+          "type": "string",
+          "const": "name"
+        }
+      ]
     },
     "Template": {
       "description": "A template: its title, and its body inline or in a file beside the config.",

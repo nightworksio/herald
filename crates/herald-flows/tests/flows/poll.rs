@@ -48,7 +48,16 @@ fn backfilled(mut config: Config, backfill: usize) -> Config {
 }
 
 fn swept(config: &Config, store: &Failing, script: &Script) -> Sweep {
-    let prepared = pollster::block_on(prepare(config, &secrets(), &FakeSigner)).unwrap();
+    swept_with(config, store, script, &secrets())
+}
+
+fn swept_with(
+    config: &Config,
+    store: &Failing,
+    script: &Script,
+    secrets: &herald_testing::FakeSecrets,
+) -> Sweep {
+    let prepared = pollster::block_on(prepare(config, secrets, &FakeSigner)).unwrap();
     let connected = prepared.connect(|_| Ok::<_, ()>(script.clone())).unwrap();
     let clock = FakeClock::at(NOON);
     let ports = Ports {
@@ -319,6 +328,63 @@ fn a_registry_is_polled_as_a_forge_is_with_one_request() {
             "crates.io's versions was answered with 404".to_owned()
         ))
     );
+}
+
+#[test]
+fn a_docker_hub_token_is_exchanged_before_each_poll_and_a_refused_exchange_stops_it() {
+    let store = healthy();
+    let mut config = config("");
+    config.sources.insert(
+        SourceName::new("gate"),
+        Source::Registry(
+            Registry::DockerHub,
+            RegistryOptions {
+                package: "nightworksio/gate".to_owned(),
+                token: Some(herald_core::SecretRef {
+                    secret: "HERALD_DOCKER_HUB_TOKEN".to_owned(),
+                }),
+                username: Some("wessel".to_owned()),
+                backfill: 1,
+                ..RegistryOptions::default()
+            },
+        ),
+    );
+    let secrets = secrets().with("HERALD_DOCKER_HUB_TOKEN", "dckr_pat_1");
+    let tags = serde_json::json!({ "results": [
+        { "name": "0.2.0", "tag_last_pushed": "2026-10-31T12:00:00Z" },
+    ]})
+    .to_string();
+    let exchanged = (
+        "POST https://hub.docker.com/v2/auth/token",
+        200,
+        r#"{"access_token":"jwt-1"}"#,
+    );
+    let mut answers = vec![
+        exchanged,
+        (
+            "/repositories/gate/tags?page_size=30&ordering=last_updated",
+            200,
+            tags.as_str(),
+        ),
+    ];
+    answers.extend(announced());
+    let script = Script::answering(&answers);
+    let Sweep::Polled { found, .. } = swept_with(&config, &store, &script, &secrets) else {
+        panic!("Docker Hub was not polled");
+    };
+    assert_eq!(found, 1);
+    let sent: serde_json::Value = serde_json::from_slice(&script.bodies()[0]).unwrap();
+    assert_eq!(
+        sent,
+        serde_json::json!({ "identifier": "wessel", "secret": "dckr_pat_1" })
+    );
+    let refused = Script::answering(&[(exchanged.0, 401, r#"{"detail":"no"}"#)]);
+    let Sweep::Stopped(Stop::Source(reason)) = swept_with(&config, &healthy(), &refused, &secrets)
+    else {
+        panic!("a refused exchange did not stop the poll");
+    };
+    assert!(reason.contains("check the username"), "{reason}");
+    assert_eq!(refused.seen().len(), 1);
 }
 
 #[test]

@@ -9,6 +9,7 @@ mod address;
 mod announce;
 mod bounds;
 mod chunk;
+mod credentials;
 mod cursor;
 mod duration;
 mod event;
@@ -39,6 +40,7 @@ pub use announce::{
 };
 pub use bounds::{Inbound, ReadBack, Sandbox};
 pub use chunk::{Room, chunk, size};
+pub use credentials::basic;
 pub use cursor::{Cursor, Polled, fresh};
 pub use duration::Duration;
 pub use event::{Draft, Event, Kind, Problem};

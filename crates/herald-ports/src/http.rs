@@ -34,8 +34,8 @@ impl Method {
 }
 
 /// One request, as a value. Its URL and header values may carry secrets, which
-/// its `Display` redacts.
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// its `Display` redacts, and a sealed body is never shown.
+#[derive(Clone, PartialEq, Eq)]
 pub struct Request {
     /// The method.
     pub method: Method,
@@ -47,6 +47,29 @@ pub struct Request {
     pub body: Vec<u8>,
     /// The most bytes of its response's body that are read.
     pub most: usize,
+    /// Whether the body carries a secret, so it is shown by its length
+    /// alone, even in a dry run.
+    pub sealed: bool,
+}
+
+impl fmt::Debug for Request {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Request")
+            .field("method", &self.method)
+            .field("url", &self.url.redacted())
+            .field(
+                "headers",
+                &self
+                    .headers
+                    .iter()
+                    .map(|(name, value)| (name, value.redacted()))
+                    .collect::<Vec<_>>(),
+            )
+            .field("body", &format_args!("{} bytes", self.body.len()))
+            .field("most", &self.most)
+            .field("sealed", &self.sealed)
+            .finish()
+    }
 }
 
 impl Request {
@@ -59,6 +82,7 @@ impl Request {
             headers: Vec::new(),
             body: Vec::new(),
             most: Outbound::BODY_MOST,
+            sealed: false,
         }
     }
 
@@ -73,6 +97,15 @@ impl Request {
     #[must_use]
     pub fn body(mut self, body: impl Into<Vec<u8>>) -> Self {
         self.body = body.into();
+        self
+    }
+
+    /// The request with `body`, which carries a secret: it is sent as it
+    /// is, and shown by its length alone.
+    #[must_use]
+    pub fn sealed_body(mut self, body: impl Into<Vec<u8>>) -> Self {
+        self.body = body.into();
+        self.sealed = true;
         self
     }
 
@@ -117,7 +150,9 @@ pub struct WithBody<'r>(&'r Request);
 impl fmt::Display for WithBody<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.0.head(f)?;
-        if !self.0.body.is_empty() {
+        if self.0.sealed {
+            write!(f, "\n\n«sealed: {} bytes»", self.0.body.len())?;
+        } else if !self.0.body.is_empty() {
             write!(f, "\n\n{}", String::from_utf8_lossy(&self.0.body))?;
         }
         Ok(())
@@ -279,6 +314,29 @@ mod tests {
             request.to_string(),
             "POST https://discord.com/api/v10/channels/1/messages\nAuthorization: Bot «secret:TOKEN»\nContent-Type: application/json\n\n16 bytes"
         );
+    }
+
+    #[test]
+    fn a_sealed_body_is_sent_as_it_is_and_shown_by_its_length_alone() {
+        let request = Request::new(Method::Post, Text::plain("https://hub.example/auth"))
+            .header(
+                "Authorization",
+                Text::plain("Bearer ").then_secret(Secret::new("HUB", "pat-1")),
+            )
+            .sealed_body(r#"{"secret":"pat-1"}"#);
+        assert_eq!(request.body, br#"{"secret":"pat-1"}"#);
+        assert!(request.sealed);
+        let shown = [
+            request.to_string(),
+            request.with_body().to_string(),
+            format!("{request:?}"),
+        ];
+        for shown in &shown {
+            assert!(!shown.contains("pat-1"), "{shown}");
+        }
+        assert!(shown[1].ends_with("«sealed: 18 bytes»"), "{}", shown[1]);
+        assert!(shown[2].contains("18 bytes"), "{}", shown[2]);
+        assert!(!Request::new(Method::Get, Text::plain("https://example.org")).sealed);
     }
 
     #[test]

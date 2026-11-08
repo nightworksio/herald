@@ -12,5 +12,5 @@ mod options;
 mod package;
 mod packagist;
 
-pub use options::RegistryOptions;
+pub use options::{RegistryOptions, TagOrdering};
 pub use package::{Package, Registry};

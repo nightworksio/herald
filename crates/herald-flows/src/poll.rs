@@ -102,8 +102,18 @@ async fn polled<H: Http>(
                 .map_err(unreadable)
         }
         Asked::Registry { package, token } => {
+            let bearer = match token
+                .as_ref()
+                .and_then(|token| package.token_request(token).map(|request| (token, request)))
+            {
+                Some((token, request)) => {
+                    let answer = http.send(request).await.map_err(unreachable)?;
+                    Some(package.exchanged(token, &answer).map_err(unreadable)?)
+                }
+                None => token.clone(),
+            };
             let answer = http
-                .send(package.versions_request(cursor, token.as_ref()))
+                .send(package.versions_request(cursor, bearer.as_ref()))
                 .await
                 .map_err(unreachable)?;
             if Registry::unchanged(&answer) {
