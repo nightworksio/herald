@@ -343,15 +343,15 @@ async fn a_database_the_host_offers_runs_statements_and_one_it_does_not_is_refus
     let sql = hosted.sql(SqlAt::D1("HERALD_DB")).await.unwrap();
     let big = 1_i64 << 60;
     let answered = sql
-        .transaction(vec![Statement {
-            sql: "SELECT ?1, ?2, ?3, ?4".to_owned(),
-            params: vec![
+        .transaction(vec![Statement::query(
+            "SELECT ?1, ?2, ?3, ?4",
+            vec![
                 Value::Null,
                 Value::Integer(-5),
                 Value::Integer(big),
                 Value::Text("t".to_owned()),
             ],
-        }])
+        )])
         .await
         .unwrap();
     assert_eq!(

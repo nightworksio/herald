@@ -14,3 +14,5 @@ __pycache__/
 /deploy/spin/.spin/
 /dist/
 /deploy/tests/egress/.spin/
+/deploy/tests/spin-conformance/herald_wasi.wasm
+/deploy/tests/spin-conformance/.spin/

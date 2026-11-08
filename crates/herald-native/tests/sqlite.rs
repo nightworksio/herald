@@ -134,10 +134,7 @@ mod sqlite {
         let sql = NativeSqlite::open(&path, SignedDuration::from_millis(600)).unwrap();
         let holder = rusqlite::Connection::open(&path).unwrap();
         holder.execute_batch("BEGIN IMMEDIATE").unwrap();
-        let statement = Statement {
-            sql: "CREATE TABLE t (a INTEGER)".to_owned(),
-            params: vec![],
-        };
+        let statement = Statement::change("CREATE TABLE t (a INTEGER)", vec![]);
         let started = std::time::Instant::now();
         let (waited, ticked) = run(async {
             tokio::join!(sql.transaction(vec![statement.clone()]), async {
@@ -158,10 +155,7 @@ mod sqlite {
 
     #[test]
     fn a_database_another_herald_laid_out_is_refused() {
-        let statement = |sql: &str| Statement {
-            sql: sql.to_owned(),
-            params: vec![],
-        };
+        let statement = |sql: &str| Statement::change(sql, vec![]);
         let newer = NativeSqlite::in_memory().unwrap();
         run(newer.transaction(vec![
             statement(
@@ -196,9 +190,12 @@ mod sqlite {
     #[test]
     fn each_statement_answers_its_rows_and_the_rows_it_changed() {
         let sql = NativeSqlite::in_memory().unwrap();
-        let statement = |sql: &str, params: Vec<Value>| Statement {
-            sql: sql.to_owned(),
-            params,
+        let statement = |sql: &str, params: Vec<Value>| {
+            if sql.starts_with("SELECT") {
+                Statement::query(sql, params)
+            } else {
+                Statement::change(sql, params)
+            }
         };
         let answers = run(sql.transaction(vec![
             statement("CREATE TABLE t (a INTEGER, b TEXT)", vec![]),

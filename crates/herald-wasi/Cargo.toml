@@ -16,6 +16,9 @@ crate-type = ["cdylib", "rlib"]
 # The databases Spin offers. A component built with it runs on Spin alone,
 # since no other host gives it these imports.
 spin = ["dep:herald-spin", "dep:herald-store-postgres", "dep:jiff"]
+# The store conformance suite over Spin's databases on `/conformance/*`, for
+# testing on Spin; never in a released component.
+conformance = ["spin", "dep:herald-store-sqlite", "dep:herald-testing"]
 
 [target.'cfg(all(target_arch = "wasm32", target_os = "wasi"))'.dependencies]
 futures-util = { version = "0.3", default-features = false, features = ["std"] }
@@ -27,6 +30,8 @@ herald-flows.workspace = true
 herald-ports.workspace = true
 herald-spin = { workspace = true, optional = true }
 herald-store-postgres = { workspace = true, optional = true }
+herald-store-sqlite = { workspace = true, optional = true }
+herald-testing = { workspace = true, optional = true }
 jiff = { workspace = true, optional = true }
 send_wrapper = { version = "0.6", features = ["futures"] }
 http-body-util = "0.1"

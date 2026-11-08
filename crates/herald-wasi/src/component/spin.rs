@@ -2,7 +2,7 @@
 
 use std::future::{Future, ready};
 
-use herald_ports::{Changed, Secret, Sql, SqlError, Statement, Value};
+use herald_ports::{Answers, Changed, Secret, Sql, SqlError, Statement, Value};
 use jiff::SignedDuration;
 
 use herald_spin::postgres as pg;
@@ -54,10 +54,22 @@ fn from_pg(value: pg::DbValue) -> Result<Value, SqlError> {
     })
 }
 
-/// Whether `sql` answers with rows, which Postgres's two calls keep apart.
-fn answers_rows(sql: &str) -> bool {
-    let lower = sql.trim_start().to_ascii_lowercase();
-    lower.starts_with("select") || lower.starts_with("with") || lower.contains(" returning ")
+/// The answer to a transaction whose statements answered `done`: committed
+/// where they all ran, rolled back where one failed, its error kept and
+/// the rollback's added where that failed too.
+fn finished(
+    done: Result<Vec<Changed>, SqlError>,
+    simple: impl Fn(&str) -> Result<(), SqlError>,
+) -> Result<Vec<Changed>, SqlError> {
+    match done {
+        Ok(answers) => simple("COMMIT").map(|()| answers),
+        Err(SqlError::Unavailable { reason }) => Err(match simple("ROLLBACK") {
+            Ok(()) => SqlError::Unavailable { reason },
+            Err(SqlError::Unavailable { reason: rollback }) => SqlError::Unavailable {
+                reason: format!("{reason}; the rollback failed too: {rollback}"),
+            },
+        }),
+    }
 }
 
 fn sqlite_ran(connection: &sqlite::Connection, statement: Statement) -> Result<Changed, SqlError> {
@@ -65,6 +77,16 @@ fn sqlite_ran(connection: &sqlite::Connection, statement: Statement) -> Result<C
     let answered = connection
         .execute(&statement.sql, &parameters)
         .map_err(|error| failed(&format!("{error:?}")))?;
+    if statement.answers == Answers::Rows {
+        return Ok(Changed {
+            rows: answered
+                .rows
+                .into_iter()
+                .map(|row| row.values.into_iter().map(from_lite).collect())
+                .collect::<Result<_, _>>()?,
+            changed: 0,
+        });
+    }
     let counted = connection
         .execute("SELECT changes()", &[])
         .map_err(|error| failed(&format!("{error:?}")))?;
@@ -73,11 +95,7 @@ fn sqlite_ran(connection: &sqlite::Connection, statement: Statement) -> Result<C
         _ => 0,
     };
     Ok(Changed {
-        rows: answered
-            .rows
-            .into_iter()
-            .map(|row| row.values.into_iter().map(from_lite).collect())
-            .collect::<Result<_, _>>()?,
+        rows: Vec::new(),
         changed,
     })
 }
@@ -88,17 +106,16 @@ fn postgres_ran(connection: &pg::Connection, statement: Statement) -> Result<Cha
         .into_iter()
         .map(parameter)
         .collect::<Vec<_>>();
-    if answers_rows(&statement.sql) {
+    if statement.answers == Answers::Rows {
         let answered = connection
             .query(&statement.sql, &parameters)
             .map_err(|error| failed(&format!("{error:?}")))?;
-        let changed = u64::try_from(answered.rows.len()).unwrap_or(u64::MAX);
         let rows = answered
             .rows
             .into_iter()
             .map(|row| row.into_iter().map(from_pg).collect())
             .collect::<Result<_, _>>()?;
-        return Ok(Changed { rows, changed });
+        return Ok(Changed { rows, changed: 0 });
     }
     let changed = connection
         .execute(&statement.sql, &parameters)
@@ -133,12 +150,11 @@ impl SpinSql {
                     busy.unsigned_abs().as_millis()
                 ))?;
                 simple("BEGIN IMMEDIATE")?;
-                let done: Result<Vec<_>, _> = statements
+                let done = statements
                     .into_iter()
                     .map(|statement| sqlite_ran(&connection, statement))
                     .collect();
-                simple(if done.is_ok() { "COMMIT" } else { "ROLLBACK" })?;
-                done
+                finished(done, simple)
             }
             Self::Postgres(address) => {
                 let connection = pg::Connection::open(address.expose())
@@ -150,12 +166,11 @@ impl SpinSql {
                         .map_err(|error| failed(&format!("{error:?}")))
                 };
                 simple("BEGIN")?;
-                let done: Result<Vec<_>, _> = statements
+                let done = statements
                     .into_iter()
                     .map(|statement| postgres_ran(&connection, statement))
                     .collect();
-                simple(if done.is_ok() { "COMMIT" } else { "ROLLBACK" })?;
-                done
+                finished(done, simple)
             }
         }
     }

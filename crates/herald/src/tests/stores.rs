@@ -246,10 +246,7 @@ fn a_sqlite_file_a_newer_herald_laid_out_stops_the_run() {
     let setup = setup(&CONFIG.replace("kind = \"git-branch\"", "kind = \"sqlite\""));
     let file = setup.directory.path().join("herald.sqlite");
     let newer = herald_native::NativeSqlite::open(&file, herald_store_sqlite::BUSY).unwrap();
-    let statement = |sql: &str| herald_ports::Statement {
-        sql: sql.to_owned(),
-        params: vec![],
-    };
+    let statement = |sql: &str| herald_ports::Statement::change(sql, vec![]);
     tokio::runtime::Builder::new_current_thread()
         .build()
         .unwrap()
@@ -301,10 +298,7 @@ fn postgres(name: &str) -> Option<String> {
                 format!("CREATE SCHEMA {schema}"),
             ]
             .into_iter()
-            .map(|sql| herald_ports::Statement {
-                sql,
-                params: vec![],
-            })
+            .map(|sql| herald_ports::Statement::change(sql, vec![]))
             .collect(),
         )
         .await
@@ -393,10 +387,7 @@ fn a_postgres_store_that_cannot_be_reached_or_read_stops_the_run() {
                 "INSERT INTO herald_meta VALUES (1, 2, 0)",
             ]
             .into_iter()
-            .map(|sql| herald_ports::Statement {
-                sql: sql.to_owned(),
-                params: vec![],
-            })
+            .map(|sql| herald_ports::Statement::change(sql, vec![]))
             .collect(),
         )
         .await

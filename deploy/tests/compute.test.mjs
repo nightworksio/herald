@@ -189,6 +189,18 @@ test("the component keeps records in Spin's SQLite", async () => {
   await answers("http://127.0.0.1:8102");
 });
 
+test("Spin's own SQLite and Postgres keep every record a store keeps", async () => {
+  const url = process.env.HERALD_TEST_POSTGRES;
+  assert.ok(url, "HERALD_TEST_POSTGRES names the Postgres database the suite runs over");
+  run("spin", ["up", "--listen=127.0.0.1:8105", "--env", `HERALD_TEST_POSTGRES=${url}`], "deploy/tests/spin-conformance");
+  await up("http://127.0.0.1:8105");
+  for (const database of ["sqlite", "postgres"]) {
+    const answer = await fetch(`http://127.0.0.1:8105/conformance/${database}`);
+    assert.equal(await answer.text(), "conforms", database);
+    assert.equal(answer.status, 200, database);
+  }
+});
+
 test("the service answers on Viceroy, keeping records in its KV Store", async () => {
   run("viceroy", [
     "serve",

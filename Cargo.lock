@@ -1396,6 +1396,8 @@ dependencies = [
  "herald-ports",
  "herald-spin",
  "herald-store-postgres",
+ "herald-store-sqlite",
+ "herald-testing",
  "http-body-util",
  "jiff",
  "send_wrapper",

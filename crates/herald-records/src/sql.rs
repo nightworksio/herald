@@ -58,13 +58,6 @@ fn corrupt(reason: &str) -> StoreError {
     }
 }
 
-fn statement(sql: impl Into<String>, params: Vec<Value>) -> Statement {
-    Statement {
-        sql: sql.into(),
-        params,
-    }
-}
-
 fn text(value: &str) -> Value {
     Value::Text(value.to_owned())
 }
@@ -101,10 +94,10 @@ impl<S: Sql> SqlRecords<S> {
         let records = Self { sql, dialect };
         let answers = records
             .run(vec![
-                statement("CREATE TABLE IF NOT EXISTS herald_meta (id INTEGER PRIMARY KEY CHECK (id = 1), layout BIGINT NOT NULL, made BIGINT NOT NULL)", vec![]),
-                statement(format!("INSERT INTO herald_meta (id, layout, made) VALUES (1, {}, 0) ON CONFLICT (id) DO NOTHING", dialect.at(1)), vec![Value::Integer(LAYOUT)]),
-                statement(dialect.records(), vec![]),
-                statement("SELECT layout FROM herald_meta", vec![]),
+                Statement::change("CREATE TABLE IF NOT EXISTS herald_meta (id INTEGER PRIMARY KEY CHECK (id = 1), layout BIGINT NOT NULL, made BIGINT NOT NULL)", vec![]),
+                Statement::change(format!("INSERT INTO herald_meta (id, layout, made) VALUES (1, {}, 0) ON CONFLICT (id) DO NOTHING", dialect.at(1)), vec![Value::Integer(LAYOUT)]),
+                Statement::change(dialect.records(), vec![]),
+                Statement::query("SELECT layout FROM herald_meta", vec![]),
             ])
             .await?;
         match rows(answers, 3).as_slice() {
@@ -131,7 +124,7 @@ impl<S: Sql> SqlRecords<S> {
 impl<S: Sql> Records for SqlRecords<S> {
     async fn read(&self, path: &str) -> Result<Option<Blob>, StoreError> {
         let answers = self
-            .run(vec![statement(
+            .run(vec![Statement::query(
                 format!(
                     "SELECT body, version FROM herald_records WHERE path = {}",
                     self.at(1)
@@ -154,7 +147,7 @@ impl<S: Sql> Records for SqlRecords<S> {
 
     async fn list(&self, directory: &str) -> Result<Vec<String>, StoreError> {
         let answers = self
-            .run(vec![statement(
+            .run(vec![Statement::query(
                 format!(
                     "SELECT path FROM herald_records WHERE path >= {} AND path < {} ORDER BY path",
                     self.at(1),
@@ -182,12 +175,12 @@ impl<S: Sql> Records for SqlRecords<S> {
         replacing: Option<&str>,
     ) -> Result<Wrote, StoreError> {
         let body = std::str::from_utf8(bytes).map_err(|_| corrupt("a record is not UTF-8 text"))?;
-        let counted = statement("UPDATE herald_meta SET made = made + 1", vec![]);
+        let counted = Statement::change("UPDATE herald_meta SET made = made + 1", vec![]);
         let answers = match replacing {
             None => {
                 self.run(vec![
                     counted,
-                    statement(format!("INSERT INTO herald_records (path, body, version) SELECT {}, {}, made FROM herald_meta WHERE true ON CONFLICT (path) DO NOTHING", self.at(1), self.at(2)), vec![text(path), text(body)]),
+                    Statement::change(format!("INSERT INTO herald_records (path, body, version) SELECT {}, {}, made FROM herald_meta WHERE true ON CONFLICT (path) DO NOTHING", self.at(1), self.at(2)), vec![text(path), text(body)]),
                 ])
                 .await?
             }
@@ -197,7 +190,7 @@ impl<S: Sql> Records for SqlRecords<S> {
                 };
                 self.run(vec![
                     counted,
-                    statement(format!("UPDATE herald_records SET body = {}, version = (SELECT made FROM herald_meta) WHERE path = {} AND version = {}", self.at(2), self.at(1), self.at(3)), vec![text(path), text(body), Value::Integer(version)]),
+                    Statement::change(format!("UPDATE herald_records SET body = {}, version = (SELECT made FROM herald_meta) WHERE path = {} AND version = {}", self.at(2), self.at(1), self.at(3)), vec![text(path), text(body), Value::Integer(version)]),
                 ])
                 .await?
             }
@@ -211,7 +204,7 @@ impl<S: Sql> Records for SqlRecords<S> {
         };
         let answers = self
             .run(vec![
-                statement(
+                Statement::change(
                     format!(
                         "DELETE FROM herald_records WHERE path = {} AND version = {}",
                         self.at(1),
@@ -219,7 +212,7 @@ impl<S: Sql> Records for SqlRecords<S> {
                     ),
                     vec![text(path), Value::Integer(version)],
                 ),
-                statement(
+                Statement::query(
                     format!(
                         "SELECT version FROM herald_records WHERE path = {}",
                         self.at(1)

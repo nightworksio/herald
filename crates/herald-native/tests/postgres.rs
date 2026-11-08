@@ -27,9 +27,10 @@ mod postgres {
     }
 
     fn statement(sql: &str, params: Vec<Value>) -> Statement {
-        Statement {
-            sql: sql.to_owned(),
-            params,
+        if sql.starts_with("SELECT") {
+            Statement::query(sql, params)
+        } else {
+            Statement::change(sql, params)
         }
     }
 
