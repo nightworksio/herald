@@ -461,6 +461,33 @@ async fn a_composed_herald_answers_polls_and_keeps_house() {
 }
 
 #[wasm_bindgen_test]
+async fn a_host_listens_where_it_is_told_and_otherwise_where_the_config_says() {
+    let composed = Herald::compose(
+        host(&object(&[])),
+        "version = 1\n[store]\nkind = \"deno-kv\"\n[server]\nlisten = \"[::1]:9000\"\n".to_owned(),
+        JsValue::UNDEFINED,
+        "deno".to_owned(),
+    )
+    .await
+    .unwrap_or_else(|_| panic!("composed"));
+    let configured = composed.listen(None).unwrap_or_else(|_| panic!("listens"));
+    assert_eq!(
+        member(&configured, "hostname").as_string().as_deref(),
+        Some("::1")
+    );
+    assert_eq!(member(&configured, "port").as_f64(), Some(9000.0));
+    let told = composed
+        .listen(Some("0.0.0.0:8081".to_owned()))
+        .unwrap_or_else(|_| panic!("listens"));
+    assert_eq!(
+        member(&told, "hostname").as_string().as_deref(),
+        Some("0.0.0.0")
+    );
+    assert_eq!(member(&told, "port").as_f64(), Some(8081.0));
+    assert!(composed.listen(Some("herald:8080".to_owned())).is_err());
+}
+
+#[wasm_bindgen_test]
 async fn a_host_keeps_the_limits_server_sets() {
     use herald_config::Server;
 

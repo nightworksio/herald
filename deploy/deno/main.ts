@@ -29,7 +29,7 @@ const herald = await Herald.compose(host(env), await Deno.readTextFile(path), fi
 Deno.cron("herald poll", env.HERALD_POLL_CRON ?? "*/5 * * * *", () => rounds(herald, ["poll"]));
 Deno.cron("herald housekeep", env.HERALD_HOUSEKEEP_CRON ?? "17 * * * *", () => rounds(herald, ["housekeep"]));
 
-Deno.serve(async (request) => {
+Deno.serve(herald.listen(env.HERALD_LISTEN || undefined), async (request) => {
   const { response, work } = await answered(herald, request);
   work?.catch(console.error);
   return response;

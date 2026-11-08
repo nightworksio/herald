@@ -141,16 +141,18 @@ names in `worker/files.mjs`, and run `wrangler deploy` from `worker/`.
 
 Run `deno run --allow-read --allow-net --allow-env --allow-sys
 --unstable-cron --unstable-kv deploy/deno/main.ts` beside `herald.toml`, or
-deploy it to Deno Deploy. `HERALD_CONFIG` names another config file.
-`HERALD_POLL_CRON` and `HERALD_HOUSEKEEP_CRON` set the rounds' crons, every
+deploy it to Deno Deploy. `HERALD_CONFIG` names another config file. It
+listens on `HERALD_LISTEN`, or where unset on the config's `[server]
+listen`; Deno Deploy chooses its own. `HERALD_POLL_CRON` and `HERALD_HOUSEKEEP_CRON` set the rounds' crons, every
 five minutes and hourly where unset.
 
 ## Node and Bun
 
 Run `node deploy/node/server.mjs` or `bun deploy/node/server.mjs` beside
-`herald.toml`. The server listens on `HERALD_LISTEN` (`127.0.0.1:8080`
-where unset) and runs each round at the period the config's `[schedule]`
-names.
+`herald.toml`. The server listens on `HERALD_LISTEN`, or where unset on
+the config's `[server] listen` (`127.0.0.1:8080` by default), and runs
+each round at the period the config's `[schedule]` names. `HERALD_CONFIG`
+names another config file; files it names are read beside it.
 
 - `sqlite` uses `node:sqlite` on Node 24 or newer, and `bun:sqlite` on Bun.
   The file is readable by its owner alone.

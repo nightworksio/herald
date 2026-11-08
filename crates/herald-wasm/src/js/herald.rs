@@ -153,6 +153,26 @@ impl Herald {
         ])
     }
 
+    /// Where a host that serves herald listens: `{ hostname, port }` from
+    /// `given`, the host's `HERALD_LISTEN`, where it is set, and otherwise
+    /// from the config's `[server] listen`. An IPv6 hostname is unbracketed.
+    ///
+    /// # Errors
+    ///
+    /// `given` names no address and port.
+    pub fn listen(&self, given: Option<String>) -> Result<JsValue, JsError> {
+        let named = given.unwrap_or_else(|| self.composed.config().server.listen.clone());
+        let address: std::net::SocketAddr = named.parse().map_err(|_| {
+            JsError::new(&format!(
+                "HERALD_LISTEN is {named}, which names no address and port"
+            ))
+        })?;
+        Ok(object(&[
+            ("hostname", JsValue::from(address.ip().to_string())),
+            ("port", JsValue::from(address.port())),
+        ]))
+    }
+
     /// The periods the config asks rounds at, in milliseconds: `{ poll?,
     /// housekeep? }`.
     #[must_use]
