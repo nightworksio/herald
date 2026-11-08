@@ -3,7 +3,7 @@
 //! interaction it carries (ADR-0016). Nothing here does I/O; a driver sends
 //! what it is told to and passes on what Discord sends.
 
-use herald_core::DestinationName;
+use herald_core::{DestinationName, socket_under};
 use herald_ports::{Secret, Text};
 use jiff::SignedDuration;
 use serde_json::{Value, json};
@@ -64,6 +64,7 @@ pub enum Effect {
 #[derive(Debug, Clone)]
 pub struct Gateway {
     token: Secret,
+    domains: Vec<String>,
     sequence: Option<u64>,
     session: Option<String>,
     resume: Option<String>,
@@ -72,11 +73,13 @@ pub struct Gateway {
 }
 
 impl Gateway {
-    /// A session for the bot whose token is `token`.
+    /// A session for the bot whose token is `token`, resuming only under
+    /// `domains`.
     #[must_use]
-    pub fn new(token: Secret) -> Self {
+    pub fn new(token: Secret, domains: &[&str]) -> Self {
         Self {
             token,
+            domains: domains.iter().map(|domain| (*domain).to_owned()).collect(),
             sequence: None,
             session: None,
             resume: None,
@@ -146,9 +149,11 @@ impl Gateway {
                     .get("session_id")
                     .and_then(Value::as_str)
                     .map(ToOwned::to_owned);
+                let domains: Vec<&str> = self.domains.iter().map(String::as_str).collect();
                 self.resume = data
                     .get("resume_gateway_url")
                     .and_then(Value::as_str)
+                    .filter(|url| socket_under(url, &domains))
                     .map(ToOwned::to_owned);
                 vec![Effect::Ready]
             }

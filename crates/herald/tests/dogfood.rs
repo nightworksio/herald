@@ -14,7 +14,7 @@ mod dogfood {
     use std::path::PathBuf;
     use std::sync::{Arc, Mutex};
 
-    use herald::{Connection, DONE, run};
+    use herald::{Connection, Connector, DONE, run};
     use herald_ports::{Http, HttpError, Method, Request, Response};
     use serde_json::{Value, json};
 
@@ -246,7 +246,13 @@ mod dogfood {
             .map(|_| {
                 let mut out = Vec::new();
                 let mut err = Vec::new();
-                let code = pollster::block_on(run(&args, &vars, &connect, &mut out, &mut err));
+                let code = pollster::block_on(run(
+                    &args,
+                    &vars,
+                    &Connector::new(&connect, &connect),
+                    &mut out,
+                    &mut err,
+                ));
                 let out = String::from_utf8(out).unwrap();
                 assert_eq!(code, DONE, "{out}{}", String::from_utf8_lossy(&err));
                 out

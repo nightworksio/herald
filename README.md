@@ -196,7 +196,7 @@ listen = "127.0.0.1:8080"
 - herald answers each verified release with 202 and announces it after the reply.
 - An ActivityPub actor is served at `/users/<actor>`, with its Notes, its inbox, the shared inbox `/inbox` and WebFinger.
 - `--listen` or `HERALD_LISTEN` takes the place of `listen`.
-- `[server]` also sets `jobs`, `connections`, `body`, `fetches`, `completions` (how many autocompletions a session answers at once), `deliveries` and `silence` (how long a session hears nothing before it checks its connection), and `[server.keys]` sets where inbound activities' keys are kept (`cache = "memory"` or `"store"`), `refresh_after` and `most` ([ADR-0014](.docs/decisions/0014-herald-server-answers-first-and-works-after-on-one-task-within-limits.md)).
+- `[server]` also sets `jobs`, `connections`, `body`, `fetches`, `completions` (how many autocompletions a session answers at once), `deliveries` and `silence` (how long a session hears nothing before it checks its connection), and `[server.keys]` sets where inbound activities' keys are kept (`cache = "memory"` or `"store"`), `refresh_after`, `reread_after` and `most` ([ADR-0014](.docs/decisions/0014-herald-server-answers-first-and-works-after-on-one-task-within-limits.md)).
 
 `herald doctor --layer server` names what the config asks for that the
 server cannot serve.
@@ -251,6 +251,7 @@ subscribe = { role = "1566190000000000001" }
   - Discord: `http`, posted to `/interactions/discord`, or `gateway`, held by `herald server`.
   - Slack: `http`, posted to `/interactions/<destination>`, or `socket`, Socket Mode held by `herald server`.
   - Matrix: `appservice`, pushed to `/matrix/<destination>`, or `sync`, as the bot.
+- A gateway connects only under `discord.gg` and Socket Mode only under `slack.com`; a resume or Socket Mode address elsewhere is refused. `domains = ["proxy.example"]` in the interactions adds domains, such as a proxy's.
 - `herald discord commands` registers the commands. `herald discord roles --guild <id>` lists a server's roles, and `--create <name>` makes an opt-in role.
 - `herald slack manifest --url https://<your host>` prints the Slack app's manifest. `herald matrix registration --url https://<your host>` prints the homeserver's registration with two new tokens, once.
 - On Discord, subscribing gives the route's opt-in role, which the route mentions. On Slack and Matrix, it keeps the member in the store, for a route with `mentions = { subscribers = true }`.

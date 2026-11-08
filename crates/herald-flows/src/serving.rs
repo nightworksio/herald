@@ -55,7 +55,9 @@ pub struct Inbound<'a> {
 }
 
 impl Inbound<'_> {
-    fn header(&self, name: &str) -> Option<&str> {
+    /// The value of the header `name`, in any case.
+    #[must_use]
+    pub fn header(&self, name: &str) -> Option<&str> {
         self.headers
             .iter()
             .find(|(named, _)| named.eq_ignore_ascii_case(name))
@@ -76,6 +78,9 @@ pub struct Reply {
     pub kind: &'static str,
     /// The body.
     pub body: Vec<u8>,
+    /// How many seconds the sender is asked to wait before it asks again,
+    /// as `Retry-After` names them.
+    pub retry_after: Option<u32>,
 }
 
 /// Work a request leaves to be done once it is answered.
@@ -144,6 +149,21 @@ pub enum Worked {
     Interacted(Vec<Interacted>),
 }
 
+impl Worked {
+    /// Whether the work stopped before it was done: a route stopped, or the
+    /// activity was not taken.
+    #[must_use]
+    pub fn stopped(&self) -> bool {
+        match self {
+            Self::Announced(announced) => announced
+                .iter()
+                .any(|announced| matches!(announced.outcome, Outcome::Stopped { .. })),
+            Self::Followed(taken) => taken.is_err(),
+            Self::Interacted(_) => false,
+        }
+    }
+}
+
 /// One command, answered.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Interacted {
@@ -153,6 +173,22 @@ pub struct Interacted {
     pub answer: Answer,
     /// Whether the answer was sent, or else why not.
     pub sent: Result<(), String>,
+}
+
+impl Job {
+    /// The scheme and identity of the delivery the job came by, where it
+    /// came by one to release.
+    #[must_use]
+    pub fn delivery(&self) -> Option<(Scheme, &Verified)> {
+        match self {
+            Self::Announce {
+                scheme, verified, ..
+            } => Some((*scheme, verified)),
+            Self::App { verified, .. } => Some((Scheme::App, verified)),
+            Self::Follow { verified, .. } => Some((Scheme::ActivityPub, verified)),
+            Self::Interact { .. } => None,
+        }
+    }
 }
 
 /// The secret each forge source's webhooks are signed with, by the source.
@@ -168,9 +204,7 @@ pub struct Webhooks(BTreeMap<SourceName, Secret>);
 pub async fn webhooks<S: Secrets>(config: &Config, secrets: &S) -> Result<Webhooks, PrepareError> {
     let mut found = BTreeMap::new();
     for (name, source) in &config.sources {
-        if let Source::Forge(_, options) = source
-            && let Some(named) = &options.webhook
-        {
+        if let Some(named) = source.webhook() {
             found.insert(name.clone(), secrets.secret(&named.secret).await?);
         }
     }
@@ -221,7 +255,9 @@ pub(crate) async fn unread<S: Store>(
 /// The reply to a request refused for `reason`: a body that names no
 /// reason, the same for every refusal of its kind, and the reason kept for
 /// the log (ADR-0007).
-pub(crate) fn refusal(status: u16, reason: impl Into<String>) -> Answered {
+/// A refusal answered `status` with herald's fixed body for it, its
+/// `reason` kept for the log (ADR-0007).
+pub fn refusal(status: u16, reason: impl Into<String>) -> Answered {
     let body = match status {
         409 => "herald has taken this request already",
         500.. => "herald cannot answer this request now",
@@ -233,12 +269,30 @@ pub(crate) fn refusal(status: u16, reason: impl Into<String>) -> Answered {
     }
 }
 
+/// How many seconds a request whose work found no place is asked to wait.
+pub const BUSY_RETRY: u32 = 30;
+
+/// The refusal of a request whose work found no place, asking its sender
+/// to wait [`BUSY_RETRY`] seconds.
+#[must_use]
+pub fn busy() -> Answered {
+    let refused = refusal(503, "the queue has no place for the work it leaves");
+    Answered {
+        reply: Reply {
+            retry_after: Some(BUSY_RETRY),
+            ..refused.reply
+        },
+        ..refused
+    }
+}
+
 pub(crate) fn replied(status: u16, kind: &'static str, body: impl Into<Vec<u8>>) -> Answered {
     Answered {
         reply: Reply {
             status,
             kind,
             body: body.into(),
+            retry_after: None,
         },
         job: None,
         refused: None,
@@ -682,15 +736,9 @@ pub async fn unworked<S: Store, C, G, V, H, P, K>(
     serving: &Serving<'_, S, C, G, V, H, P, K>,
     job: &Job,
 ) {
-    let (scheme, verified) = match job {
-        Job::Announce {
-            scheme, verified, ..
-        } => (*scheme, verified),
-        Job::App { verified, .. } => (Scheme::App, verified),
-        Job::Follow { verified, .. } => (Scheme::ActivityPub, verified),
-        Job::Interact { .. } => return,
-    };
-    let _ = released(serving.ports.store, scheme, verified).await;
+    if let Some((scheme, verified)) = job.delivery() {
+        let _ = released(serving.ports.store, scheme, verified).await;
+    }
 }
 
 /// `job` done, under the run name `run`: a delivery whose work stopped or
@@ -702,13 +750,11 @@ pub async fn work<S: Store, C: Clock, G: Signer, V, H: Http, P, K>(
     run: &str,
 ) -> Worked {
     let store = serving.ports.store;
-    match job {
-        Job::Announce {
-            source,
-            event,
-            scheme,
-            verified,
-        } => {
+    let delivery = job
+        .delivery()
+        .map(|(scheme, verified)| (scheme, verified.clone()));
+    let worked = match job {
+        Job::Announce { source, event, .. } => {
             let announced = announce(
                 serving.config,
                 serving.connected,
@@ -718,19 +764,9 @@ pub async fn work<S: Store, C: Clock, G: Signer, V, H: Http, P, K>(
                 run,
             )
             .await;
-            if announced
-                .iter()
-                .any(|announced| matches!(announced.outcome, Outcome::Stopped { .. }))
-            {
-                let _ = released(store, scheme, &verified).await;
-            }
             Worked::Announced(announced)
         }
-        Job::App {
-            app,
-            event,
-            verified,
-        } => {
+        Job::App { app, event, .. } => {
             let within = serving
                 .config
                 .apps
@@ -747,12 +783,6 @@ pub async fn work<S: Store, C: Clock, G: Signer, V, H: Http, P, K>(
                 run,
             )
             .await;
-            if announced
-                .iter()
-                .any(|announced| matches!(announced.outcome, Outcome::Stopped { .. }))
-            {
-                let _ = released(store, Scheme::App, &verified).await;
-            }
             Worked::Announced(announced)
         }
         Job::Follow { verified, body } => {
@@ -765,9 +795,6 @@ pub async fn work<S: Store, C: Clock, G: Signer, V, H: Http, P, K>(
                 &body,
             )
             .await;
-            if taken.is_err() {
-                let _ = released(store, Scheme::ActivityPub, &verified).await;
-            }
             Worked::Followed(taken)
         }
         Job::Interact { destination, asked } => {
@@ -784,7 +811,13 @@ pub async fn work<S: Store, C: Clock, G: Signer, V, H: Http, P, K>(
             }
             Worked::Interacted(interacted)
         }
+    };
+    if worked.stopped()
+        && let Some((scheme, verified)) = delivery
+    {
+        let _ = released(store, scheme, &verified).await;
     }
+    worked
 }
 
 #[cfg(test)]

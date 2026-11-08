@@ -6,13 +6,13 @@ use std::collections::BTreeMap;
 use std::future::Future;
 use std::io::Write;
 
-use herald_compose::{Capped, SESSIONS, Served};
+use herald_compose::{Capped, Served};
 use herald_config::Config;
 use herald_crypto::{RingSigner, RingVerifier};
 use herald_environment::{EnvSecrets, SystemClock};
-use herald_flows::{Connected, Keys, Ports, Serving, Webhooks, webhooks};
+use herald_flows::{Connected, Keys, Ports, ROUND_SECRET, Serving, Webhooks, webhooks};
 use herald_native::NativeSockets;
-use herald_ports::{Keyring, PUBLIC, Store as Keeps};
+use herald_ports::{Keyring, PUBLIC, Secret, Store as Keeps};
 use herald_records::MemoryKeyring;
 use herald_server::{Asked, Heard, Limits, READ, serve};
 
@@ -31,7 +31,8 @@ struct Listening<'a, F> {
     public: &'a Capped<Connection>,
     sockets: NativeSockets,
     listener: tokio::net::TcpListener,
-    asked: Option<Asked>,
+    asked: Option<Asked<'a>>,
+    secret: Option<Secret>,
     out: RefCell<&'a mut dyn Write>,
     stop: F,
 }
@@ -63,6 +64,7 @@ impl<F: Future<Output = ()>> Listening<'_, F> {
         let keys = Keys {
             keyring,
             refreshed: server.keys_refreshed,
+            reread: server.keys_reread,
         };
         let serving = Serving {
             config: self.config,
@@ -86,6 +88,7 @@ impl<F: Future<Output = ()>> Listening<'_, F> {
             keys: period(Some(server.keys_refreshed)).unwrap_or_default(),
             read: READ,
             asked: self.asked,
+            secret: self.secret.as_ref(),
         };
         let out = &self.out;
         let heard = |heard: Heard| {
@@ -109,13 +112,40 @@ impl<F: Future<Output = ()>> Listening<'_, F> {
 
 /// Where Azure Functions tells a custom handler to listen.
 const AZURE_PORT: &str = "FUNCTIONS_CUSTOMHANDLER_PORT";
+/// The app setting that overrides `host.json`'s HTTP route prefix.
+const AZURE_PREFIX: &str = "AzureFunctionsJobHost__extensions__http__routePrefix";
+/// The file Azure Functions reads its HTTP route prefix from.
+const AZURE_HOST: &str = "host.json";
+/// The route prefix Azure Functions serves HTTP under where nothing sets
+/// one.
+const AZURE_DEFAULT_PREFIX: &str = "api";
+
+/// The prefix Azure Functions serves outside HTTP under: the app setting,
+/// else `host`'s `extensions.http.routePrefix`, else Azure's own default.
+pub(crate) fn azure_prefix(vars: &BTreeMap<String, String>, host: Option<&str>) -> String {
+    if let Some(prefix) = vars.get(AZURE_PREFIX) {
+        return prefix.trim_matches('/').to_owned();
+    }
+    host.and_then(|text| serde_json::from_str::<serde_json::Value>(text).ok())
+        .and_then(|host| {
+            host.pointer("/extensions/http/routePrefix")
+                .and_then(serde_json::Value::as_str)
+                .map(|prefix| prefix.trim_matches('/').to_owned())
+        })
+        .unwrap_or_else(|| AZURE_DEFAULT_PREFIX.to_owned())
+}
+
 /// Where Azure Functions' timer triggers ask for rounds, by the functions
-/// `deploy/azure` names, and what each invocation is answered.
-const AZURE: Asked = Asked {
-    poll: "/poll",
-    housekeep: "/housekeep",
-    reply: r#"{"Outputs":{},"Logs":[],"ReturnValue":null}"#,
-};
+/// `deploy/azure` names, with outside HTTP under `prefix`; none where the
+/// prefix is empty, as a request from outside could then reach them.
+pub(crate) fn timers(prefix: &str) -> Option<Asked<'_>> {
+    (!prefix.is_empty()).then_some(Asked {
+        poll: "/poll",
+        housekeep: "/housekeep",
+        reply: r#"{"Outputs":{},"Logs":[],"ReturnValue":null}"#,
+        prefix,
+    })
+}
 
 /// What a server says of what it heard.
 pub(crate) fn said(heard: Heard) -> Vec<String> {
@@ -142,7 +172,18 @@ pub(crate) async fn serving(
         .get(AZURE_PORT)
         .filter(|port| !port.is_empty())
         .map(|port| format!("127.0.0.1:{port}"));
-    let asked = azure.is_some().then_some(AZURE);
+    let prefix = match azure {
+        Some(_) => {
+            let host = tokio::fs::read_to_string(AZURE_HOST).await.ok();
+            Some(azure_prefix(vars, host.as_deref()))
+        }
+        None => None,
+    };
+    let asked = prefix.as_deref().and_then(timers);
+    let secret = vars
+        .get(ROUND_SECRET)
+        .filter(|value| !value.is_empty())
+        .map(|value| Secret::new(ROUND_SECRET, value.clone()));
     let address = listen
         .map(ToOwned::to_owned)
         .or_else(|| vars.get(LISTEN).filter(|value| !value.is_empty()).cloned())
@@ -156,9 +197,9 @@ pub(crate) async fn serving(
     let webhooks = webhooks(config, &secrets)
         .await
         .map_err(|error| error.to_string())?;
-    let public = Capped::new(connect(PUBLIC)?, config.server.fetches);
+    let public = Capped::new(connect.reach(PUBLIC)?, config.server.fetches);
     let silence = std::time::Duration::try_from(config.server.silence).unwrap_or_default();
-    let sockets = worded(NativeSockets::under(SESSIONS))?.silent_for(silence);
+    let sockets = worded(NativeSockets::under(config.session_domains()))?.silent_for(silence);
     let listening = Listening {
         config,
         connected: &connected,
@@ -167,6 +208,7 @@ pub(crate) async fn serving(
         sockets,
         listener,
         asked,
+        secret,
         out: RefCell::new(out),
         stop,
     };

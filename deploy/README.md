@@ -155,8 +155,10 @@ names.
 ## Vercel
 
 Deploy `vercel/` with `herald.toml` and `pkg/` included. `vercel.json` sends
-every path to the function and schedules both rounds, which Vercel calls with
-the project's `CRON_SECRET`; a round asked for without it is refused.
+every path to the function and schedules both rounds at `/herald/round/*`.
+Vercel calls them with the project's `CRON_SECRET`, which herald takes as
+`HERALD_ROUND_SECRET` where that is unset; a round asked for without it is
+refused.
 
 ## Netlify
 
@@ -180,12 +182,13 @@ beside `lambda/bootstrap`, and deploy `lambda/template.yaml` with SAM.
   invocation, so two invocations never send one announcement's steps
   twice.
 
-## Hosts with no timer of their own
+## Asking for a round over HTTP
 
-The `wasi:http` component, Spin and Fastly Compute run a round when asked over
-HTTP: `POST /herald/round/poll` or `/herald/round/housekeep`, carrying
-`Authorization: Bearer` and the secret `HERALD_ROUND_SECRET`. With that secret
-unset, no request runs a round. Call them from any scheduler.
+Every host runs a round when asked over HTTP: `POST /herald/round/poll` or
+`/herald/round/housekeep`, carrying `Authorization: Bearer` and the secret
+`HERALD_ROUND_SECRET`. With that secret unset, no request runs a round. The
+`wasi:http` component, Spin and Fastly Compute have no timer of their own, so
+call them this way from any scheduler.
 
 ## `wasi:http` hosts
 
@@ -240,6 +243,15 @@ targets wasm, and enable dynamic backends on the service.
 
 Put the `herald` binary for `x86_64-unknown-linux-gnu` and `herald.toml`
 beside `azure/host.json`, and publish `azure/` as a custom-handler function
-app. `herald server` listens on Azure's port, answers every path through the
-`herald` function, and runs a round each time the `poll` or `housekeep`
-timer fires.
+app. `herald server` listens on Azure's port and answers every path through
+the `herald` function.
+
+- Outside HTTP is served under `host.json`'s route prefix, `api`, so a
+  webhook's URL is `https://<app>/api/hooks/<source>`. herald reads the prefix
+  from `host.json`, or from the app setting
+  `AzureFunctionsJobHost__extensions__http__routePrefix` where it is set.
+- The `poll` and `housekeep` timers run a round each time they fire. No
+  request from outside reaches their paths, which lie outside the prefix.
+- With an empty prefix the timers' paths would be reachable, so herald runs
+  no round there. Delete the `poll` and `housekeep` functions and ask for
+  rounds as every host can, below.

@@ -66,6 +66,10 @@ impl Store for FakeStore {
         }
     }
 
+    fn skipped(&self) -> Vec<String> {
+        vec![]
+    }
+
     async fn entry(&self, key: &Key) -> Result<Option<Versioned<Entry>>, StoreError> {
         Ok(lock(&self.state).entries.get(key).cloned())
     }

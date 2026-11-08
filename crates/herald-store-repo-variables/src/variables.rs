@@ -1,3 +1,5 @@
+use std::sync::{Arc, Mutex, PoisonError};
+
 use herald_ports::{Http, Method, Request, Response, Secret, StoreError, Text, USER_AGENT};
 use herald_records::{Blob, Kept, Records, Wrote};
 use jiff::{SignedDuration, Timestamp};
@@ -13,6 +15,9 @@ const API_VERSION: &str = "2022-11-28";
 const PAGE: usize = 30;
 /// How long a lock holds before it is taken as abandoned.
 const LEASE: SignedDuration = SignedDuration::from_mins(10);
+/// How often a lock with no time to judge its age by is found held,
+/// unchanged, before it is taken as abandoned.
+const PATIENCE: u32 = 10;
 const MISSING: u16 = 404;
 const FORBIDDEN: u16 = 403;
 const EXISTS: u16 = 409;
@@ -44,12 +49,15 @@ impl RepoVariables {
         &self.api
     }
 
-    /// The store kept in the variables, reached through `http`.
+    /// The store kept in the variables, reached through `http`, taking its
+    /// lock as `holder`, a value no other run takes it as.
     #[must_use]
-    pub fn store<H: Http>(self, http: H) -> RepoVariablesStore<H> {
+    pub fn store<H: Http>(self, http: H, holder: impl Into<String>) -> RepoVariablesStore<H> {
         Kept::new(VariableRecords {
             variables: self,
             http,
+            holder: holder.into(),
+            sighted: Arc::default(),
         })
     }
 }
@@ -60,12 +68,24 @@ impl RepoVariables {
 pub struct VariableRecords<H> {
     variables: RepoVariables,
     http: H,
+    holder: String,
+    sighted: Arc<Mutex<Option<(Variable, u32)>>>,
+}
+
+/// What the lock is found to be.
+enum Lock {
+    /// No run holds it.
+    Free,
+    /// Another run holds it.
+    Held,
+    /// It is held past its lease, as it was read.
+    Abandoned(Variable),
 }
 
 /// The store [`RepoVariables`] keep.
 pub type RepoVariablesStore<H> = Kept<VariableRecords<H>>;
 
-#[derive(Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 struct Variable {
     name: String,
     value: String,
@@ -175,32 +195,65 @@ impl<H: Http> VariableRecords<H> {
         done(&response)
     }
 
-    /// Whether the lock is abandoned: held longer than its lease, by the
-    /// clock of GitHub's own answer.
-    async fn abandoned(&self) -> Result<bool, StoreError> {
+    /// What the lock is: abandoned once held longer than its lease, by the
+    /// clock of GitHub's own answer, or, where there is no time to judge
+    /// by, once found held and unchanged [`PATIENCE`] times.
+    async fn lock(&self) -> Result<Lock, StoreError> {
         let Some((lock, response)) = self.variable(name::LOCK).await? else {
-            return Ok(true);
+            return Ok(Lock::Free);
         };
         let now = response
             .header("date")
             .and_then(|date| jiff::fmt::rfc2822::parse(date).ok())
             .map(|now| now.timestamp());
-        Ok(match (lock.created_at, now) {
-            (Some(created), Some(now)) => now.duration_since(created) > LEASE,
-            _ => false,
+        let lapsed = if let (Some(created), Some(now)) = (lock.created_at, now) {
+            now.duration_since(created) > LEASE
+        } else {
+            let mut sighted = self.sighted.lock().unwrap_or_else(PoisonError::into_inner);
+            let seen = match sighted.take() {
+                Some((seen, times)) if seen == lock => times + 1,
+                _ => 1,
+            };
+            *sighted = Some((lock.clone(), seen));
+            seen >= PATIENCE
+        };
+        Ok(if lapsed {
+            Lock::Abandoned(lock)
+        } else {
+            Lock::Held
         })
     }
 
-    /// Takes the lock, unless another run holds it.
+    /// Whether the lock holds this store's own value.
+    async fn ours(&self) -> Result<bool, StoreError> {
+        Ok(self
+            .variable(name::LOCK)
+            .await?
+            .is_some_and(|(lock, _)| lock.value == self.holder))
+    }
+
+    /// Takes the lock, unless another run holds it: an abandoned lock is
+    /// deleted only while it is still the one found abandoned, and a lock
+    /// is taken only once it is read back holding this store's value.
     async fn locked(&self) -> Result<bool, StoreError> {
-        if self.created(name::LOCK, "held").await? == Wrote::Written {
-            return Ok(true);
+        if self.created(name::LOCK, &self.holder).await? == Wrote::Written {
+            return self.ours().await;
         }
-        if !self.abandoned().await? {
+        match self.lock().await? {
+            Lock::Held => return Ok(false),
+            Lock::Free => {}
+            Lock::Abandoned(stale) => match self.variable(name::LOCK).await? {
+                Some((lock, _)) if lock == stale => {
+                    self.deleted(name::LOCK).await?;
+                }
+                Some(_) => return Ok(false),
+                None => {}
+            },
+        }
+        if self.created(name::LOCK, &self.holder).await? != Wrote::Written {
             return Ok(false);
         }
-        self.deleted(name::LOCK).await?;
-        Ok(self.created(name::LOCK, "held").await? == Wrote::Written)
+        self.ours().await
     }
 
     /// `change`'s outcome, holding the lock while it runs.
@@ -209,7 +262,11 @@ impl<H: Http> VariableRecords<H> {
             return Ok(Wrote::Conflict);
         }
         let changed = self.change(change).await;
-        let released = self.deleted(name::LOCK).await;
+        let released = match self.ours().await {
+            Ok(true) => self.deleted(name::LOCK).await.map(drop),
+            Ok(false) => Ok(()),
+            Err(error) => Err(error),
+        };
         let wrote = changed?;
         released?;
         Ok(wrote)

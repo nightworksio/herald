@@ -1,3 +1,5 @@
+use base64::Engine as _;
+use base64::engine::general_purpose::STANDARD;
 use herald_core::Chore;
 use herald_ports::Method;
 
@@ -71,5 +73,25 @@ fn housekeeping_that_must_wait_or_cannot_read_its_store_stops() {
     assert_eq!(
         unset.err,
         "GITHUB_REPOSITORY is not set; name the store's repository, or run herald in the repository's CI\n"
+    );
+}
+
+#[test]
+fn housekeeping_says_which_records_it_skipped_as_corrupt() {
+    let setup = setup(CONFIG);
+    let world = World::default();
+    scheduled(&world, &[("releases", "9", Chore::Lock, DISTANT)]);
+    world.state.lock().unwrap().files.insert(
+        "schedules/bad.json".to_owned(),
+        ("sha-bad".to_owned(), STANDARD.encode("not json")),
+    );
+    let kept = herald(&setup, &world, &["housekeep"]);
+    assert_eq!(kept.code, DONE, "{}", kept.err);
+    assert_eq!(
+        kept.out.lines().collect::<Vec<_>>(),
+        [
+            "No chore is due.",
+            "the record schedules/bad.json could not be read and was skipped; fix or remove it",
+        ]
     );
 }

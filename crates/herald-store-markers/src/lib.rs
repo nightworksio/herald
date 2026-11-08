@@ -135,6 +135,10 @@ impl<M: Markers, G: Signer> Store for MarkersStore<M, G> {
         }
     }
 
+    fn skipped(&self) -> Vec<String> {
+        vec![]
+    }
+
     async fn entry(&self, key: &Key) -> Result<Option<Versioned<Entry>>, StoreError> {
         for route in &self.routes {
             let carried = self.mark(&route.key, &Marker::message(key)).await?;

@@ -12,6 +12,7 @@ publish.workspace = true
 [target.'cfg(all(target_arch = "wasm32", target_os = "wasi"))'.dependencies]
 fastly = "0.13"
 herald-compose.workspace = true
+herald-flows.workspace = true
 herald-config.workspace = true
 herald-crypto.workspace = true
 herald-environment.workspace = true

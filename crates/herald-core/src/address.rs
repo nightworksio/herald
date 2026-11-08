@@ -15,6 +15,49 @@ pub fn web_url(url: &str) -> bool {
     })
 }
 
+/// Whether `text` is a domain alone: two or more labels of lowercase ASCII
+/// letters, digits and inner `-`, with no scheme, port or path.
+#[must_use]
+pub fn domain(text: &str) -> bool {
+    let labels: Vec<&str> = text.split('.').collect();
+    labels.len() > 1
+        && labels.iter().all(|label| {
+            !label.is_empty()
+                && !label.starts_with('-')
+                && !label.ends_with('-')
+                && label
+                    .bytes()
+                    .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-')
+        })
+}
+
+/// Whether `host` is `domain` or a host under it.
+#[must_use]
+pub fn under_domain(host: &str, domain: &str) -> bool {
+    host == domain
+        || host
+            .strip_suffix(domain)
+            .is_some_and(|rest| rest.ends_with('.'))
+}
+
+/// Whether `url` is a `wss://` URL whose host lies under one of `domains`,
+/// with no credentials before it.
+#[must_use]
+pub fn socket_under(url: &str, domains: &[&str]) -> bool {
+    let Some(rest) = url.strip_prefix("wss://") else {
+        return false;
+    };
+    let authority = rest.split(['/', '?', '#']).next().unwrap_or_default();
+    if authority.contains('@') {
+        return false;
+    }
+    let host = authority
+        .rsplit_once(':')
+        .map_or(authority, |(host, _)| host)
+        .to_ascii_lowercase();
+    domains.iter().any(|domain| under_domain(&host, domain))
+}
+
 /// Whether `path` is as many names as `names` allows, joined by `/`, each of
 /// ASCII letters, digits, `.`, `_` and `-` and none of them `.` or `..`, so
 /// it names one path and nothing else in a URL.
@@ -72,6 +115,49 @@ mod tests {
             "a/ b",
         ] {
             assert!(!path_of_names(path, 2..=2), "{path}");
+        }
+    }
+
+    #[test]
+    fn a_domain_is_lowercase_labels_with_nothing_around_them() {
+        for good in ["slack.com", "gateway.discord.gg", "a-1.example"] {
+            assert!(domain(good), "{good}");
+        }
+        for bad in [
+            "localhost",
+            "Slack.com",
+            "slack.com:443",
+            "https://slack.com",
+            "slack..com",
+            "-a.com",
+            "a-.com",
+            "slack.com/",
+        ] {
+            assert!(!domain(bad), "{bad}");
+        }
+    }
+
+    #[test]
+    fn a_socket_lies_under_a_domain_only_by_its_host() {
+        let domains = ["slack.com", "discord.gg"];
+        for good in [
+            "wss://wss-primary.slack.com/link?ticket=1",
+            "wss://slack.com",
+            "wss://Resume.Discord.gg:443/?v=10",
+        ] {
+            assert!(socket_under(good, &domains), "{good}");
+        }
+        for bad in [
+            "ws://slack.com/",
+            "https://slack.com/",
+            "wss://evilslack.com/",
+            "wss://slack.com.evil.example/",
+            "wss://slack.com@evil.example/",
+            "wss://evil.example/slack.com",
+            "wss://evil.example/?slack.com",
+            "wss://[::1]:443/",
+        ] {
+            assert!(!socket_under(bad, &domains), "{bad}");
         }
     }
 }

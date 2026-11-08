@@ -13,6 +13,16 @@ pub struct Kept {
     pub outcome: Chored,
 }
 
+/// What a round of housekeeping did: each schedule that fell due, and the
+/// records the store's listings skipped as corrupt since the last round.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct Housekept {
+    /// What became of each schedule that fell due.
+    pub kept: Vec<Kept>,
+    /// The path of each record a listing skipped as corrupt.
+    pub skipped: Vec<String>,
+}
+
 /// What became of a schedule that fell due.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Chored {
@@ -38,7 +48,7 @@ pub async fn housekeep<S: Store, C: Clock, H: Http>(
     connected: &Connected<H>,
     store: &S,
     clock: &C,
-) -> Result<Vec<Kept>, Stop> {
+) -> Result<Housekept, Stop> {
     if store.capabilities().deliveries {
         store
             .expire_deliveries(clock.now() - DELIVERIES_KEPT)
@@ -96,5 +106,8 @@ pub async fn housekeep<S: Store, C: Clock, H: Http>(
             outcome,
         });
     }
-    Ok(kept)
+    Ok(Housekept {
+        kept,
+        skipped: store.skipped(),
+    })
 }

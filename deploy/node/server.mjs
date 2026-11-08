@@ -24,6 +24,28 @@ export function host(env = process.env, directory = process.cwd()) {
   };
 }
 
+function bodyOf(incoming, most) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    let length = 0;
+    const taken = (chunk) => {
+      chunks.push(chunk);
+      length += chunk.length;
+      if (length > most) {
+        incoming.off("data", taken);
+        incoming.pause();
+        resolve(Buffer.concat(chunks));
+      }
+    };
+    incoming.on("data", taken);
+    incoming.on("end", () => resolve(Buffer.concat(chunks)));
+    incoming.on("error", reject);
+    incoming.on("close", () => {
+      if (!incoming.complete) reject(new Error("the request was aborted"));
+    });
+  });
+}
+
 export async function serve({ env = process.env, path = env.HERALD_CONFIG ?? "herald.toml", listen = env.HERALD_LISTEN ?? "127.0.0.1:8080" } = {}) {
   await load(await readFile(new URL("../pkg/herald_wasm_bg.wasm", import.meta.url)));
   const directory = dirname(path);
@@ -41,21 +63,43 @@ export async function serve({ env = process.env, path = env.HERALD_CONFIG ?? "he
     .filter((round) => schedule[round])
     .map((round) => setInterval(() => rounds(herald, [round]).catch(console.error), schedule[round]));
   const [hostname, port] = [listen.slice(0, listen.lastIndexOf(":")), Number(listen.slice(listen.lastIndexOf(":") + 1))];
+  const limits = herald.limits();
   const server = createServer(async (incoming, outgoing) => {
-    const chunks = [];
-    for await (const chunk of incoming) chunks.push(chunk);
     const [path, query = ""] = incoming.url.split(/\?(.*)/s);
-    const { response, work } = await answering(herald, {
-      method: incoming.method,
-      path,
-      query,
-      headers: Object.entries(incoming.headers).flatMap(([name, value]) => [value].flat().map((each) => [name, String(each)])),
-      body: Buffer.concat(chunks),
-    });
-    work?.catch(console.error);
-    outgoing.writeHead(response.status, Object.fromEntries(response.headers));
-    outgoing.end(Buffer.from(await response.arrayBuffer()));
+    let body;
+    try {
+      body = await bodyOf(incoming, limits.body);
+    } catch (error) {
+      console.warn(`herald dropped ${incoming.method} ${path}: its body did not arrive: ${error.message}`);
+      outgoing.destroy();
+      return;
+    }
+    try {
+      const { response, work } = await answering(herald, {
+        method: incoming.method,
+        path,
+        query,
+        headers: Object.entries(incoming.headers).flatMap(([name, value]) => [value].flat().map((each) => [name, String(each)])),
+        body,
+      });
+      if (body.length > limits.body) outgoing.setHeader("connection", "close");
+      work?.catch(console.error);
+      outgoing.writeHead(response.status, Object.fromEntries(response.headers));
+      outgoing.end(Buffer.from(await response.arrayBuffer()));
+    } catch (error) {
+      console.error(`herald could not answer ${incoming.method} ${path}: ${error.message}`);
+      if (outgoing.headersSent) {
+        outgoing.destroy();
+        return;
+      }
+      outgoing.writeHead(500, { "content-type": "text/plain; charset=utf-8" });
+      outgoing.end("herald cannot answer this request now");
+    }
   });
+  server.maxConnections = limits.connections;
+  server.headersTimeout = limits.read;
+  server.requestTimeout = limits.read * 2;
+  server.setTimeout(limits.held);
   await new Promise((resolve) => server.listen(port, hostname, resolve));
   said([`herald serves on ${hostname}:${server.address().port}`]);
   return {

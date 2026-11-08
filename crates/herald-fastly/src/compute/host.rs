@@ -64,11 +64,6 @@ impl FastlyHost {
     pub(super) fn item(&self, name: &str) -> Option<String> {
         self.config.as_ref()?.try_get(name).ok().flatten()
     }
-
-    /// The secret `name`, where the Secret Store holds it.
-    pub(super) async fn secrets_for_round(&self, name: &str) -> Option<Secret> {
-        self.secrets.secret(name).await.ok()
-    }
 }
 
 impl Host for FastlyHost {

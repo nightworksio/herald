@@ -251,6 +251,7 @@ appservice_token = {{ secret = "HERALD_MATRIX_AS" }}
             let keys = Keys {
                 keyring: &self.keyring,
                 refreshed: jiff::SignedDuration::from_hours(1),
+                reread: jiff::SignedDuration::from_mins(1),
             };
             let webhooks = Webhooks::default();
             let serving = Serving {
@@ -272,6 +273,7 @@ appservice_token = {{ secret = "HERALD_MATRIX_AS" }}
                 keys: Duration::from_secs(3_600),
                 read: Duration::from_secs(2),
                 asked: None,
+                secret: None,
             };
             let heard = RefCell::new(Vec::new());
             let stop = Notify::new();

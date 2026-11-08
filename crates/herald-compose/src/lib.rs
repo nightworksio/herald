@@ -5,6 +5,7 @@
 //! wasm module, the WASI component and Fastly Compute each give it their
 //! ports.
 
+mod answer;
 mod asked;
 mod capped;
 mod composed;
@@ -14,16 +15,15 @@ mod public;
 mod reach;
 mod reaching;
 mod records;
-mod round;
 pub mod told;
 
-pub use asked::{Asked, Reached, plain};
+pub use answer::{Answer, Left};
+pub use asked::Asked;
 pub use capped::Capped;
 pub use composed::Composed;
 pub use host::{Host, KvAt, SqlAt, Unoffered};
 pub use hosting::Hosting;
 pub use public::{public, reachable};
-pub use reach::{Reach, ReachError, SESSIONS, SocketReach};
+pub use reach::{Reach, ReachError, SocketReach};
 pub use reaching::{EGRESS_GUARDED, Reaching, asked_query, public_address, received};
 pub use records::{GITHUB_REPOSITORY, GITHUB_TOKEN, Records, Served, reached};
-pub use round::{ROUND_SECRET, Round};

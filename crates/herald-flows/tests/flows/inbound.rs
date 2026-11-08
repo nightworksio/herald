@@ -239,6 +239,9 @@ impl Store for Refusing {
     fn capabilities(&self) -> herald_ports::Capabilities {
         FakeStore::default().capabilities()
     }
+    fn skipped(&self) -> Vec<String> {
+        Vec::new()
+    }
     async fn entry(
         &self,
         _: &herald_core::Key,
@@ -476,6 +479,7 @@ fn served(
 
 /// How long a key is used before it is read again, in these tests.
 const REFRESHED: jiff::SignedDuration = jiff::SignedDuration::from_hours(1);
+const REREAD: jiff::SignedDuration = jiff::SignedDuration::from_mins(1);
 
 fn kept_by<K: Keyring>(
     keyring: &K,
@@ -489,6 +493,7 @@ fn kept_by<K: Keyring>(
     let keys = Keys {
         keyring,
         refreshed: REFRESHED,
+        reread: REREAD,
     };
     let checked = pollster::block_on(activity_verified(
         &FakeVerifier,
@@ -573,10 +578,11 @@ fn a_key_kept_just_inside_its_refresh_is_used() {
 }
 
 #[test]
-fn a_kept_key_the_activity_does_not_hold_under_is_read_again() {
+fn a_kept_key_the_activity_does_not_hold_under_is_read_again_once_its_reread_has_passed() {
     let keyring = MemoryKeyring::new(8);
     let rotated = "https://social.example/users/bob";
-    pollster::block_on(keyring.know(ANA_KEY, &known(rotated, at()))).unwrap();
+    let read = at().checked_sub(REREAD).unwrap();
+    pollster::block_on(keyring.know(ANA_KEY, &known(rotated, read))).unwrap();
     let owned = document(ANA);
     let headers = activity(FOLLOW, ANA_KEY, None);
     let (checked, seen) = kept_by(
@@ -588,6 +594,29 @@ fn a_kept_key_the_activity_does_not_hold_under_is_read_again() {
     );
     assert_eq!(checked.unwrap().signer.as_deref(), Some(ANA));
     assert_eq!(seen, [format!("GET {ANA}")]);
+}
+
+#[test]
+fn an_activity_that_does_not_hold_under_a_key_read_within_its_reread_is_refused_unread() {
+    let keyring = MemoryKeyring::new(8);
+    let rotated = "https://social.example/users/bob";
+    let read = at()
+        .checked_sub(REREAD)
+        .unwrap()
+        .checked_add(jiff::SignedDuration::from_secs(1))
+        .unwrap();
+    pollster::block_on(keyring.know(ANA_KEY, &known(rotated, read))).unwrap();
+    let owned = document(ANA);
+    let headers = activity(FOLLOW, ANA_KEY, None);
+    let (checked, seen) = kept_by(
+        &keyring,
+        FOLLOW,
+        &headers,
+        &[(ANA, 200, owned.as_str())],
+        JSON,
+    );
+    assert!(checked.is_err());
+    assert_eq!(seen, [] as [String; 0]);
 }
 
 /// A keyring that can neither read nor keep a key.

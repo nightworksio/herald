@@ -4,6 +4,6 @@
     "description": { "defaultExecutablePath": "herald", "arguments": ["server"] },
     "enableForwardingHttpRequest": true
   },
-  "extensions": { "http": { "routePrefix": "" } },
+  "extensions": { "http": { "routePrefix": "api" } },
   "extensionBundle": { "id": "Microsoft.Azure.Functions.ExtensionBundle", "version": "[4.*, 5.0.0)" }
 }

@@ -3,29 +3,46 @@
 
 const REDACTED: &str = "«secret:";
 
-const PREFIXES: [(&str, &str); 13] = [
+const PREFIXES: [(&str, &str); 16] = [
     ("xoxb-", "a Slack bot token"),
     ("xoxp-", "a Slack user token"),
     ("xoxa-", "a Slack app token"),
     ("xoxr-", "a Slack refresh token"),
     ("xoxs-", "a Slack session token"),
+    ("xoxe", "a Slack refresh token"),
     ("xapp-", "a Slack app-level token"),
     ("ghp_", "a GitHub token"),
     ("gho_", "a GitHub token"),
     ("ghs_", "a GitHub token"),
     ("ghu_", "a GitHub token"),
+    ("ghr_", "a GitHub refresh token"),
     ("github_pat_", "a GitHub token"),
     ("syt_", "a Matrix access token"),
     ("glpat-", "a GitLab token"),
+    ("glrt-", "a GitLab runner token"),
 ];
 
-const SECRET_HEADERS: [&str; 6] = [
+/// How an AWS access key id begins: a long-term key, then a temporary one.
+const AWS_KEYS: [&str; 2] = ["AKIA", "ASIA"];
+/// How many characters follow an AWS access key id's prefix.
+const AWS_KEY_REST: usize = 16;
+
+const SECRET_HEADERS: [&str; 15] = [
     "authorization",
     "cookie",
     "set-cookie",
     "x-gitlab-token",
     "x-slack-signature",
     "proxy-authorization",
+    "x-amz-security-token",
+    "private-token",
+    "x-api-key",
+    "x-hub-signature",
+    "x-hub-signature-256",
+    "x-gitea-signature",
+    "x-forgejo-signature",
+    "x-gogs-signature",
+    "x-signature-ed25519",
 ];
 
 /// Each credential `text` holds, by what it looks like.
@@ -39,11 +56,19 @@ pub fn credentials(text: &str) -> Vec<&'static str> {
     if webhook_token(text) {
         found.push("a webhook's token in its URL");
     }
-    if text
-        .split(|character: char| !(character.is_ascii_alphanumeric() || "._-".contains(character)))
-        .any(discord_token)
-    {
+    if userinfo(text) {
+        found.push("a password in a URL");
+    }
+    let words = || {
+        text.split(|character: char| {
+            !(character.is_ascii_alphanumeric() || "._-".contains(character))
+        })
+    };
+    if words().any(discord_token) {
         found.push("a Discord bot token");
+    }
+    if words().any(aws_key) {
+        found.push("an AWS access key id");
     }
     found
 }
@@ -65,6 +90,33 @@ fn webhook_token(text: &str) -> bool {
             && id.chars().all(|digit| digit.is_ascii_digit())
             && !token.is_empty()
             && !token.starts_with(REDACTED)
+    })
+}
+
+fn userinfo(text: &str) -> bool {
+    text.match_indices("://").any(|(index, marker)| {
+        let rest = text.get(index + marker.len()..).unwrap_or_default();
+        let authority = rest
+            .split(['/', '?', '#', ' ', '"', '\'', '<', '>'])
+            .next()
+            .unwrap_or_default();
+        authority.split_once('@').is_some_and(|(user, host)| {
+            !host.is_empty()
+                && user.split_once(':').is_some_and(|(_, password)| {
+                    !password.is_empty() && !password.starts_with(REDACTED)
+                })
+        })
+    })
+}
+
+fn aws_key(word: &str) -> bool {
+    AWS_KEYS.iter().any(|prefix| {
+        word.strip_prefix(prefix).is_some_and(|rest| {
+            rest.len() == AWS_KEY_REST
+                && rest
+                    .bytes()
+                    .all(|byte| byte.is_ascii_uppercase() || byte.is_ascii_digit())
+        })
     })
 }
 
@@ -120,6 +172,39 @@ mod tests {
             credentials("https://discord.com/api/webhooks/123"),
             Vec::<&str>::new()
         );
+    }
+
+    #[test]
+    fn a_password_in_a_url_is_found_unless_redacted() {
+        let url = shaped(&["postgres://herald:", "hunter2", "@db.example/herald"]);
+        assert_eq!(credentials(&url), ["a password in a URL"]);
+        assert_eq!(
+            credentials(&shaped(&[
+                "postgres://herald:",
+                REDACTED,
+                "URL»@db.example/"
+            ])),
+            Vec::<&str>::new()
+        );
+        assert_eq!(
+            credentials("https://user@host.example/"),
+            Vec::<&str>::new()
+        );
+        assert_eq!(credentials("mailto:ana@social.example"), Vec::<&str>::new());
+        assert_eq!(
+            credentials("https://host.example/path?ana:x@y"),
+            Vec::<&str>::new()
+        );
+    }
+
+    #[test]
+    fn an_aws_access_key_id_is_found_by_its_shape() {
+        for prefix in AWS_KEYS {
+            let key = shaped(&[prefix, "ABCDEFGHIJ012345"]);
+            assert_eq!(credentials(&key), ["an AWS access key id"], "{key}");
+        }
+        assert_eq!(credentials("AKIAABC"), Vec::<&str>::new());
+        assert_eq!(credentials("AKIAabcdefghij012345"), Vec::<&str>::new());
     }
 
     #[test]

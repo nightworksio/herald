@@ -1,7 +1,7 @@
 use std::rc::Rc;
 
-use herald_compose::{Composed, Hosting, SESSIONS, SocketReach, asked_query, public_address, told};
-use herald_config::load;
+use herald_compose::{Composed, Hosting, SocketReach, asked_query, public_address, told};
+use herald_config::{Server, load};
 use herald_flows::{Admission, Inbound};
 use js_sys::{Function, Promise, Uint8Array};
 use send_wrapper::SendWrapper;
@@ -81,7 +81,9 @@ impl Herald {
 
     /// The answer to `request`, `{ method, path, query?, headers, body }`,
     /// its delivery admitted again where `again`: `{ status, kind, body,
-    /// work? }`, `work` settling to what the work it leaves did, in words.
+    /// retryAfter?, work?, refused?, said }`, `work` settling to what the
+    /// work it leaves did, in words, and `said` what a round it asked for
+    /// did.
     pub fn answer(&self, request: JsValue, again: bool) -> Promise {
         let composed = Rc::clone(&self.composed);
         future_to_promise(async move {
@@ -107,10 +109,10 @@ impl Herald {
                 Admission::Once
             };
             let answered = composed.answer(&inbound, admission).await;
-            let work = answered.job.map_or(JsValue::UNDEFINED, |job| {
+            let work = answered.left.map_or(JsValue::UNDEFINED, |left| {
                 let composed = Rc::clone(&composed);
                 future_to_promise(async move {
-                    Ok(strings(&told::worked(&composed.work(job).await)).into())
+                    Ok(strings(&told::worked(&composed.work(left).await)).into())
                 })
                 .into()
             });
@@ -123,10 +125,32 @@ impl Herald {
                 ("status", reply.status.into()),
                 ("kind", reply.kind.into()),
                 ("body", Uint8Array::from(reply.body.as_slice()).into()),
+                (
+                    "retryAfter",
+                    reply.retry_after.map_or(JsValue::UNDEFINED, JsValue::from),
+                ),
                 ("work", work),
                 ("refused", refused),
+                ("said", strings(&answered.said).into()),
             ]))
         })
+    }
+
+    /// The limits a host that serves herald keeps: `{ body, connections,
+    /// read, held }`, the most bytes of a request's body that are read, how
+    /// many connections are held at once, how many milliseconds a request's
+    /// headers and then its body may take, and how many a connection is held
+    /// at most (ADR-0014).
+    #[must_use]
+    pub fn limits(&self) -> JsValue {
+        let server = &self.composed.config().server;
+        let period = |every| millis(every).map_or(JsValue::UNDEFINED, JsValue::from);
+        object(&[
+            ("body", JsValue::from(server.body)),
+            ("connections", JsValue::from(server.connections)),
+            ("read", period(Server::READ)),
+            ("held", period(Server::HELD)),
+        ])
     }
 
     /// The periods the config asks rounds at, in milliseconds: `{ poll?,
@@ -153,12 +177,10 @@ impl Herald {
         future_to_promise(async move {
             let sockets = JsSockets {
                 opener: SendWrapper::new(sockets),
-                reach: SocketReach::under(SESSIONS),
+                reach: SocketReach::under(composed.config().session_domains()),
             };
             let taker = JsTaker {
-                most: composed.config().server.jobs,
                 composed: Rc::clone(&composed),
-                working: Rc::default(),
             };
             composed.hold(&sockets, &taker, &JsTimer).await;
             Ok(JsValue::UNDEFINED)

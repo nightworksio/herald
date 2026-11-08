@@ -3,8 +3,8 @@
 
 use herald_core::{Chore, Schedule, Step};
 use herald_flows::{
-    Announced, Chored, FollowError, Followed, Interacted, Kept, Outcome, Remembered, Stop, Sweep,
-    Swept, Worked,
+    Announced, Chored, FollowError, Followed, Housekept, Interacted, Kept, Outcome, Remembered,
+    Stop, Sweep, Swept, Worked,
 };
 
 /// What a poll of one source found and announced.
@@ -161,11 +161,23 @@ pub fn refused(reason: &str) -> String {
     format!("a request was refused: {reason}")
 }
 
+/// What a record a listing skipped as corrupt, at `path`, asks of whoever
+/// keeps the store.
+#[must_use]
+pub fn skipped(path: &str) -> String {
+    format!("the record {path} could not be read and was skipped; fix or remove it")
+}
+
 /// What housekeeping did, or why it stopped.
 #[must_use]
-pub fn kept(kept: &Result<Vec<Kept>, Stop>) -> Vec<String> {
+pub fn kept(kept: &Result<Housekept, Stop>) -> Vec<String> {
     match kept {
-        Ok(kept) => kept.iter().map(chored).collect(),
+        Ok(housekept) => housekept
+            .kept
+            .iter()
+            .map(chored)
+            .chain(housekept.skipped.iter().map(|path| skipped(path)))
+            .collect(),
         Err(stop) => vec![format!(
             "housekeeping stopped: {}. The next round tries again.",
             why(stop)

@@ -7,16 +7,18 @@ use std::collections::BTreeMap;
 use std::io::Write;
 
 use herald_config::Config;
-use herald_flows::Gap;
+use herald_flows::{Gap, ROUND_SECRET};
 use herald_ports::Secret;
 
+use super::lambda::CREDENTIALS;
 use super::{GITHUB_TOKEN, JOB_TOKEN, RUNTIME_TOKEN, SCRUBBED, gapped};
 
 /// Every secret the run may resolve, by its name, and each line of a value
 /// that spans lines on its own as well.
 pub(crate) fn hidden(config: &Config, vars: &BTreeMap<String, String>) -> Vec<Secret> {
     let mut names = config.secrets();
-    names.extend([GITHUB_TOKEN, RUNTIME_TOKEN, JOB_TOKEN]);
+    names.extend([GITHUB_TOKEN, RUNTIME_TOKEN, JOB_TOKEN, ROUND_SECRET]);
+    names.extend(CREDENTIALS);
     let mut hidden = Vec::new();
     for (name, value) in names
         .iter()

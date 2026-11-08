@@ -1,6 +1,7 @@
 use herald_core::Replies;
 
 use super::*;
+use crate::SESSION_DOMAIN;
 
 const APPLICATION: &str = "123456789012345678";
 const GUILD: &str = "223456789012345678";
@@ -504,6 +505,10 @@ fn responses_say_working_privately_or_publicly_and_list_choices() {
 #[test]
 fn the_destination_says_how_it_carries_and_answers_commands() {
     assert_eq!(interacting(r#", "via": "gateway""#).via(), Via::Gateway);
+    assert_eq!(
+        interacting(r#", "domains": ["proxy.example"]"#).session_domains(),
+        [SESSION_DOMAIN, "proxy.example"]
+    );
     let interacting = interacting(r#", "replies": "public""#);
     assert_eq!(interacting.via(), Via::Http);
     assert_eq!(interacting.key(), Some(KEY));

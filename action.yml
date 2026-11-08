@@ -149,7 +149,7 @@ runs:
         HERALD: ${{ steps.download.outputs.binary || steps.build.outputs.binary }}
         CONFIG: ${{ inputs.config }}
       run: |
-        kind=$("$HERALD" --config "$CONFIG" store)
+        kind=$("$HERALD" --config "$CONFIG" store | tail -n 1)
         echo "kind=$kind" >> "$GITHUB_OUTPUT"
 
     # The cache service's address and the run's token reach only JavaScript

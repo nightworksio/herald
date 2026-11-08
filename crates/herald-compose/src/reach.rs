@@ -1,5 +1,6 @@
 use std::fmt;
 
+use herald_core::under_domain;
 use herald_ports::HttpError;
 use url::{Host, Url};
 
@@ -90,10 +91,6 @@ impl Reach {
     }
 }
 
-/// The domains herald's sessions hold connections under: Discord's gateway
-/// and Slack's Socket Mode (ADR-0016).
-pub const SESSIONS: [&str; 2] = ["discord.gg", "slack.com"];
-
 /// What sockets may reach: `wss` under its domains alone, and plain `ws`
 /// only on a loopback host (ADR-0007).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -112,12 +109,7 @@ impl SocketReach {
             return false;
         };
         match url.scheme() {
-            "wss" => self.0.iter().any(|domain| {
-                host == domain
-                    || host
-                        .strip_suffix(domain.as_str())
-                        .is_some_and(|rest| rest.ends_with('.'))
-            }),
+            "wss" => self.0.iter().any(|domain| under_domain(host, domain)),
             "ws" => loopback(url),
             _ => false,
         }
@@ -197,7 +189,7 @@ mod tests {
     }
 
     fn allowed(text: &str) -> bool {
-        SocketReach::under(SESSIONS).allows(&url(text))
+        SocketReach::under(["discord.gg", "slack.com"]).allows(&url(text))
     }
 
     #[test]
@@ -220,7 +212,7 @@ mod tests {
 
     #[test]
     fn a_socket_not_allowed_is_refused_without_its_query() {
-        let reach = SocketReach::under(SESSIONS);
+        let reach = SocketReach::under(["discord.gg", "slack.com"]);
         assert_eq!(
             reach.admitted("wss://evil.example/?ticket=secret"),
             Err(HttpError::Refused {

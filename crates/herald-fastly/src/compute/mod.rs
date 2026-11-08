@@ -8,15 +8,15 @@ mod tests;
 
 use fastly::http::Method;
 use fastly::{Request, Response};
-use herald_compose::{Asked, Composed, Hosting, ROUND_SECRET, plain, told};
+use std::io::Read as _;
+
+use herald_compose::{Asked, Composed, Hosting, told};
 use herald_config::load;
-use herald_ports::Secret;
+use herald_flows::{Answered, Reply, refusal};
 use host::{FastlyHost, STORE};
 
 /// The Config Store item holding `herald.toml`.
 const CONFIG: &str = "herald.toml";
-/// The most of a request's body that is read.
-const MOST: usize = 1 << 20;
 
 fn said(lines: impl IntoIterator<Item = String>) {
     for line in lines {
@@ -24,7 +24,8 @@ fn said(lines: impl IntoIterator<Item = String>) {
     }
 }
 
-fn asked(mut request: Request) -> Option<Asked> {
+/// What `request` asks, its body read no further than one byte past `most`.
+fn asked(mut request: Request, most: usize) -> std::io::Result<Asked> {
     let method = request.get_method_str().to_owned();
     let target = request.get_url().path().to_owned()
         + &request
@@ -36,8 +37,10 @@ fn asked(mut request: Request) -> Option<Asked> {
             Some((name.as_str().to_owned(), value.to_str().ok()?.to_owned()))
         })
         .collect();
-    let body = request.take_body_bytes();
-    (body.len() <= MOST).then_some(Asked {
+    let mut body = Vec::new();
+    let limit = u64::try_from(most).unwrap_or(u64::MAX).saturating_add(1);
+    request.take_body().take(limit).read_to_end(&mut body)?;
+    Ok(Asked {
         method,
         target,
         headers,
@@ -64,42 +67,47 @@ fn composed() -> Result<Composed<FastlyHost>, String> {
     ))
 }
 
-fn send(status: u16, kind: &str, body: Vec<u8>) {
-    Response::from_status(status)
-        .with_content_type(kind.parse().unwrap_or(fastly::mime::TEXT_PLAIN))
-        .with_body(body)
-        .send_to_client();
+fn send(reply: Reply, head: bool) {
+    let mut response = Response::from_status(reply.status)
+        .with_content_type(reply.kind.parse().unwrap_or(fastly::mime::TEXT_PLAIN));
+    if let Some(after) = reply.retry_after {
+        response.set_header("retry-after", after.to_string());
+    }
+    if !head {
+        response.set_body(reply.body);
+    }
+    response.send_to_client();
+}
+
+/// Sends the refusal `answered`, and logs its reason.
+fn refused(answered: Answered) {
+    said(answered.refused.as_deref().map(told::refused));
+    send(answered.reply, false);
 }
 
 /// Answers the client's request, then does the work it leaves.
 pub(crate) fn serve() {
     let request = Request::from_client();
     let is_head = request.get_method() == Method::HEAD;
-    let Some(asked) = asked(request) else {
-        let reply = plain(413, "the body is too large");
-        send(reply.status, reply.kind, reply.body);
-        return;
-    };
     let composed = match composed() {
         Ok(composed) => composed,
         Err(error) => {
-            eprintln!("herald could not start: {error}");
-            let reply = plain(500, "herald could not start");
-            send(reply.status, reply.kind, reply.body);
+            refused(refusal(500, format!("herald could not start: {error}")));
             return;
         }
     };
-    let secret: Option<Secret> =
-        pollster::block_on(composed.host().secrets_for_round(ROUND_SECRET));
-    let reached = pollster::block_on(composed.reached(&asked, secret.as_ref()));
-    said(reached.said);
-    let body = if is_head {
-        Vec::new()
-    } else {
-        reached.reply.body
+    let asked = match asked(request, composed.config().server.body) {
+        Ok(asked) => asked,
+        Err(error) => {
+            refused(refusal(400, format!("its body could not be read: {error}")));
+            return;
+        }
     };
-    send(reached.reply.status, reached.reply.kind, body);
-    if let Some(job) = reached.job {
-        said(told::worked(&pollster::block_on(composed.work(job))));
+    let answer = pollster::block_on(composed.reached(&asked));
+    said(answer.refused.as_deref().map(told::refused));
+    said(answer.said);
+    send(answer.reply, is_head);
+    if let Some(left) = answer.left {
+        said(told::worked(&pollster::block_on(composed.work(left))));
     }
 }

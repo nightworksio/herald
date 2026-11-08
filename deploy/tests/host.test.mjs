@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
 import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
+import { connect } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { before, test } from "node:test";
-import { capped, fetching, load, publicAddress } from "../host.mjs";
+import { answering, capped, fetching, load, publicAddress, upTo } from "../host.mjs";
 import { serve } from "../node/server.mjs";
 import { guarded, vetted } from "../vetted.mjs";
 
@@ -69,5 +70,57 @@ test("herald serves on Node, keeping its records in a SQLite file", async () => 
   assert.equal(await health.text(), "herald is up");
   const unknown = await fetch(`http://127.0.0.1:${port}/nowhere`);
   assert.equal(unknown.status, 404);
+  await running.close();
+});
+
+test("a request aborted mid-body is dropped and the next is answered", async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "herald-node-"));
+  const path = join(directory, "herald.toml");
+  await writeFile(path, 'version = 1\n[store]\nkind = "sqlite"\n');
+  const warned = t.mock.method(console, "warn", () => {});
+  const running = await serve({ env: {}, path, listen: "127.0.0.1:0" });
+  const { port } = running.server.address();
+  await new Promise((resolve, reject) => {
+    const socket = connect(port, "127.0.0.1", () => {
+      socket.write("POST /inbox HTTP/1.1\r\nHost: herald.example\r\nContent-Length: 100\r\n\r\npart");
+      setTimeout(() => socket.destroy(), 50);
+    });
+    socket.on("close", resolve);
+    socket.on("error", reject);
+  });
+  while (warned.mock.callCount() === 0) await new Promise((resolve) => setTimeout(resolve, 10));
+  assert.match(warned.mock.calls[0].arguments[0], /^herald dropped POST \/inbox: its body did not arrive/);
+  const health = await fetch(`http://127.0.0.1:${port}/healthz`);
+  assert.equal(health.status, 200);
+  await running.close();
+});
+
+test("a body is read no further than one byte past the most herald takes", async () => {
+  const chunks = [new Uint8Array([1, 2]), new Uint8Array([3, 4]), new Uint8Array([5])];
+  assert.deepEqual(await upTo(chunks, 3), new Uint8Array([1, 2, 3, 4]));
+  assert.deepEqual(await upTo(chunks, 9), new Uint8Array([1, 2, 3, 4, 5]));
+  assert.deepEqual(await upTo(null, 3), new Uint8Array());
+});
+
+test("a refusal that asks its sender to wait says how long", async (t) => {
+  t.mock.method(console, "warn", () => {});
+  const herald = {
+    answer: async () => ({ status: 503, kind: "text/plain", body: new Uint8Array(), retryAfter: 30, refused: "busy" }),
+  };
+  const { response } = await answering(herald, {});
+  assert.equal(response.status, 503);
+  assert.equal(response.headers.get("retry-after"), "30");
+});
+
+test("a body larger than [server] body is refused on Node", async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "herald-node-"));
+  const path = join(directory, "herald.toml");
+  await writeFile(path, 'version = 1\n[store]\nkind = "sqlite"\n[server]\nbody = "4KiB"\n');
+  t.mock.method(console, "warn", () => {});
+  const running = await serve({ env: {}, path, listen: "127.0.0.1:0" });
+  const { port } = running.server.address();
+  const refused = await fetch(`http://127.0.0.1:${port}/inbox`, { method: "POST", body: "0".repeat(5000) });
+  assert.equal(refused.status, 413);
+  assert.equal(await refused.text(), "herald does not take this request");
   await running.close();
 });

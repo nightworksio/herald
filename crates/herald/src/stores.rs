@@ -46,7 +46,7 @@ impl Host for Native<'_> {
     type Kv = Unoffered;
 
     fn connect(&self, base: &str) -> Result<Connection, String> {
-        (self.connect)(base)
+        self.connect.reach(base)
     }
 
     fn var(&self, name: &str) -> Option<&str> {
@@ -185,7 +185,7 @@ pub(crate) async fn reached<'a>(
             .map_err(|error| error.to_string())?,
         Commands::Unanswered => prepared,
     };
-    Ok((records, prepared.connect(connect)?))
+    Ok((records, prepared.connect(|base| connect.reach(base))?))
 }
 
 pub(crate) async fn cache<'a>(
@@ -199,6 +199,6 @@ pub(crate) async fn cache<'a>(
         format!("{RUNTIME_TOKEN} is not set; the actions-cache store runs through herald's Action")
     })?;
     let cache = ActionsCache::new(results, token, options.prefix.as_deref());
-    let http = connect(cache.results())?;
-    Ok(cache.store(http, Box::new(connect)))
+    let http = connect.reach(cache.results())?;
+    Ok(cache.store(http, Box::new(move |base: &str| connect.reach(base))))
 }

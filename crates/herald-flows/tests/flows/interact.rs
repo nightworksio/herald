@@ -221,6 +221,7 @@ impl World {
         let keys = Keys {
             keyring: &self.keyring,
             refreshed: jiff::SignedDuration::from_hours(1),
+            reread: jiff::SignedDuration::from_mins(1),
         };
         let webhooks = Webhooks::default();
         self.ports(|ports| {

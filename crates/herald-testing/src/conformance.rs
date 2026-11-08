@@ -7,14 +7,18 @@ use std::fmt;
 use herald_ports::{Admitted, Keeping, Keyring, KnownKey, Store, StoreError, Version, Written};
 use jiff::Timestamp;
 
-/// Whether `store`, empty, keeps every record its capabilities declare as a
-/// store must (ADR-0005), and refuses as unsupported every kind it does not
-/// declare. Every store passes this suite, and so does [`crate::FakeStore`].
+/// Whether `store`, empty, skips no record, keeps every record its
+/// capabilities declare as a store must (ADR-0005), and refuses as
+/// unsupported every kind it does not declare. Every store passes this
+/// suite, and so does [`crate::FakeStore`].
 ///
 /// # Errors
 ///
 /// The first way the store fails, as a sentence.
 pub async fn store_conformance<S: Store>(store: &S) -> Result<(), Failure> {
+    if !store.skipped().is_empty() {
+        return Err(Failure("a store holding no record skipped one".to_owned()));
+    }
     let capabilities = store.capabilities();
     match capabilities.ledger {
         Keeping::Kept => ledger(store).await?,

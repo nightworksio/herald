@@ -1,7 +1,7 @@
 use herald_core::Command;
 
 use super::*;
-use crate::interactions::Interactions;
+use crate::interactions::{Interactions, SESSION_DOMAIN};
 
 const APPLICATION: &str = "123456789012345678";
 
@@ -52,7 +52,7 @@ fn ready(gateway: &mut Gateway) {
 
 #[test]
 fn a_session_identifies_on_hello_and_beats_as_often_as_discord_says() {
-    let mut gateway = Gateway::new(token());
+    let mut gateway = Gateway::new(token(), &[SESSION_DOMAIN]);
     assert_eq!(gateway.url(), GATEWAY);
     let effects = hello(&mut gateway);
     assert_eq!(effects[0], Effect::Beat(SignedDuration::from_millis(41250)));
@@ -74,12 +74,12 @@ fn a_session_identifies_on_hello_and_beats_as_often_as_discord_says() {
 
 #[test]
 fn a_beat_carries_the_last_sequence_and_an_unacknowledged_beat_reconnects() {
-    let mut gateway = Gateway::new(token());
+    let mut gateway = Gateway::new(token(), &[SESSION_DOMAIN]);
     hello(&mut gateway);
     assert_eq!(sent(&gateway.beat()), json!({ "op": 1, "d": null }));
     ready(&mut gateway);
     assert_eq!(gateway.beat(), Effect::Reconnect { resume: true });
-    let mut acknowledged = Gateway::new(token());
+    let mut acknowledged = Gateway::new(token(), &[SESSION_DOMAIN]);
     hello(&mut acknowledged);
     ready(&mut acknowledged);
     assert_eq!(sent(&acknowledged.beat()), json!({ "op": 1, "d": 1 }));
@@ -90,8 +90,37 @@ fn a_beat_carries_the_last_sequence_and_an_unacknowledged_beat_reconnects() {
 }
 
 #[test]
+fn a_session_resumes_only_under_its_domains() {
+    let mut gateway = Gateway::new(token(), &[SESSION_DOMAIN]);
+    hello(&mut gateway);
+    received(
+        &mut gateway,
+        &json!({ "op": 0, "s": 1, "t": "READY", "d": {
+            "session_id": "session",
+            "resume_gateway_url": "wss://resume.evil.example/",
+        }}),
+    );
+    received(&mut gateway, &json!({ "op": 7 }));
+    assert_eq!(gateway.url(), GATEWAY);
+    let mut proxied = Gateway::new(token(), &[SESSION_DOMAIN, "proxy.example"]);
+    hello(&mut proxied);
+    received(
+        &mut proxied,
+        &json!({ "op": 0, "s": 1, "t": "READY", "d": {
+            "session_id": "session",
+            "resume_gateway_url": "wss://resume.proxy.example/",
+        }}),
+    );
+    received(&mut proxied, &json!({ "op": 7 }));
+    assert_eq!(
+        proxied.url(),
+        "wss://resume.proxy.example/?v=10&encoding=json"
+    );
+}
+
+#[test]
 fn a_session_told_to_reconnect_resumes_where_discord_said() {
-    let mut gateway = Gateway::new(token());
+    let mut gateway = Gateway::new(token(), &[SESSION_DOMAIN]);
     hello(&mut gateway);
     ready(&mut gateway);
     assert_eq!(
@@ -109,7 +138,7 @@ fn a_session_told_to_reconnect_resumes_where_discord_said() {
 
 #[test]
 fn an_invalid_session_identifies_afresh_unless_discord_says_it_resumes() {
-    let mut gateway = Gateway::new(token());
+    let mut gateway = Gateway::new(token(), &[SESSION_DOMAIN]);
     hello(&mut gateway);
     ready(&mut gateway);
     assert_eq!(
@@ -122,13 +151,13 @@ fn an_invalid_session_identifies_afresh_unless_discord_says_it_resumes() {
         received(&mut gateway, &json!({ "op": 9, "d": true })),
         [Effect::Reconnect { resume: true }]
     );
-    let mut fresh = Gateway::new(token());
+    let mut fresh = Gateway::new(token(), &[SESSION_DOMAIN]);
     assert_eq!(fresh.closed(None), Effect::Reconnect { resume: false });
 }
 
 #[test]
 fn a_close_reconnecting_cannot_help_stops_and_any_other_resumes() {
-    let mut gateway = Gateway::new(token());
+    let mut gateway = Gateway::new(token(), &[SESSION_DOMAIN]);
     hello(&mut gateway);
     ready(&mut gateway);
     for code in [4004, 4010, 4011, 4012, 4013, 4014] {
@@ -146,7 +175,7 @@ fn a_close_reconnecting_cannot_help_stops_and_any_other_resumes() {
 #[test]
 fn a_session_that_cannot_be_taken_up_again_starts_afresh_and_is_ready_once_resumed() {
     for code in [4007, 4009] {
-        let mut gateway = Gateway::new(token());
+        let mut gateway = Gateway::new(token(), &[SESSION_DOMAIN]);
         hello(&mut gateway);
         ready(&mut gateway);
         assert_eq!(
@@ -156,7 +185,7 @@ fn a_session_that_cannot_be_taken_up_again_starts_afresh_and_is_ready_once_resum
         );
         assert_eq!(gateway.url(), GATEWAY);
     }
-    let mut gateway = Gateway::new(token());
+    let mut gateway = Gateway::new(token(), &[SESSION_DOMAIN]);
     hello(&mut gateway);
     ready(&mut gateway);
     gateway.closed(None);
@@ -171,7 +200,7 @@ fn a_session_that_cannot_be_taken_up_again_starts_afresh_and_is_ready_once_resum
 
 #[test]
 fn an_interaction_dispatched_is_handed_over_and_others_pass() {
-    let mut gateway = Gateway::new(token());
+    let mut gateway = Gateway::new(token(), &[SESSION_DOMAIN]);
     let interaction = json!({ "op": 0, "s": 5, "t": "INTERACTION_CREATE", "d": {
         "id": "900",
         "token": "tok",

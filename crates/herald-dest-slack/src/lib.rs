@@ -21,7 +21,7 @@ mod web_api;
 pub use interact::{
     Interacting, Received, Replying, SECTION, SUBSCRIBE, Unread, subscribe_block, took,
 };
-pub use interactions::{Interactions, Subscribe, Via};
+pub use interactions::{Interactions, SESSION_DOMAIN, Subscribe, Via};
 pub use markers::SlackMarkers;
 pub use options::{DestinationOptions, RouteOptions};
 pub use request::Refusal;

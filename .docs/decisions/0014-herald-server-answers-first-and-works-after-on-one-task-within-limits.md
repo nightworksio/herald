@@ -50,9 +50,11 @@ does. Nothing herald keeps today holds its content.
      poll finishes (ADR-0005).
 3. **Everything runs on one task, within limits the config sets.**
    - `jobs` (8) pieces of work run at once, and as many again wait. A
-     request that could leave work holds a place in the queue before it is
-     read, and is answered 503 with `Retry-After` when there is none, so the
-     queue never holds more than `jobs`.
+     request's work takes its place in the queue once the request is read
+     and verified, so a slow body holds no place. Work with no place is
+     released, so its sender's retry is admitted, and its request is
+     answered 503 with `Retry-After`; the queue never holds more than
+     `jobs`.
    - `connections` (256) are held at once. Each carries one request, whose
      headers and then body must arrive within 30 seconds, and is closed
      after 90. A body is at most `body` (1 MiB).
@@ -61,6 +63,10 @@ does. Nothing herald keeps today holds its content.
      session; one arriving while as many are answered is dropped and said.
    - `deliveries` (8) of an announcement's inboxes are delivered to at once,
      each still one step of the ledger. The CLI honours it too.
+   - Every host herald composes on keeps the same limits: a body past
+     `body` is refused 413, work past `jobs` is released and refused 503
+     with `Retry-After`, and one round of each kind runs at a time. The
+     Node shim also holds `connections` and the 30- and 90-second times.
    - Sources are polled and threads kept on `[schedule]`, and keys read
      longer ago than their refresh are forgotten. One round of each kind
      runs at a time.
@@ -69,7 +75,9 @@ does. Nothing herald keeps today holds its content.
      owner and when it was read. A key read within `[server.keys]
      refresh_after` (1 hour) checks the next activity signed with it without
      reading its document again. An activity that does not hold under a kept
-     key has the key read again, as one rotated since.
+     key has the key read again, as one rotated since, once `[server.keys]
+     reread_after` (1 minute) has passed since it was read; within it the
+     activity is refused, so forgeries naming a kept key read nothing.
    - `cache = "memory"`, the default, keeps at most `most` (1024) keys and
      forgets the one used longest ago. `cache = "store"` keeps them in the
      store, across restarts and shared by every instance, and every store

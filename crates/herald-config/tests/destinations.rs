@@ -13,6 +13,17 @@ mod destinations {
         load("herald.toml", text, &nothing).unwrap_err().to_string()
     }
 
+    /// The name of the secret the config's first destination reaches its
+    /// platform with.
+    fn credential(config: &herald_config::Config) -> Option<&str> {
+        config
+            .destinations
+            .values()
+            .next()
+            .and_then(Destination::credential)
+            .map(|reference| reference.secret.as_str())
+    }
+
     const MASTODON: &str = r#"version = 1
 
 [store]
@@ -50,6 +61,7 @@ body = "{{ event.body }}"
             panic!("the destination is Mastodon's");
         };
         assert_eq!(social.server, "https://mastodon.example");
+        assert_eq!(credential(&config), Some("HERALD_MASTODON_TOKEN"));
         assert_eq!(
             config.destinations.values().next().map(Destination::kind),
             Some("mastodon")
@@ -152,6 +164,7 @@ body = "{{ event.body }}"
             panic!("the destination is Matrix's");
         };
         assert_eq!(room.homeserver, "https://matrix.example");
+        assert_eq!(credential(&config), Some("HERALD_MATRIX_TOKEN"));
         assert_eq!(
             config.destinations.values().next().map(Destination::kind),
             Some("matrix")
@@ -244,6 +257,7 @@ body = "{{ event.body }}"
             panic!("the destination is Slack's");
         };
         assert!(team.token.is_some());
+        assert_eq!(credential(&config), Some("HERALD_SLACK_TOKEN"));
         assert_eq!(
             config.destinations.values().next().map(Destination::kind),
             Some("slack")
@@ -262,6 +276,7 @@ body = "{{ event.body }}"
             .replace("channel = \"C0123456789\"\npin = \"markers\"\nmentions = { subscribers = true }\nthread = { name = \"{{ event.version }}\" }\n", "");
         let config = load("herald.toml", &hooked, &nothing).unwrap();
         assert_eq!(config.routes[0].profile, herald_dest_slack::profile(false));
+        assert_eq!(credential(&config), Some("HERALD_SLACK_WEBHOOK"));
         assert_eq!(
             config.secrets().into_iter().collect::<Vec<_>>(),
             ["HERALD_SLACK_WEBHOOK"]
@@ -368,6 +383,7 @@ body = "{{ event.body }}"
             panic!("the destination is herald's own actor's");
         };
         assert_eq!(fedi.domain, "herald.example");
+        assert_eq!(credential(&config), Some("HERALD_ACTIVITYPUB_KEY"));
         assert_eq!(
             config.destinations.values().next().map(Destination::kind),
             Some("activitypub")

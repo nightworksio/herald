@@ -26,14 +26,23 @@ pub enum Public {
     Rsa,
 }
 
-/// The DER a PEM block holds, whatever its label.
+/// The label of a PKCS#8 private key's PEM block.
+pub const PRIVATE_KEY: &str = "PRIVATE KEY";
+/// The label of a `SubjectPublicKeyInfo`'s PEM block.
+pub const PUBLIC_KEY: &str = "PUBLIC KEY";
+
+/// The DER `text` holds as one PEM block labelled `label`, and nothing
+/// around it.
 #[must_use]
-pub fn pem(text: &str) -> Option<Vec<u8>> {
-    let body: String = text
-        .lines()
-        .filter(|line| !line.starts_with("-----"))
-        .map(str::trim)
-        .collect();
+pub fn pem(text: &str, label: &str) -> Option<Vec<u8>> {
+    let inner = text
+        .trim()
+        .strip_prefix(&format!("-----BEGIN {label}-----"))?
+        .strip_suffix(&format!("-----END {label}-----"))?;
+    if inner.contains("-----") {
+        return None;
+    }
+    let body: String = inner.split_whitespace().collect();
     STANDARD.decode(body).ok()
 }
 
@@ -110,12 +119,23 @@ mod tests {
         assert_eq!(value(300).len(), 304);
     }
 
+    /// `body` between a PEM `BEGIN` line of `begin` and an `END` line of `end`.
+    fn armoured(begin: &str, body: &str, end: &str) -> String {
+        format!("-----BEGIN {begin}-----\n{body}\n-----END {end}-----\n")
+    }
+
     #[test]
-    fn a_pem_block_is_read_whatever_its_label_and_a_broken_one_is_not() {
-        let block = "-----BEGIN PRIVATE KEY-----\n AAEC\nAw==\n-----END PRIVATE KEY-----\n";
-        assert_eq!(pem(block), Some(vec![0, 1, 2, 3]));
-        assert_eq!(pem("AAEC"), Some(vec![0, 1, 2]));
-        assert_eq!(pem("not base64!"), None);
+    fn one_pem_block_of_the_label_asked_for_is_read_and_nothing_else() {
+        let block = armoured(PRIVATE_KEY, " AAEC\nAw==", PRIVATE_KEY);
+        assert_eq!(pem(&block, PRIVATE_KEY), Some(vec![0, 1, 2, 3]));
+        assert_eq!(pem(&block, PUBLIC_KEY), None);
+        assert_eq!(pem("AAEC", PRIVATE_KEY), None);
+        let two = format!("{block}{block}");
+        assert_eq!(pem(&two, PRIVATE_KEY), None);
+        let mixed = armoured(PRIVATE_KEY, "AAEC", PUBLIC_KEY);
+        assert_eq!(pem(&mixed, PRIVATE_KEY), None);
+        let broken = armoured(PRIVATE_KEY, "not base64!", PRIVATE_KEY);
+        assert_eq!(pem(&broken, PRIVATE_KEY), None);
     }
 
     #[test]

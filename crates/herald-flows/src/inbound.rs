@@ -44,6 +44,9 @@ pub struct Keys<'a, K> {
     pub keyring: &'a K,
     /// How long one is used before its document is read again.
     pub refreshed: SignedDuration,
+    /// How long after one is read an activity that does not hold under it
+    /// is refused rather than having it read again.
+    pub reread: SignedDuration,
 }
 
 /// A request [`verified`] let through.
@@ -120,7 +123,8 @@ pub async fn verified<V: Verifier>(
 /// document names its owner is that owner's only where the owner's own
 /// document lists it. A key `keys` keeps, read within its refresh, is used
 /// without reading its document again; where the activity does not hold
-/// under it, its document is read again, as a key rotated since. Only an
+/// under it, its document is read again, as a key rotated since, unless it
+/// was read within `keys.reread`, when the activity is refused. Only an
 /// activity this lets through may reach a parser.
 ///
 /// # Errors
@@ -150,12 +154,17 @@ pub async fn activity_verified<V: Verifier, H: Http, K: Keyring>(
                 .is_ok_and(|stale| stale > now)
         });
     if let Some(known) = kept {
+        let recent = known
+            .fetched
+            .checked_add(keys.reread)
+            .is_ok_and(|after| after > now);
         let owned = ActorKey {
             actor: known.owner,
             pem: known.pem,
         };
-        if let Ok(verified) = owned_by(verifier, &claim, owned, body).await {
-            return Ok(verified);
+        let checked = owned_by(verifier, &claim, owned, body).await;
+        if checked.is_ok() || recent {
+            return checked;
         }
     }
     let owned = read_key(http, named).await?;

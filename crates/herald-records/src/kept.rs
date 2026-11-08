@@ -1,3 +1,6 @@
+use std::collections::BTreeSet;
+use std::sync::{Arc, Mutex, PoisonError};
+
 use herald_core::{
     Cursor, DestinationName, Entry, Key, Latest, RouteId, Schedule, Scheme, SourceName,
     Subscription,
@@ -43,6 +46,7 @@ struct Read {
 #[derive(Debug, Clone)]
 pub struct Kept<R> {
     records: R,
+    skipped: Arc<Mutex<BTreeSet<String>>>,
 }
 
 fn corrupt(path: &str, error: impl std::fmt::Display) -> StoreError {
@@ -61,7 +65,28 @@ impl<R: Records> Kept<R> {
     /// The store kept in `records`.
     #[must_use]
     pub fn new(records: R) -> Self {
-        Self { records }
+        Self {
+            records,
+            skipped: Arc::default(),
+        }
+    }
+
+    /// The record at `path` as a listing reads it: one that cannot be read
+    /// is skipped, and its path kept to report.
+    async fn listed<T: DeserializeOwned>(
+        &self,
+        path: &str,
+    ) -> Result<Option<Versioned<T>>, StoreError> {
+        match self.record::<T>(path).await {
+            Err(StoreError::Corrupt { .. }) => {
+                self.skipped
+                    .lock()
+                    .unwrap_or_else(PoisonError::into_inner)
+                    .insert(path.to_owned());
+                Ok(None)
+            }
+            read => read,
+        }
     }
 
     /// The backend it keeps its records in.
@@ -171,7 +196,7 @@ impl<R: Records> Kept<R> {
     async fn all<T: DeserializeOwned>(&self, directory: &str) -> Result<Vec<T>, StoreError> {
         let mut found = Vec::new();
         for path in self.records.list(directory).await? {
-            if let Some(record) = self.record::<T>(&path).await? {
+            if let Some(record) = self.listed::<T>(&path).await? {
                 found.push(record.value);
             }
         }
@@ -192,6 +217,12 @@ impl<R: Records> Store for Kept<R> {
             latest: true,
             concurrent: true,
         }
+    }
+
+    fn skipped(&self) -> Vec<String> {
+        std::mem::take(&mut *self.skipped.lock().unwrap_or_else(PoisonError::into_inner))
+            .into_iter()
+            .collect()
     }
 
     async fn entry(&self, key: &Key) -> Result<Option<Versioned<Entry>>, StoreError> {
@@ -281,7 +312,7 @@ impl<R: Records> Store for Kept<R> {
 
     async fn expire_deliveries(&self, before: Timestamp) -> Result<(), StoreError> {
         for path in self.records.list(paths::DELIVERIES).await? {
-            let admitted = self.record::<Timestamp>(&path).await?;
+            let admitted = self.listed::<Timestamp>(&path).await?;
             if admitted.is_some_and(|admitted| admitted.value < before) {
                 self.removed(&path).await?;
             }
@@ -341,7 +372,7 @@ impl<R: Records> Keyring for Kept<R> {
 
     async fn forget_before(&self, before: Timestamp) -> Result<(), StoreError> {
         for path in self.records.list(paths::KEYS).await? {
-            let known = self.record::<Known>(&path).await?;
+            let known = self.listed::<Known>(&path).await?;
             if known.is_some_and(|known| known.value.fetched < before) {
                 self.removed(&path).await?;
             }

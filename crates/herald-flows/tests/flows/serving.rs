@@ -1,8 +1,8 @@
 use herald_config::{Config, load};
 use herald_core::{Key, RouteId, Scheme, Step};
 use herald_flows::{
-    Answered, Connected, FollowError, Followed, Inbound, Job, Keys, Outcome, Ports, Serving,
-    Webhooks, Worked, answer, prepare, unworked, webhooks, work,
+    Answered, BUSY_RETRY, Connected, FollowError, Followed, Inbound, Job, Keys, Outcome, Ports,
+    Serving, Webhooks, Worked, answer, busy, prepare, unworked, webhooks, work,
 };
 use herald_ports::{Admitted, Algorithm, CryptoError, Secret, Signer, Store as _};
 use herald_records::MemoryKeyring;
@@ -118,6 +118,7 @@ impl World {
         let keys = Keys {
             keyring: &self.keyring,
             refreshed: jiff::SignedDuration::from_hours(1),
+            reread: jiff::SignedDuration::from_mins(1),
         };
         act(&Serving {
             config: &self.config,
@@ -204,6 +205,25 @@ fn health_is_answered_and_every_path_herald_does_not_serve_is_not_found() {
 }
 
 #[test]
+fn work_with_no_place_is_refused_and_asked_to_wait() {
+    let refused = busy();
+    assert_eq!(
+        said(&refused),
+        (
+            503,
+            TEXT,
+            "herald cannot answer this request now".to_owned()
+        )
+    );
+    assert_eq!(refused.reply.retry_after, Some(BUSY_RETRY));
+    assert_eq!(
+        refused.refused.as_deref(),
+        Some("the queue has no place for the work it leaves")
+    );
+    assert!(refused.job.is_none());
+}
+
+#[test]
 fn webfinger_names_an_actor_herald_serves_by_its_account_or_its_id() {
     let world = World::new(Script::default());
     for query in [
@@ -279,6 +299,7 @@ fn an_actor_whose_key_cannot_be_read_is_not_served() {
     let keys = Keys {
         keyring: &world.keyring,
         refreshed: jiff::SignedDuration::from_hours(1),
+        reread: jiff::SignedDuration::from_mins(1),
     };
     let serving = Serving {
         config: &world.config,

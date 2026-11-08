@@ -7,7 +7,7 @@ mod guide {
     use std::collections::BTreeMap;
     use std::path::PathBuf;
 
-    use herald::{DONE, run};
+    use herald::{Connector, DONE, run};
 
     fn root() -> PathBuf {
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..")
@@ -37,7 +37,7 @@ mod guide {
         let code = pollster::block_on(run(
             &args,
             &BTreeMap::new(),
-            &|_| Err(String::new()),
+            &Connector::new(&|_| Err(String::new()), &|_| Err(String::new())),
             &mut out,
             &mut err,
         ));

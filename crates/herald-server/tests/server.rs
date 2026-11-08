@@ -20,7 +20,7 @@ mod server {
     use herald_core::{DestinationName, Scheme, Subscription};
     use herald_flows::{Connected, Keys, Ports, Serving, Webhooks, prepare, webhooks};
     use herald_ports::{
-        Admitted, Clock as _, Http, HttpError, Keyring as _, KnownKey, Request, Response,
+        Admitted, Clock as _, Http, HttpError, Keyring as _, KnownKey, Request, Response, Secret,
         Store as _,
     };
     use herald_records::MemoryKeyring;
@@ -125,7 +125,7 @@ body = "{{ event.body }}"
         async fn serve(
             &self,
             listener: Taking,
-            limits: Limits,
+            limits: Limits<'_>,
             heard: &dyn Fn(Heard),
             stop: impl Future<Output = ()>,
         ) {
@@ -137,6 +137,7 @@ body = "{{ event.body }}"
             let keys = Keys {
                 keyring: &self.keyring,
                 refreshed: jiff::SignedDuration::from_hours(1),
+                reread: jiff::SignedDuration::from_mins(1),
             };
             let serving = Serving {
                 config: &self.config,
@@ -158,7 +159,7 @@ body = "{{ event.body }}"
         }
     }
 
-    fn limits() -> Limits {
+    fn limits() -> Limits<'static> {
         Limits {
             jobs: 4,
             connections: 4,
@@ -168,6 +169,7 @@ body = "{{ event.body }}"
             keys: Duration::from_secs(3_600),
             read: Duration::from_secs(2),
             asked: None,
+            secret: None,
         }
     }
 
@@ -314,25 +316,55 @@ body = "{{ event.body }}"
     }
 
     #[tokio::test]
-    async fn a_request_that_could_leave_work_is_refused_while_the_queue_is_full() {
+    async fn work_the_queue_has_no_place_for_is_refused_and_its_delivery_released() {
         let world = World::new(Gate::default()).await;
-        let (listener, address) = listening().await;
-        let stop = Notify::new();
-        let client = async {
-            let answer = asked(address, &posted("/inbox", &[], b"{}")).await;
-            stop.notify_one();
-            answer
-        };
-        let none = Limits {
+        let heard = RefCell::new(Vec::new());
+        let hear = |said: Heard| heard.borrow_mut().push(named(&said));
+        let unsigned = Limits {
             jobs: 0,
             ..limits()
         };
+        let (listener, address) = listening().await;
+        let stop = Notify::new();
+        let client = async {
+            let answers = (
+                asked(address, &posted("/inbox", &[], b"{}")).await,
+                asked(address, &release(EVENT.as_bytes())).await,
+            );
+            stop.notify_one();
+            answers
+        };
+        let ((unread, busy), ()) = tokio::join!(
+            client,
+            world.serve(listener, unsigned, &hear, stop.notified())
+        );
+        assert!(unread.starts_with("HTTP/1.1 401 "), "{unread}");
+        assert!(busy.starts_with("HTTP/1.1 503 "), "{busy}");
+        assert!(busy.contains("retry-after: 30"), "{busy}");
+        assert!(
+            busy.ends_with("herald cannot answer this request now"),
+            "{busy}"
+        );
+        assert_eq!(
+            said(&heard),
+            [
+                "listening",
+                "refused: the request carries no Signature",
+                "refused: the queue has no place for the work it leaves",
+            ]
+        );
+        let (listener, address) = listening().await;
+        let stop = Notify::new();
+        let client = async {
+            let answer = asked(address, &release(EVENT.as_bytes())).await;
+            stop.notify_one();
+            answer
+        };
         let (answer, ()) = tokio::join!(
             client,
-            world.serve(listener, none, &|_| {}, stop.notified())
+            world.serve(listener, limits(), &|_| {}, stop.notified())
         );
-        assert!(answer.starts_with("HTTP/1.1 503 "), "{answer}");
-        assert!(answer.contains("retry-after: 30"), "{answer}");
+        assert!(answer.starts_with("HTTP/1.1 202 "), "{answer}");
     }
 
     #[tokio::test]
@@ -502,6 +534,60 @@ body = "{{ event.body }}"
     }
 
     #[tokio::test]
+    async fn a_round_is_run_where_its_request_carries_the_round_secret() {
+        let world = World::new(Gate::default()).await;
+        let (listener, address) = listening().await;
+        let heard = RefCell::new(Vec::new());
+        let stop = Notify::new();
+        let secret = Secret::new("HERALD_ROUND_SECRET", "s3cret");
+        let held = Limits {
+            secret: Some(&secret),
+            ..limits()
+        };
+        let client = async {
+            let answers = (
+                asked(address, &posted("/herald/round/poll", &[], b"")).await,
+                asked(
+                    address,
+                    &posted(
+                        "/herald/round/poll",
+                        &[("Authorization", "Bearer s3cres")],
+                        b"",
+                    ),
+                )
+                .await,
+                asked(
+                    address,
+                    &posted(
+                        "/herald/round/housekeep",
+                        &[("Authorization", "Bearer s3cret")],
+                        b"",
+                    ),
+                )
+                .await,
+            );
+            stop.notify_one();
+            answers
+        };
+        let hear = |said: Heard| heard.borrow_mut().push(named(&said));
+        let ((unheld, wrong, kept), ()) =
+            tokio::join!(client, world.serve(listener, held, &hear, stop.notified()));
+        assert!(unheld.starts_with("HTTP/1.1 401"), "{unheld}");
+        assert!(wrong.starts_with("HTTP/1.1 401"), "{wrong}");
+        assert!(kept.starts_with("HTTP/1.1 200"), "{kept}");
+        assert!(kept.ends_with("the round ran"), "{kept}");
+        let said = said(&heard);
+        assert!(said.contains(&"kept".to_owned()), "{said:?}");
+        assert_eq!(
+            said.iter()
+                .filter(|line| *line == "refused: a round was asked without its secret")
+                .count(),
+            2,
+            "{said:?}"
+        );
+    }
+
+    #[tokio::test]
     async fn a_host_asks_for_rounds_at_its_paths_and_each_runs_one_at_a_time() {
         let gate = Gate {
             open: std::sync::Arc::new(Notify::new()),
@@ -516,6 +602,7 @@ body = "{{ event.body }}"
                 poll: "/poll",
                 housekeep: "/housekeep",
                 reply: r#"{"Outputs":{}}"#,
+                prefix: "api",
             }),
             ..limits()
         };
@@ -527,7 +614,8 @@ body = "{{ event.body }}"
                 let again = asked(address, &posted("/poll", &[], b"{}")).await;
                 let kept = asked(address, &posted("/housekeep", &[], b"{}")).await;
                 let elsewhere = asked(address, &posted("/nowhere", &[], b"{}")).await;
-                (again, kept, elsewhere)
+                let health = asked(address, b"GET /api/healthz HTTP/1.1\r\nHost: x\r\n\r\n").await;
+                (again, kept, (elsewhere, health))
             };
             let opening = async {
                 loop {
@@ -543,7 +631,7 @@ body = "{{ event.body }}"
             answers
         };
         let hear = |said: Heard| heard.borrow_mut().push(named(&said));
-        let ((first, (again, kept, elsewhere)), ()) = tokio::join!(
+        let ((first, (again, kept, (elsewhere, health))), ()) = tokio::join!(
             client,
             world.serve(listener, asking, &hear, stop.notified())
         );
@@ -556,6 +644,7 @@ body = "{{ event.body }}"
             );
         }
         assert!(elsewhere.starts_with("HTTP/1.1 404"), "{elsewhere}");
+        assert!(health.starts_with("HTTP/1.1 200"), "{health}");
         let said = said(&heard);
         assert_eq!(
             said.iter().filter(|name| *name == "polled").count(),

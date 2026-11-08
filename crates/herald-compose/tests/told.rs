@@ -8,8 +8,8 @@ mod told {
         SourceName, Step,
     };
     use herald_flows::{
-        Announced, Answer, Chored, FollowError, Followed, Interacted, Kept, Outcome, Remembered,
-        Stop, Sweep, Swept, Worked,
+        Announced, Answer, Chored, FollowError, Followed, Housekept, Interacted, Kept, Outcome,
+        Remembered, Stop, Sweep, Swept, Worked,
     };
 
     fn route() -> RouteId {
@@ -86,8 +86,14 @@ mod told {
             "releases: thread 9 archived"
         );
         assert_eq!(
-            told::kept(&Ok(vec![kept(Chored::Later(refused()))])),
-            ["releases: thread 9 not archived yet: no. The next run tries again."]
+            told::kept(&Ok(Housekept {
+                kept: vec![kept(Chored::Later(refused()))],
+                skipped: vec!["deliveries/app/7.json".to_owned()],
+            })),
+            [
+                "releases: thread 9 not archived yet: no. The next run tries again.",
+                "the record deliveries/app/7.json could not be read and was skipped; fix or remove it",
+            ]
         );
         assert_eq!(
             told::kept(&Err(refused())),

@@ -24,17 +24,7 @@ impl ActorOptions {
     ///
     /// When it is not, naming the fix.
     pub fn check(&self) -> Result<(), String> {
-        let labels: Vec<&str> = self.domain.split('.').collect();
-        let sound = labels.len() > 1
-            && labels.iter().all(|label| {
-                !label.is_empty()
-                    && !label.starts_with('-')
-                    && !label.ends_with('-')
-                    && label.bytes().all(|byte| {
-                        byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-'
-                    })
-            });
-        if sound {
+        if herald_core::domain(&self.domain) {
             Ok(())
         } else {
             Err(format!(

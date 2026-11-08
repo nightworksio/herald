@@ -869,3 +869,20 @@ fn a_bearer_token_is_read_whatever_case_its_scheme_is_written_in() {
     assert_eq!(bearer("Bearer "), None);
     assert_eq!(bearer("Bearer"), None);
 }
+
+#[test]
+fn a_claim_debugs_without_its_message_or_signatures() {
+    let claim = Claim {
+        kind: Signature::HmacSha256,
+        message: b"hs-token".to_vec(),
+        signatures: vec![b"hs-token".to_vec()],
+        delivery: Some("txn-1".to_owned()),
+        signer: None,
+    };
+    let shown = format!("{claim:?}");
+    assert!(!shown.contains("hs-token"), "{shown}");
+    assert_eq!(
+        shown,
+        r#"Claim { kind: HmacSha256, message: 8 bytes, signatures: 1 held back, delivery: Some("txn-1"), signer: None }"#
+    );
+}

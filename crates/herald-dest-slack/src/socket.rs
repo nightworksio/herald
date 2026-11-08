@@ -4,7 +4,7 @@
 
 use std::collections::BTreeMap;
 
-use herald_core::DestinationName;
+use herald_core::{DestinationName, socket_under};
 use herald_ports::{Method, Request, Response, Secret, Text};
 use serde_json::{Value, json};
 
@@ -106,19 +106,25 @@ impl Interacting {
     }
 }
 
-/// The address a `apps.connections.open` answer opens a connection at.
+/// The address a `apps.connections.open` answer opens a connection at, on
+/// a host under one of `domains`.
 ///
 /// # Errors
 ///
-/// What Slack said, where it opened none.
-pub fn opened(response: &Response) -> Result<String, String> {
+/// What Slack said, where it opened none, or that the address lies outside
+/// `domains`.
+pub fn opened(response: &Response, domains: &[&str]) -> Result<String, String> {
     let body: Value = serde_json::from_slice(&response.body).unwrap_or(Value::Null);
     let url = body
         .get("url")
         .and_then(Value::as_str)
         .filter(|url| url.starts_with("wss://"));
     match (body.get("ok").and_then(Value::as_bool), url) {
-        (Some(true), Some(url)) => Ok(url.to_owned()),
+        (Some(true), Some(url)) if socket_under(url, domains) => Ok(url.to_owned()),
+        (Some(true), Some(_)) => Err(format!(
+            "Slack opened a Socket Mode connection on a host outside {}; add its domain to the destination's interactions domains to take it",
+            domains.join(", ")
+        )),
         _ => Err(format!(
             "Slack opened no Socket Mode connection: {}",
             body.get("error")

@@ -1,26 +1,28 @@
-use herald_flows::{Admission, Inbound, Job, Reply};
-use herald_ports::Secret;
+use std::fmt;
 
+use herald_flows::{Admission, Inbound, ROUND_SECRET, Reply, Round, refusal};
+use herald_ports::Secrets as _;
+
+use crate::answer::Answer;
 use crate::composed::Composed;
 use crate::host::Host;
 use crate::reaching::asked_query;
-use crate::round::Round;
 use crate::told;
 
 const PLAIN: &str = "text/plain; charset=utf-8";
 
 /// A plain text reply.
-#[must_use]
-pub fn plain(status: u16, text: &str) -> Reply {
+fn plain(status: u16, text: &str) -> Reply {
     Reply {
         status,
         kind: PLAIN,
         body: text.as_bytes().to_vec(),
+        retry_after: None,
     }
 }
 
 /// What a request asked, as a host with no script of its own read it.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct Asked {
     /// The method, in capitals.
     pub method: String,
@@ -32,29 +34,32 @@ pub struct Asked {
     pub body: Vec<u8>,
 }
 
-/// What came of a request: its reply, the work it leaves, and what a round
-/// it asked for did, in words.
-#[derive(Debug)]
-pub struct Reached {
-    /// The reply.
-    pub reply: Reply,
-    /// The work to do once the reply is sent.
-    pub job: Option<Job>,
-    /// What a round did.
-    pub said: Vec<String>,
+impl fmt::Debug for Asked {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let headers: Vec<&str> = self.headers.iter().map(|(name, _)| name.as_str()).collect();
+        f.debug_struct("Asked")
+            .field("method", &self.method)
+            .field(
+                "path",
+                &self
+                    .target
+                    .split_once('?')
+                    .map_or(self.target.as_str(), |(path, _)| path),
+            )
+            .field("headers", &headers)
+            .field("body", &format_args!("{} bytes", self.body.len()))
+            .finish()
+    }
 }
 
 impl<H: Host> Composed<H> {
-    /// What comes of `asked`: a round where it names one and carries
-    /// `secret`, and otherwise herald's own answer.
-    pub async fn reached(&self, asked: &Asked, secret: Option<&Secret>) -> Reached {
+    /// What comes of `asked`, a request a host with no script of its own
+    /// read.
+    pub async fn reached(&self, asked: &Asked) -> Answer {
         let (path, query) = match asked.target.split_once('?') {
             Some((path, query)) => (path, asked_query(Some(query.to_owned()))),
             None => (asked.target.as_str(), None),
         };
-        if let Some(round) = Round::named(&asked.method, path) {
-            return self.round(round, asked, secret).await;
-        }
         let headers: Vec<(&str, &str)> = asked
             .headers
             .iter()
@@ -67,40 +72,45 @@ impl<H: Host> Composed<H> {
             headers: &headers,
             body: &asked.body,
         };
-        let answered = self.answer(&inbound, Admission::Once).await;
-        Reached {
-            reply: answered.reply,
-            job: answered.job,
-            said: answered
-                .refused
-                .as_deref()
-                .map(told::refused)
-                .into_iter()
-                .collect(),
-        }
+        self.answer(&inbound, Admission::Once).await
     }
 
-    async fn round(&self, round: Round, asked: &Asked, secret: Option<&Secret>) -> Reached {
-        let authorization = asked
-            .headers
-            .iter()
-            .find(|(name, _)| name.eq_ignore_ascii_case("authorization"))
-            .map(|(_, value)| value.as_str());
-        if !Round::allowed(authorization, secret) {
-            return Reached {
-                reply: plain(401, "a round needs its secret"),
-                job: None,
-                said: Vec::new(),
-            };
+    /// `round` run, where `authorization` holds the round secret the host
+    /// keeps as [`ROUND_SECRET`].
+    pub(crate) async fn round(&self, round: Round, authorization: Option<&str>) -> Answer {
+        let secret = self.host().secrets().secret(ROUND_SECRET).await.ok();
+        if !Round::allowed(authorization, secret.as_ref()) {
+            return refusal(401, "a round was asked without its secret").into();
         }
         let said = match round {
             Round::Poll => self.poll().await.iter().flat_map(told::polled).collect(),
             Round::Housekeep => told::kept(&self.housekeep().await),
         };
-        Reached {
+        Answer {
             reply: plain(200, "the round ran"),
-            job: None,
+            refused: None,
+            left: None,
             said,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_request_debugs_without_its_query_header_values_or_body() {
+        let asked = Asked {
+            method: "POST".to_owned(),
+            target: "/matrix/chat/transactions/1?access_token=hs-secret".to_owned(),
+            headers: vec![("Authorization".to_owned(), "Bearer round-secret".to_owned())],
+            body: b"{}".to_vec(),
+        };
+        let shown = format!("{asked:?}");
+        assert_eq!(
+            shown,
+            r#"Asked { method: "POST", path: "/matrix/chat/transactions/1", headers: ["Authorization"], body: 2 bytes }"#
+        );
     }
 }

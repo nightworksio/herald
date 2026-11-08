@@ -250,7 +250,10 @@ async fn an_ed25519_key_publishes_rfc_8410_s_public_key_and_verifies_its_own_sig
 async fn an_rsa_key_publishes_its_spki_and_verifies_through_its_pkcs1() {
     let key = Secret::new("RSA", pem(&unhex(RSA)));
     let public = WebSigner.public(Algorithm::RsaSha256, &key).await.unwrap();
-    assert_eq!(public, herald_keys::pem(RSA_SPKI).unwrap());
+    assert_eq!(
+        public,
+        herald_keys::pem(RSA_SPKI, herald_keys::PUBLIC_KEY).unwrap()
+    );
     let signature = WebSigner
         .sign(Algorithm::RsaSha256, &key, b"(request-target): post /inbox")
         .await
@@ -424,6 +427,32 @@ async fn a_composed_herald_answers_polls_and_keeps_house() {
 }
 
 #[wasm_bindgen_test]
+async fn a_host_keeps_the_limits_server_sets() {
+    use herald_config::Server;
+
+    let composed = Herald::compose(
+        host(&object(&[])),
+        "version = 1\n[store]\nkind = \"deno-kv\"\n[server]\nconnections = 3\nbody = \"64KiB\"\n"
+            .to_owned(),
+        JsValue::UNDEFINED,
+        "deno".to_owned(),
+    )
+    .await
+    .unwrap_or_else(|_| panic!("composed"));
+    let limits = composed.limits();
+    assert_eq!(member(&limits, "body").as_f64(), Some(65_536.0));
+    assert_eq!(member(&limits, "connections").as_f64(), Some(3.0));
+    assert_eq!(
+        member(&limits, "read").as_f64(),
+        crate::numbers::millis(Server::READ)
+    );
+    assert_eq!(
+        member(&limits, "held").as_f64(),
+        crate::numbers::millis(Server::HELD)
+    );
+}
+
+#[wasm_bindgen_test]
 async fn a_key_value_store_deletes_only_at_the_stamp_it_was_given() {
     let kv = hosted().kv(KvAt::DenoKv(None)).await.unwrap();
     let key = ["held".to_owned()];
@@ -470,7 +499,7 @@ async fn a_config_with_mistakes_or_an_unkept_store_is_not_composed() {
 async fn a_session_s_socket_carries_text_both_ways_and_says_how_it_closed() {
     let opened = JsSockets {
         opener: send_wrapper::SendWrapper::new(sockets()),
-        reach: herald_compose::SocketReach::under(herald_compose::SESSIONS),
+        reach: herald_compose::SocketReach::under(["discord.gg", "slack.com"]),
     };
     assert!(matches!(
         opened.open("wss://evil.example/?ticket=1").await,
@@ -499,7 +528,7 @@ async fn work_is_taken_up_to_the_most_at_once_and_done_on_the_event_loop() {
     JsTimer.sleep(std::time::Duration::from_millis(1)).await;
     let composed = Herald::compose(
         host(&object(&[])),
-        "version = 1\n[store]\nkind = \"markers\"\n".to_owned(),
+        "version = 1\n[store]\nkind = \"markers\"\n[server]\njobs = 1\n".to_owned(),
         JsValue::UNDEFINED,
         "worker".to_owned(),
     )
@@ -507,25 +536,24 @@ async fn work_is_taken_up_to_the_most_at_once_and_done_on_the_event_loop() {
     .unwrap_or_else(|_| panic!("composed"));
     let taker = JsTaker {
         composed: composed.composed(),
-        working: std::rc::Rc::default(),
-        most: 1,
     };
-    assert_eq!(taker.place(), Some(()));
-    assert_eq!(taker.place(), None);
+    let place = taker.place().expect("a place in an empty room");
+    assert!(taker.place().is_none());
     let destination = herald_core::DestinationName::new("chat");
     taker.fill(
-        (),
+        place,
         herald_flows::Job::Interact {
             destination: destination.clone(),
             asked: Vec::new(),
         },
     );
+    assert!(taker.place().is_none());
     hear();
     taker.said(&destination, "heard".to_owned());
     let said = heard();
     assert_eq!(strings_of(&said), ["chat: heard"]);
     JsTimer.sleep(std::time::Duration::from_millis(5)).await;
-    assert_eq!(taker.working.get(), 0);
+    assert!(taker.place().is_some());
     let held = JsFuture::from(composed.hold(sockets())).await.unwrap();
     assert!(held.is_undefined());
 }

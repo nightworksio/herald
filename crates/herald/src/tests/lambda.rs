@@ -258,13 +258,59 @@ fn work_whose_hand_off_times_out_is_done_now_and_an_unread_body_is_not_a_request
 #[test]
 fn a_body_that_is_not_text_is_answered_in_base64() {
     assert_eq!(
-        crate::lambda::replied(200, "application/octet-stream", &[0xff, 0x00]),
+        crate::lambda::replied(&herald_flows::Reply {
+            status: 200,
+            kind: "application/octet-stream",
+            body: vec![0xff, 0x00],
+            retry_after: None,
+        }),
         json!({
             "statusCode": 200,
             "headers": { "content-type": "application/octet-stream" },
             "body": "/wA=",
             "isBase64Encoded": true,
         })
+    );
+}
+
+#[test]
+fn a_reply_with_no_place_for_its_work_asks_its_sender_to_wait() {
+    let busy = herald_flows::busy();
+    let replied = crate::lambda::replied(&busy.reply);
+    assert_eq!(replied["statusCode"], json!(503));
+    assert_eq!(
+        replied["headers"]["retry-after"],
+        json!(herald_flows::BUSY_RETRY.to_string())
+    );
+}
+
+#[test]
+fn a_round_asked_with_its_secret_runs_and_says_what_it_did() {
+    let world = World::default();
+    let round = json!({
+        "version": "2.0",
+        "requestContext": { "http": { "method": "POST" } },
+        "rawPath": "/herald/round/poll",
+        "rawQueryString": "",
+        "headers": { "authorization": "Bearer round-secret" },
+        "isBase64Encoded": false,
+    });
+    invoked(&world, vec![round]);
+    let mut asking = function(CONFIG, false);
+    asking.vars.insert(
+        herald_flows::ROUND_SECRET.to_owned(),
+        "round-secret".to_owned(),
+    );
+    let run = herald(&asking, &world, &LAMBDA);
+    let given = given(&world);
+    assert_eq!(given[0].0, "request-1/response");
+    assert_eq!(given[0].1["statusCode"], json!(200));
+    assert_eq!(given[0].1["body"], json!("the round ran"));
+    assert!(
+        run.out
+            .starts_with("cli: stopped: GitHub's repository was answered with 400."),
+        "{}",
+        run.out
     );
 }
 

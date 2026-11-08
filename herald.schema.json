@@ -561,6 +561,14 @@
             "$ref": "#/$defs/Command"
           }
         },
+        "domains": {
+          "description": "Domains beside `discord.gg` a gateway session may connect under, such as a proxy's.",
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "string"
+          }
+        },
         "group": {
           "description": "Registers the commands as subcommands of `/<group>`, such as\n`/herald latest`, in place of commands of their own.",
           "type": [
@@ -701,6 +709,14 @@
             "$ref": "#/$defs/Command"
           }
         },
+        "domains": {
+          "description": "Domains beside `slack.com` a Socket Mode session may connect under, such as a proxy's.",
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "string"
+          }
+        },
         "prereleases": {
           "description": "Whether `latest` and `changelog` answer with a pre-release newer than\nevery release.",
           "type": "boolean",
@@ -776,6 +792,17 @@
         },
         "refresh_after": {
           "description": "How long a key is used before its document is read again; 1h where\nabsent.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Duration"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "reread_after": {
+          "description": "How long after a key is read an activity that does not hold under it\nis refused rather than having it read again; 1m where absent.",
           "anyOf": [
             {
               "$ref": "#/$defs/Duration"

@@ -2,7 +2,7 @@
 
 use std::future::{Future, ready};
 
-use herald_ports::{Changed, Sql, SqlError, Statement, Value};
+use herald_ports::{Changed, Secret, Sql, SqlError, Statement, Value};
 
 use herald_spin::postgres as pg;
 use herald_spin::sqlite;
@@ -112,7 +112,7 @@ fn postgres_ran(connection: &pg::Connection, statement: Statement) -> Result<Cha
 #[derive(Debug)]
 pub(super) enum SpinSql {
     Sqlite(String),
-    Postgres(String),
+    Postgres(Secret),
 }
 
 impl SpinSql {
@@ -136,8 +136,8 @@ impl SpinSql {
                 done
             }
             Self::Postgres(address) => {
-                let connection =
-                    pg::Connection::open(address).map_err(|error| failed(&format!("{error:?}")))?;
+                let connection = pg::Connection::open(address.expose())
+                    .map_err(|error| failed(&format!("{error:?}")))?;
                 let simple = |sql: &str| {
                     connection
                         .execute(sql, &[])
