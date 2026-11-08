@@ -1,6 +1,6 @@
 use herald_compose::{Asked, Composed, Hosting, Left, told};
 use herald_config::{Config, load};
-use herald_flows::{Reply, refusal};
+use herald_flows::{Reply, refusal, uncomposed};
 
 use super::host::WasiHost;
 
@@ -23,13 +23,22 @@ fn configured(path: &str) -> Result<Config, String> {
     load(path, &text, &read).map_err(|errors| errors.to_string())
 }
 
-/// herald composed from the host's environment and files.
-async fn composed(vars: Vec<(String, String)>) -> Result<Composed<WasiHost>, String> {
+/// herald composed from the host's environment and files, or the reply to
+/// `method` on `target` once its config loads where that needs no composed
+/// herald.
+async fn composed(
+    vars: Vec<(String, String)>,
+    method: &str,
+    target: &str,
+) -> Result<Result<Composed<WasiHost>, Reply>, String> {
     let path = named(&vars, "HERALD_CONFIG").unwrap_or_else(|| CONFIG.to_owned());
     let hosting = named(&vars, "HERALD_HOST").unwrap_or_else(|| HOST.to_owned());
     let hosting =
         Hosting::of(&hosting).ok_or_else(|| format!("{hosting} is no host herald knows"))?;
     let config = configured(&path)?;
+    if let Some(reply) = uncomposed(method, target) {
+        return Ok(Err(reply));
+    }
     Composed::new(
         WasiHost::new(vars),
         config,
@@ -37,6 +46,7 @@ async fn composed(vars: Vec<(String, String)>) -> Result<Composed<WasiHost>, Str
         hosting.name(),
     )
     .await
+    .map(Ok)
 }
 
 pub(super) fn said(lines: impl IntoIterator<Item = String>) {
@@ -51,11 +61,17 @@ pub(super) struct Started {
 }
 
 impl Started {
-    /// herald composed over `vars`, the environment, or the reply that says
-    /// it could not start, the reason logged.
-    pub(super) async fn new(vars: Vec<(String, String)>) -> Result<Self, Reply> {
-        match composed(vars).await {
-            Ok(composed) => Ok(Self { composed }),
+    /// herald composed over `vars`, the environment, for `method` on
+    /// `target`, or the reply given without composing it: whether it is up,
+    /// or the refusal that says it could not start, the reason logged.
+    pub(super) async fn new(
+        vars: Vec<(String, String)>,
+        method: &str,
+        target: &str,
+    ) -> Result<Self, Reply> {
+        match composed(vars, method, target).await {
+            Ok(Ok(composed)) => Ok(Self { composed }),
+            Ok(Err(reply)) => Err(reply),
             Err(error) => {
                 let refused = refusal(500, format!("herald could not start: {error}"));
                 said(refused.refused.as_deref().map(told::refused));

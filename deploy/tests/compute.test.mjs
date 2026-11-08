@@ -180,6 +180,23 @@ test("the component answers on wasmtime", async () => {
   await answers("http://127.0.0.1:8101");
 });
 
+test("the component says it is up from its config alone, before it opens a store", async () => {
+  run(
+    "wasmtime",
+    ["serve", "-Scli", "--addr=127.0.0.1:8108", "--dir=.", `--env=HERALD_ROUND_SECRET=${SECRET}`, `../../component/herald_wasi.wasm`],
+    "deploy/tests/uncomposed",
+  );
+  await up("http://127.0.0.1:8108");
+  const health = await fetch("http://127.0.0.1:8108/healthz");
+  assert.equal(health.status, 200);
+  assert.equal(await health.text(), "herald is up");
+  const round = await fetch("http://127.0.0.1:8108/herald/round/poll", {
+    method: "POST",
+    headers: { authorization: `Bearer ${SECRET}` },
+  });
+  assert.equal(round.status, 500);
+});
+
 test("the component keeps records in Spin's SQLite", async () => {
   run(
     "spin",
