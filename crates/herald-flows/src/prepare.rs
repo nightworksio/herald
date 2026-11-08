@@ -307,6 +307,8 @@ impl Resolved<'_> {
                 };
                 Some(Reached::Slack(
                     Slack::new(credential, placed.clone(), reached.api.as_deref())
+                        .on(reached.domain.unwrap_or_default())
+                        .in_team(reached.team.as_deref())
                         .reading_back(reached.read_back.unwrap_or_default()),
                 ))
             }
@@ -500,7 +502,8 @@ async fn interacts<S: Secrets>(
                 interacting: herald_dest_slack::Interacting::new(
                     interactions.clone(),
                     options.api.as_deref(),
-                ),
+                )
+                .on(options.domain.unwrap_or_default()),
                 signing: optional(secrets, interactions.signing.as_ref()).await?,
                 app: optional(secrets, interactions.app.as_ref()).await?,
             }),
@@ -561,7 +564,10 @@ mod tests {
             .unwrap(),
         );
         let slack = Destination::Slack(
-            serde_json::from_value(json!({ "token": token, "read_back": 9 })).unwrap(),
+            serde_json::from_value(
+                json!({ "token": token, "read_back": 9, "domain": "slack-gov.com", "team": "T0123456789" }),
+            )
+            .unwrap(),
         );
         let matrix = Destination::Matrix(
             serde_json::from_value(json!({
@@ -608,6 +614,8 @@ mod tests {
                     herald_dest_slack::RouteOptions::default(),
                     None
                 )
+                .on(herald_dest_slack::Domain::Gov)
+                .in_team(Some("T0123456789"))
                 .reading_back(pages)
             ))
         );
@@ -630,6 +638,32 @@ mod tests {
                 )
                 .reading_back(pages)
             ))
+        );
+    }
+
+    #[test]
+    fn a_slack_on_its_government_cloud_takes_commands_there() {
+        let slack = Destination::Slack(
+            serde_json::from_value(json!({
+                "token": { "secret": "HERALD_TOKEN" },
+                "domain": "slack-gov.com",
+                "interactions": { "via": "socket", "app": { "secret": "HERALD_SLACK_APP" } },
+            }))
+            .unwrap(),
+        );
+        let secrets = herald_testing::FakeSecrets::default().with("HERALD_SLACK_APP", "xapp");
+        let interacting = pollster::block_on(interacts(
+            &slack,
+            &Secret::new("HERALD_TOKEN", "token"),
+            &secrets,
+        ))
+        .unwrap();
+        let Some(Interacting::Slack { interacting, .. }) = interacting else {
+            panic!("Slack takes commands");
+        };
+        assert_eq!(
+            (interacting.api(), interacting.hooks()),
+            ("https://slack-gov.com/api", "https://hooks.slack-gov.com")
         );
     }
 }

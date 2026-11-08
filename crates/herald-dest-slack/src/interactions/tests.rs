@@ -10,10 +10,13 @@ const SIGNED: &str = r#"{"signing": {"secret": "HERALD_SLACK_SIGNING"}"#;
 fn a_socket_mode_session_connects_under_slack_com_and_the_domains_added() {
     let proxied = read(&format!(r#"{SIGNED}, "domains": ["proxy.example"]}}"#));
     assert_eq!(proxied.check(), Ok(()));
-    assert_eq!(proxied.session_domains(), [SESSION_DOMAIN, "proxy.example"]);
     assert_eq!(
-        read(&format!("{SIGNED}}}")).session_domains(),
-        [SESSION_DOMAIN]
+        proxied.session_domains(Domain::Slack),
+        [Domain::Slack.host(), "proxy.example"]
+    );
+    assert_eq!(
+        read(&format!("{SIGNED}}}")).session_domains(Domain::Slack),
+        [Domain::Slack.host()]
     );
     assert_eq!(
         read(&format!(r#"{SIGNED}, "domains": ["https://proxy.example"]}}"#)).check(),
@@ -55,6 +58,26 @@ fn each_transport_needs_its_own_secret() {
         read(r#"{"via": "socket", "app": {"secret": "HERALD_SLACK_APP"}}"#).check(),
         Ok(())
     );
+}
+
+#[test]
+fn an_app_name_slack_would_refuse_is_refused() {
+    let longest = "a".repeat(35);
+    for name in ["acme.releases_1-x", longest.as_str()] {
+        assert_eq!(
+            read(&format!(r#"{SIGNED}, "name": "{name}"}}"#)).check(),
+            Ok(())
+        );
+    }
+    let longer = "a".repeat(36);
+    for name in ["", "Acme", "acme releases", longer.as_str()] {
+        assert_eq!(
+            read(&format!(r#"{SIGNED}, "name": "{name}"}}"#)).check(),
+            Err(format!(
+                "\"{name}\" is not an app name; give up to 35 lowercase letters, digits, ., - or _, such as \"herald\""
+            ))
+        );
+    }
 }
 
 #[test]

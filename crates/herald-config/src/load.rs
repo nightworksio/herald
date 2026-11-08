@@ -541,6 +541,10 @@ impl Loader<'_> {
             self.error(span, path, message);
             return None;
         }
+        if let Err(message) = options.team() {
+            self.error(span, path, message);
+            return None;
+        }
         if let Some(interactions) = &options.interactions {
             self.interactions(span, path, interactions.check());
         }

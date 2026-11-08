@@ -59,7 +59,9 @@ impl Config {
                     .interactions
                     .as_ref()
                     .filter(|interactions| interactions.via == herald_dest_slack::Via::Socket)
-                    .map(herald_dest_slack::Interactions::session_domains)
+                    .map(|interactions| {
+                        interactions.session_domains(options.domain.unwrap_or_default())
+                    })
                     .unwrap_or_default(),
                 _ => Vec::new(),
             })

@@ -541,6 +541,17 @@
                 "null"
               ]
             },
+            "domain": {
+              "description": "The Slack the workspace lives on: `slack.com`, Slack's own and an\nEnterprise Grid's, where unset, or `slack-gov.com` for Slack's government cloud.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Domain"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
             "interactions": {
               "description": "How it takes commands, where it takes any.",
               "anyOf": [
@@ -565,6 +576,13 @@
                 {
                   "type": "null"
                 }
+              ]
+            },
+            "team": {
+              "description": "The workspace's id, such as `T0123456789`, where the token is an\nEnterprise Grid org-wide app's: each Web API call names it.",
+              "type": [
+                "string",
+                "null"
               ]
             },
             "token": {
@@ -724,6 +742,21 @@
         "sources",
         "destination",
         "template"
+      ]
+    },
+    "Domain": {
+      "description": "The Slack a workspace lives on: Slack's own, or Slack's government cloud.",
+      "oneOf": [
+        {
+          "description": "Slack's own, at `slack.com`.",
+          "type": "string",
+          "const": "slack.com"
+        },
+        {
+          "description": "Slack's government cloud, at `slack-gov.com`.",
+          "type": "string",
+          "const": "slack-gov.com"
+        }
       ]
     },
     "Duration": {
@@ -992,12 +1025,19 @@
           }
         },
         "domains": {
-          "description": "Domains beside `slack.com` a Socket Mode session may connect under, such as a proxy's.",
+          "description": "Domains beside its Slack's own a Socket Mode session may connect\nunder, such as a proxy's.",
           "type": "array",
           "default": [],
           "items": {
             "type": "string"
           }
+        },
+        "name": {
+          "description": "The name its app and bot user go by in the manifest `herald setup`\nprints: up to 35 lowercase letters, digits, `.`, `-` or `_`, and\n`herald` where unset.",
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "prereleases": {
           "description": "Whether `latest` and `changelog` answer with a pre-release newer than\nevery release.",

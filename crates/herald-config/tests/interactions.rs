@@ -359,6 +359,17 @@ body = "{{{{ event.body }}}}"
                 .collect::<Vec<_>>(),
             ["slack.com"]
         );
+        let gov = socket.replace(
+            "token = { secret = \"HERALD_SLACK_TOKEN\" }",
+            "token = { secret = \"HERALD_SLACK_TOKEN\" }\ndomain = \"slack-gov.com\"",
+        );
+        assert_eq!(
+            config_of(&gov)
+                .session_domains()
+                .into_iter()
+                .collect::<Vec<_>>(),
+            ["slack-gov.com"]
+        );
         refused(
             &config(
                 "git-branch",

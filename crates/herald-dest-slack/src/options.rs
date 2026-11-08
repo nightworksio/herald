@@ -1,5 +1,7 @@
 use herald_core::{ReadBack, SecretRef};
 
+use crate::domain::Domain;
+
 use crate::interactions::{Interactions, Subscribe};
 use schemars::JsonSchema;
 use serde::Deserialize;
@@ -15,6 +17,12 @@ pub struct DestinationOptions {
     pub webhook: Option<SecretRef>,
     /// Another base URL for Slack's API, such as a recorded-fixture server.
     pub api: Option<String>,
+    /// The Slack the workspace lives on: `slack.com`, Slack's own and an
+    /// Enterprise Grid's, where unset, or `slack-gov.com` for Slack's government cloud.
+    pub domain: Option<Domain>,
+    /// The workspace's id, such as `T0123456789`, where the token is an
+    /// Enterprise Grid org-wide app's: each Web API call names it.
+    pub team: Option<String>,
     /// How it takes commands, where it takes any.
     pub interactions: Option<Interactions>,
     /// How many pages of its own posts it reads back for their markers,
@@ -23,6 +31,21 @@ pub struct DestinationOptions {
 }
 
 impl DestinationOptions {
+    /// Whether its workspace id, where it names one, is written as Slack
+    /// writes one.
+    ///
+    /// # Errors
+    ///
+    /// When `team` is not a T followed by letters and digits.
+    pub fn team(&self) -> Result<(), String> {
+        match &self.team {
+            Some(team) if !workspace_id(team) => Err(format!(
+                "\"{team}\" is not a workspace id; give the workspace's id, a T and its letters and digits, such as \"T0123456789\""
+            )),
+            _ => Ok(()),
+        }
+    }
+
     /// Whether the destination posts as a bot, or else through a webhook.
     ///
     /// # Errors
@@ -70,6 +93,17 @@ impl RouteOptions {
 fn channel_id(channel: &str) -> bool {
     channel.strip_prefix(['C', 'G', 'D']).is_some_and(|rest| {
         rest.len() >= 8
+            && rest
+                .bytes()
+                .all(|byte| byte.is_ascii_uppercase() || byte.is_ascii_digit())
+    })
+}
+
+/// Whether `team` is written as a Slack workspace id: a T and at least two
+/// capital letters or digits.
+fn workspace_id(team: &str) -> bool {
+    team.strip_prefix('T').is_some_and(|rest| {
+        rest.len() >= 2
             && rest
                 .bytes()
                 .all(|byte| byte.is_ascii_uppercase() || byte.is_ascii_digit())

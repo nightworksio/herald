@@ -1,6 +1,7 @@
 //! How a Slack destination takes commands, as
 //! `[destinations.*.interactions]` writes it (ADR-0016).
 
+use crate::domain::Domain;
 use herald_core::{Answering, Command, Replies, SecretRef, TemplateName, every_command};
 use schemars::JsonSchema;
 use serde::Deserialize;
@@ -50,13 +51,31 @@ pub struct Interactions {
     /// The template `latest` takes its title from and `changelog` its body,
     /// in place of the route's own.
     pub template: Option<String>,
-    /// Domains beside `slack.com` a Socket Mode session may connect under, such as a proxy's.
+    /// Domains beside its Slack's own a Socket Mode session may connect
+    /// under, such as a proxy's.
     #[serde(default)]
     pub domains: Vec<String>,
+    /// The name its app and bot user go by in the manifest `herald setup`
+    /// prints: up to 35 lowercase letters, digits, `.`, `-` or `_`, and
+    /// `herald` where unset.
+    pub name: Option<String>,
 }
 
 fn slash() -> String {
     "/herald".to_owned()
+}
+
+/// The longest name a Slack app takes.
+const APP_NAME: usize = 35;
+/// The name its app and bot user go by where the config names none.
+pub(crate) const DEFAULT_NAME: &str = "herald";
+
+/// Whether `name` can name both a Slack app and its bot user.
+fn app_name(name: &str) -> bool {
+    (1..=APP_NAME).contains(&name.len())
+        && name.bytes().all(|byte| {
+            byte.is_ascii_lowercase() || byte.is_ascii_digit() || matches!(byte, b'.' | b'-' | b'_')
+        })
 }
 
 impl Interactions {
@@ -91,6 +110,11 @@ impl Interactions {
             }
             _ => {}
         }
+        if let Some(name) = self.name.as_deref().filter(|name| !app_name(name)) {
+            return Err(format!(
+                "\"{name}\" is not an app name; give up to {APP_NAME} lowercase letters, digits, ., - or _, such as \"herald\""
+            ));
+        }
         if !slash_command(&self.command) {
             return Err(format!(
                 "\"{}\" is not a slash command; give one such as \"/herald\": a / and up to 31 lowercase letters, digits, - or _",
@@ -109,18 +133,15 @@ impl Interactions {
         Answering::check(&self.commands)
     }
 
-    /// The domains a Socket Mode session may connect under: `slack.com` and those the
-    /// config adds.
+    /// The domains a Socket Mode session may connect under: `domain`'s own
+    /// and those the config adds.
     #[must_use]
-    pub fn session_domains(&self) -> Vec<&str> {
-        std::iter::once(SESSION_DOMAIN)
+    pub fn session_domains(&self, domain: Domain) -> Vec<&str> {
+        std::iter::once(domain.host())
             .chain(self.domains.iter().map(String::as_str))
             .collect()
     }
 }
-
-/// The domain Slack's Socket Mode hosts lie under.
-pub const SESSION_DOMAIN: &str = "slack.com";
 
 /// What a route says about subscribing on Slack, where it mentions its
 /// subscribers.

@@ -8,7 +8,8 @@ mod replay {
         Threads,
     };
     use herald_dest_slack::{
-        Credential, DestinationOptions, Refusal, RouteOptions, Slack, SlackMarkers, profile,
+        Credential, DestinationOptions, Domain, Interacting, Interactions, Refusal, RouteOptions,
+        Slack, SlackMarkers, profile,
     };
     use herald_ports::{Markers, MarkersError, Secret};
     use herald_testing::sample::{self, marker, route_marker};
@@ -474,6 +475,88 @@ mod replay {
     }
 
     #[test]
+    fn a_domain_places_the_api_its_webhooks_and_its_sessions_unless_an_api_is_given() {
+        let token = || Credential::Bot(Secret::new("HERALD_SLACK_TOKEN", "xoxb-test"));
+        let hook = || {
+            Credential::Webhook(Secret::new(
+                "HERALD_SLACK_WEBHOOK",
+                "https://hooks.slack-gov.com/services/T/B/x",
+            ))
+        };
+        let route = RouteOptions::default;
+        assert_eq!(
+            Slack::new(token(), route(), None).api(),
+            "https://slack.com/api"
+        );
+        assert_eq!(
+            Slack::new(hook(), route(), None).api(),
+            "https://hooks.slack.com"
+        );
+        assert_eq!(
+            Slack::new(token(), route(), None).on(Domain::Gov).api(),
+            "https://slack-gov.com/api"
+        );
+        assert_eq!(
+            Slack::new(hook(), route(), None).on(Domain::Gov).api(),
+            "https://hooks.slack-gov.com"
+        );
+        assert_eq!(
+            Slack::new(token(), route(), Some("http://127.0.0.1:9/"))
+                .on(Domain::Gov)
+                .api(),
+            "http://127.0.0.1:9"
+        );
+        let interactions: Interactions = serde_json::from_value(serde_json::json!({
+            "via": "socket",
+            "app": { "secret": "HERALD_SLACK_APP" },
+            "domains": ["proxy.example"],
+        }))
+        .unwrap();
+        let gov = Interacting::new(interactions.clone(), None).on(Domain::Gov);
+        assert_eq!(
+            (gov.api(), gov.hooks()),
+            ("https://slack-gov.com/api", "https://hooks.slack-gov.com")
+        );
+        assert_eq!(gov.session_domains(), ["slack-gov.com", "proxy.example"]);
+        let given = Interacting::new(interactions, Some("http://127.0.0.1:9")).on(Domain::Gov);
+        assert_eq!(
+            (given.api(), given.hooks()),
+            ("http://127.0.0.1:9", "http://127.0.0.1:9")
+        );
+    }
+
+    #[test]
+    fn an_org_wide_app_names_its_workspace_in_each_web_api_call_and_no_other_app_does() {
+        let announcement = announcement();
+        let fresh = Entry::new(announcement.key);
+        let team = |slack: &Slack| {
+            let post: serde_json::Value = serde_json::from_slice(
+                &slack
+                    .request(&Step::Post, &announcement, &fresh)
+                    .unwrap()
+                    .body,
+            )
+            .unwrap();
+            let pins = slack.request(&Step::Unpin, &announcement, &fresh).unwrap();
+            (post.get("team_id").cloned(), pins.url.redacted())
+        };
+        assert_eq!(
+            team(&bot().in_team(Some("T0123456789"))),
+            (
+                Some(serde_json::json!("T0123456789")),
+                format!("https://slack.com/api/pins.list?channel={CHANNEL}&team_id=T0123456789")
+            )
+        );
+        assert_eq!(
+            team(&bot()),
+            (
+                None,
+                format!("https://slack.com/api/pins.list?channel={CHANNEL}")
+            )
+        );
+    }
+
+    #[test]
     fn a_channel_that_cannot_be_read_says_why() {
         let slack = bot();
         let replay = fixture!("markers-unreadable");
@@ -527,6 +610,8 @@ mod replay {
             token,
             webhook,
             api: None,
+            domain: None,
+            team: None,
             interactions: None,
             read_back: None,
         };

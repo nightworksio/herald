@@ -63,6 +63,16 @@ fn authorised(request: Request, slack: &Slack) -> Request {
 /// A call of the Web API method `method`, with `query` already encoded.
 pub(crate) fn get(slack: &Slack, method: WebMethod, query: &str) -> Request {
     let name = method.name;
+    let team = slack
+        .team
+        .as_deref()
+        .map(|team| format!("team_id={}", unreserved(team)));
+    let query = [Some(query), team.as_deref()]
+        .into_iter()
+        .flatten()
+        .filter(|part| !part.is_empty())
+        .collect::<Vec<_>>()
+        .join("&");
     let url = if query.is_empty() {
         format!("{}/{name}", slack.api)
     } else {
@@ -82,10 +92,14 @@ fn posted_json(slack: &Slack, url: Text, body: &Value) -> Request {
 
 /// A call of the Web API method `method` with the JSON `body`.
 pub(crate) fn call(slack: &Slack, method: WebMethod, body: &Value) -> Request {
+    let mut body = body.clone();
+    if let (Some(team), Value::Object(fields)) = (&slack.team, &mut body) {
+        fields.insert("team_id".to_owned(), Value::String(team.clone()));
+    }
     posted_json(
         slack,
         Text::plain(format!("{}/{}", slack.api, method.name)),
-        body,
+        &body,
     )
 }
 
