@@ -5,12 +5,13 @@ use std::num::NonZeroUsize;
 use std::ops::Range;
 
 use herald_core::{Duration, Inbound, RecordKind, Sandbox, Size};
+use herald_kinds::Store;
 use herald_ports::{Outbound, Proxy, Roots};
 use jiff::SignedDuration;
 use toml::Spanned;
 
 use super::{Loader, Value};
-use crate::config::{Announce, KeyCache, Reconnecting, Server, Store};
+use crate::config::{Announce, KeyCache, Reconnecting, Server};
 use crate::file::{
     AnnounceFile, HttpFile, InboundFile, KeyCacheFile, RenderFile, ServerFile, SessionsFile,
 };

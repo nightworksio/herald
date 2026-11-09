@@ -8,6 +8,10 @@
 //! nowhere. It keeps no cursors, subscriptions or pins, and two runs at once
 //! are told apart only by the destination's own idempotency.
 
+mod kind;
+
+pub use kind::{MarkersKind, MarkersOptions};
+
 use std::future::{Future, ready};
 
 use herald_core::{Chore, Entry, Identity, Key, Marker, RouteId, Schedule, Thread, schedules};

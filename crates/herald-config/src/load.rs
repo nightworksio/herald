@@ -8,13 +8,12 @@ use serde::de::DeserializeOwned;
 use toml::Spanned;
 use toml::de::{DeTable, DeValue, ValueDeserializer};
 
-use herald_kinds::{Destination, Fault};
+use herald_kinds::{Destination, Fault, Store, StoreKind};
+use herald_store_git_branch::GitBranchKind;
 
-use crate::config::{Config, Schedule, Source, Store};
+use crate::config::{Config, Schedule, Source};
 use crate::error::{ConfigError, Errors};
-use crate::file::{
-    HttpFile, Keep, KeepFile, MarkersFile, NoOptions, ScheduleFile, ServerFile, TemplateFile,
-};
+use crate::file::{HttpFile, Keep, KeepFile, MarkersFile, ScheduleFile, ServerFile, TemplateFile};
 use crate::kinds::{At, Kinds};
 use crate::position::position;
 
@@ -301,14 +300,16 @@ impl Loader<'_> {
             );
             return None;
         };
-        let (kind, span, table) = self.kinded_table(value, "store", &Store::KINDS)?;
-        if kind == Store::MARKERS {
-            self.typed::<NoOptions>(Spanned::new(span, DeValue::Table(table)), "store")?;
-            return Some((Store::Markers, Retention::default()));
+        let kinds = self.kinds;
+        let (kind, span, table) = self.kinded_table(value, "store", &kinds.store_kinds())?;
+        let kind = kinds.store_named(&kind)?;
+        if !kind.retained() {
+            let store = kind.parse(self, Spanned::new(span, DeValue::Table(table)))?;
+            return Some((store, Retention::default()));
         }
         let (rest, keep) = kept(span, table);
         let retention = self.retention(keep);
-        let store = self.options(&kind, rest)?;
+        let store = kind.parse(self, rest)?;
         Some((store, retention?))
     }
 
@@ -349,56 +350,6 @@ impl Loader<'_> {
             ledger: file.ledger.map_or(defaults.ledger, Keep::kept),
             notes: file.notes.map_or(defaults.notes, Keep::kept),
         })
-    }
-
-    fn options(&mut self, kind: &str, rest: Value<'_>) -> Option<Store> {
-        if kind == Store::SQLITE {
-            return self
-                .typed::<herald_store_sqlite::StoreOptions>(rest, "store")
-                .map(Store::Sqlite);
-        }
-        if kind == Store::POSTGRES {
-            return self
-                .typed::<herald_store_postgres::StoreOptions>(rest, "store")
-                .map(Store::Postgres);
-        }
-        if kind == Store::GIT_BRANCH {
-            return self
-                .typed::<herald_store_git_branch::StoreOptions>(rest, "store")
-                .map(Store::GitBranch);
-        }
-        if kind == Store::ACTIONS_CACHE {
-            return self
-                .typed::<herald_store_actions_cache::StoreOptions>(rest, "store")
-                .map(Store::ActionsCache);
-        }
-        if kind == Store::REPO_VARIABLES {
-            return self
-                .typed::<herald_store_repo_variables::StoreOptions>(rest, "store")
-                .map(Store::RepoVariables);
-        }
-        if kind == Store::CLOUDFLARE_D1 {
-            return self
-                .typed::<herald_store_d1::StoreOptions>(rest, "store")
-                .map(Store::D1);
-        }
-        if kind == Store::DURABLE_OBJECT {
-            return self
-                .typed::<herald_store_durable_object::StoreOptions>(rest, "store")
-                .map(Store::DurableObject);
-        }
-        if kind == Store::DYNAMODB {
-            return self
-                .typed::<herald_store_dynamodb::StoreOptions>(rest, "store")
-                .map(Store::Dynamodb);
-        }
-        if kind == Store::DENO_KV {
-            return self
-                .typed::<herald_store_deno_kv::StoreOptions>(rest, "store")
-                .map(Store::DenoKv);
-        }
-        self.typed::<herald_store_fastly_kv::StoreOptions>(rest, "store")
-            .map(Store::FastlyKv)
     }
 
     /// Whether every session a destination holds open waits less than
@@ -448,7 +399,7 @@ impl Loader<'_> {
             store.kept_by(kind).unwrap_or_else(|| {
                 format!(
                     "give a store that keeps them, such as \"{}\"",
-                    Store::GIT_BRANCH
+                    GitBranchKind::NAME
                 )
             })
         };
@@ -516,7 +467,7 @@ impl Loader<'_> {
                 let hint = store.kept_by(RecordKind::Latest).unwrap_or_else(|| {
                     format!(
                         "give a store that keeps what each project last announced, such as \"{}\"",
-                        Store::GIT_BRANCH
+                        GitBranchKind::NAME
                     )
                 });
                 self.error(

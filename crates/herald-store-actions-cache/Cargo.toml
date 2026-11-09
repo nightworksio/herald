@@ -12,6 +12,7 @@ publish.workspace = true
 [dependencies]
 base64.workspace = true
 herald-core.workspace = true
+herald-kinds.workspace = true
 herald-ports.workspace = true
 herald-records.workspace = true
 schemars.workspace = true

@@ -16,10 +16,10 @@ mod samples;
 mod schema;
 
 pub use config::{
-    Announce, App, Config, KeyCache, Reconnecting, RouteConfig, Schedule, Server, Source, Store,
+    Announce, App, Config, KeyCache, Reconnecting, RouteConfig, Schedule, Server, Source,
 };
 pub use error::{ConfigError, Errors};
-pub use herald_kinds::{Destination, Placed};
+pub use herald_kinds::{Destination, Placed, Store};
 pub use kinds::Kinds;
 pub use load::load;
 pub use samples::samples;

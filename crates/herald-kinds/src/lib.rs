@@ -10,6 +10,7 @@ mod kind;
 mod placement;
 mod reach;
 mod session;
+mod store;
 
 pub use destination::{Carried, Destination, DestinationConfig, UNREAD};
 pub use federates::{Activity, Federates, Inboxes};
@@ -19,3 +20,4 @@ pub use kind::{DestinationKind, Fault, Placing};
 pub use placement::{Placed, Placement};
 pub use reach::{Posts, Reach, Reached, Signing, Unread};
 pub use session::{Connect, Effect, Session};
+pub use store::{Store, StoreConfig, StoreKind};

@@ -1,4 +1,4 @@
-use herald_config::{Config, RouteConfig, Server, Source, Store};
+use herald_config::{Config, RouteConfig, Server, Source};
 use herald_core::{Inbound, Pinning, RecordKind, Sandbox};
 use herald_kinds::Carried;
 use herald_ports::{Secrets, Signer};
@@ -35,12 +35,6 @@ const UNGUARDED: &str = "The markers store has no compare-and-set, so two runs a
 
 /// What the markers store cannot run (ADR-0005).
 const UNPOLLED: &str = "`herald poll` stops on the markers store, which keeps no cursors; announcing each release from its own event needs none.";
-/// What the Actions cache keeps apart and drops (ADR-0005).
-const SCOPED: &str = "The Actions cache keeps records apart for each ref a run is on, and drops what no run reads for a week: a release run on its tag does not see what a run on the default branch wrote. Run housekeeping and polling on one ref, or choose a store that keeps records across refs.";
-/// Where the sqlite store must run (ADR-0005).
-const FILED: &str = "Every record is kept in one SQLite file, so run herald where that file outlives the run: a CI runner's disk is gone when its job ends.";
-/// What repository variables hold at most (ADR-0005).
-const CROWDED: &str = "Each record is a repository variable: a repository holds at most 500, and a run is handed at most 256 KB of them, so many records can crowd out the repository's own variables.";
 
 /// Each soundness bound the config sets above its default, as a note: what
 /// herald holds a request or a template to is looser than it ships with.
@@ -249,16 +243,13 @@ pub fn doctor(config: &Config, layer: Layer<'_>) -> Findings {
             ));
         }
     }
-    match config.store {
-        Store::ActionsCache(_) => findings.notes.push(SCOPED.to_owned()),
-        Store::RepoVariables(_) => findings.notes.push(CROWDED.to_owned()),
-        Store::Sqlite(_) => findings.notes.push(FILED.to_owned()),
-        _ => {}
+    if let Some(note) = config.store.note() {
+        findings.notes.push(note.to_owned());
     }
     for (index, route) in config.routes.iter().enumerate() {
         unpinned(config, index, route, &mut findings.gaps);
     }
-    if matches!(config.store, Store::Markers) {
+    if config.store.reads_posts() {
         for (index, route) in config.routes.iter().enumerate() {
             unkept(config, index, route, &mut findings.gaps);
         }

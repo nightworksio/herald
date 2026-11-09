@@ -10,16 +10,19 @@ mod compose {
     use std::task::{Context, Poll};
 
     use herald_compose::{Asked, Composed, Host, KvAt, Left, Records, SqlAt, reached};
-    use herald_config::{Config, Store, load};
+    use herald_config::{Config, load};
     use herald_core::DestinationName;
     use herald_flows::{Admission, Housekept, Inbound, Job, Taker, Worked};
+    use herald_kinds::StoreKind;
     use herald_ports::{Changed, Frame, Http, HttpError, Outbound, Request, Response, Value};
     use herald_testing::{
         FakeClock, FakeKv, FakeSecrets, FakeSigner, FakeTimer, FakeVerifier, ScriptedSockets,
         ScriptedSql,
     };
 
-    const EVERY: [&str; 11] = Store::KINDS;
+    fn every() -> Vec<&'static str> {
+        herald_compose::kinds().store_kinds()
+    }
 
     #[derive(Debug, Clone, Default)]
     struct Answering;
@@ -204,7 +207,7 @@ mod compose {
     fn kept(host: &Hosting, store: &str) -> Result<&'static str, String> {
         let config = config(store);
         let records =
-            pollster::block_on(reached(host, &config.store, &Outbound::default(), &EVERY))?;
+            pollster::block_on(reached(host, &config.store, &Outbound::default(), &every()))?;
         Ok(match records {
             Records::Sql(_) => "sql",
             Records::Kv(_) => "kv",
@@ -360,7 +363,7 @@ mod compose {
             &host,
             &d1.store,
             &Outbound::default(),
-            &[Store::MARKERS],
+            &[herald_store_markers::MarkersKind::NAME],
         ));
         assert_eq!(
             refused.err(),
@@ -369,8 +372,12 @@ mod compose {
             )
         );
         let cached = config("kind = \"actions-cache\"");
-        let unkept =
-            pollster::block_on(reached(&host, &cached.store, &Outbound::default(), &EVERY));
+        let unkept = pollster::block_on(reached(
+            &host,
+            &cached.store,
+            &Outbound::default(),
+            &every(),
+        ));
         assert!(
             unkept
                 .err()
@@ -394,9 +401,12 @@ mod compose {
             )
             .unwrap();
             let composed =
-                pollster::block_on(Composed::new(Hosting::default(), config, &EVERY, "test"))
+                pollster::block_on(Composed::new(Hosting::default(), config, &every(), "test"))
                     .unwrap();
-            assert_eq!(composed.config().store.kind(), Store::DENO_KV);
+            assert_eq!(
+                composed.config().store.kind(),
+                herald_store_deno_kv::DenoKvKind::NAME
+            );
             assert_eq!(composed.host().asked(), ["DenoKv(None)"]);
             let health = Inbound {
                 method: "GET",
@@ -469,7 +479,8 @@ template = "t"
                 secrets: FakeSecrets::default().with("TOKEN", "t"),
                 ..Hosting::default()
             };
-            let composed = pollster::block_on(Composed::new(host, config, &EVERY, "test")).unwrap();
+            let composed =
+                pollster::block_on(Composed::new(host, config, &every(), "test")).unwrap();
             let swept = pollster::block_on(composed.poll());
             assert_eq!(swept.len(), 1);
             assert_eq!(swept[0].source.as_str(), "gate");
@@ -491,7 +502,8 @@ template = "t"
             &herald_compose::kinds(),
         )
         .unwrap();
-        let composed = pollster::block_on(Composed::new(github(), config, &EVERY, "test")).unwrap();
+        let composed =
+            pollster::block_on(Composed::new(github(), config, &every(), "test")).unwrap();
         let (swept, unswept) =
             pollster::block_on(futures_util::future::join(composed.poll(), composed.poll()));
         assert_eq!(swept.len(), 1);
@@ -534,7 +546,7 @@ template = "t"
                 )
                 .unwrap();
                 let composed =
-                    pollster::block_on(Composed::new(github(), config, &EVERY, "test")).unwrap();
+                    pollster::block_on(Composed::new(github(), config, &every(), "test")).unwrap();
                 let health = Inbound {
                     method: "GET",
                     path: "/healthz",
@@ -579,7 +591,7 @@ template = "t"
         let unset = pollster::block_on(Composed::new(
             Hosting::default(),
             config("kind = \"deno-kv\""),
-            &EVERY,
+            &every(),
             "test",
         ))
         .unwrap();
@@ -598,7 +610,7 @@ template = "t"
         let composed = pollster::block_on(Composed::new(
             host,
             config("kind = \"deno-kv\""),
-            &EVERY,
+            &every(),
             "test",
         ))
         .unwrap();
@@ -655,7 +667,7 @@ body = "{{ event.body }}"
             secrets: FakeSecrets::default().with("KEY", "k"),
             ..Hosting::default()
         };
-        let composed = pollster::block_on(Composed::new(host, config, &EVERY, "test")).unwrap();
+        let composed = pollster::block_on(Composed::new(host, config, &every(), "test")).unwrap();
         let mut inbox = asked("POST", "/inbox", None);
         let unaddressed = pollster::block_on(composed.reached(&inbox));
         assert_eq!(unaddressed.reply.status, 404);
@@ -705,7 +717,7 @@ body = "{{{{ event.body }}}}"
             secrets: FakeSecrets::default().with("TOKEN", "t"),
             ..Hosting::default()
         };
-        let composed = pollster::block_on(Composed::new(host, config, &EVERY, "test")).unwrap();
+        let composed = pollster::block_on(Composed::new(host, config, &every(), "test")).unwrap();
         let headers = [("Authorization", "Bearer app-token")];
         let event =
             |id: &str| format!(r#"{{"id": "{id}", "project": "herald", "title": "Deployed"}}"#);
@@ -772,7 +784,7 @@ body = "{{{{ event.body }}}}"
                 },
                 ..Hosting::default()
             };
-            let refused = pollster::block_on(Composed::new(host, config, &EVERY, "test")).err();
+            let refused = pollster::block_on(Composed::new(host, config, &every(), "test")).err();
             assert!(
                 refused.as_deref().is_some_and(|said| said.contains(missing)),
                 "{missing}: {refused:?}"
@@ -789,7 +801,7 @@ body = "{{{{ event.body }}}}"
         let composed = pollster::block_on(Composed::new(
             unreached,
             config("kind = \"markers\""),
-            &EVERY,
+            &every(),
             "test",
         ));
         assert_eq!(composed.err(), Some("public: is out of reach".to_owned()));

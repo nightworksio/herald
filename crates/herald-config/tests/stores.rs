@@ -20,17 +20,17 @@ mod stores {
 
     #[test]
     fn a_sqlite_store_names_its_file_or_keeps_it_beside_the_config() {
-        assert_eq!(store(""), Ok(Store::Sqlite(StoreOptions::default())));
+        assert_eq!(store(""), Ok(Store::new(StoreOptions::default())));
         assert_eq!(
             store("path = \"/var/lib/herald/records.db\"\n"),
-            Ok(Store::Sqlite(StoreOptions {
+            Ok(Store::new(StoreOptions {
                 key: None,
                 path: Some("/var/lib/herald/records.db".to_owned()),
                 busy: None,
             }))
         );
         let waiting = store("busy = \"30s\"\n").unwrap();
-        let Store::Sqlite(options) = waiting else {
+        let Some(options) = waiting.of::<herald_store_sqlite::StoreOptions>() else {
             panic!("expected a sqlite store, got {waiting:?}");
         };
         assert_eq!(options.busy(), jiff::SignedDuration::from_secs(30));
@@ -53,7 +53,7 @@ mod stores {
         let named = config("url = { secret = \"HERALD_POSTGRES_URL\" }\n").unwrap();
         assert_eq!(
             named.store,
-            Store::Postgres(herald_store_postgres::StoreOptions {
+            Store::new(herald_store_postgres::StoreOptions {
                 key: None,
                 url: herald_core::SecretRef {
                     secret: "HERALD_POSTGRES_URL".to_owned()
@@ -62,7 +62,7 @@ mod stores {
                 statement_timeout: None,
             })
         );
-        let Store::Postgres(defaults) = &named.store else {
+        let Some(defaults) = named.store.of::<herald_store_postgres::StoreOptions>() else {
             panic!("expected a postgres store");
         };
         assert_eq!(
@@ -77,7 +77,7 @@ mod stores {
             "url = { secret = \"HERALD_POSTGRES_URL\" }\nconnect_timeout = \"5s\"\nstatement_timeout = \"2m\"\n",
         )
         .unwrap();
-        let Store::Postgres(timed) = timed.store else {
+        let Some(timed) = timed.store.of::<herald_store_postgres::StoreOptions>() else {
             panic!("expected a postgres store");
         };
         assert_eq!(timed.connect_timeout(), jiff::SignedDuration::from_secs(5));
@@ -104,7 +104,7 @@ mod stores {
     fn each_serverless_store_takes_its_own_options_and_none_of_another_s() {
         assert_eq!(
             kind("d1", "binding = \"DB\"\n").unwrap().store,
-            Store::D1(herald_store_d1::StoreOptions {
+            Store::new(herald_store_d1::StoreOptions {
                 key: None,
                 binding: Some("DB".to_owned())
             })
@@ -113,7 +113,7 @@ mod stores {
             kind("durable-object", "object = \"records\"\n")
                 .unwrap()
                 .store,
-            Store::DurableObject(herald_store_durable_object::StoreOptions {
+            Store::new(herald_store_durable_object::StoreOptions {
                 key: None,
                 binding: None,
                 object: Some("records".to_owned())
@@ -121,7 +121,7 @@ mod stores {
         );
         assert_eq!(
             kind("deno-kv", "prefix = \"apps/herald\"\n").unwrap().store,
-            Store::DenoKv(herald_store_deno_kv::StoreOptions {
+            Store::new(herald_store_deno_kv::StoreOptions {
                 key: None,
                 path: None,
                 prefix: Some("apps/herald".to_owned())
@@ -129,7 +129,7 @@ mod stores {
         );
         assert_eq!(
             kind("fastly-kv", "store = \"records\"\n").unwrap().store,
-            Store::FastlyKv(herald_store_fastly_kv::StoreOptions {
+            Store::new(herald_store_fastly_kv::StoreOptions {
                 key: None,
                 store: Some("records".to_owned()),
                 prefix: None
@@ -153,7 +153,7 @@ mod stores {
             "table = \"records\"\nregion = \"eu-west-1\"\nendpoint = \"http://localhost:8000\"\naccess_key_id = { secret = \"ID\" }\nsecret_access_key = { secret = \"KEY\" }\n",
         )
         .unwrap();
-        let Store::Dynamodb(options) = &config.store else {
+        let Some(options) = config.store.of::<herald_store_dynamodb::StoreOptions>() else {
             panic!("{:?}", config.store);
         };
         assert_eq!(
@@ -169,7 +169,7 @@ mod stores {
         let unnamed = kind("dynamodb", "").unwrap();
         assert_eq!(
             unnamed.store,
-            Store::Dynamodb(herald_store_dynamodb::StoreOptions::default())
+            Store::new(herald_store_dynamodb::StoreOptions::default())
         );
         let hidden = unnamed.secrets();
         for name in [
@@ -179,6 +179,9 @@ mod stores {
         ] {
             assert!(hidden.contains(&name), "{name} is hidden");
         }
-        assert_eq!(kind("markers", "").unwrap().store, Store::Markers);
+        assert_eq!(
+            kind("markers", "").unwrap().store,
+            Store::new(herald_store_markers::MarkersOptions {})
+        );
     }
 }

@@ -5,6 +5,10 @@
 //! check of versionstamps sets the value only where it still has that one:
 //! that is the compare-and-set.
 
+mod kind;
+
+pub use kind::DenoKvKind;
+
 use herald_core::SecretRef;
 use herald_ports::Kv;
 use herald_records::{Kept, KvRecords};

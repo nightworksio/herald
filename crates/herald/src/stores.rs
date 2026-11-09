@@ -5,14 +5,23 @@ use std::collections::BTreeMap;
 use std::future::{Future, ready};
 
 use herald_compose::{Host, KvAt, Served, SqlAt, Unoffered};
-use herald_config::{Config, Store};
+use herald_config::Config;
 use herald_crypto::{RingSigner, RingVerifier};
 use herald_environment::{EnvSecrets, SystemClock};
 use herald_flows::{Connected, prepare};
+use herald_kinds::StoreKind;
 use herald_native::{NativePostgres, NativeSql, NativeSqlite, Timeouts};
 use herald_ports::{Outbound, Secrets as _};
 use herald_records::{Memory, Seal};
-use herald_store_actions_cache::{ActionsCache, ActionsCacheStore, StoreOptions as CacheOptions};
+use herald_store_actions_cache::{
+    ActionsCache, ActionsCacheKind, ActionsCacheStore, StoreOptions as CacheOptions,
+};
+use herald_store_dynamodb::DynamodbKind;
+use herald_store_git_branch::GitBranchKind;
+use herald_store_markers::MarkersKind;
+use herald_store_postgres::PostgresKind;
+use herald_store_repo_variables::RepoVariablesKind;
+use herald_store_sqlite::SqliteKind;
 
 use super::{Connect, Connection, RESULTS, RUNTIME_TOKEN, variable};
 
@@ -125,33 +134,33 @@ impl Records<'_> {
 /// The store kinds `herald server` keeps records in: every kind but the
 /// Actions cache, which only a workflow run reaches.
 pub(crate) const SERVED: [&str; 6] = [
-    Store::SQLITE,
-    Store::POSTGRES,
-    Store::DYNAMODB,
-    Store::GIT_BRANCH,
-    Store::MARKERS,
-    Store::REPO_VARIABLES,
+    SqliteKind::NAME,
+    PostgresKind::NAME,
+    DynamodbKind::NAME,
+    GitBranchKind::NAME,
+    MarkersKind::NAME,
+    RepoVariablesKind::NAME,
 ];
 
 /// The store kinds a Lambda function keeps records in: every kind that
 /// outlives the function's file system and needs no workflow run.
 pub(crate) const LAMBDA: [&str; 5] = [
-    Store::POSTGRES,
-    Store::DYNAMODB,
-    Store::GIT_BRANCH,
-    Store::MARKERS,
-    Store::REPO_VARIABLES,
+    PostgresKind::NAME,
+    DynamodbKind::NAME,
+    GitBranchKind::NAME,
+    MarkersKind::NAME,
+    RepoVariablesKind::NAME,
 ];
 
 /// The store kinds this herald keeps records in.
 pub(crate) const STORES: [&str; 7] = [
-    Store::SQLITE,
-    Store::POSTGRES,
-    Store::DYNAMODB,
-    Store::GIT_BRANCH,
-    Store::MARKERS,
-    Store::ACTIONS_CACHE,
-    Store::REPO_VARIABLES,
+    SqliteKind::NAME,
+    PostgresKind::NAME,
+    DynamodbKind::NAME,
+    GitBranchKind::NAME,
+    MarkersKind::NAME,
+    ActionsCacheKind::NAME,
+    RepoVariablesKind::NAME,
 ];
 
 /// Whether a run answers the commands members give.
@@ -175,12 +184,14 @@ pub(crate) async fn reached<'a>(
     stores: &[&str],
 ) -> Result<(Records<'a>, Connected<Connection>), String> {
     let native = Native::new(vars, connect);
-    let records = match &config.store {
-        Store::ActionsCache(options) if stores.contains(&Store::ACTIONS_CACHE) => {
-            Records::Cache(cache(options, vars, &native.secrets, connect).await?)
-        }
-        store => Records::Hosted(
-            herald_compose::reached(&native, store, connect.outbound(), stores).await?,
+    let cached = config
+        .store
+        .of::<CacheOptions>()
+        .filter(|_| stores.contains(&ActionsCacheKind::NAME));
+    let records = match cached {
+        Some(options) => Records::Cache(cache(options, vars, &native.secrets, connect).await?),
+        None => Records::Hosted(
+            herald_compose::reached(&native, &config.store, connect.outbound(), stores).await?,
         ),
     };
     let prepared = prepare(config, &native.secrets, &RingSigner)

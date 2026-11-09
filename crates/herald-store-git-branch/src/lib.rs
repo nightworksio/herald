@@ -4,6 +4,10 @@
 //! A write names the blob it replaces, and GitHub refuses it when the file
 //! changed since it was read: that refusal is the compare-and-set.
 
+mod kind;
+
+pub use kind::GitBranchKind;
+
 mod contents;
 mod options;
 mod store;

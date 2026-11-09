@@ -329,8 +329,10 @@ fn read(path: &str) -> Result<Config, String> {
     };
     let mut config =
         load(path, &text, &files, &herald_compose::kinds()).map_err(|errors| errors.to_string())?;
-    if let herald_config::Store::Sqlite(options) = &mut config.store {
+    if let Some(options) = config.store.of::<herald_store_sqlite::StoreOptions>() {
+        let mut options = options.clone();
         options.path = Some(options.file(directory).display().to_string());
+        config.store = herald_config::Store::new(options);
     }
     Ok(config)
 }

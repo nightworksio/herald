@@ -8,6 +8,10 @@
 //! compare-and-set, and a record removed and written again never takes a
 //! version back. Every request is signed with AWS Signature Version 4.
 
+mod kind;
+
+pub use kind::DynamodbKind;
+
 mod dynamodb;
 mod options;
 

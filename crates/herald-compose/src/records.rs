@@ -98,86 +98,96 @@ async fn opening<H: Host>(
     let kind = store.kind();
     let opened = |error: String| format!("the {kind} store could not be opened: {error}");
     let migrated = |error: herald_ports::StoreError| opened(error.to_string());
-    Ok(match store {
-        Store::Sqlite(options) => Records::Sql(sqlite(host, options).await?.sealed(seal)),
-        Store::Postgres(options) => {
-            let name = options.url.secret.as_str();
-            let url = secret(
-                host,
-                name,
-                "the postgres store reads its connection URL from it",
-            )
-            .await?;
-            let at = SqlAt::Postgres {
-                url: &url,
-                connect: options.connect_timeout(),
-                statement: options.statement_timeout(),
-            };
-            let sql = host.sql(at).await.map_err(opened)?;
-            Records::Sql(
-                herald_store_postgres::store(sql)
-                    .await
-                    .map_err(migrated)?
-                    .sealed(seal),
-            )
-        }
-        Store::D1(options) => {
-            let sql = host
-                .sql(SqlAt::D1(options.binding()))
+    if let Some(options) = store.of::<SqliteOptions>() {
+        return Ok(Records::Sql(sqlite(host, options).await?.sealed(seal)));
+    }
+    if let Some(options) = store.of::<herald_store_postgres::StoreOptions>() {
+        let name = options.url.secret.as_str();
+        let url = secret(
+            host,
+            name,
+            "the postgres store reads its connection URL from it",
+        )
+        .await?;
+        let at = SqlAt::Postgres {
+            url: &url,
+            connect: options.connect_timeout(),
+            statement: options.statement_timeout(),
+        };
+        let sql = host.sql(at).await.map_err(opened)?;
+        return Ok(Records::Sql(
+            herald_store_postgres::store(sql)
                 .await
-                .map_err(opened)?;
-            Records::Sql(
-                herald_store_d1::store(sql)
-                    .await
-                    .map_err(migrated)?
-                    .sealed(seal),
-            )
-        }
-        Store::DurableObject(options) => {
-            let at = SqlAt::DurableObject {
-                binding: options.binding(),
-                object: options.object(),
-            };
-            let sql = host.sql(at).await.map_err(opened)?;
-            Records::Sql(
-                herald_store_durable_object::store(sql)
-                    .await
-                    .map_err(migrated)?
-                    .sealed(seal),
-            )
-        }
-        Store::DenoKv(options) => {
-            let kv = host
-                .kv(KvAt::DenoKv(options.path.as_deref()))
+                .map_err(migrated)?
+                .sealed(seal),
+        ));
+    }
+    if let Some(options) = store.of::<herald_store_d1::StoreOptions>() {
+        let sql = host
+            .sql(SqlAt::D1(options.binding()))
+            .await
+            .map_err(opened)?;
+        return Ok(Records::Sql(
+            herald_store_d1::store(sql)
                 .await
-                .map_err(opened)?;
-            Records::Kv(herald_store_deno_kv::store(kv, options).sealed(seal))
-        }
-        Store::FastlyKv(options) => {
-            let kv = host
-                .kv(KvAt::FastlyKv(options.store()))
+                .map_err(migrated)?
+                .sealed(seal),
+        ));
+    }
+    if let Some(options) = store.of::<herald_store_durable_object::StoreOptions>() {
+        let at = SqlAt::DurableObject {
+            binding: options.binding(),
+            object: options.object(),
+        };
+        let sql = host.sql(at).await.map_err(opened)?;
+        return Ok(Records::Sql(
+            herald_store_durable_object::store(sql)
                 .await
-                .map_err(opened)?;
-            Records::Kv(herald_store_fastly_kv::store(kv, options).sealed(seal))
-        }
-        Store::GitBranch(options) => {
-            Records::Branch(branch(host, options, outbound).await?.sealed(seal))
-        }
-        Store::RepoVariables(options) => {
-            Records::Variables(variables(host, options, outbound).await?.sealed(seal))
-        }
-        Store::Dynamodb(options) => {
-            let table = Dynamodb::reached(options, host.secrets()).await?;
-            let http = host.connect(table.api(), outbound)?;
-            Records::Dynamodb(
-                table
-                    .store(http, host.clock().clone(), host.nonce())
-                    .sealed(seal),
-            )
-        }
-        Store::Markers => Records::Posts,
-        Store::ActionsCache(_) => return Err(unserved(stores)),
-    })
+                .map_err(migrated)?
+                .sealed(seal),
+        ));
+    }
+    if let Some(options) = store.of::<herald_store_deno_kv::StoreOptions>() {
+        let kv = host
+            .kv(KvAt::DenoKv(options.path.as_deref()))
+            .await
+            .map_err(opened)?;
+        return Ok(Records::Kv(
+            herald_store_deno_kv::store(kv, options).sealed(seal),
+        ));
+    }
+    if let Some(options) = store.of::<herald_store_fastly_kv::StoreOptions>() {
+        let kv = host
+            .kv(KvAt::FastlyKv(options.store()))
+            .await
+            .map_err(opened)?;
+        return Ok(Records::Kv(
+            herald_store_fastly_kv::store(kv, options).sealed(seal),
+        ));
+    }
+    if let Some(options) = store.of::<BranchOptions>() {
+        return Ok(Records::Branch(
+            branch(host, options, outbound).await?.sealed(seal),
+        ));
+    }
+    if let Some(options) = store.of::<VariablesOptions>() {
+        return Ok(Records::Variables(
+            variables(host, options, outbound).await?.sealed(seal),
+        ));
+    }
+    if let Some(options) = store.of::<herald_store_dynamodb::StoreOptions>() {
+        let table = Dynamodb::reached(options, host.secrets()).await?;
+        let http = host.connect(table.api(), outbound)?;
+        return Ok(Records::Dynamodb(
+            table
+                .store(http, host.clock().clone(), host.nonce())
+                .sealed(seal),
+        ));
+    }
+    if store.reads_posts() {
+        return Ok(Records::Posts);
+    }
+    Err(unserved(stores))
 }
 
 async fn sqlite<H: Host>(host: &H, options: &SqliteOptions) -> Result<SqliteStore<H::Sql>, String> {

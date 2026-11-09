@@ -5,6 +5,10 @@
 //! file's write lock changes the row only where it still has that version:
 //! that is the compare-and-set.
 
+mod kind;
+
+pub use kind::SqliteKind;
+
 use std::path::{Path, PathBuf};
 
 use herald_core::{Duration, SecretRef};
