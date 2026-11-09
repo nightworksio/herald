@@ -128,3 +128,16 @@ fn a_subscribe_names_a_role_by_id_with_a_button_by_default() {
         Err("\"updates\" is not a role id; give the role's id, or make one with herald discord roles".to_owned())
     );
 }
+
+#[test]
+fn what_it_says_is_worded_as_the_config_words_it_and_refused_where_it_cannot_be_said() {
+    let worded = written(r#", "wording": {"nothing": "Niets."}"#);
+    assert_eq!(worded.check(), Ok(()));
+    assert_eq!(worded.answering().wording.text(Phrase::Nothing), "Niets.");
+    assert!(
+        written(r#", "wording": {"nothing": "{{ project"}"#)
+            .check()
+            .unwrap_err()
+            .starts_with("wording.nothing is not a template")
+    );
+}

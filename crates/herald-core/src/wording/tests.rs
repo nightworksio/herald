@@ -120,6 +120,10 @@ fn a_phrase_that_cannot_be_said_is_refused_and_one_that_fails_later_falls_back()
         Wording::check(&worded(&[(Phrase::Nothing, "Niets.")])),
         Ok(())
     );
+    assert_eq!(
+        Wording::check(&worded(&[(Phrase::Date, "%d-%m-%Y")])),
+        Ok(())
+    );
     let failing = Wording::of(Some(&worded(&[(Phrase::Unavailable, "{{ 1 / 0 }}")])));
     assert_eq!(
         failing.say(&Said::Unavailable),

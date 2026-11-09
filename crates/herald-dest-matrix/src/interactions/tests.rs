@@ -78,3 +78,20 @@ fn what_it_says_is_worded_as_the_config_words_it_and_refused_where_it_cannot_be_
             .starts_with("wording.nothing is not a template")
     );
 }
+
+#[test]
+fn a_sync_reads_from_one_message_up_to_its_bound_from_each_room() {
+    for timeline in [1, TIMELINE_MOST] {
+        let json = format!(r#"{{"via": "sync", "timeline": {timeline}}}"#);
+        assert_eq!(read(&json).check(), Ok(()), "{timeline}");
+    }
+    for timeline in [0, TIMELINE_MOST + 1] {
+        let json = format!(r#"{{"via": "sync", "timeline": {timeline}}}"#);
+        assert_eq!(
+            read(&json).check(),
+            Err(format!(
+                "a sync reads 1 to {TIMELINE_MOST} messages from each room, not {timeline}"
+            ))
+        );
+    }
+}
