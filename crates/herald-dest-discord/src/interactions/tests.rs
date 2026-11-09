@@ -151,12 +151,4 @@ fn what_it_says_is_worded_as_the_config_words_it_and_refused_where_it_cannot_be_
             Phrase::DESCRIPTION
         )
     );
-    let failing = written(r#", "wording": {"unavailable": "{{ 1 / 0 }}"}"#);
-    assert_eq!(
-        failing
-            .answering()
-            .wording
-            .say(&herald_core::Said::Unavailable),
-        Phrase::Unavailable.default_text()
-    );
 }

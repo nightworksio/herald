@@ -268,9 +268,7 @@ impl Wording {
     /// The day `at`, as `latest` writes it.
     #[must_use]
     pub fn date(&self, at: Timestamp) -> String {
-        strtime::format(self.text(Phrase::Date), at)
-            .or_else(|_| strtime::format(Phrase::Date.default_text(), at))
-            .unwrap_or_default()
+        strtime::format(self.text(Phrase::Date), at).unwrap_or_default()
     }
 
     fn unchosen(&self, unchosen: &Unchosen) -> String {
@@ -300,7 +298,7 @@ impl Wording {
         environment
             .render_str(self.text(phrase), values)
             .or_else(|_| environment.render_str(phrase.default_text(), values))
-            .unwrap_or_else(|_| phrase.default_text().to_owned())
+            .unwrap_or_default()
     }
 }
 
