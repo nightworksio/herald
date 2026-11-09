@@ -1,10 +1,8 @@
-use std::any::Any;
-
 use herald_core::{RecordKind, SecretRef};
 use herald_ports::Secret;
 
 use super::*;
-use crate::{Local, Opened, Opening, same};
+use crate::{Local, Opened, Opening};
 
 /// Options of a kind that keeps every default.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -27,14 +25,6 @@ impl StoreConfig for Plain {
         _: Option<Secret>,
     ) -> Local<'s, Result<Opened<'o>, String>> {
         Box::pin(std::future::ready(Ok(Opened::Posts)))
-    }
-
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-
-    fn same(&self, other: &dyn Any) -> bool {
-        same(self, other)
     }
 }
 
@@ -64,14 +54,6 @@ impl StoreConfig for Tokened {
             opening.secret("TOKEN", "the store reads with it").await?;
             Ok(Opened::Posts)
         })
-    }
-
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-
-    fn same(&self, other: &dyn Any) -> bool {
-        same(self, other)
     }
 }
 

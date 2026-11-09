@@ -1,8 +1,7 @@
-use std::any::Any;
 use std::sync::Arc;
 
 use herald_core::SecretRef;
-use herald_kinds::{Local, Opened, Opening, StoreConfig, StoreKind, same};
+use herald_kinds::{Local, Opened, Opening, StoreConfig, StoreKind};
 use herald_ports::Erased;
 use herald_ports::Secret;
 use herald_records::Seal;
@@ -48,14 +47,6 @@ impl StoreConfig for StoreOptions {
             )))
         })
     }
-
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-
-    fn same(&self, other: &dyn Any) -> bool {
-        same(self, other)
-    }
 }
 
 #[cfg(test)]
@@ -91,7 +82,5 @@ mod tests {
         assert!(options.keeps(RecordKind::Notes));
         assert_eq!(options.kept_by(RecordKind::Notes), None);
         assert!(!options.reads_posts());
-        assert!(options.same(options.clone().as_any()));
-        assert!(!options.same(&0_u8));
     }
 }

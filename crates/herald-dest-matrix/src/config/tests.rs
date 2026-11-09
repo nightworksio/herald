@@ -226,7 +226,7 @@ fn commands_are_taken_with_the_tokens_the_homeserver_and_herald_present() {
     );
     assert_eq!(
         pushed.posted(Endpoint::Pushed),
-        Some(Ok((Scheme::Matrix, "hs-token")))
+        Some(Ok((crate::SCHEME, "hs-token")))
     );
     assert_eq!(pushed.posted(Endpoint::Posted), None);
     assert!(pushed.session().is_none());

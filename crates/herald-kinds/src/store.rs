@@ -1,4 +1,3 @@
-use std::any::Any;
 use std::fmt;
 use std::ops::Deref;
 use std::sync::Arc;
@@ -6,11 +5,11 @@ use std::sync::Arc;
 use herald_core::{RecordKind, SecretRef};
 use herald_ports::Secret;
 
-use crate::{Local, Opened, Opening};
+use crate::{Itself, Local, Opened, Opening};
 
 /// The `[store]` table in `herald.toml`, read: what every kind of store's
 /// options are to the config and the flows that read it.
-pub trait StoreConfig: fmt::Debug + Send + Sync + Any {
+pub trait StoreConfig: fmt::Debug + Send + Sync + Itself {
     /// The kind's name, as `[store] kind` writes it.
     fn kind(&self) -> &'static str;
 
@@ -51,12 +50,6 @@ pub trait StoreConfig: fmt::Debug + Send + Sync + Any {
         opening: Arc<dyn Opening + 'o>,
         seal: Option<Secret>,
     ) -> Local<'s, Result<Opened<'o>, String>>;
-
-    /// Itself, for code that reads one kind's own options.
-    fn as_any(&self) -> &dyn Any;
-
-    /// Whether `other` is the same options of the same kind.
-    fn same(&self, other: &dyn Any) -> bool;
 }
 
 /// One kind of store: the options its table reads into, and how the schema
