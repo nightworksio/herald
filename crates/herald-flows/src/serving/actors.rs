@@ -2,7 +2,7 @@
 //! documents, Notes, outboxes, followers, inboxes and WebFinger.
 
 use herald_core::{ACTIVITY_JSON, Addressed, DestinationName, Key, Scheme};
-use herald_dest_fediverse::{ActivityPub, FIRST};
+use herald_kinds::Federates;
 use herald_ports::{
     Clock, CryptoError, Http, Keyring, Notes, Outboxed, Signer, Store, Subscriptions, Verifier,
 };
@@ -18,9 +18,9 @@ pub(super) fn actor<'a, H>(
     connected: &'a Connected<H>,
     name: &str,
     host: &str,
-) -> Option<(&'a ActivityPub, &'a DestinationName)> {
+) -> Option<(&'a dyn Federates, &'a DestinationName)> {
     connected.routes.iter().find_map(|(route, _)| {
-        let actor = route.reached.of::<ActivityPub>()?;
+        let actor = route.reached.federates()?;
         (actor.actor() == name && actor.domain() == host)
             .then_some((actor, &route.config.route.destination))
     })
@@ -30,7 +30,7 @@ pub(super) fn actor<'a, H>(
 /// actor on it.
 pub(super) fn domain<'a, H>(connected: &'a Connected<H>, host: &str) -> Option<&'a str> {
     connected.routes.iter().find_map(|(route, _)| {
-        let actor = route.reached.of::<ActivityPub>()?;
+        let actor = route.reached.federates()?;
         (actor.domain() == host).then_some(actor.domain())
     })
 }
@@ -45,7 +45,7 @@ pub(super) fn fingered<H>(connected: &Connected<H>, query: Option<&str>) -> Answ
         .and_then(decoded)
         .unwrap_or_default();
     let found = connected.routes.iter().find_map(|(route, _)| {
-        let actor = route.reached.of::<ActivityPub>()?;
+        let actor = route.reached.federates()?;
         (resource == format!("acct:{}@{}", actor.actor(), actor.domain()) || resource == actor.id())
             .then_some(actor)
     });
@@ -58,7 +58,7 @@ pub(super) fn fingered<H>(connected: &Connected<H>, query: Option<&str>) -> Answ
 /// The actor document of `served`.
 pub(super) async fn documented<S, C, G: Signer, V, H, P, K>(
     serving: &Serving<'_, S, C, G, V, H, P, K>,
-    served: &ActivityPub,
+    served: &dyn Federates,
 ) -> Answered {
     shown(served.document(serving.ports.signer).await)
 }
@@ -74,7 +74,7 @@ fn shown(document: Result<String, CryptoError>) -> Answered {
 /// The Note `served` published as the announcement `key`.
 pub(super) async fn noted<S: Store, C, G, V, H, P, K>(
     serving: &Serving<'_, S, C, G, V, H, P, K>,
-    served: &ActivityPub,
+    served: &dyn Federates,
     key: &str,
 ) -> Answered {
     let Ok(parsed) = key.parse::<Key>() else {
@@ -90,12 +90,13 @@ pub(super) async fn noted<S: Store, C, G, V, H, P, K>(
 /// The outbox of `served`, or the page of it `query` asks for.
 pub(super) async fn outboxed<S: Store, C, G, V, H, P, K>(
     serving: &Serving<'_, S, C, G, V, H, P, K>,
-    served: &ActivityPub,
+    served: &dyn Federates,
     query: Option<&str>,
 ) -> Answered {
     let page = query.and_then(|query| query.split('&').find_map(|pair| pair.strip_prefix("page=")));
     let after = match page {
-        None | Some(FIRST) => None,
+        None => None,
+        Some(name) if name == served.first_page() => None,
         Some(name) if Outboxed::is_name(name) => Some(name),
         Some(_) => return missing("such page"),
     };
@@ -121,7 +122,7 @@ pub(super) async fn outboxed<S: Store, C, G, V, H, P, K>(
 /// How many follow `served`, the actor of `destination`, and never who.
 pub(super) async fn counted<S: Store, C, G, V, H, P, K>(
     serving: &Serving<'_, S, C, G, V, H, P, K>,
-    served: &ActivityPub,
+    served: &dyn Federates,
     destination: &DestinationName,
 ) -> Answered {
     match serving
@@ -134,7 +135,7 @@ pub(super) async fn counted<S: Store, C, G, V, H, P, K>(
         Ok(following) => {
             let admitted = following
                 .iter()
-                .filter(|kept| kept.pending.is_none() && served.policy().admits(&kept.subscriber))
+                .filter(|kept| kept.pending.is_none() && served.admits(&kept.subscriber))
                 .count();
             replied(200, ACTIVITY_JSON, served.followers(admitted))
         }

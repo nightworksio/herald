@@ -175,6 +175,7 @@ fn a_reached_destination_is_its_kind_equal_only_to_the_same_and_keeps_every_defa
     assert_eq!(reached.follows(), None);
     assert_eq!(reached.published(&announcement), None);
     assert!(reached.admits("https://anyone.example/users/a"));
+    assert!(reached.federates().is_none());
 }
 
 #[test]

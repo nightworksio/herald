@@ -1,7 +1,7 @@
 use std::fmt;
 
 use herald_core::{DestinationName, Sent, Subscription};
-use herald_dest_fediverse::{ActivityPub, Asked, asked, follow_id, inboxes};
+use herald_kinds::{Activity, Federates};
 use herald_ports::{Http, Signer, Store, Subscriptions};
 
 use crate::inbound::{Checking, Verified, fetched};
@@ -86,9 +86,9 @@ fn ignored(reason: &str) -> Followed {
 fn serving<'a, H>(
     connected: &'a Connected<H>,
     id: &str,
-) -> Option<(&'a PreparedRoute, &'a ActivityPub, &'a H)> {
+) -> Option<(&'a PreparedRoute, &'a dyn Federates, &'a H)> {
     connected.routes.iter().find_map(|(route, http)| {
-        let actor = route.reached.of::<ActivityPub>()?;
+        let actor = route.reached.federates()?;
         (actor.id() == id).then_some((route, actor, http))
     })
 }
@@ -96,7 +96,7 @@ fn serving<'a, H>(
 /// Every follower `actor` keeps on `destination`, waiting or not.
 pub(crate) async fn kept<S: Store>(
     store: &S,
-    actor: &ActivityPub,
+    actor: &dyn Federates,
     destination: &DestinationName,
 ) -> Result<Vec<Subscription>, FollowError> {
     store
@@ -108,11 +108,11 @@ pub(crate) async fn kept<S: Store>(
 
 /// The followers among `kept` that follow `actor` now: approved, and still
 /// admitted by its policy.
-pub(crate) fn following<'a>(actor: &ActivityPub, kept: &'a [Subscription]) -> Vec<&'a str> {
+pub(crate) fn following<'a>(actor: &dyn Federates, kept: &'a [Subscription]) -> Vec<&'a str> {
     kept.iter()
         .filter(|kept| kept.pending.is_none())
         .map(|kept| kept.subscriber.as_str())
-        .filter(|kept| actor.policy().admits(kept))
+        .filter(|kept| actor.admits(kept))
         .collect()
 }
 
@@ -130,7 +130,7 @@ async fn taken<S: Store, G: Signer, H: Http>(
     store: &S,
     signer: &G,
     checking: Checking<'_>,
-    actor: &ActivityPub,
+    actor: &dyn Federates,
     http: &H,
     follow: Follow<'_>,
 ) -> Result<Followed, FollowError> {
@@ -139,8 +139,7 @@ async fn taken<S: Store, G: Signer, H: Http>(
         id,
         destination,
     } = follow;
-    let follow = actor.follow_of(id, follower);
-    if !actor.policy().admits(follower) {
+    if !actor.admits(follower) {
         return Ok(ignored(
             "the actor's block or allow list turns its follower away",
         ));
@@ -148,21 +147,21 @@ async fn taken<S: Store, G: Signer, H: Http>(
     let document = fetched(http, follower, checking.bounds)
         .await
         .map_err(FollowError::Unfetched)?;
-    let Some(inboxes) = inboxes(&document, follower) else {
+    let Some(inboxes) = actor.inboxes(&document, follower) else {
         return Ok(ignored(
             "the follower's document names no inbox on its own origin",
         ));
     };
     let kept = kept(store, actor, destination).await?;
     let mine = kept.iter().find(|kept| kept.subscriber == follower);
-    if !actor.policy().room(follower, &following(actor, &kept)) {
+    if !actor.room(follower, &following(actor, &kept)) {
         let answered = actor
             .post(
                 http,
                 signer,
                 checking.now,
                 &inboxes.personal,
-                &actor.reject(&follow),
+                &actor.answer(id, follower, false),
             )
             .await
             .unwrap_or_else(|error| Sent::Refused(error.to_string()));
@@ -172,12 +171,12 @@ async fn taken<S: Store, G: Signer, H: Http>(
             answered,
         });
     }
-    let waits = actor.policy().manual() && mine.is_none_or(|mine| mine.pending.is_some());
+    let waits = actor.manual() && mine.is_none_or(|mine| mine.pending.is_some());
     let subscription = Subscription {
         destination: destination.clone(),
         project: actor.actor().to_owned(),
         subscriber: follower.to_owned(),
-        inbox: Some(inboxes.delivered().to_owned()),
+        inbox: Some(inboxes.delivered.clone()),
         pending: waits.then(|| id.to_owned()),
     };
     store
@@ -197,7 +196,7 @@ async fn taken<S: Store, G: Signer, H: Http>(
             signer,
             checking.now,
             &inboxes.personal,
-            &actor.accept(&follow),
+            &actor.answer(id, follower, true),
         )
         .await
         .unwrap_or_else(|error| Sent::Refused(error.to_string()));
@@ -229,19 +228,27 @@ pub async fn followed<S: Store, G: Signer, H: Http>(
     let Some(follower) = verified.signer.as_deref() else {
         return Ok(ignored("it names no signer"));
     };
-    match asked(body, follower) {
-        Asked::Follow { target, follow } => {
+    let activity = connected
+        .routes
+        .iter()
+        .find_map(|(route, _)| route.reached.federates())
+        .map_or_else(
+            || Activity::Nothing("herald serves no actor".to_owned()),
+            |actor| actor.read(body, follower),
+        );
+    match activity {
+        Activity::Follow { target, id } => {
             let Some((route, actor, http)) = serving(connected, &target) else {
                 return Ok(ignored("it follows no actor herald serves"));
             };
             let follow = Follow {
                 follower,
-                id: &follow_id(&follow),
+                id: &id,
                 destination: &route.config.route.destination,
             };
             taken(store, signer, checking, actor, http, follow).await
         }
-        Asked::Undo { follower, target } => {
+        Activity::Undo { follower, target } => {
             let Some((route, actor, _)) = serving(connected, &target) else {
                 return Ok(ignored("it undoes a follow of no actor herald serves"));
             };
@@ -263,6 +270,6 @@ pub async fn followed<S: Store, G: Signer, H: Http>(
                 actor: actor.actor().to_owned(),
             })
         }
-        Asked::Nothing(why) => Ok(Followed::Ignored(why)),
+        Activity::Nothing(why) => Ok(Followed::Ignored(why)),
     }
 }

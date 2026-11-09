@@ -5,6 +5,7 @@
 
 mod deliver;
 mod documents;
+mod federates;
 mod options;
 mod policy;
 mod reach;

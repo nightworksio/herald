@@ -1,5 +1,5 @@
 use herald_core::{DestinationName, Sent, Subscription};
-use herald_dest_fediverse::ActivityPub;
+use herald_kinds::Federates;
 use herald_ports::{Http, Signer, Store, Subscriptions};
 use jiff::Timestamp;
 
@@ -21,12 +21,12 @@ fn served<'a, H>(
     connected: &'a Connected<H>,
     destination: &DestinationName,
     actor: &str,
-) -> Result<(&'a ActivityPub, &'a H), FollowError> {
+) -> Result<(&'a dyn Federates, &'a H), FollowError> {
     connected
         .routes
         .iter()
         .find_map(|(route, http)| {
-            let served = route.reached.of::<ActivityPub>()?;
+            let served = route.reached.federates()?;
             (served.actor() == actor && &route.config.route.destination == destination)
                 .then_some((served, http))
         })
@@ -89,13 +89,12 @@ pub async fn decide<S: Store, G: Signer, H: Http>(
             "no follow of \"{actor}\" by \"{follower}\" waits for approval"
         )));
     };
-    let follow = served.follow_of(id, follower);
     let inbox = waiting.inbox.clone().unwrap_or_default();
     let subscriptions = store.subscriptions();
     let stored = |error: herald_ports::StoreError| FollowError::Store(error.to_string());
     let answer = match decision {
         Decision::Approve => {
-            if !served.policy().room(follower, &following(served, &kept)) {
+            if !served.room(follower, &following(served, &kept)) {
                 return Err(FollowError::Full);
             }
             let approved = Subscription {
@@ -103,11 +102,11 @@ pub async fn decide<S: Store, G: Signer, H: Http>(
                 ..waiting.clone()
             };
             subscriptions.subscribe(&approved).await.map_err(stored)?;
-            served.accept(&follow)
+            served.answer(id, follower, true)
         }
         Decision::Reject => {
             subscriptions.unsubscribe(waiting).await.map_err(stored)?;
-            served.reject(&follow)
+            served.answer(id, follower, false)
         }
     };
     let answered = served

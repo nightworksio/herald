@@ -63,7 +63,9 @@ fn taken_under(
     verified: &Verified,
     body: &[u8],
 ) -> Result<Followed, FollowError> {
-    let secrets = FakeSecrets::default().with("HERALD_ACTIVITYPUB_KEY", "the-key");
+    let secrets = FakeSecrets::default()
+        .with("HERALD_ACTIVITYPUB_KEY", "the-key")
+        .with("HERALD_DISCORD_TOKEN", "hunter2");
     let prepared = pollster::block_on(prepare(config, &secrets, &FakeSigner)).unwrap();
     let connected = prepared.connect(|_| Ok::<_, ()>(script.clone())).unwrap();
     pollster::block_on(followed(
@@ -423,6 +425,16 @@ fn an_activity_without_a_signer_or_for_no_served_actor_is_left_alone() {
         ),
         Ok(Followed::Ignored("herald takes no Like".to_owned()))
     );
+    assert_eq!(
+        taken_under(
+            &config(""),
+            &store,
+            &script,
+            &signed_by(Some(ANA)),
+            &follow(ACTOR)
+        ),
+        Ok(Followed::Ignored("herald serves no actor".to_owned()))
+    );
     assert_eq!(script.seen(), Vec::<String>::new());
 }
 
@@ -433,7 +445,9 @@ fn decided(
     actor: &str,
     decision: Decision,
 ) -> Result<Followed, FollowError> {
-    let secrets = FakeSecrets::default().with("HERALD_ACTIVITYPUB_KEY", "the-key");
+    let secrets = FakeSecrets::default()
+        .with("HERALD_ACTIVITYPUB_KEY", "the-key")
+        .with("HERALD_DISCORD_TOKEN", "hunter2");
     let prepared = pollster::block_on(prepare(config, &secrets, &FakeSigner)).unwrap();
     let connected = prepared.connect(|_| Ok::<_, ()>(script.clone())).unwrap();
     pollster::block_on(decide(
@@ -605,7 +619,9 @@ fn a_follow_approved_past_the_caps_or_of_no_actor_is_refused() {
         unknown.unwrap_err().to_string(),
         "the destination \"fedi\" serves no actor \"nobody\""
     );
-    let secrets = FakeSecrets::default().with("HERALD_ACTIVITYPUB_KEY", "the-key");
+    let secrets = FakeSecrets::default()
+        .with("HERALD_ACTIVITYPUB_KEY", "the-key")
+        .with("HERALD_DISCORD_TOKEN", "hunter2");
     let prepared = pollster::block_on(prepare(&full, &secrets, &FakeSigner)).unwrap();
     let connected = prepared.connect(|_| Ok::<_, ()>(served(&[]))).unwrap();
     let listed = pollster::block_on(followers(

@@ -2,7 +2,7 @@ use std::any::Any;
 use std::future::ready;
 
 use herald_core::{Announcement, Chore, Delivery, Entry, Profile, Sent, Step};
-use herald_kinds::{Reach, Signing, Unread, same};
+use herald_kinds::{Federates, Reach, Signing, Unread, same};
 use herald_ports::{Boxed, DynHttp, DynMarkers, DynSigner, Erased, HttpError};
 
 use super::deliver::ActivityPub;
@@ -69,6 +69,10 @@ impl Reach for ActivityPub {
 
     fn admits(&self, follower: &str) -> bool {
         self.policy().admits(follower)
+    }
+
+    fn federates(&self) -> Option<&dyn Federates> {
+        Some(self)
     }
 
     fn as_any(&self) -> &dyn Any {

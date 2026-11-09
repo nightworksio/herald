@@ -10,6 +10,8 @@ use herald_ports::{
 };
 use jiff::Timestamp;
 
+use crate::Federates;
+
 /// What a step is signed with, where its destination signs its requests.
 #[derive(Clone, Copy)]
 pub struct Signing<'a> {
@@ -68,6 +70,12 @@ pub trait Reach: fmt::Debug + Send + Sync + Any {
     /// destination follows no policy.
     fn admits(&self, _follower: &str) -> bool {
         true
+    }
+
+    /// It as one of herald's own actors, where herald serves it rather than
+    /// posting to it.
+    fn federates(&self) -> Option<&dyn Federates> {
+        None
     }
 
     /// Itself, for code that reads one kind's own capabilities.
