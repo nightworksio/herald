@@ -308,6 +308,13 @@ mod github {
         );
         assert_eq!(plain.headers.len(), 3);
         assert_eq!(
+            source(Some("https://api.acme.ghe.com"))
+                .releases_request(None, None)
+                .url
+                .redacted(),
+            "https://api.acme.ghe.com/repos/neovim/neovim/releases?per_page=30"
+        );
+        assert_eq!(
             source(None).repository_request(None).url.redacted(),
             "https://api.github.com/repos/neovim/neovim"
         );

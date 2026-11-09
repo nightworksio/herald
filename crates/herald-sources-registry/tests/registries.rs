@@ -218,9 +218,19 @@ mod registries {
         assert_eq!(
             asked(Registry::Packagist, "monolog/monolog"),
             format!(
-                "{}\n{tail}",
+                "{}\nAuthorization: Basic «secret:NPM_TOKEN»\n{tail}",
                 head("https://repo.packagist.org/p2/monolog/monolog.json")
             )
+        );
+        let basic = package(Registry::Packagist, "monolog/monolog", None)
+            .versions_request(None, Some(&token));
+        assert_eq!(
+            basic
+                .headers
+                .iter()
+                .find(|(name, _)| name == "Authorization")
+                .map(|(_, value)| value.expose()),
+            Some("Basic dG9rZW46aHVudGVyMg==".to_owned())
         );
         assert_eq!(
             asked(Registry::CratesIo, "jiff"),
@@ -239,7 +249,7 @@ mod registries {
         assert_eq!(
             asked(Registry::DockerHub, "caddy"),
             format!(
-                "{}\n{tail}",
+                "{}\nAuthorization: Bearer «secret:NPM_TOKEN»\n{tail}",
                 head(
                     "https://hub.docker.com/v2/namespaces/library/repositories/caddy/tags?page_size=30&ordering=last_updated"
                 )
@@ -269,6 +279,109 @@ mod registries {
     }
 
     #[test]
+    fn a_docker_hub_token_is_exchanged_with_its_username_in_a_sealed_body() {
+        let token = Secret::new("HERALD_DOCKER_HUB_TOKEN", "dckr_pat_1");
+        let hub = Package::new(
+            Registry::DockerHub,
+            &RegistryOptions {
+                package: "nightworksio/herald".to_owned(),
+                token: Some(herald_core::SecretRef {
+                    secret: "HERALD_DOCKER_HUB_TOKEN".to_owned(),
+                }),
+                username: Some("wessel".to_owned()),
+                ..RegistryOptions::default()
+            },
+        );
+        let exchange = hub.token_request(&token).unwrap();
+        assert!(exchange.sealed);
+        assert_eq!(
+            exchange.url.expose(),
+            "https://hub.docker.com/v2/auth/token"
+        );
+        assert_eq!(
+            serde_json::from_slice::<serde_json::Value>(&exchange.body).unwrap(),
+            serde_json::json!({ "identifier": "wessel", "secret": "dckr_pat_1" })
+        );
+        assert!(!exchange.with_body().to_string().contains("dckr_pat_1"));
+        let bearer = hub
+            .exchanged(&token, &answer(200, r#"{"access_token":"jwt-1"}"#))
+            .unwrap();
+        assert_eq!(
+            (bearer.name(), bearer.expose()),
+            ("HERALD_DOCKER_HUB_TOKEN", "jwt-1")
+        );
+        for refused in [
+            answer(401, r#"{"detail":"no"}"#),
+            answer(200, "{}"),
+            answer(200, r#"{"access_token":""}"#),
+        ] {
+            let error = hub.exchanged(&token, &refused).unwrap_err().to_string();
+            assert!(error.contains("check the username"), "{error}");
+            assert!(!error.contains("dckr_pat_1"), "{error}");
+        }
+        assert!(
+            package(Registry::DockerHub, "caddy", None)
+                .token_request(&token)
+                .is_none()
+        );
+        let npm = Package::new(
+            Registry::Npm,
+            &RegistryOptions {
+                package: "left-pad".to_owned(),
+                username: Some("wessel".to_owned()),
+                ..RegistryOptions::default()
+            },
+        );
+        assert!(npm.token_request(&token).is_none());
+    }
+
+    #[test]
+    fn a_username_goes_with_a_docker_hub_token_and_nowhere_else() {
+        let options = |token: bool, username: bool| RegistryOptions {
+            package: "nightworksio/herald".to_owned(),
+            token: token.then(|| herald_core::SecretRef {
+                secret: "T".to_owned(),
+            }),
+            username: username.then(|| "wessel".to_owned()),
+            ..RegistryOptions::default()
+        };
+        let both = "Docker Hub exchanges a personal access token with its account's username; give both token and username";
+        assert_eq!(options(true, true).check(Registry::DockerHub), Ok(()));
+        assert_eq!(options(false, false).check(Registry::DockerHub), Ok(()));
+        assert_eq!(
+            options(true, false).check(Registry::DockerHub),
+            Err(both.to_owned())
+        );
+        assert_eq!(
+            options(false, true).check(Registry::DockerHub),
+            Err(both.to_owned())
+        );
+        let named = RegistryOptions {
+            ordering: Some(herald_sources_registry::TagOrdering::Name),
+            ..options(false, false)
+        };
+        assert_eq!(named.check(Registry::DockerHub), Ok(()));
+        assert_eq!(
+            Package::new(Registry::DockerHub, &named)
+                .versions_request(None, None)
+                .url
+                .expose(),
+            "https://hub.docker.com/v2/namespaces/nightworksio/repositories/herald/tags?page_size=30&ordering=name"
+        );
+        assert_eq!(
+            named.check(Registry::Packagist),
+            Err(
+                "the registry \"packagist\" lists versions in its own order; remove ordering"
+                    .to_owned()
+            )
+        );
+        assert_eq!(
+            options(true, true).check(Registry::Packagist),
+            Err("the registry \"packagist\" takes no username; remove username".to_owned())
+        );
+    }
+
+    #[test]
     fn what_each_registry_is_and_takes_is_named() {
         let kinds: Vec<&str> = REGISTRIES.iter().map(|registry| registry.kind()).collect();
         assert_eq!(kinds, ["packagist", "crates-io", "npm", "docker-hub"]);
@@ -276,7 +389,12 @@ mod registries {
             .iter()
             .map(|registry| registry.takes_token())
             .collect();
-        assert_eq!(tokens, [false, false, true, false]);
+        assert_eq!(tokens, [true, false, true, true]);
+        let accounts: Vec<bool> = REGISTRIES
+            .iter()
+            .map(|registry| registry.names_its_account())
+            .collect();
+        assert_eq!(accounts, [false, false, false, true]);
         let moving: Vec<bool> = REGISTRIES
             .iter()
             .map(|registry| registry.moving_tags())

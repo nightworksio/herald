@@ -15,12 +15,6 @@ use crate::interactions::{Interactions, Via};
 const SHARE: &str = "share";
 /// The relation of a message in a thread to the message it started under.
 const THREAD: &str = "m.thread";
-/// How long a sync waits for an event before it answers with none, in
-/// milliseconds: within the thirty seconds herald waits for any answer.
-pub const SYNC_WAIT: u32 = 20_000;
-/// The filter a sync reads messages with: room messages alone, with no
-/// presence, account data or history before the sync began.
-const FILTER: &str = r#"{"presence":{"types":[]},"account_data":{"types":[]},"room":{"timeline":{"types":["m.room.message"],"limit":20},"state":{"types":[]},"ephemeral":{"types":[]},"account_data":{"types":[]}}}"#;
 
 /// How a Matrix destination takes and answers commands.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -240,13 +234,37 @@ impl Interacting {
         let mut url = format!(
             "{}/_matrix/client/v3/sync?timeout={wait}&filter={}",
             self.homeserver,
-            unreserved(FILTER)
+            unreserved(&self.filter())
         );
         if let Some(since) = since {
             url.push_str("&since=");
             url.push_str(&unreserved(since));
         }
         self.authorised(Request::new(Method::Get, Text::plain(url)))
+    }
+
+    /// How long a sync waits for a message, in milliseconds.
+    #[must_use]
+    pub fn sync_wait(&self) -> u32 {
+        u32::try_from(self.interactions.sync_wait().as_millis()).unwrap_or(u32::MAX)
+    }
+
+    /// The filter a sync reads messages with: room messages alone, up to
+    /// the timeline's limit, with no presence, account data or history
+    /// before the sync began.
+    fn filter(&self) -> String {
+        let none = json!({ "types": [] });
+        json!({
+            "presence": none,
+            "account_data": none,
+            "room": {
+                "timeline": { "types": ["m.room.message"], "limit": self.interactions.timeline() },
+                "state": none,
+                "ephemeral": none,
+                "account_data": none,
+            },
+        })
+        .to_string()
     }
 
     /// The requests that answer the command `replying` names with `parts`:

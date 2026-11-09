@@ -4,7 +4,7 @@
 #[cfg(test)]
 mod replay {
     use herald_core::{
-        Dialect, Entry, Facts, MentionStyle, Pins, Profile, ReadBack, Sent, Step, Threads,
+        Dialect, Entry, Facts, MentionStyle, Pins, Profile, ReadBack, Sent, Step, Threads, Waits,
     };
     use herald_dest_fediverse::{
         LIMIT, Mastodon, MastodonMarkers, Refusal, RouteOptions, Visibility, profile, shortest,
@@ -79,6 +79,7 @@ mod replay {
             language: Some("en".to_owned()),
             content_warning: Some("Release notes".to_owned()),
             limit: None,
+            ..RouteOptions::default()
         });
         let replay = fixture!("options");
         assert_eq!(
@@ -192,23 +193,48 @@ mod replay {
         replay.finish().unwrap();
     }
 
-    #[test]
-    fn a_limit_or_an_outage_is_asked_again_after_the_wait_it_names_or_its_own() {
-        let mastodon = mastodon(RouteOptions::default());
+    fn limited(mastodon: &Mastodon, waits: [SignedDuration; 5]) {
         let replay = fixture!("rate-limited");
         let entry = Entry::new(announcement().key);
-        for wait in [
-            SignedDuration::from_mins(5),
-            SignedDuration::from_secs(30),
-            SignedDuration::from_secs(5),
-            SignedDuration::from_mins(1),
-        ] {
+        for wait in waits {
             assert_eq!(
-                send(&mastodon, &replay, &Step::Post, &entry),
+                send(mastodon, &replay, &Step::Post, &entry),
                 Sent::RetryAfter(wait)
             );
         }
         replay.finish().unwrap();
+    }
+
+    #[test]
+    fn a_limit_or_an_outage_is_asked_again_after_the_wait_it_names_or_its_own() {
+        limited(
+            &mastodon(RouteOptions::default()),
+            [
+                SignedDuration::from_secs(90),
+                SignedDuration::from_secs(30),
+                SignedDuration::from_secs(5),
+                SignedDuration::from_mins(1),
+                SignedDuration::from_mins(5),
+            ],
+        );
+    }
+
+    #[test]
+    fn a_limit_or_an_outage_that_names_no_wait_waits_as_long_as_the_destination_says() {
+        let waits = Waits {
+            outage: SignedDuration::from_secs(40),
+            limited: SignedDuration::from_mins(15),
+        };
+        limited(
+            &mastodon(RouteOptions::default()).waiting(waits),
+            [
+                SignedDuration::from_secs(90),
+                SignedDuration::from_secs(30),
+                waits.outage,
+                SignedDuration::from_mins(1),
+                waits.limited,
+            ],
+        );
     }
 
     #[test]
@@ -344,6 +370,25 @@ mod replay {
             ..RouteOptions::default()
         };
         assert_eq!(shortest(&accented), 138);
+        let server = RouteOptions {
+            limit: Some(1000),
+            title: std::num::NonZeroUsize::new(60),
+            link_length: Some(30),
+            ..RouteOptions::default()
+        };
+        let Profile { limits, .. } = profile(&server);
+        assert_eq!(
+            (limits.title, limits.thread_name, limits.text),
+            (60, 60, 1000 - 60 - 4 - 30)
+        );
+        assert_eq!(shortest(&server), 60 + 4 + 30 + 1);
+        assert_eq!(
+            (
+                RouteOptions::default().title(),
+                RouteOptions::default().link_length()
+            ),
+            (100, 23)
+        );
         let tight = RouteOptions {
             limit: Some(10),
             content_warning: Some("a long warning".to_owned()),

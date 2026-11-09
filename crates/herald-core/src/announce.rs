@@ -1,7 +1,7 @@
 use jiff::Timestamp;
 use unicode_segmentation::UnicodeSegmentation;
 
-use crate::chunk::{Room, chunk};
+use crate::chunk::{Room, chunk_in};
 use crate::event::Event;
 use crate::key::{Key, RouteId};
 use crate::marker::Marks;
@@ -153,7 +153,7 @@ pub fn announce(
         route: route.id.clone(),
         project: event.project().to_owned(),
         title: Title::new(shortened(&title, profile.limits.title, profile.measure)),
-        parts: chunk(&body, profile.dialect, room),
+        parts: chunk_in(&body, profile.dialect, profile.symbols, room),
         thread: thread
             .map(|thread| shortened(&thread, profile.limits.thread_name, profile.measure)),
         link: event

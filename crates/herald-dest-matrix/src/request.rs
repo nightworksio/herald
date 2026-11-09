@@ -1,6 +1,6 @@
 use std::fmt;
 
-use herald_core::{Announcement, Dialect, Entry, Sent, Step, safe_url};
+use herald_core::{Announcement, Dialect, Entry, Sent, Step, Waits, safe_url};
 use herald_ports::{Method, Request, Response, Text, USER_AGENT, unreserved};
 use serde_json::{Map, Value, json};
 
@@ -229,12 +229,12 @@ pub(crate) fn pinned(matrix: &Matrix) -> Request {
 
 /// The room's pinned events, as `response` holds them, or what the
 /// homeserver's trouble means.
-pub(crate) fn pins(response: &Response) -> Result<Vec<String>, Sent> {
+pub(crate) fn pins(response: &Response, waits: Waits) -> Result<Vec<String>, Sent> {
     let body = json(response);
     if response.status == NOT_FOUND {
         return Ok(Vec::new());
     }
-    if let Some(sent) = trouble(response, &body) {
+    if let Some(sent) = trouble(response, &body, waits) {
         return Err(sent);
     }
     Ok(body

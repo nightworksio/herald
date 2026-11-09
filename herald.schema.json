@@ -159,6 +159,13 @@
             "$ref": "#/$defs/Kind"
           }
         },
+        "language": {
+          "description": "The language each Note is written in, as an ISO 639 code.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "mentions": {
           "description": "Who it mentions.",
           "$ref": "#/$defs/Mentions"
@@ -206,6 +213,10 @@
             "string",
             "null"
           ]
+        },
+        "visibility": {
+          "description": "Who sees each Note on the timelines.",
+          "$ref": "#/$defs/Audience"
         }
       },
       "additionalProperties": false,
@@ -275,6 +286,80 @@
       },
       "additionalProperties": false
     },
+    "ArchiveAfter": {
+      "description": "How long a quiet thread stays open before Discord archives it: one of the\nfour lengths Discord takes.",
+      "oneOf": [
+        {
+          "description": "An hour.",
+          "type": "string",
+          "const": "1h"
+        },
+        {
+          "description": "A day.",
+          "type": "string",
+          "const": "1d"
+        },
+        {
+          "description": "Three days.",
+          "type": "string",
+          "const": "3d"
+        },
+        {
+          "description": "A week, the longest Discord keeps a quiet thread open.",
+          "type": "string",
+          "const": "1w"
+        }
+      ]
+    },
+    "Audience": {
+      "description": "Who sees an actor's Notes on the timelines. Followers see every Note.",
+      "oneOf": [
+        {
+          "description": "Everyone, on the public timelines too.",
+          "type": "string",
+          "const": "public"
+        },
+        {
+          "description": "Everyone who looks, kept off the public timelines.",
+          "type": "string",
+          "const": "unlisted"
+        }
+      ]
+    },
+    "Colour": {
+      "description": "A colour, written \"#rrggbb\".",
+      "type": "string",
+      "pattern": "^#[0-9A-Fa-f]{6}$"
+    },
+    "Colours": {
+      "description": "The colours of an announcement's embed, each where the config sets one.",
+      "type": "object",
+      "properties": {
+        "prerelease": {
+          "description": "A pre-release's colour; the violet of herald's banner, `#8f88c7`,\nwhere unset.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Colour"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "release": {
+          "description": "A release's colour; the gold of herald's trumpet, `#e39a26`, where\nunset.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Colour"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
     "Command": {
       "description": "A command a member gives herald.",
       "oneOf": [
@@ -314,6 +399,28 @@
                 "null"
               ]
             },
+            "archive_after": {
+              "description": "How long a quiet thread stays open: `1h`, `1d`, `3d` or `1w`, the\nweek where unset.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/ArchiveAfter"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "colours": {
+              "description": "The colours of its embeds.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Colours"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
             "interactions": {
               "description": "How it takes commands, where it takes any.",
               "anyOf": [
@@ -340,11 +447,33 @@
                 }
               ]
             },
+            "symbols": {
+              "description": "The characters its posts write where its markup has none: a task\ndone and to do, a rule and a text list's bullet.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Symbols"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
             "token": {
               "description": "The secret holding a bot token. A bot crossposts, threads, pins and\nreads back its posts.",
               "anyOf": [
                 {
                   "$ref": "#/$defs/SecretRef"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "waits": {
+              "description": "How long it waits before sending again where Discord answers that it\nis unwell or limited and names no wait.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/WaitOptions"
                 },
                 {
                   "type": "null"
@@ -391,9 +520,31 @@
               "description": "The server's base URL, such as `https://mastodon.social`.",
               "type": "string"
             },
+            "symbols": {
+              "description": "The characters its posts write where its markup has none: a task\ndone and to do, a rule and a text list's bullet.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Symbols"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
             "token": {
               "description": "The secret holding the account's access token, granted\n`write:statuses` and `read:statuses`.",
               "$ref": "#/$defs/SecretRef"
+            },
+            "waits": {
+              "description": "How long it waits before sending again where the server answers that it\nis unwell or limited and names no wait.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/WaitOptions"
+                },
+                {
+                  "type": "null"
+                }
+              ]
             }
           },
           "additionalProperties": false,
@@ -437,9 +588,31 @@
                 }
               ]
             },
+            "symbols": {
+              "description": "The characters its posts write where its markup has none: a task\ndone and to do, a rule and a text list's bullet.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Symbols"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
             "token": {
               "description": "The secret holding the bot account's access token.",
               "$ref": "#/$defs/SecretRef"
+            },
+            "waits": {
+              "description": "How long it waits before sending again where the homeserver answers that it\nis unwell or limited and names no wait.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/WaitOptions"
+                },
+                {
+                  "type": "null"
+                }
+              ]
             }
           },
           "additionalProperties": false,
@@ -458,6 +631,17 @@
               "type": [
                 "string",
                 "null"
+              ]
+            },
+            "domain": {
+              "description": "The Slack the workspace lives on: `slack.com`, Slack's own and an\nEnterprise Grid's, where unset, or `slack-gov.com` for Slack's government cloud.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Domain"
+                },
+                {
+                  "type": "null"
+                }
               ]
             },
             "interactions": {
@@ -486,11 +670,40 @@
                 }
               ]
             },
+            "symbols": {
+              "description": "The characters its posts write where its markup has none: a task\ndone and to do, a rule and a text list's bullet.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Symbols"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "team": {
+              "description": "The workspace's id, such as `T0123456789`, where the token is an\nEnterprise Grid org-wide app's: each Web API call names it.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
             "token": {
               "description": "The secret holding a bot token (`xoxb-…`). A bot threads, pins and\nreads back its posts.",
               "anyOf": [
                 {
                   "$ref": "#/$defs/SecretRef"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "waits": {
+              "description": "How long it waits before sending again where Slack answers that it\nis unwell or limited and names no wait.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/WaitOptions"
                 },
                 {
                   "type": "null"
@@ -529,6 +742,28 @@
             "kind": {
               "type": "string",
               "const": "activitypub"
+            },
+            "symbols": {
+              "description": "The characters its posts write where its markup has none: a task\ndone and to do, a rule and a text list's bullet.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Symbols"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "waits": {
+              "description": "How long it waits before sending again where an inbox answers that it\nis unwell or limited and names no wait.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/WaitOptions"
+                },
+                {
+                  "type": "null"
+                }
+              ]
             }
           },
           "additionalProperties": false,
@@ -643,6 +878,21 @@
         "sources",
         "destination",
         "template"
+      ]
+    },
+    "Domain": {
+      "description": "The Slack a workspace lives on: Slack's own, or Slack's government cloud.",
+      "oneOf": [
+        {
+          "description": "Slack's own, at `slack.com`.",
+          "type": "string",
+          "const": "slack.com"
+        },
+        {
+          "description": "Slack's government cloud, at `slack-gov.com`.",
+          "type": "string",
+          "const": "slack-gov.com"
+        }
       ]
     },
     "Duration": {
@@ -784,6 +1034,13 @@
             "null"
           ]
         },
+        "os": {
+          "description": "The operating system the gateway session identifies as, in place of\nthe host's own.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "prereleases": {
           "description": "Whether `latest` and `changelog` answer with a pre-release newer than\nevery release.",
           "type": "boolean",
@@ -803,6 +1060,16 @@
         "via": {
           "description": "How Discord carries them.",
           "$ref": "#/$defs/Via"
+        },
+        "wording": {
+          "description": "What it says back and how it describes its commands, phrase by\nphrase, each a template over `project`, `projects`, `named` and\n`command`; herald's own words for every phrase left out.",
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": {
+            "type": "string"
+          }
         }
       },
       "additionalProperties": false,
@@ -862,6 +1129,17 @@
           "type": "string",
           "default": "herald"
         },
+        "sync_wait": {
+          "description": "How long a sync waits for a message before it answers with none,\n\"20s\" where unset; shorter than `[http] total`, which bounds every\nanswer.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Duration"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "template": {
           "description": "The template `latest` takes its title from and `changelog` its body,\nin place of the route's own.",
           "type": [
@@ -869,9 +1147,29 @@
             "null"
           ]
         },
+        "timeline": {
+          "description": "The most messages one sync reads from each room, from 1 to 100; 20\nwhere unset.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint8",
+          "maximum": 255,
+          "minimum": 0
+        },
         "via": {
           "description": "How the homeserver carries them.",
           "$ref": "#/$defs/Via2"
+        },
+        "wording": {
+          "description": "What it says back and how it describes its commands, phrase by\nphrase, each a template over `project`, `projects`, `named` and\n`command`; herald's own words for every phrase left out.",
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": {
+            "type": "string"
+          }
         }
       },
       "additionalProperties": false
@@ -904,12 +1202,19 @@
           }
         },
         "domains": {
-          "description": "Domains beside `slack.com` a Socket Mode session may connect under, such as a proxy's.",
+          "description": "Domains beside its Slack's own a Socket Mode session may connect\nunder, such as a proxy's.",
           "type": "array",
           "default": [],
           "items": {
             "type": "string"
           }
+        },
+        "name": {
+          "description": "The name its app and bot user go by in the manifest `herald setup`\nprints: up to 35 lowercase letters, digits, `.`, `-` or `_`, and\n`herald` where unset.",
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "prereleases": {
           "description": "Whether `latest` and `changelog` answer with a pre-release newer than\nevery release.",
@@ -941,6 +1246,16 @@
         "via": {
           "description": "How Slack carries them.",
           "$ref": "#/$defs/Via3"
+        },
+        "wording": {
+          "description": "What it says back and how it describes its commands, phrase by\nphrase, each a template over `project`, `projects`, `named` and\n`command`; herald's own words for every phrase left out.",
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": {
+            "type": "string"
+          }
         }
       },
       "additionalProperties": false
@@ -1118,6 +1433,15 @@
           "format": "uint",
           "minimum": 0
         },
+        "link_length": {
+          "description": "The characters the server counts a link as, however long it is: its\n`characters_reserved_per_url`, Mastodon's own 23 where unset.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint",
+          "minimum": 0
+        },
         "mentions": {
           "description": "Who it mentions.",
           "$ref": "#/$defs/Mentions"
@@ -1158,6 +1482,15 @@
               "type": "null"
             }
           ]
+        },
+        "title": {
+          "description": "The longest title, a status's first line, in characters; 100 where\nunset.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint",
+          "minimum": 1
         },
         "versions": {
           "description": "The versions it takes, as a pattern in which `*` stands for any run\nof characters and `?` for any one, such as `\"*.*.*\"`, which leaves\nout a Docker Hub tag such as `latest`; every version where absent.",
@@ -1285,6 +1618,12 @@
         }
       },
       "additionalProperties": false
+    },
+    "OneCharacter": {
+      "description": "One character, as a config writes it.",
+      "type": "string",
+      "maxLength": 1,
+      "minLength": 1
     },
     "Pinning": {
       "description": "How a route keeps its newest announcement pinned: each pin unpins the\nroute's earlier one, found as this says (ADR-0011).",
@@ -1778,7 +2117,7 @@
           "type": "object",
           "properties": {
             "api": {
-              "description": "The API's base URL, for a forge that is not GitHub, GitLab.com or\nCodeberg, such as `https://forge.example/api/v1`. Where absent, it is\nthe CI run's own when announcing the run's repository, and otherwise\nthe forge's public instance.",
+              "description": "The API's base URL, for a forge that is not GitHub, GitLab.com or\nCodeberg: a GitHub Enterprise Server's `https://ghe.example/api/v3`,\na GHE.com tenant's `https://api.acme.ghe.com`, a self-managed or\nDedicated GitLab's `https://gitlab.example/api/v4`, or a Forgejo's\n`https://forge.example/api/v1`. Where absent, it is the CI run's own\nwhen announcing the run's repository, and otherwise the forge's\npublic instance.",
               "type": [
                 "string",
                 "null"
@@ -1862,7 +2201,7 @@
           "type": "object",
           "properties": {
             "api": {
-              "description": "The API's base URL, for a forge that is not GitHub, GitLab.com or\nCodeberg, such as `https://forge.example/api/v1`. Where absent, it is\nthe CI run's own when announcing the run's repository, and otherwise\nthe forge's public instance.",
+              "description": "The API's base URL, for a forge that is not GitHub, GitLab.com or\nCodeberg: a GitHub Enterprise Server's `https://ghe.example/api/v3`,\na GHE.com tenant's `https://api.acme.ghe.com`, a self-managed or\nDedicated GitLab's `https://gitlab.example/api/v4`, or a Forgejo's\n`https://forge.example/api/v1`. Where absent, it is the CI run's own\nwhen announcing the run's repository, and otherwise the forge's\npublic instance.",
               "type": [
                 "string",
                 "null"
@@ -1946,7 +2285,7 @@
           "type": "object",
           "properties": {
             "api": {
-              "description": "The API's base URL, for a forge that is not GitHub, GitLab.com or\nCodeberg, such as `https://forge.example/api/v1`. Where absent, it is\nthe CI run's own when announcing the run's repository, and otherwise\nthe forge's public instance.",
+              "description": "The API's base URL, for a forge that is not GitHub, GitLab.com or\nCodeberg: a GitHub Enterprise Server's `https://ghe.example/api/v3`,\na GHE.com tenant's `https://api.acme.ghe.com`, a self-managed or\nDedicated GitLab's `https://gitlab.example/api/v4`, or a Forgejo's\n`https://forge.example/api/v1`. Where absent, it is the CI run's own\nwhen announcing the run's repository, and otherwise the forge's\npublic instance.",
               "type": [
                 "string",
                 "null"
@@ -2047,6 +2386,17 @@
               "type": "string",
               "const": "packagist"
             },
+            "ordering": {
+              "description": "How Docker Hub lists a repository's tags for a poll:\n`last_updated`, the most recently pushed first, where unset, or\n`name`.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/TagOrdering"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
             "package": {
               "description": "The package, as the registry names it: `vendor/name` on Packagist,\na crate's name, an npm package's name such as `@scope/name`, or a\nDocker Hub repository such as `library/caddy`, where an official\nimage may leave out `library/`.",
               "type": "string"
@@ -2081,7 +2431,7 @@
               "minimum": 1
             },
             "token": {
-              "description": "A token for a private npm package, sent as a bearer token; the other\nregistries take none.",
+              "description": "A token for a private package: npm's, sent as a bearer token;\nPrivate Packagist's Composer token, sent as HTTP Basic with the user\n`token`; or a Docker Hub personal access token, exchanged with\n`username` for a bearer token. crates.io takes none.",
               "anyOf": [
                 {
                   "$ref": "#/$defs/SecretRef"
@@ -2089,6 +2439,13 @@
                 {
                   "type": "null"
                 }
+              ]
+            },
+            "username": {
+              "description": "The Docker Hub account `token` belongs to.",
+              "type": [
+                "string",
+                "null"
               ]
             }
           },
@@ -2120,6 +2477,17 @@
               "type": "string",
               "const": "crates-io"
             },
+            "ordering": {
+              "description": "How Docker Hub lists a repository's tags for a poll:\n`last_updated`, the most recently pushed first, where unset, or\n`name`.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/TagOrdering"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
             "package": {
               "description": "The package, as the registry names it: `vendor/name` on Packagist,\na crate's name, an npm package's name such as `@scope/name`, or a\nDocker Hub repository such as `library/caddy`, where an official\nimage may leave out `library/`.",
               "type": "string"
@@ -2154,7 +2522,7 @@
               "minimum": 1
             },
             "token": {
-              "description": "A token for a private npm package, sent as a bearer token; the other\nregistries take none.",
+              "description": "A token for a private package: npm's, sent as a bearer token;\nPrivate Packagist's Composer token, sent as HTTP Basic with the user\n`token`; or a Docker Hub personal access token, exchanged with\n`username` for a bearer token. crates.io takes none.",
               "anyOf": [
                 {
                   "$ref": "#/$defs/SecretRef"
@@ -2162,6 +2530,13 @@
                 {
                   "type": "null"
                 }
+              ]
+            },
+            "username": {
+              "description": "The Docker Hub account `token` belongs to.",
+              "type": [
+                "string",
+                "null"
               ]
             }
           },
@@ -2193,6 +2568,17 @@
               "type": "string",
               "const": "npm"
             },
+            "ordering": {
+              "description": "How Docker Hub lists a repository's tags for a poll:\n`last_updated`, the most recently pushed first, where unset, or\n`name`.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/TagOrdering"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
             "package": {
               "description": "The package, as the registry names it: `vendor/name` on Packagist,\na crate's name, an npm package's name such as `@scope/name`, or a\nDocker Hub repository such as `library/caddy`, where an official\nimage may leave out `library/`.",
               "type": "string"
@@ -2227,7 +2613,7 @@
               "minimum": 1
             },
             "token": {
-              "description": "A token for a private npm package, sent as a bearer token; the other\nregistries take none.",
+              "description": "A token for a private package: npm's, sent as a bearer token;\nPrivate Packagist's Composer token, sent as HTTP Basic with the user\n`token`; or a Docker Hub personal access token, exchanged with\n`username` for a bearer token. crates.io takes none.",
               "anyOf": [
                 {
                   "$ref": "#/$defs/SecretRef"
@@ -2235,6 +2621,13 @@
                 {
                   "type": "null"
                 }
+              ]
+            },
+            "username": {
+              "description": "The Docker Hub account `token` belongs to.",
+              "type": [
+                "string",
+                "null"
               ]
             }
           },
@@ -2266,6 +2659,17 @@
               "type": "string",
               "const": "docker-hub"
             },
+            "ordering": {
+              "description": "How Docker Hub lists a repository's tags for a poll:\n`last_updated`, the most recently pushed first, where unset, or\n`name`.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/TagOrdering"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
             "package": {
               "description": "The package, as the registry names it: `vendor/name` on Packagist,\na crate's name, an npm package's name such as `@scope/name`, or a\nDocker Hub repository such as `library/caddy`, where an official\nimage may leave out `library/`.",
               "type": "string"
@@ -2300,7 +2704,7 @@
               "minimum": 1
             },
             "token": {
-              "description": "A token for a private npm package, sent as a bearer token; the other\nregistries take none.",
+              "description": "A token for a private package: npm's, sent as a bearer token;\nPrivate Packagist's Composer token, sent as HTTP Basic with the user\n`token`; or a Docker Hub personal access token, exchanged with\n`username` for a bearer token. crates.io takes none.",
               "anyOf": [
                 {
                   "$ref": "#/$defs/SecretRef"
@@ -2308,6 +2712,13 @@
                 {
                   "type": "null"
                 }
+              ]
+            },
+            "username": {
+              "description": "The Docker Hub account `token` belongs to.",
+              "type": [
+                "string",
+                "null"
               ]
             }
           },
@@ -3166,6 +3577,76 @@
       },
       "additionalProperties": false
     },
+    "Symbols": {
+      "description": "The characters a destination writes where its markup has none: a task\ndone and to do, a rule (drawn three wide), and a list's bullet where a\nlist is written as text, in Slack and in plain text.",
+      "type": "object",
+      "properties": {
+        "bullet": {
+          "description": "A list's bullet where a list is written as text: `•` in Slack and\n`-` in plain text where unset.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/OneCharacter"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "done": {
+          "description": "A task done; `☑` where unset.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/OneCharacter"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": "☑"
+        },
+        "rule": {
+          "description": "A rule's character, drawn three wide; `─` where unset.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/OneCharacter"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": "─"
+        },
+        "todo": {
+          "description": "A task to do; `☐` where unset.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/OneCharacter"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": "☐"
+        }
+      },
+      "additionalProperties": false
+    },
+    "TagOrdering": {
+      "description": "How Docker Hub lists a repository's tags.",
+      "oneOf": [
+        {
+          "description": "The most recently pushed first.",
+          "type": "string",
+          "const": "last_updated"
+        },
+        {
+          "description": "By name.",
+          "type": "string",
+          "const": "name"
+        }
+      ]
+    },
     "Template": {
       "description": "A template: its title, and its body inline or in a file beside the config.",
       "type": "object",
@@ -3294,6 +3775,35 @@
           "const": "private"
         }
       ]
+    },
+    "WaitOptions": {
+      "description": "The waits as `[destinations.*] waits` writes them, each a length of time\nof at least a second.",
+      "type": "object",
+      "properties": {
+        "limited": {
+          "description": "After the platform answers that herald sends too often; the\nplatform's own window where unset: \"5m\" on Mastodon, \"5s\" elsewhere.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Duration"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "outage": {
+          "description": "After the platform answers that it is unwell; \"5s\" where unset.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Duration"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
     }
   }
 }

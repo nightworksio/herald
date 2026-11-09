@@ -5,7 +5,7 @@
 mod replay {
     use herald_core::{
         Announcement, Dialect, Entry, Facts, MentionRoom, MentionStyle, Pins, ReadBack, Sent, Step,
-        Text, Threads,
+        Text, Threads, Waits,
     };
     use herald_dest_matrix::{Matrix, MatrixMarkers, Refusal, RouteOptions, profile};
     use herald_ports::{Markers, MarkersError, Method, Secret};
@@ -308,21 +308,37 @@ mod replay {
         replay.finish().unwrap();
     }
 
-    #[test]
-    fn a_limit_or_an_outage_is_asked_again_after_the_wait_it_names_or_its_own() {
+    fn limited(matrix: &Matrix, unnamed: Waits) {
         let replay = fixture!("rate-limited");
         let entry = Entry::new(announcement().key);
         for wait in [
             SignedDuration::from_millis(2500),
             SignedDuration::from_secs(7),
-            SignedDuration::from_secs(5),
+            unnamed.outage,
             SignedDuration::from_secs(30),
             SignedDuration::from_millis(2500),
-            SignedDuration::from_secs(5),
+            unnamed.outage,
+            unnamed.limited,
         ] {
-            assert_eq!(send(&replay, &Step::Post, &entry), Sent::RetryAfter(wait));
+            let sent =
+                pollster::block_on(matrix.send(&replay, &Step::Post, &announcement(), &entry));
+            assert_eq!(sent.unwrap(), Sent::RetryAfter(wait));
         }
         replay.finish().unwrap();
+    }
+
+    #[test]
+    fn a_limit_or_an_outage_is_asked_again_after_the_wait_it_names_or_its_own() {
+        limited(&matrix(), Waits::DEFAULT);
+    }
+
+    #[test]
+    fn a_limit_or_an_outage_that_names_no_wait_waits_as_long_as_the_destination_says() {
+        let waits = Waits {
+            outage: SignedDuration::from_secs(40),
+            limited: SignedDuration::from_secs(90),
+        };
+        limited(&matrix().waiting(waits), waits);
     }
 
     #[test]

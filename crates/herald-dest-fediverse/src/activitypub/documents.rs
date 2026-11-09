@@ -1,6 +1,8 @@
 use herald_core::{ACTIVITY_JSON, Announcement, Dialect, digest, public_pem, safe_url};
 use serde_json::{Value, json};
 
+use super::options::{ActorRouteOptions, Audience};
+
 /// The `ActivityStreams` context.
 const STREAMS: &str = "https://www.w3.org/ns/activitystreams";
 /// The security context, which names `publicKey`.
@@ -84,32 +86,43 @@ fn content(announcement: &Announcement) -> String {
     html.join("\n")
 }
 
-/// `announcement` as the actor `actor` served at `origin` publishes it: a public
-/// `Note`, behind `content_warning` where it is given.
+/// Who an activity of the actor `id` is addressed to, and who is copied:
+/// the public and its followers, the public copied where `audience` keeps
+/// it off the public timelines.
+fn addressed(id: &str, audience: Audience) -> (Value, Value) {
+    match audience {
+        Audience::Public => (json!([PUBLIC]), json!([followers(id)])),
+        Audience::Unlisted => (json!([followers(id)]), json!([PUBLIC])),
+    }
+}
+
+/// `announcement` as the actor `route` names, served at `origin`,
+/// publishes it: a `Note` seen as `route` says, in its language and behind
+/// its content warning where it gives them.
 #[must_use]
-pub fn note(
-    origin: &str,
-    actor: &str,
-    announcement: &Announcement,
-    content_warning: Option<&str>,
-) -> Value {
-    let id = actor_id(origin, actor);
+pub fn note(origin: &str, announcement: &Announcement, route: &ActorRouteOptions) -> Value {
+    let id = actor_id(origin, &route.actor);
+    let (to, cc) = addressed(&id, route.visibility);
+    let content = content(announcement);
     let mut note = json!({
-        "id": note_id(origin, actor, &announcement.key.to_string()),
+        "id": note_id(origin, &route.actor, &announcement.key.to_string()),
         "type": "Note",
         "attributedTo": id,
         "published": announcement.occurred.to_string(),
-        "to": [PUBLIC],
-        "cc": [followers(&id)],
-        "content": content(announcement),
-        "sensitive": content_warning.is_some(),
+        "to": to,
+        "cc": cc,
+        "content": content,
+        "sensitive": route.content_warning.is_some(),
     });
     note.as_object_mut().into_iter().for_each(|fields| {
         if let Some(link) = &announcement.link {
             fields.insert("url".to_owned(), json!(safe_url(link)));
         }
-        if let Some(warning) = content_warning {
+        if let Some(warning) = &route.content_warning {
             fields.insert("summary".to_owned(), json!(warning));
+        }
+        if let Some(language) = &route.language {
+            fields.insert("contentMap".to_owned(), json!({ language: content }));
         }
     });
     note
@@ -121,22 +134,18 @@ fn followers(actor: &str) -> String {
 
 /// The `Create` of `announcement`'s Note, as each follower's inbox takes it.
 #[must_use]
-pub fn create(
-    origin: &str,
-    actor: &str,
-    announcement: &Announcement,
-    content_warning: Option<&str>,
-) -> Value {
-    let id = actor_id(origin, actor);
+pub fn create(origin: &str, announcement: &Announcement, route: &ActorRouteOptions) -> Value {
+    let id = actor_id(origin, &route.actor);
+    let (to, cc) = addressed(&id, route.visibility);
     json!({
         "@context": STREAMS,
-        "id": format!("{}/activity", note_id(origin, actor, &announcement.key.to_string())),
+        "id": format!("{}/activity", note_id(origin, &route.actor, &announcement.key.to_string())),
         "type": "Create",
         "actor": id,
         "published": announcement.occurred.to_string(),
-        "to": [PUBLIC],
-        "cc": [followers(&id)],
-        "object": note(origin, actor, announcement, content_warning),
+        "to": to,
+        "cc": cc,
+        "object": note(origin, announcement, route),
     })
 }
 

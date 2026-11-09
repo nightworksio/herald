@@ -5,13 +5,14 @@
 use std::collections::BTreeMap;
 use std::fmt;
 
-use herald_core::{Answering, Asked, Command, DestinationName, Place, SecretRef};
+use herald_core::{Answering, Asked, Command, DestinationName, Phrase, Place, SecretRef};
 use herald_ports::{Method, Request, Response, Secret, Text};
 use serde_json::{Value, json};
 
+use crate::domain::Domain;
+use crate::interactions::DEFAULT_NAME;
 use crate::interactions::{Interactions, Via};
 use crate::read::quoted;
-use crate::slack::{API, HOOKS};
 use crate::web_api;
 
 /// The action id of the button that subscribes to a project.
@@ -29,6 +30,8 @@ const BLOCKS: usize = 50;
 pub struct Interacting {
     api: String,
     hooks: String,
+    given: Option<String>,
+    domain: Domain,
     interactions: Interactions,
 }
 
@@ -83,11 +86,25 @@ impl Interacting {
     /// is another base, on it.
     #[must_use]
     pub fn new(interactions: Interactions, api: Option<&str>) -> Self {
-        let api = api.map(|api| api.trim_end_matches('/').to_owned());
         Self {
-            hooks: api.clone().unwrap_or_else(|| HOOKS.to_owned()),
-            api: api.unwrap_or_else(|| API.to_owned()),
+            api: String::new(),
+            hooks: String::new(),
+            given: api.map(|api| api.trim_end_matches('/').to_owned()),
+            domain: Domain::default(),
             interactions,
+        }
+        .on(Domain::default())
+    }
+
+    /// How it takes commands on the Slack `domain` names: its API, response
+    /// URLs and sessions there, where no `api` was given.
+    #[must_use]
+    pub fn on(self, domain: Domain) -> Self {
+        Self {
+            api: self.given.clone().unwrap_or_else(|| domain.api()),
+            hooks: self.given.clone().unwrap_or_else(|| domain.hooks()),
+            domain,
+            ..self
         }
     }
 
@@ -112,7 +129,7 @@ impl Interacting {
     /// The domains its sessions may connect under.
     #[must_use]
     pub fn session_domains(&self) -> Vec<&str> {
-        self.interactions.session_domains()
+        self.interactions.session_domains(self.domain)
     }
 
     /// The secret holding the signing secret each request posted to herald
@@ -340,7 +357,7 @@ impl Interacting {
             .collect();
         let mut command = json!({
             "command": self.interactions.command,
-            "description": "Ask herald about the projects it announces",
+            "description": self.interactions.wording().text(Phrase::DescribeGroup),
             "usage_hint": format!("{} [project] [share]", commands.join(" | ")),
             "should_escape": false,
         });
@@ -353,10 +370,11 @@ impl Interacting {
             command.insert("url".to_owned(), json!(endpoint));
             interactivity.insert("request_url".to_owned(), json!(endpoint));
         }
+        let name = self.interactions.name.as_deref().unwrap_or(DEFAULT_NAME);
         json!({
-            "display_information": { "name": "herald" },
+            "display_information": { "name": name },
             "features": {
-                "bot_user": { "display_name": "herald", "always_online": false },
+                "bot_user": { "display_name": name, "always_online": false },
                 "slash_commands": [command],
             },
             "oauth_config": {
@@ -387,17 +405,17 @@ struct Placed<'a> {
     url: Option<&'a str>,
 }
 
-/// The block holding the button that subscribes to `project`, or
-/// unsubscribes a member already subscribed.
+/// The block holding the button, labelled `label`, that subscribes to
+/// `project`, or unsubscribes a member already subscribed.
 #[must_use]
-pub fn subscribe_block(project: &str) -> Value {
+pub fn subscribe_block(project: &str, label: &str) -> Value {
     json!({
         "type": "actions",
         "elements": [{
             "type": "button",
             "action_id": SUBSCRIBE,
             "value": project,
-            "text": { "type": "plain_text", "text": "Subscribe" },
+            "text": { "type": "plain_text", "text": label },
         }],
     })
 }

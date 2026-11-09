@@ -24,6 +24,7 @@ fn interactions_default_to_an_appservice_answering_herald_s_prefix() {
             replies: Replies::Public,
             prereleases: true,
             template: Some(TemplateName::new("t")),
+            wording: herald_core::Wording::default(),
         }
     );
 }
@@ -63,4 +64,34 @@ fn prefixes_senders_and_commands_written_wrongly_are_refused() {
         Ok(())
     );
     assert!(read(r#"{"via": "sync", "commands": []}"#).check().is_err());
+}
+
+#[test]
+fn what_it_says_is_worded_as_the_config_words_it_and_refused_where_it_cannot_be_said() {
+    let worded = read(r#"{"via": "sync", "wording": {"nothing": "Niets."}}"#);
+    assert_eq!(worded.check(), Ok(()));
+    assert_eq!(worded.answering().wording.text(Phrase::Nothing), "Niets.");
+    assert!(
+        read(r#"{"via": "sync", "wording": {"nothing": "{{ project"}}"#)
+            .check()
+            .unwrap_err()
+            .starts_with("wording.nothing is not a template")
+    );
+}
+
+#[test]
+fn a_sync_reads_from_one_message_up_to_its_bound_from_each_room() {
+    for timeline in [1, TIMELINE_MOST] {
+        let json = format!(r#"{{"via": "sync", "timeline": {timeline}}}"#);
+        assert_eq!(read(&json).check(), Ok(()), "{timeline}");
+    }
+    for timeline in [0, TIMELINE_MOST + 1] {
+        let json = format!(r#"{{"via": "sync", "timeline": {timeline}}}"#);
+        assert_eq!(
+            read(&json).check(),
+            Err(format!(
+                "a sync reads 1 to {TIMELINE_MOST} messages from each room, not {timeline}"
+            ))
+        );
+    }
 }

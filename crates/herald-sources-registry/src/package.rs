@@ -5,7 +5,7 @@ use herald_ports::{Method, Request, Response, Secret, Text, USER_AGENT};
 use herald_wire::{Reading, SourceError, answered, host};
 use jiff::Timestamp;
 
-use crate::options::RegistryOptions;
+use crate::options::{RegistryOptions, TagOrdering};
 use crate::{crates_io, docker_hub, npm, packagist};
 
 /// A registry whose package versions herald announces.
@@ -44,6 +44,8 @@ pub struct Package {
     api: String,
     name: String,
     reading: Reading,
+    username: Option<String>,
+    ordering: TagOrdering,
 }
 
 impl Registry {
@@ -94,7 +96,14 @@ impl Registry {
     /// Whether the registry takes a token.
     #[must_use]
     pub const fn takes_token(self) -> bool {
-        matches!(self, Self::Npm)
+        matches!(self, Self::Npm | Self::Packagist | Self::DockerHub)
+    }
+
+    /// Whether its token belongs to an account the source names: Docker
+    /// Hub's personal access tokens are exchanged with their username.
+    #[must_use]
+    pub const fn names_its_account(self) -> bool {
+        matches!(self, Self::DockerHub)
     }
 
     /// Whether the registry's versions include tags that move, such as
@@ -132,7 +141,47 @@ impl Package {
                 .to_owned(),
             name,
             reading: options.reading(registry),
+            username: options.username.clone(),
+            ordering: options.ordering.unwrap_or_default(),
         }
+    }
+
+    /// The request that exchanges `token` for the short-lived bearer token
+    /// the registry's API takes, where the registry exchanges one: Docker
+    /// Hub's, sent with the account's username in a sealed body.
+    #[must_use]
+    pub fn token_request(&self, token: &Secret) -> Option<Request> {
+        let username = self.username.as_deref()?;
+        self.registry.names_its_account().then(|| {
+            let body = serde_json::json!({ "identifier": username, "secret": token.expose() });
+            Request::new(
+                Method::Post,
+                Text::plain(format!("{}/auth/token", self.api)),
+            )
+            .at_most(docker_hub::TOKEN_ANSWER)
+            .header("Content-Type", Text::plain("application/json"))
+            .header("User-Agent", Text::plain(USER_AGENT))
+            .sealed_body(body.to_string())
+        })
+    }
+
+    /// The bearer token the registry answered `response` with, named as
+    /// `token`, the secret it was exchanged for.
+    ///
+    /// # Errors
+    ///
+    /// When the registry refused the exchange or answered no token.
+    pub fn exchanged(&self, token: &Secret, response: &Response) -> Result<Secret, SourceError> {
+        docker_hub::exchanged(response)
+            .map(|access| Secret::new(token.name(), access))
+            .ok_or_else(|| SourceError::Unreadable {
+                what: "Docker Hub's access token",
+                reason: format!(
+                    "Docker Hub answered {} to the exchange of {}; check the username and that the token may read the repository",
+                    response.status,
+                    token.name()
+                ),
+            })
     }
 
     /// How a poll of it reads.
@@ -172,6 +221,19 @@ impl Package {
         self.api == self.registry.api().url
     }
 
+    /// How `token` authorises a request to the registry: as HTTP Basic
+    /// with the user `token` on Packagist, as Private Packagist takes it,
+    /// and as a bearer token elsewhere.
+    fn authorization(&self, token: &Secret) -> Text {
+        match self.registry {
+            Registry::Packagist => Text::plain("Basic ").then_secret(Secret::new(
+                token.name(),
+                herald_core::basic("token", token.expose()),
+            )),
+            _ => Text::plain("Bearer ").then_secret(token.clone()),
+        }
+    }
+
     /// The request for the newest versions, conditional on the validators
     /// `cursor` holds, carrying `token` where the registry takes one.
     #[must_use]
@@ -180,17 +242,14 @@ impl Package {
             Registry::Packagist => packagist::path(&self.name),
             Registry::CratesIo => crates_io::path(&self.name, self.reading.page),
             Registry::Npm => npm::path(&self.name),
-            Registry::DockerHub => docker_hub::path(&self.name, self.reading.page),
+            Registry::DockerHub => docker_hub::path(&self.name, self.reading.page, self.ordering),
         };
         let mut request = Request::new(Method::Get, Text::plain(format!("{}{path}", self.api)))
             .at_most(self.reading.parse)
             .header("Accept", Text::plain("application/json"))
             .header("User-Agent", Text::plain(USER_AGENT));
         if let Some(token) = token.filter(|_| self.registry.takes_token()) {
-            request = request.header(
-                "Authorization",
-                Text::plain("Bearer ").then_secret(token.clone()),
-            );
+            request = request.header("Authorization", self.authorization(token));
         }
         if let Some(etag) = cursor.and_then(|cursor| cursor.etag.as_deref()) {
             request = request.header("If-None-Match", Text::plain(etag));

@@ -1,8 +1,9 @@
 use pulldown_cmark::{CodeBlockKind, Event, Parser, Tag};
 use unicode_segmentation::UnicodeSegmentation;
 
-use crate::markup::{EXTENSIONS, Text, convert};
+use crate::markup::{EXTENSIONS, Text, convert_in};
 use crate::profile::{Dialect, Measure};
+use crate::symbols::Symbols;
 
 /// How long each part of a chunked text may be, and how length is counted.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -20,7 +21,15 @@ pub struct Room {
 /// is fenced again on both sides. There is always at least one part.
 #[must_use]
 pub fn chunk(markdown: &str, dialect: Dialect, room: Room) -> Vec<Text> {
-    let fits = |text: &str, limit: usize| size(&convert(text, dialect), room.measure) <= limit;
+    chunk_in(markdown, dialect, Symbols::DEFAULT, room)
+}
+
+/// `markdown` cut as [`chunk`] cuts it, written with `symbols` where the
+/// dialect has no markup of its own.
+#[must_use]
+pub fn chunk_in(markdown: &str, dialect: Dialect, symbols: Symbols, room: Room) -> Vec<Text> {
+    let fits =
+        |text: &str, limit: usize| size(&convert_in(text, dialect, symbols), room.measure) <= limit;
     let narrowest = room.first.min(room.rest);
     let pieces: Vec<String> = blocks(markdown)
         .into_iter()
@@ -70,7 +79,10 @@ pub fn chunk(markdown: &str, dialect: Dialect, room: Room) -> Vec<Text> {
     if parts.is_empty() {
         parts.push(String::new());
     }
-    parts.iter().map(|part| convert(part, dialect)).collect()
+    parts
+        .iter()
+        .map(|part| convert_in(part, dialect, symbols))
+        .collect()
 }
 
 /// The length of `text` as `measure` counts it, its HTML included.

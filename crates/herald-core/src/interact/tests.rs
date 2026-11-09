@@ -56,9 +56,8 @@ fn every_command_is_named_in_any_case_and_described() {
             Command::named(&command.name().to_uppercase()),
             Some(command)
         );
-        assert!(
-            command.description().ends_with("last") || command.description().contains("release")
-        );
+        let described = crate::Wording::default().describe(command).to_owned();
+        assert!(described.ends_with("last") || described.contains("release"));
     }
     assert_eq!(Command::named("subscribed"), None);
     assert_eq!(
@@ -256,6 +255,7 @@ fn answering_takes_the_commands_it_names_each_once() {
         replies: Replies::Public,
         prereleases: false,
         template: None,
+        wording: crate::Wording::default(),
     };
     assert!(answering.takes(Command::Latest));
     assert!(!answering.takes(Command::Subscribe));

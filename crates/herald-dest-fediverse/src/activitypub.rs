@@ -9,4 +9,4 @@ mod options;
 
 pub use deliver::{ActivityPub, actor_profile};
 pub use documents::{Asked, accept, actor_document, asked, create, note, webfinger};
-pub use options::{ActorOptions, ActorRouteOptions};
+pub use options::{ActorOptions, ActorRouteOptions, Audience};

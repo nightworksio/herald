@@ -1,4 +1,6 @@
-use herald_core::{ReadBack, SecretRef};
+use herald_core::{ReadBack, SecretRef, Symbols, WaitOptions};
+
+use crate::domain::Domain;
 
 use crate::interactions::{Interactions, Subscribe};
 use schemars::JsonSchema;
@@ -15,14 +17,41 @@ pub struct DestinationOptions {
     pub webhook: Option<SecretRef>,
     /// Another base URL for Slack's API, such as a recorded-fixture server.
     pub api: Option<String>,
+    /// The Slack the workspace lives on: `slack.com`, Slack's own and an
+    /// Enterprise Grid's, where unset, or `slack-gov.com` for Slack's government cloud.
+    pub domain: Option<Domain>,
+    /// The workspace's id, such as `T0123456789`, where the token is an
+    /// Enterprise Grid org-wide app's: each Web API call names it.
+    pub team: Option<String>,
     /// How it takes commands, where it takes any.
     pub interactions: Option<Interactions>,
     /// How many pages of its own posts it reads back for their markers,
     /// from 1 to 20; 5 where unset.
     pub read_back: Option<ReadBack>,
+    /// The characters its posts write where its markup has none: a task
+    /// done and to do, a rule and a text list's bullet.
+    pub symbols: Option<Symbols>,
+    /// How long it waits before sending again where Slack answers that it
+    /// is unwell or limited and names no wait.
+    pub waits: Option<WaitOptions>,
 }
 
 impl DestinationOptions {
+    /// Whether its workspace id, where it names one, is written as Slack
+    /// writes one.
+    ///
+    /// # Errors
+    ///
+    /// When `team` is not a T followed by letters and digits.
+    pub fn team(&self) -> Result<(), String> {
+        match &self.team {
+            Some(team) if !workspace_id(team) => Err(format!(
+                "\"{team}\" is not a workspace id; give the workspace's id, a T and its letters and digits, such as \"T0123456789\""
+            )),
+            _ => Ok(()),
+        }
+    }
+
     /// Whether the destination posts as a bot, or else through a webhook.
     ///
     /// # Errors
@@ -74,4 +103,44 @@ fn channel_id(channel: &str) -> bool {
                 .bytes()
                 .all(|byte| byte.is_ascii_uppercase() || byte.is_ascii_digit())
     })
+}
+
+/// Whether `team` is written as a Slack workspace id: a T and at least two
+/// capital letters or digits.
+fn workspace_id(team: &str) -> bool {
+    team.strip_prefix('T').is_some_and(|rest| {
+        rest.len() >= 2
+            && rest
+                .bytes()
+                .all(|byte| byte.is_ascii_uppercase() || byte.is_ascii_digit())
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn team(team: &str) -> Result<(), String> {
+        serde_json::from_value::<DestinationOptions>(serde_json::json!({ "team": team }))
+            .unwrap()
+            .team()
+    }
+
+    #[test]
+    fn a_workspace_is_named_by_its_id() {
+        for written in ["T0123456789", "T01", "TAB"] {
+            assert_eq!(team(written), Ok(()), "{written}");
+        }
+        let unnamed: DestinationOptions = serde_json::from_str("{}").unwrap();
+        assert_eq!(unnamed.team(), Ok(()));
+        for written in ["T", "T0", "t0123456789", "T01x", "X0123456789", "T01-2"] {
+            assert_eq!(
+                team(written),
+                Err(format!(
+                    "\"{written}\" is not a workspace id; give the workspace's id, a T and its letters and digits, such as \"T0123456789\""
+                )),
+                "{written}"
+            );
+        }
+    }
 }

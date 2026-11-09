@@ -1,7 +1,7 @@
 use herald_core::Replies;
 
 use super::*;
-use crate::SESSION_DOMAIN;
+use crate::Domain;
 
 const HOOK: &str = "https://hooks.slack.com/commands/T1/2/abc";
 
@@ -200,7 +200,7 @@ fn an_answer_is_one_message_of_sections_seen_by_the_asker_unless_public() {
 #[test]
 fn the_subscribe_block_holds_one_button_valued_by_its_project() {
     assert_eq!(
-        subscribe_block("herald"),
+        subscribe_block("herald", "Subscribe"),
         json!({
             "type": "actions",
             "elements": [{
@@ -241,7 +241,7 @@ fn the_destination_says_where_it_reaches_and_how_it_answers() {
     assert_eq!(plain.via(), Via::Http);
     assert_eq!(
         interacting(r#", "domains": ["proxy.example"]"#).session_domains(),
-        [SESSION_DOMAIN, "proxy.example"]
+        [Domain::Slack.host(), "proxy.example"]
     );
     assert_eq!(
         plain.signing().map(|secret| secret.secret.as_str()),
@@ -292,4 +292,20 @@ fn the_manifest_points_the_command_and_buttons_at_herald_or_opens_socket_mode() 
         json!({ "is_enabled": true })
     );
     assert_eq!(socket["features"]["slash_commands"][0].get("url"), None);
+}
+
+#[test]
+fn the_manifest_names_the_app_and_its_bot_as_the_config_says_or_herald() {
+    let named = |extra: &str| -> Value {
+        serde_json::from_str(&interacting(extra).manifest("slack", None)).unwrap()
+    };
+    let unnamed = named("");
+    assert_eq!(unnamed["display_information"]["name"], "herald");
+    assert_eq!(unnamed["features"]["bot_user"]["display_name"], "herald");
+    let acme = named(r#", "name": "acme-releases""#);
+    assert_eq!(acme["display_information"]["name"], "acme-releases");
+    assert_eq!(
+        acme["features"]["bot_user"]["display_name"],
+        "acme-releases"
+    );
 }

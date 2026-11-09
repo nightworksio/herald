@@ -18,7 +18,7 @@ type Read<T> = Result<Result<T, Sent>, HttpError>;
 async fn read<H: Http>(discord: &Discord, http: &H, path: &str) -> Read<Value> {
     let response = http.send(get(discord, path)).await?;
     let body = serde_json::from_slice(&response.body).unwrap_or(Value::Null);
-    Ok(trouble(&response, &body).map_or(Ok(body), Err))
+    Ok(trouble(&response, &body, discord.waits).map_or(Ok(body), Err))
 }
 
 fn field<'a>(value: &'a Value, name: &str) -> Option<&'a str> {
@@ -182,7 +182,7 @@ pub(crate) async fn unpinned<H: Http>(
             continue;
         }
         let body = serde_json::from_slice(&response.body).unwrap_or(Value::Null);
-        if let Some(sent) = trouble(&response, &body) {
+        if let Some(sent) = trouble(&response, &body, discord.waits) {
             return Ok(sent);
         }
     }

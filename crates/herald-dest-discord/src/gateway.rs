@@ -65,6 +65,7 @@ pub enum Effect {
 pub struct Gateway {
     token: Secret,
     domains: Vec<String>,
+    os: String,
     sequence: Option<u64>,
     session: Option<String>,
     resume: Option<String>,
@@ -80,11 +81,25 @@ impl Gateway {
         Self {
             token,
             domains: domains.iter().map(|domain| (*domain).to_owned()).collect(),
+            os: std::env::consts::OS.to_owned(),
             sequence: None,
             session: None,
             resume: None,
             acknowledged: true,
             resuming: false,
+        }
+    }
+
+    /// The session, identifying to Discord as running on `os` where it
+    /// names one, in place of the host's own.
+    #[must_use]
+    pub fn identifying_as(self, os: Option<&str>) -> Self {
+        match os {
+            Some(os) => Self {
+                os: os.to_owned(),
+                ..self
+            },
+            None => self,
         }
     }
 
@@ -180,7 +195,7 @@ impl Gateway {
             &json!({ "op": IDENTIFY, "d": {
                 "token": TOKEN,
                 "intents": 0,
-                "properties": { "os": "linux", "browser": "herald", "device": "herald" },
+                "properties": { "os": self.os, "browser": "herald", "device": "herald" },
             }}),
             &self.token,
         )

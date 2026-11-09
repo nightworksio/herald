@@ -11,6 +11,7 @@ mod discord;
 mod gateway;
 mod interact;
 mod interactions;
+mod look;
 mod markers;
 mod options;
 mod read;
@@ -24,6 +25,7 @@ pub use interact::{
     subscribe_button, took,
 };
 pub use interactions::{Interactions, SESSION_DOMAIN, Subscribe, Via};
+pub use look::{ArchiveAfter, Colour, Colours, Look};
 pub use markers::DiscordMarkers;
 pub use options::{DestinationOptions, RouteOptions};
 pub use request::Refusal;

@@ -388,6 +388,46 @@ impl Loader<'_> {
             .map(Store::FastlyKv)
     }
 
+    /// Whether every Matrix sync waits less than `[http] total` allows any
+    /// answer.
+    fn synced(
+        &mut self,
+        destinations: &BTreeMap<DestinationName, (Destination, Range<usize>)>,
+        http: &herald_ports::Outbound,
+    ) {
+        for (name, (destination, span)) in destinations {
+            let Destination::Matrix(options) = destination else {
+                continue;
+            };
+            let Some(interactions) = &options.interactions else {
+                continue;
+            };
+            let wait = interactions.sync_wait();
+            if wait >= http.total {
+                self.error(
+                    span,
+                    &format!("destinations.{}.interactions", name.as_str()),
+                    format!(
+                        "a sync that waits {wait:#} outlasts the {:#} [http] total allows any answer; make sync_wait shorter, or total longer",
+                        http.total
+                    ),
+                );
+            }
+        }
+    }
+
+    /// Whether every wait a destination sets is long enough.
+    fn waited(&mut self, destinations: &BTreeMap<DestinationName, (Destination, Range<usize>)>) {
+        for (name, (destination, span)) in destinations {
+            if let Some(Err(error)) = destination
+                .waits_written()
+                .map(|set| herald_core::Waits::check(&set))
+            {
+                self.error(span, &format!("destinations.{}", name.as_str()), error);
+            }
+        }
+    }
+
     /// Whether every route that reaches followers or subscribers has a store
     /// that keeps them.
     fn followed(
@@ -538,6 +578,10 @@ impl Loader<'_> {
     fn slack(&mut self, rest: Value<'_>, path: &str, span: &Range<usize>) -> Option<Destination> {
         let options = self.typed::<herald_dest_slack::DestinationOptions>(rest, path)?;
         if let Err(message) = options.bot() {
+            self.error(span, path, message);
+            return None;
+        }
+        if let Err(message) = options.team() {
             self.error(span, path, message);
             return None;
         }
@@ -760,6 +804,8 @@ pub fn load(
         .and_then(|value| loader.typed::<HttpFile>(value, "http"))
         .map(|file| loader.http(file, read))
         .unwrap_or_default();
+    loader.synced(&destinations, &http);
+    loader.waited(&destinations);
     let announce = loader.announce(sections.announce);
     if let (true, Some(store), Some(templates)) = (loader.errors.is_empty(), store, compiled) {
         return Ok(Config {

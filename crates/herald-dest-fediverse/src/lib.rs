@@ -15,8 +15,8 @@ mod read;
 mod request;
 
 pub use activitypub::{
-    ActivityPub, ActorOptions, ActorRouteOptions, Asked, accept, actor_document, actor_profile,
-    asked, create, note, webfinger,
+    ActivityPub, ActorOptions, ActorRouteOptions, Asked, Audience, accept, actor_document,
+    actor_profile, asked, create, note, webfinger,
 };
 pub use actor::{
     ActorError, ActorKey, Found, Inboxes, activity_json, actor_key, actor_of, confirms, document,

@@ -210,6 +210,59 @@ body = "{{{{ event.body }}}}"
     }
 
     #[test]
+    fn a_wording_that_cannot_be_said_or_names_no_phrase_is_refused() {
+        let base = config("git-branch", &bot(""), "channel = \"1566200000000000100\"");
+        let worded = |line: &str| {
+            base.replace(
+                "signing = { secret = \"HERALD_SLACK_SIGNING\" }",
+                &format!("signing = {{ secret = \"HERALD_SLACK_SIGNING\" }}\n{line}"),
+            )
+        };
+        assert!(
+            load(
+                "herald.toml",
+                &worded(r#"wording = { subscribed = "Ja {{ project }}.", date = "%d-%m" }"#),
+                &nothing
+            )
+            .is_ok()
+        );
+        refused(
+            &worded(r#"wording = { subscribed = "{{ project" }"#),
+            "destinations.slack.interactions: wording.subscribed is not a template",
+        );
+        refused(&worded(r#"wording = { greeting = "Hoi" }"#), "greeting");
+    }
+
+    #[test]
+    fn a_sync_reads_within_the_http_total_and_from_one_to_a_hundred_messages() {
+        let base = config("git-branch", &bot(""), "channel = \"1566200000000000100\"");
+        let with = |line: &str| {
+            base.replace(
+                "appservice_token = { secret = \"HERALD_MATRIX_AS\" }\n",
+                &format!("appservice_token = {{ secret = \"HERALD_MATRIX_AS\" }}\n{line}\n"),
+            )
+        };
+        assert!(
+            load(
+                "herald.toml",
+                &with("sync_wait = \"29s\"\ntimeline = 100"),
+                &nothing
+            )
+            .is_ok()
+        );
+        refused(
+            &with("sync_wait = \"30s\""),
+            "destinations.matrix.interactions: a sync that waits 30s outlasts the 30s [http] total allows any answer",
+        );
+        for timeline in [0, 101] {
+            refused(
+                &with(&format!("timeline = {timeline}")),
+                &format!("a sync reads 1 to 100 messages from each room, not {timeline}"),
+            );
+        }
+    }
+
+    #[test]
     fn a_webhook_destination_takes_the_interactions_discord_posts() {
         let text = config(
             "git-branch",
@@ -233,6 +286,8 @@ body = "{{{{ event.body }}}}"
             RouteOptions::ActivityPub(herald_dest_fediverse::ActorRouteOptions {
                 actor: "herald".to_owned(),
                 content_warning: None,
+                visibility: herald_dest_fediverse::Audience::Public,
+                language: None,
             }),
         ] {
             assert_eq!(options.place(), None);
@@ -358,6 +413,17 @@ body = "{{{{ event.body }}}}"
                 .into_iter()
                 .collect::<Vec<_>>(),
             ["slack.com"]
+        );
+        let gov = socket.replace(
+            "token = { secret = \"HERALD_SLACK_TOKEN\" }",
+            "token = { secret = \"HERALD_SLACK_TOKEN\" }\ndomain = \"slack-gov.com\"",
+        );
+        assert_eq!(
+            config_of(&gov)
+                .session_domains()
+                .into_iter()
+                .collect::<Vec<_>>(),
+            ["slack-gov.com"]
         );
         refused(
             &config(

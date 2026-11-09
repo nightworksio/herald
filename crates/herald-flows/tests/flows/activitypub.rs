@@ -158,6 +158,8 @@ fn an_actor_reads_no_posts_back_and_delivers_to_its_own_followers() {
         herald_dest_fediverse::ActorRouteOptions {
             actor: "php-mutation-gate".to_owned(),
             content_warning: None,
+            visibility: herald_dest_fediverse::Audience::Public,
+            language: None,
         },
     ));
     let script = Script::default();

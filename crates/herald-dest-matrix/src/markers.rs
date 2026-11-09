@@ -139,7 +139,7 @@ impl<H: Http> Markers for MatrixMarkers<'_, H> {
             .send(pinned(self.matrix))
             .await
             .map_err(|error| unreadable(error.to_string()))?;
-        let held = pins(&response).map_err(|_| {
+        let held = pins(&response, self.matrix.waits).map_err(|_| {
             unreadable(format!(
                 "the homeserver answered {} for the room's pins",
                 response.status

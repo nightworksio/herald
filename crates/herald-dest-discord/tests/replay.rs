@@ -5,15 +5,17 @@
 mod replay {
     use herald_core::{
         Announcement, Chore, Delivery, Entry, Facts, Marker, Pins, Plan, Planned, ReadBack, Sent,
-        Step, plan,
+        Step, Waits, plan,
     };
     use herald_dest_discord::{
-        Credential, DestinationOptions, Discord, DiscordMarkers, Refusal, RouteOptions,
+        ArchiveAfter, Colour, Credential, DestinationOptions, Discord, DiscordMarkers, Look,
+        Refusal, RouteOptions,
     };
     use herald_ports::{MarkedThread, Markers, MarkersError, Secret};
     use herald_testing::sample::{self, announcement, marker, route_marker};
     use herald_testing::{Fixture, Replay};
     use jiff::SignedDuration;
+    use serde_json::Value;
 
     const CHANNEL: &str = "1566184281406177531";
     const FORUM: &str = "1566184281406177600";
@@ -77,6 +79,63 @@ mod replay {
 
     fn send(discord: &Discord, replay: &Replay, step: &Step, entry: &Entry) -> Sent {
         pollster::block_on(discord.send(replay, step, &announcement(), &delivery(), entry)).unwrap()
+    }
+
+    fn body(discord: &Discord, step: &Step, shown: &Announcement, entry: &Entry) -> Value {
+        serde_json::from_slice(
+            &discord
+                .request(step, shown, &delivery(), entry)
+                .unwrap()
+                .body,
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn a_look_sets_the_embed_s_colour_and_how_long_a_thread_stays_open() {
+        let look = Look {
+            release: Colour(0x0011_2233),
+            prerelease: Colour(0x0044_5566),
+            archive_after: ArchiveAfter::Day,
+        };
+        let release = announcement();
+        let prerelease = Announcement {
+            prerelease: true,
+            ..announcement()
+        };
+        let fresh = Entry::new(release.key);
+        let posted = fresh
+            .clone()
+            .landed(Step::Post, message("1566200000000000001"));
+        let discord = bot(CHANNEL, false).looking(look);
+        let colour = |discord: &Discord, shown: &Announcement| {
+            body(discord, &Step::Post, shown, &fresh)["embeds"][0]["color"].clone()
+        };
+        assert_eq!(colour(&discord, &release), 0x0011_2233);
+        assert_eq!(colour(&discord, &prerelease), 0x0044_5566);
+        assert_eq!(colour(&webhook(false).looking(look), &release), 0x0011_2233);
+        assert_eq!(colour(&bot(CHANNEL, false), &release), 0x00E3_9A26);
+        assert_eq!(colour(&bot(CHANNEL, false), &prerelease), 0x008F_88C7);
+        let mut worded = std::collections::BTreeMap::new();
+        worded.insert(herald_core::Phrase::ReleaseLink, "Uitgave".to_owned());
+        let labelled = bot(CHANNEL, false).worded(herald_core::Wording::of(Some(&worded)));
+        let buttons =
+            body(&labelled, &Step::Post, &release, &fresh)["components"][0]["components"].clone();
+        assert_eq!(buttons[0]["label"], "Uitgave");
+        assert_eq!(buttons[1]["label"], "Changelog");
+        assert_eq!(
+            body(&discord, &Step::OpenThread, &release, &posted)["auto_archive_duration"],
+            1_440
+        );
+        let forum = bot(FORUM, true).looking(look);
+        assert_eq!(
+            body(&forum, &Step::Post, &release, &fresh)["auto_archive_duration"],
+            1_440
+        );
+        assert_eq!(
+            body(&bot(FORUM, true), &Step::Post, &release, &fresh)["auto_archive_duration"],
+            10_080
+        );
     }
 
     #[test]
@@ -376,6 +435,23 @@ mod replay {
             send(&bot(CHANNEL, false), &replay, &Step::Post, &entry),
             Sent::RetryAfter(SignedDuration::from_secs(5))
         );
+        replay.finish().unwrap();
+    }
+
+    #[test]
+    fn an_outage_that_names_no_wait_waits_as_long_as_the_destination_says() {
+        let entry = Entry::new(announcement().key);
+        let replay = fixture!("outage");
+        let waiting = bot(CHANNEL, false).waiting(Waits {
+            outage: SignedDuration::from_secs(40),
+            limited: SignedDuration::from_secs(90),
+        });
+        for wait in [30, 40] {
+            assert_eq!(
+                send(&waiting, &replay, &Step::Post, &entry),
+                Sent::RetryAfter(SignedDuration::from_secs(wait))
+            );
+        }
         replay.finish().unwrap();
     }
 
@@ -686,10 +762,14 @@ mod replay {
         };
         let options = |token, webhook| DestinationOptions {
             token,
+            symbols: None,
+            waits: None,
             webhook,
             api: None,
             interactions: None,
             read_back: None,
+            colours: None,
+            archive_after: None,
         };
         assert_eq!(options(secret(), None).bot(), Ok(true));
         assert_eq!(options(None, secret()).bot(), Ok(false));

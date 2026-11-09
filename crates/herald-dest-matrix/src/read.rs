@@ -1,15 +1,10 @@
-use herald_core::{Facts, Sent};
+use herald_core::{Facts, Sent, Waits};
 use herald_ports::Response;
 use jiff::SignedDuration;
 use serde_json::Value;
 
 use crate::matrix::Matrix;
 
-/// How long to wait when the homeserver is unwell and says nothing of when
-/// to ask again.
-const OUTAGE: SignedDuration = SignedDuration::from_secs(5);
-const TOO_MANY: u16 = 429;
-const SERVER: u16 = 500;
 /// What is said when the homeserver names no account for the token.
 pub(crate) const UNNAMED: &str = "the homeserver did not say which account the token is";
 /// Where a message's permalink starts, as Matrix clients read it.
@@ -26,21 +21,15 @@ pub(crate) fn text<'a>(value: &'a Value, field: &str) -> Option<&'a str> {
 
 /// What a failed response means: when to ask again, or why the homeserver
 /// refused.
-pub(crate) fn trouble(response: &Response, body: &Value) -> Option<Sent> {
-    let after = response
-        .header("retry-after")
-        .and_then(|after| after.parse::<u32>().ok())
-        .map(|seconds| SignedDuration::from_secs(i64::from(seconds)));
-    if response.status == TOO_MANY {
-        let named = body
-            .get("retry_after_ms")
-            .and_then(Value::as_u64)
-            .and_then(|millis| i64::try_from(millis).ok())
-            .map(SignedDuration::from_millis);
-        return Some(Sent::RetryAfter(named.or(after).unwrap_or(OUTAGE)));
-    }
-    if response.status >= SERVER {
-        return Some(Sent::RetryAfter(after.unwrap_or(OUTAGE)));
+pub(crate) fn trouble(response: &Response, body: &Value, waits: Waits) -> Option<Sent> {
+    let named = body
+        .get("retry_after_ms")
+        .and_then(Value::as_u64)
+        .and_then(|millis| i64::try_from(millis).ok())
+        .map(SignedDuration::from_millis)
+        .or_else(|| response.retry_after());
+    if let Some(wait) = waits.after(response.status, named) {
+        return Some(Sent::RetryAfter(wait));
     }
     if response.succeeded() {
         return None;
@@ -60,7 +49,7 @@ pub(crate) fn trouble(response: &Response, body: &Value) -> Option<Sent> {
 
 pub(crate) fn read(matrix: &Matrix, response: &Response) -> Sent {
     let body = json(response);
-    if let Some(sent) = trouble(response, &body) {
+    if let Some(sent) = trouble(response, &body, matrix.waits) {
         return sent;
     }
     text(&body, "event_id").map_or_else(

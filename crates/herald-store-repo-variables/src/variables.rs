@@ -202,10 +202,7 @@ impl<H: Http> VariableRecords<H> {
         let Some((lock, response)) = self.variable(name::LOCK).await? else {
             return Ok(Lock::Free);
         };
-        let now = response
-            .header("date")
-            .and_then(|date| jiff::fmt::rfc2822::parse(date).ok())
-            .map(|now| now.timestamp());
+        let now = response.date();
         let lapsed = if let (Some(created), Some(now)) = (lock.created_at, now) {
             now.duration_since(created) > LEASE
         } else {

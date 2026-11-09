@@ -213,6 +213,10 @@ impl Loader<'_> {
             (RouteOptions::ActivityPub(_), _) => (herald_dest_fediverse::actor_profile(), None),
             (_, _) => (herald_dest_matrix::profile(), None),
         };
+        let profile = herald_core::Profile {
+            symbols: reached.symbols(),
+            ..profile
+        };
         let thread_name = route.thread.as_ref().map(|thread| thread.name.clone());
         let delivery = Delivery {
             crosspost: route.crosspost,

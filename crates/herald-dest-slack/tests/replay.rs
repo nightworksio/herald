@@ -5,10 +5,11 @@
 mod replay {
     use herald_core::{
         Announcement, Dialect, Entry, Facts, MentionStyle, Pins, ReadBack, Sent, Step, Text,
-        Threads,
+        Threads, Waits,
     };
     use herald_dest_slack::{
-        Credential, DestinationOptions, Refusal, RouteOptions, Slack, SlackMarkers, profile,
+        Credential, DestinationOptions, Domain, Interacting, Interactions, Refusal, RouteOptions,
+        Slack, SlackMarkers, profile,
     };
     use herald_ports::{Markers, MarkersError, Secret};
     use herald_testing::sample::{self, marker, route_marker};
@@ -205,18 +206,31 @@ mod replay {
         );
     }
 
-    #[test]
-    fn a_limit_or_an_outage_is_asked_again_after_the_wait_it_names_or_its_own() {
+    fn limited(slack: &Slack, waits: [i64; 4]) {
         let replay = fixture!("rate-limited");
         let announcement = announcement();
         let bare = Entry::new(announcement.key);
-        for wait in [7, 5, 5, 30] {
+        for wait in waits {
             assert_eq!(
-                send(&bot(), &replay, &Step::Post, &announcement, &bare),
+                send(slack, &replay, &Step::Post, &announcement, &bare),
                 Sent::RetryAfter(SignedDuration::from_secs(wait))
             );
         }
         replay.finish().unwrap();
+    }
+
+    #[test]
+    fn a_limit_or_an_outage_is_asked_again_after_the_wait_it_names_or_its_own() {
+        limited(&bot(), [7, 5, 5, 30]);
+    }
+
+    #[test]
+    fn a_limit_or_an_outage_that_names_no_wait_waits_as_long_as_the_destination_says() {
+        let waiting = bot().waiting(Waits {
+            outage: SignedDuration::from_secs(40),
+            limited: SignedDuration::from_secs(90),
+        });
+        limited(&waiting, [7, 90, 40, 30]);
     }
 
     #[test]
@@ -474,6 +488,88 @@ mod replay {
     }
 
     #[test]
+    fn a_domain_places_the_api_its_webhooks_and_its_sessions_unless_an_api_is_given() {
+        let token = || Credential::Bot(Secret::new("HERALD_SLACK_TOKEN", "xoxb-test"));
+        let hook = || {
+            Credential::Webhook(Secret::new(
+                "HERALD_SLACK_WEBHOOK",
+                "https://hooks.slack-gov.com/services/T/B/x",
+            ))
+        };
+        let route = RouteOptions::default;
+        assert_eq!(
+            Slack::new(token(), route(), None).api(),
+            "https://slack.com/api"
+        );
+        assert_eq!(
+            Slack::new(hook(), route(), None).api(),
+            "https://hooks.slack.com"
+        );
+        assert_eq!(
+            Slack::new(token(), route(), None).on(Domain::Gov).api(),
+            "https://slack-gov.com/api"
+        );
+        assert_eq!(
+            Slack::new(hook(), route(), None).on(Domain::Gov).api(),
+            "https://hooks.slack-gov.com"
+        );
+        assert_eq!(
+            Slack::new(token(), route(), Some("http://127.0.0.1:9/"))
+                .on(Domain::Gov)
+                .api(),
+            "http://127.0.0.1:9"
+        );
+        let interactions: Interactions = serde_json::from_value(serde_json::json!({
+            "via": "socket",
+            "app": { "secret": "HERALD_SLACK_APP" },
+            "domains": ["proxy.example"],
+        }))
+        .unwrap();
+        let gov = Interacting::new(interactions.clone(), None).on(Domain::Gov);
+        assert_eq!(
+            (gov.api(), gov.hooks()),
+            ("https://slack-gov.com/api", "https://hooks.slack-gov.com")
+        );
+        assert_eq!(gov.session_domains(), ["slack-gov.com", "proxy.example"]);
+        let given = Interacting::new(interactions, Some("http://127.0.0.1:9")).on(Domain::Gov);
+        assert_eq!(
+            (given.api(), given.hooks()),
+            ("http://127.0.0.1:9", "http://127.0.0.1:9")
+        );
+    }
+
+    #[test]
+    fn an_org_wide_app_names_its_workspace_in_each_web_api_call_and_no_other_app_does() {
+        let announcement = announcement();
+        let fresh = Entry::new(announcement.key);
+        let team = |slack: &Slack| {
+            let post: serde_json::Value = serde_json::from_slice(
+                &slack
+                    .request(&Step::Post, &announcement, &fresh)
+                    .unwrap()
+                    .body,
+            )
+            .unwrap();
+            let pins = slack.request(&Step::Unpin, &announcement, &fresh).unwrap();
+            (post.get("team_id").cloned(), pins.url.redacted())
+        };
+        assert_eq!(
+            team(&bot().in_team(Some("T0123456789"))),
+            (
+                Some(serde_json::json!("T0123456789")),
+                format!("https://slack.com/api/pins.list?channel={CHANNEL}&team_id=T0123456789")
+            )
+        );
+        assert_eq!(
+            team(&bot()),
+            (
+                None,
+                format!("https://slack.com/api/pins.list?channel={CHANNEL}")
+            )
+        );
+    }
+
+    #[test]
     fn a_channel_that_cannot_be_read_says_why() {
         let slack = bot();
         let replay = fixture!("markers-unreadable");
@@ -525,8 +621,12 @@ mod replay {
         };
         let reached = |token, webhook| DestinationOptions {
             token,
+            symbols: None,
+            waits: None,
             webhook,
             api: None,
+            domain: None,
+            team: None,
             interactions: None,
             read_back: None,
         };
@@ -639,8 +739,34 @@ mod subscribing {
         for credential in [bot(), hook] {
             let body = posted(credential, Some(Subscribe { button: true }));
             let blocks = body["blocks"].as_array().unwrap();
-            assert_eq!(blocks.last(), Some(&subscribe_block("php-mutation-gate")));
+            assert_eq!(
+                blocks.last(),
+                Some(&subscribe_block("php-mutation-gate", "Subscribe"))
+            );
         }
+        let mut worded = std::collections::BTreeMap::new();
+        worded.insert(herald_core::Phrase::SubscribeButton, "Volgen".to_owned());
+        let announcement = sample::announcement();
+        let labelled = Slack::new(
+            bot(),
+            RouteOptions {
+                channel: Some("C0123456789".to_owned()),
+                subscribe: Some(Subscribe { button: true }),
+            },
+            None,
+        )
+        .worded(herald_core::Wording::of(Some(&worded)));
+        let body: Value = serde_json::from_slice(
+            &labelled
+                .request(&Step::Post, &announcement, &Entry::new(announcement.key))
+                .unwrap()
+                .body,
+        )
+        .unwrap();
+        assert_eq!(
+            body["blocks"].as_array().unwrap().last(),
+            Some(&subscribe_block("php-mutation-gate", "Volgen"))
+        );
         for quiet in [Some(Subscribe { button: false }), None] {
             let body = posted(bot(), quiet);
             let blocks = body["blocks"].as_array().unwrap();

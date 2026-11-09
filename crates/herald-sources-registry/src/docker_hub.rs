@@ -2,6 +2,7 @@ use herald_wire::{SourceError, read, segment};
 use jiff::Timestamp;
 use serde::Deserialize;
 
+use crate::options::TagOrdering;
 use crate::package::{Api, Found};
 
 pub(crate) const API: Api = Api {
@@ -9,6 +10,25 @@ pub(crate) const API: Api = Api {
     limit: herald_wire::PARSE_LIMIT,
     versions: "Docker Hub's tags",
 };
+
+/// The most of an exchange's answer read: a token and little else.
+pub(crate) const TOKEN_ANSWER: usize = 65_536;
+
+#[derive(Deserialize)]
+struct Exchanged {
+    access_token: String,
+}
+
+/// The access token Docker Hub answered an exchange with, where it
+/// answered one.
+pub(crate) fn exchanged(response: &herald_ports::Response) -> Option<String> {
+    response
+        .succeeded()
+        .then(|| serde_json::from_slice::<Exchanged>(&response.body).ok())
+        .flatten()
+        .map(|exchanged| exchanged.access_token)
+        .filter(|token| !token.is_empty())
+}
 
 /// The namespace of Docker Hub's official images.
 pub(crate) const OFFICIAL: &str = "library";
@@ -38,12 +58,13 @@ pub(crate) fn project(name: &str) -> &str {
     }
 }
 
-pub(crate) fn path(name: &str, page: usize) -> String {
+pub(crate) fn path(name: &str, page: usize, ordering: TagOrdering) -> String {
     let (namespace, repository) = split(name);
     format!(
-        "/namespaces/{}/repositories/{}/tags?page_size={page}&ordering=last_updated",
+        "/namespaces/{}/repositories/{}/tags?page_size={page}&ordering={}",
         segment(namespace),
-        segment(repository)
+        segment(repository),
+        ordering.as_str()
     )
 }
 

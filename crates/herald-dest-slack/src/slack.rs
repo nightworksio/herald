@@ -1,10 +1,11 @@
 use herald_core::{
     Announcement, Dialect, Entry, Facts, Features, Limits, Marker, Measure, MentionRoom,
-    MentionStyle, Pins, Profile, ReadBack, Sent, Step, Threads,
+    MentionStyle, Pins, Profile, ReadBack, Sent, Step, Threads, Waits, Wording,
 };
 use herald_ports::{Http, HttpError, Request, Secret, unreserved};
 use serde_json::Value;
 
+use crate::domain::Domain;
 use crate::options::RouteOptions;
 use crate::read::{json, read, text, trouble};
 use crate::request::{EVENT, ROUTE, Refusal, channel, get, pin, posted, step};
@@ -12,10 +13,6 @@ use crate::web_api::{
     AUTH_TEST, BOTS_INFO, CHAT_GET_PERMALINK, CONVERSATIONS_HISTORY, PINS_REMOVE,
 };
 
-/// The Web API herald speaks.
-pub(crate) const API: &str = "https://slack.com/api";
-/// Where Slack's incoming webhooks are.
-pub(crate) const HOOKS: &str = "https://hooks.slack.com";
 /// The longest title, in characters: a header block's text.
 const TITLE: usize = 150;
 /// The longest text of one message, in characters: a section block's text.
@@ -53,13 +50,29 @@ impl Identity {
     }
 }
 
+/// The base URL a destination reaches: `given`, or `domain`'s Web API for a
+/// bot and its webhooks for a webhook.
+fn base(given: Option<&str>, domain: Domain, credential: &Credential) -> String {
+    given.map_or_else(
+        || match credential {
+            Credential::Bot(_) => domain.api(),
+            Credential::Webhook(_) => domain.hooks(),
+        },
+        ToOwned::to_owned,
+    )
+}
+
 /// One Slack destination, for one route.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Slack {
     pub(crate) api: String,
+    given: Option<String>,
     pub(crate) credential: Credential,
     pub(crate) route: RouteOptions,
     pub(crate) read_back: ReadBack,
+    pub(crate) team: Option<String>,
+    pub(crate) wording: Wording,
+    pub(crate) waits: Waits,
 }
 
 impl Slack {
@@ -68,15 +81,48 @@ impl Slack {
     /// its webhooks for a webhook.
     #[must_use]
     pub fn new(credential: Credential, route: RouteOptions, api: Option<&str>) -> Self {
-        let own = match credential {
-            Credential::Bot(_) => API,
-            Credential::Webhook(_) => HOOKS,
-        };
+        let given = api.map(|api| api.trim_end_matches('/').to_owned());
         Self {
-            api: api.unwrap_or(own).trim_end_matches('/').to_owned(),
+            api: base(given.as_deref(), Domain::default(), &credential),
+            given,
             credential,
             route,
             read_back: ReadBack::DEFAULT,
+            team: None,
+            wording: Wording::default(),
+            waits: Waits::DEFAULT,
+        }
+    }
+
+    /// The destination, waiting `waits` where Slack names no wait.
+    #[must_use]
+    pub fn waiting(self, waits: Waits) -> Self {
+        Self { waits, ..self }
+    }
+
+    /// The destination, its subscribe button labelled as `wording` words
+    /// it.
+    #[must_use]
+    pub fn worded(self, wording: Wording) -> Self {
+        Self { wording, ..self }
+    }
+
+    /// The destination, as an Enterprise Grid org-wide app installed in the
+    /// workspace `team`, which each Web API call names.
+    #[must_use]
+    pub fn in_team(self, team: Option<&str>) -> Self {
+        Self {
+            team: team.map(ToOwned::to_owned),
+            ..self
+        }
+    }
+
+    /// The destination, on the Slack `domain` names, where no `api` was given.
+    #[must_use]
+    pub fn on(self, domain: Domain) -> Self {
+        Self {
+            api: base(self.given.as_deref(), domain, &self.credential),
+            ..self
         }
     }
 
@@ -139,13 +185,13 @@ impl Slack {
                 if text(&body, "error") == Some(ALREADY_PINNED) {
                     return Ok(Sent::Landed(Facts::default()));
                 }
-                Ok(trouble(&answer, &body).unwrap_or(Sent::Landed(Facts::default())))
+                Ok(trouble(&answer, &body, self.waits).unwrap_or(Sent::Landed(Facts::default())))
             }
-            Step::Post => match read(&http.send(request).await?) {
+            Step::Post => match read(&http.send(request).await?, self.waits) {
                 Sent::Landed(facts) => Ok(Sent::Landed(self.linked(http, facts).await?)),
                 sent => Ok(sent),
             },
-            _ => Ok(read(&http.send(request).await?)),
+            _ => Ok(read(&http.send(request).await?, self.waits)),
         }
     }
 
@@ -162,7 +208,7 @@ impl Slack {
         );
         let answer = http.send(get(self, CHAT_GET_PERMALINK, &asked)).await?;
         let body = json(&answer);
-        let permalink = trouble(&answer, &body)
+        let permalink = trouble(&answer, &body, self.waits)
             .is_none()
             .then(|| text(&body, "permalink").map(ToOwned::to_owned))
             .flatten();
@@ -202,7 +248,7 @@ impl Slack {
             if text(&body, "error").is_some_and(|error| UNPINNED.contains(&error)) {
                 continue;
             }
-            if let Some(sent) = trouble(&answer, &body) {
+            if let Some(sent) = trouble(&answer, &body, self.waits) {
                 return Ok(sent);
             }
         }
@@ -222,7 +268,7 @@ impl Slack {
     ) -> Read<Vec<String>> {
         let answer = http.send(listing).await?;
         let listed = json(&answer);
-        if let Some(sent) = trouble(&answer, &listed) {
+        if let Some(sent) = trouble(&answer, &listed, self.waits) {
             return Ok(Err(sent));
         }
         let identity = match identity(self, http).await? {
@@ -248,7 +294,7 @@ impl Slack {
             );
             let answer = http.send(get(self, CONVERSATIONS_HISTORY, &asked)).await?;
             let found = json(&answer);
-            if let Some(sent) = trouble(&answer, &found) {
+            if let Some(sent) = trouble(&answer, &found, self.waits) {
                 return Ok(Err(sent));
             }
             let routed = found
@@ -284,7 +330,7 @@ pub(crate) fn carried<'a>(message: &'a Value, field: &str) -> Option<&'a str> {
 pub(crate) async fn identity<H: Http>(slack: &Slack, http: &H) -> Read<Identity> {
     let answer = http.send(get(slack, AUTH_TEST, "")).await?;
     let tested = json(&answer);
-    if let Some(sent) = trouble(&answer, &tested) {
+    if let Some(sent) = trouble(&answer, &tested, slack.waits) {
         return Ok(Err(sent));
     }
     let Some(bot) = text(&tested, "bot_id") else {
@@ -296,7 +342,7 @@ pub(crate) async fn identity<H: Http>(slack: &Slack, http: &H) -> Read<Identity>
         .send(get(slack, BOTS_INFO, &format!("bot={}", unreserved(bot))))
         .await?;
     let info = json(&answer);
-    if let Some(sent) = trouble(&answer, &info) {
+    if let Some(sent) = trouble(&answer, &info, slack.waits) {
         return Ok(Err(sent));
     }
     let Some(app) = info.get("bot").and_then(|bot| text(bot, "app_id")) else {
@@ -341,5 +387,6 @@ pub fn profile(bot: bool) -> Profile {
             mentions: MentionStyle::Users(MENTION_ROOM),
             interactions: bot,
         },
+        symbols: herald_core::Symbols::DEFAULT,
     }
 }

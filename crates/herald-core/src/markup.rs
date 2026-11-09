@@ -1,6 +1,7 @@
 use pulldown_cmark::{CodeBlockKind, CowStr, Event, LinkType, Options, Parser, Tag, TagEnd, html};
 
 use crate::profile::Dialect;
+use crate::symbols::Symbols;
 
 /// A text converted to a destination's dialect.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -20,6 +21,13 @@ pub struct Text {
 /// mention.
 #[must_use]
 pub fn convert(markdown: &str, dialect: Dialect) -> Text {
+    convert_in(markdown, dialect, Symbols::DEFAULT)
+}
+
+/// `markdown` in `dialect`, as [`convert`] writes it, with `symbols` where
+/// the dialect has no markup of its own.
+#[must_use]
+pub fn convert_in(markdown: &str, dialect: Dialect, symbols: Symbols) -> Text {
     match dialect {
         Dialect::Matrix => {
             let mut html = String::new();
@@ -29,12 +37,12 @@ pub fn convert(markdown: &str, dialect: Dialect) -> Text {
                 .collect();
             html::push_html(&mut html, shown_links(events.into_iter()).into_iter());
             Text {
-                body: Writer::run(markdown, Dialect::Plain, Dialect::Matrix),
+                body: Writer::run(markdown, Dialect::Plain, Dialect::Matrix, symbols),
                 html: Some(html.trim_end().to_owned()),
             }
         }
         _ => Text {
-            body: Writer::run(markdown, dialect, dialect),
+            body: Writer::run(markdown, dialect, dialect, symbols),
             html: None,
         },
     }
@@ -281,6 +289,7 @@ fn matrix(event: Event<'_>) -> Event<'_> {
 
 struct Writer {
     dialect: Dialect,
+    symbols: Symbols,
     root: String,
     buffers: Vec<String>,
     lists: Vec<Option<u64>>,
@@ -290,9 +299,10 @@ struct Writer {
 }
 
 impl Writer {
-    fn run(markdown: &str, dialect: Dialect, rules: Dialect) -> String {
+    fn run(markdown: &str, dialect: Dialect, rules: Dialect, symbols: Symbols) -> String {
         let mut writer = Self {
             dialect,
+            symbols,
             root: String::new(),
             buffers: Vec::new(),
             lists: Vec::new(),
@@ -352,11 +362,18 @@ impl Writer {
                 self.push(&text);
             }
             Event::Code(t) | Event::InlineMath(t) | Event::DisplayMath(t) => self.inline_code(&t),
-            Event::TaskListMarker(done) => self.push(if done { "☑ " } else { "☐ " }),
+            Event::TaskListMarker(done) => {
+                let marker = if done {
+                    self.symbols.done
+                } else {
+                    self.symbols.todo
+                };
+                self.push(&format!("{marker} "));
+            }
             Event::SoftBreak | Event::HardBreak => self.push("\n"),
             Event::Rule => {
                 self.block();
-                self.push("───");
+                self.push(&self.symbols.rule.to_string().repeat(3));
                 self.block();
             }
         }
@@ -409,7 +426,12 @@ impl Writer {
                         *number += 1;
                         marker
                     }
-                    _ if self.dialect == Dialect::Slack => "• ".to_owned(),
+                    _ if self.dialect == Dialect::Slack => {
+                        format!("{} ", self.symbols.bullet.unwrap_or('•'))
+                    }
+                    _ if self.dialect == Dialect::Plain => {
+                        format!("{} ", self.symbols.bullet.unwrap_or('-'))
+                    }
                     _ => "- ".to_owned(),
                 };
                 self.push(&format!("{}{marker}", "  ".repeat(depth)));

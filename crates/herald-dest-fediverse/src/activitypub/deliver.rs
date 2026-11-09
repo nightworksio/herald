@@ -1,12 +1,12 @@
 use herald_core::{
     ACTIVITY_JSON, Addressed, Announcement, Dialect, Entry, Facts, Features, Limits, Measure,
-    MentionStyle, Pins, Profile, Sent, Step, Threads, signature_header, signing,
+    MentionStyle, Pins, Profile, Sent, Step, Threads, Waits, signature_header, signing,
 };
 use herald_ports::{
     Algorithm, CryptoError, Http, HttpError, Method, PUBLIC, Request, Response, Secret, Signer,
     Text, USER_AGENT,
 };
-use jiff::{SignedDuration, Timestamp};
+use jiff::Timestamp;
 use serde_json::Value;
 
 use super::documents::{
@@ -19,11 +19,6 @@ const TITLE: usize = 500;
 /// The longest text of one Note, in characters. A Note holds the whole
 /// announcement, so its parts are never posted apart.
 const TEXT: usize = 20_000;
-/// How long to wait when an inbox is unwell and says nothing of when to ask
-/// again.
-const OUTAGE: SignedDuration = SignedDuration::from_secs(5);
-const TOO_MANY: u16 = 429;
-const SERVER: u16 = 500;
 /// What an inbox answers when its actor or server is gone for good.
 const GONE: u16 = 410;
 /// The most of an inbox's answer read: only its status is used.
@@ -38,6 +33,7 @@ pub struct ActivityPub {
     origin: String,
     key: Secret,
     route: ActorRouteOptions,
+    waits: Waits,
 }
 
 fn refused(reason: impl Into<String>) -> Sent {
@@ -58,7 +54,14 @@ impl ActivityPub {
             origin: format!("{domain}{base}"),
             key,
             route,
+            waits: Waits::DEFAULT,
         }
+    }
+
+    /// The actor, waiting `waits` where an inbox names no wait.
+    #[must_use]
+    pub fn waiting(self, waits: Waits) -> Self {
+        Self { waits, ..self }
     }
 
     /// [`PUBLIC`]: its deliveries reach its followers' inboxes, on any public
@@ -133,12 +136,7 @@ impl ActivityPub {
         inbox: &str,
         announcement: &Announcement,
     ) -> Result<Sent, HttpError> {
-        let created = create(
-            &self.origin,
-            &self.route.actor,
-            announcement,
-            self.route.content_warning.as_deref(),
-        );
+        let created = create(&self.origin, announcement, &self.route);
         self.post(http, signer, now, inbox, &created).await
     }
 
@@ -168,13 +166,7 @@ impl ActivityPub {
     /// `announcement`'s Note, as herald serves it at its id.
     #[must_use]
     pub fn note(&self, announcement: &Announcement) -> String {
-        note(
-            &self.origin,
-            &self.route.actor,
-            announcement,
-            self.route.content_warning.as_deref(),
-        )
-        .to_string()
+        note(&self.origin, announcement, &self.route).to_string()
     }
 
     /// Whether `note`, kept as the Note of the announcement `key`, is this
@@ -234,7 +226,7 @@ impl ActivityPub {
             .header("Digest", Text::plain(delivered.digest))
             .header("Signature", Text::plain(header))
             .body(body);
-        Ok(answered(&http.send(request).await?))
+        Ok(answered(&http.send(request).await?, self.waits))
     }
 }
 
@@ -258,16 +250,12 @@ fn addressed(inbox: &str) -> Option<(String, String)> {
 
 /// What an inbox's answer means. An inbox that is gone for good counts as
 /// delivered, as nothing will ever take it there.
-fn answered(response: &Response) -> Sent {
+fn answered(response: &Response, waits: Waits) -> Sent {
     if response.succeeded() || response.status == GONE {
         return Sent::Landed(Facts::default());
     }
-    if response.status == TOO_MANY || response.status >= SERVER {
-        let after = response
-            .header("retry-after")
-            .and_then(|after| after.parse::<u32>().ok())
-            .map(|seconds| SignedDuration::from_secs(i64::from(seconds)));
-        return Sent::RetryAfter(after.unwrap_or(OUTAGE));
+    if let Some(wait) = waits.after(response.status, response.retry_after()) {
+        return Sent::RetryAfter(wait);
     }
     refused(format!("the inbox refused it with {}", response.status))
 }
@@ -294,5 +282,6 @@ pub fn actor_profile() -> Profile {
             mentions: MentionStyle::None,
             interactions: false,
         },
+        symbols: herald_core::Symbols::DEFAULT,
     }
 }

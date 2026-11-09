@@ -13,9 +13,12 @@ pub struct SourceOptions {
     /// such as `group/subgroup/name`.
     pub repository: String,
     /// The API's base URL, for a forge that is not GitHub, GitLab.com or
-    /// Codeberg, such as `https://forge.example/api/v1`. Where absent, it is
-    /// the CI run's own when announcing the run's repository, and otherwise
-    /// the forge's public instance.
+    /// Codeberg: a GitHub Enterprise Server's `https://ghe.example/api/v3`,
+    /// a GHE.com tenant's `https://api.acme.ghe.com`, a self-managed or
+    /// Dedicated GitLab's `https://gitlab.example/api/v4`, or a Forgejo's
+    /// `https://forge.example/api/v1`. Where absent, it is the CI run's own
+    /// when announcing the run's repository, and otherwise the forge's
+    /// public instance.
     pub api: Option<String>,
     /// A token that reaches a private repository or raises the API's rate
     /// limit, such as the run's `GITHUB_TOKEN`.

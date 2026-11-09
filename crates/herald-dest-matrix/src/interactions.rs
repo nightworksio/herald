@@ -1,7 +1,12 @@
 //! How a Matrix destination takes commands, as
 //! `[destinations.*.interactions]` writes it (ADR-0016).
 
-use herald_core::{Answering, Command, Replies, SecretRef, TemplateName, every_command};
+use std::collections::BTreeMap;
+
+use herald_core::{
+    Answering, Command, Duration, Phrase, Replies, SecretRef, TemplateName, Wording, every_command,
+};
+use jiff::SignedDuration;
 use schemars::JsonSchema;
 use serde::Deserialize;
 
@@ -55,7 +60,25 @@ pub struct Interactions {
     /// The template `latest` takes its title from and `changelog` its body,
     /// in place of the route's own.
     pub template: Option<String>,
+    /// What it says back and how it describes its commands, phrase by
+    /// phrase, each a template over `project`, `projects`, `named` and
+    /// `command`; herald's own words for every phrase left out.
+    pub wording: Option<BTreeMap<Phrase, String>>,
+    /// How long a sync waits for a message before it answers with none,
+    /// "20s" where unset; shorter than `[http] total`, which bounds every
+    /// answer.
+    pub sync_wait: Option<Duration>,
+    /// The most messages one sync reads from each room, from 1 to 100; 20
+    /// where unset.
+    pub timeline: Option<u8>,
 }
+
+/// How long a sync waits where the config sets nothing.
+pub const SYNC_WAIT: SignedDuration = SignedDuration::from_secs(20);
+/// The messages one sync reads from each room where the config sets none.
+const TIMELINE: u8 = 20;
+/// The most messages one sync may read from each room.
+const TIMELINE_MOST: u8 = 100;
 
 fn prefix() -> String {
     "!herald".to_owned()
@@ -66,6 +89,24 @@ fn sender() -> String {
 }
 
 impl Interactions {
+    /// How long a sync waits for a message.
+    #[must_use]
+    pub fn sync_wait(&self) -> SignedDuration {
+        self.sync_wait.map_or(SYNC_WAIT, |wait| wait.0)
+    }
+
+    /// The most messages one sync reads from each room.
+    #[must_use]
+    pub fn timeline(&self) -> u8 {
+        self.timeline.unwrap_or(TIMELINE)
+    }
+
+    /// What it says, as the config words it.
+    #[must_use]
+    pub fn wording(&self) -> Wording {
+        Wording::of(self.wording.as_ref())
+    }
+
     /// How it answers, whatever carries the commands.
     #[must_use]
     pub fn answering(&self) -> Answering {
@@ -74,6 +115,7 @@ impl Interactions {
             replies: self.replies,
             prereleases: self.prereleases,
             template: self.template.as_deref().map(TemplateName::new),
+            wording: self.wording(),
         }
     }
 
@@ -84,6 +126,15 @@ impl Interactions {
     ///
     /// The first that is not, naming the fix.
     pub fn check(&self) -> Result<(), String> {
+        if let Some(worded) = &self.wording {
+            Wording::check(worded)?;
+        }
+        if !(1..=TIMELINE_MOST).contains(&self.timeline()) {
+            return Err(format!(
+                "a sync reads 1 to {TIMELINE_MOST} messages from each room, not {}",
+                self.timeline()
+            ));
+        }
         if self.via == Via::Appservice
             && (self.homeserver_token.is_none() || self.appservice_token.is_none())
         {

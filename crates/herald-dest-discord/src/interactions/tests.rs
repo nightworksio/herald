@@ -26,6 +26,7 @@ fn interactions_default_to_http_every_command_and_ephemeral_replies() {
             replies: Replies::Ephemeral,
             prereleases: false,
             template: None,
+            wording: herald_core::Wording::default(),
         }
     );
     let chosen = written(r#", "replies": "public", "prereleases": true, "template": "short""#);
@@ -36,6 +37,7 @@ fn interactions_default_to_http_every_command_and_ephemeral_replies() {
             replies: Replies::Public,
             prereleases: true,
             template: Some(TemplateName::new("short")),
+            wording: herald_core::Wording::default(),
         }
     );
 }
@@ -124,5 +126,29 @@ fn a_subscribe_names_a_role_by_id_with_a_button_by_default() {
     assert_eq!(
         quiet.check(),
         Err("\"updates\" is not a role id; give the role's id, or make one with herald discord roles".to_owned())
+    );
+}
+
+#[test]
+fn what_it_says_is_worded_as_the_config_words_it_and_refused_where_it_cannot_be_said() {
+    let worded = written(r#", "wording": {"nothing": "Niets."}"#);
+    assert_eq!(worded.check(), Ok(()));
+    assert_eq!(worded.answering().wording.text(Phrase::Nothing), "Niets.");
+    let refused = |wording: &str| {
+        written(&format!(r#", "wording": {wording}"#))
+            .check()
+            .unwrap_err()
+    };
+    assert!(
+        refused(r#"{"nothing": "{{ project"}"#).starts_with("wording.nothing is not a template")
+    );
+    assert!(refused(r#"{"date": "%Y-%"}"#).starts_with("wording.date is not a strftime pattern"));
+    let long = "a".repeat(Phrase::DESCRIPTION + 1);
+    assert_eq!(
+        refused(&format!(r#"{{"describe_share": "{long}"}}"#)),
+        format!(
+            "wording.describe_share takes 1 to {} characters",
+            Phrase::DESCRIPTION
+        )
     );
 }

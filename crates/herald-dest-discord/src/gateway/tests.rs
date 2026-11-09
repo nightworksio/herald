@@ -61,7 +61,7 @@ fn a_session_identifies_on_hello_and_beats_as_often_as_discord_says() {
         json!({ "op": 2, "d": {
             "token": "bot.token-1",
             "intents": 0,
-            "properties": { "os": "linux", "browser": "herald", "device": "herald" },
+            "properties": { "os": std::env::consts::OS, "browser": "herald", "device": "herald" },
         }})
     );
     let Effect::Send(identify) = &effects[1] else {
@@ -70,6 +70,19 @@ fn a_session_identifies_on_hello_and_beats_as_often_as_discord_says() {
     assert!(!identify.redacted().contains("bot.token-1"));
     let silent = received(&mut gateway, &json!({ "op": 10, "d": {} }));
     assert_eq!(silent[0], Effect::Beat(SignedDuration::from_secs(41)));
+}
+
+#[test]
+fn a_session_identifies_as_the_operating_system_the_config_names() {
+    let mut gateway = Gateway::new(token(), &[SESSION_DOMAIN]).identifying_as(Some("freebsd"));
+    let effects = hello(&mut gateway);
+    assert_eq!(sent(&effects[1])["d"]["properties"]["os"], "freebsd");
+    let mut host = Gateway::new(token(), &[SESSION_DOMAIN]).identifying_as(None);
+    let effects = hello(&mut host);
+    assert_eq!(
+        sent(&effects[1])["d"]["properties"]["os"],
+        std::env::consts::OS
+    );
 }
 
 #[test]

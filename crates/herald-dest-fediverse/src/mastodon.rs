@@ -1,8 +1,9 @@
 use herald_core::{
     Announcement, Dialect, Entry, Features, Limits, Measure, MentionStyle, Pins, Profile, ReadBack,
-    Sent, Step, Threads,
+    Sent, Step, Threads, Waits,
 };
 use herald_ports::{Http, HttpError, Request, Secret};
+use jiff::SignedDuration;
 
 use crate::options::RouteOptions;
 use crate::read::read;
@@ -11,10 +12,6 @@ use crate::request::{Refusal, step};
 /// The most characters Mastodon takes in a status, where a route gives no
 /// limit of its server's own.
 pub const LIMIT: usize = 500;
-/// The longest title, the status's first line.
-const TITLE: usize = 100;
-/// The length Mastodon counts a link as, however long it is.
-const LINK: usize = 23;
 /// The two blank lines between the title, the text and the link.
 const BREAKS: usize = 4;
 
@@ -25,9 +22,17 @@ pub struct Mastodon {
     pub(crate) token: Secret,
     pub(crate) route: RouteOptions,
     pub(crate) read_back: ReadBack,
+    pub(crate) waits: Waits,
 }
 
 impl Mastodon {
+    /// The waits where the config sets none: a limit lasts as long as
+    /// Mastodon's own windows, five minutes.
+    pub const WAITS: Waits = Waits {
+        limited: SignedDuration::from_mins(5),
+        ..Waits::DEFAULT
+    };
+
     /// The account whose access token is `token`, on the server at `server`,
     /// for a route whose Mastodon options are `route`.
     #[must_use]
@@ -37,7 +42,14 @@ impl Mastodon {
             token,
             route,
             read_back: ReadBack::DEFAULT,
+            waits: Self::WAITS,
         }
+    }
+
+    /// The destination, waiting `waits` where the server names no wait.
+    #[must_use]
+    pub fn waiting(self, waits: Waits) -> Self {
+        Self { waits, ..self }
     }
 
     /// The destination, reading back `read_back` pages of its own posts.
@@ -91,7 +103,7 @@ impl Mastodon {
             Ok(request) => request,
             Err(refusal) => return Ok(Sent::Refused(refusal.to_string())),
         };
-        Ok(read(&http.send(request).await?))
+        Ok(read(&http.send(request).await?, self.waits))
     }
 }
 
@@ -100,7 +112,7 @@ impl Mastodon {
 /// content warning, which the server counts with the status.
 #[must_use]
 pub fn shortest(route: &RouteOptions) -> usize {
-    TITLE + BREAKS + LINK + 1 + warning(route)
+    route.title() + BREAKS + route.link_length() + 1 + warning(route)
 }
 
 fn warning(route: &RouteOptions) -> usize {
@@ -119,10 +131,12 @@ pub fn profile(route: &RouteOptions) -> Profile {
         dialect: Dialect::Plain,
         measure: Measure::Chars,
         limits: Limits {
-            title: TITLE,
-            text: each.saturating_sub(TITLE + BREAKS + LINK).max(1),
+            title: route.title(),
+            text: each
+                .saturating_sub(route.title() + BREAKS + route.link_length())
+                .max(1),
             followup: each.max(1),
-            thread_name: TITLE,
+            thread_name: route.title(),
         },
         features: Features {
             threads: Threads::Replies,
@@ -133,5 +147,6 @@ pub fn profile(route: &RouteOptions) -> Profile {
             mentions: MentionStyle::None,
             interactions: false,
         },
+        symbols: herald_core::Symbols::DEFAULT,
     }
 }

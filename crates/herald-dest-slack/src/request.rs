@@ -1,6 +1,6 @@
 use std::fmt;
 
-use herald_core::{Announcement, Dialect, Entry, Step, safe_url};
+use herald_core::{Announcement, Dialect, Entry, Phrase, Step, safe_url};
 use herald_ports::{Method, Request, Text, USER_AGENT, unreserved};
 use serde_json::{Value, json};
 
@@ -63,6 +63,16 @@ fn authorised(request: Request, slack: &Slack) -> Request {
 /// A call of the Web API method `method`, with `query` already encoded.
 pub(crate) fn get(slack: &Slack, method: WebMethod, query: &str) -> Request {
     let name = method.name;
+    let team = slack
+        .team
+        .as_deref()
+        .map(|team| format!("team_id={}", unreserved(team)));
+    let query = [Some(query), team.as_deref()]
+        .into_iter()
+        .flatten()
+        .filter(|part| !part.is_empty())
+        .collect::<Vec<_>>()
+        .join("&");
     let url = if query.is_empty() {
         format!("{}/{name}", slack.api)
     } else {
@@ -82,10 +92,14 @@ fn posted_json(slack: &Slack, url: Text, body: &Value) -> Request {
 
 /// A call of the Web API method `method` with the JSON `body`.
 pub(crate) fn call(slack: &Slack, method: WebMethod, body: &Value) -> Request {
+    let mut body = body.clone();
+    if let (Some(team), Value::Object(fields)) = (&slack.team, &mut body) {
+        fields.insert("team_id".to_owned(), Value::String(team.clone()));
+    }
     posted_json(
         slack,
         Text::plain(format!("{}/{}", slack.api, method.name)),
-        body,
+        &body,
     )
 }
 
@@ -108,7 +122,11 @@ fn section(text: &str) -> Value {
     json!({ "type": "section", "text": { "type": "mrkdwn", "text": text } })
 }
 
-fn announcement_body(announcement: &Announcement, subscribe: Option<&Subscribe>) -> Value {
+fn announcement_body(
+    slack: &Slack,
+    announcement: &Announcement,
+    subscribe: Option<&Subscribe>,
+) -> Value {
     let first = announcement
         .parts
         .first()
@@ -131,7 +149,10 @@ fn announcement_body(announcement: &Announcement, subscribe: Option<&Subscribe>)
         fallback.push(text);
     }
     if subscribe.is_some_and(|subscribe| subscribe.button) {
-        blocks.push(subscribe_block(&announcement.project));
+        blocks.push(subscribe_block(
+            &announcement.project,
+            slack.wording.text(Phrase::SubscribeButton),
+        ));
     }
     json!({
         "text": fallback.join("\n\n"),
@@ -213,7 +234,7 @@ pub(crate) fn step(
         (Credential::Webhook(url), Step::Post) => Ok(posted_json(
             slack,
             Text::secret(url.clone()),
-            &announcement_body(announcement, slack.route.subscribe.as_ref()),
+            &announcement_body(slack, announcement, slack.route.subscribe.as_ref()),
         )),
         (Credential::Webhook(url), Step::Chunk(index)) => Ok(posted_json(
             slack,
@@ -225,7 +246,7 @@ pub(crate) fn step(
         (Credential::Bot(_), Step::Post) => {
             let marks = &announcement.marks;
             let body = with(
-                announcement_body(announcement, slack.route.subscribe.as_ref()),
+                announcement_body(slack, announcement, slack.route.subscribe.as_ref()),
                 &[
                     ("channel", json!(channel(slack)?)),
                     (

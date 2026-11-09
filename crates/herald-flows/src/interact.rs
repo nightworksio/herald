@@ -4,9 +4,9 @@
 
 use herald_config::{Config, RouteConfig};
 use herald_core::{
-    Answering, Asked, Command, Context, DestinationName, Draft, Event, Latest, Place, RouteId,
-    Said, Subscription, announced, body_template, chosen, chunk, completions, escaped, safe_url,
-    title_template,
+    Answering, Asked, Command, Context, DestinationName, Draft, Event, Latest, Phrase, Place,
+    RouteId, Said, Subscription, Wording, announced, body_template, chosen, chunk, completions,
+    escaped, safe_url, title_template,
 };
 use herald_ports::{Announcements, Http, Store, Subscriptions};
 
@@ -26,19 +26,39 @@ pub struct Answer {
     pub trouble: Option<String>,
 }
 
-fn told(said: &Said) -> Answer {
-    Answer {
-        said: said.to_string(),
-        public: false,
-        trouble: None,
-    }
+/// What herald replies before it is worded.
+enum Reply {
+    /// Something herald says, to the asker alone.
+    Told(Said),
+    /// What herald could not answer, for its log.
+    Unavailable(String),
+    /// What a project announced, shown as `public` says.
+    Shown { said: String, public: bool },
 }
 
-impl Answer {
+impl Reply {
     fn unavailable(trouble: impl Into<String>) -> Self {
-        Self {
-            trouble: Some(trouble.into()),
-            ..told(&Said::Unavailable)
+        Self::Unavailable(trouble.into())
+    }
+
+    /// The reply as `wording` words it.
+    fn worded(self, wording: &Wording) -> Answer {
+        match self {
+            Self::Told(said) => Answer {
+                said: wording.say(&said),
+                public: false,
+                trouble: None,
+            },
+            Self::Unavailable(trouble) => Answer {
+                said: wording.say(&Said::Unavailable),
+                public: false,
+                trouble: Some(trouble),
+            },
+            Self::Shown { said, public } => Answer {
+                said,
+                public,
+                trouble: None,
+            },
         }
     }
 }
@@ -74,7 +94,23 @@ pub async fn interact<S: Store, C, G, H: Http>(
     ports: &Ports<'_, S, C, G>,
     asked: &Asked,
 ) -> Answer {
-    let disabled = || told(&Said::Disabled(asked.command));
+    let wording = connected
+        .interacting(&asked.destination)
+        .map_or_else(Wording::default, |(interacting, _)| {
+            interacting.answering().wording
+        });
+    reply(config, connected, ports, asked)
+        .await
+        .worded(&wording)
+}
+
+async fn reply<S: Store, C, G, H: Http>(
+    config: &Config,
+    connected: &Connected<H>,
+    ports: &Ports<'_, S, C, G>,
+    asked: &Asked,
+) -> Reply {
+    let disabled = || Reply::Told(Said::Disabled(asked.command));
     let Some((interacting, http)) = connected.interacting(&asked.destination) else {
         return disabled();
     };
@@ -85,14 +121,14 @@ pub async fn interact<S: Store, C, G, H: Http>(
     let placed = placed(config, &asked.destination, &asked.place);
     let every_latest = match ports.store.announcements().every_latest().await {
         Ok(every_latest) => every_latest,
-        Err(error) => return Answer::unavailable(error.to_string()),
+        Err(error) => return Reply::unavailable(error.to_string()),
     };
     let here = match chosen(
         asked.project.as_deref(),
         &announced(&every_latest, &placed, id),
     ) {
         Ok(here) => here,
-        Err(unchosen) => return told(&Said::Unchosen(unchosen)),
+        Err(unchosen) => return Reply::Told(Said::Unchosen(unchosen)),
     };
     match asked.command {
         Command::Subscribe | Command::Unsubscribe => {
@@ -198,11 +234,11 @@ async fn subscribing<S: Store, H: Http>(
     asked: &Asked,
     latest: &Latest,
     routes: &[&RouteConfig],
-) -> Answer {
+) -> Reply {
     let project = latest.project.clone();
-    let unoffered = || told(&Said::Unoffered(project.clone()));
+    let unoffered = || Reply::Told(Said::Unoffered(project.clone()));
     let done = |give: bool| {
-        told(&if give {
+        Reply::Told(if give {
             Said::Subscribed(project.clone())
         } else {
             Said::Unsubscribed(project.clone())
@@ -224,16 +260,16 @@ async fn subscribing<S: Store, H: Http>(
         let holds = roles.iter().any(|role| member.roles.contains(role));
         let give = match decided(asked, holds) {
             Ok(give) => give,
-            Err(said) => return told(&said(project)),
+            Err(said) => return Reply::Told(said(project)),
         };
         for role in &roles {
             let Some(request) = discord.role(&member.guild, &asked.user, role, give) else {
-                return Answer::unavailable(
+                return Reply::unavailable(
                     "a role could not be asked of Discord: an id is not written as Discord writes one",
                 );
             };
             if let Err(trouble) = interacting.sent(http, request).await {
-                return Answer::unavailable(trouble);
+                return Reply::unavailable(trouble);
             }
         }
         return done(give);
@@ -250,14 +286,14 @@ async fn subscribing<S: Store, H: Http>(
         .await
     {
         Ok(subscribers) => subscribers,
-        Err(error) => return Answer::unavailable(error.to_string()),
+        Err(error) => return Reply::unavailable(error.to_string()),
     };
     let holds = subscribers
         .iter()
         .any(|subscription| subscription.subscriber == asked.user);
     let give = match decided(asked, holds) {
         Ok(give) => give,
-        Err(said) => return told(&said(project)),
+        Err(said) => return Reply::Told(said(project)),
     };
     let subscription = Subscription {
         destination: asked.destination.clone(),
@@ -272,7 +308,7 @@ async fn subscribing<S: Store, H: Http>(
     };
     match written {
         Ok(()) => done(give),
-        Err(error) => Answer::unavailable(error.to_string()),
+        Err(error) => Reply::unavailable(error.to_string()),
     }
 }
 
@@ -282,7 +318,7 @@ fn shown(
     asked: &Asked,
     latest: &Latest,
     route: &RouteConfig,
-) -> Answer {
+) -> Reply {
     let shown = latest.shown(answering.prereleases);
     let event = match Event::normalise(Draft {
         identity: format!("latest/{}", latest.project),
@@ -296,7 +332,7 @@ fn shown(
         occurred: shown.occurred,
     }) {
         Ok(event) => event,
-        Err(problem) => return Answer::unavailable(problem.to_string()),
+        Err(problem) => return Reply::unavailable(problem.to_string()),
     };
     let template = answering
         .template
@@ -311,47 +347,50 @@ fn shown(
         config
             .templates
             .render_line(&title_template(&template), &context)
-            .map(|title| latest_text(&title, &event))
+            .map(|title| latest_text(&title, &event, &answering.wording))
     } else {
         config
             .templates
             .render(&body_template(&template), &context)
-            .map(|body| changelog_text(&body, &event))
+            .map(|body| changelog_text(&body, &event, &answering.wording))
     };
     match said {
-        Ok(said) => Answer {
+        Ok(said) => Reply::Shown {
             said,
             public: answering.replies.public(asked.command, asked.share),
-            trouble: None,
         },
-        Err(error) => Answer::unavailable(error.to_string()),
+        Err(error) => Reply::unavailable(error.to_string()),
     }
 }
 
 /// What `latest` answers: the title, linked to the release, and the day it
 /// happened.
-fn latest_text(title: &str, event: &Event) -> String {
+fn latest_text(title: &str, event: &Event, wording: &Wording) -> String {
     let title = escaped(title);
     let headline = match event.link("release").or_else(|| event.first_link()) {
         Some(link) => format!("**[{title}]({})**", safe_url(link)),
         None => format!("**{title}**"),
     };
-    format!("{headline}\n{}", event.occurred().strftime("%Y-%m-%d"))
+    format!("{headline}\n{}", wording.date(event.occurred()))
 }
 
 /// What `changelog` answers: the notes, and a link to the changelog or the
 /// release.
-fn changelog_text(body: &str, event: &Event) -> String {
+fn changelog_text(body: &str, event: &Event, wording: &Wording) -> String {
     let notes = body.trim();
     let notes = if notes.is_empty() {
-        "No notes were announced."
+        wording.text(Phrase::NoNotes)
     } else {
         notes
     };
     let link = event
         .link("changelog")
-        .map(|link| ("Changelog", link))
-        .or_else(|| event.link("release").map(|link| ("Release", link)));
+        .map(|link| (wording.text(Phrase::ChangelogLink), link))
+        .or_else(|| {
+            event
+                .link("release")
+                .map(|link| (wording.text(Phrase::ReleaseLink), link))
+        });
     match link {
         Some((name, link)) => format!("{notes}\n\n[{name}]({})", safe_url(link)),
         None => notes.to_owned(),

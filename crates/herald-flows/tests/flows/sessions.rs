@@ -29,16 +29,20 @@ const ROLE: &str = "523456789012345678";
 const TOKEN: &str = "«secret:the interaction's token»";
 const KEY: &str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 
-/// A config whose one destination, `kind`, holds a session.
+/// A config whose one destination, `kind`, holds a session: `discord on
+/// <os>` is a Discord one identifying as that operating system.
 fn config(kind: &str) -> Config {
+    let os = kind
+        .strip_prefix("discord on ")
+        .map_or_else(String::new, |os| format!("\nos = \"{os}\""));
     let destination = match kind {
-        "discord" => format!(
+        _ if kind.starts_with("discord") => format!(
             r#"[destinations.discord]
 kind = "discord"
 token = {{ secret = "HERALD_DISCORD_TOKEN" }}
 [destinations.discord.interactions]
 application = "{APPLICATION}"
-via = "gateway"
+via = "gateway"{os}
 [[routes]]
 id = "discorded"
 sources = ["gate"]
@@ -446,13 +450,15 @@ async fn the_gateway_identifies_answers_a_command_and_its_completions_then_stops
             "{}",
         ),
     ]);
-    let world = World::new("discord", answers, sockets.clone()).await;
+    let world = World::new("discord on freebsd", answers, sockets.clone()).await;
     let heard = world.served(4, |line| line.starts_with("answered")).await;
     assert!(
         heard.contains(&"answered latest: Ok(())".to_owned()),
         "{heard:?}"
     );
     assert_eq!(sent(&sockets), [2]);
+    let identified: Value = serde_json::from_str(&sockets.sent()[0]).unwrap();
+    assert_eq!(identified["d"]["properties"]["os"], "freebsd");
     let seen = world.answers.seen();
     assert!(seen[0].ends_with("/callback"), "{seen:?}");
 }

@@ -4,7 +4,7 @@
 
 use std::fmt;
 
-use herald_core::{Answering, Asked, Command, DestinationName, Member, Place};
+use herald_core::{Answering, Asked, Command, DestinationName, Member, Phrase, Place};
 use herald_ports::{Method, Request, Response, Secret, Text};
 use serde_json::{Value, json};
 
@@ -177,6 +177,13 @@ impl Interacting {
         self.interactions.session_domains()
     }
 
+    /// The operating system its gateway session identifies as, where the
+    /// config names one.
+    #[must_use]
+    pub fn os(&self) -> Option<&str> {
+        self.interactions.os.as_deref()
+    }
+
     /// The application's public key, in hex, which each interaction posted
     /// to herald is checked against.
     #[must_use]
@@ -345,6 +352,7 @@ impl Interacting {
     /// takes: as commands of their own, or as subcommands of the group.
     #[must_use]
     pub fn commands(&self) -> Value {
+        let wording = self.interactions.wording();
         let described: Vec<Value> = self
             .interactions
             .commands
@@ -353,7 +361,7 @@ impl Interacting {
                 let mut options = vec![json!({
                     "type": STRING,
                     "name": PROJECT,
-                    "description": "The project, where more than one is announced here",
+                    "description": wording.text(Phrase::DescribeProject),
                     "required": false,
                     "autocomplete": true,
                 })];
@@ -361,13 +369,13 @@ impl Interacting {
                     options.push(json!({
                         "type": BOOLEAN,
                         "name": SHARE,
-                        "description": "Show the answer to the channel",
+                        "description": wording.text(Phrase::DescribeShare),
                         "required": false,
                     }));
                 }
                 json!({
                     "name": command.name(),
-                    "description": command.description(),
+                    "description": wording.describe(*command),
                     "options": options,
                 })
             })
@@ -375,7 +383,7 @@ impl Interacting {
         match &self.interactions.group {
             Some(group) => json!([{
                 "name": group,
-                "description": "Ask herald about the projects it announces",
+                "description": wording.text(Phrase::DescribeGroup),
                 "options": described
                     .into_iter()
                     .map(|mut sub| {
@@ -436,11 +444,11 @@ impl Interacting {
             )?
             .header(
                 "X-Audit-Log-Reason",
-                Text::plain(if give {
-                    "Subscribed through herald"
+                Text::plain(self.interactions.wording().text(if give {
+                    Phrase::AuditSubscribed
                 } else {
-                    "Unsubscribed through herald"
-                }),
+                    Phrase::AuditUnsubscribed
+                })),
             ),
         )
     }

@@ -59,7 +59,9 @@ impl Config {
                     .interactions
                     .as_ref()
                     .filter(|interactions| interactions.via == herald_dest_slack::Via::Socket)
-                    .map(herald_dest_slack::Interactions::session_domains)
+                    .map(|interactions| {
+                        interactions.session_domains(options.domain.unwrap_or_default())
+                    })
                     .unwrap_or_default(),
                 _ => Vec::new(),
             })
@@ -244,6 +246,42 @@ pub enum Destination {
 }
 
 impl Destination {
+    /// The characters its posts write where its markup has none.
+    #[must_use]
+    pub fn symbols(&self) -> herald_core::Symbols {
+        match self {
+            Self::Discord(options) => options.symbols,
+            Self::Mastodon(options) => options.symbols,
+            Self::Matrix(options) => options.symbols,
+            Self::Slack(options) => options.symbols,
+            Self::ActivityPub(options) => options.symbols,
+        }
+        .unwrap_or_default()
+    }
+
+    /// How long it waits before sending again where its platform names no
+    /// wait: the config's, else the platform's own.
+    #[must_use]
+    pub fn waits(&self) -> herald_core::Waits {
+        let platform = match self {
+            Self::Mastodon(_) => herald_dest_fediverse::Mastodon::WAITS,
+            _ => herald_core::Waits::DEFAULT,
+        };
+        herald_core::Waits::of(self.waits_written(), platform)
+    }
+
+    /// The waits its config sets, each still to be checked.
+    #[must_use]
+    pub fn waits_written(&self) -> Option<herald_core::WaitOptions> {
+        match self {
+            Self::Discord(options) => options.waits,
+            Self::Mastodon(options) => options.waits,
+            Self::Matrix(options) => options.waits,
+            Self::Slack(options) => options.waits,
+            Self::ActivityPub(options) => options.waits,
+        }
+    }
+
     /// The secret it reaches its platform with: its token, else its webhook,
     /// or its key.
     #[must_use]

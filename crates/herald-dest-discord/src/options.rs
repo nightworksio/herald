@@ -1,6 +1,7 @@
-use herald_core::{ReadBack, SecretRef};
+use herald_core::{ReadBack, SecretRef, Symbols, WaitOptions};
 
 use crate::interactions::{Interactions, Subscribe, snowflake};
+use crate::look::{ArchiveAfter, Colours, Look};
 use schemars::JsonSchema;
 use serde::Deserialize;
 
@@ -20,6 +21,25 @@ pub struct DestinationOptions {
     /// How many pages of its own posts it reads back for their markers,
     /// from 1 to 20; 5 where unset.
     pub read_back: Option<ReadBack>,
+    /// The colours of its embeds.
+    pub colours: Option<Colours>,
+    /// How long a quiet thread stays open: `1h`, `1d`, `3d` or `1w`, the
+    /// week where unset.
+    pub archive_after: Option<ArchiveAfter>,
+    /// The characters its posts write where its markup has none: a task
+    /// done and to do, a rule and a text list's bullet.
+    pub symbols: Option<Symbols>,
+    /// How long it waits before sending again where Discord answers that it
+    /// is unwell or limited and names no wait.
+    pub waits: Option<WaitOptions>,
+}
+
+impl DestinationOptions {
+    /// How its posts look.
+    #[must_use]
+    pub fn look(&self) -> Look {
+        Look::of(self.colours, self.archive_after)
+    }
 }
 
 impl DestinationOptions {
@@ -68,5 +88,28 @@ impl RouteOptions {
             )),
             _ => Ok(()),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::look::Colour;
+
+    #[test]
+    fn its_posts_look_as_its_colours_and_archive_length_say() {
+        let options: DestinationOptions = serde_json::from_value(serde_json::json!({
+            "colours": { "release": "#000001" },
+            "archive_after": "1h",
+        }))
+        .unwrap();
+        assert_eq!(
+            options.look(),
+            Look {
+                release: Colour(1),
+                prerelease: Look::DEFAULT.prerelease,
+                archive_after: ArchiveAfter::Hour,
+            }
+        );
     }
 }
