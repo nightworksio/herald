@@ -1,11 +1,15 @@
 use std::any::Any;
 
-use herald_core::{Answering, Profile, SecretRef, Symbols, WaitOptions};
-use herald_kinds::{
-    Carried, DestinationConfig, DestinationKind, Fault, Placed, Placement, Placing, Reached, same,
+use herald_core::{
+    Answering, Dialect, Measure, Profile, Room, SecretRef, Symbols, Text, WaitOptions,
 };
-use herald_ports::Secret;
+use herald_kinds::{
+    Carried, DestinationConfig, DestinationKind, Fault, Interacted, Interacts, Placed, Placement,
+    Placing, Reached, Replying, optional, same,
+};
+use herald_ports::{Boxed, DynSecrets, Request, Response, Secret, SecretError};
 
+use crate::interact::{self, Interacting, SECTION, took};
 use crate::interactions::{Interactions, Via};
 use crate::options::{DestinationOptions, RouteOptions};
 use crate::slack::{self, Credential, Slack};
@@ -90,6 +94,25 @@ impl DestinationConfig for DestinationOptions {
         ))
     }
 
+    fn interacts<'a>(
+        &'a self,
+        _credential: &'a Secret,
+        secrets: &'a dyn DynSecrets,
+    ) -> Boxed<'a, Result<Option<Interacted>, SecretError>> {
+        Box::pin(async move {
+            let Some(interactions) = &self.interactions else {
+                return Ok(None);
+            };
+            let signing = optional(secrets, interactions.signing.as_ref()).await?;
+            let app = optional(secrets, interactions.app.as_ref()).await?;
+            Ok(Some(Interacted::new(
+                Interacting::new(interactions.clone(), self.api.as_deref())
+                    .on(self.domain.unwrap_or_default())
+                    .keyed(signing, app),
+            )))
+        })
+    }
+
     fn as_any(&self) -> &dyn Any {
         self
     }
@@ -170,4 +193,49 @@ fn subscribed(options: &DestinationOptions, placing: Placing<'_>) -> Result<(), 
         );
     }
     placing.answers_subscribing(options.answering())
+}
+
+impl Interacts for Interacting {
+    fn api(&self) -> &str {
+        self.hooks()
+    }
+
+    fn sessions(&self) -> Option<&str> {
+        self.app_token().map(|_| Self::api(self))
+    }
+
+    fn answering(&self) -> Answering {
+        Self::answering(self)
+    }
+
+    fn room(&self) -> (Dialect, Room) {
+        (
+            Dialect::Slack,
+            Room {
+                measure: Measure::Chars,
+                first: SECTION,
+                rest: SECTION,
+            },
+        )
+    }
+
+    fn answered(&self, replying: &Replying, parts: &[Text], public: bool) -> Vec<Request> {
+        let Some(replying) = replying.of::<interact::Replying>() else {
+            return Vec::new();
+        };
+        let bodies: Vec<String> = parts.iter().map(|part| part.body.clone()).collect();
+        vec![Self::answered(self, replying, &bodies, public)]
+    }
+
+    fn took(&self, response: &Response) -> Result<(), String> {
+        took(response)
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn same(&self, other: &dyn Any) -> bool {
+        same(self, other)
+    }
 }

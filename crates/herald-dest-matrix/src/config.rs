@@ -1,12 +1,14 @@
 use std::any::Any;
 
-use herald_core::{Answering, Profile, SecretRef, Symbols, WaitOptions};
+use herald_core::{Answering, Dialect, Profile, Room, SecretRef, Symbols, Text, WaitOptions};
 use herald_kinds::{
-    Carried, DestinationConfig, DestinationKind, Fault, Placed, Placement, Placing, Reached, same,
+    Carried, DestinationConfig, DestinationKind, Fault, Interacted, Interacts, Placed, Placement,
+    Placing, Reached, Replying, optional, same,
 };
-use herald_ports::Secret;
+use herald_ports::{Boxed, DynSecrets, Request, Response, Secret, SecretError};
 use jiff::SignedDuration;
 
+use crate::interact::{self, Interacting, took};
 use crate::interactions::{Interactions, Via};
 use crate::matrix::{self, Matrix};
 use crate::options::{DestinationOptions, RouteOptions};
@@ -67,6 +69,33 @@ impl DestinationConfig for DestinationOptions {
                 .reading_back(self.read_back.unwrap_or_default())
                 .waiting(self.waits()),
         ))
+    }
+
+    fn interacts<'a>(
+        &'a self,
+        credential: &'a Secret,
+        secrets: &'a dyn DynSecrets,
+    ) -> Boxed<'a, Result<Option<Interacted>, SecretError>> {
+        Box::pin(async move {
+            let Some(interactions) = &self.interactions else {
+                return Ok(None);
+            };
+            let acting = match interactions.via {
+                Via::Appservice => {
+                    optional(secrets, interactions.appservice_token.as_ref()).await?
+                }
+                Via::Sync => None,
+            };
+            let presented = optional(secrets, interactions.homeserver_token.as_ref()).await?;
+            Ok(Some(Interacted::new(
+                Interacting::new(
+                    &self.homeserver,
+                    interactions.clone(),
+                    acting.unwrap_or_else(|| credential.clone()),
+                )
+                .presented(presented),
+            )))
+        })
     }
 
     fn as_any(&self) -> &dyn Any {
@@ -138,5 +167,46 @@ impl DestinationKind for MatrixKind {
                 ),
             )
         })
+    }
+}
+
+impl Interacts for Interacting {
+    fn api(&self) -> &str {
+        Self::api(self)
+    }
+
+    fn answering(&self) -> Answering {
+        Self::answering(self)
+    }
+
+    fn room(&self) -> (Dialect, Room) {
+        let profile = matrix::profile();
+        (
+            Dialect::Matrix,
+            Room {
+                measure: profile.measure,
+                first: profile.limits.followup,
+                rest: profile.limits.followup,
+            },
+        )
+    }
+
+    fn answered(&self, replying: &Replying, parts: &[Text], public: bool) -> Vec<Request> {
+        replying
+            .of::<interact::Replying>()
+            .map(|replying| Self::answered(self, replying, parts, public))
+            .unwrap_or_default()
+    }
+
+    fn took(&self, response: &Response) -> Result<(), String> {
+        took(response)
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn same(&self, other: &dyn Any) -> bool {
+        same(self, other)
     }
 }

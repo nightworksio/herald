@@ -4,9 +4,9 @@ use std::ops::Deref;
 use std::sync::Arc;
 
 use herald_core::{Answering, Profile, SecretRef, Symbols, WaitOptions, Waits};
-use herald_ports::Secret;
+use herald_ports::{Boxed, DynSecrets, Secret, SecretError};
 
-use crate::{Placed, Reached};
+use crate::{Interacted, Placed, Reached};
 
 /// One destination's table in `herald.toml`, read: what every kind of
 /// destination's options are to the config and the flows that read it.
@@ -75,6 +75,16 @@ pub trait DestinationConfig: fmt::Debug + Send + Sync + Any {
     /// `secret` and herald's own `base` URL: where `placed` are options of
     /// its kind.
     fn reach(&self, placed: &Placed, base: &str, secret: Secret) -> Option<Reached>;
+
+    /// How it takes commands, reached with `credential` and its other
+    /// secrets read through `secrets`, where it takes any.
+    fn interacts<'a>(
+        &'a self,
+        _credential: &'a Secret,
+        _secrets: &'a dyn DynSecrets,
+    ) -> Boxed<'a, Result<Option<Interacted>, SecretError>> {
+        Box::pin(std::future::ready(Ok(None)))
+    }
 
     /// Itself, for code that reads one kind's own options.
     fn as_any(&self) -> &dyn Any;

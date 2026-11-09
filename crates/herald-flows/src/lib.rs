@@ -38,12 +38,12 @@ pub use approving::{Decision, decide, followers};
 pub use commanded::{INTERACTIONS, MATRIX};
 pub use doctor::{Findings, Gap, Layer, doctor, keys, unserved};
 pub use following::{FollowError, Followed, followed};
+pub use herald_kinds::Replying;
 pub use housekeep::{Chored, Housekept, Kept, housekeep};
 pub use inbound::{
     Admission, Checking, Keys, Rejected, Verified, activity_verified, admitted, released, verified,
 };
 pub use interact::{Answer, completed, deferral, interact, replied};
-pub use interacting::{Interacting, Replying};
 pub use poll::{Fresh, Remembered, Sweep, Swept, poll};
 pub use prepare::{Connected, PrepareError, Prepared, prepare};
 pub use preview::{Previewed, preview};

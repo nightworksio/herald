@@ -2,14 +2,14 @@ use std::collections::BTreeMap;
 use std::fmt;
 
 use herald_config::{Config, Destination, Placed, RouteConfig, Source};
-use herald_core::{DestinationName, RouteId, SecretRef, SourceName, hex};
+use herald_core::{DestinationName, RouteId, SourceName, hex};
+use herald_kinds::Interacted;
 use herald_ports::{Algorithm, CryptoError, Http, Secret, SecretError, Secrets, Signer};
 use herald_sources_feed::Feed;
 use herald_sources_forge::{Origin, Token};
 use herald_sources_registry::Package;
 use herald_store_markers::{MarkedRoute, MarkersStore};
 
-use crate::interacting::Interacting;
 use crate::reached::{Posts, Reached};
 
 /// What a marker key is derived from a credential under (ADR-0011).
@@ -140,7 +140,7 @@ pub struct Prepared {
     routes: Vec<PreparedRoute>,
     sources: Vec<PreparedSource>,
     destinations: Vec<(DestinationName, Destination, Secret)>,
-    interacting: Vec<(DestinationName, Interacting)>,
+    interacting: Vec<(DestinationName, Interacted)>,
 }
 
 /// The prepared routes and sources, each with the `Http` that reaches it.
@@ -148,14 +148,14 @@ pub struct Prepared {
 pub struct Connected<H> {
     pub(crate) routes: Vec<(PreparedRoute, H)>,
     pub(crate) sources: Vec<(PreparedSource, H)>,
-    pub(crate) interacting: Vec<(DestinationName, Interacting, H, Option<H>)>,
+    pub(crate) interacting: Vec<(DestinationName, Interacted, H, Option<H>)>,
 }
 
 impl<H> Connected<H> {
     /// The destination named `name`, where it takes commands, with the
     /// `Http` its answers go through.
     #[must_use]
-    pub fn interacting(&self, name: &DestinationName) -> Option<(&Interacting, &H)> {
+    pub fn interacting(&self, name: &DestinationName) -> Option<(&Interacted, &H)> {
         self.interacting
             .iter()
             .find(|(named, ..)| named == name)
@@ -167,7 +167,7 @@ impl<H> Connected<H> {
     /// holds any.
     pub fn interactions(
         &self,
-    ) -> impl Iterator<Item = (&DestinationName, &Interacting, &H, Option<&H>)> {
+    ) -> impl Iterator<Item = (&DestinationName, &Interacted, &H, Option<&H>)> {
         self.interacting
             .iter()
             .map(|(name, interacting, http, sessions)| (name, interacting, http, sessions.as_ref()))
@@ -366,7 +366,7 @@ pub async fn prepare<S: Secrets, G: Signer>(
     }
     let mut sources = Vec::new();
     for (name, source) in &config.sources {
-        let token = optional(secrets, source.token()).await?;
+        let token = herald_kinds::optional(secrets, source.token()).await?;
         let (asked, backfill) = match source {
             Source::Forge(forge, options) => (
                 Asked::Forge {
@@ -413,79 +413,13 @@ impl Prepared {
     pub async fn answering<S: Secrets>(mut self, secrets: &S) -> Result<Self, PrepareError> {
         let mut interacting = Vec::new();
         for (name, destination, credential) in &self.destinations {
-            if let Some(found) = interacts(destination, credential, secrets).await? {
+            if let Some(found) = destination.interacts(credential, secrets).await? {
                 interacting.push((name.clone(), found));
             }
         }
         self.interacting = interacting;
         Ok(self)
     }
-}
-
-async fn optional<S: Secrets>(
-    secrets: &S,
-    named: Option<&SecretRef>,
-) -> Result<Option<Secret>, PrepareError> {
-    match named {
-        Some(named) => Ok(Some(secrets.secret(&named.secret).await?)),
-        None => Ok(None),
-    }
-}
-
-/// How `destination`, reached with `credential`, takes commands, where it
-/// takes any, with its secrets read through `secrets`.
-async fn interacts<S: Secrets>(
-    destination: &Destination,
-    credential: &Secret,
-    secrets: &S,
-) -> Result<Option<Interacting>, PrepareError> {
-    if let Some(options) = destination.of::<herald_dest_discord::DestinationOptions>() {
-        return Ok(options.interactions.as_ref().map(|interactions| {
-            let bot = options.token.is_some().then(|| credential.clone());
-            Interacting::Discord(herald_dest_discord::Interacting::new(
-                interactions.clone(),
-                bot,
-                options.api.as_deref(),
-            ))
-        }));
-    }
-    if let Some(options) = destination.of::<herald_dest_slack::DestinationOptions>() {
-        return Ok(match &options.interactions {
-            Some(interactions) => Some(Interacting::Slack {
-                interacting: herald_dest_slack::Interacting::new(
-                    interactions.clone(),
-                    options.api.as_deref(),
-                )
-                .on(options.domain.unwrap_or_default()),
-                signing: optional(secrets, interactions.signing.as_ref()).await?,
-                app: optional(secrets, interactions.app.as_ref()).await?,
-            }),
-            None => None,
-        });
-    }
-    if let Some(options) = destination.of::<herald_dest_matrix::DestinationOptions>() {
-        return Ok(match &options.interactions {
-            Some(interactions) => {
-                let acting = match interactions.via {
-                    herald_dest_matrix::Via::Appservice => {
-                        optional(secrets, interactions.appservice_token.as_ref()).await?
-                    }
-                    herald_dest_matrix::Via::Sync => None,
-                };
-                Some(Interacting::Matrix {
-                    interacting: herald_dest_matrix::Interacting::new(
-                        &options.homeserver,
-                        interactions.clone(),
-                        acting.unwrap_or_else(|| credential.clone()),
-                    ),
-                    homeserver_token: optional(secrets, interactions.homeserver_token.as_ref())
-                        .await?,
-                })
-            }
-            None => None,
-        });
-    }
-    Ok(None)
 }
 
 #[cfg(test)]
@@ -678,20 +612,18 @@ mod tests {
             .unwrap(),
         );
         let secrets = herald_testing::FakeSecrets::default().with("HERALD_SLACK_APP", "xapp");
-        let interacting = pollster::block_on(interacts(
-            &slack,
-            &Secret::new("HERALD_TOKEN", "token"),
-            &secrets,
-        ))
-        .unwrap();
-        assert!(
-            matches!(
-                &interacting,
-                Some(Interacting::Slack { interacting, .. })
-                    if (interacting.api(), interacting.hooks())
-                        == ("https://slack-gov.com/api", "https://hooks.slack-gov.com")
-            ),
-            "{interacting:?}"
+        let interacting =
+            pollster::block_on(slack.interacts(&Secret::new("HERALD_TOKEN", "token"), &secrets))
+                .unwrap();
+        let Some(interacting) = interacting
+            .as_ref()
+            .and_then(|interacting| interacting.of::<herald_dest_slack::Interacting>())
+        else {
+            panic!("Slack takes commands");
+        };
+        assert_eq!(
+            (interacting.api(), interacting.hooks()),
+            ("https://slack-gov.com/api", "https://hooks.slack-gov.com")
         );
     }
 }

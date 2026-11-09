@@ -518,7 +518,7 @@ template = "t"
 title = "{{ event.title }}"
 body = "- [x] {{ event.version }}"
 "#;
-    let config = load("herald.toml", text, &|_| Err(String::new())).unwrap();
+    let config = crate::harness::loaded(text);
     let (announced, script) = hooked(&config, &healthy());
     assert_eq!(
         outcome(&announced),

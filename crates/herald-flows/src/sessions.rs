@@ -17,10 +17,10 @@ use herald_core::{Asked, DestinationName};
 use herald_dest_discord::{self as discord, Effect, Gateway};
 use herald_dest_matrix as matrix;
 use herald_dest_slack::{self as slack};
+use herald_kinds::Replying;
 use herald_ports::{Clock, Frame, Http, Secret, Socket, Sockets, Store, Text, Timer};
 
 use crate::interact::{completed, deferral};
-use crate::interacting::{Interacting, Replying};
 use crate::room::Room;
 use crate::serving::{Job, Serving};
 
@@ -208,34 +208,27 @@ where
         let mut sessions: FuturesUnordered<Pin<Box<dyn Future<Output = ()> + '_>>> =
             FuturesUnordered::new();
         for (name, interacting, http, opening) in self.serving.connected.interactions() {
-            match interacting {
-                Interacting::Discord(discord)
-                    if discord.via() == herald_dest_discord::Via::Gateway =>
-                {
-                    if let Some(bot) = discord.bot() {
-                        let gateway = Gateway::new(bot.clone(), &discord.session_domains())
-                            .identifying_as(discord.os());
-                        sessions.push(Box::pin(
-                            self.gateway(sockets, name, discord, gateway, http),
-                        ));
-                    }
+            if let Some(discord) = interacting.of::<discord::Interacting>()
+                && discord.via() == herald_dest_discord::Via::Gateway
+            {
+                if let Some(bot) = discord.bot() {
+                    let gateway = Gateway::new(bot.clone(), &discord.session_domains())
+                        .identifying_as(discord.os());
+                    sessions.push(Box::pin(
+                        self.gateway(sockets, name, discord, gateway, http),
+                    ));
                 }
-                Interacting::Slack {
-                    interacting: slack,
-                    app: Some(app),
-                    ..
-                } if slack.via() == herald_dest_slack::Via::Socket => {
-                    if let Some(opening) = opening {
-                        sessions.push(Box::pin(self.socket(sockets, name, slack, app, opening)));
-                    }
+            } else if let Some(slack) = interacting.of::<slack::Interacting>()
+                && let Some(app) = slack.app_token()
+                && slack.via() == herald_dest_slack::Via::Socket
+            {
+                if let Some(opening) = opening {
+                    sessions.push(Box::pin(self.socket(sockets, name, slack, app, opening)));
                 }
-                Interacting::Matrix {
-                    interacting: matrix,
-                    ..
-                } if matrix.via() == herald_dest_matrix::Via::Sync => {
-                    sessions.push(Box::pin(self.sync(name, matrix, http)));
-                }
-                _ => {}
+            } else if let Some(matrix) = interacting.of::<matrix::Interacting>()
+                && matrix.via() == herald_dest_matrix::Via::Sync
+            {
+                sessions.push(Box::pin(self.sync(name, matrix, http)));
             }
         }
         while sessions.next().await.is_some() {}
@@ -376,7 +369,7 @@ where
     ) {
         match received {
             discord::Received::Asked { asked, replying } => {
-                self.take(taking, name, asked, Replying::Discord(replying));
+                self.take(taking, name, asked, Replying::new(replying));
             }
             discord::Received::Completing {
                 place,
@@ -448,7 +441,7 @@ where
                         break;
                     }
                     if let Some(slack::Received::Asked { asked, replying }) = enveloped.received {
-                        self.take(&mut taking, name, *asked, Replying::Slack(replying));
+                        self.take(&mut taking, name, *asked, Replying::new(replying));
                     }
                     if enveloped.reconnect {
                         break;
@@ -495,7 +488,7 @@ where
                     backoff.reset();
                     if since.is_some() {
                         for (asked, replying) in read.asked {
-                            self.take(&mut taking, name, asked, Replying::Matrix(replying));
+                            self.take(&mut taking, name, asked, Replying::new(replying));
                         }
                     }
                     since = Some(read.next);

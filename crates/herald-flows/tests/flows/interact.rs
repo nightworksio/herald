@@ -782,7 +782,7 @@ fn completions_list_what_was_announced_in_the_channel() {
 }
 
 pub(crate) fn discord_replying() -> Replying {
-    Replying::Discord(herald_dest_discord::Replying {
+    Replying::new(herald_dest_discord::Replying {
         id: "900".to_owned(),
         token: Secret::new("the interaction's token", "tok"),
     })
@@ -882,7 +882,7 @@ fn a_command_the_gateway_carried_is_deferred_first_and_others_are_not() {
         world.script.bodies()[0],
         br#"{"data":{"flags":64},"type":5}"#
     );
-    let slack_replying = Replying::Slack(herald_dest_slack::Replying {
+    let slack_replying = Replying::new(herald_dest_slack::Replying {
         url: Secret::new("the command's response URL", HOOK),
     });
     assert_eq!(

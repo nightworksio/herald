@@ -535,3 +535,12 @@ fn the_destination_says_how_it_carries_and_answers_commands() {
     assert_eq!(interacting.key(), Some(KEY));
     assert_eq!(interacting.answering().replies, Replies::Public);
 }
+
+#[test]
+fn an_answer_to_a_command_of_another_kind_is_no_request() {
+    let foreign = herald_kinds::Replying::new(0_u8);
+    assert_eq!(
+        herald_kinds::Interacts::answered(&interacting(""), &foreign, &[], false),
+        Vec::new()
+    );
+}

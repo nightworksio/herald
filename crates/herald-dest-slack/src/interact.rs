@@ -33,6 +33,8 @@ pub struct Interacting {
     given: Option<String>,
     domain: Domain,
     interactions: Interactions,
+    signing: Option<Secret>,
+    app: Option<Secret>,
 }
 
 /// Where herald's answer to a command goes: the command's response URL,
@@ -92,6 +94,8 @@ impl Interacting {
             given: api.map(|api| api.trim_end_matches('/').to_owned()),
             domain: Domain::default(),
             interactions,
+            signing: None,
+            app: None,
         }
         .on(Domain::default())
     }
@@ -106,6 +110,29 @@ impl Interacting {
             domain,
             ..self
         }
+    }
+
+    /// How it takes commands, with the signing secret requests are checked
+    /// against and the app-level token Socket Mode is opened with.
+    #[must_use]
+    pub fn keyed(self, signing: Option<Secret>, app: Option<Secret>) -> Self {
+        Self {
+            signing,
+            app,
+            ..self
+        }
+    }
+
+    /// The signing secret requests are checked against, where it is set.
+    #[must_use]
+    pub fn signing_secret(&self) -> Option<&Secret> {
+        self.signing.as_ref()
+    }
+
+    /// The app-level token Socket Mode is opened with, where it is set.
+    #[must_use]
+    pub fn app_token(&self) -> Option<&Secret> {
+        self.app.as_ref()
     }
 
     /// The base URL of the API it opens Socket Mode connections at.

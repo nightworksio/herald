@@ -6,7 +6,7 @@ use herald_core::{Entry, Key, Marker};
 use crate::crypto::{Algorithm, CryptoError, Signer};
 use crate::http::{Http, HttpError, Request, Response};
 use crate::markers::{MarkedThread, Markers, MarkersError};
-use crate::secret::Secret;
+use crate::secret::{Secret, SecretError, Secrets};
 
 /// A future boxed, as a trait object's methods return one.
 pub type Boxed<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
@@ -57,6 +57,18 @@ impl<G: Signer> DynSigner for G {
         key: &'a Secret,
     ) -> Boxed<'a, Result<Vec<u8>, CryptoError>> {
         Box::pin(self.public(algorithm, key))
+    }
+}
+
+/// [`Secrets`] as a trait object: every `Secrets` is one.
+pub trait DynSecrets: Sync {
+    /// The secret named `name`.
+    fn secret_boxed<'a>(&'a self, name: &'a str) -> Boxed<'a, Result<Secret, SecretError>>;
+}
+
+impl<S: Secrets> DynSecrets for S {
+    fn secret_boxed<'a>(&'a self, name: &'a str) -> Boxed<'a, Result<Secret, SecretError>> {
+        Box::pin(self.secret(name))
     }
 }
 
@@ -170,6 +182,34 @@ mod tests {
         async fn public(&self, _: Algorithm, key: &Secret) -> Result<Vec<u8>, CryptoError> {
             Ok(key.expose().as_bytes().to_vec())
         }
+    }
+
+    struct Named;
+
+    impl Secrets for Named {
+        async fn secret(&self, name: &str) -> Result<Secret, SecretError> {
+            if name.is_empty() {
+                return Err(SecretError::Missing {
+                    name: name.to_owned(),
+                });
+            }
+            Ok(Secret::new(name, "value"))
+        }
+    }
+
+    #[test]
+    fn erased_secrets_read_as_the_secrets_they_erase() {
+        let secrets: &dyn DynSecrets = &Named;
+        assert_eq!(
+            pollster::block_on(secrets.secret_boxed("K")),
+            Ok(Secret::new("K", "value"))
+        );
+        assert_eq!(
+            pollster::block_on(secrets.secret_boxed("")),
+            Err(SecretError::Missing {
+                name: String::new()
+            })
+        );
     }
 
     #[test]

@@ -22,6 +22,7 @@ pub struct Interacting {
     homeserver: String,
     interactions: Interactions,
     token: Secret,
+    homeserver_token: Option<Secret>,
 }
 
 /// Where herald's answer to a command goes: the room it was given in,
@@ -80,7 +81,25 @@ impl Interacting {
             homeserver: homeserver.trim_end_matches('/').to_owned(),
             interactions,
             token,
+            homeserver_token: None,
         }
+    }
+
+    /// How it takes commands, checking each transaction the homeserver
+    /// pushes against `token`.
+    #[must_use]
+    pub fn presented(self, token: Option<Secret>) -> Self {
+        Self {
+            homeserver_token: token,
+            ..self
+        }
+    }
+
+    /// The token the homeserver presents with each transaction, where it
+    /// is set.
+    #[must_use]
+    pub fn homeserver_token(&self) -> Option<&Secret> {
+        self.homeserver_token.as_ref()
     }
 
     /// The homeserver's base URL.

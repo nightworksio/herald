@@ -21,7 +21,7 @@ mod timer;
 
 pub use clock::Clock;
 pub use crypto::{Algorithm, CryptoError, Signer, Verifier};
-pub use erased::{Boxed, DynHttp, DynMarkers, DynSigner, Erased};
+pub use erased::{Boxed, DynHttp, DynMarkers, DynSecrets, DynSigner, Erased};
 pub use http::{
     Http, HttpError, Method, PUBLIC, Request, Response, USER_AGENT, WithBody, unreserved,
 };

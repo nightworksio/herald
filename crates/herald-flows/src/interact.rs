@@ -8,10 +8,11 @@ use herald_core::{
     RouteId, Said, Subscription, Wording, announced, body_template, chosen, chunk, completions,
     escaped, safe_url, title_template,
 };
+use herald_kinds::{Interacted, Replying};
 use herald_ports::{Announcements, Http, Store, Subscriptions};
 
 use crate::announce::Ports;
-use crate::interacting::{Interacting, Replying};
+use crate::interacting::sent;
 use crate::prepare::Connected;
 
 /// What herald answers a command: Markdown, who sees it, and what kept herald
@@ -181,7 +182,7 @@ pub async fn replied<H: Http>(
     let (dialect, room) = interacting.room();
     let parts = chunk(&answer.said, dialect, room);
     for request in interacting.answered(replying, &parts, answer.public) {
-        interacting.sent(http, request).await?;
+        sent(interacting, http, request).await?;
     }
     Ok(())
 }
@@ -202,17 +203,9 @@ pub async fn deferral<H: Http>(
     let (interacting, http) = connected
         .interacting(destination)
         .ok_or_else(|| format!("{} takes no commands", destination.as_str()))?;
-    match (interacting, replying) {
-        (Interacting::Discord(discord), Replying::Discord(replying)) => {
-            let public = discord
-                .answering()
-                .replies
-                .public(asked.command, asked.share);
-            interacting
-                .sent(http, discord.defer(replying, public))
-                .await
-        }
-        _ => Ok(()),
+    match interacting.deferred(replying, asked) {
+        Some(request) => sent(interacting, http, request).await,
+        None => Ok(()),
     }
 }
 
@@ -228,7 +221,7 @@ fn decided(asked: &Asked, holds: bool) -> Result<bool, fn(String) -> Said> {
 }
 
 async fn subscribing<S: Store, H: Http>(
-    interacting: &Interacting,
+    interacting: &Interacted,
     http: &H,
     store: &S,
     asked: &Asked,
@@ -244,7 +237,7 @@ async fn subscribing<S: Store, H: Http>(
             Said::Unsubscribed(project.clone())
         })
     };
-    if let Interacting::Discord(discord) = interacting {
+    if let Some(discord) = interacting.of::<herald_dest_discord::Interacting>() {
         let mut roles: Vec<String> = Vec::new();
         for role in routes
             .iter()
@@ -268,7 +261,7 @@ async fn subscribing<S: Store, H: Http>(
                     "a role could not be asked of Discord: an id is not written as Discord writes one",
                 );
             };
-            if let Err(trouble) = interacting.sent(http, request).await {
+            if let Err(trouble) = sent(interacting, http, request).await {
                 return Reply::unavailable(trouble);
             }
         }

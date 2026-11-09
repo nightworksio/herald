@@ -1,12 +1,17 @@
 use std::any::Any;
+use std::future::ready;
 
-use herald_core::{Answering, Profile, SecretRef, Symbols, WaitOptions};
-use herald_kinds::{
-    Carried, DestinationConfig, DestinationKind, Fault, Placed, Placement, Placing, Reached, same,
+use herald_core::{
+    Answering, Asked, Dialect, Measure, Profile, Room, SecretRef, Symbols, Text, WaitOptions,
 };
-use herald_ports::Secret;
+use herald_kinds::{
+    Carried, DestinationConfig, DestinationKind, Fault, Interacted, Interacts, Placed, Placement,
+    Placing, Reached, Replying, same,
+};
+use herald_ports::{Boxed, DynSecrets, Request, Response, Secret, SecretError};
 
 use crate::discord::{self, Credential, Discord};
+use crate::interact::{self, Interacting, MESSAGE, took};
 use crate::interactions::{Interactions, Subscribe, Via};
 use crate::options::{DestinationOptions, RouteOptions};
 
@@ -81,6 +86,21 @@ impl DestinationConfig for DestinationOptions {
                         .unwrap_or_default(),
                 ),
         ))
+    }
+
+    fn interacts<'a>(
+        &'a self,
+        credential: &'a Secret,
+        _secrets: &'a dyn DynSecrets,
+    ) -> Boxed<'a, Result<Option<Interacted>, SecretError>> {
+        let bot = self.token.is_some().then(|| credential.clone());
+        Box::pin(ready(Ok(self.interactions.as_ref().map(|interactions| {
+            Interacted::new(Interacting::new(
+                interactions.clone(),
+                bot,
+                self.api.as_deref(),
+            ))
+        }))))
     }
 
     fn as_any(&self) -> &dyn Any {
@@ -188,4 +208,53 @@ fn subscribed(
         );
     }
     placing.answers_subscribing(options.answering())
+}
+
+impl Interacts for Interacting {
+    fn api(&self) -> &str {
+        Self::api(self)
+    }
+
+    fn answering(&self) -> Answering {
+        Self::answering(self)
+    }
+
+    fn room(&self) -> (Dialect, Room) {
+        (
+            Dialect::Discord,
+            Room {
+                measure: Measure::Chars,
+                first: MESSAGE,
+                rest: MESSAGE,
+            },
+        )
+    }
+
+    fn answered(&self, replying: &Replying, parts: &[Text], public: bool) -> Vec<Request> {
+        let Some(replying) = replying.of::<interact::Replying>() else {
+            return Vec::new();
+        };
+        let bodies: Vec<String> = parts.iter().map(|part| part.body.clone()).collect();
+        Self::answered(self, replying, &bodies, public)
+    }
+
+    fn took(&self, response: &Response) -> Result<(), String> {
+        took(response)
+    }
+
+    fn deferred(&self, replying: &Replying, asked: &Asked) -> Option<Request> {
+        let replying = replying.of::<interact::Replying>()?;
+        let public = Self::answering(self)
+            .replies
+            .public(asked.command, asked.share);
+        Some(self.defer(replying, public))
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn same(&self, other: &dyn Any) -> bool {
+        same(self, other)
+    }
 }

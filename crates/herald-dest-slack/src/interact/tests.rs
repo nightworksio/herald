@@ -309,3 +309,12 @@ fn the_manifest_names_the_app_and_its_bot_as_the_config_says_or_herald() {
         "acme-releases"
     );
 }
+
+#[test]
+fn an_answer_to_a_command_of_another_kind_is_no_request() {
+    let foreign = herald_kinds::Replying::new(0_u8);
+    assert_eq!(
+        herald_kinds::Interacts::answered(&interacting(""), &foreign, &[], false),
+        Vec::new()
+    );
+}

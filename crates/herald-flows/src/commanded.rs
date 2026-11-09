@@ -6,12 +6,13 @@
 
 use herald_core::{Asked, DestinationName, Scheme};
 use herald_dest_discord as discord;
+use herald_dest_matrix as matrix;
 use herald_dest_slack as slack;
+use herald_kinds::Replying;
 use herald_ports::{Clock, Keyring, Store, Verifier};
 
 use crate::inbound::{Checking, Rejected, Verified, admitted, verified};
 use crate::interact::completed;
-use crate::interacting::{Interacting, Replying};
 use crate::serving::{
     Answered, Inbound, Job, Serving, missing, refusal, rejection, replied, unmethodical, unread,
 };
@@ -40,29 +41,26 @@ pub(crate) async fn commanded<S: Store, C: Clock, G, V: Verifier, H, P, K: Keyri
     inbound: &Inbound<'_>,
 ) -> Answered {
     let destination = DestinationName::new(name);
-    match serving.connected.interacting(&destination) {
-        Some((Interacting::Discord(interacting), _)) => {
-            interaction(serving, &destination, interacting, inbound).await
-        }
-        Some((
-            Interacting::Slack {
-                interacting,
-                signing: Some(signing),
-                ..
-            },
-            _,
-        )) => {
-            slash(
-                serving,
-                &destination,
-                interacting,
-                signing.expose(),
-                inbound,
-            )
-            .await
-        }
-        _ => missing("commands for such a destination"),
+    let interacting = serving
+        .connected
+        .interacting(&destination)
+        .map(|(interacting, _)| interacting);
+    if let Some(interacting) = interacting.and_then(|found| found.of::<discord::Interacting>()) {
+        return interaction(serving, &destination, interacting, inbound).await;
     }
+    if let Some(interacting) = interacting.and_then(|found| found.of::<slack::Interacting>())
+        && let Some(signing) = interacting.signing_secret()
+    {
+        return slash(
+            serving,
+            &destination,
+            interacting,
+            signing.expose(),
+            inbound,
+        )
+        .await;
+    }
+    missing("commands for such a destination")
 }
 
 async fn admit<S: Store, C: Clock, G, V: Verifier, H, P, K>(
@@ -127,7 +125,7 @@ async fn interaction<S: Store, C: Clock, G, V: Verifier, H, P, K>(
                 .replies
                 .public(asked.command, asked.share);
             Answered {
-                job: Some(job(destination, vec![(asked, Replying::Discord(replying))])),
+                job: Some(job(destination, vec![(asked, Replying::new(replying))])),
                 ..replied(200, JSON, discord::deferred(public))
             }
         }
@@ -151,7 +149,7 @@ async fn slash<S: Store, C: Clock, G, V: Verifier, H, P, K>(
     };
     match interacting.received(destination, inbound.body) {
         Ok(slack::Received::Asked { asked, replying }) => Answered {
-            job: Some(job(destination, vec![(*asked, Replying::Slack(replying))])),
+            job: Some(job(destination, vec![(*asked, Replying::new(replying))])),
             ..replied(200, JSON, "")
         },
         Ok(slack::Received::Usage) => replied(200, JSON, interacting.usage()),
@@ -170,13 +168,11 @@ pub(crate) async fn appserviced<S: Store, C: Clock, G, V: Verifier, H, P, K>(
     inbound: &Inbound<'_>,
 ) -> Answered {
     let destination = DestinationName::new(name);
-    let Some((
-        Interacting::Matrix {
-            interacting,
-            homeserver_token: Some(token),
-        },
-        _,
-    )) = serving.connected.interacting(&destination)
+    let Some((interacting, token)) = serving
+        .connected
+        .interacting(&destination)
+        .and_then(|(found, _)| found.of::<matrix::Interacting>())
+        .and_then(|interacting| Some((interacting, interacting.homeserver_token()?)))
     else {
         return missing("application service for such a destination");
     };
@@ -223,7 +219,7 @@ pub(crate) async fn appserviced<S: Store, C: Clock, G, V: Verifier, H, P, K>(
                         &destination,
                         asked
                             .into_iter()
-                            .map(|(asked, replying)| (asked, Replying::Matrix(replying)))
+                            .map(|(asked, replying)| (asked, Replying::new(replying)))
                             .collect(),
                     )),
                     ..replied(200, JSON, EMPTY)
