@@ -118,18 +118,11 @@ where
         read: &dyn Fn(&str) -> Result<String, String>,
     ) -> Option<Destination> {
         let options = loader.typed::<K::Options>(rest, at.path)?;
-        match K::checked(options, read) {
-            Ok((options, faults)) => {
-                for fault in faults {
-                    loader.fault(at, &fault);
-                }
-                Some(Destination::new(options))
-            }
-            Err(fault) => {
-                loader.fault(at, &fault);
-                None
-            }
-        }
+        admitted(
+            loader,
+            at,
+            K::checked(options, read).map(|(options, faults)| (Destination::new(options), faults)),
+        )
     }
 
     fn place(
@@ -143,10 +136,7 @@ where
         let options = destination.of::<K::Options>()?;
         let route = loader.typed::<K::Route>(rest, at.path)?;
         let faults = K::placed(options, &route, placing);
-        for fault in &faults {
-            loader.fault(at, fault);
-        }
-        Some((Placed::new(route), K::LABEL, faults.is_empty()))
+        Some((Placed::new(route), K::LABEL, clean(loader, at, &faults)))
     }
 
     fn outlasts(&self, destination: &Destination, total: SignedDuration) -> Option<Fault> {
@@ -160,6 +150,29 @@ where
     fn route_schema(&self, generator: &mut SchemaGenerator) -> Schema {
         routed::<K::Route>(generator, K::ROUTE, K::ROUTE_DESCRIPTION)
     }
+}
+
+/// The destination `checked` admits, with every fault it was checked with
+/// said where its table is written.
+fn admitted(
+    loader: &mut Loader<'_>,
+    at: At<'_>,
+    checked: Result<(Destination, Vec<Fault>), Fault>,
+) -> Option<Destination> {
+    let (destination, faults) = match checked {
+        Ok((destination, faults)) => (Some(destination), faults),
+        Err(fault) => (None, vec![fault]),
+    };
+    clean(loader, at, &faults);
+    destination
+}
+
+/// Whether there are no `faults`, each said where its table is written.
+fn clean(loader: &mut Loader<'_>, at: At<'_>, faults: &[Fault]) -> bool {
+    for fault in faults {
+        loader.fault(at, fault);
+    }
+    faults.is_empty()
 }
 
 #[cfg(test)]

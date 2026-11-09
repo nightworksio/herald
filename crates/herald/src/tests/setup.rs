@@ -282,6 +282,20 @@ fn a_slack_manifest_posts_to_herald_s_address_or_opens_socket_mode() {
             .out
             .ends_with("keep an app-level token with connections:write as HERALD_SLACK_APP.\n")
     );
+    let addressed = herald(
+        &setup,
+        &world,
+        &[
+            "slack",
+            "manifest",
+            "--destination",
+            "socket",
+            "--url",
+            "herald.example",
+        ],
+    );
+    assert_eq!(addressed.code, DONE, "{}", addressed.err);
+    assert_eq!(addressed.out, socket.out);
 }
 
 #[test]

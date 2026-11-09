@@ -197,6 +197,46 @@ mod tests {
         }
     }
 
+    struct Found;
+
+    impl Markers for Found {
+        async fn entry(&self, key: &Key, _: &Marker) -> Result<Option<Entry>, MarkersError> {
+            Ok(Some(Entry::new(*key)))
+        }
+
+        async fn threads(&self, _: &Marker) -> Result<Vec<MarkedThread>, MarkersError> {
+            Ok(vec![MarkedThread {
+                thread: "7".to_owned(),
+                opened: jiff::Timestamp::UNIX_EPOCH,
+                archived: false,
+                locked: true,
+            }])
+        }
+    }
+
+    #[test]
+    fn erased_markers_read_what_the_markers_they_erase_read() {
+        let markers: &dyn DynMarkers = &Found;
+        let key = Key::derive(
+            &herald_core::RouteId::new("route"),
+            &herald_core::Identity::new("event"),
+        );
+        let marker = Marker::of(&[1]);
+        assert_eq!(
+            pollster::block_on(Erased(markers).entry(&key, &marker)),
+            Ok(Some(Entry::new(key)))
+        );
+        assert_eq!(
+            pollster::block_on(Erased(markers).threads(&marker)),
+            Ok(vec![MarkedThread {
+                thread: "7".to_owned(),
+                opened: jiff::Timestamp::UNIX_EPOCH,
+                archived: false,
+                locked: true,
+            }])
+        );
+    }
+
     #[test]
     fn erased_secrets_read_as_the_secrets_they_erase() {
         let secrets: &dyn DynSecrets = &Named;

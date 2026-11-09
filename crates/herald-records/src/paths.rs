@@ -77,11 +77,6 @@ pub(crate) fn note(key: &Key) -> String {
     format!("{NOTES}/{key}.json")
 }
 
-/// The key of the Note kept at `path`.
-pub(crate) fn noted_key(path: &str) -> Option<Key> {
-    stem(path, NOTES)?.parse().ok()
-}
-
 /// The directory of `actor`'s outbox: one record per Note, named so that
 /// names sort as the Notes were published.
 pub(crate) fn outbox(actor: &str) -> String {
@@ -97,13 +92,6 @@ pub(crate) fn outboxed(actor: &str, at: Timestamp, key: &Key) -> String {
 pub(crate) fn outboxed_name(path: &str) -> Option<String> {
     let name = path.rsplit('/').next()?.strip_suffix(".json")?;
     Some(name.to_owned())
-}
-
-/// The name of the record at `path` in `directory`, without `.json`.
-fn stem<'a>(path: &'a str, directory: &str) -> Option<&'a str> {
-    path.strip_prefix(directory)?
-        .strip_prefix('/')?
-        .strip_suffix(".json")
 }
 
 pub(crate) const LATEST: &str = "latest";

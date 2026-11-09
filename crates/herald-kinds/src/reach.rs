@@ -1,4 +1,3 @@
-use std::any::Any;
 use std::fmt;
 use std::future::{Future, ready};
 use std::ops::Deref;
@@ -10,7 +9,7 @@ use herald_ports::{
 };
 use jiff::Timestamp;
 
-use crate::Federates;
+use crate::{Federates, Itself};
 
 /// What a step is signed with, where its destination signs its requests.
 #[derive(Clone, Copy)]
@@ -23,7 +22,7 @@ pub struct Signing<'a> {
 
 /// One route's destination, its credential resolved: what every kind of
 /// destination is to the flows that announce through it.
-pub trait Reach: fmt::Debug + Send + Sync + Any {
+pub trait Reach: fmt::Debug + Send + Sync + Itself {
     /// What it can do.
     fn profile(&self) -> Profile;
 
@@ -77,19 +76,6 @@ pub trait Reach: fmt::Debug + Send + Sync + Any {
     fn federates(&self) -> Option<&dyn Federates> {
         None
     }
-
-    /// Itself, for code that reads one kind's own capabilities.
-    fn as_any(&self) -> &dyn Any;
-
-    /// Whether `other` is the same destination, reached the same way.
-    fn same(&self, other: &dyn Any) -> bool;
-}
-
-/// Whether `other` is a `T` equal to `one`: [`Reach::same`] and
-/// [`DestinationConfig::same`](crate::DestinationConfig::same) for every kind.
-#[must_use]
-pub fn same<T: PartialEq + 'static>(one: &T, other: &dyn Any) -> bool {
-    other.downcast_ref::<T>() == Some(one)
 }
 
 /// A reached destination of any kind, shared by every route that reaches it.

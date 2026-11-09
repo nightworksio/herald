@@ -1,4 +1,3 @@
-use std::any::Any;
 use std::future::ready;
 
 use herald_core::{
@@ -7,7 +6,7 @@ use herald_core::{
 };
 use herald_kinds::{
     Carried, DestinationConfig, DestinationKind, Endpoint, Fault, Interacted, Interacts, Placed,
-    Placement, Placing, Post, Reached, Read, Replying, Said, Session, UNREAD, same,
+    Placement, Placing, Post, Reached, Read, Replying, Said, Session, UNREAD,
 };
 use herald_ports::{Boxed, DynSecrets, Request, Response, Secret, SecretError};
 
@@ -112,14 +111,6 @@ impl DestinationConfig for DestinationOptions {
             UNREAD
         }
     }
-
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-
-    fn same(&self, other: &dyn Any) -> bool {
-        same(self, other)
-    }
 }
 
 impl Placement for RouteOptions {
@@ -136,14 +127,6 @@ impl Placement for RouteOptions {
             .as_ref()
             .map(|subscribe| subscribe.role.clone())
     }
-
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-
-    fn same(&self, other: &dyn Any) -> bool {
-        same(self, other)
-    }
 }
 
 /// Discord, as a kind of destination.
@@ -151,11 +134,11 @@ impl Placement for RouteOptions {
 pub enum DiscordKind {}
 
 impl DestinationKind for DiscordKind {
-    const NAME: &'static str = KIND;
-    const DESCRIPTION: &'static str = "Discord, by bot token or webhook.";
-    const LABEL: &'static str = "Discord";
-    const ROUTE: &'static str = "DiscordRoute";
-    const ROUTE_DESCRIPTION: &'static str = "A route to a Discord destination.";
+    const NAME: &str = KIND;
+    const DESCRIPTION: &str = "Discord, by bot token or webhook.";
+    const LABEL: &str = "Discord";
+    const ROUTE: &str = "DiscordRoute";
+    const ROUTE_DESCRIPTION: &str = "A route to a Discord destination.";
 
     type Options = DestinationOptions;
     type Route = RouteOptions;
@@ -309,12 +292,7 @@ impl Interacts for Interacting {
     fn role(&self, guild: &str, user: &str, role: &str, give: bool) -> Option<Request> {
         Self::role(self, guild, user, role, give)
     }
-
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-
-    fn same(&self, other: &dyn Any) -> bool {
-        same(self, other)
-    }
 }
+
+#[cfg(test)]
+mod tests;

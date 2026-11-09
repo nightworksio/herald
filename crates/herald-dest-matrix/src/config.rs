@@ -1,12 +1,10 @@
-use std::any::Any;
-
 use herald_core::{
     Answering, DestinationName, Dialect, Profile, Room, Scheme, SecretRef, Symbols, Text,
     WaitOptions,
 };
 use herald_kinds::{
     Carried, DestinationConfig, DestinationKind, Endpoint, Fault, Interacted, Interacts, Placed,
-    Placement, Placing, Post, Reached, Read, Replying, Said, Session, optional, same,
+    Placement, Placing, Post, Reached, Read, Replying, Said, Session, optional,
 };
 use herald_ports::{Boxed, DynSecrets, Request, Response, Secret, SecretError};
 use jiff::SignedDuration;
@@ -112,27 +110,11 @@ impl DestinationConfig for DestinationOptions {
             )))
         })
     }
-
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-
-    fn same(&self, other: &dyn Any) -> bool {
-        same(self, other)
-    }
 }
 
 impl Placement for RouteOptions {
     fn place(&self) -> Option<&str> {
         Some(&self.room)
-    }
-
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-
-    fn same(&self, other: &dyn Any) -> bool {
-        same(self, other)
     }
 }
 
@@ -141,11 +123,11 @@ impl Placement for RouteOptions {
 pub enum MatrixKind {}
 
 impl DestinationKind for MatrixKind {
-    const NAME: &'static str = KIND;
-    const DESCRIPTION: &'static str = "A bot account on a Matrix homeserver.";
-    const LABEL: &'static str = "Matrix";
-    const ROUTE: &'static str = "MatrixRoute";
-    const ROUTE_DESCRIPTION: &'static str = "A route to a Matrix destination.";
+    const NAME: &str = KIND;
+    const DESCRIPTION: &str = "A bot account on a Matrix homeserver.";
+    const LABEL: &str = "Matrix";
+    const ROUTE: &str = "MatrixRoute";
+    const ROUTE_DESCRIPTION: &str = "A route to a Matrix destination.";
 
     type Options = DestinationOptions;
     type Route = RouteOptions;
@@ -268,12 +250,7 @@ impl Interacts for Interacting {
     fn session(&self) -> Option<Box<dyn Session + '_>> {
         Syncing::of(self).map(|session| Box::new(session) as Box<dyn Session + '_>)
     }
-
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-
-    fn same(&self, other: &dyn Any) -> bool {
-        same(self, other)
-    }
 }
+
+#[cfg(test)]
+mod tests;

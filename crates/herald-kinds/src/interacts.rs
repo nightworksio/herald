@@ -1,4 +1,3 @@
-use std::any::Any;
 use std::fmt;
 use std::ops::Deref;
 use std::sync::Arc;
@@ -8,12 +7,12 @@ use herald_core::{
 };
 use herald_ports::{DynSecrets, Request, Response, Secret, SecretError};
 
-use crate::Session;
+use crate::{Itself, Session};
 
 /// A destination that takes commands, with the secrets it needs resolved:
 /// what every kind's commands are to the flows that answer them
 /// (ADR-0016).
-pub trait Interacts: fmt::Debug + Send + Sync + Any {
+pub trait Interacts: fmt::Debug + Send + Sync + Itself {
     /// The base URL every answer it gives is sent to.
     fn api(&self) -> &str;
 
@@ -87,12 +86,6 @@ pub trait Interacts: fmt::Debug + Send + Sync + Any {
     fn choices(&self, _projects: &[String]) -> String {
         String::new()
     }
-
-    /// Itself, for code that reads one kind's own capabilities.
-    fn as_any(&self) -> &dyn Any;
-
-    /// Whether `other` is the same, taking commands the same way.
-    fn same(&self, other: &dyn Any) -> bool;
 }
 
 /// Where herald takes requests carrying commands (ADR-0016).
@@ -233,21 +226,9 @@ impl PartialEq for Interacted {
 impl Eq for Interacted {}
 
 /// What a kind keeps of where an answer goes: compared and shown as itself.
-trait Kept: fmt::Debug + Send + Sync + Any {
-    fn as_any(&self) -> &dyn Any;
+trait Kept: fmt::Debug + Send + Sync + Itself {}
 
-    fn same(&self, other: &dyn Any) -> bool;
-}
-
-impl<T: fmt::Debug + PartialEq + Send + Sync + 'static> Kept for T {
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-
-    fn same(&self, other: &dyn Any) -> bool {
-        other.downcast_ref::<T>() == Some(self)
-    }
-}
+impl<T: fmt::Debug + Send + Sync + Itself> Kept for T {}
 
 /// Where an answer to a command goes, as the command's kind writes it.
 #[derive(Clone)]

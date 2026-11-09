@@ -242,12 +242,10 @@ where
                     match polled {
                         Ok(effects) => {
                             for effect in effects {
-                                match effect {
-                                    Effect::Ready => backoff.reset(),
-                                    Effect::Asked(asked, replying) => {
-                                        self.take(&mut taking, name, asked, replying);
-                                    }
-                                    _ => {}
+                                if let Effect::Asked(asked, replying) = effect {
+                                    self.take(&mut taking, name, asked, replying);
+                                } else if effect == Effect::Ready {
+                                    backoff.reset();
                                 }
                             }
                             continue;
@@ -257,10 +255,7 @@ where
                 }
                 Connect::Socket(url) => Ok(url),
                 Connect::Opening(request) => {
-                    let Some(opening) = opening else {
-                        return;
-                    };
-                    meanwhile(&mut taking, opening.send(request))
+                    meanwhile(&mut taking, opening.unwrap_or(http).send(request))
                         .await
                         .map_err(|error| error.to_string())
                         .and_then(|response| session.opened(&response))
@@ -407,14 +402,14 @@ where
             let _completion = completion;
             let projects =
                 completed(serving.config, serving.ports.store, &name, &place, &typed).await;
-            if let Some(request) = interacting.complete(&replying, &projects) {
-                let sent = http.send(request).await;
-                if let Err(trouble) = sent
+            if let Some(request) = interacting.complete(&replying, &projects)
+                && let Err(trouble) = http
+                    .send(request)
+                    .await
                     .map_err(|error| error.to_string())
                     .and_then(|response| interacting.took(&response))
-                {
-                    taker.said(&name, format!("completions could not be sent: {trouble}"));
-                }
+            {
+                taker.said(&name, format!("completions could not be sent: {trouble}"));
             }
         }));
     }

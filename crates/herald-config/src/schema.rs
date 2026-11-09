@@ -168,14 +168,14 @@ const ROUTE: &str = "Route";
 fn described(schema: &Schema, description: &str) -> Schema {
     let mut map = serde_json::Map::new();
     map.insert("description".to_owned(), description.into());
-    if let Some(object) = schema.as_object() {
-        map.extend(
-            object
-                .iter()
-                .filter(|(key, _)| key.as_str() != "description")
-                .map(|(key, value)| (key.clone(), value.clone())),
-        );
-    }
+    map.extend(
+        schema
+            .as_object()
+            .into_iter()
+            .flatten()
+            .filter(|(key, _)| key.as_str() != "description")
+            .map(|(key, value)| (key.clone(), value.clone())),
+    );
     Schema::from(map)
 }
 

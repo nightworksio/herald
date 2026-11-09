@@ -247,3 +247,80 @@ fn every_store_error_reads_as_a_sentence() {
         "this store keeps no cursors; choose a store that does"
     );
 }
+
+#[test]
+fn an_outbox_page_holds_the_newest_notes_older_than_where_it_starts() {
+    let listed = |names: &[&str]| -> Vec<(String, &'static str)> {
+        names
+            .iter()
+            .map(|name| ((*name).to_owned(), "note"))
+            .collect()
+    };
+    let named = |names: &[&str]| -> Vec<(String, String)> {
+        names
+            .iter()
+            .map(|name| ((*name).to_owned(), (*name).to_owned()))
+            .collect()
+    };
+    assert_eq!(
+        Outboxed::page(named(&["1", "3", "2", "4"]), None, 2),
+        Outboxed {
+            total: 4,
+            notes: vec!["4".to_owned(), "3".to_owned()],
+            next: Some("3".to_owned()),
+        }
+    );
+    assert_eq!(
+        Outboxed::page(named(&["1", "3", "2", "4"]), Some("3"), 2),
+        Outboxed {
+            total: 4,
+            notes: vec!["2".to_owned(), "1".to_owned()],
+            next: None,
+        }
+    );
+    assert_eq!(
+        Outboxed::page(named(&["1", "2", "3"]), Some("2"), 1),
+        Outboxed {
+            total: 3,
+            notes: vec!["1".to_owned()],
+            next: None,
+        }
+    );
+    assert_eq!(
+        Outboxed::page(listed(&["1", "2"]), None, 2),
+        Outboxed {
+            total: 2,
+            notes: vec!["note", "note"],
+            next: None,
+        }
+    );
+    assert_eq!(
+        Outboxed::page(listed(&["1", "2", "3"]), Some("1"), 2),
+        Outboxed {
+            total: 3,
+            notes: Vec::new(),
+            next: None,
+        }
+    );
+}
+
+#[test]
+fn an_outbox_names_a_note_by_when_it_was_published_and_its_key() {
+    let key = Key::derive(&RouteId::new("r"), &herald_core::Identity::new("e"));
+    let at = Timestamp::from_second(1_700_000_000).unwrap();
+    let name = Outboxed::name(at, &key);
+    assert_eq!(name, format!("01700000000000000000.{key}"));
+    assert_eq!(Outboxed::key(&name), Some(key));
+    assert_eq!(Outboxed::key("01700000000000000000"), None);
+    assert_eq!(Outboxed::key("1.nope"), None);
+    assert!(Outboxed::is_name(&name));
+    assert!(Outboxed::name(Timestamp::UNIX_EPOCH, &key) < name);
+    for unnamed in [
+        format!("1700000000000000000.{key}"),
+        format!("0170000000000000000x.{key}"),
+        "01700000000000000000.nope".to_owned(),
+        "01700000000000000000".to_owned(),
+    ] {
+        assert!(!Outboxed::is_name(&unnamed), "{unnamed}");
+    }
+}

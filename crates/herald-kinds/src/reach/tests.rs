@@ -73,14 +73,6 @@ impl Reach for Plain {
     fn posts<'a>(&'a self, _: &'a dyn DynHttp) -> Box<dyn DynMarkers + 'a> {
         Box::new(Unread("plain reads nothing back"))
     }
-
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-
-    fn same(&self, other: &dyn Any) -> bool {
-        same(self, other)
-    }
 }
 
 /// Another kind, never the same as a [`Plain`].
@@ -118,15 +110,20 @@ impl Reach for Other {
     }
 
     fn posts<'a>(&'a self, _: &'a dyn DynHttp) -> Box<dyn DynMarkers + 'a> {
-        Box::new(Unread(""))
+        Box::new(Landed)
+    }
+}
+
+/// Posts that say every announcement landed, and open no thread.
+struct Landed;
+
+impl Markers for Landed {
+    async fn entry(&self, key: &Key, _: &Marker) -> Result<Option<Entry>, MarkersError> {
+        Ok(Some(Entry::new(*key)))
     }
 
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-
-    fn same(&self, other: &dyn Any) -> bool {
-        same(self, other)
+    async fn threads(&self, _: &Marker) -> Result<Vec<MarkedThread>, MarkersError> {
+        Ok(Vec::new())
     }
 }
 
@@ -222,7 +219,7 @@ fn a_reached_destination_sends_and_keeps_house_through_the_ports_it_is_handed() 
 }
 
 #[test]
-fn posts_a_destination_reads_none_of_are_unreadable_and_say_why() {
+fn a_destination_reads_back_what_landed_or_says_why_it_cannot() {
     let reached = Reached::new(Plain("https://plain.example"));
     let key = sample::announcement().key;
     let marker = Marker::of(&[1]);
@@ -241,5 +238,12 @@ fn posts_a_destination_reads_none_of_are_unreadable_and_say_why() {
     );
     assert_eq!(pollster::block_on(posts.threads(&marker)), Err(unreadable));
     let other = Reached::new(Other);
-    assert!(pollster::block_on(other.read(&Silent).threads(&marker)).is_err());
+    assert_eq!(
+        pollster::block_on(other.landed(&Silent, &key, &marker)),
+        Some(Entry::new(key))
+    );
+    assert_eq!(
+        pollster::block_on(other.read(&Silent).threads(&marker)),
+        Ok(Vec::new())
+    );
 }

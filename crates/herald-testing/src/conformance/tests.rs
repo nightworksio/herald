@@ -24,6 +24,8 @@ enum Fault {
     DuplicatesSchedules,
     IgnoresProjects,
     KeepsTheFirstSubscription,
+    ForgetsWhatAFollowAwaits,
+    KeepsTheFirstInbox,
     ForgetsOnlyTheSameSubscription,
     KeepsTheFirstPin,
     SharesPins,
@@ -39,6 +41,9 @@ enum Fault {
     SharesNotes,
     ForgetsTheOutbox,
     NamesNoNextPage,
+    NamesANextPageAtTheEnd,
+    ListsTheOldestFirst,
+    MiscountsTheOutbox,
     IgnoresWhereAPageEnded,
     SharesOutboxes,
     ListsARepublishedNoteTwice,
@@ -254,19 +259,26 @@ impl Subscriptions for Faulty {
 
     async fn subscribe(&self, subscription: &Subscription) -> Result<(), StoreError> {
         self.refuses()?;
-        if self.fault == Fault::KeepsTheFirstSubscription {
-            let held = self
-                .inner
-                .subscribers(&subscription.destination, &subscription.project)
-                .await?;
-            if held
-                .iter()
-                .any(|kept| kept.subscriber == subscription.subscriber)
-            {
-                return Ok(());
-            }
-        }
-        self.inner.subscribe(subscription).await
+        let held = self
+            .inner
+            .subscribers(&subscription.destination, &subscription.project)
+            .await?;
+        let earlier = held
+            .into_iter()
+            .find(|kept| kept.subscriber == subscription.subscriber);
+        let subscription = match (self.fault, earlier) {
+            (Fault::KeepsTheFirstSubscription, Some(_)) => return Ok(()),
+            (Fault::KeepsTheFirstInbox, Some(earlier)) => Subscription {
+                inbox: earlier.inbox,
+                ..subscription.clone()
+            },
+            (Fault::ForgetsWhatAFollowAwaits, _) => Subscription {
+                pending: None,
+                ..subscription.clone()
+            },
+            _ => subscription.clone(),
+        };
+        self.inner.subscribe(&subscription).await
     }
 
     async fn unsubscribe(&self, subscription: &Subscription) -> Result<(), StoreError> {
@@ -394,6 +406,11 @@ impl Notes for Faulty {
         match self.fault {
             Fault::ForgetsTheOutbox => return Ok(Outboxed::default()),
             Fault::NamesNoNextPage => page.next = None,
+            Fault::NamesANextPageAtTheEnd => {
+                page.next.get_or_insert_with(|| "end".to_owned());
+            }
+            Fault::ListsTheOldestFirst => page.notes.reverse(),
+            Fault::MiscountsTheOutbox => page.total += 1,
             _ => {}
         }
         Ok(page)
@@ -656,6 +673,14 @@ fn a_store_that_breaks_its_promises_on_the_run_s_records_is_refused() {
             "a subscriber subscribed again was not kept once, as subscribed last",
         ),
         (
+            Fault::ForgetsWhatAFollowAwaits,
+            "a subscriber subscribed again was not kept once, as subscribed last",
+        ),
+        (
+            Fault::KeepsTheFirstInbox,
+            "a subscriber subscribed again was not kept once, as subscribed last",
+        ),
+        (
             Fault::ForgetsOnlyTheSameSubscription,
             "a subscriber kept as subscribed otherwise was not forgotten",
         ),
@@ -736,6 +761,18 @@ fn a_store_that_breaks_its_promises_on_the_served_records_is_refused() {
         (
             Fault::NamesNoNextPage,
             "an outbox with more notes than a page named no next page",
+        ),
+        (
+            Fault::NamesANextPageAtTheEnd,
+            "an outbox's next page did not hold the notes older than the last",
+        ),
+        (
+            Fault::ListsTheOldestFirst,
+            "an actor's outbox did not list its newest notes first",
+        ),
+        (
+            Fault::MiscountsTheOutbox,
+            "an actor's outbox did not list its newest notes first",
         ),
         (
             Fault::IgnoresWhereAPageEnded,

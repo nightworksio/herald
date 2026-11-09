@@ -61,3 +61,70 @@ pub fn registration(
     said.push("herald prints these tokens only this once.".to_owned());
     Ok(said)
 }
+
+#[cfg(test)]
+mod tests {
+    use serde_json::json;
+
+    use super::*;
+
+    fn interactions(via: &str) -> Interactions {
+        serde_json::from_value(json!({
+            "via": via,
+            "homeserver_token": { "secret": "HERALD_MATRIX_HS" },
+            "appservice_token": { "secret": "HERALD_MATRIX_AS" },
+        }))
+        .unwrap()
+    }
+
+    #[test]
+    fn a_registration_reaches_herald_by_destination_and_names_the_tokens_to_keep() {
+        let options: DestinationOptions = serde_json::from_value(json!({
+            "homeserver": "https://matrix.example",
+            "token": { "secret": "HERALD_MATRIX_TOKEN" },
+        }))
+        .unwrap();
+        let pushed = interactions("appservice");
+        assert_eq!(installs("matrix", &pushed), Ok(()));
+        let said = registration(
+            "matrix",
+            &options,
+            &pushed,
+            "https://herald.example",
+            ("hs-token", "as-token"),
+        )
+        .unwrap();
+        let interacting = Interacting::new(
+            "https://matrix.example",
+            pushed.clone(),
+            Secret::new("the application service's token", "as-token"),
+        );
+        let mut expected = vec!["Keep the homeserver's token as HERALD_MATRIX_HS and the application service's token as HERALD_MATRIX_AS, then give the homeserver's administrator this registration:".to_owned()];
+        expected.extend(
+            interacting
+                .registration(
+                    "https://herald.example/matrix/matrix",
+                    "hs-token",
+                    "as-token",
+                )
+                .lines()
+                .map(str::to_owned),
+        );
+        expected.push("herald prints these tokens only this once.".to_owned());
+        assert_eq!(said, expected);
+        assert!(said.len() > 2);
+        let refused =
+            Err("matrix reads commands by syncing, so the homeserver installs nothing".to_owned());
+        assert_eq!(installs("matrix", &interactions("sync")), refused);
+        assert_eq!(
+            registration(
+                "matrix",
+                &options,
+                &interactions("sync"),
+                "https://herald.example",
+                ("hs-token", "as-token"),
+            ),
+            refused.map(|()| Vec::new())
+        );
+    }
+}

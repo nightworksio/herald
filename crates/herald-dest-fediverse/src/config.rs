@@ -1,8 +1,6 @@
-use std::any::Any;
-
 use herald_core::{Profile, SecretRef, Symbols, WaitOptions, Waits};
 use herald_kinds::{
-    DestinationConfig, DestinationKind, Fault, Placed, Placement, Placing, Reached, same,
+    DestinationConfig, DestinationKind, Fault, Placed, Placement, Placing, Reached,
 };
 use herald_ports::Secret;
 
@@ -52,14 +50,6 @@ impl DestinationConfig for DestinationOptions {
                 .waiting(self.waits()),
         ))
     }
-
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-
-    fn same(&self, other: &dyn Any) -> bool {
-        same(self, other)
-    }
 }
 
 impl DestinationConfig for ActorOptions {
@@ -101,46 +91,22 @@ impl DestinationConfig for ActorOptions {
                 .governed(self.policy()),
         ))
     }
-
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-
-    fn same(&self, other: &dyn Any) -> bool {
-        same(self, other)
-    }
 }
 
-impl Placement for RouteOptions {
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
+impl Placement for RouteOptions {}
 
-    fn same(&self, other: &dyn Any) -> bool {
-        same(self, other)
-    }
-}
-
-impl Placement for ActorRouteOptions {
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-
-    fn same(&self, other: &dyn Any) -> bool {
-        same(self, other)
-    }
-}
+impl Placement for ActorRouteOptions {}
 
 /// Mastodon, as a kind of destination.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MastodonKind {}
 
 impl DestinationKind for MastodonKind {
-    const NAME: &'static str = MASTODON;
-    const DESCRIPTION: &'static str = "An account on a server speaking the Mastodon client API.";
-    const LABEL: &'static str = "Mastodon";
-    const ROUTE: &'static str = "MastodonRoute";
-    const ROUTE_DESCRIPTION: &'static str = "A route to a Mastodon destination.";
+    const NAME: &str = MASTODON;
+    const DESCRIPTION: &str = "An account on a server speaking the Mastodon client API.";
+    const LABEL: &str = "Mastodon";
+    const ROUTE: &str = "MastodonRoute";
+    const ROUTE_DESCRIPTION: &str = "A route to a Mastodon destination.";
 
     type Options = DestinationOptions;
     type Route = RouteOptions;
@@ -159,12 +125,11 @@ impl DestinationKind for MastodonKind {
 pub enum ActorKind {}
 
 impl DestinationKind for ActorKind {
-    const NAME: &'static str = ACTIVITYPUB;
-    const DESCRIPTION: &'static str = "herald's own ActivityPub actors, on its domain.";
-    const LABEL: &'static str = "herald's ActivityPub actor";
-    const ROUTE: &'static str = "ActivityPubRoute";
-    const ROUTE_DESCRIPTION: &'static str =
-        "A route announcing as one of herald's own ActivityPub actors.";
+    const NAME: &str = ACTIVITYPUB;
+    const DESCRIPTION: &str = "herald's own ActivityPub actors, on its domain.";
+    const LABEL: &str = "herald's ActivityPub actor";
+    const ROUTE: &str = "ActivityPubRoute";
+    const ROUTE_DESCRIPTION: &str = "A route announcing as one of herald's own ActivityPub actors.";
 
     type Options = ActorOptions;
     type Route = ActorRouteOptions;

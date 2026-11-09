@@ -364,6 +364,60 @@ mod tests {
     }
 
     #[test]
+    fn an_id_with_no_domain_is_named_by_no_domain_and_admitted_only_where_all_are() {
+        let open = Policy::new(
+            Mode::Open,
+            &listed(&["example"]),
+            &[],
+            FollowerCaps::default(),
+        );
+        let allowing = Policy::new(
+            Mode::Allowlist,
+            &[],
+            &listed(&["example"]),
+            FollowerCaps::default(),
+        );
+        for unhosted in ["https://192.0.2.1/users/a", "not an id"] {
+            assert!(open.admits(unhosted), "{unhosted}");
+            assert!(!allowing.admits(unhosted), "{unhosted}");
+        }
+    }
+
+    #[test]
+    fn a_shared_list_is_read_only_where_its_file_has_the_digest_it_is_pinned_to() {
+        let csv = "spam.example,suspend\n";
+        let digest = herald_core::digest(csv);
+        let read = |file: &str| match file {
+            "blocks.csv" => Ok(csv.to_owned()),
+            "broken.csv" => Ok("sp*m.example\n".to_owned()),
+            _ => Err("no such file".to_owned()),
+        };
+        let list = |file: &str, sha256: &str| SharedList {
+            file: file.to_owned(),
+            sha256: sha256.to_owned(),
+        };
+        assert_eq!(
+            list("blocks.csv", &digest.to_ascii_uppercase()).read(&read),
+            Ok(listed(&["spam.example"]))
+        );
+        assert_eq!(
+            list("blocks.csv", "00").read(&read),
+            Err(format!(
+                "blocks.csv has the SHA-256 {digest}, not the 00 pinned; check the list, then pin its digest"
+            ))
+        );
+        assert_eq!(
+            list("gone.csv", &digest).read(&read),
+            Err("gone.csv could not be read: no such file".to_owned())
+        );
+        let broken = herald_core::digest("sp*m.example\n");
+        assert_eq!(
+            list("broken.csv", &broken).read(&read),
+            Err("broken.csv: line 1 names \"sp*m.example\", which is not a domain".to_owned())
+        );
+    }
+
+    #[test]
     fn a_long_list_names_an_actor_by_its_host_or_any_parent() {
         let entries: Vec<String> = (0..5_000).map(|n| format!("s{n}.example")).collect();
         let policy = Policy::new(Mode::Open, &entries, &[], FollowerCaps::default());

@@ -10,7 +10,7 @@ use herald_config::Config;
 use herald_core::{DestinationName, Sent, Subscription};
 use herald_crypto::RingSigner;
 use herald_environment::SystemClock;
-use herald_flows::{Connected, Decision, FollowError, Followed, decide, followers};
+use herald_flows::{Connected, Decision, FollowError, decide, followers};
 use herald_ports::{Clock as _, Keyring, Store as Keeps};
 
 use super::cli::Following;
@@ -28,13 +28,17 @@ struct Asked<'a> {
 }
 
 /// What was read or decided.
-enum Done {
+enum Done<'a> {
     Listed(Vec<Subscription>),
-    Decided(Followed),
+    Decided {
+        follower: &'a str,
+        decision: Decision,
+        answered: Sent,
+    },
 }
 
-impl Served for Asked<'_> {
-    type Done = Result<Done, FollowError>;
+impl<'a> Served for Asked<'a> {
+    type Done = Result<Done<'a>, FollowError>;
 
     async fn over<S: Keeps + Keyring>(self, store: &S) -> Self::Done {
         match self.decided {
@@ -52,7 +56,11 @@ impl Served for Asked<'_> {
                 decision,
             )
             .await
-            .map(Done::Decided),
+            .map(|answered| Done::Decided {
+                follower,
+                decision,
+                answered,
+            }),
         }
     }
 }
@@ -109,7 +117,11 @@ pub(crate) async fn following(
             listed(actor, &kept, out);
             DONE
         }
-        Done::Decided(followed) => told(&followed, out),
+        Done::Decided {
+            follower,
+            decision,
+            answered,
+        } => told(follower, decision, actor, &answered, out),
     })
 }
 
@@ -129,23 +141,19 @@ fn listed(actor: &str, kept: &[Subscription], out: &mut dyn Write) {
     }
 }
 
-/// What a decision did, and the code it ends with: one that the follower's
-/// inbox did not take the answer to stops.
-fn told(followed: &Followed, out: &mut dyn Write) -> u8 {
-    let (said, answered) = match followed {
-        Followed::Accepted {
-            follower,
-            actor,
-            answered,
-        } => (format!("{follower} follows {actor} now"), answered),
-        Followed::Rejected {
-            follower,
-            actor,
-            answered,
-        } => (format!("{follower} was turned away from {actor}"), answered),
-        Followed::Waiting { .. } | Followed::Undone { .. } | Followed::Ignored(_) => {
-            return DONE;
-        }
+/// What `decision` of `follower`'s follow of `actor` did, and the code it
+/// ends with: one that the follower's inbox did not take the answer to
+/// stops.
+fn told(
+    follower: &str,
+    decision: Decision,
+    actor: &str,
+    answered: &Sent,
+    out: &mut dyn Write,
+) -> u8 {
+    let said = match decision {
+        Decision::Approve => format!("{follower} follows {actor} now"),
+        Decision::Reject => format!("{follower} was turned away from {actor}"),
     };
     say(out, &said);
     let unanswered = match answered {

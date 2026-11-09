@@ -3,7 +3,7 @@ use herald_kinds::Federates;
 use herald_ports::{Http, Signer, Store, Subscriptions};
 use jiff::Timestamp;
 
-use crate::following::{FollowError, Followed, following, kept};
+use crate::following::{FollowError, answered, following, kept};
 use crate::prepare::Connected;
 
 /// What the operator decides of a follow waiting for approval.
@@ -56,7 +56,8 @@ pub async fn followers<S: Store, H>(
 
 /// Approves or rejects, as `decision` says, the follow of the actor `actor`
 /// of `destination` by `follower` that waits for the operator, and answers
-/// it signed at `now` through `signer`.
+/// it signed at `now` through `signer`: how the follower's inbox took the
+/// answer.
 ///
 /// # Errors
 ///
@@ -76,7 +77,7 @@ pub async fn decide<S: Store, G: Signer, H: Http>(
     actor: &str,
     follower: &str,
     decision: Decision,
-) -> Result<Followed, FollowError> {
+) -> Result<Sent, FollowError> {
     let (served, http) = served(connected, destination, actor)?;
     let kept = kept(store, served, destination).await?;
     let Some((waiting, id)) = kept.iter().find_map(|kept| {
@@ -91,7 +92,6 @@ pub async fn decide<S: Store, G: Signer, H: Http>(
     };
     let inbox = waiting.inbox.clone().unwrap_or_default();
     let subscriptions = store.subscriptions();
-    let stored = |error: herald_ports::StoreError| FollowError::Store(error.to_string());
     let answer = match decision {
         Decision::Approve => {
             if !served.room(follower, &following(served, &kept)) {
@@ -101,29 +101,15 @@ pub async fn decide<S: Store, G: Signer, H: Http>(
                 pending: None,
                 ..waiting.clone()
             };
-            subscriptions.subscribe(&approved).await.map_err(stored)?;
+            subscriptions.subscribe(&approved).await?;
             served.answer(id, follower, true)
         }
         Decision::Reject => {
-            subscriptions.unsubscribe(waiting).await.map_err(stored)?;
+            subscriptions.unsubscribe(waiting).await?;
             served.answer(id, follower, false)
         }
     };
-    let answered = served
-        .post(http, signer, now, &inbox, &answer)
-        .await
-        .unwrap_or_else(|error| Sent::Refused(error.to_string()));
-    let (follower, actor) = (follower.to_owned(), actor.to_owned());
-    Ok(match decision {
-        Decision::Approve => Followed::Accepted {
-            follower,
-            actor,
-            answered,
-        },
-        Decision::Reject => Followed::Rejected {
-            follower,
-            actor,
-            answered,
-        },
-    })
+    Ok(answered(
+        served.post(http, signer, now, &inbox, &answer).await,
+    ))
 }

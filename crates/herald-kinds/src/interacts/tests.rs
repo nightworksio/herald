@@ -7,7 +7,6 @@ use herald_core::{Command, DestinationName, Measure, Place, Replies, Wording};
 use herald_ports::{Method, Secrets, Text as Url};
 
 use super::*;
-use crate::same;
 
 /// A destination that takes commands and keeps every default.
 #[derive(Debug, PartialEq, Eq)]
@@ -55,14 +54,6 @@ impl Interacts for Plain {
         (response.status == 200)
             .then_some(())
             .ok_or_else(|| format!("{} answered {}", self.0, response.status))
-    }
-
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-
-    fn same(&self, other: &dyn Any) -> bool {
-        same(self, other)
     }
 }
 

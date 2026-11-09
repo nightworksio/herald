@@ -65,15 +65,15 @@ impl Placing<'_> {
 /// options for it, how each is checked, and how the schema names them.
 pub trait DestinationKind: 'static {
     /// The kind's name, as `[destinations.<name>] kind` writes it.
-    const NAME: &'static str;
+    const NAME: &str;
     /// What the kind is, as the schema describes a destination of it.
-    const DESCRIPTION: &'static str;
+    const DESCRIPTION: &str;
     /// The kind, as a route's error names it.
-    const LABEL: &'static str;
+    const LABEL: &str;
     /// The schema's name for a route to it.
-    const ROUTE: &'static str;
+    const ROUTE: &str;
     /// What the schema says of a route to it.
-    const ROUTE_DESCRIPTION: &'static str;
+    const ROUTE_DESCRIPTION: &str;
 
     /// The options its table reads into.
     type Options: DestinationConfig + Clone;

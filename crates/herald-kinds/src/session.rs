@@ -65,7 +65,7 @@ pub trait Session: Send {
 
     /// What it does on hearing the text frame `text` for `destination`.
     fn heard(&mut self, _destination: &DestinationName, _text: &str) -> Vec<Effect> {
-        Vec::new()
+        vec![]
     }
 
     /// What it does when its socket is closed with `code`, or lost.
@@ -75,7 +75,7 @@ pub trait Session: Send {
 
     /// What it does when its beat is due.
     fn beat(&mut self) -> Vec<Effect> {
-        Vec::new()
+        vec![]
     }
 
     /// What it does with the answer to a poll for `destination`.
@@ -88,9 +88,12 @@ pub trait Session: Send {
         _destination: &DestinationName,
         _response: &Response,
     ) -> Result<Vec<Effect>, String> {
-        Ok(Vec::new())
+        Ok(vec![])
     }
 
     /// What a failure to connect is said as, before its reason.
     fn unreachable(&self) -> &'static str;
 }
+
+#[cfg(test)]
+mod tests;

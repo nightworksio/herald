@@ -444,7 +444,7 @@ fn decided(
     script: &Script,
     actor: &str,
     decision: Decision,
-) -> Result<Followed, FollowError> {
+) -> Result<Sent, FollowError> {
     let secrets = FakeSecrets::default()
         .with("HERALD_ACTIVITYPUB_KEY", "the-key")
         .with("HERALD_DISCORD_TOKEN", "hunter2");
@@ -511,11 +511,7 @@ fn an_approved_follow_is_kept_and_accepted_at_its_inbox() {
             "php-mutation-gate",
             Decision::Approve
         ),
-        Ok(Followed::Accepted {
-            follower: ANA.to_owned(),
-            actor: "php-mutation-gate".to_owned(),
-            answered: Sent::Landed(Facts::default()),
-        })
+        Ok(Sent::Landed(Facts::default()))
     );
     assert_eq!(
         kept(&store),
@@ -571,11 +567,7 @@ fn a_rejected_follow_is_forgotten_and_rejected_at_its_inbox() {
             "php-mutation-gate",
             Decision::Reject
         ),
-        Ok(Followed::Rejected {
-            follower: ANA.to_owned(),
-            actor: "php-mutation-gate".to_owned(),
-            answered: Sent::Landed(Facts::default()),
-        })
+        Ok(Sent::Landed(Facts::default()))
     );
     assert_eq!(kept(&store), []);
     let rejected: serde_json::Value = serde_json::from_slice(&script.bodies()[0]).unwrap();

@@ -31,6 +31,7 @@ body = "{{ event.body }}"
 
 const ANA: &str = "https://social.example/users/ana";
 const BO: &str = "https://social.example/users/bo";
+const CY: &str = "https://social.example/users/cy";
 
 fn followed() -> Setup {
     let mut setup = setup(FOLLOWED);
@@ -132,6 +133,18 @@ fn a_waiting_follow_is_approved_or_rejected_and_answered_at_its_inbox() {
     );
     let listed = herald(&setup, &world, &asked("list", None));
     assert_eq!(listed.out, format!("follows: {ANA}\n"));
+    kept(&world, CY, Some("https://social.example/f/3"));
+    discord(&world, &[("/inbox", 503, "")]);
+    let unwell = herald(&setup, &world, &asked("approve", Some(CY)));
+    assert_eq!(
+        (unwell.code, unwell.out.as_str()),
+        (
+            STOPPED,
+            &*format!(
+                "{CY} follows gate now\nIts inbox did not take the answer, which was not sent again: it asked to wait 5s\n"
+            )
+        )
+    );
     let again = herald(&setup, &world, &asked("approve", Some(ANA)));
     assert_eq!(
         (again.code, again.err.as_str()),

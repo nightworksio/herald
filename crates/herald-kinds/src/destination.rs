@@ -1,4 +1,3 @@
-use std::any::Any;
 use std::fmt;
 use std::ops::Deref;
 use std::sync::Arc;
@@ -6,14 +5,14 @@ use std::sync::Arc;
 use herald_core::{Answering, Profile, SecretRef, Symbols, WaitOptions, Waits};
 use herald_ports::{Boxed, DynSecrets, Secret, SecretError};
 
-use crate::{Interacted, Placed, Reached};
+use crate::{Interacted, Itself, Placed, Reached};
 
 /// Why a route's posts are not read back, where nothing else says why.
 pub const UNREAD: &str = "a webhook cannot read back its posts";
 
 /// One destination's table in `herald.toml`, read: what every kind of
 /// destination's options are to the config and the flows that read it.
-pub trait DestinationConfig: fmt::Debug + Send + Sync + Any {
+pub trait DestinationConfig: fmt::Debug + Send + Sync + Itself {
     /// The kind's name, as `[destinations.<name>] kind` writes it.
     fn kind(&self) -> &'static str;
 
@@ -72,7 +71,7 @@ pub trait DestinationConfig: fmt::Debug + Send + Sync + Any {
     /// The domains its sessions connect under, where it holds any open
     /// (ADR-0016).
     fn session_domains(&self) -> Vec<&str> {
-        Vec::new()
+        vec![]
     }
 
     /// What a route placed as `placed` can do through it, as it is reached
@@ -94,12 +93,6 @@ pub trait DestinationConfig: fmt::Debug + Send + Sync + Any {
     ) -> Boxed<'a, Result<Option<Interacted>, SecretError>> {
         Box::pin(std::future::ready(Ok(None)))
     }
-
-    /// Itself, for code that reads one kind's own options.
-    fn as_any(&self) -> &dyn Any;
-
-    /// Whether `other` is the same options of the same kind.
-    fn same(&self, other: &dyn Any) -> bool;
 }
 
 /// How a destination's commands reach herald (ADR-0016).

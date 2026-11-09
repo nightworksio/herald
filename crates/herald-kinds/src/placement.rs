@@ -1,11 +1,12 @@
-use std::any::Any;
 use std::fmt;
 use std::ops::Deref;
 use std::sync::Arc;
 
+use crate::Itself;
+
 /// A route's own options for its destination's kind, read: where and how
 /// it announces there.
-pub trait Placement: fmt::Debug + Send + Sync + Any {
+pub trait Placement: fmt::Debug + Send + Sync + Itself {
     /// Whether every post opens a thread of its own, as a Discord forum's
     /// does, so the route takes `thread` whatever its destination's
     /// features say.
@@ -24,12 +25,6 @@ pub trait Placement: fmt::Debug + Send + Sync + Any {
     fn opt_in_role(&self) -> Option<String> {
         None
     }
-
-    /// Itself, for code that reads one kind's own options.
-    fn as_any(&self) -> &dyn Any;
-
-    /// Whether `other` is the same options of the same kind.
-    fn same(&self, other: &dyn Any) -> bool;
 }
 
 /// A route's options for its destination, of any kind.

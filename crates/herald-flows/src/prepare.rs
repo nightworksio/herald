@@ -615,12 +615,8 @@ mod tests {
         let interacting =
             pollster::block_on(slack.interacts(&Secret::new("HERALD_TOKEN", "token"), &secrets))
                 .unwrap();
-        let Some(interacting) = interacting
-            .as_ref()
-            .and_then(|interacting| interacting.of::<herald_dest_slack::Interacting>())
-        else {
-            panic!("Slack takes commands");
-        };
+        let interacting = interacting.unwrap();
+        let interacting = interacting.of::<herald_dest_slack::Interacting>().unwrap();
         assert_eq!(
             (interacting.api(), interacting.hooks()),
             ("https://slack-gov.com/api", "https://hooks.slack-gov.com")

@@ -36,10 +36,12 @@ struct Known {
     fetched: Timestamp,
 }
 
-/// A Note as it is kept: the actor that published it and when, beside it.
+/// A Note as it is kept: the actor that published it, the announcement it
+/// is of and when, beside it.
 #[derive(Serialize, Deserialize)]
 struct Published {
     actor: String,
+    key: Key,
     note: String,
     at: Timestamp,
 }
@@ -427,6 +429,7 @@ impl<R: Records> Notes for Kept<R> {
         }
         let published = Published {
             actor: actor.to_owned(),
+            key: *key,
             note: note.to_owned(),
             at,
         };
@@ -467,14 +470,12 @@ impl<R: Records> Notes for Kept<R> {
         for path in self.records.list(paths::NOTES).await? {
             let published = self.listed::<Published>(&path).await?;
             if let Some(published) = published.filter(|published| published.value.at < before) {
-                if let Some(key) = paths::noted_key(&path) {
-                    self.removed(&paths::outboxed(
-                        &published.value.actor,
-                        published.value.at,
-                        &key,
-                    ))
-                    .await?;
-                }
+                self.removed(&paths::outboxed(
+                    &published.value.actor,
+                    published.value.at,
+                    &published.value.key,
+                ))
+                .await?;
                 self.removed(&path).await?;
             }
         }

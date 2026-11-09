@@ -1,7 +1,5 @@
-use std::any::Any;
-
 use herald_core::{Announcement, Chore, Delivery, Entry, Profile, Sent, Step};
-use herald_kinds::{Reach, Signing, same};
+use herald_kinds::{Reach, Signing};
 use herald_ports::{Boxed, DynHttp, DynMarkers, Erased, HttpError};
 
 use crate::discord::Discord;
@@ -41,13 +39,5 @@ impl Reach for Discord {
 
     fn posts<'a>(&'a self, http: &'a dyn DynHttp) -> Box<dyn DynMarkers + 'a> {
         Box::new(DiscordMarkers::new(self, Erased(http)))
-    }
-
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-
-    fn same(&self, other: &dyn Any) -> bool {
-        same(self, other)
     }
 }

@@ -1,12 +1,10 @@
-use std::any::Any;
-
 use herald_core::{Profile, SecretRef, Symbols, WaitOptions, Waits};
 use herald_ports::Secret;
 use jiff::SignedDuration;
 
 use super::*;
 use crate::reach::tests::{PROFILE, Plain as Reaching};
-use crate::{Placed, Placement, Reached, same};
+use crate::{Placed, Placement, Reached};
 
 /// Options of a kind that keeps every default.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -48,14 +46,6 @@ impl DestinationConfig for Plain {
         } else {
             "https://based.example"
         })))
-    }
-
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-
-    fn same(&self, other: &dyn Any) -> bool {
-        same(self, other)
     }
 }
 
@@ -102,29 +92,13 @@ impl DestinationConfig for Patient {
     fn reach(&self, _: &Placed, _: &str, _: Secret) -> Option<Reached> {
         None
     }
-
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-
-    fn same(&self, other: &dyn Any) -> bool {
-        same(self, other)
-    }
 }
 
 /// A route's options of the plain kind, which keep every default.
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct Spot(&'static str);
 
-impl Placement for Spot {
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-
-    fn same(&self, other: &dyn Any) -> bool {
-        same(self, other)
-    }
-}
+impl Placement for Spot {}
 
 /// A route's options of another kind, which names its place.
 #[derive(Debug, PartialEq, Eq)]
@@ -141,14 +115,6 @@ impl Placement for Room {
 
     fn opt_in_role(&self) -> Option<String> {
         Some("role".to_owned())
-    }
-
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-
-    fn same(&self, other: &dyn Any) -> bool {
-        same(self, other)
     }
 }
 

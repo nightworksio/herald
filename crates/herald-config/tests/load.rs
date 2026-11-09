@@ -333,6 +333,12 @@ body = "{{ event.body }}"
             refused.starts_with("herald.toml:20:12 routes[0].versions: feed entries and app messages carry no version"),
             "{refused}"
         );
+        let unplaced = errors(&feeds.replace("channel = \"1566184281406177531\"\n", ""));
+        assert!(
+            unplaced.contains("routes[0]: a Discord bot posts to a channel"),
+            "{unplaced}"
+        );
+        assert!(!unplaced.contains("routes[0].versions"), "{unplaced}");
     }
 
     #[test]

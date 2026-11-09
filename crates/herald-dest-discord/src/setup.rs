@@ -93,3 +93,82 @@ pub fn said(
             .collect(),
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use serde_json::json;
+
+    use super::*;
+
+    const GUILD: &str = "223456789012345678";
+
+    fn interactions(guild: Option<&str>) -> Interactions {
+        serde_json::from_value(json!({
+            "application": "123456789012345678",
+            "via": "gateway",
+            "commands": ["latest", "subscribe"],
+            "guild": guild,
+        }))
+        .unwrap()
+    }
+
+    fn response(status: u16, body: &serde_json::Value) -> Response {
+        Response {
+            status,
+            headers: Vec::new(),
+            body: body.to_string().into_bytes(),
+        }
+    }
+
+    #[test]
+    fn what_is_said_of_a_task_names_the_commands_and_roles_discord_answered_with() {
+        let done = response(200, &json!([]));
+        assert_eq!(
+            said(&interactions(None), Task::Commands, &done),
+            Ok(vec![
+                "Registered latest, subscribe with Discord in every server the application is in."
+                    .to_owned()
+            ])
+        );
+        assert_eq!(
+            said(&interactions(Some(GUILD)), Task::Commands, &done),
+            Ok(vec![format!(
+                "Registered latest, subscribe with Discord in the server {GUILD}."
+            )])
+        );
+        assert_eq!(
+            said(
+                &interactions(None),
+                Task::Commands,
+                &response(403, &json!({ "message": "Missing Access" }))
+            ),
+            Err("Discord answered 403: Missing Access".to_owned())
+        );
+        let role = json!({ "id": "523456789012345678", "name": "releases" });
+        assert_eq!(
+            said(
+                &interactions(None),
+                Task::Roles {
+                    guild: GUILD,
+                    create: Some("releases")
+                },
+                &response(200, &role)
+            ),
+            Ok(vec![
+                "Made the role releases. Offer it on a route with:".to_owned(),
+                "subscribe = { role = \"523456789012345678\" }".to_owned(),
+            ])
+        );
+        assert_eq!(
+            said(
+                &interactions(None),
+                Task::Roles {
+                    guild: GUILD,
+                    create: None
+                },
+                &response(200, &json!([role]))
+            ),
+            Ok(vec!["523456789012345678  releases".to_owned()])
+        );
+    }
+}
