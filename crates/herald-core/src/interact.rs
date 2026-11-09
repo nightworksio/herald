@@ -217,12 +217,6 @@ pub enum Unchosen {
     },
 }
 
-impl fmt::Display for Unchosen {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&crate::wording::Wording::default().say(&Said::Unchosen(self.clone())))
-    }
-}
-
 /// A project announced where a command was given, and the first route that
 /// announced it there.
 #[derive(Debug, PartialEq, Eq)]

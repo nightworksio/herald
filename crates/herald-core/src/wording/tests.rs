@@ -99,8 +99,23 @@ fn a_phrase_that_cannot_be_said_is_refused_and_one_that_fails_later_falls_back()
         let error = Wording::check(&worded(&[(phrase, text)])).unwrap_err();
         assert!(error.starts_with(refused), "{error}");
     }
-    let long = "a".repeat(101);
+    let long = "a".repeat(Phrase::DESCRIPTION + 1);
     assert!(Wording::check(&worded(&[(Phrase::DescribeGroup, long.as_str())])).is_err());
+    let longest = "a".repeat(Phrase::LABEL);
+    let longer = "a".repeat(Phrase::LABEL + 1);
+    let most = format!("takes 1 to {} characters", Phrase::LABEL);
+    for label in [
+        Phrase::ReleaseLink,
+        Phrase::ChangelogLink,
+        Phrase::SubscribeButton,
+    ] {
+        assert_eq!(
+            Wording::check(&worded(&[(label, longest.as_str())])),
+            Ok(())
+        );
+        let error = Wording::check(&worded(&[(label, longer.as_str())])).unwrap_err();
+        assert!(error.ends_with(&most), "{error}");
+    }
     assert_eq!(
         Wording::check(&worded(&[(Phrase::Nothing, "Niets.")])),
         Ok(())
@@ -108,6 +123,20 @@ fn a_phrase_that_cannot_be_said_is_refused_and_one_that_fails_later_falls_back()
     let failing = Wording::of(Some(&worded(&[(Phrase::Unavailable, "{{ 1 / 0 }}")])));
     assert_eq!(
         failing.say(&Said::Unavailable),
+        Phrase::Unavailable.default_text()
+    );
+}
+
+#[test]
+fn a_phrase_is_rendered_with_herald_s_filters_and_within_its_sandbox() {
+    let endless = "{% for i in range(9999) %}{% for j in range(9999) %}x{% endfor %}{% endfor %}";
+    let wording = Wording::of(Some(&worded(&[
+        (Phrase::Subscribed, "{{ project | upper }}"),
+        (Phrase::Unavailable, endless),
+    ])));
+    assert_eq!(wording.say(&Said::Subscribed("p".to_owned())), "P");
+    assert_eq!(
+        wording.say(&Said::Unavailable),
         Phrase::Unavailable.default_text()
     );
 }

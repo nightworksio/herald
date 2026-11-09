@@ -741,12 +741,14 @@ mod tests {
             &secrets,
         ))
         .unwrap();
-        let Some(Interacting::Slack { interacting, .. }) = interacting else {
-            panic!("Slack takes commands");
-        };
-        assert_eq!(
-            (interacting.api(), interacting.hooks()),
-            ("https://slack-gov.com/api", "https://hooks.slack-gov.com")
+        assert!(
+            matches!(
+                &interacting,
+                Some(Interacting::Slack { interacting, .. })
+                    if (interacting.api(), interacting.hooks())
+                        == ("https://slack-gov.com/api", "https://hooks.slack-gov.com")
+            ),
+            "{interacting:?}"
         );
     }
 }

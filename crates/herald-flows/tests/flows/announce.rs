@@ -1,6 +1,6 @@
 use herald_config::{Config, load};
 use herald_core::{Chore, Entry, Identity, Key, RouteId, SourceName, Step};
-use herald_flows::{Outcome, Ports, PrepareError, Stop, announce, prepare};
+use herald_flows::{Announced, Outcome, Ports, PrepareError, Stop, announce, prepare};
 use herald_ports::{Announcements, Ledger, Pins, Schedules};
 use herald_testing::{FakeClock, FakeSecrets, FakeSigner};
 use jiff::SignedDuration;
@@ -372,6 +372,37 @@ fn a_post_an_earlier_run_attempted_and_the_channel_does_not_show_is_sent_again()
     assert_eq!(outcome(&second), &Outcome::Sent { steps: all() });
 }
 
+/// What announcing `v1` from `gate` as `config` routes it does, through a
+/// Discord webhook named `HOOK`, and the script that answered it.
+fn hooked(config: &Config, store: &Failing) -> (Vec<Announced>, Script) {
+    let prepared = pollster::block_on(prepare(
+        config,
+        &FakeSecrets::default().with("HOOK", "https://discord.com/api/webhooks/1/x"),
+        &FakeSigner,
+    ))
+    .unwrap();
+    let script = Script::answering(&[(
+        "«secret:HOOK»?wait=true&with_components=true",
+        200,
+        r#"{"id":"5","channel_id":"6"}"#,
+    )]);
+    let connected = prepared.connect(|_| Ok::<_, ()>(script.clone())).unwrap();
+    let ports = Ports {
+        store,
+        clock: &FakeClock::at(NOON),
+        signer: &FakeSigner,
+    };
+    let announced = pollster::block_on(announce(
+        config,
+        &connected,
+        &ports,
+        &SourceName::new("gate"),
+        &event("v1"),
+        "r1",
+    ));
+    (announced, script)
+}
+
 #[test]
 fn a_webhook_destination_posts_and_opens_no_thread_to_keep() {
     let text = r#"version = 1
@@ -394,31 +425,7 @@ body = "{{ event.body }}"
 "#;
     let config = load("herald.toml", text, &|_| Err(String::new())).unwrap();
     let store = healthy();
-    let prepared = pollster::block_on(prepare(
-        &config,
-        &FakeSecrets::default().with("HOOK", "https://discord.com/api/webhooks/1/x"),
-        &FakeSigner,
-    ))
-    .unwrap();
-    let script = Script::answering(&[(
-        "«secret:HOOK»?wait=true&with_components=true",
-        200,
-        r#"{"id":"5","channel_id":"6"}"#,
-    )]);
-    let connected = prepared.connect(|_| Ok::<_, ()>(script.clone())).unwrap();
-    let ports = Ports {
-        store: &store,
-        clock: &FakeClock::at(NOON),
-        signer: &FakeSigner,
-    };
-    let announced = pollster::block_on(announce(
-        &config,
-        &connected,
-        &ports,
-        &SourceName::new("gate"),
-        &event("v1"),
-        "r1",
-    ));
+    let (announced, _) = hooked(&config, &store);
     assert_eq!(
         outcome(&announced),
         &Outcome::Sent {
@@ -458,31 +465,7 @@ body = "{{ event.body }}"
         thread.archive_after = Some(SignedDuration::from_hours(24));
     }
     let store = healthy();
-    let prepared = pollster::block_on(prepare(
-        &config,
-        &FakeSecrets::default().with("HOOK", "https://discord.com/api/webhooks/1/x"),
-        &FakeSigner,
-    ))
-    .unwrap();
-    let script = Script::answering(&[(
-        "«secret:HOOK»?wait=true&with_components=true",
-        200,
-        r#"{"id":"5","channel_id":"6"}"#,
-    )]);
-    let connected = prepared.connect(|_| Ok::<_, ()>(script.clone())).unwrap();
-    let ports = Ports {
-        store: &store,
-        clock: &FakeClock::at(NOON),
-        signer: &FakeSigner,
-    };
-    let announced = pollster::block_on(announce(
-        &config,
-        &connected,
-        &ports,
-        &SourceName::new("gate"),
-        &event("v1"),
-        "r1",
-    ));
+    let (announced, _) = hooked(&config, &store);
     assert_eq!(
         outcome(&announced),
         &Outcome::Sent {
@@ -493,6 +476,39 @@ body = "{{ event.body }}"
         pollster::block_on(store.every_schedule()).unwrap(),
         Vec::new()
     );
+}
+
+#[test]
+fn a_post_writes_the_symbols_its_destination_sets_where_its_markup_has_none() {
+    let text = r#"version = 1
+[store]
+kind = "sqlite"
+[destinations.hook]
+kind = "discord"
+webhook = { secret = "HOOK" }
+symbols = { done = "✓" }
+[sources.gate]
+kind = "github"
+repository = "o/r"
+[[routes]]
+id = "hooked"
+sources = ["gate"]
+destination = "hook"
+template = "t"
+[templates.t]
+title = "{{ event.title }}"
+body = "- [x] {{ event.version }}"
+"#;
+    let config = load("herald.toml", text, &|_| Err(String::new())).unwrap();
+    let (announced, script) = hooked(&config, &healthy());
+    assert_eq!(
+        outcome(&announced),
+        &Outcome::Sent {
+            steps: vec![Step::Post]
+        }
+    );
+    let posted = String::from_utf8(script.bodies().concat()).unwrap();
+    assert!(posted.contains("✓ v1"), "{posted}");
 }
 
 #[test]

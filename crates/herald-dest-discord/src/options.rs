@@ -90,3 +90,26 @@ impl RouteOptions {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::look::Colour;
+
+    #[test]
+    fn its_posts_look_as_its_colours_and_archive_length_say() {
+        let options: DestinationOptions = serde_json::from_value(serde_json::json!({
+            "colours": { "release": "#000001" },
+            "archive_after": "1h",
+        }))
+        .unwrap();
+        assert_eq!(
+            options.look(),
+            Look {
+                release: Colour(1),
+                prerelease: Look::DEFAULT.prerelease,
+                archive_after: ArchiveAfter::Hour,
+            }
+        );
+    }
+}

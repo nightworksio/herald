@@ -115,3 +115,32 @@ fn workspace_id(team: &str) -> bool {
                 .all(|byte| byte.is_ascii_uppercase() || byte.is_ascii_digit())
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn team(team: &str) -> Result<(), String> {
+        serde_json::from_value::<DestinationOptions>(serde_json::json!({ "team": team }))
+            .unwrap()
+            .team()
+    }
+
+    #[test]
+    fn a_workspace_is_named_by_its_id() {
+        for written in ["T0123456789", "T01", "TAB"] {
+            assert_eq!(team(written), Ok(()), "{written}");
+        }
+        let unnamed: DestinationOptions = serde_json::from_str("{}").unwrap();
+        assert_eq!(unnamed.team(), Ok(()));
+        for written in ["T", "T0", "t0123456789", "T01x", "X0123456789", "T01-2"] {
+            assert_eq!(
+                team(written),
+                Err(format!(
+                    "\"{written}\" is not a workspace id; give the workspace's id, a T and its letters and digits, such as \"T0123456789\""
+                )),
+                "{written}"
+            );
+        }
+    }
+}

@@ -65,3 +65,16 @@ fn prefixes_senders_and_commands_written_wrongly_are_refused() {
     );
     assert!(read(r#"{"via": "sync", "commands": []}"#).check().is_err());
 }
+
+#[test]
+fn what_it_says_is_worded_as_the_config_words_it_and_refused_where_it_cannot_be_said() {
+    let worded = read(r#"{"via": "sync", "wording": {"nothing": "Niets."}}"#);
+    assert_eq!(worded.check(), Ok(()));
+    assert_eq!(worded.answering().wording.text(Phrase::Nothing), "Niets.");
+    assert!(
+        read(r#"{"via": "sync", "wording": {"nothing": "{{ project"}}"#)
+            .check()
+            .unwrap_err()
+            .starts_with("wording.nothing is not a template")
+    );
+}

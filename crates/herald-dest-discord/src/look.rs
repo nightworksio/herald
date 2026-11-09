@@ -153,6 +153,19 @@ mod tests {
     }
 
     #[test]
+    fn the_schema_holds_a_colour_to_its_pattern() {
+        let schema = schemars::schema_for!(Colour);
+        assert_eq!(
+            schema.get("pattern").and_then(|pattern| pattern.as_str()),
+            Some("^#[0-9A-Fa-f]{6}$")
+        );
+        assert_eq!(
+            schema.get("type").and_then(|kind| kind.as_str()),
+            Some("string")
+        );
+    }
+
+    #[test]
     fn a_thread_stays_open_for_one_of_discord_s_four_lengths() {
         for (written, minutes) in [("1h", 60), ("1d", 1_440), ("3d", 4_320), ("1w", 10_080)] {
             assert_eq!(

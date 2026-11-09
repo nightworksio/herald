@@ -114,3 +114,12 @@ fn a_subscribe_carries_a_button_unless_it_says_not() {
     let plain: Subscribe = serde_json::from_str("{}").unwrap();
     assert!(plain.button);
 }
+
+#[test]
+fn what_it_says_is_worded_as_the_config_words_it() {
+    let worded = read(&format!(
+        r#"{SIGNED}, "wording": {{"nothing": "Niets."}}}}"#
+    ));
+    assert_eq!(worded.check(), Ok(()));
+    assert_eq!(worded.answering().wording.text(Phrase::Nothing), "Niets.");
+}

@@ -528,7 +528,9 @@ fn the_destination_says_how_it_carries_and_answers_commands() {
         interacting(r#", "domains": ["proxy.example"]"#).session_domains(),
         [SESSION_DOMAIN, "proxy.example"]
     );
+    assert_eq!(interacting(r#", "os": "freebsd""#).os(), Some("freebsd"));
     let interacting = interacting(r#", "replies": "public""#);
+    assert_eq!(interacting.os(), None);
     assert_eq!(interacting.via(), Via::Http);
     assert_eq!(interacting.key(), Some(KEY));
     assert_eq!(interacting.answering().replies, Replies::Public);
