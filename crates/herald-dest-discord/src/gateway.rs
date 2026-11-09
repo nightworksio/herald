@@ -90,13 +90,16 @@ impl Gateway {
         }
     }
 
-    /// The session, identifying to Discord as running on `os`, in place of
-    /// the host's own.
+    /// The session, identifying to Discord as running on `os` where it
+    /// names one, in place of the host's own.
     #[must_use]
-    pub fn identifying_as(self, os: &str) -> Self {
-        Self {
-            os: os.to_owned(),
-            ..self
+    pub fn identifying_as(self, os: Option<&str>) -> Self {
+        match os {
+            Some(os) => Self {
+                os: os.to_owned(),
+                ..self
+            },
+            None => self,
         }
     }
 

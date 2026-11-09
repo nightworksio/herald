@@ -74,9 +74,15 @@ fn a_session_identifies_on_hello_and_beats_as_often_as_discord_says() {
 
 #[test]
 fn a_session_identifies_as_the_operating_system_the_config_names() {
-    let mut gateway = Gateway::new(token(), &[SESSION_DOMAIN]).identifying_as("freebsd");
+    let mut gateway = Gateway::new(token(), &[SESSION_DOMAIN]).identifying_as(Some("freebsd"));
     let effects = hello(&mut gateway);
     assert_eq!(sent(&effects[1])["d"]["properties"]["os"], "freebsd");
+    let mut host = Gateway::new(token(), &[SESSION_DOMAIN]).identifying_as(None);
+    let effects = hello(&mut host);
+    assert_eq!(
+        sent(&effects[1])["d"]["properties"]["os"],
+        std::env::consts::OS
+    );
 }
 
 #[test]

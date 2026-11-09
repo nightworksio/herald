@@ -213,11 +213,8 @@ where
                     if discord.via() == herald_dest_discord::Via::Gateway =>
                 {
                     if let Some(bot) = discord.bot() {
-                        let gateway = Gateway::new(bot.clone(), &discord.session_domains());
-                        let gateway = match discord.os() {
-                            Some(os) => gateway.identifying_as(os),
-                            None => gateway,
-                        };
+                        let gateway = Gateway::new(bot.clone(), &discord.session_domains())
+                            .identifying_as(discord.os());
                         sessions.push(Box::pin(
                             self.gateway(sockets, name, discord, gateway, http),
                         ));
