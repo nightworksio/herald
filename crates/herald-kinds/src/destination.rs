@@ -8,6 +8,9 @@ use herald_ports::{Boxed, DynSecrets, Secret, SecretError};
 
 use crate::{Interacted, Placed, Reached};
 
+/// Why a route's posts are not read back, where nothing else says why.
+pub const UNREAD: &str = "a webhook cannot read back its posts";
+
 /// One destination's table in `herald.toml`, read: what every kind of
 /// destination's options are to the config and the flows that read it.
 pub trait DestinationConfig: fmt::Debug + Send + Sync + Any {
@@ -52,6 +55,12 @@ pub trait DestinationConfig: fmt::Debug + Send + Sync + Any {
     /// (ADR-0016).
     fn carried(&self) -> Option<Carried> {
         None
+    }
+
+    /// Why a route's posts through it are not read back, where its profile
+    /// says they are not.
+    fn unread_why(&self) -> &'static str {
+        UNREAD
     }
 
     /// Whether it is one of herald's own actors: its followers are kept, its

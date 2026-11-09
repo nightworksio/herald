@@ -103,6 +103,10 @@ fn an_interacting_destination_is_its_kind_equal_only_to_the_same_and_keeps_every
     );
     assert_eq!(interacted.api(), "https://plain.example");
     assert_eq!(interacted.sessions(), None);
+    assert!(!interacted.gives_roles());
+    assert_eq!(interacted.role("1", "2", "3", true), None);
+    assert!(interacted.session().is_none());
+    assert_eq!(interacted.complete(&Replying::new(1_u8), &[]), None);
     assert_eq!(interacted.posted(Endpoint::Posted), None);
     assert_eq!(interacted.posted(Endpoint::Pushed), None);
     assert_eq!(interacted.choices(&["herald".to_owned()]), "");

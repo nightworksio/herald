@@ -59,6 +59,19 @@ pub trait Interacts: fmt::Debug + Send + Sync + Any {
         Read::Missing("such path")
     }
 
+    /// Whether it keeps subscriptions as roles it gives members, rather
+    /// than in herald's store.
+    fn gives_roles(&self) -> bool {
+        false
+    }
+
+    /// The request giving `role` to `user` in `guild`, or taking it back
+    /// unless `give`; none where an id is not written as its platform
+    /// writes one.
+    fn role(&self, _guild: &str, _user: &str, _role: &str, _give: bool) -> Option<Request> {
+        None
+    }
+
     /// The session it holds to carry commands, where it holds one.
     fn session(&self) -> Option<Box<dyn Session + '_>> {
         None

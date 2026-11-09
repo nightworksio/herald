@@ -9,7 +9,7 @@ mod placement;
 mod reach;
 mod session;
 
-pub use destination::{Carried, Destination, DestinationConfig};
+pub use destination::{Carried, Destination, DestinationConfig, UNREAD};
 pub use interacts::{Endpoint, Interacted, Interacts, Post, Read, Replying, Said, optional};
 pub use kind::{DestinationKind, Fault, Placing};
 pub use placement::{Placed, Placement};

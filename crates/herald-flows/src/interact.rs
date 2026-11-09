@@ -237,7 +237,7 @@ async fn subscribing<S: Store, H: Http>(
             Said::Unsubscribed(project.clone())
         })
     };
-    if let Some(discord) = interacting.of::<herald_dest_discord::Interacting>() {
+    if interacting.gives_roles() {
         let mut roles: Vec<String> = Vec::new();
         for role in routes
             .iter()
@@ -256,7 +256,7 @@ async fn subscribing<S: Store, H: Http>(
             Err(said) => return Reply::Told(said(project)),
         };
         for role in &roles {
-            let Some(request) = discord.role(&member.guild, &asked.user, role, give) else {
+            let Some(request) = interacting.role(&member.guild, &asked.user, role, give) else {
                 return Reply::unavailable(
                     "a role could not be asked of Discord: an id is not written as Discord writes one",
                 );

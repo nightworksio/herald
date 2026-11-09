@@ -7,7 +7,7 @@ use herald_core::{
 };
 use herald_kinds::{
     Carried, DestinationConfig, DestinationKind, Endpoint, Fault, Interacted, Interacts, Placed,
-    Placement, Placing, Post, Reached, Read, Replying, Said, Session, same,
+    Placement, Placing, Post, Reached, Read, Replying, Said, Session, UNREAD, same,
 };
 use herald_ports::{Boxed, DynSecrets, Request, Response, Secret, SecretError};
 
@@ -103,6 +103,14 @@ impl DestinationConfig for DestinationOptions {
                 self.api.as_deref(),
             ))
         }))))
+    }
+
+    fn unread_why(&self) -> &'static str {
+        if self.token.is_some() {
+            "a forum's posts are not read back"
+        } else {
+            UNREAD
+        }
     }
 
     fn as_any(&self) -> &dyn Any {
@@ -292,6 +300,14 @@ impl Interacts for Interacting {
         replying
             .of::<interact::Replying>()
             .map(|replying| Self::complete(self, replying, projects))
+    }
+
+    fn gives_roles(&self) -> bool {
+        true
+    }
+
+    fn role(&self, guild: &str, user: &str, role: &str, give: bool) -> Option<Request> {
+        Self::role(self, guild, user, role, give)
     }
 
     fn as_any(&self) -> &dyn Any {

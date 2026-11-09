@@ -130,18 +130,12 @@ fn unpinned(config: &Config, index: usize, route: &RouteConfig, gaps: &mut Vec<G
 }
 
 fn unkept(config: &Config, index: usize, route: &RouteConfig, gaps: &mut Vec<Gap>) {
-    let bot = config
-        .destinations
-        .get(&route.route.destination)
-        .and_then(|destination| destination.of::<herald_dest_discord::DestinationOptions>())
-        .is_some_and(|options| options.token.is_some());
     let key = |field: &str| format!("routes[{index}].{field}");
     if !route.profile.features.reads_back {
-        let cannot = if bot {
-            "a forum's posts are not read back"
-        } else {
-            "a webhook cannot read back its posts"
-        };
+        let cannot = config
+            .destinations
+            .get(&route.route.destination)
+            .map_or(herald_kinds::UNREAD, |destination| destination.unread_why());
         gaps.push(gap(
             "sending each announcement once",
             key("destination"),
