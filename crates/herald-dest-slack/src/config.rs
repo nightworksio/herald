@@ -1,5 +1,5 @@
 use herald_core::{
-    Answering, DestinationName, Dialect, Measure, Profile, Room, Scheme, SecretRef, Symbols, Text,
+    Answering, DestinationName, Markup, Measure, Profile, Room, Scheme, SecretRef, Symbols, Text,
     WaitOptions,
 };
 use herald_kinds::{
@@ -192,9 +192,9 @@ impl Interacts for Interacting {
         Self::answering(self)
     }
 
-    fn room(&self) -> (Dialect, Room) {
+    fn room(&self) -> (Markup, Room) {
         (
-            Dialect::Slack,
+            slack::MARKUP,
             Room {
                 measure: Measure::Chars,
                 first: SECTION,

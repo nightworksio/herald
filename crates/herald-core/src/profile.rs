@@ -1,14 +1,92 @@
-/// The markup a destination renders.
+/// The markup a destination renders, as data: how its text is escaped,
+/// how links, headings, emphasis, code and list items are written, and
+/// whether HTML is written beside a plain body.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Dialect {
-    /// Discord's Markdown.
-    Discord,
-    /// Slack's `mrkdwn`.
-    Slack,
-    /// Matrix's HTML, beside a plain body.
-    Matrix,
-    /// Plain text, as Mastodon shows it.
-    Plain,
+pub struct Markup {
+    /// How text is escaped, and inline code written.
+    pub escape: Escape,
+    /// How a link is written.
+    pub links: Links,
+    /// How a heading is written.
+    pub heading: Heading,
+    /// The marks around emphasis, strong text and struck text.
+    pub marks: Emphases,
+    /// How a code block is fenced.
+    pub fences: Fences,
+    /// How a list item without a number starts.
+    pub bullet: Bullet,
+    /// Whether HTML is written beside the plain body.
+    pub html: bool,
+    /// The prefix of links that mention rather than lead somewhere, which
+    /// are never kept as links.
+    pub pills: Option<&'static str>,
+}
+
+/// How text is escaped, and inline code written.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Escape {
+    /// Every ASCII punctuation mark but `@` behind a backslash, each sigil
+    /// broken from what follows; inline code fenced in backticks.
+    Backslash,
+    /// `&`, `<` and `>` written as entities; inline code fenced in one
+    /// backtick where it holds none.
+    Entities,
+    /// Nothing escaped and nothing fenced: every mention and markup
+    /// character neutralised.
+    Neutral,
+}
+
+/// How a link is written.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Links {
+    /// Its text, then its target in parentheses and angle brackets.
+    Bracketed,
+    /// Its target and its text in angle brackets, split by a pipe.
+    Piped,
+    /// Its text, then its target spelled out in parentheses.
+    Spelled,
+}
+
+/// How a heading is written.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Heading {
+    /// Behind as many hashes as its level, at most this many.
+    Hashes(u8),
+    /// Between these marks.
+    Wrapped(&'static str),
+    /// As plain text.
+    Bare,
+}
+
+/// The marks around emphasis, strong text and struck text.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Emphases {
+    /// Around emphasis.
+    pub emphasis: &'static str,
+    /// Around strong text.
+    pub strong: &'static str,
+    /// Around struck text.
+    pub strike: &'static str,
+}
+
+/// How a code block is fenced.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Fences {
+    /// In backticks, naming its language.
+    Labelled,
+    /// In backticks.
+    Bare,
+    /// Not at all.
+    None,
+}
+
+/// How a list item without a number starts.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Bullet {
+    /// With this marker, whatever the symbols say.
+    Fixed(&'static str),
+    /// With the symbols' bullet, else this one.
+    Symbol(char),
 }
 
 /// How a destination counts the length of a text.
@@ -135,11 +213,11 @@ pub struct Features {
     pub interactions: bool,
 }
 
-/// A destination's dialect, limits and features, as the core plans with them.
+/// A destination's markup, limits and features, as the core plans with them.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Profile {
     /// The markup it renders.
-    pub dialect: Dialect,
+    pub markup: Markup,
     /// How it counts length.
     pub measure: Measure,
     /// How long each part may be.
@@ -356,4 +434,63 @@ mod tests {
             ["thread"]
         );
     }
+}
+
+#[cfg(test)]
+pub(crate) mod fixtures {
+    //! Each destination's markup as its own crate writes it, for the core's
+    //! tests.
+
+    use super::{Bullet, Emphases, Escape, Fences, Heading, Links, Markup};
+
+    pub(crate) const DISCORD: Markup = Markup {
+        escape: Escape::Backslash,
+        links: Links::Bracketed,
+        heading: Heading::Hashes(3),
+        marks: Emphases {
+            emphasis: "*",
+            strong: "**",
+            strike: "~~",
+        },
+        fences: Fences::Labelled,
+        bullet: Bullet::Fixed("- "),
+        html: false,
+        pills: None,
+    };
+
+    pub(crate) const SLACK: Markup = Markup {
+        escape: Escape::Entities,
+        links: Links::Piped,
+        heading: Heading::Wrapped("*"),
+        marks: Emphases {
+            emphasis: "_",
+            strong: "*",
+            strike: "~",
+        },
+        fences: Fences::Bare,
+        bullet: Bullet::Symbol('•'),
+        html: false,
+        pills: None,
+    };
+
+    pub(crate) const PLAIN: Markup = Markup {
+        escape: Escape::Neutral,
+        links: Links::Spelled,
+        heading: Heading::Bare,
+        marks: Emphases {
+            emphasis: "",
+            strong: "",
+            strike: "",
+        },
+        fences: Fences::None,
+        bullet: Bullet::Symbol('-'),
+        html: false,
+        pills: None,
+    };
+
+    pub(crate) const MATRIX: Markup = Markup {
+        html: true,
+        pills: Some("https://matrix.to/"),
+        ..PLAIN
+    };
 }

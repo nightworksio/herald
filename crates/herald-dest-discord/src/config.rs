@@ -1,7 +1,7 @@
 use std::future::ready;
 
 use herald_core::{
-    Answering, Asked, DestinationName, Dialect, Measure, Profile, Room, Scheme, SecretRef, Symbols,
+    Answering, Asked, DestinationName, Markup, Measure, Profile, Room, Scheme, SecretRef, Symbols,
     Text, WaitOptions,
 };
 use herald_kinds::{
@@ -212,9 +212,9 @@ impl Interacts for Interacting {
         Self::answering(self)
     }
 
-    fn room(&self) -> (Dialect, Room) {
+    fn room(&self) -> (Markup, Room) {
         (
-            Dialect::Discord,
+            discord::MARKUP,
             Room {
                 measure: Measure::Chars,
                 first: MESSAGE,

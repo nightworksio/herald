@@ -3,7 +3,7 @@ use std::ops::Deref;
 use std::sync::Arc;
 
 use herald_core::{
-    Answering, Asked, DestinationName, Dialect, Place, Room, Scheme, SecretRef, Text,
+    Answering, Asked, DestinationName, Markup, Place, Room, Scheme, SecretRef, Text,
 };
 use herald_ports::{DynSecrets, Request, Response, Secret, SecretError};
 
@@ -27,7 +27,7 @@ pub trait Interacts: fmt::Debug + Send + Sync + Itself {
 
     /// The dialect its answers are written in, and the room each part of
     /// one fits.
-    fn room(&self) -> (Dialect, Room);
+    fn room(&self) -> (Markup, Room);
 
     /// The requests that answer the command `replying` names with `parts`,
     /// seen by the asker alone unless `public`; none where `replying` is of

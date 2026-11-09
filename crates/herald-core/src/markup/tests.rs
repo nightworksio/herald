@@ -1,11 +1,12 @@
 use super::*;
+use crate::profile::fixtures::{DISCORD, MATRIX, PLAIN, SLACK};
 
 const SAMPLE: &str = "# Added\n\nSome **bold**, *em*, ~~gone~~ and `code`.\n\n- one\n- two\n  - nested\n\n1. first\n2. second\n\n> quoted\n> line\n\n```rust\nlet x = 1 < 2;\n```\n\n[the release](https://example.org/r) and <https://example.org/auto>\n\n<b>raw</b> [bad](javascript:alert(1)) a_b*c\n\n---\n\nend";
 
 #[test]
 fn markdown_becomes_discord_markdown_with_its_text_escaped() {
     assert_eq!(
-        convert(SAMPLE, Dialect::Discord),
+        convert(SAMPLE, DISCORD),
         Text {
             body: "# Added\n\nSome **bold**\\, *em*\\, ~~gone~~ and `code`\\.\n\n- one\n- two\n  - nested\n\n1. first\n2. second\n\n> quoted\n> line\n\n```rust\nlet x = 1 < 2;\n```\n\nthe release (<https://example.org/r>) and <https://example.org/auto>\n\n\\<b\\>raw\\<\\/b\\> bad a\\_b\\*c\n\n───\n\nend".to_owned(),
             html: None,
@@ -16,7 +17,7 @@ fn markdown_becomes_discord_markdown_with_its_text_escaped() {
 #[test]
 fn markdown_becomes_slack_mrkdwn_with_its_control_characters_escaped() {
     assert_eq!(
-        convert(SAMPLE, Dialect::Slack),
+        convert(SAMPLE, SLACK),
         Text {
             body: "*Added*\n\nSome *bold*, _em_, ~gone~ and `code`.\n\n• one\n• two\n  • nested\n\n1. first\n2. second\n\n> quoted\n> line\n\n```\nlet x = 1 &lt; 2;\n```\n\n<https://example.org/r|the release> and <https://example.org/auto>\n\n&lt;b&gt;raw&lt;/b&gt; bad a_b*c\n\n───\n\nend".to_owned(),
             html: None,
@@ -27,7 +28,7 @@ fn markdown_becomes_slack_mrkdwn_with_its_control_characters_escaped() {
 #[test]
 fn markdown_becomes_plain_text_with_links_spelled_out() {
     assert_eq!(
-        convert(SAMPLE, Dialect::Plain),
+        convert(SAMPLE, PLAIN),
         Text {
             body: "Added\n\nSome bold, em, gone and code.\n\n- one\n- two\n  - nested\n\n1. first\n2. second\n\n> quoted\n> line\n\nlet x = 1 < 2;\n\nthe release (https://example.org/r) and https://example.org/auto\n\n<b>raw</b> bad a_b*c\n\n───\n\nend".to_owned(),
             html: None,
@@ -37,8 +38,8 @@ fn markdown_becomes_plain_text_with_links_spelled_out() {
 
 #[test]
 fn markdown_becomes_matrix_html_beside_a_plain_body() {
-    let text = convert(SAMPLE, Dialect::Matrix);
-    assert_eq!(text.body, convert(SAMPLE, Dialect::Plain).body);
+    let text = convert(SAMPLE, MATRIX);
+    assert_eq!(text.body, convert(SAMPLE, PLAIN).body);
     assert_eq!(
         text.html.as_deref(),
         Some(
@@ -49,14 +50,14 @@ fn markdown_becomes_matrix_html_beside_a_plain_body() {
 
 #[test]
 fn discord_headings_stop_at_its_third_level() {
-    assert_eq!(convert("##### deep", Dialect::Discord).body, "### deep");
-    assert_eq!(convert("## two", Dialect::Discord).body, "## two");
+    assert_eq!(convert("##### deep", DISCORD).body, "### deep");
+    assert_eq!(convert("## two", DISCORD).body, "## two");
 }
 
 #[test]
 fn discord_inline_code_holding_a_backtick_takes_a_double_fence() {
-    assert_eq!(convert("``a`b``", Dialect::Discord).body, "``a`b``");
-    assert_eq!(convert("`` `a ``", Dialect::Discord).body, "`` `a ``");
+    assert_eq!(convert("``a`b``", DISCORD).body, "``a`b``");
+    assert_eq!(convert("`` `a ``", DISCORD).body, "`` `a ``");
 }
 
 #[test]
@@ -70,70 +71,67 @@ fn the_oracle_refuses_what_could_mention_or_link() {
         body: String::new(),
         html: Some(html.to_owned()),
     };
-    assert!(inert(&text("@everyone"), Dialect::Plain).is_err());
-    assert!(inert(&text("[x"), Dialect::Discord).is_err());
-    assert!(inert(&text("`x"), Dialect::Discord).is_err());
-    assert!(inert(&text("<@&1>"), Dialect::Discord).is_err());
-    assert!(inert(&matrix("<p"), Dialect::Matrix).is_err());
-    assert!(inert(&text("x\n-# small"), Dialect::Discord).is_err());
-    assert!(inert(&text(">>> quote"), Dialect::Discord).is_err());
-    assert!(inert(&text("a & b"), Dialect::Slack).is_err());
-    assert!(inert(&text("#tag"), Dialect::Plain).is_err());
-    assert!(inert(&text("\u{FF20}everyone"), Dialect::Discord).is_err());
+    assert!(inert(&text("@everyone"), PLAIN).is_err());
+    assert!(inert(&text("[x"), DISCORD).is_err());
+    assert!(inert(&text("`x"), DISCORD).is_err());
+    assert!(inert(&text("<@&1>"), DISCORD).is_err());
+    assert!(inert(&matrix("<p"), MATRIX).is_err());
+    assert!(inert(&text("x\n-# small"), DISCORD).is_err());
+    assert!(inert(&text(">>> quote"), DISCORD).is_err());
+    assert!(inert(&text("a & b"), SLACK).is_err());
+    assert!(inert(&text("#tag"), PLAIN).is_err());
+    assert!(inert(&text("\u{FF20}everyone"), DISCORD).is_err());
     let masked = Text {
         body: "https://a.example".to_owned(),
         html: Some("<a href=\"https://a.example\">b</a>".to_owned()),
     };
-    assert!(inert(&masked, Dialect::Matrix).is_err());
+    assert!(inert(&masked, MATRIX).is_err());
     let unshown = Text {
         body: "nothing".to_owned(),
         html: Some("<a href=\"https://a.example\">https://a.example</a>".to_owned()),
     };
-    assert!(inert(&unshown, Dialect::Matrix).is_err());
-    assert!(inert(&text("a > b"), Dialect::Slack).is_err());
-    assert!(inert(&text("<!channel>"), Dialect::Slack).is_err());
-    assert!(inert(&matrix("<script>x</script>"), Dialect::Matrix).is_err());
+    assert!(inert(&unshown, MATRIX).is_err());
+    assert!(inert(&text("a > b"), SLACK).is_err());
+    assert!(inert(&text("<!channel>"), SLACK).is_err());
+    assert!(inert(&matrix("<script>x</script>"), MATRIX).is_err());
     assert!(
         inert(
             &matrix("<a href=\"https://matrix.to/#/@a:b\">a</a>"),
-            Dialect::Matrix
+            MATRIX
         )
         .is_err()
     );
-    assert_eq!(inert(&matrix("<p>x</p>"), Dialect::Matrix), Ok(()));
-    assert_eq!(
-        inert(&convert("3. three", Dialect::Matrix), Dialect::Matrix),
-        Ok(())
-    );
-    assert!(inert(&matrix("<ol start=\"x\">"), Dialect::Matrix).is_err());
-    assert!(literal_inert(&text("a*b"), Dialect::Discord).is_err());
-    assert!(literal_inert(&text("<https://x.example>"), Dialect::Slack).is_err());
-    assert!(literal_inert(&matrix("<p>x</p>"), Dialect::Matrix).is_err());
+    assert_eq!(inert(&matrix("<p>x</p>"), MATRIX), Ok(()));
+    assert_eq!(inert(&convert("3. three", MATRIX), MATRIX), Ok(()));
+    assert!(inert(&matrix("<ol start=\"x\">"), MATRIX).is_err());
+    assert!(literal_inert(&text("a*b"), DISCORD).is_err());
+    assert!(literal_inert(&text("<https://x.example>"), SLACK).is_err());
+    assert!(literal_inert(&matrix("<p>x</p>"), MATRIX).is_err());
 }
 
 #[test]
 fn a_slack_link_cannot_end_early_or_split_on_its_url() {
     assert_eq!(
-        convert("[x](https://example.org/a|b>c)", Dialect::Slack).body,
+        convert("[x](https://example.org/a|b>c)", SLACK).body,
         "<https://example.org/a%7Cb%3Ec|x>"
     );
-    let quoted = convert("> [a\nb](https://example.org)", Dialect::Slack);
+    let quoted = convert("> [a\nb](https://example.org)", SLACK);
     assert_eq!(quoted.body, "> <https://example.org|a b>");
-    assert_eq!(inert::inert(&quoted, Dialect::Slack), Ok(()));
+    assert_eq!(inert::inert(&quoted, SLACK), Ok(()));
 }
 
 #[test]
 fn a_mail_link_is_kept_and_an_image_becomes_its_link() {
     assert_eq!(
-        convert("[mail](mailto:a@example.org)", Dialect::Plain).body,
+        convert("[mail](mailto:a@example.org)", PLAIN).body,
         "mail (mailto:a@example.org)"
     );
     assert_eq!(
-        convert("![logo](https://example.org/logo.png)", Dialect::Discord).body,
+        convert("![logo](https://example.org/logo.png)", DISCORD).body,
         "logo (<https://example.org/logo.png>)"
     );
     assert_eq!(
-        convert("![](https://example.org/logo.png)", Dialect::Plain).body,
+        convert("![](https://example.org/logo.png)", PLAIN).body,
         "https://example.org/logo.png"
     );
 }
@@ -143,7 +141,7 @@ fn matrix_html_shows_each_links_url_once_and_keeps_its_formatting() {
     assert_eq!(
         convert(
             "[![i](https://img.example/i.png) **docs**](https://example.org/d)",
-            Dialect::Matrix
+            MATRIX
         )
         .html
         .as_deref(),
@@ -152,7 +150,7 @@ fn matrix_html_shows_each_links_url_once_and_keeps_its_formatting() {
         )
     );
     assert_eq!(
-        convert("3. three", Dialect::Matrix).html.as_deref(),
+        convert("3. three", MATRIX).html.as_deref(),
         Some("<ol start=\"3\">\n<li>three</li>\n</ol>")
     );
 }
@@ -160,11 +158,11 @@ fn matrix_html_shows_each_links_url_once_and_keeps_its_formatting() {
 #[test]
 fn a_bare_url_in_plain_text_is_kept_apart_from_what_follows() {
     assert_eq!(
-        convert("<https://a.example>@x and more", Dialect::Plain).body,
+        convert("<https://a.example>@x and more", PLAIN).body,
         "https://a.example @\u{200B}x and more"
     );
     assert_eq!(
-        convert("<https://a.example> then", Dialect::Plain).body,
+        convert("<https://a.example> then", PLAIN).body,
         "https://a.example then"
     );
 }
@@ -172,22 +170,22 @@ fn a_bare_url_in_plain_text_is_kept_apart_from_what_follows() {
 #[test]
 fn only_a_bare_url_in_plain_text_or_matrix_is_kept_apart_from_what_follows() {
     assert_eq!(
-        convert("[docs](https://a.example)x", Dialect::Plain).body,
+        convert("[docs](https://a.example)x", PLAIN).body,
         "docs (https://a.example)x"
     );
     assert_eq!(
-        convert("<https://a.example>x", Dialect::Discord).body,
+        convert("<https://a.example>x", DISCORD).body,
         "<https://a.example>x"
     );
     assert_eq!(
-        convert("<https://a.example>x", Dialect::Matrix).body,
+        convert("<https://a.example>x", MATRIX).body,
         "https://a.example x"
     );
 }
 
 #[test]
 fn backticks_outside_code_reach_slack_unbroken() {
-    assert_eq!(convert("a ``` b", Dialect::Slack).body, "a ``` b");
+    assert_eq!(convert("a ``` b", SLACK).body, "a ``` b");
 }
 
 #[test]
@@ -195,7 +193,7 @@ fn a_link_inside_a_link_is_its_text_alone() {
     assert_eq!(
         convert(
             "[![logo](https://example.org/i.png) docs](https://example.org/d)",
-            Dialect::Slack
+            SLACK
         )
         .body,
         "<https://example.org/d|logo docs>"
@@ -204,37 +202,31 @@ fn a_link_inside_a_link_is_its_text_alone() {
 
 #[test]
 fn a_quote_inside_a_list_is_quoted_inside_its_item() {
-    assert_eq!(
-        convert("- item\n\n  > said", Dialect::Plain).body,
-        "- item\n> said"
-    );
+    assert_eq!(convert("- item\n\n  > said", PLAIN).body, "- item\n> said");
 }
 
 #[test]
 fn a_loose_list_keeps_its_items_on_lines_of_their_own() {
-    assert_eq!(
-        convert("- one\n\n- two", Dialect::Plain).body,
-        "- one\n- two"
-    );
+    assert_eq!(convert("- one\n\n- two", PLAIN).body, "- one\n- two");
 }
 
 #[test]
 fn an_ordered_list_counts_from_where_it_starts() {
     assert_eq!(
-        convert("3. three\n4. four", Dialect::Slack).body,
+        convert("3. three\n4. four", SLACK).body,
         "3. three\n4. four"
     );
 }
 
 #[test]
 fn a_hard_break_is_a_new_line() {
-    assert_eq!(convert("one  \ntwo", Dialect::Discord).body, "one\ntwo");
+    assert_eq!(convert("one  \ntwo", DISCORD).body, "one\ntwo");
 }
 
 #[test]
 fn a_task_list_shows_its_boxes() {
     assert_eq!(
-        convert("- [x] done\n- [ ] open", Dialect::Plain).body,
+        convert("- [x] done\n- [ ] open", PLAIN).body,
         "- ☑ done\n- ☐ open"
     );
 }
@@ -242,7 +234,7 @@ fn a_task_list_shows_its_boxes() {
 #[test]
 fn an_html_block_is_shown_as_its_text() {
     assert_eq!(
-        convert("<div>\nhi\n</div>", Dialect::Slack).body,
+        convert("<div>\nhi\n</div>", SLACK).body,
         "&lt;div&gt;\nhi\n&lt;/div&gt;"
     );
 }
@@ -250,11 +242,7 @@ fn an_html_block_is_shown_as_its_text() {
 #[test]
 fn a_quote_keeps_its_heading_list_and_code_inside_it() {
     assert_eq!(
-        convert(
-            "> # Title\n>\n> - one\n>\n> ```\n> code\n> ```",
-            Dialect::Discord
-        )
-        .body,
+        convert("> # Title\n>\n> - one\n>\n> ```\n> code\n> ```", DISCORD).body,
         "> # Title\n>\n> - one\n>\n> ```\n> code\n> ```"
     );
 }
@@ -269,12 +257,7 @@ mod hostile {
     use crate::render::{Context, Form, Templates};
     use crate::{Event, RouteId};
 
-    const DIALECTS: [Dialect; 4] = [
-        Dialect::Discord,
-        Dialect::Slack,
-        Dialect::Matrix,
-        Dialect::Plain,
-    ];
+    const DIALECTS: [Markup; 4] = [DISCORD, SLACK, MATRIX, PLAIN];
 
     const PIECES: &[&str] = &[
         "@everyone",
@@ -360,17 +343,17 @@ mod hostile {
 
         #[test]
         fn converted_markdown_mentions_no_one_and_links_nowhere_unshown(markdown in hostile()) {
-            for dialect in DIALECTS {
-                let text = convert(&markdown, dialect);
-                prop_assert_eq!(inert(&text, dialect), Ok(()), "{:?} in {:?}", markdown, dialect);
+            for markup in DIALECTS {
+                let text = convert(&markdown, markup);
+                prop_assert_eq!(inert(&text, markup), Ok(()), "{:?} in {:?}", markdown, markup);
             }
         }
 
         #[test]
         fn literal_text_is_only_its_letters(text in hostile()) {
-            for dialect in DIALECTS {
-                let shown = literal(&text, dialect);
-                prop_assert_eq!(literal_inert(&shown, dialect), Ok(()), "{:?} in {:?}", text, dialect);
+            for markup in DIALECTS {
+                let shown = literal(&text, markup);
+                prop_assert_eq!(literal_inert(&shown, markup), Ok(()), "{:?} in {:?}", text, markup);
             }
         }
 
@@ -387,8 +370,8 @@ mod hostile {
             .unwrap();
             let route = RouteId::new("r");
             let markdown = templates.render("body", &Context { event: &event, route: &route, herald: "0" }).unwrap();
-            for dialect in DIALECTS {
-                prop_assert_eq!(inert(&convert(&markdown, dialect), dialect), Ok(()), "{:?} in {:?}", markdown, dialect);
+            for markup in DIALECTS {
+                prop_assert_eq!(inert(&convert(&markdown, markup), markup), Ok(()), "{:?} in {:?}", markdown, markup);
             }
         }
     }
@@ -397,14 +380,14 @@ mod hostile {
 #[test]
 fn an_at_sign_cannot_start_a_mention() {
     assert_eq!(
-        convert("@everyone `@here`", Dialect::Discord).body,
+        convert("@everyone `@here`", DISCORD).body,
         "@\u{200B}everyone `@\u{200B}here`"
     );
     assert_eq!(
-        convert("@user@example.social", Dialect::Plain).body,
+        convert("@user@example.social", PLAIN).body,
         "@\u{200B}user@\u{200B}example.social"
     );
-    let matrix = convert("@room `@room`", Dialect::Matrix);
+    let matrix = convert("@room `@room`", MATRIX);
     assert_eq!(matrix.body, "@\u{200B}room @\u{200B}room");
     assert_eq!(
         matrix.html.as_deref(),
@@ -416,13 +399,13 @@ fn an_at_sign_cannot_start_a_mention() {
 fn a_matrix_pill_link_is_its_text_alone_and_an_image_a_link() {
     let markdown = "[pill](https://matrix.to/#/@a:b) ![logo](https://example.org/i.png)";
     assert_eq!(
-        convert(markdown, Dialect::Matrix).html.as_deref(),
+        convert(markdown, MATRIX).html.as_deref(),
         Some(
             "<p>pill logo (<a href=\"https://example.org/i.png\">https://example.org/i.png</a>)</p>"
         )
     );
     assert_eq!(
-        convert("[pill](https://matrix.to/#/@a:b)", Dialect::Discord).body,
+        convert("[pill](https://matrix.to/#/@a:b)", DISCORD).body,
         "pill (<https://matrix.to/#/@a:b>)"
     );
 }
@@ -430,7 +413,7 @@ fn a_matrix_pill_link_is_its_text_alone_and_an_image_a_link() {
 #[test]
 fn a_url_is_encoded_past_anything_that_could_close_it() {
     assert_eq!(
-        convert("[x](<https://a.example/b c\"d>)", Dialect::Plain).body,
+        convert("[x](<https://a.example/b c\"d>)", PLAIN).body,
         "x (https://a.example/b%20c%22d)"
     );
 }
@@ -438,17 +421,15 @@ fn a_url_is_encoded_past_anything_that_could_close_it() {
 #[test]
 fn a_code_language_that_is_no_language_is_dropped() {
     assert_eq!(
-        convert("```@everyone\ncode\n```", Dialect::Discord).body,
+        convert("```@everyone\ncode\n```", DISCORD).body,
         "```\ncode\n```"
     );
     assert_eq!(
-        convert("```rust extra\ncode\n```", Dialect::Discord).body,
+        convert("```rust extra\ncode\n```", DISCORD).body,
         "```rust\ncode\n```"
     );
     assert_eq!(
-        convert("```a\"b\ncode\n```", Dialect::Matrix)
-            .html
-            .as_deref(),
+        convert("```a\"b\ncode\n```", MATRIX).html.as_deref(),
         Some("<pre><code>code\n</code></pre>")
     );
 }
@@ -456,26 +437,23 @@ fn a_code_language_that_is_no_language_is_dropped() {
 #[test]
 fn code_cannot_close_its_own_fence() {
     assert_eq!(
-        convert("~~~\na```b\n~~~", Dialect::Discord).body,
+        convert("~~~\na```b\n~~~", DISCORD).body,
         "```\na`\u{200B}`\u{200B}`b\n```"
     );
     assert_eq!(
-        convert("~~~\na```b\n~~~", Dialect::Slack).body,
+        convert("~~~\na```b\n~~~", SLACK).body,
         "```\na`\u{200B}`\u{200B}`b\n```"
     );
-    assert_eq!(convert("``a`b``", Dialect::Slack).body, "a`b");
+    assert_eq!(convert("``a`b``", SLACK).body, "a`b");
 }
 
 #[test]
 fn literal_text_is_escaped_for_each_dialect() {
     let text = "a*b @c <d>";
-    assert_eq!(
-        literal(text, Dialect::Discord).body,
-        "a\\*b @\u{200B}c \\<d\\>"
-    );
-    assert_eq!(literal(text, Dialect::Slack).body, "a*b @c &lt;d&gt;");
-    assert_eq!(literal(text, Dialect::Plain).body, "a*b @\u{200B}c <d>");
-    let matrix = literal(text, Dialect::Matrix);
+    assert_eq!(literal(text, DISCORD).body, "a\\*b @\u{200B}c \\<d\\>");
+    assert_eq!(literal(text, SLACK).body, "a*b @c &lt;d&gt;");
+    assert_eq!(literal(text, PLAIN).body, "a*b @\u{200B}c <d>");
+    let matrix = literal(text, MATRIX);
     assert_eq!(matrix.body, "a*b @\u{200B}c <d>");
     assert_eq!(matrix.html.as_deref(), Some("a*b @\u{200B}c &lt;d&gt;"));
 }
@@ -490,23 +468,23 @@ fn a_destination_s_symbols_mark_tasks_draw_rules_and_bullet_its_text_lists() {
         bullet: Some('*'),
     };
     assert_eq!(
-        convert_in(markdown, Dialect::Plain, symbols).body,
+        convert_in(markdown, PLAIN, symbols).body,
         "* v done\n* o open\n\n===\n\n* one"
     );
     assert_eq!(
-        convert_in(markdown, Dialect::Slack, symbols).body,
+        convert_in(markdown, SLACK, symbols).body,
         "* v done\n* o open\n\n===\n\n* one"
     );
     assert_eq!(
-        convert_in(markdown, Dialect::Discord, symbols).body,
+        convert_in(markdown, DISCORD, symbols).body,
         "- v done\n- o open\n\n===\n\n- one"
     );
     assert_eq!(
-        convert_in(markdown, Dialect::Slack, crate::Symbols::DEFAULT).body,
-        convert(markdown, Dialect::Slack).body
+        convert_in(markdown, SLACK, crate::Symbols::DEFAULT).body,
+        convert(markdown, SLACK).body
     );
     assert_eq!(
-        convert(markdown, Dialect::Plain).body,
+        convert(markdown, PLAIN).body,
         "- ☑ done\n- ☐ open\n\n───\n\n- one"
     );
 }

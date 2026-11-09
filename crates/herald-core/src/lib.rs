@@ -65,7 +65,8 @@ pub use marker::{Marker, Marks};
 pub use markup::{LINK_SCHEMES, Text, convert, convert_in, escaped, literal, safe_url};
 pub use pattern::Pattern;
 pub use profile::{
-    Dialect, Features, Limits, Measure, MentionRoom, MentionStyle, Pins, Profile, Threads,
+    Bullet, Emphases, Escape, Features, Fences, Heading, Limits, Links, Markup, Measure,
+    MentionRoom, MentionStyle, Pins, Profile, Threads,
 };
 pub use render::{Context, Form, TemplateError, Templates};
 pub use retention::Retention;

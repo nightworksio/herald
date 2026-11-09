@@ -4,8 +4,7 @@
 #[cfg(test)]
 mod replay {
     use herald_core::{
-        Announcement, Dialect, Entry, Facts, MentionStyle, Pins, ReadBack, Sent, Step, Text,
-        Threads, Waits,
+        Announcement, Entry, Facts, MentionStyle, Pins, ReadBack, Sent, Step, Text, Threads, Waits,
     };
     use herald_dest_slack::{
         Credential, DestinationOptions, Domain, Interacting, Interactions, Refusal, RouteOptions,
@@ -674,7 +673,7 @@ mod replay {
         let as_bot = profile(true);
         assert_eq!(bot().profile(), as_bot);
         assert_eq!(hook().profile(), profile(false));
-        assert_eq!(as_bot.dialect, Dialect::Slack);
+        assert_eq!(as_bot.markup, herald_dest_slack::MARKUP);
         assert_eq!(as_bot.features.threads, Threads::Replies);
         assert_eq!(as_bot.features.pins, Pins::Many);
         assert!(matches!(as_bot.features.mentions, MentionStyle::Users(_)));

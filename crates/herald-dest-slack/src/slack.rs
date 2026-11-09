@@ -1,6 +1,7 @@
 use herald_core::{
-    Announcement, Dialect, Entry, Facts, Features, Limits, Marker, Measure, MentionRoom,
-    MentionStyle, Pins, Profile, ReadBack, Sent, Step, Threads, Waits, Wording,
+    Announcement, Bullet, Emphases, Entry, Escape, Facts, Features, Fences, Heading, Limits, Links,
+    Marker, Markup, Measure, MentionRoom, MentionStyle, Pins, Profile, ReadBack, Sent, Step,
+    Threads, Waits, Wording,
 };
 use herald_ports::{Http, HttpError, Request, Secret, unreserved};
 use serde_json::Value;
@@ -11,6 +12,22 @@ use crate::read::{json, read, text, trouble};
 use crate::request::{EVENT, ROUTE, Refusal, channel, get, pin, posted, step};
 use crate::web_api::{
     AUTH_TEST, BOTS_INFO, CHAT_GET_PERMALINK, CONVERSATIONS_HISTORY, PINS_REMOVE,
+};
+
+/// Slack's `mrkdwn`: entities escaped, links piped, headings starred.
+pub const MARKUP: Markup = Markup {
+    escape: Escape::Entities,
+    links: Links::Piped,
+    heading: Heading::Wrapped("*"),
+    marks: Emphases {
+        emphasis: "_",
+        strong: "*",
+        strike: "~",
+    },
+    fences: Fences::Bare,
+    bullet: Bullet::Symbol('•'),
+    html: false,
+    pills: None,
 };
 
 /// The longest title, in characters: a header block's text.
@@ -370,7 +387,7 @@ const MENTION_ROOM: MentionRoom = MentionRoom {
 #[must_use]
 pub fn profile(bot: bool) -> Profile {
     Profile {
-        dialect: Dialect::Slack,
+        markup: MARKUP,
         measure: Measure::Chars,
         limits: Limits {
             title: TITLE,

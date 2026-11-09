@@ -4,9 +4,7 @@
 
 #[cfg(test)]
 mod activitypub {
-    use herald_core::{
-        Dialect, Entry, Facts, MentionStyle, Pins, Sent, Step, Text, Threads, Waits,
-    };
+    use herald_core::{Entry, Facts, MentionStyle, Pins, Sent, Step, Text, Threads, Waits};
     use herald_dest_fediverse::{
         ActivityPub, ActorOptions, ActorRouteOptions, Approve, Asked, FollowerCaps, Mode, accept,
         actor_document, actor_profile, asked, create, note, webfinger,
@@ -331,7 +329,7 @@ mod activitypub {
             );
         }
         let profile = actor_profile();
-        assert_eq!(profile.dialect, Dialect::Matrix);
+        assert_eq!(profile.markup, herald_dest_fediverse::ACTOR_MARKUP);
         assert_eq!(profile.features.threads, Threads::None);
         assert_eq!(profile.features.pins, Pins::None);
         assert_eq!(profile.features.mentions, MentionStyle::None);

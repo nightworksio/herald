@@ -1,6 +1,7 @@
 use herald_core::{
-    Announcement, Chore, Delivery, Dialect, Entry, Features, Limits, Measure, MentionStyle, Pins,
-    Profile, ReadBack, Sent, Step, Threads, Waits, Wording,
+    Announcement, Bullet, Chore, Delivery, Emphases, Entry, Escape, Features, Fences, Heading,
+    Limits, Links, Markup, Measure, MentionStyle, Pins, Profile, ReadBack, Sent, Step, Threads,
+    Waits, Wording,
 };
 use herald_ports::{Http, HttpError, Request, Secret};
 
@@ -9,6 +10,22 @@ use crate::options::RouteOptions;
 use crate::read::{read, trouble};
 use crate::request::{Refusal, chore, step};
 use crate::unpin::unpinned;
+
+/// Discord's Markdown: punctuation escaped, links bracketed, headings hashed.
+pub const MARKUP: Markup = Markup {
+    escape: Escape::Backslash,
+    links: Links::Bracketed,
+    heading: Heading::Hashes(3),
+    marks: Emphases {
+        emphasis: "*",
+        strong: "**",
+        strike: "~~",
+    },
+    fences: Fences::Labelled,
+    bullet: Bullet::Fixed("- "),
+    html: false,
+    pills: None,
+};
 
 /// The API herald speaks, at the version it was written against.
 pub(crate) const API: &str = "https://discord.com/api/v10";
@@ -164,7 +181,7 @@ impl Discord {
 #[must_use]
 pub fn profile(bot: bool, forum: bool) -> Profile {
     Profile {
-        dialect: Dialect::Discord,
+        markup: MARKUP,
         measure: Measure::Chars,
         limits: Limits {
             title: 256,

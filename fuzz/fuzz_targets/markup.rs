@@ -1,29 +1,29 @@
-//! Whatever text arrives, no dialect's conversion of it mentions anyone or
+//! Whatever text arrives, no markup's conversion of it mentions anyone or
 //! links anywhere it does not show, and its literal form is only its letters.
 
 #![no_main]
 
-use herald_core::{Dialect, Text, convert, literal};
+use herald_core::{Escape, Markup, Text, convert, literal};
 use libfuzzer_sys::fuzz_target;
 
 #[path = "../../crates/herald-core/src/markup/inert.rs"]
 mod inert;
 
-const DIALECTS: [Dialect; 4] = [
-    Dialect::Discord,
-    Dialect::Slack,
-    Dialect::Matrix,
-    Dialect::Plain,
+const MARKUPS: [Markup; 4] = [
+    herald_dest_discord::MARKUP,
+    herald_dest_slack::MARKUP,
+    herald_dest_matrix::MARKUP,
+    herald_dest_fediverse::MASTODON_MARKUP,
 ];
 
 fuzz_target!(|text: &str| {
-    for dialect in DIALECTS {
-        let converted: Text = convert(text, dialect);
-        if let Err(problem) = inert::inert(&converted, dialect) {
-            panic!("{dialect:?}: {problem}");
+    for markup in MARKUPS {
+        let converted: Text = convert(text, markup);
+        if let Err(problem) = inert::inert(&converted, markup) {
+            panic!("{markup:?}: {problem}");
         }
-        if let Err(problem) = inert::literal_inert(&literal(text, dialect), dialect) {
-            panic!("{dialect:?} literal: {problem}");
+        if let Err(problem) = inert::literal_inert(&literal(text, markup), markup) {
+            panic!("{markup:?} literal: {problem}");
         }
     }
 });

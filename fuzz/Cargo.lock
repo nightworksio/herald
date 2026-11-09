@@ -401,6 +401,7 @@ dependencies = [
  "herald-config",
  "herald-core",
  "herald-dest-discord",
+ "herald-dest-fediverse",
  "herald-dest-matrix",
  "herald-dest-slack",
  "herald-ports",

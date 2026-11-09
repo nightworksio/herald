@@ -6,7 +6,7 @@ use crate::event::Event;
 use crate::key::{Key, RouteId};
 use crate::marker::Marks;
 use crate::markup::{Text, literal};
-use crate::profile::{Dialect, Measure, Profile};
+use crate::profile::{Markup, Measure, Profile};
 use crate::render::{Context, TemplateError, Templates};
 use crate::route::{Route, TemplateName};
 
@@ -49,11 +49,11 @@ impl Title {
         &self.0
     }
 
-    /// The title shown literally in `dialect`, for a field the destination
+    /// The title shown literally in `markup`, for a field the destination
     /// reads markup in.
     #[must_use]
-    pub fn shown(&self, dialect: Dialect) -> Text {
-        literal(&self.0, dialect)
+    pub fn shown(&self, markup: Markup) -> Text {
+        literal(&self.0, markup)
     }
 }
 
@@ -153,7 +153,7 @@ pub fn announce(
         route: route.id.clone(),
         project: event.project().to_owned(),
         title: Title::new(shortened(&title, profile.limits.title, profile.measure)),
-        parts: chunk_in(&body, profile.dialect, profile.symbols, room),
+        parts: chunk_in(&body, profile.markup, profile.symbols, room),
         thread: thread
             .map(|thread| shortened(&thread, profile.limits.thread_name, profile.measure)),
         link: event

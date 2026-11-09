@@ -1,6 +1,6 @@
 use std::fmt;
 
-use herald_core::{Announcement, Dialect, Entry, Sent, Step, Waits, safe_url};
+use herald_core::{Announcement, Entry, Sent, Step, Waits, safe_url};
 use herald_ports::{Method, Request, Response, Text, USER_AGENT, unreserved};
 use serde_json::{Map, Value, json};
 
@@ -85,7 +85,7 @@ fn user_id(user: &str) -> bool {
 
 fn announcement_content(announcement: &Announcement) -> Value {
     let first = announcement.parts.first();
-    let title = announcement.title.shown(Dialect::Matrix);
+    let title = announcement.title.shown(crate::matrix::MARKUP);
     let link = announcement
         .link
         .as_deref()

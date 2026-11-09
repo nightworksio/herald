@@ -2,7 +2,7 @@ use pulldown_cmark::{CodeBlockKind, Event, Parser, Tag};
 use unicode_segmentation::UnicodeSegmentation;
 
 use crate::markup::{EXTENSIONS, Text, convert_in};
-use crate::profile::{Dialect, Measure};
+use crate::profile::{Markup, Measure};
 use crate::symbols::Symbols;
 
 /// How long each part of a chunked text may be, and how length is counted.
@@ -16,20 +16,20 @@ pub struct Room {
     pub rest: usize,
 }
 
-/// `markdown` in `dialect`, cut into parts that each fit `room`: at a block
+/// `markdown` in `markup`, cut into parts that each fit `room`: at a block
 /// where it can, then at a line, a word and a grapheme. A code block cut in two
 /// is fenced again on both sides. There is always at least one part.
 #[must_use]
-pub fn chunk(markdown: &str, dialect: Dialect, room: Room) -> Vec<Text> {
-    chunk_in(markdown, dialect, Symbols::DEFAULT, room)
+pub fn chunk(markdown: &str, markup: Markup, room: Room) -> Vec<Text> {
+    chunk_in(markdown, markup, Symbols::DEFAULT, room)
 }
 
 /// `markdown` cut as [`chunk`] cuts it, written with `symbols` where the
-/// dialect has no markup of its own.
+/// markup has no markup of its own.
 #[must_use]
-pub fn chunk_in(markdown: &str, dialect: Dialect, symbols: Symbols, room: Room) -> Vec<Text> {
+pub fn chunk_in(markdown: &str, markup: Markup, symbols: Symbols, room: Room) -> Vec<Text> {
     let fits =
-        |text: &str, limit: usize| size(&convert_in(text, dialect, symbols), room.measure) <= limit;
+        |text: &str, limit: usize| size(&convert_in(text, markup, symbols), room.measure) <= limit;
     let narrowest = room.first.min(room.rest);
     let pieces: Vec<String> = blocks(markdown)
         .into_iter()
@@ -81,7 +81,7 @@ pub fn chunk_in(markdown: &str, dialect: Dialect, symbols: Symbols, room: Room) 
     }
     parts
         .iter()
-        .map(|part| convert_in(part, dialect, symbols))
+        .map(|part| convert_in(part, markup, symbols))
         .collect()
 }
 

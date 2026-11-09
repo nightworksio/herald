@@ -1,6 +1,7 @@
 use herald_core::{
-    ACTIVITY_JSON, Addressed, Announcement, Dialect, Entry, Facts, Features, Limits, Measure,
-    MentionStyle, Pins, Profile, Sent, Step, Threads, Waits, signature_header, signing,
+    ACTIVITY_JSON, Addressed, Announcement, Bullet, Emphases, Entry, Escape, Facts, Features,
+    Fences, Heading, Limits, Links, Markup, Measure, MentionStyle, Pins, Profile, Sent, Step,
+    Threads, Waits, signature_header, signing,
 };
 use herald_ports::{
     Algorithm, CryptoError, Http, HttpError, Method, PUBLIC, Request, Response, Secret, Signer,
@@ -15,6 +16,22 @@ use super::documents::{
 };
 use super::options::{ActorOptions, ActorRouteOptions};
 use super::policy::Policy;
+
+/// The HTML of a Note, beside its plain text.
+pub const ACTOR_MARKUP: Markup = Markup {
+    escape: Escape::Neutral,
+    links: Links::Spelled,
+    heading: Heading::Bare,
+    marks: Emphases {
+        emphasis: "",
+        strong: "",
+        strike: "",
+    },
+    fences: Fences::None,
+    bullet: Bullet::Symbol('-'),
+    html: true,
+    pills: Some("https://matrix.to/"),
+};
 
 /// The longest title, in characters.
 const TITLE: usize = 500;
@@ -342,7 +359,7 @@ fn answered(response: &Response, waits: Waits) -> Sent {
 #[must_use]
 pub fn actor_profile() -> Profile {
     Profile {
-        dialect: Dialect::Matrix,
+        markup: ACTOR_MARKUP,
         measure: Measure::Chars,
         limits: Limits {
             title: TITLE,

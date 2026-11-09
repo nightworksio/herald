@@ -32,5 +32,5 @@ pub use interactions::{Interactions, Subscribe, Via};
 pub use markers::SlackMarkers;
 pub use options::{DestinationOptions, RouteOptions};
 pub use request::Refusal;
-pub use slack::{Credential, Slack, profile};
+pub use slack::{Credential, MARKUP, Slack, profile};
 pub use socket::{Enveloped, opened};

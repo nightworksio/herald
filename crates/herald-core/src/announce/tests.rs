@@ -4,14 +4,15 @@ use super::*;
 use crate::event::Draft;
 use crate::event::tests::{draft, event};
 use crate::marker::Marker;
-use crate::profile::{Dialect, Features, Limits, MentionStyle, Pins, Threads};
+use crate::profile::fixtures::{DISCORD, MATRIX, PLAIN, SLACK};
+use crate::profile::{Features, Limits, MentionStyle, Pins, Threads};
 use crate::render::Form;
 use crate::route::Thread;
 use crate::route::tests::route_for;
 
 fn profile(title: usize, text: usize) -> Profile {
     Profile {
-        dialect: Dialect::Plain,
+        markup: PLAIN,
         measure: Measure::Chars,
         limits: Limits {
             title,
@@ -294,17 +295,12 @@ fn a_title_is_plain_as_written_and_shown_inert_in_every_dialect() {
     ] {
         let title = Title::new(written);
         assert_eq!(title.plain(), written);
-        for dialect in [
-            Dialect::Discord,
-            Dialect::Slack,
-            Dialect::Matrix,
-            Dialect::Plain,
-        ] {
-            let shown = title.shown(dialect);
+        for markup in [DISCORD, SLACK, MATRIX, PLAIN] {
+            let shown = title.shown(markup);
             assert_eq!(
-                literal_inert(&shown, dialect),
+                literal_inert(&shown, markup),
                 Ok(()),
-                "{written:?} in {dialect:?}"
+                "{written:?} in {markup:?}"
             );
         }
     }

@@ -1,5 +1,5 @@
 use herald_core::{
-    Answering, DestinationName, Dialect, Profile, Room, Scheme, SecretRef, Symbols, Text,
+    Answering, DestinationName, Markup, Profile, Room, Scheme, SecretRef, Symbols, Text,
     WaitOptions,
 };
 use herald_kinds::{
@@ -176,10 +176,10 @@ impl Interacts for Interacting {
         Self::answering(self)
     }
 
-    fn room(&self) -> (Dialect, Room) {
+    fn room(&self) -> (Markup, Room) {
         let profile = matrix::profile();
         (
-            Dialect::Matrix,
+            matrix::MARKUP,
             Room {
                 measure: profile.measure,
                 first: profile.limits.followup,
