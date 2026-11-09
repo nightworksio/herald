@@ -628,3 +628,17 @@ mod activitypub {
         assert!(!actor.owns("not json", "k1"));
     }
 }
+
+#[test]
+fn a_note_keeps_every_web_link_as_a_link_matrix_s_pills_included() {
+    let note = herald_core::convert(
+        "[the room](https://matrix.to/#/#herald:example.org)",
+        herald_dest_fediverse::ACTOR_MARKUP,
+    );
+    assert_eq!(
+        note.html.as_deref(),
+        Some(
+            "<p>the room (<a href=\"https://matrix.to/#/#herald:example.org\">https://matrix.to/#\u{200b}/#\u{200b}herald:example.org</a>)</p>"
+        )
+    );
+}

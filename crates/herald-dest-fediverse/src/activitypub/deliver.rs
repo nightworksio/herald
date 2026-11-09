@@ -30,7 +30,7 @@ pub const ACTOR_MARKUP: Markup = Markup {
     fences: Fences::None,
     bullet: Bullet::Symbol('-'),
     html: true,
-    pills: Some("https://matrix.to/"),
+    pills: None,
 };
 
 /// The longest title, in characters.
