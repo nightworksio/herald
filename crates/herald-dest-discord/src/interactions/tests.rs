@@ -134,10 +134,29 @@ fn what_it_says_is_worded_as_the_config_words_it_and_refused_where_it_cannot_be_
     let worded = written(r#", "wording": {"nothing": "Niets."}"#);
     assert_eq!(worded.check(), Ok(()));
     assert_eq!(worded.answering().wording.text(Phrase::Nothing), "Niets.");
-    assert!(
-        written(r#", "wording": {"nothing": "{{ project"}"#)
+    let refused = |wording: &str| {
+        written(&format!(r#", "wording": {wording}"#))
             .check()
             .unwrap_err()
-            .starts_with("wording.nothing is not a template")
+    };
+    assert!(
+        refused(r#"{"nothing": "{{ project"}"#).starts_with("wording.nothing is not a template")
+    );
+    assert!(refused(r#"{"date": "%Y-%"}"#).starts_with("wording.date is not a strftime pattern"));
+    let long = "a".repeat(Phrase::DESCRIPTION + 1);
+    assert_eq!(
+        refused(&format!(r#"{{"describe_share": "{long}"}}"#)),
+        format!(
+            "wording.describe_share takes 1 to {} characters",
+            Phrase::DESCRIPTION
+        )
+    );
+    let failing = written(r#", "wording": {"unavailable": "{{ 1 / 0 }}"}"#);
+    assert_eq!(
+        failing
+            .answering()
+            .wording
+            .say(&herald_core::Said::Unavailable),
+        Phrase::Unavailable.default_text()
     );
 }
