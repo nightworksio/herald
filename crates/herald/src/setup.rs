@@ -89,15 +89,11 @@ pub(crate) async fn discord(
     asked: Discording<'_>,
     out: &mut dyn Write,
 ) -> Result<u8, String> {
-    let (name, (options, interactions)) = chosen(
-        config,
-        Destination::DISCORD,
-        named,
-        |destination| match destination {
-            Destination::Discord(options) => Some((options, options.interactions.as_ref()?)),
-            _ => None,
-        },
-    )?;
+    let (name, (options, interactions)) =
+        chosen(config, herald_dest_discord::KIND, named, |destination| {
+            let options = destination.of::<herald_dest_discord::DestinationOptions>()?;
+            Some((options, options.interactions.as_ref()?))
+        })?;
     let Some(token) = &options.token else {
         return Err(format!(
             "{} has no bot token, which Discord's commands and roles are set up with",
@@ -164,15 +160,11 @@ pub(crate) fn slack(
     url: Option<&str>,
     out: &mut dyn Write,
 ) -> Result<u8, String> {
-    let (name, (options, interactions)) = chosen(
-        config,
-        Destination::SLACK,
-        named,
-        |destination| match destination {
-            Destination::Slack(options) => Some((options, options.interactions.as_ref()?)),
-            _ => None,
-        },
-    )?;
+    let (name, (options, interactions)) =
+        chosen(config, herald_dest_slack::KIND, named, |destination| {
+            let options = destination.of::<herald_dest_slack::DestinationOptions>()?;
+            Some((options, options.interactions.as_ref()?))
+        })?;
     let posted = interactions.via == herald_dest_slack::Via::Http;
     let url = match (posted, url) {
         (true, None) => {
@@ -219,15 +211,11 @@ pub(crate) fn matrix(
     random: &dyn Fn() -> Option<String>,
     out: &mut dyn Write,
 ) -> Result<u8, String> {
-    let (name, (options, interactions)) = chosen(
-        config,
-        Destination::MATRIX,
-        named,
-        |destination| match destination {
-            Destination::Matrix(options) => Some((options, options.interactions.as_ref()?)),
-            _ => None,
-        },
-    )?;
+    let (name, (options, interactions)) =
+        chosen(config, herald_dest_matrix::KIND, named, |destination| {
+            let options = destination.of::<herald_dest_matrix::DestinationOptions>()?;
+            Some((options, options.interactions.as_ref()?))
+        })?;
     if interactions.via != herald_dest_matrix::Via::Appservice {
         return Err(format!(
             "{} reads commands by syncing, so the homeserver installs nothing",

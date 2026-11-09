@@ -133,10 +133,13 @@ fn the_markers_store_names_the_pins_cursors_and_read_backs_it_lacks() {
             .contains("a forum's posts are not read back")
     );
     let mut hooked = on("markers", "");
-    if let Some(herald_config::Destination::Discord(options)) =
-        hooked.destinations.values_mut().next()
+    if let Some(destination) = hooked.destinations.values_mut().next()
+        && let Some(mut options) = destination
+            .of::<herald_dest_discord::DestinationOptions>()
+            .cloned()
     {
         options.webhook = options.token.take();
+        *destination = herald_config::Destination::new(options);
     }
     hooked.routes[0].route.delivery.pin = None;
     hooked.routes[0].route.delivery.crosspost = false;

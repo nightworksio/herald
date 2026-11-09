@@ -3,7 +3,7 @@
 
 #[cfg(test)]
 mod load {
-    use herald_config::{Destination, RouteOptions, Source, Store, load, schema};
+    use herald_config::{RouteOptions, Source, Store, load, schema};
     use herald_core::{Kind, Pinning, Prereleases};
     use herald_sources_forge::Forge;
 
@@ -62,12 +62,20 @@ body = "{{ event.body }}"
             })
         );
         assert_eq!(config.marker_key, None);
-        assert!(matches!(
-            config.destinations.values().next(),
-            Some(Destination::Discord(options)) if options.token.is_some()
-        ));
+        assert!(
+            config
+                .destinations
+                .values()
+                .next()
+                .and_then(|destination| destination.of::<herald_dest_discord::DestinationOptions>())
+                .is_some_and(|options| options.token.is_some())
+        );
         assert_eq!(
-            config.destinations.values().next().map(Destination::kind),
+            config
+                .destinations
+                .values()
+                .next()
+                .map(|destination| destination.kind()),
             Some("discord")
         );
         assert!(matches!(

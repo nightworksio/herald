@@ -3,7 +3,7 @@
 
 #[cfg(test)]
 mod interactions {
-    use herald_config::{Destination, RouteOptions, load};
+    use herald_config::{RouteOptions, load};
     use herald_core::{Command, Replies, RoleId};
 
     const APPLICATION: &str = "123456789012345678";
@@ -146,10 +146,11 @@ body = "{{{{ event.body }}}}"
             config.destinations[&herald_core::DestinationName::new("discord")].answering(),
             None
         );
-        assert!(matches!(
-            config.destinations[&herald_core::DestinationName::new("discord")],
-            Destination::Discord(_)
-        ));
+        assert!(
+            config.destinations[&herald_core::DestinationName::new("discord")]
+                .of::<herald_dest_discord::DestinationOptions>()
+                .is_some()
+        );
         assert_eq!(config.routes[0].options.opt_in_role(), None);
     }
 

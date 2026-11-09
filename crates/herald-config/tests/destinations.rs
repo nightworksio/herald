@@ -3,7 +3,7 @@
 
 #[cfg(test)]
 mod destinations {
-    use herald_config::{Destination, RouteOptions, load};
+    use herald_config::{RouteOptions, load};
 
     fn nothing(_: &str) -> Result<String, String> {
         Err("no file".to_owned())
@@ -20,7 +20,7 @@ mod destinations {
             .destinations
             .values()
             .next()
-            .and_then(Destination::credential)
+            .and_then(|destination| destination.credential())
             .map(|reference| reference.secret.as_str())
     }
 
@@ -57,13 +57,21 @@ body = "{{ event.body }}"
     #[test]
     fn a_mastodon_destination_and_its_route_options_load() {
         let config = load("herald.toml", MASTODON, &nothing).unwrap();
-        let Some(Destination::Mastodon(social)) = config.destinations.values().next() else {
+        let Some(social) =
+            config.destinations.values().next().and_then(|destination| {
+                destination.of::<herald_dest_fediverse::DestinationOptions>()
+            })
+        else {
             panic!("the destination is Mastodon's");
         };
         assert_eq!(social.server, "https://mastodon.example");
         assert_eq!(credential(&config), Some("HERALD_MASTODON_TOKEN"));
         assert_eq!(
-            config.destinations.values().next().map(Destination::kind),
+            config
+                .destinations
+                .values()
+                .next()
+                .map(|destination| destination.kind()),
             Some("mastodon")
         );
         let RouteOptions::Mastodon(placed) = &config.routes[0].options else {
@@ -160,13 +168,22 @@ body = "{{ event.body }}"
     #[test]
     fn a_matrix_destination_and_its_route_options_load() {
         let config = load("herald.toml", MATRIX, &nothing).unwrap();
-        let Some(Destination::Matrix(room)) = config.destinations.values().next() else {
+        let Some(room) = config
+            .destinations
+            .values()
+            .next()
+            .and_then(|destination| destination.of::<herald_dest_matrix::DestinationOptions>())
+        else {
             panic!("the destination is Matrix's");
         };
         assert_eq!(room.homeserver, "https://matrix.example");
         assert_eq!(credential(&config), Some("HERALD_MATRIX_TOKEN"));
         assert_eq!(
-            config.destinations.values().next().map(Destination::kind),
+            config
+                .destinations
+                .values()
+                .next()
+                .map(|destination| destination.kind()),
             Some("matrix")
         );
         let RouteOptions::Matrix(placed) = &config.routes[0].options else {
@@ -253,13 +270,22 @@ body = "{{ event.body }}"
     #[test]
     fn a_slack_destination_and_its_route_options_load_as_a_bot_or_a_webhook() {
         let config = load("herald.toml", SLACK, &nothing).unwrap();
-        let Some(Destination::Slack(team)) = config.destinations.values().next() else {
+        let Some(team) = config
+            .destinations
+            .values()
+            .next()
+            .and_then(|destination| destination.of::<herald_dest_slack::DestinationOptions>())
+        else {
             panic!("the destination is Slack's");
         };
         assert!(team.token.is_some());
         assert_eq!(credential(&config), Some("HERALD_SLACK_TOKEN"));
         assert_eq!(
-            config.destinations.values().next().map(Destination::kind),
+            config
+                .destinations
+                .values()
+                .next()
+                .map(|destination| destination.kind()),
             Some("slack")
         );
         let RouteOptions::Slack(placed) = &config.routes[0].options else {
@@ -380,13 +406,22 @@ body = "{{ event.body }}"
     #[test]
     fn an_activitypub_destination_and_its_actor_load() {
         let config = load("herald.toml", ACTIVITYPUB, &nothing).unwrap();
-        let Some(Destination::ActivityPub(fedi)) = config.destinations.values().next() else {
+        let Some(fedi) = config
+            .destinations
+            .values()
+            .next()
+            .and_then(|destination| destination.of::<herald_dest_fediverse::ActorOptions>())
+        else {
             panic!("the destination is herald's own actor's");
         };
         assert_eq!(fedi.domain, "herald.example");
         assert_eq!(credential(&config), Some("HERALD_ACTIVITYPUB_KEY"));
         assert_eq!(
-            config.destinations.values().next().map(Destination::kind),
+            config
+                .destinations
+                .values()
+                .next()
+                .map(|destination| destination.kind()),
             Some("activitypub")
         );
         let RouteOptions::ActivityPub(placed) = &config.routes[0].options else {
@@ -426,7 +461,12 @@ body = "{{ event.body }}"
     fn a_shared_block_list_pinned_by_its_digest_blocks_its_domains() {
         let digest = herald_core::digest(SHARED);
         let config = listed(&digest, SHARED).unwrap();
-        let Some(Destination::ActivityPub(fedi)) = config.destinations.values().next() else {
+        let Some(fedi) = config
+            .destinations
+            .values()
+            .next()
+            .and_then(|destination| destination.of::<herald_dest_fediverse::ActorOptions>())
+        else {
             panic!("the destination is herald's own actor's");
         };
         assert_eq!(fedi.block, ["spam.example"]);

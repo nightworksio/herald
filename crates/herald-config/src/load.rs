@@ -8,7 +8,9 @@ use serde::de::DeserializeOwned;
 use toml::Spanned;
 use toml::de::{DeTable, DeValue, ValueDeserializer};
 
-use crate::config::{Config, Destination, Schedule, Source, Store};
+use herald_kinds::Destination;
+
+use crate::config::{Config, DESTINATION_KINDS, Schedule, Source, Store};
 use crate::error::{ConfigError, Errors};
 use crate::file::{
     HttpFile, Keep, KeepFile, MarkersFile, NoOptions, ScheduleFile, ServerFile, TemplateFile,
@@ -396,7 +398,7 @@ impl Loader<'_> {
         http: &herald_ports::Outbound,
     ) {
         for (name, (destination, span)) in destinations {
-            let Destination::Matrix(options) = destination else {
+            let Some(options) = destination.of::<herald_dest_matrix::DestinationOptions>() else {
                 continue;
             };
             let Some(interactions) = &options.interactions else {
@@ -449,10 +451,9 @@ impl Loader<'_> {
         };
         for read in routes {
             let route = &read.config.route;
-            let follows = matches!(
-                destinations.get(&route.destination),
-                Some((Destination::ActivityPub(_), _))
-            );
+            let follows = destinations
+                .get(&route.destination)
+                .is_some_and(|(destination, _)| destination.acts());
             if (follows || route.delivery.mentions.subscribers)
                 && !store.keeps(RecordKind::Subscriptions)
             {
@@ -536,17 +537,17 @@ impl Loader<'_> {
         for (name, value) in self.named(value, "destinations") {
             let path = format!("destinations.{name}");
             let span = value.span();
-            let Some((kind, rest)) = self.kinded(value, &path, &Destination::KINDS) else {
+            let Some((kind, rest)) = self.kinded(value, &path, &DESTINATION_KINDS) else {
                 continue;
             };
-            let destination = if kind == Destination::MASTODON {
+            let destination = if kind == herald_dest_fediverse::MASTODON {
                 self.typed::<herald_dest_fediverse::DestinationOptions>(rest, &path)
-                    .map(Destination::Mastodon)
-            } else if kind == Destination::MATRIX {
+                    .map(Destination::new)
+            } else if kind == herald_dest_matrix::KIND {
                 self.matrix(rest, &path, &span)
-            } else if kind == Destination::ACTIVITYPUB {
+            } else if kind == herald_dest_fediverse::ACTIVITYPUB {
                 self.actor(rest, &path, &span, read)
-            } else if kind == Destination::SLACK {
+            } else if kind == herald_dest_slack::KIND {
                 self.slack(rest, &path, &span)
             } else {
                 self.discord(rest, &path, &span)
@@ -564,7 +565,7 @@ impl Loader<'_> {
         if let Some(interactions) = &options.interactions {
             self.interactions(span, path, interactions.check());
         }
-        Some(Destination::Matrix(options))
+        Some(Destination::new(options))
     }
 
     fn actor(
@@ -588,7 +589,7 @@ impl Loader<'_> {
             self.error(span, path, message);
             return None;
         }
-        Some(Destination::ActivityPub(options))
+        Some(Destination::new(options))
     }
 
     fn slack(&mut self, rest: Value<'_>, path: &str, span: &Range<usize>) -> Option<Destination> {
@@ -604,7 +605,7 @@ impl Loader<'_> {
         if let Some(interactions) = &options.interactions {
             self.interactions(span, path, interactions.check());
         }
-        Some(Destination::Slack(options))
+        Some(Destination::new(options))
     }
 
     fn discord(&mut self, rest: Value<'_>, path: &str, span: &Range<usize>) -> Option<Destination> {
@@ -626,7 +627,7 @@ impl Loader<'_> {
             });
             self.interactions(span, path, checked);
         }
-        Some(Destination::Discord(options))
+        Some(Destination::new(options))
     }
 
     fn interactions(&mut self, span: &Range<usize>, path: &str, checked: Result<(), String>) {

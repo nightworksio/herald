@@ -74,13 +74,14 @@ pub trait Reach: fmt::Debug + Send + Sync + Any {
     fn as_any(&self) -> &dyn Any;
 
     /// Whether `other` is the same destination, reached the same way.
-    fn same(&self, other: &dyn Reach) -> bool;
+    fn same(&self, other: &dyn Any) -> bool;
 }
 
-/// Whether `other` is a `T` equal to `one`: [`Reach::same`] for every kind.
+/// Whether `other` is a `T` equal to `one`: [`Reach::same`] and
+/// [`DestinationConfig::same`](crate::DestinationConfig::same) for every kind.
 #[must_use]
-pub fn same<T: PartialEq + 'static>(one: &T, other: &dyn Reach) -> bool {
-    other.as_any().downcast_ref::<T>() == Some(one)
+pub fn same<T: PartialEq + 'static>(one: &T, other: &dyn Any) -> bool {
+    other.downcast_ref::<T>() == Some(one)
 }
 
 /// A reached destination of any kind, shared by every route that reaches it.
@@ -128,7 +129,7 @@ impl fmt::Debug for Reached {
 
 impl PartialEq for Reached {
     fn eq(&self, other: &Self) -> bool {
-        self.0.same(&*other.0)
+        self.0.same(other.0.as_any())
     }
 }
 

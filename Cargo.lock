@@ -914,6 +914,7 @@ dependencies = [
  "herald-dest-fediverse",
  "herald-dest-matrix",
  "herald-dest-slack",
+ "herald-kinds",
  "herald-ports",
  "herald-sources-feed",
  "herald-sources-forge",
@@ -1099,6 +1100,7 @@ dependencies = [
  "herald-testing",
  "jiff",
  "pollster",
+ "serde_json",
 ]
 
 [[package]]

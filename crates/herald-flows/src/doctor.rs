@@ -1,5 +1,6 @@
-use herald_config::{Config, Destination, RouteConfig, Server, Source, Store};
+use herald_config::{Config, RouteConfig, Server, Source, Store};
 use herald_core::{Inbound, Pinning, RecordKind, Sandbox};
+use herald_kinds::Carried;
 use herald_ports::{Secrets, Signer};
 
 use crate::prepare::keyed;
@@ -129,10 +130,11 @@ fn unpinned(config: &Config, index: usize, route: &RouteConfig, gaps: &mut Vec<G
 }
 
 fn unkept(config: &Config, index: usize, route: &RouteConfig, gaps: &mut Vec<Gap>) {
-    let bot = matches!(
-        config.destinations.get(&route.route.destination),
-        Some(Destination::Discord(options)) if options.token.is_some()
-    );
+    let bot = config
+        .destinations
+        .get(&route.route.destination)
+        .and_then(|destination| destination.of::<herald_dest_discord::DestinationOptions>())
+        .is_some_and(|options| options.token.is_some());
     let key = |field: &str| format!("routes[{index}].{field}");
     if !route.profile.features.reads_back {
         let cannot = if bot {
@@ -164,14 +166,14 @@ pub fn unserved(stores: &[&str]) -> String {
 pub async fn keys<S: Secrets, G: Signer>(config: &Config, secrets: &S, signer: &G) -> Findings {
     let mut findings = Findings::default();
     for (name, destination) in &config.destinations {
-        let Destination::ActivityPub(options) = destination else {
+        let Some(reference) = destination.credential().filter(|_| destination.acts()) else {
             continue;
         };
-        let Ok(key) = secrets.secret(&options.key.secret).await else {
+        let Ok(key) = secrets.secret(&reference.secret).await else {
             findings.notes.push(format!(
                 "The key of the destination \"{}\" is not checked, as {} is not set here.",
                 name.as_str(),
-                options.key.secret
+                reference.secret
             ));
             continue;
         };
@@ -197,38 +199,15 @@ pub struct Layer<'a> {
 /// herald (ADR-0016).
 fn unanswered(config: &Config, layer: Layer<'_>, gaps: &mut Vec<Gap>) {
     for (name, destination) in &config.destinations {
-        let (posted, how) = match destination {
-            Destination::Discord(options) => match &options.interactions {
-                Some(interactions) => (
-                    interactions.via == herald_dest_discord::Via::Http,
-                    (
-                        "interactions Discord posts",
-                        "the gateway with via = \"gateway\"",
-                    ),
-                ),
-                None => continue,
-            },
-            Destination::Slack(options) => match &options.interactions {
-                Some(interactions) => (
-                    interactions.via == herald_dest_slack::Via::Http,
-                    ("commands Slack posts", "Socket Mode with via = \"socket\""),
-                ),
-                None => continue,
-            },
-            Destination::Matrix(options) => match &options.interactions {
-                Some(interactions) => (
-                    interactions.via == herald_dest_matrix::Via::Appservice,
-                    (
-                        "transactions the homeserver pushes",
-                        "a sync with via = \"sync\"",
-                    ),
-                ),
-                None => continue,
-            },
-            Destination::Mastodon(_) | Destination::ActivityPub(_) => continue,
+        let Some(Carried {
+            posted,
+            what: carried,
+            session,
+        }) = destination.carried()
+        else {
+            continue;
         };
         let key = format!("destinations.{}.interactions.via", name.as_str());
-        let (carried, session) = how;
         if posted && !layer.endpoint {
             gaps.push(gap(
                 &format!("the {carried}"),

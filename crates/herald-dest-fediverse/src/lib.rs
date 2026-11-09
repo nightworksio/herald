@@ -8,6 +8,7 @@
 
 mod activitypub;
 mod actor;
+mod config;
 mod markers;
 mod mastodon;
 mod mastodon_reach;
@@ -24,6 +25,7 @@ pub use actor::{
     ActorError, ActorKey, Found, Inboxes, activity_json, actor_key, actor_of, confirms, document,
     inboxes, key_request, origin, same_origin,
 };
+pub use config::{ACTIVITYPUB, MASTODON};
 pub use markers::MastodonMarkers;
 pub use mastodon::{LIMIT, Mastodon, profile, shortest};
 pub use options::{DestinationOptions, RouteOptions, Visibility};

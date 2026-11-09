@@ -42,8 +42,10 @@ body = "{{{{ event.body }}}}"
     }
 
     fn read_back(config: &herald_config::Config) -> ReadBack {
-        let Some(Destination::Discord(options)) =
-            config.destinations.get(&DestinationName::new("discord"))
+        let Some(options) = config
+            .destinations
+            .get(&DestinationName::new("discord"))
+            .and_then(|destination| destination.of::<herald_dest_discord::DestinationOptions>())
         else {
             panic!("no Discord destination");
         };
@@ -109,7 +111,7 @@ body = "{{{{ event.body }}}}"
                 "server = \"https://mastodon.example\"\ntoken = {{ secret = \"T\" }}\n{written}"
             ))
             .unwrap();
-            Destination::Mastodon(options).waits()
+            Destination::new(options).waits()
         };
         assert_eq!(mastodon("").limited, SignedDuration::from_mins(5));
         assert_eq!(mastodon("").outage, Waits::DEFAULT.outage);

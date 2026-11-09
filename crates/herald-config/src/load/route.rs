@@ -10,7 +10,9 @@ use toml::de::{DeTable, DeValue};
 
 use super::apps::Named;
 use super::{Loader, Value, Written, list};
-use crate::config::{Destination, RouteConfig, RouteOptions, Source};
+use herald_kinds::Destination;
+
+use crate::config::{RouteConfig, RouteOptions, Source};
 use crate::file::{ROUTE_KEYS, RouteFile};
 
 /// A route as its keys say, before its templates are compiled.
@@ -78,8 +80,8 @@ impl Loader<'_> {
         sound: &mut bool,
     ) -> Option<(RouteOptions, &'static str)> {
         let span = route.id.span();
-        Some(match reached {
-            Destination::Discord(reached) => {
+        Some(
+            if let Some(reached) = reached.of::<herald_dest_discord::DestinationOptions>() {
                 let options = self.typed::<herald_dest_discord::RouteOptions>(rest, path)?;
                 if let Err(message) = options.check() {
                     self.error(&span, path, message);
@@ -100,24 +102,27 @@ impl Loader<'_> {
                     *sound = false;
                 }
                 (RouteOptions::Discord(options), "Discord")
-            }
-            Destination::Mastodon(_) => {
+            } else if reached
+                .of::<herald_dest_fediverse::DestinationOptions>()
+                .is_some()
+            {
                 let options = self.typed::<herald_dest_fediverse::RouteOptions>(rest, path)?;
                 if let Err(message) = options.check() {
                     self.error(&span, path, message);
                     *sound = false;
                 }
                 (RouteOptions::Mastodon(options), "Mastodon")
-            }
-            Destination::Matrix(_) => {
+            } else if reached
+                .of::<herald_dest_matrix::DestinationOptions>()
+                .is_some()
+            {
                 let options = self.typed::<herald_dest_matrix::RouteOptions>(rest, path)?;
                 if let Err(message) = options.check() {
                     self.error(&span, path, message);
                     *sound = false;
                 }
                 (RouteOptions::Matrix(options), "Matrix")
-            }
-            Destination::Slack(reached) => {
+            } else if let Some(reached) = reached.of::<herald_dest_slack::DestinationOptions>() {
                 let options = self.typed::<herald_dest_slack::RouteOptions>(rest, path)?;
                 if let Err(message) = options.check() {
                     self.error(&span, path, message);
@@ -139,8 +144,7 @@ impl Loader<'_> {
                     *sound = false;
                 }
                 (RouteOptions::Slack(options), "Slack")
-            }
-            Destination::ActivityPub(_) => {
+            } else {
                 let options = self.typed::<herald_dest_fediverse::ActorRouteOptions>(rest, path)?;
                 if let Err(message) = options.check() {
                     self.error(&span, path, message);
@@ -150,8 +154,8 @@ impl Loader<'_> {
                     RouteOptions::ActivityPub(options),
                     "herald's ActivityPub actor",
                 )
-            }
-        })
+            },
+        )
     }
 
     #[allow(clippy::too_many_lines)]
@@ -200,18 +204,27 @@ impl Loader<'_> {
         let span = route.id.span();
         let (options, name) =
             self.placed(reached, rest, &route, &path, &destination, &mut sound)?;
-        let (profile, as_bot) = match (&options, reached) {
-            (RouteOptions::Discord(placed), Destination::Discord(reached)) => (
-                herald_dest_discord::profile(reached.token.is_some(), placed.forum),
+        let bot = reached
+            .of::<herald_dest_discord::DestinationOptions>()
+            .map(|reached| reached.token.is_some())
+            .or_else(|| {
+                reached
+                    .of::<herald_dest_slack::DestinationOptions>()
+                    .map(|reached| reached.token.is_some())
+            })
+            .unwrap_or_default();
+        let (profile, as_bot) = match &options {
+            RouteOptions::Discord(placed) => (
+                herald_dest_discord::profile(bot, placed.forum),
                 Some(herald_dest_discord::profile(true, placed.forum)),
             ),
-            (RouteOptions::Slack(_), Destination::Slack(reached)) => (
-                herald_dest_slack::profile(reached.token.is_some()),
+            RouteOptions::Slack(_) => (
+                herald_dest_slack::profile(bot),
                 Some(herald_dest_slack::profile(true)),
             ),
-            (RouteOptions::Mastodon(placed), _) => (herald_dest_fediverse::profile(placed), None),
-            (RouteOptions::ActivityPub(_), _) => (herald_dest_fediverse::actor_profile(), None),
-            (_, _) => (herald_dest_matrix::profile(), None),
+            RouteOptions::Mastodon(placed) => (herald_dest_fediverse::profile(placed), None),
+            RouteOptions::ActivityPub(_) => (herald_dest_fediverse::actor_profile(), None),
+            RouteOptions::Matrix(_) => (herald_dest_matrix::profile(), None),
         };
         let profile = herald_core::Profile {
             symbols: reached.symbols(),

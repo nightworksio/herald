@@ -7,6 +7,7 @@
 //! request built from the announcement and the steps already landed, and
 //! each response is read back into the facts the ledger records.
 
+mod config;
 mod discord;
 mod gateway;
 mod interact;
@@ -19,6 +20,7 @@ mod read;
 mod request;
 mod unpin;
 
+pub use config::KIND;
 pub use discord::{Credential, Discord, profile};
 pub use gateway::{Effect, GATEWAY, Gateway};
 pub use interact::{

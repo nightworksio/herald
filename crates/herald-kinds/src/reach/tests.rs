@@ -78,7 +78,7 @@ impl Reach for Plain {
         self
     }
 
-    fn same(&self, other: &dyn Reach) -> bool {
+    fn same(&self, other: &dyn Any) -> bool {
         same(self, other)
     }
 }
@@ -125,7 +125,7 @@ impl Reach for Other {
         self
     }
 
-    fn same(&self, other: &dyn Reach) -> bool {
+    fn same(&self, other: &dyn Any) -> bool {
         same(self, other)
     }
 }

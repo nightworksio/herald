@@ -3,7 +3,7 @@
 
 #[cfg(test)]
 mod slack_team {
-    use herald_config::{Destination, load};
+    use herald_config::load;
     use herald_core::DestinationName;
 
     fn config(team: &str) -> Result<herald_config::Config, String> {
@@ -43,8 +43,10 @@ body = "{{{{ event.body }}}}"
     #[test]
     fn a_workspace_id_is_kept_and_anything_else_is_refused() {
         let kept = config("team = \"T0123456789\"").unwrap();
-        let Some(Destination::Slack(options)) =
-            kept.destinations.get(&DestinationName::new("slack"))
+        let Some(options) = kept
+            .destinations
+            .get(&DestinationName::new("slack"))
+            .and_then(|destination| destination.of::<herald_dest_slack::DestinationOptions>())
         else {
             panic!("no Slack destination");
         };

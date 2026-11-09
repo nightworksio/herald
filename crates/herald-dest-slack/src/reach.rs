@@ -49,7 +49,7 @@ impl Reach for Slack {
         self
     }
 
-    fn same(&self, other: &dyn Reach) -> bool {
+    fn same(&self, other: &dyn Any) -> bool {
         same(self, other)
     }
 }
