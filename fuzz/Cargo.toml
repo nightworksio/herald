@@ -9,6 +9,7 @@ publish = false
 cargo-fuzz = true
 
 [dependencies]
+herald-compose = { path = "../crates/herald-compose" }
 herald-config = { path = "../crates/herald-config" }
 herald-core = { path = "../crates/herald-core" }
 herald-dest-discord = { path = "../crates/herald-dest-discord" }
