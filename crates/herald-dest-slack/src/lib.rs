@@ -18,6 +18,7 @@ mod options;
 mod reach;
 mod read;
 mod request;
+pub mod setup;
 mod slack;
 mod socket;
 mod web_api;

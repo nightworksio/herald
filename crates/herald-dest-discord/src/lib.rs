@@ -19,6 +19,7 @@ mod options;
 mod reach;
 mod read;
 mod request;
+pub mod setup;
 mod unpin;
 
 pub use config::{DiscordKind, KIND};

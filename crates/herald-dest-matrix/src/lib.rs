@@ -18,6 +18,7 @@ mod options;
 mod reach;
 mod read;
 mod request;
+pub mod setup;
 
 pub use config::{KIND, MatrixKind};
 pub use interact::{Interacting, Replying, Synced, Unread, took};

@@ -238,19 +238,19 @@ async fn set_up(
 ) -> Result<u8, String> {
     match setting {
         Setting::Discord(Discording::Commands { destination }) => {
-            let asked = setup::Discording::Commands;
-            setup::discord(config, vars, connect, destination.as_deref(), asked, out).await
+            let task = herald_dest_discord::setup::Task::Commands;
+            setup::discord(config, vars, connect, destination.as_deref(), task, out).await
         }
         Setting::Discord(Discording::Roles {
             destination,
             guild,
             create,
         }) => {
-            let asked = setup::Discording::Roles {
+            let task = herald_dest_discord::setup::Task::Roles {
                 guild: &guild,
                 create: create.as_deref(),
             };
-            setup::discord(config, vars, connect, destination.as_deref(), asked, out).await
+            setup::discord(config, vars, connect, destination.as_deref(), task, out).await
         }
         Setting::Slack(Slacking::Manifest { destination, url }) => {
             setup::slack(config, destination.as_deref(), url.as_deref(), out)
