@@ -113,9 +113,11 @@ mod tests {
         expected.push("herald prints these tokens only this once.".to_owned());
         assert_eq!(said, expected);
         assert!(said.len() > 2);
-        let refused =
-            Err("matrix reads commands by syncing, so the homeserver installs nothing".to_owned());
-        assert_eq!(installs("matrix", &interactions("sync")), refused);
+        let refused = "matrix reads commands by syncing, so the homeserver installs nothing";
+        assert_eq!(
+            installs("matrix", &interactions("sync")),
+            Err(refused.to_owned())
+        );
         assert_eq!(
             registration(
                 "matrix",
@@ -124,7 +126,7 @@ mod tests {
                 "https://herald.example",
                 ("hs-token", "as-token"),
             ),
-            refused.map(|()| Vec::new())
+            Err(refused.to_owned())
         );
     }
 }
