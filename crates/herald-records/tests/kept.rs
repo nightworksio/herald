@@ -18,6 +18,13 @@ mod kept {
     use herald_records::{Blob, Kept, Records, Wrote};
     use herald_testing::store_conformance;
 
+    /// A scheme as its crate writes it, for these tests.
+    const APP: herald_core::Scheme = herald_core::Scheme {
+        name: "app",
+        signed: herald_core::Signed::Hashed,
+        key: herald_core::KeyForm::Bytes,
+    };
+
     #[derive(Debug, Default)]
     struct Memory {
         files: Mutex<BTreeMap<String, (u64, Vec<u8>)>>,
@@ -240,7 +247,7 @@ mod kept {
         let store = Kept::new(Memory::holding("deliveries/app.bad.json", b"not json"));
         let now: jiff::Timestamp = "2027-01-15T08:00:00Z".parse().unwrap();
         assert_eq!(
-            pollster::block_on(store.admit(herald_core::Scheme::App, "old", now)),
+            pollster::block_on(store.admit(APP, "old", now)),
             Ok(herald_ports::Admitted::Fresh)
         );
         let later = now
@@ -248,7 +255,7 @@ mod kept {
             .unwrap();
         assert_eq!(pollster::block_on(store.expire_deliveries(later)), Ok(()));
         assert_eq!(
-            pollster::block_on(store.admit(herald_core::Scheme::App, "old", later)),
+            pollster::block_on(store.admit(APP, "old", later)),
             Ok(herald_ports::Admitted::Fresh)
         );
         assert_eq!(store.skipped(), ["deliveries/app.bad.json"]);

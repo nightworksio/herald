@@ -1,4 +1,4 @@
-use herald_core::{Command, DestinationName, Place, Scheme};
+use herald_core::{Command, DestinationName, Place};
 use herald_flows::{Answered, Inbound, Interacted, Job, Worked, unworked};
 use serde_json::{Value, json};
 
@@ -11,7 +11,7 @@ use crate::interact::{
 
 fn signed_discord(body: &[u8]) -> Vec<(String, String)> {
     let stamp = at().as_second().to_string();
-    let key = herald_core::key(Scheme::Discord, KEY).unwrap();
+    let key = herald_core::key(herald_dest_discord::SCHEME, KEY).unwrap();
     let message = [stamp.as_bytes(), body].concat();
     let signature = [b"Ed25519".as_slice(), &key, &message].join(&b'|');
     vec![

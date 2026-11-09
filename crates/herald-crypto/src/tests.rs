@@ -3,6 +3,23 @@ use base64::engine::general_purpose::STANDARD;
 
 use super::*;
 
+/// A scheme as its crate writes it, for these tests.
+const GITHUB: herald_core::Scheme = herald_core::Scheme {
+    name: "github",
+    signed: herald_core::Signed::Body {
+        headers: &["X-Hub-Signature-256"],
+        prefix: "sha256=",
+    },
+    key: herald_core::KeyForm::Bytes,
+};
+
+/// A scheme as its crate writes it, for these tests.
+const ACTIVITYPUB: herald_core::Scheme = herald_core::Scheme {
+    name: "activitypub",
+    signed: herald_core::Signed::HttpSignature,
+    key: herald_core::KeyForm::RsaPem,
+};
+
 const RSA: &str = include_str!("../fixtures/rsa-2048-pkcs8.test.hex");
 
 fn pem(der: &[u8]) -> String {
@@ -126,14 +143,8 @@ fn githubs_documented_delivery_verifies_and_a_changed_body_does_not() {
         (b"Hello, World!".as_slice(), true),
         (b"Hello, World?", false),
     ] {
-        let claim = herald_core::claim(
-            herald_core::Scheme::GitHub,
-            &headers,
-            body,
-            now,
-            &herald_core::Inbound::DEFAULT,
-        )
-        .unwrap();
+        let claim = herald_core::claim(GITHUB, &headers, body, now, &herald_core::Inbound::DEFAULT)
+            .unwrap();
         assert_eq!(
             verify(
                 Algorithm::HmacSha256,
@@ -171,7 +182,7 @@ fn an_activity_signed_by_its_actors_key_verifies_through_the_pem_it_publishes() 
         ("Signature", signature.as_str()),
     ];
     let now = "2027-01-15T08:00:00Z".parse().unwrap();
-    let public = herald_core::key(herald_core::Scheme::ActivityPub, SPKI).unwrap();
+    let public = herald_core::key(ACTIVITYPUB, SPKI).unwrap();
     for (body, holds) in [(body.as_slice(), true), (b"{\"type\":\"Undo\"}", false)] {
         let to = herald_core::Addressed {
             target: "post /inbox",

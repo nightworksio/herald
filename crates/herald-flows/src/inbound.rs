@@ -1,5 +1,6 @@
 use std::fmt;
 
+use herald_core::Signed;
 use herald_core::{
     Addressed, Claim, Inbound, Refusal, Scheme, Signature, activity_claim, claim, key, same,
 };
@@ -117,7 +118,7 @@ pub async fn verified<V: Verifier>(
     checking: Checking<'_>,
 ) -> Result<Verified, Rejected> {
     let key = key(scheme, written)
-        .filter(|_| scheme != Scheme::ActivityPub)
+        .filter(|_| scheme.signed != Signed::HttpSignature)
         .ok_or(Rejected::Unkeyed)?;
     let claim =
         claim(scheme, headers, body, checking.now, checking.bounds).map_err(Rejected::Refused)?;
@@ -225,7 +226,7 @@ async fn owned_by<V: Verifier>(
     owned: ActorKey,
     body: &[u8],
 ) -> Result<Verified, Rejected> {
-    let key = key(Scheme::ActivityPub, &owned.pem).ok_or(Rejected::Unkeyed)?;
+    let key = key(herald_dest_fediverse::ACTOR_SCHEME, &owned.pem).ok_or(Rejected::Unkeyed)?;
     signed(verifier, &key, claim).await?;
     let Some((actor, own)) = actor_of(body) else {
         return Err(Rejected::Impersonated);

@@ -50,7 +50,7 @@ fn a_webhook_signed_with_the_shared_secret_is_let_through() {
     );
     assert_eq!(
         checked(
-            Scheme::GitHub,
+            herald_sources_forge::Forge::GitHub.scheme(),
             "secret",
             &[("X-Hub-Signature-256", &signed)]
         ),
@@ -65,7 +65,7 @@ fn a_webhook_signed_with_another_secret_is_forged() {
         hex(&[b"HmacSha256|other|".as_slice(), BODY].concat())
     );
     let rejected = checked(
-        Scheme::GitHub,
+        herald_sources_forge::Forge::GitHub.scheme(),
         "secret",
         &[("X-Hub-Signature-256", &signed)],
     );
@@ -84,7 +84,10 @@ fn a_discord_interaction_is_checked_as_ed25519_over_its_timestamp_and_body() {
         ("X-Signature-Ed25519", signed.as_str()),
         ("X-Signature-Timestamp", "1800000000"),
     ];
-    assert_eq!(checked(Scheme::Discord, "0aff", &headers), Ok(()));
+    assert_eq!(
+        checked(herald_dest_discord::SCHEME, "0aff", &headers),
+        Ok(())
+    );
 }
 
 #[test]
@@ -100,14 +103,21 @@ fn a_discord_interaction_delivered_twice_is_a_replay() {
         pollster::block_on(async {
             let verified = verified(
                 &FakeVerifier,
-                Scheme::Discord,
+                herald_dest_discord::SCHEME,
                 "0aff",
                 &headers,
                 BODY,
                 checking(now()),
             )
             .await?;
-            admitted(&store, Admission::Once, Scheme::Discord, &verified, now()).await
+            admitted(
+                &store,
+                Admission::Once,
+                herald_dest_discord::SCHEME,
+                &verified,
+                now(),
+            )
+            .await
         })
     };
     assert_eq!(delivery(), Ok(()));
@@ -116,7 +126,7 @@ fn a_discord_interaction_delivered_twice_is_a_replay() {
 
 #[test]
 fn a_refused_request_is_never_checked_and_says_why() {
-    let rejected = checked(Scheme::Slack, "secret", &[]);
+    let rejected = checked(herald_dest_slack::SCHEME, "secret", &[]);
     assert_eq!(
         rejected,
         Err(Rejected::Refused(Refusal::Unsigned {
@@ -136,21 +146,32 @@ fn a_gitlab_webhook_holds_where_any_one_of_its_signatures_does() {
         ("webhook-timestamp", "1800000000"),
         ("webhook-signature", ROTATED),
     ];
-    assert_eq!(checked(Scheme::GitLab, "whsec_AAE=", &headers), Ok(()));
+    assert_eq!(
+        checked(
+            herald_sources_forge::Forge::GitLab.scheme(),
+            "whsec_AAE=",
+            &headers
+        ),
+        Ok(())
+    );
     let only_bad = [
         ("webhook-id", "msg"),
         ("webhook-timestamp", "1800000000"),
         ("webhook-signature", "v1,AAAA"),
     ];
     assert_eq!(
-        checked(Scheme::GitLab, "whsec_AAE=", &only_bad),
+        checked(
+            herald_sources_forge::Forge::GitLab.scheme(),
+            "whsec_AAE=",
+            &only_bad
+        ),
         Err(Rejected::Forged)
     );
 }
 
 #[test]
 fn a_key_not_written_in_its_form_lets_nothing_through() {
-    let rejected = checked(Scheme::GitLab, "AAE=", &[]);
+    let rejected = checked(herald_sources_forge::Forge::GitLab.scheme(), "AAE=", &[]);
     assert_eq!(rejected, Err(Rejected::Unkeyed));
     assert_eq!(
         rejected.unwrap_err().to_string(),
@@ -162,7 +183,7 @@ fn a_key_not_written_in_its_form_lets_nothing_through() {
 fn a_matrix_transaction_holds_only_with_the_homeserver_token() {
     assert_eq!(
         checked(
-            Scheme::Matrix,
+            herald_dest_matrix::SCHEME,
             "hs-token",
             &[("Authorization", "Bearer hs-token")]
         ),
@@ -170,7 +191,7 @@ fn a_matrix_transaction_holds_only_with_the_homeserver_token() {
     );
     assert_eq!(
         checked(
-            Scheme::Matrix,
+            herald_dest_matrix::SCHEME,
             "hs-token",
             &[("Authorization", "Bearer as-token")]
         ),
@@ -193,7 +214,7 @@ fn a_github_webhook_is_delivered_as_its_signature() {
     );
     let verified = pollster::block_on(verified(
         &FakeVerifier,
-        Scheme::GitHub,
+        herald_sources_forge::Forge::GitHub.scheme(),
         "secret",
         &[("X-Hub-Signature-256", &signed)],
         BODY,
@@ -210,7 +231,7 @@ fn a_delivery_is_admitted_once_until_it_is_released() {
         pollster::block_on(admitted(
             &store,
             Admission::Once,
-            Scheme::GitHub,
+            herald_sources_forge::Forge::GitHub.scheme(),
             verified,
             now(),
         ))
@@ -221,7 +242,7 @@ fn a_delivery_is_admitted_once_until_it_is_released() {
         pollster::block_on(admitted(
             &store,
             Admission::Again,
-            Scheme::GitHub,
+            herald_sources_forge::Forge::GitHub.scheme(),
             &delivered("1"),
             now()
         )),
@@ -234,7 +255,11 @@ fn a_delivery_is_admitted_once_until_it_is_released() {
         "the request was delivered before, so it is taken for a replay"
     );
     assert_eq!(
-        pollster::block_on(released(&store, Scheme::GitHub, &delivered("1"))),
+        pollster::block_on(released(
+            &store,
+            herald_sources_forge::Forge::GitHub.scheme(),
+            &delivered("1")
+        )),
         Ok(())
     );
     assert_eq!(admit(&delivered("1")), Ok(()));
@@ -245,7 +270,11 @@ fn a_delivery_is_admitted_once_until_it_is_released() {
     assert_eq!(admit(&unnamed), Ok(()));
     assert_eq!(admit(&unnamed), Ok(()));
     assert_eq!(
-        pollster::block_on(released(&store, Scheme::GitHub, &unnamed)),
+        pollster::block_on(released(
+            &store,
+            herald_sources_forge::Forge::GitHub.scheme(),
+            &unnamed
+        )),
         Ok(())
     );
 }
@@ -258,14 +287,18 @@ fn a_store_keeping_no_deliveries_admits_every_one_and_the_ledger_skips_replays()
         pollster::block_on(admitted(
             &store,
             Admission::Once,
-            Scheme::GitHub,
+            herald_sources_forge::Forge::GitHub.scheme(),
             &verified,
             now()
         )),
         Ok(())
     );
     assert_eq!(
-        pollster::block_on(released(&store, Scheme::GitHub, &verified)),
+        pollster::block_on(released(
+            &store,
+            herald_sources_forge::Forge::GitHub.scheme(),
+            &verified
+        )),
         Ok(())
     );
 }
@@ -280,7 +313,7 @@ fn a_store_that_cannot_answer_lets_nothing_through() {
     let rejected = pollster::block_on(admitted(
         &store,
         Admission::Once,
-        Scheme::GitHub,
+        herald_sources_forge::Forge::GitHub.scheme(),
         &verified,
         now(),
     ));
@@ -295,7 +328,11 @@ fn a_store_that_cannot_answer_lets_nothing_through() {
         "the store could not say whether the request was delivered before, so it is not let through: the store could not be reached: down"
     );
     assert_eq!(
-        pollster::block_on(released(&store, Scheme::GitHub, &verified)),
+        pollster::block_on(released(
+            &store,
+            herald_sources_forge::Forge::GitHub.scheme(),
+            &verified
+        )),
         Err(down)
     );
 }
@@ -356,7 +393,7 @@ pub(crate) fn activity(
     )
     .unwrap()
     .message;
-    let public = herald_core::key(Scheme::ActivityPub, ACTOR_KEY).unwrap();
+    let public = herald_core::key(herald_dest_fediverse::ACTOR_SCHEME, ACTOR_KEY).unwrap();
     let spelled = [b"RsaSha256|".as_slice(), &public, b"|", &message].concat();
     signing(&STANDARD.encode(spelled))
 }
@@ -736,7 +773,7 @@ fn an_activity_is_never_checked_against_a_key_handed_in() {
     let headers = activity(FOLLOW, ANA_KEY, None);
     let handed = pollster::block_on(verified(
         &FakeVerifier,
-        Scheme::ActivityPub,
+        herald_dest_fediverse::ACTOR_SCHEME,
         ACTOR_KEY,
         &borrowed(&headers),
         FOLLOW,

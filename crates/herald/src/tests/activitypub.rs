@@ -1,6 +1,6 @@
 use std::sync::Mutex;
 
-use herald_core::{Addressed, Entry, Scheme, Sent, Step, activity_claim, key, public_pem};
+use herald_core::{Addressed, Entry, Sent, Step, activity_claim, key, public_pem};
 use herald_crypto::RingVerifier;
 use herald_dest_fediverse::{ActivityPub, ActorRouteOptions};
 use herald_ports::{Algorithm, Secret, Signer as _, Verifier as _};
@@ -91,7 +91,7 @@ fn a_delivery_herald_signs_is_one_its_own_inbox_takes_under_the_key_its_actor_pu
         Some("https://herald.example/users/php-mutation-gate#main-key")
     );
     let published = pollster::block_on(RingSigner.public(Algorithm::RsaSha256, &secret)).unwrap();
-    let public = key(Scheme::ActivityPub, &public_pem(&published)).unwrap();
+    let public = key(herald_dest_fediverse::ACTOR_SCHEME, &public_pem(&published)).unwrap();
     let holds = |body: &[u8]| {
         claim.signatures.iter().any(|signature| {
             pollster::block_on(RingVerifier.verify(

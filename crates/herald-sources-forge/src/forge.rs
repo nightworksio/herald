@@ -1,4 +1,4 @@
-use herald_core::{Cursor, Event, Polled};
+use herald_core::{Cursor, Event, KeyForm, Polled, Scheme, Signed};
 use herald_ports::{Method, Request, Response, Secret, Text, USER_AGENT};
 use serde::Deserialize;
 
@@ -8,6 +8,37 @@ use herald_wire::{NOT_MODIFIED, Reading, answered, segment};
 
 use crate::wire::{Found, event, read};
 use crate::{forgejo, github, gitlab};
+
+/// A GitHub webhook: `X-Hub-Signature-256: sha256=<hex>`, an HMAC-SHA256 of the body.
+const GITHUB: Scheme = Scheme {
+    name: "github",
+    signed: Signed::Body {
+        headers: &["X-Hub-Signature-256"],
+        prefix: "sha256=",
+    },
+    key: KeyForm::Bytes,
+};
+
+/// A GitLab webhook signed with a signing token, as Standard Webhooks sign.
+const GITLAB: Scheme = Scheme {
+    name: "gitlab",
+    signed: Signed::StandardWebhooks {
+        id: "webhook-id",
+        timestamp: "webhook-timestamp",
+        signature: "webhook-signature",
+    },
+    key: KeyForm::Whsec,
+};
+
+/// A Forgejo or Gitea webhook: `X-Forgejo-Signature` or `X-Gitea-Signature`, the hex HMAC-SHA256 of the body.
+const FORGEJO: Scheme = Scheme {
+    name: "forgejo",
+    signed: Signed::Body {
+        headers: &["X-Forgejo-Signature", "X-Gitea-Signature"],
+        prefix: "",
+    },
+    key: KeyForm::Bytes,
+};
 
 /// A forge whose releases herald announces.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -82,6 +113,16 @@ pub struct Origin {
 }
 
 impl Forge {
+    /// Who signs its webhooks, and how.
+    #[must_use]
+    pub const fn scheme(self) -> Scheme {
+        match self {
+            Self::GitHub => GITHUB,
+            Self::GitLab => GITLAB,
+            Self::Forgejo => FORGEJO,
+        }
+    }
+
     /// How many names a repository's path holds on the forge.
     #[must_use]
     pub const fn names(self) -> std::ops::RangeInclusive<usize> {
@@ -360,6 +401,14 @@ impl Origin {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn each_forge_signs_under_its_own_scheme() {
+        assert_eq!(
+            [Forge::GitHub, Forge::GitLab, Forge::Forgejo].map(|forge| forge.scheme().name()),
+            ["github", "gitlab", "forgejo"]
+        );
+    }
 
     #[test]
     fn each_forge_is_named_as_a_source_s_kind_writes_it() {

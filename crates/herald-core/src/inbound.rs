@@ -13,57 +13,93 @@ use jiff::{SignedDuration, Timestamp};
 
 use crate::bounds::Inbound;
 
-/// Who signs a kind of inbound request, and how.
+/// Who signs a kind of inbound request, and how: data each source and
+/// destination supplies, over the primitives herald checks (ADR-0007).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Scheme {
-    /// A GitHub webhook: `X-Hub-Signature-256: sha256=<hex>`, an HMAC-SHA256
-    /// of the body.
-    GitHub,
-    /// A Forgejo or Gitea webhook: `X-Forgejo-Signature` or
-    /// `X-Gitea-Signature`, the hex HMAC-SHA256 of the body.
-    Forgejo,
-    /// A GitLab webhook signed with a signing token, as Standard Webhooks
-    /// sign: `webhook-signature: v1,<base64>`, an HMAC-SHA256 of
-    /// `<webhook-id>.<webhook-timestamp>.<body>`, keyed by the token's
-    /// base64 after its `whsec_` and delivered as `webhook-id`.
-    GitLab,
-    /// A Discord interaction: `X-Signature-Ed25519` over
-    /// `X-Signature-Timestamp` and the body.
-    Discord,
-    /// A Slack command or interaction: `X-Slack-Signature: v0=<hex>`, an
-    /// HMAC-SHA256 of `v0:<X-Slack-Request-Timestamp>:<body>`.
-    Slack,
-    /// A Matrix application-service transaction: `Authorization: Bearer
-    /// <hs_token>`, the homeserver token its registration names.
-    Matrix,
-    /// An ActivityPub activity posted to herald's inbox, signed as HTTP
-    /// Signatures do: `Signature` names the signer's `keyId` and the headers
-    /// it signs, which must hold `(request-target)`, `host`, `date` and, with
-    /// a body, `digest`; `Digest: SHA-256=<base64>` is the body's. It is
-    /// claimed by [`activity_claim`], with where it was sent, and delivered
-    /// as its signature.
-    ActivityPub,
-    /// An app's event posted to herald's HTTP API with `Authorization:
-    /// Bearer <token>`, checked against the hashes `[apps]` keeps and
-    /// delivered as the event's identity (ADR-0007).
-    App,
+pub struct Scheme {
+    /// Its name, as a store keeps its deliveries under it.
+    pub name: &'static str,
+    /// How a request of it is signed.
+    pub signed: Signed,
+    /// How the key it is checked with is written.
+    pub key: KeyForm,
 }
 
 impl Scheme {
     /// The scheme's name, as a store keeps its deliveries under it.
     #[must_use]
     pub const fn name(self) -> &'static str {
-        match self {
-            Self::GitHub => "github",
-            Self::Forgejo => "forgejo",
-            Self::GitLab => "gitlab",
-            Self::Discord => "discord",
-            Self::Slack => "slack",
-            Self::Matrix => "matrix",
-            Self::ActivityPub => "activitypub",
-            Self::App => "app",
-        }
+        self.name
     }
+}
+
+/// How a request of a scheme is signed: one of the primitives herald
+/// checks, with the headers it is carried in.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Signed {
+    /// An HMAC-SHA256 of the body, in hex after `prefix`, in the first of
+    /// `headers` the request carries; delivered as its signature.
+    Body {
+        /// The headers it may be carried in, the first named when none is.
+        headers: &'static [&'static str],
+        /// What the hex follows.
+        prefix: &'static str,
+    },
+    /// An HMAC-SHA256 of `<version>:<timestamp>:<body>`, in hex after
+    /// `prefix` in `signature`, its Unix-seconds timestamp in `timestamp`;
+    /// delivered as its signature.
+    Stamped {
+        /// The header the signature is in.
+        signature: &'static str,
+        /// What the hex follows.
+        prefix: &'static str,
+        /// The header the timestamp is in.
+        timestamp: &'static str,
+        /// The version the signed message starts with.
+        version: &'static str,
+    },
+    /// Ed25519, in hex in `signature`, over the Unix-seconds timestamp in
+    /// `timestamp` and the body; delivered as its signature.
+    Ed25519 {
+        /// The header the signature is in.
+        signature: &'static str,
+        /// The header the timestamp is in.
+        timestamp: &'static str,
+    },
+    /// As Standard Webhooks sign: `v1,<base64>` HMAC-SHA256s in
+    /// `signature`, each of `<id>.<timestamp>.<body>`; delivered as its id.
+    StandardWebhooks {
+        /// The header the id is in.
+        id: &'static str,
+        /// The header the timestamp is in.
+        timestamp: &'static str,
+        /// The header the signatures are in.
+        signature: &'static str,
+    },
+    /// A bearer token in `header`, checked against the one herald holds.
+    Bearer {
+        /// The header the token is in.
+        header: &'static str,
+    },
+    /// HTTP Signatures over where the request was sent, claimed by
+    /// [`activity_claim`] alone.
+    HttpSignature,
+    /// A bearer token checked against the hashes herald keeps, never by a
+    /// claim.
+    Hashed,
+}
+
+/// How the key a scheme is checked with is written.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum KeyForm {
+    /// As its bytes.
+    Bytes,
+    /// In hex.
+    Hex,
+    /// In base64 after `whsec_`.
+    Whsec,
+    /// As a PEM public key, of RSA.
+    RsaPem,
 }
 
 /// The kind of signature a scheme carries.
@@ -190,52 +226,56 @@ pub fn claim(
     now: Timestamp,
     bounds: &Inbound,
 ) -> Result<Claim, Refusal> {
-    match scheme {
-        Scheme::GitHub => {
-            const HEADER: &str = "X-Hub-Signature-256";
-            let signature = prefixed(headers, HEADER, "sha256=")?;
-            Ok(signed_body(body, signature))
-        }
-        Scheme::Forgejo => {
-            let (header, value) = ["X-Forgejo-Signature", "X-Gitea-Signature"]
-                .into_iter()
-                .find_map(|header| header_of(headers, header).map(|value| (header, value)))
+    match scheme.signed {
+        Signed::Body {
+            headers: names,
+            prefix,
+        } => {
+            let (header, value) = names
+                .iter()
+                .find_map(|name| header_of(headers, name).map(|value| (*name, value)))
                 .ok_or(Refusal::Unsigned {
-                    header: "X-Forgejo-Signature",
+                    header: names.first().copied().unwrap_or_default(),
                 })?;
-            let signature = unhex(value).ok_or(Refusal::Malformed { header })?;
+            let signature = value
+                .strip_prefix(prefix)
+                .and_then(unhex)
+                .ok_or(Refusal::Malformed { header })?;
             Ok(signed_body(body, signature))
         }
-        Scheme::Discord => {
-            const SIGNATURE: &str = "X-Signature-Ed25519";
-            const TIMESTAMP: &str = "X-Signature-Timestamp";
-            let stamp = timestamp(headers, TIMESTAMP, now, bounds.replay_window)?;
-            let signature = unhex(required(headers, SIGNATURE)?)
-                .ok_or(Refusal::Malformed { header: SIGNATURE })?;
+        Signed::Ed25519 {
+            signature,
+            timestamp: stamped,
+        } => {
+            let stamp = timestamp(headers, stamped, now, bounds.replay_window)?;
+            let signed = unhex(required(headers, signature)?)
+                .ok_or(Refusal::Malformed { header: signature })?;
             Ok(Claim {
                 kind: Signature::Ed25519,
                 message: [stamp.as_bytes(), body].concat(),
-                delivery: Some(crate::hex(&signature)),
-                signatures: vec![signature],
+                delivery: Some(crate::hex(&signed)),
+                signatures: vec![signed],
                 signer: None,
             })
         }
-        Scheme::Slack => {
-            const TIMESTAMP: &str = "X-Slack-Request-Timestamp";
-            let stamp = timestamp(headers, TIMESTAMP, now, bounds.replay_window)?;
-            let signature = prefixed(headers, "X-Slack-Signature", "v0=")?;
-            let delivery = crate::hex(&signature);
+        Signed::Stamped {
+            signature,
+            prefix,
+            timestamp: stamped,
+            version,
+        } => {
+            let stamp = timestamp(headers, stamped, now, bounds.replay_window)?;
+            let signed = prefixed(headers, signature, prefix)?;
+            let delivery = crate::hex(&signed);
             Ok(hmac(
-                [b"v0:", stamp.as_bytes(), b":", body].concat(),
-                signature,
+                [version.as_bytes(), b":", stamp.as_bytes(), b":", body].concat(),
+                signed,
                 Some(&delivery),
             ))
         }
-        Scheme::ActivityPub | Scheme::App => Err(Refusal::Unaddressed),
-        Scheme::Matrix => {
-            const HEADER: &str = "Authorization";
-            let token =
-                bearer(required(headers, HEADER)?).ok_or(Refusal::Malformed { header: HEADER })?;
+        Signed::HttpSignature | Signed::Hashed => Err(Refusal::Unaddressed),
+        Signed::Bearer { header } => {
+            let token = bearer(required(headers, header)?).ok_or(Refusal::Malformed { header })?;
             Ok(Claim {
                 kind: Signature::Token,
                 message: Vec::new(),
@@ -244,11 +284,14 @@ pub fn claim(
                 signer: None,
             })
         }
-        Scheme::GitLab => {
-            const SIGNATURE: &str = "webhook-signature";
-            let id = required(headers, "webhook-id")?;
-            let stamp = timestamp(headers, "webhook-timestamp", now, bounds.replay_window)?;
-            let signatures: Vec<Vec<u8>> = required(headers, SIGNATURE)?
+        Signed::StandardWebhooks {
+            id,
+            timestamp: stamped,
+            signature,
+        } => {
+            let id = required(headers, id)?;
+            let stamp = timestamp(headers, stamped, now, bounds.replay_window)?;
+            let signatures: Vec<Vec<u8>> = required(headers, signature)?
                 .split(' ')
                 .filter_map(|entry| entry.strip_prefix("v1,"))
                 .map(|encoded| {
@@ -262,7 +305,7 @@ pub fn claim(
                 .filter(|signatures: &Vec<Vec<u8>>| {
                     (1..=bounds.signatures).contains(&signatures.len())
                 })
-                .ok_or(Refusal::Malformed { header: SIGNATURE })?;
+                .ok_or(Refusal::Malformed { header: signature })?;
             Ok(Claim {
                 kind: Signature::HmacSha256,
                 message: [id.as_bytes(), b".", stamp.as_bytes(), b".", body].concat(),
@@ -280,16 +323,14 @@ pub fn claim(
 /// bytes. Nothing where it is not written in its form.
 #[must_use]
 pub fn key(scheme: Scheme, written: &str) -> Option<Vec<u8>> {
-    match scheme {
-        Scheme::GitLab => written
+    match scheme.key {
+        KeyForm::Whsec => written
             .strip_prefix("whsec_")
             .and_then(|encoded| STANDARD.decode(encoded).ok())
             .filter(|key| !key.is_empty()),
-        Scheme::Discord => unhex(written),
-        Scheme::ActivityPub => rsa_public_key(written),
-        Scheme::GitHub | Scheme::Forgejo | Scheme::Slack | Scheme::Matrix | Scheme::App => {
-            (!written.is_empty()).then(|| written.as_bytes().to_vec())
-        }
+        KeyForm::Hex => unhex(written),
+        KeyForm::RsaPem => rsa_public_key(written),
+        KeyForm::Bytes => (!written.is_empty()).then(|| written.as_bytes().to_vec()),
     }
 }
 
@@ -571,3 +612,79 @@ fn unhex(text: &str) -> Option<Vec<u8>> {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+pub(crate) mod fixtures {
+    //! Each source's and destination's scheme as its own crate writes it,
+    //! for the core's tests.
+
+    use super::{KeyForm, Scheme, Signed};
+
+    pub(crate) const GITHUB: Scheme = Scheme {
+        name: "github",
+        signed: Signed::Body {
+            headers: &["X-Hub-Signature-256"],
+            prefix: "sha256=",
+        },
+        key: KeyForm::Bytes,
+    };
+
+    pub(crate) const FORGEJO: Scheme = Scheme {
+        name: "forgejo",
+        signed: Signed::Body {
+            headers: &["X-Forgejo-Signature", "X-Gitea-Signature"],
+            prefix: "",
+        },
+        key: KeyForm::Bytes,
+    };
+
+    pub(crate) const GITLAB: Scheme = Scheme {
+        name: "gitlab",
+        signed: Signed::StandardWebhooks {
+            id: "webhook-id",
+            timestamp: "webhook-timestamp",
+            signature: "webhook-signature",
+        },
+        key: KeyForm::Whsec,
+    };
+
+    pub(crate) const DISCORD: Scheme = Scheme {
+        name: "discord",
+        signed: Signed::Ed25519 {
+            signature: "X-Signature-Ed25519",
+            timestamp: "X-Signature-Timestamp",
+        },
+        key: KeyForm::Hex,
+    };
+
+    pub(crate) const SLACK: Scheme = Scheme {
+        name: "slack",
+        signed: Signed::Stamped {
+            signature: "X-Slack-Signature",
+            prefix: "v0=",
+            timestamp: "X-Slack-Request-Timestamp",
+            version: "v0",
+        },
+        key: KeyForm::Bytes,
+    };
+
+    pub(crate) const MATRIX: Scheme = Scheme {
+        name: "matrix",
+        signed: Signed::Bearer {
+            header: "Authorization",
+        },
+        key: KeyForm::Bytes,
+    };
+
+    pub(crate) const ACTIVITYPUB: Scheme = Scheme {
+        name: "activitypub",
+        signed: Signed::HttpSignature,
+        key: KeyForm::RsaPem,
+    };
+
+    pub(crate) const APP: Scheme = Scheme {
+        name: "app",
+        signed: Signed::Hashed,
+        key: KeyForm::Bytes,
+    };
+}

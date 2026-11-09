@@ -8,6 +8,16 @@ use jiff::Timestamp;
 use super::*;
 use crate::FakeStore;
 
+/// A scheme as its crate writes it, for these tests.
+const GITHUB: herald_core::Scheme = herald_core::Scheme {
+    name: "github",
+    signed: herald_core::Signed::Body {
+        headers: &["X-Hub-Signature-256"],
+        prefix: "sha256=",
+    },
+    key: herald_core::KeyForm::Bytes,
+};
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Fault {
     OverwritesEntries,
@@ -321,10 +331,15 @@ impl Pins for Faulty {
 }
 
 impl Deliveries for Faulty {
-    async fn admit(&self, scheme: Scheme, id: &str, at: Timestamp) -> Result<Admitted, StoreError> {
+    async fn admit(
+        &self,
+        scheme: herald_core::Scheme,
+        id: &str,
+        at: Timestamp,
+    ) -> Result<Admitted, StoreError> {
         self.refuses()?;
         let scheme = match self.fault {
-            Fault::SharesDeliveries => Scheme::GitHub,
+            Fault::SharesDeliveries => GITHUB,
             _ => scheme,
         };
         let admitted = self.inner.admit(scheme, id, at).await?;
@@ -334,7 +349,7 @@ impl Deliveries for Faulty {
         })
     }
 
-    async fn release(&self, scheme: Scheme, id: &str) -> Result<(), StoreError> {
+    async fn release(&self, scheme: herald_core::Scheme, id: &str) -> Result<(), StoreError> {
         self.refuses()?;
         if self.fault == Fault::KeepsReleased {
             return Ok(());

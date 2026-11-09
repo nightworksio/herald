@@ -1,6 +1,6 @@
 use herald_core::{
     Chore, Cursor, DestinationName, Entry, Facts, Identity, Key, Kind, Latest, RouteId, Schedule,
-    Scheme, Shown, SourceName, State, Step, Subscription,
+    Shown, SourceName, State, Step, Subscription,
 };
 use std::fmt;
 
@@ -9,6 +9,37 @@ use herald_ports::{
     Notes, Pins, Schedules, Store, StoreError, Subscriptions, Version, Written,
 };
 use jiff::Timestamp;
+
+/// A scheme as its crate writes it, for these tests.
+const GITHUB: herald_core::Scheme = herald_core::Scheme {
+    name: "github",
+    signed: herald_core::Signed::Body {
+        headers: &["X-Hub-Signature-256"],
+        prefix: "sha256=",
+    },
+    key: herald_core::KeyForm::Bytes,
+};
+
+/// A scheme as its crate writes it, for these tests.
+const GITLAB: herald_core::Scheme = herald_core::Scheme {
+    name: "gitlab",
+    signed: herald_core::Signed::StandardWebhooks {
+        id: "webhook-id",
+        timestamp: "webhook-timestamp",
+        signature: "webhook-signature",
+    },
+    key: herald_core::KeyForm::Whsec,
+};
+
+/// A scheme as its crate writes it, for these tests.
+const FORGEJO: herald_core::Scheme = herald_core::Scheme {
+    name: "forgejo",
+    signed: herald_core::Signed::Body {
+        headers: &["X-Forgejo-Signature", "X-Gitea-Signature"],
+        prefix: "",
+    },
+    key: herald_core::KeyForm::Bytes,
+};
 
 /// Whether `store`, empty, skips no record and keeps every kind of record
 /// it answers as a store must (ADR-0005). Every store passes this suite,
@@ -512,31 +543,31 @@ async fn deliveries<S: Deliveries>(store: &S) -> Result<(), Failure> {
     let mut checks = Checks::default();
     let later = NOON + jiff::SignedDuration::from_hours(1);
     checks.ensure(
-        store.admit(Scheme::GitHub, "one", NOON).await? == Admitted::Fresh,
+        store.admit(GITHUB, "one", NOON).await? == Admitted::Fresh,
         "a delivery arriving the first time was not fresh",
     );
     checks.ensure(
-        store.admit(Scheme::GitHub, "one", later).await? == Admitted::Seen,
+        store.admit(GITHUB, "one", later).await? == Admitted::Seen,
         "a delivery admitted before was fresh again",
     );
     checks.ensure(
-        store.admit(Scheme::GitLab, "one", NOON).await? == Admitted::Fresh,
+        store.admit(GITLAB, "one", NOON).await? == Admitted::Fresh,
         "another scheme's delivery of the same id was seen",
     );
-    store.release(Scheme::GitHub, "one").await?;
+    store.release(GITHUB, "one").await?;
     checks.ensure(
-        store.admit(Scheme::GitHub, "one", later).await? == Admitted::Fresh,
+        store.admit(GITHUB, "one", later).await? == Admitted::Fresh,
         "a released delivery was not admitted again",
     );
-    store.admit(Scheme::Forgejo, "old", NOON).await?;
-    store.admit(Scheme::Forgejo, "new", later).await?;
+    store.admit(FORGEJO, "old", NOON).await?;
+    store.admit(FORGEJO, "new", later).await?;
     store.expire_deliveries(later).await?;
     checks.ensure(
-        store.admit(Scheme::Forgejo, "old", later).await? == Admitted::Fresh,
+        store.admit(FORGEJO, "old", later).await? == Admitted::Fresh,
         "a delivery admitted before the expiry was still seen",
     );
     checks.ensure(
-        store.admit(Scheme::Forgejo, "new", later).await? == Admitted::Seen,
+        store.admit(FORGEJO, "new", later).await? == Admitted::Seen,
         "a delivery admitted at the expiry was forgotten",
     );
     checks.done()

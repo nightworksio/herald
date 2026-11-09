@@ -7,18 +7,18 @@
 
 #![no_main]
 
-use herald_core::{Addressed, Inbound, Scheme, activity_claim, claim, key};
+use herald_core::{Addressed, Inbound, Scheme, Signed, activity_claim, claim, key};
 use jiff::Timestamp;
 use libfuzzer_sys::fuzz_target;
 
 const SCHEMES: [Scheme; 7] = [
-    Scheme::GitHub,
-    Scheme::Forgejo,
-    Scheme::GitLab,
-    Scheme::Discord,
-    Scheme::Slack,
-    Scheme::Matrix,
-    Scheme::ActivityPub,
+    herald_sources_forge::Forge::GitHub.scheme(),
+    herald_sources_forge::Forge::Forgejo.scheme(),
+    herald_sources_forge::Forge::GitLab.scheme(),
+    herald_dest_discord::SCHEME,
+    herald_dest_slack::SCHEME,
+    herald_dest_matrix::SCHEME,
+    herald_dest_fediverse::ACTOR_SCHEME,
 ];
 
 const HEADERS: [&str; 15] = [
@@ -65,8 +65,8 @@ fuzz_target!(|input: (Vec<String>, Vec<u8>, i64, String, String)| {
     }
     for scheme in SCHEMES {
         if let Ok(claim) = claim(scheme, &headers, &body, now, &Inbound::DEFAULT) {
-            assert_ne!(scheme, Scheme::ActivityPub);
-            if scheme == Scheme::Matrix {
+            assert_ne!(scheme.signed, Signed::HttpSignature);
+            if matches!(scheme.signed, Signed::Bearer { .. }) {
                 assert!(claim.message.is_empty());
             } else {
                 assert!(claim.message.ends_with(&body), "{scheme:?}");

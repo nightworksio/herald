@@ -20,7 +20,7 @@ mod read;
 mod request;
 pub mod setup;
 
-pub use config::{KIND, MatrixKind};
+pub use config::{KIND, MatrixKind, SCHEME};
 pub use interact::{Interacting, Replying, Synced, Unread, took};
 pub use interactions::{Interactions, SYNC_WAIT, Via};
 pub use markers::MatrixMarkers;

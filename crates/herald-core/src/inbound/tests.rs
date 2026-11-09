@@ -1,3 +1,4 @@
+use super::fixtures::{ACTIVITYPUB, APP, DISCORD, FORGEJO, GITHUB, GITLAB, MATRIX, SLACK};
 use super::*;
 use crate::bounds::Inbound;
 
@@ -14,7 +15,7 @@ fn claimed(scheme: Scheme, headers: &[(&str, &str)]) -> Result<Claim, Refusal> {
 #[test]
 fn a_github_webhook_claims_an_hmac_of_its_body() {
     let claim = claimed(
-        Scheme::GitHub,
+        GITHUB,
         &[
             ("x-hub-signature-256", "sha256=00Ff10"),
             ("x-github-delivery", "72d3162e-cc78-11e3-81ab-4c9367dc0958"),
@@ -36,14 +37,14 @@ fn a_github_webhook_claims_an_hmac_of_its_body() {
 #[test]
 fn a_github_webhook_without_its_signature_or_its_prefix_is_refused() {
     assert_eq!(
-        claimed(Scheme::GitHub, &[("X-Hub-Signature", "sha1=00")]),
+        claimed(GITHUB, &[("X-Hub-Signature", "sha1=00")]),
         Err(Refusal::Unsigned {
             header: "X-Hub-Signature-256"
         })
     );
     for value in ["00ff", "sha256=", "sha256=0", "sha256=zz", "sha256=+1"] {
         assert_eq!(
-            claimed(Scheme::GitHub, &[("X-Hub-Signature-256", value)]),
+            claimed(GITHUB, &[("X-Hub-Signature-256", value)]),
             Err(Refusal::Malformed {
                 header: "X-Hub-Signature-256"
             }),
@@ -58,20 +59,20 @@ fn a_forgejo_webhook_claims_an_hmac_of_its_body_under_either_header() {
         ("X-Forgejo-Signature", "X-Forgejo-Delivery"),
         ("x-gitea-signature", "x-gitea-delivery"),
     ] {
-        let claim = claimed(Scheme::Forgejo, &[(header, "abcd"), (delivered, "7")]).unwrap();
+        let claim = claimed(FORGEJO, &[(header, "abcd"), (delivered, "7")]).unwrap();
         assert_eq!(claim.kind, Signature::HmacSha256, "{header}");
         assert_eq!(claim.message, BODY, "{header}");
         assert_eq!(claim.signatures, [[0xab, 0xcd]], "{header}");
         assert_eq!(claim.delivery.as_deref(), Some("abcd"), "{header}");
     }
     assert_eq!(
-        claimed(Scheme::Forgejo, &[("X-Gitea-Signature", "abc")]),
+        claimed(FORGEJO, &[("X-Gitea-Signature", "abc")]),
         Err(Refusal::Malformed {
             header: "X-Gitea-Signature"
         })
     );
     assert_eq!(
-        claimed(Scheme::Forgejo, &[]),
+        claimed(FORGEJO, &[]),
         Err(Refusal::Unsigned {
             header: "X-Forgejo-Signature"
         })
@@ -81,7 +82,7 @@ fn a_forgejo_webhook_claims_an_hmac_of_its_body_under_either_header() {
 #[test]
 fn a_forgejo_header_is_read_before_a_gitea_one() {
     let claim = claimed(
-        Scheme::Forgejo,
+        FORGEJO,
         &[
             ("X-Gitea-Signature", "00"),
             ("X-Forgejo-Signature", "01"),
@@ -97,7 +98,7 @@ fn a_forgejo_header_is_read_before_a_gitea_one() {
 #[test]
 fn a_discord_interaction_claims_an_ed25519_signature_of_its_timestamp_and_body() {
     let claim = claimed(
-        Scheme::Discord,
+        DISCORD,
         &[
             ("X-Signature-Ed25519", "0A0b"),
             ("X-Signature-Timestamp", "1800000000"),
@@ -109,14 +110,14 @@ fn a_discord_interaction_claims_an_ed25519_signature_of_its_timestamp_and_body()
     assert_eq!(claim.signatures, [[0x0a, 0x0b]]);
     assert_eq!(claim.delivery.as_deref(), Some("0a0b"));
     assert_eq!(
-        claimed(Scheme::Discord, &[("X-Signature-Timestamp", "1800000000")]),
+        claimed(DISCORD, &[("X-Signature-Timestamp", "1800000000")]),
         Err(Refusal::Unsigned {
             header: "X-Signature-Ed25519"
         })
     );
     assert_eq!(
         claimed(
-            Scheme::Discord,
+            DISCORD,
             &[
                 ("X-Signature-Ed25519", "nope"),
                 ("X-Signature-Timestamp", "1800000000"),
@@ -131,7 +132,7 @@ fn a_discord_interaction_claims_an_ed25519_signature_of_its_timestamp_and_body()
 #[test]
 fn a_slack_request_claims_an_hmac_of_its_versioned_base_string() {
     let claim = claimed(
-        Scheme::Slack,
+        SLACK,
         &[
             ("X-Slack-Signature", "v0=ff"),
             ("X-Slack-Request-Timestamp", "1800000000"),
@@ -144,7 +145,7 @@ fn a_slack_request_claims_an_hmac_of_its_versioned_base_string() {
     assert_eq!(claim.delivery.as_deref(), Some("ff"));
     assert_eq!(
         claimed(
-            Scheme::Slack,
+            SLACK,
             &[
                 ("X-Slack-Signature", "ff"),
                 ("X-Slack-Request-Timestamp", "1800000000"),
@@ -164,7 +165,7 @@ fn a_timestamp_inside_the_window_either_way_is_taken() {
             ("X-Slack-Signature", "v0=ff"),
             ("X-Slack-Request-Timestamp", stamp.as_str()),
         ];
-        assert!(claimed(Scheme::Slack, &headers).is_ok(), "{offset}");
+        assert!(claimed(SLACK, &headers).is_ok(), "{offset}");
     }
 }
 
@@ -177,7 +178,7 @@ fn a_timestamp_outside_the_window_is_a_replay() {
             ("X-Signature-Timestamp", stamp.as_str()),
         ];
         assert_eq!(
-            claimed(Scheme::Discord, &headers),
+            claimed(DISCORD, &headers),
             Err(Refusal::Stale {
                 window: Inbound::DEFAULT.replay_window,
             }),
@@ -201,7 +202,7 @@ fn a_timestamp_that_is_not_unix_seconds_is_malformed() {
             ("X-Slack-Request-Timestamp", stamp),
         ];
         assert_eq!(
-            claimed(Scheme::Slack, &headers),
+            claimed(SLACK, &headers),
             Err(Refusal::Malformed {
                 header: "X-Slack-Request-Timestamp"
             }),
@@ -209,7 +210,7 @@ fn a_timestamp_that_is_not_unix_seconds_is_malformed() {
         );
     }
     assert_eq!(
-        claimed(Scheme::Slack, &[("X-Slack-Signature", "v0=ff")]),
+        claimed(SLACK, &[("X-Slack-Signature", "v0=ff")]),
         Err(Refusal::Unsigned {
             header: "X-Slack-Request-Timestamp"
         })
@@ -223,7 +224,7 @@ fn a_timestamp_beyond_the_calendar_is_malformed() {
         ("X-Signature-Timestamp", "9999999999999"),
     ];
     assert_eq!(
-        claimed(Scheme::Discord, &headers),
+        claimed(DISCORD, &headers),
         Err(Refusal::Malformed {
             header: "X-Signature-Timestamp"
         })
@@ -257,7 +258,7 @@ fn each_refusal_reads_as_a_sentence() {
 
 fn gitlab(signature: &str) -> Result<Claim, Refusal> {
     claimed(
-        Scheme::GitLab,
+        GITLAB,
         &[
             ("webhook-id", "msg_2KWPBgLlAfxdpx2AI54pPJ85f4W"),
             ("webhook-timestamp", "1800000000"),
@@ -301,14 +302,14 @@ fn a_gitlab_webhook_with_no_v1_signature_or_one_not_in_base64_is_malformed() {
 #[test]
 fn a_gitlab_webhook_names_what_it_lacks() {
     assert_eq!(
-        claimed(Scheme::GitLab, &[]),
+        claimed(GITLAB, &[]),
         Err(Refusal::Unsigned {
             header: "webhook-id"
         })
     );
     assert_eq!(
         claimed(
-            Scheme::GitLab,
+            GITLAB,
             &[("webhook-id", "msg"), ("webhook-timestamp", "1800000000")]
         ),
         Err(Refusal::Unsigned {
@@ -317,7 +318,7 @@ fn a_gitlab_webhook_names_what_it_lacks() {
     );
     assert_eq!(
         claimed(
-            Scheme::GitLab,
+            GITLAB,
             &[
                 ("webhook-id", "msg"),
                 ("webhook-timestamp", "1"),
@@ -332,13 +333,13 @@ fn a_gitlab_webhook_names_what_it_lacks() {
 
 #[test]
 fn each_scheme_reads_its_key_as_it_is_written() {
-    assert_eq!(key(Scheme::GitLab, "whsec_AAE="), Some(vec![0x00, 0x01]));
+    assert_eq!(key(GITLAB, "whsec_AAE="), Some(vec![0x00, 0x01]));
     for written in ["AAE=", "whsec_", "whsec_!!"] {
-        assert_eq!(key(Scheme::GitLab, written), None, "{written}");
+        assert_eq!(key(GITLAB, written), None, "{written}");
     }
-    assert_eq!(key(Scheme::Discord, "0aFF"), Some(vec![0x0a, 0xff]));
-    assert_eq!(key(Scheme::Discord, "public"), None);
-    for scheme in [Scheme::GitHub, Scheme::Forgejo, Scheme::Slack] {
+    assert_eq!(key(DISCORD, "0aFF"), Some(vec![0x0a, 0xff]));
+    assert_eq!(key(DISCORD, "public"), None);
+    for scheme in [GITHUB, FORGEJO, SLACK] {
         assert_eq!(
             key(scheme, "secret"),
             Some(b"secret".to_vec()),
@@ -368,14 +369,14 @@ fn a_gitlab_webhook_carrying_more_signatures_than_a_rotation_needs_is_refused_un
 
 #[test]
 fn a_matrix_transaction_claims_the_homeserver_token_it_presents() {
-    let claim = claimed(Scheme::Matrix, &[("authorization", "Bearer hs-token")]).unwrap();
+    let claim = claimed(MATRIX, &[("authorization", "Bearer hs-token")]).unwrap();
     assert_eq!(claim.kind, Signature::Token);
     assert_eq!(claim.message, Vec::<u8>::new());
     assert_eq!(claim.signatures, [b"hs-token".to_vec()]);
     assert_eq!(claim.delivery, None);
     for value in ["hs-token", "Bearer ", "Basic aHM6dG9rZW4="] {
         assert_eq!(
-            claimed(Scheme::Matrix, &[("Authorization", value)]),
+            claimed(MATRIX, &[("Authorization", value)]),
             Err(Refusal::Malformed {
                 header: "Authorization"
             }),
@@ -383,12 +384,12 @@ fn a_matrix_transaction_claims_the_homeserver_token_it_presents() {
         );
     }
     assert_eq!(
-        claimed(Scheme::Matrix, &[]),
+        claimed(MATRIX, &[]),
         Err(Refusal::Unsigned {
             header: "Authorization"
         })
     );
-    assert_eq!(key(Scheme::Matrix, "hs-token"), Some(b"hs-token".to_vec()));
+    assert_eq!(key(MATRIX, "hs-token"), Some(b"hs-token".to_vec()));
 }
 
 #[test]
@@ -414,22 +415,22 @@ fn an_unsigned_delivery_header_changes_nothing_a_store_admits() {
         ("X-GitHub-Delivery", "a-fresh-id"),
     ];
     assert_eq!(
-        claimed(Scheme::GitHub, &signature).map(|claim| claim.delivery),
-        claimed(Scheme::GitHub, &renamed).map(|claim| claim.delivery)
+        claimed(GITHUB, &signature).map(|claim| claim.delivery),
+        claimed(GITHUB, &renamed).map(|claim| claim.delivery)
     );
 }
 
 #[test]
 fn each_scheme_keeps_its_deliveries_under_its_own_name() {
     let schemes = [
-        Scheme::GitHub,
-        Scheme::Forgejo,
-        Scheme::GitLab,
-        Scheme::Discord,
-        Scheme::Slack,
-        Scheme::Matrix,
-        Scheme::ActivityPub,
-        Scheme::App,
+        GITHUB,
+        FORGEJO,
+        GITLAB,
+        DISCORD,
+        SLACK,
+        MATRIX,
+        ACTIVITYPUB,
+        APP,
     ];
     assert_eq!(
         schemes.map(Scheme::name),
@@ -450,7 +451,7 @@ fn each_scheme_keeps_its_deliveries_under_its_own_name() {
 fn an_app_s_event_is_claimed_by_its_token_and_not_by_a_signature() {
     assert_eq!(
         claim(
-            Scheme::App,
+            APP,
             &[("authorization", "Bearer t")],
             b"{}",
             now(),
@@ -458,8 +459,8 @@ fn an_app_s_event_is_claimed_by_its_token_and_not_by_a_signature() {
         ),
         Err(Refusal::Unaddressed)
     );
-    assert_eq!(key(Scheme::App, "t"), Some(b"t".to_vec()));
-    assert_eq!(key(Scheme::App, ""), None);
+    assert_eq!(key(APP, "t"), Some(b"t".to_vec()));
+    assert_eq!(key(APP, ""), None);
 }
 
 const PUBLIC_KEY: &str = "-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAtz228sa1z4u70xtqdZER\nBwxBvj+JP0V8SEK7SPdlULv1XbBcoI7T238LnlVGo4IN+C/TsW4tpwORACY7iOb2\npF8LZU0LBOFBV7U4fsd2JwwZa45m8U9wd5Q00xcqQoMZYfwQF3HonOlHwNt8DKpb\nmlKsH1WjhhCcjD5m1Q8LeEuGhVviBtrtAor81FzU106aGDYkMwcrUouxSPzDx8+I\nS7oicynJwyHgqqq8ImqZnqYGufaQuqxcOxNNL1GEMtwW6uylOyPIUb4aJ2wcoXTs\nt1dNhGrVFrSUYlad0nhHNuzF8n83Pj0cELoGmrBepQ8+LqI+Yj6sUIagTEi7P0tz\nowIDAQAB\n-----END PUBLIC KEY-----\n";
@@ -697,7 +698,7 @@ const NOT_KEYS: [(&str, &str); 8] = [
 
 #[test]
 fn an_actors_pem_public_key_reads_as_its_pkcs1_der() {
-    let der = key(Scheme::ActivityPub, PUBLIC_KEY).unwrap();
+    let der = key(ACTIVITYPUB, PUBLIC_KEY).unwrap();
     assert_eq!(der.len(), 270);
     assert_eq!(der[..4], [0x30, 0x82, 0x01, 0x0a]);
     for written in [
@@ -707,10 +708,10 @@ fn an_actors_pem_public_key_reads_as_its_pkcs1_der() {
         &PUBLIC_KEY.replace("MIIBIjAN", "MIIBIjAM"),
         "-----BEGIN PUBLIC KEY-----\n!!\n-----END PUBLIC KEY-----",
     ] {
-        assert_eq!(key(Scheme::ActivityPub, written), None, "{written}");
+        assert_eq!(key(ACTIVITYPUB, written), None, "{written}");
     }
     for (wrong, written) in NOT_KEYS {
-        assert_eq!(key(Scheme::ActivityPub, written), None, "{wrong}");
+        assert_eq!(key(ACTIVITYPUB, written), None, "{wrong}");
     }
 }
 
@@ -809,7 +810,7 @@ fn an_activity_signed_for_another_host_is_misdirected() {
     );
     assert_eq!(
         claim(
-            Scheme::ActivityPub,
+            ACTIVITYPUB,
             &headers,
             ACTIVITY,
             activity_now(),
@@ -924,9 +925,9 @@ fn a_request_is_held_to_the_bounds_it_is_claimed_within() {
         ("X-Signature-Ed25519", "00"),
         ("X-Signature-Timestamp", stamp.as_str()),
     ];
-    assert!(claimed(Scheme::Discord, &discord).is_ok());
+    assert!(claimed(DISCORD, &discord).is_ok());
     assert_eq!(
-        claim(Scheme::Discord, &discord, BODY, now(), &narrow),
+        claim(DISCORD, &discord, BODY, now(), &narrow),
         Err(Refusal::Stale {
             window: SignedDuration::from_mins(1),
         })
@@ -936,9 +937,9 @@ fn a_request_is_held_to_the_bounds_it_is_claimed_within() {
         ("webhook-timestamp", "1800000000"),
         ("webhook-signature", "v1,AAE= v1,/w=="),
     ];
-    assert!(claimed(Scheme::GitLab, &rotating).is_ok());
+    assert!(claimed(GITLAB, &rotating).is_ok());
     assert_eq!(
-        claim(Scheme::GitLab, &rotating, BODY, now(), &narrow),
+        claim(GITLAB, &rotating, BODY, now(), &narrow),
         Err(Refusal::Malformed {
             header: "webhook-signature"
         })

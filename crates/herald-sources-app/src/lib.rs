@@ -5,10 +5,17 @@
 use std::collections::BTreeMap;
 use std::fmt;
 
-use herald_core::{Draft, Event, Kind, Problem, Standing};
+use herald_core::{Draft, Event, KeyForm, Kind, Problem, Scheme, Signed, Standing};
 use jiff::Timestamp;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+
+/// An app's event posted with `Authorization: Bearer <token>`, checked against the hashes `[apps]` keeps.
+pub const SCHEME: Scheme = Scheme {
+    name: "app",
+    signed: Signed::Hashed,
+    key: KeyForm::Bytes,
+};
 
 /// One event as an app writes it.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, JsonSchema)]

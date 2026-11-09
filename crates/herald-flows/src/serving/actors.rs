@@ -1,7 +1,7 @@
 //! herald's ActivityPub actors as the server answers for them: their
 //! documents, Notes, outboxes, followers, inboxes and WebFinger.
 
-use herald_core::{ACTIVITY_JSON, Addressed, DestinationName, Key, Scheme};
+use herald_core::{ACTIVITY_JSON, Addressed, DestinationName, Key};
 use herald_kinds::Federates;
 use herald_ports::{
     Clock, CryptoError, Http, Keyring, Notes, Outboxed, Signer, Store, Subscriptions, Verifier,
@@ -179,7 +179,7 @@ pub(super) async fn inboxed<S: Store, C: Clock, G, V: Verifier, H, P: Http, K: K
     if let Err(rejected) = admitted(
         serving.ports.store,
         serving.admission,
-        Scheme::ActivityPub,
+        herald_dest_fediverse::ACTOR_SCHEME,
         &verified,
         now,
     )

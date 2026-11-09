@@ -12,6 +12,16 @@ mod markers {
     use herald_testing::{FakeMarkers, FakeSigner, store_conformance};
     use jiff::{SignedDuration, Timestamp};
 
+    /// A scheme as its crate writes it, for these tests.
+    const GITHUB: herald_core::Scheme = herald_core::Scheme {
+        name: "github",
+        signed: herald_core::Signed::Body {
+            headers: &["X-Hub-Signature-256"],
+            prefix: "sha256=",
+        },
+        key: herald_core::KeyForm::Bytes,
+    };
+
     const OPENED: Timestamp = Timestamp::constant(1_793_448_000, 0);
     const DAY: SignedDuration = SignedDuration::from_hours(24);
 
@@ -113,7 +123,7 @@ mod markers {
             Err(unsupported("pins"))
         );
         assert_eq!(
-            pollster::block_on(store.deliveries().release(herald_core::Scheme::GitHub, "d")),
+            pollster::block_on(store.deliveries().release(GITHUB, "d")),
             Err(unsupported("deliveries"))
         );
         assert_eq!(

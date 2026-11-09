@@ -49,7 +49,8 @@ pub use duration::Duration;
 pub use event::{Draft, Event, Kind, Problem};
 pub use housekeep::{Chore, Schedule, due, schedules};
 pub use inbound::{
-    Addressed, Claim, Refusal, Scheme, Signature, activity_claim, bearer, claim, key, same,
+    Addressed, Claim, KeyForm, Refusal, Scheme, Signature, Signed, activity_claim, bearer, claim,
+    key, same,
 };
 pub use interact::{
     AnnouncedHere, Answering, Asked, Command, MOST_COMPLETIONS, Member, Place, Replies, Said,

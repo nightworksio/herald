@@ -1,6 +1,4 @@
-use herald_core::{
-    Chore, Entry, Facts, Identity, Key, Retention, RouteId, Schedule, Scheme, State,
-};
+use herald_core::{Chore, Entry, Facts, Identity, Key, Retention, RouteId, Schedule, State};
 use herald_flows::{Chored, Stop, housekeep, prepare};
 use herald_ports::{Admitted, Deliveries, Inboxes, Ledger, Notes, Schedules};
 use herald_testing::{FakeClock, FakeSigner};
@@ -166,15 +164,31 @@ fn housekeeping_forgets_a_delivery_admitted_more_than_a_week_ago_and_keeps_the_r
     let day = SignedDuration::from_hours(24);
     let week_and_a_day = NOON.checked_sub(Retention::DELIVERIES + day).unwrap();
     let six_days = NOON.checked_sub(Retention::DELIVERIES - day).unwrap();
-    pollster::block_on(store.admit(Scheme::GitHub, "old", week_and_a_day)).unwrap();
-    pollster::block_on(store.admit(Scheme::GitHub, "recent", six_days)).unwrap();
+    pollster::block_on(store.admit(
+        herald_sources_forge::Forge::GitHub.scheme(),
+        "old",
+        week_and_a_day,
+    ))
+    .unwrap();
+    pollster::block_on(store.admit(
+        herald_sources_forge::Forge::GitHub.scheme(),
+        "recent",
+        six_days,
+    ))
+    .unwrap();
     assert_eq!(kept(&store, &Script::answering(&[])).unwrap(), []);
     assert_eq!(
-        pollster::block_on(store.admit(Scheme::GitHub, "old", NOON)).unwrap(),
+        pollster::block_on(store.admit(herald_sources_forge::Forge::GitHub.scheme(), "old", NOON))
+            .unwrap(),
         Admitted::Fresh
     );
     assert_eq!(
-        pollster::block_on(store.admit(Scheme::GitHub, "recent", NOON)).unwrap(),
+        pollster::block_on(store.admit(
+            herald_sources_forge::Forge::GitHub.scheme(),
+            "recent",
+            NOON
+        ))
+        .unwrap(),
         Admitted::Seen
     );
 }
@@ -219,8 +233,14 @@ fn claimed(identity: &str, days_ago: i64) -> Entry {
 #[test]
 fn housekeeping_forgets_deliveries_as_long_ago_as_the_store_is_set_to_keep_them() {
     let store = healthy();
-    pollster::block_on(store.admit(Scheme::GitHub, "old", ago(4))).unwrap();
-    pollster::block_on(store.admit(Scheme::GitHub, "recent", ago(2))).unwrap();
+    pollster::block_on(store.admit(herald_sources_forge::Forge::GitHub.scheme(), "old", ago(4)))
+        .unwrap();
+    pollster::block_on(store.admit(
+        herald_sources_forge::Forge::GitHub.scheme(),
+        "recent",
+        ago(2),
+    ))
+    .unwrap();
     let retention = Retention {
         deliveries: days(3),
         ..Retention::default()
@@ -230,11 +250,17 @@ fn housekeeping_forgets_deliveries_as_long_ago_as_the_store_is_set_to_keep_them(
         []
     );
     assert_eq!(
-        pollster::block_on(store.admit(Scheme::GitHub, "old", NOON)).unwrap(),
+        pollster::block_on(store.admit(herald_sources_forge::Forge::GitHub.scheme(), "old", NOON))
+            .unwrap(),
         Admitted::Fresh
     );
     assert_eq!(
-        pollster::block_on(store.admit(Scheme::GitHub, "recent", NOON)).unwrap(),
+        pollster::block_on(store.admit(
+            herald_sources_forge::Forge::GitHub.scheme(),
+            "recent",
+            NOON
+        ))
+        .unwrap(),
         Admitted::Seen
     );
 }

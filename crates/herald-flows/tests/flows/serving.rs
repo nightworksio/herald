@@ -357,7 +357,10 @@ fn a_signed_webhook_of_a_release_is_answered_and_left_to_announce() {
     else {
         panic!("the release is left to announce");
     };
-    assert_eq!((source.as_str(), scheme), ("gate", Scheme::GitHub));
+    assert_eq!(
+        (source.as_str(), scheme),
+        ("gate", herald_sources_forge::Forge::GitHub.scheme())
+    );
     let delivery = verified.delivery.clone().unwrap();
     let again = world.answer(&hooked("/hooks/gate", &headers, EVENT.as_bytes()));
     assert_eq!(again.reply.status, 409);
@@ -377,7 +380,10 @@ fn a_signed_webhook_of_a_release_is_answered_and_left_to_announce() {
             },
         }])
     );
-    assert_eq!(world.admits(Scheme::GitHub, &delivery), Admitted::Seen);
+    assert_eq!(
+        world.admits(herald_sources_forge::Forge::GitHub.scheme(), &delivery),
+        Admitted::Seen
+    );
     let note = world.answer(&get(&format!("/users/php-mutation-gate/notes/{}", key())));
     let (status, kind, body) = said(&note);
     assert_eq!((status, kind), (200, JSON));
@@ -600,17 +606,23 @@ fn work_that_stops_or_fails_releases_its_delivery() {
         delivery: Some("d1".to_owned()),
         signer: None,
     };
-    assert_eq!(world.admits(Scheme::GitHub, "d1"), Admitted::Fresh);
+    assert_eq!(
+        world.admits(herald_sources_forge::Forge::GitHub.scheme(), "d1"),
+        Admitted::Fresh
+    );
     let Worked::Announced(announced) = world.work(Job::Announce {
         source: herald_core::SourceName::new("gate"),
         event,
-        scheme: Scheme::GitHub,
+        scheme: herald_sources_forge::Forge::GitHub.scheme(),
         verified,
     }) else {
         panic!("the release is announced");
     };
     assert!(matches!(announced[0].outcome, Outcome::Stopped { .. }));
-    assert_eq!(world.admits(Scheme::GitHub, "d1"), Admitted::Fresh);
+    assert_eq!(
+        world.admits(herald_sources_forge::Forge::GitHub.scheme(), "d1"),
+        Admitted::Fresh
+    );
     let follow = serde_json::json!({ "id": "https://social.example/f/1", "type": "Follow", "actor": ANA, "object": ACTOR })
         .to_string()
         .into_bytes();
@@ -618,7 +630,10 @@ fn work_that_stops_or_fails_releases_its_delivery() {
         delivery: Some("d2".to_owned()),
         signer: Some(ANA.to_owned()),
     };
-    assert_eq!(world.admits(Scheme::ActivityPub, "d2"), Admitted::Fresh);
+    assert_eq!(
+        world.admits(herald_dest_fediverse::ACTOR_SCHEME, "d2"),
+        Admitted::Fresh
+    );
     let Worked::Followed(taken) = world.work(Job::Follow {
         verified,
         body: follow,
@@ -626,7 +641,10 @@ fn work_that_stops_or_fails_releases_its_delivery() {
         panic!("the activity is taken");
     };
     assert!(matches!(taken, Err(FollowError::Unfetched(_))));
-    assert_eq!(world.admits(Scheme::ActivityPub, "d2"), Admitted::Fresh);
+    assert_eq!(
+        world.admits(herald_dest_fediverse::ACTOR_SCHEME, "d2"),
+        Admitted::Fresh
+    );
 }
 
 #[test]
@@ -638,11 +656,11 @@ fn work_that_will_not_be_done_releases_its_delivery() {
         .unwrap();
     let jobs = [
         (
-            Scheme::GitHub,
+            herald_sources_forge::Forge::GitHub.scheme(),
             Job::Announce {
                 source: herald_core::SourceName::new("gate"),
                 event,
-                scheme: Scheme::GitHub,
+                scheme: herald_sources_forge::Forge::GitHub.scheme(),
                 verified: herald_flows::Verified {
                     delivery: Some("d3".to_owned()),
                     signer: None,
@@ -650,7 +668,7 @@ fn work_that_will_not_be_done_releases_its_delivery() {
             },
         ),
         (
-            Scheme::ActivityPub,
+            herald_dest_fediverse::ACTOR_SCHEME,
             Job::Follow {
                 verified: herald_flows::Verified {
                     delivery: Some("d3".to_owned()),
@@ -717,7 +735,10 @@ fn an_app_s_event_is_answered_and_left_to_announce_once() {
         (200, TEXT, "herald has this event already".to_owned())
     );
     assert_eq!(again.job, None);
-    assert_eq!(world.admits(Scheme::App, "app/ci/7"), Admitted::Seen);
+    assert_eq!(
+        world.admits(herald_sources_app::SCHEME, "app/ci/7"),
+        Admitted::Seen
+    );
 }
 
 #[test]
@@ -780,7 +801,10 @@ fn an_app_s_event_its_token_or_scope_does_not_let_through_is_refused_unread() {
         mismatched.refused.as_deref(),
         Some("the event names the project \"other\", not \"herald\"")
     );
-    assert_eq!(world.admits(Scheme::App, "app/ci/7"), Admitted::Fresh);
+    assert_eq!(
+        world.admits(herald_sources_app::SCHEME, "app/ci/7"),
+        Admitted::Fresh
+    );
     let asked = Inbound {
         method: "GET",
         ..get("/api/projects/herald/events")
@@ -820,14 +844,23 @@ fn an_app_s_work_that_stops_or_will_not_be_done_releases_its_delivery() {
             signer: Some("ci".to_owned()),
         },
     };
-    assert_eq!(world.admits(Scheme::App, "app/ci/7"), Admitted::Fresh);
+    assert_eq!(
+        world.admits(herald_sources_app::SCHEME, "app/ci/7"),
+        Admitted::Fresh
+    );
     let Worked::Announced(announced) = world.work(job()) else {
         panic!("the event is announced");
     };
     assert!(matches!(announced[0].outcome, Outcome::Stopped { .. }));
-    assert_eq!(world.admits(Scheme::App, "app/ci/7"), Admitted::Fresh);
+    assert_eq!(
+        world.admits(herald_sources_app::SCHEME, "app/ci/7"),
+        Admitted::Fresh
+    );
     world.serving(|serving| pollster::block_on(unworked(serving, &job())));
-    assert_eq!(world.admits(Scheme::App, "app/ci/7"), Admitted::Fresh);
+    assert_eq!(
+        world.admits(herald_sources_app::SCHEME, "app/ci/7"),
+        Admitted::Fresh
+    );
 }
 
 #[test]

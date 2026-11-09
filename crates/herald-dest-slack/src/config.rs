@@ -1,6 +1,6 @@
 use herald_core::{
-    Answering, DestinationName, Markup, Measure, Profile, Room, Scheme, SecretRef, Symbols, Text,
-    WaitOptions,
+    Answering, DestinationName, KeyForm, Markup, Measure, Profile, Room, Scheme, SecretRef, Signed,
+    Symbols, Text, WaitOptions,
 };
 use herald_kinds::{
     Carried, DestinationConfig, DestinationKind, Endpoint, Fault, Interacted, Interacts, Placed,
@@ -13,6 +13,18 @@ use crate::interact::{self, Interacting, Received, SECTION, took};
 use crate::interactions::{Interactions, Via};
 use crate::options::{DestinationOptions, RouteOptions};
 use crate::slack::{self, Credential, Slack};
+
+/// A Slack command or interaction: `X-Slack-Signature: v0=<hex>`, an HMAC-SHA256 of `v0:<timestamp>:<body>`.
+pub const SCHEME: Scheme = Scheme {
+    name: "slack",
+    signed: Signed::Stamped {
+        signature: "X-Slack-Signature",
+        prefix: "v0=",
+        timestamp: "X-Slack-Request-Timestamp",
+        version: "v0",
+    },
+    key: KeyForm::Bytes,
+};
 
 /// The kind of a Slack destination, as the config spells it.
 pub const KIND: &str = "slack";
@@ -218,7 +230,7 @@ impl Interacts for Interacting {
     fn posted(&self, endpoint: Endpoint) -> Option<Result<(Scheme, &str), &'static str>> {
         (endpoint == Endpoint::Posted).then(|| {
             self.signing_secret()
-                .map(|signing| (Scheme::Slack, signing.expose()))
+                .map(|signing| (SCHEME, signing.expose()))
                 .ok_or("commands for such a destination")
         })
     }

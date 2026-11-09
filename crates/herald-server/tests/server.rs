@@ -17,7 +17,7 @@ mod server {
     use futures_util::FutureExt as _;
     use herald_compose::Capped;
     use herald_config::{Config, load};
-    use herald_core::{DestinationName, Scheme, Subscription};
+    use herald_core::{DestinationName, Subscription};
     use herald_flows::{Connected, Keys, Ports, Serving, Webhooks, prepare, webhooks};
     use herald_ports::{
         Admitted, Clock as _, Deliveries, Http, HttpError, Keyring as _, KnownKey, Request,
@@ -31,6 +31,16 @@ mod server {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::net::{TcpListener, TcpStream};
     use tokio::sync::Notify;
+
+    /// A scheme as its crate writes it, for these tests.
+    const GITHUB: herald_core::Scheme = herald_core::Scheme {
+        name: "github",
+        signed: herald_core::Signed::Body {
+            headers: &["X-Hub-Signature-256"],
+            prefix: "sha256=",
+        },
+        key: herald_core::KeyForm::Bytes,
+    };
 
     const EVENT: &str =
         include_str!("../../herald-sources-forge/fixtures/github/release-event.reference.json");
@@ -506,17 +516,11 @@ body = "{{ event.body }}"
         let second = signature(later.as_bytes());
         let delivery = |signed: &str| signed.trim_start_matches("sha256=").to_owned();
         assert_eq!(
-            world
-                .store
-                .admit(Scheme::GitHub, &delivery(&first), at)
-                .await,
+            world.store.admit(GITHUB, &delivery(&first), at).await,
             Ok(Admitted::Seen)
         );
         assert_eq!(
-            world
-                .store
-                .admit(Scheme::GitHub, &delivery(&second), at)
-                .await,
+            world.store.admit(GITHUB, &delivery(&second), at).await,
             Ok(Admitted::Fresh)
         );
     }
