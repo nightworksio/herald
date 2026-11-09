@@ -6,10 +6,10 @@ mod compose {
     use std::collections::BTreeMap;
     use std::future::{Future, ready};
     use std::pin::Pin;
-    use std::sync::Mutex;
+    use std::sync::{Arc, Mutex};
     use std::task::{Context, Poll};
 
-    use herald_compose::{Asked, Composed, Host, KvAt, Left, Records, SqlAt, reached};
+    use herald_compose::{Asked, Composed, Host, KvAt, Left, Opener, SqlAt, reached};
     use herald_config::{Config, load};
     use herald_core::DestinationName;
     use herald_flows::{Admission, Housekept, Inbound, Job, Taker, Worked};
@@ -204,17 +204,17 @@ mod compose {
         .unwrap()
     }
 
-    fn kept(host: &Hosting, store: &str) -> Result<&'static str, String> {
+    fn opener(host: &Arc<Hosting>) -> Arc<Opener<Hosting>> {
+        Arc::new(Opener::new(Arc::clone(host), Outbound::default()))
+    }
+
+    fn kept(host: &Arc<Hosting>, store: &str) -> Result<&'static str, String> {
         let config = config(store);
-        let records =
-            pollster::block_on(reached(host, &config.store, &Outbound::default(), &every()))?;
-        Ok(match records {
-            Records::Sql(_) => "sql",
-            Records::Kv(_) => "kv",
-            Records::Branch(_) => "branch",
-            Records::Variables(_) => "variables",
-            Records::Dynamodb(_) => "dynamodb",
-            Records::Posts => "posts",
+        let records = pollster::block_on(reached(opener(host), &config.store, &every()))?;
+        Ok(if records.reads_posts() {
+            "posts"
+        } else {
+            "kept"
         })
     }
 
@@ -235,23 +235,23 @@ mod compose {
 
     #[test]
     fn each_store_is_reached_through_what_the_host_offers() {
-        let host = github();
+        let host = Arc::new(github());
         let kinds = [
-            ("kind = \"sqlite\"", "sql"),
+            ("kind = \"sqlite\"", "kept"),
             (
                 "kind = \"postgres\"\nurl = { secret = \"DATABASE_URL\" }",
-                "sql",
+                "kept",
             ),
-            ("kind = \"d1\"\nbinding = \"DB\"", "sql"),
-            ("kind = \"durable-object\"", "sql"),
-            ("kind = \"deno-kv\"\npath = \"/data/kv\"", "kv"),
-            ("kind = \"fastly-kv\"", "kv"),
-            ("kind = \"git-branch\"", "branch"),
+            ("kind = \"d1\"\nbinding = \"DB\"", "kept"),
+            ("kind = \"durable-object\"", "kept"),
+            ("kind = \"deno-kv\"\npath = \"/data/kv\"", "kept"),
+            ("kind = \"fastly-kv\"", "kept"),
+            ("kind = \"git-branch\"", "kept"),
             (
                 "kind = \"repo-variables\"\ntoken = { secret = \"VARIABLES\" }",
-                "variables",
+                "kept",
             ),
-            ("kind = \"dynamodb\"", "dynamodb"),
+            ("kind = \"dynamodb\"", "kept"),
             ("kind = \"markers\"", "posts"),
         ];
         for (store, records) in kinds {
@@ -272,10 +272,10 @@ mod compose {
 
     #[test]
     fn a_store_the_host_cannot_open_or_reach_says_which_and_why() {
-        let refusing = Hosting {
+        let refusing = Arc::new(Hosting {
             refusing: true,
             ..github()
-        };
+        });
         assert_eq!(
             kept(&refusing, "kind = \"sqlite\"\npath = \"kept.sqlite\""),
             Err("the sqlite store kept.sqlite could not be opened: refused".to_owned())
@@ -293,23 +293,23 @@ mod compose {
             ),
             Err("the postgres store could not be opened: refused".to_owned())
         );
-        let unreached = Hosting {
+        let unreached = Arc::new(Hosting {
             unreached: true,
             ..github()
-        };
+        });
         assert_eq!(
             kept(&unreached, "kind = \"git-branch\""),
             Err("https://api.github.com is out of reach".to_owned())
         );
-        let keyless = Hosting {
+        let keyless = Arc::new(Hosting {
             secrets: FakeSecrets::default().with("GITHUB_TOKEN", "t"),
             ..github()
-        };
+        });
         assert_eq!(
             kept(&keyless, "kind = \"git-branch\""),
             Err("HERALD_STORE_KEY is not set; the store seals its records with it".to_owned())
         );
-        let bare = Hosting::default();
+        let bare = Arc::new(Hosting::default());
         assert_eq!(
             kept(
                 &bare,
@@ -335,10 +335,10 @@ mod compose {
 
     #[test]
     fn a_database_whose_tables_cannot_be_laid_out_opens_no_store() {
-        let host = Hosting {
+        let host = Arc::new(Hosting {
             unlaid: true,
             ..github()
-        };
+        });
         let laid = "could not be opened: the store could not be reached: the database refused the statements: no answer was scripted";
         for store in [
             "kind = \"postgres\"\nurl = { secret = \"DATABASE_URL\" }",
@@ -357,12 +357,11 @@ mod compose {
 
     #[test]
     fn a_kind_the_host_does_not_keep_records_in_is_refused_by_name() {
-        let host = github();
+        let host = Arc::new(github());
         let d1 = config("kind = \"d1\"");
         let refused = pollster::block_on(reached(
-            &host,
+            opener(&host),
             &d1.store,
-            &Outbound::default(),
             &[herald_store_markers::MarkersKind::NAME],
         ));
         assert_eq!(
@@ -372,17 +371,10 @@ mod compose {
             )
         );
         let cached = config("kind = \"actions-cache\"");
-        let unkept = pollster::block_on(reached(
-            &host,
-            &cached.store,
-            &Outbound::default(),
-            &every(),
-        ));
-        assert!(
-            unkept
-                .err()
-                .unwrap()
-                .starts_with("this herald keeps records in sqlite")
+        let unkept = pollster::block_on(reached(opener(&host), &cached.store, &every()));
+        assert_eq!(
+            unkept.err(),
+            Some("ACTIONS_RESULTS_URL is not set; herald reads it from the CI run".to_owned())
         );
         assert_eq!(host.asked(), Vec::<String>::new());
     }
@@ -595,7 +587,7 @@ template = "t"
             "test",
         ))
         .unwrap();
-        let reach = |composed: &Composed<Hosting>, asked: &Asked| {
+        let reach = |composed: &Composed<'_, Hosting>, asked: &Asked| {
             pollster::block_on(composed.reached(asked))
         };
         let health = reach(&unset, &asked("GET", "/healthz?x=1", None));

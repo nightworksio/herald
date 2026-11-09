@@ -1348,6 +1348,7 @@ dependencies = [
  "herald-core",
  "herald-kinds",
  "herald-ports",
+ "herald-records",
  "herald-testing",
  "jiff",
  "pollster",

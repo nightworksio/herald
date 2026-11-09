@@ -1,9 +1,13 @@
 use std::any::Any;
+use std::sync::Arc;
 
 use herald_core::SecretRef;
-use herald_kinds::{StoreConfig, StoreKind, same};
+use herald_kinds::{Local, Opened, Opening, StoreConfig, StoreKind, same};
+use herald_ports::Erased;
+use herald_ports::Secret;
+use herald_records::Seal;
 
-use crate::StoreOptions;
+use crate::{Dynamodb, StoreOptions};
 
 /// DynamoDB, as a kind of store.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -27,6 +31,22 @@ impl StoreConfig for StoreOptions {
 
     fn named(&self) -> Vec<&str> {
         self.secrets().to_vec()
+    }
+
+    fn open<'s, 'o: 's>(
+        &'s self,
+        opening: Arc<dyn Opening + 'o>,
+        seal: Option<Secret>,
+    ) -> Local<'s, Result<Opened<'o>, String>> {
+        Box::pin(async move {
+            let table = Dynamodb::reached(self, &Erased(opening.secrets())).await?;
+            let http = opening.connect(table.api())?;
+            Ok(Opened::Kept(Box::new(
+                table
+                    .store(http, opening.clock(), opening.nonce())
+                    .sealed(seal.map(Seal::new)),
+            )))
+        })
     }
 
     fn as_any(&self) -> &dyn Any {

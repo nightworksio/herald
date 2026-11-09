@@ -1,9 +1,10 @@
 use std::any::Any;
 
 use herald_core::{RecordKind, SecretRef};
+use herald_ports::Secret;
 
 use super::*;
-use crate::same;
+use crate::{Local, Opened, Opening, same};
 
 /// Options of a kind that keeps every default.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -18,6 +19,14 @@ impl StoreConfig for Plain {
 
     fn key(&self) -> Option<&SecretRef> {
         self.key.as_ref()
+    }
+
+    fn open<'s, 'o: 's>(
+        &'s self,
+        _: Arc<dyn Opening + 'o>,
+        _: Option<Secret>,
+    ) -> Local<'s, Result<Opened<'o>, String>> {
+        Box::pin(std::future::ready(Ok(Opened::Posts)))
     }
 
     fn as_any(&self) -> &dyn Any {
@@ -44,6 +53,17 @@ impl StoreConfig for Tokened {
 
     fn named(&self) -> Vec<&str> {
         vec!["TOKEN"]
+    }
+
+    fn open<'s, 'o: 's>(
+        &'s self,
+        opening: Arc<dyn Opening + 'o>,
+        _: Option<Secret>,
+    ) -> Local<'s, Result<Opened<'o>, String>> {
+        Box::pin(async move {
+            opening.secret("TOKEN", "the store reads with it").await?;
+            Ok(Opened::Posts)
+        })
     }
 
     fn as_any(&self) -> &dyn Any {
@@ -101,4 +121,16 @@ fn a_store_is_read_as_its_own_kind_and_equal_only_to_the_same_options() {
     assert_ne!(store, Store::new(Plain { key: None }));
     assert_ne!(store, Store::new(Tokened));
     assert_eq!(format!("{store:?}"), format!("{:?}", sealed()));
+}
+
+#[test]
+fn a_store_opens_through_what_its_host_offers() {
+    let opening: Arc<dyn Opening> = Arc::new(crate::opening::tests::bare(&[]));
+    let posts = pollster::block_on(Store::new(sealed()).open(Arc::clone(&opening), None));
+    assert!(matches!(posts, Ok(Opened::Posts)));
+    let tokened = pollster::block_on(Store::new(Tokened).open(opening, None));
+    assert_eq!(
+        tokened.err(),
+        Some("TOKEN is not set; the store reads with it".to_owned())
+    );
 }

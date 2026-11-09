@@ -1,7 +1,10 @@
 use std::any::Any;
+use std::sync::Arc;
 
 use herald_core::SecretRef;
-use herald_kinds::{StoreConfig, StoreKind, same};
+use herald_kinds::{Local, Opened, Opening, SqlAt, StoreConfig, StoreKind, same, unopened};
+use herald_ports::Secret;
+use herald_records::Seal;
 
 use crate::StoreOptions;
 
@@ -24,6 +27,25 @@ impl StoreConfig for StoreOptions {
 
     fn key(&self) -> Option<&SecretRef> {
         self.key.as_ref()
+    }
+
+    fn open<'s, 'o: 's>(
+        &'s self,
+        opening: Arc<dyn Opening + 'o>,
+        seal: Option<Secret>,
+    ) -> Local<'s, Result<Opened<'o>, String>> {
+        Box::pin(async move {
+            let at = SqlAt::DurableObject {
+                binding: self.binding(),
+                object: self.object(),
+            };
+            let opened = |error| unopened(DurableObjectKind::NAME, error);
+            let sql = opening.sql(at).await.map_err(opened)?;
+            let store = crate::store(sql)
+                .await
+                .map_err(|error| opened(error.to_string()))?;
+            Ok(Opened::Kept(Box::new(store.sealed(seal.map(Seal::new)))))
+        })
     }
 
     fn as_any(&self) -> &dyn Any {

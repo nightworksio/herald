@@ -4,6 +4,9 @@ use std::ops::Deref;
 use std::sync::Arc;
 
 use herald_core::{RecordKind, SecretRef};
+use herald_ports::Secret;
+
+use crate::{Local, Opened, Opening};
 
 /// The `[store]` table in `herald.toml`, read: what every kind of store's
 /// options are to the config and the flows that read it.
@@ -39,6 +42,15 @@ pub trait StoreConfig: fmt::Debug + Send + Sync + Any {
     fn note(&self) -> Option<&'static str> {
         None
     }
+
+    /// It, opened through `opening`, every record it keeps sealed with the
+    /// key `seal` where there is one (ADR-0005). What it opens holds nothing of its options,
+    /// and holds the opening only where it connects again later.
+    fn open<'s, 'o: 's>(
+        &'s self,
+        opening: Arc<dyn Opening + 'o>,
+        seal: Option<Secret>,
+    ) -> Local<'s, Result<Opened<'o>, String>>;
 
     /// Itself, for code that reads one kind's own options.
     fn as_any(&self) -> &dyn Any;

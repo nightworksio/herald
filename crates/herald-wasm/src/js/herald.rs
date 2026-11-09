@@ -27,12 +27,12 @@ const CONFIG: &str = "herald.toml";
 /// herald composed on a JavaScript host.
 #[wasm_bindgen]
 pub struct Herald {
-    composed: Rc<Composed<JsHost>>,
+    composed: Rc<Composed<'static, JsHost>>,
 }
 
 #[cfg(test)]
 impl Herald {
-    pub(crate) fn composed(&self) -> Rc<Composed<JsHost>> {
+    pub(crate) fn composed(&self) -> Rc<Composed<'static, JsHost>> {
         Rc::clone(&self.composed)
     }
 }

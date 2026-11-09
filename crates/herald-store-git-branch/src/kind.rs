@@ -1,9 +1,13 @@
 use std::any::Any;
+use std::sync::Arc;
 
 use herald_core::SecretRef;
-use herald_kinds::{StoreConfig, StoreKind, same};
+use herald_kinds::GITHUB_TOKEN;
+use herald_kinds::{Local, Opened, Opening, StoreConfig, StoreKind, same};
+use herald_ports::Secret;
+use herald_records::Seal;
 
-use crate::StoreOptions;
+use crate::{GitBranch, StoreOptions};
 
 /// A branch of the repository, as a kind of store.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -30,6 +34,33 @@ impl StoreConfig for StoreOptions {
             .iter()
             .map(|named| named.secret.as_str())
             .collect()
+    }
+
+    fn open<'s, 'o: 's>(
+        &'s self,
+        opening: Arc<dyn Opening + 'o>,
+        seal: Option<Secret>,
+    ) -> Local<'s, Result<Opened<'o>, String>> {
+        Box::pin(async move {
+            let repository = opening.repository(self.repository.as_deref())?;
+            let name = self
+                .token
+                .as_ref()
+                .map_or(GITHUB_TOKEN, |token| token.secret.as_str());
+            let token = opening
+                .secret(name, "the git-branch store needs a token that may push")
+                .await?;
+            let branch = GitBranch::new(
+                repository,
+                token,
+                self.branch.as_deref(),
+                self.api.as_deref(),
+            );
+            let http = opening.connect(branch.api())?;
+            Ok(Opened::Kept(Box::new(
+                branch.store(http).sealed(seal.map(Seal::new)),
+            )))
+        })
     }
 
     fn as_any(&self) -> &dyn Any {

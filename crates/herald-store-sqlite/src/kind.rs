@@ -1,7 +1,11 @@
 use std::any::Any;
+use std::path::Path;
+use std::sync::Arc;
 
 use herald_core::SecretRef;
-use herald_kinds::{StoreConfig, StoreKind, same};
+use herald_kinds::{Local, Opened, Opening, SqlAt, StoreConfig, StoreKind, same};
+use herald_ports::Secret;
+use herald_records::Seal;
 
 use crate::StoreOptions;
 
@@ -30,6 +34,31 @@ impl StoreConfig for StoreOptions {
 
     fn note(&self) -> Option<&'static str> {
         Some(FILED)
+    }
+
+    fn open<'s, 'o: 's>(
+        &'s self,
+        opening: Arc<dyn Opening + 'o>,
+        seal: Option<Secret>,
+    ) -> Local<'s, Result<Opened<'o>, String>> {
+        Box::pin(async move {
+            let file = self.file(Path::new(""));
+            let filed = |error: String| {
+                format!(
+                    "the sqlite store {} could not be opened: {error}",
+                    file.display()
+                )
+            };
+            let at = SqlAt::Sqlite {
+                file: &file,
+                busy: self.busy(),
+            };
+            let sql = opening.sql(at).await.map_err(filed)?;
+            let store = crate::store(sql)
+                .await
+                .map_err(|error| filed(error.to_string()))?;
+            Ok(Opened::Kept(Box::new(store.sealed(seal.map(Seal::new)))))
+        })
     }
 
     fn as_any(&self) -> &dyn Any {

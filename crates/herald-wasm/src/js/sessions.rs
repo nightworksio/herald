@@ -92,7 +92,7 @@ impl Timer for JsTimer {
 /// Where the sessions hand each command's work: done on the host's event
 /// loop, at most so many at once.
 pub(crate) struct JsTaker {
-    pub(crate) composed: Rc<Composed<JsHost>>,
+    pub(crate) composed: Rc<Composed<'static, JsHost>>,
 }
 
 impl Taker for JsTaker {

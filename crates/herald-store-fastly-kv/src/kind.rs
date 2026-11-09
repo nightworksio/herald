@@ -1,7 +1,10 @@
 use std::any::Any;
+use std::sync::Arc;
 
 use herald_core::SecretRef;
-use herald_kinds::{StoreConfig, StoreKind, same};
+use herald_kinds::{KvAt, Local, Opened, Opening, StoreConfig, StoreKind, same, unopened};
+use herald_ports::Secret;
+use herald_records::Seal;
 
 use crate::StoreOptions;
 
@@ -23,6 +26,22 @@ impl StoreConfig for StoreOptions {
 
     fn key(&self) -> Option<&SecretRef> {
         self.key.as_ref()
+    }
+
+    fn open<'s, 'o: 's>(
+        &'s self,
+        opening: Arc<dyn Opening + 'o>,
+        seal: Option<Secret>,
+    ) -> Local<'s, Result<Opened<'o>, String>> {
+        Box::pin(async move {
+            let kv = opening
+                .kv(KvAt::FastlyKv(self.store()))
+                .await
+                .map_err(|error| unopened(FastlyKvKind::NAME, error))?;
+            Ok(Opened::Kept(Box::new(
+                crate::store(kv, self).sealed(seal.map(Seal::new)),
+            )))
+        })
     }
 
     fn as_any(&self) -> &dyn Any {

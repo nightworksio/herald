@@ -52,7 +52,7 @@ impl fmt::Debug for Asked {
     }
 }
 
-impl<H: Host> Composed<H> {
+impl<H: Host> Composed<'_, H> {
     /// What comes of `asked`, a request a host with no script of its own
     /// read.
     pub async fn reached(&self, asked: &Asked) -> Answer {

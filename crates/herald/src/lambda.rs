@@ -190,7 +190,7 @@ pub(crate) fn replied(reply: &Reply) -> Value {
 /// The function: herald composed on the native host, and the runtime API
 /// it takes invocations from.
 struct Function<'a> {
-    composed: Composed<Native<'a>>,
+    composed: Composed<'a, Native<'a>>,
     runtime: Connection,
     api: String,
     handing: Option<(Handing, Connection)>,

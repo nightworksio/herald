@@ -1,9 +1,12 @@
 use std::any::Any;
+use std::sync::Arc;
 
 use herald_core::SecretRef;
-use herald_kinds::{StoreConfig, StoreKind, same};
+use herald_kinds::{Local, Opened, Opening, StoreConfig, StoreKind, same};
+use herald_ports::Secret;
+use herald_records::Seal;
 
-use crate::StoreOptions;
+use crate::{RepoVariables, StoreOptions};
 
 /// What repository variables hold at most (ADR-0005).
 const CROWDED: &str = "Each record is a repository variable: a repository holds at most 500, and a run is handed at most 256 KB of them, so many records can crowd out the repository's own variables.";
@@ -34,6 +37,29 @@ impl StoreConfig for StoreOptions {
 
     fn note(&self) -> Option<&'static str> {
         Some(CROWDED)
+    }
+
+    fn open<'s, 'o: 's>(
+        &'s self,
+        opening: Arc<dyn Opening + 'o>,
+        seal: Option<Secret>,
+    ) -> Local<'s, Result<Opened<'o>, String>> {
+        Box::pin(async move {
+            let repository = opening.repository(self.repository.as_deref())?;
+            let token = opening
+                .secret(
+                    self.token.secret.as_str(),
+                    "the repo-variables store needs a token with the repository's Variables permission",
+                )
+                .await?;
+            let variables = RepoVariables::new(repository, token, self.api.as_deref());
+            let http = opening.connect(variables.api())?;
+            Ok(Opened::Kept(Box::new(
+                variables
+                    .store(http, opening.nonce())
+                    .sealed(seal.map(Seal::new)),
+            )))
+        })
     }
 
     fn as_any(&self) -> &dyn Any {

@@ -10,7 +10,7 @@
 
 mod kind;
 
-pub use kind::ActionsCacheKind;
+pub use kind::{ActionsCacheKind, RESULTS, RUNTIME_TOKEN};
 
 mod cache;
 mod options;
