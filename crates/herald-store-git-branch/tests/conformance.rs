@@ -375,6 +375,7 @@ mod conformance {
             project: "p".to_owned(),
             subscriber: "u".to_owned(),
             inbox: None,
+            pending: None,
         };
         let deleting = failing("DELETE", 403, "{}");
         pollster::block_on(deleting.subscribe(&subscription)).unwrap();

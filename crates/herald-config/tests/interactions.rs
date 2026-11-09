@@ -1,9 +1,11 @@
 //! `[destinations.*.interactions]` and a route's `subscribe`: commands each
 //! destination answers and how, read and refused by key (ADR-0016).
 
+mod common;
+
 #[cfg(test)]
 mod interactions {
-    use herald_config::{Destination, RouteOptions, load};
+    use herald_config::{Placed, load};
     use herald_core::{Command, Replies, RoleId};
 
     const APPLICATION: &str = "123456789012345678";
@@ -72,7 +74,9 @@ body = "{{{{ event.body }}}}"
     }
 
     fn errors(text: &str) -> String {
-        load("herald.toml", text, &nothing).unwrap_err().to_string()
+        load("herald.toml", text, &nothing, &crate::common::kinds())
+            .unwrap_err()
+            .to_string()
     }
 
     fn refused(text: &str, expected: &str) {
@@ -87,7 +91,7 @@ body = "{{{{ event.body }}}}"
             &bot("replies = \"public\"\ncommands = [\"subscribe\", \"latest\"]"),
             &format!("channel = \"1566200000000000100\"\nsubscribe = {{ role = \"{ROLE}\" }}"),
         );
-        let config = load("herald.toml", &text, &nothing).unwrap();
+        let config = load("herald.toml", &text, &nothing, &crate::common::kinds()).unwrap();
         let answering = config.destinations[&herald_core::DestinationName::new("discord")]
             .answering()
             .unwrap();
@@ -98,7 +102,13 @@ body = "{{{{ event.body }}}}"
         assert_eq!(route.options.opt_in_role().as_deref(), Some(ROLE));
         assert_eq!(route.options.place(), Some("1566200000000000100"));
         assert!(
-            matches!(&route.options, RouteOptions::Discord(placed) if placed.subscribe.as_ref().is_some_and(|subscribe| subscribe.button))
+            route
+                .options
+                .of::<herald_dest_discord::RouteOptions>()
+                .is_some_and(|placed| placed
+                    .subscribe
+                    .as_ref()
+                    .is_some_and(|subscribe| subscribe.button))
         );
         for name in ["slack", "matrix"] {
             assert_eq!(
@@ -127,7 +137,7 @@ body = "{{{{ event.body }}}}"
                 "channel = \"1566200000000000100\"\nmentions = {{ roles = [\"{ROLE}\"] }}\nsubscribe = {{ role = \"{ROLE}\" }}"
             ),
         );
-        let config = load("herald.toml", &text, &nothing).unwrap();
+        let config = load("herald.toml", &text, &nothing, &crate::common::kinds()).unwrap();
         assert_eq!(
             config.routes[0].route.delivery.mentions.roles,
             [RoleId::new(ROLE)]
@@ -141,15 +151,16 @@ body = "{{{{ event.body }}}}"
             "token = { secret = \"HERALD_DISCORD_TOKEN\" }",
             "channel = \"1566200000000000100\"",
         );
-        let config = load("herald.toml", &text, &nothing).unwrap();
+        let config = load("herald.toml", &text, &nothing, &crate::common::kinds()).unwrap();
         assert_eq!(
             config.destinations[&herald_core::DestinationName::new("discord")].answering(),
             None
         );
-        assert!(matches!(
-            config.destinations[&herald_core::DestinationName::new("discord")],
-            Destination::Discord(_)
-        ));
+        assert!(
+            config.destinations[&herald_core::DestinationName::new("discord")]
+                .of::<herald_dest_discord::DestinationOptions>()
+                .is_some()
+        );
         assert_eq!(config.routes[0].options.opt_in_role(), None);
     }
 
@@ -222,7 +233,8 @@ body = "{{{{ event.body }}}}"
             load(
                 "herald.toml",
                 &worded(r#"wording = { subscribed = "Ja {{ project }}.", date = "%d-%m" }"#),
-                &nothing
+                &nothing,
+                &crate::common::kinds()
             )
             .is_ok()
         );
@@ -246,7 +258,8 @@ body = "{{{{ event.body }}}}"
             load(
                 "herald.toml",
                 &with("sync_wait = \"29s\"\ntimeline = 100"),
-                &nothing
+                &nothing,
+                &crate::common::kinds()
             )
             .is_ok()
         );
@@ -271,7 +284,7 @@ body = "{{{{ event.body }}}}"
             ),
             "",
         );
-        let config = load("herald.toml", &text, &nothing).unwrap();
+        let config = load("herald.toml", &text, &nothing, &crate::common::kinds()).unwrap();
         assert!(
             config.destinations[&herald_core::DestinationName::new("discord")]
                 .answering()
@@ -282,8 +295,8 @@ body = "{{{{ event.body }}}}"
     #[test]
     fn a_fediverse_route_announces_in_no_channel_and_offers_no_role() {
         for options in [
-            RouteOptions::Mastodon(herald_dest_fediverse::RouteOptions::default()),
-            RouteOptions::ActivityPub(herald_dest_fediverse::ActorRouteOptions {
+            Placed::new(herald_dest_fediverse::RouteOptions::default()),
+            Placed::new(herald_dest_fediverse::ActorRouteOptions {
                 actor: "herald".to_owned(),
                 content_warning: None,
                 visibility: herald_dest_fediverse::Audience::Public,
@@ -369,9 +382,15 @@ body = "{{{{ event.body }}}}"
     #[test]
     fn a_slack_subscribe_needs_the_route_to_mention_subscribers_and_interactions_answering_it() {
         let text = slack_route("mentions = { subscribers = true }\nsubscribe = { button = false }");
-        let config = load("herald.toml", &text, &nothing).unwrap();
+        let config = load("herald.toml", &text, &nothing, &crate::common::kinds()).unwrap();
         assert!(
-            matches!(&config.routes[1].options, RouteOptions::Slack(placed) if placed.subscribe.as_ref().is_some_and(|subscribe| !subscribe.button))
+            config.routes[1]
+                .options
+                .of::<herald_dest_slack::RouteOptions>()
+                .is_some_and(|placed| placed
+                    .subscribe
+                    .as_ref()
+                    .is_some_and(|subscribe| !subscribe.button))
         );
         refused(
             &slack_route("subscribe = {}"),
@@ -389,7 +408,8 @@ body = "{{{{ event.body }}}}"
     #[test]
     fn sessions_connect_under_their_own_domains_and_those_their_destination_adds() {
         let http = config("git-branch", &bot(""), "channel = \"1566200000000000100\"");
-        let config_of = |text: &str| load("herald.toml", text, &nothing).unwrap();
+        let config_of =
+            |text: &str| load("herald.toml", text, &nothing, &crate::common::kinds()).unwrap();
         assert!(config_of(&http).session_domains().is_empty());
         let gateway = config(
             "git-branch",

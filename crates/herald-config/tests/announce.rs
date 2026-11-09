@@ -1,6 +1,8 @@
 //! `[announce]`: how a run holds and keeps an announcement, read with its
 //! defaults, and every value it cannot keep named by key.
 
+mod common;
+
 #[cfg(test)]
 mod announce {
     use herald_config::{Announce, load};
@@ -37,7 +39,7 @@ body = "{{ event.body }}"
 
     #[test]
     fn a_run_holds_a_claim_twenty_minutes_and_writes_the_latest_three_times_by_default() {
-        let config = load("herald.toml", EXAMPLE, &nothing).unwrap();
+        let config = load("herald.toml", EXAMPLE, &nothing, &crate::common::kinds()).unwrap();
         assert_eq!(
             config.announce,
             Announce {
@@ -50,7 +52,7 @@ body = "{{ event.body }}"
     #[test]
     fn every_announce_setting_is_read_and_a_mistake_named_by_its_key() {
         let text = format!("{EXAMPLE}\n[announce]\nlease = \"45m\"\nlatest_attempts = 5\n");
-        let config = load("herald.toml", &text, &nothing).unwrap();
+        let config = load("herald.toml", &text, &nothing, &crate::common::kinds()).unwrap();
         assert_eq!(
             config.announce,
             Announce {
@@ -67,6 +69,7 @@ body = "{{ event.body }}"
                 "herald.toml",
                 &format!("{EXAMPLE}\n[announce]\n{written}\n"),
                 &nothing,
+                &crate::common::kinds(),
             )
             .unwrap_err()
             .to_string();

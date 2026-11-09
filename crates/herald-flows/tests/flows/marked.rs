@@ -125,7 +125,13 @@ template = "release"
 title = "t"
 body = "b"
 "#;
-    let config = load("herald.toml", text, &|_| Err(String::new())).unwrap();
+    let config = load(
+        "herald.toml",
+        text,
+        &|_| Err(String::new()),
+        &crate::harness::kinds(),
+    )
+    .unwrap();
     let secrets = secrets().with("HOOK", "https://discord.com/api/webhooks/1/x");
     let prepared = pollster::block_on(prepare(&config, &secrets, &FakeSigner)).unwrap();
     let script = Script::default();

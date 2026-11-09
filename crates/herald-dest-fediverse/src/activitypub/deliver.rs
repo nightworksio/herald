@@ -10,9 +10,11 @@ use jiff::Timestamp;
 use serde_json::Value;
 
 use super::documents::{
-    accept, actor_document, actor_id, create, key_id, note, note_id, webfinger,
+    accept, actor_document, actor_id, create, follow, followers_collection, key_id, note, note_id,
+    outbox, outbox_page, reject, webfinger,
 };
-use super::options::ActorRouteOptions;
+use super::options::{ActorOptions, ActorRouteOptions};
+use super::policy::Policy;
 
 /// The longest title, in characters.
 const TITLE: usize = 500;
@@ -34,6 +36,8 @@ pub struct ActivityPub {
     key: Secret,
     route: ActorRouteOptions,
     waits: Waits,
+    page: usize,
+    policy: Policy,
 }
 
 fn refused(reason: impl Into<String>) -> Sent {
@@ -55,7 +59,21 @@ impl ActivityPub {
             key,
             route,
             waits: Waits::DEFAULT,
+            page: ActorOptions::OUTBOX_PAGE,
+            policy: Policy::default(),
         }
+    }
+
+    /// The actor, federating as `policy` says.
+    #[must_use]
+    pub fn governed(self, policy: Policy) -> Self {
+        Self { policy, ..self }
+    }
+
+    /// Whom the actor federates with, and how many may follow it.
+    #[must_use]
+    pub const fn policy(&self) -> &Policy {
+        &self.policy
     }
 
     /// The actor, waiting `waits` where an inbox names no wait.
@@ -154,7 +172,13 @@ impl ActivityPub {
     /// When `signer` cannot read the public key.
     pub async fn document<G: Signer>(&self, signer: &G) -> Result<String, CryptoError> {
         let public = signer.public(Algorithm::RsaSha256, &self.key).await?;
-        Ok(actor_document(&self.origin, &self.route.actor, &public).to_string())
+        Ok(actor_document(
+            &self.origin,
+            &self.route.actor,
+            &public,
+            self.policy.manual(),
+        )
+        .to_string())
     }
 
     /// What WebFinger answers for the actor.
@@ -167,6 +191,45 @@ impl ActivityPub {
     #[must_use]
     pub fn note(&self, announcement: &Announcement) -> String {
         note(&self.origin, announcement, &self.route).to_string()
+    }
+
+    /// The actor's outbox, holding `total` Notes.
+    #[must_use]
+    pub fn outbox(&self, total: usize) -> String {
+        outbox(&self.origin, &self.route.actor, total).to_string()
+    }
+
+    /// The page `page` of the actor's outbox: those of `notes` that are the
+    /// actor's own, newest first, and the page after it where `next` names
+    /// one.
+    #[must_use]
+    pub fn outbox_page(&self, page: &str, notes: &[String], next: Option<&str>) -> String {
+        let id = self.id();
+        let own: Vec<Value> = notes
+            .iter()
+            .filter_map(|note| serde_json::from_str::<Value>(note).ok())
+            .filter(|note| note.get("attributedTo").and_then(Value::as_str) == Some(id.as_str()))
+            .collect();
+        outbox_page(&self.origin, &self.route.actor, page, &own, next).to_string()
+    }
+
+    /// The actor's followers collection, holding how many of `total` follow
+    /// it and never who.
+    #[must_use]
+    pub fn followers(&self, total: usize) -> String {
+        followers_collection(&self.origin, &self.route.actor, total).to_string()
+    }
+
+    /// How many Notes one page of its outbox holds.
+    #[must_use]
+    pub const fn outbox_most(&self) -> usize {
+        self.page
+    }
+
+    /// The actor, its outbox paged `page` Notes at a time.
+    #[must_use]
+    pub fn paging(self, page: usize) -> Self {
+        Self { page, ..self }
     }
 
     /// Whether `note`, kept as the Note of the announcement `key`, is this
@@ -182,6 +245,20 @@ impl ActivityPub {
     #[must_use]
     pub fn accept(&self, follow: &Value) -> Value {
         accept(&self.origin, &self.route.actor, follow)
+    }
+
+    /// The `Follow` of this actor by `follower` whose id is `id`, as one
+    /// waiting for the operator is answered.
+    #[must_use]
+    pub fn follow_of(&self, id: &str, follower: &str) -> Value {
+        follow(&self.origin, &self.route.actor, id, follower)
+    }
+
+    /// The `Reject` of `follow`, a `Follow` of this actor its policy turns
+    /// away.
+    #[must_use]
+    pub fn reject(&self, follow: &Value) -> Value {
+        reject(&self.origin, &self.route.actor, follow)
     }
 
     /// Posts `activity` to `inbox`, signed by this actor at `now` through

@@ -24,7 +24,7 @@ impl Http for Kept {
     }
 }
 
-fn pkcs8() -> String {
+pub(super) fn pkcs8() -> String {
     use base64::Engine as _;
     let der: Vec<u8> = (0..RSA.trim().len())
         .step_by(2)

@@ -1,6 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use herald_config::{Config, load};
+use herald_config::Config;
 use herald_core::{
     Asked, Command, DestinationName, Kind, Latest, Member, Place, RouteId, Shown, Subscription,
 };
@@ -127,7 +127,7 @@ title = "{{{{ event.missing }}}}"
 body = "{{{{ event.missing }}}}"
 "#
     );
-    load("herald.toml", &text, &|_| Err(String::new())).unwrap()
+    crate::harness::loaded(&text)
 }
 
 fn secrets() -> FakeSecrets {
@@ -616,6 +616,7 @@ fn subscribing_on_slack_keeps_the_member_in_the_store_until_they_unsubscribe() {
         project: "gate".to_owned(),
         subscriber: "U0123456789".to_owned(),
         inbox: None,
+        pending: None,
     }))
     .unwrap();
     assert_eq!(
@@ -781,7 +782,7 @@ fn completions_list_what_was_announced_in_the_channel() {
 }
 
 pub(crate) fn discord_replying() -> Replying {
-    Replying::Discord(herald_dest_discord::Replying {
+    Replying::new(herald_dest_discord::Replying {
         id: "900".to_owned(),
         token: Secret::new("the interaction's token", "tok"),
     })
@@ -881,7 +882,7 @@ fn a_command_the_gateway_carried_is_deferred_first_and_others_are_not() {
         world.script.bodies()[0],
         br#"{"data":{"flags":64},"type":5}"#
     );
-    let slack_replying = Replying::Slack(herald_dest_slack::Replying {
+    let slack_replying = Replying::new(herald_dest_slack::Replying {
         url: Secret::new("the command's response URL", HOOK),
     });
     assert_eq!(

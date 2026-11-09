@@ -249,12 +249,17 @@ impl<S: Store, C: Clock, G: Signer, H: Http> Run<'_, S, C, G, H> {
         match sent {
             Sent::Landed(facts) => {
                 if *step == Step::Post
-                    && let Some(published) = self.route.reached.published(announcement)
+                    && let Some((actor, published)) = self.route.reached.published(announcement)
                 {
                     self.ports
                         .store
                         .notes()
-                        .put_note(&progress.entry.key, &published, self.ports.clock.now())
+                        .put_note(
+                            actor,
+                            &progress.entry.key,
+                            &published,
+                            self.ports.clock.now(),
+                        )
                         .await
                         .map_err(stored)?;
                 }
@@ -385,7 +390,7 @@ impl<S: Store, C: Clock, G: Signer, H: Http> Run<'_, S, C, G, H> {
     }
 
     /// The inboxes an announcement is delivered to: each distinct inbox of
-    /// the followers of `actor`, in order.
+    /// the followers of `actor` that are approved and admitted, in order.
     async fn recipients(&self, actor: &str) -> Result<Vec<String>, Stop> {
         let followers = self
             .ports
@@ -396,6 +401,9 @@ impl<S: Store, C: Clock, G: Signer, H: Http> Run<'_, S, C, G, H> {
             .map_err(stored)?;
         let inboxes: BTreeSet<String> = followers
             .into_iter()
+            .filter(|follower| {
+                follower.pending.is_none() && self.route.reached.admits(&follower.subscriber)
+            })
             .filter_map(|follower| follower.inbox)
             .collect();
         Ok(inboxes.into_iter().collect())

@@ -8,17 +8,22 @@
 //! carries its markers in its message metadata (ADR-0011). An incoming
 //! webhook only posts.
 
+mod config;
 mod domain;
+mod held;
 mod interact;
 mod interactions;
 mod markers;
 mod options;
+mod reach;
 mod read;
 mod request;
+pub mod setup;
 mod slack;
 mod socket;
 mod web_api;
 
+pub use config::{KIND, SlackKind};
 pub use domain::Domain;
 pub use interact::{
     Interacting, Received, Replying, SECTION, SUBSCRIBE, Unread, subscribe_block, took,

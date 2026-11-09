@@ -1,6 +1,8 @@
 //! `[server]`: how `herald server` listens and what it takes on at once,
 //! read with its defaults, and every value it cannot serve named by key.
 
+mod common;
+
 #[cfg(test)]
 mod server {
     use herald_config::{KeyCache, Server, Source, load};
@@ -36,12 +38,14 @@ body = "{{ event.body }}"
     }
 
     fn errors(text: &str) -> String {
-        load("herald.toml", text, &nothing).unwrap_err().to_string()
+        load("herald.toml", text, &nothing, &crate::common::kinds())
+            .unwrap_err()
+            .to_string()
     }
 
     #[test]
     fn a_config_without_a_server_table_serves_with_the_defaults() {
-        let config = load("herald.toml", EXAMPLE, &nothing).unwrap();
+        let config = load("herald.toml", EXAMPLE, &nothing, &crate::common::kinds()).unwrap();
         assert_eq!(config.server, Server::default());
         assert_eq!(config.server.listen, "127.0.0.1:8080");
         assert_eq!(
@@ -86,7 +90,7 @@ body = "{{ event.body }}"
         let text = format!(
             "{EXAMPLE}\n[server]\nlisten = \"0.0.0.0:9000\"\nbase = \"/tools/herald\"\njobs = 2\nqueue = 5\nconnections = 3\nbody = \"64KiB\"\nfetches = 5\ncompletions = 9\ndeliveries = 6\nsilence = \"45s\"\nbusy_retry = \"2m\"\nread = \"10s\"\nheld = \"20s\"\naccept_pause = \"250ms\"\n\n[server.sessions]\nfirst_wait = \"2s\"\nlongest_wait = \"5m\"\njitter = false\n\n[server.keys]\ncache = \"store\"\nrefresh_after = \"30m\"\nreread_after = \"5m\"\nmost = 7\ndocument = \"1MiB\"\n\n[server.inbound]\nreplay_window = \"20m\"\nsignatures = 2\ncovered = 4\n"
         );
-        let config = load("herald.toml", &text, &nothing).unwrap();
+        let config = load("herald.toml", &text, &nothing, &crate::common::kinds()).unwrap();
         assert_eq!(
             config.server,
             Server {
@@ -123,7 +127,7 @@ body = "{{ event.body }}"
         );
         assert!(config.server.keys_in_store());
         let memory = format!("{EXAMPLE}\n[server.keys]\ncache = \"memory\"\n");
-        let config = load("herald.toml", &memory, &nothing).unwrap();
+        let config = load("herald.toml", &memory, &nothing, &crate::common::kinds()).unwrap();
         assert_eq!(config.server.keys, KeyCache::Memory);
     }
 
@@ -170,13 +174,14 @@ body = "{{ event.body }}"
             "herald.toml",
             &format!("{EXAMPLE}\n[server]\nread = \"2m\"\n"),
             &nothing,
+            &crate::common::kinds(),
         )
         .unwrap();
         assert_eq!(slow.server.held, jiff::SignedDuration::from_mins(2));
         let even = load(
             "herald.toml",
             &format!("{EXAMPLE}\n[server]\nread = \"1m\"\nheld = \"1m\"\n\n[server.sessions]\nfirst_wait = \"1m\"\nlongest_wait = \"1m\"\n"),
-            &nothing,
+            &nothing, &crate::common::kinds(),
         )
         .unwrap();
         assert_eq!(even.server.held, even.server.read);
@@ -244,7 +249,15 @@ body = "{{ event.body }}"
             ),
             "{uncached}"
         );
-        assert!(load("herald.toml", &cached("keeps = [\"keys\"]"), &nothing).is_ok());
+        assert!(
+            load(
+                "herald.toml",
+                &cached("keeps = [\"keys\"]"),
+                &nothing,
+                &crate::common::kinds()
+            )
+            .is_ok()
+        );
         let stray = errors(&format!("{EXAMPLE}\n[server]\nport = 80\n"));
         assert!(stray.contains("server.port"), "{stray}");
     }
@@ -255,7 +268,7 @@ body = "{{ event.body }}"
             "repository = \"nightworksio/php-mutation-gate\"",
             "repository = \"nightworksio/php-mutation-gate\"\nwebhook = { secret = \"HERALD_WEBHOOK\" }",
         );
-        let config = load("herald.toml", &hooked, &nothing).unwrap();
+        let config = load("herald.toml", &hooked, &nothing, &crate::common::kinds()).unwrap();
         assert!(config.secrets().contains("HERALD_WEBHOOK"));
         assert!(matches!(
             config.sources.values().next(),

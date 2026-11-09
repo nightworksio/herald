@@ -1,7 +1,7 @@
 use herald_core::State;
 use herald_ports::{
     Admitted, Announcements, Cursors, Deliveries, Held, Inboxes, Keeper, Keeping, Keyring,
-    KnownKey, Ledger, Notes, Pins, Schedules, Subscriptions, Versioned,
+    KnownKey, Ledger, Notes, Outboxed, Pins, Schedules, Subscriptions, Versioned,
 };
 use jiff::Timestamp;
 
@@ -23,6 +23,10 @@ enum Fault {
     OverwritesCursors,
     DuplicatesSchedules,
     IgnoresProjects,
+    KeepsTheFirstSubscription,
+    ForgetsWhatAFollowAwaits,
+    KeepsTheFirstInbox,
+    ForgetsOnlyTheSameSubscription,
     KeepsTheFirstPin,
     SharesPins,
     HoldsAnUnwrittenDelivery,
@@ -35,6 +39,15 @@ enum Fault {
     ExpiresNothing,
     KeepsTheFirstNote,
     SharesNotes,
+    ForgetsTheOutbox,
+    NamesNoNextPage,
+    NamesANextPageAtTheEnd,
+    ListsTheOldestFirst,
+    MiscountsTheOutbox,
+    IgnoresWhereAPageEnded,
+    SharesOutboxes,
+    ListsARepublishedNoteTwice,
+    KeepsExpiredNotesInTheOutbox,
     OverwritesLatest,
     ListsNoLatest,
     ListsAnUnwrittenLatest,
@@ -246,11 +259,39 @@ impl Subscriptions for Faulty {
 
     async fn subscribe(&self, subscription: &Subscription) -> Result<(), StoreError> {
         self.refuses()?;
-        self.inner.subscribe(subscription).await
+        let held = self
+            .inner
+            .subscribers(&subscription.destination, &subscription.project)
+            .await?;
+        let earlier = held
+            .into_iter()
+            .find(|kept| kept.subscriber == subscription.subscriber);
+        let subscription = match (self.fault, earlier) {
+            (Fault::KeepsTheFirstSubscription, Some(_)) => return Ok(()),
+            (Fault::KeepsTheFirstInbox, Some(earlier)) => Subscription {
+                inbox: earlier.inbox,
+                ..subscription.clone()
+            },
+            (Fault::ForgetsWhatAFollowAwaits, _) => Subscription {
+                pending: None,
+                ..subscription.clone()
+            },
+            _ => subscription.clone(),
+        };
+        self.inner.subscribe(&subscription).await
     }
 
     async fn unsubscribe(&self, subscription: &Subscription) -> Result<(), StoreError> {
         self.refuses()?;
+        if self.fault == Fault::ForgetsOnlyTheSameSubscription {
+            let held = self
+                .inner
+                .subscribers(&subscription.destination, &subscription.project)
+                .await?;
+            if !held.contains(subscription) {
+                return Ok(());
+            }
+        }
         self.inner.unsubscribe(subscription).await
     }
 }
@@ -321,7 +362,13 @@ impl Notes for Faulty {
         self.inner.note(&key).await
     }
 
-    async fn put_note(&self, key: &Key, note: &str, at: Timestamp) -> Result<(), StoreError> {
+    async fn put_note(
+        &self,
+        actor: &str,
+        key: &Key,
+        note: &str,
+        at: Timestamp,
+    ) -> Result<(), StoreError> {
         self.refuses()?;
         let key = match self.fault {
             Fault::SharesNotes => super::key("shared"),
@@ -331,13 +378,53 @@ impl Notes for Faulty {
         if self.fault == Fault::KeepsTheFirstNote && kept.is_some() {
             return Ok(());
         }
-        self.inner.put_note(&key, note, at).await
+        let key = match (self.fault, kept) {
+            (Fault::ListsARepublishedNoteTwice, Some(_)) if key == super::key("first") => {
+                super::key("first again")
+            }
+            _ => key,
+        };
+        self.inner.put_note(actor, &key, note, at).await
+    }
+
+    async fn outbox(
+        &self,
+        actor: &str,
+        after: Option<&str>,
+        most: usize,
+    ) -> Result<Outboxed, StoreError> {
+        self.refuses()?;
+        let actor = match self.fault {
+            Fault::SharesOutboxes => "announcer",
+            _ => actor,
+        };
+        let after = match self.fault {
+            Fault::IgnoresWhereAPageEnded => None,
+            _ => after,
+        };
+        let mut page = self.inner.outbox(actor, after, most).await?;
+        match self.fault {
+            Fault::ForgetsTheOutbox => return Ok(Outboxed::default()),
+            Fault::NamesNoNextPage => page.next = None,
+            Fault::NamesANextPageAtTheEnd => {
+                page.next.get_or_insert_with(|| "end".to_owned());
+            }
+            Fault::ListsTheOldestFirst => page.notes.reverse(),
+            Fault::MiscountsTheOutbox => page.total += 1,
+            _ => {}
+        }
+        Ok(page)
     }
 
     async fn expire_notes(&self, before: Timestamp) -> Result<(), StoreError> {
         self.refuses()?;
         match self.fault {
             Fault::KeepsExpiredNotes => Ok(()),
+            Fault::KeepsExpiredNotesInTheOutbox
+                if before > NOON + jiff::SignedDuration::from_hours(1) =>
+            {
+                Ok(())
+            }
             Fault::ExpiresEveryNote => self.inner.expire_notes(Timestamp::MAX).await,
             _ => self.inner.expire_notes(before).await,
         }
@@ -582,6 +669,22 @@ fn a_store_that_breaks_its_promises_on_the_run_s_records_is_refused() {
             "the subscribers of a project on a destination were not those subscribed, once each",
         ),
         (
+            Fault::KeepsTheFirstSubscription,
+            "a subscriber subscribed again was not kept once, as subscribed last",
+        ),
+        (
+            Fault::ForgetsWhatAFollowAwaits,
+            "a subscriber subscribed again was not kept once, as subscribed last",
+        ),
+        (
+            Fault::KeepsTheFirstInbox,
+            "a subscriber subscribed again was not kept once, as subscribed last",
+        ),
+        (
+            Fault::ForgetsOnlyTheSameSubscription,
+            "a subscriber kept as subscribed otherwise was not forgotten",
+        ),
+        (
             Fault::KeepsTheFirstPin,
             "a route's pin was not the one written last",
         ),
@@ -650,6 +753,42 @@ fn a_store_that_breaks_its_promises_on_the_served_records_is_refused() {
         (
             Fault::ExpiresEveryNote,
             "a note published at the expiry was forgotten",
+        ),
+        (
+            Fault::ForgetsTheOutbox,
+            "an actor's outbox did not list its newest notes first",
+        ),
+        (
+            Fault::NamesNoNextPage,
+            "an outbox with more notes than a page named no next page",
+        ),
+        (
+            Fault::NamesANextPageAtTheEnd,
+            "an outbox's next page did not hold the notes older than the last",
+        ),
+        (
+            Fault::ListsTheOldestFirst,
+            "an actor's outbox did not list its newest notes first",
+        ),
+        (
+            Fault::MiscountsTheOutbox,
+            "an actor's outbox did not list its newest notes first",
+        ),
+        (
+            Fault::IgnoresWhereAPageEnded,
+            "an outbox's next page did not hold the notes older than the last",
+        ),
+        (
+            Fault::SharesOutboxes,
+            "an actor's outbox listed another actor's notes",
+        ),
+        (
+            Fault::ListsARepublishedNoteTwice,
+            "a note published again was not listed once, as published last",
+        ),
+        (
+            Fault::KeepsExpiredNotesInTheOutbox,
+            "an expired note stayed in its actor's outbox",
         ),
         (
             Fault::OverwritesLatest,

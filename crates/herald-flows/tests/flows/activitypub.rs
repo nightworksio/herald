@@ -35,7 +35,29 @@ body = "{{ event.body }}"
 }
 
 pub(crate) fn activitypub() -> Config {
-    load("herald.toml", toml_text(), &|_| Err(String::new())).unwrap()
+    load(
+        "herald.toml",
+        toml_text(),
+        &|_| Err(String::new()),
+        &crate::harness::kinds(),
+    )
+    .unwrap()
+}
+
+/// The config of [`activitypub`], its actor's destination also set as
+/// `policy` writes it.
+pub(crate) fn governed(policy: &str) -> Config {
+    let text = toml_text().replace(
+        "key = { secret = \"HERALD_ACTIVITYPUB_KEY\" }\n",
+        &format!("key = {{ secret = \"HERALD_ACTIVITYPUB_KEY\" }}\n{policy}\n"),
+    );
+    load(
+        "herald.toml",
+        &text,
+        &|_| Err(String::new()),
+        &crate::harness::kinds(),
+    )
+    .unwrap()
 }
 
 pub(crate) fn follower(actor: &str, follower: &str, inbox: Option<&str>) -> Subscription {
@@ -44,6 +66,7 @@ pub(crate) fn follower(actor: &str, follower: &str, inbox: Option<&str>) -> Subs
         project: actor.to_owned(),
         subscriber: follower.to_owned(),
         inbox: inbox.map(ToOwned::to_owned),
+        pending: None,
     }
 }
 
@@ -122,6 +145,34 @@ fn an_announcement_is_delivered_once_to_each_inbox_its_actor_s_followers_share()
 }
 
 #[test]
+fn an_announcement_is_delivered_to_no_follower_turned_away_or_waiting() {
+    let store = healthy();
+    for (who, inbox) in [
+        (
+            "https://social.example/users/ana",
+            "https://social.example/inbox",
+        ),
+        (
+            "https://eu.spam.example/users/x",
+            "https://eu.spam.example/inbox",
+        ),
+    ] {
+        pollster::block_on(store.subscribe(&follower("php-mutation-gate", who, Some(inbox))))
+            .unwrap();
+    }
+    let script = Script::answering(&[("https://social.example/inbox", 202, "")]);
+    assert_eq!(
+        announced_with(&governed(r#"block = ["spam.example"]"#), &store, &script),
+        Outcome::Sent {
+            steps: vec![
+                Step::Post,
+                Step::Deliver("https://social.example/inbox".to_owned()),
+            ]
+        }
+    );
+}
+
+#[test]
 fn an_actor_no_one_follows_posts_its_note_and_delivers_nothing() {
     let store = healthy();
     let script = Script::default();
@@ -151,7 +202,7 @@ fn an_actor_whose_followers_cannot_be_read_stops_before_anything_is_sent() {
 
 #[test]
 fn an_actor_reads_no_posts_back_and_delivers_to_its_own_followers() {
-    let reached = Reached::ActivityPub(herald_dest_fediverse::ActivityPub::new(
+    let reached = Reached::new(herald_dest_fediverse::ActivityPub::new(
         "herald.example",
         "",
         herald_ports::Secret::new("HERALD_ACTIVITYPUB_KEY", "the-key"),
@@ -163,7 +214,7 @@ fn an_actor_reads_no_posts_back_and_delivers_to_its_own_followers() {
         },
     ));
     let script = Script::default();
-    let posts = reached.posts(&script);
+    let posts = reached.read(&script);
     let unread = MarkersError::Unreadable {
         reason: "herald's ActivityPub actor reads no posts back".to_owned(),
     };
@@ -215,7 +266,13 @@ fn an_actor_keeps_no_thread_chores() {
 
 fn keyed(secret: &str) -> Config {
     let text = toml_text().replace("HERALD_ACTIVITYPUB_KEY", secret);
-    load("herald.toml", &text, &|_| Err(String::new())).unwrap()
+    load(
+        "herald.toml",
+        &text,
+        &|_| Err(String::new()),
+        &crate::harness::kinds(),
+    )
+    .unwrap()
 }
 
 #[test]
@@ -352,6 +409,7 @@ fn deliveries_go_out_as_many_at_once_as_the_server_table_allows() {
         "herald.toml",
         &format!("{}\n[server]\ndeliveries = 1\n", toml_text()),
         &|_| Err(String::new()),
+        &crate::harness::kinds(),
     )
     .unwrap();
     let store = healthy();

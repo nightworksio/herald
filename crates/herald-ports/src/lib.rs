@@ -7,6 +7,7 @@
 
 mod clock;
 mod crypto;
+mod erased;
 mod http;
 mod keyring;
 mod kv;
@@ -20,6 +21,7 @@ mod timer;
 
 pub use clock::Clock;
 pub use crypto::{Algorithm, CryptoError, Signer, Verifier};
+pub use erased::{Boxed, DynHttp, DynMarkers, DynSecrets, DynSigner, Erased};
 pub use http::{
     Http, HttpError, Method, PUBLIC, Request, Response, USER_AGENT, WithBody, unreserved,
 };
@@ -32,6 +34,7 @@ pub use socket::{Frame, Socket, Sockets};
 pub use sql::{Answers, Changed, Sql, SqlError, Statement, Value};
 pub use store::{
     Admitted, Announcements, Cursors, Deliveries, Held, Inboxes, Keeper, Keeping, Ledger, Notes,
-    Pins, Schedules, Store, StoreError, Subscriptions, Unkept, Version, Versioned, Written,
+    Outboxed, Pins, Schedules, Store, StoreError, Subscriptions, Unkept, Version, Versioned,
+    Written,
 };
 pub use timer::Timer;

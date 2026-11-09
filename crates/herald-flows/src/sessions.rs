@@ -13,14 +13,11 @@ use std::time::Duration;
 
 use futures_util::stream::{FuturesUnordered, StreamExt};
 use herald_config::Reconnecting;
-use herald_core::{Asked, DestinationName};
-use herald_dest_discord::{self as discord, Effect, Gateway};
-use herald_dest_matrix as matrix;
-use herald_dest_slack::{self as slack};
-use herald_ports::{Clock, Frame, Http, Secret, Socket, Sockets, Store, Text, Timer};
+use herald_core::{Asked, DestinationName, Place};
+use herald_kinds::{Connect, Effect, Interacted, Replying, Session};
+use herald_ports::{Clock, Frame, Http, Socket, Sockets, Store, Timer};
 
 use crate::interact::{completed, deferral};
-use crate::interacting::{Interacting, Replying};
 use crate::room::Room;
 use crate::serving::{Job, Serving};
 
@@ -113,14 +110,14 @@ async fn meanwhile<T>(taking: &mut Taking<'_>, doing: impl Future<Output = T>) -
     .await
 }
 
-/// A gateway's destination, as a session joined to it needs it.
-struct Joined<'a, 's, H> {
+/// A socket session's destination, as hearing it needs it.
+struct Hearing<'a, 's, H> {
     name: &'a DestinationName,
-    interacting: &'s discord::Interacting,
+    interacting: &'s Interacted,
     http: &'s H,
 }
 
-/// What a gateway session heard first.
+/// What a socket session heard first.
 enum Heard {
     Frame(Frame),
     Beat,
@@ -208,83 +205,93 @@ where
         let mut sessions: FuturesUnordered<Pin<Box<dyn Future<Output = ()> + '_>>> =
             FuturesUnordered::new();
         for (name, interacting, http, opening) in self.serving.connected.interactions() {
-            match interacting {
-                Interacting::Discord(discord)
-                    if discord.via() == herald_dest_discord::Via::Gateway =>
-                {
-                    if let Some(bot) = discord.bot() {
-                        let gateway = Gateway::new(bot.clone(), &discord.session_domains())
-                            .identifying_as(discord.os());
-                        sessions.push(Box::pin(
-                            self.gateway(sockets, name, discord, gateway, http),
-                        ));
-                    }
-                }
-                Interacting::Slack {
-                    interacting: slack,
-                    app: Some(app),
-                    ..
-                } if slack.via() == herald_dest_slack::Via::Socket => {
-                    if let Some(opening) = opening {
-                        sessions.push(Box::pin(self.socket(sockets, name, slack, app, opening)));
-                    }
-                }
-                Interacting::Matrix {
-                    interacting: matrix,
-                    ..
-                } if matrix.via() == herald_dest_matrix::Via::Sync => {
-                    sessions.push(Box::pin(self.sync(name, matrix, http)));
-                }
-                _ => {}
+            if let Some(session) = interacting.session() {
+                sessions.push(Box::pin(self.hold(
+                    sockets,
+                    name,
+                    interacting,
+                    session,
+                    http,
+                    opening,
+                )));
             }
         }
         while sessions.next().await.is_some() {}
     }
 
-    async fn gateway<So: Sockets>(
+    /// Holds `session` of the destination `name` until it stops,
+    /// connecting again after each connection it loses.
+    async fn hold<So: Sockets>(
         &self,
         sockets: &So,
         name: &DestinationName,
-        interacting: &'s discord::Interacting,
-        mut gateway: Gateway,
+        interacting: &'s Interacted,
+        mut session: Box<dyn Session + 's>,
         http: &'s H,
+        opening: Option<&H>,
     ) {
         let mut backoff = Backoff::new(&self.serving.config.server.sessions);
         let mut taking: Taking<'s> = FuturesUnordered::new();
         loop {
-            let mut socket = match meanwhile(&mut taking, sockets.open(&gateway.url())).await {
-                Ok(socket) => socket,
-                Err(error) => {
-                    self.said(
-                        name,
-                        format!("Discord's gateway could not be reached: {error}"),
-                    );
-                    meanwhile(
-                        &mut taking,
-                        backoff.wait(self.timer, self.serving.ports.clock),
-                    )
-                    .await;
-                    continue;
+            let url = match session.connect() {
+                Connect::Poll(request) => {
+                    let polled = meanwhile(&mut taking, http.send(request))
+                        .await
+                        .map_err(|error| error.to_string())
+                        .and_then(|response| session.polled(name, &response));
+                    match polled {
+                        Ok(effects) => {
+                            for effect in effects {
+                                if let Effect::Asked(asked, replying) = effect {
+                                    self.take(&mut taking, name, asked, replying);
+                                } else if effect == Effect::Ready {
+                                    backoff.reset();
+                                }
+                            }
+                            continue;
+                        }
+                        Err(trouble) => Err(trouble),
+                    }
+                }
+                Connect::Socket(url) => Ok(url),
+                Connect::Opening(request) => {
+                    meanwhile(&mut taking, opening.unwrap_or(http).send(request))
+                        .await
+                        .map_err(|error| error.to_string())
+                        .and_then(|response| session.opened(&response))
                 }
             };
-            let joined = Joined {
-                name,
-                interacting,
-                http,
+            let socket = match url {
+                Ok(url) => meanwhile(&mut taking, sockets.open(&url))
+                    .await
+                    .map_err(|error| error.to_string()),
+                Err(trouble) => Err(trouble),
             };
-            let stopped = self
-                .joined(
-                    &joined,
-                    &mut socket,
-                    &mut gateway,
-                    &mut backoff,
-                    &mut taking,
-                )
-                .await;
-            if let Some(reason) = stopped {
-                self.said(name, reason);
-                while taking.next().await.is_some() {}
-                return;
+            match socket {
+                Ok(mut socket) => {
+                    let heard = Hearing {
+                        name,
+                        interacting,
+                        http,
+                    };
+                    let stopped = self
+                        .heard(
+                            &heard,
+                            &mut socket,
+                            &mut *session,
+                            &mut backoff,
+                            &mut taking,
+                        )
+                        .await;
+                    if let Some(reason) = stopped {
+                        self.said(name, reason);
+                        while taking.next().await.is_some() {}
+                        return;
+                    }
+                }
+                Err(trouble) => {
+                    self.said(name, format!("{}: {trouble}", session.unreachable()));
+                }
             }
             meanwhile(
                 &mut taking,
@@ -294,13 +301,13 @@ where
         }
     }
 
-    /// Hears a joined gateway until it is left: `None` to join again, or why
-    /// the session stops.
-    async fn joined<So: Socket>(
+    /// Hears an open socket until it is left: `None` to connect again, or
+    /// why the session stops.
+    async fn heard<So: Socket>(
         &self,
-        joined: &Joined<'_, 's, H>,
+        hearing: &Hearing<'_, 's, H>,
         socket: &mut So,
-        gateway: &mut Gateway,
+        session: &mut (dyn Session + 's),
         backoff: &mut Backoff,
         taking: &mut Taking<'s>,
     ) -> Option<String> {
@@ -324,13 +331,11 @@ where
                 .await
             };
             let effects = match heard {
-                Heard::Frame(Frame::Text(text)) => {
-                    gateway.received(joined.interacting, joined.name, &text)
-                }
-                Heard::Frame(Frame::Closed(code)) => vec![gateway.closed(code)],
+                Heard::Frame(Frame::Text(text)) => session.heard(hearing.name, &text),
+                Heard::Frame(Frame::Closed(code)) => session.closed(code),
                 Heard::Beat => {
                     beat = every.map(|every| Box::pin(self.timer.sleep(every)) as _);
-                    vec![gateway.beat()]
+                    session.beat()
                 }
             };
             let mut next = None;
@@ -341,22 +346,27 @@ where
                             next = Some(None);
                         }
                     }
+                    Effect::Acknowledge(frame) => {
+                        if socket.send(frame).await.is_err() {
+                            next = Some(None);
+                            break;
+                        }
+                    }
                     Effect::Beat(interval) => {
                         let interval = beating(interval);
                         every = Some(interval);
                         beat = Some(Box::pin(self.timer.sleep(interval)));
                     }
                     Effect::Ready => backoff.reset(),
-                    Effect::Received(received) => {
-                        self.discord(
-                            taking,
-                            joined.name,
-                            joined.interacting,
-                            joined.http,
-                            *received,
-                        );
+                    Effect::Asked(asked, replying) => {
+                        self.take(taking, hearing.name, asked, replying);
                     }
-                    Effect::Reconnect { .. } => next = Some(None),
+                    Effect::Completing {
+                        place,
+                        typed,
+                        replying,
+                    } => self.completion(taking, hearing, place, typed, replying),
+                    Effect::Reconnect => next = Some(None),
                     Effect::Stop(reason) => next = Some(Some(reason)),
                 }
             }
@@ -366,153 +376,42 @@ where
         }
     }
 
-    fn discord(
+    /// Offers the projects announced at `place` that start with `typed`,
+    /// where `replying` names, or says it cannot where there is no room.
+    fn completion(
         &self,
         taking: &mut Taking<'s>,
-        name: &DestinationName,
-        interacting: &'s discord::Interacting,
-        http: &'s H,
-        received: discord::Received,
+        hearing: &Hearing<'_, 's, H>,
+        place: Place,
+        typed: String,
+        replying: Replying,
     ) {
-        match received {
-            discord::Received::Asked { asked, replying } => {
-                self.take(taking, name, asked, Replying::Discord(replying));
+        let Some(completion) = self.completing.place() else {
+            self.said(
+                hearing.name,
+                "a completion was dropped: no more are answered at once",
+            );
+            return;
+        };
+        let serving = self.serving;
+        let taker = self.taker;
+        let name = hearing.name.clone();
+        let interacting = hearing.interacting;
+        let http = hearing.http;
+        taking.push(Box::pin(async move {
+            let _completion = completion;
+            let projects =
+                completed(serving.config, serving.ports.store, &name, &place, &typed).await;
+            if let Some(request) = interacting.complete(&replying, &projects)
+                && let Err(trouble) = http
+                    .send(request)
+                    .await
+                    .map_err(|error| error.to_string())
+                    .and_then(|response| interacting.took(&response))
+            {
+                taker.said(&name, format!("completions could not be sent: {trouble}"));
             }
-            discord::Received::Completing {
-                place,
-                typed,
-                replying,
-            } => {
-                let Some(completion) = self.completing.place() else {
-                    self.said(
-                        name,
-                        "a completion was dropped: no more are answered at once",
-                    );
-                    return;
-                };
-                let serving = self.serving;
-                let taker = self.taker;
-                let name = name.clone();
-                taking.push(Box::pin(async move {
-                    let _completion = completion;
-                    let projects =
-                        completed(serving.config, serving.ports.store, &name, &place, &typed).await;
-                    let sent = http.send(interacting.complete(&replying, &projects)).await;
-                    if let Err(trouble) = sent
-                        .map_err(|error| error.to_string())
-                        .and_then(|response| discord::took(&response))
-                    {
-                        taker.said(&name, format!("completions could not be sent: {trouble}"));
-                    }
-                }));
-            }
-            discord::Received::Ping | discord::Received::Ignored => {}
-        }
-    }
-
-    async fn socket<So: Sockets>(
-        &self,
-        sockets: &So,
-        name: &DestinationName,
-        interacting: &slack::Interacting,
-        app: &Secret,
-        opening: &H,
-    ) {
-        let mut backoff = Backoff::new(&self.serving.config.server.sessions);
-        let mut taking: Taking<'s> = FuturesUnordered::new();
-        loop {
-            let opened = meanwhile(&mut taking, async {
-                let url = match opening.send(interacting.opening(app)).await {
-                    Ok(response) => slack::opened(&response, &interacting.session_domains())?,
-                    Err(error) => return Err(error.to_string()),
-                };
-                sockets.open(&url).await.map_err(|error| error.to_string())
-            })
-            .await;
-            match opened {
-                Ok(mut socket) => loop {
-                    let frame = {
-                        let receiving = socket.receive();
-                        meanwhile(&mut taking, receiving).await
-                    };
-                    let Frame::Text(text) = frame else {
-                        break;
-                    };
-                    let enveloped = interacting.envelope(name, &text);
-                    if enveloped.greeted {
-                        backoff.reset();
-                    }
-                    if let Some(acknowledgement) = enveloped.acknowledgement
-                        && socket.send(Text::plain(acknowledgement)).await.is_err()
-                    {
-                        break;
-                    }
-                    if let Some(slack::Received::Asked { asked, replying }) = enveloped.received {
-                        self.take(&mut taking, name, *asked, Replying::Slack(replying));
-                    }
-                    if enveloped.reconnect {
-                        break;
-                    }
-                },
-                Err(trouble) => self.said(
-                    name,
-                    format!("Slack's Socket Mode could not be opened: {trouble}"),
-                ),
-            }
-            meanwhile(
-                &mut taking,
-                backoff.wait(self.timer, self.serving.ports.clock),
-            )
-            .await;
-        }
-    }
-
-    async fn sync(&self, name: &DestinationName, interacting: &matrix::Interacting, http: &H) {
-        let mut backoff = Backoff::new(&self.serving.config.server.sessions);
-        let mut taking: Taking<'s> = FuturesUnordered::new();
-        let mut since: Option<String> = None;
-        loop {
-            let wait = if since.is_some() {
-                interacting.sync_wait()
-            } else {
-                0
-            };
-            let synced = meanwhile(
-                &mut taking,
-                http.send(interacting.sync(since.as_deref(), wait)),
-            )
-            .await;
-            let read = synced
-                .map_err(|error| error.to_string())
-                .and_then(|response| {
-                    matrix::took(&response)?;
-                    interacting
-                        .synced(name, &response.body)
-                        .map_err(|unread| unread.to_string())
-                });
-            match read {
-                Ok(read) => {
-                    backoff.reset();
-                    if since.is_some() {
-                        for (asked, replying) in read.asked {
-                            self.take(&mut taking, name, asked, Replying::Matrix(replying));
-                        }
-                    }
-                    since = Some(read.next);
-                }
-                Err(trouble) => {
-                    self.said(
-                        name,
-                        format!("the homeserver could not be synced: {trouble}"),
-                    );
-                    meanwhile(
-                        &mut taking,
-                        backoff.wait(self.timer, self.serving.ports.clock),
-                    )
-                    .await;
-                }
-            }
-        }
+        }));
     }
 }
 

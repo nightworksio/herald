@@ -196,6 +196,7 @@ mod kept {
             project: "p".to_owned(),
             subscriber: "u".to_owned(),
             inbox: None,
+            pending: None,
         };
         let removing = Kept::new(Memory::default());
         pollster::block_on(removing.subscribe(&subscription)).unwrap();

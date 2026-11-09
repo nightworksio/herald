@@ -15,7 +15,7 @@ const PAGE: u8 = 100;
 #[derive(Debug)]
 pub struct SlackMarkers<'a, H> {
     slack: &'a Slack,
-    http: &'a H,
+    http: H,
 }
 
 fn unreadable(reason: impl Into<String>) -> MarkersError {
@@ -49,7 +49,7 @@ fn landed(message: &Value) -> Facts {
 impl<'a, H: Http> SlackMarkers<'a, H> {
     /// The markers in the channel `slack` posts to, read through `http`.
     #[must_use]
-    pub fn new(slack: &'a Slack, http: &'a H) -> Self {
+    pub fn new(slack: &'a Slack, http: H) -> Self {
         Self { slack, http }
     }
 
@@ -105,7 +105,7 @@ impl<'a, H: Http> SlackMarkers<'a, H> {
     }
 
     async fn identity(&self) -> Result<Identity, MarkersError> {
-        identity(self.slack, self.http)
+        identity(self.slack, &self.http)
             .await
             .map_err(|error| unreadable(error.to_string()))?
             .map_err(said)

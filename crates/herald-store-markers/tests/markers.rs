@@ -86,6 +86,7 @@ mod markers {
             project: "p".to_owned(),
             subscriber: "s".to_owned(),
             inbox: None,
+            pending: None,
         };
         assert_eq!(
             pollster::block_on(store.cursors().put_cursor(
@@ -121,7 +122,11 @@ mod markers {
         );
         let key = Key::derive(&RouteId::new("r"), &Identity::new("1"));
         assert_eq!(
-            pollster::block_on(store.notes().put_note(&key, "{}", OPENED)),
+            pollster::block_on(store.notes().put_note("herald", &key, "{}", OPENED)),
+            Err(unsupported("notes"))
+        );
+        assert_eq!(
+            pollster::block_on(store.notes().outbox("herald", None, 1)),
             Err(unsupported("notes"))
         );
         assert_eq!(

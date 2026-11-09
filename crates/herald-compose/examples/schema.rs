@@ -1,5 +1,5 @@
 //! Prints the JSON Schema of `herald.toml`, which `herald.schema.json` holds.
 
 fn main() {
-    print!("{}", herald_config::schema());
+    print!("{}", herald_config::schema(&herald_compose::kinds()));
 }

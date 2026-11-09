@@ -110,7 +110,13 @@ appservice_token = {{ secret = "HERALD_MATRIX_AS" }}
 {destination}
 "#
     );
-    let mut config = load("herald.toml", &text, &|_| Err(String::new())).unwrap();
+    let mut config = load(
+        "herald.toml",
+        &text,
+        &|_| Err(String::new()),
+        &crate::harness::kinds(),
+    )
+    .unwrap();
     config.server.sessions.jitter = false;
     config
 }
@@ -879,4 +885,26 @@ async fn a_sync_skips_history_answers_what_follows_and_waits_after_a_failure() {
             .count(),
         1
     );
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_sync_waits_from_the_first_again_once_the_homeserver_answers() {
+    let failed = || answer("/sync?", 500, r#"{"errcode": "M_UNKNOWN"}"#);
+    let answers = Answers::of(vec![
+        failed(),
+        failed(),
+        answer("sync?timeout=0", 200, &synced("s1", "hi")),
+        failed(),
+    ]);
+    let world = World::new("matrix", answers, ScriptedSockets::default()).await;
+    let failures = std::cell::Cell::new(0);
+    world
+        .served(4, |line| {
+            if line.contains("could not be synced") {
+                failures.set(failures.get() + 1);
+            }
+            failures.get() == 4
+        })
+        .await;
+    assert_eq!(world.answers.spaced("/sync?"), [1, 2, 0, 1]);
 }

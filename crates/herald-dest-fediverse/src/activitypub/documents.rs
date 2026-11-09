@@ -30,7 +30,7 @@ pub(crate) fn note_id(origin: &str, actor: &str, key: &str) -> String {
 /// with its inbox, its server's shared inbox, and its public key as
 /// `public` (a DER `SubjectPublicKeyInfo`) publishes it.
 #[must_use]
-pub fn actor_document(origin: &str, actor: &str, public: &[u8]) -> Value {
+pub fn actor_document(origin: &str, actor: &str, public: &[u8], manual: bool) -> Value {
     let id = actor_id(origin, actor);
     json!({
         "@context": [STREAMS, SECURITY],
@@ -40,9 +40,9 @@ pub fn actor_document(origin: &str, actor: &str, public: &[u8]) -> Value {
         "name": actor,
         "url": id,
         "inbox": format!("{id}/inbox"),
-        "outbox": format!("{id}/outbox"),
+        "outbox": outbox_id(origin, actor),
         "followers": followers(&id),
-        "manuallyApprovesFollowers": false,
+        "manuallyApprovesFollowers": manual,
         "discoverable": true,
         "endpoints": { "sharedInbox": format!("https://{origin}/inbox") },
         "publicKey": {
@@ -135,18 +135,82 @@ fn followers(actor: &str) -> String {
 /// The `Create` of `announcement`'s Note, as each follower's inbox takes it.
 #[must_use]
 pub fn create(origin: &str, announcement: &Announcement, route: &ActorRouteOptions) -> Value {
-    let id = actor_id(origin, &route.actor);
-    let (to, cc) = addressed(&id, route.visibility);
+    created(&note(origin, announcement, route))
+}
+
+/// The `Create` of `note`, a Note as herald writes it: by its author, to
+/// its audience, when it was published.
+#[must_use]
+pub(crate) fn created(note: &Value) -> Value {
+    let field = |name: &str| note.get(name).cloned().unwrap_or(Value::Null);
+    let id = note.get("id").and_then(Value::as_str).unwrap_or_default();
     json!({
         "@context": STREAMS,
-        "id": format!("{}/activity", note_id(origin, &route.actor, &announcement.key.to_string())),
+        "id": format!("{id}/activity"),
         "type": "Create",
-        "actor": id,
-        "published": announcement.occurred.to_string(),
-        "to": to,
-        "cc": cc,
-        "object": note(origin, announcement, route),
+        "actor": field("attributedTo"),
+        "published": field("published"),
+        "to": field("to"),
+        "cc": field("cc"),
+        "object": note,
     })
+}
+
+/// The outbox of the actor `actor` served at `origin`, holding `total`
+/// Notes: a collection that names its first page.
+#[must_use]
+pub(crate) fn outbox(origin: &str, actor: &str, total: usize) -> Value {
+    let id = outbox_id(origin, actor);
+    json!({
+        "@context": STREAMS,
+        "id": id,
+        "type": "OrderedCollection",
+        "totalItems": total,
+        "first": format!("{id}?page={FIRST}"),
+    })
+}
+
+/// The page `page` of that outbox: `notes`, newest first, each as its
+/// `Create`, and the page after it where `next` names one.
+#[must_use]
+pub(crate) fn outbox_page(
+    origin: &str,
+    actor: &str,
+    page: &str,
+    notes: &[Value],
+    next: Option<&str>,
+) -> Value {
+    let outbox = outbox_id(origin, actor);
+    let mut shown = json!({
+        "@context": STREAMS,
+        "id": format!("{outbox}?page={page}"),
+        "type": "OrderedCollectionPage",
+        "partOf": outbox,
+        "orderedItems": notes.iter().map(created).collect::<Vec<_>>(),
+    });
+    if let (Some(next), Some(fields)) = (next, shown.as_object_mut()) {
+        fields.insert("next".to_owned(), json!(format!("{outbox}?page={next}")));
+    }
+    shown
+}
+
+/// The followers collection of the actor `actor` served at `origin`: how
+/// many follow it, and never who.
+#[must_use]
+pub(crate) fn followers_collection(origin: &str, actor: &str, total: usize) -> Value {
+    json!({
+        "@context": STREAMS,
+        "id": followers(&actor_id(origin, actor)),
+        "type": "OrderedCollection",
+        "totalItems": total,
+    })
+}
+
+/// What an outbox's first page is asked for as.
+pub const FIRST: &str = "true";
+
+fn outbox_id(origin: &str, actor: &str) -> String {
+    format!("{}/outbox", actor_id(origin, actor))
 }
 
 /// The `Accept` of `follow`, a `Follow` of the actor `actor` served at `origin`:
@@ -154,12 +218,46 @@ pub fn create(origin: &str, announcement: &Announcement, route: &ActorRouteOptio
 /// accepted as one.
 #[must_use]
 pub fn accept(origin: &str, actor: &str, follow: &Value) -> Value {
+    answer(origin, actor, follow, "Accept")
+}
+
+/// The id of `follow`, a `Follow`, as an `Accept` or `Reject` names it.
+#[must_use]
+pub fn follow_id(follow: &Value) -> String {
+    follow
+        .get("id")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_owned()
+}
+
+/// The `Follow` of id `id` by `follower` of the actor `actor` served at
+/// `origin`, as an `Accept` or `Reject` of it names it.
+#[must_use]
+pub(crate) fn follow(origin: &str, actor: &str, id: &str, follower: &str) -> Value {
+    json!({
+        "id": id,
+        "type": "Follow",
+        "actor": follower,
+        "object": actor_id(origin, actor),
+    })
+}
+
+/// The `Reject` of `follow`, a `Follow` of the actor `actor` served at
+/// `origin` that its policy turns away, its id digested as an `Accept`'s is.
+#[must_use]
+pub(crate) fn reject(origin: &str, actor: &str, follow: &Value) -> Value {
+    answer(origin, actor, follow, "Reject")
+}
+
+/// The `kind`, `Accept` or `Reject`, of `follow`.
+fn answer(origin: &str, actor: &str, follow: &Value, kind: &str) -> Value {
     let id = actor_id(origin, actor);
     let followed = follow.get("id").and_then(Value::as_str).unwrap_or_default();
     json!({
         "@context": STREAMS,
-        "id": format!("{id}/accepts/{}", digest(followed)),
-        "type": "Accept",
+        "id": format!("{id}/{}s/{}", kind.to_ascii_lowercase(), digest(followed)),
+        "type": kind,
         "actor": id,
         "object": follow,
     })

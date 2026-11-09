@@ -67,37 +67,20 @@ async fn sent(connect: Connect<'_>, base: &str, request: Request) -> Result<Resp
     http.send(request).await.map_err(|error| error.to_string())
 }
 
-/// What `herald discord …` is asked.
-pub(crate) enum Discording<'a> {
-    /// Register the commands.
-    Commands,
-    /// List the server's roles, or make one named `create`.
-    Roles {
-        /// The server.
-        guild: &'a str,
-        /// The name of a role to make.
-        create: Option<&'a str>,
-    },
-}
-
-/// The Discord destination `named`, set up as `asked`.
+/// The Discord destination `named`, set up as `task` asks.
 pub(crate) async fn discord(
     config: &Config,
     vars: &BTreeMap<String, String>,
     connect: Connect<'_>,
     named: Option<&str>,
-    asked: Discording<'_>,
+    task: herald_dest_discord::setup::Task<'_>,
     out: &mut dyn Write,
 ) -> Result<u8, String> {
-    let (name, (options, interactions)) = chosen(
-        config,
-        Destination::DISCORD,
-        named,
-        |destination| match destination {
-            Destination::Discord(options) => Some((options, options.interactions.as_ref()?)),
-            _ => None,
-        },
-    )?;
+    let (name, (options, interactions)) =
+        chosen(config, herald_dest_discord::KIND, named, |destination| {
+            let options = destination.of::<herald_dest_discord::DestinationOptions>()?;
+            Some((options, options.interactions.as_ref()?))
+        })?;
     let Some(token) = &options.token else {
         return Err(format!(
             "{} has no bot token, which Discord's commands and roles are set up with",
@@ -105,52 +88,10 @@ pub(crate) async fn discord(
         ));
     };
     let bot = secret(vars, token).await?;
-    let interacting = herald_dest_discord::Interacting::new(
-        interactions.clone(),
-        Some(bot),
-        options.api.as_deref(),
-    );
-    let api = interacting.api().to_owned();
-    let unwritten = || "the server's id is not written as Discord writes one".to_owned();
-    match asked {
-        Discording::Commands => {
-            let request = interacting.register().ok_or_else(unwritten)?;
-            herald_dest_discord::took(&sent(connect, &api, request).await?)?;
-            let registered: Vec<&str> = interactions
-                .commands
-                .iter()
-                .map(|command| command.name())
-                .collect();
-            let place = interactions.guild.as_ref().map_or_else(
-                || "in every server the application is in".to_owned(),
-                |guild| format!("in the server {guild}"),
-            );
-            say(
-                out,
-                &format!("Registered {} with Discord {place}.", registered.join(", ")),
-            );
-        }
-        Discording::Roles {
-            guild,
-            create: Some(role),
-        } => {
-            let request = interacting.make_role(guild, role).ok_or_else(unwritten)?;
-            let (id, made) = herald_dest_discord::made(&sent(connect, &api, request).await?)?;
-            say(
-                out,
-                &format!("Made the role {made}. Offer it on a route with:"),
-            );
-            say(out, &format!("subscribe = {{ role = \"{id}\" }}"));
-        }
-        Discording::Roles {
-            guild,
-            create: None,
-        } => {
-            let request = interacting.roles(guild).ok_or_else(unwritten)?;
-            for (id, role) in herald_dest_discord::listed(&sent(connect, &api, request).await?)? {
-                say(out, &format!("{id}  {role}"));
-            }
-        }
+    let (api, request) = herald_dest_discord::setup::request(options, interactions, bot, task)?;
+    let response = sent(connect, &api, request).await?;
+    for line in herald_dest_discord::setup::said(interactions, task, &response)? {
+        say(out, &line);
     }
     Ok(DONE)
 }
@@ -164,48 +105,22 @@ pub(crate) fn slack(
     url: Option<&str>,
     out: &mut dyn Write,
 ) -> Result<u8, String> {
-    let (name, (options, interactions)) = chosen(
-        config,
-        Destination::SLACK,
-        named,
-        |destination| match destination {
-            Destination::Slack(options) => Some((options, options.interactions.as_ref()?)),
-            _ => None,
-        },
-    )?;
-    let posted = interactions.via == herald_dest_slack::Via::Http;
-    let url = match (posted, url) {
-        (true, None) => {
-            return Err(
-                "Slack posts commands to herald's address; give it with --url, such as --url https://herald.example".to_owned(),
-            );
+    let (name, (options, interactions)) =
+        chosen(config, herald_dest_slack::KIND, named, |destination| {
+            let options = destination.of::<herald_dest_slack::DestinationOptions>()?;
+            Some((options, options.interactions.as_ref()?))
+        })?;
+    let url = match url {
+        Some(url) if herald_dest_slack::setup::posted(interactions) => {
+            Some(format!("{}{}", web(url)?, config.server.base))
         }
-        (true, Some(url)) => Some(format!("{}{}", web(url)?, config.server.base)),
-        (false, _) => None,
+        _ => None,
     };
-    let interacting =
-        herald_dest_slack::Interacting::new(interactions.clone(), options.api.as_deref());
-    say(out, &interacting.manifest(name.as_str(), url.as_deref()));
-    let kept = if posted {
-        interactions
-            .signing
-            .as_ref()
-            .map(|named| format!("its signing secret as {}", named.secret))
-    } else {
-        interactions.app.as_ref().map(|named| {
-            format!(
-                "an app-level token with connections:write as {}",
-                named.secret
-            )
-        })
-    };
-    say(
-        out,
-        &format!(
-            "Make a Slack app from this manifest at https://api.slack.com/apps, install it, and keep {}.",
-            kept.unwrap_or_default()
-        ),
-    );
+    for line in
+        herald_dest_slack::setup::manifest(name.as_str(), options, interactions, url.as_deref())?
+    {
+        say(out, &line);
+    }
     Ok(DONE)
 }
 
@@ -219,49 +134,25 @@ pub(crate) fn matrix(
     random: &dyn Fn() -> Option<String>,
     out: &mut dyn Write,
 ) -> Result<u8, String> {
-    let (name, (options, interactions)) = chosen(
-        config,
-        Destination::MATRIX,
-        named,
-        |destination| match destination {
-            Destination::Matrix(options) => Some((options, options.interactions.as_ref()?)),
-            _ => None,
-        },
-    )?;
-    if interactions.via != herald_dest_matrix::Via::Appservice {
-        return Err(format!(
-            "{} reads commands by syncing, so the homeserver installs nothing",
-            name.as_str()
-        ));
-    }
-    let url = web(url)?;
+    let (name, (options, interactions)) =
+        chosen(config, herald_dest_matrix::KIND, named, |destination| {
+            let options = destination.of::<herald_dest_matrix::DestinationOptions>()?;
+            Some((options, options.interactions.as_ref()?))
+        })?;
+    herald_dest_matrix::setup::installs(name.as_str(), interactions)?;
+    let url = format!("{}{}", web(url)?, config.server.base);
     let (Some(homeserver), Some(appservice)) = (random(), random()) else {
         return Err("the system's random generator failed, so no token was made".to_owned());
     };
-    let interacting = herald_dest_matrix::Interacting::new(
-        &options.homeserver,
-        interactions.clone(),
-        Secret::new("the application service's token", appservice.clone()),
-    );
-    let secret_of =
-        |named: Option<&SecretRef>| named.map(|named| named.secret.clone()).unwrap_or_default();
-    say(
-        out,
-        &format!(
-            "Keep the homeserver's token as {} and the application service's token as {}, then give the homeserver's administrator this registration:",
-            secret_of(interactions.homeserver_token.as_ref()),
-            secret_of(interactions.appservice_token.as_ref())
-        ),
-    );
-    let registration = interacting.registration(
-        &format!("{url}{}/matrix/{}", config.server.base, name.as_str()),
-        &homeserver,
-        &appservice,
-    );
-    for line in registration.lines() {
-        say(out, line);
+    for line in herald_dest_matrix::setup::registration(
+        name.as_str(),
+        options,
+        interactions,
+        &url,
+        (&homeserver, &appservice),
+    )? {
+        say(out, &line);
     }
-    say(out, "herald prints these tokens only this once.");
     Ok(DONE)
 }
 

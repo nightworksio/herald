@@ -63,6 +63,7 @@ title = "{{ event.title }}"
 body = "{{ event.body }}"
 "#,
             &|_| Err(String::new()),
+            &herald_compose::kinds(),
         )
         .unwrap()
     }
@@ -470,6 +471,7 @@ body = "{{ event.body }}"
                 project: "php-mutation-gate".to_owned(),
                 subscriber: "https://social.example/users/ana".to_owned(),
                 inbox: Some("https://social.example/inbox".to_owned()),
+                pending: None,
             })
             .await
             .unwrap();

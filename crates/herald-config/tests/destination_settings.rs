@@ -1,6 +1,8 @@
 //! Each destination's own settings: the pages it reads back of its own
 //! posts, the symbols it writes and how long it waits to send again.
 
+mod common;
+
 #[cfg(test)]
 mod destination_settings {
     use herald_config::{Destination, load};
@@ -35,15 +37,20 @@ title = "{{{{ event.project }}}} {{{{ event.version }}}}"
 body = "{{{{ event.body }}}}"
 "#
         );
-        load("herald.toml", &text, &|name| {
-            Err(format!("{name}: no such file"))
-        })
+        load(
+            "herald.toml",
+            &text,
+            &|name| Err(format!("{name}: no such file")),
+            &crate::common::kinds(),
+        )
         .map_err(|errors| errors.to_string())
     }
 
     fn read_back(config: &herald_config::Config) -> ReadBack {
-        let Some(Destination::Discord(options)) =
-            config.destinations.get(&DestinationName::new("discord"))
+        let Some(options) = config
+            .destinations
+            .get(&DestinationName::new("discord"))
+            .and_then(|destination| destination.of::<herald_dest_discord::DestinationOptions>())
         else {
             panic!("no Discord destination");
         };
@@ -109,7 +116,7 @@ body = "{{{{ event.body }}}}"
                 "server = \"https://mastodon.example\"\ntoken = {{ secret = \"T\" }}\n{written}"
             ))
             .unwrap();
-            Destination::Mastodon(options).waits()
+            Destination::new(options).waits()
         };
         assert_eq!(mastodon("").limited, SignedDuration::from_mins(5));
         assert_eq!(mastodon("").outage, Waits::DEFAULT.outage);

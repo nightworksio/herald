@@ -1,6 +1,9 @@
+use std::borrow::Cow;
 use std::collections::BTreeMap;
 
-use schemars::JsonSchema;
+use schemars::{JsonSchema, Schema, SchemaGenerator};
+
+use crate::kinds::Kinds;
 
 use crate::file::{
     AnnounceFile, AppFile, HttpFile, KeepFile, MarkersFile, RenderFile, RouteFile, ScheduleFile,
@@ -83,23 +86,17 @@ enum StoreSchema {
     RepoVariables(herald_store_repo_variables::StoreOptions),
 }
 
-/// A destination, by its kind.
-#[derive(JsonSchema)]
-#[serde(tag = "kind", rename_all = "kebab-case")]
-#[schemars(rename = "Destination")]
-#[allow(dead_code, reason = "read only by the schema's derive")]
-enum DestinationSchema {
-    /// Discord, by bot token or webhook.
-    Discord(herald_dest_discord::DestinationOptions),
-    /// An account on a server speaking the Mastodon client API.
-    Mastodon(herald_dest_fediverse::DestinationOptions),
-    /// A bot account on a Matrix homeserver.
-    Matrix(herald_dest_matrix::DestinationOptions),
-    /// Slack, by bot token or webhook.
-    Slack(herald_dest_slack::DestinationOptions),
-    /// herald's own ActivityPub actors, on its domain.
-    #[serde(rename = "activitypub")]
-    ActivityPub(herald_dest_fediverse::ActorOptions),
+/// A destination, by its kind: its schema is its kind's.
+struct DestinationSchema;
+
+impl JsonSchema for DestinationSchema {
+    fn schema_name() -> Cow<'static, str> {
+        DESTINATION.into()
+    }
+
+    fn json_schema(_: &mut SchemaGenerator) -> Schema {
+        Schema::default()
+    }
 }
 
 /// A source, by its kind.
@@ -129,78 +126,93 @@ enum SourceSchema {
     Feed(herald_sources_feed::FeedOptions),
 }
 
-/// A route: what it takes, where it announces, and its destination's own
-/// options, as its destination's kind defines them.
-#[derive(JsonSchema)]
-#[serde(untagged)]
-#[schemars(rename = "Route")]
-#[allow(dead_code, reason = "read only by the schema's derive")]
-enum RouteSchema {
-    /// A route to a Discord destination.
-    Discord(DiscordRoute),
-    /// A route to a Mastodon destination.
-    Mastodon(MastodonRoute),
-    /// A route to a Matrix destination.
-    Matrix(MatrixRoute),
-    /// A route to a Slack destination.
-    Slack(SlackRoute),
-    /// A route announcing as one of herald's own ActivityPub actors.
-    ActivityPub(ActivityPubRoute),
+/// A route: its schema is its kind's.
+struct RouteSchema;
+
+impl JsonSchema for RouteSchema {
+    fn schema_name() -> Cow<'static, str> {
+        ROUTE.into()
+    }
+
+    fn json_schema(_: &mut SchemaGenerator) -> Schema {
+        Schema::default()
+    }
 }
 
-/// A route to a Discord destination.
+/// A destination's table, tagged by its kind.
+#[derive(JsonSchema)]
+#[serde(tag = "kind")]
+#[allow(dead_code, reason = "read only by the schema's derive")]
+enum Tagged<T> {
+    #[serde(rename = "")]
+    Kind(T),
+}
+
+/// A route to a destination of one kind.
 #[derive(JsonSchema)]
 #[schemars(deny_unknown_fields)]
 #[allow(dead_code, reason = "read only by the schema's derive")]
-struct DiscordRoute {
+struct Routed<T> {
     #[serde(flatten)]
     common: RouteFile,
     #[serde(flatten)]
-    discord: herald_dest_discord::RouteOptions,
+    own: T,
 }
 
-/// A route to a Matrix destination.
-#[derive(JsonSchema)]
-#[schemars(deny_unknown_fields)]
-#[allow(dead_code, reason = "read only by the schema's derive")]
-struct MatrixRoute {
-    #[serde(flatten)]
-    common: RouteFile,
-    #[serde(flatten)]
-    matrix: herald_dest_matrix::RouteOptions,
+/// The schema's name for a destination.
+const DESTINATION: &str = "Destination";
+/// The schema's name for a route.
+const ROUTE: &str = "Route";
+
+/// `schema`, its description first.
+fn described(schema: &Schema, description: &str) -> Schema {
+    let mut map = serde_json::Map::new();
+    map.insert("description".to_owned(), description.into());
+    map.extend(
+        schema
+            .as_object()
+            .into_iter()
+            .flatten()
+            .filter(|(key, _)| key.as_str() != "description")
+            .map(|(key, value)| (key.clone(), value.clone())),
+    );
+    Schema::from(map)
 }
 
-/// A route announcing as one of herald's own ActivityPub actors.
-#[derive(JsonSchema)]
-#[schemars(deny_unknown_fields)]
-#[allow(dead_code, reason = "read only by the schema's derive")]
-struct ActivityPubRoute {
-    #[serde(flatten)]
-    common: RouteFile,
-    #[serde(flatten)]
-    actor: herald_dest_fediverse::ActorRouteOptions,
+/// The schema of a destination of the kind `name`, with options `T`.
+pub(crate) fn tagged<T: JsonSchema>(
+    generator: &mut SchemaGenerator,
+    name: &str,
+    description: &str,
+) -> Schema {
+    let mut schema = Tagged::<T>::json_schema(generator);
+    let mut variant = schema
+        .get_mut("oneOf")
+        .and_then(|variants| variants.as_array_mut())
+        .and_then(Vec::pop)
+        .and_then(|variant| Schema::try_from(variant).ok())
+        .unwrap_or(schema);
+    if let Some(kind) = variant.pointer_mut("/properties/kind/const") {
+        *kind = name.into();
+    }
+    described(&variant, description)
 }
 
-/// A route to a Slack destination.
-#[derive(JsonSchema)]
-#[schemars(deny_unknown_fields)]
-#[allow(dead_code, reason = "read only by the schema's derive")]
-struct SlackRoute {
-    #[serde(flatten)]
-    common: RouteFile,
-    #[serde(flatten)]
-    slack: herald_dest_slack::RouteOptions,
-}
-
-/// A route to a Mastodon destination.
-#[derive(JsonSchema)]
-#[schemars(deny_unknown_fields)]
-#[allow(dead_code, reason = "read only by the schema's derive")]
-struct MastodonRoute {
-    #[serde(flatten)]
-    common: RouteFile,
-    #[serde(flatten)]
-    mastodon: herald_dest_fediverse::RouteOptions,
+/// The schema of a route to a destination of one kind, with options `T`,
+/// kept as the definition `name` and referred to.
+pub(crate) fn routed<T: JsonSchema>(
+    generator: &mut SchemaGenerator,
+    name: &str,
+    description: &str,
+) -> Schema {
+    let schema = described(&Routed::<T>::json_schema(generator), description);
+    generator
+        .definitions_mut()
+        .insert(name.to_owned(), schema.to_value());
+    let mut reference = serde_json::Map::new();
+    reference.insert("description".to_owned(), description.into());
+    reference.insert("$ref".to_owned(), format!("#/$defs/{name}").into());
+    Schema::from(reference)
 }
 
 /// `herald.toml`: herald's whole config (ADR-0006).
@@ -217,6 +229,10 @@ struct FileSchema {
     markers: Option<MarkersFile>,
     /// The places herald posts to, by name.
     #[serde(default)]
+    #[expect(
+        clippy::zero_sized_map_values,
+        reason = "only the schema's derive reads the map, and its kinds' schemas take the value's place"
+    )]
     destinations: BTreeMap<String, DestinationSchema>,
     /// What herald listens to, by name.
     #[serde(default)]
@@ -242,12 +258,42 @@ struct FileSchema {
     announce: Option<AnnounceFile>,
 }
 
-/// The JSON Schema of `herald.toml`, as committed in `herald.schema.json`.
+/// The JSON Schema of `herald.toml` with `kinds`, as
+/// committed in `herald.schema.json`.
 #[must_use]
-pub fn schema() -> String {
-    let schema = schemars::schema_for!(FileSchema);
+pub fn schema(kinds: &Kinds) -> String {
+    let mut generator = SchemaGenerator::default();
+    let mut root = generator.root_schema_for::<FileSchema>();
+    let destinations: Vec<_> = kinds
+        .destinations()
+        .map(|kind| kind.destination_schema(&mut generator).to_value())
+        .collect();
+    let routes: Vec<_> = kinds
+        .destinations()
+        .map(|kind| kind.route_schema(&mut generator).to_value())
+        .collect();
+    let mut definitions: BTreeMap<String, serde_json::Value> = generator
+        .definitions()
+        .iter()
+        .map(|(name, schema)| (name.clone(), schema.clone()))
+        .collect();
+    definitions.insert(
+        DESTINATION.to_owned(),
+        serde_json::json!({ "description": "A destination, by its kind.", "oneOf": destinations }),
+    );
+    definitions.insert(
+        ROUTE.to_owned(),
+        serde_json::json!({
+            "description": "A route: what it takes, where it announces, and its destination's own\noptions, as its destination's kind defines them.",
+            "anyOf": routes,
+        }),
+    );
+    root.insert(
+        "$defs".to_owned(),
+        serde_json::Value::Object(definitions.into_iter().collect()),
+    );
     format!(
         "{}\n",
-        serde_json::to_string_pretty(&schema).unwrap_or_default()
+        serde_json::to_string_pretty(&root).unwrap_or_default()
     )
 }

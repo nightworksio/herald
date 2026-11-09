@@ -1,9 +1,11 @@
 //! `herald.toml` read whole, and every mistake in it named by line, column,
 //! key and fix.
 
+mod common;
+
 #[cfg(test)]
 mod load {
-    use herald_config::{Destination, RouteOptions, Source, Store, load, schema};
+    use herald_config::{Source, Store, load, schema};
     use herald_core::{Kind, Pinning, Prereleases};
     use herald_sources_forge::Forge;
 
@@ -43,12 +45,14 @@ body = "{{ event.body }}"
     }
 
     fn errors(text: &str) -> String {
-        load("herald.toml", text, &nothing).unwrap_err().to_string()
+        load("herald.toml", text, &nothing, &crate::common::kinds())
+            .unwrap_err()
+            .to_string()
     }
 
     #[test]
     fn the_documented_example_loads() {
-        let config = load("herald.toml", EXAMPLE, &nothing).unwrap();
+        let config = load("herald.toml", EXAMPLE, &nothing, &crate::common::kinds()).unwrap();
         assert_eq!(
             config.store,
             Store::GitBranch(herald_store_git_branch::StoreOptions {
@@ -62,12 +66,20 @@ body = "{{ event.body }}"
             })
         );
         assert_eq!(config.marker_key, None);
-        assert!(matches!(
-            config.destinations.values().next(),
-            Some(Destination::Discord(options)) if options.token.is_some()
-        ));
+        assert!(
+            config
+                .destinations
+                .values()
+                .next()
+                .and_then(|destination| destination.of::<herald_dest_discord::DestinationOptions>())
+                .is_some_and(|options| options.token.is_some())
+        );
         assert_eq!(
-            config.destinations.values().next().map(Destination::kind),
+            config
+                .destinations
+                .values()
+                .next()
+                .map(|destination| destination.kind()),
             Some("discord")
         );
         assert!(matches!(
@@ -84,10 +96,12 @@ body = "{{ event.body }}"
         assert_eq!(thread.archive_after.unwrap().as_secs(), 1_209_600);
         assert_eq!(thread.lock_after, None);
         assert_eq!(route.route.delivery.mentions.roles.len(), 1);
-        assert!(matches!(
-            &route.options,
-            RouteOptions::Discord(options) if options.channel.as_deref() == Some("1566184281406177531")
-        ));
+        assert!(
+            route
+                .options
+                .of::<herald_dest_discord::RouteOptions>()
+                .is_some_and(|options| options.channel.as_deref() == Some("1566184281406177531"))
+        );
         assert!(config.apps.is_empty());
         assert_eq!(config.schedule.poll, None);
     }
@@ -101,7 +115,7 @@ body = "{{ event.body }}"
             assert_eq!(file, "templates/body.md.j2");
             Ok("{{ event.body }}".to_owned())
         };
-        let config = load("herald.toml", &text, &read).unwrap();
+        let config = load("herald.toml", &text, &read, &crate::common::kinds()).unwrap();
         assert_eq!(config.marker_key.unwrap().secret, "HERALD_MARKER_SECRET");
         assert_eq!(config.schedule.poll.unwrap().as_secs(), 900);
         assert_eq!(config.schedule.housekeep.unwrap().as_secs(), 3_600);
@@ -189,7 +203,13 @@ body = "{{ event.body }}"
                 "repository = \"nightworksio/php-mutation-gate\"",
                 "repository = \"nightworksio/php-mutation-gate\"\ntoken = { secret = \"HERALD_DISCORD_TOKEN\" }",
             );
-        let config = load("herald.toml", &text, &|_| Err(String::new())).unwrap();
+        let config = load(
+            "herald.toml",
+            &text,
+            &|_| Err(String::new()),
+            &crate::common::kinds(),
+        )
+        .unwrap();
         let secrets: Vec<&str> = config.secrets().into_iter().collect();
         assert_eq!(
             secrets,
@@ -201,14 +221,26 @@ body = "{{ event.body }}"
         );
         let keyed =
             format!("{variables}\n[markers]\nkey = {{ secret = \"HERALD_MARKER_SECRET\" }}\n");
-        let config = load("herald.toml", &keyed, &|_| Err(String::new())).unwrap();
+        let config = load(
+            "herald.toml",
+            &keyed,
+            &|_| Err(String::new()),
+            &crate::common::kinds(),
+        )
+        .unwrap();
         assert!(config.secrets().contains("VARIABLES_TOKEN"));
         assert!(config.secrets().contains("HERALD_MARKER_SECRET"));
         let marked = EXAMPLE.replace(
             "kind = \"git-branch\"\nkey = { secret = \"HERALD_STORE_KEY\" }",
             "kind = \"markers\"",
         );
-        let config = load("herald.toml", &marked, &|_| Err(String::new())).unwrap();
+        let config = load(
+            "herald.toml",
+            &marked,
+            &|_| Err(String::new()),
+            &crate::common::kinds(),
+        )
+        .unwrap();
         assert_eq!(config.secrets().len(), 1);
     }
 
@@ -227,7 +259,13 @@ body = "{{ event.body }}"
                 "kind = \"git-branch\"\nkey = { secret = \"HERALD_STORE_KEY\" }",
                 &format!("kind = \"{kind}\"{options}"),
             );
-            let config = load("herald.toml", &text, &|_| Err(String::new())).unwrap();
+            let config = load(
+                "herald.toml",
+                &text,
+                &|_| Err(String::new()),
+                &crate::common::kinds(),
+            )
+            .unwrap();
             assert_eq!(config.store.kind(), kind);
         }
     }
@@ -258,7 +296,13 @@ body = "{{ event.body }}"
                     )
                     .replace("kinds = [\"release\"]", "kinds = [\"package-version\"]");
             }
-            let config = load("herald.toml", &text, &|_| Err(String::new())).unwrap();
+            let config = load(
+                "herald.toml",
+                &text,
+                &|_| Err(String::new()),
+                &crate::common::kinds(),
+            )
+            .unwrap();
             let source = config.sources.values().next().unwrap();
             assert_eq!(source.kind(), kind);
             assert!(config.secrets().contains("HERALD_DISCORD_TOKEN"));
@@ -277,7 +321,7 @@ body = "{{ event.body }}"
             "kinds = [\"release\"]",
             "kinds = [\"release\"]\nversions = \"v*.*.*\"",
         );
-        let config = load("herald.toml", &text, &nothing).unwrap();
+        let config = load("herald.toml", &text, &nothing, &crate::common::kinds()).unwrap();
         let versions = config.routes[0].route.filter.versions.as_ref().unwrap();
         assert_eq!(versions.as_str(), "v*.*.*");
         let feeds = text.replace(
@@ -289,6 +333,12 @@ body = "{{ event.body }}"
             refused.starts_with("herald.toml:20:12 routes[0].versions: feed entries and app messages carry no version"),
             "{refused}"
         );
+        let unplaced = errors(&feeds.replace("channel = \"1566184281406177531\"\n", ""));
+        assert!(
+            unplaced.contains("routes[0]: a Discord bot posts to a channel"),
+            "{unplaced}"
+        );
+        assert!(!unplaced.contains("routes[0].versions"), "{unplaced}");
     }
 
     #[test]
@@ -343,7 +393,15 @@ body = "{{ event.body }}"
             );
         }
         let gitlab = source("gitlab", "repository = \"group/sub/name\"");
-        assert!(load("herald.toml", &gitlab, &|_| Err(String::new())).is_ok());
+        assert!(
+            load(
+                "herald.toml",
+                &gitlab,
+                &|_| Err(String::new()),
+                &crate::common::kinds()
+            )
+            .is_ok()
+        );
     }
 
     #[test]
@@ -369,7 +427,13 @@ body = "{{ event.body }}"
                 )
                 .replace("kinds = [\"release\"]", "kinds = [\"package-version\"]")
         };
-        let config = load("herald.toml", &registry("npm"), &|_| Err(String::new())).unwrap();
+        let config = load(
+            "herald.toml",
+            &registry("npm"),
+            &|_| Err(String::new()),
+            &crate::common::kinds(),
+        )
+        .unwrap();
         assert!(config.secrets().contains("REGISTRY_TOKEN"));
         let refused = errors(&registry("crates-io"));
         assert!(
@@ -465,7 +529,15 @@ body = "{{ event.body }}"
                 &format!("title = \"{}\"", "x".repeat(length)),
             )
         };
-        assert!(load("herald.toml", &title(256), &nothing).is_ok());
+        assert!(
+            load(
+                "herald.toml",
+                &title(256),
+                &nothing,
+                &crate::common::kinds()
+            )
+            .is_ok()
+        );
         assert!(errors(&title(257)).contains("it renders 257 characters"));
         let thread = EXAMPLE.replace(
             "{{ event.project }} {{ event.version }}\", archive_after",
@@ -540,12 +612,16 @@ body = "{{ event.body }}"
             "kind = \"markers\"",
         );
         assert_eq!(
-            load("herald.toml", &markers, &nothing).unwrap().store,
+            load("herald.toml", &markers, &nothing, &crate::common::kinds())
+                .unwrap()
+                .store,
             Store::Markers
         );
         let pinned = EXAMPLE.replace("crosspost = true", "crosspost = true\npin = \"store\"");
         assert_eq!(
-            load("herald.toml", &pinned, &nothing).unwrap().routes[0]
+            load("herald.toml", &pinned, &nothing, &crate::common::kinds())
+                .unwrap()
+                .routes[0]
                 .route
                 .delivery
                 .pin,
@@ -592,7 +668,7 @@ body = "{{ event.body }}"
             "body = \"{{ event.body }}\"",
             "body = \"{{ event.version | upper }}\"",
         );
-        let config = load("herald.toml", &text, &nothing).unwrap();
+        let config = load("herald.toml", &text, &nothing, &crate::common::kinds()).unwrap();
         assert_eq!(config.routes[0].route.filter.kinds, Vec::<Kind>::new());
         assert_eq!(
             config.sources.values().next().unwrap().kinds(),
@@ -624,9 +700,9 @@ body = "{{ event.body }}"
     #[test]
     fn the_committed_schema_is_the_one_the_types_generate() {
         assert_eq!(
-            schema(),
+            schema(&crate::common::kinds()),
             include_str!("../../../herald.schema.json"),
-            "regenerate it: cargo run -p herald-config --example schema > herald.schema.json"
+            "regenerate it: cargo run -p herald-compose --example schema > herald.schema.json"
         );
     }
 }

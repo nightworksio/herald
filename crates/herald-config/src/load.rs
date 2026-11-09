@@ -8,14 +8,17 @@ use serde::de::DeserializeOwned;
 use toml::Spanned;
 use toml::de::{DeTable, DeValue, ValueDeserializer};
 
-use crate::config::{Config, Destination, Schedule, Source, Store};
+use herald_kinds::{Destination, Fault};
+
+use crate::config::{Config, Schedule, Source, Store};
 use crate::error::{ConfigError, Errors};
 use crate::file::{
     HttpFile, Keep, KeepFile, MarkersFile, NoOptions, ScheduleFile, ServerFile, TemplateFile,
 };
+use crate::kinds::{At, Kinds};
 use crate::position::position;
 
-type Value<'i> = Spanned<DeValue<'i>>;
+pub(crate) type Value<'i> = Spanned<DeValue<'i>>;
 
 /// The version of the config this herald reads.
 const VERSION: i64 = 1;
@@ -71,8 +74,9 @@ fn path_at(base: &str, value: &Value<'_>, at: &Range<usize>) -> String {
     }
 }
 
-struct Loader<'t> {
+pub(crate) struct Loader<'t> {
     text: &'t str,
+    kinds: &'t Kinds,
     errors: Vec<ConfigError>,
 }
 
@@ -112,7 +116,16 @@ impl Loader<'_> {
         });
     }
 
-    fn typed<T: DeserializeOwned>(&mut self, value: Value<'_>, path: &str) -> Option<T> {
+    /// `fault`, reported where the table at `at` writes it.
+    pub(crate) fn fault(&mut self, at: At<'_>, fault: &Fault) {
+        let path = match &fault.key {
+            Some(key) => format!("{}.{key}", at.path),
+            None => at.path.to_owned(),
+        };
+        self.error(at.span, &path, fault.message.clone());
+    }
+
+    pub(crate) fn typed<T: DeserializeOwned>(&mut self, value: Value<'_>, path: &str) -> Option<T> {
         let mut typed = None;
         let clean = self.retrying(value, path, &mut |value| {
             T::deserialize(ValueDeserializer::from(value)).map(|read| typed = Some(read))
@@ -388,31 +401,23 @@ impl Loader<'_> {
             .map(Store::FastlyKv)
     }
 
-    /// Whether every Matrix sync waits less than `[http] total` allows any
-    /// answer.
-    fn synced(
+    /// Whether every session a destination holds open waits less than
+    /// `[http] total` allows any answer.
+    fn outlasted(
         &mut self,
         destinations: &BTreeMap<DestinationName, (Destination, Range<usize>)>,
         http: &herald_ports::Outbound,
     ) {
+        let kinds = self.kinds;
         for (name, (destination, span)) in destinations {
-            let Destination::Matrix(options) = destination else {
+            let Some(fault) = kinds
+                .destination_named(destination.kind())
+                .and_then(|kind| kind.outlasts(destination, http.total))
+            else {
                 continue;
             };
-            let Some(interactions) = &options.interactions else {
-                continue;
-            };
-            let wait = interactions.sync_wait();
-            if wait >= http.total {
-                self.error(
-                    span,
-                    &format!("destinations.{}.interactions", name.as_str()),
-                    format!(
-                        "a sync that waits {wait:#} outlasts the {:#} [http] total allows any answer; make sync_wait shorter, or total longer",
-                        http.total
-                    ),
-                );
-            }
+            let path = format!("destinations.{}", name.as_str());
+            self.fault(At { path: &path, span }, &fault);
         }
     }
 
@@ -449,10 +454,9 @@ impl Loader<'_> {
         };
         for read in routes {
             let route = &read.config.route;
-            let follows = matches!(
-                destinations.get(&route.destination),
-                Some((Destination::ActivityPub(_), _))
-            );
+            let follows = destinations
+                .get(&route.destination)
+                .is_some_and(|(destination, _)| destination.acts());
             if (follows || route.delivery.mentions.subscribers)
                 && !store.keeps(RecordKind::Subscriptions)
             {
@@ -530,93 +534,34 @@ impl Loader<'_> {
     fn destinations(
         &mut self,
         value: Option<Value<'_>>,
+        read: &dyn Fn(&str) -> Result<String, String>,
     ) -> BTreeMap<DestinationName, (Destination, Range<usize>)> {
         let mut destinations = BTreeMap::new();
         for (name, value) in self.named(value, "destinations") {
             let path = format!("destinations.{name}");
             let span = value.span();
-            let Some((kind, rest)) = self.kinded(value, &path, &Destination::KINDS) else {
+            let kinds = self.kinds;
+            let names = kinds.destination_kinds();
+            let Some((kind, rest)) = self.kinded(value, &path, &names) else {
                 continue;
             };
-            let destination = if kind == Destination::MASTODON {
-                self.typed::<herald_dest_fediverse::DestinationOptions>(rest, &path)
-                    .map(Destination::Mastodon)
-            } else if kind == Destination::MATRIX {
-                self.matrix(rest, &path, &span)
-            } else if kind == Destination::ACTIVITYPUB {
-                self.actor(rest, &path, &span)
-            } else if kind == Destination::SLACK {
-                self.slack(rest, &path, &span)
-            } else {
-                self.discord(rest, &path, &span)
-            };
+            let destination = kinds.destination_named(&kind).and_then(|kind| {
+                kind.parse(
+                    self,
+                    rest,
+                    At {
+                        path: &path,
+                        span: &span,
+                    },
+                    read,
+                )
+            });
             let Some(destination) = destination else {
                 continue;
             };
             destinations.insert(DestinationName::new(name), (destination, span));
         }
         destinations
-    }
-
-    fn matrix(&mut self, rest: Value<'_>, path: &str, span: &Range<usize>) -> Option<Destination> {
-        let options = self.typed::<herald_dest_matrix::DestinationOptions>(rest, path)?;
-        if let Some(interactions) = &options.interactions {
-            self.interactions(span, path, interactions.check());
-        }
-        Some(Destination::Matrix(options))
-    }
-
-    fn actor(&mut self, rest: Value<'_>, path: &str, span: &Range<usize>) -> Option<Destination> {
-        let options = self.typed::<herald_dest_fediverse::ActorOptions>(rest, path)?;
-        if let Err(message) = options.check() {
-            self.error(span, path, message);
-            return None;
-        }
-        Some(Destination::ActivityPub(options))
-    }
-
-    fn slack(&mut self, rest: Value<'_>, path: &str, span: &Range<usize>) -> Option<Destination> {
-        let options = self.typed::<herald_dest_slack::DestinationOptions>(rest, path)?;
-        if let Err(message) = options.bot() {
-            self.error(span, path, message);
-            return None;
-        }
-        if let Err(message) = options.team() {
-            self.error(span, path, message);
-            return None;
-        }
-        if let Some(interactions) = &options.interactions {
-            self.interactions(span, path, interactions.check());
-        }
-        Some(Destination::Slack(options))
-    }
-
-    fn discord(&mut self, rest: Value<'_>, path: &str, span: &Range<usize>) -> Option<Destination> {
-        let options = self.typed::<herald_dest_discord::DestinationOptions>(rest, path)?;
-        let bot = match options.bot() {
-            Ok(bot) => bot,
-            Err(message) => {
-                self.error(span, path, message);
-                return None;
-            }
-        };
-        if let Some(interactions) = &options.interactions {
-            let checked = interactions.check().and_then(|()| {
-                if interactions.via == herald_dest_discord::Via::Gateway && !bot {
-                    Err("the gateway is joined as a bot; give the destination a token in place of its webhook".to_owned())
-                } else {
-                    Ok(())
-                }
-            });
-            self.interactions(span, path, checked);
-        }
-        Some(Destination::Discord(options))
-    }
-
-    fn interactions(&mut self, span: &Range<usize>, path: &str, checked: Result<(), String>) {
-        if let Err(message) = checked {
-            self.error(span, &format!("{path}.interactions"), message);
-        }
     }
 
     fn sources(&mut self, value: Option<Value<'_>>) -> BTreeMap<SourceName, Source> {
@@ -732,7 +677,7 @@ impl Loader<'_> {
 }
 
 /// The config `text` holds, read from the file named `file`, with each
-/// template file read through `read`.
+/// template file and shared block list read through `read`.
 ///
 /// # Errors
 ///
@@ -741,9 +686,11 @@ pub fn load(
     file: &str,
     text: &str,
     read: &dyn Fn(&str) -> Result<String, String>,
+    kinds: &Kinds,
 ) -> Result<Config, Errors> {
     let mut loader = Loader {
         text,
+        kinds,
         errors: Vec::new(),
     };
     let (root, syntax) = DeTable::parse_recoverable(text);
@@ -757,7 +704,7 @@ pub fn load(
         .markers
         .and_then(|value| loader.typed::<MarkersFile>(value, "markers"))
         .map(|markers| markers.key);
-    let destinations = loader.destinations(sections.destinations);
+    let destinations = loader.destinations(sections.destinations, read);
     let sources = loader.sources(sections.sources);
     let templates = loader.templates(sections.templates, read);
     let listed = loader.apps(sections.apps, &sources);
@@ -804,7 +751,7 @@ pub fn load(
         .and_then(|value| loader.typed::<HttpFile>(value, "http"))
         .map(|file| loader.http(file, read))
         .unwrap_or_default();
-    loader.synced(&destinations, &http);
+    loader.outlasted(&destinations, &http);
     loader.waited(&destinations);
     let announce = loader.announce(sections.announce);
     if let (true, Some(store), Some(templates)) = (loader.errors.is_empty(), store, compiled) {

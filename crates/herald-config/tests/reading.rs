@@ -1,6 +1,8 @@
 //! Each source's `page`, `remembered` and `parse`: read with their
 //! defaults, and a reading that cannot be kept named by its source.
 
+mod common;
+
 #[cfg(test)]
 mod reading {
     use herald_config::{Source, load};
@@ -32,9 +34,12 @@ title = "{{{{ event.project }}}} {{{{ event.version }}}}"
 body = "{{{{ event.body }}}}"
 "#
         );
-        load("herald.toml", &text, &|name| {
-            Err(format!("{name}: no such file"))
-        })
+        load(
+            "herald.toml",
+            &text,
+            &|name| Err(format!("{name}: no such file")),
+            &crate::common::kinds(),
+        )
         .map_err(|errors| errors.to_string())
     }
 

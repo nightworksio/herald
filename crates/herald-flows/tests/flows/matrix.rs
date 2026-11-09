@@ -33,7 +33,13 @@ title = "{{{{ event.title }}}}"
 body = "{{{{ event.body }}}}"
 "#
     );
-    load("herald.toml", &text, &|_| Err(String::new())).unwrap()
+    load(
+        "herald.toml",
+        &text,
+        &|_| Err(String::new()),
+        &crate::harness::kinds(),
+    )
+    .unwrap()
 }
 
 fn token() -> FakeSecrets {
@@ -51,6 +57,7 @@ fn subscribed(store: &Failing) {
         project: "php-mutation-gate".to_owned(),
         subscriber: "@ana:matrix.example".to_owned(),
         inbox: None,
+        pending: None,
     };
     pollster::block_on(store.subscribe(&subscription)).unwrap();
 }
@@ -112,6 +119,7 @@ fn subscribers_past_the_announcement_s_room_are_mentioned_in_a_message_after_it(
             project: "php-mutation-gate".to_owned(),
             subscriber: format!("@user{index:03}:matrix.example"),
             inbox: None,
+            pending: None,
         };
         pollster::block_on(store.subscribe(&subscription)).unwrap();
     }
@@ -187,7 +195,7 @@ fn a_matrix_route_keeps_no_thread_chores_and_its_room_lists_no_threads() {
         Chored::Dropped("Matrix cannot archive or lock a thread".to_owned())
     );
     assert_eq!(script.seen(), Vec::<String>::new());
-    let reached = Reached::Matrix(herald_dest_matrix::Matrix::new(
+    let reached = Reached::new(herald_dest_matrix::Matrix::new(
         "https://matrix.example",
         herald_ports::Secret::new("HERALD_MATRIX_TOKEN", "t0ken"),
         herald_dest_matrix::RouteOptions {
@@ -196,10 +204,10 @@ fn a_matrix_route_keeps_no_thread_chores_and_its_room_lists_no_threads() {
     ));
     assert_eq!(reached.api(), "https://matrix.example");
     assert_eq!(reached.profile(), herald_dest_matrix::profile());
-    let listed = pollster::block_on(reached.posts(&script).threads(&Marker::of(&[1]))).unwrap();
+    let listed = pollster::block_on(reached.read(&script).threads(&Marker::of(&[1]))).unwrap();
     assert_eq!(listed, []);
     let key = Key::derive(&RouteId::new("roomed"), &Identity::new("1"));
-    let read = pollster::block_on(reached.posts(&script).entry(&key, &Marker::of(&[1])));
+    let read = pollster::block_on(reached.read(&script).entry(&key, &Marker::of(&[1])));
     let Err(herald_ports::MarkersError::Unreadable { reason }) = read else {
         panic!("{read:?}");
     };
@@ -220,7 +228,7 @@ fn a_matrix_route_keeps_no_thread_chores_and_its_room_lists_no_threads() {
         ),
         ("/messages?dir=b&limit=100", 200, page.as_str()),
     ]);
-    let read = pollster::block_on(reached.posts(&cut_short).entry(&key, &marker));
+    let read = pollster::block_on(reached.read(&cut_short).entry(&key, &marker));
     let Err(herald_ports::MarkersError::Unreadable { reason }) = read else {
         panic!("{read:?}");
     };

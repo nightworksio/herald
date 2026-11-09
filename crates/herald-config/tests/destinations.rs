@@ -1,16 +1,20 @@
 //! Each destination's options in `herald.toml`: what loads, and what each
 //! destination cannot do refused by key.
 
+mod common;
+
 #[cfg(test)]
 mod destinations {
-    use herald_config::{Destination, RouteOptions, load};
+    use herald_config::load;
 
     fn nothing(_: &str) -> Result<String, String> {
         Err("no file".to_owned())
     }
 
     fn errors(text: &str) -> String {
-        load("herald.toml", text, &nothing).unwrap_err().to_string()
+        load("herald.toml", text, &nothing, &crate::common::kinds())
+            .unwrap_err()
+            .to_string()
     }
 
     /// The name of the secret the config's first destination reaches its
@@ -20,7 +24,7 @@ mod destinations {
             .destinations
             .values()
             .next()
-            .and_then(Destination::credential)
+            .and_then(|destination| destination.credential())
             .map(|reference| reference.secret.as_str())
     }
 
@@ -56,17 +60,28 @@ body = "{{ event.body }}"
 
     #[test]
     fn a_mastodon_destination_and_its_route_options_load() {
-        let config = load("herald.toml", MASTODON, &nothing).unwrap();
-        let Some(Destination::Mastodon(social)) = config.destinations.values().next() else {
+        let config = load("herald.toml", MASTODON, &nothing, &crate::common::kinds()).unwrap();
+        let Some(social) =
+            config.destinations.values().next().and_then(|destination| {
+                destination.of::<herald_dest_fediverse::DestinationOptions>()
+            })
+        else {
             panic!("the destination is Mastodon's");
         };
         assert_eq!(social.server, "https://mastodon.example");
         assert_eq!(credential(&config), Some("HERALD_MASTODON_TOKEN"));
         assert_eq!(
-            config.destinations.values().next().map(Destination::kind),
+            config
+                .destinations
+                .values()
+                .next()
+                .map(|destination| destination.kind()),
             Some("mastodon")
         );
-        let RouteOptions::Mastodon(placed) = &config.routes[0].options else {
+        let Some(placed) = config.routes[0]
+            .options
+            .of::<herald_dest_fediverse::RouteOptions>()
+        else {
             panic!("the route's options are Mastodon's");
         };
         assert_eq!(
@@ -159,17 +174,29 @@ body = "{{ event.body }}"
 
     #[test]
     fn a_matrix_destination_and_its_route_options_load() {
-        let config = load("herald.toml", MATRIX, &nothing).unwrap();
-        let Some(Destination::Matrix(room)) = config.destinations.values().next() else {
+        let config = load("herald.toml", MATRIX, &nothing, &crate::common::kinds()).unwrap();
+        let Some(room) = config
+            .destinations
+            .values()
+            .next()
+            .and_then(|destination| destination.of::<herald_dest_matrix::DestinationOptions>())
+        else {
             panic!("the destination is Matrix's");
         };
         assert_eq!(room.homeserver, "https://matrix.example");
         assert_eq!(credential(&config), Some("HERALD_MATRIX_TOKEN"));
         assert_eq!(
-            config.destinations.values().next().map(Destination::kind),
+            config
+                .destinations
+                .values()
+                .next()
+                .map(|destination| destination.kind()),
             Some("matrix")
         );
-        let RouteOptions::Matrix(placed) = &config.routes[0].options else {
+        let Some(placed) = config.routes[0]
+            .options
+            .of::<herald_dest_matrix::RouteOptions>()
+        else {
             panic!("the route's options are Matrix's");
         };
         assert_eq!(placed.room, "!releases:matrix.example");
@@ -252,17 +279,29 @@ body = "{{ event.body }}"
 
     #[test]
     fn a_slack_destination_and_its_route_options_load_as_a_bot_or_a_webhook() {
-        let config = load("herald.toml", SLACK, &nothing).unwrap();
-        let Some(Destination::Slack(team)) = config.destinations.values().next() else {
+        let config = load("herald.toml", SLACK, &nothing, &crate::common::kinds()).unwrap();
+        let Some(team) = config
+            .destinations
+            .values()
+            .next()
+            .and_then(|destination| destination.of::<herald_dest_slack::DestinationOptions>())
+        else {
             panic!("the destination is Slack's");
         };
         assert!(team.token.is_some());
         assert_eq!(credential(&config), Some("HERALD_SLACK_TOKEN"));
         assert_eq!(
-            config.destinations.values().next().map(Destination::kind),
+            config
+                .destinations
+                .values()
+                .next()
+                .map(|destination| destination.kind()),
             Some("slack")
         );
-        let RouteOptions::Slack(placed) = &config.routes[0].options else {
+        let Some(placed) = config.routes[0]
+            .options
+            .of::<herald_dest_slack::RouteOptions>()
+        else {
             panic!("the route's options are Slack's");
         };
         assert_eq!(placed.channel.as_deref(), Some("C0123456789"));
@@ -274,7 +313,7 @@ body = "{{ event.body }}"
         let hooked = SLACK
             .replace("token = { secret = \"HERALD_SLACK_TOKEN\" }", "webhook = { secret = \"HERALD_SLACK_WEBHOOK\" }")
             .replace("channel = \"C0123456789\"\npin = \"markers\"\nmentions = { subscribers = true }\nthread = { name = \"{{ event.version }}\" }\n", "");
-        let config = load("herald.toml", &hooked, &nothing).unwrap();
+        let config = load("herald.toml", &hooked, &nothing, &crate::common::kinds()).unwrap();
         assert_eq!(config.routes[0].profile, herald_dest_slack::profile(false));
         assert_eq!(credential(&config), Some("HERALD_SLACK_WEBHOOK"));
         assert_eq!(
@@ -379,17 +418,35 @@ body = "{{ event.body }}"
 
     #[test]
     fn an_activitypub_destination_and_its_actor_load() {
-        let config = load("herald.toml", ACTIVITYPUB, &nothing).unwrap();
-        let Some(Destination::ActivityPub(fedi)) = config.destinations.values().next() else {
+        let config = load(
+            "herald.toml",
+            ACTIVITYPUB,
+            &nothing,
+            &crate::common::kinds(),
+        )
+        .unwrap();
+        let Some(fedi) = config
+            .destinations
+            .values()
+            .next()
+            .and_then(|destination| destination.of::<herald_dest_fediverse::ActorOptions>())
+        else {
             panic!("the destination is herald's own actor's");
         };
         assert_eq!(fedi.domain, "herald.example");
         assert_eq!(credential(&config), Some("HERALD_ACTIVITYPUB_KEY"));
         assert_eq!(
-            config.destinations.values().next().map(Destination::kind),
+            config
+                .destinations
+                .values()
+                .next()
+                .map(|destination| destination.kind()),
             Some("activitypub")
         );
-        let RouteOptions::ActivityPub(placed) = &config.routes[0].options else {
+        let Some(placed) = config.routes[0]
+            .options
+            .of::<herald_dest_fediverse::ActorRouteOptions>()
+        else {
             panic!("the route's options are the actor's");
         };
         assert_eq!(placed.actor, "php-mutation-gate");
@@ -403,6 +460,71 @@ body = "{{ event.body }}"
                 .secrets()
                 .into_iter()
                 .any(|secret| secret == "HERALD_ACTIVITYPUB_KEY")
+        );
+    }
+
+    const SHARED: &str = "#domain,#severity\nspam.example,suspend\nfine.example,noop\n";
+
+    fn listed(pinned: &str, list: &'static str) -> Result<herald_config::Config, String> {
+        let text = ACTIVITYPUB.replace(
+            "key = { secret = \"HERALD_ACTIVITYPUB_KEY\" }\n",
+            &format!(
+                "key = {{ secret = \"HERALD_ACTIVITYPUB_KEY\" }}\nlists = [{{ file = \"blocks.csv\", sha256 = \"{pinned}\" }}]\n"
+            ),
+        );
+        load(
+            "herald.toml",
+            &text,
+            &|file| match file {
+                "blocks.csv" => Ok(list.to_owned()),
+                other => Err(format!("{other}: no such file")),
+            },
+            &crate::common::kinds(),
+        )
+        .map_err(|errors| errors.to_string())
+    }
+
+    #[test]
+    fn a_shared_block_list_pinned_by_its_digest_blocks_its_domains() {
+        let digest = herald_core::digest(SHARED);
+        let config = listed(&digest, SHARED).unwrap();
+        let Some(fedi) = config
+            .destinations
+            .values()
+            .next()
+            .and_then(|destination| destination.of::<herald_dest_fediverse::ActorOptions>())
+        else {
+            panic!("the destination is herald's own actor's");
+        };
+        assert_eq!(fedi.block, ["spam.example"]);
+        assert!(!fedi.policy().admits("https://spam.example/users/x"));
+        assert!(fedi.policy().admits("https://fine.example/users/y"));
+        assert!(listed(&digest.to_uppercase(), SHARED).is_ok());
+        let moved = listed(&digest, "#domain\nother.example\n").unwrap_err();
+        assert!(
+            moved.contains("destinations.fedi.lists[0]")
+                && moved.contains("blocks.csv has the SHA-256")
+                && moved.contains(&format!(
+                    "not the {digest} pinned; check the list, then pin its digest"
+                )),
+            "{moved}"
+        );
+        let unread = load(
+            "herald.toml",
+            &ACTIVITYPUB.replace(
+                "key = { secret = \"HERALD_ACTIVITYPUB_KEY\" }\n",
+                "key = { secret = \"HERALD_ACTIVITYPUB_KEY\" }\nlists = [{ file = \"gone.csv\", sha256 = \"00\" }]\n",
+            ),
+            &nothing, &crate::common::kinds(),
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(unread.contains("gone.csv could not be read"), "{unread}");
+        let broken = "sp*m.example,suspend\n";
+        let refused = listed(&herald_core::digest(broken), broken).unwrap_err();
+        assert!(
+            refused.contains("blocks.csv: line 1 names \"sp*m.example\", which is not a domain"),
+            "{refused}"
         );
     }
 
@@ -472,7 +594,7 @@ body = "{{ event.body }}"
             "kind = \"git-branch\"",
             "kind = \"actions-cache\"\nkeeps = [\"subscriptions\", \"notes\"]",
         );
-        assert!(load("herald.toml", &noted, &nothing).is_ok());
+        assert!(load("herald.toml", &noted, &nothing, &crate::common::kinds()).is_ok());
         let unheard = ACTIVITYPUB.replace(
             "kind = \"git-branch\"",
             "kind = \"actions-cache\"\nkeeps = [\"everything\"]",
@@ -487,6 +609,6 @@ body = "{{ event.body }}"
         let quiet = MATRIX
             .replace("kind = \"sqlite\"", "kind = \"markers\"")
             .replace("mentions = { subscribers = true }\n", "");
-        assert!(load("herald.toml", &quiet, &nothing).is_ok());
+        assert!(load("herald.toml", &quiet, &nothing, &crate::common::kinds()).is_ok());
     }
 }

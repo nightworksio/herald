@@ -19,4 +19,8 @@ exclude_re = [
     "impl Host for (Native<'_>|JsHost|WasiHost|FastlyHost)>::(clock|signer|verifier) ",
     # A Compute service's secrets are a unit struct reading one store, so a fresh one is the same one.
     "impl Host for FastlyHost>::secrets ",
+    # A destination's platform waits the default waits unless its kind names its own.
+    "DestinationConfig::platform_waits -> Waits with Default::default\\(\\)",
+    # The destination and route schemas name a definition every kind's own schema replaces.
+    "impl JsonSchema for (DestinationSchema|RouteSchema)>::json_schema ",
 ]

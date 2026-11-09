@@ -282,6 +282,20 @@ fn a_slack_manifest_posts_to_herald_s_address_or_opens_socket_mode() {
             .out
             .ends_with("keep an app-level token with connections:write as HERALD_SLACK_APP.\n")
     );
+    let addressed = herald(
+        &setup,
+        &world,
+        &[
+            "slack",
+            "manifest",
+            "--destination",
+            "socket",
+            "--url",
+            "herald.example",
+        ],
+    );
+    assert_eq!(addressed.code, DONE, "{}", addressed.err);
+    assert_eq!(addressed.out, socket.out);
 }
 
 #[test]
@@ -338,7 +352,13 @@ fn a_matrix_registration_holds_two_new_tokens_and_reaches_herald_by_destination(
         synced.err,
         "synced reads commands by syncing, so the homeserver installs nothing\n"
     );
-    let config = herald_config::load("herald.toml", &config(""), &|_| Err(String::new())).unwrap();
+    let config = herald_config::load(
+        "herald.toml",
+        &config(""),
+        &|_| Err(String::new()),
+        &herald_compose::kinds(),
+    )
+    .unwrap();
     let mut out = Vec::new();
     assert_eq!(
         setup::matrix(

@@ -35,6 +35,7 @@ use herald_sources_forge::{Forge, Origin, Repository, SourceOptions, Token};
 mod apps;
 mod cli;
 mod connect;
+mod followers;
 mod health;
 mod lambda;
 mod output;
@@ -216,6 +217,7 @@ async fn stopping(
             serving(&config, vars, connect, listen.as_deref(), out, stop).await
         }
         Serve::Lambda => lambda::lambda(config, vars, connect, out).await,
+        Serve::Followers(asked) => followers::following(&config, vars, connect, &asked, out).await,
     };
     let code = ran.unwrap_or_else(|message| {
         say(err, &message);
@@ -236,19 +238,19 @@ async fn set_up(
 ) -> Result<u8, String> {
     match setting {
         Setting::Discord(Discording::Commands { destination }) => {
-            let asked = setup::Discording::Commands;
-            setup::discord(config, vars, connect, destination.as_deref(), asked, out).await
+            let task = herald_dest_discord::setup::Task::Commands;
+            setup::discord(config, vars, connect, destination.as_deref(), task, out).await
         }
         Setting::Discord(Discording::Roles {
             destination,
             guild,
             create,
         }) => {
-            let asked = setup::Discording::Roles {
+            let task = herald_dest_discord::setup::Task::Roles {
                 guild: &guild,
                 create: create.as_deref(),
             };
-            setup::discord(config, vars, connect, destination.as_deref(), asked, out).await
+            setup::discord(config, vars, connect, destination.as_deref(), task, out).await
         }
         Setting::Slack(Slacking::Manifest { destination, url }) => {
             setup::slack(config, destination.as_deref(), url.as_deref(), out)
@@ -325,7 +327,8 @@ fn read(path: &str) -> Result<Config, String> {
     let files = |file: &str| {
         std::fs::read_to_string(directory.join(file)).map_err(|error| error.to_string())
     };
-    let mut config = load(path, &text, &files).map_err(|errors| errors.to_string())?;
+    let mut config =
+        load(path, &text, &files, &herald_compose::kinds()).map_err(|errors| errors.to_string())?;
     if let herald_config::Store::Sqlite(options) = &mut config.store {
         options.path = Some(options.file(directory).display().to_string());
     }

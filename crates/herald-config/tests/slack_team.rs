@@ -1,9 +1,11 @@
 //! A Slack destination's `team`: the workspace an Enterprise Grid org-wide
 //! app's calls name, refused unless written as a workspace id.
 
+mod common;
+
 #[cfg(test)]
 mod slack_team {
-    use herald_config::{Destination, load};
+    use herald_config::load;
     use herald_core::DestinationName;
 
     fn config(team: &str) -> Result<herald_config::Config, String> {
@@ -34,17 +36,22 @@ title = "{{{{ event.project }}}} {{{{ event.version }}}}"
 body = "{{{{ event.body }}}}"
 "#
         );
-        load("herald.toml", &text, &|name| {
-            Err(format!("{name}: no such file"))
-        })
+        load(
+            "herald.toml",
+            &text,
+            &|name| Err(format!("{name}: no such file")),
+            &crate::common::kinds(),
+        )
         .map_err(|errors| errors.to_string())
     }
 
     #[test]
     fn a_workspace_id_is_kept_and_anything_else_is_refused() {
         let kept = config("team = \"T0123456789\"").unwrap();
-        let Some(Destination::Slack(options)) =
-            kept.destinations.get(&DestinationName::new("slack"))
+        let Some(options) = kept
+            .destinations
+            .get(&DestinationName::new("slack"))
+            .and_then(|destination| destination.of::<herald_dest_slack::DestinationOptions>())
         else {
             panic!("no Slack destination");
         };

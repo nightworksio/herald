@@ -1,19 +1,15 @@
 use std::collections::BTreeMap;
 use std::fmt;
 
-use herald_config::{Config, Destination, RouteConfig, RouteOptions, Source};
-use herald_core::{DestinationName, RouteId, SecretRef, SourceName, hex};
-use herald_dest_discord::{Credential, Discord};
-use herald_dest_fediverse::{ActivityPub, Mastodon};
-use herald_dest_matrix::Matrix;
-use herald_dest_slack::Slack;
+use herald_config::{Config, Destination, Placed, RouteConfig, Source};
+use herald_core::{DestinationName, RouteId, SourceName, hex};
+use herald_kinds::Interacted;
 use herald_ports::{Algorithm, CryptoError, Http, Secret, SecretError, Secrets, Signer};
 use herald_sources_feed::Feed;
 use herald_sources_forge::{Origin, Token};
 use herald_sources_registry::Package;
 use herald_store_markers::{MarkedRoute, MarkersStore};
 
-use crate::interacting::Interacting;
 use crate::reached::{Posts, Reached};
 
 /// What a marker key is derived from a credential under (ADR-0011).
@@ -144,7 +140,7 @@ pub struct Prepared {
     routes: Vec<PreparedRoute>,
     sources: Vec<PreparedSource>,
     destinations: Vec<(DestinationName, Destination, Secret)>,
-    interacting: Vec<(DestinationName, Interacting)>,
+    interacting: Vec<(DestinationName, Interacted)>,
 }
 
 /// The prepared routes and sources, each with the `Http` that reaches it.
@@ -152,14 +148,14 @@ pub struct Prepared {
 pub struct Connected<H> {
     pub(crate) routes: Vec<(PreparedRoute, H)>,
     pub(crate) sources: Vec<(PreparedSource, H)>,
-    pub(crate) interacting: Vec<(DestinationName, Interacting, H, Option<H>)>,
+    pub(crate) interacting: Vec<(DestinationName, Interacted, H, Option<H>)>,
 }
 
 impl<H> Connected<H> {
     /// The destination named `name`, where it takes commands, with the
     /// `Http` its answers go through.
     #[must_use]
-    pub fn interacting(&self, name: &DestinationName) -> Option<(&Interacting, &H)> {
+    pub fn interacting(&self, name: &DestinationName) -> Option<(&Interacted, &H)> {
         self.interacting
             .iter()
             .find(|(named, ..)| named == name)
@@ -171,7 +167,7 @@ impl<H> Connected<H> {
     /// holds any.
     pub fn interactions(
         &self,
-    ) -> impl Iterator<Item = (&DestinationName, &Interacting, &H, Option<&H>)> {
+    ) -> impl Iterator<Item = (&DestinationName, &Interacted, &H, Option<&H>)> {
         self.interacting
             .iter()
             .map(|(name, interacting, http, sessions)| (name, interacting, http, sessions.as_ref()))
@@ -181,7 +177,7 @@ impl<H> Connected<H> {
 impl<H: Http> Connected<H> {
     /// The store the posts of every route that reads them back make, its
     /// markers computed by `signer` (ADR-0005).
-    pub fn marked<G: Signer>(&self, signer: G) -> MarkersStore<Posts<'_, H>, G> {
+    pub fn marked<G: Signer>(&self, signer: G) -> MarkersStore<Posts<'_>, G> {
         let routes = self
             .routes
             .iter()
@@ -189,7 +185,7 @@ impl<H: Http> Connected<H> {
             .map(|(route, http)| MarkedRoute {
                 route: route.config.route.id.clone(),
                 thread: route.config.route.delivery.thread.clone(),
-                markers: route.reached.posts(http),
+                markers: route.reached.read(http),
                 key: route.marker_key.clone(),
             })
             .collect();
@@ -266,70 +262,9 @@ struct Resolved<'a> {
 impl Resolved<'_> {
     /// The destination reached for a route with `options`, where they are
     /// options of the destination's kind.
-    fn reached(&self, options: &RouteOptions) -> Option<Reached> {
-        let secret = self.secret.clone();
-        match (self.destination, options) {
-            (Destination::Discord(reached), RouteOptions::Discord(placed)) => {
-                let credential = if reached.token.is_some() {
-                    Credential::Bot(secret)
-                } else {
-                    Credential::Webhook(secret)
-                };
-                Some(Reached::Discord(
-                    Discord::new(credential, placed.clone(), reached.api.as_deref())
-                        .reading_back(reached.read_back.unwrap_or_default())
-                        .waiting(self.destination.waits())
-                        .looking(reached.look())
-                        .worded(
-                            reached
-                                .interactions
-                                .as_ref()
-                                .map(herald_dest_discord::Interactions::wording)
-                                .unwrap_or_default(),
-                        ),
-                ))
-            }
-            (Destination::Mastodon(reached), RouteOptions::Mastodon(placed)) => {
-                Some(Reached::Mastodon(
-                    Mastodon::new(&reached.server, secret, placed.clone())
-                        .reading_back(reached.read_back.unwrap_or_default())
-                        .waiting(self.destination.waits()),
-                ))
-            }
-            (Destination::Matrix(reached), RouteOptions::Matrix(placed)) => Some(Reached::Matrix(
-                Matrix::new(&reached.homeserver, secret, placed.clone())
-                    .reading_back(reached.read_back.unwrap_or_default())
-                    .waiting(self.destination.waits()),
-            )),
-            (Destination::ActivityPub(reached), RouteOptions::ActivityPub(placed)) => {
-                Some(Reached::ActivityPub(
-                    ActivityPub::new(&reached.domain, self.base, secret, placed.clone())
-                        .waiting(self.destination.waits()),
-                ))
-            }
-            (Destination::Slack(reached), RouteOptions::Slack(placed)) => {
-                let credential = if reached.token.is_some() {
-                    herald_dest_slack::Credential::Bot(secret)
-                } else {
-                    herald_dest_slack::Credential::Webhook(secret)
-                };
-                Some(Reached::Slack(
-                    Slack::new(credential, placed.clone(), reached.api.as_deref())
-                        .on(reached.domain.unwrap_or_default())
-                        .in_team(reached.team.as_deref())
-                        .reading_back(reached.read_back.unwrap_or_default())
-                        .waiting(self.destination.waits())
-                        .worded(
-                            reached
-                                .interactions
-                                .as_ref()
-                                .map(herald_dest_slack::Interactions::wording)
-                                .unwrap_or_default(),
-                        ),
-                ))
-            }
-            _ => None,
-        }
+    fn reached(&self, options: &Placed) -> Option<Reached> {
+        self.destination
+            .reach(options, self.base, self.secret.clone())
     }
 }
 
@@ -373,7 +308,7 @@ async fn resolved<'c, S: Secrets, G: Signer>(
             });
         };
         let secret = secrets.secret(&reference.secret).await?;
-        if matches!(destination, Destination::ActivityPub(_)) {
+        if destination.acts() {
             keyed(signer, name, &secret).await?;
         }
         let (marker_key, derived) = if let Some(key) = &installation {
@@ -431,7 +366,7 @@ pub async fn prepare<S: Secrets, G: Signer>(
     }
     let mut sources = Vec::new();
     for (name, source) in &config.sources {
-        let token = optional(secrets, source.token()).await?;
+        let token = herald_kinds::optional(secrets, source.token()).await?;
         let (asked, backfill) = match source {
             Source::Forge(forge, options) => (
                 Asked::Forge {
@@ -478,7 +413,7 @@ impl Prepared {
     pub async fn answering<S: Secrets>(mut self, secrets: &S) -> Result<Self, PrepareError> {
         let mut interacting = Vec::new();
         for (name, destination, credential) in &self.destinations {
-            if let Some(found) = interacts(destination, credential, secrets).await? {
+            if let Some(found) = destination.interacts(credential, secrets).await? {
                 interacting.push((name.clone(), found));
             }
         }
@@ -487,76 +422,18 @@ impl Prepared {
     }
 }
 
-async fn optional<S: Secrets>(
-    secrets: &S,
-    named: Option<&SecretRef>,
-) -> Result<Option<Secret>, PrepareError> {
-    match named {
-        Some(named) => Ok(Some(secrets.secret(&named.secret).await?)),
-        None => Ok(None),
-    }
-}
-
-/// How `destination`, reached with `credential`, takes commands, where it
-/// takes any, with its secrets read through `secrets`.
-async fn interacts<S: Secrets>(
-    destination: &Destination,
-    credential: &Secret,
-    secrets: &S,
-) -> Result<Option<Interacting>, PrepareError> {
-    Ok(match destination {
-        Destination::Discord(options) => options.interactions.as_ref().map(|interactions| {
-            let bot = options.token.is_some().then(|| credential.clone());
-            Interacting::Discord(herald_dest_discord::Interacting::new(
-                interactions.clone(),
-                bot,
-                options.api.as_deref(),
-            ))
-        }),
-        Destination::Slack(options) => match &options.interactions {
-            Some(interactions) => Some(Interacting::Slack {
-                interacting: herald_dest_slack::Interacting::new(
-                    interactions.clone(),
-                    options.api.as_deref(),
-                )
-                .on(options.domain.unwrap_or_default()),
-                signing: optional(secrets, interactions.signing.as_ref()).await?,
-                app: optional(secrets, interactions.app.as_ref()).await?,
-            }),
-            None => None,
-        },
-        Destination::Matrix(options) => match &options.interactions {
-            Some(interactions) => {
-                let acting = match interactions.via {
-                    herald_dest_matrix::Via::Appservice => {
-                        optional(secrets, interactions.appservice_token.as_ref()).await?
-                    }
-                    herald_dest_matrix::Via::Sync => None,
-                };
-                Some(Interacting::Matrix {
-                    interacting: herald_dest_matrix::Interacting::new(
-                        &options.homeserver,
-                        interactions.clone(),
-                        acting.unwrap_or_else(|| credential.clone()),
-                    ),
-                    homeserver_token: optional(secrets, interactions.homeserver_token.as_ref())
-                        .await?,
-                })
-            }
-            None => None,
-        },
-        Destination::Mastodon(_) | Destination::ActivityPub(_) => None,
-    })
-}
-
 #[cfg(test)]
 mod tests {
     use herald_core::{Phrase, ReadBack, Wording};
+    use herald_dest_discord::{Credential, Discord};
+    use herald_dest_fediverse::{ActivityPub, Mastodon};
+    use herald_dest_matrix::Matrix;
+    use herald_dest_slack::Slack;
     use serde_json::json;
 
     use super::*;
 
-    fn reached(destination: &Destination, options: &RouteOptions) -> Option<Reached> {
+    fn reached(destination: &Destination, options: &Placed) -> Option<Reached> {
         Resolved {
             destination,
             base: "",
@@ -572,28 +449,28 @@ mod tests {
         let pages = ReadBack::new(9).unwrap();
         let token = json!({ "secret": "HERALD_TOKEN" });
         let secret = || Secret::new("HERALD_TOKEN", "token");
-        let discord = Destination::Discord(
-            serde_json::from_value(json!({
+        let discord = Destination::new(
+            serde_json::from_value::<herald_dest_discord::DestinationOptions>(json!({
                 "token": token, "read_back": 9,
                 "colours": { "release": "#112233" }, "archive_after": "1d",
                 "interactions": { "application": "1566184281406177000", "wording": { "release_link": "Uitgave" } }
             }))
             .unwrap(),
         );
-        let slack = Destination::Slack(
-            serde_json::from_value(
+        let slack = Destination::new(
+            serde_json::from_value::<herald_dest_slack::DestinationOptions>(
                 json!({ "token": token, "read_back": 9, "domain": "slack-gov.com", "team": "T0123456789" }),
             )
             .unwrap(),
         );
-        let matrix = Destination::Matrix(
-            serde_json::from_value(json!({
+        let matrix = Destination::new(
+            serde_json::from_value::<herald_dest_matrix::DestinationOptions>(json!({
                 "homeserver": "https://matrix.example", "token": token, "read_back": 9
             }))
             .unwrap(),
         );
-        let mastodon = Destination::Mastodon(
-            serde_json::from_value(json!({
+        let mastodon = Destination::new(
+            serde_json::from_value::<herald_dest_fediverse::DestinationOptions>(json!({
                 "server": "https://mastodon.example", "token": token, "read_back": 9
             }))
             .unwrap(),
@@ -604,9 +481,9 @@ mod tests {
         assert_eq!(
             reached(
                 &discord,
-                &RouteOptions::Discord(herald_dest_discord::RouteOptions::default())
+                &Placed::new(herald_dest_discord::RouteOptions::default())
             ),
-            Some(Reached::Discord(
+            Some(Reached::new(
                 Discord::new(
                     Credential::Bot(secret()),
                     herald_dest_discord::RouteOptions::default(),
@@ -626,9 +503,9 @@ mod tests {
         assert_eq!(
             reached(
                 &slack,
-                &RouteOptions::Slack(herald_dest_slack::RouteOptions::default())
+                &Placed::new(herald_dest_slack::RouteOptions::default())
             ),
-            Some(Reached::Slack(
+            Some(Reached::new(
                 Slack::new(
                     herald_dest_slack::Credential::Bot(secret()),
                     herald_dest_slack::RouteOptions::default(),
@@ -640,17 +517,17 @@ mod tests {
             ))
         );
         assert_eq!(
-            reached(&matrix, &RouteOptions::Matrix(room.clone())),
-            Some(Reached::Matrix(
+            reached(&matrix, &Placed::new(room.clone())),
+            Some(Reached::new(
                 Matrix::new("https://matrix.example", secret(), room).reading_back(pages)
             ))
         );
         assert_eq!(
             reached(
                 &mastodon,
-                &RouteOptions::Mastodon(herald_dest_fediverse::RouteOptions::default())
+                &Placed::new(herald_dest_fediverse::RouteOptions::default())
             ),
-            Some(Reached::Mastodon(
+            Some(Reached::new(
                 Mastodon::new(
                     "https://mastodon.example",
                     secret(),
@@ -667,20 +544,20 @@ mod tests {
         let secret = || Secret::new("HERALD_TOKEN", "token");
         let outage = jiff::SignedDuration::from_secs(40);
         let waits = json!({ "outage": "40s" });
-        let matrix = Destination::Matrix(
-            serde_json::from_value(
+        let matrix = Destination::new(
+            serde_json::from_value::<herald_dest_matrix::DestinationOptions>(
                 json!({ "homeserver": "https://matrix.example", "token": token, "waits": waits }),
             )
             .unwrap(),
         );
-        let mastodon = Destination::Mastodon(
-            serde_json::from_value(
+        let mastodon = Destination::new(
+            serde_json::from_value::<herald_dest_fediverse::DestinationOptions>(
                 json!({ "server": "https://mastodon.example", "token": token, "waits": waits }),
             )
             .unwrap(),
         );
-        let actor = Destination::ActivityPub(
-            serde_json::from_value(
+        let actor = Destination::new(
+            serde_json::from_value::<herald_dest_fediverse::ActorOptions>(
                 json!({ "domain": "herald.example", "key": token, "waits": waits }),
             )
             .unwrap(),
@@ -692,8 +569,8 @@ mod tests {
         let named: herald_dest_fediverse::ActorRouteOptions =
             serde_json::from_value(json!({ "actor": "herald" })).unwrap();
         assert_eq!(
-            reached(&matrix, &RouteOptions::Matrix(room.clone())),
-            Some(Reached::Matrix(
+            reached(&matrix, &Placed::new(room.clone())),
+            Some(Reached::new(
                 Matrix::new("https://matrix.example", secret(), room).waiting(herald_core::Waits {
                     outage,
                     ..herald_core::Waits::DEFAULT
@@ -701,8 +578,8 @@ mod tests {
             ))
         );
         assert_eq!(
-            reached(&mastodon, &RouteOptions::Mastodon(toot.clone())),
-            Some(Reached::Mastodon(
+            reached(&mastodon, &Placed::new(toot.clone())),
+            Some(Reached::new(
                 Mastodon::new("https://mastodon.example", secret(), toot).waiting(
                     herald_core::Waits {
                         outage,
@@ -712,8 +589,8 @@ mod tests {
             ))
         );
         assert_eq!(
-            reached(&actor, &RouteOptions::ActivityPub(named.clone())),
-            Some(Reached::ActivityPub(
+            reached(&actor, &Placed::new(named.clone())),
+            Some(Reached::new(
                 ActivityPub::new("herald.example", "", secret(), named).waiting(
                     herald_core::Waits {
                         outage,
@@ -726,8 +603,8 @@ mod tests {
 
     #[test]
     fn a_slack_on_its_government_cloud_takes_commands_there() {
-        let slack = Destination::Slack(
-            serde_json::from_value(json!({
+        let slack = Destination::new(
+            serde_json::from_value::<herald_dest_slack::DestinationOptions>(json!({
                 "token": { "secret": "HERALD_TOKEN" },
                 "domain": "slack-gov.com",
                 "interactions": { "via": "socket", "app": { "secret": "HERALD_SLACK_APP" } },
@@ -735,20 +612,14 @@ mod tests {
             .unwrap(),
         );
         let secrets = herald_testing::FakeSecrets::default().with("HERALD_SLACK_APP", "xapp");
-        let interacting = pollster::block_on(interacts(
-            &slack,
-            &Secret::new("HERALD_TOKEN", "token"),
-            &secrets,
-        ))
-        .unwrap();
-        assert!(
-            matches!(
-                &interacting,
-                Some(Interacting::Slack { interacting, .. })
-                    if (interacting.api(), interacting.hooks())
-                        == ("https://slack-gov.com/api", "https://hooks.slack-gov.com")
-            ),
-            "{interacting:?}"
+        let interacting =
+            pollster::block_on(slack.interacts(&Secret::new("HERALD_TOKEN", "token"), &secrets))
+                .unwrap();
+        let interacting = interacting.unwrap();
+        let interacting = interacting.of::<herald_dest_slack::Interacting>().unwrap();
+        assert_eq!(
+            (interacting.api(), interacting.hooks()),
+            ("https://slack-gov.com/api", "https://hooks.slack-gov.com")
         );
     }
 }

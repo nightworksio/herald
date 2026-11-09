@@ -58,7 +58,8 @@ fn configured() -> Result<(FastlyHost, Config), String> {
         host.item(name)
             .ok_or_else(|| format!("{name} is not in the Config Store {STORE}"))
     };
-    let config = load(CONFIG, &text, &read).map_err(|errors| errors.to_string())?;
+    let config = load(CONFIG, &text, &read, &herald_compose::kinds())
+        .map_err(|errors| errors.to_string())?;
     Ok((host, config))
 }
 

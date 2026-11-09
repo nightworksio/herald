@@ -36,7 +36,13 @@ title = "{{{{ event.title }}}}"
 body = "{{{{ event.body }}}}"
 "#
     );
-    load("herald.toml", &text, &|_| Err(String::new())).unwrap()
+    load(
+        "herald.toml",
+        &text,
+        &|_| Err(String::new()),
+        &crate::harness::kinds(),
+    )
+    .unwrap()
 }
 
 fn token() -> FakeSecrets {
@@ -119,7 +125,7 @@ fn a_mastodon_route_keeps_no_thread_chores_and_its_account_lists_no_threads() {
         Chored::Dropped("Mastodon cannot archive or lock a thread".to_owned())
     );
     assert_eq!(script.seen(), Vec::<String>::new());
-    let reached = Reached::Mastodon(herald_dest_fediverse::Mastodon::new(
+    let reached = Reached::new(herald_dest_fediverse::Mastodon::new(
         "https://mastodon.example",
         herald_ports::Secret::new("HERALD_MASTODON_TOKEN", "t0ken"),
         herald_dest_fediverse::RouteOptions::default(),
@@ -129,6 +135,6 @@ fn a_mastodon_route_keeps_no_thread_chores_and_its_account_lists_no_threads() {
         reached.profile(),
         herald_dest_fediverse::profile(&herald_dest_fediverse::RouteOptions::default())
     );
-    let listed = pollster::block_on(reached.posts(&script).threads(&Marker::of(&[1]))).unwrap();
+    let listed = pollster::block_on(reached.read(&script).threads(&Marker::of(&[1]))).unwrap();
     assert_eq!(listed, []);
 }

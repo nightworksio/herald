@@ -887,6 +887,10 @@ dependencies = [
  "futures-util",
  "herald-config",
  "herald-core",
+ "herald-dest-discord",
+ "herald-dest-fediverse",
+ "herald-dest-matrix",
+ "herald-dest-slack",
  "herald-flows",
  "herald-ports",
  "herald-records",
@@ -914,6 +918,7 @@ dependencies = [
  "herald-dest-fediverse",
  "herald-dest-matrix",
  "herald-dest-slack",
+ "herald-kinds",
  "herald-ports",
  "herald-sources-feed",
  "herald-sources-forge",
@@ -970,6 +975,7 @@ name = "herald-dest-discord"
 version = "0.0.0"
 dependencies = [
  "herald-core",
+ "herald-kinds",
  "herald-ports",
  "herald-testing",
  "jiff",
@@ -984,6 +990,7 @@ name = "herald-dest-fediverse"
 version = "0.0.0"
 dependencies = [
  "herald-core",
+ "herald-kinds",
  "herald-ports",
  "herald-testing",
  "jiff",
@@ -999,6 +1006,7 @@ name = "herald-dest-matrix"
 version = "0.0.0"
 dependencies = [
  "herald-core",
+ "herald-kinds",
  "herald-ports",
  "herald-testing",
  "jiff",
@@ -1013,6 +1021,7 @@ name = "herald-dest-slack"
 version = "0.0.0"
 dependencies = [
  "herald-core",
+ "herald-kinds",
  "herald-ports",
  "herald-testing",
  "jiff",
@@ -1061,6 +1070,7 @@ dependencies = [
  "herald-dest-fediverse",
  "herald-dest-matrix",
  "herald-dest-slack",
+ "herald-kinds",
  "herald-ports",
  "herald-records",
  "herald-sources-app",
@@ -1083,6 +1093,18 @@ name = "herald-keys"
 version = "0.0.0"
 dependencies = [
  "base64 0.23.1",
+]
+
+[[package]]
+name = "herald-kinds"
+version = "0.0.0"
+dependencies = [
+ "herald-core",
+ "herald-ports",
+ "herald-testing",
+ "jiff",
+ "pollster",
+ "serde_json",
 ]
 
 [[package]]

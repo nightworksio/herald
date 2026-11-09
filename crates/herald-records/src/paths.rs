@@ -1,6 +1,8 @@
 use std::fmt::Write as _;
 
 use herald_core::{DestinationName, Key, RouteId, Schedule, Scheme, SourceName, Subscription};
+use herald_ports::Outboxed;
+use jiff::Timestamp;
 
 /// A name as one segment of a path: letters, digits, `.`, `_` and `-` kept,
 /// and every other byte written as `~` and its two hex digits.
@@ -73,6 +75,23 @@ pub(crate) const NOTES: &str = "notes";
 
 pub(crate) fn note(key: &Key) -> String {
     format!("{NOTES}/{key}.json")
+}
+
+/// The directory of `actor`'s outbox: one record per Note, named so that
+/// names sort as the Notes were published.
+pub(crate) fn outbox(actor: &str) -> String {
+    format!("outbox/{}", segment(actor))
+}
+
+/// Where `actor`'s outbox lists the Note of `key`, published at `at`.
+pub(crate) fn outboxed(actor: &str, at: Timestamp, key: &Key) -> String {
+    format!("{}/{}.json", outbox(actor), Outboxed::name(at, key))
+}
+
+/// The name an outbox lists at `path`, without its directory or `.json`.
+pub(crate) fn outboxed_name(path: &str) -> Option<String> {
+    let name = path.rsplit('/').next()?.strip_suffix(".json")?;
+    Some(name.to_owned())
 }
 
 pub(crate) const LATEST: &str = "latest";

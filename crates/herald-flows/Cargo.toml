@@ -17,6 +17,7 @@ herald-dest-discord.workspace = true
 herald-dest-fediverse.workspace = true
 herald-dest-matrix.workspace = true
 herald-dest-slack.workspace = true
+herald-kinds.workspace = true
 herald-ports.workspace = true
 herald-sources-feed.workspace = true
 herald-sources-app.workspace = true

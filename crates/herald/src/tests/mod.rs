@@ -8,6 +8,7 @@ mod announce;
 mod apps;
 mod commands;
 mod doctor;
+mod followers;
 mod forges;
 mod housekeep;
 mod lambda;

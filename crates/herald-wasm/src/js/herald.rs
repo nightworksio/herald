@@ -69,8 +69,8 @@ impl Herald {
             read.and_then(|text| text.as_string())
                 .ok_or_else(|| format!("{name} is not among the files herald was given"))
         };
-        let loaded =
-            load(CONFIG, &config, &read).map_err(|errors| JsError::new(&errors.to_string()))?;
+        let loaded = load(CONFIG, &config, &read, &herald_compose::kinds())
+            .map_err(|errors| JsError::new(&errors.to_string()))?;
         let composed = Composed::new(JsHost::new(host), loaded, hosting.stores(), hosting.name())
             .await
             .map_err(|error| JsError::new(&error))?;

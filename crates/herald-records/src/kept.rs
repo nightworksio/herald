@@ -7,7 +7,7 @@ use herald_core::{
 };
 use herald_ports::{
     Admitted, Announcements, Cursors, Deliveries, Held, Inboxes, Keeper, Keyring, KnownKey, Ledger,
-    Notes, Pins, Schedules, StoreError, Subscriptions, Version, Versioned, Written,
+    Notes, Outboxed, Pins, Schedules, StoreError, Subscriptions, Version, Versioned, Written,
 };
 use jiff::Timestamp;
 use serde::de::DeserializeOwned;
@@ -36,9 +36,12 @@ struct Known {
     fetched: Timestamp,
 }
 
-/// A Note as it is kept: when it was published beside it.
+/// A Note as it is kept: the actor that published it, the announcement it
+/// is of and when, beside it.
 #[derive(Serialize, Deserialize)]
 struct Published {
+    actor: String,
+    key: Key,
     note: String,
     at: Timestamp,
 }
@@ -352,7 +355,7 @@ impl<R: Records> Subscriptions for Kept<R> {
     }
 
     async fn subscribe(&self, subscription: &Subscription) -> Result<(), StoreError> {
-        self.added(&paths::subscribed(subscription), subscription)
+        self.kept(&paths::subscribed(subscription), subscription)
             .await
     }
 
@@ -410,18 +413,69 @@ impl<R: Records> Notes for Kept<R> {
             .map(|record| record.value.note))
     }
 
-    async fn put_note(&self, key: &Key, note: &str, at: Timestamp) -> Result<(), StoreError> {
+    async fn put_note(
+        &self,
+        actor: &str,
+        key: &Key,
+        note: &str,
+        at: Timestamp,
+    ) -> Result<(), StoreError> {
+        let path = paths::note(key);
+        if let Some(earlier) = self.listed::<Published>(&path).await? {
+            let listed = paths::outboxed(&earlier.value.actor, earlier.value.at, key);
+            if listed != paths::outboxed(actor, at, key) {
+                self.removed(&listed).await?;
+            }
+        }
         let published = Published {
+            actor: actor.to_owned(),
+            key: *key,
             note: note.to_owned(),
             at,
         };
-        self.kept(&paths::note(key), &published).await
+        self.kept(&path, &published).await?;
+        self.kept(&paths::outboxed(actor, at, key), &key.to_string())
+            .await
+    }
+
+    async fn outbox(
+        &self,
+        actor: &str,
+        after: Option<&str>,
+        most: usize,
+    ) -> Result<Outboxed, StoreError> {
+        let listed = self
+            .records
+            .list(&paths::outbox(actor))
+            .await?
+            .iter()
+            .filter_map(|path| paths::outboxed_name(path))
+            .filter_map(|name| Outboxed::key(&name).map(|key| (name, key)))
+            .collect();
+        let keys: Outboxed<Key> = Outboxed::page(listed, after, most);
+        let mut notes = Vec::with_capacity(keys.notes.len());
+        for key in &keys.notes {
+            if let Some(published) = self.listed::<Published>(&paths::note(key)).await? {
+                notes.push(published.value.note);
+            }
+        }
+        Ok(Outboxed {
+            total: keys.total,
+            notes,
+            next: keys.next,
+        })
     }
 
     async fn expire_notes(&self, before: Timestamp) -> Result<(), StoreError> {
         for path in self.records.list(paths::NOTES).await? {
             let published = self.listed::<Published>(&path).await?;
-            if published.is_some_and(|published| published.value.at < before) {
+            if let Some(published) = published.filter(|published| published.value.at < before) {
+                self.removed(&paths::outboxed(
+                    &published.value.actor,
+                    published.value.at,
+                    &published.value.key,
+                ))
+                .await?;
                 self.removed(&path).await?;
             }
         }
@@ -534,6 +588,7 @@ mod tests {
                 project: "p".to_owned(),
                 subscriber: "u".to_owned(),
                 inbox: None,
+                pending: None,
             };
             let path = paths::subscribed(&subscription);
             let planted = br#"{"version":1,"record":{"destination":"slack","project":"p","subscriber":"mallory"}}"#;

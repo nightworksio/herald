@@ -14,7 +14,7 @@ const PAGE: u8 = 100;
 #[derive(Debug)]
 pub struct MatrixMarkers<'a, H> {
     matrix: &'a Matrix,
-    http: &'a H,
+    http: H,
 }
 
 fn unreadable(reason: impl Into<String>) -> MarkersError {
@@ -26,7 +26,7 @@ fn unreadable(reason: impl Into<String>) -> MarkersError {
 impl<'a, H: Http> MatrixMarkers<'a, H> {
     /// The markers in the room `matrix` posts to, read through `http`.
     #[must_use]
-    pub fn new(matrix: &'a Matrix, http: &'a H) -> Self {
+    pub fn new(matrix: &'a Matrix, http: H) -> Self {
         Self { matrix, http }
     }
 

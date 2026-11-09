@@ -221,12 +221,15 @@ fn pinned_by_store(mut config: Config) -> Config {
 
 fn token_named(name: &str) -> Config {
     let mut config = config("");
-    if let Some(herald_config::Destination::Discord(options)) =
-        config.destinations.values_mut().next()
+    if let Some(destination) = config.destinations.values_mut().next()
+        && let Some(mut options) = destination
+            .of::<herald_dest_discord::DestinationOptions>()
+            .cloned()
     {
         options.token = Some(herald_core::SecretRef {
             secret: name.to_owned(),
         });
+        *destination = herald_config::Destination::new(options);
     }
     config
 }
@@ -301,9 +304,13 @@ fn credentials_and_marker_keys_that_cannot_be_resolved_say_why() {
     .unwrap_err();
     assert!(matches!(derived, PrepareError::Crypto(_)), "{derived}");
     assert!(derived.to_string().contains("BAD"), "{derived}");
-    if let Some(herald_config::Destination::Discord(options)) = bad.destinations.values_mut().next()
+    if let Some(destination) = bad.destinations.values_mut().next()
+        && let Some(mut options) = destination
+            .of::<herald_dest_discord::DestinationOptions>()
+            .cloned()
     {
         options.token = None;
+        *destination = herald_config::Destination::new(options);
     }
     let none = pollster::block_on(prepare(&bad, &secrets(), &FakeSigner)).unwrap_err();
     assert_eq!(
@@ -317,9 +324,9 @@ fn credentials_and_marker_keys_that_cannot_be_resolved_say_why() {
     assert_eq!(lost.to_string(), unplaced);
     let mut crossed = config("");
     for destination in crossed.destinations.values_mut() {
-        if let herald_config::Destination::Discord(options) = destination {
+        if let Some(options) = destination.of::<herald_dest_discord::DestinationOptions>() {
             *destination =
-                herald_config::Destination::Mastodon(herald_dest_fediverse::DestinationOptions {
+                herald_config::Destination::new(herald_dest_fediverse::DestinationOptions {
                     server: "https://mastodon.example".to_owned(),
                     token: options.token.clone().unwrap(),
                     read_back: None,
@@ -423,7 +430,13 @@ template = "t"
 title = "{{ event.title }}"
 body = "{{ event.body }}"
 "#;
-    let config = load("herald.toml", text, &|_| Err(String::new())).unwrap();
+    let config = load(
+        "herald.toml",
+        text,
+        &|_| Err(String::new()),
+        &crate::harness::kinds(),
+    )
+    .unwrap();
     let store = healthy();
     let (announced, _) = hooked(&config, &store);
     assert_eq!(
@@ -460,7 +473,13 @@ thread = { name = "{{ event.version }}" }
 title = "{{ event.title }}"
 body = "{{ event.body }}"
 "#;
-    let mut config = load("herald.toml", text, &|_| Err(String::new())).unwrap();
+    let mut config = load(
+        "herald.toml",
+        text,
+        &|_| Err(String::new()),
+        &crate::harness::kinds(),
+    )
+    .unwrap();
     if let Some(thread) = config.routes[0].route.delivery.thread.as_mut() {
         thread.archive_after = Some(SignedDuration::from_hours(24));
     }
@@ -499,7 +518,7 @@ template = "t"
 title = "{{ event.title }}"
 body = "- [x] {{ event.version }}"
 "#;
-    let config = load("herald.toml", text, &|_| Err(String::new())).unwrap();
+    let config = crate::harness::loaded(text);
     let (announced, script) = hooked(&config, &healthy());
     assert_eq!(
         outcome(&announced),

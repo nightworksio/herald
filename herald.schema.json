@@ -286,6 +286,21 @@
       },
       "additionalProperties": false
     },
+    "Approve": {
+      "description": "Who decides whether a follow of herald's actors is taken.",
+      "oneOf": [
+        {
+          "description": "herald, by the lists and caps alone.",
+          "type": "string",
+          "const": "auto"
+        },
+        {
+          "description": "The operator, through `herald followers approve` or `reject`: a\nfollow waits until then, and its follower is not delivered to.",
+          "type": "string",
+          "const": "manual"
+        }
+      ]
+    },
     "ArchiveAfter": {
       "description": "How long a quiet thread stays open before Discord archives it: one of the\nfour lengths Discord takes.",
       "oneOf": [
@@ -731,17 +746,68 @@
           "description": "herald's own ActivityPub actors, on its domain.",
           "type": "object",
           "properties": {
+            "allow": {
+              "description": "The servers and actors an `allowlist` federates with, written as\n`block` writes them.",
+              "type": "array",
+              "default": [],
+              "items": {
+                "type": "string"
+              }
+            },
+            "approve": {
+              "description": "Who takes a follow: `auto`, herald by the lists and caps, or\n`manual`, the operator through `herald followers`.",
+              "$ref": "#/$defs/Approve"
+            },
+            "block": {
+              "description": "The servers and actors its actors never take a follow from or\ndeliver to: each a domain, naming its subdomains too, or an actor's\nid.",
+              "type": "array",
+              "default": [],
+              "items": {
+                "type": "string"
+              }
+            },
             "domain": {
               "description": "The domain herald serves its actors on, such as `herald.example`:\na host alone, with no scheme, port or path.",
               "type": "string"
             },
+            "followers": {
+              "description": "How many may follow each actor, in all and from any one server; a\nfollow past either is answered with a `Reject`.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/FollowerCaps"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
             "key": {
-              "description": "The secret holding the actors' RSA private key, as PKCS#8 PEM, which\n`herald activitypub keygen` writes.",
+              "description": "The secret holding the actors' RSA private key, as PKCS#8 PEM, such\nas `openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048`\nwrites.",
               "$ref": "#/$defs/SecretRef"
             },
             "kind": {
               "type": "string",
               "const": "activitypub"
+            },
+            "lists": {
+              "description": "Shared block lists, each a file of Mastodon's domain block CSV\npinned by its SHA-256, whose domains are blocked beside `block`'s.",
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/SharedList"
+              }
+            },
+            "mode": {
+              "description": "Whom its actors federate with: `open`, everyone `block` does not\nname, or `allowlist`, only those `allow` names.",
+              "$ref": "#/$defs/Mode"
+            },
+            "outbox_page": {
+              "description": "How many Notes one page of each actor's outbox holds, from 1 to 80;\n20 where unset.",
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "uint",
+              "minimum": 0
             },
             "symbols": {
               "description": "The characters its posts write where its markup has none: a task\ndone and to do, a rule and a text list's bullet.",
@@ -899,6 +965,31 @@
       "description": "A length of time: a number and ms, s, m, h, d or w, as \"14d\".",
       "type": "string",
       "pattern": "^[0-9]+(ms|[smhdw])$"
+    },
+    "FollowerCaps": {
+      "description": "How many may follow each of herald's actors, as `followers` writes it.",
+      "type": "object",
+      "properties": {
+        "most": {
+          "description": "The most followers one actor keeps; no limit where unset.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint",
+          "minimum": 0
+        },
+        "per_domain": {
+          "description": "The most followers one actor keeps from any one server; no limit\nwhere unset.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false
     },
     "Http": {
       "description": "`[http]`: how herald's own requests reach the services a config names.\nNone of it applies to the hosts herald reaches on others' behalf, an\n`ActivityPub` actor's key or a follower's inbox (ADR-0007).",
@@ -1619,6 +1710,21 @@
       },
       "additionalProperties": false
     },
+    "Mode": {
+      "description": "Whom herald's actors federate with.",
+      "oneOf": [
+        {
+          "description": "Every server and actor that `block` does not name.",
+          "type": "string",
+          "const": "open"
+        },
+        {
+          "description": "Only the servers and actors `allow` names, and none that `block`\nnames.",
+          "type": "string",
+          "const": "allowlist"
+        }
+      ]
+    },
     "OneCharacter": {
       "description": "One character, as a config writes it.",
       "type": "string",
@@ -2003,6 +2109,25 @@
         }
       },
       "additionalProperties": false
+    },
+    "SharedList": {
+      "description": "A shared block list, as `lists` writes it: a file of domains to block in\nthe CSV form Mastodon exports, pinned by the SHA-256 of its text.",
+      "type": "object",
+      "properties": {
+        "file": {
+          "description": "The file, as a path beside `herald.toml`.",
+          "type": "string"
+        },
+        "sha256": {
+          "description": "The SHA-256 of the file's text, in hex: a list that changes is not\nread until its new digest is pinned.",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "file",
+        "sha256"
+      ]
     },
     "Size": {
       "description": "A number of bytes: a number and KiB or MiB, as \"1MiB\".",

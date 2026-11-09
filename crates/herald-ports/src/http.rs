@@ -278,6 +278,12 @@ pub trait Http: Sync {
     fn send(&self, request: Request) -> impl Future<Output = Result<Response, HttpError>> + Send;
 }
 
+impl<H: Http> Http for &H {
+    fn send(&self, request: Request) -> impl Future<Output = Result<Response, HttpError>> + Send {
+        (**self).send(request)
+    }
+}
+
 /// `text` with every byte but a URL's unreserved ones percent-encoded, fit
 /// for one segment of a path or one value of a query.
 #[must_use]

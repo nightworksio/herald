@@ -31,6 +31,7 @@ fn on(store: &str, extra: &str) -> herald_config::Config {
             sealed(store)
         ),
         &|_| Err(String::new()),
+        &crate::harness::kinds(),
     )
     .unwrap()
     .store;
@@ -64,7 +65,7 @@ fn the_actions_cache_and_repository_variables_note_what_they_cannot_hold() {
     variables.store = load(
         "herald.toml",
         "version = 1\n[store]\nkind = \"repo-variables\"\ntoken = { secret = \"T\" }\nkey = { secret = \"K\" }\n",
-        &|_| Err(String::new()),
+        &|_| Err(String::new()), &crate::harness::kinds(),
     )
     .unwrap()
     .store;
@@ -133,10 +134,13 @@ fn the_markers_store_names_the_pins_cursors_and_read_backs_it_lacks() {
             .contains("a forum's posts are not read back")
     );
     let mut hooked = on("markers", "");
-    if let Some(herald_config::Destination::Discord(options)) =
-        hooked.destinations.values_mut().next()
+    if let Some(destination) = hooked.destinations.values_mut().next()
+        && let Some(mut options) = destination
+            .of::<herald_dest_discord::DestinationOptions>()
+            .cloned()
     {
         options.webhook = options.token.take();
+        *destination = herald_config::Destination::new(options);
     }
     hooked.routes[0].route.delivery.pin = None;
     hooked.routes[0].route.delivery.crosspost = false;
@@ -158,8 +162,15 @@ fn a_route_taking_docker_hub_tags_without_versions_is_noted() {
             "version = 1\n[store]\nkind = \"git-branch\"\nkey = {{ secret = \"S\" }}\n[markers]\nkey = {{ secret = \"K\" }}\n[destinations.discord]\nkind = \"discord\"\ntoken = {{ secret = \"T\" }}\n[sources.caddy]\nkind = \"docker-hub\"\npackage = \"caddy\"\n[[routes]]\nid = \"images\"\nsources = [\"caddy\"]\ndestination = \"discord\"\nchannel = \"1566200000000000100\"\ntemplate = \"t\"\n{versions}\n[templates.t]\ntitle = \"{{{{ event.version }}}}\"\nbody = \"\"\n"
         )
     };
-    let loaded =
-        |versions: &str| load("herald.toml", &text(versions), &|_| Err(String::new())).unwrap();
+    let loaded = |versions: &str| {
+        load(
+            "herald.toml",
+            &text(versions),
+            &|_| Err(String::new()),
+            &crate::harness::kinds(),
+        )
+        .unwrap()
+    };
     let noted = doctor(&loaded(""), layer(&STORES));
     assert_eq!(
         noted.notes,
@@ -217,7 +228,13 @@ homeserver = "https://matrix.example"
 token = {{ secret = "T" }}
 "#
     );
-    load("herald.toml", &text, &|_| Err(String::new())).unwrap()
+    load(
+        "herald.toml",
+        &text,
+        &|_| Err(String::new()),
+        &crate::harness::kinds(),
+    )
+    .unwrap()
 }
 
 fn gap_keys(findings: &herald_flows::Findings) -> Vec<String> {

@@ -8,8 +8,8 @@ mod activitypub {
         Dialect, Entry, Facts, MentionStyle, Pins, Sent, Step, Text, Threads, Waits,
     };
     use herald_dest_fediverse::{
-        ActivityPub, ActorOptions, ActorRouteOptions, Asked, accept, actor_document, actor_profile,
-        asked, create, note, webfinger,
+        ActivityPub, ActorOptions, ActorRouteOptions, Approve, Asked, FollowerCaps, Mode, accept,
+        actor_document, actor_profile, asked, create, note, webfinger,
     };
     use herald_ports::{PUBLIC, Secret};
     use herald_testing::sample;
@@ -67,7 +67,12 @@ mod activitypub {
             finger["links"][0]["href"],
             "https://herald.example/herald/users/php-mutation-gate"
         );
-        let document = actor_document("herald.example/herald", "php-mutation-gate", &[1; 70]);
+        let document = actor_document(
+            "herald.example/herald",
+            "php-mutation-gate",
+            &[1; 70],
+            false,
+        );
         assert_eq!(
             document["endpoints"]["sharedInbox"],
             "https://herald.example/herald/inbox"
@@ -217,12 +222,14 @@ mod activitypub {
 
     #[test]
     fn its_documents_name_the_actor_its_key_and_its_inboxes() {
-        let document = actor_document(DOMAIN, "php-mutation-gate", &[1; 70]);
+        let document = actor_document(DOMAIN, "php-mutation-gate", &[1; 70], true);
         assert_eq!(document["id"], ACTOR);
         assert_eq!(document["type"], "Service");
         assert_eq!(document["preferredUsername"], "php-mutation-gate");
         assert_eq!(document["inbox"], format!("{ACTOR}/inbox"));
         assert_eq!(document["followers"], format!("{ACTOR}/followers"));
+        assert_eq!(document["outbox"], format!("{ACTOR}/outbox"));
+        assert_eq!(document["manuallyApprovesFollowers"], true);
         assert_eq!(
             document["endpoints"]["sharedInbox"],
             "https://herald.example/inbox"
@@ -273,6 +280,13 @@ mod activitypub {
             domain: domain.to_owned(),
             symbols: None,
             waits: None,
+            outbox_page: None,
+            mode: Mode::Open,
+            block: Vec::new(),
+            allow: Vec::new(),
+            followers: None,
+            approve: Approve::Auto,
+            lists: Vec::new(),
             key: herald_core::SecretRef {
                 secret: "K".to_owned(),
             },
@@ -334,6 +348,94 @@ mod activitypub {
 
     fn nothing(why: &str) -> Asked {
         Asked::Nothing(why.to_owned())
+    }
+
+    #[test]
+    fn an_outbox_page_holds_one_to_eighty_notes_and_twenty_where_unset() {
+        let paged = |outbox_page| ActorOptions {
+            domain: "herald.example".to_owned(),
+            symbols: None,
+            waits: None,
+            outbox_page,
+            mode: Mode::Open,
+            block: Vec::new(),
+            allow: Vec::new(),
+            followers: None,
+            approve: Approve::Auto,
+            lists: Vec::new(),
+            key: herald_core::SecretRef {
+                secret: "K".to_owned(),
+            },
+        };
+        assert_eq!(paged(None).outbox_page(), 20);
+        for most in [1, 80] {
+            assert_eq!(paged(Some(most)).check(), Ok(()), "{most}");
+            assert_eq!(paged(Some(most)).outbox_page(), most);
+        }
+        for most in [0, 81] {
+            assert_eq!(
+                paged(Some(most)).check(),
+                Err(format!("outbox_page holds 1 to 80 Notes, not {most}"))
+            );
+        }
+    }
+
+    #[test]
+    fn an_actor_s_lists_name_domains_or_actors_and_its_caps_are_at_least_one() {
+        let governed = |block: &[&str], followers: Option<FollowerCaps>| ActorOptions {
+            domain: "herald.example".to_owned(),
+            symbols: None,
+            waits: None,
+            outbox_page: None,
+            mode: Mode::Allowlist,
+            block: block.iter().map(|entry| (*entry).to_owned()).collect(),
+            allow: vec!["friends.example".to_owned()],
+            followers,
+            approve: Approve::Manual,
+            lists: Vec::new(),
+            key: herald_core::SecretRef {
+                secret: "K".to_owned(),
+            },
+        };
+        let open = governed(&["spam.example", "https://good.example/users/troll"], None);
+        assert_eq!(open.check(), Ok(()));
+        assert!(open.policy().admits("https://friends.example/users/ana"));
+        assert!(!open.policy().admits("https://spam.example/users/x"));
+        assert!(!open.policy().admits("https://elsewhere.example/users/x"));
+        let refused = governed(&["http://spam.example"], None)
+            .check()
+            .unwrap_err();
+        assert!(
+            refused.starts_with("\"http://spam.example\" is neither a domain nor an actor's id"),
+            "{refused}"
+        );
+        for caps in [
+            FollowerCaps {
+                most: Some(0),
+                per_domain: None,
+            },
+            FollowerCaps {
+                most: None,
+                per_domain: Some(0),
+            },
+        ] {
+            assert_eq!(
+                governed(&[], Some(caps)).check(),
+                Err("followers.most and followers.per_domain take at least 1; leave one out for no limit".to_owned())
+            );
+        }
+        let capped = governed(
+            &[],
+            Some(FollowerCaps {
+                most: Some(1),
+                per_domain: None,
+            }),
+        );
+        assert_eq!(capped.check(), Ok(()));
+        assert!(!capped.policy().room(
+            "https://friends.example/users/b",
+            &["https://friends.example/users/a"]
+        ));
     }
 
     #[test]
@@ -438,8 +540,16 @@ mod activitypub {
                     &Secret::new("HERALD_ACTIVITYPUB_KEY", "the-key"),
                 ))
                 .unwrap(),
+                false,
             )
         );
+        let manual = reached("HERALD_ACTIVITYPUB_KEY")
+            .governed(herald_dest_fediverse::Policy::default().approving(Approve::Manual));
+        let waiting: serde_json::Value =
+            serde_json::from_str(&pollster::block_on(manual.document(&FakeSigner)).unwrap())
+                .unwrap();
+        assert_eq!(waiting["manuallyApprovesFollowers"], true);
+        assert_eq!(document["manuallyApprovesFollowers"], false);
         assert!(pollster::block_on(reached("BAD").document(&FakeSigner)).is_err());
         let finger: serde_json::Value = serde_json::from_str(&actor.finger()).unwrap();
         assert_eq!(finger, webfinger(DOMAIN, DOMAIN, "php-mutation-gate"));

@@ -1,6 +1,8 @@
 //! `[apps]`: the HTTP API's apps, each a source routes may name, read with
 //! their tokens' hashes, and every mistake in them named by key.
 
+mod common;
+
 #[cfg(test)]
 mod apps {
     use herald_config::load;
@@ -59,7 +61,9 @@ body = "{{ event.body }}"
     }
 
     fn errors(text: &str) -> String {
-        load("herald.toml", text, &nothing).unwrap_err().to_string()
+        load("herald.toml", text, &nothing, &crate::common::kinds())
+            .unwrap_err()
+            .to_string()
     }
 
     #[test]
@@ -69,7 +73,7 @@ body = "{{ event.body }}"
             token('0'),
             token('f')
         ));
-        let config = load("herald.toml", &text, &nothing).unwrap();
+        let config = load("herald.toml", &text, &nothing, &crate::common::kinds()).unwrap();
         let app = &config.apps["ci"];
         assert_eq!(app.tokens, ["0".repeat(64), "f".repeat(64)]);
         assert_eq!(app.projects, ["herald"]);
@@ -101,7 +105,7 @@ body = "{{ event.body }}"
             "[apps.ci]\ntokens = [\"{}\"]\nroutes = [\"everything\"]\n",
             token('c')
         ));
-        let config = load("herald.toml", &text, &nothing).unwrap();
+        let config = load("herald.toml", &text, &nothing, &crate::common::kinds()).unwrap();
         let routes: Vec<&str> = config.apps["ci"]
             .routes
             .iter()
@@ -112,13 +116,25 @@ body = "{{ event.body }}"
 
     #[test]
     fn an_app_with_no_tokens_is_read_for_the_cli_alone() {
-        let config = load("herald.toml", &with("[apps.ci]\n"), &nothing).unwrap();
+        let config = load(
+            "herald.toml",
+            &with("[apps.ci]\n"),
+            &nothing,
+            &crate::common::kinds(),
+        )
+        .unwrap();
         assert_eq!(config.apps["ci"].tokens, Vec::<String>::new());
     }
 
     #[test]
     fn a_route_naming_an_app_takes_its_messages() {
-        let config = load("herald.toml", &with("[apps.ci]\n"), &nothing).unwrap();
+        let config = load(
+            "herald.toml",
+            &with("[apps.ci]\n"),
+            &nothing,
+            &crate::common::kinds(),
+        )
+        .unwrap();
         let deploys = config
             .routes
             .iter()

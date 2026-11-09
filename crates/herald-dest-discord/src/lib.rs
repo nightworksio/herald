@@ -7,17 +7,22 @@
 //! request built from the announcement and the steps already landed, and
 //! each response is read back into the facts the ledger records.
 
+mod config;
 mod discord;
 mod gateway;
+mod held;
 mod interact;
 mod interactions;
 mod look;
 mod markers;
 mod options;
+mod reach;
 mod read;
 mod request;
+pub mod setup;
 mod unpin;
 
+pub use config::{DiscordKind, KIND};
 pub use discord::{Credential, Discord, profile};
 pub use gateway::{Effect, GATEWAY, Gateway};
 pub use interact::{

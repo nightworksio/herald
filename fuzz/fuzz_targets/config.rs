@@ -9,7 +9,7 @@ use libfuzzer_sys::fuzz_target;
 
 fuzz_target!(|text: &str| {
     let files = |name: &str| Err(format!("{name} is not in the fuzzed text"));
-    if let Err(errors) = load("herald.toml", text, &files) {
+    if let Err(errors) = load("herald.toml", text, &files, &herald_compose::kinds()) {
         assert!(!errors.errors.is_empty(), "no mistake was named");
         let lines = text.lines().count().max(1) + 1;
         let mut previous = (0, 0);

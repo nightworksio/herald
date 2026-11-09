@@ -286,7 +286,7 @@ fn housekeeping_keeps_every_entry_and_note_where_they_are_kept_for_ever() {
     let store = healthy();
     let old = claimed("old", 10_000);
     pollster::block_on(store.put_entry(&old, None)).unwrap();
-    pollster::block_on(store.put_note(&old.key, "{}", ago(10_000))).unwrap();
+    pollster::block_on(store.put_note("herald", &old.key, "{}", ago(10_000))).unwrap();
     let retention = Retention {
         ledger: None,
         ..Retention::default()
@@ -307,8 +307,8 @@ fn housekeeping_forgets_notes_published_longer_ago_than_the_store_keeps_them() {
     let store = healthy();
     let old = claimed("old", 10);
     let recent = claimed("recent", 5);
-    pollster::block_on(store.put_note(&old.key, "{\"n\":1}", ago(10))).unwrap();
-    pollster::block_on(store.put_note(&recent.key, "{\"n\":2}", ago(5))).unwrap();
+    pollster::block_on(store.put_note("herald", &old.key, "{\"n\":1}", ago(10))).unwrap();
+    pollster::block_on(store.put_note("herald", &recent.key, "{\"n\":2}", ago(5))).unwrap();
     let retention = Retention {
         notes: Some(days(7)),
         ..Retention::default()

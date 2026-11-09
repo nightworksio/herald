@@ -17,4 +17,8 @@ pub struct Subscription {
     /// inbox, or else its own.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub inbox: Option<String>,
+    /// The id of the ActivityPub follow waiting for the operator's approval,
+    /// where it waits: a follower that is not delivered to until approved.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pending: Option<String>,
 }

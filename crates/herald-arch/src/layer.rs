@@ -42,9 +42,8 @@ impl Layer {
             "herald-core" => Some(Self::Core),
             "herald-ports" => Some(Self::Ports),
             "herald-testing" => Some(Self::Testing),
-            "herald-aws" | "herald-keys" | "herald-records" | "herald-sql" | "herald-wire" => {
-                Some(Self::Kits)
-            }
+            "herald-aws" | "herald-keys" | "herald-kinds" | "herald-records" | "herald-sql"
+            | "herald-wire" => Some(Self::Kits),
             "herald-config" => Some(Self::Config),
             "herald-flows" => Some(Self::Flows),
             "herald-compose" => Some(Self::Composition),

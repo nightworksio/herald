@@ -4,6 +4,7 @@ use herald_core::{
     DestinationName, Inbound, Kind, Profile, RecordKind, Retention, Route, RouteId, Sandbox,
     SecretRef, SourceName, Templates,
 };
+use herald_kinds::{Destination, Placed};
 use herald_sources_forge::Forge;
 use herald_sources_registry::Registry;
 use jiff::SignedDuration;
@@ -48,23 +49,7 @@ impl Config {
     pub fn session_domains(&self) -> BTreeSet<&str> {
         self.destinations
             .values()
-            .flat_map(|destination| match destination {
-                Destination::Discord(options) => options
-                    .interactions
-                    .as_ref()
-                    .filter(|interactions| interactions.via == herald_dest_discord::Via::Gateway)
-                    .map(herald_dest_discord::Interactions::session_domains)
-                    .unwrap_or_default(),
-                Destination::Slack(options) => options
-                    .interactions
-                    .as_ref()
-                    .filter(|interactions| interactions.via == herald_dest_slack::Via::Socket)
-                    .map(|interactions| {
-                        interactions.session_domains(options.domain.unwrap_or_default())
-                    })
-                    .unwrap_or_default(),
-                _ => Vec::new(),
-            })
+            .flat_map(|destination| destination.session_domains())
             .collect()
     }
 
@@ -73,7 +58,7 @@ impl Config {
     pub fn secrets(&self) -> BTreeSet<&str> {
         self.destinations
             .values()
-            .flat_map(Destination::secret_refs)
+            .flat_map(|destination| destination.secret_refs())
             .chain(self.sources.values().flat_map(Source::secret_refs))
             .chain(self.marker_key.as_ref())
             .map(|named| named.secret.as_str())
@@ -230,154 +215,6 @@ impl Store {
     }
 }
 
-/// A destination and its options, by its kind.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Destination {
-    /// Discord.
-    Discord(herald_dest_discord::DestinationOptions),
-    /// An account on a server speaking the Mastodon client API.
-    Mastodon(herald_dest_fediverse::DestinationOptions),
-    /// A bot account on a Matrix homeserver.
-    Matrix(herald_dest_matrix::DestinationOptions),
-    /// Slack, by bot token or webhook.
-    Slack(herald_dest_slack::DestinationOptions),
-    /// herald's own ActivityPub actors, on its domain.
-    ActivityPub(herald_dest_fediverse::ActorOptions),
-}
-
-impl Destination {
-    /// The characters its posts write where its markup has none.
-    #[must_use]
-    pub fn symbols(&self) -> herald_core::Symbols {
-        match self {
-            Self::Discord(options) => options.symbols,
-            Self::Mastodon(options) => options.symbols,
-            Self::Matrix(options) => options.symbols,
-            Self::Slack(options) => options.symbols,
-            Self::ActivityPub(options) => options.symbols,
-        }
-        .unwrap_or_default()
-    }
-
-    /// How long it waits before sending again where its platform names no
-    /// wait: the config's, else the platform's own.
-    #[must_use]
-    pub fn waits(&self) -> herald_core::Waits {
-        let platform = match self {
-            Self::Mastodon(_) => herald_dest_fediverse::Mastodon::WAITS,
-            _ => herald_core::Waits::DEFAULT,
-        };
-        herald_core::Waits::of(self.waits_written(), platform)
-    }
-
-    /// The waits its config sets, each still to be checked.
-    #[must_use]
-    pub fn waits_written(&self) -> Option<herald_core::WaitOptions> {
-        match self {
-            Self::Discord(options) => options.waits,
-            Self::Mastodon(options) => options.waits,
-            Self::Matrix(options) => options.waits,
-            Self::Slack(options) => options.waits,
-            Self::ActivityPub(options) => options.waits,
-        }
-    }
-
-    /// The secret it reaches its platform with: its token, else its webhook,
-    /// or its key.
-    #[must_use]
-    pub fn credential(&self) -> Option<&SecretRef> {
-        match self {
-            Self::Discord(options) => options.token.as_ref().or(options.webhook.as_ref()),
-            Self::Mastodon(options) => Some(&options.token),
-            Self::Matrix(options) => Some(&options.token),
-            Self::Slack(options) => options.token.as_ref().or(options.webhook.as_ref()),
-            Self::ActivityPub(options) => Some(&options.key),
-        }
-    }
-
-    /// Every secret it names.
-    #[must_use]
-    pub fn secret_refs(&self) -> Vec<&SecretRef> {
-        let named: [Option<&SecretRef>; 4] = match self {
-            Self::Discord(options) => {
-                [options.token.as_ref(), options.webhook.as_ref(), None, None]
-            }
-            Self::Mastodon(options) => [Some(&options.token), None, None, None],
-            Self::Matrix(options) => {
-                let interactions = options.interactions.as_ref();
-                [
-                    Some(&options.token),
-                    interactions.and_then(|interactions| interactions.homeserver_token.as_ref()),
-                    interactions.and_then(|interactions| interactions.appservice_token.as_ref()),
-                    None,
-                ]
-            }
-            Self::Slack(options) => {
-                let interactions = options.interactions.as_ref();
-                [
-                    options.token.as_ref(),
-                    options.webhook.as_ref(),
-                    interactions.and_then(|interactions| interactions.signing.as_ref()),
-                    interactions.and_then(|interactions| interactions.app.as_ref()),
-                ]
-            }
-            Self::ActivityPub(options) => [Some(&options.key), None, None, None],
-        };
-        named.into_iter().flatten().collect()
-    }
-
-    /// The kind of a Discord destination, as the config spells it.
-    pub const DISCORD: &str = "discord";
-    /// The kind of a Mastodon destination, as the config spells it.
-    pub const MASTODON: &str = "mastodon";
-    /// The kind of a Matrix destination, as the config spells it.
-    pub const MATRIX: &str = "matrix";
-    /// The kind of a Slack destination, as the config spells it.
-    pub const SLACK: &str = "slack";
-    /// The kind of herald's own ActivityPub actors, as the config spells it.
-    pub const ACTIVITYPUB: &str = "activitypub";
-    /// Every kind, as the config spells it.
-    pub const KINDS: [&str; 5] = [
-        Self::DISCORD,
-        Self::MASTODON,
-        Self::MATRIX,
-        Self::SLACK,
-        Self::ACTIVITYPUB,
-    ];
-
-    /// The kind's name, as `[destinations.<name>] kind` writes it.
-    #[must_use]
-    pub fn kind(&self) -> &'static str {
-        match self {
-            Self::Discord(_) => Self::DISCORD,
-            Self::Mastodon(_) => Self::MASTODON,
-            Self::Matrix(_) => Self::MATRIX,
-            Self::Slack(_) => Self::SLACK,
-            Self::ActivityPub(_) => Self::ACTIVITYPUB,
-        }
-    }
-
-    /// How it answers commands, where it takes any.
-    #[must_use]
-    pub fn answering(&self) -> Option<herald_core::Answering> {
-        match self {
-            Self::Discord(options) => options
-                .interactions
-                .as_ref()
-                .map(herald_dest_discord::Interactions::answering),
-            Self::Slack(options) => options
-                .interactions
-                .as_ref()
-                .map(herald_dest_slack::Interactions::answering),
-            Self::Matrix(options) => options
-                .interactions
-                .as_ref()
-                .map(herald_dest_matrix::Interactions::answering),
-            Self::Mastodon(_) | Self::ActivityPub(_) => None,
-        }
-    }
-}
-
 /// A source and its options, by its kind.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Source {
@@ -461,59 +298,9 @@ pub struct RouteConfig {
     /// The route.
     pub route: Route,
     /// Its destination's own options.
-    pub options: RouteOptions,
+    pub options: Placed,
     /// What its destination can do, as the core plans with it.
     pub profile: Profile,
-}
-
-/// A route's options for its destination's kind.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum RouteOptions {
-    /// Discord's.
-    Discord(herald_dest_discord::RouteOptions),
-    /// Mastodon's.
-    Mastodon(herald_dest_fediverse::RouteOptions),
-    /// Matrix's.
-    Matrix(herald_dest_matrix::RouteOptions),
-    /// Slack's.
-    Slack(herald_dest_slack::RouteOptions),
-    /// herald's own actor's.
-    ActivityPub(herald_dest_fediverse::ActorRouteOptions),
-}
-
-impl RouteOptions {
-    /// Whether every post opens a thread of its own, as a Discord forum's
-    /// does, so the route takes `thread` whatever its destination's features
-    /// say.
-    #[must_use]
-    pub fn threads_each_post(&self) -> bool {
-        matches!(self, Self::Discord(placed) if placed.forum)
-    }
-
-    /// The channel or room the route announces in, where its destination
-    /// names one, as a command given there names it.
-    #[must_use]
-    pub fn place(&self) -> Option<&str> {
-        match self {
-            Self::Discord(placed) => placed.channel.as_deref(),
-            Self::Slack(placed) => placed.channel.as_deref(),
-            Self::Matrix(placed) => Some(&placed.room),
-            Self::Mastodon(_) | Self::ActivityPub(_) => None,
-        }
-    }
-
-    /// The opt-in role members subscribe to, which the route mentions with
-    /// its announcements: a Discord route's alone.
-    #[must_use]
-    pub fn opt_in_role(&self) -> Option<String> {
-        match self {
-            Self::Discord(placed) => placed
-                .subscribe
-                .as_ref()
-                .map(|subscribe| subscribe.role.clone()),
-            _ => None,
-        }
-    }
 }
 
 /// An app of the HTTP API: its token's hash and what it may announce to.
