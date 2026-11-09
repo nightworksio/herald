@@ -3,7 +3,7 @@
 
 #[cfg(test)]
 mod destinations {
-    use herald_config::{RouteOptions, load};
+    use herald_config::load;
 
     fn nothing(_: &str) -> Result<String, String> {
         Err("no file".to_owned())
@@ -74,7 +74,10 @@ body = "{{ event.body }}"
                 .map(|destination| destination.kind()),
             Some("mastodon")
         );
-        let RouteOptions::Mastodon(placed) = &config.routes[0].options else {
+        let Some(placed) = config.routes[0]
+            .options
+            .of::<herald_dest_fediverse::RouteOptions>()
+        else {
             panic!("the route's options are Mastodon's");
         };
         assert_eq!(
@@ -186,7 +189,10 @@ body = "{{ event.body }}"
                 .map(|destination| destination.kind()),
             Some("matrix")
         );
-        let RouteOptions::Matrix(placed) = &config.routes[0].options else {
+        let Some(placed) = config.routes[0]
+            .options
+            .of::<herald_dest_matrix::RouteOptions>()
+        else {
             panic!("the route's options are Matrix's");
         };
         assert_eq!(placed.room, "!releases:matrix.example");
@@ -288,7 +294,10 @@ body = "{{ event.body }}"
                 .map(|destination| destination.kind()),
             Some("slack")
         );
-        let RouteOptions::Slack(placed) = &config.routes[0].options else {
+        let Some(placed) = config.routes[0]
+            .options
+            .of::<herald_dest_slack::RouteOptions>()
+        else {
             panic!("the route's options are Slack's");
         };
         assert_eq!(placed.channel.as_deref(), Some("C0123456789"));
@@ -424,7 +433,10 @@ body = "{{ event.body }}"
                 .map(|destination| destination.kind()),
             Some("activitypub")
         );
-        let RouteOptions::ActivityPub(placed) = &config.routes[0].options else {
+        let Some(placed) = config.routes[0]
+            .options
+            .of::<herald_dest_fediverse::ActorRouteOptions>()
+        else {
             panic!("the route's options are the actor's");
         };
         assert_eq!(placed.actor, "php-mutation-gate");

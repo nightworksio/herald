@@ -4,7 +4,7 @@ use herald_core::{
     DestinationName, Inbound, Kind, Profile, RecordKind, Retention, Route, RouteId, Sandbox,
     SecretRef, SourceName, Templates,
 };
-use herald_kinds::Destination;
+use herald_kinds::{Destination, Placed};
 use herald_sources_forge::Forge;
 use herald_sources_registry::Registry;
 use jiff::SignedDuration;
@@ -307,59 +307,9 @@ pub struct RouteConfig {
     /// The route.
     pub route: Route,
     /// Its destination's own options.
-    pub options: RouteOptions,
+    pub options: Placed,
     /// What its destination can do, as the core plans with it.
     pub profile: Profile,
-}
-
-/// A route's options for its destination's kind.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum RouteOptions {
-    /// Discord's.
-    Discord(herald_dest_discord::RouteOptions),
-    /// Mastodon's.
-    Mastodon(herald_dest_fediverse::RouteOptions),
-    /// Matrix's.
-    Matrix(herald_dest_matrix::RouteOptions),
-    /// Slack's.
-    Slack(herald_dest_slack::RouteOptions),
-    /// herald's own actor's.
-    ActivityPub(herald_dest_fediverse::ActorRouteOptions),
-}
-
-impl RouteOptions {
-    /// Whether every post opens a thread of its own, as a Discord forum's
-    /// does, so the route takes `thread` whatever its destination's features
-    /// say.
-    #[must_use]
-    pub fn threads_each_post(&self) -> bool {
-        matches!(self, Self::Discord(placed) if placed.forum)
-    }
-
-    /// The channel or room the route announces in, where its destination
-    /// names one, as a command given there names it.
-    #[must_use]
-    pub fn place(&self) -> Option<&str> {
-        match self {
-            Self::Discord(placed) => placed.channel.as_deref(),
-            Self::Slack(placed) => placed.channel.as_deref(),
-            Self::Matrix(placed) => Some(&placed.room),
-            Self::Mastodon(_) | Self::ActivityPub(_) => None,
-        }
-    }
-
-    /// The opt-in role members subscribe to, which the route mentions with
-    /// its announcements: a Discord route's alone.
-    #[must_use]
-    pub fn opt_in_role(&self) -> Option<String> {
-        match self {
-            Self::Discord(placed) => placed
-                .subscribe
-                .as_ref()
-                .map(|subscribe| subscribe.role.clone()),
-            _ => None,
-        }
-    }
 }
 
 /// An app of the HTTP API: its token's hash and what it may announce to.

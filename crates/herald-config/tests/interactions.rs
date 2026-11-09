@@ -3,7 +3,7 @@
 
 #[cfg(test)]
 mod interactions {
-    use herald_config::{RouteOptions, load};
+    use herald_config::{Placed, load};
     use herald_core::{Command, Replies, RoleId};
 
     const APPLICATION: &str = "123456789012345678";
@@ -98,7 +98,13 @@ body = "{{{{ event.body }}}}"
         assert_eq!(route.options.opt_in_role().as_deref(), Some(ROLE));
         assert_eq!(route.options.place(), Some("1566200000000000100"));
         assert!(
-            matches!(&route.options, RouteOptions::Discord(placed) if placed.subscribe.as_ref().is_some_and(|subscribe| subscribe.button))
+            route
+                .options
+                .of::<herald_dest_discord::RouteOptions>()
+                .is_some_and(|placed| placed
+                    .subscribe
+                    .as_ref()
+                    .is_some_and(|subscribe| subscribe.button))
         );
         for name in ["slack", "matrix"] {
             assert_eq!(
@@ -283,8 +289,8 @@ body = "{{{{ event.body }}}}"
     #[test]
     fn a_fediverse_route_announces_in_no_channel_and_offers_no_role() {
         for options in [
-            RouteOptions::Mastodon(herald_dest_fediverse::RouteOptions::default()),
-            RouteOptions::ActivityPub(herald_dest_fediverse::ActorRouteOptions {
+            Placed::new(herald_dest_fediverse::RouteOptions::default()),
+            Placed::new(herald_dest_fediverse::ActorRouteOptions {
                 actor: "herald".to_owned(),
                 content_warning: None,
                 visibility: herald_dest_fediverse::Audience::Public,
@@ -372,7 +378,13 @@ body = "{{{{ event.body }}}}"
         let text = slack_route("mentions = { subscribers = true }\nsubscribe = { button = false }");
         let config = load("herald.toml", &text, &nothing).unwrap();
         assert!(
-            matches!(&config.routes[1].options, RouteOptions::Slack(placed) if placed.subscribe.as_ref().is_some_and(|subscribe| !subscribe.button))
+            config.routes[1]
+                .options
+                .of::<herald_dest_slack::RouteOptions>()
+                .is_some_and(|placed| placed
+                    .subscribe
+                    .as_ref()
+                    .is_some_and(|subscribe| !subscribe.button))
         );
         refused(
             &slack_route("subscribe = {}"),

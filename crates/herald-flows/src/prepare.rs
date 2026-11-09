@@ -1,12 +1,8 @@
 use std::collections::BTreeMap;
 use std::fmt;
 
-use herald_config::{Config, Destination, RouteConfig, RouteOptions, Source};
+use herald_config::{Config, Destination, Placed, RouteConfig, Source};
 use herald_core::{DestinationName, RouteId, SecretRef, SourceName, hex};
-use herald_dest_discord::{Credential, Discord};
-use herald_dest_fediverse::{ActivityPub, Mastodon};
-use herald_dest_matrix::Matrix;
-use herald_dest_slack::Slack;
 use herald_ports::{Algorithm, CryptoError, Http, Secret, SecretError, Secrets, Signer};
 use herald_sources_feed::Feed;
 use herald_sources_forge::{Origin, Token};
@@ -266,88 +262,9 @@ struct Resolved<'a> {
 impl Resolved<'_> {
     /// The destination reached for a route with `options`, where they are
     /// options of the destination's kind.
-    fn reached(&self, options: &RouteOptions) -> Option<Reached> {
-        let secret = self.secret.clone();
-        match options {
-            RouteOptions::Discord(placed) => {
-                let reached = self
-                    .destination
-                    .of::<herald_dest_discord::DestinationOptions>()?;
-                let credential = if reached.token.is_some() {
-                    Credential::Bot(secret)
-                } else {
-                    Credential::Webhook(secret)
-                };
-                Some(Reached::new(
-                    Discord::new(credential, placed.clone(), reached.api.as_deref())
-                        .reading_back(reached.read_back.unwrap_or_default())
-                        .waiting(self.destination.waits())
-                        .looking(reached.look())
-                        .worded(
-                            reached
-                                .interactions
-                                .as_ref()
-                                .map(herald_dest_discord::Interactions::wording)
-                                .unwrap_or_default(),
-                        ),
-                ))
-            }
-            RouteOptions::Mastodon(placed) => {
-                let reached = self
-                    .destination
-                    .of::<herald_dest_fediverse::DestinationOptions>()?;
-                Some(Reached::new(
-                    Mastodon::new(&reached.server, secret, placed.clone())
-                        .reading_back(reached.read_back.unwrap_or_default())
-                        .waiting(self.destination.waits()),
-                ))
-            }
-            RouteOptions::Matrix(placed) => {
-                let reached = self
-                    .destination
-                    .of::<herald_dest_matrix::DestinationOptions>()?;
-                Some(Reached::new(
-                    Matrix::new(&reached.homeserver, secret, placed.clone())
-                        .reading_back(reached.read_back.unwrap_or_default())
-                        .waiting(self.destination.waits()),
-                ))
-            }
-            RouteOptions::ActivityPub(placed) => {
-                let reached = self
-                    .destination
-                    .of::<herald_dest_fediverse::ActorOptions>()?;
-                Some(Reached::new(
-                    ActivityPub::new(&reached.domain, self.base, secret, placed.clone())
-                        .waiting(self.destination.waits())
-                        .paging(reached.outbox_page())
-                        .governed(reached.policy()),
-                ))
-            }
-            RouteOptions::Slack(placed) => {
-                let reached = self
-                    .destination
-                    .of::<herald_dest_slack::DestinationOptions>()?;
-                let credential = if reached.token.is_some() {
-                    herald_dest_slack::Credential::Bot(secret)
-                } else {
-                    herald_dest_slack::Credential::Webhook(secret)
-                };
-                Some(Reached::new(
-                    Slack::new(credential, placed.clone(), reached.api.as_deref())
-                        .on(reached.domain.unwrap_or_default())
-                        .in_team(reached.team.as_deref())
-                        .reading_back(reached.read_back.unwrap_or_default())
-                        .waiting(self.destination.waits())
-                        .worded(
-                            reached
-                                .interactions
-                                .as_ref()
-                                .map(herald_dest_slack::Interactions::wording)
-                                .unwrap_or_default(),
-                        ),
-                ))
-            }
-        }
+    fn reached(&self, options: &Placed) -> Option<Reached> {
+        self.destination
+            .reach(options, self.base, self.secret.clone())
     }
 }
 
@@ -574,11 +491,15 @@ async fn interacts<S: Secrets>(
 #[cfg(test)]
 mod tests {
     use herald_core::{Phrase, ReadBack, Wording};
+    use herald_dest_discord::{Credential, Discord};
+    use herald_dest_fediverse::{ActivityPub, Mastodon};
+    use herald_dest_matrix::Matrix;
+    use herald_dest_slack::Slack;
     use serde_json::json;
 
     use super::*;
 
-    fn reached(destination: &Destination, options: &RouteOptions) -> Option<Reached> {
+    fn reached(destination: &Destination, options: &Placed) -> Option<Reached> {
         Resolved {
             destination,
             base: "",
@@ -626,7 +547,7 @@ mod tests {
         assert_eq!(
             reached(
                 &discord,
-                &RouteOptions::Discord(herald_dest_discord::RouteOptions::default())
+                &Placed::new(herald_dest_discord::RouteOptions::default())
             ),
             Some(Reached::new(
                 Discord::new(
@@ -648,7 +569,7 @@ mod tests {
         assert_eq!(
             reached(
                 &slack,
-                &RouteOptions::Slack(herald_dest_slack::RouteOptions::default())
+                &Placed::new(herald_dest_slack::RouteOptions::default())
             ),
             Some(Reached::new(
                 Slack::new(
@@ -662,7 +583,7 @@ mod tests {
             ))
         );
         assert_eq!(
-            reached(&matrix, &RouteOptions::Matrix(room.clone())),
+            reached(&matrix, &Placed::new(room.clone())),
             Some(Reached::new(
                 Matrix::new("https://matrix.example", secret(), room).reading_back(pages)
             ))
@@ -670,7 +591,7 @@ mod tests {
         assert_eq!(
             reached(
                 &mastodon,
-                &RouteOptions::Mastodon(herald_dest_fediverse::RouteOptions::default())
+                &Placed::new(herald_dest_fediverse::RouteOptions::default())
             ),
             Some(Reached::new(
                 Mastodon::new(
@@ -714,7 +635,7 @@ mod tests {
         let named: herald_dest_fediverse::ActorRouteOptions =
             serde_json::from_value(json!({ "actor": "herald" })).unwrap();
         assert_eq!(
-            reached(&matrix, &RouteOptions::Matrix(room.clone())),
+            reached(&matrix, &Placed::new(room.clone())),
             Some(Reached::new(
                 Matrix::new("https://matrix.example", secret(), room).waiting(herald_core::Waits {
                     outage,
@@ -723,7 +644,7 @@ mod tests {
             ))
         );
         assert_eq!(
-            reached(&mastodon, &RouteOptions::Mastodon(toot.clone())),
+            reached(&mastodon, &Placed::new(toot.clone())),
             Some(Reached::new(
                 Mastodon::new("https://mastodon.example", secret(), toot).waiting(
                     herald_core::Waits {
@@ -734,7 +655,7 @@ mod tests {
             ))
         );
         assert_eq!(
-            reached(&actor, &RouteOptions::ActivityPub(named.clone())),
+            reached(&actor, &Placed::new(named.clone())),
             Some(Reached::new(
                 ActivityPub::new("herald.example", "", secret(), named).waiting(
                     herald_core::Waits {

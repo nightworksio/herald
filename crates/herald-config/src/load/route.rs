@@ -10,9 +10,9 @@ use toml::de::{DeTable, DeValue};
 
 use super::apps::Named;
 use super::{Loader, Value, Written, list};
-use herald_kinds::Destination;
+use herald_kinds::{Destination, Placed};
 
-use crate::config::{RouteConfig, RouteOptions, Source};
+use crate::config::{RouteConfig, Source};
 use crate::file::{ROUTE_KEYS, RouteFile};
 
 /// A route as its keys say, before its templates are compiled.
@@ -78,7 +78,7 @@ impl Loader<'_> {
         path: &str,
         destination: &DestinationName,
         sound: &mut bool,
-    ) -> Option<(RouteOptions, &'static str)> {
+    ) -> Option<(Placed, &'static str)> {
         let span = route.id.span();
         Some(
             if let Some(reached) = reached.of::<herald_dest_discord::DestinationOptions>() {
@@ -101,7 +101,7 @@ impl Loader<'_> {
                     self.error(&span, &format!("{path}.subscribe"), message);
                     *sound = false;
                 }
-                (RouteOptions::Discord(options), "Discord")
+                (Placed::new(options), "Discord")
             } else if reached
                 .of::<herald_dest_fediverse::DestinationOptions>()
                 .is_some()
@@ -111,7 +111,7 @@ impl Loader<'_> {
                     self.error(&span, path, message);
                     *sound = false;
                 }
-                (RouteOptions::Mastodon(options), "Mastodon")
+                (Placed::new(options), "Mastodon")
             } else if reached
                 .of::<herald_dest_matrix::DestinationOptions>()
                 .is_some()
@@ -121,7 +121,7 @@ impl Loader<'_> {
                     self.error(&span, path, message);
                     *sound = false;
                 }
-                (RouteOptions::Matrix(options), "Matrix")
+                (Placed::new(options), "Matrix")
             } else if let Some(reached) = reached.of::<herald_dest_slack::DestinationOptions>() {
                 let options = self.typed::<herald_dest_slack::RouteOptions>(rest, path)?;
                 if let Err(message) = options.check() {
@@ -143,17 +143,14 @@ impl Loader<'_> {
                     self.error(&span, &format!("{path}.subscribe"), message);
                     *sound = false;
                 }
-                (RouteOptions::Slack(options), "Slack")
+                (Placed::new(options), "Slack")
             } else {
                 let options = self.typed::<herald_dest_fediverse::ActorRouteOptions>(rest, path)?;
                 if let Err(message) = options.check() {
                     self.error(&span, path, message);
                     *sound = false;
                 }
-                (
-                    RouteOptions::ActivityPub(options),
-                    "herald's ActivityPub actor",
-                )
+                (Placed::new(options), "herald's ActivityPub actor")
             },
         )
     }
@@ -204,28 +201,7 @@ impl Loader<'_> {
         let span = route.id.span();
         let (options, name) =
             self.placed(reached, rest, &route, &path, &destination, &mut sound)?;
-        let bot = reached
-            .of::<herald_dest_discord::DestinationOptions>()
-            .map(|reached| reached.token.is_some())
-            .or_else(|| {
-                reached
-                    .of::<herald_dest_slack::DestinationOptions>()
-                    .map(|reached| reached.token.is_some())
-            })
-            .unwrap_or_default();
-        let (profile, as_bot) = match &options {
-            RouteOptions::Discord(placed) => (
-                herald_dest_discord::profile(bot, placed.forum),
-                Some(herald_dest_discord::profile(true, placed.forum)),
-            ),
-            RouteOptions::Slack(_) => (
-                herald_dest_slack::profile(bot),
-                Some(herald_dest_slack::profile(true)),
-            ),
-            RouteOptions::Mastodon(placed) => (herald_dest_fediverse::profile(placed), None),
-            RouteOptions::ActivityPub(_) => (herald_dest_fediverse::actor_profile(), None),
-            RouteOptions::Matrix(_) => (herald_dest_matrix::profile(), None),
-        };
+        let (profile, as_bot) = reached.profile(&options)?;
         let profile = herald_core::Profile {
             symbols: reached.symbols(),
             ..profile

@@ -14,9 +14,9 @@ use super::*;
 /// A destination of no kind: it answers each call with what it was given,
 /// and keeps every default.
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct Plain(&'static str);
+pub(crate) struct Plain(pub(crate) &'static str);
 
-const PROFILE: Profile = Profile {
+pub(crate) const PROFILE: Profile = Profile {
     dialect: Dialect::Plain,
     measure: Measure::Chars,
     limits: Limits {

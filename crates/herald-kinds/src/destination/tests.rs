@@ -1,10 +1,12 @@
 use std::any::Any;
 
-use herald_core::{SecretRef, Symbols, WaitOptions, Waits};
+use herald_core::{Profile, SecretRef, Symbols, WaitOptions, Waits};
+use herald_ports::Secret;
 use jiff::SignedDuration;
 
 use super::*;
-use crate::same;
+use crate::reach::tests::{PROFILE, Plain as Reaching};
+use crate::{Placed, Placement, Reached, same};
 
 /// Options of a kind that keeps every default.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -19,7 +21,7 @@ impl DestinationConfig for Plain {
         "plain"
     }
 
-    fn symbols(&self) -> Option<Symbols> {
+    fn symbols_written(&self) -> Option<Symbols> {
         self.symbols
     }
 
@@ -33,6 +35,19 @@ impl DestinationConfig for Plain {
 
     fn secret_refs(&self) -> Vec<&SecretRef> {
         vec![&self.key]
+    }
+
+    fn profile(&self, placed: &Placed) -> Option<(Profile, Option<Profile>)> {
+        placed.of::<Spot>().map(|_| (PROFILE, Some(PROFILE)))
+    }
+
+    fn reach(&self, placed: &Placed, base: &str, _: Secret) -> Option<Reached> {
+        placed.of::<Spot>()?;
+        Some(Reached::new(Reaching(if base.is_empty() {
+            "https://plain.example"
+        } else {
+            "https://based.example"
+        })))
     }
 
     fn as_any(&self) -> &dyn Any {
@@ -60,7 +75,7 @@ impl DestinationConfig for Patient {
         "patient"
     }
 
-    fn symbols(&self) -> Option<Symbols> {
+    fn symbols_written(&self) -> Option<Symbols> {
         None
     }
 
@@ -78,6 +93,54 @@ impl DestinationConfig for Patient {
 
     fn secret_refs(&self) -> Vec<&SecretRef> {
         Vec::new()
+    }
+
+    fn profile(&self, _: &Placed) -> Option<(Profile, Option<Profile>)> {
+        None
+    }
+
+    fn reach(&self, _: &Placed, _: &str, _: Secret) -> Option<Reached> {
+        None
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn same(&self, other: &dyn Any) -> bool {
+        same(self, other)
+    }
+}
+
+/// A route's options of the plain kind, which keep every default.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct Spot(&'static str);
+
+impl Placement for Spot {
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn same(&self, other: &dyn Any) -> bool {
+        same(self, other)
+    }
+}
+
+/// A route's options of another kind, which names its place.
+#[derive(Debug, PartialEq, Eq)]
+struct Room;
+
+impl Placement for Room {
+    fn threads_each_post(&self) -> bool {
+        true
+    }
+
+    fn place(&self) -> Option<&str> {
+        Some("!room")
+    }
+
+    fn opt_in_role(&self) -> Option<String> {
+        Some("role".to_owned())
     }
 
     fn as_any(&self) -> &dyn Any {
@@ -145,4 +208,43 @@ fn a_destination_writes_its_symbols_and_waits_else_the_defaults_and_its_platform
     assert_eq!(set.symbols(), symbols);
     assert_eq!(set.waits(), Waits::of(Some(written), Waits::DEFAULT));
     assert_eq!(set.waits().outage, SignedDuration::from_secs(7));
+}
+
+#[test]
+fn a_route_is_placed_as_its_kind_and_keeps_every_default() {
+    let spot = Placed::new(Spot("here"));
+    assert_eq!(spot, spot.clone());
+    assert_ne!(spot, Placed::new(Spot("there")));
+    assert_ne!(spot, Placed::new(Room));
+    assert_eq!(spot.of::<Spot>(), Some(&Spot("here")));
+    assert_eq!(spot.of::<Room>(), None);
+    assert_eq!(format!("{spot:?}"), "Spot(\"here\")");
+    assert!(!spot.threads_each_post());
+    assert_eq!(spot.place(), None);
+    assert_eq!(spot.opt_in_role(), None);
+    let room = Placed::new(Room);
+    assert!(room.threads_each_post());
+    assert_eq!(room.place(), Some("!room"));
+    assert_eq!(room.opt_in_role().as_deref(), Some("role"));
+}
+
+#[test]
+fn a_destination_reaches_and_profiles_only_routes_placed_as_its_kind() {
+    let destination = Destination::new(plain("HERALD_KEY"));
+    let spot = Placed::new(Spot("here"));
+    let secret = || Secret::new("HERALD_KEY", "key");
+    assert_eq!(destination.profile(&spot), Some((PROFILE, Some(PROFILE))));
+    assert_eq!(destination.profile(&Placed::new(Room)), None);
+    assert_eq!(
+        destination.reach(&spot, "", secret()),
+        Some(Reached::new(Reaching("https://plain.example")))
+    );
+    assert_eq!(
+        destination.reach(&spot, "https://herald.example", secret()),
+        Some(Reached::new(Reaching("https://based.example")))
+    );
+    assert_eq!(destination.reach(&Placed::new(Room), "", secret()), None);
+    let patient = Destination::new(Patient);
+    assert_eq!(patient.profile(&spot), None);
+    assert_eq!(patient.reach(&spot, "", secret()), None);
 }

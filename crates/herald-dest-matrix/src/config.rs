@@ -1,10 +1,12 @@
 use std::any::Any;
 
-use herald_core::{Answering, SecretRef, Symbols, WaitOptions};
-use herald_kinds::{Carried, DestinationConfig, same};
+use herald_core::{Answering, Profile, SecretRef, Symbols, WaitOptions};
+use herald_kinds::{Carried, DestinationConfig, Placed, Placement, Reached, same};
+use herald_ports::Secret;
 
 use crate::interactions::{Interactions, Via};
-use crate::options::DestinationOptions;
+use crate::matrix::{self, Matrix};
+use crate::options::{DestinationOptions, RouteOptions};
 
 /// The kind of a Matrix destination, as the config spells it.
 pub const KIND: &str = "matrix";
@@ -14,7 +16,7 @@ impl DestinationConfig for DestinationOptions {
         KIND
     }
 
-    fn symbols(&self) -> Option<Symbols> {
+    fn symbols_written(&self) -> Option<Symbols> {
         self.symbols
     }
 
@@ -48,6 +50,34 @@ impl DestinationConfig for DestinationOptions {
             what: "transactions the homeserver pushes",
             session: "a sync with via = \"sync\"",
         })
+    }
+
+    fn profile(&self, placed: &Placed) -> Option<(Profile, Option<Profile>)> {
+        placed.of::<RouteOptions>()?;
+        Some((matrix::profile(), None))
+    }
+
+    fn reach(&self, placed: &Placed, _: &str, secret: Secret) -> Option<Reached> {
+        let placed = placed.of::<RouteOptions>()?;
+        Some(Reached::new(
+            Matrix::new(&self.homeserver, secret, placed.clone())
+                .reading_back(self.read_back.unwrap_or_default())
+                .waiting(self.waits()),
+        ))
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn same(&self, other: &dyn Any) -> bool {
+        same(self, other)
+    }
+}
+
+impl Placement for RouteOptions {
+    fn place(&self) -> Option<&str> {
+        Some(&self.room)
     }
 
     fn as_any(&self) -> &dyn Any {

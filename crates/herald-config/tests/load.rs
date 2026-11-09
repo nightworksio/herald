@@ -3,7 +3,7 @@
 
 #[cfg(test)]
 mod load {
-    use herald_config::{RouteOptions, Source, Store, load, schema};
+    use herald_config::{Source, Store, load, schema};
     use herald_core::{Kind, Pinning, Prereleases};
     use herald_sources_forge::Forge;
 
@@ -92,10 +92,12 @@ body = "{{ event.body }}"
         assert_eq!(thread.archive_after.unwrap().as_secs(), 1_209_600);
         assert_eq!(thread.lock_after, None);
         assert_eq!(route.route.delivery.mentions.roles.len(), 1);
-        assert!(matches!(
-            &route.options,
-            RouteOptions::Discord(options) if options.channel.as_deref() == Some("1566184281406177531")
-        ));
+        assert!(
+            route
+                .options
+                .of::<herald_dest_discord::RouteOptions>()
+                .is_some_and(|options| options.channel.as_deref() == Some("1566184281406177531"))
+        );
         assert!(config.apps.is_empty());
         assert_eq!(config.schedule.poll, None);
     }

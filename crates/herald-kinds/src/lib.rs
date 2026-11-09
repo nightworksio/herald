@@ -3,7 +3,9 @@
 //! reach every kind through them and name none.
 
 mod destination;
+mod placement;
 mod reach;
 
 pub use destination::{Carried, Destination, DestinationConfig};
+pub use placement::{Placed, Placement};
 pub use reach::{Posts, Reach, Reached, Signing, Unread, same};
