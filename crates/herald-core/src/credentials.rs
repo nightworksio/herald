@@ -1,11 +1,11 @@
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD;
 
-/// `user` and `password` as HTTP Basic credentials take them: the pair
+/// `user` and `secret` as HTTP Basic credentials take them: the pair
 /// joined by a colon, in base64 (RFC 7617).
 #[must_use]
-pub fn basic(user: &str, password: &str) -> String {
-    STANDARD.encode(format!("{user}:{password}"))
+pub fn basic(user: &str, secret: &str) -> String {
+    STANDARD.encode(format!("{user}:{secret}"))
 }
 
 #[cfg(test)]
