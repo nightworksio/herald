@@ -530,6 +530,7 @@ impl Loader<'_> {
     fn destinations(
         &mut self,
         value: Option<Value<'_>>,
+        read: &dyn Fn(&str) -> Result<String, String>,
     ) -> BTreeMap<DestinationName, (Destination, Range<usize>)> {
         let mut destinations = BTreeMap::new();
         for (name, value) in self.named(value, "destinations") {
@@ -544,7 +545,7 @@ impl Loader<'_> {
             } else if kind == Destination::MATRIX {
                 self.matrix(rest, &path, &span)
             } else if kind == Destination::ACTIVITYPUB {
-                self.actor(rest, &path, &span)
+                self.actor(rest, &path, &span, read)
             } else if kind == Destination::SLACK {
                 self.slack(rest, &path, &span)
             } else {
@@ -566,8 +567,23 @@ impl Loader<'_> {
         Some(Destination::Matrix(options))
     }
 
-    fn actor(&mut self, rest: Value<'_>, path: &str, span: &Range<usize>) -> Option<Destination> {
-        let options = self.typed::<herald_dest_fediverse::ActorOptions>(rest, path)?;
+    fn actor(
+        &mut self,
+        rest: Value<'_>,
+        path: &str,
+        span: &Range<usize>,
+        read: &dyn Fn(&str) -> Result<String, String>,
+    ) -> Option<Destination> {
+        let mut options = self.typed::<herald_dest_fediverse::ActorOptions>(rest, path)?;
+        for (index, list) in options.lists.clone().iter().enumerate() {
+            match shared(list, read) {
+                Ok(blocked) => options.block.extend(blocked),
+                Err(message) => {
+                    self.error(span, &format!("{path}.lists[{index}]"), message);
+                    return None;
+                }
+            }
+        }
         if let Err(message) = options.check() {
             self.error(span, path, message);
             return None;
@@ -731,8 +747,26 @@ impl Loader<'_> {
     }
 }
 
+/// The domains `list` blocks, read through `read` and held to its pinned
+/// digest.
+fn shared(
+    list: &herald_dest_fediverse::SharedList,
+    read: &dyn Fn(&str) -> Result<String, String>,
+) -> Result<Vec<String>, String> {
+    let file = &list.file;
+    let text = read(file).map_err(|error| format!("{file} could not be read: {error}"))?;
+    let digest = herald_core::digest(&text);
+    if !digest.eq_ignore_ascii_case(&list.sha256) {
+        return Err(format!(
+            "{file} has the SHA-256 {digest}, not the {} pinned; check the list, then pin its digest",
+            list.sha256
+        ));
+    }
+    herald_dest_fediverse::blocked_domains(&text).map_err(|error| format!("{file}: {error}"))
+}
+
 /// The config `text` holds, read from the file named `file`, with each
-/// template file read through `read`.
+/// template file and shared block list read through `read`.
 ///
 /// # Errors
 ///
@@ -757,7 +791,7 @@ pub fn load(
         .markers
         .and_then(|value| loader.typed::<MarkersFile>(value, "markers"))
         .map(|markers| markers.key);
-    let destinations = loader.destinations(sections.destinations);
+    let destinations = loader.destinations(sections.destinations, read);
     let sources = loader.sources(sections.sources);
     let templates = loader.templates(sections.templates, read);
     let listed = loader.apps(sections.apps, &sources);

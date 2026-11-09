@@ -286,6 +286,7 @@ mod activitypub {
             allow: Vec::new(),
             followers: None,
             approve: Approve::Auto,
+            lists: Vec::new(),
             key: herald_core::SecretRef {
                 secret: "K".to_owned(),
             },
@@ -361,6 +362,7 @@ mod activitypub {
             allow: Vec::new(),
             followers: None,
             approve: Approve::Auto,
+            lists: Vec::new(),
             key: herald_core::SecretRef {
                 secret: "K".to_owned(),
             },
@@ -390,6 +392,7 @@ mod activitypub {
             allow: vec!["friends.example".to_owned()],
             followers,
             approve: Approve::Manual,
+            lists: Vec::new(),
             key: herald_core::SecretRef {
                 secret: "K".to_owned(),
             },

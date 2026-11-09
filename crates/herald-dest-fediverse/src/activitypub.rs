@@ -13,4 +13,4 @@ pub use documents::{
     Asked, FIRST, accept, actor_document, asked, create, follow_id, note, webfinger,
 };
 pub use options::{ActorOptions, ActorRouteOptions, Audience};
-pub use policy::{Approve, FollowerCaps, Mode, Policy};
+pub use policy::{Approve, FollowerCaps, Mode, Policy, SharedList, blocked_domains};

@@ -789,6 +789,13 @@
               "type": "string",
               "const": "activitypub"
             },
+            "lists": {
+              "description": "Shared block lists, each a file of Mastodon's domain block CSV\npinned by its SHA-256, whose domains are blocked beside `block`'s.",
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/SharedList"
+              }
+            },
             "mode": {
               "description": "Whom its actors federate with: `open`, everyone `block` does not\nname, or `allowlist`, only those `allow` names.",
               "$ref": "#/$defs/Mode"
@@ -2102,6 +2109,25 @@
         }
       },
       "additionalProperties": false
+    },
+    "SharedList": {
+      "description": "A shared block list, as `lists` writes it: a file of domains to block in\nthe CSV form Mastodon exports, pinned by the SHA-256 of its text.",
+      "type": "object",
+      "properties": {
+        "file": {
+          "description": "The file, as a path beside `herald.toml`.",
+          "type": "string"
+        },
+        "sha256": {
+          "description": "The SHA-256 of the file's text, in hex: a list that changes is not\nread until its new digest is pinned.",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "file",
+        "sha256"
+      ]
     },
     "Size": {
       "description": "A number of bytes: a number and KiB or MiB, as \"1MiB\".",

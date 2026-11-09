@@ -2,7 +2,7 @@ use herald_core::{SecretRef, Symbols, WaitOptions};
 use schemars::JsonSchema;
 use serde::Deserialize;
 
-use super::policy::{Approve, FollowerCaps, Mode, Policy, unlisted};
+use super::policy::{Approve, FollowerCaps, Mode, Policy, SharedList, unlisted};
 
 /// The longest name an actor takes, as Mastodon takes a username.
 const NAME: usize = 30;
@@ -47,6 +47,10 @@ pub struct ActorOptions {
     /// `manual`, the operator through `herald followers`.
     #[serde(default)]
     pub approve: Approve,
+    /// Shared block lists, each a file of Mastodon's domain block CSV
+    /// pinned by its SHA-256, whose domains are blocked beside `block`'s.
+    #[serde(default)]
+    pub lists: Vec<SharedList>,
 }
 
 impl ActorOptions {

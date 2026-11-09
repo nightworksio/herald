@@ -1,3 +1,5 @@
+use std::collections::BTreeSet;
+
 use schemars::JsonSchema;
 use serde::Deserialize;
 use url::{Host, Url};
@@ -37,12 +39,58 @@ pub struct FollowerCaps {
     pub per_domain: Option<usize>,
 }
 
+/// The servers and actors a list names, each looked up at once however
+/// long the list: a domain names every actor on it and on its subdomains,
+/// an id names one actor.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+struct Listed {
+    domains: BTreeSet<String>,
+    actors: BTreeSet<String>,
+}
+
+impl Listed {
+    fn of(entries: &[String]) -> Self {
+        let mut listed = Self::default();
+        for entry in entries {
+            if entry.contains("://") {
+                listed.actors.extend(canonical(entry));
+            } else {
+                listed
+                    .domains
+                    .insert(entry.trim_end_matches('.').to_ascii_lowercase());
+            }
+        }
+        listed
+    }
+
+    /// Whether the list names the actor `id`, each host compared in
+    /// lowercase and without a trailing dot.
+    fn names(&self, id: &str) -> bool {
+        if canonical(id).is_some_and(|id| self.actors.contains(&id)) {
+            return true;
+        }
+        let Some(host) = host(id) else {
+            return false;
+        };
+        let mut rest = host.as_str();
+        loop {
+            if self.domains.contains(rest) {
+                return true;
+            }
+            match rest.split_once('.') {
+                Some((_, parent)) => rest = parent,
+                None => return false,
+            }
+        }
+    }
+}
+
 /// Whom an actor federates with, and how many may follow it.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Policy {
     mode: Mode,
-    block: Vec<String>,
-    allow: Vec<String>,
+    block: Listed,
+    allow: Listed,
     caps: FollowerCaps,
     approve: Approve,
 }
@@ -55,8 +103,8 @@ impl Policy {
     pub fn new(mode: Mode, block: &[String], allow: &[String], caps: FollowerCaps) -> Self {
         Self {
             mode,
-            block: block.to_vec(),
-            allow: allow.to_vec(),
+            block: Listed::of(block),
+            allow: Listed::of(allow),
             caps,
             approve: Approve::Auto,
         }
@@ -77,12 +125,12 @@ impl Policy {
     /// Whether the actor `id` may follow herald's actor and be delivered to.
     #[must_use]
     pub fn admits(&self, id: &str) -> bool {
-        if self.block.iter().any(|entry| names(entry, id)) {
+        if self.block.names(id) {
             return false;
         }
         match self.mode {
             Mode::Open => true,
-            Mode::Allowlist => self.allow.iter().any(|entry| names(entry, id)),
+            Mode::Allowlist => self.allow.names(id),
         }
     }
 
@@ -107,21 +155,6 @@ impl Policy {
     }
 }
 
-/// Whether `entry`, a domain or an actor's id, names the actor `id`, each
-/// host compared in lowercase and without a trailing dot.
-fn names(entry: &str, id: &str) -> bool {
-    if entry.contains("://") {
-        return canonical(entry).is_some_and(|entry| canonical(id) == Some(entry));
-    }
-    let entry = entry.trim_end_matches('.').to_ascii_lowercase();
-    host(id).is_some_and(|host| {
-        host == entry
-            || host
-                .strip_suffix(&entry)
-                .is_some_and(|rest| rest.ends_with('.'))
-    })
-}
-
 /// The host of the actor `id`, in lowercase and without a trailing dot.
 fn host(id: &str) -> Option<String> {
     match Url::parse(id).ok()?.host()? {
@@ -135,6 +168,56 @@ fn canonical(id: &str) -> Option<String> {
     let mut url = Url::parse(id).ok()?;
     url.set_host(Some(&host(id)?)).ok()?;
     Some(url.into())
+}
+
+/// A shared block list, as `lists` writes it: a file of domains to block in
+/// the CSV form Mastodon exports, pinned by the SHA-256 of its text.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct SharedList {
+    /// The file, as a path beside `herald.toml`.
+    pub file: String,
+    /// The SHA-256 of the file's text, in hex: a list that changes is not
+    /// read until its new digest is pinned.
+    pub sha256: String,
+}
+
+/// The severities a list's row blocks with; `noop` blocks nothing.
+const SEVERITIES: [&str; 2] = ["suspend", "silence"];
+
+/// The domains `csv`, a domain block list as Mastodon exports it, blocks:
+/// each row's domain, first, where its severity, second, is `suspend` or
+/// `silence` or not given. A header row, starting with `domain` or
+/// `#domain`, and blank rows are skipped.
+///
+/// # Errors
+///
+/// The first row whose domain is not one, naming its line.
+pub fn blocked_domains(csv: &str) -> Result<Vec<String>, String> {
+    let mut blocked = Vec::new();
+    for (index, row) in csv.lines().enumerate() {
+        let mut fields = row.split(',').map(str::trim);
+        let domain = fields.next().unwrap_or_default();
+        let severity = fields.next().unwrap_or_default();
+        if domain.is_empty() || matches!(domain, "domain" | "#domain") {
+            continue;
+        }
+        if !severity.is_empty() && !SEVERITIES.contains(&severity) {
+            continue;
+        }
+        let ascii = match Host::parse(domain) {
+            Ok(Host::Domain(ascii)) => ascii.trim_end_matches('.').to_ascii_lowercase(),
+            _ => String::new(),
+        };
+        if !herald_core::domain(&ascii) {
+            return Err(format!(
+                "line {} names \"{domain}\", which is not a domain",
+                index + 1
+            ));
+        }
+        blocked.push(ascii);
+    }
+    Ok(blocked)
 }
 
 /// Why `entry` cannot be written in `block` or `allow`, where it cannot: it
@@ -224,6 +307,44 @@ mod tests {
         assert!(capped(None, Some(3)).room(new_on_a, &following));
         assert!(capped(None, Some(2)).room(new_on_c, &following));
         assert!(capped(Some(1), Some(1)).room(following[0], &following));
+    }
+
+    #[test]
+    fn a_shared_list_blocks_each_suspended_or_silenced_domain_and_skips_the_rest() {
+        let csv = "#domain,#severity,#reject_media,#reject_reports,#public_comment,#obfuscate\n\
+                   spam.example,suspend,true,true,\"spam, all of it\",false\n\
+                   Loud.Example.,silence,false,false,,false\n\
+                   fine.example,noop,false,false,,false\n\
+                   \n\
+                   bare.example\n\
+                   bücher.example,suspend\n";
+        assert_eq!(
+            blocked_domains(csv),
+            Ok(listed(&[
+                "spam.example",
+                "loud.example",
+                "bare.example",
+                "xn--bcher-kva.example"
+            ]))
+        );
+        assert_eq!(blocked_domains("domain,severity\n"), Ok(Vec::new()));
+        assert_eq!(
+            blocked_domains("ok.example\nsp*m.example,suspend\n"),
+            Err("line 2 names \"sp*m.example\", which is not a domain".to_owned())
+        );
+        assert_eq!(
+            blocked_domains("https://spam.example/users/x\n"),
+            Err("line 1 names \"https://spam.example/users/x\", which is not a domain".to_owned())
+        );
+    }
+
+    #[test]
+    fn a_long_list_names_an_actor_by_its_host_or_any_parent() {
+        let entries: Vec<String> = (0..5_000).map(|n| format!("s{n}.example")).collect();
+        let policy = Policy::new(Mode::Open, &entries, &[], FollowerCaps::default());
+        assert!(!policy.admits("https://a.b.s4999.example/users/x"));
+        assert!(policy.admits("https://s5000.example/users/x"));
+        assert!(policy.admits("https://example/users/x"));
     }
 
     #[test]

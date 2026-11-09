@@ -16,7 +16,8 @@ mod request;
 
 pub use activitypub::{
     ActivityPub, ActorOptions, ActorRouteOptions, Approve, Asked, Audience, FIRST, FollowerCaps,
-    Mode, Policy, accept, actor_document, actor_profile, asked, create, follow_id, note, webfinger,
+    Mode, Policy, SharedList, accept, actor_document, actor_profile, asked, blocked_domains,
+    create, follow_id, note, webfinger,
 };
 pub use actor::{
     ActorError, ActorKey, Found, Inboxes, activity_json, actor_key, actor_of, confirms, document,

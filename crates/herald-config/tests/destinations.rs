@@ -406,6 +406,61 @@ body = "{{ event.body }}"
         );
     }
 
+    const SHARED: &str = "#domain,#severity\nspam.example,suspend\nfine.example,noop\n";
+
+    fn listed(pinned: &str, list: &'static str) -> Result<herald_config::Config, String> {
+        let text = ACTIVITYPUB.replace(
+            "key = { secret = \"HERALD_ACTIVITYPUB_KEY\" }\n",
+            &format!(
+                "key = {{ secret = \"HERALD_ACTIVITYPUB_KEY\" }}\nlists = [{{ file = \"blocks.csv\", sha256 = \"{pinned}\" }}]\n"
+            ),
+        );
+        load("herald.toml", &text, &|file| match file {
+            "blocks.csv" => Ok(list.to_owned()),
+            other => Err(format!("{other}: no such file")),
+        })
+        .map_err(|errors| errors.to_string())
+    }
+
+    #[test]
+    fn a_shared_block_list_pinned_by_its_digest_blocks_its_domains() {
+        let digest = herald_core::digest(SHARED);
+        let config = listed(&digest, SHARED).unwrap();
+        let Some(Destination::ActivityPub(fedi)) = config.destinations.values().next() else {
+            panic!("the destination is herald's own actor's");
+        };
+        assert_eq!(fedi.block, ["spam.example"]);
+        assert!(!fedi.policy().admits("https://spam.example/users/x"));
+        assert!(fedi.policy().admits("https://fine.example/users/y"));
+        assert!(listed(&digest.to_uppercase(), SHARED).is_ok());
+        let moved = listed(&digest, "#domain\nother.example\n").unwrap_err();
+        assert!(
+            moved.contains("destinations.fedi.lists[0]")
+                && moved.contains("blocks.csv has the SHA-256")
+                && moved.contains(&format!(
+                    "not the {digest} pinned; check the list, then pin its digest"
+                )),
+            "{moved}"
+        );
+        let unread = load(
+            "herald.toml",
+            &ACTIVITYPUB.replace(
+                "key = { secret = \"HERALD_ACTIVITYPUB_KEY\" }\n",
+                "key = { secret = \"HERALD_ACTIVITYPUB_KEY\" }\nlists = [{ file = \"gone.csv\", sha256 = \"00\" }]\n",
+            ),
+            &nothing,
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(unread.contains("gone.csv could not be read"), "{unread}");
+        let broken = "sp*m.example,suspend\n";
+        let refused = listed(&herald_core::digest(broken), broken).unwrap_err();
+        assert!(
+            refused.contains("blocks.csv: line 1 names \"sp*m.example\", which is not a domain"),
+            "{refused}"
+        );
+    }
+
     #[test]
     fn an_activitypub_route_is_refused_a_bad_domain_or_actor_what_it_cannot_do_and_a_store_without_followers()
      {
