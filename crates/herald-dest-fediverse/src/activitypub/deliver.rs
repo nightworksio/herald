@@ -10,9 +10,10 @@ use jiff::Timestamp;
 use serde_json::Value;
 
 use super::documents::{
-    accept, actor_document, actor_id, create, key_id, note, note_id, webfinger,
+    accept, actor_document, actor_id, create, followers_collection, key_id, note, note_id, outbox,
+    outbox_page, webfinger,
 };
-use super::options::ActorRouteOptions;
+use super::options::{ActorOptions, ActorRouteOptions};
 
 /// The longest title, in characters.
 const TITLE: usize = 500;
@@ -34,6 +35,7 @@ pub struct ActivityPub {
     key: Secret,
     route: ActorRouteOptions,
     waits: Waits,
+    page: usize,
 }
 
 fn refused(reason: impl Into<String>) -> Sent {
@@ -55,6 +57,7 @@ impl ActivityPub {
             key,
             route,
             waits: Waits::DEFAULT,
+            page: ActorOptions::OUTBOX_PAGE,
         }
     }
 
@@ -167,6 +170,45 @@ impl ActivityPub {
     #[must_use]
     pub fn note(&self, announcement: &Announcement) -> String {
         note(&self.origin, announcement, &self.route).to_string()
+    }
+
+    /// The actor's outbox, holding `total` Notes.
+    #[must_use]
+    pub fn outbox(&self, total: usize) -> String {
+        outbox(&self.origin, &self.route.actor, total).to_string()
+    }
+
+    /// The page `page` of the actor's outbox: those of `notes` that are the
+    /// actor's own, newest first, and the page after it where `next` names
+    /// one.
+    #[must_use]
+    pub fn outbox_page(&self, page: &str, notes: &[String], next: Option<&str>) -> String {
+        let id = self.id();
+        let own: Vec<Value> = notes
+            .iter()
+            .filter_map(|note| serde_json::from_str::<Value>(note).ok())
+            .filter(|note| note.get("attributedTo").and_then(Value::as_str) == Some(id.as_str()))
+            .collect();
+        outbox_page(&self.origin, &self.route.actor, page, &own, next).to_string()
+    }
+
+    /// The actor's followers collection, holding how many of `total` follow
+    /// it and never who.
+    #[must_use]
+    pub fn followers(&self, total: usize) -> String {
+        followers_collection(&self.origin, &self.route.actor, total).to_string()
+    }
+
+    /// How many Notes one page of its outbox holds.
+    #[must_use]
+    pub const fn outbox_most(&self) -> usize {
+        self.page
+    }
+
+    /// The actor, its outbox paged `page` Notes at a time.
+    #[must_use]
+    pub fn paging(self, page: usize) -> Self {
+        Self { page, ..self }
     }
 
     /// Whether `note`, kept as the Note of the announcement `key`, is this

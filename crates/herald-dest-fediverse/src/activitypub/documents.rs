@@ -40,7 +40,7 @@ pub fn actor_document(origin: &str, actor: &str, public: &[u8]) -> Value {
         "name": actor,
         "url": id,
         "inbox": format!("{id}/inbox"),
-        "outbox": format!("{id}/outbox"),
+        "outbox": outbox_id(origin, actor),
         "followers": followers(&id),
         "manuallyApprovesFollowers": false,
         "discoverable": true,
@@ -135,18 +135,82 @@ fn followers(actor: &str) -> String {
 /// The `Create` of `announcement`'s Note, as each follower's inbox takes it.
 #[must_use]
 pub fn create(origin: &str, announcement: &Announcement, route: &ActorRouteOptions) -> Value {
-    let id = actor_id(origin, &route.actor);
-    let (to, cc) = addressed(&id, route.visibility);
+    created(&note(origin, announcement, route))
+}
+
+/// The `Create` of `note`, a Note as herald writes it: by its author, to
+/// its audience, when it was published.
+#[must_use]
+pub(crate) fn created(note: &Value) -> Value {
+    let field = |name: &str| note.get(name).cloned().unwrap_or(Value::Null);
+    let id = note.get("id").and_then(Value::as_str).unwrap_or_default();
     json!({
         "@context": STREAMS,
-        "id": format!("{}/activity", note_id(origin, &route.actor, &announcement.key.to_string())),
+        "id": format!("{id}/activity"),
         "type": "Create",
-        "actor": id,
-        "published": announcement.occurred.to_string(),
-        "to": to,
-        "cc": cc,
-        "object": note(origin, announcement, route),
+        "actor": field("attributedTo"),
+        "published": field("published"),
+        "to": field("to"),
+        "cc": field("cc"),
+        "object": note,
     })
+}
+
+/// The outbox of the actor `actor` served at `origin`, holding `total`
+/// Notes: a collection that names its first page.
+#[must_use]
+pub(crate) fn outbox(origin: &str, actor: &str, total: usize) -> Value {
+    let id = outbox_id(origin, actor);
+    json!({
+        "@context": STREAMS,
+        "id": id,
+        "type": "OrderedCollection",
+        "totalItems": total,
+        "first": format!("{id}?page={FIRST}"),
+    })
+}
+
+/// The page `page` of that outbox: `notes`, newest first, each as its
+/// `Create`, and the page after it where `next` names one.
+#[must_use]
+pub(crate) fn outbox_page(
+    origin: &str,
+    actor: &str,
+    page: &str,
+    notes: &[Value],
+    next: Option<&str>,
+) -> Value {
+    let outbox = outbox_id(origin, actor);
+    let mut shown = json!({
+        "@context": STREAMS,
+        "id": format!("{outbox}?page={page}"),
+        "type": "OrderedCollectionPage",
+        "partOf": outbox,
+        "orderedItems": notes.iter().map(created).collect::<Vec<_>>(),
+    });
+    if let (Some(next), Some(fields)) = (next, shown.as_object_mut()) {
+        fields.insert("next".to_owned(), json!(format!("{outbox}?page={next}")));
+    }
+    shown
+}
+
+/// The followers collection of the actor `actor` served at `origin`: how
+/// many follow it, and never who.
+#[must_use]
+pub(crate) fn followers_collection(origin: &str, actor: &str, total: usize) -> Value {
+    json!({
+        "@context": STREAMS,
+        "id": followers(&actor_id(origin, actor)),
+        "type": "OrderedCollection",
+        "totalItems": total,
+    })
+}
+
+/// What an outbox's first page is asked for as.
+pub const FIRST: &str = "true";
+
+fn outbox_id(origin: &str, actor: &str) -> String {
+    format!("{}/outbox", actor_id(origin, actor))
 }
 
 /// The `Accept` of `follow`, a `Follow` of the actor `actor` served at `origin`:

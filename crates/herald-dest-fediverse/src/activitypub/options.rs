@@ -21,23 +21,44 @@ pub struct ActorOptions {
     /// How long it waits before sending again where an inbox answers that it
     /// is unwell or limited and names no wait.
     pub waits: Option<WaitOptions>,
+    /// How many Notes one page of each actor's outbox holds, from 1 to 80;
+    /// 20 where unset.
+    pub outbox_page: Option<usize>,
 }
 
 impl ActorOptions {
-    /// Whether the domain is a host alone.
+    /// The Notes an outbox page holds where the config sets none.
+    pub const OUTBOX_PAGE: usize = 20;
+    /// The most Notes an outbox page may hold: four times the default.
+    pub const OUTBOX_MOST: usize = 4 * Self::OUTBOX_PAGE;
+
+    /// How many Notes one page of each actor's outbox holds.
+    #[must_use]
+    pub fn outbox_page(&self) -> usize {
+        self.outbox_page.unwrap_or(Self::OUTBOX_PAGE)
+    }
+
+    /// Whether the domain is a host alone, and an outbox page holds 1 to 80
+    /// Notes.
     ///
     /// # Errors
     ///
     /// When it is not, naming the fix.
     pub fn check(&self) -> Result<(), String> {
-        if herald_core::domain(&self.domain) {
-            Ok(())
-        } else {
-            Err(format!(
+        if !herald_core::domain(&self.domain) {
+            return Err(format!(
                 "\"{}\" is not a domain; give the host herald serves its actors on, such as \"herald.example\", with no scheme, port or path",
                 self.domain
-            ))
+            ));
         }
+        if !(1..=Self::OUTBOX_MOST).contains(&self.outbox_page()) {
+            return Err(format!(
+                "outbox_page holds 1 to {} Notes, not {}",
+                Self::OUTBOX_MOST,
+                self.outbox_page()
+            ));
+        }
+        Ok(())
     }
 }
 

@@ -15,7 +15,7 @@ mod read;
 mod request;
 
 pub use activitypub::{
-    ActivityPub, ActorOptions, ActorRouteOptions, Asked, Audience, accept, actor_document,
+    ActivityPub, ActorOptions, ActorRouteOptions, Asked, Audience, FIRST, accept, actor_document,
     actor_profile, asked, create, note, webfinger,
 };
 pub use actor::{

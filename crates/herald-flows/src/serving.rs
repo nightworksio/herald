@@ -2,25 +2,22 @@ use std::collections::BTreeMap;
 
 use herald_config::{App, Config, Source};
 use herald_core::{
-    ACTIVITY_JSON, Addressed, Asked, DestinationName, Event, Identity, Key, Scheme, SourceName,
-    Standing, digest, same,
+    Asked, DestinationName, Event, Identity, Key, Scheme, SourceName, Standing, digest, same,
 };
-use herald_dest_fediverse::ActivityPub;
-use herald_ports::{
-    Clock, CryptoError, Http, Keyring, Ledger, Notes, Secret, Secrets, Signer, Store, Verifier,
-};
+use herald_ports::{Clock, Http, Keyring, Ledger, Secret, Secrets, Signer, Store, Verifier};
 use herald_sources_forge::{Forge, Hooked};
 
 use crate::announce::{Announced, Outcome, Ports, announce, announce_within};
 use crate::commanded::{INTERACTIONS, MATRIX, appserviced, commanded};
 use crate::following::{FollowError, Followed, followed};
-use crate::inbound::{
-    Admission, Checking, Keys, Rejected, Verified, activity_verified, admitted, released, verified,
-};
+use crate::inbound::{Admission, Checking, Keys, Rejected, Verified, admitted, released, verified};
 use crate::interact::{Answer, interact, replied as replied_to};
 use crate::interacting::Replying;
 use crate::prepare::{Connected, PrepareError};
-use crate::reached::Reached;
+
+mod actors;
+
+use actors::{actor, counted, documented, domain, fingered, inboxed, noted, outboxed};
 
 /// Where the server answers whether it is up.
 pub const HEALTH: &str = "/healthz";
@@ -369,58 +366,6 @@ fn decoded(text: &str) -> Option<String> {
     String::from_utf8(bytes).ok()
 }
 
-/// The actor herald serves as `name`.
-fn actor<'a, H>(connected: &'a Connected<H>, name: &str, host: &str) -> Option<&'a ActivityPub> {
-    connected
-        .routes
-        .iter()
-        .find_map(|(route, _)| match &route.reached {
-            Reached::ActivityPub(actor) if actor.actor() == name && actor.domain() == host => {
-                Some(actor)
-            }
-            _ => None,
-        })
-}
-
-/// The domain from herald's config that is `host`, when herald serves an
-/// actor on it.
-fn domain<'a, H>(connected: &'a Connected<H>, host: &str) -> Option<&'a str> {
-    connected
-        .routes
-        .iter()
-        .find_map(|(route, _)| match &route.reached {
-            Reached::ActivityPub(actor) if actor.domain() == host => Some(actor.domain()),
-            _ => None,
-        })
-}
-
-/// What WebFinger answers for the resource `query` asks for: an actor herald
-/// serves, as `acct:<actor>@<domain>` or as its id.
-fn fingered<H>(connected: &Connected<H>, query: Option<&str>) -> Answered {
-    let resource = query
-        .unwrap_or_default()
-        .split('&')
-        .find_map(|pair| pair.strip_prefix("resource="))
-        .and_then(decoded)
-        .unwrap_or_default();
-    let found = connected
-        .routes
-        .iter()
-        .find_map(|(route, _)| match &route.reached {
-            Reached::ActivityPub(actor)
-                if resource == format!("acct:{}@{}", actor.actor(), actor.domain())
-                    || resource == actor.id() =>
-            {
-                Some(actor)
-            }
-            _ => None,
-        });
-    found.map_or_else(
-        || missing("such actor"),
-        |actor| replied(200, JRD, actor.finger()),
-    )
-}
-
 /// The reply to `inbound`, and the work it leaves: health, forge webhooks,
 /// and herald's ActivityPub actors, their Notes, inboxes and WebFinger
 /// (ADR-0002). Every webhook and activity is verified and admitted before
@@ -476,7 +421,7 @@ pub async fn answer<S: Store, C: Clock, G: Signer, V: Verifier, H, P: Http, K: K
                 return missing("such path");
             };
             let parts: Vec<&str> = rest.split('/').collect();
-            let Some(served) = parts
+            let Some((served, destination)) = parts
                 .first()
                 .and_then(|name| actor(serving.connected, name, inbound.host()))
             else {
@@ -486,42 +431,14 @@ pub async fn answer<S: Store, C: Clock, G: Signer, V: Verifier, H, P: Http, K: K
                 ("GET", [_]) => documented(serving, served).await,
                 ("POST", [_, "inbox"]) => inboxed(serving, inbound, served.domain()).await,
                 ("GET", [_, "notes", key]) => noted(serving, served, key).await,
-                (_, [_] | [_, "inbox"] | [_, "notes", _]) => unmethodical(),
+                ("GET", [_, "outbox"]) => outboxed(serving, served, inbound.query).await,
+                ("GET", [_, "followers"]) => counted(serving, served, destination).await,
+                (_, [_] | [_, "inbox" | "outbox" | "followers"] | [_, "notes", _]) => {
+                    unmethodical()
+                }
                 _ => missing("such path"),
             }
         }
-    }
-}
-
-/// The actor document of `served`.
-async fn documented<S, C, G: Signer, V, H, P, K>(
-    serving: &Serving<'_, S, C, G, V, H, P, K>,
-    served: &ActivityPub,
-) -> Answered {
-    shown(served.document(serving.ports.signer).await)
-}
-
-/// The answer to an actor document that was or could not be built.
-fn shown(document: Result<String, CryptoError>) -> Answered {
-    match document {
-        Ok(document) => replied(200, ACTIVITY_JSON, document),
-        Err(error) => refusal(500, format!("the actor's key cannot be read: {error}")),
-    }
-}
-
-/// The Note `served` published as the announcement `key`.
-async fn noted<S: Store, C, G, V, H, P, K>(
-    serving: &Serving<'_, S, C, G, V, H, P, K>,
-    served: &ActivityPub,
-    key: &str,
-) -> Answered {
-    let Ok(parsed) = key.parse::<Key>() else {
-        return missing("such note");
-    };
-    match serving.ports.store.notes().note(&parsed).await {
-        Ok(Some(note)) if served.owns(&note, key) => replied(200, ACTIVITY_JSON, note),
-        Ok(_) => missing("such note"),
-        Err(error) => refusal(503, error.to_string()),
     }
 }
 
@@ -710,60 +627,6 @@ fn holder<'c>(config: &'c Config, token: &str) -> Option<(&'c str, &'c App)> {
         }
     }
     found
-}
-
-/// An activity delivered to an inbox herald serves, verified and admitted,
-/// and left to take.
-async fn inboxed<S: Store, C: Clock, G, V: Verifier, H, P: Http, K: Keyring>(
-    serving: &Serving<'_, S, C, G, V, H, P, K>,
-    inbound: &Inbound<'_>,
-    audience: &str,
-) -> Answered {
-    let target = match inbound.query {
-        Some(query) => format!("post {}?{query}", inbound.path),
-        None => format!("post {}", inbound.path),
-    };
-    let addressed = Addressed {
-        target: &target,
-        audience,
-    };
-    let now = serving.ports.clock.now();
-    let checked = activity_verified(
-        serving.verifier,
-        serving.public,
-        serving.keys,
-        addressed,
-        inbound.headers,
-        inbound.body,
-        Checking {
-            now,
-            bounds: &serving.config.server.inbound,
-        },
-    )
-    .await;
-    let verified = match checked {
-        Ok(verified) => verified,
-        Err(rejected) => return rejection(&rejected),
-    };
-    if let Err(rejected) = admitted(
-        serving.ports.store,
-        serving.admission,
-        Scheme::ActivityPub,
-        &verified,
-        now,
-    )
-    .await
-    {
-        return rejection(&rejected);
-    }
-    Answered {
-        reply: said(202, "herald takes the activity").reply,
-        refused: None,
-        job: Some(Job::Follow {
-            verified,
-            body: inbound.body.to_vec(),
-        }),
-    }
 }
 
 /// Releases the delivery `job` came by, as it will not be done, so its

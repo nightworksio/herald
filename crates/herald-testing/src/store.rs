@@ -6,8 +6,8 @@ use herald_core::{
     Subscription,
 };
 use herald_ports::{
-    Admitted, Announcements, Cursors, Deliveries, Held, Inboxes, Keeper, Ledger, Notes, Pins,
-    Schedules, StoreError, Subscriptions, Version, Versioned, Written,
+    Admitted, Announcements, Cursors, Deliveries, Held, Inboxes, Keeper, Ledger, Notes, Outboxed,
+    Pins, Schedules, StoreError, Subscriptions, Version, Versioned, Written,
 };
 use jiff::Timestamp;
 
@@ -21,7 +21,7 @@ struct Records {
     subscriptions: BTreeSet<Subscription>,
     pins: BTreeMap<RouteId, String>,
     deliveries: BTreeMap<(&'static str, String), Timestamp>,
-    notes: BTreeMap<Key, (String, Timestamp)>,
+    notes: BTreeMap<Key, (String, String, Timestamp)>,
     latest: BTreeMap<String, Versioned<Latest>>,
     inboxes: BTreeMap<(Key, String), State>,
 }
@@ -217,16 +217,41 @@ impl Notes for FakeStore {
         Ok(lock(&self.state)
             .notes
             .get(key)
-            .map(|(note, _)| note.clone()))
+            .map(|(_, note, _)| note.clone()))
     }
 
-    async fn put_note(&self, key: &Key, note: &str, at: Timestamp) -> Result<(), StoreError> {
-        lock(&self.state).notes.insert(*key, (note.to_owned(), at));
+    async fn put_note(
+        &self,
+        actor: &str,
+        key: &Key,
+        note: &str,
+        at: Timestamp,
+    ) -> Result<(), StoreError> {
+        lock(&self.state)
+            .notes
+            .insert(*key, (actor.to_owned(), note.to_owned(), at));
         Ok(())
     }
 
+    async fn outbox(
+        &self,
+        actor: &str,
+        after: Option<&str>,
+        most: usize,
+    ) -> Result<Outboxed, StoreError> {
+        let listed = lock(&self.state)
+            .notes
+            .iter()
+            .filter(|(_, (by, _, _))| by == actor)
+            .map(|(key, (_, note, at))| (Outboxed::name(*at, key), note.clone()))
+            .collect();
+        Ok(Outboxed::page(listed, after, most))
+    }
+
     async fn expire_notes(&self, before: Timestamp) -> Result<(), StoreError> {
-        lock(&self.state).notes.retain(|_, (_, at)| *at >= before);
+        lock(&self.state)
+            .notes
+            .retain(|_, (_, _, at)| *at >= before);
         Ok(())
     }
 }

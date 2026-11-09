@@ -195,7 +195,11 @@ fn the_served_kinds_kept_nowhere_answer_unsupported_naming_them() {
         );
         assert_eq!(unsupported(unkept.note(&key)), naming("notes"));
         assert_eq!(
-            unsupported(unkept.put_note(&key, "{}", at)),
+            unsupported(unkept.put_note("herald", &key, "{}", at)),
+            naming("notes")
+        );
+        assert_eq!(
+            unsupported(unkept.outbox("herald", None, 1)),
             naming("notes")
         );
         assert_eq!(unsupported(unkept.expire_notes(at)), naming("notes"));

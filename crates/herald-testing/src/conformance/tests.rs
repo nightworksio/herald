@@ -1,7 +1,7 @@
 use herald_core::State;
 use herald_ports::{
     Admitted, Announcements, Cursors, Deliveries, Held, Inboxes, Keeper, Keeping, Keyring,
-    KnownKey, Ledger, Notes, Pins, Schedules, Subscriptions, Versioned,
+    KnownKey, Ledger, Notes, Outboxed, Pins, Schedules, Subscriptions, Versioned,
 };
 use jiff::Timestamp;
 
@@ -35,6 +35,12 @@ enum Fault {
     ExpiresNothing,
     KeepsTheFirstNote,
     SharesNotes,
+    ForgetsTheOutbox,
+    NamesNoNextPage,
+    IgnoresWhereAPageEnded,
+    SharesOutboxes,
+    ListsARepublishedNoteTwice,
+    KeepsExpiredNotesInTheOutbox,
     OverwritesLatest,
     ListsNoLatest,
     ListsAnUnwrittenLatest,
@@ -321,7 +327,13 @@ impl Notes for Faulty {
         self.inner.note(&key).await
     }
 
-    async fn put_note(&self, key: &Key, note: &str, at: Timestamp) -> Result<(), StoreError> {
+    async fn put_note(
+        &self,
+        actor: &str,
+        key: &Key,
+        note: &str,
+        at: Timestamp,
+    ) -> Result<(), StoreError> {
         self.refuses()?;
         let key = match self.fault {
             Fault::SharesNotes => super::key("shared"),
@@ -331,13 +343,48 @@ impl Notes for Faulty {
         if self.fault == Fault::KeepsTheFirstNote && kept.is_some() {
             return Ok(());
         }
-        self.inner.put_note(&key, note, at).await
+        let key = match (self.fault, kept) {
+            (Fault::ListsARepublishedNoteTwice, Some(_)) if key == super::key("first") => {
+                super::key("first again")
+            }
+            _ => key,
+        };
+        self.inner.put_note(actor, &key, note, at).await
+    }
+
+    async fn outbox(
+        &self,
+        actor: &str,
+        after: Option<&str>,
+        most: usize,
+    ) -> Result<Outboxed, StoreError> {
+        self.refuses()?;
+        let actor = match self.fault {
+            Fault::SharesOutboxes => "announcer",
+            _ => actor,
+        };
+        let after = match self.fault {
+            Fault::IgnoresWhereAPageEnded => None,
+            _ => after,
+        };
+        let mut page = self.inner.outbox(actor, after, most).await?;
+        match self.fault {
+            Fault::ForgetsTheOutbox => return Ok(Outboxed::default()),
+            Fault::NamesNoNextPage => page.next = None,
+            _ => {}
+        }
+        Ok(page)
     }
 
     async fn expire_notes(&self, before: Timestamp) -> Result<(), StoreError> {
         self.refuses()?;
         match self.fault {
             Fault::KeepsExpiredNotes => Ok(()),
+            Fault::KeepsExpiredNotesInTheOutbox
+                if before > NOON + jiff::SignedDuration::from_hours(1) =>
+            {
+                Ok(())
+            }
             Fault::ExpiresEveryNote => self.inner.expire_notes(Timestamp::MAX).await,
             _ => self.inner.expire_notes(before).await,
         }
@@ -650,6 +697,30 @@ fn a_store_that_breaks_its_promises_on_the_served_records_is_refused() {
         (
             Fault::ExpiresEveryNote,
             "a note published at the expiry was forgotten",
+        ),
+        (
+            Fault::ForgetsTheOutbox,
+            "an actor's outbox did not list its newest notes first",
+        ),
+        (
+            Fault::NamesNoNextPage,
+            "an outbox with more notes than a page named no next page",
+        ),
+        (
+            Fault::IgnoresWhereAPageEnded,
+            "an outbox's next page did not hold the notes older than the last",
+        ),
+        (
+            Fault::SharesOutboxes,
+            "an actor's outbox listed another actor's notes",
+        ),
+        (
+            Fault::ListsARepublishedNoteTwice,
+            "a note published again was not listed once, as published last",
+        ),
+        (
+            Fault::KeepsExpiredNotesInTheOutbox,
+            "an expired note stayed in its actor's outbox",
         ),
         (
             Fault::OverwritesLatest,

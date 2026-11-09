@@ -260,19 +260,95 @@ pub trait Deliveries: Sync {
     ) -> impl Future<Output = Result<(), StoreError>> + Send;
 }
 
-/// The Notes herald's ActivityPub actors published, served by their id.
+/// The digits a time takes in an outbox's names: enough for any time in
+/// nanoseconds since 1970, so that names sort as their times do.
+const STAMP: usize = 20;
+
+/// One page of an actor's outbox: its Notes newest first, each as its JSON
+/// unless `T` says otherwise.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct Outboxed<T = String> {
+    /// How many Notes the actor's outbox holds in all.
+    pub total: usize,
+    /// The page's Notes, newest first.
+    pub notes: Vec<T>,
+    /// Where the next, older page starts, where there is one.
+    pub next: Option<String>,
+}
+
+impl<T> Outboxed<T> {
+    /// The page of `listed`, each Note under the name its outbox lists it
+    /// by, holding the newest `most` that are older than `after`.
+    #[must_use]
+    pub fn page(mut listed: Vec<(String, T)>, after: Option<&str>, most: usize) -> Self {
+        listed.sort_unstable_by(|one, other| other.0.cmp(&one.0));
+        let total = listed.len();
+        let mut older: Vec<(String, T)> = listed
+            .into_iter()
+            .filter(|(name, _)| after.is_none_or(|after| name.as_str() < after))
+            .collect();
+        let more = older.len() > most;
+        older.truncate(most);
+        Self {
+            total,
+            next: more
+                .then(|| older.last().map(|(name, _)| name.clone()))
+                .flatten(),
+            notes: older.into_iter().map(|(_, note)| note).collect(),
+        }
+    }
+}
+
+impl Outboxed {
+    /// The name an outbox lists the Note of `key` under, published at `at`:
+    /// names sort as their Notes were published.
+    #[must_use]
+    pub fn name(at: Timestamp, key: &Key) -> String {
+        format!("{:0width$}.{key}", at.as_nanosecond(), width = STAMP)
+    }
+
+    /// The key of the Note an outbox lists as `name`.
+    #[must_use]
+    pub fn key(name: &str) -> Option<Key> {
+        name.split_once('.')?.1.parse().ok()
+    }
+
+    /// Whether `name` is one an outbox lists a Note under: a time in
+    /// nanoseconds, written in full, and a key.
+    #[must_use]
+    pub fn is_name(name: &str) -> bool {
+        name.split_once('.').is_some_and(|(stamp, key)| {
+            stamp.len() == STAMP
+                && stamp.bytes().all(|byte| byte.is_ascii_digit())
+                && key.parse::<Key>().is_ok()
+        })
+    }
+}
+
+/// The Notes herald's ActivityPub actors published, served by their id and
+/// in each actor's outbox.
 pub trait Notes: Sync {
     /// The Note the announcement `key` was published as, as its JSON.
     fn note(&self, key: &Key) -> impl Future<Output = Result<Option<String>, StoreError>> + Send;
 
-    /// Keeps `note` as the Note the announcement `key` was published as,
-    /// at `at`.
+    /// Keeps `note` as the Note the actor `actor` published the
+    /// announcement `key` as, at `at`, in its outbox.
     fn put_note(
         &self,
+        actor: &str,
         key: &Key,
         note: &str,
         at: Timestamp,
     ) -> impl Future<Output = Result<(), StoreError>> + Send;
+
+    /// The page of `actor`'s outbox holding its newest `most` Notes, or the
+    /// newest `most` older than where `after` says the last page ended.
+    fn outbox(
+        &self,
+        actor: &str,
+        after: Option<&str>,
+        most: usize,
+    ) -> impl Future<Output = Result<Outboxed, StoreError>> + Send;
 
     /// Forgets every Note published before `before`.
     fn expire_notes(
@@ -471,10 +547,28 @@ impl<T: Notes> Notes for Option<&T> {
         }
     }
 
-    async fn put_note(&self, key: &Key, note: &str, at: Timestamp) -> Result<(), StoreError> {
+    async fn put_note(
+        &self,
+        actor: &str,
+        key: &Key,
+        note: &str,
+        at: Timestamp,
+    ) -> Result<(), StoreError> {
         match self {
-            Some(kept) => kept.put_note(key, note, at).await,
-            None => Unkept.put_note(key, note, at).await,
+            Some(kept) => kept.put_note(actor, key, note, at).await,
+            None => Unkept.put_note(actor, key, note, at).await,
+        }
+    }
+
+    async fn outbox(
+        &self,
+        actor: &str,
+        after: Option<&str>,
+        most: usize,
+    ) -> Result<Outboxed, StoreError> {
+        match self {
+            Some(kept) => kept.outbox(actor, after, most).await,
+            None => Unkept.outbox(actor, after, most).await,
         }
     }
 
@@ -661,10 +755,20 @@ impl Notes for Unkept {
 
     fn put_note(
         &self,
+        _: &str,
         _: &Key,
         _: &str,
         _: Timestamp,
     ) -> impl Future<Output = Result<(), StoreError>> + Send {
+        ready(Err(Held::Notes.unsupported()))
+    }
+
+    fn outbox(
+        &self,
+        _: &str,
+        _: Option<&str>,
+        _: usize,
+    ) -> impl Future<Output = Result<Outboxed, StoreError>> + Send {
         ready(Err(Held::Notes.unsupported()))
     }
 

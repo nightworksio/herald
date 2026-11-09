@@ -273,6 +273,7 @@ mod activitypub {
             domain: domain.to_owned(),
             symbols: None,
             waits: None,
+            outbox_page: None,
             key: herald_core::SecretRef {
                 secret: "K".to_owned(),
             },
@@ -334,6 +335,30 @@ mod activitypub {
 
     fn nothing(why: &str) -> Asked {
         Asked::Nothing(why.to_owned())
+    }
+
+    #[test]
+    fn an_outbox_page_holds_one_to_eighty_notes_and_twenty_where_unset() {
+        let paged = |outbox_page| ActorOptions {
+            domain: "herald.example".to_owned(),
+            symbols: None,
+            waits: None,
+            outbox_page,
+            key: herald_core::SecretRef {
+                secret: "K".to_owned(),
+            },
+        };
+        assert_eq!(paged(None).outbox_page(), 20);
+        for most in [1, 80] {
+            assert_eq!(paged(Some(most)).check(), Ok(()), "{most}");
+            assert_eq!(paged(Some(most)).outbox_page(), most);
+        }
+        for most in [0, 81] {
+            assert_eq!(
+                paged(Some(most)).check(),
+                Err(format!("outbox_page holds 1 to 80 Notes, not {most}"))
+            );
+        }
     }
 
     #[test]

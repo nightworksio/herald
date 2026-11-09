@@ -40,11 +40,12 @@ impl Reached {
     }
 
     /// The document `announcement` is published as where the destination is
-    /// herald's own and serves it: an ActivityPub actor's Note.
+    /// herald's own and serves it: an ActivityPub actor's Note, beside the
+    /// actor whose outbox lists it.
     #[must_use]
-    pub fn published(&self, announcement: &Announcement) -> Option<String> {
+    pub fn published(&self, announcement: &Announcement) -> Option<(&str, String)> {
         match self {
-            Self::ActivityPub(actor) => Some(actor.note(announcement)),
+            Self::ActivityPub(actor) => Some((actor.actor(), actor.note(announcement))),
             _ => None,
         }
     }

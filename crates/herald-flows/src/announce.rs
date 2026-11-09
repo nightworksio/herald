@@ -249,12 +249,17 @@ impl<S: Store, C: Clock, G: Signer, H: Http> Run<'_, S, C, G, H> {
         match sent {
             Sent::Landed(facts) => {
                 if *step == Step::Post
-                    && let Some(published) = self.route.reached.published(announcement)
+                    && let Some((actor, published)) = self.route.reached.published(announcement)
                 {
                     self.ports
                         .store
                         .notes()
-                        .put_note(&progress.entry.key, &published, self.ports.clock.now())
+                        .put_note(
+                            actor,
+                            &progress.entry.key,
+                            &published,
+                            self.ports.clock.now(),
+                        )
                         .await
                         .map_err(stored)?;
                 }

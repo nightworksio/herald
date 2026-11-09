@@ -743,6 +743,15 @@
               "type": "string",
               "const": "activitypub"
             },
+            "outbox_page": {
+              "description": "How many Notes one page of each actor's outbox holds, from 1 to 80;\n20 where unset.",
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "uint",
+              "minimum": 0
+            },
             "symbols": {
               "description": "The characters its posts write where its markup has none: a task\ndone and to do, a rule and a text list's bullet.",
               "anyOf": [

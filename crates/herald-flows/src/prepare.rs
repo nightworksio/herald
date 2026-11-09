@@ -304,7 +304,8 @@ impl Resolved<'_> {
             (Destination::ActivityPub(reached), RouteOptions::ActivityPub(placed)) => {
                 Some(Reached::ActivityPub(
                     ActivityPub::new(&reached.domain, self.base, secret, placed.clone())
-                        .waiting(self.destination.waits()),
+                        .waiting(self.destination.waits())
+                        .paging(reached.outbox_page()),
                 ))
             }
             (Destination::Slack(reached), RouteOptions::Slack(placed)) => {

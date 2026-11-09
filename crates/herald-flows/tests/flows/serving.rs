@@ -4,16 +4,16 @@ use herald_flows::{
     Answered, Connected, FollowError, Followed, Inbound, Job, Keys, Outcome, Ports, Serving,
     Webhooks, Worked, answer, busy, prepare, unworked, webhooks, work,
 };
-use herald_ports::{Admitted, Algorithm, CryptoError, Deliveries, Ledger, Notes, Secret, Signer};
+use herald_ports::{Admitted, Algorithm, CryptoError, Deliveries, Ledger, Secret, Signer};
 use herald_records::MemoryKeyring;
 use herald_testing::{FakeClock, FakeSecrets, FakeSigner, FakeVerifier};
 
 use crate::harness::{Failing, Fault, Script, healthy};
 use crate::inbound::{ANA, ANA_KEY, FOLLOW, activity, at, borrowed, document};
 
-const EVENT: &str =
+pub(crate) const EVENT: &str =
     include_str!("../../../herald-sources-forge/fixtures/github/release-event.reference.json");
-const ACTOR: &str = "https://herald.example/users/php-mutation-gate";
+pub(crate) const ACTOR: &str = "https://herald.example/users/php-mutation-gate";
 
 const APP_TOKEN: &str = "app-token";
 
@@ -29,6 +29,7 @@ kind = "sqlite"
 kind = "activitypub"
 domain = "herald.example"
 key = { secret = "HERALD_ACTIVITYPUB_KEY" }
+outbox_page = 2
 [sources.gate]
 kind = "github"
 repository = "cli/cli"
@@ -71,11 +72,11 @@ fn secrets() -> FakeSecrets {
         .with("HERALD_WEBHOOK", "hook-secret")
 }
 
-struct World {
+pub(crate) struct World {
     config: Config,
     connected: Connected<Script>,
     webhooks: Webhooks,
-    store: Failing,
+    pub(crate) store: Failing,
     keyring: MemoryKeyring,
     script: Script,
 }
@@ -84,7 +85,7 @@ type Served<'a> =
     Serving<'a, Failing, FakeClock, FakeSigner, FakeVerifier, Script, Script, MemoryKeyring>;
 
 impl World {
-    fn new(script: Script) -> Self {
+    pub(crate) fn new(script: Script) -> Self {
         Self::with(config(), script)
     }
 
@@ -102,7 +103,7 @@ impl World {
         }
     }
 
-    fn failing(fault: Fault) -> Self {
+    pub(crate) fn failing(fault: Fault) -> Self {
         let mut world = Self::new(Script::default());
         world.store.fault = fault;
         world
@@ -132,7 +133,7 @@ impl World {
         })
     }
 
-    fn answer(&self, inbound: &Inbound<'_>) -> Answered {
+    pub(crate) fn answer(&self, inbound: &Inbound<'_>) -> Answered {
         self.serving(|serving| pollster::block_on(answer(serving, inbound)))
     }
 
@@ -145,7 +146,7 @@ impl World {
     }
 }
 
-fn get(path: &str) -> Inbound<'_> {
+pub(crate) fn get(path: &str) -> Inbound<'_> {
     Inbound {
         method: "GET",
         path,
@@ -155,7 +156,7 @@ fn get(path: &str) -> Inbound<'_> {
     }
 }
 
-fn said(answered: &Answered) -> (u16, &'static str, String) {
+pub(crate) fn said(answered: &Answered) -> (u16, &'static str, String) {
     (
         answered.reply.status,
         answered.reply.kind,
@@ -167,7 +168,7 @@ const TEXT: &str = "text/plain; charset=utf-8";
 
 /// A webhook's path, its headers and the status it is answered with.
 type Case<'a> = (&'a str, &'a [(&'a str, &'a str)], u16);
-const JSON: &str = "application/activity+json";
+pub(crate) const JSON: &str = "application/activity+json";
 
 #[test]
 fn health_is_answered_and_every_path_herald_does_not_serve_is_not_found() {
@@ -184,7 +185,7 @@ fn health_is_answered_and_every_path_herald_does_not_serve_is_not_found() {
     for path in [
         "/",
         "/users/nobody",
-        "/users/php-mutation-gate/outbox",
+        "/users/php-mutation-gate/following",
         "/users/php-mutation-gate/notes",
     ] {
         assert_eq!(world.answer(&get(path)).reply.status, 404, "{path}");
@@ -245,54 +246,6 @@ fn work_with_no_place_is_refused_and_asked_to_wait() {
     assert!(refused.job.is_none());
 }
 
-#[test]
-fn webfinger_names_an_actor_herald_serves_by_its_account_or_its_id() {
-    let world = World::new(Script::default());
-    for query in [
-        "resource=acct%3Aphp-mutation-gate%40herald.example",
-        "rel=self&resource=acct:php-mutation-gate@herald.example",
-        "resource=https%3A%2F%2Fherald.example%2Fusers%2Fphp-mutation-gate",
-    ] {
-        let asked = Inbound {
-            query: Some(query),
-            ..get("/.well-known/webfinger")
-        };
-        let (status, kind, body) = said(&world.answer(&asked));
-        assert_eq!((status, kind), (200, "application/jrd+json"), "{query}");
-        let found: serde_json::Value = serde_json::from_str(&body).unwrap();
-        assert_eq!(found["subject"], "acct:php-mutation-gate@herald.example");
-        assert_eq!(found["links"][0]["href"], ACTOR);
-    }
-    for query in [
-        None,
-        Some("resource=acct:nobody@herald.example"),
-        Some("resource=%zz"),
-    ] {
-        let asked = Inbound {
-            query,
-            ..get("/.well-known/webfinger")
-        };
-        assert_eq!(world.answer(&asked).reply.status, 404, "{query:?}");
-    }
-}
-
-#[test]
-fn an_actor_is_served_its_document_with_its_public_key() {
-    let world = World::new(Script::default());
-    let (status, kind, body) = said(&world.answer(&get("/users/php-mutation-gate")));
-    assert_eq!((status, kind), (200, JSON));
-    let document: serde_json::Value = serde_json::from_str(&body).unwrap();
-    assert_eq!(document["id"], ACTOR);
-    assert_eq!(document["publicKey"]["owner"], ACTOR);
-    assert!(
-        document["publicKey"]["publicKeyPem"]
-            .as_str()
-            .unwrap()
-            .starts_with("-----BEGIN PUBLIC KEY-----")
-    );
-}
-
-/// A signer that cannot read any key.
 struct Keyless;
 
 impl Signer for Keyless {
@@ -351,55 +304,12 @@ fn an_actor_whose_key_cannot_be_read_is_not_served() {
     );
 }
 
-fn key() -> Key {
+pub(crate) fn key() -> Key {
     let event = herald_sources_forge::Forge::GitHub
         .event(EVENT.as_bytes())
         .unwrap()
         .unwrap();
     Key::derive(&RouteId::new("followed"), event.identity())
-}
-
-#[test]
-fn a_note_is_served_by_its_id_where_its_actor_published_it() {
-    let world = World::new(Script::default());
-    let key = key();
-    let path = format!("/users/php-mutation-gate/notes/{key}");
-    assert_eq!(world.answer(&get(&path)).reply.status, 404);
-    let note = format!(r#"{{"id":"{ACTOR}/notes/{key}","type":"Note"}}"#);
-    pollster::block_on(
-        world
-            .store
-            .inner
-            .put_note(&key, &note, crate::harness::NOON),
-    )
-    .unwrap();
-    assert_eq!(said(&world.answer(&get(&path))), (200, JSON, note));
-    let other = format!(r#"{{"id":"https://herald.example/users/other/notes/{key}"}}"#);
-    pollster::block_on(
-        world
-            .store
-            .inner
-            .put_note(&key, &other, crate::harness::NOON),
-    )
-    .unwrap();
-    assert_eq!(world.answer(&get(&path)).reply.status, 404);
-    pollster::block_on(
-        world
-            .store
-            .inner
-            .put_note(&key, "not json", crate::harness::NOON),
-    )
-    .unwrap();
-    assert_eq!(world.answer(&get(&path)).reply.status, 404);
-    assert_eq!(
-        world
-            .answer(&get("/users/php-mutation-gate/notes/not-a-key"))
-            .reply
-            .status,
-        404
-    );
-    let unread = World::failing(Fault::ReadsNotes);
-    assert_eq!(unread.answer(&get(&path)).reply.status, 503);
 }
 
 fn signed(secret: &str, body: &[u8]) -> String {

@@ -10,6 +10,8 @@
 #[cfg(test)]
 mod activitypub;
 #[cfg(test)]
+mod actors;
+#[cfg(test)]
 mod announce;
 #[cfg(test)]
 mod doctor;

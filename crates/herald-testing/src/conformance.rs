@@ -50,6 +50,7 @@ pub async fn store_conformance<S: Store>(store: &S) -> Result<(), Failure> {
     }
     if let Some(kept) = store.notes() {
         notes(kept).await?;
+        outboxes(kept).await?;
     }
     if let Some(kept) = store.announcements() {
         latest(kept).await?;
@@ -530,9 +531,15 @@ async fn notes<S: Notes>(store: &S) -> Result<(), Failure> {
         "a new store holds a note",
     );
     let later = NOON + jiff::SignedDuration::from_hours(1);
-    store.put_note(&published, "{\"n\":1}", NOON).await?;
-    store.put_note(&published, "{\"n\":2}", NOON).await?;
-    store.put_note(&key("other"), "{\"n\":3}", later).await?;
+    store
+        .put_note("herald", &published, "{\"n\":1}", NOON)
+        .await?;
+    store
+        .put_note("herald", &published, "{\"n\":2}", NOON)
+        .await?;
+    store
+        .put_note("herald", &key("other"), "{\"n\":3}", later)
+        .await?;
     checks.ensure(
         store.note(&published).await?.as_deref() == Some("{\"n\":2}"),
         "an announcement's note was not the one written last",
@@ -545,6 +552,61 @@ async fn notes<S: Notes>(store: &S) -> Result<(), Failure> {
     checks.ensure(
         store.note(&key("other")).await?.as_deref() == Some("{\"n\":3}"),
         "a note published at the expiry was forgotten",
+    );
+    checks.done()
+}
+
+/// The Note named `name`, as the outbox checks write it.
+fn written(name: &str) -> String {
+    format!("{{\"n\":\"{name}\"}}")
+}
+
+async fn outboxes<S: Notes>(store: &S) -> Result<(), Failure> {
+    let mut checks = Checks::default();
+    let hour = |hours| NOON + jiff::SignedDuration::from_hours(hours);
+    for (name, at) in [("first", 0), ("second", 1), ("third", 2), ("third", 2)] {
+        store
+            .put_note("announcer", &key(name), &written(name), hour(at))
+            .await?;
+    }
+    store
+        .put_note(
+            "elsewhere",
+            &key("elsewhere"),
+            &written("elsewhere"),
+            hour(1),
+        )
+        .await?;
+    let newest = store.outbox("announcer", None, 2).await?;
+    checks.ensure(
+        newest.total == 3 && newest.notes == [written("third"), written("second")],
+        "an actor's outbox did not list its newest notes first",
+    );
+    checks.ensure(
+        newest.next.is_some(),
+        "an outbox with more notes than a page named no next page",
+    );
+    let older = store.outbox("announcer", newest.next.as_deref(), 2).await?;
+    checks.ensure(
+        older.notes == [written("first")] && older.next.is_none(),
+        "an outbox's next page did not hold the notes older than the last",
+    );
+    checks.ensure(
+        store.outbox("elsewhere", None, 2).await?.notes == [written("elsewhere")],
+        "an actor's outbox listed another actor's notes",
+    );
+    store
+        .put_note("announcer", &key("first"), &written("first"), hour(3))
+        .await?;
+    let again = store.outbox("announcer", None, 3).await?;
+    checks.ensure(
+        again.total == 3 && again.notes.first() == Some(&written("first")),
+        "a note published again was not listed once, as published last",
+    );
+    store.expire_notes(hour(2)).await?;
+    checks.ensure(
+        store.outbox("announcer", None, 3).await?.notes == [written("first"), written("third")],
+        "an expired note stayed in its actor's outbox",
     );
     checks.done()
 }
