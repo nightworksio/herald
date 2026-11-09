@@ -1,7 +1,7 @@
 use std::fmt;
 
 use herald_core::{DestinationName, Sent, Subscription};
-use herald_dest_fediverse::{ActivityPub, Asked, asked, inboxes};
+use herald_dest_fediverse::{ActivityPub, Asked, asked, follow_id, inboxes};
 use herald_ports::{Http, Signer, Store, Subscriptions};
 
 use crate::inbound::{Checking, Verified, fetched};
@@ -20,8 +20,17 @@ pub enum Followed {
         /// What the follower's inbox answered to the `Accept`.
         answered: Sent,
     },
-    /// The actor's follower caps are full: the follower is not kept, and its
-    /// follow was answered with a `Reject`.
+    /// The follow waits for the operator's approval: the follower is kept,
+    /// and not delivered to until it is approved.
+    Waiting {
+        /// The follower's actor id.
+        follower: String,
+        /// The actor it asks to follow.
+        actor: String,
+    },
+    /// The follower is turned away, as the actor's follower caps are full or
+    /// the operator rejected it: it is not kept, and its follow was answered
+    /// with a `Reject`.
     Rejected {
         /// The follower's actor id.
         follower: String,
@@ -48,6 +57,11 @@ pub enum FollowError {
     Store(String),
     /// The follower's own document could not be read.
     Unfetched(String),
+    /// The operator asked about an actor herald does not serve, or a follow
+    /// that is not waiting.
+    Unknown(String),
+    /// The operator approved a follow past the actor's follower caps.
+    Full,
 }
 
 impl fmt::Display for FollowError {
@@ -57,6 +71,10 @@ impl fmt::Display for FollowError {
             Self::Unfetched(reason) => {
                 write!(f, "the follower's document could not be read: {reason}")
             }
+            Self::Unknown(what) => write!(f, "{what}"),
+            Self::Full => f.write_str(
+                "the actor's followers are full; raise followers.most or followers.per_domain, or reject the follow",
+            ),
         }
     }
 }
@@ -79,25 +97,119 @@ fn serving<'a, H>(
         })
 }
 
-/// Whether `follower` finds room among the followers `actor` keeps on
-/// `destination` that its policy still admits.
-async fn roomy<S: Store>(
+/// Every follower `actor` keeps on `destination`, waiting or not.
+pub(crate) async fn kept<S: Store>(
     store: &S,
     actor: &ActivityPub,
     destination: &DestinationName,
-    follower: &str,
-) -> Result<bool, FollowError> {
-    let kept = store
+) -> Result<Vec<Subscription>, FollowError> {
+    store
         .subscriptions()
         .subscribers(destination, actor.actor())
         .await
-        .map_err(|error| FollowError::Store(error.to_string()))?;
-    let following: Vec<&str> = kept
-        .iter()
+        .map_err(|error| FollowError::Store(error.to_string()))
+}
+
+/// The followers among `kept` that follow `actor` now: approved, and still
+/// admitted by its policy.
+pub(crate) fn following<'a>(actor: &ActivityPub, kept: &'a [Subscription]) -> Vec<&'a str> {
+    kept.iter()
+        .filter(|kept| kept.pending.is_none())
         .map(|kept| kept.subscriber.as_str())
         .filter(|kept| actor.policy().admits(kept))
-        .collect();
-    Ok(actor.policy().room(follower, &following))
+        .collect()
+}
+
+/// A follow of one of herald's actors: by whom, the `Follow`'s id, and on
+/// which destination.
+struct Follow<'a> {
+    follower: &'a str,
+    id: &'a str,
+    destination: &'a DestinationName,
+}
+
+/// Takes `follow` of `actor`, reached through `http`: turned away by its
+/// lists or caps, kept waiting for the operator, or kept and accepted.
+async fn taken<S: Store, G: Signer, H: Http>(
+    store: &S,
+    signer: &G,
+    checking: Checking<'_>,
+    actor: &ActivityPub,
+    http: &H,
+    follow: Follow<'_>,
+) -> Result<Followed, FollowError> {
+    let Follow {
+        follower,
+        id,
+        destination,
+    } = follow;
+    let follow = actor.follow_of(id, follower);
+    if !actor.policy().admits(follower) {
+        return Ok(ignored(
+            "the actor's block or allow list turns its follower away",
+        ));
+    }
+    let document = fetched(http, follower, checking.bounds)
+        .await
+        .map_err(FollowError::Unfetched)?;
+    let Some(inboxes) = inboxes(&document, follower) else {
+        return Ok(ignored(
+            "the follower's document names no inbox on its own origin",
+        ));
+    };
+    let kept = kept(store, actor, destination).await?;
+    let mine = kept.iter().find(|kept| kept.subscriber == follower);
+    if !actor.policy().room(follower, &following(actor, &kept)) {
+        let answered = actor
+            .post(
+                http,
+                signer,
+                checking.now,
+                &inboxes.personal,
+                &actor.reject(&follow),
+            )
+            .await
+            .unwrap_or_else(|error| Sent::Refused(error.to_string()));
+        return Ok(Followed::Rejected {
+            follower: follower.to_owned(),
+            actor: actor.actor().to_owned(),
+            answered,
+        });
+    }
+    let waits = actor.policy().manual() && mine.is_none_or(|mine| mine.pending.is_some());
+    let subscription = Subscription {
+        destination: destination.clone(),
+        project: actor.actor().to_owned(),
+        subscriber: follower.to_owned(),
+        inbox: Some(inboxes.delivered().to_owned()),
+        pending: waits.then(|| id.to_owned()),
+    };
+    store
+        .subscriptions()
+        .subscribe(&subscription)
+        .await
+        .map_err(|error| FollowError::Store(error.to_string()))?;
+    if waits {
+        return Ok(Followed::Waiting {
+            follower: follower.to_owned(),
+            actor: actor.actor().to_owned(),
+        });
+    }
+    let answered = actor
+        .post(
+            http,
+            signer,
+            checking.now,
+            &inboxes.personal,
+            &actor.accept(&follow),
+        )
+        .await
+        .unwrap_or_else(|error| Sent::Refused(error.to_string()));
+    Ok(Followed::Accepted {
+        follower: follower.to_owned(),
+        actor: actor.actor().to_owned(),
+        answered,
+    })
 }
 
 /// Takes `body`, an activity [`crate::activity_verified`] let through as
@@ -126,63 +238,12 @@ pub async fn followed<S: Store, G: Signer, H: Http>(
             let Some((route, actor, http)) = serving(connected, &target) else {
                 return Ok(ignored("it follows no actor herald serves"));
             };
-            if !actor.policy().admits(follower) {
-                return Ok(ignored(
-                    "the actor's block or allow list turns its follower away",
-                ));
-            }
-            let document = fetched(http, follower, checking.bounds)
-                .await
-                .map_err(FollowError::Unfetched)?;
-            let Some(inboxes) = inboxes(&document, follower) else {
-                return Ok(ignored(
-                    "the follower's document names no inbox on its own origin",
-                ));
+            let follow = Follow {
+                follower,
+                id: &follow_id(&follow),
+                destination: &route.config.route.destination,
             };
-            let destination = &route.config.route.destination;
-            if !roomy(store, actor, destination, follower).await? {
-                let answered = actor
-                    .post(
-                        http,
-                        signer,
-                        checking.now,
-                        &inboxes.personal,
-                        &actor.reject(&follow),
-                    )
-                    .await
-                    .unwrap_or_else(|error| Sent::Refused(error.to_string()));
-                return Ok(Followed::Rejected {
-                    follower: follower.to_owned(),
-                    actor: actor.actor().to_owned(),
-                    answered,
-                });
-            }
-            let subscription = Subscription {
-                destination: destination.clone(),
-                project: actor.actor().to_owned(),
-                subscriber: follower.to_owned(),
-                inbox: Some(inboxes.delivered().to_owned()),
-            };
-            store
-                .subscriptions()
-                .subscribe(&subscription)
-                .await
-                .map_err(|error| FollowError::Store(error.to_string()))?;
-            let answered = actor
-                .post(
-                    http,
-                    signer,
-                    checking.now,
-                    &inboxes.personal,
-                    &actor.accept(&follow),
-                )
-                .await
-                .unwrap_or_else(|error| Sent::Refused(error.to_string()));
-            Ok(Followed::Accepted {
-                follower: follower.to_owned(),
-                actor: actor.actor().to_owned(),
-                answered,
-            })
+            taken(store, signer, checking, actor, http, follow).await
         }
         Asked::Undo { follower, target } => {
             let Some((route, actor, _)) = serving(connected, &target) else {

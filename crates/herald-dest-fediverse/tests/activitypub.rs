@@ -8,7 +8,7 @@ mod activitypub {
         Dialect, Entry, Facts, MentionStyle, Pins, Sent, Step, Text, Threads, Waits,
     };
     use herald_dest_fediverse::{
-        ActivityPub, ActorOptions, ActorRouteOptions, Asked, FollowerCaps, Mode, accept,
+        ActivityPub, ActorOptions, ActorRouteOptions, Approve, Asked, FollowerCaps, Mode, accept,
         actor_document, actor_profile, asked, create, note, webfinger,
     };
     use herald_ports::{PUBLIC, Secret};
@@ -67,7 +67,12 @@ mod activitypub {
             finger["links"][0]["href"],
             "https://herald.example/herald/users/php-mutation-gate"
         );
-        let document = actor_document("herald.example/herald", "php-mutation-gate", &[1; 70]);
+        let document = actor_document(
+            "herald.example/herald",
+            "php-mutation-gate",
+            &[1; 70],
+            false,
+        );
         assert_eq!(
             document["endpoints"]["sharedInbox"],
             "https://herald.example/herald/inbox"
@@ -217,12 +222,14 @@ mod activitypub {
 
     #[test]
     fn its_documents_name_the_actor_its_key_and_its_inboxes() {
-        let document = actor_document(DOMAIN, "php-mutation-gate", &[1; 70]);
+        let document = actor_document(DOMAIN, "php-mutation-gate", &[1; 70], true);
         assert_eq!(document["id"], ACTOR);
         assert_eq!(document["type"], "Service");
         assert_eq!(document["preferredUsername"], "php-mutation-gate");
         assert_eq!(document["inbox"], format!("{ACTOR}/inbox"));
         assert_eq!(document["followers"], format!("{ACTOR}/followers"));
+        assert_eq!(document["outbox"], format!("{ACTOR}/outbox"));
+        assert_eq!(document["manuallyApprovesFollowers"], true);
         assert_eq!(
             document["endpoints"]["sharedInbox"],
             "https://herald.example/inbox"
@@ -278,6 +285,7 @@ mod activitypub {
             block: Vec::new(),
             allow: Vec::new(),
             followers: None,
+            approve: Approve::Auto,
             key: herald_core::SecretRef {
                 secret: "K".to_owned(),
             },
@@ -352,6 +360,7 @@ mod activitypub {
             block: Vec::new(),
             allow: Vec::new(),
             followers: None,
+            approve: Approve::Auto,
             key: herald_core::SecretRef {
                 secret: "K".to_owned(),
             },
@@ -380,6 +389,7 @@ mod activitypub {
             block: block.iter().map(|entry| (*entry).to_owned()).collect(),
             allow: vec!["friends.example".to_owned()],
             followers,
+            approve: Approve::Manual,
             key: herald_core::SecretRef {
                 secret: "K".to_owned(),
             },
@@ -527,8 +537,16 @@ mod activitypub {
                     &Secret::new("HERALD_ACTIVITYPUB_KEY", "the-key"),
                 ))
                 .unwrap(),
+                false,
             )
         );
+        let manual = reached("HERALD_ACTIVITYPUB_KEY")
+            .governed(herald_dest_fediverse::Policy::default().approving(Approve::Manual));
+        let waiting: serde_json::Value =
+            serde_json::from_str(&pollster::block_on(manual.document(&FakeSigner)).unwrap())
+                .unwrap();
+        assert_eq!(waiting["manuallyApprovesFollowers"], true);
+        assert_eq!(document["manuallyApprovesFollowers"], false);
         assert!(pollster::block_on(reached("BAD").document(&FakeSigner)).is_err());
         let finger: serde_json::Value = serde_json::from_str(&actor.finger()).unwrap();
         assert_eq!(finger, webfinger(DOMAIN, DOMAIN, "php-mutation-gate"));

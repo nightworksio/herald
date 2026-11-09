@@ -258,6 +258,48 @@ pub(crate) enum Serve {
     /// requests, do the work they leave, and poll and keep house on its
     /// schedule.
     Lambda,
+    /// Read the followers of herald's ActivityPub actors, and approve or
+    /// reject a follow that waits.
+    #[command(subcommand)]
+    Followers(Following),
+}
+
+/// The commands on an ActivityPub actor's followers.
+#[derive(Debug, Subcommand)]
+pub(crate) enum Following {
+    /// List who follows an actor, and whose follow waits for approval.
+    List {
+        /// The ActivityPub destination, as `[destinations.<name>]` names it.
+        #[arg(long)]
+        destination: String,
+        /// The actor, as a route's `actor` names it.
+        #[arg(long)]
+        actor: String,
+    },
+    /// Approve a waiting follow: keep its follower and send it an `Accept`.
+    Approve {
+        /// The ActivityPub destination.
+        #[arg(long)]
+        destination: String,
+        /// The actor followed.
+        #[arg(long)]
+        actor: String,
+        /// The follower's actor id, as `list` prints it.
+        #[arg(long)]
+        follower: String,
+    },
+    /// Reject a waiting follow: forget its follower and send it a `Reject`.
+    Reject {
+        /// The ActivityPub destination.
+        #[arg(long)]
+        destination: String,
+        /// The actor followed.
+        #[arg(long)]
+        actor: String,
+        /// The follower's actor id, as `list` prints it.
+        #[arg(long)]
+        follower: String,
+    },
 }
 
 #[derive(Debug, Clone, Copy, ValueEnum)]

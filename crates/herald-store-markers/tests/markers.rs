@@ -86,6 +86,7 @@ mod markers {
             project: "p".to_owned(),
             subscriber: "s".to_owned(),
             inbox: None,
+            pending: None,
         };
         assert_eq!(
             pollster::block_on(store.cursors().put_cursor(

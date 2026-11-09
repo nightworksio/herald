@@ -121,6 +121,7 @@ fn the_run_s_kinds_kept_nowhere_answer_unsupported_naming_them() {
         project: "p".to_owned(),
         subscriber: "s".to_owned(),
         inbox: None,
+        pending: None,
     };
     for unkept in [None, Some(&Unkept)] {
         assert_eq!(unsupported(unkept.entry(&key)), naming("ledger"));

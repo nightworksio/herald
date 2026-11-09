@@ -162,7 +162,14 @@ mod told {
                 actor: "gate".to_owned(),
                 answered: herald_core::Sent::Landed(herald_core::Facts::default()),
             }))),
-            ["gate: bo was turned away, as its followers are full"]
+            ["gate: bo was turned away"]
+        );
+        assert_eq!(
+            told::worked(&Worked::Followed(Ok(Followed::Waiting {
+                follower: "cy".to_owned(),
+                actor: "gate".to_owned(),
+            }))),
+            ["gate: cy asks to follow it; approve or reject with `herald followers`"]
         );
         assert_eq!(
             told::worked(&Worked::Followed(Err(FollowError::Store(

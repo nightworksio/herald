@@ -286,6 +286,21 @@
       },
       "additionalProperties": false
     },
+    "Approve": {
+      "description": "Who decides whether a follow of herald's actors is taken.",
+      "oneOf": [
+        {
+          "description": "herald, by the lists and caps alone.",
+          "type": "string",
+          "const": "auto"
+        },
+        {
+          "description": "The operator, through `herald followers approve` or `reject`: a\nfollow waits until then, and its follower is not delivered to.",
+          "type": "string",
+          "const": "manual"
+        }
+      ]
+    },
     "ArchiveAfter": {
       "description": "How long a quiet thread stays open before Discord archives it: one of the\nfour lengths Discord takes.",
       "oneOf": [
@@ -739,6 +754,10 @@
                 "type": "string"
               }
             },
+            "approve": {
+              "description": "Who takes a follow: `auto`, herald by the lists and caps, or\n`manual`, the operator through `herald followers`.",
+              "$ref": "#/$defs/Approve"
+            },
             "block": {
               "description": "The servers and actors its actors never take a follow from or\ndeliver to: each a domain, naming its subdomains too, or an actor's\nid.",
               "type": "array",
@@ -763,7 +782,7 @@
               ]
             },
             "key": {
-              "description": "The secret holding the actors' RSA private key, as PKCS#8 PEM, which\n`herald activitypub keygen` writes.",
+              "description": "The secret holding the actors' RSA private key, as PKCS#8 PEM, such\nas `openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048`\nwrites.",
               "$ref": "#/$defs/SecretRef"
             },
             "kind": {

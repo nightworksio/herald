@@ -30,7 +30,7 @@ pub(crate) fn note_id(origin: &str, actor: &str, key: &str) -> String {
 /// with its inbox, its server's shared inbox, and its public key as
 /// `public` (a DER `SubjectPublicKeyInfo`) publishes it.
 #[must_use]
-pub fn actor_document(origin: &str, actor: &str, public: &[u8]) -> Value {
+pub fn actor_document(origin: &str, actor: &str, public: &[u8], manual: bool) -> Value {
     let id = actor_id(origin, actor);
     json!({
         "@context": [STREAMS, SECURITY],
@@ -42,7 +42,7 @@ pub fn actor_document(origin: &str, actor: &str, public: &[u8]) -> Value {
         "inbox": format!("{id}/inbox"),
         "outbox": outbox_id(origin, actor),
         "followers": followers(&id),
-        "manuallyApprovesFollowers": false,
+        "manuallyApprovesFollowers": manual,
         "discoverable": true,
         "endpoints": { "sharedInbox": format!("https://{origin}/inbox") },
         "publicKey": {
@@ -219,6 +219,28 @@ fn outbox_id(origin: &str, actor: &str) -> String {
 #[must_use]
 pub fn accept(origin: &str, actor: &str, follow: &Value) -> Value {
     answer(origin, actor, follow, "Accept")
+}
+
+/// The id of `follow`, a `Follow`, as an `Accept` or `Reject` names it.
+#[must_use]
+pub fn follow_id(follow: &Value) -> String {
+    follow
+        .get("id")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_owned()
+}
+
+/// The `Follow` of id `id` by `follower` of the actor `actor` served at
+/// `origin`, as an `Accept` or `Reject` of it names it.
+#[must_use]
+pub(crate) fn follow(origin: &str, actor: &str, id: &str, follower: &str) -> Value {
+    json!({
+        "id": id,
+        "type": "Follow",
+        "actor": follower,
+        "object": actor_id(origin, actor),
+    })
 }
 
 /// The `Reject` of `follow`, a `Follow` of the actor `actor` served at

@@ -9,6 +9,8 @@ mod options;
 mod policy;
 
 pub use deliver::{ActivityPub, actor_profile};
-pub use documents::{Asked, FIRST, accept, actor_document, asked, create, note, webfinger};
+pub use documents::{
+    Asked, FIRST, accept, actor_document, asked, create, follow_id, note, webfinger,
+};
 pub use options::{ActorOptions, ActorRouteOptions, Audience};
-pub use policy::{FollowerCaps, Mode, Policy};
+pub use policy::{Approve, FollowerCaps, Mode, Policy};

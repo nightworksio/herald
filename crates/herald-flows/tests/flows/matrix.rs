@@ -51,6 +51,7 @@ fn subscribed(store: &Failing) {
         project: "php-mutation-gate".to_owned(),
         subscriber: "@ana:matrix.example".to_owned(),
         inbox: None,
+        pending: None,
     };
     pollster::block_on(store.subscribe(&subscription)).unwrap();
 }
@@ -112,6 +113,7 @@ fn subscribers_past_the_announcement_s_room_are_mentioned_in_a_message_after_it(
             project: "php-mutation-gate".to_owned(),
             subscriber: format!("@user{index:03}:matrix.example"),
             inbox: None,
+            pending: None,
         };
         pollster::block_on(store.subscribe(&subscription)).unwrap();
     }

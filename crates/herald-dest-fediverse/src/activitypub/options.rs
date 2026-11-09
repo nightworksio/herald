@@ -2,7 +2,7 @@ use herald_core::{SecretRef, Symbols, WaitOptions};
 use schemars::JsonSchema;
 use serde::Deserialize;
 
-use super::policy::{FollowerCaps, Mode, Policy, unlisted};
+use super::policy::{Approve, FollowerCaps, Mode, Policy, unlisted};
 
 /// The longest name an actor takes, as Mastodon takes a username.
 const NAME: usize = 30;
@@ -14,8 +14,9 @@ pub struct ActorOptions {
     /// The domain herald serves its actors on, such as `herald.example`:
     /// a host alone, with no scheme, port or path.
     pub domain: String,
-    /// The secret holding the actors' RSA private key, as PKCS#8 PEM, which
-    /// `herald activitypub keygen` writes.
+    /// The secret holding the actors' RSA private key, as PKCS#8 PEM, such
+    /// as `openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048`
+    /// writes.
     pub key: SecretRef,
     /// The characters its posts write where its markup has none: a task
     /// done and to do, a rule and a text list's bullet.
@@ -42,6 +43,10 @@ pub struct ActorOptions {
     /// How many may follow each actor, in all and from any one server; a
     /// follow past either is answered with a `Reject`.
     pub followers: Option<FollowerCaps>,
+    /// Who takes a follow: `auto`, herald by the lists and caps, or
+    /// `manual`, the operator through `herald followers`.
+    #[serde(default)]
+    pub approve: Approve,
 }
 
 impl ActorOptions {
@@ -59,6 +64,7 @@ impl ActorOptions {
             &self.allow,
             self.followers.unwrap_or_default(),
         )
+        .approving(self.approve)
     }
 
     /// How many Notes one page of each actor's outbox holds.

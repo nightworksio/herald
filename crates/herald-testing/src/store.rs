@@ -165,14 +165,28 @@ impl Subscriptions for FakeStore {
     }
 
     async fn subscribe(&self, subscription: &Subscription) -> Result<(), StoreError> {
-        lock(&self.state).subscriptions.insert(subscription.clone());
+        let mut state = lock(&self.state);
+        state
+            .subscriptions
+            .retain(|kept| !same_subscriber(kept, subscription));
+        state.subscriptions.insert(subscription.clone());
         Ok(())
     }
 
     async fn unsubscribe(&self, subscription: &Subscription) -> Result<(), StoreError> {
-        lock(&self.state).subscriptions.remove(subscription);
+        lock(&self.state)
+            .subscriptions
+            .retain(|kept| !same_subscriber(kept, subscription));
         Ok(())
     }
+}
+
+/// Whether `one` and `other` are one subscriber's to one project on one
+/// destination.
+fn same_subscriber(one: &Subscription, other: &Subscription) -> bool {
+    one.destination == other.destination
+        && one.project == other.project
+        && one.subscriber == other.subscriber
 }
 
 impl Pins for FakeStore {

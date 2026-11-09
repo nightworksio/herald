@@ -232,6 +232,7 @@ fn an_actor_s_followers_are_counted_and_never_listed() {
                 project: "php-mutation-gate".to_owned(),
                 subscriber: follower.to_owned(),
                 inbox: None,
+                pending: None,
             },
         ))
         .unwrap();
@@ -273,6 +274,19 @@ fn an_actor_s_followers_are_counted_and_never_listed() {
             project: "php-mutation-gate".to_owned(),
             subscriber: "https://b.example/users/bo".to_owned(),
             inbox: None,
+            pending: None,
+        },
+    ))
+    .unwrap();
+    assert_eq!(json(&blocking.answer(&get(followers)))["totalItems"], 0);
+    pollster::block_on(herald_ports::Subscriptions::subscribe(
+        &blocking.store.inner,
+        &herald_core::Subscription {
+            destination: herald_core::DestinationName::new("fedi"),
+            project: "php-mutation-gate".to_owned(),
+            subscriber: "https://c.example/users/cy".to_owned(),
+            inbox: None,
+            pending: Some("https://c.example/f/1".to_owned()),
         },
     ))
     .unwrap();

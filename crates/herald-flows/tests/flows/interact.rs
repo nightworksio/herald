@@ -616,6 +616,7 @@ fn subscribing_on_slack_keeps_the_member_in_the_store_until_they_unsubscribe() {
         project: "gate".to_owned(),
         subscriber: "U0123456789".to_owned(),
         inbox: None,
+        pending: None,
     }))
     .unwrap();
     assert_eq!(

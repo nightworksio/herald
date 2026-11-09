@@ -157,6 +157,7 @@ fn subscription(destination: &str, project: &str, subscriber: &str) -> Subscript
         project: project.to_owned(),
         subscriber: subscriber.to_owned(),
         inbox: None,
+        pending: None,
     }
 }
 
@@ -419,8 +420,26 @@ async fn subscriptions<S: Subscriptions>(store: &S) -> Result<(), Failure> {
         "a follower's inbox was not kept with them",
     );
     checks.ensure(
-        store.subscribers(&fediverse, "herald").await? == [follower],
+        store.subscribers(&fediverse, "herald").await? == [follower.clone()],
         "a follower's inbox was not kept with its subscription",
+    );
+    let waiting = Subscription {
+        pending: Some("https://social.example/f/1".to_owned()),
+        inbox: Some("https://social.example/users/ana/inbox".to_owned()),
+        ..follower.clone()
+    };
+    store.subscribe(&waiting).await?;
+    let replaced = store.subscribers(&fediverse, "herald").await? == [waiting.clone()];
+    store.subscribe(&follower).await?;
+    checks.ensure(
+        replaced && store.subscribers(&fediverse, "herald").await? == [follower.clone()],
+        "a subscriber subscribed again was not kept once, as subscribed last",
+    );
+    store.subscribe(&waiting).await?;
+    store.unsubscribe(&follower).await?;
+    checks.ensure(
+        store.subscribers(&fediverse, "herald").await?.is_empty(),
+        "a subscriber kept as subscribed otherwise was not forgotten",
     );
     checks.done()
 }

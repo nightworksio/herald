@@ -353,7 +353,7 @@ impl<R: Records> Subscriptions for Kept<R> {
     }
 
     async fn subscribe(&self, subscription: &Subscription) -> Result<(), StoreError> {
-        self.added(&paths::subscribed(subscription), subscription)
+        self.kept(&paths::subscribed(subscription), subscription)
             .await
     }
 
@@ -587,6 +587,7 @@ mod tests {
                 project: "p".to_owned(),
                 subscriber: "u".to_owned(),
                 inbox: None,
+                pending: None,
             };
             let path = paths::subscribed(&subscription);
             let planted = br#"{"version":1,"record":{"destination":"slack","project":"p","subscriber":"mallory"}}"#;

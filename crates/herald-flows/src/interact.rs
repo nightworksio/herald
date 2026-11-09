@@ -300,6 +300,7 @@ async fn subscribing<S: Store, H: Http>(
         project: project.clone(),
         subscriber: asked.user.clone(),
         inbox: None,
+        pending: None,
     };
     let written = if give {
         store.subscriptions().subscribe(&subscription).await

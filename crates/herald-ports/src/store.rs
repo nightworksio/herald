@@ -205,13 +205,15 @@ pub trait Subscriptions: Sync {
         project: &str,
     ) -> impl Future<Output = Result<Vec<Subscription>, StoreError>> + Send;
 
-    /// Adds `subscription`.
+    /// Keeps `subscription`, in place of what was kept of its subscriber
+    /// to its project on its destination.
     fn subscribe(
         &self,
         subscription: &Subscription,
     ) -> impl Future<Output = Result<(), StoreError>> + Send;
 
-    /// Removes `subscription`.
+    /// Forgets the subscriber of `subscription` to its project on its
+    /// destination.
     fn unsubscribe(
         &self,
         subscription: &Subscription,

@@ -23,6 +23,8 @@ enum Fault {
     OverwritesCursors,
     DuplicatesSchedules,
     IgnoresProjects,
+    KeepsTheFirstSubscription,
+    ForgetsOnlyTheSameSubscription,
     KeepsTheFirstPin,
     SharesPins,
     HoldsAnUnwrittenDelivery,
@@ -252,11 +254,32 @@ impl Subscriptions for Faulty {
 
     async fn subscribe(&self, subscription: &Subscription) -> Result<(), StoreError> {
         self.refuses()?;
+        if self.fault == Fault::KeepsTheFirstSubscription {
+            let held = self
+                .inner
+                .subscribers(&subscription.destination, &subscription.project)
+                .await?;
+            if held
+                .iter()
+                .any(|kept| kept.subscriber == subscription.subscriber)
+            {
+                return Ok(());
+            }
+        }
         self.inner.subscribe(subscription).await
     }
 
     async fn unsubscribe(&self, subscription: &Subscription) -> Result<(), StoreError> {
         self.refuses()?;
+        if self.fault == Fault::ForgetsOnlyTheSameSubscription {
+            let held = self
+                .inner
+                .subscribers(&subscription.destination, &subscription.project)
+                .await?;
+            if !held.contains(subscription) {
+                return Ok(());
+            }
+        }
         self.inner.unsubscribe(subscription).await
     }
 }
@@ -627,6 +650,14 @@ fn a_store_that_breaks_its_promises_on_the_run_s_records_is_refused() {
         (
             Fault::IgnoresProjects,
             "the subscribers of a project on a destination were not those subscribed, once each",
+        ),
+        (
+            Fault::KeepsTheFirstSubscription,
+            "a subscriber subscribed again was not kept once, as subscribed last",
+        ),
+        (
+            Fault::ForgetsOnlyTheSameSubscription,
+            "a subscriber kept as subscribed otherwise was not forgotten",
         ),
         (
             Fault::KeepsTheFirstPin,

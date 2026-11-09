@@ -14,6 +14,18 @@ pub enum Mode {
     Allowlist,
 }
 
+/// Who decides whether a follow of herald's actors is taken.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize, JsonSchema)]
+#[serde(rename_all = "kebab-case")]
+pub enum Approve {
+    /// herald, by the lists and caps alone.
+    #[default]
+    Auto,
+    /// The operator, through `herald followers approve` or `reject`: a
+    /// follow waits until then, and its follower is not delivered to.
+    Manual,
+}
+
 /// How many may follow each of herald's actors, as `followers` writes it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
@@ -32,6 +44,7 @@ pub struct Policy {
     block: Vec<String>,
     allow: Vec<String>,
     caps: FollowerCaps,
+    approve: Approve,
 }
 
 impl Policy {
@@ -45,7 +58,20 @@ impl Policy {
             block: block.to_vec(),
             allow: allow.to_vec(),
             caps,
+            approve: Approve::Auto,
         }
+    }
+
+    /// The policy, its follows taken as `approve` says.
+    #[must_use]
+    pub fn approving(self, approve: Approve) -> Self {
+        Self { approve, ..self }
+    }
+
+    /// Whether a follow waits for the operator's approval.
+    #[must_use]
+    pub const fn manual(&self) -> bool {
+        matches!(self.approve, Approve::Manual)
     }
 
     /// Whether the actor `id` may follow herald's actor and be delivered to.

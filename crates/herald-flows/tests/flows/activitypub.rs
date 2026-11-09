@@ -54,6 +54,7 @@ pub(crate) fn follower(actor: &str, follower: &str, inbox: Option<&str>) -> Subs
         project: actor.to_owned(),
         subscriber: follower.to_owned(),
         inbox: inbox.map(ToOwned::to_owned),
+        pending: None,
     }
 }
 
@@ -132,7 +133,7 @@ fn an_announcement_is_delivered_once_to_each_inbox_its_actor_s_followers_share()
 }
 
 #[test]
-fn an_announcement_is_delivered_to_no_follower_the_actor_s_lists_turn_away() {
+fn an_announcement_is_delivered_to_no_follower_turned_away_or_waiting() {
     let store = healthy();
     for (who, inbox) in [
         (

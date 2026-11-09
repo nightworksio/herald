@@ -15,6 +15,7 @@
 //! renders each route's templates as its destination would show them.
 
 mod announce;
+mod approving;
 mod commanded;
 mod doctor;
 mod following;
@@ -33,6 +34,7 @@ mod sessions;
 mod together;
 
 pub use announce::{Announced, Outcome, Ports, Stop, announce, announce_within};
+pub use approving::{Decision, decide, followers};
 pub use commanded::{INTERACTIONS, MATRIX};
 pub use doctor::{Findings, Gap, Layer, doctor, keys, unserved};
 pub use following::{FollowError, Followed, followed};

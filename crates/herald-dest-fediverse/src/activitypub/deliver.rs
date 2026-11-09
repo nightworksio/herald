@@ -10,8 +10,8 @@ use jiff::Timestamp;
 use serde_json::Value;
 
 use super::documents::{
-    accept, actor_document, actor_id, create, followers_collection, key_id, note, note_id, outbox,
-    outbox_page, reject, webfinger,
+    accept, actor_document, actor_id, create, follow, followers_collection, key_id, note, note_id,
+    outbox, outbox_page, reject, webfinger,
 };
 use super::options::{ActorOptions, ActorRouteOptions};
 use super::policy::Policy;
@@ -172,7 +172,13 @@ impl ActivityPub {
     /// When `signer` cannot read the public key.
     pub async fn document<G: Signer>(&self, signer: &G) -> Result<String, CryptoError> {
         let public = signer.public(Algorithm::RsaSha256, &self.key).await?;
-        Ok(actor_document(&self.origin, &self.route.actor, &public).to_string())
+        Ok(actor_document(
+            &self.origin,
+            &self.route.actor,
+            &public,
+            self.policy.manual(),
+        )
+        .to_string())
     }
 
     /// What WebFinger answers for the actor.
@@ -239,6 +245,13 @@ impl ActivityPub {
     #[must_use]
     pub fn accept(&self, follow: &Value) -> Value {
         accept(&self.origin, &self.route.actor, follow)
+    }
+
+    /// The `Follow` of this actor by `follower` whose id is `id`, as one
+    /// waiting for the operator is answered.
+    #[must_use]
+    pub fn follow_of(&self, id: &str, follower: &str) -> Value {
+        follow(&self.origin, &self.route.actor, id, follower)
     }
 
     /// The `Reject` of `follow`, a `Follow` of this actor its policy turns

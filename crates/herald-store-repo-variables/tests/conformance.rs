@@ -282,6 +282,7 @@ mod conformance {
                 project: "p".to_owned(),
                 subscriber: subscriber.to_string(),
                 inbox: None,
+                pending: None,
             };
             pollster::block_on(store.subscribe(&subscription)).unwrap();
         }

@@ -35,6 +35,7 @@ use herald_sources_forge::{Forge, Origin, Repository, SourceOptions, Token};
 mod apps;
 mod cli;
 mod connect;
+mod followers;
 mod health;
 mod lambda;
 mod output;
@@ -216,6 +217,7 @@ async fn stopping(
             serving(&config, vars, connect, listen.as_deref(), out, stop).await
         }
         Serve::Lambda => lambda::lambda(config, vars, connect, out).await,
+        Serve::Followers(asked) => followers::following(&config, vars, connect, &asked, out).await,
     };
     let code = ran.unwrap_or_else(|message| {
         say(err, &message);

@@ -149,7 +149,7 @@ pub(super) async fn counted<S: Store, C, G, V, H, P, K>(
         Ok(following) => {
             let admitted = following
                 .iter()
-                .filter(|kept| served.policy().admits(&kept.subscriber))
+                .filter(|kept| kept.pending.is_none() && served.policy().admits(&kept.subscriber))
                 .count();
             replied(200, ACTIVITY_JSON, served.followers(admitted))
         }
