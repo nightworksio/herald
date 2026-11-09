@@ -1,6 +1,6 @@
 use std::fmt;
 
-use herald_core::{Sent, Subscription};
+use herald_core::{DestinationName, Sent, Subscription};
 use herald_dest_fediverse::{ActivityPub, Asked, asked, inboxes};
 use herald_ports::{Http, Signer, Store, Subscriptions};
 
@@ -18,6 +18,16 @@ pub enum Followed {
         /// The actor it follows.
         actor: String,
         /// What the follower's inbox answered to the `Accept`.
+        answered: Sent,
+    },
+    /// The actor's follower caps are full: the follower is not kept, and its
+    /// follow was answered with a `Reject`.
+    Rejected {
+        /// The follower's actor id.
+        follower: String,
+        /// The actor it asked to follow.
+        actor: String,
+        /// What the follower's inbox answered to the `Reject`.
         answered: Sent,
     },
     /// The follower is forgotten.
@@ -69,6 +79,27 @@ fn serving<'a, H>(
         })
 }
 
+/// Whether `follower` finds room among the followers `actor` keeps on
+/// `destination` that its policy still admits.
+async fn roomy<S: Store>(
+    store: &S,
+    actor: &ActivityPub,
+    destination: &DestinationName,
+    follower: &str,
+) -> Result<bool, FollowError> {
+    let kept = store
+        .subscriptions()
+        .subscribers(destination, actor.actor())
+        .await
+        .map_err(|error| FollowError::Store(error.to_string()))?;
+    let following: Vec<&str> = kept
+        .iter()
+        .map(|kept| kept.subscriber.as_str())
+        .filter(|kept| actor.policy().admits(kept))
+        .collect();
+    Ok(actor.policy().room(follower, &following))
+}
+
 /// Takes `body`, an activity [`crate::activity_verified`] let through as
 /// `verified`: a `Follow` of one of herald's actors keeps its follower,
 /// delivered to at the inbox its own document names, and is answered with
@@ -95,6 +126,11 @@ pub async fn followed<S: Store, G: Signer, H: Http>(
             let Some((route, actor, http)) = serving(connected, &target) else {
                 return Ok(ignored("it follows no actor herald serves"));
             };
+            if !actor.policy().admits(follower) {
+                return Ok(ignored(
+                    "the actor's block or allow list turns its follower away",
+                ));
+            }
             let document = fetched(http, follower, checking.bounds)
                 .await
                 .map_err(FollowError::Unfetched)?;
@@ -103,8 +139,26 @@ pub async fn followed<S: Store, G: Signer, H: Http>(
                     "the follower's document names no inbox on its own origin",
                 ));
             };
+            let destination = &route.config.route.destination;
+            if !roomy(store, actor, destination, follower).await? {
+                let answered = actor
+                    .post(
+                        http,
+                        signer,
+                        checking.now,
+                        &inboxes.personal,
+                        &actor.reject(&follow),
+                    )
+                    .await
+                    .unwrap_or_else(|error| Sent::Refused(error.to_string()));
+                return Ok(Followed::Rejected {
+                    follower: follower.to_owned(),
+                    actor: actor.actor().to_owned(),
+                    answered,
+                });
+            }
             let subscription = Subscription {
-                destination: route.config.route.destination.clone(),
+                destination: destination.clone(),
                 project: actor.actor().to_owned(),
                 subscriber: follower.to_owned(),
                 inbox: Some(inboxes.delivered().to_owned()),

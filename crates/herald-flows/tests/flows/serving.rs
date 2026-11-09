@@ -21,7 +21,7 @@ fn config() -> Config {
     load("herald.toml", &config_text(), &|_| Err(String::new())).unwrap()
 }
 
-fn config_text() -> String {
+pub(crate) fn config_text() -> String {
     r#"version = 1
 [store]
 kind = "sqlite"
@@ -89,7 +89,7 @@ impl World {
         Self::with(config(), script)
     }
 
-    fn with(config: Config, script: Script) -> Self {
+    pub(crate) fn with(config: Config, script: Script) -> Self {
         let prepared = pollster::block_on(prepare(&config, &secrets(), &FakeSigner)).unwrap();
         let connected = prepared.connect(|_| Ok::<_, ()>(script.clone())).unwrap();
         let webhooks = pollster::block_on(webhooks(&config, &secrets())).unwrap();

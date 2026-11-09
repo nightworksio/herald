@@ -731,9 +731,36 @@
           "description": "herald's own ActivityPub actors, on its domain.",
           "type": "object",
           "properties": {
+            "allow": {
+              "description": "The servers and actors an `allowlist` federates with, written as\n`block` writes them.",
+              "type": "array",
+              "default": [],
+              "items": {
+                "type": "string"
+              }
+            },
+            "block": {
+              "description": "The servers and actors its actors never take a follow from or\ndeliver to: each a domain, naming its subdomains too, or an actor's\nid.",
+              "type": "array",
+              "default": [],
+              "items": {
+                "type": "string"
+              }
+            },
             "domain": {
               "description": "The domain herald serves its actors on, such as `herald.example`:\na host alone, with no scheme, port or path.",
               "type": "string"
+            },
+            "followers": {
+              "description": "How many may follow each actor, in all and from any one server; a\nfollow past either is answered with a `Reject`.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/FollowerCaps"
+                },
+                {
+                  "type": "null"
+                }
+              ]
             },
             "key": {
               "description": "The secret holding the actors' RSA private key, as PKCS#8 PEM, which\n`herald activitypub keygen` writes.",
@@ -742,6 +769,10 @@
             "kind": {
               "type": "string",
               "const": "activitypub"
+            },
+            "mode": {
+              "description": "Whom its actors federate with: `open`, everyone `block` does not\nname, or `allowlist`, only those `allow` names.",
+              "$ref": "#/$defs/Mode"
             },
             "outbox_page": {
               "description": "How many Notes one page of each actor's outbox holds, from 1 to 80;\n20 where unset.",
@@ -908,6 +939,31 @@
       "description": "A length of time: a number and ms, s, m, h, d or w, as \"14d\".",
       "type": "string",
       "pattern": "^[0-9]+(ms|[smhdw])$"
+    },
+    "FollowerCaps": {
+      "description": "How many may follow each of herald's actors, as `followers` writes it.",
+      "type": "object",
+      "properties": {
+        "most": {
+          "description": "The most followers one actor keeps; no limit where unset.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint",
+          "minimum": 0
+        },
+        "per_domain": {
+          "description": "The most followers one actor keeps from any one server; no limit\nwhere unset.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false
     },
     "Http": {
       "description": "`[http]`: how herald's own requests reach the services a config names.\nNone of it applies to the hosts herald reaches on others' behalf, an\n`ActivityPub` actor's key or a follower's inbox (ADR-0007).",
@@ -1627,6 +1683,21 @@
         }
       },
       "additionalProperties": false
+    },
+    "Mode": {
+      "description": "Whom herald's actors federate with.",
+      "oneOf": [
+        {
+          "description": "Every server and actor that `block` does not name.",
+          "type": "string",
+          "const": "open"
+        },
+        {
+          "description": "Only the servers and actors `allow` names, and none that `block`\nnames.",
+          "type": "string",
+          "const": "allowlist"
+        }
+      ]
     },
     "OneCharacter": {
       "description": "One character, as a config writes it.",

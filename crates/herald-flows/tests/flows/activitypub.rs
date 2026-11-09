@@ -38,6 +38,16 @@ pub(crate) fn activitypub() -> Config {
     load("herald.toml", toml_text(), &|_| Err(String::new())).unwrap()
 }
 
+/// The config of [`activitypub`], its actor's destination also set as
+/// `policy` writes it.
+pub(crate) fn governed(policy: &str) -> Config {
+    let text = toml_text().replace(
+        "key = { secret = \"HERALD_ACTIVITYPUB_KEY\" }\n",
+        &format!("key = {{ secret = \"HERALD_ACTIVITYPUB_KEY\" }}\n{policy}\n"),
+    );
+    load("herald.toml", &text, &|_| Err(String::new())).unwrap()
+}
+
 pub(crate) fn follower(actor: &str, follower: &str, inbox: Option<&str>) -> Subscription {
     Subscription {
         destination: DestinationName::new("fedi"),
@@ -118,6 +128,34 @@ fn an_announcement_is_delivered_once_to_each_inbox_its_actor_s_followers_share()
     assert_eq!(
         created["actor"],
         "https://herald.example/users/php-mutation-gate"
+    );
+}
+
+#[test]
+fn an_announcement_is_delivered_to_no_follower_the_actor_s_lists_turn_away() {
+    let store = healthy();
+    for (who, inbox) in [
+        (
+            "https://social.example/users/ana",
+            "https://social.example/inbox",
+        ),
+        (
+            "https://eu.spam.example/users/x",
+            "https://eu.spam.example/inbox",
+        ),
+    ] {
+        pollster::block_on(store.subscribe(&follower("php-mutation-gate", who, Some(inbox))))
+            .unwrap();
+    }
+    let script = Script::answering(&[("https://social.example/inbox", 202, "")]);
+    assert_eq!(
+        announced_with(&governed(r#"block = ["spam.example"]"#), &store, &script),
+        Outcome::Sent {
+            steps: vec![
+                Step::Post,
+                Step::Deliver("https://social.example/inbox".to_owned()),
+            ]
+        }
     );
 }
 

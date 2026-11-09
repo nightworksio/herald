@@ -8,8 +8,8 @@ mod activitypub {
         Dialect, Entry, Facts, MentionStyle, Pins, Sent, Step, Text, Threads, Waits,
     };
     use herald_dest_fediverse::{
-        ActivityPub, ActorOptions, ActorRouteOptions, Asked, accept, actor_document, actor_profile,
-        asked, create, note, webfinger,
+        ActivityPub, ActorOptions, ActorRouteOptions, Asked, FollowerCaps, Mode, accept,
+        actor_document, actor_profile, asked, create, note, webfinger,
     };
     use herald_ports::{PUBLIC, Secret};
     use herald_testing::sample;
@@ -274,6 +274,10 @@ mod activitypub {
             symbols: None,
             waits: None,
             outbox_page: None,
+            mode: Mode::Open,
+            block: Vec::new(),
+            allow: Vec::new(),
+            followers: None,
             key: herald_core::SecretRef {
                 secret: "K".to_owned(),
             },
@@ -344,6 +348,10 @@ mod activitypub {
             symbols: None,
             waits: None,
             outbox_page,
+            mode: Mode::Open,
+            block: Vec::new(),
+            allow: Vec::new(),
+            followers: None,
             key: herald_core::SecretRef {
                 secret: "K".to_owned(),
             },
@@ -359,6 +367,62 @@ mod activitypub {
                 Err(format!("outbox_page holds 1 to 80 Notes, not {most}"))
             );
         }
+    }
+
+    #[test]
+    fn an_actor_s_lists_name_domains_or_actors_and_its_caps_are_at_least_one() {
+        let governed = |block: &[&str], followers: Option<FollowerCaps>| ActorOptions {
+            domain: "herald.example".to_owned(),
+            symbols: None,
+            waits: None,
+            outbox_page: None,
+            mode: Mode::Allowlist,
+            block: block.iter().map(|entry| (*entry).to_owned()).collect(),
+            allow: vec!["friends.example".to_owned()],
+            followers,
+            key: herald_core::SecretRef {
+                secret: "K".to_owned(),
+            },
+        };
+        let open = governed(&["spam.example", "https://good.example/users/troll"], None);
+        assert_eq!(open.check(), Ok(()));
+        assert!(open.policy().admits("https://friends.example/users/ana"));
+        assert!(!open.policy().admits("https://spam.example/users/x"));
+        assert!(!open.policy().admits("https://elsewhere.example/users/x"));
+        let refused = governed(&["http://spam.example"], None)
+            .check()
+            .unwrap_err();
+        assert!(
+            refused.starts_with("\"http://spam.example\" is neither a domain nor an actor's id"),
+            "{refused}"
+        );
+        for caps in [
+            FollowerCaps {
+                most: Some(0),
+                per_domain: None,
+            },
+            FollowerCaps {
+                most: None,
+                per_domain: Some(0),
+            },
+        ] {
+            assert_eq!(
+                governed(&[], Some(caps)).check(),
+                Err("followers.most and followers.per_domain take at least 1; leave one out for no limit".to_owned())
+            );
+        }
+        let capped = governed(
+            &[],
+            Some(FollowerCaps {
+                most: Some(1),
+                per_domain: None,
+            }),
+        );
+        assert_eq!(capped.check(), Ok(()));
+        assert!(!capped.policy().room(
+            "https://friends.example/users/b",
+            &["https://friends.example/users/a"]
+        ));
     }
 
     #[test]

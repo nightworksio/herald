@@ -207,6 +207,9 @@ fn follow(followed: &Result<Followed, FollowError>) -> String {
         Ok(Followed::Accepted {
             follower, actor, ..
         }) => format!("{actor}: {follower} follows it now"),
+        Ok(Followed::Rejected {
+            follower, actor, ..
+        }) => format!("{actor}: {follower} was turned away, as its followers are full"),
         Ok(Followed::Undone { follower, actor }) => {
             format!("{actor}: {follower} no longer follows it")
         }

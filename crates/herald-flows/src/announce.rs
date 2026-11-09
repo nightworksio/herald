@@ -401,6 +401,7 @@ impl<S: Store, C: Clock, G: Signer, H: Http> Run<'_, S, C, G, H> {
             .map_err(stored)?;
         let inboxes: BTreeSet<String> = followers
             .into_iter()
+            .filter(|follower| self.route.reached.admits(&follower.subscriber))
             .filter_map(|follower| follower.inbox)
             .collect();
         Ok(inboxes.into_iter().collect())

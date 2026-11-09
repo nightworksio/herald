@@ -157,6 +157,14 @@ mod told {
             ["gate: ana no longer follows it"]
         );
         assert_eq!(
+            told::worked(&Worked::Followed(Ok(Followed::Rejected {
+                follower: "bo".to_owned(),
+                actor: "gate".to_owned(),
+                answered: herald_core::Sent::Landed(herald_core::Facts::default()),
+            }))),
+            ["gate: bo was turned away, as its followers are full"]
+        );
+        assert_eq!(
             told::worked(&Worked::Followed(Err(FollowError::Store(
                 "down".to_owned()
             ))))

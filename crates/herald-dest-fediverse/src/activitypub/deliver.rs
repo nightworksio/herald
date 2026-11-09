@@ -11,9 +11,10 @@ use serde_json::Value;
 
 use super::documents::{
     accept, actor_document, actor_id, create, followers_collection, key_id, note, note_id, outbox,
-    outbox_page, webfinger,
+    outbox_page, reject, webfinger,
 };
 use super::options::{ActorOptions, ActorRouteOptions};
+use super::policy::Policy;
 
 /// The longest title, in characters.
 const TITLE: usize = 500;
@@ -36,6 +37,7 @@ pub struct ActivityPub {
     route: ActorRouteOptions,
     waits: Waits,
     page: usize,
+    policy: Policy,
 }
 
 fn refused(reason: impl Into<String>) -> Sent {
@@ -58,7 +60,20 @@ impl ActivityPub {
             route,
             waits: Waits::DEFAULT,
             page: ActorOptions::OUTBOX_PAGE,
+            policy: Policy::default(),
         }
+    }
+
+    /// The actor, federating as `policy` says.
+    #[must_use]
+    pub fn governed(self, policy: Policy) -> Self {
+        Self { policy, ..self }
+    }
+
+    /// Whom the actor federates with, and how many may follow it.
+    #[must_use]
+    pub const fn policy(&self) -> &Policy {
+        &self.policy
     }
 
     /// The actor, waiting `waits` where an inbox names no wait.
@@ -224,6 +239,13 @@ impl ActivityPub {
     #[must_use]
     pub fn accept(&self, follow: &Value) -> Value {
         accept(&self.origin, &self.route.actor, follow)
+    }
+
+    /// The `Reject` of `follow`, a `Follow` of this actor its policy turns
+    /// away.
+    #[must_use]
+    pub fn reject(&self, follow: &Value) -> Value {
+        reject(&self.origin, &self.route.actor, follow)
     }
 
     /// Posts `activity` to `inbox`, signed by this actor at `now` through

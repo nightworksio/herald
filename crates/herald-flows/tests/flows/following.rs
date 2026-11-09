@@ -3,7 +3,7 @@ use herald_flows::{Checking, FollowError, Followed, Verified, followed, prepare}
 use herald_ports::Subscriptions;
 use herald_testing::{FakeSecrets, FakeSigner};
 
-use crate::activitypub::{activitypub, follower};
+use crate::activitypub::{activitypub, follower, governed};
 use crate::harness::*;
 
 const ACTOR: &str = "https://herald.example/users/php-mutation-gate";
@@ -51,9 +51,18 @@ fn taken(
     verified: &Verified,
     body: &[u8],
 ) -> Result<Followed, FollowError> {
-    let config = activitypub();
+    taken_under(&activitypub(), store, script, verified, body)
+}
+
+fn taken_under(
+    config: &herald_config::Config,
+    store: &Failing,
+    script: &Script,
+    verified: &Verified,
+    body: &[u8],
+) -> Result<Followed, FollowError> {
     let secrets = FakeSecrets::default().with("HERALD_ACTIVITYPUB_KEY", "the-key");
-    let prepared = pollster::block_on(prepare(&config, &secrets, &FakeSigner)).unwrap();
+    let prepared = pollster::block_on(prepare(config, &secrets, &FakeSigner)).unwrap();
     let connected = prepared.connect(|_| Ok::<_, ()>(script.clone())).unwrap();
     pollster::block_on(followed(
         &connected,
@@ -106,6 +115,117 @@ fn a_follow_keeps_its_follower_at_its_shared_inbox_and_is_accepted_at_its_own() 
     assert_eq!(accepted["type"], "Accept");
     assert_eq!(accepted["actor"], ACTOR);
     assert_eq!(accepted["object"]["id"], "https://social.example/f/1");
+}
+
+#[test]
+fn a_follower_the_actor_s_lists_turn_away_is_ignored_and_asked_nothing() {
+    for policy in [
+        r#"block = ["social.example"]"#,
+        r#"block = ["https://social.example/users/ana"]"#,
+        r#"mode = "allowlist"
+allow = ["friends.example"]"#,
+    ] {
+        let store = healthy();
+        let script = served(&[]);
+        assert_eq!(
+            taken_under(
+                &governed(policy),
+                &store,
+                &script,
+                &signed_by(Some(ANA)),
+                &follow(ACTOR)
+            ),
+            Ok(Followed::Ignored(
+                "the actor's block or allow list turns its follower away".to_owned()
+            )),
+            "{policy}"
+        );
+        assert!(script.seen().is_empty(), "{policy}");
+        assert!(kept(&store).is_empty(), "{policy}");
+    }
+}
+
+#[test]
+fn a_follow_past_the_actor_s_caps_is_rejected_and_its_follower_not_kept() {
+    let store = healthy();
+    let bo = follower(
+        "php-mutation-gate",
+        "https://social.example/users/bo",
+        Some(SHARED),
+    );
+    pollster::block_on(store.subscribe(&bo)).unwrap();
+    let document = ana(ANA_INBOX);
+    for caps in ["followers = { most = 1 }", "followers = { per_domain = 1 }"] {
+        let script = served(&[(ANA, 200, &document), (ANA_INBOX, 202, "")]);
+        assert_eq!(
+            taken_under(
+                &governed(caps),
+                &store,
+                &script,
+                &signed_by(Some(ANA)),
+                &follow(ACTOR)
+            ),
+            Ok(Followed::Rejected {
+                follower: ANA.to_owned(),
+                actor: "php-mutation-gate".to_owned(),
+                answered: Sent::Landed(Facts::default()),
+            }),
+            "{caps}"
+        );
+        let rejected: serde_json::Value = serde_json::from_slice(&script.bodies()[1]).unwrap();
+        assert_eq!(rejected["type"], "Reject");
+        assert_eq!(rejected["actor"], ACTOR);
+        assert_eq!(rejected["object"]["id"], "https://social.example/f/1");
+        assert!(
+            rejected["id"]
+                .as_str()
+                .unwrap()
+                .starts_with(&format!("{ACTOR}/rejects/"))
+        );
+    }
+    assert_eq!(kept(&store), vec![bo.clone()]);
+    let open = served(&[(ANA, 200, &document), (ANA_INBOX, 202, "")]);
+    let room = governed("followers = { most = 2, per_domain = 2 }");
+    assert!(matches!(
+        taken_under(&room, &store, &open, &signed_by(Some(ANA)), &follow(ACTOR)),
+        Ok(Followed::Accepted { .. })
+    ));
+    let again = served(&[(ANA, 200, &document), (ANA_INBOX, 202, "")]);
+    let full = governed("followers = { most = 1 }");
+    assert!(
+        matches!(
+            taken_under(&full, &store, &again, &signed_by(Some(ANA)), &follow(ACTOR)),
+            Ok(Followed::Accepted { .. })
+        ),
+        "a follower already kept is accepted again past the caps"
+    );
+}
+
+#[test]
+fn a_follower_the_actor_s_lists_turn_away_takes_no_place_under_its_caps() {
+    let store = healthy();
+    let spam = follower(
+        "php-mutation-gate",
+        "https://spam.example/users/x",
+        Some("https://spam.example/inbox"),
+    );
+    pollster::block_on(store.subscribe(&spam)).unwrap();
+    let document = ana(ANA_INBOX);
+    let script = served(&[(ANA, 200, &document), (ANA_INBOX, 202, "")]);
+    let config = governed(
+        r#"block = ["spam.example"]
+followers = { most = 1 }"#,
+    );
+    assert!(matches!(
+        taken_under(
+            &config,
+            &store,
+            &script,
+            &signed_by(Some(ANA)),
+            &follow(ACTOR)
+        ),
+        Ok(Followed::Accepted { .. })
+    ));
 }
 
 #[test]

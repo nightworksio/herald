@@ -6,7 +6,9 @@
 mod deliver;
 mod documents;
 mod options;
+mod policy;
 
 pub use deliver::{ActivityPub, actor_profile};
 pub use documents::{Asked, FIRST, accept, actor_document, asked, create, note, webfinger};
 pub use options::{ActorOptions, ActorRouteOptions, Audience};
+pub use policy::{FollowerCaps, Mode, Policy};

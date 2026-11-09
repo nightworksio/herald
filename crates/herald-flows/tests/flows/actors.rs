@@ -6,7 +6,7 @@ use herald_flows::{Answered, Inbound};
 use herald_ports::Notes;
 
 use crate::harness::{Fault, Script};
-use crate::serving::{ACTOR, JSON, World, get, key, said};
+use crate::serving::{ACTOR, JSON, World, config_text, get, key, said};
 
 #[test]
 fn webfinger_names_an_actor_herald_serves_by_its_account_or_its_id() {
@@ -258,4 +258,23 @@ fn an_actor_s_followers_are_counted_and_never_listed() {
     assert_eq!(world.answer(&posted).reply.status, 405);
     let unread = World::failing(Fault::Subscribers);
     assert_eq!(unread.answer(&get(followers)).reply.status, 503);
+    let text = config_text().replace(
+        "outbox_page = 2\n",
+        "outbox_page = 2\nblock = [\"b.example\"]\n",
+    );
+    let blocking = World::with(
+        herald_config::load("herald.toml", &text, &|_| Err(String::new())).unwrap(),
+        Script::default(),
+    );
+    pollster::block_on(herald_ports::Subscriptions::subscribe(
+        &blocking.store.inner,
+        &herald_core::Subscription {
+            destination: herald_core::DestinationName::new("fedi"),
+            project: "php-mutation-gate".to_owned(),
+            subscriber: "https://b.example/users/bo".to_owned(),
+            inbox: None,
+        },
+    ))
+    .unwrap();
+    assert_eq!(json(&blocking.answer(&get(followers)))["totalItems"], 0);
 }

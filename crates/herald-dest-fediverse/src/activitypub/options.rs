@@ -2,6 +2,8 @@ use herald_core::{SecretRef, Symbols, WaitOptions};
 use schemars::JsonSchema;
 use serde::Deserialize;
 
+use super::policy::{FollowerCaps, Mode, Policy, unlisted};
+
 /// The longest name an actor takes, as Mastodon takes a username.
 const NAME: usize = 30;
 
@@ -24,6 +26,22 @@ pub struct ActorOptions {
     /// How many Notes one page of each actor's outbox holds, from 1 to 80;
     /// 20 where unset.
     pub outbox_page: Option<usize>,
+    /// Whom its actors federate with: `open`, everyone `block` does not
+    /// name, or `allowlist`, only those `allow` names.
+    #[serde(default)]
+    pub mode: Mode,
+    /// The servers and actors its actors never take a follow from or
+    /// deliver to: each a domain, naming its subdomains too, or an actor's
+    /// id.
+    #[serde(default)]
+    pub block: Vec<String>,
+    /// The servers and actors an `allowlist` federates with, written as
+    /// `block` writes them.
+    #[serde(default)]
+    pub allow: Vec<String>,
+    /// How many may follow each actor, in all and from any one server; a
+    /// follow past either is answered with a `Reject`.
+    pub followers: Option<FollowerCaps>,
 }
 
 impl ActorOptions {
@@ -32,14 +50,26 @@ impl ActorOptions {
     /// The most Notes an outbox page may hold: four times the default.
     pub const OUTBOX_MOST: usize = 4 * Self::OUTBOX_PAGE;
 
+    /// Whom its actors federate with, and how many may follow each.
+    #[must_use]
+    pub fn policy(&self) -> Policy {
+        Policy::new(
+            self.mode,
+            &self.block,
+            &self.allow,
+            self.followers.unwrap_or_default(),
+        )
+    }
+
     /// How many Notes one page of each actor's outbox holds.
     #[must_use]
     pub fn outbox_page(&self) -> usize {
         self.outbox_page.unwrap_or(Self::OUTBOX_PAGE)
     }
 
-    /// Whether the domain is a host alone, and an outbox page holds 1 to 80
-    /// Notes.
+    /// Whether the domain is a host alone, every entry of `block` and
+    /// `allow` is a domain or an actor's id, each follower cap is at least
+    /// 1, and an outbox page holds 1 to 80 Notes.
     ///
     /// # Errors
     ///
@@ -50,6 +80,18 @@ impl ActorOptions {
                 "\"{}\" is not a domain; give the host herald serves its actors on, such as \"herald.example\", with no scheme, port or path",
                 self.domain
             ));
+        }
+        if let Some(refused) = self
+            .block
+            .iter()
+            .chain(&self.allow)
+            .find_map(|entry| unlisted(entry))
+        {
+            return Err(refused);
+        }
+        let caps = self.followers.unwrap_or_default();
+        if caps.most == Some(0) || caps.per_domain == Some(0) {
+            return Err("followers.most and followers.per_domain take at least 1; leave one out for no limit".to_owned());
         }
         if !(1..=Self::OUTBOX_MOST).contains(&self.outbox_page()) {
             return Err(format!(

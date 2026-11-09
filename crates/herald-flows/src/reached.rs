@@ -50,6 +50,16 @@ impl Reached {
         }
     }
 
+    /// Whether `follower` may be delivered to: by an ActivityPub actor's
+    /// policy, and by every other destination, which follows no one.
+    #[must_use]
+    pub fn admits(&self, follower: &str) -> bool {
+        match self {
+            Self::ActivityPub(actor) => actor.policy().admits(follower),
+            _ => true,
+        }
+    }
+
     /// What it can do.
     #[must_use]
     pub fn profile(&self) -> Profile {

@@ -218,12 +218,24 @@ fn outbox_id(origin: &str, actor: &str) -> String {
 /// accepted as one.
 #[must_use]
 pub fn accept(origin: &str, actor: &str, follow: &Value) -> Value {
+    answer(origin, actor, follow, "Accept")
+}
+
+/// The `Reject` of `follow`, a `Follow` of the actor `actor` served at
+/// `origin` that its policy turns away, its id digested as an `Accept`'s is.
+#[must_use]
+pub(crate) fn reject(origin: &str, actor: &str, follow: &Value) -> Value {
+    answer(origin, actor, follow, "Reject")
+}
+
+/// The `kind`, `Accept` or `Reject`, of `follow`.
+fn answer(origin: &str, actor: &str, follow: &Value, kind: &str) -> Value {
     let id = actor_id(origin, actor);
     let followed = follow.get("id").and_then(Value::as_str).unwrap_or_default();
     json!({
         "@context": STREAMS,
-        "id": format!("{id}/accepts/{}", digest(followed)),
-        "type": "Accept",
+        "id": format!("{id}/{}s/{}", kind.to_ascii_lowercase(), digest(followed)),
+        "type": kind,
         "actor": id,
         "object": follow,
     })

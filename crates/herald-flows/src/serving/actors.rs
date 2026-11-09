@@ -146,7 +146,13 @@ pub(super) async fn counted<S: Store, C, G, V, H, P, K>(
         .subscribers(destination, served.actor())
         .await
     {
-        Ok(following) => replied(200, ACTIVITY_JSON, served.followers(following.len())),
+        Ok(following) => {
+            let admitted = following
+                .iter()
+                .filter(|kept| served.policy().admits(&kept.subscriber))
+                .count();
+            replied(200, ACTIVITY_JSON, served.followers(admitted))
+        }
         Err(error) => refusal(503, error.to_string()),
     }
 }
