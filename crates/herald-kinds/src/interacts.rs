@@ -3,7 +3,9 @@ use std::fmt;
 use std::ops::Deref;
 use std::sync::Arc;
 
-use herald_core::{Answering, Asked, Dialect, Room, SecretRef, Text};
+use herald_core::{
+    Answering, Asked, DestinationName, Dialect, Place, Room, Scheme, SecretRef, Text,
+};
 use herald_ports::{DynSecrets, Request, Response, Secret, SecretError};
 
 /// A destination that takes commands, with the secrets it needs resolved:
@@ -44,11 +46,109 @@ pub trait Interacts: fmt::Debug + Send + Sync + Any {
         None
     }
 
+    /// The scheme and secret a request to `endpoint` is verified with, where
+    /// it takes requests there; else what is not set to take them.
+    fn posted(&self, _endpoint: Endpoint) -> Option<Result<(Scheme, &str), &'static str>> {
+        None
+    }
+
+    /// What `post`, verified, says to the destination `destination`.
+    fn read(&self, _destination: &DestinationName, _post: Post<'_>) -> Read {
+        Read::Missing("such path")
+    }
+
+    /// The answer offering `projects` to a member typing one.
+    fn choices(&self, _projects: &[String]) -> String {
+        String::new()
+    }
+
     /// Itself, for code that reads one kind's own capabilities.
     fn as_any(&self) -> &dyn Any;
 
     /// Whether `other` is the same, taking commands the same way.
     fn same(&self, other: &dyn Any) -> bool;
+}
+
+/// Where herald takes requests carrying commands (ADR-0016).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Endpoint {
+    /// Commands posted one at a time, under `/interactions/`.
+    Posted,
+    /// Transactions a server pushes, under `/matrix/`.
+    Pushed,
+}
+
+/// A request to an endpoint, verified: its method, its path after the
+/// destination's name, and its body.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Post<'a> {
+    /// The method.
+    pub method: &'a str,
+    /// The path's segments after the destination's name.
+    pub path: &'a [&'a str],
+    /// The body.
+    pub body: &'a [u8],
+}
+
+/// What herald answers a request at once, as JSON.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Said {
+    /// The status.
+    pub status: u16,
+    /// The JSON body.
+    pub body: String,
+}
+
+impl Said {
+    /// `body`, answered `200 OK`.
+    #[must_use]
+    pub fn ok(body: impl Into<String>) -> Self {
+        Self {
+            status: 200,
+            body: body.into(),
+        }
+    }
+}
+
+/// What a verified request to an endpoint says.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Read {
+    /// Commands, each answered where its replying says, and `answer` said
+    /// at once.
+    Asked {
+        /// Each command and where its answer goes.
+        asked: Vec<(Asked, Replying)>,
+        /// What is said at once.
+        answer: Said,
+    },
+    /// A member typing a project at `place`, to be offered the projects
+    /// announced there that start with `typed`.
+    Completing {
+        /// Where it is typed.
+        place: Place,
+        /// What is typed so far.
+        typed: String,
+    },
+    /// What is said at once, and nothing more.
+    Said(Said),
+    /// Admitted under `delivery` before `then` is answered; a delivery
+    /// seen before is answered `replayed`.
+    Delivered {
+        /// The delivery's id, as the destination names it.
+        delivery: String,
+        /// What a replay is answered.
+        replayed: Said,
+        /// What the request says, once admitted.
+        then: Box<Read>,
+    },
+    /// A request of a kind herald does not answer, refused as it says.
+    Refused(String),
+    /// A request that could not be read, why; its delivery is released.
+    Unread(String),
+    /// A method the path does not take.
+    Unmethodical,
+    /// A path the endpoint does not serve, named as missing.
+    Missing(&'static str),
 }
 
 /// The secret `named` names, read through `secrets`, where it names one.

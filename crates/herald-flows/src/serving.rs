@@ -4,12 +4,12 @@ use herald_config::{App, Config, Source};
 use herald_core::{
     Asked, DestinationName, Event, Identity, Key, Scheme, SourceName, Standing, digest, same,
 };
-use herald_kinds::Replying;
+use herald_kinds::{Endpoint, Replying};
 use herald_ports::{Clock, Http, Keyring, Ledger, Secret, Secrets, Signer, Store, Verifier};
 use herald_sources_forge::{Forge, Hooked};
 
 use crate::announce::{Announced, Outcome, Ports, announce, announce_within};
-use crate::commanded::{INTERACTIONS, MATRIX, appserviced, commanded};
+use crate::commanded::{INTERACTIONS, MATRIX, commanded};
 use crate::following::{FollowError, Followed, followed};
 use crate::inbound::{Admission, Checking, Keys, Rejected, Verified, admitted, released, verified};
 use crate::interact::{Answer, interact, replied as replied_to};
@@ -399,7 +399,7 @@ pub async fn answer<S: Store, C: Clock, G: Signer, V: Verifier, H, P: Http, K: K
             }
             if let Some(destination) = path.strip_prefix(INTERACTIONS) {
                 return if method == "POST" {
-                    commanded(serving, destination, inbound).await
+                    commanded(serving, Endpoint::Posted, destination, "", inbound).await
                 } else {
                     unmethodical()
                 };
@@ -408,7 +408,7 @@ pub async fn answer<S: Store, C: Clock, G: Signer, V: Verifier, H, P: Http, K: K
                 .strip_prefix(MATRIX)
                 .and_then(|rest| rest.split_once('/'))
             {
-                return appserviced(serving, destination, rest, inbound).await;
+                return commanded(serving, Endpoint::Pushed, destination, rest, inbound).await;
             }
             if let Some(source) = path.strip_prefix(HOOKS) {
                 return if method == "POST" {

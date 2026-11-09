@@ -1,9 +1,12 @@
 use std::any::Any;
 
-use herald_core::{Answering, Dialect, Profile, Room, SecretRef, Symbols, Text, WaitOptions};
+use herald_core::{
+    Answering, DestinationName, Dialect, Profile, Room, Scheme, SecretRef, Symbols, Text,
+    WaitOptions,
+};
 use herald_kinds::{
-    Carried, DestinationConfig, DestinationKind, Fault, Interacted, Interacts, Placed, Placement,
-    Placing, Reached, Replying, optional, same,
+    Carried, DestinationConfig, DestinationKind, Endpoint, Fault, Interacted, Interacts, Placed,
+    Placement, Placing, Post, Reached, Read, Replying, Said, optional, same,
 };
 use herald_ports::{Boxed, DynSecrets, Request, Response, Secret, SecretError};
 use jiff::SignedDuration;
@@ -12,6 +15,17 @@ use crate::interact::{self, Interacting, took};
 use crate::interactions::{Interactions, Via};
 use crate::matrix::{self, Matrix};
 use crate::options::{DestinationOptions, RouteOptions};
+
+/// What a homeserver is answered for a call that went through.
+const EMPTY: &str = "{}";
+
+/// What a homeserver is answered for a user or room herald does not hold.
+fn unknown() -> Said {
+    Said {
+        status: 404,
+        body: r#"{"errcode":"M_NOT_FOUND"}"#.to_owned(),
+    }
+}
 
 /// The kind of a Matrix destination, as the config spells it.
 pub const KIND: &str = "matrix";
@@ -200,6 +214,54 @@ impl Interacts for Interacting {
 
     fn took(&self, response: &Response) -> Result<(), String> {
         took(response)
+    }
+
+    fn posted(&self, endpoint: Endpoint) -> Option<Result<(Scheme, &str), &'static str>> {
+        (endpoint == Endpoint::Pushed).then(|| {
+            self.homeserver_token()
+                .map(|token| (Scheme::Matrix, token.expose()))
+                .ok_or("application service for such a destination")
+        })
+    }
+
+    fn read(&self, destination: &DestinationName, post: Post<'_>) -> Read {
+        match (post.method, post.path) {
+            ("PUT", ["_matrix", "app", "v1", "transactions", transaction]) => Read::Delivered {
+                delivery: format!("{}/{transaction}", destination.as_str()),
+                replayed: Said::ok(EMPTY),
+                then: Box::new(match self.transaction(destination, post.body) {
+                    Ok(asked) if asked.is_empty() => Read::Said(Said::ok(EMPTY)),
+                    Ok(asked) => Read::Asked {
+                        asked: asked
+                            .into_iter()
+                            .map(|(asked, replying)| (asked, Replying::new(replying)))
+                            .collect(),
+                        answer: Said::ok(EMPTY),
+                    },
+                    Err(reason) => Read::Unread(reason.to_string()),
+                }),
+            },
+            ("GET", ["_matrix", "app", "v1", "users", user]) => {
+                let owned = user
+                    .strip_prefix('@')
+                    .and_then(|user| user.split_once(':'))
+                    .is_some_and(|(local, _)| local == self.sender());
+                Read::Said(if owned { Said::ok(EMPTY) } else { unknown() })
+            }
+            ("GET", ["_matrix", "app", "v1", "rooms", _]) => Read::Said(unknown()),
+            ("POST", ["_matrix", "app", "v1", "ping"]) => Read::Said(Said::ok(EMPTY)),
+            (
+                _,
+                [
+                    "_matrix",
+                    "app",
+                    "v1",
+                    "transactions" | "users" | "rooms" | "ping",
+                    ..,
+                ],
+            ) => Read::Unmethodical,
+            _ => Read::Missing("such path"),
+        }
     }
 
     fn as_any(&self) -> &dyn Any {

@@ -2,16 +2,17 @@ use std::any::Any;
 use std::future::ready;
 
 use herald_core::{
-    Answering, Asked, Dialect, Measure, Profile, Room, SecretRef, Symbols, Text, WaitOptions,
+    Answering, Asked, DestinationName, Dialect, Measure, Profile, Room, Scheme, SecretRef, Symbols,
+    Text, WaitOptions,
 };
 use herald_kinds::{
-    Carried, DestinationConfig, DestinationKind, Fault, Interacted, Interacts, Placed, Placement,
-    Placing, Reached, Replying, same,
+    Carried, DestinationConfig, DestinationKind, Endpoint, Fault, Interacted, Interacts, Placed,
+    Placement, Placing, Post, Reached, Read, Replying, Said, same,
 };
 use herald_ports::{Boxed, DynSecrets, Request, Response, Secret, SecretError};
 
 use crate::discord::{self, Credential, Discord};
-use crate::interact::{self, Interacting, MESSAGE, took};
+use crate::interact::{self, Interacting, MESSAGE, Received, choices, pong, took};
 use crate::interactions::{Interactions, Subscribe, Via};
 use crate::options::{DestinationOptions, RouteOptions};
 
@@ -248,6 +249,38 @@ impl Interacts for Interacting {
             .replies
             .public(asked.command, asked.share);
         Some(self.defer(replying, public))
+    }
+
+    fn posted(&self, endpoint: Endpoint) -> Option<Result<(Scheme, &str), &'static str>> {
+        (endpoint == Endpoint::Posted).then(|| {
+            self.key()
+                .map(|key| (Scheme::Discord, key))
+                .ok_or("interactions for such a destination")
+        })
+    }
+
+    fn read(&self, destination: &DestinationName, post: Post<'_>) -> Read {
+        match self.received(destination, post.body) {
+            Ok(Received::Ping) => Read::Said(Said::ok(pong())),
+            Ok(Received::Completing { place, typed, .. }) => Read::Completing { place, typed },
+            Ok(Received::Asked { asked, replying }) => {
+                let public = Self::answering(self)
+                    .replies
+                    .public(asked.command, asked.share);
+                Read::Asked {
+                    asked: vec![(asked, Replying::new(replying))],
+                    answer: Said::ok(interact::deferred(public)),
+                }
+            }
+            Ok(Received::Ignored) => {
+                Read::Refused("the interaction is of a kind herald does not answer".to_owned())
+            }
+            Err(reason) => Read::Unread(reason.to_string()),
+        }
+    }
+
+    fn choices(&self, projects: &[String]) -> String {
+        choices(projects)
     }
 
     fn as_any(&self) -> &dyn Any {

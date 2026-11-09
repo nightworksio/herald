@@ -103,6 +103,27 @@ fn an_interacting_destination_is_its_kind_equal_only_to_the_same_and_keeps_every
     );
     assert_eq!(interacted.api(), "https://plain.example");
     assert_eq!(interacted.sessions(), None);
+    assert_eq!(interacted.posted(Endpoint::Posted), None);
+    assert_eq!(interacted.posted(Endpoint::Pushed), None);
+    assert_eq!(interacted.choices(&["herald".to_owned()]), "");
+    assert_eq!(
+        interacted.read(
+            &DestinationName::new("plain"),
+            Post {
+                method: "POST",
+                path: &[],
+                body: b"{}",
+            },
+        ),
+        Read::Missing("such path")
+    );
+    assert_eq!(
+        Said::ok("{}"),
+        Said {
+            status: 200,
+            body: "{}".to_owned()
+        }
+    );
     assert!(interacted.answering().takes(Command::Latest));
     assert_eq!(interacted.room().0, Dialect::Plain);
     assert_eq!(interacted.took(&response(200)), Ok(()));

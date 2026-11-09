@@ -1,15 +1,16 @@
 use std::any::Any;
 
 use herald_core::{
-    Answering, Dialect, Measure, Profile, Room, SecretRef, Symbols, Text, WaitOptions,
+    Answering, DestinationName, Dialect, Measure, Profile, Room, Scheme, SecretRef, Symbols, Text,
+    WaitOptions,
 };
 use herald_kinds::{
-    Carried, DestinationConfig, DestinationKind, Fault, Interacted, Interacts, Placed, Placement,
-    Placing, Reached, Replying, optional, same,
+    Carried, DestinationConfig, DestinationKind, Endpoint, Fault, Interacted, Interacts, Placed,
+    Placement, Placing, Post, Reached, Read, Replying, Said, optional, same,
 };
 use herald_ports::{Boxed, DynSecrets, Request, Response, Secret, SecretError};
 
-use crate::interact::{self, Interacting, SECTION, took};
+use crate::interact::{self, Interacting, Received, SECTION, took};
 use crate::interactions::{Interactions, Via};
 use crate::options::{DestinationOptions, RouteOptions};
 use crate::slack::{self, Credential, Slack};
@@ -229,6 +230,26 @@ impl Interacts for Interacting {
 
     fn took(&self, response: &Response) -> Result<(), String> {
         took(response)
+    }
+
+    fn posted(&self, endpoint: Endpoint) -> Option<Result<(Scheme, &str), &'static str>> {
+        (endpoint == Endpoint::Posted).then(|| {
+            self.signing_secret()
+                .map(|signing| (Scheme::Slack, signing.expose()))
+                .ok_or("commands for such a destination")
+        })
+    }
+
+    fn read(&self, destination: &DestinationName, post: Post<'_>) -> Read {
+        match self.received(destination, post.body) {
+            Ok(Received::Asked { asked, replying }) => Read::Asked {
+                asked: vec![(*asked, Replying::new(replying))],
+                answer: Said::ok(""),
+            },
+            Ok(Received::Usage) => Read::Said(Said::ok(self.usage())),
+            Ok(Received::Ignored) => Read::Said(Said::ok("")),
+            Err(reason) => Read::Unread(reason.to_string()),
+        }
     }
 
     fn as_any(&self) -> &dyn Any {
