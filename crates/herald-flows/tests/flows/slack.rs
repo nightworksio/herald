@@ -154,7 +154,7 @@ fn a_slack_route_keeps_no_thread_chores_and_its_channel_lists_no_threads() {
         Chored::Dropped("Slack cannot archive or lock a thread".to_owned())
     );
     assert_eq!(script.seen(), Vec::<String>::new());
-    let reached = Reached::Slack(herald_dest_slack::Slack::new(
+    let reached = Reached::new(herald_dest_slack::Slack::new(
         herald_dest_slack::Credential::Bot(herald_ports::Secret::new(
             "HERALD_SLACK_TOKEN",
             "xoxb-t0ken",
@@ -167,10 +167,10 @@ fn a_slack_route_keeps_no_thread_chores_and_its_channel_lists_no_threads() {
     ));
     assert_eq!(reached.api(), "https://slack.com/api");
     assert_eq!(reached.profile(), herald_dest_slack::profile(true));
-    let listed = pollster::block_on(reached.posts(&script).threads(&Marker::of(&[1]))).unwrap();
+    let listed = pollster::block_on(reached.read(&script).threads(&Marker::of(&[1]))).unwrap();
     assert_eq!(listed, []);
     let key = Key::derive(&RouteId::new("slacked"), &Identity::new("1"));
-    let read = pollster::block_on(reached.posts(&script).entry(&key, &Marker::of(&[1])));
+    let read = pollster::block_on(reached.read(&script).entry(&key, &Marker::of(&[1])));
     let Err(herald_ports::MarkersError::Unreadable { reason }) = read else {
         panic!("{read:?}");
     };

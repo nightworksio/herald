@@ -6,7 +6,6 @@ use herald_ports::{Http, Signer, Store, Subscriptions};
 
 use crate::inbound::{Checking, Verified, fetched};
 use crate::prepare::{Connected, PreparedRoute};
-use crate::reached::Reached;
 
 /// What a follow, or the undoing of one, did.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -88,13 +87,10 @@ fn serving<'a, H>(
     connected: &'a Connected<H>,
     id: &str,
 ) -> Option<(&'a PreparedRoute, &'a ActivityPub, &'a H)> {
-    connected
-        .routes
-        .iter()
-        .find_map(|(route, http)| match &route.reached {
-            Reached::ActivityPub(actor) if actor.id() == id => Some((route, actor, http)),
-            _ => None,
-        })
+    connected.routes.iter().find_map(|(route, http)| {
+        let actor = route.reached.of::<ActivityPub>()?;
+        (actor.id() == id).then_some((route, actor, http))
+    })
 }
 
 /// Every follower `actor` keeps on `destination`, waiting or not.

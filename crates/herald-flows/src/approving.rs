@@ -5,7 +5,6 @@ use jiff::Timestamp;
 
 use crate::following::{FollowError, Followed, following, kept};
 use crate::prepare::Connected;
-use crate::reached::Reached;
 
 /// What the operator decides of a follow waiting for approval.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -26,13 +25,10 @@ fn served<'a, H>(
     connected
         .routes
         .iter()
-        .find_map(|(route, http)| match &route.reached {
-            Reached::ActivityPub(served)
-                if served.actor() == actor && &route.config.route.destination == destination =>
-            {
-                Some((served, http))
-            }
-            _ => None,
+        .find_map(|(route, http)| {
+            let served = route.reached.of::<ActivityPub>()?;
+            (served.actor() == actor && &route.config.route.destination == destination)
+                .then_some((served, http))
         })
         .ok_or_else(|| {
             FollowError::Unknown(format!(

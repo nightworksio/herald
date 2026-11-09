@@ -7,6 +7,7 @@ mod deliver;
 mod documents;
 mod options;
 mod policy;
+mod reach;
 
 pub use deliver::{ActivityPub, actor_profile};
 pub use documents::{

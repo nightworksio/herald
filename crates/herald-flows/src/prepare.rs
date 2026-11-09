@@ -181,7 +181,7 @@ impl<H> Connected<H> {
 impl<H: Http> Connected<H> {
     /// The store the posts of every route that reads them back make, its
     /// markers computed by `signer` (ADR-0005).
-    pub fn marked<G: Signer>(&self, signer: G) -> MarkersStore<Posts<'_, H>, G> {
+    pub fn marked<G: Signer>(&self, signer: G) -> MarkersStore<Posts<'_>, G> {
         let routes = self
             .routes
             .iter()
@@ -189,7 +189,7 @@ impl<H: Http> Connected<H> {
             .map(|(route, http)| MarkedRoute {
                 route: route.config.route.id.clone(),
                 thread: route.config.route.delivery.thread.clone(),
-                markers: route.reached.posts(http),
+                markers: route.reached.read(http),
                 key: route.marker_key.clone(),
             })
             .collect();
@@ -275,7 +275,7 @@ impl Resolved<'_> {
                 } else {
                     Credential::Webhook(secret)
                 };
-                Some(Reached::Discord(
+                Some(Reached::new(
                     Discord::new(credential, placed.clone(), reached.api.as_deref())
                         .reading_back(reached.read_back.unwrap_or_default())
                         .waiting(self.destination.waits())
@@ -289,20 +289,18 @@ impl Resolved<'_> {
                         ),
                 ))
             }
-            (Destination::Mastodon(reached), RouteOptions::Mastodon(placed)) => {
-                Some(Reached::Mastodon(
-                    Mastodon::new(&reached.server, secret, placed.clone())
-                        .reading_back(reached.read_back.unwrap_or_default())
-                        .waiting(self.destination.waits()),
-                ))
-            }
-            (Destination::Matrix(reached), RouteOptions::Matrix(placed)) => Some(Reached::Matrix(
+            (Destination::Mastodon(reached), RouteOptions::Mastodon(placed)) => Some(Reached::new(
+                Mastodon::new(&reached.server, secret, placed.clone())
+                    .reading_back(reached.read_back.unwrap_or_default())
+                    .waiting(self.destination.waits()),
+            )),
+            (Destination::Matrix(reached), RouteOptions::Matrix(placed)) => Some(Reached::new(
                 Matrix::new(&reached.homeserver, secret, placed.clone())
                     .reading_back(reached.read_back.unwrap_or_default())
                     .waiting(self.destination.waits()),
             )),
             (Destination::ActivityPub(reached), RouteOptions::ActivityPub(placed)) => {
-                Some(Reached::ActivityPub(
+                Some(Reached::new(
                     ActivityPub::new(&reached.domain, self.base, secret, placed.clone())
                         .waiting(self.destination.waits())
                         .paging(reached.outbox_page())
@@ -315,7 +313,7 @@ impl Resolved<'_> {
                 } else {
                     herald_dest_slack::Credential::Webhook(secret)
                 };
-                Some(Reached::Slack(
+                Some(Reached::new(
                     Slack::new(credential, placed.clone(), reached.api.as_deref())
                         .on(reached.domain.unwrap_or_default())
                         .in_team(reached.team.as_deref())
@@ -608,7 +606,7 @@ mod tests {
                 &discord,
                 &RouteOptions::Discord(herald_dest_discord::RouteOptions::default())
             ),
-            Some(Reached::Discord(
+            Some(Reached::new(
                 Discord::new(
                     Credential::Bot(secret()),
                     herald_dest_discord::RouteOptions::default(),
@@ -630,7 +628,7 @@ mod tests {
                 &slack,
                 &RouteOptions::Slack(herald_dest_slack::RouteOptions::default())
             ),
-            Some(Reached::Slack(
+            Some(Reached::new(
                 Slack::new(
                     herald_dest_slack::Credential::Bot(secret()),
                     herald_dest_slack::RouteOptions::default(),
@@ -643,7 +641,7 @@ mod tests {
         );
         assert_eq!(
             reached(&matrix, &RouteOptions::Matrix(room.clone())),
-            Some(Reached::Matrix(
+            Some(Reached::new(
                 Matrix::new("https://matrix.example", secret(), room).reading_back(pages)
             ))
         );
@@ -652,7 +650,7 @@ mod tests {
                 &mastodon,
                 &RouteOptions::Mastodon(herald_dest_fediverse::RouteOptions::default())
             ),
-            Some(Reached::Mastodon(
+            Some(Reached::new(
                 Mastodon::new(
                     "https://mastodon.example",
                     secret(),
@@ -695,7 +693,7 @@ mod tests {
             serde_json::from_value(json!({ "actor": "herald" })).unwrap();
         assert_eq!(
             reached(&matrix, &RouteOptions::Matrix(room.clone())),
-            Some(Reached::Matrix(
+            Some(Reached::new(
                 Matrix::new("https://matrix.example", secret(), room).waiting(herald_core::Waits {
                     outage,
                     ..herald_core::Waits::DEFAULT
@@ -704,7 +702,7 @@ mod tests {
         );
         assert_eq!(
             reached(&mastodon, &RouteOptions::Mastodon(toot.clone())),
-            Some(Reached::Mastodon(
+            Some(Reached::new(
                 Mastodon::new("https://mastodon.example", secret(), toot).waiting(
                     herald_core::Waits {
                         outage,
@@ -715,7 +713,7 @@ mod tests {
         );
         assert_eq!(
             reached(&actor, &RouteOptions::ActivityPub(named.clone())),
-            Some(Reached::ActivityPub(
+            Some(Reached::new(
                 ActivityPub::new("herald.example", "", secret(), named).waiting(
                     herald_core::Waits {
                         outage,

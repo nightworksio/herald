@@ -12,7 +12,6 @@ use super::{
 };
 use crate::inbound::{Checking, activity_verified, admitted};
 use crate::prepare::Connected;
-use crate::reached::Reached;
 
 /// The actor herald serves as `name`.
 pub(super) fn actor<'a, H>(
@@ -20,27 +19,20 @@ pub(super) fn actor<'a, H>(
     name: &str,
     host: &str,
 ) -> Option<(&'a ActivityPub, &'a DestinationName)> {
-    connected
-        .routes
-        .iter()
-        .find_map(|(route, _)| match &route.reached {
-            Reached::ActivityPub(actor) if actor.actor() == name && actor.domain() == host => {
-                Some((actor, &route.config.route.destination))
-            }
-            _ => None,
-        })
+    connected.routes.iter().find_map(|(route, _)| {
+        let actor = route.reached.of::<ActivityPub>()?;
+        (actor.actor() == name && actor.domain() == host)
+            .then_some((actor, &route.config.route.destination))
+    })
 }
 
 /// The domain from herald's config that is `host`, when herald serves an
 /// actor on it.
 pub(super) fn domain<'a, H>(connected: &'a Connected<H>, host: &str) -> Option<&'a str> {
-    connected
-        .routes
-        .iter()
-        .find_map(|(route, _)| match &route.reached {
-            Reached::ActivityPub(actor) if actor.domain() == host => Some(actor.domain()),
-            _ => None,
-        })
+    connected.routes.iter().find_map(|(route, _)| {
+        let actor = route.reached.of::<ActivityPub>()?;
+        (actor.domain() == host).then_some(actor.domain())
+    })
 }
 
 /// What WebFinger answers for the resource `query` asks for: an actor herald
@@ -52,18 +44,11 @@ pub(super) fn fingered<H>(connected: &Connected<H>, query: Option<&str>) -> Answ
         .find_map(|pair| pair.strip_prefix("resource="))
         .and_then(decoded)
         .unwrap_or_default();
-    let found = connected
-        .routes
-        .iter()
-        .find_map(|(route, _)| match &route.reached {
-            Reached::ActivityPub(actor)
-                if resource == format!("acct:{}@{}", actor.actor(), actor.domain())
-                    || resource == actor.id() =>
-            {
-                Some(actor)
-            }
-            _ => None,
-        });
+    let found = connected.routes.iter().find_map(|(route, _)| {
+        let actor = route.reached.of::<ActivityPub>()?;
+        (resource == format!("acct:{}@{}", actor.actor(), actor.domain()) || resource == actor.id())
+            .then_some(actor)
+    });
     found.map_or_else(
         || missing("such actor"),
         |actor| replied(200, JRD, actor.finger()),

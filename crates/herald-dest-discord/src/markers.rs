@@ -18,13 +18,13 @@ const DEFAULT_TYPE: u64 = 0;
 #[derive(Debug)]
 pub struct DiscordMarkers<'a, H> {
     discord: &'a Discord,
-    http: &'a H,
+    http: H,
 }
 
 impl<'a, H: Http> DiscordMarkers<'a, H> {
     /// The markers in the channel `discord` posts to, read through `http`.
     #[must_use]
-    pub fn new(discord: &'a Discord, http: &'a H) -> Self {
+    pub fn new(discord: &'a Discord, http: H) -> Self {
         Self { discord, http }
     }
 

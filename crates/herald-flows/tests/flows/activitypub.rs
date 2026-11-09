@@ -190,7 +190,7 @@ fn an_actor_whose_followers_cannot_be_read_stops_before_anything_is_sent() {
 
 #[test]
 fn an_actor_reads_no_posts_back_and_delivers_to_its_own_followers() {
-    let reached = Reached::ActivityPub(herald_dest_fediverse::ActivityPub::new(
+    let reached = Reached::new(herald_dest_fediverse::ActivityPub::new(
         "herald.example",
         "",
         herald_ports::Secret::new("HERALD_ACTIVITYPUB_KEY", "the-key"),
@@ -202,7 +202,7 @@ fn an_actor_reads_no_posts_back_and_delivers_to_its_own_followers() {
         },
     ));
     let script = Script::default();
-    let posts = reached.posts(&script);
+    let posts = reached.read(&script);
     let unread = MarkersError::Unreadable {
         reason: "herald's ActivityPub actor reads no posts back".to_owned(),
     };

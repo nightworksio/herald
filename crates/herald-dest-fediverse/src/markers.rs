@@ -16,14 +16,14 @@ const HREF: &str = "href=\"";
 #[derive(Debug)]
 pub struct MastodonMarkers<'a, H> {
     mastodon: &'a Mastodon,
-    http: &'a H,
+    http: H,
 }
 
 impl<'a, H: Http> MastodonMarkers<'a, H> {
     /// The markers in the statuses of the account `mastodon` posts as, read
     /// through `http`.
     #[must_use]
-    pub fn new(mastodon: &'a Mastodon, http: &'a H) -> Self {
+    pub fn new(mastodon: &'a Mastodon, http: H) -> Self {
         Self { mastodon, http }
     }
 

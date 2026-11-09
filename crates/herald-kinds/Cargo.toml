@@ -1,0 +1,22 @@
+[package]
+name = "herald-kinds"
+description = "What a kind of destination, source or store is to herald: the traits each kind's crate implements, read through one registry"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish.workspace = true
+
+[dependencies]
+herald-core.workspace = true
+herald-ports.workspace = true
+jiff.workspace = true
+
+[dev-dependencies]
+herald-testing.workspace = true
+pollster.workspace = true
+
+[lints]
+workspace = true
