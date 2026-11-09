@@ -1,7 +1,9 @@
 use std::any::Any;
 
 use herald_core::{Answering, Profile, SecretRef, Symbols, WaitOptions};
-use herald_kinds::{Carried, DestinationConfig, Placed, Placement, Reached, same};
+use herald_kinds::{
+    Carried, DestinationConfig, DestinationKind, Fault, Placed, Placement, Placing, Reached, same,
+};
 use herald_ports::Secret;
 
 use crate::interactions::{Interactions, Via};
@@ -109,4 +111,63 @@ impl Placement for RouteOptions {
     fn same(&self, other: &dyn Any) -> bool {
         same(self, other)
     }
+}
+
+/// Slack, as a kind of destination.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SlackKind {}
+
+impl DestinationKind for SlackKind {
+    const NAME: &'static str = KIND;
+    const DESCRIPTION: &'static str = "Slack, by bot token or webhook.";
+    const LABEL: &'static str = "Slack";
+    const ROUTE: &'static str = "SlackRoute";
+    const ROUTE_DESCRIPTION: &'static str = "A route to a Slack destination.";
+
+    type Options = DestinationOptions;
+    type Route = RouteOptions;
+
+    fn checked(
+        options: DestinationOptions,
+        _read: &dyn Fn(&str) -> Result<String, String>,
+    ) -> Result<(DestinationOptions, Vec<Fault>), Fault> {
+        options.bot().map_err(Fault::here)?;
+        options.team().map_err(Fault::here)?;
+        let faults = options
+            .interactions
+            .as_ref()
+            .and_then(|interactions| interactions.check().err())
+            .map(|message| Fault::at("interactions", message))
+            .into_iter()
+            .collect();
+        Ok((options, faults))
+    }
+
+    fn placed(
+        options: &DestinationOptions,
+        route: &RouteOptions,
+        placing: Placing<'_>,
+    ) -> Vec<Fault> {
+        let mut faults: Vec<Fault> = route.check().err().map(Fault::here).into_iter().collect();
+        if options.token.is_some() && route.channel.is_none() {
+            faults.push(Fault::here(
+                "a Slack bot posts to a channel; give channel = \"<the channel's id>\"",
+            ));
+        }
+        if route.subscribe.is_some()
+            && let Err(message) = subscribed(options, placing)
+        {
+            faults.push(Fault::at("subscribe", message));
+        }
+        faults
+    }
+}
+
+fn subscribed(options: &DestinationOptions, placing: Placing<'_>) -> Result<(), String> {
+    if !placing.subscribers {
+        return Err(
+            "a member subscribes to be mentioned; add mentions = { subscribers = true } to the route".to_owned(),
+        );
+    }
+    placing.answers_subscribing(options.answering())
 }

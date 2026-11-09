@@ -1,6 +1,8 @@
 //! `[store]`'s `keep_*` keys: how long the store keeps what herald records,
 //! read with their defaults, and every value it cannot keep named by key.
 
+mod common;
+
 #[cfg(test)]
 mod retention {
     use herald_config::load;
@@ -33,6 +35,7 @@ body = "{{ event.body }}"
             "herald.toml",
             &format!("version = 1\n\n[store]\n{store}\n{REST}"),
             &|name| Err(format!("{name}: no such file")),
+            &crate::common::kinds(),
         )
         .map_err(|errors| errors.to_string())
     }

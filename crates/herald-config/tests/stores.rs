@@ -1,5 +1,7 @@
 //! `[store]` read into the store it names, with that store's options.
 
+mod common;
+
 #[cfg(test)]
 mod stores {
     use herald_config::{Store, load};
@@ -10,6 +12,7 @@ mod stores {
             "herald.toml",
             &format!("version = 1\n[store]\nkind = \"sqlite\"\n{options}"),
             &|_| Err(String::new()),
+            &crate::common::kinds(),
         )
         .map(|config| config.store)
         .map_err(|errors| errors.to_string())
@@ -43,6 +46,7 @@ mod stores {
                 "herald.toml",
                 &format!("version = 1\n[store]\nkind = \"postgres\"\n{options}"),
                 &|_| Err(String::new()),
+                &crate::common::kinds(),
             )
             .map_err(|errors| errors.to_string())
         };
@@ -91,6 +95,7 @@ mod stores {
             "herald.toml",
             &format!("version = 1\n[store]\nkind = \"{kind}\"\n{options}"),
             &|_| Err(String::new()),
+            &crate::common::kinds(),
         )
         .map_err(|errors| errors.to_string())
     }

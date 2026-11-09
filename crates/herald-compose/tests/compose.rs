@@ -192,7 +192,13 @@ mod compose {
 
     fn config(store: &str) -> Config {
         let text = format!("version = 1\n[store]\n{}\n", sealed(store));
-        load("herald.toml", &text, &|_| Err(String::new())).unwrap()
+        load(
+            "herald.toml",
+            &text,
+            &|_| Err(String::new()),
+            &herald_compose::kinds(),
+        )
+        .unwrap()
     }
 
     fn kept(host: &Hosting, store: &str) -> Result<&'static str, String> {
@@ -380,7 +386,13 @@ mod compose {
             let text = format!(
                 "version = 1\n[store]\nkind = \"deno-kv\"\n[server.keys]\ncache = \"{keys}\"\n"
             );
-            let config = load("herald.toml", &text, &|_| Err(String::new())).unwrap();
+            let config = load(
+                "herald.toml",
+                &text,
+                &|_| Err(String::new()),
+                &herald_compose::kinds(),
+            )
+            .unwrap();
             let composed =
                 pollster::block_on(Composed::new(Hosting::default(), config, &EVERY, "test"))
                     .unwrap();
@@ -446,7 +458,13 @@ channel = "323456789012345678"
 template = "t"
 "#
             );
-            let config = load("herald.toml", &text, &|_| Err(String::new())).unwrap();
+            let config = load(
+                "herald.toml",
+                &text,
+                &|_| Err(String::new()),
+                &herald_compose::kinds(),
+            )
+            .unwrap();
             let host = Hosting {
                 secrets: FakeSecrets::default().with("TOKEN", "t"),
                 ..Hosting::default()
@@ -466,7 +484,13 @@ template = "t"
     #[test]
     fn a_round_asked_while_one_of_its_kind_runs_does_nothing() {
         let text = "version = 1\n[store]\nkind = \"git-branch\"\nkey = { secret = \"HERALD_STORE_KEY\" }\n[sources.gate]\nkind = \"github\"\nrepository = \"cli/cli\"\n";
-        let config = load("herald.toml", text, &|_| Err(String::new())).unwrap();
+        let config = load(
+            "herald.toml",
+            text,
+            &|_| Err(String::new()),
+            &herald_compose::kinds(),
+        )
+        .unwrap();
         let composed = pollster::block_on(Composed::new(github(), config, &EVERY, "test")).unwrap();
         let (swept, unswept) =
             pollster::block_on(futures_util::future::join(composed.poll(), composed.poll()));
@@ -502,7 +526,13 @@ template = "t"
                     "version = 1\n[store]\n{}\n[server.keys]\ncache = \"{keys}\"\n",
                     sealed(store)
                 );
-                let config = load("herald.toml", &text, &|_| Err(String::new())).unwrap();
+                let config = load(
+                    "herald.toml",
+                    &text,
+                    &|_| Err(String::new()),
+                    &herald_compose::kinds(),
+                )
+                .unwrap();
                 let composed =
                     pollster::block_on(Composed::new(github(), config, &EVERY, "test")).unwrap();
                 let health = Inbound {
@@ -614,7 +644,13 @@ actor = "herald"
 title = "{{ event.title }}"
 body = "{{ event.body }}"
 "#;
-        let config = load("herald.toml", text, &|_| Err(String::new())).unwrap();
+        let config = load(
+            "herald.toml",
+            text,
+            &|_| Err(String::new()),
+            &herald_compose::kinds(),
+        )
+        .unwrap();
         let host = Hosting {
             secrets: FakeSecrets::default().with("KEY", "k"),
             ..Hosting::default()
@@ -658,7 +694,13 @@ body = "{{{{ event.body }}}}"
 "#,
             herald_core::digest("app-token")
         );
-        let config = load("herald.toml", &text, &|_| Err(String::new())).unwrap();
+        let config = load(
+            "herald.toml",
+            &text,
+            &|_| Err(String::new()),
+            &herald_compose::kinds(),
+        )
+        .unwrap();
         let host = Hosting {
             secrets: FakeSecrets::default().with("TOKEN", "t"),
             ..Hosting::default()
@@ -721,7 +763,7 @@ body = "{{{{ event.body }}}}"
             ),
         ] {
             let text = format!("version = 1\n[store]\nkind = \"deno-kv\"\n{rest}");
-            let config = load("herald.toml", &text, &|_| Err(String::new())).unwrap();
+            let config = load("herald.toml", &text, &|_| Err(String::new()), &herald_compose::kinds()).unwrap();
             let host = Hosting {
                 secrets: if missing == "TOKEN" {
                     FakeSecrets::default()

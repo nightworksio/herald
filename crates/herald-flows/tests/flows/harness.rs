@@ -43,7 +43,13 @@ title = "📦 {{{{ event.project }}}} {{{{ event.version }}}}"
 body = "{{% if event.version == 'boom' %}}{{{{ nothing.here }}}}{{% endif %}}{{{{ event.body }}}}"
 "#
     );
-    load("herald.toml", &text, &|_| Err("no file".to_owned())).unwrap()
+    load(
+        "herald.toml",
+        &text,
+        &|_| Err("no file".to_owned()),
+        &crate::harness::kinds(),
+    )
+    .unwrap()
 }
 
 pub(crate) fn event(version: &str) -> Event {
@@ -716,4 +722,20 @@ impl Keeper for Refusing {
     fn skipped(&self) -> Vec<String> {
         Vec::new()
     }
+}
+
+/// Every destination kind herald ships, in the order herald lists them.
+pub fn kinds() -> herald_config::Kinds {
+    herald_config::Kinds::new()
+        .destination::<herald_dest_discord::DiscordKind>()
+        .destination::<herald_dest_fediverse::MastodonKind>()
+        .destination::<herald_dest_matrix::MatrixKind>()
+        .destination::<herald_dest_slack::SlackKind>()
+        .destination::<herald_dest_fediverse::ActorKind>()
+}
+
+/// `text`, loaded as `herald.toml` with every kind herald ships, where it
+/// names no other file.
+pub fn loaded(text: &str) -> herald_config::Config {
+    herald_config::load("herald.toml", text, &|_| Err(String::new()), &kinds()).unwrap()
 }

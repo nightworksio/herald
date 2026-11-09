@@ -338,7 +338,13 @@ fn a_matrix_registration_holds_two_new_tokens_and_reaches_herald_by_destination(
         synced.err,
         "synced reads commands by syncing, so the homeserver installs nothing\n"
     );
-    let config = herald_config::load("herald.toml", &config(""), &|_| Err(String::new())).unwrap();
+    let config = herald_config::load(
+        "herald.toml",
+        &config(""),
+        &|_| Err(String::new()),
+        &herald_compose::kinds(),
+    )
+    .unwrap();
     let mut out = Vec::new();
     assert_eq!(
         setup::matrix(

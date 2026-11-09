@@ -10,10 +10,11 @@ use toml::de::{DeTable, DeValue};
 
 use super::apps::Named;
 use super::{Loader, Value, Written, list};
-use herald_kinds::{Destination, Placed};
+use herald_kinds::{Destination, Placed, Placing};
 
 use crate::config::{RouteConfig, Source};
 use crate::file::{ROUTE_KEYS, RouteFile};
+use crate::kinds::At;
 
 /// A route as its keys say, before its templates are compiled.
 pub(super) struct Read {
@@ -80,79 +81,15 @@ impl Loader<'_> {
         sound: &mut bool,
     ) -> Option<(Placed, &'static str)> {
         let span = route.id.span();
-        Some(
-            if let Some(reached) = reached.of::<herald_dest_discord::DestinationOptions>() {
-                let options = self.typed::<herald_dest_discord::RouteOptions>(rest, path)?;
-                if let Err(message) = options.check() {
-                    self.error(&span, path, message);
-                    *sound = false;
-                }
-                if reached.token.is_some() && options.channel.is_none() {
-                    self.error(
-                        &span,
-                        path,
-                        "a Discord bot posts to a channel; give channel = \"<the channel's id>\"",
-                    );
-                    *sound = false;
-                }
-                if let Some(subscribe) = &options.subscribe
-                    && let Err(message) = discord_subscribe(reached, subscribe, destination)
-                {
-                    self.error(&span, &format!("{path}.subscribe"), message);
-                    *sound = false;
-                }
-                (Placed::new(options), "Discord")
-            } else if reached
-                .of::<herald_dest_fediverse::DestinationOptions>()
-                .is_some()
-            {
-                let options = self.typed::<herald_dest_fediverse::RouteOptions>(rest, path)?;
-                if let Err(message) = options.check() {
-                    self.error(&span, path, message);
-                    *sound = false;
-                }
-                (Placed::new(options), "Mastodon")
-            } else if reached
-                .of::<herald_dest_matrix::DestinationOptions>()
-                .is_some()
-            {
-                let options = self.typed::<herald_dest_matrix::RouteOptions>(rest, path)?;
-                if let Err(message) = options.check() {
-                    self.error(&span, path, message);
-                    *sound = false;
-                }
-                (Placed::new(options), "Matrix")
-            } else if let Some(reached) = reached.of::<herald_dest_slack::DestinationOptions>() {
-                let options = self.typed::<herald_dest_slack::RouteOptions>(rest, path)?;
-                if let Err(message) = options.check() {
-                    self.error(&span, path, message);
-                    *sound = false;
-                }
-                if reached.token.is_some() && options.channel.is_none() {
-                    self.error(
-                        &span,
-                        path,
-                        "a Slack bot posts to a channel; give channel = \"<the channel's id>\"",
-                    );
-                    *sound = false;
-                }
-                if options.subscribe.is_some()
-                    && let Err(message) =
-                        slack_subscribe(reached, route.mentions.subscribers, destination)
-                {
-                    self.error(&span, &format!("{path}.subscribe"), message);
-                    *sound = false;
-                }
-                (Placed::new(options), "Slack")
-            } else {
-                let options = self.typed::<herald_dest_fediverse::ActorRouteOptions>(rest, path)?;
-                if let Err(message) = options.check() {
-                    self.error(&span, path, message);
-                    *sound = false;
-                }
-                (Placed::new(options), "herald's ActivityPub actor")
-            },
-        )
+        let kind = self.kinds.destination_named(reached.kind())?;
+        let placing = Placing {
+            destination: destination.as_str(),
+            subscribers: route.mentions.subscribers,
+        };
+        let (placed, name, clean) =
+            kind.place(self, reached, rest, At { path, span: &span }, placing)?;
+        *sound &= clean;
+        Some((placed, name))
     }
 
     #[allow(clippy::too_many_lines)]
@@ -321,57 +258,4 @@ impl Loader<'_> {
             path,
         })
     }
-}
-
-fn answers_subscribing(
-    answering: Option<herald_core::Answering>,
-    destination: &DestinationName,
-) -> Result<(), String> {
-    if answering.is_some_and(|answering| answering.takes(herald_core::Command::Subscribe)) {
-        Ok(())
-    } else {
-        Err(format!(
-            "subscribing is answered through the destination's interactions; give [destinations.{}.interactions] answering subscribe",
-            destination.as_str()
-        ))
-    }
-}
-
-fn discord_subscribe(
-    reached: &herald_dest_discord::DestinationOptions,
-    subscribe: &herald_dest_discord::Subscribe,
-    destination: &DestinationName,
-) -> Result<(), String> {
-    subscribe.check()?;
-    if reached.token.is_none() {
-        return Err(
-            "a member is given the opt-in role by a bot; give the destination a token in place of its webhook".to_owned(),
-        );
-    }
-    answers_subscribing(
-        reached
-            .interactions
-            .as_ref()
-            .map(herald_dest_discord::Interactions::answering),
-        destination,
-    )
-}
-
-fn slack_subscribe(
-    reached: &herald_dest_slack::DestinationOptions,
-    mentions_subscribers: bool,
-    destination: &DestinationName,
-) -> Result<(), String> {
-    if !mentions_subscribers {
-        return Err(
-            "a member subscribes to be mentioned; add mentions = { subscribers = true } to the route".to_owned(),
-        );
-    }
-    answers_subscribing(
-        reached
-            .interactions
-            .as_ref()
-            .map(herald_dest_slack::Interactions::answering),
-        destination,
-    )
 }

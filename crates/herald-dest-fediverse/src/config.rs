@@ -1,7 +1,9 @@
 use std::any::Any;
 
 use herald_core::{Profile, SecretRef, Symbols, WaitOptions, Waits};
-use herald_kinds::{DestinationConfig, Placed, Placement, Reached, same};
+use herald_kinds::{
+    DestinationConfig, DestinationKind, Fault, Placed, Placement, Placing, Reached, same,
+};
 use herald_ports::Secret;
 
 use crate::activitypub::{ActivityPub, ActorOptions, ActorRouteOptions, actor_profile};
@@ -126,5 +128,66 @@ impl Placement for ActorRouteOptions {
 
     fn same(&self, other: &dyn Any) -> bool {
         same(self, other)
+    }
+}
+
+/// Mastodon, as a kind of destination.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MastodonKind {}
+
+impl DestinationKind for MastodonKind {
+    const NAME: &'static str = MASTODON;
+    const DESCRIPTION: &'static str = "An account on a server speaking the Mastodon client API.";
+    const LABEL: &'static str = "Mastodon";
+    const ROUTE: &'static str = "MastodonRoute";
+    const ROUTE_DESCRIPTION: &'static str = "A route to a Mastodon destination.";
+
+    type Options = DestinationOptions;
+    type Route = RouteOptions;
+
+    fn placed(
+        _options: &DestinationOptions,
+        route: &RouteOptions,
+        _placing: Placing<'_>,
+    ) -> Vec<Fault> {
+        route.check().err().map(Fault::here).into_iter().collect()
+    }
+}
+
+/// herald's own ActivityPub actors, as a kind of destination.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ActorKind {}
+
+impl DestinationKind for ActorKind {
+    const NAME: &'static str = ACTIVITYPUB;
+    const DESCRIPTION: &'static str = "herald's own ActivityPub actors, on its domain.";
+    const LABEL: &'static str = "herald's ActivityPub actor";
+    const ROUTE: &'static str = "ActivityPubRoute";
+    const ROUTE_DESCRIPTION: &'static str =
+        "A route announcing as one of herald's own ActivityPub actors.";
+
+    type Options = ActorOptions;
+    type Route = ActorRouteOptions;
+
+    fn checked(
+        mut options: ActorOptions,
+        read: &dyn Fn(&str) -> Result<String, String>,
+    ) -> Result<(ActorOptions, Vec<Fault>), Fault> {
+        for (index, list) in options.lists.clone().iter().enumerate() {
+            let blocked = list
+                .read(read)
+                .map_err(|message| Fault::at(format!("lists[{index}]"), message))?;
+            options.block.extend(blocked);
+        }
+        options.check().map_err(Fault::here)?;
+        Ok((options, Vec::new()))
+    }
+
+    fn placed(
+        _options: &ActorOptions,
+        route: &ActorRouteOptions,
+        _placing: Placing<'_>,
+    ) -> Vec<Fault> {
+        route.check().err().map(Fault::here).into_iter().collect()
     }
 }

@@ -1,6 +1,8 @@
 //! `[render]`: how far a template may go as it renders, read with its
 //! defaults, held to its maximums, and every template compiled into it.
 
+mod common;
+
 #[cfg(test)]
 mod render {
     use herald_config::load;
@@ -36,12 +38,14 @@ body = "{{ event.body }}"
     }
 
     fn errors(text: &str) -> String {
-        load("herald.toml", text, &nothing).unwrap_err().to_string()
+        load("herald.toml", text, &nothing, &crate::common::kinds())
+            .unwrap_err()
+            .to_string()
     }
 
     #[test]
     fn a_config_without_a_render_table_renders_in_the_default_sandbox() {
-        let config = load("herald.toml", EXAMPLE, &nothing).unwrap();
+        let config = load("herald.toml", EXAMPLE, &nothing, &crate::common::kinds()).unwrap();
         assert_eq!(config.render, Sandbox::DEFAULT);
         assert_eq!(
             config.render,
@@ -57,7 +61,7 @@ body = "{{ event.body }}"
     fn every_render_setting_is_read_and_the_templates_are_held_to_it() {
         let text =
             format!("{EXAMPLE}\n[render]\nfuel = 400000\nrecursion = 2\noutput = \"1MiB\"\n");
-        let config = load("herald.toml", &text, &nothing).unwrap();
+        let config = load("herald.toml", &text, &nothing, &crate::common::kinds()).unwrap();
         assert_eq!(
             config.render,
             Sandbox {

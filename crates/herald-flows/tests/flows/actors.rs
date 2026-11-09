@@ -264,7 +264,13 @@ fn an_actor_s_followers_are_counted_and_never_listed() {
         "outbox_page = 2\nblock = [\"b.example\"]\n",
     );
     let blocking = World::with(
-        herald_config::load("herald.toml", &text, &|_| Err(String::new())).unwrap(),
+        herald_config::load(
+            "herald.toml",
+            &text,
+            &|_| Err(String::new()),
+            &crate::harness::kinds(),
+        )
+        .unwrap(),
         Script::default(),
     );
     pollster::block_on(herald_ports::Subscriptions::subscribe(

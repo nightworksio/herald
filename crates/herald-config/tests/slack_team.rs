@@ -1,6 +1,8 @@
 //! A Slack destination's `team`: the workspace an Enterprise Grid org-wide
 //! app's calls name, refused unless written as a workspace id.
 
+mod common;
+
 #[cfg(test)]
 mod slack_team {
     use herald_config::load;
@@ -34,9 +36,12 @@ title = "{{{{ event.project }}}} {{{{ event.version }}}}"
 body = "{{{{ event.body }}}}"
 "#
         );
-        load("herald.toml", &text, &|name| {
-            Err(format!("{name}: no such file"))
-        })
+        load(
+            "herald.toml",
+            &text,
+            &|name| Err(format!("{name}: no such file")),
+            &crate::common::kinds(),
+        )
         .map_err(|errors| errors.to_string())
     }
 

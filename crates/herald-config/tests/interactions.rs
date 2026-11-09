@@ -1,6 +1,8 @@
 //! `[destinations.*.interactions]` and a route's `subscribe`: commands each
 //! destination answers and how, read and refused by key (ADR-0016).
 
+mod common;
+
 #[cfg(test)]
 mod interactions {
     use herald_config::{Placed, load};
@@ -72,7 +74,9 @@ body = "{{{{ event.body }}}}"
     }
 
     fn errors(text: &str) -> String {
-        load("herald.toml", text, &nothing).unwrap_err().to_string()
+        load("herald.toml", text, &nothing, &crate::common::kinds())
+            .unwrap_err()
+            .to_string()
     }
 
     fn refused(text: &str, expected: &str) {
@@ -87,7 +91,7 @@ body = "{{{{ event.body }}}}"
             &bot("replies = \"public\"\ncommands = [\"subscribe\", \"latest\"]"),
             &format!("channel = \"1566200000000000100\"\nsubscribe = {{ role = \"{ROLE}\" }}"),
         );
-        let config = load("herald.toml", &text, &nothing).unwrap();
+        let config = load("herald.toml", &text, &nothing, &crate::common::kinds()).unwrap();
         let answering = config.destinations[&herald_core::DestinationName::new("discord")]
             .answering()
             .unwrap();
@@ -133,7 +137,7 @@ body = "{{{{ event.body }}}}"
                 "channel = \"1566200000000000100\"\nmentions = {{ roles = [\"{ROLE}\"] }}\nsubscribe = {{ role = \"{ROLE}\" }}"
             ),
         );
-        let config = load("herald.toml", &text, &nothing).unwrap();
+        let config = load("herald.toml", &text, &nothing, &crate::common::kinds()).unwrap();
         assert_eq!(
             config.routes[0].route.delivery.mentions.roles,
             [RoleId::new(ROLE)]
@@ -147,7 +151,7 @@ body = "{{{{ event.body }}}}"
             "token = { secret = \"HERALD_DISCORD_TOKEN\" }",
             "channel = \"1566200000000000100\"",
         );
-        let config = load("herald.toml", &text, &nothing).unwrap();
+        let config = load("herald.toml", &text, &nothing, &crate::common::kinds()).unwrap();
         assert_eq!(
             config.destinations[&herald_core::DestinationName::new("discord")].answering(),
             None
@@ -229,7 +233,8 @@ body = "{{{{ event.body }}}}"
             load(
                 "herald.toml",
                 &worded(r#"wording = { subscribed = "Ja {{ project }}.", date = "%d-%m" }"#),
-                &nothing
+                &nothing,
+                &crate::common::kinds()
             )
             .is_ok()
         );
@@ -253,7 +258,8 @@ body = "{{{{ event.body }}}}"
             load(
                 "herald.toml",
                 &with("sync_wait = \"29s\"\ntimeline = 100"),
-                &nothing
+                &nothing,
+                &crate::common::kinds()
             )
             .is_ok()
         );
@@ -278,7 +284,7 @@ body = "{{{{ event.body }}}}"
             ),
             "",
         );
-        let config = load("herald.toml", &text, &nothing).unwrap();
+        let config = load("herald.toml", &text, &nothing, &crate::common::kinds()).unwrap();
         assert!(
             config.destinations[&herald_core::DestinationName::new("discord")]
                 .answering()
@@ -376,7 +382,7 @@ body = "{{{{ event.body }}}}"
     #[test]
     fn a_slack_subscribe_needs_the_route_to_mention_subscribers_and_interactions_answering_it() {
         let text = slack_route("mentions = { subscribers = true }\nsubscribe = { button = false }");
-        let config = load("herald.toml", &text, &nothing).unwrap();
+        let config = load("herald.toml", &text, &nothing, &crate::common::kinds()).unwrap();
         assert!(
             config.routes[1]
                 .options
@@ -402,7 +408,8 @@ body = "{{{{ event.body }}}}"
     #[test]
     fn sessions_connect_under_their_own_domains_and_those_their_destination_adds() {
         let http = config("git-branch", &bot(""), "channel = \"1566200000000000100\"");
-        let config_of = |text: &str| load("herald.toml", text, &nothing).unwrap();
+        let config_of =
+            |text: &str| load("herald.toml", text, &nothing, &crate::common::kinds()).unwrap();
         assert!(config_of(&http).session_domains().is_empty());
         let gateway = config(
             "git-branch",

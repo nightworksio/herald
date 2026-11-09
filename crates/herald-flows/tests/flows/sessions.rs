@@ -110,7 +110,13 @@ appservice_token = {{ secret = "HERALD_MATRIX_AS" }}
 {destination}
 "#
     );
-    let mut config = load("herald.toml", &text, &|_| Err(String::new())).unwrap();
+    let mut config = load(
+        "herald.toml",
+        &text,
+        &|_| Err(String::new()),
+        &crate::harness::kinds(),
+    )
+    .unwrap();
     config.server.sessions.jitter = false;
     config
 }

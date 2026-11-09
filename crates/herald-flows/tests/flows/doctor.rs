@@ -31,6 +31,7 @@ fn on(store: &str, extra: &str) -> herald_config::Config {
             sealed(store)
         ),
         &|_| Err(String::new()),
+        &crate::harness::kinds(),
     )
     .unwrap()
     .store;
@@ -64,7 +65,7 @@ fn the_actions_cache_and_repository_variables_note_what_they_cannot_hold() {
     variables.store = load(
         "herald.toml",
         "version = 1\n[store]\nkind = \"repo-variables\"\ntoken = { secret = \"T\" }\nkey = { secret = \"K\" }\n",
-        &|_| Err(String::new()),
+        &|_| Err(String::new()), &crate::harness::kinds(),
     )
     .unwrap()
     .store;
@@ -161,8 +162,15 @@ fn a_route_taking_docker_hub_tags_without_versions_is_noted() {
             "version = 1\n[store]\nkind = \"git-branch\"\nkey = {{ secret = \"S\" }}\n[markers]\nkey = {{ secret = \"K\" }}\n[destinations.discord]\nkind = \"discord\"\ntoken = {{ secret = \"T\" }}\n[sources.caddy]\nkind = \"docker-hub\"\npackage = \"caddy\"\n[[routes]]\nid = \"images\"\nsources = [\"caddy\"]\ndestination = \"discord\"\nchannel = \"1566200000000000100\"\ntemplate = \"t\"\n{versions}\n[templates.t]\ntitle = \"{{{{ event.version }}}}\"\nbody = \"\"\n"
         )
     };
-    let loaded =
-        |versions: &str| load("herald.toml", &text(versions), &|_| Err(String::new())).unwrap();
+    let loaded = |versions: &str| {
+        load(
+            "herald.toml",
+            &text(versions),
+            &|_| Err(String::new()),
+            &crate::harness::kinds(),
+        )
+        .unwrap()
+    };
     let noted = doctor(&loaded(""), layer(&STORES));
     assert_eq!(
         noted.notes,
@@ -220,7 +228,13 @@ homeserver = "https://matrix.example"
 token = {{ secret = "T" }}
 "#
     );
-    load("herald.toml", &text, &|_| Err(String::new())).unwrap()
+    load(
+        "herald.toml",
+        &text,
+        &|_| Err(String::new()),
+        &crate::harness::kinds(),
+    )
+    .unwrap()
 }
 
 fn gap_keys(findings: &herald_flows::Findings) -> Vec<String> {

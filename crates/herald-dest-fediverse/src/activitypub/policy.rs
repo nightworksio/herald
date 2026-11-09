@@ -182,6 +182,31 @@ pub struct SharedList {
     pub sha256: String,
 }
 
+impl SharedList {
+    /// The domains the list blocks, its file read through `read` and
+    /// checked against its pinned digest.
+    ///
+    /// # Errors
+    ///
+    /// Where the file cannot be read, has another digest than the one
+    /// pinned, or is no block list.
+    pub fn read(
+        &self,
+        read: &dyn Fn(&str) -> Result<String, String>,
+    ) -> Result<Vec<String>, String> {
+        let file = &self.file;
+        let text = read(file).map_err(|error| format!("{file} could not be read: {error}"))?;
+        let digest = herald_core::digest(&text);
+        if !digest.eq_ignore_ascii_case(&self.sha256) {
+            return Err(format!(
+                "{file} has the SHA-256 {digest}, not the {} pinned; check the list, then pin its digest",
+                self.sha256
+            ));
+        }
+        blocked_domains(&text).map_err(|error| format!("{file}: {error}"))
+    }
+}
+
 /// The severities a list's row blocks with; `noop` blocks nothing.
 const SEVERITIES: [&str; 2] = ["suspend", "silence"];
 

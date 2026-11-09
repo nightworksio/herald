@@ -215,15 +215,6 @@ impl Store {
     }
 }
 
-/// Every destination kind, as the config spells it.
-pub const DESTINATION_KINDS: [&str; 5] = [
-    herald_dest_discord::KIND,
-    herald_dest_fediverse::MASTODON,
-    herald_dest_matrix::KIND,
-    herald_dest_slack::KIND,
-    herald_dest_fediverse::ACTIVITYPUB,
-];
-
 /// A source and its options, by its kind.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Source {

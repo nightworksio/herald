@@ -1,6 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use herald_config::{Config, load};
+use herald_config::Config;
 use herald_core::{
     Asked, Command, DestinationName, Kind, Latest, Member, Place, RouteId, Shown, Subscription,
 };
@@ -127,7 +127,7 @@ title = "{{{{ event.missing }}}}"
 body = "{{{{ event.missing }}}}"
 "#
     );
-    load("herald.toml", &text, &|_| Err(String::new())).unwrap()
+    crate::harness::loaded(&text)
 }
 
 fn secrets() -> FakeSecrets {

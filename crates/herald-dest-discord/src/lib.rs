@@ -20,7 +20,7 @@ mod read;
 mod request;
 mod unpin;
 
-pub use config::KIND;
+pub use config::{DiscordKind, KIND};
 pub use discord::{Credential, Discord, profile};
 pub use gateway::{Effect, GATEWAY, Gateway};
 pub use interact::{

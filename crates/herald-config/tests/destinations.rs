@@ -1,6 +1,8 @@
 //! Each destination's options in `herald.toml`: what loads, and what each
 //! destination cannot do refused by key.
 
+mod common;
+
 #[cfg(test)]
 mod destinations {
     use herald_config::load;
@@ -10,7 +12,9 @@ mod destinations {
     }
 
     fn errors(text: &str) -> String {
-        load("herald.toml", text, &nothing).unwrap_err().to_string()
+        load("herald.toml", text, &nothing, &crate::common::kinds())
+            .unwrap_err()
+            .to_string()
     }
 
     /// The name of the secret the config's first destination reaches its
@@ -56,7 +60,7 @@ body = "{{ event.body }}"
 
     #[test]
     fn a_mastodon_destination_and_its_route_options_load() {
-        let config = load("herald.toml", MASTODON, &nothing).unwrap();
+        let config = load("herald.toml", MASTODON, &nothing, &crate::common::kinds()).unwrap();
         let Some(social) =
             config.destinations.values().next().and_then(|destination| {
                 destination.of::<herald_dest_fediverse::DestinationOptions>()
@@ -170,7 +174,7 @@ body = "{{ event.body }}"
 
     #[test]
     fn a_matrix_destination_and_its_route_options_load() {
-        let config = load("herald.toml", MATRIX, &nothing).unwrap();
+        let config = load("herald.toml", MATRIX, &nothing, &crate::common::kinds()).unwrap();
         let Some(room) = config
             .destinations
             .values()
@@ -275,7 +279,7 @@ body = "{{ event.body }}"
 
     #[test]
     fn a_slack_destination_and_its_route_options_load_as_a_bot_or_a_webhook() {
-        let config = load("herald.toml", SLACK, &nothing).unwrap();
+        let config = load("herald.toml", SLACK, &nothing, &crate::common::kinds()).unwrap();
         let Some(team) = config
             .destinations
             .values()
@@ -309,7 +313,7 @@ body = "{{ event.body }}"
         let hooked = SLACK
             .replace("token = { secret = \"HERALD_SLACK_TOKEN\" }", "webhook = { secret = \"HERALD_SLACK_WEBHOOK\" }")
             .replace("channel = \"C0123456789\"\npin = \"markers\"\nmentions = { subscribers = true }\nthread = { name = \"{{ event.version }}\" }\n", "");
-        let config = load("herald.toml", &hooked, &nothing).unwrap();
+        let config = load("herald.toml", &hooked, &nothing, &crate::common::kinds()).unwrap();
         assert_eq!(config.routes[0].profile, herald_dest_slack::profile(false));
         assert_eq!(credential(&config), Some("HERALD_SLACK_WEBHOOK"));
         assert_eq!(
@@ -414,7 +418,13 @@ body = "{{ event.body }}"
 
     #[test]
     fn an_activitypub_destination_and_its_actor_load() {
-        let config = load("herald.toml", ACTIVITYPUB, &nothing).unwrap();
+        let config = load(
+            "herald.toml",
+            ACTIVITYPUB,
+            &nothing,
+            &crate::common::kinds(),
+        )
+        .unwrap();
         let Some(fedi) = config
             .destinations
             .values()
@@ -462,10 +472,15 @@ body = "{{ event.body }}"
                 "key = {{ secret = \"HERALD_ACTIVITYPUB_KEY\" }}\nlists = [{{ file = \"blocks.csv\", sha256 = \"{pinned}\" }}]\n"
             ),
         );
-        load("herald.toml", &text, &|file| match file {
-            "blocks.csv" => Ok(list.to_owned()),
-            other => Err(format!("{other}: no such file")),
-        })
+        load(
+            "herald.toml",
+            &text,
+            &|file| match file {
+                "blocks.csv" => Ok(list.to_owned()),
+                other => Err(format!("{other}: no such file")),
+            },
+            &crate::common::kinds(),
+        )
         .map_err(|errors| errors.to_string())
     }
 
@@ -500,7 +515,7 @@ body = "{{ event.body }}"
                 "key = { secret = \"HERALD_ACTIVITYPUB_KEY\" }\n",
                 "key = { secret = \"HERALD_ACTIVITYPUB_KEY\" }\nlists = [{ file = \"gone.csv\", sha256 = \"00\" }]\n",
             ),
-            &nothing,
+            &nothing, &crate::common::kinds(),
         )
         .unwrap_err()
         .to_string();
@@ -579,7 +594,7 @@ body = "{{ event.body }}"
             "kind = \"git-branch\"",
             "kind = \"actions-cache\"\nkeeps = [\"subscriptions\", \"notes\"]",
         );
-        assert!(load("herald.toml", &noted, &nothing).is_ok());
+        assert!(load("herald.toml", &noted, &nothing, &crate::common::kinds()).is_ok());
         let unheard = ACTIVITYPUB.replace(
             "kind = \"git-branch\"",
             "kind = \"actions-cache\"\nkeeps = [\"everything\"]",
@@ -594,6 +609,6 @@ body = "{{ event.body }}"
         let quiet = MATRIX
             .replace("kind = \"sqlite\"", "kind = \"markers\"")
             .replace("mentions = { subscribers = true }\n", "");
-        assert!(load("herald.toml", &quiet, &nothing).is_ok());
+        assert!(load("herald.toml", &quiet, &nothing, &crate::common::kinds()).is_ok());
     }
 }

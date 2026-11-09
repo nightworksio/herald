@@ -327,7 +327,8 @@ fn read(path: &str) -> Result<Config, String> {
     let files = |file: &str| {
         std::fs::read_to_string(directory.join(file)).map_err(|error| error.to_string())
     };
-    let mut config = load(path, &text, &files).map_err(|errors| errors.to_string())?;
+    let mut config =
+        load(path, &text, &files, &herald_compose::kinds()).map_err(|errors| errors.to_string())?;
     if let herald_config::Store::Sqlite(options) = &mut config.store {
         options.path = Some(options.file(directory).display().to_string());
     }

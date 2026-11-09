@@ -430,7 +430,13 @@ template = "t"
 title = "{{ event.title }}"
 body = "{{ event.body }}"
 "#;
-    let config = load("herald.toml", text, &|_| Err(String::new())).unwrap();
+    let config = load(
+        "herald.toml",
+        text,
+        &|_| Err(String::new()),
+        &crate::harness::kinds(),
+    )
+    .unwrap();
     let store = healthy();
     let (announced, _) = hooked(&config, &store);
     assert_eq!(
@@ -467,7 +473,13 @@ thread = { name = "{{ event.version }}" }
 title = "{{ event.title }}"
 body = "{{ event.body }}"
 "#;
-    let mut config = load("herald.toml", text, &|_| Err(String::new())).unwrap();
+    let mut config = load(
+        "herald.toml",
+        text,
+        &|_| Err(String::new()),
+        &crate::harness::kinds(),
+    )
+    .unwrap();
     if let Some(thread) = config.routes[0].route.delivery.thread.as_mut() {
         thread.archive_after = Some(SignedDuration::from_hours(24));
     }

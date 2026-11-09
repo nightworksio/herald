@@ -34,7 +34,13 @@ title = "{{{{ event.title }}}}"
 body = "{{{{ event.body }}}}"
 "#
     );
-    load("herald.toml", &text, &|_| Err(String::new())).unwrap()
+    load(
+        "herald.toml",
+        &text,
+        &|_| Err(String::new()),
+        &crate::harness::kinds(),
+    )
+    .unwrap()
 }
 
 fn secrets() -> FakeSecrets {

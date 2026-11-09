@@ -13,10 +13,6 @@ publish.workspace = true
 herald-core.workspace = true
 herald-ports.workspace = true
 herald-kinds.workspace = true
-herald-dest-discord.workspace = true
-herald-dest-fediverse.workspace = true
-herald-dest-matrix.workspace = true
-herald-dest-slack.workspace = true
 herald-sources-feed.workspace = true
 herald-sources-forge.workspace = true
 herald-sources-registry.workspace = true
@@ -35,6 +31,12 @@ schemars.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 toml.workspace = true
+
+[dev-dependencies]
+herald-dest-discord.workspace = true
+herald-dest-fediverse.workspace = true
+herald-dest-matrix.workspace = true
+herald-dest-slack.workspace = true
 
 [lints]
 workspace = true

@@ -20,7 +20,7 @@ fn configured(path: &str) -> Result<Config, String> {
     let read =
         |name: &str| std::fs::read_to_string(name).map_err(|error| format!("{name}: {error}"));
     let text = read(path)?;
-    load(path, &text, &read).map_err(|errors| errors.to_string())
+    load(path, &text, &read, &herald_compose::kinds()).map_err(|errors| errors.to_string())
 }
 
 /// herald composed from the host's environment and files, or the reply to

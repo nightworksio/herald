@@ -63,6 +63,7 @@ title = "{{ event.title }}"
 body = "{{ event.body }}"
 "#,
             &|_| Err(String::new()),
+            &herald_compose::kinds(),
         )
         .unwrap()
     }

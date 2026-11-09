@@ -1,11 +1,13 @@
 use std::any::Any;
 
 use herald_core::{Answering, Profile, SecretRef, Symbols, WaitOptions};
-use herald_kinds::{Carried, DestinationConfig, Placed, Placement, Reached, same};
+use herald_kinds::{
+    Carried, DestinationConfig, DestinationKind, Fault, Placed, Placement, Placing, Reached, same,
+};
 use herald_ports::Secret;
 
 use crate::discord::{self, Credential, Discord};
-use crate::interactions::{Interactions, Via};
+use crate::interactions::{Interactions, Subscribe, Via};
 use crate::options::{DestinationOptions, RouteOptions};
 
 /// The kind of a Discord destination, as the config spells it.
@@ -112,4 +114,78 @@ impl Placement for RouteOptions {
     fn same(&self, other: &dyn Any) -> bool {
         same(self, other)
     }
+}
+
+/// Discord, as a kind of destination.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DiscordKind {}
+
+impl DestinationKind for DiscordKind {
+    const NAME: &'static str = KIND;
+    const DESCRIPTION: &'static str = "Discord, by bot token or webhook.";
+    const LABEL: &'static str = "Discord";
+    const ROUTE: &'static str = "DiscordRoute";
+    const ROUTE_DESCRIPTION: &'static str = "A route to a Discord destination.";
+
+    type Options = DestinationOptions;
+    type Route = RouteOptions;
+
+    fn checked(
+        options: DestinationOptions,
+        _read: &dyn Fn(&str) -> Result<String, String>,
+    ) -> Result<(DestinationOptions, Vec<Fault>), Fault> {
+        let bot = options.bot().map_err(Fault::here)?;
+        let faults = options
+            .interactions
+            .as_ref()
+            .and_then(|interactions| {
+                interactions
+                    .check()
+                    .and_then(|()| {
+                        if interactions.via == Via::Gateway && !bot {
+                            Err("the gateway is joined as a bot; give the destination a token in place of its webhook".to_owned())
+                        } else {
+                            Ok(())
+                        }
+                    })
+                    .err()
+            })
+            .map(|message| Fault::at("interactions", message))
+            .into_iter()
+            .collect();
+        Ok((options, faults))
+    }
+
+    fn placed(
+        options: &DestinationOptions,
+        route: &RouteOptions,
+        placing: Placing<'_>,
+    ) -> Vec<Fault> {
+        let mut faults: Vec<Fault> = route.check().err().map(Fault::here).into_iter().collect();
+        if options.token.is_some() && route.channel.is_none() {
+            faults.push(Fault::here(
+                "a Discord bot posts to a channel; give channel = \"<the channel's id>\"",
+            ));
+        }
+        if let Some(subscribe) = &route.subscribe
+            && let Err(message) = subscribed(options, subscribe, placing)
+        {
+            faults.push(Fault::at("subscribe", message));
+        }
+        faults
+    }
+}
+
+fn subscribed(
+    options: &DestinationOptions,
+    subscribe: &Subscribe,
+    placing: Placing<'_>,
+) -> Result<(), String> {
+    subscribe.check()?;
+    if options.token.is_none() {
+        return Err(
+            "a member is given the opt-in role by a bot; give the destination a token in place of its webhook".to_owned(),
+        );
+    }
+    placing.answers_subscribing(options.answering())
 }

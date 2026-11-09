@@ -1,6 +1,8 @@
 //! `[http]`: how herald's own requests reach the services a config names,
 //! read with its defaults, and every value it cannot keep named by key.
 
+mod common;
+
 #[cfg(test)]
 mod http {
     use herald_config::load;
@@ -44,12 +46,14 @@ body = "{{ event.body }}"
     }
 
     fn errors(text: &str) -> String {
-        load("herald.toml", text, &files).unwrap_err().to_string()
+        load("herald.toml", text, &files, &crate::common::kinds())
+            .unwrap_err()
+            .to_string()
     }
 
     #[test]
     fn a_config_without_an_http_table_keeps_the_standard_bounds() {
-        let config = load("herald.toml", EXAMPLE, &files).unwrap();
+        let config = load("herald.toml", EXAMPLE, &files, &crate::common::kinds()).unwrap();
         assert_eq!(config.http, Outbound::STANDARD);
         assert_eq!(config.http.connect, SignedDuration::from_secs(10));
         assert_eq!(config.http.total, SignedDuration::from_secs(30));
@@ -63,7 +67,7 @@ body = "{{ event.body }}"
         let config = load(
             "herald.toml",
             &format!("{EXAMPLE}\n[http]\nconnect = \"3s\"\ntotal = \"1m\"\nproxy = \"https://proxy.example:3128\"\nca_file = \"ca.pem\"\nbody = \"64MiB\"\n"),
-            &files,
+            &files, &crate::common::kinds(),
         )
         .unwrap();
         assert_eq!(
@@ -84,6 +88,7 @@ body = "{{ event.body }}"
                 "herald.toml",
                 &format!("{EXAMPLE}\n[http]\nproxy = \"{written}\"\n"),
                 &files,
+                &crate::common::kinds(),
             )
             .unwrap();
             assert_eq!(config.http.proxy, proxy);
@@ -101,6 +106,7 @@ body = "{{ event.body }}"
             "herald.toml",
             &format!("{EXAMPLE}\n[http]\nconnect = \"30s\"\ntotal = \"30s\"\n"),
             &files,
+            &crate::common::kinds(),
         )
         .unwrap();
         assert_eq!(even.http.connect, even.http.total);

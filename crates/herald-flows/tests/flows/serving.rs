@@ -18,7 +18,13 @@ pub(crate) const ACTOR: &str = "https://herald.example/users/php-mutation-gate";
 const APP_TOKEN: &str = "app-token";
 
 fn config() -> Config {
-    load("herald.toml", &config_text(), &|_| Err(String::new())).unwrap()
+    load(
+        "herald.toml",
+        &config_text(),
+        &|_| Err(String::new()),
+        &crate::harness::kinds(),
+    )
+    .unwrap()
 }
 
 pub(crate) fn config_text() -> String {
@@ -482,7 +488,13 @@ fn an_actor_is_served_on_its_own_domain_only() {
         "[destinations.other]\nkind = \"activitypub\"\ndomain = \"other.example\"\nkey = { secret = \"HERALD_ACTIVITYPUB_KEY\" }\n[sources.gate]",
     ) + "[[routes]]\nid = \"other\"\nsources = [\"gate\"]\ndestination = \"other\"\ntemplate = \"t\"\nactor = \"releases\"\n";
     let world = World::with(
-        load("herald.toml", &text, &|_| Err(String::new())).unwrap(),
+        load(
+            "herald.toml",
+            &text,
+            &|_| Err(String::new()),
+            &crate::harness::kinds(),
+        )
+        .unwrap(),
         keyed(),
     );
     let signed = activity(FOLLOW, ANA_KEY, None);

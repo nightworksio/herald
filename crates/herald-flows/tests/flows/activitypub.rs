@@ -35,7 +35,13 @@ body = "{{ event.body }}"
 }
 
 pub(crate) fn activitypub() -> Config {
-    load("herald.toml", toml_text(), &|_| Err(String::new())).unwrap()
+    load(
+        "herald.toml",
+        toml_text(),
+        &|_| Err(String::new()),
+        &crate::harness::kinds(),
+    )
+    .unwrap()
 }
 
 /// The config of [`activitypub`], its actor's destination also set as
@@ -45,7 +51,13 @@ pub(crate) fn governed(policy: &str) -> Config {
         "key = { secret = \"HERALD_ACTIVITYPUB_KEY\" }\n",
         &format!("key = {{ secret = \"HERALD_ACTIVITYPUB_KEY\" }}\n{policy}\n"),
     );
-    load("herald.toml", &text, &|_| Err(String::new())).unwrap()
+    load(
+        "herald.toml",
+        &text,
+        &|_| Err(String::new()),
+        &crate::harness::kinds(),
+    )
+    .unwrap()
 }
 
 pub(crate) fn follower(actor: &str, follower: &str, inbox: Option<&str>) -> Subscription {
@@ -254,7 +266,13 @@ fn an_actor_keeps_no_thread_chores() {
 
 fn keyed(secret: &str) -> Config {
     let text = toml_text().replace("HERALD_ACTIVITYPUB_KEY", secret);
-    load("herald.toml", &text, &|_| Err(String::new())).unwrap()
+    load(
+        "herald.toml",
+        &text,
+        &|_| Err(String::new()),
+        &crate::harness::kinds(),
+    )
+    .unwrap()
 }
 
 #[test]
@@ -391,6 +409,7 @@ fn deliveries_go_out_as_many_at_once_as_the_server_table_allows() {
         "herald.toml",
         &format!("{}\n[server]\ndeliveries = 1\n", toml_text()),
         &|_| Err(String::new()),
+        &crate::harness::kinds(),
     )
     .unwrap();
     let store = healthy();

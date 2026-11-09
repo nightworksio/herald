@@ -1,8 +1,11 @@
 use std::any::Any;
 
 use herald_core::{Answering, Profile, SecretRef, Symbols, WaitOptions};
-use herald_kinds::{Carried, DestinationConfig, Placed, Placement, Reached, same};
+use herald_kinds::{
+    Carried, DestinationConfig, DestinationKind, Fault, Placed, Placement, Placing, Reached, same,
+};
 use herald_ports::Secret;
+use jiff::SignedDuration;
 
 use crate::interactions::{Interactions, Via};
 use crate::matrix::{self, Matrix};
@@ -86,5 +89,54 @@ impl Placement for RouteOptions {
 
     fn same(&self, other: &dyn Any) -> bool {
         same(self, other)
+    }
+}
+
+/// Matrix, as a kind of destination.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MatrixKind {}
+
+impl DestinationKind for MatrixKind {
+    const NAME: &'static str = KIND;
+    const DESCRIPTION: &'static str = "A bot account on a Matrix homeserver.";
+    const LABEL: &'static str = "Matrix";
+    const ROUTE: &'static str = "MatrixRoute";
+    const ROUTE_DESCRIPTION: &'static str = "A route to a Matrix destination.";
+
+    type Options = DestinationOptions;
+    type Route = RouteOptions;
+
+    fn checked(
+        options: DestinationOptions,
+        _read: &dyn Fn(&str) -> Result<String, String>,
+    ) -> Result<(DestinationOptions, Vec<Fault>), Fault> {
+        let faults = options
+            .interactions
+            .as_ref()
+            .and_then(|interactions| interactions.check().err())
+            .map(|message| Fault::at("interactions", message))
+            .into_iter()
+            .collect();
+        Ok((options, faults))
+    }
+
+    fn placed(
+        _options: &DestinationOptions,
+        route: &RouteOptions,
+        _placing: Placing<'_>,
+    ) -> Vec<Fault> {
+        route.check().err().map(Fault::here).into_iter().collect()
+    }
+
+    fn outlasts(options: &DestinationOptions, total: SignedDuration) -> Option<Fault> {
+        let wait = options.interactions.as_ref()?.sync_wait();
+        (wait >= total).then(|| {
+            Fault::at(
+                "interactions",
+                format!(
+                    "a sync that waits {wait:#} outlasts the {total:#} [http] total allows any answer; make sync_wait shorter, or total longer"
+                ),
+            )
+        })
     }
 }

@@ -18,7 +18,7 @@ mod reach;
 mod read;
 mod request;
 
-pub use config::KIND;
+pub use config::{KIND, MatrixKind};
 pub use interact::{Interacting, Replying, Synced, Unread, took};
 pub use interactions::{Interactions, SYNC_WAIT, Via};
 pub use markers::MatrixMarkers;

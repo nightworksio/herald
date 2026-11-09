@@ -25,7 +25,7 @@ pub use actor::{
     ActorError, ActorKey, Found, Inboxes, activity_json, actor_key, actor_of, confirms, document,
     inboxes, key_request, origin, same_origin,
 };
-pub use config::{ACTIVITYPUB, MASTODON};
+pub use config::{ACTIVITYPUB, ActorKind, MASTODON, MastodonKind};
 pub use markers::MastodonMarkers;
 pub use mastodon::{LIMIT, Mastodon, profile, shortest};
 pub use options::{DestinationOptions, RouteOptions, Visibility};
