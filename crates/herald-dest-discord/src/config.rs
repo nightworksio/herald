@@ -7,11 +7,12 @@ use herald_core::{
 };
 use herald_kinds::{
     Carried, DestinationConfig, DestinationKind, Endpoint, Fault, Interacted, Interacts, Placed,
-    Placement, Placing, Post, Reached, Read, Replying, Said, same,
+    Placement, Placing, Post, Reached, Read, Replying, Said, Session, same,
 };
 use herald_ports::{Boxed, DynSecrets, Request, Response, Secret, SecretError};
 
 use crate::discord::{self, Credential, Discord};
+use crate::held::Joined;
 use crate::interact::{self, Interacting, MESSAGE, Received, choices, pong, took};
 use crate::interactions::{Interactions, Subscribe, Via};
 use crate::options::{DestinationOptions, RouteOptions};
@@ -281,6 +282,16 @@ impl Interacts for Interacting {
 
     fn choices(&self, projects: &[String]) -> String {
         choices(projects)
+    }
+
+    fn session(&self) -> Option<Box<dyn Session + '_>> {
+        Joined::of(self).map(|session| Box::new(session) as Box<dyn Session + '_>)
+    }
+
+    fn complete(&self, replying: &Replying, projects: &[String]) -> Option<Request> {
+        replying
+            .of::<interact::Replying>()
+            .map(|replying| Self::complete(self, replying, projects))
     }
 
     fn as_any(&self) -> &dyn Any {

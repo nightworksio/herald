@@ -6,11 +6,12 @@ use herald_core::{
 };
 use herald_kinds::{
     Carried, DestinationConfig, DestinationKind, Endpoint, Fault, Interacted, Interacts, Placed,
-    Placement, Placing, Post, Reached, Read, Replying, Said, optional, same,
+    Placement, Placing, Post, Reached, Read, Replying, Said, Session, optional, same,
 };
 use herald_ports::{Boxed, DynSecrets, Request, Response, Secret, SecretError};
 use jiff::SignedDuration;
 
+use crate::held::Syncing;
 use crate::interact::{self, Interacting, took};
 use crate::interactions::{Interactions, Via};
 use crate::matrix::{self, Matrix};
@@ -262,6 +263,10 @@ impl Interacts for Interacting {
             ) => Read::Unmethodical,
             _ => Read::Missing("such path"),
         }
+    }
+
+    fn session(&self) -> Option<Box<dyn Session + '_>> {
+        Syncing::of(self).map(|session| Box::new(session) as Box<dyn Session + '_>)
     }
 
     fn as_any(&self) -> &dyn Any {

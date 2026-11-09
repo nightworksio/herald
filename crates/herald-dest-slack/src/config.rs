@@ -6,10 +6,11 @@ use herald_core::{
 };
 use herald_kinds::{
     Carried, DestinationConfig, DestinationKind, Endpoint, Fault, Interacted, Interacts, Placed,
-    Placement, Placing, Post, Reached, Read, Replying, Said, optional, same,
+    Placement, Placing, Post, Reached, Read, Replying, Said, Session, optional, same,
 };
 use herald_ports::{Boxed, DynSecrets, Request, Response, Secret, SecretError};
 
+use crate::held::Socketed;
 use crate::interact::{self, Interacting, Received, SECTION, took};
 use crate::interactions::{Interactions, Via};
 use crate::options::{DestinationOptions, RouteOptions};
@@ -250,6 +251,10 @@ impl Interacts for Interacting {
             Ok(Received::Ignored) => Read::Said(Said::ok("")),
             Err(reason) => Read::Unread(reason.to_string()),
         }
+    }
+
+    fn session(&self) -> Option<Box<dyn Session + '_>> {
+        Socketed::of(self).map(|session| Box::new(session) as Box<dyn Session + '_>)
     }
 
     fn as_any(&self) -> &dyn Any {

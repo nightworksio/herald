@@ -8,6 +8,8 @@ use herald_core::{
 };
 use herald_ports::{DynSecrets, Request, Response, Secret, SecretError};
 
+use crate::Session;
+
 /// A destination that takes commands, with the secrets it needs resolved:
 /// what every kind's commands are to the flows that answer them
 /// (ADR-0016).
@@ -55,6 +57,17 @@ pub trait Interacts: fmt::Debug + Send + Sync + Any {
     /// What `post`, verified, says to the destination `destination`.
     fn read(&self, _destination: &DestinationName, _post: Post<'_>) -> Read {
         Read::Missing("such path")
+    }
+
+    /// The session it holds to carry commands, where it holds one.
+    fn session(&self) -> Option<Box<dyn Session + '_>> {
+        None
+    }
+
+    /// The request offering `projects` where `replying` names, to a member
+    /// typing one in a session.
+    fn complete(&self, _replying: &Replying, _projects: &[String]) -> Option<Request> {
+        None
     }
 
     /// The answer offering `projects` to a member typing one.

@@ -10,6 +10,7 @@
 mod config;
 mod discord;
 mod gateway;
+mod held;
 mod interact;
 mod interactions;
 mod look;
