@@ -321,3 +321,39 @@ fn post_sends_one_test_message_per_route_and_keeps_no_record() {
     let unasked = herald(&setup(CONFIG), &world, &["doctor", "--post"]);
     assert_eq!(unasked.code, 2, "{}", unasked.err);
 }
+
+#[test]
+fn a_test_message_that_did_not_land_is_named_at_its_own_route() {
+    let world = World::default();
+    let answered = |path: &str, status: u16, body: &str| (path.to_owned(), status, body.to_owned());
+    world.state.lock().unwrap().discord = vec![
+        answered("/users/@me", 200, "{}"),
+        answered("/channels/1566200000000000100", 200, "{}"),
+        answered("/users/@me", 200, "{}"),
+        answered("/channels/1566200000000000101", 200, "{}"),
+        answered(
+            "/channels/1566200000000000100/messages",
+            200,
+            r#"{"id":"1"}"#,
+        ),
+        answered("/channels/1566200000000000101/messages", 403, "{}"),
+    ];
+    let again = setup(&CONFIG.replace(
+        "[templates.release]",
+        "[[routes]]\nid = \"again\"\nsources = [\"cli\"]\ndestination = \"discord\"\nchannel = \"1566200000000000101\"\ntemplate = \"release\"\n[templates.release]",
+    ));
+    let run = herald(&again, &world, &["doctor", "--online", "--post"]);
+    assert_eq!(run.code, STOPPED, "{}", run.out);
+    assert!(
+        run.out
+            .contains("routes[1]: posting a test message on the route again cannot be served"),
+        "{}",
+        run.out
+    );
+    assert!(
+        run.out
+            .contains("A test message was posted on the route releases (post)."),
+        "{}",
+        run.out
+    );
+}
