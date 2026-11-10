@@ -32,7 +32,7 @@ Deno.test("Deno KV passes the key-value suite", async () => {
   await init({ module_or_path: await Deno.readFile(new URL("pkg-conformance/herald_wasm_bg.wasm", import.meta.url)) });
   const kv = await Deno.openKv(":memory:");
   try {
-    await kvConformance(denoKv(kv));
+    equal(await kvConformance(denoKv(kv)), undefined);
   } finally {
     kv.close();
   }

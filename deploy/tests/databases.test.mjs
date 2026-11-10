@@ -39,7 +39,7 @@ test("a SQLite transaction waits for the lock no longer than it was given", asyn
 });
 
 test("a SQLite file passes the database suite", async (t) => {
-  await sqlConformance(await sqlite(join(await directory(t), "herald.sqlite"), 300), "sqlite");
+  await assert.doesNotReject(sqlConformance(await sqlite(join(await directory(t), "herald.sqlite"), 300), "sqlite"));
 });
 
 test("a SQLite file is kept in write-ahead mode, as the native store keeps it", async (t) => {
@@ -83,7 +83,7 @@ test("a Postgres transaction answers each statement in order", { skip: !url }, a
 });
 
 test("a Postgres database passes the database suite", { skip: !url }, async () => {
-  await sqlConformance(await postgres({ url, ...within }, pg), "postgres");
+  await assert.doesNotReject(sqlConformance(await postgres({ url, ...within }, pg), "postgres"));
 });
 
 test("a Postgres statement past its timeout is cancelled", { skip: !url }, async () => {

@@ -12,7 +12,7 @@ const SECRET = "local-round-secret";
 test("Bun's own SQLite passes the database suite", async () => {
   await init({ module_or_path: await readFile(new URL("pkg-conformance/herald_wasm_bg.wasm", import.meta.url)) });
   const directory = await mkdtemp(join(tmpdir(), "herald-bun-"));
-  await sqlConformance(await sqlite(join(directory, "herald.sqlite"), 300), "sqlite");
+  expect(await sqlConformance(await sqlite(join(directory, "herald.sqlite"), 300), "sqlite")).toBeUndefined();
 });
 
 test("herald serves on Bun, keeping its records in a SQLite file, and refuses a body past [server] body", async () => {

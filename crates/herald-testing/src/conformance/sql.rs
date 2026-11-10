@@ -79,7 +79,7 @@ fn transactions(parameters: Parameters) -> [Vec<Statement>; 5] {
         vec![
             Statement::change(format!("DROP TABLE IF EXISTS {TABLE}"), vec![]),
             Statement::change(
-                format!("CREATE TABLE {TABLE} (k INTEGER PRIMARY KEY, n BIGINT, t TEXT)"),
+                format!("CREATE TABLE {TABLE} (k BIGINT PRIMARY KEY, n BIGINT, t TEXT)"),
                 vec![],
             ),
             Statement::change(
