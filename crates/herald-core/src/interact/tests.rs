@@ -3,17 +3,16 @@ use std::collections::{BTreeMap, BTreeSet};
 use jiff::Timestamp;
 
 use super::*;
-use crate::event::Kind;
+use crate::kind::Kind;
 use crate::latest::Shown;
 
 fn latest(project: &str, routes: &[&str]) -> Latest {
     let shown = Shown {
-        kind: Kind::Release,
-        version: Some("1.0.0".to_owned()),
+        kind: Kind::RELEASE,
+        attributes: crate::versioned("1.0.0", false),
         title: project.to_owned(),
         body: String::new(),
         links: BTreeMap::new(),
-        prerelease: false,
         occurred: Timestamp::UNIX_EPOCH,
     };
     Latest {

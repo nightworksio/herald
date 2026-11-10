@@ -5,40 +5,7 @@ use jiff::Timestamp;
 use serde::Serialize;
 
 use crate::key::Identity;
-
-/// What kind of thing an event announces.
-#[derive(
-    Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    Hash,
-    PartialOrd,
-    Ord,
-    Serialize,
-    serde::Deserialize,
-    schemars::JsonSchema,
-)]
-#[serde(rename_all = "kebab-case")]
-pub enum Kind {
-    /// A release on a forge.
-    Release,
-    /// A new version of a package on a registry.
-    PackageVersion,
-    /// An entry in a feed.
-    FeedEntry,
-    /// Anything an app says.
-    Message,
-}
-
-impl Kind {
-    /// Whether an event of the kind carries a version.
-    #[must_use]
-    pub const fn versioned(self) -> bool {
-        matches!(self, Self::Release | Self::PackageVersion)
-    }
-}
+use crate::kind::{Attribute, Kind, PRERELEASE, VERSION};
 
 /// An event as a source parsed it, before [`Event::normalise`] checks it.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -49,16 +16,15 @@ pub struct Draft {
     pub kind: Kind,
     /// The project's name.
     pub project: String,
-    /// The version, where the kind has one.
-    pub version: Option<String>,
     /// A title, on one line.
     pub title: String,
     /// The body, in Markdown.
     pub body: String,
     /// Named links: `release`, `changelog`, `comparison`, `download`.
     pub links: BTreeMap<String, String>,
-    /// Whether it is a pre-release, as the source says.
-    pub prerelease: bool,
+    /// Its kind's attributes, by name: a versioned kind's `version`, and
+    /// `prerelease`.
+    pub attributes: BTreeMap<String, Attribute>,
     /// When it happened, as the source says.
     pub occurred: Timestamp,
 }
@@ -97,11 +63,10 @@ pub struct Event {
     identity: Identity,
     kind: Kind,
     project: String,
-    version: Option<String>,
     title: String,
     body: String,
     links: BTreeMap<String, String>,
-    prerelease: bool,
+    attributes: BTreeMap<String, Attribute>,
     occurred: Timestamp,
 }
 
@@ -137,16 +102,10 @@ impl Event {
             identity: Identity::new(identity),
             kind: draft.kind,
             project: project.to_owned(),
-            version: draft
-                .version
-                .as_deref()
-                .map(str::trim)
-                .filter(|version| !version.is_empty())
-                .map(ToOwned::to_owned),
             title,
             body: draft.body.trim().to_owned(),
             links,
-            prerelease: draft.prerelease,
+            attributes: attributes(draft.attributes),
             occurred: draft.occurred,
         })
     }
@@ -159,8 +118,8 @@ impl Event {
 
     /// What kind of thing it announces.
     #[must_use]
-    pub fn kind(&self) -> Kind {
-        self.kind
+    pub const fn kind(&self) -> &Kind {
+        &self.kind
     }
 
     /// The project's name.
@@ -169,10 +128,25 @@ impl Event {
         &self.project
     }
 
-    /// The version, where the event has one.
+    /// The version, where its kind carries one.
     #[must_use]
     pub fn version(&self) -> Option<&str> {
-        self.version.as_deref()
+        match self.attributes.get(VERSION) {
+            Some(Attribute::Text(version)) => Some(version),
+            _ => None,
+        }
+    }
+
+    /// The attribute named `name`.
+    #[must_use]
+    pub fn attribute(&self, name: &str) -> Option<&Attribute> {
+        self.attributes.get(name)
+    }
+
+    /// Every attribute, by name.
+    #[must_use]
+    pub const fn attributes(&self) -> &BTreeMap<String, Attribute> {
+        &self.attributes
     }
 
     /// The title, on one line.
@@ -208,7 +182,7 @@ impl Event {
     /// Whether it is a pre-release.
     #[must_use]
     pub fn prerelease(&self) -> bool {
-        self.prerelease
+        self.attributes.get(PRERELEASE) == Some(&Attribute::Flag(true))
     }
 
     /// When it happened.
@@ -216,6 +190,20 @@ impl Event {
     pub fn occurred(&self) -> Timestamp {
         self.occurred
     }
+}
+
+/// `attributes`, their text trimmed and each that is left empty dropped.
+fn attributes(attributes: BTreeMap<String, Attribute>) -> BTreeMap<String, Attribute> {
+    attributes
+        .into_iter()
+        .filter_map(|(name, attribute)| match attribute {
+            Attribute::Text(text) => {
+                let text = text.trim();
+                (!text.is_empty()).then(|| (name, Attribute::Text(text.to_owned())))
+            }
+            other => Some((name, other)),
+        })
+        .collect()
 }
 
 fn links(links: BTreeMap<String, String>) -> Result<BTreeMap<String, String>, Problem> {
@@ -242,26 +230,17 @@ pub(crate) mod tests {
     pub(crate) fn draft() -> Draft {
         Draft {
             identity: "github.com/1066469473/v0.1.0".to_owned(),
-            kind: Kind::Release,
+            kind: Kind::RELEASE,
             project: "php-mutation-gate".to_owned(),
-            version: Some("v0.1.0".to_owned()),
+            attributes: crate::versioned("v0.1.0", false),
             title: "php-mutation-gate v0.1.0".to_owned(),
             body: "## Added\n\n- the gate".to_owned(),
             links: BTreeMap::from([(
                 "release".to_owned(),
                 "https://github.com/nightworksio/php-mutation-gate/releases/tag/v0.1.0".to_owned(),
             )]),
-            prerelease: false,
             occurred: "2026-10-31T12:00:00Z".parse().unwrap(),
         }
-    }
-
-    #[test]
-    fn releases_and_package_versions_carry_a_version_and_nothing_else_does() {
-        assert!(Kind::Release.versioned());
-        assert!(Kind::PackageVersion.versioned());
-        assert!(!Kind::FeedEntry.versioned());
-        assert!(!Kind::Message.versioned());
     }
 
     pub(crate) fn event() -> Event {
@@ -272,7 +251,7 @@ pub(crate) mod tests {
     fn a_draft_becomes_an_event_with_its_fields() {
         let event = event();
         assert_eq!(event.identity().as_str(), "github.com/1066469473/v0.1.0");
-        assert_eq!(event.kind(), Kind::Release);
+        assert_eq!(event.kind(), &Kind::RELEASE);
         assert_eq!(event.project(), "php-mutation-gate");
         assert_eq!(event.version(), Some("v0.1.0"));
         assert_eq!(event.title(), "php-mutation-gate v0.1.0");
@@ -292,7 +271,7 @@ pub(crate) mod tests {
             identity: " id ".to_owned(),
             project: " project ".to_owned(),
             title: "  a\ttitle\n over\r\nlines ".to_owned(),
-            version: Some(" 1.0 ".to_owned()),
+            attributes: crate::versioned(" 1.0 ", false),
             body: "\n body \n".to_owned(),
             links: BTreeMap::from([(" release ".to_owned(), " https://example.org ".to_owned())]),
             ..draft()
@@ -308,8 +287,12 @@ pub(crate) mod tests {
 
     #[test]
     fn a_blank_or_missing_version_is_no_version() {
-        for version in [Some("  ".to_owned()), None] {
-            let event = Event::normalise(Draft { version, ..draft() }).unwrap();
+        for attributes in [crate::versioned("  ", false), BTreeMap::new()] {
+            let event = Event::normalise(Draft {
+                attributes,
+                ..draft()
+            })
+            .unwrap();
             assert_eq!(event.version(), None);
         }
     }
@@ -317,7 +300,7 @@ pub(crate) mod tests {
     #[test]
     fn the_prerelease_flag_is_kept() {
         let event = Event::normalise(Draft {
-            prerelease: true,
+            attributes: crate::versioned("v0.1.0-rc.1", true),
             ..draft()
         })
         .unwrap();
@@ -397,13 +380,12 @@ pub(crate) mod tests {
                 "identity": "github.com/1066469473/v0.1.0",
                 "kind": "release",
                 "project": "php-mutation-gate",
-                "version": "v0.1.0",
                 "title": "php-mutation-gate v0.1.0",
                 "body": "## Added\n\n- the gate",
                 "links": {
                     "release": "https://github.com/nightworksio/php-mutation-gate/releases/tag/v0.1.0"
                 },
-                "prerelease": false,
+                "attributes": {"version": "v0.1.0", "prerelease": false},
                 "occurred": "2026-10-31T12:00:00Z"
             })
         );
@@ -412,10 +394,10 @@ pub(crate) mod tests {
     #[test]
     fn each_kind_serialises_in_kebab_case() {
         let kinds = [
-            Kind::Release,
-            Kind::PackageVersion,
-            Kind::FeedEntry,
-            Kind::Message,
+            Kind::RELEASE,
+            Kind::PACKAGE_VERSION,
+            Kind::FEED_ENTRY,
+            Kind::MESSAGE,
         ];
         let names: Vec<String> = kinds
             .iter()

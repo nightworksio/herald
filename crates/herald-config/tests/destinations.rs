@@ -51,7 +51,7 @@ visibility = "unlisted"
 language = "en"
 content_warning = "Release notes"
 limit = 1000
-thread = { name = "{{ event.version }}" }
+thread = { name = "{{ event.attributes.version }}" }
 
 [templates.t]
 title = "{{ event.title }}"
@@ -104,7 +104,7 @@ body = "{{ event.body }}"
     #[test]
     fn a_mastodon_route_is_refused_what_mastodon_cannot_do() {
         let asking = MASTODON.replace(
-            "thread = { name = \"{{ event.version }}\" }",
+            "thread = { name = \"{{ event.attributes.version }}\" }",
             "thread = { name = \"v\", archive_after = \"14d\" }\ncrosspost = true\npin = \"markers\"\nmentions = { roles = [\"1\"] }",
         );
         let error = errors(&asking);
@@ -165,7 +165,7 @@ template = "t"
 room = "!releases:matrix.example"
 pin = "markers"
 mentions = { subscribers = true }
-thread = { name = "{{ event.version }}" }
+thread = { name = "{{ event.attributes.version }}" }
 
 [templates.t]
 title = "{{ event.title }}"
@@ -210,7 +210,7 @@ body = "{{ event.body }}"
     #[test]
     fn a_matrix_route_is_refused_what_matrix_cannot_do() {
         let asking = MATRIX.replace(
-            "thread = { name = \"{{ event.version }}\" }",
+            "thread = { name = \"{{ event.attributes.version }}\" }",
             "thread = { name = \"v\", archive_after = \"14d\" }\ncrosspost = true",
         );
         let error = errors(&asking);
@@ -270,7 +270,7 @@ template = "t"
 channel = "C0123456789"
 pin = "markers"
 mentions = { subscribers = true }
-thread = { name = "{{ event.version }}" }
+thread = { name = "{{ event.attributes.version }}" }
 
 [templates.t]
 title = "{{ event.title }}"
@@ -312,7 +312,7 @@ body = "{{ event.body }}"
         );
         let hooked = SLACK
             .replace("token = { secret = \"HERALD_SLACK_TOKEN\" }", "webhook = { secret = \"HERALD_SLACK_WEBHOOK\" }")
-            .replace("channel = \"C0123456789\"\npin = \"markers\"\nmentions = { subscribers = true }\nthread = { name = \"{{ event.version }}\" }\n", "");
+            .replace("channel = \"C0123456789\"\npin = \"markers\"\nmentions = { subscribers = true }\nthread = { name = \"{{ event.attributes.version }}\" }\n", "");
         let config = load("herald.toml", &hooked, &nothing, &crate::common::kinds()).unwrap();
         assert_eq!(config.routes[0].profile, herald_dest_slack::profile(false));
         assert_eq!(credential(&config), Some("HERALD_SLACK_WEBHOOK"));
@@ -325,7 +325,7 @@ body = "{{ event.body }}"
     #[test]
     fn a_slack_route_is_refused_what_slack_cannot_do_as_it_is_reached() {
         let asking = SLACK.replace(
-            "thread = { name = \"{{ event.version }}\" }",
+            "thread = { name = \"{{ event.attributes.version }}\" }",
             "thread = { name = \"v\", archive_after = \"14d\" }\ncrosspost = true\nmentions.roles = [\"1\"]",
         ).replace("mentions = { subscribers = true }\n", "");
         let error = errors(&asking);

@@ -117,10 +117,10 @@ room = "{ROOM}"
 template = "t"
 mentions = {{ subscribers = true }}
 [templates.t]
-title = "{{{{ event.project }}}} {{{{ event.version }}}}"
+title = "{{{{ event.project }}}} {{{{ event.attributes.version }}}}"
 body = "{{{{ event.body }}}}"
 [templates.short]
-title = "Short {{{{ event.version }}}}"
+title = "Short {{{{ event.attributes.version }}}}"
 body = "Short notes"
 [templates.broken]
 title = "{{{{ event.missing }}}}"
@@ -172,8 +172,8 @@ impl World {
 
     pub(crate) fn announced(self, project: &str, routes: &[&str]) -> Self {
         let shown = |version: &str, prerelease: bool, body: &str| Shown {
-            kind: Kind::Release,
-            version: Some(version.to_owned()),
+            kind: Kind::RELEASE,
+            attributes: herald_core::versioned(version, prerelease),
             title: format!("{project} {version}"),
             body: body.to_owned(),
             links: BTreeMap::from([
@@ -186,7 +186,6 @@ impl World {
                     "https://example.org/changes".to_owned(),
                 ),
             ]),
-            prerelease,
             occurred: at(),
         };
         let latest = Latest {
@@ -356,12 +355,11 @@ fn changelog_shows_the_notes_with_a_link_to_the_changelog_or_the_release() {
     let mut latest = Latest {
         project: "bare".to_owned(),
         newest: Shown {
-            kind: Kind::Release,
-            version: None,
+            kind: Kind::RELEASE,
+            attributes: herald_core::versioned("v1", false),
             title: "Bare".to_owned(),
             body: "  ".to_owned(),
             links: BTreeMap::from([("release".to_owned(), "https://example.org/r".to_owned())]),
-            prerelease: false,
             occurred: at(),
         },
         stable: None,
@@ -384,7 +382,7 @@ fn changelog_shows_the_notes_with_a_link_to_the_changelog_or_the_release() {
     );
     assert_eq!(
         said(&world.interact(&discord(Command::Latest))),
-        "**bare None**\n2027-01-15"
+        "**bare v1**\n2027-01-15"
     );
 }
 
@@ -452,12 +450,11 @@ fn a_store_that_cannot_list_or_an_unshowable_record_is_answered_as_unavailable()
     let untitled = Latest {
         project: "untitled".to_owned(),
         newest: Shown {
-            kind: Kind::Release,
-            version: None,
+            kind: Kind::RELEASE,
+            attributes: std::collections::BTreeMap::default(),
             title: String::new(),
             body: String::new(),
             links: BTreeMap::new(),
-            prerelease: false,
             occurred: at(),
         },
         stable: None,

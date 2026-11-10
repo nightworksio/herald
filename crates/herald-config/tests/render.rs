@@ -29,7 +29,7 @@ channel = "1566200000000000100"
 template = "release"
 
 [templates.release]
-title = "{{ event.project }} {{ event.version }}"
+title = "{{ event.project }} {{ event.attributes.version }}"
 body = "{{ event.body }}"
 "#;
 
@@ -73,7 +73,7 @@ body = "{{ event.body }}"
         let small = errors(&format!("{EXAMPLE}\n[render]\noutput = \"1KiB\"\n"));
         assert!(
             small.contains(
-                "templates.release.body: it does not render a sample Release event: its output passes the cap of 1024 bytes"
+                "templates.release.body: it does not render a sample release event: its output passes the cap of 1024 bytes"
             ),
             "{small}"
         );

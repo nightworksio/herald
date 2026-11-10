@@ -1,8 +1,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use herald_core::{
-    DestinationName, Inbound, Profile, Retention, Route, RouteId, Sandbox, SecretRef, SourceName,
-    Templates,
+    DestinationName, Inbound, KindSpecs, Profile, Retention, Route, RouteId, Sandbox, SecretRef,
+    SourceName, Templates,
 };
 use herald_kinds::{Destination, Placed, Source, Store};
 use jiff::SignedDuration;
@@ -37,6 +37,9 @@ pub struct Config {
     pub server: Server,
     /// How herald's own requests reach the services the config names.
     pub http: herald_ports::Outbound,
+    /// Every kind of event it knows: those herald ships, and those it
+    /// declares.
+    pub kinds: KindSpecs,
 }
 
 impl Config {

@@ -316,13 +316,12 @@ fn shown(
     let shown = latest.shown(answering.prereleases);
     let event = match Event::normalise(Draft {
         identity: format!("latest/{}", latest.project),
-        kind: shown.kind,
+        kind: shown.kind.clone(),
         project: latest.project.clone(),
-        version: shown.version.clone(),
         title: shown.title.clone(),
         body: shown.body.clone(),
         links: shown.links.clone(),
-        prerelease: shown.prerelease,
+        attributes: shown.attributes.clone(),
         occurred: shown.occurred,
     }) {
         Ok(event) => event,

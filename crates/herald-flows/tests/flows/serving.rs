@@ -815,7 +815,8 @@ fn an_app_s_event_its_token_or_scope_does_not_let_through_is_refused_unread() {
 #[test]
 fn an_app_s_event_is_announced_to_the_routes_the_app_may_announce_to_only() {
     let world = World::new(Script::default());
-    let event = herald_sources_app::event("ci", DEPLOYED, at()).unwrap();
+    let event = herald_sources_app::event("ci", DEPLOYED, at(), &herald_core::KindSpecs::default())
+        .unwrap();
     let Worked::Announced(announced) = world.work(Job::App {
         app: "ci".to_owned(),
         event,
@@ -838,7 +839,8 @@ fn an_app_s_work_that_stops_or_will_not_be_done_releases_its_delivery() {
     let world = World::failing(Fault::Claims);
     let job = || Job::App {
         app: "ci".to_owned(),
-        event: herald_sources_app::event("ci", DEPLOYED, at()).unwrap(),
+        event: herald_sources_app::event("ci", DEPLOYED, at(), &herald_core::KindSpecs::default())
+            .unwrap(),
         verified: herald_flows::Verified {
             delivery: Some("app/ci/7".to_owned()),
             signer: Some("ci".to_owned()),
@@ -877,7 +879,8 @@ fn where_an_app_s_event_stands_is_read_route_by_route_from_the_ledger() {
         body,
         r#"{"id":"7","project":"herald","routes":[{"route":"deployed","standing":"pending"}]}"#
     );
-    let event = herald_sources_app::event("ci", DEPLOYED, at()).unwrap();
+    let event = herald_sources_app::event("ci", DEPLOYED, at(), &herald_core::KindSpecs::default())
+        .unwrap();
     let identity = event.identity().clone();
     world.work(Job::App {
         app: "ci".to_owned(),

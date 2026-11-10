@@ -464,15 +464,14 @@ impl Feed {
         };
         let draft = Draft {
             identity: format!("{}#{named}", self.url),
-            kind: Kind::FeedEntry,
+            kind: Kind::FEED_ENTRY,
             project: project.to_owned(),
-            version: None,
             title,
             body: body.unwrap_or_default(),
             links: link
                 .map(|link| BTreeMap::from([("entry".to_owned(), link)]))
                 .unwrap_or_default(),
-            prerelease: false,
+            attributes: BTreeMap::new(),
             occurred,
         };
         Event::normalise(draft)

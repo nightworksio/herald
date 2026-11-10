@@ -663,12 +663,11 @@ async fn outboxes<S: Notes>(store: &S) -> Result<(), Failure> {
 
 fn announced(project: &str, version: &str) -> Latest {
     let shown = Shown {
-        kind: Kind::Release,
-        version: Some(version.to_owned()),
+        kind: Kind::RELEASE,
         title: format!("{project} {version}"),
         body: "Notes".to_owned(),
         links: std::iter::once(("release".to_owned(), "https://example.org".to_owned())).collect(),
-        prerelease: false,
+        attributes: herald_core::versioned(version, false),
         occurred: NOON,
     };
     Latest {

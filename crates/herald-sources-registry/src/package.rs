@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use herald_core::{Cursor, Draft, Event, Kind, Polled, prerelease_version};
+use herald_core::{Cursor, Draft, Event, Kind, Polled, prerelease_version, versioned};
 use herald_ports::{Method, Request, Response, Secret, Text, USER_AGENT};
 use herald_wire::{Reading, SourceError, answered, host};
 use jiff::Timestamp;
@@ -302,13 +302,15 @@ impl Package {
             };
             links.insert("release".to_owned(), page);
         }
+        let identity = format!("{}/{}/{}", host(&self.api), self.name, found.version);
+        let title = format!("{project} {}", found.version);
+        let prerelease = prerelease_version(&found.version);
         let draft = Draft {
-            identity: format!("{}/{}/{}", host(&self.api), self.name, found.version),
-            kind: Kind::PackageVersion,
+            identity,
+            kind: Kind::PACKAGE_VERSION,
             project: project.to_owned(),
-            prerelease: prerelease_version(&found.version),
-            title: format!("{project} {}", found.version),
-            version: Some(found.version),
+            title,
+            attributes: versioned(found.version, prerelease),
             body: String::new(),
             links,
             occurred: found.published,

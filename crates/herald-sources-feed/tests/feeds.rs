@@ -79,7 +79,7 @@ mod feeds {
             newest.identity().as_str(),
             "https://blog.rust-lang.org/feed.xml#https://blog.rust-lang.org/2026/10/26/how-to-fund-rust-contributors/"
         );
-        assert_eq!(newest.kind(), Kind::FeedEntry);
+        assert_eq!(newest.kind(), &Kind::FEED_ENTRY);
         assert_eq!(newest.project(), "Rust Blog");
         assert_eq!(newest.title(), "How to fund Rust contributors");
         assert_eq!(newest.version(), None);

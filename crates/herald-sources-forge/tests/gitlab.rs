@@ -84,7 +84,7 @@ mod gitlab {
     fn a_created_release_hook_becomes_an_event() {
         let event = Forge::GitLab.event(HOOK.as_bytes()).unwrap().unwrap();
         assert_eq!(event.identity().as_str(), "gitlab.com/34675721/v1.126.0");
-        assert_eq!(event.kind(), Kind::Release);
+        assert_eq!(event.kind(), &Kind::RELEASE);
         assert_eq!(event.project(), "cli");
         assert_eq!(event.version(), Some("v1.126.0"));
         assert_eq!(event.title(), "v1.126.0");

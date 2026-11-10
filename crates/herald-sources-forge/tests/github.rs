@@ -102,7 +102,7 @@ mod github {
     fn a_published_release_event_becomes_an_event() {
         let event = Forge::GitHub.event(EVENT.as_bytes()).unwrap().unwrap();
         assert_eq!(event.identity().as_str(), "github.com/212613049/v2.103.3");
-        assert_eq!(event.kind(), Kind::Release);
+        assert_eq!(event.kind(), &Kind::RELEASE);
         assert_eq!(event.project(), "cli");
         assert_eq!(event.version(), Some("v2.103.3"));
         assert_eq!(event.title(), "GitHub CLI 2.103.3");

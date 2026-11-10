@@ -123,7 +123,7 @@ fn preview_renders_each_route_against_a_sample_or_a_release_event() {
     );
     let threaded = super::world::setup(&CONFIG.replace(
         "template = \"release\"\n",
-        "template = \"release\"\nthread = { name = \"{{ event.version }}\" }\n",
+        "template = \"release\"\nthread = { name = \"{{ event.attributes.version }}\" }\n",
     ));
     assert!(
         herald(&threaded, &world, &["preview"])
@@ -141,7 +141,7 @@ fn preview_renders_each_route_against_a_sample_or_a_release_event() {
 fn preview_says_why_an_event_file_or_a_template_fails() {
     let world = World::default();
     let failing = setup(&CONFIG.replace(
-        "title = \"📦 {{ event.project }} {{ event.version }}\"",
+        "title = \"📦 {{ event.project }} {{ event.attributes.version }}\"",
         "title = \"{% if event.project == 'cli' %}{{ nothing.here }}{% endif %}📦\"",
     ));
     let path = failing

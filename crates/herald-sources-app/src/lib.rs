@@ -5,7 +5,9 @@
 use std::collections::BTreeMap;
 use std::fmt;
 
-use herald_core::{Draft, Event, KeyForm, Kind, Problem, Scheme, Signed, Standing};
+use herald_core::{
+    Attribute, Draft, Event, KeyForm, Kind, KindSpecs, Problem, Scheme, Signed, Standing,
+};
 use jiff::Timestamp;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -24,11 +26,12 @@ pub const SCHEME: Scheme = Scheme {
 pub struct AppEvent {
     /// The app's own id for the event, which no other event of the app has.
     pub id: String,
+    /// What kind of thing it announces: one herald ships or one the config
+    /// declares; `message` where it is left out.
+    #[serde(default = "message")]
+    pub kind: Kind,
     /// The project it is about.
     pub project: String,
-    /// The version it announces, where it announces one.
-    #[serde(default)]
-    pub version: Option<String>,
     /// A title, on one line.
     pub title: String,
     /// The body, in Markdown.
@@ -38,14 +41,20 @@ pub struct AppEvent {
     /// `comparison`, `download`.
     #[serde(default)]
     pub links: BTreeMap<String, String>,
-    /// Whether it is a pre-release.
+    /// Its kind's attributes, by name: a versioned kind's `version`, and
+    /// `prerelease`.
     #[serde(default)]
-    pub prerelease: bool,
+    pub attributes: BTreeMap<String, Attribute>,
     /// When it happened, in RFC 3339; when herald read it where it is left
     /// out.
     #[serde(default)]
     #[schemars(with = "Option<String>")]
     pub occurred: Option<Timestamp>,
+}
+
+/// The kind of an event an app leaves unnamed.
+fn message() -> Kind {
+    Kind::MESSAGE
 }
 
 /// Why an app's event could not be read.
@@ -59,6 +68,11 @@ pub enum Unread {
     TooLarge,
     /// A field of the event cannot be part of one.
     Problem(Problem),
+    /// The config knows no kind of event by its name.
+    UnknownKind(Kind),
+    /// Its attributes are not what its kind's events carry, as the reason
+    /// says.
+    Unfit(String),
 }
 
 impl fmt::Display for Unread {
@@ -71,6 +85,11 @@ impl fmt::Display for Unread {
                 "the event is longer than {MOST} bytes; send a shorter one"
             ),
             Self::Problem(problem) => problem.fmt(f),
+            Self::UnknownKind(kind) => write!(
+                f,
+                "herald knows no kind \"{kind}\"; send a kind it ships, or one the config declares under [kinds.{kind}]"
+            ),
+            Self::Unfit(reason) => f.write_str(reason),
         }
     }
 }
@@ -84,13 +103,13 @@ pub fn identity(app: &str, id: &str) -> String {
     format!("app/{app}/{id}")
 }
 
-/// The event `body` holds, written by the app named `app`, which happened
-/// at `now` where it says no time of its own.
+/// The event `body` holds, written by the app named `app`, of one of the
+/// kinds `kinds`, which happened at `now` where it says no time of its own.
 ///
 /// # Errors
 ///
 /// The [`Unread`] that keeps `body` from being an event.
-pub fn event(app: &str, body: &[u8], now: Timestamp) -> Result<Event, Unread> {
+pub fn event(app: &str, body: &[u8], now: Timestamp, kinds: &KindSpecs) -> Result<Event, Unread> {
     if body.len() > MOST {
         return Err(Unread::TooLarge);
     }
@@ -100,18 +119,22 @@ pub fn event(app: &str, body: &[u8], now: Timestamp) -> Result<Event, Unread> {
     if id.is_empty() {
         return Err(Unread::NoId);
     }
-    Event::normalise(Draft {
+    let Some(spec) = kinds.get(&written.kind) else {
+        return Err(Unread::UnknownKind(written.kind));
+    };
+    let event = Event::normalise(Draft {
         identity: identity(app, id),
-        kind: Kind::Message,
+        kind: written.kind,
         project: written.project,
-        version: written.version,
         title: written.title,
         body: written.body,
         links: written.links,
-        prerelease: written.prerelease,
+        attributes: written.attributes,
         occurred: written.occurred.unwrap_or(now),
     })
-    .map_err(Unread::Problem)
+    .map_err(Unread::Problem)?;
+    spec.check(event.attributes()).map_err(Unread::Unfit)?;
+    Ok(event)
 }
 
 /// Where an app's event stands on each route it may go to, as the HTTP API

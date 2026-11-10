@@ -6,24 +6,23 @@ use std::collections::{BTreeMap, BTreeSet};
 use jiff::Timestamp;
 use serde::{Deserialize, Serialize};
 
-use crate::event::{Event, Kind};
+use crate::event::Event;
 use crate::key::RouteId;
+use crate::kind::{Attribute, Kind, PRERELEASE, VERSION};
 
 /// One event, as a command shows it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Shown {
     /// What kind of thing it announced.
     pub kind: Kind,
-    /// The version, where it has one.
-    pub version: Option<String>,
     /// Its title.
     pub title: String,
     /// Its body, in Markdown.
     pub body: String,
     /// Its named links.
     pub links: BTreeMap<String, String>,
-    /// Whether it is a pre-release.
-    pub prerelease: bool,
+    /// Its kind's attributes, by name.
+    pub attributes: BTreeMap<String, Attribute>,
     /// When it happened.
     pub occurred: Timestamp,
 }
@@ -33,13 +32,27 @@ impl Shown {
     #[must_use]
     pub fn of(event: &Event) -> Self {
         Self {
-            kind: event.kind(),
-            version: event.version().map(str::to_owned),
+            kind: event.kind().clone(),
             title: event.title().to_owned(),
             body: event.body().to_owned(),
             links: event.links().clone(),
-            prerelease: event.prerelease(),
+            attributes: event.attributes().clone(),
             occurred: event.occurred(),
+        }
+    }
+
+    /// Whether it is a pre-release.
+    #[must_use]
+    pub fn prerelease(&self) -> bool {
+        self.attributes.get(PRERELEASE) == Some(&Attribute::Flag(true))
+    }
+
+    /// The version, where its kind carries one.
+    #[must_use]
+    pub fn version(&self) -> Option<&str> {
+        match self.attributes.get(VERSION) {
+            Some(Attribute::Text(version)) => Some(version),
+            _ => None,
         }
     }
 }
@@ -64,7 +77,7 @@ impl Latest {
     #[must_use]
     pub fn after(kept: Option<Self>, event: &Event, route: &RouteId) -> Self {
         let shown = Shown::of(event);
-        let stable = (!shown.prerelease).then(|| shown.clone());
+        let stable = (!shown.prerelease()).then(|| shown.clone());
         let Some(mut latest) = kept else {
             return Self {
                 project: event.project().to_owned(),

@@ -1,6 +1,7 @@
+use std::collections::BTreeMap;
 use std::num::{NonZeroU64, NonZeroUsize};
 
-use herald_core::{Duration, Kind, Pinning, Prereleases, SecretRef, Size};
+use herald_core::{AttributeSpec, Duration, Kind, Pinning, Prereleases, SecretRef, Size};
 use schemars::JsonSchema;
 use serde::{Deserialize, Deserializer};
 use toml::Spanned;
@@ -119,6 +120,27 @@ pub(crate) struct MentionsFile {
     pub(crate) subscribers: bool,
 }
 
+/// A kind of event the config declares, which its apps may announce.
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+#[serde(rename = "DeclaredKind")]
+pub(crate) struct KindFile {
+    /// What it is, in a sentence.
+    #[serde(default)]
+    pub(crate) description: String,
+    /// Whether its events carry a version, as `attributes.version`, and may
+    /// be pre-releases, as `attributes.prerelease`.
+    #[serde(default)]
+    pub(crate) versioned: bool,
+    /// The names of the links that become its buttons, in order.
+    #[serde(default)]
+    pub(crate) links: Vec<String>,
+    /// The attributes its events carry, by name, as `event.attributes.<name>`
+    /// reads them.
+    #[serde(default)]
+    pub(crate) attributes: BTreeMap<String, AttributeSpec>,
+}
+
 /// What a route says whatever its destination.
 #[derive(Debug, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
@@ -132,7 +154,8 @@ pub(crate) struct RouteFile {
     pub(crate) sources: Vec<Spanned<String>>,
     /// The kinds of event it takes; every kind where absent.
     #[serde(default)]
-    pub(crate) kinds: Vec<Kind>,
+    #[schemars(with = "Vec<Kind>")]
+    pub(crate) kinds: Vec<Spanned<Kind>>,
     /// Which pre-releases it takes.
     #[serde(default)]
     pub(crate) prereleases: Prereleases,

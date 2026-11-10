@@ -18,6 +18,7 @@ mod inbound;
 mod interact;
 mod kept;
 mod key;
+mod kind;
 mod latest;
 mod ledger;
 mod marker;
@@ -46,7 +47,7 @@ pub use chunk::{Room, chunk, chunk_in, size};
 pub use credentials::basic;
 pub use cursor::{Cursor, Polled, fresh};
 pub use duration::Duration;
-pub use event::{Draft, Event, Kind, Problem};
+pub use event::{Draft, Event, Problem};
 pub use housekeep::{Chore, Schedule, due, schedules};
 pub use inbound::{
     Addressed, Claim, KeyForm, Refusal, Scheme, Signature, Signed, activity_claim, bearer, claim,
@@ -58,6 +59,10 @@ pub use interact::{
 };
 pub use kept::RecordKind;
 pub use key::{Identity, Key, NotAKey, RouteId, digest, hex};
+pub use kind::{
+    Attribute, AttributeSpec, AttributeType, Kind, KindSpec, KindSpecs, PRERELEASE, VERSION,
+    readable, versioned,
+};
 pub use latest::{Latest, Shown};
 pub use ledger::{
     Entry, Facts, Lease, Plan, Planned, Record, Sent, Standing, State, Step, plan, steps,

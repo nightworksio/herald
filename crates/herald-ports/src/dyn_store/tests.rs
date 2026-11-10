@@ -240,12 +240,11 @@ fn every_answer_of_an_erased_store_is_the_store_s_own() {
     let latest = Latest {
         project: "p".to_owned(),
         newest: Shown {
-            kind: Kind::Release,
-            version: None,
+            kind: Kind::RELEASE,
+            attributes: BTreeMap::default(),
             title: "t".to_owned(),
             body: String::new(),
             links: BTreeMap::new(),
-            prerelease: false,
             occurred: at,
         },
         stable: None,

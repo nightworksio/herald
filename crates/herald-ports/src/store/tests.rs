@@ -180,12 +180,11 @@ fn the_served_kinds_kept_nowhere_answer_unsupported_naming_them() {
     let latest = Latest {
         project: "p".to_owned(),
         newest: herald_core::Shown {
-            kind: herald_core::Kind::Release,
-            version: None,
+            kind: herald_core::Kind::RELEASE,
+            attributes: std::collections::BTreeMap::default(),
             title: "t".to_owned(),
             body: String::new(),
             links: std::collections::BTreeMap::new(),
-            prerelease: false,
             occurred: at,
         },
         stable: None,

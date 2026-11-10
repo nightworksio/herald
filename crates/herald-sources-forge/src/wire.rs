@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use herald_core::{Draft, Event, Kind, prerelease_version};
+use herald_core::{Draft, Event, Kind, prerelease_version, versioned};
 use jiff::Timestamp;
 
 use herald_wire::{SourceError, host};
@@ -50,10 +50,12 @@ pub(crate) fn event(
         .unwrap_or_else(|| found.tag.clone());
     let draft = Draft {
         identity: format!("{}/{}/{}", host(&found.url), repository.id, found.tag),
-        kind: Kind::Release,
+        kind: Kind::RELEASE,
         project: repository.name.clone(),
-        prerelease: found.prerelease || prerelease_version(&found.tag),
-        version: Some(found.tag),
+        attributes: versioned(
+            found.tag.clone(),
+            found.prerelease || prerelease_version(&found.tag),
+        ),
         title,
         body: found.body.unwrap_or_default(),
         links: BTreeMap::from([("release".to_owned(), found.url)]),

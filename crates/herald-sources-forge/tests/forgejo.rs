@@ -68,7 +68,7 @@ mod forgejo {
     fn a_published_release_event_becomes_an_event() {
         let event = Forge::Forgejo.event(EVENT.as_bytes()).unwrap().unwrap();
         assert_eq!(event.identity().as_str(), "codeberg.org/73144/v17.0.1");
-        assert_eq!(event.kind(), Kind::Release);
+        assert_eq!(event.kind(), &Kind::RELEASE);
         assert_eq!(event.project(), "forgejo");
         assert_eq!(event.title(), "v17.0.1");
         assert_eq!(

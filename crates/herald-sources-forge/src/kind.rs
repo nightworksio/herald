@@ -87,7 +87,7 @@ impl SourceConfig for ForgeSource {
     }
 
     fn kinds(&self) -> &'static [Kind] {
-        &[Kind::Release]
+        &[Kind::RELEASE]
     }
 
     fn backfill(&self) -> usize {

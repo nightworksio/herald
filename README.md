@@ -99,11 +99,11 @@ destination = "discord"
 channel = "1566184281406177531"
 template = "package-release"
 crosspost = true
-thread = { name = "{{ event.project }} {{ event.version }}", archive_after = "14d" }
+thread = { name = "{{ event.project }} {{ event.attributes.version }}", archive_after = "14d" }
 pin = "markers"
 
 [templates.package-release]
-title = "📦 {{ event.project }} {{ event.version }}{% if event.prerelease %} · pre-release{% endif %}"
+title = "📦 {{ event.project }} {{ event.attributes.version }}{% if event.attributes.prerelease %} · pre-release{% endif %}"
 body = "{{ event.body }}"
 ```
 
@@ -263,7 +263,17 @@ projects = ["herald"]
 ```
 
 - `herald token new --app ci` prints a new token once, with the `tokens` line to keep. Add a second token before removing the first to rotate it.
-- An event is herald's event JSON, as [`herald-event.schema.json`](herald-event.schema.json) describes it: `{"id": "7", "project": "herald", "title": "Deployed"}`, with `version`, `body`, `links`, `prerelease` and `occurred` where there are any.
+- An event is herald's event JSON, as [`herald-event.schema.json`](herald-event.schema.json) describes it: `{"id": "7", "project": "herald", "title": "Deployed"}`, with `kind`, `body`, `links`, `attributes` and `occurred` where there are any. Its kind is `message` where it names none.
+- An app sends any kind the config knows: `release`, `package-version`, `feed-entry`, `message`, or one it declares. A declared kind names the attributes its events carry, and herald refuses an event whose attributes do not fit ([ADR-0018](.docs/decisions/0018-a-kind-is-data-and-an-event-carries-its-kind-s-attributes.md)):
+
+  ```toml
+  [kinds.deploy]
+  description = "A deploy of a service."
+  links = ["dashboard"]
+  attributes = { region = { type = "text", required = true }, canary = { type = "flag" } }
+  ```
+
+  A template reads them as `{{ event.attributes.region }}`, and `herald check` names each attribute a template prints that a kind its route takes does not carry.
 - `herald announce --event deploy.json --app ci` announces it from a file, or from standard input with `--event -`.
 - `herald server` takes it at `POST /api/projects/herald/events` with `Authorization: Bearer <token>`: 202 for a new event, 200 for one it has already ([ADR-0015](.docs/decisions/0015-an-app-is-a-source-routes-name-announcing-with-hashed-tokens-scoped-to-its-projects.md)).
 - `GET /api/projects/herald/events/7`, with the same token, answers where its announcement stands on each of the app's routes: `pending`, `announcing`, `announced`, or `stopped` with the steps that remain.

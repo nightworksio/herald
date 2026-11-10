@@ -28,7 +28,93 @@ pub(super) struct Read {
     pub(super) path: String,
 }
 
+/// What a route takes events by: its sources, kinds and versions.
+#[derive(Clone, Copy)]
+struct Taken<'r> {
+    sources: &'r [Spanned<String>],
+    kinds: &'r [Spanned<Kind>],
+    versions: Option<&'r Spanned<String>>,
+}
+
 impl Loader<'_> {
+    /// The kinds of event `route` takes, each known, where its versions
+    /// can match them.
+    fn sample_kinds(
+        &mut self,
+        route: Taken<'_>,
+        path: &str,
+        sources: &BTreeMap<SourceName, Source>,
+        apps: &BTreeMap<String, Named>,
+    ) -> Option<BTreeSet<Kind>> {
+        let mut sound = true;
+        for (index, kind) in route.kinds.iter().enumerate() {
+            if self.specs.get(kind.get_ref()).is_none() {
+                let names: Vec<String> = self
+                    .specs
+                    .iter()
+                    .map(|spec| spec.kind.to_string())
+                    .collect();
+                let names: Vec<&str> = names.iter().map(String::as_str).collect();
+                self.error(
+                    &kind.span(),
+                    &format!("{path}.kinds[{index}]"),
+                    format!(
+                        "there is no kind \"{}\"; the kinds are {}, or declare it under [kinds.{0}]",
+                        kind.get_ref(),
+                        list(&names)
+                    ),
+                );
+                sound = false;
+            }
+        }
+        if !sound {
+            return None;
+        }
+        let kinds: BTreeSet<Kind> = if route.kinds.is_empty() {
+            route
+                .sources
+                .iter()
+                .flat_map(|source| {
+                    let name = source.get_ref();
+                    let posted: Vec<Kind> = if apps.contains_key(name) {
+                        self.specs.iter().map(|spec| spec.kind.clone()).collect()
+                    } else {
+                        Vec::new()
+                    };
+                    sources
+                        .get(&SourceName::new(name))
+                        .map(|source| source.kinds().to_vec())
+                        .unwrap_or_default()
+                        .into_iter()
+                        .chain(posted)
+                })
+                .collect()
+        } else {
+            route
+                .kinds
+                .iter()
+                .map(|kind| kind.get_ref().clone())
+                .collect()
+        };
+        let unversioned: Vec<&str> = kinds
+            .iter()
+            .filter(|kind| !self.specs.get(kind).is_some_and(|spec| spec.versioned))
+            .map(Kind::as_str)
+            .collect();
+        if let (Some(versions), false) = (route.versions, unversioned.is_empty()) {
+            self.error(
+                &versions.span(),
+                &format!("{path}.versions"),
+                format!(
+                    "{} events carry no version, so a route with versions takes none of them; give kinds that are versioned, such as kinds = [\"release\", \"package-version\"], or remove versions",
+                    list(&unversioned)
+                ),
+            );
+            return None;
+        }
+        Some(kinds)
+    }
+
     fn split<'i>(&mut self, value: Value<'i>, path: &str) -> Option<(Value<'i>, Value<'i>)> {
         let (span, table) = self.table(value, path)?;
         let (common, rest): (DeTable<'i>, DeTable<'i>) = table
@@ -197,34 +283,16 @@ impl Loader<'_> {
         let (Some(written), true) = (written, sound) else {
             return None;
         };
-        let sample_kinds: BTreeSet<Kind> = if route.kinds.is_empty() {
-            route
-                .sources
-                .iter()
-                .flat_map(|source| {
-                    let name = source.get_ref();
-                    let app = apps.contains_key(name).then_some(Kind::Message);
-                    sources
-                        .get(&SourceName::new(name))
-                        .map(|source| source.kinds().to_vec())
-                        .unwrap_or_default()
-                        .into_iter()
-                        .chain(app)
-                })
-                .collect()
-        } else {
-            route.kinds.iter().copied().collect()
-        };
-        if let Some(versions) = &route.versions
-            && sample_kinds.iter().any(|kind| !kind.versioned())
-        {
-            self.error(
-                &versions.span(),
-                &format!("{path}.versions"),
-                "feed entries and app messages carry no version, so a route with versions takes none of them; give kinds = [\"release\", \"package-version\"], or remove versions",
-            );
-            return None;
-        }
+        let sample_kinds = self.sample_kinds(
+            Taken {
+                sources: &route.sources,
+                kinds: &route.kinds,
+                versions: route.versions.as_ref(),
+            },
+            &path,
+            sources,
+            apps,
+        )?;
         let config = RouteConfig {
             route: Route {
                 id: RouteId::new(route.id.get_ref()),
@@ -234,7 +302,7 @@ impl Loader<'_> {
                         .iter()
                         .map(|source| SourceName::new(source.get_ref()))
                         .collect(),
-                    kinds: route.kinds,
+                    kinds: route.kinds.into_iter().map(Spanned::into_inner).collect(),
                     prereleases: route.prereleases,
                     versions: route
                         .versions

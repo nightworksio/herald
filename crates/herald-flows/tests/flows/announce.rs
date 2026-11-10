@@ -468,7 +468,7 @@ sources = ["gate"]
 destination = "hook"
 template = "t"
 forum = true
-thread = { name = "{{ event.version }}" }
+thread = { name = "{{ event.attributes.version }}" }
 [templates.t]
 title = "{{ event.title }}"
 body = "{{ event.body }}"
@@ -516,7 +516,7 @@ destination = "hook"
 template = "t"
 [templates.t]
 title = "{{ event.title }}"
-body = "- [x] {{ event.version }}"
+body = "- [x] {{ event.attributes.version }}"
 "#;
     let config = crate::harness::loaded(text);
     let (announced, script) = hooked(&config, &healthy());

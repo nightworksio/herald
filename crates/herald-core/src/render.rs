@@ -140,7 +140,18 @@ impl Templates {
                 reason: format!("its output passes the cap of {} bytes", self.output),
             });
         }
-        rendered.map_err(|error| failure(name, &error))?;
+        rendered.map_err(
+            |error| match lacked(template.source(), &error, context.event) {
+                Some(attribute) => TemplateError {
+                    name: name.to_owned(),
+                    reason: format!(
+                        "it prints event.attributes.{attribute}, which a {} event does not carry",
+                        context.event.kind()
+                    ),
+                },
+                None => failure(name, &error),
+            },
+        )?;
         Ok(String::from_utf8_lossy(&capped.written).into_owned())
     }
 
@@ -198,6 +209,26 @@ fn format(
     };
     output.write_str(&text).map_err(minijinja::Error::from)
 }
+
+/// The attribute `event` lacks that the line of `source` where `error`
+/// stopped prints, where it stopped on one.
+fn lacked<'s>(source: &'s str, error: &minijinja::Error, event: &Event) -> Option<&'s str> {
+    if error.kind() != ErrorKind::UndefinedError {
+        return None;
+    }
+    let line = source.lines().nth(error.line()?.checked_sub(1)?)?;
+    line.match_indices(ATTRIBUTES).find_map(|(at, _)| {
+        let rest = &line[at + ATTRIBUTES.len()..];
+        let end = rest
+            .find(|c: char| !(c.is_ascii_alphanumeric() || c == '_'))
+            .unwrap_or(rest.len());
+        let attribute = &rest[..end];
+        (!attribute.is_empty() && event.attribute(attribute).is_none()).then_some(attribute)
+    })
+}
+
+/// How a template reads one of an event's attributes.
+const ATTRIBUTES: &str = "event.attributes.";
 
 fn failure(name: &str, error: &minijinja::Error) -> TemplateError {
     let reason = match error.kind() {

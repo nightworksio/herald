@@ -67,7 +67,7 @@ mod registries {
             newest.identity().as_str(),
             "repo.packagist.org/monolog/monolog/3.12.1"
         );
-        assert_eq!(newest.kind(), Kind::PackageVersion);
+        assert_eq!(newest.kind(), &Kind::PACKAGE_VERSION);
         assert_eq!(newest.project(), "monolog/monolog");
         assert_eq!(newest.title(), "monolog/monolog 3.12.1");
         assert_eq!(newest.version(), Some("3.12.1"));

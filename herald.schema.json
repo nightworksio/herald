@@ -40,6 +40,13 @@
         }
       ]
     },
+    "kinds": {
+      "description": "The kinds of event the config declares beside those herald ships, by\nname; its apps may announce them.",
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/DeclaredKind"
+      }
+    },
     "markers": {
       "description": "The installation's marker key.",
       "anyOf": [
@@ -326,6 +333,50 @@
         }
       ]
     },
+    "AttributeSpec": {
+      "description": "One attribute a kind's events carry.",
+      "type": "object",
+      "properties": {
+        "required": {
+          "description": "Whether every event of the kind carries it.",
+          "type": "boolean",
+          "default": false
+        },
+        "type": {
+          "description": "What it holds.",
+          "$ref": "#/$defs/AttributeType"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "type"
+      ]
+    },
+    "AttributeType": {
+      "description": "What type an attribute holds.",
+      "oneOf": [
+        {
+          "description": "Text.",
+          "type": "string",
+          "const": "text"
+        },
+        {
+          "description": "Yes or no.",
+          "type": "string",
+          "const": "flag"
+        },
+        {
+          "description": "A number.",
+          "type": "string",
+          "const": "number"
+        },
+        {
+          "description": "An `https` or `http` address.",
+          "type": "string",
+          "const": "url"
+        }
+      ]
+    },
     "Audience": {
       "description": "Who sees an actor's Notes on the timelines. Followers see every Note.",
       "oneOf": [
@@ -399,6 +450,39 @@
           "const": "changelog"
         }
       ]
+    },
+    "DeclaredKind": {
+      "description": "A kind of event the config declares, which its apps may announce.",
+      "type": "object",
+      "properties": {
+        "attributes": {
+          "description": "The attributes its events carry, by name, as `event.attributes.<name>`\nreads them.",
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/AttributeSpec"
+          },
+          "default": {}
+        },
+        "description": {
+          "description": "What it is, in a sentence.",
+          "type": "string",
+          "default": ""
+        },
+        "links": {
+          "description": "The names of the links that become its buttons, in order.",
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "string"
+          }
+        },
+        "versioned": {
+          "description": "Whether its events carry a version, as `attributes.version`, and may\nbe pre-releases, as `attributes.prerelease`.",
+          "type": "boolean",
+          "default": false
+        }
+      },
+      "additionalProperties": false
     },
     "Destination": {
       "description": "A destination, by its kind.",
@@ -1438,29 +1522,9 @@
       "additionalProperties": false
     },
     "Kind": {
-      "description": "What kind of thing an event announces.",
-      "oneOf": [
-        {
-          "description": "A release on a forge.",
-          "type": "string",
-          "const": "release"
-        },
-        {
-          "description": "A new version of a package on a registry.",
-          "type": "string",
-          "const": "package-version"
-        },
-        {
-          "description": "An entry in a feed.",
-          "type": "string",
-          "const": "feed-entry"
-        },
-        {
-          "description": "Anything an app says.",
-          "type": "string",
-          "const": "message"
-        }
-      ]
+      "description": "What kind of thing an event announces: release, package-version, feed-entry, message, or a kind the config declares.",
+      "type": "string",
+      "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"
     },
     "Markers": {
       "description": "`[markers]`: the installation's marker key (ADR-0011).",
