@@ -73,9 +73,9 @@ pub enum Hooked {
 /// how the schema names it.
 pub trait SourceKind: 'static {
     /// The kind's name, as `[sources.<name>] kind` writes it.
-    const NAME: &'static str;
+    const NAME: &str;
     /// What the kind is, as the schema describes a source of it.
-    const DESCRIPTION: &'static str;
+    const DESCRIPTION: &str;
 
     /// The table it reads.
     type File;

@@ -8,7 +8,7 @@ fn named(package: &str, token: Option<&str>) -> RegistryOptions {
         token: token.map(|secret| SecretRef {
             secret: secret.to_owned(),
         }),
-        backfill: 1,
+        backfill: 3,
         ..RegistryOptions::default()
     }
 }
@@ -76,7 +76,7 @@ fn a_registry_source_names_its_token_and_polls_its_package() {
         }]
     );
     assert_eq!(source.kinds(), &[Kind::PackageVersion]);
-    assert_eq!(source.backfill(), 1);
+    assert_eq!(source.backfill(), 3);
     assert_eq!(source.scheme(), None);
     let poll = source.poller(None);
     assert_eq!(

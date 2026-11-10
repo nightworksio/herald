@@ -30,8 +30,8 @@ impl ForgeSource {
 pub enum GitHubKind {}
 
 impl SourceKind for GitHubKind {
-    const NAME: &'static str = Forge::GitHub.kind();
-    const DESCRIPTION: &'static str = "A GitHub repository's releases.";
+    const NAME: &str = Forge::GitHub.kind();
+    const DESCRIPTION: &str = "A GitHub repository's releases.";
 
     type File = SourceOptions;
     type Options = ForgeSource;
@@ -46,8 +46,8 @@ impl SourceKind for GitHubKind {
 pub enum GitLabKind {}
 
 impl SourceKind for GitLabKind {
-    const NAME: &'static str = Forge::GitLab.kind();
-    const DESCRIPTION: &'static str = "A GitLab project's releases.";
+    const NAME: &str = Forge::GitLab.kind();
+    const DESCRIPTION: &str = "A GitLab project's releases.";
 
     type File = SourceOptions;
     type Options = ForgeSource;
@@ -62,8 +62,8 @@ impl SourceKind for GitLabKind {
 pub enum ForgejoKind {}
 
 impl SourceKind for ForgejoKind {
-    const NAME: &'static str = Forge::Forgejo.kind();
-    const DESCRIPTION: &'static str = "A Forgejo or Gitea repository's releases.";
+    const NAME: &str = Forge::Forgejo.kind();
+    const DESCRIPTION: &str = "A Forgejo or Gitea repository's releases.";
 
     type File = SourceOptions;
     type Options = ForgeSource;

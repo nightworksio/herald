@@ -41,8 +41,8 @@ macro_rules! registry_kind {
         pub enum $kind {}
 
         impl SourceKind for $kind {
-            const NAME: &'static str = $registry.kind();
-            const DESCRIPTION: &'static str = $description;
+            const NAME: &str = $registry.kind();
+            const DESCRIPTION: &str = $description;
 
             type File = RegistryOptions;
             type Options = RegistrySource;

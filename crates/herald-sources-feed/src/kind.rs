@@ -11,8 +11,8 @@ use crate::{Feed, FeedOptions};
 pub enum FeedKind {}
 
 impl SourceKind for FeedKind {
-    const NAME: &'static str = "feed";
-    const DESCRIPTION: &'static str = "An RSS or Atom feed's entries.";
+    const NAME: &str = "feed";
+    const DESCRIPTION: &str = "An RSS or Atom feed's entries.";
 
     type File = FeedOptions;
     type Options = FeedOptions;
