@@ -4,7 +4,7 @@ use unicode_segmentation::UnicodeSegmentation;
 use crate::chunk::{Room, chunk_in};
 use crate::event::Event;
 use crate::key::{Key, RouteId};
-use crate::kind::LinkSpec;
+use crate::kind::{LinkSpec, RELEASE_LINK};
 use crate::marker::Marks;
 use crate::markup::{Text, literal};
 use crate::profile::{Markup, Measure, Profile};
@@ -183,7 +183,7 @@ pub fn announce(
         thread: thread
             .map(|thread| shortened(&thread, profile.limits.thread_name, profile.measure)),
         link: event
-            .link("release")
+            .link(RELEASE_LINK)
             .or_else(|| event.first_link())
             .map(ToOwned::to_owned),
         buttons: links

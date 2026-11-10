@@ -4,9 +4,9 @@
 
 use herald_config::{Config, RouteConfig};
 use herald_core::{
-    Answering, Asked, Command, Context, DestinationName, Draft, Event, Latest, Phrase, Place,
-    RouteId, Said, Subscription, Wording, announced, body_template, chosen, chunk, completions,
-    escaped, safe_url, title_template,
+    Answering, Asked, CHANGELOG_LINK, Command, Context, DestinationName, Draft, Event, Latest,
+    Phrase, Place, RELEASE_LINK, RouteId, Said, Subscription, Wording, announced, body_template,
+    chosen, chunk, completions, escaped, safe_url, title_template,
 };
 use herald_kinds::{Interacted, Replying};
 use herald_ports::{Announcements, Http, Store, Subscriptions};
@@ -360,7 +360,7 @@ fn shown(
 /// happened.
 fn latest_text(title: &str, event: &Event, wording: &Wording) -> String {
     let title = escaped(title);
-    let headline = match event.link("release").or_else(|| event.first_link()) {
+    let headline = match event.link(RELEASE_LINK).or_else(|| event.first_link()) {
         Some(link) => format!("**[{title}]({})**", safe_url(link)),
         None => format!("**{title}**"),
     };
@@ -377,11 +377,11 @@ fn changelog_text(body: &str, event: &Event, wording: &Wording) -> String {
         notes
     };
     let link = event
-        .link("changelog")
+        .link(CHANGELOG_LINK)
         .map(|link| (wording.text(Phrase::ChangelogLink), link))
         .or_else(|| {
             event
-                .link("release")
+                .link(RELEASE_LINK)
                 .map(|link| (wording.text(Phrase::ReleaseLink), link))
         });
     match link {

@@ -1,8 +1,8 @@
 //! The sample every destination's fixtures announce.
 
 use herald_core::{
-    Announcement, Button, Delivery, Identity, Key, Marker, Marks, Mentions, Pinning, RoleId,
-    RouteId, Text, Thread, Title,
+    Announcement, Button, CHANGELOG_LINK, Delivery, Identity, Key, Marker, Marks, Mentions,
+    Pinning, RELEASE_LINK, RoleId, RouteId, Text, Thread, Title,
 };
 
 /// The route every destination's fixtures announce through.
@@ -52,13 +52,13 @@ pub fn announcement() -> Announcement {
         ),
         buttons: vec![
             Button {
-                name: "release".to_owned(),
+                name: RELEASE_LINK.to_owned(),
                 label: None,
                 url: "https://github.com/nightworksio/php-mutation-gate/releases/tag/v0.1.0"
                     .to_owned(),
             },
             Button {
-                name: "changelog".to_owned(),
+                name: CHANGELOG_LINK.to_owned(),
                 label: None,
                 url: "https://github.com/nightworksio/php-mutation-gate/blob/v0.1.0/CHANGELOG.md"
                     .to_owned(),

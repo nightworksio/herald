@@ -8,6 +8,7 @@ use serde::Deserialize;
 
 use crate::bounds::Sandbox;
 use crate::interact::{Command, Said, Unchosen};
+use crate::kind::{CHANGELOG_LINK, ENTRY_LINK, RELEASE_LINK};
 use crate::markup::escaped;
 
 /// One thing herald says where it takes commands, as `wording` names it.
@@ -175,9 +176,9 @@ impl Phrase {
     #[must_use]
     pub fn link(name: &str) -> Option<Self> {
         match name {
-            "release" => Some(Self::ReleaseLink),
-            "changelog" => Some(Self::ChangelogLink),
-            "entry" => Some(Self::EntryLink),
+            RELEASE_LINK => Some(Self::ReleaseLink),
+            CHANGELOG_LINK => Some(Self::ChangelogLink),
+            ENTRY_LINK => Some(Self::EntryLink),
             _ => None,
         }
     }

@@ -40,19 +40,18 @@ impl Loader<'_> {
                     );
                     sound = false;
                 }
-                if let Some(label) = &link.label {
-                    let length = label.trim().chars().count();
-                    if length == 0 || length > Phrase::LABEL {
-                        self.error(
-                            &span,
-                            &format!("{at}.label"),
-                            format!(
-                                "a button's label is 1 to {} characters; give one that fits",
-                                Phrase::LABEL
-                            ),
-                        );
-                        sound = false;
-                    }
+                if let Some(label) = &link.label
+                    && (label.trim().is_empty() || label.chars().count() > Phrase::LABEL)
+                {
+                    self.error(
+                        &span,
+                        &format!("{at}.label"),
+                        format!(
+                            "a button's label is 1 to {} characters; give one that fits",
+                            Phrase::LABEL
+                        ),
+                    );
+                    sound = false;
                 }
             }
             for attribute in file.attributes.keys() {

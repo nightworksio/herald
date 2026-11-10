@@ -166,7 +166,8 @@ body = "{{ event.body }}"
             ]
         );
         let too_long = "x".repeat(Phrase::LABEL + 1);
-        for label in ["", "  ", too_long.as_str()] {
+        let padded = format!(" {}", "x".repeat(Phrase::LABEL));
+        for label in ["", "  ", too_long.as_str(), padded.as_str()] {
             let error = errors(&EXAMPLE.replace(
                 "links = [\"site\"]",
                 &format!("links = [{{ name = \"site\", label = \"{label}\" }}]"),

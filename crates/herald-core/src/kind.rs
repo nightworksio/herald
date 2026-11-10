@@ -148,6 +148,12 @@ pub struct AttributeSpec {
 pub const VERSION: &str = "version";
 /// The attribute that marks a pre-release.
 pub const PRERELEASE: &str = "prerelease";
+/// The link to a release's page.
+pub const RELEASE_LINK: &str = "release";
+/// The link to a release's changelog.
+pub const CHANGELOG_LINK: &str = "changelog";
+/// The link to a feed's entry.
+pub const ENTRY_LINK: &str = "entry";
 
 /// Whether `name` can name an attribute or a link as a template reads it:
 /// lowercase letters, digits and `_`, starting with a letter.
@@ -267,28 +273,28 @@ impl KindSpec {
                 Kind::RELEASE,
                 "A release on a forge.",
                 true,
-                buttons(&["release", "changelog"]),
+                buttons(&[RELEASE_LINK, CHANGELOG_LINK]),
                 BTreeMap::new(),
             ),
             Self::new(
                 Kind::PACKAGE_VERSION,
                 "A new version of a package on a registry.",
                 true,
-                buttons(&["release", "changelog"]),
+                buttons(&[RELEASE_LINK, CHANGELOG_LINK]),
                 BTreeMap::new(),
             ),
             Self::new(
                 Kind::FEED_ENTRY,
                 "An entry in a feed.",
                 false,
-                buttons(&["entry"]),
+                buttons(&[ENTRY_LINK]),
                 BTreeMap::new(),
             ),
             Self::new(
                 Kind::MESSAGE,
                 "Anything an app says.",
                 false,
-                buttons(&["release", "changelog"]),
+                buttons(&[RELEASE_LINK, CHANGELOG_LINK]),
                 BTreeMap::new(),
             ),
         ]

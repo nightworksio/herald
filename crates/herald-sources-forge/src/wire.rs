@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use herald_core::{Draft, Event, Kind, prerelease_version, versioned};
+use herald_core::{Draft, Event, Kind, RELEASE_LINK, prerelease_version, versioned};
 use jiff::Timestamp;
 
 use herald_wire::{SourceError, host};
@@ -58,7 +58,7 @@ pub(crate) fn event(
         ),
         title,
         body: found.body.unwrap_or_default(),
-        links: BTreeMap::from([("release".to_owned(), found.url)]),
+        links: BTreeMap::from([(RELEASE_LINK.to_owned(), found.url)]),
         occurred,
     };
     Event::normalise(draft)
