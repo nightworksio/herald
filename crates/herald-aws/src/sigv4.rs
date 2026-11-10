@@ -158,6 +158,37 @@ mod tests {
     }
 
     #[test]
+    fn a_request_carries_the_signature_aws_s_own_test_suite_gives() {
+        let id = Secret::new("AWS_ACCESS_KEY_ID", "AKIDEXAMPLE");
+        let key = Secret::new(
+            "AWS_SECRET_ACCESS_KEY",
+            include_str!("../fixtures/aws-documented-secret.test.txt").trim(),
+        );
+        let request = Request::new(Method::Post, Text::plain("https://example.amazonaws.com/"))
+            .body(b"Param1=value1".to_vec());
+        let signing = Signing {
+            access_key_id: &id,
+            secret_access_key: &key,
+            session_token: None,
+            region: "us-east-1",
+            service: "service",
+            host: "example.amazonaws.com",
+        };
+        let signed = signed(
+            request,
+            "/",
+            "application/x-www-form-urlencoded",
+            &[],
+            &signing,
+            "2015-08-30T12:36:00Z".parse().unwrap(),
+        );
+        assert_eq!(
+            header(&signed, "Authorization"),
+            "AWS4-HMAC-SHA256 Credential=AKIDEXAMPLE/20150830/us-east-1/service/aws4_request, SignedHeaders=content-type;host;x-amz-date, Signature=ff11897932ad3f4e8b18135d722051e5ac45fc38421b1da7b9d196a0fe09473a"
+        );
+    }
+
+    #[test]
     fn a_request_is_signed_over_its_headers_and_body_with_its_token_where_it_has_one() {
         let id = Secret::new("AWS_ACCESS_KEY_ID", "AKIDEXAMPLE");
         let key = Secret::new(
@@ -187,9 +218,10 @@ mod tests {
         assert_eq!(header(&plain, "X-Amz-Date"), "20261105T230000Z");
         assert_eq!(header(&plain, "X-Amz-Target"), "DynamoDB_20120810.GetItem");
         let authorization = header(&plain, "Authorization");
-        assert!(authorization.starts_with(
-            "AWS4-HMAC-SHA256 Credential=AKIDEXAMPLE/20261105/eu-west-1/dynamodb/aws4_request, SignedHeaders=content-type;host;x-amz-date;x-amz-target, Signature="
-        ), "{authorization}");
+        assert_eq!(
+            authorization,
+            "AWS4-HMAC-SHA256 Credential=AKIDEXAMPLE/20261105/eu-west-1/dynamodb/aws4_request, SignedHeaders=content-type;host;x-amz-date;x-amz-target, Signature=815c67390ae7dfcff4ba13a9df909f854e22dc65cb561ed53256a9a8aec02658"
+        );
         assert_eq!(header(&plain, "X-Amz-Security-Token"), "");
         signing.session_token = Some(&token);
         let tokened = signed(request(), "/", json, &target, &signing, now);
