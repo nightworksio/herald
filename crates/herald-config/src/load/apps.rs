@@ -4,11 +4,12 @@
 use std::collections::BTreeMap;
 
 use herald_core::{RouteId, SourceName};
+use herald_kinds::Source;
 use toml::Spanned;
 
 use super::route::Read;
 use super::{HASH_DIGITS, Loader, Value};
-use crate::config::{App, Source};
+use crate::config::App;
 use crate::file::AppFile;
 
 /// How a token's SHA-256 is written in `[apps.<name>] tokens`.

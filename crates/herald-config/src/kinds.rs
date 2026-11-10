@@ -2,7 +2,9 @@ use std::fmt;
 use std::marker::PhantomData;
 use std::ops::Range;
 
-use herald_kinds::{Destination, DestinationKind, Fault, Placed, Placing, Store, StoreKind};
+use herald_kinds::{
+    Destination, DestinationKind, Fault, Placed, Placing, Source, SourceKind, Store, StoreKind,
+};
 use jiff::SignedDuration;
 use schemars::{JsonSchema, Schema, SchemaGenerator};
 use serde::de::DeserializeOwned;
@@ -10,12 +12,13 @@ use serde::de::DeserializeOwned;
 use crate::load::{Loader, Value};
 use crate::schema::{routed, store, tagged};
 
-/// Every kind of destination and store a herald reads its config with: the
-/// one list each host composes, which the loader parses through and the
-/// schema is generated from.
+/// Every kind of destination, source and store a herald reads its config
+/// with: the one list each host composes, which the loader parses through
+/// and the schema is generated from.
 #[derive(Default)]
 pub struct Kinds {
     destinations: Vec<Box<dyn Kinded>>,
+    sources: Vec<Box<dyn SourceKinded>>,
     stores: Vec<Box<dyn StoreKinded>>,
 }
 
@@ -55,6 +58,34 @@ impl Kinds {
         self.destinations.iter().map(AsRef::as_ref)
     }
 
+    /// These kinds, and sources of kind `K`.
+    #[must_use]
+    pub fn source<K>(mut self) -> Self
+    where
+        K: SourceKind,
+        K::File: DeserializeOwned + JsonSchema,
+    {
+        self.sources.push(Box::new(Of::<K>(PhantomData)));
+        self
+    }
+
+    /// Every source kind's name, as `kind` writes it.
+    #[must_use]
+    pub fn source_kinds(&self) -> Vec<&'static str> {
+        self.sources.iter().map(|kind| kind.name()).collect()
+    }
+
+    pub(crate) fn source_named(&self, name: &str) -> Option<&dyn SourceKinded> {
+        self.sources
+            .iter()
+            .map(AsRef::as_ref)
+            .find(|kind| kind.name() == name)
+    }
+
+    pub(crate) fn sources(&self) -> impl Iterator<Item = &dyn SourceKinded> {
+        self.sources.iter().map(AsRef::as_ref)
+    }
+
     /// These kinds, and stores of kind `K`.
     #[must_use]
     pub fn store<K>(mut self) -> Self
@@ -88,6 +119,7 @@ impl fmt::Debug for Kinds {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Kinds")
             .field("destinations", &self.destination_kinds())
+            .field("sources", &self.source_kinds())
             .field("stores", &self.store_kinds())
             .finish()
     }
@@ -205,6 +237,40 @@ fn clean(loader: &mut Loader<'_>, at: At<'_>, faults: &[Fault]) -> bool {
     faults.is_empty()
 }
 
+/// One source kind, its types erased.
+pub(crate) trait SourceKinded: Send + Sync {
+    fn name(&self) -> &'static str;
+
+    fn parse(&self, loader: &mut Loader<'_>, rest: Value<'_>, at: At<'_>) -> Option<Source>;
+
+    fn schema(&self, generator: &mut SchemaGenerator) -> Schema;
+}
+
+impl<K> SourceKinded for Of<K>
+where
+    K: SourceKind,
+    K::File: DeserializeOwned + JsonSchema,
+{
+    fn name(&self) -> &'static str {
+        K::NAME
+    }
+
+    fn parse(&self, loader: &mut Loader<'_>, rest: Value<'_>, at: At<'_>) -> Option<Source> {
+        let file = loader.typed::<K::File>(rest, at.path)?;
+        match K::checked(file) {
+            Ok(options) => Some(Source::new(options)),
+            Err(fault) => {
+                clean(loader, at, &[fault]);
+                None
+            }
+        }
+    }
+
+    fn schema(&self, generator: &mut SchemaGenerator) -> Schema {
+        tagged::<K::File>(generator, K::NAME, K::DESCRIPTION)
+    }
+}
+
 /// One store kind, its types erased.
 pub(crate) trait StoreKinded: Send + Sync {
     fn name(&self) -> &'static str;
@@ -246,11 +312,13 @@ mod tests {
     fn kinds_list_their_names_in_the_order_they_are_given() {
         let none = Kinds::new();
         assert_eq!(none.destination_kinds(), Vec::<&str>::new());
+        assert_eq!(none.source_kinds(), Vec::<&str>::new());
         assert_eq!(none.store_kinds(), Vec::<&str>::new());
         assert_eq!(
             format!("{none:?}"),
-            "Kinds { destinations: [], stores: [] }"
+            "Kinds { destinations: [], sources: [], stores: [] }"
         );
+        assert!(none.source_named("github").is_none());
         assert!(none.destination_named("discord").is_none());
         assert!(none.store_named("sqlite").is_none());
     }

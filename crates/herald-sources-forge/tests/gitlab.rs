@@ -50,7 +50,7 @@ mod gitlab {
         let release = [("X-Gitlab-Event", "Release Hook")];
         assert_eq!(
             Forge::GitLab.hooked(&release, HOOK.as_bytes(), "gitlab-org/cli"),
-            Ok(Hooked::Release(
+            Ok(Hooked::Event(
                 Forge::GitLab.event(HOOK.as_bytes()).unwrap().unwrap()
             ))
         );

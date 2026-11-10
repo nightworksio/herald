@@ -10,9 +10,9 @@ use toml::de::{DeTable, DeValue};
 
 use super::apps::Named;
 use super::{Loader, Value, Written, list};
-use herald_kinds::{Destination, Placed, Placing};
+use herald_kinds::{Destination, Placed, Placing, Source};
 
-use crate::config::{RouteConfig, Source};
+use crate::config::RouteConfig;
 use crate::file::{ROUTE_KEYS, RouteFile};
 use crate::kinds::At;
 

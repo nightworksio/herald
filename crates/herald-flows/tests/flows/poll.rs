@@ -3,7 +3,8 @@ use herald_core::{Cursor, Identity, SourceName};
 use herald_flows::{Fresh, Outcome, Ports, PrepareError, Remembered, Stop, Sweep, poll, prepare};
 use herald_ports::Cursors;
 use herald_sources_feed::FeedOptions;
-use herald_sources_registry::{Registry, RegistryOptions};
+use herald_sources_forge::{ForgeSource, SourceOptions};
+use herald_sources_registry::{Registry, RegistryOptions, RegistrySource};
 use herald_testing::{FakeClock, FakeSigner};
 
 use crate::harness::*;
@@ -40,10 +41,20 @@ fn announced() -> [(&'static str, u16, &'static str); 6] {
     [POSTED, CROSSPOSTED, THREADED, PINNED, WHO, NO_PINS]
 }
 
-fn backfilled(mut config: Config, backfill: usize) -> Config {
-    if let Some(Source::Forge(_, options)) = config.sources.values_mut().next() {
-        options.backfill = backfill;
+/// `config` with its first source's forge options changed by `change`.
+fn forged(config: &mut Config, change: impl FnOnce(&mut SourceOptions)) {
+    if let Some(source) = config.sources.values_mut().next()
+        && let Some(mut forged) = source.of::<ForgeSource>().cloned()
+    {
+        change(&mut forged.options);
+        *source = Source::new(forged);
     }
+}
+
+fn backfilled(mut config: Config, backfill: usize) -> Config {
+    forged(&mut config, |options| {
+        options.backfill = backfill;
+    });
     config
 }
 
@@ -272,11 +283,11 @@ fn a_source_that_cannot_be_read_or_reached_stops_its_poll() {
 #[test]
 fn a_source_token_is_resolved_with_the_rest_of_the_config() {
     let mut config = config("");
-    if let Some(Source::Forge(_, options)) = config.sources.values_mut().next() {
+    forged(&mut config, |options| {
         options.token = Some(herald_core::SecretRef {
             secret: "GITHUB_TOKEN".to_owned(),
         });
-    }
+    });
     assert!(matches!(
         pollster::block_on(prepare(&config, &secrets(), &FakeSigner)),
         Err(PrepareError::Secret(_))
@@ -291,14 +302,14 @@ fn a_registry_is_polled_as_a_forge_is_with_one_request() {
     let mut config = config("");
     config.sources.insert(
         SourceName::new("gate"),
-        Source::Registry(
-            Registry::CratesIo,
-            RegistryOptions {
+        Source::new(RegistrySource {
+            registry: Registry::CratesIo,
+            options: RegistryOptions {
                 package: "gate".to_owned(),
                 backfill: 1,
                 ..RegistryOptions::default()
             },
-        ),
+        }),
     );
     let versions = serde_json::json!({ "versions": [
         { "num": "0.2.0", "created_at": "2026-10-31T12:00:00Z", "yanked": false },
@@ -336,9 +347,9 @@ fn a_docker_hub_token_is_exchanged_before_each_poll_and_a_refused_exchange_stops
     let mut config = config("");
     config.sources.insert(
         SourceName::new("gate"),
-        Source::Registry(
-            Registry::DockerHub,
-            RegistryOptions {
+        Source::new(RegistrySource {
+            registry: Registry::DockerHub,
+            options: RegistryOptions {
                 package: "nightworksio/gate".to_owned(),
                 token: Some(herald_core::SecretRef {
                     secret: "HERALD_DOCKER_HUB_TOKEN".to_owned(),
@@ -347,7 +358,7 @@ fn a_docker_hub_token_is_exchanged_before_each_poll_and_a_refused_exchange_stops
                 backfill: 1,
                 ..RegistryOptions::default()
             },
-        ),
+        }),
     );
     let secrets = secrets().with("HERALD_DOCKER_HUB_TOKEN", "dckr_pat_1");
     let tags = serde_json::json!({ "results": [
@@ -393,7 +404,7 @@ fn a_feed_is_polled_with_one_request_and_its_entries_announced() {
     let mut config = config("");
     config.sources.insert(
         SourceName::new("gate"),
-        Source::Feed(FeedOptions {
+        Source::new(FeedOptions {
             url: "https://blog.example/feed.xml".to_owned(),
             backfill: 1,
             ..FeedOptions::default()
@@ -423,10 +434,10 @@ fn a_feed_is_polled_with_one_request_and_its_entries_announced() {
 fn a_poll_reads_as_many_as_the_source_s_page_and_remembers_as_many_as_it_says() {
     let store = healthy();
     let mut config = config("");
-    if let Some(Source::Forge(_, options)) = config.sources.values_mut().next() {
+    forged(&mut config, |options| {
         options.page = std::num::NonZeroUsize::new(2);
         options.remembered = std::num::NonZeroUsize::new(2);
-    }
+    });
     let three = releases(&["v3", "v2", "v1"]);
     let paged = "/repos/nightworksio/php-mutation-gate/releases?per_page=2";
     let first = Script::answering(&[(paged, 200, &three), REPOSITORY]);
@@ -435,9 +446,9 @@ fn a_poll_reads_as_many_as_the_source_s_page_and_remembers_as_many_as_it_says() 
         Sweep::Polled { found: 3, .. }
     ));
     assert_eq!(cursor(&store).unwrap().seen, seen(&["v3", "v2"]));
-    if let Some(Source::Forge(_, options)) = config.sources.values_mut().next() {
+    forged(&mut config, |options| {
         options.parse = Some(herald_core::Size(three.len() - 1));
-    }
+    });
     let large = Script::answering(&[(paged, 200, &three), REPOSITORY]);
     let Sweep::Stopped(Stop::Unreachable(reason)) = swept(&config, &healthy(), &large) else {
         panic!("a releases answer past parse was read");

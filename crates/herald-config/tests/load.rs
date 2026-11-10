@@ -5,7 +5,7 @@ mod common;
 
 #[cfg(test)]
 mod load {
-    use herald_config::{Source, Store, load, schema};
+    use herald_config::{Store, load, schema};
     use herald_core::{Kind, Pinning, Prereleases};
     use herald_sources_forge::Forge;
 
@@ -82,10 +82,15 @@ body = "{{ event.body }}"
                 .map(|destination| destination.kind()),
             Some("discord")
         );
-        assert!(matches!(
-            config.sources.values().next(),
-            Some(Source::Forge(Forge::GitHub, options)) if options.repository == "nightworksio/php-mutation-gate"
-        ));
+        assert!(
+            config
+                .sources
+                .values()
+                .next()
+                .and_then(|source| source.of::<herald_sources_forge::ForgeSource>())
+                .is_some_and(|forged| forged.forge == Forge::GitHub
+                    && forged.options.repository == "nightworksio/php-mutation-gate")
+        );
         let route = &config.routes[0];
         assert_eq!(route.route.id.as_str(), "php-mutation-gate-releases");
         assert_eq!(route.route.filter.kinds, [Kind::Release]);
@@ -272,7 +277,7 @@ body = "{{ event.body }}"
 
     #[test]
     fn every_source_kind_loads_as_itself() {
-        for kind in Source::KINDS {
+        for kind in crate::common::kinds().source_kinds() {
             let forge = ["github", "gitlab", "forgejo"].contains(&kind);
             let mut text = EXAMPLE.replace("kind = \"github\"", &format!("kind = \"{kind}\""));
             if kind == "feed" {

@@ -55,7 +55,7 @@ mod github {
         let hooked = Forge::GitHub.hooked(&[RELEASE], EVENT.as_bytes(), "CLI/cli");
         assert_eq!(
             hooked,
-            Ok(Hooked::Release(
+            Ok(Hooked::Event(
                 Forge::GitHub.event(EVENT.as_bytes()).unwrap().unwrap()
             ))
         );

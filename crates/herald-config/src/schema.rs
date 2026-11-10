@@ -36,31 +36,17 @@ impl JsonSchema for DestinationSchema {
     }
 }
 
-/// A source, by its kind.
-#[derive(JsonSchema)]
-#[serde(tag = "kind", rename_all = "kebab-case")]
-#[schemars(rename = "Source")]
-#[allow(dead_code, reason = "read only by the schema's derive")]
-enum SourceSchema {
-    /// A GitHub repository's releases.
-    #[serde(rename = "github")]
-    GitHub(herald_sources_forge::SourceOptions),
-    /// A GitLab project's releases.
-    #[serde(rename = "gitlab")]
-    GitLab(herald_sources_forge::SourceOptions),
-    /// A Forgejo or Gitea repository's releases.
-    Forgejo(herald_sources_forge::SourceOptions),
-    /// A package's versions on Packagist.
-    Packagist(herald_sources_registry::RegistryOptions),
-    /// A crate's versions on crates.io.
-    #[serde(rename = "crates-io")]
-    CratesIo(herald_sources_registry::RegistryOptions),
-    /// A package's versions on the npm registry.
-    Npm(herald_sources_registry::RegistryOptions),
-    /// A repository's tags on Docker Hub.
-    DockerHub(herald_sources_registry::RegistryOptions),
-    /// An RSS or Atom feed's entries.
-    Feed(herald_sources_feed::FeedOptions),
+/// A source, by its kind: its schema is its kind's.
+struct SourceSchema;
+
+impl JsonSchema for SourceSchema {
+    fn schema_name() -> Cow<'static, str> {
+        SOURCE.into()
+    }
+
+    fn json_schema(_: &mut SchemaGenerator) -> Schema {
+        Schema::default()
+    }
 }
 
 /// A route: its schema is its kind's.
@@ -107,6 +93,8 @@ struct Routed<T> {
     own: T,
 }
 
+/// The schema's name for a source.
+const SOURCE: &str = "Source";
 /// The schema's name for a store.
 const STORE: &str = "Store";
 /// The schema's name for a destination.
@@ -201,6 +189,10 @@ struct FileSchema {
     destinations: BTreeMap<String, DestinationSchema>,
     /// What herald listens to, by name.
     #[serde(default)]
+    #[expect(
+        clippy::zero_sized_map_values,
+        reason = "only the schema's derive reads the map, and its kinds' schemas take the value's place"
+    )]
     sources: BTreeMap<String, SourceSchema>,
     /// Which events go where, rendered how.
     #[serde(default)]
@@ -229,6 +221,10 @@ struct FileSchema {
 pub fn schema(kinds: &Kinds) -> String {
     let mut generator = SchemaGenerator::default();
     let mut root = generator.root_schema_for::<FileSchema>();
+    let sources: Vec<_> = kinds
+        .sources()
+        .map(|kind| kind.schema(&mut generator).to_value())
+        .collect();
     let stores: Vec<_> = kinds
         .stores()
         .map(|kind| kind.schema(&mut generator).to_value())
@@ -246,6 +242,10 @@ pub fn schema(kinds: &Kinds) -> String {
         .iter()
         .map(|(name, schema)| (name.clone(), schema.clone()))
         .collect();
+    definitions.insert(
+        SOURCE.to_owned(),
+        serde_json::json!({ "description": "A source, by its kind.", "oneOf": sources }),
+    );
     definitions.insert(
         STORE.to_owned(),
         serde_json::json!({ "description": "`[store]`: one store, by its kind.", "oneOf": stores }),

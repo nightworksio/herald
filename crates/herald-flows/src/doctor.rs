@@ -1,4 +1,4 @@
-use herald_config::{Config, RouteConfig, Server, Source};
+use herald_config::{Config, RouteConfig, Server};
 use herald_core::{Inbound, Pinning, RecordKind, Sandbox};
 use herald_kinds::Carried;
 use herald_ports::{Secrets, Signer};
@@ -233,7 +233,10 @@ pub fn doctor(config: &Config, layer: Layer<'_>) -> Findings {
     }
     for route in &config.routes {
         let moving = route.route.filter.sources.iter().find(|name| {
-            matches!(config.sources.get(*name), Some(Source::Registry(registry, _)) if registry.moving_tags())
+            config
+                .sources
+                .get(*name)
+                .is_some_and(|source| source.moving_tags())
         });
         if let (Some(source), None) = (moving, &route.route.filter.versions) {
             findings.notes.push(format!(

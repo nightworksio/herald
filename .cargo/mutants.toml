@@ -23,6 +23,6 @@ exclude_re = [
     "DestinationConfig::platform_waits -> Waits with Default::default\\(\\)",
     # A store names no secret beside its key unless its kind says so, and `Vec::new()` is `vec![]`.
     "StoreConfig::named -> Vec<&str> with vec!\\[\\]",
-    # The store, destination and route schemas name a definition every kind's own schema replaces.
-    "impl JsonSchema for (StoreSchema|DestinationSchema|RouteSchema)>::json_schema ",
+    # The source, store, destination and route schemas name a definition every kind's own schema replaces.
+    "impl JsonSchema for (SourceSchema|StoreSchema|DestinationSchema|RouteSchema)>::json_schema ",
 ]

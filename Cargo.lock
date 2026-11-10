@@ -866,6 +866,9 @@ dependencies = [
  "herald-kinds",
  "herald-ports",
  "herald-records",
+ "herald-sources-feed",
+ "herald-sources-forge",
+ "herald-sources-registry",
  "herald-store-actions-cache",
  "herald-store-d1",
  "herald-store-deno-kv",
@@ -1188,6 +1191,7 @@ name = "herald-sources-feed"
 version = "0.0.0"
 dependencies = [
  "herald-core",
+ "herald-kinds",
  "herald-ports",
  "herald-wire",
  "jiff",
@@ -1203,6 +1207,7 @@ name = "herald-sources-forge"
 version = "0.0.0"
 dependencies = [
  "herald-core",
+ "herald-kinds",
  "herald-ports",
  "herald-wire",
  "jiff",
@@ -1217,6 +1222,7 @@ name = "herald-sources-registry"
 version = "0.0.0"
 dependencies = [
  "herald-core",
+ "herald-kinds",
  "herald-ports",
  "herald-wire",
  "jiff",

@@ -146,7 +146,7 @@ impl Markers for Landed {
     }
 }
 
-struct Silent;
+pub(crate) struct Silent;
 
 impl Http for Silent {
     async fn send(&self, _: Request) -> Result<Response, HttpError> {
