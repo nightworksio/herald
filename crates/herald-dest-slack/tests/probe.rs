@@ -121,4 +121,21 @@ mod probe {
             [Probe::Taken]
         );
     }
+
+    #[test]
+    fn an_incoming_webhook_is_not_asked() {
+        let webhook = Slack::new(
+            Credential::Webhook(Secret::new(
+                "HERALD_SLACK_WEBHOOK",
+                "https://hooks.slack.com/services/T0/B0/xyz",
+            )),
+            RouteOptions::default(),
+            None,
+        );
+        let http = Replay::of(Fixture::default());
+        assert_eq!(
+            probed(&webhook, &http, false),
+            [Probe::Said("Slack answers nothing about an incoming webhook short of a post to it, so its URL is not checked".to_owned())]
+        );
+    }
 }

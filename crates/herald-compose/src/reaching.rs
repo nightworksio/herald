@@ -7,6 +7,7 @@ use herald_ports::{HttpError, PUBLIC, Request, Response, Text};
 use url::Url;
 
 pub use herald_flows::EGRESS_GUARDED;
+use herald_flows::egress_guarded;
 
 /// What one connection may reach: the origins of its base, or any public
 /// HTTPS origin, on others' behalf (ADR-0007).
@@ -45,7 +46,7 @@ impl Reaching {
     /// Where `base` is not a URL a connection may be bound to, saying why.
     pub fn unresolved(base: &str, guarded: Option<&str>) -> Result<Self, String> {
         Self::of(base).map(|reaching| match reaching {
-            Self::Public if guarded != Some("true") => Self::Nothing,
+            Self::Public if !egress_guarded(guarded) => Self::Nothing,
             reaching => reaching,
         })
     }

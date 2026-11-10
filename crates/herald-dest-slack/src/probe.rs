@@ -15,6 +15,8 @@ use crate::web_api::{
 
 /// The platform, as a probe names it.
 const SLACK: &str = "Slack";
+/// Why an incoming webhook is not asked.
+const UNASKED: &str = "Slack answers nothing about an incoming webhook short of a post to it, so its URL is not checked";
 /// The header Slack lists a token's scopes in.
 const SCOPES: &str = "x-oauth-scopes";
 
@@ -47,7 +49,7 @@ fn lacking(granted: &str, delivery: &Delivery) -> Vec<String> {
 /// needs, asked through `http`.
 pub(crate) async fn probe<H: Http>(slack: &Slack, http: &H, delivery: &Delivery) -> Vec<Probe> {
     if let Credential::Webhook(_) = slack.credential {
-        return Vec::new();
+        return vec![Probe::Said(UNASKED.to_owned())];
     }
     let answer = match http.send(get(slack, AUTH_TEST, "")).await {
         Ok(answer) if answer.succeeded() => answer,

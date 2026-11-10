@@ -9,7 +9,9 @@ use clap::{Args, ValueEnum};
 use herald_config::Config;
 use herald_crypto::RingSigner;
 use herald_environment::EnvSecrets;
-use herald_flows::{EGRESS_GUARDED, Findings, Gap, Here, Tier, doctor, keys, online, prepare};
+use herald_flows::{
+    EGRESS_GUARDED, Findings, Gap, Here, Tier, doctor, egress_guarded, keys, online, prepare,
+};
 use herald_ports::Secrets as _;
 use schemars::JsonSchema;
 use serde::Serialize;
@@ -126,9 +128,7 @@ pub(crate) async fn here(
     }
     Here {
         online,
-        guarded: vars
-            .get(EGRESS_GUARDED)
-            .is_some_and(|value| value == "true"),
+        guarded: egress_guarded(vars.get(EGRESS_GUARDED).map(String::as_str)),
         round_secrets,
     }
 }

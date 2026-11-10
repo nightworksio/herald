@@ -70,6 +70,13 @@ const UNHOSTED: &str = "it is served at herald's endpoint, which this layer has 
 /// (ADR-0017).
 pub const EGRESS_GUARDED: &str = "HERALD_EGRESS_GUARDED";
 
+/// Whether `value`, of [`EGRESS_GUARDED`], says the host's own egress
+/// refuses private addresses.
+#[must_use]
+pub fn egress_guarded(value: Option<&str>) -> bool {
+    value == Some("true")
+}
+
 /// Each soundness bound the config sets above its default, as a note: what
 /// herald holds a request or a template to is looser than it ships with.
 fn loosened(config: &Config, notes: &mut Vec<String>) {

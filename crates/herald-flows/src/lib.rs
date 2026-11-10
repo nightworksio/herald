@@ -38,7 +38,7 @@ pub use approving::{Decision, decide, followers};
 pub use commanded::{INTERACTIONS, MATRIX};
 pub use doctor::{
     Cadence, EGRESS_GUARDED, Egress, Findings, Gap, Here, Layer, Memory, Rounds, Tier, doctor,
-    keys, online, secrets, unserved,
+    egress_guarded, keys, online, secrets, unserved,
 };
 pub use following::{FollowError, Followed, followed};
 pub use herald_kinds::Replying;

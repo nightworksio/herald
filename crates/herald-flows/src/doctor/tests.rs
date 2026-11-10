@@ -115,3 +115,10 @@ fn names_are_listed_as_a_sentence_and_tiers_as_adr_0002_names_them() {
     );
     assert!(Tier::Actions < Tier::Serverless && Tier::Serverless < Tier::Container);
 }
+
+#[test]
+fn only_true_says_a_host_s_egress_is_guarded() {
+    assert!(egress_guarded(Some("true")));
+    assert!(!egress_guarded(Some("yes")));
+    assert!(!egress_guarded(None));
+}
