@@ -1,5 +1,6 @@
 # The tokens the fuzz targets read: the mention, link, tag and fence syntax of
-# every dialect herald writes, and the fields of a forge's release JSON.
+# every dialect herald writes, and the fields of a forge's release JSON and of
+# an app's event.
 "@everyone"
 "@here"
 "@room"
@@ -58,6 +59,12 @@
 "\"id\""
 "\"name\""
 "\"body\""
+"\"kind\""
+"\"project\""
+"\"title\""
+"\"attributes\""
+"\"version\""
+"\"package-version\""
 "\"2026-10-31T12:00:00Z\""
 "https://github.com/"
 "INTERACTION_CREATE"

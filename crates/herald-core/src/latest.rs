@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::event::Event;
 use crate::key::RouteId;
-use crate::kind::{Attribute, Kind, PRERELEASE, VERSION};
+use crate::kind::{Attribute, Kind, prerelease_in, version_in};
 
 /// One event, as a command shows it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -44,16 +44,13 @@ impl Shown {
     /// Whether it is a pre-release.
     #[must_use]
     pub fn prerelease(&self) -> bool {
-        self.attributes.get(PRERELEASE) == Some(&Attribute::Flag(true))
+        prerelease_in(&self.attributes)
     }
 
     /// The version, where its kind carries one.
     #[must_use]
     pub fn version(&self) -> Option<&str> {
-        match self.attributes.get(VERSION) {
-            Some(Attribute::Text(version)) => Some(version),
-            _ => None,
-        }
+        version_in(&self.attributes)
     }
 }
 

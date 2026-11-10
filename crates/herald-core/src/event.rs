@@ -5,7 +5,7 @@ use jiff::Timestamp;
 use serde::Serialize;
 
 use crate::key::Identity;
-use crate::kind::{Attribute, Kind, PRERELEASE, VERSION};
+use crate::kind::{Attribute, Kind, prerelease_in, version_in};
 
 /// An event as a source parsed it, before [`Event::normalise`] checks it.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -131,10 +131,7 @@ impl Event {
     /// The version, where its kind carries one.
     #[must_use]
     pub fn version(&self) -> Option<&str> {
-        match self.attributes.get(VERSION) {
-            Some(Attribute::Text(version)) => Some(version),
-            _ => None,
-        }
+        version_in(&self.attributes)
     }
 
     /// The attribute named `name`.
@@ -182,7 +179,7 @@ impl Event {
     /// Whether it is a pre-release.
     #[must_use]
     pub fn prerelease(&self) -> bool {
-        self.attributes.get(PRERELEASE) == Some(&Attribute::Flag(true))
+        prerelease_in(&self.attributes)
     }
 
     /// When it happened.

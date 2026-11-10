@@ -171,6 +171,19 @@ pub fn versioned(version: impl Into<String>, prerelease: bool) -> BTreeMap<Strin
     ])
 }
 
+/// The version `attributes` carry, where they carry one.
+pub(crate) fn version_in(attributes: &BTreeMap<String, Attribute>) -> Option<&str> {
+    match attributes.get(VERSION) {
+        Some(Attribute::Text(version)) => Some(version),
+        _ => None,
+    }
+}
+
+/// Whether `attributes` mark a pre-release.
+pub(crate) fn prerelease_in(attributes: &BTreeMap<String, Attribute>) -> bool {
+    attributes.get(PRERELEASE) == Some(&Attribute::Flag(true))
+}
+
 /// What a kind of event is: whether it carries a version, the links that
 /// become its buttons, and the attributes its events carry.
 #[derive(Debug, Clone, PartialEq, Eq)]
