@@ -16,8 +16,8 @@ pub struct MarkersOptions {}
 pub enum MarkersKind {}
 
 impl StoreKind for MarkersKind {
-    const NAME: &'static str = "markers";
-    const DESCRIPTION: &'static str = "The destinations' own posts.";
+    const NAME: &str = "markers";
+    const DESCRIPTION: &str = "The destinations' own posts.";
     const RETAINED: bool = false;
 
     type Options = MarkersOptions;

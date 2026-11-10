@@ -56,9 +56,9 @@ pub trait StoreConfig: fmt::Debug + Send + Sync + Itself {
 /// names it.
 pub trait StoreKind: 'static {
     /// The kind's name, as `[store] kind` writes it.
-    const NAME: &'static str;
+    const NAME: &str;
     /// What the kind is, as the schema describes a store of it.
-    const DESCRIPTION: &'static str;
+    const DESCRIPTION: &str;
     /// Whether its table also says how long records are kept, with
     /// `keep_deliveries`, `keep_ledger` and `keep_notes`.
     const RETAINED: bool = true;

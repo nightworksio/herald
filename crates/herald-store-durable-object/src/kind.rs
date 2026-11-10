@@ -12,8 +12,8 @@ use crate::StoreOptions;
 pub enum DurableObjectKind {}
 
 impl StoreKind for DurableObjectKind {
-    const NAME: &'static str = "durable-object";
-    const DESCRIPTION: &'static str =
+    const NAME: &str = "durable-object";
+    const DESCRIPTION: &str =
         "The storage of herald's Cloudflare Durable Object, through the\nWorker's binding.";
 
     type Options = StoreOptions;

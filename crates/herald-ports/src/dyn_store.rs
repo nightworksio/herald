@@ -21,7 +21,7 @@ pub trait DynStore: Sync {
     /// last asked, each once.
     fn skipped(&self) -> Vec<String>;
 
-    /// How its ledger are held.
+    /// How its ledger is held.
     fn ledger_keeping(&self) -> Keeping;
 
     /// [`Ledger::entry`].
@@ -581,3 +581,6 @@ impl Keeper for Erased<'_, dyn DynStore + '_> {
         self.0.skipped()
     }
 }
+
+#[cfg(test)]
+mod tests;

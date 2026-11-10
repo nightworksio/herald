@@ -350,6 +350,111 @@ mod tests {
         }
     }
 
+    struct Shelf;
+
+    impl Kv for Shelf {
+        async fn get(&self, key: &[String]) -> Result<Option<Stamped>, KvError> {
+            Ok(Some(Stamped {
+                value: key.concat().into_bytes(),
+                versionstamp: Versionstamp("v1".to_owned()),
+            }))
+        }
+
+        async fn set_if(
+            &self,
+            _: &[String],
+            value: Vec<u8>,
+            _: Option<Versionstamp>,
+        ) -> Result<Option<Versionstamp>, KvError> {
+            Ok(Some(Versionstamp(String::from_utf8(value).unwrap())))
+        }
+
+        async fn delete_if(&self, _: &[String], expected: Versionstamp) -> Result<bool, KvError> {
+            Ok(expected.0 == "v1")
+        }
+
+        async fn list(&self, prefix: &[String]) -> Result<Vec<Pair>, KvError> {
+            Ok(vec![Pair {
+                key: prefix.to_vec(),
+                value: b"listed".to_vec(),
+            }])
+        }
+    }
+
+    struct Stopped;
+
+    impl Clock for Stopped {
+        fn now(&self) -> Timestamp {
+            Timestamp::from_second(1_700_000_000).unwrap()
+        }
+    }
+
+    struct Counted;
+
+    impl Sql for Counted {
+        async fn transaction(&self, statements: Vec<Statement>) -> Result<Vec<Changed>, SqlError> {
+            Ok(statements
+                .iter()
+                .map(|statement| Changed {
+                    rows: vec![vec![crate::sql::Value::Text(statement.sql.clone())]],
+                    changed: 1,
+                })
+                .collect())
+        }
+    }
+
+    #[test]
+    fn an_owned_port_answers_as_the_port_it_owns() {
+        let kv: Owned<dyn DynKv> = Owned::new(Box::new(Shelf));
+        let key = ["a".to_owned(), "b".to_owned()];
+        assert_eq!(
+            pollster::block_on(kv.get(&key)),
+            Ok(Some(Stamped {
+                value: b"ab".to_vec(),
+                versionstamp: Versionstamp("v1".to_owned()),
+            }))
+        );
+        assert_eq!(
+            pollster::block_on(kv.set_if(&key, b"v2".to_vec(), None)),
+            Ok(Some(Versionstamp("v2".to_owned())))
+        );
+        assert_eq!(
+            pollster::block_on(kv.delete_if(&key, Versionstamp("v1".to_owned()))),
+            Ok(true)
+        );
+        assert_eq!(
+            pollster::block_on(kv.delete_if(&key, Versionstamp("v0".to_owned()))),
+            Ok(false)
+        );
+        assert_eq!(
+            pollster::block_on(kv.list(&key)),
+            Ok(vec![Pair {
+                key: key.to_vec(),
+                value: b"listed".to_vec(),
+            }])
+        );
+        let clock: Owned<dyn Clock> = Owned::new(Box::new(Stopped));
+        assert_eq!(clock.now(), Timestamp::from_second(1_700_000_000).unwrap());
+        let sql: Owned<dyn DynSql> = Owned::new(Box::new(Counted));
+        assert_eq!(
+            pollster::block_on(sql.transaction(vec![Statement::change(
+                "DELETE",
+                vec![crate::sql::Value::Null]
+            )])),
+            Ok(vec![Changed {
+                rows: vec![vec![crate::sql::Value::Text("DELETE".to_owned())]],
+                changed: 1,
+            }])
+        );
+        let http: Owned<dyn DynHttp + Send> = Owned::new(Box::new(Echo));
+        let answered = pollster::block_on(http.send(Request::new(
+            crate::http::Method::Get,
+            crate::secret::Text::plain("https://example.org/owned"),
+        )))
+        .unwrap();
+        assert_eq!(answered.body, b"https://example.org/owned");
+    }
+
     #[test]
     fn erased_markers_read_what_the_markers_they_erase_read() {
         let markers: &dyn DynMarkers = &Found;

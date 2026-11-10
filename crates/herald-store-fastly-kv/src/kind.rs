@@ -12,8 +12,8 @@ use crate::StoreOptions;
 pub enum FastlyKvKind {}
 
 impl StoreKind for FastlyKvKind {
-    const NAME: &'static str = "fastly-kv";
-    const DESCRIPTION: &'static str = "A Fastly KV Store, on Fastly Compute.";
+    const NAME: &str = "fastly-kv";
+    const DESCRIPTION: &str = "A Fastly KV Store, on Fastly Compute.";
 
     type Options = StoreOptions;
 }

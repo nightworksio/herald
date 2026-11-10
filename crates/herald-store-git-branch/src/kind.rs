@@ -1,8 +1,7 @@
 use std::sync::Arc;
 
 use herald_core::SecretRef;
-use herald_kinds::GITHUB_TOKEN;
-use herald_kinds::{Local, Opened, Opening, StoreConfig, StoreKind};
+use herald_kinds::{GITHUB_TOKEN, Local, Opened, Opening, StoreConfig, StoreKind};
 use herald_ports::Secret;
 use herald_records::Seal;
 
@@ -13,8 +12,8 @@ use crate::{GitBranch, StoreOptions};
 pub enum GitBranchKind {}
 
 impl StoreKind for GitBranchKind {
-    const NAME: &'static str = "git-branch";
-    const DESCRIPTION: &'static str = "One file per record on a `herald-state` branch.";
+    const NAME: &str = "git-branch";
+    const DESCRIPTION: &str = "One file per record on a `herald-state` branch.";
 
     type Options = StoreOptions;
 }

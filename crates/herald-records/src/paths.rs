@@ -68,7 +68,7 @@ pub(crate) fn subscribed(subscription: &Subscription) -> String {
 pub(crate) const DELIVERIES: &str = "deliveries";
 
 pub(crate) fn delivery(scheme: Scheme, id: &str) -> String {
-    format!("{DELIVERIES}/{}.{}.json", scheme.name(), segment(id))
+    format!("{DELIVERIES}/{}.{}.json", scheme.name, segment(id))
 }
 
 pub(crate) const NOTES: &str = "notes";

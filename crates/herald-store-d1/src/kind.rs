@@ -12,8 +12,8 @@ use crate::StoreOptions;
 pub enum D1Kind {}
 
 impl StoreKind for D1Kind {
-    const NAME: &'static str = "d1";
-    const DESCRIPTION: &'static str = "Cloudflare D1, through the Worker's binding.";
+    const NAME: &str = "d1";
+    const DESCRIPTION: &str = "Cloudflare D1, through the Worker's binding.";
 
     type Options = StoreOptions;
 }

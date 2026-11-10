@@ -12,8 +12,8 @@ use crate::StoreOptions;
 pub enum DenoKvKind {}
 
 impl StoreKind for DenoKvKind {
-    const NAME: &'static str = "deno-kv";
-    const DESCRIPTION: &'static str = "Deno KV, on Deno Deploy or wherever a database is opened.";
+    const NAME: &str = "deno-kv";
+    const DESCRIPTION: &str = "Deno KV, on Deno Deploy or wherever a database is opened.";
 
     type Options = StoreOptions;
 }

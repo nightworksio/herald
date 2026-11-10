@@ -25,14 +25,6 @@ pub struct Scheme {
     pub key: KeyForm,
 }
 
-impl Scheme {
-    /// The scheme's name, as a store keeps its deliveries under it.
-    #[must_use]
-    pub const fn name(self) -> &'static str {
-        self.name
-    }
-}
-
 /// How a request of a scheme is signed: one of the primitives herald
 /// checks, with the headers it is carried in.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -12,8 +12,8 @@ use crate::StoreOptions;
 pub enum PostgresKind {}
 
 impl StoreKind for PostgresKind {
-    const NAME: &'static str = "postgres";
-    const DESCRIPTION: &'static str = "A Postgres database.";
+    const NAME: &str = "postgres";
+    const DESCRIPTION: &str = "A Postgres database.";
 
     type Options = StoreOptions;
 }

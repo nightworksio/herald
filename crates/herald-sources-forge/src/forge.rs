@@ -405,7 +405,7 @@ mod tests {
     #[test]
     fn each_forge_signs_under_its_own_scheme() {
         assert_eq!(
-            [Forge::GitHub, Forge::GitLab, Forge::Forgejo].map(|forge| forge.scheme().name()),
+            [Forge::GitHub, Forge::GitLab, Forge::Forgejo].map(|forge| forge.scheme().name),
             ["github", "gitlab", "forgejo"]
         );
     }

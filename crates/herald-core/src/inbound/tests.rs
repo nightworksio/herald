@@ -433,7 +433,7 @@ fn each_scheme_keeps_its_deliveries_under_its_own_name() {
         APP,
     ];
     assert_eq!(
-        schemes.map(Scheme::name),
+        schemes.map(|scheme| scheme.name),
         [
             "github",
             "forgejo",

@@ -148,14 +148,19 @@ pub(crate) fn tagged<T: JsonSchema>(
     described(&variant, description)
 }
 
-/// The schema of a store of the kind `name`, with options `T` and how long
-/// it keeps its records.
-pub(crate) fn retained<T: JsonSchema>(
+/// The schema of a store of the kind `name`, with options `T`, and how long
+/// it keeps its records where it is `retained`.
+pub(crate) fn store<T: JsonSchema>(
     generator: &mut SchemaGenerator,
     name: &str,
     description: &str,
+    retained: bool,
 ) -> Schema {
-    tagged::<Retained<T>>(generator, name, description)
+    if retained {
+        tagged::<Retained<T>>(generator, name, description)
+    } else {
+        tagged::<T>(generator, name, description)
+    }
 }
 
 /// The schema of a route to a destination of one kind, with options `T`,
@@ -264,4 +269,34 @@ pub fn schema(kinds: &Kinds) -> String {
         "{}\n",
         serde_json::to_string_pretty(&root).unwrap_or_default()
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[derive(JsonSchema)]
+    #[schemars(deny_unknown_fields)]
+    #[allow(dead_code, reason = "read only by the schema's derive")]
+    struct Options {
+        path: String,
+    }
+
+    #[test]
+    fn a_store_lists_how_long_it_keeps_records_only_where_it_is_retained() {
+        let mut generator = SchemaGenerator::default();
+        for retained in [true, false] {
+            let schema = store::<Options>(&mut generator, "kept", "Kept.", retained);
+            assert_eq!(
+                schema.pointer("/properties/kind/const"),
+                Some(&"kept".into())
+            );
+            assert_eq!(schema.pointer("/description"), Some(&"Kept.".into()));
+            assert!(schema.pointer("/properties/path").is_some());
+            assert_eq!(
+                schema.pointer("/properties/keep_ledger").is_some(),
+                retained
+            );
+        }
+    }
 }

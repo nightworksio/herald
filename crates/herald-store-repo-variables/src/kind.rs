@@ -15,8 +15,8 @@ const CROWDED: &str = "Each record is a repository variable: a repository holds 
 pub enum RepoVariablesKind {}
 
 impl StoreKind for RepoVariablesKind {
-    const NAME: &'static str = "repo-variables";
-    const DESCRIPTION: &'static str = "The repository's variables.";
+    const NAME: &str = "repo-variables";
+    const DESCRIPTION: &str = "The repository's variables.";
 
     type Options = StoreOptions;
 }

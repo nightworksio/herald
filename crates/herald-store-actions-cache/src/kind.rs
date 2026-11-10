@@ -20,8 +20,8 @@ const SCOPED: &str = "The Actions cache keeps records apart for each ref a run i
 pub enum ActionsCacheKind {}
 
 impl StoreKind for ActionsCacheKind {
-    const NAME: &'static str = "actions-cache";
-    const DESCRIPTION: &'static str = "Generations of the GitHub Actions cache.";
+    const NAME: &str = "actions-cache";
+    const DESCRIPTION: &str = "Generations of the GitHub Actions cache.";
 
     type Options = StoreOptions;
 }

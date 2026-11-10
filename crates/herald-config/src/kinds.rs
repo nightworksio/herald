@@ -8,7 +8,7 @@ use schemars::{JsonSchema, Schema, SchemaGenerator};
 use serde::de::DeserializeOwned;
 
 use crate::load::{Loader, Value};
-use crate::schema::{retained, routed, tagged};
+use crate::schema::{routed, store, tagged};
 
 /// Every kind of destination and store a herald reads its config with: the
 /// one list each host composes, which the loader parses through and the
@@ -234,11 +234,7 @@ where
     }
 
     fn schema(&self, generator: &mut SchemaGenerator) -> Schema {
-        if K::RETAINED {
-            retained::<K::Options>(generator, K::NAME, K::DESCRIPTION)
-        } else {
-            tagged::<K::Options>(generator, K::NAME, K::DESCRIPTION)
-        }
+        store::<K::Options>(generator, K::NAME, K::DESCRIPTION, K::RETAINED)
     }
 }
 

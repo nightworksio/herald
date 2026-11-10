@@ -13,7 +13,7 @@ mod compose {
     use herald_config::{Config, load};
     use herald_core::DestinationName;
     use herald_flows::{Admission, Housekept, Inbound, Job, Taker, Worked};
-    use herald_kinds::StoreKind;
+    use herald_kinds::{Opening, StoreKind};
     use herald_ports::{Changed, Frame, Http, HttpError, Outbound, Request, Response, Value};
     use herald_testing::{
         FakeClock, FakeKv, FakeSecrets, FakeSigner, FakeTimer, FakeVerifier, ScriptedSockets,
@@ -231,6 +231,16 @@ mod compose {
                 .with("AWS_REGION", "eu-west-1"),
             ..Hosting::default()
         }
+    }
+
+    #[test]
+    fn an_opener_reads_its_host_s_variables_and_takes_its_nonces() {
+        let host = Arc::new(github());
+        let opener = opener(&host);
+        assert_eq!(opener.var("GITHUB_REPOSITORY"), Some("cli/cli"));
+        let nonce = opener.nonce();
+        assert!(nonce.parse::<u64>().is_ok(), "{nonce}");
+        assert_ne!(opener.nonce(), nonce);
     }
 
     #[test]

@@ -16,8 +16,8 @@ const FILED: &str = "Every record is kept in one SQLite file, so run herald wher
 pub enum SqliteKind {}
 
 impl StoreKind for SqliteKind {
-    const NAME: &'static str = "sqlite";
-    const DESCRIPTION: &'static str = "A SQLite file, on a volume or a persistent disk.";
+    const NAME: &str = "sqlite";
+    const DESCRIPTION: &str = "A SQLite file, on a volume or a persistent disk.";
 
     type Options = StoreOptions;
 }

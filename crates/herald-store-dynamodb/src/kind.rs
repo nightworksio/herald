@@ -13,8 +13,8 @@ use crate::{Dynamodb, StoreOptions};
 pub enum DynamodbKind {}
 
 impl StoreKind for DynamodbKind {
-    const NAME: &'static str = "dynamodb";
-    const DESCRIPTION: &'static str = "An AWS DynamoDB table.";
+    const NAME: &str = "dynamodb";
+    const DESCRIPTION: &str = "An AWS DynamoDB table.";
 
     type Options = StoreOptions;
 }
