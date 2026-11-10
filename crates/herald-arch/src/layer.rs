@@ -85,6 +85,7 @@ fn outside_allowed(layer: Layer) -> &'static [&'static str] {
             "pulldown-cmark",
             "schemars",
             "serde",
+            "serde_json",
             "sha2",
             "unicode-segmentation",
         ],

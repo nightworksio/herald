@@ -95,39 +95,44 @@ impl Loader<'_> {
                 Some(limits.thread_name),
             )
         });
-        for kind in &read.sample_kinds {
-            for event in samples(*kind) {
-                let context = Context {
-                    event: &event,
-                    route: &route.id,
-                    herald: env!("CARGO_PKG_VERSION"),
+        let events: Vec<_> = read
+            .sample_kinds
+            .iter()
+            .filter_map(|kind| self.specs.get(kind))
+            .flat_map(samples)
+            .collect();
+        for event in &events {
+            let context = Context {
+                event,
+                route: &route.id,
+                herald: env!("CARGO_PKG_VERSION"),
+            };
+            for (name, span, path, limit) in parts.iter().chain(thread.iter()) {
+                let rendered = match limit {
+                    Some(_) => templates.render_line(name, &context),
+                    None => templates.render(name, &context),
                 };
-                for (name, span, path, limit) in parts.iter().chain(thread.iter()) {
-                    let rendered = match limit {
-                        Some(_) => templates.render_line(name, &context),
-                        None => templates.render(name, &context),
-                    };
-                    match (rendered, limit) {
-                        (Err(failure), _) => {
-                            self.error(
-                                span,
-                                path,
-                                format!(
-                                    "it does not render a sample {kind:?} event: {}",
-                                    failure.reason
-                                ),
-                            );
-                            return;
-                        }
-                        (Ok(text), Some(limit)) if text.chars().count() > *limit => {
-                            self.error(span, path, format!(
+                match (rendered, limit) {
+                    (Err(failure), _) => {
+                        self.error(
+                            span,
+                            path,
+                            format!(
+                                "it does not render a sample {} event: {}",
+                                event.kind(),
+                                failure.reason
+                            ),
+                        );
+                        return;
+                    }
+                    (Ok(text), Some(limit)) if text.chars().count() > *limit => {
+                        self.error(span, path, format!(
                                 "it renders {} characters for a sample event, over the destination's {limit}; shorten it",
                                 text.chars().count()
                             ));
-                            return;
-                        }
-                        (Ok(_), _) => {}
+                        return;
                     }
+                    (Ok(_), _) => {}
                 }
             }
         }

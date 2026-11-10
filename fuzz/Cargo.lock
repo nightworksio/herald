@@ -307,6 +307,7 @@ dependencies = [
  "pulldown-cmark",
  "schemars",
  "serde",
+ "serde_json",
  "sha2",
  "unicode-segmentation",
 ]

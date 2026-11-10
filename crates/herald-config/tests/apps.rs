@@ -6,7 +6,6 @@ mod common;
 #[cfg(test)]
 mod apps {
     use herald_config::load;
-    use herald_core::Kind;
 
     const EXAMPLE: &str = r#"version = 1
 
@@ -153,12 +152,12 @@ body = "{{ event.body }}"
             "id = \"deploys\"\nsources = [\"ci\"]\nversions = \"1.*\"",
         );
         assert!(
-            errors(&kinds)
-                .contains("routes[1].versions: feed entries and app messages carry no version"),
+            errors(&kinds).contains(
+                "routes[1].versions: \"feed-entry\", \"message\" events carry no version"
+            ),
             "{}",
             errors(&kinds)
         );
-        assert!(!Kind::Message.versioned());
     }
 
     #[test]

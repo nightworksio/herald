@@ -586,7 +586,14 @@ fn previewing(
                 }
             }
         }
-        None => samples(Kind::Release).into_iter().take(1).collect(),
+        None => config
+            .kinds
+            .get(&Kind::RELEASE)
+            .map(samples)
+            .unwrap_or_default()
+            .into_iter()
+            .take(1)
+            .collect(),
     };
     let only = route.map(RouteId::new);
     let mut code = DONE;

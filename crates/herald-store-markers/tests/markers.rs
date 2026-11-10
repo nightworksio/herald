@@ -154,12 +154,11 @@ mod markers {
         let latest = herald_core::Latest {
             project: "herald".to_owned(),
             newest: herald_core::Shown {
-                kind: herald_core::Kind::Release,
-                version: None,
+                kind: herald_core::Kind::RELEASE,
+                attributes: std::collections::BTreeMap::default(),
                 title: "t".to_owned(),
                 body: String::new(),
                 links: std::collections::BTreeMap::new(),
-                prerelease: false,
                 occurred: OPENED,
             },
             stable: None,
@@ -235,7 +234,7 @@ mod markers {
             .with_thread(carried.clone(), opened("3", false, true))
             .with_thread(carried, opened("4", true, true));
         let thread = Thread {
-            name: "{{ event.version }}".to_owned(),
+            name: "{{ event.attributes.version }}".to_owned(),
             archive_after: Some(DAY),
             lock_after: Some(DAY * 7),
         };

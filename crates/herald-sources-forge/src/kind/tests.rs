@@ -67,7 +67,7 @@ fn a_forge_source_names_its_secrets_and_reads_its_webhooks() {
             }
         ]
     );
-    assert_eq!(source.kinds(), &[Kind::Release]);
+    assert_eq!(source.kinds(), &[Kind::RELEASE]);
     assert_eq!(source.backfill(), 2);
     assert!(!source.moving_tags());
     assert!(matches!(

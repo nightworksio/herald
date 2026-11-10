@@ -32,11 +32,11 @@ destination = "discord"
 channel = "1566184281406177531"
 template = "package-release"
 crosspost = true
-thread = { name = "{{ event.project }} {{ event.version }}", archive_after = "14d" }
+thread = { name = "{{ event.project }} {{ event.attributes.version }}", archive_after = "14d" }
 mentions = { roles = ["<the php-mutation-gate role's id>"] }
 
 [templates.package-release]
-title = "📦 {{ event.project }} {{ event.version }}{% if event.prerelease %} · pre-release{% endif %}"
+title = "📦 {{ event.project }} {{ event.attributes.version }}{% if event.attributes.prerelease %} · pre-release{% endif %}"
 body = "{{ event.body }}"
 "#;
 
@@ -93,7 +93,7 @@ body = "{{ event.body }}"
         );
         let route = &config.routes[0];
         assert_eq!(route.route.id.as_str(), "php-mutation-gate-releases");
-        assert_eq!(route.route.filter.kinds, [Kind::Release]);
+        assert_eq!(route.route.filter.kinds, [Kind::RELEASE]);
         assert_eq!(route.route.filter.prereleases, Prereleases::Include);
         assert!(route.route.delivery.crosspost);
         assert_eq!(route.route.delivery.pin, None);
@@ -166,7 +166,7 @@ body = "{{ event.body }}"
             errors(text),
             [
                 "herald.toml:1:11 version: this herald reads version 1 of the config; write version = 1",
-                "herald.toml:2:1 unknown: herald.toml has no key \"unknown\"; the keys are \"version\", \"store\", \"markers\", \"destinations\", \"sources\", \"routes\", \"templates\", \"apps\", \"schedule\", \"server\", \"http\", \"render\", \"announce\"",
+                "herald.toml:2:1 unknown: herald.toml has no key \"unknown\"; the keys are \"version\", \"kinds\", \"store\", \"markers\", \"destinations\", \"sources\", \"routes\", \"templates\", \"apps\", \"schedule\", \"server\", \"http\", \"render\", \"announce\"",
                 "herald.toml:4:8 store.kind: there is no kind \"nowhere\"; the kinds are \"sqlite\", \"postgres\", \"d1\", \"durable-object\", \"dynamodb\", \"deno-kv\", \"fastly-kv\", \"markers\", \"git-branch\", \"actions-cache\", \"repo-variables\"",
                 "herald.toml:5:1 destinations.d: a Discord destination needs a token or a webhook; give one",
                 "herald.toml:8:8 sources.s.kind: there is no kind \"bitbucket\"; the kinds are \"github\", \"gitlab\", \"forgejo\", \"packagist\", \"crates-io\", \"npm\", \"docker-hub\", \"feed\"",
@@ -286,7 +286,8 @@ body = "{{ event.body }}"
                         "repository = \"nightworksio/php-mutation-gate\"",
                         "url = \"https://blog.example/feed.xml\"",
                     )
-                    .replace("kinds = [\"release\"]", "kinds = [\"feed-entry\"]");
+                    .replace("kinds = [\"release\"]", "kinds = [\"feed-entry\"]")
+                    .replace("{{ event.attributes.version }}", "{{ event.title }}");
             } else if !forge {
                 let package = match kind {
                     "crates-io" => "herald",
@@ -312,9 +313,9 @@ body = "{{ event.body }}"
             assert_eq!(source.kind(), kind);
             assert!(config.secrets().contains("HERALD_DISCORD_TOKEN"));
             let made = match kind {
-                "feed" => Kind::FeedEntry,
-                _ if forge => Kind::Release,
-                _ => Kind::PackageVersion,
+                "feed" => Kind::FEED_ENTRY,
+                _ if forge => Kind::RELEASE,
+                _ => Kind::PACKAGE_VERSION,
             };
             assert_eq!(source.kinds(), [made]);
         }
@@ -335,7 +336,7 @@ body = "{{ event.body }}"
         );
         let refused = errors(&feeds);
         assert!(
-            refused.starts_with("herald.toml:20:12 routes[0].versions: feed entries and app messages carry no version"),
+            refused.starts_with("herald.toml:20:12 routes[0].versions: \"feed-entry\" events carry no version, so a route with versions takes none of them"),
             "{refused}"
         );
         let unplaced = errors(&feeds.replace("channel = \"1566184281406177531\"\n", ""));
@@ -517,7 +518,7 @@ body = "{{ event.body }}"
             "body = \"{{ event.release_notes }}\"",
         );
         let error = errors(&undefined);
-        assert!(error.starts_with("herald.toml:29:8 templates.package-release.body: it does not render a sample Release event:"), "{error}");
+        assert!(error.starts_with("herald.toml:29:8 templates.package-release.body: it does not render a sample release event:"), "{error}");
         let long = EXAMPLE.replace("title = \"📦", &format!("title = \"{}", "x".repeat(300)));
         let error = errors(&long);
         assert!(
@@ -530,7 +531,7 @@ body = "{{ event.body }}"
         );
         let title = |length: usize| {
             EXAMPLE.replace(
-                "title = \"📦 {{ event.project }} {{ event.version }}{% if event.prerelease %} · pre-release{% endif %}\"",
+                "title = \"📦 {{ event.project }} {{ event.attributes.version }}{% if event.attributes.prerelease %} · pre-release{% endif %}\"",
                 &format!("title = \"{}\"", "x".repeat(length)),
             )
         };
@@ -545,7 +546,7 @@ body = "{{ event.body }}"
         );
         assert!(errors(&title(257)).contains("it renders 257 characters"));
         let thread = EXAMPLE.replace(
-            "{{ event.project }} {{ event.version }}\", archive_after",
+            "{{ event.project }} {{ event.attributes.version }}\", archive_after",
             "{{ event.nope }}\", archive_after",
         );
         assert!(errors(&thread).contains("routes[0].thread.name: it does not render"));
@@ -637,21 +638,30 @@ body = "{{ event.body }}"
     #[test]
     fn a_mistake_inside_a_section_is_named_by_its_key_path() {
         let text = EXAMPLE
-            .replace("kinds = [\"release\"]", "kinds = [\"release\", \"tweet\"]")
+            .replace(
+                "kinds = [\"release\"]",
+                "kinds = [\"release\", \"tweet\", \"Tweet\"]",
+            )
             .replace("archive_after = \"14d\"", "archive_after = \"14y\"");
         let error = errors(&text);
         assert!(
-            error.contains("routes[0].kinds[1]: unknown variant `tweet`"),
+            error.contains("routes[0].kinds: \"Tweet\" is not a kind; name it in lowercase letters and digits, words joined by '-'"),
             "{error}"
+        );
+        let unknown =
+            errors(&EXAMPLE.replace("kinds = [\"release\"]", "kinds = [\"release\", \"tweet\"]"));
+        assert!(
+            unknown.contains("routes[0].kinds[1]: there is no kind \"tweet\"; the kinds are \"release\", \"package-version\", \"feed-entry\", \"message\", or declare it under [kinds.tweet]"),
+            "{unknown}"
         );
         assert!(error.contains("routes[0].thread.archive_after: invalid value: string \"14y\", expected a length of time such as \"250ms\", \"30s\""), "{error}");
         let unnamed = EXAMPLE.replace(
-            "thread = { name = \"{{ event.project }} {{ event.version }}\", archive_after = \"14d\" }",
+            "thread = { name = \"{{ event.project }} {{ event.attributes.version }}\", archive_after = \"14d\" }",
             "thread = { archive_after = \"14d\" }",
         );
         assert!(errors(&unnamed).contains("routes[0].thread: missing field `name`"));
         let listed = EXAMPLE.replace(
-            "thread = { name = \"{{ event.project }} {{ event.version }}\", archive_after = \"14d\" }",
+            "thread = { name = \"{{ event.project }} {{ event.attributes.version }}\", archive_after = \"14d\" }",
             "thread = [\"a\"]",
         );
         let error = errors(&listed);
@@ -671,13 +681,13 @@ body = "{{ event.body }}"
     fn a_route_without_kinds_is_dry_rendered_with_its_sources_kinds() {
         let text = EXAMPLE.replace("kinds = [\"release\"]\n", "").replace(
             "body = \"{{ event.body }}\"",
-            "body = \"{{ event.version | upper }}\"",
+            "body = \"{{ event.attributes.version | upper }}\"",
         );
         let config = load("herald.toml", &text, &nothing, &crate::common::kinds()).unwrap();
         assert_eq!(config.routes[0].route.filter.kinds, Vec::<Kind>::new());
         assert_eq!(
             config.sources.values().next().unwrap().kinds(),
-            [Kind::Release]
+            [Kind::RELEASE]
         );
     }
 

@@ -35,12 +35,12 @@ destination = "discord"
 channel = "1566200000000000100"
 template = "release"
 crosspost = true
-thread = {{ name = "{{{{ event.version }}}}", archive_after = "14d" }}
+thread = {{ name = "{{{{ event.attributes.version }}}}", archive_after = "14d" }}
 pin = "markers"
 {extra}
 [templates.release]
-title = "📦 {{{{ event.project }}}} {{{{ event.version }}}}"
-body = "{{% if event.version == 'boom' %}}{{{{ nothing.here }}}}{{% endif %}}{{{{ event.body }}}}"
+title = "📦 {{{{ event.project }}}} {{{{ event.attributes.version }}}}"
+body = "{{% if event.attributes.version == 'boom' %}}{{{{ nothing.here }}}}{{% endif %}}{{{{ event.body }}}}"
 "#
     );
     load(
@@ -55,13 +55,12 @@ body = "{{% if event.version == 'boom' %}}{{{{ nothing.here }}}}{{% endif %}}{{{
 pub(crate) fn event(version: &str) -> Event {
     Event::normalise(Draft {
         identity: format!("github.com/1/{version}"),
-        kind: Kind::Release,
+        kind: Kind::RELEASE,
         project: "php-mutation-gate".to_owned(),
-        version: Some(version.to_owned()),
+        attributes: herald_core::versioned(version.to_owned(), false),
         title: "php-mutation-gate".to_owned(),
         body: "## Added".to_owned(),
         links: [("release".to_owned(), "https://example.org/r".to_owned())].into(),
-        prerelease: false,
         occurred: NOON,
     })
     .unwrap()

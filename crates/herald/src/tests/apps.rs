@@ -8,13 +8,16 @@ id = "deploys"
 sources = ["ci"]
 destination = "discord"
 channel = "1566200000000000200"
-template = "release"
+template = "deploy"
 [[routes]]
 id = "elsewhere"
 sources = ["ci"]
 destination = "discord"
 channel = "1566200000000000300"
-template = "release"
+template = "deploy"
+[templates.deploy]
+title = "{{{{ event.project }}}}: {{{{ event.title }}}}"
+body = "{{{{ event.body }}}}"
 [apps.ci]
 projects = ["herald"]
 routes = ["deploys"]

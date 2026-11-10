@@ -3,7 +3,7 @@
 
 #[cfg(test)]
 mod app {
-    use herald_core::{Kind, Problem, Standing, Step};
+    use herald_core::{Attribute, Kind, KindSpecs, Problem, Standing, Step};
     use herald_sources_app::{Unread, event, identity, schema, standings};
     use jiff::Timestamp;
 
@@ -14,7 +14,13 @@ mod app {
     #[test]
     fn an_event_longer_than_an_app_may_send_is_refused_unread() {
         let long = vec![b' '; herald_sources_app::MOST + 1];
-        let refused = event("ci", &long, jiff::Timestamp::UNIX_EPOCH).unwrap_err();
+        let refused = event(
+            "ci",
+            &long,
+            jiff::Timestamp::UNIX_EPOCH,
+            &KindSpecs::default(),
+        )
+        .unwrap_err();
         assert_eq!(
             refused.to_string(),
             format!(
@@ -28,7 +34,7 @@ mod app {
     fn an_event_as_long_as_an_app_may_send_is_read() {
         let mut longest = br#"{"id": "build-42", "project": "herald", "title": "herald"}"#.to_vec();
         longest.resize(herald_sources_app::MOST, b' ');
-        let read = event("ci", &longest, now()).unwrap();
+        let read = event("ci", &longest, now(), &KindSpecs::default()).unwrap();
         assert_eq!(read.identity().as_str(), identity("ci", "build-42"));
     }
 
@@ -38,19 +44,20 @@ mod app {
             "ci",
             br#"{
                 "id": "build-42",
+                "kind": "release",
                 "project": "herald",
-                "version": "1.2.0",
+                "attributes": {"version": "1.2.0", "prerelease": true},
                 "title": "  herald\n1.2.0  ",
                 "body": "  What changed  ",
                 "links": {"release": "https://herald.example/releases/1.2.0"},
-                "prerelease": true,
                 "occurred": "2027-01-14T10:30:00Z"
             }"#,
             now(),
+            &KindSpecs::default(),
         )
         .unwrap();
         assert_eq!(read.identity().as_str(), "app/ci/build-42");
-        assert_eq!(read.kind(), Kind::Message);
+        assert_eq!(read.kind(), &Kind::RELEASE);
         assert_eq!(read.project(), "herald");
         assert_eq!(read.version(), Some("1.2.0"));
         assert_eq!(read.title(), "herald 1.2.0");
@@ -72,8 +79,10 @@ mod app {
             "ci",
             br#"{"id": "7", "project": "herald", "title": "Deployed"}"#,
             now(),
+            &KindSpecs::default(),
         )
         .unwrap();
+        assert_eq!(read.kind(), &Kind::MESSAGE);
         assert_eq!(read.version(), None);
         assert_eq!(read.body(), "");
         assert_eq!(read.first_link(), None);
@@ -87,6 +96,7 @@ mod app {
             "deploys",
             br#"{"id": "  7  ", "project": "herald", "title": "Deployed"}"#,
             now(),
+            &KindSpecs::default(),
         )
         .unwrap();
         assert_eq!(read.identity().as_str(), identity("deploys", "7"));
@@ -99,6 +109,7 @@ mod app {
             "ci",
             br#"{"id": "  ", "project": "herald", "title": "Deployed"}"#,
             now(),
+            &KindSpecs::default(),
         );
         assert_eq!(refused, Err(Unread::NoId));
         assert_eq!(
@@ -113,6 +124,7 @@ mod app {
             "ci",
             br#"{"id": "7", "project": "herald", "title": "Deployed", "colour": "red"}"#,
             now(),
+            &KindSpecs::default(),
         ) else {
             panic!("an unknown field was read");
         };
@@ -120,8 +132,64 @@ mod app {
     }
 
     #[test]
+    fn a_kind_herald_does_not_know_is_refused_and_named() {
+        let refused = event(
+            "ci",
+            br#"{"id": "7", "kind": "deploy", "project": "herald", "title": "Deployed"}"#,
+            now(),
+            &KindSpecs::default(),
+        )
+        .unwrap_err();
+        assert_eq!(
+            refused.to_string(),
+            "herald knows no kind \"deploy\"; send a kind it ships, or one the config declares under [kinds.deploy]"
+        );
+    }
+
+    #[test]
+    fn a_declared_kind_is_read_with_its_attributes_and_refused_without_them() {
+        let deploy = herald_core::KindSpec::new(
+            Kind::new("deploy").unwrap(),
+            "A deploy.",
+            false,
+            Vec::new(),
+            [(
+                "region".to_owned(),
+                herald_core::AttributeSpec {
+                    ty: herald_core::AttributeType::Text,
+                    required: true,
+                },
+            )]
+            .into(),
+        );
+        let kinds = KindSpecs::default().with(deploy);
+        let read = event(
+            "ci",
+            br#"{"id": "7", "kind": "deploy", "project": "herald", "title": "Deployed", "attributes": {"region": "eu"}}"#,
+            now(),
+            &kinds,
+        )
+        .unwrap();
+        assert_eq!(
+            read.attribute("region"),
+            Some(&Attribute::Text("eu".to_owned()))
+        );
+        let refused = event(
+            "ci",
+            br#"{"id": "7", "kind": "deploy", "project": "herald", "title": "Deployed"}"#,
+            now(),
+            &kinds,
+        )
+        .unwrap_err();
+        assert_eq!(
+            refused.to_string(),
+            "attributes.region is missing; a deploy event carries it"
+        );
+    }
+
+    #[test]
     fn bytes_that_are_not_json_are_refused() {
-        let refused = event("ci", b"not json", now()).unwrap_err();
+        let refused = event("ci", b"not json", now(), &KindSpecs::default()).unwrap_err();
         assert!(
             refused
                 .to_string()
@@ -135,7 +203,7 @@ mod app {
         let refused = event(
             "ci",
             br#"{"id": "7", "project": "herald", "title": "Deployed", "links": {"release": "ftp://x"}}"#,
-            now(),
+            now(), &KindSpecs::default(),
         )
         .unwrap_err();
         assert_eq!(refused, Unread::Problem(Problem::LinkNotWeb));
@@ -145,11 +213,21 @@ mod app {
     #[test]
     fn an_event_with_no_project_or_title_is_refused() {
         assert_eq!(
-            event("ci", br#"{"id": "7", "project": " ", "title": "t"}"#, now()),
+            event(
+                "ci",
+                br#"{"id": "7", "project": " ", "title": "t"}"#,
+                now(),
+                &KindSpecs::default()
+            ),
             Err(Unread::Problem(Problem::NoProject))
         );
         assert_eq!(
-            event("ci", br#"{"id": "7", "project": "p", "title": " "}"#, now()),
+            event(
+                "ci",
+                br#"{"id": "7", "project": "p", "title": " "}"#,
+                now(),
+                &KindSpecs::default()
+            ),
             Err(Unread::Problem(Problem::NoTitle))
         );
     }

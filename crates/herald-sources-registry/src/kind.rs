@@ -89,7 +89,7 @@ impl SourceConfig for RegistrySource {
     }
 
     fn kinds(&self) -> &'static [Kind] {
-        &[Kind::PackageVersion]
+        &[Kind::PACKAGE_VERSION]
     }
 
     fn backfill(&self) -> usize {

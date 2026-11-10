@@ -1,7 +1,9 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::ops::Range;
 
-use herald_core::{DestinationName, RecordKind, Retention, RouteId, SourceName, TemplateName};
+use herald_core::{
+    DestinationName, KindSpecs, RecordKind, Retention, RouteId, SourceName, TemplateName,
+};
 use serde::de::DeserializeOwned;
 use toml::Spanned;
 use toml::de::{DeTable, DeValue, ValueDeserializer};
@@ -20,8 +22,9 @@ pub(crate) type Value<'i> = Spanned<DeValue<'i>>;
 /// The version of the config this herald reads.
 const VERSION: i64 = 1;
 /// The top-level keys of `herald.toml`.
-const SECTIONS: [&str; 13] = [
+const SECTIONS: [&str; 14] = [
     "version",
+    "kinds",
     "store",
     "markers",
     "destinations",
@@ -74,6 +77,7 @@ fn path_at(base: &str, value: &Value<'_>, at: &Range<usize>) -> String {
 pub(crate) struct Loader<'t> {
     text: &'t str,
     kinds: &'t Kinds,
+    specs: KindSpecs,
     errors: Vec<ConfigError>,
 }
 
@@ -81,6 +85,7 @@ pub(crate) struct Loader<'t> {
 #[derive(Default)]
 struct Sections<'i> {
     version: Option<Value<'i>>,
+    kinds: Option<Value<'i>>,
     store: Option<Value<'i>>,
     markers: Option<Value<'i>>,
     destinations: Option<Value<'i>>,
@@ -245,6 +250,7 @@ impl Loader<'_> {
         for (key, value) in root {
             let slot = match key.get_ref().as_ref() {
                 "version" => &mut sections.version,
+                "kinds" => &mut sections.kinds,
                 "store" => &mut sections.store,
                 "markers" => &mut sections.markers,
                 "destinations" => &mut sections.destinations,
@@ -600,6 +606,7 @@ pub fn load(
     let mut loader = Loader {
         text,
         kinds,
+        specs: KindSpecs::default(),
         errors: Vec::new(),
     };
     let (root, syntax) = DeTable::parse_recoverable(text);
@@ -608,6 +615,7 @@ pub fn load(
     }
     let sections = loader.sections(root.into_inner());
     loader.version(sections.version);
+    loader.specs = loader.declared(sections.kinds);
     let (store, retention) = loader.store(sections.store).unzip();
     let marker_key = sections
         .markers
@@ -684,6 +692,7 @@ pub fn load(
             server,
             http,
             announce,
+            kinds: loader.specs,
         });
     }
     let mut errors = loader.errors;
@@ -710,6 +719,7 @@ fn kept(span: Range<usize>, mut options: DeTable<'_>) -> (Value<'_>, Value<'_>) 
 }
 
 mod apps;
+mod declared;
 mod route;
 mod settings;
 mod templates;

@@ -1,7 +1,8 @@
 use jiff::SignedDuration;
 
-use crate::event::{Event, Kind};
+use crate::event::Event;
 use crate::key::RouteId;
+use crate::kind::Kind;
 use crate::pattern::Pattern;
 
 macro_rules! name {
@@ -145,7 +146,7 @@ impl Filter {
                 .is_some_and(|version| pattern.matches(version))
         });
         self.sources.contains(source)
-            && (self.kinds.is_empty() || self.kinds.contains(&event.kind()))
+            && (self.kinds.is_empty() || self.kinds.contains(event.kind()))
             && prerelease
             && version
     }
@@ -257,7 +258,7 @@ pub(crate) mod tests {
 
     fn prerelease() -> Event {
         Event::normalise(Draft {
-            prerelease: true,
+            attributes: crate::versioned("v0.1.0", true),
             ..draft()
         })
         .unwrap()
@@ -277,9 +278,9 @@ pub(crate) mod tests {
     #[test]
     fn a_route_with_kinds_takes_those_kinds_only() {
         let mut route = route_for("r", "php-mutation-gate");
-        route.filter.kinds = vec![Kind::PackageVersion];
+        route.filter.kinds = vec![Kind::PACKAGE_VERSION];
         assert!(!route.filter.takes(&source(), &event()));
-        route.filter.kinds = vec![Kind::PackageVersion, Kind::Release];
+        route.filter.kinds = vec![Kind::PACKAGE_VERSION, Kind::RELEASE];
         assert!(route.filter.takes(&source(), &event()));
     }
 
@@ -314,8 +315,8 @@ pub(crate) mod tests {
         route.filter.versions = Some(Pattern::new("*-alpine"));
         assert!(!route.filter.takes(&source(), &event()));
         let unversioned = Event::normalise(Draft {
-            kind: Kind::FeedEntry,
-            version: None,
+            kind: Kind::FEED_ENTRY,
+            attributes: std::collections::BTreeMap::new(),
             ..draft()
         })
         .unwrap();

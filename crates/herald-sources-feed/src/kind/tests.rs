@@ -16,7 +16,7 @@ fn a_feed_is_a_kind_of_source_and_polls_its_url() {
     assert_eq!(FeedKind::NAME, "feed");
     assert_eq!(feed.kind(), "feed");
     assert_eq!(feed.token(), None);
-    assert_eq!(feed.kinds(), &[Kind::FeedEntry]);
+    assert_eq!(feed.kinds(), &[Kind::FEED_ENTRY]);
     assert_eq!(feed.backfill(), 4);
     let poll = feed.poller(None);
     assert_eq!(poll.api(), Feed::new(&feed).api());

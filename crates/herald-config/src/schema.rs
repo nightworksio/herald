@@ -6,8 +6,8 @@ use schemars::{JsonSchema, Schema, SchemaGenerator};
 use crate::kinds::Kinds;
 
 use crate::file::{
-    AnnounceFile, AppFile, HttpFile, KeepFile, MarkersFile, RenderFile, RouteFile, ScheduleFile,
-    ServerFile, TemplateFile,
+    AnnounceFile, AppFile, HttpFile, KeepFile, KindFile, MarkersFile, RenderFile, RouteFile,
+    ScheduleFile, ServerFile, TemplateFile,
 };
 
 /// `[store]`: one store, by its kind: its schema is its kind's.
@@ -176,6 +176,10 @@ pub(crate) fn routed<T: JsonSchema>(
 struct FileSchema {
     /// The version of the config: 1.
     version: u8,
+    /// The kinds of event the config declares beside those herald ships, by
+    /// name; its apps may announce them.
+    #[serde(default)]
+    kinds: BTreeMap<String, KindFile>,
     /// The store herald keeps its records in.
     store: StoreSchema,
     /// The installation's marker key.

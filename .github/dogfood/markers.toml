@@ -26,10 +26,10 @@ destination = "discord"
 channel = "1566184281406177531"
 template = "package-release"
 crosspost = true
-thread = { name = "{{ event.project }} {{ event.version }}" }
+thread = { name = "{{ event.project }} {{ event.attributes.version }}" }
 pin = "markers"
 mentions = { roles = ["1566190000000000555"] }
 
 [templates.package-release]
-title = "📦 {{ event.project }} {{ event.version }}"
+title = "📦 {{ event.project }} {{ event.attributes.version }}"
 body = "{{ event.body }}"

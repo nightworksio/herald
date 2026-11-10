@@ -83,7 +83,7 @@ kind = "sqlite"
 kind = "github"
 repository = "cli/cli"
 [templates.t]
-title = "{{{{ event.project }}}} {{{{ event.version }}}}"
+title = "{{{{ event.project }}}} {{{{ event.attributes.version }}}}"
 body = "{{{{ event.body }}}}"
 [destinations.posted]
 kind = "discord"
@@ -217,12 +217,11 @@ appservice_token = {{ secret = "HERALD_MATRIX_AS" }}
             let connected = prepared.connect(|_| Ok::<_, ()>(answers.clone())).unwrap();
             let store = FakeStore::default();
             let shown = Shown {
-                kind: Kind::Release,
-                version: Some("1.0.0".to_owned()),
+                kind: Kind::RELEASE,
+                attributes: herald_core::versioned("1.0.0", false),
                 title: "gate".to_owned(),
                 body: "Notes".to_owned(),
                 links: BTreeMap::new(),
-                prerelease: false,
                 occurred: "2027-01-15T08:00:00Z".parse().unwrap(),
             };
             let latest = Latest {

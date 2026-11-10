@@ -70,7 +70,7 @@ pub(crate) async fn announcing_event(
         ));
     };
     let bytes = read(written.event, &mut tokio::io::stdin()).await?;
-    let event = herald_sources_app::event(app, &bytes, SystemClock.now())
+    let event = herald_sources_app::event(app, &bytes, SystemClock.now(), &config.kinds)
         .map_err(|unread| unread.to_string())?;
     if !named
         .projects

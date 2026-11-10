@@ -75,7 +75,7 @@ fn a_registry_source_names_its_token_and_polls_its_package() {
             secret: "NPM_TOKEN".to_owned()
         }]
     );
-    assert_eq!(source.kinds(), &[Kind::PackageVersion]);
+    assert_eq!(source.kinds(), &[Kind::PACKAGE_VERSION]);
     assert_eq!(source.backfill(), 3);
     assert_eq!(source.scheme(), None);
     let poll = source.poller(None);

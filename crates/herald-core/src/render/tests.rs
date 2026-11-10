@@ -2,8 +2,7 @@ use super::*;
 use crate::event::tests::{draft, event};
 use crate::event::{Draft, Event};
 
-const TITLE: &str =
-    "📦 {{ event.project }} {{ event.version }}{% if event.prerelease %} · pre-release{% endif %}";
+const TITLE: &str = "📦 {{ event.project }} {{ event.attributes.version }}{% if event.attributes.prerelease %} · pre-release{% endif %}";
 
 fn templates(sources: &[(&str, &str)]) -> Templates {
     let lines: Vec<(&str, &str, Form)> = sources
@@ -59,7 +58,7 @@ fn a_template_renders_the_event_route_and_herald() {
 #[test]
 fn a_prerelease_is_marked_where_the_template_asks() {
     let prerelease = Event::normalise(Draft {
-        prerelease: true,
+        attributes: crate::versioned("v0.1.0", true),
         ..draft()
     })
     .unwrap();
@@ -116,16 +115,19 @@ fn an_undefined_value_is_refused_wherever_it_is_used_as_a_value() {
 #[test]
 fn a_render_line_is_on_one_line() {
     let route = RouteId::new("r");
-    let line = templates(&[("t", "  {{ event.project }}\n\n  {{ event.version }} ")])
-        .render_line(
-            "t",
-            &Context {
-                event: &event(),
-                route: &route,
-                herald: "0.1.0",
-            },
-        )
-        .unwrap();
+    let line = templates(&[(
+        "t",
+        "  {{ event.project }}\n\n  {{ event.attributes.version }} ",
+    )])
+    .render_line(
+        "t",
+        &Context {
+            event: &event(),
+            route: &route,
+            herald: "0.1.0",
+        },
+    )
+    .unwrap();
     assert_eq!(line, "php-mutation-gate v0.1.0");
     let error = templates(&[])
         .render_line(
@@ -254,13 +256,13 @@ fn a_markdown_template_places_event_text_literally_and_the_body_as_markdown() {
 #[test]
 fn a_markdown_template_prints_numbers_and_absent_values_as_a_line_template_does() {
     let unversioned = Event::normalise(Draft {
-        version: None,
+        attributes: std::collections::BTreeMap::new(),
         ..draft()
     })
     .unwrap();
     assert_eq!(
-        markdown("{{ 1 + 1 }} {{ event.version }}", &unversioned),
-        render("{{ 1 + 1 }} {{ event.version }}", &unversioned).unwrap()
+        markdown("{{ 1 + 1 }} {{ none }}", &unversioned),
+        render("{{ 1 + 1 }} {{ none }}", &unversioned).unwrap()
     );
     assert!(
         Templates::compile(
@@ -351,5 +353,46 @@ fn a_template_is_held_to_the_sandbox_it_was_compiled_into() {
             recursion: 64,
             output: 1_048_576,
         }
+    );
+}
+
+#[test]
+fn an_attribute_the_event_lacks_is_named_where_the_template_prints_it() {
+    let error = render(
+        "{{ event.project }}\n{{ event.attributes.region }}",
+        &event(),
+    )
+    .unwrap_err();
+    assert_eq!(
+        error.reason,
+        "it prints event.attributes.region, which a release event does not carry"
+    );
+    let error = render(
+        "{{ event.attributes.version }} {{ event.attributes.region_2 }}",
+        &event(),
+    )
+    .unwrap_err();
+    assert_eq!(
+        error.reason,
+        "it prints event.attributes.region_2, which a release event does not carry"
+    );
+    for source in [
+        "{{ event.attributes.version }} {{ nothing.here }}",
+        "{{ event.attributes.version | nope }}",
+    ] {
+        let error = render(source, &event()).unwrap_err();
+        assert!(
+            !error.reason.starts_with("it prints event.attributes."),
+            "{source}: {}",
+            error.reason
+        );
+    }
+    assert_eq!(
+        render(
+            "{% if event.attributes.region %}{{ event.attributes.region }}{% endif %}",
+            &event()
+        )
+        .unwrap(),
+        ""
     );
 }

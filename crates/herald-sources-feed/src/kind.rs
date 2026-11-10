@@ -32,7 +32,7 @@ impl SourceConfig for FeedOptions {
     }
 
     fn kinds(&self) -> &'static [Kind] {
-        &[Kind::FeedEntry]
+        &[Kind::FEED_ENTRY]
     }
 
     fn backfill(&self) -> usize {

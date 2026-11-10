@@ -45,7 +45,7 @@ fn templates(route: &Route) -> Templates {
         &[
             (
                 &title_template(&route.template),
-                "📦 {{ event.project }} {{ event.version }}",
+                "📦 {{ event.project }} {{ event.attributes.version }}",
                 Form::Line,
             ),
             (
@@ -55,7 +55,7 @@ fn templates(route: &Route) -> Templates {
             ),
             (
                 &thread_template(&route.id),
-                "{{ event.project }} {{ event.version }}",
+                "{{ event.project }} {{ event.attributes.version }}",
                 Form::Line,
             ),
         ],
@@ -138,7 +138,7 @@ fn a_route_without_a_thread_names_none_and_a_long_body_is_cut() {
     let route = route_for("r", "php-mutation-gate");
     let long = Event::normalise(Draft {
         body: "one\n\ntwo\n\nthree".to_owned(),
-        prerelease: true,
+        attributes: crate::versioned("v0.1.0", true),
         ..draft()
     })
     .unwrap();

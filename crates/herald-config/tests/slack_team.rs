@@ -32,7 +32,7 @@ channel = "C0123456789"
 template = "release"
 
 [templates.release]
-title = "{{{{ event.project }}}} {{{{ event.version }}}}"
+title = "{{{{ event.project }}}} {{{{ event.attributes.version }}}}"
 body = "{{{{ event.body }}}}"
 "#
         );

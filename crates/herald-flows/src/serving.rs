@@ -500,7 +500,7 @@ async fn posted<S: Store, C: Clock, G, V, H, P, K>(
         Err(refused) => return refused.answered(),
     };
     let now = serving.ports.clock.now();
-    let event = match herald_sources_app::event(name, inbound.body, now) {
+    let event = match herald_sources_app::event(name, inbound.body, now, &serving.config.kinds) {
         Ok(event) => event,
         Err(unread) => return refusal(400, unread.to_string()),
     };

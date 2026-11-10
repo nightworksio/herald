@@ -398,7 +398,7 @@ mod tests {
         let after = Some(SignedDuration::from_hours(24));
         let delivery = Delivery {
             thread: Some(Thread {
-                name: "{{ event.version }}".to_owned(),
+                name: "{{ event.attributes.version }}".to_owned(),
                 archive_after: after,
                 lock_after: after,
             }),
@@ -423,7 +423,7 @@ mod tests {
         );
         let named_only = Delivery {
             thread: Some(Thread {
-                name: "{{ event.version }}".to_owned(),
+                name: "{{ event.attributes.version }}".to_owned(),
                 archive_after: None,
                 lock_after: None,
             }),

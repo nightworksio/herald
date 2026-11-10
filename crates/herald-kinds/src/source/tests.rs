@@ -43,7 +43,7 @@ impl SourceConfig for Plain {
     }
 
     fn kinds(&self) -> &'static [Kind] {
-        &[Kind::Release]
+        &[Kind::RELEASE]
     }
 
     fn backfill(&self) -> usize {
@@ -76,7 +76,7 @@ fn a_source_takes_no_webhook_and_no_moving_tag_where_its_kind_keeps_the_defaults
         }]
     );
     assert_eq!(source.kind(), "plain");
-    assert_eq!(source.kinds(), &[Kind::Release]);
+    assert_eq!(source.kinds(), &[Kind::RELEASE]);
     assert_eq!(source.backfill(), 3);
     assert_eq!(source.hooked(&[], b"{}"), Ok(Hooked::Nothing(UNHOOKED)));
 }

@@ -1,6 +1,6 @@
 # ADR-0003: Every source becomes one neutral event, parsed without I/O
 
-**Status:** Accepted
+**Status:** Accepted; the `kind`, `version` and `prerelease` fields superseded by [ADR-0018](0018-a-kind-is-data-and-an-event-carries-its-kind-s-attributes.md), under which a kind is data and an event carries its kind's attributes
 **Date:** 2026-10-31
 
 ## Context
