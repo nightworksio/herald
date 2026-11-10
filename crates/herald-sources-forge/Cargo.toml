@@ -11,6 +11,7 @@ publish.workspace = true
 
 [dependencies]
 herald-core.workspace = true
+herald-kinds.workspace = true
 herald-ports.workspace = true
 herald-wire.workspace = true
 jiff.workspace = true

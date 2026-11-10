@@ -42,7 +42,7 @@ mod forgejo {
         for header in ["X-Forgejo-Event", "X-Gitea-Event"] {
             assert_eq!(
                 Forge::Forgejo.hooked(&[(header, "release")], EVENT.as_bytes(), "forgejo/forgejo"),
-                Ok(Hooked::Release(event.clone()))
+                Ok(Hooked::Event(event.clone()))
             );
         }
         assert_eq!(

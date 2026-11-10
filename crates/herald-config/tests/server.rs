@@ -5,7 +5,7 @@ mod common;
 
 #[cfg(test)]
 mod server {
-    use herald_config::{KeyCache, Server, Source, load};
+    use herald_config::{KeyCache, Server, load};
 
     const EXAMPLE: &str = r#"version = 1
 
@@ -270,10 +270,14 @@ body = "{{ event.body }}"
         );
         let config = load("herald.toml", &hooked, &nothing, &crate::common::kinds()).unwrap();
         assert!(config.secrets().contains("HERALD_WEBHOOK"));
-        assert!(matches!(
-            config.sources.values().next(),
-            Some(Source::Forge(_, options))
-                if options.webhook.as_ref().map(|named| named.secret.as_str()) == Some("HERALD_WEBHOOK")
-        ));
+        assert_eq!(
+            config
+                .sources
+                .values()
+                .next()
+                .and_then(|source| source.webhook())
+                .map(|named| named.secret.as_str()),
+            Some("HERALD_WEBHOOK")
+        );
     }
 }

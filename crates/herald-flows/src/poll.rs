@@ -1,12 +1,10 @@
 use herald_config::Config;
-use herald_core::{Cursor, Event, Polled, SourceName, fresh};
+use herald_core::{Event, SourceName, fresh};
+use herald_kinds::Unpolled;
 use herald_ports::{Clock, Cursors, Http, Signer, Store, Written};
-use herald_sources_feed::Feed;
-use herald_sources_forge::Forge;
-use herald_sources_registry::Registry;
 
 use crate::announce::{Announced, Outcome, Ports, Stop, announce};
-use crate::prepare::{Asked, Connected, PreparedSource};
+use crate::prepare::{Connected, PreparedSource};
 
 /// What polling one source did.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -65,72 +63,6 @@ fn stored(error: impl std::fmt::Display) -> Stop {
     Stop::Store(error.to_string())
 }
 
-fn unreachable(error: impl std::fmt::Display) -> Stop {
-    Stop::Unreachable(error.to_string())
-}
-
-fn unreadable(error: impl std::fmt::Display) -> Stop {
-    Stop::Source(error.to_string())
-}
-
-/// What `asked` answers since `cursor`, or nothing where it says nothing
-/// changed.
-async fn polled<H: Http>(
-    asked: &Asked,
-    http: &H,
-    cursor: Option<&Cursor>,
-) -> Result<Option<Polled>, Stop> {
-    match asked {
-        Asked::Forge { origin, token } => {
-            let token = token.as_ref();
-            let answer = http
-                .send(origin.releases_request(cursor, token))
-                .await
-                .map_err(unreachable)?;
-            if Forge::unchanged(&answer) {
-                return Ok(None);
-            }
-            let described = http
-                .send(origin.repository_request(token))
-                .await
-                .map_err(unreachable)?;
-            let forge = origin.forge();
-            let repository = forge.repository(&described).map_err(unreadable)?;
-            forge
-                .releases(&repository, &answer, origin.reading().parse)
-                .map(Some)
-                .map_err(unreadable)
-        }
-        Asked::Registry { package, token } => {
-            let bearer = match token
-                .as_ref()
-                .and_then(|token| package.token_request(token).map(|request| (token, request)))
-            {
-                Some((token, request)) => {
-                    let answer = http.send(request).await.map_err(unreachable)?;
-                    Some(package.exchanged(token, &answer).map_err(unreadable)?)
-                }
-                None => token.clone(),
-            };
-            let answer = http
-                .send(package.versions_request(cursor, bearer.as_ref()))
-                .await
-                .map_err(unreachable)?;
-            if Registry::unchanged(&answer) {
-                return Ok(None);
-            }
-            package.versions(&answer).map(Some).map_err(unreadable)
-        }
-        Asked::Feed(feed) => {
-            let answer = http.send(feed.request(cursor)).await.map_err(unreachable)?;
-            if Feed::unchanged(&answer) {
-                return Ok(None);
-            }
-            feed.entries(&answer).map(Some).map_err(unreadable)
-        }
-    }
-}
-
 async fn sweep<S: Store, C: Clock, G: Signer, H: Http>(
     config: &Config,
     connected: &Connected<H>,
@@ -145,7 +77,15 @@ async fn sweep<S: Store, C: Clock, G: Signer, H: Http>(
         .await
         .map_err(stored)?;
     let cursor = record.as_ref().map(|record| &record.value);
-    let Some(releases) = polled(&source.asked, http, cursor).await? else {
+    let polled = source
+        .poll
+        .polled(http, cursor)
+        .await
+        .map_err(|unpolled| match unpolled {
+            Unpolled::Unreachable(reason) => Stop::Unreachable(reason),
+            Unpolled::Unreadable(reason) => Stop::Source(reason),
+        })?;
+    let Some(releases) = polled else {
         return Ok(Sweep::Unchanged);
     };
     let found = releases.events.len();
@@ -169,7 +109,7 @@ async fn sweep<S: Store, C: Clock, G: Signer, H: Http>(
             &releases.events,
             releases.etag,
             releases.last_modified,
-            source.asked.reading().remembered,
+            source.poll.remembered(),
         );
         let expected = record.as_ref().map(|record| record.version);
         match ports

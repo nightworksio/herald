@@ -5,7 +5,7 @@ mod common;
 
 #[cfg(test)]
 mod reading {
-    use herald_config::{Source, load};
+    use herald_config::load;
     use herald_core::SourceName;
 
     fn config(source: &str) -> Result<herald_config::Config, String> {
@@ -49,20 +49,27 @@ body = "{{{{ event.body }}}}"
             "kind = \"github\"\nrepository = \"nightworksio/php-mutation-gate\"\npage = 50\nremembered = 1000\nparse = \"8MiB\"",
         )
         .unwrap();
-        let Some(Source::Forge(_, options)) = read.sources.get(&SourceName::new("gate")) else {
+        let Some(forged) = read
+            .sources
+            .get(&SourceName::new("gate"))
+            .and_then(|source| source.of::<herald_sources_forge::ForgeSource>())
+        else {
             panic!("no forge source");
         };
-        let reading = options.reading();
+        let reading = forged.options.reading();
         assert_eq!(
             (reading.page, reading.remembered, reading.parse),
             (50, 1000, 8 << 20)
         );
         let npm = config("kind = \"npm\"\npackage = \"left-pad\"\nparse = \"128MiB\"").unwrap();
-        let Some(Source::Registry(registry, options)) = npm.sources.get(&SourceName::new("gate"))
+        let Some(listed) = npm
+            .sources
+            .get(&SourceName::new("gate"))
+            .and_then(|source| source.of::<herald_sources_registry::RegistrySource>())
         else {
             panic!("no registry source");
         };
-        assert_eq!(options.reading(*registry).parse, 128 << 20);
+        assert_eq!(listed.options.reading(listed.registry).parse, 128 << 20);
     }
 
     #[test]

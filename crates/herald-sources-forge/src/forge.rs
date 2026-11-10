@@ -1,4 +1,5 @@
 use herald_core::{Cursor, Event, KeyForm, Polled, Scheme, Signed};
+use herald_kinds::Hooked;
 use herald_ports::{Method, Request, Response, Secret, Text, USER_AGENT};
 use serde::Deserialize;
 
@@ -74,15 +75,6 @@ pub(crate) struct Api {
 const OTHER_EVENT: &str = "the delivery is not of a release";
 /// Why a webhook delivery of an unpublished release announces nothing.
 const UNPUBLISHED: &str = "the release is not published, or is a draft";
-
-/// What a webhook delivery asks herald to announce.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Hooked {
-    /// The release it publishes.
-    Release(Event),
-    /// Nothing, and why.
-    Nothing(&'static str),
-}
 
 /// A repository, as its forge names it: its numeric id outlives a rename.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -201,7 +193,7 @@ impl Forge {
                 reason: format!("it is not of {repository}, the repository its source names"),
             });
         }
-        Ok(event.map_or(Hooked::Nothing(UNPUBLISHED), Hooked::Release))
+        Ok(event.map_or(Hooked::Nothing(UNPUBLISHED), Hooked::Event))
     }
 
     /// The event a release event's payload announces, as a webhook or as

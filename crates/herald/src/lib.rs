@@ -19,7 +19,7 @@ use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
 
 use clap::Parser as _;
-use herald_config::{Config, Source, load, samples};
+use herald_config::{Config, load, samples};
 use herald_core::{Event, Kind, RouteId, SourceName};
 use herald_crypto::RingSigner;
 use herald_environment::{EnvSecrets, SystemClock};
@@ -29,7 +29,7 @@ use herald_flows::{
 };
 use herald_native::random_secret;
 use herald_ports::{Http, HttpError, Keyring, Request, Response, Secrets, Store as Keeps};
-use herald_sources_forge::{Forge, Origin, Repository, SourceOptions, Token};
+use herald_sources_forge::{Forge, ForgeSource, Origin, Repository, SourceOptions, Token};
 
 mod apps;
 mod cli;
@@ -392,13 +392,14 @@ async fn announcing_from(
     let named: Vec<(&SourceName, &SourceOptions)> = config
         .sources
         .iter()
-        .filter_map(|(name, source)| match source {
-            Source::Forge(kind, options)
-                if *kind == forge && options.repository.eq_ignore_ascii_case(repository) =>
-            {
-                Some((name, options))
-            }
-            _ => None,
+        .filter_map(|(name, source)| {
+            source
+                .of::<ForgeSource>()
+                .filter(|named| {
+                    named.forge == forge
+                        && named.options.repository.eq_ignore_ascii_case(repository)
+                })
+                .map(|named| (name, &named.options))
         })
         .collect();
     let Some((_, named_options)) = named.first() else {

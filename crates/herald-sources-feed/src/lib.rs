@@ -8,8 +8,10 @@
 mod entity;
 mod feed;
 mod html;
+mod kind;
 mod options;
 
 pub use feed::Feed;
 pub use html::markdown;
+pub use kind::FeedKind;
 pub use options::FeedOptions;

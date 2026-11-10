@@ -11,6 +11,7 @@ mod opening;
 mod placement;
 mod reach;
 mod session;
+mod source;
 mod store;
 
 pub use destination::{Carried, Destination, DestinationConfig, UNREAD};
@@ -22,4 +23,5 @@ pub use opening::{GITHUB_REPOSITORY, GITHUB_TOKEN, KvAt, Local, Opened, Opening,
 pub use placement::{Placed, Placement};
 pub use reach::{Posts, Reach, Reached, Signing, Unread};
 pub use session::{Connect, Effect, Session};
+pub use source::{Hooked, Poll, Source, SourceConfig, SourceKind, UNHOOKED, Unpolled};
 pub use store::{Store, StoreConfig, StoreKind};

@@ -1,12 +1,12 @@
 use std::collections::BTreeMap;
 
-use herald_config::{App, Config, Source};
+use herald_config::{App, Config};
 use herald_core::{
     Asked, DestinationName, Event, Identity, Key, Scheme, SourceName, Standing, digest, same,
 };
+use herald_kinds::Hooked;
 use herald_kinds::{Endpoint, Replying};
 use herald_ports::{Clock, Http, Keyring, Ledger, Secret, Secrets, Signer, Store, Verifier};
-use herald_sources_forge::Hooked;
 
 use crate::announce::{Announced, Outcome, Ports, announce, announce_within};
 use crate::commanded::{INTERACTIONS, MATRIX, commanded};
@@ -441,13 +441,15 @@ async fn hooked<S: Store, C: Clock, G, V: Verifier, H, P, K>(
     inbound: &Inbound<'_>,
 ) -> Answered {
     let source = SourceName::new(name);
-    let (Some(Source::Forge(forge, options)), Some(secret)) = (
-        serving.config.sources.get(&source),
-        serving.webhooks.0.get(&source),
-    ) else {
+    let Some((hooking, scheme, secret)) = serving
+        .config
+        .sources
+        .get(&source)
+        .zip(serving.webhooks.0.get(&source))
+        .and_then(|(hooking, secret)| hooking.scheme().map(|scheme| (hooking, scheme, secret)))
+    else {
         return missing("webhook of such a source");
     };
-    let scheme = forge.scheme();
     let store = serving.ports.store;
     let now = serving.ports.clock.now();
     let checked = verified(
@@ -469,8 +471,8 @@ async fn hooked<S: Store, C: Clock, G, V: Verifier, H, P, K>(
     if let Err(rejected) = admitted(store, serving.admission, scheme, &verified, now).await {
         return rejection(&rejected);
     }
-    match forge.hooked(inbound.headers, inbound.body, &options.repository) {
-        Ok(Hooked::Release(event)) => Answered {
+    match hooking.hooked(inbound.headers, inbound.body) {
+        Ok(Hooked::Event(event)) => Answered {
             reply: said(202, "herald announces the release").reply,
             refused: None,
             job: Some(Job::Announce {

@@ -1,13 +1,11 @@
 use std::collections::BTreeMap;
 use std::fmt;
+use std::sync::Arc;
 
-use herald_config::{Config, Destination, Placed, RouteConfig, Source};
+use herald_config::{Config, Destination, Placed, RouteConfig};
 use herald_core::{DestinationName, RouteId, SourceName, hex};
-use herald_kinds::Interacted;
+use herald_kinds::{Interacted, Poll};
 use herald_ports::{Algorithm, CryptoError, Http, Secret, SecretError, Secrets, Signer};
-use herald_sources_feed::Feed;
-use herald_sources_forge::{Origin, Token};
-use herald_sources_registry::Package;
 use herald_store_markers::{MarkedRoute, MarkersStore};
 
 use crate::reached::{Posts, Reached};
@@ -89,47 +87,11 @@ pub(crate) struct PreparedRoute {
     pub(crate) derived: bool,
 }
 
-/// What a source is asked, with its token resolved.
-#[derive(Debug, Clone)]
-pub(crate) enum Asked {
-    /// A repository's releases on a forge.
-    Forge {
-        origin: Origin,
-        token: Option<Token>,
-    },
-    /// A package's versions on a registry.
-    Registry {
-        package: Package,
-        token: Option<Secret>,
-    },
-    /// A feed's entries.
-    Feed(Feed),
-}
-
-impl Asked {
-    /// How a poll of it reads.
-    pub(crate) const fn reading(&self) -> herald_wire::Reading {
-        match self {
-            Self::Forge { origin, .. } => origin.reading(),
-            Self::Registry { package, .. } => package.reading(),
-            Self::Feed(feed) => feed.reading(),
-        }
-    }
-
-    fn api(&self) -> &str {
-        match self {
-            Self::Forge { origin, .. } => origin.api(),
-            Self::Registry { package, .. } => package.api(),
-            Self::Feed(feed) => feed.api(),
-        }
-    }
-}
-
 /// A source ready to poll.
 #[derive(Debug, Clone)]
 pub(crate) struct PreparedSource {
     pub(crate) name: SourceName,
-    pub(crate) asked: Asked,
+    pub(crate) poll: Arc<dyn Poll>,
     pub(crate) backfill: usize,
 }
 
@@ -231,7 +193,7 @@ impl Prepared {
         }
         let mut sources = Vec::new();
         for source in self.sources {
-            let reaching = reach(source.asked.api())?;
+            let reaching = reach(source.poll.api())?;
             sources.push((source, reaching));
         }
         let mut interacting = Vec::new();
@@ -367,27 +329,10 @@ pub async fn prepare<S: Secrets, G: Signer>(
     let mut sources = Vec::new();
     for (name, source) in &config.sources {
         let token = herald_kinds::optional(secrets, source.token()).await?;
-        let (asked, backfill) = match source {
-            Source::Forge(forge, options) => (
-                Asked::Forge {
-                    origin: Origin::new(*forge, options),
-                    token: token.map(Token::Named),
-                },
-                options.backfill,
-            ),
-            Source::Registry(registry, options) => (
-                Asked::Registry {
-                    package: Package::new(*registry, options),
-                    token,
-                },
-                options.backfill,
-            ),
-            Source::Feed(options) => (Asked::Feed(Feed::new(options)), options.backfill),
-        };
         sources.push(PreparedSource {
             name: name.clone(),
-            asked,
-            backfill,
+            poll: source.poller(token),
+            backfill: source.backfill(),
         });
     }
     Ok(Prepared {

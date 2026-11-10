@@ -1,12 +1,10 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use herald_core::{
-    DestinationName, Inbound, Kind, Profile, Retention, Route, RouteId, Sandbox, SecretRef,
-    SourceName, Templates,
+    DestinationName, Inbound, Profile, Retention, Route, RouteId, Sandbox, SecretRef, SourceName,
+    Templates,
 };
-use herald_kinds::{Destination, Placed, Store};
-use herald_sources_forge::Forge;
-use herald_sources_registry::Registry;
+use herald_kinds::{Destination, Placed, Source, Store};
 use jiff::SignedDuration;
 
 /// A config, read, resolved and with its templates compiled.
@@ -59,88 +57,15 @@ impl Config {
         self.destinations
             .values()
             .flat_map(|destination| destination.secret_refs())
-            .chain(self.sources.values().flat_map(Source::secret_refs))
+            .chain(
+                self.sources
+                    .values()
+                    .flat_map(|source| source.secret_refs()),
+            )
             .chain(self.marker_key.as_ref())
             .map(|named| named.secret.as_str())
             .chain(self.store.secrets())
             .collect()
-    }
-}
-
-/// A source and its options, by its kind.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Source {
-    /// A repository's releases on a forge.
-    Forge(Forge, herald_sources_forge::SourceOptions),
-    /// A package's versions on a registry.
-    Registry(Registry, herald_sources_registry::RegistryOptions),
-    /// An RSS or Atom feed's entries.
-    Feed(herald_sources_feed::FeedOptions),
-}
-
-impl Source {
-    /// The token it reads its platform with, where it names one.
-    #[must_use]
-    pub fn token(&self) -> Option<&SecretRef> {
-        match self {
-            Self::Forge(_, options) => options.token.as_ref(),
-            Self::Registry(_, options) => options.token.as_ref(),
-            Self::Feed(_) => None,
-        }
-    }
-
-    /// The secret its webhooks are signed with, where it takes them.
-    #[must_use]
-    pub fn webhook(&self) -> Option<&SecretRef> {
-        match self {
-            Self::Forge(_, options) => options.webhook.as_ref(),
-            Self::Registry(..) | Self::Feed(_) => None,
-        }
-    }
-
-    /// Every secret it names.
-    #[must_use]
-    pub fn secret_refs(&self) -> Vec<&SecretRef> {
-        self.token().into_iter().chain(self.webhook()).collect()
-    }
-
-    /// The kind of a feed source, as the config spells it.
-    pub const FEED: &str = "feed";
-
-    /// The kind's name, as `[sources.<name>] kind` writes it.
-    #[must_use]
-    pub fn kind(&self) -> &'static str {
-        match self {
-            Self::Forge(forge, _) => forge.kind(),
-            Self::Registry(registry, _) => registry.kind(),
-            Self::Feed(_) => Self::FEED,
-        }
-    }
-
-    /// Every kind, as the config spells it.
-    pub const KINDS: [&str; 8] = {
-        let [github, gitlab, forgejo] = Forge::ALL;
-        let [packagist, crates_io, npm, docker_hub] = Registry::ALL;
-        [
-            github.kind(),
-            gitlab.kind(),
-            forgejo.kind(),
-            packagist.kind(),
-            crates_io.kind(),
-            npm.kind(),
-            docker_hub.kind(),
-            Self::FEED,
-        ]
-    };
-
-    /// The kinds of event the source produces.
-    #[must_use]
-    pub fn kinds(&self) -> &'static [Kind] {
-        match self {
-            Self::Forge(..) => &[Kind::Release],
-            Self::Registry(..) => &[Kind::PackageVersion],
-            Self::Feed(_) => &[Kind::FeedEntry],
-        }
     }
 }
 
