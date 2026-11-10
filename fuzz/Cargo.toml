@@ -17,6 +17,7 @@ herald-dest-fediverse = { path = "../crates/herald-dest-fediverse" }
 herald-dest-matrix = { path = "../crates/herald-dest-matrix" }
 herald-dest-slack = { path = "../crates/herald-dest-slack" }
 herald-ports = { path = "../crates/herald-ports" }
+herald-records = { path = "../crates/herald-records" }
 herald-sources-app = { path = "../crates/herald-sources-app" }
 herald-sources-feed = { path = "../crates/herald-sources-feed" }
 herald-sources-forge = { path = "../crates/herald-sources-forge" }
@@ -25,6 +26,7 @@ herald-wire = { path = "../crates/herald-wire" }
 serde_json = "1"
 jiff = { version = "0.2", default-features = false, features = ["std"] }
 libfuzzer-sys = "0.4"
+pollster = "1"
 pulldown-cmark = { version = "0.13", default-features = false }
 
 [workspace]
@@ -89,6 +91,20 @@ bench = false
 [[bin]]
 name = "commands"
 path = "fuzz_targets/commands.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "activitypub"
+path = "fuzz_targets/activitypub.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "records"
+path = "fuzz_targets/records.rs"
 test = false
 doc = false
 bench = false
