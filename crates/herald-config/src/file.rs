@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 use std::num::{NonZeroU64, NonZeroUsize};
 
-use herald_core::{AttributeSpec, Duration, Kind, Pinning, Prereleases, SecretRef, Size};
+use herald_core::{AttributeSpec, Duration, Kind, LinkSpec, Pinning, Prereleases, SecretRef, Size};
 use schemars::JsonSchema;
 use serde::{Deserialize, Deserializer};
 use toml::Spanned;
@@ -120,6 +120,41 @@ pub(crate) struct MentionsFile {
     pub(crate) subscribers: bool,
 }
 
+/// A link a declared kind's events carry: its name, or its name and its
+/// button's label.
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(untagged)]
+#[serde(rename = "DeclaredLink")]
+pub(crate) enum LinkFile {
+    /// A link whose button is labelled by its name.
+    Named(String),
+    /// A link and its button's label.
+    Labelled(LabelledLinkFile),
+}
+
+/// A link and its button's label.
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+#[serde(rename = "LabelledLink")]
+pub(crate) struct LabelledLinkFile {
+    /// Its name, as `event.links.<name>` reads it.
+    pub(crate) name: String,
+    /// Its button's label.
+    pub(crate) label: String,
+}
+
+impl From<LinkFile> for LinkSpec {
+    fn from(file: LinkFile) -> Self {
+        match file {
+            LinkFile::Named(name) => Self::named(name),
+            LinkFile::Labelled(labelled) => Self {
+                name: labelled.name,
+                label: Some(labelled.label),
+            },
+        }
+    }
+}
+
 /// A kind of event the config declares, which its apps may announce.
 #[derive(Debug, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
@@ -132,9 +167,10 @@ pub(crate) struct KindFile {
     /// be pre-releases, as `attributes.prerelease`.
     #[serde(default)]
     pub(crate) versioned: bool,
-    /// The names of the links that become its buttons, in order.
+    /// The links that become its buttons, in order: each a name, labelled
+    /// by its name, or a name and a label.
     #[serde(default)]
-    pub(crate) links: Vec<String>,
+    pub(crate) links: Vec<LinkFile>,
     /// The attributes its events carry, by name, as `event.attributes.<name>`
     /// reads them.
     #[serde(default)]

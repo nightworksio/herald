@@ -35,6 +35,7 @@ pub fn preview(config: &Config, event: &Event, only: Option<&RouteId>) -> Vec<Pr
                 &route.profile,
                 env!("CARGO_PKG_VERSION"),
                 placeholder(),
+                config.kinds.links(event.kind()),
             )
             .map_err(|error| error.to_string());
             Previewed {

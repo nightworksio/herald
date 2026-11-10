@@ -35,4 +35,5 @@ no separate requirements document, and there are no requirement IDs.
 | [0015](0015-an-app-is-a-source-routes-name-announcing-with-hashed-tokens-scoped-to-its-projects.md) | An app is a source routes name, announcing with hashed tokens scoped to its projects | Accepted; superseded in part by [0018](0018-a-kind-is-data-and-an-event-carries-its-kind-s-attributes.md) |
 | [0016](0016-commands-are-carried-every-way-a-destination-offers-and-answered-from-what-herald-keeps.md) | Commands are carried every way a destination offers, and answered from what herald keeps | Accepted |
 | [0017](0017-herald-runs-wherever-code-runs-from-one-native-binary-and-one-wasm-module.md) | herald runs wherever code runs, from one native binary and one wasm module | Accepted |
-| [0018](0018-a-kind-is-data-and-an-event-carries-its-kind-s-attributes.md) | A kind is data, and an event carries its kind's attributes | Accepted |
+| [0018](0018-a-kind-is-data-and-an-event-carries-its-kind-s-attributes.md) | A kind is data, and an event carries its kind's attributes | Accepted; extended by [0019](0019-a-kind-s-links-are-its-buttons-each-labelled-by-the-config-or-by-herald.md) |
+| [0019](0019-a-kind-s-links-are-its-buttons-each-labelled-by-the-config-or-by-herald.md) | A kind's links are its buttons, each labelled by the config or by herald | Accepted |

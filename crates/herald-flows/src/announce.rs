@@ -2,9 +2,9 @@ use std::collections::BTreeSet;
 
 use herald_config::Config;
 use herald_core::{
-    Announcement, Entry, Event, Facts, Key, Latest, Marker, Marks, MentionStyle, Pinning, Plan,
-    Planned, Profile, RouteId, Sent, SourceName, State, Step, Templates, Threads, plan, schedules,
-    steps,
+    Announcement, Entry, Event, Facts, Key, KindSpecs, Latest, Marker, Marks, MentionStyle,
+    Pinning, Plan, Planned, Profile, RouteId, Sent, SourceName, State, Step, Templates, Threads,
+    plan, schedules, steps,
 };
 use herald_ports::{
     Announcements, Clock, Http, Inboxes, Ledger, Notes, Pins, Schedules, Secret, Signer, Store,
@@ -86,6 +86,7 @@ pub enum Stop {
 struct Run<'a, S, C, G, H> {
     ports: &'a Ports<'a, S, C, G>,
     route: &'a PreparedRoute,
+    kinds: &'a KindSpecs,
     http: &'a H,
     holder: &'a str,
     together: usize,
@@ -424,6 +425,7 @@ impl<S: Store, C: Clock, G: Signer, H: Http> Run<'_, S, C, G, H> {
             profile,
             env!("CARGO_PKG_VERSION"),
             marks,
+            self.kinds.links(event.kind()),
         )
         .map_err(|error| Stop::Template(error.to_string()))?;
         if route.delivery.mentions.subscribers
@@ -638,6 +640,7 @@ pub async fn announce_within<S: Store, C: Clock, G: Signer, H: Http>(
         let outcome = Run {
             ports,
             route,
+            kinds: &config.kinds,
             http,
             holder: run,
             together: config.server.deliveries,

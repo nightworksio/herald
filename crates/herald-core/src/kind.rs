@@ -184,6 +184,27 @@ pub(crate) fn prerelease_in(attributes: &BTreeMap<String, Attribute>) -> bool {
     attributes.get(PRERELEASE) == Some(&Attribute::Flag(true))
 }
 
+/// One link a kind's events carry, which becomes a button where the event
+/// carries it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LinkSpec {
+    /// Its name, as `event.links.<name>` reads it.
+    pub name: String,
+    /// Its button's label, where the config gives one.
+    pub label: Option<String>,
+}
+
+impl LinkSpec {
+    /// The link `name`, its button labelled as herald words it.
+    #[must_use]
+    pub fn named(name: impl Into<String>) -> Self {
+        Self {
+            name: name.into(),
+            label: None,
+        }
+    }
+}
+
 /// What a kind of event is: whether it carries a version, the links that
 /// become its buttons, and the attributes its events carry.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -194,8 +215,8 @@ pub struct KindSpec {
     pub description: String,
     /// Whether its events carry a version, as the `version` attribute.
     pub versioned: bool,
-    /// The names of the links that become its buttons, in order.
-    pub links: Vec<String>,
+    /// The links that become its buttons, in order.
+    pub links: Vec<LinkSpec>,
     /// The attributes its events carry, by name.
     pub attributes: BTreeMap<String, AttributeSpec>,
 }
@@ -209,7 +230,7 @@ impl KindSpec {
         kind: Kind,
         description: impl Into<String>,
         versioned: bool,
-        links: Vec<String>,
+        links: Vec<LinkSpec>,
         mut attributes: BTreeMap<String, AttributeSpec>,
     ) -> Self {
         if versioned {
@@ -240,7 +261,7 @@ impl KindSpec {
     /// The kinds herald's own sources and apps announce.
     #[must_use]
     pub fn shipped() -> Vec<Self> {
-        let buttons = |names: &[&str]| names.iter().map(|&name| name.to_owned()).collect();
+        let buttons = |names: &[&str]| names.iter().map(|&name| LinkSpec::named(name)).collect();
         vec![
             Self::new(
                 Kind::RELEASE,
@@ -333,6 +354,13 @@ impl KindSpecs {
     #[must_use]
     pub fn get(&self, kind: &Kind) -> Option<&KindSpec> {
         self.0.iter().find(|spec| &spec.kind == kind)
+    }
+
+    /// The links that become the buttons of a `kind` event, none where the
+    /// kind is not known.
+    #[must_use]
+    pub fn links(&self, kind: &Kind) -> &[LinkSpec] {
+        self.get(kind).map_or(&[], |spec| &spec.links)
     }
 
     /// Every kind, in the order herald ships them and the config declares

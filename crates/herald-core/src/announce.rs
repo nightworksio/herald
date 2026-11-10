@@ -4,11 +4,13 @@ use unicode_segmentation::UnicodeSegmentation;
 use crate::chunk::{Room, chunk_in};
 use crate::event::Event;
 use crate::key::{Key, RouteId};
+use crate::kind::LinkSpec;
 use crate::marker::Marks;
 use crate::markup::{Text, literal};
 use crate::profile::{Markup, Measure, Profile};
 use crate::render::{Context, TemplateError, Templates};
 use crate::route::{Route, TemplateName};
+use crate::wording::{Phrase, Wording};
 
 const ELLIPSIS: &str = "…";
 
@@ -57,6 +59,30 @@ impl Title {
     }
 }
 
+/// A button to one of an event's links.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Button {
+    /// The link's name.
+    pub name: String,
+    /// Its label, where the config gives one.
+    pub label: Option<String>,
+    /// Where it leads.
+    pub url: String,
+}
+
+impl Button {
+    /// Its label: the config's, or as `wording` words the link, or the
+    /// link's name.
+    #[must_use]
+    pub fn label<'a>(&'a self, wording: &'a Wording) -> &'a str {
+        match (&self.label, Phrase::link(&self.name)) {
+            (Some(label), _) => label,
+            (None, Some(phrase)) => wording.text(phrase),
+            (None, None) => &self.name,
+        }
+    }
+}
+
 /// An event rendered for one route on one destination.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Announcement {
@@ -78,10 +104,9 @@ pub struct Announcement {
     /// The link the announcement leads to: the event's `release` link, or
     /// its first.
     pub link: Option<String>,
-    /// The event's `release` link, the release page.
-    pub release: Option<String>,
-    /// The event's `changelog` link.
-    pub changelog: Option<String>,
+    /// The buttons to the links its kind names, in its kind's order, each
+    /// where the event carries the link.
+    pub buttons: Vec<Button>,
     /// Whether the event is a pre-release.
     pub prerelease: bool,
     /// When the event happened.
@@ -118,7 +143,7 @@ impl Announcement {
 }
 
 /// `event` rendered by `route` for a destination described by `profile`,
-/// carrying `marks`.
+/// carrying `marks`, with a button to each of `links` the event carries.
 ///
 /// # Errors
 ///
@@ -130,6 +155,7 @@ pub fn announce(
     profile: &Profile,
     herald: &str,
     marks: Marks,
+    links: &[LinkSpec],
 ) -> Result<Announcement, TemplateError> {
     let context = Context {
         event,
@@ -160,8 +186,16 @@ pub fn announce(
             .link("release")
             .or_else(|| event.first_link())
             .map(ToOwned::to_owned),
-        release: event.link("release").map(ToOwned::to_owned),
-        changelog: event.link("changelog").map(ToOwned::to_owned),
+        buttons: links
+            .iter()
+            .filter_map(|link| {
+                event.link(&link.name).map(|url| Button {
+                    name: link.name.clone(),
+                    label: link.label.clone(),
+                    url: url.to_owned(),
+                })
+            })
+            .collect(),
         prerelease: event.prerelease(),
         occurred: event.occurred(),
         replaces: None,

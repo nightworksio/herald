@@ -469,11 +469,10 @@
           "default": ""
         },
         "links": {
-          "description": "The names of the links that become its buttons, in order.",
+          "description": "The links that become its buttons, in order: each a name, labelled\nby its name, or a name and a label.",
           "type": "array",
-          "default": [],
           "items": {
-            "type": "string"
+            "$ref": "#/$defs/DeclaredLink"
           }
         },
         "versioned": {
@@ -483,6 +482,19 @@
         }
       },
       "additionalProperties": false
+    },
+    "DeclaredLink": {
+      "description": "A link a declared kind's events carry: its name, or its name and its\nbutton's label.",
+      "anyOf": [
+        {
+          "description": "A link whose button is labelled by its name.",
+          "type": "string"
+        },
+        {
+          "description": "A link and its button's label.",
+          "$ref": "#/$defs/LabelledLink"
+        }
+      ]
     },
     "Destination": {
       "description": "A destination, by its kind.",
@@ -1525,6 +1537,25 @@
       "description": "What kind of thing an event announces: release, package-version, feed-entry, message, or a kind the config declares.",
       "type": "string",
       "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"
+    },
+    "LabelledLink": {
+      "description": "A link and its button's label.",
+      "type": "object",
+      "properties": {
+        "label": {
+          "description": "Its button's label.",
+          "type": "string"
+        },
+        "name": {
+          "description": "Its name, as `event.links.<name>` reads it.",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "label"
+      ]
     },
     "Markers": {
       "description": "`[markers]`: the installation's marker key (ADR-0011).",

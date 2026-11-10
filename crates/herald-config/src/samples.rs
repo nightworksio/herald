@@ -30,7 +30,12 @@ fn draft(spec: &KindSpec) -> Draft {
         links: spec
             .links
             .iter()
-            .map(|name| (name.clone(), format!("https://example.org/{name}")))
+            .map(|link| {
+                (
+                    link.name.clone(),
+                    format!("https://example.org/{}", link.name),
+                )
+            })
             .collect(),
         attributes,
         occurred: NOON,

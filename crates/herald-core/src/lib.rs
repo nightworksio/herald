@@ -40,7 +40,8 @@ pub use activity::{
 };
 pub use address::{WEB_SCHEMES, domain, path_of_names, socket_under, under_domain, web_url};
 pub use announce::{
-    Announcement, Title, announce, body_template, shortened, thread_template, title_template,
+    Announcement, Button, Title, announce, body_template, shortened, thread_template,
+    title_template,
 };
 pub use bounds::{Inbound, ReadBack, Sandbox};
 pub use chunk::{Room, chunk, chunk_in, size};
@@ -60,8 +61,8 @@ pub use interact::{
 pub use kept::RecordKind;
 pub use key::{Identity, Key, NotAKey, RouteId, digest, hex};
 pub use kind::{
-    Attribute, AttributeSpec, AttributeType, Kind, KindSpec, KindSpecs, PRERELEASE, VERSION,
-    readable, versioned,
+    Attribute, AttributeSpec, AttributeType, Kind, KindSpec, KindSpecs, LinkSpec, PRERELEASE,
+    VERSION, readable, versioned,
 };
 pub use latest::{Latest, Shown};
 pub use ledger::{

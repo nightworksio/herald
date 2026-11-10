@@ -7,7 +7,9 @@ mod common;
 #[cfg(test)]
 mod kinds {
     use herald_config::load;
-    use herald_core::{AttributeSpec, AttributeType, Kind, PRERELEASE, VERSION, versioned};
+    use herald_core::{
+        AttributeSpec, AttributeType, Kind, LinkSpec, PRERELEASE, Phrase, VERSION, versioned,
+    };
 
     const EXAMPLE: &str = r#"version = 1
 
@@ -71,7 +73,7 @@ body = "{{ event.body }}"
         let deploy = config.kinds.get(&Kind::new("deploy").unwrap()).unwrap();
         assert_eq!(deploy.description, "A deploy of a site.");
         assert!(!deploy.versioned);
-        assert_eq!(deploy.links, ["site"]);
+        assert_eq!(deploy.links, [LinkSpec::named("site")]);
         assert_eq!(
             deploy.attributes["region"],
             AttributeSpec {
@@ -146,10 +148,59 @@ body = "{{ event.body }}"
     }
 
     #[test]
+    fn a_link_is_labelled_by_its_name_or_by_the_label_it_gives() {
+        let text = EXAMPLE.replace(
+            "links = [\"site\"]",
+            "links = [\"site\", { name = \"status\", label = \"Status page\" }]",
+        );
+        let config = load("herald.toml", &text, &nothing, &crate::common::kinds()).unwrap();
+        let deploy = config.kinds.get(&Kind::new("deploy").unwrap()).unwrap();
+        assert_eq!(
+            deploy.links,
+            [
+                LinkSpec::named("site"),
+                LinkSpec {
+                    name: "status".to_owned(),
+                    label: Some("Status page".to_owned()),
+                },
+            ]
+        );
+        let too_long = "x".repeat(Phrase::LABEL + 1);
+        for label in ["", "  ", too_long.as_str()] {
+            let error = errors(&EXAMPLE.replace(
+                "links = [\"site\"]",
+                &format!("links = [{{ name = \"site\", label = \"{label}\" }}]"),
+            ));
+            assert!(
+                error.contains("kinds.deploy.links[0].label: a button's label is 1 to 75 characters; give one that fits"),
+                "{error}"
+            );
+        }
+        let fits = "x".repeat(Phrase::LABEL);
+        assert!(
+            load(
+                "herald.toml",
+                &EXAMPLE.replace(
+                    "links = [\"site\"]",
+                    &format!("links = [{{ name = \"site\", label = \"{fits}\" }}]"),
+                ),
+                &nothing,
+                &crate::common::kinds()
+            )
+            .is_ok()
+        );
+        let stray = errors(&EXAMPLE.replace(
+            "links = [\"site\"]",
+            "links = [{ name = \"site\", label = \"Site\", colour = \"red\" }]",
+        ));
+        assert!(stray.contains("kinds.deploy"), "{stray}");
+    }
+
+    #[test]
     fn a_link_or_attribute_a_template_cannot_read_is_refused() {
         let error = errors(&EXAMPLE.replace("links = [\"site\"]", "links = [\"site\", \"Site\"]"));
         assert!(
-            error.contains("kinds.deploy.links: \"Site\" cannot name a link; name it in lowercase letters, digits and '_', starting with a letter"),
+            error.contains("kinds.deploy.links[1]: \"Site\" cannot name a link; name it in lowercase letters, digits and '_', starting with a letter"),
             "{error}"
         );
         assert!(!error.contains("\"site\" cannot"), "{error}");

@@ -1,4 +1,4 @@
-use herald_core::{Kind, KindSpec, KindSpecs, PRERELEASE, VERSION, readable};
+use herald_core::{Kind, KindSpec, KindSpecs, LinkSpec, PRERELEASE, Phrase, VERSION, readable};
 
 use super::{Loader, Value};
 use crate::file::KindFile;
@@ -29,13 +29,31 @@ impl Loader<'_> {
                 continue;
             };
             let mut sound = true;
-            for link in file.links.iter().filter(|link| !readable(link)) {
-                self.error(
-                    &span,
-                    &format!("{path}.links"),
-                    format!("\"{link}\" cannot name a link; name it in lowercase letters, digits and '_', starting with a letter"),
-                );
-                sound = false;
+            let links: Vec<LinkSpec> = file.links.into_iter().map(LinkSpec::from).collect();
+            for (index, link) in links.iter().enumerate() {
+                let at = format!("{path}.links[{index}]");
+                if !readable(&link.name) {
+                    self.error(
+                        &span,
+                        &at,
+                        format!("\"{}\" cannot name a link; name it in lowercase letters, digits and '_', starting with a letter", link.name),
+                    );
+                    sound = false;
+                }
+                if let Some(label) = &link.label {
+                    let length = label.trim().chars().count();
+                    if length == 0 || length > Phrase::LABEL {
+                        self.error(
+                            &span,
+                            &format!("{at}.label"),
+                            format!(
+                                "a button's label is 1 to {} characters; give one that fits",
+                                Phrase::LABEL
+                            ),
+                        );
+                        sound = false;
+                    }
+                }
             }
             for attribute in file.attributes.keys() {
                 let at = format!("{path}.attributes.{attribute}");
@@ -60,7 +78,7 @@ impl Loader<'_> {
                     kind,
                     file.description,
                     file.versioned,
-                    file.links,
+                    links,
                     file.attributes,
                 ));
             }
