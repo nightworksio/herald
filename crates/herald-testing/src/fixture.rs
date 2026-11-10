@@ -119,7 +119,7 @@ impl Fixture {
     /// Each credential found, by where it is and what it looks like, never
     /// by its value.
     pub fn audit(&self, secrets: &[String]) -> Result<(), String> {
-        let texts = self.texts()?;
+        let texts = self.texts();
         let mut found = handed(&texts, secrets);
         for (index, (exchange, text)) in self.exchanges.iter().zip(&texts).enumerate() {
             found.extend(
@@ -141,12 +141,11 @@ impl Fixture {
         verdict(&found)
     }
 
-    fn texts(&self) -> Result<Vec<String>, String> {
+    fn texts(&self) -> Vec<String> {
         self.exchanges
             .iter()
-            .map(serde_json::to_string)
-            .collect::<Result<_, _>>()
-            .map_err(|error| format!("the fixture could not be audited: {error}"))
+            .map(|exchange| serde_json::json!(exchange).to_string())
+            .collect()
     }
 
     /// The fixture as pretty JSON, ending in a newline.
@@ -305,7 +304,7 @@ impl<H: Http> Recorder<H> {
             exchanges: lock(&self.exchanges).clone(),
         };
         let secrets = lock(&self.secrets).clone();
-        verdict(&handed(&recorded.texts()?, &secrets))?;
+        verdict(&handed(&recorded.texts(), &secrets))?;
         let scrubbed = scrub.applied(&recorded);
         scrubbed.audit(&secrets)?;
         Ok(scrubbed)
