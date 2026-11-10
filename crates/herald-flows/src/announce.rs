@@ -83,14 +83,14 @@ pub enum Stop {
     Source(String),
 }
 
-struct Run<'a, S, C, G, H> {
-    ports: &'a Ports<'a, S, C, G>,
-    route: &'a PreparedRoute,
-    kinds: &'a KindSpecs,
-    http: &'a H,
-    holder: &'a str,
-    together: usize,
-    lease: SignedDuration,
+pub(crate) struct Run<'a, S, C, G, H> {
+    pub(crate) ports: &'a Ports<'a, S, C, G>,
+    pub(crate) route: &'a PreparedRoute,
+    pub(crate) kinds: &'a KindSpecs,
+    pub(crate) http: &'a H,
+    pub(crate) holder: &'a str,
+    pub(crate) together: usize,
+    pub(crate) lease: SignedDuration,
 }
 
 /// The steps a run took that did not land, and why the first of them did
@@ -448,7 +448,7 @@ impl<S: Store, C: Clock, G: Signer, H: Http> Run<'_, S, C, G, H> {
         Ok(announcement)
     }
 
-    async fn announce(&self, event: &Event, templates: &Templates) -> Outcome {
+    pub(crate) async fn announce(&self, event: &Event, templates: &Templates) -> Outcome {
         let route = &self.route.config.route;
         let key = Key::derive(&route.id, event.identity());
         let stopped = |reason| Outcome::Stopped {

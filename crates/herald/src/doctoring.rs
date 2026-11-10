@@ -6,20 +6,23 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::io::Write;
 
 use clap::{Args, ValueEnum};
+use herald_compose::{Served, told};
 use herald_config::Config;
 use herald_crypto::RingSigner;
-use herald_environment::EnvSecrets;
+use herald_environment::{EnvSecrets, SystemClock};
 use herald_flows::{
-    EGRESS_GUARDED, Findings, Gap, Here, Tier, doctor, egress_guarded, keys, online, prepare,
+    Announced, Connected, EGRESS_GUARDED, Findings, Gap, Here, Outcome, Ports, Tier, doctor,
+    egress_guarded, keys, online, prepare, trial,
 };
-use herald_ports::Secrets as _;
+use herald_ports::{Keyring, Secrets as _, Store as Keeps};
 use schemars::JsonSchema;
 use serde::Serialize;
 
 use super::cli::{Layer, Serve};
 use super::output::say;
 use super::serving::AZURE_PORT;
-use super::{Connect, DONE, MISTAKEN, STOPPED};
+use super::stores::Records;
+use super::{Connect, Connection, DONE, MISTAKEN, STOPPED, run_name};
 
 /// How doctor prints its findings.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
@@ -43,6 +46,59 @@ pub(crate) struct Asked {
     /// its credential and grants what each route needs, posting nothing.
     #[arg(long)]
     pub(crate) online: bool,
+    /// Also post one test message to each route's destination, kept apart
+    /// from every record a real announcement reads.
+    #[arg(long, requires = "online")]
+    pub(crate) post: bool,
+}
+
+/// The test messages `herald doctor --post` posts, kept in a store of their
+/// own.
+struct Posting<'a> {
+    config: &'a Config,
+    connected: &'a Connected<Connection>,
+    run: &'a str,
+}
+
+impl Served for Posting<'_> {
+    type Done = Vec<Announced>;
+
+    async fn over<S: Keeps + Keyring>(self, store: &S) -> Vec<Announced> {
+        let ports = Ports {
+            store,
+            clock: &SystemClock,
+            signer: &RingSigner,
+        };
+        trial(self.config, self.connected, &ports, self.run).await
+    }
+}
+
+/// What each route's test message did, as findings: a note where it was
+/// posted, and a gap where it was not.
+fn posted(config: &Config, tried: &[Announced]) -> Findings {
+    let mut findings = Findings::default();
+    for announced in tried {
+        let id = announced.route.as_str();
+        let index = config
+            .routes
+            .iter()
+            .position(|route| route.route.id == announced.route)
+            .unwrap_or_default();
+        if let Outcome::Sent { steps } = &announced.outcome {
+            findings.notes.push(format!(
+                "A test message was posted on the route {id} ({}).",
+                told::steps(steps)
+            ));
+        } else {
+            findings.gaps.push(Gap {
+                feature: format!("posting a test message on the route {id}"),
+                key: format!("routes[{index}]"),
+                why: told::report(announced),
+                first_layer: None,
+            });
+        }
+    }
+    findings
 }
 
 /// The first layer that serves a gap, as the JSON names it.
@@ -174,7 +230,18 @@ async fn findings(
             Err(error) => Err(error.to_string()),
         };
         match connected {
-            Ok(connected) => findings.extend(online(&connected).await),
+            Ok(connected) => {
+                findings.extend(online(&connected).await);
+                if asked.post {
+                    let posting = Posting {
+                        config,
+                        connected: &connected,
+                        run: &run_name(vars),
+                    };
+                    let tried = Records::memory().serve(&connected, posting).await;
+                    findings.extend(posted(config, &tried));
+                }
+            }
             Err(why) => findings
                 .notes
                 .push(format!("No destination is asked, as {why}.")),

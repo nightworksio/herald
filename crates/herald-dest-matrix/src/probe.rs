@@ -75,7 +75,7 @@ pub(crate) async fn probe<H: Http>(matrix: &Matrix, http: &H, delivery: &Deliver
     let roomed = &matrix.route.room;
     let path = format!("{}/state/m.room.power_levels/", room(matrix));
     let answer = http.send(get(matrix, &path)).await;
-    if let Some(withheld) = Probe::route(MATRIX, Some("room"), &answer, |status| {
+    if let Some(withheld) = Probe::route(MATRIX, Some("room"), &answer, &|status| {
         format!(
             "{user_id} cannot read the power levels of {roomed}, as the homeserver answered {status}; invite the bot to the room and have it join"
         )

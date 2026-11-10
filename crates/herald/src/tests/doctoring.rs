@@ -272,3 +272,52 @@ fn an_azure_server_warns_of_what_the_azure_layer_cannot_serve() {
     );
     assert!(!held.out.contains(warned), "{}", held.out);
 }
+
+#[test]
+fn post_sends_one_test_message_per_route_and_keeps_no_record() {
+    let world = World::default();
+    let asked = [
+        ("/users/@me".to_owned(), 200, "{}".to_owned()),
+        (
+            "/channels/1566200000000000100".to_owned(),
+            200,
+            "{}".to_owned(),
+        ),
+    ];
+    let mut answers = asked.to_vec();
+    answers.push((
+        "/channels/1566200000000000100/messages".to_owned(),
+        200,
+        r#"{"id":"1"}"#.to_owned(),
+    ));
+    world.state.lock().unwrap().discord = answers;
+    let run = herald(&setup(CONFIG), &world, &["doctor", "--online", "--post"]);
+    assert_eq!(run.code, DONE, "{}", run.out);
+    assert!(
+        run.out
+            .contains("A test message was posted on the route releases (post)."),
+        "{}",
+        run.out
+    );
+    let state = world.state.lock().unwrap();
+    assert!(state.files.is_empty(), "{:?}", state.files);
+    drop(state);
+    let mut refused = asked.to_vec();
+    refused.push((
+        "/channels/1566200000000000100/messages".to_owned(),
+        403,
+        r#"{"message":"Missing Permissions"}"#.to_owned(),
+    ));
+    world.state.lock().unwrap().discord = refused;
+    let stopped = herald(&setup(CONFIG), &world, &["doctor", "--online", "--post"]);
+    assert_eq!(stopped.code, STOPPED, "{}", stopped.out);
+    assert!(
+        stopped
+            .out
+            .contains("routes[0]: posting a test message on the route releases cannot be served: releases: stopped: "),
+        "{}",
+        stopped.out
+    );
+    let unasked = herald(&setup(CONFIG), &world, &["doctor", "--post"]);
+    assert_eq!(unasked.code, 2, "{}", unasked.err);
+}

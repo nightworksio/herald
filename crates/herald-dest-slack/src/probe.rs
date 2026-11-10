@@ -3,11 +3,11 @@
 
 use herald_core::Delivery;
 use herald_kinds::Probe;
-use herald_ports::Http;
-use serde_json::Value;
+use herald_ports::{Http, Secret, Text};
+use serde_json::{Map, Value};
 
 use crate::read::{json, quoted, text};
-use crate::request::get;
+use crate::request::{get, posted_json};
 use crate::slack::{Credential, Slack};
 use crate::web_api::{
     AUTH_TEST, BOTS_INFO, CHAT_POST_MESSAGE, CONVERSATIONS_HISTORY, PINS_ADD, PINS_LIST,
@@ -15,8 +15,12 @@ use crate::web_api::{
 
 /// The platform, as a probe names it.
 const SLACK: &str = "Slack";
-/// Why an incoming webhook is not asked.
-const UNASKED: &str = "Slack answers nothing about an incoming webhook short of a post to it, so its URL is not checked";
+/// What Slack answers an empty post to a live incoming webhook: its
+/// payload is refused, and nothing reaches the channel.
+const LIVE: u16 = 400;
+/// What Slack answers a post to an incoming webhook that no longer posts:
+/// its token is refused, it was removed, or its channel was archived.
+const DEAD: [u16; 3] = [403, 404, 410];
 /// The header Slack lists a token's scopes in.
 const SCOPES: &str = "x-oauth-scopes";
 
@@ -45,11 +49,26 @@ fn lacking(granted: &str, delivery: &Delivery) -> Vec<String> {
         .collect()
 }
 
+/// What Slack answers an empty post to the incoming webhook `url`, which
+/// it refuses before anything reaches the channel.
+async fn webhook<H: Http>(slack: &Slack, http: &H, url: &Secret) -> Probe {
+    let empty = posted_json(slack, Text::secret(url.clone()), &Value::Object(Map::new()));
+    match http.send(empty).await {
+        Ok(answer) if answer.status == LIVE => Probe::Taken,
+        Ok(answer) if DEAD.contains(&answer.status) => Probe::Credential(format!(
+            "Slack refuses its webhook, answering {}: {}",
+            answer.status,
+            quoted(&String::from_utf8_lossy(&answer.body))
+        )),
+        other => Probe::credential(SLACK, &other),
+    }
+}
+
 /// What Slack says of `slack`'s bot token and of the scopes `delivery`
 /// needs, asked through `http`.
 pub(crate) async fn probe<H: Http>(slack: &Slack, http: &H, delivery: &Delivery) -> Vec<Probe> {
-    if let Credential::Webhook(_) = slack.credential {
-        return vec![Probe::Said(UNASKED.to_owned())];
+    if let Credential::Webhook(url) = &slack.credential {
+        return vec![webhook(slack, http, url).await];
     }
     let answer = match http.send(get(slack, AUTH_TEST, "")).await {
         Ok(answer) if answer.succeeded() => answer,

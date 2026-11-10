@@ -64,8 +64,13 @@ same findings as one JSON document, which
 `--online` also reads every secret and asks each destination, with nothing
 posted, whether it takes its credential and grants what each route needs: a
 Discord bot's view of its channel, a Slack bot token's scopes, a Matrix bot's
-power level in its room, and a Mastodon server's own character limit against
-the route's `limit`.
+power level in its room, a Mastodon server's own character limit against
+the route's `limit`, and a Slack incoming webhook by an empty post Slack refuses
+before anything reaches the channel. `--online --post` also posts one test
+message to each route's destination, a plain post with no crosspost, thread,
+pin or mention, kept in memory so no real announcement is held back by it. A
+destination's interactions word it with `test_title` and `test_body`, which
+`{{ route }}` names the route in.
 
 **Never twice, never half-posted.** Each announcement has a deterministic
 key, and every step that lands is recorded: the post, the crosspost, the

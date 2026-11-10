@@ -66,6 +66,10 @@ pub enum Phrase {
     AuditSubscribed,
     /// Why a member's role was taken away, as an audit log records it.
     AuditUnsubscribed,
+    /// The title of the test message `herald doctor --post` sends.
+    TestTitle,
+    /// The text of the test message `herald doctor --post` sends to `route`.
+    TestBody,
 }
 
 impl Phrase {
@@ -107,6 +111,10 @@ impl Phrase {
             Self::SubscribeButton => "Subscribe",
             Self::AuditSubscribed => "Subscribed through herald",
             Self::AuditUnsubscribed => "Unsubscribed through herald",
+            Self::TestTitle => "herald test message",
+            Self::TestBody => {
+                "herald doctor --post sent this to check that the route {{ route }} reaches here. It announces nothing."
+            }
         }
     }
 
@@ -139,11 +147,13 @@ impl Phrase {
             Self::SubscribeButton => "subscribe_button",
             Self::AuditSubscribed => "audit_subscribed",
             Self::AuditUnsubscribed => "audit_unsubscribed",
+            Self::TestTitle => "test_title",
+            Self::TestBody => "test_body",
         }
     }
 
     /// Every phrase.
-    pub const ALL: [Self; 25] = [
+    pub const ALL: [Self; 27] = [
         Self::Subscribed,
         Self::AlreadySubscribed,
         Self::Unsubscribed,
@@ -169,6 +179,8 @@ impl Phrase {
         Self::SubscribeButton,
         Self::AuditSubscribed,
         Self::AuditUnsubscribed,
+        Self::TestTitle,
+        Self::TestBody,
     ];
 
     /// The phrase that labels the button of a link named `name`, where
@@ -283,6 +295,16 @@ impl Wording {
             Command::Latest => Phrase::DescribeLatest,
             Command::Changelog => Phrase::DescribeChangelog,
         })
+    }
+
+    /// The title and the text of the test message sent to `route`.
+    #[must_use]
+    pub fn test(&self, route: &str) -> (String, String) {
+        let values = context! { route => escaped(route) };
+        (
+            self.render(Phrase::TestTitle, &values),
+            self.render(Phrase::TestBody, &values),
+        )
     }
 
     /// The day `at`, as `latest` writes it.

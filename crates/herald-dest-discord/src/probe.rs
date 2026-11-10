@@ -30,7 +30,7 @@ pub(crate) async fn probe<H: Http>(discord: &Discord, http: &H) -> Vec<Probe> {
         let answer = http
             .send(bare(Method::Get, Text::plain(url), credential))
             .await;
-        probes.extend(Probe::route(DISCORD, Some("channel"), &answer, |status| {
+        probes.extend(Probe::route(DISCORD, Some("channel"), &answer, &|status| {
             format!("the bot cannot see the channel {channel}, as Discord answered {status}; add the bot to the server and give it View Channel and Send Messages there")
         }));
     }

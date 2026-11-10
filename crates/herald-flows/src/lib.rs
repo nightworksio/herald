@@ -32,6 +32,7 @@ mod round;
 mod serving;
 mod sessions;
 mod together;
+mod trial;
 
 pub use announce::{Announced, Outcome, Ports, Stop, announce, announce_within};
 pub use approving::{Decision, decide, followers};
@@ -58,3 +59,4 @@ pub use serving::{
     busy, refusal, uncomposed, unworked, webhooks, work,
 };
 pub use sessions::{Sessions, Taker};
+pub use trial::trial;

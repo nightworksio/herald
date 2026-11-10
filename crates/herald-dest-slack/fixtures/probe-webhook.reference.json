@@ -1,0 +1,19 @@
+{
+  "exchanges": [
+    {
+      "request": {
+        "body": {},
+        "headers": {
+          "Content-Type": "application/json; charset=utf-8",
+          "User-Agent": "herald/0.0.0 (+https://github.com/nightworksio/herald)"
+        },
+        "method": "POST",
+        "url": "«secret:HERALD_SLACK_WEBHOOK»"
+      },
+      "response": {
+        "body": "invalid_payload",
+        "status": 400
+      }
+    }
+  ]
+}

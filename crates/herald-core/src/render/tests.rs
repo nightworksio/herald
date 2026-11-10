@@ -406,3 +406,37 @@ fn an_attribute_the_event_lacks_is_named_where_the_template_prints_it() {
         ""
     );
 }
+
+#[test]
+fn verbatim_templates_render_an_event_s_own_title_and_body_within_the_sandbox() {
+    let name = TemplateName::new("plain");
+    let route = RouteId::new("r");
+    let event = Event::normalise(Draft {
+        title: "A *title*".to_owned(),
+        body: "Some **text**".to_owned(),
+        ..draft()
+    })
+    .unwrap();
+    let context = Context {
+        event: &event,
+        route: &route,
+        herald: "0.1.0",
+    };
+    let verbatim = Templates::verbatim(&name, Sandbox::DEFAULT);
+    assert_eq!(
+        verbatim.render(&title_template(&name), &context).unwrap(),
+        "A *title*"
+    );
+    assert_eq!(
+        verbatim.render(&body_template(&name), &context).unwrap(),
+        "Some **text**"
+    );
+    let capped = Templates::verbatim(
+        &name,
+        Sandbox {
+            output: 4,
+            ..Sandbox::DEFAULT
+        },
+    );
+    assert!(capped.render(&body_template(&name), &context).is_err());
+}

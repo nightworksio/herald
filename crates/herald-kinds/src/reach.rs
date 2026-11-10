@@ -138,7 +138,7 @@ impl Probe {
         platform: &str,
         key: Option<&'static str>,
         answer: &Result<Response, HttpError>,
-        withheld: impl FnOnce(u16) -> String,
+        withheld: &dyn Fn(u16) -> String,
     ) -> Option<Self> {
         let why = match answer {
             Ok(response) if response.succeeded() => return None,

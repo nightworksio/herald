@@ -122,8 +122,7 @@ mod probe {
         );
     }
 
-    #[test]
-    fn an_incoming_webhook_is_not_asked() {
+    fn hooked(status: u16, said: &str) -> Vec<Probe> {
         let webhook = Slack::new(
             Credential::Webhook(Secret::new(
                 "HERALD_SLACK_WEBHOOK",
@@ -132,10 +131,35 @@ mod probe {
             RouteOptions::default(),
             None,
         );
-        let http = Replay::of(Fixture::default());
+        let mut fixture =
+            Fixture::from_json(include_str!("../fixtures/probe-webhook.reference.json")).unwrap();
+        if let Some(exchange) = fixture.exchanges.first_mut() {
+            exchange.response.status = status;
+            exchange.response.body = Some(Value::String(said.to_owned()));
+        }
+        probed(&webhook, &Replay::of(fixture), false)
+    }
+
+    #[test]
+    fn an_incoming_webhook_is_asked_with_an_empty_post_slack_refuses() {
+        assert_eq!(hooked(400, "invalid_payload"), [Probe::Taken]);
+        for (status, said) in [
+            (403, "invalid_token"),
+            (404, "no_service"),
+            (410, "channel_is_archived"),
+        ] {
+            assert_eq!(
+                hooked(status, said),
+                [Probe::Credential(format!(
+                    "Slack refuses its webhook, answering {status}: {said}"
+                ))]
+            );
+        }
         assert_eq!(
-            probed(&webhook, &http, false),
-            [Probe::Said("Slack answers nothing about an incoming webhook short of a post to it, so its URL is not checked".to_owned())]
+            hooked(500, "oops"),
+            [Probe::Credential(
+                "Slack answered 500 when asked whether it takes its credential".to_owned()
+            )]
         );
     }
 }

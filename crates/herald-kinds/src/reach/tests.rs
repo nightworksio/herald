@@ -210,7 +210,7 @@ fn a_route_is_given_what_it_needs_where_its_platform_answers_with_success() {
                 headers: Vec::new(),
                 body: Vec::new(),
             }),
-            |status| format!("withheld with {status}"),
+            &|status| format!("withheld with {status}"),
         )
     };
     let withheld = |why: &str| {
@@ -225,7 +225,7 @@ fn a_route_is_given_what_it_needs_where_its_platform_answers_with_success() {
     assert_eq!(answered(404), withheld("withheld with 404"));
     assert_eq!(answered(500), withheld("Plain answered 500 when asked"));
     assert_eq!(
-        Probe::route("Plain", Some("channel"), &Err(HttpError::TimedOut), |_| {
+        Probe::route("Plain", Some("channel"), &Err(HttpError::TimedOut), &|_| {
             String::new()
         }),
         withheld("Plain could not be asked: the host did not answer in time")

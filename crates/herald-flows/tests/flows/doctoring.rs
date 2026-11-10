@@ -2,9 +2,10 @@ use std::collections::BTreeSet;
 
 use herald_config::{Config, KeyCache, load};
 use herald_flows::{
-    Cadence, Egress, Findings, Gap, Here, Layer, Memory, Rounds, Tier, doctor, online, prepare,
-    secrets,
+    Cadence, Egress, Findings, Gap, Here, Layer, Memory, Outcome, Ports, Rounds, Stop, Tier,
+    doctor, online, prepare, secrets, trial,
 };
+use herald_testing::FakeClock;
 use herald_testing::{FakeSecrets, FakeSigner};
 use jiff::SignedDuration;
 
@@ -517,4 +518,64 @@ body = "{{ event.body }}"
             "The destination \"social\" takes its credential.",
         ]
     );
+}
+
+fn tried(configured: &Config, script: &Script) -> Vec<herald_flows::Announced> {
+    let given = crate::harness::secrets().with("HERALD_ACTIVITYPUB_KEY", "the-key");
+    let prepared = pollster::block_on(prepare(configured, &given, &FakeSigner)).unwrap();
+    let connected = prepared.connect(|_| Ok::<_, ()>(script.clone())).unwrap();
+    let store = healthy();
+    let ports = Ports {
+        store: &store,
+        clock: &FakeClock::at(NOON),
+        signer: &FakeSigner,
+    };
+    pollster::block_on(trial(configured, &connected, &ports, "doctor"))
+}
+
+#[test]
+fn a_test_message_is_a_plain_post_worded_by_its_destination() {
+    let script = Script::answering(&[POSTED]);
+    let posted = tried(&config(""), &script);
+    assert_eq!(posted.len(), 1);
+    assert_eq!(posted[0].route.as_str(), "releases");
+    assert_eq!(
+        posted[0].outcome,
+        Outcome::Sent {
+            steps: vec![herald_core::Step::Post]
+        }
+    );
+    assert_eq!(script.seen().len(), 1);
+    let body = String::from_utf8(script.bodies()[0].clone()).unwrap();
+    assert!(body.contains("herald test message"), "{body}");
+    assert!(body.contains("the route releases reaches here"), "{body}");
+    let worded = config(
+        "[destinations.discord.interactions]\napplication = \"1566184281406177000\"\nkey = \"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\"\nwording = { test_title = \"Proef\", test_body = \"Route {{ route }}\" }\n",
+    );
+    let script = Script::answering(&[POSTED]);
+    tried(&worded, &script);
+    let body = String::from_utf8(script.bodies()[0].clone()).unwrap();
+    assert!(
+        body.contains("Proef") && body.contains("Route releases"),
+        "{body}"
+    );
+    assert_eq!(tried(&served(), &Script::default()), Vec::new());
+}
+
+#[test]
+fn a_test_message_with_no_title_is_not_posted() {
+    let blank = config(
+        "[destinations.discord.interactions]\napplication = \"1566184281406177000\"\nkey = \"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\"\nwording = { test_title = \" \" }\n",
+    );
+    let script = Script::default();
+    let posted = tried(&blank, &script);
+    assert_eq!(
+        posted[0].outcome,
+        Outcome::Stopped {
+            landed: Vec::new(),
+            remaining: Vec::new(),
+            reason: Stop::Template("the event has no title".to_owned()),
+        }
+    );
+    assert_eq!(script.seen(), Vec::<String>::new());
 }
