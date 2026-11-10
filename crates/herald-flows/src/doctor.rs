@@ -401,10 +401,11 @@ fn scheduled(config: &Config, layer: Layer<'_>, here: &Here, findings: &mut Find
 /// where it is reached otherwise.
 fn webhooked(config: &Config, notes: &mut Vec<String>) {
     for route in &config.routes {
-        let Some(destination) = config.destinations.get(&route.route.destination) else {
-            continue;
-        };
-        let Some((reached, Some(bot))) = destination.profile(&route.options) else {
+        let profiles = config
+            .destinations
+            .get(&route.route.destination)
+            .and_then(|destination| destination.profile(&route.options));
+        let Some((reached, Some(bot))) = profiles else {
             continue;
         };
         let lacking = lacked(reached.features, bot.features);

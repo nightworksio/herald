@@ -133,21 +133,22 @@ fn each_layer_is_its_own_and_the_hosts_settings_are_read_here() {
             ],
         ),
     ] {
-        let herald_flows::Rounds::Platform(cadence) = layer.served().rounds else {
-            panic!("{layer:?} asks for rounds on its platform");
-        };
         let [files, poll, housekeep] = shipped;
         assert!(
             files.contains(poll) && files.contains(housekeep),
             "{layer:?}"
         );
-        assert_eq!(cadence.poll, herald_compose::POLLED);
         let every = if poll == housekeep {
             herald_compose::POLLED
         } else {
             herald_compose::HOUSEKEPT
         };
-        assert_eq!(cadence.housekeep, every);
+        let asked = matches!(
+            layer.served().rounds,
+            herald_flows::Rounds::Platform(cadence)
+                if (cadence.poll, cadence.housekeep) == (herald_compose::POLLED, every)
+        );
+        assert!(asked, "{layer:?}");
     }
     let lambda = herald(&setup(CONFIG), &world, &["doctor", "--layer", "lambda"]);
     assert!(

@@ -359,11 +359,12 @@ mod tests {
             ),
         ];
         for (hosting, path, files) in shipped {
-            let Rounds::Platform(cadence) = hosting.rounds() else {
-                panic!("{} asks for rounds on its platform", hosting.name());
-            };
-            assert!(cadence.by.contains(path), "{}", cadence.by);
-            assert_eq!((cadence.poll, cadence.housekeep), (POLLED, HOUSEKEPT));
+            let asked = matches!(
+                hosting.rounds(),
+                Rounds::Platform(cadence) if cadence.by.contains(path)
+                    && (cadence.poll, cadence.housekeep) == (POLLED, HOUSEKEPT)
+            );
+            assert!(asked, "{}", hosting.name());
             let text = files.concat();
             assert!(text.contains("\"*/5 * * * *\""), "{path}");
             assert!(text.contains("\"17 * * * *\""), "{path}");
