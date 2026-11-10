@@ -12,7 +12,7 @@ mod compose {
     use herald_compose::{Asked, Composed, Host, KvAt, Left, Opener, SqlAt, reached};
     use herald_config::{Config, load};
     use herald_core::DestinationName;
-    use herald_flows::{Admission, Housekept, Inbound, Job, Taker, Worked};
+    use herald_flows::{Admission, Housekept, Inbound, Job, Stop, Sweep, Taker, Worked};
     use herald_kinds::{Opening, StoreKind};
     use herald_ports::{Changed, Frame, Http, HttpError, Outbound, Request, Response, Value};
     use herald_testing::{
@@ -484,10 +484,16 @@ template = "t"
             let composed =
                 pollster::block_on(Composed::new(host, config, &every(), "test")).unwrap();
             let swept = pollster::block_on(composed.poll());
+            let unscripted = || {
+                Stop::Store(
+                    "the store could not be reached: the database refused the statements: no answer was scripted"
+                        .to_owned(),
+                )
+            };
             assert_eq!(swept.len(), 1);
             assert_eq!(swept[0].source.as_str(), "gate");
-            let kept = pollster::block_on(composed.housekeep());
-            assert!(kept.is_err(), "{kept:?}");
+            assert_eq!(swept[0].outcome, Sweep::Stopped(unscripted()));
+            assert_eq!(pollster::block_on(composed.housekeep()), Err(unscripted()));
             let sockets = ScriptedSockets::opening(vec![Ok(vec![Frame::Closed(Some(4004))])]);
             pollster::block_on(composed.hold(&sockets, &Untaken, &FakeTimer::default()));
             assert_eq!(sockets.opened().len(), 1);
@@ -529,6 +535,7 @@ template = "t"
             "kind = \"dynamodb\"",
             "kind = \"markers\"",
         ];
+        let mut housekeeping = Vec::new();
         for store in stores {
             let kept: &[&str] = if store.contains("markers") {
                 &["memory"]
@@ -559,7 +566,8 @@ template = "t"
                 let answered = pollster::block_on(composed.answer(&health, Admission::Once));
                 assert_eq!(answered.reply.status, 200, "{store}");
                 assert_eq!(pollster::block_on(composed.poll()), Vec::new(), "{store}");
-                let _ = pollster::block_on(composed.housekeep());
+                let housekept = pollster::block_on(composed.housekeep());
+                housekeeping.push(format!("{store} {keys} {housekept:?}"));
                 let sockets = ScriptedSockets::default();
                 pollster::block_on(composed.hold(&sockets, &Untaken, &FakeTimer::default()));
                 let job = Job::Interact {
@@ -574,6 +582,27 @@ template = "t"
                 );
             }
         }
+        let unscripted = "Err(Store(\"the store could not be reached: the database refused the statements: no answer was scripted\"))";
+        let untreed = "Err(Store(\"a record in the store could not be read: deliveries: missing field `tree` at line 1 column 2\"))";
+        let uncounted = "Err(Store(\"a record in the store could not be read: the repository's variables: missing field `total_count` at line 1 column 2\"))";
+        let kept = "Ok(Housekept { kept: [], skipped: [] })";
+        let variables = "kind = \"repo-variables\"\ntoken = { secret = \"VARIABLES\" }";
+        assert_eq!(
+            housekeeping,
+            [
+                format!("kind = \"sqlite\" memory {unscripted}"),
+                format!("kind = \"sqlite\" store {unscripted}"),
+                format!("kind = \"deno-kv\" memory {kept}"),
+                format!("kind = \"deno-kv\" store {kept}"),
+                format!("kind = \"git-branch\" memory {untreed}"),
+                format!("kind = \"git-branch\" store {untreed}"),
+                format!("{variables} memory {uncounted}"),
+                format!("{variables} store {uncounted}"),
+                format!("kind = \"dynamodb\" memory {kept}"),
+                format!("kind = \"dynamodb\" store {kept}"),
+                format!("kind = \"markers\" memory {kept}"),
+            ]
+        );
     }
 
     fn asked(method: &str, target: &str, authorization: Option<&str>) -> Asked {
