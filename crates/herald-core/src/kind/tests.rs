@@ -5,7 +5,7 @@ fn spec(ty: AttributeType, required: bool) -> KindSpec {
         Kind::new("deploy").unwrap(),
         "A deploy.",
         false,
-        vec!["site".to_owned()],
+        vec![LinkSpec::named("site")],
         BTreeMap::from([("region".to_owned(), AttributeSpec { ty, required })]),
     )
 }
@@ -86,7 +86,7 @@ fn a_versioned_kind_carries_a_required_version_and_an_optional_prerelease() {
     assert!(!unversioned.versioned);
     assert!(!unversioned.attributes.contains_key(VERSION));
     assert_eq!(unversioned.description, "A deploy.");
-    assert_eq!(unversioned.links, ["site"]);
+    assert_eq!(unversioned.links, [LinkSpec::named("site")]);
 }
 
 #[test]
@@ -105,8 +105,11 @@ fn herald_ships_four_kinds_and_only_releases_and_package_versions_are_versioned(
             ("message", false)
         ]
     );
-    assert_eq!(shipped[2].links, ["entry"]);
-    assert_eq!(shipped[3].links, ["release", "changelog"]);
+    assert_eq!(shipped[2].links, [LinkSpec::named("entry")]);
+    assert_eq!(
+        shipped[3].links,
+        [LinkSpec::named("release"), LinkSpec::named("changelog")]
+    );
 }
 
 #[test]
@@ -207,4 +210,14 @@ fn the_kinds_a_config_knows_are_herald_s_and_those_it_declares_in_order() {
             "deploy"
         ]
     );
+}
+
+#[test]
+fn a_kind_s_links_are_known_by_its_kind_and_none_for_an_unknown_one() {
+    let kinds = KindSpecs::default();
+    assert_eq!(
+        kinds.links(&Kind::RELEASE),
+        [LinkSpec::named("release"), LinkSpec::named("changelog")]
+    );
+    assert_eq!(kinds.links(&Kind::new("deploy").unwrap()), []);
 }

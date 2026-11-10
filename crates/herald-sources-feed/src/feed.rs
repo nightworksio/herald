@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 use std::fmt::Write;
 
-use herald_core::{Cursor, Draft, Event, Kind, Polled, digest};
+use herald_core::{Cursor, Draft, ENTRY_LINK, Event, Kind, Polled, digest};
 use herald_ports::{Method, Request, Response, Text, USER_AGENT};
 use herald_wire::{NOT_MODIFIED, SourceError, answered, host};
 use jiff::Timestamp;
@@ -469,7 +469,7 @@ impl Feed {
             title,
             body: body.unwrap_or_default(),
             links: link
-                .map(|link| BTreeMap::from([("entry".to_owned(), link)]))
+                .map(|link| BTreeMap::from([(ENTRY_LINK.to_owned(), link)]))
                 .unwrap_or_default(),
             attributes: BTreeMap::new(),
             occurred,

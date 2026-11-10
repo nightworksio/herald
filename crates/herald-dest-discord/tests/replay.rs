@@ -713,18 +713,22 @@ mod replay {
             serde_json::from_slice(&request.body).unwrap()
         };
         let unlinked = Announcement {
-            release: None,
-            changelog: None,
+            buttons: Vec::new(),
             ..announcement()
         };
         assert_eq!(body(&unlinked).get("components"), None);
-        let changelog_only = Announcement {
-            release: None,
-            ..announcement()
-        };
+        let mut changelog_only = announcement();
+        changelog_only
+            .buttons
+            .retain(|button| button.name == "changelog");
         let buttons = &body(&changelog_only)["components"][0]["components"];
         assert_eq!(buttons.as_array().map(Vec::len), Some(1));
         assert_eq!(buttons[0]["label"], "Changelog");
+        let mut labelled = announcement();
+        labelled.buttons[0].label = Some("Status page".to_owned());
+        let buttons = &body(&labelled)["components"][0]["components"];
+        assert_eq!(buttons[0]["label"], "Status page");
+        assert_eq!(buttons[1]["label"], "Changelog");
     }
 
     #[test]
@@ -876,8 +880,7 @@ mod subscribing {
         }
         let long = Announcement {
             project: "p".repeat(90),
-            release: None,
-            changelog: None,
+            buttons: Vec::new(),
             ..announcement
         };
         assert_eq!(

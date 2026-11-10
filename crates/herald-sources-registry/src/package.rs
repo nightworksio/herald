@@ -1,6 +1,8 @@
 use std::collections::BTreeMap;
 
-use herald_core::{Cursor, Draft, Event, Kind, Polled, prerelease_version, versioned};
+use herald_core::{
+    Cursor, Draft, Event, Kind, Polled, RELEASE_LINK, prerelease_version, versioned,
+};
 use herald_ports::{Method, Request, Response, Secret, Text, USER_AGENT};
 use herald_wire::{Reading, SourceError, answered, host};
 use jiff::Timestamp;
@@ -300,7 +302,7 @@ impl Package {
                 Registry::Npm => npm::page(&self.name, &found.version),
                 Registry::DockerHub => docker_hub::page(&self.name, &found.version),
             };
-            links.insert("release".to_owned(), page);
+            links.insert(RELEASE_LINK.to_owned(), page);
         }
         let identity = format!("{}/{}/{}", host(&self.api), self.name, found.version);
         let title = format!("{project} {}", found.version);

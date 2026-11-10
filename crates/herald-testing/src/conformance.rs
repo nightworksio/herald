@@ -666,7 +666,11 @@ fn announced(project: &str, version: &str) -> Latest {
         kind: Kind::RELEASE,
         title: format!("{project} {version}"),
         body: "Notes".to_owned(),
-        links: std::iter::once(("release".to_owned(), "https://example.org".to_owned())).collect(),
+        links: std::iter::once((
+            herald_core::RELEASE_LINK.to_owned(),
+            "https://example.org".to_owned(),
+        ))
+        .collect(),
         attributes: herald_core::versioned(version, false),
         occurred: NOON,
     };

@@ -269,11 +269,11 @@ projects = ["herald"]
   ```toml
   [kinds.deploy]
   description = "A deploy of a service."
-  links = ["dashboard"]
+  links = ["dashboard", { name = "status", label = "Status page" }]
   attributes = { region = { type = "text", required = true }, canary = { type = "flag" } }
   ```
 
-  A template reads them as `{{ event.attributes.region }}`, and `herald check` names each attribute a template prints that a kind its route takes does not carry.
+  A template reads them as `{{ event.attributes.region }}`, and `herald check` names each attribute a template prints that a kind its route takes does not carry. A kind's links are its buttons, in order, each labelled by its `label`, by herald's wording for `release`, `changelog` and `entry`, or by its name ([ADR-0019](.docs/decisions/0019-a-kind-s-links-are-its-buttons-each-labelled-by-the-config-or-by-herald.md)).
 - `herald announce --event deploy.json --app ci` announces it from a file, or from standard input with `--event -`.
 - `herald server` takes it at `POST /api/projects/herald/events` with `Authorization: Bearer <token>`: 202 for a new event, 200 for one it has already ([ADR-0015](.docs/decisions/0015-an-app-is-a-source-routes-name-announcing-with-hashed-tokens-scoped-to-its-projects.md)).
 - `GET /api/projects/herald/events/7`, with the same token, answers where its announcement stands on each of the app's routes: `pending`, `announcing`, `announced`, or `stopped` with the steps that remain.

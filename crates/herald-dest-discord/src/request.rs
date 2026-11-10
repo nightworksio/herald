@@ -155,20 +155,14 @@ fn buttons(
     announcement: &Announcement,
     subscribe: Option<&Subscribe>,
 ) -> Option<Value> {
-    let links = [
-        (wording.text(Phrase::ReleaseLink), &announcement.release),
-        (wording.text(Phrase::ChangelogLink), &announcement.changelog),
-    ];
     let subscribing = subscribe
         .filter(|subscribe| subscribe.button)
         .and_then(|_| subscribe_button(&announcement.project))
         .map(|id| json!({ "type": BUTTON, "style": SECONDARY, "label": wording.text(Phrase::SubscribeButton), "custom_id": id }));
-    let buttons: Vec<Value> = links
-        .into_iter()
-        .filter_map(|(label, url)| {
-            url.as_ref()
-                .map(|url| json!({ "type": BUTTON, "style": LINK, "label": label, "url": url }))
-        })
+    let buttons: Vec<Value> = announcement
+        .buttons
+        .iter()
+        .map(|button| json!({ "type": BUTTON, "style": LINK, "label": button.label(wording), "url": button.url }))
         .chain(subscribing)
         .collect();
     (!buttons.is_empty()).then(|| json!([{ "type": ACTION_ROW, "components": buttons }]))

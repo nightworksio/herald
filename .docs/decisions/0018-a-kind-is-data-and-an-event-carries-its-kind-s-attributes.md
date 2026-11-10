@@ -1,6 +1,6 @@
 # ADR-0018: A kind is data, and an event carries its kind's attributes
 
-**Status:** Accepted
+**Status:** Accepted; a link's label and how a button is labelled extended by [ADR-0019](0019-a-kind-s-links-are-its-buttons-each-labelled-by-the-config-or-by-herald.md)
 **Date:** 2026-11-10
 
 ## Context

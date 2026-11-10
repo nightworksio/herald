@@ -40,6 +40,10 @@ fn marks() -> Marks {
     }
 }
 
+fn links() -> Vec<LinkSpec> {
+    vec![LinkSpec::named("release"), LinkSpec::named("changelog")]
+}
+
 fn templates(route: &Route) -> Templates {
     Templates::compile(
         &[
@@ -84,6 +88,7 @@ fn an_event_is_announced_with_its_key_title_parts_thread_and_link() {
         &profile(256, 4096),
         "0.1.0",
         marks(),
+        &links(),
     )
     .unwrap();
     assert_eq!(announcement.key, Key::derive(&route.id, event().identity()));
@@ -104,8 +109,14 @@ fn an_event_is_announced_with_its_key_title_parts_thread_and_link() {
         announcement.link.as_deref(),
         Some("https://github.com/nightworksio/php-mutation-gate/releases/tag/v0.1.0")
     );
-    assert_eq!(announcement.release, announcement.link);
-    assert_eq!(announcement.changelog, None);
+    assert_eq!(
+        announcement.buttons,
+        [Button {
+            name: "release".to_owned(),
+            label: None,
+            url: announcement.link.clone().unwrap(),
+        }]
+    );
     assert!(!announcement.prerelease);
     assert_eq!(announcement.occurred, event().occurred());
 }
@@ -120,6 +131,7 @@ fn each_list_of_users_past_the_room_is_a_message_after_the_parts() {
         &profile(256, 4096),
         "0.1.0",
         marks(),
+        &links(),
     )
     .unwrap();
     announcement.mentioned_after = vec![vec!["a".to_owned()], vec!["b".to_owned(), "c".to_owned()]];
@@ -149,6 +161,7 @@ fn a_route_without_a_thread_names_none_and_a_long_body_is_cut() {
         &profile(10, 5),
         "0.1.0",
         marks(),
+        &links(),
     )
     .unwrap();
     assert_eq!(announcement.thread, None);
@@ -175,13 +188,17 @@ fn without_a_release_link_the_first_link_is_used_and_the_changelog_kept() {
         &profile(256, 4096),
         "0",
         marks(),
+        &links(),
     )
     .unwrap();
     assert_eq!(announcement.link.as_deref(), Some("https://example.org/c"));
-    assert_eq!(announcement.release, None);
     assert_eq!(
-        announcement.changelog.as_deref(),
-        Some("https://example.org/c")
+        announcement.buttons,
+        [Button {
+            name: "changelog".to_owned(),
+            label: None,
+            url: "https://example.org/c".to_owned(),
+        }]
     );
     let bare = Event::normalise(Draft {
         links: BTreeMap::new(),
@@ -195,7 +212,8 @@ fn without_a_release_link_the_first_link_is_used_and_the_changelog_kept() {
             &templates(&route),
             &profile(256, 4096),
             "0",
-            marks()
+            marks(),
+            &links(),
         )
         .unwrap()
         .link,
@@ -220,6 +238,7 @@ fn an_announcement_is_written_with_its_destination_s_symbols() {
         &profile,
         "0.1.0",
         marks(),
+        &links(),
     )
     .unwrap();
     assert_eq!(announcement.parts[0].body, "Added\n\n* the gate");
@@ -229,7 +248,18 @@ fn an_announcement_is_written_with_its_destination_s_symbols() {
 fn a_template_that_fails_fails_the_announcement() {
     let route = threaded();
     let broken = Templates::compile(&[], crate::Sandbox::DEFAULT).unwrap();
-    assert!(announce(&event(), &route, &broken, &profile(256, 4096), "0", marks()).is_err());
+    assert!(
+        announce(
+            &event(),
+            &route,
+            &broken,
+            &profile(256, 4096),
+            "0",
+            marks(),
+            &links()
+        )
+        .is_err()
+    );
     let no_body = Templates::compile(
         &[(&title_template(&route.template), "t", Form::Line)],
         crate::Sandbox::DEFAULT,
@@ -242,7 +272,8 @@ fn a_template_that_fails_fails_the_announcement() {
             &no_body,
             &profile(256, 4096),
             "0",
-            marks()
+            marks(),
+            &links(),
         )
         .is_err()
     );
@@ -261,7 +292,8 @@ fn a_template_that_fails_fails_the_announcement() {
             &no_thread,
             &profile(256, 4096),
             "0",
-            marks()
+            marks(),
+            &links(),
         )
         .is_err()
     );
@@ -304,4 +336,74 @@ fn a_title_is_plain_as_written_and_shown_inert_in_every_dialect() {
             );
         }
     }
+}
+
+#[test]
+fn a_button_is_labelled_by_the_config_or_as_herald_words_its_link_or_by_its_name() {
+    let button = |name: &str, label: Option<&str>| Button {
+        name: name.to_owned(),
+        label: label.map(ToOwned::to_owned),
+        url: "https://example.org".to_owned(),
+    };
+    let wording = Wording::default();
+    assert_eq!(button("release", None).label(&wording), "Release");
+    assert_eq!(button("changelog", None).label(&wording), "Changelog");
+    assert_eq!(button("entry", None).label(&wording), "Read");
+    assert_eq!(button("status", None).label(&wording), "status");
+    assert_eq!(button("release", Some("Notes")).label(&wording), "Notes");
+    let dutch = Wording::of(Some(&BTreeMap::from([(
+        Phrase::EntryLink,
+        "Lezen".to_owned(),
+    )])));
+    assert_eq!(button("entry", None).label(&dutch), "Lezen");
+}
+
+#[test]
+fn a_kind_s_links_become_buttons_in_its_order_where_the_event_carries_them() {
+    let route = threaded();
+    let linked = Event::normalise(Draft {
+        links: BTreeMap::from([
+            ("changelog".to_owned(), "https://example.org/c".to_owned()),
+            ("status".to_owned(), "https://example.org/s".to_owned()),
+            ("release".to_owned(), "https://example.org/r".to_owned()),
+        ]),
+        ..draft()
+    })
+    .unwrap();
+    let order = [
+        LinkSpec {
+            name: "status".to_owned(),
+            label: Some("Status page".to_owned()),
+        },
+        LinkSpec::named("missing"),
+        LinkSpec::named("release"),
+    ];
+    let announcement = announce(
+        &linked,
+        &route,
+        &templates(&route),
+        &profile(256, 4096),
+        "0",
+        marks(),
+        &order,
+    )
+    .unwrap();
+    let buttons: Vec<(&str, Option<&str>, &str)> = announcement
+        .buttons
+        .iter()
+        .map(|button| {
+            (
+                button.name.as_str(),
+                button.label.as_deref(),
+                button.url.as_str(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        buttons,
+        [
+            ("status", Some("Status page"), "https://example.org/s"),
+            ("release", None, "https://example.org/r"),
+        ]
+    );
 }

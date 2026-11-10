@@ -8,6 +8,7 @@ use serde::Deserialize;
 
 use crate::bounds::Sandbox;
 use crate::interact::{Command, Said, Unchosen};
+use crate::kind::{CHANGELOG_LINK, ENTRY_LINK, RELEASE_LINK};
 use crate::markup::escaped;
 
 /// One thing herald says where it takes commands, as `wording` names it.
@@ -40,6 +41,8 @@ pub enum Phrase {
     ReleaseLink,
     /// The link to the changelog, after `changelog`'s notes.
     ChangelogLink,
+    /// The button to a feed's entry.
+    EntryLink,
     /// How `latest` writes the day a release happened, as a strftime
     /// pattern.
     Date,
@@ -92,6 +95,7 @@ impl Phrase {
             Self::NoNotes => "No notes were announced.",
             Self::ReleaseLink => "Release",
             Self::ChangelogLink => "Changelog",
+            Self::EntryLink => "Read",
             Self::Date => "%Y-%m-%d",
             Self::DescribeSubscribe => "Be mentioned when a project announces a release",
             Self::DescribeUnsubscribe => "Stop being mentioned when a project announces a release",
@@ -123,6 +127,7 @@ impl Phrase {
             Self::NoNotes => "no_notes",
             Self::ReleaseLink => "release_link",
             Self::ChangelogLink => "changelog_link",
+            Self::EntryLink => "entry_link",
             Self::Date => "date",
             Self::DescribeSubscribe => "describe_subscribe",
             Self::DescribeUnsubscribe => "describe_unsubscribe",
@@ -138,7 +143,7 @@ impl Phrase {
     }
 
     /// Every phrase.
-    pub const ALL: [Self; 24] = [
+    pub const ALL: [Self; 25] = [
         Self::Subscribed,
         Self::AlreadySubscribed,
         Self::Unsubscribed,
@@ -152,6 +157,7 @@ impl Phrase {
         Self::NoNotes,
         Self::ReleaseLink,
         Self::ChangelogLink,
+        Self::EntryLink,
         Self::Date,
         Self::DescribeSubscribe,
         Self::DescribeUnsubscribe,
@@ -165,6 +171,18 @@ impl Phrase {
         Self::AuditUnsubscribed,
     ];
 
+    /// The phrase that labels the button of a link named `name`, where
+    /// herald words one.
+    #[must_use]
+    pub fn link(name: &str) -> Option<Self> {
+        match name {
+            RELEASE_LINK => Some(Self::ReleaseLink),
+            CHANGELOG_LINK => Some(Self::ChangelogLink),
+            ENTRY_LINK => Some(Self::EntryLink),
+            _ => None,
+        }
+    }
+
     /// The most characters a destination takes of it, where it is a
     /// description or a label.
     const fn longest(self) -> Option<usize> {
@@ -176,7 +194,9 @@ impl Phrase {
             | Self::DescribeGroup
             | Self::DescribeProject
             | Self::DescribeShare => Some(Self::DESCRIPTION),
-            Self::ReleaseLink | Self::ChangelogLink | Self::SubscribeButton => Some(Self::LABEL),
+            Self::ReleaseLink | Self::ChangelogLink | Self::EntryLink | Self::SubscribeButton => {
+                Some(Self::LABEL)
+            }
             _ => None,
         }
     }
