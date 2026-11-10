@@ -3,18 +3,26 @@
 
 use std::collections::BTreeMap;
 use std::future::{Future, ready};
+use std::sync::Arc;
 
-use herald_compose::{Host, KvAt, Served, SqlAt, Unoffered};
-use herald_config::{Config, Store};
+use herald_compose::{Host, KvAt, Opener, Served, SqlAt, Unoffered};
+use herald_config::Config;
 use herald_crypto::{RingSigner, RingVerifier};
 use herald_environment::{EnvSecrets, SystemClock};
 use herald_flows::{Connected, prepare};
+use herald_kinds::{Opened, StoreKind};
 use herald_native::{NativePostgres, NativeSql, NativeSqlite, Timeouts};
-use herald_ports::{Outbound, Secrets as _};
-use herald_records::{Memory, Seal};
-use herald_store_actions_cache::{ActionsCache, ActionsCacheStore, StoreOptions as CacheOptions};
+use herald_ports::Outbound;
+use herald_records::{Kept, Memory};
+use herald_store_actions_cache::ActionsCacheKind;
+use herald_store_dynamodb::DynamodbKind;
+use herald_store_git_branch::GitBranchKind;
+use herald_store_markers::MarkersKind;
+use herald_store_postgres::PostgresKind;
+use herald_store_repo_variables::RepoVariablesKind;
+use herald_store_sqlite::SqliteKind;
 
-use super::{Connect, Connection, RESULTS, RUNTIME_TOKEN, variable};
+use super::{Connect, Connection};
 
 /// The native binary, as the host its stores are reached through.
 pub(crate) struct Native<'a> {
@@ -97,16 +105,16 @@ impl Host for Native<'_> {
 }
 
 /// Where the run's records are kept.
-pub(crate) enum Records<'a> {
-    /// In a store every host reaches alike.
-    Hosted(herald_compose::Records<Native<'a>>),
-    /// In the Actions cache.
-    Cache(ActionsCacheStore<'a, Connection>),
-    /// In memory, for a dry run.
-    Memory(herald_records::Kept<Memory>),
-}
+pub(crate) struct Records<'a>(herald_compose::Records<'a>);
 
 impl Records<'_> {
+    /// Records kept in memory, for a dry run.
+    pub(crate) fn memory() -> Self {
+        Self(herald_compose::Records::new(Opened::Kept(Box::new(
+            Kept::new(Memory::default()),
+        ))))
+    }
+
     /// `work` done over the store, the routes' posts made one where they
     /// keep the records.
     pub(crate) async fn serve<W: Served>(
@@ -114,44 +122,40 @@ impl Records<'_> {
         connected: &Connected<Connection>,
         work: W,
     ) -> W::Done {
-        match self {
-            Self::Hosted(records) => records.serve(connected, &RingSigner, work).await,
-            Self::Cache(store) => work.over(store).await,
-            Self::Memory(store) => work.over(store).await,
-        }
+        self.0.serve(connected, &RingSigner, work).await
     }
 }
 
 /// The store kinds `herald server` keeps records in: every kind but the
 /// Actions cache, which only a workflow run reaches.
 pub(crate) const SERVED: [&str; 6] = [
-    Store::SQLITE,
-    Store::POSTGRES,
-    Store::DYNAMODB,
-    Store::GIT_BRANCH,
-    Store::MARKERS,
-    Store::REPO_VARIABLES,
+    SqliteKind::NAME,
+    PostgresKind::NAME,
+    DynamodbKind::NAME,
+    GitBranchKind::NAME,
+    MarkersKind::NAME,
+    RepoVariablesKind::NAME,
 ];
 
 /// The store kinds a Lambda function keeps records in: every kind that
 /// outlives the function's file system and needs no workflow run.
 pub(crate) const LAMBDA: [&str; 5] = [
-    Store::POSTGRES,
-    Store::DYNAMODB,
-    Store::GIT_BRANCH,
-    Store::MARKERS,
-    Store::REPO_VARIABLES,
+    PostgresKind::NAME,
+    DynamodbKind::NAME,
+    GitBranchKind::NAME,
+    MarkersKind::NAME,
+    RepoVariablesKind::NAME,
 ];
 
 /// The store kinds this herald keeps records in.
 pub(crate) const STORES: [&str; 7] = [
-    Store::SQLITE,
-    Store::POSTGRES,
-    Store::DYNAMODB,
-    Store::GIT_BRANCH,
-    Store::MARKERS,
-    Store::ACTIONS_CACHE,
-    Store::REPO_VARIABLES,
+    SqliteKind::NAME,
+    PostgresKind::NAME,
+    DynamodbKind::NAME,
+    GitBranchKind::NAME,
+    MarkersKind::NAME,
+    ActionsCacheKind::NAME,
+    RepoVariablesKind::NAME,
 ];
 
 /// Whether a run answers the commands members give.
@@ -174,15 +178,9 @@ pub(crate) async fn reached<'a>(
     commands: Commands,
     stores: &[&str],
 ) -> Result<(Records<'a>, Connected<Connection>), String> {
-    let native = Native::new(vars, connect);
-    let records = match &config.store {
-        Store::ActionsCache(options) if stores.contains(&Store::ACTIONS_CACHE) => {
-            Records::Cache(cache(options, vars, &native.secrets, connect).await?)
-        }
-        store => Records::Hosted(
-            herald_compose::reached(&native, store, connect.outbound(), stores).await?,
-        ),
-    };
+    let native = Arc::new(Native::new(vars, connect));
+    let opener = Opener::new(Arc::clone(&native), connect.outbound().clone());
+    let records = Records(herald_compose::reached(Arc::new(opener), &config.store, stores).await?);
     let prepared = prepare(config, &native.secrets, &RingSigner)
         .await
         .map_err(|error| error.to_string())?;
@@ -194,28 +192,4 @@ pub(crate) async fn reached<'a>(
         Commands::Unanswered => prepared,
     };
     Ok((records, prepared.connect(|base| connect.reach(base))?))
-}
-
-pub(crate) async fn cache<'a>(
-    options: &CacheOptions,
-    vars: &BTreeMap<String, String>,
-    secrets: &EnvSecrets,
-    connect: Connect<'a>,
-) -> Result<ActionsCacheStore<'a, Connection>, String> {
-    let results = variable(vars, RESULTS)?;
-    let key = secrets.secret(&options.key.secret).await.map_err(|_| {
-        format!(
-            "{} is not set; the store seals its records with it",
-            options.key.secret
-        )
-    })?;
-    let token = secrets.secret(RUNTIME_TOKEN).await.map_err(|_| {
-        format!("{RUNTIME_TOKEN} is not set; the actions-cache store runs through herald's Action")
-    })?;
-    let cache =
-        ActionsCache::new(results, token, options.prefix.as_deref()).keeping(&options.keeps);
-    let http = connect.reach(cache.results())?;
-    Ok(cache
-        .store(http, Box::new(move |base: &str| connect.reach(base)))
-        .sealed(Seal::new(key)))
 }

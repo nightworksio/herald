@@ -20,31 +20,3 @@ pub struct StoreOptions {
     /// forge records herald trusts (ADR-0005).
     pub key: SecretRef,
 }
-
-impl StoreOptions {
-    /// Whether it keeps records of `kind`.
-    #[must_use]
-    pub fn keeps(&self, kind: RecordKind) -> bool {
-        self.keeps.contains(&kind)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn it_keeps_only_the_kinds_it_names() {
-        let options = |keeps| StoreOptions {
-            prefix: None,
-            keeps,
-            key: SecretRef {
-                secret: "HERALD_STORE_KEY".to_owned(),
-            },
-        };
-        let pins = options(vec![RecordKind::Pins]);
-        assert!(pins.keeps(RecordKind::Pins));
-        assert!(!pins.keeps(RecordKind::Notes));
-        assert!(!options(Vec::new()).keeps(RecordKind::Pins));
-    }
-}

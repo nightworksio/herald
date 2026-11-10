@@ -1,5 +1,15 @@
-use herald_config::Store;
 use herald_flows::Layer;
+use herald_kinds::StoreKind;
+use herald_store_d1::D1Kind;
+use herald_store_deno_kv::DenoKvKind;
+use herald_store_durable_object::DurableObjectKind;
+use herald_store_dynamodb::DynamodbKind;
+use herald_store_fastly_kv::FastlyKvKind;
+use herald_store_git_branch::GitBranchKind;
+use herald_store_markers::MarkersKind;
+use herald_store_postgres::PostgresKind;
+use herald_store_repo_variables::RepoVariablesKind;
+use herald_store_sqlite::SqliteKind;
 
 /// A host herald runs on as WebAssembly, and what it serves there.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -24,57 +34,57 @@ pub enum Hosting {
 }
 
 const WORKER: [&str; 6] = [
-    Store::CLOUDFLARE_D1,
-    Store::DURABLE_OBJECT,
-    Store::DYNAMODB,
-    Store::GIT_BRANCH,
-    Store::MARKERS,
-    Store::REPO_VARIABLES,
+    D1Kind::NAME,
+    DurableObjectKind::NAME,
+    DynamodbKind::NAME,
+    GitBranchKind::NAME,
+    MarkersKind::NAME,
+    RepoVariablesKind::NAME,
 ];
 const DENO: [&str; 5] = [
-    Store::DENO_KV,
-    Store::DYNAMODB,
-    Store::GIT_BRANCH,
-    Store::MARKERS,
-    Store::REPO_VARIABLES,
+    DenoKvKind::NAME,
+    DynamodbKind::NAME,
+    GitBranchKind::NAME,
+    MarkersKind::NAME,
+    RepoVariablesKind::NAME,
 ];
 const NODE: [&str; 7] = [
-    Store::SQLITE,
-    Store::POSTGRES,
-    Store::DENO_KV,
-    Store::DYNAMODB,
-    Store::GIT_BRANCH,
-    Store::MARKERS,
-    Store::REPO_VARIABLES,
+    SqliteKind::NAME,
+    PostgresKind::NAME,
+    DenoKvKind::NAME,
+    DynamodbKind::NAME,
+    GitBranchKind::NAME,
+    MarkersKind::NAME,
+    RepoVariablesKind::NAME,
 ];
 const FUNCTIONS: [&str; 5] = [
-    Store::POSTGRES,
-    Store::DYNAMODB,
-    Store::GIT_BRANCH,
-    Store::MARKERS,
-    Store::REPO_VARIABLES,
+    PostgresKind::NAME,
+    DynamodbKind::NAME,
+    GitBranchKind::NAME,
+    MarkersKind::NAME,
+    RepoVariablesKind::NAME,
 ];
 
 const WASI: [&str; 4] = [
-    Store::DYNAMODB,
-    Store::GIT_BRANCH,
-    Store::MARKERS,
-    Store::REPO_VARIABLES,
+    DynamodbKind::NAME,
+    GitBranchKind::NAME,
+    MarkersKind::NAME,
+    RepoVariablesKind::NAME,
 ];
 const SPIN: [&str; 6] = [
-    Store::SQLITE,
-    Store::POSTGRES,
-    Store::DYNAMODB,
-    Store::GIT_BRANCH,
-    Store::MARKERS,
-    Store::REPO_VARIABLES,
+    SqliteKind::NAME,
+    PostgresKind::NAME,
+    DynamodbKind::NAME,
+    GitBranchKind::NAME,
+    MarkersKind::NAME,
+    RepoVariablesKind::NAME,
 ];
 const FASTLY: [&str; 5] = [
-    Store::FASTLY_KV,
-    Store::DYNAMODB,
-    Store::GIT_BRANCH,
-    Store::MARKERS,
-    Store::REPO_VARIABLES,
+    FastlyKvKind::NAME,
+    DynamodbKind::NAME,
+    GitBranchKind::NAME,
+    MarkersKind::NAME,
+    RepoVariablesKind::NAME,
 ];
 
 impl Hosting {
@@ -138,6 +148,8 @@ impl Hosting {
 
 #[cfg(test)]
 mod tests {
+    use herald_store_actions_cache::ActionsCacheKind;
+
     use super::*;
 
     #[test]
@@ -146,13 +158,13 @@ mod tests {
             assert_eq!(Hosting::of(hosting.name()), Some(hosting));
             assert!(hosting.layer().endpoint);
             assert!(!hosting.layer().sessions);
-            assert!(hosting.stores().contains(&Store::MARKERS));
-            assert!(!hosting.stores().contains(&Store::ACTIONS_CACHE));
+            assert!(hosting.stores().contains(&MarkersKind::NAME));
+            assert!(!hosting.stores().contains(&ActionsCacheKind::NAME));
         }
         assert_eq!(Hosting::of("lambda"), None);
-        assert!(Hosting::Worker.stores().contains(&Store::CLOUDFLARE_D1));
-        assert!(Hosting::Deno.stores().contains(&Store::DENO_KV));
-        assert!(Hosting::Node.stores().contains(&Store::SQLITE));
+        assert!(Hosting::Worker.stores().contains(&D1Kind::NAME));
+        assert!(Hosting::Deno.stores().contains(&DenoKvKind::NAME));
+        assert!(Hosting::Node.stores().contains(&SqliteKind::NAME));
         assert_eq!(Hosting::Vercel.stores(), Hosting::Netlify.stores());
     }
 }

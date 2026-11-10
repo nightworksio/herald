@@ -6,7 +6,7 @@ use herald_core::{
 };
 use herald_kinds::{Endpoint, Replying};
 use herald_ports::{Clock, Http, Keyring, Ledger, Secret, Secrets, Signer, Store, Verifier};
-use herald_sources_forge::{Forge, Hooked};
+use herald_sources_forge::Hooked;
 
 use crate::announce::{Announced, Outcome, Ports, announce, announce_within};
 use crate::commanded::{INTERACTIONS, MATRIX, commanded};
@@ -185,8 +185,8 @@ impl Job {
             Self::Announce {
                 scheme, verified, ..
             } => Some((*scheme, verified)),
-            Self::App { verified, .. } => Some((Scheme::App, verified)),
-            Self::Follow { verified, .. } => Some((Scheme::ActivityPub, verified)),
+            Self::App { verified, .. } => Some((herald_sources_app::SCHEME, verified)),
+            Self::Follow { verified, .. } => Some((herald_dest_fediverse::ACTOR_SCHEME, verified)),
             Self::Interact { .. } => None,
         }
     }
@@ -341,15 +341,6 @@ pub(crate) fn rejection(rejected: &Rejected) -> Answered {
     refusal(status, rejected.to_string())
 }
 
-/// The scheme `forge` signs its webhooks under.
-const fn scheme(forge: Forge) -> Scheme {
-    match forge {
-        Forge::GitHub => Scheme::GitHub,
-        Forge::GitLab => Scheme::GitLab,
-        Forge::Forgejo => Scheme::Forgejo,
-    }
-}
-
 /// `text` with each `%` and its two hex digits read as the byte they write.
 fn decoded(text: &str) -> Option<String> {
     let mut bytes = Vec::with_capacity(text.len());
@@ -456,7 +447,7 @@ async fn hooked<S: Store, C: Clock, G, V: Verifier, H, P, K>(
     ) else {
         return missing("webhook of such a source");
     };
-    let scheme = scheme(*forge);
+    let scheme = forge.scheme();
     let store = serving.ports.store;
     let now = serving.ports.clock.now();
     let checked = verified(
@@ -527,7 +518,7 @@ async fn posted<S: Store, C: Clock, G, V, H, P, K>(
     match admitted(
         serving.ports.store,
         serving.admission,
-        Scheme::App,
+        herald_sources_app::SCHEME,
         &verified,
         now,
     )
@@ -758,13 +749,6 @@ mod tests {
         for broken in ["%", "%4", "%zz", "%ff"] {
             assert_eq!(decoded(broken), None, "{broken}");
         }
-    }
-
-    #[test]
-    fn each_forge_signs_under_its_own_scheme() {
-        assert_eq!(scheme(Forge::GitHub), Scheme::GitHub);
-        assert_eq!(scheme(Forge::GitLab), Scheme::GitLab);
-        assert_eq!(scheme(Forge::Forgejo), Scheme::Forgejo);
     }
 
     #[test]

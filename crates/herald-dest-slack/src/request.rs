@@ -1,6 +1,6 @@
 use std::fmt;
 
-use herald_core::{Announcement, Dialect, Entry, Phrase, Step, safe_url};
+use herald_core::{Announcement, Entry, Phrase, Step, safe_url};
 use herald_ports::{Method, Request, Text, USER_AGENT, unreserved};
 use serde_json::{Value, json};
 
@@ -138,7 +138,7 @@ fn announcement_body(
         "type": "header",
         "text": { "type": "plain_text", "text": announcement.title.plain(), "emoji": true },
     })];
-    let mut fallback = vec![announcement.title.shown(Dialect::Slack).body];
+    let mut fallback = vec![announcement.title.shown(crate::slack::MARKUP).body];
     for text in first
         .map(ToOwned::to_owned)
         .into_iter()

@@ -55,7 +55,7 @@ body = "{{ event.body }}"
         let config = load("herald.toml", EXAMPLE, &nothing, &crate::common::kinds()).unwrap();
         assert_eq!(
             config.store,
-            Store::GitBranch(herald_store_git_branch::StoreOptions {
+            Store::new(herald_store_git_branch::StoreOptions {
                 repository: None,
                 branch: None,
                 token: None,
@@ -246,7 +246,7 @@ body = "{{ event.body }}"
 
     #[test]
     fn every_store_kind_loads_as_itself() {
-        for kind in Store::KINDS {
+        for kind in crate::common::kinds().store_kinds() {
             let options = match kind {
                 "repo-variables" => {
                     "\ntoken = { secret = \"HERALD_STATE_TOKEN\" }\nkey = { secret = \"HERALD_STORE_KEY\" }"
@@ -615,7 +615,7 @@ body = "{{ event.body }}"
             load("herald.toml", &markers, &nothing, &crate::common::kinds())
                 .unwrap()
                 .store,
-            Store::Markers
+            Store::new(herald_store_markers::MarkersOptions {})
         );
         let pinned = EXAMPLE.replace("crosspost = true", "crosspost = true\npin = \"store\"");
         assert_eq!(

@@ -363,7 +363,7 @@ fn interactions_are_posted_under_the_key_they_are_signed_with() {
     let interacting = interacting(&posted());
     assert_eq!(
         interacting.posted(Endpoint::Posted),
-        Some(Ok((Scheme::Discord, KEY)))
+        Some(Ok((crate::SCHEME, KEY)))
     );
     assert_eq!(interacting.posted(Endpoint::Pushed), None);
     assert_eq!(

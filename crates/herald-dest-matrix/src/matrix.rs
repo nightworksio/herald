@@ -1,6 +1,7 @@
 use herald_core::{
-    Announcement, Dialect, Entry, Facts, Features, Limits, Marker, Measure, MentionRoom,
-    MentionStyle, Pins, Profile, ReadBack, Sent, Step, Threads, Waits,
+    Announcement, Bullet, Emphases, Entry, Escape, Facts, Features, Fences, Heading, Limits, Links,
+    Marker, Markup, Measure, MentionRoom, MentionStyle, Pins, Profile, ReadBack, Sent, Step,
+    Threads, Waits,
 };
 use herald_ports::{Http, HttpError, Request, Secret};
 use serde_json::Value;
@@ -10,6 +11,22 @@ use crate::read::{UNNAMED, json, read, text, trouble};
 use crate::request::{
     NOT_FOUND, ROUTE, Refusal, Repin, event, get, pin_target, pinned, pins, repinned, step, with,
     without,
+};
+
+/// Matrix's HTML beside a plain body, its `matrix.to` pills never linked.
+pub const MARKUP: Markup = Markup {
+    escape: Escape::Neutral,
+    links: Links::Spelled,
+    heading: Heading::Bare,
+    marks: Emphases {
+        emphasis: "",
+        strong: "",
+        strike: "",
+    },
+    fences: Fences::None,
+    bullet: Bullet::Symbol('-'),
+    html: true,
+    pills: Some("https://matrix.to/"),
 };
 
 /// An answer read, a reason to stop with, or no answer at all.
@@ -208,7 +225,7 @@ impl Matrix {
 #[must_use]
 pub fn profile() -> Profile {
     Profile {
-        dialect: Dialect::Matrix,
+        markup: MARKUP,
         measure: Measure::Bytes,
         limits: Limits {
             title: TITLE,

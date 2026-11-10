@@ -1,8 +1,8 @@
 use std::future::ready;
 
 use herald_core::{
-    Answering, Asked, DestinationName, Dialect, Measure, Profile, Room, Scheme, SecretRef, Symbols,
-    Text, WaitOptions,
+    Answering, Asked, DestinationName, KeyForm, Markup, Measure, Profile, Room, Scheme, SecretRef,
+    Signed, Symbols, Text, WaitOptions,
 };
 use herald_kinds::{
     Carried, DestinationConfig, DestinationKind, Endpoint, Fault, Interacted, Interacts, Placed,
@@ -15,6 +15,16 @@ use crate::held::Joined;
 use crate::interact::{self, Interacting, MESSAGE, Received, choices, pong, took};
 use crate::interactions::{Interactions, Subscribe, Via};
 use crate::options::{DestinationOptions, RouteOptions};
+
+/// A Discord interaction: `X-Signature-Ed25519` over `X-Signature-Timestamp` and the body.
+pub const SCHEME: Scheme = Scheme {
+    name: "discord",
+    signed: Signed::Ed25519 {
+        signature: "X-Signature-Ed25519",
+        timestamp: "X-Signature-Timestamp",
+    },
+    key: KeyForm::Hex,
+};
 
 /// The kind of a Discord destination, as the config spells it.
 pub const KIND: &str = "discord";
@@ -212,9 +222,9 @@ impl Interacts for Interacting {
         Self::answering(self)
     }
 
-    fn room(&self) -> (Dialect, Room) {
+    fn room(&self) -> (Markup, Room) {
         (
-            Dialect::Discord,
+            discord::MARKUP,
             Room {
                 measure: Measure::Chars,
                 first: MESSAGE,
@@ -246,7 +256,7 @@ impl Interacts for Interacting {
     fn posted(&self, endpoint: Endpoint) -> Option<Result<(Scheme, &str), &'static str>> {
         (endpoint == Endpoint::Posted).then(|| {
             self.key()
-                .map(|key| (Scheme::Discord, key))
+                .map(|key| (SCHEME, key))
                 .ok_or("interactions for such a destination")
         })
     }

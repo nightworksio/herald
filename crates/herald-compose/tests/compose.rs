@@ -6,20 +6,23 @@ mod compose {
     use std::collections::BTreeMap;
     use std::future::{Future, ready};
     use std::pin::Pin;
-    use std::sync::Mutex;
+    use std::sync::{Arc, Mutex};
     use std::task::{Context, Poll};
 
-    use herald_compose::{Asked, Composed, Host, KvAt, Left, Records, SqlAt, reached};
-    use herald_config::{Config, Store, load};
+    use herald_compose::{Asked, Composed, Host, KvAt, Left, Opener, SqlAt, reached};
+    use herald_config::{Config, load};
     use herald_core::DestinationName;
     use herald_flows::{Admission, Housekept, Inbound, Job, Taker, Worked};
+    use herald_kinds::{Opening, StoreKind};
     use herald_ports::{Changed, Frame, Http, HttpError, Outbound, Request, Response, Value};
     use herald_testing::{
         FakeClock, FakeKv, FakeSecrets, FakeSigner, FakeTimer, FakeVerifier, ScriptedSockets,
         ScriptedSql,
     };
 
-    const EVERY: [&str; 11] = Store::KINDS;
+    fn every() -> Vec<&'static str> {
+        herald_compose::kinds().store_kinds()
+    }
 
     #[derive(Debug, Clone, Default)]
     struct Answering;
@@ -201,17 +204,17 @@ mod compose {
         .unwrap()
     }
 
-    fn kept(host: &Hosting, store: &str) -> Result<&'static str, String> {
+    fn opener(host: &Arc<Hosting>) -> Arc<Opener<Hosting>> {
+        Arc::new(Opener::new(Arc::clone(host), Outbound::default()))
+    }
+
+    fn kept(host: &Arc<Hosting>, store: &str) -> Result<&'static str, String> {
         let config = config(store);
-        let records =
-            pollster::block_on(reached(host, &config.store, &Outbound::default(), &EVERY))?;
-        Ok(match records {
-            Records::Sql(_) => "sql",
-            Records::Kv(_) => "kv",
-            Records::Branch(_) => "branch",
-            Records::Variables(_) => "variables",
-            Records::Dynamodb(_) => "dynamodb",
-            Records::Posts => "posts",
+        let records = pollster::block_on(reached(opener(host), &config.store, &every()))?;
+        Ok(if records.reads_posts() {
+            "posts"
+        } else {
+            "kept"
         })
     }
 
@@ -231,24 +234,34 @@ mod compose {
     }
 
     #[test]
+    fn an_opener_reads_its_host_s_variables_and_takes_its_nonces() {
+        let host = Arc::new(github());
+        let opener = opener(&host);
+        assert_eq!(opener.var("GITHUB_REPOSITORY"), Some("cli/cli"));
+        let nonce = opener.nonce();
+        assert!(nonce.parse::<u64>().is_ok(), "{nonce}");
+        assert_ne!(opener.nonce(), nonce);
+    }
+
+    #[test]
     fn each_store_is_reached_through_what_the_host_offers() {
-        let host = github();
+        let host = Arc::new(github());
         let kinds = [
-            ("kind = \"sqlite\"", "sql"),
+            ("kind = \"sqlite\"", "kept"),
             (
                 "kind = \"postgres\"\nurl = { secret = \"DATABASE_URL\" }",
-                "sql",
+                "kept",
             ),
-            ("kind = \"d1\"\nbinding = \"DB\"", "sql"),
-            ("kind = \"durable-object\"", "sql"),
-            ("kind = \"deno-kv\"\npath = \"/data/kv\"", "kv"),
-            ("kind = \"fastly-kv\"", "kv"),
-            ("kind = \"git-branch\"", "branch"),
+            ("kind = \"d1\"\nbinding = \"DB\"", "kept"),
+            ("kind = \"durable-object\"", "kept"),
+            ("kind = \"deno-kv\"\npath = \"/data/kv\"", "kept"),
+            ("kind = \"fastly-kv\"", "kept"),
+            ("kind = \"git-branch\"", "kept"),
             (
                 "kind = \"repo-variables\"\ntoken = { secret = \"VARIABLES\" }",
-                "variables",
+                "kept",
             ),
-            ("kind = \"dynamodb\"", "dynamodb"),
+            ("kind = \"dynamodb\"", "kept"),
             ("kind = \"markers\"", "posts"),
         ];
         for (store, records) in kinds {
@@ -269,10 +282,10 @@ mod compose {
 
     #[test]
     fn a_store_the_host_cannot_open_or_reach_says_which_and_why() {
-        let refusing = Hosting {
+        let refusing = Arc::new(Hosting {
             refusing: true,
             ..github()
-        };
+        });
         assert_eq!(
             kept(&refusing, "kind = \"sqlite\"\npath = \"kept.sqlite\""),
             Err("the sqlite store kept.sqlite could not be opened: refused".to_owned())
@@ -290,23 +303,23 @@ mod compose {
             ),
             Err("the postgres store could not be opened: refused".to_owned())
         );
-        let unreached = Hosting {
+        let unreached = Arc::new(Hosting {
             unreached: true,
             ..github()
-        };
+        });
         assert_eq!(
             kept(&unreached, "kind = \"git-branch\""),
             Err("https://api.github.com is out of reach".to_owned())
         );
-        let keyless = Hosting {
+        let keyless = Arc::new(Hosting {
             secrets: FakeSecrets::default().with("GITHUB_TOKEN", "t"),
             ..github()
-        };
+        });
         assert_eq!(
             kept(&keyless, "kind = \"git-branch\""),
             Err("HERALD_STORE_KEY is not set; the store seals its records with it".to_owned())
         );
-        let bare = Hosting::default();
+        let bare = Arc::new(Hosting::default());
         assert_eq!(
             kept(
                 &bare,
@@ -332,10 +345,10 @@ mod compose {
 
     #[test]
     fn a_database_whose_tables_cannot_be_laid_out_opens_no_store() {
-        let host = Hosting {
+        let host = Arc::new(Hosting {
             unlaid: true,
             ..github()
-        };
+        });
         let laid = "could not be opened: the store could not be reached: the database refused the statements: no answer was scripted";
         for store in [
             "kind = \"postgres\"\nurl = { secret = \"DATABASE_URL\" }",
@@ -354,13 +367,12 @@ mod compose {
 
     #[test]
     fn a_kind_the_host_does_not_keep_records_in_is_refused_by_name() {
-        let host = github();
+        let host = Arc::new(github());
         let d1 = config("kind = \"d1\"");
         let refused = pollster::block_on(reached(
-            &host,
+            opener(&host),
             &d1.store,
-            &Outbound::default(),
-            &[Store::MARKERS],
+            &[herald_store_markers::MarkersKind::NAME],
         ));
         assert_eq!(
             refused.err(),
@@ -369,13 +381,10 @@ mod compose {
             )
         );
         let cached = config("kind = \"actions-cache\"");
-        let unkept =
-            pollster::block_on(reached(&host, &cached.store, &Outbound::default(), &EVERY));
-        assert!(
-            unkept
-                .err()
-                .unwrap()
-                .starts_with("this herald keeps records in sqlite")
+        let unkept = pollster::block_on(reached(opener(&host), &cached.store, &every()));
+        assert_eq!(
+            unkept.err(),
+            Some("ACTIONS_RESULTS_URL is not set; herald reads it from the CI run".to_owned())
         );
         assert_eq!(host.asked(), Vec::<String>::new());
     }
@@ -394,9 +403,12 @@ mod compose {
             )
             .unwrap();
             let composed =
-                pollster::block_on(Composed::new(Hosting::default(), config, &EVERY, "test"))
+                pollster::block_on(Composed::new(Hosting::default(), config, &every(), "test"))
                     .unwrap();
-            assert_eq!(composed.config().store.kind(), Store::DENO_KV);
+            assert_eq!(
+                composed.config().store.kind(),
+                herald_store_deno_kv::DenoKvKind::NAME
+            );
             assert_eq!(composed.host().asked(), ["DenoKv(None)"]);
             let health = Inbound {
                 method: "GET",
@@ -469,7 +481,8 @@ template = "t"
                 secrets: FakeSecrets::default().with("TOKEN", "t"),
                 ..Hosting::default()
             };
-            let composed = pollster::block_on(Composed::new(host, config, &EVERY, "test")).unwrap();
+            let composed =
+                pollster::block_on(Composed::new(host, config, &every(), "test")).unwrap();
             let swept = pollster::block_on(composed.poll());
             assert_eq!(swept.len(), 1);
             assert_eq!(swept[0].source.as_str(), "gate");
@@ -491,7 +504,8 @@ template = "t"
             &herald_compose::kinds(),
         )
         .unwrap();
-        let composed = pollster::block_on(Composed::new(github(), config, &EVERY, "test")).unwrap();
+        let composed =
+            pollster::block_on(Composed::new(github(), config, &every(), "test")).unwrap();
         let (swept, unswept) =
             pollster::block_on(futures_util::future::join(composed.poll(), composed.poll()));
         assert_eq!(swept.len(), 1);
@@ -534,7 +548,7 @@ template = "t"
                 )
                 .unwrap();
                 let composed =
-                    pollster::block_on(Composed::new(github(), config, &EVERY, "test")).unwrap();
+                    pollster::block_on(Composed::new(github(), config, &every(), "test")).unwrap();
                 let health = Inbound {
                     method: "GET",
                     path: "/healthz",
@@ -579,11 +593,11 @@ template = "t"
         let unset = pollster::block_on(Composed::new(
             Hosting::default(),
             config("kind = \"deno-kv\""),
-            &EVERY,
+            &every(),
             "test",
         ))
         .unwrap();
-        let reach = |composed: &Composed<Hosting>, asked: &Asked| {
+        let reach = |composed: &Composed<'_, Hosting>, asked: &Asked| {
             pollster::block_on(composed.reached(asked))
         };
         let health = reach(&unset, &asked("GET", "/healthz?x=1", None));
@@ -598,7 +612,7 @@ template = "t"
         let composed = pollster::block_on(Composed::new(
             host,
             config("kind = \"deno-kv\""),
-            &EVERY,
+            &every(),
             "test",
         ))
         .unwrap();
@@ -655,7 +669,7 @@ body = "{{ event.body }}"
             secrets: FakeSecrets::default().with("KEY", "k"),
             ..Hosting::default()
         };
-        let composed = pollster::block_on(Composed::new(host, config, &EVERY, "test")).unwrap();
+        let composed = pollster::block_on(Composed::new(host, config, &every(), "test")).unwrap();
         let mut inbox = asked("POST", "/inbox", None);
         let unaddressed = pollster::block_on(composed.reached(&inbox));
         assert_eq!(unaddressed.reply.status, 404);
@@ -705,7 +719,7 @@ body = "{{{{ event.body }}}}"
             secrets: FakeSecrets::default().with("TOKEN", "t"),
             ..Hosting::default()
         };
-        let composed = pollster::block_on(Composed::new(host, config, &EVERY, "test")).unwrap();
+        let composed = pollster::block_on(Composed::new(host, config, &every(), "test")).unwrap();
         let headers = [("Authorization", "Bearer app-token")];
         let event =
             |id: &str| format!(r#"{{"id": "{id}", "project": "herald", "title": "Deployed"}}"#);
@@ -772,7 +786,7 @@ body = "{{{{ event.body }}}}"
                 },
                 ..Hosting::default()
             };
-            let refused = pollster::block_on(Composed::new(host, config, &EVERY, "test")).err();
+            let refused = pollster::block_on(Composed::new(host, config, &every(), "test")).err();
             assert!(
                 refused.as_deref().is_some_and(|said| said.contains(missing)),
                 "{missing}: {refused:?}"
@@ -789,7 +803,7 @@ body = "{{{{ event.body }}}}"
         let composed = pollster::block_on(Composed::new(
             unreached,
             config("kind = \"markers\""),
-            &EVERY,
+            &every(),
             "test",
         ));
         assert_eq!(composed.err(), Some("public: is out of reach".to_owned()));

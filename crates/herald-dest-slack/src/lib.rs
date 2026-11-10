@@ -23,7 +23,7 @@ mod slack;
 mod socket;
 mod web_api;
 
-pub use config::{KIND, SlackKind};
+pub use config::{KIND, SCHEME, SlackKind};
 pub use domain::Domain;
 pub use interact::{
     Interacting, Received, Replying, SECTION, SUBSCRIBE, Unread, subscribe_block, took,
@@ -32,5 +32,5 @@ pub use interactions::{Interactions, Subscribe, Via};
 pub use markers::SlackMarkers;
 pub use options::{DestinationOptions, RouteOptions};
 pub use request::Refusal;
-pub use slack::{Credential, Slack, profile};
+pub use slack::{Credential, MARKUP, Slack, profile};
 pub use socket::{Enveloped, opened};

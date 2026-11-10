@@ -7,6 +7,7 @@ use herald_core::{Command, DestinationName, Measure, Place, Replies, Wording};
 use herald_ports::{Method, Secrets, Text as Url};
 
 use super::*;
+use crate::reach::tests::PLAIN;
 
 /// A destination that takes commands and keeps every default.
 #[derive(Debug, PartialEq, Eq)]
@@ -27,9 +28,9 @@ impl Interacts for Plain {
         }
     }
 
-    fn room(&self) -> (Dialect, Room) {
+    fn room(&self) -> (Markup, Room) {
         (
-            Dialect::Plain,
+            PLAIN,
             Room {
                 measure: Measure::Chars,
                 first: 10,
@@ -120,7 +121,7 @@ fn an_interacting_destination_is_its_kind_equal_only_to_the_same_and_keeps_every
         }
     );
     assert!(interacted.answering().takes(Command::Latest));
-    assert_eq!(interacted.room().0, Dialect::Plain);
+    assert_eq!(interacted.room().0, PLAIN);
     assert_eq!(interacted.took(&response(200)), Ok(()));
     assert_eq!(
         interacted.took(&response(500)),

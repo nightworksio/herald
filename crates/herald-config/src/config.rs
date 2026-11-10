@@ -1,10 +1,10 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use herald_core::{
-    DestinationName, Inbound, Kind, Profile, RecordKind, Retention, Route, RouteId, Sandbox,
-    SecretRef, SourceName, Templates,
+    DestinationName, Inbound, Kind, Profile, Retention, Route, RouteId, Sandbox, SecretRef,
+    SourceName, Templates,
 };
-use herald_kinds::{Destination, Placed};
+use herald_kinds::{Destination, Placed, Store};
 use herald_sources_forge::Forge;
 use herald_sources_registry::Registry;
 use jiff::SignedDuration;
@@ -64,154 +64,6 @@ impl Config {
             .map(|named| named.secret.as_str())
             .chain(self.store.secrets())
             .collect()
-    }
-}
-
-/// Which store keeps herald's records, and its options.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Store {
-    /// A SQLite file.
-    Sqlite(herald_store_sqlite::StoreOptions),
-    /// A Postgres database.
-    Postgres(herald_store_postgres::StoreOptions),
-    /// Cloudflare D1.
-    D1(herald_store_d1::StoreOptions),
-    /// A Cloudflare Durable Object's storage.
-    DurableObject(herald_store_durable_object::StoreOptions),
-    /// An AWS DynamoDB table.
-    Dynamodb(herald_store_dynamodb::StoreOptions),
-    /// Deno KV.
-    DenoKv(herald_store_deno_kv::StoreOptions),
-    /// A Fastly KV Store.
-    FastlyKv(herald_store_fastly_kv::StoreOptions),
-    /// The destinations' own posts.
-    Markers,
-    /// A branch of the repository.
-    GitBranch(herald_store_git_branch::StoreOptions),
-    /// The GitHub Actions cache.
-    ActionsCache(herald_store_actions_cache::StoreOptions),
-    /// The repository's variables.
-    RepoVariables(herald_store_repo_variables::StoreOptions),
-}
-
-impl Store {
-    /// The secret it seals its records with, where it names one (ADR-0005).
-    #[must_use]
-    pub fn key(&self) -> Option<&SecretRef> {
-        match self {
-            Self::GitBranch(options) => Some(&options.key),
-            Self::RepoVariables(options) => Some(&options.key),
-            Self::ActionsCache(options) => Some(&options.key),
-            Self::Sqlite(options) => options.key.as_ref(),
-            Self::Postgres(options) => options.key.as_ref(),
-            Self::D1(options) => options.key.as_ref(),
-            Self::DurableObject(options) => options.key.as_ref(),
-            Self::DenoKv(options) => options.key.as_ref(),
-            Self::FastlyKv(options) => options.key.as_ref(),
-            Self::Dynamodb(options) => options.key.as_ref(),
-            Self::Markers => None,
-        }
-    }
-
-    /// The name of every secret it names.
-    #[must_use]
-    pub fn secrets(&self) -> Vec<&str> {
-        let mut named = self.named();
-        named.extend(self.key().map(|key| key.secret.as_str()));
-        named
-    }
-
-    fn named(&self) -> Vec<&str> {
-        match self {
-            Self::GitBranch(options) => options
-                .token
-                .iter()
-                .map(|named| named.secret.as_str())
-                .collect(),
-            Self::RepoVariables(options) => vec![options.token.secret.as_str()],
-            Self::Postgres(options) => vec![options.url.secret.as_str()],
-            Self::Dynamodb(options) => options.secrets().to_vec(),
-            Self::Sqlite(_)
-            | Self::D1(_)
-            | Self::DurableObject(_)
-            | Self::DenoKv(_)
-            | Self::FastlyKv(_)
-            | Self::Markers
-            | Self::ActionsCache(_) => Vec::new(),
-        }
-    }
-
-    /// The kind of a SQLite store, as the config spells it.
-    pub const SQLITE: &str = "sqlite";
-    /// The kind of a Postgres store.
-    pub const POSTGRES: &str = "postgres";
-    /// The kind of a Cloudflare D1 store.
-    pub const CLOUDFLARE_D1: &str = "d1";
-    /// The kind of a store in a Cloudflare Durable Object.
-    pub const DURABLE_OBJECT: &str = "durable-object";
-    /// The kind of a DynamoDB store.
-    pub const DYNAMODB: &str = "dynamodb";
-    /// The kind of a Deno KV store.
-    pub const DENO_KV: &str = "deno-kv";
-    /// The kind of a Fastly KV Store store.
-    pub const FASTLY_KV: &str = "fastly-kv";
-    /// The kind of the store kept in the destinations' own posts.
-    pub const MARKERS: &str = "markers";
-    /// The kind of a store on a branch of the repository.
-    pub const GIT_BRANCH: &str = "git-branch";
-    /// The kind of a store in the GitHub Actions cache.
-    pub const ACTIONS_CACHE: &str = "actions-cache";
-    /// The kind of a store in the repository's variables.
-    pub const REPO_VARIABLES: &str = "repo-variables";
-    /// Every kind, as the config spells it.
-    pub const KINDS: [&str; 11] = [
-        Self::SQLITE,
-        Self::POSTGRES,
-        Self::CLOUDFLARE_D1,
-        Self::DURABLE_OBJECT,
-        Self::DYNAMODB,
-        Self::DENO_KV,
-        Self::FASTLY_KV,
-        Self::MARKERS,
-        Self::GIT_BRANCH,
-        Self::ACTIONS_CACHE,
-        Self::REPO_VARIABLES,
-    ];
-
-    /// Whether it keeps records of `kind`.
-    #[must_use]
-    pub fn keeps(&self, kind: RecordKind) -> bool {
-        match self {
-            Self::Markers => false,
-            Self::ActionsCache(options) => options.keeps(kind),
-            _ => true,
-        }
-    }
-
-    /// How it would keep records of `kind`, where its own options can make
-    /// it.
-    #[must_use]
-    pub fn kept_by(&self, kind: RecordKind) -> Option<String> {
-        matches!(self, Self::ActionsCache(_))
-            .then(|| format!("add \"{}\" to its keeps", kind.name()))
-    }
-
-    /// The kind's name, as `[store] kind` writes it.
-    #[must_use]
-    pub fn kind(&self) -> &'static str {
-        match self {
-            Self::Sqlite(_) => Self::SQLITE,
-            Self::Postgres(_) => Self::POSTGRES,
-            Self::D1(_) => Self::CLOUDFLARE_D1,
-            Self::DurableObject(_) => Self::DURABLE_OBJECT,
-            Self::Dynamodb(_) => Self::DYNAMODB,
-            Self::DenoKv(_) => Self::DENO_KV,
-            Self::FastlyKv(_) => Self::FASTLY_KV,
-            Self::Markers => Self::MARKERS,
-            Self::GitBranch(_) => Self::GIT_BRANCH,
-            Self::ActionsCache(_) => Self::ACTIONS_CACHE,
-            Self::RepoVariables(_) => Self::REPO_VARIABLES,
-        }
     }
 }
 

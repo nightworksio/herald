@@ -3642,6 +3642,39 @@
                 "null"
               ]
             },
+            "keep_deliveries": {
+              "description": "How long a webhook delivery's id is kept after it was admitted, so a\nreplay of it is refused (ADR-0013); \"7d\" where absent, and at least\n\"3d\", longer than any sender goes on retrying a delivery.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Duration"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "keep_ledger": {
+              "description": "How long a ledger entry, and where each of its deliveries to a\nfollower's inbox stands, is kept after a run last claimed it; \"90d\"\nwhere absent.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Keep"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "keep_notes": {
+              "description": "How long a Note herald's ActivityPub actors published is kept, and\nserved by its id; \"forever\" where absent.",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Keep"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
             "key": {
               "description": "The secret holding the key every record is sealed with, such as\n`HERALD_STORE_KEY`: whoever can write the repository could otherwise\nforge records herald trusts (ADR-0005).",
               "$ref": "#/$defs/SecretRef"

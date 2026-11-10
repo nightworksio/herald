@@ -17,16 +17,16 @@ mod read;
 mod request;
 
 pub use activitypub::{
-    ActivityPub, ActorOptions, ActorRouteOptions, Approve, Asked, Audience, FIRST, FollowerCaps,
-    Mode, Policy, SharedList, accept, actor_document, actor_profile, asked, blocked_domains,
-    create, follow_id, note, webfinger,
+    ACTOR_MARKUP, ActivityPub, ActorOptions, ActorRouteOptions, Approve, Asked, Audience, FIRST,
+    FollowerCaps, Mode, Policy, SharedList, accept, actor_document, actor_profile, asked,
+    blocked_domains, create, follow_id, note, webfinger,
 };
 pub use actor::{
     ActorError, ActorKey, Found, Inboxes, activity_json, actor_key, actor_of, confirms, document,
     inboxes, key_request, origin, same_origin,
 };
-pub use config::{ACTIVITYPUB, ActorKind, MASTODON, MastodonKind};
+pub use config::{ACTIVITYPUB, ACTOR_SCHEME, ActorKind, MASTODON, MastodonKind};
 pub use markers::MastodonMarkers;
-pub use mastodon::{LIMIT, Mastodon, profile, shortest};
+pub use mastodon::{LIMIT, MASTODON_MARKUP, Mastodon, profile, shortest};
 pub use options::{DestinationOptions, RouteOptions, Visibility};
 pub use request::Refusal;

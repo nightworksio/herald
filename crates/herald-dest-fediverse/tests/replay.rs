@@ -4,7 +4,7 @@
 #[cfg(test)]
 mod replay {
     use herald_core::{
-        Dialect, Entry, Facts, MentionStyle, Pins, Profile, ReadBack, Sent, Step, Threads, Waits,
+        Entry, Facts, MentionStyle, Pins, Profile, ReadBack, Sent, Step, Threads, Waits,
     };
     use herald_dest_fediverse::{
         LIMIT, Mastodon, MastodonMarkers, Refusal, RouteOptions, Visibility, profile, shortest,
@@ -346,7 +346,7 @@ mod replay {
     #[test]
     fn a_status_fits_the_server_limit_with_its_title_link_and_warning() {
         let plain = profile(&RouteOptions::default());
-        assert_eq!(plain.dialect, Dialect::Plain);
+        assert_eq!(plain.markup, herald_dest_fediverse::MASTODON_MARKUP);
         assert_eq!(plain.features.threads, Threads::Replies);
         assert_eq!(plain.features.pins, Pins::None);
         assert_eq!(plain.features.mentions, MentionStyle::None);

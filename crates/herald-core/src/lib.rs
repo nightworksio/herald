@@ -49,7 +49,8 @@ pub use duration::Duration;
 pub use event::{Draft, Event, Kind, Problem};
 pub use housekeep::{Chore, Schedule, due, schedules};
 pub use inbound::{
-    Addressed, Claim, Refusal, Scheme, Signature, activity_claim, bearer, claim, key, same,
+    Addressed, Claim, KeyForm, Refusal, Scheme, Signature, Signed, activity_claim, bearer, claim,
+    key, same,
 };
 pub use interact::{
     AnnouncedHere, Answering, Asked, Command, MOST_COMPLETIONS, Member, Place, Replies, Said,
@@ -65,7 +66,8 @@ pub use marker::{Marker, Marks};
 pub use markup::{LINK_SCHEMES, Text, convert, convert_in, escaped, literal, safe_url};
 pub use pattern::Pattern;
 pub use profile::{
-    Dialect, Features, Limits, Measure, MentionRoom, MentionStyle, Pins, Profile, Threads,
+    Bullet, Emphases, Escape, Features, Fences, Heading, Limits, Links, Markup, Measure,
+    MentionRoom, MentionStyle, Pins, Profile, Threads,
 };
 pub use render::{Context, Form, TemplateError, Templates};
 pub use retention::Retention;

@@ -5,11 +5,6 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Deserializer};
 use toml::Spanned;
 
-/// A section that takes no options beside its kind.
-#[derive(Debug, Deserialize)]
-#[serde(deny_unknown_fields, rename = "Options")]
-pub(crate) struct NoOptions {}
-
 /// How long a store keeps what herald records, beside its kind's own
 /// options.
 #[derive(Debug, Default, Deserialize, JsonSchema)]

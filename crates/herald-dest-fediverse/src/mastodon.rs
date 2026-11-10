@@ -1,6 +1,6 @@
 use herald_core::{
-    Announcement, Dialect, Entry, Features, Limits, Measure, MentionStyle, Pins, Profile, ReadBack,
-    Sent, Step, Threads, Waits,
+    Announcement, Bullet, Emphases, Entry, Escape, Features, Fences, Heading, Limits, Links,
+    Markup, Measure, MentionStyle, Pins, Profile, ReadBack, Sent, Step, Threads, Waits,
 };
 use herald_ports::{Http, HttpError, Request, Secret};
 use jiff::SignedDuration;
@@ -8,6 +8,22 @@ use jiff::SignedDuration;
 use crate::options::RouteOptions;
 use crate::read::read;
 use crate::request::{Refusal, step};
+
+/// Plain text, as Mastodon shows it.
+pub const MASTODON_MARKUP: Markup = Markup {
+    escape: Escape::Neutral,
+    links: Links::Spelled,
+    heading: Heading::Bare,
+    marks: Emphases {
+        emphasis: "",
+        strong: "",
+        strike: "",
+    },
+    fences: Fences::None,
+    bullet: Bullet::Symbol('-'),
+    html: false,
+    pills: None,
+};
 
 /// The most characters Mastodon takes in a status, where a route gives no
 /// limit of its server's own.
@@ -128,7 +144,7 @@ pub fn profile(route: &RouteOptions) -> Profile {
     let limit = route.limit.unwrap_or(LIMIT);
     let each = limit.saturating_sub(warning(route));
     Profile {
-        dialect: Dialect::Plain,
+        markup: MASTODON_MARKUP,
         measure: Measure::Chars,
         limits: Limits {
             title: route.title(),

@@ -5,6 +5,10 @@
 //! it replaces in a transaction of the object's storage: that is the
 //! compare-and-set.
 
+mod kind;
+
+pub use kind::DurableObjectKind;
+
 use herald_core::SecretRef;
 use herald_ports::{Sql, StoreError};
 use herald_records::{Dialect, Kept, SqlRecords};

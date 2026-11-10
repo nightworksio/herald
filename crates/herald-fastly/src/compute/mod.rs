@@ -63,7 +63,7 @@ fn configured() -> Result<(FastlyHost, Config), String> {
     Ok((host, config))
 }
 
-fn composed(host: FastlyHost, config: Config) -> Result<Composed<FastlyHost>, String> {
+fn composed(host: FastlyHost, config: Config) -> Result<Composed<'static, FastlyHost>, String> {
     let hosting = Hosting::Fastly;
     pollster::block_on(Composed::new(
         host,

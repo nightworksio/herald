@@ -8,6 +8,10 @@
 //! entry the key's prefix finds. The cache is scoped to the ref a run is on,
 //! and drops what no run reads for a week.
 
+mod kind;
+
+pub use kind::{ActionsCacheKind, RESULTS, RUNTIME_TOKEN};
+
 mod cache;
 mod options;
 mod service;

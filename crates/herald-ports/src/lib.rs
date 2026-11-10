@@ -7,6 +7,7 @@
 
 mod clock;
 mod crypto;
+mod dyn_store;
 mod erased;
 mod http;
 mod keyring;
@@ -21,7 +22,8 @@ mod timer;
 
 pub use clock::Clock;
 pub use crypto::{Algorithm, CryptoError, Signer, Verifier};
-pub use erased::{Boxed, DynHttp, DynMarkers, DynSecrets, DynSigner, Erased};
+pub use dyn_store::DynStore;
+pub use erased::{Boxed, DynHttp, DynKv, DynMarkers, DynSecrets, DynSigner, DynSql, Erased, Owned};
 pub use http::{
     Http, HttpError, Method, PUBLIC, Request, Response, USER_AGENT, WithBody, unreserved,
 };

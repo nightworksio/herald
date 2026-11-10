@@ -809,6 +809,7 @@ dependencies = [
  "herald-dest-slack",
  "herald-environment",
  "herald-flows",
+ "herald-kinds",
  "herald-native",
  "herald-ports",
  "herald-records",
@@ -818,6 +819,7 @@ dependencies = [
  "herald-store-actions-cache",
  "herald-store-dynamodb",
  "herald-store-git-branch",
+ "herald-store-markers",
  "herald-store-postgres",
  "herald-store-repo-variables",
  "herald-store-sqlite",
@@ -861,14 +863,17 @@ dependencies = [
  "herald-dest-matrix",
  "herald-dest-slack",
  "herald-flows",
+ "herald-kinds",
  "herald-ports",
  "herald-records",
+ "herald-store-actions-cache",
  "herald-store-d1",
  "herald-store-deno-kv",
  "herald-store-durable-object",
  "herald-store-dynamodb",
  "herald-store-fastly-kv",
  "herald-store-git-branch",
+ "herald-store-markers",
  "herald-store-postgres",
  "herald-store-repo-variables",
  "herald-store-sqlite",
@@ -899,6 +904,7 @@ dependencies = [
  "herald-store-dynamodb",
  "herald-store-fastly-kv",
  "herald-store-git-branch",
+ "herald-store-markers",
  "herald-store-postgres",
  "herald-store-repo-variables",
  "herald-store-sqlite",
@@ -1046,7 +1052,17 @@ dependencies = [
  "herald-sources-feed",
  "herald-sources-forge",
  "herald-sources-registry",
+ "herald-store-actions-cache",
+ "herald-store-d1",
+ "herald-store-deno-kv",
+ "herald-store-durable-object",
+ "herald-store-dynamodb",
+ "herald-store-fastly-kv",
+ "herald-store-git-branch",
  "herald-store-markers",
+ "herald-store-postgres",
+ "herald-store-repo-variables",
+ "herald-store-sqlite",
  "herald-testing",
  "herald-wire",
  "jiff",
@@ -1223,6 +1239,7 @@ version = "0.0.0"
 dependencies = [
  "base64 0.23.1",
  "herald-core",
+ "herald-kinds",
  "herald-ports",
  "herald-records",
  "herald-testing",
@@ -1237,6 +1254,7 @@ name = "herald-store-d1"
 version = "0.0.0"
 dependencies = [
  "herald-core",
+ "herald-kinds",
  "herald-ports",
  "herald-records",
  "herald-testing",
@@ -1251,6 +1269,7 @@ name = "herald-store-deno-kv"
 version = "0.0.0"
 dependencies = [
  "herald-core",
+ "herald-kinds",
  "herald-ports",
  "herald-records",
  "herald-testing",
@@ -1265,6 +1284,7 @@ name = "herald-store-durable-object"
 version = "0.0.0"
 dependencies = [
  "herald-core",
+ "herald-kinds",
  "herald-ports",
  "herald-records",
  "herald-testing",
@@ -1280,6 +1300,7 @@ version = "0.0.0"
 dependencies = [
  "herald-aws",
  "herald-core",
+ "herald-kinds",
  "herald-ports",
  "herald-records",
  "herald-testing",
@@ -1294,6 +1315,7 @@ name = "herald-store-fastly-kv"
 version = "0.0.0"
 dependencies = [
  "herald-core",
+ "herald-kinds",
  "herald-ports",
  "herald-records",
  "herald-testing",
@@ -1309,6 +1331,7 @@ version = "0.0.0"
 dependencies = [
  "base64 0.23.1",
  "herald-core",
+ "herald-kinds",
  "herald-ports",
  "herald-records",
  "herald-testing",
@@ -1323,10 +1346,14 @@ name = "herald-store-markers"
 version = "0.0.0"
 dependencies = [
  "herald-core",
+ "herald-kinds",
  "herald-ports",
+ "herald-records",
  "herald-testing",
  "jiff",
  "pollster",
+ "schemars",
+ "serde",
 ]
 
 [[package]]
@@ -1334,6 +1361,7 @@ name = "herald-store-postgres"
 version = "0.0.0"
 dependencies = [
  "herald-core",
+ "herald-kinds",
  "herald-ports",
  "herald-records",
  "herald-testing",
@@ -1348,6 +1376,7 @@ name = "herald-store-repo-variables"
 version = "0.0.0"
 dependencies = [
  "herald-core",
+ "herald-kinds",
  "herald-ports",
  "herald-records",
  "herald-testing",
@@ -1363,6 +1392,7 @@ name = "herald-store-sqlite"
 version = "0.0.0"
 dependencies = [
  "herald-core",
+ "herald-kinds",
  "herald-ports",
  "herald-records",
  "herald-testing",

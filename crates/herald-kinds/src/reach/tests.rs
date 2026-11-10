@@ -5,7 +5,10 @@
 
 use std::future::ready;
 
-use herald_core::{Dialect, Features, Limits, Measure, MentionStyle, Pins, Symbols, Threads};
+use herald_core::{
+    Bullet, Emphases, Escape, Features, Fences, Heading, Limits, Links, Markup, Measure,
+    MentionStyle, Pins, Symbols, Threads,
+};
 use herald_ports::{Http, Request, Response};
 use herald_testing::sample;
 
@@ -16,8 +19,24 @@ use super::*;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Plain(pub(crate) &'static str);
 
+/// Plain text, as a destination with no markup writes it.
+pub(crate) const PLAIN: Markup = Markup {
+    escape: Escape::Neutral,
+    links: Links::Spelled,
+    heading: Heading::Bare,
+    marks: Emphases {
+        emphasis: "",
+        strong: "",
+        strike: "",
+    },
+    fences: Fences::None,
+    bullet: Bullet::Symbol('-'),
+    html: false,
+    pills: None,
+};
+
 pub(crate) const PROFILE: Profile = Profile {
-    dialect: Dialect::Plain,
+    markup: PLAIN,
     measure: Measure::Chars,
     limits: Limits {
         title: 1,

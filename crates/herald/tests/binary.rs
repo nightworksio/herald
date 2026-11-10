@@ -166,7 +166,7 @@ body = "{{{{ event.body }}}}"
                 .spawn()
                 .unwrap()
         };
-        let (port, server) = (0..TRIES)
+        let (mut server, mut said) = (0..TRIES)
             .find_map(|_| {
                 let port = std::net::TcpListener::bind("127.0.0.1:0")
                     .unwrap()
@@ -174,17 +174,12 @@ body = "{{{{ event.body }}}}"
                     .unwrap()
                     .port();
                 let mut server = serving(port);
-                (0..200)
-                    .find_map(|_| {
-                        std::thread::sleep(std::time::Duration::from_millis(50));
-                        if std::net::TcpStream::connect(("127.0.0.1", port)).is_ok() {
-                            Some(true)
-                        } else {
-                            server.try_wait().unwrap().map(|_| false)
-                        }
-                    })
-                    .filter(|listening| *listening)
-                    .map(|_| (port, server))
+                let mut said = std::io::BufReader::new(server.stdout.take().unwrap());
+                let listening = format!("herald serves on 127.0.0.1:{port}");
+                std::io::BufRead::lines(&mut said)
+                    .map_while(Result::ok)
+                    .any(|line| line == listening)
+                    .then_some((server, said))
             })
             .expect("the server never listened");
         let killed = Command::new("kill")
@@ -192,12 +187,8 @@ body = "{{{{ event.body }}}}"
             .status()
             .unwrap();
         assert!(killed.success());
-        let output = server.wait_with_output().unwrap();
-        assert!(output.status.success(), "{:?}", output.status);
-        assert!(
-            String::from_utf8(output.stdout)
-                .unwrap()
-                .contains(&format!("herald serves on 127.0.0.1:{port}"))
-        );
+        std::io::Read::read_to_end(&mut said, &mut Vec::new()).unwrap();
+        let status = server.wait().unwrap();
+        assert!(status.success(), "{status:?}");
     }
 }

@@ -1,6 +1,6 @@
 use herald_core::{
-    Answering, DestinationName, Dialect, Profile, Room, Scheme, SecretRef, Symbols, Text,
-    WaitOptions,
+    Answering, DestinationName, KeyForm, Markup, Profile, Room, Scheme, SecretRef, Signed, Symbols,
+    Text, WaitOptions,
 };
 use herald_kinds::{
     Carried, DestinationConfig, DestinationKind, Endpoint, Fault, Interacted, Interacts, Placed,
@@ -14,6 +14,15 @@ use crate::interact::{self, Interacting, took};
 use crate::interactions::{Interactions, Via};
 use crate::matrix::{self, Matrix};
 use crate::options::{DestinationOptions, RouteOptions};
+
+/// A homeserver's transaction: `Authorization: Bearer <hs_token>`.
+pub const SCHEME: Scheme = Scheme {
+    name: "matrix",
+    signed: Signed::Bearer {
+        header: "Authorization",
+    },
+    key: KeyForm::Bytes,
+};
 
 /// What a homeserver is answered for a call that went through.
 const EMPTY: &str = "{}";
@@ -176,10 +185,10 @@ impl Interacts for Interacting {
         Self::answering(self)
     }
 
-    fn room(&self) -> (Dialect, Room) {
+    fn room(&self) -> (Markup, Room) {
         let profile = matrix::profile();
         (
-            Dialect::Matrix,
+            matrix::MARKUP,
             Room {
                 measure: profile.measure,
                 first: profile.limits.followup,
@@ -202,7 +211,7 @@ impl Interacts for Interacting {
     fn posted(&self, endpoint: Endpoint) -> Option<Result<(Scheme, &str), &'static str>> {
         (endpoint == Endpoint::Pushed).then(|| {
             self.homeserver_token()
-                .map(|token| (Scheme::Matrix, token.expose()))
+                .map(|token| (SCHEME, token.expose()))
                 .ok_or("application service for such a destination")
         })
     }

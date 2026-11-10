@@ -3,10 +3,15 @@ use std::pin::Pin;
 
 use herald_core::{Entry, Key, Marker};
 
+use jiff::Timestamp;
+
+use crate::clock::Clock;
 use crate::crypto::{Algorithm, CryptoError, Signer};
 use crate::http::{Http, HttpError, Request, Response};
+use crate::kv::{Kv, KvError, Pair, Stamped, Versionstamp};
 use crate::markers::{MarkedThread, Markers, MarkersError};
 use crate::secret::{Secret, SecretError, Secrets};
+use crate::sql::{Changed, Sql, SqlError, Statement};
 
 /// A future boxed, as a trait object's methods return one.
 pub type Boxed<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
@@ -106,6 +111,131 @@ impl<M: Markers> DynMarkers for M {
     }
 }
 
+/// [`Sql`] as a trait object: every `Sql` is one.
+pub trait DynSql: Sync {
+    /// Runs `statements` in one transaction, all or none, and answers each.
+    fn transaction_boxed(
+        &self,
+        statements: Vec<Statement>,
+    ) -> Boxed<'_, Result<Vec<Changed>, SqlError>>;
+}
+
+impl<S: Sql> DynSql for S {
+    fn transaction_boxed(
+        &self,
+        statements: Vec<Statement>,
+    ) -> Boxed<'_, Result<Vec<Changed>, SqlError>> {
+        Box::pin(self.transaction(statements))
+    }
+}
+
+/// [`Kv`] as a trait object: every `Kv` is one.
+pub trait DynKv: Sync {
+    /// The value at `key`, and its versionstamp.
+    fn get_boxed<'a>(&'a self, key: &'a [String]) -> Boxed<'a, Result<Option<Stamped>, KvError>>;
+
+    /// Sets `key` to `value` if its versionstamp is `expected`.
+    fn set_if_boxed<'a>(
+        &'a self,
+        key: &'a [String],
+        value: Vec<u8>,
+        expected: Option<Versionstamp>,
+    ) -> Boxed<'a, Result<Option<Versionstamp>, KvError>>;
+
+    /// Deletes `key` if its versionstamp is `expected`.
+    fn delete_if_boxed<'a>(
+        &'a self,
+        key: &'a [String],
+        expected: Versionstamp,
+    ) -> Boxed<'a, Result<bool, KvError>>;
+
+    /// Every key under `prefix`, with its value.
+    fn list_boxed<'a>(&'a self, prefix: &'a [String]) -> Boxed<'a, Result<Vec<Pair>, KvError>>;
+}
+
+impl<K: Kv> DynKv for K {
+    fn get_boxed<'a>(&'a self, key: &'a [String]) -> Boxed<'a, Result<Option<Stamped>, KvError>> {
+        Box::pin(self.get(key))
+    }
+
+    fn set_if_boxed<'a>(
+        &'a self,
+        key: &'a [String],
+        value: Vec<u8>,
+        expected: Option<Versionstamp>,
+    ) -> Boxed<'a, Result<Option<Versionstamp>, KvError>> {
+        Box::pin(self.set_if(key, value, expected))
+    }
+
+    fn delete_if_boxed<'a>(
+        &'a self,
+        key: &'a [String],
+        expected: Versionstamp,
+    ) -> Boxed<'a, Result<bool, KvError>> {
+        Box::pin(self.delete_if(key, expected))
+    }
+
+    fn list_boxed<'a>(&'a self, prefix: &'a [String]) -> Boxed<'a, Result<Vec<Pair>, KvError>> {
+        Box::pin(self.list(prefix))
+    }
+}
+
+/// A port a host offers, owned as a trait object, as code generic over the
+/// port takes it.
+pub struct Owned<T: ?Sized>(pub Box<T>);
+
+impl<T: ?Sized> Owned<T> {
+    /// `port`, owned.
+    #[must_use]
+    pub fn new(port: Box<T>) -> Self {
+        Self(port)
+    }
+}
+
+impl Http for Owned<dyn DynHttp + Send + '_> {
+    fn send(&self, request: Request) -> impl Future<Output = Result<Response, HttpError>> + Send {
+        self.0.send_boxed(request)
+    }
+}
+
+impl Sql for Owned<dyn DynSql + '_> {
+    fn transaction(
+        &self,
+        statements: Vec<Statement>,
+    ) -> impl Future<Output = Result<Vec<Changed>, SqlError>> + Send {
+        self.0.transaction_boxed(statements)
+    }
+}
+
+impl Kv for Owned<dyn DynKv + '_> {
+    async fn get(&self, key: &[String]) -> Result<Option<Stamped>, KvError> {
+        self.0.get_boxed(key).await
+    }
+
+    async fn set_if(
+        &self,
+        key: &[String],
+        value: Vec<u8>,
+        expected: Option<Versionstamp>,
+    ) -> Result<Option<Versionstamp>, KvError> {
+        self.0.set_if_boxed(key, value, expected).await
+    }
+
+    async fn delete_if(&self, key: &[String], expected: Versionstamp) -> Result<bool, KvError> {
+        self.0.delete_if_boxed(key, expected).await
+    }
+
+    async fn list(&self, prefix: &[String]) -> Result<Vec<Pair>, KvError> {
+        self.0.list_boxed(prefix).await
+    }
+}
+
+impl Clock for Owned<dyn Clock + '_> {
+    fn now(&self) -> Timestamp {
+        self.0.now()
+    }
+}
+
 /// A trait object's port, as code generic over the port takes it.
 #[derive(Clone, Copy)]
 pub struct Erased<'a, T: ?Sized>(pub &'a T);
@@ -128,6 +258,12 @@ impl Signer for Erased<'_, dyn DynSigner + '_> {
 
     async fn public(&self, algorithm: Algorithm, key: &Secret) -> Result<Vec<u8>, CryptoError> {
         self.0.public_boxed(algorithm, key).await
+    }
+}
+
+impl Secrets for Erased<'_, dyn DynSecrets + '_> {
+    async fn secret(&self, name: &str) -> Result<Secret, SecretError> {
+        self.0.secret_boxed(name).await
     }
 }
 
@@ -212,6 +348,111 @@ mod tests {
                 locked: true,
             }])
         }
+    }
+
+    struct Shelf;
+
+    impl Kv for Shelf {
+        async fn get(&self, key: &[String]) -> Result<Option<Stamped>, KvError> {
+            Ok(Some(Stamped {
+                value: key.concat().into_bytes(),
+                versionstamp: Versionstamp("v1".to_owned()),
+            }))
+        }
+
+        async fn set_if(
+            &self,
+            _: &[String],
+            value: Vec<u8>,
+            _: Option<Versionstamp>,
+        ) -> Result<Option<Versionstamp>, KvError> {
+            Ok(Some(Versionstamp(String::from_utf8(value).unwrap())))
+        }
+
+        async fn delete_if(&self, _: &[String], expected: Versionstamp) -> Result<bool, KvError> {
+            Ok(expected.0 == "v1")
+        }
+
+        async fn list(&self, prefix: &[String]) -> Result<Vec<Pair>, KvError> {
+            Ok(vec![Pair {
+                key: prefix.to_vec(),
+                value: b"listed".to_vec(),
+            }])
+        }
+    }
+
+    struct Stopped;
+
+    impl Clock for Stopped {
+        fn now(&self) -> Timestamp {
+            Timestamp::from_second(1_700_000_000).unwrap()
+        }
+    }
+
+    struct Counted;
+
+    impl Sql for Counted {
+        async fn transaction(&self, statements: Vec<Statement>) -> Result<Vec<Changed>, SqlError> {
+            Ok(statements
+                .iter()
+                .map(|statement| Changed {
+                    rows: vec![vec![crate::sql::Value::Text(statement.sql.clone())]],
+                    changed: 1,
+                })
+                .collect())
+        }
+    }
+
+    #[test]
+    fn an_owned_port_answers_as_the_port_it_owns() {
+        let kv: Owned<dyn DynKv> = Owned::new(Box::new(Shelf));
+        let key = ["a".to_owned(), "b".to_owned()];
+        assert_eq!(
+            pollster::block_on(kv.get(&key)),
+            Ok(Some(Stamped {
+                value: b"ab".to_vec(),
+                versionstamp: Versionstamp("v1".to_owned()),
+            }))
+        );
+        assert_eq!(
+            pollster::block_on(kv.set_if(&key, b"v2".to_vec(), None)),
+            Ok(Some(Versionstamp("v2".to_owned())))
+        );
+        assert_eq!(
+            pollster::block_on(kv.delete_if(&key, Versionstamp("v1".to_owned()))),
+            Ok(true)
+        );
+        assert_eq!(
+            pollster::block_on(kv.delete_if(&key, Versionstamp("v0".to_owned()))),
+            Ok(false)
+        );
+        assert_eq!(
+            pollster::block_on(kv.list(&key)),
+            Ok(vec![Pair {
+                key: key.to_vec(),
+                value: b"listed".to_vec(),
+            }])
+        );
+        let clock: Owned<dyn Clock> = Owned::new(Box::new(Stopped));
+        assert_eq!(clock.now(), Timestamp::from_second(1_700_000_000).unwrap());
+        let sql: Owned<dyn DynSql> = Owned::new(Box::new(Counted));
+        assert_eq!(
+            pollster::block_on(sql.transaction(vec![Statement::change(
+                "DELETE",
+                vec![crate::sql::Value::Null]
+            )])),
+            Ok(vec![Changed {
+                rows: vec![vec![crate::sql::Value::Text("DELETE".to_owned())]],
+                changed: 1,
+            }])
+        );
+        let http: Owned<dyn DynHttp + Send> = Owned::new(Box::new(Echo));
+        let answered = pollster::block_on(http.send(Request::new(
+            crate::http::Method::Get,
+            crate::secret::Text::plain("https://example.org/owned"),
+        )))
+        .unwrap();
+        assert_eq!(answered.body, b"https://example.org/owned");
     }
 
     #[test]

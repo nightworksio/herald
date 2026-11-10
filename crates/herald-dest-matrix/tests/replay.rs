@@ -4,8 +4,8 @@
 #[cfg(test)]
 mod replay {
     use herald_core::{
-        Announcement, Dialect, Entry, Facts, MentionRoom, MentionStyle, Pins, ReadBack, Sent, Step,
-        Text, Threads, Waits,
+        Announcement, Entry, Facts, MentionRoom, MentionStyle, Pins, ReadBack, Sent, Step, Text,
+        Threads, Waits,
     };
     use herald_dest_matrix::{Matrix, MatrixMarkers, Refusal, RouteOptions, profile};
     use herald_ports::{Markers, MarkersError, Method, Secret};
@@ -470,7 +470,7 @@ mod replay {
         }
         let profile = profile();
         assert_eq!(matrix().profile(), profile);
-        assert_eq!(profile.dialect, Dialect::Matrix);
+        assert_eq!(profile.markup, herald_dest_matrix::MARKUP);
         assert_eq!(profile.features.threads, Threads::Replies);
         assert_eq!(profile.features.pins, Pins::Many);
         assert_eq!(

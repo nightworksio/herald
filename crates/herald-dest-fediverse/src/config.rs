@@ -1,4 +1,4 @@
-use herald_core::{Profile, SecretRef, Symbols, WaitOptions, Waits};
+use herald_core::{KeyForm, Profile, Scheme, SecretRef, Signed, Symbols, WaitOptions, Waits};
 use herald_kinds::{
     DestinationConfig, DestinationKind, Fault, Placed, Placement, Placing, Reached,
 };
@@ -7,6 +7,13 @@ use herald_ports::Secret;
 use crate::activitypub::{ActivityPub, ActorOptions, ActorRouteOptions, actor_profile};
 use crate::mastodon::{self, Mastodon};
 use crate::options::{DestinationOptions, RouteOptions};
+
+/// An activity posted to an actor's inbox, signed as HTTP Signatures do.
+pub const ACTOR_SCHEME: Scheme = Scheme {
+    name: "activitypub",
+    signed: Signed::HttpSignature,
+    key: KeyForm::RsaPem,
+};
 
 /// The kind of a Mastodon destination, as the config spells it.
 pub const MASTODON: &str = "mastodon";

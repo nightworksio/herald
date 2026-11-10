@@ -1,33 +1,33 @@
 //! The oracle the markup property tests and fuzz targets share: whether a
 //! converted text could mention anyone or link anywhere it does not show.
 
-use crate::{Dialect, Text};
+use crate::{Escape, Markup, Text};
 
 const BREAK: char = '\u{200B}';
 const MENTIONS: [char; 3] = ['@', '\u{FF20}', '\u{FE6B}'];
 const SCHEMES: [&str; 3] = ["https://", "http://", "mailto:"];
 
-/// Why `text`, converted to `dialect`, is not inert.
-pub fn inert(text: &Text, dialect: Dialect) -> Result<(), String> {
-    match dialect {
-        Dialect::Discord => discord(&text.body),
-        Dialect::Slack => slack(&text.body),
-        Dialect::Plain => plain(&text.body),
-        Dialect::Matrix => {
-            let markup = text.html.as_deref().unwrap_or_default();
-            breaks(&outside_urls(&text.body), &MENTIONS)?;
-            html(markup)?;
-            hrefs_shown_in(markup, &text.body)
-        }
+/// Why `text`, converted to `markup`, is not inert.
+pub fn inert(text: &Text, markup: Markup) -> Result<(), String> {
+    if markup.html {
+        let markup = text.html.as_deref().unwrap_or_default();
+        breaks(&outside_urls(&text.body), &MENTIONS)?;
+        html(markup)?;
+        return hrefs_shown_in(markup, &text.body);
+    }
+    match markup.escape {
+        Escape::Backslash => discord(&text.body),
+        Escape::Entities => slack(&text.body),
+        Escape::Neutral => plain(&text.body),
     }
 }
 
-/// Why `text`, shown literally in `dialect`, could be read as anything but
+/// Why `text`, shown literally in `markup`, could be read as anything but
 /// its letters.
-pub fn literal_inert(text: &Text, dialect: Dialect) -> Result<(), String> {
-    inert(text, dialect)?;
-    match dialect {
-        Dialect::Discord => {
+pub fn literal_inert(text: &Text, markup: Markup) -> Result<(), String> {
+    inert(text, markup)?;
+    match markup.escape {
+        Escape::Backslash => {
             let mut characters = text.body.chars();
             while let Some(character) = characters.next() {
                 if character == '\\' {
@@ -38,10 +38,10 @@ pub fn literal_inert(text: &Text, dialect: Dialect) -> Result<(), String> {
             }
             Ok(())
         }
-        Dialect::Slack if text.body.contains('<') => {
+        Escape::Entities if text.body.contains('<') => {
             Err(format!("a link or mention in {:?}", text.body))
         }
-        Dialect::Matrix if text.html.as_deref().unwrap_or_default().contains('<') => {
+        _ if markup.html && text.html.as_deref().unwrap_or_default().contains('<') => {
             Err(format!("a tag in {:?}", text.html))
         }
         _ => Ok(()),

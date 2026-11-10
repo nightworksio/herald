@@ -30,7 +30,7 @@ async fn composed(
     vars: Vec<(String, String)>,
     method: &str,
     target: &str,
-) -> Result<Result<Composed<WasiHost>, Reply>, String> {
+) -> Result<Result<Composed<'static, WasiHost>, Reply>, String> {
     let path = named(&vars, "HERALD_CONFIG").unwrap_or_else(|| CONFIG.to_owned());
     let hosting = named(&vars, "HERALD_HOST").unwrap_or_else(|| HOST.to_owned());
     let hosting =
@@ -57,7 +57,7 @@ pub(super) fn said(lines: impl IntoIterator<Item = String>) {
 
 /// herald composed for one request.
 pub(super) struct Started {
-    composed: Composed<WasiHost>,
+    composed: Composed<'static, WasiHost>,
 }
 
 impl Started {

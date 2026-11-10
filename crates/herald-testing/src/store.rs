@@ -205,7 +205,7 @@ impl Pins for FakeStore {
 impl Deliveries for FakeStore {
     async fn admit(&self, scheme: Scheme, id: &str, at: Timestamp) -> Result<Admitted, StoreError> {
         let mut state = lock(&self.state);
-        let delivery = (scheme.name(), id.to_owned());
+        let delivery = (scheme.name, id.to_owned());
         if state.deliveries.contains_key(&delivery) {
             return Ok(Admitted::Seen);
         }
@@ -216,7 +216,7 @@ impl Deliveries for FakeStore {
     async fn release(&self, scheme: Scheme, id: &str) -> Result<(), StoreError> {
         lock(&self.state)
             .deliveries
-            .remove(&(scheme.name(), id.to_owned()));
+            .remove(&(scheme.name, id.to_owned()));
         Ok(())
     }
 

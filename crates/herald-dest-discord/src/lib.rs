@@ -22,8 +22,8 @@ mod request;
 pub mod setup;
 mod unpin;
 
-pub use config::{DiscordKind, KIND};
-pub use discord::{Credential, Discord, profile};
+pub use config::{DiscordKind, KIND, SCHEME};
+pub use discord::{Credential, Discord, MARKUP, profile};
 pub use gateway::{Effect, GATEWAY, Gateway};
 pub use interact::{
     Interacting, MESSAGE, Received, Replying, Unread, choices, deferred, listed, made, pong,

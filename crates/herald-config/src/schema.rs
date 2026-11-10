@@ -10,80 +10,17 @@ use crate::file::{
     ServerFile, TemplateFile,
 };
 
-/// `[store]`: one store, by its kind.
-#[derive(JsonSchema)]
-#[serde(tag = "kind", rename_all = "kebab-case", deny_unknown_fields)]
-#[schemars(rename = "Store")]
-#[allow(dead_code, reason = "read only by the schema's derive")]
-enum StoreSchema {
-    /// A SQLite file, on a volume or a persistent disk.
-    Sqlite {
-        #[serde(flatten)]
-        options: herald_store_sqlite::StoreOptions,
-        #[serde(flatten)]
-        keep: KeepFile,
-    },
-    /// A Postgres database.
-    Postgres {
-        #[serde(flatten)]
-        options: herald_store_postgres::StoreOptions,
-        #[serde(flatten)]
-        keep: KeepFile,
-    },
-    /// Cloudflare D1, through the Worker's binding.
-    D1 {
-        #[serde(flatten)]
-        options: herald_store_d1::StoreOptions,
-        #[serde(flatten)]
-        keep: KeepFile,
-    },
-    /// The storage of herald's Cloudflare Durable Object, through the
-    /// Worker's binding.
-    DurableObject {
-        #[serde(flatten)]
-        options: herald_store_durable_object::StoreOptions,
-        #[serde(flatten)]
-        keep: KeepFile,
-    },
-    /// An AWS DynamoDB table.
-    Dynamodb {
-        #[serde(flatten)]
-        options: herald_store_dynamodb::StoreOptions,
-        #[serde(flatten)]
-        keep: KeepFile,
-    },
-    /// Deno KV, on Deno Deploy or wherever a database is opened.
-    DenoKv {
-        #[serde(flatten)]
-        options: herald_store_deno_kv::StoreOptions,
-        #[serde(flatten)]
-        keep: KeepFile,
-    },
-    /// A Fastly KV Store, on Fastly Compute.
-    FastlyKv {
-        #[serde(flatten)]
-        options: herald_store_fastly_kv::StoreOptions,
-        #[serde(flatten)]
-        keep: KeepFile,
-    },
-    /// The destinations' own posts.
-    Markers {},
-    /// One file per record on a `herald-state` branch.
-    GitBranch {
-        #[serde(flatten)]
-        options: herald_store_git_branch::StoreOptions,
-        #[serde(flatten)]
-        keep: KeepFile,
-    },
-    /// Generations of the GitHub Actions cache.
-    ActionsCache {
-        #[serde(flatten)]
-        options: herald_store_actions_cache::StoreOptions,
-        #[serde(flatten)]
-        keep: KeepFile,
-    },
-    /// The repository's variables.
-    RepoVariables(herald_store_repo_variables::StoreOptions),
+/// `[store]`: one store, by its kind: its schema is its kind's.
+struct StoreSchema;
+
+impl JsonSchema for StoreSchema {
+    fn schema_name() -> Cow<'static, str> {
+        STORE.into()
+    }
+
+    fn json_schema(_: &mut SchemaGenerator) -> Schema {
+        Schema::default()
+    }
 }
 
 /// A destination, by its kind: its schema is its kind's.
@@ -148,6 +85,17 @@ enum Tagged<T> {
     Kind(T),
 }
 
+/// A store's options with how long it keeps its records.
+#[derive(JsonSchema)]
+#[schemars(deny_unknown_fields)]
+#[allow(dead_code, reason = "read only by the schema's derive")]
+struct Retained<T> {
+    #[serde(flatten)]
+    options: T,
+    #[serde(flatten)]
+    keep: KeepFile,
+}
+
 /// A route to a destination of one kind.
 #[derive(JsonSchema)]
 #[schemars(deny_unknown_fields)]
@@ -159,6 +107,8 @@ struct Routed<T> {
     own: T,
 }
 
+/// The schema's name for a store.
+const STORE: &str = "Store";
 /// The schema's name for a destination.
 const DESTINATION: &str = "Destination";
 /// The schema's name for a route.
@@ -196,6 +146,21 @@ pub(crate) fn tagged<T: JsonSchema>(
         *kind = name.into();
     }
     described(&variant, description)
+}
+
+/// The schema of a store of the kind `name`, with options `T`, and how long
+/// it keeps its records where it is `retained`.
+pub(crate) fn store<T: JsonSchema>(
+    generator: &mut SchemaGenerator,
+    name: &str,
+    description: &str,
+    retained: bool,
+) -> Schema {
+    if retained {
+        tagged::<Retained<T>>(generator, name, description)
+    } else {
+        tagged::<T>(generator, name, description)
+    }
 }
 
 /// The schema of a route to a destination of one kind, with options `T`,
@@ -264,6 +229,10 @@ struct FileSchema {
 pub fn schema(kinds: &Kinds) -> String {
     let mut generator = SchemaGenerator::default();
     let mut root = generator.root_schema_for::<FileSchema>();
+    let stores: Vec<_> = kinds
+        .stores()
+        .map(|kind| kind.schema(&mut generator).to_value())
+        .collect();
     let destinations: Vec<_> = kinds
         .destinations()
         .map(|kind| kind.destination_schema(&mut generator).to_value())
@@ -277,6 +246,10 @@ pub fn schema(kinds: &Kinds) -> String {
         .iter()
         .map(|(name, schema)| (name.clone(), schema.clone()))
         .collect();
+    definitions.insert(
+        STORE.to_owned(),
+        serde_json::json!({ "description": "`[store]`: one store, by its kind.", "oneOf": stores }),
+    );
     definitions.insert(
         DESTINATION.to_owned(),
         serde_json::json!({ "description": "A destination, by its kind.", "oneOf": destinations }),
@@ -296,4 +269,34 @@ pub fn schema(kinds: &Kinds) -> String {
         "{}\n",
         serde_json::to_string_pretty(&root).unwrap_or_default()
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[derive(JsonSchema)]
+    #[schemars(deny_unknown_fields)]
+    #[allow(dead_code, reason = "read only by the schema's derive")]
+    struct Options {
+        path: String,
+    }
+
+    #[test]
+    fn a_store_lists_how_long_it_keeps_records_only_where_it_is_retained() {
+        let mut generator = SchemaGenerator::default();
+        for retained in [true, false] {
+            let schema = store::<Options>(&mut generator, "kept", "Kept.", retained);
+            assert_eq!(
+                schema.pointer("/properties/kind/const"),
+                Some(&"kept".into())
+            );
+            assert_eq!(schema.pointer("/description"), Some(&"Kept.".into()));
+            assert!(schema.pointer("/properties/path").is_some());
+            assert_eq!(
+                schema.pointer("/properties/keep_ledger").is_some(),
+                retained
+            );
+        }
+    }
 }

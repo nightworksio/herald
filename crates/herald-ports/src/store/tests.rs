@@ -1,5 +1,15 @@
 use super::*;
 
+/// A scheme as its crate writes it, for these tests.
+const GITHUB: herald_core::Scheme = herald_core::Scheme {
+    name: "github",
+    signed: herald_core::Signed::Body {
+        headers: &["X-Hub-Signature-256"],
+        prefix: "sha256=",
+    },
+    key: herald_core::KeyForm::Bytes,
+};
+
 struct Derived;
 
 impl Ledger for Derived {
@@ -183,11 +193,11 @@ fn the_served_kinds_kept_nowhere_answer_unsupported_naming_them() {
     };
     for unkept in [None, Some(&Unkept)] {
         assert_eq!(
-            unsupported(unkept.admit(Scheme::GitHub, "1", at)),
+            unsupported(unkept.admit(GITHUB, "1", at)),
             naming("deliveries")
         );
         assert_eq!(
-            unsupported(unkept.release(Scheme::GitHub, "1")),
+            unsupported(unkept.release(GITHUB, "1")),
             naming("deliveries")
         );
         assert_eq!(

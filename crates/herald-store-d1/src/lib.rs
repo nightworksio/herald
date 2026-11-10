@@ -5,6 +5,10 @@
 //! transaction changes the row only where it still has that version: that
 //! is the compare-and-set.
 
+mod kind;
+
+pub use kind::D1Kind;
+
 use herald_core::SecretRef;
 use herald_ports::{Sql, StoreError};
 use herald_records::{Dialect, Kept, SqlRecords};

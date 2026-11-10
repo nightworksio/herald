@@ -7,6 +7,10 @@
 //! is taken as abandoned. Writing variables needs a token with the
 //! repository's Variables permission, which the job's own token lacks.
 
+mod kind;
+
+pub use kind::RepoVariablesKind;
+
 mod name;
 mod options;
 mod variables;

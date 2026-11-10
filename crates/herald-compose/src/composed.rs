@@ -1,4 +1,5 @@
 use std::future::Future;
+use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 
 use herald_config::Config;
@@ -15,7 +16,7 @@ use jiff::Timestamp;
 use crate::answer::{Answer, Left};
 use crate::capped::Capped;
 use crate::host::Host;
-use crate::records::{Records, Served, reached};
+use crate::records::{Opener, Records, Served, reached};
 
 /// The variable that bounds a request's whole time, in milliseconds, in
 /// place of the config's `[http] total`.
@@ -24,10 +25,10 @@ const TIMEOUT_MS: &str = "HERALD_TIMEOUT_MS";
 /// herald composed on a host: the config, the store it names, and every
 /// route, source and destination connected, ready to answer requests, do
 /// the work they leave, and run each scheduled round.
-pub struct Composed<H: Host> {
-    host: H,
+pub struct Composed<'o, H: Host + 'o> {
+    host: Arc<H>,
     config: Config,
-    records: Records<H>,
+    records: Records<'o>,
     connected: Connected<H::Http>,
     webhooks: Webhooks,
     public: Capped<H::Http>,
@@ -38,7 +39,7 @@ pub struct Composed<H: Host> {
     run: String,
 }
 
-impl<H: Host> Composed<H> {
+impl<'o, H: Host + 'o> Composed<'o, H> {
     /// `config` composed on `host`, keeping its records in a store of one
     /// of the kinds in `stores`, and taking leases under the run name `run`.
     ///
@@ -50,9 +51,18 @@ impl<H: Host> Composed<H> {
         config: Config,
         stores: &[&str],
         run: impl Into<String>,
-    ) -> Result<Self, String> {
+    ) -> Result<Self, String>
+    where
+        H: Send,
+        H::Http: Send + 'static,
+        H::Clock: Send + 'static,
+        H::Sql: 'static,
+        H::Kv: 'static,
+    {
+        let host = Arc::new(host);
         let outbound = config.http.clone().timed(host.var(TIMEOUT_MS));
-        let records = reached(&host, &config.store, &outbound, stores).await?;
+        let opener = Opener::new(Arc::clone(&host), outbound.clone());
+        let records = reached(Arc::new(opener), &config.store, stores).await?;
         let prepared = prepare(&config, host.secrets(), host.signer())
             .await
             .map_err(|error| error.to_string())?
@@ -207,7 +217,7 @@ trait Keyed<H: Host> {
 }
 
 struct Through<'c, H: Host, W> {
-    composed: &'c Composed<H>,
+    composed: &'c Composed<'c, H>,
     admission: Admission,
     work: W,
 }

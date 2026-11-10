@@ -29,7 +29,6 @@ use herald_flows::{
 };
 use herald_native::random_secret;
 use herald_ports::{Http, HttpError, Keyring, Request, Response, Secrets, Store as Keeps};
-use herald_records::Memory;
 use herald_sources_forge::{Forge, Origin, Repository, SourceOptions, Token};
 
 mod apps;
@@ -64,11 +63,6 @@ pub const STOPPED: u8 = 1;
 /// The config has mistakes.
 pub const MISTAKEN: u8 = 2;
 
-/// Where the Actions cache's results service is, as herald's Action hands
-/// it on.
-const RESULTS: &str = "ACTIONS_RESULTS_URL";
-/// The run's token for the Actions cache, as herald's Action hands it on.
-const RUNTIME_TOKEN: &str = "ACTIONS_RUNTIME_TOKEN";
 /// A GitLab CI job's own token.
 const JOB_TOKEN: &str = "CI_JOB_TOKEN";
 /// Where `herald server` listens, in place of the config's.
@@ -329,8 +323,10 @@ fn read(path: &str) -> Result<Config, String> {
     };
     let mut config =
         load(path, &text, &files, &herald_compose::kinds()).map_err(|errors| errors.to_string())?;
-    if let herald_config::Store::Sqlite(options) = &mut config.store {
+    if let Some(options) = config.store.of::<herald_store_sqlite::StoreOptions>() {
+        let mut options = options.clone();
         options.path = Some(options.file(directory).display().to_string());
+        config.store = herald_config::Store::new(options);
     }
     Ok(config)
 }
@@ -543,10 +539,7 @@ async fn dry<'a>(
             sent: Arc::clone(sent),
         }))
     });
-    Ok((
-        Records::Memory(herald_records::Kept::new(Memory::default())),
-        connected,
-    ))
+    Ok((Records::memory(), connected))
 }
 
 /// A new marker secret printed once, or why none could be made.

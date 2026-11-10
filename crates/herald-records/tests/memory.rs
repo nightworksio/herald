@@ -3,7 +3,7 @@
 
 #[cfg(test)]
 mod memory {
-    use herald_ports::{Keyring, KnownKey};
+    use herald_ports::{DynStore, Erased, Keyring, KnownKey};
     use herald_records::{Kept, Memory, MemoryKeyring, Records, Wrote};
     use herald_testing::{keyring_conformance, store_conformance};
     use jiff::Timestamp;
@@ -14,6 +14,14 @@ mod memory {
             pollster::block_on(store_conformance(&Kept::new(Memory::default()))),
             Ok(())
         );
+    }
+
+    #[test]
+    fn a_store_erased_to_a_trait_object_passes_both_suites_as_itself() {
+        let kept = Kept::new(Memory::default());
+        let erased = Erased(&kept as &dyn DynStore);
+        assert_eq!(pollster::block_on(store_conformance(&erased)), Ok(()));
+        assert_eq!(pollster::block_on(keyring_conformance(&erased)), Ok(()));
     }
 
     #[test]

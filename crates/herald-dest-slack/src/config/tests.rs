@@ -275,7 +275,7 @@ fn commands_are_taken_with_the_secrets_they_are_signed_and_opened_with() {
     assert_eq!(answering.sessions(), None);
     assert_eq!(
         answering.posted(Endpoint::Posted),
-        Some(Ok((Scheme::Slack, "signing")))
+        Some(Ok((crate::SCHEME, "signing")))
     );
     assert_eq!(answering.posted(Endpoint::Pushed), None);
     assert!(answering.session().is_none());

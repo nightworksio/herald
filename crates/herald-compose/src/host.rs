@@ -1,11 +1,10 @@
 use std::future::{Future, ready};
-use std::path::Path;
 
+use herald_kinds::{KvAt, SqlAt};
 use herald_ports::{
-    Changed, Clock, Http, Kv, KvError, Outbound, Pair, Proxy, Secret, Secrets, Signer, Sql,
-    SqlError, Stamped, Statement, Verifier, Versionstamp,
+    Changed, Clock, Http, Kv, KvError, Outbound, Pair, Proxy, Secrets, Signer, Sql, SqlError,
+    Stamped, Statement, Verifier, Versionstamp,
 };
-use jiff::SignedDuration;
 
 /// What a platform gives herald: its ports, its variables, and the
 /// databases it offers.
@@ -68,45 +67,6 @@ pub trait Host: Sync {
     /// A nonce no other run or job takes, which keeps each job's name for
     /// its leases its own (ADR-0005).
     fn nonce(&self) -> String;
-}
-
-/// Where a store's database is.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SqlAt<'a> {
-    /// A SQLite file.
-    Sqlite {
-        /// The file.
-        file: &'a Path,
-        /// How long a transaction waits for another process to let go of it.
-        busy: SignedDuration,
-    },
-    /// A Postgres database, by its connection URL.
-    Postgres {
-        /// The connection URL.
-        url: &'a Secret,
-        /// How long making a connection may take.
-        connect: SignedDuration,
-        /// How long one statement may run before the database cancels it.
-        statement: SignedDuration,
-    },
-    /// A Cloudflare D1 database, by the Worker's binding to it.
-    D1(&'a str),
-    /// The storage of a Durable Object.
-    DurableObject {
-        /// The Worker's binding to the object's namespace.
-        binding: &'a str,
-        /// The object's name.
-        object: &'a str,
-    },
-}
-
-/// Where a store's key-value store is.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum KvAt<'a> {
-    /// Deno KV: the default database, or the one at a path or URL.
-    DenoKv(Option<&'a str>),
-    /// A Fastly KV Store, by its name.
-    FastlyKv(&'a str),
 }
 
 /// The database, or key-value store, of a host that offers none: every

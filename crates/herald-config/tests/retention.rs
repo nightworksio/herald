@@ -72,7 +72,7 @@ body = "{{ event.body }}"
                 notes: Some(days(14)),
             }
         );
-        let herald_config::Store::Sqlite(options) = sqlite.store else {
+        let Some(options) = sqlite.store.of::<herald_store_sqlite::StoreOptions>() else {
             panic!("not a sqlite store: {:?}", sqlite.store);
         };
         assert_eq!(options.path.as_deref(), Some("state.sqlite"));
@@ -96,5 +96,28 @@ body = "{{ event.body }}"
         assert!(soon.contains("\"90d\", or \"forever\""), "{soon}");
         let markers = config("kind = \"markers\"\nkeep_notes = \"7d\"").unwrap_err();
         assert!(markers.contains("keep_notes"), "{markers}");
+    }
+
+    #[test]
+    fn every_store_but_markers_keeps_records_as_long_as_its_table_and_its_schema_say() {
+        let variables = config(
+            "kind = \"repo-variables\"\ntoken = { secret = \"HERALD_STATE_TOKEN\" }\nkey = { secret = \"HERALD_STORE_KEY\" }\nkeep_ledger = \"30d\"",
+        )
+        .unwrap();
+        assert_eq!(variables.retention.ledger, Some(days(30)));
+        let schema: serde_json::Value =
+            serde_json::from_str(&herald_config::schema(&crate::common::kinds())).unwrap();
+        let stores = schema["$defs"]["Store"]["oneOf"].as_array().unwrap();
+        assert_eq!(stores.len(), crate::common::kinds().store_kinds().len());
+        for store in stores {
+            let kind = store["properties"]["kind"]["const"].as_str().unwrap();
+            for key in ["keep_deliveries", "keep_ledger", "keep_notes"] {
+                assert_eq!(
+                    store["properties"].get(key).is_some(),
+                    kind != "markers",
+                    "{kind} {key}"
+                );
+            }
+        }
     }
 }
