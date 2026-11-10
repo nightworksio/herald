@@ -31,39 +31,54 @@ fn interactions_default_to_an_appservice_answering_herald_s_prefix() {
 
 #[test]
 fn an_appservice_needs_both_tokens_and_syncing_needs_neither() {
-    for json in [
+    let refused: Vec<String> = [
         "{}",
         r#"{"homeserver_token": {"secret": "HS"}}"#,
         r#"{"appservice_token": {"secret": "AS"}}"#,
-    ] {
-        assert!(read(json).check().unwrap_err().contains("two tokens"));
-    }
+    ]
+    .into_iter()
+    .map(|json| read(json).check().unwrap_err())
+    .collect();
+    assert_eq!(
+        refused,
+        ["an application service holds two tokens; give homeserver_token = { secret = \"…\" } and appservice_token = { secret = \"…\" }, or read commands by syncing with via = \"sync\"";
+            3]
+    );
     assert_eq!(read(r#"{"via": "sync"}"#).check(), Ok(()));
 }
 
 #[test]
 fn prefixes_senders_and_commands_written_wrongly_are_refused() {
-    for prefix in ["", "! herald"] {
-        assert!(
+    let prefixes = ["", "! herald"];
+    assert_eq!(
+        prefixes.map(|prefix| {
             read(&format!(r#"{{"via": "sync", "prefix": "{prefix}"}}"#))
                 .check()
                 .unwrap_err()
-                .contains("cannot start a command")
-        );
-    }
-    for sender in ["", "Herald", "her ald"] {
-        assert!(
+        }),
+        prefixes.map(|prefix| {
+            format!("\"{prefix}\" cannot start a command; give a prefix with no spaces, such as \"!herald\"")
+        })
+    );
+    let senders = ["", "Herald", "her ald"];
+    assert_eq!(
+        senders.map(|sender| {
             read(&format!(r#"{{"via": "sync", "sender": "{sender}"}}"#))
                 .check()
                 .unwrap_err()
-                .contains("is not a localpart")
-        );
-    }
+        }),
+        senders.map(|sender| {
+            format!("\"{sender}\" is not a localpart; give the user's name before the colon, in lowercase letters, digits, ., _, =, - or /")
+        })
+    );
     assert_eq!(
         read(r#"{"via": "sync", "sender": "a.b_c=d-e/f9"}"#).check(),
         Ok(())
     );
-    assert!(read(r#"{"via": "sync", "commands": []}"#).check().is_err());
+    assert_eq!(
+        read(r#"{"via": "sync", "commands": []}"#).check(),
+        Err("it answers no command; name at least one, or leave out the interactions".to_owned())
+    );
 }
 
 #[test]
@@ -71,11 +86,11 @@ fn what_it_says_is_worded_as_the_config_words_it_and_refused_where_it_cannot_be_
     let worded = read(r#"{"via": "sync", "wording": {"nothing": "Niets."}}"#);
     assert_eq!(worded.check(), Ok(()));
     assert_eq!(worded.answering().wording.text(Phrase::Nothing), "Niets.");
-    assert!(
+    assert_eq!(
         read(r#"{"via": "sync", "wording": {"nothing": "{{ project"}}"#)
             .check()
-            .unwrap_err()
-            .starts_with("wording.nothing is not a template")
+            .unwrap_err(),
+        "wording.nothing is not a template: syntax error: unexpected end of input, expected end of variable block (in <string>:1)"
     );
 }
 

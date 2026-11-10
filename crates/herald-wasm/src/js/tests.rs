@@ -9,7 +9,7 @@ use herald_ports::{
     Sql as _, Statement, Text, Timer as _, Value, Verifier as _, Versionstamp,
 };
 use herald_records::{Kept, KvRecords};
-use herald_testing::store_conformance;
+use herald_testing::{kv_conformance, store_conformance};
 use js_sys::{Array, Uint8Array};
 use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::JsFuture;
@@ -32,6 +32,7 @@ export function host(vars) {
     secret(name) {
       if (name === "LATER") return Promise.resolve("later");
       if (name === "NOW") return "now";
+      if (name === "HERALD_CONFORMANCE_SECRET") return "conforms";
       return undefined;
     },
     async fetch(request) {
@@ -410,6 +411,23 @@ fn a_database_is_asked_for_with_its_waits_in_milliseconds() {
         busy: jiff::SignedDuration::MAX,
     });
     assert!(member(&endless, "busy").is_undefined());
+}
+
+#[wasm_bindgen_test]
+async fn the_host_passes_the_host_suite() {
+    use herald_compose::{CONFORMANCE_EMPTY, CONFORMANCE_VAR, CONFORMS, host_conformance};
+
+    let hosted = JsHost::new(host(&object(&[
+        (CONFORMANCE_VAR, CONFORMS.into()),
+        (CONFORMANCE_EMPTY, "".into()),
+    ])));
+    assert_eq!(host_conformance(&hosted).await, Ok(()));
+}
+
+#[wasm_bindgen_test]
+async fn a_key_value_store_the_host_offers_passes_the_key_value_suite() {
+    let kv = hosted().kv(KvAt::DenoKv(None)).await.unwrap();
+    assert_eq!(kv_conformance(&kv).await, Ok(()));
 }
 
 #[wasm_bindgen_test]

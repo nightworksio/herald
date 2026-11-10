@@ -34,9 +34,7 @@ mod stores {
             panic!("expected a sqlite store, got {waiting:?}");
         };
         assert_eq!(options.busy(), jiff::SignedDuration::from_secs(30));
-        let unknown = store("file = \"x\"\n").unwrap_err();
-        assert!(unknown.contains("store"), "{unknown}");
-        assert!(unknown.contains("file"), "{unknown}");
+        assert_eq!(store("file = \"x\"\n"), Err("herald.toml:4:1 store.file: unknown field `file`, expected one of `path`, `busy`, `key`".to_owned()));
     }
 
     #[test]
@@ -85,9 +83,11 @@ mod stores {
             timed.statement_timeout(),
             jiff::SignedDuration::from_mins(2)
         );
-        assert!(named.secrets().contains(&"HERALD_POSTGRES_URL"));
-        let missing = config("").unwrap_err();
-        assert!(missing.contains("url"), "{missing}");
+        assert_eq!(named.secrets(), ["HERALD_POSTGRES_URL"].into());
+        assert_eq!(
+            config("").unwrap_err(),
+            "herald.toml:2:1 store: missing field `url`"
+        );
     }
 
     fn kind(kind: &str, options: &str) -> Result<herald_config::Config, String> {
@@ -135,15 +135,26 @@ mod stores {
                 prefix: None
             })
         );
-        for (store, foreign) in [
+        let refused: Vec<String> = [
             ("d1", "object = \"x\"\n"),
             ("durable-object", "prefix = \"x\"\n"),
             ("deno-kv", "binding = \"x\"\n"),
             ("fastly-kv", "table = \"x\"\n"),
             ("dynamodb", "store = \"x\"\n"),
-        ] {
-            assert!(kind(store, foreign).is_err(), "{store}");
-        }
+        ]
+        .into_iter()
+        .map(|(store, foreign)| kind(store, foreign).unwrap_err())
+        .collect();
+        assert_eq!(
+            refused,
+            [
+                "herald.toml:4:1 store.object: unknown field `object`, expected `binding` or `key`",
+                "herald.toml:4:1 store.prefix: unknown field `prefix`, expected one of `binding`, `object`, `key`",
+                "herald.toml:4:1 store.binding: unknown field `binding`, expected one of `path`, `prefix`, `key`",
+                "herald.toml:4:1 store.table: unknown field `table`, expected one of `store`, `prefix`, `key`",
+                "herald.toml:4:1 store.store: unknown field `store`, expected one of `table`, `region`, `endpoint`, `access_key_id`, `secret_access_key`, `session_token`, `key`"
+            ]
+        );
     }
 
     #[test]
@@ -164,21 +175,21 @@ mod stores {
             ),
             ("records", Some("eu-west-1"), Some("http://localhost:8000"))
         );
-        let secrets = config.secrets();
-        assert!(secrets.contains(&"ID") && secrets.contains(&"KEY"));
+        assert_eq!(config.secrets(), ["AWS_SESSION_TOKEN", "ID", "KEY"].into());
         let unnamed = kind("dynamodb", "").unwrap();
         assert_eq!(
             unnamed.store,
             Store::new(herald_store_dynamodb::StoreOptions::default())
         );
-        let hidden = unnamed.secrets();
-        for name in [
-            "AWS_ACCESS_KEY_ID",
-            "AWS_SECRET_ACCESS_KEY",
-            "AWS_SESSION_TOKEN",
-        ] {
-            assert!(hidden.contains(&name), "{name} is hidden");
-        }
+        assert_eq!(
+            unnamed.secrets(),
+            [
+                "AWS_ACCESS_KEY_ID",
+                "AWS_SECRET_ACCESS_KEY",
+                "AWS_SESSION_TOKEN"
+            ]
+            .into()
+        );
         assert_eq!(
             kind("markers", "").unwrap().store,
             Store::new(herald_store_markers::MarkersOptions {})

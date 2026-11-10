@@ -21,6 +21,7 @@ herald-ports.workspace = true
 pollster.workspace = true
 
 [target.'cfg(all(target_arch = "wasm32", target_os = "wasi"))'.dev-dependencies]
+herald-compose = { workspace = true, features = ["conformance"] }
 herald-records.workspace = true
 herald-testing.workspace = true
 

@@ -20,6 +20,23 @@ fn the_host_gives_its_variables_and_refuses_a_database() {
 }
 
 #[test]
+fn the_host_passes_the_host_suite() {
+    use herald_compose::{
+        CONFORMANCE_EMPTY, CONFORMANCE_SECRET, CONFORMANCE_VAR, CONFORMS, host_conformance,
+    };
+
+    let host = WasiHost::new(
+        [
+            (CONFORMANCE_VAR, CONFORMS),
+            (CONFORMANCE_EMPTY, ""),
+            (CONFORMANCE_SECRET, CONFORMS),
+        ]
+        .map(|(name, value)| (name.to_owned(), value.to_owned())),
+    );
+    assert_eq!(wstd::runtime::block_on(host_conformance(&host)), Ok(()));
+}
+
+#[test]
 fn each_nonce_the_host_gives_is_new() {
     let host = hosted();
     assert_ne!(host.nonce(), host.nonce());

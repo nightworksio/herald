@@ -3,6 +3,7 @@ import { mkdtemp, readFile, stat, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { connect } from "node:net";
 import { tmpdir } from "node:os";
+import { DatabaseSync } from "node:sqlite";
 import { join } from "node:path";
 import { before, test } from "node:test";
 import { answering, capped, fetching, load, publicAddress, upTo } from "../host.mjs";
@@ -64,14 +65,28 @@ test("herald serves on Node, keeping its records in a SQLite file", async () => 
   const directory = await mkdtemp(join(tmpdir(), "herald-node-"));
   const path = join(directory, "herald.toml");
   await writeFile(path, 'version = 1\n[store]\nkind = "sqlite"\n');
-  const running = await serve({ env: {}, path, listen: "127.0.0.1:0" });
+  const running = await serve({ env: { HERALD_ROUND_SECRET: "local" }, path, listen: "127.0.0.1:0" });
   const { port } = running.server.address();
   const health = await fetch(`http://127.0.0.1:${port}/healthz`);
-  assert.equal(health.status, 200);
-  assert.equal(await health.text(), "herald is up");
   const unknown = await fetch(`http://127.0.0.1:${port}/nowhere`);
-  assert.equal(unknown.status, 404);
+  const round = await fetch(`http://127.0.0.1:${port}/herald/round/housekeep`, {
+    method: "POST",
+    headers: { authorization: "Bearer local" },
+  });
+  const answers = [
+    [health.status, await health.text()],
+    [unknown.status, await unknown.text()],
+    [round.status, await round.text()],
+  ];
   await running.close();
+  assert.deepEqual(answers, [
+    [200, "herald is up"],
+    [404, "herald serves no such path here"],
+    [200, "the round ran"],
+  ]);
+  const kept = new DatabaseSync(join(directory, "herald.sqlite"));
+  assert.equal(kept.prepare("SELECT layout FROM herald_meta").get().layout, 2);
+  kept.close();
 });
 
 test("Node listens where the config says, an IPv6 address too, and keeps an absolute store path", async () => {
@@ -146,8 +161,12 @@ test("a body larger than [server] body is refused on Node", async (t) => {
   t.mock.method(console, "warn", () => {});
   const running = await serve({ env: {}, path, listen: "127.0.0.1:0" });
   const { port } = running.server.address();
-  const refused = await fetch(`http://127.0.0.1:${port}/inbox`, { method: "POST", body: "0".repeat(5000) });
+  const refused = await fetch(`http://127.0.0.1:${port}/inbox`, { method: "POST", body: "0".repeat(4097) });
   assert.equal(refused.status, 413);
+  assert.equal(refused.headers.get("connection"), "close");
   assert.equal(await refused.text(), "herald does not take this request");
+  const taken = await fetch(`http://127.0.0.1:${port}/inbox`, { method: "POST", body: "0".repeat(4096) });
+  const answer = [taken.status, taken.headers.get("connection"), await taken.text()];
   await running.close();
+  assert.deepEqual(answer, [404, "keep-alive", "herald serves no actor on this host here"]);
 });

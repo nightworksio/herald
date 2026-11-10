@@ -4,7 +4,7 @@
 # one it lists; where it lists none, the one this repository first downloaded.
 set -euo pipefail
 
-tool="${1:?usage: install-tool.sh <cargo-nextest|cargo-llvm-cov|cargo-deny|cargo-audit|cargo-mutants|cargo-fuzz|gitleaks|cosign|syft|wkg|kind|kubectl|helm|kubeconform|wasm-bindgen|wasm-bindgen-test-runner|deno|wasmtime|viceroy|spin>}"
+tool="${1:?usage: install-tool.sh <cargo-nextest|cargo-llvm-cov|cargo-deny|cargo-audit|cargo-mutants|cargo-fuzz|gitleaks|cosign|syft|wkg|kind|kubectl|helm|kubeconform|wasm-bindgen|wasm-bindgen-test-runner|deno|bun|wasmtime|viceroy|spin>}"
 
 case "$tool" in
   cargo-nextest)
@@ -54,6 +54,12 @@ case "$tool" in
     url="https://github.com/denoland/deno/releases/download/v${version}/deno-x86_64-unknown-linux-gnu.zip"
     sha256="e890975bc2549807bbcc0b584ffafda72cc7c93349dd99c80483dd784f6c4609"
     member="deno"
+    ;;
+  bun)
+    version="1.4.4"
+    url="https://github.com/oven-sh/bun/releases/download/bun-v${version}/bun-linux-x64.zip"
+    sha256="bf8ccbfb2b0b80159e0f9a6d15c55317add8077534dbc6130a3edb52fccb395c"
+    member="bun-linux-x64/bun"
     ;;
   wasmtime)
     version="50.0.1"

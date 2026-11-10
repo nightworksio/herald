@@ -7,7 +7,7 @@ use herald_ports::{
     Text, Versionstamp,
 };
 use herald_records::{Kept, KvRecords};
-use herald_testing::store_conformance;
+use herald_testing::{kv_conformance, store_conformance};
 
 use super::host::{FastlyHost, StoreSecrets};
 use super::http::backend_name;
@@ -54,6 +54,21 @@ fn the_service_gives_the_variables_it_holds_and_not_an_empty_one() {
     assert_eq!(host.var("GITHUB_REPOSITORY"), Some("cli/cli"));
     assert_eq!(host.var("EMPTY"), None);
     assert_eq!(host.var("UNSET"), None);
+}
+
+#[test]
+fn the_service_passes_the_host_suite() {
+    use herald_compose::{CONFORMANCE_EMPTY, CONFORMANCE_VAR, CONFORMS, host_conformance};
+
+    let host = FastlyHost {
+        config: None,
+        vars: BTreeMap::from([
+            (CONFORMANCE_VAR, CONFORMS.to_owned()),
+            (CONFORMANCE_EMPTY, String::new()),
+        ]),
+        secrets: StoreSecrets,
+    };
+    assert_eq!(pollster::block_on(host_conformance(&host)), Ok(()));
 }
 
 #[test]
@@ -149,6 +164,11 @@ fn kv() -> super::kv::FastlyKv {
 fn a_kv_store_the_service_is_linked_to_keeps_every_record_a_store_keeps() {
     let store = Kept::new(KvRecords::new(kv(), "conformance"));
     pollster::block_on(store_conformance(&store)).unwrap();
+}
+
+#[test]
+fn a_kv_store_the_service_is_linked_to_passes_the_key_value_suite() {
+    assert_eq!(pollster::block_on(kv_conformance(&kv())), Ok(()));
 }
 
 #[test]

@@ -1,7 +1,7 @@
 use herald_config::{Config, load};
 use herald_core::{Key, RouteId, Scheme, Step};
 use herald_flows::{
-    Answered, Connected, FollowError, Followed, Inbound, Job, Keys, Outcome, Ports, Serving,
+    Answered, Connected, FollowError, Followed, Inbound, Job, Keys, Outcome, Ports, Serving, Stop,
     Webhooks, Worked, answer, busy, prepare, unworked, webhooks, work,
 };
 use herald_ports::{Admitted, Algorithm, CryptoError, Deliveries, Ledger, Secret, Signer};
@@ -252,6 +252,16 @@ fn work_with_no_place_is_refused_and_asked_to_wait() {
     assert!(refused.job.is_none());
 }
 
+/// What a route answers when the store cannot say whether its event was
+/// delivered before.
+fn unadmitted() -> Outcome {
+    Outcome::Stopped {
+        landed: Vec::new(),
+        remaining: Vec::new(),
+        reason: Stop::Store("the store could not be reached: broken".to_owned()),
+    }
+}
+
 struct Keyless;
 
 impl Signer for Keyless {
@@ -298,15 +308,17 @@ fn an_actor_whose_key_cannot_be_read_is_not_served() {
         String::from_utf8(answered.reply.body).unwrap(),
         "herald cannot answer this request now"
     );
-    assert!(
-        answered
-            .refused
-            .unwrap()
-            .starts_with("the actor's key cannot be read:")
+    assert_eq!(
+        answered.refused.as_deref(),
+        Some(
+            "the actor's key cannot be read: the secret HERALD_ACTIVITYPUB_KEY is not a key for this signature"
+        )
     );
-    assert!(
-        pollster::block_on(Keyless.sign(Algorithm::RsaSha256, &Secret::new("K", "v"), b""))
-            .is_err()
+    assert_eq!(
+        pollster::block_on(Keyless.sign(Algorithm::RsaSha256, &Secret::new("K", "v"), b"")),
+        Err(CryptoError::BadKey {
+            name: "K".to_owned()
+        })
     );
 }
 
@@ -460,10 +472,11 @@ fn a_webhook_of_another_repository_is_refused_and_its_delivery_released() {
         elsewhere.as_bytes(),
     ));
     assert_eq!(unreleased.reply.status, 400);
-    assert!(
-        unreleased.refused.unwrap().ends_with(
-            "; its delivery could not be released: the store could not be reached: broken"
-        ),
+    assert_eq!(
+        unreleased.refused.as_deref(),
+        Some(
+            "GitHub's release event could not be read: it is not of cli/cli, the repository its source names; its delivery could not be released: the store could not be reached: broken"
+        )
     );
 }
 
@@ -542,10 +555,13 @@ fn an_activity_signed_by_its_actor_is_answered_and_left_to_take_once() {
             .status,
         409
     );
-    assert!(matches!(
-        world.work(Job::Follow { verified, body }),
-        Worked::Followed(Ok(Followed::Ignored(_)))
-    ));
+    let Worked::Followed(followed) = world.work(Job::Follow { verified, body }) else {
+        panic!("the follow is taken");
+    };
+    assert_eq!(
+        followed,
+        Ok(Followed::Ignored("it is a follow with no id".to_owned()))
+    );
 }
 
 #[test]
@@ -618,7 +634,7 @@ fn work_that_stops_or_fails_releases_its_delivery() {
     }) else {
         panic!("the release is announced");
     };
-    assert!(matches!(announced[0].outcome, Outcome::Stopped { .. }));
+    assert_eq!(announced[0].outcome, unadmitted());
     assert_eq!(
         world.admits(herald_sources_forge::Forge::GitHub.scheme(), "d1"),
         Admitted::Fresh
@@ -640,7 +656,7 @@ fn work_that_stops_or_fails_releases_its_delivery() {
     }) else {
         panic!("the activity is taken");
     };
-    assert!(matches!(taken, Err(FollowError::Unfetched(_))));
+    assert_eq!(taken, Err(FollowError::Unfetched("the host could not be reached: nothing scripted for GET https://social.example/users/ana".to_owned())));
     assert_eq!(
         world.admits(herald_dest_fediverse::ACTOR_SCHEME, "d2"),
         Admitted::Fresh
@@ -689,7 +705,15 @@ fn work_that_will_not_be_done_releases_its_delivery() {
 fn a_webhook_secret_that_is_not_set_stops_the_server_before_it_serves() {
     let config = config();
     let unset = FakeSecrets::default().with("HERALD_ACTIVITYPUB_KEY", "the-key");
-    assert!(pollster::block_on(webhooks(&config, &unset)).is_err());
+    assert_eq!(
+        pollster::block_on(webhooks(&config, &unset))
+            .err()
+            .map(|error| error.to_string()),
+        Some(
+            "no secret is named HERALD_WEBHOOK; set it where this platform keeps secrets"
+                .to_owned()
+        )
+    );
 }
 
 fn posted<'a>(project: &'a str, headers: &'a [(&'a str, &'a str)], body: &'a [u8]) -> Inbound<'a> {
@@ -853,7 +877,7 @@ fn an_app_s_work_that_stops_or_will_not_be_done_releases_its_delivery() {
     let Worked::Announced(announced) = world.work(job()) else {
         panic!("the event is announced");
     };
-    assert!(matches!(announced[0].outcome, Outcome::Stopped { .. }));
+    assert_eq!(announced[0].outcome, unadmitted());
     assert_eq!(
         world.admits(herald_sources_app::SCHEME, "app/ci/7"),
         Admitted::Fresh

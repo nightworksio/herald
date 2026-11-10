@@ -80,7 +80,7 @@ fn an_undefined_value_may_be_tested_but_not_printed() {
     );
     let error = render("{{ event.release_notes }}", &event()).unwrap_err();
     assert_eq!(error.name, "t");
-    assert!(error.reason.contains("undefined"), "{}", error.reason);
+    assert_eq!(error.reason, "undefined value (in t:1)");
 }
 
 #[test]
@@ -96,20 +96,17 @@ fn an_undefined_value_is_refused_wherever_it_is_used_as_a_value() {
     for (source, expected) in tested {
         assert_eq!(render(source, &event()).unwrap(), expected, "{source}");
     }
-    for refused in [
+    let reasons: Vec<String> = [
         "{{ event.missing }}",
         "{{ event.missing.deeper }}",
         "{% for line in event.missing %}{{ line }}{% endfor %}",
         "{{ event.missing ~ 'x' }}",
         "{{ event.missing | upper }}",
-    ] {
-        let error = render(refused, &event()).unwrap_err();
-        assert!(
-            error.reason.contains("undefined"),
-            "{refused}: {}",
-            error.reason
-        );
-    }
+    ]
+    .into_iter()
+    .map(|refused| render(refused, &event()).unwrap_err().reason)
+    .collect();
+    assert_eq!(reasons, ["undefined value (in t:1)"; 5]);
 }
 
 #[test]
@@ -155,10 +152,12 @@ fn every_template_that_does_not_compile_is_named() {
     .unwrap_err();
     let names: Vec<&str> = errors.iter().map(|error| error.name.as_str()).collect();
     assert_eq!(names, ["bad", "worse"]);
-    assert!(
-        errors[0].to_string().starts_with("template bad: "),
-        "{}",
-        errors[0]
+    assert_eq!(
+        errors.iter().map(ToString::to_string).collect::<Vec<_>>(),
+        [
+            "template bad: syntax error: unexpected end of block (in bad:1)",
+            "template worse: syntax error: unexpected end of input, expected expression (in worse:1)"
+        ]
     );
 }
 
@@ -195,7 +194,10 @@ fn a_template_includes_another_by_name_and_nothing_from_disk() {
         "php-mutation-gate v0.1.0 — php-mutation-gate"
     );
     let set = templates(&[("body", "{% include '/etc/passwd' %}")]);
-    assert!(set.render("body", &context).is_err());
+    assert_eq!(
+        set.render("body", &context).unwrap_err().to_string(),
+        "template body: template not found: tried to include non-existing template '/etc/passwd' (in body:1)"
+    );
 }
 
 #[test]
@@ -264,7 +266,7 @@ fn a_markdown_template_prints_numbers_and_absent_values_as_a_line_template_does(
         markdown("{{ 1 + 1 }} {{ none }}", &unversioned),
         render("{{ 1 + 1 }} {{ none }}", &unversioned).unwrap()
     );
-    assert!(
+    assert_eq!(
         Templates::compile(
             &[("t", "{{ event.nope }}", Form::Markdown)],
             Sandbox::DEFAULT
@@ -278,7 +280,9 @@ fn a_markdown_template_prints_numbers_and_absent_values_as_a_line_template_does(
                 herald: "0.1.0"
             }
         )
-        .is_err()
+        .unwrap_err()
+        .to_string(),
+        "template t: undefined value (in t:1)"
     );
 }
 
@@ -296,7 +300,10 @@ fn the_capped_output_holds_what_was_written_and_flushes_nothing() {
         (capped.written.as_slice(), capped.passed),
         (&b"ab"[..], false)
     );
-    assert!(capped.write(b"c").is_err());
+    assert_eq!(
+        capped.write(b"c").unwrap_err().to_string(),
+        "the output passes its cap"
+    );
     assert_eq!(
         (capped.written.as_slice(), capped.passed),
         (&b"ab"[..], true)
@@ -376,17 +383,20 @@ fn an_attribute_the_event_lacks_is_named_where_the_template_prints_it() {
         error.reason,
         "it prints event.attributes.region_2, which a release event does not carry"
     );
-    for source in [
+    let reasons: Vec<String> = [
         "{{ event.attributes.version }} {{ nothing.here }}",
         "{{ event.attributes.version | nope }}",
-    ] {
-        let error = render(source, &event()).unwrap_err();
-        assert!(
-            !error.reason.starts_with("it prints event.attributes."),
-            "{source}: {}",
-            error.reason
-        );
-    }
+    ]
+    .into_iter()
+    .map(|source| render(source, &event()).unwrap_err().reason)
+    .collect();
+    assert_eq!(
+        reasons,
+        [
+            "undefined value (in t:1)",
+            "unknown filter: filter nope is unknown (in t:1)"
+        ]
+    );
     assert_eq!(
         render(
             "{% if event.attributes.region %}{{ event.attributes.region }}{% endif %}",

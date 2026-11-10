@@ -92,7 +92,7 @@ fn outside_allowed(layer: Layer) -> &'static [&'static str] {
         Layer::Ports => &["jiff", "zeroize"],
         Layer::Flows => &["futures-util", "jiff"],
         Layer::Composition => &["async-lock", "jiff", "url"],
-        Layer::Testing => &["jiff", "serde", "serde_json"],
+        Layer::Testing => &["futures-util", "jiff", "serde", "serde_json"],
         Layer::Kits => &[
             "base64",
             "hmac",

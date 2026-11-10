@@ -55,6 +55,26 @@ impl Statement {
     }
 }
 
+/// How a database's statements name their parameters.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Parameters {
+    /// `?1`, `?2`, as SQLite and Cloudflare D1 write them.
+    Question,
+    /// `$1`, `$2`, as Postgres writes them.
+    Dollar,
+}
+
+impl Parameters {
+    /// How a statement names its parameter at `place`, counted from 1.
+    #[must_use]
+    pub fn at(self, place: u8) -> String {
+        match self {
+            Self::Question => format!("?{place}"),
+            Self::Dollar => format!("${place}"),
+        }
+    }
+}
+
 /// What one statement of a transaction answered.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Changed {
@@ -96,6 +116,12 @@ pub trait Sql: Sync {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_parameter_is_named_as_its_database_writes_it() {
+        assert_eq!(Parameters::Question.at(12), "?12");
+        assert_eq!(Parameters::Dollar.at(3), "$3");
+    }
 
     #[test]
     fn the_error_reads_as_a_sentence() {

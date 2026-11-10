@@ -38,5 +38,8 @@ http-body-util = "0.1"
 wasip2 = "2"
 wstd = "0.6"
 
+[target.'cfg(all(target_arch = "wasm32", target_os = "wasi"))'.dev-dependencies]
+herald-compose = { workspace = true, features = ["conformance"] }
+
 [lints]
 workspace = true
