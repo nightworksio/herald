@@ -1,0 +1,30 @@
+{
+  "exchanges": [
+    {
+      "request": {
+        "headers": {
+          "Authorization": "Bearer «secret:HERALD_SLACK_TOKEN»",
+          "User-Agent": "herald/0.0.0 (+https://github.com/nightworksio/herald)"
+        },
+        "method": "GET",
+        "url": "https://slack.com/api/auth.test"
+      },
+      "response": {
+        "body": {
+          "bot_id": "B0123456789",
+          "ok": true,
+          "team": "NightWorks",
+          "team_id": "T0123456789",
+          "url": "https://nightworks.slack.com/",
+          "user": "herald",
+          "user_id": "U0HERALD01",
+          "is_enterprise_install": false
+        },
+        "headers": {
+          "x-oauth-scopes": "chat:write,groups:history,users:read,pins:read"
+        },
+        "status": 200
+      }
+    }
+  ]
+}

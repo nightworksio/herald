@@ -24,8 +24,8 @@ use herald_core::{Event, Kind, RouteId, SourceName};
 use herald_crypto::RingSigner;
 use herald_environment::{EnvSecrets, SystemClock};
 use herald_flows::{
-    Announced, Chored, Connected, Findings, Gap, Housekept, Outcome, Ports, Remembered, Stop,
-    Sweep, Swept, announce_within, doctor, housekeep, keys, poll, prepare, preview,
+    Announced, Chored, Connected, Housekept, Outcome, Ports, Remembered, Stop, Sweep, Swept,
+    announce_within, housekeep, poll, prepare, preview,
 };
 use herald_native::random_secret;
 use herald_ports::{Http, HttpError, Keyring, Request, Response, Secrets, Store as Keeps};
@@ -34,6 +34,7 @@ use herald_sources_forge::{Forge, ForgeSource, Origin, Repository, SourceOptions
 mod apps;
 mod cli;
 mod connect;
+mod doctoring;
 mod followers;
 mod health;
 mod lambda;
@@ -43,10 +44,9 @@ mod setup;
 mod stores;
 
 pub use connect::{Connect, Connection, Connector, NATIVE, native, waiting};
+pub use doctoring::schema as doctor_schema;
 
-use cli::{
-    Cli, Command, Discording, From, Layer, Matrixing, Reading, Serve, Setting, Slacking, Tokens,
-};
+use cli::{Cli, Command, Discording, From, Matrixing, Reading, Serve, Setting, Slacking, Tokens};
 use herald_compose::told::{chored, polled, report, skipped, why};
 use herald_compose::{GITHUB_TOKEN, Served};
 use output::{Scrubbing, hidden, masked, say, warned};
@@ -153,9 +153,16 @@ async fn stopping(
         }
         Command::Read(reading) => reading,
     };
+    let doctored = match reading {
+        Reading::Doctor(asked) => Some(asked),
+        _ => None,
+    };
     let config = match read(&cli.config) {
         Ok(config) => config,
         Err(message) => {
+            if let Some(code) = doctored.and_then(|asked| doctoring::unread(asked, &message, out)) {
+                return code;
+            }
             say(err, &message);
             return MISTAKEN;
         }
@@ -168,19 +175,17 @@ async fn stopping(
     );
     let connect = &within;
     let hidden = hidden(&config, vars);
-    masked(&hidden, vars, out);
+    let json = doctored.is_some_and(|asked| asked.format == doctoring::Format::Json);
+    masked(&hidden, vars, if json { &mut *err } else { &mut *out });
     let out = &mut Scrubbing::new(out, &hidden);
     let err = &mut Scrubbing::new(err, &hidden);
     let serve = match answered(reading, &config, &cli.config, vars, connect, out, err).await {
         ControlFlow::Continue(serve) => serve,
         ControlFlow::Break(code) => return code,
     };
-    let layer = match serve {
-        Serve::Server { .. } => Layer::Server,
-        Serve::Lambda => Layer::Lambda,
-        _ => Layer::Actions,
-    };
-    warned(&doctor(&config, layer.served()).gaps, vars, out);
+    if let Some(layer) = doctoring::warning(&serve, vars) {
+        warned(&doctoring::gaps(&config, layer, vars).await, vars, out);
+    }
     let ran = match serve {
         Serve::Announce {
             from,
@@ -275,12 +280,8 @@ async fn answered(
     err: &mut dyn Write,
 ) -> ControlFlow<u8, Serve> {
     ControlFlow::Break(match reading {
-        Reading::Doctor { layer } => {
-            let mut findings = doctor(config, layer.served());
-            let keyed = keys(config, &EnvSecrets::from_vars(vars.clone()), &RingSigner).await;
-            findings.notes.extend(keyed.notes);
-            findings.mistakes.extend(keyed.mistakes);
-            checked(path, &findings, out)
+        Reading::Doctor(asked) => {
+            doctoring::doctoring(config, path, asked, vars, connect, out).await
         }
         Reading::Store => {
             say(out, config.store.kind());
@@ -329,36 +330,6 @@ fn read(path: &str) -> Result<Config, String> {
         config.store = herald_config::Store::new(options);
     }
     Ok(config)
-}
-
-fn checked(path: &str, findings: &Findings, out: &mut dyn Write) -> u8 {
-    say(
-        out,
-        &format!("{path} reads, its names resolve and its templates render."),
-    );
-    for note in &findings.notes {
-        say(out, note);
-    }
-    for gap in &findings.gaps {
-        say(out, &gapped(gap));
-    }
-    for mistake in &findings.mistakes {
-        say(out, mistake);
-    }
-    if !findings.mistakes.is_empty() {
-        MISTAKEN
-    } else if findings.gaps.is_empty() {
-        DONE
-    } else {
-        STOPPED
-    }
-}
-
-fn gapped(gap: &Gap) -> String {
-    format!(
-        "{}: {} cannot be served: {}.",
-        gap.key, gap.feature, gap.why
-    )
 }
 
 fn variable<'a>(vars: &'a BTreeMap<String, String>, name: &str) -> Result<&'a str, String> {

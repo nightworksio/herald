@@ -90,6 +90,10 @@ impl SourceConfig for ForgeSource {
         &[Kind::RELEASE]
     }
 
+    fn note(&self) -> Option<&'static str> {
+        self.options.webhook.as_ref().and(self.forge.unsigned())
+    }
+
     fn backfill(&self) -> usize {
         self.options.backfill
     }

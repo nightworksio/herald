@@ -6,9 +6,7 @@ use crate::reach::Reach;
 use herald_ports::{HttpError, PUBLIC, Request, Response, Text};
 use url::Url;
 
-/// The setting that says, with `true`, that a host's own egress refuses
-/// private addresses, on a host herald cannot check them on.
-pub const EGRESS_GUARDED: &str = "HERALD_EGRESS_GUARDED";
+pub use herald_flows::EGRESS_GUARDED;
 
 /// What one connection may reach: the origins of its base, or any public
 /// HTTPS origin, on others' behalf (ADR-0007).

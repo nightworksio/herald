@@ -8,6 +8,7 @@ mod announce;
 mod apps;
 mod commands;
 mod doctor;
+mod doctoring;
 mod followers;
 mod forges;
 mod housekeep;

@@ -36,7 +36,10 @@ mod together;
 pub use announce::{Announced, Outcome, Ports, Stop, announce, announce_within};
 pub use approving::{Decision, decide, followers};
 pub use commanded::{INTERACTIONS, MATRIX};
-pub use doctor::{Findings, Gap, Layer, doctor, keys, unserved};
+pub use doctor::{
+    Cadence, EGRESS_GUARDED, Egress, Findings, Gap, Here, Layer, Memory, Rounds, Tier, doctor,
+    keys, online, secrets, unserved,
+};
 pub use following::{FollowError, Followed, followed};
 pub use herald_kinds::Replying;
 pub use housekeep::{Chored, Housekept, Kept, housekeep};

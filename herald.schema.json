@@ -3973,7 +3973,7 @@
           "const": "http"
         },
         {
-          "description": "herald holds a connection to Discord's gateway and takes each\ninteraction from it: served by `herald server`, with no public\nendpoint.",
+          "description": "herald holds a connection to Discord's gateway and takes each\ninteraction from it: served by `herald server` and by a Cloudflare\nWorker's Durable Object, with no public endpoint.",
           "type": "string",
           "const": "gateway"
         }
@@ -3988,7 +3988,7 @@
           "const": "appservice"
         },
         {
-          "description": "herald syncs as the bot account and reads each message in the rooms\nit has joined: served by `herald server`, with no public endpoint and\nnothing for the homeserver's administrator to install.",
+          "description": "herald syncs as the bot account and reads each message in the rooms\nit has joined: served by `herald server` and by a Cloudflare Worker's\nDurable Object, with no public endpoint and nothing for the\nhomeserver's administrator to install.",
           "type": "string",
           "const": "sync"
         }
@@ -4003,7 +4003,7 @@
           "const": "http"
         },
         {
-          "description": "herald holds a Socket Mode connection, opened with the app-level\ntoken, and takes each one from it: served by `herald server`, with no\npublic endpoint.",
+          "description": "herald holds a Socket Mode connection, opened with the app-level\ntoken, and takes each one from it: served by `herald server` and by a\nCloudflare Worker's Durable Object, with no public endpoint.",
           "type": "string",
           "const": "socket"
         }

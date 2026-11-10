@@ -37,7 +37,21 @@ fn each_forge_is_a_kind_of_source_named_as_the_config_spells_it() {
         assert_eq!(source.forge, forge);
         assert_eq!(source.kind(), forge.kind());
         assert_eq!(source.scheme(), Some(forge.scheme()));
+        assert_eq!(source.note(), forge.unsigned());
     }
+    assert_eq!(Forge::GitHub.unsigned(), None);
+    assert_eq!(Forge::Forgejo.unsigned(), None);
+    assert!(
+        Forge::GitLab
+            .unsigned()
+            .is_some_and(|note| note.starts_with("GitLab signs a webhook only"))
+    );
+    let polled = GitLabKind::checked(SourceOptions {
+        webhook: None,
+        ..options("group/name")
+    })
+    .unwrap();
+    assert_eq!(polled.note(), None);
 }
 
 #[test]

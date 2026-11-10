@@ -15,6 +15,7 @@ mod interact;
 mod interactions;
 mod markers;
 mod options;
+mod probe;
 mod reach;
 mod read;
 mod request;

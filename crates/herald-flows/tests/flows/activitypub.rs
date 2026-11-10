@@ -295,20 +295,16 @@ fn an_actor_whose_key_cannot_sign_stops_every_run_before_it_starts() {
 }
 
 #[test]
-fn doctor_checks_each_actor_s_key_where_it_is_set_and_says_where_it_is_not() {
+fn doctor_checks_each_actor_s_key_where_it_is_set() {
     let found = |config: &Config, secrets: &FakeSecrets| {
         pollster::block_on(keys(config, secrets, &FakeSigner))
     };
     let set = FakeSecrets::default().with("HERALD_ACTIVITYPUB_KEY", "the-key");
     assert_eq!(found(&activitypub(), &set), Findings::default());
-    let unset = found(&activitypub(), &FakeSecrets::default());
     assert_eq!(
-        unset.notes,
-        [
-            "The key of the destination \"fedi\" is not checked, as HERALD_ACTIVITYPUB_KEY is not set here."
-        ]
+        found(&activitypub(), &FakeSecrets::default()),
+        Findings::default()
     );
-    assert_eq!(unset.mistakes, Vec::<String>::new());
     let bad = found(&keyed("BAD"), &FakeSecrets::default().with("BAD", "x"));
     assert_eq!(bad.notes, Vec::<String>::new());
     assert_eq!(bad.mistakes.len(), 1);

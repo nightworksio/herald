@@ -16,6 +16,8 @@ mod announce;
 #[cfg(test)]
 mod doctor;
 #[cfg(test)]
+mod doctoring;
+#[cfg(test)]
 mod endpoint;
 #[cfg(test)]
 mod following;

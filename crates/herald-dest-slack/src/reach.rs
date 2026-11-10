@@ -1,7 +1,7 @@
 use std::future::ready;
 
 use herald_core::{Announcement, Chore, Delivery, Entry, Profile, Sent, Step};
-use herald_kinds::{Reach, Signing};
+use herald_kinds::{Probe, Reach, Signing};
 use herald_ports::{Boxed, DynHttp, DynMarkers, Erased, HttpError};
 
 use crate::markers::SlackMarkers;
@@ -42,5 +42,9 @@ impl Reach for Slack {
 
     fn posts<'a>(&'a self, http: &'a dyn DynHttp) -> Box<dyn DynMarkers + 'a> {
         Box::new(SlackMarkers::new(self, Erased(http)))
+    }
+
+    fn probe<'a>(&'a self, http: &'a dyn DynHttp, delivery: &'a Delivery) -> Boxed<'a, Vec<Probe>> {
+        Box::pin(async move { crate::probe::probe(self, &Erased(http), delivery).await })
     }
 }

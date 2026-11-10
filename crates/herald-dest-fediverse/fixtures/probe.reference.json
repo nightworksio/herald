@@ -1,0 +1,50 @@
+{
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "url": "https://mastodon.example/api/v1/accounts/verify_credentials",
+        "headers": {
+          "Authorization": "Bearer «secret:HERALD_MASTODON_TOKEN»",
+          "User-Agent": "herald/0.0.0 (+https://github.com/nightworksio/herald)"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "id": "109000000000000001",
+          "username": "herald",
+          "acct": "herald"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "url": "https://mastodon.example/api/v2/instance",
+        "headers": {
+          "Authorization": "Bearer «secret:HERALD_MASTODON_TOKEN»",
+          "User-Agent": "herald/0.0.0 (+https://github.com/nightworksio/herald)"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "domain": "mastodon.example",
+          "title": "Mastodon",
+          "version": "4.5.0",
+          "configuration": {
+            "urls": {
+              "streaming": "wss://mastodon.example"
+            },
+            "statuses": {
+              "max_characters": 1000,
+              "max_media_attachments": 4,
+              "characters_reserved_per_url": 23
+            }
+          }
+        }
+      }
+    }
+  ]
+}

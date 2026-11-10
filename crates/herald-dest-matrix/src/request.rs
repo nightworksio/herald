@@ -17,7 +17,9 @@ const HTML: &str = "org.matrix.custom.html";
 /// Where a mention links, as Matrix clients read it.
 const PILL: &str = "https://matrix.to/#/";
 /// The state event holding a room's pinned events.
-const PINNED_EVENTS: &str = "m.room.pinned_events";
+pub(crate) const PINNED_EVENTS: &str = "m.room.pinned_events";
+/// The event a message is.
+pub(crate) const MESSAGE: &str = "m.room.message";
 /// The answer of a homeserver for state a room does not hold.
 pub(crate) const NOT_FOUND: u16 = 404;
 
@@ -63,7 +65,7 @@ fn put(matrix: &Matrix, path: &str, body: &Value) -> Request {
         .body(body.to_string())
 }
 
-fn room(matrix: &Matrix) -> String {
+pub(crate) fn room(matrix: &Matrix) -> String {
     format!("/rooms/{}", unreserved(&matrix.route.room))
 }
 
@@ -190,7 +192,7 @@ pub(crate) fn posted<'a>(
 
 fn sent(matrix: &Matrix, transaction: &str, content: &Value) -> Request {
     let path = format!(
-        "{}/send/m.room.message/{}",
+        "{}/send/{MESSAGE}/{}",
         room(matrix),
         unreserved(transaction)
     );

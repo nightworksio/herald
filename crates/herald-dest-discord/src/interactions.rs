@@ -17,8 +17,8 @@ pub enum Via {
     #[default]
     Http,
     /// herald holds a connection to Discord's gateway and takes each
-    /// interaction from it: served by `herald server`, with no public
-    /// endpoint.
+    /// interaction from it: served by `herald server` and by a Cloudflare
+    /// Worker's Durable Object, with no public endpoint.
     Gateway,
 }
 

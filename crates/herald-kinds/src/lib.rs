@@ -21,7 +21,7 @@ pub use itself::Itself;
 pub use kind::{DestinationKind, Fault, Placing};
 pub use opening::{GITHUB_REPOSITORY, GITHUB_TOKEN, KvAt, Local, Opened, Opening, SqlAt, unopened};
 pub use placement::{Placed, Placement};
-pub use reach::{Posts, Reach, Reached, Signing, Unread};
+pub use reach::{Posts, Probe, Reach, Reached, Signing, Unread};
 pub use session::{Connect, Effect, Session};
 pub use source::{Hooked, Poll, Source, SourceConfig, SourceKind, UNHOOKED, Unpolled};
 pub use store::{Store, StoreConfig, StoreKind};

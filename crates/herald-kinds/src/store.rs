@@ -37,8 +37,20 @@ pub trait StoreConfig: fmt::Debug + Send + Sync + Itself {
         false
     }
 
+    /// Whether it keeps each webhook delivery it admits, so a replay is
+    /// refused before it reaches a parser (ADR-0013).
+    fn keeps_deliveries(&self) -> bool {
+        true
+    }
+
     /// What the doctor says of every run that keeps its records in it.
     fn note(&self) -> Option<&'static str> {
+        None
+    }
+
+    /// The key under `[store]` whose value no run can keep records with,
+    /// and why, where its options name one.
+    fn withheld(&self) -> Option<(&'static str, &'static str)> {
         None
     }
 

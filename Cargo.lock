@@ -826,6 +826,8 @@ dependencies = [
  "herald-testing",
  "jiff",
  "pollster",
+ "schemars",
+ "serde",
  "serde_json",
  "tempfile",
  "tokio",

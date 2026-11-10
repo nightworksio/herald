@@ -4,8 +4,10 @@
 use clap::{Parser, Subcommand, ValueEnum};
 use herald_sources_forge::Forge;
 
-use herald_compose::Hosting;
+use herald_compose::{HOUSEKEPT, Hosting, POLLED};
+use herald_flows::{Cadence, Egress, Memory, Rounds, Tier};
 
+use super::doctoring::Asked;
 use super::stores::{LAMBDA, SERVED, STORES};
 
 #[derive(Debug, Parser)]
@@ -66,11 +68,7 @@ pub(crate) enum Reading {
     #[command(flatten)]
     Serve(Serve),
     /// Check the config, and name what it asks for that herald cannot serve.
-    Doctor {
-        /// The layer to check the config for.
-        #[arg(long, value_enum, default_value_t = Layer::Actions)]
-        layer: Layer,
-    },
+    Doctor(Asked),
     /// Print the kind of store the config keeps its records in, as
     /// `[store] kind` writes it.
     Store,
@@ -161,7 +159,7 @@ pub(crate) enum Matrixing {
 }
 
 /// A layer of support (ADR-0002).
-#[derive(Debug, Clone, Copy, ValueEnum)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
 pub(crate) enum Layer {
     /// The CLI, on GitHub Actions or anywhere else.
     Actions,
@@ -169,6 +167,8 @@ pub(crate) enum Layer {
     Server,
     /// `herald lambda`, as an AWS Lambda function.
     Lambda,
+    /// `herald server` as an Azure Functions custom handler.
+    Azure,
     /// The wasm module on a Cloudflare Worker.
     Worker,
     /// The wasm module on Deno.
@@ -188,23 +188,77 @@ pub(crate) enum Layer {
 }
 
 impl Layer {
+    /// Every layer, in ADR-0002's order: those with no endpoint, the
+    /// serverless ones, and those that hold their endpoint open.
+    pub(crate) const ALL: [Self; 12] = [
+        Self::Actions,
+        Self::Worker,
+        Self::Deno,
+        Self::Vercel,
+        Self::Netlify,
+        Self::Lambda,
+        Self::Azure,
+        Self::Wasi,
+        Self::Spin,
+        Self::Fastly,
+        Self::Node,
+        Self::Server,
+    ];
+
     /// What it serves.
     pub(crate) fn served(self) -> herald_flows::Layer<'static> {
         match self {
             Self::Actions => herald_flows::Layer {
+                name: "actions",
+                tier: Tier::Actions,
                 stores: &STORES,
                 endpoint: false,
                 sessions: false,
+                egress: Egress::Checked,
+                rounds: Rounds::Workflow,
+                round_secrets: &[],
+                keyring: Memory::PerRequest,
             },
             Self::Server => herald_flows::Layer {
+                name: "server",
+                tier: Tier::Container,
                 stores: &SERVED,
                 endpoint: true,
                 sessions: true,
+                egress: Egress::Checked,
+                rounds: Rounds::Scheduled,
+                round_secrets: &[],
+                keyring: Memory::Lasting,
             },
             Self::Lambda => herald_flows::Layer {
+                name: "lambda",
+                tier: Tier::Serverless,
                 stores: &LAMBDA,
                 endpoint: true,
                 sessions: false,
+                egress: Egress::Checked,
+                rounds: Rounds::Platform(Cadence {
+                    by: "the Rounds schedule in deploy/lambda/template.yaml",
+                    poll: POLLED,
+                    housekeep: POLLED,
+                }),
+                round_secrets: &[],
+                keyring: Memory::PerRequest,
+            },
+            Self::Azure => herald_flows::Layer {
+                name: "azure",
+                tier: Tier::Serverless,
+                stores: &SERVED,
+                endpoint: true,
+                sessions: false,
+                egress: Egress::Checked,
+                rounds: Rounds::Platform(Cadence {
+                    by: "the poll and housekeep timer triggers in deploy/azure",
+                    poll: POLLED,
+                    housekeep: HOUSEKEPT,
+                }),
+                round_secrets: &[],
+                keyring: Memory::Lasting,
             },
             Self::Worker => Hosting::Worker.layer(),
             Self::Deno => Hosting::Deno.layer(),
@@ -215,6 +269,11 @@ impl Layer {
             Self::Spin => Hosting::Spin.layer(),
             Self::Fastly => Hosting::Fastly.layer(),
         }
+    }
+
+    /// Every layer's, in ADR-0002's order.
+    pub(crate) fn every() -> [herald_flows::Layer<'static>; 12] {
+        Self::ALL.map(Self::served)
     }
 }
 

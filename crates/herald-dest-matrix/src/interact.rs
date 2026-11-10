@@ -9,6 +9,7 @@ use herald_ports::{Method, Request, Response, Secret, Text, unreserved};
 use serde_json::{Value, json};
 
 use crate::interactions::{Interactions, Via};
+use crate::request::MESSAGE;
 
 /// The word after a project that asks for the answer to be posted to the
 /// room rather than in a thread.
@@ -182,7 +183,7 @@ impl Interacting {
         room: &str,
         event: &Value,
     ) -> Option<(Asked, Replying)> {
-        if text(event, "type") != Some("m.room.message") {
+        if text(event, "type") != Some(MESSAGE) {
             return None;
         }
         let content = event.get("content")?;
@@ -277,7 +278,7 @@ impl Interacting {
             "presence": none,
             "account_data": none,
             "room": {
-                "timeline": { "types": ["m.room.message"], "limit": self.interactions.timeline() },
+                "timeline": { "types": [MESSAGE], "limit": self.interactions.timeline() },
                 "state": none,
                 "ephemeral": none,
                 "account_data": none,
@@ -324,7 +325,7 @@ impl Interacting {
                     object.insert("formatted_body".to_owned(), json!(html));
                 }
                 let url = format!(
-                    "{}/_matrix/client/v3/rooms/{}/send/m.room.message/herald.{drawn}.{index}",
+                    "{}/_matrix/client/v3/rooms/{}/send/{MESSAGE}/herald.{drawn}.{index}",
                     self.homeserver,
                     unreserved(&replying.room)
                 );

@@ -13,6 +13,7 @@ mod markers;
 mod mastodon;
 mod mastodon_reach;
 mod options;
+mod probe;
 mod read;
 mod request;
 

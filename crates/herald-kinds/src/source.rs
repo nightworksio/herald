@@ -47,6 +47,12 @@ pub trait SourceConfig: fmt::Debug + Send + Sync + Itself {
         Ok(Hooked::Nothing(UNHOOKED))
     }
 
+    /// What the doctor says of every run that serves it, where its options
+    /// leave something to its platform.
+    fn note(&self) -> Option<&'static str> {
+        None
+    }
+
     /// Whether a name it announces can move to another version, as a
     /// registry's `latest` tag can.
     fn moving_tags(&self) -> bool {

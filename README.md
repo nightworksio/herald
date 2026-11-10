@@ -54,7 +54,18 @@ enough to start.
 | Container | a signed multi-arch image on GHCR, under Compose, Kubernetes or Helm | the same endpoint, with SQLite on a volume or Postgres |
 
 `herald doctor` names every feature a config asks for that the layer it runs
-in cannot serve, before anything posts.
+in cannot serve, before anything posts, with the first layer that serves it.
+`--layer` names the host to check for: `actions`, `server`, `lambda`,
+`azure`, `worker`, `deno`, `node`, `vercel`, `netlify`, `wasi`, `spin` or
+`fastly`. It says what asks each host for rounds, and where `[schedule]`
+disagrees with the cron its deploy files ship. `--format json` prints the
+same findings as one JSON document, which
+[`herald-doctor.schema.json`](herald-doctor.schema.json) describes.
+`--online` also reads every secret and asks each destination, with nothing
+posted, whether it takes its credential and grants what each route needs: a
+Discord bot's view of its channel, a Slack bot token's scopes, a Matrix bot's
+power level in its room, and a Mastodon server's own character limit against
+the route's `limit`.
 
 **Never twice, never half-posted.** Each announcement has a deterministic
 key, and every step that lands is recorded: the post, the crosspost, the
@@ -300,9 +311,9 @@ subscribe = { role = "1566190000000000001" }
 ```
 
 - Each destination takes its commands every way it offers, set by `via` ([ADR-0016](.docs/decisions/0016-commands-are-carried-every-way-a-destination-offers-and-answered-from-what-herald-keeps.md)):
-  - Discord: `http`, posted to `/interactions/discord`, or `gateway`, held by `herald server`.
-  - Slack: `http`, posted to `/interactions/<destination>`, or `socket`, Socket Mode held by `herald server`.
-  - Matrix: `appservice`, pushed to `/matrix/<destination>`, or `sync`, as the bot.
+  - Discord: `http`, posted to `/interactions/discord`, or `gateway`, held by `herald server` or a Cloudflare Worker's Durable Object.
+  - Slack: `http`, posted to `/interactions/<destination>`, or `socket`, Socket Mode held by `herald server` or a Cloudflare Worker's Durable Object.
+  - Matrix: `appservice`, pushed to `/matrix/<destination>`, or `sync`, as the bot, held by `herald server` or a Cloudflare Worker's Durable Object.
 - A gateway connects only under `discord.gg` and Socket Mode only under `slack.com`; a resume or Socket Mode address elsewhere is refused. `domains = ["proxy.example"]` in the interactions adds domains, such as a proxy's.
 - `herald discord commands` registers the commands. `herald discord roles --guild <id>` lists a server's roles, and `--create <name>` makes an opt-in role.
 - `herald slack manifest --url https://<your host>` prints the Slack app's manifest. `herald matrix registration --url https://<your host>` prints the homeserver's registration with two new tokens, once.

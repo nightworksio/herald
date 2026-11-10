@@ -1,0 +1,90 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "herald doctor",
+  "description": "What `herald doctor --format json` prints.",
+  "type": "object",
+  "properties": {
+    "gaps": {
+      "description": "The features that cannot be served.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Gapped"
+      }
+    },
+    "layer": {
+      "description": "The layer the config is checked for, as `--layer` names it.",
+      "type": "string"
+    },
+    "mistakes": {
+      "description": "What no run could get past.",
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "notes": {
+      "description": "What holds, at a cost worth knowing.",
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "online": {
+      "description": "Whether every secret was read and each destination asked.",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "layer",
+    "online",
+    "gaps",
+    "notes",
+    "mistakes"
+  ],
+  "$defs": {
+    "Gapped": {
+      "description": "A feature the config asks for that the layer cannot serve.",
+      "type": "object",
+      "properties": {
+        "feature": {
+          "description": "What the config asks for.",
+          "type": "string"
+        },
+        "first_layer": {
+          "description": "The first layer that serves it; null where none does until the\nconfig or the platform changes.",
+          "oneOf": [
+            {
+              "description": "The CLI in a workflow or any CI.",
+              "type": "string",
+              "const": "actions"
+            },
+            {
+              "description": "A serverless driver's endpoint.",
+              "type": "string",
+              "const": "serverless"
+            },
+            {
+              "description": "A process of its own that holds its endpoint open.",
+              "type": "string",
+              "const": "container"
+            }
+          ]
+        },
+        "key": {
+          "description": "The config key that asks for it.",
+          "type": "string"
+        },
+        "why": {
+          "description": "Why it cannot be served, and what would serve it.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "feature",
+        "key",
+        "why",
+        "first_layer"
+      ]
+    }
+  }
+}

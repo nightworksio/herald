@@ -114,7 +114,7 @@ impl<F: Future<Output = ()>> Listening<'_, F> {
 }
 
 /// Where Azure Functions tells a custom handler to listen.
-const AZURE_PORT: &str = "FUNCTIONS_CUSTOMHANDLER_PORT";
+pub(crate) const AZURE_PORT: &str = "FUNCTIONS_CUSTOMHANDLER_PORT";
 /// The app setting that overrides `host.json`'s HTTP route prefix.
 const AZURE_PREFIX: &str = "AzureFunctionsJobHost__extensions__http__routePrefix";
 /// The file Azure Functions reads its HTTP route prefix from.

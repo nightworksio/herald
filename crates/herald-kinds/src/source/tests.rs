@@ -69,6 +69,7 @@ fn a_source_takes_no_webhook_and_no_moving_tag_where_its_kind_keeps_the_defaults
     assert_eq!(source.webhook(), None);
     assert_eq!(source.scheme(), None);
     assert!(!source.moving_tags());
+    assert_eq!(source.note(), None);
     assert_eq!(
         source.secret_refs(),
         vec![&SecretRef {

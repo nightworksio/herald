@@ -30,7 +30,7 @@ pub use conformance::{
 };
 pub use herald_kinds::{KvAt, SqlAt};
 pub use host::{Host, Unoffered, plain};
-pub use hosting::Hosting;
+pub use hosting::{CRON_SECRET, HOUSEKEPT, Hosting, POLLED};
 pub use kinds::kinds;
 pub use public::{public, reachable};
 pub use reach::{Reach, ReachError, SocketReach};
