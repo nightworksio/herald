@@ -165,7 +165,11 @@ fn a_timestamp_inside_the_window_either_way_is_taken() {
             ("X-Slack-Signature", "v0=ff"),
             ("X-Slack-Request-Timestamp", stamp.as_str()),
         ];
-        assert!(claimed(SLACK, &headers).is_ok(), "{offset}");
+        assert_eq!(
+            probe(claimed(SLACK, &headers)),
+            format!("HmacSha256 v0:{stamp}:{{\"action\":\"published\"}}"),
+            "{offset}"
+        );
     }
 }
 
@@ -583,7 +587,10 @@ fn an_activity_whose_digest_is_not_its_bodys_is_refused() {
         Err(Refusal::Unmatched { header: "Digest" })
     );
     let both = format!("SHA-512=xyz, {}", digest().replace("SHA-256", "sha-256"));
-    assert!(activitypub(&activity_headers(SIGNED, DATE, &both)).is_ok());
+    assert_eq!(
+        probe(activitypub(&activity_headers(SIGNED, DATE, &both))),
+        "RsaSha256 (request-target): post /inbox\nhost: herald.example\ndate: Fri, 15 Jan 2027 08:00:00 GMT\ndigest: SHA-512=xyz, sha-256=GYwYnH3BiO6aICFt0ThC5bUIJ4byvqdpWtR8m5fNkww="
+    );
     for written in ["", "MD5=abc", "SHA-256"] {
         assert_eq!(
             activitypub(&activity_headers(SIGNED, DATE, written)),
@@ -606,13 +613,13 @@ fn an_activity_dated_outside_the_window_or_undated_is_refused() {
             window: Inbound::DEFAULT.replay_window,
         })
     );
-    assert!(
-        activitypub(&activity_headers(
+    assert_eq!(
+        probe(activitypub(&activity_headers(
             SIGNED,
             "Fri, 15 Jan 2027 07:55:00 GMT",
             &digest
-        ))
-        .is_ok()
+        ))),
+        "RsaSha256 (request-target): post /inbox\nhost: herald.example\ndate: Fri, 15 Jan 2027 07:55:00 GMT\ndigest: SHA-256=GYwYnH3BiO6aICFt0ThC5bUIJ4byvqdpWtR8m5fNkww="
     );
     assert_eq!(
         activitypub(&activity_headers(
@@ -655,9 +662,15 @@ fn a_signature_header_not_in_its_form_is_malformed() {
         );
     }
     let hs2019 = SIGNED.replace("rsa-sha256", "hs2019");
-    assert!(activitypub(&activity_headers(&hs2019, DATE, &digest)).is_ok());
+    assert_eq!(
+        probe(activitypub(&activity_headers(&hs2019, DATE, &digest))),
+        "RsaSha256 (request-target): post /inbox\nhost: herald.example\ndate: Fri, 15 Jan 2027 08:00:00 GMT\ndigest: SHA-256=GYwYnH3BiO6aICFt0ThC5bUIJ4byvqdpWtR8m5fNkww="
+    );
     let unnamed = SIGNED.replace(r#"algorithm="rsa-sha256","#, "");
-    assert!(activitypub(&activity_headers(&unnamed, DATE, &digest)).is_ok());
+    assert_eq!(
+        probe(activitypub(&activity_headers(&unnamed, DATE, &digest))),
+        "RsaSha256 (request-target): post /inbox\nhost: herald.example\ndate: Fri, 15 Jan 2027 08:00:00 GMT\ndigest: SHA-256=GYwYnH3BiO6aICFt0ThC5bUIJ4byvqdpWtR8m5fNkww="
+    );
 }
 
 /// The test key's SPKI made wrong one way each, as an actor might publish it.
@@ -746,7 +759,10 @@ fn an_activity_without_a_body_need_not_cover_a_digest() {
         "(request-target) host date",
     );
     let headers = activity_headers(&unsigned, DATE, "");
-    assert!(addressed(&headers, b"").is_ok());
+    assert_eq!(
+        probe(addressed(&headers, b"")),
+        "RsaSha256 (request-target): post /inbox\nhost: herald.example\ndate: Fri, 15 Jan 2027 08:00:00 GMT"
+    );
     assert_eq!(
         addressed(&headers, ACTIVITY),
         Err(Refusal::Uncovered { header: "digest" })
@@ -779,7 +795,10 @@ fn blank_names_do_not_count_toward_the_most_an_activity_may_name() {
         ),
     );
     let headers = activity_headers(&padded, DATE, &digest);
-    assert!(activitypub(&headers).is_ok());
+    assert_eq!(
+        probe(activitypub(&headers)),
+        "RsaSha256 (request-target): post /inbox\nhost: herald.example\ndate: Fri, 15 Jan 2027 08:00:00 GMT\ndigest: SHA-256=GYwYnH3BiO6aICFt0ThC5bUIJ4byvqdpWtR8m5fNkww="
+    );
 }
 
 #[test]
@@ -800,7 +819,10 @@ fn an_activity_signed_for_another_host_is_misdirected() {
     let mut headers = activity_headers(SIGNED, DATE, &digest);
     headers.retain(|(name, _)| *name != "Host");
     headers.push(("Host", "HERALD.example "));
-    assert!(activitypub(&headers).is_ok());
+    assert_eq!(
+        probe(activitypub(&headers)),
+        "RsaSha256 (request-target): post /inbox\nhost: HERALD.example\ndate: Fri, 15 Jan 2027 08:00:00 GMT\ndigest: SHA-256=GYwYnH3BiO6aICFt0ThC5bUIJ4byvqdpWtR8m5fNkww="
+    );
     headers.retain(|(name, _)| *name != "Host");
     headers.push(("Host", "elsewhere.example"));
     assert_eq!(activitypub(&headers), Err(Refusal::Misdirected));
@@ -871,7 +893,10 @@ fn an_activity_naming_more_headers_than_it_may_is_refused_unread() {
     );
     let mut headers = activity_headers(&at_most, DATE, &digest);
     headers.push(("X-Extra", "1"));
-    assert!(activitypub(&headers).is_ok());
+    assert_eq!(
+        probe(activitypub(&headers)),
+        "RsaSha256 (request-target): post /inbox\nhost: herald.example\ndate: Fri, 15 Jan 2027 08:00:00 GMT\ndigest: SHA-256=GYwYnH3BiO6aICFt0ThC5bUIJ4byvqdpWtR8m5fNkww=\nx-extra: 1\nx-extra: 1\nx-extra: 1\nx-extra: 1\nx-extra: 1\nx-extra: 1\nx-extra: 1\nx-extra: 1\nx-extra: 1\nx-extra: 1\nx-extra: 1\nx-extra: 1"
+    );
     let over = SIGNED.replace(
         "(request-target) host date digest",
         &format!("(request-target) host date digest {extra} x-extra"),
@@ -925,7 +950,10 @@ fn a_request_is_held_to_the_bounds_it_is_claimed_within() {
         ("X-Signature-Ed25519", "00"),
         ("X-Signature-Timestamp", stamp.as_str()),
     ];
-    assert!(claimed(DISCORD, &discord).is_ok());
+    assert_eq!(
+        probe(claimed(DISCORD, &discord)),
+        "Ed25519 1800000061{\"action\":\"published\"}"
+    );
     assert_eq!(
         claim(DISCORD, &discord, BODY, now(), &narrow),
         Err(Refusal::Stale {
@@ -937,7 +965,10 @@ fn a_request_is_held_to_the_bounds_it_is_claimed_within() {
         ("webhook-timestamp", "1800000000"),
         ("webhook-signature", "v1,AAE= v1,/w=="),
     ];
-    assert!(claimed(GITLAB, &rotating).is_ok());
+    assert_eq!(
+        probe(claimed(GITLAB, &rotating)),
+        "HmacSha256 msg_2KWPBgLlAfxdpx2AI54pPJ85f4W.1800000000.{\"action\":\"published\"}"
+    );
     assert_eq!(
         claim(GITLAB, &rotating, BODY, now(), &narrow),
         Err(Refusal::Malformed {
@@ -950,7 +981,16 @@ fn a_request_is_held_to_the_bounds_it_is_claimed_within() {
         target: "post /inbox",
         audience: "herald.example",
     };
-    assert!(activity_claim(to, &headers, ACTIVITY, activity_now(), &Inbound::DEFAULT).is_ok());
+    assert_eq!(
+        probe(activity_claim(
+            to,
+            &headers,
+            ACTIVITY,
+            activity_now(),
+            &Inbound::DEFAULT
+        )),
+        "RsaSha256 (request-target): post /inbox\nhost: herald.example\ndate: Fri, 15 Jan 2027 08:00:00 GMT\ndigest: SHA-256=GYwYnH3BiO6aICFt0ThC5bUIJ4byvqdpWtR8m5fNkww="
+    );
     assert_eq!(
         activity_claim(
             to,
@@ -982,4 +1022,15 @@ fn a_request_is_held_to_the_bounds_it_is_claimed_within() {
             document: 1_048_576,
         }
     );
+}
+
+fn probe(claim: Result<Claim, Refusal>) -> String {
+    match claim {
+        Ok(claim) => format!(
+            "{:?} {}",
+            claim.kind,
+            String::from_utf8(claim.message).unwrap()
+        ),
+        Err(refusal) => format!("{refusal:?}"),
+    }
 }
