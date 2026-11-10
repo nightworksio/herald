@@ -17,6 +17,8 @@ exclude_globs = [
 # A host's clock, signer and verifier hold nothing, so a fresh one is the same one.
 exclude_re = [
     "impl Host for (Native<'_>|JsHost|WasiHost|FastlyHost)>::(clock|signer|verifier) ",
+    # Each kind a store keeps none of is answered by herald-ports' `Unkept` whatever the store, so no store fails the probes of them; the probes themselves are judged by the suite's tests.
+    "herald-testing/src/conformance/unkept\\.rs:\\d+:\\d+: replace unkept with \\(\\)",
     # A Compute service's secrets are a unit struct reading one store, so a fresh one is the same one.
     "impl Host for FastlyHost>::secrets ",
     # A destination's platform waits the default waits unless its kind names its own.

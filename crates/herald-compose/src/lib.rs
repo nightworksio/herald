@@ -9,6 +9,8 @@ mod answer;
 mod asked;
 mod capped;
 mod composed;
+#[cfg(any(test, feature = "conformance"))]
+mod conformance;
 mod host;
 mod hosting;
 mod kinds;
@@ -22,6 +24,10 @@ pub use answer::{Answer, Left};
 pub use asked::Asked;
 pub use capped::Capped;
 pub use composed::Composed;
+#[cfg(any(test, feature = "conformance"))]
+pub use conformance::{
+    CONFORMANCE_EMPTY, CONFORMANCE_SECRET, CONFORMANCE_VAR, CONFORMS, host_conformance,
+};
 pub use herald_kinds::{KvAt, SqlAt};
 pub use host::{Host, Unoffered, plain};
 pub use hosting::Hosting;

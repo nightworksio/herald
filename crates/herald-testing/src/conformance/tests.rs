@@ -68,6 +68,10 @@ enum Fault {
     DerivesAtOneVersion,
     Derives,
     SkipsWhatItNeverHeld,
+    RacesEntries,
+    RacesCursors,
+    RacesLatest,
+    RacesAdmissions,
 }
 
 struct Faulty {
@@ -95,6 +99,17 @@ impl Faulty {
         match self.fault {
             Fault::Broken => Err(broken()),
             _ => Ok(()),
+        }
+    }
+
+    /// `written`, or written where it conflicted on a raced record and the
+    /// store races `racing`: what a store whose check and write are apart
+    /// answers every writer racing it.
+    fn raced(&self, racing: Fault, raced: bool, written: Written) -> Written {
+        if self.fault == racing && raced && written == Written::Conflict {
+            Written::Written(Version(99))
+        } else {
+            written
         }
     }
 }
@@ -181,7 +196,12 @@ impl Ledger for Faulty {
                 .map(|record| record.version),
             _ => expected,
         };
-        self.inner.put_entry(entry, expected).await
+        let written = self.inner.put_entry(entry, expected).await?;
+        Ok(self.raced(
+            Fault::RacesEntries,
+            entry.key == super::key("raced"),
+            written,
+        ))
     }
 
     async fn expire_entries(&self, before: Timestamp) -> Result<Vec<Key>, StoreError> {
@@ -223,7 +243,8 @@ impl Cursors for Faulty {
                 .map(|record| record.version),
             _ => expected,
         };
-        self.inner.put_cursor(source, cursor, expected).await
+        let written = self.inner.put_cursor(source, cursor, expected).await?;
+        Ok(self.raced(Fault::RacesCursors, source.as_str() == "raced", written))
     }
 }
 
@@ -345,6 +366,7 @@ impl Deliveries for Faulty {
         let admitted = self.inner.admit(scheme, id, at).await?;
         Ok(match self.fault {
             Fault::AdmitsTwice => Admitted::Fresh,
+            Fault::RacesAdmissions if id == "raced" => Admitted::Fresh,
             _ => admitted,
         })
     }
@@ -477,7 +499,8 @@ impl Announcements for Faulty {
                 .map(|kept| kept.version),
             _ => expected,
         };
-        self.inner.put_latest(latest, expected).await
+        let written = self.inner.put_latest(latest, expected).await?;
+        Ok(self.raced(Fault::RacesLatest, latest.project == "raced", written))
     }
 }
 
@@ -818,6 +841,98 @@ fn a_store_that_breaks_its_promises_on_the_served_records_is_refused() {
             "a new store holds what a project last announced",
         ),
     ]);
+}
+
+#[test]
+fn a_store_whose_check_and_write_are_apart_is_refused() {
+    refused(&[
+        (
+            Fault::RacesEntries,
+            "of writers racing to make an entry, other than one wrote it",
+        ),
+        (
+            Fault::RacesCursors,
+            "of writers racing to make a cursor, other than one wrote it",
+        ),
+        (
+            Fault::RacesLatest,
+            "of writers racing to record what a project last announced, other than one wrote it",
+        ),
+        (
+            Fault::RacesAdmissions,
+            "of runs admitting one delivery at once, other than one admitted it fresh",
+        ),
+    ]);
+}
+
+#[test]
+fn a_store_answering_a_kind_it_keeps_none_of_is_refused() {
+    let store = FakeStore::default();
+    let probed = |checks: Checks, method: &str| {
+        assert_eq!(
+            checks.done(),
+            Err(Failure(format!(
+                "{method} was not refused as unsupported by a store keeping none of its kind"
+            )))
+        );
+    };
+    let mut checks = Checks::default();
+    pollster::block_on(super::unkept::ledger(&store, &mut checks));
+    probed(checks, "entry");
+    let mut checks = Checks::default();
+    pollster::block_on(super::unkept::cursors(&store, &mut checks));
+    probed(checks, "cursor");
+    let mut checks = Checks::default();
+    pollster::block_on(super::unkept::schedules(&store, &mut checks));
+    probed(checks, "every_schedule");
+    let mut checks = Checks::default();
+    pollster::block_on(super::unkept::subscriptions(&store, &mut checks));
+    probed(checks, "subscribers");
+    let mut checks = Checks::default();
+    pollster::block_on(super::unkept::pins(&store, &mut checks));
+    probed(checks, "pinned");
+    let mut checks = Checks::default();
+    pollster::block_on(super::unkept::deliveries(&store, &mut checks));
+    probed(checks, "admit");
+    let mut checks = Checks::default();
+    pollster::block_on(super::unkept::notes(&store, &mut checks));
+    probed(checks, "note");
+    let mut checks = Checks::default();
+    pollster::block_on(super::unkept::announcements(&store, &mut checks));
+    probed(checks, "latest");
+    let mut checks = Checks::default();
+    pollster::block_on(super::unkept::inboxes(&store, &mut checks));
+    probed(checks, "delivery");
+}
+
+#[test]
+fn every_method_of_a_kind_a_store_keeps_none_of_is_probed() {
+    let mut checks = Checks::default();
+    let unkept = Option::<&FakeStore>::None;
+    pollster::block_on(async {
+        super::unkept::ledger(&unkept, &mut checks).await;
+        super::unkept::cursors(&unkept, &mut checks).await;
+        super::unkept::schedules(&unkept, &mut checks).await;
+        super::unkept::subscriptions(&unkept, &mut checks).await;
+        super::unkept::pins(&unkept, &mut checks).await;
+        super::unkept::deliveries(&unkept, &mut checks).await;
+        super::unkept::notes(&unkept, &mut checks).await;
+        super::unkept::announcements(&unkept, &mut checks).await;
+        super::unkept::inboxes(&unkept, &mut checks).await;
+    });
+    assert_eq!(checks.done(), Ok(()));
+    let mut checks = Checks::default();
+    let store = FakeStore::default();
+    pollster::block_on(super::unkept::notes(&store, &mut checks));
+    assert_eq!(
+        checks.0,
+        [
+            "note was not refused as unsupported by a store keeping none of its kind",
+            "put_note was not refused as unsupported by a store keeping none of its kind",
+            "outbox was not refused as unsupported by a store keeping none of its kind",
+            "expire_notes was not refused as unsupported by a store keeping none of its kind",
+        ]
+    );
 }
 
 #[test]

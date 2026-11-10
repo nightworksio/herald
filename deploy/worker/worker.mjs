@@ -2,20 +2,8 @@ import { DurableObject } from "cloudflare:workers";
 import module from "../pkg/herald_wasm_bg.wasm";
 import { Herald, answered, fetching, load, rounds } from "../host.mjs";
 import files from "./files.mjs";
-import { transacted } from "./sql.mjs";
+import { d1, transacted } from "./sql.mjs";
 import config from "./herald.toml";
-
-function d1(db) {
-  return {
-    async transaction(statements) {
-      const results = await db.batch(statements.map((statement) => db.prepare(statement.sql).bind(...statement.params)));
-      return results.map((result) => ({
-        rows: (result.results ?? []).map((row) => Object.values(row)),
-        changed: result.meta?.changes ?? 0,
-      }));
-    },
-  };
-}
 
 function socket(webSocket) {
   const frames = [];

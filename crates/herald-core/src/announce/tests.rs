@@ -248,7 +248,7 @@ fn an_announcement_is_written_with_its_destination_s_symbols() {
 fn a_template_that_fails_fails_the_announcement() {
     let route = threaded();
     let broken = Templates::compile(&[], crate::Sandbox::DEFAULT).unwrap();
-    assert!(
+    assert_eq!(
         announce(
             &event(),
             &route,
@@ -258,14 +258,16 @@ fn a_template_that_fails_fails_the_announcement() {
             marks(),
             &links()
         )
-        .is_err()
+        .unwrap_err()
+        .to_string(),
+        "template package-release/title: template not found: template \"package-release/title\" does not exist"
     );
     let no_body = Templates::compile(
         &[(&title_template(&route.template), "t", Form::Line)],
         crate::Sandbox::DEFAULT,
     )
     .unwrap();
-    assert!(
+    assert_eq!(
         announce(
             &event(),
             &route,
@@ -275,7 +277,9 @@ fn a_template_that_fails_fails_the_announcement() {
             marks(),
             &links(),
         )
-        .is_err()
+        .unwrap_err()
+        .to_string(),
+        "template package-release/body: template not found: template \"package-release/body\" does not exist"
     );
     let no_thread = Templates::compile(
         &[
@@ -285,7 +289,7 @@ fn a_template_that_fails_fails_the_announcement() {
         crate::Sandbox::DEFAULT,
     )
     .unwrap();
-    assert!(
+    assert_eq!(
         announce(
             &event(),
             &route,
@@ -295,7 +299,9 @@ fn a_template_that_fails_fails_the_announcement() {
             marks(),
             &links(),
         )
-        .is_err()
+        .unwrap_err()
+        .to_string(),
+        "template route/php-mutation-gate-releases/thread: template not found: template \"route/php-mutation-gate-releases/thread\" does not exist"
     );
 }
 

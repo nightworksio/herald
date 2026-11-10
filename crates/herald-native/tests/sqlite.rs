@@ -4,9 +4,9 @@
 #[cfg(test)]
 mod sqlite {
     use herald_native::{NativeSql, NativeSqlite};
-    use herald_ports::{Sql as _, Statement, StoreError, Value};
+    use herald_ports::{Sql as _, SqlError, Statement, StoreError, Value};
     use herald_records::{Dialect, Kept, Records as _, SqlRecords, Wrote};
-    use herald_testing::{keyring_conformance, store_conformance};
+    use herald_testing::{keyring_conformance, sql_conformance, store_conformance};
     use jiff::SignedDuration;
 
     const BUSY: SignedDuration = SignedDuration::from_secs(5);
@@ -29,6 +29,21 @@ mod sqlite {
         run(store_conformance(&store)).unwrap();
         let keyring = Kept::new(opened(NativeSqlite::in_memory().unwrap()));
         run(keyring_conformance(&keyring)).unwrap();
+    }
+
+    #[test]
+    fn a_sqlite_database_and_the_native_database_over_one_pass_the_database_suite() {
+        let parameters = Dialect::Sqlite.parameters();
+        let file = tempfile::tempdir().unwrap();
+        let opened = NativeSqlite::open(&file.path().join("herald.sqlite"), BUSY).unwrap();
+        run(sql_conformance(&opened, parameters)).unwrap();
+        run(sql_conformance(
+            &NativeSqlite::in_memory().unwrap(),
+            parameters,
+        ))
+        .unwrap();
+        let native = NativeSql::Sqlite(NativeSqlite::in_memory().unwrap());
+        run(sql_conformance(&native, parameters)).unwrap();
     }
 
     #[test]
@@ -221,10 +236,20 @@ mod sqlite {
             statement("INSERT INTO t VALUES (1, 'kept?')", vec![]),
             statement("SELECT 1.5", vec![]),
         ]));
-        assert!(refused.is_err());
+        assert_eq!(
+            refused,
+            Err(SqlError::Unavailable {
+                reason: "a column holds neither an integer nor text".to_owned()
+            })
+        );
         let count =
             run(sql.transaction(vec![statement("SELECT count(*) FROM t", vec![])])).unwrap();
         assert_eq!(count[0].rows, [[Value::Integer(2)]]);
-        assert!(run(sql.transaction(vec![statement("NOT SQL", vec![])])).is_err());
+        assert_eq!(
+            run(sql.transaction(vec![statement("NOT SQL", vec![])])),
+            Err(SqlError::Unavailable {
+                reason: "near \"NOT\": syntax error in NOT SQL at offset 0".to_owned()
+            })
+        );
     }
 }

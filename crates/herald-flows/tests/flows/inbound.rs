@@ -1,3 +1,5 @@
+use std::fmt::Write as _;
+
 use herald_core::{Refusal, Scheme};
 use herald_flows::{
     Admission, Checking, Keys, Rejected, Verified, activity_verified, admitted, released, verified,
@@ -199,6 +201,17 @@ fn a_matrix_transaction_holds_only_with_the_homeserver_token() {
     );
 }
 
+/// What a follow signed with Ana's key is let through as.
+fn followed() -> Verified {
+    Verified {
+        delivery: Some(signed(FOLLOW).iter().fold(String::new(), |mut hex, byte| {
+            let _ = write!(hex, "{byte:02x}");
+            hex
+        })),
+        signer: Some(ANA.to_owned()),
+    }
+}
+
 fn delivered(id: &str) -> Verified {
     Verified {
         delivery: Some(id.to_owned()),
@@ -380,10 +393,15 @@ pub(crate) fn activity(
             ),
         ]
     };
-    if let Some(signature) = signature {
-        return signing(signature);
+    match signature {
+        Some(signature) => signing(signature),
+        None => signing(&STANDARD.encode(signed(body))),
     }
-    let probe = signing("AA==");
+}
+
+/// What Ana's key signs `body`'s activity as, as [`FakeSigner`] spells it.
+fn signed(body: &[u8]) -> Vec<u8> {
+    let probe = activity(body, ANA_KEY, Some("AA=="));
     let message = herald_core::activity_claim(
         TO,
         &borrowed(&probe),
@@ -394,8 +412,7 @@ pub(crate) fn activity(
     .unwrap()
     .message;
     let public = herald_core::key(herald_dest_fediverse::ACTOR_SCHEME, ACTOR_KEY).unwrap();
-    let spelled = [b"RsaSha256|".as_slice(), &public, b"|", &message].concat();
-    signing(&STANDARD.encode(spelled))
+    [b"RsaSha256|".as_slice(), &public, b"|", &message].concat()
 }
 
 pub(crate) fn borrowed(headers: &[(String, String)]) -> Vec<(&str, &str)> {
@@ -486,8 +503,8 @@ fn a_key_read_once_checks_the_next_activity_without_reading_it_again() {
         &[(ANA, 200, owned.as_str())],
         JSON,
     );
-    assert!(first.is_ok());
-    assert_eq!(seen.len(), 1);
+    assert_eq!(first, Ok(followed()));
+    assert_eq!(seen, [format!("GET {ANA}")]);
     assert_eq!(
         pollster::block_on(keyring.known(ANA_KEY)).unwrap(),
         Some(known(ANA, at()))
@@ -528,12 +545,12 @@ fn a_key_s_document_is_read_no_further_than_the_bounds_let_it() {
     let Err(Rejected::Unfetched { reason }) = checked else {
         panic!("{checked:?}");
     };
-    assert!(
-        reason.contains(&format!(
-            "the response is larger than {} bytes",
+    assert_eq!(
+        reason,
+        format!(
+            "the host could not be reached: the response is larger than {} bytes",
             owned.len() - 1
-        )),
-        "{reason}"
+        )
     );
 }
 
@@ -551,7 +568,7 @@ fn a_key_kept_as_long_as_its_refresh_is_read_again() {
         &[(ANA, 200, owned.as_str())],
         JSON,
     );
-    assert!(checked.is_ok());
+    assert_eq!(checked, Ok(followed()));
     assert_eq!(seen, [format!("GET {ANA}")]);
     assert_eq!(
         pollster::block_on(keyring.known(ANA_KEY)).unwrap(),
@@ -570,7 +587,7 @@ fn a_key_kept_just_inside_its_refresh_is_used() {
     pollster::block_on(keyring.know(ANA_KEY, &known(ANA, fresh))).unwrap();
     let headers = activity(FOLLOW, ANA_KEY, None);
     let (checked, seen) = kept_by(&keyring, FOLLOW, &headers, &[], JSON);
-    assert!(checked.is_ok());
+    assert_eq!(checked, Ok(followed()));
     assert_eq!(seen, [] as [String; 0]);
 }
 
@@ -612,7 +629,7 @@ fn an_activity_that_does_not_hold_under_a_key_read_within_its_reread_is_refused_
         &[(ANA, 200, owned.as_str())],
         JSON,
     );
-    assert!(checked.is_err());
+    assert_eq!(checked, Err(Rejected::Impersonated));
     assert_eq!(seen, [] as [String; 0]);
 }
 
@@ -648,9 +665,9 @@ fn a_keyring_that_cannot_answer_reads_every_key_from_its_document() {
         &[(ANA, 200, owned.as_str())],
         JSON,
     );
-    assert!(checked.is_ok());
+    assert_eq!(checked, Ok(followed()));
     assert_eq!(seen, [format!("GET {ANA}")]);
-    assert!(pollster::block_on(Unkept.forget_before(at())).is_ok());
+    assert_eq!(pollster::block_on(Unkept.forget_before(at())), Ok(()));
 }
 
 #[test]
@@ -661,9 +678,7 @@ fn an_activity_is_checked_with_its_actor_s_key_and_names_that_actor() {
         &activity(FOLLOW, ANA_KEY, None),
         &[(ANA, 200, owned.as_str())],
     );
-    let verified = checked.unwrap();
-    assert_eq!(verified.signer.as_deref(), Some(ANA));
-    assert!(verified.delivery.is_some());
+    assert_eq!(checked, Ok(followed()));
     assert_eq!(seen, [format!("GET {ANA}")]);
 }
 
@@ -728,7 +743,7 @@ fn a_key_that_cannot_be_read_lets_no_activity_through_and_says_why() {
         let Err(Rejected::Unfetched { reason: said }) = checked else {
             panic!("{key_id}: {checked:?}");
         };
-        assert!(said.ends_with(reason), "{said}");
+        assert_eq!(said, reason);
         assert_eq!(
             Rejected::Unfetched {
                 reason: said.clone()
@@ -744,7 +759,12 @@ fn a_key_that_cannot_be_read_lets_no_activity_through_and_says_why() {
     );
     assert_eq!(checked, Err(Rejected::Unkeyed));
     let (refused, seen) = checked_activity(FOLLOW, &[], &[]);
-    assert!(matches!(refused, Err(Rejected::Refused(_))), "{refused:?}");
+    assert_eq!(
+        refused,
+        Err(Rejected::Refused(Refusal::Unsigned {
+            header: "Signature"
+        }))
+    );
     assert_eq!(seen, Vec::<String>::new());
 }
 

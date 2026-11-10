@@ -106,6 +106,19 @@ pub enum Held {
 }
 
 impl Held {
+    /// Every kind, in the order a store's accessors list them.
+    pub const ALL: [Self; 9] = [
+        Self::Ledger,
+        Self::Cursors,
+        Self::Schedules,
+        Self::Subscriptions,
+        Self::Pins,
+        Self::Deliveries,
+        Self::Notes,
+        Self::Latest,
+        Self::Inboxes,
+    ];
+
     /// The kind as an error names it.
     const fn what(self) -> &'static str {
         match self {
@@ -122,7 +135,8 @@ impl Held {
     }
 
     /// The error a store keeping none of this kind answers.
-    const fn unsupported(self) -> StoreError {
+    #[must_use]
+    pub const fn unsupported(self) -> StoreError {
         StoreError::Unsupported { what: self.what() }
     }
 }

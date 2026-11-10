@@ -548,7 +548,12 @@ mod activitypub {
                 .unwrap();
         assert_eq!(waiting["manuallyApprovesFollowers"], true);
         assert_eq!(document["manuallyApprovesFollowers"], false);
-        assert!(pollster::block_on(reached("BAD").document(&FakeSigner)).is_err());
+        assert_eq!(
+            pollster::block_on(reached("BAD").document(&FakeSigner))
+                .unwrap_err()
+                .to_string(),
+            "the secret BAD is not a key for this signature"
+        );
         let finger: serde_json::Value = serde_json::from_str(&actor.finger()).unwrap();
         assert_eq!(finger, webfinger(DOMAIN, DOMAIN, "php-mutation-gate"));
         let announcement = announcement();

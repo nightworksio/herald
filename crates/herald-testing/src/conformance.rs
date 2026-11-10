@@ -10,6 +10,14 @@ use herald_ports::{
 };
 use jiff::Timestamp;
 
+mod kv;
+mod raced;
+mod sql;
+mod unkept;
+
+pub use kv::kv_conformance;
+pub use sql::sql_conformance;
+
 /// A scheme as its crate writes it, for these tests.
 const GITHUB: herald_core::Scheme = herald_core::Scheme {
     name: "github",
@@ -41,14 +49,21 @@ const FORGEJO: herald_core::Scheme = herald_core::Scheme {
     key: herald_core::KeyForm::Bytes,
 };
 
-/// Whether `store`, empty, skips no record and keeps every kind of record
-/// it answers as a store must (ADR-0005). Every store passes this suite,
-/// and so does [`crate::FakeStore`].
+/// Whether `store`, empty, skips no record, keeps every kind of record it
+/// answers as a store must (ADR-0005), and refuses every method of each
+/// kind it keeps none of as unsupported. Where it keeps a kind with
+/// compare-and-set, as its ledger, cursors and what its projects last
+/// announced are, of writers racing for one record exactly one writes, and
+/// of runs admitting one delivery at once exactly one admits it fresh.
+/// Every store passes this suite, and so does [`crate::FakeStore`].
 ///
 /// # Errors
 ///
 /// The first way the store fails, as a sentence.
 pub async fn store_conformance<S: Store>(store: &S) -> Result<(), Failure> {
+    let mut checks = Checks::default();
+    unkept::unkept(store, &mut checks).await;
+    checks.done()?;
     if !store.skipped().is_empty() {
         return Err(Failure("a store holding no record skipped one".to_owned()));
     }
@@ -231,6 +246,7 @@ async fn ledger<S: Ledger>(store: &S) -> Result<(), Failure> {
     let other = store.entry(&key("other")).await?;
     checks.ensure(other.is_none(), "writing one entry made another appear");
     expired_entries(store, &mut checks, &first.key).await?;
+    raced::entries(store, &mut checks).await?;
     checks.done()
 }
 
@@ -361,6 +377,7 @@ async fn cursors<S: Cursors>(store: &S) -> Result<(), Failure> {
     );
     let other = store.cursor(&SourceName::new("other")).await?;
     checks.ensure(other.is_none(), "writing one cursor made another appear");
+    raced::cursors(store, &mut checks).await?;
     checks.done()
 }
 
@@ -570,6 +587,7 @@ async fn deliveries<S: Deliveries>(store: &S) -> Result<(), Failure> {
         store.admit(FORGEJO, "new", later).await? == Admitted::Seen,
         "a delivery admitted at the expiry was forgotten",
     );
+    raced::admissions(store, &mut checks).await?;
     checks.done()
 }
 
@@ -718,6 +736,7 @@ async fn latest<S: Announcements>(store: &S) -> Result<(), Failure> {
         every == [second, other],
         "every project's latest was not listed as written last",
     );
+    raced::latest(store, &mut checks).await?;
     checks.done()
 }
 

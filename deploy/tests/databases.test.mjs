@@ -1,10 +1,15 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { test } from "node:test";
+import { before, test } from "node:test";
 import { postgres, sqlite } from "../databases.mjs";
+import init, { sqlConformance } from "./pkg-conformance/herald_wasm.js";
+
+before(async () => {
+  await init({ module_or_path: await readFile(new URL("pkg-conformance/herald_wasm_bg.wasm", import.meta.url)) });
+});
 
 const said = (sql, params = []) => ({ sql, params });
 
@@ -31,6 +36,10 @@ test("a SQLite transaction waits for the lock no longer than it was given", asyn
   ]);
   assert.deepEqual(answers[1], { rows: [], changed: 2 });
   assert.deepEqual(answers[2].rows, [[7], [7]]);
+});
+
+test("a SQLite file passes the database suite", async (t) => {
+  await assert.doesNotReject(sqlConformance(await sqlite(join(await directory(t), "herald.sqlite"), 300), "sqlite"));
 });
 
 test("a SQLite file is kept in write-ahead mode, as the native store keeps it", async (t) => {
@@ -71,6 +80,10 @@ test("a Postgres transaction answers each statement in order", { skip: !url }, a
     { rows: [[7], [7]], changed: 0 },
   ]);
   await assert.rejects(db.transaction([said("NOT SQL"), said("SELECT 1")]), /syntax error/);
+});
+
+test("a Postgres database passes the database suite", { skip: !url }, async () => {
+  await assert.doesNotReject(sqlConformance(await postgres({ url, ...within }, pg), "postgres"));
 });
 
 test("a Postgres statement past its timeout is cancelled", { skip: !url }, async () => {

@@ -1412,6 +1412,7 @@ dependencies = [
 name = "herald-testing"
 version = "0.0.0"
 dependencies = [
+ "futures-util",
  "herald-core",
  "herald-ports",
  "jiff",

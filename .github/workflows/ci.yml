@@ -222,11 +222,13 @@ jobs:
       - run: cargo test --workspace --locked
 
   # herald-wasm and everything it builds on compile for wasm32 without a
-  # warning, its JavaScript glue passes its tests under Node, every
-  # JavaScript host in deploy/ passes its own under Node and Deno, and the
-  # Durable Object store passes the store conformance on a real Durable
-  # Object's SQLite storage under Miniflare, and the JavaScript hosts' SQLite
-  # and Postgres databases keep their waits on real databases.
+  # warning, and its JavaScript glue passes its tests under Node. Every
+  # JavaScript host in deploy/ answers, runs its rounds and keeps its records
+  # on its own runtime: the Worker under Miniflare, over D1 and a Durable
+  # Object's SQLite storage, with its crons and held sessions; Vercel and
+  # Netlify over Postgres; Node and Bun over SQLite; Deno over Deno KV. Each
+  # of their databases and key-value stores passes the conformance suite of
+  # its port, and the SQLite and Postgres databases keep their waits.
   wasm:
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -274,9 +276,13 @@ jobs:
       - run: npm ci --ignore-scripts --prefix deploy/tests
       - run: node --test deploy/tests/worker.test.mjs
       - run: node --test deploy/tests/databases.test.mjs
+      - run: node --test deploy/tests/serverless.test.mjs
       - run: .github/scripts/install-tool.sh deno
       - run: deno test --allow-read --allow-net --allow-sys deploy/tests/vetted.deno.test.ts
+      - run: deno test --unstable-kv --allow-read --allow-write --allow-net --allow-env --allow-sys --allow-run deploy/tests/entry.deno.test.ts
       - run: deno check --unstable-cron deploy/deno/main.ts
+      - run: .github/scripts/install-tool.sh bun
+      - run: bun test ./deploy/tests/bun.test.mjs
 
   # The WASI component and the Fastly service build without a warning, their
   # ports pass under wasmtime and Viceroy, and each answers real requests on

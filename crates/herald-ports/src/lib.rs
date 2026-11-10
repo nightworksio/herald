@@ -33,7 +33,7 @@ pub use markers::{MarkedThread, Markers, MarkersError, marker};
 pub use outbound::{Outbound, Proxy, Roots};
 pub use secret::{Secret, SecretError, Secrets, Segment, Text};
 pub use socket::{Frame, Socket, Sockets};
-pub use sql::{Answers, Changed, Sql, SqlError, Statement, Value};
+pub use sql::{Answers, Changed, Parameters, Sql, SqlError, Statement, Value};
 pub use store::{
     Admitted, Announcements, Cursors, Deliveries, Held, Inboxes, Keeper, Keeping, Ledger, Notes,
     Outboxed, Pins, Schedules, Store, StoreError, Subscriptions, Unkept, Version, Versioned,

@@ -243,10 +243,13 @@ fn a_sqlite_file_that_cannot_be_opened_stops_the_run() {
         &ANNOUNCE,
     );
     assert_eq!(foreign.code, STOPPED);
-    assert!(
-        foreign.err.contains("could not be opened"),
-        "{}",
-        foreign.err
+    assert_eq!(
+        foreign.err,
+        format!(
+            "the sqlite store {} could not be opened: the database refused the statements: file is not a database
+",
+            setup.directory.path().join("other.sqlite").display()
+        )
     );
 }
 
@@ -438,6 +441,24 @@ fn the_native_binary_opens_no_database_or_key_value_store_of_another_platform() 
             .as_deref(),
         Some(unhosted)
     );
+}
+
+#[test]
+fn the_native_binary_passes_the_host_suite() {
+    use herald_compose::{
+        CONFORMANCE_EMPTY, CONFORMANCE_SECRET, CONFORMANCE_VAR, CONFORMS, host_conformance,
+    };
+
+    let vars = [
+        (CONFORMANCE_VAR, CONFORMS),
+        (CONFORMANCE_EMPTY, ""),
+        (CONFORMANCE_SECRET, CONFORMS),
+    ]
+    .map(|(name, value)| (name.to_owned(), value.to_owned()))
+    .into();
+    let connector = crate::connect::NATIVE;
+    let native = stores::Native::new(&vars, &connector);
+    assert_eq!(pollster::block_on(host_conformance(&native)), Ok(()));
 }
 
 #[test]

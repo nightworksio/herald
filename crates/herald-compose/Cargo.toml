@@ -9,6 +9,10 @@ repository.workspace = true
 authors.workspace = true
 publish.workspace = true
 
+[features]
+# The host suite every host passes, for a driver's tests (ADR-0001).
+conformance = ["dep:herald-testing"]
+
 [dependencies]
 async-lock = { version = "3", default-features = false, features = ["std"] }
 herald-config.workspace = true
@@ -35,6 +39,7 @@ herald-store-markers.workspace = true
 herald-store-postgres.workspace = true
 herald-store-repo-variables.workspace = true
 herald-store-sqlite.workspace = true
+herald-testing = { workspace = true, optional = true }
 jiff.workspace = true
 url.workspace = true
 

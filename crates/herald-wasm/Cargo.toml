@@ -34,6 +34,7 @@ wasm-bindgen-futures = "0.4"
 
 [target.'cfg(target_arch = "wasm32")'.dev-dependencies]
 base64.workspace = true
+herald-compose = { workspace = true, features = ["conformance"] }
 herald-records.workspace = true
 herald-testing.workspace = true
 wasm-bindgen-test = "0.3"

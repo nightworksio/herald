@@ -72,8 +72,21 @@ fn finished(
     }
 }
 
+fn counted(connection: &sqlite::Connection, sql: &str) -> Result<u64, SqlError> {
+    let counted = connection
+        .execute(sql, &[])
+        .map_err(|error| failed(&format!("{error:?}")))?;
+    Ok(
+        match counted.rows.first().and_then(|row| row.values.first()) {
+            Some(sqlite::Value::Integer(count)) => u64::try_from(*count).unwrap_or(0),
+            _ => 0,
+        },
+    )
+}
+
 fn sqlite_ran(connection: &sqlite::Connection, statement: Statement) -> Result<Changed, SqlError> {
     let parameters = statement.params.into_iter().map(lite).collect::<Vec<_>>();
+    let before = counted(connection, "SELECT total_changes()")?;
     let answered = connection
         .execute(&statement.sql, &parameters)
         .map_err(|error| failed(&format!("{error:?}")))?;
@@ -87,12 +100,10 @@ fn sqlite_ran(connection: &sqlite::Connection, statement: Statement) -> Result<C
             changed: 0,
         });
     }
-    let counted = connection
-        .execute("SELECT changes()", &[])
-        .map_err(|error| failed(&format!("{error:?}")))?;
-    let changed = match counted.rows.first().and_then(|row| row.values.first()) {
-        Some(sqlite::Value::Integer(count)) => u64::try_from(*count).unwrap_or(0),
-        _ => 0,
+    let changed = if counted(connection, "SELECT total_changes()")? == before {
+        0
+    } else {
+        counted(connection, "SELECT changes()")?
     };
     Ok(Changed {
         rows: Vec::new(),

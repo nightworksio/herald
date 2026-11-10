@@ -1,26 +1,33 @@
-use herald_ports::{Changed, Sql, Statement, StoreError, Value};
+use herald_ports::{Changed, Parameters, Sql, Statement, StoreError, Value};
 
 use crate::records::{Blob, Records, Wrote};
 
 /// The layout of the tables this herald keeps records in.
 pub const LAYOUT: i64 = 2;
 
-/// How a database numbers a statement's parameters.
+/// The SQL a database speaks: SQLite's, as Cloudflare D1 speaks it too, or
+/// Postgres's.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Dialect {
-    /// `?1`, `?2`, as SQLite and Cloudflare D1 write them.
+    /// SQLite's.
     Sqlite,
-    /// `$1`, `$2`, as Postgres writes them.
+    /// Postgres's.
     Postgres,
 }
 
 impl Dialect {
+    /// How its statements name their parameters.
+    #[must_use]
+    pub const fn parameters(self) -> Parameters {
+        match self {
+            Self::Sqlite => Parameters::Question,
+            Self::Postgres => Parameters::Dollar,
+        }
+    }
+
     /// How a statement names its parameter at `place`, counted from 1.
     fn at(self, place: u8) -> String {
-        match self {
-            Self::Sqlite => format!("?{place}"),
-            Self::Postgres => format!("${place}"),
-        }
+        self.parameters().at(place)
     }
 
     /// The table records are kept in, its paths ordered byte by byte so a

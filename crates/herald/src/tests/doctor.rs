@@ -1,70 +1,100 @@
 use super::world::*;
 use crate::*;
 
+/// What `doctor` said with `args` over `setup`, its config's path written as
+/// `herald.toml`.
+fn doctored(setup: &Setup, args: &[&str]) -> (u8, String) {
+    let run = herald(setup, &World::default(), args);
+    let path = setup.directory.path().join("herald.toml");
+    (
+        run.code,
+        run.out.replace(&path.display().to_string(), "herald.toml"),
+    )
+}
+
+/// What `doctor` says of a config with nothing to name.
+const READS: &str = "herald.toml reads, its names resolve and its templates render.\n";
+
+/// What `doctor` says of the Actions cache.
+const REFS: &str = "The Actions cache keeps records apart for each ref a run is on, and drops what no run reads for a week: a release run on its tag does not see what a run on the default branch wrote. Run housekeeping and polling on one ref, or choose a store that keeps records across refs.\n";
+
+/// What `doctor` says of markers keyed by a destination's credential.
+const DERIVED: &str = "Each post's markers are keyed by its destination's credential, as no [markers] key is set. Rotating that credential forgets every earlier marker, so an announcement made before the rotation can be posted again on a store that has only markers. Set [markers] key = { secret = \"HERALD_MARKER_SECRET\" } to keep them.\n";
+
 #[test]
 fn doctor_names_the_stores_each_host_keeps_records_in() {
-    let world = World::default();
     let sqlite = setup(&CONFIG.replace("kind = \"git-branch\"", "kind = \"sqlite\""));
-    for (host, keeps) in [
-        ("node", true),
-        ("worker", false),
-        ("deno", false),
-        ("vercel", false),
-        ("netlify", false),
-        ("wasi", false),
-        ("spin", true),
-        ("fastly", false),
-    ] {
-        let run = herald(&sqlite, &world, &["doctor", "--layer", host]);
-        assert_eq!(
-            !run.out.contains("this herald keeps records in"),
-            keeps,
-            "{host}: {}",
-            run.out
-        );
-    }
-    let worker = herald(&sqlite, &world, &["doctor", "--layer", "worker"]);
-    assert!(worker.out.contains("d1"), "{}", worker.out);
-    assert!(!worker.out.contains("deno-kv"), "{}", worker.out);
-    let deno = herald(&sqlite, &world, &["doctor", "--layer", "deno"]);
-    assert!(deno.out.contains("deno-kv"), "{}", deno.out);
-    let fastly = herald(&sqlite, &world, &["doctor", "--layer", "fastly"]);
-    assert!(fastly.out.contains("fastly-kv"), "{}", fastly.out);
+    let unserved = |kinds: &str| {
+        Some(format!(
+            "store.kind: keeping records in sqlite cannot be served: this herald keeps records in {kinds}; set [store] kind to one of them."
+        ))
+    };
+    let named: Vec<(&str, Option<String>)> = [
+        "node", "worker", "deno", "vercel", "netlify", "wasi", "spin", "fastly",
+    ]
+    .into_iter()
+    .map(|host| {
+        let (_, out) = doctored(&sqlite, &["doctor", "--layer", host]);
+        let line = out
+            .lines()
+            .find(|line| line.starts_with("store.kind: "))
+            .map(ToOwned::to_owned);
+        (host, line)
+    })
+    .collect();
+    assert_eq!(
+        named,
+        [
+            ("node", None),
+            (
+                "worker",
+                unserved("d1, durable-object, dynamodb, git-branch, markers or repo-variables")
+            ),
+            (
+                "deno",
+                unserved("deno-kv, dynamodb, git-branch, markers or repo-variables")
+            ),
+            (
+                "vercel",
+                unserved("postgres, dynamodb, git-branch, markers or repo-variables")
+            ),
+            (
+                "netlify",
+                unserved("postgres, dynamodb, git-branch, markers or repo-variables")
+            ),
+            (
+                "wasi",
+                unserved("dynamodb, git-branch, markers or repo-variables")
+            ),
+            ("spin", None),
+            (
+                "fastly",
+                unserved("fastly-kv, dynamodb, git-branch, markers or repo-variables")
+            ),
+        ]
+    );
 }
 
 #[test]
 fn doctor_names_what_the_config_leaves_to_chance() {
-    let world = World::default();
-    let derived = herald(&setup(CONFIG), &world, &["doctor", "--layer", "actions"]);
-    assert_eq!(derived.code, DONE);
-    assert!(
-        derived
-            .out
-            .contains("reads, its names resolve and its templates render.")
+    assert_eq!(
+        doctored(&setup(CONFIG), &["doctor", "--layer", "actions"]),
+        (DONE, format!("{READS}{DERIVED}"))
     );
-    assert!(
-        derived
-            .out
-            .contains("Rotating that credential forgets every earlier marker")
-    );
-    let keyed = herald(
-        &setup(&format!(
-            "{CONFIG}[markers]\nkey = {{ secret = \"HERALD_MARKER_SECRET\" }}\n"
-        )),
-        &world,
-        &["doctor"],
-    );
-    assert!(!keyed.out.contains("Rotating"), "{}", keyed.out);
-    let d1 = herald(
-        &setup(&CONFIG.replace("kind = \"git-branch\"", "kind = \"d1\"")),
-        &world,
-        &["doctor"],
-    );
-    assert_eq!(d1.code, STOPPED);
-    assert!(
-        d1.out.ends_with("store.kind: keeping records in d1 cannot be served: this herald keeps records in sqlite, postgres, dynamodb, git-branch, markers, actions-cache or repo-variables; set [store] kind to one of them.\n"),
-        "{}",
-        d1.out
+    let keyed = setup(&format!(
+        "{CONFIG}[markers]\nkey = {{ secret = \"HERALD_MARKER_SECRET\" }}\n"
+    ));
+    assert_eq!(doctored(&keyed, &["doctor"]), (DONE, READS.to_owned()));
+    let d1 = setup(&CONFIG.replace("kind = \"git-branch\"", "kind = \"d1\""));
+    assert_eq!(
+        doctored(&d1, &["doctor"]),
+        (
+            STOPPED,
+            format!(
+                "{READS}{DERIVED}store.kind: keeping records in d1 cannot be served: this herald keeps records in sqlite, postgres, dynamodb, git-branch, markers, actions-cache or repo-variables; set [store] kind to one of them.
+"
+            )
+        )
     );
 }
 
@@ -80,17 +110,21 @@ fn doctor_names_a_pin_the_actions_cache_keeps_only_when_told() {
                 "template = \"release\"\n",
                 "template = \"release\"\npin = \"store\"\n",
             );
-        herald(&setup(&config), &World::default(), &["doctor"]).out
+        doctored(&setup(&config), &["doctor"])
     };
-    assert!(
-        pinned("").contains("routes[0].pin: a pin the store remembers cannot be served: the actions-cache store keeps no pins; add \"pins\" to its keeps, or set pin = \"markers\"."),
-        "{}",
-        pinned("")
+    assert_eq!(
+        pinned(""),
+        (
+            STOPPED,
+            format!(
+                "{READS}{DERIVED}{REFS}routes[0].pin: a pin the store remembers cannot be served: the actions-cache store keeps no pins; add \"pins\" to its keeps, or set pin = \"markers\".
+"
+            )
+        )
     );
-    assert!(
-        !pinned("keeps = [\"pins\"]").contains("routes[0].pin"),
-        "{}",
-        pinned("keeps = [\"pins\"]")
+    assert_eq!(
+        pinned("keeps = [\"pins\"]"),
+        (DONE, format!("{READS}{DERIVED}{REFS}"))
     );
 }
 
@@ -99,10 +133,13 @@ fn doctor_names_what_the_markers_store_cannot_serve() {
     let gaps = |config: &str| {
         let doctored = herald(&setup(config), &World::default(), &["doctor"]);
         assert_eq!(doctored.code, STOPPED, "{}", doctored.err);
-        assert!(
+        assert_eq!(
             doctored
                 .out
-                .contains("The markers store has no compare-and-set")
+                .lines()
+                .filter(|line| line.starts_with("The markers store has no compare-and-set"))
+                .count(),
+            1
         );
         doctored
             .out
@@ -138,5 +175,10 @@ fn doctor_names_what_the_markers_store_cannot_serve() {
         "channel = \"1566200000000000100\"",
         "channel = \"1566200000000000100\"\nforum = true",
     );
-    assert!(gaps(&forum)[0].contains("and a forum's posts are not read back"));
+    assert_eq!(
+        gaps(&forum),
+        [
+            "routes[0].destination: sending each announcement once cannot be served: the markers store reads announcements back from their posts, and a forum's posts are not read back; post through a bot to a text or announcement channel, or choose a store that keeps records."
+        ]
+    );
 }

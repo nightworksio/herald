@@ -66,7 +66,7 @@ pub async fn store<S: Sql>(sql: S) -> Result<DurableObjectStore<S>, StoreError> 
 
 #[cfg(test)]
 mod tests {
-    use herald_ports::{Changed, SqlError, Store as _, Value};
+    use herald_ports::{Changed, Held, Keeper as _, SqlError, Value};
     use herald_testing::ScriptedSql;
 
     use super::*;
@@ -103,11 +103,7 @@ mod tests {
                 changed: 0,
             },
         ]));
-        assert!(
-            pollster::block_on(store(opened))
-                .unwrap()
-                .cursors()
-                .is_some()
-        );
+        let kept = pollster::block_on(store(opened)).unwrap();
+        assert_eq!(Held::ALL.map(|held| kept.holds(held)), [true; 9]);
     }
 }

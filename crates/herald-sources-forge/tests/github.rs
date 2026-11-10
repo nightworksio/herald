@@ -90,12 +90,20 @@ mod github {
             .to_string()
         );
         let unnamed = edited(|payload| payload["repository"]["full_name"] = json!(7));
-        assert!(
+        assert_eq!(
             Forge::GitHub
                 .hooked(&[RELEASE], &unnamed, "cli/cli")
-                .is_err()
+                .unwrap_err()
+                .to_string(),
+            "GitHub's release event could not be read: it is not of cli/cli, the repository its source names"
         );
-        assert!(Forge::GitHub.hooked(&[RELEASE], b"{}", "cli/cli").is_err());
+        assert_eq!(
+            Forge::GitHub
+                .hooked(&[RELEASE], b"{}", "cli/cli")
+                .unwrap_err()
+                .to_string(),
+            "GitHub's release event could not be read: missing field `action` at line 1 column 2"
+        );
     }
 
     #[test]
@@ -154,21 +162,22 @@ mod github {
         let error = Forge::GitHub
             .event(b"{\"action\":\"published\"}")
             .unwrap_err();
-        assert!(
-            error
-                .to_string()
-                .starts_with("GitHub's release event could not be read: missing field `release`"),
-            "{error}"
+        assert_eq!(
+            error.to_string(),
+            "GitHub's release event could not be read: missing field `release` at line 1 column 22"
         );
         let huge = vec![b' '; 4_194_305];
         assert_eq!(
             Forge::GitHub.event(&huge).unwrap_err().to_string(),
             "GitHub's release event is larger than the 4194304 bytes herald reads"
         );
-        assert!(matches!(
-            Forge::GitHub.event(&huge[..4_194_304]),
-            Err(SourceError::Unreadable { .. })
-        ));
+        assert_eq!(
+            Forge::GitHub
+                .event(&huge[..4_194_304])
+                .unwrap_err()
+                .to_string(),
+            "GitHub's release event could not be read: EOF while parsing a value at line 1 column 4194304"
+        );
     }
 
     #[test]
@@ -262,10 +271,12 @@ mod github {
         drafts[0]["draft"] = json!(true);
         drafts[1]["published_at"] = json!(null);
         let body = drafts.to_string();
-        assert!(
+        assert_eq!(
             Forge::GitHub
                 .releases(&neovim(), &answer(200, &body), herald_wire::PARSE_LIMIT)
-                .is_err()
+                .unwrap_err()
+                .to_string(),
+            "GitHub's releases could not be read: a published release has no publication time"
         );
         drafts[1]["draft"] = json!(true);
         let body = drafts.to_string();

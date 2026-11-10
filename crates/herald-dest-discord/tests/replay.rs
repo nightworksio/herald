@@ -326,10 +326,13 @@ mod replay {
             );
         }
         let without_id = entry.clone().landed(Step::Post, Facts::default());
-        assert!(matches!(
+        assert_eq!(
             send(&bot(CHANNEL, false), &replay, &Step::Pin, &without_id),
-            Sent::Refused(_)
-        ));
+            Sent::Refused(
+                "the announcement's message is not recorded, so this step cannot be taken yet"
+                    .to_owned()
+            )
+        );
         replay.finish().unwrap();
     }
 
@@ -635,9 +638,11 @@ mod replay {
             ]
         );
         let unreadable = fixture!("markers-unreadable");
-        assert!(
+        assert_eq!(
             pollster::block_on(DiscordMarkers::new(&discord, &unreadable).threads(&route_marker()))
-                .is_err()
+                .unwrap_err()
+                .to_string(),
+            "the destination's posts could not be read: Discord answered 403"
         );
     }
 
@@ -652,7 +657,12 @@ mod replay {
             "the destination's posts could not be read: Discord answered 403"
         );
         let nothing = Replay::of(Fixture::default());
-        assert!(read_back(&discord, &nothing, &marker()).is_err());
+        assert_eq!(
+            read_back(&discord, &nothing, &marker())
+                .unwrap_err()
+                .to_string(),
+            "the destination's posts could not be read: https://discord.com/api/v10/users/@me is not a host this destination may reach"
+        );
         assert_eq!(
             read_back(&webhook(false), &nothing, &marker())
                 .unwrap_err()
@@ -777,17 +787,13 @@ mod replay {
         };
         assert_eq!(options(secret(), None).bot(), Ok(true));
         assert_eq!(options(None, secret()).bot(), Ok(false));
-        assert!(
-            options(None, None)
-                .bot()
-                .unwrap_err()
-                .contains("needs a token or a webhook")
+        assert_eq!(
+            options(None, None).bot().unwrap_err(),
+            "a Discord destination needs a token or a webhook; give one"
         );
-        assert!(
-            options(secret(), secret())
-                .bot()
-                .unwrap_err()
-                .contains("not both")
+        assert_eq!(
+            options(secret(), secret()).bot().unwrap_err(),
+            "a Discord destination takes a token or a webhook, not both; keep one"
         );
     }
 

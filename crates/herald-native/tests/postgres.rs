@@ -7,7 +7,7 @@ mod postgres {
     use herald_native::{NativePostgres, NativeSql, Timeouts};
     use herald_ports::{Secret, Sql as _, SqlError, Statement, StoreError, Value};
     use herald_records::{Dialect, Kept, Records as _, SqlRecords, Wrote};
-    use herald_testing::{keyring_conformance, store_conformance};
+    use herald_testing::{keyring_conformance, sql_conformance, store_conformance};
     use jiff::SignedDuration;
 
     const URL: &str = "HERALD_TEST_POSTGRES";
@@ -66,6 +66,21 @@ mod postgres {
             return;
         };
         keyring_conformance(&Kept::new(keys)).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn a_postgres_database_and_the_native_database_over_one_pass_the_database_suite() {
+        let Some(sql) = fresh("suite").await else {
+            return;
+        };
+        let parameters = Dialect::Postgres.parameters();
+        sql_conformance(&sql, parameters).await.unwrap();
+        let Some(sql) = fresh("native_suite").await else {
+            return;
+        };
+        sql_conformance(&NativeSql::Postgres(Box::new(sql)), parameters)
+            .await
+            .unwrap();
     }
 
     #[tokio::test]

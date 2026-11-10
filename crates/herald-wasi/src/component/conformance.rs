@@ -1,11 +1,12 @@
-//! The store conformance suite over Spin's own databases, built only with
-//! the `conformance` feature, for testing a host: `/conformance/sqlite`
-//! runs it over Spin's SQLite database `default`, `/conformance/postgres`
-//! over the Postgres database `HERALD_TEST_POSTGRES` names.
+//! The database and store conformance suites over Spin's own databases,
+//! built only with the `conformance` feature, for testing a host:
+//! `/conformance/sqlite` runs them over Spin's SQLite database `default`,
+//! `/conformance/postgres` over the Postgres database `HERALD_TEST_POSTGRES`
+//! names.
 
 use herald_flows::Reply;
-use herald_ports::{Secret, Sql as _, SqlError, Statement};
-use herald_testing::store_conformance;
+use herald_ports::{Parameters, Secret, Sql as _, SqlError, Statement};
+use herald_testing::{sql_conformance, store_conformance};
 use jiff::SignedDuration;
 
 use super::spin::SpinSql;
@@ -34,6 +35,14 @@ async fn failure_kept(sql: &SpinSql) -> Result<(), String> {
 
 async fn conforms(sql: SpinSql, postgres: bool) -> Result<(), String> {
     failure_kept(&sql).await?;
+    let parameters = if postgres {
+        Parameters::Dollar
+    } else {
+        Parameters::Question
+    };
+    sql_conformance(&sql, parameters)
+        .await
+        .map_err(|failure| failure.to_string())?;
     if postgres {
         let store = herald_store_postgres::store(sql)
             .await

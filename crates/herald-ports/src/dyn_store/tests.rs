@@ -194,19 +194,10 @@ fn an_erased_store_holds_and_skips_what_the_store_it_erases_does() {
     for holding in [true, false] {
         let store = Refusing { holding };
         let erased = Erased(&store as &dyn DynStore);
-        for held in [
-            Held::Ledger,
-            Held::Cursors,
-            Held::Schedules,
-            Held::Subscriptions,
-            Held::Pins,
-            Held::Deliveries,
-            Held::Notes,
-            Held::Latest,
-            Held::Inboxes,
-        ] {
-            assert_eq!(Keeper::holds(&erased, held), holding);
-        }
+        assert_eq!(
+            Held::ALL.map(|held| Keeper::holds(&erased, held)),
+            [holding; 9]
+        );
         assert_eq!(Keeper::skipped(&erased), ["corrupt.json"]);
     }
     let unheld = Refusing { holding: false };

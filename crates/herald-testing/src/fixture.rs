@@ -119,11 +119,11 @@ impl Fixture {
     /// Each credential found, by where it is and what it looks like, never
     /// by its value.
     pub fn audit(&self, secrets: &[String]) -> Result<(), String> {
-        let mut found = self.handed(secrets);
-        for (index, exchange) in self.exchanges.iter().enumerate() {
-            let text = serde_json::to_string(exchange).unwrap_or_default();
+        let texts = self.texts();
+        let mut found = handed(&texts, secrets);
+        for (index, (exchange, text)) in self.exchanges.iter().zip(&texts).enumerate() {
             found.extend(
-                credentials(&text)
+                credentials(text)
                     .into_iter()
                     .map(|what| format!("exchange {index} holds {what}")),
             );
@@ -141,17 +141,10 @@ impl Fixture {
         verdict(&found)
     }
 
-    fn handed(&self, secrets: &[String]) -> Vec<String> {
+    fn texts(&self) -> Vec<String> {
         self.exchanges
             .iter()
-            .enumerate()
-            .filter(|(_, exchange)| {
-                let text = serde_json::to_string(exchange).unwrap_or_default();
-                secrets
-                    .iter()
-                    .any(|secret| !secret.is_empty() && text.contains(secret.as_str()))
-            })
-            .map(|(index, _)| format!("exchange {index} holds a secret it was handed"))
+            .map(|exchange| serde_json::json!(exchange).to_string())
             .collect()
     }
 
@@ -167,6 +160,19 @@ impl Fixture {
     fn exchanges_value(&self) -> Value {
         serde_json::to_value(self).unwrap_or(Value::Null)
     }
+}
+
+fn handed(texts: &[String], secrets: &[String]) -> Vec<String> {
+    texts
+        .iter()
+        .enumerate()
+        .filter(|(_, text)| {
+            secrets
+                .iter()
+                .any(|secret| !secret.is_empty() && text.contains(secret.as_str()))
+        })
+        .map(|(index, _)| format!("exchange {index} holds a secret it was handed"))
+        .collect()
 }
 
 fn verdict(found: &[String]) -> Result<(), String> {
@@ -298,7 +304,7 @@ impl<H: Http> Recorder<H> {
             exchanges: lock(&self.exchanges).clone(),
         };
         let secrets = lock(&self.secrets).clone();
-        verdict(&recorded.handed(&secrets))?;
+        verdict(&handed(&recorded.texts(), &secrets))?;
         let scrubbed = scrub.applied(&recorded);
         scrubbed.audit(&secrets)?;
         Ok(scrubbed)

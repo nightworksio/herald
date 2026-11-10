@@ -47,6 +47,7 @@ tokio = { workspace = true, features = ["fs", "io-std", "io-util", "macros", "ne
 
 [dev-dependencies]
 base64.workspace = true
+herald-compose = { workspace = true, features = ["conformance"] }
 herald-dest-fediverse.workspace = true
 herald-testing.workspace = true
 pollster.workspace = true

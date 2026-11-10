@@ -1,6 +1,8 @@
 import { chmod, open } from "node:fs/promises";
 
 const JOURNAL = "PRAGMA journal_mode = WAL";
+const TOTAL = "SELECT total_changes() AS total";
+const INT8 = 20;
 
 async function rolledBack(rollback, error) {
   try {
@@ -21,10 +23,13 @@ export async function sqlite(file, busy) {
     const db = new Database(file);
     db.exec(JOURNAL);
     if (waiting) db.exec(waiting);
+    const total = db.prepare(TOTAL);
     const run = (statement) => {
       const prepared = db.prepare(statement.sql);
       if (prepared.columnNames.length) return { rows: prepared.values(...statement.params), changed: 0 };
-      return { rows: [], changed: prepared.run(...statement.params).changes };
+      const before = total.get().total;
+      const { changes } = prepared.run(...statement.params);
+      return { rows: [], changed: total.get().total === before ? 0 : changes };
     };
     return { transaction: async (statements) => db.transaction(() => statements.map(run)).immediate() };
   }
@@ -32,13 +37,16 @@ export async function sqlite(file, busy) {
   const db = new DatabaseSync(file);
   db.exec(JOURNAL);
   if (waiting) db.exec(waiting);
+  const total = db.prepare(TOTAL);
   const run = (statement) => {
     const prepared = db.prepare(statement.sql);
     if (prepared.columns().length) {
       prepared.setReturnArrays(true);
       return { rows: prepared.all(...statement.params), changed: 0 };
     }
-    return { rows: [], changed: Number(prepared.run(...statement.params).changes) };
+    const before = total.get().total;
+    const { changes } = prepared.run(...statement.params);
+    return { rows: [], changed: total.get().total === before ? 0 : Number(changes) };
   };
   return {
     async transaction(statements) {
@@ -65,6 +73,7 @@ export async function postgres({ url, connect, statement }, driver = () => impor
     connectionTimeoutMillis: connect,
     statement_timeout: statement,
     allowExitOnIdle: true,
+    types: { getTypeParser: (oid, format) => (oid === INT8 ? BigInt : pg.types.getTypeParser(oid, format)) },
   });
   pool.on("error", (error) => console.error(`herald: the database closed its connection: ${error.message}`));
   return {

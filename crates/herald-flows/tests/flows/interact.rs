@@ -338,10 +338,9 @@ fn a_destination_s_wording_words_its_replies_its_days_and_its_links() {
         "Je krijgt een melding bij gate."
     );
     let unworded = world().interact(&slack(Command::Latest));
-    assert!(
-        said(&unworded).ends_with("2027-01-15"),
-        "{}",
-        said(&unworded)
+    assert_eq!(
+        said(&unworded),
+        "**[gate 1\\.0\\.0](https://example.org/1.0.0)**\n2027-01-15"
     );
 }
 
@@ -467,18 +466,17 @@ fn a_store_that_cannot_list_or_an_unshowable_record_is_answered_as_unavailable()
     );
     let unrendered =
         World::new("template = \"broken\"", Script::default()).announced("gate", &["releases"]);
-    for command in [Command::Latest, Command::Changelog] {
+    for (command, template) in [(Command::Latest, "title"), (Command::Changelog, "body")] {
         let answer = unrendered.interact(&discord(command));
         assert_eq!(
             said(&answer),
             "herald could not answer just now; try again later."
         );
-        assert!(
-            answer
-                .trouble
-                .as_deref()
-                .is_some_and(|trouble| trouble.contains("broken")),
-            "{answer:?}"
+        assert_eq!(
+            answer.trouble,
+            Some(format!(
+                "template broken/{template}: undefined value (in broken/{template}:1)"
+            ))
         );
     }
 }
@@ -553,11 +551,9 @@ fn discord_refusing_a_role_or_no_role_to_give_is_said() {
         }),
         ..discord(Command::Subscribe)
     });
-    assert!(
-        unwritten
-            .trouble
-            .unwrap()
-            .starts_with("a role could not be asked of Discord")
+    assert_eq!(
+        unwritten.trouble.as_deref(),
+        Some("a role could not be asked of Discord: an id is not written as Discord writes one")
     );
     let direct = role_world(&[]).interact(&Asked {
         member: None,
@@ -660,7 +656,15 @@ fn only_a_run_that_answers_commands_reads_the_secrets_it_answers_with() {
         .connect(|_| Ok::<_, ()>(Script::default()))
         .unwrap();
     assert_eq!(unanswering.interactions().count(), 0);
-    assert!(pollster::block_on(prepared.answering(&announcing)).is_err());
+    assert_eq!(
+        pollster::block_on(prepared.answering(&announcing))
+            .err()
+            .map(|error| error.to_string()),
+        Some(
+            "no secret is named HERALD_MATRIX_AS; set it where this platform keeps secrets"
+                .to_owned()
+        )
+    );
 }
 
 #[test]
@@ -840,15 +844,15 @@ fn an_answer_is_sent_in_its_destination_s_parts_and_a_refusal_said() {
         Err("quiet takes no commands".to_owned())
     );
     let unreachable = World::new("", Script::default());
-    assert!(
+    assert_eq!(
         pollster::block_on(replied(
             &unreachable.connected,
             &destination,
             &discord_replying(),
             &answer
         ))
-        .unwrap_err()
-        .contains("nothing scripted")
+        .unwrap_err(),
+        "the host could not be reached: nothing scripted for PATCH https://discord.com/api/v10/webhooks/123456789012345678/«secret:the interaction's token»/messages/@original"
     );
     let mismatched = pollster::block_on(replied(
         &world.connected,

@@ -55,9 +55,18 @@ fn every_command_is_named_in_any_case_and_described() {
             Command::named(&command.name().to_uppercase()),
             Some(command)
         );
-        let described = crate::Wording::default().describe(command).to_owned();
-        assert!(described.ends_with("last") || described.contains("release"));
     }
+    assert_eq!(
+        Command::ALL
+            .map(|command| crate::Wording::default().describe(command).to_owned())
+            .to_vec(),
+        [
+            "Be mentioned when a project announces a release",
+            "Stop being mentioned when a project announces a release",
+            "Show what a project announced last",
+            "Show the notes of what a project announced last"
+        ]
+    );
     assert_eq!(Command::named("subscribed"), None);
     assert_eq!(
         Command::ALL.map(Command::name),
@@ -143,13 +152,15 @@ fn completions_hold_what_was_typed_those_starting_with_it_first_at_most_twenty_f
     ];
     let announced = every(&every_latest);
     assert_eq!(completions("GA", &announced), ["gate", "php-mutation-gate"]);
-    assert_eq!(completions("", &announced).len(), 3);
+    assert_eq!(
+        completions("", &announced),
+        ["php-mutation-gate", "gate", "herald"]
+    );
     let many: Vec<Latest> = (0..30)
         .map(|n| latest(&format!("p{n:02}"), &["a"]))
         .collect();
-    let listed = completions("p", &every(&many));
-    assert_eq!(listed.len(), MOST_COMPLETIONS);
-    assert_eq!(listed.first().map(String::as_str), Some("p00"));
+    let first: Vec<String> = (0..MOST_COMPLETIONS).map(|n| format!("p{n:02}")).collect();
+    assert_eq!(completions("p", &every(&many)), first);
 }
 
 #[test]
@@ -221,16 +232,24 @@ fn every_name_herald_says_back_is_shown_as_written_not_read_as_markup() {
         Said::Unchosen(Unchosen::Many(vec![link()])).to_string(),
         format!("More than one project is announced here; name one of {shown}.")
     );
-    for said in [
-        Said::Subscribed(link()),
-        Said::AlreadySubscribed(link()),
-        Said::Unsubscribed(link()),
-        Said::NotSubscribed(link()),
-        Said::Unoffered(link()),
-    ] {
-        let said = said.to_string();
-        assert!(said.contains(shown) && !said.contains("[Free]"), "{said}");
-    }
+    assert_eq!(
+        [
+            Said::Subscribed(link()),
+            Said::AlreadySubscribed(link()),
+            Said::Unsubscribed(link()),
+            Said::NotSubscribed(link()),
+            Said::Unoffered(link()),
+        ]
+        .map(|said| said.to_string())
+        .to_vec(),
+        [
+            format!("You will be mentioned when {shown} announces a release."),
+            format!("You are already mentioned when {shown} announces a release."),
+            format!("You will no longer be mentioned when {shown} announces a release."),
+            format!("You are not mentioned when {shown} announces a release."),
+            format!("Subscribing to {shown} is not offered here."),
+        ]
+    );
 }
 
 #[test]
