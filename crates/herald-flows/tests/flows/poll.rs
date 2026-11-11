@@ -152,7 +152,7 @@ fn backfill_announces_the_newest_on_the_first_poll_the_oldest_first() {
     let body = releases(&["v3", "v2", "v1"]);
     let mut answers = vec![(RELEASES, 200, body.as_str()), REPOSITORY];
     answers.extend(announced());
-    answers.extend(announced());
+    answers.extend(announced().into_iter().filter(|answer| *answer != WHO));
     let Sweep::Polled { announced, .. } = swept(
         &backfilled(config(""), 2),
         &store,

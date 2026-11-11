@@ -170,6 +170,17 @@ fn an_answer_is_one_message_of_sections_seen_by_the_asker_unless_public() {
     let answer = interacting("").answered(&replying, &parts, false);
     assert_eq!(answer.method, Method::Post);
     assert_eq!(answer.url.expose(), HOOK);
+    assert_eq!(
+        answer
+            .headers
+            .iter()
+            .map(|(name, value)| (name.as_str(), value.redacted()))
+            .collect::<Vec<_>>(),
+        [
+            ("Content-Type", "application/json; charset=utf-8".to_owned()),
+            ("User-Agent", herald_ports::USER_AGENT.to_owned()),
+        ]
+    );
     assert!(!answer.url.redacted().contains("abc"));
     assert_eq!(
         serde_json::from_slice::<Value>(&answer.body).unwrap(),
@@ -223,13 +234,16 @@ fn slack_taking_an_answer_or_not_is_read_from_its_status() {
     assert_eq!(took(&answer(200, "ok")), Ok(()));
     assert_eq!(
         took(&answer(404, "expired_url")),
-        Err("Slack answered 404: expired_url".to_owned())
+        Err("Slack refused it with 404: expired_url".to_owned())
     );
-    assert_eq!(took(&answer(500, "")), Err("Slack answered 500".to_owned()));
+    assert_eq!(
+        took(&answer(500, "")),
+        Err("Slack refused it with 500".to_owned())
+    );
     let long = "x".repeat(1000);
     assert_eq!(
         took(&answer(502, &long)),
-        Err(format!("Slack answered 502: {}", "x".repeat(200)))
+        Err(format!("Slack refused it with 502: {}", "x".repeat(200)))
     );
 }
 

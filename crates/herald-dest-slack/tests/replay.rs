@@ -7,8 +7,8 @@ mod replay {
         Announcement, Entry, Facts, MentionStyle, Pins, ReadBack, Sent, Step, Text, Threads, Waits,
     };
     use herald_dest_slack::{
-        Credential, DestinationOptions, Domain, Interacting, Interactions, Refusal, RouteOptions,
-        Slack, SlackMarkers, profile,
+        Credential, DestinationOptions, Domain, Interacting, Interactions, RouteOptions, Slack,
+        SlackMarkers, profile,
     };
     use herald_ports::{Markers, MarkersError, Secret};
     use herald_testing::sample::{self, marker, route_marker};
@@ -187,9 +187,7 @@ mod replay {
         for (step, what) in [(Step::Pin, "pin"), (Step::Unpin, "unpin")] {
             assert_eq!(
                 send(&hook(), &replay, &step, &announcement, &posted()),
-                refused(&format!(
-                    "a Slack webhook cannot {what}; reach Slack with a bot token to"
-                ))
+                refused(&format!("a Slack webhook cannot {what}; use a bot token"))
             );
         }
         replay.finish().unwrap();
@@ -276,6 +274,35 @@ mod replay {
     }
 
     #[test]
+    fn own_pins_are_looked_up_no_further_than_pin_lookups_by_an_identity_learned_once() {
+        let recorded: serde_json::Value =
+            serde_json::from_str(include_str!("../fixtures/unpin-by-marker.reference.json"))
+                .unwrap();
+        let exchanges = &recorded["exchanges"];
+        let replay = Replay::of(
+            Fixture::from_json(
+                &serde_json::json!({
+                    "exchanges": [exchanges[0], exchanges[1], exchanges[2], exchanges[0]]
+                })
+                .to_string(),
+            )
+            .unwrap(),
+        );
+        let mut unremembered = announcement();
+        unremembered.replaces = None;
+        let one = bot().looking_up(herald_core::PinLookups::new(1).unwrap());
+        for _ in 0..2 {
+            assert_eq!(
+                send(&one, &replay, &Step::Unpin, &unremembered, &posted()),
+                refused(
+                    "the route's earlier pins are among 2 pins, more than the 1 it looks up; raise pin_lookups, up to 100, or unpin them by hand"
+                )
+            );
+        }
+        replay.finish().unwrap();
+    }
+
+    #[test]
     fn a_step_needing_an_earlier_one_or_a_thing_slack_has_not_is_refused_unsent() {
         let replay = Replay::of(Fixture::default());
         let announcement = announcement();
@@ -308,13 +335,13 @@ mod replay {
                 unchannelled.clone(),
                 Step::Post,
                 &bare,
-                "a Slack bot posts to a channel, and the route names none",
+                "the route names no Slack channel; set its channel",
             ),
             (
                 unchannelled,
                 Step::Unpin,
                 &posted(),
-                "a Slack bot posts to a channel, and the route names none",
+                "the route names no Slack channel; set its channel",
             ),
         ] {
             assert_eq!(
@@ -325,7 +352,7 @@ mod replay {
         }
         replay.finish().unwrap();
         assert_eq!(
-            Refusal::Missing("the route's earlier pin").to_string(),
+            herald_core::Declined::Missing("the route's earlier pin").to_string(),
             "the route's earlier pin is not recorded, so this step cannot be taken yet"
         );
     }
@@ -574,16 +601,19 @@ mod replay {
         let replay = fixture!("markers-unreadable");
         let markers = SlackMarkers::new(&slack, &replay);
         let key = announcement().key;
-        for reason in [
-            "Slack refused it: invalid_auth",
-            "Slack asked to wait 3s first",
-            "Slack refused it: thread_not_found",
+        let unreadable = |reason: &str| MarkersError::Unreadable {
+            reason: reason.to_owned(),
+        };
+        for error in [
+            unreadable("Slack refused it: invalid_auth"),
+            MarkersError::RetryAfter {
+                after: SignedDuration::from_secs(3),
+            },
+            unreadable("Slack refused it: thread_not_found"),
         ] {
             assert_eq!(
                 pollster::block_on(markers.entry(&key, &marker())),
-                Err(MarkersError::Unreadable {
-                    reason: reason.to_owned()
-                })
+                Err(error)
             );
         }
         replay.finish().unwrap();
@@ -593,12 +623,22 @@ mod replay {
             RouteOptions::default(),
             None,
         );
+        let blank = Slack::new(
+            Credential::Bot(Secret::new("HERALD_SLACK_TOKEN", "xoxb-test")),
+            RouteOptions {
+                channel: Some(String::new()),
+                ..RouteOptions::default()
+            },
+            None,
+        );
+        let unnamed = "the route names no Slack channel; set its channel";
         for (slack, reason) in [
-            (hook(), "a webhook cannot read a channel's messages"),
             (
-                unchannelled,
-                "a Slack bot posts to a channel, and the route names none",
+                hook(),
+                "a Slack webhook cannot read a channel's messages; use a bot token",
             ),
+            (unchannelled, unnamed),
+            (blank, unnamed),
         ] {
             assert_eq!(
                 pollster::block_on(SlackMarkers::new(&slack, &none).entry(&key, &marker())),
@@ -628,16 +668,17 @@ mod replay {
             team: None,
             interactions: None,
             read_back: None,
+            pin_lookups: None,
         };
         assert_eq!(reached(secret(), None).bot(), Ok(true));
         assert_eq!(reached(None, secret()).bot(), Ok(false));
         assert_eq!(
             reached(None, None).bot(),
-            Err("a Slack destination needs a token or a webhook; give one")
+            Err("a Slack destination needs a token or a webhook; give one".to_owned())
         );
         assert_eq!(
             reached(secret(), secret()).bot(),
-            Err("a Slack destination takes a token or a webhook, not both; keep one")
+            Err("a Slack destination takes a token or a webhook, not both; keep one".to_owned())
         );
         for channel in ["C0123456789", "G01234567", "D0123ABCD"] {
             assert_eq!(

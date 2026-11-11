@@ -1,6 +1,8 @@
 use herald_core::{Facts, Sent, Waits};
 use herald_ports::Response;
 use serde_json::Value;
+
+use crate::slack::SLACK;
 /// The most of an answer that is not JSON a refusal quotes.
 const QUOTED: usize = 200;
 
@@ -19,24 +21,21 @@ pub(crate) fn text<'a>(value: &'a Value, field: &str) -> Option<&'a str> {
     value.get(field).and_then(Value::as_str)
 }
 
+/// What Slack said in `body`: the word an incoming webhook answers with,
+/// or the Web API's error.
+fn said(body: &Value) -> String {
+    quoted(
+        body.as_str()
+            .unwrap_or_else(|| text(body, "error").unwrap_or_default()),
+    )
+}
+
 /// What a failed answer means: when to ask again, or why Slack refused.
 /// Slack's Web API answers a refusal with `200` and `"ok": false`; an
 /// incoming webhook answers one with a status and a word.
 pub(crate) fn trouble(response: &Response, body: &Value, waits: Waits) -> Option<Sent> {
-    if let Some(wait) = waits.after(response.status, response.retry_after()) {
-        return Some(Sent::RetryAfter(wait));
-    }
-    if !response.succeeded() {
-        let said = quoted(
-            body.as_str()
-                .unwrap_or_else(|| text(body, "error").unwrap_or_default()),
-        );
-        let status = response.status;
-        return Some(Sent::Refused(if said.is_empty() {
-            format!("Slack refused it with {status}")
-        } else {
-            format!("Slack refused it with {status}: {said}")
-        }));
+    if let Some(sent) = response.trouble(waits, None, SLACK, || said(body)) {
+        return Some(sent);
     }
     if body.get("ok").and_then(Value::as_bool) == Some(false) {
         let error = text(body, "error").unwrap_or("an unnamed error");

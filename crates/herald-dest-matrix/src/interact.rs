@@ -9,7 +9,9 @@ use herald_ports::{Method, Request, Response, Secret, Text, unreserved};
 use serde_json::{Value, json};
 
 use crate::interactions::{Interactions, Via};
-use crate::request::MESSAGE;
+use crate::matrix::MATRIX;
+use crate::read::{json, said, waited};
+use crate::request::{CLIENT, MESSAGE};
 
 /// The word after a project that asks for the answer to be posted to the
 /// room rather than in a thread.
@@ -252,7 +254,7 @@ impl Interacting {
     #[must_use]
     pub fn sync(&self, since: Option<&str>, wait: u32) -> Request {
         let mut url = format!(
-            "{}/_matrix/client/v3/sync?timeout={wait}&filter={}",
+            "{}{CLIENT}/sync?timeout={wait}&filter={}",
             self.homeserver,
             unreserved(&self.filter())
         );
@@ -325,7 +327,7 @@ impl Interacting {
                     object.insert("formatted_body".to_owned(), json!(html));
                 }
                 let url = format!(
-                    "{}/_matrix/client/v3/rooms/{}/send/{MESSAGE}/herald.{drawn}.{index}",
+                    "{}{CLIENT}/rooms/{}/send/{MESSAGE}/herald.{drawn}.{index}",
                     self.homeserver,
                     unreserved(&replying.room)
                 );
@@ -336,11 +338,17 @@ impl Interacting {
             .collect()
     }
 
-    /// The registration the homeserver's administrator installs: herald at
-    /// `url`, with the tokens `homeserver` and `appservice`, owning its
-    /// sender alone.
+    /// The registration the homeserver's administrator installs for the
+    /// destination `destination`: herald at `url`, with the tokens
+    /// `homeserver` and `appservice`, owning its sender alone.
     #[must_use]
-    pub fn registration(&self, url: &str, homeserver: &str, appservice: &str) -> String {
+    pub fn registration(
+        &self,
+        destination: &str,
+        url: &str,
+        homeserver: &str,
+        appservice: &str,
+    ) -> String {
         let sender = &self.interactions.sender;
         let escaped: String = sender
             .chars()
@@ -353,12 +361,12 @@ impl Interacting {
             })
             .collect();
         [
-            "id: 'herald'".to_owned(),
+            format!("id: {}", quoted(&format!("herald-{destination}"))),
             format!("url: {}", quoted(url)),
             format!("as_token: {}", quoted(appservice)),
             format!("hs_token: {}", quoted(homeserver)),
             format!("sender_localpart: {}", quoted(sender)),
-            "rate_limited: false".to_owned(),
+            format!("rate_limited: {}", self.interactions.rate_limited),
             "namespaces:".to_owned(),
             "  users:".to_owned(),
             "    - exclusive: true".to_owned(),
@@ -383,20 +391,8 @@ fn quoted(value: &str) -> String {
 ///
 /// What the homeserver said, where it refused or was unwell.
 pub fn took(response: &Response) -> Result<(), String> {
-    if response.succeeded() {
-        return Ok(());
-    }
-    let body: Value = serde_json::from_slice(&response.body).unwrap_or(Value::Null);
-    let said = [text(&body, "errcode"), text(&body, "error")]
-        .into_iter()
-        .flatten()
-        .collect::<Vec<&str>>()
-        .join(" ");
-    Err(
-        format!("the homeserver answered {}: {said}", response.status)
-            .trim_end_matches([' ', ':'])
-            .to_owned(),
-    )
+    let body = json(response);
+    response.took(waited(&body), MATRIX, || said(&body))
 }
 
 #[cfg(test)]

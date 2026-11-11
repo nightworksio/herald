@@ -201,6 +201,10 @@ pub struct LinkSpec {
 }
 
 impl LinkSpec {
+    /// The most links a kind names: the buttons Discord, which takes the
+    /// fewest, draws beside its subscribe button.
+    pub const MOST: usize = 24;
+
     /// The link `name`, its button labelled as herald words it.
     #[must_use]
     pub fn named(name: impl Into<String>) -> Self {

@@ -1,11 +1,12 @@
 use std::fmt;
 use std::future::Future;
 
-use herald_core::{Entry, Key, Marker};
+use herald_core::{Entry, Key, Marker, Sent};
 
 use crate::crypto::{Algorithm, CryptoError, Signer};
+use crate::http::HttpError;
 use crate::secret::Secret;
-use jiff::Timestamp;
+use jiff::{SignedDuration, Timestamp};
 
 /// Why a destination's posts could not be read.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -15,6 +16,34 @@ pub enum MarkersError {
         /// What it said.
         reason: String,
     },
+    /// The destination asked to be asked again after this long.
+    RetryAfter {
+        /// How long it asked to wait.
+        after: SignedDuration,
+    },
+}
+
+impl MarkersError {
+    /// The error a read the destination answered with `sent` makes: the
+    /// wait it asked for, or else what it said.
+    #[must_use]
+    pub fn unlanded(sent: Sent) -> Self {
+        match sent {
+            Sent::RetryAfter(after) => Self::RetryAfter { after },
+            Sent::Refused(reason) => Self::Unreadable { reason },
+            Sent::Landed(_) => Self::Unreadable {
+                reason: "the destination answered with nothing to read".to_owned(),
+            },
+        }
+    }
+}
+
+impl From<HttpError> for MarkersError {
+    fn from(error: HttpError) -> Self {
+        Self::Unreadable {
+            reason: error.to_string(),
+        }
+    }
 }
 
 impl fmt::Display for MarkersError {
@@ -23,6 +52,10 @@ impl fmt::Display for MarkersError {
             Self::Unreadable { reason } => {
                 write!(f, "the destination's posts could not be read: {reason}")
             }
+            Self::RetryAfter { after } => write!(
+                f,
+                "the destination asked to wait {after:#} before its posts are read"
+            ),
         }
     }
 }
@@ -137,6 +170,40 @@ mod tests {
             }
             .to_string(),
             "the destination's posts could not be read: 403"
+        );
+        assert_eq!(
+            MarkersError::RetryAfter {
+                after: SignedDuration::from_secs(2)
+            }
+            .to_string(),
+            "the destination asked to wait 2s before its posts are read"
+        );
+    }
+
+    #[test]
+    fn an_unlanded_read_is_the_wait_asked_for_or_what_was_said() {
+        let after = SignedDuration::from_secs(4);
+        assert_eq!(
+            MarkersError::unlanded(Sent::RetryAfter(after)),
+            MarkersError::RetryAfter { after }
+        );
+        assert_eq!(
+            MarkersError::unlanded(Sent::Refused("403".to_owned())),
+            MarkersError::Unreadable {
+                reason: "403".to_owned()
+            }
+        );
+        assert_eq!(
+            MarkersError::unlanded(Sent::Landed(herald_core::Facts::default())),
+            MarkersError::Unreadable {
+                reason: "the destination answered with nothing to read".to_owned()
+            }
+        );
+        assert_eq!(
+            MarkersError::from(HttpError::TimedOut),
+            MarkersError::Unreadable {
+                reason: "the host did not answer in time".to_owned()
+            }
         );
     }
 }

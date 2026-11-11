@@ -4,8 +4,9 @@ use herald_kinds::{
 };
 use herald_ports::Secret;
 
+use crate::activitypub::ACTOR;
 use crate::activitypub::{ActivityPub, ActorOptions, ActorRouteOptions, actor_profile};
-use crate::mastodon::{self, Mastodon};
+use crate::mastodon::{self, Mastodon, PLATFORM};
 use crate::options::{DestinationOptions, RouteOptions};
 
 /// An activity posted to an actor's inbox, signed as HTTP Signatures do.
@@ -112,7 +113,7 @@ pub enum MastodonKind {}
 impl DestinationKind for MastodonKind {
     const NAME: &str = MASTODON;
     const DESCRIPTION: &str = "An account on a server speaking the Mastodon client API.";
-    const LABEL: &str = "Mastodon";
+    const LABEL: &str = PLATFORM;
     const ROUTE: &str = "MastodonRoute";
     const ROUTE_DESCRIPTION: &str = "A route to a Mastodon destination.";
 
@@ -135,7 +136,7 @@ pub enum ActorKind {}
 impl DestinationKind for ActorKind {
     const NAME: &str = ACTIVITYPUB;
     const DESCRIPTION: &str = "herald's own ActivityPub actors, on its domain.";
-    const LABEL: &str = "herald's ActivityPub actor";
+    const LABEL: &str = ACTOR;
     const ROUTE: &str = "ActivityPubRoute";
     const ROUTE_DESCRIPTION: &str = "A route announcing as one of herald's own ActivityPub actors.";
 

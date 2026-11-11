@@ -447,7 +447,7 @@ fn roles_are_listed_and_made_mentionable_in_a_server_named_by_id() {
     assert_eq!(listed(&answer(200, "{}")), Ok(Vec::new()));
     assert_eq!(
         listed(&answer(403, r#"{"message": "Missing Permissions"}"#)),
-        Err("Discord answered 403: Missing Permissions".to_owned())
+        Err("Discord refused it with 403: Missing Permissions".to_owned())
     );
     assert_eq!(took(&answer(204, "")), Ok(()));
     assert_eq!(
@@ -460,11 +460,21 @@ fn roles_are_listed_and_made_mentionable_in_a_server_named_by_id() {
     );
     assert_eq!(
         made(&answer(403, "")),
-        Err("Discord answered 403".to_owned())
+        Err("Discord refused it with 403".to_owned())
     );
     assert_eq!(
         took(&answer(500, "")),
-        Err("Discord answered 500".to_owned())
+        Err("Discord refused it with 500".to_owned())
+    );
+    assert_eq!(
+        took(&answer(
+            429,
+            r#"{"message":"You are being rate limited.","retry_after":2.5}"#
+        )),
+        Err(
+            "Discord refused it with 429: You are being rate limited., and asked to wait 2s 500ms"
+                .to_owned()
+        )
     );
 }
 

@@ -7,7 +7,7 @@ mod replay {
         Entry, Facts, MentionStyle, Pins, Profile, ReadBack, Sent, Step, Threads, Waits,
     };
     use herald_dest_fediverse::{
-        LIMIT, Mastodon, MastodonMarkers, Refusal, RouteOptions, Visibility, profile, shortest,
+        LIMIT, Mastodon, MastodonMarkers, RouteOptions, Visibility, profile, shortest,
     };
     use herald_ports::{Markers, MarkersError, Secret};
     use herald_testing::sample::{announcement, marker, route_marker};
@@ -115,7 +115,7 @@ mod replay {
         assert_eq!(key, Some(format!("{}.2", announcement().key)));
         assert_eq!(
             mastodon.request(&Step::Chunk(2), &announcement(), &posted()),
-            Err(Refusal::Missing("the status before it"))
+            Err(herald_core::Declined::Missing("the status before it"))
         );
         assert_eq!(
             mastodon.request(
@@ -123,10 +123,10 @@ mod replay {
                 &announcement(),
                 &Entry::new(announcement().key)
             ),
-            Err(Refusal::Missing("the announcement's status"))
+            Err(herald_core::Declined::Missing("the announcement's status"))
         );
         assert_eq!(
-            Refusal::Missing("the status before it").to_string(),
+            herald_core::Declined::Missing("the status before it").to_string(),
             "the status before it is not recorded, so this step cannot be taken yet"
         );
     }
@@ -315,7 +315,7 @@ mod replay {
         let markers = MastodonMarkers::new(&mastodon, &replay);
         let key = announcement().key;
         for reason in [
-            "Mastodon answered 401",
+            "Mastodon refused it with 401: The access token is invalid",
             "Mastodon did not say which account the token is",
         ] {
             assert_eq!(
@@ -326,6 +326,18 @@ mod replay {
             );
         }
         replay.finish().unwrap();
+        let limited = Replay::of(
+            Fixture::from_json(
+                r#"{"exchanges":[{"request":{"method":"GET","url":"https://mastodon.example/api/v1/accounts/verify_credentials","headers":{"Authorization":"Bearer «secret:HERALD_MASTODON_TOKEN»","User-Agent":"herald/0.0.0 (+https://github.com/nightworksio/herald)"}},"response":{"status":429}}]}"#,
+            )
+            .unwrap(),
+        );
+        assert_eq!(
+            pollster::block_on(MastodonMarkers::new(&mastodon, &limited).entry(&key, &marker())),
+            Err(MarkersError::RetryAfter {
+                after: Mastodon::WAITS.limited
+            })
+        );
     }
 
     #[test]

@@ -538,7 +538,7 @@ fn discord_refusing_a_role_or_no_role_to_give_is_said() {
         .interact(&discord(Command::Subscribe));
     assert_eq!(
         refused.trouble.as_deref(),
-        Some("Discord answered 403: Missing Permissions")
+        Some("Discord refused it with 403: Missing Permissions")
     );
     let unwritten = role_world(&[]).interact(&Asked {
         member: Some(Member {
@@ -822,7 +822,7 @@ fn an_answer_is_sent_in_its_destination_s_parts_and_a_refusal_said() {
             &discord_replying(),
             &answer
         )),
-        Err("Discord answered 404: Unknown Webhook".to_owned())
+        Err("Discord refused it with 404: Unknown Webhook".to_owned())
     );
     let quiet = DestinationName::new("quiet");
     assert_eq!(

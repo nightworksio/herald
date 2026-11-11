@@ -1,12 +1,10 @@
-use std::fmt;
-
-use herald_core::{Announcement, Entry, Phrase, Step, safe_url};
-use herald_ports::{Method, Request, Text, USER_AGENT, unreserved};
+use herald_core::{Announcement, Declined, Entry, Phrase, Step, safe_url};
+use herald_ports::{Credential, Method, Request, Text, USER_AGENT, unreserved};
 use serde_json::{Value, json};
 
 use crate::interact::subscribe_block;
 use crate::interactions::Subscribe;
-use crate::slack::{Credential, Slack};
+use crate::slack::{SLACK, Slack};
 use crate::web_api::{CHAT_POST_MESSAGE, PINS_ADD, PINS_LIST, WebMethod};
 
 /// The type of the metadata event herald's posts carry their markers in
@@ -17,36 +15,25 @@ pub(crate) const ROUTE: &str = "route";
 /// The field of the metadata's payload carrying the announcement's marker.
 pub(crate) const MARKER: &str = "marker";
 
-/// Why a step cannot be asked of Slack.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Refusal {
-    /// Slack has no such thing to do.
-    Cannot(&'static str),
-    /// An incoming webhook cannot do it; a bot token can.
-    WebhookCannot(&'static str),
-    /// A bot needs the route's channel, and the route names none.
-    NoChannel,
-    /// The step needs an earlier step's answer, which is not recorded.
-    Missing(&'static str),
+/// Why Slack cannot take a step.
+pub(crate) const fn cannot(what: &'static str) -> Declined {
+    Declined::Cannot {
+        platform: SLACK,
+        what,
+    }
 }
 
-impl fmt::Display for Refusal {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Cannot(what) => write!(f, "Slack cannot {what}"),
-            Self::WebhookCannot(what) => write!(
-                f,
-                "a Slack webhook cannot {what}; reach Slack with a bot token to"
-            ),
-            Self::NoChannel => {
-                f.write_str("a Slack bot posts to a channel, and the route names none")
-            }
-            Self::Missing(what) => write!(
-                f,
-                "{what} is not recorded, so this step cannot be taken yet"
-            ),
-        }
+/// Why an incoming webhook cannot take a step.
+pub(crate) const fn webhook_cannot(what: &'static str) -> Declined {
+    Declined::WebhookCannot {
+        platform: SLACK,
+        what,
     }
+}
+
+/// A request to Slack, sent as the bot where `slack` posts as one.
+pub(crate) fn sent(method: Method, url: Text, slack: &Slack) -> Request {
+    authorised(Request::new(method, url), slack)
 }
 
 fn authorised(request: Request, slack: &Slack) -> Request {
@@ -78,11 +65,11 @@ pub(crate) fn get(slack: &Slack, method: WebMethod, query: &str) -> Request {
     } else {
         format!("{}/{name}?{query}", slack.api)
     };
-    authorised(Request::new(Method::Get, Text::plain(url)), slack)
+    sent(Method::Get, Text::plain(url), slack)
 }
 
 pub(crate) fn posted_json(slack: &Slack, url: Text, body: &Value) -> Request {
-    authorised(Request::new(Method::Post, url), slack)
+    sent(Method::Post, url, slack)
         .header(
             "Content-Type",
             Text::plain("application/json; charset=utf-8"),
@@ -173,12 +160,13 @@ fn mentioning(users: &[String]) -> Option<String> {
 }
 
 fn chunk_body(announcement: &Announcement, index: u32) -> Value {
-    let index = usize::try_from(index).unwrap_or(usize::MAX);
-    let text = announcement.mentioned_in(index).map_or_else(
+    let mentioned = usize::try_from(index)
+        .ok()
+        .and_then(|index| announcement.mentioned_in(index));
+    let text = mentioned.map_or_else(
         || {
             announcement
-                .parts
-                .get(index)
+                .part(index)
                 .map(|part| part.body.clone())
                 .unwrap_or_default()
         },
@@ -209,16 +197,18 @@ pub(crate) fn posted<'a>(
     entry: &'a Entry,
     step: &Step,
     what: &'static str,
-) -> Result<&'a str, Refusal> {
-    entry
-        .facts(step)
-        .and_then(|facts| facts.message.as_deref())
-        .ok_or(Refusal::Missing(what))
+) -> Result<&'a str, Declined> {
+    entry.message(step).ok_or(Declined::Missing(what))
 }
 
 /// The route's channel, which a bot needs.
-pub(crate) fn channel(slack: &Slack) -> Result<&str, Refusal> {
-    slack.route.channel.as_deref().ok_or(Refusal::NoChannel)
+pub(crate) fn channel(slack: &Slack) -> Result<&str, Declined> {
+    slack
+        .route
+        .channel
+        .as_deref()
+        .filter(|channel| !channel.is_empty())
+        .ok_or(Declined::NoChannel { platform: SLACK })
 }
 
 pub(crate) fn step(
@@ -226,11 +216,11 @@ pub(crate) fn step(
     step: &Step,
     announcement: &Announcement,
     entry: &Entry,
-) -> Result<Request, Refusal> {
+) -> Result<Request, Declined> {
     match (&slack.credential, step) {
-        (_, Step::Crosspost) => Err(Refusal::Cannot("crosspost")),
-        (_, Step::OpenThread) => Err(Refusal::Cannot("open a thread; its replies are the thread")),
-        (_, Step::Deliver(_) | Step::Deliveries) => Err(Refusal::Cannot("deliver to an inbox")),
+        (_, Step::Crosspost) => Err(cannot("crosspost")),
+        (_, Step::OpenThread) => Err(cannot("open a thread; its replies are the thread")),
+        (_, Step::Deliver(_) | Step::Deliveries) => Err(cannot("deliver to an inbox")),
         (Credential::Webhook(url), Step::Post) => Ok(posted_json(
             slack,
             Text::secret(url.clone()),
@@ -241,8 +231,8 @@ pub(crate) fn step(
             Text::secret(url.clone()),
             &chunk_body(announcement, *index),
         )),
-        (Credential::Webhook(_), Step::Pin) => Err(Refusal::WebhookCannot("pin")),
-        (Credential::Webhook(_), Step::Unpin) => Err(Refusal::WebhookCannot("unpin")),
+        (Credential::Webhook(_), Step::Pin) => Err(webhook_cannot("pin")),
+        (Credential::Webhook(_), Step::Unpin) => Err(webhook_cannot("unpin")),
         (Credential::Bot(_), Step::Post) => {
             let marks = &announcement.marks;
             let body = with(

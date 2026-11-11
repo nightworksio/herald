@@ -3,8 +3,9 @@ use herald_ports::{Http, MarkedThread, Markers, MarkersError, unreserved};
 use jiff::Timestamp;
 use serde_json::Value;
 
-use crate::discord::{Credential, Discord};
-use crate::request::get;
+use crate::discord::Discord;
+use crate::read::{json, owned, trouble};
+use crate::request::{channel, get, webhook_cannot};
 
 /// The most messages Discord lists in one page.
 const PAGE: u8 = 100;
@@ -29,31 +30,32 @@ impl<'a, H: Http> DiscordMarkers<'a, H> {
     }
 
     async fn read(&self, path: &str) -> Result<Value, MarkersError> {
-        if let Credential::Webhook(_) = &self.discord.credential {
-            return Err(MarkersError::Unreadable {
-                reason: "a webhook cannot read a channel's messages".to_owned(),
-            });
+        let response = self.http.send(get(self.discord, path)).await?;
+        match trouble(&response, self.discord.waits) {
+            Some(sent) => Err(MarkersError::unlanded(sent)),
+            None => Ok(json(&response)),
         }
-        let request = get(self.discord, path);
-        let response = self
-            .http
-            .send(request)
-            .await
-            .map_err(|error| MarkersError::Unreadable {
-                reason: error.to_string(),
-            })?;
-        if !response.succeeded() {
-            return Err(MarkersError::Unreadable {
-                reason: format!("Discord answered {}", response.status),
-            });
-        }
-        Ok(serde_json::from_slice(&response.body).unwrap_or(Value::Null))
     }
 
     async fn herald(&self) -> Result<String, MarkersError> {
+        if let Some(bot) = self.discord.bot.get() {
+            return Ok(bot.clone());
+        }
         let user = self.read("/users/@me").await?;
-        text(&user, "id").ok_or_else(|| MarkersError::Unreadable {
-            reason: "Discord did not say which user the bot is".to_owned(),
+        let bot = owned(&user, "id").ok_or_else(|| MarkersError::Unreadable {
+            reason: crate::unpin::UNNAMED.to_owned(),
+        })?;
+        Ok(self.discord.bot.learn(bot).clone())
+    }
+
+    /// The channel read back, where a bot reads one.
+    fn channel(&self) -> Result<&str, MarkersError> {
+        let declined = match self.discord.credential.bot() {
+            Some(_) => channel(self.discord),
+            None => Err(webhook_cannot("read a channel's messages")),
+        };
+        declined.map_err(|declined| MarkersError::Unreadable {
+            reason: declined.to_string(),
         })
     }
 
@@ -86,20 +88,13 @@ impl<'a, H: Http> DiscordMarkers<'a, H> {
                 .collect();
             let done = listed.len() < usize::from(PAGE) || mine.iter().any(&sought);
             own.extend(mine);
-            before = listed.last().and_then(|message| text(message, "id"));
+            before = listed.last().and_then(|message| owned(message, "id"));
             if done || before.is_none() {
                 break;
             }
         }
         Ok(own)
     }
-}
-
-fn text(value: &Value, field: &str) -> Option<String> {
-    value
-        .get(field)
-        .and_then(Value::as_str)
-        .map(ToOwned::to_owned)
 }
 
 /// The route and announcement markers on `message`'s embed links, as
@@ -140,7 +135,7 @@ fn marked_thread(post: &Value) -> Option<MarkedThread> {
     let thread = post.get("thread")?;
     let metadata = thread.get("thread_metadata").unwrap_or(&Value::Null);
     Some(MarkedThread {
-        thread: text(thread, "id")?,
+        thread: owned(thread, "id")?,
         opened: timestamp(metadata, "create_timestamp").or_else(|| timestamp(post, "timestamp"))?,
         archived: flag(metadata, "archived"),
         locked: flag(metadata, "locked"),
@@ -155,7 +150,7 @@ fn carries(message: &Value, marker: &Marker) -> bool {
 
 impl<H: Http> Markers for DiscordMarkers<'_, H> {
     async fn threads(&self, route: &Marker) -> Result<Vec<MarkedThread>, MarkersError> {
-        let channel = self.discord.route.channel.as_deref().unwrap_or_default();
+        let channel = self.channel()?;
         let herald = self.herald().await?;
         Ok(self
             .messages(channel, &herald, |_| false)
@@ -171,7 +166,7 @@ impl<H: Http> Markers for DiscordMarkers<'_, H> {
     }
 
     async fn entry(&self, key: &Key, marker: &Marker) -> Result<Option<Entry>, MarkersError> {
-        let channel = self.discord.route.channel.as_deref().unwrap_or_default();
+        let channel = self.channel()?;
         let herald = self.herald().await?;
         let messages = self
             .messages(channel, &herald, |message| carries(message, marker))
@@ -179,8 +174,8 @@ impl<H: Http> Markers for DiscordMarkers<'_, H> {
         let Some(post) = messages.iter().find(|message| carries(message, marker)) else {
             return Ok(None);
         };
-        let message = text(post, "id");
-        let thread = post.get("thread").and_then(|thread| text(thread, "id"));
+        let message = owned(post, "id");
+        let thread = post.get("thread").and_then(|thread| owned(thread, "id"));
         let mut entry = Entry::new(*key).landed(
             Step::Post,
             Facts {
@@ -221,7 +216,7 @@ impl<H: Http> Markers for DiscordMarkers<'_, H> {
             .await?
             .iter()
             .filter(|chunk| chunk.get("type").and_then(Value::as_u64) == Some(DEFAULT_TYPE))
-            .filter(|chunk| text(chunk, "id") != message)
+            .filter(|chunk| owned(chunk, "id") != message)
             .count();
         for index in 1..=u32::try_from(chunks).unwrap_or(u32::MAX) {
             entry = entry.landed(

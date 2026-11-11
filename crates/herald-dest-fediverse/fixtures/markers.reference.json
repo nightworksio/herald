@@ -92,24 +92,6 @@
     {
       "request": {
         "method": "GET",
-        "url": "https://mastodon.example/api/v1/accounts/verify_credentials",
-        "headers": {
-          "Authorization": "Bearer «secret:HERALD_MASTODON_TOKEN»",
-          "User-Agent": "herald/0.0.0 (+https://github.com/nightworksio/herald)"
-        }
-      },
-      "response": {
-        "status": 200,
-        "body": {
-          "id": "109000000000000001",
-          "username": "herald",
-          "acct": "herald"
-        }
-      }
-    },
-    {
-      "request": {
-        "method": "GET",
         "url": "https://mastodon.example/api/v1/accounts/109000000000000001/statuses?limit=40&exclude_reblogs=true",
         "headers": {
           "Authorization": "Bearer «secret:HERALD_MASTODON_TOKEN»",

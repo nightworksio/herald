@@ -303,14 +303,23 @@ fn an_answer_to_a_command_given_in_a_thread_replies_to_it_in_that_thread_public_
 #[test]
 fn the_registration_owns_the_sender_alone_with_its_tokens_quoted() {
     let registration = interacting(r#", "sender": "her.ald""#).registration(
+        "it's",
         "https://herald.example",
         "hs'1",
         "as2",
     );
     assert_eq!(
         registration,
-        "id: 'herald'\nurl: 'https://herald.example'\nas_token: 'as2'\nhs_token: 'hs''1'\nsender_localpart: 'her.ald'\nrate_limited: false\nnamespaces:\n  users:\n    - exclusive: true\n      regex: '@her\\.ald:.*'\n  rooms: []\n  aliases: []\n"
+        "id: 'herald-it''s'\nurl: 'https://herald.example'\nas_token: 'as2'\nhs_token: 'hs''1'\nsender_localpart: 'her.ald'\nrate_limited: true\nnamespaces:\n  users:\n    - exclusive: true\n      regex: '@her\\.ald:.*'\n  rooms: []\n  aliases: []\n"
     );
+    let unlimited = interacting(r#", "rate_limited": false"#).registration(
+        "matrix",
+        "https://herald.example",
+        "hs",
+        "as",
+    );
+    assert!(unlimited.starts_with("id: 'herald-matrix'\n"));
+    assert!(unlimited.contains("\nrate_limited: false\n"));
 }
 
 #[test]
@@ -326,11 +335,18 @@ fn the_homeserver_taking_an_answer_or_not_is_read_from_its_status() {
             403,
             r#"{"errcode": "M_FORBIDDEN", "error": "not in room"}"#
         )),
-        Err("the homeserver answered 403: M_FORBIDDEN not in room".to_owned())
+        Err("Matrix refused it with 403: M_FORBIDDEN not in room".to_owned())
     );
     assert_eq!(
         took(&answer(502, "")),
-        Err("the homeserver answered 502".to_owned())
+        Err("Matrix refused it with 502".to_owned())
+    );
+    assert_eq!(
+        took(&answer(
+            429,
+            r#"{"errcode": "M_LIMIT_EXCEEDED", "retry_after_ms": 2000}"#
+        )),
+        Err("Matrix refused it with 429: M_LIMIT_EXCEEDED, and asked to wait 2s".to_owned())
     );
 }
 

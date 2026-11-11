@@ -124,6 +124,12 @@ pub struct Announcement {
 }
 
 impl Announcement {
+    /// Its part `index`, where it has one.
+    #[must_use]
+    pub fn part(&self, index: u32) -> Option<&Text> {
+        self.parts.get(usize::try_from(index).ok()?)
+    }
+
     /// How many messages it takes: its parts, then a message for each list
     /// of users mentioned after them.
     #[must_use]

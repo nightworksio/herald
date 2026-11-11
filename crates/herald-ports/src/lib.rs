@@ -6,12 +6,14 @@
 //! so.
 
 mod clock;
+mod credential;
 mod crypto;
 mod dyn_store;
 mod erased;
 mod http;
 mod keyring;
 mod kv;
+mod learned;
 mod markers;
 mod outbound;
 mod secret;
@@ -21,6 +23,7 @@ mod store;
 mod timer;
 
 pub use clock::Clock;
+pub use credential::Credential;
 pub use crypto::{Algorithm, CryptoError, Signer, Verifier};
 pub use dyn_store::DynStore;
 pub use erased::{Boxed, DynHttp, DynKv, DynMarkers, DynSecrets, DynSigner, DynSql, Erased, Owned};
@@ -29,6 +32,7 @@ pub use http::{
 };
 pub use keyring::{Keyring, KnownKey};
 pub use kv::{Kv, KvError, Pair, Stamped, Versionstamp};
+pub use learned::Learned;
 pub use markers::{MarkedThread, Markers, MarkersError, marker};
 pub use outbound::{Outbound, Proxy, Roots};
 pub use secret::{Secret, SecretError, Secrets, Segment, Text};

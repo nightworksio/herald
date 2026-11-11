@@ -119,6 +119,8 @@ fn an_event_is_announced_with_its_key_title_parts_thread_and_link() {
     );
     assert!(!announcement.prerelease);
     assert_eq!(announcement.occurred, event().occurred());
+    assert_eq!(announcement.part(0), announcement.parts.first());
+    assert_eq!(announcement.part(1), None);
 }
 
 #[test]

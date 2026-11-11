@@ -1,4 +1,4 @@
-use herald_core::{ReadBack, SecretRef, Symbols, WaitOptions};
+use herald_core::{PinLookups, ReadBack, SecretRef, Symbols, WaitOptions};
 
 use crate::interactions::Interactions;
 use schemars::JsonSchema;
@@ -18,6 +18,9 @@ pub struct DestinationOptions {
     /// How many pages of its own posts it reads back for their markers,
     /// from 1 to 20; 5 where unset.
     pub read_back: Option<ReadBack>,
+    /// How many of the room's pins it looks up, one request each, as it
+    /// finds a route's earlier pins, from 1 to 100; 25 where unset.
+    pub pin_lookups: Option<PinLookups>,
     /// The characters its posts write where its markup has none: a task
     /// done and to do, a rule and a text list's bullet.
     pub symbols: Option<Symbols>,

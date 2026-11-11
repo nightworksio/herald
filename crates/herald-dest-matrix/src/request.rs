@@ -1,10 +1,8 @@
-use std::fmt;
-
-use herald_core::{Announcement, Entry, Sent, Step, Waits, safe_url};
+use herald_core::{Announcement, Declined, Entry, Sent, Step, Waits, safe_url};
 use herald_ports::{Method, Request, Response, Text, USER_AGENT, unreserved};
 use serde_json::{Map, Value, json};
 
-use crate::matrix::Matrix;
+use crate::matrix::{MATRIX, Matrix};
 use crate::read::{json, trouble};
 
 /// The field of a message's content carrying its route's marker (ADR-0011).
@@ -14,8 +12,13 @@ pub(crate) const ROUTE: &str = "io.nightworks.herald.route";
 pub(crate) const MARKER: &str = "io.nightworks.herald.marker";
 /// The format of a message's sanitised HTML.
 const HTML: &str = "org.matrix.custom.html";
-/// Where a mention links, as Matrix clients read it.
-const PILL: &str = "https://matrix.to/#/";
+/// Where a mention and a permalink lead, as Matrix clients read them.
+pub(crate) const MATRIX_TO: &str = "https://matrix.to/";
+/// Where the client-server API lies under the homeserver.
+pub(crate) const CLIENT: &str = "/_matrix/client/v3";
+/// The punctuation a user id's localpart may hold, the historical ones
+/// included, that neither HTML nor a link's fragment reads.
+const LOCALPART: &[u8] = b"!$()*+,-./;=?@_~";
 /// The state event holding a room's pinned events.
 pub(crate) const PINNED_EVENTS: &str = "m.room.pinned_events";
 /// The event a message is.
@@ -23,24 +26,11 @@ pub(crate) const MESSAGE: &str = "m.room.message";
 /// The answer of a homeserver for state a room does not hold.
 pub(crate) const NOT_FOUND: u16 = 404;
 
-/// Why a step cannot be asked of Matrix.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Refusal {
-    /// Matrix has no such thing to do.
-    Cannot(&'static str),
-    /// The step needs an earlier step's answer, which is not recorded.
-    Missing(&'static str),
-}
-
-impl fmt::Display for Refusal {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Cannot(what) => write!(f, "Matrix cannot {what}"),
-            Self::Missing(what) => write!(
-                f,
-                "{what} is not recorded, so this step cannot be taken yet"
-            ),
-        }
+/// Why Matrix cannot take a step.
+pub(crate) const fn cannot(what: &'static str) -> Declined {
+    Declined::Cannot {
+        platform: MATRIX,
+        what,
     }
 }
 
@@ -54,12 +44,12 @@ fn authorised(request: Request, matrix: &Matrix) -> Request {
 }
 
 pub(crate) fn get(matrix: &Matrix, path: &str) -> Request {
-    let url = format!("{}/_matrix/client/v3{path}", matrix.homeserver);
+    let url = format!("{}{CLIENT}{path}", matrix.homeserver);
     authorised(Request::new(Method::Get, Text::plain(url)), matrix)
 }
 
 fn put(matrix: &Matrix, path: &str, body: &Value) -> Request {
-    let url = format!("{}/_matrix/client/v3{path}", matrix.homeserver);
+    let url = format!("{}{CLIENT}{path}", matrix.homeserver);
     authorised(Request::new(Method::Put, Text::plain(url)), matrix)
         .header("Content-Type", Text::plain("application/json"))
         .body(body.to_string())
@@ -75,9 +65,9 @@ fn user_id(user: &str) -> bool {
         .and_then(|rest| rest.split_once(':'))
         .is_some_and(|(local, server)| {
             !local.is_empty()
-                && local.bytes().all(|byte| {
-                    byte.is_ascii_lowercase() || byte.is_ascii_digit() || b"._=-/+".contains(&byte)
-                })
+                && local
+                    .bytes()
+                    .all(|byte| byte.is_ascii_alphanumeric() || LOCALPART.contains(&byte))
                 && !server.is_empty()
                 && server
                     .bytes()
@@ -139,19 +129,19 @@ fn mentionable(users: &[String]) -> Vec<&str> {
 fn mentions(users: &[&str]) -> (String, String) {
     let pills: Vec<String> = users
         .iter()
-        .map(|user| format!("<a href=\"{PILL}{user}\">{user}</a>"))
+        .map(|user| format!("<a href=\"{MATRIX_TO}#/{user}\">{user}</a>"))
         .collect();
     (users.join(" "), format!("<p>{}</p>", pills.join(" ")))
 }
 
 fn chunk_content(announcement: &Announcement, index: u32, root: &str, before: &str) -> Value {
-    let index = usize::try_from(index).unwrap_or(usize::MAX);
-    let mentioned = announcement
-        .mentioned_in(index)
+    let mentioned = usize::try_from(index)
+        .ok()
+        .and_then(|index| announcement.mentioned_in(index))
         .map(mentionable)
         .unwrap_or_default();
     let (body, html) = if mentioned.is_empty() {
-        let part = announcement.parts.get(index);
+        let part = announcement.part(index);
         (
             part.map(|part| part.body.clone()).unwrap_or_default(),
             part.and_then(|part| part.html.clone()).unwrap_or_default(),
@@ -183,11 +173,8 @@ pub(crate) fn posted<'a>(
     entry: &'a Entry,
     step: &Step,
     what: &'static str,
-) -> Result<&'a str, Refusal> {
-    entry
-        .facts(step)
-        .and_then(|facts| facts.message.as_deref())
-        .ok_or(Refusal::Missing(what))
+) -> Result<&'a str, Declined> {
+    entry.message(step).ok_or(Declined::Missing(what))
 }
 
 fn sent(matrix: &Matrix, transaction: &str, content: &Value) -> Request {
@@ -204,23 +191,22 @@ pub(crate) fn step(
     step: &Step,
     announcement: &Announcement,
     entry: &Entry,
-) -> Result<Request, Refusal> {
+) -> Result<Request, Declined> {
     let key = announcement.key.to_string();
     match step {
         Step::Post => Ok(sent(matrix, &key, &announcement_content(announcement))),
         Step::Chunk(index) => {
             let root = posted(entry, &Step::Post, "the announcement's message")?;
-            let before = match index.checked_sub(1).filter(|earlier| *earlier > 0) {
-                None => root,
-                Some(earlier) => posted(entry, &Step::Chunk(earlier), "the message before it")?,
-            };
+            let before = entry
+                .before(*index)
+                .ok_or(Declined::Missing("the message before it"))?;
             let content = chunk_content(announcement, *index, root, before);
             Ok(sent(matrix, &format!("{key}.{index}"), &content))
         }
         Step::Pin | Step::Unpin => Ok(pinned(matrix)),
-        Step::Crosspost => Err(Refusal::Cannot("crosspost")),
-        Step::OpenThread => Err(Refusal::Cannot("open a thread; its replies are the thread")),
-        Step::Deliver(_) | Step::Deliveries => Err(Refusal::Cannot("deliver to an inbox")),
+        Step::Crosspost => Err(cannot("crosspost")),
+        Step::OpenThread => Err(cannot("open a thread; its replies are the thread")),
+        Step::Deliver(_) | Step::Deliveries => Err(cannot("deliver to an inbox")),
     }
 }
 
@@ -232,14 +218,13 @@ pub(crate) fn pinned(matrix: &Matrix) -> Request {
 /// The room's pinned events, as `response` holds them, or what the
 /// homeserver's trouble means.
 pub(crate) fn pins(response: &Response, waits: Waits) -> Result<Vec<String>, Sent> {
-    let body = json(response);
     if response.status == NOT_FOUND {
         return Ok(Vec::new());
     }
-    if let Some(sent) = trouble(response, &body, waits) {
+    if let Some(sent) = trouble(response, waits) {
         return Err(sent);
     }
-    Ok(body
+    Ok(json(response)
         .get("pinned")
         .and_then(Value::as_array)
         .into_iter()
@@ -267,7 +252,7 @@ pub(crate) fn pin_target<'a>(
     step: &Step,
     announcement: &'a Announcement,
     entry: &'a Entry,
-) -> Result<Repin<'a>, Refusal> {
+) -> Result<Repin<'a>, Declined> {
     let post = posted(entry, &Step::Post, "the announcement's message")?;
     Ok(if *step == Step::Pin {
         Repin::Pin(post)

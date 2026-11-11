@@ -7,8 +7,8 @@ use herald_core::{
     plan, schedules, steps,
 };
 use herald_ports::{
-    Announcements, Clock, Http, Inboxes, Ledger, Notes, Pins, Schedules, Secret, Signer, Store,
-    Subscriptions, Version, Written, marker,
+    Announcements, Clock, Http, Inboxes, Ledger, Markers, MarkersError, Notes, Pins, Schedules,
+    Secret, Signer, Store, Subscriptions, Version, Written, marker,
 };
 use jiff::{SignedDuration, Timestamp};
 
@@ -73,6 +73,9 @@ pub enum Stop {
     Refused(String),
     /// The destination could not be reached.
     Unreachable(String),
+    /// The destination's own posts could not be read back to learn whether
+    /// a step an earlier run attempted landed, so it is not sent again.
+    Unread(String),
     /// The store could not be read or written, or another run wrote first.
     Store(String),
     /// A template could not render the event.
@@ -203,12 +206,13 @@ impl<S: Store, C: Clock, G: Signer, H: Http> Run<'_, S, C, G, H> {
             let found = self
                 .route
                 .reached
-                .landed(
-                    self.http,
-                    &progress.entry.key,
-                    &announcement.marks.announcement,
-                )
-                .await;
+                .read(self.http)
+                .entry(&progress.entry.key, &announcement.marks.announcement)
+                .await
+                .map_err(|error| match error {
+                    MarkersError::RetryAfter { after } => Stop::RetryAfter(after),
+                    MarkersError::Unreadable { .. } => Stop::Unread(error.to_string()),
+                })?;
             if let Some(facts) = found.as_ref().and_then(|found| found.facts(step)) {
                 return self.landed(step, facts.clone(), progress).await;
             }

@@ -104,7 +104,7 @@ fn a_slash_command_is_acknowledged_and_handed_over() {
     assert_eq!(asked.command, Command::Latest);
     assert_eq!(asked.project.as_deref(), Some("gate"));
     assert_eq!(replying.url.expose(), HOOK);
-    assert!(!enveloped.reconnect);
+    assert_eq!(enveloped.ended, None);
 }
 
 #[test]
@@ -153,13 +153,18 @@ fn a_disconnect_reconnects_a_greeting_is_noted_and_noise_asks_nothing() {
         &destination(),
         r#"{"type": "disconnect", "reason": "refresh_requested"}"#,
     );
-    assert!(disconnect.reconnect);
+    assert_eq!(disconnect.ended, Some(Ended::Reconnect));
     assert!(!disconnect.greeted);
     assert_eq!(disconnect.acknowledgement, None);
+    let disabled = interacting().envelope(
+        &destination(),
+        r#"{"type": "disconnect", "reason": "link_disabled"}"#,
+    );
+    assert_eq!(disabled.ended, Some(Ended::Disabled));
     let quiet = Enveloped {
         acknowledgement: None,
         received: None,
-        reconnect: false,
+        ended: None,
         greeted: false,
     };
     assert_eq!(

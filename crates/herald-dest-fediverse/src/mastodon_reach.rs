@@ -6,7 +6,7 @@ use herald_ports::{Boxed, DynHttp, DynMarkers, Erased, HttpError};
 
 use crate::markers::MastodonMarkers;
 use crate::mastodon::Mastodon;
-use crate::request::Refusal;
+use crate::request::cannot;
 
 impl Reach for Mastodon {
     fn profile(&self) -> Profile {
@@ -36,7 +36,7 @@ impl Reach for Mastodon {
         _: &'a str,
     ) -> Boxed<'a, Result<Sent, HttpError>> {
         Box::pin(ready(Ok(Sent::Refused(
-            Refusal::Cannot("archive or lock a thread").to_string(),
+            cannot("archive or lock a thread").to_string(),
         ))))
     }
 

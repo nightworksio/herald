@@ -1,10 +1,10 @@
-use herald_core::{Entry, Facts, Key, Marker, Sent, Step};
+use herald_core::{Entry, Facts, Key, Marker, Step};
 use herald_ports::{Http, MarkedThread, Markers, MarkersError, unreserved};
 use serde_json::Value;
 
 use crate::read::{json, text, trouble};
-use crate::request::{MARKER, get};
-use crate::slack::{Credential, Identity, Slack, carried, identity};
+use crate::request::{MARKER, channel, get, webhook_cannot};
+use crate::slack::{Identity, Slack, carried, identity};
 use crate::web_api::{CONVERSATIONS_HISTORY, CONVERSATIONS_REPLIES, WebMethod};
 
 /// The most messages read back from a channel, or from a thread.
@@ -22,14 +22,6 @@ fn unreadable(reason: impl Into<String>) -> MarkersError {
     MarkersError::Unreadable {
         reason: reason.into(),
     }
-}
-
-fn said(sent: Sent) -> MarkersError {
-    unreadable(match sent {
-        Sent::Refused(reason) => reason,
-        Sent::RetryAfter(wait) => format!("Slack asked to wait {wait:#} first"),
-        Sent::Landed(_) => "Slack answered nothing to read".to_owned(),
-    })
 }
 
 fn messages(page: &Value) -> impl Iterator<Item = &Value> {
@@ -54,13 +46,10 @@ impl<'a, H: Http> SlackMarkers<'a, H> {
     }
 
     async fn read(&self, method: WebMethod, asked: &str) -> Result<Value, MarkersError> {
-        let response = self
-            .http
-            .send(get(self.slack, method, asked))
-            .await
-            .map_err(|error| unreadable(error.to_string()))?;
+        let response = self.http.send(get(self.slack, method, asked)).await?;
         let body = json(&response);
-        trouble(&response, &body, self.slack.waits).map_or(Ok(body), |sent| Err(said(sent)))
+        trouble(&response, &body, self.slack.waits)
+            .map_or(Ok(body), |sent| Err(MarkersError::unlanded(sent)))
     }
 
     /// What `method` lists for `asked`, read page by page until a page
@@ -93,22 +82,19 @@ impl<'a, H: Http> SlackMarkers<'a, H> {
         Ok(listed)
     }
 
+    /// The channel read back, where a bot reads one.
     fn channel(&self) -> Result<&str, MarkersError> {
-        if let Credential::Webhook(_) = self.slack.credential {
-            return Err(unreadable("a webhook cannot read a channel's messages"));
-        }
-        self.slack
-            .route
-            .channel
-            .as_deref()
-            .ok_or_else(|| unreadable("a Slack bot posts to a channel, and the route names none"))
+        let declined = match self.slack.credential.bot() {
+            Some(_) => channel(self.slack),
+            None => Err(webhook_cannot("read a channel's messages")),
+        };
+        declined.map_err(|declined| unreadable(declined.to_string()))
     }
 
     async fn identity(&self) -> Result<Identity, MarkersError> {
         identity(self.slack, &self.http)
-            .await
-            .map_err(|error| unreadable(error.to_string()))?
-            .map_err(said)
+            .await?
+            .map_err(MarkersError::unlanded)
     }
 }
 
@@ -172,34 +158,5 @@ impl<H: Http> Markers for SlackMarkers<'_, H> {
                 .landed(Step::Unpin, Facts::default());
         }
         Ok(Some(entry))
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use jiff::SignedDuration;
-
-    use super::*;
-
-    #[test]
-    fn what_slack_answered_instead_of_a_page_reads_as_a_reason() {
-        for (sent, reason) in [
-            (Sent::Refused("no".to_owned()), "no"),
-            (
-                Sent::RetryAfter(SignedDuration::from_secs(3)),
-                "Slack asked to wait 3s first",
-            ),
-            (
-                Sent::Landed(Facts::default()),
-                "Slack answered nothing to read",
-            ),
-        ] {
-            assert_eq!(
-                said(sent),
-                MarkersError::Unreadable {
-                    reason: reason.to_owned()
-                }
-            );
-        }
     }
 }

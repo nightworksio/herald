@@ -142,7 +142,7 @@ mod tests {
                 Task::Commands,
                 &response(403, &json!({ "message": "Missing Access" }))
             ),
-            Err("Discord answered 403: Missing Access".to_owned())
+            Err("Discord refused it with 403: Missing Access".to_owned())
         );
         let role = json!({ "id": "523456789012345678", "name": "releases" });
         assert_eq!(

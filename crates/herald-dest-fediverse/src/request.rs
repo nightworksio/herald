@@ -1,29 +1,14 @@
-use std::fmt;
-
-use herald_core::{Announcement, Entry, Step};
+use herald_core::{Announcement, Declined, Entry, Step};
 use herald_ports::{Method, Request, Text, USER_AGENT};
 use serde_json::{Map, Value, json};
 
-use crate::mastodon::Mastodon;
+use crate::mastodon::{Mastodon, PLATFORM};
 
-/// Why a step cannot be asked of Mastodon.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Refusal {
-    /// Mastodon has no such thing to do.
-    Cannot(&'static str),
-    /// The step needs an earlier step's answer, which is not recorded.
-    Missing(&'static str),
-}
-
-impl fmt::Display for Refusal {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Cannot(what) => write!(f, "Mastodon cannot {what}"),
-            Self::Missing(what) => write!(
-                f,
-                "{what} is not recorded, so this step cannot be taken yet"
-            ),
-        }
+/// Why Mastodon cannot take a step.
+pub(crate) const fn cannot(what: &'static str) -> Declined {
+    Declined::Cannot {
+        platform: PLATFORM,
+        what,
     }
 }
 
@@ -84,30 +69,25 @@ fn first(announcement: &Announcement) -> String {
         .join("\n\n")
 }
 
-fn posted<'a>(entry: &'a Entry, step: &Step, what: &'static str) -> Result<&'a str, Refusal> {
-    entry
-        .facts(step)
-        .and_then(|facts| facts.message.as_deref())
-        .ok_or(Refusal::Missing(what))
-}
-
 pub(crate) fn step(
     mastodon: &Mastodon,
     step: &Step,
     announcement: &Announcement,
     entry: &Entry,
-) -> Result<Request, Refusal> {
+) -> Result<Request, Declined> {
     let key = announcement.key.to_string();
     match step {
         Step::Post => Ok(status(mastodon, &first(announcement), None, key)),
         Step::Chunk(index) => {
-            let before = match index.checked_sub(1).filter(|earlier| *earlier > 0) {
-                None => posted(entry, &Step::Post, "the announcement's status")?,
-                Some(earlier) => posted(entry, &Step::Chunk(earlier), "the status before it")?,
-            };
-            let text = usize::try_from(*index)
-                .ok()
-                .and_then(|index| announcement.parts.get(index))
+            let before = entry
+                .before(*index)
+                .ok_or(Declined::Missing(if *index > 1 {
+                    "the status before it"
+                } else {
+                    "the announcement's status"
+                }))?;
+            let text = announcement
+                .part(*index)
                 .map(|part| part.body.as_str())
                 .unwrap_or_default();
             Ok(status(
@@ -117,9 +97,9 @@ pub(crate) fn step(
                 format!("{key}.{index}"),
             ))
         }
-        Step::Crosspost => Err(Refusal::Cannot("crosspost")),
-        Step::OpenThread => Err(Refusal::Cannot("open a thread; its replies are the thread")),
-        Step::Pin | Step::Unpin => Err(Refusal::Cannot("pin a route's announcement")),
-        Step::Deliver(_) | Step::Deliveries => Err(Refusal::Cannot("deliver to an inbox")),
+        Step::Crosspost => Err(cannot("crosspost")),
+        Step::OpenThread => Err(cannot("open a thread; its replies are the thread")),
+        Step::Pin | Step::Unpin => Err(cannot("pin a route's announcement")),
+        Step::Deliver(_) | Step::Deliveries => Err(cannot("deliver to an inbox")),
     }
 }

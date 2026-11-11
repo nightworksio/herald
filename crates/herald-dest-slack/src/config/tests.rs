@@ -360,6 +360,15 @@ fn socket_mode_is_opened_with_the_app_level_token_and_heard_as_herald_answers_it
         ),
         [Effect::Ready]
     );
+    let mut disconnected = |reason: &str| {
+        let frame = json!({ "type": "disconnect", "reason": reason }).to_string();
+        session.heard(&DestinationName::new("slack"), &frame)
+    };
+    assert_eq!(disconnected("warning"), [Effect::Reconnect]);
+    assert_eq!(
+        disconnected("link_disabled"),
+        [Effect::Stop("Slack turned Socket Mode off for the app, so its commands cannot be carried; turn Socket Mode on in the app's settings".to_owned())]
+    );
     assert_eq!(
         session.unreachable(),
         "Slack's Socket Mode could not be opened"

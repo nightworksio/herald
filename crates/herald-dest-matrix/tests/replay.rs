@@ -7,7 +7,7 @@ mod replay {
         Announcement, Entry, Facts, MentionRoom, MentionStyle, Pins, ReadBack, Sent, Step, Text,
         Threads, Waits,
     };
-    use herald_dest_matrix::{Matrix, MatrixMarkers, Refusal, RouteOptions, profile};
+    use herald_dest_matrix::{Matrix, MatrixMarkers, RouteOptions, profile};
     use herald_ports::{Markers, MarkersError, Method, Secret};
     use herald_testing::sample::{self, marker, route_marker};
     use herald_testing::{Fixture, Replay};
@@ -60,7 +60,11 @@ mod replay {
         Facts {
             message: Some(id.to_owned()),
             thread: None,
-            permalink: Some(format!("https://matrix.to/#/{ROOM}/{id}")),
+            permalink: Some(format!(
+                "https://matrix.to/#/{}/{}",
+                herald_ports::unreserved(ROOM),
+                herald_ports::unreserved(id)
+            )),
         }
     }
 
@@ -173,7 +177,7 @@ mod replay {
         );
         replay.finish().unwrap();
         assert_eq!(
-            Refusal::Cannot("crosspost").to_string(),
+            "Matrix cannot crosspost".to_owned(),
             "Matrix cannot crosspost"
         );
     }
@@ -236,13 +240,17 @@ mod replay {
         let content = content(&mentioning);
         assert_eq!(
             content["m.mentions"]["user_ids"],
-            serde_json::json!(["@ana:matrix.example", "@bo_b.=-/+9:[::1]:8448"])
+            serde_json::json!([
+                "@ana:matrix.example",
+                "@bo_b.=-/+9:[::1]:8448",
+                "@Ana:matrix.example"
+            ])
         );
         assert!(
             content["body"]
                 .as_str()
                 .unwrap()
-                .ends_with("\n\n@ana:matrix.example @bo_b.=-/+9:[::1]:8448")
+                .ends_with("\n\n@ana:matrix.example @bo_b.=-/+9:[::1]:8448 @Ana:matrix.example")
         );
     }
 
@@ -306,6 +314,41 @@ mod replay {
         );
         assert_eq!(unpin(), Sent::RetryAfter(SignedDuration::from_secs(5)));
         replay.finish().unwrap();
+    }
+
+    #[test]
+    fn pins_are_looked_up_no_further_than_pin_lookups_by_an_account_asked_once() {
+        let recorded: serde_json::Value =
+            serde_json::from_str(include_str!("../fixtures/unpin-by-marker.reference.json"))
+                .unwrap();
+        let picked = |indexes: &[usize]| {
+            let exchanges: Vec<&serde_json::Value> = indexes
+                .iter()
+                .map(|index| &recorded["exchanges"][index])
+                .collect();
+            Replay::of(
+                Fixture::from_json(&serde_json::json!({ "exchanges": exchanges }).to_string())
+                    .unwrap(),
+            )
+        };
+        let mut unremembered = announcement();
+        unremembered.replaces = None;
+        let unpin = |matrix: &Matrix, replay: &Replay| {
+            pollster::block_on(matrix.send(replay, &Step::Unpin, &unremembered, &posted())).unwrap()
+        };
+        let crowded = picked(&[0]);
+        let four = matrix().looking_up(herald_core::PinLookups::new(4).unwrap());
+        assert_eq!(
+            unpin(&four, &crowded),
+            Sent::Refused("the route's earlier pins are among 5 pins, more than the 4 it looks up; raise pin_lookups, up to 100, or unpin them by hand".to_owned())
+        );
+        crowded.finish().unwrap();
+        let twice = picked(&[8, 9, 10, 8, 10]);
+        let matrix = matrix();
+        for _ in 0..2 {
+            assert_eq!(unpin(&matrix, &twice), Sent::Landed(Facts::default()));
+        }
+        twice.finish().unwrap();
     }
 
     fn limited(matrix: &Matrix, unnamed: Waits) {
@@ -427,16 +470,19 @@ mod replay {
         let replay = fixture!("markers-unreadable");
         let markers = MatrixMarkers::new(&matrix, &replay);
         let key = announcement().key;
-        for reason in [
-            "the homeserver answered 401",
-            "the homeserver did not say which account the token is",
-            "the homeserver answered 500 for the room's pins",
+        let unreadable = |reason: &str| MarkersError::Unreadable {
+            reason: reason.to_owned(),
+        };
+        for error in [
+            unreadable("Matrix refused it with 401: M_UNKNOWN_TOKEN Invalid access token"),
+            unreadable("the homeserver did not say which account the token is"),
+            MarkersError::RetryAfter {
+                after: jiff::SignedDuration::from_secs(5),
+            },
         ] {
             assert_eq!(
                 pollster::block_on(markers.entry(&key, &marker())),
-                Err(MarkersError::Unreadable {
-                    reason: reason.to_owned()
-                })
+                Err(error)
             );
         }
         replay.finish().unwrap();

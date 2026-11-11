@@ -2,10 +2,13 @@ use herald_core::{Announcement, Entry, Facts, Marker, Sent};
 use herald_ports::{Http, HttpError, unreserved};
 use serde_json::Value;
 
-use crate::discord::{Credential, Discord};
+use crate::discord::Discord;
 use crate::markers::{author, marks};
-use crate::read::trouble;
-use crate::request::{PINNED, Refusal, get, posted, unpin};
+use crate::read::{id, json, trouble};
+use crate::request::{PINNED, channel, get, posted, unpin, webhook_cannot};
+
+/// What is said where Discord names no user for the bot's token.
+pub(crate) const UNNAMED: &str = "Discord did not say which user the bot is";
 
 /// The most pins Discord lists in one page.
 const PINS: u8 = 50;
@@ -17,12 +20,7 @@ type Read<T> = Result<Result<T, Sent>, HttpError>;
 
 async fn read<H: Http>(discord: &Discord, http: &H, path: &str) -> Read<Value> {
     let response = http.send(get(discord, path)).await?;
-    let body = serde_json::from_slice(&response.body).unwrap_or(Value::Null);
-    Ok(trouble(&response, &body, discord.waits).map_or(Ok(body), Err))
-}
-
-fn field<'a>(value: &'a Value, name: &str) -> Option<&'a str> {
-    value.get(name).and_then(Value::as_str)
+    Ok(trouble(&response, discord.waits).map_or_else(|| Ok(json(&response)), Err))
 }
 
 fn routed(message: &Value, bot: &str, route: &Marker) -> bool {
@@ -33,13 +31,16 @@ fn routed(message: &Value, bot: &str, route: &Marker) -> bool {
 }
 
 async fn bot<H: Http>(discord: &Discord, http: &H) -> Read<String> {
+    if let Some(bot) = discord.bot.get() {
+        return Ok(Ok(bot.clone()));
+    }
     let user = match read(discord, http, "/users/@me").await? {
         Ok(user) => user,
         Err(sent) => return Ok(Err(sent)),
     };
-    Ok(field(&user, "id")
-        .map(ToOwned::to_owned)
-        .ok_or_else(|| Sent::Refused("Discord did not say which user the bot is".to_owned())))
+    Ok(id(&user, "id")
+        .map(|bot| discord.bot.learn(bot.to_owned()).clone())
+        .ok_or_else(|| Sent::Refused(UNNAMED.to_owned())))
 }
 
 async fn pinned_messages<H: Http>(
@@ -75,12 +76,12 @@ async fn pinned_messages<H: Http>(
                 .iter()
                 .filter_map(|pin| pin.get("message"))
                 .filter(|message| routed(message, bot, route))
-                .filter_map(|message| field(message, "id"))
+                .filter_map(|message| id(message, "id"))
                 .map(ToOwned::to_owned),
         );
         before = items
             .last()
-            .and_then(|pin| field(pin, "pinned_at"))
+            .and_then(|pin| id(pin, "pinned_at"))
             .map(ToOwned::to_owned);
         if pins.get("has_more").and_then(Value::as_bool) != Some(true) || before.is_none() {
             break;
@@ -100,7 +101,11 @@ async fn pinned_posts<H: Http>(
         Ok(channel) => channel,
         Err(sent) => return Ok(Err(sent)),
     };
-    let guild = field(&channel, "guild_id").unwrap_or_default();
+    let Some(guild) = id(&channel, "guild_id") else {
+        return Ok(Err(Sent::Refused(format!(
+            "Discord did not say which server the forum {forum} is in"
+        ))));
+    };
     let active = match read(discord, http, &format!("/guilds/{guild}/threads/active")).await? {
         Ok(active) => active,
         Err(sent) => return Ok(Err(sent)),
@@ -110,17 +115,20 @@ async fn pinned_posts<H: Http>(
         .and_then(Value::as_array)
         .into_iter()
         .flatten()
-        .filter(|thread| field(thread, "parent_id") == Some(forum))
-        .filter(|thread| field(thread, "owner_id") == Some(bot))
+        .filter(|thread| id(thread, "parent_id") == Some(forum))
+        .filter(|thread| id(thread, "owner_id") == Some(bot))
         .filter(|thread| {
             thread
                 .get("flags")
                 .and_then(Value::as_u64)
                 .is_some_and(|flags| flags & PINNED != 0)
         })
-        .filter_map(|thread| field(thread, "id"))
+        .filter_map(|thread| id(thread, "id"))
         .map(ToOwned::to_owned)
         .collect();
+    if let Some(over) = discord.pin_lookups.over(candidates.len()) {
+        return Ok(Err(Sent::Refused(over)));
+    }
     let mut posts = Vec::new();
     for post in candidates {
         let path = format!("/channels/{post}/messages/{post}");
@@ -159,11 +167,12 @@ pub(crate) async fn unpinned<H: Http>(
     announcement: &Announcement,
     entry: &Entry,
 ) -> Result<Sent, HttpError> {
-    if let Credential::Webhook(_) = discord.credential {
-        return Ok(Sent::Refused(Refusal::WebhookCannot("unpin").to_string()));
+    if discord.credential.bot().is_none() {
+        return Ok(Sent::Refused(webhook_cannot("unpin").to_string()));
     }
-    let Some(channel) = discord.route.channel.as_deref() else {
-        return Ok(Sent::Refused(Refusal::NoChannel.to_string()));
+    let channel = match channel(discord) {
+        Ok(channel) => channel,
+        Err(declined) => return Ok(Sent::Refused(declined.to_string())),
     };
     let current = match posted(entry) {
         Ok(current) => current.to_owned(),
@@ -181,8 +190,7 @@ pub(crate) async fn unpinned<H: Http>(
         if response.status == GONE {
             continue;
         }
-        let body = serde_json::from_slice(&response.body).unwrap_or(Value::Null);
-        if let Some(sent) = trouble(&response, &body, discord.waits) {
+        if let Some(sent) = trouble(&response, discord.waits) {
             return Ok(sent);
         }
     }

@@ -119,7 +119,6 @@ fn a_run_stopped_by_a_rate_limit_is_finished_by_the_next_after_it_asks_what_land
         ),
         THREADED,
         PINNED,
-        WHO,
         NO_PINS,
     ]);
     let second = pollster::block_on(run(&config, &store, &clock, &finishing, "v1", "r2"));
@@ -383,11 +382,47 @@ fn a_post_an_earlier_run_attempted_and_the_channel_does_not_show_is_sent_again()
         CROSSPOSTED,
         THREADED,
         PINNED,
-        WHO,
         NO_PINS,
     ]);
     let second = pollster::block_on(run(&config, &store, &clock, &resending, "v1", "r2"));
     assert_eq!(outcome(&second), &Outcome::Sent { steps: all() });
+}
+
+#[test]
+fn a_post_an_earlier_run_attempted_is_not_sent_again_while_the_channel_cannot_be_read() {
+    let store = healthy();
+    let clock = FakeClock::at(NOON);
+    let config = config("");
+    pollster::block_on(run(&config, &store, &clock, &Script::default(), "v1", "r1"));
+    let reason = |script: &Script, run_name: &str| {
+        let announced = pollster::block_on(run(&config, &store, &clock, script, "v1", run_name));
+        let Outcome::Stopped { landed, reason, .. } = outcome(&announced).clone() else {
+            panic!("the route was not stopped");
+        };
+        assert_eq!(landed, Vec::<Step>::new());
+        assert!(script.answers.lock().unwrap().is_empty());
+        reason
+    };
+    let limited = Script::answering(&[("/users/@me", 429, r#"{"retry_after":2}"#)]);
+    assert_eq!(
+        reason(&limited, "r2"),
+        Stop::RetryAfter(SignedDuration::from_secs(2))
+    );
+    let forbidden = Script::answering(&[
+        WHO,
+        (
+            "/channels/1566200000000000100/messages?limit=100",
+            403,
+            r#"{"code":50001,"message":"Missing Access"}"#,
+        ),
+    ]);
+    assert_eq!(
+        reason(&forbidden, "r3"),
+        Stop::Unread(
+            "the destination's posts could not be read: Discord refused it with 403: 50001 Missing Access"
+                .to_owned()
+        )
+    );
 }
 
 /// What announcing `v1` from `gate` as `config` routes it does, through a

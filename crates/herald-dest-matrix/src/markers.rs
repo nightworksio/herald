@@ -3,7 +3,7 @@ use herald_ports::{Http, MarkedThread, Markers, MarkersError, unreserved};
 use serde_json::Value;
 
 use crate::matrix::Matrix;
-use crate::read::{UNNAMED, json, text};
+use crate::read::{json, text, trouble};
 use crate::request::{MARKER, MESSAGE, get, pinned, pins};
 
 /// The most events read back from a room's timeline.
@@ -17,12 +17,6 @@ pub struct MatrixMarkers<'a, H> {
     http: H,
 }
 
-fn unreadable(reason: impl Into<String>) -> MarkersError {
-    MarkersError::Unreadable {
-        reason: reason.into(),
-    }
-}
-
 impl<'a, H: Http> MatrixMarkers<'a, H> {
     /// The markers in the room `matrix` posts to, read through `http`.
     #[must_use]
@@ -31,28 +25,22 @@ impl<'a, H: Http> MatrixMarkers<'a, H> {
     }
 
     async fn read(&self, path: &str) -> Result<Value, MarkersError> {
-        let response = self
-            .http
-            .send(get(self.matrix, path))
-            .await
-            .map_err(|error| unreadable(error.to_string()))?;
-        if !response.succeeded() {
-            return Err(unreadable(format!(
-                "the homeserver answered {}",
-                response.status
-            )));
+        let response = self.http.send(get(self.matrix, path)).await?;
+        match trouble(&response, self.matrix.waits) {
+            Some(sent) => Err(MarkersError::unlanded(sent)),
+            None => Ok(json(&response)),
         }
-        Ok(json(&response))
     }
 
     /// The room's recent messages that herald's own account sent, newest
     /// first, read back page by page until a page holds one `sought`, or
     /// none is left.
     async fn own(&self, sought: impl Fn(&Value) -> bool) -> Result<Vec<Value>, MarkersError> {
-        let account = self.read("/account/whoami").await?;
-        let herald = text(&account, "user_id")
-            .ok_or_else(|| unreadable(UNNAMED))?
-            .to_owned();
+        let herald = self
+            .matrix
+            .account(&self.http)
+            .await?
+            .map_err(MarkersError::unlanded)?;
         let room = unreserved(&self.matrix.route.room);
         let mut own = Vec::new();
         let mut from: Option<String> = None;
@@ -134,17 +122,8 @@ impl<H: Http> Markers for MatrixMarkers<'_, H> {
         for (index, reply) in (1..).zip(replies) {
             entry = entry.landed(Step::Chunk(index), landed(reply));
         }
-        let response = self
-            .http
-            .send(pinned(self.matrix))
-            .await
-            .map_err(|error| unreadable(error.to_string()))?;
-        let held = pins(&response, self.matrix.waits).map_err(|_| {
-            unreadable(format!(
-                "the homeserver answered {} for the room's pins",
-                response.status
-            ))
-        })?;
+        let response = self.http.send(pinned(self.matrix)).await?;
+        let held = pins(&response, self.matrix.waits).map_err(MarkersError::unlanded)?;
         if held.iter().any(|pinned| pinned == root) {
             entry = entry
                 .landed(Step::Pin, Facts::default())

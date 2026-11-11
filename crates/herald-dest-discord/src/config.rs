@@ -10,11 +10,12 @@ use herald_kinds::{
 };
 use herald_ports::{Boxed, DynSecrets, Request, Response, Secret, SecretError};
 
-use crate::discord::{self, Credential, Discord};
+use crate::discord::{self, DISCORD, Discord};
 use crate::held::Joined;
 use crate::interact::{self, Interacting, MESSAGE, Received, choices, pong, took};
 use crate::interactions::{Interactions, Subscribe, Via};
 use crate::options::{DestinationOptions, RouteOptions};
+use herald_ports::Credential;
 
 /// A Discord interaction: `X-Signature-Ed25519` over `X-Signature-Timestamp` and the body.
 pub const SCHEME: Scheme = Scheme {
@@ -88,6 +89,7 @@ impl DestinationConfig for DestinationOptions {
         Some(Reached::new(
             Discord::new(credential, placed.clone(), self.api.as_deref())
                 .reading_back(self.read_back.unwrap_or_default())
+                .looking_up(self.pin_lookups.unwrap_or_default())
                 .waiting(self.waits())
                 .looking(self.look())
                 .worded(
@@ -146,7 +148,7 @@ pub enum DiscordKind {}
 impl DestinationKind for DiscordKind {
     const NAME: &str = KIND;
     const DESCRIPTION: &str = "Discord, by bot token or webhook.";
-    const LABEL: &str = "Discord";
+    const LABEL: &str = DISCORD;
     const ROUTE: &str = "DiscordRoute";
     const ROUTE_DESCRIPTION: &str = "A route to a Discord destination.";
 

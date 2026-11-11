@@ -155,7 +155,11 @@ makes, so the run writes nothing to the repository. It has no compare-and-set,
 so the `concurrency` group keeps to one herald run at a time. `herald init`
 prints a new `HERALD_MARKER_SECRET`, once. Each destination reads back up to
 `read_back` pages of its own posts, 5 by default and at most 20, and stops at
-the page holding the post it looks for.
+the page holding the post it looks for. A rerun that finds a post an earlier
+run attempted but cannot read the channel back stops rather than post it
+twice. Discord, Slack and Matrix look up at most `pin_lookups` pins, 25 by
+default and at most 100, as they find a route's earlier pins, and say so
+where more are pinned.
 
 ### herald's own ActivityPub actor
 
@@ -329,7 +333,7 @@ subscribe = { role = "1566190000000000001" }
   - Matrix: `appservice`, pushed to `/matrix/<destination>`, or `sync`, as the bot, held by `herald server` or a Cloudflare Worker's Durable Object.
 - A gateway connects only under `discord.gg` and Socket Mode only under `slack.com`; a resume or Socket Mode address elsewhere is refused. `domains = ["proxy.example"]` in the interactions adds domains, such as a proxy's.
 - `herald discord commands` registers the commands. `herald discord roles --guild <id>` lists a server's roles, and `--create <name>` makes an opt-in role.
-- `herald slack manifest --url https://<your host>` prints the Slack app's manifest. `herald matrix registration --url https://<your host>` prints the homeserver's registration with two new tokens, once.
+- `herald slack manifest --url https://<your host>` prints the Slack app's manifest. `herald matrix registration --url https://<your host>` prints the homeserver's registration with two new tokens, once, as the application service `herald-<destination>`, held to the homeserver's rate limits unless `rate_limited = false` in the interactions.
 - On Discord, subscribing gives the route's opt-in role, which the route mentions. On Slack and Matrix, it keeps the member in the store, for a route with `mentions = { subscribers = true }`.
 - A command names a project, or acts on the only one announced in its channel; Discord completes the names.
 - Answers to `latest` and `changelog` are the asker's alone unless `replies = "public"` or the asker adds `share`. `commands`, `prereleases` and `template` set which commands are answered and what they show.

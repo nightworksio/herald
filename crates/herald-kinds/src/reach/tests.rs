@@ -314,10 +314,6 @@ fn a_destination_reads_back_what_landed_or_says_why_it_cannot() {
     let reached = Reached::new(Plain("https://plain.example"));
     let key = sample::announcement().key;
     let marker = Marker::of(&[1]);
-    assert_eq!(
-        pollster::block_on(reached.landed(&Silent, &key, &marker)),
-        None
-    );
     let unreadable = MarkersError::Unreadable {
         reason: "plain reads nothing back".to_owned(),
     };
@@ -330,8 +326,8 @@ fn a_destination_reads_back_what_landed_or_says_why_it_cannot() {
     assert_eq!(pollster::block_on(posts.threads(&marker)), Err(unreadable));
     let other = Reached::new(Other);
     assert_eq!(
-        pollster::block_on(other.landed(&Silent, &key, &marker)),
-        Some(Entry::new(key))
+        pollster::block_on(other.read(&Silent).entry(&key, &marker)),
+        Ok(Some(Entry::new(key)))
     );
     assert_eq!(
         pollster::block_on(other.read(&Silent).threads(&marker)),

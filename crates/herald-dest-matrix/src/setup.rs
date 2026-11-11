@@ -54,7 +54,12 @@ pub fn registration(
     )];
     said.extend(
         interacting
-            .registration(&format!("{url}/matrix/{name}"), homeserver, appservice)
+            .registration(
+                name,
+                &format!("{url}/matrix/{name}"),
+                homeserver,
+                appservice,
+            )
             .lines()
             .map(str::to_owned),
     );
@@ -103,6 +108,7 @@ mod tests {
         expected.extend(
             interacting
                 .registration(
+                    "matrix",
                     "https://herald.example/matrix/matrix",
                     "hs-token",
                     "as-token",

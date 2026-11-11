@@ -406,7 +406,8 @@
           "type": "array",
           "items": {
             "$ref": "#/$defs/DeclaredLink"
-          }
+          },
+          "maxItems": 24
         },
         "versioned": {
           "description": "Whether its events carry a version, as `attributes.version`, and may\nbe pre-releases, as `attributes.prerelease`.",
@@ -455,6 +456,10 @@
             "kind": {
               "type": "string",
               "const": "discord"
+            },
+            "pin_lookups": {
+              "description": "How many pins it looks up, one request each, as it finds a route's\nearlier pins in a forum, from 1 to 100; 25 where unset.",
+              "$ref": "#/$defs/PinLookups"
             },
             "read_back": {
               "description": "How many pages of its own posts it reads back for their markers,\nfrom 1 to 20; 5 where unset.",
@@ -540,6 +545,10 @@
               "type": "string",
               "const": "matrix"
             },
+            "pin_lookups": {
+              "description": "How many of the room's pins it looks up, one request each, as it\nfinds a route's earlier pins, from 1 to 100; 25 where unset.",
+              "$ref": "#/$defs/PinLookups"
+            },
             "read_back": {
               "description": "How many pages of its own posts it reads back for their markers,\nfrom 1 to 20; 5 where unset.",
               "$ref": "#/$defs/ReadBack"
@@ -583,6 +592,10 @@
             "kind": {
               "type": "string",
               "const": "slack"
+            },
+            "pin_lookups": {
+              "description": "How many of its own pins it looks up, one request each, as it finds\na route's earlier pins, from 1 to 100; 25 where unset.",
+              "$ref": "#/$defs/PinLookups"
             },
             "read_back": {
               "description": "How many pages of its own posts it reads back for their markers,\nfrom 1 to 20; 5 where unset.",
@@ -1216,6 +1229,11 @@
           "type": "boolean",
           "default": false
         },
+        "rate_limited": {
+          "description": "Whether the homeserver holds the application service's user to its\nrate limits, as its registration says; true where unset.",
+          "type": "boolean",
+          "default": true
+        },
         "replies": {
           "description": "Whether answers to `latest` and `changelog` are posted to the room;\nMatrix has no answer seen by one member alone, so `ephemeral` answers\nin a thread under the command.",
           "$ref": "#/$defs/Replies"
@@ -1396,6 +1414,12 @@
       "type": "string",
       "maxLength": 1,
       "minLength": 1
+    },
+    "PinLookups": {
+      "description": "How many pins the destination looks up, one request each, as it finds the route's earlier pins, 25 by default.",
+      "type": "integer",
+      "maximum": 100,
+      "minimum": 1
     },
     "Pinning": {
       "description": "How a route keeps its newest announcement pinned: each pin unpins the\nroute's earlier one, found as this says (ADR-0011).",

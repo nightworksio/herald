@@ -5,7 +5,7 @@ use herald_kinds::{Probe, Reach, Signing};
 use herald_ports::{Boxed, DynHttp, DynMarkers, Erased, HttpError};
 
 use crate::markers::SlackMarkers;
-use crate::request::Refusal;
+use crate::request::cannot;
 use crate::slack::Slack;
 
 impl Reach for Slack {
@@ -36,7 +36,7 @@ impl Reach for Slack {
         _: &'a str,
     ) -> Boxed<'a, Result<Sent, HttpError>> {
         Box::pin(ready(Ok(Sent::Refused(
-            Refusal::Cannot("archive or lock a thread").to_string(),
+            cannot("archive or lock a thread").to_string(),
         ))))
     }
 

@@ -74,7 +74,7 @@ fn discord_s_commands_are_registered_in_every_server() {
         &["discord", "commands", "--destination", "discord"],
     );
     assert_eq!(refused.code, STOPPED);
-    assert_eq!(refused.err, "Discord answered 403: Missing Access\n");
+    assert_eq!(refused.err, "Discord refused it with 403: Missing Access\n");
     world
         .state
         .lock()

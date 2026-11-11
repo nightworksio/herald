@@ -12,7 +12,8 @@ use crate::held::Socketed;
 use crate::interact::{self, Interacting, Received, SECTION, took};
 use crate::interactions::{Interactions, Via};
 use crate::options::{DestinationOptions, RouteOptions};
-use crate::slack::{self, Credential, Slack};
+use crate::slack::{self, SLACK, Slack};
+use herald_ports::Credential;
 
 /// A Slack command or interaction: `X-Slack-Signature: v0=<hex>`, an HMAC-SHA256 of `v0:<timestamp>:<body>`.
 pub const SCHEME: Scheme = Scheme {
@@ -96,6 +97,7 @@ impl DestinationConfig for DestinationOptions {
                 .on(self.domain.unwrap_or_default())
                 .in_team(self.team.as_deref())
                 .reading_back(self.read_back.unwrap_or_default())
+                .looking_up(self.pin_lookups.unwrap_or_default())
                 .waiting(self.waits())
                 .worded(
                     self.interactions
@@ -139,7 +141,7 @@ pub enum SlackKind {}
 impl DestinationKind for SlackKind {
     const NAME: &str = KIND;
     const DESCRIPTION: &str = "Slack, by bot token or webhook.";
-    const LABEL: &str = "Slack";
+    const LABEL: &str = SLACK;
     const ROUTE: &str = "SlackRoute";
     const ROUTE_DESCRIPTION: &str = "A route to a Slack destination.";
 

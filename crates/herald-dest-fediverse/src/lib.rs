@@ -30,4 +30,3 @@ pub use config::{ACTIVITYPUB, ACTOR_SCHEME, ActorKind, MASTODON, MastodonKind};
 pub use markers::MastodonMarkers;
 pub use mastodon::{LIMIT, MASTODON_MARKUP, Mastodon, profile, shortest};
 pub use options::{DestinationOptions, RouteOptions, Visibility};
-pub use request::Refusal;

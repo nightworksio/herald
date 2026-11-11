@@ -1,4 +1,6 @@
-use herald_core::{ReadBack, SecretRef, Symbols, WaitOptions};
+use herald_core::{PinLookups, ReadBack, SecretRef, Symbols, WaitOptions, bot_or_webhook};
+
+use crate::discord::DISCORD;
 
 use crate::interactions::{Interactions, Subscribe, snowflake};
 use crate::look::{ArchiveAfter, Colours, Look};
@@ -21,6 +23,9 @@ pub struct DestinationOptions {
     /// How many pages of its own posts it reads back for their markers,
     /// from 1 to 20; 5 where unset.
     pub read_back: Option<ReadBack>,
+    /// How many pins it looks up, one request each, as it finds a route's
+    /// earlier pins in a forum, from 1 to 100; 25 where unset.
+    pub pin_lookups: Option<PinLookups>,
     /// The colours of its embeds.
     pub colours: Option<Colours>,
     /// How long a quiet thread stays open: `1h`, `1d`, `3d` or `1w`, the
@@ -48,15 +53,8 @@ impl DestinationOptions {
     /// # Errors
     ///
     /// When it names neither a token nor a webhook, or both.
-    pub fn bot(&self) -> Result<bool, &'static str> {
-        match (&self.token, &self.webhook) {
-            (Some(_), None) => Ok(true),
-            (None, Some(_)) => Ok(false),
-            (None, None) => Err("a Discord destination needs a token or a webhook; give one"),
-            (Some(_), Some(_)) => {
-                Err("a Discord destination takes a token or a webhook, not both; keep one")
-            }
-        }
+    pub fn bot(&self) -> Result<bool, String> {
+        bot_or_webhook(DISCORD, self.token.as_ref(), self.webhook.as_ref())
     }
 }
 

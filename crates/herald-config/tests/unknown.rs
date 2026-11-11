@@ -34,7 +34,7 @@ fn a_destination_naming_an_option_its_kind_lacks_is_refused_by_name() {
         [
             unknown(
                 "discord",
-                "`token`, `webhook`, `api`, `interactions`, `read_back`, `colours`, `archive_after`, `symbols`, `waits`"
+                "`token`, `webhook`, `api`, `interactions`, `read_back`, `pin_lookups`, `colours`, `archive_after`, `symbols`, `waits`"
             ),
             unknown(
                 "mastodon",
@@ -42,11 +42,11 @@ fn a_destination_naming_an_option_its_kind_lacks_is_refused_by_name() {
             ),
             unknown(
                 "matrix",
-                "`homeserver`, `token`, `interactions`, `read_back`, `symbols`, `waits`"
+                "`homeserver`, `token`, `interactions`, `read_back`, `pin_lookups`, `symbols`, `waits`"
             ),
             unknown(
                 "slack",
-                "`token`, `webhook`, `api`, `domain`, `team`, `interactions`, `read_back`, `symbols`, `waits`"
+                "`token`, `webhook`, `api`, `domain`, `team`, `interactions`, `read_back`, `pin_lookups`, `symbols`, `waits`"
             ),
             unknown(
                 "activitypub",
