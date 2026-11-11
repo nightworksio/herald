@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use herald_core::{Announcement, Chore, Delivery, Entry, Key, Marker, Profile, Sent, Step};
 use herald_ports::{
-    Boxed, DynHttp, DynMarkers, DynSigner, HttpError, MarkedThread, Markers, MarkersError,
+    Boxed, DynHttp, DynMarkers, DynSigner, HttpError, MarkedThread, Markers, MarkersError, Response,
 };
 use jiff::Timestamp;
 
@@ -76,7 +76,89 @@ pub trait Reach: fmt::Debug + Send + Sync + Itself {
     fn federates(&self) -> Option<&dyn Federates> {
         None
     }
+
+    /// What its platform says, asked through `http`, of its credential and
+    /// of what a route delivering as `delivery` needs, with nothing posted
+    /// (ADR-0002): nothing where it has no platform to ask.
+    fn probe<'a>(
+        &'a self,
+        _http: &'a dyn DynHttp,
+        _delivery: &'a Delivery,
+    ) -> Boxed<'a, Vec<Probe>> {
+        Box::pin(ready(Vec::new()))
+    }
 }
+
+/// What a platform answers when asked whether it serves a route
+/// (ADR-0002).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Probe {
+    /// It takes the credential.
+    Taken,
+    /// It does not take the credential: it refuses it, or could not be
+    /// asked.
+    Credential(String),
+    /// It withholds what the route needs, at the route's option `key` where
+    /// one asks for it.
+    Route {
+        /// The route's option that asks for it.
+        key: Option<&'static str>,
+        /// What it withholds, and what would have it given.
+        why: String,
+    },
+    /// What it says that the route could follow.
+    Said(String),
+}
+
+impl Probe {
+    /// What `platform`'s `answer` to a request made with the credential
+    /// says of it.
+    #[must_use]
+    pub fn credential(platform: &str, answer: &Result<Response, HttpError>) -> Self {
+        let why = match answer {
+            Ok(response) if response.succeeded() => return Self::Taken,
+            Ok(response) if matches!(response.status, UNAUTHORIZED | FORBIDDEN) => format!(
+                "{platform} refuses its credential, answering {}",
+                response.status
+            ),
+            Ok(response) => format!(
+                "{platform} answered {} when asked whether it takes its credential",
+                response.status
+            ),
+            Err(error) => format!("{platform} could not be asked: {error}"),
+        };
+        Self::Credential(why)
+    }
+
+    /// What `platform`'s `answer` to a request for what a route needs says,
+    /// at the route's option `key`: nothing where it gave it, and
+    /// `withheld`, handed the status, where it says no.
+    #[must_use]
+    pub fn route(
+        platform: &str,
+        key: Option<&'static str>,
+        answer: &Result<Response, HttpError>,
+        withheld: &dyn Fn(u16) -> String,
+    ) -> Option<Self> {
+        let why = match answer {
+            Ok(response) if response.succeeded() => return None,
+            Ok(response) if matches!(response.status, UNAUTHORIZED | FORBIDDEN | NOT_FOUND) => {
+                withheld(response.status)
+            }
+            Ok(response) => format!("{platform} answered {} when asked", response.status),
+            Err(error) => format!("{platform} could not be asked: {error}"),
+        };
+        Some(Self::Route { key, why })
+    }
+}
+
+/// The status of a request whose credential is not taken.
+const UNAUTHORIZED: u16 = 401;
+/// The status of a request whose credential may not do what it asks.
+const FORBIDDEN: u16 = 403;
+/// The status of a request for what does not exist, or is hidden from the
+/// credential.
+const NOT_FOUND: u16 = 404;
 
 /// A reached destination of any kind, shared by every route that reaches it.
 #[derive(Clone)]

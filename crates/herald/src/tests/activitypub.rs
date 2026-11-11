@@ -155,19 +155,22 @@ const UNKEYED: &str = "the destination \"fedi\" signs with HERALD_ACTIVITYPUB_KE
 #[test]
 fn doctor_loads_the_actor_s_key_where_it_is_set() {
     let world = super::world::World::default();
-    let keyed = super::world::herald(&followed(Some(pkcs8())), &world, &["doctor"]);
+    let served = ["doctor", "--layer", "server"];
+    let keyed = super::world::herald(&followed(Some(pkcs8())), &world, &served);
     assert_eq!(keyed.code, DONE, "{}", keyed.out);
     assert!(
         !keyed.out.contains("HERALD_ACTIVITYPUB_KEY"),
         "{}",
         keyed.out
     );
-    let unset = super::world::herald(&followed(None), &world, &["doctor"]);
+    let unset = super::world::herald(&followed(None), &world, &served);
     assert_eq!(unset.code, DONE, "{}", unset.out);
     assert!(
-        unset.out.contains(
-            "The key of the destination \"fedi\" is not checked, as HERALD_ACTIVITYPUB_KEY is not set here."
-        ),
+        unset
+            .out
+            .lines()
+            .any(|line| line.starts_with("Nothing that reads ")
+                && line.contains("HERALD_ACTIVITYPUB_KEY")),
         "{}",
         unset.out
     );
@@ -179,7 +182,7 @@ fn doctor_loads_the_actor_s_key_where_it_is_set() {
         .unwrap(),
     );
     for bad in ["not a key".to_owned(), public] {
-        let mistaken = super::world::herald(&followed(Some(bad)), &world, &["doctor"]);
+        let mistaken = super::world::herald(&followed(Some(bad)), &world, &served);
         assert_eq!(mistaken.code, MISTAKEN, "{}", mistaken.out);
         assert!(mistaken.out.contains(UNKEYED), "{}", mistaken.out);
     }

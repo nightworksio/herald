@@ -41,6 +41,9 @@ const FORGEJO: Scheme = Scheme {
     key: KeyForm::Bytes,
 };
 
+/// Why a GitLab webhook may go unserved (ADR-0007).
+const UNSIGNED: &str = "GitLab signs a webhook only with a signing token, which an older self-managed instance does not offer; where it cannot sign, remove webhook and let herald poll the project.";
+
 /// A forge whose releases herald announces.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Forge {
@@ -112,6 +115,15 @@ impl Forge {
             Self::GitHub => GITHUB,
             Self::GitLab => GITLAB,
             Self::Forgejo => FORGEJO,
+        }
+    }
+
+    /// What a webhook from the forge leaves to it, where anything.
+    #[must_use]
+    pub const fn unsigned(self) -> Option<&'static str> {
+        match self {
+            Self::GitLab => Some(UNSIGNED),
+            Self::GitHub | Self::Forgejo => None,
         }
     }
 

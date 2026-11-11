@@ -1,5 +1,5 @@
 use herald_core::{Announcement, Chore, Delivery, Entry, Profile, Sent, Step};
-use herald_kinds::{Reach, Signing};
+use herald_kinds::{Probe, Reach, Signing};
 use herald_ports::{Boxed, DynHttp, DynMarkers, Erased, HttpError};
 
 use crate::discord::Discord;
@@ -39,5 +39,9 @@ impl Reach for Discord {
 
     fn posts<'a>(&'a self, http: &'a dyn DynHttp) -> Box<dyn DynMarkers + 'a> {
         Box::new(DiscordMarkers::new(self, Erased(http)))
+    }
+
+    fn probe<'a>(&'a self, http: &'a dyn DynHttp, _: &'a Delivery) -> Boxed<'a, Vec<Probe>> {
+        Box::pin(async move { crate::probe::probe(self, &Erased(http)).await })
     }
 }

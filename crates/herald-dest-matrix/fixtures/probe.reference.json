@@ -1,0 +1,46 @@
+{
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "url": "https://matrix.example/_matrix/client/v3/account/whoami",
+        "headers": {
+          "Authorization": "Bearer «secret:HERALD_MATRIX_TOKEN»",
+          "User-Agent": "herald/0.0.0 (+https://github.com/nightworksio/herald)"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "user_id": "@herald:matrix.example",
+          "device_id": "HERALD"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "url": "https://matrix.example/_matrix/client/v3/rooms/%21abcdefg%3Amatrix.example/state/m.room.power_levels/",
+        "headers": {
+          "Authorization": "Bearer «secret:HERALD_MATRIX_TOKEN»",
+          "User-Agent": "herald/0.0.0 (+https://github.com/nightworksio/herald)"
+        }
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "users": {
+            "@admin:matrix.example": 100,
+            "@herald:matrix.example": 10
+          },
+          "users_default": 0,
+          "events": {
+            "m.room.pinned_events": 50
+          },
+          "events_default": 0,
+          "state_default": 50
+        }
+      }
+    }
+  ]
+}

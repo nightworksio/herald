@@ -6,7 +6,9 @@ or one Fastly Compute service (ADR-0017). The native binary is the CLI,
 on each JavaScript host below.
 
 `herald doctor --layer <host>` names what a config asks for that a host
-cannot serve.
+cannot serve. It also says what asks the host for rounds: the cron the files
+here ship, a poll every five minutes and housekeeping hourly (both every five
+minutes on Lambda), and where the config's `[schedule]` disagrees with it.
 
 | Host | Shim | Stores | Rounds |
 |------|------|--------|--------|

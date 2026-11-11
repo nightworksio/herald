@@ -32,11 +32,15 @@ mod round;
 mod serving;
 mod sessions;
 mod together;
+mod trial;
 
 pub use announce::{Announced, Outcome, Ports, Stop, announce, announce_within};
 pub use approving::{Decision, decide, followers};
 pub use commanded::{INTERACTIONS, MATRIX};
-pub use doctor::{Findings, Gap, Layer, doctor, keys, unserved};
+pub use doctor::{
+    Cadence, EGRESS_GUARDED, Egress, Findings, Gap, Here, Layer, Memory, Rounds, Tier, doctor,
+    egress_guarded, keys, online, secrets, unserved,
+};
 pub use following::{FollowError, Followed, followed};
 pub use herald_kinds::Replying;
 pub use housekeep::{Chored, Housekept, Kept, housekeep};
@@ -55,3 +59,4 @@ pub use serving::{
     busy, refusal, uncomposed, unworked, webhooks, work,
 };
 pub use sessions::{Sessions, Taker};
+pub use trial::trial;

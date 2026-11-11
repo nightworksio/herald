@@ -40,6 +40,10 @@ impl StoreConfig for MarkersOptions {
         true
     }
 
+    fn keeps_deliveries(&self) -> bool {
+        false
+    }
+
     fn open<'s, 'o: 's>(
         &'s self,
         _: Arc<dyn Opening + 'o>,
@@ -64,5 +68,6 @@ mod tests {
         assert!(!options.keeps(RecordKind::Pins));
         assert_eq!(options.kept_by(RecordKind::Pins), None);
         assert!(options.reads_posts());
+        assert!(!options.keeps_deliveries());
     }
 }

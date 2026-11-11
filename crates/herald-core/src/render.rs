@@ -9,10 +9,12 @@ use minijinja::{
     escape_formatter,
 };
 
+use crate::announce::{body_template, title_template};
 use crate::bounds::Sandbox;
 use crate::event::Event;
 use crate::key::RouteId;
 use crate::markup::escaped;
+use crate::route::TemplateName;
 
 const MARKDOWN: &str = "markdown";
 
@@ -76,18 +78,7 @@ impl Templates {
             .filter(|(_, _, form)| *form == Form::Markdown)
             .map(|(name, _, _)| (*name).to_owned())
             .collect();
-        let mut environment = Environment::new();
-        environment.set_fuel(Some(sandbox.fuel));
-        environment.set_recursion_limit(sandbox.recursion);
-        environment.set_undefined_behavior(UndefinedBehavior::SemiStrict);
-        environment.set_auto_escape_callback(move |name| {
-            if markdown.contains(name) {
-                AutoEscape::Custom(Cow::Borrowed(MARKDOWN))
-            } else {
-                AutoEscape::None
-            }
-        });
-        environment.set_formatter(format);
+        let mut environment = sandboxed(sandbox, markdown);
         let errors: Vec<TemplateError> = sources
             .iter()
             .filter_map(|&(name, source, _)| {
@@ -104,6 +95,24 @@ impl Templates {
             })
         } else {
             Err(errors)
+        }
+    }
+
+    /// Templates that render an event's own title and body, as they are,
+    /// under `template`.
+    #[must_use]
+    pub fn verbatim(template: &TemplateName, sandbox: Sandbox) -> Self {
+        let body = body_template(template);
+        let mut environment = sandboxed(sandbox, BTreeSet::from([body.clone()]));
+        for (name, source) in [
+            (title_template(template), "{{ event.title }}"),
+            (body, "{{ event.body }}"),
+        ] {
+            let _ = environment.add_template_owned(name, source);
+        }
+        Self {
+            environment,
+            output: sandbox.output,
         }
     }
 
@@ -167,6 +176,24 @@ impl Templates {
             .collect::<Vec<_>>()
             .join(" "))
     }
+}
+
+/// An environment kept to `sandbox`, escaping what it places into the
+/// templates named in `markdown` as Markdown.
+fn sandboxed(sandbox: Sandbox, markdown: BTreeSet<String>) -> Environment<'static> {
+    let mut environment = Environment::new();
+    environment.set_fuel(Some(sandbox.fuel));
+    environment.set_recursion_limit(sandbox.recursion);
+    environment.set_undefined_behavior(UndefinedBehavior::SemiStrict);
+    environment.set_auto_escape_callback(move |name| {
+        if markdown.contains(name) {
+            AutoEscape::Custom(Cow::Borrowed(MARKDOWN))
+        } else {
+            AutoEscape::None
+        }
+    });
+    environment.set_formatter(format);
+    environment
 }
 
 /// A template's output, refused once it passes the cap, so a template is

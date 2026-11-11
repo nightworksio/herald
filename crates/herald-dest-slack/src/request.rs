@@ -81,7 +81,7 @@ pub(crate) fn get(slack: &Slack, method: WebMethod, query: &str) -> Request {
     authorised(Request::new(Method::Get, Text::plain(url)), slack)
 }
 
-fn posted_json(slack: &Slack, url: Text, body: &Value) -> Request {
+pub(crate) fn posted_json(slack: &Slack, url: Text, body: &Value) -> Request {
     authorised(Request::new(Method::Post, url), slack)
         .header(
             "Content-Type",

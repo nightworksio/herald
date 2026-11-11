@@ -42,6 +42,8 @@ herald-store-postgres.workspace = true
 herald-store-repo-variables.workspace = true
 herald-store-sqlite.workspace = true
 jiff.workspace = true
+schemars.workspace = true
+serde.workspace = true
 serde_json.workspace = true
 tokio = { workspace = true, features = ["fs", "io-std", "io-util", "macros", "net", "rt", "signal"] }
 

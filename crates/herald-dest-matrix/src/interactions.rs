@@ -20,8 +20,9 @@ pub enum Via {
     #[default]
     Appservice,
     /// herald syncs as the bot account and reads each message in the rooms
-    /// it has joined: served by `herald server`, with no public endpoint and
-    /// nothing for the homeserver's administrator to install.
+    /// it has joined: served by `herald server` and by a Cloudflare Worker's
+    /// Durable Object, with no public endpoint and nothing for the
+    /// homeserver's administrator to install.
     Sync,
 }
 

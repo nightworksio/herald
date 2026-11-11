@@ -20,8 +20,8 @@ pub enum Via {
     #[default]
     Http,
     /// herald holds a Socket Mode connection, opened with the app-level
-    /// token, and takes each one from it: served by `herald server`, with no
-    /// public endpoint.
+    /// token, and takes each one from it: served by `herald server` and by a
+    /// Cloudflare Worker's Durable Object, with no public endpoint.
     Socket,
 }
 

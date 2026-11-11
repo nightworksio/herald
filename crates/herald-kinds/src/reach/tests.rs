@@ -192,6 +192,78 @@ fn a_reached_destination_is_its_kind_equal_only_to_the_same_and_keeps_every_defa
     assert_eq!(reached.published(&announcement), None);
     assert!(reached.admits("https://anyone.example/users/a"));
     assert!(reached.federates().is_none());
+    let delivery = Delivery::default();
+    assert_eq!(
+        pollster::block_on(reached.probe(&Silent, &delivery)),
+        Vec::new()
+    );
+}
+
+#[test]
+fn a_route_is_given_what_it_needs_where_its_platform_answers_with_success() {
+    let answered = |status: u16| {
+        Probe::route(
+            "Plain",
+            Some("channel"),
+            &Ok(Response {
+                status,
+                headers: Vec::new(),
+                body: Vec::new(),
+            }),
+            &|status| format!("withheld with {status}"),
+        )
+    };
+    let withheld = |why: &str| {
+        Some(Probe::Route {
+            key: Some("channel"),
+            why: why.to_owned(),
+        })
+    };
+    assert_eq!(answered(200), None);
+    assert_eq!(answered(401), withheld("withheld with 401"));
+    assert_eq!(answered(403), withheld("withheld with 403"));
+    assert_eq!(answered(404), withheld("withheld with 404"));
+    assert_eq!(answered(500), withheld("Plain answered 500 when asked"));
+    assert_eq!(
+        Probe::route("Plain", Some("channel"), &Err(HttpError::TimedOut), &|_| {
+            String::new()
+        }),
+        withheld("Plain could not be asked: the host did not answer in time")
+    );
+}
+
+#[test]
+fn a_credential_is_taken_where_its_platform_answers_with_success() {
+    let answered = |status: u16| {
+        Probe::credential(
+            "Plain",
+            &Ok(Response {
+                status,
+                headers: Vec::new(),
+                body: Vec::new(),
+            }),
+        )
+    };
+    assert_eq!(answered(200), Probe::Taken);
+    assert_eq!(answered(204), Probe::Taken);
+    assert_eq!(
+        answered(401),
+        Probe::Credential("Plain refuses its credential, answering 401".to_owned())
+    );
+    assert_eq!(
+        answered(403),
+        Probe::Credential("Plain refuses its credential, answering 403".to_owned())
+    );
+    assert_eq!(
+        answered(404),
+        Probe::Credential(
+            "Plain answered 404 when asked whether it takes its credential".to_owned()
+        )
+    );
+    assert_eq!(
+        Probe::credential("Plain", &Err(HttpError::TimedOut)),
+        Probe::Credential("Plain could not be asked: the host did not answer in time".to_owned())
+    );
 }
 
 #[test]

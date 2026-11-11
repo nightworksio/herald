@@ -4,7 +4,7 @@ use serde_json::Value;
 
 use crate::matrix::Matrix;
 use crate::read::{UNNAMED, json, text};
-use crate::request::{MARKER, get, pinned, pins};
+use crate::request::{MARKER, MESSAGE, get, pinned, pins};
 
 /// The most events read back from a room's timeline.
 const PAGE: u8 = 100;
@@ -74,7 +74,7 @@ impl<'a, H: Http> MatrixMarkers<'a, H> {
                 .unwrap_or_default();
             let mine: Vec<Value> = chunk
                 .iter()
-                .filter(|event| text(event, "type") == Some("m.room.message"))
+                .filter(|event| text(event, "type") == Some(MESSAGE))
                 .filter(|event| text(event, "sender") == Some(herald.as_str()))
                 .cloned()
                 .collect();

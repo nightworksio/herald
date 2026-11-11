@@ -144,3 +144,22 @@ fn a_phrase_is_rendered_with_herald_s_filters_and_within_its_sandbox() {
         Phrase::Unavailable.default_text()
     );
 }
+
+#[test]
+fn the_test_message_names_its_route_as_herald_or_the_config_words_it() {
+    assert_eq!(
+        Wording::default().test("releases"),
+        (
+            "herald test message".to_owned(),
+            "herald doctor --post sent this to check that the route releases reaches here. It announces nothing.".to_owned()
+        )
+    );
+    let worded = Wording::of(Some(&worded(&[
+        (Phrase::TestTitle, "Proefbericht"),
+        (Phrase::TestBody, "Route {{ route }} werkt."),
+    ])));
+    assert_eq!(
+        worded.test("a*b"),
+        ("Proefbericht".to_owned(), "Route a\\*b werkt.".to_owned())
+    );
+}
