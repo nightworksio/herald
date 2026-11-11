@@ -477,8 +477,20 @@ mod tests {
         );
         let missing = pollster::block_on(read.secret("OTHER")).unwrap_err();
         assert_eq!(
-            PrepareError::from(missing).to_string(),
+            PrepareError::from(missing.clone()).to_string(),
             "no secret is named OTHER; set it where this platform keeps secrets"
+        );
+        let named = Unread {
+            error: missing,
+            keys: vec!["a.token".to_owned(), "b.token".to_owned()],
+        };
+        assert_eq!(
+            PrepareError::Unread(vec![named.clone(), named]).to_string(),
+            [
+                "a.token, b.token: no secret is named OTHER; set it where this platform keeps secrets";
+                2
+            ]
+            .join("\n")
         );
     }
 
