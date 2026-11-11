@@ -183,6 +183,9 @@ PEM. Make one with:
 openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out herald-activitypub.pem
 ```
 
+The destination's `deliveries` (8) sets how many of an announcement's
+followers' inboxes it delivers to at once, whichever command announces.
+
 Store the file's contents as `HERALD_ACTIVITYPUB_KEY`. Every run loads the
 key before it sends anything. `herald doctor` loads it too, wherever it is
 set.
@@ -217,7 +220,7 @@ listen = "127.0.0.1:8080"
 - `busy_retry` ("30s") is how long a request whose work found no place is asked to wait, `read` ("30s") and `held` ("90s") how long a connection may take to send its headers and how long it is held at most, and `accept_pause` ("100ms") how long the server waits after a connection could not be accepted.
 - `[server.sessions]` sets how a session a destination holds connects again: `first_wait` ("1s"), doubled up to `longest_wait` ("1m"), each wait between half of it and all of it unless `jitter = false`.
 - `base`, such as `"/herald"`, serves every endpoint under that path, for a reverse proxy that serves herald beside other things; the ActivityPub actors' ids, and the addresses `slack manifest` and `matrix registration` print, are under it too.
-- `[server]` also sets `jobs`, `queue` (how many announcements may wait for a place, as many as `jobs` where absent), `connections`, `body`, `fetches`, `completions` (how many autocompletions a session answers at once), `deliveries` and `silence` (how long a session hears nothing before it checks its connection), and `[server.keys]` sets where inbound activities' keys are kept (`cache = "memory"` or `"store"`), `refresh_after`, `reread_after`, `most` and `document` (the most of a key's document read) ([ADR-0014](.docs/decisions/0014-herald-server-answers-first-and-works-after-on-one-task-within-limits.md)).
+- `[server]` also sets `jobs` (how many pieces of work it does at once: announcements, activities and commands), `queue` (how many pieces of work may wait for a place, as many as `jobs` where absent), `connections`, `body`, `fetches`, `completions` (how many autocompletions a session answers at once) and `silence` (how long a session hears nothing before it checks its connection), and `[server.keys]` sets where inbound activities' keys are kept (`cache = "memory"` or `"store"`), `refresh_after`, `reread_after`, `most` and `document` (the most of a key's document read) ([ADR-0014](.docs/decisions/0014-herald-server-answers-first-and-works-after-on-one-task-within-limits.md)).
 
 `herald doctor --layer server` names what the config asks for that the
 server cannot serve.
@@ -274,11 +277,12 @@ channel = "1566184281406177531"
 template = "deploy"
 
 [apps.ci]
-tokens = ["sha256:…"]
+tokens = ["sha256:50d858e0985ecc7f60418aaf0cc5ab587f42c2570a884095a9e8ccacd0f6545c"]
 projects = ["herald"]
 ```
 
 - `herald token new --app ci` prints a new token once, with the `tokens` line to keep. Add a second token before removing the first to rotate it.
+- An app names at least one project, and at least one route names it among its sources; herald refuses a config where either is missing.
 - An event is herald's event JSON, as [`herald-event.schema.json`](herald-event.schema.json) describes it: `{"id": "7", "project": "herald", "title": "Deployed"}`, with `kind`, `body`, `links`, `attributes` and `occurred` where there are any. Its kind is `message` where it names none.
 - An app sends any kind the config knows: `release`, `package-version`, `feed-entry`, `message`, or one it declares. A declared kind names the attributes its events carry, and herald refuses an event whose attributes do not fit ([ADR-0018](.docs/decisions/0018-a-kind-is-data-and-an-event-carries-its-kind-s-attributes.md)):
 
@@ -289,10 +293,10 @@ projects = ["herald"]
   attributes = { region = { type = "text", required = true }, canary = { type = "flag" } }
   ```
 
-  A template reads them as `{{ event.attributes.region }}`, and `herald check` names each attribute a template prints that a kind its route takes does not carry. A kind's links are its buttons, in order, each labelled by its `label`, by herald's wording for `release`, `changelog` and `entry`, or by its name ([ADR-0019](.docs/decisions/0019-a-kind-s-links-are-its-buttons-each-labelled-by-the-config-or-by-herald.md)).
+  A template reads them as `{{ event.attributes.region }}`, and `herald doctor` names each attribute a template prints that a kind its route takes does not carry. A kind's links are its buttons, in order, each labelled by its `label`, by herald's wording for `release`, `changelog` and `entry`, or by its name ([ADR-0019](.docs/decisions/0019-a-kind-s-links-are-its-buttons-each-labelled-by-the-config-or-by-herald.md)).
 - `herald announce --event deploy.json --app ci` announces it from a file, or from standard input with `--event -`.
 - `herald server` takes it at `POST /api/projects/herald/events` with `Authorization: Bearer <token>`: 202 for a new event, 200 for one it has already ([ADR-0015](.docs/decisions/0015-an-app-is-a-source-routes-name-announcing-with-hashed-tokens-scoped-to-its-projects.md)).
-- `GET /api/projects/herald/events/7`, with the same token, answers where its announcement stands on each of the app's routes: `pending`, `announcing`, `announced`, or `stopped` with the steps that remain.
+- `GET /api/projects/herald/events/7`, with the same token, answers where its announcement stands on each of the app's routes: `pending`, `announcing`, `announced`, or `stopped` with the steps that remain. The project and the id are each one path segment, percent-encoded, so an id such as `deploy/7` is read back at `/api/projects/herald/events/deploy%2F7`.
 
 ### Commands in your channels
 
@@ -302,6 +306,10 @@ announced last, and `changelog` for its notes. Each announcement can carry a
 button that subscribes.
 
 ```toml
+[destinations.discord]
+kind = "discord"
+token = { secret = "HERALD_DISCORD_TOKEN" }
+
 [destinations.discord.interactions]
 application = "1566100000000000000"
 key = "<the application's public key>"

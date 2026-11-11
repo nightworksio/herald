@@ -176,6 +176,7 @@ fn canonical(id: &str) -> Option<String> {
 #[serde(deny_unknown_fields)]
 pub struct SharedList {
     /// The file, as a path beside `herald.toml`.
+    #[schemars(example = "blocklist.csv")]
     pub file: String,
     /// The SHA-256 of the file's text, in hex: a list that changes is not
     /// read until its new digest is pinned.

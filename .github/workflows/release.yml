@@ -269,7 +269,7 @@ jobs:
         run: .github/scripts/still-tagged.sh
       - name: Install musl
         if: contains(matrix.target, 'musl')
-        run: sudo apt-get update && sudo apt-get install --yes musl-tools=1.2.4-2
+        run: .github/scripts/apt.sh musl-tools=1.2.4-2
       - name: Build
         shell: bash
         env:

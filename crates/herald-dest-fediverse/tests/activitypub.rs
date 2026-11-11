@@ -279,6 +279,7 @@ mod activitypub {
             symbols: None,
             waits: None,
             outbox_page: None,
+            deliveries: None,
             mode: Mode::Open,
             block: Vec::new(),
             allow: Vec::new(),
@@ -355,6 +356,7 @@ mod activitypub {
             symbols: None,
             waits: None,
             outbox_page,
+            deliveries: None,
             mode: Mode::Open,
             block: Vec::new(),
             allow: Vec::new(),
@@ -366,6 +368,12 @@ mod activitypub {
             },
         };
         assert_eq!(paged(None).outbox_page(), 20);
+        assert_eq!(paged(None).deliveries(), 8);
+        let wide = ActorOptions {
+            deliveries: std::num::NonZeroUsize::new(16),
+            ..paged(None)
+        };
+        assert_eq!(wide.deliveries(), 16);
         for most in [1, 80] {
             assert_eq!(paged(Some(most)).check(), Ok(()), "{most}");
             assert_eq!(paged(Some(most)).outbox_page(), most);
@@ -385,6 +393,7 @@ mod activitypub {
             symbols: None,
             waits: None,
             outbox_page: None,
+            deliveries: None,
             mode: Mode::Allowlist,
             block: block.iter().map(|entry| (*entry).to_owned()).collect(),
             allow: vec!["friends.example".to_owned()],

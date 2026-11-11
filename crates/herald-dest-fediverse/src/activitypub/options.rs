@@ -1,3 +1,5 @@
+use std::num::NonZeroUsize;
+
 use herald_core::{SecretRef, Symbols, WaitOptions};
 use schemars::JsonSchema;
 use serde::Deserialize;
@@ -13,6 +15,7 @@ const NAME: usize = 30;
 pub struct ActorOptions {
     /// The domain herald serves its actors on, such as `herald.example`:
     /// a host alone, with no scheme, port or path.
+    #[schemars(example = "herald.example")]
     pub domain: String,
     /// The secret holding the actors' RSA private key, as PKCS#8 PEM, such
     /// as `openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048`
@@ -26,7 +29,11 @@ pub struct ActorOptions {
     pub waits: Option<WaitOptions>,
     /// How many Notes one page of each actor's outbox holds, from 1 to 80;
     /// 20 where unset.
+    #[schemars(range(min = 1, max = ActorOptions::OUTBOX_MOST))]
     pub outbox_page: Option<usize>,
+    /// How many of an announcement's followers' inboxes it delivers to at
+    /// once, by every command that announces; 8 where unset.
+    pub deliveries: Option<NonZeroUsize>,
     /// Whom its actors federate with: `open`, everyone `block` does not
     /// name, or `allowlist`, only those `allow` names.
     #[serde(default)]
@@ -58,6 +65,8 @@ impl ActorOptions {
     pub const OUTBOX_PAGE: usize = 20;
     /// The most Notes an outbox page may hold: four times the default.
     pub const OUTBOX_MOST: usize = 4 * Self::OUTBOX_PAGE;
+    /// How many inboxes it delivers to at once where the config sets none.
+    pub const DELIVERIES: usize = 8;
 
     /// Whom its actors federate with, and how many may follow each.
     #[must_use]
@@ -75,6 +84,13 @@ impl ActorOptions {
     #[must_use]
     pub fn outbox_page(&self) -> usize {
         self.outbox_page.unwrap_or(Self::OUTBOX_PAGE)
+    }
+
+    /// How many of an announcement's followers' inboxes it delivers to at
+    /// once.
+    #[must_use]
+    pub fn deliveries(&self) -> usize {
+        self.deliveries.map_or(Self::DELIVERIES, NonZeroUsize::get)
     }
 
     /// Whether the domain is a host alone, every entry of `block` and
@@ -120,6 +136,7 @@ impl ActorOptions {
 pub struct ActorRouteOptions {
     /// The actor the route announces as, such as `php-mutation-gate`, which
     /// is followed as `@php-mutation-gate@<domain>`.
+    #[schemars(example = "php-mutation-gate")]
     pub actor: String,
     /// The content warning each Note is shown behind.
     pub content_warning: Option<String>,

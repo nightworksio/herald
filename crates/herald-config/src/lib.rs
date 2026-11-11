@@ -8,6 +8,7 @@
 
 mod config;
 mod error;
+mod example;
 mod file;
 mod kinds;
 mod load;
@@ -15,7 +16,9 @@ mod position;
 mod samples;
 mod schema;
 
-pub use config::{Announce, App, Config, KeyCache, Reconnecting, RouteConfig, Schedule, Server};
+pub use config::{
+    Announce, App, Config, KeyCache, Reconnecting, RouteConfig, Schedule, Server, Uses,
+};
 pub use error::{ConfigError, Errors};
 pub use herald_kinds::{Destination, Placed, Source, Store};
 pub use kinds::Kinds;

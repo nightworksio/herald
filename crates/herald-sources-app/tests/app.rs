@@ -261,4 +261,43 @@ mod app {
             "regenerate it: cargo run -p herald-sources-app --example event-schema > herald-event.schema.json"
         );
     }
+
+    fn mistakes(event: &serde_json::Value) -> usize {
+        let schema: serde_json::Value = serde_json::from_str(&schema()).unwrap();
+        jsonschema::options()
+            .should_validate_formats(true)
+            .build(&schema)
+            .unwrap()
+            .iter_errors(event)
+            .count()
+    }
+
+    #[test]
+    fn the_schema_takes_the_readme_s_event_and_refuses_what_the_reader_refuses() {
+        let readme = include_str!("../../../README.md");
+        let example = r#"{"id": "7", "project": "herald", "title": "Deployed"}"#;
+        assert!(readme.contains(example));
+        assert_eq!(mistakes(&serde_json::from_str(example).unwrap()), 0);
+        let whole = serde_json::json!({
+            "id": "deploy/7", "project": "night works", "title": "Deployed",
+            "links": { "release": "https://example.org/r" },
+            "occurred": "2027-01-15T08:00:00Z"
+        });
+        assert_eq!(mistakes(&whole), 0);
+        for refused in [
+            serde_json::json!({ "id": " ", "project": "herald", "title": "Deployed" }),
+            serde_json::json!({ "id": "7", "project": "", "title": "Deployed" }),
+            serde_json::json!({ "id": "7", "project": "herald", "title": "\t" }),
+            serde_json::json!({ "id": "7", "project": "herald", "title": "t", "links": { "r": "ftp://example.org" } }),
+            serde_json::json!({ "id": "7", "project": "herald", "title": "t", "links": { " ": "https://example.org" } }),
+            serde_json::json!({ "id": "7", "project": "herald", "title": "t", "occurred": "yesterday" }),
+        ] {
+            assert_ne!(mistakes(&refused), 0, "{refused}");
+        }
+    }
+
+    #[test]
+    fn an_identity_is_the_app_and_the_id_without_white_space_around_it() {
+        assert_eq!(identity("ci", " deploy/7 "), "app/ci/deploy/7");
+    }
 }

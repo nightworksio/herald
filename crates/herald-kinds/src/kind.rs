@@ -54,7 +54,8 @@ impl Placing<'_> {
             Ok(())
         } else {
             Err(format!(
-                "subscribing is answered through the destination's interactions; give [destinations.{}.interactions] answering subscribe",
+                "subscribing is answered through the destination's interactions; add \"{}\" to [destinations.{}.interactions] commands",
+                Command::Subscribe.name(),
                 self.destination
             ))
         }
@@ -148,7 +149,7 @@ mod tests {
             Ok(())
         );
         let refused = Err(
-            "subscribing is answered through the destination's interactions; give [destinations.chat.interactions] answering subscribe".to_owned(),
+            "subscribing is answered through the destination's interactions; add \"subscribe\" to [destinations.chat.interactions] commands".to_owned(),
         );
         assert_eq!(
             placing.answers_subscribing(Some(answering(vec![Command::Latest]))),

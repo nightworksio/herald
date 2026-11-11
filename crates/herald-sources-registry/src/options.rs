@@ -36,6 +36,7 @@ pub struct RegistryOptions {
     /// a crate's name, an npm package's name such as `@scope/name`, or a
     /// Docker Hub repository such as `library/caddy`, where an official
     /// image may leave out `library/`.
+    #[schemars(example = "vendor/name")]
     pub package: String,
     /// The registry's base URL, for a mirror or a private registry that
     /// answers as the public one does; the public registry's where absent.

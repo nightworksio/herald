@@ -3,12 +3,26 @@ use std::collections::BTreeMap;
 
 use schemars::{JsonSchema, Schema, SchemaGenerator};
 
+use crate::config::Config;
 use crate::kinds::Kinds;
 
 use crate::file::{
     AnnounceFile, AppFile, HttpFile, KeepFile, KindFile, MarkersFile, RenderFile, RouteFile,
     ScheduleFile, ServerFile, TemplateFile,
 };
+
+/// `version`: the one version of the config this herald reads.
+struct VersionSchema;
+
+impl JsonSchema for VersionSchema {
+    fn schema_name() -> Cow<'static, str> {
+        "Version".into()
+    }
+
+    fn json_schema(_: &mut SchemaGenerator) -> Schema {
+        schemars::json_schema!({ "type": "integer", "const": Config::VERSION })
+    }
+}
 
 /// `[store]`: one store, by its kind: its schema is its kind's.
 struct StoreSchema;
@@ -102,6 +116,39 @@ const DESTINATION: &str = "Destination";
 /// The schema's name for a route.
 const ROUTE: &str = "Route";
 
+/// `schema` with null taken out of every type it allows, as TOML has no
+/// null: a key left out is how a config gives none.
+fn unnulled(schema: &mut Schema) {
+    if let Some(types) = schema
+        .get_mut("type")
+        .and_then(|types| types.as_array_mut())
+    {
+        types.retain(|kind| kind != "null");
+        if let [only] = types.as_slice() {
+            let only = only.clone();
+            schema.insert("type".to_owned(), only);
+        }
+    }
+    if let Some(any) = schema.get_mut("anyOf").and_then(|any| any.as_array_mut()) {
+        any.retain(|branch| branch.get("type").is_none_or(|kind| kind != "null"));
+        if let [only] = any.as_slice()
+            && let Some(object) = only.as_object().cloned()
+        {
+            schema.remove("anyOf");
+            for (key, value) in object {
+                schema.insert(key, value);
+            }
+        }
+    }
+    if schema
+        .get("default")
+        .is_some_and(serde_json::Value::is_null)
+    {
+        schema.remove("default");
+    }
+    schemars::transform::transform_subschemas(&mut unnulled, schema);
+}
+
 /// `schema`, its description first.
 fn described(schema: &Schema, description: &str) -> Schema {
     let mut map = serde_json::Map::new();
@@ -175,7 +222,7 @@ pub(crate) fn routed<T: JsonSchema>(
 #[allow(dead_code, reason = "read only by the schema's derive")]
 struct FileSchema {
     /// The version of the config: 1.
-    version: u8,
+    version: VersionSchema,
     /// The kinds of event the config declares beside those herald ships, by
     /// name; its apps may announce them.
     #[serde(default)]
@@ -269,6 +316,7 @@ pub fn schema(kinds: &Kinds) -> String {
         "$defs".to_owned(),
         serde_json::Value::Object(definitions.into_iter().collect()),
     );
+    unnulled(&mut root);
     format!(
         "{}\n",
         serde_json::to_string_pretty(&root).unwrap_or_default()

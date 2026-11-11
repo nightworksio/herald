@@ -1,8 +1,8 @@
-use herald_config::{Config, load};
+use herald_config::{Config, Uses, load};
 use herald_core::{Key, RouteId, Scheme, Step};
 use herald_flows::{
     Answered, Connected, FollowError, Followed, Inbound, Job, Keys, Outcome, Ports, Serving, Stop,
-    Webhooks, Worked, answer, busy, prepare, unworked, webhooks, work,
+    Worked, answer, busy, prepare, unworked, work,
 };
 use herald_ports::{Admitted, Algorithm, CryptoError, Deliveries, Ledger, Secret, Signer};
 use herald_records::MemoryKeyring;
@@ -63,7 +63,7 @@ template = "t"
 actor = "deploys"
 [apps.ci]
 tokens = ["sha256:TOKEN_HASH"]
-projects = ["herald"]
+projects = ["herald", "night works"]
 routes = ["deployed"]
 [templates.t]
 title = "{{ event.title }}"
@@ -81,7 +81,6 @@ fn secrets() -> FakeSecrets {
 pub(crate) struct World {
     config: Config,
     connected: Connected<Script>,
-    webhooks: Webhooks,
     pub(crate) store: Failing,
     keyring: MemoryKeyring,
     script: Script,
@@ -96,13 +95,12 @@ impl World {
     }
 
     pub(crate) fn with(config: Config, script: Script) -> Self {
-        let prepared = pollster::block_on(prepare(&config, &secrets(), &FakeSigner)).unwrap();
+        let prepared =
+            pollster::block_on(prepare(&config, &secrets(), &FakeSigner, Uses::Serves)).unwrap();
         let connected = prepared.connect(|_| Ok::<_, ()>(script.clone())).unwrap();
-        let webhooks = pollster::block_on(webhooks(&config, &secrets())).unwrap();
         Self {
             config,
             connected,
-            webhooks,
             store: healthy(),
             keyring: MemoryKeyring::new(8),
             script,
@@ -134,7 +132,7 @@ impl World {
             verifier: &FakeVerifier,
             public: &self.script,
             keys: &keys,
-            webhooks: &self.webhooks,
+            webhooks: self.connected.webhooks(),
             admission: herald_flows::Admission::Once,
         })
     }
@@ -299,7 +297,7 @@ fn an_actor_whose_key_cannot_be_read_is_not_served() {
         verifier: &FakeVerifier,
         public: &world.script,
         keys: &keys,
-        webhooks: &world.webhooks,
+        webhooks: world.connected.webhooks(),
         admission: herald_flows::Admission::Once,
     };
     let answered = pollster::block_on(answer(&serving, &get("/users/php-mutation-gate")));
@@ -596,8 +594,13 @@ fn an_activity_herald_cannot_take_is_answered_by_why() {
     let unadmitted = World {
         script: keyed(),
         connected: {
-            let prepared =
-                pollster::block_on(prepare(&unadmitted.config, &secrets(), &FakeSigner)).unwrap();
+            let prepared = pollster::block_on(prepare(
+                &unadmitted.config,
+                &secrets(),
+                &FakeSigner,
+                Uses::Polls,
+            ))
+            .unwrap();
             prepared.connect(|_| Ok::<_, ()>(keyed())).unwrap()
         },
         ..unadmitted
@@ -705,12 +708,14 @@ fn work_that_will_not_be_done_releases_its_delivery() {
 fn a_webhook_secret_that_is_not_set_stops_the_server_before_it_serves() {
     let config = config();
     let unset = FakeSecrets::default().with("HERALD_ACTIVITYPUB_KEY", "the-key");
+    let polled = pollster::block_on(prepare(&config, &unset, &FakeSigner, Uses::Polls));
+    assert!(polled.is_ok());
     assert_eq!(
-        pollster::block_on(webhooks(&config, &unset))
+        pollster::block_on(prepare(&config, &unset, &FakeSigner, Uses::Serves))
             .err()
             .map(|error| error.to_string()),
         Some(
-            "no secret is named HERALD_WEBHOOK; set it where this platform keeps secrets"
+            "sources.gate.webhook: no secret is named HERALD_WEBHOOK; set it where this platform keeps secrets"
                 .to_owned()
         )
     );
@@ -962,4 +967,34 @@ fn an_app_s_event_the_store_cannot_admit_is_answered_so_and_left_undone() {
     let answered = world.answer(&posted("/api/projects/herald/events", BEARER, DEPLOYED));
     assert_eq!(answered.reply.status, 503);
     assert_eq!(answered.job, None);
+}
+
+#[test]
+fn a_project_and_an_id_are_read_from_their_percent_encoded_path_segments() {
+    let world = World::new(Script::default());
+    let event = br#"{"id": "deploy/7", "project": "night works", "title": "Deployed"}"#;
+    let first = world.answer(&posted("/api/projects/night%20works/events", BEARER, event));
+    world.work(first.job.expect("the event is left to announce"));
+    let stood = r#"{"id":"deploy/7","project":"night works","routes":[{"route":"deployed","standing":"announced"}]}"#;
+    for (path, status, body) in [
+        ("/api/projects/night%20works/events/deploy%2F7", 200, stood),
+        (
+            "/api/projects/night%2works/events/7",
+            404,
+            "herald serves no such path here",
+        ),
+        (
+            "/api/projects/night%20works/events/deploy/7",
+            404,
+            "herald serves no such path here",
+        ),
+    ] {
+        let asked = Inbound {
+            method: "GET",
+            headers: BEARER,
+            ..get(path)
+        };
+        let (code, _, text) = said(&world.answer(&asked));
+        assert_eq!((code, text.as_str()), (status, body), "{path}");
+    }
 }

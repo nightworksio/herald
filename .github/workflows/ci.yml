@@ -365,7 +365,7 @@ jobs:
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
-      - run: sudo apt-get update && sudo apt-get install --yes musl-tools=1.2.4-2
+      - run: .github/scripts/apt.sh musl-tools=1.2.4-2
       - id: host
         run: |
           . /etc/os-release

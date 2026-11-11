@@ -241,7 +241,7 @@ fn a_route_through_a_bot_names_its_channel_and_a_subscription_mentions_subscribe
         )),
         [(
             Some("subscribe"),
-            "subscribing is answered through the destination's interactions; give [destinations.slack.interactions] answering subscribe"
+            "subscribing is answered through the destination's interactions; add \"subscribe\" to [destinations.slack.interactions] commands"
         )]
     );
 }

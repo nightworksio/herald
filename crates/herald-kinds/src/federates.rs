@@ -59,6 +59,10 @@ pub trait Federates: Send + Sync {
     /// The most notes a page of its outbox lists.
     fn outbox_most(&self) -> usize;
 
+    /// How many of an announcement's followers' inboxes it delivers to at
+    /// once.
+    fn deliveries(&self) -> usize;
+
     /// The name of its outbox's first page.
     fn first_page(&self) -> &'static str;
 

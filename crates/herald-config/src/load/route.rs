@@ -143,13 +143,15 @@ impl Loader<'_> {
                     .chain(apps.keys().map(String::as_str))
                     .collect();
                 names.sort_unstable();
+                let hint = if names.is_empty() {
+                    format!("name it under [sources.{name}] or [apps.{name}]")
+                } else {
+                    format!("the sources and apps are {}", list(&names))
+                };
                 self.error(
                     &source.span(),
                     &format!("{path}.sources"),
-                    format!(
-                        "no source or app is named \"{name}\"; the sources and apps are {}",
-                        list(&names)
-                    ),
+                    format!("no source or app is named \"{name}\"; {hint}"),
                 );
                 sound = false;
             }
@@ -178,8 +180,40 @@ impl Loader<'_> {
         Some((placed, name))
     }
 
+    /// Each route of `[[routes]]`, its id one no other route has.
+    pub(super) fn every_route(
+        &mut self,
+        value: Option<Value<'_>>,
+        destinations: &BTreeMap<DestinationName, (Destination, Range<usize>)>,
+        sources: &BTreeMap<SourceName, Source>,
+        apps: &BTreeMap<String, Named>,
+        templates: &BTreeMap<TemplateName, Written>,
+    ) -> Vec<Read> {
+        let mut routes = Vec::new();
+        let mut ids: BTreeSet<RouteId> = BTreeSet::new();
+        for (index, value) in self.routes(value).into_iter().enumerate() {
+            let Some(read) = self.route(index, value, destinations, sources, apps, templates)
+            else {
+                continue;
+            };
+            if ids.insert(read.config.route.id.clone()) {
+                routes.push(read);
+            } else {
+                self.error(
+                    &read.id_span,
+                    &format!("{}.id", read.path),
+                    format!(
+                        "another route has the id \"{}\"; give each route its own",
+                        read.config.route.id.as_str()
+                    ),
+                );
+            }
+        }
+        routes
+    }
+
     #[allow(clippy::too_many_lines)]
-    pub(super) fn route(
+    fn route(
         &mut self,
         index: usize,
         value: Value<'_>,

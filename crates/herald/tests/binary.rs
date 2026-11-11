@@ -68,6 +68,7 @@ body = "{{{{ event.body }}}}"
         let config = directory.path().join("herald.toml");
         let mut text = std::fs::read_to_string(&config).unwrap();
         text.push_str("[apps.ci]\nprojects = [\"herald\"]\n");
+        text = text.replace("sources = [\"cli\"]", "sources = [\"cli\", \"ci\"]");
         std::fs::write(&config, text).unwrap();
         let mut child = Command::new(env!("CARGO_BIN_EXE_herald"))
             .args(["announce", "--event", "-", "--app", "ci"])

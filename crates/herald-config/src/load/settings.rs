@@ -161,7 +161,6 @@ impl Loader<'_> {
             ),
             fetches: count(file.fetches, defaults.fetches),
             completions: count(file.completions, defaults.completions),
-            deliveries: count(file.deliveries, defaults.deliveries),
             silence: file.silence.map_or(defaults.silence, |silence| silence.0),
             keys,
             keys_refreshed: file

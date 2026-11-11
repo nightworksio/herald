@@ -40,9 +40,30 @@ pub struct Config {
     /// Every kind of event it knows: those herald ships, and those it
     /// declares.
     pub kinds: KindSpecs,
+    /// The keys that name each secret, by the secret's name, such as
+    /// `destinations.discord.token`.
+    pub secret_keys: BTreeMap<String, Vec<String>>,
+}
+
+/// What a run does, and so which of the config's secrets it reads
+/// (ADR-0006).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum Uses {
+    /// A run that announces, keeps house or decides follows: each
+    /// destination's credential and the marker key.
+    Announces,
+    /// A run that polls: those, and each source's token.
+    Polls,
+    /// A run that serves: every secret the config names, those each
+    /// destination answers commands with and each webhook is signed with
+    /// among them.
+    Serves,
 }
 
 impl Config {
+    /// The version of the config this herald reads, as `version` writes it.
+    pub const VERSION: i64 = 1;
+
     /// The domains herald's sessions may connect under: each Discord
     /// gateway's and Slack Socket Mode session's own, and those its
     /// destination adds (ADR-0016).
@@ -57,18 +78,39 @@ impl Config {
     /// The name of every secret the config names, once each.
     #[must_use]
     pub fn secrets(&self) -> BTreeSet<&str> {
-        self.destinations
-            .values()
-            .flat_map(|destination| destination.secret_refs())
-            .chain(
-                self.sources
-                    .values()
-                    .flat_map(|source| source.secret_refs()),
-            )
+        let mut secrets = self.secrets_used(Uses::Serves);
+        secrets.extend(self.store.secrets());
+        secrets
+    }
+
+    /// The name of every secret a run that `uses` the config reads beside
+    /// its store's, which the store reads as it opens, once each.
+    #[must_use]
+    pub fn secrets_used(&self, uses: Uses) -> BTreeSet<&str> {
+        let destinations = self.destinations.values().flat_map(|destination| {
+            if uses == Uses::Serves {
+                destination.secret_refs()
+            } else {
+                destination.credential().into_iter().collect()
+            }
+        });
+        let sources = self.sources.values().flat_map(|source| match uses {
+            Uses::Serves => source.secret_refs(),
+            Uses::Polls => source.token().into_iter().collect(),
+            Uses::Announces => Vec::new(),
+        });
+        destinations
+            .chain(sources)
             .chain(self.marker_key.as_ref())
             .map(|named| named.secret.as_str())
-            .chain(self.store.secrets())
             .collect()
+    }
+
+    /// The keys that name the secret `name`, such as
+    /// `destinations.discord.token`; none where only a default names it.
+    #[must_use]
+    pub fn keys_naming(&self, name: &str) -> &[String] {
+        self.secret_keys.get(name).map_or(&[], Vec::as_slice)
     }
 }
 
@@ -150,10 +192,10 @@ pub struct Server {
     /// The path every endpoint is served under, as `/herald`; empty where
     /// they are served at the root.
     pub base: String,
-    /// How many announcements it works on at once.
+    /// How many pieces of work it does at once.
     pub jobs: usize,
-    /// How many announcements may wait for a place; a webhook arriving while
-    /// as many wait is answered 503.
+    /// How many pieces of work may wait for a place; a request leaving one
+    /// while as many wait is answered 503.
     pub queue: usize,
     /// How many connections it holds at once.
     pub connections: usize,
@@ -164,8 +206,6 @@ pub struct Server {
     /// How many autocompletions a session answers at once; one arriving
     /// while as many are answered is dropped.
     pub completions: usize,
-    /// How many of an announcement's inboxes are delivered to at once.
-    pub deliveries: usize,
     /// How long a session a destination holds hears nothing before it
     /// checks the connection is alive, and then as long again before it
     /// opens another.
@@ -227,7 +267,7 @@ impl Server {
     /// Where `herald server` listens where the config names nowhere: this
     /// machine alone, as a reverse proxy in front of it reaches it.
     pub const LISTEN: &str = "127.0.0.1:8080";
-    /// How many announcements it works on at once where the config says
+    /// How many pieces of work it does at once where the config says
     /// nothing.
     pub const JOBS: usize = 8;
     /// How many connections it holds at once where the config says nothing.
@@ -242,9 +282,6 @@ impl Server {
     /// How many autocompletions a session answers at once where the config
     /// says nothing.
     pub const COMPLETIONS: usize = 4;
-    /// How many inboxes it delivers to at once where the config says
-    /// nothing.
-    pub const DELIVERIES: usize = 8;
     /// How long a key is used before it is read again where the config says
     /// nothing.
     pub const KEYS_REFRESHED: SignedDuration = SignedDuration::from_hours(1);
@@ -289,7 +326,6 @@ impl Default for Server {
             body: Self::BODY,
             fetches: Self::FETCHES,
             completions: Self::COMPLETIONS,
-            deliveries: Self::DELIVERIES,
             silence: Self::SILENCE,
             keys: KeyCache::Memory,
             keys_refreshed: Self::KEYS_REFRESHED,

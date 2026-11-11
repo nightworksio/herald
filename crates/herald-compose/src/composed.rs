@@ -2,12 +2,12 @@ use std::future::Future;
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 
-use herald_config::Config;
+use herald_config::{Config, Uses};
 use herald_core::Retention;
 use herald_flows::{
     Admission, Connected, Housekept, Inbound, Job, Keys, Place, Ports, Room, Round, Running,
-    Serving, Sessions, Stop, Swept, Taker, Webhooks, Worked, answer, busy, housekeep, poll,
-    prepare, refusal, unworked, webhooks, work,
+    Serving, Sessions, Stop, Swept, Taker, Worked, answer, busy, housekeep, poll, prepare, refusal,
+    unworked, work,
 };
 use herald_ports::{Clock as _, Keyring, PUBLIC, Sockets, Store as Keeps, Timer};
 use herald_records::MemoryKeyring;
@@ -30,7 +30,6 @@ pub struct Composed<'o, H: Host + 'o> {
     config: Config,
     records: Records<'o>,
     connected: Connected<H::Http>,
-    webhooks: Webhooks,
     public: Capped<H::Http>,
     memory: MemoryKeyring,
     room: Room,
@@ -61,18 +60,12 @@ impl<'o, H: Host + 'o> Composed<'o, H> {
     {
         let host = Arc::new(host);
         let outbound = config.http.clone().timed(host.var(TIMEOUT_MS));
+        let prepared = prepare(&config, host.secrets(), host.signer(), Uses::Serves)
+            .await
+            .map_err(|error| error.to_string())?;
         let opener = Opener::new(Arc::clone(&host), outbound.clone());
         let records = reached(Arc::new(opener), &config.store, stores).await?;
-        let prepared = prepare(&config, host.secrets(), host.signer())
-            .await
-            .map_err(|error| error.to_string())?
-            .answering(host.secrets())
-            .await
-            .map_err(|error| error.to_string())?;
         let connected = prepared.connect(|base| host.connect(base, &outbound))?;
-        let webhooks = webhooks(&config, host.secrets())
-            .await
-            .map_err(|error| error.to_string())?;
         let public = Capped::new(
             host.connect(PUBLIC, &outbound.public())?,
             config.server.fetches,
@@ -84,7 +77,6 @@ impl<'o, H: Host + 'o> Composed<'o, H> {
             config,
             records,
             connected,
-            webhooks,
             public,
             memory,
             room,
@@ -256,7 +248,7 @@ impl<H: Host, W: Keyed<H>> Through<'_, H, W> {
             verifier: host.verifier(),
             public: &composed.public,
             keys: &keys,
-            webhooks: &composed.webhooks,
+            webhooks: composed.connected.webhooks(),
             admission: self.admission,
         };
         let run = format!("{}/{}", composed.run, host.nonce());

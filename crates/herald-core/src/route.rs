@@ -53,7 +53,13 @@ name!(
 #[schemars(deny_unknown_fields)]
 pub struct SecretRef {
     /// The secret's name.
+    #[schemars(example = SecretRef::EXAMPLE)]
     pub secret: String,
+}
+
+impl SecretRef {
+    /// How the schema shows a secret's name.
+    const EXAMPLE: &str = "NAME";
 }
 
 /// How a secret is written, for an error that never repeats what was written

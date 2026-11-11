@@ -16,12 +16,15 @@ impl JsonSchema for Size {
         schemars::json_schema!({
             "description": "A number of bytes: a number and KiB or MiB, as \"1MiB\".",
             "type": "string",
-            "pattern": "^[0-9]+(KiB|MiB)$"
+            "pattern": Self::PATTERN
         })
     }
 }
 
 impl Size {
+    /// The pattern the schema holds a size to: a number above 0 and its
+    /// unit.
+    pub const PATTERN: &str = "^0*[1-9][0-9]*(KiB|MiB)$";
     /// The bytes in a KiB.
     pub const KIB: usize = 1 << 10;
     /// The bytes in a MiB.
@@ -121,7 +124,7 @@ mod tests {
     fn a_size_s_schema_is_a_string_of_a_number_and_a_binary_unit() {
         let schema = serde_json::to_value(schemars::schema_for!(Size)).unwrap();
         assert_eq!(schema["type"], "string");
-        assert_eq!(schema["pattern"], "^[0-9]+(KiB|MiB)$");
+        assert_eq!(schema["pattern"], "^0*[1-9][0-9]*(KiB|MiB)$");
     }
 
     #[test]

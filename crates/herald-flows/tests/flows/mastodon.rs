@@ -1,4 +1,4 @@
-use herald_config::{Config, load};
+use herald_config::{Config, Uses, load};
 use herald_core::{Chore, Identity, Key, Marker, RouteId, Schedule, SourceName, Step};
 use herald_flows::{Chored, Outcome, Ports, Reached, announce, housekeep, prepare};
 use herald_ports::{Markers as _, Schedules};
@@ -69,7 +69,8 @@ fn a_mastodon_route_posts_its_status_and_replies_its_overflow_under_it() {
         ),
         ("/api/v1/statuses", 200, r#"{"id":"2"}"#),
     ]);
-    let prepared = pollster::block_on(prepare(&config, &token(), &FakeSigner)).unwrap();
+    let prepared =
+        pollster::block_on(prepare(&config, &token(), &FakeSigner, Uses::Polls)).unwrap();
     let connected = prepared.connect(|_| Ok::<_, ()>(script.clone())).unwrap();
     let marked = connected.marked(FakeSigner);
     let ports = Ports {
@@ -110,7 +111,8 @@ fn a_mastodon_route_keeps_no_thread_chores_and_its_account_lists_no_threads() {
     };
     pollster::block_on(store.put_schedules(&[thread], &[])).unwrap();
     let script = Script::default();
-    let prepared = pollster::block_on(prepare(&config, &token(), &FakeSigner)).unwrap();
+    let prepared =
+        pollster::block_on(prepare(&config, &token(), &FakeSigner, Uses::Polls)).unwrap();
     let connected = prepared.connect(|_| Ok::<_, ()>(script.clone())).unwrap();
     let kept = pollster::block_on(housekeep(
         &connected,

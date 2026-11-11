@@ -6,14 +6,7 @@
   "properties": {
     "announce": {
       "description": "How a run holds and keeps an announcement.",
-      "anyOf": [
-        {
-          "$ref": "#/$defs/Announce"
-        },
-        {
-          "type": "null"
-        }
-      ]
+      "$ref": "#/$defs/Announce"
     },
     "apps": {
       "description": "The HTTP API's apps, by name.",
@@ -31,14 +24,7 @@
     },
     "http": {
       "description": "How herald's own requests reach the services the config names.",
-      "anyOf": [
-        {
-          "$ref": "#/$defs/Http"
-        },
-        {
-          "type": "null"
-        }
-      ]
+      "$ref": "#/$defs/Http"
     },
     "kinds": {
       "description": "The kinds of event the config declares beside those herald ships, by\nname; its apps may announce them.",
@@ -49,25 +35,11 @@
     },
     "markers": {
       "description": "The installation's marker key.",
-      "anyOf": [
-        {
-          "$ref": "#/$defs/Markers"
-        },
-        {
-          "type": "null"
-        }
-      ]
+      "$ref": "#/$defs/Markers"
     },
     "render": {
       "description": "How far a template may go as it renders.",
-      "anyOf": [
-        {
-          "$ref": "#/$defs/Render"
-        },
-        {
-          "type": "null"
-        }
-      ]
+      "$ref": "#/$defs/Render"
     },
     "routes": {
       "description": "Which events go where, rendered how.",
@@ -78,25 +50,11 @@
     },
     "schedule": {
       "description": "How often a driver that keeps its own schedule polls and keeps house.",
-      "anyOf": [
-        {
-          "$ref": "#/$defs/Schedule"
-        },
-        {
-          "type": "null"
-        }
-      ]
+      "$ref": "#/$defs/Schedule"
     },
     "server": {
       "description": "How `herald server` listens, and what it takes on at once.",
-      "anyOf": [
-        {
-          "$ref": "#/$defs/Server"
-        },
-        {
-          "type": "null"
-        }
-      ]
+      "$ref": "#/$defs/Server"
     },
     "sources": {
       "description": "What herald listens to, by name.",
@@ -118,10 +76,7 @@
     },
     "version": {
       "description": "The version of the config: 1.",
-      "type": "integer",
-      "format": "uint8",
-      "maximum": 255,
-      "minimum": 0
+      "$ref": "#/$defs/Version"
     }
   },
   "additionalProperties": false,
@@ -136,14 +91,14 @@
       "properties": {
         "actor": {
           "description": "The actor the route announces as, such as `php-mutation-gate`, which\nis followed as `@php-mutation-gate@<domain>`.",
-          "type": "string"
+          "type": "string",
+          "examples": [
+            "php-mutation-gate"
+          ]
         },
         "content_warning": {
           "description": "The content warning each Note is shown behind.",
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": "string"
         },
         "crosspost": {
           "description": "Whether to crosspost each announcement.",
@@ -152,11 +107,17 @@
         },
         "destination": {
           "description": "The destination it announces to.",
-          "type": "string"
+          "type": "string",
+          "examples": [
+            "discord"
+          ]
         },
         "id": {
           "description": "The route's stable id, part of every announcement's key.",
-          "type": "string"
+          "type": "string",
+          "examples": [
+            "herald-releases"
+          ]
         },
         "kinds": {
           "description": "The kinds of event it takes; every kind where absent.",
@@ -168,10 +129,7 @@
         },
         "language": {
           "description": "The language each Note is written in, as an ISO 639 code.",
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": "string"
         },
         "mentions": {
           "description": "Who it mentions.",
@@ -179,14 +137,7 @@
         },
         "pin": {
           "description": "Whether to pin each announcement in place of the route's earlier pin,\nand how the earlier pin is found.",
-          "anyOf": [
-            {
-              "$ref": "#/$defs/Pinning"
-            },
-            {
-              "type": "null"
-            }
-          ]
+          "$ref": "#/$defs/Pinning"
         },
         "prereleases": {
           "description": "Which pre-releases it takes.",
@@ -195,31 +146,29 @@
         "sources": {
           "description": "The sources it takes events from.",
           "type": "array",
+          "examples": [
+            [
+              "herald"
+            ]
+          ],
           "items": {
             "type": "string"
           }
         },
         "template": {
           "description": "The template it renders with.",
-          "type": "string"
+          "type": "string",
+          "examples": [
+            "package-release"
+          ]
         },
         "thread": {
           "description": "The thread to open for each announcement.",
-          "anyOf": [
-            {
-              "$ref": "#/$defs/Thread"
-            },
-            {
-              "type": "null"
-            }
-          ]
+          "$ref": "#/$defs/Thread"
         },
         "versions": {
           "description": "The versions it takes, as a pattern in which `*` stands for any run\nof characters and `?` for any one, such as `\"*.*.*\"`, which leaves\nout a Docker Hub tag such as `latest`; every version where absent.",
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": "string"
         },
         "visibility": {
           "description": "Who sees each Note on the timelines.",
@@ -241,23 +190,13 @@
       "properties": {
         "latest_attempts": {
           "description": "How often a run writes what a project last announced again when\nanother write lands between its read and its write; 3 where absent.",
-          "type": [
-            "integer",
-            "null"
-          ],
+          "type": "integer",
           "format": "uint",
           "minimum": 1
         },
         "lease": {
           "description": "How long a run holds an announcement past its last write before\nanother may finish it; \"20m\" where absent, longer than the longest a\nhost lets one run go on, a Lambda's 15 minutes.",
-          "anyOf": [
-            {
-              "$ref": "#/$defs/Duration"
-            },
-            {
-              "type": "null"
-            }
-          ]
+          "$ref": "#/$defs/Duration"
         }
       },
       "additionalProperties": false
@@ -267,12 +206,17 @@
       "type": "object",
       "properties": {
         "projects": {
-          "description": "The projects it may announce.",
+          "description": "The projects it may announce: at least one.",
           "type": "array",
-          "default": [],
+          "examples": [
+            [
+              "herald"
+            ]
+          ],
           "items": {
             "type": "string"
-          }
+          },
+          "minItems": 1
         },
         "routes": {
           "description": "The routes it announces to, each naming the app among its sources;\nevery such route where it names none.",
@@ -287,11 +231,14 @@
           "type": "array",
           "default": [],
           "items": {
-            "type": "string"
+            "$ref": "#/$defs/TokenHash"
           }
         }
       },
-      "additionalProperties": false
+      "additionalProperties": false,
+      "required": [
+        "projects"
+      ]
     },
     "Approve": {
       "description": "Who decides whether a follow of herald's actors is taken.",
@@ -403,25 +350,11 @@
       "properties": {
         "prerelease": {
           "description": "A pre-release's colour; the violet of herald's banner, `#8f88c7`,\nwhere unset.",
-          "anyOf": [
-            {
-              "$ref": "#/$defs/Colour"
-            },
-            {
-              "type": "null"
-            }
-          ]
+          "$ref": "#/$defs/Colour"
         },
         "release": {
           "description": "A release's colour; the gold of herald's trumpet, `#e39a26`, where\nunset.",
-          "anyOf": [
-            {
-              "$ref": "#/$defs/Colour"
-            },
-            {
-              "type": "null"
-            }
-          ]
+          "$ref": "#/$defs/Colour"
         }
       },
       "additionalProperties": false
@@ -505,43 +438,19 @@
           "properties": {
             "api": {
               "description": "Another base URL for Discord's API, such as a recorded-fixture server.",
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": "string"
             },
             "archive_after": {
               "description": "How long a quiet thread stays open: `1h`, `1d`, `3d` or `1w`, the\nweek where unset.",
-              "anyOf": [
-                {
-                  "$ref": "#/$defs/ArchiveAfter"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "$ref": "#/$defs/ArchiveAfter"
             },
             "colours": {
               "description": "The colours of its embeds.",
-              "anyOf": [
-                {
-                  "$ref": "#/$defs/Colours"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "$ref": "#/$defs/Colours"
             },
             "interactions": {
               "description": "How it takes commands, where it takes any.",
-              "anyOf": [
-                {
-                  "$ref": "#/$defs/Interactions"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "$ref": "#/$defs/DiscordInteractions"
             },
             "kind": {
               "type": "string",
@@ -549,58 +458,23 @@
             },
             "read_back": {
               "description": "How many pages of its own posts it reads back for their markers,\nfrom 1 to 20; 5 where unset.",
-              "anyOf": [
-                {
-                  "$ref": "#/$defs/ReadBack"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "$ref": "#/$defs/ReadBack"
             },
             "symbols": {
               "description": "The characters its posts write where its markup has none: a task\ndone and to do, a rule and a text list's bullet.",
-              "anyOf": [
-                {
-                  "$ref": "#/$defs/Symbols"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "$ref": "#/$defs/Symbols"
             },
             "token": {
               "description": "The secret holding a bot token. A bot crossposts, threads, pins and\nreads back its posts.",
-              "anyOf": [
-                {
-                  "$ref": "#/$defs/SecretRef"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "$ref": "#/$defs/SecretRef"
             },
             "waits": {
               "description": "How long it waits before sending again where Discord answers that it\nis unwell or limited and names no wait.",
-              "anyOf": [
-                {
-                  "$ref": "#/$defs/WaitOptions"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "$ref": "#/$defs/WaitOptions"
             },
             "webhook": {
               "description": "The secret holding an incoming webhook's URL. A webhook only posts.",
-              "anyOf": [
-                {
-                  "$ref": "#/$defs/SecretRef"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "$ref": "#/$defs/SecretRef"
             }
           },
           "additionalProperties": false,
@@ -618,29 +492,18 @@
             },
             "read_back": {
               "description": "How many pages of its own posts it reads back for their markers,\nfrom 1 to 20; 5 where unset.",
-              "anyOf": [
-                {
-                  "$ref": "#/$defs/ReadBack"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "$ref": "#/$defs/ReadBack"
             },
             "server": {
               "description": "The server's base URL, such as `https://mastodon.social`.",
-              "type": "string"
+              "type": "string",
+              "examples": [
+                "https://mastodon.social"
+              ]
             },
             "symbols": {
               "description": "The characters its posts write where its markup has none: a task\ndone and to do, a rule and a text list's bullet.",
-              "anyOf": [
-                {
-                  "$ref": "#/$defs/Symbols"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "$ref": "#/$defs/Symbols"
             },
             "token": {
               "description": "The secret holding the account's access token, granted\n`write:statuses` and `read:statuses`.",
@@ -648,14 +511,7 @@
             },
             "waits": {
               "description": "How long it waits before sending again where the server answers that it\nis unwell or limited and names no wait.",
-              "anyOf": [
-                {
-                  "$ref": "#/$defs/WaitOptions"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "$ref": "#/$defs/WaitOptions"
             }
           },
           "additionalProperties": false,
@@ -671,18 +527,14 @@
           "properties": {
             "homeserver": {
               "description": "The homeserver's base URL, such as `https://matrix.org`.",
-              "type": "string"
+              "type": "string",
+              "examples": [
+                "https://matrix.org"
+              ]
             },
             "interactions": {
               "description": "How it takes commands, where it takes any.",
-              "anyOf": [
-                {
-                  "$ref": "#/$defs/Interactions2"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "$ref": "#/$defs/MatrixInteractions"
             },
             "kind": {
               "type": "string",
@@ -690,25 +542,11 @@
             },
             "read_back": {
               "description": "How many pages of its own posts it reads back for their markers,\nfrom 1 to 20; 5 where unset.",
-              "anyOf": [
-                {
-                  "$ref": "#/$defs/ReadBack"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "$ref": "#/$defs/ReadBack"
             },
             "symbols": {
               "description": "The characters its posts write where its markup has none: a task\ndone and to do, a rule and a text list's bullet.",
-              "anyOf": [
-                {
-                  "$ref": "#/$defs/Symbols"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "$ref": "#/$defs/Symbols"
             },
             "token": {
               "description": "The secret holding the bot account's access token.",
@@ -716,14 +554,7 @@
             },
             "waits": {
               "description": "How long it waits before sending again where the homeserver answers that it\nis unwell or limited and names no wait.",
-              "anyOf": [
-                {
-                  "$ref": "#/$defs/WaitOptions"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "$ref": "#/$defs/WaitOptions"
             }
           },
           "additionalProperties": false,
@@ -739,32 +570,15 @@
           "properties": {
             "api": {
               "description": "Another base URL for Slack's API, such as a recorded-fixture server.",
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": "string"
             },
             "domain": {
               "description": "The Slack the workspace lives on: `slack.com`, Slack's own and an\nEnterprise Grid's, where unset, or `slack-gov.com` for Slack's government cloud.",
-              "anyOf": [
-                {
-                  "$ref": "#/$defs/Domain"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "$ref": "#/$defs/Domain"
             },
             "interactions": {
               "description": "How it takes commands, where it takes any.",
-              "anyOf": [
-                {
-                  "$ref": "#/$defs/Interactions3"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "$ref": "#/$defs/SlackInteractions"
             },
             "kind": {
               "type": "string",
@@ -772,65 +586,27 @@
             },
             "read_back": {
               "description": "How many pages of its own posts it reads back for their markers,\nfrom 1 to 20; 5 where unset.",
-              "anyOf": [
-                {
-                  "$ref": "#/$defs/ReadBack"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "$ref": "#/$defs/ReadBack"
             },
             "symbols": {
               "description": "The characters its posts write where its markup has none: a task\ndone and to do, a rule and a text list's bullet.",
-              "anyOf": [
-                {
-                  "$ref": "#/$defs/Symbols"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "$ref": "#/$defs/Symbols"
             },
             "team": {
               "description": "The workspace's id, such as `T0123456789`, where the token is an\nEnterprise Grid org-wide app's: each Web API call names it.",
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": "string"
             },
             "token": {
               "description": "The secret holding a bot token (`xoxb-…`). A bot threads, pins and\nreads back its posts.",
-              "anyOf": [
-                {
-                  "$ref": "#/$defs/SecretRef"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "$ref": "#/$defs/SecretRef"
             },
             "waits": {
               "description": "How long it waits before sending again where Slack answers that it\nis unwell or limited and names no wait.",
-              "anyOf": [
-                {
-                  "$ref": "#/$defs/WaitOptions"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "$ref": "#/$defs/WaitOptions"
             },
             "webhook": {
               "description": "The secret holding an incoming webhook's URL. A webhook only posts.",
-              "anyOf": [
-                {
-                  "$ref": "#/$defs/SecretRef"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "$ref": "#/$defs/SecretRef"
             }
           },
           "additionalProperties": false,
@@ -862,20 +638,22 @@
                 "type": "string"
               }
             },
+            "deliveries": {
+              "description": "How many of an announcement's followers' inboxes it delivers to at\nonce, by every command that announces; 8 where unset.",
+              "type": "integer",
+              "format": "uint",
+              "minimum": 1
+            },
             "domain": {
               "description": "The domain herald serves its actors on, such as `herald.example`:\na host alone, with no scheme, port or path.",
-              "type": "string"
+              "type": "string",
+              "examples": [
+                "herald.example"
+              ]
             },
             "followers": {
               "description": "How many may follow each actor, in all and from any one server; a\nfollow past either is answered with a `Reject`.",
-              "anyOf": [
-                {
-                  "$ref": "#/$defs/FollowerCaps"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "$ref": "#/$defs/FollowerCaps"
             },
             "key": {
               "description": "The secret holding the actors' RSA private key, as PKCS#8 PEM, such\nas `openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048`\nwrites.",
@@ -898,34 +676,18 @@
             },
             "outbox_page": {
               "description": "How many Notes one page of each actor's outbox holds, from 1 to 80;\n20 where unset.",
-              "type": [
-                "integer",
-                "null"
-              ],
+              "type": "integer",
               "format": "uint",
-              "minimum": 0
+              "maximum": 80,
+              "minimum": 1
             },
             "symbols": {
               "description": "The characters its posts write where its markup has none: a task\ndone and to do, a rule and a text list's bullet.",
-              "anyOf": [
-                {
-                  "$ref": "#/$defs/Symbols"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "$ref": "#/$defs/Symbols"
             },
             "waits": {
               "description": "How long it waits before sending again where an inbox answers that it\nis unwell or limited and names no wait.",
-              "anyOf": [
-                {
-                  "$ref": "#/$defs/WaitOptions"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "$ref": "#/$defs/WaitOptions"
             }
           },
           "additionalProperties": false,
@@ -937,247 +699,7 @@
         }
       ]
     },
-    "DiscordRoute": {
-      "description": "A route to a Discord destination.",
-      "type": "object",
-      "properties": {
-        "channel": {
-          "description": "The channel's id. A bot needs one; a webhook posts where it was made.",
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "crosspost": {
-          "description": "Whether to crosspost each announcement.",
-          "type": "boolean",
-          "default": false
-        },
-        "destination": {
-          "description": "The destination it announces to.",
-          "type": "string"
-        },
-        "forum": {
-          "description": "Whether the channel is a forum, where each announcement is a post of\nits own.",
-          "type": "boolean",
-          "default": false
-        },
-        "id": {
-          "description": "The route's stable id, part of every announcement's key.",
-          "type": "string"
-        },
-        "kinds": {
-          "description": "The kinds of event it takes; every kind where absent.",
-          "type": "array",
-          "default": [],
-          "items": {
-            "$ref": "#/$defs/Kind"
-          }
-        },
-        "mentions": {
-          "description": "Who it mentions.",
-          "$ref": "#/$defs/Mentions"
-        },
-        "pin": {
-          "description": "Whether to pin each announcement in place of the route's earlier pin,\nand how the earlier pin is found.",
-          "anyOf": [
-            {
-              "$ref": "#/$defs/Pinning"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "prereleases": {
-          "description": "Which pre-releases it takes.",
-          "$ref": "#/$defs/Prereleases"
-        },
-        "sources": {
-          "description": "The sources it takes events from.",
-          "type": "array",
-          "items": {
-            "type": "string"
-          }
-        },
-        "subscribe": {
-          "description": "The opt-in role members subscribe to, where the route offers one.",
-          "anyOf": [
-            {
-              "$ref": "#/$defs/Subscribe"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "template": {
-          "description": "The template it renders with.",
-          "type": "string"
-        },
-        "thread": {
-          "description": "The thread to open for each announcement.",
-          "anyOf": [
-            {
-              "$ref": "#/$defs/Thread"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "versions": {
-          "description": "The versions it takes, as a pattern in which `*` stands for any run\nof characters and `?` for any one, such as `\"*.*.*\"`, which leaves\nout a Docker Hub tag such as `latest`; every version where absent.",
-          "type": [
-            "string",
-            "null"
-          ]
-        }
-      },
-      "additionalProperties": false,
-      "required": [
-        "id",
-        "sources",
-        "destination",
-        "template"
-      ]
-    },
-    "Domain": {
-      "description": "The Slack a workspace lives on: Slack's own, or Slack's government cloud.",
-      "oneOf": [
-        {
-          "description": "Slack's own, at `slack.com`.",
-          "type": "string",
-          "const": "slack.com"
-        },
-        {
-          "description": "Slack's government cloud, at `slack-gov.com`.",
-          "type": "string",
-          "const": "slack-gov.com"
-        }
-      ]
-    },
-    "Duration": {
-      "description": "A length of time: a number and ms, s, m, h, d or w, as \"14d\".",
-      "type": "string",
-      "pattern": "^[0-9]+(ms|[smhdw])$"
-    },
-    "FollowerCaps": {
-      "description": "How many may follow each of herald's actors, as `followers` writes it.",
-      "type": "object",
-      "properties": {
-        "most": {
-          "description": "The most followers one actor keeps; no limit where unset.",
-          "type": [
-            "integer",
-            "null"
-          ],
-          "format": "uint",
-          "minimum": 0
-        },
-        "per_domain": {
-          "description": "The most followers one actor keeps from any one server; no limit\nwhere unset.",
-          "type": [
-            "integer",
-            "null"
-          ],
-          "format": "uint",
-          "minimum": 0
-        }
-      },
-      "additionalProperties": false
-    },
-    "Http": {
-      "description": "`[http]`: how herald's own requests reach the services a config names.\nNone of it applies to the hosts herald reaches on others' behalf, an\n`ActivityPub` actor's key or a follower's inbox (ADR-0007).",
-      "type": "object",
-      "properties": {
-        "body": {
-          "description": "The most bytes of a response's body herald reads; \"32MiB\" where\nabsent, and at most \"128MiB\". A host reached on others' behalf is\nread no further than \"32MiB\" whatever this says.",
-          "anyOf": [
-            {
-              "$ref": "#/$defs/Size"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "ca_file": {
-          "description": "A PEM file of the certificate authorities herald's own requests trust\nbeside the Mozilla roots, read beside the config, such as a GitHub\nEnterprise Server's private CA.",
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "connect": {
-          "description": "How long a connection may take to open; \"10s\" where absent.",
-          "anyOf": [
-            {
-              "$ref": "#/$defs/Duration"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "proxy": {
-          "description": "The proxy herald's own requests go through: \"environment\", the\nhost's `HTTPS_PROXY` and `NO_PROXY` where it honours them; \"none\";\nor a proxy's http or https URL. \"environment\" where absent.",
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "total": {
-          "description": "How long a request may take, from sending it to the end of its\nanswer; \"30s\" where absent. `HERALD_TIMEOUT_MS` takes its place.",
-          "anyOf": [
-            {
-              "$ref": "#/$defs/Duration"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        }
-      },
-      "additionalProperties": false
-    },
-    "Inbound": {
-      "description": "`[server.inbound]`: what a signed inbound request may carry and still be\nchecked. Each bound may be at most four times its default, and doctor\nnames one set above it.",
-      "type": "object",
-      "properties": {
-        "covered": {
-          "description": "The most headers one ActivityPub signature may cover; 16 where\nabsent, at least the 4 it must cover, and at most 64.",
-          "type": [
-            "integer",
-            "null"
-          ],
-          "format": "uint",
-          "minimum": 1
-        },
-        "replay_window": {
-          "description": "How far a signed timestamp may lie from now, either way, before the\nrequest is taken for a replay; \"5m\" where absent, and at most \"20m\".",
-          "anyOf": [
-            {
-              "$ref": "#/$defs/Duration"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "signatures": {
-          "description": "The most signatures a request may carry, each checked in turn; 4\nwhere absent, and at most 16.",
-          "type": [
-            "integer",
-            "null"
-          ],
-          "format": "uint",
-          "minimum": 1
-        }
-      },
-      "additionalProperties": false
-    },
-    "Interactions": {
+    "DiscordInteractions": {
       "description": "How a Discord destination takes commands.",
       "type": "object",
       "properties": {
@@ -1202,31 +724,19 @@
         },
         "group": {
           "description": "Registers the commands as subcommands of `/<group>`, such as\n`/herald latest`, in place of commands of their own.",
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": "string"
         },
         "guild": {
           "description": "The server the commands are registered in alone, by id; where none is\nnamed, they are registered in every server the application is in.",
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": "string"
         },
         "key": {
           "description": "The application's public key, in hex, from the same page. Each\ninteraction posted to herald is checked against it.",
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": "string"
         },
         "os": {
           "description": "The operating system the gateway session identifies as, in place of\nthe host's own.",
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": "string"
         },
         "prereleases": {
           "description": "Whether `latest` and `changelog` answer with a pre-release newer than\nevery release.",
@@ -1239,21 +749,15 @@
         },
         "template": {
           "description": "The template `latest` takes its title from and `changelog` its body,\nin place of the route's own.",
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": "string"
         },
         "via": {
           "description": "How Discord carries them.",
-          "$ref": "#/$defs/Via"
+          "$ref": "#/$defs/DiscordVia"
         },
         "wording": {
           "description": "What it says back and how it describes its commands, phrase by\nphrase, each a template over `project`, `projects`, `named` and\n`command`; herald's own words for every phrase left out.",
-          "type": [
-            "object",
-            "null"
-          ],
+          "type": "object",
           "additionalProperties": {
             "type": "string"
           }
@@ -1264,185 +768,219 @@
         "application"
       ]
     },
-    "Interactions2": {
-      "description": "How a Matrix destination takes commands.",
+    "DiscordRoute": {
+      "description": "A route to a Discord destination.",
       "type": "object",
       "properties": {
-        "appservice_token": {
-          "description": "The secret holding the token herald acts with as the application\nservice (`as_token`).",
-          "anyOf": [
-            {
-              "$ref": "#/$defs/SecretRef"
-            },
-            {
-              "type": "null"
-            }
-          ]
+        "channel": {
+          "description": "The channel's id. A bot needs one; a webhook posts where it was made.",
+          "type": "string"
         },
-        "commands": {
-          "description": "The commands it answers.",
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/Command"
-          }
-        },
-        "homeserver_token": {
-          "description": "The secret holding the token the homeserver presents with each\ntransaction it pushes (`hs_token`).",
-          "anyOf": [
-            {
-              "$ref": "#/$defs/SecretRef"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "prefix": {
-          "description": "What a message starts with to be a command to herald:\n`!herald latest php-mutation-gate`.",
-          "type": "string",
-          "default": "!herald"
-        },
-        "prereleases": {
-          "description": "Whether `latest` and `changelog` answer with a pre-release newer than\nevery release.",
+        "crosspost": {
+          "description": "Whether to crosspost each announcement.",
           "type": "boolean",
           "default": false
         },
-        "replies": {
-          "description": "Whether answers to `latest` and `changelog` are posted to the room;\nMatrix has no answer seen by one member alone, so `ephemeral` answers\nin a thread under the command.",
-          "$ref": "#/$defs/Replies"
-        },
-        "sender": {
-          "description": "The application service's user, by its localpart.",
+        "destination": {
+          "description": "The destination it announces to.",
           "type": "string",
-          "default": "herald"
-        },
-        "sync_wait": {
-          "description": "How long a sync waits for a message before it answers with none,\n\"20s\" where unset; shorter than `[http] total`, which bounds every\nanswer.",
-          "anyOf": [
-            {
-              "$ref": "#/$defs/Duration"
-            },
-            {
-              "type": "null"
-            }
+          "examples": [
+            "discord"
           ]
         },
-        "template": {
-          "description": "The template `latest` takes its title from and `changelog` its body,\nin place of the route's own.",
-          "type": [
-            "string",
-            "null"
+        "forum": {
+          "description": "Whether the channel is a forum, where each announcement is a post of\nits own.",
+          "type": "boolean",
+          "default": false
+        },
+        "id": {
+          "description": "The route's stable id, part of every announcement's key.",
+          "type": "string",
+          "examples": [
+            "herald-releases"
           ]
         },
-        "timeline": {
-          "description": "The most messages one sync reads from each room, from 1 to 100; 20\nwhere unset.",
-          "type": [
-            "integer",
-            "null"
-          ],
-          "format": "uint8",
-          "maximum": 255,
-          "minimum": 0
+        "kinds": {
+          "description": "The kinds of event it takes; every kind where absent.",
+          "type": "array",
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/Kind"
+          }
         },
-        "via": {
-          "description": "How the homeserver carries them.",
-          "$ref": "#/$defs/Via2"
+        "mentions": {
+          "description": "Who it mentions.",
+          "$ref": "#/$defs/Mentions"
         },
-        "wording": {
-          "description": "What it says back and how it describes its commands, phrase by\nphrase, each a template over `project`, `projects`, `named` and\n`command`; herald's own words for every phrase left out.",
-          "type": [
-            "object",
-            "null"
+        "pin": {
+          "description": "Whether to pin each announcement in place of the route's earlier pin,\nand how the earlier pin is found.",
+          "$ref": "#/$defs/Pinning"
+        },
+        "prereleases": {
+          "description": "Which pre-releases it takes.",
+          "$ref": "#/$defs/Prereleases"
+        },
+        "sources": {
+          "description": "The sources it takes events from.",
+          "type": "array",
+          "examples": [
+            [
+              "herald"
+            ]
           ],
-          "additionalProperties": {
+          "items": {
             "type": "string"
           }
+        },
+        "subscribe": {
+          "description": "The opt-in role members subscribe to, where the route offers one.",
+          "$ref": "#/$defs/DiscordSubscribe"
+        },
+        "template": {
+          "description": "The template it renders with.",
+          "type": "string",
+          "examples": [
+            "package-release"
+          ]
+        },
+        "thread": {
+          "description": "The thread to open for each announcement.",
+          "$ref": "#/$defs/Thread"
+        },
+        "versions": {
+          "description": "The versions it takes, as a pattern in which `*` stands for any run\nof characters and `?` for any one, such as `\"*.*.*\"`, which leaves\nout a Docker Hub tag such as `latest`; every version where absent.",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "sources",
+        "destination",
+        "template"
+      ]
+    },
+    "DiscordSubscribe": {
+      "description": "What a route says about subscribing on Discord.",
+      "type": "object",
+      "properties": {
+        "button": {
+          "description": "Whether each announcement carries a button that subscribes, or\nunsubscribes a member already subscribed.",
+          "type": "boolean",
+          "default": true
+        },
+        "role": {
+          "description": "The opt-in role `subscribe` gives a member and `unsubscribe` takes\naway, by id. The route mentions it with its announcements.",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "role"
+      ]
+    },
+    "DiscordVia": {
+      "description": "How Discord carries commands to herald.",
+      "oneOf": [
+        {
+          "description": "Discord posts each interaction to herald's endpoint, signed with the\napplication's key: served by `herald server` and by a serverless\ndriver.",
+          "type": "string",
+          "const": "http"
+        },
+        {
+          "description": "herald holds a connection to Discord's gateway and takes each\ninteraction from it: served by `herald server` and by a Cloudflare\nWorker's Durable Object, with no public endpoint.",
+          "type": "string",
+          "const": "gateway"
+        }
+      ]
+    },
+    "Domain": {
+      "description": "The Slack a workspace lives on: Slack's own, or Slack's government cloud.",
+      "oneOf": [
+        {
+          "description": "Slack's own, at `slack.com`.",
+          "type": "string",
+          "const": "slack.com"
+        },
+        {
+          "description": "Slack's government cloud, at `slack-gov.com`.",
+          "type": "string",
+          "const": "slack-gov.com"
+        }
+      ]
+    },
+    "Duration": {
+      "description": "A length of time: a number and ms, s, m, h, d or w, as \"14d\".",
+      "type": "string",
+      "pattern": "^0*[1-9][0-9]*(ms|[smhdw])$"
+    },
+    "FollowerCaps": {
+      "description": "How many may follow each of herald's actors, as `followers` writes it.",
+      "type": "object",
+      "properties": {
+        "most": {
+          "description": "The most followers one actor keeps; no limit where unset.",
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0
+        },
+        "per_domain": {
+          "description": "The most followers one actor keeps from any one server; no limit\nwhere unset.",
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0
         }
       },
       "additionalProperties": false
     },
-    "Interactions3": {
-      "description": "How a Slack destination takes commands.",
+    "Http": {
+      "description": "`[http]`: how herald's own requests reach the services a config names.\nNone of it applies to the hosts herald reaches on others' behalf, an\n`ActivityPub` actor's key or a follower's inbox (ADR-0007).",
       "type": "object",
       "properties": {
-        "app": {
-          "description": "The secret holding an app-level token (`xapp-…`) with\n`connections:write`, which opens Socket Mode connections.",
-          "anyOf": [
-            {
-              "$ref": "#/$defs/SecretRef"
-            },
-            {
-              "type": "null"
-            }
-          ]
+        "body": {
+          "description": "The most bytes of a response's body herald reads; \"32MiB\" where\nabsent, and at most \"128MiB\". A host reached on others' behalf is\nread no further than \"32MiB\" whatever this says.",
+          "$ref": "#/$defs/Size"
         },
-        "command": {
-          "description": "The slash command members give, followed by a command and a project:\n`/herald latest php-mutation-gate`.",
-          "type": "string",
-          "default": "/herald"
+        "ca_file": {
+          "description": "A PEM file of the certificate authorities herald's own requests trust\nbeside the Mozilla roots, read beside the config, such as a GitHub\nEnterprise Server's private CA.",
+          "type": "string"
         },
-        "commands": {
-          "description": "The commands it answers.",
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/Command"
-          }
+        "connect": {
+          "description": "How long a connection may take to open; \"10s\" where absent.",
+          "$ref": "#/$defs/Duration"
         },
-        "domains": {
-          "description": "Domains beside its Slack's own a Socket Mode session may connect\nunder, such as a proxy's.",
-          "type": "array",
-          "default": [],
-          "items": {
-            "type": "string"
-          }
+        "proxy": {
+          "description": "The proxy herald's own requests go through: \"environment\", the\nhost's `HTTPS_PROXY` and `NO_PROXY` where it honours them; \"none\";\nor a proxy's http or https URL. \"environment\" where absent.",
+          "type": "string"
         },
-        "name": {
-          "description": "The name its app and bot user go by in the manifest `herald setup`\nprints: up to 35 lowercase letters, digits, `.`, `-` or `_`, and\n`herald` where unset.",
-          "type": [
-            "string",
-            "null"
-          ]
+        "total": {
+          "description": "How long a request may take, from sending it to the end of its\nanswer; \"30s\" where absent. `HERALD_TIMEOUT_MS` takes its place.",
+          "$ref": "#/$defs/Duration"
+        }
+      },
+      "additionalProperties": false
+    },
+    "Inbound": {
+      "description": "`[server.inbound]`: what a signed inbound request may carry and still be\nchecked. Each bound may be at most four times its default, and doctor\nnames one set above it.",
+      "type": "object",
+      "properties": {
+        "covered": {
+          "description": "The most headers one ActivityPub signature may cover; 16 where\nabsent, at least the 4 it must cover, and at most 64.",
+          "type": "integer",
+          "format": "uint",
+          "maximum": 64,
+          "minimum": 4
         },
-        "prereleases": {
-          "description": "Whether `latest` and `changelog` answer with a pre-release newer than\nevery release.",
-          "type": "boolean",
-          "default": false
+        "replay_window": {
+          "description": "How far a signed timestamp may lie from now, either way, before the\nrequest is taken for a replay; \"5m\" where absent, and at most \"20m\".",
+          "$ref": "#/$defs/Duration"
         },
-        "replies": {
-          "description": "Who sees the answers to `latest` and `changelog`.",
-          "$ref": "#/$defs/Replies"
-        },
-        "signing": {
-          "description": "The secret holding the app's signing secret, which each request\nposted to herald is checked against.",
-          "anyOf": [
-            {
-              "$ref": "#/$defs/SecretRef"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "template": {
-          "description": "The template `latest` takes its title from and `changelog` its body,\nin place of the route's own.",
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "via": {
-          "description": "How Slack carries them.",
-          "$ref": "#/$defs/Via3"
-        },
-        "wording": {
-          "description": "What it says back and how it describes its commands, phrase by\nphrase, each a template over `project`, `projects`, `named` and\n`command`; herald's own words for every phrase left out.",
-          "type": [
-            "object",
-            "null"
-          ],
-          "additionalProperties": {
-            "type": "string"
-          }
+        "signatures": {
+          "description": "The most signatures a request may carry, each checked in turn; 4\nwhere absent, and at most 16.",
+          "type": "integer",
+          "format": "uint",
+          "maximum": 16,
+          "minimum": 1
         }
       },
       "additionalProperties": false
@@ -1479,56 +1017,25 @@
       "properties": {
         "cache": {
           "description": "Where they are kept: \"memory\", the default, or \"store\".",
-          "anyOf": [
-            {
-              "$ref": "#/$defs/KeyCache"
-            },
-            {
-              "type": "null"
-            }
-          ]
+          "$ref": "#/$defs/KeyCache"
         },
         "document": {
           "description": "The most of a key's or an actor's document read; \"256KiB\" where\nabsent, and at most \"1MiB\".",
-          "anyOf": [
-            {
-              "$ref": "#/$defs/Size"
-            },
-            {
-              "type": "null"
-            }
-          ]
+          "$ref": "#/$defs/Size"
         },
         "most": {
           "description": "The most kept in memory, the one used longest ago forgotten first;\n1024 where absent.",
-          "type": [
-            "integer",
-            "null"
-          ],
+          "type": "integer",
           "format": "uint",
           "minimum": 1
         },
         "refresh_after": {
           "description": "How long a key is used before its document is read again; 1h where\nabsent.",
-          "anyOf": [
-            {
-              "$ref": "#/$defs/Duration"
-            },
-            {
-              "type": "null"
-            }
-          ]
+          "$ref": "#/$defs/Duration"
         },
         "reread_after": {
           "description": "How long after a key is read an activity that does not hold under it\nis refused rather than having it read again; 1m where absent.",
-          "anyOf": [
-            {
-              "$ref": "#/$defs/Duration"
-            },
-            {
-              "type": "null"
-            }
-          ]
+          "$ref": "#/$defs/Duration"
         }
       },
       "additionalProperties": false
@@ -1577,10 +1084,7 @@
       "properties": {
         "content_warning": {
           "description": "The content warning each status is shown behind.",
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": "string"
         },
         "crosspost": {
           "description": "Whether to crosspost each announcement.",
@@ -1589,11 +1093,17 @@
         },
         "destination": {
           "description": "The destination it announces to.",
-          "type": "string"
+          "type": "string",
+          "examples": [
+            "discord"
+          ]
         },
         "id": {
           "description": "The route's stable id, part of every announcement's key.",
-          "type": "string"
+          "type": "string",
+          "examples": [
+            "herald-releases"
+          ]
         },
         "kinds": {
           "description": "The kinds of event it takes; every kind where absent.",
@@ -1605,26 +1115,17 @@
         },
         "language": {
           "description": "The language each status is written in, as an ISO 639 code.",
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": "string"
         },
         "limit": {
           "description": "The most characters the server takes in a status, Mastodon's own\n500 where it is not given.",
-          "type": [
-            "integer",
-            "null"
-          ],
+          "type": "integer",
           "format": "uint",
           "minimum": 0
         },
         "link_length": {
           "description": "The characters the server counts a link as, however long it is: its\n`characters_reserved_per_url`, Mastodon's own 23 where unset.",
-          "type": [
-            "integer",
-            "null"
-          ],
+          "type": "integer",
           "format": "uint",
           "minimum": 0
         },
@@ -1634,14 +1135,7 @@
         },
         "pin": {
           "description": "Whether to pin each announcement in place of the route's earlier pin,\nand how the earlier pin is found.",
-          "anyOf": [
-            {
-              "$ref": "#/$defs/Pinning"
-            },
-            {
-              "type": "null"
-            }
-          ]
+          "$ref": "#/$defs/Pinning"
         },
         "prereleases": {
           "description": "Which pre-releases it takes.",
@@ -1650,40 +1144,35 @@
         "sources": {
           "description": "The sources it takes events from.",
           "type": "array",
+          "examples": [
+            [
+              "herald"
+            ]
+          ],
           "items": {
             "type": "string"
           }
         },
         "template": {
           "description": "The template it renders with.",
-          "type": "string"
+          "type": "string",
+          "examples": [
+            "package-release"
+          ]
         },
         "thread": {
           "description": "The thread to open for each announcement.",
-          "anyOf": [
-            {
-              "$ref": "#/$defs/Thread"
-            },
-            {
-              "type": "null"
-            }
-          ]
+          "$ref": "#/$defs/Thread"
         },
         "title": {
           "description": "The longest title, a status's first line, in characters; 100 where\nunset.",
-          "type": [
-            "integer",
-            "null"
-          ],
+          "type": "integer",
           "format": "uint",
           "minimum": 1
         },
         "versions": {
           "description": "The versions it takes, as a pattern in which `*` stands for any run\nof characters and `?` for any one, such as `\"*.*.*\"`, which leaves\nout a Docker Hub tag such as `latest`; every version where absent.",
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": "string"
         },
         "visibility": {
           "description": "Who sees each status.",
@@ -1698,6 +1187,73 @@
         "template"
       ]
     },
+    "MatrixInteractions": {
+      "description": "How a Matrix destination takes commands.",
+      "type": "object",
+      "properties": {
+        "appservice_token": {
+          "description": "The secret holding the token herald acts with as the application\nservice (`as_token`).",
+          "$ref": "#/$defs/SecretRef"
+        },
+        "commands": {
+          "description": "The commands it answers.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Command"
+          }
+        },
+        "homeserver_token": {
+          "description": "The secret holding the token the homeserver presents with each\ntransaction it pushes (`hs_token`).",
+          "$ref": "#/$defs/SecretRef"
+        },
+        "prefix": {
+          "description": "What a message starts with to be a command to herald:\n`!herald latest php-mutation-gate`.",
+          "type": "string",
+          "default": "!herald"
+        },
+        "prereleases": {
+          "description": "Whether `latest` and `changelog` answer with a pre-release newer than\nevery release.",
+          "type": "boolean",
+          "default": false
+        },
+        "replies": {
+          "description": "Whether answers to `latest` and `changelog` are posted to the room;\nMatrix has no answer seen by one member alone, so `ephemeral` answers\nin a thread under the command.",
+          "$ref": "#/$defs/Replies"
+        },
+        "sender": {
+          "description": "The application service's user, by its localpart.",
+          "type": "string",
+          "default": "herald"
+        },
+        "sync_wait": {
+          "description": "How long a sync waits for a message before it answers with none,\n\"20s\" where unset; shorter than `[http] total`, which bounds every\nanswer.",
+          "$ref": "#/$defs/Duration"
+        },
+        "template": {
+          "description": "The template `latest` takes its title from and `changelog` its body,\nin place of the route's own.",
+          "type": "string"
+        },
+        "timeline": {
+          "description": "The most messages one sync reads from each room, from 1 to 100; 20\nwhere unset.",
+          "type": "integer",
+          "format": "uint8",
+          "maximum": 255,
+          "minimum": 0
+        },
+        "via": {
+          "description": "How the homeserver carries them.",
+          "$ref": "#/$defs/MatrixVia"
+        },
+        "wording": {
+          "description": "What it says back and how it describes its commands, phrase by\nphrase, each a template over `project`, `projects`, `named` and\n`command`; herald's own words for every phrase left out.",
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
     "MatrixRoute": {
       "description": "A route to a Matrix destination.",
       "type": "object",
@@ -1709,11 +1265,17 @@
         },
         "destination": {
           "description": "The destination it announces to.",
-          "type": "string"
+          "type": "string",
+          "examples": [
+            "discord"
+          ]
         },
         "id": {
           "description": "The route's stable id, part of every announcement's key.",
-          "type": "string"
+          "type": "string",
+          "examples": [
+            "herald-releases"
+          ]
         },
         "kinds": {
           "description": "The kinds of event it takes; every kind where absent.",
@@ -1729,14 +1291,7 @@
         },
         "pin": {
           "description": "Whether to pin each announcement in place of the route's earlier pin,\nand how the earlier pin is found.",
-          "anyOf": [
-            {
-              "$ref": "#/$defs/Pinning"
-            },
-            {
-              "type": "null"
-            }
-          ]
+          "$ref": "#/$defs/Pinning"
         },
         "prereleases": {
           "description": "Which pre-releases it takes.",
@@ -1744,36 +1299,37 @@
         },
         "room": {
           "description": "The room's id, such as `!abcdefg:matrix.org`, which the bot has\njoined.",
-          "type": "string"
+          "type": "string",
+          "examples": [
+            "!abcdefg:matrix.org"
+          ]
         },
         "sources": {
           "description": "The sources it takes events from.",
           "type": "array",
+          "examples": [
+            [
+              "herald"
+            ]
+          ],
           "items": {
             "type": "string"
           }
         },
         "template": {
           "description": "The template it renders with.",
-          "type": "string"
+          "type": "string",
+          "examples": [
+            "package-release"
+          ]
         },
         "thread": {
           "description": "The thread to open for each announcement.",
-          "anyOf": [
-            {
-              "$ref": "#/$defs/Thread"
-            },
-            {
-              "type": "null"
-            }
-          ]
+          "$ref": "#/$defs/Thread"
         },
         "versions": {
           "description": "The versions it takes, as a pattern in which `*` stands for any run\nof characters and `?` for any one, such as `\"*.*.*\"`, which leaves\nout a Docker Hub tag such as `latest`; every version where absent.",
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": "string"
         }
       },
       "additionalProperties": false,
@@ -1783,6 +1339,21 @@
         "destination",
         "template",
         "room"
+      ]
+    },
+    "MatrixVia": {
+      "description": "How the homeserver carries commands to herald.",
+      "oneOf": [
+        {
+          "description": "The homeserver pushes each room event to herald as an application\nservice, with the registration `herald matrix registration` writes:\nserved by `herald server` and by a serverless driver.",
+          "type": "string",
+          "const": "appservice"
+        },
+        {
+          "description": "herald syncs as the bot account and reads each message in the rooms\nit has joined: served by `herald server` and by a Cloudflare Worker's\nDurable Object, with no public endpoint and nothing for the\nhomeserver's administrator to install.",
+          "type": "string",
+          "const": "sync"
+        }
       ]
     },
     "Mentions": {
@@ -1903,31 +1474,20 @@
       "properties": {
         "fuel": {
           "description": "The fuel one render may burn; 100000 where absent, and at most\n400000.",
-          "type": [
-            "integer",
-            "null"
-          ],
+          "type": "integer",
           "format": "uint64",
+          "maximum": 400000,
           "minimum": 1
         },
         "output": {
           "description": "The most it may write; \"256KiB\" where absent, and at most \"1MiB\".",
-          "anyOf": [
-            {
-              "$ref": "#/$defs/Size"
-            },
-            {
-              "type": "null"
-            }
-          ]
+          "$ref": "#/$defs/Size"
         },
         "recursion": {
           "description": "How deep its loops and calls may nest; 16 where absent, and at most\n64.",
-          "type": [
-            "integer",
-            "null"
-          ],
+          "type": "integer",
           "format": "uint",
+          "maximum": 64,
           "minimum": 1
         }
       },
@@ -1979,25 +1539,11 @@
       "properties": {
         "housekeep": {
           "description": "How often threads are kept.",
-          "anyOf": [
-            {
-              "$ref": "#/$defs/Duration"
-            },
-            {
-              "type": "null"
-            }
-          ]
+          "$ref": "#/$defs/Duration"
         },
         "poll": {
           "description": "How often sources are polled.",
-          "anyOf": [
-            {
-              "$ref": "#/$defs/Duration"
-            },
-            {
-              "type": "null"
-            }
-          ]
+          "$ref": "#/$defs/Duration"
         }
       },
       "additionalProperties": false
@@ -2008,7 +1554,10 @@
       "properties": {
         "secret": {
           "description": "The secret's name.",
-          "type": "string"
+          "type": "string",
+          "examples": [
+            "NAME"
+          ]
         }
       },
       "additionalProperties": false,
@@ -2022,101 +1571,49 @@
       "properties": {
         "accept_pause": {
           "description": "How long the server waits after a connection could not be accepted;\n\"100ms\" where absent.",
-          "anyOf": [
-            {
-              "$ref": "#/$defs/Duration"
-            },
-            {
-              "type": "null"
-            }
-          ]
+          "$ref": "#/$defs/Duration"
         },
         "base": {
           "description": "The path every endpoint is served under, for a reverse proxy that\nserves herald beside other things, as \"/herald\"; the root where\nabsent. herald's ActivityPub actors' ids are under it too.",
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": "string"
         },
         "body": {
           "description": "The most an inbound request's body may hold; \"1MiB\" where absent,\nand at most \"4MiB\".",
-          "anyOf": [
-            {
-              "$ref": "#/$defs/Size"
-            },
-            {
-              "type": "null"
-            }
-          ]
+          "$ref": "#/$defs/Size"
         },
         "busy_retry": {
           "description": "How long a request whose work found no place is asked to wait, in\nits `Retry-After`; \"30s\" where absent.",
-          "anyOf": [
-            {
-              "$ref": "#/$defs/Duration"
-            },
-            {
-              "type": "null"
-            }
-          ]
+          "$ref": "#/$defs/Duration"
         },
         "completions": {
           "description": "How many autocompletions a session answers at once; one arriving\nwhile as many are answered is dropped. 4 where absent.",
-          "type": [
-            "integer",
-            "null"
-          ],
+          "type": "integer",
           "format": "uint",
           "minimum": 1
         },
         "connections": {
           "description": "How many connections it holds at once; 256 where absent.",
-          "type": [
-            "integer",
-            "null"
-          ],
-          "format": "uint",
-          "minimum": 1
-        },
-        "deliveries": {
-          "description": "How many of an announcement's inboxes are delivered to at once, by\nevery command; 8 where absent.",
-          "type": [
-            "integer",
-            "null"
-          ],
+          "type": "integer",
           "format": "uint",
           "minimum": 1
         },
         "fetches": {
           "description": "How many actor documents it reads at once; 4 where absent.",
-          "type": [
-            "integer",
-            "null"
-          ],
+          "type": "integer",
           "format": "uint",
           "minimum": 1
         },
         "held": {
           "description": "How long a connection is held at most, its one request answered;\n\"90s\", or `read` where that is longer, where absent; at least `read`.",
-          "anyOf": [
-            {
-              "$ref": "#/$defs/Duration"
-            },
-            {
-              "type": "null"
-            }
-          ]
+          "$ref": "#/$defs/Duration"
         },
         "inbound": {
           "description": "What a signed inbound request may carry and still be checked.",
           "$ref": "#/$defs/Inbound"
         },
         "jobs": {
-          "description": "How many announcements it works on at once; 8 where absent.",
-          "type": [
-            "integer",
-            "null"
-          ],
+          "description": "How many pieces of work it does at once, each an announcement, an\nactivity or a command a request leaves; 8 where absent.",
+          "type": "integer",
           "format": "uint",
           "minimum": 1
         },
@@ -2126,30 +1623,17 @@
         },
         "listen": {
           "description": "The address and port it listens on; `--listen` and `HERALD_LISTEN`\ntake its place. \"127.0.0.1:8080\" where absent, for a reverse proxy\nin front of it.",
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": "string"
         },
         "queue": {
-          "description": "How many announcements may wait for a place; a webhook arriving while\nas many wait is answered 503. As many as `jobs` where absent.",
-          "type": [
-            "integer",
-            "null"
-          ],
+          "description": "How many pieces of work may wait for a place; a request leaving one\nwhile as many wait is answered 503. As many as `jobs` where absent.",
+          "type": "integer",
           "format": "uint",
           "minimum": 1
         },
         "read": {
           "description": "How long a connection may take to send a request's headers; \"30s\"\nwhere absent.",
-          "anyOf": [
-            {
-              "$ref": "#/$defs/Duration"
-            },
-            {
-              "type": "null"
-            }
-          ]
+          "$ref": "#/$defs/Duration"
         },
         "sessions": {
           "description": "How a session a destination holds waits before it connects again.",
@@ -2157,14 +1641,7 @@
         },
         "silence": {
           "description": "How long a session a destination holds hears nothing before it\nchecks the connection is alive, and then as long again before it\nopens another; \"30s\" where absent.",
-          "anyOf": [
-            {
-              "$ref": "#/$defs/Duration"
-            },
-            {
-              "type": "null"
-            }
-          ]
+          "$ref": "#/$defs/Duration"
         }
       },
       "additionalProperties": false
@@ -2175,32 +1652,15 @@
       "properties": {
         "first_wait": {
           "description": "The first wait after a session fails to connect; \"1s\" where absent.",
-          "anyOf": [
-            {
-              "$ref": "#/$defs/Duration"
-            },
-            {
-              "type": "null"
-            }
-          ]
+          "$ref": "#/$defs/Duration"
         },
         "jitter": {
           "description": "Whether each wait is between half of it and all of it, so sessions\nthat failed together do not all connect again at once; true where\nabsent.",
-          "type": [
-            "boolean",
-            "null"
-          ]
+          "type": "boolean"
         },
         "longest_wait": {
           "description": "The longest wait between attempts; \"1m\" where absent, and at least\n`first_wait`.",
-          "anyOf": [
-            {
-              "$ref": "#/$defs/Duration"
-            },
-            {
-              "type": "null"
-            }
-          ]
+          "$ref": "#/$defs/Duration"
         }
       },
       "additionalProperties": false
@@ -2211,7 +1671,10 @@
       "properties": {
         "file": {
           "description": "The file, as a path beside `herald.toml`.",
-          "type": "string"
+          "type": "string",
+          "examples": [
+            "blocklist.csv"
+          ]
         },
         "sha256": {
           "description": "The SHA-256 of the file's text, in hex: a list that changes is not\nread until its new digest is pinned.",
@@ -2227,7 +1690,70 @@
     "Size": {
       "description": "A number of bytes: a number and KiB or MiB, as \"1MiB\".",
       "type": "string",
-      "pattern": "^[0-9]+(KiB|MiB)$"
+      "pattern": "^0*[1-9][0-9]*(KiB|MiB)$"
+    },
+    "SlackInteractions": {
+      "description": "How a Slack destination takes commands.",
+      "type": "object",
+      "properties": {
+        "app": {
+          "description": "The secret holding an app-level token (`xapp-…`) with\n`connections:write`, which opens Socket Mode connections.",
+          "$ref": "#/$defs/SecretRef"
+        },
+        "command": {
+          "description": "The slash command members give, followed by a command and a project:\n`/herald latest php-mutation-gate`.",
+          "type": "string",
+          "default": "/herald"
+        },
+        "commands": {
+          "description": "The commands it answers.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Command"
+          }
+        },
+        "domains": {
+          "description": "Domains beside its Slack's own a Socket Mode session may connect\nunder, such as a proxy's.",
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "string"
+          }
+        },
+        "name": {
+          "description": "The name its app and bot user go by in the manifest `herald setup`\nprints: up to 35 lowercase letters, digits, `.`, `-` or `_`, and\n`herald` where unset.",
+          "type": "string"
+        },
+        "prereleases": {
+          "description": "Whether `latest` and `changelog` answer with a pre-release newer than\nevery release.",
+          "type": "boolean",
+          "default": false
+        },
+        "replies": {
+          "description": "Who sees the answers to `latest` and `changelog`.",
+          "$ref": "#/$defs/Replies"
+        },
+        "signing": {
+          "description": "The secret holding the app's signing secret, which each request\nposted to herald is checked against.",
+          "$ref": "#/$defs/SecretRef"
+        },
+        "template": {
+          "description": "The template `latest` takes its title from and `changelog` its body,\nin place of the route's own.",
+          "type": "string"
+        },
+        "via": {
+          "description": "How Slack carries them.",
+          "$ref": "#/$defs/SlackVia"
+        },
+        "wording": {
+          "description": "What it says back and how it describes its commands, phrase by\nphrase, each a template over `project`, `projects`, `named` and\n`command`; herald's own words for every phrase left out.",
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false
     },
     "SlackRoute": {
       "description": "A route to a Slack destination.",
@@ -2235,10 +1761,7 @@
       "properties": {
         "channel": {
           "description": "The channel's id, such as `C0123456789`, which the bot has joined. A\nbot needs one; a webhook posts where it was made.",
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": "string"
         },
         "crosspost": {
           "description": "Whether to crosspost each announcement.",
@@ -2247,11 +1770,17 @@
         },
         "destination": {
           "description": "The destination it announces to.",
-          "type": "string"
+          "type": "string",
+          "examples": [
+            "discord"
+          ]
         },
         "id": {
           "description": "The route's stable id, part of every announcement's key.",
-          "type": "string"
+          "type": "string",
+          "examples": [
+            "herald-releases"
+          ]
         },
         "kinds": {
           "description": "The kinds of event it takes; every kind where absent.",
@@ -2267,14 +1796,7 @@
         },
         "pin": {
           "description": "Whether to pin each announcement in place of the route's earlier pin,\nand how the earlier pin is found.",
-          "anyOf": [
-            {
-              "$ref": "#/$defs/Pinning"
-            },
-            {
-              "type": "null"
-            }
-          ]
+          "$ref": "#/$defs/Pinning"
         },
         "prereleases": {
           "description": "Which pre-releases it takes.",
@@ -2283,42 +1805,33 @@
         "sources": {
           "description": "The sources it takes events from.",
           "type": "array",
+          "examples": [
+            [
+              "herald"
+            ]
+          ],
           "items": {
             "type": "string"
           }
         },
         "subscribe": {
           "description": "How the route offers subscribing, where it mentions its subscribers.",
-          "anyOf": [
-            {
-              "$ref": "#/$defs/Subscribe2"
-            },
-            {
-              "type": "null"
-            }
-          ]
+          "$ref": "#/$defs/SlackSubscribe"
         },
         "template": {
           "description": "The template it renders with.",
-          "type": "string"
+          "type": "string",
+          "examples": [
+            "package-release"
+          ]
         },
         "thread": {
           "description": "The thread to open for each announcement.",
-          "anyOf": [
-            {
-              "$ref": "#/$defs/Thread"
-            },
-            {
-              "type": "null"
-            }
-          ]
+          "$ref": "#/$defs/Thread"
         },
         "versions": {
           "description": "The versions it takes, as a pattern in which `*` stands for any run\nof characters and `?` for any one, such as `\"*.*.*\"`, which leaves\nout a Docker Hub tag such as `latest`; every version where absent.",
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": "string"
         }
       },
       "additionalProperties": false,
@@ -2327,6 +1840,33 @@
         "sources",
         "destination",
         "template"
+      ]
+    },
+    "SlackSubscribe": {
+      "description": "What a route says about subscribing on Slack, where it mentions its\nsubscribers.",
+      "type": "object",
+      "properties": {
+        "button": {
+          "description": "Whether each announcement carries a button that subscribes, or\nunsubscribes a member already subscribed.",
+          "type": "boolean",
+          "default": true
+        }
+      },
+      "additionalProperties": false
+    },
+    "SlackVia": {
+      "description": "How Slack carries commands to herald.",
+      "oneOf": [
+        {
+          "description": "Slack posts each command and button press to herald's endpoint,\nsigned with the app's signing secret: served by `herald server` and\nby a serverless driver.",
+          "type": "string",
+          "const": "http"
+        },
+        {
+          "description": "herald holds a Socket Mode connection, opened with the app-level\ntoken, and takes each one from it: served by `herald server` and by a\nCloudflare Worker's Durable Object, with no public endpoint.",
+          "type": "string",
+          "const": "socket"
+        }
       ]
     },
     "Source": {
@@ -2338,10 +1878,7 @@
           "properties": {
             "api": {
               "description": "The API's base URL, for a forge that is not GitHub, GitLab.com or\nCodeberg: a GitHub Enterprise Server's `https://ghe.example/api/v3`,\na GHE.com tenant's `https://api.acme.ghe.com`, a self-managed or\nDedicated GitLab's `https://gitlab.example/api/v4`, or a Forgejo's\n`https://forge.example/api/v1`. Where absent, it is the CI run's own\nwhen announcing the run's repository, and otherwise the forge's\npublic instance.",
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": "string"
             },
             "backfill": {
               "description": "How many of the newest releases the first poll announces; none where\nabsent (ADR-0003).",
@@ -2356,58 +1893,34 @@
             },
             "page": {
               "description": "How many of the newest releases one poll reads; 30 where absent.",
-              "type": [
-                "integer",
-                "null"
-              ],
+              "type": "integer",
               "format": "uint",
               "minimum": 1
             },
             "parse": {
               "description": "The most of an answer parsed; \"4MiB\" where absent, and at most four\ntimes that.",
-              "anyOf": [
-                {
-                  "$ref": "#/$defs/Size"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "$ref": "#/$defs/Size"
             },
             "remembered": {
               "description": "How many identities the cursor remembers, newest first; 500 where\nabsent, and at least `page`.",
-              "type": [
-                "integer",
-                "null"
-              ],
+              "type": "integer",
               "format": "uint",
               "minimum": 1
             },
             "repository": {
               "description": "The repository, as `owner/name`, or a GitLab project's full path,\nsuch as `group/subgroup/name`.",
-              "type": "string"
+              "type": "string",
+              "examples": [
+                "nightworksio/herald"
+              ]
             },
             "token": {
               "description": "A token that reaches a private repository or raises the API's rate\nlimit, such as the run's `GITHUB_TOKEN`.",
-              "anyOf": [
-                {
-                  "$ref": "#/$defs/SecretRef"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "$ref": "#/$defs/SecretRef"
             },
             "webhook": {
               "description": "The secret the forge signs its webhook deliveries to `herald server`\nwith: GitHub's and Forgejo's webhook secret, or GitLab's signing\ntoken (ADR-0007).",
-              "anyOf": [
-                {
-                  "$ref": "#/$defs/SecretRef"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "$ref": "#/$defs/SecretRef"
             }
           },
           "additionalProperties": false,
@@ -2422,10 +1935,7 @@
           "properties": {
             "api": {
               "description": "The API's base URL, for a forge that is not GitHub, GitLab.com or\nCodeberg: a GitHub Enterprise Server's `https://ghe.example/api/v3`,\na GHE.com tenant's `https://api.acme.ghe.com`, a self-managed or\nDedicated GitLab's `https://gitlab.example/api/v4`, or a Forgejo's\n`https://forge.example/api/v1`. Where absent, it is the CI run's own\nwhen announcing the run's repository, and otherwise the forge's\npublic instance.",
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": "string"
             },
             "backfill": {
               "description": "How many of the newest releases the first poll announces; none where\nabsent (ADR-0003).",
@@ -2440,58 +1950,34 @@
             },
             "page": {
               "description": "How many of the newest releases one poll reads; 30 where absent.",
-              "type": [
-                "integer",
-                "null"
-              ],
+              "type": "integer",
               "format": "uint",
               "minimum": 1
             },
             "parse": {
               "description": "The most of an answer parsed; \"4MiB\" where absent, and at most four\ntimes that.",
-              "anyOf": [
-                {
-                  "$ref": "#/$defs/Size"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "$ref": "#/$defs/Size"
             },
             "remembered": {
               "description": "How many identities the cursor remembers, newest first; 500 where\nabsent, and at least `page`.",
-              "type": [
-                "integer",
-                "null"
-              ],
+              "type": "integer",
               "format": "uint",
               "minimum": 1
             },
             "repository": {
               "description": "The repository, as `owner/name`, or a GitLab project's full path,\nsuch as `group/subgroup/name`.",
-              "type": "string"
+              "type": "string",
+              "examples": [
+                "nightworksio/herald"
+              ]
             },
             "token": {
               "description": "A token that reaches a private repository or raises the API's rate\nlimit, such as the run's `GITHUB_TOKEN`.",
-              "anyOf": [
-                {
-                  "$ref": "#/$defs/SecretRef"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "$ref": "#/$defs/SecretRef"
             },
             "webhook": {
               "description": "The secret the forge signs its webhook deliveries to `herald server`\nwith: GitHub's and Forgejo's webhook secret, or GitLab's signing\ntoken (ADR-0007).",
-              "anyOf": [
-                {
-                  "$ref": "#/$defs/SecretRef"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "$ref": "#/$defs/SecretRef"
             }
           },
           "additionalProperties": false,
@@ -2506,10 +1992,7 @@
           "properties": {
             "api": {
               "description": "The API's base URL, for a forge that is not GitHub, GitLab.com or\nCodeberg: a GitHub Enterprise Server's `https://ghe.example/api/v3`,\na GHE.com tenant's `https://api.acme.ghe.com`, a self-managed or\nDedicated GitLab's `https://gitlab.example/api/v4`, or a Forgejo's\n`https://forge.example/api/v1`. Where absent, it is the CI run's own\nwhen announcing the run's repository, and otherwise the forge's\npublic instance.",
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": "string"
             },
             "backfill": {
               "description": "How many of the newest releases the first poll announces; none where\nabsent (ADR-0003).",
@@ -2524,58 +2007,34 @@
             },
             "page": {
               "description": "How many of the newest releases one poll reads; 30 where absent.",
-              "type": [
-                "integer",
-                "null"
-              ],
+              "type": "integer",
               "format": "uint",
               "minimum": 1
             },
             "parse": {
               "description": "The most of an answer parsed; \"4MiB\" where absent, and at most four\ntimes that.",
-              "anyOf": [
-                {
-                  "$ref": "#/$defs/Size"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "$ref": "#/$defs/Size"
             },
             "remembered": {
               "description": "How many identities the cursor remembers, newest first; 500 where\nabsent, and at least `page`.",
-              "type": [
-                "integer",
-                "null"
-              ],
+              "type": "integer",
               "format": "uint",
               "minimum": 1
             },
             "repository": {
               "description": "The repository, as `owner/name`, or a GitLab project's full path,\nsuch as `group/subgroup/name`.",
-              "type": "string"
+              "type": "string",
+              "examples": [
+                "nightworksio/herald"
+              ]
             },
             "token": {
               "description": "A token that reaches a private repository or raises the API's rate\nlimit, such as the run's `GITHUB_TOKEN`.",
-              "anyOf": [
-                {
-                  "$ref": "#/$defs/SecretRef"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "$ref": "#/$defs/SecretRef"
             },
             "webhook": {
               "description": "The secret the forge signs its webhook deliveries to `herald server`\nwith: GitHub's and Forgejo's webhook secret, or GitLab's signing\ntoken (ADR-0007).",
-              "anyOf": [
-                {
-                  "$ref": "#/$defs/SecretRef"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "$ref": "#/$defs/SecretRef"
             }
           },
           "additionalProperties": false,
@@ -2590,10 +2049,7 @@
           "properties": {
             "api": {
               "description": "The registry's base URL, for a mirror or a private registry that\nanswers as the public one does; the public registry's where absent.",
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": "string"
             },
             "backfill": {
               "description": "How many of the newest versions the first poll announces; none where\nabsent (ADR-0003).",
@@ -2608,65 +2064,38 @@
             },
             "ordering": {
               "description": "How Docker Hub lists a repository's tags for a poll:\n`last_updated`, the most recently pushed first, where unset, or\n`name`.",
-              "anyOf": [
-                {
-                  "$ref": "#/$defs/TagOrdering"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "$ref": "#/$defs/TagOrdering"
             },
             "package": {
               "description": "The package, as the registry names it: `vendor/name` on Packagist,\na crate's name, an npm package's name such as `@scope/name`, or a\nDocker Hub repository such as `library/caddy`, where an official\nimage may leave out `library/`.",
-              "type": "string"
+              "type": "string",
+              "examples": [
+                "vendor/name"
+              ]
             },
             "page": {
               "description": "How many of the newest versions one poll reads; 30 where absent.",
-              "type": [
-                "integer",
-                "null"
-              ],
+              "type": "integer",
               "format": "uint",
               "minimum": 1
             },
             "parse": {
               "description": "The most of an answer parsed; \"4MiB\", \"16MiB\" on Packagist and \"32MiB\" on npm, where absent, and at most four\ntimes that.",
-              "anyOf": [
-                {
-                  "$ref": "#/$defs/Size"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "$ref": "#/$defs/Size"
             },
             "remembered": {
               "description": "How many identities the cursor remembers, newest first; 500 where\nabsent, and at least `page`.",
-              "type": [
-                "integer",
-                "null"
-              ],
+              "type": "integer",
               "format": "uint",
               "minimum": 1
             },
             "token": {
               "description": "A token for a private package: npm's, sent as a bearer token;\nPrivate Packagist's Composer token, sent as HTTP Basic with the user\n`token`; or a Docker Hub personal access token, exchanged with\n`username` for a bearer token. crates.io takes none.",
-              "anyOf": [
-                {
-                  "$ref": "#/$defs/SecretRef"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "$ref": "#/$defs/SecretRef"
             },
             "username": {
               "description": "The Docker Hub account `token` belongs to.",
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": "string"
             }
           },
           "additionalProperties": false,
@@ -2681,10 +2110,7 @@
           "properties": {
             "api": {
               "description": "The registry's base URL, for a mirror or a private registry that\nanswers as the public one does; the public registry's where absent.",
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": "string"
             },
             "backfill": {
               "description": "How many of the newest versions the first poll announces; none where\nabsent (ADR-0003).",
@@ -2699,65 +2125,38 @@
             },
             "ordering": {
               "description": "How Docker Hub lists a repository's tags for a poll:\n`last_updated`, the most recently pushed first, where unset, or\n`name`.",
-              "anyOf": [
-                {
-                  "$ref": "#/$defs/TagOrdering"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "$ref": "#/$defs/TagOrdering"
             },
             "package": {
               "description": "The package, as the registry names it: `vendor/name` on Packagist,\na crate's name, an npm package's name such as `@scope/name`, or a\nDocker Hub repository such as `library/caddy`, where an official\nimage may leave out `library/`.",
-              "type": "string"
+              "type": "string",
+              "examples": [
+                "vendor/name"
+              ]
             },
             "page": {
               "description": "How many of the newest versions one poll reads; 30 where absent.",
-              "type": [
-                "integer",
-                "null"
-              ],
+              "type": "integer",
               "format": "uint",
               "minimum": 1
             },
             "parse": {
               "description": "The most of an answer parsed; \"4MiB\", \"16MiB\" on Packagist and \"32MiB\" on npm, where absent, and at most four\ntimes that.",
-              "anyOf": [
-                {
-                  "$ref": "#/$defs/Size"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "$ref": "#/$defs/Size"
             },
             "remembered": {
               "description": "How many identities the cursor remembers, newest first; 500 where\nabsent, and at least `page`.",
-              "type": [
-                "integer",
-                "null"
-              ],
+              "type": "integer",
               "format": "uint",
               "minimum": 1
             },
             "token": {
               "description": "A token for a private package: npm's, sent as a bearer token;\nPrivate Packagist's Composer token, sent as HTTP Basic with the user\n`token`; or a Docker Hub personal access token, exchanged with\n`username` for a bearer token. crates.io takes none.",
-              "anyOf": [
-                {
-                  "$ref": "#/$defs/SecretRef"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "$ref": "#/$defs/SecretRef"
             },
             "username": {
               "description": "The Docker Hub account `token` belongs to.",
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": "string"
             }
           },
           "additionalProperties": false,
@@ -2772,10 +2171,7 @@
           "properties": {
             "api": {
               "description": "The registry's base URL, for a mirror or a private registry that\nanswers as the public one does; the public registry's where absent.",
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": "string"
             },
             "backfill": {
               "description": "How many of the newest versions the first poll announces; none where\nabsent (ADR-0003).",
@@ -2790,65 +2186,38 @@
             },
             "ordering": {
               "description": "How Docker Hub lists a repository's tags for a poll:\n`last_updated`, the most recently pushed first, where unset, or\n`name`.",
-              "anyOf": [
-                {
-                  "$ref": "#/$defs/TagOrdering"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "$ref": "#/$defs/TagOrdering"
             },
             "package": {
               "description": "The package, as the registry names it: `vendor/name` on Packagist,\na crate's name, an npm package's name such as `@scope/name`, or a\nDocker Hub repository such as `library/caddy`, where an official\nimage may leave out `library/`.",
-              "type": "string"
+              "type": "string",
+              "examples": [
+                "vendor/name"
+              ]
             },
             "page": {
               "description": "How many of the newest versions one poll reads; 30 where absent.",
-              "type": [
-                "integer",
-                "null"
-              ],
+              "type": "integer",
               "format": "uint",
               "minimum": 1
             },
             "parse": {
               "description": "The most of an answer parsed; \"4MiB\", \"16MiB\" on Packagist and \"32MiB\" on npm, where absent, and at most four\ntimes that.",
-              "anyOf": [
-                {
-                  "$ref": "#/$defs/Size"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "$ref": "#/$defs/Size"
             },
             "remembered": {
               "description": "How many identities the cursor remembers, newest first; 500 where\nabsent, and at least `page`.",
-              "type": [
-                "integer",
-                "null"
-              ],
+              "type": "integer",
               "format": "uint",
               "minimum": 1
             },
             "token": {
               "description": "A token for a private package: npm's, sent as a bearer token;\nPrivate Packagist's Composer token, sent as HTTP Basic with the user\n`token`; or a Docker Hub personal access token, exchanged with\n`username` for a bearer token. crates.io takes none.",
-              "anyOf": [
-                {
-                  "$ref": "#/$defs/SecretRef"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "$ref": "#/$defs/SecretRef"
             },
             "username": {
               "description": "The Docker Hub account `token` belongs to.",
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": "string"
             }
           },
           "additionalProperties": false,
@@ -2863,10 +2232,7 @@
           "properties": {
             "api": {
               "description": "The registry's base URL, for a mirror or a private registry that\nanswers as the public one does; the public registry's where absent.",
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": "string"
             },
             "backfill": {
               "description": "How many of the newest versions the first poll announces; none where\nabsent (ADR-0003).",
@@ -2881,65 +2247,38 @@
             },
             "ordering": {
               "description": "How Docker Hub lists a repository's tags for a poll:\n`last_updated`, the most recently pushed first, where unset, or\n`name`.",
-              "anyOf": [
-                {
-                  "$ref": "#/$defs/TagOrdering"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "$ref": "#/$defs/TagOrdering"
             },
             "package": {
               "description": "The package, as the registry names it: `vendor/name` on Packagist,\na crate's name, an npm package's name such as `@scope/name`, or a\nDocker Hub repository such as `library/caddy`, where an official\nimage may leave out `library/`.",
-              "type": "string"
+              "type": "string",
+              "examples": [
+                "vendor/name"
+              ]
             },
             "page": {
               "description": "How many of the newest versions one poll reads; 30 where absent.",
-              "type": [
-                "integer",
-                "null"
-              ],
+              "type": "integer",
               "format": "uint",
               "minimum": 1
             },
             "parse": {
               "description": "The most of an answer parsed; \"4MiB\", \"16MiB\" on Packagist and \"32MiB\" on npm, where absent, and at most four\ntimes that.",
-              "anyOf": [
-                {
-                  "$ref": "#/$defs/Size"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "$ref": "#/$defs/Size"
             },
             "remembered": {
               "description": "How many identities the cursor remembers, newest first; 500 where\nabsent, and at least `page`.",
-              "type": [
-                "integer",
-                "null"
-              ],
+              "type": "integer",
               "format": "uint",
               "minimum": 1
             },
             "token": {
               "description": "A token for a private package: npm's, sent as a bearer token;\nPrivate Packagist's Composer token, sent as HTTP Basic with the user\n`token`; or a Docker Hub personal access token, exchanged with\n`username` for a bearer token. crates.io takes none.",
-              "anyOf": [
-                {
-                  "$ref": "#/$defs/SecretRef"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "$ref": "#/$defs/SecretRef"
             },
             "username": {
               "description": "The Docker Hub account `token` belongs to.",
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": "string"
             }
           },
           "additionalProperties": false,
@@ -2965,36 +2304,26 @@
             },
             "page": {
               "description": "How many of the newest entries one poll reads; 30 where absent.",
-              "type": [
-                "integer",
-                "null"
-              ],
+              "type": "integer",
               "format": "uint",
               "minimum": 1
             },
             "parse": {
               "description": "The most of an answer parsed; \"4MiB\" where absent, and at most four\ntimes that.",
-              "anyOf": [
-                {
-                  "$ref": "#/$defs/Size"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "$ref": "#/$defs/Size"
             },
             "remembered": {
               "description": "How many identities the cursor remembers, newest first; 500 where\nabsent, and at least `page`.",
-              "type": [
-                "integer",
-                "null"
-              ],
+              "type": "integer",
               "format": "uint",
               "minimum": 1
             },
             "url": {
               "description": "The feed's URL, RSS 2.0 or Atom 1.0.",
-              "type": "string"
+              "type": "string",
+              "examples": [
+                "https://example.org/feed.xml"
+              ]
             }
           },
           "additionalProperties": false,
@@ -3014,58 +2343,23 @@
           "properties": {
             "busy": {
               "description": "How long a transaction waits for another process to let go of the\nfile; 5s where absent.",
-              "anyOf": [
-                {
-                  "$ref": "#/$defs/Duration"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "$ref": "#/$defs/Duration"
             },
             "keep_deliveries": {
               "description": "How long a webhook delivery's id is kept after it was admitted, so a\nreplay of it is refused (ADR-0013); \"7d\" where absent, and at least\n\"3d\", longer than any sender goes on retrying a delivery.",
-              "anyOf": [
-                {
-                  "$ref": "#/$defs/Duration"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "$ref": "#/$defs/Duration"
             },
             "keep_ledger": {
               "description": "How long a ledger entry, and where each of its deliveries to a\nfollower's inbox stands, is kept after a run last claimed it; \"90d\"\nwhere absent.",
-              "anyOf": [
-                {
-                  "$ref": "#/$defs/Keep"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "$ref": "#/$defs/Keep"
             },
             "keep_notes": {
               "description": "How long a Note herald's ActivityPub actors published is kept, and\nserved by its id; \"forever\" where absent.",
-              "anyOf": [
-                {
-                  "$ref": "#/$defs/Keep"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "$ref": "#/$defs/Keep"
             },
             "key": {
               "description": "The secret holding a key to seal every record with, such as\n`HERALD_STORE_KEY`, so a record herald did not seal reads as corrupt\n(ADR-0005); records are not sealed where absent.",
-              "anyOf": [
-                {
-                  "$ref": "#/$defs/SecretRef"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "$ref": "#/$defs/SecretRef"
             },
             "kind": {
               "type": "string",
@@ -3073,10 +2367,7 @@
             },
             "path": {
               "description": "The database file, relative to `herald.toml`; `herald.sqlite` beside\nit where absent.",
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": "string"
             }
           },
           "additionalProperties": false,
@@ -3090,58 +2381,23 @@
           "properties": {
             "connect_timeout": {
               "description": "How long making a connection may take; 10s where absent.",
-              "anyOf": [
-                {
-                  "$ref": "#/$defs/Duration"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "$ref": "#/$defs/Duration"
             },
             "keep_deliveries": {
               "description": "How long a webhook delivery's id is kept after it was admitted, so a\nreplay of it is refused (ADR-0013); \"7d\" where absent, and at least\n\"3d\", longer than any sender goes on retrying a delivery.",
-              "anyOf": [
-                {
-                  "$ref": "#/$defs/Duration"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "$ref": "#/$defs/Duration"
             },
             "keep_ledger": {
               "description": "How long a ledger entry, and where each of its deliveries to a\nfollower's inbox stands, is kept after a run last claimed it; \"90d\"\nwhere absent.",
-              "anyOf": [
-                {
-                  "$ref": "#/$defs/Keep"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "$ref": "#/$defs/Keep"
             },
             "keep_notes": {
               "description": "How long a Note herald's ActivityPub actors published is kept, and\nserved by its id; \"forever\" where absent.",
-              "anyOf": [
-                {
-                  "$ref": "#/$defs/Keep"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "$ref": "#/$defs/Keep"
             },
             "key": {
               "description": "The secret holding a key to seal every record with, such as\n`HERALD_STORE_KEY`, so a record herald did not seal reads as corrupt\n(ADR-0005); records are not sealed where absent.",
-              "anyOf": [
-                {
-                  "$ref": "#/$defs/SecretRef"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "$ref": "#/$defs/SecretRef"
             },
             "kind": {
               "type": "string",
@@ -3149,14 +2405,7 @@
             },
             "statement_timeout": {
               "description": "How long one statement may run before the database cancels it; 30s\nwhere absent.",
-              "anyOf": [
-                {
-                  "$ref": "#/$defs/Duration"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "$ref": "#/$defs/Duration"
             },
             "url": {
               "description": "The secret holding the database's connection URL, such as\n`postgres://herald:…@db.example/herald`. herald reaches it over TLS\nunless the URL sets `sslmode=disable`.",
@@ -3175,54 +2424,23 @@
           "properties": {
             "binding": {
               "description": "The Worker's binding to the database, as `wrangler.toml` names it;\n`HERALD_DB` where absent.",
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": "string"
             },
             "keep_deliveries": {
               "description": "How long a webhook delivery's id is kept after it was admitted, so a\nreplay of it is refused (ADR-0013); \"7d\" where absent, and at least\n\"3d\", longer than any sender goes on retrying a delivery.",
-              "anyOf": [
-                {
-                  "$ref": "#/$defs/Duration"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "$ref": "#/$defs/Duration"
             },
             "keep_ledger": {
               "description": "How long a ledger entry, and where each of its deliveries to a\nfollower's inbox stands, is kept after a run last claimed it; \"90d\"\nwhere absent.",
-              "anyOf": [
-                {
-                  "$ref": "#/$defs/Keep"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "$ref": "#/$defs/Keep"
             },
             "keep_notes": {
               "description": "How long a Note herald's ActivityPub actors published is kept, and\nserved by its id; \"forever\" where absent.",
-              "anyOf": [
-                {
-                  "$ref": "#/$defs/Keep"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "$ref": "#/$defs/Keep"
             },
             "key": {
               "description": "The secret holding a key to seal every record with, such as\n`HERALD_STORE_KEY`, so a record herald did not seal reads as corrupt\n(ADR-0005); records are not sealed where absent.",
-              "anyOf": [
-                {
-                  "$ref": "#/$defs/SecretRef"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "$ref": "#/$defs/SecretRef"
             },
             "kind": {
               "type": "string",
@@ -3240,54 +2458,23 @@
           "properties": {
             "binding": {
               "description": "The Worker's binding to herald's Durable Object namespace, as\n`wrangler.toml` names it; `HERALD` where absent.",
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": "string"
             },
             "keep_deliveries": {
               "description": "How long a webhook delivery's id is kept after it was admitted, so a\nreplay of it is refused (ADR-0013); \"7d\" where absent, and at least\n\"3d\", longer than any sender goes on retrying a delivery.",
-              "anyOf": [
-                {
-                  "$ref": "#/$defs/Duration"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "$ref": "#/$defs/Duration"
             },
             "keep_ledger": {
               "description": "How long a ledger entry, and where each of its deliveries to a\nfollower's inbox stands, is kept after a run last claimed it; \"90d\"\nwhere absent.",
-              "anyOf": [
-                {
-                  "$ref": "#/$defs/Keep"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "$ref": "#/$defs/Keep"
             },
             "keep_notes": {
               "description": "How long a Note herald's ActivityPub actors published is kept, and\nserved by its id; \"forever\" where absent.",
-              "anyOf": [
-                {
-                  "$ref": "#/$defs/Keep"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "$ref": "#/$defs/Keep"
             },
             "key": {
               "description": "The secret holding a key to seal every record with, such as\n`HERALD_STORE_KEY`, so a record herald did not seal reads as corrupt\n(ADR-0005); records are not sealed where absent.",
-              "anyOf": [
-                {
-                  "$ref": "#/$defs/SecretRef"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "$ref": "#/$defs/SecretRef"
             },
             "kind": {
               "type": "string",
@@ -3295,10 +2482,7 @@
             },
             "object": {
               "description": "The name of the object that keeps the records; `herald` where\nabsent.",
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": "string"
             }
           },
           "additionalProperties": false,
@@ -3312,65 +2496,27 @@
           "properties": {
             "access_key_id": {
               "description": "The secret holding the access key's id; `AWS_ACCESS_KEY_ID` where\nabsent, as a Lambda's role provides it.",
-              "anyOf": [
-                {
-                  "$ref": "#/$defs/SecretRef"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "$ref": "#/$defs/SecretRef"
             },
             "endpoint": {
               "description": "The endpoint's base URL, for DynamoDB Local or another endpoint;\nthe region's own where absent.",
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": "string"
             },
             "keep_deliveries": {
               "description": "How long a webhook delivery's id is kept after it was admitted, so a\nreplay of it is refused (ADR-0013); \"7d\" where absent, and at least\n\"3d\", longer than any sender goes on retrying a delivery.",
-              "anyOf": [
-                {
-                  "$ref": "#/$defs/Duration"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "$ref": "#/$defs/Duration"
             },
             "keep_ledger": {
               "description": "How long a ledger entry, and where each of its deliveries to a\nfollower's inbox stands, is kept after a run last claimed it; \"90d\"\nwhere absent.",
-              "anyOf": [
-                {
-                  "$ref": "#/$defs/Keep"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "$ref": "#/$defs/Keep"
             },
             "keep_notes": {
               "description": "How long a Note herald's ActivityPub actors published is kept, and\nserved by its id; \"forever\" where absent.",
-              "anyOf": [
-                {
-                  "$ref": "#/$defs/Keep"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "$ref": "#/$defs/Keep"
             },
             "key": {
               "description": "The secret holding a key to seal every record with, such as\n`HERALD_STORE_KEY`, so a record herald did not seal reads as corrupt\n(ADR-0005); records are not sealed where absent.",
-              "anyOf": [
-                {
-                  "$ref": "#/$defs/SecretRef"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "$ref": "#/$defs/SecretRef"
             },
             "kind": {
               "type": "string",
@@ -3378,39 +2524,19 @@
             },
             "region": {
               "description": "The region, such as `eu-west-1`; the `AWS_REGION` the platform sets\nwhere absent.",
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": "string"
             },
             "secret_access_key": {
               "description": "The secret holding the secret access key; `AWS_SECRET_ACCESS_KEY`\nwhere absent.",
-              "anyOf": [
-                {
-                  "$ref": "#/$defs/SecretRef"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "$ref": "#/$defs/SecretRef"
             },
             "session_token": {
               "description": "The secret holding a session token, sent where it is set;\n`AWS_SESSION_TOKEN` where absent.",
-              "anyOf": [
-                {
-                  "$ref": "#/$defs/SecretRef"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "$ref": "#/$defs/SecretRef"
             },
             "table": {
               "description": "The table, with the string partition key `directory` and the string\nsort key `name`; `herald` where absent.",
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": "string"
             }
           },
           "additionalProperties": false,
@@ -3424,47 +2550,19 @@
           "properties": {
             "keep_deliveries": {
               "description": "How long a webhook delivery's id is kept after it was admitted, so a\nreplay of it is refused (ADR-0013); \"7d\" where absent, and at least\n\"3d\", longer than any sender goes on retrying a delivery.",
-              "anyOf": [
-                {
-                  "$ref": "#/$defs/Duration"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "$ref": "#/$defs/Duration"
             },
             "keep_ledger": {
               "description": "How long a ledger entry, and where each of its deliveries to a\nfollower's inbox stands, is kept after a run last claimed it; \"90d\"\nwhere absent.",
-              "anyOf": [
-                {
-                  "$ref": "#/$defs/Keep"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "$ref": "#/$defs/Keep"
             },
             "keep_notes": {
               "description": "How long a Note herald's ActivityPub actors published is kept, and\nserved by its id; \"forever\" where absent.",
-              "anyOf": [
-                {
-                  "$ref": "#/$defs/Keep"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "$ref": "#/$defs/Keep"
             },
             "key": {
               "description": "The secret holding a key to seal every record with, such as\n`HERALD_STORE_KEY`, so a record herald did not seal reads as corrupt\n(ADR-0005); records are not sealed where absent.",
-              "anyOf": [
-                {
-                  "$ref": "#/$defs/SecretRef"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "$ref": "#/$defs/SecretRef"
             },
             "kind": {
               "type": "string",
@@ -3472,17 +2570,11 @@
             },
             "path": {
               "description": "The database `Deno.openKv` opens: a path or a URL; the deployment's\nown where absent.",
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": "string"
             },
             "prefix": {
               "description": "The key every record is kept under, its parts split at `/`;\n`herald` where absent.",
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": "string"
             }
           },
           "additionalProperties": false,
@@ -3496,47 +2588,19 @@
           "properties": {
             "keep_deliveries": {
               "description": "How long a webhook delivery's id is kept after it was admitted, so a\nreplay of it is refused (ADR-0013); \"7d\" where absent, and at least\n\"3d\", longer than any sender goes on retrying a delivery.",
-              "anyOf": [
-                {
-                  "$ref": "#/$defs/Duration"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "$ref": "#/$defs/Duration"
             },
             "keep_ledger": {
               "description": "How long a ledger entry, and where each of its deliveries to a\nfollower's inbox stands, is kept after a run last claimed it; \"90d\"\nwhere absent.",
-              "anyOf": [
-                {
-                  "$ref": "#/$defs/Keep"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "$ref": "#/$defs/Keep"
             },
             "keep_notes": {
               "description": "How long a Note herald's ActivityPub actors published is kept, and\nserved by its id; \"forever\" where absent.",
-              "anyOf": [
-                {
-                  "$ref": "#/$defs/Keep"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "$ref": "#/$defs/Keep"
             },
             "key": {
               "description": "The secret holding a key to seal every record with, such as\n`HERALD_STORE_KEY`, so a record herald did not seal reads as corrupt\n(ADR-0005); records are not sealed where absent.",
-              "anyOf": [
-                {
-                  "$ref": "#/$defs/SecretRef"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "$ref": "#/$defs/SecretRef"
             },
             "kind": {
               "type": "string",
@@ -3544,17 +2608,11 @@
             },
             "prefix": {
               "description": "The key every record is kept under, its parts split at `/`;\n`herald` where absent.",
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": "string"
             },
             "store": {
               "description": "The KV Store the service is linked to, by name; `herald` where\nabsent.",
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": "string"
             }
           },
           "additionalProperties": false,
@@ -3582,50 +2640,23 @@
           "properties": {
             "api": {
               "description": "The API's base URL, for a GitHub Enterprise Server; GitHub's own API\nwhere absent.",
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": "string"
             },
             "branch": {
               "description": "The branch the records are kept on; `herald-state` where absent.",
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": "string"
             },
             "keep_deliveries": {
               "description": "How long a webhook delivery's id is kept after it was admitted, so a\nreplay of it is refused (ADR-0013); \"7d\" where absent, and at least\n\"3d\", longer than any sender goes on retrying a delivery.",
-              "anyOf": [
-                {
-                  "$ref": "#/$defs/Duration"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "$ref": "#/$defs/Duration"
             },
             "keep_ledger": {
               "description": "How long a ledger entry, and where each of its deliveries to a\nfollower's inbox stands, is kept after a run last claimed it; \"90d\"\nwhere absent.",
-              "anyOf": [
-                {
-                  "$ref": "#/$defs/Keep"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "$ref": "#/$defs/Keep"
             },
             "keep_notes": {
               "description": "How long a Note herald's ActivityPub actors published is kept, and\nserved by its id; \"forever\" where absent.",
-              "anyOf": [
-                {
-                  "$ref": "#/$defs/Keep"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "$ref": "#/$defs/Keep"
             },
             "key": {
               "description": "The secret holding the key every record is sealed with, such as\n`HERALD_STORE_KEY`: whoever can write the repository could otherwise\nforge records herald trusts (ADR-0005).",
@@ -3637,21 +2668,11 @@
             },
             "repository": {
               "description": "The repository, as `owner/name`; the run's own where absent.",
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": "string"
             },
             "token": {
               "description": "The secret holding a token that may push to the branch;\n`GITHUB_TOKEN` where absent.",
-              "anyOf": [
-                {
-                  "$ref": "#/$defs/SecretRef"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "$ref": "#/$defs/SecretRef"
             }
           },
           "additionalProperties": false,
@@ -3666,36 +2687,15 @@
           "properties": {
             "keep_deliveries": {
               "description": "How long a webhook delivery's id is kept after it was admitted, so a\nreplay of it is refused (ADR-0013); \"7d\" where absent, and at least\n\"3d\", longer than any sender goes on retrying a delivery.",
-              "anyOf": [
-                {
-                  "$ref": "#/$defs/Duration"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "$ref": "#/$defs/Duration"
             },
             "keep_ledger": {
               "description": "How long a ledger entry, and where each of its deliveries to a\nfollower's inbox stands, is kept after a run last claimed it; \"90d\"\nwhere absent.",
-              "anyOf": [
-                {
-                  "$ref": "#/$defs/Keep"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "$ref": "#/$defs/Keep"
             },
             "keep_notes": {
               "description": "How long a Note herald's ActivityPub actors published is kept, and\nserved by its id; \"forever\" where absent.",
-              "anyOf": [
-                {
-                  "$ref": "#/$defs/Keep"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "$ref": "#/$defs/Keep"
             },
             "keeps": {
               "description": "What it keeps besides the ledger, cursors, schedules and deliveries:\nany of \"subscriptions\", \"pins\", \"notes\", \"latest\" and \"keys\". Each\nis rewritten with every other record on every write, and counts\nagainst the cache's quota; none where absent.",
@@ -3714,10 +2714,7 @@
             },
             "prefix": {
               "description": "What every generation's key starts with, so two configs in one\nrepository keep their records apart; `herald-state` where absent.",
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": "string"
             }
           },
           "additionalProperties": false,
@@ -3732,43 +2729,19 @@
           "properties": {
             "api": {
               "description": "The API's base URL, for a GitHub Enterprise Server; GitHub's own API\nwhere absent.",
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": "string"
             },
             "keep_deliveries": {
               "description": "How long a webhook delivery's id is kept after it was admitted, so a\nreplay of it is refused (ADR-0013); \"7d\" where absent, and at least\n\"3d\", longer than any sender goes on retrying a delivery.",
-              "anyOf": [
-                {
-                  "$ref": "#/$defs/Duration"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "$ref": "#/$defs/Duration"
             },
             "keep_ledger": {
               "description": "How long a ledger entry, and where each of its deliveries to a\nfollower's inbox stands, is kept after a run last claimed it; \"90d\"\nwhere absent.",
-              "anyOf": [
-                {
-                  "$ref": "#/$defs/Keep"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "$ref": "#/$defs/Keep"
             },
             "keep_notes": {
               "description": "How long a Note herald's ActivityPub actors published is kept, and\nserved by its id; \"forever\" where absent.",
-              "anyOf": [
-                {
-                  "$ref": "#/$defs/Keep"
-                },
-                {
-                  "type": "null"
-                }
-              ]
+              "$ref": "#/$defs/Keep"
             },
             "key": {
               "description": "The secret holding the key every record is sealed with, such as\n`HERALD_STORE_KEY`: whoever can write the repository could otherwise\nforge records herald trusts (ADR-0005).",
@@ -3780,10 +2753,7 @@
             },
             "repository": {
               "description": "The repository, as `owner/name`; the run's own where absent.",
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": "string"
             },
             "token": {
               "description": "The secret holding a token with the repository's Variables\npermission; the job's own token cannot write variables.",
@@ -3799,87 +2769,27 @@
         }
       ]
     },
-    "Subscribe": {
-      "description": "What a route says about subscribing on Discord.",
-      "type": "object",
-      "properties": {
-        "button": {
-          "description": "Whether each announcement carries a button that subscribes, or\nunsubscribes a member already subscribed.",
-          "type": "boolean",
-          "default": true
-        },
-        "role": {
-          "description": "The opt-in role `subscribe` gives a member and `unsubscribe` takes\naway, by id. The route mentions it with its announcements.",
-          "type": "string"
-        }
-      },
-      "additionalProperties": false,
-      "required": [
-        "role"
-      ]
-    },
-    "Subscribe2": {
-      "description": "What a route says about subscribing on Slack, where it mentions its\nsubscribers.",
-      "type": "object",
-      "properties": {
-        "button": {
-          "description": "Whether each announcement carries a button that subscribes, or\nunsubscribes a member already subscribed.",
-          "type": "boolean",
-          "default": true
-        }
-      },
-      "additionalProperties": false
-    },
     "Symbols": {
       "description": "The characters a destination writes where its markup has none: a task\ndone and to do, a rule (drawn three wide), and a list's bullet where a\nlist is written as text, in Slack and in plain text.",
       "type": "object",
       "properties": {
         "bullet": {
           "description": "A list's bullet where a list is written as text: `•` in Slack and\n`-` in plain text where unset.",
-          "anyOf": [
-            {
-              "$ref": "#/$defs/OneCharacter"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null
+          "$ref": "#/$defs/OneCharacter"
         },
         "done": {
           "description": "A task done; `☑` where unset.",
-          "anyOf": [
-            {
-              "$ref": "#/$defs/OneCharacter"
-            },
-            {
-              "type": "null"
-            }
-          ],
+          "$ref": "#/$defs/OneCharacter",
           "default": "☑"
         },
         "rule": {
           "description": "A rule's character, drawn three wide; `─` where unset.",
-          "anyOf": [
-            {
-              "$ref": "#/$defs/OneCharacter"
-            },
-            {
-              "type": "null"
-            }
-          ],
+          "$ref": "#/$defs/OneCharacter",
           "default": "─"
         },
         "todo": {
           "description": "A task to do; `☐` where unset.",
-          "anyOf": [
-            {
-              "$ref": "#/$defs/OneCharacter"
-            },
-            {
-              "type": "null"
-            }
-          ],
+          "$ref": "#/$defs/OneCharacter",
           "default": "☐"
         }
       },
@@ -3906,24 +2816,33 @@
       "properties": {
         "body": {
           "description": "The body, in Markdown.",
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": "string"
         },
         "file": {
           "description": "A file beside the config holding the body.",
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": "string"
         },
         "title": {
           "description": "The title, on one line.",
-          "type": "string"
+          "type": "string",
+          "examples": [
+            "{{ event.title }}"
+          ]
         }
       },
       "additionalProperties": false,
+      "oneOf": [
+        {
+          "required": [
+            "body"
+          ]
+        },
+        {
+          "required": [
+            "file"
+          ]
+        }
+      ],
       "required": [
         "title"
       ]
@@ -3934,29 +2853,18 @@
       "properties": {
         "archive_after": {
           "description": "How long after the announcement the thread is archived.",
-          "anyOf": [
-            {
-              "$ref": "#/$defs/Duration"
-            },
-            {
-              "type": "null"
-            }
-          ]
+          "$ref": "#/$defs/Duration"
         },
         "lock_after": {
           "description": "How long after the announcement the thread is locked, and archived.",
-          "anyOf": [
-            {
-              "$ref": "#/$defs/Duration"
-            },
-            {
-              "type": "null"
-            }
-          ]
+          "$ref": "#/$defs/Duration"
         },
         "name": {
           "description": "The template of the thread's name.",
-          "type": "string"
+          "type": "string",
+          "examples": [
+            "{{ event.project }} {{ event.attributes.version }}"
+          ]
         }
       },
       "additionalProperties": false,
@@ -3964,50 +2872,13 @@
         "name"
       ]
     },
-    "Via": {
-      "description": "How Discord carries commands to herald.",
-      "oneOf": [
-        {
-          "description": "Discord posts each interaction to herald's endpoint, signed with the\napplication's key: served by `herald server` and by a serverless\ndriver.",
-          "type": "string",
-          "const": "http"
-        },
-        {
-          "description": "herald holds a connection to Discord's gateway and takes each\ninteraction from it: served by `herald server` and by a Cloudflare\nWorker's Durable Object, with no public endpoint.",
-          "type": "string",
-          "const": "gateway"
-        }
-      ]
+    "TokenHash": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
     },
-    "Via2": {
-      "description": "How the homeserver carries commands to herald.",
-      "oneOf": [
-        {
-          "description": "The homeserver pushes each room event to herald as an application\nservice, with the registration `herald matrix registration` writes:\nserved by `herald server` and by a serverless driver.",
-          "type": "string",
-          "const": "appservice"
-        },
-        {
-          "description": "herald syncs as the bot account and reads each message in the rooms\nit has joined: served by `herald server` and by a Cloudflare Worker's\nDurable Object, with no public endpoint and nothing for the\nhomeserver's administrator to install.",
-          "type": "string",
-          "const": "sync"
-        }
-      ]
-    },
-    "Via3": {
-      "description": "How Slack carries commands to herald.",
-      "oneOf": [
-        {
-          "description": "Slack posts each command and button press to herald's endpoint,\nsigned with the app's signing secret: served by `herald server` and\nby a serverless driver.",
-          "type": "string",
-          "const": "http"
-        },
-        {
-          "description": "herald holds a Socket Mode connection, opened with the app-level\ntoken, and takes each one from it: served by `herald server` and by a\nCloudflare Worker's Durable Object, with no public endpoint.",
-          "type": "string",
-          "const": "socket"
-        }
-      ]
+    "Version": {
+      "type": "integer",
+      "const": 1
     },
     "Visibility": {
       "description": "Who sees a status.",
@@ -4035,25 +2906,11 @@
       "properties": {
         "limited": {
           "description": "After the platform answers that herald sends too often; the\nplatform's own window where unset: \"5m\" on Mastodon, \"5s\" elsewhere.",
-          "anyOf": [
-            {
-              "$ref": "#/$defs/Duration"
-            },
-            {
-              "type": "null"
-            }
-          ]
+          "$ref": "#/$defs/Duration"
         },
         "outage": {
           "description": "After the platform answers that it is unwell; \"5s\" where unset.",
-          "anyOf": [
-            {
-              "$ref": "#/$defs/Duration"
-            },
-            {
-              "type": "null"
-            }
-          ]
+          "$ref": "#/$defs/Duration"
         }
       },
       "additionalProperties": false

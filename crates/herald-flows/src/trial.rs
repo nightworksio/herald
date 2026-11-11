@@ -60,7 +60,6 @@ pub async fn trial<S: Store, C: Clock, G: Signer, H: Http>(
                     kinds: &config.kinds,
                     http,
                     holder: run,
-                    together: config.server.deliveries,
                     lease: config.announce.lease,
                 }
                 .announce(&event, &templates)

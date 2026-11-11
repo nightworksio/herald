@@ -11,6 +11,7 @@ use crate::Forge;
 pub struct SourceOptions {
     /// The repository, as `owner/name`, or a GitLab project's full path,
     /// such as `group/subgroup/name`.
+    #[schemars(example = "nightworksio/herald")]
     pub repository: String,
     /// The API's base URL, for a forge that is not GitHub, GitLab.com or
     /// Codeberg: a GitHub Enterprise Server's `https://ghe.example/api/v3`,

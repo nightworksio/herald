@@ -6,14 +6,14 @@ use herald_core::{
 };
 use herald_kinds::Hooked;
 use herald_kinds::{Endpoint, Replying};
-use herald_ports::{Clock, Http, Keyring, Ledger, Secret, Secrets, Signer, Store, Verifier};
+use herald_ports::{Clock, Http, Keyring, Ledger, Secret, Signer, Store, Verifier};
 
 use crate::announce::{Announced, Outcome, Ports, announce, announce_within};
 use crate::commanded::{INTERACTIONS, MATRIX, commanded};
 use crate::following::{FollowError, Followed, followed};
 use crate::inbound::{Admission, Checking, Keys, Rejected, Verified, admitted, released, verified};
 use crate::interact::{Answer, interact, replied as replied_to};
-use crate::prepare::{Connected, PrepareError};
+use crate::prepare::Connected;
 
 mod actors;
 
@@ -194,23 +194,7 @@ impl Job {
 
 /// The secret each forge source's webhooks are signed with, by the source.
 #[derive(Debug, Clone, Default)]
-pub struct Webhooks(BTreeMap<SourceName, Secret>);
-
-/// The secret each forge source of `config` signs its webhooks with, read
-/// through `secrets`.
-///
-/// # Errors
-///
-/// When a secret a source names is not set.
-pub async fn webhooks<S: Secrets>(config: &Config, secrets: &S) -> Result<Webhooks, PrepareError> {
-    let mut found = BTreeMap::new();
-    for (name, source) in &config.sources {
-        if let Some(named) = source.webhook() {
-            found.insert(name.clone(), secrets.secret(&named.secret).await?);
-        }
-    }
-    Ok(Webhooks(found))
-}
+pub struct Webhooks(pub(crate) BTreeMap<SourceName, Secret>);
 
 /// What a request is answered through.
 #[derive(Debug)]
@@ -379,7 +363,12 @@ pub async fn answer<S: Store, C: Clock, G: Signer, V: Verifier, H, P: Http, K: K
         (_, HEALTH | WEBFINGER | SHARED_INBOX) => unmethodical(),
         (method, path) => {
             if let Some(rest) = path.strip_prefix(PROJECTS) {
-                return match (method, rest.split('/').collect::<Vec<_>>().as_slice()) {
+                let Some(segments) = rest.split('/').map(decoded).collect::<Option<Vec<_>>>()
+                else {
+                    return missing("such path");
+                };
+                let segments: Vec<&str> = segments.iter().map(String::as_str).collect();
+                return match (method, segments.as_slice()) {
                     ("POST", [project, "events"]) => posted(serving, project, inbound).await,
                     ("GET", [project, "events", id]) => {
                         standing(serving, project, id, inbound).await

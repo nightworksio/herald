@@ -7,7 +7,7 @@ use std::io::Write;
 
 use clap::{Args, ValueEnum};
 use herald_compose::{Served, told};
-use herald_config::Config;
+use herald_config::{Config, Uses};
 use herald_crypto::RingSigner;
 use herald_environment::{EnvSecrets, SystemClock};
 use herald_flows::{
@@ -225,7 +225,7 @@ async fn findings(
     findings.extend(herald_flows::secrets(config, &secrets, &here).await);
     findings.extend(keys(config, &secrets, &RingSigner).await);
     if asked.online {
-        let connected = match prepare(config, &secrets, &RingSigner).await {
+        let connected = match prepare(config, &secrets, &RingSigner, Uses::Announces).await {
             Ok(prepared) => prepared.connect(|base| connect.reach(base)),
             Err(error) => Err(error.to_string()),
         };

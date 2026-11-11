@@ -8,6 +8,7 @@ use herald_wire::{PARSE_LIMIT, Reading};
 #[serde(deny_unknown_fields)]
 pub struct FeedOptions {
     /// The feed's URL, RSS 2.0 or Atom 1.0.
+    #[schemars(example = "https://example.org/feed.xml")]
     pub url: String,
     /// How many of the newest entries the first poll announces; none where
     /// absent (ADR-0003).

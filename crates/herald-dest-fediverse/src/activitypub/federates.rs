@@ -37,6 +37,10 @@ impl Federates for ActivityPub {
         Self::outbox_most(self)
     }
 
+    fn deliveries(&self) -> usize {
+        Self::deliveries(self)
+    }
+
     fn first_page(&self) -> &'static str {
         FIRST
     }

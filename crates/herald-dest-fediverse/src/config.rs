@@ -95,6 +95,7 @@ impl DestinationConfig for ActorOptions {
             ActivityPub::new(&self.domain, base, secret, placed.clone())
                 .waiting(self.waits())
                 .paging(self.outbox_page())
+                .delivering(self.deliveries())
                 .governed(self.policy()),
         ))
     }

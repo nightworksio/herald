@@ -89,7 +89,6 @@ pub(crate) struct Run<'a, S, C, G, H> {
     pub(crate) kinds: &'a KindSpecs,
     pub(crate) http: &'a H,
     pub(crate) holder: &'a str,
-    pub(crate) together: usize,
     pub(crate) lease: SignedDuration,
 }
 
@@ -337,7 +336,8 @@ impl<S: Store, C: Clock, G: Signer, H: Http> Run<'_, S, C, G, H> {
     }
 
     /// Delivers the announcement to the inbox of each follower of `actor` it
-    /// has not landed in, `together` at once, and lands the deliveries once
+    /// has not landed in, as many at once as its destination's `deliveries`
+    /// says, and lands the deliveries once
     /// every one has.
     async fn deliveries(
         &self,
@@ -360,7 +360,12 @@ impl<S: Store, C: Clock, G: Signer, H: Http> Run<'_, S, C, G, H> {
                 pending.push(inbox);
             }
         }
-        let mut batches = pending.chunks(self.together.max(1));
+        let together = self
+            .route
+            .reached
+            .federates()
+            .map_or(1, herald_kinds::Federates::deliveries);
+        let mut batches = pending.chunks(together.max(1));
         while let Some(batch) = batches.next() {
             if let Err((mut failed, reason)) = self.delivered(batch, announcement, progress).await {
                 failed.extend(batches.flatten().cloned().map(Step::Deliver));
@@ -643,7 +648,6 @@ pub async fn announce_within<S: Store, C: Clock, G: Signer, H: Http>(
             kinds: &config.kinds,
             http,
             holder: run,
-            together: config.server.deliveries,
             lease: config.announce.lease,
         }
         .announce(event, &config.templates)

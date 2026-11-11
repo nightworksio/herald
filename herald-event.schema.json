@@ -15,11 +15,15 @@
     "body": {
       "description": "The body, in Markdown.",
       "type": "string",
-      "default": ""
+      "default": "",
+      "maxLength": 4194304
     },
     "id": {
-      "description": "The app's own id for the event, which no other event of the app has.",
-      "type": "string"
+      "description": "The app's own id for the event, which no other event of the app has.\nAny text: a request reading its standing back writes it as one path\nsegment, percent-encoded.",
+      "type": "string",
+      "maxLength": 4194304,
+      "minLength": 1,
+      "pattern": "\\S"
     },
     "kind": {
       "description": "What kind of thing it announces: one herald ships or one the config\ndeclares; `message` where it is left out.",
@@ -30,9 +34,12 @@
       "description": "Named links, each an `https` or `http` URL: `release`, `changelog`,\n`comparison`, `download`.",
       "type": "object",
       "additionalProperties": {
-        "type": "string"
+        "$ref": "#/$defs/Link"
       },
-      "default": {}
+      "default": {},
+      "propertyNames": {
+        "pattern": "\\S"
+      }
     },
     "occurred": {
       "description": "When it happened, in RFC 3339; when herald read it where it is left\nout.",
@@ -40,15 +47,22 @@
         "string",
         "null"
       ],
+      "format": "date-time",
       "default": null
     },
     "project": {
       "description": "The project it is about.",
-      "type": "string"
+      "type": "string",
+      "maxLength": 4194304,
+      "minLength": 1,
+      "pattern": "\\S"
     },
     "title": {
       "description": "A title, on one line.",
-      "type": "string"
+      "type": "string",
+      "maxLength": 4194304,
+      "minLength": 1,
+      "pattern": "\\S"
     }
   },
   "additionalProperties": false,
@@ -79,6 +93,12 @@
       "description": "What kind of thing an event announces: release, package-version, feed-entry, message, or a kind the config declares.",
       "type": "string",
       "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"
+    },
+    "Link": {
+      "type": "string",
+      "format": "uri",
+      "maxLength": 4194304,
+      "pattern": "^https?://"
     }
   }
 }

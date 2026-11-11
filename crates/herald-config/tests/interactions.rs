@@ -358,7 +358,7 @@ body = "{{{{ event.body }}}}"
                 "token = { secret = \"HERALD_DISCORD_TOKEN\" }",
                 &format!("channel = \"1566200000000000100\"\nsubscribe = {{ role = \"{ROLE}\" }}"),
             ),
-            "routes[0].subscribe: subscribing is answered through the destination's interactions; give [destinations.discord.interactions] answering subscribe",
+            "routes[0].subscribe: subscribing is answered through the destination's interactions; add \"subscribe\" to [destinations.discord.interactions] commands",
         );
         refused(
             &config(
@@ -401,7 +401,7 @@ body = "{{{{ event.body }}}}"
                 "signing = { secret = \"HERALD_SLACK_SIGNING\" }",
                 "signing = { secret = \"HERALD_SLACK_SIGNING\" }\ncommands = [\"latest\"]",
             ),
-            "routes[1].subscribe: subscribing is answered through the destination's interactions; give [destinations.slack.interactions] answering subscribe",
+            "routes[1].subscribe: subscribing is answered through the destination's interactions; add \"subscribe\" to [destinations.slack.interactions] commands",
         );
     }
 

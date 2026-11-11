@@ -7,10 +7,10 @@ use std::future::Future;
 use std::io::Write;
 
 use herald_compose::{Capped, Served};
-use herald_config::Config;
+use herald_config::{Config, Uses};
 use herald_crypto::{RingSigner, RingVerifier};
-use herald_environment::{EnvSecrets, SystemClock};
-use herald_flows::{Connected, Keys, Ports, ROUND_SECRET, Serving, Webhooks, webhooks};
+use herald_environment::SystemClock;
+use herald_flows::{Connected, Keys, Ports, ROUND_SECRET, Serving};
 use herald_native::NativeSockets;
 use herald_ports::{Keyring, PUBLIC, Secret, Store as Keeps};
 use herald_records::MemoryKeyring;
@@ -19,7 +19,7 @@ use herald_server::{Asked, Heard, Limits, serve};
 use herald_compose::told;
 
 use super::output::say;
-use super::stores::{Commands, SERVED, reached};
+use super::stores::{SERVED, reached};
 use super::{Connect, Connection, DONE, LISTEN, worded};
 
 /// A server's work, over whichever store the config names, and the keys
@@ -27,7 +27,6 @@ use super::{Connect, Connection, DONE, LISTEN, worded};
 struct Listening<'a, F> {
     config: &'a Config,
     connected: &'a Connected<Connection>,
-    webhooks: &'a Webhooks,
     public: &'a Capped<Connection>,
     sockets: NativeSockets,
     listener: tokio::net::TcpListener,
@@ -73,7 +72,7 @@ impl<F: Future<Output = ()>> Listening<'_, F> {
             verifier: &RingVerifier,
             public: self.public,
             keys: &keys,
-            webhooks: self.webhooks,
+            webhooks: self.connected.webhooks(),
             admission: herald_flows::Admission::Once,
         };
         let period = |every: Option<jiff::SignedDuration>| {
@@ -192,11 +191,7 @@ pub(crate) async fn serving(
         .or_else(|| vars.get(LISTEN).filter(|value| !value.is_empty()).cloned())
         .or(azure)
         .unwrap_or_else(|| config.server.listen.clone());
-    let (records, connected) = reached(config, vars, connect, Commands::Answered, &SERVED).await?;
-    let secrets = EnvSecrets::from_vars(vars.clone());
-    let webhooks = webhooks(config, &secrets)
-        .await
-        .map_err(|error| error.to_string())?;
+    let (records, connected) = reached(config, vars, connect, Uses::Serves, &SERVED).await?;
     let public = Capped::new(connect.reach(PUBLIC)?, config.server.fetches);
     let silence = std::time::Duration::try_from(config.server.silence).unwrap_or_default();
     let sockets = worded(NativeSockets::under(config.session_domains()))?.silent_for(silence);
@@ -206,7 +201,6 @@ pub(crate) async fn serving(
     let listening = Listening {
         config,
         connected: &connected,
-        webhooks: &webhooks,
         public: &public,
         sockets,
         listener,

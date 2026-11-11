@@ -54,6 +54,7 @@ pub struct ActivityPub {
     route: ActorRouteOptions,
     waits: Waits,
     page: usize,
+    deliveries: usize,
     policy: Policy,
 }
 
@@ -77,6 +78,7 @@ impl ActivityPub {
             route,
             waits: Waits::DEFAULT,
             page: ActorOptions::OUTBOX_PAGE,
+            deliveries: ActorOptions::DELIVERIES,
             policy: Policy::default(),
         }
     }
@@ -241,6 +243,19 @@ impl ActivityPub {
     #[must_use]
     pub const fn outbox_most(&self) -> usize {
         self.page
+    }
+
+    /// How many of an announcement's followers' inboxes it delivers to at
+    /// once.
+    #[must_use]
+    pub const fn deliveries(&self) -> usize {
+        self.deliveries
+    }
+
+    /// The actor, delivering to `deliveries` inboxes at once.
+    #[must_use]
+    pub fn delivering(self, deliveries: usize) -> Self {
+        Self { deliveries, ..self }
     }
 
     /// The actor, its outbox paged `page` Notes at a time.

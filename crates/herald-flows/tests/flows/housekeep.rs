@@ -1,3 +1,4 @@
+use herald_config::Uses;
 use herald_core::{Chore, Entry, Facts, Identity, Key, Retention, RouteId, Schedule, State};
 use herald_flows::{Chored, Stop, housekeep, prepare};
 use herald_ports::{Admitted, Deliveries, Inboxes, Ledger, Notes, Schedules};
@@ -28,7 +29,8 @@ fn kept_for(
     retention: &Retention,
 ) -> Result<Vec<(String, Chored)>, Stop> {
     let config = config("");
-    let prepared = pollster::block_on(prepare(&config, &secrets(), &FakeSigner)).unwrap();
+    let prepared =
+        pollster::block_on(prepare(&config, &secrets(), &FakeSigner, Uses::Polls)).unwrap();
     let connected = prepared.connect(|_| Ok::<_, ()>(script.clone())).unwrap();
     let clock = FakeClock::at(NOON);
     pollster::block_on(housekeep(&connected, store, &clock, retention)).map(|kept| {
@@ -74,7 +76,8 @@ fn a_round_reports_the_records_the_store_skipped() {
         ..healthy()
     };
     let config = config("");
-    let prepared = pollster::block_on(prepare(&config, &secrets(), &FakeSigner)).unwrap();
+    let prepared =
+        pollster::block_on(prepare(&config, &secrets(), &FakeSigner, Uses::Polls)).unwrap();
     let connected = prepared
         .connect(|_| Ok::<_, ()>(Script::default()))
         .unwrap();

@@ -12,7 +12,7 @@ mod sessions {
     use std::sync::{Arc, Mutex};
     use std::time::Duration;
 
-    use herald_config::{Config, load};
+    use herald_config::{Config, Uses, load};
     use herald_core::{Kind, Latest, RouteId, Shown};
     use herald_flows::{Connected, Keys, Ports, Serving, Webhooks, Worked, prepare};
     use herald_ports::{Announcements, Frame, Http, HttpError, Request, Response};
@@ -208,10 +208,7 @@ appservice_token = {{ secret = "HERALD_MATRIX_AS" }}
     impl World {
         async fn new(kind: &str, answers: Answers, sockets: ScriptedSockets) -> Self {
             let config = config(kind);
-            let prepared = prepare(&config, &secrets(), &FakeSigner)
-                .await
-                .unwrap()
-                .answering(&secrets())
+            let prepared = prepare(&config, &secrets(), &FakeSigner, Uses::Serves)
                 .await
                 .unwrap();
             let connected = prepared.connect(|_| Ok::<_, ()>(answers.clone())).unwrap();

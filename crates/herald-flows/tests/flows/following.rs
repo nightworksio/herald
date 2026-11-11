@@ -1,3 +1,4 @@
+use herald_config::Uses;
 use herald_core::{DestinationName, Facts, Sent};
 use herald_flows::{
     Checking, Decision, FollowError, Followed, Verified, decide, followed, followers, prepare,
@@ -66,7 +67,7 @@ fn taken_under(
     let secrets = FakeSecrets::default()
         .with("HERALD_ACTIVITYPUB_KEY", "the-key")
         .with("HERALD_DISCORD_TOKEN", "hunter2");
-    let prepared = pollster::block_on(prepare(config, &secrets, &FakeSigner)).unwrap();
+    let prepared = pollster::block_on(prepare(config, &secrets, &FakeSigner, Uses::Polls)).unwrap();
     let connected = prepared.connect(|_| Ok::<_, ()>(script.clone())).unwrap();
     pollster::block_on(followed(
         &connected,
@@ -448,7 +449,7 @@ fn decided(
     let secrets = FakeSecrets::default()
         .with("HERALD_ACTIVITYPUB_KEY", "the-key")
         .with("HERALD_DISCORD_TOKEN", "hunter2");
-    let prepared = pollster::block_on(prepare(config, &secrets, &FakeSigner)).unwrap();
+    let prepared = pollster::block_on(prepare(config, &secrets, &FakeSigner, Uses::Polls)).unwrap();
     let connected = prepared.connect(|_| Ok::<_, ()>(script.clone())).unwrap();
     pollster::block_on(decide(
         &connected,
@@ -614,7 +615,7 @@ fn a_follow_approved_past_the_caps_or_of_no_actor_is_refused() {
     let secrets = FakeSecrets::default()
         .with("HERALD_ACTIVITYPUB_KEY", "the-key")
         .with("HERALD_DISCORD_TOKEN", "hunter2");
-    let prepared = pollster::block_on(prepare(&full, &secrets, &FakeSigner)).unwrap();
+    let prepared = pollster::block_on(prepare(&full, &secrets, &FakeSigner, Uses::Polls)).unwrap();
     let connected = prepared.connect(|_| Ok::<_, ()>(served(&[]))).unwrap();
     let listed = pollster::block_on(followers(
         &connected,

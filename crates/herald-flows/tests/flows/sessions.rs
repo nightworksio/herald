@@ -9,7 +9,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use futures_util::stream::{FuturesUnordered, StreamExt};
-use herald_config::{Config, load};
+use herald_config::{Config, Uses, load};
 use herald_core::{DestinationName, Kind, Latest, RouteId, Shown};
 use herald_flows::{
     Connected, Job, Keys, Ports, Serving, Sessions, Taker, Webhooks, Worked, prepare, work,
@@ -259,10 +259,7 @@ struct World {
 impl World {
     async fn new(kind: &str, answers: Answers, sockets: ScriptedSockets) -> Self {
         let config = config(kind);
-        let prepared = prepare(&config, &secrets(), &FakeSigner)
-            .await
-            .unwrap()
-            .answering(&secrets())
+        let prepared = prepare(&config, &secrets(), &FakeSigner, Uses::Serves)
             .await
             .unwrap();
         let connected = prepared.connect(|_| Ok::<_, ()>(answers.clone())).unwrap();

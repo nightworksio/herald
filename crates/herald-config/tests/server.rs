@@ -5,7 +5,7 @@ mod common;
 
 #[cfg(test)]
 mod server {
-    use herald_config::{KeyCache, Server, load};
+    use herald_config::{KeyCache, Server, Uses, load};
 
     const EXAMPLE: &str = r#"version = 1
 
@@ -56,10 +56,9 @@ body = "{{ event.body }}"
                 config.server.body,
                 config.server.fetches,
                 config.server.completions,
-                config.server.deliveries,
                 config.server.keys_most,
             ),
-            (8, 8, 256, 1_048_576, 4, 4, 8, 1024)
+            (8, 8, 256, 1_048_576, 4, 4, 1024)
         );
         assert_eq!(config.server.keys, KeyCache::Memory);
         assert!(!config.server.keys_in_store());
@@ -88,7 +87,7 @@ body = "{{ event.body }}"
     #[test]
     fn the_server_table_sets_every_limit() {
         let text = format!(
-            "{EXAMPLE}\n[server]\nlisten = \"0.0.0.0:9000\"\nbase = \"/tools/herald\"\njobs = 2\nqueue = 5\nconnections = 3\nbody = \"64KiB\"\nfetches = 5\ncompletions = 9\ndeliveries = 6\nsilence = \"45s\"\nbusy_retry = \"2m\"\nread = \"10s\"\nheld = \"20s\"\naccept_pause = \"250ms\"\n\n[server.sessions]\nfirst_wait = \"2s\"\nlongest_wait = \"5m\"\njitter = false\n\n[server.keys]\ncache = \"store\"\nrefresh_after = \"30m\"\nreread_after = \"5m\"\nmost = 7\ndocument = \"1MiB\"\n\n[server.inbound]\nreplay_window = \"20m\"\nsignatures = 2\ncovered = 4\n"
+            "{EXAMPLE}\n[server]\nlisten = \"0.0.0.0:9000\"\nbase = \"/tools/herald\"\njobs = 2\nqueue = 5\nconnections = 3\nbody = \"64KiB\"\nfetches = 5\ncompletions = 9\nsilence = \"45s\"\nbusy_retry = \"2m\"\nread = \"10s\"\nheld = \"20s\"\naccept_pause = \"250ms\"\n\n[server.sessions]\nfirst_wait = \"2s\"\nlongest_wait = \"5m\"\njitter = false\n\n[server.keys]\ncache = \"store\"\nrefresh_after = \"30m\"\nreread_after = \"5m\"\nmost = 7\ndocument = \"1MiB\"\n\n[server.inbound]\nreplay_window = \"20m\"\nsignatures = 2\ncovered = 4\n"
         );
         let config = load("herald.toml", &text, &nothing, &crate::common::kinds()).unwrap();
         assert_eq!(
@@ -102,7 +101,6 @@ body = "{{ event.body }}"
                 body: 65_536,
                 fetches: 5,
                 completions: 9,
-                deliveries: 6,
                 silence: jiff::SignedDuration::from_secs(45),
                 keys: KeyCache::Store,
                 keys_refreshed: jiff::SignedDuration::from_mins(30),
@@ -279,5 +277,51 @@ body = "{{ event.body }}"
                 .map(|named| named.secret.as_str()),
             Some("HERALD_WEBHOOK")
         );
+    }
+
+    #[test]
+    fn each_run_reads_the_secrets_its_work_needs_and_each_is_named_by_its_keys() {
+        let hooked = EXAMPLE
+            .replace(
+                "repository = \"nightworksio/php-mutation-gate\"",
+                "repository = \"nightworksio/php-mutation-gate\"\ntoken = { secret = \"GITHUB_TOKEN\" }\nwebhook = { secret = \"HERALD_WEBHOOK\" }",
+            )
+            .replace(
+                "[sources.gate]",
+                "[markers]\nkey = { secret = \"HERALD_MARKER_SECRET\" }\n\n[sources.gate]",
+            );
+        let config = load("herald.toml", &hooked, &nothing, &crate::common::kinds()).unwrap();
+        let used = |uses| config.secrets_used(uses).into_iter().collect::<Vec<_>>();
+        assert_eq!(
+            used(Uses::Announces),
+            ["HERALD_DISCORD_TOKEN", "HERALD_MARKER_SECRET"]
+        );
+        assert_eq!(
+            used(Uses::Polls),
+            [
+                "GITHUB_TOKEN",
+                "HERALD_DISCORD_TOKEN",
+                "HERALD_MARKER_SECRET"
+            ]
+        );
+        assert_eq!(
+            used(Uses::Serves),
+            [
+                "GITHUB_TOKEN",
+                "HERALD_DISCORD_TOKEN",
+                "HERALD_MARKER_SECRET",
+                "HERALD_WEBHOOK"
+            ]
+        );
+        assert!(config.secrets().contains("HERALD_STORE_KEY"));
+        assert_eq!(
+            config.keys_naming("HERALD_DISCORD_TOKEN"),
+            ["destinations.discord.token"]
+        );
+        assert_eq!(
+            config.keys_naming("HERALD_WEBHOOK"),
+            ["sources.gate.webhook"]
+        );
+        assert_eq!(config.keys_naming("UNNAMED"), Vec::<String>::new());
     }
 }

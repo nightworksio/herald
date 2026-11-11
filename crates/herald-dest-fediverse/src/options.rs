@@ -9,6 +9,7 @@ use serde::Deserialize;
 #[serde(deny_unknown_fields)]
 pub struct DestinationOptions {
     /// The server's base URL, such as `https://mastodon.social`.
+    #[schemars(example = "https://mastodon.social")]
     pub server: String,
     /// The secret holding the account's access token, granted
     /// `write:statuses` and `read:statuses`.
