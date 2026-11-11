@@ -1,6 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use herald_config::Config;
+use herald_config::{Config, Uses};
 use herald_core::{
     Asked, Command, DestinationName, Kind, Latest, Member, Place, RouteId, Shown, Subscription,
 };
@@ -153,11 +153,7 @@ impl World {
     pub(crate) fn new(discord: &str, script: Script) -> Self {
         let config = config(discord);
         let prepared = pollster::block_on(async {
-            prepare(&config, &secrets(), &FakeSigner)
-                .await
-                .unwrap()
-                .answering(&secrets())
-                .await
+            prepare(&config, &secrets(), &FakeSigner, Uses::Serves).await
         })
         .unwrap();
         let connected = prepared.connect(|_| Ok::<_, ()>(script.clone())).unwrap();
@@ -650,19 +646,24 @@ fn only_a_run_that_answers_commands_reads_the_secrets_it_answers_with() {
         .with("HERALD_DISCORD_TOKEN", "bot-token")
         .with("HERALD_SLACK_TOKEN", "slack-token")
         .with("HERALD_MATRIX_TOKEN", "matrix-token");
-    let prepared = pollster::block_on(prepare(&config, &announcing, &FakeSigner)).unwrap();
+    let prepared =
+        pollster::block_on(prepare(&config, &announcing, &FakeSigner, Uses::Polls)).unwrap();
     let unanswering = prepared
-        .clone()
         .connect(|_| Ok::<_, ()>(Script::default()))
         .unwrap();
     assert_eq!(unanswering.interactions().count(), 0);
     assert_eq!(
-        pollster::block_on(prepared.answering(&announcing))
+        pollster::block_on(prepare(&config, &announcing, &FakeSigner, Uses::Serves))
             .err()
             .map(|error| error.to_string()),
         Some(
-            "no secret is named HERALD_MATRIX_AS; set it where this platform keeps secrets"
-                .to_owned()
+            [
+                "destinations.matrix.interactions.appservice_token, destinations.neighbour.interactions.appservice_token: no secret is named HERALD_MATRIX_AS; set it where this platform keeps secrets",
+                "destinations.matrix.interactions.homeserver_token, destinations.neighbour.interactions.homeserver_token: no secret is named HERALD_MATRIX_HS; set it where this platform keeps secrets",
+                "destinations.socket.interactions.app: no secret is named HERALD_SLACK_APP; set it where this platform keeps secrets",
+                "destinations.slack.interactions.signing: no secret is named HERALD_SLACK_SIGNING; set it where this platform keeps secrets",
+            ]
+            .join("\n")
         )
     );
 }
@@ -670,14 +671,9 @@ fn only_a_run_that_answers_commands_reads_the_secrets_it_answers_with() {
 #[test]
 fn each_destination_answers_through_its_own_base_and_socket_mode_opens_through_slack_s_api() {
     let config = config("");
-    let prepared = pollster::block_on(async {
-        prepare(&config, &secrets(), &FakeSigner)
-            .await
-            .unwrap()
-            .answering(&secrets())
-            .await
-    })
-    .unwrap();
+    let prepared =
+        pollster::block_on(async { prepare(&config, &secrets(), &FakeSigner, Uses::Serves).await })
+            .unwrap();
     let connected = prepared
         .connect(|base| Ok::<_, ()>(base.to_owned()))
         .unwrap();
@@ -728,14 +724,9 @@ server = "https://social.example"
 token = { secret = "HERALD_DISCORD_TOKEN" }"#,
     );
     let secrets = crate::harness::secrets();
-    let prepared = pollster::block_on(async {
-        prepare(&config, &secrets, &FakeSigner)
-            .await
-            .unwrap()
-            .answering(&secrets)
-            .await
-    })
-    .unwrap();
+    let prepared =
+        pollster::block_on(async { prepare(&config, &secrets, &FakeSigner, Uses::Serves).await })
+            .unwrap();
     let connected = prepared
         .connect(|_| Ok::<_, ()>(Script::default()))
         .unwrap();

@@ -10,6 +10,7 @@ use serde::Deserialize;
 /// How Discord carries commands to herald.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize, JsonSchema)]
 #[serde(rename_all = "kebab-case")]
+#[schemars(rename = "DiscordVia")]
 pub enum Via {
     /// Discord posts each interaction to herald's endpoint, signed with the
     /// application's key: served by `herald server` and by a serverless
@@ -25,6 +26,7 @@ pub enum Via {
 /// How a Discord destination takes commands.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
+#[schemars(rename = "DiscordInteractions")]
 pub struct Interactions {
     /// How Discord carries them.
     #[serde(default)]
@@ -155,6 +157,7 @@ pub const SESSION_DOMAIN: &str = "discord.gg";
 /// What a route says about subscribing on Discord.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
+#[schemars(rename = "DiscordSubscribe")]
 pub struct Subscribe {
     /// The opt-in role `subscribe` gives a member and `unsubscribe` takes
     /// away, by id. The route mentions it with its announcements.

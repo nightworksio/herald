@@ -19,7 +19,7 @@ use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
 
 use clap::Parser as _;
-use herald_config::{Config, load, samples};
+use herald_config::{Config, Uses, load, samples};
 use herald_core::{Event, Kind, RouteId, SourceName};
 use herald_crypto::RingSigner;
 use herald_environment::{EnvSecrets, SystemClock};
@@ -51,7 +51,7 @@ use herald_compose::told::{chored, polled, report, skipped, why};
 use herald_compose::{GITHUB_TOKEN, Served};
 use output::{Scrubbing, hidden, masked, say, warned};
 use serving::serving;
-use stores::{Commands, Records, STORES, reached};
+use stores::{Records, STORES, reached};
 
 /// Every route announced, already announced, or held by another run; every
 /// source polled and its cursor moved on; or every chore that fell due done
@@ -442,7 +442,7 @@ async fn announcing(
     let (records, connected) = if dry_run {
         dry(config, vars, &sent).await?
     } else {
-        reached(config, vars, connect, Commands::Unanswered, &STORES).await?
+        reached(config, vars, connect, Uses::Announces, &STORES).await?
     };
     let run = run_name(vars);
     let announcing = Announcing {
@@ -503,7 +503,7 @@ async fn dry<'a>(
     sent: &Arc<Mutex<Vec<String>>>,
 ) -> Result<(Records<'a>, Connected<Connection>), String> {
     let secrets = EnvSecrets::from_vars(vars.clone());
-    let prepared = prepare(config, &secrets, &RingSigner)
+    let prepared = prepare(config, &secrets, &RingSigner, Uses::Announces)
         .await
         .map_err(|error| error.to_string())?;
     let Ok(connected) = prepared.connect(|_| {
@@ -784,8 +784,7 @@ async fn polling(
     connect: Connect<'_>,
     out: &mut dyn Write,
 ) -> Result<u8, String> {
-    let (records, connected) =
-        reached(config, vars, connect, Commands::Unanswered, &STORES).await?;
+    let (records, connected) = reached(config, vars, connect, Uses::Polls, &STORES).await?;
     let run = run_name(vars);
     let polling = Polling {
         config,
@@ -819,8 +818,7 @@ async fn housekeeping(
     connect: Connect<'_>,
     out: &mut dyn Write,
 ) -> Result<u8, String> {
-    let (records, connected) =
-        reached(config, vars, connect, Commands::Unanswered, &STORES).await?;
+    let (records, connected) = reached(config, vars, connect, Uses::Announces, &STORES).await?;
     let housekeeping = Housekeeping {
         connected: &connected,
         retention: config.retention,

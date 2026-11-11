@@ -199,7 +199,7 @@ fn online_doctor_asks_each_destination_and_reads_every_secret() {
     assert_eq!(unread.code, STOPPED, "{}", unread.out);
     assert!(
         unread.out.contains(
-            "HERALD_DISCORD_TOKEN: reading the secret HERALD_DISCORD_TOKEN cannot be served"
+            "destinations.discord.token: reading the secret HERALD_DISCORD_TOKEN cannot be served"
         ),
         "{}",
         unread.out

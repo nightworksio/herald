@@ -52,10 +52,12 @@ base64.workspace = true
 herald-compose = { workspace = true, features = ["conformance"] }
 herald-dest-fediverse.workspace = true
 herald-testing.workspace = true
+jsonschema.workspace = true
 pollster.workspace = true
 serde_json.workspace = true
 tempfile.workspace = true
 tokio = { workspace = true, features = ["io-util", "macros", "net", "rt"] }
+toml.workspace = true
 
 [lints]
 workspace = true

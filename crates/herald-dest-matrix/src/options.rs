@@ -9,6 +9,7 @@ use serde::Deserialize;
 #[serde(deny_unknown_fields)]
 pub struct DestinationOptions {
     /// The homeserver's base URL, such as `https://matrix.org`.
+    #[schemars(example = "https://matrix.org")]
     pub homeserver: String,
     /// The secret holding the bot account's access token.
     pub token: SecretRef,
@@ -31,6 +32,7 @@ pub struct DestinationOptions {
 pub struct RouteOptions {
     /// The room's id, such as `!abcdefg:matrix.org`, which the bot has
     /// joined.
+    #[schemars(example = "!abcdefg:matrix.org")]
     pub room: String,
 }
 

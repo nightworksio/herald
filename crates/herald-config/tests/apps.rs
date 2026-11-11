@@ -87,7 +87,7 @@ body = "{{ event.body }}"
     #[test]
     fn a_token_listed_by_two_apps_is_refused_naming_both() {
         let text = with(&format!(
-            "[apps.ci]\ntokens = [\"{}\"]\n[apps.cd]\ntokens = [\"{}\"]\n",
+            "[apps.ci]\nprojects = [\"herald\"]\ntokens = [\"{}\"]\n[apps.cd]\nprojects = [\"herald\"]\ntokens = [\"{}\"]\n",
             token('a'),
             token('a')
         ));
@@ -101,7 +101,7 @@ body = "{{ event.body }}"
     #[test]
     fn an_app_naming_its_routes_announces_to_those_only() {
         let text = with(&format!(
-            "[apps.ci]\ntokens = [\"{}\"]\nroutes = [\"everything\"]\n",
+            "[apps.ci]\nprojects = [\"herald\"]\ntokens = [\"{}\"]\nroutes = [\"everything\"]\n",
             token('c')
         ));
         let config = load("herald.toml", &text, &nothing, &crate::common::kinds()).unwrap();
@@ -117,7 +117,7 @@ body = "{{ event.body }}"
     fn an_app_with_no_tokens_is_read_for_the_cli_alone() {
         let config = load(
             "herald.toml",
-            &with("[apps.ci]\n"),
+            &with("[apps.ci]\nprojects = [\"herald\"]\n"),
             &nothing,
             &crate::common::kinds(),
         )
@@ -129,7 +129,7 @@ body = "{{ event.body }}"
     fn a_route_naming_an_app_takes_its_messages() {
         let config = load(
             "herald.toml",
-            &with("[apps.ci]\n"),
+            &with("[apps.ci]\nprojects = [\"herald\"]\n"),
             &nothing,
             &crate::common::kinds(),
         )
@@ -147,7 +147,7 @@ body = "{{ event.body }}"
                 .iter()
                 .any(|source| source.as_str() == "ci")
         );
-        let kinds = with("[apps.ci]\n").replace(
+        let kinds = with("[apps.ci]\nprojects = [\"herald\"]\n").replace(
             "id = \"deploys\"\nsources = [\"ci\"]",
             "id = \"deploys\"\nsources = [\"ci\"]\nversions = \"1.*\"",
         );
@@ -169,7 +169,9 @@ body = "{{ event.body }}"
             format!("sha256:{}", "a".repeat(63)),
             format!("sha1:{}", "a".repeat(64)),
         ] {
-            let error = errors(&with(&format!("[apps.ci]\ntokens = [\"{written}\"]\n")));
+            let error = errors(&with(&format!(
+                "[apps.ci]\nprojects = [\"herald\"]\ntokens = [\"{written}\"]\n"
+            )));
             assert!(
                 error.contains(
                     "apps.ci.tokens: a token is written sha256: and its SHA-256 in 64 lowercase hex digits, as herald token new prints it"
@@ -181,7 +183,10 @@ body = "{{ event.body }}"
 
     #[test]
     fn an_app_named_as_a_source_is_refused() {
-        let error = errors(&EXAMPLE.replace("[templates.t]", "[apps.gate]\n\n[templates.t]"));
+        let error = errors(&EXAMPLE.replace(
+            "[templates.t]",
+            "[apps.gate]\nprojects = [\"herald\"]\n\n[templates.t]",
+        ));
         assert!(
             error.contains("apps.gate: a source is named \"gate\" too; a route names sources and apps alike, so give each its own name"),
             "{error}"
@@ -190,7 +195,9 @@ body = "{{ event.body }}"
 
     #[test]
     fn an_app_naming_a_route_that_does_not_take_it_or_does_not_exist_is_refused() {
-        let error = errors(&with("[apps.ci]\nroutes = [\"releases\", \"nowhere\"]\n"));
+        let error = errors(&with(
+            "[apps.ci]\nprojects = [\"herald\"]\nroutes = [\"releases\", \"nowhere\"]\n",
+        ));
         assert!(
             error.contains(
                 "apps.ci.routes: the route \"releases\" takes no event of \"ci\"; name the app in its sources"
@@ -198,7 +205,9 @@ body = "{{ event.body }}"
             "{error}"
         );
         assert!(
-            error.contains("apps.ci.routes: no route has the id \"nowhere\""),
+            error.contains(
+                "apps.ci.routes: no route has the id \"nowhere\"; the routes are \"releases\", \"deploys\", \"everything\""
+            ),
             "{error}"
         );
     }
@@ -212,10 +221,41 @@ body = "{{ event.body }}"
             ),
             "{error}"
         );
-        let error =
-            errors(&with("[apps.ci]\n").replace("sources = [\"gate\"]", "sources = [\"nobody\"]"));
+        let error = errors(
+            &with("[apps.ci]\nprojects = [\"herald\"]\n")
+                .replace("sources = [\"gate\"]", "sources = [\"nobody\"]"),
+        );
         assert!(
             error.contains("the sources and apps are \"ci\", \"gate\""),
+            "{error}"
+        );
+    }
+
+    #[test]
+    fn an_app_that_names_no_project_is_refused_with_how_to_name_one() {
+        let error = errors(&with("[apps.ci]\nprojects = []\n"));
+        assert!(
+            error.contains(
+                "apps.ci.projects: an app announces only the projects it names; give them, such as projects = [\"herald\"]"
+            ),
+            "{error}"
+        );
+        let error = errors(&with("[apps.ci]\n"));
+        assert!(
+            error.contains(
+                "apps.ci: missing field `projects`; give it, such as projects = [\"herald\"]"
+            ),
+            "{error}"
+        );
+    }
+
+    #[test]
+    fn an_app_no_route_names_is_refused_with_how_to_name_it() {
+        let error = errors(&with("[apps.cd]\nprojects = [\"herald\"]\n"));
+        assert!(
+            error.contains(
+                "apps.cd: no route names the app \"cd\" among its sources, so it announces nothing; add \"cd\" to a route's sources"
+            ),
             "{error}"
         );
     }

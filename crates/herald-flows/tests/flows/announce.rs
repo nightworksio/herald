@@ -1,4 +1,4 @@
-use herald_config::{Config, load};
+use herald_config::{Config, Uses, load};
 use herald_core::{Chore, Entry, Identity, Key, RouteId, SourceName, Step};
 use herald_flows::{Announced, Outcome, Ports, PrepareError, Stop, announce, prepare};
 use herald_ports::{Announcements, Ledger, Pins, Schedules};
@@ -39,7 +39,8 @@ fn an_event_is_announced_once_and_a_rerun_sends_nothing() {
 fn an_event_no_route_takes_is_announced_nowhere() {
     let store = healthy();
     let config = config("");
-    let prepared = pollster::block_on(prepare(&config, &secrets(), &FakeSigner)).unwrap();
+    let prepared =
+        pollster::block_on(prepare(&config, &secrets(), &FakeSigner, Uses::Polls)).unwrap();
     let connected = prepared
         .connect(|_| Ok::<_, ()>(Script::default()))
         .unwrap();
@@ -252,7 +253,7 @@ fn an_event_a_template_cannot_render_or_a_marker_key_that_fails_stops_before_any
         secret: "BAD".to_owned(),
     });
     let secrets = secrets().with("BAD", "x");
-    let prepared = pollster::block_on(prepare(&keyed, &secrets, &FakeSigner)).unwrap();
+    let prepared = pollster::block_on(prepare(&keyed, &secrets, &FakeSigner, Uses::Polls)).unwrap();
     assert_eq!(prepared.derived(), Vec::<&RouteId>::new());
     let connected = prepared.connect(|_| Ok::<_, ()>(script.clone())).unwrap();
     let ports = Ports {
@@ -281,8 +282,13 @@ fn an_event_a_template_cannot_render_or_a_marker_key_that_fails_stops_before_any
 #[test]
 fn credentials_and_marker_keys_that_cannot_be_resolved_say_why() {
     let loaded = config("");
-    let missing =
-        pollster::block_on(prepare(&loaded, &FakeSecrets::default(), &FakeSigner)).unwrap_err();
+    let missing = pollster::block_on(prepare(
+        &loaded,
+        &FakeSecrets::default(),
+        &FakeSigner,
+        Uses::Polls,
+    ))
+    .unwrap_err();
     assert!(
         missing.to_string().contains("HERALD_DISCORD_TOKEN"),
         "{missing}"
@@ -293,6 +299,7 @@ fn credentials_and_marker_keys_that_cannot_be_resolved_say_why() {
             .with("HERALD_DISCORD_TOKEN", "x")
             .with("BAD", "y"),
         &FakeSigner,
+        Uses::Polls,
     ));
     assert!(underived.is_ok());
     let mut bad = token_named("BAD");
@@ -300,6 +307,7 @@ fn credentials_and_marker_keys_that_cannot_be_resolved_say_why() {
         &bad,
         &FakeSecrets::default().with("BAD", "y"),
         &FakeSigner,
+        Uses::Polls,
     ))
     .unwrap_err();
     assert!(matches!(derived, PrepareError::Crypto(_)), "{derived}");
@@ -312,15 +320,16 @@ fn credentials_and_marker_keys_that_cannot_be_resolved_say_why() {
         options.token = None;
         *destination = herald_config::Destination::new(options);
     }
-    let none = pollster::block_on(prepare(&bad, &secrets(), &FakeSigner)).unwrap_err();
+    let none = pollster::block_on(prepare(&bad, &secrets(), &FakeSigner, Uses::Polls)).unwrap_err();
     assert_eq!(
         none.to_string(),
-        "the destination \"discord\" names no credential"
+        "the destination \"discord\" names no credential; give it the token or webhook it reaches its platform with, as [destinations.discord] token = { secret = \"NAME\" }"
     );
     let mut orphan = config("");
     orphan.destinations.clear();
-    let lost = pollster::block_on(prepare(&orphan, &secrets(), &FakeSigner)).unwrap_err();
-    let unplaced = "the route \"releases\" names a destination the config does not have, or one of another kind";
+    let lost =
+        pollster::block_on(prepare(&orphan, &secrets(), &FakeSigner, Uses::Polls)).unwrap_err();
+    let unplaced = "the route \"releases\" names a destination the config does not have, or one of another kind; run herald doctor and fix what it names";
     assert_eq!(lost.to_string(), unplaced);
     let mut crossed = config("");
     for destination in crossed.destinations.values_mut() {
@@ -335,9 +344,11 @@ fn credentials_and_marker_keys_that_cannot_be_resolved_say_why() {
                 });
         }
     }
-    let crossed = pollster::block_on(prepare(&crossed, &secrets(), &FakeSigner)).unwrap_err();
+    let crossed =
+        pollster::block_on(prepare(&crossed, &secrets(), &FakeSigner, Uses::Polls)).unwrap_err();
     assert_eq!(crossed.to_string(), unplaced);
-    let prepared = pollster::block_on(prepare(&loaded, &secrets(), &FakeSigner)).unwrap();
+    let prepared =
+        pollster::block_on(prepare(&loaded, &secrets(), &FakeSigner, Uses::Polls)).unwrap();
     assert_eq!(prepared.derived(), [&RouteId::new("releases")]);
     assert_eq!(
         prepared
@@ -386,6 +397,7 @@ fn hooked(config: &Config, store: &Failing) -> (Vec<Announced>, Script) {
         config,
         &FakeSecrets::default().with("HOOK", "https://discord.com/api/webhooks/1/x"),
         &FakeSigner,
+        Uses::Polls,
     ))
     .unwrap();
     let script = Script::answering(&[(
@@ -535,7 +547,8 @@ fn routes_and_sources_on_one_base_share_its_http() {
     let config = config(
         "[[routes]]\nid = \"second\"\nsources = [\"gate\"]\ndestination = \"discord\"\nchannel = \"1566200000000000200\"\ntemplate = \"release\"\n[sources.cli]\nkind = \"github\"\nrepository = \"cli/cli\"\n",
     );
-    let prepared = pollster::block_on(prepare(&config, &secrets(), &FakeSigner)).unwrap();
+    let prepared =
+        pollster::block_on(prepare(&config, &secrets(), &FakeSigner, Uses::Polls)).unwrap();
     let mut made = Vec::new();
     let connected = prepared.connect(|base| {
         made.push(base.to_owned());
@@ -546,7 +559,7 @@ fn routes_and_sources_on_one_base_share_its_http() {
         made,
         ["https://discord.com/api/v10", "https://api.github.com"]
     );
-    let refused = pollster::block_on(prepare(&config, &secrets(), &FakeSigner))
+    let refused = pollster::block_on(prepare(&config, &secrets(), &FakeSigner, Uses::Polls))
         .unwrap()
         .connect(|base| {
             if base.contains("github") {

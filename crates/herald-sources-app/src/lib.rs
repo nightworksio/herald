@@ -25,21 +25,28 @@ pub const SCHEME: Scheme = Scheme {
 #[schemars(title = "herald event")]
 pub struct AppEvent {
     /// The app's own id for the event, which no other event of the app has.
+    /// Any text: a request reading its standing back writes it as one path
+    /// segment, percent-encoded.
+    #[schemars(length(min = 1, max = MOST), pattern(WRITTEN))]
     pub id: String,
     /// What kind of thing it announces: one herald ships or one the config
     /// declares; `message` where it is left out.
     #[serde(default = "message")]
     pub kind: Kind,
     /// The project it is about.
+    #[schemars(length(min = 1, max = MOST), pattern(WRITTEN))]
     pub project: String,
     /// A title, on one line.
+    #[schemars(length(min = 1, max = MOST), pattern(WRITTEN))]
     pub title: String,
     /// The body, in Markdown.
     #[serde(default)]
+    #[schemars(length(max = MOST))]
     pub body: String,
     /// Named links, each an `https` or `http` URL: `release`, `changelog`,
     /// `comparison`, `download`.
     #[serde(default)]
+    #[schemars(with = "BTreeMap<String, Link>", extend("propertyNames" = { "pattern": WRITTEN }))]
     pub links: BTreeMap<String, String>,
     /// Its kind's attributes, by name: a versioned kind's `version`, and
     /// `prerelease`.
@@ -48,8 +55,33 @@ pub struct AppEvent {
     /// When it happened, in RFC 3339; when herald read it where it is left
     /// out.
     #[serde(default)]
-    #[schemars(with = "Option<String>")]
+    #[schemars(with = "Option<String>", extend("format" = "date-time"))]
     pub occurred: Option<Timestamp>,
+}
+
+/// The pattern of a field herald refuses when it holds only white space.
+const WRITTEN: &str = r"\S";
+
+/// A link of an event, as the schema holds it: an `https` or `http` URL.
+struct Link;
+
+impl JsonSchema for Link {
+    fn inline_schema() -> bool {
+        true
+    }
+
+    fn schema_name() -> std::borrow::Cow<'static, str> {
+        "Link".into()
+    }
+
+    fn json_schema(_: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        schemars::json_schema!({
+            "type": "string",
+            "format": "uri",
+            "pattern": "^https?://",
+            "maxLength": MOST
+        })
+    }
 }
 
 /// The kind of an event an app leaves unnamed.
@@ -97,10 +129,11 @@ impl fmt::Display for Unread {
 /// The most bytes an app's event may hold (ADR-0003).
 pub const MOST: usize = herald_wire::PARSE_LIMIT;
 
-/// The identity of the event `app` gave `id`.
+/// The identity of the event `app` gave `id`, white space around it taken
+/// off.
 #[must_use]
 pub fn identity(app: &str, id: &str) -> String {
-    format!("app/{app}/{id}")
+    format!("app/{app}/{}", id.trim())
 }
 
 /// The event `body` holds, written by the app named `app`, of one of the
@@ -115,15 +148,14 @@ pub fn event(app: &str, body: &[u8], now: Timestamp, kinds: &KindSpecs) -> Resul
     }
     let written: AppEvent =
         serde_json::from_slice(body).map_err(|error| Unread::NotAnEvent(error.to_string()))?;
-    let id = written.id.trim();
-    if id.is_empty() {
+    if written.id.trim().is_empty() {
         return Err(Unread::NoId);
     }
     let Some(spec) = kinds.get(&written.kind) else {
         return Err(Unread::UnknownKind(written.kind));
     };
     let event = Event::normalise(Draft {
-        identity: identity(app, id),
+        identity: identity(app, &written.id),
         kind: written.kind,
         project: written.project,
         title: written.title,

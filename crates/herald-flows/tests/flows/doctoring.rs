@@ -1,6 +1,6 @@
 use std::collections::BTreeSet;
 
-use herald_config::{Config, KeyCache, load};
+use herald_config::{Config, KeyCache, Uses, load};
 use herald_flows::{
     Cadence, Egress, Findings, Gap, Here, Layer, Memory, Outcome, Ports, Rounds, Stop, Tier,
     doctor, online, prepare, secrets, trial,
@@ -381,7 +381,7 @@ fn every_secret_is_read_and_one_not_set_here_is_noted_or_a_gap_online() {
         ]
     );
     let online = read(&one, true);
-    assert_eq!(keyed(&online), [("HERALD_ACTIVITYPUB_KEY", None)]);
+    assert_eq!(keyed(&online), [("destinations.fedi.key", None)]);
     assert_eq!(
         online.gaps[0].feature,
         "reading the secret HERALD_ACTIVITYPUB_KEY"
@@ -403,6 +403,7 @@ fn online_each_route_s_platform_is_asked_and_its_answers_named_once_per_destinat
         &configured,
         &crate::harness::secrets(),
         &FakeSigner,
+        Uses::Polls,
     ))
     .unwrap();
     let ask = |answers: &[(&str, u16, &str)]| {
@@ -495,7 +496,8 @@ body = "{{ event.body }}"
 "#,
     );
     let given = FakeSecrets::default().with("T", "token");
-    let prepared = pollster::block_on(prepare(&configured, &given, &FakeSigner)).unwrap();
+    let prepared =
+        pollster::block_on(prepare(&configured, &given, &FakeSigner, Uses::Polls)).unwrap();
     let script = Script::answering(&[
         ("/api/v1/accounts/verify_credentials", 200, "{}"),
         (
@@ -522,7 +524,8 @@ body = "{{ event.body }}"
 
 fn tried(configured: &Config, script: &Script) -> Vec<herald_flows::Announced> {
     let given = crate::harness::secrets().with("HERALD_ACTIVITYPUB_KEY", "the-key");
-    let prepared = pollster::block_on(prepare(configured, &given, &FakeSigner)).unwrap();
+    let prepared =
+        pollster::block_on(prepare(configured, &given, &FakeSigner, Uses::Polls)).unwrap();
     let connected = prepared.connect(|_| Ok::<_, ()>(script.clone())).unwrap();
     let store = healthy();
     let ports = Ports {

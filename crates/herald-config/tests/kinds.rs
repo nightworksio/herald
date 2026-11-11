@@ -30,6 +30,7 @@ kind = "discord"
 token = { secret = "HERALD_DISCORD_TOKEN" }
 
 [apps.ci]
+projects = ["herald"]
 
 [[routes]]
 id = "deploys"

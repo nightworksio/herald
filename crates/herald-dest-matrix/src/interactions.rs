@@ -13,6 +13,7 @@ use serde::Deserialize;
 /// How the homeserver carries commands to herald.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize, JsonSchema)]
 #[serde(rename_all = "kebab-case")]
+#[schemars(rename = "MatrixVia")]
 pub enum Via {
     /// The homeserver pushes each room event to herald as an application
     /// service, with the registration `herald matrix registration` writes:
@@ -29,6 +30,7 @@ pub enum Via {
 /// How a Matrix destination takes commands.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
+#[schemars(rename = "MatrixInteractions")]
 pub struct Interactions {
     /// How the homeserver carries them.
     #[serde(default)]

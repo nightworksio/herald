@@ -2,24 +2,23 @@
 //! app as a source, and checked against those routes after.
 
 use std::collections::BTreeMap;
+use std::ops::Range;
 
 use herald_core::{RouteId, SourceName};
 use herald_kinds::Source;
 use toml::Spanned;
 
 use super::route::Read;
-use super::{HASH_DIGITS, Loader, Value};
+use super::{Loader, Value};
 use crate::config::App;
 use crate::file::AppFile;
-
-/// How a token's SHA-256 is written in `[apps.<name>] tokens`.
-const TOKEN_PREFIX: &str = "sha256:";
 
 /// An app as its table names it, its routes not yet checked.
 pub(super) struct Named {
     tokens: Vec<String>,
     projects: Vec<String>,
     routes: Vec<Spanned<String>>,
+    span: Range<usize>,
 }
 
 impl Loader<'_> {
@@ -38,6 +37,17 @@ impl Loader<'_> {
                 continue;
             };
             let mut sound = true;
+            if app.projects.is_empty() {
+                self.error(
+                    &span,
+                    &format!("{path}.projects"),
+                    format!(
+                        "an app announces only the projects it names; give them, such as projects = [{}]",
+                        super::list(&AppFile::PROJECTS)
+                    ),
+                );
+                sound = false;
+            }
             if sources.contains_key(&SourceName::new(&name)) {
                 self.error(
                     &span,
@@ -50,7 +60,7 @@ impl Loader<'_> {
             }
             let mut tokens = Vec::new();
             for token in &app.tokens {
-                if let Some(hash) = hash(token.get_ref()) {
+                if let Some(hash) = AppFile::hash(token.get_ref()) {
                     if let Some(holder) = held.insert(hash.to_owned(), path.clone()) {
                         self.error(
                             &token.span(),
@@ -78,6 +88,7 @@ impl Loader<'_> {
                         tokens,
                         projects: app.projects,
                         routes: app.routes,
+                        span,
                     },
                 );
             }
@@ -105,7 +116,15 @@ impl Loader<'_> {
             for route in &app.routes {
                 let id = RouteId::new(route.get_ref());
                 let why = if !routes.iter().any(|read| read.config.route.id == id) {
-                    format!("no route has the id \"{}\"", id.as_str())
+                    let ids: Vec<&str> = routes
+                        .iter()
+                        .map(|read| read.config.route.id.as_str())
+                        .collect();
+                    format!(
+                        "no route has the id \"{}\"; the routes are {}",
+                        id.as_str(),
+                        super::list(&ids)
+                    )
                 } else if !taking(&id) {
                     format!(
                         "the route \"{}\" takes no event of \"{name}\"; name the app in its sources",
@@ -121,11 +140,22 @@ impl Loader<'_> {
                 continue;
             }
             let routes = if app.routes.is_empty() {
-                routes
+                let taken: Vec<RouteId> = routes
                     .iter()
                     .map(|read| read.config.route.id.clone())
                     .filter(|id| taking(id))
-                    .collect()
+                    .collect();
+                if taken.is_empty() {
+                    self.error(
+                        &app.span,
+                        &format!("apps.{name}"),
+                        format!(
+                            "no route names the app \"{name}\" among its sources, so it announces nothing; add \"{name}\" to a route's sources"
+                        ),
+                    );
+                    continue;
+                }
+                taken
             } else {
                 app.routes
                     .iter()
@@ -143,15 +173,4 @@ impl Loader<'_> {
         }
         apps
     }
-}
-
-/// The SHA-256 `token` names, where it is written `sha256:` and 64 lowercase
-/// hex digits.
-fn hash(token: &str) -> Option<&str> {
-    token.strip_prefix(TOKEN_PREFIX).filter(|hash| {
-        hash.len() == HASH_DIGITS
-            && hash
-                .bytes()
-                .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
-    })
 }

@@ -237,7 +237,7 @@ fn a_dry_run_prints_every_request_redacted_and_sends_and_keeps_nothing() {
         (stopped.code, stopped.err.as_str()),
         (
             STOPPED,
-            "no secret is named HERALD_DISCORD_TOKEN; set it where this platform keeps secrets\n"
+            "destinations.discord.token: no secret is named HERALD_DISCORD_TOKEN; set it where this platform keeps secrets\n"
         )
     );
 }

@@ -13,6 +13,7 @@ use serde::Deserialize;
 /// How Slack carries commands to herald.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize, JsonSchema)]
 #[serde(rename_all = "kebab-case")]
+#[schemars(rename = "SlackVia")]
 pub enum Via {
     /// Slack posts each command and button press to herald's endpoint,
     /// signed with the app's signing secret: served by `herald server` and
@@ -28,6 +29,7 @@ pub enum Via {
 /// How a Slack destination takes commands.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
+#[schemars(rename = "SlackInteractions")]
 pub struct Interactions {
     /// How Slack carries them.
     #[serde(default)]
@@ -165,6 +167,7 @@ impl Interactions {
 /// subscribers.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
+#[schemars(rename = "SlackSubscribe")]
 pub struct Subscribe {
     /// Whether each announcement carries a button that subscribes, or
     /// unsubscribes a member already subscribed.

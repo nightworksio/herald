@@ -42,11 +42,15 @@ pub async fn secrets<S: Secrets>(config: &Config, secrets: &S, here: &Here) -> F
             }
             Err(error) => error.to_string(),
         };
-        findings.gaps.push(gap(
-            &format!("reading the secret {name}"),
-            name.to_owned(),
-            why,
-        ));
+        let keys = config.keys_naming(name);
+        let key = if keys.is_empty() {
+            name.to_owned()
+        } else {
+            keys.join(", ")
+        };
+        findings
+            .gaps
+            .push(gap(&format!("reading the secret {name}"), key, why));
     }
     if !unset.is_empty() {
         findings.notes.push(format!(

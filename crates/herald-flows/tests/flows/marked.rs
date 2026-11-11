@@ -1,4 +1,4 @@
-use herald_config::load;
+use herald_config::{Uses, load};
 use herald_core::{Chore, SourceName};
 use herald_flows::{Outcome, Ports, announce, prepare};
 use herald_ports::{Ledger, Schedules};
@@ -34,7 +34,8 @@ fn posted_by_herald() -> String {
 fn an_announcement_kept_only_in_its_post_is_found_there_by_the_next_run() {
     let config = config("");
     let script = Script::default();
-    let prepared = pollster::block_on(prepare(&config, &secrets(), &FakeSigner)).unwrap();
+    let prepared =
+        pollster::block_on(prepare(&config, &secrets(), &FakeSigner, Uses::Polls)).unwrap();
     let connected = prepared.connect(|_| Ok::<_, ()>(script.clone())).unwrap();
     let store = connected.marked(FakeSigner);
     let clock = FakeClock::at(NOON);
@@ -133,7 +134,8 @@ body = "b"
     )
     .unwrap();
     let secrets = secrets().with("HOOK", "https://discord.com/api/webhooks/1/x");
-    let prepared = pollster::block_on(prepare(&config, &secrets, &FakeSigner)).unwrap();
+    let prepared =
+        pollster::block_on(prepare(&config, &secrets, &FakeSigner, Uses::Polls)).unwrap();
     let script = Script::default();
     let connected = prepared.connect(|_| Ok::<_, ()>(script.clone())).unwrap();
     let store = connected.marked(FakeSigner);

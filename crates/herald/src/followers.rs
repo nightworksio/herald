@@ -6,7 +6,7 @@ use std::collections::BTreeMap;
 use std::io::Write;
 
 use herald_compose::Served;
-use herald_config::Config;
+use herald_config::{Config, Uses};
 use herald_core::{DestinationName, Sent, Subscription};
 use herald_crypto::RingSigner;
 use herald_environment::SystemClock;
@@ -16,7 +16,7 @@ use herald_ports::{Clock as _, Keyring, Store as Keeps};
 use super::cli::Following;
 use super::connect::Connection;
 use super::output::say;
-use super::stores::{Commands, STORES, reached};
+use super::stores::{STORES, reached};
 use super::{Connect, DONE, STOPPED};
 
 /// What the operator asks of an actor's followers.
@@ -79,8 +79,7 @@ pub(crate) async fn following(
     following: &Following,
     out: &mut dyn Write,
 ) -> Result<u8, String> {
-    let (records, connected) =
-        reached(config, vars, connect, Commands::Unanswered, &STORES).await?;
+    let (records, connected) = reached(config, vars, connect, Uses::Announces, &STORES).await?;
     let (destination, actor, decided) = match following {
         Following::List { destination, actor } => (destination, actor, None),
         Following::Approve {

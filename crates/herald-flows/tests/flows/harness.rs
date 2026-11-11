@@ -1,7 +1,7 @@
 use std::collections::VecDeque;
 use std::sync::Mutex;
 
-use herald_config::{Config, load};
+use herald_config::{Config, Uses, load};
 use herald_core::{
     Cursor, DestinationName, Draft, Entry, Event, Identity, Key, Kind, RouteId, Schedule, Scheme,
     SourceName, State, Step, Subscription,
@@ -172,7 +172,9 @@ pub(crate) async fn run<S: Store>(
     version: &str,
     run: &str,
 ) -> Vec<Announced> {
-    let prepared = prepare(config, &secrets(), &FakeSigner).await.unwrap();
+    let prepared = prepare(config, &secrets(), &FakeSigner, Uses::Polls)
+        .await
+        .unwrap();
     let connected = prepared.connect(|_| Ok::<_, ()>(script.clone())).unwrap();
     let ports = Ports {
         store,

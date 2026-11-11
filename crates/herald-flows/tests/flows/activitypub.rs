@@ -1,4 +1,4 @@
-use herald_config::{Config, load};
+use herald_config::{Config, Uses, load};
 use herald_core::{
     Chore, DestinationName, Identity, Key, Marker, RouteId, Schedule, SourceName, Step,
     Subscription,
@@ -76,7 +76,7 @@ fn announced(store: &Failing, script: &Script) -> Outcome {
 
 fn announced_with(config: &Config, store: &Failing, script: &Script) -> Outcome {
     let secrets = FakeSecrets::default().with("HERALD_ACTIVITYPUB_KEY", "the-key");
-    let prepared = pollster::block_on(prepare(config, &secrets, &FakeSigner)).unwrap();
+    let prepared = pollster::block_on(prepare(config, &secrets, &FakeSigner, Uses::Polls)).unwrap();
     let connected = prepared.connect(|_| Ok::<_, ()>(script.clone())).unwrap();
     let ports = Ports {
         store,
@@ -247,7 +247,8 @@ fn an_actor_keeps_no_thread_chores() {
     pollster::block_on(store.put_schedules(&[thread], &[])).unwrap();
     let script = Script::default();
     let secrets = FakeSecrets::default().with("HERALD_ACTIVITYPUB_KEY", "the-key");
-    let prepared = pollster::block_on(prepare(&config, &secrets, &FakeSigner)).unwrap();
+    let prepared =
+        pollster::block_on(prepare(&config, &secrets, &FakeSigner, Uses::Polls)).unwrap();
     let connected = prepared.connect(|_| Ok::<_, ()>(script.clone())).unwrap();
     let kept = pollster::block_on(housekeep(
         &connected,
@@ -278,7 +279,9 @@ fn keyed(secret: &str) -> Config {
 #[test]
 fn an_actor_whose_key_cannot_sign_stops_every_run_before_it_starts() {
     let secrets = FakeSecrets::default().with("BAD", "not a key");
-    let Err(unkeyed) = pollster::block_on(prepare(&keyed("BAD"), &secrets, &FakeSigner)) else {
+    let Err(unkeyed) =
+        pollster::block_on(prepare(&keyed("BAD"), &secrets, &FakeSigner, Uses::Polls))
+    else {
         panic!("the run stops");
     };
     assert_eq!(
@@ -400,10 +403,13 @@ fn every_inbox_is_delivered_to_at_once_and_only_those_that_failed_remain() {
 }
 
 #[test]
-fn deliveries_go_out_as_many_at_once_as_the_server_table_allows() {
+fn deliveries_go_out_as_many_at_once_as_the_destination_allows() {
     let config = load(
         "herald.toml",
-        &format!("{}\n[server]\ndeliveries = 1\n", toml_text()),
+        &toml_text().replace(
+            "key = { secret = \"HERALD_ACTIVITYPUB_KEY\" }",
+            "key = { secret = \"HERALD_ACTIVITYPUB_KEY\" }\ndeliveries = 1",
+        ),
         &|_| Err(String::new()),
         &crate::harness::kinds(),
     )

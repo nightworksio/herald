@@ -562,9 +562,22 @@ body = "{{ event.body }}"
         }
         let actorless = ACTIVITYPUB.replace("actor = \"php-mutation-gate\"\n", "");
         assert!(
-            errors(&actorless).contains("routes[0]: missing field `actor`"),
+            errors(&actorless).contains(
+                "routes[0]: missing field `actor`; give it, such as actor = \"php-mutation-gate\""
+            ),
             "{}",
             errors(&actorless)
+        );
+        let unlisted = ACTIVITYPUB.replace(
+            "key = { secret = \"HERALD_ACTIVITYPUB_KEY\" }",
+            "key = { secret = \"HERALD_ACTIVITYPUB_KEY\" }\nlists = [{ sha256 = \"00\" }]",
+        );
+        assert!(
+            errors(&unlisted).contains(
+                "destinations.fedi.lists[0]: missing field `file`; give it, such as file = \"blocklist.csv\""
+            ),
+            "{}",
+            errors(&unlisted)
         );
         let marked = ACTIVITYPUB.replace(
             "kind = \"git-branch\"\nkey = { secret = \"HERALD_STORE_KEY\" }",

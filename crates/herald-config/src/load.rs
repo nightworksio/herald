@@ -1,9 +1,8 @@
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 use std::ops::Range;
 
-use herald_core::{
-    DestinationName, KindSpecs, RecordKind, Retention, RouteId, SourceName, TemplateName,
-};
+use herald_core::{DestinationName, KindSpecs, RecordKind, Retention, SourceName, TemplateName};
+use schemars::JsonSchema;
 use serde::de::DeserializeOwned;
 use toml::Spanned;
 use toml::de::{DeTable, DeValue, ValueDeserializer};
@@ -13,14 +12,13 @@ use herald_store_git_branch::GitBranchKind;
 
 use crate::config::{Config, Schedule};
 use crate::error::{ConfigError, Errors};
+use crate::example::explained;
 use crate::file::{HttpFile, Keep, KeepFile, MarkersFile, ScheduleFile, ServerFile, TemplateFile};
 use crate::kinds::{At, Kinds};
 use crate::position::position;
 
 pub(crate) type Value<'i> = Spanned<DeValue<'i>>;
 
-/// The version of the config this herald reads.
-const VERSION: i64 = 1;
 /// The top-level keys of `herald.toml`.
 const SECTIONS: [&str; 14] = [
     "version",
@@ -38,8 +36,6 @@ const SECTIONS: [&str; 14] = [
     "render",
     "announce",
 ];
-/// The length of a SHA-256 in hex.
-const HASH_DIGITS: usize = 64;
 
 fn list(names: &[&str]) -> String {
     names
@@ -75,6 +71,7 @@ fn path_at(base: &str, value: &Value<'_>, at: &Range<usize>) -> String {
 }
 
 pub(crate) struct Loader<'t> {
+    file: &'t str,
     text: &'t str,
     kinds: &'t Kinds,
     specs: KindSpecs,
@@ -127,9 +124,23 @@ impl Loader<'_> {
         self.error(at.span, &path, fault.message.clone());
     }
 
-    pub(crate) fn typed<T: DeserializeOwned>(&mut self, value: Value<'_>, path: &str) -> Option<T> {
+    pub(crate) fn typed<T: DeserializeOwned + JsonSchema>(
+        &mut self,
+        value: Value<'_>,
+        path: &str,
+    ) -> Option<T> {
         let mut typed = None;
-        let clean = self.retrying(value, path, &mut |value| {
+        let explain = |message: &str, at: &str| {
+            let within: Vec<&str> = at
+                .strip_prefix(path)
+                .unwrap_or_default()
+                .split('.')
+                .filter(|step| !step.is_empty())
+                .map(|step| step.split_once('[').map_or(step, |(key, _)| key))
+                .collect();
+            explained::<T>(message, &within)
+        };
+        let clean = self.retrying(value, path, &explain, &mut |value| {
             T::deserialize(ValueDeserializer::from(value)).map(|read| typed = Some(read))
         });
         typed.filter(|_| clean)
@@ -139,6 +150,7 @@ impl Loader<'_> {
         &mut self,
         value: Value<'_>,
         path: &str,
+        explain: &dyn Fn(&str, &str) -> String,
         attempt: &mut dyn FnMut(Value<'_>) -> Result<(), toml::de::Error>,
     ) -> bool {
         let mut value = value;
@@ -150,8 +162,10 @@ impl Loader<'_> {
                 return !reported;
             };
             let at = error.span().unwrap_or(span.clone());
+            let at_path = path_at(path, &copy, &at);
+            let message = explain(error.message(), &at_path);
             let DeValue::Table(mut table) = copy.clone().into_inner() else {
-                self.error(&at, &path_at(path, &copy, &at), error.message());
+                self.error(&at, &at_path, message);
                 return false;
             };
             let culprit = table
@@ -160,11 +174,11 @@ impl Loader<'_> {
                 .map(|(key, _)| key.get_ref().to_string());
             let Some(key) = culprit else {
                 if !reported {
-                    self.error(&at, path, error.message());
+                    self.error(&at, path, explain(error.message(), path));
                 }
                 return false;
             };
-            self.error(&at, &path_at(path, &copy, &at), error.message());
+            self.error(&at, &at_path, message);
             table.remove(key.as_str());
             reported = true;
             value = Spanned::new(span, DeValue::Table(table));
@@ -268,7 +282,8 @@ impl Loader<'_> {
                         &key.span(),
                         other,
                         format!(
-                            "herald.toml has no key \"{other}\"; the keys are {}",
+                            "{} has no key \"{other}\"; the keys are {}",
+                            self.file,
                             list(&SECTIONS)
                         ),
                     );
@@ -282,29 +297,40 @@ impl Loader<'_> {
 
     fn version(&mut self, value: Option<Value<'_>>) {
         let Some(value) = value else {
-            self.error(&(0..0), "version", "give the config's version: version = 1");
+            self.error(
+                &(0..0),
+                "version",
+                format!("give the config's version: version = {}", Config::VERSION),
+            );
             return;
         };
         let span = value.span();
-        if self.typed::<i64>(value, "version") != Some(VERSION) {
+        if self.typed::<i64>(value, "version") != Some(Config::VERSION) {
             self.error(
                 &span,
                 "version",
-                "this herald reads version 1 of the config; write version = 1",
+                format!(
+                    "this herald reads version {0} of the config; write version = {0}",
+                    Config::VERSION
+                ),
             );
         }
     }
 
     fn store(&mut self, value: Option<Value<'_>>) -> Option<(Store, Retention)> {
+        let kinds = self.kinds;
         let Some(value) = value else {
             self.error(
                 &(0..0),
                 "store",
-                "choose a store: [store] with kind = \"git-branch\" on GitHub Actions",
+                format!(
+                    "choose a store: [store] with kind = one of {}, such as \"{}\" on GitHub Actions",
+                    list(&kinds.store_kinds()),
+                    GitBranchKind::NAME
+                ),
             );
             return None;
         };
-        let kinds = self.kinds;
         let (kind, span, table) = self.kinded_table(value, "store", &kinds.store_kinds())?;
         let kind = kinds.store_named(&kind)?;
         if !kind.retained() {
@@ -562,7 +588,11 @@ impl Loader<'_> {
                         self.error(
                             &file.span(),
                             &format!("{path}.file"),
-                            format!("{} could not be read: {reason}", file.get_ref()),
+                            format!(
+                                "{} could not be read: {reason}; name a file beside {}, or write the body inline as body = \"…\"",
+                                file.get_ref(),
+                                self.file
+                            ),
                         );
                         None
                     }
@@ -604,6 +634,7 @@ pub fn load(
     kinds: &Kinds,
 ) -> Result<Config, Errors> {
     let mut loader = Loader {
+        file,
         text,
         kinds,
         specs: KindSpecs::default(),
@@ -613,6 +644,7 @@ pub fn load(
     for error in syntax {
         loader.error(&error.span().unwrap_or(0..0), "", error.message());
     }
+    let secret_keys = secret_keys(root.get_ref());
     let sections = loader.sections(root.into_inner());
     loader.version(sections.version);
     loader.specs = loader.declared(sections.kinds);
@@ -625,25 +657,13 @@ pub fn load(
     let sources = loader.sources(sections.sources);
     let templates = loader.templates(sections.templates, read);
     let listed = loader.apps(sections.apps, &sources);
-    let mut routes = Vec::new();
-    let mut ids: BTreeSet<RouteId> = BTreeSet::new();
-    for (index, value) in loader.routes(sections.routes).into_iter().enumerate() {
-        if let Some(read) = loader.route(index, value, &destinations, &sources, &listed, &templates)
-        {
-            if !ids.insert(read.config.route.id.clone()) {
-                loader.error(
-                    &read.id_span,
-                    &format!("{}.id", read.path),
-                    format!(
-                        "another route has the id \"{}\"; give each route its own",
-                        read.config.route.id.as_str()
-                    ),
-                );
-                continue;
-            }
-            routes.push(read);
-        }
-    }
+    let routes = loader.every_route(
+        sections.routes,
+        &destinations,
+        &sources,
+        &listed,
+        &templates,
+    );
     loader.followed(store.as_ref(), &destinations, &routes);
     loader.answered(store.as_ref(), &destinations, &templates);
     let render = loader.render(sections.render);
@@ -693,6 +713,7 @@ pub fn load(
             http,
             announce,
             kinds: loader.specs,
+            secret_keys,
         });
     }
     let mut errors = loader.errors;
@@ -701,6 +722,44 @@ pub fn load(
         file: file.to_owned(),
         errors,
     })
+}
+
+/// Every secret `table` names as `{ secret = "NAME" }`, by its name, with
+/// each key that names it.
+fn secret_keys(table: &DeTable<'_>) -> BTreeMap<String, Vec<String>> {
+    let mut found = BTreeMap::new();
+    for (key, value) in table {
+        named_secrets(key.get_ref(), value, &mut found);
+    }
+    found
+}
+
+/// Each secret `value`, written at `path`, names, added to `found`.
+fn named_secrets(path: &str, value: &Value<'_>, found: &mut BTreeMap<String, Vec<String>>) {
+    match value.get_ref() {
+        DeValue::Table(table) => {
+            let mut entries = table.iter();
+            if let (Some((key, child)), None) = (entries.next(), entries.next())
+                && key.get_ref() == "secret"
+                && let DeValue::String(name) = child.get_ref()
+            {
+                found
+                    .entry(name.to_string())
+                    .or_default()
+                    .push(path.to_owned());
+                return;
+            }
+            for (key, child) in table {
+                named_secrets(&format!("{path}.{}", key.get_ref()), child, found);
+            }
+        }
+        DeValue::Array(items) => {
+            for (index, item) in items.iter().enumerate() {
+                named_secrets(&format!("{path}[{index}]"), item, found);
+            }
+        }
+        _ => {}
+    }
 }
 
 /// `options`, a store's table written at `span`, apart from how long it
@@ -723,3 +782,19 @@ mod declared;
 mod route;
 mod settings;
 mod templates;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn every_key_naming_a_secret_is_found_in_tables_and_arrays() {
+        let (root, _) = DeTable::parse_recoverable(
+            "a = [{ secret = \"X\" }]\n[b]\nc = { secret = \"X\" }\nd = { secret = 1 }\ne = { secret = \"Y\", other = 1 }\n",
+        );
+        assert_eq!(
+            secret_keys(root.get_ref()),
+            [("X".to_owned(), vec!["a[0]".to_owned(), "b.c".to_owned()])].into()
+        );
+    }
+}

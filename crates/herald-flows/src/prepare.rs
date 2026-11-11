@@ -2,13 +2,14 @@ use std::collections::BTreeMap;
 use std::fmt;
 use std::sync::Arc;
 
-use herald_config::{Config, Destination, Placed, RouteConfig};
+use herald_config::{Config, Destination, Placed, RouteConfig, Uses};
 use herald_core::{DestinationName, RouteId, SourceName, hex};
 use herald_kinds::{Interacted, Poll};
 use herald_ports::{Algorithm, CryptoError, Http, Secret, SecretError, Secrets, Signer};
 use herald_store_markers::{MarkedRoute, MarkersStore};
 
 use crate::reached::{Posts, Reached};
+use crate::serving::Webhooks;
 
 /// What a marker key is derived from a credential under (ADR-0011).
 const DERIVATION: &[u8] = b"herald/marker-key/v1";
@@ -16,8 +17,9 @@ const DERIVATION: &[u8] = b"herald/marker-key/v1";
 /// Why a config's credentials could not be resolved.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PrepareError {
-    /// A secret the config names could not be read.
-    Secret(SecretError),
+    /// Every secret the run needs that could not be read, each with the
+    /// keys that name it.
+    Unread(Vec<Unread>),
     /// A marker key could not be derived.
     Crypto(CryptoError),
     /// A destination names neither a token nor a webhook.
@@ -43,15 +45,26 @@ pub enum PrepareError {
 impl fmt::Display for PrepareError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Secret(error) => error.fmt(f),
+            Self::Unread(unread) => {
+                for (index, one) in unread.iter().enumerate() {
+                    if index > 0 {
+                        f.write_str("\n")?;
+                    }
+                    one.fmt(f)?;
+                }
+                Ok(())
+            }
             Self::Crypto(error) => error.fmt(f),
             Self::NoCredential { destination } => {
-                write!(f, "the destination \"{destination}\" names no credential")
+                write!(
+                    f,
+                    "the destination \"{destination}\" names no credential; give it the token or webhook it reaches its platform with, as [destinations.{destination}] token = {{ secret = \"NAME\" }}"
+                )
             }
             Self::NoDestination { route } => {
                 write!(
                     f,
-                    "the route \"{route}\" names a destination the config does not have, or one of another kind"
+                    "the route \"{route}\" names a destination the config does not have, or one of another kind; run herald doctor and fix what it names"
                 )
             }
             Self::Unkeyed {
@@ -67,7 +80,75 @@ impl fmt::Display for PrepareError {
 
 impl From<SecretError> for PrepareError {
     fn from(error: SecretError) -> Self {
-        Self::Secret(error)
+        Self::Unread(vec![Unread {
+            error,
+            keys: Vec::new(),
+        }])
+    }
+}
+
+/// A secret a run needs that could not be read, and the keys that name it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Unread {
+    /// Why it could not be read.
+    pub error: SecretError,
+    /// The keys that name it, such as `destinations.discord.token`.
+    pub keys: Vec<String>,
+}
+
+impl fmt::Display for Unread {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if !self.keys.is_empty() {
+            write!(f, "{}: ", self.keys.join(", "))?;
+        }
+        self.error.fmt(f)
+    }
+}
+
+/// The secrets a run needs, read before anything else: each it asks for
+/// again is taken from here.
+struct Read(BTreeMap<String, Secret>);
+
+impl Secrets for Read {
+    fn secret(
+        &self,
+        name: &str,
+    ) -> impl std::future::Future<Output = Result<Secret, SecretError>> + Send {
+        std::future::ready(
+            self.0
+                .get(name)
+                .cloned()
+                .ok_or_else(|| SecretError::Missing {
+                    name: name.to_owned(),
+                }),
+        )
+    }
+}
+
+/// Every secret a run that `uses` `config` needs, read through `secrets`
+/// (ADR-0006 decision 7).
+///
+/// # Errors
+///
+/// Every one that cannot be read, each with the keys that name it.
+async fn read<S: Secrets>(config: &Config, secrets: &S, uses: Uses) -> Result<Read, PrepareError> {
+    let mut read = BTreeMap::new();
+    let mut unread = Vec::new();
+    for name in config.secrets_used(uses) {
+        match secrets.secret(name).await {
+            Ok(secret) => {
+                read.insert(name.to_owned(), secret);
+            }
+            Err(error) => unread.push(Unread {
+                error,
+                keys: config.keys_naming(name).to_vec(),
+            }),
+        }
+    }
+    if unread.is_empty() {
+        Ok(Read(read))
+    } else {
+        Err(PrepareError::Unread(unread))
     }
 }
 
@@ -101,8 +182,8 @@ pub(crate) struct PreparedSource {
 pub struct Prepared {
     routes: Vec<PreparedRoute>,
     sources: Vec<PreparedSource>,
-    destinations: Vec<(DestinationName, Destination, Secret)>,
     interacting: Vec<(DestinationName, Interacted)>,
+    webhooks: Webhooks,
 }
 
 /// The prepared routes and sources, each with the `Http` that reaches it.
@@ -111,9 +192,17 @@ pub struct Connected<H> {
     pub(crate) routes: Vec<(PreparedRoute, H)>,
     pub(crate) sources: Vec<(PreparedSource, H)>,
     pub(crate) interacting: Vec<(DestinationName, Interacted, H, Option<H>)>,
+    webhooks: Webhooks,
 }
 
 impl<H> Connected<H> {
+    /// The secret each source's webhooks are signed with, where the run
+    /// serves them.
+    #[must_use]
+    pub fn webhooks(&self) -> &Webhooks {
+        &self.webhooks
+    }
+
     /// The destination named `name`, where it takes commands, with the
     /// `Http` its answers go through.
     #[must_use]
@@ -209,6 +298,7 @@ impl Prepared {
             routes,
             sources,
             interacting,
+            webhooks: self.webhooks,
         })
     }
 }
@@ -253,9 +343,9 @@ pub(crate) async fn keyed<G: Signer>(
 
 /// Each destination of `config` with its credential and marker key,
 /// resolved through `secrets` and `signer`.
-async fn resolved<'c, S: Secrets, G: Signer>(
+async fn resolved<'c, G: Signer>(
     config: &'c Config,
-    secrets: &S,
+    secrets: &Read,
     signer: &G,
 ) -> Result<BTreeMap<&'c DestinationName, Resolved<'c>>, PrepareError> {
     let installation = match &config.marker_key {
@@ -296,19 +386,25 @@ async fn resolved<'c, S: Secrets, G: Signer>(
     Ok(resolved)
 }
 
-/// `config`'s routes and sources with every credential, token and marker
-/// key resolved through `secrets` and `signer`.
+/// `config`'s routes with every credential and marker key resolved through
+/// `secrets` and `signer`, with what else a run that `uses` it needs: each
+/// source's token where it polls, and where it serves, each destination's
+/// commands and each source's webhook secret. Every secret the run needs
+/// beside its store's is read first, and every one that cannot be is named
+/// at once.
 ///
 /// # Errors
 ///
-/// The first secret that cannot be read, or marker key that cannot be
-/// derived.
+/// Every secret that cannot be read, or the first marker key that cannot
+/// be derived.
 pub async fn prepare<S: Secrets, G: Signer>(
     config: &Config,
     secrets: &S,
     signer: &G,
+    uses: Uses,
 ) -> Result<Prepared, PrepareError> {
-    let resolved = resolved(config, secrets, signer).await?;
+    let read = read(config, secrets, uses).await?;
+    let resolved = resolved(config, &read, signer).await?;
     let mut routes = Vec::new();
     for route in &config.routes {
         let found = resolved.get(&route.route.destination);
@@ -327,44 +423,38 @@ pub async fn prepare<S: Secrets, G: Signer>(
         });
     }
     let mut sources = Vec::new();
-    for (name, source) in &config.sources {
-        let token = herald_kinds::optional(secrets, source.token()).await?;
+    for (name, source) in config.sources.iter().filter(|_| uses >= Uses::Polls) {
+        let token = herald_kinds::optional(&read, source.token()).await?;
         sources.push(PreparedSource {
             name: name.clone(),
             poll: source.poller(token),
             backfill: source.backfill(),
         });
     }
+    let mut interacting = Vec::new();
+    let mut webhooks = BTreeMap::new();
+    if uses == Uses::Serves {
+        for (name, resolved) in &resolved {
+            if let Some(found) = resolved
+                .destination
+                .interacts(&resolved.secret, &read)
+                .await?
+            {
+                interacting.push(((*name).clone(), found));
+            }
+        }
+        for (name, source) in &config.sources {
+            if let Some(named) = source.webhook() {
+                webhooks.insert(name.clone(), read.secret(&named.secret).await?);
+            }
+        }
+    }
     Ok(Prepared {
         routes,
         sources,
-        destinations: resolved
-            .into_iter()
-            .map(|(name, resolved)| (name.clone(), resolved.destination.clone(), resolved.secret))
-            .collect(),
-        interacting: Vec::new(),
+        interacting,
+        webhooks: Webhooks(webhooks),
     })
-}
-
-impl Prepared {
-    /// These routes and sources, with every destination that takes
-    /// commands, each with the secrets it answers with read through
-    /// `secrets`: what a run that answers commands needs, and no other run
-    /// reads.
-    ///
-    /// # Errors
-    ///
-    /// The first secret that cannot be read.
-    pub async fn answering<S: Secrets>(mut self, secrets: &S) -> Result<Self, PrepareError> {
-        let mut interacting = Vec::new();
-        for (name, destination, credential) in &self.destinations {
-            if let Some(found) = destination.interacts(credential, secrets).await? {
-                interacting.push((name.clone(), found));
-            }
-        }
-        self.interacting = interacting;
-        Ok(self)
-    }
 }
 
 #[cfg(test)]
@@ -377,6 +467,20 @@ mod tests {
     use serde_json::json;
 
     use super::*;
+
+    #[test]
+    fn a_secret_read_first_is_taken_again_and_one_not_read_is_missing() {
+        let read = Read([("TOKEN".to_owned(), Secret::new("TOKEN", "t"))].into());
+        assert_eq!(
+            pollster::block_on(read.secret("TOKEN")),
+            Ok(Secret::new("TOKEN", "t"))
+        );
+        let missing = pollster::block_on(read.secret("OTHER")).unwrap_err();
+        assert_eq!(
+            PrepareError::from(missing).to_string(),
+            "no secret is named OTHER; set it where this platform keeps secrets"
+        );
+    }
 
     fn reached(destination: &Destination, options: &Placed) -> Option<Reached> {
         Resolved {

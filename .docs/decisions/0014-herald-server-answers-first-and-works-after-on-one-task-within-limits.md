@@ -1,6 +1,6 @@
 # ADR-0014: herald server answers first and works after, on one task, within limits
 
-**Status:** Accepted
+**Status:** Accepted; `deliveries` superseded by [ADR-0020](0020-an-activitypub-destination-sets-how-many-inboxes-it-delivers-to-at-once.md), under which an ActivityPub destination sets it
 **Date:** 2026-11-05
 
 ## Context

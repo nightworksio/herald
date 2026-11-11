@@ -16,9 +16,9 @@ mod server {
 
     use futures_util::FutureExt as _;
     use herald_compose::Capped;
-    use herald_config::{Config, load};
+    use herald_config::{Config, Uses, load};
     use herald_core::{DestinationName, Subscription};
-    use herald_flows::{Connected, Keys, Ports, Serving, Webhooks, prepare, webhooks};
+    use herald_flows::{Connected, Keys, Ports, Serving, prepare};
     use herald_ports::{
         Admitted, Clock as _, Deliveries, Http, HttpError, Keyring as _, KnownKey, Request,
         Response, Secret, Subscriptions,
@@ -107,7 +107,6 @@ body = "{{ event.body }}"
     struct World {
         config: Config,
         connected: Connected<Gate>,
-        webhooks: Webhooks,
         store: FakeStore,
         keyring: MemoryKeyring,
         public: Capped<Gate>,
@@ -118,13 +117,13 @@ body = "{{ event.body }}"
     impl World {
         async fn new(http: Gate) -> Self {
             let config = config();
-            let prepared = prepare(&config, &secrets(), &FakeSigner).await.unwrap();
+            let prepared = prepare(&config, &secrets(), &FakeSigner, Uses::Serves)
+                .await
+                .unwrap();
             let connected = prepared.connect(|_| Ok::<_, ()>(http.clone())).unwrap();
-            let webhooks = webhooks(&config, &secrets()).await.unwrap();
             Self {
                 config,
                 connected,
-                webhooks,
                 store: FakeStore::default(),
                 keyring: MemoryKeyring::new(8),
                 public: Capped::new(http, 2),
@@ -157,7 +156,7 @@ body = "{{ event.body }}"
                 verifier: &FakeVerifier,
                 public: &self.public,
                 keys: &keys,
-                webhooks: &self.webhooks,
+                webhooks: self.connected.webhooks(),
                 admission: herald_flows::Admission::Once,
             };
             let stop: Pin<Box<dyn Future<Output = ()> + '_>> = Box::pin(stop);

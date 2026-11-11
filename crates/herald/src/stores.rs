@@ -6,7 +6,7 @@ use std::future::{Future, ready};
 use std::sync::Arc;
 
 use herald_compose::{Host, KvAt, Opener, Served, SqlAt, Unoffered};
-use herald_config::Config;
+use herald_config::{Config, Uses};
 use herald_crypto::{RingSigner, RingVerifier};
 use herald_environment::{EnvSecrets, SystemClock};
 use herald_flows::{Connected, prepare};
@@ -158,38 +158,21 @@ pub(crate) const STORES: [&str; 7] = [
     RepoVariablesKind::NAME,
 ];
 
-/// Whether a run answers the commands members give.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Commands {
-    /// It answers them, so it reads the secrets each destination answers
-    /// with.
-    Answered,
-    /// It answers none, and reads none of those secrets.
-    Unanswered,
-}
-
 /// The run's records, in a store of one of the kinds in `stores`, and
-/// every route and source connected, with every destination that takes
-/// commands where the run answers them.
+/// what a run that `uses` the config needs connected, every secret it
+/// needs read before the store is opened.
 pub(crate) async fn reached<'a>(
     config: &Config,
     vars: &'a BTreeMap<String, String>,
     connect: Connect<'a>,
-    commands: Commands,
+    uses: Uses,
     stores: &[&str],
 ) -> Result<(Records<'a>, Connected<Connection>), String> {
     let native = Arc::new(Native::new(vars, connect));
-    let opener = Opener::new(Arc::clone(&native), connect.outbound().clone());
-    let records = Records(herald_compose::reached(Arc::new(opener), &config.store, stores).await?);
-    let prepared = prepare(config, &native.secrets, &RingSigner)
+    let prepared = prepare(config, &native.secrets, &RingSigner, uses)
         .await
         .map_err(|error| error.to_string())?;
-    let prepared = match commands {
-        Commands::Answered => prepared
-            .answering(&native.secrets)
-            .await
-            .map_err(|error| error.to_string())?,
-        Commands::Unanswered => prepared,
-    };
+    let opener = Opener::new(Arc::clone(&native), connect.outbound().clone());
+    let records = Records(herald_compose::reached(Arc::new(opener), &config.store, stores).await?);
     Ok((records, prepared.connect(|base| connect.reach(base))?))
 }

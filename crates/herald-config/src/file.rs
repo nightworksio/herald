@@ -1,7 +1,10 @@
 use std::collections::BTreeMap;
 use std::num::{NonZeroU64, NonZeroUsize};
 
-use herald_core::{AttributeSpec, Duration, Kind, LinkSpec, Pinning, Prereleases, SecretRef, Size};
+use herald_core::{
+    AttributeSpec, Duration, Inbound, Kind, LinkSpec, Pinning, Prereleases, Sandbox, SecretRef,
+    Size,
+};
 use schemars::JsonSchema;
 use serde::{Deserialize, Deserializer};
 use toml::Spanned;
@@ -99,7 +102,10 @@ pub(crate) struct MarkersFile {
 #[serde(rename = "Thread")]
 pub(crate) struct ThreadFile {
     /// The template of the thread's name.
-    #[schemars(with = "String")]
+    #[schemars(
+        with = "String",
+        example = "{{ event.project }} {{ event.attributes.version }}"
+    )]
     pub(crate) name: Spanned<String>,
     /// How long after the announcement the thread is archived.
     pub(crate) archive_after: Option<Duration>,
@@ -183,10 +189,10 @@ pub(crate) struct KindFile {
 #[serde(rename = "Route")]
 pub(crate) struct RouteFile {
     /// The route's stable id, part of every announcement's key.
-    #[schemars(with = "String")]
+    #[schemars(with = "String", example = "herald-releases")]
     pub(crate) id: Spanned<String>,
     /// The sources it takes events from.
-    #[schemars(with = "Vec<String>")]
+    #[schemars(with = "Vec<String>", example = RouteFile::SOURCES)]
     pub(crate) sources: Vec<Spanned<String>>,
     /// The kinds of event it takes; every kind where absent.
     #[serde(default)]
@@ -201,10 +207,10 @@ pub(crate) struct RouteFile {
     #[schemars(with = "Option<String>")]
     pub(crate) versions: Option<Spanned<String>>,
     /// The destination it announces to.
-    #[schemars(with = "String")]
+    #[schemars(with = "String", example = RouteFile::DESTINATION)]
     pub(crate) destination: Spanned<String>,
     /// The template it renders with.
-    #[schemars(with = "String")]
+    #[schemars(with = "String", example = "package-release")]
     pub(crate) template: Spanned<String>,
     /// Whether to crosspost each announcement.
     #[serde(default)]
@@ -217,6 +223,13 @@ pub(crate) struct RouteFile {
     /// Who it mentions.
     #[serde(default)]
     pub(crate) mentions: MentionsFile,
+}
+
+impl RouteFile {
+    /// The sources the schema shows as an example.
+    const SOURCES: [&str; 1] = ["herald"];
+    /// The destination the schema shows as an example.
+    const DESTINATION: &str = "discord";
 }
 
 /// The keys every route may give, whatever its destination.
@@ -238,9 +251,10 @@ pub(crate) const ROUTE_KEYS: [&str; 11] = [
 #[derive(Debug, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 #[serde(rename = "Template")]
+#[schemars(extend("oneOf" = [{ "required": ["body"] }, { "required": ["file"] }]))]
 pub(crate) struct TemplateFile {
     /// The title, on one line.
-    #[schemars(with = "String")]
+    #[schemars(with = "String", example = "{{ event.title }}")]
     pub(crate) title: Spanned<String>,
     /// The body, in Markdown.
     #[schemars(with = "Option<String>")]
@@ -259,16 +273,56 @@ pub(crate) struct AppFile {
     /// lowercase hex digits, as `herald token new` prints it. A token is
     /// rotated by adding the new one before the old one is removed.
     #[serde(default)]
-    #[schemars(with = "Vec<String>")]
+    #[schemars(with = "Vec<TokenHash>")]
     pub(crate) tokens: Vec<Spanned<String>>,
-    /// The projects it may announce.
-    #[serde(default)]
+    /// The projects it may announce: at least one.
+    #[schemars(length(min = 1), example = AppFile::PROJECTS)]
     pub(crate) projects: Vec<String>,
     /// The routes it announces to, each naming the app among its sources;
     /// every such route where it names none.
     #[serde(default)]
     #[schemars(with = "Vec<String>")]
     pub(crate) routes: Vec<Spanned<String>>,
+}
+
+impl AppFile {
+    /// How a token's SHA-256 is written in `tokens`, before its hex digits.
+    pub(crate) const TOKEN_PREFIX: &str = "sha256:";
+    /// The length of a SHA-256 in hex.
+    pub(crate) const HASH_DIGITS: usize = 64;
+    /// The projects the schema and the loader's errors show as an example.
+    pub(crate) const PROJECTS: [&str; 1] = ["herald"];
+
+    /// The SHA-256 `token` names, where it is written `sha256:` and 64
+    /// lowercase hex digits.
+    pub(crate) fn hash(token: &str) -> Option<&str> {
+        token.strip_prefix(Self::TOKEN_PREFIX).filter(|hash| {
+            hash.len() == Self::HASH_DIGITS
+                && hash
+                    .bytes()
+                    .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+        })
+    }
+}
+
+/// A token's SHA-256, as `[apps.<name>] tokens` writes it.
+struct TokenHash;
+
+impl JsonSchema for TokenHash {
+    fn inline_schema() -> bool {
+        true
+    }
+
+    fn schema_name() -> std::borrow::Cow<'static, str> {
+        "TokenHash".into()
+    }
+
+    fn json_schema(_: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        schemars::json_schema!({
+            "type": "string",
+            "pattern": format!("^{}[0-9a-f]{{{}}}$", AppFile::TOKEN_PREFIX, AppFile::HASH_DIGITS)
+        })
+    }
 }
 
 /// How often a driver that keeps its own schedule polls and keeps house.
@@ -375,10 +429,11 @@ pub(crate) struct ServerFile {
     /// absent. herald's ActivityPub actors' ids are under it too.
     #[schemars(with = "Option<String>")]
     pub(crate) base: Option<Spanned<String>>,
-    /// How many announcements it works on at once; 8 where absent.
+    /// How many pieces of work it does at once, each an announcement, an
+    /// activity or a command a request leaves; 8 where absent.
     pub(crate) jobs: Option<NonZeroUsize>,
-    /// How many announcements may wait for a place; a webhook arriving while
-    /// as many wait is answered 503. As many as `jobs` where absent.
+    /// How many pieces of work may wait for a place; a request leaving one
+    /// while as many wait is answered 503. As many as `jobs` where absent.
     pub(crate) queue: Option<NonZeroUsize>,
     /// How many connections it holds at once; 256 where absent.
     pub(crate) connections: Option<NonZeroUsize>,
@@ -391,9 +446,6 @@ pub(crate) struct ServerFile {
     /// How many autocompletions a session answers at once; one arriving
     /// while as many are answered is dropped. 4 where absent.
     pub(crate) completions: Option<NonZeroUsize>,
-    /// How many of an announcement's inboxes are delivered to at once, by
-    /// every command; 8 where absent.
-    pub(crate) deliveries: Option<NonZeroUsize>,
     /// How long a session a destination holds hears nothing before it
     /// checks the connection is alive, and then as long again before it
     /// opens another; "30s" where absent.
@@ -453,11 +505,14 @@ pub(crate) struct InboundFile {
     pub(crate) replay_window: Option<Spanned<Duration>>,
     /// The most signatures a request may carry, each checked in turn; 4
     /// where absent, and at most 16.
-    #[schemars(with = "Option<NonZeroUsize>")]
+    #[schemars(with = "Option<NonZeroUsize>", range(max = Inbound::MOST.signatures))]
     pub(crate) signatures: Option<Spanned<NonZeroUsize>>,
     /// The most headers one ActivityPub signature may cover; 16 where
     /// absent, at least the 4 it must cover, and at most 64.
-    #[schemars(with = "Option<NonZeroUsize>")]
+    #[schemars(
+        with = "Option<NonZeroUsize>",
+        range(min = Inbound::LEAST_COVERED, max = Inbound::MOST.covered)
+    )]
     pub(crate) covered: Option<Spanned<NonZeroUsize>>,
 }
 
@@ -469,11 +524,11 @@ pub(crate) struct InboundFile {
 pub(crate) struct RenderFile {
     /// The fuel one render may burn; 100000 where absent, and at most
     /// 400000.
-    #[schemars(with = "Option<NonZeroU64>")]
+    #[schemars(with = "Option<NonZeroU64>", range(max = Sandbox::MOST.fuel))]
     pub(crate) fuel: Option<Spanned<NonZeroU64>>,
     /// How deep its loops and calls may nest; 16 where absent, and at most
     /// 64.
-    #[schemars(with = "Option<NonZeroUsize>")]
+    #[schemars(with = "Option<NonZeroUsize>", range(max = Sandbox::MOST.recursion))]
     pub(crate) recursion: Option<Spanned<NonZeroUsize>>,
     /// The most it may write; "256KiB" where absent, and at most "1MiB".
     #[schemars(with = "Option<Size>")]

@@ -1,7 +1,10 @@
-use herald_config::{Config, Source};
+use herald_config::{Config, Source, Uses};
 use herald_core::{Cursor, Identity, SourceName};
-use herald_flows::{Fresh, Outcome, Ports, PrepareError, Remembered, Stop, Sweep, poll, prepare};
+use herald_flows::{
+    Fresh, Outcome, Ports, PrepareError, Remembered, Stop, Sweep, Unread, poll, prepare,
+};
 use herald_ports::Cursors;
+use herald_ports::SecretError;
 use herald_sources_feed::FeedOptions;
 use herald_sources_forge::{ForgeSource, SourceOptions};
 use herald_sources_registry::{Registry, RegistryOptions, RegistrySource};
@@ -68,7 +71,7 @@ fn swept_with(
     script: &Script,
     secrets: &herald_testing::FakeSecrets,
 ) -> Sweep {
-    let prepared = pollster::block_on(prepare(config, secrets, &FakeSigner)).unwrap();
+    let prepared = pollster::block_on(prepare(config, secrets, &FakeSigner, Uses::Polls)).unwrap();
     let connected = prepared.connect(|_| Ok::<_, ()>(script.clone())).unwrap();
     let clock = FakeClock::at(NOON);
     let ports = Ports {
@@ -288,12 +291,18 @@ fn a_source_token_is_resolved_with_the_rest_of_the_config() {
             secret: "GITHUB_TOKEN".to_owned(),
         });
     });
-    assert!(matches!(
-        pollster::block_on(prepare(&config, &secrets(), &FakeSigner)),
-        Err(PrepareError::Secret(_))
-    ));
+    assert_eq!(
+        pollster::block_on(prepare(&config, &secrets(), &FakeSigner, Uses::Polls)).err(),
+        Some(PrepareError::Unread(vec![Unread {
+            error: SecretError::Missing {
+                name: "GITHUB_TOKEN".to_owned()
+            },
+            keys: Vec::new(),
+        }]))
+    );
+    assert!(pollster::block_on(prepare(&config, &secrets(), &FakeSigner, Uses::Announces)).is_ok());
     let tokened = secrets().with("GITHUB_TOKEN", "github-token");
-    assert!(pollster::block_on(prepare(&config, &tokened, &FakeSigner)).is_ok());
+    assert!(pollster::block_on(prepare(&config, &tokened, &FakeSigner, Uses::Polls)).is_ok());
 }
 
 #[test]

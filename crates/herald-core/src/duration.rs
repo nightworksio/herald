@@ -18,7 +18,7 @@ impl JsonSchema for Duration {
         schemars::json_schema!({
             "description": "A length of time: a number and ms, s, m, h, d or w, as \"14d\".",
             "type": "string",
-            "pattern": "^[0-9]+(ms|[smhdw])$"
+            "pattern": Self::PATTERN
         })
     }
 }
@@ -30,16 +30,18 @@ const DAY: i64 = 86_400;
 const WEEK: i64 = 604_800;
 
 impl Duration {
+    /// The pattern the schema holds a length of time to: a number above 0
+    /// and its unit.
+    pub const PATTERN: &str = "^0*[1-9][0-9]*(ms|[smhdw])$";
+
     fn parse(text: &str) -> Option<Self> {
         if let Some(number) = text.strip_suffix("ms") {
-            return number
-                .parse::<i64>()
-                .ok()
+            return digits(number)
                 .filter(|millis| *millis > 0)
                 .map(|millis| Self(SignedDuration::from_millis(millis)));
         }
         let unit = text.chars().last()?;
-        let number: i64 = text.get(..text.len() - 1)?.parse().ok()?;
+        let number = digits(text.get(..text.len() - 1)?)?;
         let seconds = match unit {
             's' => SECOND,
             'm' => MINUTE,
@@ -53,6 +55,14 @@ impl Duration {
             .filter(|seconds| *seconds > 0)
             .map(|seconds| Self(SignedDuration::from_secs(seconds)))
     }
+}
+
+/// The number `text` writes in decimal digits alone, with no sign.
+fn digits(text: &str) -> Option<i64> {
+    if !text.bytes().all(|byte| byte.is_ascii_digit()) {
+        return None;
+    }
+    text.parse().ok()
 }
 
 struct DurationVisitor;
@@ -95,7 +105,7 @@ mod tests {
             Duration::parse("250ms"),
             Some(Duration(SignedDuration::from_millis(250)))
         );
-        for text in ["ms", "0ms", "-5ms", "1.5ms"] {
+        for text in ["ms", "0ms", "-5ms", "+5ms", "1.5ms"] {
             assert_eq!(Duration::parse(text), None, "{text}");
         }
         for (text, seconds) in cases {
@@ -112,6 +122,7 @@ mod tests {
             "14y",
             "0d",
             "-1d",
+            "+5m",
             "1.5h",
             "99999999999999999w",
         ] {
@@ -138,7 +149,7 @@ mod tests {
         let schema = schemars::schema_for!(Duration);
         assert_eq!(
             schema.get("pattern").and_then(|pattern| pattern.as_str()),
-            Some("^[0-9]+(ms|[smhdw])$")
+            Some("^0*[1-9][0-9]*(ms|[smhdw])$")
         );
         assert_eq!(
             schema.get("type").and_then(|kind| kind.as_str()),

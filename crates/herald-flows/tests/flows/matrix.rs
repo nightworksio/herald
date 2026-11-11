@@ -1,4 +1,4 @@
-use herald_config::{Config, load};
+use herald_config::{Config, Uses, load};
 use herald_core::{
     Chore, DestinationName, Identity, Key, Marker, RouteId, Schedule, SourceName, Step,
     Subscription,
@@ -63,7 +63,7 @@ fn subscribed(store: &Failing) {
 }
 
 fn announced(config: &Config, store: &Failing, script: &Script) -> Outcome {
-    let prepared = pollster::block_on(prepare(config, &token(), &FakeSigner)).unwrap();
+    let prepared = pollster::block_on(prepare(config, &token(), &FakeSigner, Uses::Polls)).unwrap();
     let connected = prepared.connect(|_| Ok::<_, ()>(script.clone())).unwrap();
     let ports = Ports {
         store,
@@ -180,7 +180,8 @@ fn a_matrix_route_keeps_no_thread_chores_and_its_room_lists_no_threads() {
     };
     pollster::block_on(store.put_schedules(&[thread], &[])).unwrap();
     let script = Script::default();
-    let prepared = pollster::block_on(prepare(&config, &token(), &FakeSigner)).unwrap();
+    let prepared =
+        pollster::block_on(prepare(&config, &token(), &FakeSigner, Uses::Polls)).unwrap();
     let connected = prepared.connect(|_| Ok::<_, ()>(script.clone())).unwrap();
     let kept = pollster::block_on(housekeep(
         &connected,

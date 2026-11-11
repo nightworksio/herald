@@ -86,7 +86,7 @@ mod stores {
         assert_eq!(named.secrets(), ["HERALD_POSTGRES_URL"].into());
         assert_eq!(
             config("").unwrap_err(),
-            "herald.toml:2:1 store: missing field `url`"
+            "herald.toml:2:1 store: missing field `url`; give it, such as url = { secret = \"NAME\" }"
         );
     }
 
