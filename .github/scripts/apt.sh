@@ -1,9 +1,4 @@
 #!/usr/bin/env bash
-# Updates apt's lists and installs the pinned packages it is given, each
-# attempt retried and timed out. Where the runner's mirror fails, it points
-# Ubuntu's sources at archive.ubuntu.com, and security.ubuntu.com for
-# -security, and tries once more; where that fails too, it fails. Given no
-# package, the lists must update without an error.
 set -euo pipefail
 
 options=(
