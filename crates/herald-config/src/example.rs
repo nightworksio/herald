@@ -210,6 +210,14 @@ mod tests {
         for (schema, written) in cases {
             assert_eq!(example(&root, &schema), written, "{schema}");
         }
+        let shown = Schema::try_from(serde_json::json!({
+            "$defs": { "Shown": { "type": "string", "examples": ["shown"] } }
+        }))
+        .unwrap();
+        assert_eq!(
+            example(&shown, &serde_json::json!({ "$ref": "#/$defs/Shown" })),
+            "\"shown\""
+        );
     }
 
     #[test]

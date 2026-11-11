@@ -66,10 +66,6 @@ const WRITTEN: &str = r"\S";
 struct Link;
 
 impl JsonSchema for Link {
-    fn inline_schema() -> bool {
-        true
-    }
-
     fn schema_name() -> std::borrow::Cow<'static, str> {
         "Link".into()
     }

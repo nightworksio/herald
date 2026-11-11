@@ -63,7 +63,7 @@ template = "t"
 actor = "deploys"
 [apps.ci]
 tokens = ["sha256:TOKEN_HASH"]
-projects = ["herald"]
+projects = ["herald", "night works"]
 routes = ["deployed"]
 [templates.t]
 title = "{{ event.title }}"
@@ -971,42 +971,30 @@ fn an_app_s_event_the_store_cannot_admit_is_answered_so_and_left_undone() {
 
 #[test]
 fn a_project_and_an_id_are_read_from_their_percent_encoded_path_segments() {
-    let config = load(
-        "herald.toml",
-        &config_text().replace(
-            "projects = [\"herald\"]",
-            "projects = [\"herald\", \"night works\"]",
-        ),
-        &|_| Err(String::new()),
-        &crate::harness::kinds(),
-    )
-    .unwrap();
-    let world = World::with(config, Script::default());
+    let world = World::new(Script::default());
     let event = br#"{"id": "deploy/7", "project": "night works", "title": "Deployed"}"#;
     let first = world.answer(&posted("/api/projects/night%20works/events", BEARER, event));
-    assert_eq!(first.reply.status, 202);
-    let Some(job) = first.job else {
-        panic!("the event is left to announce");
-    };
-    world.work(job);
-    let asked = Inbound {
-        method: "GET",
-        headers: BEARER,
-        ..get("/api/projects/night%20works/events/deploy%2F7")
-    };
-    assert_eq!(
-        said(&world.answer(&asked)).2,
-        r#"{"id":"deploy/7","project":"night works","routes":[{"route":"deployed","standing":"announced"}]}"#
-    );
-    for path in [
-        "/api/projects/night%2works/events/7",
-        "/api/projects/night%20works/events/deploy/7",
+    world.work(first.job.expect("the event is left to announce"));
+    let stood = r#"{"id":"deploy/7","project":"night works","routes":[{"route":"deployed","standing":"announced"}]}"#;
+    for (path, status, body) in [
+        ("/api/projects/night%20works/events/deploy%2F7", 200, stood),
+        (
+            "/api/projects/night%2works/events/7",
+            404,
+            "herald serves no such path here",
+        ),
+        (
+            "/api/projects/night%20works/events/deploy/7",
+            404,
+            "herald serves no such path here",
+        ),
     ] {
-        let unread = Inbound {
+        let asked = Inbound {
             method: "GET",
             headers: BEARER,
             ..get(path)
         };
-        assert_eq!(world.answer(&unread).reply.status, 404, "{path}");
+        let (code, _, text) = said(&world.answer(&asked));
+        assert_eq!((code, text.as_str()), (status, body), "{path}");
     }
 }

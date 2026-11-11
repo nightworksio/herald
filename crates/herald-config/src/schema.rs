@@ -15,10 +15,6 @@ use crate::file::{
 struct VersionSchema;
 
 impl JsonSchema for VersionSchema {
-    fn inline_schema() -> bool {
-        true
-    }
-
     fn schema_name() -> Cow<'static, str> {
         "Version".into()
     }
@@ -135,13 +131,12 @@ fn unnulled(schema: &mut Schema) {
     }
     if let Some(any) = schema.get_mut("anyOf").and_then(|any| any.as_array_mut()) {
         any.retain(|branch| branch.get("type").is_none_or(|kind| kind != "null"));
-        if let [only] = any.as_slice() {
-            let only = only.clone();
+        if let [only] = any.as_slice()
+            && let Some(object) = only.as_object().cloned()
+        {
             schema.remove("anyOf");
-            if let Some(object) = only.as_object() {
-                for (key, value) in object {
-                    schema.insert(key.clone(), value.clone());
-                }
+            for (key, value) in object {
+                schema.insert(key, value);
             }
         }
     }

@@ -76,8 +76,7 @@
     },
     "version": {
       "description": "The version of the config: 1.",
-      "type": "integer",
-      "const": 1
+      "$ref": "#/$defs/Version"
     }
   },
   "additionalProperties": false,
@@ -232,8 +231,7 @@
           "type": "array",
           "default": [],
           "items": {
-            "type": "string",
-            "pattern": "^sha256:[0-9a-f]{64}$"
+            "$ref": "#/$defs/TokenHash"
           }
         }
       },
@@ -2873,6 +2871,14 @@
       "required": [
         "name"
       ]
+    },
+    "TokenHash": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "Version": {
+      "type": "integer",
+      "const": 1
     },
     "Visibility": {
       "description": "Who sees a status.",

@@ -390,6 +390,14 @@ fn every_secret_is_read_and_one_not_set_here_is_noted_or_a_gap_online() {
         online.gaps[0].why,
         "no secret is named HERALD_ACTIVITYPUB_KEY; set it where this platform keeps secrets"
     );
+    let mut unkeyed = served();
+    unkeyed.secret_keys.clear();
+    let here = Here {
+        online: true,
+        ..Here::default()
+    };
+    let online = pollster::block_on(secrets(&unkeyed, &one, &here));
+    assert_eq!(keyed(&online), [("HERALD_ACTIVITYPUB_KEY", None)]);
     let all = one.with("HERALD_ACTIVITYPUB_KEY", "k");
     assert_eq!(read(&all, true), Findings::default());
 }

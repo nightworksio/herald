@@ -178,8 +178,8 @@ mod examples {
         );
         assert!(!schema.to_string().contains("null"));
         assert_eq!(
-            schema["properties"]["version"],
-            json!({ "description": "The version of the config: 1.", "type": "integer", "const": 1 })
+            schema["$defs"]["Version"],
+            json!({ "type": "integer", "const": 1 })
         );
     }
 }

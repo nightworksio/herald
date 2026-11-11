@@ -309,10 +309,6 @@ impl AppFile {
 struct TokenHash;
 
 impl JsonSchema for TokenHash {
-    fn inline_schema() -> bool {
-        true
-    }
-
     fn schema_name() -> std::borrow::Cow<'static, str> {
         "TokenHash".into()
     }

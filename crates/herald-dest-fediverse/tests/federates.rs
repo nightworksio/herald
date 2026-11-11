@@ -242,6 +242,8 @@ mod federates {
         assert_eq!(FIRST, "true");
         assert_eq!(Federates::outbox_most(&gate), ActorOptions::OUTBOX_PAGE);
         assert_eq!(Federates::outbox_most(&gate.clone().paging(7)), 7);
+        assert_eq!(Federates::deliveries(&gate), ActorOptions::DELIVERIES);
+        assert_eq!(Federates::deliveries(&gate.clone().delivering(3)), 3);
         let announcement = sample::announcement();
         let note = gate.note(&announcement);
         let key = announcement.key.to_string();

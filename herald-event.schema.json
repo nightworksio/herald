@@ -34,10 +34,7 @@
       "description": "Named links, each an `https` or `http` URL: `release`, `changelog`,\n`comparison`, `download`.",
       "type": "object",
       "additionalProperties": {
-        "type": "string",
-        "format": "uri",
-        "maxLength": 4194304,
-        "pattern": "^https?://"
+        "$ref": "#/$defs/Link"
       },
       "default": {},
       "propertyNames": {
@@ -96,6 +93,12 @@
       "description": "What kind of thing an event announces: release, package-version, feed-entry, message, or a kind the config declares.",
       "type": "string",
       "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"
+    },
+    "Link": {
+      "type": "string",
+      "format": "uri",
+      "maxLength": 4194304,
+      "pattern": "^https?://"
     }
   }
 }

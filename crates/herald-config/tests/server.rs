@@ -5,7 +5,7 @@ mod common;
 
 #[cfg(test)]
 mod server {
-    use herald_config::{KeyCache, Server, load};
+    use herald_config::{KeyCache, Server, Uses, load};
 
     const EXAMPLE: &str = r#"version = 1
 
@@ -277,5 +277,51 @@ body = "{{ event.body }}"
                 .map(|named| named.secret.as_str()),
             Some("HERALD_WEBHOOK")
         );
+    }
+
+    #[test]
+    fn each_run_reads_the_secrets_its_work_needs_and_each_is_named_by_its_keys() {
+        let hooked = EXAMPLE
+            .replace(
+                "repository = \"nightworksio/php-mutation-gate\"",
+                "repository = \"nightworksio/php-mutation-gate\"\ntoken = { secret = \"GITHUB_TOKEN\" }\nwebhook = { secret = \"HERALD_WEBHOOK\" }",
+            )
+            .replace(
+                "[sources.gate]",
+                "[markers]\nkey = { secret = \"HERALD_MARKER_SECRET\" }\n\n[sources.gate]",
+            );
+        let config = load("herald.toml", &hooked, &nothing, &crate::common::kinds()).unwrap();
+        let used = |uses| config.secrets_used(uses).into_iter().collect::<Vec<_>>();
+        assert_eq!(
+            used(Uses::Announces),
+            ["HERALD_DISCORD_TOKEN", "HERALD_MARKER_SECRET"]
+        );
+        assert_eq!(
+            used(Uses::Polls),
+            [
+                "GITHUB_TOKEN",
+                "HERALD_DISCORD_TOKEN",
+                "HERALD_MARKER_SECRET"
+            ]
+        );
+        assert_eq!(
+            used(Uses::Serves),
+            [
+                "GITHUB_TOKEN",
+                "HERALD_DISCORD_TOKEN",
+                "HERALD_MARKER_SECRET",
+                "HERALD_WEBHOOK"
+            ]
+        );
+        assert!(config.secrets().contains("HERALD_STORE_KEY"));
+        assert_eq!(
+            config.keys_naming("HERALD_DISCORD_TOKEN"),
+            ["destinations.discord.token"]
+        );
+        assert_eq!(
+            config.keys_naming("HERALD_WEBHOOK"),
+            ["sources.gate.webhook"]
+        );
+        assert_eq!(config.keys_naming("UNNAMED"), Vec::<String>::new());
     }
 }
