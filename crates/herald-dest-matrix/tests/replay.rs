@@ -486,6 +486,25 @@ mod replay {
             );
         }
         replay.finish().unwrap();
+        let recorded: serde_json::Value = serde_json::from_str(include_str!(
+            "../fixtures/markers-unreadable.reference.json"
+        ))
+        .unwrap();
+        let mut limited = recorded["exchanges"][3].clone();
+        limited["response"] = serde_json::json!({
+            "status": 429,
+            "body": { "errcode": "M_LIMIT_EXCEEDED", "retry_after_ms": 1500 },
+        });
+        let timeline = Replay::of(
+            Fixture::from_json(&serde_json::json!({ "exchanges": [limited] }).to_string()).unwrap(),
+        );
+        assert_eq!(
+            pollster::block_on(MatrixMarkers::new(&matrix, &timeline).entry(&key, &marker())),
+            Err(MarkersError::RetryAfter {
+                after: jiff::SignedDuration::from_millis(1_500)
+            })
+        );
+        timeline.finish().unwrap();
     }
 
     #[test]
