@@ -151,15 +151,15 @@ mod tests {
         assert_eq!(within(both, ten, half), both);
         assert_eq!(
             within(
-                "host=db connect_timeouts=1 password=a://b?xconnect_timeout=1",
+                "host=db connect_timeouts=1 application_name=a://b?xconnect_timeout=1",
                 ten,
                 half
             ),
-            "host=db connect_timeouts=1 password=a://b?xconnect_timeout=1 connect_timeout=10 options='-c statement_timeout=500'"
+            "host=db connect_timeouts=1 application_name=a://b?xconnect_timeout=1 connect_timeout=10 options='-c statement_timeout=500'"
         );
         assert_eq!(
-            within("postgresql://u:options=x@db/herald", ten, half),
-            "postgresql://u:options=x@db/herald?connect_timeout=10&options=-c%20statement_timeout%3D500"
+            within("postgresql://db/options=x?sslmode=require", ten, half),
+            "postgresql://db/options=x?sslmode=require&connect_timeout=10&options=-c%20statement_timeout%3D500"
         );
     }
 
