@@ -218,6 +218,64 @@ mod replay {
         replay.finish().unwrap();
     }
 
+    fn gets(answers: &[(&str, u16, Value)]) -> Replay {
+        let exchanges: Vec<Value> = answers
+            .iter()
+            .map(|(path, status, body)| {
+                serde_json::json!({
+                    "request": {
+                        "method": "GET",
+                        "url": format!("https://discord.com/api/v10{path}"),
+                        "headers": {
+                            "Authorization": "Bot «secret:HERALD_DISCORD_TOKEN»",
+                            "User-Agent": "DiscordBot (https://github.com/nightworksio/herald, 0.0.0)",
+                        },
+                    },
+                    "response": { "status": status, "body": body },
+                })
+            })
+            .collect();
+        Replay::of(
+            Fixture::from_json(&serde_json::json!({ "exchanges": exchanges }).to_string()).unwrap(),
+        )
+    }
+
+    #[test]
+    fn a_forum_s_pins_are_looked_up_no_further_than_pin_lookups() {
+        let entry =
+            Entry::new(announcement().key).landed(Step::Post, message("1566200000000000010"));
+        let me = ("/users/@me", 200, serde_json::json!({ "id": "9" }));
+        let forum = format!("/channels/{FORUM}");
+        let pinned = |id: &str| serde_json::json!({ "id": id, "parent_id": FORUM, "owner_id": "9", "flags": 2 });
+        let replay = gets(&[
+            me.clone(),
+            (&forum, 200, serde_json::json!({ "guild_id": "1" })),
+            (
+                "/guilds/1/threads/active",
+                200,
+                serde_json::json!({ "threads": [pinned("11"), pinned("12")] }),
+            ),
+        ]);
+        let one = bot(FORUM, true).looking_up(herald_core::PinLookups::new(1).unwrap());
+        assert_eq!(
+            unpin(&one, &replay, &announcement(), &entry),
+            Sent::Refused("the route's earlier pins are among 2 pins, more than the 1 it looks up; raise pin_lookups, up to 100, or unpin them by hand".to_owned())
+        );
+        replay.finish().unwrap();
+        let unplaced = gets(&[me, (&forum, 200, serde_json::json!({}))]);
+        assert_eq!(
+            unpin(&bot(FORUM, true), &unplaced, &announcement(), &entry),
+            Sent::Refused(format!(
+                "Discord did not say which server the forum {FORUM} is in"
+            ))
+        );
+        unplaced.finish().unwrap();
+        assert_eq!(
+            unpin(&bot("", false), &gets(&[]), &announcement(), &entry),
+            Sent::Refused("the route names no Discord channel; set its channel".to_owned())
+        );
+    }
+
     #[test]
     fn a_forum_unpins_the_post_the_store_remembers_by_its_flag() {
         let request = bot(FORUM, true)

@@ -360,6 +360,24 @@ fn socket_mode_is_opened_with_the_app_level_token_and_heard_as_herald_answers_it
         ),
         [Effect::Ready]
     );
+    let asked = json!({
+        "envelope_id": "e1",
+        "type": "slash_commands",
+        "payload": {
+            "command": "/herald",
+            "text": "latest gate",
+            "channel_id": "C0123456789",
+            "user_id": "U0123456789",
+            "response_url": "https://hooks.slack.com/commands/T1/2/abc",
+        },
+    });
+    let effects = session.heard(&DestinationName::new("slack"), &asked.to_string());
+    assert_eq!(
+        effects[0],
+        Effect::Acknowledge(herald_ports::Text::plain(r#"{"envelope_id":"e1"}"#))
+    );
+    assert!(matches!(effects[1], Effect::Asked(..)), "{effects:?}");
+    assert_eq!(effects.len(), 2);
     let mut disconnected = |reason: &str| {
         let frame = json!({ "type": "disconnect", "reason": reason }).to_string();
         session.heard(&DestinationName::new("slack"), &frame)
