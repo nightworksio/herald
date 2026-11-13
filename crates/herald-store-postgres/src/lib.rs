@@ -57,19 +57,37 @@ impl StoreOptions {
     }
 }
 
+/// The schemes a connection address written as a URL starts with.
+const URI_SCHEMES: [&str; 2] = ["postgresql://", "postgres://"];
+
 /// The connection address `address`, a URL or `key=value` pairs, with
 /// `connect` and `statement` as its connection and statement timeouts, for
 /// a host that hands the address to its database driver as it is. A timeout
 /// the address already sets is kept as it is written.
 #[must_use]
 pub fn within(address: &str, connect: SignedDuration, statement: SignedDuration) -> String {
-    let keyed = !address.contains("://");
+    let keyed = !URI_SCHEMES.iter().any(|scheme| address.starts_with(scheme));
+    let pairs: Vec<&str> = if keyed {
+        address.split_whitespace().collect()
+    } else {
+        address
+            .split_once('?')
+            .map_or("", |(_, query)| query)
+            .split('&')
+            .collect()
+    };
+    let sets = |key: &str| {
+        pairs.iter().any(|pair| {
+            pair.strip_prefix(key)
+                .is_some_and(|rest| rest.starts_with('='))
+        })
+    };
     let mut added = Vec::new();
-    if !address.contains("connect_timeout=") {
+    if !sets("connect_timeout") {
         let seconds = connect.unsigned_abs().as_secs().max(1);
         added.push(format!("connect_timeout={seconds}"));
     }
-    if !address.contains("options=") {
+    if !sets("options") {
         let millis = statement.unsigned_abs().as_millis();
         added.push(if keyed {
             format!("options='-c statement_timeout={millis}'")
@@ -131,6 +149,18 @@ mod tests {
         );
         let both = "host=db connect_timeout=3 options='-c search_path=herald'";
         assert_eq!(within(both, ten, half), both);
+        assert_eq!(
+            within(
+                "host=db connect_timeouts=1 password=a://b?xconnect_timeout=1",
+                ten,
+                half
+            ),
+            "host=db connect_timeouts=1 password=a://b?xconnect_timeout=1 connect_timeout=10 options='-c statement_timeout=500'"
+        );
+        assert_eq!(
+            within("postgresql://u:options=x@db/herald", ten, half),
+            "postgresql://u:options=x@db/herald?connect_timeout=10&options=-c%20statement_timeout%3D500"
+        );
     }
 
     #[test]
