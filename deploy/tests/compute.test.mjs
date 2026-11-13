@@ -6,13 +6,17 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { request } from "node:http";
 import { connect as connectTo, createServer } from "node:net";
-import { after, test } from "node:test";
+import { join, relative } from "node:path";
+import { after, before, test } from "node:test";
 
 const SECRET = "local-round-secret";
 const EGRESS = "deploy/tests/egress";
+const SPIN = "deploy/spin";
+const MANIFEST = "spin.toml";
+const COMPONENT_SOURCE = /^source = "([^"]+)"$/m;
 const KEY_PORT = 443;
 const COMPONENT = "../../component/herald_wasi.wasm";
 const RUNTIME_CONFIG = "../../spin/runtime-config.toml";
@@ -32,6 +36,14 @@ const ENV = {
   HERALD_STORE_KEY: "local-store-key",
 };
 const started = [];
+
+before(() => {
+  const shipped = readFileSync(join(SPIN, MANIFEST), "utf8");
+  const [, source] = shipped.match(COMPONENT_SOURCE) ?? [];
+  assert.ok(source, `${SPIN}/${MANIFEST} names no component source`);
+  const moved = relative(EGRESS, join(SPIN, source));
+  writeFileSync(join(EGRESS, MANIFEST), shipped.replace(COMPONENT_SOURCE, `source = ${JSON.stringify(moved)}`));
+});
 
 after(() => started.forEach((child) => child.kill()));
 

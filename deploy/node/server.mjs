@@ -1,27 +1,25 @@
-import { readFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { dirname, resolve as absolute } from "node:path";
-import { Herald, answering, denoKv, load, rounds, said } from "../host.mjs";
+import { ROUNDS, answering, configPath, denoKv, envHost, headerPairs, rounds, said } from "../host.mjs";
 import { postgres, sqlite } from "../databases.mjs";
-import { beside } from "../files.mjs";
+import { composedFrom } from "../files.mjs";
 import { guarded } from "../vetted.mjs";
 
 export function host(env = process.env, directory = process.cwd()) {
-  return {
-    vars: Object.fromEntries(Object.entries(env).filter(([, value]) => typeof value === "string")),
-    secret: (name) => env[name],
+  return envHost(env, {
+    by: "Node",
     fetch: guarded(),
-    async sql(at) {
-      if (at.kind === "sqlite") return sqlite(absolute(directory, at.file), at.busy);
-      if (at.kind === "postgres") return postgres(at);
-      throw new Error(`Node offers no ${at.kind} database`);
+    sql: {
+      sqlite: (at) => sqlite(absolute(directory, at.file), at.busy),
+      postgres,
     },
-    async kv(at) {
-      if (at.kind !== "deno-kv") throw new Error(`Node offers no ${at.kind} store`);
-      const { openKv } = await import("@deno/kv");
-      return denoKv(await openKv(at.path));
+    kv: {
+      "deno-kv": async (at) => {
+        const { openKv } = await import("@deno/kv");
+        return denoKv(await openKv(at.path));
+      },
     },
-  };
+  });
 }
 
 function bodyOf(incoming, most) {
@@ -46,13 +44,10 @@ function bodyOf(incoming, most) {
   });
 }
 
-export async function serve({ env = process.env, path = env.HERALD_CONFIG ?? "herald.toml", listen = env.HERALD_LISTEN } = {}) {
-  await load(await readFile(new URL("../pkg/herald_wasm_bg.wasm", import.meta.url)));
-  const directory = dirname(path);
-  const config = await readFile(path, "utf8");
-  const herald = await Herald.compose(host(env, directory), config, beside(path), "node");
+export async function serve({ env = process.env, path = configPath(env), listen = env.HERALD_LISTEN } = {}) {
+  const herald = await composedFrom(path, host(env, dirname(path)), "node");
   const schedule = herald.schedule();
-  const timers = ["poll", "housekeep"]
+  const timers = ROUNDS
     .filter((round) => schedule[round])
     .map((round) => setInterval(() => rounds(herald, [round]).catch(console.error), schedule[round]));
   const { hostname, port } = herald.listen(listen || undefined);
@@ -72,7 +67,7 @@ export async function serve({ env = process.env, path = env.HERALD_CONFIG ?? "he
         method: incoming.method,
         path,
         query,
-        headers: Object.entries(incoming.headers).flatMap(([name, value]) => [value].flat().map((each) => [name, String(each)])),
+        headers: headerPairs(incoming.headers),
         body,
       });
       if (body.length > limits.body) outgoing.setHeader("connection", "close");

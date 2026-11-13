@@ -1,6 +1,6 @@
 import { DurableObject } from "cloudflare:workers";
 import module from "../pkg/herald_wasm_bg.wasm";
-import { Herald, answered, fetching, load, rounds } from "../host.mjs";
+import { Herald, answered, composeOnce, envHost, fetching, load, rounds } from "../host.mjs";
 import files from "./files.mjs";
 import { d1, transacted } from "./sql.mjs";
 import config from "./herald.toml";
@@ -31,40 +31,37 @@ const sockets = {
   },
 };
 
+function bound(env, at) {
+  const binding = env[at.binding];
+  if (!binding) throw new Error(`the Worker has no binding ${at.binding}`);
+  return binding;
+}
+
 function host(env, storage) {
-  return {
-    vars: Object.fromEntries(Object.entries(env).filter(([, value]) => typeof value === "string")),
-    secret: (name) => (typeof env[name] === "string" ? env[name] : undefined),
+  return envHost(env, {
+    by: "a Worker",
     fetch: fetching(),
-    async sql(at) {
-      const bound = env[at.binding];
-      if (!bound) throw new Error(`the Worker has no binding ${at.binding}`);
-      if (at.kind === "d1") return d1(bound);
-      if (at.kind === "durable-object") return storage ?? bound.get(bound.idFromName(at.object));
-      throw new Error(`a Worker offers no ${at.kind} database`);
+    sql: {
+      d1: (at) => d1(bound(env, at)),
+      "durable-object": (at) => {
+        const objects = bound(env, at);
+        return storage ?? objects.get(objects.idFromName(at.object));
+      },
     },
-  };
+  });
 }
 
-let composing;
-
-function composed(env) {
-  composing ??= load(module)
-    .then(() => Herald.compose(host(env), config, files, "worker"))
-    .catch((error) => {
-      composing = undefined;
-      throw error;
-    });
-  return composing;
+function compose(env, storage) {
+  return load(module).then(() => Herald.compose(host(env, storage), config, files, "worker"));
 }
+
+const composed = composeOnce(compose);
 
 const HOLD_AGAIN = 60_000;
 
 export default {
   async fetch(request, env, ctx) {
-    const { response, work } = await answered(await composed(env), request);
-    if (work) ctx.waitUntil(work);
-    return response;
+    return answered(await composed(env), request, (work) => ctx.waitUntil(work));
   },
 
   async scheduled(event, env, ctx) {
@@ -77,8 +74,7 @@ export default {
 
 export class HeraldObject extends DurableObject {
   hold() {
-    this.holding ??= load(module)
-      .then(() => Herald.compose(host(this.env, this), config, files, "worker"))
+    this.holding ??= compose(this.env, this)
       .then((herald) => herald.hold(sockets))
       .catch(console.error)
       .finally(() => {
