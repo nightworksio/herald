@@ -24,6 +24,7 @@ conformance = ["spin", "dep:herald-records", "dep:herald-testing"]
 futures-util = { version = "0.3", default-features = false, features = ["std"] }
 herald-compose.workspace = true
 herald-config.workspace = true
+herald-core.workspace = true
 herald-crypto.workspace = true
 herald-environment.workspace = true
 herald-flows.workspace = true

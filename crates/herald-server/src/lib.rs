@@ -12,6 +12,7 @@
 //! One round of each kind runs at a time. Sources are polled, threads kept and
 //! keys forgotten on the config's schedule. TLS is a reverse proxy's.
 
+use herald_core::status;
 use std::cell::{Cell, RefCell};
 use std::collections::VecDeque;
 use std::convert::Infallible;
@@ -342,7 +343,7 @@ where
         && let Some(round) = timers.round(request.uri().path())
     {
         rounds.ran(serving, round).await;
-        return ControlFlow::Break(replied(200, JSON, timers.reply.as_bytes().to_vec()));
+        return ControlFlow::Break(replied(status::OK, JSON, timers.reply.as_bytes().to_vec()));
     }
     let path = match limits.timers {
         Some(timers) => match timers.within(request.uri().path()) {
@@ -350,7 +351,7 @@ where
             None => {
                 return ControlFlow::Break(sent(
                     rounds,
-                    refusal(404, "its path lies outside the host's prefix"),
+                    refusal(status::NOT_FOUND, "its path lies outside the host's prefix"),
                 ));
             }
         },
@@ -364,11 +365,11 @@ where
         if !Round::allowed(authorization, limits.secret) {
             return ControlFlow::Break(sent(
                 rounds,
-                refusal(401, "a round was asked without its secret"),
+                refusal(status::UNAUTHORIZED, "a round was asked without its secret"),
             ));
         }
         rounds.ran(serving, round).await;
-        return ControlFlow::Break(replied(200, TEXT, b"the round ran".to_vec()));
+        return ControlFlow::Break(replied(status::OK, TEXT, b"the round ran".to_vec()));
     }
     ControlFlow::Continue(path)
 }
@@ -379,11 +380,14 @@ async fn collected(body: Incoming, limits: Limits<'_>) -> ControlFlow<Answered, 
     let Ok(read) =
         tokio::time::timeout(limits.read, Limited::new(body, limits.body).collect()).await
     else {
-        return ControlFlow::Break(refusal(408, "its body was not sent in time"));
+        return ControlFlow::Break(refusal(
+            status::REQUEST_TIMEOUT,
+            "its body was not sent in time",
+        ));
     };
     let Ok(collected) = read else {
         return ControlFlow::Break(refusal(
-            413,
+            status::CONTENT_TOO_LARGE,
             format!(
                 "its body is larger than [server] body, {} bytes, or could not be read",
                 limits.body

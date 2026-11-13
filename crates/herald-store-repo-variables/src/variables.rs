@@ -1,3 +1,4 @@
+use herald_core::status;
 use std::sync::{Arc, Mutex, PoisonError};
 
 use herald_ports::{Http, Method, Response, Secret, StoreError};
@@ -16,9 +17,6 @@ const LEASE: SignedDuration = SignedDuration::from_mins(10);
 /// How often a lock with no time to judge its age by is found held,
 /// unchanged, before it is taken as abandoned.
 const PATIENCE: u32 = 10;
-const MISSING: u16 = 404;
-const FORBIDDEN: u16 = 403;
-const EXISTS: u16 = 409;
 
 /// Where the records are kept: a repository's Actions variables, reached
 /// with a token that may write them.
@@ -98,7 +96,7 @@ struct Listed {
 }
 
 fn answered(response: &Response) -> StoreError {
-    if response.status == FORBIDDEN {
+    if response.status == status::FORBIDDEN {
         return StoreError::unavailable(
             "GitHub answered 403: the token cannot write the repository's variables; give the store a token with the Variables permission",
         );
@@ -107,7 +105,7 @@ fn answered(response: &Response) -> StoreError {
 }
 
 fn done(response: &Response) -> Result<Wrote, StoreError> {
-    if response.succeeded() || response.status == MISSING {
+    if response.succeeded() || response.status == status::NOT_FOUND {
         Ok(Wrote::Written)
     } else {
         Err(answered(response))
@@ -141,7 +139,7 @@ impl<H: Http> VariableRecords<H> {
 
     async fn variable(&self, name: &str) -> Result<Option<(Variable, Response)>, StoreError> {
         let response = self.send(Method::Get, &format!("/{name}"), None).await?;
-        if response.status == MISSING {
+        if response.status == status::NOT_FOUND {
             return Ok(None);
         }
         if !response.succeeded() {
@@ -157,7 +155,7 @@ impl<H: Http> VariableRecords<H> {
         let response = self.send(Method::Post, "", Some(body)).await?;
         match response.status {
             _ if response.succeeded() => Ok(Wrote::Written),
-            EXISTS => Ok(Wrote::Conflict),
+            status::CONFLICT => Ok(Wrote::Conflict),
             _ => Err(answered(&response)),
         }
     }

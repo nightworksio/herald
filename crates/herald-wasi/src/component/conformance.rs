@@ -4,6 +4,7 @@
 //! `/conformance/postgres` over the Postgres database `HERALD_TEST_POSTGRES`
 //! names.
 
+use herald_core::status;
 use herald_flows::Reply;
 use herald_ports::{Parameters, Secret, Sql as _, SqlError, Statement};
 use herald_records::{Dialect, SqlRecords};
@@ -67,13 +68,13 @@ pub(super) async fn answered(path: &str) -> Option<Reply> {
         },
         "/conformance/postgres" => match std::env::var(URL) {
             Ok(url) => SpinSql::Postgres(Secret::new(URL, url)),
-            Err(_) => return Some(plain(500, format!("{URL} is not set"))),
+            Err(_) => return Some(plain(status::SERVER_ERROR, format!("{URL} is not set"))),
         },
         _ => return None,
     };
     let postgres = matches!(sql, SpinSql::Postgres(_));
     Some(match conforms(sql, postgres).await {
-        Ok(()) => plain(200, "conforms"),
-        Err(failure) => plain(500, failure),
+        Ok(()) => plain(status::OK, "conforms"),
+        Err(failure) => plain(status::SERVER_ERROR, failure),
     })
 }

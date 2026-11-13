@@ -4,6 +4,7 @@
 //! names and admitted before it is read, and answered at once with the
 //! command's work left for after (ADR-0007, ADR-0016).
 
+use herald_core::status;
 use herald_core::{Asked, DestinationName, Place, Scheme};
 use herald_kinds::{Endpoint, Interacted, Post, Read, Replying, Said};
 use herald_ports::{Clock, Keyring, Store, Verifier};
@@ -140,7 +141,7 @@ async fn answered<S: Store, C: Clock, G, V: Verifier, H, P, K>(
             ))
             .await
         }
-        Read::Refused(reason) => refusal(400, reason),
+        Read::Refused(reason) => refusal(status::BAD_REQUEST, reason),
         Read::Unread(reason) => unread(serving.ports.store, scheme, verified, reason).await,
         Read::Unmethodical => unmethodical(),
         Read::Missing(what) => missing(what),
@@ -165,8 +166,8 @@ async fn completions<S: Store, C, G, V, H, P, K>(
     )
     .await
     {
-        Ok(projects) => replied(200, JSON, interacting.choices(&projects)),
-        Err(error) => refusal(503, unlisted(&error)),
+        Ok(projects) => replied(status::OK, JSON, interacting.choices(&projects)),
+        Err(error) => refusal(status::UNAVAILABLE, unlisted(&error)),
     }
 }
 

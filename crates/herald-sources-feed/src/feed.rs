@@ -1,9 +1,10 @@
+use herald_core::status;
 use std::collections::BTreeMap;
 use std::fmt::Write;
 
 use herald_core::{Address, Cursor, Draft, ENTRY_LINK, Event, Kind, Polled, digest};
 use herald_ports::{Method, Request, Response, SecretText};
-use herald_wire::{NOT_MODIFIED, SourceError, answered};
+use herald_wire::{SourceError, answered};
 use jiff::Timestamp;
 use jiff::civil::DateTime;
 use jiff::tz::TimeZone;
@@ -397,7 +398,7 @@ impl Feed {
     /// since the cursor's validators.
     #[must_use]
     pub fn unchanged(response: &Response) -> bool {
-        response.status == NOT_MODIFIED
+        response.status == status::NOT_MODIFIED
     }
 
     /// The newest entries in the server's answer to [`Feed::request`], the

@@ -18,7 +18,7 @@ mod webhooks;
 pub use jobs::{Did, Interacted, Job, Worked, unplaced, unworked, work};
 pub use replies::{Answered, Reply, busy, refusal};
 pub(crate) use replies::{missing, rejection, replied, unmethodical, unread};
-pub use router::{answer, uncomposed};
+pub use router::{HEALTH, answer, uncomposed};
 pub use webhooks::Webhooks;
 
 /// An inbound HTTP request, as a driver hands it over.

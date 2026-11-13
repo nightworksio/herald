@@ -1,3 +1,4 @@
+use herald_core::status;
 use herald_core::{Announcement, Declined, Entry, Sent, Step, Waits, safe_url, unreserved};
 use herald_ports::{Method, Request, Response, SecretText};
 use serde_json::{Map, Value, json};
@@ -23,8 +24,6 @@ const LOCALPART: &[u8] = b"!$()*+,-./;=?@_~";
 pub(crate) const PINNED_EVENTS: &str = "m.room.pinned_events";
 /// The event a message is.
 pub(crate) const MESSAGE: &str = "m.room.message";
-/// The answer of a homeserver for state a room does not hold.
-pub(crate) const NOT_FOUND: u16 = 404;
 
 /// Why Matrix cannot take a step.
 pub(crate) const fn cannot(what: &'static str) -> Declined {
@@ -213,7 +212,7 @@ pub(crate) fn pinned(matrix: &Matrix) -> Request {
 /// The room's pinned events, as `response` holds them, or what the
 /// homeserver's trouble means.
 pub(crate) fn pins(response: &Response, waits: Waits) -> Result<Vec<String>, Sent> {
-    if response.status == NOT_FOUND {
+    if response.status == status::NOT_FOUND {
         return Ok(Vec::new());
     }
     if let Some(sent) = failure(response, waits) {

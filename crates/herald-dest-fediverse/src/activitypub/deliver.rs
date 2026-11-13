@@ -1,3 +1,4 @@
+use herald_core::status;
 use herald_core::{
     ACTIVITY_JSON, Address, Addressed, Announcement, Bullet, Declined, Emphases, Entry, Escape,
     Facts, Features, Fences, Heading, Limits, Links, Markup, Measure, MentionStyle, Pins, Profile,
@@ -38,8 +39,6 @@ const TITLE: usize = 500;
 /// The longest text of one Note, in characters. A Note holds the whole
 /// announcement, so its parts are never posted apart.
 const TEXT: usize = 20_000;
-/// What an inbox answers when its actor or server is gone for good.
-const GONE: u16 = 410;
 /// The most of an inbox's answer read: only its status is used.
 const ANSWER: usize = 65_536;
 /// An HTTP date, as `Date` carries it.
@@ -358,7 +357,7 @@ fn addressed(inbox: &str) -> Option<(String, String)> {
 /// What an inbox's answer means. An inbox that is gone for good counts as
 /// delivered, as nothing will ever take it there.
 fn answered(response: &Response, waits: Waits) -> Sent {
-    if response.status == GONE {
+    if response.status == status::GONE {
         return Sent::Landed(Facts::default());
     }
     response

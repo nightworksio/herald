@@ -1,6 +1,7 @@
 //! A dry run: an `Http` that sends nothing and keeps each request, and the
 //! requests it kept printed.
 
+use herald_core::status;
 use std::future::Future;
 use std::io::Write;
 use std::sync::{Arc, Mutex, PoisonError};
@@ -46,7 +47,7 @@ impl Http for Dry {
             .unwrap_or_else(PoisonError::into_inner)
             .push(request.with_body().to_string());
         std::future::ready(Ok(Response {
-            status: 200,
+            status: status::OK,
             headers: Vec::new(),
             body: br#"{"id":"0"}"#.to_vec(),
         }))

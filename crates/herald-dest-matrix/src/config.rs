@@ -1,3 +1,4 @@
+use herald_core::status;
 use herald_core::{
     Answering, DestinationName, KeyForm, Markup, Profile, Room, Scheme, SecretRef, Signed, Symbols,
     Text, WaitOptions,
@@ -31,7 +32,7 @@ const EMPTY: &str = "{}";
 /// What a homeserver is answered for a user or room herald does not hold.
 fn unknown() -> Said {
     Said {
-        status: 404,
+        status: status::NOT_FOUND,
         body: r#"{"errcode":"M_NOT_FOUND"}"#.to_owned(),
     }
 }

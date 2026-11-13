@@ -1,4 +1,5 @@
 use herald_core::Address;
+use herald_core::status;
 use herald_ports::{Http, Method, Request, Response, Secret, SecretText, StoreError};
 use herald_records::Wrote;
 use serde::de::DeserializeOwned;
@@ -12,8 +13,6 @@ const SERVICE: &str = "/twirp/github.actions.results.api.v1.CacheService/";
 /// The version every generation is saved under: the SHA-256 of
 /// `herald/actions-cache/v1`.
 const VERSION: &str = "514567f3aac3eee4eded2f7416de16186bc488fbfc99341324de7a200c712123";
-/// What the service answers to an entry that exists.
-const EXISTS: u16 = 409;
 /// The service, as its errors name it.
 const CACHE: &str = "the Actions cache";
 /// What a Twirp method answers, as its errors name it.
@@ -120,7 +119,7 @@ impl<H: Http + Send> CacheRecords<'_, H> {
         let key = self.key(generation.number);
         let body = json!({ "key": key, "version": VERSION });
         let response = self.call("CreateCacheEntry", &body).await?;
-        if response.status == EXISTS {
+        if response.status == status::CONFLICT {
             return Ok(Wrote::Conflict);
         }
         let reserved: Reserved = read(ANSWER, &response)?;

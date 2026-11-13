@@ -2,6 +2,7 @@
 //! before it is read, and the release it publishes left to announce
 //! (ADR-0007, ADR-0013).
 
+use herald_core::status;
 use std::collections::BTreeMap;
 
 use herald_core::SourceName;
@@ -57,7 +58,7 @@ pub(super) async fn hooked<S: Store, C: Clock, G, V: Verifier, H, P, K>(
     }
     match hooking.hooked(inbound.headers, inbound.body) {
         Ok(Hooked::Event(event)) => Answered {
-            reply: text_reply(202, "herald announces the release").reply,
+            reply: text_reply(status::ACCEPTED, "herald announces the release").reply,
             refused: None,
             job: Some(Job::Announce {
                 source,
@@ -66,7 +67,7 @@ pub(super) async fn hooked<S: Store, C: Clock, G, V: Verifier, H, P, K>(
                 verified,
             }),
         },
-        Ok(Hooked::Nothing(why)) => text_reply(200, why),
+        Ok(Hooked::Nothing(why)) => text_reply(status::OK, why),
         Err(error) => unread(store, scheme, &verified, error).await,
     }
 }

@@ -1,3 +1,4 @@
+use herald_core::status;
 use std::fmt;
 use std::future::Future;
 
@@ -224,14 +225,14 @@ impl Response {
     /// Whether the status is a success, `2xx`.
     #[must_use]
     pub fn succeeded(&self) -> bool {
-        (200..300).contains(&self.status)
+        status::succeeded(self.status)
     }
 
     /// Whether the status refuses the request's credential: `401`, as it is
     /// not taken, or `403`, as it may not do what the request asks.
     #[must_use]
     pub fn refuses_credential(&self) -> bool {
-        matches!(self.status, 401 | 403)
+        matches!(self.status, status::UNAUTHORIZED | status::FORBIDDEN)
     }
 
     /// When the response was sent, as its `Date` names it.

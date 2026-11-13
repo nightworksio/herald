@@ -48,8 +48,8 @@ pub use preview::{Previewed, preview};
 pub use room::{Place, Room, Running};
 pub use round::{ROUND_SECRET, Round};
 pub use serving::{
-    Answered, Did, Inbound, Interacted, Job, Reply, Serving, Webhooks, Worked, answer, busy,
-    refusal, uncomposed, unplaced, unworked, work,
+    Answered, Did, HEALTH, Inbound, Interacted, Job, Reply, Serving, Webhooks, Worked, answer,
+    busy, refusal, uncomposed, unplaced, unworked, work,
 };
 pub use sessions::{Sessions, Taker};
 pub use trial::trial;

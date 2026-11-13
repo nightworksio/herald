@@ -1,6 +1,7 @@
 //! A request as a host with no script of its own reads it, and the answer
 //! herald gives it.
 
+use herald_core::status;
 use std::fmt;
 
 use herald_flows::{Admission, Inbound, ROUND_SECRET, Reply, Round, refusal};
@@ -83,14 +84,14 @@ impl<H: Host> Composed<'_, H> {
     pub(crate) async fn round(&self, round: Round, authorization: Option<&str>) -> Answer {
         let secret = self.host().secrets().secret(ROUND_SECRET).await.ok();
         if !Round::allowed(authorization, secret.as_ref()) {
-            return refusal(401, "a round was asked without its secret").into();
+            return refusal(status::UNAUTHORIZED, "a round was asked without its secret").into();
         }
         let said = match round {
             Round::Poll => self.poll().await.iter().flat_map(told::polled).collect(),
             Round::Housekeep => told::kept(&self.housekeep().await),
         };
         Answer {
-            reply: plain(200, "the round ran"),
+            reply: plain(status::OK, "the round ran"),
             refused: None,
             left: None,
             said,

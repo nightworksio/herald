@@ -1537,6 +1537,7 @@ dependencies = [
  "futures-util",
  "herald-compose",
  "herald-config",
+ "herald-core",
  "herald-crypto",
  "herald-environment",
  "herald-flows",

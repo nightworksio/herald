@@ -1,5 +1,6 @@
 use herald_compose::{Artefact, Composed, HostRequest, Hosting, Left, told};
 use herald_config::{Config, Uses, load};
+use herald_core::status;
 use herald_flows::{Reply, refusal, uncomposed};
 
 use super::host::WasiHost;
@@ -73,7 +74,10 @@ impl Started {
             Ok(Ok(composed)) => Ok(Self { composed }),
             Ok(Err(reply)) => Err(reply),
             Err(error) => {
-                let refused = refusal(500, format!("herald could not start: {error}"));
+                let refused = refusal(
+                    status::SERVER_ERROR,
+                    format!("herald could not start: {error}"),
+                );
                 log_lines(refused.refused.as_deref().map(told::refused));
                 Err(refused.reply)
             }

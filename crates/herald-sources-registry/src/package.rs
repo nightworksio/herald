@@ -1,3 +1,4 @@
+use herald_core::status;
 use std::collections::BTreeMap;
 
 use herald_core::{
@@ -119,7 +120,7 @@ impl Registry {
     /// nothing changed since the cursor's validators.
     #[must_use]
     pub fn unchanged(response: &Response) -> bool {
-        response.status == herald_wire::NOT_MODIFIED
+        response.status == status::NOT_MODIFIED
     }
 }
 

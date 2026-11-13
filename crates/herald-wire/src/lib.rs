@@ -14,9 +14,6 @@ use herald_core::Size;
 use herald_ports::Response;
 use serde::de::DeserializeOwned;
 
-/// What a server answers to a conditional request when nothing changed.
-pub const NOT_MODIFIED: u16 = 304;
-
 /// The newest releases or versions one poll reads (ADR-0003).
 pub const PAGE: usize = 30;
 

@@ -1,3 +1,4 @@
+use herald_core::status;
 use std::future::Future;
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
@@ -155,7 +156,7 @@ impl<'o, H: Host + 'o> Composed<'o, H> {
         }
         if inbound.body.len() > self.config.server.body {
             return refusal(
-                413,
+                status::CONTENT_TOO_LARGE,
                 format!(
                     "its body is larger than [server] body, {} bytes",
                     self.config.server.body

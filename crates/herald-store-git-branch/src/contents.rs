@@ -1,5 +1,6 @@
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD;
+use herald_core::status;
 use herald_ports::{Http, Method, Request, Response, StoreError};
 use herald_records::{Blob, RecordBackend, Wrote};
 use herald_wire::github::{self, GITHUB};
@@ -8,10 +9,6 @@ use serde_json::{Value, json};
 
 use crate::store::{BranchRecords, GitBranch};
 
-const OK: u16 = 200;
-const MISSING: u16 = 404;
-const CONFLICT: u16 = 409;
-const UNPROCESSABLE: u16 = 422;
 /// What a file is, among a tree's entries.
 const BLOB: &str = "blob";
 /// What the branch's first commit holds, so the branch has a tree.
@@ -89,7 +86,7 @@ impl GitBranch {
         let commit = self.sha(http, "/git/commits", &commit).await?;
         let reference = json!({ "ref": format!("refs/heads/{}", self.branch), "sha": commit });
         let response = self.made(http, "/git/refs", &reference).await?;
-        if response.succeeded() || response.status == UNPROCESSABLE {
+        if response.succeeded() || response.status == status::UNPROCESSABLE {
             Ok(())
         } else {
             Err(StoreError::answered(GITHUB, response.status))
@@ -106,10 +103,10 @@ impl<H: Http> RecordBackend for BranchRecords<H> {
         let branch = &self.branch;
         let request = branch.contents(Method::Get, &format!("{path}?ref={}", branch.branch));
         let response = branch.send(&self.http, request).await?;
-        if response.status == MISSING {
+        if response.status == status::NOT_FOUND {
             return Ok(None);
         }
-        if response.status != OK {
+        if response.status != status::OK {
             return Err(StoreError::answered(GITHUB, response.status));
         }
         let content: Content = serde_json::from_slice(&response.body)
@@ -130,10 +127,10 @@ impl<H: Http> RecordBackend for BranchRecords<H> {
             &format!("/git/trees/{}:{directory}", branch.branch),
         );
         let response = branch.send(&self.http, request).await?;
-        if response.status == MISSING {
+        if response.status == status::NOT_FOUND {
             return Ok(Vec::new());
         }
-        if response.status != OK {
+        if response.status != status::OK {
             return Err(StoreError::answered(GITHUB, response.status));
         }
         let tree: Tree = serde_json::from_slice(&response.body)
@@ -168,13 +165,13 @@ impl<H: Http> RecordBackend for BranchRecords<H> {
         }
         let put = || branch.contents(Method::Put, path).body(body.to_string());
         let mut response = branch.send(&self.http, put()).await?;
-        if response.status == MISSING {
+        if response.status == status::NOT_FOUND {
             branch.branch_made(&self.http).await?;
             response = branch.send(&self.http, put()).await?;
         }
         match response.status {
             _ if response.succeeded() => Ok(Wrote::Written),
-            CONFLICT | UNPROCESSABLE => Ok(Wrote::Conflict),
+            status::CONFLICT | status::UNPROCESSABLE => Ok(Wrote::Conflict),
             _ => Err(StoreError::answered(GITHUB, response.status)),
         }
     }
@@ -189,8 +186,8 @@ impl<H: Http> RecordBackend for BranchRecords<H> {
         let request = branch.contents(Method::Delete, path).body(body.to_string());
         let response = branch.send(&self.http, request).await?;
         match response.status {
-            OK | MISSING => Ok(Wrote::Written),
-            CONFLICT | UNPROCESSABLE => Ok(Wrote::Conflict),
+            status::OK | status::NOT_FOUND => Ok(Wrote::Written),
+            status::CONFLICT | status::UNPROCESSABLE => Ok(Wrote::Conflict),
             _ => Err(StoreError::answered(GITHUB, response.status)),
         }
     }

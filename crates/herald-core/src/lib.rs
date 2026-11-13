@@ -31,6 +31,7 @@ mod render;
 mod retention;
 mod route;
 mod size;
+pub mod status;
 mod subscription;
 mod symbols;
 mod version;
