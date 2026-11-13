@@ -1,15 +1,13 @@
 //! herald's ActivityPub actors as the server answers for them: their
 //! documents, Notes, outboxes, followers, inboxes and WebFinger.
 
-use herald_core::{ACTIVITY_JSON, Addressed, DestinationName, Key};
+use herald_core::{ACTIVITY_JSON, Addressed, DestinationName, Escaping, Key};
 use herald_kinds::Federates;
 use herald_ports::{
     Clock, CryptoError, Http, Keyring, Notes, Outboxed, Signer, Store, Subscriptions, Verifier,
 };
 
-use super::{
-    Answered, Inbound, JRD, Job, Serving, decoded, missing, refusal, rejection, replied, said,
-};
+use super::{Answered, Inbound, JRD, Job, Serving, missing, refusal, rejection, replied, said};
 use crate::inbound::{Checking, activity_verified, admitted};
 use crate::prepare::Connected;
 
@@ -42,7 +40,7 @@ pub(super) fn fingered<H>(connected: &Connected<H>, query: Option<&str>) -> Answ
         .unwrap_or_default()
         .split('&')
         .find_map(|pair| pair.strip_prefix("resource="))
-        .and_then(decoded)
+        .and_then(|resource| Escaping::UNRESERVED.unescape(resource))
         .unwrap_or_default();
     let found = connected.routes.iter().find_map(|(route, _)| {
         let actor = route.reached.federates()?;

@@ -108,3 +108,10 @@ path = "fuzz_targets/records.rs"
 test = false
 doc = false
 bench = false
+
+[[bin]]
+name = "address"
+path = "fuzz_targets/address.rs"
+test = false
+doc = false
+bench = false

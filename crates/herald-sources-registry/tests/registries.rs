@@ -65,7 +65,7 @@ mod registries {
         let newest = &polled.events[0];
         assert_eq!(
             newest.identity().as_str(),
-            "repo.packagist.org/monolog/monolog/3.12.1"
+            "packagist/monolog/monolog/3.12.1"
         );
         assert_eq!(newest.kind(), &Kind::PACKAGE_VERSION);
         assert_eq!(newest.project(), "monolog/monolog");
@@ -103,16 +103,10 @@ mod registries {
         let ab = package(Registry::Packagist, "a/b", None);
         assert_eq!(
             identities(&ab, &minified.to_string()),
-            [
-                "repo.packagist.org/a/b/2.0.0",
-                "repo.packagist.org/a/b/1.0.0"
-            ]
+            ["packagist/a/b/2.0.0", "packagist/a/b/1.0.0"]
         );
         let full = json!({ "packages": { "a/b": entries } });
-        assert_eq!(
-            identities(&ab, &full.to_string()),
-            ["repo.packagist.org/a/b/2.0.0"]
-        );
+        assert_eq!(identities(&ab, &full.to_string()), ["packagist/a/b/2.0.0"]);
         let other = json!({ "packages": { "c/d": entries } });
         assert_eq!(identities(&ab, &other.to_string()), Vec::<String>::new());
     }
@@ -123,7 +117,7 @@ mod registries {
         let found = identities(&jiff, CRATES_IO);
         assert_eq!(
             found[..2],
-            ["crates.io/jiff/0.2.38", "crates.io/jiff/0.2.37"]
+            ["crates-io/jiff/0.2.38", "crates-io/jiff/0.2.37"]
         );
         assert!(!found.iter().any(|identity| identity.ends_with("/0.2.36")));
         let polled = jiff.versions(&answer(200, CRATES_IO)).unwrap();
@@ -138,7 +132,7 @@ mod registries {
         let pad = package(Registry::Npm, "left-pad", None);
         let found = identities(&pad, NPM);
         assert_eq!(found.len(), 15);
-        assert_eq!(found[0], "registry.npmjs.org/left-pad/1.3.0");
+        assert_eq!(found[0], "npm/left-pad/1.3.0");
         let polled = pad.versions(&answer(200, NPM)).unwrap();
         assert_eq!(
             polled.events[0].link("release"),
@@ -150,7 +144,7 @@ mod registries {
         });
         assert_eq!(
             identities(&pad, &unpublished.to_string()),
-            ["registry.npmjs.org/left-pad/1.0.0"]
+            ["npm/left-pad/1.0.0"]
         );
         assert_eq!(identities(&pad, "{}"), Vec::<String>::new());
         let listed = pad.versions(&answer(200, r#"{"versions":["1.0.0"]}"#));
@@ -166,10 +160,7 @@ mod registries {
         assert_eq!(caddy.name(), "library/caddy");
         let polled = caddy.versions(&answer(200, DOCKER_HUB)).unwrap();
         let first = &polled.events[0];
-        assert_eq!(
-            first.identity().as_str(),
-            "hub.docker.com/library/caddy/latest"
-        );
+        assert_eq!(first.identity().as_str(), "docker-hub/library/caddy/latest");
         assert_eq!(first.project(), "caddy");
         assert_eq!(first.title(), "caddy latest");
         let release = polled
@@ -271,10 +262,11 @@ mod registries {
         assert_eq!(mirror.api(), "https://npm.example");
         assert_eq!(mirror.registry(), Registry::Npm);
         let polled = mirror.versions(&answer(200, NPM)).unwrap();
-        assert_eq!(
-            polled.events[0].identity().as_str(),
-            "npm.example/left-pad/1.3.0"
-        );
+        let public = package(Registry::Npm, "left-pad", None)
+            .versions(&answer(200, NPM))
+            .unwrap();
+        assert_eq!(polled.events[0].identity().as_str(), "npm/left-pad/1.3.0");
+        assert_eq!(polled.events[0].identity(), public.events[0].identity());
         assert_eq!(polled.events[0].link("release"), None);
     }
 
@@ -505,7 +497,7 @@ mod registries {
             let body = json!({ "versions": { version.clone(): {} }, "time": { version.clone(): "2026-01-01T00:00:00Z" } });
             let pad = package(Registry::Npm, "left-pad", None);
             let found = identities(&pad, &body.to_string());
-            prop_assert_eq!(found, vec![format!("registry.npmjs.org/left-pad/{version}")]);
+            prop_assert_eq!(found, vec![format!("npm/left-pad/{version}")]);
         }
     }
 }

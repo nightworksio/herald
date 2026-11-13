@@ -1,9 +1,9 @@
 use std::collections::BTreeMap;
 
-use herald_core::{Draft, Event, Kind, RELEASE_LINK, prerelease_version, versioned};
+use herald_core::{Address, Draft, Event, Kind, RELEASE_LINK, prerelease_version, versioned};
 use jiff::Timestamp;
 
-use herald_wire::{SourceError, host};
+use herald_wire::SourceError;
 use serde::de::DeserializeOwned;
 
 use crate::forge::Repository;
@@ -44,12 +44,16 @@ pub(crate) fn event(
         what,
         reason: "a published release has no publication time".to_owned(),
     })?;
+    let forge = Address::parse(&found.url).ok_or_else(|| SourceError::Unreadable {
+        what,
+        reason: "a release's page names no host".to_owned(),
+    })?;
     let title = found
         .name
         .filter(|name| !name.trim().is_empty())
         .unwrap_or_else(|| found.tag.clone());
     let draft = Draft {
-        identity: format!("{}/{}/{}", host(&found.url), repository.id, found.tag),
+        identity: format!("{}/{}/{}", forge.host(), repository.id, found.tag),
         kind: Kind::RELEASE,
         project: repository.name.clone(),
         attributes: versioned(

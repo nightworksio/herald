@@ -4,8 +4,8 @@ use jiff::tz::TimeZone;
 use serde::{Deserialize, Deserializer};
 
 use crate::forge::{Api, Repository};
+use herald_core::unreserved;
 use herald_wire::SourceError;
-use herald_wire::segment;
 
 use crate::wire::{Found, read};
 
@@ -87,7 +87,7 @@ fn when<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Option<Timestamp>,
 
 /// The base URL of a project's API, named by its full path.
 pub(crate) fn project(api: &str, path: &str) -> String {
-    format!("{api}/projects/{}", segment(path))
+    format!("{api}/projects/{}", unreserved(path))
 }
 
 /// The project and release a `create` release hook names, or nothing for

@@ -1,6 +1,6 @@
 # ADR-0003: Every source becomes one neutral event, parsed without I/O
 
-**Status:** Accepted; the `kind`, `version` and `prerelease` fields superseded by [ADR-0018](0018-a-kind-is-data-and-an-event-carries-its-kind-s-attributes.md), under which a kind is data and an event carries its kind's attributes
+**Status:** Accepted; the `kind`, `version` and `prerelease` fields superseded by [ADR-0018](0018-a-kind-is-data-and-an-event-carries-its-kind-s-attributes.md), under which a kind is data and an event carries its kind's attributes; the registry and forge host in an identity extended by [ADR-0023](0023-urls-are-read-one-way-in-the-core-text-is-escaped-one-way-and-a-registry-names-its-events-by-its-kind.md)
 **Date:** 2026-10-31
 
 ## Context
@@ -135,3 +135,4 @@ makes them the code fuzzing reaches best.
 - [ADR-0005](0005-an-announcement-is-sent-once-and-finished-if-interrupted.md): the key built from the identity
 - [ADR-0006](0006-one-herald-toml-with-sandboxed-templates-and-a-published-schema.md): the event schema and what templates read
 - [ADR-0007](0007-secrets-stay-out-of-reach-and-every-inbound-request-is-verified-first.md): verifying webhooks before parsing them
+- [ADR-0023](0023-urls-are-read-one-way-in-the-core-text-is-escaped-one-way-and-a-registry-names-its-events-by-its-kind.md): the registry and forge host in an identity, extended

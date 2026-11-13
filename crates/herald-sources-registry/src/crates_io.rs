@@ -1,4 +1,5 @@
-use herald_wire::{SourceError, read, segment};
+use herald_core::unreserved;
+use herald_wire::{SourceError, read};
 use jiff::Timestamp;
 use serde::Deserialize;
 
@@ -25,7 +26,7 @@ struct Version {
 pub(crate) fn path(name: &str, page: usize) -> String {
     format!(
         "/crates/{}/versions?per_page={page}&sort=date",
-        segment(name)
+        unreserved(name)
     )
 }
 

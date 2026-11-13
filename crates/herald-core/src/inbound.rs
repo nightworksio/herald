@@ -12,6 +12,7 @@ use base64::engine::general_purpose::STANDARD;
 use jiff::{SignedDuration, Timestamp};
 
 use crate::bounds::Inbound;
+use crate::key::unhex;
 
 /// Who signs a kind of inbound request, and how: data each source and
 /// destination supplies, over the primitives herald checks (ADR-0007).
@@ -583,23 +584,6 @@ fn element(der: &[u8], tag: u8) -> Option<(&[u8], &[u8])> {
         _ => return None,
     };
     (found == tag && rest.len() >= length).then(|| rest.split_at(length))
-}
-
-/// The bytes `text` spells in hex, in either case; nothing where it spells
-/// none.
-fn unhex(text: &str) -> Option<Vec<u8>> {
-    if text.is_empty() || !text.len().is_multiple_of(2) {
-        return None;
-    }
-    text.as_bytes()
-        .chunks(2)
-        .map(|pair| {
-            std::str::from_utf8(pair)
-                .ok()
-                .filter(|pair| pair.bytes().all(|byte| byte.is_ascii_hexdigit()))
-                .and_then(|pair| u8::from_str_radix(pair, 16).ok())
-        })
-        .collect()
 }
 
 #[cfg(test)]

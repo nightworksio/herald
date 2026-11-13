@@ -1,18 +1,84 @@
 //! What a config or an event names that goes into a URL: a web address, and
-//! the names a path is built from.
+//! the names a path is built from. Every URL is read as WHATWG reads it, as
+//! the HTTP clients that reach it do.
 
 use std::ops::RangeInclusive;
+
+use url::{Position, Url};
 
 /// The schemes a web address is written with.
 pub const WEB_SCHEMES: [&str; 2] = ["https://", "http://"];
 
+/// A URL that names a host, read as WHATWG reads it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Address(Url);
+
+impl Address {
+    /// `text` read as a URL, where it is one and names a host.
+    #[must_use]
+    pub fn parse(text: &str) -> Option<Self> {
+        Url::parse(text)
+            .ok()
+            .filter(|url| url.host().is_some())
+            .map(Self)
+    }
+
+    /// Its scheme, in lowercase.
+    #[must_use]
+    pub fn scheme(&self) -> &str {
+        self.0.scheme()
+    }
+
+    /// Its host: a domain in lowercase, an IPv4 address, or an IPv6 address
+    /// in brackets.
+    #[must_use]
+    pub fn host(&self) -> &str {
+        self.0.host_str().unwrap_or_default()
+    }
+
+    /// Its port, or its scheme's where it names none.
+    #[must_use]
+    pub fn port(&self) -> Option<u16> {
+        self.0.port_or_known_default()
+    }
+
+    /// Its host, and its port where that is not its scheme's: what a `Host`
+    /// header carries.
+    #[must_use]
+    pub fn authority(&self) -> String {
+        match self.0.port() {
+            Some(port) => format!("{}:{port}", self.host()),
+            None => self.host().to_owned(),
+        }
+    }
+
+    /// Its scheme and authority.
+    #[must_use]
+    pub fn origin(&self) -> String {
+        format!("{}://{}", self.scheme(), self.authority())
+    }
+
+    /// Its path and query: what a request line names.
+    #[must_use]
+    pub fn target(&self) -> &str {
+        &self.0[Position::BeforePath..Position::AfterQuery]
+    }
+
+    /// Whether it names a user or a password before its host.
+    #[must_use]
+    pub fn names_a_user(&self) -> bool {
+        !self.0.username().is_empty() || self.0.password().is_some()
+    }
+}
+
 /// Whether `url` is a web address: `https://` or `http://`, then a host.
 #[must_use]
 pub fn web_url(url: &str) -> bool {
-    WEB_SCHEMES.iter().any(|scheme| {
+    let written = WEB_SCHEMES.iter().any(|scheme| {
         url.strip_prefix(scheme)
-            .is_some_and(|rest| !rest.is_empty() && !rest.starts_with(['/', '?', '#']))
-    })
+            .is_some_and(|rest| !rest.starts_with(['/', '\\', '?', '#']))
+    });
+    written && Address::parse(url).is_some()
 }
 
 /// Whether `text` is a domain alone: two or more labels of lowercase ASCII
@@ -44,18 +110,13 @@ pub fn under_domain(host: &str, domain: &str) -> bool {
 /// with no credentials before it.
 #[must_use]
 pub fn socket_under(url: &str, domains: &[&str]) -> bool {
-    let Some(rest) = url.strip_prefix("wss://") else {
-        return false;
-    };
-    let authority = rest.split(['/', '?', '#']).next().unwrap_or_default();
-    if authority.contains('@') {
-        return false;
-    }
-    let host = authority
-        .rsplit_once(':')
-        .map_or(authority, |(host, _)| host)
-        .to_ascii_lowercase();
-    domains.iter().any(|domain| under_domain(&host, domain))
+    Address::parse(url).is_some_and(|address| {
+        address.scheme() == "wss"
+            && !address.names_a_user()
+            && domains
+                .iter()
+                .any(|domain| under_domain(address.host(), domain))
+    })
 }
 
 /// Whether `path` is as many names as `names` allows, joined by `/`, each of
@@ -92,9 +153,75 @@ mod tests {
             "https://",
             "https:///x",
             "http://?q",
+            "https://[/",
+            "https://a b/",
+            "https:forge.example",
+            "https:\\\\forge.example",
+            "https://\\forge.example",
             "forge.example",
         ] {
             assert!(!web_url(url), "{url}");
+        }
+    }
+
+    #[test]
+    fn an_address_is_read_as_an_http_client_reads_it() {
+        let cases = [
+            (
+                "https://github.com/cli/cli",
+                "github.com",
+                "github.com",
+                "/cli/cli",
+            ),
+            (
+                "https://user:secret@Forge.Example:8443/o/r?x=1#f",
+                "forge.example",
+                "forge.example:8443",
+                "/o/r?x=1",
+            ),
+            ("https://[::1]:8/", "[::1]", "[::1]:8", "/"),
+            ("http://127.0.0.1:80", "127.0.0.1", "127.0.0.1", "/"),
+            (
+                "https://dynamodb.eu-west-1.amazonaws.com:443",
+                "dynamodb.eu-west-1.amazonaws.com",
+                "dynamodb.eu-west-1.amazonaws.com",
+                "/",
+            ),
+            (
+                "https://evil.com\\.slack.com/",
+                "evil.com",
+                "evil.com",
+                "/.slack.com/",
+            ),
+        ];
+        for (url, host, authority, target) in cases {
+            let address = Address::parse(url).unwrap();
+            assert_eq!(address.host(), host, "{url}");
+            assert_eq!(address.authority(), authority, "{url}");
+            assert_eq!(address.target(), target, "{url}");
+        }
+        let address = Address::parse("https://u@h.example:8443/").unwrap();
+        assert_eq!(address.scheme(), "https");
+        assert_eq!(address.port(), Some(8443));
+        assert_eq!(address.origin(), "https://h.example:8443");
+        assert!(address.names_a_user());
+        assert!(
+            Address::parse("https://:p@h.example/")
+                .unwrap()
+                .names_a_user()
+        );
+        let plain = Address::parse("http://h.example/").unwrap();
+        assert_eq!(plain.port(), Some(80));
+        assert_eq!(plain.origin(), "http://h.example");
+        assert!(!plain.names_a_user());
+        for none in [
+            "",
+            "crates.io/api/v1",
+            "mailto:a@b.example",
+            "https://[/",
+            "data:text/plain,x",
+        ] {
+            assert_eq!(Address::parse(none), None, "{none}");
         }
     }
 
@@ -156,6 +283,9 @@ mod tests {
             "wss://evil.example/slack.com",
             "wss://evil.example/?slack.com",
             "wss://[::1]:443/",
+            "wss://evil.com\\.slack.com/",
+            "wss://evil.com\\@slack.com/",
+            "wss://user:pass@slack.com/",
         ] {
             assert!(!socket_under(bad, &domains), "{bad}");
         }

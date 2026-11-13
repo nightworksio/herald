@@ -88,6 +88,7 @@ fn outside_allowed(layer: Layer) -> &'static [&'static str] {
             "serde_json",
             "sha2",
             "unicode-segmentation",
+            "url",
         ],
         Layer::Ports => &["jiff", "zeroize"],
         Layer::Flows => &["futures-util", "jiff"],

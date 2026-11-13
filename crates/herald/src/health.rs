@@ -5,6 +5,7 @@ use std::io::Write;
 use std::time::Duration;
 
 use herald_config::Server;
+use herald_core::Address;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 
@@ -42,19 +43,20 @@ pub(crate) fn url(
         .unwrap_or_else(|| url_of(Server::LISTEN))
 }
 
-/// The authority and path of a plain HTTP `url`.
-fn parts(url: &str) -> Option<(&str, &str)> {
-    let rest = url.strip_prefix("http://")?;
-    let (authority, path) = rest.find('/').map_or((rest, "/"), |at| rest.split_at(at));
-    (!authority.is_empty()).then_some((authority, path))
+/// Where a plain HTTP `url` is reached, the `Host` it is asked as, and the
+/// target it asks for.
+fn parts(url: &str) -> Option<(String, String, String)> {
+    let address = Address::parse(url).filter(|address| address.scheme() == "http")?;
+    let reached = format!("{}:{}", address.host(), address.port()?);
+    Some((reached, address.authority(), address.target().to_owned()))
 }
 
 /// Why `url` did not answer healthy, or nothing where it did.
 async fn asked(url: &str, within: Duration) -> Result<(), String> {
-    let (authority, path) =
+    let (reached, authority, path) =
         parts(url).ok_or_else(|| format!("{url} is not an http:// URL naming a host"))?;
     let exchange = async {
-        let mut stream = TcpStream::connect(authority).await?;
+        let mut stream = TcpStream::connect(reached).await?;
         let request = format!(
             "GET {path} HTTP/1.1\r\nHost: {authority}\r\nUser-Agent: herald\r\nConnection: close\r\n\r\n"
         );
@@ -172,9 +174,17 @@ mod tests {
 
     #[test]
     fn a_url_is_read_as_its_authority_and_path() {
-        assert_eq!(parts("http://a:1/x/y"), Some(("a:1", "/x/y")));
-        assert_eq!(parts("http://a:1"), Some(("a:1", "/")));
-        assert_eq!(parts("http:///x"), None);
+        let parted = |reached: &str, authority: &str, target: &str| {
+            Some((reached.to_owned(), authority.to_owned(), target.to_owned()))
+        };
+        assert_eq!(parts("http://a:1/x/y?z"), parted("a:1", "a:1", "/x/y?z"));
+        assert_eq!(parts("http://a:1"), parted("a:1", "a:1", "/"));
+        assert_eq!(parts("http://u@a/x"), parted("a:80", "a", "/x"));
+        assert_eq!(
+            parts("http://[::1]:8080/"),
+            parted("[::1]:8080", "[::1]:8080", "/")
+        );
+        assert_eq!(parts("http://"), None);
         assert_eq!(parts("https://a:1/x"), None);
     }
 

@@ -4,7 +4,7 @@ use herald_core::{
     Cursor, Draft, Event, Kind, Polled, RELEASE_LINK, prerelease_version, versioned,
 };
 use herald_ports::{Method, Request, Response, Secret, Text, USER_AGENT};
-use herald_wire::{Reading, SourceError, answered, host};
+use herald_wire::{Reading, SourceError, answered};
 use jiff::Timestamp;
 
 use crate::options::{RegistryOptions, TagOrdering};
@@ -304,7 +304,7 @@ impl Package {
             };
             links.insert(RELEASE_LINK.to_owned(), page);
         }
-        let identity = format!("{}/{}/{}", host(&self.api), self.name, found.version);
+        let identity = format!("{}/{}/{}", self.registry.kind(), self.name, found.version);
         let title = format!("{project} {}", found.version);
         let prerelease = prerelease_version(&found.version);
         let draft = Draft {

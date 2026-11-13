@@ -1,11 +1,11 @@
-use herald_core::{Cursor, Event, KeyForm, Polled, Scheme, Signed};
+use herald_core::{Cursor, Event, KeyForm, Polled, Scheme, Signed, unreserved};
 use herald_kinds::Hooked;
 use herald_ports::{Method, Request, Response, Secret, Text, USER_AGENT};
 use serde::Deserialize;
 
 use crate::options::SourceOptions;
 use herald_wire::SourceError;
-use herald_wire::{NOT_MODIFIED, Reading, answered, segment};
+use herald_wire::{NOT_MODIFIED, Reading, answered};
 
 use crate::wire::{Found, event, read};
 use crate::{forgejo, github, gitlab};
@@ -397,7 +397,7 @@ impl Origin {
     /// The request for the release tagged `tag`.
     #[must_use]
     pub fn release_request(&self, tag: &str, token: Option<&Token>) -> Request {
-        let path = format!("{}{}", self.forge.api().tagged, segment(tag));
+        let path = format!("{}{}", self.forge.api().tagged, unreserved(tag));
         self.get(&path, token)
     }
 }

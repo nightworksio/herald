@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 
-use herald_wire::{SourceError, read, segment};
+use herald_core::unreserved;
+use herald_wire::{SourceError, read};
 use jiff::Timestamp;
 use serde::Deserialize;
 
@@ -28,7 +29,7 @@ struct Entry {
 }
 
 pub(crate) fn path(name: &str) -> String {
-    let name: Vec<String> = name.split('/').map(segment).collect();
+    let name: Vec<String> = name.split('/').map(unreserved).collect();
     format!("/p2/{}.json", name.join("/"))
 }
 

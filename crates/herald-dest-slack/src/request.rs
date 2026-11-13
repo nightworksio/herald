@@ -1,5 +1,5 @@
-use herald_core::{Announcement, Declined, Entry, Phrase, Step, safe_url};
-use herald_ports::{Credential, Method, Request, Text, USER_AGENT, unreserved};
+use herald_core::{Announcement, Declined, Entry, Phrase, Step, safe_url, unreserved};
+use herald_ports::{Credential, Method, Request, Text, USER_AGENT};
 use serde_json::{Value, json};
 
 use crate::interact::subscribe_block;
