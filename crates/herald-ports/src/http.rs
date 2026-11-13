@@ -5,7 +5,7 @@ use herald_core::{Sent, Waits};
 use jiff::{SignedDuration, Timestamp};
 
 use crate::outbound::Outbound;
-use crate::secret::Text;
+use crate::secret::{Secret, Text};
 
 /// An HTTP method.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -94,6 +94,18 @@ impl Request {
     pub fn header(mut self, name: impl Into<String>, value: Text) -> Self {
         self.headers.push((name.into(), value));
         self
+    }
+
+    /// The request carrying `token` as its bearer token.
+    #[must_use]
+    pub fn bearer(self, token: Secret) -> Self {
+        self.header("Authorization", Text::plain("Bearer ").then_secret(token))
+    }
+
+    /// The request identified as herald's, by its `User-Agent`.
+    #[must_use]
+    pub fn identified(self) -> Self {
+        self.header("User-Agent", Text::plain(USER_AGENT))
     }
 
     /// The request with `body`.
@@ -328,6 +340,16 @@ impl fmt::Display for HttpError {
     }
 }
 
+impl HttpError {
+    /// The host could not be reached, for `reason`.
+    #[must_use]
+    pub fn unreachable(reason: impl fmt::Display) -> Self {
+        Self::Unreachable {
+            reason: reason.to_string(),
+        }
+    }
+}
+
 /// One request, one response.
 pub trait Http: Sync {
     /// The response to `request`.
@@ -343,7 +365,6 @@ impl<H: Http> Http for &H {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::secret::Secret;
 
     #[test]
     fn a_request_reads_no_more_than_its_cap_its_ask_and_the_ceiling() {
@@ -512,6 +533,20 @@ mod tests {
     }
 
     #[test]
+    fn a_request_carries_a_bearer_token_and_herald_s_user_agent() {
+        let request = Request::new(Method::Get, Text::plain("https://example.org"))
+            .bearer(Secret::new("TOKEN", "hunter2"))
+            .identified();
+        assert_eq!(
+            request.to_string(),
+            format!(
+                "GET https://example.org\nAuthorization: Bearer «secret:TOKEN»\nUser-Agent: {USER_AGENT}"
+            )
+        );
+        assert_eq!(request.headers[0].1.expose(), "Bearer hunter2");
+    }
+
+    #[test]
     fn a_sealed_body_is_sent_as_it_is_and_shown_by_its_length_alone() {
         let request = Request::new(Method::Post, Text::plain("https://hub.example/auth"))
             .header(
@@ -575,10 +610,7 @@ mod tests {
             "http://10.0.0.1 is not a host this destination may reach"
         );
         assert_eq!(
-            HttpError::Unreachable {
-                reason: "dns".to_owned()
-            }
-            .to_string(),
+            HttpError::unreachable("dns").to_string(),
             "the host could not be reached: dns"
         );
         assert_eq!(

@@ -58,9 +58,7 @@ impl Http for JsHttp {
                 .as_f64()
                 .and_then(count)
                 .and_then(|status| u16::try_from(status).ok())
-                .ok_or_else(|| HttpError::Unreachable {
-                    reason: "the host answered with no status".to_owned(),
-                })?;
+                .ok_or_else(|| HttpError::unreachable("the host answered with no status"))?;
             let response = Response {
                 status,
                 headers: pairs(&member(&answered, "headers")),
@@ -170,10 +168,6 @@ impl Sql for JsSql {
 /// A key-value store the host offers.
 pub(crate) struct JsKv(pub(crate) SendWrapper<KvObject>);
 
-fn unreached(reason: String) -> KvError {
-    KvError::Unavailable { reason }
-}
-
 fn stamp(value: &JsValue) -> Option<Versionstamp> {
     value.as_string().map(Versionstamp)
 }
@@ -183,7 +177,7 @@ impl Kv for JsKv {
         let kv = self.0.clone();
         let key = strings(key);
         SendWrapper::new(async move {
-            let found = settled(kv.get(&key)).await.map_err(unreached)?;
+            let found = settled(kv.get(&key)).await.map_err(KvError::unavailable)?;
             Ok(
                 stamp(&member(&found, "versionstamp")).map(|versionstamp| Stamped {
                     value: bytes(&member(&found, "value")),
@@ -206,7 +200,7 @@ impl Kv for JsKv {
             let value = Uint8Array::from(value.as_slice());
             let set = settled(kv.set_if(&key, &value, &expected))
                 .await
-                .map_err(unreached)?;
+                .map_err(KvError::unavailable)?;
             Ok(stamp(&set))
         })
     }
@@ -221,7 +215,7 @@ impl Kv for JsKv {
         SendWrapper::new(async move {
             let deleted = settled(kv.delete_if(&key, &expected.0))
                 .await
-                .map_err(unreached)?;
+                .map_err(KvError::unavailable)?;
             Ok(deleted.as_bool() == Some(true))
         })
     }
@@ -230,7 +224,9 @@ impl Kv for JsKv {
         let kv = self.0.clone();
         let prefix = strings(prefix);
         SendWrapper::new(async move {
-            let listed = settled(kv.list(&prefix)).await.map_err(unreached)?;
+            let listed = settled(kv.list(&prefix))
+                .await
+                .map_err(KvError::unavailable)?;
             Ok(Array::from(&listed)
                 .iter()
                 .map(|pair| Pair {

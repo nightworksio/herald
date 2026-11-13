@@ -104,6 +104,17 @@ impl fmt::Display for SqlError {
     }
 }
 
+impl SqlError {
+    /// The database could not be reached or refused the statements, for
+    /// `reason`.
+    #[must_use]
+    pub fn unavailable(reason: impl fmt::Display) -> Self {
+        Self::Unavailable {
+            reason: reason.to_string(),
+        }
+    }
+}
+
 /// A database that runs statements in one transaction: SQLite, Postgres or D1.
 pub trait Sql: Sync {
     /// Runs `statements` in one transaction, all or none, and answers each.
@@ -126,10 +137,7 @@ mod tests {
     #[test]
     fn the_error_reads_as_a_sentence() {
         assert_eq!(
-            SqlError::Unavailable {
-                reason: "locked".to_owned()
-            }
-            .to_string(),
+            SqlError::unavailable("locked").to_string(),
             "the database refused the statements: locked"
         );
     }

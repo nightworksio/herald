@@ -28,12 +28,6 @@ impl WasiHttp {
     }
 }
 
-fn unreachable(reason: &impl ToString) -> HttpError {
-    HttpError::Unreachable {
-        reason: reason.to_string(),
-    }
-}
-
 /// `body` read frame by frame to at most one byte past `most`, which
 /// `received` then refuses, so a larger answer is never held whole.
 async fn read(body: Body, most: usize) -> Result<Vec<u8>, HttpError> {
@@ -43,7 +37,7 @@ async fn read(body: Body, most: usize) -> Result<Vec<u8>, HttpError> {
         let Some(frame) = stream.frame().await else {
             break;
         };
-        if let Ok(data) = frame.map_err(|error| unreachable(&error))?.into_data() {
+        if let Ok(data) = frame.map_err(HttpError::unreachable)?.into_data() {
             let room = most.saturating_add(1).saturating_sub(bytes.len());
             bytes.extend_from_slice(data.get(..room.min(data.len())).unwrap_or_default());
         }
@@ -52,7 +46,7 @@ async fn read(body: Body, most: usize) -> Result<Vec<u8>, HttpError> {
 }
 
 fn method(request: &Request) -> Result<Method, HttpError> {
-    Method::from_bytes(request.method.as_str().as_bytes()).map_err(|error| unreachable(&error))
+    Method::from_bytes(request.method.as_str().as_bytes()).map_err(HttpError::unreachable)
 }
 
 impl Http for WasiHttp {
@@ -70,7 +64,7 @@ impl Http for WasiHttp {
             }
             let asked = asked
                 .body(wstd::http::Body::from(request.body.clone()))
-                .map_err(|error| unreachable(&error))?;
+                .map_err(HttpError::unreachable)?;
             let mut client = Client::new();
             client.set_connect_timeout(timeout);
             client.set_first_byte_timeout(timeout);
@@ -78,7 +72,7 @@ impl Http for WasiHttp {
             let (head, body) = client
                 .send(asked)
                 .await
-                .map_err(|error| unreachable(&error))?
+                .map_err(HttpError::unreachable)?
                 .into_parts();
             let bytes = read(body, request.most).await?;
             let headers = head

@@ -19,16 +19,6 @@ pub struct NativeSqlite {
     connection: Arc<Mutex<Connection>>,
 }
 
-#[allow(
-    clippy::needless_pass_by_value,
-    reason = "it is handed to map_err, which passes each error by value"
-)]
-fn refused(error: impl ToString) -> SqlError {
-    SqlError::Unavailable {
-        reason: error.to_string(),
-    }
-}
-
 /// Makes the file at `path`, readable and writable by its owner alone,
 /// where there is none.
 fn made(path: &Path) -> std::io::Result<()> {
@@ -56,10 +46,10 @@ fn read(value: ValueRef<'_>) -> Result<Value, SqlError> {
         ValueRef::Integer(integer) => Ok(Value::Integer(integer)),
         ValueRef::Text(text) => std::str::from_utf8(text)
             .map(|text| Value::Text(text.to_owned()))
-            .map_err(refused),
-        ValueRef::Real(_) | ValueRef::Blob(_) => {
-            Err(refused("a column holds neither an integer nor text"))
-        }
+            .map_err(SqlError::unavailable),
+        ValueRef::Real(_) | ValueRef::Blob(_) => Err(SqlError::unavailable(
+            "a column holds neither an integer nor text",
+        )),
     }
 }
 
@@ -69,20 +59,22 @@ fn transact(
 ) -> Result<Vec<Changed>, SqlError> {
     let transaction = connection
         .transaction_with_behavior(TransactionBehavior::Immediate)
-        .map_err(refused)?;
+        .map_err(SqlError::unavailable)?;
     let mut answers = Vec::with_capacity(statements.len());
     for statement in statements {
         let before = transaction.total_changes();
-        let mut prepared = transaction.prepare(&statement.sql).map_err(refused)?;
+        let mut prepared = transaction
+            .prepare(&statement.sql)
+            .map_err(SqlError::unavailable)?;
         let columns = prepared.column_count();
         let mut query = prepared
             .query(params_from_iter(statement.params.iter().map(bound)))
-            .map_err(refused)?;
+            .map_err(SqlError::unavailable)?;
         let mut rows = Vec::new();
-        while let Some(row) = query.next().map_err(refused)? {
+        while let Some(row) = query.next().map_err(SqlError::unavailable)? {
             rows.push(
                 (0..columns)
-                    .map(|column| read(row.get_ref(column).map_err(refused)?))
+                    .map(|column| read(row.get_ref(column).map_err(SqlError::unavailable)?))
                     .collect::<Result<_, _>>()?,
             );
         }
@@ -93,7 +85,7 @@ fn transact(
             changed: transaction.total_changes() - before,
         });
     }
-    transaction.commit().map_err(refused)?;
+    transaction.commit().map_err(SqlError::unavailable)?;
     Ok(answers)
 }
 
@@ -106,15 +98,19 @@ impl NativeSqlite {
     ///
     /// When the file cannot be made or opened as a SQLite database.
     pub fn open(path: &Path, busy: SignedDuration) -> Result<Self, SqlError> {
-        made(path)
-            .map_err(|error| refused(format!("{} could not be made: {error}", path.display())))?;
-        let connection = Connection::open(path).map_err(refused)?;
+        made(path).map_err(|error| {
+            SqlError::unavailable(format_args!(
+                "{} could not be made: {error}",
+                path.display()
+            ))
+        })?;
+        let connection = Connection::open(path).map_err(SqlError::unavailable)?;
         connection
             .pragma_update(None, "journal_mode", "WAL")
-            .map_err(refused)?;
+            .map_err(SqlError::unavailable)?;
         connection
             .busy_timeout(busy.unsigned_abs())
-            .map_err(refused)?;
+            .map_err(SqlError::unavailable)?;
         Ok(Self::kept(connection))
     }
 
@@ -124,7 +120,9 @@ impl NativeSqlite {
     ///
     /// When SQLite cannot open one.
     pub fn in_memory() -> Result<Self, SqlError> {
-        Ok(Self::kept(Connection::open_in_memory().map_err(refused)?))
+        Ok(Self::kept(
+            Connection::open_in_memory().map_err(SqlError::unavailable)?,
+        ))
     }
 
     fn kept(connection: Connection) -> Self {
@@ -146,7 +144,7 @@ impl Sql for NativeSqlite {
                 transact(&mut connection, &statements)
             })
             .await
-            .map_err(refused)?
+            .map_err(SqlError::unavailable)?
         }
     }
 }

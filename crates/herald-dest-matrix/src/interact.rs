@@ -242,12 +242,7 @@ impl Interacting {
     }
 
     fn authorised(&self, request: Request) -> Request {
-        request
-            .header("User-Agent", Text::plain(herald_ports::USER_AGENT))
-            .header(
-                "Authorization",
-                Text::plain("Bearer ").then_secret(self.token.clone()),
-            )
+        request.identified().bearer(self.token.clone())
     }
 
     /// The request for the messages given since `since`, or for where the

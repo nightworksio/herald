@@ -10,12 +10,6 @@ use herald_spin::sqlite;
 
 const UNKEPT: &str = "a column of a type herald keeps no records in";
 
-fn failed(reason: &impl ToString) -> SqlError {
-    SqlError::Unavailable {
-        reason: reason.to_string(),
-    }
-}
-
 fn lite(value: Value) -> sqlite::Value {
     match value {
         Value::Null => sqlite::Value::Null,
@@ -29,7 +23,7 @@ fn from_lite(value: sqlite::Value) -> Result<Value, SqlError> {
         sqlite::Value::Null => Ok(Value::Null),
         sqlite::Value::Integer(number) => Ok(Value::Integer(number)),
         sqlite::Value::Text(text) => Ok(Value::Text(text)),
-        sqlite::Value::Real(_) | sqlite::Value::Blob(_) => Err(failed(&UNKEPT)),
+        sqlite::Value::Real(_) | sqlite::Value::Blob(_) => Err(SqlError::unavailable(UNKEPT)),
     }
 }
 
@@ -50,7 +44,7 @@ fn from_pg(value: pg::DbValue) -> Result<Value, SqlError> {
         pg::DbValue::Int32(number) => Value::Integer(i64::from(number)),
         pg::DbValue::Int64(number) | pg::DbValue::Timestamp(number) => Value::Integer(number),
         pg::DbValue::Str(text) => Value::Text(text),
-        _ => return Err(failed(&UNKEPT)),
+        _ => return Err(SqlError::unavailable(UNKEPT)),
     })
 }
 
@@ -65,9 +59,9 @@ fn finished(
         Ok(answers) => simple("COMMIT").map(|()| answers),
         Err(SqlError::Unavailable { reason }) => Err(match simple("ROLLBACK") {
             Ok(()) => SqlError::Unavailable { reason },
-            Err(SqlError::Unavailable { reason: rollback }) => SqlError::Unavailable {
-                reason: format!("{reason}; the rollback failed too: {rollback}"),
-            },
+            Err(SqlError::Unavailable { reason: rollback }) => SqlError::unavailable(format_args!(
+                "{reason}; the rollback failed too: {rollback}"
+            )),
         }),
     }
 }
@@ -75,7 +69,7 @@ fn finished(
 fn counted(connection: &sqlite::Connection, sql: &str) -> Result<u64, SqlError> {
     let counted = connection
         .execute(sql, &[])
-        .map_err(|error| failed(&format!("{error:?}")))?;
+        .map_err(|error| SqlError::unavailable(format_args!("{error:?}")))?;
     Ok(
         match counted.rows.first().and_then(|row| row.values.first()) {
             Some(sqlite::Value::Integer(count)) => u64::try_from(*count).unwrap_or(0),
@@ -89,7 +83,7 @@ fn sqlite_ran(connection: &sqlite::Connection, statement: Statement) -> Result<C
     let before = counted(connection, "SELECT total_changes()")?;
     let answered = connection
         .execute(&statement.sql, &parameters)
-        .map_err(|error| failed(&format!("{error:?}")))?;
+        .map_err(|error| SqlError::unavailable(format_args!("{error:?}")))?;
     if statement.answers == Answers::Rows {
         return Ok(Changed {
             rows: answered
@@ -120,7 +114,7 @@ fn postgres_ran(connection: &pg::Connection, statement: Statement) -> Result<Cha
     if statement.answers == Answers::Rows {
         let answered = connection
             .query(&statement.sql, &parameters)
-            .map_err(|error| failed(&format!("{error:?}")))?;
+            .map_err(|error| SqlError::unavailable(format_args!("{error:?}")))?;
         let rows = answered
             .rows
             .into_iter()
@@ -130,7 +124,7 @@ fn postgres_ran(connection: &pg::Connection, statement: Statement) -> Result<Cha
     }
     let changed = connection
         .execute(&statement.sql, &parameters)
-        .map_err(|error| failed(&format!("{error:?}")))?;
+        .map_err(|error| SqlError::unavailable(format_args!("{error:?}")))?;
     Ok(Changed {
         rows: Vec::new(),
         changed,
@@ -149,12 +143,12 @@ impl SpinSql {
         match self {
             Self::Sqlite { label, busy } => {
                 let connection = sqlite::Connection::open(label)
-                    .map_err(|error| failed(&format!("{error:?}")))?;
+                    .map_err(|error| SqlError::unavailable(format_args!("{error:?}")))?;
                 let simple = |sql: &str| {
                     connection
                         .execute(sql, &[])
                         .map(|_| ())
-                        .map_err(|error| failed(&format!("{error:?}")))
+                        .map_err(|error| SqlError::unavailable(format_args!("{error:?}")))
                 };
                 simple(&format!(
                     "PRAGMA busy_timeout = {}",
@@ -169,12 +163,12 @@ impl SpinSql {
             }
             Self::Postgres(address) => {
                 let connection = pg::Connection::open(address.expose())
-                    .map_err(|error| failed(&format!("{error:?}")))?;
+                    .map_err(|error| SqlError::unavailable(format_args!("{error:?}")))?;
                 let simple = |sql: &str| {
                     connection
                         .execute(sql, &[])
                         .map(|_| ())
-                        .map_err(|error| failed(&format!("{error:?}")))
+                        .map_err(|error| SqlError::unavailable(format_args!("{error:?}")))
                 };
                 simple("BEGIN")?;
                 let done = statements

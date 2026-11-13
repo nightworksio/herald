@@ -105,12 +105,6 @@ impl<H> std::fmt::Debug for CacheRecords<'_, H> {
 /// The store an [`ActionsCache`] keeps.
 pub type ActionsCacheStore<'a, H> = Kept<CacheRecords<'a, H>>;
 
-fn corrupt(path: &str, error: impl std::fmt::Display) -> StoreError {
-    StoreError::Corrupt {
-        reason: format!("{path}: {error}"),
-    }
-}
-
 impl<H: Http + Send> CacheRecords<'_, H> {
     fn remembered(&self) -> Option<Generation> {
         self.current
@@ -152,7 +146,7 @@ impl<H: Http + Send> Records for CacheRecords<'_, H> {
         };
         let bytes = STANDARD
             .decode(&held.bytes)
-            .map_err(|error| corrupt(path, error))?;
+            .map_err(|error| StoreError::unreadable(path, error))?;
         Ok(Some(Blob {
             token: held.written.to_string(),
             bytes,

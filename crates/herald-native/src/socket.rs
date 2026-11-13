@@ -72,12 +72,10 @@ impl Sockets for NativeSockets {
         );
         let (stream, _) = timeout(self.silence, connecting)
             .await
-            .map_err(|_| HttpError::Unreachable {
-                reason: format!("it did not open within {:?}", self.silence),
+            .map_err(|_| {
+                HttpError::unreachable(format_args!("it did not open within {:?}", self.silence))
             })?
-            .map_err(|error| HttpError::Unreachable {
-                reason: error.to_string(),
-            })?;
+            .map_err(HttpError::unreachable)?;
         Ok(NativeSocket {
             stream,
             silence: self.silence,
@@ -92,9 +90,7 @@ impl Socket for NativeSocket {
         self.stream
             .send(Message::text(frame.expose()))
             .await
-            .map_err(|error| HttpError::Unreachable {
-                reason: error.to_string(),
-            })
+            .map_err(HttpError::unreachable)
     }
 
     async fn receive(&mut self) -> Frame {

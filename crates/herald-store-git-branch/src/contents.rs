@@ -1,13 +1,13 @@
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD;
-use herald_ports::{Http, Method, Request, Response, StoreError, Text, USER_AGENT};
+use herald_ports::{Http, Method, Request, Response, StoreError};
 use herald_records::{Blob, Records, Wrote};
+use herald_wire::github::{self, GITHUB};
 use serde::Deserialize;
 use serde_json::{Value, json};
 
 use crate::store::{BranchRecords, GitBranch};
 
-const API_VERSION: &str = "2022-11-28";
 const OK: u16 = 200;
 const MISSING: u16 = 404;
 const CONFLICT: u16 = 409;
@@ -42,34 +42,12 @@ struct Made {
     sha: String,
 }
 
-fn unavailable(reason: impl std::fmt::Display) -> StoreError {
-    StoreError::Unavailable {
-        reason: reason.to_string(),
-    }
-}
-
-fn corrupt(path: &str, error: impl std::fmt::Display) -> StoreError {
-    StoreError::Corrupt {
-        reason: format!("{path}: {error}"),
-    }
-}
-
-fn answered(response: &Response) -> StoreError {
-    unavailable(format!("GitHub answered {}", response.status))
-}
-
 impl GitBranch {
     fn request(&self, method: Method, path: &str) -> Request {
-        Request::new(
+        github::request(
             method,
-            Text::plain(format!("{}/repos/{}{path}", self.api, self.repository)),
-        )
-        .header("Accept", Text::plain("application/vnd.github+json"))
-        .header("X-GitHub-Api-Version", Text::plain(API_VERSION))
-        .header("User-Agent", Text::plain(USER_AGENT))
-        .header(
-            "Authorization",
-            Text::plain("Bearer ").then_secret(self.token.clone()),
+            format!("{}/repos/{}{path}", self.api, self.repository),
+            self.token.clone(),
         )
     }
 
@@ -78,7 +56,7 @@ impl GitBranch {
     }
 
     async fn send<H: Http>(&self, http: &H, request: Request) -> Result<Response, StoreError> {
-        http.send(request).await.map_err(unavailable)
+        http.send(request).await.map_err(StoreError::unavailable)
     }
 
     async fn made<H: Http>(
@@ -94,10 +72,10 @@ impl GitBranch {
     async fn sha<H: Http>(&self, http: &H, path: &str, body: &Value) -> Result<String, StoreError> {
         let response = self.made(http, path, body).await?;
         if !response.succeeded() {
-            return Err(answered(&response));
+            return Err(StoreError::answered(GITHUB, response.status));
         }
-        let made: Made =
-            serde_json::from_slice(&response.body).map_err(|error| corrupt(path, error))?;
+        let made: Made = serde_json::from_slice(&response.body)
+            .map_err(|error| StoreError::unreadable(path, error))?;
         Ok(made.sha)
     }
 
@@ -114,7 +92,7 @@ impl GitBranch {
         if response.succeeded() || response.status == UNPROCESSABLE {
             Ok(())
         } else {
-            Err(answered(&response))
+            Err(StoreError::answered(GITHUB, response.status))
         }
     }
 }
@@ -128,13 +106,13 @@ impl<H: Http> Records for BranchRecords<H> {
             return Ok(None);
         }
         if response.status != OK {
-            return Err(answered(&response));
+            return Err(StoreError::answered(GITHUB, response.status));
         }
-        let content: Content =
-            serde_json::from_slice(&response.body).map_err(|error| corrupt(path, error))?;
+        let content: Content = serde_json::from_slice(&response.body)
+            .map_err(|error| StoreError::unreadable(path, error))?;
         let bytes = STANDARD
             .decode(content.content.replace('\n', ""))
-            .map_err(|error| corrupt(path, error))?;
+            .map_err(|error| StoreError::unreadable(path, error))?;
         Ok(Some(Blob {
             token: content.sha,
             bytes,
@@ -152,12 +130,12 @@ impl<H: Http> Records for BranchRecords<H> {
             return Ok(Vec::new());
         }
         if response.status != OK {
-            return Err(answered(&response));
+            return Err(StoreError::answered(GITHUB, response.status));
         }
-        let tree: Tree =
-            serde_json::from_slice(&response.body).map_err(|error| corrupt(directory, error))?;
+        let tree: Tree = serde_json::from_slice(&response.body)
+            .map_err(|error| StoreError::unreadable(directory, error))?;
         if tree.truncated {
-            return Err(unavailable(format!(
+            return Err(StoreError::unavailable(format_args!(
                 "GitHub listed {directory} only in part"
             )));
         }
@@ -193,7 +171,7 @@ impl<H: Http> Records for BranchRecords<H> {
         match response.status {
             _ if response.succeeded() => Ok(Wrote::Written),
             CONFLICT | UNPROCESSABLE => Ok(Wrote::Conflict),
-            _ => Err(answered(&response)),
+            _ => Err(StoreError::answered(GITHUB, response.status)),
         }
     }
 
@@ -209,7 +187,7 @@ impl<H: Http> Records for BranchRecords<H> {
         match response.status {
             OK | MISSING => Ok(Wrote::Written),
             CONFLICT | UNPROCESSABLE => Ok(Wrote::Conflict),
-            _ => Err(answered(&response)),
+            _ => Err(StoreError::answered(GITHUB, response.status)),
         }
     }
 }

@@ -1,8 +1,7 @@
 use herald_ports::{Http, Secret};
 use herald_records::Kept;
+use herald_wire::github;
 
-/// GitHub's own API.
-const API: &str = "https://api.github.com";
 /// The branch the records are kept on.
 const BRANCH: &str = "herald-state";
 
@@ -22,7 +21,7 @@ impl GitBranch {
     #[must_use]
     pub fn new(repository: &str, token: Secret, branch: Option<&str>, api: Option<&str>) -> Self {
         Self {
-            api: api.unwrap_or(API).trim_end_matches('/').to_owned(),
+            api: github::api(api),
             repository: repository.to_owned(),
             branch: branch.unwrap_or(BRANCH).to_owned(),
             token,

@@ -43,6 +43,16 @@ impl fmt::Display for KvError {
     }
 }
 
+impl KvError {
+    /// The store could not be reached, for `reason`.
+    #[must_use]
+    pub fn unavailable(reason: impl fmt::Display) -> Self {
+        Self::Unavailable {
+            reason: reason.to_string(),
+        }
+    }
+}
+
 /// A key-value store with versioned reads and an atomic check: Deno KV or
 /// Fastly's KV Store.
 pub trait Kv: Sync {
@@ -78,10 +88,7 @@ mod tests {
     #[test]
     fn the_error_reads_as_a_sentence() {
         assert_eq!(
-            KvError::Unavailable {
-                reason: "down".to_owned()
-            }
-            .to_string(),
+            KvError::unavailable("down").to_string(),
             "the key-value store could not be reached: down"
         );
     }

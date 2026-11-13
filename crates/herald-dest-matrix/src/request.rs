@@ -1,5 +1,5 @@
 use herald_core::{Announcement, Declined, Entry, Sent, Step, Waits, safe_url, unreserved};
-use herald_ports::{Method, Request, Response, Text, USER_AGENT};
+use herald_ports::{Method, Request, Response, Text};
 use serde_json::{Map, Value, json};
 
 use crate::matrix::{MATRIX, Matrix};
@@ -35,12 +35,7 @@ pub(crate) const fn cannot(what: &'static str) -> Declined {
 }
 
 fn authorised(request: Request, matrix: &Matrix) -> Request {
-    request
-        .header("User-Agent", Text::plain(USER_AGENT))
-        .header(
-            "Authorization",
-            Text::plain("Bearer ").then_secret(matrix.token.clone()),
-        )
+    request.identified().bearer(matrix.token.clone())
 }
 
 pub(crate) fn get(matrix: &Matrix, path: &str) -> Request {

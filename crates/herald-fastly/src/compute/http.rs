@@ -37,7 +37,6 @@ impl FastlyHttp {
     }
 
     fn sent(&self, request: &Request) -> Result<Response, HttpError> {
-        let unreachable = |reason: String| HttpError::Unreachable { reason };
         let url = self.reaching.admitted(&request.url)?;
         let host = url.host_str().unwrap_or_default();
         let port = url.port_or_known_default().unwrap_or(443);
@@ -56,19 +55,18 @@ impl FastlyHttp {
         let backend = match backend.finish() {
             Ok(backend) => backend,
             Err(fastly::backend::BackendCreationError::NameInUse) => {
-                let kept =
-                    Backend::from_name(&name).map_err(|error| unreachable(error.to_string()))?;
+                let kept = Backend::from_name(&name).map_err(HttpError::unreachable)?;
                 if kept.get_host() != host || kept.get_port() != port || kept.is_ssl() != secure {
-                    return Err(unreachable(format!(
+                    return Err(HttpError::unreachable(format_args!(
                         "the backend {name} reaches another origin than {host}:{port}"
                     )));
                 }
                 kept
             }
-            Err(error) => return Err(unreachable(error.to_string())),
+            Err(error) => return Err(HttpError::unreachable(error)),
         };
         let method = Method::from_bytes(request.method.as_str().as_bytes())
-            .map_err(|error| unreachable(error.to_string()))?;
+            .map_err(HttpError::unreachable)?;
         let mut asked = fastly::Request::new(method, url.as_str());
         for (name, value) in &request.headers {
             asked.append_header(name.as_str(), value.expose());
@@ -76,7 +74,7 @@ impl FastlyHttp {
         asked.set_body(request.body.clone());
         let mut answer = asked
             .send(backend)
-            .map_err(|error| unreachable(error.root_cause().to_string()))?;
+            .map_err(|error| HttpError::unreachable(error.root_cause()))?;
         let status = answer.get_status().as_u16();
         let headers = answer
             .get_headers()
@@ -92,7 +90,7 @@ impl FastlyHttp {
             .take_body()
             .take(limit)
             .read_to_end(&mut body)
-            .map_err(|error| unreachable(error.to_string()))?;
+            .map_err(HttpError::unreachable)?;
         received(
             request,
             Response {

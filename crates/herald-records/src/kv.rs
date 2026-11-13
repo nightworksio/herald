@@ -1,4 +1,4 @@
-use herald_ports::{Kv, KvError, StoreError, Versionstamp};
+use herald_ports::{Kv, StoreError, Versionstamp};
 
 use crate::records::{Blob, Records, Wrote};
 
@@ -9,12 +9,6 @@ use crate::records::{Blob, Records, Wrote};
 pub struct KvRecords<K> {
     kv: K,
     prefix: Vec<String>,
-}
-
-fn unavailable(error: &KvError) -> StoreError {
-    StoreError::Unavailable {
-        reason: error.to_string(),
-    }
 }
 
 impl<K: Kv> KvRecords<K> {
@@ -46,7 +40,7 @@ impl<K: Kv> Records for KvRecords<K> {
             .kv
             .get(&self.key(path))
             .await
-            .map_err(|error| unavailable(&error))?;
+            .map_err(StoreError::unavailable)?;
         Ok(stamped.map(|stamped| Blob {
             token: stamped.versionstamp.0,
             bytes: stamped.value,
@@ -58,7 +52,7 @@ impl<K: Kv> Records for KvRecords<K> {
             .kv
             .list(&self.key(directory))
             .await
-            .map_err(|error| unavailable(&error))?;
+            .map_err(StoreError::unavailable)?;
         let mut paths: Vec<String> = pairs
             .into_iter()
             .filter_map(|pair| {
@@ -81,7 +75,7 @@ impl<K: Kv> Records for KvRecords<K> {
             .kv
             .set_if(&self.key(path), bytes.to_vec(), expected)
             .await
-            .map_err(|error| unavailable(&error))?;
+            .map_err(StoreError::unavailable)?;
         Ok(if written.is_some() {
             Wrote::Written
         } else {
@@ -95,15 +89,11 @@ impl<K: Kv> Records for KvRecords<K> {
             .kv
             .delete_if(&key, Versionstamp(replacing.to_owned()))
             .await
-            .map_err(|error| unavailable(&error))?;
+            .map_err(StoreError::unavailable)?;
         if deleted {
             return Ok(Wrote::Written);
         }
-        let left = self
-            .kv
-            .get(&key)
-            .await
-            .map_err(|error| unavailable(&error))?;
+        let left = self.kv.get(&key).await.map_err(StoreError::unavailable)?;
         Ok(if left.is_none() {
             Wrote::Written
         } else {

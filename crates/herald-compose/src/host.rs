@@ -77,9 +77,7 @@ pub struct Unoffered(());
 const UNOFFERED: &str = "this host offers none";
 
 fn unreached<T: Send>() -> impl Future<Output = Result<T, KvError>> + Send {
-    ready(Err(KvError::Unavailable {
-        reason: UNOFFERED.to_owned(),
-    }))
+    ready(Err(KvError::unavailable(UNOFFERED)))
 }
 
 impl Sql for Unoffered {
@@ -87,9 +85,7 @@ impl Sql for Unoffered {
         &self,
         _: Vec<Statement>,
     ) -> impl Future<Output = Result<Vec<Changed>, SqlError>> + Send {
-        ready(Err(SqlError::Unavailable {
-            reason: UNOFFERED.to_owned(),
-        }))
+        ready(Err(SqlError::unavailable(UNOFFERED)))
     }
 }
 

@@ -82,6 +82,37 @@ impl fmt::Display for StoreError {
     }
 }
 
+impl StoreError {
+    /// The store could not be reached, for `reason`.
+    #[must_use]
+    pub fn unavailable(reason: impl fmt::Display) -> Self {
+        Self::Unavailable {
+            reason: reason.to_string(),
+        }
+    }
+
+    /// `who` answered with `status`, where the store reads no other answer
+    /// than a success.
+    #[must_use]
+    pub fn answered(who: &str, status: u16) -> Self {
+        Self::unavailable(format_args!("{who} answered {status}"))
+    }
+
+    /// A record could not be read back, for `reason`.
+    #[must_use]
+    pub fn corrupt(reason: impl fmt::Display) -> Self {
+        Self::Corrupt {
+            reason: reason.to_string(),
+        }
+    }
+
+    /// `what` could not be read back, for `error`.
+    #[must_use]
+    pub fn unreadable(what: &str, error: impl fmt::Display) -> Self {
+        Self::corrupt(format_args!("{what}: {error}"))
+    }
+}
+
 /// A kind of record a store may hold.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Held {

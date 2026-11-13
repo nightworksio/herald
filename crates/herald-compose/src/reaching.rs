@@ -91,9 +91,10 @@ pub fn public_address(text: &str) -> bool {
 /// Where the body is larger.
 pub fn received(request: &Request, response: Response) -> Result<Response, HttpError> {
     if response.body.len() > request.most {
-        return Err(HttpError::Unreachable {
-            reason: format!("the response is larger than {} bytes", request.most),
-        });
+        return Err(HttpError::unreachable(format_args!(
+            "the response is larger than {} bytes",
+            request.most
+        )));
     }
     Ok(response)
 }

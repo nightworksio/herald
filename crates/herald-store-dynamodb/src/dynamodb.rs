@@ -2,9 +2,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use herald_core::Address;
-use herald_ports::{
-    Clock, Http, Method, Request, Response, Secret, Secrets, StoreError, Text, USER_AGENT,
-};
+use herald_ports::{Clock, Http, Method, Request, Response, Secret, Secrets, StoreError, Text};
 use herald_records::{Blob, Kept, Records, Wrote};
 use serde_json::{Value, json};
 
@@ -150,18 +148,6 @@ pub struct DynamodbRecords<H, C> {
 /// The store a [`Dynamodb`] table keeps.
 pub type DynamodbStore<H, C> = Kept<DynamodbRecords<H, C>>;
 
-fn unavailable(reason: impl std::fmt::Display) -> StoreError {
-    StoreError::Unavailable {
-        reason: reason.to_string(),
-    }
-}
-
-fn corrupt(reason: &str) -> StoreError {
-    StoreError::Corrupt {
-        reason: reason.to_owned(),
-    }
-}
-
 /// A record's path as its directory and its name.
 fn split(path: &str) -> (&str, &str) {
     path.rsplit_once('/').unwrap_or(("/", path))
@@ -224,7 +210,7 @@ impl<H: Http, C: Clock> DynamodbRecords<H, C> {
             Method::Post,
             Text::plain(format!("{}/", self.table.endpoint)),
         )
-        .header("User-Agent", Text::plain(USER_AGENT))
+        .identified()
         .body(body.to_string().into_bytes());
         let target = format!("{API}.{action}");
         let request = signed(
@@ -235,7 +221,11 @@ impl<H: Http, C: Clock> DynamodbRecords<H, C> {
             &signing,
             self.clock.now(),
         );
-        let response = self.http.send(request).await.map_err(unavailable)?;
+        let response = self
+            .http
+            .send(request)
+            .await
+            .map_err(StoreError::unavailable)?;
         Ok(answer(&response))
     }
 
@@ -248,12 +238,12 @@ impl<H: Http, C: Clock> DynamodbRecords<H, C> {
 
     fn failed(&self, kind: &str, said: &str) -> StoreError {
         if kind == NO_TABLE {
-            return unavailable(format!(
+            return StoreError::unavailable(format_args!(
                 "the table {} does not exist in {}; make it with the string partition key directory and the string sort key name",
                 self.table.table, self.table.region
             ));
         }
-        unavailable(format!("DynamoDB refused it: {said}"))
+        StoreError::unavailable(format_args!("DynamoDB refused it: {said}"))
     }
 
     async fn conditional(&self, action: &str, body: Value) -> Result<Wrote, StoreError> {
@@ -318,7 +308,7 @@ impl<H: Http, C: Clock> Records for DynamodbRecords<H, C> {
                 token: token(epoch, version),
                 bytes: body.as_bytes().to_vec(),
             })),
-            _ => Err(corrupt(
+            _ => Err(StoreError::corrupt(
                 "a record's item is not a body, an epoch and a version",
             )),
         }
@@ -346,7 +336,7 @@ impl<H: Http, C: Clock> Records for DynamodbRecords<H, C> {
                 .flatten()
             {
                 let name = text(item, "name", "S")
-                    .ok_or_else(|| corrupt("a record's name is not text"))?;
+                    .ok_or_else(|| StoreError::corrupt("a record's name is not text"))?;
                 paths.push(format!("{directory}/{name}"));
             }
             match answered.get("LastEvaluatedKey") {
@@ -364,7 +354,8 @@ impl<H: Http, C: Clock> Records for DynamodbRecords<H, C> {
         bytes: &[u8],
         replacing: Option<&str>,
     ) -> Result<Wrote, StoreError> {
-        let body = std::str::from_utf8(bytes).map_err(|_| corrupt("a record is not UTF-8 text"))?;
+        let body = std::str::from_utf8(bytes)
+            .map_err(|_| StoreError::corrupt("a record is not UTF-8 text"))?;
         let (epoch, version, condition) = match replacing {
             None => (
                 self.epoch(),

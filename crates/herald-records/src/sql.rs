@@ -74,18 +74,6 @@ pub struct SqlRecords<S> {
     dialect: Dialect,
 }
 
-fn unavailable(error: &impl ToString) -> StoreError {
-    StoreError::Unavailable {
-        reason: error.to_string(),
-    }
-}
-
-fn corrupt(reason: &str) -> StoreError {
-    StoreError::Corrupt {
-        reason: reason.to_owned(),
-    }
-}
-
 fn text(value: &str) -> Value {
     Value::Text(value.to_owned())
 }
@@ -130,15 +118,19 @@ impl<S: Sql> SqlRecords<S> {
             .await?;
         match rows(answers, 3).as_slice() {
             [row] if row.as_slice() == [Value::Integer(LAYOUT)] => Ok(records),
-            [row] if matches!(row.as_slice(), [Value::Integer(layout)] if *layout > LAYOUT) => Err(
-                corrupt("a newer herald laid the database out; run that herald or a later one"),
-            ),
+            [row] if matches!(row.as_slice(), [Value::Integer(layout)] if *layout > LAYOUT) => {
+                Err(StoreError::corrupt(
+                    "a newer herald laid the database out; run that herald or a later one",
+                ))
+            }
             [row] if matches!(row.as_slice(), [Value::Integer(layout)] if *layout > 0) => {
-                Err(corrupt(
+                Err(StoreError::corrupt(
                     "a preview of herald laid the database out; give this herald an empty database",
                 ))
             }
-            _ => Err(corrupt("the database's herald_meta table is not herald's")),
+            _ => Err(StoreError::corrupt(
+                "the database's herald_meta table is not herald's",
+            )),
         }
     }
 
@@ -150,7 +142,7 @@ impl<S: Sql> SqlRecords<S> {
         self.sql
             .transaction(statements)
             .await
-            .map_err(|error| unavailable(&error))
+            .map_err(StoreError::unavailable)
     }
 }
 
@@ -176,11 +168,11 @@ impl<S: Sql> Records for SqlRecords<S> {
                     token: token(epoch, *version),
                     bytes: body.clone().into_bytes(),
                 })),
-                _ => Err(corrupt(
+                _ => Err(StoreError::corrupt(
                     "a record's row is not a body, an epoch and a version",
                 )),
             },
-            _ => Err(corrupt("a path holds more than one record")),
+            _ => Err(StoreError::corrupt("a path holds more than one record")),
         }
     }
 
@@ -202,7 +194,7 @@ impl<S: Sql> Records for SqlRecords<S> {
             .into_iter()
             .map(|row| match row.as_slice() {
                 [Value::Text(path)] => Ok(path.clone()),
-                _ => Err(corrupt("a record's path is not text")),
+                _ => Err(StoreError::corrupt("a record's path is not text")),
             })
             .collect()
     }
@@ -213,7 +205,8 @@ impl<S: Sql> Records for SqlRecords<S> {
         bytes: &[u8],
         replacing: Option<&str>,
     ) -> Result<Wrote, StoreError> {
-        let body = std::str::from_utf8(bytes).map_err(|_| corrupt("a record is not UTF-8 text"))?;
+        let body = std::str::from_utf8(bytes)
+            .map_err(|_| StoreError::corrupt("a record is not UTF-8 text"))?;
         let statement = match replacing {
             None => Statement::change(
                 format!(

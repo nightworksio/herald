@@ -1,5 +1,5 @@
 use herald_core::{Announcement, Declined, Entry, Phrase, Step, safe_url, unreserved};
-use herald_ports::{Credential, Method, Request, Text, USER_AGENT};
+use herald_ports::{Credential, Method, Request, Text};
 use serde_json::{Value, json};
 
 use crate::interact::subscribe_block;
@@ -37,12 +37,9 @@ pub(crate) fn sent(method: Method, url: Text, slack: &Slack) -> Request {
 }
 
 fn authorised(request: Request, slack: &Slack) -> Request {
-    let request = request.header("User-Agent", Text::plain(USER_AGENT));
+    let request = request.identified();
     match &slack.credential {
-        Credential::Bot(token) => request.header(
-            "Authorization",
-            Text::plain("Bearer ").then_secret(token.clone()),
-        ),
+        Credential::Bot(token) => request.bearer(token.clone()),
         Credential::Webhook(_) => request,
     }
 }
