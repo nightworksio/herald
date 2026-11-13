@@ -31,11 +31,9 @@ impl ScriptedSql {
 impl Sql for ScriptedSql {
     async fn transaction(&self, statements: Vec<Statement>) -> Result<Vec<Changed>, SqlError> {
         lock(&self.sent).push(statements);
-        lock(&self.answers).pop_front().unwrap_or_else(|| {
-            Err(SqlError::Unavailable {
-                reason: "no answer was scripted".to_owned(),
-            })
-        })
+        lock(&self.answers)
+            .pop_front()
+            .unwrap_or_else(|| Err(SqlError::unavailable("no answer was scripted")))
     }
 }
 

@@ -573,6 +573,37 @@ body = "{{ event.body }}"
     }
 
     #[tokio::test]
+    async fn keys_read_before_their_refresh_are_forgotten_on_their_own_period() {
+        let world = World::new(Gate::default()).await;
+        let (listener, _) = listening().await;
+        let sweeps = Limits {
+            keys: Duration::from_millis(5),
+            ..limits()
+        };
+        let old = "https://social.example/users/ana#main-key";
+        world
+            .keyring
+            .know(
+                old,
+                &KnownKey {
+                    owner: "https://social.example/users/ana".to_owned(),
+                    pem: "pem".to_owned(),
+                    fetched: "2027-01-14T08:00:00Z".parse().unwrap(),
+                },
+            )
+            .await
+            .unwrap();
+        let forgotten = || matches!(world.keyring.known(old).now_or_never(), Some(Ok(None)));
+        let swept = async {
+            while !forgotten() {
+                tokio::time::sleep(Duration::from_millis(1)).await;
+            }
+        };
+        world.serve(listener, sweeps, &|_| {}, swept).await;
+        assert!(forgotten());
+    }
+
+    #[tokio::test]
     async fn a_round_is_run_where_its_request_carries_the_round_secret() {
         let world = World::new(Gate::default()).await;
         let (listener, address) = listening().await;

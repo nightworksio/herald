@@ -6,7 +6,21 @@ import { tmpdir } from "node:os";
 import { DatabaseSync } from "node:sqlite";
 import { join } from "node:path";
 import { before, test } from "node:test";
-import { answering, capped, fetching, load, publicAddress, upTo } from "../host.mjs";
+import {
+  ROUNDS,
+  answered,
+  answering,
+  capped,
+  composeOnce,
+  configPath,
+  envHost,
+  fetching,
+  headerPairs,
+  load,
+  publicAddress,
+  rounds,
+  upTo,
+} from "../host.mjs";
 import { beside } from "../files.mjs";
 import { serve } from "../node/server.mjs";
 import { guarded, vetted } from "../vetted.mjs";
@@ -169,4 +183,121 @@ test("a body larger than [server] body is refused on Node", async (t) => {
   const answer = [taken.status, taken.headers.get("connection"), await taken.text()];
   await running.close();
   assert.deepEqual(answer, [404, "keep-alive", "herald serves no actor on this host here"]);
+});
+
+test("a host offers the environment's strings as its variables and secrets, and only the databases it names", () => {
+  const fetch = async () => ({});
+  const host = envHost({ NAME: "set", COUNT: 3, BOUND: {} }, { by: "Here", fetch });
+  assert.deepEqual(host.vars, { NAME: "set" });
+  assert.deepEqual(["NAME", "COUNT", "BOUND", "toString", "ABSENT"].map(host.secret), ["set", undefined, undefined, undefined, undefined]);
+  assert.equal(host.fetch, fetch);
+  assert.equal("sql" in host, false);
+  assert.equal("kv" in host, false);
+});
+
+test("a host opens each database by its kind and refuses a kind it does not offer, naming itself", async () => {
+  const host = envHost(
+    {},
+    {
+      by: "Here",
+      sql: {
+        lite: async (at) => `lite at ${at.file}`,
+        broken: () => {
+          throw new Error("no binding");
+        },
+      },
+      kv: { "deno-kv": async (at) => `kv at ${at.path}` },
+    },
+  );
+  assert.equal(await host.sql({ kind: "lite", file: "f" }), "lite at f");
+  assert.equal(await host.kv({ kind: "deno-kv", path: "p" }), "kv at p");
+  await assert.rejects(host.sql({ kind: "broken" }), /^Error: no binding$/);
+  await assert.rejects(host.sql({ kind: "postgres" }), /^Error: Here offers no postgres database$/);
+  await assert.rejects(host.sql({ kind: "toString" }), /^Error: Here offers no toString database$/);
+  await assert.rejects(host.kv({ kind: "fastly-kv" }), /^Error: Here offers no fastly-kv store$/);
+});
+
+test("a host takes its own secret lookup in place of the environment's", () => {
+  const host = envHost({ OWN: "env" }, { by: "Here", secret: (name) => `looked up ${name}` });
+  assert.equal(host.secret("OWN"), "looked up OWN");
+});
+
+test("herald is composed once, from the first call's arguments, and again after a composition fails", async () => {
+  const asked = [];
+  let failing = true;
+  const composed = composeOnce(async (...args) => {
+    asked.push(args);
+    if (failing) throw new Error("not yet");
+    return { composed: args };
+  });
+  await assert.rejects(composed("first"), /not yet/);
+  failing = false;
+  const [one, two] = await Promise.all([composed("second"), composed("third")]);
+  assert.equal(one, two);
+  assert.deepEqual(one, { composed: ["second"] });
+  assert.equal(await composed("fourth"), one);
+  assert.deepEqual(asked, [["first"], ["second"]]);
+});
+
+test("a composition that throws before it awaits is refused and tried again", async () => {
+  let tries = 0;
+  const composed = composeOnce(() => {
+    tries += 1;
+    if (tries === 1) throw new Error("at once");
+    return "composed";
+  });
+  await assert.rejects(composed(), /at once/);
+  assert.equal(await composed(), "composed");
+  assert.equal(tries, 2);
+});
+
+test("the config is read from HERALD_CONFIG, or herald.toml where it is unset", () => {
+  assert.equal(configPath({}), "herald.toml");
+  assert.equal(configPath({ HERALD_CONFIG: "/etc/herald/herald.toml" }), "/etc/herald/herald.toml");
+});
+
+test("an answer hands the work it leaves to the host, which logs a failure where it is not told how to wait", async (t) => {
+  const herald = (work) => ({
+    limits: () => ({ body: 16 }),
+    answer: async (asked) => ({ status: 202, kind: "text/plain", body: asked.body, work }),
+  });
+  const request = () => new Request("https://herald.example/inbox?a=1", { method: "POST", body: "hi" });
+  const waited = [];
+  const response = await answered(herald(Promise.resolve([])), request(), (work) => waited.push(work));
+  assert.equal(response.status, 202);
+  assert.equal(await response.text(), "hi");
+  assert.equal(waited.length, 1);
+  await waited[0];
+  assert.equal((await answered(herald(undefined), request(), (work) => waited.push(work))).status, 202);
+  assert.equal(waited.length, 1);
+  const logged = t.mock.method(console, "error", () => {});
+  await answered(herald(Promise.reject(new Error("lost"))), request());
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(logged.mock.callCount(), 1);
+  assert.match(String(logged.mock.calls[0].arguments[0]), /lost/);
+});
+
+test("both rounds run where none is named", async (t) => {
+  t.mock.method(console, "log", () => {});
+  const ran = [];
+  const herald = Object.fromEntries(
+    ROUNDS.map((round) => [
+      round,
+      async () => {
+        ran.push(round);
+        return [];
+      },
+    ]),
+  );
+  await rounds(herald);
+  assert.deepEqual(ran, ["poll", "housekeep"]);
+});
+
+test("a Node header given more than once is one pair per value", () => {
+  assert.deepEqual(headerPairs({ host: "herald.example", "set-cookie": ["a=1", "b=2"], "content-length": 2 }), [
+    ["host", "herald.example"],
+    ["set-cookie", "a=1"],
+    ["set-cookie", "b=2"],
+    ["content-length", "2"],
+  ]);
 });

@@ -10,8 +10,6 @@ mod kind;
 pub use kind::PostgresKind;
 
 use herald_core::{Duration, SecretRef};
-use herald_ports::{Sql, StoreError};
-use herald_records::{Dialect, Kept, SqlRecords};
 use jiff::SignedDuration;
 use schemars::JsonSchema;
 use serde::Deserialize;
@@ -105,26 +103,8 @@ pub fn within(address: &str, connect: SignedDuration, statement: SignedDuration)
     }
 }
 
-/// The store a Postgres database keeps.
-pub type PostgresStore<S> = Kept<SqlRecords<S>>;
-
-/// The store kept in `sql`, a Postgres database, with its tables made where
-/// they are missing.
-///
-/// # Errors
-///
-/// When the database cannot be reached, or a newer herald laid it out.
-pub async fn store<S: Sql>(sql: S) -> Result<PostgresStore<S>, StoreError> {
-    SqlRecords::open(sql, Dialect::Postgres)
-        .await
-        .map(Kept::new)
-}
-
 #[cfg(test)]
 mod tests {
-    use herald_ports::{Changed, Held, Keeper as _, SqlError, Value};
-    use herald_testing::ScriptedSql;
-
     use super::*;
 
     #[test]
@@ -184,29 +164,5 @@ mod tests {
         };
         assert_eq!(named.connect_timeout(), SignedDuration::from_secs(3));
         assert_eq!(named.statement_timeout(), SignedDuration::from_secs(4));
-    }
-
-    #[test]
-    fn a_database_that_cannot_be_reached_opens_no_store() {
-        let unreachable = ScriptedSql::default().answering(Err(SqlError::Unavailable {
-            reason: "refused".to_owned(),
-        }));
-        assert_eq!(
-            pollster::block_on(store(unreachable)).err(),
-            Some(StoreError::Unavailable {
-                reason: "the database refused the statements: refused".to_owned()
-            })
-        );
-        let opened = ScriptedSql::default().answering(Ok(vec![
-            Changed::default(),
-            Changed::default(),
-            Changed::default(),
-            Changed {
-                rows: vec![vec![Value::Integer(herald_records::LAYOUT)]],
-                changed: 0,
-            },
-        ]));
-        let kept = pollster::block_on(store(opened)).unwrap();
-        assert_eq!(Held::ALL.map(|held| kept.holds(held)), [true; 9]);
     }
 }

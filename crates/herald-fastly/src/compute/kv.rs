@@ -23,12 +23,6 @@ struct Held {
 #[derive(Debug)]
 pub(super) struct FastlyKv(String);
 
-fn unavailable(error: &KVStoreError) -> KvError {
-    KvError::Unavailable {
-        reason: error.to_string(),
-    }
-}
-
 fn key_of(key: &[String]) -> String {
     key.join("/")
 }
@@ -46,10 +40,8 @@ impl FastlyKv {
 
     fn store(&self) -> Result<KVStore, KvError> {
         KVStore::open(&self.0)
-            .map_err(|error| unavailable(&error))?
-            .ok_or_else(|| KvError::Unavailable {
-                reason: format!("the KV Store {} is gone", self.0),
-            })
+            .map_err(KvError::unavailable)?
+            .ok_or_else(|| KvError::unavailable(format_args!("the KV Store {} is gone", self.0)))
     }
 
     fn held(&self, key: &str) -> Result<Option<Held>, KvError> {
@@ -60,7 +52,7 @@ impl FastlyKv {
                 value: found.take_body_bytes(),
             })),
             Err(KVStoreError::ItemNotFound) => Ok(None),
-            Err(error) => Err(unavailable(&error)),
+            Err(error) => Err(KvError::unavailable(error)),
         }
     }
 
@@ -91,7 +83,7 @@ impl FastlyKv {
         match insert.execute(key, value) {
             Ok(()) => Ok(true),
             Err(KVStoreError::ItemPreconditionFailed | KVStoreError::ItemNotFound) => Ok(false),
-            Err(error) => Err(unavailable(&error)),
+            Err(error) => Err(KvError::unavailable(error)),
         }
     }
 }
@@ -155,7 +147,7 @@ impl Kv for FastlyKv {
             match marked {
                 Ok(()) => Ok(true),
                 Err(KVStoreError::ItemPreconditionFailed | KVStoreError::ItemNotFound) => Ok(false),
-                Err(error) => Err(unavailable(&error)),
+                Err(error) => Err(KvError::unavailable(error)),
             }
         })();
         ready(done)
@@ -167,7 +159,7 @@ impl Kv for FastlyKv {
             let store = self.store()?;
             let mut pairs = Vec::new();
             for page in store.build_list().prefix(&start).iter() {
-                let page = page.map_err(|error| unavailable(&error))?;
+                let page = page.map_err(KvError::unavailable)?;
                 for name in page.keys() {
                     if let Some((value, _)) = self.read(name)? {
                         pairs.push(Pair {

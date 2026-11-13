@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 use herald_core::{
     Cursor, Draft, Event, Kind, Polled, RELEASE_LINK, prerelease_version, versioned,
 };
-use herald_ports::{Method, Request, Response, Secret, Text, USER_AGENT};
+use herald_ports::{Method, Request, Response, Secret, Text};
 use herald_wire::{Reading, SourceError, answered};
 use jiff::Timestamp;
 
@@ -162,7 +162,7 @@ impl Package {
             )
             .at_most(docker_hub::TOKEN_ANSWER)
             .header("Content-Type", Text::plain("application/json"))
-            .header("User-Agent", Text::plain(USER_AGENT))
+            .identified()
             .sealed_body(body.to_string())
         })
     }
@@ -223,16 +223,19 @@ impl Package {
         self.api == self.registry.api().url
     }
 
-    /// How `token` authorises a request to the registry: as HTTP Basic
+    /// `request` authorised by `token` as the registry takes it: as HTTP Basic
     /// with the user `token` on Packagist, as Private Packagist takes it,
     /// and as a bearer token elsewhere.
-    fn authorization(&self, token: &Secret) -> Text {
+    fn authorised(&self, request: Request, token: &Secret) -> Request {
         match self.registry {
-            Registry::Packagist => Text::plain("Basic ").then_secret(Secret::new(
-                token.name(),
-                herald_core::basic("token", token.expose()),
-            )),
-            _ => Text::plain("Bearer ").then_secret(token.clone()),
+            Registry::Packagist => request.header(
+                "Authorization",
+                Text::plain("Basic ").then_secret(Secret::new(
+                    token.name(),
+                    herald_core::basic("token", token.expose()),
+                )),
+            ),
+            _ => request.bearer(token.clone()),
         }
     }
 
@@ -249,9 +252,9 @@ impl Package {
         let mut request = Request::new(Method::Get, Text::plain(format!("{}{path}", self.api)))
             .at_most(self.reading.parse)
             .header("Accept", Text::plain("application/json"))
-            .header("User-Agent", Text::plain(USER_AGENT));
+            .identified();
         if let Some(token) = token.filter(|_| self.registry.takes_token()) {
-            request = request.header("Authorization", self.authorization(token));
+            request = self.authorised(request, token);
         }
         if let Some(etag) = cursor.and_then(|cursor| cursor.etag.as_deref()) {
             request = request.header("If-None-Match", Text::plain(etag));

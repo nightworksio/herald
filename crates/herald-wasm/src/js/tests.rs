@@ -8,7 +8,7 @@ use herald_ports::{
     PUBLIC, Request, Secret, SecretError, Secrets as _, Signer as _, Socket as _, Sockets as _,
     Sql as _, Statement, Text, Timer as _, Value, Verifier as _, Versionstamp,
 };
-use herald_records::{Kept, KvRecords};
+use herald_records::KvRecords;
 use herald_testing::{kv_conformance, store_conformance};
 use js_sys::{Array, Uint8Array};
 use wasm_bindgen::prelude::*;
@@ -433,7 +433,7 @@ async fn a_key_value_store_the_host_offers_passes_the_key_value_suite() {
 #[wasm_bindgen_test]
 async fn a_key_value_store_the_host_offers_keeps_every_record_a_store_keeps() {
     let kv = hosted().kv(KvAt::DenoKv(None)).await.unwrap();
-    let store = Kept::new(KvRecords::new(kv, "herald"));
+    let store = KvRecords::kept(kv, None, None);
     store_conformance(&store).await.unwrap();
 }
 

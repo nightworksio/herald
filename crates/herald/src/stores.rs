@@ -1,26 +1,15 @@
-//! The store a run keeps its records in, as the config names it, reached
-//! over the run's connections (ADR-0005).
+//! The native binary as the host herald is composed on, its stores reached
+//! over the run's connections (ADR-0005, ADR-0017).
 
 use std::collections::BTreeMap;
 use std::future::{Future, ready};
-use std::sync::Arc;
 
-use herald_compose::{Host, KvAt, Opener, Served, SqlAt, Unoffered};
+use herald_compose::{Composed, Host, Hosting, KvAt, SqlAt, Unoffered};
 use herald_config::{Config, Uses};
 use herald_crypto::{RingSigner, RingVerifier};
 use herald_environment::{EnvSecrets, SystemClock};
-use herald_flows::{Connected, prepare};
-use herald_kinds::{Opened, StoreKind};
 use herald_native::{NativePostgres, NativeSql, NativeSqlite, Timeouts};
 use herald_ports::Outbound;
-use herald_records::{Kept, Memory};
-use herald_store_actions_cache::ActionsCacheKind;
-use herald_store_dynamodb::DynamodbKind;
-use herald_store_git_branch::GitBranchKind;
-use herald_store_markers::MarkersKind;
-use herald_store_postgres::PostgresKind;
-use herald_store_repo_variables::RepoVariablesKind;
-use herald_store_sqlite::SqliteKind;
 
 use super::{Connect, Connection};
 
@@ -104,75 +93,23 @@ impl Host for Native<'_> {
     }
 }
 
-/// Where the run's records are kept.
-pub(crate) struct Records<'a>(herald_compose::Records<'a>);
-
-impl Records<'_> {
-    /// Records kept in memory, for a dry run.
-    pub(crate) fn memory() -> Self {
-        Self(herald_compose::Records::new(Opened::Kept(Box::new(
-            Kept::new(Memory::default()),
-        ))))
-    }
-
-    /// `work` done over the store, the routes' posts made one where they
-    /// keep the records.
-    pub(crate) async fn serve<W: Served>(
-        &self,
-        connected: &Connected<Connection>,
-        work: W,
-    ) -> W::Done {
-        self.0.serve(connected, &RingSigner, work).await
-    }
-}
-
-/// The store kinds `herald server` keeps records in: every kind but the
-/// Actions cache, which only a workflow run reaches.
-pub(crate) const SERVED: [&str; 6] = [
-    SqliteKind::NAME,
-    PostgresKind::NAME,
-    DynamodbKind::NAME,
-    GitBranchKind::NAME,
-    MarkersKind::NAME,
-    RepoVariablesKind::NAME,
-];
-
-/// The store kinds a Lambda function keeps records in: every kind that
-/// outlives the function's file system and needs no workflow run.
-pub(crate) const LAMBDA: [&str; 5] = [
-    PostgresKind::NAME,
-    DynamodbKind::NAME,
-    GitBranchKind::NAME,
-    MarkersKind::NAME,
-    RepoVariablesKind::NAME,
-];
-
-/// The store kinds this herald keeps records in.
-pub(crate) const STORES: [&str; 7] = [
-    SqliteKind::NAME,
-    PostgresKind::NAME,
-    DynamodbKind::NAME,
-    GitBranchKind::NAME,
-    MarkersKind::NAME,
-    ActionsCacheKind::NAME,
-    RepoVariablesKind::NAME,
-];
-
-/// The run's records, in a store of one of the kinds in `stores`, and
-/// what a run that `uses` the config needs connected, every secret it
-/// needs read before the store is opened.
-pub(crate) async fn reached<'a>(
+/// herald composed on the native binary as `hosting` describes it, reading
+/// the secrets a run that `uses` the config reads, and taking leases under
+/// the run name `run`.
+pub(crate) async fn composed<'a>(
     config: &Config,
     vars: &'a BTreeMap<String, String>,
     connect: Connect<'a>,
+    hosting: Hosting,
     uses: Uses,
-    stores: &[&str],
-) -> Result<(Records<'a>, Connected<Connection>), String> {
-    let native = Arc::new(Native::new(vars, connect));
-    let prepared = prepare(config, &native.secrets, &RingSigner, uses)
-        .await
-        .map_err(|error| error.to_string())?;
-    let opener = Opener::new(Arc::clone(&native), connect.outbound().clone());
-    let records = Records(herald_compose::reached(Arc::new(opener), &config.store, stores).await?);
-    Ok((records, prepared.connect(|base| connect.reach(base))?))
+    run: impl Into<String>,
+) -> Result<Composed<'a, Native<'a>>, String> {
+    Composed::new(
+        Native::new(vars, connect),
+        config.clone(),
+        hosting,
+        uses,
+        run,
+    )
+    .await
 }

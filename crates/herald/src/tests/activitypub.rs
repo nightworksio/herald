@@ -1,7 +1,7 @@
 use std::sync::Mutex;
 
 use herald_core::{Addressed, Entry, Sent, Step, activity_claim, key, public_pem};
-use herald_crypto::RingVerifier;
+use herald_crypto::{RingSigner, RingVerifier};
 use herald_dest_fediverse::{ActivityPub, ActorRouteOptions};
 use herald_ports::{Algorithm, Secret, Signer as _, Verifier as _};
 use herald_testing::sample;

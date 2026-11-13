@@ -18,11 +18,11 @@ minutes on Lambda), and where the config's `[schedule]` disagrees with it.
 | Vercel | `vercel/` | `postgres`, `dynamodb`, `git-branch`, `markers`, `repo-variables` | Vercel cron |
 | Netlify | `netlify/` | `postgres`, `dynamodb`, `git-branch`, `markers`, `repo-variables` | scheduled functions |
 | AWS Lambda | `lambda/` | `postgres`, `dynamodb`, `git-branch`, `markers`, `repo-variables` | an EventBridge schedule |
-| Azure Functions | `azure/` | the stores `herald server` keeps records in | timer triggers |
+| Azure Functions | `azure/` | `sqlite`, `postgres`, `dynamodb`, `git-branch`, `markers`, `repo-variables` | timer triggers |
 | `wasmtime serve`, wasmCloud and other `wasi:http` hosts | `component/` | `dynamodb`, `git-branch`, `markers`, `repo-variables` | `POST /herald/round/*` |
 | Spin | `spin/` | `sqlite`, `postgres`, `dynamodb`, `git-branch`, `markers`, `repo-variables` | `POST /herald/round/*` |
 | Fastly Compute | `fastly/` | `fastly-kv`, `dynamodb`, `git-branch`, `markers`, `repo-variables` | `POST /herald/round/*` |
-| A container, Compose, Kubernetes and Helm | `compose/`, `kubernetes/`, `helm/herald/` | the stores `herald server` keeps records in | the config's `[schedule]` |
+| A container, Compose, Kubernetes and Helm | `compose/`, `kubernetes/`, `helm/herald/` | `sqlite`, `postgres`, `dynamodb`, `git-branch`, `markers`, `repo-variables` | the config's `[schedule]` |
 
 On every host that keeps `sqlite`, a transaction waits up to the store's
 `busy` (5s) for the file's lock. On every host that keeps `postgres`, making a

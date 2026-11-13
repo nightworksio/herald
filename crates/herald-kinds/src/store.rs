@@ -64,13 +64,37 @@ pub trait StoreConfig: fmt::Debug + Send + Sync + Itself {
     ) -> Local<'s, Result<Opened<'o>, String>>;
 }
 
-/// One kind of store: the options its table reads into, and how the schema
-/// names it.
+/// What a host offers a store beyond `Http`, which a kind of store may need
+/// (ADR-0017).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Offer {
+    /// Nothing beyond `Http`.
+    Http,
+    /// A SQLite file on a disk that outlives the run.
+    Sqlite,
+    /// A Postgres database.
+    Postgres,
+    /// A Cloudflare D1 database, through a Worker's binding.
+    D1,
+    /// The storage of a Cloudflare Durable Object.
+    DurableObject,
+    /// Deno KV.
+    DenoKv,
+    /// A Fastly KV Store.
+    FastlyKv,
+    /// The cache of the workflow run herald runs in.
+    WorkflowCache,
+}
+
+/// One kind of store: the options its table reads into, how the schema
+/// names it, and what it needs of its host.
 pub trait StoreKind: 'static {
     /// The kind's name, as `[store] kind` writes it.
     const NAME: &str;
     /// What the kind is, as the schema describes a store of it.
     const DESCRIPTION: &str;
+    /// What it needs its host to offer.
+    const NEEDS: Offer = Offer::Http;
     /// Whether its table also says how long records are kept, with
     /// `keep_deliveries`, `keep_ledger` and `keep_notes`.
     const RETAINED: bool = true;

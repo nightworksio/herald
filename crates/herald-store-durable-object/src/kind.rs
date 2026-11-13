@@ -1,9 +1,9 @@
 use std::sync::Arc;
 
 use herald_core::SecretRef;
-use herald_kinds::{Local, Opened, Opening, SqlAt, StoreConfig, StoreKind, unopened};
+use herald_kinds::{Local, Offer, Opened, Opening, SqlAt, StoreConfig, StoreKind, unopened};
 use herald_ports::Secret;
-use herald_records::Seal;
+use herald_records::{Dialect, SqlRecords};
 
 use crate::StoreOptions;
 
@@ -15,6 +15,7 @@ impl StoreKind for DurableObjectKind {
     const NAME: &str = "durable-object";
     const DESCRIPTION: &str =
         "The storage of herald's Cloudflare Durable Object, through the\nWorker's binding.";
+    const NEEDS: Offer = Offer::DurableObject;
 
     type Options = StoreOptions;
 }
@@ -40,10 +41,10 @@ impl StoreConfig for StoreOptions {
             };
             let opened = |error| unopened(DurableObjectKind::NAME, error);
             let sql = opening.sql(at).await.map_err(opened)?;
-            let store = crate::store(sql)
+            let store = SqlRecords::kept(sql, Dialect::Sqlite, seal)
                 .await
                 .map_err(|error| opened(error.to_string()))?;
-            Ok(Opened::Kept(Box::new(store.sealed(seal.map(Seal::new)))))
+            Ok(Opened::Kept(Box::new(store)))
         })
     }
 }

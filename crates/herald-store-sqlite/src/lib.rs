@@ -12,8 +12,6 @@ pub use kind::SqliteKind;
 use std::path::{Path, PathBuf};
 
 use herald_core::{Duration, SecretRef};
-use herald_ports::{Sql, StoreError};
-use herald_records::{Dialect, Kept, SqlRecords};
 use jiff::SignedDuration;
 use schemars::JsonSchema;
 use serde::Deserialize;
@@ -57,24 +55,8 @@ impl StoreOptions {
     }
 }
 
-/// The store a SQLite database keeps.
-pub type SqliteStore<S> = Kept<SqlRecords<S>>;
-
-/// The store kept in `sql`, a SQLite database, with its tables made where
-/// they are missing.
-///
-/// # Errors
-///
-/// When the database cannot be reached, or a newer herald laid it out.
-pub async fn store<S: Sql>(sql: S) -> Result<SqliteStore<S>, StoreError> {
-    SqlRecords::open(sql, Dialect::Sqlite).await.map(Kept::new)
-}
-
 #[cfg(test)]
 mod tests {
-    use herald_ports::{Changed, Held, Keeper as _, SqlError, Value};
-    use herald_testing::ScriptedSql;
-
     use super::*;
 
     #[test]
@@ -104,30 +86,5 @@ mod tests {
             busy: Some(Duration(SignedDuration::from_secs(30))),
         };
         assert_eq!(named.busy(), SignedDuration::from_secs(30));
-    }
-
-    #[test]
-    fn a_database_that_cannot_be_reached_opens_no_store() {
-        let unreachable = ScriptedSql::default().answering(Err(SqlError::Unavailable {
-            reason: "locked".to_owned(),
-        }));
-        assert_eq!(
-            pollster::block_on(store(unreachable)).err(),
-            Some(StoreError::Unavailable {
-                reason: "the database refused the statements: locked".to_owned()
-            })
-        );
-        let laid_out = Changed {
-            rows: vec![vec![Value::Integer(herald_records::LAYOUT)]],
-            changed: 0,
-        };
-        let opened = ScriptedSql::default().answering(Ok(vec![
-            Changed::default(),
-            Changed::default(),
-            Changed::default(),
-            laid_out,
-        ]));
-        let kept = pollster::block_on(store(opened)).unwrap();
-        assert_eq!(Held::ALL.map(|held| kept.holds(held)), [true; 9]);
     }
 }

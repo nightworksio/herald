@@ -5,23 +5,19 @@
 use std::collections::BTreeMap;
 use std::io::Write;
 
-use herald_compose::Served;
+use herald_compose::{Host, Hosting, ServingOn, Through};
 use herald_config::{Config, Uses};
 use herald_core::{DestinationName, Sent, Subscription};
-use herald_crypto::RingSigner;
-use herald_environment::SystemClock;
-use herald_flows::{Connected, Decision, FollowError, decide, followers};
+use herald_flows::{Decision, FollowError, decide, followers};
 use herald_ports::{Clock as _, Keyring, Store as Keeps};
 
 use super::cli::Following;
-use super::connect::Connection;
 use super::output::say;
-use super::stores::{STORES, reached};
-use super::{Connect, DONE, STOPPED};
+use super::stores::composed;
+use super::{Connect, DONE, STOPPED, place};
 
 /// What the operator asks of an actor's followers.
 struct Asked<'a> {
-    connected: &'a Connected<Connection>,
     destination: DestinationName,
     actor: &'a str,
     decided: Option<(&'a str, Decision)>,
@@ -37,19 +33,29 @@ enum Done<'a> {
     },
 }
 
-impl<'a> Served for Asked<'a> {
+impl<'a, H: Host> Through<H> for Asked<'a> {
     type Done = Result<Done<'a>, FollowError>;
 
-    async fn over<S: Keeps + Keyring>(self, store: &S) -> Self::Done {
+    async fn through<S: Keeps, K: Keyring>(
+        self,
+        serving: &ServingOn<'_, H, S, K>,
+        _: &str,
+    ) -> Self::Done {
+        let ports = serving.ports;
         match self.decided {
-            None => followers(self.connected, store, &self.destination, self.actor)
-                .await
-                .map(Done::Listed),
+            None => followers(
+                serving.connected,
+                ports.store,
+                &self.destination,
+                self.actor,
+            )
+            .await
+            .map(Done::Listed),
             Some((follower, decision)) => decide(
-                self.connected,
-                store,
-                &RingSigner,
-                SystemClock.now(),
+                serving.connected,
+                ports.store,
+                ports.signer,
+                ports.clock.now(),
                 &self.destination,
                 self.actor,
                 follower,
@@ -79,7 +85,15 @@ pub(crate) async fn following(
     following: &Following,
     out: &mut dyn Write,
 ) -> Result<u8, String> {
-    let (records, connected) = reached(config, vars, connect, Uses::Announces, &STORES).await?;
+    let composed = composed(
+        config,
+        vars,
+        connect,
+        Hosting::Actions,
+        Uses::Announces,
+        place(vars),
+    )
+    .await?;
     let (destination, actor, decided) = match following {
         Following::List { destination, actor } => (destination, actor, None),
         Following::Approve {
@@ -102,13 +116,12 @@ pub(crate) async fn following(
         ),
     };
     let asked = Asked {
-        connected: &connected,
         destination: DestinationName::new(destination),
         actor,
         decided,
     };
-    let done = records
-        .serve(&connected, asked)
+    let done = composed
+        .run(asked)
         .await
         .map_err(|error| error.to_string())?;
     Ok(match done {

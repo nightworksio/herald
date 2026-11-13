@@ -156,6 +156,7 @@ fn a_destination_is_its_kind_equal_only_to_the_same_options_and_keeps_every_defa
     assert_eq!(patient.kind(), "patient");
     assert_eq!(patient.credential(), None);
     assert_eq!(patient.secret_refs(), Vec::<&SecretRef>::new());
+    assert!(patient.setup().is_none());
 }
 
 #[test]

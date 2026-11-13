@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
-import { mkdtemp, writeFile } from "node:fs/promises";
+import { mkdtemp, rename, writeFile } from "node:fs/promises";
 import { registerHooks } from "node:module";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { test } from "node:test";
 
 const url = process.env.HERALD_TEST_POSTGRES;
@@ -89,6 +89,17 @@ test("Vercel takes a round secret in place of CRON_SECRET", { skip: !url }, asyn
     const round = (secret) => vercel.fetch(asked("/herald/round/housekeep", { secret }));
     assert.deepEqual(await answered(await round("cron")), [401, "herald does not take this request"]);
     assert.deepEqual(await answered(await round("own")), [200, "the round ran"]);
+  });
+});
+
+test("Vercel composes herald again once a failed composition can succeed", { skip: !url }, async () => {
+  const written = await configured(POSTGRES);
+  const path = join(dirname(written), "later.toml");
+  await within({ HERALD_CONFIG: path }, async () => {
+    const { default: vercel } = await import("../vercel/api/herald.mjs?later");
+    await assert.rejects(vercel.fetch(asked("/healthz")), { code: "ENOENT" });
+    await rename(written, path);
+    assert.deepEqual(await answered(await vercel.fetch(asked("/healthz"))), [200, "herald is up"]);
   });
 });
 

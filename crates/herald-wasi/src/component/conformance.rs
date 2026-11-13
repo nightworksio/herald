@@ -6,6 +6,7 @@
 
 use herald_flows::Reply;
 use herald_ports::{Parameters, Secret, Sql as _, SqlError, Statement};
+use herald_records::{Dialect, SqlRecords};
 use herald_testing::{sql_conformance, store_conformance};
 use jiff::SignedDuration;
 
@@ -44,12 +45,12 @@ async fn conforms(sql: SpinSql, postgres: bool) -> Result<(), String> {
         .await
         .map_err(|failure| failure.to_string())?;
     if postgres {
-        let store = herald_store_postgres::store(sql)
+        let store = SqlRecords::kept(sql, Dialect::Postgres, None)
             .await
             .map_err(|error| error.to_string())?;
         store_conformance(&store).await
     } else {
-        let store = herald_store_sqlite::store(sql)
+        let store = SqlRecords::kept(sql, Dialect::Sqlite, None)
             .await
             .map_err(|error| error.to_string())?;
         store_conformance(&store).await

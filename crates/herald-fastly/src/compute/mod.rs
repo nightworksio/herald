@@ -11,7 +11,7 @@ use fastly::{Request, Response};
 use std::io::Read as _;
 
 use herald_compose::{Asked, Composed, Hosting, told};
-use herald_config::{Config, load};
+use herald_config::{Config, Uses, load};
 use herald_flows::{Answered, Reply, refusal, uncomposed};
 use host::{FastlyHost, STORE};
 
@@ -68,7 +68,8 @@ fn composed(host: FastlyHost, config: Config) -> Result<Composed<'static, Fastly
     pollster::block_on(Composed::new(
         host,
         config,
-        hosting.stores(),
+        hosting,
+        Uses::Serves,
         hosting.name(),
     ))
 }

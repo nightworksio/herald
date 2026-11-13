@@ -2,6 +2,7 @@
 //! stores: built only with the `conformance` feature, for testing a host.
 
 use herald_ports::Parameters;
+use herald_records::{Dialect, SqlRecords};
 use send_wrapper::SendWrapper;
 use wasm_bindgen::prelude::*;
 
@@ -20,9 +21,13 @@ fn failed(failure: &impl ToString) -> JsError {
 /// Why the store could not open, or the first case it fails.
 #[wasm_bindgen]
 pub async fn conformance(sql: JsValue) -> Result<(), JsError> {
-    let store = herald_store_durable_object::store(JsSql(SendWrapper::new(sql.unchecked_into())))
-        .await
-        .map_err(|error| failed(&error))?;
+    let store = SqlRecords::kept(
+        JsSql(SendWrapper::new(sql.unchecked_into())),
+        Dialect::Sqlite,
+        None,
+    )
+    .await
+    .map_err(|error| failed(&error))?;
     herald_testing::store_conformance(&store)
         .await
         .map_err(|failure| failed(&failure))

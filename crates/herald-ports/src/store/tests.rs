@@ -258,6 +258,34 @@ fn every_store_error_reads_as_a_sentence() {
 }
 
 #[test]
+fn a_store_error_is_built_from_what_went_wrong() {
+    assert_eq!(
+        StoreError::unavailable(404),
+        StoreError::Unavailable {
+            reason: "404".to_owned()
+        }
+    );
+    assert_eq!(
+        StoreError::answered("GitHub", 502),
+        StoreError::Unavailable {
+            reason: "GitHub answered 502".to_owned()
+        }
+    );
+    assert_eq!(
+        StoreError::corrupt("bad json"),
+        StoreError::Corrupt {
+            reason: "bad json".to_owned()
+        }
+    );
+    assert_eq!(
+        StoreError::unreadable("ledger/a.json", "EOF"),
+        StoreError::Corrupt {
+            reason: "ledger/a.json: EOF".to_owned()
+        }
+    );
+}
+
+#[test]
 fn an_outbox_page_holds_the_newest_notes_older_than_where_it_starts() {
     let listed = |names: &[&str]| -> Vec<(String, &'static str)> {
         names

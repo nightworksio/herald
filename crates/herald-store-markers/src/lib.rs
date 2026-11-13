@@ -42,12 +42,6 @@ pub struct MarkersStore<M, G> {
     signer: G,
 }
 
-fn unavailable(error: impl std::fmt::Display) -> StoreError {
-    StoreError::Unavailable {
-        reason: error.to_string(),
-    }
-}
-
 fn unsupported<T>(what: &'static str) -> Result<T, StoreError> {
     Err(StoreError::Unsupported { what })
 }
@@ -67,7 +61,7 @@ impl<M: Markers, G: Signer> MarkersStore<M, G> {
     async fn mark(&self, key: &Secret, message: &[u8]) -> Result<Marker, StoreError> {
         marker(&self.signer, key, message)
             .await
-            .map_err(unavailable)
+            .map_err(StoreError::unavailable)
     }
 
     async fn derived(
@@ -79,7 +73,12 @@ impl<M: Markers, G: Signer> MarkersStore<M, G> {
             .mark(&route.key, &Marker::route_message(&route.route))
             .await?;
         let mut derived = Vec::new();
-        for opened in route.markers.threads(&carried).await.map_err(unavailable)? {
+        for opened in route
+            .markers
+            .threads(&carried)
+            .await
+            .map_err(StoreError::unavailable)?
+        {
             let key = Key::derive(
                 &route.route,
                 &Identity::new(format!("thread/{}", opened.thread)),
@@ -133,7 +132,7 @@ impl<M: Markers, G: Signer> Ledger for MarkersStore<M, G> {
                 .markers
                 .entry(key, &carried)
                 .await
-                .map_err(unavailable)?
+                .map_err(StoreError::unavailable)?
             {
                 return Ok(Some(Versioned {
                     value: entry,

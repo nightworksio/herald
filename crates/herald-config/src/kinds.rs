@@ -3,7 +3,8 @@ use std::marker::PhantomData;
 use std::ops::Range;
 
 use herald_kinds::{
-    Destination, DestinationKind, Fault, Placed, Placing, Source, SourceKind, Store, StoreKind,
+    Destination, DestinationKind, Fault, Offer, Placed, Placing, Source, SourceKind, Store,
+    StoreKind,
 };
 use jiff::SignedDuration;
 use schemars::{JsonSchema, Schema, SchemaGenerator};
@@ -101,6 +102,17 @@ impl Kinds {
     #[must_use]
     pub fn store_kinds(&self) -> Vec<&'static str> {
         self.stores.iter().map(|kind| kind.name()).collect()
+    }
+
+    /// The name of every store kind whose needs a host meets where it
+    /// offers what `offers` holds for, in the order they are given.
+    #[must_use]
+    pub fn store_kinds_offered(&self, offers: impl Fn(Offer) -> bool) -> Vec<&'static str> {
+        self.stores
+            .iter()
+            .filter(|kind| offers(kind.needs()))
+            .map(|kind| kind.name())
+            .collect()
     }
 
     pub(crate) fn store_named(&self, name: &str) -> Option<&dyn StoreKinded> {
@@ -275,6 +287,8 @@ where
 pub(crate) trait StoreKinded: Send + Sync {
     fn name(&self) -> &'static str;
 
+    fn needs(&self) -> Offer;
+
     fn retained(&self) -> bool;
 
     fn parse(&self, loader: &mut Loader<'_>, rest: Value<'_>) -> Option<Store>;
@@ -289,6 +303,10 @@ where
 {
     fn name(&self) -> &'static str {
         K::NAME
+    }
+
+    fn needs(&self) -> Offer {
+        K::NEEDS
     }
 
     fn retained(&self) -> bool {

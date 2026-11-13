@@ -201,7 +201,7 @@ pub fn unserved(stores: &[&str]) -> String {
 
 /// The commands `config`'s destinations take that `layer` cannot carry to
 /// herald, each named with the `layers` that can (ADR-0016).
-fn unanswered(config: &Config, layer: Layer<'_>, layers: &[Layer<'_>], gaps: &mut Vec<Gap>) {
+fn unanswered(config: &Config, layer: &Layer, layers: &[Layer], gaps: &mut Vec<Gap>) {
     let holders: Vec<&str> = layers
         .iter()
         .filter(|layer| layer.sessions)
@@ -287,7 +287,7 @@ fn unhosted(config: &Config, gaps: &mut Vec<Gap>) {
 
 /// What `config` asks of herald's endpoint that `layer`, which serves one,
 /// leaves to its host or its store.
-fn hosted(config: &Config, layer: Layer<'_>, here: &Here, findings: &mut Findings) {
+fn hosted(config: &Config, layer: &Layer, here: &Here, findings: &mut Findings) {
     if !config.store.keeps_deliveries() {
         for (name, source) in &config.sources {
             if source.webhook().is_some() {
@@ -337,7 +337,7 @@ fn hosted(config: &Config, layer: Layer<'_>, here: &Here, findings: &mut Finding
 
 /// Who asks `layer` for rounds, and where `config`'s `[schedule]` says
 /// otherwise.
-fn scheduled(config: &Config, layer: Layer<'_>, here: &Here, findings: &mut Findings) {
+fn scheduled(config: &Config, layer: &Layer, here: &Here, findings: &mut Findings) {
     let schedule = config.schedule;
     let set = schedule.poll.is_some() || schedule.housekeep.is_some();
     let name = layer.name;
@@ -442,13 +442,13 @@ fn lacked(reached: Features, bot: Features) -> Vec<&'static str> {
 }
 
 /// What `config`'s store asks that no run serves, and what serves the rest.
-fn stored(config: &Config, layer: Layer<'_>, findings: &mut Findings) {
+fn stored(config: &Config, layer: &Layer, findings: &mut Findings) {
     let kind = config.store.kind();
     if !layer.stores.contains(&kind) {
         findings.gaps.push(gap(
             &format!("keeping records in {kind}"),
             "store.kind".to_owned(),
-            unserved(layer.stores),
+            unserved(&layer.stores),
         ));
     }
     if let Some((key, why)) = config.store.withheld() {
@@ -501,7 +501,7 @@ fn moving(config: &Config, notes: &mut Vec<String>) {
 
 /// What `config` asks for that `layer` cannot serve, and what it leaves to
 /// chance, with `here`'s settings.
-fn served(config: &Config, layer: Layer<'_>, layers: &[Layer<'_>], here: &Here) -> Findings {
+fn served(config: &Config, layer: &Layer, layers: &[Layer], here: &Here) -> Findings {
     let mut findings = Findings::default();
     unanswered(config, layer, layers, &mut findings.gaps);
     if layer.endpoint {
@@ -530,13 +530,13 @@ fn served(config: &Config, layer: Layer<'_>, layers: &[Layer<'_>], here: &Here) 
 /// first of `layers`, in ADR-0002's order, that serves it, and what it
 /// leaves to chance, with `here`'s settings (ADR-0002).
 #[must_use]
-pub fn doctor(config: &Config, layer: Layer<'_>, layers: &[Layer<'_>], here: &Here) -> Findings {
+pub fn doctor(config: &Config, layer: &Layer, layers: &[Layer], here: &Here) -> Findings {
     let mut findings = served(config, layer, layers, here);
     for found in &mut findings.gaps {
         found.first_layer = layers
             .iter()
             .find(|candidate| {
-                !served(config, **candidate, layers, here)
+                !served(config, candidate, layers, here)
                     .gaps
                     .iter()
                     .any(|other| other.key == found.key)

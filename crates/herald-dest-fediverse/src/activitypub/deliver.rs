@@ -5,7 +5,7 @@ use herald_core::{
 };
 use herald_ports::{
     Algorithm, CryptoError, Http, HttpError, Method, PUBLIC, Request, Response, Secret, Signer,
-    Text, USER_AGENT,
+    Text,
 };
 use jiff::Timestamp;
 use serde_json::Value;
@@ -338,7 +338,7 @@ impl ActivityPub {
         let header = signature_header(&key_id(&self.origin, &self.route.actor), &signature);
         let request = Request::new(Method::Post, Text::plain(inbox))
             .at_most(ANSWER)
-            .header("User-Agent", Text::plain(USER_AGENT))
+            .identified()
             .header("Content-Type", Text::plain(ACTIVITY_JSON))
             .header("Date", Text::plain(date))
             .header("Digest", Text::plain(delivered.digest))

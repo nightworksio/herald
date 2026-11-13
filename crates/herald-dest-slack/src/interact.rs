@@ -6,7 +6,7 @@ use std::collections::BTreeMap;
 use std::fmt;
 
 use herald_core::{Answering, Asked, Command, DestinationName, Phrase, Place, SecretRef};
-use herald_ports::{Method, Request, Response, Secret, Text, USER_AGENT};
+use herald_ports::{Method, Request, Response, Secret, Text};
 use serde_json::{Value, json};
 
 use crate::domain::Domain;
@@ -365,7 +365,7 @@ impl Interacting {
                 "Content-Type",
                 Text::plain("application/json; charset=utf-8"),
             )
-            .header("User-Agent", Text::plain(USER_AGENT))
+            .identified()
             .body(body.to_string())
     }
 }

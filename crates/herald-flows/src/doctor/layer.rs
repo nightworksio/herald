@@ -72,14 +72,14 @@ pub enum Memory {
 }
 
 /// What a layer of support serves (ADR-0002), as its host describes it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Layer<'a> {
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Layer {
     /// Its name, as `herald doctor --layer` writes it.
-    pub name: &'a str,
+    pub name: &'static str,
     /// The layer of ADR-0002 it belongs to.
     pub tier: Tier,
     /// The store kinds it keeps records in.
-    pub stores: &'a [&'a str],
+    pub stores: Vec<&'static str>,
     /// Whether it serves herald's endpoint, where commands are posted.
     pub endpoint: bool,
     /// Whether it holds sessions open, which carry commands to it.
@@ -90,7 +90,7 @@ pub struct Layer<'a> {
     pub rounds: Rounds,
     /// The secrets, any one of which a request asking it for a round holds,
     /// where its rounds are asked for over HTTP alone.
-    pub round_secrets: &'a [&'a str],
+    pub round_secrets: &'static [&'static str],
     /// How long the keys it keeps in memory last.
     pub keyring: Memory,
 }

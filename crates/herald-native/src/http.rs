@@ -212,16 +212,13 @@ fn failed(error: reqwest::Error) -> HttpError {
     if error.is_timeout() {
         HttpError::TimedOut
     } else {
-        HttpError::Unreachable {
-            reason: chain(&error.without_url()),
-        }
+        HttpError::unreachable(chain(&error.without_url()))
     }
 }
 
 async fn read(mut response: reqwest::Response, most: usize) -> Result<Response, HttpError> {
-    let larger = || HttpError::Unreachable {
-        reason: format!("the response is larger than {most} bytes"),
-    };
+    let larger =
+        || HttpError::unreachable(format_args!("the response is larger than {most} bytes"));
     if response
         .content_length()
         .is_some_and(|length| usize::try_from(length).map_or(true, |length| length > most))

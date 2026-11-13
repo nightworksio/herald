@@ -8,7 +8,7 @@ use herald_kinds::{Destination, Placed, Source, Store};
 use jiff::SignedDuration;
 
 /// A config, read, resolved and with its templates compiled.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Config {
     /// The store the ledger and the rest are kept in (ADR-0005).
     pub store: Store,

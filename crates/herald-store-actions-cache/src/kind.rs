@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use herald_core::{RecordKind, SecretRef};
-use herald_kinds::{Local, Opened, Opening, StoreConfig, StoreKind};
+use herald_kinds::{Local, Offer, Opened, Opening, StoreConfig, StoreKind};
 use herald_ports::Secret;
 use herald_records::Seal;
 
@@ -22,6 +22,7 @@ pub enum ActionsCacheKind {}
 impl StoreKind for ActionsCacheKind {
     const NAME: &str = "actions-cache";
     const DESCRIPTION: &str = "Generations of the GitHub Actions cache.";
+    const NEEDS: Offer = Offer::WorkflowCache;
 
     type Options = StoreOptions;
 }

@@ -20,9 +20,7 @@ struct Sealed {
 pub struct Seal(Secret);
 
 fn unsealed(path: &str) -> StoreError {
-    StoreError::Corrupt {
-        reason: format!("{path} is not sealed by this store's key"),
-    }
+    StoreError::corrupt(format_args!("{path} is not sealed by this store's key"))
 }
 
 impl Seal {

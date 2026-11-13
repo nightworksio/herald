@@ -359,27 +359,26 @@ fn a_matrix_registration_holds_two_new_tokens_and_reaches_herald_by_destination(
         &herald_compose::kinds(),
     )
     .unwrap();
-    let mut out = Vec::new();
+    let registered = |destination: &str, url: &str, random: &dyn Fn() -> Option<String>| {
+        let setting = cli::Setting::Matrix(cli::Matrixing::Registration {
+            destination: Some(destination.to_owned()),
+            url: url.to_owned(),
+        });
+        let vars = std::collections::BTreeMap::new();
+        let mut out = Vec::new();
+        pollster::block_on(setup::set_up(
+            &config, &vars, &NATIVE, &setting, random, &mut out,
+        ))
+    };
+    let made = || Some("t".to_owned());
     assert_eq!(
-        setup::matrix(
-            &config,
-            Some("matrix"),
-            "https://herald.example",
-            &|| None,
-            &mut out
-        ),
+        registered("matrix", "https://herald.example", &|| None),
         Err("the system's random generator failed, so no token was made".to_owned())
     );
     assert!(
-        setup::matrix(
-            &config,
-            Some("nope"),
-            "https://herald.example",
-            &|| Some("t".to_owned()),
-            &mut out
-        )
-        .unwrap_err()
-        .starts_with("no matrix destination named \"nope\" takes commands")
+        registered("nope", "https://herald.example", &made)
+            .unwrap_err()
+            .starts_with("no matrix destination named \"nope\" takes commands")
     );
     for unsound in [
         "ftp://x",
@@ -387,15 +386,9 @@ fn a_matrix_registration_holds_two_new_tokens_and_reaches_herald_by_destination(
         "https://herald.example/'",
     ] {
         assert!(
-            setup::matrix(
-                &config,
-                Some("matrix"),
-                unsound,
-                &|| Some("t".to_owned()),
-                &mut out
-            )
-            .unwrap_err()
-            .contains("is not an address herald is served at"),
+            registered("matrix", unsound, &made)
+                .unwrap_err()
+                .contains("is not an address herald is served at"),
             "{unsound}"
         );
     }

@@ -6,7 +6,7 @@ use herald_core::{
 };
 use herald_kinds::{
     Carried, DestinationConfig, DestinationKind, Endpoint, Fault, Interacted, Interacts, Placed,
-    Placement, Placing, Post, Reached, Read, Replying, Said, Session, UNREAD,
+    Placement, Placing, Post, Reached, Read, Replying, Said, Session, Setup, UNREAD,
 };
 use herald_ports::{Boxed, DynSecrets, Request, Response, Secret, SecretError};
 
@@ -15,6 +15,7 @@ use crate::held::Joined;
 use crate::interact::{self, Interacting, MESSAGE, Received, choices, pong, took};
 use crate::interactions::{Interactions, Subscribe, Via};
 use crate::options::{DestinationOptions, RouteOptions};
+use crate::setup::Setting;
 use herald_ports::Credential;
 
 /// A Discord interaction: `X-Signature-Ed25519` over `X-Signature-Timestamp` and the body.
@@ -53,6 +54,15 @@ impl DestinationConfig for DestinationOptions {
 
     fn answering(&self) -> Option<Answering> {
         self.interactions.as_ref().map(Interactions::answering)
+    }
+
+    fn setup(&self) -> Option<Box<dyn Setup + '_>> {
+        self.interactions.as_ref().map(|interactions| {
+            Box::new(Setting {
+                options: self,
+                interactions,
+            }) as Box<dyn Setup + '_>
+        })
     }
 
     fn session_domains(&self) -> Vec<&str> {

@@ -9,8 +9,10 @@ mod compose {
     use std::sync::{Arc, Mutex};
     use std::task::{Context, Poll};
 
-    use herald_compose::{Asked, Composed, Host, KvAt, Left, Opener, SqlAt, reached};
-    use herald_config::{Config, load};
+    use herald_compose::{
+        Asked, Composed, Host, KvAt, Left, Opener, ServingOn, SqlAt, Through, reached,
+    };
+    use herald_config::{Config, Uses, load};
     use herald_core::DestinationName;
     use herald_flows::{Admission, Housekept, Inbound, Job, Stop, Sweep, Taker, Worked};
     use herald_kinds::{Opening, StoreKind};
@@ -23,6 +25,8 @@ mod compose {
     fn every() -> Vec<&'static str> {
         herald_compose::kinds().store_kinds()
     }
+
+    const NODE: herald_compose::Hosting = herald_compose::Hosting::Node;
 
     #[derive(Debug, Clone, Default)]
     struct Answering;
@@ -402,9 +406,14 @@ mod compose {
                 &herald_compose::kinds(),
             )
             .unwrap();
-            let composed =
-                pollster::block_on(Composed::new(Hosting::default(), config, &every(), "test"))
-                    .unwrap();
+            let composed = pollster::block_on(Composed::new(
+                Hosting::default(),
+                config,
+                NODE,
+                Uses::Serves,
+                "test",
+            ))
+            .unwrap();
             assert_eq!(
                 composed.config().store.kind(),
                 herald_store_deno_kv::DenoKvKind::NAME
@@ -482,7 +491,8 @@ template = "t"
                 ..Hosting::default()
             };
             let composed =
-                pollster::block_on(Composed::new(host, config, &every(), "test")).unwrap();
+                pollster::block_on(Composed::new(host, config, NODE, Uses::Serves, "test"))
+                    .unwrap();
             let swept = pollster::block_on(composed.poll());
             let unscripted = || {
                 Stop::Store(
@@ -511,7 +521,8 @@ template = "t"
         )
         .unwrap();
         let composed =
-            pollster::block_on(Composed::new(github(), config, &every(), "test")).unwrap();
+            pollster::block_on(Composed::new(github(), config, NODE, Uses::Serves, "test"))
+                .unwrap();
         let (swept, unswept) =
             pollster::block_on(futures_util::future::join(composed.poll(), composed.poll()));
         assert_eq!(swept.len(), 1);
@@ -555,7 +566,8 @@ template = "t"
                 )
                 .unwrap();
                 let composed =
-                    pollster::block_on(Composed::new(github(), config, &every(), "test")).unwrap();
+                    pollster::block_on(Composed::new(github(), config, NODE, Uses::Serves, "test"))
+                        .unwrap();
                 let health = Inbound {
                     method: "GET",
                     path: "/healthz",
@@ -622,7 +634,8 @@ template = "t"
         let unset = pollster::block_on(Composed::new(
             Hosting::default(),
             config("kind = \"deno-kv\""),
-            &every(),
+            NODE,
+            Uses::Serves,
             "test",
         ))
         .unwrap();
@@ -641,7 +654,8 @@ template = "t"
         let composed = pollster::block_on(Composed::new(
             host,
             config("kind = \"deno-kv\""),
-            &every(),
+            NODE,
+            Uses::Serves,
             "test",
         ))
         .unwrap();
@@ -698,7 +712,8 @@ body = "{{ event.body }}"
             secrets: FakeSecrets::default().with("KEY", "k"),
             ..Hosting::default()
         };
-        let composed = pollster::block_on(Composed::new(host, config, &every(), "test")).unwrap();
+        let composed =
+            pollster::block_on(Composed::new(host, config, NODE, Uses::Serves, "test")).unwrap();
         let mut inbox = asked("POST", "/inbox", None);
         let unaddressed = pollster::block_on(composed.reached(&inbox));
         assert_eq!(unaddressed.reply.status, 404);
@@ -748,7 +763,8 @@ body = "{{{{ event.body }}}}"
             secrets: FakeSecrets::default().with("TOKEN", "t"),
             ..Hosting::default()
         };
-        let composed = pollster::block_on(Composed::new(host, config, &every(), "test")).unwrap();
+        let composed =
+            pollster::block_on(Composed::new(host, config, NODE, Uses::Serves, "test")).unwrap();
         let headers = [("Authorization", "Bearer app-token")];
         let event =
             |id: &str| format!(r#"{{"id": "{id}", "project": "herald", "title": "Deployed"}}"#);
@@ -815,7 +831,7 @@ body = "{{{{ event.body }}}}"
                 },
                 ..Hosting::default()
             };
-            let refused = pollster::block_on(Composed::new(host, config, &every(), "test")).err();
+            let refused = pollster::block_on(Composed::new(host, config, NODE, Uses::Serves, "test")).err();
             assert!(
                 refused.as_deref().is_some_and(|said| said.contains(missing)),
                 "{missing}: {refused:?}"
@@ -832,9 +848,78 @@ body = "{{{{ event.body }}}}"
         let composed = pollster::block_on(Composed::new(
             unreached,
             config("kind = \"markers\""),
-            &every(),
+            NODE,
+            Uses::Serves,
             "test",
         ));
         assert_eq!(composed.err(), Some("public: is out of reach".to_owned()));
+    }
+
+    struct Named;
+
+    impl<H: Host> Through<H> for Named {
+        type Done = (String, bool);
+
+        fn through<S: herald_ports::Store, K: herald_ports::Keyring>(
+            self,
+            serving: &ServingOn<'_, H, S, K>,
+            run: &str,
+        ) -> impl Future<Output = (String, bool)> {
+            ready((run.to_owned(), serving.ports.store.cursors().is_some()))
+        }
+    }
+
+    #[test]
+    fn a_dry_herald_keeps_its_records_in_memory_and_opens_no_store() {
+        let composed = pollster::block_on(Composed::dry(
+            Hosting::default(),
+            config("kind = \"deno-kv\""),
+            Uses::Announces,
+            "dry",
+        ))
+        .unwrap();
+        assert_eq!(composed.host().asked(), Vec::<String>::new());
+        assert!(
+            composed
+                .connected()
+                .interacting(&DestinationName::new("chat"))
+                .is_none()
+        );
+        let (run, kept) = pollster::block_on(composed.run(Named));
+        assert!(run.starts_with("dry/"), "{run}");
+        assert!(run.len() > "dry/".len(), "{run}");
+        assert!(kept);
+        let (again, _) = pollster::block_on(composed.run(Named));
+        assert_ne!(again, run);
+    }
+
+    #[test]
+    fn a_herald_reads_only_the_secrets_its_run_uses() {
+        let text = "version = 1\n[store]\nkind = \"markers\"\n[sources.app]\nkind = \"github\"\nrepository = \"o/r\"\ntoken = { secret = \"SOURCE_TOKEN\" }\n";
+        let config = load(
+            "herald.toml",
+            text,
+            &|_| Err(String::new()),
+            &herald_compose::kinds(),
+        )
+        .unwrap();
+        let announcing = pollster::block_on(Composed::dry(
+            Hosting::default(),
+            config.clone(),
+            Uses::Announces,
+            "dry",
+        ));
+        assert!(announcing.is_ok());
+        let polling = pollster::block_on(Composed::dry(
+            Hosting::default(),
+            config,
+            Uses::Polls,
+            "dry",
+        ));
+        assert!(
+            polling
+                .err()
+                .is_some_and(|error| error.contains("SOURCE_TOKEN"))
+        );
     }
 }

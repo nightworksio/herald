@@ -1,6 +1,6 @@
 use herald_core::{Cursor, Event, KeyForm, Polled, Scheme, Signed, unreserved};
 use herald_kinds::Hooked;
-use herald_ports::{Method, Request, Response, Secret, Text, USER_AGENT};
+use herald_ports::{Method, Request, Response, Secret, Text};
 use serde::Deserialize;
 
 use crate::options::SourceOptions;
@@ -349,12 +349,11 @@ impl Origin {
         let request = Request::new(Method::Get, Text::plain(format!("{base}{path}")))
             .at_most(self.reading.parse);
         let request = match self.forge {
-            Forge::GitHub => github::headed(request),
-            Forge::GitLab | Forge::Forgejo => {
-                request.header("Accept", Text::plain("application/json"))
-            }
-        }
-        .header("User-Agent", Text::plain(USER_AGENT));
+            Forge::GitHub => herald_wire::github::headed(request),
+            Forge::GitLab | Forge::Forgejo => request
+                .header("Accept", Text::plain("application/json"))
+                .identified(),
+        };
         match (self.forge, token) {
             (_, None) => request,
             (Forge::GitLab, Some(Token::Run(token))) => {
@@ -365,10 +364,7 @@ impl Origin {
                 Text::plain("token ").then_secret(token.clone()),
             ),
             (Forge::GitHub | Forge::GitLab, Some(Token::Named(token) | Token::Run(token))) => {
-                request.header(
-                    "Authorization",
-                    Text::plain("Bearer ").then_secret(token.clone()),
-                )
+                request.bearer(token.clone())
             }
         }
     }

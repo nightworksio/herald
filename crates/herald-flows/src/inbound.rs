@@ -63,6 +63,14 @@ pub struct Keys<'a, K> {
     pub reread: SignedDuration,
 }
 
+impl<K: Keyring> Keys<'_, K> {
+    /// Every key read longer ago than its refresh at `now`, forgotten.
+    pub async fn sweep(&self, now: Timestamp) {
+        let before = now.checked_sub(self.refreshed).unwrap_or(Timestamp::MIN);
+        let _ = self.keyring.forget_before(before).await;
+    }
+}
+
 /// A request [`verified`] let through.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Verified {

@@ -95,3 +95,24 @@ fn housekeeping_says_which_records_it_skipped_as_corrupt() {
         ]
     );
 }
+
+#[test]
+fn housekeeping_forgets_the_keys_the_store_keeps_once_they_are_due_a_reread() {
+    let setup = setup(&format!("{CONFIG}[server.keys]\ncache = \"store\"\n"));
+    let world = World::default();
+    let store = kept(&world);
+    let read = |fetched: &str| herald_ports::KnownKey {
+        owner: "https://social.example/users/ann".to_owned(),
+        pem: "key".to_owned(),
+        fetched: fetched.parse().unwrap(),
+    };
+    pollster::block_on(store.know("stale", &read(OVERDUE))).unwrap();
+    pollster::block_on(store.know("fresh", &read(DISTANT))).unwrap();
+    let kept = herald(&setup, &world, &["housekeep"]);
+    assert_eq!(kept.code, DONE, "{}", kept.err);
+    assert_eq!(pollster::block_on(store.known("stale")).unwrap(), None);
+    assert_eq!(
+        pollster::block_on(store.known("fresh")).unwrap(),
+        Some(read(DISTANT))
+    );
+}

@@ -1,5 +1,5 @@
 use herald_core::Address;
-use herald_ports::{Http, Method, Request, Response, Secret, StoreError, Text, USER_AGENT};
+use herald_ports::{Http, Method, Request, Response, Secret, StoreError, Text};
 use herald_records::Wrote;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
@@ -14,6 +14,10 @@ const SERVICE: &str = "/twirp/github.actions.results.api.v1.CacheService/";
 const VERSION: &str = "514567f3aac3eee4eded2f7416de16186bc488fbfc99341324de7a200c712123";
 /// What the service answers to an entry that exists.
 const EXISTS: u16 = 409;
+/// The service, as its errors name it.
+const CACHE: &str = "the Actions cache";
+/// What a Twirp method answers, as its errors name it.
+const ANSWER: &str = "the Actions cache's answer";
 /// The name a signed URL is redacted under.
 const SIGNED: &str = "the Actions cache's signed URL";
 
@@ -38,31 +42,15 @@ struct Finalized {
     ok: bool,
 }
 
-fn unavailable(reason: impl std::fmt::Display) -> StoreError {
-    StoreError::Unavailable {
-        reason: reason.to_string(),
-    }
-}
-
-fn answered(response: &Response) -> StoreError {
-    unavailable(format!("the Actions cache answered {}", response.status))
-}
-
-fn corrupt(what: &str, error: impl std::fmt::Display) -> StoreError {
-    StoreError::Corrupt {
-        reason: format!("{what}: {error}"),
-    }
-}
-
 fn encoded(what: &str, value: &impl Serialize) -> Result<Vec<u8>, StoreError> {
-    serde_json::to_vec(value).map_err(|error| corrupt(what, error))
+    serde_json::to_vec(value).map_err(|error| StoreError::unreadable(what, error))
 }
 
 fn read<T: DeserializeOwned>(what: &str, response: &Response) -> Result<T, StoreError> {
     if !response.succeeded() {
-        return Err(answered(response));
+        return Err(StoreError::answered(CACHE, response.status));
     }
-    serde_json::from_slice(&response.body).map_err(|error| corrupt(what, error))
+    serde_json::from_slice(&response.body).map_err(|error| StoreError::unreadable(what, error))
 }
 
 /// The origin of a signed blob URL, which must be HTTPS.
@@ -70,7 +58,9 @@ fn origin(url: &str) -> Result<String, StoreError> {
     Address::parse(url)
         .filter(|address| address.scheme() == "https")
         .map(|address| address.origin())
-        .ok_or_else(|| unavailable("the Actions cache named a blob URL that is not HTTPS"))
+        .ok_or_else(|| {
+            StoreError::unavailable("the Actions cache named a blob URL that is not HTTPS")
+        })
 }
 
 impl<H: Http + Send> CacheRecords<'_, H> {
@@ -85,18 +75,18 @@ impl<H: Http + Send> CacheRecords<'_, H> {
         )
         .header("Content-Type", Text::plain("application/json"))
         .header("Accept", Text::plain("application/json"))
-        .header("User-Agent", Text::plain(USER_AGENT))
-        .header(
-            "Authorization",
-            Text::plain("Bearer ").then_secret(self.cache.token.clone()),
-        )
+        .identified()
+        .bearer(self.cache.token.clone())
         .body(body.to_string());
-        self.service.send(request).await.map_err(unavailable)
+        self.service
+            .send(request)
+            .await
+            .map_err(StoreError::unavailable)
     }
 
     async fn blob(&self, request: Request, url: &str) -> Result<Response, StoreError> {
-        let http = (self.blobs)(&origin(url)?).map_err(unavailable)?;
-        http.send(request).await.map_err(unavailable)
+        let http = (self.blobs)(&origin(url)?).map_err(StoreError::unavailable)?;
+        http.send(request).await.map_err(StoreError::unavailable)
     }
 
     /// The newest generation, if the cache holds one.
@@ -104,7 +94,7 @@ impl<H: Http + Send> CacheRecords<'_, H> {
         let prefix = format!("{}-", self.cache.prefix);
         let body = json!({ "key": prefix, "restore_keys": [prefix], "version": VERSION });
         let response = self.call("GetCacheEntryDownloadURL", &body).await?;
-        let found: Found = read("the Actions cache's answer", &response)?;
+        let found: Found = read(ANSWER, &response)?;
         if !found.ok {
             return Ok(None);
         }
@@ -112,7 +102,9 @@ impl<H: Http + Send> CacheRecords<'_, H> {
             .matched_key
             .strip_prefix(&prefix)
             .and_then(|number| number.parse().ok())
-            .ok_or_else(|| corrupt(&found.matched_key, "not a generation of herald's records"))?;
+            .ok_or_else(|| {
+                StoreError::unreadable(&found.matched_key, "not a generation of herald's records")
+            })?;
         let url = Secret::new(SIGNED, found.signed_download_url);
         let request = Request::new(Method::Get, Text::secret(url.clone()));
         let downloaded = self.blob(request, url.expose()).await?;
@@ -130,7 +122,7 @@ impl<H: Http + Send> CacheRecords<'_, H> {
         if response.status == EXISTS {
             return Ok(Wrote::Conflict);
         }
-        let reserved: Reserved = read("the Actions cache's answer", &response)?;
+        let reserved: Reserved = read(ANSWER, &response)?;
         if !reserved.ok {
             return Ok(Wrote::Conflict);
         }
@@ -143,15 +135,17 @@ impl<H: Http + Send> CacheRecords<'_, H> {
             .body(bytes);
         let uploaded = self.blob(request, url.expose()).await?;
         if !uploaded.succeeded() {
-            return Err(answered(&uploaded));
+            return Err(StoreError::answered(CACHE, uploaded.status));
         }
         let body = json!({ "key": key, "version": VERSION, "size_bytes": size.to_string() });
         let response = self.call("FinalizeCacheEntryUpload", &body).await?;
-        let finalized: Finalized = read("the Actions cache's answer", &response)?;
+        let finalized: Finalized = read(ANSWER, &response)?;
         if finalized.ok {
             Ok(Wrote::Written)
         } else {
-            Err(unavailable(format!("the Actions cache did not keep {key}")))
+            Err(StoreError::unavailable(format_args!(
+                "the Actions cache did not keep {key}"
+            )))
         }
     }
 }

@@ -19,7 +19,7 @@ mod probe;
 mod reach;
 mod read;
 mod request;
-pub mod setup;
+mod setup;
 
 pub use config::{KIND, MatrixKind, SCHEME};
 pub use interact::{Interacting, Replying, Synced, Unread, took};

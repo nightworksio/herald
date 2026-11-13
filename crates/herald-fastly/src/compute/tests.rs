@@ -6,7 +6,7 @@ use herald_ports::{
     Http as _, HttpError, Kv as _, Method, Outbound, PUBLIC, Request, SecretError, Secrets as _,
     Text, Versionstamp,
 };
-use herald_records::{Kept, KvRecords};
+use herald_records::KvRecords;
 use herald_testing::{kv_conformance, store_conformance};
 
 use super::host::{FastlyHost, StoreSecrets};
@@ -162,7 +162,7 @@ fn kv() -> super::kv::FastlyKv {
 
 #[test]
 fn a_kv_store_the_service_is_linked_to_keeps_every_record_a_store_keeps() {
-    let store = Kept::new(KvRecords::new(kv(), "conformance"));
+    let store = KvRecords::kept(kv(), Some("conformance"), None);
     pollster::block_on(store_conformance(&store)).unwrap();
 }
 

@@ -6,7 +6,9 @@ use herald_core::{
     Cursor, DestinationName, Draft, Entry, Event, Identity, Key, Kind, RouteId, Schedule, Scheme,
     SourceName, State, Step, Subscription,
 };
-use herald_flows::{Announced, Outcome, Ports, announce, prepare};
+use herald_flows::{
+    Announced, Connected, Housekept, Keys, Outcome, Ports, Stop, announce, housekeep, prepare,
+};
 use herald_ports::{
     Announcements, Cursors, Deliveries, Held, Http, HttpError, Inboxes, Keeper, Ledger, Notes,
     Pins, Request, Response, Schedules, Store, StoreError, Subscriptions, Version, Versioned,
@@ -746,11 +748,11 @@ pub fn kinds() -> herald_config::Kinds {
         .store::<herald_store_postgres::PostgresKind>()
         .store::<herald_store_d1::D1Kind>()
         .store::<herald_store_durable_object::DurableObjectKind>()
-        .store::<herald_store_dynamodb::DynamodbKind>()
         .store::<herald_store_deno_kv::DenoKvKind>()
         .store::<herald_store_fastly_kv::FastlyKvKind>()
-        .store::<herald_store_markers::MarkersKind>()
+        .store::<herald_store_dynamodb::DynamodbKind>()
         .store::<herald_store_git_branch::GitBranchKind>()
+        .store::<herald_store_markers::MarkersKind>()
         .store::<herald_store_actions_cache::ActionsCacheKind>()
         .store::<herald_store_repo_variables::RepoVariablesKind>()
 }
@@ -759,4 +761,31 @@ pub fn kinds() -> herald_config::Kinds {
 /// names no other file.
 pub fn loaded(text: &str) -> herald_config::Config {
     herald_config::load("herald.toml", text, &|_| Err(String::new()), &kinds()).unwrap()
+}
+
+/// The keys in `keyring`, each used for an hour and read again a minute
+/// after it fails.
+pub(crate) fn keys_in<K>(keyring: &K) -> Keys<'_, K> {
+    Keys {
+        keyring,
+        refreshed: jiff::SignedDuration::from_hours(1),
+        reread: jiff::SignedDuration::from_mins(1),
+    }
+}
+
+/// Housekeeping at noon over `store`, keeping what `retention` says, its
+/// keys in a keyring of their own.
+pub(crate) fn housekept<S: herald_ports::Store, H: herald_ports::Http>(
+    connected: &Connected<H>,
+    store: &S,
+    retention: &herald_core::Retention,
+) -> Result<Housekept, Stop> {
+    let keyring = herald_records::MemoryKeyring::new(1);
+    pollster::block_on(housekeep(
+        connected,
+        store,
+        &FakeClock::at(NOON),
+        &keys_in(&keyring),
+        retention,
+    ))
 }

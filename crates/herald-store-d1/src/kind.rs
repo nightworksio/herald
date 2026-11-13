@@ -1,9 +1,9 @@
 use std::sync::Arc;
 
 use herald_core::SecretRef;
-use herald_kinds::{Local, Opened, Opening, SqlAt, StoreConfig, StoreKind, unopened};
+use herald_kinds::{Local, Offer, Opened, Opening, SqlAt, StoreConfig, StoreKind, unopened};
 use herald_ports::Secret;
-use herald_records::Seal;
+use herald_records::{Dialect, SqlRecords};
 
 use crate::StoreOptions;
 
@@ -14,6 +14,7 @@ pub enum D1Kind {}
 impl StoreKind for D1Kind {
     const NAME: &str = "d1";
     const DESCRIPTION: &str = "Cloudflare D1, through the Worker's binding.";
+    const NEEDS: Offer = Offer::D1;
 
     type Options = StoreOptions;
 }
@@ -38,10 +39,10 @@ impl StoreConfig for StoreOptions {
                 .sql(SqlAt::D1(self.binding()))
                 .await
                 .map_err(opened)?;
-            let store = crate::store(sql)
+            let store = SqlRecords::kept(sql, Dialect::Sqlite, seal)
                 .await
                 .map_err(|error| opened(error.to_string()))?;
-            Ok(Opened::Kept(Box::new(store.sealed(seal.map(Seal::new)))))
+            Ok(Opened::Kept(Box::new(store)))
         })
     }
 }

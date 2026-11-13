@@ -1,5 +1,5 @@
-use herald_compose::{Asked, Composed, Hosting, Left, told};
-use herald_config::{Config, load};
+use herald_compose::{Artefact, Asked, Composed, Hosting, Left, told};
+use herald_config::{Config, Uses, load};
 use herald_flows::{Reply, refusal, uncomposed};
 
 use super::host::WasiHost;
@@ -33,8 +33,7 @@ async fn composed(
 ) -> Result<Result<Composed<'static, WasiHost>, Reply>, String> {
     let path = named(&vars, "HERALD_CONFIG").unwrap_or_else(|| CONFIG.to_owned());
     let hosting = named(&vars, "HERALD_HOST").unwrap_or_else(|| HOST.to_owned());
-    let hosting =
-        Hosting::of(&hosting).ok_or_else(|| format!("{hosting} is no host herald knows"))?;
+    let hosting = Hosting::running(&hosting, Artefact::Component)?;
     let config = configured(&path)?;
     if let Some(reply) = uncomposed(method, target, &config.server.base) {
         return Ok(Err(reply));
@@ -42,7 +41,8 @@ async fn composed(
     Composed::new(
         WasiHost::new(vars),
         config,
-        hosting.stores(),
+        hosting,
+        Uses::Serves,
         hosting.name(),
     )
     .await

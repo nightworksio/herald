@@ -1,16 +1,14 @@
 use std::sync::{Arc, Mutex, PoisonError};
 
-use herald_ports::{Http, Method, Request, Response, Secret, StoreError, Text, USER_AGENT};
+use herald_ports::{Http, Method, Response, Secret, StoreError};
 use herald_records::{Blob, Kept, Records, Wrote};
+use herald_wire::github::{self, GITHUB};
 use jiff::{SignedDuration, Timestamp};
 use serde::Deserialize;
 use serde_json::json;
 
 use crate::name;
 
-/// GitHub's own API.
-const API: &str = "https://api.github.com";
-const API_VERSION: &str = "2022-11-28";
 /// The most variables GitHub lists in one page.
 const PAGE: usize = 30;
 /// How long a lock holds before it is taken as abandoned.
@@ -37,7 +35,7 @@ impl RepoVariables {
     #[must_use]
     pub fn new(repository: &str, token: Secret, api: Option<&str>) -> Self {
         Self {
-            api: api.unwrap_or(API).trim_end_matches('/').to_owned(),
+            api: github::api(api),
             repository: repository.to_owned(),
             token,
         }
@@ -99,19 +97,13 @@ struct Listed {
     variables: Vec<Variable>,
 }
 
-fn unavailable(reason: impl std::fmt::Display) -> StoreError {
-    StoreError::Unavailable {
-        reason: reason.to_string(),
-    }
-}
-
 fn answered(response: &Response) -> StoreError {
     if response.status == FORBIDDEN {
-        return unavailable(
+        return StoreError::unavailable(
             "GitHub answered 403: the token cannot write the repository's variables; give the store a token with the Variables permission",
         );
     }
-    unavailable(format!("GitHub answered {}", response.status))
+    StoreError::answered(GITHUB, response.status)
 }
 
 fn done(response: &Response) -> Result<Wrote, StoreError> {
@@ -119,12 +111,6 @@ fn done(response: &Response) -> Result<Wrote, StoreError> {
         Ok(Wrote::Written)
     } else {
         Err(answered(response))
-    }
-}
-
-fn corrupt(what: &str, error: impl std::fmt::Display) -> StoreError {
-    StoreError::Corrupt {
-        reason: format!("{what}: {error}"),
     }
 }
 
@@ -136,24 +122,21 @@ impl<H: Http> VariableRecords<H> {
         body: Option<serde_json::Value>,
     ) -> Result<Response, StoreError> {
         let variables = &self.variables;
-        let mut request = Request::new(
+        let mut request = github::request(
             method,
-            Text::plain(format!(
+            format!(
                 "{}/repos/{}/actions/variables{path}",
                 variables.api, variables.repository
-            )),
-        )
-        .header("Accept", Text::plain("application/vnd.github+json"))
-        .header("X-GitHub-Api-Version", Text::plain(API_VERSION))
-        .header("User-Agent", Text::plain(USER_AGENT))
-        .header(
-            "Authorization",
-            Text::plain("Bearer ").then_secret(variables.token.clone()),
+            ),
+            variables.token.clone(),
         );
         if let Some(body) = body {
             request = request.body(body.to_string());
         }
-        self.http.send(request).await.map_err(unavailable)
+        self.http
+            .send(request)
+            .await
+            .map_err(StoreError::unavailable)
     }
 
     async fn variable(&self, name: &str) -> Result<Option<(Variable, Response)>, StoreError> {
@@ -164,8 +147,8 @@ impl<H: Http> VariableRecords<H> {
         if !response.succeeded() {
             return Err(answered(&response));
         }
-        let variable =
-            serde_json::from_slice(&response.body).map_err(|error| corrupt(name, error))?;
+        let variable = serde_json::from_slice(&response.body)
+            .map_err(|error| StoreError::unreadable(name, error))?;
         Ok(Some((variable, response)))
     }
 
@@ -187,7 +170,7 @@ impl<H: Http> VariableRecords<H> {
             return Err(answered(&response));
         }
         serde_json::from_slice(&response.body)
-            .map_err(|error| corrupt("the repository's variables", error))
+            .map_err(|error| StoreError::unreadable("the repository's variables", error))
     }
 
     async fn deleted(&self, name: &str) -> Result<Wrote, StoreError> {

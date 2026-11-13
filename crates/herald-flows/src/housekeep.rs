@@ -1,8 +1,9 @@
 use herald_core::{Retention, Schedule, Sent, due};
-use herald_ports::{Clock, Deliveries, Http, Inboxes, Ledger, Notes, Schedules, Store};
+use herald_ports::{Clock, Deliveries, Http, Inboxes, Keyring, Ledger, Notes, Schedules, Store};
 use jiff::{SignedDuration, Timestamp};
 
 use crate::announce::Stop;
+use crate::inbound::Keys;
 use crate::prepare::Connected;
 
 /// What housekeeping did with one schedule that fell due.
@@ -38,20 +39,23 @@ pub enum Chored {
 
 /// Every chore due at the clock's time done through the route that
 /// scheduled it, each schedule removed once its chore is done or cannot be
-/// (ADR-0005), after what the store keeps longer than `retention` says is
-/// forgotten: each delivery's id (ADR-0013), each ledger entry with its
-/// deliveries to followers' inboxes, and each Note.
+/// (ADR-0005), after every key in `keys` read longer ago than its refresh
+/// and what the store keeps longer than `retention` says are forgotten: each
+/// delivery's id (ADR-0013), each ledger entry with its deliveries to
+/// followers' inboxes, and each Note.
 ///
 /// # Errors
 ///
 /// When the store's schedules cannot be read, or what it keeps cannot be
 /// expired.
-pub async fn housekeep<S: Store, C: Clock, H: Http>(
+pub async fn housekeep<S: Store, C: Clock, H: Http, K: Keyring>(
     connected: &Connected<H>,
     store: &S,
     clock: &C,
+    keys: &Keys<'_, K>,
     retention: &Retention,
 ) -> Result<Housekept, Stop> {
+    keys.sweep(clock.now()).await;
     expire(store, clock.now(), retention)
         .await
         .map_err(|error| Stop::Store(error.to_string()))?;
