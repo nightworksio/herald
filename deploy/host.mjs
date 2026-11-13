@@ -11,6 +11,46 @@ export function load(module) {
 
 export const TIMEOUT = 30_000;
 
+export const ROUNDS = ["poll", "housekeep"];
+
+const CONFIG = "herald.toml";
+
+export function configPath(env) {
+  return env.HERALD_CONFIG ?? CONFIG;
+}
+
+export function envHost(env, offered) {
+  const { by, fetch, sql, kv, secret = (name) => (typeof env[name] === "string" ? env[name] : undefined) } = offered;
+  const host = {
+    vars: Object.fromEntries(Object.entries(env).filter(([, value]) => typeof value === "string")),
+    secret,
+    fetch,
+  };
+  if (sql) host.sql = offering(by, "database", sql);
+  if (kv) host.kv = offering(by, "store", kv);
+  return host;
+}
+
+function offering(by, kept, kinds) {
+  return async (at) => {
+    if (!Object.hasOwn(kinds, at.kind)) throw new Error(`${by} offers no ${at.kind} ${kept}`);
+    return kinds[at.kind](at);
+  };
+}
+
+export function composeOnce(compose) {
+  let composing;
+  return (...args) => {
+    composing ??= Promise.resolve()
+      .then(() => compose(...args))
+      .catch((error) => {
+        composing = undefined;
+        throw error;
+      });
+    return composing;
+  };
+}
+
 export async function capped(response, most) {
   const larger = () => new Error(`the response is larger than ${most} bytes`);
   if (Number(response.headers.get("content-length") ?? 0) > most) throw larger();
@@ -87,20 +127,26 @@ export async function upTo(chunks, most) {
   return body;
 }
 
-export async function answered(herald, request) {
+export async function answered(herald, request, waitUntil = (work) => work.catch(console.error)) {
   const url = new URL(request.url);
-  return answering(herald, {
+  const { response, work } = await answering(herald, {
     method: request.method,
     path: url.pathname,
     query: url.search.slice(1),
     headers: [...request.headers],
     body: await upTo(request.body, herald.limits().body),
   });
+  if (work) waitUntil(work);
+  return response;
 }
 
-export async function rounds(herald, names = ["poll", "housekeep"]) {
+export async function rounds(herald, names = ROUNDS) {
   const lines = await Promise.all(names.map((round) => herald[round]()));
   lines.forEach(said);
+}
+
+export function headerPairs(headers) {
+  return Object.entries(headers).flatMap(([name, value]) => [value].flat().map((each) => [name, String(each)]));
 }
 
 export function said(lines) {

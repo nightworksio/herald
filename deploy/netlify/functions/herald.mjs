@@ -1,39 +1,16 @@
-import { readFile } from "node:fs/promises";
-import { Herald, answered, load } from "../../host.mjs";
+import { answered, composeOnce, configPath, envHost } from "../../host.mjs";
 import { postgres } from "../../databases.mjs";
-import { beside } from "../../files.mjs";
+import { composedFrom } from "../../files.mjs";
 import { guarded } from "../../vetted.mjs";
 
 function host(env) {
-  return {
-    vars: Object.fromEntries(Object.entries(env).filter(([, value]) => typeof value === "string")),
-    secret: (name) => env[name],
-    fetch: guarded(),
-    async sql(at) {
-      if (at.kind === "postgres") return postgres(at);
-      throw new Error(`this function offers no ${at.kind} database`);
-    },
-  };
+  return envHost(env, { by: "this function", fetch: guarded(), sql: { postgres } });
 }
 
-let composing;
-
-export function composed() {
-  composing ??= (async () => {
-    await load(await readFile(new URL("../../pkg/herald_wasm_bg.wasm", import.meta.url)));
-    const path = process.env.HERALD_CONFIG ?? "herald.toml";
-    return Herald.compose(host(process.env), await readFile(path, "utf8"), beside(path), "netlify");
-  })().catch((error) => {
-    composing = undefined;
-    throw error;
-  });
-  return composing;
-}
+export const composed = composeOnce(() => composedFrom(configPath(process.env), host(process.env), "netlify"));
 
 export default async function herald(request, context) {
-  const { response, work } = await answered(await composed(), request);
-  if (work) context.waitUntil(work);
-  return response;
+  return answered(await composed(), request, (work) => context.waitUntil(work));
 }
 
 export const config = { path: "/*" };
