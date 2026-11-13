@@ -1,20 +1,19 @@
-use std::fmt::Write as _;
-
-use herald_core::{DestinationName, Key, RouteId, Schedule, Scheme, SourceName, Subscription};
+use herald_core::{
+    DestinationName, Escaping, Key, RouteId, Schedule, Scheme, SourceName, Subscription,
+};
 use herald_ports::Outboxed;
 use jiff::Timestamp;
 
 /// A name as one segment of a path: letters, digits, `.`, `_` and `-` kept,
 /// and every other byte written as `~` and its two hex digits.
+const NAME: Escaping = Escaping {
+    keeps: |byte| byte.is_ascii_alphanumeric() || b"._-".contains(&byte),
+    mark: '~',
+    upper: false,
+};
+
 pub(crate) fn segment(name: &str) -> String {
-    name.bytes().fold(String::new(), |mut segment, byte| {
-        if byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b'-') {
-            segment.push(char::from(byte));
-        } else {
-            let _ = write!(segment, "~{byte:02x}");
-        }
-        segment
-    })
+    NAME.escape(name)
 }
 
 pub(crate) const LEDGER: &str = "ledger";

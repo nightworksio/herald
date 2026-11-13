@@ -2,7 +2,8 @@ use std::collections::BTreeMap;
 
 use herald_config::{App, Config};
 use herald_core::{
-    Asked, DestinationName, Event, Identity, Key, Scheme, SourceName, Standing, digest, same,
+    Asked, DestinationName, Escaping, Event, Identity, Key, Scheme, SourceName, Standing, digest,
+    same,
 };
 use herald_kinds::Hooked;
 use herald_kinds::{Endpoint, Replying};
@@ -325,22 +326,6 @@ pub(crate) fn rejection(rejected: &Rejected) -> Answered {
     refusal(status, rejected.to_string())
 }
 
-/// `text` with each `%` and its two hex digits read as the byte they write.
-fn decoded(text: &str) -> Option<String> {
-    let mut bytes = Vec::with_capacity(text.len());
-    let mut rest = text.bytes();
-    while let Some(byte) = rest.next() {
-        if byte == b'%' {
-            let digits = [rest.next()?, rest.next()?];
-            let digits = std::str::from_utf8(&digits).ok()?;
-            bytes.push(u8::from_str_radix(digits, 16).ok()?);
-        } else {
-            bytes.push(byte);
-        }
-    }
-    String::from_utf8(bytes).ok()
-}
-
 /// The reply to `inbound`, and the work it leaves: health, forge webhooks,
 /// and herald's ActivityPub actors, their Notes, inboxes and WebFinger
 /// (ADR-0002). Every webhook and activity is verified and admitted before
@@ -363,7 +348,10 @@ pub async fn answer<S: Store, C: Clock, G: Signer, V: Verifier, H, P: Http, K: K
         (_, HEALTH | WEBFINGER | SHARED_INBOX) => unmethodical(),
         (method, path) => {
             if let Some(rest) = path.strip_prefix(PROJECTS) {
-                let Some(segments) = rest.split('/').map(decoded).collect::<Option<Vec<_>>>()
+                let Some(segments) = rest
+                    .split('/')
+                    .map(|segment| Escaping::UNRESERVED.unescape(segment))
+                    .collect::<Option<Vec<_>>>()
                 else {
                     return missing("such path");
                 };
@@ -728,18 +716,6 @@ mod tests {
         assert_eq!(under("/herald", "/herald"), Some("/"));
         assert_eq!(under("/herald", "/heraldry/hooks"), None);
         assert_eq!(under("/herald", "/hooks/gate"), None);
-    }
-
-    #[test]
-    fn a_percent_and_two_hex_digits_read_as_their_byte() {
-        assert_eq!(
-            decoded("acct%3Aana%40social.example").as_deref(),
-            Some("acct:ana@social.example")
-        );
-        assert_eq!(decoded("plain").as_deref(), Some("plain"));
-        for broken in ["%", "%4", "%zz", "%ff"] {
-            assert_eq!(decoded(broken), None, "{broken}");
-        }
     }
 
     #[test]

@@ -224,7 +224,31 @@ mod conformance {
             },
         );
         assert_eq!(own.api(), "https://dynamodb.eu-west-1.amazonaws.com");
+        assert_eq!(own.host(), "dynamodb.eu-west-1.amazonaws.com");
         assert_eq!(table().api(), "http://localhost:8000");
+        assert_eq!(table().host(), "localhost:8000");
+    }
+
+    #[test]
+    fn a_request_is_signed_for_the_host_the_client_reaches() {
+        let named = |endpoint: &str| {
+            Dynamodb::new(
+                "herald",
+                "eu-west-1",
+                Some(endpoint),
+                Credentials {
+                    access_key_id: Secret::new("A", "a"),
+                    secret_access_key: Secret::new("B", "b"),
+                    session_token: None,
+                },
+            )
+        };
+        assert_eq!(
+            named("https://bot@DynamoDB.Example:443/").host(),
+            "dynamodb.example"
+        );
+        assert_eq!(named("http://[::1]:8000").host(), "[::1]:8000");
+        assert_eq!(named("localhost:8000").host(), "");
     }
 
     #[test]

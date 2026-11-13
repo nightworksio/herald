@@ -1,6 +1,6 @@
 //! What every herald source shares (ADR-0001, ADR-0003): reading a bounded
-//! JSON answer, checking an answer's status, escaping a URL's path segment,
-//! naming a URL's host, and the error that names what was read.
+//! JSON answer, checking an answer's status, and the error that names what
+//! was read.
 
 mod error;
 
@@ -117,33 +117,10 @@ pub fn answered(what: &'static str, response: &Response) -> Result<(), SourceErr
     }
 }
 
-/// `text` as one segment of a URL's path: every byte but a letter, a digit,
-/// `.`, `_` and `-` percent-encoded.
-#[must_use]
-pub fn segment(text: &str) -> String {
-    text.bytes()
-        .map(|byte| {
-            if byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b'-') {
-                char::from(byte).to_string()
-            } else {
-                format!("%{byte:02X}")
-            }
-        })
-        .collect()
-}
-
-/// The host of `url`, without its scheme, port or path.
-#[must_use]
-pub fn host(url: &str) -> &str {
-    let rest = url.split_once("://").map_or(url, |(_, rest)| rest);
-    rest.split(['/', ':', '?', '#']).next().unwrap_or(rest)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use herald_core::Problem;
-    use proptest::prelude::*;
 
     fn answer(status: u16) -> Response {
         Response {
@@ -225,26 +202,6 @@ mod tests {
     }
 
     #[test]
-    fn a_segment_escapes_what_a_path_would_read_otherwise() {
-        assert_eq!(segment("v1.2.0_rc-1"), "v1.2.0_rc-1");
-        assert_eq!(segment("group/sub project"), "group%2Fsub%20project");
-        assert_eq!(segment("@scope/name"), "%40scope%2Fname");
-    }
-
-    #[test]
-    fn a_host_is_named_without_its_scheme_port_or_path() {
-        for (url, named) in [
-            ("https://github.com/cli/cli", "github.com"),
-            ("https://forge.example:8443/o/r", "forge.example"),
-            ("https://registry.npmjs.org?x=1", "registry.npmjs.org"),
-            ("crates.io/api/v1", "crates.io"),
-            ("", ""),
-        ] {
-            assert_eq!(host(url), named, "{url}");
-        }
-    }
-
-    #[test]
     fn each_error_reads_as_a_sentence() {
         let errors = [
             (
@@ -278,14 +235,6 @@ mod tests {
         ];
         for (error, sentence) in errors {
             assert_eq!(error.to_string(), sentence);
-        }
-    }
-
-    proptest! {
-        #[test]
-        fn a_segment_holds_no_byte_a_path_reads_as_a_separator(text in ".{0,24}") {
-            let escaped = segment(&text);
-            prop_assert!(escaped.bytes().all(|byte| byte.is_ascii_alphanumeric() || b"._-%".contains(&byte)));
         }
     }
 }

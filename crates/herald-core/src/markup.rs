@@ -1,5 +1,6 @@
 use pulldown_cmark::{CodeBlockKind, CowStr, Event, LinkType, Options, Parser, Tag, TagEnd, html};
 
+use crate::escaping::safe_url;
 use crate::profile::{Bullet, Escape, Fences, Heading, Links, Markup};
 use crate::symbols::Symbols;
 
@@ -97,21 +98,6 @@ fn parser(markdown: &str) -> Parser<'_> {
 fn linkable(url: &str, markup: Markup) -> bool {
     let web = LINK_SCHEMES.iter().any(|scheme| url.starts_with(scheme));
     web && !markup.pills.is_some_and(|pills| url.starts_with(pills))
-}
-
-/// `url` with every byte that could end a Markdown link or open markup in
-/// it percent-encoded.
-#[must_use]
-pub fn safe_url(url: &str) -> String {
-    url.bytes()
-        .map(|byte| {
-            if byte.is_ascii_graphic() && !b"\"'<>\\^`{|}()[]".contains(&byte) {
-                char::from(byte).to_string()
-            } else {
-                format!("%{byte:02X}")
-            }
-        })
-        .collect()
 }
 
 fn language(info: &str) -> String {

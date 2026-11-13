@@ -13,6 +13,7 @@ mod credentials;
 mod cursor;
 mod declined;
 mod duration;
+mod escaping;
 mod event;
 mod housekeep;
 mod inbound;
@@ -39,7 +40,9 @@ mod wording;
 pub use activity::{
     ACTIVITY_JSON, SIGNED, Signing, body_sha256, public_pem, signature_header, signing,
 };
-pub use address::{WEB_SCHEMES, domain, path_of_names, socket_under, under_domain, web_url};
+pub use address::{
+    Address, WEB_SCHEMES, domain, path_of_names, socket_under, under_domain, web_url,
+};
 pub use announce::{
     Announcement, Button, Title, announce, body_template, shortened, thread_template,
     title_template,
@@ -50,6 +53,7 @@ pub use credentials::{basic, bot_or_webhook};
 pub use cursor::{Cursor, Polled, fresh};
 pub use declined::Declined;
 pub use duration::Duration;
+pub use escaping::{Escaping, safe_url, unreserved};
 pub use event::{Draft, Event, Problem};
 pub use housekeep::{Chore, Schedule, due, schedules};
 pub use inbound::{
@@ -61,7 +65,7 @@ pub use interact::{
     Unchosen, announced, chosen, completions, every_command,
 };
 pub use kept::RecordKind;
-pub use key::{Identity, Key, NotAKey, RouteId, digest, hex};
+pub use key::{Identity, Key, NotAKey, RouteId, digest, hex, unhex};
 pub use kind::{
     Attribute, AttributeSpec, AttributeType, CHANGELOG_LINK, ENTRY_LINK, Kind, KindSpec, KindSpecs,
     LinkSpec, PRERELEASE, RELEASE_LINK, VERSION, readable, versioned,
@@ -71,7 +75,7 @@ pub use ledger::{
     Entry, Facts, Lease, Plan, Planned, Record, Sent, Standing, State, Step, plan, steps,
 };
 pub use marker::{Marker, Marks};
-pub use markup::{LINK_SCHEMES, Text, convert, convert_in, escaped, literal, safe_url};
+pub use markup::{LINK_SCHEMES, Text, convert, convert_in, escaped, literal};
 pub use pattern::Pattern;
 pub use profile::{
     Bullet, Emphases, Escape, Features, Fences, Heading, Limits, Links, Markup, Measure,

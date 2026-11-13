@@ -340,21 +340,6 @@ impl<H: Http> Http for &H {
     }
 }
 
-/// `text` with every byte but a URL's unreserved ones percent-encoded, fit
-/// for one segment of a path or one value of a query.
-#[must_use]
-pub fn unreserved(text: &str) -> String {
-    use std::fmt::Write as _;
-    text.bytes().fold(String::new(), |mut encoded, byte| {
-        if byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'.' | b'_' | b'~') {
-            encoded.push(char::from(byte));
-        } else {
-            let _ = write!(encoded, "%{byte:02X}");
-        }
-        encoded
-    })
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -489,13 +474,6 @@ mod tests {
         assert_eq!(sent.until(at("2026-11-08T21:00:00Z")), None);
         assert_eq!(answered(&[]).until(at("2026-11-08T22:00:30Z")), None);
         assert_eq!(answered(&[("Date", "yesterday")]).date(), None);
-    }
-
-    #[test]
-    fn every_byte_but_a_url_s_unreserved_ones_is_percent_encoded() {
-        assert_eq!(unreserved("aZ09-._~"), "aZ09-._~");
-        assert_eq!(unreserved("a b/c?d&é"), "a%20b%2Fc%3Fd%26%C3%A9");
-        assert_eq!(unreserved(""), "");
     }
 
     #[test]

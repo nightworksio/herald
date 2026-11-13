@@ -1,6 +1,7 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
+use herald_core::Address;
 use herald_ports::{
     Clock, Http, Method, Request, Response, Secret, Secrets, StoreError, Text, USER_AGENT,
 };
@@ -57,13 +58,9 @@ impl Dynamodb {
             || format!("https://dynamodb.{region}.amazonaws.com"),
             |endpoint| endpoint.trim_end_matches('/').to_owned(),
         );
-        let host = endpoint
-            .split_once("://")
-            .map_or(endpoint.as_str(), |(_, rest)| rest)
-            .split('/')
-            .next()
-            .unwrap_or_default()
-            .to_owned();
+        let host = Address::parse(&endpoint)
+            .map(|address| address.authority())
+            .unwrap_or_default();
         Self {
             endpoint,
             host,
@@ -113,6 +110,13 @@ impl Dynamodb {
     #[must_use]
     pub fn api(&self) -> &str {
         &self.endpoint
+    }
+
+    /// The host its requests are signed for: the endpoint's, with its port
+    /// where that is not its scheme's.
+    #[must_use]
+    pub fn host(&self) -> &str {
+        &self.host
     }
 
     /// The store kept in the table, reached through `http` and signed at the

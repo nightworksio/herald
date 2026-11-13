@@ -79,6 +79,34 @@ mod github {
     }
 
     #[test]
+    fn the_identity_names_the_host_of_the_release_s_page_as_a_client_reads_it() {
+        let page = |url: &str| edited(|payload| payload["release"]["html_url"] = json!(url));
+        let read = Forge::GitHub
+            .event(&page(
+                "https://bot:secret@GitHub.Example:8443/o/r/releases/tag/v1",
+            ))
+            .unwrap()
+            .unwrap();
+        assert!(read.identity().as_str().starts_with("github.example/"));
+        let bracketed = Forge::GitHub
+            .event(&page("https://[2001:db8::1]/o/r/releases/tag/v1"))
+            .unwrap()
+            .unwrap();
+        assert!(bracketed.identity().as_str().starts_with("[2001:db8::1]/"));
+        assert_eq!(
+            Forge::GitHub
+                .event(&page("o/r/releases/tag/v1"))
+                .unwrap_err()
+                .to_string(),
+            SourceError::Unreadable {
+                what: "GitHub's release event",
+                reason: "a release's page names no host".to_owned(),
+            }
+            .to_string()
+        );
+    }
+
+    #[test]
     fn a_webhook_of_another_repository_or_of_no_release_is_refused() {
         let elsewhere = Forge::GitHub.hooked(&[RELEASE], EVENT.as_bytes(), "other/repo");
         assert_eq!(

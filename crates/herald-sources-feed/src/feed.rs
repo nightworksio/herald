@@ -1,9 +1,9 @@
 use std::collections::BTreeMap;
 use std::fmt::Write;
 
-use herald_core::{Cursor, Draft, ENTRY_LINK, Event, Kind, Polled, digest};
+use herald_core::{Address, Cursor, Draft, ENTRY_LINK, Event, Kind, Polled, digest};
 use herald_ports::{Method, Request, Response, Text, USER_AGENT};
-use herald_wire::{NOT_MODIFIED, SourceError, answered, host};
+use herald_wire::{NOT_MODIFIED, SourceError, answered};
 use jiff::Timestamp;
 use jiff::civil::DateTime;
 use jiff::tz::TimeZone;
@@ -419,7 +419,7 @@ impl Feed {
         let (feed_title, entries) = read(&response.body)?;
         let answered_at = response.header("date").and_then(when);
         let project = if feed_title.is_empty() {
-            host(&self.url).to_owned()
+            Address::parse(&self.url).map_or_else(|| self.url.clone(), |url| url.host().to_owned())
         } else {
             feed_title
         };

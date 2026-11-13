@@ -1,7 +1,7 @@
 use herald_core::{
-    ACTIVITY_JSON, Addressed, Announcement, Bullet, Declined, Emphases, Entry, Escape, Facts,
-    Features, Fences, Heading, Limits, Links, Markup, Measure, MentionStyle, Pins, Profile, Sent,
-    Step, Threads, Waits, signature_header, signing,
+    ACTIVITY_JSON, Address, Addressed, Announcement, Bullet, Declined, Emphases, Entry, Escape,
+    Facts, Features, Fences, Heading, Limits, Links, Markup, Measure, MentionStyle, Pins, Profile,
+    Sent, Step, Threads, Waits, signature_header, signing,
 };
 use herald_ports::{
     Algorithm, CryptoError, Http, HttpError, Method, PUBLIC, Request, Response, Secret, Signer,
@@ -351,19 +351,8 @@ impl ActivityPub {
 /// The host and the request target an inbox's signature names, where the
 /// inbox is an https URL.
 fn addressed(inbox: &str) -> Option<(String, String)> {
-    let url = url::Url::parse(inbox).ok()?;
-    if url.scheme() != "https" {
-        return None;
-    }
-    let host = match url.port() {
-        Some(port) => format!("{}:{port}", url.host_str()?),
-        None => url.host_str()?.to_owned(),
-    };
-    let target = match url.query() {
-        Some(query) => format!("post {}?{query}", url.path()),
-        None => format!("post {}", url.path()),
-    };
-    Some((host, target))
+    let address = Address::parse(inbox).filter(|address| address.scheme() == "https")?;
+    Some((address.authority(), format!("post {}", address.target())))
 }
 
 /// What an inbox's answer means. An inbox that is gone for good counts as

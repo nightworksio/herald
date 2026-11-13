@@ -1,3 +1,4 @@
+use herald_core::Address;
 use herald_ports::{Http, Method, Request, Response, Secret, StoreError, Text, USER_AGENT};
 use herald_records::Wrote;
 use serde::de::DeserializeOwned;
@@ -65,14 +66,11 @@ fn read<T: DeserializeOwned>(what: &str, response: &Response) -> Result<T, Store
 }
 
 /// The origin of a signed blob URL, which must be HTTPS.
-fn origin(url: &str) -> Result<&str, StoreError> {
-    let rest = url
-        .strip_prefix("https://")
-        .ok_or_else(|| unavailable("the Actions cache named a blob URL that is not HTTPS"))?;
-    let host = rest
-        .find('/')
-        .map_or(url.len(), |end| end + "https://".len());
-    Ok(&url[..host])
+fn origin(url: &str) -> Result<String, StoreError> {
+    Address::parse(url)
+        .filter(|address| address.scheme() == "https")
+        .map(|address| address.origin())
+        .ok_or_else(|| unavailable("the Actions cache named a blob URL that is not HTTPS"))
 }
 
 impl<H: Http + Send> CacheRecords<'_, H> {
@@ -97,7 +95,7 @@ impl<H: Http + Send> CacheRecords<'_, H> {
     }
 
     async fn blob(&self, request: Request, url: &str) -> Result<Response, StoreError> {
-        let http = (self.blobs)(origin(url)?).map_err(unavailable)?;
+        let http = (self.blobs)(&origin(url)?).map_err(unavailable)?;
         http.send(request).await.map_err(unavailable)
     }
 

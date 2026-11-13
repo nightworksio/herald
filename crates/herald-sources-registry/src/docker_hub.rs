@@ -1,4 +1,5 @@
-use herald_wire::{SourceError, read, segment};
+use herald_core::unreserved;
+use herald_wire::{SourceError, read};
 use jiff::Timestamp;
 use serde::Deserialize;
 
@@ -62,8 +63,8 @@ pub(crate) fn path(name: &str, page: usize, ordering: TagOrdering) -> String {
     let (namespace, repository) = split(name);
     format!(
         "/namespaces/{}/repositories/{}/tags?page_size={page}&ordering={}",
-        segment(namespace),
-        segment(repository),
+        unreserved(namespace),
+        unreserved(repository),
         ordering.as_str()
     )
 }

@@ -4,8 +4,10 @@
 
 use std::fmt;
 
-use herald_core::{Answering, Asked, Command, DestinationName, Place, Text as Written, digest};
-use herald_ports::{Method, Request, Response, Secret, Text, unreserved};
+use herald_core::{
+    Answering, Asked, Command, DestinationName, Place, Text as Written, digest, unreserved,
+};
+use herald_ports::{Method, Request, Response, Secret, Text};
 use serde_json::{Value, json};
 
 use crate::interactions::{Interactions, Via};

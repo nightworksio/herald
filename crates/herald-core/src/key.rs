@@ -84,6 +84,24 @@ pub fn hex(bytes: &[u8]) -> String {
     })
 }
 
+/// The bytes `text` spells in hex, in either case; nothing where it spells
+/// none.
+#[must_use]
+pub fn unhex(text: &str) -> Option<Vec<u8>> {
+    if text.is_empty() || !text.len().is_multiple_of(2) {
+        return None;
+    }
+    text.as_bytes()
+        .chunks(2)
+        .map(|pair| {
+            std::str::from_utf8(pair)
+                .ok()
+                .filter(|pair| pair.bytes().all(|byte| byte.is_ascii_hexdigit()))
+                .and_then(|pair| u8::from_str_radix(pair, 16).ok())
+        })
+        .collect()
+}
+
 /// The SHA-256 of `text`, in lowercase hex: what identifies a thing that
 /// names itself nowhere else.
 #[must_use]
@@ -105,19 +123,16 @@ impl FromStr for Key {
     type Err = NotAKey;
 
     fn from_str(text: &str) -> Result<Self, Self::Err> {
-        let hex = text
+        let lowercase = text
             .bytes()
             .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte));
-        if !hex || text.len() != HEX_DIGITS {
+        if !lowercase || text.len() != HEX_DIGITS {
             return Err(NotAKey);
         }
-        let bytes: Vec<u8> = text
-            .as_bytes()
-            .chunks(2)
-            .filter_map(|pair| std::str::from_utf8(pair).ok())
-            .filter_map(|pair| u8::from_str_radix(pair, 16).ok())
-            .collect();
-        bytes.try_into().map(Self).map_err(|_| NotAKey)
+        unhex(text)
+            .and_then(|bytes| bytes.try_into().ok())
+            .map(Self)
+            .ok_or(NotAKey)
     }
 }
 

@@ -1,9 +1,9 @@
 use herald_core::{
     Announcement, Bullet, Declined, Emphases, Entry, Escape, Facts, Features, Fences, Heading,
     Limits, Links, Marker, Markup, Measure, MentionRoom, MentionStyle, PinLookups, Pins, Profile,
-    ReadBack, Sent, Step, Threads, Waits, Wording,
+    ReadBack, Sent, Step, Threads, Waits, Wording, unreserved,
 };
-use herald_ports::{Credential, Http, HttpError, Learned, Request, unreserved};
+use herald_ports::{Credential, Http, HttpError, Learned, Request};
 use serde_json::Value;
 
 use crate::domain::Domain;

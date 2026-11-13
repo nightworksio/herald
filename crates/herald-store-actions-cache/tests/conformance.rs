@@ -341,6 +341,13 @@ mod conformance {
                 "the Actions cache named a blob URL that is not HTTPS"
             ))
         );
+        let dressed = Cache::default();
+        dressed.state.lock().unwrap().blob_origin =
+            Some("https://bot@Blobs.Example:443".to_owned());
+        assert_eq!(
+            pollster::block_on(store(&dressed).put_entry(&entry, None)),
+            Ok(Written::Written(Version(1)))
+        );
         let elsewhere = Cache::default();
         elsewhere.state.lock().unwrap().blob_origin = Some("https://other.example".to_owned());
         assert_eq!(

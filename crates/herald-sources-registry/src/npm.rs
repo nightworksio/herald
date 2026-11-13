@@ -1,8 +1,9 @@
 use std::collections::BTreeMap;
 use std::fmt;
 
+use herald_core::unreserved;
 use herald_ports::Outbound;
-use herald_wire::{SourceError, read, segment};
+use herald_wire::{SourceError, read};
 use jiff::Timestamp;
 use serde::de::{IgnoredAny, MapAccess, Visitor};
 use serde::{Deserialize, Deserializer};
@@ -50,8 +51,8 @@ fn keys<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Vec<String>, D::Er
 
 pub(crate) fn path(name: &str) -> String {
     match name.strip_prefix('@') {
-        Some(scoped) => format!("/@{}", segment(scoped)),
-        None => format!("/{}", segment(name)),
+        Some(scoped) => format!("/@{}", unreserved(scoped)),
+        None => format!("/{}", unreserved(name)),
     }
 }
 

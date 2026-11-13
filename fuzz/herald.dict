@@ -1,6 +1,6 @@
 # The tokens the fuzz targets read: the mention, link, tag and fence syntax of
 # every dialect herald writes, and the fields of a forge's release JSON and of
-# an app's event.
+# an app's event, and the parts of a URL.
 "@everyone"
 "@here"
 "@room"
@@ -94,3 +94,11 @@
 "object"
 "#main-key"
 "https://example.org/actor"
+"wss://"
+"https://"
+"http://"
+"://"
+"[::1]"
+":443"
+"%2F"
+"\\"

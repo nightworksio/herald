@@ -62,8 +62,8 @@ mod replay {
             thread: None,
             permalink: Some(format!(
                 "https://matrix.to/#/{}/{}",
-                herald_ports::unreserved(ROOM),
-                herald_ports::unreserved(id)
+                herald_core::unreserved(ROOM),
+                herald_core::unreserved(id)
             )),
         }
     }

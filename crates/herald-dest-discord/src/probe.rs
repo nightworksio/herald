@@ -1,8 +1,9 @@
 //! What Discord says of a destination's credential and of each route's
 //! channel, asked with nothing posted (ADR-0002).
 
+use herald_core::unreserved;
 use herald_kinds::Probe;
-use herald_ports::{Credential, Http, Method, Text, unreserved};
+use herald_ports::{Credential, Http, Method, Text};
 
 use crate::discord::{DISCORD, Discord};
 use crate::request::bare;
