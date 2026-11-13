@@ -192,6 +192,7 @@ mod conformance {
     fn the_store_passes_the_conformance_suite_and_makes_its_branch_on_first_write() {
         let github = store(GitHub::default());
         assert_eq!(pollster::block_on(store_conformance(&github)), Ok(()));
+        assert!(herald_ports::Store::writes_one_at_a_time(&github));
     }
 
     #[test]

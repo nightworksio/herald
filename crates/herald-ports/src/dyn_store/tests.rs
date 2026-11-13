@@ -209,6 +209,7 @@ fn an_erased_store_holds_and_skips_what_the_store_it_erases_does() {
             [holding; 10]
         );
         assert_eq!(Keeper::skipped(&erased), ["corrupt.json"]);
+        assert!(!Keeper::writes_one_at_a_time(&erased));
     }
     let unheld = Refusing { holding: false };
     let erased = Erased(&unheld as &dyn DynStore);

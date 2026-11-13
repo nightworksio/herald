@@ -154,6 +154,8 @@ mod kept {
         assert!(bare.schedules().is_some() && bare.deliveries().is_some());
         assert!(bare.subscriptions().is_none() && bare.inboxes().is_none());
         assert!(bare.pins().is_none() && bare.notes().is_none());
+        assert!(bare.positions().is_some());
+        assert!(!bare.writes_one_at_a_time());
         assert!(bare.announcements().is_none());
     }
 

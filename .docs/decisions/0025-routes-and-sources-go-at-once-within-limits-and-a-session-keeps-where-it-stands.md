@@ -43,7 +43,9 @@ unanswered.
    `repo-variables`, `actions-cache` and `markers` do, and on them routes and
    sources go one at a time whatever `[run]` says. Every claim, step and
    cursor is still written with ADR-0005's compare-and-set, so a run that
-   goes at once sends nothing twice.
+   goes at once sends nothing twice. Each source takes its leases under the
+   run's name and its own, so of two sources that find one event at once,
+   one sends it and the other is told another run holds it.
 3. **What a project last announced is kept route by route, in the file's
    order**, once every route has answered, so routes going at once do not
    write it at once.

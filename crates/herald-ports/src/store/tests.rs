@@ -91,14 +91,15 @@ fn a_keeper_answers_each_kind_it_holds_itself_and_none_it_does_not() {
     assert!(held(holding.schedules()) && held(holding.subscriptions()));
     assert!(held(holding.pins()) && held(holding.deliveries()));
     assert!(held(holding.notes()) && held(holding.announcements()));
-    assert!(held(holding.inboxes()));
+    assert!(held(holding.inboxes()) && held(holding.positions()));
     assert_eq!(Store::skipped(&holding), ["corrupt.json"]);
+    assert!(!Store::writes_one_at_a_time(&holding));
     let none = None::<&Unkept>;
     assert!(none.ledger().is_none() && none.cursors().is_none());
     assert!(none.schedules().is_none() && none.subscriptions().is_none());
     assert!(none.pins().is_none() && none.deliveries().is_none());
     assert!(none.notes().is_none() && none.announcements().is_none());
-    assert!(none.inboxes().is_none());
+    assert!(none.inboxes().is_none() && none.positions().is_none());
 }
 
 #[test]

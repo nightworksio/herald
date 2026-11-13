@@ -981,9 +981,7 @@ pub trait Store: Sync {
     /// Whether a run writes one record at a time: where a write may be
     /// refused because another record was written at once, or where writes
     /// are not compared and set.
-    fn writes_one_at_a_time(&self) -> bool {
-        false
-    }
+    fn writes_one_at_a_time(&self) -> bool;
 }
 
 /// A store holding every kind of record it keeps itself, and saying which

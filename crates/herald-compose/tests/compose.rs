@@ -610,7 +610,10 @@ template = "t"
                 format!("kind = \"deno-kv\" memory {kept}"),
                 format!("kind = \"deno-kv\" store {kept}"),
                 format!("kind = \"git-branch\" memory {untreed}"),
-                format!("kind = \"git-branch\" store {}", untreed.replace("deliveries", "keys")),
+                format!(
+                    "kind = \"git-branch\" store {}",
+                    untreed.replace("deliveries", "keys")
+                ),
                 format!("{variables} memory {uncounted}"),
                 format!("{variables} store {uncounted}"),
                 format!("kind = \"dynamodb\" memory {kept}"),

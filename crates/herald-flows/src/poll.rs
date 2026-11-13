@@ -90,13 +90,14 @@ async fn sweep<S: Store, C: Clock, G: Signer, H: Http>(
         return Ok(Sweep::Unchanged);
     };
     let found = releases.events.len();
+    let holder = format!("{run}/{}", source.name.as_str());
     let mut announced = Vec::new();
     let mut settled = true;
     for event in fresh(cursor, releases.events.clone(), source.backfill)
         .into_iter()
         .rev()
     {
-        let outcomes = announce(config, connected, ports, &source.name, &event, run).await;
+        let outcomes = announce(config, connected, ports, &source.name, &event, &holder).await;
         settled &= !outcomes
             .iter()
             .any(|outcome| matches!(outcome.outcome, Outcome::Stopped { .. }));
@@ -141,8 +142,9 @@ async fn sweep<S: Store, C: Clock, G: Signer, H: Http>(
 /// remembers what it found only once every route has its events, so a
 /// route that stopped is offered them again by the next poll. As many
 /// sources as `[run] sources` says are polled at once, one at a time where
-/// the store writes one record at a time (ADR-0025). `run` names this run
-/// in the leases it takes.
+/// the store writes one record at a time (ADR-0025). Each source takes its
+/// leases under `run` and its own name, so two sources finding one event
+/// never both send it.
 pub async fn poll<S: Store, C: Clock, G: Signer, H: Http>(
     config: &Config,
     connected: &Connected<H>,

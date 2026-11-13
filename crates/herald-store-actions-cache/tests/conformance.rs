@@ -200,6 +200,7 @@ mod conformance {
             pollster::block_on(store_conformance(&store(&cache))),
             Ok(())
         );
+        assert!(store(&cache).writes_one_at_a_time());
     }
 
     #[test]
