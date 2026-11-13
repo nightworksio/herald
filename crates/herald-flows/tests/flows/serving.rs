@@ -1,14 +1,14 @@
 use herald_config::{Config, Uses, load};
 use herald_core::{Key, RouteId, Scheme, Step};
 use herald_flows::{
-    Answered, Connected, FollowError, Followed, Inbound, Job, Keys, Outcome, Ports, Serving, Stop,
+    Answered, Connected, FollowError, Followed, Inbound, Job, Outcome, Ports, Serving, Stop,
     Worked, answer, busy, prepare, unworked, work,
 };
 use herald_ports::{Admitted, Algorithm, CryptoError, Deliveries, Ledger, Secret, Signer};
 use herald_records::MemoryKeyring;
 use herald_testing::{FakeClock, FakeSecrets, FakeSigner, FakeVerifier};
 
-use crate::harness::{Failing, Fault, Script, healthy};
+use crate::harness::{Failing, Fault, Script, healthy, keys_in};
 use crate::inbound::{ANA, ANA_KEY, FOLLOW, activity, at, borrowed, document};
 
 pub(crate) const EVENT: &str =
@@ -120,11 +120,7 @@ impl World {
             clock: &clock,
             signer: &FakeSigner,
         };
-        let keys = Keys {
-            keyring: &self.keyring,
-            refreshed: jiff::SignedDuration::from_hours(1),
-            reread: jiff::SignedDuration::from_mins(1),
-        };
+        let keys = keys_in(&self.keyring);
         act(&Serving {
             config: &self.config,
             connected: &self.connected,
@@ -285,11 +281,7 @@ fn an_actor_whose_key_cannot_be_read_is_not_served() {
         clock: &clock,
         signer: &Keyless,
     };
-    let keys = Keys {
-        keyring: &world.keyring,
-        refreshed: jiff::SignedDuration::from_hours(1),
-        reread: jiff::SignedDuration::from_mins(1),
-    };
+    let keys = keys_in(&world.keyring);
     let serving = Serving {
         config: &world.config,
         connected: &world.connected,

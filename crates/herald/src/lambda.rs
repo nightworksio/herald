@@ -14,8 +14,8 @@ use std::io::Write;
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD;
 use herald_aws::{Signing, signed};
-use herald_compose::{Composed, Host as _, Left};
-use herald_config::Config;
+use herald_compose::{Composed, Host as _, Hosting, Left};
+use herald_config::{Config, Uses};
 use herald_environment::EnvSecrets;
 use herald_flows::{Admission, Inbound, Reply};
 use herald_ports::{Clock as _, Http, Method, Request, Secret, Secrets as _, Text};
@@ -25,7 +25,7 @@ use serde_json::{Value, json};
 
 use super::output::say;
 use super::serving::said;
-use super::stores::{LAMBDA, Native};
+use super::stores::Native;
 use super::{Connect, Connection, STOPPED};
 
 /// Where Lambda's runtime API is, as Lambda sets it.
@@ -42,8 +42,6 @@ pub(crate) const CREDENTIALS: [&str; 3] = [
 ];
 /// The version of the runtime API every path names.
 const VERSION: &str = "2018-06-01";
-/// The name the function takes leases under.
-const RUN: &str = "lambda";
 /// What an event handing the function its own work says it is.
 const WORK: &str = "work";
 
@@ -341,7 +339,9 @@ pub(crate) async fn lambda(
             format!("{RUNTIME_API} is not set; herald lambda runs as a Lambda function's runtime")
         })?;
     let runtime = connect.wait(&api)?;
-    let composed = Composed::new(Native::new(vars, connect), config, &LAMBDA, RUN).await?;
+    let lambda = Hosting::Lambda;
+    let native = Native::new(vars, connect);
+    let composed = Composed::new(native, config, lambda, Uses::Serves, lambda.name()).await?;
     let handing = match Handing::read(vars).await {
         Some(handing) => {
             let http = connect.reach(&format!("https://{}", handing.host))?;

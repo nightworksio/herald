@@ -37,7 +37,6 @@ use hyper::server::conn::http1;
 use hyper::service::service_fn;
 use hyper::{Method, StatusCode};
 use hyper_util::rt::{TokioIo, TokioTimer};
-use jiff::Timestamp;
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::Notify;
@@ -399,8 +398,9 @@ impl Rounds<'_> {
         .await
     }
 
-    /// Housekeeping, where none is running.
-    async fn kept<S: Store, C: Clock, G, V, H: Http, P, K>(
+    /// Housekeeping, the keys read longest ago forgotten first, where none
+    /// is running.
+    async fn kept<S: Store, C: Clock, G, V, H: Http, P, K: Keyring>(
         &self,
         serving: &Serving<'_, S, C, G, V, H, P, K>,
     ) -> Option<Heard> {
@@ -411,6 +411,7 @@ impl Rounds<'_> {
                     serving.connected,
                     ports.store,
                     ports.clock,
+                    serving.keys,
                     &serving.config.retention,
                 )
                 .await,
@@ -425,7 +426,7 @@ impl Rounds<'_> {
         serving: &Serving<'_, S, C, G, V, H, P, K>,
     ) -> Option<Heard> {
         once(&self.sweeping, async {
-            swept(serving).await;
+            serving.keys.sweep(serving.ports.clock.now()).await;
             None
         })
         .await
@@ -440,10 +441,7 @@ impl Rounds<'_> {
     ) {
         let done = match round {
             Round::Poll => self.polled(serving).await,
-            Round::Housekeep => {
-                self.swept(serving).await;
-                self.kept(serving).await
-            }
+            Round::Housekeep => self.kept(serving).await,
         };
         if let Some(heard) = done {
             (self.heard)(heard);
@@ -484,15 +482,6 @@ fn rounds(period: Option<Duration>) -> Option<Interval> {
         rounds.set_missed_tick_behavior(MissedTickBehavior::Delay);
         rounds
     })
-}
-
-/// Every key read longer ago than its refresh, forgotten.
-async fn swept<S, C: Clock, G, V, H, P, K: Keyring>(serving: &Serving<'_, S, C, G, V, H, P, K>) {
-    let now = serving.ports.clock.now();
-    let before = now
-        .checked_sub(serving.keys.refreshed)
-        .unwrap_or(Timestamp::MIN);
-    let _ = serving.keys.keyring.forget_before(before).await;
 }
 
 /// The next of `rounds`, or never where there are none.

@@ -6,28 +6,19 @@ use std::collections::BTreeMap;
 use std::future::Future;
 use std::io::Write;
 
-use herald_compose::{Capped, Served};
+use herald_compose::{Host, Hosting, ServingOn, Through, told};
 use herald_config::{Config, Uses};
-use herald_crypto::{RingSigner, RingVerifier};
-use herald_environment::SystemClock;
-use herald_flows::{Connected, Keys, Ports, ROUND_SECRET, Serving};
+use herald_flows::ROUND_SECRET;
 use herald_native::NativeSockets;
-use herald_ports::{Keyring, PUBLIC, Secret, Store as Keeps};
-use herald_records::MemoryKeyring;
+use herald_ports::{Keyring, Secret, Store as Keeps};
 use herald_server::{Asked, Heard, Limits, serve};
 
-use herald_compose::told;
-
 use super::output::say;
-use super::stores::{SERVED, reached};
-use super::{Connect, Connection, DONE, LISTEN, worded};
+use super::stores::composed;
+use super::{Connect, DONE, LISTEN, worded};
 
-/// A server's work, over whichever store the config names, and the keys
-/// it checks activities with.
+/// A server's work: listening, and what it says of what it hears.
 struct Listening<'a, F> {
-    config: &'a Config,
-    connected: &'a Connected<Connection>,
-    public: &'a Capped<Connection>,
     sockets: NativeSockets,
     listener: tokio::net::TcpListener,
     asked: Option<Asked<'a>>,
@@ -36,45 +27,12 @@ struct Listening<'a, F> {
     stop: F,
 }
 
-impl<F: Future<Output = ()>> Served for Listening<'_, F> {
+impl<H: Host, F: Future<Output = ()>> Through<H> for Listening<'_, F> {
     type Done = u8;
 
-    async fn over<S: Keeps + Keyring>(self, store: &S) -> u8 {
-        let server = &self.config.server;
-        if server.keys_in_store() {
-            self.keyed(store, store).await
-        } else {
-            let memory = MemoryKeyring::new(server.keys_most);
-            self.keyed(store, &memory).await
-        }
-    }
-}
-
-impl<F: Future<Output = ()>> Listening<'_, F> {
-    /// The server, over `store`, checking activities with the keys in
-    /// `keyring`.
-    async fn keyed<S: Keeps, K: Keyring>(self, store: &S, keyring: &K) -> u8 {
-        let server = &self.config.server;
-        let ports = Ports {
-            store,
-            clock: &SystemClock,
-            signer: &RingSigner,
-        };
-        let keys = Keys {
-            keyring,
-            refreshed: server.keys_refreshed,
-            reread: server.keys_reread,
-        };
-        let serving = Serving {
-            config: self.config,
-            connected: self.connected,
-            ports: &ports,
-            verifier: &RingVerifier,
-            public: self.public,
-            keys: &keys,
-            webhooks: self.connected.webhooks(),
-            admission: herald_flows::Admission::Once,
-        };
+    async fn through<S: Keeps, K: Keyring>(self, serving: &ServingOn<'_, H, S, K>, _: &str) -> u8 {
+        let config = serving.config;
+        let server = &config.server;
         let period = |every: Option<jiff::SignedDuration>| {
             every.and_then(|every| std::time::Duration::try_from(every).ok())
         };
@@ -83,8 +41,8 @@ impl<F: Future<Output = ()>> Listening<'_, F> {
             queue: server.queue,
             connections: server.connections,
             body: server.body,
-            poll: period(self.config.schedule.poll),
-            housekeep: period(self.config.schedule.housekeep),
+            poll: period(config.schedule.poll),
+            housekeep: period(config.schedule.housekeep),
             keys: period(Some(server.keys_refreshed)).unwrap_or_default(),
             read: period(Some(server.read)).unwrap_or_default(),
             held: period(Some(server.held)).unwrap_or_default(),
@@ -100,7 +58,7 @@ impl<F: Future<Output = ()>> Listening<'_, F> {
             }
         };
         serve(
-            &serving,
+            serving,
             self.listener,
             &self.sockets,
             limits,
@@ -109,6 +67,16 @@ impl<F: Future<Output = ()>> Listening<'_, F> {
         )
         .await;
         DONE
+    }
+}
+
+/// The host `herald server` serves as: an Azure Functions custom handler
+/// where Azure names its port, and else a server of its own.
+pub(crate) fn hosting(vars: &BTreeMap<String, String>) -> Hosting {
+    if vars.get(AZURE_PORT).is_some_and(|port| !port.is_empty()) {
+        Hosting::Azure
+    } else {
+        Hosting::Server
     }
 }
 
@@ -191,17 +159,14 @@ pub(crate) async fn serving(
         .or_else(|| vars.get(LISTEN).filter(|value| !value.is_empty()).cloned())
         .or(azure)
         .unwrap_or_else(|| config.server.listen.clone());
-    let (records, connected) = reached(config, vars, connect, Uses::Serves, &SERVED).await?;
-    let public = Capped::new(connect.reach(PUBLIC)?, config.server.fetches);
+    let hosting = hosting(vars);
+    let composed = composed(config, vars, connect, hosting, Uses::Serves, hosting.name()).await?;
     let silence = std::time::Duration::try_from(config.server.silence).unwrap_or_default();
     let sockets = worded(NativeSockets::under(config.session_domains()))?.silent_for(silence);
     let listener = tokio::net::TcpListener::bind(&address)
         .await
         .map_err(|error| format!("herald could not listen on {address}: {error}"))?;
     let listening = Listening {
-        config,
-        connected: &connected,
-        public: &public,
         sockets,
         listener,
         asked,
@@ -209,5 +174,5 @@ pub(crate) async fn serving(
         out: RefCell::new(out),
         stop,
     };
-    Ok(records.serve(&connected, listening).await)
+    Ok(composed.run(listening).await)
 }

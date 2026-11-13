@@ -1,65 +1,59 @@
 //! Setting a destination up to take commands (ADR-0016): Discord's commands
 //! registered and its opt-in roles made, Slack's app manifest, and the
-//! registration a Matrix homeserver installs.
+//! registration a Matrix homeserver installs, each as its destination's
+//! setup says.
 
 use std::collections::BTreeMap;
 use std::io::Write;
 
-use herald_config::{Config, Destination};
-use herald_core::{DestinationName, SecretRef};
+use herald_config::Config;
+use herald_core::DestinationName;
 use herald_environment::EnvSecrets;
-use herald_ports::{Http, Request, Response, Secret, Secrets};
+use herald_kinds::{Made, Served, Setup, SetupStep, SetupTask};
+use herald_ports::{Http, Request, Response, Secrets};
 
+use super::cli::{Discording, Matrixing, Setting, Slacking};
 use super::output::say;
 use super::{Connect, DONE};
 
-/// What `taken` takes of the destination named `named` among those of
-/// `kind` that take commands, or of the only one where none is named.
-fn chosen<'a, T: Copy>(
+/// Why a setup that hands out new tokens could not.
+const UNRANDOM: &str = "the system's random generator failed, so no token was made";
+
+/// The setup of the destination named `named` among those of `kind` that
+/// take commands, or of the only one where none is named.
+fn chosen<'a>(
     config: &'a Config,
     kind: &str,
     named: Option<&str>,
-    taken: impl Fn(&'a Destination) -> Option<T>,
-) -> Result<(DestinationName, T), String> {
-    let taking: Vec<(&DestinationName, T)> = config
+) -> Result<(&'a DestinationName, Box<dyn Setup + 'a>), String> {
+    let mut taking: Vec<(&DestinationName, Box<dyn Setup + 'a>)> = config
         .destinations
         .iter()
-        .filter_map(|(name, destination)| Some((name, taken(destination)?)))
+        .filter(|(_, destination)| destination.kind() == kind)
+        .filter_map(|(name, destination)| Some((name, destination.setup()?)))
         .collect();
-    let listed = || {
-        taking
-            .iter()
-            .map(|(name, _)| name.as_str())
-            .collect::<Vec<_>>()
-            .join(", ")
+    let listed = taking
+        .iter()
+        .map(|(name, _)| name.as_str())
+        .collect::<Vec<_>>()
+        .join(", ");
+    let found = match named {
+        Some(named) => taking.iter().position(|(name, _)| name.as_str() == named),
+        None if taking.len() == 1 => Some(0),
+        None => None,
     };
-    match (named, taking.as_slice()) {
-        (_, []) => Err(format!(
+    match (found, named) {
+        (Some(index), _) => Ok(taking.swap_remove(index)),
+        _ if taking.is_empty() => Err(format!(
             "no {kind} destination takes commands; give one [destinations.<name>.interactions]"
         )),
-        (None, [(name, destination)]) => Ok(((*name).clone(), *destination)),
-        (None, _) => Err(format!(
-            "more than one {kind} destination takes commands; name one of {} with --destination",
-            listed()
+        (None, None) => Err(format!(
+            "more than one {kind} destination takes commands; name one of {listed} with --destination"
         )),
-        (Some(named), _) => taking
-            .iter()
-            .find(|(name, _)| name.as_str() == named)
-            .map(|(name, destination)| ((*name).clone(), *destination))
-            .ok_or_else(|| {
-                format!(
-                    "no {kind} destination named \"{named}\" takes commands; the ones that do are {}",
-                    listed()
-                )
-            }),
+        (None, Some(named)) => Err(format!(
+            "no {kind} destination named \"{named}\" takes commands; the ones that do are {listed}"
+        )),
     }
-}
-
-async fn secret(vars: &BTreeMap<String, String>, named: &SecretRef) -> Result<Secret, String> {
-    EnvSecrets::from_vars(vars.clone())
-        .secret(&named.secret)
-        .await
-        .map_err(|error| error.to_string())
 }
 
 async fn sent(connect: Connect<'_>, base: &str, request: Request) -> Result<Response, String> {
@@ -67,106 +61,80 @@ async fn sent(connect: Connect<'_>, base: &str, request: Request) -> Result<Resp
     http.send(request).await.map_err(|error| error.to_string())
 }
 
-/// The Discord destination `named`, set up as `task` asks.
-pub(crate) async fn discord(
+/// The destination `setting` names set up as it asks, its secrets read from
+/// `vars`, its requests sent through `connect`, and each new token made by
+/// `random`.
+pub(crate) async fn set_up(
     config: &Config,
     vars: &BTreeMap<String, String>,
     connect: Connect<'_>,
-    named: Option<&str>,
-    task: herald_dest_discord::setup::Task<'_>,
-    out: &mut dyn Write,
-) -> Result<u8, String> {
-    let (name, (options, interactions)) =
-        chosen(config, herald_dest_discord::KIND, named, |destination| {
-            let options = destination.of::<herald_dest_discord::DestinationOptions>()?;
-            Some((options, options.interactions.as_ref()?))
-        })?;
-    let Some(token) = &options.token else {
-        return Err(format!(
-            "{} has no bot token, which Discord's commands and roles are set up with",
-            name.as_str()
-        ));
-    };
-    let bot = secret(vars, token).await?;
-    let (api, request) = herald_dest_discord::setup::request(options, interactions, bot, task)?;
-    let response = sent(connect, &api, request).await?;
-    for line in herald_dest_discord::setup::said(interactions, task, &response)? {
-        say(out, &line);
-    }
-    Ok(DONE)
-}
-
-/// The app manifest of the Slack destination `named`, its commands posted to
-/// herald at `url`, under the config's `[server] base`, or carried over
-/// Socket Mode.
-pub(crate) fn slack(
-    config: &Config,
-    named: Option<&str>,
-    url: Option<&str>,
-    out: &mut dyn Write,
-) -> Result<u8, String> {
-    let (name, (options, interactions)) =
-        chosen(config, herald_dest_slack::KIND, named, |destination| {
-            let options = destination.of::<herald_dest_slack::DestinationOptions>()?;
-            Some((options, options.interactions.as_ref()?))
-        })?;
-    let url = match url {
-        Some(url) if herald_dest_slack::setup::posted(interactions) => {
-            Some(format!("{}{}", web(url)?, config.server.base))
-        }
-        _ => None,
-    };
-    for line in
-        herald_dest_slack::setup::manifest(name.as_str(), options, interactions, url.as_deref())?
-    {
-        say(out, &line);
-    }
-    Ok(DONE)
-}
-
-/// The registration a homeserver installs for the Matrix destination
-/// `named`, reaching herald at `url` under the config's `[server] base`, with
-/// two tokens made by `random`.
-pub(crate) fn matrix(
-    config: &Config,
-    named: Option<&str>,
-    url: &str,
+    setting: &Setting,
     random: &dyn Fn() -> Option<String>,
     out: &mut dyn Write,
 ) -> Result<u8, String> {
-    let (name, (options, interactions)) =
-        chosen(config, herald_dest_matrix::KIND, named, |destination| {
-            let options = destination.of::<herald_dest_matrix::DestinationOptions>()?;
-            Some((options, options.interactions.as_ref()?))
-        })?;
-    herald_dest_matrix::setup::installs(name.as_str(), interactions)?;
-    let url = format!("{}{}", web(url)?, config.server.base);
-    let (Some(homeserver), Some(appservice)) = (random(), random()) else {
-        return Err("the system's random generator failed, so no token was made".to_owned());
+    let base = config.server.base.as_str();
+    let (kind, named, task) = match setting {
+        Setting::Discord(Discording::Commands { destination }) => {
+            (herald_dest_discord::KIND, destination, SetupTask::Commands)
+        }
+        Setting::Discord(Discording::Roles {
+            destination,
+            guild,
+            create,
+        }) => (
+            herald_dest_discord::KIND,
+            destination,
+            SetupTask::Roles {
+                guild,
+                create: create.as_deref(),
+            },
+        ),
+        Setting::Slack(Slacking::Manifest { destination, url }) => (
+            herald_dest_slack::KIND,
+            destination,
+            SetupTask::Manifest {
+                served: url.as_deref().map(|url| Served { url, base }),
+            },
+        ),
+        Setting::Matrix(Matrixing::Registration { destination, url }) => (
+            herald_dest_matrix::KIND,
+            destination,
+            SetupTask::Registration {
+                served: Served { url, base },
+            },
+        ),
     };
-    for line in herald_dest_matrix::setup::registration(
-        name.as_str(),
-        options,
-        interactions,
-        &url,
-        (&homeserver, &appservice),
-    )? {
-        say(out, &line);
+    let (name, setup) = chosen(config, kind, named.as_deref())?;
+    let name = name.as_str();
+    let secrets = EnvSecrets::from_vars(vars.clone());
+    let needs = setup.needs(name, task)?;
+    let mut read = Vec::new();
+    for named in needs.secrets {
+        read.push(
+            secrets
+                .secret(&named.secret)
+                .await
+                .map_err(|error| error.to_string())?,
+        );
+    }
+    let tokens = (0..needs.tokens)
+        .map(|_| random())
+        .collect::<Option<Vec<String>>>()
+        .ok_or_else(|| UNRANDOM.to_owned())?;
+    let made = Made {
+        secrets: read,
+        tokens,
+    };
+    for step in setup.steps(name, task, made)? {
+        let said = match step {
+            SetupStep::Say(said) => said,
+            SetupStep::Send { base, request } => {
+                setup.said(task, &sent(connect, &base, request).await?)?
+            }
+        };
+        for line in said {
+            say(out, &line);
+        }
     }
     Ok(DONE)
-}
-
-/// `url` with no trailing slash, where it is an `https` or `http` address
-/// with nothing a YAML or JSON string could be broken by.
-fn web(url: &str) -> Result<&str, String> {
-    let sound = herald_core::web_url(url)
-        && !url
-            .contains(|character: char| character.is_whitespace() || "\"'\\".contains(character));
-    if sound {
-        Ok(url.trim_end_matches('/'))
-    } else {
-        Err(format!(
-            "\"{url}\" is not an address herald is served at; give one such as https://herald.example"
-        ))
-    }
 }

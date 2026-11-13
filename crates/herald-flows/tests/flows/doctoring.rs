@@ -23,11 +23,11 @@ fn loaded(text: &str) -> Config {
 
 const STORES: [&str; 3] = ["sqlite", "markers", "repo-variables"];
 
-fn actions() -> Layer<'static> {
+fn actions() -> Layer {
     Layer {
         name: "actions",
         tier: Tier::Actions,
-        stores: &STORES,
+        stores: STORES.to_vec(),
         endpoint: false,
         sessions: false,
         egress: Egress::Checked,
@@ -37,7 +37,7 @@ fn actions() -> Layer<'static> {
     }
 }
 
-fn fastly() -> Layer<'static> {
+fn fastly() -> Layer {
     Layer {
         name: "fastly",
         tier: Tier::Serverless,
@@ -49,7 +49,7 @@ fn fastly() -> Layer<'static> {
     }
 }
 
-fn worker() -> Layer<'static> {
+fn worker() -> Layer {
     Layer {
         name: "worker",
         tier: Tier::Serverless,
@@ -64,7 +64,7 @@ fn worker() -> Layer<'static> {
     }
 }
 
-fn server() -> Layer<'static> {
+fn server() -> Layer {
     Layer {
         name: "server",
         tier: Tier::Container,
@@ -76,11 +76,11 @@ fn server() -> Layer<'static> {
     }
 }
 
-fn layers() -> [Layer<'static>; 4] {
+fn layers() -> [Layer; 4] {
     [actions(), fastly(), worker(), server()]
 }
 
-fn on(config: &Config, layer: Layer<'_>, here: &Here) -> Findings {
+fn on(config: &Config, layer: &Layer, here: &Here) -> Findings {
     doctor(config, layer, &layers(), here)
 }
 
@@ -98,7 +98,7 @@ fn served() -> Config {
 
 #[test]
 fn a_layer_with_no_endpoint_names_the_actor_webhooks_and_apps_it_cannot_serve() {
-    let findings = on(&served(), actions(), &Here::default());
+    let findings = on(&served(), &actions(), &Here::default());
     assert_eq!(
         keyed(&findings),
         [
@@ -126,12 +126,12 @@ fn a_layer_with_no_endpoint_names_the_actor_webhooks_and_apps_it_cannot_serve() 
             .why
             .ends_with("; announce the app's events with herald announce --event")
     );
-    assert_eq!(keyed(&on(&served(), server(), &Here::default())), []);
+    assert_eq!(keyed(&on(&served(), &server(), &Here::default())), []);
 }
 
 #[test]
 fn an_actor_on_a_host_that_cannot_check_addresses_needs_its_egress_guarded() {
-    let unset = on(&served(), fastly(), &Here::default());
+    let unset = on(&served(), &fastly(), &Here::default());
     assert_eq!(keyed(&unset), []);
     let egress = "destinations.fedi: herald's own ActivityPub actor is served only where its setting is made: the fastly layer resolves names out of herald's sight, so the actor reads no key and delivers to no inbox until HERALD_EGRESS_GUARDED is true; set it once the host's egress refuses private, loopback and link-local addresses.";
     assert!(
@@ -144,7 +144,7 @@ fn an_actor_on_a_host_that_cannot_check_addresses_needs_its_egress_guarded() {
         ..Here::default()
     };
     assert_eq!(
-        keyed(&on(&served(), fastly(), &online)),
+        keyed(&on(&served(), &fastly(), &online)),
         [
             ("destinations.fedi", Some(Tier::Serverless)),
             ("HERALD_ROUND_SECRET", Some(Tier::Actions)),
@@ -155,7 +155,7 @@ fn an_actor_on_a_host_that_cannot_check_addresses_needs_its_egress_guarded() {
         guarded: true,
         round_secrets: BTreeSet::from(["HERALD_ROUND_SECRET".to_owned()]),
     };
-    let set = on(&served(), fastly(), &guarded);
+    let set = on(&served(), &fastly(), &guarded);
     assert_eq!(keyed(&set), []);
     assert!(
         !set.notes
@@ -167,8 +167,8 @@ fn an_actor_on_a_host_that_cannot_check_addresses_needs_its_egress_guarded() {
 #[test]
 fn keys_kept_in_memory_are_noted_where_the_layer_drops_them_after_each_request() {
     let dropped = "[server.keys] cache is \"memory\", which the worker layer drops after each request, so every inbound activity has its signer's key read again; set cache = \"store\" to keep keys across requests.";
-    let noted = |config: &Config, layer: Layer<'_>| {
-        on(config, layer, &Here::default())
+    let noted = |config: &Config, layer: Layer| {
+        on(config, &layer, &Here::default())
             .notes
             .iter()
             .any(|note| note == dropped)
@@ -205,7 +205,7 @@ title = "{{ event.title }}"
 body = "{{ event.body }}"
 "#,
     );
-    let findings = on(&marked, server(), &Here::default());
+    let findings = on(&marked, &server(), &Here::default());
     let replayed = findings
         .gaps
         .iter()
@@ -225,7 +225,7 @@ body = "{{ event.body }}"
         "{:?}",
         findings.notes
     );
-    let unsigned = on(&served(), server(), &Here::default());
+    let unsigned = on(&served(), &server(), &Here::default());
     assert!(
         !unsigned
             .notes
@@ -243,7 +243,7 @@ body = "{{ event.body }}"
 #[test]
 fn each_layer_says_what_asks_it_for_rounds_and_where_the_schedule_disagrees() {
     let schedule = |extra: &str| config(&format!("[schedule]\n{extra}"));
-    let notes = |config: &Config, layer: Layer<'_>| on(config, layer, &Here::default()).notes;
+    let notes = |config: &Config, layer: Layer| on(config, &layer, &Here::default()).notes;
     let unset = notes(&config(""), worker());
     assert!(unset.contains(
         &"On the worker layer, the cron triggers asks for rounds: a poll every 5m and housekeeping every 1h, as shipped.".to_owned()
@@ -280,13 +280,13 @@ fn each_layer_says_what_asks_it_for_rounds_and_where_the_schedule_disagrees() {
         ..Here::default()
     };
     assert!(
-        !on(&config(""), vercel, &cron)
+        !on(&config(""), &vercel, &cron)
             .notes
             .iter()
             .any(|note| note.starts_with("HERALD_ROUND_SECRET"))
     );
     assert!(
-        on(&config(""), vercel, &Here::default())
+        on(&config(""), &vercel, &Here::default())
             .notes
             .iter()
             .any(|note| note
@@ -321,13 +321,13 @@ title = "{{ event.title }}"
 body = "{{ event.body }}"
 "#,
     );
-    let notes = on(&hooked, actions(), &Here::default()).notes;
+    let notes = on(&hooked, &actions(), &Here::default()).notes;
     assert!(
         notes.contains(&"The route hooked cannot crosspost, open a thread from a message, pin, edit a post, read back its posts for markers or take commands through \"hook\" as it is reached; a bot token could.".to_owned()),
         "{notes:?}"
     );
     assert!(
-        !on(&config(""), actions(), &Here::default())
+        !on(&config(""), &actions(), &Here::default())
             .notes
             .iter()
             .any(|note| note.contains("a bot token could"))
@@ -344,7 +344,7 @@ fn the_job_s_own_token_keeps_no_repository_variables() {
         .store;
         configured
     };
-    let job = on(&variables("GITHUB_TOKEN"), actions(), &Here::default());
+    let job = on(&variables("GITHUB_TOKEN"), &actions(), &Here::default());
     assert_eq!(keyed(&job), [("store.token", None)]);
     assert_eq!(job.gaps[0].feature, "keeping records in repo-variables");
     assert!(
@@ -352,7 +352,10 @@ fn the_job_s_own_token_keeps_no_repository_variables() {
             .why
             .starts_with("a workflow's GITHUB_TOKEN cannot write")
     );
-    assert_eq!(keyed(&on(&variables("T"), actions(), &Here::default())), []);
+    assert_eq!(
+        keyed(&on(&variables("T"), &actions(), &Here::default())),
+        []
+    );
 }
 
 #[test]

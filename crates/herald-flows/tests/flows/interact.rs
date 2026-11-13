@@ -5,14 +5,14 @@ use herald_core::{
     Asked, Command, DestinationName, Kind, Latest, Member, Place, RouteId, Shown, Subscription,
 };
 use herald_flows::{
-    Answer, Answered, Connected, Inbound, Job, Keys, Ports, Replying, Serving, Webhooks, Worked,
-    answer, completed, deferral, interact, prepare, replied, work,
+    Answer, Answered, Connected, Inbound, Job, Ports, Replying, Serving, Webhooks, Worked, answer,
+    completed, deferral, interact, prepare, replied, work,
 };
 use herald_ports::{Announcements, Secret, Subscriptions};
 use herald_records::MemoryKeyring;
 use herald_testing::{FakeClock, FakeSecrets, FakeSigner, FakeVerifier};
 
-use crate::harness::{Failing, Fault, Script, healthy};
+use crate::harness::{Failing, Fault, Script, healthy, keys_in};
 use crate::inbound::at;
 
 pub(crate) const APPLICATION: &str = "123456789012345678";
@@ -213,11 +213,7 @@ impl World {
     }
 
     pub(crate) fn serving<T>(&self, act: impl FnOnce(&Served<'_>) -> T) -> T {
-        let keys = Keys {
-            keyring: &self.keyring,
-            refreshed: jiff::SignedDuration::from_hours(1),
-            reread: jiff::SignedDuration::from_mins(1),
-        };
+        let keys = keys_in(&self.keyring);
         let webhooks = Webhooks::default();
         self.ports(|ports| {
             act(&Serving {

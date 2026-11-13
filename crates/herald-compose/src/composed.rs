@@ -3,19 +3,19 @@ use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 
 use herald_config::{Config, Uses};
-use herald_core::Retention;
 use herald_flows::{
     Admission, Connected, Housekept, Inbound, Job, Keys, Place, Ports, Room, Round, Running,
     Serving, Sessions, Stop, Swept, Taker, Worked, answer, busy, housekeep, poll, prepare, refusal,
     unworked, work,
 };
-use herald_ports::{Clock as _, Keyring, PUBLIC, Sockets, Store as Keeps, Timer};
-use herald_records::MemoryKeyring;
-use jiff::Timestamp;
+use herald_kinds::Opened;
+use herald_ports::{Keyring, PUBLIC, Sockets, Store as Keeps, Timer};
+use herald_records::{Kept, Memory, MemoryKeyring};
 
 use crate::answer::{Answer, Left};
 use crate::capped::Capped;
 use crate::host::Host;
+use crate::hosting::Hosting;
 use crate::records::{Opener, Records, Served, reached};
 
 /// The variable that bounds a request's whole time, in milliseconds, in
@@ -38,9 +38,26 @@ pub struct Composed<'o, H: Host + 'o> {
     run: String,
 }
 
-impl<'o, H: Host + 'o> Composed<'o, H> {
-    /// `config` composed on `host`, keeping its records in a store of one
-    /// of the kinds in `stores`, and taking leases under the run name `run`.
+/// Where a composed herald keeps its records.
+enum Keeping {
+    /// In the store the config names, of a kind `hosting` keeps records in.
+    Stored(Hosting),
+    /// In memory, for a run that keeps no record.
+    Remembered,
+}
+
+impl<'o, H: Host + 'o> Composed<'o, H>
+where
+    H: Send,
+    H::Http: Send + 'static,
+    H::Clock: Send + 'static,
+    H::Sql: 'static,
+    H::Kv: 'static,
+{
+    /// `config` composed on `host`, as `hosting` describes it, keeping its
+    /// records in a store of a kind it keeps records in, reading the secrets
+    /// a run that `uses` the config reads, and taking leases under the run
+    /// name `run`.
     ///
     /// # Errors
     ///
@@ -48,23 +65,49 @@ impl<'o, H: Host + 'o> Composed<'o, H> {
     pub async fn new(
         host: H,
         config: Config,
-        stores: &[&str],
+        hosting: Hosting,
+        uses: Uses,
         run: impl Into<String>,
-    ) -> Result<Self, String>
-    where
-        H: Send,
-        H::Http: Send + 'static,
-        H::Clock: Send + 'static,
-        H::Sql: 'static,
-        H::Kv: 'static,
-    {
+    ) -> Result<Self, String> {
+        Self::kept(host, config, uses, run.into(), Keeping::Stored(hosting)).await
+    }
+
+    /// `config` composed on `host` as [`Composed::new`] composes it, its
+    /// records kept in memory for a run that keeps no record.
+    ///
+    /// # Errors
+    ///
+    /// Where a secret or a base URL cannot be reached, saying why.
+    pub async fn dry(
+        host: H,
+        config: Config,
+        uses: Uses,
+        run: impl Into<String>,
+    ) -> Result<Self, String> {
+        Self::kept(host, config, uses, run.into(), Keeping::Remembered).await
+    }
+
+    async fn kept(
+        host: H,
+        config: Config,
+        uses: Uses,
+        run: String,
+        keeping: Keeping,
+    ) -> Result<Self, String> {
         let host = Arc::new(host);
         let outbound = config.http.clone().timed(host.var(TIMEOUT_MS));
-        let prepared = prepare(&config, host.secrets(), host.signer(), Uses::Serves)
+        let prepared = prepare(&config, host.secrets(), host.signer(), uses)
             .await
             .map_err(|error| error.to_string())?;
-        let opener = Opener::new(Arc::clone(&host), outbound.clone());
-        let records = reached(Arc::new(opener), &config.store, stores).await?;
+        let records = match keeping {
+            Keeping::Stored(hosting) => {
+                let opener = Opener::new(Arc::clone(&host), outbound.clone());
+                reached(Arc::new(opener), &config.store, &hosting.stores()).await?
+            }
+            Keeping::Remembered => {
+                Records::new(Opened::Kept(Box::new(Kept::new(Memory::default()))))
+            }
+        };
         let connected = prepared.connect(|base| host.connect(base, &outbound))?;
         let public = Capped::new(
             host.connect(PUBLIC, &outbound.public())?,
@@ -82,10 +125,12 @@ impl<'o, H: Host + 'o> Composed<'o, H> {
             room,
             polling: AtomicBool::new(false),
             housekeeping: AtomicBool::new(false),
-            run: run.into(),
+            run,
         })
     }
+}
 
+impl<'o, H: Host + 'o> Composed<'o, H> {
     /// The host composed on.
     pub fn host(&self) -> &H {
         &self.host
@@ -94,6 +139,11 @@ impl<'o, H: Host + 'o> Composed<'o, H> {
     /// The config composed.
     pub fn config(&self) -> &Config {
         &self.config
+    }
+
+    /// Every route, source and destination, connected.
+    pub fn connected(&self) -> &Connected<H::Http> {
+        &self.connected
     }
 
     /// The reply to `inbound`, and the work it leaves, its delivery admitted
@@ -152,8 +202,7 @@ impl<'o, H: Host + 'o> Composed<'o, H> {
         let Some(_running) = Running::start(&self.housekeeping) else {
             return Ok(Housekept::default());
         };
-        self.through(Admission::Once, Housekeeping(self.config.retention))
-            .await
+        self.through(Admission::Once, Housekeeping).await
     }
 
     /// Every session the destinations hold, opened through `sockets`, each
@@ -173,8 +222,13 @@ impl<'o, H: Host + 'o> Composed<'o, H> {
         self.through(Admission::Once, holding).await;
     }
 
-    async fn through<W: Keyed<H>>(&self, admission: Admission, work: W) -> W::Done {
-        let through = Through {
+    /// `work` done through everything composed.
+    pub async fn run<W: Through<H>>(&self, work: W) -> W::Done {
+        self.through(Admission::Once, work).await
+    }
+
+    async fn through<W: Through<H>>(&self, admission: Admission, work: W) -> W::Done {
+        let through = Keying {
             composed: self,
             admission,
             work,
@@ -186,7 +240,7 @@ impl<'o, H: Host + 'o> Composed<'o, H> {
 }
 
 /// What serves on `H`, over the store `S` and the keys in `K`.
-type Hosted<'a, H, S, K> = Serving<
+pub type ServingOn<'a, H, S, K> = Serving<
     'a,
     S,
     <H as Host>::Clock,
@@ -197,24 +251,27 @@ type Hosted<'a, H, S, K> = Serving<
     K,
 >;
 
-/// Work done over a store and the keys it checks activities with.
-trait Keyed<H: Host> {
+/// Work done through a composed herald: over its store, with the keys it
+/// checks activities with, its leases taken under a run name of its own.
+pub trait Through<H: Host> {
+    /// What the work did.
     type Done;
 
-    fn keyed<S: Keeps, K: Keyring>(
+    /// The work done through `serving`, taking leases under `run`.
+    fn through<S: Keeps, K: Keyring>(
         self,
-        serving: &Hosted<'_, H, S, K>,
+        serving: &ServingOn<'_, H, S, K>,
         run: &str,
     ) -> impl Future<Output = Self::Done>;
 }
 
-struct Through<'c, H: Host, W> {
+struct Keying<'c, H: Host, W> {
     composed: &'c Composed<'c, H>,
     admission: Admission,
     work: W,
 }
 
-impl<H: Host, W: Keyed<H>> Served for Through<'_, H, W> {
+impl<H: Host, W: Through<H>> Served for Keying<'_, H, W> {
     type Done = W::Done;
 
     async fn over<S: Keeps + Keyring>(self, store: &S) -> W::Done {
@@ -227,7 +284,7 @@ impl<H: Host, W: Keyed<H>> Served for Through<'_, H, W> {
     }
 }
 
-impl<H: Host, W: Keyed<H>> Through<'_, H, W> {
+impl<H: Host, W: Through<H>> Keying<'_, H, W> {
     async fn keyed<S: Keeps, K: Keyring>(self, store: &S, keyring: &K) -> W::Done {
         let composed = self.composed;
         let host = &composed.host;
@@ -252,7 +309,7 @@ impl<H: Host, W: Keyed<H>> Through<'_, H, W> {
             admission: self.admission,
         };
         let run = format!("{}/{}", composed.run, host.nonce());
-        self.work.keyed(&serving, &run).await
+        self.work.through(&serving, &run).await
     }
 }
 
@@ -261,10 +318,14 @@ struct Answering<'i, 'a> {
     room: &'i Room,
 }
 
-impl<H: Host> Keyed<H> for Answering<'_, '_> {
+impl<H: Host> Through<H> for Answering<'_, '_> {
     type Done = Answer;
 
-    async fn keyed<S: Keeps, K: Keyring>(self, serving: &Hosted<'_, H, S, K>, _: &str) -> Answer {
+    async fn through<S: Keeps, K: Keyring>(
+        self,
+        serving: &ServingOn<'_, H, S, K>,
+        _: &str,
+    ) -> Answer {
         let mut answered = answer(serving, self.inbound).await;
         let Some(job) = answered.job.take() else {
             return answered.into();
@@ -282,22 +343,26 @@ impl<H: Host> Keyed<H> for Answering<'_, '_> {
 
 struct Working(Job);
 
-impl<H: Host> Keyed<H> for Working {
+impl<H: Host> Through<H> for Working {
     type Done = Worked;
 
-    async fn keyed<S: Keeps, K: Keyring>(self, serving: &Hosted<'_, H, S, K>, run: &str) -> Worked {
+    async fn through<S: Keeps, K: Keyring>(
+        self,
+        serving: &ServingOn<'_, H, S, K>,
+        run: &str,
+    ) -> Worked {
         work(serving, self.0, run).await
     }
 }
 
 struct Polling;
 
-impl<H: Host> Keyed<H> for Polling {
+impl<H: Host> Through<H> for Polling {
     type Done = Vec<Swept>;
 
-    async fn keyed<S: Keeps, K: Keyring>(
+    async fn through<S: Keeps, K: Keyring>(
         self,
-        serving: &Hosted<'_, H, S, K>,
+        serving: &ServingOn<'_, H, S, K>,
         run: &str,
     ) -> Vec<Swept> {
         poll(serving.config, serving.connected, serving.ports, run).await
@@ -310,33 +375,34 @@ struct Holding<'h, So, T, Ti> {
     timer: &'h Ti,
 }
 
-impl<H: Host, So: Sockets, T: Taker, Ti: Timer> Keyed<H> for Holding<'_, So, T, Ti> {
+impl<H: Host, So: Sockets, T: Taker, Ti: Timer> Through<H> for Holding<'_, So, T, Ti> {
     type Done = ();
 
-    async fn keyed<S: Keeps, K: Keyring>(self, serving: &Hosted<'_, H, S, K>, _: &str) {
+    async fn through<S: Keeps, K: Keyring>(self, serving: &ServingOn<'_, H, S, K>, _: &str) {
         Sessions::new(serving, self.taker, self.timer)
             .held(self.sockets)
             .await;
     }
 }
 
-struct Housekeeping(Retention);
+struct Housekeeping;
 
-impl<H: Host> Keyed<H> for Housekeeping {
+impl<H: Host> Through<H> for Housekeeping {
     type Done = Result<Housekept, Stop>;
 
-    async fn keyed<S: Keeps, K: Keyring>(
+    async fn through<S: Keeps, K: Keyring>(
         self,
-        serving: &Hosted<'_, H, S, K>,
+        serving: &ServingOn<'_, H, S, K>,
         _: &str,
     ) -> Result<Housekept, Stop> {
         let ports = serving.ports;
-        let before = ports
-            .clock
-            .now()
-            .checked_sub(serving.keys.refreshed)
-            .unwrap_or(Timestamp::MIN);
-        let _ = serving.keys.keyring.forget_before(before).await;
-        housekeep(serving.connected, ports.store, ports.clock, &self.0).await
+        housekeep(
+            serving.connected,
+            ports.store,
+            ports.clock,
+            serving.keys,
+            &serving.config.retention,
+        )
+        .await
     }
 }

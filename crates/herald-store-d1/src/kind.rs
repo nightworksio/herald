@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use herald_core::SecretRef;
-use herald_kinds::{Local, Opened, Opening, SqlAt, StoreConfig, StoreKind, unopened};
+use herald_kinds::{Local, Offer, Opened, Opening, SqlAt, StoreConfig, StoreKind, unopened};
 use herald_ports::Secret;
 use herald_records::Seal;
 
@@ -14,6 +14,7 @@ pub enum D1Kind {}
 impl StoreKind for D1Kind {
     const NAME: &str = "d1";
     const DESCRIPTION: &str = "Cloudflare D1, through the Worker's binding.";
+    const NEEDS: Offer = Offer::D1;
 
     type Options = StoreOptions;
 }

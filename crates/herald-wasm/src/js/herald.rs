@@ -1,7 +1,7 @@
 use std::rc::Rc;
 
-use herald_compose::{Composed, Hosting, SocketReach, asked_query, public_address, told};
-use herald_config::{Server, load};
+use herald_compose::{Artefact, Composed, Hosting, SocketReach, asked_query, public_address, told};
+use herald_config::{Server, Uses, load};
 use herald_flows::{Admission, Inbound};
 use js_sys::{Function, Promise, Uint8Array};
 use send_wrapper::SendWrapper;
@@ -54,13 +54,8 @@ impl Herald {
         files: JsValue,
         hosting: String,
     ) -> Result<Herald, JsError> {
-        let hosting = Hosting::of(&hosting).ok_or_else(|| {
-            let named: Vec<&str> = Hosting::ALL.iter().map(|hosting| hosting.name()).collect();
-            JsError::new(&format!(
-                "{hosting} is no host herald knows; it runs on {}",
-                named.join(", ")
-            ))
-        })?;
+        let hosting =
+            Hosting::running(&hosting, Artefact::Module).map_err(|error| JsError::new(&error))?;
         let read = |name: &str| {
             let read = match files.dyn_ref::<Function>() {
                 Some(reader) => reader.call1(&JsValue::NULL, &JsValue::from_str(name)).ok(),
@@ -71,9 +66,15 @@ impl Herald {
         };
         let loaded = load(CONFIG, &config, &read, &herald_compose::kinds())
             .map_err(|errors| JsError::new(&errors.to_string()))?;
-        let composed = Composed::new(JsHost::new(host), loaded, hosting.stores(), hosting.name())
-            .await
-            .map_err(|error| JsError::new(&error))?;
+        let composed = Composed::new(
+            JsHost::new(host),
+            loaded,
+            hosting,
+            Uses::Serves,
+            hosting.name(),
+        )
+        .await
+        .map_err(|error| JsError::new(&error))?;
         Ok(Self {
             composed: Rc::new(composed),
         })

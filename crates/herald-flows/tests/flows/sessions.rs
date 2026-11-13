@@ -12,7 +12,7 @@ use futures_util::stream::{FuturesUnordered, StreamExt};
 use herald_config::{Config, Uses, load};
 use herald_core::{DestinationName, Kind, Latest, RouteId, Shown};
 use herald_flows::{
-    Connected, Job, Keys, Ports, Serving, Sessions, Taker, Webhooks, Worked, prepare, work,
+    Connected, Job, Ports, Serving, Sessions, Taker, Webhooks, Worked, prepare, work,
 };
 use herald_ports::{Announcements, Frame, Http, HttpError, Request, Response, Timer};
 use herald_records::MemoryKeyring;
@@ -21,6 +21,8 @@ use herald_testing::{
 };
 use serde_json::{Value, json};
 use tokio::sync::Notify;
+
+use crate::harness::keys_in;
 
 const APPLICATION: &str = "123456789012345678";
 const CHANNEL: &str = "323456789012345678";
@@ -301,11 +303,7 @@ impl World {
             clock: &clock,
             signer: &FakeSigner,
         };
-        let keys = Keys {
-            keyring: &self.keyring,
-            refreshed: jiff::SignedDuration::from_hours(1),
-            reread: jiff::SignedDuration::from_mins(1),
-        };
+        let keys = keys_in(&self.keyring);
         let webhooks = Webhooks::default();
         let serving = Serving {
             config: &self.config,

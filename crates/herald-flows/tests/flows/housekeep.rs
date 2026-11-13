@@ -1,6 +1,7 @@
 use herald_config::Uses;
 use herald_core::{Chore, Entry, Facts, Identity, Key, Retention, RouteId, Schedule, State};
 use herald_flows::{Chored, Stop, housekeep, prepare};
+use herald_ports::Keyring as _;
 use herald_ports::{Admitted, Deliveries, Inboxes, Ledger, Notes, Schedules};
 use herald_testing::{FakeClock, FakeSigner};
 use jiff::SignedDuration;
@@ -32,8 +33,7 @@ fn kept_for(
     let prepared =
         pollster::block_on(prepare(&config, &secrets(), &FakeSigner, Uses::Polls)).unwrap();
     let connected = prepared.connect(|_| Ok::<_, ()>(script.clone())).unwrap();
-    let clock = FakeClock::at(NOON);
-    pollster::block_on(housekeep(&connected, store, &clock, retention)).map(|kept| {
+    housekept(&connected, store, retention).map(|kept| {
         kept.kept
             .into_iter()
             .map(|kept| (kept.schedule.thread, kept.outcome))
@@ -81,14 +81,8 @@ fn a_round_reports_the_records_the_store_skipped() {
     let connected = prepared
         .connect(|_| Ok::<_, ()>(Script::default()))
         .unwrap();
-    let housekept = pollster::block_on(housekeep(
-        &connected,
-        &store,
-        &FakeClock::at(NOON),
-        &herald_core::Retention::default(),
-    ))
-    .unwrap();
-    assert_eq!(housekept.skipped, ["latest/bad.json"]);
+    let kept = housekept(&connected, &store, &herald_core::Retention::default()).unwrap();
+    assert_eq!(kept.skipped, ["latest/bad.json"]);
 }
 
 #[test]
@@ -373,4 +367,37 @@ fn what_cannot_be_expired_stops_housekeeping() {
             Err(Stop::Store(broken().to_string()))
         );
     }
+}
+
+#[test]
+fn housekeeping_forgets_the_keys_read_longer_ago_than_their_refresh() {
+    let keyring = herald_records::MemoryKeyring::new(4);
+    let read = |minutes: i64| herald_ports::KnownKey {
+        owner: "https://social.example/users/ann".to_owned(),
+        pem: "key".to_owned(),
+        fetched: NOON
+            .checked_sub(SignedDuration::from_mins(minutes))
+            .unwrap(),
+    };
+    pollster::block_on(keyring.know("stale", &read(61))).unwrap();
+    pollster::block_on(keyring.know("fresh", &read(59))).unwrap();
+    let config = config("");
+    let prepared =
+        pollster::block_on(prepare(&config, &secrets(), &FakeSigner, Uses::Polls)).unwrap();
+    let connected = prepared
+        .connect(|_| Ok::<_, ()>(Script::default()))
+        .unwrap();
+    pollster::block_on(housekeep(
+        &connected,
+        &healthy(),
+        &FakeClock::at(NOON),
+        &keys_in(&keyring),
+        &Retention::default(),
+    ))
+    .unwrap();
+    assert_eq!(pollster::block_on(keyring.known("stale")).unwrap(), None);
+    assert_eq!(
+        pollster::block_on(keyring.known("fresh")).unwrap(),
+        Some(read(59))
+    );
 }

@@ -6,13 +6,13 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::io::Write;
 
 use clap::{Args, ValueEnum};
-use herald_compose::{Served, told};
+use herald_compose::{Composed, Host, Hosting, ServingOn, Through, told};
 use herald_config::{Config, Uses};
 use herald_crypto::RingSigner;
-use herald_environment::{EnvSecrets, SystemClock};
+use herald_environment::EnvSecrets;
 use herald_flows::{
-    Announced, Connected, EGRESS_GUARDED, Findings, Gap, Here, Outcome, Ports, Tier, doctor,
-    egress_guarded, keys, online, prepare, trial,
+    Announced, EGRESS_GUARDED, Findings, Gap, Here, Outcome, Tier, doctor, egress_guarded, keys,
+    online, trial,
 };
 use herald_ports::{Keyring, Secrets as _, Store as Keeps};
 use schemars::JsonSchema;
@@ -20,9 +20,9 @@ use serde::Serialize;
 
 use super::cli::{Layer, Serve};
 use super::output::say;
-use super::serving::AZURE_PORT;
-use super::stores::Records;
-use super::{Connect, Connection, DONE, MISTAKEN, STOPPED, run_name};
+use super::serving::hosting;
+use super::stores::Native;
+use super::{Connect, DONE, MISTAKEN, STOPPED, place};
 
 /// How doctor prints its findings.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
@@ -37,7 +37,7 @@ pub(crate) enum Format {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Args)]
 pub(crate) struct Asked {
     /// The layer to check the config for.
-    #[arg(long, value_enum, default_value_t = Layer::Actions)]
+    #[arg(long, value_enum, default_value_t = Layer(Hosting::Actions))]
     pub(crate) layer: Layer,
     /// How to print what it finds.
     #[arg(long, value_enum, default_value_t = Format::Text)]
@@ -54,22 +54,17 @@ pub(crate) struct Asked {
 
 /// The test messages `herald doctor --post` posts, kept in a store of their
 /// own.
-struct Posting<'a> {
-    config: &'a Config,
-    connected: &'a Connected<Connection>,
-    run: &'a str,
-}
+struct Posting;
 
-impl Served for Posting<'_> {
+impl<H: Host> Through<H> for Posting {
     type Done = Vec<Announced>;
 
-    async fn over<S: Keeps + Keyring>(self, store: &S) -> Vec<Announced> {
-        let ports = Ports {
-            store,
-            clock: &SystemClock,
-            signer: &RingSigner,
-        };
-        trial(self.config, self.connected, &ports, self.run).await
+    async fn through<S: Keeps, K: Keyring>(
+        self,
+        serving: &ServingOn<'_, H, S, K>,
+        run: &str,
+    ) -> Vec<Announced> {
+        trial(serving.config, serving.connected, serving.ports, run).await
     }
 }
 
@@ -172,9 +167,10 @@ pub(crate) async fn here(
     secrets: &EnvSecrets,
     online: bool,
 ) -> Here {
-    let named: BTreeSet<&str> = Layer::every()
-        .iter()
-        .flat_map(|layer| layer.round_secrets.iter().copied())
+    let named: BTreeSet<&str> = Hosting::ALL
+        .into_iter()
+        .flat_map(Hosting::round_secrets)
+        .copied()
         .collect();
     let mut round_secrets = BTreeSet::new();
     for name in named {
@@ -191,25 +187,24 @@ pub(crate) async fn here(
 
 /// The layer a command serving as `serve` runs on, where it warns of the
 /// gaps it leaves (ADR-0002).
-pub(crate) fn warning(serve: &Serve, vars: &BTreeMap<String, String>) -> Option<Layer> {
+pub(crate) fn warning(serve: &Serve, vars: &BTreeMap<String, String>) -> Option<Hosting> {
     match serve {
-        Serve::Server { .. } if vars.contains_key(AZURE_PORT) => Some(Layer::Azure),
-        Serve::Server { .. } => Some(Layer::Server),
-        Serve::Lambda => Some(Layer::Lambda),
+        Serve::Server { .. } => Some(hosting(vars)),
+        Serve::Lambda => Some(Hosting::Lambda),
         Serve::Followers(_) => None,
-        Serve::Announce { .. } | Serve::Poll | Serve::Housekeep => Some(Layer::Actions),
+        Serve::Announce { .. } | Serve::Poll | Serve::Housekeep => Some(Hosting::Actions),
     }
 }
 
 /// The gaps `config` leaves on `layer`, as every command warns of them.
 pub(crate) async fn gaps(
     config: &Config,
-    layer: Layer,
+    hosting: Hosting,
     vars: &BTreeMap<String, String>,
 ) -> Vec<Gap> {
     let secrets = EnvSecrets::from_vars(vars.clone());
     let here = here(vars, &secrets, false).await;
-    doctor(config, layer.served(), &Layer::every(), &here).gaps
+    doctor(config, &hosting.layer(), &Hosting::layers(), &here).gaps
 }
 
 /// What doctor finds in `config` for `asked`.
@@ -221,24 +216,16 @@ async fn findings(
 ) -> Findings {
     let secrets = EnvSecrets::from_vars(vars.clone());
     let here = here(vars, &secrets, asked.online).await;
-    let mut findings = doctor(config, asked.layer.served(), &Layer::every(), &here);
+    let mut findings = doctor(config, &asked.layer.0.layer(), &Hosting::layers(), &here);
     findings.extend(herald_flows::secrets(config, &secrets, &here).await);
     findings.extend(keys(config, &secrets, &RingSigner).await);
     if asked.online {
-        let connected = match prepare(config, &secrets, &RingSigner, Uses::Announces).await {
-            Ok(prepared) => prepared.connect(|base| connect.reach(base)),
-            Err(error) => Err(error.to_string()),
-        };
-        match connected {
-            Ok(connected) => {
-                findings.extend(online(&connected).await);
+        let native = Native::new(vars, connect);
+        match Composed::dry(native, config.clone(), Uses::Announces, place(vars)).await {
+            Ok(composed) => {
+                findings.extend(online(composed.connected()).await);
                 if asked.post {
-                    let posting = Posting {
-                        config,
-                        connected: &connected,
-                        run: &run_name(vars),
-                    };
-                    let tried = Records::memory().serve(&connected, posting).await;
+                    let tried = composed.run(Posting).await;
                     findings.extend(posted(config, &tried));
                 }
             }
@@ -277,7 +264,7 @@ fn printed(path: &str, asked: Asked, findings: &Findings, out: &mut dyn Write) -
     match asked.format {
         Format::Json => {
             let report = Report {
-                layer: asked.layer.served().name,
+                layer: asked.layer.0.name(),
                 online: asked.online,
                 gaps: findings
                     .gaps

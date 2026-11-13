@@ -4,7 +4,7 @@ use herald_core::{
 };
 use herald_kinds::{
     Carried, DestinationConfig, DestinationKind, Endpoint, Fault, Interacted, Interacts, Placed,
-    Placement, Placing, Post, Reached, Read, Replying, Said, Session, optional,
+    Placement, Placing, Post, Reached, Read, Replying, Said, Session, Setup, optional,
 };
 use herald_ports::{Boxed, DynSecrets, Request, Response, Secret, SecretError};
 use jiff::SignedDuration;
@@ -14,6 +14,7 @@ use crate::interact::{self, Interacting, took};
 use crate::interactions::{Interactions, Via};
 use crate::matrix::{self, MATRIX, Matrix};
 use crate::options::{DestinationOptions, RouteOptions};
+use crate::setup::Setting;
 
 /// A homeserver's transaction: `Authorization: Bearer <hs_token>`.
 pub const SCHEME: Scheme = Scheme {
@@ -41,6 +42,15 @@ pub const KIND: &str = "matrix";
 impl DestinationConfig for DestinationOptions {
     fn kind(&self) -> &'static str {
         KIND
+    }
+
+    fn setup(&self) -> Option<Box<dyn Setup + '_>> {
+        self.interactions.as_ref().map(|interactions| {
+            Box::new(Setting {
+                options: self,
+                interactions,
+            }) as Box<dyn Setup + '_>
+        })
     }
 
     fn symbols_written(&self) -> Option<Symbols> {

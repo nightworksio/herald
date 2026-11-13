@@ -20,7 +20,7 @@ mod probe;
 mod reach;
 mod read;
 mod request;
-pub mod setup;
+mod setup;
 mod unpin;
 
 pub use config::{DiscordKind, KIND, SCHEME};

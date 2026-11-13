@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use herald_core::SecretRef;
-use herald_kinds::{Local, Opened, Opening, SqlAt, StoreConfig, StoreKind, unopened};
+use herald_kinds::{Local, Offer, Opened, Opening, SqlAt, StoreConfig, StoreKind, unopened};
 use herald_ports::Secret;
 use herald_records::Seal;
 
@@ -14,6 +14,7 @@ pub enum PostgresKind {}
 impl StoreKind for PostgresKind {
     const NAME: &str = "postgres";
     const DESCRIPTION: &str = "A Postgres database.";
+    const NEEDS: Offer = Offer::Postgres;
 
     type Options = StoreOptions;
 }

@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use herald_core::SecretRef;
-use herald_kinds::{KvAt, Local, Opened, Opening, StoreConfig, StoreKind, unopened};
+use herald_kinds::{KvAt, Local, Offer, Opened, Opening, StoreConfig, StoreKind, unopened};
 use herald_ports::Secret;
 use herald_records::Seal;
 
@@ -14,6 +14,7 @@ pub enum FastlyKvKind {}
 impl StoreKind for FastlyKvKind {
     const NAME: &str = "fastly-kv";
     const DESCRIPTION: &str = "A Fastly KV Store, on Fastly Compute.";
+    const NEEDS: Offer = Offer::FastlyKv;
 
     type Options = StoreOptions;
 }

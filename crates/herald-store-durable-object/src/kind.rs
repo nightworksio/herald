@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use herald_core::SecretRef;
-use herald_kinds::{Local, Opened, Opening, SqlAt, StoreConfig, StoreKind, unopened};
+use herald_kinds::{Local, Offer, Opened, Opening, SqlAt, StoreConfig, StoreKind, unopened};
 use herald_ports::Secret;
 use herald_records::Seal;
 
@@ -15,6 +15,7 @@ impl StoreKind for DurableObjectKind {
     const NAME: &str = "durable-object";
     const DESCRIPTION: &str =
         "The storage of herald's Cloudflare Durable Object, through the\nWorker's binding.";
+    const NEEDS: Offer = Offer::DurableObject;
 
     type Options = StoreOptions;
 }

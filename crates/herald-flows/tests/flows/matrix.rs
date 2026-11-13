@@ -3,7 +3,7 @@ use herald_core::{
     Chore, DestinationName, Identity, Key, Marker, RouteId, Schedule, SourceName, Step,
     Subscription,
 };
-use herald_flows::{Chored, Outcome, Ports, Reached, announce, housekeep, prepare};
+use herald_flows::{Chored, Outcome, Ports, Reached, announce, prepare};
 use herald_ports::{Markers as _, Schedules, Subscriptions};
 use herald_testing::{FakeClock, FakeSecrets, FakeSigner};
 
@@ -183,14 +183,9 @@ fn a_matrix_route_keeps_no_thread_chores_and_its_room_lists_no_threads() {
     let prepared =
         pollster::block_on(prepare(&config, &token(), &FakeSigner, Uses::Polls)).unwrap();
     let connected = prepared.connect(|_| Ok::<_, ()>(script.clone())).unwrap();
-    let kept = pollster::block_on(housekeep(
-        &connected,
-        &store,
-        &FakeClock::at(NOON),
-        &herald_core::Retention::default(),
-    ))
-    .unwrap()
-    .kept;
+    let kept = housekept(&connected, &store, &herald_core::Retention::default())
+        .unwrap()
+        .kept;
     assert_eq!(
         kept[0].outcome,
         Chored::Dropped("Matrix cannot archive or lock a thread".to_owned())

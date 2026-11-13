@@ -5,6 +5,7 @@ use std::sync::Arc;
 use herald_core::{Answering, Profile, SecretRef, Symbols, WaitOptions, Waits};
 use herald_ports::{Boxed, DynSecrets, Secret, SecretError};
 
+use crate::setup::Setup;
 use crate::{Interacted, Itself, Placed, Reached};
 
 /// Why a route's posts are not read back, where nothing else says why.
@@ -19,6 +20,11 @@ pub trait DestinationConfig: fmt::Debug + Send + Sync + Itself {
     /// The characters its posts write where its markup has none, where the
     /// config sets them.
     fn symbols_written(&self) -> Option<Symbols>;
+
+    /// How it is set up to take commands, where it takes them.
+    fn setup(&self) -> Option<Box<dyn Setup + '_>> {
+        None
+    }
 
     /// The characters its posts write where its markup has none.
     fn symbols(&self) -> Symbols {

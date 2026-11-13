@@ -8,7 +8,6 @@
 //! under test as on a runner.
 
 use std::collections::BTreeMap;
-use std::convert::Infallible;
 use std::fmt::Display;
 use std::future::Future;
 use std::io::Write;
@@ -21,14 +20,12 @@ use std::time::Duration;
 use clap::Parser as _;
 use herald_config::{Config, Uses, load, samples};
 use herald_core::{Event, Kind, RouteId, SourceName};
-use herald_crypto::RingSigner;
-use herald_environment::{EnvSecrets, SystemClock};
-use herald_flows::{
-    Announced, Chored, Connected, Housekept, Outcome, Ports, Remembered, Stop, Sweep, Swept,
-    announce_within, housekeep, poll, prepare, preview,
-};
+use herald_environment::EnvSecrets;
+use herald_flows::{Announced, Chored, Outcome, Remembered, Sweep, announce_within, preview};
 use herald_native::random_secret;
-use herald_ports::{Http, HttpError, Keyring, Request, Response, Secrets, Store as Keeps};
+use herald_ports::{
+    Http, HttpError, Keyring, Outbound, Request, Response, Secrets, Store as Keeps,
+};
 use herald_sources_forge::{Forge, ForgeSource, Origin, Repository, SourceOptions, Token};
 
 mod apps;
@@ -46,12 +43,12 @@ mod stores;
 pub use connect::{Connect, Connection, Connector, NATIVE, native, waiting};
 pub use doctoring::schema as doctor_schema;
 
-use cli::{Cli, Command, Discording, From, Matrixing, Reading, Serve, Setting, Slacking, Tokens};
+use cli::{Cli, Command, From, Reading, Serve, Tokens};
 use herald_compose::told::{chored, polled, report, skipped, why};
-use herald_compose::{GITHUB_TOKEN, Served};
+use herald_compose::{Composed, GITHUB_TOKEN, Host, Hosting, ServingOn, Through};
 use output::{Scrubbing, hidden, masked, say, warned};
 use serving::serving;
-use stores::{Records, STORES, reached};
+use stores::{Native, composed};
 
 /// Every route announced, already announced, or held by another run; every
 /// source polled and its cursor moved on; or every chore that fell due done
@@ -227,39 +224,6 @@ async fn stopping(
     code
 }
 
-/// `config`'s destination set up as `setting` asks.
-async fn set_up(
-    config: &Config,
-    vars: &BTreeMap<String, String>,
-    connect: Connect<'_>,
-    setting: Setting,
-    out: &mut dyn Write,
-) -> Result<u8, String> {
-    match setting {
-        Setting::Discord(Discording::Commands { destination }) => {
-            let task = herald_dest_discord::setup::Task::Commands;
-            setup::discord(config, vars, connect, destination.as_deref(), task, out).await
-        }
-        Setting::Discord(Discording::Roles {
-            destination,
-            guild,
-            create,
-        }) => {
-            let task = herald_dest_discord::setup::Task::Roles {
-                guild: &guild,
-                create: create.as_deref(),
-            };
-            setup::discord(config, vars, connect, destination.as_deref(), task, out).await
-        }
-        Setting::Slack(Slacking::Manifest { destination, url }) => {
-            setup::slack(config, destination.as_deref(), url.as_deref(), out)
-        }
-        Setting::Matrix(Matrixing::Registration { destination, url }) => {
-            setup::matrix(config, destination.as_deref(), &url, &random_secret, out)
-        }
-    }
-}
-
 /// The code a setup command ends with, saying why where it stopped.
 fn finished(done: Result<u8, String>, err: &mut dyn Write) -> u8 {
     done.unwrap_or_else(|message| {
@@ -291,7 +255,10 @@ async fn answered(
             let event = event.as_deref().map(|path| (from.forge(), path));
             previewing(config, route.as_deref(), event, out, err)
         }
-        Reading::Set(setting) => finished(set_up(config, vars, connect, setting, out).await, err),
+        Reading::Set(setting) => {
+            let done = setup::set_up(config, vars, connect, &setting, &random_secret, out).await;
+            finished(done, err)
+        }
         Reading::Serve(serve) => return ControlFlow::Continue(serve),
     })
 }
@@ -439,19 +406,28 @@ async fn announcing(
     out: &mut dyn Write,
 ) -> Result<u8, String> {
     let sent = Arc::new(Mutex::new(Vec::new()));
-    let (records, connected) = if dry_run {
-        dry(config, vars, &sent).await?
+    let kept = Arc::clone(&sent);
+    let dry = move |_: &str, _: &Outbound| {
+        Ok(Connection::new(Dry {
+            sent: Arc::clone(&kept),
+        }))
+    };
+    let dried = Connector::new(&dry, &waiting);
+    let composed = if dry_run {
+        let native = Native::new(vars, &dried);
+        Composed::dry(native, config.clone(), Uses::Announces, place(vars)).await?
     } else {
-        reached(config, vars, connect, Uses::Announces, &STORES).await?
+        composed(
+            config,
+            vars,
+            connect,
+            Hosting::Actions,
+            Uses::Announces,
+            place(vars),
+        )
+        .await?
     };
-    let run = run_name(vars);
-    let announcing = Announcing {
-        config,
-        connected: &connected,
-        routed,
-        run: &run,
-    };
-    let announced = records.serve(&connected, announcing).await;
+    let announced = composed.run(Announcing(routed)).await;
     if dry_run {
         say(
             out,
@@ -476,7 +452,7 @@ async fn announcing(
 }
 
 /// An `Http` that keeps each request it is handed, sends none, and answers
-/// each with a success, for a dry run.
+/// each with a success, for a dry run, whose records are kept in memory.
 struct Dry {
     sent: Arc<Mutex<Vec<String>>>,
 }
@@ -493,25 +469,6 @@ impl Http for Dry {
             body: br#"{"id":"0"}"#.to_vec(),
         }))
     }
-}
-
-/// A dry run's records, kept in memory, and every route connected to a
-/// [`Dry`] that keeps what it is sent in `sent`.
-async fn dry<'a>(
-    config: &Config,
-    vars: &BTreeMap<String, String>,
-    sent: &Arc<Mutex<Vec<String>>>,
-) -> Result<(Records<'a>, Connected<Connection>), String> {
-    let secrets = EnvSecrets::from_vars(vars.clone());
-    let prepared = prepare(config, &secrets, &RingSigner, Uses::Announces)
-        .await
-        .map_err(|error| error.to_string())?;
-    let Ok(connected) = prepared.connect(|_| {
-        Ok::<_, Infallible>(Connection::new(Dry {
-            sent: Arc::clone(sent),
-        }))
-    });
-    Ok((Records::memory(), connected))
 }
 
 /// A new marker secret printed once, or why none could be made.
@@ -693,34 +650,29 @@ async fn tagged(
     Ok(event)
 }
 
-/// An event, and the routes and sources it is announced through.
-struct Announcing<'a> {
-    config: &'a Config,
-    connected: &'a Connected<Connection>,
-    routed: Routed<'a>,
-    run: &'a str,
-}
+/// An event, announced through the routes and from the sources it names.
+struct Announcing<'a>(Routed<'a>);
 
-impl Served for Announcing<'_> {
+impl<H: Host> Through<H> for Announcing<'_> {
     type Done = Vec<Announced>;
 
-    async fn over<S: Keeps + Keyring>(self, store: &S) -> Vec<Announced> {
-        let ports = Ports {
-            store,
-            clock: &SystemClock,
-            signer: &RingSigner,
-        };
+    async fn through<S: Keeps, K: Keyring>(
+        self,
+        serving: &ServingOn<'_, H, S, K>,
+        run: &str,
+    ) -> Vec<Announced> {
+        let routed = self.0;
         let mut all = Vec::new();
-        for source in self.routed.sources {
+        for source in routed.sources {
             all.extend(
                 announce_within(
-                    self.config,
-                    self.connected,
-                    &ports,
+                    serving.config,
+                    serving.connected,
+                    serving.ports,
                     source,
-                    self.routed.event,
-                    self.routed.within,
-                    self.run,
+                    routed.event,
+                    routed.within,
+                    run,
                 )
                 .await,
             );
@@ -729,53 +681,18 @@ impl Served for Announcing<'_> {
     }
 }
 
-/// Every source polled through the routes and sources connected.
-struct Polling<'a> {
-    config: &'a Config,
-    connected: &'a Connected<Connection>,
-    run: &'a str,
-}
-
-impl Served for Polling<'_> {
-    type Done = Vec<Swept>;
-
-    async fn over<S: Keeps + Keyring>(self, store: &S) -> Vec<Swept> {
-        let ports = Ports {
-            store,
-            clock: &SystemClock,
-            signer: &RingSigner,
-        };
-        poll(self.config, self.connected, &ports, self.run).await
-    }
-}
-
-/// Every chore that fell due, done through the routes connected, after
-/// what the store keeps longer than `retention` says is forgotten.
-struct Housekeeping<'a> {
-    connected: &'a Connected<Connection>,
-    retention: herald_core::Retention,
-}
-
-impl Served for Housekeeping<'_> {
-    type Done = Result<Housekept, Stop>;
-
-    async fn over<S: Keeps + Keyring>(self, store: &S) -> Self::Done {
-        housekeep(self.connected, store, &SystemClock, &self.retention).await
-    }
-}
-
-/// The name this run takes its leases under: where it runs, then a nonce no
-/// other run takes, so two jobs of one CI run never share it.
-fn run_name(vars: &BTreeMap<String, String>) -> String {
+/// Where this run takes its leases: the CI run and job it is in, or
+/// `local`; each job then names its leases with a nonce no other takes, so
+/// two jobs of one CI run never share them.
+fn place(vars: &BTreeMap<String, String>) -> String {
     let pair = |first: &str, second: &str| vars.get(first).zip(vars.get(second));
-    let place = if let Some((id, attempt)) = pair("GITHUB_RUN_ID", "GITHUB_RUN_ATTEMPT") {
+    if let Some((id, attempt)) = pair("GITHUB_RUN_ID", "GITHUB_RUN_ATTEMPT") {
         format!("github/{id}/{attempt}")
     } else if let Some((pipeline, job)) = pair("CI_PIPELINE_ID", "CI_JOB_ID") {
         format!("gitlab/{pipeline}/{job}")
     } else {
         "local".to_owned()
-    };
-    format!("{place}/{}", herald_environment::nonce())
+    }
 }
 
 async fn polling(
@@ -784,14 +701,16 @@ async fn polling(
     connect: Connect<'_>,
     out: &mut dyn Write,
 ) -> Result<u8, String> {
-    let (records, connected) = reached(config, vars, connect, Uses::Polls, &STORES).await?;
-    let run = run_name(vars);
-    let polling = Polling {
+    let composed = composed(
         config,
-        connected: &connected,
-        run: &run,
-    };
-    let swept = records.serve(&connected, polling).await;
+        vars,
+        connect,
+        Hosting::Actions,
+        Uses::Polls,
+        place(vars),
+    )
+    .await?;
+    let swept = composed.poll().await;
     if swept.is_empty() {
         say(out, "The config names no source to poll.");
     }
@@ -818,15 +737,16 @@ async fn housekeeping(
     connect: Connect<'_>,
     out: &mut dyn Write,
 ) -> Result<u8, String> {
-    let (records, connected) = reached(config, vars, connect, Uses::Announces, &STORES).await?;
-    let housekeeping = Housekeeping {
-        connected: &connected,
-        retention: config.retention,
-    };
-    let kept = records
-        .serve(&connected, housekeeping)
-        .await
-        .map_err(|stop| why(&stop))?;
+    let composed = composed(
+        config,
+        vars,
+        connect,
+        Hosting::Actions,
+        Uses::Announces,
+        place(vars),
+    )
+    .await?;
+    let kept = composed.housekeep().await.map_err(|stop| why(&stop))?;
     if kept.kept.is_empty() {
         say(out, "No chore is due.");
     }

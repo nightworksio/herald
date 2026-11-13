@@ -453,8 +453,9 @@ pub(super) const OVERDUE: &str = "2020-01-01T00:00:00Z";
 
 pub(super) const DISTANT: &str = "2100-01-01T00:00:00Z";
 
-pub(super) fn scheduled(world: &World, schedules: &[(&str, &str, Chore, &str)]) {
-    let store = GitBranch::new(
+/// The store [`CONFIG`] names, reached through `world`.
+pub(super) fn kept(world: &World) -> impl Keeps + Keyring + Schedules {
+    GitBranch::new(
         "cli/cli",
         Secret::new("GITHUB_TOKEN", "github-token"),
         None,
@@ -464,7 +465,11 @@ pub(super) fn scheduled(world: &World, schedules: &[(&str, &str, Chore, &str)]) 
     .sealed(herald_records::Seal::new(Secret::new(
         "HERALD_STORE_KEY",
         "store-key",
-    )));
+    )))
+}
+
+pub(super) fn scheduled(world: &World, schedules: &[(&str, &str, Chore, &str)]) {
+    let store = kept(world);
     let schedules: Vec<Schedule> = schedules
         .iter()
         .map(|&(route, thread, chore, due)| Schedule {

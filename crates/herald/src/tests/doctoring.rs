@@ -1,5 +1,7 @@
 use serde_json::{Value, json};
 
+use herald_compose::Hosting;
+
 use super::world::*;
 use crate::*;
 
@@ -78,16 +80,14 @@ fn the_committed_schema_is_the_one_the_report_generates() {
 #[test]
 fn each_layer_is_its_own_and_the_hosts_settings_are_read_here() {
     let world = World::default();
-    for (layer, name) in [
-        (cli::Layer::Actions, "actions"),
-        (cli::Layer::Server, "server"),
-        (cli::Layer::Lambda, "lambda"),
-        (cli::Layer::Azure, "azure"),
-    ] {
-        assert_eq!(layer.served().name, name);
-    }
-    let every = cli::Layer::every();
-    assert_eq!(every.len(), cli::Layer::ALL.len());
+    let named: Vec<String> = <cli::Layer as clap::ValueEnum>::value_variants()
+        .iter()
+        .filter_map(clap::ValueEnum::to_possible_value)
+        .map(|value| value.get_name().to_owned())
+        .collect();
+    let hosts: Vec<&str> = Hosting::ALL.iter().map(|hosting| hosting.name()).collect();
+    assert_eq!(named, hosts);
+    let every = Hosting::layers();
     assert!(every.windows(2).all(|pair| pair[0].tier <= pair[1].tier));
     let mut fastly = setup(CONFIG);
     let rounds = "HERALD_ROUND_SECRET: rounds of polling and housekeeping is served only where its setting is made";
@@ -114,7 +114,7 @@ fn each_layer_is_its_own_and_the_hosts_settings_are_read_here() {
     );
     for (layer, shipped) in [
         (
-            cli::Layer::Lambda,
+            Hosting::Lambda,
             [
                 include_str!("../../../../deploy/lambda/template.yaml"),
                 "rate(5 minutes)",
@@ -122,7 +122,7 @@ fn each_layer_is_its_own_and_the_hosts_settings_are_read_here() {
             ],
         ),
         (
-            cli::Layer::Azure,
+            Hosting::Azure,
             [
                 concat!(
                     include_str!("../../../../deploy/azure/poll/function.json"),
@@ -144,7 +144,7 @@ fn each_layer_is_its_own_and_the_hosts_settings_are_read_here() {
             herald_compose::HOUSEKEPT
         };
         let asked = matches!(
-            layer.served().rounds,
+            layer.rounds(),
             herald_flows::Rounds::Platform(cadence)
                 if (cadence.poll, cadence.housekeep) == (herald_compose::POLLED, every)
         );

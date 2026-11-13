@@ -23,14 +23,14 @@ pub mod told;
 pub use answer::{Answer, Left};
 pub use asked::Asked;
 pub use capped::Capped;
-pub use composed::Composed;
+pub use composed::{Composed, ServingOn, Through};
 #[cfg(any(test, feature = "conformance"))]
 pub use conformance::{
     CONFORMANCE_EMPTY, CONFORMANCE_SECRET, CONFORMANCE_VAR, CONFORMS, host_conformance,
 };
 pub use herald_kinds::{KvAt, SqlAt};
 pub use host::{Host, Unoffered, plain};
-pub use hosting::{CRON_SECRET, HOUSEKEPT, Hosting, POLLED};
+pub use hosting::{Artefact, CRON_SECRET, HOUSEKEPT, Hosting, POLLED};
 pub use kinds::kinds;
 pub use public::{public, reachable};
 pub use reach::{Reach, ReachError, SocketReach};

@@ -4,7 +4,7 @@ use herald_core::{
     Subscription,
 };
 use herald_flows::{
-    Chored, Findings, Outcome, Ports, PrepareError, Reached, announce, housekeep, keys, prepare,
+    Chored, Findings, Outcome, Ports, PrepareError, Reached, announce, keys, prepare,
 };
 use herald_ports::{Markers as _, MarkersError, Notes, Schedules, Subscriptions};
 use herald_testing::{FakeClock, FakeSecrets, FakeSigner};
@@ -250,14 +250,9 @@ fn an_actor_keeps_no_thread_chores() {
     let prepared =
         pollster::block_on(prepare(&config, &secrets, &FakeSigner, Uses::Polls)).unwrap();
     let connected = prepared.connect(|_| Ok::<_, ()>(script.clone())).unwrap();
-    let kept = pollster::block_on(housekeep(
-        &connected,
-        &store,
-        &FakeClock::at(NOON),
-        &herald_core::Retention::default(),
-    ))
-    .unwrap()
-    .kept;
+    let kept = housekept(&connected, &store, &herald_core::Retention::default())
+        .unwrap()
+        .kept;
     assert_eq!(
         kept[0].outcome,
         Chored::Dropped("herald's ActivityPub actor cannot archive or lock a thread".to_owned())

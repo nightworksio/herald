@@ -2515,60 +2515,6 @@
           ]
         },
         {
-          "description": "An AWS DynamoDB table.",
-          "type": "object",
-          "properties": {
-            "access_key_id": {
-              "description": "The secret holding the access key's id; `AWS_ACCESS_KEY_ID` where\nabsent, as a Lambda's role provides it.",
-              "$ref": "#/$defs/SecretRef"
-            },
-            "endpoint": {
-              "description": "The endpoint's base URL, for DynamoDB Local or another endpoint;\nthe region's own where absent.",
-              "type": "string"
-            },
-            "keep_deliveries": {
-              "description": "How long a webhook delivery's id is kept after it was admitted, so a\nreplay of it is refused (ADR-0013); \"7d\" where absent, and at least\n\"3d\", longer than any sender goes on retrying a delivery.",
-              "$ref": "#/$defs/Duration"
-            },
-            "keep_ledger": {
-              "description": "How long a ledger entry, and where each of its deliveries to a\nfollower's inbox stands, is kept after a run last claimed it; \"90d\"\nwhere absent.",
-              "$ref": "#/$defs/Keep"
-            },
-            "keep_notes": {
-              "description": "How long a Note herald's ActivityPub actors published is kept, and\nserved by its id; \"forever\" where absent.",
-              "$ref": "#/$defs/Keep"
-            },
-            "key": {
-              "description": "The secret holding a key to seal every record with, such as\n`HERALD_STORE_KEY`, so a record herald did not seal reads as corrupt\n(ADR-0005); records are not sealed where absent.",
-              "$ref": "#/$defs/SecretRef"
-            },
-            "kind": {
-              "type": "string",
-              "const": "dynamodb"
-            },
-            "region": {
-              "description": "The region, such as `eu-west-1`; the `AWS_REGION` the platform sets\nwhere absent.",
-              "type": "string"
-            },
-            "secret_access_key": {
-              "description": "The secret holding the secret access key; `AWS_SECRET_ACCESS_KEY`\nwhere absent.",
-              "$ref": "#/$defs/SecretRef"
-            },
-            "session_token": {
-              "description": "The secret holding a session token, sent where it is set;\n`AWS_SESSION_TOKEN` where absent.",
-              "$ref": "#/$defs/SecretRef"
-            },
-            "table": {
-              "description": "The table, with the string partition key `directory` and the string\nsort key `name`; `herald` where absent.",
-              "type": "string"
-            }
-          },
-          "additionalProperties": false,
-          "required": [
-            "kind"
-          ]
-        },
-        {
           "description": "Deno KV, on Deno Deploy or wherever a database is opened.",
           "type": "object",
           "properties": {
@@ -2645,12 +2591,52 @@
           ]
         },
         {
-          "description": "The destinations' own posts.",
+          "description": "An AWS DynamoDB table.",
           "type": "object",
           "properties": {
+            "access_key_id": {
+              "description": "The secret holding the access key's id; `AWS_ACCESS_KEY_ID` where\nabsent, as a Lambda's role provides it.",
+              "$ref": "#/$defs/SecretRef"
+            },
+            "endpoint": {
+              "description": "The endpoint's base URL, for DynamoDB Local or another endpoint;\nthe region's own where absent.",
+              "type": "string"
+            },
+            "keep_deliveries": {
+              "description": "How long a webhook delivery's id is kept after it was admitted, so a\nreplay of it is refused (ADR-0013); \"7d\" where absent, and at least\n\"3d\", longer than any sender goes on retrying a delivery.",
+              "$ref": "#/$defs/Duration"
+            },
+            "keep_ledger": {
+              "description": "How long a ledger entry, and where each of its deliveries to a\nfollower's inbox stands, is kept after a run last claimed it; \"90d\"\nwhere absent.",
+              "$ref": "#/$defs/Keep"
+            },
+            "keep_notes": {
+              "description": "How long a Note herald's ActivityPub actors published is kept, and\nserved by its id; \"forever\" where absent.",
+              "$ref": "#/$defs/Keep"
+            },
+            "key": {
+              "description": "The secret holding a key to seal every record with, such as\n`HERALD_STORE_KEY`, so a record herald did not seal reads as corrupt\n(ADR-0005); records are not sealed where absent.",
+              "$ref": "#/$defs/SecretRef"
+            },
             "kind": {
               "type": "string",
-              "const": "markers"
+              "const": "dynamodb"
+            },
+            "region": {
+              "description": "The region, such as `eu-west-1`; the `AWS_REGION` the platform sets\nwhere absent.",
+              "type": "string"
+            },
+            "secret_access_key": {
+              "description": "The secret holding the secret access key; `AWS_SECRET_ACCESS_KEY`\nwhere absent.",
+              "$ref": "#/$defs/SecretRef"
+            },
+            "session_token": {
+              "description": "The secret holding a session token, sent where it is set;\n`AWS_SESSION_TOKEN` where absent.",
+              "$ref": "#/$defs/SecretRef"
+            },
+            "table": {
+              "description": "The table, with the string partition key `directory` and the string\nsort key `name`; `herald` where absent.",
+              "type": "string"
             }
           },
           "additionalProperties": false,
@@ -2703,6 +2689,20 @@
           "required": [
             "kind",
             "key"
+          ]
+        },
+        {
+          "description": "The destinations' own posts.",
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "markers"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind"
           ]
         },
         {

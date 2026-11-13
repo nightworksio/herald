@@ -56,7 +56,7 @@ impl fmt::Display for TemplateError {
 
 /// Templates compiled into a sandbox: no filesystem, a fuel limit, a recursion
 /// limit, an output cap, and undefined values refused when printed.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Templates {
     environment: Environment<'static>,
     output: usize,

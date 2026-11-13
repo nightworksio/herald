@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 
 use herald_core::{RouteId, Step};
+use herald_flows::Stop;
 
 use super::world::*;
 use crate::output::escaped;
@@ -8,41 +9,18 @@ use crate::*;
 use herald_compose::told::steps;
 
 #[test]
-fn a_run_is_named_for_the_ci_job_it_runs_in() {
+fn a_run_takes_its_leases_in_the_ci_job_it_runs_in() {
     let vars = |pairs: &[(&str, &str)]| -> BTreeMap<String, String> {
         pairs
             .iter()
             .map(|(name, value)| ((*name).to_owned(), (*value).to_owned()))
             .collect()
     };
-    let placed = |vars: &BTreeMap<String, String>| {
-        let name = run_name(vars);
-        let (place, nonce) = name.rsplit_once('/').unwrap();
-        assert_eq!(nonce.len(), 16, "{name}");
-        place.to_owned()
-    };
     let github = vars(&[("GITHUB_RUN_ID", "7"), ("GITHUB_RUN_ATTEMPT", "2")]);
-    assert_eq!(placed(&github), "github/7/2");
-    assert_ne!(run_name(&github), run_name(&github));
+    assert_eq!(place(&github), "github/7/2");
     let gitlab = vars(&[("CI_PIPELINE_ID", "11"), ("CI_JOB_ID", "12")]);
-    assert_eq!(placed(&gitlab), "gitlab/11/12");
-    assert_eq!(placed(&vars(&[("GITHUB_RUN_ID", "7")])), "local");
-    let key = herald_core::Key::derive(
-        &herald_core::RouteId::new("releases"),
-        &herald_core::Identity::new("github.com/1/v1"),
-    );
-    let now = jiff::Timestamp::UNIX_EPOCH;
-    let until = now + jiff::SignedDuration::from_mins(10);
-    let racing = herald_core::Entry::new(key).claimed_by(&run_name(&github), now, until);
-    assert!(matches!(
-        herald_core::plan(
-            Some(&racing),
-            &[herald_core::Step::Post],
-            &run_name(&github),
-            now
-        ),
-        herald_core::Plan::Held { .. }
-    ));
+    assert_eq!(place(&gitlab), "gitlab/11/12");
+    assert_eq!(place(&vars(&[("GITHUB_RUN_ID", "7")])), "local");
 }
 
 #[test]

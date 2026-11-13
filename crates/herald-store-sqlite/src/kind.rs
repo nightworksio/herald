@@ -2,7 +2,7 @@ use std::path::Path;
 use std::sync::Arc;
 
 use herald_core::SecretRef;
-use herald_kinds::{Local, Opened, Opening, SqlAt, StoreConfig, StoreKind};
+use herald_kinds::{Local, Offer, Opened, Opening, SqlAt, StoreConfig, StoreKind};
 use herald_ports::Secret;
 use herald_records::Seal;
 
@@ -18,6 +18,7 @@ pub enum SqliteKind {}
 impl StoreKind for SqliteKind {
     const NAME: &str = "sqlite";
     const DESCRIPTION: &str = "A SQLite file, on a volume or a persistent disk.";
+    const NEEDS: Offer = Offer::Sqlite;
 
     type Options = StoreOptions;
 }

@@ -1,6 +1,6 @@
 # ADR-0017: herald runs wherever code runs, from one native binary and one wasm module
 
-**Status:** Accepted
+**Status:** Accepted; `Hosting` extended to every host, its stores derived from what it offers, by [ADR-0024](0024-a-host-is-described-once-and-every-driver-composes-through-one-composition.md)
 **Date:** 2026-11-06
 
 ## Context
@@ -131,3 +131,4 @@ session, and SQLite on a file system that does not outlive the function.
 - [ADR-0009](0009-herald-ships-as-binaries-an-action-an-image-and-a-wasm-build.md): the artefacts that carry each driver
 - [ADR-0014](0014-herald-server-answers-first-and-works-after-on-one-task-within-limits.md): answering first and working after
 - [ADR-0016](0016-commands-are-carried-every-way-a-destination-offers-and-answered-from-what-herald-keeps.md): the sessions the Durable Object holds
+- [ADR-0024](0024-a-host-is-described-once-and-every-driver-composes-through-one-composition.md): every host described once, and every driver composed through `Composed`

@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use herald_core::SecretRef;
-use herald_kinds::{KvAt, Local, Opened, Opening, StoreConfig, StoreKind, unopened};
+use herald_kinds::{KvAt, Local, Offer, Opened, Opening, StoreConfig, StoreKind, unopened};
 use herald_ports::Secret;
 use herald_records::Seal;
 
@@ -14,6 +14,7 @@ pub enum DenoKvKind {}
 impl StoreKind for DenoKvKind {
     const NAME: &str = "deno-kv";
     const DESCRIPTION: &str = "Deno KV, on Deno Deploy or wherever a database is opened.";
+    const NEEDS: Offer = Offer::DenoKv;
 
     type Options = StoreOptions;
 }
