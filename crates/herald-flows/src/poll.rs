@@ -163,7 +163,7 @@ pub async fn poll<S: Store, C: Clock, G: Signer, H: Http>(
             outcome,
         }
     }))
-    .buffered(at_once(ports.store, config.run.sources))
+    .buffered(at_once(ports.store, config.run.sources).get())
     .collect()
     .await
 }

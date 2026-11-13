@@ -729,7 +729,7 @@ pub async fn announce_within<S: Store, C: Clock, G: Signer, H: Http>(
         .announce(event, &config.templates)
         .await
     }))
-    .buffered(at_once(ports.store, config.run.routes))
+    .buffered(at_once(ports.store, config.run.routes).get())
     .collect()
     .await;
     let mut announced = Vec::new();
@@ -754,10 +754,10 @@ pub async fn announce_within<S: Store, C: Clock, G: Signer, H: Http>(
 /// How many of a run's routes or sources go at once: `width`, or one where
 /// `store` writes one record at a time, so no write is refused for another
 /// made at the same time.
-pub(crate) fn at_once<S: Store>(store: &S, width: NonZeroUsize) -> usize {
+pub(crate) fn at_once<S: Store>(store: &S, width: NonZeroUsize) -> NonZeroUsize {
     if store.writes_one_at_a_time() {
-        1
+        NonZeroUsize::MIN
     } else {
-        width.get()
+        width
     }
 }

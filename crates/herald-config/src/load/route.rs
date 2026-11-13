@@ -347,7 +347,6 @@ impl Loader<'_> {
         let reached = self.reached(&destination, &route, &path, destinations)?;
         let template = TemplateName::new(route.template.get_ref());
         let written = self.written(&template, &route, &path, templates);
-        sound &= written.is_some();
         let span = route.id.span();
         let (options, name) =
             self.placed(reached, rest, &route, &path, &destination, &mut sound)?;

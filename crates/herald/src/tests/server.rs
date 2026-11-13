@@ -75,6 +75,21 @@ fn a_process_stops_when_it_is_asked_to() {
 
 #[cfg(unix)]
 #[test]
+fn a_process_listening_for_its_signals_waits_until_one_arrives() {
+    use futures_util::FutureExt as _;
+    use tokio::signal::unix::{SignalKind, signal};
+    on_tokio(async {
+        let waiting = crate::signals::signalled(
+            signal(SignalKind::user_defined1()),
+            signal(SignalKind::user_defined2()),
+        )
+        .now_or_never();
+        assert_eq!(waiting, None);
+    });
+}
+
+#[cfg(unix)]
+#[test]
 fn a_process_that_cannot_listen_for_its_signals_stops_at_once() {
     let unheard = || Err(std::io::Error::other("no signals here"));
     on_tokio(crate::signals::signalled(unheard(), unheard()));
