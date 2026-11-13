@@ -3,7 +3,7 @@ use std::sync::Arc;
 use herald_core::SecretRef;
 use herald_kinds::{Local, Opened, Opening, SqlAt, StoreConfig, StoreKind, unopened};
 use herald_ports::Secret;
-use herald_records::Seal;
+use herald_records::{Dialect, SqlRecords};
 
 use crate::StoreOptions;
 
@@ -38,10 +38,10 @@ impl StoreConfig for StoreOptions {
                 .sql(SqlAt::D1(self.binding()))
                 .await
                 .map_err(opened)?;
-            let store = crate::store(sql)
+            let store = SqlRecords::kept(sql, Dialect::Sqlite, seal)
                 .await
                 .map_err(|error| opened(error.to_string()))?;
-            Ok(Opened::Kept(Box::new(store.sealed(seal.map(Seal::new)))))
+            Ok(Opened::Kept(Box::new(store)))
         })
     }
 }

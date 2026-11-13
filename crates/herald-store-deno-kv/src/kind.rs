@@ -3,7 +3,7 @@ use std::sync::Arc;
 use herald_core::SecretRef;
 use herald_kinds::{KvAt, Local, Opened, Opening, StoreConfig, StoreKind, unopened};
 use herald_ports::Secret;
-use herald_records::Seal;
+use herald_records::KvRecords;
 
 use crate::StoreOptions;
 
@@ -37,9 +37,11 @@ impl StoreConfig for StoreOptions {
                 .kv(KvAt::DenoKv(self.path.as_deref()))
                 .await
                 .map_err(|error| unopened(DenoKvKind::NAME, error))?;
-            Ok(Opened::Kept(Box::new(
-                crate::store(kv, self).sealed(seal.map(Seal::new)),
-            )))
+            Ok(Opened::Kept(Box::new(KvRecords::kept(
+                kv,
+                self.prefix.as_deref(),
+                seal,
+            ))))
         })
     }
 }
