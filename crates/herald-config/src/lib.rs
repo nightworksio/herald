@@ -20,7 +20,7 @@ pub use config::{
     Announce, App, Config, HeldSessions, KeyCache, RouteConfig, Run, Schedule, Server, Uses,
 };
 pub use error::{ConfigError, Errors};
-pub use herald_kinds::{Destination, Placed, Source, Store};
+pub use herald_kinds::{ConfiguredStore, Destination, Placed, Source};
 pub use kinds::Kinds;
 pub use load::load;
 pub use samples::samples;

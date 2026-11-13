@@ -5,7 +5,7 @@ mod common;
 
 #[cfg(test)]
 mod load {
-    use herald_config::{Store, load, schema};
+    use herald_config::{ConfiguredStore, load, schema};
     use herald_core::{Kind, Pinning, Prereleases};
     use herald_sources_forge::Forge;
 
@@ -55,7 +55,7 @@ body = "{{ event.body }}"
         let config = load("herald.toml", EXAMPLE, &nothing, &crate::common::kinds()).unwrap();
         assert_eq!(
             config.store,
-            Store::new(herald_store_git_branch::StoreOptions {
+            ConfiguredStore::new(herald_store_git_branch::StoreOptions {
                 repository: None,
                 branch: None,
                 token: None,
@@ -621,7 +621,7 @@ body = "{{ event.body }}"
             load("herald.toml", &markers, &nothing, &crate::common::kinds())
                 .unwrap()
                 .store,
-            Store::new(herald_store_markers::MarkersOptions {})
+            ConfiguredStore::new(herald_store_markers::MarkersOptions {})
         );
         let pinned = EXAMPLE.replace("crosspost = true", "crosspost = true\npin = \"store\"");
         assert_eq!(

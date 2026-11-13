@@ -1,3 +1,6 @@
+//! Each route's templates rendered as its destination would show them
+//! (ADR-0006).
+
 use herald_config::Config;
 use herald_core::{Announcement, DestinationName, Event, Marker, Marks, RouteId};
 

@@ -1,7 +1,7 @@
 use std::future::ready;
 
 use herald_core::{Announcement, Chore, Delivery, Entry, Profile, Sent, Step};
-use herald_kinds::{Federates, Reach, Signing, Unread};
+use herald_kinds::{Federates, Reach, Signing, UnreadPosts};
 use herald_ports::{Boxed, DynHttp, DynMarkers, DynSigner, Erased, HttpError};
 
 use super::deliver::ActivityPub;
@@ -55,7 +55,7 @@ impl Reach for ActivityPub {
     }
 
     fn posts<'a>(&'a self, _: &'a dyn DynHttp) -> Box<dyn DynMarkers + 'a> {
-        Box::new(Unread(UNREAD))
+        Box::new(UnreadPosts(UNREAD))
     }
 
     fn follows(&self) -> Option<&str> {

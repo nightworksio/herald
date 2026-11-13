@@ -10,8 +10,8 @@ use herald_compose::{Host, Hosting, ServingOn, Through, told};
 use herald_config::{Config, Uses};
 use herald_flows::ROUND_SECRET;
 use herald_native::NativeSockets;
-use herald_ports::{Keyring, Secret, Store as Keeps};
-use herald_server::{Asked, Heard, Limits, serve};
+use herald_ports::{Keyring, Secret, Store};
+use herald_server::{Heard, HostTimers, Limits, serve};
 
 use super::output::say;
 use super::stores::composed;
@@ -21,7 +21,7 @@ use super::{Connect, DONE, LISTEN, worded};
 struct Listening<'a, F> {
     sockets: NativeSockets,
     listener: tokio::net::TcpListener,
-    asked: Option<Asked<'a>>,
+    timers: Option<HostTimers<'a>>,
     secret: Option<Secret>,
     out: RefCell<&'a mut dyn Write>,
     stop: F,
@@ -30,7 +30,7 @@ struct Listening<'a, F> {
 impl<H: Host, F: Future<Output = ()>> Through<H> for Listening<'_, F> {
     type Done = u8;
 
-    async fn through<S: Keeps, K: Keyring>(self, serving: &ServingOn<'_, H, S, K>, _: &str) -> u8 {
+    async fn through<S: Store, K: Keyring>(self, serving: &ServingOn<'_, H, S, K>, _: &str) -> u8 {
         let config = serving.config;
         let server = &config.server;
         let period = |every: Option<jiff::SignedDuration>| {
@@ -47,13 +47,13 @@ impl<H: Host, F: Future<Output = ()>> Through<H> for Listening<'_, F> {
             read: period(Some(server.read)).unwrap_or_default(),
             held: period(Some(server.held)).unwrap_or_default(),
             accept_pause: period(Some(server.accept_pause)).unwrap_or_default(),
-            asked: self.asked,
+            timers: self.timers,
             secret: self.secret.as_ref(),
         };
         let out = &self.out;
         let heard = |heard: Heard| {
             let mut out = out.borrow_mut();
-            for line in said(heard) {
+            for line in heard_lines(heard) {
                 say(&mut **out, &line);
             }
         };
@@ -108,8 +108,8 @@ pub(crate) fn azure_prefix(vars: &BTreeMap<String, String>, host: Option<&str>) 
 /// Where Azure Functions' timer triggers ask for rounds, by the functions
 /// `deploy/azure` names, with outside HTTP under `prefix`; none where the
 /// prefix is empty, as a request from outside could then reach them.
-pub(crate) fn timers(prefix: &str) -> Option<Asked<'_>> {
-    (!prefix.is_empty()).then_some(Asked {
+pub(crate) fn timers(prefix: &str) -> Option<HostTimers<'_>> {
+    (!prefix.is_empty()).then_some(HostTimers {
         poll: "/poll",
         housekeep: "/housekeep",
         reply: r#"{"Outputs":{},"Logs":[],"ReturnValue":null}"#,
@@ -118,7 +118,7 @@ pub(crate) fn timers(prefix: &str) -> Option<Asked<'_>> {
 }
 
 /// What a server says of what it heard.
-pub(crate) fn said(heard: Heard) -> Vec<String> {
+pub(crate) fn heard_lines(heard: Heard) -> Vec<String> {
     match heard {
         Heard::Listening(address) => vec![format!("herald serves on {address}")],
         Heard::Worked(worked) => told::worked(&worked),
@@ -150,7 +150,7 @@ pub(crate) async fn serving(
         }
         None => None,
     };
-    let asked = prefix.as_deref().and_then(timers);
+    let timers = prefix.as_deref().and_then(timers);
     let secret = vars
         .get(ROUND_SECRET)
         .filter(|value| !value.is_empty())
@@ -170,7 +170,7 @@ pub(crate) async fn serving(
     let listening = Listening {
         sockets,
         listener,
-        asked,
+        timers,
         secret,
         out: RefCell::new(out),
         stop,

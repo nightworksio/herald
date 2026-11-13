@@ -224,9 +224,9 @@ impl Markers for Posts<'_> {
 /// Posts a destination reads none of, and why: it serves what it publishes
 /// rather than posting it somewhere it could read.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Unread(pub &'static str);
+pub struct UnreadPosts(pub &'static str);
 
-impl Markers for Unread {
+impl Markers for UnreadPosts {
     fn entry(
         &self,
         _: &Key,
@@ -243,7 +243,7 @@ impl Markers for Unread {
     }
 }
 
-impl Unread {
+impl UnreadPosts {
     fn unreadable(self) -> MarkersError {
         MarkersError::Unreadable {
             reason: self.0.to_owned(),

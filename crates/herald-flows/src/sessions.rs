@@ -18,7 +18,7 @@ use herald_kinds::{Connect, Effect, Interacted, Replying, Session};
 use herald_ports::{Clock, Frame, Http, Positions, Response, Socket, Sockets, Store, Timer};
 use jiff::Timestamp;
 
-use crate::interact::{completed, deferral, replied, unanswerable, unlisted};
+use crate::command_answers::{completed, deferral, replied, unanswerable, unlisted};
 use crate::room::Room;
 use crate::serving::{Job, Serving};
 
@@ -44,8 +44,8 @@ pub trait Taker {
     /// Fills `place` with `job`.
     fn fill(&self, place: Self::Place, job: Job);
 
-    /// Says what a session of `destination` came to.
-    fn said(&self, destination: &DestinationName, said: String);
+    /// Reports what a session of `destination` came to.
+    fn report(&self, destination: &DestinationName, said: String);
 }
 
 /// How long a session waits before it connects again, doubling each time it
@@ -150,8 +150,8 @@ where
         }
     }
 
-    fn said(&self, destination: &DestinationName, what: impl Into<String>) {
-        self.taker.said(destination, what.into());
+    fn report(&self, destination: &DestinationName, what: impl Into<String>) {
+        self.taker.report(destination, what.into());
     }
 
     /// Takes `asked` up: defers it where its destination waits for that, and
@@ -178,7 +178,7 @@ where
                     Ok(()) => replied(serving.connected, &destination, &replying, &answer).await,
                     Err(trouble) => Err(trouble),
                 };
-                taker.said(
+                taker.report(
                     &destination,
                     match sent {
                         Ok(()) => trouble,
@@ -193,7 +193,7 @@ where
         taking.push(Box::pin(async move {
             if let Err(trouble) = deferral(serving.connected, &destination, &replying, &asked).await
             {
-                taker.said(
+                taker.report(
                     &destination,
                     format!(
                         "{} was not answered: it could not be deferred: {trouble}",
@@ -313,7 +313,7 @@ where
                     }
                 }
                 Err(trouble) => {
-                    self.said(name, format!("{}: {trouble}", session.unreachable()));
+                    self.report(name, format!("{}: {trouble}", session.unreachable()));
                 }
             }
             meanwhile(
@@ -346,7 +346,7 @@ where
             }
             Ok(None) => None,
             Err(error) => {
-                self.said(
+                self.report(
                     name,
                     format!(
                         "where its session stood could not be read, so it starts afresh: {error}"
@@ -378,7 +378,7 @@ where
         }
         match positions.put_position(name, position).await {
             Ok(()) => *kept = Some(position.to_owned()),
-            Err(error) => self.said(
+            Err(error) => self.report(
                 name,
                 format!("where its session stands could not be kept: {error}"),
             ),
@@ -398,7 +398,7 @@ where
         if let Effect::Asked(asked, replying) = effect {
             self.take(taking, name, asked, replying);
         } else if let Effect::Skipped(reason) = effect {
-            self.said(name, reason);
+            self.report(name, reason);
         } else if effect == Effect::Ready {
             backoff.reset();
         }
@@ -407,7 +407,7 @@ where
     /// Stops the session of `name` for `reason`, once what `taking` holds is
     /// done.
     async fn stop(&self, name: &DestinationName, reason: String, taking: &mut Taking<'s>) {
-        self.said(name, reason);
+        self.report(name, reason);
         while taking.next().await.is_some() {}
     }
 
@@ -494,7 +494,7 @@ where
         replying: Replying,
     ) {
         let Some(completion) = self.completing.place() else {
-            self.said(
+            self.report(
                 hearing.name,
                 "a completion was dropped: no more are answered at once",
             );
@@ -511,7 +511,7 @@ where
                 match completed(serving.config, serving.ports.store, &name, &place, &typed).await {
                     Ok(projects) => projects,
                     Err(error) => {
-                        taker.said(&name, unlisted(&error));
+                        taker.report(&name, unlisted(&error));
                         return;
                     }
                 };
@@ -520,9 +520,9 @@ where
                     .send(request)
                     .await
                     .map_err(|error| error.to_string())
-                    .and_then(|response| interacting.took(&response))
+                    .and_then(|response| interacting.accepted(&response))
             {
-                taker.said(&name, format!("completions could not be sent: {trouble}"));
+                taker.report(&name, format!("completions could not be sent: {trouble}"));
             }
         }));
     }

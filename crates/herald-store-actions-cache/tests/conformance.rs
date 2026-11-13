@@ -405,7 +405,7 @@ mod conformance {
 
     #[test]
     fn a_write_or_removal_naming_a_record_since_replaced_changes_nothing() {
-        use herald_records::{Records, Wrote};
+        use herald_records::{RecordBackend, Wrote};
         let cache = Cache::default();
         let store = store(&cache);
         let records = store.records();

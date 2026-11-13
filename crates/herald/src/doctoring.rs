@@ -14,11 +14,11 @@ use herald_flows::{
     Announced, EGRESS_GUARDED, Findings, Gap, Here, Outcome, Tier, doctor, egress_guarded, keys,
     online, trial,
 };
-use herald_ports::{Keyring, Secrets as _, Store as Keeps};
+use herald_ports::{Keyring, Secrets as _, Store};
 use schemars::JsonSchema;
 use serde::Serialize;
 
-use super::cli::{Layer, Serve};
+use super::cli::{Layer, Running};
 use super::output::say;
 use super::serving::hosting;
 use super::stores::Native;
@@ -35,7 +35,7 @@ pub(crate) enum Format {
 
 /// How a doctor run is asked for.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Args)]
-pub(crate) struct Asked {
+pub(crate) struct DoctorArgs {
     /// The layer to check the config for.
     #[arg(long, value_enum, default_value_t = Layer(Hosting::Actions))]
     pub(crate) layer: Layer,
@@ -59,7 +59,7 @@ struct Posting;
 impl<H: Host> Through<H> for Posting {
     type Done = Vec<Announced>;
 
-    async fn through<S: Keeps, K: Keyring>(
+    async fn through<S: Store, K: Keyring>(
         self,
         serving: &ServingOn<'_, H, S, K>,
         run: &str,
@@ -185,14 +185,14 @@ pub(crate) async fn here(
     }
 }
 
-/// The layer a command serving as `serve` runs on, where it warns of the
-/// gaps it leaves (ADR-0002).
-pub(crate) fn warning(serve: &Serve, vars: &BTreeMap<String, String>) -> Option<Hosting> {
-    match serve {
-        Serve::Server { .. } => Some(hosting(vars)),
-        Serve::Lambda => Some(Hosting::Lambda),
-        Serve::Followers(_) => None,
-        Serve::Announce { .. } | Serve::Poll | Serve::Housekeep => Some(Hosting::Actions),
+/// The layer the command `run` runs on, where it warns of the gaps it
+/// leaves (ADR-0002).
+pub(crate) fn warning(run: &Running, vars: &BTreeMap<String, String>) -> Option<Hosting> {
+    match run {
+        Running::Server { .. } => Some(hosting(vars)),
+        Running::Lambda => Some(Hosting::Lambda),
+        Running::Followers(_) => None,
+        Running::Announce { .. } | Running::Poll | Running::Housekeep => Some(Hosting::Actions),
     }
 }
 
@@ -210,7 +210,7 @@ pub(crate) async fn gaps(
 /// What doctor finds in `config` for `asked`.
 async fn findings(
     config: &Config,
-    asked: Asked,
+    asked: DoctorArgs,
     vars: &BTreeMap<String, String>,
     connect: Connect<'_>,
 ) -> Findings {
@@ -260,7 +260,7 @@ pub(crate) fn gapped(gap: &Gap) -> String {
 }
 
 /// `findings` for `asked`, printed as `asked` says to `out`.
-fn printed(path: &str, asked: Asked, findings: &Findings, out: &mut dyn Write) -> u8 {
+fn printed(path: &str, asked: DoctorArgs, findings: &Findings, out: &mut dyn Write) -> u8 {
     match asked.format {
         Format::Json => {
             let report = Report {
@@ -304,7 +304,7 @@ fn printed(path: &str, asked: Asked, findings: &Findings, out: &mut dyn Write) -
 pub(crate) async fn doctoring(
     config: &Config,
     path: &str,
-    asked: Asked,
+    asked: DoctorArgs,
     vars: &BTreeMap<String, String>,
     connect: Connect<'_>,
     out: &mut dyn Write,
@@ -315,7 +315,7 @@ pub(crate) async fn doctoring(
 
 /// `herald doctor` on a config that could not be read, as `message` says,
 /// printed as JSON where `asked` says so; `None` where it prints lines.
-pub(crate) fn unread(asked: Asked, message: &str, out: &mut dyn Write) -> Option<u8> {
+pub(crate) fn unread(asked: DoctorArgs, message: &str, out: &mut dyn Write) -> Option<u8> {
     (asked.format == Format::Json).then(|| {
         let mistakes: Vec<String> = message.lines().map(ToOwned::to_owned).collect();
         let findings = Findings {

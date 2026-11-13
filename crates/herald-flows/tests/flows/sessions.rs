@@ -252,7 +252,7 @@ impl Taker for Taken<'_> {
         self.arrived.notify_one();
     }
 
-    fn said(&self, destination: &DestinationName, said: String) {
+    fn report(&self, destination: &DestinationName, said: String) {
         (self.hear)(format!("{}: {said}", destination.as_str()));
     }
 }

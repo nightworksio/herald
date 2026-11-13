@@ -16,41 +16,36 @@
 
 mod announce;
 mod approving;
-mod commanded;
+mod command_answers;
+mod command_endpoints;
+mod command_requests;
 mod doctor;
-mod following;
+mod follows;
 mod housekeep;
-mod inbound;
-mod interact;
-mod interacting;
 mod poll;
 mod prepare;
 mod preview;
-mod reached;
 mod room;
 mod round;
 mod serving;
 mod sessions;
 mod trial;
+mod verification;
 
 pub use announce::{Announced, Outcome, Ports, Stop, announce, announce_within};
 pub use approving::{Decision, decide, followers};
-pub use commanded::{INTERACTIONS, MATRIX};
+pub use command_answers::{Answer, completed, deferral, interact, replied};
+pub use command_endpoints::{INTERACTIONS, MATRIX};
 pub use doctor::{
     Cadence, EGRESS_GUARDED, Egress, Findings, Gap, Here, Layer, Memory, Rounds, Tier, doctor,
     egress_guarded, keys, online, secrets, unserved,
 };
-pub use following::{FollowError, Followed, followed};
+pub use follows::{FollowError, Followed, followed};
 pub use herald_kinds::Replying;
-pub use housekeep::{Chored, Housekept, Kept, housekeep};
-pub use inbound::{
-    Admission, Checking, Keys, Rejected, Verified, activity_verified, admitted, released, verified,
-};
-pub use interact::{Answer, completed, deferral, interact, replied};
+pub use housekeep::{Chored, Housekept, HousekeptSchedule, housekeep};
 pub use poll::{Fresh, Remembered, Sweep, Swept, poll};
-pub use prepare::{Connected, PrepareError, Prepared, Unread, prepare};
+pub use prepare::{Connected, PrepareError, Prepared, UnreadSecret, prepare};
 pub use preview::{Previewed, preview};
-pub use reached::{Posts, Reached};
 pub use room::{Place, Room, Running};
 pub use round::{ROUND_SECRET, Round};
 pub use serving::{
@@ -59,3 +54,6 @@ pub use serving::{
 };
 pub use sessions::{Sessions, Taker};
 pub use trial::trial;
+pub use verification::{
+    Admission, Checking, Keys, Rejected, Verified, activity_verified, admitted, released, verified,
+};

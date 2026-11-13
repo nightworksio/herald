@@ -5,7 +5,7 @@
 mod sqlite {
     use herald_native::{NativeSql, NativeSqlite};
     use herald_ports::{Sql as _, SqlError, Statement, StoreError, Value};
-    use herald_records::{Dialect, Kept, Records as _, SqlRecords, Wrote};
+    use herald_records::{Dialect, RecordBackend as _, RecordStore, SqlRecords, Wrote};
     use herald_testing::{keyring_conformance, sql_conformance, store_conformance};
     use jiff::SignedDuration;
 
@@ -25,9 +25,9 @@ mod sqlite {
 
     #[test]
     fn a_sqlite_database_keeps_every_record_a_store_keeps() {
-        let store = Kept::new(opened(NativeSqlite::in_memory().unwrap()));
+        let store = RecordStore::new(opened(NativeSqlite::in_memory().unwrap()));
         run(store_conformance(&store)).unwrap();
-        let keyring = Kept::new(opened(NativeSqlite::in_memory().unwrap()));
+        let keyring = RecordStore::new(opened(NativeSqlite::in_memory().unwrap()));
         run(keyring_conformance(&keyring)).unwrap();
     }
 

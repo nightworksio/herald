@@ -4,7 +4,7 @@ use std::sync::{Mutex, PoisonError};
 
 use herald_ports::StoreError;
 
-use crate::records::{Blob, Records, Wrote};
+use crate::records::{Blob, RecordBackend, Wrote};
 
 /// What memory holds: how many writes it has taken, and each record with
 /// the write that made it.
@@ -26,7 +26,7 @@ impl Memory {
     }
 }
 
-impl Records for Memory {
+impl RecordBackend for Memory {
     fn read(&self, path: &str) -> impl Future<Output = Result<Option<Blob>, StoreError>> + Send {
         ready(Ok(self.with(|held| {
             held.records.get(path).map(|(token, bytes)| Blob {

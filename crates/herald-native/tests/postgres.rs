@@ -6,7 +6,7 @@
 mod postgres {
     use herald_native::{NativePostgres, NativeSql, Timeouts};
     use herald_ports::{Secret, Sql as _, SqlError, Statement, StoreError, Value};
-    use herald_records::{Dialect, Kept, Records as _, SqlRecords, Wrote};
+    use herald_records::{Dialect, RecordBackend as _, RecordStore, SqlRecords, Wrote};
     use herald_testing::{keyring_conformance, sql_conformance, store_conformance};
     use jiff::SignedDuration;
 
@@ -61,11 +61,11 @@ mod postgres {
         let Some(records) = opened("conformance").await else {
             return;
         };
-        store_conformance(&Kept::new(records)).await.unwrap();
+        store_conformance(&RecordStore::new(records)).await.unwrap();
         let Some(keys) = opened("keyring").await else {
             return;
         };
-        keyring_conformance(&Kept::new(keys)).await.unwrap();
+        keyring_conformance(&RecordStore::new(keys)).await.unwrap();
     }
 
     #[tokio::test]
@@ -90,7 +90,7 @@ mod postgres {
         };
         let sql = NativeSql::Postgres(Box::new(sql));
         let records = SqlRecords::open(sql, Dialect::Postgres).await.unwrap();
-        store_conformance(&Kept::new(records)).await.unwrap();
+        store_conformance(&RecordStore::new(records)).await.unwrap();
     }
 
     #[tokio::test]

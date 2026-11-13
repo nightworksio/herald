@@ -5,7 +5,7 @@ use std::num::NonZeroUsize;
 use std::ops::Range;
 
 use herald_core::{Duration, Inbound, RecordKind, Sandbox, Size};
-use herald_kinds::Store;
+use herald_kinds::ConfiguredStore;
 use herald_ports::{Outbound, Proxy, Roots};
 use jiff::SignedDuration;
 use toml::Spanned;
@@ -92,7 +92,7 @@ impl Loader<'_> {
     }
 
     /// `[server]` as `file` gives it, over the store `store`.
-    pub(super) fn server(&mut self, file: ServerFile, store: Option<&Store>) -> Server {
+    pub(super) fn server(&mut self, file: ServerFile, store: Option<&ConfiguredStore>) -> Server {
         let defaults = Server::default();
         let listen = file.listen.map_or(defaults.listen, |listen| {
             if listen.get_ref().parse::<std::net::SocketAddr>().is_err() {

@@ -8,7 +8,7 @@ use jiff::Timestamp;
 use serde::de::{IgnoredAny, MapAccess, Visitor};
 use serde::{Deserialize, Deserializer};
 
-use crate::package::{Api, Found};
+use crate::package::{Api, RegistryVersion};
 
 pub(crate) const API: Api = Api {
     url: "https://registry.npmjs.org",
@@ -62,14 +62,18 @@ pub(crate) fn page(name: &str, version: &str) -> String {
 
 /// Each published version with its time; a version unpublished since keeps
 /// its time but leaves the versions, and is not found.
-pub(crate) fn found(api: &Api, limit: usize, body: &[u8]) -> Result<Vec<Found>, SourceError> {
+pub(crate) fn found(
+    api: &Api,
+    limit: usize,
+    body: &[u8],
+) -> Result<Vec<RegistryVersion>, SourceError> {
     let packument: Packument = read(api.versions, limit, body)?;
     let time = packument.time;
     Ok(packument
         .versions
         .into_iter()
         .filter_map(|version| {
-            time.get(&version).map(|published| Found {
+            time.get(&version).map(|published| RegistryVersion {
                 version,
                 published: *published,
             })

@@ -10,7 +10,7 @@ use herald_compose::{Composed, Host, Hosting, ServingOn, Through};
 use herald_config::{Config, Uses};
 use herald_core::{Event, RouteId, SourceName};
 use herald_flows::{Announced, Outcome, announce_within};
-use herald_ports::{Keyring, Outbound, Store as Keeps};
+use herald_ports::{Keyring, Outbound, Store};
 use herald_sources_forge::{Forge, ForgeSource, SourceOptions};
 
 use super::dry_run::Dry;
@@ -192,7 +192,7 @@ struct Announcing<'a>(Routed<'a>);
 impl<H: Host> Through<H> for Announcing<'_> {
     type Done = Vec<Announced>;
 
-    async fn through<S: Keeps, K: Keyring>(
+    async fn through<S: Store, K: Keyring>(
         self,
         serving: &ServingOn<'_, H, S, K>,
         run: &str,

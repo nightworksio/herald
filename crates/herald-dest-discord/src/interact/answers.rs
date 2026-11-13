@@ -1,7 +1,7 @@
 //! herald's answers to an interaction: the responses an endpoint gives, and
 //! the requests that answer through the interaction's webhook.
 
-use herald_ports::{Method, Request, Text};
+use herald_ports::{Method, Request, SecretText};
 use serde_json::{Value, json};
 
 use super::{Interacting, Replying};
@@ -20,14 +20,14 @@ pub const MESSAGE: usize = 2000;
 
 impl Interacting {
     fn callback(&self, replying: &Replying, body: String) -> Request {
-        let url = Text::plain(format!("{}/interactions/{}/", self.api, replying.id))
+        let url = SecretText::plain(format!("{}/interactions/{}/", self.api, replying.id))
             .then_secret(replying.token.clone())
             .then("/callback");
         json(Method::Post, url, None, body)
     }
 
-    fn hook(&self, replying: &Replying, rest: &str) -> Text {
-        Text::plain(format!(
+    fn hook(&self, replying: &Replying, rest: &str) -> SecretText {
+        SecretText::plain(format!(
             "{}/webhooks/{}/",
             self.api, self.interactions.application
         ))

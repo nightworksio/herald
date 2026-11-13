@@ -1,3 +1,6 @@
+//! Each source asked for what it has not seen, and each event it finds
+//! announced (ADR-0003).
+
 use futures_util::stream::{self, StreamExt};
 use herald_config::Config;
 use herald_core::{Event, SourceName, fresh};

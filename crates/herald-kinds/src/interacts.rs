@@ -39,7 +39,7 @@ pub trait Interacts: fmt::Debug + Send + Sync + Itself {
     /// # Errors
     ///
     /// What it said.
-    fn took(&self, response: &Response) -> Result<(), String>;
+    fn accepted(&self, response: &Response) -> Result<(), String>;
 
     /// The request saying `asked` is being worked, where it waits for that
     /// on a command `replying` names that no endpoint answered.

@@ -4,7 +4,7 @@
 #[cfg(test)]
 mod app {
     use herald_core::{Attribute, Kind, KindSpecs, Problem, Standing, Step};
-    use herald_sources_app::{Unread, event, identity, schema, standings};
+    use herald_sources_app::{UnreadEvent, event, identity, schema, standings};
     use jiff::Timestamp;
 
     fn now() -> Timestamp {
@@ -111,16 +111,16 @@ mod app {
             now(),
             &KindSpecs::default(),
         );
-        assert_eq!(refused, Err(Unread::NoId));
+        assert_eq!(refused, Err(UnreadEvent::NoId));
         assert_eq!(
-            Unread::NoId.to_string(),
+            UnreadEvent::NoId.to_string(),
             "the event has no id; an app gives every event one"
         );
     }
 
     #[test]
     fn a_field_no_event_has_is_refused_and_named() {
-        let Err(Unread::NotAnEvent(why)) = event(
+        let Err(UnreadEvent::NotAnEvent(why)) = event(
             "ci",
             br#"{"id": "7", "project": "herald", "title": "Deployed", "colour": "red"}"#,
             now(),
@@ -206,7 +206,7 @@ mod app {
             now(), &KindSpecs::default(),
         )
         .unwrap_err();
-        assert_eq!(refused, Unread::Problem(Problem::LinkNotWeb));
+        assert_eq!(refused, UnreadEvent::Problem(Problem::LinkNotWeb));
         assert_eq!(refused.to_string(), Problem::LinkNotWeb.to_string());
     }
 
@@ -219,7 +219,7 @@ mod app {
                 now(),
                 &KindSpecs::default()
             ),
-            Err(Unread::Problem(Problem::NoProject))
+            Err(UnreadEvent::Problem(Problem::NoProject))
         );
         assert_eq!(
             event(
@@ -228,7 +228,7 @@ mod app {
                 now(),
                 &KindSpecs::default()
             ),
-            Err(Unread::Problem(Problem::NoTitle))
+            Err(UnreadEvent::Problem(Problem::NoTitle))
         );
     }
 

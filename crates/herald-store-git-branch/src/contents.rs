@@ -1,7 +1,7 @@
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD;
 use herald_ports::{Http, Method, Request, Response, StoreError};
-use herald_records::{Blob, Records, Wrote};
+use herald_records::{Blob, RecordBackend, Wrote};
 use herald_wire::github::{self, GITHUB};
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -97,7 +97,7 @@ impl GitBranch {
     }
 }
 
-impl<H: Http> Records for BranchRecords<H> {
+impl<H: Http> RecordBackend for BranchRecords<H> {
     fn one_at_a_time(&self) -> bool {
         true
     }

@@ -5,7 +5,7 @@ use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD;
 use herald_core::RecordKind;
 use herald_ports::{Http, Secret, StoreError};
-use herald_records::{Blob, Kept, Records, Wrote};
+use herald_records::{Blob, RecordBackend, RecordStore, Wrote};
 use serde::{Deserialize, Serialize};
 
 /// The prefix of every generation's key where none is given.
@@ -61,7 +61,7 @@ impl ActionsCache {
         blobs: Blobs<'_, H>,
     ) -> ActionsCacheStore<'_, H> {
         let keeps = self.keeps.clone();
-        Kept::new(CacheRecords {
+        RecordStore::new(CacheRecords {
             cache: self,
             service,
             blobs,
@@ -103,7 +103,7 @@ impl<H> std::fmt::Debug for CacheRecords<'_, H> {
 }
 
 /// The store an [`ActionsCache`] keeps.
-pub type ActionsCacheStore<'a, H> = Kept<CacheRecords<'a, H>>;
+pub type ActionsCacheStore<'a, H> = RecordStore<CacheRecords<'a, H>>;
 
 impl<H: Http + Send> CacheRecords<'_, H> {
     fn remembered(&self) -> Option<Generation> {
@@ -138,7 +138,7 @@ impl<H: Http + Send> CacheRecords<'_, H> {
     }
 }
 
-impl<H: Http + Send> Records for CacheRecords<'_, H> {
+impl<H: Http + Send> RecordBackend for CacheRecords<'_, H> {
     fn one_at_a_time(&self) -> bool {
         true
     }

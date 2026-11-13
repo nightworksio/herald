@@ -1,6 +1,6 @@
 use herald_core::DestinationName;
 use herald_kinds::{Connect, Effect, Replying, Session};
-use herald_ports::{Response, Secret, Text};
+use herald_ports::{Response, Secret, SecretText};
 
 use crate::interact::{Interacting, Received};
 use crate::interactions::Via;
@@ -45,7 +45,7 @@ impl Session for Socketed<'_> {
             effects.push(Effect::Ready);
         }
         if let Some(acknowledgement) = enveloped.acknowledgement {
-            effects.push(Effect::Acknowledge(Text::plain(acknowledgement)));
+            effects.push(Effect::Acknowledge(SecretText::plain(acknowledgement)));
         }
         if let Some(Received::Asked { asked, replying }) = enveloped.received {
             effects.push(Effect::Asked(*asked, Replying::new(replying)));

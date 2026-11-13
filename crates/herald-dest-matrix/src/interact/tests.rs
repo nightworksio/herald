@@ -137,14 +137,14 @@ fn messages_that_are_not_commands_to_herald_are_passed_over() {
 fn a_body_that_is_no_transaction_is_unread() {
     assert_eq!(
         interacting("").transaction(&destination(), b"{}"),
-        Err(Unread::NotEvents)
+        Err(UnreadTransaction::NotEvents)
     );
     assert_eq!(
         interacting("").transaction(&destination(), b"nope"),
-        Err(Unread::NotEvents)
+        Err(UnreadTransaction::NotEvents)
     );
     assert_eq!(
-        Unread::NotEvents.to_string(),
+        UnreadTransaction::NotEvents.to_string(),
         "the body is not a Matrix transaction or sync"
     );
 }
@@ -178,11 +178,11 @@ fn a_sync_s_commands_are_read_from_each_joined_room_with_where_the_next_starts()
     );
     assert_eq!(
         interacting("").synced(&destination(), b"{}"),
-        Err(Unread::NotEvents)
+        Err(UnreadTransaction::NotEvents)
     );
     assert_eq!(
         interacting("").synced(&destination(), b"x"),
-        Err(Unread::NotEvents)
+        Err(UnreadTransaction::NotEvents)
     );
 }
 
@@ -229,11 +229,11 @@ fn an_answer_is_threaded_under_the_command_unless_public_once_per_part() {
         thread: None,
     };
     let parts = [
-        Written {
+        Text {
             body: "one".to_owned(),
             html: Some("<p>one</p>".to_owned()),
         },
-        Written {
+        Text {
             body: "two".to_owned(),
             html: None,
         },
@@ -281,7 +281,7 @@ fn an_answer_to_a_command_given_in_a_thread_replies_to_it_in_that_thread_public_
         event: "$command".to_owned(),
         thread: Some("$root".to_owned()),
     };
-    let parts = [Written {
+    let parts = [Text {
         body: "one".to_owned(),
         html: None,
     }];
@@ -329,20 +329,20 @@ fn the_homeserver_taking_an_answer_or_not_is_read_from_its_status() {
         headers: Vec::new(),
         body: body.as_bytes().to_vec(),
     };
-    assert_eq!(took(&answer(200, "{}")), Ok(()));
+    assert_eq!(accepted(&answer(200, "{}")), Ok(()));
     assert_eq!(
-        took(&answer(
+        accepted(&answer(
             403,
             r#"{"errcode": "M_FORBIDDEN", "error": "not in room"}"#
         )),
         Err("Matrix refused it with 403: M_FORBIDDEN not in room".to_owned())
     );
     assert_eq!(
-        took(&answer(502, "")),
+        accepted(&answer(502, "")),
         Err("Matrix refused it with 502".to_owned())
     );
     assert_eq!(
-        took(&answer(
+        accepted(&answer(
             429,
             r#"{"errcode": "M_LIMIT_EXCEEDED", "retry_after_ms": 2000}"#
         )),

@@ -1,3 +1,6 @@
+//! Inbound requests verified as their senders' and admitted once before a
+//! parser reads them (ADR-0007, ADR-0013).
+
 use std::fmt;
 
 use herald_core::Signed;
@@ -5,7 +8,7 @@ use herald_core::{
     Addressed, Claim, Inbound, Refusal, Scheme, Signature, activity_claim, claim, key, same,
 };
 use herald_dest_fediverse::{
-    ActorError, ActorKey, Found, activity_json, actor_key, actor_of, confirms, key_request,
+    ActorError, ActorKey, KeyOwner, activity_json, actor_key, actor_of, confirms, key_request,
     same_origin,
 };
 use herald_ports::{
@@ -225,8 +228,8 @@ async fn read_key<H: Http>(http: &H, named: &str, bounds: &Inbound) -> Result<Ac
     )
     .map_err(|error| unfetched(error.to_string()))?;
     match found {
-        Found::Held(owned) => Ok(owned),
-        Found::Claimed { owner, pem } => {
+        KeyOwner::Held(owned) => Ok(owned),
+        KeyOwner::Claimed { owner, pem } => {
             if !confirms(
                 &fetched(http, &owner, bounds).await.map_err(unfetched)?,
                 &owner,

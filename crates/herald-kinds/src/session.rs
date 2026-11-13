@@ -1,5 +1,5 @@
 use herald_core::{Asked, DestinationName, Place};
-use herald_ports::{Request, Response, Text};
+use herald_ports::{Request, Response, SecretText};
 use jiff::{SignedDuration, Timestamp};
 
 use crate::Replying;
@@ -21,10 +21,10 @@ pub enum Connect {
 pub enum Effect {
     /// Send the frame; where it cannot be sent, connect again once every
     /// effect heard with it is done.
-    Send(Text),
+    Send(SecretText),
     /// Send the frame acknowledging what was heard; where it cannot be
     /// sent, connect again at once, and do nothing more of what was heard.
-    Acknowledge(Text),
+    Acknowledge(SecretText),
     /// Beat every interval from now on.
     Beat(SignedDuration),
     /// The session is taken up: its next wait starts from the first.

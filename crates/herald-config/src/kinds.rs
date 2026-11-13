@@ -3,8 +3,8 @@ use std::marker::PhantomData;
 use std::ops::Range;
 
 use herald_kinds::{
-    Destination, DestinationKind, Fault, Offer, Placed, Placing, Source, SourceKind, Store,
-    StoreKind,
+    ConfiguredStore, Destination, DestinationKind, Fault, Offer, Placed, Placing, Source,
+    SourceKind, StoreKind,
 };
 use jiff::SignedDuration;
 use schemars::{JsonSchema, Schema, SchemaGenerator};
@@ -291,7 +291,7 @@ pub(crate) trait StoreKinded: Send + Sync {
 
     fn retained(&self) -> bool;
 
-    fn parse(&self, loader: &mut Loader<'_>, rest: Value<'_>) -> Option<Store>;
+    fn parse(&self, loader: &mut Loader<'_>, rest: Value<'_>) -> Option<ConfiguredStore>;
 
     fn schema(&self, generator: &mut SchemaGenerator) -> Schema;
 }
@@ -313,8 +313,10 @@ where
         K::RETAINED
     }
 
-    fn parse(&self, loader: &mut Loader<'_>, rest: Value<'_>) -> Option<Store> {
-        loader.typed::<K::Options>(rest, "store").map(Store::new)
+    fn parse(&self, loader: &mut Loader<'_>, rest: Value<'_>) -> Option<ConfiguredStore> {
+        loader
+            .typed::<K::Options>(rest, "store")
+            .map(ConfiguredStore::new)
     }
 
     fn schema(&self, generator: &mut SchemaGenerator) -> Schema {

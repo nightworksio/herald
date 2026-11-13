@@ -6,12 +6,12 @@
 //! ports.
 
 mod answer;
-mod asked;
 mod capped;
 mod composed;
 #[cfg(any(test, feature = "conformance"))]
 mod conformance;
 mod host;
+mod host_request;
 mod hosting;
 mod kinds;
 mod public;
@@ -21,7 +21,6 @@ mod records;
 pub mod told;
 
 pub use answer::{Answer, Left};
-pub use asked::Asked;
 pub use capped::Capped;
 pub use composed::{Composed, ServingOn, Through};
 #[cfg(any(test, feature = "conformance"))]
@@ -30,9 +29,10 @@ pub use conformance::{
 };
 pub use herald_kinds::{KvAt, SqlAt};
 pub use host::{Host, Unoffered, plain};
+pub use host_request::HostRequest;
 pub use hosting::{Artefact, CRON_SECRET, HOUSEKEPT, Hosting, POLLED};
 pub use kinds::kinds;
 pub use public::{public, reachable};
 pub use reach::{Reach, ReachError, SocketReach};
 pub use reaching::{EGRESS_GUARDED, Reaching, asked_query, public_address, received};
-pub use records::{GITHUB_REPOSITORY, GITHUB_TOKEN, Opener, Records, Served, reached};
+pub use records::{GITHUB_REPOSITORY, GITHUB_TOKEN, OpenedRecords, Opener, Served, reached};

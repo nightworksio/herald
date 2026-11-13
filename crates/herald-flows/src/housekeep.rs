@@ -1,3 +1,5 @@
+//! Housekeeping: each thread's chores done as they fall due.
+
 use std::collections::BTreeMap;
 
 use herald_core::{DestinationName, Retention, Schedule, Sent, due};
@@ -5,12 +7,12 @@ use herald_ports::{Clock, Deliveries, Http, Inboxes, Keyring, Ledger, Notes, Sch
 use jiff::{SignedDuration, Timestamp};
 
 use crate::announce::Stop;
-use crate::inbound::Keys;
 use crate::prepare::Connected;
+use crate::verification::Keys;
 
 /// What housekeeping did with one schedule that fell due.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Kept {
+pub struct HousekeptSchedule {
     /// The schedule.
     pub schedule: Schedule,
     /// What became of it.
@@ -22,7 +24,7 @@ pub struct Kept {
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Housekept {
     /// What became of each schedule that fell due.
-    pub kept: Vec<Kept>,
+    pub kept: Vec<HousekeptSchedule>,
     /// The path of each record a listing skipped as corrupt.
     pub skipped: Vec<String>,
 }
@@ -79,7 +81,7 @@ pub async fn housekeep<S: Store, C: Clock, H: Http, K: Keyring>(
         if let Some(stop) =
             route.and_then(|(route, _)| waiting.get(&route.config.route.destination))
         {
-            kept.push(Kept {
+            kept.push(HousekeptSchedule {
                 schedule: schedule.clone(),
                 outcome: Chored::Later(stop.clone()),
             });
@@ -114,7 +116,7 @@ pub async fn housekeep<S: Store, C: Clock, H: Http, K: Keyring>(
                 Err(error) => Chored::Later(Stop::Store(error.to_string())),
             },
         };
-        kept.push(Kept {
+        kept.push(HousekeptSchedule {
             schedule: schedule.clone(),
             outcome,
         });

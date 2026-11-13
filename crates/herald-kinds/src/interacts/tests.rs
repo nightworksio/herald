@@ -4,7 +4,7 @@
 )]
 
 use herald_core::{Command, DestinationName, Measure, Place, Replies, Wording};
-use herald_ports::{Method, Secrets, Text as Url};
+use herald_ports::{Method, SecretText, Secrets};
 
 use super::*;
 use crate::reach::tests::PLAIN;
@@ -45,13 +45,13 @@ impl Interacts for Plain {
             .map(|place| {
                 parts
                     .iter()
-                    .map(|_| Request::new(Method::Post, Url::plain(*place)))
+                    .map(|_| Request::new(Method::Post, SecretText::plain(*place)))
                     .collect()
             })
             .unwrap_or_default()
     }
 
-    fn took(&self, response: &Response) -> Result<(), String> {
+    fn accepted(&self, response: &Response) -> Result<(), String> {
         (response.status == 200)
             .then_some(())
             .ok_or_else(|| format!("{} answered {}", self.0, response.status))
@@ -122,9 +122,9 @@ fn an_interacting_destination_is_its_kind_equal_only_to_the_same_and_keeps_every
     );
     assert!(interacted.answering().takes(Command::Latest));
     assert_eq!(interacted.room().0, PLAIN);
-    assert_eq!(interacted.took(&response(200)), Ok(()));
+    assert_eq!(interacted.accepted(&response(200)), Ok(()));
     assert_eq!(
-        interacted.took(&response(500)),
+        interacted.accepted(&response(500)),
         Err("https://plain.example answered 500".to_owned())
     );
 }

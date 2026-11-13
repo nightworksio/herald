@@ -1,6 +1,6 @@
 use std::fmt;
 
-use herald_ports::{Method, Request, Text};
+use herald_ports::{Method, Request, SecretText};
 use serde_json::Value;
 use url::{Host, Url};
 
@@ -23,7 +23,7 @@ pub struct ActorKey {
 
 /// What a key's document says of the key a signature names.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Found {
+pub enum KeyOwner {
     /// The actor's own document lists the key, so the actor holds it.
     Held(ActorKey),
     /// The key's own document names its owner, whose document must list the
@@ -81,8 +81,8 @@ pub fn document(key_id: &str) -> &str {
 pub fn key_request(key_id: &str, most: usize) -> Option<Request> {
     origin(key_id)?;
     Some(
-        Request::new(Method::Get, Text::plain(document(key_id)))
-            .header("Accept", Text::plain(ACTIVITY_JSON))
+        Request::new(Method::Get, SecretText::plain(document(key_id)))
+            .header("Accept", SecretText::plain(ACTIVITY_JSON))
             .identified()
             .at_most(most),
     )
@@ -178,7 +178,7 @@ fn pem(key: &Value) -> Result<String, ActorError> {
 ///
 /// When the document is not an object, holds no such key, is not the one
 /// it was read from, or names another owner.
-pub fn actor_key(document: &[u8], key_id: &str) -> Result<Found, ActorError> {
+pub fn actor_key(document: &[u8], key_id: &str) -> Result<KeyOwner, ActorError> {
     let value = object(document)?;
     if origin(key_id).is_none() || id(&value) != Some(self::document(key_id)) {
         return Err(ActorError::Misnamed);
@@ -188,7 +188,7 @@ pub fn actor_key(document: &[u8], key_id: &str) -> Result<Found, ActorError> {
         if !same_origin(owner, key_id) {
             return Err(ActorError::Misnamed);
         }
-        return Ok(Found::Claimed {
+        return Ok(KeyOwner::Claimed {
             owner: owner.to_owned(),
             pem: pem(&value)?,
         });
@@ -208,7 +208,7 @@ pub fn actor_key(document: &[u8], key_id: &str) -> Result<Found, ActorError> {
     {
         return Err(ActorError::Misnamed);
     }
-    Ok(Found::Held(ActorKey {
+    Ok(KeyOwner::Held(ActorKey {
         actor: actor.to_owned(),
         pem: pem(key)?,
     }))

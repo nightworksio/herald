@@ -1,3 +1,6 @@
+//! A test message posted to each route's destination, as `herald doctor
+//! --post` asks.
+
 use std::collections::BTreeMap;
 
 use herald_config::Config;

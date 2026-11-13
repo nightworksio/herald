@@ -331,10 +331,10 @@ fn commands_are_answered_through_the_response_url_they_came_with() {
         []
     );
     assert_eq!(
-        Interacts::took(&interacting, &response(404, &json!("no_service"))),
-        took(&response(404, &json!("no_service")))
+        Interacts::accepted(&interacting, &response(404, &json!("no_service"))),
+        accepted(&response(404, &json!("no_service")))
     );
-    assert!(Interacts::took(&interacting, &response(404, &json!("no_service"))).is_err());
+    assert!(Interacts::accepted(&interacting, &response(404, &json!("no_service"))).is_err());
 }
 
 #[test]
@@ -374,7 +374,7 @@ fn socket_mode_is_opened_with_the_app_level_token_and_heard_as_herald_answers_it
     let effects = session.heard(&DestinationName::new("slack"), &asked.to_string());
     assert_eq!(
         effects[0],
-        Effect::Acknowledge(herald_ports::Text::plain(r#"{"envelope_id":"e1"}"#))
+        Effect::Acknowledge(herald_ports::SecretText::plain(r#"{"envelope_id":"e1"}"#))
     );
     assert!(matches!(effects[1], Effect::Asked(..)), "{effects:?}");
     assert_eq!(effects.len(), 2);

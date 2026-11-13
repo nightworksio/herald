@@ -12,7 +12,7 @@ use crate::forge::Repository;
 pub(crate) const LIMIT: usize = herald_wire::PARSE_LIMIT;
 
 /// A release, as any forge describes it.
-pub(crate) struct Found {
+pub(crate) struct ForgeRelease {
     pub(crate) tag: String,
     pub(crate) name: Option<String>,
     pub(crate) body: Option<String>,
@@ -35,7 +35,7 @@ pub(crate) fn read<T: DeserializeOwned>(
 pub(crate) fn event(
     what: &'static str,
     repository: &Repository,
-    found: Found,
+    found: ForgeRelease,
 ) -> Result<Option<Event>, SourceError> {
     if found.draft {
         return Ok(None);

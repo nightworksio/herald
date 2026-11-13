@@ -5,7 +5,7 @@ use herald_kinds::{Made, Setup, SetupNeeds, SetupStep, SetupTask};
 use herald_ports::{Request, Response, Secret};
 
 use crate::config::KIND;
-use crate::interact::{Interacting, listed, made, took};
+use crate::interact::{Interacting, accepted, listed, made};
 use crate::interactions::Interactions;
 use crate::options::DestinationOptions;
 
@@ -37,8 +37,8 @@ impl Setup for Setting<'_> {
         Ok(vec![SetupStep::Send { base, request }])
     }
 
-    fn said(&self, task: SetupTask<'_>, response: &Response) -> Result<Vec<String>, String> {
-        said(self.interactions, task, response)
+    fn reported(&self, task: SetupTask<'_>, response: &Response) -> Result<Vec<String>, String> {
+        reported(self.interactions, task, response)
     }
 }
 
@@ -90,7 +90,7 @@ fn request(
 ///
 /// What Discord said where it did not do it, or where a Discord destination
 /// is not set up with `task`.
-fn said(
+fn reported(
     interactions: &Interactions,
     task: SetupTask<'_>,
     response: &Response,
@@ -111,7 +111,7 @@ fn said(
             .map(|(id, role)| format!("{id}  {role}"))
             .collect(),
         SetupTask::Commands | SetupTask::Manifest { .. } | SetupTask::Registration { .. } => {
-            took(response)?;
+            accepted(response)?;
             let registered: Vec<&str> = interactions
                 .commands
                 .iter()
@@ -159,20 +159,20 @@ mod tests {
     fn what_is_said_of_a_task_names_the_commands_and_roles_discord_answered_with() {
         let done = response(200, &json!([]));
         assert_eq!(
-            said(&interactions(None), SetupTask::Commands, &done),
+            reported(&interactions(None), SetupTask::Commands, &done),
             Ok(vec![
                 "Registered latest, subscribe with Discord in every server the application is in."
                     .to_owned()
             ])
         );
         assert_eq!(
-            said(&interactions(Some(GUILD)), SetupTask::Commands, &done),
+            reported(&interactions(Some(GUILD)), SetupTask::Commands, &done),
             Ok(vec![format!(
                 "Registered latest, subscribe with Discord in the server {GUILD}."
             )])
         );
         assert_eq!(
-            said(
+            reported(
                 &interactions(None),
                 SetupTask::Commands,
                 &response(403, &json!({ "message": "Missing Access" }))
@@ -181,7 +181,7 @@ mod tests {
         );
         let role = json!({ "id": "523456789012345678", "name": "releases" });
         assert_eq!(
-            said(
+            reported(
                 &interactions(None),
                 SetupTask::Roles {
                     guild: GUILD,
@@ -195,7 +195,7 @@ mod tests {
             ])
         );
         assert_eq!(
-            said(
+            reported(
                 &interactions(None),
                 SetupTask::Roles {
                     guild: GUILD,
@@ -305,13 +305,13 @@ mod tests {
             Ok(vec![SetupStep::Send { base, request }])
         );
         assert_eq!(
-            setup.said(SetupTask::Commands, &response(200, &json!([]))),
+            setup.reported(SetupTask::Commands, &response(200, &json!([]))),
             Ok(vec![
                 "Registered latest with Discord in every server the application is in.".to_owned()
             ])
         );
         assert_eq!(
-            setup.said(manifest, &response(200, &json!([]))).err(),
+            setup.reported(manifest, &response(200, &json!([]))).err(),
             Some("a discord destination is not set up with a manifest".to_owned())
         );
     }

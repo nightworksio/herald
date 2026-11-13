@@ -1,7 +1,7 @@
 use herald_config::{Config, Source, Uses};
 use herald_core::{Cursor, Identity, SourceName};
 use herald_flows::{
-    Fresh, Outcome, Ports, PrepareError, Remembered, Stop, Sweep, Unread, poll, prepare,
+    Fresh, Outcome, Ports, PrepareError, Remembered, Stop, Sweep, UnreadSecret, poll, prepare,
 };
 use herald_ports::Cursors;
 use herald_ports::SecretError;
@@ -293,7 +293,7 @@ fn a_source_token_is_resolved_with_the_rest_of_the_config() {
     });
     assert_eq!(
         pollster::block_on(prepare(&config, &secrets(), &FakeSigner, Uses::Polls)).err(),
-        Some(PrepareError::Unread(vec![Unread {
+        Some(PrepareError::Unread(vec![UnreadSecret {
             error: SecretError::Missing {
                 name: "GITHUB_TOKEN".to_owned()
             },

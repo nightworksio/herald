@@ -4,7 +4,7 @@
 //! what it is told to and passes on what Discord sends.
 
 use herald_core::{DestinationName, socket_under};
-use herald_ports::{Secret, Text};
+use herald_ports::{Secret, SecretText};
 use jiff::SignedDuration;
 use serde_json::{Value, json};
 
@@ -44,7 +44,7 @@ const UNRESUMABLE: [u16; 2] = [4007, 4009];
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Effect {
     /// Send this frame.
-    Send(Text),
+    Send(SecretText),
     /// Beat this often from now on.
     Beat(SignedDuration),
     /// Answer this interaction.
@@ -184,7 +184,7 @@ impl Gateway {
         }
     }
 
-    fn introduced(&mut self) -> Text {
+    fn introduced(&mut self) -> SecretText {
         let resuming = std::mem::take(&mut self.resuming);
         if let (Some(session), Some(sequence), true) = (&self.session, self.sequence, resuming) {
             return framed(
@@ -204,8 +204,8 @@ impl Gateway {
         )
     }
 
-    fn heartbeat(&self) -> Text {
-        Text::plain(json!({ "op": HEARTBEAT, "d": self.sequence }).to_string())
+    fn heartbeat(&self) -> SecretText {
+        SecretText::plain(json!({ "op": HEARTBEAT, "d": self.sequence }).to_string())
     }
 
     fn reconnect(&mut self, resume: bool) -> Effect {
@@ -244,14 +244,14 @@ impl Gateway {
 /// that no frame shown in a log carries it.
 const TOKEN: &str = "\u{0}herald-token\u{0}";
 
-fn framed(value: &Value, token: &Secret) -> Text {
+fn framed(value: &Value, token: &Secret) -> SecretText {
     let written = value.to_string();
     let placeholder = serde_json::to_string(TOKEN).unwrap_or_default();
     match written.split_once(&placeholder) {
-        Some((before, after)) => Text::plain(format!("{before}\""))
+        Some((before, after)) => SecretText::plain(format!("{before}\""))
             .then_secret(token.clone())
             .then(format!("\"{after}")),
-        None => Text::plain(written),
+        None => SecretText::plain(written),
     }
 }
 

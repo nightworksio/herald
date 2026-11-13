@@ -22,7 +22,7 @@ pub enum Wrote {
 }
 
 /// A backend keeping one record per path.
-pub trait Records: Sync {
+pub trait RecordBackend: Sync {
     /// Whether a run writes one record at a time: where a write may be
     /// refused because another record was written at once, or where writes
     /// are not compared and set.

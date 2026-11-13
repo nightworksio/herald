@@ -30,7 +30,7 @@ fn form(text: &str) -> String {
         .finish()
 }
 
-fn received(body: &str) -> Result<Received, Unread> {
+fn received(body: &str) -> Result<Received, UnreadCommand> {
     interacting("").received(&destination(), body.as_bytes())
 }
 
@@ -94,13 +94,13 @@ fn a_command_herald_cannot_read_is_answered_with_its_usage() {
 fn another_slash_command_is_ignored_and_a_form_without_one_unread() {
     let other = form("latest").replace("%2Fherald", "%2Fdeploy");
     assert_eq!(received(&other), Ok(Received::Ignored));
-    assert_eq!(received("text=latest"), Err(Unread::NotACommand));
+    assert_eq!(received("text=latest"), Err(UnreadCommand::NotACommand));
 }
 
 #[test]
 fn slack_checking_the_endpoint_s_certificate_is_answered_and_nothing_more() {
     assert_eq!(received("ssl_check=1&token=t"), Ok(Received::Ignored));
-    assert_eq!(received("ssl_check=0"), Err(Unread::NotACommand));
+    assert_eq!(received("ssl_check=0"), Err(UnreadCommand::NotACommand));
 }
 
 #[test]
@@ -114,14 +114,14 @@ fn a_command_missing_its_place_or_answered_elsewhere_than_slack_is_unread() {
         ),
     ] {
         let missing = form("latest").replace(&format!("&{field}={value}"), "");
-        assert_eq!(received(&missing), Err(Unread::Unplaced), "{field}");
+        assert_eq!(received(&missing), Err(UnreadCommand::Unplaced), "{field}");
         let empty = form("latest").replace(&format!("&{field}={value}"), &format!("&{field}="));
-        assert_eq!(received(&empty), Err(Unread::Unplaced), "{field}");
+        assert_eq!(received(&empty), Err(UnreadCommand::Unplaced), "{field}");
     }
     let elsewhere = form("latest").replace("hooks.slack.com", "evil.example");
-    assert_eq!(received(&elsewhere), Err(Unread::Unplaced));
+    assert_eq!(received(&elsewhere), Err(UnreadCommand::Unplaced));
     let lookalike = form("latest").replace("hooks.slack.com%2F", "hooks.slack.com.evil.example%2F");
-    assert_eq!(received(&lookalike), Err(Unread::Unplaced));
+    assert_eq!(received(&lookalike), Err(UnreadCommand::Unplaced));
 }
 
 fn payload(value: &Value) -> String {
@@ -157,8 +157,11 @@ fn a_subscribe_button_press_toggles_and_other_presses_are_ignored() {
     assert_eq!(received(&payload(&actionless)), Ok(Received::Ignored));
     let mut unplaced = pressed(SUBSCRIBE);
     unplaced.as_object_mut().unwrap().remove("channel");
-    assert_eq!(received(&payload(&unplaced)), Err(Unread::Unplaced));
-    assert_eq!(received("payload=not%20json"), Err(Unread::NotACommand));
+    assert_eq!(received(&payload(&unplaced)), Err(UnreadCommand::Unplaced));
+    assert_eq!(
+        received("payload=not%20json"),
+        Err(UnreadCommand::NotACommand)
+    );
 }
 
 #[test]
@@ -231,18 +234,18 @@ fn slack_taking_an_answer_or_not_is_read_from_its_status() {
         headers: Vec::new(),
         body: body.as_bytes().to_vec(),
     };
-    assert_eq!(took(&answer(200, "ok")), Ok(()));
+    assert_eq!(accepted(&answer(200, "ok")), Ok(()));
     assert_eq!(
-        took(&answer(404, "expired_url")),
+        accepted(&answer(404, "expired_url")),
         Err("Slack refused it with 404: expired_url".to_owned())
     );
     assert_eq!(
-        took(&answer(500, "")),
+        accepted(&answer(500, "")),
         Err("Slack refused it with 500".to_owned())
     );
     let long = "x".repeat(1000);
     assert_eq!(
-        took(&answer(502, &long)),
+        accepted(&answer(502, &long)),
         Err(format!("Slack refused it with 502: {}", "x".repeat(200)))
     );
 }
@@ -273,11 +276,11 @@ fn the_destination_says_where_it_reaches_and_how_it_answers() {
     assert_eq!(recorded.api(), "http://127.0.0.1:9");
     assert_eq!(recorded.hooks(), "http://127.0.0.1:9");
     assert_eq!(
-        Unread::NotACommand.to_string(),
+        UnreadCommand::NotACommand.to_string(),
         "the body is neither a Slack command nor a button press"
     );
     assert_eq!(
-        Unread::Unplaced.to_string(),
+        UnreadCommand::Unplaced.to_string(),
         "the request names no channel, member or Slack response URL of its own"
     );
 }

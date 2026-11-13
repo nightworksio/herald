@@ -1,3 +1,6 @@
+//! An event announced to every route that takes it, each step once,
+//! finishing what an earlier run left (ADR-0005).
+
 use std::collections::BTreeSet;
 use std::num::NonZeroUsize;
 
@@ -9,6 +12,7 @@ use herald_core::{
     Pinning, Plan, Planned, Profile, RouteId, Sent, SourceName, State, Step, Templates, Threads,
     plan, schedules, steps,
 };
+use herald_kinds::Signing;
 use herald_ports::{
     Announcements, Clock, Http, Inboxes, Ledger, Markers, MarkersError, Notes, Pins, Schedules,
     Secret, Signer, Store, Subscriptions, Version, Written, marker,
@@ -16,7 +20,6 @@ use herald_ports::{
 use jiff::{SignedDuration, Timestamp};
 
 use crate::prepare::{Connected, PreparedRoute};
-use crate::reached::Signing;
 
 /// The ports an announcement goes through, beside each route's `Http`.
 #[derive(Debug)]
@@ -204,20 +207,11 @@ impl<S: Store, C: Clock, G: Signer, H: Http> Run<'_, S, C, G, H> {
         progress: &mut Progress,
     ) -> Result<(), Stop> {
         let route = &self.route.config.route;
-        if verify_first && self.route.reached.profile().features.reads_back {
-            let found = self
-                .route
-                .reached
-                .read(self.http)
-                .entry(&progress.entry.key, &announcement.marks.announcement)
-                .await
-                .map_err(|error| match error {
-                    MarkersError::RetryAfter { after } => Stop::RetryAfter(after),
-                    MarkersError::Unreadable { .. } => Stop::Unread(error.to_string()),
-                })?;
-            if let Some(facts) = found.as_ref().and_then(|found| found.facts(step)) {
-                return self.landed(step, facts.clone(), progress).await;
-            }
+        if verify_first
+            && self.route.reached.profile().features.reads_back
+            && let Some(facts) = self.read_back(step, announcement, progress).await?
+        {
+            return self.landed(step, facts, progress).await;
         }
         if *step == Step::Unpin && route.delivery.pin == Some(Pinning::Store) {
             announcement.replaces = self
@@ -254,26 +248,59 @@ impl<S: Store, C: Clock, G: Signer, H: Http> Run<'_, S, C, G, H> {
             .map_err(|error| Stop::Unreachable(error.to_string()))?;
         match sent {
             Sent::Landed(facts) => {
-                if *step == Step::Post
-                    && let Some((actor, published)) = self.route.reached.published(announcement)
-                {
-                    self.ports
-                        .store
-                        .notes()
-                        .put_note(
-                            actor,
-                            &progress.entry.key,
-                            &published,
-                            self.ports.clock.now(),
-                        )
-                        .await
-                        .map_err(stored)?;
-                }
+                self.noted(step, announcement, progress).await?;
                 self.landed(step, facts, progress).await
             }
             Sent::RetryAfter(after) => Err(Stop::RetryAfter(after)),
             Sent::Refused(reason) => Err(Stop::Refused(reason)),
         }
+    }
+
+    /// The facts of `step` an earlier run landed, read back from the route's
+    /// own posts, where they show it landed.
+    async fn read_back(
+        &self,
+        step: &Step,
+        announcement: &Announcement,
+        progress: &Progress,
+    ) -> Result<Option<Facts>, Stop> {
+        let found = self
+            .route
+            .reached
+            .read(self.http)
+            .entry(&progress.entry.key, &announcement.marks.announcement)
+            .await
+            .map_err(|error| match error {
+                MarkersError::RetryAfter { after } => Stop::RetryAfter(after),
+                MarkersError::Unreadable { .. } => Stop::Unread(error.to_string()),
+            })?;
+        Ok(found.as_ref().and_then(|found| found.facts(step)).cloned())
+    }
+
+    /// Keeps the Note the route's actor published with `step`, where it is
+    /// the post and the route serves what it publishes.
+    async fn noted(
+        &self,
+        step: &Step,
+        announcement: &Announcement,
+        progress: &Progress,
+    ) -> Result<(), Stop> {
+        if *step == Step::Post
+            && let Some((actor, published)) = self.route.reached.published(announcement)
+        {
+            self.ports
+                .store
+                .notes()
+                .put_note(
+                    actor,
+                    &progress.entry.key,
+                    &published,
+                    self.ports.clock.now(),
+                )
+                .await
+                .map_err(stored)?;
+        }
+        Ok(())
     }
 
     /// Delivers to each inbox in `batch` all at once, once the run still
@@ -455,41 +482,64 @@ impl<S: Store, C: Clock, G: Signer, H: Http> Run<'_, S, C, G, H> {
     }
 
     pub(crate) async fn announce(&self, event: &Event, templates: &Templates) -> Outcome {
-        let route = &self.route.config.route;
-        let key = Key::derive(&route.id, event.identity());
-        let stopped = |reason| Outcome::Stopped {
-            landed: Vec::new(),
-            remaining: Vec::new(),
-            reason,
-        };
-        let marks = match self.marks(&key).await {
-            Ok(marks) => marks,
+        let key = Key::derive(&self.route.config.route.id, event.identity());
+        let (mut announcement, wanted) = match self.prepared(&key, event, templates).await {
+            Ok(prepared) => prepared,
             Err(reason) => return stopped(reason),
         };
+        let (planned, mut progress) = match self.claimed(key, &wanted).await {
+            Ok(claimed) => claimed,
+            Err(outcome) => return outcome,
+        };
+        let stop = self.taken(&planned, &mut announcement, &mut progress).await;
+        self.released(stop, progress).await
+    }
+
+    /// The announcement `key` of `event`, rendered for the route, and the
+    /// steps the route wants it sent in.
+    async fn prepared(
+        &self,
+        key: &Key,
+        event: &Event,
+        templates: &Templates,
+    ) -> Result<(Announcement, Vec<Step>), Stop> {
+        let marks = self.marks(key).await?;
         let profile = Profile {
             symbols: self.route.config.profile.symbols,
             ..self.route.reached.profile()
         };
-        let mut announcement = match self.rendered(event, templates, &profile, marks).await {
-            Ok(announcement) => announcement,
-            Err(reason) => return stopped(reason),
-        };
+        let announcement = self.rendered(event, templates, &profile, marks).await?;
         let parts = u32::try_from(announcement.messages()).unwrap_or(u32::MAX);
         let follows = self.route.reached.follows().is_some();
-        let wanted = steps(&route.delivery, &profile.features, parts, follows);
+        let delivery = &self.route.config.route.delivery;
+        let wanted = steps(delivery, &profile.features, parts, follows);
+        Ok((announcement, wanted))
+    }
+
+    /// The steps the announcement `key` still needs, and its ledger entry
+    /// claimed for this run; or else what the route did instead: an earlier
+    /// run announced it, another holds it, or it could not be claimed.
+    async fn claimed(
+        &self,
+        key: Key,
+        wanted: &[Step],
+    ) -> Result<(Vec<Planned>, Progress), Outcome> {
         let now = self.ports.clock.now();
-        let record = match self.ports.store.ledger().entry(&key).await {
-            Ok(record) => record,
-            Err(error) => return stopped(stored(error)),
-        };
+        let record = self
+            .ports
+            .store
+            .ledger()
+            .entry(&key)
+            .await
+            .map_err(|error| stopped(stored(error)))?;
         let planned = match plan(
             record.as_ref().map(|record| &record.value),
-            &wanted,
+            wanted,
             self.holder,
             now,
         ) {
-            Plan::Complete => return Outcome::AlreadyAnnounced,
-            Plan::Held { by, until } => return Outcome::Held { by, until },
+            Plan::Complete => return Err(Outcome::AlreadyAnnounced),
+            Plan::Held { by, until } => return Err(Outcome::Held { by, until }),
             Plan::Send(planned) => planned,
         };
         let expected = record.as_ref().map(|record| record.version);
@@ -500,7 +550,7 @@ impl<S: Store, C: Clock, G: Signer, H: Http> Run<'_, S, C, G, H> {
                 now,
                 now.checked_add(self.lease).unwrap_or(Timestamp::MAX),
             )
-            .wanting(&wanted);
+            .wanting(wanted);
         let version = match self
             .ports
             .store
@@ -510,30 +560,41 @@ impl<S: Store, C: Clock, G: Signer, H: Http> Run<'_, S, C, G, H> {
         {
             Ok(Written::Written(version)) => version,
             Ok(Written::Conflict) => {
-                return stopped(Stop::Store(
+                return Err(stopped(Stop::Store(
                     "another run claimed the announcement first".to_owned(),
-                ));
+                )));
             }
-            Err(error) => return stopped(stored(error)),
+            Err(error) => return Err(stopped(stored(error))),
         };
-        let mut progress = Progress {
+        let progress = Progress {
             entry: claimed,
             version,
             landed: Vec::new(),
         };
-        let mut stop = None;
+        Ok((planned, progress))
+    }
+
+    /// Takes each of `planned` in turn, until one stops: then the steps that
+    /// did not land, every step after it among them, and why.
+    async fn taken(
+        &self,
+        planned: &[Planned],
+        announcement: &mut Announcement,
+        progress: &mut Progress,
+    ) -> Option<Unlanded> {
         for (index, current) in planned.iter().enumerate() {
-            if let Err((unlanded, reason)) =
-                self.next(current, &mut announcement, &mut progress).await
-            {
+            if let Err((unlanded, reason)) = self.next(current, announcement, progress).await {
                 let rest = planned.iter().skip(index + 1).map(|step| step.step.clone());
-                stop = Some((
-                    unlanded.into_iter().chain(rest).collect::<Vec<Step>>(),
-                    reason,
-                ));
-                break;
+                return Some((unlanded.into_iter().chain(rest).collect(), reason));
             }
         }
+        None
+    }
+
+    /// What the route did, once its announcement is released: stopped where
+    /// `stop` names steps that did not land or the release failed, and sent
+    /// otherwise.
+    async fn released(&self, stop: Option<Unlanded>, mut progress: Progress) -> Outcome {
         progress.entry = progress.entry.clone().released();
         let released = self.write(&mut progress).await;
         match (stop, released) {
@@ -551,6 +612,15 @@ impl<S: Store, C: Clock, G: Signer, H: Http> Run<'_, S, C, G, H> {
                 steps: progress.landed,
             },
         }
+    }
+}
+
+/// A route stopped by `reason` before it landed or planned anything.
+fn stopped(reason: Stop) -> Outcome {
+    Outcome::Stopped {
+        landed: Vec::new(),
+        remaining: Vec::new(),
+        reason,
     }
 }
 

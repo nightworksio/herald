@@ -3,7 +3,7 @@ use herald_kinds::{Connect, Effect, Replying, Session};
 use herald_ports::Response;
 use jiff::Timestamp;
 
-use crate::interact::{Interacting, took};
+use crate::interact::{Interacting, accepted};
 use crate::interactions::Via;
 
 /// A sync of the destination's homeserver, polled as long as it is held.
@@ -39,7 +39,7 @@ impl Session for Syncing<'_> {
         destination: &DestinationName,
         response: &Response,
     ) -> Result<Vec<Effect>, String> {
-        took(response)?;
+        accepted(response)?;
         let synced = self
             .interacting
             .synced(destination, &response.body)

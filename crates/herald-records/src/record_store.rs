@@ -1,3 +1,5 @@
+//! herald's `Store` kept in any backend, one record per path.
+
 use std::collections::BTreeSet;
 use std::sync::{Arc, Mutex, PoisonError};
 
@@ -16,7 +18,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::paths;
-use crate::records::{Blob, Records, Wrote};
+use crate::records::{Blob, RecordBackend, Wrote};
 use crate::seal::Seal;
 
 /// How often a write that lost a race to an unrelated write is tried again.
@@ -56,7 +58,7 @@ struct Read {
 
 /// The `Store` kept in `R`, one record per path.
 #[derive(Debug, Clone)]
-pub struct Kept<R> {
+pub struct RecordStore<R> {
     records: R,
     skipped: Arc<Mutex<BTreeSet<String>>>,
     keeps: BTreeSet<RecordKind>,
@@ -85,7 +87,7 @@ fn changing(path: &str, doing: &str) -> StoreError {
     StoreError::unavailable(format_args!("{path} kept changing while herald {doing} it"))
 }
 
-impl<R: Records> Kept<R> {
+impl<R: RecordBackend> RecordStore<R> {
     /// The store kept in `records`, keeping every kind of record.
     #[must_use]
     pub fn new(records: R) -> Self {
@@ -260,7 +262,7 @@ impl<R: Records> Kept<R> {
     }
 }
 
-impl<R: Records> Inboxes for Kept<R> {
+impl<R: RecordBackend> Inboxes for RecordStore<R> {
     async fn delivery(&self, key: &Key, inbox: &str) -> Result<Option<State>, StoreError> {
         Ok(self
             .record::<State>(&paths::inbox(key, inbox))
@@ -280,7 +282,7 @@ impl<R: Records> Inboxes for Kept<R> {
     }
 }
 
-impl<R: Records> Ledger for Kept<R> {
+impl<R: RecordBackend> Ledger for RecordStore<R> {
     async fn entry(&self, key: &Key) -> Result<Option<Versioned<Entry>>, StoreError> {
         self.record(&paths::entry(key)).await
     }
@@ -307,7 +309,7 @@ impl<R: Records> Ledger for Kept<R> {
     }
 }
 
-impl<R: Records> Cursors for Kept<R> {
+impl<R: RecordBackend> Cursors for RecordStore<R> {
     async fn cursor(&self, source: &SourceName) -> Result<Option<Versioned<Cursor>>, StoreError> {
         self.record(&paths::cursor(source)).await
     }
@@ -323,7 +325,7 @@ impl<R: Records> Cursors for Kept<R> {
     }
 }
 
-impl<R: Records> Schedules for Kept<R> {
+impl<R: RecordBackend> Schedules for RecordStore<R> {
     async fn every_schedule(&self) -> Result<Vec<Schedule>, StoreError> {
         self.all(paths::SCHEDULES).await
     }
@@ -339,7 +341,7 @@ impl<R: Records> Schedules for Kept<R> {
     }
 }
 
-impl<R: Records> Subscriptions for Kept<R> {
+impl<R: RecordBackend> Subscriptions for RecordStore<R> {
     async fn subscribers(
         &self,
         destination: &DestinationName,
@@ -358,7 +360,7 @@ impl<R: Records> Subscriptions for Kept<R> {
     }
 }
 
-impl<R: Records> Pins for Kept<R> {
+impl<R: RecordBackend> Pins for RecordStore<R> {
     async fn pinned(&self, route: &RouteId) -> Result<Option<String>, StoreError> {
         Ok(self
             .record::<String>(&paths::pin(route))
@@ -371,7 +373,7 @@ impl<R: Records> Pins for Kept<R> {
     }
 }
 
-impl<R: Records> Positions for Kept<R> {
+impl<R: RecordBackend> Positions for RecordStore<R> {
     async fn position(&self, destination: &DestinationName) -> Result<Option<String>, StoreError> {
         Ok(self
             .record::<String>(&paths::position(destination))
@@ -388,7 +390,7 @@ impl<R: Records> Positions for Kept<R> {
     }
 }
 
-impl<R: Records> Deliveries for Kept<R> {
+impl<R: RecordBackend> Deliveries for RecordStore<R> {
     async fn admit(&self, scheme: Scheme, id: &str, at: Timestamp) -> Result<Admitted, StoreError> {
         Ok(
             match self
@@ -416,7 +418,7 @@ impl<R: Records> Deliveries for Kept<R> {
     }
 }
 
-impl<R: Records> Notes for Kept<R> {
+impl<R: RecordBackend> Notes for RecordStore<R> {
     async fn note(&self, key: &Key) -> Result<Option<String>, StoreError> {
         Ok(self
             .record::<Published>(&paths::note(key))
@@ -494,7 +496,7 @@ impl<R: Records> Notes for Kept<R> {
     }
 }
 
-impl<R: Records> Announcements for Kept<R> {
+impl<R: RecordBackend> Announcements for RecordStore<R> {
     async fn latest(&self, project: &str) -> Result<Option<Versioned<Latest>>, StoreError> {
         self.record(&paths::latest(project)).await
     }
@@ -513,7 +515,7 @@ impl<R: Records> Announcements for Kept<R> {
     }
 }
 
-impl<R: Records> Keeper for Kept<R> {
+impl<R: RecordBackend> Keeper for RecordStore<R> {
     fn holds(&self, kind: Held) -> bool {
         match kind {
             Held::Ledger | Held::Cursors | Held::Schedules | Held::Deliveries | Held::Positions => {
@@ -537,7 +539,7 @@ impl<R: Records> Keeper for Kept<R> {
     }
 }
 
-impl<R: Records> Keyring for Kept<R> {
+impl<R: RecordBackend> Keyring for RecordStore<R> {
     async fn known(&self, id: &str) -> Result<Option<KnownKey>, StoreError> {
         Ok(self
             .record::<Known>(&paths::key(id))
@@ -594,12 +596,14 @@ mod tests {
     #[test]
     fn a_sealed_store_keeps_every_record_and_trusts_none_it_did_not_seal() {
         let seal = || Seal::new(herald_ports::Secret::new("HERALD_STORE_KEY", "k"));
-        let sealed = Kept::new(Memory::default()).sealed(seal());
+        let sealed = RecordStore::new(Memory::default()).sealed(seal());
         pollster::block_on(async {
             herald_testing::store_conformance(&sealed).await.unwrap();
-            herald_testing::keyring_conformance(&Kept::new(Memory::default()).sealed(seal()))
-                .await
-                .unwrap();
+            herald_testing::keyring_conformance(
+                &RecordStore::new(Memory::default()).sealed(seal()),
+            )
+            .await
+            .unwrap();
             let subscription = Subscription {
                 destination: DestinationName::new("slack"),
                 project: "p".to_owned(),
@@ -631,7 +635,7 @@ mod tests {
 
     #[test]
     fn a_value_with_no_json_is_refused_as_corrupt_and_nothing_is_written() {
-        let kept = Kept::new(Memory::default());
+        let kept = RecordStore::new(Memory::default());
         pollster::block_on(async {
             assert_eq!(
                 kept.compare_and_set("a.json", &Unwritable, None)

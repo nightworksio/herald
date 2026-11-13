@@ -32,7 +32,7 @@ pub(crate) fn waited(body: &Value) -> Option<SignedDuration> {
 }
 
 /// What Discord said in `body`: its error's code and message.
-pub(crate) fn said(body: &Value) -> String {
+pub(crate) fn error_text(body: &Value) -> String {
     let code = body.get("code").map(Value::to_string).unwrap_or_default();
     let message = body
         .get("message")
@@ -42,13 +42,13 @@ pub(crate) fn said(body: &Value) -> String {
 }
 
 /// What a failed response means: when to ask again, or why Discord refused.
-pub(crate) fn trouble(response: &Response, waits: Waits) -> Option<Sent> {
+pub(crate) fn failure(response: &Response, waits: Waits) -> Option<Sent> {
     let body = json(response);
-    response.trouble(waits, waited(&body), DISCORD, || said(&body))
+    response.failure(waits, waited(&body), DISCORD, || error_text(&body))
 }
 
 pub(crate) fn read(discord: &Discord, step: &Step, response: &Response) -> Sent {
-    if let Some(sent) = trouble(response, discord.waits) {
+    if let Some(sent) = failure(response, discord.waits) {
         return sent;
     }
     let body = json(response);

@@ -8,8 +8,8 @@ mod told {
         SourceName, Step,
     };
     use herald_flows::{
-        Announced, Answer, Chored, Did, FollowError, Followed, Housekept, Interacted, Job, Kept,
-        Outcome, Remembered, Stop, Sweep, Swept, Worked,
+        Announced, Answer, Chored, Did, FollowError, Followed, Housekept, HousekeptSchedule,
+        Interacted, Job, Outcome, Remembered, Stop, Sweep, Swept, Worked,
     };
 
     fn did(did: Did) -> Worked {
@@ -37,8 +37,8 @@ mod told {
         })
     }
 
-    fn kept(outcome: Chored) -> Kept {
-        Kept {
+    fn kept(outcome: Chored) -> HousekeptSchedule {
+        HousekeptSchedule {
             schedule: Schedule {
                 key: Key::derive(&route(), &Identity::new("1.0.0")),
                 route: route(),

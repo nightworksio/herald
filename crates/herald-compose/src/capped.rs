@@ -33,7 +33,7 @@ mod tests {
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::task::Poll;
 
-    use herald_ports::{Method, Text};
+    use herald_ports::{Method, SecretText};
 
     use super::*;
 
@@ -69,7 +69,12 @@ mod tests {
 
     fn sent(most: usize) -> usize {
         let capped = Capped::new(Counting::default(), most);
-        let request = || Request::new(Method::Get, Text::plain("https://social.example/users/ana"));
+        let request = || {
+            Request::new(
+                Method::Get,
+                SecretText::plain("https://social.example/users/ana"),
+            )
+        };
         let answers = pollster::block_on(futures_util::future::join3(
             capped.send(request()),
             capped.send(request()),

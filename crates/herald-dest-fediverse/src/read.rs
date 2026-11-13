@@ -20,19 +20,19 @@ pub(crate) fn json(response: &Response) -> Value {
 
 /// What a failed response means: when to ask again, or why the server
 /// refused.
-pub(crate) fn trouble(response: &Response, waits: Waits) -> Option<Sent> {
+pub(crate) fn failure(response: &Response, waits: Waits) -> Option<Sent> {
     let reset = response
         .header("x-ratelimit-reset")
         .and_then(|reset| reset.trim().parse::<Timestamp>().ok())
         .and_then(|reset| response.until(reset));
     let named = response.retry_after().or(reset);
-    response.trouble(waits, named, PLATFORM, || {
+    response.failure(waits, named, PLATFORM, || {
         text(&json(response), "error").unwrap_or_default()
     })
 }
 
 pub(crate) fn read(response: &Response, waits: Waits) -> Sent {
-    if let Some(sent) = trouble(response, waits) {
+    if let Some(sent) = failure(response, waits) {
         return sent;
     }
     let body = json(response);

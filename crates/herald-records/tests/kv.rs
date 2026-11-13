@@ -8,7 +8,7 @@
 )]
 mod kv {
     use herald_ports::{Kv, KvError, Pair, Stamped, StoreError, Versionstamp};
-    use herald_records::{Kept, KvRecords, Records, Wrote};
+    use herald_records::{KvRecords, RecordBackend, RecordStore, Wrote};
     use herald_testing::{FakeKv, keyring_conformance, store_conformance};
 
     #[test]
@@ -27,14 +27,14 @@ mod kv {
     #[test]
     fn a_key_value_store_passes_the_conformance_suites() {
         assert_eq!(
-            pollster::block_on(store_conformance(&Kept::new(KvRecords::new(
+            pollster::block_on(store_conformance(&RecordStore::new(KvRecords::new(
                 FakeKv::default(),
                 "herald"
             )))),
             Ok(())
         );
         assert_eq!(
-            pollster::block_on(keyring_conformance(&Kept::new(KvRecords::new(
+            pollster::block_on(keyring_conformance(&RecordStore::new(KvRecords::new(
                 FakeKv::default(),
                 "/apps/herald/"
             )))),

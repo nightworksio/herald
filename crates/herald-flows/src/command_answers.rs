@@ -12,7 +12,7 @@ use herald_kinds::{Interacted, Replying};
 use herald_ports::{Announcements, Http, Store, StoreError, Subscriptions};
 
 use crate::announce::Ports;
-use crate::interacting::sent;
+use crate::command_requests::sent;
 use crate::prepare::Connected;
 
 /// What herald answers a command: Markdown, who sees it, and what kept herald
@@ -155,7 +155,7 @@ async fn reply<S: Store, C, G, H: Http>(
             subscribing(interacting, http, ports.store, asked, here.latest, &routes).await
         }
         Command::Latest | Command::Changelog => {
-            shown(config, &answering, asked, here.latest, here.route)
+            latest_reply(config, &answering, asked, here.latest, here.route)
         }
     }
 }
@@ -240,6 +240,9 @@ fn decided(asked: &Asked, holds: bool) -> Result<bool, fn(String) -> Said> {
     }
 }
 
+/// `asked` worked for the member who gave it on `routes`, the routes
+/// announcing `latest` where it was given: by the opt-in roles the
+/// destination gives, or else by the subscriptions the store keeps.
 async fn subscribing<S: Store, H: Http>(
     interacting: &Interacted,
     http: &H,
@@ -248,54 +251,79 @@ async fn subscribing<S: Store, H: Http>(
     latest: &Latest,
     routes: &[&RouteConfig],
 ) -> Reply {
-    let project = latest.project.clone();
-    let unoffered = || Reply::Told(Said::Unoffered(project.clone()));
-    let done = |give: bool| {
-        Reply::Told(if give {
-            Said::Subscribed(project.clone())
-        } else {
-            Said::Unsubscribed(project.clone())
-        })
-    };
     if interacting.gives_roles() {
-        let mut roles: Vec<String> = Vec::new();
-        for role in routes
-            .iter()
-            .filter_map(|route| route.options.opt_in_role())
-        {
-            if !roles.contains(&role) {
-                roles.push(role);
-            }
-        }
-        let (Some(member), false) = (&asked.member, roles.is_empty()) else {
-            return unoffered();
-        };
-        let holds = roles.iter().any(|role| member.roles.contains(role));
-        let give = match decided(asked, holds) {
-            Ok(give) => give,
-            Err(said) => return Reply::Told(said(project)),
-        };
-        for role in &roles {
-            let Some(request) = interacting.role(&member.guild, &asked.user, role, give) else {
-                return Reply::unavailable(
-                    "a role could not be asked of Discord: an id is not written as Discord writes one",
-                );
-            };
-            if let Err(trouble) = sent(interacting, http, request).await {
-                return Reply::unavailable(trouble);
-            }
-        }
-        return done(give);
+        return by_role(interacting, http, asked, &latest.project, routes).await;
     }
+    by_store(store, asked, &latest.project, routes).await
+}
+
+/// What herald says once `asked` subscribed the member to `project`, where
+/// `give`, or else unsubscribed them.
+fn toggled(project: &str, give: bool) -> Reply {
+    let project = project.to_owned();
+    Reply::Told(if give {
+        Said::Subscribed(project)
+    } else {
+        Said::Unsubscribed(project)
+    })
+}
+
+/// `asked` worked by giving or taking each opt-in role of `routes`, so the
+/// member is mentioned when `project` announces.
+async fn by_role<H: Http>(
+    interacting: &Interacted,
+    http: &H,
+    asked: &Asked,
+    project: &str,
+    routes: &[&RouteConfig],
+) -> Reply {
+    let mut roles: Vec<String> = Vec::new();
+    for role in routes
+        .iter()
+        .filter_map(|route| route.options.opt_in_role())
+    {
+        if !roles.contains(&role) {
+            roles.push(role);
+        }
+    }
+    let (Some(member), false) = (&asked.member, roles.is_empty()) else {
+        return Reply::Told(Said::Unoffered(project.to_owned()));
+    };
+    let holds = roles.iter().any(|role| member.roles.contains(role));
+    let give = match decided(asked, holds) {
+        Ok(give) => give,
+        Err(said) => return Reply::Told(said(project.to_owned())),
+    };
+    for role in &roles {
+        let Some(request) = interacting.role(&member.guild, &asked.user, role, give) else {
+            return Reply::unavailable(
+                "a role could not be asked of Discord: an id is not written as Discord writes one",
+            );
+        };
+        if let Err(trouble) = sent(interacting, http, request).await {
+            return Reply::unavailable(trouble);
+        }
+    }
+    toggled(project, give)
+}
+
+/// `asked` worked by keeping or forgetting the member's subscription to
+/// `project` in `store`, where `routes` mention subscribers.
+async fn by_store<S: Store>(
+    store: &S,
+    asked: &Asked,
+    project: &str,
+    routes: &[&RouteConfig],
+) -> Reply {
     if !routes
         .iter()
         .any(|route| route.route.delivery.mentions.subscribers)
     {
-        return unoffered();
+        return Reply::Told(Said::Unoffered(project.to_owned()));
     }
     let subscribers = match store
         .subscriptions()
-        .subscribers(&asked.destination, &project)
+        .subscribers(&asked.destination, project)
         .await
     {
         Ok(subscribers) => subscribers,
@@ -306,11 +334,11 @@ async fn subscribing<S: Store, H: Http>(
         .any(|subscription| subscription.subscriber == asked.user);
     let give = match decided(asked, holds) {
         Ok(give) => give,
-        Err(said) => return Reply::Told(said(project)),
+        Err(said) => return Reply::Told(said(project.to_owned())),
     };
     let subscription = Subscription {
         destination: asked.destination.clone(),
-        project: project.clone(),
+        project: project.to_owned(),
         subscriber: asked.user.clone(),
         inbox: None,
         pending: None,
@@ -321,12 +349,14 @@ async fn subscribing<S: Store, H: Http>(
         store.subscriptions().unsubscribe(&subscription).await
     };
     match written {
-        Ok(()) => done(give),
+        Ok(()) => toggled(project, give),
         Err(error) => Reply::unavailable(error.to_string()),
     }
 }
 
-fn shown(
+/// What `latest` or `changelog` shows of `latest`, rendered with the
+/// template `answering` names, or else `route`'s.
+fn latest_reply(
     config: &Config,
     answering: &Answering,
     asked: &Asked,

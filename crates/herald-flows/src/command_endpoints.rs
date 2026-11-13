@@ -4,15 +4,15 @@
 //! names and admitted before it is read, and answered at once with the
 //! command's work left for after (ADR-0007, ADR-0016).
 
-use herald_core::{Asked, DestinationName, Scheme};
+use herald_core::{Asked, DestinationName, Place, Scheme};
 use herald_kinds::{Endpoint, Interacted, Post, Read, Replying, Said};
 use herald_ports::{Clock, Keyring, Store, Verifier};
 
-use crate::inbound::{Checking, Rejected, Verified, admitted, verified};
-use crate::interact::{completed, unlisted};
+use crate::command_answers::{completed, unlisted};
 use crate::serving::{
     Answered, Inbound, Job, Serving, missing, refusal, rejection, replied, unmethodical, unread,
 };
+use crate::verification::{Checking, Rejected, Verified, admitted, verified};
 
 /// Where requests carrying commands are posted, before the destination's
 /// name.
@@ -29,7 +29,8 @@ fn job(destination: &DestinationName, asked: Vec<(Asked, Replying)>) -> Job {
     }
 }
 
-fn said(said: Said) -> Answered {
+/// What a destination's kind says, answered as JSON.
+fn json_reply(said: Said) -> Answered {
     replied(said.status, JSON, said.body)
 }
 
@@ -117,51 +118,24 @@ async fn answered<S: Store, C: Clock, G, V: Verifier, H, P, K>(
     match read {
         Read::Asked { asked, answer } => Answered {
             job: Some(job(destination, asked)),
-            ..said(answer)
+            ..json_reply(answer)
         },
         Read::Completing { place, typed } => {
-            match completed(
-                serving.config,
-                serving.ports.store,
-                destination,
-                &place,
-                &typed,
-            )
-            .await
-            {
-                Ok(projects) => replied(200, JSON, interacting.choices(&projects)),
-                Err(error) => refusal(503, unlisted(&error)),
-            }
+            completions(serving, destination, interacting, &place, &typed).await
         }
-        Read::Said(answer) => said(answer),
+        Read::Said(answer) => json_reply(answer),
         Read::Delivered {
             delivery,
             replayed,
             then,
         } => {
-            let delivery = Verified {
-                delivery: Some(delivery),
-                signer: None,
-            };
-            match admitted(
-                serving.ports.store,
-                serving.admission,
-                scheme,
-                &delivery,
-                serving.ports.clock.now(),
-            )
-            .await
-            {
-                Ok(()) => {}
-                Err(Rejected::Replayed) => return said(replayed),
-                Err(rejected) => return rejection(&rejected),
-            }
-            Box::pin(answered(
+            Box::pin(redelivered(
                 serving,
                 destination,
                 interacting,
                 scheme,
-                &delivery,
+                delivery,
+                replayed,
                 *then,
             ))
             .await
@@ -171,4 +145,59 @@ async fn answered<S: Store, C: Clock, G, V: Verifier, H, P, K>(
         Read::Unmethodical => unmethodical(),
         Read::Missing(what) => missing(what),
     }
+}
+
+/// The projects announced on `destination` in `place` whose names hold
+/// `typed`, offered as `interacting` offers choices.
+async fn completions<S: Store, C, G, V, H, P, K>(
+    serving: &Serving<'_, S, C, G, V, H, P, K>,
+    destination: &DestinationName,
+    interacting: &Interacted,
+    place: &Place,
+    typed: &str,
+) -> Answered {
+    match completed(
+        serving.config,
+        serving.ports.store,
+        destination,
+        place,
+        typed,
+    )
+    .await
+    {
+        Ok(projects) => replied(200, JSON, interacting.choices(&projects)),
+        Err(error) => refusal(503, unlisted(&error)),
+    }
+}
+
+/// What `then` says, once the delivery a request carries inside it is
+/// admitted once under `scheme`; a delivery admitted before is answered
+/// `replayed`.
+async fn redelivered<S: Store, C: Clock, G, V: Verifier, H, P, K>(
+    serving: &Serving<'_, S, C, G, V, H, P, K>,
+    destination: &DestinationName,
+    interacting: &Interacted,
+    scheme: Scheme,
+    delivery: String,
+    replayed: Said,
+    then: Read,
+) -> Answered {
+    let delivery = Verified {
+        delivery: Some(delivery),
+        signer: None,
+    };
+    match admitted(
+        serving.ports.store,
+        serving.admission,
+        scheme,
+        &delivery,
+        serving.ports.clock.now(),
+    )
+    .await
+    {
+        Ok(()) => {}
+        Err(Rejected::Replayed) => return json_reply(replayed),
+        Err(rejected) => return rejection(&rejected),
+    }
+    answered(serving, destination, interacting, scheme, &delivery, then).await
 }

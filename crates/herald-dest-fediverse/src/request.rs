@@ -1,5 +1,5 @@
 use herald_core::{Announcement, Declined, Entry, Step};
-use herald_ports::{Method, Request, Text};
+use herald_ports::{Method, Request, SecretText};
 use serde_json::{Map, Value, json};
 
 use crate::mastodon::{Mastodon, PLATFORM};
@@ -14,7 +14,7 @@ pub(crate) const fn cannot(what: &'static str) -> Declined {
 
 pub(crate) fn get(mastodon: &Mastodon, path: &str) -> Request {
     let url = format!("{}{path}", mastodon.server);
-    authorised(Request::new(Method::Get, Text::plain(url)), mastodon)
+    authorised(Request::new(Method::Get, SecretText::plain(url)), mastodon)
 }
 
 fn authorised(request: Request, mastodon: &Mastodon) -> Request {
@@ -39,10 +39,10 @@ fn status(mastodon: &Mastodon, text: &str, reply_to: Option<&str>, key: String) 
             .map(|warning| ("spoiler_text".to_owned(), json!(warning))),
     );
     body.extend(reply_to.map(|reply_to| ("in_reply_to_id".to_owned(), json!(reply_to))));
-    let url = Text::plain(format!("{}/api/v1/statuses", mastodon.server));
+    let url = SecretText::plain(format!("{}/api/v1/statuses", mastodon.server));
     authorised(Request::new(Method::Post, url), mastodon)
-        .header("Content-Type", Text::plain("application/json"))
-        .header("Idempotency-Key", Text::plain(key))
+        .header("Content-Type", SecretText::plain("application/json"))
+        .header("Idempotency-Key", SecretText::plain(key))
         .body(Value::Object(body).to_string())
 }
 

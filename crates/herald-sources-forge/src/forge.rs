@@ -1,13 +1,13 @@
 use herald_core::{Cursor, Event, KeyForm, Polled, Scheme, Signed, unreserved};
 use herald_kinds::Hooked;
-use herald_ports::{Method, Request, Response, Secret, Text};
+use herald_ports::{Method, Request, Response, Secret, SecretText};
 use serde::Deserialize;
 
 use crate::options::SourceOptions;
 use herald_wire::SourceError;
 use herald_wire::{NOT_MODIFIED, Reading, answered};
 
-use crate::wire::{Found, event, read};
+use crate::wire::{ForgeRelease, event, read};
 use crate::{forgejo, github, gitlab};
 
 /// A GitHub webhook: `X-Hub-Signature-256: sha256=<hex>`, an HMAC-SHA256 of the body.
@@ -240,7 +240,7 @@ impl Forge {
         read(what, &response.body)
     }
 
-    fn found(self, what: &'static str, body: &[u8]) -> Result<Found, SourceError> {
+    fn found(self, what: &'static str, body: &[u8]) -> Result<ForgeRelease, SourceError> {
         match self {
             Self::GitHub | Self::Forgejo => github::found(what, body),
             Self::GitLab => gitlab::found(what, body),
@@ -252,7 +252,7 @@ impl Forge {
         what: &'static str,
         limit: usize,
         body: &[u8],
-    ) -> Result<Vec<Found>, SourceError> {
+    ) -> Result<Vec<ForgeRelease>, SourceError> {
         match self {
             Self::GitHub | Self::Forgejo => github::all_found(what, limit, body),
             Self::GitLab => gitlab::all_found(what, limit, body),
@@ -346,22 +346,22 @@ impl Origin {
             Forge::GitHub | Forge::Forgejo => format!("{}/repos/{}", self.api, self.repository),
             Forge::GitLab => gitlab::project(&self.api, &self.repository),
         };
-        let request = Request::new(Method::Get, Text::plain(format!("{base}{path}")))
+        let request = Request::new(Method::Get, SecretText::plain(format!("{base}{path}")))
             .at_most(self.reading.parse);
         let request = match self.forge {
             Forge::GitHub => herald_wire::github::headed(request),
             Forge::GitLab | Forge::Forgejo => request
-                .header("Accept", Text::plain("application/json"))
+                .header("Accept", SecretText::plain("application/json"))
                 .identified(),
         };
         match (self.forge, token) {
             (_, None) => request,
             (Forge::GitLab, Some(Token::Run(token))) => {
-                request.header("JOB-TOKEN", Text::secret(token.clone()))
+                request.header("JOB-TOKEN", SecretText::secret(token.clone()))
             }
             (Forge::Forgejo, Some(Token::Named(token) | Token::Run(token))) => request.header(
                 "Authorization",
-                Text::plain("token ").then_secret(token.clone()),
+                SecretText::plain("token ").then_secret(token.clone()),
             ),
             (Forge::GitHub | Forge::GitLab, Some(Token::Named(token) | Token::Run(token))) => {
                 request.bearer(token.clone())
@@ -382,10 +382,10 @@ impl Origin {
         let page = self.forge.api().page;
         let mut request = self.get(&format!("/releases?{page}={}", self.reading.page), token);
         if let Some(etag) = cursor.and_then(|cursor| cursor.etag.as_deref()) {
-            request = request.header("If-None-Match", Text::plain(etag));
+            request = request.header("If-None-Match", SecretText::plain(etag));
         }
         if let Some(modified) = cursor.and_then(|cursor| cursor.last_modified.as_deref()) {
-            request = request.header("If-Modified-Since", Text::plain(modified));
+            request = request.header("If-Modified-Since", SecretText::plain(modified));
         }
         request
     }

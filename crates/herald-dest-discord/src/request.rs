@@ -1,7 +1,7 @@
 use herald_core::{
     Announcement, Button, Chore, Declined, Delivery, Entry, Phrase, Step, Wording, digest,
 };
-use herald_ports::{Credential, Method, Request, Secret, Text};
+use herald_ports::{Credential, Method, Request, Secret, SecretText};
 use serde_json::{Map, Value, json};
 
 use crate::discord::{DISCORD, Discord};
@@ -13,15 +13,15 @@ pub(crate) const PINNED: u64 = 2;
 /// A row of message components.
 const ACTION_ROW: u8 = 1;
 /// The most buttons a row holds.
-const ROW: usize = 5;
+const ROW_BUTTONS: usize = 5;
 /// The longest address a link button takes.
 const BUTTON_URL: usize = 512;
 /// A button component.
-const BUTTON: u8 = 2;
+const COMPONENT_BUTTON: u8 = 2;
 /// The style of a button that opens a link.
-const LINK: u8 = 5;
+const BUTTON_STYLE_LINK: u8 = 5;
 /// The style of a button that asks something of herald.
-const SECONDARY: u8 = 2;
+const BUTTON_STYLE_SECONDARY: u8 = 2;
 /// The longest deduplication key Discord takes, in a message's `nonce`.
 const KEY_LENGTH: usize = 25;
 pub(crate) const USER_AGENT: &str = concat!(
@@ -47,12 +47,12 @@ const NO_INBOX: Declined = Declined::Cannot {
 };
 
 /// A request to Discord, sent as the bot where `bot` holds its token.
-pub(crate) fn bare(method: Method, url: Text, bot: Option<&Secret>) -> Request {
-    let request = Request::new(method, url).header("User-Agent", Text::plain(USER_AGENT));
+pub(crate) fn bare(method: Method, url: SecretText, bot: Option<&Secret>) -> Request {
+    let request = Request::new(method, url).header("User-Agent", SecretText::plain(USER_AGENT));
     match bot {
         Some(token) => request.header(
             "Authorization",
-            Text::plain("Bot ").then_secret(token.clone()),
+            SecretText::plain("Bot ").then_secret(token.clone()),
         ),
         None => request,
     }
@@ -60,9 +60,9 @@ pub(crate) fn bare(method: Method, url: Text, bot: Option<&Secret>) -> Request {
 
 /// A request to Discord carrying `body` as JSON, sent as the bot where
 /// `bot` holds its token.
-pub(crate) fn json(method: Method, url: Text, bot: Option<&Secret>, body: String) -> Request {
+pub(crate) fn json(method: Method, url: SecretText, bot: Option<&Secret>, body: String) -> Request {
     bare(method, url, bot)
-        .header("Content-Type", Text::plain("application/json"))
+        .header("Content-Type", SecretText::plain("application/json"))
         .body(body)
 }
 
@@ -144,17 +144,17 @@ fn buttons(
     let subscribing = subscribe
         .filter(|subscribe| subscribe.button)
         .and_then(|_| subscribe_button(&announcement.project))
-        .map(|id| json!({ "type": BUTTON, "style": SECONDARY, "label": wording.text(Phrase::SubscribeButton), "custom_id": id }));
+        .map(|id| json!({ "type": COMPONENT_BUTTON, "style": BUTTON_STYLE_SECONDARY, "label": wording.text(Phrase::SubscribeButton), "custom_id": id }));
     let buttons: Vec<Value> = announcement
         .buttons
         .iter()
         .filter(|button| fits(button))
-        .map(|button| json!({ "type": BUTTON, "style": LINK, "label": button.label(wording), "url": button.url }))
+        .map(|button| json!({ "type": COMPONENT_BUTTON, "style": BUTTON_STYLE_LINK, "label": button.label(wording), "url": button.url }))
         .chain(subscribing)
         .collect();
     (!buttons.is_empty()).then(|| {
         buttons
-            .chunks(ROW)
+            .chunks(ROW_BUTTONS)
             .map(|row| json!({ "type": ACTION_ROW, "components": row }))
             .collect()
     })
@@ -243,7 +243,7 @@ fn webhook(
             }
             Ok(json(
                 Method::Post,
-                Text::secret(url.clone()).then("?wait=true&with_components=true"),
+                SecretText::secret(url.clone()).then("?wait=true&with_components=true"),
                 None,
                 body.to_string(),
             ))
@@ -251,9 +251,9 @@ fn webhook(
         Step::Chunk(index) => {
             let target = match thread(entry) {
                 Some(thread) => {
-                    Text::secret(url.clone()).then(format!("?wait=true&thread_id={thread}"))
+                    SecretText::secret(url.clone()).then(format!("?wait=true&thread_id={thread}"))
                 }
-                None => Text::secret(url.clone()).then("?wait=true"),
+                None => SecretText::secret(url.clone()).then("?wait=true"),
             };
             Ok(json(
                 Method::Post,
@@ -284,7 +284,7 @@ fn bot(
         Step::Post => Ok(bot_post(discord, channel, announcement, delivery)),
         Step::Crosspost => {
             let message = posted(entry)?;
-            let url = Text::plain(format!(
+            let url = SecretText::plain(format!(
                 "{api}/channels/{channel}/messages/{message}/crosspost"
             ));
             Ok(bare(Method::Post, url, bot))
@@ -295,7 +295,7 @@ fn bot(
         }
         Step::Chunk(index) => {
             let target = thread(entry).unwrap_or(channel);
-            let url = Text::plain(format!("{api}/channels/{target}/messages"));
+            let url = SecretText::plain(format!("{api}/channels/{target}/messages"));
             Ok(json(
                 Method::Post,
                 url,
@@ -336,12 +336,12 @@ fn bot_post(
         });
         return json(
             Method::Post,
-            Text::plain(format!("{api}/channels/{channel}/threads")),
+            SecretText::plain(format!("{api}/channels/{channel}/threads")),
             bot,
             body.to_string(),
         );
     }
-    let url = Text::plain(format!("{api}/channels/{channel}/messages"));
+    let url = SecretText::plain(format!("{api}/channels/{channel}/messages"));
     let body = message(discord, announcement, delivery, true, subscribe);
     json(Method::Post, url, bot, body.to_string())
 }
@@ -358,7 +358,7 @@ fn open_thread(
     let name = thread_name(announcement);
     let body =
         json!({ "name": name, "auto_archive_duration": discord.look.archive_after.minutes() });
-    let url = Text::plain(format!(
+    let url = SecretText::plain(format!(
         "{api}/channels/{channel}/messages/{message}/threads"
     ));
     json(
@@ -375,7 +375,7 @@ fn pin(discord: &Discord, channel: &str, message: &str) -> Request {
     let api = &discord.api;
     let bot = discord.credential.bot();
     if discord.route.forum {
-        let url = Text::plain(format!("{api}/channels/{message}"));
+        let url = SecretText::plain(format!("{api}/channels/{message}"));
         return json(
             Method::Patch,
             url,
@@ -383,7 +383,7 @@ fn pin(discord: &Discord, channel: &str, message: &str) -> Request {
             json!({ "flags": PINNED }).to_string(),
         );
     }
-    let url = Text::plain(format!("{api}/channels/{channel}/messages/pins/{message}"));
+    let url = SecretText::plain(format!("{api}/channels/{channel}/messages/pins/{message}"));
     bare(Method::Put, url, bot)
 }
 
@@ -399,18 +399,22 @@ pub(crate) fn channel(discord: &Discord) -> Result<&str, Declined> {
 
 pub(crate) fn get(discord: &Discord, path: &str) -> Request {
     let url = format!("{}{path}", discord.api);
-    bare(Method::Get, Text::plain(url), discord.credential.bot())
+    bare(
+        Method::Get,
+        SecretText::plain(url),
+        discord.credential.bot(),
+    )
 }
 
 pub(crate) fn unpin(discord: &Discord, channel: &str, message: &str) -> Request {
     let api = &discord.api;
     let bot = discord.credential.bot();
     if discord.route.forum {
-        let url = Text::plain(format!("{api}/channels/{message}"));
+        let url = SecretText::plain(format!("{api}/channels/{message}"));
         return json(Method::Patch, url, bot, json!({ "flags": 0 }).to_string());
     }
     let url = format!("{api}/channels/{channel}/messages/pins/{message}");
-    bare(Method::Delete, Text::plain(url), bot)
+    bare(Method::Delete, SecretText::plain(url), bot)
 }
 
 pub(crate) fn chore(
@@ -434,7 +438,7 @@ pub(crate) fn chore(
         .map(|body| {
             json(
                 Method::Patch,
-                Text::plain(url.clone()),
+                SecretText::plain(url.clone()),
                 Some(bot),
                 body.to_string(),
             )

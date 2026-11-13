@@ -277,7 +277,7 @@ appservice_token = {{ secret = "HERALD_MATRIX_AS" }}
                 read: Duration::from_secs(2),
                 held: Duration::from_secs(90),
                 accept_pause: Duration::from_millis(100),
-                asked: None,
+                timers: None,
                 secret: None,
             };
             let heard = RefCell::new(Vec::new());

@@ -8,7 +8,7 @@ use herald_server::Heard;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 use super::world::*;
-use crate::serving::said;
+use crate::serving::heard_lines;
 use crate::*;
 
 fn worked(did: Did) -> Heard {
@@ -77,7 +77,7 @@ fn a_process_stops_when_it_is_asked_to() {
 #[test]
 fn a_process_that_cannot_listen_for_its_signals_stops_at_once() {
     let unheard = || Err(std::io::Error::other("no signals here"));
-    on_tokio(crate::signalled(unheard(), unheard()));
+    on_tokio(crate::signals::signalled(unheard(), unheard()));
 }
 
 #[test]
@@ -331,7 +331,7 @@ fn the_server_says_how_each_command_was_answered_and_what_its_sessions_said() {
         member: None,
     };
     let interacted = |trouble: Option<&str>, sent: Result<(), String>| {
-        said(worked(Did::Interacted(vec![Interacted {
+        heard_lines(worked(Did::Interacted(vec![Interacted {
             asked: asked.clone(),
             answer: Answer {
                 said: String::new(),
@@ -354,7 +354,7 @@ fn the_server_says_how_each_command_was_answered_and_what_its_sessions_said() {
         ["discord: latest could not be answered: the store is down"]
     );
     assert_eq!(
-        said(Heard::Session {
+        heard_lines(Heard::Session {
             destination: DestinationName::new("slack"),
             said: "Slack's Socket Mode could not be opened: invalid_auth".to_owned(),
         }),
@@ -366,7 +366,7 @@ fn the_server_says_how_each_command_was_answered_and_what_its_sessions_said() {
 fn the_server_says_what_it_heard_in_a_line_each() {
     let address = "127.0.0.1:8080".parse().unwrap();
     assert_eq!(
-        said(Heard::Listening(address)),
+        heard_lines(Heard::Listening(address)),
         ["herald serves on 127.0.0.1:8080"]
     );
     let announced = Announced {
@@ -376,20 +376,20 @@ fn the_server_says_what_it_heard_in_a_line_each() {
         },
     };
     assert_eq!(
-        said(worked(Did::Announced(vec![announced]))),
+        heard_lines(worked(Did::Announced(vec![announced]))),
         ["releases: announced (post)"]
     );
-    assert_eq!(said(Heard::Polled(Vec::new())), [] as [String; 0]);
+    assert_eq!(heard_lines(Heard::Polled(Vec::new())), [] as [String; 0]);
     assert_eq!(
-        said(Heard::Kept(Ok(herald_flows::Housekept::default()))),
+        heard_lines(Heard::Kept(Ok(herald_flows::Housekept::default()))),
         [] as [String; 0]
     );
     assert_eq!(
-        said(Heard::Kept(Err(Stop::Refused("no".to_owned())))),
+        heard_lines(Heard::Kept(Err(Stop::Refused("no".to_owned())))),
         ["housekeeping stopped: no. The next round tries again."]
     );
     assert_eq!(
-        said(Heard::Unworked(
+        heard_lines(Heard::Unworked(
             Box::new(Job::Interact {
                 destination: DestinationName::new("chat"),
                 asked: Vec::new(),
@@ -399,14 +399,14 @@ fn the_server_says_what_it_heard_in_a_line_each() {
         ["herald stopped before it worked the commands given on chat"]
     );
     assert_eq!(
-        said(Heard::Unaccepted("too many open files".to_owned())),
+        heard_lines(Heard::Unaccepted("too many open files".to_owned())),
         ["a connection could not be taken: too many open files"]
     );
     assert_eq!(
-        said(Heard::Refused("the signature does not match".to_owned())),
+        heard_lines(Heard::Refused("the signature does not match".to_owned())),
         ["a request was refused: the signature does not match"]
     );
-    let followed = |followed| said(worked(Did::Followed(followed)));
+    let followed = |followed| heard_lines(worked(Did::Followed(followed)));
     assert_eq!(
         followed(Ok(Followed::Accepted {
             follower: "https://social.example/users/ana".to_owned(),
@@ -451,6 +451,6 @@ fn azure_s_route_prefix_is_its_app_setting_else_host_json_else_api() {
     assert_eq!(azure_prefix(&BTreeMap::new(), Some("{}")), "api");
     assert_eq!(azure_prefix(&BTreeMap::new(), Some("not json")), "api");
     assert_eq!(azure_prefix(&BTreeMap::new(), None), "api");
-    assert_eq!(timers("api").map(|asked| asked.prefix), Some("api"));
+    assert_eq!(timers("api").map(|timers| timers.prefix), Some("api"));
     assert!(timers("").is_none());
 }

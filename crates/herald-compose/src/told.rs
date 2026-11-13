@@ -3,8 +3,8 @@
 
 use herald_core::{Chore, Schedule, Step};
 use herald_flows::{
-    Announced, Chored, Did, FollowError, Followed, Housekept, Interacted, Job, Kept, Outcome,
-    Remembered, Stop, Sweep, Swept, Worked,
+    Announced, Chored, Did, FollowError, Followed, Housekept, HousekeptSchedule, Interacted, Job,
+    Outcome, Remembered, Stop, Sweep, Swept, Worked,
 };
 
 /// What a poll of one source found and announced.
@@ -56,7 +56,7 @@ pub fn polled(swept: &Swept) -> Vec<String> {
 
 /// What one chore did.
 #[must_use]
-pub fn chored(kept: &Kept) -> String {
+pub fn chored(kept: &HousekeptSchedule) -> String {
     let Schedule {
         route,
         thread,

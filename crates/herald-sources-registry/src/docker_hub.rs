@@ -4,7 +4,7 @@ use jiff::Timestamp;
 use serde::Deserialize;
 
 use crate::options::TagOrdering;
-use crate::package::{Api, Found};
+use crate::package::{Api, RegistryVersion};
 
 pub(crate) const API: Api = Api {
     url: "https://hub.docker.com/v2",
@@ -77,13 +77,17 @@ pub(crate) fn page(name: &str, tag: &str) -> String {
 }
 
 /// Each tag with the time it was last pushed.
-pub(crate) fn found(api: &Api, limit: usize, body: &[u8]) -> Result<Vec<Found>, SourceError> {
+pub(crate) fn found(
+    api: &Api,
+    limit: usize,
+    body: &[u8],
+) -> Result<Vec<RegistryVersion>, SourceError> {
     let tags: Tags = read(api.versions, limit, body)?;
     Ok(tags
         .results
         .into_iter()
         .filter_map(|tag| {
-            tag.pushed.or(tag.updated).map(|published| Found {
+            tag.pushed.or(tag.updated).map(|published| RegistryVersion {
                 version: tag.name,
                 published,
             })

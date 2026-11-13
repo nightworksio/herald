@@ -9,7 +9,7 @@ use herald_compose::{Host, Hosting, ServingOn, Through};
 use herald_config::{Config, Uses};
 use herald_core::{DestinationName, Sent, Subscription};
 use herald_flows::{Decision, FollowError, decide, followers};
-use herald_ports::{Clock as _, Keyring, Store as Keeps};
+use herald_ports::{Clock as _, Keyring, Store};
 
 use super::cli::Following;
 use super::output::say;
@@ -17,7 +17,7 @@ use super::stores::composed;
 use super::{Connect, DONE, STOPPED, place};
 
 /// What the operator asks of an actor's followers.
-struct Asked<'a> {
+struct FollowersRequest<'a> {
     destination: DestinationName,
     actor: &'a str,
     decided: Option<(&'a str, Decision)>,
@@ -33,10 +33,10 @@ enum Done<'a> {
     },
 }
 
-impl<'a, H: Host> Through<H> for Asked<'a> {
+impl<'a, H: Host> Through<H> for FollowersRequest<'a> {
     type Done = Result<Done<'a>, FollowError>;
 
-    async fn through<S: Keeps, K: Keyring>(
+    async fn through<S: Store, K: Keyring>(
         self,
         serving: &ServingOn<'_, H, S, K>,
         _: &str,
@@ -115,7 +115,7 @@ pub(crate) async fn following(
             Some((follower.as_str(), Decision::Reject)),
         ),
     };
-    let asked = Asked {
+    let asked = FollowersRequest {
         destination: DestinationName::new(destination),
         actor,
         decided,
@@ -133,7 +133,7 @@ pub(crate) async fn following(
             follower,
             decision,
             answered,
-        } => told(follower, decision, actor, &answered, out),
+        } => decision_reported(follower, decision, actor, &answered, out),
     })
 }
 
@@ -156,7 +156,7 @@ fn listed(actor: &str, kept: &[Subscription], out: &mut dyn Write) {
 /// What `decision` of `follower`'s follow of `actor` did, and the code it
 /// ends with: one that the follower's inbox did not take the answer to
 /// stops.
-fn told(
+fn decision_reported(
     follower: &str,
     decision: Decision,
     actor: &str,

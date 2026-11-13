@@ -8,7 +8,7 @@ const STREAMS: &str = "https://www.w3.org/ns/activitystreams";
 /// The security context, which names `publicKey`.
 const SECURITY: &str = "https://w3id.org/security/v1";
 /// Everyone, as `ActivityStreams` addresses them.
-const PUBLIC: &str = "https://www.w3.org/ns/activitystreams#Public";
+const AS_PUBLIC: &str = "https://www.w3.org/ns/activitystreams#Public";
 
 /// The id of the actor `actor` served at `origin`: its domain, and the path
 /// herald is served under.
@@ -91,8 +91,8 @@ fn content(announcement: &Announcement) -> String {
 /// it off the public timelines.
 fn addressed(id: &str, audience: Audience) -> (Value, Value) {
     match audience {
-        Audience::Public => (json!([PUBLIC]), json!([followers(id)])),
-        Audience::Unlisted => (json!([followers(id)]), json!([PUBLIC])),
+        Audience::Public => (json!([AS_PUBLIC]), json!([followers(id)])),
+        Audience::Unlisted => (json!([followers(id)]), json!([AS_PUBLIC])),
     }
 }
 
@@ -265,7 +265,7 @@ fn answer(origin: &str, actor: &str, follow: &Value, kind: &str) -> Value {
 
 /// What an activity sent to herald's inbox asks of one of its actors.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Asked {
+pub enum InboxActivity {
     /// A `Follow` of the actor `target`, as the follow itself.
     Follow {
         /// The id of the actor followed.
@@ -292,14 +292,14 @@ fn named(value: Option<&Value>) -> Option<&str> {
     })
 }
 
-fn nothing(why: &str) -> Asked {
-    Asked::Nothing(why.to_owned())
+fn nothing(why: &str) -> InboxActivity {
+    InboxActivity::Nothing(why.to_owned())
 }
 
 /// What `body`, an activity whose actor is `sender`, asks: a follow, or the
 /// undoing of `sender`'s own follow, carried whole.
 #[must_use]
-pub fn asked(body: &[u8], sender: &str) -> Asked {
+pub fn asked(body: &[u8], sender: &str) -> InboxActivity {
     let Ok(activity) = serde_json::from_slice::<Value>(body) else {
         return nothing("it is not JSON");
     };
@@ -308,7 +308,7 @@ pub fn asked(body: &[u8], sender: &str) -> Asked {
             nothing("it is a follow with no id")
         }
         Some("Follow") => match named(activity.get("object")) {
-            Some(target) => Asked::Follow {
+            Some(target) => InboxActivity::Follow {
                 target: target.to_owned(),
                 follow: activity.clone(),
             },
@@ -325,14 +325,14 @@ pub fn asked(body: &[u8], sender: &str) -> Asked {
                 return nothing("it undoes another actor's follow");
             }
             match named(follow.get("object")) {
-                Some(target) => Asked::Undo {
+                Some(target) => InboxActivity::Undo {
                     follower: sender.to_owned(),
                     target: target.to_owned(),
                 },
                 None => nothing("it undoes a follow of no one"),
             }
         }
-        Some(kind) => Asked::Nothing(format!("herald takes no {kind}")),
+        Some(kind) => InboxActivity::Nothing(format!("herald takes no {kind}")),
         None => nothing("it names no type"),
     }
 }

@@ -1,7 +1,7 @@
 //! The requests GitHub's REST API takes, from GitHub's own API or a GitHub
 //! Enterprise Server's.
 
-use herald_ports::{Method, Request, Secret, Text};
+use herald_ports::{Method, Request, Secret, SecretText};
 
 /// GitHub's own API, where no GitHub Enterprise Server's is named.
 pub const API: &str = "https://api.github.com";
@@ -23,15 +23,15 @@ pub fn api(given: Option<&str>) -> String {
 #[must_use]
 pub fn headed(request: Request) -> Request {
     request
-        .header("Accept", Text::plain("application/vnd.github+json"))
-        .header("X-GitHub-Api-Version", Text::plain(VERSION))
+        .header("Accept", SecretText::plain("application/vnd.github+json"))
+        .header("X-GitHub-Api-Version", SecretText::plain(VERSION))
         .identified()
 }
 
 /// A request to GitHub's REST API at `url`, carrying `token`.
 #[must_use]
 pub fn request(method: Method, url: String, token: Secret) -> Request {
-    headed(Request::new(method, Text::plain(url))).bearer(token)
+    headed(Request::new(method, SecretText::plain(url))).bearer(token)
 }
 
 #[cfg(test)]

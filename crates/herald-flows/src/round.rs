@@ -1,3 +1,5 @@
+//! The scheduled rounds a host with no timer of its own asks for over HTTP.
+
 use herald_core::{bearer, same};
 use herald_ports::Secret;
 

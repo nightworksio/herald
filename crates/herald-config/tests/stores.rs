@@ -4,10 +4,10 @@ mod common;
 
 #[cfg(test)]
 mod stores {
-    use herald_config::{Store, load};
+    use herald_config::{ConfiguredStore, load};
     use herald_store_sqlite::StoreOptions;
 
-    fn store(options: &str) -> Result<Store, String> {
+    fn store(options: &str) -> Result<ConfiguredStore, String> {
         load(
             "herald.toml",
             &format!("version = 1\n[store]\nkind = \"sqlite\"\n{options}"),
@@ -20,10 +20,10 @@ mod stores {
 
     #[test]
     fn a_sqlite_store_names_its_file_or_keeps_it_beside_the_config() {
-        assert_eq!(store(""), Ok(Store::new(StoreOptions::default())));
+        assert_eq!(store(""), Ok(ConfiguredStore::new(StoreOptions::default())));
         assert_eq!(
             store("path = \"/var/lib/herald/records.db\"\n"),
-            Ok(Store::new(StoreOptions {
+            Ok(ConfiguredStore::new(StoreOptions {
                 key: None,
                 path: Some("/var/lib/herald/records.db".to_owned()),
                 busy: None,
@@ -51,7 +51,7 @@ mod stores {
         let named = config("url = { secret = \"HERALD_POSTGRES_URL\" }\n").unwrap();
         assert_eq!(
             named.store,
-            Store::new(herald_store_postgres::StoreOptions {
+            ConfiguredStore::new(herald_store_postgres::StoreOptions {
                 key: None,
                 url: herald_core::SecretRef {
                     secret: "HERALD_POSTGRES_URL".to_owned()
@@ -104,7 +104,7 @@ mod stores {
     fn each_serverless_store_takes_its_own_options_and_none_of_another_s() {
         assert_eq!(
             kind("d1", "binding = \"DB\"\n").unwrap().store,
-            Store::new(herald_store_d1::StoreOptions {
+            ConfiguredStore::new(herald_store_d1::StoreOptions {
                 key: None,
                 binding: Some("DB".to_owned())
             })
@@ -113,7 +113,7 @@ mod stores {
             kind("durable-object", "object = \"records\"\n")
                 .unwrap()
                 .store,
-            Store::new(herald_store_durable_object::StoreOptions {
+            ConfiguredStore::new(herald_store_durable_object::StoreOptions {
                 key: None,
                 binding: None,
                 object: Some("records".to_owned())
@@ -121,7 +121,7 @@ mod stores {
         );
         assert_eq!(
             kind("deno-kv", "prefix = \"apps/herald\"\n").unwrap().store,
-            Store::new(herald_store_deno_kv::StoreOptions {
+            ConfiguredStore::new(herald_store_deno_kv::StoreOptions {
                 key: None,
                 path: None,
                 prefix: Some("apps/herald".to_owned())
@@ -129,7 +129,7 @@ mod stores {
         );
         assert_eq!(
             kind("fastly-kv", "store = \"records\"\n").unwrap().store,
-            Store::new(herald_store_fastly_kv::StoreOptions {
+            ConfiguredStore::new(herald_store_fastly_kv::StoreOptions {
                 key: None,
                 store: Some("records".to_owned()),
                 prefix: None
@@ -179,7 +179,7 @@ mod stores {
         let unnamed = kind("dynamodb", "").unwrap();
         assert_eq!(
             unnamed.store,
-            Store::new(herald_store_dynamodb::StoreOptions::default())
+            ConfiguredStore::new(herald_store_dynamodb::StoreOptions::default())
         );
         assert_eq!(
             unnamed.secrets(),
@@ -192,7 +192,7 @@ mod stores {
         );
         assert_eq!(
             kind("markers", "").unwrap().store,
-            Store::new(herald_store_markers::MarkersOptions {})
+            ConfiguredStore::new(herald_store_markers::MarkersOptions {})
         );
     }
 

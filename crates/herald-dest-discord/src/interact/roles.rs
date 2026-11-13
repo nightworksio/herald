@@ -1,10 +1,10 @@
 //! The roles a subscription gives: given, taken, listed and made.
 
 use herald_core::Phrase;
-use herald_ports::{Method, Request, Response, Text};
+use herald_ports::{Method, Request, Response, SecretText};
 use serde_json::{Value, json};
 
-use super::{Interacting, text, took};
+use super::{Interacting, accepted, text};
 use crate::interactions::snowflake;
 
 impl Interacting {
@@ -24,7 +24,7 @@ impl Interacting {
             )?
             .header(
                 "X-Audit-Log-Reason",
-                Text::plain(self.interactions.wording().text(if give {
+                SecretText::plain(self.interactions.wording().text(if give {
                     Phrase::AuditSubscribed
                 } else {
                     Phrase::AuditUnsubscribed
@@ -66,7 +66,7 @@ impl Interacting {
 ///
 /// What Discord said, where it did not list them.
 pub fn listed(response: &Response) -> Result<Vec<(String, String)>, String> {
-    took(response)?;
+    accepted(response)?;
     let body: Value = serde_json::from_slice(&response.body).unwrap_or(Value::Null);
     Ok(body
         .as_array()
@@ -87,7 +87,7 @@ pub fn listed(response: &Response) -> Result<Vec<(String, String)>, String> {
 ///
 /// What Discord said, where it made none.
 pub fn made(response: &Response) -> Result<(String, String), String> {
-    took(response)?;
+    accepted(response)?;
     let body: Value = serde_json::from_slice(&response.body).unwrap_or(Value::Null);
     match (text(&body, "id"), text(&body, "name")) {
         (Some(id), Some(name)) => Ok((id.to_owned(), name.to_owned())),

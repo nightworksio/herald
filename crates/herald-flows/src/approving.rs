@@ -1,9 +1,12 @@
+//! The operator's decisions on follows waiting for approval, and the
+//! followers each actor keeps.
+
 use herald_core::{DestinationName, Sent, Subscription};
 use herald_kinds::Federates;
 use herald_ports::{Http, Signer, Store, Subscriptions};
 use jiff::Timestamp;
 
-use crate::following::{FollowError, answered, following, kept};
+use crate::follows::{FollowError, answered, following, kept};
 use crate::prepare::Connected;
 
 /// What the operator decides of a follow waiting for approval.

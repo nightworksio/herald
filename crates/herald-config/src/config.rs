@@ -5,14 +5,14 @@ use herald_core::{
     DestinationName, Inbound, KindSpecs, Profile, Retention, Route, RouteId, Sandbox, SecretRef,
     SourceName, Templates,
 };
-use herald_kinds::{Destination, Placed, Source, Store};
+use herald_kinds::{ConfiguredStore, Destination, Placed, Source};
 use jiff::SignedDuration;
 
 /// A config, read, resolved and with its templates compiled.
 #[derive(Debug, Clone)]
 pub struct Config {
     /// The store the ledger and the rest are kept in (ADR-0005).
-    pub store: Store,
+    pub store: ConfiguredStore,
     /// How long the store keeps what herald records.
     pub retention: Retention,
     /// How far a template may go as it renders.

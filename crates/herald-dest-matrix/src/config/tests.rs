@@ -264,13 +264,16 @@ fn commands_are_answered_in_the_room_they_were_given_in() {
         []
     );
     assert!(
-        Interacts::took(
+        Interacts::accepted(
             &pushed,
             &response(403, &json!({ "errcode": "M_FORBIDDEN" }))
         )
         .is_err()
     );
-    assert_eq!(Interacts::took(&pushed, &response(200, &json!({}))), Ok(()));
+    assert_eq!(
+        Interacts::accepted(&pushed, &response(200, &json!({}))),
+        Ok(())
+    );
 }
 
 #[test]

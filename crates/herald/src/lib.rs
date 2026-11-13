@@ -44,21 +44,13 @@ pub use doctoring::schema as doctor_schema;
 pub use signals::stopped;
 
 use announce::{Announce, Routed, announcing, announcing_from};
-use cli::{Cli, Command, From, Reading, Serve, Tokens};
-use doctoring::Asked;
-#[cfg(test)]
-use herald_compose::told::report;
+use cli::{Cli, Command, Reading, RunForge, Running, Tokens};
+use doctoring::DoctorArgs;
 use herald_compose::told::{chored, polled, skipped, why};
 use herald_compose::{GITHUB_TOKEN, Hosting};
-#[cfg(test)]
-use herald_flows::{Announced, Outcome};
-#[cfg(test)]
-use herald_ports::{Http, HttpError, Keyring, Request, Response, Store as Keeps};
 use output::{Scrubbing, hidden, masked, say, warned};
 use preview::previewing;
 use serving::serving;
-#[cfg(all(unix, test))]
-use signals::signalled;
 use stores::composed;
 
 /// Every route announced, already announced, or held by another run; every
@@ -146,14 +138,14 @@ async fn stopping(
     masked(&hidden, vars, if json { &mut *err } else { &mut *out });
     let out = &mut Scrubbing::new(out, &hidden);
     let err = &mut Scrubbing::new(err, &hidden);
-    let serve = match answered(reading, &config, &cli.config, vars, connect, out, err).await {
-        ControlFlow::Continue(serve) => serve,
+    let run = match answered(reading, &config, &cli.config, vars, connect, out, err).await {
+        ControlFlow::Continue(run) => run,
         ControlFlow::Break(code) => return code,
     };
-    if let Some(layer) = doctoring::warning(&serve, vars) {
+    if let Some(layer) = doctoring::warning(&run, vars) {
         warned(&doctoring::gaps(&config, layer, vars).await, vars, out);
     }
-    let code = finished(served(serve, config, vars, connect, out, stop).await, err);
+    let code = finished(ran(run, config, vars, connect, out, stop).await, err);
     let _ = out.flush();
     let _ = err.flush();
     code
@@ -177,7 +169,7 @@ fn parsed(args: &[String], out: &mut dyn Write, err: &mut dyn Write) -> Result<C
 /// read: the doctor's findings where `doctored` asks for them, or else why.
 fn configured(
     path: &str,
-    doctored: Option<Asked>,
+    doctored: Option<DoctorArgs>,
     out: &mut dyn Write,
     err: &mut dyn Write,
 ) -> Result<Config, u8> {
@@ -190,17 +182,18 @@ fn configured(
     })
 }
 
-/// The command that serves, run until it is done or `stop` completes.
-async fn served(
-    serve: Serve,
+/// The command that runs against the config, run until it is done or
+/// `stop` completes.
+async fn ran(
+    run: Running,
     config: Config,
     vars: &BTreeMap<String, String>,
     connect: Connect<'_>,
     out: &mut dyn Write,
     stop: Pin<Box<dyn Future<Output = ()> + '_>>,
 ) -> Result<u8, String> {
-    match serve {
-        Serve::Announce {
+    match run {
+        Running::Announce {
             from,
             release,
             event,
@@ -216,20 +209,22 @@ async fn served(
                 apps::announcing_event(&config, vars, connect, written, out).await
             } else {
                 let announcing = Announce {
-                    forge: from.map_or(Forge::GitHub, From::forge),
+                    forge: from.map_or(Forge::GitHub, RunForge::forge),
                     release: release.as_deref(),
                     dry_run,
                 };
                 announcing_from(&config, vars, connect, announcing, out).await
             }
         }
-        Serve::Poll => polling(&config, vars, connect, out).await,
-        Serve::Housekeep => housekeeping(&config, vars, connect, out).await,
-        Serve::Server { listen } => {
+        Running::Poll => polling(&config, vars, connect, out).await,
+        Running::Housekeep => housekeeping(&config, vars, connect, out).await,
+        Running::Server { listen } => {
             serving(&config, vars, connect, listen.as_deref(), out, stop).await
         }
-        Serve::Lambda => lambda::lambda(config, vars, connect, out).await,
-        Serve::Followers(asked) => followers::following(&config, vars, connect, &asked, out).await,
+        Running::Lambda => lambda::lambda(config, vars, connect, out).await,
+        Running::Followers(asked) => {
+            followers::following(&config, vars, connect, &asked, out).await
+        }
     }
 }
 
@@ -242,7 +237,7 @@ fn finished(done: Result<u8, String>, err: &mut dyn Write) -> u8 {
 }
 
 /// Answers a command that reads the config at `path` and finishes, breaking
-/// with its exit code, or continues with the command that serves.
+/// with its exit code, or continues with the command that runs against it.
 async fn answered(
     reading: Reading,
     config: &Config,
@@ -251,7 +246,7 @@ async fn answered(
     connect: Connect<'_>,
     out: &mut dyn Write,
     err: &mut dyn Write,
-) -> ControlFlow<u8, Serve> {
+) -> ControlFlow<u8, Running> {
     ControlFlow::Break(match reading {
         Reading::Doctor(asked) => {
             doctoring::doctoring(config, path, asked, vars, connect, out).await
@@ -268,7 +263,7 @@ async fn answered(
             let done = setup::set_up(config, vars, connect, &setting, &random_secret, out).await;
             finished(done, err)
         }
-        Reading::Serve(serve) => return ControlFlow::Continue(serve),
+        Reading::Run(run) => return ControlFlow::Continue(run),
     })
 }
 
@@ -303,7 +298,7 @@ fn read(path: &str) -> Result<Config, String> {
     if let Some(options) = config.store.of::<herald_store_sqlite::StoreOptions>() {
         let mut options = options.clone();
         options.path = Some(options.file(directory).display().to_string());
-        config.store = herald_config::Store::new(options);
+        config.store = herald_config::ConfiguredStore::new(options);
     }
     Ok(config)
 }

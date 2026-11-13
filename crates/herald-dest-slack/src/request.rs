@@ -1,5 +1,5 @@
 use herald_core::{Announcement, Declined, Entry, Phrase, Step, safe_url, unreserved};
-use herald_ports::{Credential, Method, Request, Text};
+use herald_ports::{Credential, Method, Request, SecretText};
 use serde_json::{Value, json};
 
 use crate::interact::subscribe_block;
@@ -32,7 +32,7 @@ pub(crate) const fn webhook_cannot(what: &'static str) -> Declined {
 }
 
 /// A request to Slack, sent as the bot where `slack` posts as one.
-pub(crate) fn sent(method: Method, url: Text, slack: &Slack) -> Request {
+pub(crate) fn sent(method: Method, url: SecretText, slack: &Slack) -> Request {
     authorised(Request::new(method, url), slack)
 }
 
@@ -62,14 +62,14 @@ pub(crate) fn get(slack: &Slack, method: WebMethod, query: &str) -> Request {
     } else {
         format!("{}/{name}?{query}", slack.api)
     };
-    sent(Method::Get, Text::plain(url), slack)
+    sent(Method::Get, SecretText::plain(url), slack)
 }
 
-pub(crate) fn posted_json(slack: &Slack, url: Text, body: &Value) -> Request {
+pub(crate) fn posted_json(slack: &Slack, url: SecretText, body: &Value) -> Request {
     sent(Method::Post, url, slack)
         .header(
             "Content-Type",
-            Text::plain("application/json; charset=utf-8"),
+            SecretText::plain("application/json; charset=utf-8"),
         )
         .body(body.to_string())
 }
@@ -82,7 +82,7 @@ pub(crate) fn call(slack: &Slack, method: WebMethod, body: &Value) -> Request {
     }
     posted_json(
         slack,
-        Text::plain(format!("{}/{}", slack.api, method.name)),
+        SecretText::plain(format!("{}/{}", slack.api, method.name)),
         &body,
     )
 }
@@ -220,12 +220,12 @@ pub(crate) fn step(
         (_, Step::Deliver(_) | Step::Deliveries) => Err(cannot("deliver to an inbox")),
         (Credential::Webhook(url), Step::Post) => Ok(posted_json(
             slack,
-            Text::secret(url.clone()),
+            SecretText::secret(url.clone()),
             &announcement_body(slack, announcement, slack.route.subscribe.as_ref()),
         )),
         (Credential::Webhook(url), Step::Chunk(index)) => Ok(posted_json(
             slack,
-            Text::secret(url.clone()),
+            SecretText::secret(url.clone()),
             &chunk_body(announcement, *index),
         )),
         (Credential::Webhook(_), Step::Pin) => Err(webhook_cannot("pin")),

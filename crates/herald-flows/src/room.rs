@@ -1,3 +1,6 @@
+//! The places for work done at once, and the marks that keep one round of
+//! each kind running at a time (ADR-0014).
+
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 

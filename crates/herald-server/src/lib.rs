@@ -18,6 +18,7 @@ use std::convert::Infallible;
 use std::future::Future;
 use std::io;
 use std::net::SocketAddr;
+use std::ops::ControlFlow;
 use std::pin::{Pin, pin};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
@@ -32,7 +33,7 @@ use herald_native::TokioTimer as Waiting;
 use herald_ports::{Clock, Http, Keyring, Secret, Signer, Sockets, Store, Verifier};
 use http_body_util::{BodyExt, Full, Limited};
 use hyper::body::{Bytes, Incoming};
-use hyper::header::{AUTHORIZATION, CONTENT_TYPE, HeaderValue, RETRY_AFTER};
+use hyper::header::{AUTHORIZATION, CONTENT_TYPE, HeaderMap, HeaderValue, RETRY_AFTER};
 use hyper::server::conn::http1;
 use hyper::service::service_fn;
 use hyper::{Method, StatusCode};
@@ -113,7 +114,7 @@ pub struct Limits<'a> {
     /// could not be taken, so a lack of file descriptors does not spin it.
     pub accept_pause: Duration,
     /// Where a host's own timers ask for rounds, where they do.
-    pub asked: Option<Asked<'a>>,
+    pub timers: Option<HostTimers<'a>>,
     /// The secret a request for a round at `/herald/round/<kind>` carries;
     /// with none, no request runs a round.
     pub secret: Option<&'a Secret>,
@@ -123,7 +124,7 @@ pub struct Limits<'a> {
 /// timer triggers post to their functions, and what it is answered once a
 /// round is done.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Asked<'a> {
+pub struct HostTimers<'a> {
     /// The path a poll is asked for at.
     pub poll: &'static str,
     /// The path housekeeping is asked for at; keys read longest ago are
@@ -136,7 +137,7 @@ pub struct Asked<'a> {
     pub prefix: &'a str,
 }
 
-impl Asked<'_> {
+impl HostTimers<'_> {
     /// The round the host's timer asks for at `path`, where it asks for one.
     fn round(&self, path: &str) -> Option<Round> {
         if path == self.poll {
@@ -148,8 +149,8 @@ impl Asked<'_> {
         }
     }
 
-    /// `path` from outside within [`Asked::prefix`], the prefix taken off;
-    /// none where it lies outside it.
+    /// `path` from outside within [`HostTimers::prefix`], the prefix taken
+    /// off; none where it lies outside it.
     fn within<'p>(&self, path: &'p str) -> Option<&'p str> {
         let rest = path.strip_prefix('/')?.strip_prefix(self.prefix)?;
         match rest {
@@ -287,69 +288,16 @@ where
     P: Http,
     K: Keyring,
 {
-    let posted = request.method() == Method::POST;
-    if let Some(asked) = limits.asked
-        && posted
-        && let Some(round) = asked.round(request.uri().path())
-    {
-        rounds.ran(serving, round).await;
-        return Ok(replied(200, JSON, asked.reply.as_bytes().to_vec()));
-    }
-    let path = match limits.asked {
-        Some(asked) => match asked.within(request.uri().path()) {
-            Some(path) => path.to_owned(),
-            None => {
-                return Ok(sent(
-                    rounds,
-                    refusal(404, "its path lies outside the host's prefix"),
-                ));
-            }
-        },
-        None => request.uri().path().to_owned(),
+    let path = match routed(serving, &request, limits, rounds).await {
+        ControlFlow::Continue(path) => path,
+        ControlFlow::Break(response) => return Ok(response),
     };
-    if let Some(round) = Round::named(request.method().as_str(), &path) {
-        let authorization = request
-            .headers()
-            .get(AUTHORIZATION)
-            .and_then(|value| value.to_str().ok());
-        if !Round::allowed(authorization, limits.secret) {
-            return Ok(sent(
-                rounds,
-                refusal(401, "a round was asked without its secret"),
-            ));
-        }
-        rounds.ran(serving, round).await;
-        return Ok(replied(200, TEXT, b"the round ran".to_vec()));
-    }
     let (parts, body) = request.into_parts();
-    let Ok(read) =
-        tokio::time::timeout(limits.read, Limited::new(body, limits.body).collect()).await
-    else {
-        return Ok(sent(rounds, refusal(408, "its body was not sent in time")));
+    let body = match collected(body, limits).await {
+        ControlFlow::Continue(body) => body,
+        ControlFlow::Break(refused) => return Ok(sent(rounds, refused)),
     };
-    let Ok(collected) = read else {
-        return Ok(sent(
-            rounds,
-            refusal(
-                413,
-                format!(
-                    "its body is larger than [server] body, {} bytes, or could not be read",
-                    limits.body
-                ),
-            ),
-        ));
-    };
-    let body = collected.to_bytes();
-    let headers: Vec<(String, String)> = parts
-        .headers
-        .iter()
-        .filter_map(|(name, value)| {
-            value
-                .to_str()
-                .ok()
-                .map(|value| (name.as_str().to_owned(), value.to_owned()))
-        })
-        .collect();
+    let headers = header_pairs(&parts.headers);
     let borrowed: Vec<(&str, &str)> = headers
         .iter()
         .map(|(name, value)| (name.as_str(), value.as_str()))
@@ -371,6 +319,94 @@ where
     Ok(sent(rounds, answered))
 }
 
+/// The path herald answers `request` at, or else the reply that ends it:
+/// a round the host's timers or a request carrying the round's secret ask
+/// for, run, or the refusal of a path outside the host's prefix or of a
+/// round asked for without its secret.
+async fn routed<S, C, G, V, H, P, K>(
+    serving: &Serving<'_, S, C, G, V, H, P, K>,
+    request: &hyper::Request<Incoming>,
+    limits: Limits<'_>,
+    rounds: &Rounds<'_>,
+) -> ControlFlow<hyper::Response<Full<Bytes>>, String>
+where
+    S: Store,
+    C: Clock,
+    G: Signer,
+    H: Http,
+    K: Keyring,
+{
+    let posted = request.method() == Method::POST;
+    if let Some(timers) = limits.timers
+        && posted
+        && let Some(round) = timers.round(request.uri().path())
+    {
+        rounds.ran(serving, round).await;
+        return ControlFlow::Break(replied(200, JSON, timers.reply.as_bytes().to_vec()));
+    }
+    let path = match limits.timers {
+        Some(timers) => match timers.within(request.uri().path()) {
+            Some(path) => path.to_owned(),
+            None => {
+                return ControlFlow::Break(sent(
+                    rounds,
+                    refusal(404, "its path lies outside the host's prefix"),
+                ));
+            }
+        },
+        None => request.uri().path().to_owned(),
+    };
+    if let Some(round) = Round::named(request.method().as_str(), &path) {
+        let authorization = request
+            .headers()
+            .get(AUTHORIZATION)
+            .and_then(|value| value.to_str().ok());
+        if !Round::allowed(authorization, limits.secret) {
+            return ControlFlow::Break(sent(
+                rounds,
+                refusal(401, "a round was asked without its secret"),
+            ));
+        }
+        rounds.ran(serving, round).await;
+        return ControlFlow::Break(replied(200, TEXT, b"the round ran".to_vec()));
+    }
+    ControlFlow::Continue(path)
+}
+
+/// The bytes of `body`, read within `limits.read` and `limits.body`, or
+/// else the refusal of a body sent too slowly or too large.
+async fn collected(body: Incoming, limits: Limits<'_>) -> ControlFlow<Answered, Bytes> {
+    let Ok(read) =
+        tokio::time::timeout(limits.read, Limited::new(body, limits.body).collect()).await
+    else {
+        return ControlFlow::Break(refusal(408, "its body was not sent in time"));
+    };
+    let Ok(collected) = read else {
+        return ControlFlow::Break(refusal(
+            413,
+            format!(
+                "its body is larger than [server] body, {} bytes, or could not be read",
+                limits.body
+            ),
+        ));
+    };
+    ControlFlow::Continue(collected.to_bytes())
+}
+
+/// Each header of `headers` written in visible ASCII, as its name and
+/// value.
+fn header_pairs(headers: &HeaderMap) -> Vec<(String, String)> {
+    headers
+        .iter()
+        .filter_map(|(name, value)| {
+            value
+                .to_str()
+                .ok()
+                .map(|value| (name.as_str().to_owned(), value.to_owned()))
+        })
+        .collect()
+}
+
 /// Which rounds are running, so that one of each kind runs at a time, and
 /// where what they did is said.
 struct Rounds<'a> {
@@ -386,7 +422,17 @@ async fn once(running: &AtomicBool, round: impl Future<Output = Option<Heard>>) 
     round.await
 }
 
-impl Rounds<'_> {
+impl<'a> Rounds<'a> {
+    /// No round running yet, what each does said through `heard`.
+    fn new(heard: &'a dyn Fn(Heard)) -> Self {
+        Self {
+            polling: AtomicBool::new(false),
+            keeping: AtomicBool::new(false),
+            sweeping: AtomicBool::new(false),
+            heard,
+        }
+    }
+
     /// A poll, where none is running.
     async fn polled<S: Store, C: Clock, G: Signer, V, H: Http, P, K>(
         &self,
@@ -500,6 +546,9 @@ async fn round(rounds: &mut Option<Interval>) {
     }
 }
 
+/// The work running at once: jobs and rounds, each with what it did to say.
+type Underway<'a> = FuturesUnordered<Pin<Box<dyn Future<Output = Option<Heard>> + 'a>>>;
+
 /// Every connection `listener` takes answered through `serving`, within
 /// `limits`, each thing worth saying handed to `heard`, until `stop`
 /// completes. Then no request is taken, the work waiting is released to be
@@ -525,16 +574,10 @@ pub async fn serve<S, C, G, V, H, P, K, L, So>(
     if let Ok(address) = listener.address() {
         heard(Heard::Listening(address));
     }
-    let rounding = Rounds {
-        polling: AtomicBool::new(false),
-        keeping: AtomicBool::new(false),
-        sweeping: AtomicBool::new(false),
-        heard,
-    };
+    let rounding = Rounds::new(heard);
     let queue = Queue::new(limits.queue);
     let mut connections = FuturesUnordered::new();
-    let mut running: FuturesUnordered<Pin<Box<dyn Future<Output = Option<Heard>> + '_>>> =
-        FuturesUnordered::new();
+    let mut running: Underway<'_> = FuturesUnordered::new();
     let mut polls = rounds(limits.poll);
     let mut chores = rounds(limits.housekeep);
     let mut sweeps = rounds(Some(limits.keys));
@@ -548,14 +591,7 @@ pub async fn serve<S, C, G, V, H, P, K, L, So>(
     let mut held = true;
     loop {
         tokio::task::coop::consume_budget().await;
-        while running.len() < limits.jobs {
-            let Some(job) = queue.next() else {
-                break;
-            };
-            running.push(Box::pin(async move {
-                Some(Heard::Worked(work(serving, job, &named()).await))
-            }));
-        }
+        started(serving, &queue, &mut running, limits.jobs);
         tokio::select! {
             () = &mut stop => break,
             accepted = listener.take(), if connections.len() < limits.connections => match accepted {
@@ -585,6 +621,34 @@ pub async fn serve<S, C, G, V, H, P, K, L, So>(
         }
     }
     drop(connections);
+    wound_down(serving, &queue, running, heard).await;
+}
+
+/// The work waiting in `queue` started, while fewer than `jobs` run.
+fn started<'a, S: Store, C: Clock, G: Signer, V, H: Http, P, K>(
+    serving: &'a Serving<'_, S, C, G, V, H, P, K>,
+    queue: &Queue,
+    running: &mut Underway<'a>,
+    jobs: usize,
+) {
+    while running.len() < jobs {
+        let Some(job) = queue.next() else {
+            break;
+        };
+        running.push(Box::pin(async move {
+            Some(Heard::Worked(work(serving, job, &named()).await))
+        }));
+    }
+}
+
+/// The work waiting in `queue` released to be delivered again (ADR-0013),
+/// and the work `running` finished, what each did handed to `heard`.
+async fn wound_down<S: Store, C, G, V, H, P, K>(
+    serving: &Serving<'_, S, C, G, V, H, P, K>,
+    queue: &Queue,
+    mut running: Underway<'_>,
+    heard: &dyn Fn(Heard),
+) {
     for job in queue.left() {
         let released = unworked(serving, &job).await;
         heard(Heard::Unworked(Box::new(job), released));
@@ -603,7 +667,7 @@ mod tests {
     use futures_util::FutureExt as _;
     use herald_flows::{Job, Verified};
 
-    use super::{Asked, Queue, RUN, named, round, rounds};
+    use super::{HostTimers, Queue, RUN, named, round, rounds};
 
     fn job(body: &[u8]) -> Job {
         Job::Follow {
@@ -617,17 +681,17 @@ mod tests {
 
     #[test]
     fn a_path_from_outside_lies_within_the_prefix_or_nowhere() {
-        let asked = Asked {
+        let timers = HostTimers {
             poll: "/poll",
             housekeep: "/housekeep",
             reply: "{}",
             prefix: "api",
         };
-        assert_eq!(asked.within("/api"), Some("/"));
-        assert_eq!(asked.within("/api/healthz"), Some("/healthz"));
-        assert_eq!(asked.within("/apis/healthz"), None);
-        assert_eq!(asked.within("api/healthz"), None);
-        assert_eq!(asked.within("/other/healthz"), None);
+        assert_eq!(timers.within("/api"), Some("/"));
+        assert_eq!(timers.within("/api/healthz"), Some("/healthz"));
+        assert_eq!(timers.within("/apis/healthz"), None);
+        assert_eq!(timers.within("api/healthz"), None);
+        assert_eq!(timers.within("/other/healthz"), None);
     }
 
     #[test]

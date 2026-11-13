@@ -1,4 +1,4 @@
-use herald_compose::{Artefact, Asked, Composed, Hosting, Left, told};
+use herald_compose::{Artefact, Composed, HostRequest, Hosting, Left, told};
 use herald_config::{Config, Uses, load};
 use herald_flows::{Reply, refusal, uncomposed};
 
@@ -49,7 +49,7 @@ async fn composed(
     .map(Ok)
 }
 
-pub(super) fn said(lines: impl IntoIterator<Item = String>) {
+pub(super) fn log_lines(lines: impl IntoIterator<Item = String>) {
     for line in lines {
         eprintln!("{line}");
     }
@@ -74,7 +74,7 @@ impl Started {
             Ok(Err(reply)) => Err(reply),
             Err(error) => {
                 let refused = refusal(500, format!("herald could not start: {error}"));
-                said(refused.refused.as_deref().map(told::refused));
+                log_lines(refused.refused.as_deref().map(told::refused));
                 Err(refused.reply)
             }
         }
@@ -86,15 +86,15 @@ impl Started {
     }
 
     /// The answer to `asked`, and the work it leaves.
-    pub(super) async fn answered(&self, asked: &Asked) -> (Reply, Option<Left>) {
+    pub(super) async fn answered(&self, asked: &HostRequest) -> (Reply, Option<Left>) {
         let answer = self.composed.reached(asked).await;
-        said(answer.refused.as_deref().map(told::refused));
-        said(answer.said);
+        log_lines(answer.refused.as_deref().map(told::refused));
+        log_lines(answer.said);
         (answer.reply, answer.left)
     }
 
     /// The work a request left, done.
     pub(super) async fn worked(&self, left: Left) {
-        said(told::worked(&self.composed.work(left).await));
+        log_lines(told::worked(&self.composed.work(left).await));
     }
 }

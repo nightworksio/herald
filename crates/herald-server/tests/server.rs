@@ -24,7 +24,7 @@ mod server {
         Secret, StoreError, Subscriptions,
     };
     use herald_records::MemoryKeyring;
-    use herald_server::{Asked, Heard, Limits, Listener, serve};
+    use herald_server::{Heard, HostTimers, Limits, Listener, serve};
     use herald_testing::{
         FakeClock, FakeSecrets, FakeSigner, FakeStore, FakeVerifier, ScriptedSockets,
     };
@@ -209,7 +209,7 @@ body = "{{ event.body }}"
             read: Duration::from_secs(2),
             held: Duration::from_secs(90),
             accept_pause: Duration::from_millis(100),
-            asked: None,
+            timers: None,
             secret: None,
         }
     }
@@ -347,7 +347,7 @@ body = "{{ event.body }}"
         };
         let quick = Limits {
             read: Duration::from_millis(100),
-            asked: None,
+            timers: None,
             ..limits()
         };
         let (answer, ()) = tokio::join!(
@@ -374,7 +374,7 @@ body = "{{ event.body }}"
         let brief = Limits {
             read: Duration::from_secs(30),
             held: Duration::from_millis(100),
-            asked: None,
+            timers: None,
             ..limits()
         };
         let started = std::time::Instant::now();
@@ -723,7 +723,7 @@ body = "{{ event.body }}"
         let heard = RefCell::new(Vec::new());
         let stop = Notify::new();
         let asking = Limits {
-            asked: Some(Asked {
+            timers: Some(HostTimers {
                 poll: "/poll",
                 housekeep: "/housekeep",
                 reply: r#"{"Outputs":{}}"#,

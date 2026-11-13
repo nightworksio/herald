@@ -3,7 +3,9 @@ use std::sync::Mutex;
 use herald_core::{Addressed, Entry, Sent, Step, activity_claim, key, public_pem};
 use herald_crypto::{RingSigner, RingVerifier};
 use herald_dest_fediverse::{ActivityPub, ActorRouteOptions};
-use herald_ports::{Algorithm, Secret, Signer as _, Verifier as _};
+use herald_ports::{
+    Algorithm, Http, HttpError, Request, Response, Secret, Signer as _, Verifier as _,
+};
 use herald_testing::sample;
 
 use crate::*;
@@ -108,7 +110,13 @@ fn a_delivery_herald_signs_is_one_its_own_inbox_takes_under_the_key_its_actor_pu
 
 #[test]
 fn a_public_base_connects_to_any_public_address_and_another_to_its_origin_alone() {
-    assert!(native(herald_ports::PUBLIC, &herald_ports::Outbound::default()).is_ok());
+    assert!(
+        native(
+            herald_ports::PUBLIC_BASE,
+            &herald_ports::Outbound::default()
+        )
+        .is_ok()
+    );
     assert!(
         native(
             "https://discord.com/api/v10",

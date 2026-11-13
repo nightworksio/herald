@@ -99,7 +99,7 @@ pub enum SetupStep {
     /// Lines to print.
     Say(Vec<String>),
     /// A request to send to the base URL `base`, whose response
-    /// [`Setup::said`] reads.
+    /// [`Setup::reported`] reads.
     Send {
         /// The base URL it is sent to.
         base: String,
@@ -132,7 +132,7 @@ pub trait Setup {
     /// # Errors
     ///
     /// What the platform said where it did not do it.
-    fn said(&self, task: SetupTask<'_>, response: &Response) -> Result<Vec<String>, String>;
+    fn reported(&self, task: SetupTask<'_>, response: &Response) -> Result<Vec<String>, String>;
 }
 
 #[cfg(test)]

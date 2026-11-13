@@ -5,7 +5,7 @@ use herald_core::{Sent, Waits};
 use jiff::{SignedDuration, Timestamp};
 
 use crate::outbound::Outbound;
-use crate::secret::{Secret, Text};
+use crate::secret::{Secret, SecretText};
 
 /// An HTTP method.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -43,9 +43,9 @@ pub struct Request {
     /// The method.
     pub method: Method,
     /// The URL.
-    pub url: Text,
+    pub url: SecretText,
     /// The headers, in order.
-    pub headers: Vec<(String, Text)>,
+    pub headers: Vec<(String, SecretText)>,
     /// The body.
     pub body: Vec<u8>,
     /// The most bytes of its response's body that are read.
@@ -78,7 +78,7 @@ impl fmt::Debug for Request {
 impl Request {
     /// A request with no headers and no body.
     #[must_use]
-    pub fn new(method: Method, url: Text) -> Self {
+    pub fn new(method: Method, url: SecretText) -> Self {
         Self {
             method,
             url,
@@ -91,7 +91,7 @@ impl Request {
 
     /// The request with the header `name` set to `value`.
     #[must_use]
-    pub fn header(mut self, name: impl Into<String>, value: Text) -> Self {
+    pub fn header(mut self, name: impl Into<String>, value: SecretText) -> Self {
         self.headers.push((name.into(), value));
         self
     }
@@ -99,13 +99,16 @@ impl Request {
     /// The request carrying `token` as its bearer token.
     #[must_use]
     pub fn bearer(self, token: Secret) -> Self {
-        self.header("Authorization", Text::plain("Bearer ").then_secret(token))
+        self.header(
+            "Authorization",
+            SecretText::plain("Bearer ").then_secret(token),
+        )
     }
 
     /// The request identified as herald's, by its `User-Agent`.
     #[must_use]
     pub fn identified(self) -> Self {
-        self.header("User-Agent", Text::plain(USER_AGENT))
+        self.header("User-Agent", SecretText::plain(USER_AGENT))
     }
 
     /// The request with `body`.
@@ -187,7 +190,7 @@ impl fmt::Display for Request {
 /// The base a destination names when it reaches any public address rather
 /// than one origin, as an ActivityPub actor's deliveries to its followers'
 /// inboxes do. Its `Http` admits only public addresses (ADR-0007).
-pub const PUBLIC: &str = "public:";
+pub const PUBLIC_BASE: &str = "public:";
 
 /// The `User-Agent` every request herald sends carries: herald, its version
 /// and its repository (ADR-0003).
@@ -268,7 +271,7 @@ impl Response {
     /// What it means where it did not succeed: a wait, as [`Self::wait`]
     /// reads one, or else `who` refusing it with what it `said`.
     #[must_use]
-    pub fn trouble(
+    pub fn failure(
         &self,
         waits: Waits,
         named: Option<SignedDuration>,
@@ -288,7 +291,7 @@ impl Response {
     /// # Errors
     ///
     /// Where it did not succeed.
-    pub fn took(
+    pub fn accepted(
         &self,
         named: Option<SignedDuration>,
         who: &str,
@@ -375,7 +378,7 @@ mod tests {
 
     #[test]
     fn a_request_reads_no_more_than_its_cap_its_ask_and_the_ceiling() {
-        let request = || Request::new(Method::Get, Text::plain("https://example.org"));
+        let request = || Request::new(Method::Get, SecretText::plain("https://example.org"));
         assert_eq!(request().most, Outbound::BODY_MOST);
         assert_eq!(request().at_most(usize::MAX).most, Outbound::BODY_MOST);
         assert_eq!(request().at_most(10).most, 10);
@@ -469,36 +472,36 @@ mod tests {
     fn trouble_is_a_wait_a_refusal_naming_who_and_what_was_said_or_none() {
         let said = || " Missing Access ".to_owned();
         assert_eq!(
-            status(429, &[]).trouble(WAITS, None, "Discord", said),
+            status(429, &[]).failure(WAITS, None, "Discord", said),
             Some(Sent::RetryAfter(WAITS.limited))
         );
         assert_eq!(
-            status(403, &[]).trouble(WAITS, None, "Discord", said),
+            status(403, &[]).failure(WAITS, None, "Discord", said),
             Some(Sent::Refused(
                 "Discord refused it with 403: Missing Access".to_owned()
             ))
         );
         assert_eq!(
-            status(404, &[]).trouble(WAITS, None, "the inbox", String::new),
+            status(404, &[]).failure(WAITS, None, "the inbox", String::new),
             Some(Sent::Refused("the inbox refused it with 404".to_owned()))
         );
-        assert_eq!(status(204, &[]).trouble(WAITS, None, "Discord", said), None);
+        assert_eq!(status(204, &[]).failure(WAITS, None, "Discord", said), None);
     }
 
     #[test]
     fn took_says_what_was_refused_and_any_wait_asked_for() {
         let said = || "slow down".to_owned();
-        assert_eq!(status(200, &[]).took(None, "Slack", said), Ok(()));
+        assert_eq!(status(200, &[]).accepted(None, "Slack", said), Ok(()));
         assert_eq!(
-            status(500, &[]).took(None, "Slack", String::new),
+            status(500, &[]).accepted(None, "Slack", String::new),
             Err("Slack refused it with 500".to_owned())
         );
         assert_eq!(
-            status(429, &[("Retry-After", "3")]).took(None, "Slack", said),
+            status(429, &[("Retry-After", "3")]).accepted(None, "Slack", said),
             Err("Slack refused it with 429: slow down, and asked to wait 3s".to_owned())
         );
         assert_eq!(
-            status(429, &[]).took(Some(SignedDuration::from_millis(1_500)), "Slack", said),
+            status(429, &[]).accepted(Some(SignedDuration::from_millis(1_500)), "Slack", said),
             Err("Slack refused it with 429: slow down, and asked to wait 1s 500ms".to_owned())
         );
     }
@@ -538,13 +541,13 @@ mod tests {
     fn a_request_displays_with_its_secrets_redacted() {
         let request = Request::new(
             Method::Post,
-            Text::plain("https://discord.com/api/v10/channels/1/messages"),
+            SecretText::plain("https://discord.com/api/v10/channels/1/messages"),
         )
         .header(
             "Authorization",
-            Text::plain("Bot ").then_secret(Secret::new("TOKEN", "hunter2")),
+            SecretText::plain("Bot ").then_secret(Secret::new("TOKEN", "hunter2")),
         )
-        .header("Content-Type", Text::plain("application/json"))
+        .header("Content-Type", SecretText::plain("application/json"))
         .body(r#"{"content":"hi"}"#);
         assert_eq!(
             request.with_body().to_string(),
@@ -558,7 +561,7 @@ mod tests {
 
     #[test]
     fn a_request_carries_a_bearer_token_and_herald_s_user_agent() {
-        let request = Request::new(Method::Get, Text::plain("https://example.org"))
+        let request = Request::new(Method::Get, SecretText::plain("https://example.org"))
             .bearer(Secret::new("TOKEN", "hunter2"))
             .identified();
         assert_eq!(
@@ -572,10 +575,10 @@ mod tests {
 
     #[test]
     fn a_sealed_body_is_sent_as_it_is_and_shown_by_its_length_alone() {
-        let request = Request::new(Method::Post, Text::plain("https://hub.example/auth"))
+        let request = Request::new(Method::Post, SecretText::plain("https://hub.example/auth"))
             .header(
                 "Authorization",
-                Text::plain("Bearer ").then_secret(Secret::new("HUB", "pat-1")),
+                SecretText::plain("Bearer ").then_secret(Secret::new("HUB", "pat-1")),
             )
             .sealed_body(r#"{"secret":"pat-1"}"#);
         assert_eq!(request.body, br#"{"secret":"pat-1"}"#);
@@ -590,12 +593,12 @@ mod tests {
         }
         assert!(shown[1].ends_with("«sealed: 18 bytes»"), "{}", shown[1]);
         assert!(shown[2].contains("18 bytes"), "{}", shown[2]);
-        assert!(!Request::new(Method::Get, Text::plain("https://example.org")).sealed);
+        assert!(!Request::new(Method::Get, SecretText::plain("https://example.org")).sealed);
     }
 
     #[test]
     fn a_request_without_a_body_displays_no_blank_line() {
-        let request = Request::new(Method::Get, Text::plain("https://example.org"));
+        let request = Request::new(Method::Get, SecretText::plain("https://example.org"));
         assert_eq!(request.to_string(), "GET https://example.org");
         assert_eq!(request.with_body().to_string(), "GET https://example.org");
     }

@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 use std::ops::Range;
 
 use herald_core::{DestinationName, RecordKind, TemplateName};
-use herald_kinds::{Destination, Store, StoreKind};
+use herald_kinds::{ConfiguredStore, Destination, StoreKind};
 use herald_store_git_branch::GitBranchKind;
 
 use super::templates::Written;
@@ -85,7 +85,7 @@ impl Loader<'_> {
     /// there is, and has a store that keeps what its commands answer with.
     pub(super) fn answered(
         &mut self,
-        store: Option<&Store>,
+        store: Option<&ConfiguredStore>,
         destinations: &BTreeMap<DestinationName, (Destination, Range<usize>)>,
         templates: &BTreeMap<TemplateName, Written>,
     ) {

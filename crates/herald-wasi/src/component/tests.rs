@@ -1,5 +1,7 @@
 use herald_compose::{EGRESS_GUARDED, Host as _};
-use herald_ports::{Http as _, HttpError, Method, Outbound, PUBLIC, Request, Secrets as _, Text};
+use herald_ports::{
+    Http as _, HttpError, Method, Outbound, PUBLIC_BASE, Request, SecretText, Secrets as _,
+};
 
 use super::host::WasiHost;
 
@@ -54,15 +56,15 @@ fn a_connection_refuses_what_it_may_not_reach() {
     let http = hosted()
         .connect("https://discord.com/api", &Outbound::default())
         .unwrap();
-    let elsewhere = Request::new(Method::Get, Text::plain("https://example.org/"));
+    let elsewhere = Request::new(Method::Get, SecretText::plain("https://example.org/"));
     assert!(wstd::runtime::block_on(http.send(elsewhere)).is_err());
     assert!(hosted().connect("not a url", &Outbound::default()).is_err());
 }
 
 #[test]
 fn a_public_connection_refuses_a_name_until_the_host_is_said_to_be_guarded() {
-    let asked = || Request::new(Method::Get, Text::plain("https://localhost:9/"));
-    let http = hosted().connect(PUBLIC, &Outbound::default()).unwrap();
+    let asked = || Request::new(Method::Get, SecretText::plain("https://localhost:9/"));
+    let http = hosted().connect(PUBLIC_BASE, &Outbound::default()).unwrap();
     assert!(matches!(
         wstd::runtime::block_on(http.send(asked())),
         Err(HttpError::Refused { .. })
@@ -71,7 +73,7 @@ fn a_public_connection_refuses_a_name_until_the_host_is_said_to_be_guarded() {
         return;
     }
     let guarded = WasiHost::new([(EGRESS_GUARDED.to_owned(), "true".to_owned())]);
-    let http = guarded.connect(PUBLIC, &Outbound::default()).unwrap();
+    let http = guarded.connect(PUBLIC_BASE, &Outbound::default()).unwrap();
     assert!(!matches!(
         wstd::runtime::block_on(http.send(asked())),
         Err(HttpError::Refused { .. })
@@ -84,7 +86,7 @@ fn a_connection_fetches_what_it_may_reach_and_reads_no_further_than_asked() {
         return;
     };
     let http = hosted().connect(&base, &Outbound::default()).unwrap();
-    let mut asked = Request::new(Method::Post, Text::plain(format!("{base}/said")));
+    let mut asked = Request::new(Method::Post, SecretText::plain(format!("{base}/said")));
     asked.body = b"hello".to_vec();
     let answer = wstd::runtime::block_on(http.send(asked)).unwrap();
     assert_eq!(answer.status, 200);
@@ -95,7 +97,7 @@ fn a_connection_fetches_what_it_may_reach_and_reads_no_further_than_asked() {
             .iter()
             .any(|(name, value)| name == "x-fixture" && value == "yes")
     );
-    let mut little = Request::new(Method::Get, Text::plain(format!("{base}/said")));
+    let mut little = Request::new(Method::Get, SecretText::plain(format!("{base}/said")));
     little.most = 2;
     assert!(wstd::runtime::block_on(http.send(little)).is_err());
 }

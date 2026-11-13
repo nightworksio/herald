@@ -1,8 +1,10 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use herald_ports::{Clock, Http, Method, Request, Response, Secret, Secrets, StoreError, Text};
-use herald_records::{Blob, Kept, Records, Wrote};
+use herald_ports::{
+    Clock, Http, Method, Request, Response, Secret, SecretText, Secrets, StoreError,
+};
+use herald_records::{Blob, RecordBackend, RecordStore, Wrote};
 use serde_json::{Value, json};
 
 use crate::options::StoreOptions;
@@ -116,7 +118,7 @@ impl Dynamodb {
     /// run takes, and a count of the records this store has made.
     #[must_use]
     pub fn store<H: Http, C: Clock>(self, http: H, clock: C, seed: String) -> DynamodbStore<H, C> {
-        Kept::new(DynamodbRecords {
+        RecordStore::new(DynamodbRecords {
             table: self,
             http,
             clock,
@@ -138,7 +140,7 @@ pub struct DynamodbRecords<H, C> {
 }
 
 /// The store a [`Dynamodb`] table keeps.
-pub type DynamodbStore<H, C> = Kept<DynamodbRecords<H, C>>;
+pub type DynamodbStore<H, C> = RecordStore<DynamodbRecords<H, C>>;
 
 /// A record's path as its directory and its name.
 fn split(path: &str) -> (&str, &str) {
@@ -146,7 +148,7 @@ fn split(path: &str) -> (&str, &str) {
 }
 
 /// A record's path as an item's key.
-fn keyed(path: &str) -> Value {
+fn item_key(path: &str) -> Value {
     let (directory, name) = split(path);
     json!({ "directory": { "S": directory }, "name": { "S": name } })
 }
@@ -198,9 +200,12 @@ impl<H: Http, C: Clock> DynamodbRecords<H, C> {
             service: SERVICE,
             host: self.table.endpoint.host(),
         };
-        let request = Request::new(Method::Post, Text::plain(self.table.endpoint.at(ROOT)))
-            .identified()
-            .body(body.to_string().into_bytes());
+        let request = Request::new(
+            Method::Post,
+            SecretText::plain(self.table.endpoint.at(ROOT)),
+        )
+        .identified()
+        .body(body.to_string().into_bytes());
         let target = format!("{API}.{action}");
         let request = signed(
             request,
@@ -277,12 +282,12 @@ fn holding(epoch: &str, version: u64) -> Value {
     })
 }
 
-impl<H: Http, C: Clock> Records for DynamodbRecords<H, C> {
+impl<H: Http, C: Clock> RecordBackend for DynamodbRecords<H, C> {
     async fn read(&self, path: &str) -> Result<Option<Blob>, StoreError> {
         let answered = self
             .done(
                 "GetItem",
-                json!({ "Key": keyed(path), "ConsistentRead": true }),
+                json!({ "Key": item_key(path), "ConsistentRead": true }),
             )
             .await?;
         let Some(item) = answered.get("Item") else {
@@ -381,7 +386,7 @@ impl<H: Http, C: Clock> Records for DynamodbRecords<H, C> {
         let Some((epoch, version)) = parsed(replacing) else {
             return Ok(Wrote::Conflict);
         };
-        let mut asked = json!({ "Key": keyed(path) });
+        let mut asked = json!({ "Key": item_key(path) });
         if let (Some(asked), Value::Object(condition)) =
             (asked.as_object_mut(), holding(epoch, version))
         {

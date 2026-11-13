@@ -20,13 +20,13 @@ pub(crate) fn text<'a>(value: &'a Value, field: &str) -> Option<&'a str> {
 
 /// What a failed response means: when to ask again, or why the homeserver
 /// refused.
-pub(crate) fn trouble(response: &Response, waits: Waits) -> Option<Sent> {
+pub(crate) fn failure(response: &Response, waits: Waits) -> Option<Sent> {
     let body = json(response);
-    response.trouble(waits, waited(&body), MATRIX, || said(&body))
+    response.failure(waits, waited(&body), MATRIX, || error_text(&body))
 }
 
 /// What the homeserver said in `body`: its error's code and text.
-pub(crate) fn said(body: &Value) -> String {
+pub(crate) fn error_text(body: &Value) -> String {
     [text(body, "errcode"), text(body, "error")]
         .into_iter()
         .flatten()
@@ -43,7 +43,7 @@ pub(crate) fn waited(body: &Value) -> Option<SignedDuration> {
 }
 
 pub(crate) fn read(matrix: &Matrix, response: &Response) -> Sent {
-    if let Some(sent) = trouble(response, matrix.waits) {
+    if let Some(sent) = failure(response, matrix.waits) {
         return sent;
     }
     let body = json(response);

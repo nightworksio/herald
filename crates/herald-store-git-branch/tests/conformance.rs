@@ -213,7 +213,7 @@ mod conformance {
         let github = store(GitHub {
             model: Mutex::new(model),
         });
-        let listed = pollster::block_on(herald_records::Records::list(
+        let listed = pollster::block_on(herald_records::RecordBackend::list(
             github.records(),
             "deliveries",
         ))
@@ -229,7 +229,7 @@ mod conformance {
             }),
         });
         assert_eq!(
-            pollster::block_on(herald_records::Records::list(
+            pollster::block_on(herald_records::RecordBackend::list(
                 truncated.records(),
                 "deliveries",
             )),

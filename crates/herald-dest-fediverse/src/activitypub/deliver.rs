@@ -4,8 +4,8 @@ use herald_core::{
     Sent, Step, Threads, Waits, signature_header, signing,
 };
 use herald_ports::{
-    Algorithm, CryptoError, Http, HttpError, Method, PUBLIC, Request, Response, Secret, Signer,
-    Text,
+    Algorithm, CryptoError, Http, HttpError, Method, PUBLIC_BASE, Request, Response, Secret,
+    SecretText, Signer,
 };
 use jiff::Timestamp;
 use serde_json::Value;
@@ -110,11 +110,11 @@ impl ActivityPub {
         Self { waits, ..self }
     }
 
-    /// [`PUBLIC`]: its deliveries reach its followers' inboxes, on any public
-    /// address (ADR-0007).
+    /// [`PUBLIC_BASE`]: its deliveries reach its followers' inboxes, on any
+    /// public address (ADR-0007).
     #[must_use]
     pub fn api(&self) -> &'static str {
-        PUBLIC
+        PUBLIC_BASE
     }
 
     /// The actor's name, whose followers are its recipients.
@@ -336,13 +336,13 @@ impl ActivityPub {
             Err(error) => return Ok(refused(error.to_string())),
         };
         let header = signature_header(&key_id(&self.origin, &self.route.actor), &signature);
-        let request = Request::new(Method::Post, Text::plain(inbox))
+        let request = Request::new(Method::Post, SecretText::plain(inbox))
             .at_most(ANSWER)
             .identified()
-            .header("Content-Type", Text::plain(ACTIVITY_JSON))
-            .header("Date", Text::plain(date))
-            .header("Digest", Text::plain(delivered.digest))
-            .header("Signature", Text::plain(header))
+            .header("Content-Type", SecretText::plain(ACTIVITY_JSON))
+            .header("Date", SecretText::plain(date))
+            .header("Digest", SecretText::plain(delivered.digest))
+            .header("Signature", SecretText::plain(header))
             .body(body);
         Ok(answered(&http.send(request).await?, self.waits))
     }
@@ -362,7 +362,7 @@ fn answered(response: &Response, waits: Waits) -> Sent {
         return Sent::Landed(Facts::default());
     }
     response
-        .trouble(waits, None, "the inbox", String::new)
+        .failure(waits, None, "the inbox", String::new)
         .unwrap_or_else(|| Sent::Landed(Facts::default()))
 }
 

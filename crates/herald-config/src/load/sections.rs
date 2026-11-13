@@ -3,7 +3,7 @@
 //! shape.
 
 use herald_core::SecretRef;
-use herald_kinds::Store;
+use herald_kinds::ConfiguredStore;
 use herald_ports::Outbound;
 use toml::de::DeTable;
 
@@ -133,7 +133,7 @@ impl Loader<'_> {
     pub(super) fn server_section(
         &mut self,
         value: Option<Value<'_>>,
-        store: Option<&Store>,
+        store: Option<&ConfiguredStore>,
     ) -> Server {
         value
             .and_then(|value| self.typed::<ServerFile>(value, "server"))

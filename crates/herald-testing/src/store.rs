@@ -14,7 +14,7 @@ use jiff::Timestamp;
 use crate::lock;
 
 #[derive(Debug, Default)]
-struct Records {
+struct FakeState {
     entries: BTreeMap<Key, Versioned<Entry>>,
     cursors: BTreeMap<SourceName, Versioned<Cursor>>,
     schedules: Vec<Schedule>,
@@ -30,7 +30,7 @@ struct Records {
 /// A store in memory, keeping everything a store can keep.
 #[derive(Debug, Default)]
 pub struct FakeStore {
-    state: Mutex<Records>,
+    state: Mutex<FakeState>,
 }
 
 fn compare_and_set<K: Ord, T: Clone>(

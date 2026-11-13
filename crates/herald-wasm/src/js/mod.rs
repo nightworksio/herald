@@ -31,7 +31,7 @@ fn object(members: &[(&str, JsValue)]) -> JsValue {
 }
 
 /// What a JavaScript error says.
-fn said(error: &JsValue) -> String {
+fn error_message(error: &JsValue) -> String {
     error
         .dyn_ref::<js_sys::Error>()
         .map(|error| String::from(error.message()))
@@ -42,14 +42,18 @@ fn said(error: &JsValue) -> String {
 /// What a call answering a promise settles to, or what it threw or
 /// rejected with.
 async fn settled(called: Result<Promise, JsValue>) -> Result<JsValue, String> {
-    let promise = called.map_err(|error| said(&error))?;
-    JsFuture::from(promise).await.map_err(|error| said(&error))
+    let promise = called.map_err(|error| error_message(&error))?;
+    JsFuture::from(promise)
+        .await
+        .map_err(|error| error_message(&error))
 }
 
 /// `value`, awaited where it is a promise.
 async fn resolved(value: JsValue) -> Result<JsValue, String> {
     match value.dyn_into::<Promise>() {
-        Ok(promise) => JsFuture::from(promise).await.map_err(|error| said(&error)),
+        Ok(promise) => JsFuture::from(promise)
+            .await
+            .map_err(|error| error_message(&error)),
         Err(value) => Ok(value),
     }
 }

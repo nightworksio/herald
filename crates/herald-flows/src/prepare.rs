@@ -1,14 +1,16 @@
+//! A config's credentials and marker keys resolved, and each route and
+//! source given the `Http` that reaches it.
+
 use std::collections::BTreeMap;
 use std::fmt;
 use std::sync::Arc;
 
 use herald_config::{Config, Destination, Placed, RouteConfig, Uses};
 use herald_core::{DestinationName, RouteId, SourceName, hex};
-use herald_kinds::{Interacted, Poll};
+use herald_kinds::{Interacted, Poll, Posts, Reached};
 use herald_ports::{Algorithm, CryptoError, Http, Secret, SecretError, Secrets, Signer};
 use herald_store_markers::{MarkedRoute, MarkersStore};
 
-use crate::reached::{Posts, Reached};
 use crate::serving::Webhooks;
 
 /// What a marker key is derived from a credential under (ADR-0011).
@@ -19,7 +21,7 @@ const DERIVATION: &[u8] = b"herald/marker-key/v1";
 pub enum PrepareError {
     /// Every secret the run needs that could not be read, each with the
     /// keys that name it.
-    Unread(Vec<Unread>),
+    Unread(Vec<UnreadSecret>),
     /// A marker key could not be derived.
     Crypto(CryptoError),
     /// A destination names neither a token nor a webhook.
@@ -80,7 +82,7 @@ impl fmt::Display for PrepareError {
 
 impl From<SecretError> for PrepareError {
     fn from(error: SecretError) -> Self {
-        Self::Unread(vec![Unread {
+        Self::Unread(vec![UnreadSecret {
             error,
             keys: Vec::new(),
         }])
@@ -89,14 +91,14 @@ impl From<SecretError> for PrepareError {
 
 /// A secret a run needs that could not be read, and the keys that name it.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Unread {
+pub struct UnreadSecret {
     /// Why it could not be read.
     pub error: SecretError,
     /// The keys that name it, such as `destinations.discord.token`.
     pub keys: Vec<String>,
 }
 
-impl fmt::Display for Unread {
+impl fmt::Display for UnreadSecret {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if !self.keys.is_empty() {
             write!(f, "{}: ", self.keys.join(", "))?;
@@ -107,9 +109,9 @@ impl fmt::Display for Unread {
 
 /// The secrets a run needs, read before anything else: each it asks for
 /// again is taken from here.
-struct Read(BTreeMap<String, Secret>);
+struct ReadSecrets(BTreeMap<String, Secret>);
 
-impl Secrets for Read {
+impl Secrets for ReadSecrets {
     fn secret(
         &self,
         name: &str,
@@ -131,7 +133,11 @@ impl Secrets for Read {
 /// # Errors
 ///
 /// Every one that cannot be read, each with the keys that name it.
-async fn read<S: Secrets>(config: &Config, secrets: &S, uses: Uses) -> Result<Read, PrepareError> {
+async fn read<S: Secrets>(
+    config: &Config,
+    secrets: &S,
+    uses: Uses,
+) -> Result<ReadSecrets, PrepareError> {
     let mut read = BTreeMap::new();
     let mut unread = Vec::new();
     for name in config.secrets_used(uses) {
@@ -139,14 +145,14 @@ async fn read<S: Secrets>(config: &Config, secrets: &S, uses: Uses) -> Result<Re
             Ok(secret) => {
                 read.insert(name.to_owned(), secret);
             }
-            Err(error) => unread.push(Unread {
+            Err(error) => unread.push(UnreadSecret {
                 error,
                 keys: config.keys_naming(name).to_vec(),
             }),
         }
     }
     if unread.is_empty() {
-        Ok(Read(read))
+        Ok(ReadSecrets(read))
     } else {
         Err(PrepareError::Unread(unread))
     }
@@ -326,7 +332,7 @@ impl Resolved<'_> {
 /// # Errors
 ///
 /// When it is no key `signer` can sign with.
-pub(crate) async fn keyed<G: Signer>(
+pub(crate) async fn signs_as_actor<G: Signer>(
     signer: &G,
     destination: &DestinationName,
     key: &Secret,
@@ -343,9 +349,9 @@ pub(crate) async fn keyed<G: Signer>(
 
 /// Each destination of `config` with its credential and marker key,
 /// resolved through `secrets` and `signer`.
-async fn resolved<'c, G: Signer>(
+async fn destination_secrets<'c, G: Signer>(
     config: &'c Config,
-    secrets: &Read,
+    secrets: &ReadSecrets,
     signer: &G,
 ) -> Result<BTreeMap<&'c DestinationName, Resolved<'c>>, PrepareError> {
     let installation = match &config.marker_key {
@@ -361,7 +367,7 @@ async fn resolved<'c, G: Signer>(
         };
         let secret = secrets.secret(&reference.secret).await?;
         if destination.acts() {
-            keyed(signer, name, &secret).await?;
+            signs_as_actor(signer, name, &secret).await?;
         }
         let (marker_key, derived) = if let Some(key) = &installation {
             (key.clone(), false)
@@ -404,7 +410,7 @@ pub async fn prepare<S: Secrets, G: Signer>(
     uses: Uses,
 ) -> Result<Prepared, PrepareError> {
     let read = read(config, secrets, uses).await?;
-    let resolved = resolved(config, &read, signer).await?;
+    let resolved = destination_secrets(config, &read, signer).await?;
     let mut routes = Vec::new();
     for route in &config.routes {
         let found = resolved.get(&route.route.destination);
@@ -470,7 +476,7 @@ mod tests {
 
     #[test]
     fn a_secret_read_first_is_taken_again_and_one_not_read_is_missing() {
-        let read = Read([("TOKEN".to_owned(), Secret::new("TOKEN", "t"))].into());
+        let read = ReadSecrets([("TOKEN".to_owned(), Secret::new("TOKEN", "t"))].into());
         assert_eq!(
             pollster::block_on(read.secret("TOKEN")),
             Ok(Secret::new("TOKEN", "t"))
@@ -480,7 +486,7 @@ mod tests {
             PrepareError::from(missing.clone()).to_string(),
             "no secret is named OTHER; set it where this platform keeps secrets"
         );
-        let named = Unread {
+        let named = UnreadSecret {
             error: missing,
             keys: vec!["a.token".to_owned(), "b.token".to_owned()],
         };

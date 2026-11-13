@@ -1,7 +1,7 @@
 use std::fmt::Write as _;
 
 use herald_core::hex;
-use herald_ports::{Request, Secret, Text};
+use herald_ports::{Request, Secret, SecretText};
 use hmac::{Hmac, KeyInit, Mac};
 use jiff::Timestamp;
 use sha2::{Digest, Sha256};
@@ -107,14 +107,14 @@ pub fn signed(
     );
     let signature = hex(&hmac(&key, to_sign.as_bytes()));
     let mut request = request
-        .header("Content-Type", Text::plain(kind))
-        .header("X-Amz-Date", Text::plain(stamp));
+        .header("Content-Type", SecretText::plain(kind))
+        .header("X-Amz-Date", SecretText::plain(stamp));
     for (name, value) in amz {
-        request = request.header(format!("X-Amz-{name}"), Text::plain(*value));
+        request = request.header(format!("X-Amz-{name}"), SecretText::plain(*value));
     }
     request = request.header(
         "Authorization",
-        Text::plain(format!("{ALGORITHM} Credential="))
+        SecretText::plain(format!("{ALGORITHM} Credential="))
             .then_secret(signing.access_key_id.clone())
             .then(format!(
                 "/{scope}, SignedHeaders={signed_headers}, Signature={signature}"
@@ -123,7 +123,7 @@ pub fn signed(
     if let Some(token) = signing.session_token {
         request = request.header(
             "X-Amz-Security-Token",
-            Text::plain("").then_secret(token.clone()),
+            SecretText::plain("").then_secret(token.clone()),
         );
     }
     request
@@ -164,8 +164,11 @@ mod tests {
             "AWS_SECRET_ACCESS_KEY",
             include_str!("../fixtures/aws-documented-secret.test.txt").trim(),
         );
-        let request = Request::new(Method::Post, Text::plain("https://example.amazonaws.com/"))
-            .body(b"Param1=value1".to_vec());
+        let request = Request::new(
+            Method::Post,
+            SecretText::plain("https://example.amazonaws.com/"),
+        )
+        .body(b"Param1=value1".to_vec());
         let signing = Signing {
             access_key_id: &id,
             secret_access_key: &key,
@@ -200,7 +203,7 @@ mod tests {
         let request = || {
             Request::new(
                 Method::Post,
-                Text::plain("https://dynamodb.eu-west-1.amazonaws.com/"),
+                SecretText::plain("https://dynamodb.eu-west-1.amazonaws.com/"),
             )
             .body(br#"{"TableName":"herald"}"#.to_vec())
         };

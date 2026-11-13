@@ -51,14 +51,14 @@ pub enum Received {
 
 /// Why an interaction could not be read.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Unread {
+pub enum UnreadInteraction {
     /// The body is not an interaction.
     NotAnInteraction,
     /// It names no channel or no member.
     Unplaced,
 }
 
-impl fmt::Display for Unread {
+impl fmt::Display for UnreadInteraction {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(match self {
             Self::NotAnInteraction => "the body is not a Discord interaction",
@@ -105,8 +105,13 @@ impl Interacting {
     /// # Errors
     ///
     /// When it is not an interaction, or names no channel or no member.
-    pub fn received(&self, destination: &DestinationName, body: &[u8]) -> Result<Received, Unread> {
-        let value: Value = serde_json::from_slice(body).map_err(|_| Unread::NotAnInteraction)?;
+    pub fn received(
+        &self,
+        destination: &DestinationName,
+        body: &[u8],
+    ) -> Result<Received, UnreadInteraction> {
+        let value: Value =
+            serde_json::from_slice(body).map_err(|_| UnreadInteraction::NotAnInteraction)?;
         self.read(destination, &value)
     }
 
@@ -115,19 +120,25 @@ impl Interacting {
     /// # Errors
     ///
     /// As [`Interacting::received`].
-    pub fn read(&self, destination: &DestinationName, value: &Value) -> Result<Received, Unread> {
+    pub fn read(
+        &self,
+        destination: &DestinationName,
+        value: &Value,
+    ) -> Result<Received, UnreadInteraction> {
         let kind = value
             .get("type")
             .and_then(Value::as_u64)
-            .ok_or(Unread::NotAnInteraction)?;
+            .ok_or(UnreadInteraction::NotAnInteraction)?;
         if kind == PING {
             return Ok(Received::Ping);
         }
         if text(value, "application_id") != Some(self.interactions.application.as_str()) {
             return Ok(Received::Ignored);
         }
-        let data = value.get("data").ok_or(Unread::NotAnInteraction)?;
-        let place = placed(value).ok_or(Unread::Unplaced)?;
+        let data = value
+            .get("data")
+            .ok_or(UnreadInteraction::NotAnInteraction)?;
+        let place = placed(value).ok_or(UnreadInteraction::Unplaced)?;
         let (command, given) = match kind {
             APPLICATION_COMMAND | AUTOCOMPLETE => match self.command(data) {
                 Some(found) => found,
@@ -168,7 +179,7 @@ fn pressed(
     value: &Value,
     place: Place,
     data: &Value,
-) -> Result<Received, Unread> {
+) -> Result<Received, UnreadInteraction> {
     let Some(project) = text(data, "custom_id").and_then(|id| id.strip_prefix(SUBSCRIBE)) else {
         return Ok(Received::Ignored);
     };
@@ -185,7 +196,7 @@ fn pressed(
 
 /// What a member typing into the option of `given` that has the focus, in
 /// the interaction `value`, completes.
-fn completing(value: &Value, place: Place, given: &[Value]) -> Result<Received, Unread> {
+fn completing(value: &Value, place: Place, given: &[Value]) -> Result<Received, UnreadInteraction> {
     let typed = given
         .iter()
         .find(|option| option.get("focused").and_then(Value::as_bool) == Some(true))
@@ -209,7 +220,7 @@ fn asked(
     project: Option<String>,
     share: bool,
     toggles: bool,
-) -> Result<Received, Unread> {
+) -> Result<Received, UnreadInteraction> {
     let replying = replying(value)?;
     let user = value
         .get("member")
@@ -217,7 +228,7 @@ fn asked(
         .or_else(|| value.get("user"))
         .and_then(|user| text(user, "id"))
         .filter(|user| snowflake(user))
-        .ok_or(Unread::Unplaced)?;
+        .ok_or(UnreadInteraction::Unplaced)?;
     Ok(Received::Asked {
         asked: Asked {
             destination: destination.clone(),
@@ -234,9 +245,9 @@ fn asked(
 }
 
 /// Where the answer to the interaction `value` goes.
-fn replying(value: &Value) -> Result<Replying, Unread> {
-    let id = text(value, "id").ok_or(Unread::NotAnInteraction)?;
-    let token = text(value, "token").ok_or(Unread::NotAnInteraction)?;
+fn replying(value: &Value) -> Result<Replying, UnreadInteraction> {
+    let id = text(value, "id").ok_or(UnreadInteraction::NotAnInteraction)?;
+    let token = text(value, "token").ok_or(UnreadInteraction::NotAnInteraction)?;
     Ok(Replying {
         id: id.to_owned(),
         token: Secret::new("the interaction's token", token),

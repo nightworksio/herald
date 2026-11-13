@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 use std::ops::Range;
 
 use herald_core::{DestinationName, RecordKind, Retention};
-use herald_kinds::{Destination, Store, StoreKind};
+use herald_kinds::{ConfiguredStore, Destination, StoreKind};
 use herald_store_git_branch::GitBranchKind;
 use toml::Spanned;
 use toml::de::{DeTable, DeValue};
@@ -15,7 +15,10 @@ use super::{Loader, Value, list};
 use crate::file::{Keep, KeepFile};
 
 impl Loader<'_> {
-    pub(super) fn store(&mut self, value: Option<Value<'_>>) -> Option<(Store, Retention)> {
+    pub(super) fn store(
+        &mut self,
+        value: Option<Value<'_>>,
+    ) -> Option<(ConfiguredStore, Retention)> {
         let kinds = self.kinds;
         let Some(value) = value else {
             self.error(
@@ -68,7 +71,7 @@ impl Loader<'_> {
     /// that keeps them.
     pub(super) fn followed(
         &mut self,
-        store: Option<&Store>,
+        store: Option<&ConfiguredStore>,
         destinations: &BTreeMap<DestinationName, (Destination, Range<usize>)>,
         routes: &[Read],
     ) {

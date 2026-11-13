@@ -3,12 +3,12 @@
 //! Discord takes (ADR-0016).
 
 use herald_core::Answering;
-use herald_ports::{Method, Request, Response, Secret, Text};
+use herald_ports::{Method, Request, Response, Secret, SecretText};
 use serde_json::Value;
 
 use crate::discord::{API, DISCORD};
 use crate::interactions::{Interactions, Via};
-use crate::read::{said, waited};
+use crate::read::{error_text, waited};
 use crate::request::{bare, json};
 
 mod answers;
@@ -17,7 +17,7 @@ mod received;
 mod roles;
 
 pub use answers::{MESSAGE, choices, deferred, pong};
-pub use received::{Received, Unread};
+pub use received::{Received, UnreadInteraction};
 pub use roles::{listed, made};
 
 /// An option holding a subcommand.
@@ -111,12 +111,12 @@ impl Interacting {
     }
 
     fn bare(&self, method: Method, path: &str) -> Option<Request> {
-        let url = Text::plain(format!("{}{path}", self.api));
+        let url = SecretText::plain(format!("{}{path}", self.api));
         Some(bare(method, url, Some(self.bot.as_ref()?)))
     }
 
     fn json(&self, method: Method, path: &str, body: &Value) -> Option<Request> {
-        let url = Text::plain(format!("{}{path}", self.api));
+        let url = SecretText::plain(format!("{}{path}", self.api));
         Some(json(
             method,
             url,
@@ -140,9 +140,9 @@ pub fn subscribe_button(project: &str) -> Option<String> {
 /// # Errors
 ///
 /// What Discord said, where it refused or was unwell.
-pub fn took(response: &Response) -> Result<(), String> {
+pub fn accepted(response: &Response) -> Result<(), String> {
     let body = crate::read::json(response);
-    response.took(waited(&body), DISCORD, || said(&body))
+    response.accepted(waited(&body), DISCORD, || error_text(&body))
 }
 
 #[cfg(test)]

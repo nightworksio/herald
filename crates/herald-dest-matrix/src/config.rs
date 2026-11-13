@@ -10,7 +10,7 @@ use herald_ports::{Boxed, DynSecrets, Request, Response, Secret, SecretError};
 use jiff::SignedDuration;
 
 use crate::held::Syncing;
-use crate::interact::{self, Interacting, took};
+use crate::interact::{self, Interacting, accepted};
 use crate::interactions::{Interactions, Via};
 use crate::matrix::{self, MATRIX, Matrix};
 use crate::options::{DestinationOptions, RouteOptions};
@@ -215,8 +215,8 @@ impl Interacts for Interacting {
             .unwrap_or_default()
     }
 
-    fn took(&self, response: &Response) -> Result<(), String> {
-        took(response)
+    fn accepted(&self, response: &Response) -> Result<(), String> {
+        accepted(response)
     }
 
     fn posted(&self, endpoint: Endpoint) -> Option<Result<(Scheme, &str), &'static str>> {

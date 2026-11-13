@@ -4,7 +4,7 @@ use jiff::Timestamp;
 use serde_json::Value;
 
 use crate::discord::Discord;
-use crate::read::{json, owned, trouble};
+use crate::read::{failure, json, owned};
 use crate::request::{channel, get, webhook_cannot};
 
 /// The most messages Discord lists in one page.
@@ -31,7 +31,7 @@ impl<'a, H: Http> DiscordMarkers<'a, H> {
 
     async fn read(&self, path: &str) -> Result<Value, MarkersError> {
         let response = self.http.send(get(self.discord, path)).await?;
-        match trouble(&response, self.discord.waits) {
+        match failure(&response, self.discord.waits) {
             Some(sent) => Err(MarkersError::unlanded(sent)),
             None => Ok(json(&response)),
         }

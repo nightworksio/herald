@@ -3,7 +3,7 @@
 #[cfg(test)]
 mod actor {
     use herald_dest_fediverse::{
-        ActorError, ActorKey, Found, Inboxes, activity_json, actor_key, actor_of, confirms,
+        ActorError, ActorKey, Inboxes, KeyOwner, activity_json, actor_key, actor_of, confirms,
         document, inboxes, key_request, origin, same_origin,
     };
     use serde_json::json;
@@ -13,12 +13,12 @@ mod actor {
     const ALONE: &str = "https://social.example/users/ana/main-key";
     const PEM: &str = "-----BEGIN PUBLIC KEY-----\nAQAB\n-----END PUBLIC KEY-----\n";
 
-    fn read(document: &serde_json::Value, key: &str) -> Result<Found, ActorError> {
+    fn read(document: &serde_json::Value, key: &str) -> Result<KeyOwner, ActorError> {
         actor_key(document.to_string().as_bytes(), key)
     }
 
-    fn held() -> Found {
-        Found::Held(ActorKey {
+    fn held() -> KeyOwner {
+        KeyOwner::Held(ActorKey {
             actor: ANA.to_owned(),
             pem: PEM.to_owned(),
         })
@@ -73,7 +73,7 @@ mod actor {
         let alone = json!({ "id": ALONE, "owner": ANA, "publicKeyPem": PEM });
         assert_eq!(
             read(&alone, ALONE),
-            Ok(Found::Claimed {
+            Ok(KeyOwner::Claimed {
                 owner: ANA.to_owned(),
                 pem: PEM.to_owned()
             })

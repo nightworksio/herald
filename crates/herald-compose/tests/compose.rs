@@ -10,7 +10,7 @@ mod compose {
     use std::task::{Context, Poll};
 
     use herald_compose::{
-        Asked, Composed, Host, KvAt, Left, Opener, ServingOn, SqlAt, Through, reached,
+        Composed, Host, HostRequest, KvAt, Left, Opener, ServingOn, SqlAt, Through, reached,
     };
     use herald_config::{Config, Uses, load};
     use herald_core::DestinationName;
@@ -181,7 +181,7 @@ mod compose {
 
         fn fill(&self, (): (), _: Job) {}
 
-        fn said(&self, _: &DestinationName, _: String) {}
+        fn report(&self, _: &DestinationName, _: String) {}
     }
 
     /// The store table `store`, with the key a store in a shared repository
@@ -446,7 +446,7 @@ mod compose {
                     asked: Vec::new(),
                 },
             );
-            Untaken.said(&destination, String::new());
+            Untaken.report(&destination, String::new());
         }
     }
 
@@ -623,8 +623,8 @@ template = "t"
         );
     }
 
-    fn asked(method: &str, target: &str, authorization: Option<&str>) -> Asked {
-        Asked {
+    fn asked(method: &str, target: &str, authorization: Option<&str>) -> HostRequest {
+        HostRequest {
             method: method.to_owned(),
             target: target.to_owned(),
             headers: authorization
@@ -645,7 +645,7 @@ template = "t"
             "test",
         ))
         .unwrap();
-        let reach = |composed: &Composed<'_, Hosting>, asked: &Asked| {
+        let reach = |composed: &Composed<'_, Hosting>, asked: &HostRequest| {
             pollster::block_on(composed.reached(asked))
         };
         let health = reach(&unset, &asked("GET", "/healthz?x=1", None));
