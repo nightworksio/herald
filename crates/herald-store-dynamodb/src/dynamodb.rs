@@ -1,16 +1,17 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use herald_core::Address;
 use herald_ports::{Clock, Http, Method, Request, Response, Secret, Secrets, StoreError, Text};
 use herald_records::{Blob, Kept, Records, Wrote};
 use serde_json::{Value, json};
 
-use crate::options::{REGION, StoreOptions};
-use herald_aws::{Signing, signed};
+use crate::options::StoreOptions;
+use herald_aws::{Endpoint, REGION, Signing, signed};
 
 /// The service DynamoDB's requests are signed for.
 const SERVICE: &str = "dynamodb";
+/// The path every request to DynamoDB's JSON API is sent to.
+const ROOT: &str = "/";
 /// What DynamoDB's requests and answers are.
 const JSON: &str = "application/x-amz-json-1.0";
 /// The version of DynamoDB's API every target names.
@@ -35,8 +36,7 @@ pub struct Credentials {
 /// credentials that may read and write its items.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Dynamodb {
-    endpoint: String,
-    host: String,
+    endpoint: Endpoint,
     region: String,
     table: String,
     credentials: Credentials,
@@ -52,16 +52,8 @@ impl Dynamodb {
         endpoint: Option<&str>,
         credentials: Credentials,
     ) -> Self {
-        let endpoint = endpoint.map_or_else(
-            || format!("https://dynamodb.{region}.amazonaws.com"),
-            |endpoint| endpoint.trim_end_matches('/').to_owned(),
-        );
-        let host = Address::parse(&endpoint)
-            .map(|address| address.authority())
-            .unwrap_or_default();
         Self {
-            endpoint,
-            host,
+            endpoint: Endpoint::new(SERVICE, region, endpoint),
             region: region.to_owned(),
             table: table.to_owned(),
             credentials,
@@ -107,14 +99,14 @@ impl Dynamodb {
     /// The base URL it reaches.
     #[must_use]
     pub fn api(&self) -> &str {
-        &self.endpoint
+        self.endpoint.url()
     }
 
     /// The host its requests are signed for: the endpoint's, with its port
     /// where that is not its scheme's.
     #[must_use]
     pub fn host(&self) -> &str {
-        &self.host
+        self.endpoint.host()
     }
 
     /// The store kept in the table, reached through `http` and signed at the
@@ -204,18 +196,15 @@ impl<H: Http, C: Clock> DynamodbRecords<H, C> {
             session_token: credentials.session_token.as_ref(),
             region: &self.table.region,
             service: SERVICE,
-            host: &self.table.host,
+            host: self.table.endpoint.host(),
         };
-        let request = Request::new(
-            Method::Post,
-            Text::plain(format!("{}/", self.table.endpoint)),
-        )
-        .identified()
-        .body(body.to_string().into_bytes());
+        let request = Request::new(Method::Post, Text::plain(self.table.endpoint.at(ROOT)))
+            .identified()
+            .body(body.to_string().into_bytes());
         let target = format!("{API}.{action}");
         let request = signed(
             request,
-            "/",
+            &self.table.endpoint.canonical(ROOT),
             JSON,
             &[("Target", &target)],
             &signing,
