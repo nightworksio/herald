@@ -25,11 +25,11 @@ mod unpin;
 
 pub use config::{DiscordKind, KIND, SCHEME};
 pub use discord::{Discord, MARKUP, profile};
-pub use gateway::{Effect, GATEWAY, Gateway};
+pub use gateway::{Effect, Gateway};
 pub use herald_ports::Credential;
 pub use interact::{
     Interacting, MESSAGE, Received, Replying, UnreadInteraction, accepted, choices, deferred,
-    listed, made, pong, subscribe_button,
+    listed, made, subscribe_button,
 };
 pub use interactions::{Interactions, SESSION_DOMAIN, Subscribe, Via};
 pub use look::{ArchiveAfter, Colour, Colours, Look};

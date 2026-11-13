@@ -16,7 +16,7 @@ const PEM_LINE: usize = 64;
 
 /// `body`'s SHA-256, in base64, as `Digest: SHA-256=<it>` carries it.
 #[must_use]
-pub fn body_sha256(body: &[u8]) -> String {
+pub(crate) fn body_sha256(body: &[u8]) -> String {
     STANDARD.encode(sha2::Sha256::digest(body))
 }
 

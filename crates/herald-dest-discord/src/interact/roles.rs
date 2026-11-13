@@ -47,7 +47,7 @@ impl Interacting {
     /// none without a bot token or where the id is not written as Discord
     /// writes one.
     #[must_use]
-    pub fn make_role(&self, guild: &str, name: &str) -> Option<Request> {
+    pub(crate) fn make_role(&self, guild: &str, name: &str) -> Option<Request> {
         if !snowflake(guild) {
             return None;
         }

@@ -27,7 +27,7 @@ mod timer;
 
 use std::sync::{Mutex, MutexGuard, PoisonError};
 
-pub use audit::{credentials, secret_header};
+pub use audit::credentials;
 pub use clock::FakeClock;
 pub use conformance::{
     Failure, keyring_conformance, kv_conformance, sql_conformance, store_conformance,

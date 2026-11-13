@@ -220,7 +220,7 @@ fn length(text: &str, measure: Measure) -> usize {
 /// `text` within `limit`, cut between graphemes and ended with an ellipsis
 /// where it was cut.
 #[must_use]
-pub fn shortened(text: &str, limit: usize, measure: Measure) -> String {
+pub(crate) fn shortened(text: &str, limit: usize, measure: Measure) -> String {
     if length(text, measure) <= limit {
         return text.to_owned();
     }

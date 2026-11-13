@@ -4,7 +4,7 @@
 use std::collections::BTreeMap;
 use std::future::{Future, ready};
 
-use herald_compose::{Composed, Host, Hosting, KvAt, SqlAt, Unoffered};
+use herald_compose::{Composed, Host, Hosting, KvAt, SqlAt, UNOFFERED, Unoffered};
 use herald_config::{Config, Uses};
 use herald_crypto::{RingSigner, RingVerifier};
 use herald_environment::{EnvSecrets, SystemClock};
@@ -29,9 +29,6 @@ impl<'a> Native<'a> {
         }
     }
 }
-
-/// Why the native binary opens no database, or key-value store, at `at`.
-const UNHOSTED: &str = "only a Cloudflare Worker, Deno or Fastly Compute reaches it";
 
 impl Host for Native<'_> {
     type Http = Connection;
@@ -83,13 +80,13 @@ impl Host for Native<'_> {
             } => NativePostgres::connect(url, Timeouts { connect, statement })
                 .await
                 .map(|sql| NativeSql::Postgres(Box::new(sql))),
-            SqlAt::D1(_) | SqlAt::DurableObject { .. } => return Err(UNHOSTED.to_owned()),
+            SqlAt::D1(_) | SqlAt::DurableObject { .. } => return Err(UNOFFERED.to_owned()),
         }
         .map_err(|error| error.to_string())
     }
 
     fn kv(&self, _: KvAt<'_>) -> impl Future<Output = Result<Unoffered, String>> {
-        ready(Err(UNHOSTED.to_owned()))
+        ready(Err(UNOFFERED.to_owned()))
     }
 }
 

@@ -66,7 +66,7 @@ impl Interacting {
     /// interactions name or in every server, replacing any the application
     /// registered before; none without a bot token.
     #[must_use]
-    pub fn register(&self) -> Option<Request> {
+    pub(crate) fn register(&self) -> Option<Request> {
         let application = &self.interactions.application;
         let path = match &self.interactions.guild {
             Some(guild) => format!("/applications/{application}/guilds/{guild}/commands"),

@@ -7,7 +7,7 @@ mod endpoint;
 mod sigv4;
 
 pub use endpoint::{Endpoint, configured, endpoint};
-pub use sigv4::{Signing, signed, signing_key};
+pub use sigv4::{Signing, signed};
 
 /// The variable naming the region, as Lambda and the AWS SDKs read it.
 pub const REGION: &str = "AWS_REGION";

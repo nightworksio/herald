@@ -59,9 +59,9 @@ use stores::composed;
 pub const DONE: u8 = 0;
 /// A route stopped part-way, a source waits for the next poll, a chore
 /// waits for the next run, or the run could not start.
-pub const STOPPED: u8 = 1;
+pub(crate) const STOPPED: u8 = 1;
 /// The config has mistakes.
-pub const MISTAKEN: u8 = 2;
+pub(crate) const MISTAKEN: u8 = 2;
 
 /// A GitLab CI job's own token.
 const JOB_TOKEN: &str = "CI_JOB_TOKEN";

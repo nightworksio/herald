@@ -40,7 +40,7 @@ impl Interacting {
     /// an endpoint gives in its response, sent where the gateway carried the
     /// interaction.
     #[must_use]
-    pub fn defer(&self, replying: &Replying, public: bool) -> Request {
+    pub(crate) fn defer(&self, replying: &Replying, public: bool) -> Request {
         self.callback(replying, deferred(public))
     }
 
@@ -88,7 +88,7 @@ impl Interacting {
 
 /// The response that answers a ping.
 #[must_use]
-pub fn pong() -> String {
+pub(crate) fn pong() -> String {
     json!({ "type": PONG }).to_string()
 }
 

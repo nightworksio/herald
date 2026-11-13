@@ -15,10 +15,10 @@ use jiff::Timestamp;
 
 /// The variable naming a directory holding a file per secret, each named as
 /// its secret is.
-pub const SECRETS_DIR: &str = "HERALD_SECRETS_DIR";
+pub(crate) const SECRETS_DIR: &str = "HERALD_SECRETS_DIR";
 
 /// What a variable naming the file one secret is in ends with.
-pub const FILE_SUFFIX: &str = "_FILE";
+pub(crate) const FILE_SUFFIX: &str = "_FILE";
 
 /// Secrets from the environment, read once when it is made, and from the
 /// files it names, read each time one is asked for (ADR-0007): a secret is a
@@ -39,12 +39,6 @@ impl fmt::Debug for EnvSecrets {
 }
 
 impl EnvSecrets {
-    /// The secrets in this process's environment.
-    #[must_use]
-    pub fn from_env() -> Self {
-        Self::from_vars(std::env::vars())
-    }
-
     /// The secrets `vars` holds, as `(name, value)`.
     #[must_use]
     pub fn from_vars(vars: impl IntoIterator<Item = (String, String)>) -> Self {
@@ -315,12 +309,6 @@ mod tests {
         }
         let empty_beside_file = vars(&[("TOKEN", ""), ("TOKEN_FILE", named.as_str())]);
         assert_eq!(read(&empty_beside_file, "TOKEN").unwrap(), "b");
-    }
-
-    #[test]
-    fn the_environment_s_secrets_are_this_process_s_variables() {
-        let secret = pollster::block_on(EnvSecrets::from_env().secret("CARGO_MANIFEST_DIR"));
-        assert_eq!(secret.unwrap().expose(), env!("CARGO_MANIFEST_DIR"));
     }
 
     #[test]

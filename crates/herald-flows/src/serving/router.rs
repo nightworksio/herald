@@ -13,11 +13,11 @@ use super::{Inbound, Serving};
 use crate::command_endpoints::{INTERACTIONS, MATRIX, commanded};
 
 /// Where the server answers whether it is up.
-pub const HEALTH: &str = "/healthz";
+pub(crate) const HEALTH: &str = "/healthz";
 /// What the server answers at [`HEALTH`].
 const UP: &str = "herald is up";
 /// Where a forge delivers its webhooks, before the source's name.
-pub const HOOKS: &str = "/hooks/";
+pub(crate) const HOOKS: &str = "/hooks/";
 /// Where apps post their projects' events: `/api/projects/<project>/events`.
 pub const PROJECTS: &str = "/api/projects/";
 /// Where WebFinger is asked.

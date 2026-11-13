@@ -16,9 +16,9 @@ use crate::verification::{Checking, Rejected, Verified, admitted, verified};
 
 /// Where requests carrying commands are posted, before the destination's
 /// name.
-pub const INTERACTIONS: &str = "/interactions/";
+pub(crate) const INTERACTIONS: &str = "/interactions/";
 /// Where a server pushes transactions, before the destination's name.
-pub const MATRIX: &str = "/matrix/";
+pub(crate) const MATRIX: &str = "/matrix/";
 /// The media type of every answer an endpoint gives.
 const JSON: &str = "application/json";
 

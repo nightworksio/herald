@@ -167,7 +167,7 @@ impl From<CryptoError> for PrepareError {
 /// A route ready to announce through: its destination reached, and the key
 /// its markers are computed under.
 #[derive(Debug, Clone)]
-pub(crate) struct PreparedRoute {
+pub struct PreparedRoute {
     pub(crate) config: RouteConfig,
     pub(crate) reached: Reached,
     pub(crate) marker_key: Secret,
@@ -176,7 +176,7 @@ pub(crate) struct PreparedRoute {
 
 /// A source ready to poll.
 #[derive(Debug, Clone)]
-pub(crate) struct PreparedSource {
+pub struct PreparedSource {
     pub(crate) name: SourceName,
     pub(crate) poll: Arc<dyn Poll>,
     pub(crate) backfill: usize,

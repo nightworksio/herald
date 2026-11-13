@@ -27,7 +27,7 @@ pub fn chunk(markdown: &str, markup: Markup, room: Room) -> Vec<Text> {
 /// `markdown` cut as [`chunk`] cuts it, written with `symbols` where the
 /// markup has no markup of its own.
 #[must_use]
-pub fn chunk_in(markdown: &str, markup: Markup, symbols: Symbols, room: Room) -> Vec<Text> {
+pub(crate) fn chunk_in(markdown: &str, markup: Markup, symbols: Symbols, room: Room) -> Vec<Text> {
     let fits =
         |text: &str, limit: usize| size(&convert_in(text, markup, symbols), room.measure) <= limit;
     let narrowest = room.first.min(room.rest);

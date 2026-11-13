@@ -28,11 +28,11 @@ pub struct WaitOptions {
 
 impl Waits {
     /// The status a platform answers with when herald sends too often.
-    pub const TOO_MANY: u16 = 429;
+    pub(crate) const TOO_MANY: u16 = 429;
     /// The first status a platform answers with when it is unwell.
     pub const SERVER: u16 = 500;
     /// The shortest wait a config may set.
-    pub const SHORTEST: SignedDuration = SignedDuration::from_secs(1);
+    pub(crate) const SHORTEST: SignedDuration = SignedDuration::from_secs(1);
     /// The waits where neither the config nor the platform sets any.
     pub const DEFAULT: Self = Self {
         outage: SignedDuration::from_secs(5),

@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 use std::future::{Future, ready};
 
-use herald_compose::{EGRESS_GUARDED, Host, KvAt, Reaching, SqlAt, Unoffered, plain};
+use herald_compose::{EGRESS_GUARDED, Host, KvAt, Reaching, SqlAt, UNOFFERED, Unoffered, plain};
 use herald_crypto::{RingSigner, RingVerifier};
 use herald_environment::{EnvSecrets, SystemClock};
 
@@ -26,7 +26,6 @@ impl WasiHost {
     }
 }
 
-const NO_DATABASE: &str = "this host offers no database herald keeps records in";
 /// The variable naming Spin's SQLite database where `default` is not the one.
 #[cfg(feature = "spin")]
 const SPIN_DATABASE: &str = "HERALD_SPIN_DATABASE";
@@ -93,16 +92,16 @@ impl Host for WasiHost {
                 url.name(),
                 herald_store_postgres::within(url.expose(), connect, statement),
             ))),
-            SqlAt::D1(_) | SqlAt::DurableObject { .. } => Err(NO_DATABASE.to_owned()),
+            SqlAt::D1(_) | SqlAt::DurableObject { .. } => Err(UNOFFERED.to_owned()),
         })
     }
 
     #[cfg(not(feature = "spin"))]
     fn sql(&self, _: SqlAt<'_>) -> impl Future<Output = Result<Database, String>> {
-        ready(Err(NO_DATABASE.to_owned()))
+        ready(Err(UNOFFERED.to_owned()))
     }
 
     fn kv(&self, _: KvAt<'_>) -> impl Future<Output = Result<Unoffered, String>> {
-        ready(Err(NO_DATABASE.to_owned()))
+        ready(Err(UNOFFERED.to_owned()))
     }
 }

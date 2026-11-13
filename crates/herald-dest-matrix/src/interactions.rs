@@ -81,7 +81,7 @@ pub struct Interactions {
 }
 
 /// How long a sync waits where the config sets nothing.
-pub const SYNC_WAIT: SignedDuration = SignedDuration::from_secs(20);
+pub(crate) const SYNC_WAIT: SignedDuration = SignedDuration::from_secs(20);
 /// The messages one sync reads from each room where the config sets none.
 const TIMELINE: u8 = 20;
 /// The most messages one sync may read from each room.

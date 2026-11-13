@@ -7,7 +7,7 @@ use std::ops::RangeInclusive;
 use url::{Position, Url};
 
 /// The schemes a web address is written with.
-pub const WEB_SCHEMES: [&str; 2] = ["https://", "http://"];
+pub(crate) const WEB_SCHEMES: [&str; 2] = ["https://", "http://"];
 
 /// A URL that names a host, read as WHATWG reads it.
 #[derive(Debug, Clone, PartialEq, Eq)]

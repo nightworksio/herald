@@ -76,7 +76,7 @@ pub fn credentials(text: &str) -> Vec<&'static str> {
 /// Whether a header named `name` with `value` carries a credential in the
 /// clear: a header that only ever carries one, with no secret redacted in it.
 #[must_use]
-pub fn secret_header(name: &str, value: &str) -> bool {
+pub(crate) fn secret_header(name: &str, value: &str) -> bool {
     SECRET_HEADERS.contains(&name.to_ascii_lowercase().as_str()) && !value.contains(REDACTED)
 }
 

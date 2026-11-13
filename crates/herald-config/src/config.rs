@@ -156,7 +156,7 @@ impl Announce {
     pub const LEASE: SignedDuration = SignedDuration::from_mins(20);
     /// How often what a project last announced is written where the config
     /// says nothing.
-    pub const LATEST_ATTEMPTS: usize = 3;
+    pub(crate) const LATEST_ATTEMPTS: usize = 3;
 }
 
 impl Default for Announce {
@@ -180,9 +180,9 @@ pub struct Run {
 impl Run {
     /// How many routes are announced to at once where the config says
     /// nothing.
-    pub const ROUTES: NonZeroUsize = NonZeroUsize::new(4).unwrap();
+    pub(crate) const ROUTES: NonZeroUsize = NonZeroUsize::new(4).unwrap();
     /// How many sources are read at once where the config says nothing.
-    pub const SOURCES: NonZeroUsize = NonZeroUsize::new(4).unwrap();
+    pub(crate) const SOURCES: NonZeroUsize = NonZeroUsize::new(4).unwrap();
 }
 
 impl Default for Run {
@@ -282,9 +282,9 @@ pub struct HeldSessions {
 
 impl HeldSessions {
     /// The first wait where the config says nothing.
-    pub const FIRST_WAIT: SignedDuration = SignedDuration::from_secs(1);
+    pub(crate) const FIRST_WAIT: SignedDuration = SignedDuration::from_secs(1);
     /// The longest wait where the config says nothing.
-    pub const LONGEST_WAIT: SignedDuration = SignedDuration::from_mins(1);
+    pub(crate) const LONGEST_WAIT: SignedDuration = SignedDuration::from_mins(1);
     /// How old a command may be where the config says nothing.
     pub const STALE: SignedDuration = SignedDuration::from_mins(10);
 }
@@ -306,27 +306,27 @@ impl Server {
     pub const LISTEN: &str = "127.0.0.1:8080";
     /// How many pieces of work it does at once where the config says
     /// nothing.
-    pub const JOBS: usize = 8;
+    pub(crate) const JOBS: usize = 8;
     /// How many connections it holds at once where the config says nothing.
-    pub const CONNECTIONS: usize = 256;
+    pub(crate) const CONNECTIONS: usize = 256;
     /// The most bytes a body may hold where the config says nothing: 1 MiB.
     pub const BODY: usize = 1 << 20;
     /// The most bytes a config may let a body hold: four times the default.
     pub const BODY_MOST: usize = Self::BODY * 4;
     /// How many actor documents it reads at once where the config says
     /// nothing.
-    pub const FETCHES: usize = 4;
+    pub(crate) const FETCHES: usize = 4;
     /// How many autocompletions a session answers at once where the config
     /// says nothing.
-    pub const COMPLETIONS: usize = 4;
+    pub(crate) const COMPLETIONS: usize = 4;
     /// How long a key is used before it is read again where the config says
     /// nothing.
-    pub const KEYS_REFRESHED: SignedDuration = SignedDuration::from_hours(1);
+    pub(crate) const KEYS_REFRESHED: SignedDuration = SignedDuration::from_hours(1);
     /// How long after a key is read an activity that does not hold under it
     /// is refused, where the config says nothing.
-    pub const KEYS_REREAD: SignedDuration = SignedDuration::from_mins(1);
+    pub(crate) const KEYS_REREAD: SignedDuration = SignedDuration::from_mins(1);
     /// The most keys kept in memory where the config says nothing.
-    pub const KEYS_MOST: usize = 1024;
+    pub(crate) const KEYS_MOST: usize = 1024;
     /// How long a session hears nothing before it checks its connection
     /// where the config says nothing.
     pub const SILENCE: SignedDuration = SignedDuration::from_secs(30);
@@ -337,10 +337,10 @@ impl Server {
     pub const HELD: SignedDuration = SignedDuration::from_secs(90);
     /// How long a request whose work found no place is asked to wait where
     /// the config says nothing.
-    pub const BUSY_RETRY: SignedDuration = SignedDuration::from_secs(30);
+    pub(crate) const BUSY_RETRY: SignedDuration = SignedDuration::from_secs(30);
     /// How long the server waits after a connection could not be accepted
     /// where the config says nothing.
-    pub const ACCEPT_PAUSE: SignedDuration = SignedDuration::from_millis(100);
+    pub(crate) const ACCEPT_PAUSE: SignedDuration = SignedDuration::from_millis(100);
 }
 
 impl Server {

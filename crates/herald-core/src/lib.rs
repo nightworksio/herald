@@ -37,18 +37,13 @@ mod version;
 mod waits;
 mod wording;
 
-pub use activity::{
-    ACTIVITY_JSON, SIGNED, Signing, body_sha256, public_pem, signature_header, signing,
-};
-pub use address::{
-    Address, WEB_SCHEMES, domain, path_of_names, socket_under, under_domain, web_url,
-};
+pub use activity::{ACTIVITY_JSON, SIGNED, Signing, public_pem, signature_header, signing};
+pub use address::{Address, domain, path_of_names, socket_under, under_domain, web_url};
 pub use announce::{
-    Announcement, Button, Title, announce, body_template, shortened, thread_template,
-    title_template,
+    Announcement, Button, Title, announce, body_template, thread_template, title_template,
 };
 pub use bounds::{Inbound, PinLookups, ReadBack, Sandbox};
-pub use chunk::{Room, chunk, chunk_in, size};
+pub use chunk::{Room, chunk, size};
 pub use credentials::{basic, bot_or_webhook};
 pub use cursor::{Cursor, Polled, fresh};
 pub use declined::Declined;
@@ -61,8 +56,8 @@ pub use inbound::{
     key, same,
 };
 pub use interact::{
-    AnnouncedHere, Answering, Asked, Command, MOST_COMPLETIONS, Member, Place, Replies, Said,
-    Unchosen, announced, chosen, completions, every_command,
+    AnnouncedHere, Answering, Asked, Command, Member, Place, Replies, Said, Unchosen, announced,
+    chosen, completions, every_command,
 };
 pub use kept::RecordKind;
 pub use key::{Identity, Key, NotAKey, RouteId, digest, hex, unhex};
@@ -75,7 +70,7 @@ pub use ledger::{
     Entry, Facts, Lease, Plan, Planned, Record, Sent, Standing, State, Step, plan, steps,
 };
 pub use marker::{Marker, Marks};
-pub use markup::{LINK_SCHEMES, Text, convert, convert_in, escaped, literal};
+pub use markup::{LINK_SCHEMES, Text, convert, escaped, literal};
 pub use pattern::Pattern;
 pub use profile::{
     Bullet, Emphases, Escape, Features, Fences, Heading, Limits, Links, Markup, Measure,
