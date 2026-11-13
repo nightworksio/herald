@@ -748,11 +748,11 @@ pub fn kinds() -> herald_config::Kinds {
         .store::<herald_store_postgres::PostgresKind>()
         .store::<herald_store_d1::D1Kind>()
         .store::<herald_store_durable_object::DurableObjectKind>()
-        .store::<herald_store_dynamodb::DynamodbKind>()
         .store::<herald_store_deno_kv::DenoKvKind>()
         .store::<herald_store_fastly_kv::FastlyKvKind>()
-        .store::<herald_store_markers::MarkersKind>()
+        .store::<herald_store_dynamodb::DynamodbKind>()
         .store::<herald_store_git_branch::GitBranchKind>()
+        .store::<herald_store_markers::MarkersKind>()
         .store::<herald_store_actions_cache::ActionsCacheKind>()
         .store::<herald_store_repo_variables::RepoVariablesKind>()
 }
