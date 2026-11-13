@@ -88,7 +88,7 @@ fuzz_target!(|bytes: &[u8]| {
                 placed(&asked);
             }
             if let Ok(synced) = matrix.synced(&destination, body) {
-                for (asked, _) in synced.asked {
+                for (asked, _, _) in synced.asked {
                     placed(&asked);
                 }
             }

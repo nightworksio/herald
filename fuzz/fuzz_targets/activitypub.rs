@@ -7,7 +7,7 @@
 #![no_main]
 
 use herald_dest_fediverse::{
-    Asked, Found, actor_key, actor_of, asked, confirms, document, inboxes, same_origin,
+    InboxActivity, KeyOwner, actor_key, actor_of, asked, confirms, document, inboxes, same_origin,
 };
 use libfuzzer_sys::fuzz_target;
 
@@ -18,8 +18,8 @@ fuzz_target!(|data: &[u8]| {
     };
     let named = String::from_utf8_lossy(named);
     match actor_key(body, &named) {
-        Ok(Found::Held(key)) => assert_eq!(key.actor, document(&named)),
-        Ok(Found::Claimed { owner, .. }) => assert!(same_origin(&owner, &named)),
+        Ok(KeyOwner::Held(key)) => assert_eq!(key.actor, document(&named)),
+        Ok(KeyOwner::Claimed { owner, .. }) => assert!(same_origin(&owner, &named)),
         Err(_) => {}
     }
     let _ = confirms(body, &named, &named);
@@ -30,7 +30,7 @@ fuzz_target!(|data: &[u8]| {
             assert!(same_origin(shared, &named));
         }
     }
-    if let Asked::Undo { follower, .. } = asked(body, &named) {
+    if let InboxActivity::Undo { follower, .. } = asked(body, &named) {
         assert_eq!(follower, named);
     }
 });

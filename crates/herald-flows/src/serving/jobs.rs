@@ -195,12 +195,13 @@ pub async fn work<S: Store, C: Clock, G: Signer, V, H: Http, P, K>(
         }
         Job::Interact { destination, asked } => interacted(serving, &destination, asked).await,
     };
-    let unreleased = match delivery {
-        Some((scheme, verified)) if did.stopped() => released(store, scheme, &verified)
+    let stopped = did.stopped();
+    let unreleased = match delivery.filter(|_| stopped) {
+        Some((scheme, verified)) => released(store, scheme, &verified)
             .await
             .err()
             .map(|error| unreleased(&error)),
-        _ => None,
+        None => None,
     };
     Worked { did, unreleased }
 }
