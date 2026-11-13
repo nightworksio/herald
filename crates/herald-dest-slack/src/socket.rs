@@ -17,11 +17,23 @@ pub struct Enveloped {
     pub acknowledgement: Option<String>,
     /// The command it carries, where it carries one.
     pub received: Option<Received>,
-    /// Whether Slack asked for the connection to be opened again.
-    pub reconnect: bool,
+    /// How Slack ended the connection, where it did.
+    pub ended: Option<Ended>,
     /// Whether Slack greeted the connection, ready to carry commands.
     pub greeted: bool,
 }
+
+/// How Slack ended a Socket Mode connection.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Ended {
+    /// To be opened again.
+    Reconnect,
+    /// For good, as Socket Mode was turned off for the app.
+    Disabled,
+}
+
+/// The reason a disconnect gives where Socket Mode was turned off.
+const LINK_DISABLED: &str = "link_disabled";
 
 impl Interacting {
     /// The request that opens a Socket Mode connection with the app-level
@@ -49,7 +61,7 @@ impl Interacting {
         let quiet = Enveloped {
             acknowledgement: None,
             received: None,
-            reconnect: false,
+            ended: None,
             greeted: false,
         };
         let Ok(value) = serde_json::from_str::<Value>(frame) else {
@@ -58,8 +70,13 @@ impl Interacting {
         let kind = value.get("type").and_then(Value::as_str);
         match kind {
             Some("disconnect") => {
+                let disabled = value.get("reason").and_then(Value::as_str) == Some(LINK_DISABLED);
                 return Enveloped {
-                    reconnect: true,
+                    ended: Some(if disabled {
+                        Ended::Disabled
+                    } else {
+                        Ended::Reconnect
+                    }),
                     ..quiet
                 };
             }
@@ -100,7 +117,7 @@ impl Interacting {
         Enveloped {
             acknowledgement: Some(acknowledgement.to_string()),
             received,
-            reconnect: false,
+            ended: None,
             greeted: false,
         }
     }

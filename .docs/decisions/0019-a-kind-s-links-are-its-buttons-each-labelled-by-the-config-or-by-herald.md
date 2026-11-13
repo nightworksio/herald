@@ -1,6 +1,6 @@
 # ADR-0019: A kind's links are its buttons, each labelled by the config or by herald
 
-**Status:** Accepted
+**Status:** Accepted; how many links a kind names and how Discord draws them extended by [ADR-0021](0021-a-kind-names-at-most-24-links-each-fitting-a-button.md)
 **Date:** 2026-11-10
 
 ## Context

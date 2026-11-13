@@ -219,6 +219,25 @@ impl Entry {
             })
     }
 
+    /// The message `step` left, if it landed with one.
+    #[must_use]
+    pub fn message(&self, step: &Step) -> Option<&str> {
+        self.facts(step)?
+            .message
+            .as_deref()
+            .filter(|message| !message.is_empty())
+    }
+
+    /// The message the overflow chunk `index` follows: the post's for the
+    /// first chunk, else the chunk's before it.
+    #[must_use]
+    pub fn before(&self, index: u32) -> Option<&str> {
+        match index.checked_sub(1).filter(|earlier| *earlier > 0) {
+            None => self.message(&Step::Post),
+            Some(earlier) => self.message(&Step::Chunk(earlier)),
+        }
+    }
+
     fn with(mut self, step: Step, state: State) -> Self {
         self.records.retain(|record| record.step != step);
         self.records.push(Record { step, state });
@@ -392,6 +411,28 @@ mod tests {
                 })
                 .collect(),
         )
+    }
+
+    #[test]
+    fn a_step_s_message_and_the_one_a_chunk_follows_are_read_from_what_landed() {
+        let sent = |message: &str| Facts {
+            message: Some(message.to_owned()),
+            ..Facts::default()
+        };
+        let entry = Entry::new(key())
+            .landed(Step::Post, sent("post"))
+            .landed(Step::Chunk(1), sent("one"))
+            .landed(Step::Pin, Facts::default())
+            .landed(Step::Crosspost, sent(""))
+            .attempted(Step::Chunk(2), Timestamp::UNIX_EPOCH);
+        assert_eq!(entry.message(&Step::Post), Some("post"));
+        assert_eq!(entry.message(&Step::Crosspost), None);
+        assert_eq!(entry.message(&Step::Pin), None);
+        assert_eq!(entry.message(&Step::Chunk(2)), None);
+        assert_eq!(entry.before(0), Some("post"));
+        assert_eq!(entry.before(1), Some("post"));
+        assert_eq!(entry.before(2), Some("one"));
+        assert_eq!(entry.before(3), None);
     }
 
     #[test]

@@ -1,7 +1,7 @@
 use herald_core::{
-    ACTIVITY_JSON, Addressed, Announcement, Bullet, Emphases, Entry, Escape, Facts, Features,
-    Fences, Heading, Limits, Links, Markup, Measure, MentionStyle, Pins, Profile, Sent, Step,
-    Threads, Waits, signature_header, signing,
+    ACTIVITY_JSON, Addressed, Announcement, Bullet, Declined, Emphases, Entry, Escape, Facts,
+    Features, Fences, Heading, Limits, Links, Markup, Measure, MentionStyle, Pins, Profile, Sent,
+    Step, Threads, Waits, signature_header, signing,
 };
 use herald_ports::{
     Algorithm, CryptoError, Http, HttpError, Method, PUBLIC, Request, Response, Secret, Signer,
@@ -62,8 +62,17 @@ fn refused(reason: impl Into<String>) -> Sent {
     Sent::Refused(reason.into())
 }
 
-fn cannot(what: &str) -> Sent {
-    refused(format!("herald's ActivityPub actor cannot {what}"))
+/// The destination, as herald names it.
+pub(crate) const ACTOR: &str = "herald's ActivityPub actor";
+
+fn cannot(what: &'static str) -> Sent {
+    refused(
+        Declined::Cannot {
+            platform: ACTOR,
+            what,
+        }
+        .to_string(),
+    )
 }
 
 impl ActivityPub {
@@ -360,13 +369,12 @@ fn addressed(inbox: &str) -> Option<(String, String)> {
 /// What an inbox's answer means. An inbox that is gone for good counts as
 /// delivered, as nothing will ever take it there.
 fn answered(response: &Response, waits: Waits) -> Sent {
-    if response.succeeded() || response.status == GONE {
+    if response.status == GONE {
         return Sent::Landed(Facts::default());
     }
-    if let Some(wait) = waits.after(response.status, response.retry_after()) {
-        return Sent::RetryAfter(wait);
-    }
-    refused(format!("the inbox refused it with {}", response.status))
+    response
+        .trouble(waits, None, "the inbox", String::new)
+        .unwrap_or_else(|| Sent::Landed(Facts::default()))
 }
 
 /// What herald's ActivityPub actor can do: one Note per announcement,

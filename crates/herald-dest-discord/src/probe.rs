@@ -2,13 +2,10 @@
 //! channel, asked with nothing posted (ADR-0002).
 
 use herald_kinds::Probe;
-use herald_ports::{Http, Method, Text, unreserved};
+use herald_ports::{Credential, Http, Method, Text, unreserved};
 
-use crate::discord::{Credential, Discord};
+use crate::discord::{DISCORD, Discord};
 use crate::request::bare;
-
-/// The platform, as a probe names it.
-const DISCORD: &str = "Discord";
 
 /// What Discord says of `discord`'s credential and, for a bot, of its
 /// route's channel, asked through `http`.
@@ -20,7 +17,7 @@ pub(crate) async fn probe<H: Http>(discord: &Discord, http: &H) -> Vec<Probe> {
     };
     let taken = Probe::credential(
         DISCORD,
-        &http.send(bare(Method::Get, asked, credential)).await,
+        &http.send(bare(Method::Get, asked, credential.bot())).await,
     );
     let mut probes = vec![taken];
     if let (Some(Probe::Taken), Credential::Bot(_), Some(channel)) =
@@ -28,7 +25,7 @@ pub(crate) async fn probe<H: Http>(discord: &Discord, http: &H) -> Vec<Probe> {
     {
         let url = format!("{}/channels/{}", discord.api, unreserved(channel));
         let answer = http
-            .send(bare(Method::Get, Text::plain(url), credential))
+            .send(bare(Method::Get, Text::plain(url), credential.bot()))
             .await;
         probes.extend(Probe::route(DISCORD, Some("channel"), &answer, &|status| {
             format!("the bot cannot see the channel {channel}, as Discord answered {status}; add the bot to the server and give it View Channel and Send Messages there")

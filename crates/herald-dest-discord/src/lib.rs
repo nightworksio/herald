@@ -24,8 +24,9 @@ pub mod setup;
 mod unpin;
 
 pub use config::{DiscordKind, KIND, SCHEME};
-pub use discord::{Credential, Discord, MARKUP, profile};
+pub use discord::{Discord, MARKUP, profile};
 pub use gateway::{Effect, GATEWAY, Gateway};
+pub use herald_ports::Credential;
 pub use interact::{
     Interacting, MESSAGE, Received, Replying, Unread, choices, deferred, listed, made, pong,
     subscribe_button, took,
@@ -34,4 +35,3 @@ pub use interactions::{Interactions, SESSION_DOMAIN, Subscribe, Via};
 pub use look::{ArchiveAfter, Colour, Colours, Look};
 pub use markers::DiscordMarkers;
 pub use options::{DestinationOptions, RouteOptions};
-pub use request::Refusal;

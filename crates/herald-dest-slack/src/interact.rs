@@ -6,13 +6,14 @@ use std::collections::BTreeMap;
 use std::fmt;
 
 use herald_core::{Answering, Asked, Command, DestinationName, Phrase, Place, SecretRef};
-use herald_ports::{Method, Request, Response, Secret, Text};
+use herald_ports::{Method, Request, Response, Secret, Text, USER_AGENT};
 use serde_json::{Value, json};
 
 use crate::domain::Domain;
 use crate::interactions::DEFAULT_NAME;
 use crate::interactions::{Interactions, Via};
 use crate::read::quoted;
+use crate::slack::SLACK;
 use crate::web_api;
 
 /// The action id of the button that subscribes to a project.
@@ -364,6 +365,7 @@ impl Interacting {
                 "Content-Type",
                 Text::plain("application/json; charset=utf-8"),
             )
+            .header("User-Agent", Text::plain(USER_AGENT))
             .body(body.to_string())
     }
 }
@@ -453,17 +455,9 @@ pub fn subscribe_block(project: &str, label: &str) -> Value {
 ///
 /// What Slack said, where it refused or was unwell.
 pub fn took(response: &Response) -> Result<(), String> {
-    if response.succeeded() {
-        Ok(())
-    } else {
-        Err(format!(
-            "Slack answered {}: {}",
-            response.status,
-            quoted(&String::from_utf8_lossy(&response.body))
-        )
-        .trim_end_matches([' ', ':'])
-        .to_owned())
-    }
+    response.took(None, SLACK, || {
+        quoted(&String::from_utf8_lossy(&response.body))
+    })
 }
 
 #[cfg(test)]

@@ -4,7 +4,10 @@ use herald_ports::{Response, Secret, Text};
 
 use crate::interact::{Interacting, Received};
 use crate::interactions::Via;
-use crate::socket::opened;
+use crate::socket::{Ended, opened};
+
+/// What is said where Slack turned Socket Mode off for the app.
+const DISABLED: &str = "Slack turned Socket Mode off for the app, so its commands cannot be carried; turn Socket Mode on in the app's settings";
 
 /// Slack's Socket Mode, opened with the destination's app-level token.
 pub(crate) struct Socketed<'a> {
@@ -47,8 +50,10 @@ impl Session for Socketed<'_> {
         if let Some(Received::Asked { asked, replying }) = enveloped.received {
             effects.push(Effect::Asked(*asked, Replying::new(replying)));
         }
-        if enveloped.reconnect {
-            effects.push(Effect::Reconnect);
+        match enveloped.ended {
+            Some(Ended::Reconnect) => effects.push(Effect::Reconnect),
+            Some(Ended::Disabled) => effects.push(Effect::Stop(DISABLED.to_owned())),
+            None => {}
         }
         effects
     }

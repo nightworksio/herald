@@ -1,17 +1,20 @@
 use herald_core::{
-    Announcement, Bullet, Emphases, Entry, Escape, Facts, Features, Fences, Heading, Limits, Links,
-    Marker, Markup, Measure, MentionRoom, MentionStyle, Pins, Profile, ReadBack, Sent, Step,
-    Threads, Waits,
+    Announcement, Bullet, Declined, Emphases, Entry, Escape, Facts, Features, Fences, Heading,
+    Limits, Links, Marker, Markup, Measure, MentionRoom, MentionStyle, PinLookups, Pins, Profile,
+    ReadBack, Sent, Step, Threads, Waits,
 };
-use herald_ports::{Http, HttpError, Request, Secret};
+use herald_ports::{Http, HttpError, Learned, Request, Secret};
 use serde_json::Value;
 
 use crate::options::RouteOptions;
 use crate::read::{UNNAMED, json, read, text, trouble};
 use crate::request::{
-    NOT_FOUND, ROUTE, Refusal, Repin, event, get, pin_target, pinned, pins, repinned, step, with,
+    MATRIX_TO, NOT_FOUND, ROUTE, Repin, event, get, pin_target, pinned, pins, repinned, step, with,
     without,
 };
+
+/// The platform, as herald names it.
+pub(crate) const MATRIX: &str = "Matrix";
 
 /// Matrix's HTML beside a plain body, its `matrix.to` pills never linked.
 pub const MARKUP: Markup = Markup {
@@ -26,11 +29,11 @@ pub const MARKUP: Markup = Markup {
     fences: Fences::None,
     bullet: Bullet::Symbol('-'),
     html: true,
-    pills: Some("https://matrix.to/"),
+    pills: Some(MATRIX_TO),
 };
 
 /// An answer read, a reason to stop with, or no answer at all.
-type Read<T> = Result<Result<T, Sent>, HttpError>;
+pub(crate) type Read<T> = Result<Result<T, Sent>, HttpError>;
 
 /// The longest title and thread name, in bytes.
 const TITLE: usize = 256;
@@ -61,7 +64,9 @@ pub struct Matrix {
     pub(crate) token: Secret,
     pub(crate) route: RouteOptions,
     pub(crate) read_back: ReadBack,
+    pub(crate) pin_lookups: PinLookups,
     pub(crate) waits: Waits,
+    pub(crate) account: Learned<String>,
 }
 
 impl Matrix {
@@ -74,7 +79,9 @@ impl Matrix {
             token,
             route,
             read_back: ReadBack::DEFAULT,
+            pin_lookups: PinLookups::DEFAULT,
             waits: Waits::DEFAULT,
+            account: Learned::new(),
         }
     }
 
@@ -83,6 +90,16 @@ impl Matrix {
     #[must_use]
     pub fn waiting(self, waits: Waits) -> Self {
         Self { waits, ..self }
+    }
+
+    /// The destination, looking up at most `pin_lookups` pins as it finds a
+    /// route's earlier pins.
+    #[must_use]
+    pub fn looking_up(self, pin_lookups: PinLookups) -> Self {
+        Self {
+            pin_lookups,
+            ..self
+        }
     }
 
     /// The destination, reading back `read_back` pages of its own posts.
@@ -117,7 +134,7 @@ impl Matrix {
         step_to_take: &Step,
         announcement: &Announcement,
         entry: &Entry,
-    ) -> Result<Request, Refusal> {
+    ) -> Result<Request, Declined> {
         step(self, step_to_take, announcement, entry)
     }
 
@@ -179,7 +196,7 @@ impl Matrix {
             return Ok(landed);
         }
         let answer = http.send(repinned(self, &wanted)).await?;
-        Ok(trouble(&answer, &json(&answer), self.waits).unwrap_or(landed))
+        Ok(trouble(&answer, self.waits).unwrap_or(landed))
     }
 
     /// The pins in `held`, other than `post`, that herald's own account sent
@@ -192,32 +209,46 @@ impl Matrix {
         post: &str,
         route: &Marker,
     ) -> Read<Vec<String>> {
-        let account = http.send(get(self, "/account/whoami")).await?;
-        let named = json(&account);
-        if let Some(sent) = trouble(&account, &named, self.waits) {
-            return Ok(Err(sent));
+        let candidates: Vec<&String> = held.iter().filter(|pin| *pin != post).collect();
+        if let Some(over) = self.pin_lookups.over(candidates.len()) {
+            return Ok(Err(Sent::Refused(over)));
         }
-        let Some(herald) = text(&named, "user_id") else {
-            return Ok(Err(Sent::Refused(UNNAMED.to_owned())));
+        let herald = match self.account(http).await? {
+            Ok(herald) => herald,
+            Err(sent) => return Ok(Err(sent)),
         };
         let mut stale = Vec::new();
-        for pin in held.iter().filter(|pin| *pin != post) {
+        for pin in candidates {
             let response = http.send(event(self, pin)).await?;
             if response.status == NOT_FOUND {
                 continue;
             }
-            let found = json(&response);
-            if let Some(sent) = trouble(&response, &found, self.waits) {
+            if let Some(sent) = trouble(&response, self.waits) {
                 return Ok(Err(sent));
             }
+            let found = json(&response);
             let content = found.get("content").unwrap_or(&Value::Null);
-            if text(&found, "sender") == Some(herald)
+            if text(&found, "sender") == Some(herald.as_str())
                 && text(content, ROUTE) == Some(route.as_str())
             {
                 stale.push(pin.clone());
             }
         }
         Ok(Ok(stale))
+    }
+
+    /// The account the token is, as the homeserver names it, asked once.
+    pub(crate) async fn account<H: Http>(&self, http: &H) -> Read<String> {
+        if let Some(account) = self.account.get() {
+            return Ok(Ok(account.clone()));
+        }
+        let answer = http.send(get(self, "/account/whoami")).await?;
+        if let Some(sent) = trouble(&answer, self.waits) {
+            return Ok(Err(sent));
+        }
+        Ok(text(&json(&answer), "user_id")
+            .map(|account| self.account.learn(account.to_owned()).clone())
+            .ok_or_else(|| Sent::Refused(UNNAMED.to_owned())))
     }
 }
 

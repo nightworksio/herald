@@ -869,7 +869,7 @@ async fn a_sync_skips_history_answers_what_follows_and_waits_after_a_failure() {
     );
     assert!(
         heard.contains(
-            &"matrix: the homeserver could not be synced: the homeserver answered 500: M_UNKNOWN"
+            &"matrix: the homeserver could not be synced: Matrix refused it with 500: M_UNKNOWN"
                 .to_owned()
         ),
         "{heard:?}"

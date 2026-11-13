@@ -6,12 +6,9 @@ use herald_kinds::Probe;
 use herald_ports::Http;
 use serde::Deserialize;
 
-use crate::mastodon::{LIMIT, Mastodon};
+use crate::mastodon::{LIMIT, Mastodon, PLATFORM};
 use crate::options::RouteOptions;
 use crate::request::get;
-
-/// The platform, as a probe names it.
-const MASTODON: &str = "Mastodon";
 
 /// What a status may hold, as `/api/v2/instance` says.
 #[derive(Debug, Deserialize)]
@@ -63,7 +60,7 @@ pub(crate) async fn probe<H: Http>(mastodon: &Mastodon, http: &H) -> Vec<Probe> 
     let verified = http
         .send(get(mastodon, "/api/v1/accounts/verify_credentials"))
         .await;
-    let taken = Probe::credential(MASTODON, &verified);
+    let taken = Probe::credential(PLATFORM, &verified);
     if taken != Probe::Taken {
         return vec![taken];
     }

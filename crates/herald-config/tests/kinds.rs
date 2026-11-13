@@ -199,6 +199,60 @@ body = "{{ event.body }}"
     }
 
     #[test]
+    fn a_kind_names_no_more_links_than_a_post_holds_buttons_each_fitting_a_label() {
+        let named = |count: usize| {
+            let links: Vec<String> = std::iter::once("\"site\"".to_owned())
+                .chain((1..count).map(|index| format!("\"l{index}\"")))
+                .collect();
+            EXAMPLE.replace(
+                "links = [\"site\"]",
+                &format!("links = [{}]", links.join(", ")),
+            )
+        };
+        assert!(
+            load(
+                "herald.toml",
+                &named(LinkSpec::MOST),
+                &nothing,
+                &crate::common::kinds()
+            )
+            .is_ok()
+        );
+        let crowded = errors(&named(LinkSpec::MOST + 1));
+        assert!(
+            crowded.contains("kinds.deploy.links: a kind names at most 24 links, the buttons a Discord post holds beside its subscribe button; keep 24 of its 25"),
+            "{crowded}"
+        );
+        let longest = "x".repeat(Phrase::LABEL);
+        let longer = "x".repeat(Phrase::LABEL + 1);
+        let unlabelled = |name: &str| {
+            EXAMPLE.replace(
+                "links = [\"site\"]",
+                &format!("links = [\"site\", \"{name}\"]"),
+            )
+        };
+        assert!(
+            load(
+                "herald.toml",
+                &unlabelled(&longest),
+                &nothing,
+                &crate::common::kinds()
+            )
+            .is_ok()
+        );
+        let long = errors(&unlabelled(&longer));
+        assert!(
+            long.contains(&format!("kinds.deploy.links[1]: \"{longer}\" is longer than a button's label of at most 75 characters; give it a label, {{ name = \"{longer}\", label = \"…\" }}")),
+            "{long}"
+        );
+        let labelled = EXAMPLE.replace(
+            "links = [\"site\"]",
+            &format!("links = [\"site\", {{ name = \"{longer}\", label = \"Long\" }}]"),
+        );
+        assert!(load("herald.toml", &labelled, &nothing, &crate::common::kinds()).is_ok());
+    }
+
+    #[test]
     fn a_link_or_attribute_a_template_cannot_read_is_refused() {
         let error = errors(&EXAMPLE.replace("links = [\"site\"]", "links = [\"site\", \"Site\"]"));
         assert!(

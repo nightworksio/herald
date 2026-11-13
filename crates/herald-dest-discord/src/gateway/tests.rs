@@ -68,8 +68,18 @@ fn a_session_identifies_on_hello_and_beats_as_often_as_discord_says() {
         panic!("it identifies");
     };
     assert!(!identify.redacted().contains("bot.token-1"));
+    let usual = Effect::Beat(SignedDuration::from_millis(41_250));
     let silent = received(&mut gateway, &json!({ "op": 10, "d": {} }));
-    assert_eq!(silent[0], Effect::Beat(SignedDuration::from_secs(41)));
+    assert_eq!(silent[0], usual);
+    for unsound in [0, -1] {
+        let said = json!({ "op": 10, "d": { "heartbeat_interval": unsound } });
+        assert_eq!(received(&mut gateway, &said)[0], usual, "{unsound}");
+    }
+    let quick = json!({ "op": 10, "d": { "heartbeat_interval": 1 } });
+    assert_eq!(
+        received(&mut gateway, &quick)[0],
+        Effect::Beat(SignedDuration::from_millis(1))
+    );
 }
 
 #[test]

@@ -6,7 +6,7 @@ use herald_ports::{Boxed, DynHttp, DynMarkers, Erased, HttpError};
 
 use crate::markers::MatrixMarkers;
 use crate::matrix::Matrix;
-use crate::request::Refusal;
+use crate::request::cannot;
 
 impl Reach for Matrix {
     fn profile(&self) -> Profile {
@@ -36,7 +36,7 @@ impl Reach for Matrix {
         _: &'a str,
     ) -> Boxed<'a, Result<Sent, HttpError>> {
         Box::pin(ready(Ok(Sent::Refused(
-            Refusal::Cannot("archive or lock a thread").to_string(),
+            cannot("archive or lock a thread").to_string(),
         ))))
     }
 

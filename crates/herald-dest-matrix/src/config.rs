@@ -12,7 +12,7 @@ use jiff::SignedDuration;
 use crate::held::Syncing;
 use crate::interact::{self, Interacting, took};
 use crate::interactions::{Interactions, Via};
-use crate::matrix::{self, Matrix};
+use crate::matrix::{self, MATRIX, Matrix};
 use crate::options::{DestinationOptions, RouteOptions};
 
 /// A homeserver's transaction: `Authorization: Bearer <hs_token>`.
@@ -89,6 +89,7 @@ impl DestinationConfig for DestinationOptions {
         Some(Reached::new(
             Matrix::new(&self.homeserver, secret, placed.clone())
                 .reading_back(self.read_back.unwrap_or_default())
+                .looking_up(self.pin_lookups.unwrap_or_default())
                 .waiting(self.waits()),
         ))
     }
@@ -134,7 +135,7 @@ pub enum MatrixKind {}
 impl DestinationKind for MatrixKind {
     const NAME: &str = KIND;
     const DESCRIPTION: &str = "A bot account on a Matrix homeserver.";
-    const LABEL: &str = "Matrix";
+    const LABEL: &str = MATRIX;
     const ROUTE: &str = "MatrixRoute";
     const ROUTE_DESCRIPTION: &str = "A route to a Matrix destination.";
 

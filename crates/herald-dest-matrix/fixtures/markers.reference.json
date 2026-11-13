@@ -209,22 +209,6 @@
     {
       "request": {
         "method": "GET",
-        "url": "https://matrix.example/_matrix/client/v3/account/whoami",
-        "headers": {
-          "Authorization": "Bearer «secret:HERALD_MATRIX_TOKEN»",
-          "User-Agent": "herald/0.0.0 (+https://github.com/nightworksio/herald)"
-        }
-      },
-      "response": {
-        "status": 200,
-        "body": {
-          "user_id": "@herald:matrix.example"
-        }
-      }
-    },
-    {
-      "request": {
-        "method": "GET",
         "url": "https://matrix.example/_matrix/client/v3/rooms/%21abcdefg%3Amatrix.example/messages?dir=b&limit=100",
         "headers": {
           "Authorization": "Bearer «secret:HERALD_MATRIX_TOKEN»",
@@ -255,22 +239,6 @@
               }
             }
           ]
-        }
-      }
-    },
-    {
-      "request": {
-        "method": "GET",
-        "url": "https://matrix.example/_matrix/client/v3/account/whoami",
-        "headers": {
-          "Authorization": "Bearer «secret:HERALD_MATRIX_TOKEN»",
-          "User-Agent": "herald/0.0.0 (+https://github.com/nightworksio/herald)"
-        }
-      },
-      "response": {
-        "status": 200,
-        "body": {
-          "user_id": "@herald:matrix.example"
         }
       }
     },
@@ -325,22 +293,6 @@
           "pinned": [
             "$else"
           ]
-        }
-      }
-    },
-    {
-      "request": {
-        "method": "GET",
-        "url": "https://matrix.example/_matrix/client/v3/account/whoami",
-        "headers": {
-          "Authorization": "Bearer «secret:HERALD_MATRIX_TOKEN»",
-          "User-Agent": "herald/0.0.0 (+https://github.com/nightworksio/herald)"
-        }
-      },
-      "response": {
-        "status": 200,
-        "body": {
-          "user_id": "@herald:matrix.example"
         }
       }
     },

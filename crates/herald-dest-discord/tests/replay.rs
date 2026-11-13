@@ -4,12 +4,12 @@
 #[cfg(test)]
 mod replay {
     use herald_core::{
-        Announcement, Chore, Delivery, Entry, Facts, Marker, Pins, Plan, Planned, ReadBack, Sent,
-        Step, Waits, plan,
+        Announcement, Chore, Declined, Delivery, Entry, Facts, Marker, Pins, Plan, Planned,
+        ReadBack, Sent, Step, Waits, plan,
     };
     use herald_dest_discord::{
         ArchiveAfter, Colour, Credential, DestinationOptions, Discord, DiscordMarkers, Look,
-        Refusal, RouteOptions,
+        RouteOptions,
     };
     use herald_ports::{MarkedThread, Markers, MarkersError, Secret};
     use herald_testing::sample::{self, announcement, marker, route_marker};
@@ -218,6 +218,64 @@ mod replay {
         replay.finish().unwrap();
     }
 
+    fn gets(answers: &[(&str, u16, Value)]) -> Replay {
+        let exchanges: Vec<Value> = answers
+            .iter()
+            .map(|(path, status, body)| {
+                serde_json::json!({
+                    "request": {
+                        "method": "GET",
+                        "url": format!("https://discord.com/api/v10{path}"),
+                        "headers": {
+                            "Authorization": "Bot «secret:HERALD_DISCORD_TOKEN»",
+                            "User-Agent": "DiscordBot (https://github.com/nightworksio/herald, 0.0.0)",
+                        },
+                    },
+                    "response": { "status": status, "body": body },
+                })
+            })
+            .collect();
+        Replay::of(
+            Fixture::from_json(&serde_json::json!({ "exchanges": exchanges }).to_string()).unwrap(),
+        )
+    }
+
+    #[test]
+    fn a_forum_s_pins_are_looked_up_no_further_than_pin_lookups() {
+        let entry =
+            Entry::new(announcement().key).landed(Step::Post, message("1566200000000000010"));
+        let me = ("/users/@me", 200, serde_json::json!({ "id": "9" }));
+        let forum = format!("/channels/{FORUM}");
+        let pinned = |id: &str| serde_json::json!({ "id": id, "parent_id": FORUM, "owner_id": "9", "flags": 2 });
+        let replay = gets(&[
+            me.clone(),
+            (&forum, 200, serde_json::json!({ "guild_id": "1" })),
+            (
+                "/guilds/1/threads/active",
+                200,
+                serde_json::json!({ "threads": [pinned("11"), pinned("12")] }),
+            ),
+        ]);
+        let one = bot(FORUM, true).looking_up(herald_core::PinLookups::new(1).unwrap());
+        assert_eq!(
+            unpin(&one, &replay, &announcement(), &entry),
+            Sent::Refused("the route's earlier pins are among 2 pins, more than the 1 it looks up; raise pin_lookups, up to 100, or unpin them by hand".to_owned())
+        );
+        replay.finish().unwrap();
+        let unplaced = gets(&[me, (&forum, 200, serde_json::json!({}))]);
+        assert_eq!(
+            unpin(&bot(FORUM, true), &unplaced, &announcement(), &entry),
+            Sent::Refused(format!(
+                "Discord did not say which server the forum {FORUM} is in"
+            ))
+        );
+        unplaced.finish().unwrap();
+        assert_eq!(
+            unpin(&bot("", false), &gets(&[]), &announcement(), &entry),
+            Sent::Refused("the route names no Discord channel; set its channel".to_owned())
+        );
+    }
+
     #[test]
     fn a_forum_unpins_the_post_the_store_remembers_by_its_flag() {
         let request = bot(FORUM, true)
@@ -296,11 +354,11 @@ mod replay {
         );
         assert_eq!(
             refused(&webhook(false), Step::Deliver("x".to_owned())),
-            "Discord delivers to no inbox"
+            "Discord cannot deliver to an inbox"
         );
         assert_eq!(
             refused(&bot(CHANNEL, false), Step::Deliver("x".to_owned())),
-            "Discord delivers to no inbox"
+            "Discord cannot deliver to an inbox"
         );
         let nowhere = Discord::new(
             Credential::Bot(Secret::new("T", "t")),
@@ -413,11 +471,14 @@ mod replay {
         );
         assert_eq!(
             discord.request(&Step::Unpin, &announcement(), &delivery(), &pinned()),
-            Err(Refusal::Missing("the route's earlier pin"))
+            Err(Declined::Missing("the route's earlier pin"))
         );
         assert_eq!(
             webhook(false).request(&Step::Unpin, &announcement(), &delivery(), &pinned()),
-            Err(Refusal::WebhookCannot("unpin"))
+            Err(Declined::WebhookCannot {
+                platform: "Discord",
+                what: "unpin"
+            })
         );
     }
 
@@ -591,7 +652,7 @@ mod replay {
         );
         let replay = fixture!("markers-unthreaded");
         assert_eq!(
-            read_back(&discord, &replay, &Marker::of(&[0x5a; 32])).unwrap(),
+            read_back(&bot(CHANNEL, false), &replay, &Marker::of(&[0x5a; 32])).unwrap(),
             None
         );
     }
@@ -638,11 +699,14 @@ mod replay {
             ]
         );
         let unreadable = fixture!("markers-unreadable");
+        let unlearned = bot(CHANNEL, false);
         assert_eq!(
-            pollster::block_on(DiscordMarkers::new(&discord, &unreadable).threads(&route_marker()))
-                .unwrap_err()
-                .to_string(),
-            "the destination's posts could not be read: Discord answered 403"
+            pollster::block_on(
+                DiscordMarkers::new(&unlearned, &unreadable).threads(&route_marker())
+            )
+            .unwrap_err()
+            .to_string(),
+            "the destination's posts could not be read: Discord refused it with 403: 50001 Missing Access"
         );
     }
 
@@ -654,11 +718,11 @@ mod replay {
             read_back(&discord, &replay, &marker())
                 .unwrap_err()
                 .to_string(),
-            "the destination's posts could not be read: Discord answered 403"
+            "the destination's posts could not be read: Discord refused it with 403: 50001 Missing Access"
         );
         let nothing = Replay::of(Fixture::default());
         assert_eq!(
-            read_back(&discord, &nothing, &marker())
+            read_back(&bot(CHANNEL, false), &nothing, &marker())
                 .unwrap_err()
                 .to_string(),
             "the destination's posts could not be read: https://discord.com/api/v10/users/@me is not a host this destination may reach"
@@ -667,7 +731,13 @@ mod replay {
             read_back(&webhook(false), &nothing, &marker())
                 .unwrap_err()
                 .to_string(),
-            "the destination's posts could not be read: a webhook cannot read a channel's messages"
+            "the destination's posts could not be read: a Discord webhook cannot read a channel's messages; use a bot token"
+        );
+        assert_eq!(
+            read_back(&bot("", false), &nothing, &marker())
+                .unwrap_err()
+                .to_string(),
+            "the destination's posts could not be read: the route names no Discord channel; set its channel"
         );
         let anonymous = Replay::of(
             Fixture::from_json(
@@ -676,10 +746,22 @@ mod replay {
             .unwrap(),
         );
         assert_eq!(
-            read_back(&discord, &anonymous, &marker())
+            read_back(&bot(CHANNEL, false), &anonymous, &marker())
                 .unwrap_err()
                 .to_string(),
             "the destination's posts could not be read: Discord did not say which user the bot is"
+        );
+        let limited = Replay::of(
+            Fixture::from_json(
+                r#"{"exchanges":[{"request":{"method":"GET","url":"https://discord.com/api/v10/users/@me","headers":{"Authorization":"Bot «secret:HERALD_DISCORD_TOKEN»","User-Agent":"DiscordBot (https://github.com/nightworksio/herald, 0.0.0)"}},"response":{"status":429,"body":{"retry_after":1.5}}}]}"#,
+            )
+            .unwrap(),
+        );
+        assert_eq!(
+            read_back(&bot(CHANNEL, false), &limited, &marker()),
+            Err(MarkersError::RetryAfter {
+                after: SignedDuration::from_millis(1_500)
+            })
         );
     }
 
@@ -782,6 +864,7 @@ mod replay {
             api: None,
             interactions: None,
             read_back: None,
+            pin_lookups: None,
             colours: None,
             archive_after: None,
         };

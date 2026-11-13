@@ -205,17 +205,6 @@
     {
       "body": null,
       "method": "GET",
-      "path": "/discord/api/v10/users/@me",
-      "response": {
-        "bot": true,
-        "id": "1566190000000000099",
-        "username": "herald"
-      },
-      "status": 200
-    },
-    {
-      "body": null,
-      "method": "GET",
       "path": "/discord/api/v10/channels/1566184281406177531/messages/pins?limit=50",
       "response": {
         "items": [

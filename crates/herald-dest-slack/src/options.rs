@@ -1,6 +1,7 @@
-use herald_core::{ReadBack, SecretRef, Symbols, WaitOptions};
+use herald_core::{PinLookups, ReadBack, SecretRef, Symbols, WaitOptions, bot_or_webhook};
 
 use crate::domain::Domain;
+use crate::slack::SLACK;
 
 use crate::interactions::{Interactions, Subscribe};
 use schemars::JsonSchema;
@@ -28,6 +29,9 @@ pub struct DestinationOptions {
     /// How many pages of its own posts it reads back for their markers,
     /// from 1 to 20; 5 where unset.
     pub read_back: Option<ReadBack>,
+    /// How many of its own pins it looks up, one request each, as it finds
+    /// a route's earlier pins, from 1 to 100; 25 where unset.
+    pub pin_lookups: Option<PinLookups>,
     /// The characters its posts write where its markup has none: a task
     /// done and to do, a rule and a text list's bullet.
     pub symbols: Option<Symbols>,
@@ -57,15 +61,8 @@ impl DestinationOptions {
     /// # Errors
     ///
     /// When it names neither a token nor a webhook, or both.
-    pub fn bot(&self) -> Result<bool, &'static str> {
-        match (&self.token, &self.webhook) {
-            (Some(_), None) => Ok(true),
-            (None, Some(_)) => Ok(false),
-            (None, None) => Err("a Slack destination needs a token or a webhook; give one"),
-            (Some(_), Some(_)) => {
-                Err("a Slack destination takes a token or a webhook, not both; keep one")
-            }
-        }
+    pub fn bot(&self) -> Result<bool, String> {
+        bot_or_webhook(SLACK, self.token.as_ref(), self.webhook.as_ref())
     }
 }
 

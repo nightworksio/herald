@@ -10,6 +10,7 @@ mod options;
 mod policy;
 mod reach;
 
+pub(crate) use deliver::ACTOR;
 pub use deliver::{ACTOR_MARKUP, ActivityPub, actor_profile};
 pub use documents::{
     Asked, FIRST, accept, actor_document, asked, create, follow_id, note, webfinger,

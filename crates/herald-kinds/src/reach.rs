@@ -182,11 +182,6 @@ impl Reached {
     pub fn read<'a>(&'a self, http: &'a dyn DynHttp) -> Posts<'a> {
         Posts(self.0.posts(http))
     }
-
-    /// What its own posts say landed for `key`, where it can read them back.
-    pub async fn landed(&self, http: &dyn DynHttp, key: &Key, marker: &Marker) -> Option<Entry> {
-        self.read(http).entry(key, marker).await.ok().flatten()
-    }
 }
 
 impl Deref for Reached {

@@ -3,7 +3,7 @@ use herald_ports::{Http, MarkedThread, Markers, MarkersError, unreserved};
 use serde_json::Value;
 
 use crate::mastodon::Mastodon;
-use crate::read::text;
+use crate::read::{json, text, trouble};
 use crate::request::get;
 
 /// The most statuses Mastodon lists in one page.
@@ -28,28 +28,29 @@ impl<'a, H: Http> MastodonMarkers<'a, H> {
     }
 
     async fn read(&self, path: &str) -> Result<Value, MarkersError> {
-        let response = self
-            .http
-            .send(get(self.mastodon, path))
-            .await
-            .map_err(|error| MarkersError::Unreadable {
-                reason: error.to_string(),
-            })?;
-        if !response.succeeded() {
-            return Err(MarkersError::Unreadable {
-                reason: format!("Mastodon answered {}", response.status),
-            });
+        let response = self.http.send(get(self.mastodon, path)).await?;
+        match trouble(&response, self.mastodon.waits) {
+            Some(sent) => Err(MarkersError::unlanded(sent)),
+            None => Ok(json(&response)),
         }
-        Ok(serde_json::from_slice(&response.body).unwrap_or(Value::Null))
+    }
+
+    /// The account the token is, as Mastodon names it, asked once.
+    async fn account(&self) -> Result<String, MarkersError> {
+        if let Some(account) = self.mastodon.account.get() {
+            return Ok(account.clone());
+        }
+        let account = self.read("/api/v1/accounts/verify_credentials").await?;
+        let herald = text(&account, "id").ok_or_else(|| MarkersError::Unreadable {
+            reason: "Mastodon did not say which account the token is".to_owned(),
+        })?;
+        Ok(self.mastodon.account.learn(herald).clone())
     }
 
     /// The account's own statuses, newest first, read back page by page
     /// until a page holds one `sought`, or none is left.
     async fn statuses(&self, sought: impl Fn(&Value) -> bool) -> Result<Vec<Value>, MarkersError> {
-        let account = self.read("/api/v1/accounts/verify_credentials").await?;
-        let herald = text(&account, "id").ok_or_else(|| MarkersError::Unreadable {
-            reason: "Mastodon did not say which account the token is".to_owned(),
-        })?;
+        let herald = self.account().await?;
         let listing =
             format!("/api/v1/accounts/{herald}/statuses?limit={PAGE}&exclude_reblogs=true");
         let mut own = Vec::new();

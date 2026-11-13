@@ -1,15 +1,15 @@
 use herald_core::{
-    Announcement, Bullet, Emphases, Entry, Escape, Facts, Features, Fences, Heading, Limits, Links,
-    Marker, Markup, Measure, MentionRoom, MentionStyle, Pins, Profile, ReadBack, Sent, Step,
-    Threads, Waits, Wording,
+    Announcement, Bullet, Declined, Emphases, Entry, Escape, Facts, Features, Fences, Heading,
+    Limits, Links, Marker, Markup, Measure, MentionRoom, MentionStyle, PinLookups, Pins, Profile,
+    ReadBack, Sent, Step, Threads, Waits, Wording,
 };
-use herald_ports::{Http, HttpError, Request, Secret, unreserved};
+use herald_ports::{Credential, Http, HttpError, Learned, Request, unreserved};
 use serde_json::Value;
 
 use crate::domain::Domain;
 use crate::options::RouteOptions;
 use crate::read::{json, read, text, trouble};
-use crate::request::{EVENT, ROUTE, Refusal, channel, get, pin, posted, step};
+use crate::request::{EVENT, ROUTE, channel, get, pin, posted, step};
 use crate::web_api::{
     AUTH_TEST, BOTS_INFO, CHAT_GET_PERMALINK, CONVERSATIONS_HISTORY, PINS_REMOVE,
 };
@@ -38,18 +38,11 @@ const TEXT: usize = 3_000;
 const ALREADY_PINNED: &str = "already_pinned";
 /// What Slack answers for an unpin of a message no longer pinned, or gone.
 const UNPINNED: [&str; 2] = ["no_pin", "message_not_found"];
+/// The platform, as herald names it.
+pub(crate) const SLACK: &str = "Slack";
 
 /// An answer read, a reason to stop with, or no answer at all.
 pub(crate) type Read<T> = Result<Result<T, Sent>, HttpError>;
-
-/// How herald is allowed to post.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Credential {
-    /// A bot's token.
-    Bot(Secret),
-    /// An incoming webhook's URL, which carries its own token.
-    Webhook(Secret),
-}
 
 /// The identity herald posts as (ADR-0011): its bot, and the app it
 /// belongs to.
@@ -87,9 +80,11 @@ pub struct Slack {
     pub(crate) credential: Credential,
     pub(crate) route: RouteOptions,
     pub(crate) read_back: ReadBack,
+    pub(crate) pin_lookups: PinLookups,
     pub(crate) team: Option<String>,
     pub(crate) wording: Wording,
     pub(crate) waits: Waits,
+    pub(crate) identity: Learned<Identity>,
 }
 
 impl Slack {
@@ -105,9 +100,11 @@ impl Slack {
             credential,
             route,
             read_back: ReadBack::DEFAULT,
+            pin_lookups: PinLookups::DEFAULT,
             team: None,
             wording: Wording::default(),
             waits: Waits::DEFAULT,
+            identity: Learned::new(),
         }
     }
 
@@ -115,6 +112,16 @@ impl Slack {
     #[must_use]
     pub fn waiting(self, waits: Waits) -> Self {
         Self { waits, ..self }
+    }
+
+    /// The destination, looking up at most `pin_lookups` pins as it finds a
+    /// route's earlier pins.
+    #[must_use]
+    pub fn looking_up(self, pin_lookups: PinLookups) -> Self {
+        Self {
+            pin_lookups,
+            ..self
+        }
     }
 
     /// The destination, its subscribe button labelled as `wording` words
@@ -174,7 +181,7 @@ impl Slack {
         step_to_take: &Step,
         announcement: &Announcement,
         entry: &Entry,
-    ) -> Result<Request, Refusal> {
+    ) -> Result<Request, Declined> {
         step(self, step_to_take, announcement, entry)
     }
 
@@ -302,6 +309,9 @@ impl Slack {
             .filter_map(|message| text(message, "ts"))
             .filter(|ts| *ts != post)
             .collect();
+        if let Some(over) = self.pin_lookups.over(own.len()) {
+            return Ok(Err(Sent::Refused(over)));
+        }
         let mut stale = Vec::new();
         for ts in own {
             let asked = format!(
@@ -345,6 +355,9 @@ pub(crate) fn carried<'a>(message: &'a Value, field: &str) -> Option<&'a str> {
 /// Who the bot token is: its bot, from `auth.test`, and that bot's app,
 /// from `bots.info`.
 pub(crate) async fn identity<H: Http>(slack: &Slack, http: &H) -> Read<Identity> {
+    if let Some(identity) = slack.identity.get() {
+        return Ok(Ok(identity.clone()));
+    }
     let answer = http.send(get(slack, AUTH_TEST, "")).await?;
     let tested = json(&answer);
     if let Some(sent) = trouble(&answer, &tested, slack.waits) {
@@ -367,10 +380,13 @@ pub(crate) async fn identity<H: Http>(slack: &Slack, http: &H) -> Read<Identity>
             "Slack did not say which app the bot belongs to".to_owned(),
         )));
     };
-    Ok(Ok(Identity {
-        bot: bot.to_owned(),
-        app: app.to_owned(),
-    }))
+    Ok(Ok(slack
+        .identity
+        .learn(Identity {
+            bot: bot.to_owned(),
+            app: app.to_owned(),
+        })
+        .clone()))
 }
 
 /// The most characters a section's text holds.

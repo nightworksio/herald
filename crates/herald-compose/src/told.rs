@@ -87,6 +87,7 @@ pub fn why(reason: &Stop) -> String {
         Stop::RetryAfter(after) => format!("the destination asked to wait {after:#}"),
         Stop::Refused(reason)
         | Stop::Unreachable(reason)
+        | Stop::Unread(reason)
         | Stop::Store(reason)
         | Stop::Template(reason)
         | Stop::Marker(reason)

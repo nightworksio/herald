@@ -11,6 +11,7 @@ mod bounds;
 mod chunk;
 mod credentials;
 mod cursor;
+mod declined;
 mod duration;
 mod event;
 mod housekeep;
@@ -43,10 +44,11 @@ pub use announce::{
     Announcement, Button, Title, announce, body_template, shortened, thread_template,
     title_template,
 };
-pub use bounds::{Inbound, ReadBack, Sandbox};
+pub use bounds::{Inbound, PinLookups, ReadBack, Sandbox};
 pub use chunk::{Room, chunk, chunk_in, size};
-pub use credentials::basic;
+pub use credentials::{basic, bot_or_webhook};
 pub use cursor::{Cursor, Polled, fresh};
+pub use declined::Declined;
 pub use duration::Duration;
 pub use event::{Draft, Event, Problem};
 pub use housekeep::{Chore, Schedule, due, schedules};

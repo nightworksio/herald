@@ -30,6 +30,8 @@ const INVALID_SESSION: u64 = 9;
 const HELLO: u64 = 10;
 /// Discord acknowledging a beat.
 const HEARTBEAT_ACK: u64 = 11;
+/// How often to beat where Discord's greeting names no interval it can be.
+const BEAT: SignedDuration = SignedDuration::from_millis(41_250);
 /// The close codes after which reconnecting cannot help: the token was
 /// refused, the shard or the API version is wrong, or the intents are not
 /// allowed.
@@ -132,7 +134,8 @@ impl Gateway {
                 let every = value
                     .pointer("/d/heartbeat_interval")
                     .and_then(Value::as_i64)
-                    .map_or(SignedDuration::from_secs(41), SignedDuration::from_millis);
+                    .filter(|millis| *millis > 0)
+                    .map_or(BEAT, SignedDuration::from_millis);
                 self.acknowledged = true;
                 vec![Effect::Beat(every), Effect::Send(self.introduced())]
             }

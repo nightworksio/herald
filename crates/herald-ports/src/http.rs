@@ -1,6 +1,7 @@
 use std::fmt;
 use std::future::Future;
 
+use herald_core::{Sent, Waits};
 use jiff::{SignedDuration, Timestamp};
 
 use crate::outbound::Outbound;
@@ -236,6 +237,61 @@ impl Response {
     pub fn until(&self, at: Timestamp) -> Option<SignedDuration> {
         Some(at.duration_since(self.date()?)).filter(|wait| !wait.is_negative())
     }
+
+    /// How long to wait before asking again, where its status asks for a
+    /// wait: the one `named` in its body, else its `Retry-After`, else the
+    /// one `waits` gives.
+    #[must_use]
+    pub fn wait(&self, waits: Waits, named: Option<SignedDuration>) -> Option<SignedDuration> {
+        waits.after(self.status, named.or_else(|| self.retry_after()))
+    }
+
+    /// What it means where it did not succeed: a wait, as [`Self::wait`]
+    /// reads one, or else `who` refusing it with what it `said`.
+    #[must_use]
+    pub fn trouble(
+        &self,
+        waits: Waits,
+        named: Option<SignedDuration>,
+        who: &str,
+        said: impl FnOnce() -> String,
+    ) -> Option<Sent> {
+        if let Some(wait) = self.wait(waits, named) {
+            return Some(Sent::RetryAfter(wait));
+        }
+        (!self.succeeded()).then(|| Sent::Refused(self.refused(who, &said())))
+    }
+
+    /// Whether `who` took a request it answered with this, or else why
+    /// not: what it said, and the wait it asked for, the one `named` in its
+    /// body or else its `Retry-After`.
+    ///
+    /// # Errors
+    ///
+    /// Where it did not succeed.
+    pub fn took(
+        &self,
+        named: Option<SignedDuration>,
+        who: &str,
+        said: impl FnOnce() -> String,
+    ) -> Result<(), String> {
+        if self.succeeded() {
+            return Ok(());
+        }
+        let refused = self.refused(who, &said());
+        Err(match named.or_else(|| self.retry_after()) {
+            Some(wait) => format!("{refused}, and asked to wait {wait:#}"),
+            None => refused,
+        })
+    }
+
+    fn refused(&self, who: &str, said: &str) -> String {
+        let status = self.status;
+        match said.trim() {
+            "" => format!("{who} refused it with {status}"),
+            said => format!("{who} refused it with {status}: {said}"),
+        }
+    }
 }
 
 /// The time an HTTP date names.
@@ -347,6 +403,73 @@ mod tests {
         assert_eq!(
             answered(&[("retry-after", "7")]).retry_after(),
             Some(SignedDuration::from_secs(7))
+        );
+    }
+
+    fn status(status: u16, headers: &[(&str, &str)]) -> Response {
+        Response {
+            status,
+            ..answered(headers)
+        }
+    }
+
+    const WAITS: Waits = Waits {
+        outage: SignedDuration::from_secs(3),
+        limited: SignedDuration::from_secs(9),
+    };
+
+    #[test]
+    fn a_wait_is_the_one_the_body_names_else_retry_after_else_the_status_s_own() {
+        let named = Some(SignedDuration::from_secs(1));
+        let limited = status(429, &[("Retry-After", "2")]);
+        assert_eq!(limited.wait(WAITS, named), named);
+        assert_eq!(
+            limited.wait(WAITS, None),
+            Some(SignedDuration::from_secs(2))
+        );
+        assert_eq!(status(429, &[]).wait(WAITS, None), Some(WAITS.limited));
+        assert_eq!(status(503, &[]).wait(WAITS, None), Some(WAITS.outage));
+        assert_eq!(
+            status(400, &[("Retry-After", "2")]).wait(WAITS, named),
+            None
+        );
+    }
+
+    #[test]
+    fn trouble_is_a_wait_a_refusal_naming_who_and_what_was_said_or_none() {
+        let said = || " Missing Access ".to_owned();
+        assert_eq!(
+            status(429, &[]).trouble(WAITS, None, "Discord", said),
+            Some(Sent::RetryAfter(WAITS.limited))
+        );
+        assert_eq!(
+            status(403, &[]).trouble(WAITS, None, "Discord", said),
+            Some(Sent::Refused(
+                "Discord refused it with 403: Missing Access".to_owned()
+            ))
+        );
+        assert_eq!(
+            status(404, &[]).trouble(WAITS, None, "the inbox", String::new),
+            Some(Sent::Refused("the inbox refused it with 404".to_owned()))
+        );
+        assert_eq!(status(204, &[]).trouble(WAITS, None, "Discord", said), None);
+    }
+
+    #[test]
+    fn took_says_what_was_refused_and_any_wait_asked_for() {
+        let said = || "slow down".to_owned();
+        assert_eq!(status(200, &[]).took(None, "Slack", said), Ok(()));
+        assert_eq!(
+            status(500, &[]).took(None, "Slack", String::new),
+            Err("Slack refused it with 500".to_owned())
+        );
+        assert_eq!(
+            status(429, &[("Retry-After", "3")]).took(None, "Slack", said),
+            Err("Slack refused it with 429: slow down, and asked to wait 3s".to_owned())
+        );
+        assert_eq!(
+            status(429, &[]).took(Some(SignedDuration::from_millis(1_500)), "Slack", said),
+            Err("Slack refused it with 429: slow down, and asked to wait 1s 500ms".to_owned())
         );
     }
 

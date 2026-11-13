@@ -74,6 +74,10 @@ pub struct Interactions {
     /// The most messages one sync reads from each room, from 1 to 100; 20
     /// where unset.
     pub timeline: Option<u8>,
+    /// Whether the homeserver holds the application service's user to its
+    /// rate limits, as its registration says; true where unset.
+    #[serde(default = "rate_limited")]
+    pub rate_limited: bool,
 }
 
 /// How long a sync waits where the config sets nothing.
@@ -89,6 +93,10 @@ fn prefix() -> String {
 
 fn sender() -> String {
     "herald".to_owned()
+}
+
+const fn rate_limited() -> bool {
+    true
 }
 
 impl Interactions {

@@ -130,9 +130,130 @@ impl JsonSchema for ReadBack {
     }
 }
 
+/// How many pins a destination looks up, one request each, as it finds a
+/// route's earlier pins to take down.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub struct PinLookups(u8);
+
+impl PinLookups {
+    /// The pins looked up where a config sets none.
+    pub const DEFAULT: Self = Self(25);
+    /// The most a config may set: four times the default.
+    pub const MOST: Self = Self(Self::DEFAULT.0 * 4);
+
+    /// `pins` as a setting, where it lies from 1 to [`Self::MOST`].
+    #[must_use]
+    pub fn new(pins: u8) -> Option<Self> {
+        (1..=Self::MOST.0).contains(&pins).then_some(Self(pins))
+    }
+
+    /// The pins looked up.
+    #[must_use]
+    pub fn pins(self) -> usize {
+        usize::from(self.0)
+    }
+
+    /// What is said where `candidates` pins, each to be looked up, are
+    /// more than it looks up: how to take every one into account.
+    #[must_use]
+    pub fn over(self, candidates: usize) -> Option<String> {
+        let most = self.pins();
+        (candidates > most).then(|| {
+            let among = format!(
+                "the route's earlier pins are among {candidates} pins, more than the {most} it looks up"
+            );
+            if self < Self::MOST {
+                format!(
+                    "{among}; raise pin_lookups, up to {}, or unpin them by hand",
+                    Self::MOST.0
+                )
+            } else {
+                format!("{among}; unpin them by hand")
+            }
+        })
+    }
+}
+
+impl Default for PinLookups {
+    fn default() -> Self {
+        Self::DEFAULT
+    }
+}
+
+impl<'de> Deserialize<'de> for PinLookups {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let pins = u8::deserialize(deserializer)?;
+        Self::new(pins).ok_or_else(|| {
+            D::Error::custom(format!(
+                "pin_lookups looks up 1 to {} pins, not {pins}",
+                Self::MOST.0
+            ))
+        })
+    }
+}
+
+impl JsonSchema for PinLookups {
+    fn schema_name() -> std::borrow::Cow<'static, str> {
+        "PinLookups".into()
+    }
+
+    fn json_schema(_: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        schemars::json_schema!({
+            "description": format!(
+                "How many pins the destination looks up, one request each, as it finds the route's earlier pins, {} by default.",
+                Self::DEFAULT.0
+            ),
+            "type": "integer",
+            "minimum": 1,
+            "maximum": Self::MOST.0
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_destination_looks_up_1_to_100_pins_and_25_by_default() {
+        assert_eq!(PinLookups::default().pins(), 25);
+        assert_eq!(PinLookups::MOST.pins(), 100);
+        assert_eq!(PinLookups::new(3).map(PinLookups::pins), Some(3));
+        assert_eq!(PinLookups::new(0), None);
+        assert_eq!(PinLookups::new(101), None);
+        assert_eq!(
+            serde_json::from_str::<PinLookups>("7")
+                .map(PinLookups::pins)
+                .ok(),
+            Some(7)
+        );
+        assert_eq!(
+            serde_json::from_str::<PinLookups>("101")
+                .unwrap_err()
+                .to_string(),
+            "pin_lookups looks up 1 to 100 pins, not 101"
+        );
+        assert_eq!(PinLookups::DEFAULT.over(25), None);
+        assert_eq!(
+            PinLookups::DEFAULT.over(26).as_deref(),
+            Some(
+                "the route's earlier pins are among 26 pins, more than the 25 it looks up; raise pin_lookups, up to 100, or unpin them by hand"
+            )
+        );
+        assert_eq!(
+            PinLookups::MOST.over(101).as_deref(),
+            Some(
+                "the route's earlier pins are among 101 pins, more than the 100 it looks up; unpin them by hand"
+            )
+        );
+        let schema = serde_json::to_value(schemars::schema_for!(PinLookups)).unwrap();
+        assert_eq!(schema["minimum"], 1);
+        assert_eq!(schema["maximum"], 100);
+        assert_eq!(
+            schema["description"],
+            "How many pins the destination looks up, one request each, as it finds the route's earlier pins, 25 by default."
+        );
+    }
 
     #[test]
     fn a_destination_reads_back_1_to_20_pages_and_5_by_default() {

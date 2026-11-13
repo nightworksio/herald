@@ -1,14 +1,14 @@
 use herald_core::{
-    Announcement, Bullet, Chore, Delivery, Emphases, Entry, Escape, Features, Fences, Heading,
-    Limits, Links, Markup, Measure, MentionStyle, Pins, Profile, ReadBack, Sent, Step, Threads,
-    Waits, Wording,
+    Announcement, Bullet, Chore, Declined, Delivery, Emphases, Entry, Escape, Features, Fences,
+    Heading, Limits, Links, Markup, Measure, MentionStyle, PinLookups, Pins, Profile, ReadBack,
+    Sent, Step, Threads, Waits, Wording,
 };
-use herald_ports::{Http, HttpError, Request, Secret};
+use herald_ports::{Credential, Http, HttpError, Learned, Request};
 
 use crate::look::Look;
 use crate::options::RouteOptions;
 use crate::read::{read, trouble};
-use crate::request::{Refusal, chore, step};
+use crate::request::{chore, step};
 use crate::unpin::unpinned;
 
 /// Discord's Markdown: punctuation escaped, links bracketed, headings hashed.
@@ -29,15 +29,8 @@ pub const MARKUP: Markup = Markup {
 
 /// The API herald speaks, at the version it was written against.
 pub(crate) const API: &str = "https://discord.com/api/v10";
-
-/// How herald is allowed to post.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Credential {
-    /// A bot's token.
-    Bot(Secret),
-    /// An incoming webhook's URL, which carries its own token.
-    Webhook(Secret),
-}
+/// The platform, as herald names it.
+pub(crate) const DISCORD: &str = "Discord";
 
 /// One Discord destination, for one route.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -46,9 +39,11 @@ pub struct Discord {
     pub(crate) credential: Credential,
     pub(crate) route: RouteOptions,
     pub(crate) read_back: ReadBack,
+    pub(crate) pin_lookups: PinLookups,
     pub(crate) look: Look,
     pub(crate) wording: Wording,
     pub(crate) waits: Waits,
+    pub(crate) bot: Learned<String>,
 }
 
 impl Discord {
@@ -61,9 +56,11 @@ impl Discord {
             credential,
             route,
             read_back: ReadBack::DEFAULT,
+            pin_lookups: PinLookups::DEFAULT,
             look: Look::DEFAULT,
             wording: Wording::default(),
             waits: Waits::DEFAULT,
+            bot: Learned::new(),
         }
     }
 
@@ -77,6 +74,16 @@ impl Discord {
     #[must_use]
     pub fn reading_back(self, read_back: ReadBack) -> Self {
         Self { read_back, ..self }
+    }
+
+    /// The destination, looking up at most `pin_lookups` pins as it finds a
+    /// route's earlier pins.
+    #[must_use]
+    pub fn looking_up(self, pin_lookups: PinLookups) -> Self {
+        Self {
+            pin_lookups,
+            ..self
+        }
     }
 
     /// The destination, its posts' buttons labelled as `wording` words
@@ -121,7 +128,7 @@ impl Discord {
         announcement: &Announcement,
         delivery: &Delivery,
         entry: &Entry,
-    ) -> Result<Request, Refusal> {
+    ) -> Result<Request, Declined> {
         step(self, step_to_take, announcement, delivery, entry)
     }
 
@@ -166,9 +173,7 @@ impl Discord {
             Err(refusal) => return Ok(Sent::Refused(refusal.to_string())),
         };
         for request in requests {
-            let response = http.send(request).await?;
-            let body = serde_json::from_slice(&response.body).unwrap_or(serde_json::Value::Null);
-            if let Some(trouble) = trouble(&response, &body, self.waits) {
+            if let Some(trouble) = trouble(&http.send(request).await?, self.waits) {
                 return Ok(trouble);
             }
         }

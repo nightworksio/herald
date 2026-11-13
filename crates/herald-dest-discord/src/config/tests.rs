@@ -329,7 +329,7 @@ fn commands_are_answered_through_the_interaction_they_came_with() {
     );
     assert_eq!(
         Interacts::took(&interacting, &response(400, &json!({ "message": "no" }))),
-        Err("Discord answered 400: no".to_owned())
+        Err("Discord refused it with 400: no".to_owned())
     );
     assert_eq!(
         Interacts::took(&interacting, &response(204, &Value::Null)),

@@ -1,6 +1,6 @@
 # ADR-0011: Markers count only on herald's own posts, a route keeps one pin, and a lock archives
 
-**Status:** Accepted
+**Status:** Accepted; how many pins the unpin step looks up extended by [ADR-0022](0022-a-read-back-that-fails-stops-the-step-and-pin-lookups-are-bounded.md)
 **Date:** 2026-11-01
 
 ## Context

@@ -176,6 +176,7 @@ pub(crate) struct KindFile {
     /// The links that become its buttons, in order: each a name, labelled
     /// by its name, or a name and a label.
     #[serde(default)]
+    #[schemars(length(max = LinkSpec::MOST))]
     pub(crate) links: Vec<LinkFile>,
     /// The attributes its events carry, by name, as `event.attributes.<name>`
     /// reads them.

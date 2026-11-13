@@ -54,16 +54,13 @@ fn an_announcement_kept_only_in_its_post_is_found_there_by_the_next_run() {
             CROSSPOSTED,
             THREADED,
             PINNED,
-            WHO,
             NO_PINS,
-            WHO,
             (
                 "/channels/1566200000000000100/messages?limit=100",
                 200,
                 posted.as_str(),
             ),
             ("/channels/7/messages?limit=100", 200, "[]"),
-            WHO,
             (
                 "/channels/1566200000000000100/messages?limit=100",
                 200,

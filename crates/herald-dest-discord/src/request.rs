@@ -1,10 +1,10 @@
-use std::fmt;
-
-use herald_core::{Announcement, Chore, Delivery, Entry, Phrase, Step, Wording, digest};
-use herald_ports::{Method, Request, Text};
+use herald_core::{
+    Announcement, Button, Chore, Declined, Delivery, Entry, Phrase, Step, Wording, digest,
+};
+use herald_ports::{Credential, Method, Request, Secret, Text};
 use serde_json::{Map, Value, json};
 
-use crate::discord::{Credential, Discord};
+use crate::discord::{DISCORD, Discord};
 use crate::interact::subscribe_button;
 use crate::interactions::Subscribe;
 
@@ -12,6 +12,10 @@ use crate::interactions::Subscribe;
 pub(crate) const PINNED: u64 = 2;
 /// A row of message components.
 const ACTION_ROW: u8 = 1;
+/// The most buttons a row holds.
+const ROW: usize = 5;
+/// The longest address a link button takes.
+const BUTTON_URL: usize = 512;
 /// A button component.
 const BUTTON: u8 = 2;
 /// The style of a button that opens a link.
@@ -26,58 +30,40 @@ pub(crate) const USER_AGENT: &str = concat!(
     ")"
 );
 
-/// Why a step cannot be asked of this destination.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Refusal {
-    /// A webhook cannot take the step.
-    WebhookCannot(&'static str),
-    /// A bot has no channel to post to.
-    NoChannel,
-    /// The step needs an earlier step's answer, which is not recorded.
-    Missing(&'static str),
-    /// Discord delivers to no inbox.
-    NoInbox,
-}
-
-impl fmt::Display for Refusal {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::WebhookCannot(what) => {
-                write!(f, "a Discord webhook cannot {what}; use a bot token")
-            }
-            Self::NoChannel => f.write_str("the route names no Discord channel; set its channel"),
-            Self::Missing(what) => write!(
-                f,
-                "{what} is not recorded, so this step cannot be taken yet"
-            ),
-            Self::NoInbox => f.write_str("Discord delivers to no inbox"),
-        }
+/// Why a webhook cannot take a step.
+pub(crate) const fn webhook_cannot(what: &'static str) -> Declined {
+    Declined::WebhookCannot {
+        platform: DISCORD,
+        what,
     }
 }
 
-fn json(method: Method, url: Text, credential: &Credential, body: &Value) -> Request {
-    let request = Request::new(method, url)
-        .header("Content-Type", Text::plain("application/json"))
-        .header("User-Agent", Text::plain(USER_AGENT))
-        .body(body.to_string());
-    authorised(request, credential)
-}
+/// Why a bot with no channel cannot take a step.
+pub(crate) const NO_CHANNEL: Declined = Declined::NoChannel { platform: DISCORD };
+/// Why Discord takes no delivery to an inbox.
+const NO_INBOX: Declined = Declined::Cannot {
+    platform: DISCORD,
+    what: "deliver to an inbox",
+};
 
-pub(crate) fn bare(method: Method, url: Text, credential: &Credential) -> Request {
-    authorised(
-        Request::new(method, url).header("User-Agent", Text::plain(USER_AGENT)),
-        credential,
-    )
-}
-
-fn authorised(request: Request, credential: &Credential) -> Request {
-    match credential {
-        Credential::Bot(token) => request.header(
+/// A request to Discord, sent as the bot where `bot` holds its token.
+pub(crate) fn bare(method: Method, url: Text, bot: Option<&Secret>) -> Request {
+    let request = Request::new(method, url).header("User-Agent", Text::plain(USER_AGENT));
+    match bot {
+        Some(token) => request.header(
             "Authorization",
             Text::plain("Bot ").then_secret(token.clone()),
         ),
-        Credential::Webhook(_) => request,
+        None => request,
     }
+}
+
+/// A request to Discord carrying `body` as JSON, sent as the bot where
+/// `bot` holds its token.
+pub(crate) fn json(method: Method, url: Text, bot: Option<&Secret>, body: String) -> Request {
+    bare(method, url, bot)
+        .header("Content-Type", Text::plain("application/json"))
+        .body(body)
 }
 
 fn message(
@@ -162,10 +148,21 @@ fn buttons(
     let buttons: Vec<Value> = announcement
         .buttons
         .iter()
+        .filter(|button| fits(button))
         .map(|button| json!({ "type": BUTTON, "style": LINK, "label": button.label(wording), "url": button.url }))
         .chain(subscribing)
         .collect();
-    (!buttons.is_empty()).then(|| json!([{ "type": ACTION_ROW, "components": buttons }]))
+    (!buttons.is_empty()).then(|| {
+        buttons
+            .chunks(ROW)
+            .map(|row| json!({ "type": ACTION_ROW, "components": row }))
+            .collect()
+    })
+}
+
+/// Whether Discord takes a link button to where `button` leads.
+fn fits(button: &Button) -> bool {
+    button.url.len() <= BUTTON_URL
 }
 
 fn thread_name(announcement: &Announcement) -> String {
@@ -179,9 +176,7 @@ fn thread_name(announcement: &Announcement) -> String {
 /// nonce of its own, so Discord takes it once however often it is sent; a
 /// webhook takes none.
 fn chunk(announcement: &Announcement, index: u32, deduplicated: bool) -> Value {
-    let part = usize::try_from(index)
-        .ok()
-        .and_then(|index| announcement.parts.get(index));
+    let part = announcement.part(index);
     let mut body = Map::new();
     body.insert(
         "content".to_owned(),
@@ -204,19 +199,10 @@ fn chunk_nonce(announcement: &Announcement, index: u32) -> String {
         .collect()
 }
 
-fn landed<'a>(
-    entry: &'a Entry,
-    step: &Step,
-    what: &'static str,
-) -> Result<&'a herald_core::Facts, Refusal> {
-    entry.facts(step).ok_or(Refusal::Missing(what))
-}
-
-pub(crate) fn posted(entry: &Entry) -> Result<&str, Refusal> {
-    landed(entry, &Step::Post, "the announcement's message")?
-        .message
-        .as_deref()
-        .ok_or(Refusal::Missing("the announcement's message"))
+pub(crate) fn posted(entry: &Entry) -> Result<&str, Declined> {
+    entry
+        .message(&Step::Post)
+        .ok_or(Declined::Missing("the announcement's message"))
 }
 
 fn thread(entry: &Entry) -> Option<&str> {
@@ -224,6 +210,7 @@ fn thread(entry: &Entry) -> Option<&str> {
         .iter()
         .filter_map(|step| entry.facts(step))
         .find_map(|facts| facts.thread.as_deref())
+        .filter(|thread| !thread.is_empty())
 }
 
 pub(crate) fn step(
@@ -232,7 +219,7 @@ pub(crate) fn step(
     announcement: &Announcement,
     delivery: &Delivery,
     entry: &Entry,
-) -> Result<Request, Refusal> {
+) -> Result<Request, Declined> {
     match &discord.credential {
         Credential::Webhook(url) => webhook(discord, url, step, announcement, delivery, entry),
         Credential::Bot(_) => bot(discord, step, announcement, delivery, entry),
@@ -241,14 +228,13 @@ pub(crate) fn step(
 
 fn webhook(
     discord: &Discord,
-    url: &herald_ports::Secret,
+    url: &Secret,
     step: &Step,
     announcement: &Announcement,
     delivery: &Delivery,
     entry: &Entry,
-) -> Result<Request, Refusal> {
+) -> Result<Request, Declined> {
     let forum = discord.route.forum;
-    let credential = Credential::Webhook(url.clone());
     match step {
         Step::Post => {
             let mut body = message(discord, announcement, delivery, false, None);
@@ -258,8 +244,8 @@ fn webhook(
             Ok(json(
                 Method::Post,
                 Text::secret(url.clone()).then("?wait=true&with_components=true"),
-                &credential,
-                &body,
+                None,
+                body.to_string(),
             ))
         }
         Step::Chunk(index) => {
@@ -272,15 +258,15 @@ fn webhook(
             Ok(json(
                 Method::Post,
                 target,
-                &credential,
-                &chunk(announcement, *index, false),
+                None,
+                chunk(announcement, *index, false).to_string(),
             ))
         }
-        Step::Crosspost => Err(Refusal::WebhookCannot("crosspost")),
-        Step::OpenThread => Err(Refusal::WebhookCannot("open a thread from a message")),
-        Step::Pin => Err(Refusal::WebhookCannot("pin")),
-        Step::Unpin => Err(Refusal::WebhookCannot("unpin")),
-        Step::Deliver(_) | Step::Deliveries => Err(Refusal::NoInbox),
+        Step::Crosspost => Err(webhook_cannot("crosspost")),
+        Step::OpenThread => Err(webhook_cannot("open a thread from a message")),
+        Step::Pin => Err(webhook_cannot("pin")),
+        Step::Unpin => Err(webhook_cannot("unpin")),
+        Step::Deliver(_) | Step::Deliveries => Err(NO_INBOX),
     }
 }
 
@@ -290,10 +276,10 @@ fn bot(
     announcement: &Announcement,
     delivery: &Delivery,
     entry: &Entry,
-) -> Result<Request, Refusal> {
-    let channel = discord.route.channel.as_deref().ok_or(Refusal::NoChannel)?;
+) -> Result<Request, Declined> {
+    let channel = channel(discord)?;
     let api = &discord.api;
-    let credential = &discord.credential;
+    let bot = discord.credential.bot();
     match step {
         Step::Post if discord.route.forum => {
             let name = thread_name(announcement);
@@ -305,31 +291,27 @@ fn bot(
             Ok(json(
                 Method::Post,
                 Text::plain(format!("{api}/channels/{channel}/threads")),
-                credential,
-                &body,
+                bot,
+                body.to_string(),
             ))
         }
         Step::Post => {
             let url = Text::plain(format!("{api}/channels/{channel}/messages"));
-            Ok(json(
-                Method::Post,
-                url,
-                credential,
-                &message(
-                    discord,
-                    announcement,
-                    delivery,
-                    true,
-                    discord.route.subscribe.as_ref(),
-                ),
-            ))
+            let body = message(
+                discord,
+                announcement,
+                delivery,
+                true,
+                discord.route.subscribe.as_ref(),
+            );
+            Ok(json(Method::Post, url, bot, body.to_string()))
         }
         Step::Crosspost => {
             let message = posted(entry)?;
             let url = Text::plain(format!(
                 "{api}/channels/{channel}/messages/{message}/crosspost"
             ));
-            Ok(bare(Method::Post, url, credential))
+            Ok(bare(Method::Post, url, bot))
         }
         Step::OpenThread => {
             let message = posted(entry)?;
@@ -338,7 +320,7 @@ fn bot(
             let url = Text::plain(format!(
                 "{api}/channels/{channel}/messages/{message}/threads"
             ));
-            Ok(json(Method::Post, url, credential, &body))
+            Ok(json(Method::Post, url, bot, body.to_string()))
         }
         Step::Chunk(index) => {
             let target = thread(entry).unwrap_or(channel);
@@ -346,8 +328,8 @@ fn bot(
             Ok(json(
                 Method::Post,
                 url,
-                credential,
-                &chunk(announcement, *index, true),
+                bot,
+                chunk(announcement, *index, true).to_string(),
             ))
         }
         Step::Pin if discord.route.forum => {
@@ -356,54 +338,60 @@ fn bot(
             Ok(json(
                 Method::Patch,
                 url,
-                credential,
-                &json!({ "flags": PINNED }),
+                bot,
+                json!({ "flags": PINNED }).to_string(),
             ))
         }
         Step::Pin => {
             let message = posted(entry)?;
             let url = Text::plain(format!("{api}/channels/{channel}/messages/pins/{message}"));
-            Ok(bare(Method::Put, url, credential))
+            Ok(bare(Method::Put, url, bot))
         }
         Step::Unpin => {
             posted(entry)?;
             let earlier = announcement
                 .replaces
                 .as_deref()
-                .ok_or(Refusal::Missing("the route's earlier pin"))?;
+                .ok_or(Declined::Missing("the route's earlier pin"))?;
             Ok(unpin(discord, channel, earlier))
         }
-        Step::Deliver(_) | Step::Deliveries => Err(Refusal::NoInbox),
+        Step::Deliver(_) | Step::Deliveries => Err(NO_INBOX),
     }
+}
+
+/// The route's channel, which a bot needs.
+pub(crate) fn channel(discord: &Discord) -> Result<&str, Declined> {
+    discord
+        .route
+        .channel
+        .as_deref()
+        .filter(|channel| !channel.is_empty())
+        .ok_or(NO_CHANNEL)
 }
 
 pub(crate) fn get(discord: &Discord, path: &str) -> Request {
     let url = format!("{}{path}", discord.api);
-    bare(Method::Get, Text::plain(url), &discord.credential)
+    bare(Method::Get, Text::plain(url), discord.credential.bot())
 }
 
 pub(crate) fn unpin(discord: &Discord, channel: &str, message: &str) -> Request {
     let api = &discord.api;
+    let bot = discord.credential.bot();
     if discord.route.forum {
         let url = Text::plain(format!("{api}/channels/{message}"));
-        return json(
-            Method::Patch,
-            url,
-            &discord.credential,
-            &json!({ "flags": 0 }),
-        );
+        return json(Method::Patch, url, bot, json!({ "flags": 0 }).to_string());
     }
     let url = format!("{api}/channels/{channel}/messages/pins/{message}");
-    bare(Method::Delete, Text::plain(url), &discord.credential)
+    bare(Method::Delete, Text::plain(url), bot)
 }
 
 pub(crate) fn chore(
     discord: &Discord,
     housekeeping: Chore,
     thread: &str,
-) -> Result<Vec<Request>, Refusal> {
-    let Credential::Bot(_) = &discord.credential else {
-        return Err(Refusal::WebhookCannot("archive or lock a thread"));
+) -> Result<Vec<Request>, Declined> {
+    let Some(bot) = discord.credential.bot() else {
+        return Err(webhook_cannot("archive or lock a thread"));
     };
     let bodies = match housekeeping {
         Chore::Archive => vec![json!({ "archived": true })],
@@ -419,8 +407,8 @@ pub(crate) fn chore(
             json(
                 Method::Patch,
                 Text::plain(url.clone()),
-                &discord.credential,
-                body,
+                Some(bot),
+                body.to_string(),
             )
         })
         .collect())

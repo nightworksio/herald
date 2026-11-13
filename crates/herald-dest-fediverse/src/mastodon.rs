@@ -1,13 +1,13 @@
 use herald_core::{
-    Announcement, Bullet, Emphases, Entry, Escape, Features, Fences, Heading, Limits, Links,
-    Markup, Measure, MentionStyle, Pins, Profile, ReadBack, Sent, Step, Threads, Waits,
+    Announcement, Bullet, Declined, Emphases, Entry, Escape, Features, Fences, Heading, Limits,
+    Links, Markup, Measure, MentionStyle, Pins, Profile, ReadBack, Sent, Step, Threads, Waits,
 };
-use herald_ports::{Http, HttpError, Request, Secret};
+use herald_ports::{Http, HttpError, Learned, Request, Secret};
 use jiff::SignedDuration;
 
 use crate::options::RouteOptions;
 use crate::read::read;
-use crate::request::{Refusal, step};
+use crate::request::step;
 
 /// Plain text, as Mastodon shows it.
 pub const MASTODON_MARKUP: Markup = Markup {
@@ -30,6 +30,8 @@ pub const MASTODON_MARKUP: Markup = Markup {
 pub const LIMIT: usize = 500;
 /// The two blank lines between the title, the text and the link.
 const BREAKS: usize = 4;
+/// The platform, as herald names it.
+pub(crate) const PLATFORM: &str = "Mastodon";
 
 /// One Mastodon destination, for one route.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -39,6 +41,7 @@ pub struct Mastodon {
     pub(crate) route: RouteOptions,
     pub(crate) read_back: ReadBack,
     pub(crate) waits: Waits,
+    pub(crate) account: Learned<String>,
 }
 
 impl Mastodon {
@@ -59,6 +62,7 @@ impl Mastodon {
             route,
             read_back: ReadBack::DEFAULT,
             waits: Self::WAITS,
+            account: Learned::new(),
         }
     }
 
@@ -99,7 +103,7 @@ impl Mastodon {
         step_to_take: &Step,
         announcement: &Announcement,
         entry: &Entry,
-    ) -> Result<Request, Refusal> {
+    ) -> Result<Request, Declined> {
         step(self, step_to_take, announcement, entry)
     }
 

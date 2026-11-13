@@ -3,18 +3,16 @@
 
 use herald_core::Delivery;
 use herald_kinds::Probe;
-use herald_ports::{Http, Secret, Text};
+use herald_ports::{Credential, Http, Secret, Text};
 use serde_json::{Map, Value};
 
 use crate::read::{json, quoted, text};
 use crate::request::{get, posted_json};
-use crate::slack::{Credential, Slack};
+use crate::slack::{SLACK, Slack};
 use crate::web_api::{
     AUTH_TEST, BOTS_INFO, CHAT_POST_MESSAGE, CONVERSATIONS_HISTORY, PINS_ADD, PINS_LIST,
 };
 
-/// The platform, as a probe names it.
-const SLACK: &str = "Slack";
 /// What Slack answers an empty post to a live incoming webhook: its
 /// payload is refused, and nothing reaches the channel.
 const LIVE: u16 = 400;

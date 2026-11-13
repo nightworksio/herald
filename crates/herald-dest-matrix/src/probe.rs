@@ -12,7 +12,7 @@ use crate::matrix::Matrix;
 use crate::request::{MESSAGE, PINNED_EVENTS, get, room};
 
 /// The platform, as a probe names it.
-const MATRIX: &str = "The homeserver";
+const HOMESERVER: &str = "The homeserver";
 
 /// Who a token is, as `/account/whoami` says.
 #[derive(Debug, Deserialize)]
@@ -64,7 +64,7 @@ impl PowerLevels {
 /// token and of the bot's power in the route's room for `delivery`.
 pub(crate) async fn probe<H: Http>(matrix: &Matrix, http: &H, delivery: &Delivery) -> Vec<Probe> {
     let answer = http.send(get(matrix, "/account/whoami")).await;
-    let taken = Probe::credential(MATRIX, &answer);
+    let taken = Probe::credential(HOMESERVER, &answer);
     let user = answer
         .ok()
         .and_then(|answer| serde_json::from_slice::<Whoami>(&answer.body).ok());
@@ -75,7 +75,7 @@ pub(crate) async fn probe<H: Http>(matrix: &Matrix, http: &H, delivery: &Deliver
     let roomed = &matrix.route.room;
     let path = format!("{}/state/m.room.power_levels/", room(matrix));
     let answer = http.send(get(matrix, &path)).await;
-    if let Some(withheld) = Probe::route(MATRIX, Some("room"), &answer, &|status| {
+    if let Some(withheld) = Probe::route(HOMESERVER, Some("room"), &answer, &|status| {
         format!(
             "{user_id} cannot read the power levels of {roomed}, as the homeserver answered {status}; invite the bot to the room and have it join"
         )

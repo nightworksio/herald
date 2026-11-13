@@ -8,8 +8,10 @@ use herald_core::{Answering, Asked, Command, DestinationName, Member, Phrase, Pl
 use herald_ports::{Method, Request, Response, Secret, Text};
 use serde_json::{Value, json};
 
-use crate::discord::API;
+use crate::discord::{API, DISCORD};
 use crate::interactions::{Interactions, Via, snowflake};
+use crate::read::{said, waited};
+use crate::request::{bare, json};
 
 /// Discord's ping, which an endpoint answers with a pong.
 const PING: u64 = 1;
@@ -399,20 +401,25 @@ impl Interacting {
     }
 
     fn bare(&self, method: Method, path: &str) -> Option<Request> {
-        let bot = self.bot.clone()?;
-        Some(
-            Request::new(method, Text::plain(format!("{}{path}", self.api)))
-                .header("User-Agent", Text::plain(crate::request::USER_AGENT))
-                .header("Authorization", Text::plain("Bot ").then_secret(bot)),
-        )
+        let url = Text::plain(format!("{}{path}", self.api));
+        Some(bare(method, url, Some(self.bot.as_ref()?)))
     }
 
     fn json(&self, method: Method, path: &str, body: &Value) -> Option<Request> {
-        Some(
-            self.bare(method, path)?
-                .header("Content-Type", Text::plain("application/json"))
-                .body(body.to_string()),
-        )
+        let url = Text::plain(format!("{}{path}", self.api));
+        Some(json(
+            method,
+            url,
+            Some(self.bot.as_ref()?),
+            body.to_string(),
+        ))
+    }
+
+    fn callback(&self, replying: &Replying, body: String) -> Request {
+        let url = Text::plain(format!("{}/interactions/{}/", self.api, replying.id))
+            .then_secret(replying.token.clone())
+            .then("/callback");
+        json(Method::Post, url, None, body)
     }
 
     /// The request that registers the commands, in the server the
@@ -493,15 +500,7 @@ impl Interacting {
     /// interaction.
     #[must_use]
     pub fn defer(&self, replying: &Replying, public: bool) -> Request {
-        Request::new(
-            Method::Post,
-            Text::plain(format!("{}/interactions/{}/", self.api, replying.id))
-                .then_secret(replying.token.clone())
-                .then("/callback"),
-        )
-        .header("Content-Type", Text::plain("application/json"))
-        .header("User-Agent", Text::plain(crate::request::USER_AGENT))
-        .body(deferred(public))
+        self.callback(replying, deferred(public))
     }
 
     /// The request that answers the interaction `replying` names with
@@ -509,15 +508,7 @@ impl Interacting {
     /// gateway carried the interaction.
     #[must_use]
     pub fn complete(&self, replying: &Replying, projects: &[String]) -> Request {
-        Request::new(
-            Method::Post,
-            Text::plain(format!("{}/interactions/{}/", self.api, replying.id))
-                .then_secret(replying.token.clone())
-                .then("/callback"),
-        )
-        .header("Content-Type", Text::plain("application/json"))
-        .header("User-Agent", Text::plain(crate::request::USER_AGENT))
-        .body(choices(projects))
+        self.callback(replying, choices(projects))
     }
 
     /// The requests that answer the interaction `replying` names with
@@ -548,10 +539,7 @@ impl Interacting {
                         }),
                     )
                 };
-                Request::new(method, self.hook(replying, rest))
-                    .header("Content-Type", Text::plain("application/json"))
-                    .header("User-Agent", Text::plain(crate::request::USER_AGENT))
-                    .body(body.to_string())
+                json(method, self.hook(replying, rest), None, body.to_string())
             })
             .collect()
     }
@@ -600,14 +588,8 @@ pub fn subscribe_button(project: &str) -> Option<String> {
 ///
 /// What Discord said, where it refused or was unwell.
 pub fn took(response: &Response) -> Result<(), String> {
-    if response.succeeded() {
-        return Ok(());
-    }
-    let body: Value = serde_json::from_slice(&response.body).unwrap_or(Value::Null);
-    let message = text(&body, "message").unwrap_or_default();
-    Err(format!("Discord answered {}: {message}", response.status)
-        .trim_end_matches([' ', ':'])
-        .to_owned())
+    let body = crate::read::json(response);
+    response.took(waited(&body), DISCORD, || said(&body))
 }
 
 /// The roles a `GET /guilds/{guild}/roles` answer lists, each as its id and
