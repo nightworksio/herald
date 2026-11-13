@@ -288,14 +288,21 @@ mod tests {
             setup.steps("chat", unwritten, made()).err(),
             Some("the server's id is not written as Discord writes one".to_owned())
         );
-        let steps = setup.steps("chat", SetupTask::Commands, made()).unwrap();
-        let [SetupStep::Send { base, request }] = steps.as_slice() else {
-            panic!("{steps:?}");
-        };
+        let (base, request) = request(
+            &set,
+            set.interactions.as_ref().unwrap(),
+            Secret::new("DISCORD_BOT", "bot"),
+            SetupTask::Commands,
+        )
+        .unwrap();
         assert_eq!(base, "https://discord.com/api/v10");
         assert_eq!(
             request.url.expose(),
             "https://discord.com/api/v10/applications/123456789012345678/commands"
+        );
+        assert_eq!(
+            setup.steps("chat", SetupTask::Commands, made()),
+            Ok(vec![SetupStep::Send { base, request }])
         );
         assert_eq!(
             setup.said(SetupTask::Commands, &response(200, &json!([]))),

@@ -94,7 +94,7 @@ pub struct Made {
 }
 
 /// One step of a setup task.
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum SetupStep {
     /// Lines to print.
     Say(Vec<String>),

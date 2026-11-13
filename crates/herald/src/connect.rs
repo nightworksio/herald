@@ -73,12 +73,6 @@ impl<'a> Connector<'a> {
         }
     }
 
-    /// The bounds, proxy and roots its connections keep.
-    #[must_use]
-    pub const fn outbound(&self) -> &Outbound {
-        &self.outbound
-    }
-
     /// The connection to `base`.
     ///
     /// # Errors

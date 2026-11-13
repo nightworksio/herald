@@ -168,14 +168,12 @@ mod tests {
             setup.needs("slack", SetupTask::Commands),
             Err("a slack destination is not set up with commands".to_owned())
         );
-        let steps = setup.steps("slack", task, Made::default()).unwrap();
-        let [SetupStep::Say(said)] = steps.as_slice() else {
-            panic!("{steps:?}");
-        };
         let interactions = socketed.interactions.clone().unwrap();
         assert_eq!(
-            Ok(said.clone()),
-            manifest("slack", &socketed, &interactions, None)
+            setup.steps("slack", task, Made::default()),
+            Ok(vec![SetupStep::Say(
+                manifest("slack", &socketed, &interactions, None).unwrap()
+            )])
         );
         assert_eq!(
             setup

@@ -339,7 +339,6 @@ mod tests {
                 Hosting::running(hosting.name(), hosting.artefact()),
                 Ok(hosting)
             );
-            assert_ne!(hosting.description(), "");
             assert!(hosting.offers(Offer::Http));
             assert_eq!(hosting.endpoint(), hosting != Hosting::Actions);
             assert_eq!(
@@ -370,6 +369,28 @@ mod tests {
             .filter(|hosting| hosting.sessions())
             .collect();
         assert_eq!(sessions, [Hosting::Worker, Hosting::Server]);
+    }
+
+    #[test]
+    fn each_host_is_described_as_doctor_s_help_names_it() {
+        let described: Vec<&str> = Hosting::ALL.map(Hosting::description).to_vec();
+        assert_eq!(
+            described,
+            [
+                "The CLI, on GitHub Actions or anywhere else",
+                "The wasm module on a Cloudflare Worker",
+                "The wasm module on Deno",
+                "The wasm module as a Vercel function",
+                "The wasm module as a Netlify function",
+                "`herald lambda`, as an AWS Lambda function",
+                "`herald server` as an Azure Functions custom handler",
+                "The WASI component on a `wasi:http` host",
+                "The WASI component on Spin",
+                "herald on Fastly Compute",
+                "The wasm module on Node or Bun",
+                "`herald server`, in a container or on any host",
+            ]
+        );
     }
 
     #[test]

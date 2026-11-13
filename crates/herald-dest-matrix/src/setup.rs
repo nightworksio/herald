@@ -246,20 +246,25 @@ mod tests {
             secrets: Vec::new(),
             tokens: vec!["hs-token".to_owned(), "as-token".to_owned()],
         };
-        let steps = setup.steps("matrix", task, made).unwrap();
-        let [SetupStep::Say(said)] = steps.as_slice() else {
-            panic!("{steps:?}");
-        };
         let interactions = pushed.interactions.clone().unwrap();
+        let said = registration(
+            "matrix",
+            &pushed,
+            &interactions,
+            "https://herald.example",
+            ("hs-token", "as-token"),
+        );
         assert_eq!(
-            Ok(said.clone()),
-            registration(
-                "matrix",
-                &pushed,
-                &interactions,
-                "https://herald.example",
-                ("hs-token", "as-token")
-            )
+            setup.steps("matrix", task, made),
+            Ok(vec![SetupStep::Say(said.unwrap())])
+        );
+        let tokens = Made {
+            secrets: Vec::new(),
+            tokens: vec!["hs-token".to_owned(), "as-token".to_owned()],
+        };
+        assert_eq!(
+            synced.setup().unwrap().steps("matrix", task, tokens).err(),
+            Some("matrix reads commands by syncing, so the homeserver installs nothing".to_owned())
         );
         let response = Response {
             status: 200,
