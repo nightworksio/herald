@@ -633,11 +633,11 @@ fn an_activity_that_does_not_hold_under_a_key_read_within_its_reread_is_refused_
     assert_eq!(seen, [] as [String; 0]);
 }
 
-/// A keyring that can neither read nor keep a key.
-struct Answering {
-    known: Result<Option<KnownKey>, StoreError>,
-    know: Result<(), StoreError>,
-    forget: Result<(), StoreError>,
+/// A keyring answering each call as it is set to.
+pub(crate) struct Answering {
+    pub(crate) known: Result<Option<KnownKey>, StoreError>,
+    pub(crate) know: Result<(), StoreError>,
+    pub(crate) forget: Result<(), StoreError>,
 }
 
 impl Keyring for Answering {
@@ -660,7 +660,7 @@ fn down() -> StoreError {
     }
 }
 
-fn keepless() -> Answering {
+pub(crate) fn keepless() -> Answering {
     let unsupported = || StoreError::Unsupported { what: "keys" };
     Answering {
         known: Err(unsupported()),

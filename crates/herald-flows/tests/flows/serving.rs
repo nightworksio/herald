@@ -2,13 +2,16 @@ use herald_config::{Config, Uses, load};
 use herald_core::{Key, RouteId, Scheme, Step};
 use herald_flows::{
     Answered, Connected, Did, FollowError, Followed, Inbound, Job, Outcome, Ports, Serving, Stop,
-    answer, busy, prepare, unworked, work,
+    answer, busy, prepare, unplaced, unworked, work,
 };
-use herald_ports::{Admitted, Algorithm, CryptoError, Deliveries, Ledger, Secret, Signer};
+use herald_ports::{
+    Admitted, Algorithm, CryptoError, Deliveries, Keyring, KnownKey, Ledger, Secret, Signer,
+    StoreError,
+};
 use herald_records::MemoryKeyring;
 use herald_testing::{FakeClock, FakeSecrets, FakeSigner, FakeVerifier};
 
-use crate::harness::{Failing, Fault, Script, healthy, keys_in};
+use crate::harness::{Failing, Fault, Script, broken, healthy, keys_in};
 use crate::inbound::{ANA, ANA_KEY, FOLLOW, activity, at, borrowed, document};
 
 pub(crate) const EVENT: &str =
@@ -78,16 +81,38 @@ fn secrets() -> FakeSecrets {
         .with("HERALD_WEBHOOK", "hook-secret")
 }
 
+/// The keys in memory, none of which can be read where `unread`.
+struct Keys {
+    kept: MemoryKeyring,
+    unread: bool,
+}
+
+impl Keyring for Keys {
+    async fn known(&self, id: &str) -> Result<Option<KnownKey>, StoreError> {
+        if self.unread {
+            return Err(broken());
+        }
+        self.kept.known(id).await
+    }
+
+    async fn know(&self, id: &str, key: &KnownKey) -> Result<(), StoreError> {
+        self.kept.know(id, key).await
+    }
+
+    async fn forget_before(&self, before: jiff::Timestamp) -> Result<(), StoreError> {
+        self.kept.forget_before(before).await
+    }
+}
+
 pub(crate) struct World {
     config: Config,
     connected: Connected<Script>,
     pub(crate) store: Failing,
-    keyring: MemoryKeyring,
+    keyring: Keys,
     script: Script,
 }
 
-type Served<'a> =
-    Serving<'a, Failing, FakeClock, FakeSigner, FakeVerifier, Script, Script, MemoryKeyring>;
+type Served<'a> = Serving<'a, Failing, FakeClock, FakeSigner, FakeVerifier, Script, Script, Keys>;
 
 impl World {
     pub(crate) fn new(script: Script) -> Self {
@@ -102,7 +127,10 @@ impl World {
             config,
             connected,
             store: healthy(),
-            keyring: MemoryKeyring::new(8),
+            keyring: Keys {
+                kept: MemoryKeyring::new(8),
+                unread: false,
+            },
             script,
         }
     }
@@ -609,6 +637,24 @@ fn an_activity_herald_cannot_take_is_answered_by_why() {
 }
 
 #[test]
+fn an_activity_whose_keys_cannot_be_read_is_refused_and_asked_again_later() {
+    let mut world = World::new(keyed());
+    world.keyring.unread = true;
+    let signed = activity(FOLLOW, ANA_KEY, None);
+    let headers = borrowed(&signed);
+    let refused = world.answer(&inboxed("/inbox", None, &headers));
+    assert_eq!(refused.reply.status, 503);
+    assert_eq!(
+        refused.refused,
+        Some(format!(
+            "the keys activities are checked with could not be read or kept, so the activity is not let through: {}",
+            broken()
+        ))
+    );
+    assert!(refused.job.is_none());
+}
+
+#[test]
 fn work_that_stops_or_fails_releases_its_delivery() {
     let world = World::failing(Fault::Claims);
     let event = herald_sources_forge::Forge::GitHub
@@ -699,6 +745,82 @@ fn work_that_will_not_be_done_releases_its_delivery() {
         );
         assert_eq!(world.admits(scheme, "d3"), Admitted::Fresh);
     }
+}
+
+fn followed_by(delivery: &str) -> Job {
+    Job::Follow {
+        verified: herald_flows::Verified {
+            delivery: Some(delivery.to_owned()),
+            signer: Some(ANA.to_owned()),
+        },
+        body: serde_json::json!({ "id": "https://social.example/f/1", "type": "Follow", "actor": ANA, "object": ACTOR })
+            .to_string()
+            .into_bytes(),
+    }
+}
+
+fn unreleased() -> String {
+    format!("its delivery could not be released: {}", broken())
+}
+
+#[test]
+fn work_that_stops_and_cannot_release_its_delivery_says_so() {
+    let world = World::failing(Fault::ReleasesDeliveries);
+    assert_eq!(
+        world.admits(herald_dest_fediverse::ACTOR_SCHEME, "d4"),
+        Admitted::Fresh
+    );
+    let worked =
+        world.serving(|serving| pollster::block_on(work(serving, followed_by("d4"), "server")));
+    assert!(
+        matches!(worked.did, Did::Followed(Err(FollowError::Unfetched(_)))),
+        "{worked:?}"
+    );
+    assert_eq!(worked.unreleased, Some(unreleased()));
+    assert_eq!(
+        world.admits(herald_dest_fediverse::ACTOR_SCHEME, "d4"),
+        Admitted::Seen
+    );
+    assert_eq!(
+        world.serving(|serving| pollster::block_on(unworked(serving, &followed_by("d4")))),
+        Err(unreleased())
+    );
+}
+
+#[test]
+fn work_with_no_place_is_refused_once_its_delivery_is_released() {
+    let world = World::new(Script::default());
+    assert_eq!(
+        world.admits(herald_dest_fediverse::ACTOR_SCHEME, "d5"),
+        Admitted::Fresh
+    );
+    let refused =
+        world.serving(|serving| pollster::block_on(unplaced(serving, &followed_by("d5"))));
+    assert_eq!(refused, busy(world.config.server.busy_retry));
+    assert_eq!(
+        world.admits(herald_dest_fediverse::ACTOR_SCHEME, "d5"),
+        Admitted::Fresh
+    );
+}
+
+#[test]
+fn work_with_no_place_whose_delivery_cannot_be_released_names_the_release_for_the_log() {
+    let world = World::failing(Fault::ReleasesDeliveries);
+    assert_eq!(
+        world.admits(herald_dest_fediverse::ACTOR_SCHEME, "d6"),
+        Admitted::Fresh
+    );
+    let refused =
+        world.serving(|serving| pollster::block_on(unplaced(serving, &followed_by("d6"))));
+    assert_eq!(refused.reply, busy(world.config.server.busy_retry).reply);
+    assert_eq!(
+        refused.refused,
+        Some(format!(
+            "the queue has no place for the work it leaves; {}",
+            unreleased()
+        ))
+    );
+    assert!(refused.job.is_none());
 }
 
 #[test]

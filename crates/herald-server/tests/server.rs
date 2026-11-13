@@ -18,10 +18,10 @@ mod server {
     use herald_compose::Capped;
     use herald_config::{Config, Uses, load};
     use herald_core::{DestinationName, Subscription};
-    use herald_flows::{Connected, Keys, Ports, Serving, prepare};
+    use herald_flows::{Connected, Keys, Ports, Serving, Stop, prepare};
     use herald_ports::{
-        Admitted, Clock as _, Deliveries, Http, HttpError, Keyring as _, KnownKey, Request,
-        Response, Secret, Subscriptions,
+        Admitted, Clock as _, Deliveries, Http, HttpError, Keyring, KnownKey, Request, Response,
+        Secret, StoreError, Subscriptions,
     };
     use herald_records::MemoryKeyring;
     use herald_server::{Asked, Heard, Limits, Listener, serve};
@@ -104,11 +104,36 @@ body = "{{ event.body }}"
         }
     }
 
+    /// The keys in memory, which cannot be forgotten where `unforgetting`.
+    struct Remembered {
+        keys: MemoryKeyring,
+        unforgetting: bool,
+    }
+
+    impl Keyring for Remembered {
+        async fn known(&self, id: &str) -> Result<Option<KnownKey>, StoreError> {
+            self.keys.known(id).await
+        }
+
+        async fn know(&self, id: &str, key: &KnownKey) -> Result<(), StoreError> {
+            self.keys.know(id, key).await
+        }
+
+        async fn forget_before(&self, before: jiff::Timestamp) -> Result<(), StoreError> {
+            if self.unforgetting {
+                return Err(StoreError::Unavailable {
+                    reason: "down".to_owned(),
+                });
+            }
+            self.keys.forget_before(before).await
+        }
+    }
+
     struct World {
         config: Config,
         connected: Connected<Gate>,
         store: FakeStore,
-        keyring: MemoryKeyring,
+        keyring: Remembered,
         public: Capped<Gate>,
         clock: FakeClock,
         sockets: ScriptedSockets,
@@ -125,7 +150,10 @@ body = "{{ event.body }}"
                 config,
                 connected,
                 store: FakeStore::default(),
-                keyring: MemoryKeyring::new(8),
+                keyring: Remembered {
+                    keys: MemoryKeyring::new(8),
+                    unforgetting: false,
+                },
                 public: Capped::new(http, 2),
                 clock: FakeClock::at("2027-01-15T08:00:00Z".parse().unwrap()),
                 sockets: ScriptedSockets::default(),
@@ -602,6 +630,32 @@ body = "{{ event.body }}"
         };
         world.serve(listener, sweeps, &|_| {}, swept).await;
         assert!(forgotten());
+    }
+
+    #[tokio::test]
+    async fn keys_that_cannot_be_forgotten_are_said_as_a_store_that_stops_housekeeping() {
+        let mut world = World::new(Gate::default()).await;
+        world.keyring.unforgetting = true;
+        let (listener, _) = listening().await;
+        let sweeps = Limits {
+            keys: Duration::from_millis(5),
+            ..limits()
+        };
+        let heard = RefCell::new(Vec::new());
+        let stop = Notify::new();
+        let hear = |said: Heard| {
+            if let Heard::Kept(kept) = said {
+                heard.borrow_mut().push(kept);
+                stop.notify_one();
+            }
+        };
+        world.serve(listener, sweeps, &hear, stop.notified()).await;
+        assert_eq!(
+            heard.borrow()[0],
+            Err(Stop::Store(
+                "the store could not be reached: down".to_owned()
+            ))
+        );
     }
 
     #[tokio::test]

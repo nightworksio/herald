@@ -14,15 +14,13 @@ use herald_core::{DestinationName, Kind, Latest, RouteId, Shown};
 use herald_flows::{
     Connected, Did, Job, Ports, Serving, Sessions, Taker, Webhooks, Worked, prepare, work,
 };
-use herald_ports::{Announcements, Frame, Http, HttpError, Request, Response, Timer};
+use herald_ports::{Announcements, Frame, Http, HttpError, Positions, Request, Response, Timer};
 use herald_records::MemoryKeyring;
-use herald_testing::{
-    FakeClock, FakeSecrets, FakeSigner, FakeStore, FakeVerifier, ScriptedSockets,
-};
+use herald_testing::{FakeClock, FakeSecrets, FakeSigner, FakeVerifier, ScriptedSockets};
 use serde_json::{Value, json};
 use tokio::sync::Notify;
 
-use crate::harness::keys_in;
+use crate::harness::{Failing, Fault, broken, healthy, keys_in};
 
 const APPLICATION: &str = "123456789012345678";
 const CHANNEL: &str = "323456789012345678";
@@ -146,14 +144,20 @@ type Scripted = (String, Option<(u16, String)>);
 struct Answers {
     script: Arc<Mutex<VecDeque<Scripted>>>,
     seen: Arc<Mutex<Vec<(String, tokio::time::Instant)>>>,
+    bodies: Arc<Mutex<Vec<String>>>,
 }
 
 impl Answers {
     fn of(script: Vec<Scripted>) -> Self {
         Self {
             script: Arc::new(Mutex::new(script.into())),
-            seen: Arc::default(),
+            ..Self::default()
         }
+    }
+
+    /// The body of each request, in the order they were sent.
+    fn bodies(&self) -> Vec<String> {
+        self.bodies.lock().unwrap().clone()
     }
 
     fn seen(&self) -> Vec<String> {
@@ -190,6 +194,10 @@ impl Http for Answers {
             .lock()
             .unwrap()
             .push((line.clone(), tokio::time::Instant::now()));
+        self.bodies
+            .lock()
+            .unwrap()
+            .push(String::from_utf8_lossy(&request.body).into_owned());
         let next = {
             let mut script = self.script.lock().unwrap();
             let found = script
@@ -252,7 +260,7 @@ impl Taker for Taken<'_> {
 struct World {
     config: Config,
     connected: Connected<Answers>,
-    store: FakeStore,
+    store: Failing,
     keyring: MemoryKeyring,
     answers: Answers,
     sockets: ScriptedSockets,
@@ -265,7 +273,7 @@ impl World {
             .await
             .unwrap();
         let connected = prepared.connect(|_| Ok::<_, ()>(answers.clone())).unwrap();
-        let store = FakeStore::default();
+        let store = healthy();
         let shown = Shown {
             kind: Kind::RELEASE,
             attributes: herald_core::versioned("1.0.0", false),
@@ -297,7 +305,7 @@ impl World {
     /// What the server said, run with at most `jobs` at once until it
     /// says something `done` holds true of.
     async fn served(&self, jobs: usize, done: impl Fn(&str) -> bool) -> Vec<String> {
-        let clock = FakeClock::at("2027-01-15T08:00:00Z".parse().unwrap());
+        let clock = FakeClock::at(NOW.parse().unwrap());
         let ports = Ports {
             store: &self.store,
             clock: &clock,
@@ -343,7 +351,10 @@ impl World {
                 }
                 tokio::select! {
                     () = stop.notified() => break,
-                    () = &mut sessions, if held => held = false,
+                    () = &mut sessions, if held => {
+                        held = false;
+                        hear(ENDED.to_owned());
+                    }
                     Some(worked) = running.next() => {
                         taken.held.set(taken.held.get() - 1);
                         hear(match worked.did {
@@ -372,6 +383,12 @@ impl World {
         heard
     }
 }
+
+/// What is heard once every session stopped.
+const ENDED: &str = "every session stopped";
+
+/// The harness's clock.
+const NOW: &str = "2027-01-15T08:00:00Z";
 
 fn text(value: &Value) -> Frame {
     Frame::Text(value.to_string())
@@ -814,20 +831,28 @@ async fn a_command_beyond_what_the_server_answers_at_once_is_said_and_left() {
             r#"{"ok": true, "url": "wss://wss-primary.slack.com/link"}"#,
         ),
         answer("«secret:the command's response URL»", 200, "ok"),
+        answer("«secret:the command's response URL»", 200, "ok"),
+        answer("«secret:the command's response URL»", 200, "ok"),
     ]);
     let world = World::new("slack", answers, sockets).await;
+    let refused = Cell::new(0);
     let heard = world
-        .served(1, |line| line.contains("was not answered"))
+        .served(1, |line| {
+            refused.set(refused.get() + usize::from(line.contains("was not answered")));
+            refused.get() == 2
+        })
         .await;
-    let refused: Vec<&String> = heard
+    let mut refused: Vec<&String> = heard
         .iter()
-        .filter(|line| line.ends_with("was not answered: no more is answered at once"))
+        .filter(|line| line.contains("was not answered"))
         .collect();
-    assert!(!refused.is_empty(), "{heard:?}");
-    assert!(
-        refused
-            .iter()
-            .all(|line| !line.starts_with("slack: latest")),
+    refused.sort();
+    assert_eq!(
+        refused,
+        [
+            "slack: changelog was not answered: no more is answered at once",
+            "slack: subscribe was not answered: no more is answered at once",
+        ],
         "the first command is taken: {heard:?}"
     );
 }
@@ -901,4 +926,375 @@ async fn a_sync_waits_from_the_first_again_once_the_homeserver_answers() {
         })
         .await;
     assert_eq!(world.answers.spaced("/sync?"), [1, 2, 0, 1]);
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_command_with_no_place_is_answered_as_unavailable_and_said() {
+    let sockets = ScriptedSockets::opening(vec![Ok(vec![
+        hello(60_000),
+        interaction(2, &json!({ "name": "latest" })),
+    ])]);
+    let answers = Answers::of(vec![
+        answer(&format!("/interactions/900/{TOKEN}/callback"), 204, ""),
+        answer(
+            &format!("/webhooks/{APPLICATION}/{TOKEN}/messages/@original"),
+            200,
+            "{}",
+        ),
+    ]);
+    let world = World::new("discord", answers, sockets).await;
+    let heard = world
+        .served(0, |line| line.contains("was not answered"))
+        .await;
+    assert_eq!(
+        heard,
+        ["discord: latest was not answered: no more is answered at once"]
+    );
+    let seen = world.answers.seen();
+    assert_eq!(seen.len(), 2, "{seen:?}");
+    assert!(seen[0].ends_with("/callback"), "{seen:?}");
+    assert!(seen[1].ends_with("/messages/@original"), "{seen:?}");
+    let bodies = world.answers.bodies();
+    assert_eq!(bodies[0], r#"{"data":{"flags":64},"type":5}"#);
+    let replied: Value = serde_json::from_str(&bodies[1]).unwrap();
+    assert_eq!(
+        replied["content"],
+        r"herald could not answer just now\; try again later\."
+    );
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_command_with_no_place_whose_asker_cannot_be_told_says_both() {
+    let callback = format!("/interactions/900/{TOKEN}/callback");
+    for (script, unsent) in [
+        (
+            Vec::new(),
+            unscripted("POST", &format!("https://discord.com/api/v10{callback}")),
+        ),
+        (
+            vec![answer(&callback, 204, "")],
+            unscripted(
+                "PATCH",
+                &format!(
+                    "https://discord.com/api/v10/webhooks/{APPLICATION}/{TOKEN}/messages/@original"
+                ),
+            ),
+        ),
+    ] {
+        let sockets = ScriptedSockets::opening(vec![Ok(vec![
+            hello(60_000),
+            interaction(2, &json!({ "name": "latest" })),
+        ])]);
+        let world = World::new("discord", Answers::of(script), sockets).await;
+        let heard = world
+            .served(0, |line| line.contains("was not answered"))
+            .await;
+        assert_eq!(
+            heard,
+            [format!(
+                "discord: latest was not answered: no more is answered at once, and the asker could not be told: {unsent}"
+            )]
+        );
+    }
+}
+
+/// Why a request nothing was scripted for was not sent.
+fn unscripted(method: &str, url: &str) -> String {
+    format!("the host could not be reached: nothing scripted for {method} {url}")
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_completion_whose_projects_cannot_be_listed_is_said_and_nothing_sent() {
+    let sockets = ScriptedSockets::opening(vec![Ok(vec![
+        hello(60_000),
+        interaction(4, &json!({ "name": "latest", "options": [] })),
+    ])]);
+    let mut world = World::new("discord", Answers::default(), sockets).await;
+    world.store.fault = Fault::ListsLatest;
+    let heard = world
+        .served(4, |line| line.contains("could not be offered"))
+        .await;
+    assert_eq!(
+        heard,
+        [format!(
+            "discord: completions could not be offered: the projects could not be listed: {}",
+            broken()
+        )]
+    );
+    assert_eq!(world.answers.seen(), [] as [String; 0]);
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_sync_whose_credential_is_refused_stops_and_is_not_tried_again() {
+    for status in [401, 403] {
+        let answers = Answers::of(vec![answer(
+            "sync?timeout=0",
+            status,
+            r#"{"errcode": "M_UNKNOWN_TOKEN"}"#,
+        )]);
+        let world = World::new("matrix", answers, ScriptedSockets::default()).await;
+        let heard = world.served(4, |line| line == ENDED).await;
+        assert_eq!(
+            heard,
+            [
+                format!(
+                    "matrix: the homeserver could not be synced: the credential was refused, answering {status}, so the session stops"
+                ),
+                ENDED.to_owned(),
+            ]
+        );
+        assert_eq!(world.answers.seen().len(), 1);
+    }
+}
+
+#[tokio::test(start_paused = true)]
+async fn socket_mode_whose_credential_is_refused_stops_and_is_not_opened_again() {
+    for status in [401, 403] {
+        let answers = Answers::of(vec![answer("/apps.connections.open", status, "{}")]);
+        let sockets = ScriptedSockets::default();
+        let world = World::new("slack", answers, sockets.clone()).await;
+        let heard = world.served(4, |line| line == ENDED).await;
+        assert_eq!(
+            heard,
+            [
+                format!(
+                    "slack: Slack's Socket Mode could not be opened: the credential was refused, answering {status}, so the session stops"
+                ),
+                ENDED.to_owned(),
+            ]
+        );
+        assert_eq!(world.answers.seen().len(), 1);
+        assert_eq!(sockets.opened(), [] as [String; 0]);
+    }
+}
+
+/// A sync answer starting the next at `next`, each command in `given` as
+/// its body and when the homeserver received it, in milliseconds, where
+/// it says.
+fn synced_at(next: &str, given: &[(&str, Option<i64>)]) -> String {
+    let events: Vec<Value> = given
+        .iter()
+        .enumerate()
+        .map(|(index, (body, received))| {
+            let mut event = json!({
+                "type": "m.room.message",
+                "room_id": "!room:matrix.example",
+                "event_id": format!("$command{index}"),
+                "sender": "@ann:matrix.example",
+                "content": { "msgtype": "m.text", "body": body },
+            });
+            if let Some(received) = received {
+                event["origin_server_ts"] = json!(received);
+            }
+            event
+        })
+        .collect();
+    json!({ "next_batch": next, "rooms": { "join": { "!room:matrix.example": { "timeline": { "events": events }}}}})
+        .to_string()
+}
+
+/// The milliseconds since the epoch of the harness's clock, `minutes`
+/// earlier.
+fn minutes_ago(minutes: i64) -> i64 {
+    NOW.parse::<jiff::Timestamp>()
+        .unwrap()
+        .checked_sub(jiff::SignedDuration::from_mins(minutes))
+        .unwrap()
+        .as_millisecond()
+}
+
+fn matrix() -> DestinationName {
+    DestinationName::new("matrix")
+}
+
+async fn kept_at(world: &World) -> Option<String> {
+    world.store.inner.position(&matrix()).await.unwrap()
+}
+
+/// What a sync failing with 500 is said as.
+const UNSYNCED: &str =
+    "matrix: the homeserver could not be synced: Matrix refused it with 500: M_UNKNOWN";
+
+fn unsynced(path: &str) -> Scripted {
+    answer(path, 500, r#"{"errcode": "M_UNKNOWN"}"#)
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_sync_resumes_where_it_was_kept_skipping_what_was_given_too_long_ago() {
+    let answers = Answers::of(vec![
+        answer(
+            "since=s5",
+            200,
+            &synced_at(
+                "s6",
+                &[
+                    ("!herald changelog", Some(minutes_ago(11))),
+                    ("!herald latest", Some(minutes_ago(9))),
+                ],
+            ),
+        ),
+        answer("/send/m.room.message/", 200, "{}"),
+        answer("since=s6", 200, &synced_at("s7", &[])),
+        unsynced("since=s7"),
+    ]);
+    let world = World::new("matrix", answers, ScriptedSockets::default()).await;
+    world
+        .store
+        .inner
+        .put_position(&matrix(), "s5")
+        .await
+        .unwrap();
+    let answered = Cell::new(false);
+    let failed = Cell::new(false);
+    let heard = world
+        .served(4, |line| {
+            answered.set(answered.get() || line.starts_with("answered"));
+            failed.set(failed.get() || line == UNSYNCED);
+            answered.get() && failed.get()
+        })
+        .await;
+    assert_eq!(
+        heard
+            .iter()
+            .filter(|line| !line.starts_with("answered"))
+            .collect::<Vec<_>>(),
+        [
+            "matrix: changelog given at 2027-01-15T07:49:00Z was skipped: it was given before 2027-01-15T07:50:00Z, while no session was held",
+            UNSYNCED,
+        ]
+    );
+    assert!(
+        heard.contains(&"answered latest: Ok(())".to_owned()),
+        "{heard:?}"
+    );
+    let seen = world.answers.seen();
+    assert!(seen[0].contains("since=s5"), "{seen:?}");
+    assert_eq!(kept_at(&world).await.as_deref(), Some("s6"));
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_sync_keeps_where_it_first_stands_and_then_only_where_commands_were_given() {
+    let answers = Answers::of(vec![
+        answer("sync?timeout=0", 200, &synced_at("s1", &[])),
+        answer("since=s1", 200, &synced_at("s2", &[])),
+        unsynced("since=s2"),
+    ]);
+    let world = World::new("matrix", answers, ScriptedSockets::default()).await;
+    let heard = world.served(4, |line| line == UNSYNCED).await;
+    assert_eq!(heard, [UNSYNCED]);
+    assert_eq!(kept_at(&world).await.as_deref(), Some("s1"));
+}
+
+#[tokio::test(start_paused = true)]
+async fn where_a_sync_stands_that_cannot_be_kept_is_said_before_its_commands_are_taken_up() {
+    let answers = Answers::of(vec![
+        answer(
+            "since=s1",
+            200,
+            &synced_at("s1", &[("!herald latest", None)]),
+        ),
+        answer("/send/m.room.message/", 200, "{}"),
+        answer(
+            "since=s1",
+            200,
+            &synced_at("s2", &[("!herald changelog", Some(minutes_ago(11)))]),
+        ),
+        unsynced("since=s2"),
+    ]);
+    let mut world = World::new("matrix", answers, ScriptedSockets::default()).await;
+    world
+        .store
+        .inner
+        .put_position(&matrix(), "s1")
+        .await
+        .unwrap();
+    world.store.fault = Fault::KeepsPositions;
+    let answered = Cell::new(false);
+    let failed = Cell::new(false);
+    let heard = world
+        .served(4, |line| {
+            answered.set(answered.get() || line.starts_with("answered"));
+            failed.set(failed.get() || line == UNSYNCED);
+            answered.get() && failed.get()
+        })
+        .await;
+    assert_eq!(
+        heard
+            .iter()
+            .filter(|line| !line.starts_with("answered"))
+            .cloned()
+            .collect::<Vec<_>>(),
+        [
+            format!("matrix: where its session stands could not be kept: {}", broken()),
+            "matrix: changelog given at 2027-01-15T07:49:00Z was skipped: it was given before 2027-01-15T07:50:00Z, while no session was held".to_owned(),
+            UNSYNCED.to_owned(),
+        ]
+    );
+    assert!(
+        heard.contains(&"answered latest: Ok(())".to_owned()),
+        "{heard:?}"
+    );
+    assert_eq!(kept_at(&world).await.as_deref(), Some("s1"));
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_sync_whose_position_cannot_be_read_says_so_and_starts_afresh() {
+    let answers = Answers::of(vec![
+        answer("sync?timeout=0", 200, &synced_at("s1", &[])),
+        unsynced("since=s1"),
+    ]);
+    let mut world = World::new("matrix", answers, ScriptedSockets::default()).await;
+    world
+        .store
+        .inner
+        .put_position(&matrix(), "s9")
+        .await
+        .unwrap();
+    world.store.fault = Fault::ReadsPositions;
+    let heard = world.served(4, |line| line == UNSYNCED).await;
+    assert_eq!(
+        heard,
+        [
+            format!(
+                "matrix: where its session stood could not be read, so it starts afresh: {}",
+                broken()
+            ),
+            UNSYNCED.to_owned(),
+        ]
+    );
+    assert_eq!(kept_at(&world).await.as_deref(), Some("s1"));
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_sync_on_a_store_keeping_no_positions_starts_afresh_and_keeps_none() {
+    let answers = Answers::of(vec![
+        answer("sync?timeout=0", 200, &synced_at("s1", &[])),
+        answer(
+            "since=s1",
+            200,
+            &synced_at("s2", &[("!herald latest", None)]),
+        ),
+        answer("/send/m.room.message/", 200, "{}"),
+        unsynced("since=s2"),
+    ]);
+    let mut world = World::new("matrix", answers, ScriptedSockets::default()).await;
+    world
+        .store
+        .inner
+        .put_position(&matrix(), "s9")
+        .await
+        .unwrap();
+    world.store.fault = Fault::KeepsNoPositions;
+    let answered = Cell::new(false);
+    let failed = Cell::new(false);
+    let mut heard = world
+        .served(4, |line| {
+            answered.set(answered.get() || line.starts_with("answered"));
+            failed.set(failed.get() || line == UNSYNCED);
+            answered.get() && failed.get()
+        })
+        .await;
+    heard.sort();
+    assert_eq!(heard, ["answered latest: Ok(())", UNSYNCED]);
+    assert_eq!(kept_at(&world).await.as_deref(), Some("s9"));
 }

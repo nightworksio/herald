@@ -266,14 +266,7 @@ where
                             meanwhile(&mut taking, self.keep(name, &*session, &mut kept, given))
                                 .await;
                             for effect in effects {
-                                match effect {
-                                    Effect::Asked(asked, replying) => {
-                                        self.take(&mut taking, name, asked, replying);
-                                    }
-                                    Effect::Skipped(reason) => self.said(name, reason),
-                                    Effect::Ready => backoff.reset(),
-                                    _ => {}
-                                }
+                                self.heed(&mut taking, name, &mut backoff, effect);
                             }
                             continue;
                         }
@@ -375,21 +368,39 @@ where
         kept: &mut Option<String>,
         given: bool,
     ) {
-        let Some(position) = session.position() else {
+        let (Some(position), Some(positions)) =
+            (session.position(), self.serving.ports.store.positions())
+        else {
             return;
         };
         if kept.as_deref() == Some(position) || (kept.is_some() && !given) {
             return;
         }
-        let Some(positions) = self.serving.ports.store.positions() else {
-            return;
-        };
         match positions.put_position(name, position).await {
             Ok(()) => *kept = Some(position.to_owned()),
             Err(error) => self.said(
                 name,
                 format!("where its session stands could not be kept: {error}"),
             ),
+        }
+    }
+
+    /// Takes up what every session of `name` does alike with `effect`: a
+    /// command taken up, a command skipped said, or a connection made
+    /// starting the waits from the first again.
+    fn heed(
+        &self,
+        taking: &mut Taking<'s>,
+        name: &DestinationName,
+        backoff: &mut Backoff,
+        effect: Effect,
+    ) {
+        if let Effect::Asked(asked, replying) = effect {
+            self.take(taking, name, asked, replying);
+        } else if let Effect::Skipped(reason) = effect {
+            self.said(name, reason);
+        } else if effect == Effect::Ready {
+            backoff.reset();
         }
     }
 
@@ -456,18 +467,14 @@ where
                         every = Some(interval);
                         beat = Some(Box::pin(self.timer.sleep(interval)));
                     }
-                    Effect::Ready => backoff.reset(),
-                    Effect::Asked(asked, replying) => {
-                        self.take(taking, hearing.name, asked, replying);
-                    }
                     Effect::Completing {
                         place,
                         typed,
                         replying,
                     } => self.completion(taking, hearing, place, typed, replying),
-                    Effect::Skipped(reason) => self.said(hearing.name, reason),
                     Effect::Reconnect => next = Some(None),
                     Effect::Stop(reason) => next = Some(Some(reason)),
+                    effect => self.heed(taking, hearing.name, backoff, effect),
                 }
             }
             if let Some(next) = next {
