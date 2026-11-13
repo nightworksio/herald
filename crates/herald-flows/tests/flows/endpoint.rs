@@ -1,5 +1,5 @@
 use herald_core::{Command, DestinationName, Place};
-use herald_flows::{Answered, Inbound, Interacted, Job, Worked, unworked};
+use herald_flows::{Answered, Did, Inbound, Interacted, Job, unworked};
 use serde_json::{Value, json};
 
 use crate::harness::{Fault, Script};
@@ -387,7 +387,7 @@ fn commands_left_to_answer_are_answered_and_sent() {
         destination: DestinationName::new("discord"),
         asked: vec![(discord(Command::Latest), discord_replying())],
     };
-    let Worked::Interacted(interacted) = world.work(job.clone()) else {
+    let Did::Interacted(interacted) = world.work(job.clone()) else {
         panic!("commands are answered");
     };
     assert_eq!(
@@ -400,7 +400,7 @@ fn commands_left_to_answer_are_answered_and_sent() {
     );
     assert_eq!(world.script.seen().len(), 1);
     let unsent = World::new("", Script::default()).announced("gate", &["releases"]);
-    let Worked::Interacted(failed) = unsent.work(job) else {
+    let Did::Interacted(failed) = unsent.work(job) else {
         panic!("commands are answered");
     };
     assert!(
@@ -411,12 +411,15 @@ fn commands_left_to_answer_are_answered_and_sent() {
             .contains("nothing scripted")
     );
     unsent.serving(|serving| {
-        pollster::block_on(unworked(
-            serving,
-            &Job::Interact {
-                destination: DestinationName::new("discord"),
-                asked: Vec::new(),
-            },
-        ));
+        assert_eq!(
+            pollster::block_on(unworked(
+                serving,
+                &Job::Interact {
+                    destination: DestinationName::new("discord"),
+                    asked: Vec::new(),
+                },
+            )),
+            Ok(())
+        );
     });
 }

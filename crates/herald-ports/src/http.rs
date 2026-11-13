@@ -224,6 +224,13 @@ impl Response {
         (200..300).contains(&self.status)
     }
 
+    /// Whether the status refuses the request's credential: `401`, as it is
+    /// not taken, or `403`, as it may not do what the request asks.
+    #[must_use]
+    pub fn refuses_credential(&self) -> bool {
+        matches!(self.status, 401 | 403)
+    }
+
     /// When the response was sent, as its `Date` names it.
     #[must_use]
     pub fn date(&self) -> Option<Timestamp> {
@@ -389,6 +396,23 @@ mod tests {
     }
 
     const SENT: (&str, &str) = ("Date", "Sun, 08 Nov 2026 22:00:00 GMT");
+
+    #[test]
+    fn only_401_and_403_refuse_a_credential() {
+        let refuses = |status| {
+            Response {
+                status,
+                ..answered(&[])
+            }
+            .refuses_credential()
+        };
+        assert!(refuses(401));
+        assert!(refuses(403));
+        assert!(!refuses(400));
+        assert!(!refuses(402));
+        assert!(!refuses(404));
+        assert!(!refuses(429));
+    }
 
     #[test]
     fn retry_after_names_seconds_or_a_date_measured_from_the_answer_s_own() {

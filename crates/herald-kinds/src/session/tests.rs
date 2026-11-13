@@ -40,4 +40,6 @@ fn a_session_hears_nothing_and_connects_again_when_closed_unless_it_says_otherwi
     assert_eq!(plain.beat(), []);
     assert_eq!(plain.polled(&destination, &response), Ok(Vec::new()));
     assert_eq!(plain.unreachable(), "plain is unreachable");
+    plain.resume("s1".to_owned(), jiff::Timestamp::UNIX_EPOCH);
+    assert_eq!(plain.position(), None);
 }

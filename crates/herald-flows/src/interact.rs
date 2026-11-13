@@ -9,7 +9,7 @@ use herald_core::{
     chosen, chunk, completions, escaped, safe_url, title_template,
 };
 use herald_kinds::{Interacted, Replying};
-use herald_ports::{Announcements, Http, Store, Subscriptions};
+use herald_ports::{Announcements, Http, Store, StoreError, Subscriptions};
 
 use crate::announce::Ports;
 use crate::interacting::sent;
@@ -95,14 +95,28 @@ pub async fn interact<S: Store, C, G, H: Http>(
     ports: &Ports<'_, S, C, G>,
     asked: &Asked,
 ) -> Answer {
-    let wording = connected
-        .interacting(&asked.destination)
-        .map_or_else(Wording::default, |(interacting, _)| {
-            interacting.answering().wording
-        });
     reply(config, connected, ports, asked)
         .await
-        .worded(&wording)
+        .worded(&wording(connected, &asked.destination))
+}
+
+/// What herald answers a command given on `destination` of `connected`
+/// that it could not take up, for `trouble`.
+pub(crate) fn unanswerable<H>(
+    connected: &Connected<H>,
+    destination: &DestinationName,
+    trouble: String,
+) -> Answer {
+    Reply::unavailable(trouble).worded(&wording(connected, destination))
+}
+
+/// How `destination` of `connected` words what herald says.
+fn wording<H>(connected: &Connected<H>, destination: &DestinationName) -> Wording {
+    connected
+        .interacting(destination)
+        .map_or_else(Wording::default, |(interacting, _)| {
+            interacting.answering().wording
+        })
 }
 
 async fn reply<S: Store, C, G, H: Http>(
@@ -147,21 +161,27 @@ async fn reply<S: Store, C, G, H: Http>(
 }
 
 /// The projects announced on `destination` in `place` whose names hold
-/// `typed`, as completions of it; none where the store cannot list them.
+/// `typed`, as completions of it.
+///
+/// # Errors
+///
+/// When the store cannot list what its projects last announced.
 pub async fn completed<S: Store>(
     config: &Config,
     store: &S,
     destination: &DestinationName,
     place: &Place,
     typed: &str,
-) -> Vec<String> {
-    let every_latest = store
-        .announcements()
-        .every_latest()
-        .await
-        .unwrap_or_default();
+) -> Result<Vec<String>, StoreError> {
+    let every_latest = store.announcements().every_latest().await?;
     let placed = placed(config, destination, place);
-    completions(typed, &announced(&every_latest, &placed, id))
+    Ok(completions(typed, &announced(&every_latest, &placed, id)))
+}
+
+/// What completions that could not be offered, as the store could not list
+/// the projects for `error`, are logged as.
+pub(crate) fn unlisted(error: &StoreError) -> String {
+    format!("completions could not be offered: the projects could not be listed: {error}")
 }
 
 /// Sends `answer` where `replying` names, on `destination` of `connected`, in

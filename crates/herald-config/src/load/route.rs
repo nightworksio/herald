@@ -1,19 +1,23 @@
+//! `[[routes]]`: each route read against the destinations, sources, apps
+//! and templates it names, and checked against what its destination can do.
+
 use std::collections::{BTreeMap, BTreeSet};
 use std::ops::Range;
 
 use herald_core::{
-    Delivery, DestinationName, Filter, Kind, Mentions, Pattern, Route, RouteId, SourceName,
-    TemplateName, Thread,
+    Delivery, DestinationName, Filter, Kind, Mentions, Pattern, Profile, RoleId, Route, RouteId,
+    SourceName, TemplateName, Thread,
 };
 use toml::Spanned;
 use toml::de::{DeTable, DeValue};
 
 use super::apps::Named;
-use super::{Loader, Value, Written, list};
+use super::templates::Written;
+use super::{Loader, Value, list};
 use herald_kinds::{Destination, Placed, Placing, Source};
 
 use crate::config::RouteConfig;
-use crate::file::{ROUTE_KEYS, RouteFile};
+use crate::file::{ROUTE_KEYS, RouteFile, ThreadFile};
 use crate::kinds::At;
 
 /// A route as its keys say, before its templates are compiled.
@@ -34,6 +38,16 @@ struct Taken<'r> {
     sources: &'r [Spanned<String>],
     kinds: &'r [Spanned<Kind>],
     versions: Option<&'r Spanned<String>>,
+}
+
+/// How a route reaches its destination: by what name, able to do what, what
+/// a bot could do there, and whether each post opens a thread of its own.
+#[derive(Clone, Copy)]
+struct Reach<'r> {
+    name: &'static str,
+    profile: &'r Profile,
+    as_bot: Option<&'r Profile>,
+    threads_each_post: bool,
 }
 
 impl Loader<'_> {
@@ -180,6 +194,22 @@ impl Loader<'_> {
         Some((placed, name))
     }
 
+    fn routes<'i>(&mut self, value: Option<Value<'i>>) -> Vec<Value<'i>> {
+        let Some(value) = value else {
+            return Vec::new();
+        };
+        let span = value.span();
+        if let DeValue::Array(items) = value.into_inner() {
+            return items.into_iter().collect();
+        }
+        self.error(
+            &span,
+            "routes",
+            "routes are an array of tables; write each as [[routes]]",
+        );
+        Vec::new()
+    }
+
     /// Each route of `[[routes]]`, its id one no other route has.
     pub(super) fn every_route(
         &mut self,
@@ -212,7 +242,94 @@ impl Loader<'_> {
         routes
     }
 
-    #[allow(clippy::too_many_lines)]
+    /// The destination `route` names as `destination`, one of
+    /// `destinations`.
+    fn reached<'d>(
+        &mut self,
+        destination: &DestinationName,
+        route: &RouteFile,
+        path: &str,
+        destinations: &'d BTreeMap<DestinationName, (Destination, Range<usize>)>,
+    ) -> Option<&'d Destination> {
+        if let Some((reached, _)) = destinations.get(destination) {
+            return Some(reached);
+        }
+        let names: Vec<&str> = destinations.keys().map(DestinationName::as_str).collect();
+        self.error(
+            &route.destination.span(),
+            &format!("{path}.destination"),
+            format!(
+                "no destination is named \"{}\"; the destinations are {}",
+                route.destination.get_ref(),
+                list(&names)
+            ),
+        );
+        None
+    }
+
+    /// The template `route` names as `template`, where `templates` has it.
+    fn written<'t>(
+        &mut self,
+        template: &TemplateName,
+        route: &RouteFile,
+        path: &str,
+        templates: &'t BTreeMap<TemplateName, Written>,
+    ) -> Option<&'t Written> {
+        let written = templates.get(template);
+        if written.is_none() {
+            let names: Vec<&str> = templates.keys().map(TemplateName::as_str).collect();
+            self.error(
+                &route.template.span(),
+                &format!("{path}.template"),
+                format!(
+                    "no template is named \"{}\"; the templates are {}",
+                    route.template.get_ref(),
+                    list(&names)
+                ),
+            );
+        }
+        written
+    }
+
+    /// Whether the destination `destination`, as `reach` reaches it, can do
+    /// everything `delivery` asks, each thing it cannot said at the route
+    /// written at `path` and `span`.
+    fn deliverable(
+        &mut self,
+        path: &str,
+        span: &Range<usize>,
+        destination: &DestinationName,
+        reach: Reach<'_>,
+        delivery: &Delivery,
+    ) -> bool {
+        let mut sound = true;
+        let lacking = reach.profile.features.lacking(delivery);
+        let bot_lacks = reach.as_bot.map(|bot| bot.features.lacking(delivery));
+        for key in lacking
+            .into_iter()
+            .filter(|key| !(reach.threads_each_post && *key == "thread"))
+        {
+            let remedy = if bot_lacks
+                .as_ref()
+                .is_some_and(|lacks| !lacks.contains(&key))
+            {
+                "or reach it with a bot token".to_owned()
+            } else {
+                format!("as {} has no way to do it", reach.name)
+            };
+            self.error(
+                span,
+                &format!("{path}.{key}"),
+                format!(
+                    "the destination \"{}\" cannot do this as it is reached; remove {key}, {remedy}",
+                    destination.as_str()
+                ),
+            );
+            sound = false;
+        }
+        sound
+    }
+
     fn route(
         &mut self,
         index: usize,
@@ -227,121 +344,60 @@ impl Loader<'_> {
         let route = self.typed::<RouteFile>(common, &path)?;
         let mut sound = self.sources_named(&route, &path, sources, apps);
         let destination = DestinationName::new(route.destination.get_ref());
-        let Some((reached, _)) = destinations.get(&destination) else {
-            let names: Vec<&str> = destinations.keys().map(DestinationName::as_str).collect();
-            self.error(
-                &route.destination.span(),
-                &format!("{path}.destination"),
-                format!(
-                    "no destination is named \"{}\"; the destinations are {}",
-                    route.destination.get_ref(),
-                    list(&names)
-                ),
-            );
-            return None;
-        };
+        let reached = self.reached(&destination, &route, &path, destinations)?;
         let template = TemplateName::new(route.template.get_ref());
-        let written = templates.get(&template);
-        if written.is_none() {
-            let names: Vec<&str> = templates.keys().map(TemplateName::as_str).collect();
-            self.error(
-                &route.template.span(),
-                &format!("{path}.template"),
-                format!(
-                    "no template is named \"{}\"; the templates are {}",
-                    route.template.get_ref(),
-                    list(&names)
-                ),
-            );
-            sound = false;
-        }
+        let written = self.written(&template, &route, &path, templates);
+        sound &= written.is_some();
         let span = route.id.span();
         let (options, name) =
             self.placed(reached, rest, &route, &path, &destination, &mut sound)?;
         let (profile, as_bot) = reached.profile(&options)?;
-        let profile = herald_core::Profile {
+        let profile = Profile {
             symbols: reached.symbols(),
             ..profile
         };
         let thread_name = route.thread.as_ref().map(|thread| thread.name.clone());
         let delivery = Delivery {
             crosspost: route.crosspost,
-            thread: route.thread.map(|thread| Thread {
-                name: thread.name.into_inner(),
-                archive_after: thread.archive_after.map(|after| after.0),
-                lock_after: thread.lock_after.map(|after| after.0),
-            }),
+            thread: route.thread.map(opened),
             pin: route.pin,
             mentions: Mentions {
-                roles: route
-                    .mentions
-                    .roles
-                    .into_iter()
-                    .chain(options.opt_in_role())
-                    .fold(Vec::new(), |mut roles, role| {
-                        if !roles.contains(&role) {
-                            roles.push(role);
-                        }
-                        roles
-                    })
-                    .into_iter()
-                    .map(herald_core::RoleId::new)
-                    .collect(),
+                roles: mentioned(route.mentions.roles, options.opt_in_role()),
                 subscribers: route.mentions.subscribers,
             },
         };
-        let lacking = profile.features.lacking(&delivery);
-        let bot_lacks = as_bot.map(|bot| bot.features.lacking(&delivery));
-        for key in lacking
-            .into_iter()
-            .filter(|key| !(options.threads_each_post() && *key == "thread"))
-        {
-            let remedy = if bot_lacks
-                .as_ref()
-                .is_some_and(|lacks| !lacks.contains(&key))
-            {
-                "or reach it with a bot token".to_owned()
-            } else {
-                format!("as {name} has no way to do it")
-            };
-            self.error(
-                &span,
-                &format!("{path}.{key}"),
-                format!(
-                    "the destination \"{}\" cannot do this as it is reached; remove {key}, {remedy}",
-                    destination.as_str()
-                ),
-            );
-            sound = false;
-        }
+        let reach = Reach {
+            name,
+            profile: &profile,
+            as_bot: as_bot.as_ref(),
+            threads_each_post: options.threads_each_post(),
+        };
+        sound &= self.deliverable(&path, &span, &destination, reach, &delivery);
         let (Some(written), true) = (written, sound) else {
             return None;
         };
-        let sample_kinds = self.sample_kinds(
-            Taken {
-                sources: &route.sources,
-                kinds: &route.kinds,
-                versions: route.versions.as_ref(),
-            },
-            &path,
-            sources,
-            apps,
-        )?;
+        let taken = Taken {
+            sources: &route.sources,
+            kinds: &route.kinds,
+            versions: route.versions.as_ref(),
+        };
+        let sample_kinds = self.sample_kinds(taken, &path, sources, apps)?;
+        let filter = Filter {
+            sources: route
+                .sources
+                .iter()
+                .map(|source| SourceName::new(source.get_ref()))
+                .collect(),
+            kinds: route.kinds.into_iter().map(Spanned::into_inner).collect(),
+            prereleases: route.prereleases,
+            versions: route
+                .versions
+                .map(|versions| Pattern::new(versions.into_inner())),
+        };
         let config = RouteConfig {
             route: Route {
                 id: RouteId::new(route.id.get_ref()),
-                filter: Filter {
-                    sources: route
-                        .sources
-                        .iter()
-                        .map(|source| SourceName::new(source.get_ref()))
-                        .collect(),
-                    kinds: route.kinds.into_iter().map(Spanned::into_inner).collect(),
-                    prereleases: route.prereleases,
-                    versions: route
-                        .versions
-                        .map(|versions| Pattern::new(versions.into_inner())),
-                },
+                filter,
                 destination,
                 template,
                 delivery,
@@ -356,8 +412,33 @@ impl Loader<'_> {
             body_path: written.body_path.clone(),
             sample_kinds,
             thread: thread_name,
-            id_span: route.id.span(),
+            id_span: span,
             path,
         })
     }
+}
+
+/// The thread `thread` asks a route to open.
+fn opened(thread: ThreadFile) -> Thread {
+    Thread {
+        name: thread.name.into_inner(),
+        archive_after: thread.archive_after.map(|after| after.0),
+        lock_after: thread.lock_after.map(|after| after.0),
+    }
+}
+
+/// Each role of `roles`, then the opt-in role `opt_in`, mentioned once.
+fn mentioned(roles: Vec<String>, opt_in: Option<String>) -> Vec<RoleId> {
+    roles
+        .into_iter()
+        .chain(opt_in)
+        .fold(Vec::new(), |mut roles, role| {
+            if !roles.contains(&role) {
+                roles.push(role);
+            }
+            roles
+        })
+        .into_iter()
+        .map(RoleId::new)
+        .collect()
 }

@@ -31,7 +31,6 @@ mod room;
 mod round;
 mod serving;
 mod sessions;
-mod together;
 mod trial;
 
 pub use announce::{Announced, Outcome, Ports, Stop, announce, announce_within};
@@ -55,8 +54,8 @@ pub use reached::{Posts, Reached};
 pub use room::{Place, Room, Running};
 pub use round::{ROUND_SECRET, Round};
 pub use serving::{
-    Answered, HEALTH, HOOKS, Inbound, Interacted, Job, Reply, Serving, Webhooks, Worked, answer,
-    busy, refusal, uncomposed, unworked, work,
+    Answered, Did, HEALTH, HOOKS, Inbound, Interacted, Job, Reply, Serving, Webhooks, Worked,
+    answer, busy, refusal, uncomposed, unplaced, unworked, work,
 };
 pub use sessions::{Sessions, Taker};
 pub use trial::trial;

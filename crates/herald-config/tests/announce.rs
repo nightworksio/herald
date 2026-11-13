@@ -1,11 +1,14 @@
-//! `[announce]`: how a run holds and keeps an announcement, read with its
-//! defaults, and every value it cannot keep named by key.
+//! `[announce]` and `[run]`: how a run holds and keeps an announcement, and
+//! how many routes and sources it goes through at once, read with their
+//! defaults, and every value they cannot keep named by key.
 
 mod common;
 
 #[cfg(test)]
 mod announce {
-    use herald_config::{Announce, load};
+    use std::num::NonZeroUsize;
+
+    use herald_config::{Announce, Run, load};
     use jiff::SignedDuration;
 
     const EXAMPLE: &str = r#"version = 1
@@ -68,6 +71,47 @@ body = "{{ event.body }}"
             let error = load(
                 "herald.toml",
                 &format!("{EXAMPLE}\n[announce]\n{written}\n"),
+                &nothing,
+                &crate::common::kinds(),
+            )
+            .unwrap_err()
+            .to_string();
+            assert!(error.contains(key), "{error}");
+        }
+    }
+
+    #[test]
+    fn a_run_goes_through_four_routes_and_four_sources_at_once_by_default() {
+        let config = load("herald.toml", EXAMPLE, &nothing, &crate::common::kinds()).unwrap();
+        assert_eq!(
+            config.run,
+            Run {
+                routes: NonZeroUsize::new(4).unwrap(),
+                sources: NonZeroUsize::new(4).unwrap(),
+            }
+        );
+        assert_eq!(config.run, Run::default());
+    }
+
+    #[test]
+    fn every_run_setting_is_read_and_a_mistake_named_by_its_key() {
+        let text = format!("{EXAMPLE}\n[run]\nroutes = 1\nsources = 9\n");
+        let config = load("herald.toml", &text, &nothing, &crate::common::kinds()).unwrap();
+        assert_eq!(
+            config.run,
+            Run {
+                routes: NonZeroUsize::MIN,
+                sources: NonZeroUsize::new(9).unwrap(),
+            }
+        );
+        for (written, key) in [
+            ("routes = 0", "run.routes"),
+            ("sources = 0", "run.sources"),
+            ("jobs = 2", "jobs"),
+        ] {
+            let error = load(
+                "herald.toml",
+                &format!("{EXAMPLE}\n[run]\n{written}\n"),
                 &nothing,
                 &crate::common::kinds(),
             )

@@ -1,4 +1,4 @@
-//! `[http]`, `[server]`, `[render]` and `[announce]`: the bounds, waits and
+//! `[http]`, `[server]`, `[render]`, `[announce]` and `[run]`: the bounds, waits and
 //! limits herald keeps.
 
 use std::num::NonZeroUsize;
@@ -11,9 +11,10 @@ use jiff::SignedDuration;
 use toml::Spanned;
 
 use super::{Loader, Value};
-use crate::config::{Announce, KeyCache, Reconnecting, Server};
+use crate::config::{Announce, HeldSessions, KeyCache, Run, Server};
 use crate::file::{
-    AnnounceFile, HttpFile, InboundFile, KeyCacheFile, RenderFile, ServerFile, SessionsFile,
+    AnnounceFile, HttpFile, InboundFile, KeyCacheFile, RenderFile, RunFile, ServerFile,
+    SessionsFile,
 };
 
 impl Loader<'_> {
@@ -179,7 +180,7 @@ impl Loader<'_> {
             accept_pause: file
                 .accept_pause
                 .map_or(Server::ACCEPT_PAUSE, |pause| pause.0),
-            sessions: self.reconnecting(file.sessions),
+            sessions: self.sessions(file.sessions),
         }
     }
 
@@ -278,12 +279,12 @@ impl Loader<'_> {
         held.into_inner().0
     }
 
-    fn reconnecting(&mut self, file: SessionsFile) -> Reconnecting {
+    fn sessions(&mut self, file: SessionsFile) -> HeldSessions {
         let first_wait = file
             .first_wait
-            .map_or(Reconnecting::FIRST_WAIT, |first| first.0);
+            .map_or(HeldSessions::FIRST_WAIT, |first| first.0);
         let longest_wait = file.longest_wait.map_or_else(
-            || Reconnecting::LONGEST_WAIT.max(first_wait),
+            || HeldSessions::LONGEST_WAIT.max(first_wait),
             |longest| {
                 if longest.get_ref().0 < first_wait {
                     self.error(
@@ -295,10 +296,11 @@ impl Loader<'_> {
                 longest.into_inner().0
             },
         );
-        Reconnecting {
+        HeldSessions {
             first_wait,
             longest_wait,
             jitter: file.jitter.unwrap_or(true),
+            stale: file.stale.map_or(HeldSessions::STALE, |stale| stale.0),
         }
     }
 
@@ -310,6 +312,15 @@ impl Loader<'_> {
                 latest_attempts: file
                     .latest_attempts
                     .map_or(Announce::LATEST_ATTEMPTS, NonZeroUsize::get),
+            })
+    }
+
+    pub(super) fn run(&mut self, value: Option<Value<'_>>) -> Run {
+        value
+            .and_then(|value| self.typed::<RunFile>(value, "run"))
+            .map_or_else(Run::default, |file| Run {
+                routes: file.routes.unwrap_or(Run::ROUTES),
+                sources: file.sources.unwrap_or(Run::SOURCES),
             })
     }
 

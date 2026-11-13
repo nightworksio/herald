@@ -1,13 +1,22 @@
 use std::cell::RefCell;
 
 use herald_core::{Asked, Command, DestinationName, Place, RouteId, Step};
-use herald_flows::{Announced, Answer, FollowError, Followed, Interacted, Outcome, Stop, Worked};
+use herald_flows::{
+    Announced, Answer, Did, FollowError, Followed, Interacted, Job, Outcome, Stop, Worked,
+};
 use herald_server::Heard;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 use super::world::*;
 use crate::serving::said;
 use crate::*;
+
+fn worked(did: Did) -> Heard {
+    Heard::Worked(Worked {
+        did,
+        unreleased: None,
+    })
+}
 
 fn free() -> u16 {
     std::net::TcpListener::bind("127.0.0.1:0")
@@ -322,7 +331,7 @@ fn the_server_says_how_each_command_was_answered_and_what_its_sessions_said() {
         member: None,
     };
     let interacted = |trouble: Option<&str>, sent: Result<(), String>| {
-        said(Heard::Worked(Worked::Interacted(vec![Interacted {
+        said(worked(Did::Interacted(vec![Interacted {
             asked: asked.clone(),
             answer: Answer {
                 said: String::new(),
@@ -367,7 +376,7 @@ fn the_server_says_what_it_heard_in_a_line_each() {
         },
     };
     assert_eq!(
-        said(Heard::Worked(Worked::Announced(vec![announced]))),
+        said(worked(Did::Announced(vec![announced]))),
         ["releases: announced (post)"]
     );
     assert_eq!(said(Heard::Polled(Vec::new())), [] as [String; 0]);
@@ -380,6 +389,16 @@ fn the_server_says_what_it_heard_in_a_line_each() {
         ["housekeeping stopped: no. The next round tries again."]
     );
     assert_eq!(
+        said(Heard::Unworked(
+            Box::new(Job::Interact {
+                destination: DestinationName::new("chat"),
+                asked: Vec::new(),
+            }),
+            Ok(())
+        )),
+        ["herald stopped before it worked the commands given on chat"]
+    );
+    assert_eq!(
         said(Heard::Unaccepted("too many open files".to_owned())),
         ["a connection could not be taken: too many open files"]
     );
@@ -387,7 +406,7 @@ fn the_server_says_what_it_heard_in_a_line_each() {
         said(Heard::Refused("the signature does not match".to_owned())),
         ["a request was refused: the signature does not match"]
     );
-    let followed = |followed| said(Heard::Worked(Worked::Followed(followed)));
+    let followed = |followed| said(worked(Did::Followed(followed)));
     assert_eq!(
         followed(Ok(Followed::Accepted {
             follower: "https://social.example/users/ana".to_owned(),

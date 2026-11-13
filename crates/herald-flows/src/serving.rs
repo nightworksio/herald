@@ -7,7 +7,7 @@ use herald_core::{
 };
 use herald_kinds::Hooked;
 use herald_kinds::{Endpoint, Replying};
-use herald_ports::{Clock, Http, Keyring, Ledger, Secret, Signer, Store, Verifier};
+use herald_ports::{Clock, Http, Keyring, Ledger, Secret, Signer, Store, StoreError, Verifier};
 
 use crate::announce::{Announced, Outcome, Ports, announce, announce_within};
 use crate::commanded::{INTERACTIONS, MATRIX, commanded};
@@ -140,9 +140,20 @@ pub struct Answered {
     pub refused: Option<String>,
 }
 
+/// What a job did, and why the delivery it came by could not be released
+/// where its work stopped and the release failed.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Worked {
+    /// What the job did.
+    pub did: Did,
+    /// Why the delivery could not be released, so its sender's next delivery
+    /// of it is refused as a replay until housekeeping forgets it.
+    pub unreleased: Option<String>,
+}
+
 /// What a job did.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Worked {
+pub enum Did {
     /// What each route did with the event.
     Announced(Vec<Announced>),
     /// What the activity did.
@@ -151,7 +162,7 @@ pub enum Worked {
     Interacted(Vec<Interacted>),
 }
 
-impl Worked {
+impl Did {
     /// Whether the work stopped before it was done: a route stopped, or the
     /// activity was not taken.
     #[must_use]
@@ -256,9 +267,14 @@ pub(crate) async fn unread<S: Store>(
 ) -> Answered {
     let reason = match released(store, scheme, verified).await {
         Ok(()) => reason.to_string(),
-        Err(error) => format!("{reason}; its delivery could not be released: {error}"),
+        Err(error) => format!("{reason}; {}", unreleased(&error)),
     };
     refusal(400, reason)
+}
+
+/// What a delivery that could not be released for `error` is logged as.
+fn unreleased(error: &StoreError) -> String {
+    format!("its delivery could not be released: {error}")
 }
 
 /// The reply to a request refused for `reason`: a body that names no
@@ -320,7 +336,7 @@ pub(crate) fn unmethodical() -> Answered {
 pub(crate) fn rejection(rejected: &Rejected) -> Answered {
     let status = match rejected {
         Rejected::Replayed => 409,
-        Rejected::Unadmitted { .. } => 503,
+        Rejected::Unadmitted { .. } | Rejected::Unkept { .. } => 503,
         _ => 401,
     };
     refusal(status, rejected.to_string())
@@ -601,12 +617,36 @@ fn holder<'c>(config: &'c Config, token: &str) -> Option<(&'c str, &'c App)> {
 
 /// Releases the delivery `job` came by, as it will not be done, so its
 /// sender's next delivery of it is admitted (ADR-0013).
+///
+/// # Errors
+///
+/// Where the delivery could not be released, saying so for the log.
 pub async fn unworked<S: Store, C, G, V, H, P, K>(
     serving: &Serving<'_, S, C, G, V, H, P, K>,
     job: &Job,
-) {
-    if let Some((scheme, verified)) = job.delivery() {
-        let _ = released(serving.ports.store, scheme, verified).await;
+) -> Result<(), String> {
+    match job.delivery() {
+        Some((scheme, verified)) => released(serving.ports.store, scheme, verified)
+            .await
+            .map_err(|error| unreleased(&error)),
+        None => Ok(()),
+    }
+}
+
+/// The refusal of a request whose work found no place, asking its sender to
+/// wait `[server] busy_retry`, once the delivery `job` came by is released,
+/// naming a release that failed for the log.
+pub async fn unplaced<S: Store, C, G, V, H, P, K>(
+    serving: &Serving<'_, S, C, G, V, H, P, K>,
+    job: &Job,
+) -> Answered {
+    let busy = busy(serving.config.server.busy_retry);
+    match unworked(serving, job).await {
+        Ok(()) => busy,
+        Err(unreleased) => Answered {
+            refused: busy.refused.map(|reason| format!("{reason}; {unreleased}")),
+            ..busy
+        },
     }
 }
 
@@ -622,7 +662,7 @@ pub async fn work<S: Store, C: Clock, G: Signer, V, H: Http, P, K>(
     let delivery = job
         .delivery()
         .map(|(scheme, verified)| (scheme, verified.clone()));
-    let worked = match job {
+    let did = match job {
         Job::Announce { source, event, .. } => {
             let announced = announce(
                 serving.config,
@@ -633,7 +673,7 @@ pub async fn work<S: Store, C: Clock, G: Signer, V, H: Http, P, K>(
                 run,
             )
             .await;
-            Worked::Announced(announced)
+            Did::Announced(announced)
         }
         Job::App { app, event, .. } => {
             let within = serving
@@ -652,7 +692,7 @@ pub async fn work<S: Store, C: Clock, G: Signer, V, H: Http, P, K>(
                 run,
             )
             .await;
-            Worked::Announced(announced)
+            Did::Announced(announced)
         }
         Job::Follow { verified, body } => {
             let taken = followed(
@@ -667,7 +707,7 @@ pub async fn work<S: Store, C: Clock, G: Signer, V, H: Http, P, K>(
                 &body,
             )
             .await;
-            Worked::Followed(taken)
+            Did::Followed(taken)
         }
         Job::Interact { destination, asked } => {
             let mut interacted = Vec::new();
@@ -681,15 +721,17 @@ pub async fn work<S: Store, C: Clock, G: Signer, V, H: Http, P, K>(
                     sent,
                 });
             }
-            Worked::Interacted(interacted)
+            Did::Interacted(interacted)
         }
     };
-    if worked.stopped()
-        && let Some((scheme, verified)) = delivery
-    {
-        let _ = released(store, scheme, &verified).await;
-    }
-    worked
+    let unreleased = match delivery {
+        Some((scheme, verified)) if did.stopped() => released(store, scheme, &verified)
+            .await
+            .err()
+            .map(|error| unreleased(&error)),
+        _ => None,
+    };
+    Worked { did, unreleased }
 }
 
 #[cfg(test)]

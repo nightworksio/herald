@@ -8,6 +8,7 @@ use herald_core::{
     Answering, Asked, Command, DestinationName, Place, Text as Written, digest, unreserved,
 };
 use herald_ports::{Method, Request, Response, Secret, Text};
+use jiff::Timestamp;
 use serde_json::{Value, json};
 
 use crate::interactions::{Interactions, Via};
@@ -49,8 +50,9 @@ pub struct Replying {
 pub struct Synced {
     /// Where the next sync starts.
     pub next: String,
-    /// The commands given, each with where its answer goes.
-    pub asked: Vec<(Asked, Replying)>,
+    /// The commands given, each with where its answer goes and when the
+    /// homeserver received it, where it says.
+    pub asked: Vec<(Asked, Replying, Option<Timestamp>)>,
 }
 
 /// Why a transaction or a sync could not be read.
@@ -175,7 +177,10 @@ impl Interacting {
                     .and_then(Value::as_array)
                     .into_iter()
                     .flatten()
-                    .filter_map(|event| self.command(destination, room, event))
+                    .filter_map(|event| {
+                        let (asked, replying) = self.command(destination, room, event)?;
+                        Some((asked, replying, received(event)))
+                    })
             })
             .collect();
         Ok(Synced { next, asked })
@@ -390,6 +395,15 @@ fn quoted(value: &str) -> String {
 pub fn took(response: &Response) -> Result<(), String> {
     let body = json(response);
     response.took(waited(&body), MATRIX, || said(&body))
+}
+
+/// When the homeserver received `event`, as its `origin_server_ts` says in
+/// milliseconds.
+fn received(event: &Value) -> Option<Timestamp> {
+    event
+        .get("origin_server_ts")
+        .and_then(Value::as_i64)
+        .and_then(|millis| Timestamp::from_millisecond(millis).ok())
 }
 
 #[cfg(test)]

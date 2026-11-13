@@ -9,7 +9,7 @@ use herald_kinds::{Endpoint, Interacted, Post, Read, Replying, Said};
 use herald_ports::{Clock, Keyring, Store, Verifier};
 
 use crate::inbound::{Checking, Rejected, Verified, admitted, verified};
-use crate::interact::completed;
+use crate::interact::{completed, unlisted};
 use crate::serving::{
     Answered, Inbound, Job, Serving, missing, refusal, rejection, replied, unmethodical, unread,
 };
@@ -120,15 +120,18 @@ async fn answered<S: Store, C: Clock, G, V: Verifier, H, P, K>(
             ..said(answer)
         },
         Read::Completing { place, typed } => {
-            let projects = completed(
+            match completed(
                 serving.config,
                 serving.ports.store,
                 destination,
                 &place,
                 &typed,
             )
-            .await;
-            replied(200, JSON, interacting.choices(&projects))
+            .await
+            {
+                Ok(projects) => replied(200, JSON, interacting.choices(&projects)),
+                Err(error) => refusal(503, unlisted(&error)),
+            }
         }
         Read::Said(answer) => said(answer),
         Read::Delivered {

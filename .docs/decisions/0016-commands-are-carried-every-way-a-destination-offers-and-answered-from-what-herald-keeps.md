@@ -1,6 +1,6 @@
 # ADR-0016: Commands are carried every way a destination offers, and answered from what herald keeps
 
-**Status:** Accepted
+**Status:** Accepted; extended by [ADR-0025](0025-routes-and-sources-go-at-once-within-limits-and-a-session-keeps-where-it-stands.md)
 **Date:** 2026-11-05
 
 ## Context

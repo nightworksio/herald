@@ -207,6 +207,14 @@ fn escaped(text: &str) -> String {
     out
 }
 
+/// The value of the attribute `wanted` among `attributes`.
+fn attribute<'a>(attributes: &'a [(String, String)], wanted: &str) -> Option<&'a str> {
+    attributes
+        .iter()
+        .find(|(key, _)| key == wanted)
+        .map(|(_, value)| value.as_str())
+}
+
 /// Where a list's items are numbered, and from what.
 enum List {
     Bullets,
@@ -320,19 +328,9 @@ impl Writer {
 
     fn open(&mut self, name: &str, attributes: &[(String, String)]) {
         if self.preformatted > 0 {
-            match name {
-                "pre" => self.preformatted += 1,
-                "br" => self.held.push('\n'),
-                _ => {}
-            }
+            self.open_preformatted(name);
             return;
         }
-        let attribute = |wanted: &str| {
-            attributes
-                .iter()
-                .find(|(key, _)| key == wanted)
-                .map(|(_, value)| value.as_str())
-        };
         match name {
             "br" => {
                 self.trim_end();
@@ -342,15 +340,7 @@ impl Writer {
                 self.block();
                 self.out.push_str("---\n\n");
             }
-            "h1" | "h2" | "h3" | "h4" | "h5" | "h6" => {
-                self.block();
-                let level = name
-                    .get(1..)
-                    .and_then(|level| level.parse().ok())
-                    .unwrap_or(1);
-                self.out.push_str(&"#".repeat(level));
-                self.out.push(' ');
-            }
+            "h1" | "h2" | "h3" | "h4" | "h5" | "h6" => self.heading(name),
             "strong" | "b" => self.out.push_str("**"),
             "em" | "i" => self.out.push('*'),
             "del" | "s" | "strike" => self.out.push_str("~~"),
@@ -363,41 +353,16 @@ impl Writer {
                 self.line();
                 self.lists.push(List::Bullets);
             }
-            "ol" => {
-                self.line();
-                let start = attribute("start")
-                    .and_then(|start| start.parse().ok())
-                    .unwrap_or(1);
-                self.lists.push(List::Numbers(start));
-            }
-            "li" => {
-                self.line();
-                let depth = self.lists.len().saturating_sub(1);
-                self.out.push_str(&"  ".repeat(depth));
-                match self.lists.last_mut() {
-                    Some(List::Numbers(next)) => {
-                        let _ = write!(self.out, "{next}. ");
-                        *next += 1;
-                    }
-                    _ => self.out.push_str("- "),
-                }
-            }
+            "ol" => self.numbered(attribute(attributes, "start")),
+            "li" => self.item(),
             "blockquote" => {
                 self.block();
                 self.quotes.push(self.out.len());
             }
-            "a" => {
-                let target = attribute("href")
-                    .map(str::trim)
-                    .filter(|href| LINK_SCHEMES.iter().any(|scheme| href.starts_with(scheme)))
-                    .map(safe_url);
-                if target.is_some() {
-                    self.out.push('[');
-                }
-                self.links.push(target);
-            }
+            "a" => self.link(attribute(attributes, "href")),
             "img" => {
-                if let Some(alt) = attribute("alt").filter(|alt| !alt.trim().is_empty()) {
+                if let Some(alt) = attribute(attributes, "alt").filter(|alt| !alt.trim().is_empty())
+                {
                     self.text(alt);
                 }
             }
@@ -405,6 +370,62 @@ impl Writer {
             _ if BLOCKS.contains(&name) => self.block(),
             _ => {}
         }
+    }
+
+    /// The element `name` opened within preformatted text, where only a
+    /// nested `pre` and a line break count.
+    fn open_preformatted(&mut self, name: &str) {
+        match name {
+            "pre" => self.preformatted += 1,
+            "br" => self.held.push('\n'),
+            _ => {}
+        }
+    }
+
+    /// The heading `name`, `h1` to `h6`, begun at its level.
+    fn heading(&mut self, name: &str) {
+        self.block();
+        let level = name
+            .get(1..)
+            .and_then(|level| level.parse().ok())
+            .unwrap_or(1);
+        self.out.push_str(&"#".repeat(level));
+        self.out.push(' ');
+    }
+
+    /// A numbered list begun, its first item numbered `start`, or else 1.
+    fn numbered(&mut self, start: Option<&str>) {
+        self.line();
+        let start = start.and_then(|start| start.parse().ok()).unwrap_or(1);
+        self.lists.push(List::Numbers(start));
+    }
+
+    /// A list item begun, indented to its list's depth and bulleted or
+    /// numbered as its list is.
+    fn item(&mut self) {
+        self.line();
+        let depth = self.lists.len().saturating_sub(1);
+        self.out.push_str(&"  ".repeat(depth));
+        match self.lists.last_mut() {
+            Some(List::Numbers(next)) => {
+                let _ = write!(self.out, "{next}. ");
+                *next += 1;
+            }
+            _ => self.out.push_str("- "),
+        }
+    }
+
+    /// A link to `href` begun, where it leads to the web or mail; any other
+    /// is kept as its text alone.
+    fn link(&mut self, href: Option<&str>) {
+        let target = href
+            .map(str::trim)
+            .filter(|href| LINK_SCHEMES.iter().any(|scheme| href.starts_with(scheme)))
+            .map(safe_url);
+        if target.is_some() {
+            self.out.push('[');
+        }
+        self.links.push(target);
     }
 
     fn close(&mut self, name: &str) {

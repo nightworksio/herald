@@ -26,7 +26,7 @@ use futures_util::stream::{FuturesUnordered, StreamExt};
 use herald_core::DestinationName;
 use herald_flows::{
     Answered, Housekept, Inbound, Job, Round, Running, Serving, Sessions, Stop, Swept, Worked,
-    answer, busy, housekeep, poll, refusal, unworked, work,
+    answer, housekeep, poll, refusal, unplaced, unworked, work,
 };
 use herald_native::TokioTimer as Waiting;
 use herald_ports::{Clock, Http, Keyring, Secret, Signer, Sockets, Store, Verifier};
@@ -67,6 +67,9 @@ pub enum Heard {
     Listening(SocketAddr),
     /// A request's work was done.
     Worked(Worked),
+    /// A request's work was left undone as the server stopped, and whether
+    /// the delivery it came by was released.
+    Unworked(Box<Job>, Result<(), String>),
     /// The sources were polled.
     Polled(Vec<Swept>),
     /// The threads whose chores fell due were kept.
@@ -361,8 +364,7 @@ where
     let mut answered = answer(serving, &inbound).await;
     if let Some(job) = answered.job.take() {
         let Some(held) = queue.hold() else {
-            unworked(serving, &job).await;
-            return Ok(sent(rounds, busy(serving.config.server.busy_retry)));
+            return Ok(sent(rounds, unplaced(serving, &job).await));
         };
         held.fill(job);
     }
@@ -426,8 +428,12 @@ impl Rounds<'_> {
         serving: &Serving<'_, S, C, G, V, H, P, K>,
     ) -> Option<Heard> {
         once(&self.sweeping, async {
-            serving.keys.sweep(serving.ports.clock.now()).await;
-            None
+            serving
+                .keys
+                .sweep(serving.ports.clock.now())
+                .await
+                .err()
+                .map(|error| Heard::Kept(Err(Stop::Store(error.to_string()))))
         })
         .await
     }
@@ -579,8 +585,9 @@ pub async fn serve<S, C, G, V, H, P, K, L, So>(
         }
     }
     drop(connections);
-    for job in &queue.left() {
-        unworked(serving, job).await;
+    for job in queue.left() {
+        let released = unworked(serving, &job).await;
+        heard(Heard::Unworked(Box::new(job), released));
     }
     while let Some(done) = running.next().await {
         if let Some(said) = done {

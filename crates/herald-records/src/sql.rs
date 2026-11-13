@@ -324,7 +324,7 @@ mod tests {
             ))
         );
         let kept = pollster::block_on(SqlRecords::kept(opened(), Dialect::Postgres, None)).unwrap();
-        assert_eq!(Held::ALL.map(|held| kept.holds(held)), [true; 9]);
+        assert_eq!(Held::ALL.map(|held| kept.holds(held)), [true; 10]);
     }
 
     #[test]

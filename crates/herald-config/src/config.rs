@@ -1,4 +1,5 @@
 use std::collections::{BTreeMap, BTreeSet};
+use std::num::NonZeroUsize;
 
 use herald_core::{
     DestinationName, Inbound, KindSpecs, Profile, Retention, Route, RouteId, Sandbox, SecretRef,
@@ -33,6 +34,8 @@ pub struct Config {
     pub schedule: Schedule,
     /// How a run holds and keeps an announcement.
     pub announce: Announce,
+    /// How many routes and sources a run goes through at once.
+    pub run: Run,
     /// How `herald server` listens, and what it takes on at once.
     pub server: Server,
     /// How herald's own requests reach the services the config names.
@@ -165,6 +168,32 @@ impl Default for Announce {
     }
 }
 
+/// How many routes and sources a run goes through at once.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Run {
+    /// How many routes an event is announced to at once.
+    pub routes: NonZeroUsize,
+    /// How many sources a poll reads at once.
+    pub sources: NonZeroUsize,
+}
+
+impl Run {
+    /// How many routes are announced to at once where the config says
+    /// nothing.
+    pub const ROUTES: NonZeroUsize = NonZeroUsize::new(4).unwrap();
+    /// How many sources are read at once where the config says nothing.
+    pub const SOURCES: NonZeroUsize = NonZeroUsize::new(4).unwrap();
+}
+
+impl Default for Run {
+    fn default() -> Self {
+        Self {
+            routes: Self::ROUTES,
+            sources: Self::SOURCES,
+        }
+    }
+}
+
 /// How often a driver that keeps its own schedule polls and keeps house.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct Schedule {
@@ -229,14 +258,16 @@ pub struct Server {
     pub held: SignedDuration,
     /// How long the server waits after a connection could not be accepted.
     pub accept_pause: SignedDuration,
-    /// How a session a destination holds waits before it connects again.
-    pub sessions: Reconnecting,
+    /// How a session a destination holds connects again, and how old a
+    /// command one taken up again answers.
+    pub sessions: HeldSessions,
 }
 
-/// How a session a destination holds waits before it connects again: the
-/// first wait, doubled each time it is not taken up, up to the longest.
+/// How a session a destination holds connects again: the first wait,
+/// doubled each time it is not taken up, up to the longest; and how old a
+/// command a session taken up again answers.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Reconnecting {
+pub struct HeldSessions {
     /// The first wait after a session fails to connect.
     pub first_wait: SignedDuration,
     /// The longest wait between attempts.
@@ -244,21 +275,27 @@ pub struct Reconnecting {
     /// Whether each wait is between half of it and all of it, so sessions
     /// that failed together do not all connect again at once.
     pub jitter: bool,
+    /// How long ago a command a session taken up again answers may have
+    /// been given; one given earlier is skipped.
+    pub stale: SignedDuration,
 }
 
-impl Reconnecting {
+impl HeldSessions {
     /// The first wait where the config says nothing.
     pub const FIRST_WAIT: SignedDuration = SignedDuration::from_secs(1);
     /// The longest wait where the config says nothing.
     pub const LONGEST_WAIT: SignedDuration = SignedDuration::from_mins(1);
+    /// How old a command may be where the config says nothing.
+    pub const STALE: SignedDuration = SignedDuration::from_mins(10);
 }
 
-impl Default for Reconnecting {
+impl Default for HeldSessions {
     fn default() -> Self {
         Self {
             first_wait: Self::FIRST_WAIT,
             longest_wait: Self::LONGEST_WAIT,
             jitter: true,
+            stale: Self::STALE,
         }
     }
 }
@@ -336,7 +373,7 @@ impl Default for Server {
             read: Self::READ,
             held: Self::HELD,
             accept_pause: Self::ACCEPT_PAUSE,
-            sessions: Reconnecting::default(),
+            sessions: HeldSessions::default(),
         }
     }
 }

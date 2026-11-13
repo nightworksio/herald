@@ -48,6 +48,10 @@
         "$ref": "#/$defs/Route"
       }
     },
+    "run": {
+      "description": "How many routes and sources a run goes through at once.",
+      "$ref": "#/$defs/Run"
+    },
     "schedule": {
       "description": "How often a driver that keeps its own schedule polls and keeps house.",
       "$ref": "#/$defs/Schedule"
@@ -1557,6 +1561,25 @@
         }
       ]
     },
+    "Run": {
+      "description": "`[run]`: how many routes and sources a run goes through at once.",
+      "type": "object",
+      "properties": {
+        "routes": {
+          "description": "How many routes an event is announced to at once; 4 where absent,\nand 1 announces to one route after another in the file's order.",
+          "type": "integer",
+          "format": "uint",
+          "minimum": 1
+        },
+        "sources": {
+          "description": "How many sources a poll reads at once; 4 where absent, and 1 reads\none source after another.",
+          "type": "integer",
+          "format": "uint",
+          "minimum": 1
+        }
+      },
+      "additionalProperties": false
+    },
     "Schedule": {
       "description": "How often a driver that keeps its own schedule polls and keeps house.",
       "type": "object",
@@ -1671,7 +1694,7 @@
       "additionalProperties": false
     },
     "Sessions": {
-      "description": "`[server.sessions]`: how a session a destination holds waits before it\nconnects again, each wait double the last up to the longest.",
+      "description": "`[server.sessions]`: how a session a destination holds waits before it\nconnects again, each wait double the last up to the longest, and how old\na command one taken up again answers.",
       "type": "object",
       "properties": {
         "first_wait": {
@@ -1684,6 +1707,10 @@
         },
         "longest_wait": {
           "description": "The longest wait between attempts; \"1m\" where absent, and at least\n`first_wait`.",
+          "$ref": "#/$defs/Duration"
+        },
+        "stale": {
+          "description": "How long ago a command a session taken up again answers may have\nbeen given; one given earlier is skipped and logged; \"10m\" where\nabsent.",
           "$ref": "#/$defs/Duration"
         }
       },

@@ -134,11 +134,13 @@ pub enum Held {
     Latest,
     /// Where each delivery to a follower's inbox stands.
     Inboxes,
+    /// Where each session a destination holds stands.
+    Positions,
 }
 
 impl Held {
     /// Every kind, in the order a store's accessors list them.
-    pub const ALL: [Self; 9] = [
+    pub const ALL: [Self; 10] = [
         Self::Ledger,
         Self::Cursors,
         Self::Schedules,
@@ -148,6 +150,7 @@ impl Held {
         Self::Notes,
         Self::Latest,
         Self::Inboxes,
+        Self::Positions,
     ];
 
     /// The kind as an error names it.
@@ -162,6 +165,7 @@ impl Held {
             Self::Notes => "notes",
             Self::Latest => "latest",
             Self::Inboxes => "deliveries to followers",
+            Self::Positions => "session positions",
         }
     }
 
@@ -278,6 +282,24 @@ pub trait Pins: Sync {
         &self,
         route: &RouteId,
         post: &str,
+    ) -> impl Future<Output = Result<(), StoreError>> + Send;
+}
+
+/// Where each session a destination holds stands, one value per
+/// destination: the last written is kept, so a session taken up again
+/// starts where the last left off.
+pub trait Positions: Sync {
+    /// Where the session `destination` holds last stood.
+    fn position(
+        &self,
+        destination: &DestinationName,
+    ) -> impl Future<Output = Result<Option<String>, StoreError>> + Send;
+
+    /// Keeps `position` as where the session `destination` holds stands.
+    fn put_position(
+        &self,
+        destination: &DestinationName,
+        position: &str,
     ) -> impl Future<Output = Result<(), StoreError>> + Send;
 }
 
@@ -547,6 +569,26 @@ impl<T: Subscriptions> Subscriptions for Option<&T> {
     }
 }
 
+impl<T: Positions> Positions for Option<&T> {
+    async fn position(&self, destination: &DestinationName) -> Result<Option<String>, StoreError> {
+        match self {
+            Some(kept) => kept.position(destination).await,
+            None => Unkept.position(destination).await,
+        }
+    }
+
+    async fn put_position(
+        &self,
+        destination: &DestinationName,
+        position: &str,
+    ) -> Result<(), StoreError> {
+        match self {
+            Some(kept) => kept.put_position(destination, position).await,
+            None => Unkept.put_position(destination, position).await,
+        }
+    }
+}
+
 impl<T: Pins> Pins for Option<&T> {
     async fn pinned(&self, route: &RouteId) -> Result<Option<String>, StoreError> {
         match self {
@@ -773,6 +815,23 @@ impl Pins for Unkept {
     }
 }
 
+impl Positions for Unkept {
+    fn position(
+        &self,
+        _: &DestinationName,
+    ) -> impl Future<Output = Result<Option<String>, StoreError>> + Send {
+        ready(Err(Held::Positions.unsupported()))
+    }
+
+    fn put_position(
+        &self,
+        _: &DestinationName,
+        _: &str,
+    ) -> impl Future<Output = Result<(), StoreError>> + Send {
+        ready(Err(Held::Positions.unsupported()))
+    }
+}
+
 impl Deliveries for Unkept {
     fn admit(
         &self,
@@ -890,6 +949,8 @@ pub trait Store: Sync {
     type Announcements: Announcements;
     /// Its deliveries to followers' inboxes.
     type Inboxes: Inboxes;
+    /// Where the sessions its destinations hold stand.
+    type Positions: Positions;
 
     /// The ledger, where it keeps or derives one.
     fn ledger(&self) -> Option<&Self::Ledger>;
@@ -909,20 +970,45 @@ pub trait Store: Sync {
     fn announcements(&self) -> Option<&Self::Announcements>;
     /// The deliveries to followers' inboxes, where it keeps them.
     fn inboxes(&self) -> Option<&Self::Inboxes>;
+    /// Where the sessions its destinations hold stand, where it keeps that.
+    fn positions(&self) -> Option<&Self::Positions>;
 
     /// The paths of the records a listing skipped as corrupt since this was
     /// last asked, each once, so one bad record stops no listing and is
     /// still reported.
     fn skipped(&self) -> Vec<String>;
+
+    /// Whether a run writes one record at a time: where a write may be
+    /// refused because another record was written at once, or where writes
+    /// are not compared and set.
+    fn writes_one_at_a_time(&self) -> bool {
+        false
+    }
 }
 
 /// A store holding every kind of record it keeps itself, and saying which
 /// kinds it holds.
 pub trait Keeper:
-    Ledger + Cursors + Schedules + Subscriptions + Pins + Deliveries + Notes + Announcements + Inboxes
+    Ledger
+    + Cursors
+    + Schedules
+    + Subscriptions
+    + Pins
+    + Deliveries
+    + Notes
+    + Announcements
+    + Inboxes
+    + Positions
 {
     /// Whether it holds records of `kind`.
     fn holds(&self, kind: Held) -> bool;
+
+    /// Whether a run writes one record at a time: where a write may be
+    /// refused because another record was written at once, or where writes
+    /// are not compared and set.
+    fn writes_one_at_a_time(&self) -> bool {
+        false
+    }
 
     /// The paths of the records a listing skipped as corrupt since this was
     /// last asked, each once.
@@ -939,6 +1025,7 @@ impl<K: Keeper> Store for K {
     type Notes = Self;
     type Announcements = Self;
     type Inboxes = Self;
+    type Positions = Self;
 
     fn ledger(&self) -> Option<&Self> {
         self.holds(Held::Ledger).then_some(self)
@@ -976,8 +1063,16 @@ impl<K: Keeper> Store for K {
         self.holds(Held::Inboxes).then_some(self)
     }
 
+    fn positions(&self) -> Option<&Self> {
+        self.holds(Held::Positions).then_some(self)
+    }
+
     fn skipped(&self) -> Vec<String> {
         Keeper::skipped(self)
+    }
+
+    fn writes_one_at_a_time(&self) -> bool {
+        Keeper::writes_one_at_a_time(self)
     }
 }
 

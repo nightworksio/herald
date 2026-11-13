@@ -414,3 +414,45 @@ fn a_sync_is_held_through_the_bot_and_asks_what_arrives_after_the_first() {
         Err("the body is not a Matrix transaction or sync".to_owned())
     );
 }
+
+#[test]
+fn a_sync_taken_up_again_starts_where_the_last_left_off_and_skips_what_was_given_before() {
+    let synced = interacted(&options(Some(syncing())));
+    let mut session = synced.session().unwrap();
+    assert_eq!(session.position(), None);
+    let after = jiff::Timestamp::from_millisecond(2_000).unwrap();
+    session.resume("s1".to_owned(), after);
+    assert_eq!(session.position(), Some("s1"));
+    assert_eq!(
+        session.connect(),
+        Connect::Poll(synced.sync(Some("s1"), synced.sync_wait()))
+    );
+    let given = |received: Option<i64>| {
+        let mut given = message("!herald latest");
+        if let Some(received) = received {
+            given["origin_server_ts"] = json!(received);
+        }
+        given
+    };
+    let events = [given(Some(1_999)), given(Some(2_000)), given(None)];
+    let body = response(
+        200,
+        &json!({
+            "next_batch": "s2",
+            "rooms": { "join": { ROOM: { "timeline": { "events": events } } } },
+        }),
+    );
+    let effects = session.polled(&destination(), &body).unwrap();
+    assert_eq!(effects.len(), 4, "{effects:?}");
+    assert_eq!(effects[0], Effect::Ready);
+    assert_eq!(
+        effects[1],
+        Effect::Skipped(
+            "latest given at 1970-01-01T00:00:01.999Z was skipped: it was given before 1970-01-01T00:00:02Z, while no session was held"
+                .to_owned()
+        )
+    );
+    assert!(matches!(effects[2], Effect::Asked(..)), "{effects:?}");
+    assert!(matches!(effects[3], Effect::Asked(..)), "{effects:?}");
+    assert_eq!(session.position(), Some("s2"));
+}

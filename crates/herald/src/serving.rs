@@ -122,6 +122,7 @@ pub(crate) fn said(heard: Heard) -> Vec<String> {
     match heard {
         Heard::Listening(address) => vec![format!("herald serves on {address}")],
         Heard::Worked(worked) => told::worked(&worked),
+        Heard::Unworked(job, released) => vec![told::unworked(&job, &released)],
         Heard::Polled(swept) => swept.iter().flat_map(told::polled).collect(),
         Heard::Kept(kept) => told::kept(&kept),
         Heard::Unaccepted(reason) => vec![format!("a connection could not be taken: {reason}")],

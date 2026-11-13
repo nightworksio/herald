@@ -139,6 +139,10 @@ impl<H: Http + Send> CacheRecords<'_, H> {
 }
 
 impl<H: Http + Send> Records for CacheRecords<'_, H> {
+    fn one_at_a_time(&self) -> bool {
+        true
+    }
+
     async fn read(&self, path: &str) -> Result<Option<Blob>, StoreError> {
         let generation = self.generation().await?;
         let Some(held) = generation.records.get(path) else {

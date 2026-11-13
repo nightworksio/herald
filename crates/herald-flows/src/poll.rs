@@ -1,9 +1,10 @@
+use futures_util::stream::{self, StreamExt};
 use herald_config::Config;
 use herald_core::{Event, SourceName, fresh};
 use herald_kinds::Unpolled;
 use herald_ports::{Clock, Cursors, Http, Signer, Store, Written};
 
-use crate::announce::{Announced, Outcome, Ports, Stop, announce};
+use crate::announce::{Announced, Outcome, Ports, Stop, announce, at_once};
 use crate::prepare::{Connected, PreparedSource};
 
 /// What polling one source did.
@@ -138,23 +139,26 @@ async fn sweep<S: Store, C: Clock, G: Signer, H: Http>(
 /// Every source of `connected` polled, and each event it has not seen
 /// announced to every route that takes it (ADR-0003). A source's cursor
 /// remembers what it found only once every route has its events, so a
-/// route that stopped is offered them again by the next poll. `run` names
-/// this run in the leases it takes.
+/// route that stopped is offered them again by the next poll. As many
+/// sources as `[run] sources` says are polled at once, one at a time where
+/// the store writes one record at a time (ADR-0025). `run` names this run
+/// in the leases it takes.
 pub async fn poll<S: Store, C: Clock, G: Signer, H: Http>(
     config: &Config,
     connected: &Connected<H>,
     ports: &Ports<'_, S, C, G>,
     run: &str,
 ) -> Vec<Swept> {
-    let mut swept = Vec::new();
-    for source in &connected.sources {
+    stream::iter(connected.sources.iter().map(|source| async move {
         let outcome = sweep(config, connected, ports, source, run)
             .await
             .unwrap_or_else(Sweep::Stopped);
-        swept.push(Swept {
+        Swept {
             source: source.0.name.clone(),
             outcome,
-        });
-    }
-    swept
+        }
+    }))
+    .buffered(at_once(ports.store, config.run.sources))
+    .collect()
+    .await
 }

@@ -12,7 +12,7 @@ use futures_util::stream::{FuturesUnordered, StreamExt};
 use herald_config::{Config, Uses, load};
 use herald_core::{DestinationName, Kind, Latest, RouteId, Shown};
 use herald_flows::{
-    Connected, Job, Ports, Serving, Sessions, Taker, Webhooks, Worked, prepare, work,
+    Connected, Did, Job, Ports, Serving, Sessions, Taker, Webhooks, Worked, prepare, work,
 };
 use herald_ports::{Announcements, Frame, Http, HttpError, Request, Response, Timer};
 use herald_records::MemoryKeyring;
@@ -346,8 +346,8 @@ impl World {
                     () = &mut sessions, if held => held = false,
                     Some(worked) = running.next() => {
                         taken.held.set(taken.held.get() - 1);
-                        hear(match worked {
-                            Worked::Interacted(interacted) => format!(
+                        hear(match worked.did {
+                            Did::Interacted(interacted) => format!(
                                 "answered {}: {:?}",
                                 interacted[0].asked.command.name(),
                                 interacted[0].sent

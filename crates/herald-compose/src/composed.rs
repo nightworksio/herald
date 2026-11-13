@@ -5,8 +5,8 @@ use std::sync::atomic::AtomicBool;
 use herald_config::{Config, Uses};
 use herald_flows::{
     Admission, Connected, Housekept, Inbound, Job, Keys, Place, Ports, Room, Round, Running,
-    Serving, Sessions, Stop, Swept, Taker, Worked, answer, busy, housekeep, poll, prepare, refusal,
-    unworked, work,
+    Serving, Sessions, Stop, Swept, Taker, Worked, answer, housekeep, poll, prepare, refusal,
+    unplaced, work,
 };
 use herald_kinds::Opened;
 use herald_ports::{Keyring, PUBLIC, Sockets, Store as Keeps, Timer};
@@ -331,8 +331,7 @@ impl<H: Host> Through<H> for Answering<'_, '_> {
             return answered.into();
         };
         let Some(place) = self.room.place() else {
-            unworked(serving, &job).await;
-            return busy(serving.config.server.busy_retry).into();
+            return unplaced(serving, &job).await.into();
         };
         Answer {
             left: Some(Left { job, place }),

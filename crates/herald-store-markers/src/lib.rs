@@ -193,6 +193,7 @@ impl<M: Markers, G: Signer> Store for MarkersStore<M, G> {
     type Notes = Unkept;
     type Announcements = Unkept;
     type Inboxes = Unkept;
+    type Positions = Unkept;
 
     fn ledger(&self) -> Option<&Self> {
         Some(self)
@@ -230,7 +231,15 @@ impl<M: Markers, G: Signer> Store for MarkersStore<M, G> {
         None
     }
 
+    fn positions(&self) -> Option<&Unkept> {
+        None
+    }
+
     fn skipped(&self) -> Vec<String> {
         vec![]
+    }
+
+    fn writes_one_at_a_time(&self) -> bool {
+        true
     }
 }

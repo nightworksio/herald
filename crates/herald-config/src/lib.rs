@@ -17,7 +17,7 @@ mod samples;
 mod schema;
 
 pub use config::{
-    Announce, App, Config, KeyCache, Reconnecting, RouteConfig, Schedule, Server, Uses,
+    Announce, App, Config, HeldSessions, KeyCache, RouteConfig, Run, Schedule, Server, Uses,
 };
 pub use error::{ConfigError, Errors};
 pub use herald_kinds::{Destination, Placed, Source, Store};

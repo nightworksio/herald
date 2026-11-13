@@ -288,6 +288,10 @@ struct Change<'a> {
 }
 
 impl<H: Http> Records for VariableRecords<H> {
+    fn one_at_a_time(&self) -> bool {
+        true
+    }
+
     async fn read(&self, path: &str) -> Result<Option<Blob>, StoreError> {
         Ok(self
             .variable(&name::of(path))

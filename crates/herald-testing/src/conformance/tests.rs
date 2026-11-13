@@ -1,7 +1,7 @@
 use herald_core::State;
 use herald_ports::{
     Admitted, Announcements, Cursors, Deliveries, Held, Inboxes, Keeper, Keeping, Keyring,
-    KnownKey, Ledger, Notes, Outboxed, Pins, Schedules, Subscriptions, Versioned,
+    KnownKey, Ledger, Notes, Outboxed, Pins, Positions, Schedules, Subscriptions, Versioned,
 };
 use jiff::Timestamp;
 
@@ -39,6 +39,8 @@ enum Fault {
     ForgetsOnlyTheSameSubscription,
     KeepsTheFirstPin,
     SharesPins,
+    KeepsTheFirstPosition,
+    SharesPositions,
     HoldsAnUnwrittenDelivery,
     KeepsTheFirstDeliveryState,
     SharesInboxes,
@@ -348,6 +350,34 @@ impl Pins for Faulty {
             return Ok(());
         }
         self.inner.put_pinned(&route, post).await
+    }
+}
+
+impl Positions for Faulty {
+    async fn position(&self, destination: &DestinationName) -> Result<Option<String>, StoreError> {
+        self.refuses()?;
+        let destination = match self.fault {
+            Fault::SharesPositions => DestinationName::new("shared"),
+            _ => destination.clone(),
+        };
+        self.inner.position(&destination).await
+    }
+
+    async fn put_position(
+        &self,
+        destination: &DestinationName,
+        position: &str,
+    ) -> Result<(), StoreError> {
+        self.refuses()?;
+        let destination = match self.fault {
+            Fault::SharesPositions => DestinationName::new("shared"),
+            _ => destination.clone(),
+        };
+        let kept = self.inner.position(&destination).await?;
+        if self.fault == Fault::KeepsTheFirstPosition && kept.is_some() {
+            return Ok(());
+        }
+        self.inner.put_position(&destination, position).await
     }
 }
 
@@ -731,6 +761,14 @@ fn a_store_that_breaks_its_promises_on_the_run_s_records_is_refused() {
             "a route's pin was not the one written last",
         ),
         (
+            Fault::KeepsTheFirstPosition,
+            "a session's position was not the one written last",
+        ),
+        (
+            Fault::SharesPositions,
+            "a session's position was not the one written last",
+        ),
+        (
             Fault::HoldsAnUnwrittenDelivery,
             "a new store holds a delivery to an inbox",
         ),
@@ -892,6 +930,9 @@ fn a_store_answering_a_kind_it_keeps_none_of_is_refused() {
     pollster::block_on(super::unkept::pins(&store, &mut checks));
     probed(checks, "pinned");
     let mut checks = Checks::default();
+    pollster::block_on(super::unkept::positions(&store, &mut checks));
+    probed(checks, "position");
+    let mut checks = Checks::default();
     pollster::block_on(super::unkept::deliveries(&store, &mut checks));
     probed(checks, "admit");
     let mut checks = Checks::default();
@@ -915,6 +956,7 @@ fn every_method_of_a_kind_a_store_keeps_none_of_is_probed() {
         super::unkept::schedules(&unkept, &mut checks).await;
         super::unkept::subscriptions(&unkept, &mut checks).await;
         super::unkept::pins(&unkept, &mut checks).await;
+        super::unkept::positions(&unkept, &mut checks).await;
         super::unkept::deliveries(&unkept, &mut checks).await;
         super::unkept::notes(&unkept, &mut checks).await;
         super::unkept::announcements(&unkept, &mut checks).await;

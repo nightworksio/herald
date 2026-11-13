@@ -248,6 +248,7 @@ body = "{{ event.body }}"
         match heard {
             Heard::Listening(_) => "listening".to_owned(),
             Heard::Worked(_) => "worked".to_owned(),
+            Heard::Unworked(_, released) => format!("unworked: {released:?}"),
             Heard::Polled(_) => "polled".to_owned(),
             Heard::Kept(_) => "kept".to_owned(),
             Heard::Unaccepted(reason) => format!("unaccepted: {reason}"),
@@ -509,7 +510,7 @@ body = "{{ event.body }}"
             tokio::join!(client, world.serve(listener, one, &hear, stopped));
         assert!(first.starts_with("HTTP/1.1 202 "), "{first}");
         assert!(second.starts_with("HTTP/1.1 202 "), "{second}");
-        assert_eq!(said(&heard), ["listening", "worked"]);
+        assert_eq!(said(&heard), ["listening", "unworked: Ok(())", "worked"]);
         let at = world.clock.now();
         let first = signature(EVENT.as_bytes());
         let second = signature(later.as_bytes());

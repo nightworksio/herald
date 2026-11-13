@@ -7,7 +7,8 @@ use herald_core::{
 };
 use herald_ports::{
     Admitted, Announcements, Cursors, Deliveries, Held, Inboxes, Keeper, Keyring, KnownKey, Ledger,
-    Notes, Outboxed, Pins, Schedules, StoreError, Subscriptions, Version, Versioned, Written,
+    Notes, Outboxed, Pins, Positions, Schedules, StoreError, Subscriptions, Version, Versioned,
+    Written,
 };
 use jiff::Timestamp;
 use serde::de::DeserializeOwned;
@@ -370,6 +371,23 @@ impl<R: Records> Pins for Kept<R> {
     }
 }
 
+impl<R: Records> Positions for Kept<R> {
+    async fn position(&self, destination: &DestinationName) -> Result<Option<String>, StoreError> {
+        Ok(self
+            .record::<String>(&paths::position(destination))
+            .await?
+            .map(|record| record.value))
+    }
+
+    async fn put_position(
+        &self,
+        destination: &DestinationName,
+        position: &str,
+    ) -> Result<(), StoreError> {
+        self.kept(&paths::position(destination), &position).await
+    }
+}
+
 impl<R: Records> Deliveries for Kept<R> {
     async fn admit(&self, scheme: Scheme, id: &str, at: Timestamp) -> Result<Admitted, StoreError> {
         Ok(
@@ -498,12 +516,18 @@ impl<R: Records> Announcements for Kept<R> {
 impl<R: Records> Keeper for Kept<R> {
     fn holds(&self, kind: Held) -> bool {
         match kind {
-            Held::Ledger | Held::Cursors | Held::Schedules | Held::Deliveries => true,
+            Held::Ledger | Held::Cursors | Held::Schedules | Held::Deliveries | Held::Positions => {
+                true
+            }
             Held::Subscriptions | Held::Inboxes => self.keeps.contains(&RecordKind::Subscriptions),
             Held::Pins => self.keeps.contains(&RecordKind::Pins),
             Held::Notes => self.keeps.contains(&RecordKind::Notes),
             Held::Latest => self.keeps.contains(&RecordKind::Latest),
         }
+    }
+
+    fn writes_one_at_a_time(&self) -> bool {
+        self.records.one_at_a_time()
     }
 
     fn skipped(&self) -> Vec<String> {

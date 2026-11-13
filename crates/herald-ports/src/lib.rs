@@ -38,7 +38,7 @@ pub use socket::{Frame, Socket, Sockets};
 pub use sql::{Answers, Changed, Parameters, Sql, SqlError, Statement, Value};
 pub use store::{
     Admitted, Announcements, Cursors, Deliveries, Held, Inboxes, Keeper, Keeping, Ledger, Notes,
-    Outboxed, Pins, Schedules, Store, StoreError, Subscriptions, Unkept, Version, Versioned,
-    Written,
+    Outboxed, Pins, Positions, Schedules, Store, StoreError, Subscriptions, Unkept, Version,
+    Versioned, Written,
 };
 pub use timer::Timer;

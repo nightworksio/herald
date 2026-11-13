@@ -14,7 +14,7 @@ mod compose {
     };
     use herald_config::{Config, Uses, load};
     use herald_core::DestinationName;
-    use herald_flows::{Admission, Housekept, Inbound, Job, Stop, Sweep, Taker, Worked};
+    use herald_flows::{Admission, Did, Housekept, Inbound, Job, Stop, Sweep, Taker, Worked};
     use herald_kinds::{Opening, StoreKind};
     use herald_ports::{Changed, Frame, Http, HttpError, Outbound, Request, Response, Value};
     use herald_testing::{
@@ -589,7 +589,10 @@ template = "t"
                 let place = composed.place().expect("a place in an empty room");
                 assert_eq!(
                     pollster::block_on(composed.work(Left::new(job, place))),
-                    Worked::Interacted(Vec::new()),
+                    Worked {
+                        did: Did::Interacted(Vec::new()),
+                        unreleased: None,
+                    },
                     "{store}"
                 );
             }
@@ -607,7 +610,7 @@ template = "t"
                 format!("kind = \"deno-kv\" memory {kept}"),
                 format!("kind = \"deno-kv\" store {kept}"),
                 format!("kind = \"git-branch\" memory {untreed}"),
-                format!("kind = \"git-branch\" store {untreed}"),
+                format!("kind = \"git-branch\" store {}", untreed.replace("deliveries", "keys")),
                 format!("{variables} memory {uncounted}"),
                 format!("{variables} store {uncounted}"),
                 format!("kind = \"dynamodb\" memory {kept}"),

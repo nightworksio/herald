@@ -1,6 +1,6 @@
 use herald_core::{Asked, DestinationName, Place};
 use herald_ports::{Request, Response, Text};
-use jiff::SignedDuration;
+use jiff::{SignedDuration, Timestamp};
 
 use crate::Replying;
 
@@ -31,6 +31,8 @@ pub enum Effect {
     Ready,
     /// A command, and where its answer goes.
     Asked(Asked, Replying),
+    /// A command not taken up, and why, for the log.
+    Skipped(String),
     /// A member typing a project at `place`, to be offered the projects
     /// announced there that start with `typed`.
     Completing {
@@ -93,6 +95,16 @@ pub trait Session: Send {
 
     /// What a failure to connect is said as, before its reason.
     fn unreachable(&self) -> &'static str;
+
+    /// Where it stands, for a session taken up later to start from, where
+    /// it keeps a position.
+    fn position(&self) -> Option<&str> {
+        None
+    }
+
+    /// Starts from `position`, where an earlier session of its destination
+    /// left off, skipping each command given before `given_after`.
+    fn resume(&mut self, _position: String, _given_after: Timestamp) {}
 }
 
 #[cfg(test)]

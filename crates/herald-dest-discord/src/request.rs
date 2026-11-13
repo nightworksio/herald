@@ -281,31 +281,7 @@ fn bot(
     let api = &discord.api;
     let bot = discord.credential.bot();
     match step {
-        Step::Post if discord.route.forum => {
-            let name = thread_name(announcement);
-            let body = json!({
-                "name": name,
-                "auto_archive_duration": discord.look.archive_after.minutes(),
-                "message": message(discord, announcement, delivery, false, discord.route.subscribe.as_ref()),
-            });
-            Ok(json(
-                Method::Post,
-                Text::plain(format!("{api}/channels/{channel}/threads")),
-                bot,
-                body.to_string(),
-            ))
-        }
-        Step::Post => {
-            let url = Text::plain(format!("{api}/channels/{channel}/messages"));
-            let body = message(
-                discord,
-                announcement,
-                delivery,
-                true,
-                discord.route.subscribe.as_ref(),
-            );
-            Ok(json(Method::Post, url, bot, body.to_string()))
-        }
+        Step::Post => Ok(bot_post(discord, channel, announcement, delivery)),
         Step::Crosspost => {
             let message = posted(entry)?;
             let url = Text::plain(format!(
@@ -315,12 +291,7 @@ fn bot(
         }
         Step::OpenThread => {
             let message = posted(entry)?;
-            let name = thread_name(announcement);
-            let body = json!({ "name": name, "auto_archive_duration": discord.look.archive_after.minutes() });
-            let url = Text::plain(format!(
-                "{api}/channels/{channel}/messages/{message}/threads"
-            ));
-            Ok(json(Method::Post, url, bot, body.to_string()))
+            Ok(open_thread(discord, channel, message, announcement))
         }
         Step::Chunk(index) => {
             let target = thread(entry).unwrap_or(channel);
@@ -332,21 +303,7 @@ fn bot(
                 chunk(announcement, *index, true).to_string(),
             ))
         }
-        Step::Pin if discord.route.forum => {
-            let post = posted(entry)?;
-            let url = Text::plain(format!("{api}/channels/{post}"));
-            Ok(json(
-                Method::Patch,
-                url,
-                bot,
-                json!({ "flags": PINNED }).to_string(),
-            ))
-        }
-        Step::Pin => {
-            let message = posted(entry)?;
-            let url = Text::plain(format!("{api}/channels/{channel}/messages/pins/{message}"));
-            Ok(bare(Method::Put, url, bot))
-        }
+        Step::Pin => Ok(pin(discord, channel, posted(entry)?)),
         Step::Unpin => {
             posted(entry)?;
             let earlier = announcement
@@ -357,6 +314,77 @@ fn bot(
         }
         Step::Deliver(_) | Step::Deliveries => Err(NO_INBOX),
     }
+}
+
+/// The bot's post of `announcement` to `channel`: a message, or in a forum a
+/// post of its own.
+fn bot_post(
+    discord: &Discord,
+    channel: &str,
+    announcement: &Announcement,
+    delivery: &Delivery,
+) -> Request {
+    let api = &discord.api;
+    let bot = discord.credential.bot();
+    let subscribe = discord.route.subscribe.as_ref();
+    if discord.route.forum {
+        let name = thread_name(announcement);
+        let body = json!({
+            "name": name,
+            "auto_archive_duration": discord.look.archive_after.minutes(),
+            "message": message(discord, announcement, delivery, false, subscribe),
+        });
+        return json(
+            Method::Post,
+            Text::plain(format!("{api}/channels/{channel}/threads")),
+            bot,
+            body.to_string(),
+        );
+    }
+    let url = Text::plain(format!("{api}/channels/{channel}/messages"));
+    let body = message(discord, announcement, delivery, true, subscribe);
+    json(Method::Post, url, bot, body.to_string())
+}
+
+/// The bot's thread opened from the message `message` in `channel`, named
+/// for `announcement`.
+fn open_thread(
+    discord: &Discord,
+    channel: &str,
+    message: &str,
+    announcement: &Announcement,
+) -> Request {
+    let api = &discord.api;
+    let name = thread_name(announcement);
+    let body =
+        json!({ "name": name, "auto_archive_duration": discord.look.archive_after.minutes() });
+    let url = Text::plain(format!(
+        "{api}/channels/{channel}/messages/{message}/threads"
+    ));
+    json(
+        Method::Post,
+        url,
+        discord.credential.bot(),
+        body.to_string(),
+    )
+}
+
+/// The bot's pin of the message `message` in `channel`, or of the post
+/// `message` in a forum.
+fn pin(discord: &Discord, channel: &str, message: &str) -> Request {
+    let api = &discord.api;
+    let bot = discord.credential.bot();
+    if discord.route.forum {
+        let url = Text::plain(format!("{api}/channels/{message}"));
+        return json(
+            Method::Patch,
+            url,
+            bot,
+            json!({ "flags": PINNED }).to_string(),
+        );
+    }
+    let url = Text::plain(format!("{api}/channels/{channel}/messages/pins/{message}"));
+    bare(Method::Put, url, bot)
 }
 
 /// The route's channel, which a bot needs.

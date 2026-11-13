@@ -98,6 +98,10 @@ impl GitBranch {
 }
 
 impl<H: Http> Records for BranchRecords<H> {
+    fn one_at_a_time(&self) -> bool {
+        true
+    }
+
     async fn read(&self, path: &str) -> Result<Option<Blob>, StoreError> {
         let branch = &self.branch;
         let request = branch.contents(Method::Get, &format!("{path}?ref={}", branch.branch));

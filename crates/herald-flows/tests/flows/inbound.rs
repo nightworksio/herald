@@ -9,7 +9,7 @@ use herald_records::MemoryKeyring;
 use herald_testing::{FakeStore, FakeVerifier};
 use jiff::Timestamp;
 
-use crate::harness::Refusing;
+use crate::harness::{Refusing, keys_in};
 
 /// A dead signature beside the fake verifier's signature of
 /// `msg.1800000000.` and the body, keyed by the bytes 00 01.
@@ -634,32 +634,48 @@ fn an_activity_that_does_not_hold_under_a_key_read_within_its_reread_is_refused_
 }
 
 /// A keyring that can neither read nor keep a key.
-struct Unkept;
+struct Answering {
+    known: Result<Option<KnownKey>, StoreError>,
+    know: Result<(), StoreError>,
+    forget: Result<(), StoreError>,
+}
 
-impl Keyring for Unkept {
+impl Keyring for Answering {
     async fn known(&self, _: &str) -> Result<Option<KnownKey>, StoreError> {
-        Err(StoreError::Unavailable {
-            reason: "down".to_owned(),
-        })
+        self.known.clone()
     }
 
     async fn know(&self, _: &str, _: &KnownKey) -> Result<(), StoreError> {
-        Err(StoreError::Unavailable {
-            reason: "down".to_owned(),
-        })
+        self.know.clone()
     }
 
     async fn forget_before(&self, _: Timestamp) -> Result<(), StoreError> {
-        Ok(())
+        self.forget.clone()
+    }
+}
+
+fn down() -> StoreError {
+    StoreError::Unavailable {
+        reason: "down".to_owned(),
+    }
+}
+
+fn keepless() -> Answering {
+    let unsupported = || StoreError::Unsupported { what: "keys" };
+    Answering {
+        known: Err(unsupported()),
+        know: Err(unsupported()),
+        forget: Err(unsupported()),
     }
 }
 
 #[test]
-fn a_keyring_that_cannot_answer_reads_every_key_from_its_document() {
+fn a_keyring_keeping_no_keys_reads_every_key_from_its_document() {
     let owned = document(ANA);
     let headers = activity(FOLLOW, ANA_KEY, None);
+    let keyring = keepless();
     let (checked, seen) = kept_by(
-        &Unkept,
+        &keyring,
         FOLLOW,
         &headers,
         &[(ANA, 200, owned.as_str())],
@@ -667,7 +683,51 @@ fn a_keyring_that_cannot_answer_reads_every_key_from_its_document() {
     );
     assert_eq!(checked, Ok(followed()));
     assert_eq!(seen, [format!("GET {ANA}")]);
-    assert_eq!(pollster::block_on(Unkept.forget_before(at())), Ok(()));
+    assert_eq!(pollster::block_on(keys_in(&keyring).sweep(at())), Ok(()));
+}
+
+#[test]
+fn a_keyring_that_cannot_answer_lets_no_activity_through_and_says_why() {
+    let owned = document(ANA);
+    let headers = activity(FOLLOW, ANA_KEY, None);
+    let unread = Answering {
+        known: Err(down()),
+        ..keepless()
+    };
+    let (checked, seen) = kept_by(&unread, FOLLOW, &headers, &[], JSON);
+    let rejected = Rejected::Unkept {
+        reason: down().to_string(),
+    };
+    assert_eq!(checked, Err(rejected.clone()));
+    assert_eq!(seen, [] as [String; 0]);
+    assert_eq!(
+        rejected.to_string(),
+        format!(
+            "the keys activities are checked with could not be read or kept, so the activity is not let through: {}",
+            down()
+        )
+    );
+    let unkept = Answering {
+        know: Err(down()),
+        ..keepless()
+    };
+    let (checked, seen) = kept_by(
+        &unkept,
+        FOLLOW,
+        &headers,
+        &[(ANA, 200, owned.as_str())],
+        JSON,
+    );
+    assert_eq!(checked, Err(rejected));
+    assert_eq!(seen, [format!("GET {ANA}")]);
+    let unswept = Answering {
+        forget: Err(down()),
+        ..keepless()
+    };
+    assert_eq!(
+        pollster::block_on(keys_in(&unswept).sweep(at())),
+        Err(down())
+    );
 }
 
 #[test]

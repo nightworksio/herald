@@ -101,6 +101,16 @@ impl Pins for Refusing {
     }
 }
 
+impl Positions for Refusing {
+    async fn position(&self, _: &DestinationName) -> Result<Option<String>, StoreError> {
+        Err(refused("position"))
+    }
+
+    async fn put_position(&self, _: &DestinationName, _: &str) -> Result<(), StoreError> {
+        Err(refused("put_position"))
+    }
+}
+
 impl Deliveries for Refusing {
     async fn admit(&self, _: Scheme, _: &str, _: Timestamp) -> Result<Admitted, StoreError> {
         Err(refused("admit"))
@@ -196,7 +206,7 @@ fn an_erased_store_holds_and_skips_what_the_store_it_erases_does() {
         let erased = Erased(&store as &dyn DynStore);
         assert_eq!(
             Held::ALL.map(|held| Keeper::holds(&erased, held)),
-            [holding; 9]
+            [holding; 10]
         );
         assert_eq!(Keeper::skipped(&erased), ["corrupt.json"]);
     }
@@ -256,6 +266,8 @@ fn every_answer_of_an_erased_store_is_the_store_s_own() {
         answered(erased.unsubscribe(&subscription)),
         answered(erased.pinned(&route)),
         answered(erased.put_pinned(&route, "post")),
+        answered(erased.position(&subscription.destination)),
+        answered(erased.put_position(&subscription.destination, "s1")),
         answered(erased.admit(SCHEME, "1", at)),
         answered(erased.release(SCHEME, "1")),
         answered(erased.expire_deliveries(at)),
@@ -286,6 +298,8 @@ fn every_answer_of_an_erased_store_is_the_store_s_own() {
         "unsubscribe",
         "pinned",
         "put_pinned",
+        "position",
+        "put_position",
         "admit",
         "release",
         "expire_deliveries",

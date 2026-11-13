@@ -1,5 +1,8 @@
 use std::collections::BTreeSet;
+use std::num::NonZeroUsize;
 
+use futures_util::future::join_all;
+use futures_util::stream::{self, StreamExt};
 use herald_config::Config;
 use herald_core::{
     Announcement, Entry, Event, Facts, Key, KindSpecs, Latest, Marker, Marks, MentionStyle,
@@ -14,7 +17,6 @@ use jiff::{SignedDuration, Timestamp};
 
 use crate::prepare::{Connected, PreparedRoute};
 use crate::reached::Signing;
-use crate::together::together;
 
 /// The ports an announcement goes through, beside each route's `Http`.
 #[derive(Debug)]
@@ -298,20 +300,15 @@ impl<S: Store, C: Clock, G: Signer, H: Http> Run<'_, S, C, G, H> {
         }
         let delivery = &self.route.config.route.delivery;
         let entry = &progress.entry;
-        let sent = together(
-            steps
-                .iter()
-                .map(|step| {
-                    let signing = Signing {
-                        signer: self.ports.signer,
-                        now,
-                    };
-                    self.route
-                        .reached
-                        .send(self.http, signing, step, announcement, delivery, entry)
-                })
-                .collect(),
-        )
+        let sent = join_all(steps.iter().map(|step| {
+            let signing = Signing {
+                signer: self.ports.signer,
+                now,
+            };
+            self.route
+                .reached
+                .send(self.http, signing, step, announcement, delivery, entry)
+        }))
         .await;
         let mut landed = Vec::new();
         let mut failed = Vec::new();
@@ -629,7 +626,10 @@ pub async fn announce<S: Store, C: Clock, G: Signer, H: Http>(
 }
 
 /// [`announce`], to the routes `within` names alone where it names any: the
-/// routes an app may announce to (ADR-0007).
+/// routes an app may announce to (ADR-0007). As many routes as `[run]
+/// routes` says are announced to at once, one at a time where the store
+/// writes one record at a time, and what the project last announced is
+/// kept for each route in the file's order (ADR-0025).
 pub async fn announce_within<S: Store, C: Clock, G: Signer, H: Http>(
     config: &Config,
     connected: &Connected<H>,
@@ -639,14 +639,16 @@ pub async fn announce_within<S: Store, C: Clock, G: Signer, H: Http>(
     within: Option<&[RouteId]>,
     run: &str,
 ) -> Vec<Announced> {
-    let mut announced = Vec::new();
-    for (route, http) in &connected.routes {
-        let id = &route.config.route.id;
-        let named = within.is_none_or(|within| within.contains(id));
-        if !named || !route.config.route.filter.takes(source, event) {
-            continue;
-        }
-        let outcome = Run {
+    let taking: Vec<&(PreparedRoute, H)> = connected
+        .routes
+        .iter()
+        .filter(|(route, _)| {
+            within.is_none_or(|within| within.contains(&route.config.route.id))
+                && route.config.route.filter.takes(source, event)
+        })
+        .collect();
+    let outcomes: Vec<Outcome> = stream::iter(taking.iter().map(|(route, http)| async move {
+        Run {
             ports,
             route,
             kinds: &config.kinds,
@@ -655,7 +657,14 @@ pub async fn announce_within<S: Store, C: Clock, G: Signer, H: Http>(
             lease: config.announce.lease,
         }
         .announce(event, &config.templates)
-        .await;
+        .await
+    }))
+    .buffered(at_once(ports.store, config.run.routes))
+    .collect()
+    .await;
+    let mut announced = Vec::new();
+    for ((route, _), outcome) in taking.into_iter().zip(outcomes) {
+        let id = &route.config.route.id;
         let outcome = kept_latest(
             ports.store,
             event,
@@ -665,9 +674,20 @@ pub async fn announce_within<S: Store, C: Clock, G: Signer, H: Http>(
         )
         .await;
         announced.push(Announced {
-            route: route.config.route.id.clone(),
+            route: id.clone(),
             outcome,
         });
     }
     announced
+}
+
+/// How many of a run's routes or sources go at once: `width`, or one where
+/// `store` writes one record at a time, so no write is refused for another
+/// made at the same time.
+pub(crate) fn at_once<S: Store>(store: &S, width: NonZeroUsize) -> usize {
+    if store.writes_one_at_a_time() {
+        1
+    } else {
+        width.get()
+    }
 }

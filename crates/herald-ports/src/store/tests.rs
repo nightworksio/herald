@@ -167,6 +167,14 @@ fn the_run_s_kinds_kept_nowhere_answer_unsupported_naming_them() {
         );
         assert_eq!(unsupported(unkept.pinned(&route)), naming("pins"));
         assert_eq!(unsupported(unkept.put_pinned(&route, "1")), naming("pins"));
+        assert_eq!(
+            unsupported(unkept.position(&destination)),
+            naming("session positions")
+        );
+        assert_eq!(
+            unsupported(unkept.put_position(&destination, "s1")),
+            naming("session positions")
+        );
     }
 }
 

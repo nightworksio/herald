@@ -14,7 +14,7 @@ mod sessions {
 
     use herald_config::{Config, Uses, load};
     use herald_core::{Kind, Latest, RouteId, Shown};
-    use herald_flows::{Connected, Keys, Ports, Serving, Webhooks, Worked, prepare};
+    use herald_flows::{Connected, Did, Keys, Ports, Serving, Webhooks, Worked, prepare};
     use herald_ports::{Announcements, Frame, Http, HttpError, Request, Response};
     use herald_records::MemoryKeyring;
     use herald_server::{Heard, Limits, Listener, serve};
@@ -287,7 +287,10 @@ appservice_token = {{ secret = "HERALD_MATRIX_AS" }}
                     Heard::Session { destination, said } => {
                         format!("{}: {said}", destination.as_str())
                     }
-                    Heard::Worked(Worked::Interacted(interacted)) => format!(
+                    Heard::Worked(Worked {
+                        did: Did::Interacted(interacted),
+                        ..
+                    }) => format!(
                         "answered {}: {:?}",
                         interacted[0].asked.command.name(),
                         interacted[0].sent

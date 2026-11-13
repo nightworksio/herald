@@ -347,6 +347,19 @@ pub(crate) struct AnnounceFile {
     pub(crate) latest_attempts: Option<NonZeroUsize>,
 }
 
+/// `[run]`: how many routes and sources a run goes through at once.
+#[derive(Debug, Default, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+#[serde(rename = "Run")]
+pub(crate) struct RunFile {
+    /// How many routes an event is announced to at once; 4 where absent,
+    /// and 1 announces to one route after another in the file's order.
+    pub(crate) routes: Option<NonZeroUsize>,
+    /// How many sources a poll reads at once; 4 where absent, and 1 reads
+    /// one source after another.
+    pub(crate) sources: Option<NonZeroUsize>,
+}
+
 /// Where `herald server` keeps the keys inbound activities are checked with.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, JsonSchema)]
 #[serde(rename_all = "lowercase")]
@@ -472,7 +485,8 @@ pub(crate) struct ServerFile {
 }
 
 /// `[server.sessions]`: how a session a destination holds waits before it
-/// connects again, each wait double the last up to the longest.
+/// connects again, each wait double the last up to the longest, and how old
+/// a command one taken up again answers.
 #[derive(Debug, Default, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 #[serde(rename = "Sessions")]
@@ -487,6 +501,10 @@ pub(crate) struct SessionsFile {
     /// that failed together do not all connect again at once; true where
     /// absent.
     pub(crate) jitter: Option<bool>,
+    /// How long ago a command a session taken up again answers may have
+    /// been given; one given earlier is skipped and logged; "10m" where
+    /// absent.
+    pub(crate) stale: Option<Duration>,
 }
 
 /// `[server.inbound]`: what a signed inbound request may carry and still be

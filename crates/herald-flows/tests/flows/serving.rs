@@ -1,8 +1,8 @@
 use herald_config::{Config, Uses, load};
 use herald_core::{Key, RouteId, Scheme, Step};
 use herald_flows::{
-    Answered, Connected, FollowError, Followed, Inbound, Job, Outcome, Ports, Serving, Stop,
-    Worked, answer, busy, prepare, unworked, work,
+    Answered, Connected, Did, FollowError, Followed, Inbound, Job, Outcome, Ports, Serving, Stop,
+    answer, busy, prepare, unworked, work,
 };
 use herald_ports::{Admitted, Algorithm, CryptoError, Deliveries, Ledger, Secret, Signer};
 use herald_records::MemoryKeyring;
@@ -137,8 +137,10 @@ impl World {
         self.serving(|serving| pollster::block_on(answer(serving, inbound)))
     }
 
-    fn work(&self, job: Job) -> Worked {
-        self.serving(|serving| pollster::block_on(work(serving, job, "server")))
+    fn work(&self, job: Job) -> Did {
+        let worked = self.serving(|serving| pollster::block_on(work(serving, job, "server")));
+        assert_eq!(worked.unreleased, None);
+        worked.did
     }
 
     fn admits(&self, scheme: Scheme, delivery: &str) -> Admitted {
@@ -375,7 +377,7 @@ fn a_signed_webhook_of_a_release_is_answered_and_left_to_announce() {
     };
     assert_eq!(
         world.work(job),
-        Worked::Announced(vec![herald_flows::Announced {
+        Did::Announced(vec![herald_flows::Announced {
             route: RouteId::new("followed"),
             outcome: Outcome::Sent {
                 steps: vec![Step::Post]
@@ -545,7 +547,7 @@ fn an_activity_signed_by_its_actor_is_answered_and_left_to_take_once() {
             .status,
         409
     );
-    let Worked::Followed(followed) = world.work(Job::Follow { verified, body }) else {
+    let Did::Followed(followed) = world.work(Job::Follow { verified, body }) else {
         panic!("the follow is taken");
     };
     assert_eq!(
@@ -621,7 +623,7 @@ fn work_that_stops_or_fails_releases_its_delivery() {
         world.admits(herald_sources_forge::Forge::GitHub.scheme(), "d1"),
         Admitted::Fresh
     );
-    let Worked::Announced(announced) = world.work(Job::Announce {
+    let Did::Announced(announced) = world.work(Job::Announce {
         source: herald_core::SourceName::new("gate"),
         event,
         scheme: herald_sources_forge::Forge::GitHub.scheme(),
@@ -645,7 +647,7 @@ fn work_that_stops_or_fails_releases_its_delivery() {
         world.admits(herald_dest_fediverse::ACTOR_SCHEME, "d2"),
         Admitted::Fresh
     );
-    let Worked::Followed(taken) = world.work(Job::Follow {
+    let Did::Followed(taken) = world.work(Job::Follow {
         verified,
         body: follow,
     }) else {
@@ -691,7 +693,10 @@ fn work_that_will_not_be_done_releases_its_delivery() {
     ];
     for (scheme, job) in jobs {
         assert_eq!(world.admits(scheme, "d3"), Admitted::Fresh);
-        world.serving(|serving| pollster::block_on(unworked(serving, &job)));
+        assert_eq!(
+            world.serving(|serving| pollster::block_on(unworked(serving, &job))),
+            Ok(())
+        );
         assert_eq!(world.admits(scheme, "d3"), Admitted::Fresh);
     }
 }
@@ -838,7 +843,7 @@ fn an_app_s_event_is_announced_to_the_routes_the_app_may_announce_to_only() {
     let world = World::new(Script::default());
     let event = herald_sources_app::event("ci", DEPLOYED, at(), &herald_core::KindSpecs::default())
         .unwrap();
-    let Worked::Announced(announced) = world.work(Job::App {
+    let Did::Announced(announced) = world.work(Job::App {
         app: "ci".to_owned(),
         event,
         verified: herald_flows::Verified {
@@ -871,7 +876,7 @@ fn an_app_s_work_that_stops_or_will_not_be_done_releases_its_delivery() {
         world.admits(herald_sources_app::SCHEME, "app/ci/7"),
         Admitted::Fresh
     );
-    let Worked::Announced(announced) = world.work(job()) else {
+    let Did::Announced(announced) = world.work(job()) else {
         panic!("the event is announced");
     };
     assert_eq!(announced[0].outcome, unadmitted());
@@ -879,7 +884,10 @@ fn an_app_s_work_that_stops_or_will_not_be_done_releases_its_delivery() {
         world.admits(herald_sources_app::SCHEME, "app/ci/7"),
         Admitted::Fresh
     );
-    world.serving(|serving| pollster::block_on(unworked(serving, &job())));
+    assert_eq!(
+        world.serving(|serving| pollster::block_on(unworked(serving, &job()))),
+        Ok(())
+    );
     assert_eq!(
         world.admits(herald_sources_app::SCHEME, "app/ci/7"),
         Admitted::Fresh
