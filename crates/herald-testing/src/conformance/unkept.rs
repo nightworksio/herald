@@ -2,8 +2,8 @@ use herald_core::{
     Cursor, DestinationName, Entry, RouteId, Schedule, SourceName, State, Subscription,
 };
 use herald_ports::{
-    Announcements, Cursors, Deliveries, Held, Inboxes, Ledger, Notes, Pins, Schedules, Store,
-    StoreError, Subscriptions,
+    Announcements, Cursors, Deliveries, Held, Inboxes, Ledger, Notes, Pins, Positions, Schedules,
+    Store, StoreError, Subscriptions,
 };
 
 use super::{Checks, GITHUB, NOON, announced, key};
@@ -44,6 +44,9 @@ pub(super) async fn unkept<S: Store>(store: &S, checks: &mut Checks) {
     }
     if store.inboxes().is_none() {
         inboxes(&store.inboxes(), checks).await;
+    }
+    if store.positions().is_none() {
+        positions(&store.positions(), checks).await;
     }
 }
 
@@ -126,6 +129,22 @@ pub(super) async fn subscriptions(store: &impl Subscriptions, checks: &mut Check
         store.unsubscribe(&subscription).await,
         Held::Subscriptions,
         "unsubscribe",
+    );
+}
+
+pub(super) async fn positions(store: &impl Positions, checks: &mut Checks) {
+    let destination = DestinationName::new("unkept");
+    refused(
+        checks,
+        store.position(&destination).await,
+        Held::Positions,
+        "position",
+    );
+    refused(
+        checks,
+        store.put_position(&destination, "s1").await,
+        Held::Positions,
+        "put_position",
     );
 }
 

@@ -1,3 +1,6 @@
+//! Inbound requests verified as their senders' and admitted once before a
+//! parser reads them (ADR-0007, ADR-0013).
+
 use std::fmt;
 
 use herald_core::Signed;
@@ -5,7 +8,7 @@ use herald_core::{
     Addressed, Claim, Inbound, Refusal, Scheme, Signature, activity_claim, claim, key, same,
 };
 use herald_dest_fediverse::{
-    ActorError, ActorKey, Found, activity_json, actor_key, actor_of, confirms, key_request,
+    ActorError, ActorKey, KeyOwner, activity_json, actor_key, actor_of, confirms, key_request,
     same_origin,
 };
 use herald_ports::{
@@ -48,6 +51,12 @@ pub enum Rejected {
     /// It names an actor other than the owner of the key that signed it, or
     /// has its own id on another origin than that actor.
     Impersonated,
+    /// The keys its signature is checked with could not be read or kept, so
+    /// it is not let through.
+    Unkept {
+        /// Why not.
+        reason: String,
+    },
 }
 
 /// Where the keys activities were checked with are kept, and how long one
@@ -65,9 +74,13 @@ pub struct Keys<'a, K> {
 
 impl<K: Keyring> Keys<'_, K> {
     /// Every key read longer ago than its refresh at `now`, forgotten.
-    pub async fn sweep(&self, now: Timestamp) {
+    ///
+    /// # Errors
+    ///
+    /// When the keys could not be forgotten.
+    pub async fn sweep(&self, now: Timestamp) -> Result<(), StoreError> {
         let before = now.checked_sub(self.refreshed).unwrap_or(Timestamp::MIN);
-        let _ = self.keyring.forget_before(before).await;
+        kept_nowhere(self.keyring.forget_before(before).await)
     }
 }
 
@@ -102,6 +115,10 @@ impl fmt::Display for Rejected {
             ),
             Self::Impersonated => f.write_str(
                 "the activity names an actor other than the owner of the key that signed it, or has its id on another origin",
+            ),
+            Self::Unkept { reason } => write!(
+                f,
+                "the keys activities are checked with could not be read or kept, so the activity is not let through: {reason}"
             ),
         }
     }
@@ -166,12 +183,11 @@ pub async fn activity_verified<V: Verifier, H: Http, K: Keyring>(
     let claim = activity_claim(addressed, headers, body, now, checking.bounds)
         .map_err(Rejected::Refused)?;
     let named = claim.signer.as_deref().unwrap_or_default();
-    let kept = keys
-        .keyring
-        .known(named)
-        .await
-        .ok()
-        .flatten()
+    let unkept = |error: StoreError| Rejected::Unkept {
+        reason: error.to_string(),
+    };
+    let kept = kept_nowhere(keys.keyring.known(named).await)
+        .map_err(unkept)?
         .filter(|known| {
             known
                 .fetched
@@ -198,7 +214,7 @@ pub async fn activity_verified<V: Verifier, H: Http, K: Keyring>(
         pem: owned.pem.clone(),
         fetched: now,
     };
-    let _ = keys.keyring.know(named, &known).await;
+    kept_nowhere(keys.keyring.know(named, &known).await).map_err(unkept)?;
     owned_by(verifier, &claim, owned, body).await
 }
 
@@ -212,8 +228,8 @@ async fn read_key<H: Http>(http: &H, named: &str, bounds: &Inbound) -> Result<Ac
     )
     .map_err(|error| unfetched(error.to_string()))?;
     match found {
-        Found::Held(owned) => Ok(owned),
-        Found::Claimed { owner, pem } => {
+        KeyOwner::Held(owned) => Ok(owned),
+        KeyOwner::Claimed { owner, pem } => {
             if !confirms(
                 &fetched(http, &owner, bounds).await.map_err(unfetched)?,
                 &owner,
@@ -360,14 +376,14 @@ pub async fn released<S: Store>(
     let Some(delivery) = &verified.delivery else {
         return Ok(());
     };
-    forgotten(store.deliveries().release(scheme, delivery).await)
+    kept_nowhere(store.deliveries().release(scheme, delivery).await)
 }
 
-/// What a store's answer to forgetting a delivery leaves to report: a store
-/// that keeps no deliveries has nothing to forget.
-fn forgotten(answer: Result<(), StoreError>) -> Result<(), StoreError> {
+/// What a store's `answer` leaves to report: a store that keeps none of
+/// what it was asked for has nothing to forget, keep or find.
+fn kept_nowhere<T: Default>(answer: Result<T, StoreError>) -> Result<T, StoreError> {
     match answer {
-        Err(StoreError::Unsupported { .. }) => Ok(()),
+        Err(StoreError::Unsupported { .. }) => Ok(T::default()),
         answer => answer,
     }
 }

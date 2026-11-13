@@ -1,12 +1,12 @@
 use std::collections::BTreeMap;
 
 use herald_core::{RouteId, Step};
-use herald_flows::Stop;
+use herald_flows::{Announced, Outcome, Stop};
 
 use super::world::*;
 use crate::output::escaped;
 use crate::*;
-use herald_compose::told::steps;
+use herald_compose::told::{report, steps};
 
 #[test]
 fn a_run_takes_its_leases_in_the_ci_job_it_runs_in() {

@@ -12,7 +12,7 @@ mod conformance {
     use std::sync::Mutex;
 
     use herald_ports::{Http, HttpError, Request, Response, Secret, StoreError};
-    use herald_records::{Records, Wrote};
+    use herald_records::{RecordBackend, Wrote};
     use herald_store_dynamodb::StoreOptions;
     use herald_store_dynamodb::{Credentials, Dynamodb, DynamodbRecords, DynamodbStore};
     use herald_testing::{FakeClock, FakeSecrets, store_conformance};

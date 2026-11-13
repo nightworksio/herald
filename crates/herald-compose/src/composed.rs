@@ -5,18 +5,18 @@ use std::sync::atomic::AtomicBool;
 use herald_config::{Config, Uses};
 use herald_flows::{
     Admission, Connected, Housekept, Inbound, Job, Keys, Place, Ports, Room, Round, Running,
-    Serving, Sessions, Stop, Swept, Taker, Worked, answer, busy, housekeep, poll, prepare, refusal,
-    unworked, work,
+    Serving, Sessions, Stop, Swept, Taker, Worked, answer, housekeep, poll, prepare, refusal,
+    unplaced, work,
 };
 use herald_kinds::Opened;
-use herald_ports::{Keyring, PUBLIC, Sockets, Store as Keeps, Timer};
-use herald_records::{Kept, Memory, MemoryKeyring};
+use herald_ports::{Keyring, PUBLIC_BASE, Sockets, Store, Timer};
+use herald_records::{Memory, MemoryKeyring, RecordStore};
 
 use crate::answer::{Answer, Left};
 use crate::capped::Capped;
 use crate::host::Host;
 use crate::hosting::Hosting;
-use crate::records::{Opener, Records, Served, reached};
+use crate::records::{OpenedRecords, Opener, Served, reached};
 
 /// The variable that bounds a request's whole time, in milliseconds, in
 /// place of the config's `[http] total`.
@@ -28,7 +28,7 @@ const TIMEOUT_MS: &str = "HERALD_TIMEOUT_MS";
 pub struct Composed<'o, H: Host + 'o> {
     host: Arc<H>,
     config: Config,
-    records: Records<'o>,
+    records: OpenedRecords<'o>,
     connected: Connected<H::Http>,
     public: Capped<H::Http>,
     memory: MemoryKeyring,
@@ -105,12 +105,12 @@ where
                 reached(Arc::new(opener), &config.store, &hosting.stores()).await?
             }
             Keeping::Remembered => {
-                Records::new(Opened::Kept(Box::new(Kept::new(Memory::default()))))
+                OpenedRecords::new(Opened::Kept(Box::new(RecordStore::new(Memory::default()))))
             }
         };
         let connected = prepared.connect(|base| host.connect(base, &outbound))?;
         let public = Capped::new(
-            host.connect(PUBLIC, &outbound.public())?,
+            host.connect(PUBLIC_BASE, &outbound.public())?,
             config.server.fetches,
         );
         let memory = MemoryKeyring::new(config.server.keys_most);
@@ -258,7 +258,7 @@ pub trait Through<H: Host> {
     type Done;
 
     /// The work done through `serving`, taking leases under `run`.
-    fn through<S: Keeps, K: Keyring>(
+    fn through<S: Store, K: Keyring>(
         self,
         serving: &ServingOn<'_, H, S, K>,
         run: &str,
@@ -274,18 +274,20 @@ struct Keying<'c, H: Host, W> {
 impl<H: Host, W: Through<H>> Served for Keying<'_, H, W> {
     type Done = W::Done;
 
-    async fn over<S: Keeps + Keyring>(self, store: &S) -> W::Done {
+    async fn over<S: Store + Keyring>(self, store: &S) -> W::Done {
         let composed = self.composed;
         if composed.config.server.keys_in_store() {
-            self.keyed(store, store).await
+            self.with_keyring(store, store).await
         } else {
-            self.keyed(store, &composed.memory).await
+            self.with_keyring(store, &composed.memory).await
         }
     }
 }
 
 impl<H: Host, W: Through<H>> Keying<'_, H, W> {
-    async fn keyed<S: Keeps, K: Keyring>(self, store: &S, keyring: &K) -> W::Done {
+    /// The work done over `store`, the keys activities are checked with
+    /// kept in `keyring`.
+    async fn with_keyring<S: Store, K: Keyring>(self, store: &S, keyring: &K) -> W::Done {
         let composed = self.composed;
         let host = &composed.host;
         let ports = Ports {
@@ -321,7 +323,7 @@ struct Answering<'i, 'a> {
 impl<H: Host> Through<H> for Answering<'_, '_> {
     type Done = Answer;
 
-    async fn through<S: Keeps, K: Keyring>(
+    async fn through<S: Store, K: Keyring>(
         self,
         serving: &ServingOn<'_, H, S, K>,
         _: &str,
@@ -331,8 +333,7 @@ impl<H: Host> Through<H> for Answering<'_, '_> {
             return answered.into();
         };
         let Some(place) = self.room.place() else {
-            unworked(serving, &job).await;
-            return busy(serving.config.server.busy_retry).into();
+            return unplaced(serving, &job).await.into();
         };
         Answer {
             left: Some(Left { job, place }),
@@ -346,7 +347,7 @@ struct Working(Job);
 impl<H: Host> Through<H> for Working {
     type Done = Worked;
 
-    async fn through<S: Keeps, K: Keyring>(
+    async fn through<S: Store, K: Keyring>(
         self,
         serving: &ServingOn<'_, H, S, K>,
         run: &str,
@@ -360,7 +361,7 @@ struct Polling;
 impl<H: Host> Through<H> for Polling {
     type Done = Vec<Swept>;
 
-    async fn through<S: Keeps, K: Keyring>(
+    async fn through<S: Store, K: Keyring>(
         self,
         serving: &ServingOn<'_, H, S, K>,
         run: &str,
@@ -378,7 +379,7 @@ struct Holding<'h, So, T, Ti> {
 impl<H: Host, So: Sockets, T: Taker, Ti: Timer> Through<H> for Holding<'_, So, T, Ti> {
     type Done = ();
 
-    async fn through<S: Keeps, K: Keyring>(self, serving: &ServingOn<'_, H, S, K>, _: &str) {
+    async fn through<S: Store, K: Keyring>(self, serving: &ServingOn<'_, H, S, K>, _: &str) {
         Sessions::new(serving, self.taker, self.timer)
             .held(self.sockets)
             .await;
@@ -390,7 +391,7 @@ struct Housekeeping;
 impl<H: Host> Through<H> for Housekeeping {
     type Done = Result<Housekept, Stop>;
 
-    async fn through<S: Keeps, K: Keyring>(
+    async fn through<S: Store, K: Keyring>(
         self,
         serving: &ServingOn<'_, H, S, K>,
         _: &str,

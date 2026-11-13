@@ -3,7 +3,7 @@
 
 use herald_core::Delivery;
 use herald_kinds::Probe;
-use herald_ports::{Credential, Http, Secret, Text};
+use herald_ports::{Credential, Http, Secret, SecretText};
 use serde_json::{Map, Value};
 
 use crate::read::{json, quoted, text};
@@ -50,7 +50,11 @@ fn lacking(granted: &str, delivery: &Delivery) -> Vec<String> {
 /// What Slack answers an empty post to the incoming webhook `url`, which
 /// it refuses before anything reaches the channel.
 async fn webhook<H: Http>(slack: &Slack, http: &H, url: &Secret) -> Probe {
-    let empty = posted_json(slack, Text::secret(url.clone()), &Value::Object(Map::new()));
+    let empty = posted_json(
+        slack,
+        SecretText::secret(url.clone()),
+        &Value::Object(Map::new()),
+    );
     match http.send(empty).await {
         Ok(answer) if answer.status == LIVE => Probe::Taken,
         Ok(answer) if DEAD.contains(&answer.status) => Probe::Credential(format!(

@@ -1,12 +1,12 @@
 use std::future::Future;
 use std::sync::Arc;
 
-use herald_config::Store;
+use herald_config::ConfiguredStore;
 use herald_flows::{Connected, unserved};
 use herald_kinds::{KvAt, Local, Opened, Opening, SqlAt};
 use herald_ports::{
     Clock, DynHttp, DynKv, DynSecrets, DynSql, DynStore, Erased, Http, Keyring, Outbound, Owned,
-    Signer, Store as Keeps,
+    Signer, Store,
 };
 
 use crate::host::Host;
@@ -14,9 +14,9 @@ use crate::host::Host;
 pub use herald_kinds::{GITHUB_REPOSITORY, GITHUB_TOKEN};
 
 /// Where a run keeps its records, as the config names it, opened.
-pub struct Records<'o>(Opened<'o>);
+pub struct OpenedRecords<'o>(Opened<'o>);
 
-impl<'o> Records<'o> {
+impl<'o> OpenedRecords<'o> {
     /// The records `opened` keeps.
     #[must_use]
     pub const fn new(opened: Opened<'o>) -> Self {
@@ -50,7 +50,7 @@ pub trait Served {
     type Done;
 
     /// The work done over `store`.
-    fn over<S: Keeps + Keyring>(self, store: &S) -> impl Future<Output = Self::Done>;
+    fn over<S: Store + Keyring>(self, store: &S) -> impl Future<Output = Self::Done>;
 }
 
 /// A host, as the stores it opens see it: its connections bound by
@@ -120,9 +120,9 @@ where
 /// Where the store is not one of `stores`, or cannot be reached, saying why.
 pub async fn reached<'o>(
     opening: Arc<dyn Opening + 'o>,
-    store: &Store,
+    store: &ConfiguredStore,
     stores: &[&str],
-) -> Result<Records<'o>, String> {
+) -> Result<OpenedRecords<'o>, String> {
     if !stores.contains(&store.kind()) {
         return Err(unserved(stores));
     }
@@ -134,5 +134,5 @@ pub async fn reached<'o>(
         ),
         None => None,
     };
-    store.open(opening, seal).await.map(Records::new)
+    store.open(opening, seal).await.map(OpenedRecords::new)
 }

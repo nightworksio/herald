@@ -1,8 +1,8 @@
 use herald_core::{Command, DestinationName, Place};
-use herald_flows::{Answered, Inbound, Interacted, Job, Worked, unworked};
+use herald_flows::{Answered, Did, Inbound, Interacted, Job, unworked};
 use serde_json::{Value, json};
 
-use crate::harness::{Fault, Script};
+use crate::harness::{Fault, Script, broken};
 use crate::inbound::at;
 use crate::interact::{
     APPLICATION, CHANNEL, GUILD, HOOK, KEY, ROOM, SLACK_CHANNEL, TOKEN, USER, World, discord,
@@ -128,6 +128,31 @@ fn a_discord_interaction_is_verified_then_pinged_completed_or_deferred_with_its_
             .status,
         400
     );
+}
+
+#[test]
+fn a_discord_completion_the_store_cannot_list_projects_for_is_refused_and_says_why() {
+    let mut world = world();
+    world.store.fault = Fault::ListsLatest;
+    let typing = interaction(
+        4,
+        &json!({ "name": "latest", "options": [{ "name": "project", "type": 3, "value": "ga", "focused": true }] }),
+    );
+    let refused = post(
+        &world,
+        "/interactions/discord",
+        &signed_discord(&typing),
+        &typing,
+    );
+    assert_eq!(refused.reply.status, 503);
+    assert_eq!(
+        refused.refused,
+        Some(format!(
+            "completions could not be offered: the projects could not be listed: {}",
+            broken()
+        ))
+    );
+    assert!(refused.job.is_none());
 }
 
 fn form(text: &str) -> Vec<u8> {
@@ -387,7 +412,7 @@ fn commands_left_to_answer_are_answered_and_sent() {
         destination: DestinationName::new("discord"),
         asked: vec![(discord(Command::Latest), discord_replying())],
     };
-    let Worked::Interacted(interacted) = world.work(job.clone()) else {
+    let Did::Interacted(interacted) = world.work(job.clone()) else {
         panic!("commands are answered");
     };
     assert_eq!(
@@ -400,7 +425,7 @@ fn commands_left_to_answer_are_answered_and_sent() {
     );
     assert_eq!(world.script.seen().len(), 1);
     let unsent = World::new("", Script::default()).announced("gate", &["releases"]);
-    let Worked::Interacted(failed) = unsent.work(job) else {
+    let Did::Interacted(failed) = unsent.work(job) else {
         panic!("commands are answered");
     };
     assert!(
@@ -411,12 +436,15 @@ fn commands_left_to_answer_are_answered_and_sent() {
             .contains("nothing scripted")
     );
     unsent.serving(|serving| {
-        pollster::block_on(unworked(
-            serving,
-            &Job::Interact {
-                destination: DestinationName::new("discord"),
-                asked: Vec::new(),
-            },
-        ));
+        assert_eq!(
+            pollster::block_on(unworked(
+                serving,
+                &Job::Interact {
+                    destination: DestinationName::new("discord"),
+                    asked: Vec::new(),
+                },
+            )),
+            Ok(())
+        );
     });
 }

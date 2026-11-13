@@ -3,7 +3,7 @@ use herald_wire::{SourceError, read};
 use jiff::Timestamp;
 use serde::Deserialize;
 
-use crate::package::{Api, Found};
+use crate::package::{Api, RegistryVersion};
 
 pub(crate) const API: Api = Api {
     url: "https://crates.io/api/v1",
@@ -35,13 +35,17 @@ pub(crate) fn page(name: &str, version: &str) -> String {
 }
 
 /// Each version of the crate that is not yanked.
-pub(crate) fn found(api: &Api, limit: usize, body: &[u8]) -> Result<Vec<Found>, SourceError> {
+pub(crate) fn found(
+    api: &Api,
+    limit: usize,
+    body: &[u8],
+) -> Result<Vec<RegistryVersion>, SourceError> {
     let versions: Versions = read(api.versions, limit, body)?;
     Ok(versions
         .versions
         .into_iter()
         .filter(|version| !version.yanked)
-        .map(|version| Found {
+        .map(|version| RegistryVersion {
             version: version.num,
             published: version.created_at,
         })

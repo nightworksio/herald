@@ -15,7 +15,7 @@ mod kept {
         Announcements, Deliveries, Ledger, Pins, Schedules, Store, StoreError, Subscriptions,
         Version, Written,
     };
-    use herald_records::{Blob, Kept, Records, Wrote};
+    use herald_records::{Blob, RecordBackend, RecordStore, Wrote};
     use herald_testing::store_conformance;
 
     /// A scheme as its crate writes it, for these tests.
@@ -31,6 +31,7 @@ mod kept {
         made: Mutex<u64>,
         races: Mutex<u32>,
         listed: Vec<String>,
+        one_at_a_time: bool,
     }
 
     impl Memory {
@@ -61,7 +62,11 @@ mod kept {
         }
     }
 
-    impl Records for Memory {
+    impl RecordBackend for Memory {
+        fn one_at_a_time(&self) -> bool {
+            self.one_at_a_time
+        }
+
         async fn read(&self, path: &str) -> Result<Option<Blob>, StoreError> {
             Ok(self
                 .files
@@ -129,15 +134,15 @@ mod kept {
     #[test]
     fn the_store_passes_the_conformance_suite() {
         assert_eq!(
-            pollster::block_on(store_conformance(&Kept::new(Memory::default()))),
+            pollster::block_on(store_conformance(&RecordStore::new(Memory::default()))),
             Ok(())
         );
     }
 
     #[test]
     fn the_store_answers_every_kind_itself_and_drops_the_kinds_it_is_told_not_to_keep() {
-        let store = Kept::new(Memory::default());
-        let itself = |answered: Option<&Kept<Memory>>| {
+        let store = RecordStore::new(Memory::default());
+        let itself = |answered: Option<&RecordStore<Memory>>| {
             answered.is_some_and(|kept| std::ptr::eq(kept, &raw const store))
         };
         assert!(itself(store.ledger()));
@@ -149,17 +154,24 @@ mod kept {
         assert!(itself(store.notes()));
         assert!(itself(store.announcements()));
         assert!(itself(store.inboxes()));
-        let bare = Kept::new(Memory::default()).keeping(|_| false);
+        let bare = RecordStore::new(Memory::default()).keeping(|_| false);
         assert!(bare.ledger().is_some() && bare.cursors().is_some());
         assert!(bare.schedules().is_some() && bare.deliveries().is_some());
         assert!(bare.subscriptions().is_none() && bare.inboxes().is_none());
         assert!(bare.pins().is_none() && bare.notes().is_none());
+        assert!(bare.positions().is_some());
+        assert!(!bare.writes_one_at_a_time());
+        let serial = RecordStore::new(Memory {
+            one_at_a_time: true,
+            ..Memory::default()
+        });
+        assert!(serial.writes_one_at_a_time());
         assert!(bare.announcements().is_none());
     }
 
     #[test]
     fn each_write_of_a_record_counts_its_version_up_by_one() {
-        let store = Kept::new(Memory::default());
+        let store = RecordStore::new(Memory::default());
         let entry = Entry::new(key());
         let versions: Vec<_> = [None, Some(1), Some(2)]
             .into_iter()
@@ -181,17 +193,17 @@ mod kept {
     #[test]
     fn a_write_that_loses_a_race_to_an_unrelated_write_is_tried_again_and_then_given_up() {
         let entry = Entry::new(key());
-        let twice = Kept::new(Memory::racing(2));
+        let twice = RecordStore::new(Memory::racing(2));
         assert_eq!(
             pollster::block_on(twice.put_entry(&entry, None)),
             Ok(Written::Written(Version(1)))
         );
-        let thrice = Kept::new(Memory::racing(3));
+        let thrice = RecordStore::new(Memory::racing(3));
         assert_eq!(
             pollster::block_on(thrice.put_entry(&entry, None)),
             Ok(Written::Conflict)
         );
-        let pinning = Kept::new(Memory::racing(3));
+        let pinning = RecordStore::new(Memory::racing(3));
         assert_eq!(
             pollster::block_on(pinning.put_pinned(&RouteId::new("r"), "1")),
             Err(StoreError::Unavailable {
@@ -205,7 +217,7 @@ mod kept {
             inbox: None,
             pending: None,
         };
-        let removing = Kept::new(Memory::default());
+        let removing = RecordStore::new(Memory::default());
         pollster::block_on(removing.subscribe(&subscription)).unwrap();
         *removing_races(&removing) = 3;
         assert_eq!(
@@ -226,25 +238,25 @@ mod kept {
         );
     }
 
-    fn removing_races(store: &Kept<Memory>) -> std::sync::MutexGuard<'_, u32> {
+    fn removing_races(store: &RecordStore<Memory>) -> std::sync::MutexGuard<'_, u32> {
         store.records().races.lock().unwrap()
     }
 
     #[test]
     fn a_record_that_cannot_be_read_back_says_where_it_is() {
         let path = format!("ledger/{}.json", key());
-        let garbled = Kept::new(Memory::holding(&path, b"not json"));
+        let garbled = RecordStore::new(Memory::holding(&path, b"not json"));
         let error = pollster::block_on(garbled.entry(&key())).unwrap_err();
         assert!(matches!(error, StoreError::Corrupt { .. }), "{error}");
         assert!(error.to_string().contains(&path), "{error}");
-        let misshapen = Kept::new(Memory::holding(&path, br#"{"version":1,"record":7}"#));
+        let misshapen = RecordStore::new(Memory::holding(&path, br#"{"version":1,"record":7}"#));
         let error = pollster::block_on(misshapen.entry(&key())).unwrap_err();
         assert!(error.to_string().contains(&path), "{error}");
     }
 
     #[test]
     fn a_corrupt_record_is_skipped_by_a_listing_and_reported_once() {
-        let store = Kept::new(Memory::holding("deliveries/app.bad.json", b"not json"));
+        let store = RecordStore::new(Memory::holding("deliveries/app.bad.json", b"not json"));
         let now: jiff::Timestamp = "2027-01-15T08:00:00Z".parse().unwrap();
         assert_eq!(
             pollster::block_on(store.admit(APP, "old", now)),
@@ -260,13 +272,13 @@ mod kept {
         );
         assert_eq!(store.skipped(), ["deliveries/app.bad.json"]);
         assert_eq!(store.skipped(), Vec::<String>::new());
-        let latest = Kept::new(Memory::holding(
+        let latest = RecordStore::new(Memory::holding(
             "latest/gate.json",
             br#"{"version":1,"record":7}"#,
         ));
         assert_eq!(pollster::block_on(latest.every_latest()), Ok(Vec::new()));
         assert_eq!(latest.skipped(), ["latest/gate.json"]);
-        let keys = Kept::new(Memory::holding("keys/bad.json", b"[]"));
+        let keys = RecordStore::new(Memory::holding("keys/bad.json", b"[]"));
         assert_eq!(
             pollster::block_on(herald_ports::Keyring::forget_before(&keys, later)),
             Ok(())
@@ -281,7 +293,7 @@ mod kept {
             ..Memory::default()
         };
         assert_eq!(
-            pollster::block_on(Kept::new(vanished).every_schedule()),
+            pollster::block_on(RecordStore::new(vanished).every_schedule()),
             Ok(Vec::new())
         );
     }

@@ -2,10 +2,10 @@ use wasip2::exports::http::incoming_handler::{IncomingRequest, ResponseOutparam}
 use wasip2::http::types::{Fields, IncomingBody, Method, OutgoingBody, OutgoingResponse};
 use wasip2::io::streams::StreamError;
 
-use herald_compose::{Asked, told};
+use herald_compose::{HostRequest, told};
 use herald_flows::{Reply, refusal};
 
-use super::served::{Started, said};
+use super::served::{Started, log_lines};
 
 const CHUNK: u64 = 64 * 1024;
 
@@ -107,11 +107,11 @@ pub(super) async fn handled(request: IncomingRequest, out: ResponseOutparam) {
         .and_then(|incoming| read(incoming, most))
     else {
         let refused = refusal(400, "its body could not be read");
-        said(refused.refused.as_deref().map(told::refused));
+        log_lines(refused.refused.as_deref().map(told::refused));
         respond(out, &refused.reply);
         return;
     };
-    let asked = Asked {
+    let asked = HostRequest {
         method,
         target,
         headers,

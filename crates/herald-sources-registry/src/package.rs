@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 use herald_core::{
     Cursor, Draft, Event, Kind, Polled, RELEASE_LINK, prerelease_version, versioned,
 };
-use herald_ports::{Method, Request, Response, Secret, Text};
+use herald_ports::{Method, Request, Response, Secret, SecretText};
 use herald_wire::{Reading, SourceError, answered};
 use jiff::Timestamp;
 
@@ -34,7 +34,7 @@ pub(crate) struct Api {
 }
 
 /// A version, as a registry describes it.
-pub(crate) struct Found {
+pub(crate) struct RegistryVersion {
     pub(crate) version: String,
     pub(crate) published: Timestamp,
 }
@@ -158,10 +158,10 @@ impl Package {
             let body = serde_json::json!({ "identifier": username, "secret": token.expose() });
             Request::new(
                 Method::Post,
-                Text::plain(format!("{}/auth/token", self.api)),
+                SecretText::plain(format!("{}/auth/token", self.api)),
             )
             .at_most(docker_hub::TOKEN_ANSWER)
-            .header("Content-Type", Text::plain("application/json"))
+            .header("Content-Type", SecretText::plain("application/json"))
             .identified()
             .sealed_body(body.to_string())
         })
@@ -230,7 +230,7 @@ impl Package {
         match self.registry {
             Registry::Packagist => request.header(
                 "Authorization",
-                Text::plain("Basic ").then_secret(Secret::new(
+                SecretText::plain("Basic ").then_secret(Secret::new(
                     token.name(),
                     herald_core::basic("token", token.expose()),
                 )),
@@ -249,18 +249,21 @@ impl Package {
             Registry::Npm => npm::path(&self.name),
             Registry::DockerHub => docker_hub::path(&self.name, self.reading.page, self.ordering),
         };
-        let mut request = Request::new(Method::Get, Text::plain(format!("{}{path}", self.api)))
-            .at_most(self.reading.parse)
-            .header("Accept", Text::plain("application/json"))
-            .identified();
+        let mut request = Request::new(
+            Method::Get,
+            SecretText::plain(format!("{}{path}", self.api)),
+        )
+        .at_most(self.reading.parse)
+        .header("Accept", SecretText::plain("application/json"))
+        .identified();
         if let Some(token) = token.filter(|_| self.registry.takes_token()) {
             request = self.authorised(request, token);
         }
         if let Some(etag) = cursor.and_then(|cursor| cursor.etag.as_deref()) {
-            request = request.header("If-None-Match", Text::plain(etag));
+            request = request.header("If-None-Match", SecretText::plain(etag));
         }
         if let Some(modified) = cursor.and_then(|cursor| cursor.last_modified.as_deref()) {
-            request = request.header("If-Modified-Since", Text::plain(modified));
+            request = request.header("If-Modified-Since", SecretText::plain(modified));
         }
         request
     }
@@ -295,7 +298,7 @@ impl Package {
         })
     }
 
-    fn event(&self, what: &'static str, found: Found) -> Result<Event, SourceError> {
+    fn event(&self, what: &'static str, found: RegistryVersion) -> Result<Event, SourceError> {
         let project = self.project();
         let mut links = BTreeMap::new();
         if self.public() {

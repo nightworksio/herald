@@ -1,3 +1,6 @@
+//! What a config asks for that a layer cannot serve, and what it leaves to
+//! chance (ADR-0002).
+
 use herald_config::{Config, KeyCache, RouteConfig, Server};
 use herald_core::{Features, Inbound, Pinning, Pins, RecordKind, Sandbox, Threads};
 use herald_kinds::Carried;

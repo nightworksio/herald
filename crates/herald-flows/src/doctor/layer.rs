@@ -1,3 +1,5 @@
+//! The layers of support and what each host offers (ADR-0002).
+
 use std::collections::BTreeSet;
 
 use jiff::SignedDuration;

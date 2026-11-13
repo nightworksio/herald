@@ -1,5 +1,5 @@
 use herald_core::Address;
-use herald_ports::{Http, Method, Request, Response, Secret, StoreError, Text};
+use herald_ports::{Http, Method, Request, Response, Secret, SecretText, StoreError};
 use herald_records::Wrote;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
@@ -21,8 +21,9 @@ const ANSWER: &str = "the Actions cache's answer";
 /// The name a signed URL is redacted under.
 const SIGNED: &str = "the Actions cache's signed URL";
 
+/// What the Actions cache answers a lookup of a key.
 #[derive(Deserialize)]
-struct Found {
+struct CacheLookup {
     ok: bool,
     #[serde(default, alias = "signedDownloadUrl")]
     signed_download_url: String,
@@ -71,10 +72,10 @@ impl<H: Http + Send> CacheRecords<'_, H> {
     async fn call(&self, method: &str, body: &serde_json::Value) -> Result<Response, StoreError> {
         let request = Request::new(
             Method::Post,
-            Text::plain(format!("{}{SERVICE}{method}", self.cache.results)),
+            SecretText::plain(format!("{}{SERVICE}{method}", self.cache.results)),
         )
-        .header("Content-Type", Text::plain("application/json"))
-        .header("Accept", Text::plain("application/json"))
+        .header("Content-Type", SecretText::plain("application/json"))
+        .header("Accept", SecretText::plain("application/json"))
         .identified()
         .bearer(self.cache.token.clone())
         .body(body.to_string());
@@ -94,7 +95,7 @@ impl<H: Http + Send> CacheRecords<'_, H> {
         let prefix = format!("{}-", self.cache.prefix);
         let body = json!({ "key": prefix, "restore_keys": [prefix], "version": VERSION });
         let response = self.call("GetCacheEntryDownloadURL", &body).await?;
-        let found: Found = read(ANSWER, &response)?;
+        let found: CacheLookup = read(ANSWER, &response)?;
         if !found.ok {
             return Ok(None);
         }
@@ -106,7 +107,7 @@ impl<H: Http + Send> CacheRecords<'_, H> {
                 StoreError::unreadable(&found.matched_key, "not a generation of herald's records")
             })?;
         let url = Secret::new(SIGNED, found.signed_download_url);
-        let request = Request::new(Method::Get, Text::secret(url.clone()));
+        let request = Request::new(Method::Get, SecretText::secret(url.clone()));
         let downloaded = self.blob(request, url.expose()).await?;
         let mut generation: Generation = read(&found.matched_key, &downloaded)?;
         generation.number = number;
@@ -129,9 +130,12 @@ impl<H: Http + Send> CacheRecords<'_, H> {
         let bytes = encoded("the cache's generation", generation)?;
         let size = bytes.len();
         let url = Secret::new(SIGNED, reserved.signed_upload_url);
-        let request = Request::new(Method::Put, Text::secret(url.clone()))
-            .header("x-ms-blob-type", Text::plain("BlockBlob"))
-            .header("Content-Type", Text::plain("application/octet-stream"))
+        let request = Request::new(Method::Put, SecretText::secret(url.clone()))
+            .header("x-ms-blob-type", SecretText::plain("BlockBlob"))
+            .header(
+                "Content-Type",
+                SecretText::plain("application/octet-stream"),
+            )
             .body(bytes);
         let uploaded = self.blob(request, url.expose()).await?;
         if !uploaded.succeeded() {

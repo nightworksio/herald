@@ -3,7 +3,7 @@
 
 use crate::public::{public, reachable};
 use crate::reach::Reach;
-use herald_ports::{HttpError, PUBLIC, Request, Response, Text};
+use herald_ports::{HttpError, PUBLIC_BASE, Request, Response, SecretText};
 use url::Url;
 
 pub use herald_flows::EGRESS_GUARDED;
@@ -28,7 +28,7 @@ impl Reaching {
     ///
     /// Where `base` is not a URL a connection may be bound to, saying why.
     pub fn of(base: &str) -> Result<Self, String> {
-        if base == PUBLIC {
+        if base == PUBLIC_BASE {
             return Ok(Self::Public);
         }
         Reach::new([base])
@@ -62,7 +62,7 @@ impl Reaching {
     /// # Errors
     ///
     /// Where it may not, refused unsent.
-    pub fn admitted(&self, url: &Text) -> Result<Url, HttpError> {
+    pub fn admitted(&self, url: &SecretText) -> Result<Url, HttpError> {
         Url::parse(&url.expose())
             .ok()
             .filter(|parsed| match self {
@@ -107,7 +107,7 @@ pub fn asked_query(query: Option<String>) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use herald_ports::{Method, PUBLIC};
+    use herald_ports::{Method, PUBLIC_BASE};
 
     use super::*;
 
@@ -121,15 +121,15 @@ mod tests {
         assert_eq!(asked_query(None), None);
     }
 
-    fn plain(url: &str) -> Text {
-        Text::plain(url)
+    fn plain(url: &str) -> SecretText {
+        SecretText::plain(url)
     }
 
     #[test]
     fn a_host_out_of_sight_of_names_fetches_on_others_behalf_only_where_guarded() {
         let name = plain("https://social.example/actor");
         for unguarded in [None, Some(""), Some("false"), Some("TRUE")] {
-            let reaching = Reaching::unresolved(PUBLIC, unguarded).unwrap();
+            let reaching = Reaching::unresolved(PUBLIC_BASE, unguarded).unwrap();
             assert_eq!(reaching, Reaching::Nothing);
             assert!(!reaching.public());
             assert!(matches!(
@@ -137,7 +137,7 @@ mod tests {
                 Err(HttpError::Refused { .. })
             ));
         }
-        let guarded = Reaching::unresolved(PUBLIC, Some("true")).unwrap();
+        let guarded = Reaching::unresolved(PUBLIC_BASE, Some("true")).unwrap();
         assert_eq!(guarded, Reaching::Public);
         assert!(guarded.admitted(&name).is_ok());
     }
@@ -176,7 +176,7 @@ mod tests {
 
     #[test]
     fn a_public_connection_reaches_public_https_origins_alone() {
-        let reaching = Reaching::of(PUBLIC).unwrap();
+        let reaching = Reaching::of(PUBLIC_BASE).unwrap();
         assert!(reaching.public());
         assert!(
             reaching

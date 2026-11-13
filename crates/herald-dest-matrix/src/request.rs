@@ -1,9 +1,9 @@
 use herald_core::{Announcement, Declined, Entry, Sent, Step, Waits, safe_url, unreserved};
-use herald_ports::{Method, Request, Response, Text};
+use herald_ports::{Method, Request, Response, SecretText};
 use serde_json::{Map, Value, json};
 
 use crate::matrix::{MATRIX, Matrix};
-use crate::read::{json, trouble};
+use crate::read::{failure, json};
 
 /// The field of a message's content carrying its route's marker (ADR-0011).
 pub(crate) const ROUTE: &str = "io.nightworks.herald.route";
@@ -40,13 +40,13 @@ fn authorised(request: Request, matrix: &Matrix) -> Request {
 
 pub(crate) fn get(matrix: &Matrix, path: &str) -> Request {
     let url = format!("{}{CLIENT}{path}", matrix.homeserver);
-    authorised(Request::new(Method::Get, Text::plain(url)), matrix)
+    authorised(Request::new(Method::Get, SecretText::plain(url)), matrix)
 }
 
 fn put(matrix: &Matrix, path: &str, body: &Value) -> Request {
     let url = format!("{}{CLIENT}{path}", matrix.homeserver);
-    authorised(Request::new(Method::Put, Text::plain(url)), matrix)
-        .header("Content-Type", Text::plain("application/json"))
+    authorised(Request::new(Method::Put, SecretText::plain(url)), matrix)
+        .header("Content-Type", SecretText::plain("application/json"))
         .body(body.to_string())
 }
 
@@ -216,7 +216,7 @@ pub(crate) fn pins(response: &Response, waits: Waits) -> Result<Vec<String>, Sen
     if response.status == NOT_FOUND {
         return Ok(Vec::new());
     }
-    if let Some(sent) = trouble(response, waits) {
+    if let Some(sent) = failure(response, waits) {
         return Err(sent);
     }
     Ok(json(response)

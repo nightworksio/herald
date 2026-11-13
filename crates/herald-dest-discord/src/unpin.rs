@@ -4,7 +4,7 @@ use serde_json::Value;
 
 use crate::discord::Discord;
 use crate::markers::{author, marks};
-use crate::read::{id, json, trouble};
+use crate::read::{failure, id, json};
 use crate::request::{PINNED, channel, get, posted, unpin, webhook_cannot};
 
 /// What is said where Discord names no user for the bot's token.
@@ -16,11 +16,11 @@ const PINS: u8 = 50;
 const GONE: u16 = 404;
 
 /// An answer read, a reason to stop with, or no answer at all.
-type Read<T> = Result<Result<T, Sent>, HttpError>;
+type ApiAnswer<T> = Result<Result<T, Sent>, HttpError>;
 
-async fn read<H: Http>(discord: &Discord, http: &H, path: &str) -> Read<Value> {
+async fn read<H: Http>(discord: &Discord, http: &H, path: &str) -> ApiAnswer<Value> {
     let response = http.send(get(discord, path)).await?;
-    Ok(trouble(&response, discord.waits).map_or_else(|| Ok(json(&response)), Err))
+    Ok(failure(&response, discord.waits).map_or_else(|| Ok(json(&response)), Err))
 }
 
 fn routed(message: &Value, bot: &str, route: &Marker) -> bool {
@@ -30,7 +30,7 @@ fn routed(message: &Value, bot: &str, route: &Marker) -> bool {
             .any(|(marked, _)| marked == route.as_str())
 }
 
-async fn bot<H: Http>(discord: &Discord, http: &H) -> Read<String> {
+async fn bot<H: Http>(discord: &Discord, http: &H) -> ApiAnswer<String> {
     if let Some(bot) = discord.bot.get() {
         return Ok(Ok(bot.clone()));
     }
@@ -49,7 +49,7 @@ async fn pinned_messages<H: Http>(
     channel: &str,
     bot: &str,
     route: &Marker,
-) -> Read<Vec<String>> {
+) -> ApiAnswer<Vec<String>> {
     let mut routed_pins = Vec::new();
     let mut before = None;
     for _ in 0..discord.read_back.pages() {
@@ -96,7 +96,7 @@ async fn pinned_posts<H: Http>(
     forum: &str,
     bot: &str,
     route: &Marker,
-) -> Read<Vec<String>> {
+) -> ApiAnswer<Vec<String>> {
     let channel = match read(discord, http, &format!("/channels/{forum}")).await? {
         Ok(channel) => channel,
         Err(sent) => return Ok(Err(sent)),
@@ -146,7 +146,7 @@ async fn earlier<H: Http>(
     http: &H,
     channel: &str,
     route: &Marker,
-) -> Read<Vec<String>> {
+) -> ApiAnswer<Vec<String>> {
     let bot = match bot(discord, http).await? {
         Ok(bot) => bot,
         Err(sent) => return Ok(Err(sent)),
@@ -190,7 +190,7 @@ pub(crate) async fn unpinned<H: Http>(
         if response.status == GONE {
             continue;
         }
-        if let Some(sent) = trouble(&response, discord.waits) {
+        if let Some(sent) = failure(&response, discord.waits) {
             return Ok(sent);
         }
     }

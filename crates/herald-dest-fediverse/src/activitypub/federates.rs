@@ -5,7 +5,7 @@ use jiff::Timestamp;
 use serde_json::Value;
 
 use super::deliver::ActivityPub;
-use super::documents::{Asked, FIRST, asked, follow_id};
+use super::documents::{FIRST, InboxActivity, asked, follow_id};
 use crate::actor::inboxes;
 
 impl Federates for ActivityPub {
@@ -71,12 +71,12 @@ impl Federates for ActivityPub {
 
     fn read(&self, body: &[u8], signer: &str) -> Activity {
         match asked(body, signer) {
-            Asked::Follow { target, follow } => Activity::Follow {
+            InboxActivity::Follow { target, follow } => Activity::Follow {
                 target,
                 id: follow_id(&follow),
             },
-            Asked::Undo { follower, target } => Activity::Undo { follower, target },
-            Asked::Nothing(why) => Activity::Nothing(why),
+            InboxActivity::Undo { follower, target } => Activity::Undo { follower, target },
+            InboxActivity::Nothing(why) => Activity::Nothing(why),
         }
     }
 

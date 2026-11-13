@@ -3,7 +3,7 @@ use herald_ports::{Http, MarkedThread, Markers, MarkersError};
 use serde_json::Value;
 
 use crate::mastodon::Mastodon;
-use crate::read::{json, text, trouble};
+use crate::read::{failure, json, text};
 use crate::request::get;
 
 /// The most statuses Mastodon lists in one page.
@@ -29,7 +29,7 @@ impl<'a, H: Http> MastodonMarkers<'a, H> {
 
     async fn read(&self, path: &str) -> Result<Value, MarkersError> {
         let response = self.http.send(get(self.mastodon, path)).await?;
-        match trouble(&response, self.mastodon.waits) {
+        match failure(&response, self.mastodon.waits) {
             Some(sent) => Err(MarkersError::unlanded(sent)),
             None => Ok(json(&response)),
         }

@@ -222,7 +222,7 @@ listen = "127.0.0.1:8080"
 - An ActivityPub actor is served at `/users/<actor>`, with its Notes, its inbox, the shared inbox `/inbox` and WebFinger.
 - `--listen` or `HERALD_LISTEN` takes the place of `listen`.
 - `busy_retry` ("30s") is how long a request whose work found no place is asked to wait, `read` ("30s") and `held` ("90s") how long a connection may take to send its headers and how long it is held at most, and `accept_pause` ("100ms") how long the server waits after a connection could not be accepted.
-- `[server.sessions]` sets how a session a destination holds connects again: `first_wait` ("1s"), doubled up to `longest_wait` ("1m"), each wait between half of it and all of it unless `jitter = false`.
+- `[server.sessions]` sets how a session a destination holds connects again: `first_wait` ("1s"), doubled up to `longest_wait` ("1m"), each wait between half of it and all of it unless `jitter = false`. The store keeps where a Matrix sync stands, so a sync taken up again answers the commands given while none was held, unless they are older than `stale` ("10m"). A session whose credential is refused stops.
 - `base`, such as `"/herald"`, serves every endpoint under that path, for a reverse proxy that serves herald beside other things; the ActivityPub actors' ids, and the addresses `slack manifest` and `matrix registration` print, are under it too.
 - `[server]` also sets `jobs` (how many pieces of work it does at once: announcements, activities and commands), `queue` (how many pieces of work may wait for a place, as many as `jobs` where absent), `connections`, `body`, `fetches`, `completions` (how many autocompletions a session answers at once) and `silence` (how long a session hears nothing before it checks its connection), and `[server.keys]` sets where inbound activities' keys are kept (`cache = "memory"` or `"store"`), `refresh_after`, `reread_after`, `most` and `document` (the most of a key's document read) ([ADR-0014](.docs/decisions/0014-herald-server-answers-first-and-works-after-on-one-task-within-limits.md)).
 
@@ -252,6 +252,12 @@ and `herald doctor` names any set above it.
 claimed before another may finish it, and `latest_attempts` (3), how often a
 run writes what a project last announced again when another write lands
 first.
+
+`[run]` sets how many routes an event is announced to at once, `routes` (4),
+and how many sources a poll reads at once, `sources` (4). 1 goes one after
+another in the file's order. On the `git-branch`, `repo-variables`,
+`actions-cache` and `markers` stores, which write one record at a time,
+routes and sources always go one at a time.
 
 Each source sets how a poll reads it: `page` (30), how many of the newest
 releases, versions or entries one poll reads; `remembered` (500, at least

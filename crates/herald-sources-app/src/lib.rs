@@ -87,7 +87,7 @@ fn message() -> Kind {
 
 /// Why an app's event could not be read.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Unread {
+pub enum UnreadEvent {
     /// The bytes are not herald's event JSON.
     NotAnEvent(String),
     /// The event has no id.
@@ -103,7 +103,7 @@ pub enum Unread {
     Unfit(String),
 }
 
-impl fmt::Display for Unread {
+impl fmt::Display for UnreadEvent {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::NotAnEvent(why) => write!(f, "the event is not herald's event JSON: {why}"),
@@ -137,18 +137,23 @@ pub fn identity(app: &str, id: &str) -> String {
 ///
 /// # Errors
 ///
-/// The [`Unread`] that keeps `body` from being an event.
-pub fn event(app: &str, body: &[u8], now: Timestamp, kinds: &KindSpecs) -> Result<Event, Unread> {
+/// The [`UnreadEvent`] that keeps `body` from being an event.
+pub fn event(
+    app: &str,
+    body: &[u8],
+    now: Timestamp,
+    kinds: &KindSpecs,
+) -> Result<Event, UnreadEvent> {
     if body.len() > MOST {
-        return Err(Unread::TooLarge);
+        return Err(UnreadEvent::TooLarge);
     }
     let written: AppEvent =
-        serde_json::from_slice(body).map_err(|error| Unread::NotAnEvent(error.to_string()))?;
+        serde_json::from_slice(body).map_err(|error| UnreadEvent::NotAnEvent(error.to_string()))?;
     if written.id.trim().is_empty() {
-        return Err(Unread::NoId);
+        return Err(UnreadEvent::NoId);
     }
     let Some(spec) = kinds.get(&written.kind) else {
-        return Err(Unread::UnknownKind(written.kind));
+        return Err(UnreadEvent::UnknownKind(written.kind));
     };
     let event = Event::normalise(Draft {
         identity: identity(app, &written.id),
@@ -160,8 +165,8 @@ pub fn event(app: &str, body: &[u8], now: Timestamp, kinds: &KindSpecs) -> Resul
         attributes: written.attributes,
         occurred: written.occurred.unwrap_or(now),
     })
-    .map_err(Unread::Problem)?;
-    spec.check(event.attributes()).map_err(Unread::Unfit)?;
+    .map_err(UnreadEvent::Problem)?;
+    spec.check(event.attributes()).map_err(UnreadEvent::Unfit)?;
     Ok(event)
 }
 

@@ -24,7 +24,7 @@ impl<'q> Taker for Queued<'q> {
         place.fill(job);
     }
 
-    fn said(&self, destination: &DestinationName, said: String) {
+    fn report(&self, destination: &DestinationName, said: String) {
         (self.heard)(Heard::Session {
             destination: destination.clone(),
             said,

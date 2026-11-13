@@ -8,7 +8,7 @@
 )]
 mod sql {
     use herald_ports::{Changed, SqlError, StoreError, Value};
-    use herald_records::{Dialect, LAYOUT, Records as _, SqlRecords, Wrote};
+    use herald_records::{Dialect, LAYOUT, RecordBackend as _, SqlRecords, Wrote};
     use herald_testing::ScriptedSql;
 
     fn laid_out(layout: Value) -> Result<Vec<Changed>, SqlError> {

@@ -1,7 +1,7 @@
 use std::sync::{Arc, Mutex, PoisonError};
 
 use herald_ports::{Http, Method, Response, Secret, StoreError};
-use herald_records::{Blob, Kept, Records, Wrote};
+use herald_records::{Blob, RecordBackend, RecordStore, Wrote};
 use herald_wire::github::{self, GITHUB};
 use jiff::{SignedDuration, Timestamp};
 use serde::Deserialize;
@@ -51,7 +51,7 @@ impl RepoVariables {
     /// lock as `holder`, a value no other run takes it as.
     #[must_use]
     pub fn store<H: Http>(self, http: H, holder: impl Into<String>) -> RepoVariablesStore<H> {
-        Kept::new(VariableRecords {
+        RecordStore::new(VariableRecords {
             variables: self,
             http,
             holder: holder.into(),
@@ -81,7 +81,7 @@ enum Lock {
 }
 
 /// The store [`RepoVariables`] keep.
-pub type RepoVariablesStore<H> = Kept<VariableRecords<H>>;
+pub type RepoVariablesStore<H> = RecordStore<VariableRecords<H>>;
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 struct Variable {
@@ -287,7 +287,11 @@ struct Change<'a> {
     replacing: Option<&'a str>,
 }
 
-impl<H: Http> Records for VariableRecords<H> {
+impl<H: Http> RecordBackend for VariableRecords<H> {
+    fn one_at_a_time(&self) -> bool {
+        true
+    }
+
     async fn read(&self, path: &str) -> Result<Option<Blob>, StoreError> {
         Ok(self
             .variable(&name::of(path))

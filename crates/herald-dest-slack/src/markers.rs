@@ -2,7 +2,7 @@ use herald_core::{Entry, Facts, Key, Marker, Step, unreserved};
 use herald_ports::{Http, MarkedThread, Markers, MarkersError};
 use serde_json::Value;
 
-use crate::read::{json, text, trouble};
+use crate::read::{failure, json, text};
 use crate::request::{MARKER, channel, get, webhook_cannot};
 use crate::slack::{Identity, Slack, carried, identity};
 use crate::web_api::{CONVERSATIONS_HISTORY, CONVERSATIONS_REPLIES, WebMethod};
@@ -48,7 +48,7 @@ impl<'a, H: Http> SlackMarkers<'a, H> {
     async fn read(&self, method: WebMethod, asked: &str) -> Result<Value, MarkersError> {
         let response = self.http.send(get(self.slack, method, asked)).await?;
         let body = json(&response);
-        trouble(&response, &body, self.slack.waits)
+        failure(&response, &body, self.slack.waits)
             .map_or(Ok(body), |sent| Err(MarkersError::unlanded(sent)))
     }
 

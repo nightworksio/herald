@@ -3,7 +3,7 @@ use herald_ports::{Http, MarkedThread, Markers, MarkersError};
 use serde_json::Value;
 
 use crate::matrix::Matrix;
-use crate::read::{json, text, trouble};
+use crate::read::{failure, json, text};
 use crate::request::{MARKER, MESSAGE, get, pinned, pins};
 
 /// The most events read back from a room's timeline.
@@ -26,7 +26,7 @@ impl<'a, H: Http> MatrixMarkers<'a, H> {
 
     async fn read(&self, path: &str) -> Result<Value, MarkersError> {
         let response = self.http.send(get(self.matrix, path)).await?;
-        match trouble(&response, self.matrix.waits) {
+        match failure(&response, self.matrix.waits) {
             Some(sent) => Err(MarkersError::unlanded(sent)),
             None => Ok(json(&response)),
         }

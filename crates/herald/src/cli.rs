@@ -9,7 +9,7 @@ use herald_sources_forge::Forge;
 
 use herald_compose::Hosting;
 
-use super::doctoring::Asked;
+use super::doctoring::DoctorArgs;
 
 #[derive(Debug, Parser)]
 #[command(
@@ -67,9 +67,9 @@ pub(crate) enum Tokens {
 #[derive(Debug, Subcommand)]
 pub(crate) enum Reading {
     #[command(flatten)]
-    Serve(Serve),
+    Run(Running),
     /// Check the config, and name what it asks for that herald cannot serve.
-    Doctor(Asked),
+    Doctor(DoctorArgs),
     /// Print the kind of store the config keeps its records in, as
     /// `[store] kind` writes it.
     Store,
@@ -86,8 +86,8 @@ pub(crate) enum Reading {
         #[arg(long)]
         event: Option<String>,
         /// The forge whose release event the file is.
-        #[arg(long, value_enum, default_value_t = From::Github)]
-        from: From,
+        #[arg(long, value_enum, default_value_t = RunForge::Github)]
+        from: RunForge,
     },
 }
 
@@ -176,14 +176,17 @@ impl ValueEnum for Layer {
     }
 }
 
-/// The commands that serve a config, each warning first of what it cannot.
+/// The commands that run against the config's routes, sources and store:
+/// announcing, polling, housekeeping, serving and reading an actor's
+/// followers. Each but `followers` warns first of what the layer it runs on
+/// cannot serve.
 #[derive(Debug, Subcommand)]
-pub(crate) enum Serve {
+pub(crate) enum Running {
     /// Announce the run's event to every route that takes it.
     Announce {
         /// Where the event comes from.
         #[arg(long, value_enum, required_unless_present = "event")]
-        from: Option<From>,
+        from: Option<RunForge>,
         /// The release of the run's repository to announce, by its tag, in
         /// place of the run's own event.
         #[arg(long, conflicts_with = "event")]
@@ -260,8 +263,9 @@ pub(crate) enum Following {
     },
 }
 
+/// The forge whose CI run's own event is read.
 #[derive(Debug, Clone, Copy, ValueEnum)]
-pub(crate) enum From {
+pub(crate) enum RunForge {
     /// The GitHub Actions run's own event.
     Github,
     /// The GitLab CI pipeline's tag.
@@ -270,7 +274,7 @@ pub(crate) enum From {
     Forgejo,
 }
 
-impl From {
+impl RunForge {
     pub(crate) const fn forge(self) -> Forge {
         match self {
             Self::Github => Forge::GitHub,

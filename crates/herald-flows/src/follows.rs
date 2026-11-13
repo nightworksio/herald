@@ -1,11 +1,14 @@
+//! ActivityPub follows, and the undoing of them, taken from an inbox:
+//! each follower kept or forgotten, and answered.
+
 use std::fmt;
 
 use herald_core::{DestinationName, Sent, Subscription};
 use herald_kinds::{Activity, Federates};
 use herald_ports::{Http, HttpError, Signer, Store, StoreError, Subscriptions};
 
-use crate::inbound::{Checking, Verified, fetched};
 use crate::prepare::{Connected, PreparedRoute};
+use crate::verification::{Checking, Verified, fetched};
 
 /// What a follow, or the undoing of one, did.
 #[derive(Debug, Clone, PartialEq, Eq)]

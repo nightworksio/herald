@@ -5,8 +5,8 @@ use base64::engine::general_purpose::STANDARD;
 use herald_compose::{Host as _, KvAt, SqlAt};
 use herald_ports::{
     Algorithm, Clock as _, CryptoError, Frame, Http as _, HttpError, Kv as _, Method, Outbound,
-    PUBLIC, Request, Secret, SecretError, Secrets as _, Signer as _, Socket as _, Sockets as _,
-    Sql as _, Statement, Text, Timer as _, Value, Verifier as _, Versionstamp,
+    PUBLIC_BASE, Request, Secret, SecretError, SecretText, Secrets as _, Signer as _, Socket as _,
+    Sockets as _, Sql as _, Statement, Timer as _, Value, Verifier as _, Versionstamp,
 };
 use herald_records::KvRecords;
 use herald_testing::{kv_conformance, store_conformance};
@@ -296,8 +296,8 @@ async fn a_connection_fetches_through_the_host_only_what_it_may_reach() {
     let http = hosted
         .connect("https://api.example/v1", &Outbound::default())
         .unwrap();
-    let request = Request::new(Method::Post, Text::plain("https://api.example/v1/x"))
-        .header("Accept", Text::plain("*/*"))
+    let request = Request::new(Method::Post, SecretText::plain("https://api.example/v1/x"))
+        .header("Accept", SecretText::plain("*/*"))
         .body(b"hi".to_vec());
     let response = http.send(request).await.unwrap();
     assert_eq!(response.status, 200);
@@ -306,7 +306,7 @@ async fn a_connection_fetches_through_the_host_only_what_it_may_reach() {
     assert_eq!(
         http.send(Request::new(
             Method::Get,
-            Text::plain("https://other.example/")
+            SecretText::plain("https://other.example/")
         ))
         .await,
         Err(HttpError::Refused {
@@ -316,23 +316,23 @@ async fn a_connection_fetches_through_the_host_only_what_it_may_reach() {
     assert_eq!(
         http.send(Request::new(
             Method::Get,
-            Text::plain("https://api.example/down")
+            SecretText::plain("https://api.example/down")
         ))
         .await,
         Err(HttpError::Unreachable {
             reason: "down".to_owned()
         })
     );
-    let small = Request::new(Method::Get, Text::plain("https://api.example/v1")).at_most(3);
+    let small = Request::new(Method::Get, SecretText::plain("https://api.example/v1")).at_most(3);
     assert!(matches!(
         http.send(small).await,
         Err(HttpError::Unreachable { .. })
     ));
-    let public = hosted.connect(PUBLIC, &Outbound::default()).unwrap();
+    let public = hosted.connect(PUBLIC_BASE, &Outbound::default()).unwrap();
     let fetched = public
         .send(Request::new(
             Method::Get,
-            Text::plain("https://social.example/users/ana"),
+            SecretText::plain("https://social.example/users/ana"),
         ))
         .await
         .unwrap();
@@ -599,8 +599,8 @@ async fn a_session_s_socket_carries_text_both_ways_and_says_how_it_closed() {
         socket.receive().await,
         Frame::Text("opened wss://gateway.discord.gg/?v=10".to_owned())
     );
-    socket.send(Text::plain("hello")).await.unwrap();
-    assert!(socket.send(Text::plain("refused")).await.is_err());
+    socket.send(SecretText::plain("hello")).await.unwrap();
+    assert!(socket.send(SecretText::plain("refused")).await.is_err());
     assert_eq!(socket.receive().await, Frame::Text("echo hello".to_owned()));
     assert_eq!(socket.receive().await, Frame::Closed(Some(4000)));
     assert_eq!(socket.receive().await, Frame::Closed(None));
@@ -634,7 +634,7 @@ async fn work_is_taken_up_to_the_most_at_once_and_done_on_the_event_loop() {
     );
     assert!(taker.place().is_none());
     hear();
-    taker.said(&destination, "heard".to_owned());
+    taker.report(&destination, "heard".to_owned());
     let said = heard();
     assert_eq!(strings_of(&said), ["chat: heard"]);
     JsTimer.sleep(std::time::Duration::from_millis(5)).await;

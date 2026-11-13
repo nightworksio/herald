@@ -5,7 +5,7 @@ use std::time::Duration;
 use herald_compose::{Composed, Left, SocketReach, told};
 use herald_core::DestinationName;
 use herald_flows::{Job, Place, Taker};
-use herald_ports::{Frame, HttpError, Socket, Sockets, Text, Timer};
+use herald_ports::{Frame, HttpError, SecretText, Socket, Sockets, Timer};
 use js_sys::Promise;
 use send_wrapper::SendWrapper;
 use wasm_bindgen::JsCast as _;
@@ -42,7 +42,7 @@ impl Sockets for JsSockets {
 }
 
 impl Socket for JsSocket {
-    fn send(&mut self, frame: Text) -> impl Future<Output = Result<(), HttpError>> + Send {
+    fn send(&mut self, frame: SecretText) -> impl Future<Output = Result<(), HttpError>> + Send {
         let socket = self.0.clone();
         SendWrapper::new(async move {
             settled(socket.send(&frame.expose()))
@@ -111,7 +111,7 @@ impl Taker for JsTaker {
         });
     }
 
-    fn said(&self, destination: &DestinationName, said: String) {
+    fn report(&self, destination: &DestinationName, said: String) {
         log(&format!("{}: {said}", destination.as_str()));
     }
 }

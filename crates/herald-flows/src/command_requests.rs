@@ -1,5 +1,5 @@
-//! Each destination that takes commands, with its secrets resolved
-//! (ADR-0016).
+//! A request answering a command, sent to the destination the command was
+//! given on (ADR-0016).
 
 use herald_kinds::Interacted;
 use herald_ports::{Http, Request};
@@ -19,5 +19,5 @@ pub(crate) async fn sent<H: Http>(
         .send(request)
         .await
         .map_err(|error| error.to_string())?;
-    interacting.took(&response)
+    interacting.accepted(&response)
 }

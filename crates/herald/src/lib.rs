@@ -14,41 +14,44 @@ use std::io::Write;
 use std::ops::ControlFlow;
 use std::path::Path;
 use std::pin::Pin;
-use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
 
 use clap::Parser as _;
-use herald_config::{Config, Uses, load, samples};
-use herald_core::{Event, Kind, RouteId, SourceName};
-use herald_environment::EnvSecrets;
-use herald_flows::{Announced, Chored, Outcome, Remembered, Sweep, announce_within, preview};
+use herald_config::{Config, Uses, load};
+use herald_flows::{Chored, Remembered, Sweep};
 use herald_native::random_secret;
-use herald_ports::{
-    Http, HttpError, Keyring, Outbound, Request, Response, Secrets, Store as Keeps,
-};
-use herald_sources_forge::{Forge, ForgeSource, Origin, Repository, SourceOptions, Token};
+use herald_sources_forge::Forge;
 
+mod announce;
 mod apps;
 mod cli;
 mod connect;
 mod doctoring;
+mod dry_run;
 mod followers;
 mod health;
 mod lambda;
 mod output;
+mod preview;
+mod release;
 mod serving;
 mod setup;
+mod signals;
 mod stores;
 
 pub use connect::{Connect, Connection, Connector, NATIVE, native, waiting};
 pub use doctoring::schema as doctor_schema;
+pub use signals::stopped;
 
-use cli::{Cli, Command, From, Reading, Serve, Tokens};
-use herald_compose::told::{chored, polled, report, skipped, why};
-use herald_compose::{Composed, GITHUB_TOKEN, Host, Hosting, ServingOn, Through};
+use announce::{Announce, Routed, announcing, announcing_from};
+use cli::{Cli, Command, Reading, RunForge, Running, Tokens};
+use doctoring::DoctorArgs;
+use herald_compose::told::{chored, polled, skipped, why};
+use herald_compose::{GITHUB_TOKEN, Hosting};
 use output::{Scrubbing, hidden, masked, say, warned};
+use preview::previewing;
 use serving::serving;
-use stores::{Native, composed};
+use stores::composed;
 
 /// Every route announced, already announced, or held by another run; every
 /// source polled and its cursor moved on; or every chore that fell due done
@@ -76,33 +79,6 @@ fn worded<T>(made: Result<T, impl Display>) -> Result<T, String> {
     made.map_err(|error| error.to_string())
 }
 
-/// The variables a forge's CI names a run's repository, API and token in.
-struct Ci {
-    /// The repository's path.
-    repository: &'static str,
-    /// The base URL of the forge's API.
-    api: &'static str,
-    /// The run's own token.
-    token: &'static str,
-}
-
-impl Ci {
-    const fn of(forge: Forge) -> Self {
-        match forge {
-            Forge::GitHub | Forge::Forgejo => Self {
-                repository: "GITHUB_REPOSITORY",
-                api: "GITHUB_API_URL",
-                token: GITHUB_TOKEN,
-            },
-            Forge::GitLab => Self {
-                repository: "CI_PROJECT_PATH",
-                api: "CI_API_V4_URL",
-                token: JOB_TOKEN,
-            },
-        }
-    }
-}
-
 /// The CLI, run with `args`, in an environment of `vars`, reaching each base
 /// URL through what `connect` makes for it, and writing to `out` and `err`.
 /// It answers the process's exit code. A server it runs runs until `stop`
@@ -127,17 +103,9 @@ async fn stopping(
     err: &mut dyn Write,
     stop: Pin<Box<dyn Future<Output = ()> + '_>>,
 ) -> u8 {
-    let cli = match Cli::try_parse_from(args) {
+    let cli = match parsed(args, out, err) {
         Ok(cli) => cli,
-        Err(error) => {
-            let rendered = error.render();
-            let _ = if error.use_stderr() {
-                write!(err, "{rendered}")
-            } else {
-                write!(out, "{rendered}")
-            };
-            return u8::try_from(error.exit_code()).unwrap_or(MISTAKEN);
-        }
+        Err(code) => return code,
     };
     let reading = match cli.command {
         Command::Init => return init(random_secret(), out, err),
@@ -154,15 +122,9 @@ async fn stopping(
         Reading::Doctor(asked) => Some(asked),
         _ => None,
     };
-    let config = match read(&cli.config) {
+    let config = match configured(&cli.config, doctored, out, err) {
         Ok(config) => config,
-        Err(message) => {
-            if let Some(code) = doctored.and_then(|asked| doctoring::unread(asked, &message, out)) {
-                return code;
-            }
-            say(err, &message);
-            return MISTAKEN;
-        }
+        Err(code) => return code,
     };
     let within = connect.within(
         config
@@ -176,15 +138,62 @@ async fn stopping(
     masked(&hidden, vars, if json { &mut *err } else { &mut *out });
     let out = &mut Scrubbing::new(out, &hidden);
     let err = &mut Scrubbing::new(err, &hidden);
-    let serve = match answered(reading, &config, &cli.config, vars, connect, out, err).await {
-        ControlFlow::Continue(serve) => serve,
+    let run = match answered(reading, &config, &cli.config, vars, connect, out, err).await {
+        ControlFlow::Continue(run) => run,
         ControlFlow::Break(code) => return code,
     };
-    if let Some(layer) = doctoring::warning(&serve, vars) {
+    if let Some(layer) = doctoring::warning(&run, vars) {
         warned(&doctoring::gaps(&config, layer, vars).await, vars, out);
     }
-    let ran = match serve {
-        Serve::Announce {
+    let code = finished(ran(run, config, vars, connect, out, stop).await, err);
+    let _ = out.flush();
+    let _ = err.flush();
+    code
+}
+
+/// The CLI `args` ask for, or the code it ends with once its help, version
+/// or mistake is printed.
+fn parsed(args: &[String], out: &mut dyn Write, err: &mut dyn Write) -> Result<Cli, u8> {
+    Cli::try_parse_from(args).map_err(|error| {
+        let rendered = error.render();
+        let _ = if error.use_stderr() {
+            write!(err, "{rendered}")
+        } else {
+            write!(out, "{rendered}")
+        };
+        u8::try_from(error.exit_code()).unwrap_or(MISTAKEN)
+    })
+}
+
+/// The config at `path`, or the code a run ends with where it cannot be
+/// read: the doctor's findings where `doctored` asks for them, or else why.
+fn configured(
+    path: &str,
+    doctored: Option<DoctorArgs>,
+    out: &mut dyn Write,
+    err: &mut dyn Write,
+) -> Result<Config, u8> {
+    read(path).map_err(|message| {
+        if let Some(code) = doctored.and_then(|asked| doctoring::unread(asked, &message, out)) {
+            return code;
+        }
+        say(err, &message);
+        MISTAKEN
+    })
+}
+
+/// The command that runs against the config, run until it is done or
+/// `stop` completes.
+async fn ran(
+    run: Running,
+    config: Config,
+    vars: &BTreeMap<String, String>,
+    connect: Connect<'_>,
+    out: &mut dyn Write,
+    stop: Pin<Box<dyn Future<Output = ()> + '_>>,
+) -> Result<u8, String> {
+    match run {
+        Running::Announce {
             from,
             release,
             event,
@@ -200,28 +209,23 @@ async fn stopping(
                 apps::announcing_event(&config, vars, connect, written, out).await
             } else {
                 let announcing = Announce {
-                    forge: from.map_or(Forge::GitHub, From::forge),
+                    forge: from.map_or(Forge::GitHub, RunForge::forge),
                     release: release.as_deref(),
                     dry_run,
                 };
                 announcing_from(&config, vars, connect, announcing, out).await
             }
         }
-        Serve::Poll => polling(&config, vars, connect, out).await,
-        Serve::Housekeep => housekeeping(&config, vars, connect, out).await,
-        Serve::Server { listen } => {
+        Running::Poll => polling(&config, vars, connect, out).await,
+        Running::Housekeep => housekeeping(&config, vars, connect, out).await,
+        Running::Server { listen } => {
             serving(&config, vars, connect, listen.as_deref(), out, stop).await
         }
-        Serve::Lambda => lambda::lambda(config, vars, connect, out).await,
-        Serve::Followers(asked) => followers::following(&config, vars, connect, &asked, out).await,
-    };
-    let code = ran.unwrap_or_else(|message| {
-        say(err, &message);
-        STOPPED
-    });
-    let _ = out.flush();
-    let _ = err.flush();
-    code
+        Running::Lambda => lambda::lambda(config, vars, connect, out).await,
+        Running::Followers(asked) => {
+            followers::following(&config, vars, connect, &asked, out).await
+        }
+    }
 }
 
 /// The code a setup command ends with, saying why where it stopped.
@@ -233,7 +237,7 @@ fn finished(done: Result<u8, String>, err: &mut dyn Write) -> u8 {
 }
 
 /// Answers a command that reads the config at `path` and finishes, breaking
-/// with its exit code, or continues with the command that serves.
+/// with its exit code, or continues with the command that runs against it.
 async fn answered(
     reading: Reading,
     config: &Config,
@@ -242,7 +246,7 @@ async fn answered(
     connect: Connect<'_>,
     out: &mut dyn Write,
     err: &mut dyn Write,
-) -> ControlFlow<u8, Serve> {
+) -> ControlFlow<u8, Running> {
     ControlFlow::Break(match reading {
         Reading::Doctor(asked) => {
             doctoring::doctoring(config, path, asked, vars, connect, out).await
@@ -259,7 +263,7 @@ async fn answered(
             let done = setup::set_up(config, vars, connect, &setting, &random_secret, out).await;
             finished(done, err)
         }
-        Reading::Serve(serve) => return ControlFlow::Continue(serve),
+        Reading::Run(run) => return ControlFlow::Continue(run),
     })
 }
 
@@ -294,181 +298,9 @@ fn read(path: &str) -> Result<Config, String> {
     if let Some(options) = config.store.of::<herald_store_sqlite::StoreOptions>() {
         let mut options = options.clone();
         options.path = Some(options.file(directory).display().to_string());
-        config.store = herald_config::Store::new(options);
+        config.store = herald_config::ConfiguredStore::new(options);
     }
     Ok(config)
-}
-
-fn variable<'a>(vars: &'a BTreeMap<String, String>, name: &str) -> Result<&'a str, String> {
-    vars.get(name)
-        .map(String::as_str)
-        .filter(|value| !value.is_empty())
-        .ok_or_else(|| format!("{name} is not set; herald reads it from the CI run"))
-}
-
-/// How an announcement is asked for.
-#[derive(Debug, Clone, Copy)]
-struct Announce<'a> {
-    /// The forge whose CI the run is in.
-    forge: Forge,
-    /// The release to announce by its tag, in place of the run's event.
-    release: Option<&'a str>,
-    /// Whether to print the requests and send nothing.
-    dry_run: bool,
-}
-
-async fn announcing_from(
-    config: &Config,
-    vars: &BTreeMap<String, String>,
-    connect: Connect<'_>,
-    asked: Announce<'_>,
-    out: &mut dyn Write,
-) -> Result<u8, String> {
-    let forge = asked.forge;
-    let ci = Ci::of(forge);
-    let repository = variable(vars, ci.repository)?;
-    let named: Vec<(&SourceName, &SourceOptions)> = config
-        .sources
-        .iter()
-        .filter_map(|(name, source)| {
-            source
-                .of::<ForgeSource>()
-                .filter(|named| {
-                    named.forge == forge
-                        && named.options.repository.eq_ignore_ascii_case(repository)
-                })
-                .map(|named| (name, &named.options))
-        })
-        .collect();
-    let Some((_, named_options)) = named.first() else {
-        return Err(format!(
-            "no source in the config names {repository}; add [sources.<name>] with kind = \"{}\" and repository = \"{repository}\"",
-            forge.kind()
-        ));
-    };
-    let options = &SourceOptions {
-        api: named_options
-            .api
-            .clone()
-            .or_else(|| vars.get(ci.api).filter(|api| !api.is_empty()).cloned()),
-        ..(*named_options).clone()
-    };
-    let tag = match forge {
-        Forge::GitLab => asked.release.or_else(|| {
-            vars.get("CI_COMMIT_TAG")
-                .map(String::as_str)
-                .filter(|tag| !tag.is_empty())
-        }),
-        Forge::GitHub | Forge::Forgejo => asked.release,
-    };
-    let event = match (forge, tag) {
-        (Forge::GitLab, None) => {
-            say(out, "The pipeline is not for a tag; nothing to announce.");
-            None
-        }
-        (Forge::GitLab, Some(tag)) => {
-            let project = project(vars)?;
-            tagged(options, forge, tag, Some(project), vars, connect, out).await?
-        }
-        (_, Some(tag)) => tagged(options, forge, tag, None, vars, connect, out).await?,
-        (_, None) => evented(forge, vars, out)?,
-    };
-    let Some(event) = event else {
-        return Ok(DONE);
-    };
-    let sources: Vec<&SourceName> = named.iter().map(|(name, _)| *name).collect();
-    let routed = Routed {
-        sources: &sources,
-        within: None,
-        event: &event,
-    };
-    announcing(config, vars, connect, routed, asked.dry_run, out).await
-}
-
-/// An event, and the sources and routes it is announced from and to.
-struct Routed<'a> {
-    /// The sources it comes from.
-    sources: &'a [&'a SourceName],
-    /// The routes it may go to, where only some may take it.
-    within: Option<&'a [RouteId]>,
-    /// The event.
-    event: &'a Event,
-}
-
-/// `routed` announced to every route that takes it, or, on a dry run, the
-/// requests a first announcement sends printed and nothing sent.
-async fn announcing(
-    config: &Config,
-    vars: &BTreeMap<String, String>,
-    connect: Connect<'_>,
-    routed: Routed<'_>,
-    dry_run: bool,
-    out: &mut dyn Write,
-) -> Result<u8, String> {
-    let sent = Arc::new(Mutex::new(Vec::new()));
-    let kept = Arc::clone(&sent);
-    let dry = move |_: &str, _: &Outbound| {
-        Ok(Connection::new(Dry {
-            sent: Arc::clone(&kept),
-        }))
-    };
-    let dried = Connector::new(&dry, &waiting);
-    let composed = if dry_run {
-        let native = Native::new(vars, &dried);
-        Composed::dry(native, config.clone(), Uses::Announces, place(vars)).await?
-    } else {
-        composed(
-            config,
-            vars,
-            connect,
-            Hosting::Actions,
-            Uses::Announces,
-            place(vars),
-        )
-        .await?
-    };
-    let announced = composed.run(Announcing(routed)).await;
-    if dry_run {
-        say(
-            out,
-            "A dry run sends nothing and keeps no record: these are the requests a first announcement sends.",
-        );
-        for request in sent.lock().unwrap_or_else(PoisonError::into_inner).iter() {
-            say(out, "");
-            for line in request.lines() {
-                say(out, line);
-            }
-        }
-        say(out, "");
-    }
-    let mut code = DONE;
-    for announced in announced {
-        if matches!(announced.outcome, Outcome::Stopped { .. }) {
-            code = STOPPED;
-        }
-        say(out, &report(&announced));
-    }
-    Ok(code)
-}
-
-/// An `Http` that keeps each request it is handed, sends none, and answers
-/// each with a success, for a dry run, whose records are kept in memory.
-struct Dry {
-    sent: Arc<Mutex<Vec<String>>>,
-}
-
-impl Http for Dry {
-    fn send(&self, request: Request) -> impl Future<Output = Result<Response, HttpError>> + Send {
-        self.sent
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .push(request.with_body().to_string());
-        std::future::ready(Ok(Response {
-            status: 200,
-            headers: Vec::new(),
-            body: br#"{"id":"0"}"#.to_vec(),
-        }))
-    }
 }
 
 /// A new marker secret printed once, or why none could be made.
@@ -486,199 +318,6 @@ fn init(secret: Option<String>, out: &mut dyn Write, err: &mut dyn Write) -> u8 
         "Store it as the secret HERALD_MARKER_SECRET, and name it in herald.toml as [markers] key = { secret = \"HERALD_MARKER_SECRET\" }. herald prints it only this once.",
     );
     DONE
-}
-
-/// Each route's templates rendered against the release of a forge's event
-/// file, or a sample release, as its destination would show them.
-fn previewing(
-    config: &Config,
-    route: Option<&str>,
-    event_file: Option<(Forge, &str)>,
-    out: &mut dyn Write,
-    err: &mut dyn Write,
-) -> u8 {
-    let events = match event_file {
-        Some((forge, path)) => {
-            let read = std::fs::read(path)
-                .map_err(|error| format!("{path} could not be read: {error}"))
-                .and_then(|payload| forge.event(&payload).map_err(|error| error.to_string()));
-            match read {
-                Ok(Some(event)) => vec![event],
-                Ok(None) => {
-                    say(err, &format!("{path} publishes no release"));
-                    return MISTAKEN;
-                }
-                Err(message) => {
-                    say(err, &message);
-                    return MISTAKEN;
-                }
-            }
-        }
-        None => config
-            .kinds
-            .get(&Kind::RELEASE)
-            .map(samples)
-            .unwrap_or_default()
-            .into_iter()
-            .take(1)
-            .collect(),
-    };
-    let only = route.map(RouteId::new);
-    let mut code = DONE;
-    for event in &events {
-        let previewed = preview(config, event, only.as_ref());
-        if previewed.is_empty() {
-            say(
-                err,
-                &format!("no route has the id \"{}\"", route.unwrap_or_default()),
-            );
-            return MISTAKEN;
-        }
-        for shown in previewed {
-            let head = format!("{} to {}", shown.route.as_str(), shown.destination.as_str());
-            match shown.rendered {
-                Ok(announcement) => {
-                    say(out, &format!("{head}:"));
-                    say(out, &format!("  title: {}", announcement.title.plain()));
-                    if let Some(thread) = &announcement.thread {
-                        say(out, &format!("  thread: {thread}"));
-                    }
-                    for (index, part) in announcement.parts.iter().enumerate() {
-                        say(out, &format!("  part {}:", index + 1));
-                        for line in part.body.lines() {
-                            say(out, &format!("    {line}"));
-                        }
-                    }
-                }
-                Err(reason) => {
-                    code = STOPPED;
-                    say(
-                        out,
-                        &format!("{head}: the templates cannot render this event: {reason}"),
-                    );
-                }
-            }
-        }
-    }
-    code
-}
-
-/// The release the run's own event publishes, if it does.
-fn evented(
-    forge: Forge,
-    vars: &BTreeMap<String, String>,
-    out: &mut dyn Write,
-) -> Result<Option<Event>, String> {
-    let event_name = variable(vars, "GITHUB_EVENT_NAME")?;
-    if event_name != "release" {
-        say(
-            out,
-            &format!("The run's event is {event_name}, not a release; nothing to announce."),
-        );
-        return Ok(None);
-    }
-    let path = variable(vars, "GITHUB_EVENT_PATH")?;
-    let payload =
-        std::fs::read(path).map_err(|error| format!("{path} could not be read: {error}"))?;
-    let event = forge.event(&payload).map_err(|error| error.to_string())?;
-    if event.is_none() {
-        say(
-            out,
-            "The release is not published, or is a draft; nothing to announce.",
-        );
-    }
-    Ok(event)
-}
-
-/// The GitLab CI pipeline's project, as its variables name it.
-fn project(vars: &BTreeMap<String, String>) -> Result<Repository, String> {
-    let id = variable(vars, "CI_PROJECT_ID")?;
-    Ok(Repository {
-        id: id
-            .parse()
-            .map_err(|_| format!("CI_PROJECT_ID is {id}, not a project's id"))?,
-        name: variable(vars, "CI_PROJECT_NAME")?.to_owned(),
-    })
-}
-
-/// The release tagged `tag` of the repository `options` names on `forge`,
-/// asked for with the source's token, or else the run's own; the
-/// repository asked for too where the run does not name it.
-async fn tagged(
-    options: &SourceOptions,
-    forge: Forge,
-    tag: &str,
-    known: Option<Repository>,
-    vars: &BTreeMap<String, String>,
-    connect: Connect<'_>,
-    out: &mut dyn Write,
-) -> Result<Option<Event>, String> {
-    let secrets = EnvSecrets::from_vars(vars.clone());
-    let token = match &options.token {
-        Some(named) => {
-            Some(Token::Named(secrets.secret(&named.secret).await.map_err(
-                |_| format!("{} is not set; the source names it", named.secret),
-            )?))
-        }
-        None => secrets
-            .secret(Ci::of(forge).token)
-            .await
-            .ok()
-            .map(Token::Run),
-    };
-    let origin = Origin::new(forge, options);
-    let http = connect.reach(origin.api())?;
-    let asked = |request| async { http.send(request).await.map_err(|error| error.to_string()) };
-    let answer = asked(origin.release_request(tag, token.as_ref())).await?;
-    let repository = if let Some(repository) = known {
-        repository
-    } else {
-        let described = asked(origin.repository_request(token.as_ref())).await?;
-        forge
-            .repository(&described)
-            .map_err(|error| error.to_string())?
-    };
-    let event = forge
-        .release(&repository, &answer)
-        .map_err(|error| error.to_string())?;
-    if event.is_none() {
-        say(
-            out,
-            &format!("The release {tag} is a draft; nothing to announce."),
-        );
-    }
-    Ok(event)
-}
-
-/// An event, announced through the routes and from the sources it names.
-struct Announcing<'a>(Routed<'a>);
-
-impl<H: Host> Through<H> for Announcing<'_> {
-    type Done = Vec<Announced>;
-
-    async fn through<S: Keeps, K: Keyring>(
-        self,
-        serving: &ServingOn<'_, H, S, K>,
-        run: &str,
-    ) -> Vec<Announced> {
-        let routed = self.0;
-        let mut all = Vec::new();
-        for source in routed.sources {
-            all.extend(
-                announce_within(
-                    serving.config,
-                    serving.connected,
-                    serving.ports,
-                    source,
-                    routed.event,
-                    routed.within,
-                    run,
-                )
-                .await,
-            );
-        }
-        all
-    }
 }
 
 /// Where this run takes its leases: the CI run and job it is in, or
@@ -761,40 +400,6 @@ async fn housekeeping(
         say(out, &skipped(path));
     }
     Ok(code)
-}
-
-/// When the process is asked to stop, listened for from this call on: Ctrl-C,
-/// or `SIGTERM` as a container runtime sends it where there are signals.
-pub fn stopped() -> impl Future<Output = ()> {
-    #[cfg(unix)]
-    let asked = {
-        use tokio::signal::unix::{SignalKind, signal};
-        signalled(
-            signal(SignalKind::terminate()),
-            signal(SignalKind::interrupt()),
-        )
-    };
-    #[cfg(not(unix))]
-    let asked = async {
-        let _ = tokio::signal::ctrl_c().await;
-    };
-    asked
-}
-
-/// When either signal arrives, or at once where either cannot be listened
-/// for.
-#[cfg(unix)]
-async fn signalled(
-    terminate: std::io::Result<tokio::signal::unix::Signal>,
-    interrupt: std::io::Result<tokio::signal::unix::Signal>,
-) {
-    if let (Ok(mut terminate), Ok(mut interrupt)) = (terminate, interrupt) {
-        futures_util::future::select(
-            std::pin::pin!(terminate.recv()),
-            std::pin::pin!(interrupt.recv()),
-        )
-        .await;
-    }
 }
 
 #[cfg(test)]

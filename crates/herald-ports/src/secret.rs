@@ -54,7 +54,7 @@ impl fmt::Debug for Secret {
     }
 }
 
-/// One piece of a [`Text`]: plain, or a secret.
+/// One piece of a [`SecretText`]: plain, or a secret.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Segment {
     /// Plain text.
@@ -65,9 +65,9 @@ pub enum Segment {
 
 /// A text that may carry secrets: a URL or a header value.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub struct Text(Vec<Segment>);
+pub struct SecretText(Vec<Segment>);
 
-impl Text {
+impl SecretText {
     /// The plain text `text`.
     #[must_use]
     pub fn plain(text: impl Into<String>) -> Self {
@@ -204,7 +204,7 @@ mod tests {
 
     #[test]
     fn a_text_exposes_its_secrets_only_when_asked() {
-        let text = Text::plain("Bot ").then_secret(token()).then("!");
+        let text = SecretText::plain("Bot ").then_secret(token()).then("!");
         assert_eq!(text.expose(), "Bot hunter2!");
         assert_eq!(text.redacted(), "Bot «secret:HERALD_DISCORD_TOKEN»!");
         assert!(!format!("{text:?}").contains("hunter2"));
@@ -213,10 +213,10 @@ mod tests {
 
     #[test]
     fn a_secret_alone_is_a_text() {
-        let text = Text::secret(token());
+        let text = SecretText::secret(token());
         assert_eq!(text.expose(), "hunter2");
         assert_eq!(text.redacted(), "«secret:HERALD_DISCORD_TOKEN»");
-        assert_eq!(Text::default().expose(), "");
+        assert_eq!(SecretText::default().expose(), "");
     }
 
     #[test]

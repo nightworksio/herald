@@ -6,7 +6,7 @@ use std::fmt;
 
 use herald_ports::{
     Admitted, Announcements, Cursors, Deliveries, Inboxes, Keeping, Keyring, KnownKey, Ledger,
-    Notes, Pins, Schedules, Store, StoreError, Subscriptions, Version, Written,
+    Notes, Pins, Positions, Schedules, Store, StoreError, Subscriptions, Version, Written,
 };
 use jiff::Timestamp;
 
@@ -90,6 +90,9 @@ pub async fn store_conformance<S: Store>(store: &S) -> Result<(), Failure> {
     }
     if let Some(kept) = store.pins() {
         pins(kept).await?;
+    }
+    if let Some(kept) = store.positions() {
+        positions(kept).await?;
     }
     if let Some(kept) = store.deliveries() {
         deliveries(kept).await?;
@@ -552,6 +555,25 @@ async fn pins<S: Pins>(store: &S) -> Result<(), Failure> {
     checks.ensure(
         store.pinned(&releases).await?.as_deref() == Some("2"),
         "a route's pin was not the one written last",
+    );
+    checks.done()
+}
+
+async fn positions<S: Positions>(store: &S) -> Result<(), Failure> {
+    let mut checks = Checks::default();
+    let matrix = DestinationName::new("matrix");
+    checks.ensure(
+        store.position(&matrix).await?.is_none(),
+        "a new store holds a session's position",
+    );
+    store.put_position(&matrix, "s1").await?;
+    store.put_position(&matrix, "s2").await?;
+    store
+        .put_position(&DestinationName::new("other"), "s3")
+        .await?;
+    checks.ensure(
+        store.position(&matrix).await?.as_deref() == Some("s2"),
+        "a session's position was not the one written last",
     );
     checks.done()
 }

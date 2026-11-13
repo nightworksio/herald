@@ -10,7 +10,7 @@ use fastly::http::Method;
 use fastly::{Request, Response};
 use std::io::Read as _;
 
-use herald_compose::{Asked, Composed, Hosting, told};
+use herald_compose::{Composed, HostRequest, Hosting, told};
 use herald_config::{Config, Uses, load};
 use herald_flows::{Answered, Reply, refusal, uncomposed};
 use host::{FastlyHost, STORE};
@@ -18,14 +18,14 @@ use host::{FastlyHost, STORE};
 /// The Config Store item holding `herald.toml`.
 const CONFIG: &str = "herald.toml";
 
-fn said(lines: impl IntoIterator<Item = String>) {
+fn log_lines(lines: impl IntoIterator<Item = String>) {
     for line in lines {
         eprintln!("{line}");
     }
 }
 
 /// What `request` asks, its body read no further than one byte past `most`.
-fn asked(mut request: Request, most: usize) -> std::io::Result<Asked> {
+fn asked(mut request: Request, most: usize) -> std::io::Result<HostRequest> {
     let method = request.get_method_str().to_owned();
     let target = request.get_url().path().to_owned()
         + &request
@@ -40,7 +40,7 @@ fn asked(mut request: Request, most: usize) -> std::io::Result<Asked> {
     let mut body = Vec::new();
     let limit = u64::try_from(most).unwrap_or(u64::MAX).saturating_add(1);
     request.take_body().take(limit).read_to_end(&mut body)?;
-    Ok(Asked {
+    Ok(HostRequest {
         method,
         target,
         headers,
@@ -88,7 +88,7 @@ fn send(reply: Reply, head: bool) {
 
 /// Sends the refusal `answered`, and logs its reason.
 fn refused(answered: Answered) {
-    said(answered.refused.as_deref().map(told::refused));
+    log_lines(answered.refused.as_deref().map(told::refused));
     send(answered.reply, false);
 }
 
@@ -122,10 +122,10 @@ pub(crate) fn serve() {
         }
     };
     let answer = pollster::block_on(composed.reached(&asked));
-    said(answer.refused.as_deref().map(told::refused));
-    said(answer.said);
+    log_lines(answer.refused.as_deref().map(told::refused));
+    log_lines(answer.said);
     send(answer.reply, is_head);
     if let Some(left) = answer.left {
-        said(told::worked(&pollster::block_on(composed.work(left))));
+        log_lines(told::worked(&pollster::block_on(composed.work(left))));
     }
 }

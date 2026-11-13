@@ -90,7 +90,7 @@ impl Reach for Plain {
     }
 
     fn posts<'a>(&'a self, _: &'a dyn DynHttp) -> Box<dyn DynMarkers + 'a> {
-        Box::new(Unread("plain reads nothing back"))
+        Box::new(UnreadPosts("plain reads nothing back"))
     }
 }
 

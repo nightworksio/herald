@@ -8,7 +8,8 @@ use crate::erased::{Boxed, Erased};
 use crate::keyring::{Keyring, KnownKey};
 use crate::store::{
     Admitted, Announcements, Cursors, Deliveries, Held, Inboxes, Keeper, Keeping, Ledger, Notes,
-    Outboxed, Pins, Schedules, Store, StoreError, Subscriptions, Version, Versioned, Written,
+    Outboxed, Pins, Positions, Schedules, Store, StoreError, Subscriptions, Version, Versioned,
+    Written,
 };
 
 /// [`Store`] and [`Keyring`] as one trait object: every store that is both
@@ -20,6 +21,9 @@ pub trait DynStore: Sync {
     /// The paths of the records a listing skipped as corrupt since this was
     /// last asked, each once.
     fn skipped(&self) -> Vec<String>;
+
+    /// [`Store::writes_one_at_a_time`].
+    fn writes_one_at_a_time(&self) -> bool;
 
     /// How its ledger is held.
     fn ledger_keeping(&self) -> Keeping;
@@ -97,6 +101,19 @@ pub trait DynStore: Sync {
         &'a self,
         route: &'a RouteId,
         post: &'a str,
+    ) -> Boxed<'a, Result<(), StoreError>>;
+
+    /// [`Positions::position`].
+    fn position_boxed<'a>(
+        &'a self,
+        destination: &'a DestinationName,
+    ) -> Boxed<'a, Result<Option<String>, StoreError>>;
+
+    /// [`Positions::put_position`].
+    fn put_position_boxed<'a>(
+        &'a self,
+        destination: &'a DestinationName,
+        position: &'a str,
     ) -> Boxed<'a, Result<(), StoreError>>;
 
     /// [`Deliveries::admit`].
@@ -200,11 +217,16 @@ impl<S: Store + Keyring> DynStore for S {
             Held::Notes => self.notes().is_some(),
             Held::Latest => self.announcements().is_some(),
             Held::Inboxes => self.inboxes().is_some(),
+            Held::Positions => self.positions().is_some(),
         }
     }
 
     fn skipped(&self) -> Vec<String> {
         Store::skipped(self)
+    }
+
+    fn writes_one_at_a_time(&self) -> bool {
+        Store::writes_one_at_a_time(self)
     }
 
     fn ledger_keeping(&self) -> Keeping {
@@ -297,6 +319,21 @@ impl<S: Store + Keyring> DynStore for S {
         post: &'a str,
     ) -> Boxed<'a, Result<(), StoreError>> {
         Box::pin(async move { self.pins().put_pinned(route, post).await })
+    }
+
+    fn position_boxed<'a>(
+        &'a self,
+        destination: &'a DestinationName,
+    ) -> Boxed<'a, Result<Option<String>, StoreError>> {
+        Box::pin(async move { self.positions().position(destination).await })
+    }
+
+    fn put_position_boxed<'a>(
+        &'a self,
+        destination: &'a DestinationName,
+        position: &'a str,
+    ) -> Boxed<'a, Result<(), StoreError>> {
+        Box::pin(async move { self.positions().put_position(destination, position).await })
     }
 
     fn admit_boxed<'a>(
@@ -483,6 +520,20 @@ impl Pins for Erased<'_, dyn DynStore + '_> {
     }
 }
 
+impl Positions for Erased<'_, dyn DynStore + '_> {
+    async fn position(&self, destination: &DestinationName) -> Result<Option<String>, StoreError> {
+        self.0.position_boxed(destination).await
+    }
+
+    async fn put_position(
+        &self,
+        destination: &DestinationName,
+        position: &str,
+    ) -> Result<(), StoreError> {
+        self.0.put_position_boxed(destination, position).await
+    }
+}
+
 impl Deliveries for Erased<'_, dyn DynStore + '_> {
     async fn admit(&self, scheme: Scheme, id: &str, at: Timestamp) -> Result<Admitted, StoreError> {
         self.0.admit_boxed(scheme, id, at).await
@@ -579,6 +630,10 @@ impl Keeper for Erased<'_, dyn DynStore + '_> {
 
     fn skipped(&self) -> Vec<String> {
         self.0.skipped()
+    }
+
+    fn writes_one_at_a_time(&self) -> bool {
+        self.0.writes_one_at_a_time()
     }
 }
 

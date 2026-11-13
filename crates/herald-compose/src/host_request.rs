@@ -1,3 +1,6 @@
+//! A request as a host with no script of its own reads it, and the answer
+//! herald gives it.
+
 use std::fmt;
 
 use herald_flows::{Admission, Inbound, ROUND_SECRET, Reply, Round, refusal};
@@ -23,7 +26,7 @@ fn plain(status: u16, text: &str) -> Reply {
 
 /// What a request asked, as a host with no script of its own read it.
 #[derive(Clone, PartialEq, Eq)]
-pub struct Asked {
+pub struct HostRequest {
     /// The method, in capitals.
     pub method: String,
     /// The path and its query.
@@ -34,10 +37,10 @@ pub struct Asked {
     pub body: Vec<u8>,
 }
 
-impl fmt::Debug for Asked {
+impl fmt::Debug for HostRequest {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let headers: Vec<&str> = self.headers.iter().map(|(name, _)| name.as_str()).collect();
-        f.debug_struct("Asked")
+        f.debug_struct("HostRequest")
             .field("method", &self.method)
             .field(
                 "path",
@@ -55,7 +58,7 @@ impl fmt::Debug for Asked {
 impl<H: Host> Composed<'_, H> {
     /// What comes of `asked`, a request a host with no script of its own
     /// read.
-    pub async fn reached(&self, asked: &Asked) -> Answer {
+    pub async fn reached(&self, asked: &HostRequest) -> Answer {
         let (path, query) = match asked.target.split_once('?') {
             Some((path, query)) => (path, asked_query(Some(query.to_owned()))),
             None => (asked.target.as_str(), None),
@@ -101,7 +104,7 @@ mod tests {
 
     #[test]
     fn a_request_debugs_without_its_query_header_values_or_body() {
-        let asked = Asked {
+        let asked = HostRequest {
             method: "POST".to_owned(),
             target: "/matrix/chat/transactions/1?access_token=hs-secret".to_owned(),
             headers: vec![("Authorization".to_owned(), "Bearer round-secret".to_owned())],
@@ -110,7 +113,7 @@ mod tests {
         let shown = format!("{asked:?}");
         assert_eq!(
             shown,
-            r#"Asked { method: "POST", path: "/matrix/chat/transactions/1", headers: ["Authorization"], body: 2 bytes }"#
+            r#"HostRequest { method: "POST", path: "/matrix/chat/transactions/1", headers: ["Authorization"], body: 2 bytes }"#
         );
     }
 }

@@ -4,7 +4,7 @@ use std::pin::Pin;
 use std::sync::{Arc, Mutex};
 use std::task::{Context, Poll};
 
-use herald_ports::{Frame, HttpError, Socket, Sockets, Text};
+use herald_ports::{Frame, HttpError, SecretText, Socket, Sockets};
 
 use crate::lock;
 
@@ -101,7 +101,7 @@ impl Sockets for ScriptedSockets {
 }
 
 impl Socket for ScriptedSocket {
-    async fn send(&mut self, frame: Text) -> Result<(), HttpError> {
+    async fn send(&mut self, frame: SecretText) -> Result<(), HttpError> {
         match &mut self.taking {
             Some(0) => {
                 return Err(HttpError::unreachable(
@@ -142,7 +142,10 @@ mod tests {
             pollster::block_on(socket.receive()),
             Frame::Closed(Some(1000))
         );
-        assert_eq!(pollster::block_on(socket.send(Text::plain("b"))), Ok(()));
+        assert_eq!(
+            pollster::block_on(socket.send(SecretText::plain("b"))),
+            Ok(())
+        );
         assert_eq!(sockets.sent(), ["b"]);
         assert_eq!(
             pollster::block_on(sockets.open("wss://two")).err(),
@@ -159,8 +162,8 @@ mod tests {
     fn refusing_sockets_refuse_every_frame_after_those_they_take() {
         let sockets = ScriptedSockets::opening(vec![Ok(Vec::new())]).refusing_after(1);
         let mut socket = pollster::block_on(sockets.open("wss://one")).unwrap();
-        assert!(pollster::block_on(socket.send(Text::plain("a"))).is_ok());
-        assert!(pollster::block_on(socket.send(Text::plain("b"))).is_err());
+        assert!(pollster::block_on(socket.send(SecretText::plain("a"))).is_ok());
+        assert!(pollster::block_on(socket.send(SecretText::plain("b"))).is_err());
         assert_eq!(sockets.sent(), ["a"]);
     }
 

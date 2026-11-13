@@ -20,13 +20,13 @@ use herald_compose::{Composed, Host as _, Hosting, Left};
 use herald_config::{Config, Uses};
 use herald_environment::EnvSecrets;
 use herald_flows::{Admission, Inbound, Reply};
-use herald_ports::{Clock as _, Http, Method, Request, Secret, Secrets as _, Text};
+use herald_ports::{Clock as _, Http, Method, Request, Secret, SecretText, Secrets as _};
 use herald_server::Heard;
 use jiff::Timestamp;
 use serde_json::{Value, json};
 
 use super::output::say;
-use super::serving::said;
+use super::serving::heard_lines;
 use super::stores::Native;
 use super::{Connect, Connection, STOPPED};
 
@@ -78,7 +78,7 @@ impl Handing {
     /// it to finish, signed at `now`.
     fn invocation(&self, event: &Value, now: Timestamp) -> Request {
         let path = format!("/2015-03-31/functions/{}/invocations", self.function);
-        let request = Request::new(Method::Post, Text::plain(self.endpoint.at(&path)))
+        let request = Request::new(Method::Post, SecretText::plain(self.endpoint.at(&path)))
             .body(event.to_string().into_bytes());
         signed(
             request,
@@ -197,12 +197,12 @@ struct Function<'a> {
 impl Function<'_> {
     fn heard(&self, heard: Heard) {
         let mut out = self.out.borrow_mut();
-        for line in said(heard) {
+        for line in heard_lines(heard) {
             say(&mut **out, &line);
         }
     }
 
-    fn said(&self, line: &str) {
+    fn log(&self, line: &str) {
         say(&mut **self.out.borrow_mut(), line);
     }
 
@@ -212,19 +212,19 @@ impl Function<'_> {
         loop {
             let next = Request::new(
                 Method::Get,
-                Text::plain(format!("{}/{VERSION}/runtime/invocation/next", self.api)),
+                SecretText::plain(format!("{}/{VERSION}/runtime/invocation/next", self.api)),
             );
             let invoked = match self.runtime.send(next).await {
                 Ok(invoked) if invoked.succeeded() => invoked,
                 Ok(invoked) => {
-                    self.said(&format!(
+                    self.log(&format!(
                         "the runtime API answered {}; the function stops",
                         invoked.status
                     ));
                     return STOPPED;
                 }
                 Err(error) => {
-                    self.said(&format!(
+                    self.log(&format!(
                         "the runtime API could not be reached: {error}; the function stops"
                     ));
                     return STOPPED;
@@ -238,7 +238,7 @@ impl Function<'_> {
             let (path, body) = match self.invoked(&event).await {
                 Ok(answer) => ("response", answer),
                 Err(why) => {
-                    self.said(&why);
+                    self.log(&why);
                     (
                         "error",
                         json!({ "errorMessage": why, "errorType": "Unanswered" }),
@@ -247,15 +247,15 @@ impl Function<'_> {
             };
             let done = Request::new(
                 Method::Post,
-                Text::plain(format!(
+                SecretText::plain(format!(
                     "{}/{VERSION}/runtime/invocation/{id}/{path}",
                     self.api
                 )),
             )
-            .header("Content-Type", Text::plain("application/json"))
+            .header("Content-Type", SecretText::plain("application/json"))
             .body(body.to_string().into_bytes());
             if let Err(error) = self.runtime.send(done).await {
-                self.said(&format!("the answer to {id} could not be given: {error}"));
+                self.log(&format!("the answer to {id} could not be given: {error}"));
             }
         }
     }
@@ -282,7 +282,7 @@ impl Function<'_> {
                 self.heard(Heard::Refused(reason));
             }
             for line in &answered.said {
-                self.said(line);
+                self.log(line);
             }
             if let Some(left) = answered.left {
                 self.leave(left, &carried).await;
@@ -311,11 +311,11 @@ impl Function<'_> {
             let invocation = handing.invocation(&carried.handed(), now);
             match http.send(invocation).await {
                 Ok(response) if response.succeeded() => return,
-                Ok(response) => self.said(&format!(
+                Ok(response) => self.log(&format!(
                     "the work could not be handed on, as Lambda answered {}; it is done now",
                     response.status
                 )),
-                Err(error) => self.said(&format!(
+                Err(error) => self.log(&format!(
                     "the work could not be handed on: {error}; it is done now"
                 )),
             }

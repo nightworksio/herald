@@ -7,7 +7,7 @@ use crate::forge::{Api, Repository};
 use herald_core::unreserved;
 use herald_wire::SourceError;
 
-use crate::wire::{Found, read};
+use crate::wire::{ForgeRelease, read};
 
 pub(crate) const API: Api = Api {
     url: "https://gitlab.com/api/v4",
@@ -55,7 +55,7 @@ struct Links {
     own: String,
 }
 
-impl From<Release> for Found {
+impl From<Release> for ForgeRelease {
     fn from(release: Release) -> Self {
         Self {
             tag: release.tag_name,
@@ -114,7 +114,7 @@ pub(crate) fn path(what: &'static str, payload: &[u8]) -> Option<String> {
 pub(crate) fn published(
     what: &'static str,
     payload: &[u8],
-) -> Result<Option<(Repository, Found)>, SourceError> {
+) -> Result<Option<(Repository, ForgeRelease)>, SourceError> {
     let hook: Hook = read(what, payload)?;
     if hook.object_kind != "release" {
         return Err(SourceError::Unreadable {
@@ -125,7 +125,7 @@ pub(crate) fn published(
     if hook.action != "create" {
         return Ok(None);
     }
-    let found = Found {
+    let found = ForgeRelease {
         tag: hook.tag,
         name: hook.name,
         body: hook.description,
@@ -137,15 +137,15 @@ pub(crate) fn published(
     Ok(Some((hook.project, found)))
 }
 
-pub(crate) fn found(what: &'static str, body: &[u8]) -> Result<Found, SourceError> {
-    read::<Release>(what, body).map(Found::from)
+pub(crate) fn found(what: &'static str, body: &[u8]) -> Result<ForgeRelease, SourceError> {
+    read::<Release>(what, body).map(ForgeRelease::from)
 }
 
 pub(crate) fn all_found(
     what: &'static str,
     limit: usize,
     body: &[u8],
-) -> Result<Vec<Found>, SourceError> {
+) -> Result<Vec<ForgeRelease>, SourceError> {
     let releases: Vec<Release> = herald_wire::read(what, limit, body)?;
-    Ok(releases.into_iter().map(Found::from).collect())
+    Ok(releases.into_iter().map(ForgeRelease::from).collect())
 }

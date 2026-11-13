@@ -3,7 +3,7 @@
 
 use herald_core::unreserved;
 use herald_kinds::Probe;
-use herald_ports::{Credential, Http, Method, Text};
+use herald_ports::{Credential, Http, Method, SecretText};
 
 use crate::discord::{DISCORD, Discord};
 use crate::request::bare;
@@ -13,8 +13,8 @@ use crate::request::bare;
 pub(crate) async fn probe<H: Http>(discord: &Discord, http: &H) -> Vec<Probe> {
     let credential = &discord.credential;
     let asked = match credential {
-        Credential::Bot(_) => Text::plain(format!("{}/users/@me", discord.api)),
-        Credential::Webhook(url) => Text::secret(url.clone()),
+        Credential::Bot(_) => SecretText::plain(format!("{}/users/@me", discord.api)),
+        Credential::Webhook(url) => SecretText::secret(url.clone()),
     };
     let taken = Probe::credential(
         DISCORD,
@@ -26,7 +26,7 @@ pub(crate) async fn probe<H: Http>(discord: &Discord, http: &H) -> Vec<Probe> {
     {
         let url = format!("{}/channels/{}", discord.api, unreserved(channel));
         let answer = http
-            .send(bare(Method::Get, Text::plain(url), credential.bot()))
+            .send(bare(Method::Get, SecretText::plain(url), credential.bot()))
             .await;
         probes.extend(Probe::route(DISCORD, Some("channel"), &answer, &|status| {
             format!("the bot cannot see the channel {channel}, as Discord answered {status}; add the bot to the server and give it View Channel and Send Messages there")

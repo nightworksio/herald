@@ -134,11 +134,13 @@ pub enum Held {
     Latest,
     /// Where each delivery to a follower's inbox stands.
     Inboxes,
+    /// Where each session a destination holds stands.
+    Positions,
 }
 
 impl Held {
     /// Every kind, in the order a store's accessors list them.
-    pub const ALL: [Self; 9] = [
+    pub const ALL: [Self; 10] = [
         Self::Ledger,
         Self::Cursors,
         Self::Schedules,
@@ -148,6 +150,7 @@ impl Held {
         Self::Notes,
         Self::Latest,
         Self::Inboxes,
+        Self::Positions,
     ];
 
     /// The kind as an error names it.
@@ -162,6 +165,7 @@ impl Held {
             Self::Notes => "notes",
             Self::Latest => "latest",
             Self::Inboxes => "deliveries to followers",
+            Self::Positions => "session positions",
         }
     }
 
@@ -278,6 +282,24 @@ pub trait Pins: Sync {
         &self,
         route: &RouteId,
         post: &str,
+    ) -> impl Future<Output = Result<(), StoreError>> + Send;
+}
+
+/// Where each session a destination holds stands, one value per
+/// destination: the last written is kept, so a session taken up again
+/// starts where the last left off.
+pub trait Positions: Sync {
+    /// Where the session `destination` holds last stood.
+    fn position(
+        &self,
+        destination: &DestinationName,
+    ) -> impl Future<Output = Result<Option<String>, StoreError>> + Send;
+
+    /// Keeps `position` as where the session `destination` holds stands.
+    fn put_position(
+        &self,
+        destination: &DestinationName,
+        position: &str,
     ) -> impl Future<Output = Result<(), StoreError>> + Send;
 }
 
@@ -448,235 +470,6 @@ pub trait Inboxes: Sync {
     fn forget_deliveries(&self, key: &Key) -> impl Future<Output = Result<(), StoreError>> + Send;
 }
 
-impl<T: Ledger> Ledger for Option<&T> {
-    fn keeping(&self) -> Keeping {
-        self.map_or(Keeping::Kept, Ledger::keeping)
-    }
-
-    async fn entry(&self, key: &Key) -> Result<Option<Versioned<Entry>>, StoreError> {
-        match self {
-            Some(kept) => kept.entry(key).await,
-            None => Unkept.entry(key).await,
-        }
-    }
-
-    async fn put_entry(
-        &self,
-        entry: &Entry,
-        expected: Option<Version>,
-    ) -> Result<Written, StoreError> {
-        match self {
-            Some(kept) => kept.put_entry(entry, expected).await,
-            None => Unkept.put_entry(entry, expected).await,
-        }
-    }
-
-    async fn expire_entries(&self, before: Timestamp) -> Result<Vec<Key>, StoreError> {
-        match self {
-            Some(kept) => kept.expire_entries(before).await,
-            None => Unkept.expire_entries(before).await,
-        }
-    }
-}
-
-impl<T: Cursors> Cursors for Option<&T> {
-    async fn cursor(&self, source: &SourceName) -> Result<Option<Versioned<Cursor>>, StoreError> {
-        match self {
-            Some(kept) => kept.cursor(source).await,
-            None => Unkept.cursor(source).await,
-        }
-    }
-
-    async fn put_cursor(
-        &self,
-        source: &SourceName,
-        cursor: &Cursor,
-        expected: Option<Version>,
-    ) -> Result<Written, StoreError> {
-        match self {
-            Some(kept) => kept.put_cursor(source, cursor, expected).await,
-            None => Unkept.put_cursor(source, cursor, expected).await,
-        }
-    }
-}
-
-impl<T: Schedules> Schedules for Option<&T> {
-    fn keeping(&self) -> Keeping {
-        self.map_or(Keeping::Kept, Schedules::keeping)
-    }
-
-    async fn every_schedule(&self) -> Result<Vec<Schedule>, StoreError> {
-        match self {
-            Some(kept) => kept.every_schedule().await,
-            None => Unkept.every_schedule().await,
-        }
-    }
-
-    async fn put_schedules(&self, add: &[Schedule], remove: &[Schedule]) -> Result<(), StoreError> {
-        match self {
-            Some(kept) => kept.put_schedules(add, remove).await,
-            None => Unkept.put_schedules(add, remove).await,
-        }
-    }
-}
-
-impl<T: Subscriptions> Subscriptions for Option<&T> {
-    async fn subscribers(
-        &self,
-        destination: &DestinationName,
-        project: &str,
-    ) -> Result<Vec<Subscription>, StoreError> {
-        match self {
-            Some(kept) => kept.subscribers(destination, project).await,
-            None => Unkept.subscribers(destination, project).await,
-        }
-    }
-
-    async fn subscribe(&self, subscription: &Subscription) -> Result<(), StoreError> {
-        match self {
-            Some(kept) => kept.subscribe(subscription).await,
-            None => Unkept.subscribe(subscription).await,
-        }
-    }
-
-    async fn unsubscribe(&self, subscription: &Subscription) -> Result<(), StoreError> {
-        match self {
-            Some(kept) => kept.unsubscribe(subscription).await,
-            None => Unkept.unsubscribe(subscription).await,
-        }
-    }
-}
-
-impl<T: Pins> Pins for Option<&T> {
-    async fn pinned(&self, route: &RouteId) -> Result<Option<String>, StoreError> {
-        match self {
-            Some(kept) => kept.pinned(route).await,
-            None => Unkept.pinned(route).await,
-        }
-    }
-
-    async fn put_pinned(&self, route: &RouteId, post: &str) -> Result<(), StoreError> {
-        match self {
-            Some(kept) => kept.put_pinned(route, post).await,
-            None => Unkept.put_pinned(route, post).await,
-        }
-    }
-}
-
-impl<T: Deliveries> Deliveries for Option<&T> {
-    async fn admit(&self, scheme: Scheme, id: &str, at: Timestamp) -> Result<Admitted, StoreError> {
-        match self {
-            Some(kept) => kept.admit(scheme, id, at).await,
-            None => Unkept.admit(scheme, id, at).await,
-        }
-    }
-
-    async fn release(&self, scheme: Scheme, id: &str) -> Result<(), StoreError> {
-        match self {
-            Some(kept) => kept.release(scheme, id).await,
-            None => Unkept.release(scheme, id).await,
-        }
-    }
-
-    async fn expire_deliveries(&self, before: Timestamp) -> Result<(), StoreError> {
-        match self {
-            Some(kept) => kept.expire_deliveries(before).await,
-            None => Unkept.expire_deliveries(before).await,
-        }
-    }
-}
-
-impl<T: Notes> Notes for Option<&T> {
-    async fn note(&self, key: &Key) -> Result<Option<String>, StoreError> {
-        match self {
-            Some(kept) => kept.note(key).await,
-            None => Unkept.note(key).await,
-        }
-    }
-
-    async fn put_note(
-        &self,
-        actor: &str,
-        key: &Key,
-        note: &str,
-        at: Timestamp,
-    ) -> Result<(), StoreError> {
-        match self {
-            Some(kept) => kept.put_note(actor, key, note, at).await,
-            None => Unkept.put_note(actor, key, note, at).await,
-        }
-    }
-
-    async fn outbox(
-        &self,
-        actor: &str,
-        after: Option<&str>,
-        most: usize,
-    ) -> Result<Outboxed, StoreError> {
-        match self {
-            Some(kept) => kept.outbox(actor, after, most).await,
-            None => Unkept.outbox(actor, after, most).await,
-        }
-    }
-
-    async fn expire_notes(&self, before: Timestamp) -> Result<(), StoreError> {
-        match self {
-            Some(kept) => kept.expire_notes(before).await,
-            None => Unkept.expire_notes(before).await,
-        }
-    }
-}
-
-impl<T: Announcements> Announcements for Option<&T> {
-    async fn latest(&self, project: &str) -> Result<Option<Versioned<Latest>>, StoreError> {
-        match self {
-            Some(kept) => kept.latest(project).await,
-            None => Unkept.latest(project).await,
-        }
-    }
-
-    async fn every_latest(&self) -> Result<Vec<Latest>, StoreError> {
-        match self {
-            Some(kept) => kept.every_latest().await,
-            None => Unkept.every_latest().await,
-        }
-    }
-
-    async fn put_latest(
-        &self,
-        latest: &Latest,
-        expected: Option<Version>,
-    ) -> Result<Written, StoreError> {
-        match self {
-            Some(kept) => kept.put_latest(latest, expected).await,
-            None => Unkept.put_latest(latest, expected).await,
-        }
-    }
-}
-
-impl<T: Inboxes> Inboxes for Option<&T> {
-    async fn delivery(&self, key: &Key, inbox: &str) -> Result<Option<State>, StoreError> {
-        match self {
-            Some(kept) => kept.delivery(key, inbox).await,
-            None => Unkept.delivery(key, inbox).await,
-        }
-    }
-
-    async fn put_delivery(&self, key: &Key, inbox: &str, state: &State) -> Result<(), StoreError> {
-        match self {
-            Some(kept) => kept.put_delivery(key, inbox, state).await,
-            None => Unkept.put_delivery(key, inbox, state).await,
-        }
-    }
-
-    async fn forget_deliveries(&self, key: &Key) -> Result<(), StoreError> {
-        match self {
-            Some(kept) => kept.forget_deliveries(key).await,
-            None => Unkept.forget_deliveries(key).await,
-        }
-    }
-}
-
 /// The records of a kind a store never keeps: asking for one is refused as
 /// unsupported, naming the kind.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -770,6 +563,23 @@ impl Pins for Unkept {
         _: &str,
     ) -> impl Future<Output = Result<(), StoreError>> + Send {
         ready(Err(Held::Pins.unsupported()))
+    }
+}
+
+impl Positions for Unkept {
+    fn position(
+        &self,
+        _: &DestinationName,
+    ) -> impl Future<Output = Result<Option<String>, StoreError>> + Send {
+        ready(Err(Held::Positions.unsupported()))
+    }
+
+    fn put_position(
+        &self,
+        _: &DestinationName,
+        _: &str,
+    ) -> impl Future<Output = Result<(), StoreError>> + Send {
+        ready(Err(Held::Positions.unsupported()))
     }
 }
 
@@ -890,6 +700,8 @@ pub trait Store: Sync {
     type Announcements: Announcements;
     /// Its deliveries to followers' inboxes.
     type Inboxes: Inboxes;
+    /// Where the sessions its destinations hold stand.
+    type Positions: Positions;
 
     /// The ledger, where it keeps or derives one.
     fn ledger(&self) -> Option<&Self::Ledger>;
@@ -909,20 +721,43 @@ pub trait Store: Sync {
     fn announcements(&self) -> Option<&Self::Announcements>;
     /// The deliveries to followers' inboxes, where it keeps them.
     fn inboxes(&self) -> Option<&Self::Inboxes>;
+    /// Where the sessions its destinations hold stand, where it keeps that.
+    fn positions(&self) -> Option<&Self::Positions>;
 
     /// The paths of the records a listing skipped as corrupt since this was
     /// last asked, each once, so one bad record stops no listing and is
     /// still reported.
     fn skipped(&self) -> Vec<String>;
+
+    /// Whether a run writes one record at a time: where a write may be
+    /// refused because another record was written at once, or where writes
+    /// are not compared and set.
+    fn writes_one_at_a_time(&self) -> bool;
 }
 
 /// A store holding every kind of record it keeps itself, and saying which
 /// kinds it holds.
 pub trait Keeper:
-    Ledger + Cursors + Schedules + Subscriptions + Pins + Deliveries + Notes + Announcements + Inboxes
+    Ledger
+    + Cursors
+    + Schedules
+    + Subscriptions
+    + Pins
+    + Deliveries
+    + Notes
+    + Announcements
+    + Inboxes
+    + Positions
 {
     /// Whether it holds records of `kind`.
     fn holds(&self, kind: Held) -> bool;
+
+    /// Whether a run writes one record at a time: where a write may be
+    /// refused because another record was written at once, or where writes
+    /// are not compared and set.
+    fn writes_one_at_a_time(&self) -> bool {
+        false
+    }
 
     /// The paths of the records a listing skipped as corrupt since this was
     /// last asked, each once.
@@ -939,6 +774,7 @@ impl<K: Keeper> Store for K {
     type Notes = Self;
     type Announcements = Self;
     type Inboxes = Self;
+    type Positions = Self;
 
     fn ledger(&self) -> Option<&Self> {
         self.holds(Held::Ledger).then_some(self)
@@ -976,10 +812,20 @@ impl<K: Keeper> Store for K {
         self.holds(Held::Inboxes).then_some(self)
     }
 
+    fn positions(&self) -> Option<&Self> {
+        self.holds(Held::Positions).then_some(self)
+    }
+
     fn skipped(&self) -> Vec<String> {
         Keeper::skipped(self)
     }
+
+    fn writes_one_at_a_time(&self) -> bool {
+        Keeper::writes_one_at_a_time(self)
+    }
 }
+
+mod optional;
 
 #[cfg(test)]
 mod tests;

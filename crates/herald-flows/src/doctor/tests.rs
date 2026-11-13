@@ -1,3 +1,5 @@
+//! Tests of what doctor finds in a config.
+
 use herald_core::MentionStyle;
 
 use super::*;

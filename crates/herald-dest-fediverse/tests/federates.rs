@@ -14,7 +14,7 @@ mod federates {
         Activity, DestinationConfig, DestinationKind, Fault, Federates, Inboxes, Placed, Placing,
         Reach, Reached,
     };
-    use herald_ports::{PUBLIC, Secret};
+    use herald_ports::{PUBLIC_BASE, Secret};
     use herald_testing::sample;
     use serde_json::{Value, json};
 
@@ -211,7 +211,7 @@ mod federates {
     #[test]
     fn an_actor_is_reached_publicly_and_follows_publishes_and_federates_as_itself() {
         let gate = gate();
-        assert_eq!(Reach::api(&gate), PUBLIC);
+        assert_eq!(Reach::api(&gate), PUBLIC_BASE);
         assert_eq!(gate.follows(), Some("gate"));
         let announcement = sample::announcement();
         assert_eq!(

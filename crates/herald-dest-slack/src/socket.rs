@@ -5,7 +5,7 @@
 use std::collections::BTreeMap;
 
 use herald_core::{DestinationName, socket_under};
-use herald_ports::{Method, Request, Response, Secret, Text};
+use herald_ports::{Method, Request, Response, Secret, SecretText};
 use serde_json::{Value, json};
 
 use crate::interact::{Interacting, Received};
@@ -42,11 +42,11 @@ impl Interacting {
     pub fn opening(&self, app: &Secret) -> Request {
         Request::new(
             Method::Post,
-            Text::plain(format!("{}/apps.connections.open", self.api())),
+            SecretText::plain(format!("{}/apps.connections.open", self.api())),
         )
         .header(
             "Content-Type",
-            Text::plain("application/x-www-form-urlencoded"),
+            SecretText::plain("application/x-www-form-urlencoded"),
         )
         .identified()
         .bearer(app.clone())

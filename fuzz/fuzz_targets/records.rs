@@ -8,14 +8,14 @@ use herald_ports::{
     Announcements, Cursors, Inboxes, Keyring, Ledger, Notes, Pins, Schedules, Secret, StoreError,
     Subscriptions,
 };
-use herald_records::{Blob, Kept, Records, Seal, Wrote};
+use herald_records::{Blob, RecordBackend, RecordStore, Seal, Wrote};
 use libfuzzer_sys::fuzz_target;
 
 /// A backend whose every record holds the same hostile bytes.
 #[derive(Clone)]
 struct Hostile(Vec<u8>);
 
-impl Records for Hostile {
+impl RecordBackend for Hostile {
     async fn read(&self, _: &str) -> Result<Option<Blob>, StoreError> {
         Ok(Some(Blob {
             token: "t".to_owned(),
@@ -36,7 +36,7 @@ impl Records for Hostile {
     }
 }
 
-fn read_everything(kept: &Kept<Hostile>) {
+fn read_everything(kept: &RecordStore<Hostile>) {
     let key = Key::derive(&RouteId::new("r"), &Identity::new("i"));
     pollster::block_on(async {
         let _ = kept.entry(&key).await;
@@ -53,8 +53,8 @@ fn read_everything(kept: &Kept<Hostile>) {
 }
 
 fuzz_target!(|data: &[u8]| {
-    read_everything(&Kept::new(Hostile(data.to_vec())));
-    let sealed = Kept::new(Hostile(data.to_vec()))
+    read_everything(&RecordStore::new(Hostile(data.to_vec())));
+    let sealed = RecordStore::new(Hostile(data.to_vec()))
         .sealed(Seal::new(Secret::new("HERALD_STORE_KEY", "fuzz")));
     read_everything(&sealed);
 });

@@ -105,9 +105,9 @@ pub trait StoreKind: 'static {
 
 /// A store's options, of any kind.
 #[derive(Clone)]
-pub struct Store(Arc<dyn StoreConfig>);
+pub struct ConfiguredStore(Arc<dyn StoreConfig>);
 
-impl Store {
+impl ConfiguredStore {
     /// `options`, as a store.
     #[must_use]
     pub fn new(options: impl StoreConfig) -> Self {
@@ -129,7 +129,7 @@ impl Store {
     }
 }
 
-impl Deref for Store {
+impl Deref for ConfiguredStore {
     type Target = dyn StoreConfig;
 
     fn deref(&self) -> &Self::Target {
@@ -137,19 +137,19 @@ impl Deref for Store {
     }
 }
 
-impl fmt::Debug for Store {
+impl fmt::Debug for ConfiguredStore {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.0.fmt(f)
     }
 }
 
-impl PartialEq for Store {
+impl PartialEq for ConfiguredStore {
     fn eq(&self, other: &Self) -> bool {
         self.0.same(other.0.as_any())
     }
 }
 
-impl Eq for Store {}
+impl Eq for ConfiguredStore {}
 
 #[cfg(test)]
 mod tests;

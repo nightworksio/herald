@@ -7,7 +7,7 @@ use herald_ports::{Http, HttpError, Learned, Request, Secret};
 use serde_json::Value;
 
 use crate::options::RouteOptions;
-use crate::read::{UNNAMED, json, read, text, trouble};
+use crate::read::{UNNAMED, failure, json, read, text};
 use crate::request::{
     MATRIX_TO, NOT_FOUND, ROUTE, Repin, event, get, pin_target, pinned, pins, repinned, step, with,
     without,
@@ -33,7 +33,7 @@ pub const MARKUP: Markup = Markup {
 };
 
 /// An answer read, a reason to stop with, or no answer at all.
-pub(crate) type Read<T> = Result<Result<T, Sent>, HttpError>;
+pub(crate) type ApiAnswer<T> = Result<Result<T, Sent>, HttpError>;
 
 /// The longest title and thread name, in bytes.
 const TITLE: usize = 256;
@@ -196,7 +196,7 @@ impl Matrix {
             return Ok(landed);
         }
         let answer = http.send(repinned(self, &wanted)).await?;
-        Ok(trouble(&answer, self.waits).unwrap_or(landed))
+        Ok(failure(&answer, self.waits).unwrap_or(landed))
     }
 
     /// The pins in `held`, other than `post`, that herald's own account sent
@@ -208,7 +208,7 @@ impl Matrix {
         held: &[String],
         post: &str,
         route: &Marker,
-    ) -> Read<Vec<String>> {
+    ) -> ApiAnswer<Vec<String>> {
         let candidates: Vec<&String> = held.iter().filter(|pin| *pin != post).collect();
         if let Some(over) = self.pin_lookups.over(candidates.len()) {
             return Ok(Err(Sent::Refused(over)));
@@ -223,7 +223,7 @@ impl Matrix {
             if response.status == NOT_FOUND {
                 continue;
             }
-            if let Some(sent) = trouble(&response, self.waits) {
+            if let Some(sent) = failure(&response, self.waits) {
                 return Ok(Err(sent));
             }
             let found = json(&response);
@@ -238,12 +238,12 @@ impl Matrix {
     }
 
     /// The account the token is, as the homeserver names it, asked once.
-    pub(crate) async fn account<H: Http>(&self, http: &H) -> Read<String> {
+    pub(crate) async fn account<H: Http>(&self, http: &H) -> ApiAnswer<String> {
         if let Some(account) = self.account.get() {
             return Ok(Ok(account.clone()));
         }
         let answer = http.send(get(self, "/account/whoami")).await?;
-        if let Some(sent) = trouble(&answer, self.waits) {
+        if let Some(sent) = failure(&answer, self.waits) {
             return Ok(Err(sent));
         }
         Ok(text(&json(&answer), "user_id")

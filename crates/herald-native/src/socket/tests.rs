@@ -50,14 +50,14 @@ async fn a_connection_carries_text_frames_both_ways_and_says_how_it_closed() {
             .unwrap();
     });
     let mut socket = sockets().open(&format!("ws://{address}/")).await.unwrap();
-    socket.send(Text::plain("hello")).await.unwrap();
+    socket.send(SecretText::plain("hello")).await.unwrap();
     assert_eq!(
         heard(&mut socket).await,
         Frame::Text("echo hello".to_owned())
     );
     assert_eq!(heard(&mut socket).await, Frame::Closed(Some(4004)));
     assert_eq!(heard(&mut socket).await, Frame::Closed(None));
-    assert!(socket.send(Text::plain("late")).await.is_err());
+    assert!(socket.send(SecretText::plain("late")).await.is_err());
     server.await.unwrap();
     let raw = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let raw_address = raw.local_addr().unwrap();

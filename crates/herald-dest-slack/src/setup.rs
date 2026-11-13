@@ -71,7 +71,7 @@ impl Setup for Setting<'_> {
         Ok(vec![SetupStep::Say(said)])
     }
 
-    fn said(&self, _: SetupTask<'_>, _: &Response) -> Result<Vec<String>, String> {
+    fn reported(&self, _: SetupTask<'_>, _: &Response) -> Result<Vec<String>, String> {
         Err(UNASKED.to_owned())
     }
 }
@@ -186,6 +186,6 @@ mod tests {
             headers: Vec::new(),
             body: Vec::new(),
         };
-        assert_eq!(setup.said(task, &response), Err(UNASKED.to_owned()));
+        assert_eq!(setup.reported(task, &response), Err(UNASKED.to_owned()));
     }
 }

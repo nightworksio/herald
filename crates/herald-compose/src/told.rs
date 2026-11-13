@@ -3,8 +3,8 @@
 
 use herald_core::{Chore, Schedule, Step};
 use herald_flows::{
-    Announced, Chored, FollowError, Followed, Housekept, Interacted, Kept, Outcome, Remembered,
-    Stop, Sweep, Swept, Worked,
+    Announced, Chored, Did, FollowError, Followed, Housekept, HousekeptSchedule, Interacted, Job,
+    Outcome, Remembered, Stop, Sweep, Swept, Worked,
 };
 
 /// What a poll of one source found and announced.
@@ -56,7 +56,7 @@ pub fn polled(swept: &Swept) -> Vec<String> {
 
 /// What one chore did.
 #[must_use]
-pub fn chored(kept: &Kept) -> String {
+pub fn chored(kept: &HousekeptSchedule) -> String {
     let Schedule {
         route,
         thread,
@@ -147,13 +147,37 @@ pub fn report(announced: &Announced) -> String {
     }
 }
 
-/// What a job did.
+/// What a job did, and why the delivery it came by could not be released
+/// where it could not.
 #[must_use]
 pub fn worked(worked: &Worked) -> Vec<String> {
-    match worked {
-        Worked::Announced(announced) => announced.iter().map(report).collect(),
-        Worked::Followed(followed) => vec![follow(followed)],
-        Worked::Interacted(interacted) => interacted.iter().map(answered).collect(),
+    let mut said: Vec<String> = match &worked.did {
+        Did::Announced(announced) => announced.iter().map(report).collect(),
+        Did::Followed(followed) => vec![follow(followed)],
+        Did::Interacted(interacted) => interacted.iter().map(answered).collect(),
+    };
+    said.extend(worked.unreleased.iter().map(|unreleased| {
+        format!("{unreleased}; its sender's next delivery of it is refused until housekeeping forgets it")
+    }));
+    said
+}
+
+/// What a job left undone as herald stopped is logged as, with why the
+/// delivery it came by could not be released where it could not.
+#[must_use]
+pub fn unworked(job: &Job, released: &Result<(), String>) -> String {
+    let what = match job {
+        Job::Announce { event, .. } | Job::App { event, .. } => {
+            format!("the announcement of {}", event.identity().as_str())
+        }
+        Job::Follow { .. } => "an activity".to_owned(),
+        Job::Interact { destination, .. } => {
+            format!("the commands given on {}", destination.as_str())
+        }
+    };
+    match released {
+        Ok(()) => format!("herald stopped before it worked {what}"),
+        Err(unreleased) => format!("herald stopped before it worked {what}; {unreleased}"),
     }
 }
 

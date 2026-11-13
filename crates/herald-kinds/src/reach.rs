@@ -117,7 +117,7 @@ impl Probe {
     pub fn credential(platform: &str, answer: &Result<Response, HttpError>) -> Self {
         let why = match answer {
             Ok(response) if response.succeeded() => return Self::Taken,
-            Ok(response) if matches!(response.status, UNAUTHORIZED | FORBIDDEN) => format!(
+            Ok(response) if response.refuses_credential() => format!(
                 "{platform} refuses its credential, answering {}",
                 response.status
             ),
@@ -142,7 +142,7 @@ impl Probe {
     ) -> Option<Self> {
         let why = match answer {
             Ok(response) if response.succeeded() => return None,
-            Ok(response) if matches!(response.status, UNAUTHORIZED | FORBIDDEN | NOT_FOUND) => {
+            Ok(response) if response.refuses_credential() || response.status == NOT_FOUND => {
                 withheld(response.status)
             }
             Ok(response) => format!("{platform} answered {} when asked", response.status),
@@ -152,10 +152,6 @@ impl Probe {
     }
 }
 
-/// The status of a request whose credential is not taken.
-const UNAUTHORIZED: u16 = 401;
-/// The status of a request whose credential may not do what it asks.
-const FORBIDDEN: u16 = 403;
 /// The status of a request for what does not exist, or is hidden from the
 /// credential.
 const NOT_FOUND: u16 = 404;
@@ -228,9 +224,9 @@ impl Markers for Posts<'_> {
 /// Posts a destination reads none of, and why: it serves what it publishes
 /// rather than posting it somewhere it could read.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Unread(pub &'static str);
+pub struct UnreadPosts(pub &'static str);
 
-impl Markers for Unread {
+impl Markers for UnreadPosts {
     fn entry(
         &self,
         _: &Key,
@@ -247,7 +243,7 @@ impl Markers for Unread {
     }
 }
 
-impl Unread {
+impl UnreadPosts {
     fn unreadable(self) -> MarkersError {
         MarkersError::Unreadable {
             reason: self.0.to_owned(),

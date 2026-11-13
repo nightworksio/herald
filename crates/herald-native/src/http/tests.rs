@@ -2,7 +2,7 @@ use super::*;
 use tokio::net::TcpListener;
 
 use crate::serving::{answer, serve};
-use herald_ports::{Secret, Text};
+use herald_ports::{Secret, SecretText};
 
 fn http(base: &str) -> NativeHttp {
     NativeHttp::new(Reach::new([base]).unwrap(), &Outbound::default()).unwrap()
@@ -18,13 +18,13 @@ async fn a_request_is_sent_as_given_and_its_response_read_back() {
     .await;
     let request = Request::new(
         Method::Post,
-        Text::plain(format!("{base}/channels/1/messages")),
+        SecretText::plain(format!("{base}/channels/1/messages")),
     )
     .header(
         "Authorization",
-        Text::plain("Bot ").then_secret(Secret::new("TOKEN", "hunter2")),
+        SecretText::plain("Bot ").then_secret(Secret::new("TOKEN", "hunter2")),
     )
-    .header("Content-Type", Text::plain("application/json"))
+    .header("Content-Type", SecretText::plain("application/json"))
     .body(r#"{"content":"hi"}"#);
     let response = http(&base).send(request).await.unwrap();
     assert_eq!(response.status, 201);
@@ -72,7 +72,7 @@ async fn each_method_is_sent_as_http_spells_it() {
     let http = http(&base);
     for method in methods {
         let response = http
-            .send(Request::new(method, Text::plain(format!("{base}/"))))
+            .send(Request::new(method, SecretText::plain(format!("{base}/"))))
             .await
             .unwrap();
         assert_eq!(response.status, 204);
@@ -89,7 +89,7 @@ async fn each_method_is_sent_as_http_spells_it() {
 #[tokio::test]
 async fn a_url_outside_the_reach_is_refused_with_its_secrets_redacted() {
     let http = http("https://discord.com/api/v10");
-    let url = Text::plain("https://example.org/api/webhooks/1/")
+    let url = SecretText::plain("https://example.org/api/webhooks/1/")
         .then_secret(Secret::new("HERALD_DISCORD_WEBHOOK", "hunter2"));
     assert_eq!(
         http.send(Request::new(Method::Post, url)).await,
@@ -98,7 +98,7 @@ async fn a_url_outside_the_reach_is_refused_with_its_secrets_redacted() {
         })
     );
     assert_eq!(
-        http.send(Request::new(Method::Get, Text::plain("not a url")))
+        http.send(Request::new(Method::Get, SecretText::plain("not a url")))
             .await,
         Err(HttpError::Refused {
             url: "not a url".to_owned()
@@ -115,7 +115,10 @@ async fn a_redirect_is_answered_not_followed() {
     )])
     .await;
     let response = http(&base)
-        .send(Request::new(Method::Get, Text::plain(format!("{base}/"))))
+        .send(Request::new(
+            Method::Get,
+            SecretText::plain(format!("{base}/")),
+        ))
         .await
         .unwrap();
     assert_eq!(response.status, 302);
@@ -128,7 +131,7 @@ async fn a_host_that_cannot_be_reached_says_why_without_its_url() {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let base = format!("http://{}", listener.local_addr().unwrap());
     drop(listener);
-    let url = Text::plain(format!("{base}/")).then_secret(Secret::new("HOOK", "hunter2"));
+    let url = SecretText::plain(format!("{base}/")).then_secret(Secret::new("HOOK", "hunter2"));
     let Err(HttpError::Unreachable { reason }) =
         http(&base).send(Request::new(Method::Get, url)).await
     else {
@@ -156,8 +159,11 @@ async fn a_host_that_does_not_answer_in_time_times_out() {
     )
     .unwrap();
     assert_eq!(
-        http.send(Request::new(Method::Get, Text::plain(format!("{base}/"))))
-            .await,
+        http.send(Request::new(
+            Method::Get,
+            SecretText::plain(format!("{base}/"))
+        ))
+        .await,
         Err(HttpError::TimedOut)
     );
     silent.abort();
@@ -173,7 +179,7 @@ async fn a_body_up_to_the_cap_is_read_and_a_larger_one_refused() {
     ])
     .await;
     let http = http(&base);
-    let request = || Request::new(Method::Get, Text::plain(format!("{base}/")));
+    let request = || Request::new(Method::Get, SecretText::plain(format!("{base}/")));
     assert_eq!(
         http.send(request()).await.unwrap().body.len(),
         Outbound::BODY
@@ -206,7 +212,7 @@ async fn a_waiting_client_waits_past_the_usual_bound_and_reaches_its_origin_alon
     let answered = http
         .send(Request::new(
             Method::Get,
-            Text::plain(format!("{base}/next")),
+            SecretText::plain(format!("{base}/next")),
         ))
         .await
         .unwrap();
@@ -279,7 +285,7 @@ async fn a_request_reads_at_most_its_own_cap_whether_or_not_the_length_is_said()
     ])
     .await;
     let http = http(&base);
-    let request = || Request::new(Method::Get, Text::plain(format!("{base}/"))).at_most(4);
+    let request = || Request::new(Method::Get, SecretText::plain(format!("{base}/"))).at_most(4);
     let larger = Err(HttpError::Unreachable {
         reason: "the response is larger than 4 bytes".to_owned(),
     });
@@ -289,7 +295,7 @@ async fn a_request_reads_at_most_its_own_cap_whether_or_not_the_length_is_said()
     assert_eq!(http.send(request()).await, larger);
     server.await.unwrap();
     assert_eq!(
-        Request::new(Method::Get, Text::plain("x"))
+        Request::new(Method::Get, SecretText::plain("x"))
             .at_most(Outbound::BODY_MOST + 1)
             .most,
         Outbound::BODY_MOST
@@ -308,7 +314,7 @@ async fn a_response_is_read_no_further_than_the_config_s_body() {
         ..Outbound::default()
     };
     let http = NativeHttp::new(Reach::new([base.as_str()]).unwrap(), &outbound).unwrap();
-    let request = || Request::new(Method::Get, Text::plain(format!("{base}/")));
+    let request = || Request::new(Method::Get, SecretText::plain(format!("{base}/")));
     assert_eq!(http.send(request()).await.unwrap().body, b"abcd");
     assert_eq!(
         http.send(request()).await,
@@ -360,7 +366,7 @@ async fn a_request_goes_through_the_proxy_a_config_names() {
     let answer = http
         .send(Request::new(
             Method::Get,
-            Text::plain("http://127.0.0.1:9/path"),
+            SecretText::plain("http://127.0.0.1:9/path"),
         ))
         .await
         .unwrap();
@@ -393,7 +399,7 @@ async fn a_request_set_to_no_proxy_goes_straight_to_its_origin() {
     let answer = http
         .send(Request::new(
             Method::Get,
-            Text::plain(format!("{base}/path")),
+            SecretText::plain(format!("{base}/path")),
         ))
         .await
         .unwrap();

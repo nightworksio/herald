@@ -109,6 +109,10 @@ pub(crate) fn pin(route: &RouteId) -> String {
     format!("pins/{}.json", segment(route.as_str()))
 }
 
+pub(crate) fn position(destination: &DestinationName) -> String {
+    format!("positions/{}.json", segment(destination.as_str()))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -6,10 +6,10 @@
 mod activitypub {
     use herald_core::{Entry, Facts, MentionStyle, Pins, Sent, Step, Text, Threads, Waits};
     use herald_dest_fediverse::{
-        ActivityPub, ActorOptions, ActorRouteOptions, Approve, Asked, FollowerCaps, Mode, accept,
-        actor_document, actor_profile, asked, create, note, webfinger,
+        ActivityPub, ActorOptions, ActorRouteOptions, Approve, FollowerCaps, InboxActivity, Mode,
+        accept, actor_document, actor_profile, asked, create, note, webfinger,
     };
-    use herald_ports::{PUBLIC, Secret};
+    use herald_ports::{PUBLIC_BASE, Secret};
     use herald_testing::sample;
     use herald_testing::{FakeSigner, Fixture, Replay};
     use jiff::{SignedDuration, Timestamp};
@@ -212,7 +212,7 @@ mod activitypub {
             Sent::Refused("the secret BAD is not a key for this signature".to_owned())
         );
         replay.finish().unwrap();
-        assert_eq!(actor.api(), PUBLIC);
+        assert_eq!(actor.api(), PUBLIC_BASE);
         assert_eq!(actor.actor(), "php-mutation-gate");
         assert_eq!(actor.id(), ACTOR);
         assert_eq!(actor.profile(), actor_profile());
@@ -341,12 +341,12 @@ mod activitypub {
 
     const ANA: &str = "https://social.example/users/ana";
 
-    fn asking(activity: &serde_json::Value) -> Asked {
+    fn asking(activity: &serde_json::Value) -> InboxActivity {
         asked(activity.to_string().as_bytes(), ANA)
     }
 
-    fn nothing(why: &str) -> Asked {
-        Asked::Nothing(why.to_owned())
+    fn nothing(why: &str) -> InboxActivity {
+        InboxActivity::Nothing(why.to_owned())
     }
 
     #[test]
@@ -450,7 +450,7 @@ mod activitypub {
         let follow = json!({ "id": "https://social.example/f/1", "type": "Follow", "actor": ANA, "object": ACTOR });
         assert_eq!(
             asking(&follow),
-            Asked::Follow {
+            InboxActivity::Follow {
                 target: ACTOR.to_owned(),
                 follow: follow.clone(),
             }
@@ -458,7 +458,7 @@ mod activitypub {
         let embedded = json!({ "id": "https://social.example/f/2", "type": "Follow", "actor": ANA, "object": { "id": ACTOR } });
         assert_eq!(
             asking(&embedded),
-            Asked::Follow {
+            InboxActivity::Follow {
                 target: ACTOR.to_owned(),
                 follow: embedded.clone(),
             }
@@ -474,7 +474,7 @@ mod activitypub {
         let undo = |actor: &str, object: serde_json::Value| json!({ "id": "https://social.example/u/1", "type": "Undo", "actor": ANA, "object": { "type": "Follow", "actor": actor, "object": object } });
         assert_eq!(
             asking(&undo(ANA, json!(ACTOR))),
-            Asked::Undo {
+            InboxActivity::Undo {
                 follower: ANA.to_owned(),
                 target: ACTOR.to_owned(),
             }

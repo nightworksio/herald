@@ -6,7 +6,7 @@ use std::pin::Pin;
 use std::sync::Arc;
 
 use herald_native::{ConnectError, NativeHttp, PublicHttp};
-use herald_ports::{Http, HttpError, Outbound, PUBLIC, Request, Response};
+use herald_ports::{Http, HttpError, Outbound, PUBLIC_BASE, Request, Response};
 
 use crate::worded;
 
@@ -114,13 +114,13 @@ pub fn waiting(base: &str, _: &Outbound) -> Result<Connection, String> {
 }
 
 /// The native connection to `base` within `outbound`: one reaching only its
-/// origin, or, for [`PUBLIC`], one reaching any public address (ADR-0007).
+/// origin, or, for [`PUBLIC_BASE`], one reaching any public address (ADR-0007).
 ///
 /// # Errors
 ///
 /// When `base` may not be reached, or the client cannot be built.
 pub fn native(base: &str, outbound: &Outbound) -> Result<Connection, String> {
-    let connection = if base == PUBLIC {
+    let connection = if base == PUBLIC_BASE {
         PublicHttp::new(outbound)
             .map(Connection::new)
             .map_err(ConnectError::Build)

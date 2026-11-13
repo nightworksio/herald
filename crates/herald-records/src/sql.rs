@@ -1,7 +1,7 @@
 use herald_ports::{Changed, Parameters, Secret, Sql, Statement, StoreError, Value};
 
-use crate::kept::Kept;
-use crate::records::{Blob, Records, Wrote};
+use crate::record_store::RecordStore;
+use crate::records::{Blob, RecordBackend, Wrote};
 use crate::seal::Seal;
 
 /// The layout of the tables this herald keeps records in.
@@ -101,7 +101,7 @@ fn written(wrote: bool) -> Wrote {
 }
 
 /// The store a SQL database keeps.
-pub type SqlStore<S> = Kept<SqlRecords<S>>;
+pub type SqlStore<S> = RecordStore<SqlRecords<S>>;
 
 impl<S: Sql> SqlRecords<S> {
     /// The store kept in `sql`, in `dialect`, with its tables made where
@@ -119,7 +119,7 @@ impl<S: Sql> SqlRecords<S> {
     ) -> Result<SqlStore<S>, StoreError> {
         Self::open(sql, dialect)
             .await
-            .map(|records| Kept::new(records).sealed(key.map(Seal::new)))
+            .map(|records| RecordStore::new(records).sealed(key.map(Seal::new)))
     }
 
     /// The records `sql` keeps, in `dialect`, with their tables made where
@@ -169,7 +169,7 @@ impl<S: Sql> SqlRecords<S> {
     }
 }
 
-impl<S: Sql> Records for SqlRecords<S> {
+impl<S: Sql> RecordBackend for SqlRecords<S> {
     async fn read(&self, path: &str) -> Result<Option<Blob>, StoreError> {
         let answers = self
             .run(vec![Statement::query(
@@ -324,7 +324,8 @@ mod tests {
             ))
         );
         let kept = pollster::block_on(SqlRecords::kept(opened(), Dialect::Postgres, None)).unwrap();
-        assert_eq!(Held::ALL.map(|held| kept.holds(held)), [true; 9]);
+        assert_eq!(Held::ALL.map(|held| kept.holds(held)), [true; 10]);
+        assert!(!kept.writes_one_at_a_time());
     }
 
     #[test]

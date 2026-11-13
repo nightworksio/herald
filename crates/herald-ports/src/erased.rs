@@ -449,7 +449,7 @@ mod tests {
         let http: Owned<dyn DynHttp + Send> = Owned::new(Box::new(Echo));
         let answered = pollster::block_on(http.send(Request::new(
             crate::http::Method::Get,
-            crate::secret::Text::plain("https://example.org/owned"),
+            crate::secret::SecretText::plain("https://example.org/owned"),
         )))
         .unwrap();
         assert_eq!(answered.body, b"https://example.org/owned");
@@ -498,7 +498,7 @@ mod tests {
         let http: &dyn DynHttp = &Echo;
         let request = Request::new(
             crate::http::Method::Get,
-            crate::secret::Text::plain("https://example.org/a"),
+            crate::secret::SecretText::plain("https://example.org/a"),
         );
         let answered = pollster::block_on(Erased(http).send(request)).unwrap();
         assert_eq!(answered.body, b"https://example.org/a");

@@ -2,7 +2,7 @@ use jiff::Timestamp;
 use serde::Deserialize;
 
 use crate::forge::{Api, Repository};
-use crate::wire::{Found, read};
+use crate::wire::{ForgeRelease, read};
 use herald_wire::SourceError;
 
 pub(crate) const API: Api = Api {
@@ -35,7 +35,7 @@ struct Release {
     published_at: Option<Timestamp>,
 }
 
-impl From<Release> for Found {
+impl From<Release> for ForgeRelease {
     fn from(release: Release) -> Self {
         Self {
             tag: release.tag_name,
@@ -54,7 +54,7 @@ impl From<Release> for Found {
 pub(crate) fn published(
     what: &'static str,
     payload: &[u8],
-) -> Result<Option<(Repository, Found)>, SourceError> {
+) -> Result<Option<(Repository, ForgeRelease)>, SourceError> {
     let payload: Payload = read(what, payload)?;
     Ok((payload.action == "published").then(|| (payload.repository, payload.release.into())))
 }
@@ -78,15 +78,15 @@ pub(crate) fn path(what: &'static str, payload: &[u8]) -> Option<String> {
         .map(|located| located.repository.full_name)
 }
 
-pub(crate) fn found(what: &'static str, body: &[u8]) -> Result<Found, SourceError> {
-    read::<Release>(what, body).map(Found::from)
+pub(crate) fn found(what: &'static str, body: &[u8]) -> Result<ForgeRelease, SourceError> {
+    read::<Release>(what, body).map(ForgeRelease::from)
 }
 
 pub(crate) fn all_found(
     what: &'static str,
     limit: usize,
     body: &[u8],
-) -> Result<Vec<Found>, SourceError> {
+) -> Result<Vec<ForgeRelease>, SourceError> {
     let releases: Vec<Release> = herald_wire::read(what, limit, body)?;
-    Ok(releases.into_iter().map(Found::from).collect())
+    Ok(releases.into_iter().map(ForgeRelease::from).collect())
 }

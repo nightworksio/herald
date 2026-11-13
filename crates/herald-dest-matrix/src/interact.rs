@@ -4,15 +4,14 @@
 
 use std::fmt;
 
-use herald_core::{
-    Answering, Asked, Command, DestinationName, Place, Text as Written, digest, unreserved,
-};
-use herald_ports::{Method, Request, Response, Secret, Text};
+use herald_core::{Answering, Asked, Command, DestinationName, Place, Text, digest, unreserved};
+use herald_ports::{Method, Request, Response, Secret, SecretText};
+use jiff::Timestamp;
 use serde_json::{Value, json};
 
 use crate::interactions::{Interactions, Via};
 use crate::matrix::MATRIX;
-use crate::read::{json, said, waited};
+use crate::read::{error_text, json, waited};
 use crate::request::{CLIENT, MESSAGE};
 
 /// The word after a project that asks for the answer to be posted to the
@@ -49,18 +48,19 @@ pub struct Replying {
 pub struct Synced {
     /// Where the next sync starts.
     pub next: String,
-    /// The commands given, each with where its answer goes.
-    pub asked: Vec<(Asked, Replying)>,
+    /// The commands given, each with where its answer goes and when the
+    /// homeserver received it, where it says.
+    pub asked: Vec<(Asked, Replying, Option<Timestamp>)>,
 }
 
 /// Why a transaction or a sync could not be read.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Unread {
+pub enum UnreadTransaction {
     /// The body is not a transaction or a sync's answer.
     NotEvents,
 }
 
-impl fmt::Display for Unread {
+impl fmt::Display for UnreadTransaction {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str("the body is not a Matrix transaction or sync")
     }
@@ -141,12 +141,13 @@ impl Interacting {
         &self,
         destination: &DestinationName,
         body: &[u8],
-    ) -> Result<Vec<(Asked, Replying)>, Unread> {
-        let value: Value = serde_json::from_slice(body).map_err(|_| Unread::NotEvents)?;
+    ) -> Result<Vec<(Asked, Replying)>, UnreadTransaction> {
+        let value: Value =
+            serde_json::from_slice(body).map_err(|_| UnreadTransaction::NotEvents)?;
         let events = value
             .get("events")
             .and_then(Value::as_array)
-            .ok_or(Unread::NotEvents)?;
+            .ok_or(UnreadTransaction::NotEvents)?;
         Ok(events
             .iter()
             .filter_map(|event| self.command(destination, text(event, "room_id")?, event))
@@ -159,10 +160,15 @@ impl Interacting {
     /// # Errors
     ///
     /// When it is not a sync's answer.
-    pub fn synced(&self, destination: &DestinationName, body: &[u8]) -> Result<Synced, Unread> {
-        let value: Value = serde_json::from_slice(body).map_err(|_| Unread::NotEvents)?;
+    pub fn synced(
+        &self,
+        destination: &DestinationName,
+        body: &[u8],
+    ) -> Result<Synced, UnreadTransaction> {
+        let value: Value =
+            serde_json::from_slice(body).map_err(|_| UnreadTransaction::NotEvents)?;
         let next = text(&value, "next_batch")
-            .ok_or(Unread::NotEvents)?
+            .ok_or(UnreadTransaction::NotEvents)?
             .to_owned();
         let asked = value
             .pointer("/rooms/join")
@@ -175,7 +181,10 @@ impl Interacting {
                     .and_then(Value::as_array)
                     .into_iter()
                     .flatten()
-                    .filter_map(|event| self.command(destination, room, event))
+                    .filter_map(|event| {
+                        let (asked, replying) = self.command(destination, room, event)?;
+                        Some((asked, replying, received(event)))
+                    })
             })
             .collect();
         Ok(Synced { next, asked })
@@ -259,7 +268,7 @@ impl Interacting {
             url.push_str("&since=");
             url.push_str(&unreserved(since));
         }
-        self.authorised(Request::new(Method::Get, Text::plain(url)))
+        self.authorised(Request::new(Method::Get, SecretText::plain(url)))
     }
 
     /// How long a sync waits for a message, in milliseconds.
@@ -292,7 +301,7 @@ impl Interacting {
     /// reply to it. Each is sent once whatever retries it, by a transaction
     /// id drawn from the command and the part.
     #[must_use]
-    pub fn answered(&self, replying: &Replying, parts: &[Written], public: bool) -> Vec<Request> {
+    pub fn answered(&self, replying: &Replying, parts: &[Text], public: bool) -> Vec<Request> {
         let relates = match (&replying.thread, public) {
             (Some(thread), _) => json!({
                 "rel_type": THREAD,
@@ -328,8 +337,8 @@ impl Interacting {
                     self.homeserver,
                     unreserved(&replying.room)
                 );
-                self.authorised(Request::new(Method::Put, Text::plain(url)))
-                    .header("Content-Type", Text::plain("application/json"))
+                self.authorised(Request::new(Method::Put, SecretText::plain(url)))
+                    .header("Content-Type", SecretText::plain("application/json"))
                     .body(content.to_string())
             })
             .collect()
@@ -387,9 +396,18 @@ fn quoted(value: &str) -> String {
 /// # Errors
 ///
 /// What the homeserver said, where it refused or was unwell.
-pub fn took(response: &Response) -> Result<(), String> {
+pub fn accepted(response: &Response) -> Result<(), String> {
     let body = json(response);
-    response.took(waited(&body), MATRIX, || said(&body))
+    response.accepted(waited(&body), MATRIX, || error_text(&body))
+}
+
+/// When the homeserver received `event`, as its `origin_server_ts` says in
+/// milliseconds.
+fn received(event: &Value) -> Option<Timestamp> {
+    event
+        .get("origin_server_ts")
+        .and_then(Value::as_i64)
+        .and_then(|millis| Timestamp::from_millisecond(millis).ok())
 }
 
 #[cfg(test)]

@@ -12,17 +12,18 @@ use std::task::Poll;
 use std::time::Duration;
 
 use futures_util::stream::{FuturesUnordered, StreamExt};
-use herald_config::Reconnecting;
+use herald_config::HeldSessions;
 use herald_core::{Asked, DestinationName, Place};
 use herald_kinds::{Connect, Effect, Interacted, Replying, Session};
-use herald_ports::{Clock, Frame, Http, Socket, Sockets, Store, Timer};
+use herald_ports::{Clock, Frame, Http, Positions, Response, Socket, Sockets, Store, Timer};
+use jiff::Timestamp;
 
-use crate::interact::{completed, deferral};
+use crate::command_answers::{completed, deferral, replied, unanswerable, unlisted};
 use crate::room::Room;
 use crate::serving::{Job, Serving};
 
 /// The shortest a heartbeat's interval is taken to be.
-const LEAST_BEAT: Duration = Duration::from_secs(1);
+const SHORTEST_BEAT: Duration = Duration::from_secs(1);
 /// The nanoseconds in a second, which a jittered wait's seed counts.
 const NANOS: u32 = 1_000_000_000;
 
@@ -43,8 +44,8 @@ pub trait Taker {
     /// Fills `place` with `job`.
     fn fill(&self, place: Self::Place, job: Job);
 
-    /// Says what a session of `destination` came to.
-    fn said(&self, destination: &DestinationName, said: String);
+    /// Reports what a session of `destination` came to.
+    fn report(&self, destination: &DestinationName, said: String);
 }
 
 /// How long a session waits before it connects again, doubling each time it
@@ -57,14 +58,12 @@ struct Backoff {
 }
 
 impl Backoff {
-    fn new(reconnecting: &Reconnecting) -> Self {
-        let first = Duration::try_from(reconnecting.first_wait).unwrap_or(LEAST_BEAT);
+    fn new(reconnecting: &HeldSessions) -> Self {
+        let first = reconnecting.first_wait.unsigned_abs();
         Self {
             now: first,
             first,
-            longest: Duration::try_from(reconnecting.longest_wait)
-                .unwrap_or(first)
-                .max(first),
+            longest: reconnecting.longest_wait.unsigned_abs().max(first),
             jitter: reconnecting.jitter,
         }
     }
@@ -151,8 +150,8 @@ where
         }
     }
 
-    fn said(&self, destination: &DestinationName, what: impl Into<String>) {
-        self.taker.said(destination, what.into());
+    fn report(&self, destination: &DestinationName, what: impl Into<String>) {
+        self.taker.report(destination, what.into());
     }
 
     /// Takes `asked` up: defers it where its destination waits for that, and
@@ -164,23 +163,37 @@ where
         asked: Asked,
         replying: Replying,
     ) {
-        let Some(place) = self.taker.place() else {
-            self.said(
-                destination,
-                format!(
-                    "{} was not answered: no more is answered at once",
-                    asked.command.name()
-                ),
-            );
-            return;
-        };
         let serving = self.serving;
         let taker = self.taker;
         let destination = destination.clone();
+        let Some(place) = self.taker.place() else {
+            taking.push(Box::pin(async move {
+                let trouble = format!(
+                    "{} was not answered: no more is answered at once",
+                    asked.command.name()
+                );
+                let answer = unanswerable(serving.connected, &destination, trouble.clone());
+                let sent = match deferral(serving.connected, &destination, &replying, &asked).await
+                {
+                    Ok(()) => replied(serving.connected, &destination, &replying, &answer).await,
+                    Err(trouble) => Err(trouble),
+                };
+                taker.report(
+                    &destination,
+                    match sent {
+                        Ok(()) => trouble,
+                        Err(unsent) => {
+                            format!("{trouble}, and the asker could not be told: {unsent}")
+                        }
+                    },
+                );
+            }));
+            return;
+        };
         taking.push(Box::pin(async move {
             if let Err(trouble) = deferral(serving.connected, &destination, &replying, &asked).await
             {
-                taker.said(
+                taker.report(
                     &destination,
                     format!(
                         "{} was not answered: it could not be deferred: {trouble}",
@@ -232,21 +245,28 @@ where
     ) {
         let mut backoff = Backoff::new(&self.serving.config.server.sessions);
         let mut taking: Taking<'s> = FuturesUnordered::new();
+        let mut kept = self.resumed(name, &mut *session).await;
         loop {
             let url = match session.connect() {
                 Connect::Poll(request) => {
-                    let polled = meanwhile(&mut taking, http.send(request))
-                        .await
-                        .map_err(|error| error.to_string())
-                        .and_then(|response| session.polled(name, &response));
+                    let polled = match meanwhile(&mut taking, http.send(request)).await {
+                        Ok(response) if response.refuses_credential() => {
+                            let reason = refused(&*session, &response);
+                            return self.stop(name, reason, &mut taking).await;
+                        }
+                        answered => answered
+                            .map_err(|error| error.to_string())
+                            .and_then(|response| session.polled(name, &response)),
+                    };
                     match polled {
                         Ok(effects) => {
+                            let given = effects.iter().any(|effect| {
+                                matches!(effect, Effect::Asked(..) | Effect::Skipped(_))
+                            });
+                            meanwhile(&mut taking, self.keep(name, &*session, &mut kept, given))
+                                .await;
                             for effect in effects {
-                                if let Effect::Asked(asked, replying) = effect {
-                                    self.take(&mut taking, name, asked, replying);
-                                } else if effect == Effect::Ready {
-                                    backoff.reset();
-                                }
+                                self.heed(&mut taking, name, &mut backoff, effect);
                             }
                             continue;
                         }
@@ -255,10 +275,15 @@ where
                 }
                 Connect::Socket(url) => Ok(url),
                 Connect::Opening(request) => {
-                    meanwhile(&mut taking, opening.unwrap_or(http).send(request))
-                        .await
-                        .map_err(|error| error.to_string())
-                        .and_then(|response| session.opened(&response))
+                    match meanwhile(&mut taking, opening.unwrap_or(http).send(request)).await {
+                        Ok(response) if response.refuses_credential() => {
+                            let reason = refused(&*session, &response);
+                            return self.stop(name, reason, &mut taking).await;
+                        }
+                        answered => answered
+                            .map_err(|error| error.to_string())
+                            .and_then(|response| session.opened(&response)),
+                    }
                 }
             };
             let socket = match url {
@@ -284,13 +309,11 @@ where
                         )
                         .await;
                     if let Some(reason) = stopped {
-                        self.said(name, reason);
-                        while taking.next().await.is_some() {}
-                        return;
+                        return self.stop(name, reason, &mut taking).await;
                     }
                 }
                 Err(trouble) => {
-                    self.said(name, format!("{}: {trouble}", session.unreachable()));
+                    self.report(name, format!("{}: {trouble}", session.unreachable()));
                 }
             }
             meanwhile(
@@ -299,6 +322,93 @@ where
             )
             .await;
         }
+    }
+
+    /// Where the session of `name` stood when the store last kept it, the
+    /// session taken up from there, skipping each command given longer ago
+    /// than `[server.sessions] stale`; none where the store keeps no
+    /// positions or kept none.
+    async fn resumed(
+        &self,
+        name: &DestinationName,
+        session: &mut (dyn Session + 's),
+    ) -> Option<String> {
+        let positions = self.serving.ports.store.positions()?;
+        match positions.position(name).await {
+            Ok(Some(position)) => {
+                let now = self.serving.ports.clock.now();
+                let stale = self.serving.config.server.sessions.stale;
+                session.resume(
+                    position.clone(),
+                    now.checked_sub(stale).unwrap_or(Timestamp::MIN),
+                );
+                Some(position)
+            }
+            Ok(None) => None,
+            Err(error) => {
+                self.report(
+                    name,
+                    format!(
+                        "where its session stood could not be read, so it starts afresh: {error}"
+                    ),
+                );
+                None
+            }
+        }
+    }
+
+    /// Keeps where `session` of `name` stands, before the commands it was
+    /// `given` are taken up, so a session taken up later neither skips nor
+    /// repeats them; where nothing was given and a position is `kept`
+    /// already, the store is not written.
+    async fn keep(
+        &self,
+        name: &DestinationName,
+        session: &(dyn Session + 's),
+        kept: &mut Option<String>,
+        given: bool,
+    ) {
+        let (Some(position), Some(positions)) =
+            (session.position(), self.serving.ports.store.positions())
+        else {
+            return;
+        };
+        if kept.as_deref() == Some(position) || (kept.is_some() && !given) {
+            return;
+        }
+        match positions.put_position(name, position).await {
+            Ok(()) => *kept = Some(position.to_owned()),
+            Err(error) => self.report(
+                name,
+                format!("where its session stands could not be kept: {error}"),
+            ),
+        }
+    }
+
+    /// Takes up what every session of `name` does alike with `effect`: a
+    /// command taken up, a command skipped said, or a connection made
+    /// starting the waits from the first again.
+    fn heed(
+        &self,
+        taking: &mut Taking<'s>,
+        name: &DestinationName,
+        backoff: &mut Backoff,
+        effect: Effect,
+    ) {
+        if let Effect::Asked(asked, replying) = effect {
+            self.take(taking, name, asked, replying);
+        } else if let Effect::Skipped(reason) = effect {
+            self.report(name, reason);
+        } else if effect == Effect::Ready {
+            backoff.reset();
+        }
+    }
+
+    /// Stops the session of `name` for `reason`, once what `taking` holds is
+    /// done.
+    async fn stop(&self, name: &DestinationName, reason: String, taking: &mut Taking<'s>) {
+        self.report(name, reason);
+        while taking.next().await.is_some() {}
     }
 
     /// Hears an open socket until it is left: `None` to connect again, or
@@ -357,10 +467,6 @@ where
                         every = Some(interval);
                         beat = Some(Box::pin(self.timer.sleep(interval)));
                     }
-                    Effect::Ready => backoff.reset(),
-                    Effect::Asked(asked, replying) => {
-                        self.take(taking, hearing.name, asked, replying);
-                    }
                     Effect::Completing {
                         place,
                         typed,
@@ -368,6 +474,7 @@ where
                     } => self.completion(taking, hearing, place, typed, replying),
                     Effect::Reconnect => next = Some(None),
                     Effect::Stop(reason) => next = Some(Some(reason)),
+                    effect => self.heed(taking, hearing.name, backoff, effect),
                 }
             }
             if let Some(next) = next {
@@ -387,7 +494,7 @@ where
         replying: Replying,
     ) {
         let Some(completion) = self.completing.place() else {
-            self.said(
+            self.report(
                 hearing.name,
                 "a completion was dropped: no more are answered at once",
             );
@@ -401,26 +508,42 @@ where
         taking.push(Box::pin(async move {
             let _completion = completion;
             let projects =
-                completed(serving.config, serving.ports.store, &name, &place, &typed).await;
+                match completed(serving.config, serving.ports.store, &name, &place, &typed).await {
+                    Ok(projects) => projects,
+                    Err(error) => {
+                        taker.report(&name, unlisted(&error));
+                        return;
+                    }
+                };
             if let Some(request) = interacting.complete(&replying, &projects)
                 && let Err(trouble) = http
                     .send(request)
                     .await
                     .map_err(|error| error.to_string())
-                    .and_then(|response| interacting.took(&response))
+                    .and_then(|response| interacting.accepted(&response))
             {
-                taker.said(&name, format!("completions could not be sent: {trouble}"));
+                taker.report(&name, format!("completions could not be sent: {trouble}"));
             }
         }));
     }
 }
 
+/// Why `session` stops where its destination's `response` refuses its
+/// credential: asking again with it would be refused again.
+fn refused(session: &(dyn Session + '_), response: &Response) -> String {
+    format!(
+        "{}: the credential was refused, answering {}, so the session stops",
+        session.unreachable(),
+        response.status
+    )
+}
+
 /// How often to beat for `every`, Discord's interval: at least
-/// [`LEAST_BEAT`].
+/// [`SHORTEST_BEAT`].
 fn beating(every: jiff::SignedDuration) -> Duration {
     Duration::try_from(every)
-        .unwrap_or(LEAST_BEAT)
-        .max(LEAST_BEAT)
+        .unwrap_or(SHORTEST_BEAT)
+        .max(SHORTEST_BEAT)
 }
 
 #[cfg(test)]
@@ -429,11 +552,12 @@ mod tests {
 
     use super::*;
 
-    fn reconnecting(jitter: bool) -> Reconnecting {
-        Reconnecting {
+    fn reconnecting(jitter: bool) -> HeldSessions {
+        HeldSessions {
             first_wait: jiff::SignedDuration::from_secs(2),
             longest_wait: jiff::SignedDuration::from_secs(5),
             jitter,
+            stale: HeldSessions::STALE,
         }
     }
 
@@ -475,11 +599,14 @@ mod tests {
 
     #[test]
     fn a_heartbeat_is_at_least_a_second_apart() {
-        assert_eq!(beating(jiff::SignedDuration::from_millis(10)), LEAST_BEAT);
+        assert_eq!(
+            beating(jiff::SignedDuration::from_millis(10)),
+            SHORTEST_BEAT
+        );
         assert_eq!(
             beating(jiff::SignedDuration::from_secs(41)),
             Duration::from_secs(41)
         );
-        assert_eq!(beating(jiff::SignedDuration::from_secs(-1)), LEAST_BEAT);
+        assert_eq!(beating(jiff::SignedDuration::from_secs(-1)), SHORTEST_BEAT);
     }
 }

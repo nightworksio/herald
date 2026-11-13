@@ -1,4 +1,4 @@
-use herald_ports::{Method, Secret, Text};
+use herald_ports::{Method, Secret, SecretText};
 use serde_json::json;
 
 use super::*;
@@ -7,11 +7,11 @@ use crate::scrub::Ids;
 fn message(content: &str) -> Request {
     Request::new(
         Method::Post,
-        Text::plain("https://discord.com/api/v10/channels/1/messages"),
+        SecretText::plain("https://discord.com/api/v10/channels/1/messages"),
     )
     .header(
         "Authorization",
-        Text::plain("Bot ").then_secret(Secret::new("TOKEN", "hunter2")),
+        SecretText::plain("Bot ").then_secret(Secret::new("TOKEN", "hunter2")),
     )
     .body(json!({ "content": content }).to_string())
 }
@@ -41,12 +41,13 @@ fn a_request_is_recorded_with_its_secrets_redacted_and_its_json_as_json() {
             body: Some(json!({ "content": "hi" })),
         }
     );
-    let text = Request::new(Method::Get, Text::plain("https://example.org")).body("plain words");
+    let text =
+        Request::new(Method::Get, SecretText::plain("https://example.org")).body("plain words");
     assert_eq!(Recorded::of(&text).body, Some(json!("plain words")));
     assert_eq!(
         Recorded::of(&Request::new(
             Method::Get,
-            Text::plain("https://example.org")
+            SecretText::plain("https://example.org")
         ))
         .body,
         None
@@ -116,11 +117,11 @@ fn a_secret_that_scrubbing_would_hide_is_found_before_it_is_scrubbed() {
     let digits = "12345678901234567";
     let request = Request::new(
         Method::Post,
-        Text::plain("https://discord.com/api/v10/channels/1/messages"),
+        SecretText::plain("https://discord.com/api/v10/channels/1/messages"),
     )
     .header(
         "Authorization",
-        Text::plain("Bot ").then_secret(Secret::new("TOKEN", digits)),
+        SecretText::plain("Bot ").then_secret(Secret::new("TOKEN", digits)),
     )
     .body(json!({ "content": "hi" }).to_string());
     let mut answered = echo(digits);
@@ -227,7 +228,7 @@ fn a_plain_secret_the_recorder_was_never_told_of_is_still_found_by_its_shape() {
     let token = ["gh", "p_", "0123456789abcdef"].concat();
     let leaky = Request::new(
         Method::Post,
-        Text::plain(format!("https://api.github.com/x?token={token}")),
+        SecretText::plain(format!("https://api.github.com/x?token={token}")),
     );
     let recorder = Recorder::new(Replay::of(Fixture::default()));
     let _ = pollster::block_on(recorder.send(leaky));

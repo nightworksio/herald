@@ -1,4 +1,5 @@
-use herald_core::Replies;
+use herald_core::{Asked, Command, DestinationName, Member, Place, Replies};
+use serde_json::json;
 
 use super::*;
 use crate::SESSION_DOMAIN;
@@ -46,11 +47,11 @@ fn interaction(kind: u64, data: &Value) -> Value {
     })
 }
 
-fn received(interacting: &Interacting, value: &Value) -> Result<Received, Unread> {
+fn received(interacting: &Interacting, value: &Value) -> Result<Received, UnreadInteraction> {
     interacting.received(&destination(), value.to_string().as_bytes())
 }
 
-fn taken(received: Result<Received, Unread>) -> (Asked, Replying) {
+fn taken(received: Result<Received, UnreadInteraction>) -> (Asked, Replying) {
     match received {
         Ok(Received::Asked { asked, replying }) => (asked, replying),
         other => panic!("{other:?}"),
@@ -196,13 +197,13 @@ fn typing_a_project_is_read_as_what_was_typed_in_its_channel() {
     tokenless_typing.as_object_mut().unwrap().remove("token");
     assert_eq!(
         received(&interacting(""), &tokenless_typing),
-        Err(Unread::NotAnInteraction)
+        Err(UnreadInteraction::NotAnInteraction)
     );
     let mut idless = interaction(4, &json!({ "name": "latest" }));
     idless.as_object_mut().unwrap().remove("id");
     assert_eq!(
         received(&interacting(""), &idless),
-        Err(Unread::NotAnInteraction)
+        Err(UnreadInteraction::NotAnInteraction)
     );
     let completing = interacting("").complete(&replying, &["herald".to_owned()]);
     assert_eq!(
@@ -269,24 +270,30 @@ fn a_command_in_a_direct_message_is_read_with_no_member() {
 fn an_interaction_missing_what_it_needs_is_unread() {
     assert_eq!(
         interacting("").received(&destination(), b"not json"),
-        Err(Unread::NotAnInteraction)
+        Err(UnreadInteraction::NotAnInteraction)
     );
     assert_eq!(
         received(&interacting(""), &json!({ "id": "1" })),
-        Err(Unread::NotAnInteraction)
+        Err(UnreadInteraction::NotAnInteraction)
     );
     let mut dataless = interaction(2, &json!({}));
     dataless.as_object_mut().unwrap().remove("data");
     assert_eq!(
         received(&interacting(""), &dataless),
-        Err(Unread::NotAnInteraction)
+        Err(UnreadInteraction::NotAnInteraction)
     );
     let mut unplaced = interaction(2, &json!({ "name": "latest" }));
     unplaced.as_object_mut().unwrap().remove("channel_id");
-    assert_eq!(received(&interacting(""), &unplaced), Err(Unread::Unplaced));
+    assert_eq!(
+        received(&interacting(""), &unplaced),
+        Err(UnreadInteraction::Unplaced)
+    );
     let mut userless = interaction(2, &json!({ "name": "latest" }));
     userless.as_object_mut().unwrap().remove("member");
-    assert_eq!(received(&interacting(""), &userless), Err(Unread::Unplaced));
+    assert_eq!(
+        received(&interacting(""), &userless),
+        Err(UnreadInteraction::Unplaced)
+    );
     for (key, unwritten) in [
         ("/channel_id", ""),
         ("/channel_id", "general"),
@@ -296,7 +303,7 @@ fn an_interaction_missing_what_it_needs_is_unread() {
         *miswritten.pointer_mut(key).unwrap() = json!(unwritten);
         assert_eq!(
             received(&interacting(""), &miswritten),
-            Err(Unread::Unplaced),
+            Err(UnreadInteraction::Unplaced),
             "{key} {unwritten:?}"
         );
     }
@@ -305,16 +312,16 @@ fn an_interaction_missing_what_it_needs_is_unread() {
         missing.as_object_mut().unwrap().remove(key);
         assert_eq!(
             received(&interacting(""), &missing),
-            Err(Unread::NotAnInteraction),
+            Err(UnreadInteraction::NotAnInteraction),
             "{key}"
         );
     }
     assert_eq!(
-        Unread::NotAnInteraction.to_string(),
+        UnreadInteraction::NotAnInteraction.to_string(),
         "the body is not a Discord interaction"
     );
     assert_eq!(
-        Unread::Unplaced.to_string(),
+        UnreadInteraction::Unplaced.to_string(),
         "the interaction names no channel or no member"
     );
 }
@@ -449,7 +456,7 @@ fn roles_are_listed_and_made_mentionable_in_a_server_named_by_id() {
         listed(&answer(403, r#"{"message": "Missing Permissions"}"#)),
         Err("Discord refused it with 403: Missing Permissions".to_owned())
     );
-    assert_eq!(took(&answer(204, "")), Ok(()));
+    assert_eq!(accepted(&answer(204, "")), Ok(()));
     assert_eq!(
         made(&answer(200, r#"{"id": "9", "name": "updates"}"#)),
         Ok(("9".to_owned(), "updates".to_owned()))
@@ -463,11 +470,11 @@ fn roles_are_listed_and_made_mentionable_in_a_server_named_by_id() {
         Err("Discord refused it with 403".to_owned())
     );
     assert_eq!(
-        took(&answer(500, "")),
+        accepted(&answer(500, "")),
         Err("Discord refused it with 500".to_owned())
     );
     assert_eq!(
-        took(&answer(
+        accepted(&answer(
             429,
             r#"{"message":"You are being rate limited.","retry_after":2.5}"#
         )),

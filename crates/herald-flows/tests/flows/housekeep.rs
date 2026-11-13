@@ -1,4 +1,4 @@
-use herald_config::Uses;
+use herald_config::{Config, Uses};
 use herald_core::{Chore, Entry, Facts, Identity, Key, Retention, RouteId, Schedule, State};
 use herald_flows::{Chored, Stop, housekeep, prepare};
 use herald_ports::Keyring as _;
@@ -7,6 +7,7 @@ use herald_testing::{FakeClock, FakeSigner};
 use jiff::SignedDuration;
 
 use crate::harness::*;
+use crate::inbound::{Answering, keepless};
 
 fn schedule(route: &str, thread: &str, chore: Chore, minutes: i64) -> Schedule {
     Schedule {
@@ -29,9 +30,17 @@ fn kept_for(
     script: &Script,
     retention: &Retention,
 ) -> Result<Vec<(String, Chored)>, Stop> {
-    let config = config("");
+    kept_in(&config(""), store, script, retention)
+}
+
+fn kept_in(
+    config: &Config,
+    store: &Failing,
+    script: &Script,
+    retention: &Retention,
+) -> Result<Vec<(String, Chored)>, Stop> {
     let prepared =
-        pollster::block_on(prepare(&config, &secrets(), &FakeSigner, Uses::Polls)).unwrap();
+        pollster::block_on(prepare(config, &secrets(), &FakeSigner, Uses::Polls)).unwrap();
     let connected = prepared.connect(|_| Ok::<_, ()>(script.clone())).unwrap();
     housekept(&connected, store, retention).map(|kept| {
         kept.kept
@@ -115,6 +124,80 @@ fn a_chore_refused_is_dropped_and_one_asked_to_wait_holds_the_rest_for_later() {
         ]
     );
     assert_eq!(pollster::block_on(store.every_schedule()).unwrap().len(), 2);
+}
+
+#[test]
+fn a_destination_asking_to_wait_holds_only_its_own_chores_for_later() {
+    let config = config(
+        r#"[destinations.second]
+kind = "discord"
+token = { secret = "HERALD_DISCORD_TOKEN" }
+[[routes]]
+id = "elsewhere"
+sources = ["gate"]
+destination = "second"
+channel = "1566200000000000200"
+template = "release""#,
+    );
+    let store = healthy();
+    let all = [
+        schedule("releases", "7", Chore::Archive, -60),
+        schedule("elsewhere", "6", Chore::Archive, -50),
+        schedule("releases", "5", Chore::Archive, -40),
+        schedule("elsewhere", "4", Chore::Archive, -30),
+    ];
+    pollster::block_on(store.put_schedules(&all, &[])).unwrap();
+    let script = Script::answering(&[
+        ("/channels/7", 429, r#"{"retry_after":3}"#),
+        ("/channels/6", 200, "{}"),
+        ("/channels/4", 200, "{}"),
+    ]);
+    let wait = Stop::RetryAfter(SignedDuration::from_secs(3));
+    assert_eq!(
+        kept_in(&config, &store, &script, &Retention::default()).unwrap(),
+        [
+            ("7".to_owned(), Chored::Later(wait.clone())),
+            ("6".to_owned(), Chored::Done),
+            ("5".to_owned(), Chored::Later(wait)),
+            ("4".to_owned(), Chored::Done),
+        ]
+    );
+    assert_eq!(script.seen().len(), 3);
+    assert_eq!(
+        pollster::block_on(store.every_schedule())
+            .unwrap()
+            .into_iter()
+            .map(|schedule| schedule.thread)
+            .collect::<Vec<_>>(),
+        ["7", "5"]
+    );
+}
+
+#[test]
+fn keys_that_cannot_be_forgotten_stop_housekeeping() {
+    let config = config("");
+    let prepared =
+        pollster::block_on(prepare(&config, &secrets(), &FakeSigner, Uses::Polls)).unwrap();
+    let connected = prepared
+        .connect(|_| Ok::<_, ()>(Script::default()))
+        .unwrap();
+    let store = healthy();
+    pollster::block_on(store.put_schedules(&[schedule("releases", "7", Chore::Archive, -1)], &[]))
+        .unwrap();
+    assert_eq!(
+        pollster::block_on(housekeep(
+            &connected,
+            &store,
+            &FakeClock::at(NOON),
+            &keys_in(&Answering {
+                forget: Err(broken()),
+                ..keepless()
+            }),
+            &Retention::default(),
+        )),
+        Err(Stop::Store(broken().to_string()))
+    );
+    assert_eq!(pollster::block_on(store.every_schedule()).unwrap().len(), 1);
 }
 
 #[test]

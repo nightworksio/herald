@@ -1,14 +1,14 @@
 use herald_ports::{Kv, Secret, StoreError, Versionstamp};
 
-use crate::kept::Kept;
-use crate::records::{Blob, Records, Wrote};
+use crate::record_store::RecordStore;
+use crate::records::{Blob, RecordBackend, Wrote};
 use crate::seal::Seal;
 
 /// The key every record is kept under where a store's options name none.
 const PREFIX: &str = "herald";
 
 /// The store a key-value store keeps.
-pub type KvStore<K> = Kept<KvRecords<K>>;
+pub type KvStore<K> = RecordStore<KvRecords<K>>;
 
 /// Records kept one value per path in a key-value store (ADR-0005): each
 /// path a key of its segments under the store's prefix, each value's
@@ -38,7 +38,7 @@ impl<K: Kv> KvRecords<K> {
     /// (ADR-0005).
     #[must_use]
     pub fn kept(kv: K, prefix: Option<&str>, key: Option<Secret>) -> KvStore<K> {
-        Kept::new(Self::new(kv, prefix.unwrap_or(PREFIX))).sealed(key.map(Seal::new))
+        RecordStore::new(Self::new(kv, prefix.unwrap_or(PREFIX))).sealed(key.map(Seal::new))
     }
 
     fn key(&self, path: &str) -> Vec<String> {
@@ -50,7 +50,7 @@ impl<K: Kv> KvRecords<K> {
     }
 }
 
-impl<K: Kv> Records for KvRecords<K> {
+impl<K: Kv> RecordBackend for KvRecords<K> {
     async fn read(&self, path: &str) -> Result<Option<Blob>, StoreError> {
         let stamped = self
             .kv

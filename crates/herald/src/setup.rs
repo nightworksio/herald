@@ -129,7 +129,7 @@ pub(crate) async fn set_up(
         let said = match step {
             SetupStep::Say(said) => said,
             SetupStep::Send { base, request } => {
-                setup.said(task, &sent(connect, &base, request).await?)?
+                setup.reported(task, &sent(connect, &base, request).await?)?
             }
         };
         for line in said {

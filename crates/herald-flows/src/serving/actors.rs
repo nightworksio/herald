@@ -7,9 +7,14 @@ use herald_ports::{
     Clock, CryptoError, Http, Keyring, Notes, Outboxed, Signer, Store, Subscriptions, Verifier,
 };
 
-use super::{Answered, Inbound, JRD, Job, Serving, missing, refusal, rejection, replied, said};
-use crate::inbound::{Checking, activity_verified, admitted};
+use super::jobs::Job;
+use super::replies::{Answered, missing, refusal, rejection, replied, text_reply};
+use super::{Inbound, Serving};
 use crate::prepare::Connected;
+use crate::verification::{Checking, activity_verified, admitted};
+
+/// What WebFinger answers as.
+const JRD: &str = "application/jrd+json";
 
 /// The actor herald serves as `name`.
 pub(super) fn actor<'a, H>(
@@ -58,11 +63,11 @@ pub(super) async fn documented<S, C, G: Signer, V, H, P, K>(
     serving: &Serving<'_, S, C, G, V, H, P, K>,
     served: &dyn Federates,
 ) -> Answered {
-    shown(served.document(serving.ports.signer).await)
+    document_reply(served.document(serving.ports.signer).await)
 }
 
 /// The answer to an actor document that was or could not be built.
-fn shown(document: Result<String, CryptoError>) -> Answered {
+fn document_reply(document: Result<String, CryptoError>) -> Answered {
     match document {
         Ok(document) => replied(200, ACTIVITY_JSON, document),
         Err(error) => refusal(500, format!("the actor's key cannot be read: {error}")),
@@ -186,7 +191,7 @@ pub(super) async fn inboxed<S: Store, C: Clock, G, V: Verifier, H, P: Http, K: K
         return rejection(&rejected);
     }
     Answered {
-        reply: said(202, "herald takes the activity").reply,
+        reply: text_reply(202, "herald takes the activity").reply,
         refused: None,
         job: Some(Job::Follow {
             verified,

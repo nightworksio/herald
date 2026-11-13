@@ -1,6 +1,6 @@
 use herald_core::{Asked, DestinationName, Place};
-use herald_ports::{Request, Response, Text};
-use jiff::SignedDuration;
+use herald_ports::{Request, Response, SecretText};
+use jiff::{SignedDuration, Timestamp};
 
 use crate::Replying;
 
@@ -21,16 +21,18 @@ pub enum Connect {
 pub enum Effect {
     /// Send the frame; where it cannot be sent, connect again once every
     /// effect heard with it is done.
-    Send(Text),
+    Send(SecretText),
     /// Send the frame acknowledging what was heard; where it cannot be
     /// sent, connect again at once, and do nothing more of what was heard.
-    Acknowledge(Text),
+    Acknowledge(SecretText),
     /// Beat every interval from now on.
     Beat(SignedDuration),
     /// The session is taken up: its next wait starts from the first.
     Ready,
     /// A command, and where its answer goes.
     Asked(Asked, Replying),
+    /// A command not taken up, and why, for the log.
+    Skipped(String),
     /// A member typing a project at `place`, to be offered the projects
     /// announced there that start with `typed`.
     Completing {
@@ -93,6 +95,16 @@ pub trait Session: Send {
 
     /// What a failure to connect is said as, before its reason.
     fn unreachable(&self) -> &'static str;
+
+    /// Where it stands, for a session taken up later to start from, where
+    /// it keeps a position.
+    fn position(&self) -> Option<&str> {
+        None
+    }
+
+    /// Starts from `position`, where an earlier session of its destination
+    /// left off, skipping each command given before `given_after`.
+    fn resume(&mut self, _position: String, _given_after: Timestamp) {}
 }
 
 #[cfg(test)]

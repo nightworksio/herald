@@ -10,11 +10,11 @@ mod compose {
     use std::task::{Context, Poll};
 
     use herald_compose::{
-        Asked, Composed, Host, KvAt, Left, Opener, ServingOn, SqlAt, Through, reached,
+        Composed, Host, HostRequest, KvAt, Left, Opener, ServingOn, SqlAt, Through, reached,
     };
     use herald_config::{Config, Uses, load};
     use herald_core::DestinationName;
-    use herald_flows::{Admission, Housekept, Inbound, Job, Stop, Sweep, Taker, Worked};
+    use herald_flows::{Admission, Did, Housekept, Inbound, Job, Stop, Sweep, Taker, Worked};
     use herald_kinds::{Opening, StoreKind};
     use herald_ports::{Changed, Frame, Http, HttpError, Outbound, Request, Response, Value};
     use herald_testing::{
@@ -181,7 +181,7 @@ mod compose {
 
         fn fill(&self, (): (), _: Job) {}
 
-        fn said(&self, _: &DestinationName, _: String) {}
+        fn report(&self, _: &DestinationName, _: String) {}
     }
 
     /// The store table `store`, with the key a store in a shared repository
@@ -446,7 +446,7 @@ mod compose {
                     asked: Vec::new(),
                 },
             );
-            Untaken.said(&destination, String::new());
+            Untaken.report(&destination, String::new());
         }
     }
 
@@ -589,7 +589,10 @@ template = "t"
                 let place = composed.place().expect("a place in an empty room");
                 assert_eq!(
                     pollster::block_on(composed.work(Left::new(job, place))),
-                    Worked::Interacted(Vec::new()),
+                    Worked {
+                        did: Did::Interacted(Vec::new()),
+                        unreleased: None,
+                    },
                     "{store}"
                 );
             }
@@ -607,7 +610,10 @@ template = "t"
                 format!("kind = \"deno-kv\" memory {kept}"),
                 format!("kind = \"deno-kv\" store {kept}"),
                 format!("kind = \"git-branch\" memory {untreed}"),
-                format!("kind = \"git-branch\" store {untreed}"),
+                format!(
+                    "kind = \"git-branch\" store {}",
+                    untreed.replace("deliveries", "keys")
+                ),
                 format!("{variables} memory {uncounted}"),
                 format!("{variables} store {uncounted}"),
                 format!("kind = \"dynamodb\" memory {kept}"),
@@ -617,8 +623,8 @@ template = "t"
         );
     }
 
-    fn asked(method: &str, target: &str, authorization: Option<&str>) -> Asked {
-        Asked {
+    fn asked(method: &str, target: &str, authorization: Option<&str>) -> HostRequest {
+        HostRequest {
             method: method.to_owned(),
             target: target.to_owned(),
             headers: authorization
@@ -639,7 +645,7 @@ template = "t"
             "test",
         ))
         .unwrap();
-        let reach = |composed: &Composed<'_, Hosting>, asked: &Asked| {
+        let reach = |composed: &Composed<'_, Hosting>, asked: &HostRequest| {
             pollster::block_on(composed.reached(asked))
         };
         let health = reach(&unset, &asked("GET", "/healthz?x=1", None));

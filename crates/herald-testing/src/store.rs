@@ -7,19 +7,20 @@ use herald_core::{
 };
 use herald_ports::{
     Admitted, Announcements, Cursors, Deliveries, Held, Inboxes, Keeper, Ledger, Notes, Outboxed,
-    Pins, Schedules, StoreError, Subscriptions, Version, Versioned, Written,
+    Pins, Positions, Schedules, StoreError, Subscriptions, Version, Versioned, Written,
 };
 use jiff::Timestamp;
 
 use crate::lock;
 
 #[derive(Debug, Default)]
-struct Records {
+struct FakeState {
     entries: BTreeMap<Key, Versioned<Entry>>,
     cursors: BTreeMap<SourceName, Versioned<Cursor>>,
     schedules: Vec<Schedule>,
     subscriptions: BTreeSet<Subscription>,
     pins: BTreeMap<RouteId, String>,
+    positions: BTreeMap<DestinationName, String>,
     deliveries: BTreeMap<(&'static str, String), Timestamp>,
     notes: BTreeMap<Key, (String, String, Timestamp)>,
     latest: BTreeMap<String, Versioned<Latest>>,
@@ -29,7 +30,7 @@ struct Records {
 /// A store in memory, keeping everything a store can keep.
 #[derive(Debug, Default)]
 pub struct FakeStore {
-    state: Mutex<Records>,
+    state: Mutex<FakeState>,
 }
 
 fn compare_and_set<K: Ord, T: Clone>(
@@ -202,6 +203,23 @@ impl Pins for FakeStore {
     }
 }
 
+impl Positions for FakeStore {
+    async fn position(&self, destination: &DestinationName) -> Result<Option<String>, StoreError> {
+        Ok(lock(&self.state).positions.get(destination).cloned())
+    }
+
+    async fn put_position(
+        &self,
+        destination: &DestinationName,
+        position: &str,
+    ) -> Result<(), StoreError> {
+        lock(&self.state)
+            .positions
+            .insert(destination.clone(), position.to_owned());
+        Ok(())
+    }
+}
+
 impl Deliveries for FakeStore {
     async fn admit(&self, scheme: Scheme, id: &str, at: Timestamp) -> Result<Admitted, StoreError> {
         let mut state = lock(&self.state);
@@ -327,5 +345,6 @@ mod tests {
         assert!(itself(store.notes()));
         assert!(itself(store.announcements()));
         assert!(itself(store.inboxes()));
+        assert!(itself(store.positions()));
     }
 }

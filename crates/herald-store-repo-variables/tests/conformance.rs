@@ -16,7 +16,7 @@ mod conformance {
         Http, HttpError, Ledger, Method, Pins, Request, Response, Schedules, Secret, StoreError,
         Subscriptions, Written,
     };
-    use herald_records::{Records, Wrote};
+    use herald_records::{RecordBackend, Wrote};
     use herald_store_repo_variables::{RepoVariables, RepoVariablesStore};
     use herald_testing::store_conformance;
     use serde_json::{Value, json};
@@ -267,6 +267,7 @@ mod conformance {
     fn the_store_passes_the_conformance_suite_releasing_every_lock_it_takes() {
         let store = store(Model::default());
         assert_eq!(pollster::block_on(store_conformance(&store)), Ok(()));
+        assert!(herald_ports::Store::writes_one_at_a_time(&store));
     }
 
     #[test]

@@ -194,7 +194,7 @@ fn body(bytes: &[u8]) -> Option<Value> {
 fn secrets(request: &Request) -> Vec<String> {
     let texts = std::iter::once(&request.url).chain(request.headers.iter().map(|(_, value)| value));
     texts
-        .flat_map(herald_ports::Text::segments)
+        .flat_map(herald_ports::SecretText::segments)
         .filter_map(|segment| match segment {
             Segment::Secret(secret) => Some(secret.expose().to_owned()),
             Segment::Plain(_) => None,

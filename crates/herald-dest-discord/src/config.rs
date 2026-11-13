@@ -12,7 +12,7 @@ use herald_ports::{Boxed, DynSecrets, Request, Response, Secret, SecretError};
 
 use crate::discord::{self, DISCORD, Discord};
 use crate::held::Joined;
-use crate::interact::{self, Interacting, MESSAGE, Received, choices, pong, took};
+use crate::interact::{self, Interacting, MESSAGE, Received, accepted, choices, pong};
 use crate::interactions::{Interactions, Subscribe, Via};
 use crate::options::{DestinationOptions, RouteOptions};
 use crate::setup::Setting;
@@ -253,8 +253,8 @@ impl Interacts for Interacting {
         Self::answered(self, replying, &bodies, public)
     }
 
-    fn took(&self, response: &Response) -> Result<(), String> {
-        took(response)
+    fn accepted(&self, response: &Response) -> Result<(), String> {
+        accepted(response)
     }
 
     fn deferred(&self, replying: &Replying, asked: &Asked) -> Option<Request> {

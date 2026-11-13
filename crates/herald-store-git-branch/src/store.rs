@@ -1,5 +1,5 @@
 use herald_ports::{Http, Secret};
-use herald_records::Kept;
+use herald_records::RecordStore;
 use herald_wire::github;
 
 /// The branch the records are kept on.
@@ -37,7 +37,7 @@ impl GitBranch {
     /// The store kept on the branch, reached through `http`.
     #[must_use]
     pub fn store<H: Http>(self, http: H) -> GitBranchStore<H> {
-        Kept::new(BranchRecords { branch: self, http })
+        RecordStore::new(BranchRecords { branch: self, http })
     }
 }
 
@@ -50,4 +50,4 @@ pub struct BranchRecords<H> {
 }
 
 /// The store a [`GitBranch`] keeps.
-pub type GitBranchStore<H> = Kept<BranchRecords<H>>;
+pub type GitBranchStore<H> = RecordStore<BranchRecords<H>>;

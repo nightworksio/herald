@@ -1,6 +1,6 @@
 use crate::*;
 use herald_core::{Chore, Identity, Key, RouteId, Schedule};
-use herald_ports::{HttpError, Method, Request, Response, Schedules, Secret};
+use herald_ports::{Http, HttpError, Keyring, Method, Request, Response, Schedules, Secret, Store};
 use herald_store_git_branch::GitBranch;
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
@@ -454,7 +454,7 @@ pub(super) const OVERDUE: &str = "2020-01-01T00:00:00Z";
 pub(super) const DISTANT: &str = "2100-01-01T00:00:00Z";
 
 /// The store [`CONFIG`] names, reached through `world`.
-pub(super) fn kept(world: &World) -> impl Keeps + Keyring + Schedules {
+pub(super) fn kept(world: &World) -> impl Store + Keyring + Schedules {
     GitBranch::new(
         "cli/cli",
         Secret::new("GITHUB_TOKEN", "github-token"),

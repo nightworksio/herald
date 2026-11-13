@@ -1,29 +1,29 @@
 //! herald's `Store` kept one record per path (ADR-0001, ADR-0005), over any
 //! backend that replaces a record only as it was read.
 //!
-//! A backend implements [`Records`]: it reads a record's bytes with the token
-//! a write must name to replace them, lists a directory, and writes or
-//! removes a record only where it still holds what that token names. [`Kept`]
-//! is the `Store` over it: the paths each kind of record is kept at, the
-//! version kept beside each record, and the compare-and-set built on the
-//! backend's. [`SqlRecords`] is the backend over the `Sql` port, which the
-//! SQL stores share, and [`KvRecords`] the one over the `Kv` port, which
-//! the key-value stores share. [`Kept`] is also a `Keyring`, and [`MemoryKeyring`]
-//! keeps keys in memory alone.
+//! A backend implements [`RecordBackend`]: it reads a record's bytes with
+//! the token a write must name to replace them, lists a directory, and
+//! writes or removes a record only where it still holds what that token
+//! names. [`RecordStore`] is the `Store` over it: the paths each kind of
+//! record is kept at, the version kept beside each record, and the
+//! compare-and-set built on the backend's. [`SqlRecords`] is the backend over
+//! the `Sql` port, which the SQL stores share, and [`KvRecords`] the one over
+//! the `Kv` port, which the key-value stores share. [`RecordStore`] is also a
+//! `Keyring`, and [`MemoryKeyring`] keeps keys in memory alone.
 
-mod kept;
 mod keyring;
 mod kv;
 mod memory;
 mod paths;
+mod record_store;
 mod records;
 mod seal;
 mod sql;
 
-pub use kept::Kept;
 pub use keyring::MemoryKeyring;
 pub use kv::{KvRecords, KvStore};
 pub use memory::Memory;
-pub use records::{Blob, Records, Wrote};
+pub use record_store::RecordStore;
+pub use records::{Blob, RecordBackend, Wrote};
 pub use seal::Seal;
 pub use sql::{Dialect, LAYOUT, SqlRecords, SqlStore};

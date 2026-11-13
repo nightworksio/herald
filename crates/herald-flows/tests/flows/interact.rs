@@ -5,14 +5,14 @@ use herald_core::{
     Asked, Command, DestinationName, Kind, Latest, Member, Place, RouteId, Shown, Subscription,
 };
 use herald_flows::{
-    Answer, Answered, Connected, Inbound, Job, Ports, Replying, Serving, Webhooks, Worked, answer,
+    Answer, Answered, Connected, Did, Inbound, Job, Ports, Replying, Serving, Webhooks, answer,
     completed, deferral, interact, prepare, replied, work,
 };
 use herald_ports::{Announcements, Secret, Subscriptions};
 use herald_records::MemoryKeyring;
 use herald_testing::{FakeClock, FakeSecrets, FakeSigner, FakeVerifier};
 
-use crate::harness::{Failing, Fault, Script, healthy, keys_in};
+use crate::harness::{Failing, Fault, Script, broken, healthy, keys_in};
 use crate::inbound::at;
 
 pub(crate) const APPLICATION: &str = "123456789012345678";
@@ -233,8 +233,10 @@ impl World {
         self.serving(|serving| pollster::block_on(answer(serving, inbound)))
     }
 
-    pub(crate) fn work(&self, job: Job) -> Worked {
-        self.serving(|serving| pollster::block_on(work(serving, job, "server")))
+    pub(crate) fn work(&self, job: Job) -> Did {
+        let worked = self.serving(|serving| pollster::block_on(work(serving, job, "server")));
+        assert_eq!(worked.unreleased, None);
+        worked.did
     }
 }
 
@@ -745,7 +747,7 @@ fn completions_list_what_was_announced_in_the_channel() {
         &Place::new(CHANNEL),
         "",
     ));
-    assert_eq!(found, ["gate", "other"]);
+    assert_eq!(found.unwrap(), ["gate", "other"]);
     let in_a_thread = pollster::block_on(completed(
         &world.config,
         &world.store,
@@ -756,7 +758,7 @@ fn completions_list_what_was_announced_in_the_channel() {
         },
         "",
     ));
-    assert_eq!(in_a_thread, ["gate", "other"]);
+    assert_eq!(in_a_thread.unwrap(), ["gate", "other"]);
     let mut failing = world;
     failing.store.fault = Fault::ListsLatest;
     let none = pollster::block_on(completed(
@@ -766,7 +768,7 @@ fn completions_list_what_was_announced_in_the_channel() {
         &Place::new(CHANNEL),
         "",
     ));
-    assert_eq!(none, Vec::<String>::new());
+    assert_eq!(none, Err(broken()));
 }
 
 pub(crate) fn discord_replying() -> Replying {

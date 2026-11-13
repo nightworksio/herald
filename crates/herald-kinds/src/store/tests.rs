@@ -67,7 +67,7 @@ fn sealed() -> Plain {
 
 #[test]
 fn a_store_keeps_every_kind_itself_and_says_nothing_where_its_kind_keeps_the_defaults() {
-    let store = Store::new(sealed());
+    let store = ConfiguredStore::new(sealed());
     for kind in [
         RecordKind::Subscriptions,
         RecordKind::Pins,
@@ -87,32 +87,32 @@ fn a_store_keeps_every_kind_itself_and_says_nothing_where_its_kind_keeps_the_def
 
 #[test]
 fn a_store_names_its_secrets_and_then_its_key() {
-    assert_eq!(Store::new(sealed()).secrets(), vec!["KEY"]);
+    assert_eq!(ConfiguredStore::new(sealed()).secrets(), vec!["KEY"]);
     assert_eq!(
-        Store::new(Plain { key: None }).secrets(),
+        ConfiguredStore::new(Plain { key: None }).secrets(),
         Vec::<&str>::new()
     );
-    assert_eq!(Store::new(Tokened).secrets(), vec!["TOKEN"]);
+    assert_eq!(ConfiguredStore::new(Tokened).secrets(), vec!["TOKEN"]);
 }
 
 #[test]
 fn a_store_is_read_as_its_own_kind_and_equal_only_to_the_same_options() {
-    let store = Store::new(sealed());
+    let store = ConfiguredStore::new(sealed());
     assert_eq!(store.of::<Plain>(), Some(&sealed()));
     assert_eq!(store.of::<Tokened>(), None);
     assert_eq!(store, store.clone());
-    assert_eq!(store, Store::new(sealed()));
-    assert_ne!(store, Store::new(Plain { key: None }));
-    assert_ne!(store, Store::new(Tokened));
+    assert_eq!(store, ConfiguredStore::new(sealed()));
+    assert_ne!(store, ConfiguredStore::new(Plain { key: None }));
+    assert_ne!(store, ConfiguredStore::new(Tokened));
     assert_eq!(format!("{store:?}"), format!("{:?}", sealed()));
 }
 
 #[test]
 fn a_store_opens_through_what_its_host_offers() {
     let opening: Arc<dyn Opening> = Arc::new(crate::opening::tests::bare(&[]));
-    let posts = pollster::block_on(Store::new(sealed()).open(Arc::clone(&opening), None));
+    let posts = pollster::block_on(ConfiguredStore::new(sealed()).open(Arc::clone(&opening), None));
     assert!(matches!(posts, Ok(Opened::Posts)));
-    let tokened = pollster::block_on(Store::new(Tokened).open(opening, None));
+    let tokened = pollster::block_on(ConfiguredStore::new(Tokened).open(opening, None));
     assert_eq!(
         tokened.err(),
         Some("TOKEN is not set; the store reads with it".to_owned())

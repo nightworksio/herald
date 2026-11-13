@@ -5,7 +5,7 @@ mod common;
 
 #[cfg(test)]
 mod load {
-    use herald_config::{Store, load, schema};
+    use herald_config::{ConfiguredStore, load, schema};
     use herald_core::{Kind, Pinning, Prereleases};
     use herald_sources_forge::Forge;
 
@@ -55,7 +55,7 @@ body = "{{ event.body }}"
         let config = load("herald.toml", EXAMPLE, &nothing, &crate::common::kinds()).unwrap();
         assert_eq!(
             config.store,
-            Store::new(herald_store_git_branch::StoreOptions {
+            ConfiguredStore::new(herald_store_git_branch::StoreOptions {
                 repository: None,
                 branch: None,
                 token: None,
@@ -166,7 +166,7 @@ body = "{{ event.body }}"
             errors(text),
             [
                 "herald.toml:1:11 version: this herald reads version 1 of the config; write version = 1",
-                "herald.toml:2:1 unknown: herald.toml has no key \"unknown\"; the keys are \"version\", \"kinds\", \"store\", \"markers\", \"destinations\", \"sources\", \"routes\", \"templates\", \"apps\", \"schedule\", \"server\", \"http\", \"render\", \"announce\"",
+                "herald.toml:2:1 unknown: herald.toml has no key \"unknown\"; the keys are \"version\", \"kinds\", \"store\", \"markers\", \"destinations\", \"sources\", \"routes\", \"templates\", \"apps\", \"schedule\", \"server\", \"http\", \"render\", \"announce\", \"run\"",
                 "herald.toml:4:8 store.kind: there is no kind \"nowhere\"; the kinds are \"sqlite\", \"postgres\", \"d1\", \"durable-object\", \"deno-kv\", \"fastly-kv\", \"dynamodb\", \"git-branch\", \"markers\", \"actions-cache\", \"repo-variables\"",
                 "herald.toml:5:1 destinations.d: a Discord destination needs a token or a webhook; give one",
                 "herald.toml:8:8 sources.s.kind: there is no kind \"bitbucket\"; the kinds are \"github\", \"gitlab\", \"forgejo\", \"packagist\", \"crates-io\", \"npm\", \"docker-hub\", \"feed\"",
@@ -621,7 +621,7 @@ body = "{{ event.body }}"
             load("herald.toml", &markers, &nothing, &crate::common::kinds())
                 .unwrap()
                 .store,
-            Store::new(herald_store_markers::MarkersOptions {})
+            ConfiguredStore::new(herald_store_markers::MarkersOptions {})
         );
         let pinned = EXAMPLE.replace("crosspost = true", "crosspost = true\npin = \"store\"");
         assert_eq!(

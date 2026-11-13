@@ -12,17 +12,15 @@ use futures_util::stream::{FuturesUnordered, StreamExt};
 use herald_config::{Config, Uses, load};
 use herald_core::{DestinationName, Kind, Latest, RouteId, Shown};
 use herald_flows::{
-    Connected, Job, Ports, Serving, Sessions, Taker, Webhooks, Worked, prepare, work,
+    Connected, Did, Job, Ports, Serving, Sessions, Taker, Webhooks, Worked, prepare, work,
 };
-use herald_ports::{Announcements, Frame, Http, HttpError, Request, Response, Timer};
+use herald_ports::{Announcements, Frame, Http, HttpError, Positions, Request, Response, Timer};
 use herald_records::MemoryKeyring;
-use herald_testing::{
-    FakeClock, FakeSecrets, FakeSigner, FakeStore, FakeVerifier, ScriptedSockets,
-};
+use herald_testing::{FakeClock, FakeSecrets, FakeSigner, FakeVerifier, ScriptedSockets};
 use serde_json::{Value, json};
 use tokio::sync::Notify;
 
-use crate::harness::keys_in;
+use crate::harness::{Failing, Fault, broken, healthy, keys_in};
 
 const APPLICATION: &str = "123456789012345678";
 const CHANNEL: &str = "323456789012345678";
@@ -146,14 +144,20 @@ type Scripted = (String, Option<(u16, String)>);
 struct Answers {
     script: Arc<Mutex<VecDeque<Scripted>>>,
     seen: Arc<Mutex<Vec<(String, tokio::time::Instant)>>>,
+    bodies: Arc<Mutex<Vec<String>>>,
 }
 
 impl Answers {
     fn of(script: Vec<Scripted>) -> Self {
         Self {
             script: Arc::new(Mutex::new(script.into())),
-            seen: Arc::default(),
+            ..Self::default()
         }
+    }
+
+    /// The body of each request, in the order they were sent.
+    fn bodies(&self) -> Vec<String> {
+        self.bodies.lock().unwrap().clone()
     }
 
     fn seen(&self) -> Vec<String> {
@@ -190,6 +194,10 @@ impl Http for Answers {
             .lock()
             .unwrap()
             .push((line.clone(), tokio::time::Instant::now()));
+        self.bodies
+            .lock()
+            .unwrap()
+            .push(String::from_utf8_lossy(&request.body).into_owned());
         let next = {
             let mut script = self.script.lock().unwrap();
             let found = script
@@ -244,7 +252,7 @@ impl Taker for Taken<'_> {
         self.arrived.notify_one();
     }
 
-    fn said(&self, destination: &DestinationName, said: String) {
+    fn report(&self, destination: &DestinationName, said: String) {
         (self.hear)(format!("{}: {said}", destination.as_str()));
     }
 }
@@ -252,7 +260,7 @@ impl Taker for Taken<'_> {
 struct World {
     config: Config,
     connected: Connected<Answers>,
-    store: FakeStore,
+    store: Failing,
     keyring: MemoryKeyring,
     answers: Answers,
     sockets: ScriptedSockets,
@@ -265,7 +273,7 @@ impl World {
             .await
             .unwrap();
         let connected = prepared.connect(|_| Ok::<_, ()>(answers.clone())).unwrap();
-        let store = FakeStore::default();
+        let store = healthy();
         let shown = Shown {
             kind: Kind::RELEASE,
             attributes: herald_core::versioned("1.0.0", false),
@@ -297,7 +305,7 @@ impl World {
     /// What the server said, run with at most `jobs` at once until it
     /// says something `done` holds true of.
     async fn served(&self, jobs: usize, done: impl Fn(&str) -> bool) -> Vec<String> {
-        let clock = FakeClock::at("2027-01-15T08:00:00Z".parse().unwrap());
+        let clock = FakeClock::at(NOW.parse().unwrap());
         let ports = Ports {
             store: &self.store,
             clock: &clock,
@@ -343,11 +351,14 @@ impl World {
                 }
                 tokio::select! {
                     () = stop.notified() => break,
-                    () = &mut sessions, if held => held = false,
+                    () = &mut sessions, if held => {
+                        held = false;
+                        hear(ENDED.to_owned());
+                    }
                     Some(worked) = running.next() => {
                         taken.held.set(taken.held.get() - 1);
-                        hear(match worked {
-                            Worked::Interacted(interacted) => format!(
+                        hear(match worked.did {
+                            Did::Interacted(interacted) => format!(
                                 "answered {}: {:?}",
                                 interacted[0].asked.command.name(),
                                 interacted[0].sent
@@ -372,6 +383,12 @@ impl World {
         heard
     }
 }
+
+/// What is heard once every session stopped.
+const ENDED: &str = "every session stopped";
+
+/// The harness's clock.
+const NOW: &str = "2027-01-15T08:00:00Z";
 
 fn text(value: &Value) -> Frame {
     Frame::Text(value.to_string())
@@ -814,20 +831,28 @@ async fn a_command_beyond_what_the_server_answers_at_once_is_said_and_left() {
             r#"{"ok": true, "url": "wss://wss-primary.slack.com/link"}"#,
         ),
         answer("«secret:the command's response URL»", 200, "ok"),
+        answer("«secret:the command's response URL»", 200, "ok"),
+        answer("«secret:the command's response URL»", 200, "ok"),
     ]);
     let world = World::new("slack", answers, sockets).await;
+    let refused = Cell::new(0);
     let heard = world
-        .served(1, |line| line.contains("was not answered"))
+        .served(1, |line| {
+            refused.set(refused.get() + usize::from(line.contains("was not answered")));
+            refused.get() == 2
+        })
         .await;
-    let refused: Vec<&String> = heard
+    let mut refused: Vec<&String> = heard
         .iter()
-        .filter(|line| line.ends_with("was not answered: no more is answered at once"))
+        .filter(|line| line.contains("was not answered"))
         .collect();
-    assert!(!refused.is_empty(), "{heard:?}");
-    assert!(
-        refused
-            .iter()
-            .all(|line| !line.starts_with("slack: latest")),
+    refused.sort();
+    assert_eq!(
+        refused,
+        [
+            "slack: changelog was not answered: no more is answered at once",
+            "slack: subscribe was not answered: no more is answered at once",
+        ],
         "the first command is taken: {heard:?}"
     );
 }
@@ -902,3 +927,6 @@ async fn a_sync_waits_from_the_first_again_once_the_homeserver_answers() {
         .await;
     assert_eq!(world.answers.spaced("/sync?"), [1, 2, 0, 1]);
 }
+
+mod positions;
+mod refusals;

@@ -3,7 +3,7 @@ use std::time::Duration;
 
 use futures_util::{SinkExt as _, StreamExt as _};
 use herald_compose::SocketReach;
-use herald_ports::{Frame, HttpError, Socket, Sockets, Text};
+use herald_ports::{Frame, HttpError, SecretText, Socket, Sockets};
 use rustls::ClientConfig;
 use tokio::net::TcpStream;
 use tokio::time::{Instant, timeout, timeout_at};
@@ -86,7 +86,7 @@ impl Sockets for NativeSockets {
 }
 
 impl Socket for NativeSocket {
-    async fn send(&mut self, frame: Text) -> Result<(), HttpError> {
+    async fn send(&mut self, frame: SecretText) -> Result<(), HttpError> {
         self.stream
             .send(Message::text(frame.expose()))
             .await

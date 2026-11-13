@@ -1,7 +1,7 @@
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD;
 use herald_core::Chore;
-use herald_ports::Method;
+use herald_ports::{Keyring as _, Method};
 
 use super::world::*;
 use crate::*;

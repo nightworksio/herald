@@ -5,7 +5,7 @@ use herald_wire::{SourceError, read};
 use jiff::Timestamp;
 use serde::Deserialize;
 
-use crate::package::{Api, Found};
+use crate::package::{Api, RegistryVersion};
 
 pub(crate) const API: Api = Api {
     url: "https://repo.packagist.org",
@@ -45,7 +45,7 @@ pub(crate) fn found(
     limit: usize,
     name: &str,
     body: &[u8],
-) -> Result<Vec<Found>, SourceError> {
+) -> Result<Vec<RegistryVersion>, SourceError> {
     let metadata: Metadata = read(api.versions, limit, body)?;
     let minified = metadata.minified.as_deref() == Some(MINIFIED);
     let entries = metadata
@@ -66,7 +66,7 @@ pub(crate) fn found(
             .as_deref()
             .and_then(|time| time.parse::<Timestamp>().ok())
         {
-            found.push(Found {
+            found.push(RegistryVersion {
                 version: entry.version,
                 published,
             });

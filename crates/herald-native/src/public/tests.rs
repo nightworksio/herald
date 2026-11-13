@@ -1,4 +1,4 @@
-use herald_ports::{Method, Outbound, Text};
+use herald_ports::{Method, Outbound, SecretText};
 
 use super::*;
 use crate::serving::{answer, serve};
@@ -9,7 +9,7 @@ fn admitting(scheme: &'static str, admits: fn(IpAddr) -> bool) -> PublicHttp {
 }
 
 fn get(url: &str) -> Request {
-    Request::new(Method::Get, Text::plain(url))
+    Request::new(Method::Get, SecretText::plain(url))
 }
 
 #[tokio::test]

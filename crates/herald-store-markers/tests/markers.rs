@@ -49,6 +49,7 @@ mod markers {
             FakeSigner,
         );
         assert_eq!(pollster::block_on(store_conformance(&store)), Ok(()));
+        assert!(store.writes_one_at_a_time());
     }
 
     #[test]

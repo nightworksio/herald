@@ -6,7 +6,7 @@ use std::collections::BTreeMap;
 use std::fmt;
 
 use herald_core::{Answering, Asked, Command, DestinationName, Phrase, Place, SecretRef};
-use herald_ports::{Method, Request, Response, Secret, Text};
+use herald_ports::{Method, Request, Response, Secret, SecretText};
 use serde_json::{Value, json};
 
 use crate::domain::Domain;
@@ -64,7 +64,7 @@ pub enum Received {
 
 /// Why a request could not be read.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Unread {
+pub enum UnreadCommand {
     /// The body is neither a slash command nor a button press.
     NotACommand,
     /// It names no channel, no member or no response URL, or a response URL
@@ -72,7 +72,7 @@ pub enum Unread {
     Unplaced,
 }
 
-impl fmt::Display for Unread {
+impl fmt::Display for UnreadCommand {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(match self {
             Self::NotACommand => "the body is neither a Slack command nor a button press",
@@ -186,7 +186,11 @@ impl Interacting {
     ///
     /// When it is neither, or names no channel, member or response URL of
     /// Slack's.
-    pub fn received(&self, destination: &DestinationName, body: &[u8]) -> Result<Received, Unread> {
+    pub fn received(
+        &self,
+        destination: &DestinationName,
+        body: &[u8],
+    ) -> Result<Received, UnreadCommand> {
         let fields: BTreeMap<String, String> = url::form_urlencoded::parse(body)
             .map(|(name, value)| (name.into_owned(), value.into_owned()))
             .collect();
@@ -194,7 +198,8 @@ impl Interacting {
             return Ok(Received::Ignored);
         }
         if let Some(payload) = fields.get("payload") {
-            let payload: Value = serde_json::from_str(payload).map_err(|_| Unread::NotACommand)?;
+            let payload: Value =
+                serde_json::from_str(payload).map_err(|_| UnreadCommand::NotACommand)?;
             return self.pressed(destination, &payload);
         }
         self.command(destination, &fields)
@@ -210,9 +215,9 @@ impl Interacting {
         &self,
         destination: &DestinationName,
         fields: &BTreeMap<String, String>,
-    ) -> Result<Received, Unread> {
+    ) -> Result<Received, UnreadCommand> {
         let field = |name: &str| fields.get(name).map(String::as_str);
-        let given = field("command").ok_or(Unread::NotACommand)?;
+        let given = field("command").ok_or(UnreadCommand::NotACommand)?;
         if given != self.interactions.command {
             return Ok(Received::Ignored);
         }
@@ -252,7 +257,7 @@ impl Interacting {
         &self,
         destination: &DestinationName,
         payload: &Value,
-    ) -> Result<Received, Unread> {
+    ) -> Result<Received, UnreadCommand> {
         if payload.get("type").and_then(Value::as_str) != Some("block_actions") {
             return Ok(Received::Ignored);
         }
@@ -297,14 +302,14 @@ impl Interacting {
         project: Option<String>,
         share: bool,
         toggles: bool,
-    ) -> Result<Received, Unread> {
+    ) -> Result<Received, UnreadCommand> {
         let (Some(place), Some(user), Some(url)) =
             (given(placed.place), given(placed.user), placed.url)
         else {
-            return Err(Unread::Unplaced);
+            return Err(UnreadCommand::Unplaced);
         };
         if !url.starts_with(&format!("{}/", self.hooks)) {
-            return Err(Unread::Unplaced);
+            return Err(UnreadCommand::Unplaced);
         }
         Ok(Received::Asked {
             asked: Box::new(Asked {
@@ -360,10 +365,10 @@ impl Interacting {
             "text": parts.first().cloned().unwrap_or_default(),
             "blocks": blocks,
         });
-        Request::new(Method::Post, Text::secret(replying.url.clone()))
+        Request::new(Method::Post, SecretText::secret(replying.url.clone()))
             .header(
                 "Content-Type",
-                Text::plain("application/json; charset=utf-8"),
+                SecretText::plain("application/json; charset=utf-8"),
             )
             .identified()
             .body(body.to_string())
@@ -454,8 +459,8 @@ pub fn subscribe_block(project: &str, label: &str) -> Value {
 /// # Errors
 ///
 /// What Slack said, where it refused or was unwell.
-pub fn took(response: &Response) -> Result<(), String> {
-    response.took(None, SLACK, || {
+pub fn accepted(response: &Response) -> Result<(), String> {
+    response.accepted(None, SLACK, || {
         quoted(&String::from_utf8_lossy(&response.body))
     })
 }

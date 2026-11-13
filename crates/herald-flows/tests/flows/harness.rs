@@ -11,8 +11,8 @@ use herald_flows::{
 };
 use herald_ports::{
     Announcements, Cursors, Deliveries, Held, Http, HttpError, Inboxes, Keeper, Ledger, Notes,
-    Pins, Request, Response, Schedules, Store, StoreError, Subscriptions, Version, Versioned,
-    Written,
+    Pins, Positions, Request, Response, Schedules, Store, StoreError, Subscriptions, Version,
+    Versioned, Written,
 };
 use herald_testing::{FakeClock, FakeSecrets, FakeSigner, FakeStore};
 use jiff::Timestamp;
@@ -236,6 +236,10 @@ pub(crate) enum Fault {
     AttemptsDeliveries,
     LandsDeliveries,
     LandsOneDelivery,
+    ReadsPositions,
+    KeepsPositions,
+    KeepsNoPositions,
+    OneAtATime,
 }
 
 pub(crate) struct Failing {
@@ -407,6 +411,26 @@ impl Pins for Failing {
     }
 }
 
+impl Positions for Failing {
+    async fn position(&self, destination: &DestinationName) -> Result<Option<String>, StoreError> {
+        if self.fault == Fault::ReadsPositions {
+            return Err(broken());
+        }
+        self.inner.position(destination).await
+    }
+
+    async fn put_position(
+        &self,
+        destination: &DestinationName,
+        position: &str,
+    ) -> Result<(), StoreError> {
+        if self.fault == Fault::KeepsPositions {
+            return Err(broken());
+        }
+        self.inner.put_position(destination, position).await
+    }
+}
+
 impl Deliveries for Failing {
     async fn admit(
         &self,
@@ -513,8 +537,13 @@ impl Keeper for Failing {
             Held::Deliveries => self.fault != Fault::KeepsNoDeliveries,
             Held::Inboxes => self.fault != Fault::KeepsNoInboxes,
             Held::Latest => self.fault != Fault::KeepsNoLatest,
+            Held::Positions => self.fault != Fault::KeepsNoPositions,
             _ => true,
         }
+    }
+
+    fn writes_one_at_a_time(&self) -> bool {
+        self.fault == Fault::OneAtATime
     }
 
     fn skipped(&self) -> Vec<String> {
@@ -644,6 +673,16 @@ impl herald_ports::Pins for Refusing {
     }
 
     async fn put_pinned(&self, _: &herald_core::RouteId, _: &str) -> Result<(), StoreError> {
+        Err(self.0.clone())
+    }
+}
+
+impl herald_ports::Positions for Refusing {
+    async fn position(&self, _: &DestinationName) -> Result<Option<String>, StoreError> {
+        Err(self.0.clone())
+    }
+
+    async fn put_position(&self, _: &DestinationName, _: &str) -> Result<(), StoreError> {
         Err(self.0.clone())
     }
 }

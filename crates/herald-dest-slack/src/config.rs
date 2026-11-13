@@ -9,7 +9,7 @@ use herald_kinds::{
 use herald_ports::{Boxed, DynSecrets, Request, Response, Secret, SecretError};
 
 use crate::held::Socketed;
-use crate::interact::{self, Interacting, Received, SECTION, took};
+use crate::interact::{self, Interacting, Received, SECTION, accepted};
 use crate::interactions::{Interactions, Via};
 use crate::options::{DestinationOptions, RouteOptions};
 use crate::setup::Setting;
@@ -235,8 +235,8 @@ impl Interacts for Interacting {
         vec![Self::answered(self, replying, &bodies, public)]
     }
 
-    fn took(&self, response: &Response) -> Result<(), String> {
-        took(response)
+    fn accepted(&self, response: &Response) -> Result<(), String> {
+        accepted(response)
     }
 
     fn posted(&self, endpoint: Endpoint) -> Option<Result<(Scheme, &str), &'static str>> {

@@ -7,7 +7,7 @@ use herald_ports::{Credential, Http, HttpError, Learned, Request};
 
 use crate::look::Look;
 use crate::options::RouteOptions;
-use crate::read::{read, trouble};
+use crate::read::{failure, read};
 use crate::request::{chore, step};
 use crate::unpin::unpinned;
 
@@ -173,8 +173,8 @@ impl Discord {
             Err(refusal) => return Ok(Sent::Refused(refusal.to_string())),
         };
         for request in requests {
-            if let Some(trouble) = trouble(&http.send(request).await?, self.waits) {
-                return Ok(trouble);
+            if let Some(failure) = failure(&http.send(request).await?, self.waits) {
+                return Ok(failure);
             }
         }
         Ok(Sent::Landed(herald_core::Facts::default()))

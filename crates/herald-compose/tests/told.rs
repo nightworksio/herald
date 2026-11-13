@@ -8,9 +8,16 @@ mod told {
         SourceName, Step,
     };
     use herald_flows::{
-        Announced, Answer, Chored, FollowError, Followed, Housekept, Interacted, Kept, Outcome,
-        Remembered, Stop, Sweep, Swept, Worked,
+        Announced, Answer, Chored, Did, FollowError, Followed, Housekept, HousekeptSchedule,
+        Interacted, Job, Outcome, Remembered, Stop, Sweep, Swept, Worked,
     };
+
+    fn did(did: Did) -> Worked {
+        Worked {
+            did,
+            unreleased: None,
+        }
+    }
 
     fn route() -> RouteId {
         RouteId::new("releases")
@@ -30,8 +37,8 @@ mod told {
         })
     }
 
-    fn kept(outcome: Chored) -> Kept {
-        Kept {
+    fn kept(outcome: Chored) -> HousekeptSchedule {
+        HousekeptSchedule {
             schedule: Schedule {
                 key: Key::derive(&route(), &Identity::new("1.0.0")),
                 route: route(),
@@ -145,37 +152,37 @@ mod told {
     #[test]
     fn a_job_says_what_it_did() {
         assert_eq!(
-            told::worked(&Worked::Announced(vec![announced(
+            told::worked(&did(Did::Announced(vec![announced(
                 Outcome::AlreadyAnnounced
-            )])),
+            )]))),
             ["releases: already announced; nothing sent"]
         );
         assert_eq!(
-            told::worked(&Worked::Followed(Ok(Followed::Undone {
+            told::worked(&did(Did::Followed(Ok(Followed::Undone {
                 follower: "ana".to_owned(),
                 actor: "gate".to_owned(),
-            }))),
+            })))),
             ["gate: ana no longer follows it"]
         );
         assert_eq!(
-            told::worked(&Worked::Followed(Ok(Followed::Rejected {
+            told::worked(&did(Did::Followed(Ok(Followed::Rejected {
                 follower: "bo".to_owned(),
                 actor: "gate".to_owned(),
                 answered: herald_core::Sent::Landed(herald_core::Facts::default()),
-            }))),
+            })))),
             ["gate: bo was turned away"]
         );
         assert_eq!(
-            told::worked(&Worked::Followed(Ok(Followed::Waiting {
+            told::worked(&did(Did::Followed(Ok(Followed::Waiting {
                 follower: "cy".to_owned(),
                 actor: "gate".to_owned(),
-            }))),
+            })))),
             ["gate: cy asks to follow it; approve or reject with `herald followers`"]
         );
         assert_eq!(
-            told::worked(&Worked::Followed(Err(FollowError::Store(
+            told::worked(&did(Did::Followed(Err(FollowError::Store(
                 "down".to_owned()
-            ))))
+            )))))
             .len(),
             1
         );
@@ -195,12 +202,74 @@ mod told {
             trouble: None,
         };
         assert_eq!(
-            told::worked(&Worked::Interacted(vec![Interacted {
+            told::worked(&did(Did::Interacted(vec![Interacted {
                 asked,
                 answer,
                 sent: Ok(()),
-            }])),
+            }]))),
             ["chat: latest was answered in 100"]
+        );
+    }
+
+    #[test]
+    fn a_delivery_that_could_not_be_released_is_said_after_what_its_job_did() {
+        let worked = Worked {
+            did: Did::Interacted(Vec::new()),
+            unreleased: Some("its delivery could not be released: down".to_owned()),
+        };
+        assert_eq!(
+            told::worked(&worked),
+            [
+                "its delivery could not be released: down; its sender's next delivery of it is refused until housekeeping forgets it"
+            ]
+        );
+    }
+
+    #[test]
+    fn a_job_left_undone_names_what_it_was_and_a_release_that_failed() {
+        let event = herald_core::Event::normalise(herald_core::Draft {
+            identity: "forge/gate/v1".to_owned(),
+            kind: herald_core::Kind::RELEASE,
+            project: "gate".to_owned(),
+            attributes: herald_core::versioned("1.0.0".to_owned(), false),
+            title: "gate".to_owned(),
+            body: String::new(),
+            links: std::collections::BTreeMap::new(),
+            occurred: jiff::Timestamp::UNIX_EPOCH,
+        })
+        .unwrap();
+        let verified = herald_flows::Verified {
+            delivery: Some("d".to_owned()),
+            signer: None,
+        };
+        let announcing = Job::App {
+            app: "ci".to_owned(),
+            event,
+            verified: verified.clone(),
+        };
+        assert_eq!(
+            told::unworked(&announcing, &Ok(())),
+            "herald stopped before it worked the announcement of forge/gate/v1"
+        );
+        assert_eq!(
+            told::unworked(
+                &Job::Follow {
+                    verified,
+                    body: Vec::new()
+                },
+                &Err("its delivery could not be released: down".to_owned())
+            ),
+            "herald stopped before it worked an activity; its delivery could not be released: down"
+        );
+        assert_eq!(
+            told::unworked(
+                &Job::Interact {
+                    destination: herald_core::DestinationName::new("chat"),
+                    asked: Vec::new()
+                },
+                &Ok(())
+            ),
+            "herald stopped before it worked the commands given on chat"
         );
     }
 }

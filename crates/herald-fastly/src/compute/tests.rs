@@ -3,8 +3,8 @@ use std::collections::BTreeMap;
 use fastly::Backend;
 use herald_compose::{Host as _, KvAt};
 use herald_ports::{
-    Http as _, HttpError, Kv as _, Method, Outbound, PUBLIC, Request, SecretError, Secrets as _,
-    Text, Versionstamp,
+    Http as _, HttpError, Kv as _, Method, Outbound, PUBLIC_BASE, Request, SecretError, SecretText,
+    Secrets as _, Versionstamp,
 };
 use herald_records::KvRecords;
 use herald_testing::{kv_conformance, store_conformance};
@@ -87,7 +87,7 @@ fn a_connection_fetches_plain_http_on_loopback_without_tls() {
     let http = FastlyHost::new()
         .connect(BASE, &Outbound::default())
         .unwrap();
-    let mut asked = Request::new(Method::Post, Text::plain(format!("{BASE}/said")));
+    let mut asked = Request::new(Method::Post, SecretText::plain(format!("{BASE}/said")));
     asked.body = b"hello".to_vec();
     let answer = pollster::block_on(http.send(asked)).unwrap();
     assert_eq!(answer.status, 200);
@@ -101,7 +101,7 @@ fn a_connection_uses_the_backend_its_origin_already_has() {
         .connect(BASE, &Outbound::default())
         .unwrap();
     for path in ["first", "again"] {
-        let asked = Request::new(Method::Get, Text::plain(format!("{BASE}/{path}")));
+        let asked = Request::new(Method::Get, SecretText::plain(format!("{BASE}/{path}")));
         let answer = pollster::block_on(http.send(asked)).unwrap();
         assert_eq!(answer.body, format!("GET /{path} ").into_bytes());
     }
@@ -122,7 +122,7 @@ fn a_connection_refuses_a_backend_under_its_origin_s_name_that_reaches_elsewhere
         let http = FastlyHost::new()
             .connect(&origin, &Outbound::default())
             .unwrap();
-        let asked = Request::new(Method::Get, Text::plain(format!("{origin}/")));
+        let asked = Request::new(Method::Get, SecretText::plain(format!("{origin}/")));
         assert!(
             matches!(
                 pollster::block_on(http.send(asked)),
@@ -139,7 +139,7 @@ fn a_connection_refuses_what_it_may_not_reach() {
     let http = host
         .connect("https://discord.com/api", &Outbound::default())
         .unwrap();
-    let elsewhere = Request::new(Method::Get, Text::plain("https://example.org/"));
+    let elsewhere = Request::new(Method::Get, SecretText::plain("https://example.org/"));
     assert!(pollster::block_on(http.send(elsewhere)).is_err());
     assert!(host.connect("not a url", &Outbound::default()).is_err());
 }
@@ -147,9 +147,9 @@ fn a_connection_refuses_what_it_may_not_reach() {
 #[test]
 fn a_public_connection_refuses_a_name_on_a_service_not_said_to_be_guarded() {
     let http = FastlyHost::new()
-        .connect(PUBLIC, &Outbound::default())
+        .connect(PUBLIC_BASE, &Outbound::default())
         .unwrap();
-    let asked = Request::new(Method::Get, Text::plain("https://localhost:9/"));
+    let asked = Request::new(Method::Get, SecretText::plain("https://localhost:9/"));
     assert!(matches!(
         pollster::block_on(http.send(asked)),
         Err(HttpError::Refused { .. })

@@ -1,6 +1,6 @@
 # ADR-0017: herald runs wherever code runs, from one native binary and one wasm module
 
-**Status:** Accepted; `Hosting` extended to every host, its stores derived from what it offers, by [ADR-0024](0024-a-host-is-described-once-and-every-driver-composes-through-one-composition.md)
+**Status:** Accepted; `Hosting` extended to every host, its stores derived from what it offers, by [ADR-0024](0024-a-host-is-described-once-and-every-driver-composes-through-one-composition.md); the `Limits::asked` it names is `Limits::timers`
 **Date:** 2026-11-06
 
 ## Context

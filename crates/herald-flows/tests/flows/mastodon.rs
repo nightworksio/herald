@@ -1,6 +1,7 @@
 use herald_config::{Config, Uses, load};
 use herald_core::{Chore, Identity, Key, Marker, RouteId, Schedule, SourceName, Step};
-use herald_flows::{Chored, Outcome, Ports, Reached, announce, prepare};
+use herald_flows::{Chored, Outcome, Ports, announce, prepare};
+use herald_kinds::Reached;
 use herald_ports::{Markers as _, Schedules};
 use herald_testing::{FakeClock, FakeSecrets, FakeSigner};
 

@@ -23,7 +23,7 @@ pub(crate) fn text<'a>(value: &'a Value, field: &str) -> Option<&'a str> {
 
 /// What Slack said in `body`: the word an incoming webhook answers with,
 /// or the Web API's error.
-fn said(body: &Value) -> String {
+fn error_text(body: &Value) -> String {
     quoted(
         body.as_str()
             .unwrap_or_else(|| text(body, "error").unwrap_or_default()),
@@ -33,8 +33,8 @@ fn said(body: &Value) -> String {
 /// What a failed answer means: when to ask again, or why Slack refused.
 /// Slack's Web API answers a refusal with `200` and `"ok": false`; an
 /// incoming webhook answers one with a status and a word.
-pub(crate) fn trouble(response: &Response, body: &Value, waits: Waits) -> Option<Sent> {
-    if let Some(sent) = response.trouble(waits, None, SLACK, || said(body)) {
+pub(crate) fn failure(response: &Response, body: &Value, waits: Waits) -> Option<Sent> {
+    if let Some(sent) = response.failure(waits, None, SLACK, || error_text(body)) {
         return Some(sent);
     }
     if body.get("ok").and_then(Value::as_bool) == Some(false) {
@@ -51,7 +51,7 @@ pub(crate) fn trouble(response: &Response, body: &Value, waits: Waits) -> Option
 /// where a bot posted it, or nothing more from a webhook.
 pub(crate) fn read(response: &Response, waits: Waits) -> Sent {
     let body = json(response);
-    if let Some(sent) = trouble(response, &body, waits) {
+    if let Some(sent) = failure(response, &body, waits) {
         return sent;
     }
     if body.is_string() {

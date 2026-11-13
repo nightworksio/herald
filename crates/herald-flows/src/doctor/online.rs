@@ -1,3 +1,5 @@
+//! What doctor finds by reading secrets, keys and destinations online.
+
 use std::collections::BTreeSet;
 
 use herald_config::Config;
@@ -6,7 +8,7 @@ use herald_ports::{Http, SecretError, Secrets, Signer};
 
 use super::{Findings, Here, gap};
 use crate::Connected;
-use crate::prepare::keyed;
+use crate::prepare::signs_as_actor;
 
 /// Each ActivityPub actor's key in `config` that is set here, read through
 /// `secrets` and loaded through `signer`: a mistake where it cannot sign as
@@ -20,7 +22,7 @@ pub async fn keys<S: Secrets, G: Signer>(config: &Config, secrets: &S, signer: &
         let Ok(key) = secrets.secret(&reference.secret).await else {
             continue;
         };
-        if let Err(unkeyed) = keyed(signer, name, &key).await {
+        if let Err(unkeyed) = signs_as_actor(signer, name, &key).await {
             findings.mistakes.push(unkeyed.to_string());
         }
     }
