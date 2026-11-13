@@ -90,11 +90,8 @@ impl Sockets for ScriptedSockets {
         Turn::default().await;
         lock(&self.opened).push(url.to_owned());
         let next = lock(&self.connections).pop_front();
-        let frames = next.unwrap_or_else(|| {
-            Err(HttpError::Unreachable {
-                reason: "no connection is scripted".to_owned(),
-            })
-        })?;
+        let frames =
+            next.unwrap_or_else(|| Err(HttpError::unreachable("no connection is scripted")))?;
         Ok(ScriptedSocket {
             frames: frames.into(),
             sent: Arc::clone(&self.sent),
@@ -107,9 +104,9 @@ impl Socket for ScriptedSocket {
     async fn send(&mut self, frame: Text) -> Result<(), HttpError> {
         match &mut self.taking {
             Some(0) => {
-                return Err(HttpError::Unreachable {
-                    reason: "the connection refuses what is sent".to_owned(),
-                });
+                return Err(HttpError::unreachable(
+                    "the connection refuses what is sent",
+                ));
             }
             Some(left) => *left -= 1,
             None => {}

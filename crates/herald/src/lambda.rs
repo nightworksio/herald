@@ -13,7 +13,9 @@ use std::io::Write;
 
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD;
-use herald_aws::{Signing, signed};
+use herald_aws::{
+    ACCESS_KEY_ID, Endpoint, REGION, SECRET_ACCESS_KEY, SESSION_TOKEN, Signing, configured, signed,
+};
 use herald_compose::{Composed, Host as _, Hosting, Left};
 use herald_config::{Config, Uses};
 use herald_environment::EnvSecrets;
@@ -32,25 +34,21 @@ use super::{Connect, Connection, STOPPED};
 const RUNTIME_API: &str = "AWS_LAMBDA_RUNTIME_API";
 /// The function's own name, as Lambda sets it.
 const FUNCTION: &str = "AWS_LAMBDA_FUNCTION_NAME";
-/// The region the function runs in, as Lambda sets it.
-const REGION: &str = "AWS_REGION";
 /// The credentials of the function's role, as Lambda sets them.
-pub(crate) const CREDENTIALS: [&str; 3] = [
-    "AWS_ACCESS_KEY_ID",
-    "AWS_SECRET_ACCESS_KEY",
-    "AWS_SESSION_TOKEN",
-];
+pub(crate) const CREDENTIALS: [&str; 3] = [ACCESS_KEY_ID, SECRET_ACCESS_KEY, SESSION_TOKEN];
+/// The service the function's invocations are signed for.
+const SERVICE: &str = "lambda";
 /// The version of the runtime API every path names.
 const VERSION: &str = "2018-06-01";
 /// What an event handing the function its own work says it is.
 const WORK: &str = "work";
 
-/// How the function hands itself work: its name, its region, and its
-/// role's credentials.
+/// How the function hands itself work: its name, its region, where Lambda
+/// is reached, and its role's credentials.
 struct Handing {
     function: String,
     region: String,
-    host: String,
+    endpoint: Endpoint,
     access_key_id: Secret,
     secret_access_key: Secret,
     session_token: Option<Secret>,
@@ -64,7 +62,11 @@ impl Handing {
         let region = vars.get(REGION)?.clone();
         Some(Self {
             function: vars.get(FUNCTION)?.clone(),
-            host: format!("lambda.{region}.amazonaws.com"),
+            endpoint: Endpoint::new(
+                SERVICE,
+                &region,
+                configured(SERVICE, |name| vars.get(name).map(String::as_str)),
+            ),
             region,
             access_key_id: secrets.secret(id).await.ok()?,
             secret_access_key: secrets.secret(key).await.ok()?,
@@ -76,14 +78,11 @@ impl Handing {
     /// it to finish, signed at `now`.
     fn invocation(&self, event: &Value, now: Timestamp) -> Request {
         let path = format!("/2015-03-31/functions/{}/invocations", self.function);
-        let request = Request::new(
-            Method::Post,
-            Text::plain(format!("https://{}{path}", self.host)),
-        )
-        .body(event.to_string().into_bytes());
+        let request = Request::new(Method::Post, Text::plain(self.endpoint.at(&path)))
+            .body(event.to_string().into_bytes());
         signed(
             request,
-            &path,
+            &self.endpoint.canonical(&path),
             "application/json",
             &[("Invocation-Type", "Event")],
             &Signing {
@@ -91,8 +90,8 @@ impl Handing {
                 secret_access_key: &self.secret_access_key,
                 session_token: self.session_token.as_ref(),
                 region: &self.region,
-                service: "lambda",
-                host: &self.host,
+                service: SERVICE,
+                host: self.endpoint.host(),
             },
             now,
         )
@@ -344,7 +343,7 @@ pub(crate) async fn lambda(
     let composed = Composed::new(native, config, lambda, Uses::Serves, lambda.name()).await?;
     let handing = match Handing::read(vars).await {
         Some(handing) => {
-            let http = connect.reach(&format!("https://{}", handing.host))?;
+            let http = connect.reach(handing.endpoint.url())?;
             Some((handing, http))
         }
         None => None,

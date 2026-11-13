@@ -1,6 +1,6 @@
 use std::fmt;
 
-use herald_ports::{Method, Request, Text, USER_AGENT};
+use herald_ports::{Method, Request, Text};
 use serde_json::Value;
 use url::{Host, Url};
 
@@ -83,7 +83,7 @@ pub fn key_request(key_id: &str, most: usize) -> Option<Request> {
     Some(
         Request::new(Method::Get, Text::plain(document(key_id)))
             .header("Accept", Text::plain(ACTIVITY_JSON))
-            .header("User-Agent", Text::plain(USER_AGENT))
+            .identified()
             .at_most(most),
     )
 }

@@ -61,18 +61,8 @@ impl Held {
     clippy::needless_pass_by_value,
     reason = "it is handed to map_err, which passes each error by value"
 )]
-fn refused(reason: impl ToString) -> SqlError {
-    SqlError::Unavailable {
-        reason: reason.to_string(),
-    }
-}
-
-#[allow(
-    clippy::needless_pass_by_value,
-    reason = "it is handed to map_err, which passes each error by value"
-)]
 fn failed(error: tokio_postgres::Error) -> SqlError {
-    refused(
+    SqlError::unavailable(
         error
             .as_db_error()
             .map_or_else(|| chain(&error), |db| db.message().to_owned()),
@@ -103,7 +93,7 @@ fn read(row: &Row, column: usize) -> Result<Value, SqlError> {
             .try_get::<_, Option<String>>(column)
             .map(|value| value.map(Value::Text)),
         _ => {
-            return Err(refused(
+            return Err(SqlError::unavailable(
                 "a column holds neither an integer nor text".to_owned(),
             ));
         }
@@ -131,7 +121,7 @@ impl NativePostgres {
     /// When the URL cannot be read, or the database cannot be reached.
     pub async fn connect(url: &Secret, timeouts: Timeouts) -> Result<Self, SqlError> {
         let mut config: Config = url.expose().parse().map_err(|_| {
-            refused(format!(
+            SqlError::unavailable(format_args!(
                 "the secret {} is not a Postgres connection URL",
                 url.name()
             ))
@@ -149,8 +139,9 @@ impl NativePostgres {
             None => limit,
         };
         config.options(options);
-        let tls =
-            MakeRustlsConnect::new(tls(rustls::crypto::ring::default_provider()).map_err(refused)?);
+        let tls = MakeRustlsConnect::new(
+            tls(rustls::crypto::ring::default_provider()).map_err(SqlError::unavailable)?,
+        );
         let held = Mutex::new(Box::pin(Held::made(&config, &tls)).await?);
         Ok(Self { config, tls, held })
     }
@@ -164,7 +155,7 @@ impl Sql for NativePostgres {
             *held = Box::pin(Held::made(&self.config, &self.tls))
                 .await
                 .map_err(|SqlError::Unavailable { reason }| {
-                    refused(format!(
+                    SqlError::unavailable(format_args!(
                         "the connection closed ({why}) and could not be made again: {reason}"
                     ))
                 })?;

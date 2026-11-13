@@ -10,8 +10,6 @@ mod kind;
 pub use kind::DurableObjectKind;
 
 use herald_core::SecretRef;
-use herald_ports::{Sql, StoreError};
-use herald_records::{Dialect, Kept, SqlRecords};
 use schemars::JsonSchema;
 use serde::Deserialize;
 
@@ -51,24 +49,8 @@ impl StoreOptions {
     }
 }
 
-/// The store a Durable Object's storage keeps.
-pub type DurableObjectStore<S> = Kept<SqlRecords<S>>;
-
-/// The store kept in `sql`, a Durable Object's storage, with its tables
-/// made where they are missing.
-///
-/// # Errors
-///
-/// When the storage refuses the statements, or a newer herald laid it out.
-pub async fn store<S: Sql>(sql: S) -> Result<DurableObjectStore<S>, StoreError> {
-    SqlRecords::open(sql, Dialect::Sqlite).await.map(Kept::new)
-}
-
 #[cfg(test)]
 mod tests {
-    use herald_ports::{Changed, Held, Keeper as _, SqlError, Value};
-    use herald_testing::ScriptedSql;
-
     use super::*;
 
     #[test]
@@ -81,29 +63,5 @@ mod tests {
         let named: StoreOptions =
             serde_json::from_str(r#"{"binding": "NS", "object": "records"}"#).unwrap();
         assert_eq!((named.binding(), named.object()), ("NS", "records"));
-    }
-
-    #[test]
-    fn a_database_that_cannot_be_reached_opens_no_store_and_one_that_can_does() {
-        let unreachable = ScriptedSql::default().answering(Err(SqlError::Unavailable {
-            reason: "down".to_owned(),
-        }));
-        assert_eq!(
-            pollster::block_on(store(unreachable)).err(),
-            Some(StoreError::Unavailable {
-                reason: "the database refused the statements: down".to_owned()
-            })
-        );
-        let opened = ScriptedSql::default().answering(Ok(vec![
-            Changed::default(),
-            Changed::default(),
-            Changed::default(),
-            Changed {
-                rows: vec![vec![Value::Integer(herald_records::LAYOUT)]],
-                changed: 0,
-            },
-        ]));
-        let kept = pollster::block_on(store(opened)).unwrap();
-        assert_eq!(Held::ALL.map(|held| kept.holds(held)), [true; 9]);
     }
 }

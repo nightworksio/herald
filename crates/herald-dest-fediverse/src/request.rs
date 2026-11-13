@@ -1,5 +1,5 @@
 use herald_core::{Announcement, Declined, Entry, Step};
-use herald_ports::{Method, Request, Text, USER_AGENT};
+use herald_ports::{Method, Request, Text};
 use serde_json::{Map, Value, json};
 
 use crate::mastodon::{Mastodon, PLATFORM};
@@ -18,12 +18,7 @@ pub(crate) fn get(mastodon: &Mastodon, path: &str) -> Request {
 }
 
 fn authorised(request: Request, mastodon: &Mastodon) -> Request {
-    request
-        .header("User-Agent", Text::plain(USER_AGENT))
-        .header(
-            "Authorization",
-            Text::plain("Bearer ").then_secret(mastodon.token.clone()),
-        )
+    request.identified().bearer(mastodon.token.clone())
 }
 
 fn status(mastodon: &Mastodon, text: &str, reply_to: Option<&str>, key: String) -> Request {

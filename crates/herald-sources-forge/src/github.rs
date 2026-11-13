@@ -1,4 +1,3 @@
-use herald_ports::{Request, Text};
 use jiff::Timestamp;
 use serde::Deserialize;
 
@@ -6,11 +5,8 @@ use crate::forge::{Api, Repository};
 use crate::wire::{Found, read};
 use herald_wire::SourceError;
 
-/// The API version herald was written against.
-const API_VERSION: &str = "2022-11-28";
-
 pub(crate) const API: Api = Api {
-    url: "https://api.github.com",
+    url: herald_wire::github::API,
     page: "per_page",
     tagged: "/releases/tags/",
     event: "GitHub's release event",
@@ -51,13 +47,6 @@ impl From<Release> for Found {
             published: release.published_at,
         }
     }
-}
-
-/// GitHub's request headers.
-pub(crate) fn headed(request: Request) -> Request {
-    request
-        .header("Accept", Text::plain("application/vnd.github+json"))
-        .header("X-GitHub-Api-Version", Text::plain(API_VERSION))
 }
 
 /// The repository and release a `published` release event names, or

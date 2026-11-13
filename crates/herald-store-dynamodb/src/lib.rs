@@ -16,4 +16,4 @@ mod dynamodb;
 mod options;
 
 pub use dynamodb::{Credentials, Dynamodb, DynamodbRecords, DynamodbStore};
-pub use options::{ACCESS_KEY_ID, REGION, SECRET_ACCESS_KEY, SESSION_TOKEN, StoreOptions, TABLE};
+pub use options::{StoreOptions, TABLE};

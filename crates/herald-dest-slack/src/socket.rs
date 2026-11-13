@@ -48,11 +48,8 @@ impl Interacting {
             "Content-Type",
             Text::plain("application/x-www-form-urlencoded"),
         )
-        .header("User-Agent", Text::plain(herald_ports::USER_AGENT))
-        .header(
-            "Authorization",
-            Text::plain("Bearer ").then_secret(app.clone()),
-        )
+        .identified()
+        .bearer(app.clone())
     }
 
     /// What the envelope `frame`, carried to `destination`, asks of a driver.

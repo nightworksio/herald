@@ -22,10 +22,10 @@ herald-ports.workspace = true
 jiff.workspace = true
 
 [features]
-conformance = ["dep:herald-store-durable-object", "dep:herald-testing"]
+conformance = ["dep:herald-records", "dep:herald-testing"]
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
-herald-store-durable-object = { workspace = true, optional = true }
+herald-records = { workspace = true, optional = true }
 herald-testing = { workspace = true, optional = true }
 js-sys = "0.3"
 send_wrapper = { version = "0.6", features = ["futures"] }

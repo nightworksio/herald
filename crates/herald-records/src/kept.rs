@@ -76,20 +76,12 @@ fn sealed(seal: Option<&Seal>, path: &str, bytes: Vec<u8>) -> Vec<u8> {
     }
 }
 
-fn corrupt(path: &str, error: impl std::fmt::Display) -> StoreError {
-    StoreError::Corrupt {
-        reason: format!("{path}: {error}"),
-    }
-}
-
 fn encoded(path: &str, value: &impl Serialize) -> Result<Value, StoreError> {
-    serde_json::to_value(value).map_err(|error| corrupt(path, error))
+    serde_json::to_value(value).map_err(|error| StoreError::unreadable(path, error))
 }
 
 fn changing(path: &str, doing: &str) -> StoreError {
-    StoreError::Unavailable {
-        reason: format!("{path} kept changing while herald {doing} it"),
-    }
+    StoreError::unavailable(format_args!("{path} kept changing while herald {doing} it"))
 }
 
 impl<R: Records> Kept<R> {
@@ -158,7 +150,7 @@ impl<R: Records> Kept<R> {
         };
         let bytes = opened(self.seal.as_ref(), path, bytes)?;
         let stored: Stored =
-            serde_json::from_slice(&bytes).map_err(|error| corrupt(path, error))?;
+            serde_json::from_slice(&bytes).map_err(|error| StoreError::unreadable(path, error))?;
         Ok(Some(Read {
             token,
             version: Version(stored.version),
@@ -192,7 +184,8 @@ impl<R: Records> Kept<R> {
         let Some(read) = self.read(path).await? else {
             return Ok(None);
         };
-        let value = serde_json::from_value(read.record).map_err(|error| corrupt(path, error))?;
+        let value = serde_json::from_value(read.record)
+            .map_err(|error| StoreError::unreadable(path, error))?;
         Ok(Some(Versioned {
             value,
             version: read.version,

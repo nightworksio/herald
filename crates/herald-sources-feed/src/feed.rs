@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 use std::fmt::Write;
 
 use herald_core::{Address, Cursor, Draft, ENTRY_LINK, Event, Kind, Polled, digest};
-use herald_ports::{Method, Request, Response, Text, USER_AGENT};
+use herald_ports::{Method, Request, Response, Text};
 use herald_wire::{NOT_MODIFIED, SourceError, answered};
 use jiff::Timestamp;
 use jiff::civil::DateTime;
@@ -383,7 +383,7 @@ impl Feed {
         let mut request = Request::new(Method::Get, Text::plain(self.url.clone()))
             .at_most(self.reading.parse)
             .header("Accept", Text::plain(ACCEPT))
-            .header("User-Agent", Text::plain(USER_AGENT));
+            .identified();
         if let Some(etag) = cursor.and_then(|cursor| cursor.etag.as_deref()) {
             request = request.header("If-None-Match", Text::plain(etag));
         }

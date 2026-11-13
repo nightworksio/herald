@@ -1,17 +1,10 @@
+use herald_aws::{ACCESS_KEY_ID, SECRET_ACCESS_KEY, SESSION_TOKEN};
 use herald_core::SecretRef;
 use schemars::JsonSchema;
 use serde::Deserialize;
 
 /// The table the records are kept in where the options name none.
 pub const TABLE: &str = "herald";
-/// The secret holding the access key's id where the options name none.
-pub const ACCESS_KEY_ID: &str = "AWS_ACCESS_KEY_ID";
-/// The secret holding the secret access key where the options name none.
-pub const SECRET_ACCESS_KEY: &str = "AWS_SECRET_ACCESS_KEY";
-/// The secret holding a session token where the options name none.
-pub const SESSION_TOKEN: &str = "AWS_SESSION_TOKEN";
-/// Where the region is read from where the options name none.
-pub const REGION: &str = "AWS_REGION";
 
 /// The dynamodb store's options in `herald.toml` (ADR-0006).
 #[derive(Debug, Clone, PartialEq, Eq, Default, Deserialize, JsonSchema)]
