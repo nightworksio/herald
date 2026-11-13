@@ -142,5 +142,17 @@ mod tests {
             503
         );
         assert_eq!(rejection(&Rejected::Forged).reply.status, 401);
+        let unkept = rejection(&Rejected::Unkept {
+            reason: "down".to_owned(),
+        });
+        assert_eq!(
+            (unkept.reply.status, unkept.refused.as_deref()),
+            (
+                503,
+                Some(
+                    "the keys activities are checked with could not be read or kept, so the activity is not let through: down"
+                )
+            )
+        );
     }
 }

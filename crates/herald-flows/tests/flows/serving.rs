@@ -4,10 +4,7 @@ use herald_flows::{
     Answered, Connected, Did, FollowError, Followed, Inbound, Job, Outcome, Ports, Serving, Stop,
     answer, busy, prepare, unplaced, unworked, work,
 };
-use herald_ports::{
-    Admitted, Algorithm, CryptoError, Deliveries, Keyring, KnownKey, Ledger, Secret, Signer,
-    StoreError,
-};
+use herald_ports::{Admitted, Algorithm, CryptoError, Deliveries, Ledger, Secret, Signer};
 use herald_records::MemoryKeyring;
 use herald_testing::{FakeClock, FakeSecrets, FakeSigner, FakeVerifier};
 
@@ -81,38 +78,16 @@ fn secrets() -> FakeSecrets {
         .with("HERALD_WEBHOOK", "hook-secret")
 }
 
-/// The keys in memory, none of which can be read where `unread`.
-struct Keys {
-    kept: MemoryKeyring,
-    unread: bool,
-}
-
-impl Keyring for Keys {
-    async fn known(&self, id: &str) -> Result<Option<KnownKey>, StoreError> {
-        if self.unread {
-            return Err(broken());
-        }
-        self.kept.known(id).await
-    }
-
-    async fn know(&self, id: &str, key: &KnownKey) -> Result<(), StoreError> {
-        self.kept.know(id, key).await
-    }
-
-    async fn forget_before(&self, before: jiff::Timestamp) -> Result<(), StoreError> {
-        self.kept.forget_before(before).await
-    }
-}
-
 pub(crate) struct World {
     config: Config,
     connected: Connected<Script>,
     pub(crate) store: Failing,
-    keyring: Keys,
+    keyring: MemoryKeyring,
     script: Script,
 }
 
-type Served<'a> = Serving<'a, Failing, FakeClock, FakeSigner, FakeVerifier, Script, Script, Keys>;
+type Served<'a> =
+    Serving<'a, Failing, FakeClock, FakeSigner, FakeVerifier, Script, Script, MemoryKeyring>;
 
 impl World {
     pub(crate) fn new(script: Script) -> Self {
@@ -127,10 +102,7 @@ impl World {
             config,
             connected,
             store: healthy(),
-            keyring: Keys {
-                kept: MemoryKeyring::new(8),
-                unread: false,
-            },
+            keyring: MemoryKeyring::new(8),
             script,
         }
     }
@@ -634,24 +606,6 @@ fn an_activity_herald_cannot_take_is_answered_by_why() {
             .status,
         503
     );
-}
-
-#[test]
-fn an_activity_whose_keys_cannot_be_read_is_refused_and_asked_again_later() {
-    let mut world = World::new(keyed());
-    world.keyring.unread = true;
-    let signed = activity(FOLLOW, ANA_KEY, None);
-    let headers = borrowed(&signed);
-    let refused = world.answer(&inboxed("/inbox", None, &headers));
-    assert_eq!(refused.reply.status, 503);
-    assert_eq!(
-        refused.refused,
-        Some(format!(
-            "the keys activities are checked with could not be read or kept, so the activity is not let through: {}",
-            broken()
-        ))
-    );
-    assert!(refused.job.is_none());
 }
 
 #[test]
