@@ -193,6 +193,10 @@ impl Keeper for Refusing {
     fn skipped(&self) -> Vec<String> {
         vec!["corrupt.json".to_owned()]
     }
+
+    fn writes_one_at_a_time(&self) -> bool {
+        self.holding
+    }
 }
 
 fn answered<T>(answer: impl Future<Output = Result<T, StoreError>>) -> Option<StoreError> {
@@ -209,7 +213,7 @@ fn an_erased_store_holds_and_skips_what_the_store_it_erases_does() {
             [holding; 10]
         );
         assert_eq!(Keeper::skipped(&erased), ["corrupt.json"]);
-        assert!(!Keeper::writes_one_at_a_time(&erased));
+        assert_eq!(Keeper::writes_one_at_a_time(&erased), holding);
     }
     let unheld = Refusing { holding: false };
     let erased = Erased(&unheld as &dyn DynStore);

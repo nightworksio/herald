@@ -31,6 +31,7 @@ mod kept {
         made: Mutex<u64>,
         races: Mutex<u32>,
         listed: Vec<String>,
+        one_at_a_time: bool,
     }
 
     impl Memory {
@@ -62,6 +63,10 @@ mod kept {
     }
 
     impl RecordBackend for Memory {
+        fn one_at_a_time(&self) -> bool {
+            self.one_at_a_time
+        }
+
         async fn read(&self, path: &str) -> Result<Option<Blob>, StoreError> {
             Ok(self
                 .files
@@ -156,6 +161,11 @@ mod kept {
         assert!(bare.pins().is_none() && bare.notes().is_none());
         assert!(bare.positions().is_some());
         assert!(!bare.writes_one_at_a_time());
+        let serial = RecordStore::new(Memory {
+            one_at_a_time: true,
+            ..Memory::default()
+        });
+        assert!(serial.writes_one_at_a_time());
         assert!(bare.announcements().is_none());
     }
 
