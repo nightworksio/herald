@@ -196,7 +196,8 @@ mod tests {
             "list": {"type": "array"},
             "names": {"type": "array", "items": {"type": "string"}},
             "rows": {"type": "array", "items": {"$ref": "#/$defs/Row"}},
-            "shape": {"description": "A shape.", "$ref": "#/$defs/Shape"}
+            "shape": {"description": "A shape.", "$ref": "#/$defs/Shape"},
+            "named": {"type": "object", "additionalProperties": {"type": "boolean"}}
         },
         "$defs": {
             "Tree": {
@@ -232,6 +233,7 @@ mod tests {
             "| `list` | array |  |",
             "| `names` | array of string |  |",
             "| `rows[].cell` | integer |  |",
+            "| `named.<name>` | boolean |  |",
             "\n### `shape` of kind `circle`\n\nA circle.\n\n| Setting",
             "| `shape.radius` | number |  |",
             "\n### `shape`: A free form\n\n| Setting",
