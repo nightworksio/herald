@@ -362,3 +362,47 @@ fn an_outbox_names_a_note_by_when_it_was_published_and_its_key() {
         assert!(!Outboxed::is_name(&unnamed), "{unnamed}");
     }
 }
+
+#[test]
+fn an_owner_source_s_records_kept_nowhere_answer_unsupported_naming_cursors() {
+    let source = SourceName::new("s");
+    let listing = herald_core::Listing {
+        owner: herald_core::Owner::Organization,
+        pages: Vec::new(),
+        first: Timestamp::UNIX_EPOCH,
+        listed: Timestamp::UNIX_EPOCH,
+    };
+    let membership = herald_core::Membership {
+        repository: herald_core::Listed {
+            id: "1".to_owned(),
+            name: "n".to_owned(),
+            path: "o/n".to_owned(),
+            topics: Vec::new(),
+            properties: std::collections::BTreeMap::new(),
+            visibility: herald_core::Visibility::Public,
+            archived: false,
+            fork: false,
+            template: false,
+            language: None,
+        },
+        discovered: Timestamp::UNIX_EPOCH,
+        left: None,
+        cursor: None,
+    };
+    for unkept in [None, Some(&Unkept)] {
+        assert_eq!(unsupported(unkept.listing(&source)), naming("cursors"));
+        assert_eq!(
+            unsupported(unkept.put_listing(&source, &listing, None)),
+            naming("cursors")
+        );
+        assert_eq!(unsupported(unkept.members(&source)), naming("cursors"));
+        assert_eq!(
+            unsupported(unkept.put_member(&source, &membership, None)),
+            naming("cursors")
+        );
+        assert_eq!(
+            unsupported(unkept.forget_member(&source, "1")),
+            naming("cursors")
+        );
+    }
+}

@@ -43,16 +43,27 @@ pub(super) async fn members<S: Cursors>(store: &S, checks: &mut Checks) -> Resul
     let source = SourceName::new("owner");
     let other = SourceName::new(OTHER);
     checks.ensure(
-        store.listing(&source).await?.is_none() && store.members(&source).await?.is_empty(),
-        "an owner source never listed had a listing or members",
+        store.listing(&source).await?.is_none(),
+        "an owner source never listed had a listing",
+    );
+    checks.ensure(
+        store.members(&source).await?.is_empty(),
+        "an owner source never listed had members",
     );
     let listing = listing();
     let v1 = checks.written(store.put_listing(&source, &listing, None).await?);
     let read = store.listing(&source).await?;
     checks.ensure(
-        read.as_ref()
-            .is_some_and(|read| read.value == listing && read.version == v1),
-        "a listing written was not read back as written, at its version",
+        read.as_ref().map(|read| &read.value) == Some(&listing),
+        "a listing written was not read back as written",
+    );
+    checks.ensure(
+        read.map(|read| read.version) == Some(v1),
+        "a listing was read back at another version than it was written at",
+    );
+    checks.ensure(
+        store.listing(&other).await?.is_none(),
+        "writing one listing made another appear",
     );
     checks.ensure(
         store.put_listing(&source, &listing, None).await? == Written::Conflict,
@@ -64,12 +75,14 @@ pub(super) async fn members<S: Cursors>(store: &S, checks: &mut Checks) -> Resul
     checks.written(store.put_member(&source, &second, None).await?);
     checks.written(store.put_member(&other, &membership("3"), None).await?);
     let polled = Membership {
+        repository: first.repository.clone(),
+        discovered: NOON,
+        left: None,
         cursor: Some(Cursor {
             seen: vec![Identity::new("a")],
             etag: None,
             last_modified: None,
         }),
-        ..first.clone()
     };
     let moved = checks.written(store.put_member(&source, &polled, Some(joined)).await?);
     checks.ensure(moved != joined, "a member rewritten kept its version");

@@ -129,27 +129,27 @@ pub(crate) fn wildcards<P>(
 
 /// The class that opens before `at` in `glob`, and where the glob goes on
 /// after it; none where it is never closed or holds nothing.
-fn class(glob: &[char], mut at: usize) -> Option<(Part, usize)> {
-    let negated = matches!(glob.get(at), Some('!' | '^'));
-    if negated {
-        at += 1;
-    }
+fn class(glob: &[char], at: usize) -> Option<(Part, usize)> {
+    let (negated, mut rest) = match glob.get(at..)? {
+        ['!' | '^', after @ ..] => (true, after),
+        rest => (false, rest),
+    };
     let mut ranges = Vec::new();
     loop {
-        let low = *glob.get(at)?;
-        if low == ']' && !ranges.is_empty() {
-            return Some((Part::Class { negated, ranges }, at + 1));
-        }
-        match (glob.get(at + 1), glob.get(at + 2)) {
-            (Some('-'), Some(&high)) if high != ']' => {
-                ranges.push((low.min(high), low.max(high)));
-                at += 3;
+        rest = match rest {
+            [']', after @ ..] if !ranges.is_empty() => {
+                return Some((Part::Class { negated, ranges }, glob.len() - after.len()));
             }
-            _ => {
-                ranges.push((low, low));
-                at += 1;
+            [low, '-', high, after @ ..] if *high != ']' => {
+                ranges.push((*low.min(high), *low.max(high)));
+                after
             }
-        }
+            [low, after @ ..] => {
+                ranges.push((*low, *low));
+                after
+            }
+            [] => return None,
+        };
     }
 }
 
@@ -202,6 +202,10 @@ mod tests {
         assert!(glob("[a-]").matches("-"));
         assert!(glob("[a-]").matches("a"));
         assert!(!glob("[a-]").matches("b"));
+        assert!(glob("[!a]").matches("!"));
+        assert!(glob("[^a]").matches("^"));
+        assert!(glob("[ab]c?").matches("acx"));
+        assert!(!glob("[ab]c?").matches("ac"));
     }
 
     #[test]
