@@ -6,7 +6,8 @@ use std::sync::Arc;
 use herald_core::status;
 use herald_core::{Announcement, Chore, Delivery, Entry, Key, Marker, Profile, Sent, Step};
 use herald_ports::{
-    Boxed, DynHttp, DynMarkers, DynSigner, HttpError, MarkedThread, Markers, MarkersError, Response,
+    Base, Boxed, DynHttp, DynMarkers, DynSigner, HttpError, MarkedThread, Markers, MarkersError,
+    Response,
 };
 use jiff::Timestamp;
 
@@ -27,9 +28,9 @@ pub trait Reach: fmt::Debug + Send + Sync + Itself {
     /// What it can do.
     fn profile(&self) -> Profile;
 
-    /// The base URL of everything it sends, the only origin its `Http` may
-    /// reach (ADR-0007).
-    fn api(&self) -> &str;
+    /// What its `Http` may reach: the base URL of everything it sends, or
+    /// any public address (ADR-0007).
+    fn base(&self) -> Base<'_>;
 
     /// Sends `step` of `announcement` through `http`, signed as `signing`
     /// says where the destination signs its requests, and reads the answer.

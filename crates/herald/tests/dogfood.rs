@@ -242,7 +242,7 @@ mod dogfood {
         ]
         .map(ToOwned::to_owned)
         .to_vec();
-        let connect = |_: &str, _: &herald_ports::Outbound| Ok(Connection::new(platform.clone()));
+        let connect = || Ok(Connection::new(platform.clone()));
         let outputs = (0..2)
             .map(|_| {
                 let mut out = Vec::new();
@@ -250,7 +250,7 @@ mod dogfood {
                 let code = pollster::block_on(run(
                     &args,
                     &vars,
-                    &Connector::new(&connect, &connect),
+                    &Connector::new(&|_, _| connect(), &|_, _| connect()),
                     &mut out,
                     &mut err,
                 ));

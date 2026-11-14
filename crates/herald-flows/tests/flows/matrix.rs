@@ -199,7 +199,10 @@ fn a_matrix_route_keeps_no_thread_chores_and_its_room_lists_no_threads() {
             room: "!releases:matrix.example".to_owned(),
         },
     ));
-    assert_eq!(reached.api(), "https://matrix.example");
+    assert_eq!(
+        reached.base(),
+        herald_ports::Base::At("https://matrix.example")
+    );
     assert_eq!(reached.profile(), herald_dest_matrix::profile());
     let listed = pollster::block_on(reached.read(&script).threads(&Marker::of(&[1]))).unwrap();
     assert_eq!(listed, []);

@@ -419,8 +419,11 @@ fn the_native_binary_opens_no_database_or_key_value_store_of_another_platform() 
     use herald_compose::{Host as _, KvAt, SqlAt, UNOFFERED};
 
     let vars = BTreeMap::new();
-    let unreached = |base: &str, _: &herald_ports::Outbound| Err(format!("{base} is out of reach"));
-    let connector = Connector::new(&unreached, &unreached);
+    let unreached = |base: herald_ports::Base<'_>, _: &herald_ports::Outbound| {
+        Err(format!("{base} is out of reach"))
+    };
+    let waiting = |base: &str, _: &herald_ports::Outbound| Err(format!("{base} is out of reach"));
+    let connector = Connector::new(&unreached, &waiting);
     let native = stores::Native::new(&vars, &connector);
     for at in [
         SqlAt::D1("HERALD_DB"),
@@ -465,8 +468,11 @@ fn each_nonce_the_native_binary_gives_is_new() {
     use herald_compose::Host as _;
 
     let vars = BTreeMap::new();
-    let unreached = |base: &str, _: &herald_ports::Outbound| Err(format!("{base} is out of reach"));
-    let connector = Connector::new(&unreached, &unreached);
+    let unreached = |base: herald_ports::Base<'_>, _: &herald_ports::Outbound| {
+        Err(format!("{base} is out of reach"))
+    };
+    let waiting = |base: &str, _: &herald_ports::Outbound| Err(format!("{base} is out of reach"));
+    let connector = Connector::new(&unreached, &waiting);
     let native = stores::Native::new(&vars, &connector);
     assert_ne!(native.nonce(), native.nonce());
 }

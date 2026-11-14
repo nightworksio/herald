@@ -227,7 +227,7 @@ fn an_actor_reads_no_posts_back_and_delivers_to_its_own_followers() {
         Err(unread)
     );
     assert_eq!(reached.follows(), Some("php-mutation-gate"));
-    assert_eq!(reached.api(), herald_ports::PUBLIC_BASE);
+    assert_eq!(reached.base(), herald_ports::Base::Public);
     assert_eq!(reached.profile(), herald_dest_fediverse::actor_profile());
     assert_eq!(script.seen(), Vec::<String>::new());
 }

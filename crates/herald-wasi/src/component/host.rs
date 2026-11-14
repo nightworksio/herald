@@ -5,7 +5,7 @@ use herald_compose::{EGRESS_GUARDED, Host, KvAt, Reaching, SqlAt, UNOFFERED, Uno
 use herald_crypto::{RingSigner, RingVerifier};
 use herald_environment::{EnvSecrets, SystemClock};
 
-use herald_ports::Outbound;
+use herald_ports::{Base, Outbound};
 
 use super::http::WasiHttp;
 
@@ -44,7 +44,7 @@ impl Host for WasiHost {
     type Sql = Database;
     type Kv = Unoffered;
 
-    fn connect(&self, base: &str, outbound: &Outbound) -> Result<WasiHttp, String> {
+    fn connect(&self, base: Base<'_>, outbound: &Outbound) -> Result<WasiHttp, String> {
         plain(outbound, "a WASI component")?;
         Reaching::unresolved(base, self.var(EGRESS_GUARDED))
             .map(|reaching| WasiHttp::new(reaching, outbound))

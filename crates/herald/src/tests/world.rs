@@ -390,8 +390,8 @@ pub(super) fn herald(setup: &Setup, world: &World, args: &[&str]) -> Run {
     all.extend(args.iter().map(|arg| (*arg).to_owned()));
     let mut out = Vec::new();
     let mut err = Vec::new();
-    let connect = |base: &str, _: &herald_ports::Outbound| {
-        if base.contains("unreachable") {
+    let connect = |base: herald_ports::Base<'_>, _: &herald_ports::Outbound| {
+        if base.to_string().contains("unreachable") {
             Err(format!("{base} cannot be reached"))
         } else {
             Ok(Connection::new(world.clone()))
@@ -400,7 +400,7 @@ pub(super) fn herald(setup: &Setup, world: &World, args: &[&str]) -> Run {
     let code = on_tokio(crate::run(
         &all,
         &setup.vars,
-        &Connector::new(&connect, &connect),
+        &Connector::new(&connect, &|_, _| Ok(Connection::new(world.clone()))),
         &mut out,
         &mut err,
     ));
@@ -429,11 +429,11 @@ pub(super) fn herald_until(
     all.extend(args.iter().map(|arg| (*arg).to_owned()));
     let mut out = Vec::new();
     let mut err = Vec::new();
-    let connect = |_: &str, _: &herald_ports::Outbound| Ok(Connection::new(world.clone()));
+    let connect = || Ok(Connection::new(world.clone()));
     let code = on_tokio(crate::run_until(
         &all,
         &setup.vars,
-        &Connector::new(&connect, &connect),
+        &Connector::new(&|_, _| connect(), &|_, _| connect()),
         &mut out,
         &mut err,
         stop,

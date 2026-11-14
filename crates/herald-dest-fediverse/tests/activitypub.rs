@@ -9,7 +9,8 @@ mod activitypub {
         ActivityPub, ActorOptions, ActorRouteOptions, Approve, FollowerCaps, InboxActivity, Mode,
         accept, actor_document, actor_profile, asked, create, note, webfinger,
     };
-    use herald_ports::{PUBLIC_BASE, Secret};
+    use herald_kinds::Reach as _;
+    use herald_ports::{Base, Secret};
     use herald_testing::sample;
     use herald_testing::{FakeSigner, Fixture, Replay};
     use jiff::{SignedDuration, Timestamp};
@@ -231,7 +232,7 @@ mod activitypub {
             )
         );
         replay.finish().unwrap();
-        assert_eq!(actor.api(), PUBLIC_BASE);
+        assert_eq!(actor.base(), Base::Public);
         assert_eq!(actor.actor(), "php-mutation-gate");
         assert_eq!(actor.id(), ACTOR);
         assert_eq!(actor.profile(), actor_profile());

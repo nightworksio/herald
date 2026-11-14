@@ -1,7 +1,7 @@
 use herald_config::{Config, Uses, load};
 use herald_core::{Chore, Entry, Identity, Key, RouteId, SourceName, Step};
 use herald_flows::{Announced, Outcome, Ports, PrepareError, Stop, announce, prepare};
-use herald_ports::{Announcements, Ledger, Pins, Schedules};
+use herald_ports::{Announcements, Base, Ledger, Pins, Schedules};
 use herald_testing::{FakeClock, FakeSecrets, FakeSigner};
 use jiff::SignedDuration;
 
@@ -586,22 +586,22 @@ fn routes_and_sources_on_one_base_share_its_http() {
         pollster::block_on(prepare(&config, &secrets(), &FakeSigner, Uses::Polls)).unwrap();
     let mut made = Vec::new();
     let connected = prepared.connect(|base| {
-        made.push(base.to_owned());
+        made.push(format!("{base:?}"));
         Ok::<_, ()>(Script::default())
     });
     assert!(connected.is_ok());
     assert_eq!(
         made,
-        ["https://discord.com/api/v10", "https://api.github.com"]
+        [
+            format!("{:?}", Base::At("https://discord.com/api/v10")),
+            format!("{:?}", Base::At("https://api.github.com"))
+        ]
     );
     let refused = pollster::block_on(prepare(&config, &secrets(), &FakeSigner, Uses::Polls))
         .unwrap()
-        .connect(|base| {
-            if base.contains("github") {
-                Err(base.to_owned())
-            } else {
-                Ok(Script::default())
-            }
+        .connect(|base| match base {
+            Base::At(url) if url.contains("github") => Err(url.to_owned()),
+            _ => Ok(Script::default()),
         });
     assert_eq!(refused.err().as_deref(), Some("https://api.github.com"));
 }

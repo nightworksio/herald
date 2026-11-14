@@ -1,5 +1,5 @@
 use herald_ports::{
-    Algorithm, Clock as _, Outbound, SecretError, Secrets as _, Signer as _, Verifier as _,
+    Algorithm, Base, Clock as _, Outbound, SecretError, Secrets as _, Signer as _, Verifier as _,
 };
 use herald_testing::Failure;
 use jiff::Timestamp;
@@ -101,7 +101,7 @@ pub async fn host_conformance<H: Host>(host: &H) -> Result<(), Failure> {
             "a signature the host made was not verified for its message alone",
         ),
         (
-            host.connect(BASE, &Outbound::default()).is_ok(),
+            host.connect(Base::At(BASE), &Outbound::default()).is_ok(),
             "an https base could not be reached",
         ),
     ];

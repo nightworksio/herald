@@ -2,7 +2,7 @@ use std::future::ready;
 
 use herald_core::{Announcement, Chore, Delivery, Entry, Profile, Sent, Step};
 use herald_kinds::{Federates, Reach, Signing, UnreadPosts};
-use herald_ports::{Boxed, DynHttp, DynMarkers, DynSigner, Erased, HttpError};
+use herald_ports::{Base, Boxed, DynHttp, DynMarkers, DynSigner, Erased, HttpError};
 
 use super::deliver::ActivityPub;
 
@@ -15,8 +15,8 @@ impl Reach for ActivityPub {
         Self::profile(self)
     }
 
-    fn api(&self) -> &str {
-        Self::api(self)
+    fn base(&self) -> Base<'_> {
+        Base::Public
     }
 
     fn send<'a>(

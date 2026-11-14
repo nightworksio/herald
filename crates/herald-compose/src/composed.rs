@@ -10,7 +10,7 @@ use herald_flows::{
     unplaced, work,
 };
 use herald_kinds::Opened;
-use herald_ports::{Keyring, PUBLIC_BASE, Sockets, Store, Timer};
+use herald_ports::{Base, Keyring, Sockets, Store, Timer};
 use herald_records::{Memory, MemoryKeyring, RecordStore};
 
 use crate::answer::{Answer, Left};
@@ -117,7 +117,7 @@ where
         };
         let connected = prepared.connect(|base| host.connect(base, &outbound))?;
         let public = Capped::new(
-            host.connect(PUBLIC_BASE, &outbound.public())?,
+            host.connect(Base::Public, &outbound.public())?,
             config.server.fetches,
         );
         let memory = MemoryKeyring::new(config.server.keys_most);

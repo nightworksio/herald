@@ -675,7 +675,10 @@ fn each_destination_answers_through_its_own_base_and_socket_mode_opens_through_s
         pollster::block_on(async { prepare(&config, &secrets(), &FakeSigner, Uses::Serves).await })
             .unwrap();
     let connected = prepared
-        .connect(|base| Ok::<_, ()>(base.to_owned()))
+        .connect(|base| match base {
+            herald_ports::Base::At(url) => Ok(url.to_owned()),
+            herald_ports::Base::Public => Err(()),
+        })
         .unwrap();
     let bases: Vec<(&str, &str, Option<&str>)> = connected
         .interactions()

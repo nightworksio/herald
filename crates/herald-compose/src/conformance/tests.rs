@@ -2,7 +2,9 @@ use std::future::{Future, ready};
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use herald_kinds::{KvAt, SqlAt};
-use herald_ports::{CryptoError, Http, HttpError, Request, Response, Secret, Signer, Verifier};
+use herald_ports::{
+    Base, CryptoError, Http, HttpError, Request, Response, Secret, Signer, Verifier,
+};
 use herald_testing::{FakeClock, FakeKv, FakeSecrets, FakeSigner, FakeVerifier, ScriptedSql};
 
 use super::*;
@@ -117,7 +119,7 @@ impl Host for Hosted {
     type Sql = ScriptedSql;
     type Kv = FakeKv;
 
-    fn connect(&self, base: &str, _: &Outbound) -> Result<Unsent, String> {
+    fn connect(&self, base: Base<'_>, _: &Outbound) -> Result<Unsent, String> {
         if self.fault == Fault::ReachesNothing {
             return Err(format!("{base} is out of reach"));
         }
