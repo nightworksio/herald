@@ -4,7 +4,7 @@
 use std::fmt;
 
 use herald_core::{media, status};
-use herald_flows::{Admission, Inbound, ROUND_SECRET, Reply, Round, refusal};
+use herald_flows::{Admission, Inbound, ROUND_SECRET, Reply, Round, refusal, round};
 use herald_ports::Secrets as _;
 
 use crate::answer::Answer;
@@ -82,14 +82,14 @@ impl<H: Host> Composed<'_, H> {
     pub(crate) async fn round(&self, round: Round, authorization: Option<&str>) -> Answer {
         let secret = self.host().secrets().secret(ROUND_SECRET).await.ok();
         if !Round::allowed(authorization, secret.as_ref()) {
-            return refusal(status::UNAUTHORIZED, "a round was asked without its secret").into();
+            return refusal(status::UNAUTHORIZED, round::UNASKED).into();
         }
         let said = match round {
             Round::Poll => self.poll().await.iter().flat_map(told::polled).collect(),
             Round::Housekeep => told::kept(&self.housekeep().await),
         };
         Answer {
-            reply: plain(status::OK, "the round ran"),
+            reply: plain(status::OK, round::RAN),
             refused: None,
             left: None,
             said,

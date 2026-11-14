@@ -67,7 +67,7 @@ pub use interact::{
     chosen, completions, every_command,
 };
 pub use kept::RecordKind;
-pub use key::{Identity, Key, NotAKey, RouteId, digest, hex, unhex};
+pub use key::{Identity, Key, NotAKey, RouteId, SHA256_HEX_DIGITS, digest, hex, unhex};
 pub use kind::{
     Attribute, AttributeSpec, AttributeType, CHANGELOG_LINK, ENTRY_LINK, Kind, KindSpec, KindSpecs,
     LinkSpec, PRERELEASE, RELEASE_LINK, VERSION, readable, versioned,

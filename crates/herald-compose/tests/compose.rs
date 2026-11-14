@@ -679,7 +679,7 @@ template = "t"
         let unheld = reach(&composed, &asked("POST", "/herald/round/poll", None));
         assert_eq!(
             (unheld.reply.status, unheld.refused.as_deref()),
-            (401, Some("a round was asked without its secret"))
+            (401, Some(herald_flows::round::UNASKED))
         );
         for round in ["poll", "housekeep"] {
             let held = reach(

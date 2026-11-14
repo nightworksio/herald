@@ -2,8 +2,8 @@ use std::collections::BTreeMap;
 use std::num::{NonZeroU64, NonZeroUsize};
 
 use herald_core::{
-    Attempts, AttributeSpec, Duration, Inbound, Kind, LinkSpec, Pinning, Prereleases, Sandbox,
-    SecretRef, Size,
+    Attempts, AttributeSpec, Duration, Inbound, Kind, LinkSpec, Pinning, Prereleases,
+    SHA256_HEX_DIGITS, Sandbox, SecretRef, Size,
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Deserializer};
@@ -292,8 +292,6 @@ pub(crate) struct AppFile {
 impl AppFile {
     /// How a token's SHA-256 is written in `tokens`, before its hex digits.
     pub(crate) const TOKEN_PREFIX: &str = "sha256:";
-    /// The length of a SHA-256 in hex.
-    pub(crate) const HASH_DIGITS: usize = 64;
     /// The projects the schema and the loader's errors show as an example.
     pub(crate) const PROJECTS: [&str; 1] = ["herald"];
 
@@ -301,7 +299,7 @@ impl AppFile {
     /// lowercase hex digits.
     pub(crate) fn hash(token: &str) -> Option<&str> {
         token.strip_prefix(Self::TOKEN_PREFIX).filter(|hash| {
-            hash.len() == Self::HASH_DIGITS
+            hash.len() == SHA256_HEX_DIGITS
                 && hash
                     .bytes()
                     .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
@@ -320,7 +318,7 @@ impl JsonSchema for TokenHash {
     fn json_schema(_: &mut schemars::SchemaGenerator) -> schemars::Schema {
         schemars::json_schema!({
             "type": "string",
-            "pattern": format!("^{}[0-9a-f]{{{}}}$", AppFile::TOKEN_PREFIX, AppFile::HASH_DIGITS)
+            "pattern": format!("^{}[0-9a-f]{{{}}}$", AppFile::TOKEN_PREFIX, SHA256_HEX_DIGITS)
         })
     }
 }

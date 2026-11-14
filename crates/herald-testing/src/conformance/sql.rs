@@ -1,4 +1,4 @@
-use herald_ports::{Changed, Parameters, Sql, SqlError, Statement, Value};
+use herald_ports::{Changed, EXACT_INTEGER, Parameters, Sql, SqlError, Statement, Value};
 
 use super::{Checks, Failure};
 
@@ -7,10 +7,6 @@ impl From<SqlError> for Failure {
         Self(format!("the database failed: {error}"))
     }
 }
-
-/// The largest integer every host carries exactly, JavaScript's included:
-/// 2^53 - 1.
-const LARGEST: i64 = 9_007_199_254_740_991;
 
 /// The table the suite makes, and drops again.
 const TABLE: &str = "herald_conformance";
@@ -91,9 +87,9 @@ fn transactions(parameters: Parameters) -> [Vec<Statement>; 5] {
                     at(4)
                 ),
                 vec![
-                    Value::Integer(LARGEST),
+                    Value::Integer(EXACT_INTEGER),
                     Value::Text(TEXT.to_owned()),
-                    Value::Integer(-LARGEST),
+                    Value::Integer(-EXACT_INTEGER),
                     Value::Null,
                 ],
             ),
@@ -146,10 +142,14 @@ fn expected() -> [Vec<Changed>; 3] {
             rows(vec![
                 vec![
                     Value::Integer(1),
-                    Value::Integer(LARGEST),
+                    Value::Integer(EXACT_INTEGER),
                     Value::Text(TEXT.to_owned()),
                 ],
-                vec![Value::Integer(2), Value::Integer(-LARGEST), Value::Null],
+                vec![
+                    Value::Integer(2),
+                    Value::Integer(-EXACT_INTEGER),
+                    Value::Null,
+                ],
             ]),
         ],
         vec![rows(vec![vec![Value::Integer(2)]])],

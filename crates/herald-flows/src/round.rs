@@ -6,6 +6,11 @@ use herald_ports::Secret;
 /// The variable naming the secret a request for a round carries, on a host
 /// whose only way in is HTTP.
 pub const ROUND_SECRET: &str = "HERALD_ROUND_SECRET";
+/// What a round asked for without its secret is refused with, kept for the
+/// log.
+pub const UNASKED: &str = "a round was asked without its secret; send it as Authorization: Bearer, and set HERALD_ROUND_SECRET on the host where it is unset";
+/// What a round that ran is answered with.
+pub const RAN: &str = "the round ran";
 
 /// A scheduled round a host with no timer of its own asks for over HTTP:
 /// `POST /herald/round/poll` or `/herald/round/housekeep`, carrying the secret

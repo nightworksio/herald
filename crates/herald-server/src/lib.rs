@@ -28,7 +28,7 @@ use herald_core::DestinationName;
 use herald_core::{media, status};
 use herald_flows::{
     Answered, Housekept, Inbound, Job, Round, Running, Serving, Sessions, Stop, Swept, Worked,
-    answer, housekeep, poll, refusal, unplaced, unworked, work,
+    answer, housekeep, poll, refusal, round, unplaced, unworked, work,
 };
 use herald_native::TokioTimer as Waiting;
 use herald_ports::{Clock, Http, Keyring, Secret, Signer, Sockets, Store, Verifier};
@@ -362,13 +362,14 @@ where
             .get(AUTHORIZATION)
             .and_then(|value| value.to_str().ok());
         if !Round::allowed(authorization, limits.secret) {
-            return ControlFlow::Break(sent(
-                rounds,
-                refusal(status::UNAUTHORIZED, "a round was asked without its secret"),
-            ));
+            return ControlFlow::Break(sent(rounds, refusal(status::UNAUTHORIZED, round::UNASKED)));
         }
         rounds.ran(serving, round).await;
-        return ControlFlow::Break(replied(status::OK, media::TEXT, b"the round ran".to_vec()));
+        return ControlFlow::Break(replied(
+            status::OK,
+            media::TEXT,
+            round::RAN.as_bytes().to_vec(),
+        ));
     }
     ControlFlow::Continue(path)
 }

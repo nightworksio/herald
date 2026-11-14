@@ -26,7 +26,7 @@ mod poll;
 mod prepare;
 mod preview;
 mod room;
-mod round;
+pub mod round;
 mod serving;
 mod sessions;
 mod trial;

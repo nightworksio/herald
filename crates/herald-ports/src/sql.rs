@@ -1,6 +1,10 @@
 use std::fmt;
 use std::future::Future;
 
+/// The largest integer every host carries exactly, JavaScript's included:
+/// 2^53 - 1.
+pub const EXACT_INTEGER: i64 = 9_007_199_254_740_991;
+
 /// A value bound to, or read from, a statement.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Value {
