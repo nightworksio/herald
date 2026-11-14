@@ -4,22 +4,40 @@ use crate::layer::Layer;
 use crate::workspace::{Kind, Workspace};
 
 const RUNTIME: &[&str] = &[
+    "async-io",
     "async-std",
     "axum",
+    "fastly",
     "getrandom",
     "hyper",
+    "js-sys",
     "lambda_runtime",
     "mio",
     "postgres",
     "rand",
     "reqwest",
+    "ring",
     "rusqlite",
     "smol",
+    "spin-sdk",
     "sqlx",
     "tokio",
     "tokio-postgres",
+    "tokio-tungstenite",
+    "tungstenite",
+    "ureq",
+    "wasi",
+    "wasip2",
+    "wasm-bindgen",
+    "wasm-bindgen-futures",
+    "web-sys",
+    "wit-bindgen",
     "worker",
+    "wstd",
 ];
+/// The crate of fakes and conformance suites, which only tests and opt-in
+/// conformance builds hold.
+const TESTING: &str = "herald-testing";
 
 /// One way the workspace breaks its layering.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -64,6 +82,13 @@ pub enum Violation {
         /// The runtime or I/O crate.
         to: String,
     },
+    /// A crate shipping the fakes and conformance suites: naming
+    /// `herald-testing` as a dependency that is neither a dev-dependency nor
+    /// optional.
+    TestingShipped {
+        /// The naming crate.
+        from: String,
+    },
     /// A crate before the I/O layers with a `clippy.toml` of its own, which would
     /// lift the workspace's bans on ambient I/O.
     OwnClippyConfig {
@@ -99,6 +124,10 @@ impl fmt::Display for Violation {
                 f,
                 "{from} reaches {to}, a runtime or I/O crate that only the I/O layers may hold"
             ),
+            Self::TestingShipped { from } => write!(
+                f,
+                "{from} ships {TESTING}; name it under [dev-dependencies], or as an optional dependency a feature turns on"
+            ),
             Self::OwnClippyConfig { name } => write!(
                 f,
                 "{name} carries its own clippy.toml, which lifts the bans on ambient I/O; delete it"
@@ -120,6 +149,12 @@ pub fn violations(workspace: &Workspace) -> Vec<Violation> {
             continue;
         };
         for dependency in &package.dependencies {
+            if dependency.name == TESTING && dependency.kind == Kind::Normal && !dependency.optional
+            {
+                found.push(Violation::TestingShipped {
+                    from: package.name.clone(),
+                });
+            }
             let from = package.name.clone();
             let to = dependency.name.clone();
             if workspace.has(&dependency.name) {
@@ -172,6 +207,7 @@ mod tests {
         name: &'a str,
         dependencies: &'a [(&'a str, Kind)],
         reaches: &'a [&'a str],
+        optional: &'a [&'a str],
         own_clippy_config: bool,
     }
 
@@ -180,6 +216,7 @@ mod tests {
             name,
             dependencies: &[],
             reaches: &[],
+            optional: &[],
             own_clippy_config: false,
         }
     }
@@ -196,6 +233,7 @@ mod tests {
                         .map(|(name, kind)| Dependency {
                             name: (*name).to_owned(),
                             kind: *kind,
+                            optional: spec.optional.contains(name),
                         })
                         .collect(),
                     reaches: spec
@@ -331,6 +369,36 @@ mod tests {
             ..crate_named("herald-native")
         }]));
         assert_eq!(found, []);
+    }
+
+    #[test]
+    fn the_fakes_ship_only_where_a_feature_asks_for_them() {
+        let found = violations(&workspace(&[
+            Spec {
+                dependencies: &[(TESTING, Kind::Normal)],
+                ..crate_named("herald-records")
+            },
+            Spec {
+                dependencies: &[(TESTING, Kind::Normal)],
+                optional: &[TESTING],
+                ..crate_named("herald-wasm")
+            },
+            Spec {
+                dependencies: &[(TESTING, Kind::Dev)],
+                ..crate_named("herald-flows")
+            },
+            crate_named(TESTING),
+        ]));
+        assert_eq!(
+            found,
+            [Violation::TestingShipped {
+                from: "herald-records".to_owned()
+            }]
+        );
+        assert_eq!(
+            found[0].to_string(),
+            "herald-records ships herald-testing; name it under [dev-dependencies], or as an optional dependency a feature turns on"
+        );
     }
 
     #[test]

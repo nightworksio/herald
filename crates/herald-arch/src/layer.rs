@@ -7,9 +7,9 @@ pub enum Layer {
     Ports,
     /// The fakes, the replaying `Http` and the conformance suites.
     Testing,
-    /// What siblings of a later layer share: records kept one per path,
-    /// later the SQL the SQL stores run, and what every source reads its
-    /// answers with.
+    /// What siblings of a later layer share: records kept one per path and
+    /// the SQL the SQL stores run, the kinds' registry, keys' encodings,
+    /// AWS signing, and what every source reads its answers with.
     Kits,
     /// One crate per source family.
     Sources,
@@ -42,8 +42,9 @@ impl Layer {
             "herald-core" => Some(Self::Core),
             "herald-ports" => Some(Self::Ports),
             "herald-testing" => Some(Self::Testing),
-            "herald-aws" | "herald-keys" | "herald-kinds" | "herald-records" | "herald-sql"
-            | "herald-wire" => Some(Self::Kits),
+            "herald-aws" | "herald-keys" | "herald-kinds" | "herald-records" | "herald-wire" => {
+                Some(Self::Kits)
+            }
             "herald-config" => Some(Self::Config),
             "herald-flows" => Some(Self::Flows),
             "herald-compose" => Some(Self::Composition),
@@ -94,15 +95,7 @@ fn outside_allowed(layer: Layer) -> &'static [&'static str] {
         Layer::Flows => &["futures-util", "jiff"],
         Layer::Composition => &["async-lock", "jiff", "url"],
         Layer::Testing => &["futures-util", "jiff", "serde", "serde_json"],
-        Layer::Kits => &[
-            "base64",
-            "hmac",
-            "jiff",
-            "ring",
-            "serde",
-            "serde_json",
-            "sha2",
-        ],
+        Layer::Kits => &["base64", "hmac", "jiff", "serde", "serde_json", "sha2"],
         Layer::Sources => &["jiff", "quick-xml", "schemars", "serde", "serde_json"],
         Layer::Destinations => &["jiff", "schemars", "serde", "serde_json", "url"],
         Layer::Stores => &["base64", "jiff", "schemars", "serde", "serde_json"],
@@ -136,7 +129,12 @@ mod tests {
             ("herald-crypto", Layer::Native),
             ("herald-keys", Layer::Kits),
             ("herald-records", Layer::Kits),
-            ("herald-sql", Layer::Kits),
+            ("herald-aws", Layer::Kits),
+            ("herald-kinds", Layer::Kits),
+            ("herald-environment", Layer::Native),
+            ("herald-spin", Layer::Native),
+            ("herald-fastly", Layer::Drivers),
+            ("herald-wasi", Layer::Drivers),
             ("herald-wire", Layer::Kits),
             ("herald-sources-forge", Layer::Sources),
             ("herald-dest-discord", Layer::Destinations),

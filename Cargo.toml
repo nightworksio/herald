@@ -90,6 +90,9 @@ expect_used = "deny"
 panic = "deny"
 indexing_slicing = "deny"
 todo = "deny"
+dbg_macro = "deny"
+print_stdout = "deny"
+print_stderr = "deny"
 unimplemented = "deny"
 
 [profile.dev]

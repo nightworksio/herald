@@ -20,6 +20,8 @@ pub struct Dependency {
     pub name: String,
     /// How it is depended on.
     pub kind: Kind,
+    /// Whether only a feature turns it on.
+    pub optional: bool,
 }
 
 /// One package of the workspace.
@@ -68,6 +70,7 @@ impl Workspace {
                     .map(|dependency| Dependency {
                         name: dependency.name.clone(),
                         kind: kind(dependency.kind),
+                        optional: dependency.optional,
                     })
                     .collect(),
                 reaches: reaches(&package.id, &nodes, &names),

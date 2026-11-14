@@ -38,7 +38,7 @@ fn a_workspace_is_read_with_its_kinds_reach_and_clippy_configs() -> io::Result<(
     member(
         root,
         "app",
-        "[dependencies]\nlib = { path = \"../lib\" }\n\n[dev-dependencies]\ntestkit = { path = \"../testkit\" }\n\n[build-dependencies]\nbuilder = { path = \"../builder\" }\n",
+        "[dependencies]\nlib = { path = \"../lib\" }\ndeep = { path = \"../deep\", optional = true }\n\n[dev-dependencies]\ntestkit = { path = \"../testkit\" }\n\n[build-dependencies]\nbuilder = { path = \"../builder\" }\n",
     )?;
     member(
         root,
@@ -62,17 +62,24 @@ fn a_workspace_is_read_with_its_kinds_reach_and_clippy_configs() -> io::Result<(
         .iter()
         .find(|package| package.name == "app")
         .unwrap();
-    let declared: Vec<(&str, Kind)> = app
+    let declared: Vec<(&str, Kind, bool)> = app
         .dependencies
         .iter()
-        .map(|Dependency { name, kind }| (name.as_str(), *kind))
+        .map(
+            |Dependency {
+                 name,
+                 kind,
+                 optional,
+             }| (name.as_str(), *kind, *optional),
+        )
         .collect();
     assert_eq!(
         declared,
         [
-            ("lib", Kind::Normal),
-            ("testkit", Kind::Dev),
-            ("builder", Kind::Build)
+            ("deep", Kind::Normal, true),
+            ("lib", Kind::Normal, false),
+            ("testkit", Kind::Dev, false),
+            ("builder", Kind::Build, false)
         ]
     );
     assert_eq!(
