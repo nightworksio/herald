@@ -2,7 +2,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Mutex;
 
 use herald_core::{
-    Cursor, DestinationName, Entry, Key, Latest, RouteId, Schedule, SourceName, State, Subscription,
+    Cursor, DestinationName, Entry, Key, Latest, Listing, Membership, RouteId, Schedule,
+    SourceName, State, Subscription,
 };
 use herald_ports::{
     Admitted, Announcements, Cursors, Deliveries, Held, Inboxes, Keeper, Ledger, Notes, Outboxed,
@@ -16,6 +17,8 @@ use crate::lock;
 struct FakeState {
     entries: BTreeMap<Key, Versioned<Entry>>,
     cursors: BTreeMap<SourceName, Versioned<Cursor>>,
+    listings: BTreeMap<SourceName, Versioned<Listing>>,
+    members: BTreeMap<(SourceName, String), Versioned<Membership>>,
     schedules: Vec<Schedule>,
     subscriptions: BTreeSet<Subscription>,
     pins: BTreeMap<RouteId, String>,
@@ -126,6 +129,57 @@ impl Cursors for FakeStore {
             cursor,
             expected,
         ))
+    }
+
+    async fn listing(&self, source: &SourceName) -> Result<Option<Versioned<Listing>>, StoreError> {
+        Ok(lock(&self.state).listings.get(source).cloned())
+    }
+
+    async fn put_listing(
+        &self,
+        source: &SourceName,
+        listing: &Listing,
+        expected: Option<Version>,
+    ) -> Result<Written, StoreError> {
+        let mut state = lock(&self.state);
+        Ok(compare_and_set(
+            &mut state.listings,
+            source.clone(),
+            listing,
+            expected,
+        ))
+    }
+
+    async fn members(&self, source: &SourceName) -> Result<Vec<Versioned<Membership>>, StoreError> {
+        Ok(lock(&self.state)
+            .members
+            .iter()
+            .filter(|((owner, _), _)| owner == source)
+            .map(|(_, membership)| membership.clone())
+            .collect())
+    }
+
+    async fn put_member(
+        &self,
+        source: &SourceName,
+        membership: &Membership,
+        expected: Option<Version>,
+    ) -> Result<Written, StoreError> {
+        let mut state = lock(&self.state);
+        let key = (source.clone(), membership.repository.id.clone());
+        Ok(compare_and_set(
+            &mut state.members,
+            key,
+            membership,
+            expected,
+        ))
+    }
+
+    async fn forget_member(&self, source: &SourceName, id: &str) -> Result<(), StoreError> {
+        lock(&self.state)
+            .members
+            .remove(&(source.clone(), id.to_owned()));
+        Ok(())
     }
 }
 

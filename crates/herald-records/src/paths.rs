@@ -35,6 +35,21 @@ pub(crate) fn cursor(source: &SourceName) -> String {
     format!("cursors/{}.json", segment(source.as_str()))
 }
 
+/// The directory of every member of the owner source `source`.
+pub(crate) fn members(source: &SourceName) -> String {
+    format!("cursors/{}", segment(source.as_str()))
+}
+
+/// Where the member of `source` whose forge id is `id` is kept, with its
+/// cursor.
+pub(crate) fn member(source: &SourceName, id: &str) -> String {
+    format!("{}/{}.json", members(source), segment(id))
+}
+
+pub(crate) fn listing(source: &SourceName) -> String {
+    format!("listings/{}.json", segment(source.as_str()))
+}
+
 pub(crate) const SCHEDULES: &str = "schedules";
 
 pub(crate) fn schedule(schedule: &Schedule) -> String {

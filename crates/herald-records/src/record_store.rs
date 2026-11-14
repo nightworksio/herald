@@ -4,8 +4,8 @@ use std::collections::BTreeSet;
 use std::sync::{Arc, Mutex, PoisonError};
 
 use herald_core::{
-    Attempts, Cursor, DestinationName, Entry, Key, Latest, RecordKind, RouteId, Schedule,
-    SourceName, State, Subscription,
+    Attempts, Cursor, DestinationName, Entry, Key, Latest, Listing, Membership, RecordKind,
+    RouteId, Schedule, SourceName, State, Subscription,
 };
 use herald_ports::{
     Admitted, Announcements, Cursors, Deliveries, Held, Inboxes, Keeper, Keyring, KnownKey, Ledger,
@@ -332,6 +332,42 @@ impl<R: RecordBackend> Cursors for RecordStore<R> {
     ) -> Result<Written, StoreError> {
         self.compare_and_set(&paths::cursor(source), cursor, expected)
             .await
+    }
+
+    async fn listing(&self, source: &SourceName) -> Result<Option<Versioned<Listing>>, StoreError> {
+        self.record(&paths::listing(source)).await
+    }
+
+    async fn put_listing(
+        &self,
+        source: &SourceName,
+        listing: &Listing,
+        expected: Option<Version>,
+    ) -> Result<Written, StoreError> {
+        self.compare_and_set(&paths::listing(source), listing, expected)
+            .await
+    }
+
+    async fn members(&self, source: &SourceName) -> Result<Vec<Versioned<Membership>>, StoreError> {
+        let mut found = Vec::new();
+        for path in self.records.list(&paths::members(source)).await? {
+            found.extend(self.listed::<Membership>(&path).await?);
+        }
+        Ok(found)
+    }
+
+    async fn put_member(
+        &self,
+        source: &SourceName,
+        membership: &Membership,
+        expected: Option<Version>,
+    ) -> Result<Written, StoreError> {
+        let path = paths::member(source, &membership.repository.id);
+        self.compare_and_set(&path, membership, expected).await
+    }
+
+    async fn forget_member(&self, source: &SourceName, id: &str) -> Result<(), StoreError> {
+        self.removed(&paths::member(source, id)).await
     }
 }
 

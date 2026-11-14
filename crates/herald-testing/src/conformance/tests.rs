@@ -1,12 +1,14 @@
 use herald_core::State;
 use herald_ports::{
-    Admitted, Announcements, Cursors, Deliveries, Held, Inboxes, Keeper, Keeping, Keyring,
-    KnownKey, Ledger, Notes, Outboxed, Pins, Positions, Schedules, Subscriptions, Versioned,
+    Admitted, Announcements, Deliveries, Held, Inboxes, Keeper, Keeping, Keyring, KnownKey, Ledger,
+    Notes, Outboxed, Pins, Positions, Schedules, Subscriptions, Versioned,
 };
 use jiff::Timestamp;
 
 use super::*;
 use crate::FakeStore;
+
+mod cursors;
 
 const GITHUB: &str = "github";
 
@@ -23,6 +25,10 @@ enum Fault {
     ExpiresEveryNote,
     RefusesWrites,
     OverwritesCursors,
+    OverwritesMembers,
+    ListsOtherSourcesMembers,
+    KeepsForgottenMembers,
+    ForgetsOtherSourcesMembers,
     DuplicatesSchedules,
     IgnoresProjects,
     KeepsTheFirstSubscription,
@@ -213,32 +219,6 @@ impl Ledger for Faulty {
             }
             _ => self.inner.expire_entries(before).await,
         }
-    }
-}
-
-impl Cursors for Faulty {
-    async fn cursor(&self, source: &SourceName) -> Result<Option<Versioned<Cursor>>, StoreError> {
-        self.refuses()?;
-        self.inner.cursor(source).await
-    }
-
-    async fn put_cursor(
-        &self,
-        source: &SourceName,
-        cursor: &Cursor,
-        expected: Option<Version>,
-    ) -> Result<Written, StoreError> {
-        self.refuses()?;
-        let expected = match self.fault {
-            Fault::OverwritesCursors => self
-                .inner
-                .cursor(source)
-                .await?
-                .map(|record| record.version),
-            _ => expected,
-        };
-        let written = self.inner.put_cursor(source, cursor, expected).await?;
-        Ok(self.raced(Fault::RacesCursors, source.as_str() == "raced", written))
     }
 }
 
@@ -779,6 +759,28 @@ fn a_store_that_breaks_its_promises_on_the_run_s_records_is_refused() {
         (
             Fault::ForgetsEveryAnnouncement,
             "forgetting one announcement's deliveries forgot another's",
+        ),
+    ]);
+}
+
+#[test]
+fn a_store_that_breaks_its_promises_on_an_owner_source_s_members_is_refused() {
+    refused(&[
+        (
+            Fault::OverwritesMembers,
+            "a member was written over a version it did not expect",
+        ),
+        (
+            Fault::ListsOtherSourcesMembers,
+            "the members listed were not every member written under the source, as written",
+        ),
+        (
+            Fault::KeepsForgottenMembers,
+            "forgetting a member did not forget it alone",
+        ),
+        (
+            Fault::ForgetsOtherSourcesMembers,
+            "forgetting a member forgot another source's",
         ),
     ]);
 }

@@ -11,6 +11,7 @@ use herald_ports::{
 use jiff::Timestamp;
 
 mod kv;
+mod members;
 mod raced;
 mod sql;
 mod unkept;
@@ -356,6 +357,7 @@ async fn cursors<S: Cursors>(store: &S) -> Result<(), Failure> {
     let other = store.cursor(&SourceName::new("other")).await?;
     checks.ensure(other.is_none(), "writing one cursor made another appear");
     raced::cursors(store, &mut checks).await?;
+    members::members(store, &mut checks).await?;
     checks.done()
 }
 

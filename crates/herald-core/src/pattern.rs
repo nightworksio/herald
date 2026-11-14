@@ -23,27 +23,13 @@ impl Pattern {
     #[must_use]
     pub fn matches(&self, text: &str) -> bool {
         let text: Vec<char> = text.chars().collect();
-        let mut matched = vec![true];
-        matched.resize(text.len() + 1, false);
-        for wanted in self.0.chars() {
-            matched = if wanted == '*' {
-                let mut reached = false;
-                matched
-                    .iter()
-                    .map(|&before| {
-                        reached |= before;
-                        reached
-                    })
-                    .collect()
-            } else {
-                std::iter::once(false)
-                    .chain(matched.iter().zip(&text).map(|(&before, &character)| {
-                        before && (wanted == '?' || character == wanted)
-                    }))
-                    .collect()
-            };
-        }
-        matched.last().copied().unwrap_or_default()
+        let wanted: Vec<char> = self.0.chars().collect();
+        crate::glob::wildcards(
+            &wanted,
+            |&part| part == '*',
+            |&part, character| part == '?' || character == part,
+            &text,
+        )
     }
 }
 

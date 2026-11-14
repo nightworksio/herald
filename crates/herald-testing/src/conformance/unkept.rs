@@ -76,6 +76,40 @@ pub(super) async fn cursors(store: &impl Cursors, checks: &mut Checks) {
         Held::Cursors,
         "put_cursor",
     );
+    refused(
+        checks,
+        store.listing(&source).await,
+        Held::Cursors,
+        "listing",
+    );
+    refused(
+        checks,
+        store
+            .put_listing(&source, &super::members::listing(), None)
+            .await,
+        Held::Cursors,
+        "put_listing",
+    );
+    refused(
+        checks,
+        store.members(&source).await,
+        Held::Cursors,
+        "members",
+    );
+    refused(
+        checks,
+        store
+            .put_member(&source, &super::members::membership("1"), None)
+            .await,
+        Held::Cursors,
+        "put_member",
+    );
+    refused(
+        checks,
+        store.forget_member(&source, "1").await,
+        Held::Cursors,
+        "forget_member",
+    );
 }
 
 pub(super) async fn schedules(store: &impl Schedules, checks: &mut Checks) {

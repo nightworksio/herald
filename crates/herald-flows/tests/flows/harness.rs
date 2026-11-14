@@ -371,6 +371,42 @@ impl Cursors for Failing {
             _ => self.inner.put_cursor(source, cursor, expected).await,
         }
     }
+
+    async fn listing(
+        &self,
+        source: &SourceName,
+    ) -> Result<Option<Versioned<herald_core::Listing>>, StoreError> {
+        self.inner.listing(source).await
+    }
+
+    async fn put_listing(
+        &self,
+        source: &SourceName,
+        listing: &herald_core::Listing,
+        expected: Option<Version>,
+    ) -> Result<Written, StoreError> {
+        self.inner.put_listing(source, listing, expected).await
+    }
+
+    async fn members(
+        &self,
+        source: &SourceName,
+    ) -> Result<Vec<Versioned<herald_core::Membership>>, StoreError> {
+        self.inner.members(source).await
+    }
+
+    async fn put_member(
+        &self,
+        source: &SourceName,
+        membership: &herald_core::Membership,
+        expected: Option<Version>,
+    ) -> Result<Written, StoreError> {
+        self.inner.put_member(source, membership, expected).await
+    }
+
+    async fn forget_member(&self, source: &SourceName, id: &str) -> Result<(), StoreError> {
+        self.inner.forget_member(source, id).await
+    }
 }
 
 impl Schedules for Failing {
@@ -652,6 +688,42 @@ impl herald_ports::Cursors for Refusing {
         _: &herald_core::Cursor,
         _: Option<herald_ports::Version>,
     ) -> Result<herald_ports::Written, StoreError> {
+        Err(self.0.clone())
+    }
+
+    async fn listing(
+        &self,
+        _: &herald_core::SourceName,
+    ) -> Result<Option<herald_ports::Versioned<herald_core::Listing>>, StoreError> {
+        Err(self.0.clone())
+    }
+
+    async fn put_listing(
+        &self,
+        _: &herald_core::SourceName,
+        _: &herald_core::Listing,
+        _: Option<herald_ports::Version>,
+    ) -> Result<herald_ports::Written, StoreError> {
+        Err(self.0.clone())
+    }
+
+    async fn members(
+        &self,
+        _: &herald_core::SourceName,
+    ) -> Result<Vec<herald_ports::Versioned<herald_core::Membership>>, StoreError> {
+        Err(self.0.clone())
+    }
+
+    async fn put_member(
+        &self,
+        _: &herald_core::SourceName,
+        _: &herald_core::Membership,
+        _: Option<herald_ports::Version>,
+    ) -> Result<herald_ports::Written, StoreError> {
+        Err(self.0.clone())
+    }
+
+    async fn forget_member(&self, _: &herald_core::SourceName, _: &str) -> Result<(), StoreError> {
         Err(self.0.clone())
     }
 }

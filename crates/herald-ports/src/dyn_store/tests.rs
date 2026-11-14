@@ -53,6 +53,36 @@ impl Cursors for Refusing {
     ) -> Result<Written, StoreError> {
         Err(refused("put_cursor"))
     }
+
+    async fn listing(&self, _: &SourceName) -> Result<Option<Versioned<Listing>>, StoreError> {
+        Err(refused("listing"))
+    }
+
+    async fn put_listing(
+        &self,
+        _: &SourceName,
+        _: &Listing,
+        _: Option<Version>,
+    ) -> Result<Written, StoreError> {
+        Err(refused("put_listing"))
+    }
+
+    async fn members(&self, _: &SourceName) -> Result<Vec<Versioned<Membership>>, StoreError> {
+        Err(refused("members"))
+    }
+
+    async fn put_member(
+        &self,
+        _: &SourceName,
+        _: &Membership,
+        _: Option<Version>,
+    ) -> Result<Written, StoreError> {
+        Err(refused("put_member"))
+    }
+
+    async fn forget_member(&self, _: &SourceName, _: &str) -> Result<(), StoreError> {
+        Err(refused("forget_member"))
+    }
 }
 
 impl Schedules for Refusing {
@@ -217,6 +247,56 @@ fn an_erased_store_holds_and_skips_what_the_store_it_erases_does() {
         answered(erased.pinned(&RouteId::new("r"))),
         Some(StoreError::Unsupported { what: "pins" })
     );
+}
+
+#[test]
+fn every_answer_of_an_erased_store_on_an_owner_source_is_the_store_s_own() {
+    let store = Refusing { holding: true };
+    let erased = Erased(&store as &dyn DynStore);
+    let source = SourceName::new("s");
+    let (listing, membership) = owned(Timestamp::UNIX_EPOCH);
+    let refusals = [
+        answered(erased.listing(&source)),
+        answered(erased.put_listing(&source, &listing, None)),
+        answered(erased.members(&source)),
+        answered(erased.put_member(&source, &membership, None)),
+        answered(erased.forget_member(&source, "1")),
+    ];
+    let by = [
+        "listing",
+        "put_listing",
+        "members",
+        "put_member",
+        "forget_member",
+    ];
+    assert_eq!(refusals, by.map(|by| Some(refused(by))));
+}
+
+fn owned(at: Timestamp) -> (Listing, Membership) {
+    let listing = Listing {
+        owner: herald_core::Owner::User,
+        pages: Vec::new(),
+        first: at,
+        listed: at,
+    };
+    let membership = Membership {
+        repository: herald_core::Listed {
+            id: "1".to_owned(),
+            name: "n".to_owned(),
+            path: "o/n".to_owned(),
+            topics: Vec::new(),
+            properties: BTreeMap::new(),
+            visibility: herald_core::Visibility::Public,
+            archived: false,
+            fork: false,
+            template: false,
+            language: None,
+        },
+        discovered: at,
+        left: None,
+        cursor: None,
+    };
+    (listing, membership)
 }
 
 #[test]

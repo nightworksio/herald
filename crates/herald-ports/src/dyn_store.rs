@@ -1,5 +1,6 @@
 use herald_core::{
-    Cursor, DestinationName, Entry, Key, Latest, RouteId, Schedule, SourceName, State, Subscription,
+    Cursor, DestinationName, Entry, Key, Latest, Listing, Membership, RouteId, Schedule,
+    SourceName, State, Subscription,
 };
 use jiff::Timestamp;
 
@@ -56,6 +57,41 @@ pub trait DynStore: Sync {
         cursor: &'a Cursor,
         expected: Option<Version>,
     ) -> Boxed<'a, Result<Written, StoreError>>;
+
+    /// [`Cursors::listing`].
+    fn listing_boxed<'a>(
+        &'a self,
+        source: &'a SourceName,
+    ) -> Boxed<'a, Result<Option<Versioned<Listing>>, StoreError>>;
+
+    /// [`Cursors::put_listing`].
+    fn put_listing_boxed<'a>(
+        &'a self,
+        source: &'a SourceName,
+        listing: &'a Listing,
+        expected: Option<Version>,
+    ) -> Boxed<'a, Result<Written, StoreError>>;
+
+    /// [`Cursors::members`].
+    fn members_boxed<'a>(
+        &'a self,
+        source: &'a SourceName,
+    ) -> Boxed<'a, Result<Vec<Versioned<Membership>>, StoreError>>;
+
+    /// [`Cursors::put_member`].
+    fn put_member_boxed<'a>(
+        &'a self,
+        source: &'a SourceName,
+        membership: &'a Membership,
+        expected: Option<Version>,
+    ) -> Boxed<'a, Result<Written, StoreError>>;
+
+    /// [`Cursors::forget_member`].
+    fn forget_member_boxed<'a>(
+        &'a self,
+        source: &'a SourceName,
+        id: &'a str,
+    ) -> Boxed<'a, Result<(), StoreError>>;
 
     /// How its schedules are held.
     fn schedules_keeping(&self) -> Keeping;
@@ -267,6 +303,50 @@ impl<S: Store + Keyring> DynStore for S {
         Box::pin(async move { self.cursors().put_cursor(source, cursor, expected).await })
     }
 
+    fn listing_boxed<'a>(
+        &'a self,
+        source: &'a SourceName,
+    ) -> Boxed<'a, Result<Option<Versioned<Listing>>, StoreError>> {
+        Box::pin(async move { self.cursors().listing(source).await })
+    }
+
+    fn put_listing_boxed<'a>(
+        &'a self,
+        source: &'a SourceName,
+        listing: &'a Listing,
+        expected: Option<Version>,
+    ) -> Boxed<'a, Result<Written, StoreError>> {
+        Box::pin(async move { self.cursors().put_listing(source, listing, expected).await })
+    }
+
+    fn members_boxed<'a>(
+        &'a self,
+        source: &'a SourceName,
+    ) -> Boxed<'a, Result<Vec<Versioned<Membership>>, StoreError>> {
+        Box::pin(async move { self.cursors().members(source).await })
+    }
+
+    fn put_member_boxed<'a>(
+        &'a self,
+        source: &'a SourceName,
+        membership: &'a Membership,
+        expected: Option<Version>,
+    ) -> Boxed<'a, Result<Written, StoreError>> {
+        Box::pin(async move {
+            self.cursors()
+                .put_member(source, membership, expected)
+                .await
+        })
+    }
+
+    fn forget_member_boxed<'a>(
+        &'a self,
+        source: &'a SourceName,
+        id: &'a str,
+    ) -> Boxed<'a, Result<(), StoreError>> {
+        Box::pin(async move { self.cursors().forget_member(source, id).await })
+    }
+
     fn schedules_keeping(&self) -> Keeping {
         Schedules::keeping(&self.schedules())
     }
@@ -474,6 +554,36 @@ impl Cursors for Erased<'_, dyn DynStore + '_> {
         expected: Option<Version>,
     ) -> Result<Written, StoreError> {
         self.0.put_cursor_boxed(source, cursor, expected).await
+    }
+
+    async fn listing(&self, source: &SourceName) -> Result<Option<Versioned<Listing>>, StoreError> {
+        self.0.listing_boxed(source).await
+    }
+
+    async fn put_listing(
+        &self,
+        source: &SourceName,
+        listing: &Listing,
+        expected: Option<Version>,
+    ) -> Result<Written, StoreError> {
+        self.0.put_listing_boxed(source, listing, expected).await
+    }
+
+    async fn members(&self, source: &SourceName) -> Result<Vec<Versioned<Membership>>, StoreError> {
+        self.0.members_boxed(source).await
+    }
+
+    async fn put_member(
+        &self,
+        source: &SourceName,
+        membership: &Membership,
+        expected: Option<Version>,
+    ) -> Result<Written, StoreError> {
+        self.0.put_member_boxed(source, membership, expected).await
+    }
+
+    async fn forget_member(&self, source: &SourceName, id: &str) -> Result<(), StoreError> {
+        self.0.forget_member_boxed(source, id).await
     }
 }
 
