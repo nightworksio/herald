@@ -136,11 +136,7 @@ impl Entry {
             return Standing::Announcing;
         }
         let remaining: Vec<Step> = match &self.wanted {
-            Some(wanted) => wanted
-                .iter()
-                .filter(|step| self.facts(step).is_none())
-                .cloned()
-                .collect(),
+            Some(wanted) => self.pending(wanted).map(|planned| planned.step).collect(),
             None => self
                 .records
                 .iter()
@@ -153,6 +149,18 @@ impl Entry {
         } else {
             Standing::Stopped { remaining }
         }
+    }
+
+    /// Each step of `wanted` not yet landed, in order, to be verified first
+    /// where it was attempted.
+    fn pending<'a>(&'a self, wanted: &'a [Step]) -> impl Iterator<Item = Planned> + 'a {
+        wanted.iter().filter_map(|step| match self.state(step) {
+            Some(State::Landed { .. }) => None,
+            state => Some(Planned {
+                step: step.clone(),
+                verify_first: matches!(state, Some(State::Attempted { .. })),
+            }),
+        })
     }
 
     /// The entry claimed by `run` at `at`, and held by it until `until`.
@@ -339,20 +347,7 @@ pub fn plan(entry: Option<&Entry>, wanted: &[Step], run: &str, now: Timestamp) -
             until: lease.until,
         };
     }
-    let remaining: Vec<Planned> = wanted
-        .iter()
-        .filter_map(|step| match entry.state(step) {
-            Some(State::Landed { .. }) => None,
-            Some(State::Attempted { .. }) => Some(Planned {
-                step: step.clone(),
-                verify_first: true,
-            }),
-            None => Some(Planned {
-                step: step.clone(),
-                verify_first: false,
-            }),
-        })
-        .collect();
+    let remaining: Vec<Planned> = entry.pending(wanted).collect();
     if remaining.is_empty() {
         return Plan::Complete;
     }

@@ -1,3 +1,5 @@
+use std::num::NonZeroUsize;
+
 use async_lock::Semaphore;
 use herald_ports::{Http, HttpError, Request, Response};
 
@@ -12,10 +14,10 @@ pub struct Capped<H> {
 impl<H> Capped<H> {
     /// `http`, sending at most `most` requests at once.
     #[must_use]
-    pub fn new(http: H, most: usize) -> Self {
+    pub fn new(http: H, most: NonZeroUsize) -> Self {
         Self {
             http,
-            permits: Semaphore::new(most),
+            permits: Semaphore::new(most.get()),
         }
     }
 }
@@ -68,7 +70,7 @@ mod tests {
     }
 
     fn sent(most: usize) -> usize {
-        let capped = Capped::new(Counting::default(), most);
+        let capped = Capped::new(Counting::default(), NonZeroUsize::new(most).unwrap());
         let request = || {
             Request::new(
                 Method::Get,

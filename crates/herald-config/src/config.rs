@@ -233,7 +233,7 @@ pub struct Server {
     /// The most bytes an inbound request's body may hold.
     pub body: usize,
     /// How many actor documents it reads at once.
-    pub fetches: usize,
+    pub fetches: NonZeroUsize,
     /// How many autocompletions a session answers at once; one arriving
     /// while as many are answered is dropped.
     pub completions: usize,
@@ -317,7 +317,7 @@ impl Server {
     pub const BODY_MOST: usize = Self::BODY * 4;
     /// How many actor documents it reads at once where the config says
     /// nothing.
-    pub(crate) const FETCHES: usize = 4;
+    pub(crate) const FETCHES: NonZeroUsize = NonZeroUsize::new(4).unwrap();
     /// How many autocompletions a session answers at once where the config
     /// says nothing.
     pub(crate) const COMPLETIONS: usize = 4;

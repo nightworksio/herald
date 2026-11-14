@@ -154,7 +154,7 @@ body = "{{ event.body }}"
                     keys: MemoryKeyring::new(8),
                     unforgetting: false,
                 },
-                public: Capped::new(http, 2),
+                public: Capped::new(http, std::num::NonZeroUsize::new(2).unwrap()),
                 clock: FakeClock::at("2027-01-15T08:00:00Z".parse().unwrap()),
                 sockets: ScriptedSockets::default(),
             }

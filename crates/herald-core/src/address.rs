@@ -71,12 +71,16 @@ impl Address {
     }
 }
 
-/// Whether `url` is a web address: `https://` or `http://`, then a host.
+/// Whether `url` is a web address: `https://` or `http://`, in any case,
+/// then a host.
 #[must_use]
 pub fn web_url(url: &str) -> bool {
     let written = WEB_SCHEMES.iter().any(|scheme| {
-        url.strip_prefix(scheme)
-            .is_some_and(|rest| !rest.starts_with(['/', '\\', '?', '#']))
+        url.get(..scheme.len())
+            .is_some_and(|written| written.eq_ignore_ascii_case(scheme))
+            && url
+                .get(scheme.len()..)
+                .is_some_and(|rest| !rest.starts_with(['/', '\\', '?', '#']))
     });
     written && Address::parse(url).is_some()
 }
@@ -145,6 +149,7 @@ mod tests {
         for url in [
             "https://forge.example/api/v1",
             "http://127.0.0.1:8787/github",
+            "HTTPS://Forge.example/x",
         ] {
             assert!(web_url(url), "{url}");
         }

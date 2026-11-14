@@ -160,7 +160,7 @@ impl Loader<'_> {
                 "server.body",
                 &Size::written(Server::BODY_MOST),
             ),
-            fetches: count(file.fetches, defaults.fetches),
+            fetches: file.fetches.unwrap_or(defaults.fetches),
             completions: count(file.completions, defaults.completions),
             silence: file.silence.map_or(defaults.silence, |silence| silence.0),
             keys,
