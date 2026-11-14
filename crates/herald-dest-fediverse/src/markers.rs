@@ -55,7 +55,7 @@ impl<'a, H: Http> MastodonMarkers<'a, H> {
             format!("/api/v1/accounts/{herald}/statuses?limit={PAGE}&exclude_reblogs=true");
         let mut own = Vec::new();
         let mut older: Option<String> = None;
-        for _ in 0..self.mastodon.read_back.pages() {
+        for _ in 0..self.mastodon.read_back.get() {
             let path = older.as_deref().map_or_else(
                 || listing.clone(),
                 |id| format!("{listing}&max_id={}", unreserved(id)),

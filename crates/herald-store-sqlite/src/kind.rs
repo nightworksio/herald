@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use herald_core::SecretRef;
 use herald_kinds::{Local, Offer, Opened, Opening, SqlAt, StoreConfig, StoreKind};
-use herald_ports::Secret;
+use herald_ports::RecordOptions;
 use herald_records::{Dialect, SqlRecords};
 
 use crate::StoreOptions;
@@ -39,7 +39,7 @@ impl StoreConfig for StoreOptions {
     fn open<'s, 'o: 's>(
         &'s self,
         opening: Arc<dyn Opening + 'o>,
-        seal: Option<Secret>,
+        options: RecordOptions,
     ) -> Local<'s, Result<Opened<'o>, String>> {
         Box::pin(async move {
             let file = self.file(Path::new(""));
@@ -54,7 +54,7 @@ impl StoreConfig for StoreOptions {
                 busy: self.busy(),
             };
             let sql = opening.sql(at).await.map_err(filed)?;
-            let store = SqlRecords::kept(sql, Dialect::Sqlite, seal)
+            let store = SqlRecords::kept(sql, Dialect::Sqlite, options)
                 .await
                 .map_err(|error| filed(error.to_string()))?;
             Ok(Opened::Kept(Box::new(store)))

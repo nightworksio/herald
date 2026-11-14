@@ -64,7 +64,7 @@ impl ActorOptions {
     /// The Notes an outbox page holds where the config sets none.
     pub const OUTBOX_PAGE: usize = 20;
     /// The most Notes an outbox page may hold: four times the default.
-    pub const OUTBOX_MOST: usize = 4 * Self::OUTBOX_PAGE;
+    pub(crate) const OUTBOX_MOST: usize = 4 * Self::OUTBOX_PAGE;
     /// How many inboxes it delivers to at once where the config sets none.
     pub const DELIVERIES: usize = 8;
 

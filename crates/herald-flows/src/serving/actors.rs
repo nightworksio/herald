@@ -1,6 +1,7 @@
 //! herald's ActivityPub actors as the server answers for them: their
 //! documents, Notes, outboxes, followers, inboxes and WebFinger.
 
+use herald_core::status;
 use herald_core::{ACTIVITY_JSON, Addressed, DestinationName, Escaping, Key};
 use herald_kinds::Federates;
 use herald_ports::{
@@ -54,7 +55,7 @@ pub(super) fn fingered<H>(connected: &Connected<H>, query: Option<&str>) -> Answ
     });
     found.map_or_else(
         || missing("such actor"),
-        |actor| replied(200, JRD, actor.finger()),
+        |actor| replied(status::OK, JRD, actor.finger()),
     )
 }
 
@@ -69,8 +70,11 @@ pub(super) async fn documented<S, C, G: Signer, V, H, P, K>(
 /// The answer to an actor document that was or could not be built.
 fn document_reply(document: Result<String, CryptoError>) -> Answered {
     match document {
-        Ok(document) => replied(200, ACTIVITY_JSON, document),
-        Err(error) => refusal(500, format!("the actor's key cannot be read: {error}")),
+        Ok(document) => replied(status::OK, ACTIVITY_JSON, document),
+        Err(error) => refusal(
+            status::SERVER_ERROR,
+            format!("the actor's key cannot be read: {error}"),
+        ),
     }
 }
 
@@ -84,9 +88,9 @@ pub(super) async fn noted<S: Store, C, G, V, H, P, K>(
         return missing("such note");
     };
     match serving.ports.store.notes().note(&parsed).await {
-        Ok(Some(note)) if served.owns(&note, key) => replied(200, ACTIVITY_JSON, note),
+        Ok(Some(note)) if served.owns(&note, key) => replied(status::OK, ACTIVITY_JSON, note),
         Ok(_) => missing("such note"),
-        Err(error) => refusal(503, error.to_string()),
+        Err(error) => refusal(status::UNAVAILABLE, error.to_string()),
     }
 }
 
@@ -111,14 +115,14 @@ pub(super) async fn outboxed<S: Store, C, G, V, H, P, K>(
     };
     match notes.outbox(served.actor(), after, most).await {
         Ok(listed) => replied(
-            200,
+            status::OK,
             ACTIVITY_JSON,
             match page {
                 None => served.outbox(listed.total),
                 Some(page) => served.outbox_page(page, &listed.notes, listed.next.as_deref()),
             },
         ),
-        Err(error) => refusal(503, error.to_string()),
+        Err(error) => refusal(status::UNAVAILABLE, error.to_string()),
     }
 }
 
@@ -140,9 +144,9 @@ pub(super) async fn counted<S: Store, C, G, V, H, P, K>(
                 .iter()
                 .filter(|kept| kept.pending.is_none() && served.admits(&kept.subscriber))
                 .count();
-            replied(200, ACTIVITY_JSON, served.followers(admitted))
+            replied(status::OK, ACTIVITY_JSON, served.followers(admitted))
         }
-        Err(error) => refusal(503, error.to_string()),
+        Err(error) => refusal(status::UNAVAILABLE, error.to_string()),
     }
 }
 
@@ -191,7 +195,7 @@ pub(super) async fn inboxed<S: Store, C: Clock, G, V: Verifier, H, P: Http, K: K
         return rejection(&rejected);
     }
     Answered {
-        reply: text_reply(202, "herald takes the activity").reply,
+        reply: text_reply(status::ACCEPTED, "herald takes the activity").reply,
         refused: None,
         job: Some(Job::Follow {
             verified,

@@ -7,6 +7,7 @@ use herald_ports::{Credential, Http, HttpError, Learned, Request};
 use serde_json::Value;
 
 use crate::domain::Domain;
+use crate::interact::SECTION;
 use crate::options::RouteOptions;
 use crate::read::{failure, json, read, text};
 use crate::request::{EVENT, ROUTE, channel, get, pin, posted, step};
@@ -32,8 +33,6 @@ pub const MARKUP: Markup = Markup {
 
 /// The longest title, in characters: a header block's text.
 const TITLE: usize = 150;
-/// The longest text of one message, in characters: a section block's text.
-const TEXT: usize = 3_000;
 /// What Slack answers for a pin already in place.
 const ALREADY_PINNED: &str = "already_pinned";
 /// What Slack answers for an unpin of a message no longer pinned, or gone.
@@ -389,8 +388,6 @@ pub(crate) async fn identity<H: Http>(slack: &Slack, http: &H) -> ApiAnswer<Iden
         .clone()))
 }
 
-/// The most characters a section's text holds.
-const SECTION: usize = 3_000;
 /// The mentions a message holds: one section of them, each `<@USER> `.
 const MENTION_ROOM: MentionRoom = MentionRoom {
     first: SECTION,
@@ -407,8 +404,8 @@ pub fn profile(bot: bool) -> Profile {
         measure: Measure::Chars,
         limits: Limits {
             title: TITLE,
-            text: TEXT,
-            followup: TEXT,
+            text: SECTION,
+            followup: SECTION,
             thread_name: TITLE,
         },
         features: Features {

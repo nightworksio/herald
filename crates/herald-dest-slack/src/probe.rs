@@ -2,6 +2,7 @@
 //! with nothing posted (ADR-0002).
 
 use herald_core::Delivery;
+use herald_core::status;
 use herald_kinds::Probe;
 use herald_ports::{Credential, Http, Secret, SecretText};
 use serde_json::{Map, Value};
@@ -15,10 +16,10 @@ use crate::web_api::{
 
 /// What Slack answers an empty post to a live incoming webhook: its
 /// payload is refused, and nothing reaches the channel.
-const LIVE: u16 = 400;
+const LIVE: u16 = status::BAD_REQUEST;
 /// What Slack answers a post to an incoming webhook that no longer posts:
 /// its token is refused, it was removed, or its channel was archived.
-const DEAD: [u16; 3] = [403, 404, 410];
+const DEAD: [u16; 3] = [status::FORBIDDEN, status::NOT_FOUND, status::GONE];
 /// The header Slack lists a token's scopes in.
 const SCOPES: &str = "x-oauth-scopes";
 

@@ -219,7 +219,7 @@ const SEVERITIES: [&str; 2] = ["suspend", "silence"];
 /// # Errors
 ///
 /// The first row whose domain is not one, naming its line.
-pub fn blocked_domains(csv: &str) -> Result<Vec<String>, String> {
+pub(crate) fn blocked_domains(csv: &str) -> Result<Vec<String>, String> {
     let mut blocked = Vec::new();
     for (index, row) in csv.lines().enumerate() {
         let mut fields = row.split(',').map(str::trim);

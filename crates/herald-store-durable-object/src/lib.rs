@@ -17,7 +17,7 @@ use serde::Deserialize;
 /// options name none.
 pub const BINDING: &str = "HERALD";
 /// The object the records are kept in where the options name none.
-pub const OBJECT: &str = "herald";
+pub(crate) const OBJECT: &str = "herald";
 
 /// The durable-object store's options in `herald.toml` (ADR-0006).
 #[derive(Debug, Clone, PartialEq, Eq, Default, Deserialize, JsonSchema)]

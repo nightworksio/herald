@@ -1,3 +1,5 @@
+use std::marker::PhantomData;
+
 use jiff::SignedDuration;
 use schemars::JsonSchema;
 use serde::de::Error as _;
@@ -70,59 +72,82 @@ impl Inbound {
     };
 }
 
-/// How many pages of its own posts a destination reads back for the markers
-/// they carry.
+/// What a count a config sets counts, and how it is spoken of.
+pub trait Counted {
+    /// Its name in the schema.
+    const NAME: &str;
+    /// The key that sets it.
+    const KEY: &str;
+    /// What it does with what it counts, such as "reads".
+    const VERB: &str;
+    /// What it counts, in the plural.
+    const UNIT: &str;
+    /// What it counts, as the schema describes it.
+    const DESCRIPTION: &str;
+    /// The count where a config sets none.
+    const DEFAULT: u8;
+}
+
+/// A count a config sets, from 1 to four times its default.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub struct ReadBack(u8);
+pub struct Count<C>(u8, PhantomData<C>);
 
-impl ReadBack {
-    /// The pages read where a config sets none.
-    pub const DEFAULT: Self = Self(5);
-    /// The most pages a config may set: four times the default.
-    pub const MOST: Self = Self(Self::DEFAULT.0 * 4);
+impl<C: Counted> Count<C> {
+    /// The count where a config sets none.
+    pub const DEFAULT: Self = Self(C::DEFAULT, PhantomData);
+    /// The most a config may set: four times the default.
+    pub const MOST: Self = Self(C::DEFAULT * 4, PhantomData);
 
-    /// `pages` as a setting, where it lies from 1 to [`Self::MOST`].
+    /// `count` as a setting, where it lies from 1 to [`Self::MOST`].
     #[must_use]
-    pub fn new(pages: u8) -> Option<Self> {
-        (1..=Self::MOST.0).contains(&pages).then_some(Self(pages))
+    pub fn new(count: u8) -> Option<Self> {
+        (1..=Self::MOST.0)
+            .contains(&count)
+            .then_some(Self(count, PhantomData))
     }
 
-    /// The pages read.
+    /// The count.
     #[must_use]
-    pub fn pages(self) -> u8 {
-        self.0
+    pub fn get(self) -> usize {
+        usize::from(self.0)
+    }
+
+    /// Whether it is set above its default.
+    #[must_use]
+    pub fn loosened(self) -> bool {
+        self.0 > C::DEFAULT
     }
 }
 
-impl Default for ReadBack {
+impl<C: Counted> Default for Count<C> {
     fn default() -> Self {
         Self::DEFAULT
     }
 }
 
-impl<'de> Deserialize<'de> for ReadBack {
+impl<'de, C: Counted> Deserialize<'de> for Count<C> {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let pages = u8::deserialize(deserializer)?;
-        Self::new(pages).ok_or_else(|| {
+        let count = u8::deserialize(deserializer)?;
+        Self::new(count).ok_or_else(|| {
             D::Error::custom(format!(
-                "read_back reads 1 to {} pages, not {pages}",
-                Self::MOST.0
+                "{} {} 1 to {} {}, not {count}",
+                C::KEY,
+                C::VERB,
+                Self::MOST.0,
+                C::UNIT
             ))
         })
     }
 }
 
-impl JsonSchema for ReadBack {
+impl<C: Counted> JsonSchema for Count<C> {
     fn schema_name() -> std::borrow::Cow<'static, str> {
-        "ReadBack".into()
+        C::NAME.into()
     }
 
     fn json_schema(_: &mut schemars::SchemaGenerator) -> schemars::Schema {
         schemars::json_schema!({
-            "description": format!(
-                "How many pages of its own posts the destination reads back, {} by default.",
-                Self::DEFAULT.0
-            ),
+            "description": format!("{}, {} by default.", C::DESCRIPTION, C::DEFAULT),
             "type": "integer",
             "minimum": 1,
             "maximum": Self::MOST.0
@@ -130,34 +155,46 @@ impl JsonSchema for ReadBack {
     }
 }
 
-/// How many pins a destination looks up, one request each, as it finds a
+/// The pages of its own posts a destination reads back for the markers
+/// they carry.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum ReadBackPages {}
+
+impl Counted for ReadBackPages {
+    const NAME: &str = "ReadBack";
+    const KEY: &str = "read_back";
+    const VERB: &str = "reads";
+    const UNIT: &str = "pages";
+    const DESCRIPTION: &str = "How many pages of its own posts the destination reads back";
+    const DEFAULT: u8 = 5;
+}
+
+/// How many pages of its own posts a destination reads back.
+pub type ReadBack = Count<ReadBackPages>;
+
+/// The pins a destination looks up, one request each, as it finds a
 /// route's earlier pins to take down.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub struct PinLookups(u8);
+pub enum LookedUpPins {}
+
+impl Counted for LookedUpPins {
+    const NAME: &str = "PinLookups";
+    const KEY: &str = "pin_lookups";
+    const VERB: &str = "looks up";
+    const UNIT: &str = "pins";
+    const DESCRIPTION: &str = "How many pins the destination looks up, one request each, as it finds the route's earlier pins";
+    const DEFAULT: u8 = 25;
+}
+
+/// How many pins a destination looks up.
+pub type PinLookups = Count<LookedUpPins>;
 
 impl PinLookups {
-    /// The pins looked up where a config sets none.
-    pub const DEFAULT: Self = Self(25);
-    /// The most a config may set: four times the default.
-    pub const MOST: Self = Self(Self::DEFAULT.0 * 4);
-
-    /// `pins` as a setting, where it lies from 1 to [`Self::MOST`].
-    #[must_use]
-    pub fn new(pins: u8) -> Option<Self> {
-        (1..=Self::MOST.0).contains(&pins).then_some(Self(pins))
-    }
-
-    /// The pins looked up.
-    #[must_use]
-    pub fn pins(self) -> usize {
-        usize::from(self.0)
-    }
-
     /// What is said where `candidates` pins, each to be looked up, are
     /// more than it looks up: how to take every one into account.
     #[must_use]
     pub fn over(self, candidates: usize) -> Option<String> {
-        let most = self.pins();
+        let most = self.get();
         (candidates > most).then(|| {
             let among = format!(
                 "the route's earlier pins are among {candidates} pins, more than the {most} it looks up"
@@ -174,41 +211,23 @@ impl PinLookups {
     }
 }
 
-impl Default for PinLookups {
-    fn default() -> Self {
-        Self::DEFAULT
-    }
+/// The times a store tries a write again after it lost a race to an
+/// unrelated write.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum WriteAttempts {}
+
+impl Counted for WriteAttempts {
+    const NAME: &str = "Attempts";
+    const KEY: &str = "attempts";
+    const VERB: &str = "makes";
+    const UNIT: &str = "attempts";
+    const DESCRIPTION: &str =
+        "How many times the store tries a write that lost a race to an unrelated write";
+    const DEFAULT: u8 = 3;
 }
 
-impl<'de> Deserialize<'de> for PinLookups {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let pins = u8::deserialize(deserializer)?;
-        Self::new(pins).ok_or_else(|| {
-            D::Error::custom(format!(
-                "pin_lookups looks up 1 to {} pins, not {pins}",
-                Self::MOST.0
-            ))
-        })
-    }
-}
-
-impl JsonSchema for PinLookups {
-    fn schema_name() -> std::borrow::Cow<'static, str> {
-        "PinLookups".into()
-    }
-
-    fn json_schema(_: &mut schemars::SchemaGenerator) -> schemars::Schema {
-        schemars::json_schema!({
-            "description": format!(
-                "How many pins the destination looks up, one request each, as it finds the route's earlier pins, {} by default.",
-                Self::DEFAULT.0
-            ),
-            "type": "integer",
-            "minimum": 1,
-            "maximum": Self::MOST.0
-        })
-    }
-}
+/// How many times a store tries a write that lost a race.
+pub type Attempts = Count<WriteAttempts>;
 
 #[cfg(test)]
 mod tests {
@@ -216,14 +235,14 @@ mod tests {
 
     #[test]
     fn a_destination_looks_up_1_to_100_pins_and_25_by_default() {
-        assert_eq!(PinLookups::default().pins(), 25);
-        assert_eq!(PinLookups::MOST.pins(), 100);
-        assert_eq!(PinLookups::new(3).map(PinLookups::pins), Some(3));
+        assert_eq!(PinLookups::default().get(), 25);
+        assert_eq!(PinLookups::MOST.get(), 100);
+        assert_eq!(PinLookups::new(3).map(PinLookups::get), Some(3));
         assert_eq!(PinLookups::new(0), None);
         assert_eq!(PinLookups::new(101), None);
         assert_eq!(
             serde_json::from_str::<PinLookups>("7")
-                .map(PinLookups::pins)
+                .map(PinLookups::get)
                 .ok(),
             Some(7)
         );
@@ -257,9 +276,9 @@ mod tests {
 
     #[test]
     fn a_destination_reads_back_1_to_20_pages_and_5_by_default() {
-        assert_eq!(ReadBack::default().pages(), 5);
-        assert_eq!(ReadBack::MOST.pages(), 20);
-        assert_eq!(ReadBack::new(3).map(ReadBack::pages), Some(3));
+        assert_eq!(ReadBack::default().get(), 5);
+        assert_eq!(ReadBack::MOST.get(), 20);
+        assert_eq!(ReadBack::new(3).map(ReadBack::get), Some(3));
         assert_eq!(ReadBack::new(0), None);
         assert_eq!(ReadBack::new(21), None);
     }
@@ -268,7 +287,7 @@ mod tests {
     fn read_back_is_read_as_its_pages_and_refused_outside_them() {
         assert_eq!(
             serde_json::from_str::<ReadBack>("7")
-                .map(ReadBack::pages)
+                .map(ReadBack::get)
                 .ok(),
             Some(7)
         );
@@ -285,6 +304,26 @@ mod tests {
         assert_eq!(
             schema["description"],
             "How many pages of its own posts the destination reads back, 5 by default."
+        );
+    }
+
+    #[test]
+    fn a_store_makes_1_to_12_attempts_3_by_default_and_names_any_above_it() {
+        assert_eq!(Attempts::default().get(), 3);
+        assert_eq!(Attempts::MOST.get(), 12);
+        assert!(!Attempts::DEFAULT.loosened());
+        assert!(Attempts::new(4).unwrap().loosened());
+        assert_eq!(
+            serde_json::from_str::<Attempts>("13")
+                .unwrap_err()
+                .to_string(),
+            "attempts makes 1 to 12 attempts, not 13"
+        );
+        let schema = serde_json::to_value(schemars::schema_for!(Attempts)).unwrap();
+        assert_eq!(schema["maximum"], 12);
+        assert_eq!(
+            schema["description"],
+            "How many times the store tries a write that lost a race to an unrelated write, 3 by default."
         );
     }
 }

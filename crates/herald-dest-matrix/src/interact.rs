@@ -4,6 +4,7 @@
 
 use std::fmt;
 
+use herald_core::media;
 use herald_core::{Answering, Asked, Command, DestinationName, Place, Text, digest, unreserved};
 use herald_ports::{Method, Request, Response, Secret, SecretText};
 use jiff::Timestamp;
@@ -12,13 +13,11 @@ use serde_json::{Value, json};
 use crate::interactions::{Interactions, Via};
 use crate::matrix::MATRIX;
 use crate::read::{error_text, json, waited};
-use crate::request::{CLIENT, MESSAGE};
+use crate::request::{CLIENT, HTML, MESSAGE, THREAD};
 
 /// The word after a project that asks for the answer to be posted to the
 /// room rather than in a thread.
 const SHARE: &str = "share";
-/// The relation of a message in a thread to the message it started under.
-const THREAD: &str = "m.thread";
 
 /// How a Matrix destination takes and answers commands.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -329,7 +328,7 @@ impl Interacting {
                     "m.relates_to": relates,
                 });
                 if let (Some(html), Some(object)) = (&part.html, content.as_object_mut()) {
-                    object.insert("format".to_owned(), json!("org.matrix.custom.html"));
+                    object.insert("format".to_owned(), json!(HTML));
                     object.insert("formatted_body".to_owned(), json!(html));
                 }
                 let url = format!(
@@ -338,7 +337,7 @@ impl Interacting {
                     unreserved(&replying.room)
                 );
                 self.authorised(Request::new(Method::Put, SecretText::plain(url)))
-                    .header("Content-Type", SecretText::plain("application/json"))
+                    .header("Content-Type", SecretText::plain(media::JSON))
                     .body(content.to_string())
             })
             .collect()

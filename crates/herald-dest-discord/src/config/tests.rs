@@ -379,7 +379,7 @@ fn the_gateway_is_joined_as_the_bot_and_heard_as_herald_answers_it() {
     let mut session = interacting.session().unwrap();
     assert_eq!(
         session.connect(),
-        Connect::Socket(crate::GATEWAY.to_owned())
+        Connect::Socket(crate::gateway::GATEWAY.to_owned())
     );
     assert_eq!(
         session.unreachable(),

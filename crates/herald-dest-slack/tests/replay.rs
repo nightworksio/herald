@@ -176,7 +176,7 @@ mod replay {
         );
         for said in [
             "Slack refused it with 400: invalid_payload",
-            "Slack refused it with 404: no_service",
+            "Slack refused it with 404: no_service; check the names and ids the config gives",
             "Slack refused it with 410",
         ] {
             assert_eq!(
@@ -240,7 +240,7 @@ mod replay {
             "Slack refused it: missing_scope, as the token lacks chat:write",
             "Slack refused it: an unnamed error",
             "Slack's answer holds no message timestamp",
-            "Slack refused it with 403: invalid_auth",
+            "Slack refused it with 403: invalid_auth; check what herald's credential is allowed to do there",
         ] {
             assert_eq!(
                 send(&bot(), &replay, &Step::Post, &announcement, &bare),

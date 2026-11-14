@@ -18,6 +18,7 @@ use herald_aws::{
 };
 use herald_compose::{Composed, Host as _, Hosting, Left};
 use herald_config::{Config, Uses};
+use herald_core::media;
 use herald_environment::EnvSecrets;
 use herald_flows::{Admission, Inbound, Reply};
 use herald_ports::{Clock as _, Http, Method, Request, Secret, SecretText, Secrets as _};
@@ -56,20 +57,24 @@ struct Handing {
 
 impl Handing {
     /// How the function hands itself work, where Lambda set all it needs.
-    async fn read(vars: &BTreeMap<String, String>) -> Option<Self> {
+    ///
+    /// # Errors
+    ///
+    /// The variable Lambda left unset.
+    async fn read(vars: &BTreeMap<String, String>) -> Result<Self, &'static str> {
         let secrets = EnvSecrets::from_vars(vars.clone());
         let [id, key, token] = CREDENTIALS;
-        let region = vars.get(REGION)?.clone();
-        Some(Self {
-            function: vars.get(FUNCTION)?.clone(),
+        let region = vars.get(REGION).ok_or(REGION)?.clone();
+        Ok(Self {
+            function: vars.get(FUNCTION).ok_or(FUNCTION)?.clone(),
             endpoint: Endpoint::new(
                 SERVICE,
                 &region,
                 configured(SERVICE, |name| vars.get(name).map(String::as_str)),
             ),
             region,
-            access_key_id: secrets.secret(id).await.ok()?,
-            secret_access_key: secrets.secret(key).await.ok()?,
+            access_key_id: secrets.secret(id).await.map_err(|_| id)?,
+            secret_access_key: secrets.secret(key).await.map_err(|_| key)?,
             session_token: secrets.secret(token).await.ok(),
         })
     }
@@ -83,7 +88,7 @@ impl Handing {
         signed(
             request,
             &self.endpoint.canonical(&path),
-            "application/json",
+            media::JSON,
             &[("Invocation-Type", "Event")],
             &Signing {
                 access_key_id: &self.access_key_id,
@@ -252,7 +257,7 @@ impl Function<'_> {
                     self.api
                 )),
             )
-            .header("Content-Type", SecretText::plain("application/json"))
+            .header("Content-Type", SecretText::plain(media::JSON))
             .body(body.to_string().into_bytes());
             if let Err(error) = self.runtime.send(done).await {
                 self.log(&format!("the answer to {id} could not be given: {error}"));
@@ -341,12 +346,12 @@ pub(crate) async fn lambda(
     let lambda = Hosting::Lambda;
     let native = Native::new(vars, connect);
     let composed = Composed::new(native, config, lambda, Uses::Serves, lambda.name()).await?;
-    let handing = match Handing::read(vars).await {
-        Some(handing) => {
+    let (handing, unhanded) = match Handing::read(vars).await {
+        Ok(handing) => {
             let http = connect.reach(handing.endpoint.url())?;
-            Some((handing, http))
+            (Some((handing, http)), None)
         }
-        None => None,
+        Err(unset) => (None, Some(unset)),
     };
     let function = Function {
         composed,
@@ -355,6 +360,11 @@ pub(crate) async fn lambda(
         handing,
         out: RefCell::new(out),
     };
+    if let Some(unset) = unhanded {
+        function.log(&format!(
+            "{unset} is not set, so the work a request leaves is done before the next request is taken rather than handed to the function again"
+        ));
+    }
     Ok(function.run().await)
 }
 

@@ -1,3 +1,4 @@
+use herald_core::status;
 use herald_core::{Announcement, Entry, Facts, Marker, Sent, unreserved};
 use herald_ports::{Http, HttpError};
 use serde_json::Value;
@@ -13,7 +14,7 @@ pub(crate) const UNNAMED: &str = "Discord did not say which user the bot is";
 /// The most pins Discord lists in one page.
 const PINS: u8 = 50;
 /// What Discord answers to unpinning a message no longer there.
-const GONE: u16 = 404;
+const GONE: u16 = status::NOT_FOUND;
 
 /// An answer read, a reason to stop with, or no answer at all.
 type ApiAnswer<T> = Result<Result<T, Sent>, HttpError>;
@@ -52,7 +53,7 @@ async fn pinned_messages<H: Http>(
 ) -> ApiAnswer<Vec<String>> {
     let mut routed_pins = Vec::new();
     let mut before = None;
-    for _ in 0..discord.read_back.pages() {
+    for _ in 0..discord.read_back.get() {
         let path = before.as_deref().map_or_else(
             || format!("/channels/{channel}/messages/pins?limit={PINS}"),
             |at| {

@@ -137,7 +137,7 @@ impl Interactions {
         }
         if !slash_command(&self.command) {
             return Err(format!(
-                "\"{}\" is not a slash command; give one such as \"/herald\": a / and up to 31 lowercase letters, digits, - or _",
+                "\"{}\" is not a slash command; give one such as \"/herald\": a / and up to {SLASH_COMMAND} lowercase letters, digits, - or _",
                 self.command
             ));
         }
@@ -185,9 +185,12 @@ const fn yes() -> bool {
     true
 }
 
+/// The longest name a slash command takes after its `/`.
+const SLASH_COMMAND: usize = 31;
+
 fn slash_command(command: &str) -> bool {
     command.strip_prefix('/').is_some_and(|name| {
-        (1..=31).contains(&name.len())
+        (1..=SLASH_COMMAND).contains(&name.len())
             && name.bytes().all(|byte| {
                 byte.is_ascii_lowercase() || byte.is_ascii_digit() || matches!(byte, b'-' | b'_')
             })

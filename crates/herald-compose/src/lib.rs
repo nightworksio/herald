@@ -28,7 +28,7 @@ pub use conformance::{
     CONFORMANCE_EMPTY, CONFORMANCE_SECRET, CONFORMANCE_VAR, CONFORMS, host_conformance,
 };
 pub use herald_kinds::{KvAt, SqlAt};
-pub use host::{Host, Unoffered, plain};
+pub use host::{Host, UNOFFERED, Unoffered, plain};
 pub use host_request::HostRequest;
 pub use hosting::{Artefact, CRON_SECRET, HOUSEKEPT, Hosting, POLLED};
 pub use kinds::kinds;

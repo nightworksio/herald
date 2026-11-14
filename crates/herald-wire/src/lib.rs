@@ -14,9 +14,6 @@ use herald_core::Size;
 use herald_ports::Response;
 use serde::de::DeserializeOwned;
 
-/// What a server answers to a conditional request when nothing changed.
-pub const NOT_MODIFIED: u16 = 304;
-
 /// The newest releases or versions one poll reads (ADR-0003).
 pub const PAGE: usize = 30;
 
@@ -205,7 +202,7 @@ mod tests {
 
     #[test]
     fn each_error_reads_as_a_sentence() {
-        let errors = [
+        let errors: [(SourceError, &str); 5] = [
             (
                 SourceError::TooLarge {
                     what: "x",
@@ -233,6 +230,13 @@ mod tests {
                     status: 500,
                 },
                 "x was answered with 500",
+            ),
+            (
+                SourceError::Answered {
+                    what: "x",
+                    status: 404,
+                },
+                "x was answered with 404; check the names and ids the config gives",
             ),
         ];
         for (error, sentence) in errors {

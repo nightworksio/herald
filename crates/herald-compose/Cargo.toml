@@ -14,7 +14,7 @@ publish.workspace = true
 conformance = ["dep:herald-testing"]
 
 [dependencies]
-async-lock = { version = "3", default-features = false, features = ["std"] }
+async-lock.workspace = true
 herald-config.workspace = true
 herald-dest-discord.workspace = true
 herald-dest-fediverse.workspace = true
@@ -44,7 +44,7 @@ jiff.workspace = true
 url.workspace = true
 
 [dev-dependencies]
-futures-util = { version = "0.3", default-features = false, features = ["std"] }
+futures-util.workspace = true
 herald-testing.workspace = true
 pollster.workspace = true
 

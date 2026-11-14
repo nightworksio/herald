@@ -8,6 +8,7 @@ mod tests;
 
 use fastly::http::Method;
 use fastly::{Request, Response};
+use herald_core::status;
 use std::io::Read as _;
 
 use herald_compose::{Composed, HostRequest, Hosting, told};
@@ -110,14 +111,20 @@ pub(crate) fn serve() {
             return;
         }
         Err(error) => {
-            refused(refusal(500, format!("herald could not start: {error}")));
+            refused(refusal(
+                status::SERVER_ERROR,
+                format!("herald could not start: {error}"),
+            ));
             return;
         }
     };
     let asked = match asked(request, composed.config().server.body) {
         Ok(asked) => asked,
         Err(error) => {
-            refused(refusal(400, format!("its body could not be read: {error}")));
+            refused(refusal(
+                status::BAD_REQUEST,
+                format!("its body could not be read: {error}"),
+            ));
             return;
         }
     };

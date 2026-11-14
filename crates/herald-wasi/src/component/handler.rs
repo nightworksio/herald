@@ -1,3 +1,4 @@
+use herald_core::status;
 use wasip2::exports::http::incoming_handler::{IncomingRequest, ResponseOutparam};
 use wasip2::http::types::{Fields, IncomingBody, Method, OutgoingBody, OutgoingResponse};
 use wasip2::io::streams::StreamError;
@@ -106,7 +107,7 @@ pub(super) async fn handled(request: IncomingRequest, out: ResponseOutparam) {
         .ok()
         .and_then(|incoming| read(incoming, most))
     else {
-        let refused = refusal(400, "its body could not be read");
+        let refused = refusal(status::BAD_REQUEST, "its body could not be read");
         log_lines(refused.refused.as_deref().map(told::refused));
         respond(out, &refused.reply);
         return;

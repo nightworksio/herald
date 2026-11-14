@@ -3,6 +3,7 @@ use std::collections::BTreeMap;
 use herald_core::{
     Cursor, Draft, Event, Kind, Polled, RELEASE_LINK, prerelease_version, versioned,
 };
+use herald_core::{media, status};
 use herald_ports::{Method, Request, Response, Secret, SecretText};
 use herald_wire::{Reading, SourceError, answered};
 use jiff::Timestamp;
@@ -119,7 +120,7 @@ impl Registry {
     /// nothing changed since the cursor's validators.
     #[must_use]
     pub fn unchanged(response: &Response) -> bool {
-        response.status == herald_wire::NOT_MODIFIED
+        response.status == status::NOT_MODIFIED
     }
 }
 
@@ -161,7 +162,7 @@ impl Package {
                 SecretText::plain(format!("{}/auth/token", self.api)),
             )
             .at_most(docker_hub::TOKEN_ANSWER)
-            .header("Content-Type", SecretText::plain("application/json"))
+            .header("Content-Type", SecretText::plain(media::JSON))
             .identified()
             .sealed_body(body.to_string())
         })
@@ -254,7 +255,7 @@ impl Package {
             SecretText::plain(format!("{}{path}", self.api)),
         )
         .at_most(self.reading.parse)
-        .header("Accept", SecretText::plain("application/json"))
+        .header("Accept", SecretText::plain(media::JSON))
         .identified();
         if let Some(token) = token.filter(|_| self.registry.takes_token()) {
             request = self.authorised(request, token);

@@ -2,6 +2,7 @@ use std::fmt;
 use std::ops::Deref;
 use std::sync::Arc;
 
+use herald_core::status;
 use herald_core::{
     Answering, Asked, DestinationName, Markup, Place, Room, Scheme, SecretRef, Text,
 };
@@ -123,7 +124,7 @@ impl Said {
     #[must_use]
     pub fn ok(body: impl Into<String>) -> Self {
         Self {
-            status: 200,
+            status: status::OK,
             body: body.into(),
         }
     }

@@ -1,8 +1,7 @@
-use herald_ports::{Changed, Parameters, Secret, Sql, Statement, StoreError, Value};
+use herald_ports::{Changed, Parameters, RecordOptions, Sql, Statement, StoreError, Value};
 
 use crate::record_store::RecordStore;
 use crate::records::{Blob, RecordBackend, Wrote};
-use crate::seal::Seal;
 
 /// The layout of the tables this herald keeps records in.
 pub const LAYOUT: i64 = 2;
@@ -105,8 +104,7 @@ pub type SqlStore<S> = RecordStore<SqlRecords<S>>;
 
 impl<S: Sql> SqlRecords<S> {
     /// The store kept in `sql`, in `dialect`, with its tables made where
-    /// they are missing, sealing every record with `key` where there is one
-    /// (ADR-0005).
+    /// they are missing, keeping its records as `options` say (ADR-0005).
     ///
     /// # Errors
     ///
@@ -115,11 +113,11 @@ impl<S: Sql> SqlRecords<S> {
     pub async fn kept(
         sql: S,
         dialect: Dialect,
-        key: Option<Secret>,
+        options: RecordOptions,
     ) -> Result<SqlStore<S>, StoreError> {
         Self::open(sql, dialect)
             .await
-            .map(|records| RecordStore::new(records).sealed(key.map(Seal::new)))
+            .map(|records| RecordStore::new(records).with(options))
     }
 
     /// The records `sql` keeps, in `dialect`, with their tables made where
@@ -318,12 +316,22 @@ mod tests {
     fn a_database_that_cannot_be_reached_keeps_no_store_and_one_that_can_does() {
         let unreachable = ScriptedSql::default().answering(Err(SqlError::unavailable("down")));
         assert_eq!(
-            pollster::block_on(SqlRecords::kept(unreachable, Dialect::Sqlite, None)).err(),
+            pollster::block_on(SqlRecords::kept(
+                unreachable,
+                Dialect::Sqlite,
+                RecordOptions::default()
+            ))
+            .err(),
             Some(StoreError::unavailable(
                 "the database refused the statements: down"
             ))
         );
-        let kept = pollster::block_on(SqlRecords::kept(opened(), Dialect::Postgres, None)).unwrap();
+        let kept = pollster::block_on(SqlRecords::kept(
+            opened(),
+            Dialect::Postgres,
+            RecordOptions::default(),
+        ))
+        .unwrap();
         assert_eq!(Held::ALL.map(|held| kept.holds(held)), [true; 10]);
         assert!(!kept.writes_one_at_a_time());
     }
@@ -333,11 +341,18 @@ mod tests {
         let sealed = pollster::block_on(SqlRecords::kept(
             opened(),
             Dialect::Sqlite,
-            Some(Secret::new("HERALD_STORE_KEY", "k")),
+            RecordOptions {
+                seal: Some(herald_ports::Secret::new("HERALD_STORE_KEY", "k")),
+                ..RecordOptions::default()
+            },
         ))
         .unwrap();
-        let unsealed =
-            pollster::block_on(SqlRecords::kept(opened(), Dialect::Sqlite, None)).unwrap();
+        let unsealed = pollster::block_on(SqlRecords::kept(
+            opened(),
+            Dialect::Sqlite,
+            RecordOptions::default(),
+        ))
+        .unwrap();
         assert!(format!("{sealed:?}").contains("seal: Some("));
         assert!(format!("{unsealed:?}").contains("seal: None"));
     }

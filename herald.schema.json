@@ -284,6 +284,12 @@
         }
       ]
     },
+    "Attempts": {
+      "description": "How many times the store tries a write that lost a race to an unrelated write, 3 by default.",
+      "type": "integer",
+      "maximum": 12,
+      "minimum": 1
+    },
     "AttributeSpec": {
       "description": "One attribute a kind's events carry.",
       "type": "object",
@@ -1080,6 +1086,17 @@
         "name",
         "label"
       ]
+    },
+    "LockLease": {
+      "description": "How long the store's lock holds before it is taken as abandoned, \"10m\" by default and at most \"40m\".",
+      "type": "string",
+      "pattern": "^0*[1-9][0-9]*(ms|[smhdw])$"
+    },
+    "LockPatience": {
+      "description": "How many times a lock with no time to judge its age by is found held, unchanged, before it is taken as abandoned, 10 by default.",
+      "type": "integer",
+      "maximum": 40,
+      "minimum": 1
     },
     "Markers": {
       "description": "`[markers]`: the installation's marker key (ADR-0011).",
@@ -2392,6 +2409,10 @@
           "description": "A SQLite file, on a volume or a persistent disk.",
           "type": "object",
           "properties": {
+            "attempts": {
+              "description": "How many times a write that lost a race to an unrelated write is\ntried.",
+              "$ref": "#/$defs/Attempts"
+            },
             "busy": {
               "description": "How long a transaction waits for another process to let go of the\nfile; 5s where absent.",
               "$ref": "#/$defs/Duration"
@@ -2430,6 +2451,10 @@
           "description": "A Postgres database.",
           "type": "object",
           "properties": {
+            "attempts": {
+              "description": "How many times a write that lost a race to an unrelated write is\ntried.",
+              "$ref": "#/$defs/Attempts"
+            },
             "connect_timeout": {
               "description": "How long making a connection may take; 10s where absent.",
               "$ref": "#/$defs/Duration"
@@ -2473,6 +2498,10 @@
           "description": "Cloudflare D1, through the Worker's binding.",
           "type": "object",
           "properties": {
+            "attempts": {
+              "description": "How many times a write that lost a race to an unrelated write is\ntried.",
+              "$ref": "#/$defs/Attempts"
+            },
             "binding": {
               "description": "The Worker's binding to the database, as `wrangler.toml` names it;\n`HERALD_DB` where absent.",
               "type": "string"
@@ -2507,6 +2536,10 @@
           "description": "The storage of herald's Cloudflare Durable Object, through the\nWorker's binding.",
           "type": "object",
           "properties": {
+            "attempts": {
+              "description": "How many times a write that lost a race to an unrelated write is\ntried.",
+              "$ref": "#/$defs/Attempts"
+            },
             "binding": {
               "description": "The Worker's binding to herald's Durable Object namespace, as\n`wrangler.toml` names it; `HERALD` where absent.",
               "type": "string"
@@ -2545,6 +2578,10 @@
           "description": "Deno KV, on Deno Deploy or wherever a database is opened.",
           "type": "object",
           "properties": {
+            "attempts": {
+              "description": "How many times a write that lost a race to an unrelated write is\ntried.",
+              "$ref": "#/$defs/Attempts"
+            },
             "keep_deliveries": {
               "description": "How long a webhook delivery's id is kept after it was admitted, so a\nreplay of it is refused (ADR-0013); \"7d\" where absent, and at least\n\"3d\", longer than any sender goes on retrying a delivery.",
               "$ref": "#/$defs/Duration"
@@ -2583,6 +2620,10 @@
           "description": "A Fastly KV Store, on Fastly Compute.",
           "type": "object",
           "properties": {
+            "attempts": {
+              "description": "How many times a write that lost a race to an unrelated write is\ntried.",
+              "$ref": "#/$defs/Attempts"
+            },
             "keep_deliveries": {
               "description": "How long a webhook delivery's id is kept after it was admitted, so a\nreplay of it is refused (ADR-0013); \"7d\" where absent, and at least\n\"3d\", longer than any sender goes on retrying a delivery.",
               "$ref": "#/$defs/Duration"
@@ -2610,6 +2651,10 @@
             "store": {
               "description": "The KV Store the service is linked to, by name; `herald` where\nabsent.",
               "type": "string"
+            },
+            "tombstone": {
+              "description": "How long a deleted record's mark is kept before Fastly expires it,\nso a write that read the record before it was deleted fails; \"1h\"\nwhere absent.",
+              "$ref": "#/$defs/Duration"
             }
           },
           "additionalProperties": false,
@@ -2624,6 +2669,10 @@
             "access_key_id": {
               "description": "The secret holding the access key's id; `AWS_ACCESS_KEY_ID` where\nabsent, as a Lambda's role provides it.",
               "$ref": "#/$defs/SecretRef"
+            },
+            "attempts": {
+              "description": "How many times a write that lost a race to an unrelated write is\ntried.",
+              "$ref": "#/$defs/Attempts"
             },
             "endpoint": {
               "description": "The endpoint's base URL, for DynamoDB Local or another endpoint;\nthe region's own where absent.",
@@ -2678,6 +2727,10 @@
             "api": {
               "description": "The API's base URL, for a GitHub Enterprise Server; GitHub's own API\nwhere absent.",
               "type": "string"
+            },
+            "attempts": {
+              "description": "How many times a write that lost a race to an unrelated write is\ntried.",
+              "$ref": "#/$defs/Attempts"
             },
             "branch": {
               "description": "The branch the records are kept on; `herald-state` where absent.",
@@ -2736,6 +2789,10 @@
           "description": "Generations of the GitHub Actions cache.",
           "type": "object",
           "properties": {
+            "attempts": {
+              "description": "How many times a write that lost a race to an unrelated write is\ntried.",
+              "$ref": "#/$defs/Attempts"
+            },
             "keep_deliveries": {
               "description": "How long a webhook delivery's id is kept after it was admitted, so a\nreplay of it is refused (ADR-0013); \"7d\" where absent, and at least\n\"3d\", longer than any sender goes on retrying a delivery.",
               "$ref": "#/$defs/Duration"
@@ -2782,6 +2839,10 @@
               "description": "The API's base URL, for a GitHub Enterprise Server; GitHub's own API\nwhere absent.",
               "type": "string"
             },
+            "attempts": {
+              "description": "How many times a write that lost a race to an unrelated write is\ntried.",
+              "$ref": "#/$defs/Attempts"
+            },
             "keep_deliveries": {
               "description": "How long a webhook delivery's id is kept after it was admitted, so a\nreplay of it is refused (ADR-0013); \"7d\" where absent, and at least\n\"3d\", longer than any sender goes on retrying a delivery.",
               "$ref": "#/$defs/Duration"
@@ -2801,6 +2862,14 @@
             "kind": {
               "type": "string",
               "const": "repo-variables"
+            },
+            "lock_lease": {
+              "description": "How long the store's lock holds before it is taken as abandoned.",
+              "$ref": "#/$defs/LockLease"
+            },
+            "lock_patience": {
+              "description": "How many times a lock with no time to judge its age by is found\nheld, unchanged, before it is taken as abandoned.",
+              "$ref": "#/$defs/LockPatience"
             },
             "repository": {
               "description": "The repository, as `owner/name`; the run's own where absent.",

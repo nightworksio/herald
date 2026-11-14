@@ -4,6 +4,7 @@
 //! `/conformance/postgres` over the Postgres database `HERALD_TEST_POSTGRES`
 //! names.
 
+use herald_core::{media, status};
 use herald_flows::Reply;
 use herald_ports::{Parameters, Secret, Sql as _, SqlError, Statement};
 use herald_records::{Dialect, SqlRecords};
@@ -17,7 +18,7 @@ const URL: &str = "HERALD_TEST_POSTGRES";
 fn plain(status: u16, body: impl Into<String>) -> Reply {
     Reply {
         status,
-        kind: "text/plain; charset=utf-8",
+        kind: media::TEXT,
         body: body.into().into_bytes(),
         retry_after: None,
     }
@@ -45,12 +46,16 @@ async fn conforms(sql: SpinSql, postgres: bool) -> Result<(), String> {
         .await
         .map_err(|failure| failure.to_string())?;
     if postgres {
-        let store = SqlRecords::kept(sql, Dialect::Postgres, None)
-            .await
-            .map_err(|error| error.to_string())?;
+        let store = SqlRecords::kept(
+            sql,
+            Dialect::Postgres,
+            herald_ports::RecordOptions::default(),
+        )
+        .await
+        .map_err(|error| error.to_string())?;
         store_conformance(&store).await
     } else {
-        let store = SqlRecords::kept(sql, Dialect::Sqlite, None)
+        let store = SqlRecords::kept(sql, Dialect::Sqlite, herald_ports::RecordOptions::default())
             .await
             .map_err(|error| error.to_string())?;
         store_conformance(&store).await
@@ -67,13 +72,13 @@ pub(super) async fn answered(path: &str) -> Option<Reply> {
         },
         "/conformance/postgres" => match std::env::var(URL) {
             Ok(url) => SpinSql::Postgres(Secret::new(URL, url)),
-            Err(_) => return Some(plain(500, format!("{URL} is not set"))),
+            Err(_) => return Some(plain(status::SERVER_ERROR, format!("{URL} is not set"))),
         },
         _ => return None,
     };
     let postgres = matches!(sql, SpinSql::Postgres(_));
     Some(match conforms(sql, postgres).await {
-        Ok(()) => plain(200, "conforms"),
-        Err(failure) => plain(500, failure),
+        Ok(()) => plain(status::OK, "conforms"),
+        Err(failure) => plain(status::SERVER_ERROR, failure),
     })
 }

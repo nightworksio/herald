@@ -163,7 +163,7 @@ pub(crate) async fn serving(
     let hosting = hosting(vars);
     let composed = composed(config, vars, connect, hosting, Uses::Serves, hosting.name()).await?;
     let silence = std::time::Duration::try_from(config.server.silence).unwrap_or_default();
-    let sockets = worded(NativeSockets::under(config.session_domains()))?.silent_for(silence);
+    let sockets = worded(NativeSockets::under(config.session_domains(), silence))?;
     let listener = tokio::net::TcpListener::bind(&address)
         .await
         .map_err(|error| format!("herald could not listen on {address}: {error}"))?;

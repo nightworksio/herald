@@ -12,7 +12,7 @@ publish.workspace = true
 [dependencies]
 herald-environment.workspace = true
 herald-native.workspace = true
-futures-util = { version = "0.3", default-features = false, features = ["std"] }
+futures-util.workspace = true
 herald-config.workspace = true
 herald-core.workspace = true
 herald-dest-discord.workspace = true

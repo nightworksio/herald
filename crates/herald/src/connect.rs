@@ -87,7 +87,11 @@ impl<'a> Connector<'a> {
     /// # Errors
     ///
     /// When `base` may not be reached.
-    pub fn reach_within(&self, base: &str, outbound: &Outbound) -> Result<Connection, String> {
+    pub(crate) fn reach_within(
+        &self,
+        base: &str,
+        outbound: &Outbound,
+    ) -> Result<Connection, String> {
         (self.reaching)(base, outbound)
     }
 

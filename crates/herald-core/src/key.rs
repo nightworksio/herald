@@ -5,7 +5,8 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use sha2::{Digest, Sha256};
 
 const DOMAIN: &[u8] = b"herald/key/v1\0";
-const HEX_DIGITS: usize = 64;
+/// How many hex digits a SHA-256 digest is written in.
+pub const SHA256_HEX_DIGITS: usize = 64;
 
 /// A route's stable id, as the config names it.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
@@ -126,7 +127,7 @@ impl FromStr for Key {
         let lowercase = text
             .bytes()
             .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte));
-        if !lowercase || text.len() != HEX_DIGITS {
+        if !lowercase || text.len() != SHA256_HEX_DIGITS {
             return Err(NotAKey);
         }
         unhex(text)

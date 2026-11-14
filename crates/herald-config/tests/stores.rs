@@ -132,7 +132,8 @@ mod stores {
             ConfiguredStore::new(herald_store_fastly_kv::StoreOptions {
                 key: None,
                 store: Some("records".to_owned()),
-                prefix: None
+                prefix: None,
+                tombstone: None
             })
         );
         let refused: Vec<String> = [
@@ -151,10 +152,62 @@ mod stores {
                 "herald.toml:4:1 store.object: unknown field `object`, expected `binding` or `key`",
                 "herald.toml:4:1 store.prefix: unknown field `prefix`, expected one of `binding`, `object`, `key`",
                 "herald.toml:4:1 store.binding: unknown field `binding`, expected one of `path`, `prefix`, `key`",
-                "herald.toml:4:1 store.table: unknown field `table`, expected one of `store`, `prefix`, `key`",
+                "herald.toml:4:1 store.table: unknown field `table`, expected one of `store`, `prefix`, `key`, `tombstone`",
                 "herald.toml:4:1 store.store: unknown field `store`, expected one of `table`, `region`, `endpoint`, `access_key_id`, `secret_access_key`, `session_token`, `key`"
             ]
         );
+    }
+
+    #[test]
+    fn a_store_tries_a_lost_write_3_times_or_as_many_as_it_says_up_to_12() {
+        assert_eq!(kind("sqlite", "").unwrap().attempts.get(), 3);
+        assert_eq!(
+            kind("sqlite", "attempts = 12\n").unwrap().attempts.get(),
+            12
+        );
+        assert_eq!(
+            kind("sqlite", "attempts = 13\n").unwrap_err(),
+            "herald.toml:4:12 store.attempts: attempts makes 1 to 12 attempts, not 13"
+        );
+    }
+
+    #[test]
+    fn a_repo_variables_lock_holds_and_waits_as_long_as_it_says_up_to_four_times_its_default() {
+        let sealed = "token = { secret = \"T\" }\nkey = { secret = \"K\" }\n";
+        let set = kind(
+            "repo-variables",
+            &format!("{sealed}lock_lease = \"40m\"\nlock_patience = 40\n"),
+        )
+        .unwrap();
+        let options = set
+            .store
+            .of::<herald_store_repo_variables::StoreOptions>()
+            .unwrap();
+        assert_eq!(
+            options.lock_lease,
+            herald_store_repo_variables::LockLease::MOST
+        );
+        assert_eq!(options.lock_patience.get(), 40);
+        assert!(
+            kind("repo-variables", &format!("{sealed}lock_lease = \"41m\"\n"))
+                .unwrap_err()
+                .contains("lock_lease holds at most \"40m\", four times its default, not 41m"),
+        );
+        assert!(
+            kind("repo-variables", &format!("{sealed}lock_patience = 41\n"))
+                .unwrap_err()
+                .contains("lock_patience waits for 1 to 40 sightings, not 41"),
+        );
+    }
+
+    #[test]
+    fn a_fastly_kv_store_keeps_a_deleted_record_s_mark_as_long_as_it_says() {
+        let set = kind("fastly-kv", "tombstone = \"2h\"\n").unwrap();
+        let options = set
+            .store
+            .of::<herald_store_fastly_kv::StoreOptions>()
+            .unwrap();
+        assert_eq!(options.tombstone(), jiff::SignedDuration::from_hours(2));
     }
 
     #[test]

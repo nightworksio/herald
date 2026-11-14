@@ -55,7 +55,7 @@ fn a_refusal_stops_the_run_and_says_what_remains() {
     assert_eq!(stopped.code, STOPPED);
     assert_eq!(
         stopped.out,
-        "releases: stopped: Discord refused it with 403: 50013 Missing Permissions. Landed: nothing. The next run sends what remains: post.\n"
+        "releases: stopped: Discord refused it with 403: 50013 Missing Permissions; check what herald's credential is allowed to do there. Landed: nothing. The next run sends what remains: post.\n"
     );
 }
 
@@ -389,7 +389,7 @@ fn a_release_named_by_its_tag_is_announced_in_place_of_the_run_s_event() {
     with_release(&missing, 404, false);
     assert_eq!(
         herald(&evented, &missing, &released).err,
-        "GitHub's release was answered with 404\n"
+        "GitHub's release was answered with 404; check the names and ids the config gives\n"
     );
     let tokened = setup(&CONFIG.replace(
         "repository = \"cli/cli\"",

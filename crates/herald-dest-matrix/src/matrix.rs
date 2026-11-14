@@ -1,3 +1,4 @@
+use herald_core::status;
 use herald_core::{
     Announcement, Bullet, Declined, Emphases, Entry, Escape, Facts, Features, Fences, Heading,
     Limits, Links, Marker, Markup, Measure, MentionRoom, MentionStyle, PinLookups, Pins, Profile,
@@ -9,8 +10,7 @@ use serde_json::Value;
 use crate::options::RouteOptions;
 use crate::read::{UNNAMED, failure, json, read, text};
 use crate::request::{
-    MATRIX_TO, NOT_FOUND, ROUTE, Repin, event, get, pin_target, pinned, pins, repinned, step, with,
-    without,
+    MATRIX_TO, ROUTE, Repin, event, get, pin_target, pinned, pins, repinned, step, with, without,
 };
 
 /// The platform, as herald names it.
@@ -220,7 +220,7 @@ impl Matrix {
         let mut stale = Vec::new();
         for pin in candidates {
             let response = http.send(event(self, pin)).await?;
-            if response.status == NOT_FOUND {
+            if response.status == status::NOT_FOUND {
                 continue;
             }
             if let Some(sent) = failure(&response, self.waits) {

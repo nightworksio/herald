@@ -128,7 +128,7 @@ fn a_waiting_follow_is_approved_or_rejected_and_answered_at_its_inbox() {
     assert_eq!(
         rejected.out,
         format!(
-            "{BO} was turned away from gate\nIts inbox did not take the answer, which was not sent again: the inbox refused it with 403\n"
+            "{BO} was turned away from gate\nIts inbox did not take the answer, which was not sent again: the inbox refused it with 403; check what herald's credential is allowed to do there\n"
         )
     );
     let listed = herald(&setup, &world, &asked("list", None));

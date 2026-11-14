@@ -25,5 +25,5 @@ pub use placement::{Placed, Placement};
 pub use reach::{Posts, Probe, Reach, Reached, Signing, UnreadPosts};
 pub use session::{Connect, Effect, Session};
 pub use setup::{Made, Served, Setup, SetupNeeds, SetupStep, SetupTask};
-pub use source::{Hooked, Poll, Source, SourceConfig, SourceKind, UNHOOKED, Unpolled};
+pub use source::{Hooked, Poll, Source, SourceConfig, SourceKind, Unpolled};
 pub use store::{ConfiguredStore, Offer, StoreConfig, StoreKind};

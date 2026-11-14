@@ -211,7 +211,7 @@ mod gitlab {
                 .release(&cli(), &answer(404, "{}"))
                 .unwrap_err()
                 .to_string(),
-            "GitLab's release was answered with 404"
+            "GitLab's release was answered with 404; check the names and ids the config gives"
         );
         assert_eq!(
             Forge::GitLab.repository(&answer(404, "{}")),

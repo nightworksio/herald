@@ -16,7 +16,7 @@ const CHOICES: u64 = 8;
 /// The flag of a message the asker alone sees.
 const EPHEMERAL: u64 = 64;
 /// The longest message Discord takes, in characters.
-pub const MESSAGE: usize = 2000;
+pub const MESSAGE: usize = 2_000;
 
 impl Interacting {
     fn callback(&self, replying: &Replying, body: String) -> Request {
@@ -40,7 +40,7 @@ impl Interacting {
     /// an endpoint gives in its response, sent where the gateway carried the
     /// interaction.
     #[must_use]
-    pub fn defer(&self, replying: &Replying, public: bool) -> Request {
+    pub(crate) fn defer(&self, replying: &Replying, public: bool) -> Request {
         self.callback(replying, deferred(public))
     }
 
@@ -88,7 +88,7 @@ impl Interacting {
 
 /// The response that answers a ping.
 #[must_use]
-pub fn pong() -> String {
+pub(crate) fn pong() -> String {
     json!({ "type": PONG }).to_string()
 }
 

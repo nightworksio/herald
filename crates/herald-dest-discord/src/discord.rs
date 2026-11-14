@@ -5,6 +5,7 @@ use herald_core::{
 };
 use herald_ports::{Credential, Http, HttpError, Learned, Request};
 
+use crate::interact::MESSAGE;
 use crate::look::Look;
 use crate::options::RouteOptions;
 use crate::read::{failure, read};
@@ -191,7 +192,7 @@ pub fn profile(bot: bool, forum: bool) -> Profile {
         limits: Limits {
             title: 256,
             text: 4096,
-            followup: 2000,
+            followup: MESSAGE,
             thread_name: 100,
         },
         features: Features {

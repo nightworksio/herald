@@ -4,7 +4,7 @@ use serde_json::Value;
 
 use crate::matrix::Matrix;
 use crate::read::{failure, json, text};
-use crate::request::{MARKER, MESSAGE, get, pinned, pins};
+use crate::request::{MARKER, MESSAGE, THREAD, get, pinned, pins};
 
 /// The most events read back from a room's timeline.
 const PAGE: u8 = 100;
@@ -44,7 +44,7 @@ impl<'a, H: Http> MatrixMarkers<'a, H> {
         let room = unreserved(&self.matrix.route.room);
         let mut own = Vec::new();
         let mut from: Option<String> = None;
-        for _ in 0..self.matrix.read_back.pages() {
+        for _ in 0..self.matrix.read_back.get() {
             let path = from.as_deref().map_or_else(
                 || format!("/rooms/{room}/messages?dir=b&limit={PAGE}"),
                 |from| {
@@ -87,7 +87,7 @@ fn carries(event: &Value, marker: &Marker) -> bool {
 
 fn threaded_under(event: &Value, root: &str) -> bool {
     let relation = content(event).get("m.relates_to").unwrap_or(&Value::Null);
-    text(relation, "rel_type") == Some("m.thread") && text(relation, "event_id") == Some(root)
+    text(relation, "rel_type") == Some(THREAD) && text(relation, "event_id") == Some(root)
 }
 
 fn landed(event: &Value) -> Facts {

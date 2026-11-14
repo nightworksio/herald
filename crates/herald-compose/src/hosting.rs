@@ -524,7 +524,7 @@ mod tests {
 
     #[test]
     fn each_platform_s_deploy_files_ask_for_rounds_as_its_host_says() {
-        let shipped: [(Hosting, &str, &[&str]); 4] = [
+        let shipped: [(Hosting, &str, &[&str]); 5] = [
             (
                 Hosting::Worker,
                 "deploy/worker/wrangler.toml",
@@ -548,6 +548,14 @@ mod tests {
                     include_str!("../../../deploy/netlify/functions/housekeep.mjs"),
                 ],
             ),
+            (
+                Hosting::Azure,
+                "deploy/azure",
+                &[
+                    include_str!("../../../deploy/azure/poll/function.json"),
+                    include_str!("../../../deploy/azure/housekeep/function.json"),
+                ],
+            ),
         ];
         for (hosting, path, files) in shipped {
             let asked = matches!(
@@ -557,8 +565,11 @@ mod tests {
             );
             assert!(asked, "{}", hosting.name());
             let text = files.concat();
-            assert!(text.contains("\"*/5 * * * *\""), "{path}");
-            assert!(text.contains("\"17 * * * *\""), "{path}");
+            assert!(text.contains("*/5 * * * *\""), "{path}");
+            assert!(
+                text.contains(" 17 * * * *\"") || text.contains("\"17 * * * *\""),
+                "{path}"
+            );
         }
     }
 

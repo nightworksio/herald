@@ -220,11 +220,13 @@ fn length(text: &str, measure: Measure) -> usize {
 /// `text` within `limit`, cut between graphemes and ended with an ellipsis
 /// where it was cut.
 #[must_use]
-pub fn shortened(text: &str, limit: usize, measure: Measure) -> String {
+pub(crate) fn shortened(text: &str, limit: usize, measure: Measure) -> String {
     if length(text, measure) <= limit {
         return text.to_owned();
     }
-    let room = limit.saturating_sub(length(ELLIPSIS, measure));
+    let Some(room) = limit.checked_sub(length(ELLIPSIS, measure)) else {
+        return String::new();
+    };
     let mut kept = String::new();
     for grapheme in text.graphemes(true) {
         if length(&kept, measure) + length(grapheme, measure) > room {

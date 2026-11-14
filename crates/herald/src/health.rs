@@ -5,14 +5,13 @@ use std::io::Write;
 use std::time::Duration;
 
 use herald_config::Server;
-use herald_core::Address;
+use herald_core::{Address, status};
+use herald_flows::HEALTH;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 
 use super::{STOPPED, say};
 
-/// The path the server answers its health on.
-const HEALTH: &str = "/healthz";
 /// The most of an answer read.
 const MOST: u64 = 16_384;
 
@@ -70,14 +69,14 @@ async fn asked(url: &str, within: Duration) -> Result<(), String> {
         .map_err(|_| format!("no answer within {} ms", within.as_millis()))?
         .map_err(|error| error.to_string())?;
     let line = String::from_utf8_lossy(&answer);
-    let status = line.lines().next().unwrap_or_default();
-    let healthy = status.split(' ').nth(1) == Some("200");
+    let first = line.lines().next().unwrap_or_default();
+    let healthy = first.split(' ').nth(1).and_then(|code| code.parse().ok()) == Some(status::OK);
     if healthy {
         Ok(())
-    } else if status.is_empty() {
+    } else if first.is_empty() {
         Err("it closed without answering".to_owned())
     } else {
-        Err(format!("it answered {status}"))
+        Err(format!("it answered {first}"))
     }
 }
 

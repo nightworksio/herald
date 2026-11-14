@@ -3,7 +3,7 @@ use std::future::{Future, ready};
 
 use fastly::{ConfigStore, SecretStore};
 use herald_compose::{
-    EGRESS_GUARDED, GITHUB_REPOSITORY, Host, KvAt, Reaching, SqlAt, Unoffered, plain,
+    EGRESS_GUARDED, GITHUB_REPOSITORY, Host, KvAt, Reaching, SqlAt, UNOFFERED, Unoffered, plain,
 };
 use herald_crypto::{RingSigner, RingVerifier};
 use herald_environment::SystemClock;
@@ -112,13 +112,13 @@ impl Host for FastlyHost {
     }
 
     fn sql(&self, _: SqlAt<'_>) -> impl Future<Output = Result<Unoffered, String>> {
-        ready(Err("Fastly Compute offers no database".to_owned()))
+        ready(Err(UNOFFERED.to_owned()))
     }
 
     fn kv(&self, at: KvAt<'_>) -> impl Future<Output = Result<FastlyKv, String>> {
         ready(match at {
-            KvAt::FastlyKv(name) => FastlyKv::open(name),
-            KvAt::DenoKv(_) => Err("Fastly Compute offers no Deno KV".to_owned()),
+            KvAt::FastlyKv { store, tombstone } => FastlyKv::open(store, tombstone),
+            KvAt::DenoKv(_) => Err(UNOFFERED.to_owned()),
         })
     }
 }

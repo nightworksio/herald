@@ -23,7 +23,7 @@ mod setup;
 
 pub use config::{KIND, MatrixKind, SCHEME};
 pub use interact::{Interacting, Replying, Synced, UnreadTransaction, accepted};
-pub use interactions::{Interactions, SYNC_WAIT, Via};
+pub use interactions::{Interactions, Via};
 pub use markers::MatrixMarkers;
 pub use matrix::{MARKUP, Matrix, profile};
 pub use options::{DestinationOptions, RouteOptions};

@@ -1,24 +1,18 @@
 use std::sync::{Arc, Mutex, PoisonError};
 
+use herald_core::status;
 use herald_ports::{Http, Method, Response, Secret, StoreError};
 use herald_records::{Blob, RecordBackend, RecordStore, Wrote};
 use herald_wire::github::{self, GITHUB};
-use jiff::{SignedDuration, Timestamp};
+use jiff::Timestamp;
 use serde::Deserialize;
 use serde_json::json;
 
+use crate::lock::{LockLease, LockPatience};
 use crate::name;
 
 /// The most variables GitHub lists in one page.
 const PAGE: usize = 30;
-/// How long a lock holds before it is taken as abandoned.
-const LEASE: SignedDuration = SignedDuration::from_mins(10);
-/// How often a lock with no time to judge its age by is found held,
-/// unchanged, before it is taken as abandoned.
-const PATIENCE: u32 = 10;
-const MISSING: u16 = 404;
-const FORBIDDEN: u16 = 403;
-const EXISTS: u16 = 409;
 
 /// Where the records are kept: a repository's Actions variables, reached
 /// with a token that may write them.
@@ -27,6 +21,8 @@ pub struct RepoVariables {
     api: String,
     repository: String,
     token: Secret,
+    lease: LockLease,
+    patience: LockPatience,
 }
 
 impl RepoVariables {
@@ -38,6 +34,19 @@ impl RepoVariables {
             api: github::api(api),
             repository: repository.to_owned(),
             token,
+            lease: LockLease::DEFAULT,
+            patience: LockPatience::DEFAULT,
+        }
+    }
+
+    /// The variables, their lock held for `lease` and taken as abandoned
+    /// with no time to judge it by once found held `patience` times.
+    #[must_use]
+    pub fn locked(self, lease: LockLease, patience: LockPatience) -> Self {
+        Self {
+            lease,
+            patience,
+            ..self
         }
     }
 
@@ -67,7 +76,7 @@ pub struct VariableRecords<H> {
     variables: RepoVariables,
     http: H,
     holder: String,
-    sighted: Arc<Mutex<Option<(Variable, u32)>>>,
+    sighted: Arc<Mutex<Option<(Variable, usize)>>>,
 }
 
 /// What the lock is found to be.
@@ -98,7 +107,7 @@ struct Listed {
 }
 
 fn answered(response: &Response) -> StoreError {
-    if response.status == FORBIDDEN {
+    if response.status == status::FORBIDDEN {
         return StoreError::unavailable(
             "GitHub answered 403: the token cannot write the repository's variables; give the store a token with the Variables permission",
         );
@@ -107,7 +116,7 @@ fn answered(response: &Response) -> StoreError {
 }
 
 fn done(response: &Response) -> Result<Wrote, StoreError> {
-    if response.succeeded() || response.status == MISSING {
+    if response.succeeded() || response.status == status::NOT_FOUND {
         Ok(Wrote::Written)
     } else {
         Err(answered(response))
@@ -141,7 +150,7 @@ impl<H: Http> VariableRecords<H> {
 
     async fn variable(&self, name: &str) -> Result<Option<(Variable, Response)>, StoreError> {
         let response = self.send(Method::Get, &format!("/{name}"), None).await?;
-        if response.status == MISSING {
+        if response.status == status::NOT_FOUND {
             return Ok(None);
         }
         if !response.succeeded() {
@@ -157,7 +166,7 @@ impl<H: Http> VariableRecords<H> {
         let response = self.send(Method::Post, "", Some(body)).await?;
         match response.status {
             _ if response.succeeded() => Ok(Wrote::Written),
-            EXISTS => Ok(Wrote::Conflict),
+            status::CONFLICT => Ok(Wrote::Conflict),
             _ => Err(answered(&response)),
         }
     }
@@ -180,14 +189,14 @@ impl<H: Http> VariableRecords<H> {
 
     /// What the lock is: abandoned once held longer than its lease, by the
     /// clock of GitHub's own answer, or, where there is no time to judge
-    /// by, once found held and unchanged [`PATIENCE`] times.
+    /// by, once found held and unchanged as many times as its patience.
     async fn lock(&self) -> Result<Lock, StoreError> {
         let Some((lock, response)) = self.variable(name::LOCK).await? else {
             return Ok(Lock::Free);
         };
         let now = response.date();
         let lapsed = if let (Some(created), Some(now)) = (lock.created_at, now) {
-            now.duration_since(created) > LEASE
+            now.duration_since(created) > self.variables.lease.get()
         } else {
             let mut sighted = self.sighted.lock().unwrap_or_else(PoisonError::into_inner);
             let seen = match sighted.take() {
@@ -195,7 +204,7 @@ impl<H: Http> VariableRecords<H> {
                 _ => 1,
             };
             *sighted = Some((lock.clone(), seen));
-            seen >= PATIENCE
+            seen >= self.variables.patience.get()
         };
         Ok(if lapsed {
             Lock::Abandoned(lock)

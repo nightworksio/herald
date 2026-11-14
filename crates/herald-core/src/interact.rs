@@ -12,7 +12,7 @@ use crate::route::{DestinationName, TemplateName};
 
 /// The most projects a destination lists as completions of what a member
 /// typed: Discord's own limit for autocomplete choices.
-pub const MOST_COMPLETIONS: usize = 25;
+pub(crate) const MOST_COMPLETIONS: usize = 25;
 
 /// A command a member gives herald.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Deserialize, JsonSchema)]

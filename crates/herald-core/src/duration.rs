@@ -32,7 +32,7 @@ const WEEK: i64 = 604_800;
 impl Duration {
     /// The pattern the schema holds a length of time to: a number above 0
     /// and its unit.
-    pub const PATTERN: &str = "^0*[1-9][0-9]*(ms|[smhdw])$";
+    pub(crate) const PATTERN: &str = "^0*[1-9][0-9]*(ms|[smhdw])$";
 
     fn parse(text: &str) -> Option<Self> {
         if let Some(number) = text.strip_suffix("ms") {

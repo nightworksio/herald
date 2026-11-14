@@ -2,6 +2,7 @@
 //! part of the server that answers each.
 
 use herald_core::Escaping;
+use herald_core::status;
 use herald_kinds::Endpoint;
 use herald_ports::{Clock, Http, Keyring, Signer, Store, Verifier};
 
@@ -17,7 +18,7 @@ pub const HEALTH: &str = "/healthz";
 /// What the server answers at [`HEALTH`].
 const UP: &str = "herald is up";
 /// Where a forge delivers its webhooks, before the source's name.
-pub const HOOKS: &str = "/hooks/";
+pub(crate) const HOOKS: &str = "/hooks/";
 /// Where apps post their projects' events: `/api/projects/<project>/events`.
 pub const PROJECTS: &str = "/api/projects/";
 /// Where WebFinger is asked.
@@ -34,7 +35,7 @@ const USERS: &str = "/users/";
 #[must_use]
 pub fn uncomposed(method: &str, target: &str, base: &str) -> Option<Reply> {
     let path = target.split_once('?').map_or(target, |(path, _)| path);
-    (method == "GET" && under(base, path) == Some(HEALTH)).then(|| text_reply(200, UP).reply)
+    (method == "GET" && under(base, path) == Some(HEALTH)).then(|| text_reply(status::OK, UP).reply)
 }
 
 /// `path` as herald routes it, where it lies under `base`, the path every
@@ -63,7 +64,7 @@ pub async fn answer<S: Store, C: Clock, G: Signer, V: Verifier, H, P: Http, K: K
         return missing("such path");
     };
     match (inbound.method, path) {
-        ("GET", HEALTH) => text_reply(200, UP),
+        ("GET", HEALTH) => text_reply(status::OK, UP),
         ("GET", WEBFINGER) => fingered(serving.connected, inbound.query),
         ("POST", SHARED_INBOX) => match domain(serving.connected, inbound.host()) {
             Some(audience) => inboxed(serving, inbound, audience).await,

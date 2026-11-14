@@ -36,7 +36,7 @@ pub fn preview(config: &Config, event: &Event, only: Option<&RouteId>) -> Vec<Pr
                 &route.route,
                 &config.templates,
                 &route.profile,
-                env!("CARGO_PKG_VERSION"),
+                herald_core::itself::VERSION,
                 placeholder(),
                 config.kinds.links(event.kind()),
             )

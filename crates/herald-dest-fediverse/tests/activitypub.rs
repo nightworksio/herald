@@ -127,7 +127,7 @@ mod activitypub {
             ),
             (
                 "https://strict.example/users/ana/inbox",
-                Sent::Refused("the inbox refused it with 401".to_owned()),
+                Sent::Refused("the inbox refused it with 401; check the credential herald sends, and that it has not expired".to_owned()),
             ),
             ("https://odd.example:8443/inbox?shared=1", landed),
         ] {
@@ -209,7 +209,26 @@ mod activitypub {
                 &replay,
                 &deliver("https://social.example/inbox")
             ),
-            Sent::Refused("the secret BAD is not a key for this signature".to_owned())
+            Sent::Refused(
+                "the secret BAD is not a key for this signature; give a PKCS#8 private key as PEM"
+                    .to_owned()
+            )
+        );
+        let quoted = ActivityPub::new(
+            DOMAIN,
+            "",
+            Secret::new("HERALD_ACTIVITYPUB_KEY", "the-key"),
+            ActorRouteOptions {
+                actor: "a\"b".to_owned(),
+                ..plain_route()
+            },
+        );
+        assert_eq!(
+            send(&quoted, &replay, &deliver("https://social.example/inbox")),
+            Sent::Refused(
+                "the key id https://herald.example/users/a\"b#main-key holds a quote, which no Signature header can carry; name the actor without one"
+                    .to_owned()
+            )
         );
         replay.finish().unwrap();
         assert_eq!(actor.api(), PUBLIC_BASE);
@@ -561,7 +580,7 @@ mod activitypub {
             pollster::block_on(reached("BAD").document(&FakeSigner))
                 .unwrap_err()
                 .to_string(),
-            "the secret BAD is not a key for this signature"
+            "the secret BAD is not a key for this signature; give a PKCS#8 private key as PEM"
         );
         let finger: serde_json::Value = serde_json::from_str(&actor.finger()).unwrap();
         assert_eq!(finger, webfinger(DOMAIN, DOMAIN, "php-mutation-gate"));

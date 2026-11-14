@@ -21,9 +21,10 @@ spin = ["dep:herald-spin", "dep:herald-store-postgres", "dep:jiff"]
 conformance = ["spin", "dep:herald-records", "dep:herald-testing"]
 
 [target.'cfg(all(target_arch = "wasm32", target_os = "wasi"))'.dependencies]
-futures-util = { version = "0.3", default-features = false, features = ["std"] }
+futures-util.workspace = true
 herald-compose.workspace = true
 herald-config.workspace = true
+herald-core.workspace = true
 herald-crypto.workspace = true
 herald-environment.workspace = true
 herald-flows.workspace = true

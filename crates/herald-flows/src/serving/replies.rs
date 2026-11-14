@@ -3,13 +3,11 @@
 //! leaves.
 
 use herald_core::Scheme;
+use herald_core::{media, status};
 use herald_ports::{Store, StoreError};
 
 use super::jobs::Job;
 use crate::verification::{Rejected, Verified, released};
-
-/// What a reply in words is.
-const TEXT: &str = "text/plain; charset=utf-8";
 
 /// What herald answers a request.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -39,7 +37,7 @@ pub struct Answered {
 
 /// The reply `status` in words: `text`, as plain text.
 pub(crate) fn text_reply(status: u16, text: &str) -> Answered {
-    replied(status, TEXT, text)
+    replied(status, media::TEXT, text)
 }
 
 /// The refusal of a request admitted as `verified` whose body could not be
@@ -55,7 +53,7 @@ pub(crate) async fn unread<S: Store>(
         Ok(()) => reason.to_string(),
         Err(error) => format!("{reason}; {}", unreleased(&error)),
     };
-    refusal(400, reason)
+    refusal(status::BAD_REQUEST, reason)
 }
 
 /// What a delivery that could not be released for `error` is logged as.
@@ -68,8 +66,8 @@ pub(super) fn unreleased(error: &StoreError) -> String {
 /// and `reason` kept for the log (ADR-0007).
 pub fn refusal(status: u16, reason: impl Into<String>) -> Answered {
     let body = match status {
-        409 => "herald has taken this request already",
-        500.. => "herald cannot answer this request now",
+        status::CONFLICT => "herald has taken this request already",
+        status::SERVER_ERROR.. => "herald cannot answer this request now",
         _ => "herald does not take this request",
     };
     Answered {
@@ -82,7 +80,10 @@ pub fn refusal(status: u16, reason: impl Into<String>) -> Answered {
 /// to wait `after`, in whole seconds rounded up.
 #[must_use]
 pub fn busy(after: jiff::SignedDuration) -> Answered {
-    let refused = refusal(503, "the queue has no place for the work it leaves");
+    let refused = refusal(
+        status::UNAVAILABLE,
+        "the queue has no place for the work it leaves",
+    );
     let whole = after
         .as_secs()
         .saturating_add(i64::from(after.subsec_nanos() > 0));
@@ -109,19 +110,22 @@ pub(crate) fn replied(status: u16, kind: &'static str, body: impl Into<Vec<u8>>)
 }
 
 pub(crate) fn missing(what: &str) -> Answered {
-    text_reply(404, &format!("herald serves no {what} here"))
+    text_reply(status::NOT_FOUND, &format!("herald serves no {what} here"))
 }
 
 pub(crate) fn unmethodical() -> Answered {
-    text_reply(405, "herald does not answer this method here")
+    text_reply(
+        status::METHOD_NOT_ALLOWED,
+        "herald does not answer this method here",
+    )
 }
 
 /// The reply to a request `rejected` keeps from its parser.
 pub(crate) fn rejection(rejected: &Rejected) -> Answered {
     let status = match rejected {
-        Rejected::Replayed => 409,
-        Rejected::Unadmitted { .. } | Rejected::Unkept { .. } => 503,
-        _ => 401,
+        Rejected::Replayed => status::CONFLICT,
+        Rejected::Unadmitted { .. } | Rejected::Unkept { .. } => status::UNAVAILABLE,
+        _ => status::UNAUTHORIZED,
     };
     refusal(status, rejected.to_string())
 }

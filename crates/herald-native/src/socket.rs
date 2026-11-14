@@ -12,10 +12,6 @@ use tokio_tungstenite::{Connector, MaybeTlsStream, WebSocketStream};
 
 use crate::http::{BuildError, tls};
 
-/// How long a connection hears nothing before it is pinged where nothing
-/// else is said.
-const SILENCE: Duration = Duration::from_secs(30);
-
 /// `Sockets` over `tokio-tungstenite` with rustls and the Mozilla roots,
 /// opening `wss` connections under the domains it is given alone, and plain
 /// `ws` only on a loopback host (ADR-0007). A connection that hears nothing
@@ -38,24 +34,21 @@ pub struct NativeSocket {
 }
 
 impl NativeSockets {
-    /// Sockets reaching only hosts under `domains`.
+    /// Sockets reaching only hosts under `domains`, each connection pinged
+    /// after `silence` and lost after as long again.
     ///
     /// # Errors
     ///
     /// When TLS cannot be set up.
-    pub fn under<'a>(domains: impl IntoIterator<Item = &'a str>) -> Result<Self, BuildError> {
+    pub fn under<'a>(
+        domains: impl IntoIterator<Item = &'a str>,
+        silence: Duration,
+    ) -> Result<Self, BuildError> {
         Ok(Self {
             reach: SocketReach::under(domains),
             tls: Arc::new(tls(rustls::crypto::ring::default_provider())?),
-            silence: SILENCE,
+            silence,
         })
-    }
-
-    /// These sockets, each connection pinged after `silence` and lost after
-    /// as long again.
-    #[must_use]
-    pub fn silent_for(self, silence: Duration) -> Self {
-        Self { silence, ..self }
     }
 }
 

@@ -69,7 +69,7 @@ fn a_poll_that_stops_says_what_the_next_poll_does() {
     assert!(
         refused
             .out
-            .starts_with("cli: 2 found, 1 new; a route stopped, so the next poll offers them again\ncli v2: releases: stopped: Discord refused it with 403"),
+            .starts_with("cli: 2 found, 1 new; a route stopped, so the next poll offers them again\ncli v2: releases: stopped: Discord refused it with 403: 50013 Missing Permissions; check what herald's credential is allowed to do there"),
         "{}",
         refused.out
     );
@@ -84,7 +84,7 @@ fn a_poll_that_stops_says_what_the_next_poll_does() {
         (unread.code, unread.out.as_str()),
         (
             STOPPED,
-            "cli: stopped: GitHub's repository was answered with 404. The next poll asks again.\n"
+            "cli: stopped: GitHub's repository was answered with 404; check the names and ids the config gives. The next poll asks again.\n"
         )
     );
 }

@@ -147,7 +147,7 @@ fn a_refusal_or_an_unreachable_destination_stops_the_run() {
             landed: Vec::new(),
             remaining: all(),
             reason: Stop::Refused(
-                "Discord refused it with 403: 50013 Missing Permissions".to_owned()
+                "Discord refused it with 403: 50013 Missing Permissions; check what herald's credential is allowed to do there".to_owned()
             ),
         }
     );
@@ -419,7 +419,7 @@ fn a_post_an_earlier_run_attempted_is_not_sent_again_while_the_channel_cannot_be
     assert_eq!(
         reason(&forbidden, "r3"),
         Stop::Unread(
-            "the destination's posts could not be read: Discord refused it with 403: 50001 Missing Access"
+            "the destination's posts could not be read: Discord refused it with 403: 50001 Missing Access; check what herald's credential is allowed to do there"
                 .to_owned()
         )
     );

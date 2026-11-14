@@ -11,7 +11,7 @@ use serde_json::{Value, json};
 use crate::interact::{Interacting, Received};
 
 /// Where a session starts where Discord named nowhere to resume.
-pub const GATEWAY: &str = "wss://gateway.discord.gg/?v=10&encoding=json";
+pub(crate) const GATEWAY: &str = "wss://gateway.discord.gg/?v=10&encoding=json";
 /// What a resumed session's address is asked for.
 const QUERY: &str = "/?v=10&encoding=json";
 /// An event Discord dispatches.
@@ -95,7 +95,7 @@ impl Gateway {
     /// The session, identifying to Discord as running on `os` where it
     /// names one, in place of the host's own.
     #[must_use]
-    pub fn identifying_as(self, os: Option<&str>) -> Self {
+    pub(crate) fn identifying_as(self, os: Option<&str>) -> Self {
         match os {
             Some(os) => Self {
                 os: os.to_owned(),

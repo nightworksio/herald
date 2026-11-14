@@ -3,6 +3,7 @@ use std::future::{Future, ready};
 use std::ops::Deref;
 use std::sync::Arc;
 
+use herald_core::status;
 use herald_core::{Announcement, Chore, Delivery, Entry, Key, Marker, Profile, Sent, Step};
 use herald_ports::{
     Boxed, DynHttp, DynMarkers, DynSigner, HttpError, MarkedThread, Markers, MarkersError, Response,
@@ -142,7 +143,9 @@ impl Probe {
     ) -> Option<Self> {
         let why = match answer {
             Ok(response) if response.succeeded() => return None,
-            Ok(response) if response.refuses_credential() || response.status == NOT_FOUND => {
+            Ok(response)
+                if response.refuses_credential() || response.status == status::NOT_FOUND =>
+            {
                 withheld(response.status)
             }
             Ok(response) => format!("{platform} answered {} when asked", response.status),
@@ -151,10 +154,6 @@ impl Probe {
         Some(Self::Route { key, why })
     }
 }
-
-/// The status of a request for what does not exist, or is hidden from the
-/// credential.
-const NOT_FOUND: u16 = 404;
 
 /// A reached destination of any kind, shared by every route that reaches it.
 #[derive(Clone)]

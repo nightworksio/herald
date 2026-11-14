@@ -16,6 +16,7 @@ mod kv;
 mod learned;
 mod markers;
 mod outbound;
+mod record_options;
 mod secret;
 mod socket;
 mod sql;
@@ -33,9 +34,10 @@ pub use kv::{Kv, KvError, Pair, Stamped, Versionstamp};
 pub use learned::Learned;
 pub use markers::{MarkedThread, Markers, MarkersError, marker};
 pub use outbound::{Outbound, Proxy, Roots};
-pub use secret::{Secret, SecretError, SecretText, Secrets, Segment};
+pub use record_options::RecordOptions;
+pub use secret::{REDACTED, Secret, SecretError, SecretText, Secrets, Segment};
 pub use socket::{Frame, Socket, Sockets};
-pub use sql::{Answers, Changed, Parameters, Sql, SqlError, Statement, Value};
+pub use sql::{Answers, Changed, EXACT_INTEGER, Parameters, Sql, SqlError, Statement, Value};
 pub use store::{
     Admitted, Announcements, Cursors, Deliveries, Held, Inboxes, Keeper, Keeping, Ledger, Notes,
     Outboxed, Pins, Positions, Schedules, Store, StoreError, Subscriptions, Unkept, Version,

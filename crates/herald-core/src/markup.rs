@@ -28,7 +28,7 @@ pub fn convert(markdown: &str, markup: Markup) -> Text {
 /// `markdown` in `markup`, as [`convert`] writes it, with `symbols` where
 /// the markup has none of its own.
 #[must_use]
-pub fn convert_in(markdown: &str, markup: Markup, symbols: Symbols) -> Text {
+pub(crate) fn convert_in(markdown: &str, markup: Markup, symbols: Symbols) -> Text {
     let body = Writer::run(markdown, markup, symbols);
     if !markup.html {
         return Text { body, html: None };

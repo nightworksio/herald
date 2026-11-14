@@ -20,7 +20,7 @@ mod request;
 pub use activitypub::{
     ACTOR_MARKUP, ActivityPub, ActorOptions, ActorRouteOptions, Approve, Audience, FIRST,
     FollowerCaps, InboxActivity, Mode, Policy, SharedList, accept, actor_document, actor_profile,
-    asked, blocked_domains, create, follow_id, note, webfinger,
+    asked, create, follow_id, note, webfinger,
 };
 pub use actor::{
     ActorError, ActorKey, Inboxes, KeyOwner, activity_json, actor_key, actor_of, confirms,

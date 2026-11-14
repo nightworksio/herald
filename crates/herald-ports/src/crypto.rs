@@ -27,7 +27,10 @@ pub enum CryptoError {
 impl fmt::Display for CryptoError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::BadKey { name } => write!(f, "the secret {name} is not a key for this signature"),
+            Self::BadKey { name } => write!(
+                f,
+                "the secret {name} is not a key for this signature; give a PKCS#8 private key as PEM"
+            ),
         }
     }
 }
@@ -77,7 +80,7 @@ mod tests {
                 name: "KEY".to_owned()
             }
             .to_string(),
-            "the secret KEY is not a key for this signature"
+            "the secret KEY is not a key for this signature; give a PKCS#8 private key as PEM"
         );
     }
 }

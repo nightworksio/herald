@@ -384,7 +384,7 @@ fn latest_reply(
     let context = Context {
         event: &event,
         route: &route.route.id,
-        herald: env!("CARGO_PKG_VERSION"),
+        herald: herald_core::itself::VERSION,
     };
     let said = if asked.command == Command::Latest {
         config

@@ -59,9 +59,9 @@ use stores::composed;
 pub const DONE: u8 = 0;
 /// A route stopped part-way, a source waits for the next poll, a chore
 /// waits for the next run, or the run could not start.
-pub const STOPPED: u8 = 1;
+pub(crate) const STOPPED: u8 = 1;
 /// The config has mistakes.
-pub const MISTAKEN: u8 = 2;
+pub(crate) const MISTAKEN: u8 = 2;
 
 /// A GitLab CI job's own token.
 const JOB_TOKEN: &str = "CI_JOB_TOKEN";
@@ -303,6 +303,9 @@ fn read(path: &str) -> Result<Config, String> {
     Ok(config)
 }
 
+/// The secret `herald init` names for the marker key it prints.
+const MARKER_SECRET: &str = "HERALD_MARKER_SECRET";
+
 /// A new marker secret printed once, or why none could be made.
 fn init(secret: Option<String>, out: &mut dyn Write, err: &mut dyn Write) -> u8 {
     let Some(secret) = secret else {
@@ -312,10 +315,12 @@ fn init(secret: Option<String>, out: &mut dyn Write, err: &mut dyn Write) -> u8 
         );
         return STOPPED;
     };
-    say(out, &format!("HERALD_MARKER_SECRET={secret}"));
+    say(out, &format!("{MARKER_SECRET}={secret}"));
     say(
         out,
-        "Store it as the secret HERALD_MARKER_SECRET, and name it in herald.toml as [markers] key = { secret = \"HERALD_MARKER_SECRET\" }. herald prints it only this once.",
+        &format!(
+            "Store it as the secret {MARKER_SECRET}, and name it in herald.toml as [markers] key = {{ secret = \"{MARKER_SECRET}\" }}. herald prints it only this once."
+        ),
     );
     DONE
 }

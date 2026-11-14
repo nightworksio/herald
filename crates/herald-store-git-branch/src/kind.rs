@@ -2,8 +2,7 @@ use std::sync::Arc;
 
 use herald_core::SecretRef;
 use herald_kinds::{GITHUB_TOKEN, Local, Opened, Opening, StoreConfig, StoreKind};
-use herald_ports::Secret;
-use herald_records::Seal;
+use herald_ports::RecordOptions;
 
 use crate::{GitBranch, StoreOptions};
 
@@ -44,7 +43,7 @@ impl StoreConfig for StoreOptions {
     fn open<'s, 'o: 's>(
         &'s self,
         opening: Arc<dyn Opening + 'o>,
-        seal: Option<Secret>,
+        options: RecordOptions,
     ) -> Local<'s, Result<Opened<'o>, String>> {
         Box::pin(async move {
             let repository = opening.repository(self.repository.as_deref())?;
@@ -62,9 +61,7 @@ impl StoreConfig for StoreOptions {
                 self.api.as_deref(),
             );
             let http = opening.connect(branch.api())?;
-            Ok(Opened::Kept(Box::new(
-                branch.store(http).sealed(seal.map(Seal::new)),
-            )))
+            Ok(Opened::Kept(Box::new(branch.store(http).with(options))))
         })
     }
 }

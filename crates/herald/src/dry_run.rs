@@ -5,6 +5,7 @@ use std::future::Future;
 use std::io::Write;
 use std::sync::{Arc, Mutex, PoisonError};
 
+use herald_core::status;
 use herald_ports::{Http, HttpError, Request, Response};
 
 use super::output::say;
@@ -46,7 +47,7 @@ impl Http for Dry {
             .unwrap_or_else(PoisonError::into_inner)
             .push(request.with_body().to_string());
         std::future::ready(Ok(Response {
-            status: 200,
+            status: status::OK,
             headers: Vec::new(),
             body: br#"{"id":"0"}"#.to_vec(),
         }))

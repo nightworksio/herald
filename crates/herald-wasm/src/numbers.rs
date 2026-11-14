@@ -1,7 +1,11 @@
 //! Numbers as they cross between Rust and JavaScript, exactly or not at all.
 
-/// The largest whole number JavaScript counts exactly: `2^53 - 1`.
-const EXACT: f64 = 9_007_199_254_740_991.0;
+use herald_ports::EXACT_INTEGER;
+
+/// The largest whole number JavaScript counts exactly, as a JavaScript
+/// number.
+#[expect(clippy::cast_precision_loss, reason = "2^53 - 1 converts exactly")]
+const EXACT: f64 = EXACT_INTEGER as f64;
 
 /// The whole number `number` is, where it is one JavaScript counts exactly.
 #[must_use]
@@ -21,7 +25,7 @@ pub fn integer(number: f64) -> Option<i64> {
     reason = "a whole number within ±(2^53 - 1) converts exactly"
 )]
 pub fn number(integer: i64) -> Option<f64> {
-    (integer.unsigned_abs() <= 9_007_199_254_740_991).then_some(integer as f64)
+    (integer.unsigned_abs() <= EXACT_INTEGER.unsigned_abs()).then_some(integer as f64)
 }
 
 /// `duration` in whole milliseconds, as a JavaScript number, where it is

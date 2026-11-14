@@ -456,7 +456,7 @@ impl<S: Store, C: Clock, G: Signer, H: Http> Run<'_, S, C, G, H> {
             route,
             templates,
             profile,
-            env!("CARGO_PKG_VERSION"),
+            herald_core::itself::VERSION,
             marks,
             self.kinds.links(event.kind()),
         )

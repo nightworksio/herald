@@ -1,6 +1,6 @@
 use std::fmt;
 
-use herald_core::Problem;
+use herald_core::{Problem, status};
 
 /// Why what a source was handed could not become events.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -43,7 +43,10 @@ impl fmt::Display for SourceError {
             }
             Self::Unreadable { what, reason } => write!(f, "{what} could not be read: {reason}"),
             Self::Invalid { what, problem } => write!(f, "{what} makes no event: {problem}"),
-            Self::Answered { what, status } => write!(f, "{what} was answered with {status}"),
+            Self::Answered { what, status } => match status::remedy(*status) {
+                Some(remedy) => write!(f, "{what} was answered with {status}; {remedy}"),
+                None => write!(f, "{what} was answered with {status}"),
+            },
         }
     }
 }

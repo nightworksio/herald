@@ -245,7 +245,10 @@ fn a_follower_is_kept_though_its_inbox_does_not_take_the_accept() {
     };
     assert_eq!(
         answered,
-        Sent::Refused("the inbox refused it with 403".to_owned())
+        Sent::Refused(
+            "the inbox refused it with 403; check what herald's credential is allowed to do there"
+                .to_owned()
+        )
     );
     assert_eq!(kept(&store).len(), 1);
 }

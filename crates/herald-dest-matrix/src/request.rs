@@ -1,4 +1,5 @@
 use herald_core::{Announcement, Declined, Entry, Sent, Step, Waits, safe_url, unreserved};
+use herald_core::{media, status};
 use herald_ports::{Method, Request, Response, SecretText};
 use serde_json::{Map, Value, json};
 
@@ -11,7 +12,7 @@ pub(crate) const ROUTE: &str = "io.nightworks.herald.route";
 /// (ADR-0011).
 pub(crate) const MARKER: &str = "io.nightworks.herald.marker";
 /// The format of a message's sanitised HTML.
-const HTML: &str = "org.matrix.custom.html";
+pub(crate) const HTML: &str = "org.matrix.custom.html";
 /// Where a mention and a permalink lead, as Matrix clients read them.
 pub(crate) const MATRIX_TO: &str = "https://matrix.to/";
 /// Where the client-server API lies under the homeserver.
@@ -23,8 +24,8 @@ const LOCALPART: &[u8] = b"!$()*+,-./;=?@_~";
 pub(crate) const PINNED_EVENTS: &str = "m.room.pinned_events";
 /// The event a message is.
 pub(crate) const MESSAGE: &str = "m.room.message";
-/// The answer of a homeserver for state a room does not hold.
-pub(crate) const NOT_FOUND: u16 = 404;
+/// The relation of a message in a thread to the message it started under.
+pub(crate) const THREAD: &str = "m.thread";
 
 /// Why Matrix cannot take a step.
 pub(crate) const fn cannot(what: &'static str) -> Declined {
@@ -46,7 +47,7 @@ pub(crate) fn get(matrix: &Matrix, path: &str) -> Request {
 fn put(matrix: &Matrix, path: &str, body: &Value) -> Request {
     let url = format!("{}{CLIENT}{path}", matrix.homeserver);
     authorised(Request::new(Method::Put, SecretText::plain(url)), matrix)
-        .header("Content-Type", SecretText::plain("application/json"))
+        .header("Content-Type", SecretText::plain(media::JSON))
         .body(body.to_string())
 }
 
@@ -156,7 +157,7 @@ fn chunk_content(announcement: &Announcement, index: u32, root: &str, before: &s
         "formatted_body": html,
         "m.mentions": mentioning,
         "m.relates_to": {
-            "rel_type": "m.thread",
+            "rel_type": THREAD,
             "event_id": root,
             "is_falling_back": true,
             "m.in_reply_to": { "event_id": before },
@@ -213,7 +214,7 @@ pub(crate) fn pinned(matrix: &Matrix) -> Request {
 /// The room's pinned events, as `response` holds them, or what the
 /// homeserver's trouble means.
 pub(crate) fn pins(response: &Response, waits: Waits) -> Result<Vec<String>, Sent> {
-    if response.status == NOT_FOUND {
+    if response.status == status::NOT_FOUND {
         return Ok(Vec::new());
     }
     if let Some(sent) = failure(response, waits) {

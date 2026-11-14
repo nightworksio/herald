@@ -43,7 +43,7 @@ fn hashed(bytes: &[u8]) -> String {
 /// The key a day's requests to `service` in `region` are signed with,
 /// derived from `secret`.
 #[must_use]
-pub fn signing_key(secret: &str, day: &str, region: &str, service: &str) -> Vec<u8> {
+pub(crate) fn signing_key(secret: &str, day: &str, region: &str, service: &str) -> Vec<u8> {
     let dated = hmac(format!("AWS4{secret}").as_bytes(), day.as_bytes());
     let regional = hmac(&dated, region.as_bytes());
     let serviced = hmac(&regional, service.as_bytes());

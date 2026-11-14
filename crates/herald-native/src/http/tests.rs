@@ -1,4 +1,5 @@
 use super::*;
+use herald_core::media;
 use tokio::net::TcpListener;
 
 use crate::serving::{answer, serve};
@@ -24,7 +25,7 @@ async fn a_request_is_sent_as_given_and_its_response_read_back() {
         "Authorization",
         SecretText::plain("Bot ").then_secret(Secret::new("TOKEN", "hunter2")),
     )
-    .header("Content-Type", SecretText::plain("application/json"))
+    .header("Content-Type", SecretText::plain(media::JSON))
     .body(r#"{"content":"hi"}"#);
     let response = http(&base).send(request).await.unwrap();
     assert_eq!(response.status, 201);

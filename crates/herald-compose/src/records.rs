@@ -2,11 +2,12 @@ use std::future::Future;
 use std::sync::Arc;
 
 use herald_config::ConfiguredStore;
+use herald_core::Attempts;
 use herald_flows::{Connected, unserved};
 use herald_kinds::{KvAt, Local, Opened, Opening, SqlAt};
 use herald_ports::{
     Clock, DynHttp, DynKv, DynSecrets, DynSql, DynStore, Erased, Http, Keyring, Outbound, Owned,
-    Signer, Store,
+    RecordOptions, Signer, Store,
 };
 
 use crate::host::Host;
@@ -113,7 +114,7 @@ where
 }
 
 /// The store `store` names, opened through `opening`, where it is one of
-/// the kinds in `stores`.
+/// the kinds in `stores`, trying a write that lost a race `attempts` times.
 ///
 /// # Errors
 ///
@@ -121,6 +122,7 @@ where
 pub async fn reached<'o>(
     opening: Arc<dyn Opening + 'o>,
     store: &ConfiguredStore,
+    attempts: Attempts,
     stores: &[&str],
 ) -> Result<OpenedRecords<'o>, String> {
     if !stores.contains(&store.kind()) {
@@ -134,5 +136,8 @@ pub async fn reached<'o>(
         ),
         None => None,
     };
-    store.open(opening, seal).await.map(OpenedRecords::new)
+    store
+        .open(opening, RecordOptions { seal, attempts })
+        .await
+        .map(OpenedRecords::new)
 }

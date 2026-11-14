@@ -256,7 +256,7 @@ fn each_refusal_reads_as_a_sentence() {
             window: Inbound::DEFAULT.replay_window,
         }
         .to_string(),
-        "the request was signed more than 5 minutes from now, so it is taken for a replay"
+        "the request was signed more than 5 minutes from now, so it is taken for a replay; check that the sender's clock and herald's are set right"
     );
 }
 

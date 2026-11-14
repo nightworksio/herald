@@ -4,15 +4,13 @@
 
 use herald_config::{App, Config};
 use herald_core::{Identity, Key, Standing, digest, same};
+use herald_core::{media, status};
 use herald_ports::{Clock, Ledger, Store};
 
 use super::jobs::Job;
 use super::replies::{Answered, refusal, rejection, replied, text_reply};
 use super::{Inbound, Serving};
 use crate::verification::{Rejected, Verified, admitted};
-
-/// The media type of the HTTP API's answers.
-const JSON: &str = "application/json";
 
 /// An app's event posted to `project`: its token and the project are checked
 /// before the event is read, the event is admitted once, and its
@@ -29,11 +27,11 @@ pub(super) async fn posted<S: Store, C: Clock, G, V, H, P, K>(
     let now = serving.ports.clock.now();
     let event = match herald_sources_app::event(name, inbound.body, now, &serving.config.kinds) {
         Ok(event) => event,
-        Err(unread) => return refusal(400, unread.to_string()),
+        Err(unread) => return refusal(status::BAD_REQUEST, unread.to_string()),
     };
     if event.project() != project {
         return refusal(
-            400,
+            status::BAD_REQUEST,
             format!(
                 "the event names the project \"{}\", not \"{project}\"",
                 event.project()
@@ -54,7 +52,7 @@ pub(super) async fn posted<S: Store, C: Clock, G, V, H, P, K>(
     .await
     {
         Ok(()) => Answered {
-            reply: text_reply(202, "herald announces the event").reply,
+            reply: text_reply(status::ACCEPTED, "herald announces the event").reply,
             refused: None,
             job: Some(Job::App {
                 app: name.to_owned(),
@@ -62,7 +60,7 @@ pub(super) async fn posted<S: Store, C: Clock, G, V, H, P, K>(
                 verified,
             }),
         },
-        Err(Rejected::Replayed) => text_reply(200, "herald has this event already"),
+        Err(Rejected::Replayed) => text_reply(status::OK, "herald has this event already"),
         Err(rejected) => rejection(&rejected),
     }
 }
@@ -78,8 +76,11 @@ enum Refused {
 impl Refused {
     fn answered(self) -> Answered {
         match self {
-            Self::Token => refusal(401, "the request presents no token herald knows"),
-            Self::Project => refusal(403, "the token may not announce this project"),
+            Self::Token => refusal(
+                status::UNAUTHORIZED,
+                "the request presents no token herald knows",
+            ),
+            Self::Project => refusal(status::FORBIDDEN, "the token may not announce this project"),
         }
     }
 }
@@ -123,13 +124,13 @@ pub(super) async fn standing<S: Store, C: Clock, G, V, H, P, K>(
         let standing = match serving.ports.store.ledger().entry(&key).await {
             Ok(Some(entry)) => entry.value.standing(now),
             Ok(None) => Standing::Pending,
-            Err(error) => return refusal(503, error.to_string()),
+            Err(error) => return refusal(status::UNAVAILABLE, error.to_string()),
         };
         routes.push((route.as_str(), standing));
     }
     replied(
-        200,
-        JSON,
+        status::OK,
+        media::JSON,
         herald_sources_app::standings(id, project, &routes),
     )
 }

@@ -316,6 +316,8 @@ fn text_is_shortened_between_graphemes_with_an_ellipsis() {
         shortened("👨\u{200d}👩\u{200d}👧 family", 4, Measure::Chars),
         "…"
     );
+    assert_eq!(shortened("long", 0, Measure::Chars), "");
+    assert_eq!(shortened("long", 2, Measure::Bytes), "");
 }
 
 #[test]

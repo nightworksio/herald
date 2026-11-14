@@ -212,7 +212,7 @@ mod replay {
         for _ in 0..3 {
             assert_eq!(
                 unpin(&discord, &replay, &announcement(), &entry),
-                Sent::Refused("Discord refused it with 403: 50001 Missing Access".to_owned())
+                Sent::Refused("Discord refused it with 403: 50001 Missing Access; check what herald's credential is allowed to do there".to_owned())
             );
         }
         replay.finish().unwrap();
@@ -426,7 +426,7 @@ mod replay {
         );
         assert_eq!(
             unpin(&discord, &replay, &earlier, &pinned()),
-            Sent::Refused("Discord refused it with 403: 50013 Missing Permissions".to_owned())
+            Sent::Refused("Discord refused it with 403: 50013 Missing Permissions; check what herald's credential is allowed to do there".to_owned())
         );
         let itself = replacing("1566200000000000001");
         assert_eq!(
@@ -442,8 +442,8 @@ mod replay {
         let discord = bot(CHANNEL, false);
         let refusals = [
             "Discord did not say which user the bot is",
-            "Discord refused it with 401: 0 401: Unauthorized",
-            "Discord refused it with 403: 50001 Missing Access",
+            "Discord refused it with 401: 0 401: Unauthorized; check the credential herald sends, and that it has not expired",
+            "Discord refused it with 403: 50001 Missing Access; check what herald's credential is allowed to do there",
         ];
         for refusal in refusals {
             assert_eq!(
@@ -529,7 +529,7 @@ mod replay {
                 &Step::Post,
                 &Entry::new(announcement().key)
             ),
-            Sent::Refused("Discord refused it with 403: 50013 Missing Permissions".to_owned())
+            Sent::Refused("Discord refused it with 403: 50013 Missing Permissions; check what herald's credential is allowed to do there".to_owned())
         );
         replay.finish().unwrap();
     }
@@ -551,7 +551,7 @@ mod replay {
         assert_eq!(
             pollster::block_on(discord.housekeep(&replay, Chore::Lock, "1566200000000000002"))
                 .unwrap(),
-            Sent::Refused("Discord refused it with 404: 10003 Unknown Channel".to_owned())
+            Sent::Refused("Discord refused it with 404: 10003 Unknown Channel; check the names and ids the config gives".to_owned())
         );
         replay.finish().unwrap();
         assert_eq!(
@@ -706,7 +706,7 @@ mod replay {
             )
             .unwrap_err()
             .to_string(),
-            "the destination's posts could not be read: Discord refused it with 403: 50001 Missing Access"
+            "the destination's posts could not be read: Discord refused it with 403: 50001 Missing Access; check what herald's credential is allowed to do there"
         );
     }
 
@@ -718,7 +718,7 @@ mod replay {
             read_back(&discord, &replay, &marker())
                 .unwrap_err()
                 .to_string(),
-            "the destination's posts could not be read: Discord refused it with 403: 50001 Missing Access"
+            "the destination's posts could not be read: Discord refused it with 403: 50001 Missing Access; check what herald's credential is allowed to do there"
         );
         let nothing = Replay::of(Fixture::default());
         assert_eq!(

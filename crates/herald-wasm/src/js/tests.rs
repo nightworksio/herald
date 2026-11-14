@@ -1,5 +1,3 @@
-use std::fmt::Write as _;
-
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD;
 use herald_compose::{Host as _, KvAt, SqlAt};
@@ -139,19 +137,8 @@ const RSA_SPKI: &str = include_str!("../../../herald-crypto/fixtures/rsa-2048-sp
 const ED25519: &str = include_str!("../../fixtures/ed25519-rfc8410-pkcs8.test.hex");
 const ED25519_SPKI: &str = "MCowBQYDK2VwAyEAGb9ECWmEzf6FQbrBZ9w7lshQhqowtrbLDFw4rXAxZuE=";
 
-fn hex(bytes: &[u8]) -> String {
-    bytes.iter().fold(String::new(), |mut text, byte| {
-        let _ = write!(text, "{byte:02x}");
-        text
-    })
-}
-
 fn unhex(text: &str) -> Vec<u8> {
-    let text = text.trim();
-    (0..text.len())
-        .step_by(2)
-        .map(|index| u8::from_str_radix(&text[index..index + 2], 16).unwrap())
-        .collect()
+    herald_core::unhex(text.trim()).unwrap()
 }
 
 fn pem(der: &[u8]) -> String {
@@ -185,7 +172,7 @@ async fn an_hmac_is_rfc_4231_s_and_verifies_only_for_its_message() {
         .await
         .unwrap();
     assert_eq!(
-        hex(&mac),
+        herald_core::hex(&mac),
         "5bdcc146bf60754e6a042426089575c75a003f089d2739839dec58b964ec3843"
     );
     assert!(
@@ -379,7 +366,15 @@ async fn a_database_the_host_offers_runs_statements_and_one_it_does_not_is_refus
         })
         .await;
     assert_eq!(refused.err().as_deref(), Some("no sqlite here"));
-    assert!(hosted.kv(KvAt::FastlyKv("herald")).await.is_err());
+    assert!(
+        hosted
+            .kv(KvAt::FastlyKv {
+                store: "herald",
+                tombstone: jiff::SignedDuration::from_hours(1)
+            })
+            .await
+            .is_err()
+    );
 }
 
 #[wasm_bindgen_test]
@@ -433,7 +428,7 @@ async fn a_key_value_store_the_host_offers_passes_the_key_value_suite() {
 #[wasm_bindgen_test]
 async fn a_key_value_store_the_host_offers_keeps_every_record_a_store_keeps() {
     let kv = hosted().kv(KvAt::DenoKv(None)).await.unwrap();
-    let store = KvRecords::kept(kv, None, None);
+    let store = KvRecords::kept(kv, None, herald_ports::RecordOptions::default());
     store_conformance(&store).await.unwrap();
 }
 

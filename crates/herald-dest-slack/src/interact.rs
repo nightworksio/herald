@@ -21,8 +21,8 @@ pub const SUBSCRIBE: &str = "herald_subscribe";
 /// The word after a project that asks for the answer to be shown to the
 /// channel.
 const SHARE: &str = "share";
-/// The most text a section block holds.
-pub const SECTION: usize = 3000;
+/// The most characters a section block's text holds.
+pub(crate) const SECTION: usize = 3_000;
 /// The most blocks a message holds.
 const BLOCKS: usize = 50;
 
@@ -126,13 +126,13 @@ impl Interacting {
 
     /// The signing secret requests are checked against, where it is set.
     #[must_use]
-    pub fn signing_secret(&self) -> Option<&Secret> {
+    pub(crate) fn signing_secret(&self) -> Option<&Secret> {
         self.signing.as_ref()
     }
 
     /// The app-level token Socket Mode is opened with, where it is set.
     #[must_use]
-    pub fn app_token(&self) -> Option<&Secret> {
+    pub(crate) fn app_token(&self) -> Option<&Secret> {
         self.app.as_ref()
     }
 

@@ -117,7 +117,12 @@ pub enum KvAt<'a> {
     /// Deno KV: the default database, or the one at a path or URL.
     DenoKv(Option<&'a str>),
     /// A Fastly KV Store, by its name.
-    FastlyKv(&'a str),
+    FastlyKv {
+        /// The KV Store's name.
+        store: &'a str,
+        /// How long a deleted item's mark is kept before Fastly expires it.
+        tombstone: SignedDuration,
+    },
 }
 
 #[cfg(test)]

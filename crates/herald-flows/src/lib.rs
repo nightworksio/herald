@@ -26,7 +26,7 @@ mod poll;
 mod prepare;
 mod preview;
 mod room;
-mod round;
+pub mod round;
 mod serving;
 mod sessions;
 mod trial;
@@ -35,7 +35,6 @@ mod verification;
 pub use announce::{Announced, Outcome, Ports, Stop, announce, announce_within};
 pub use approving::{Decision, decide, followers};
 pub use command_answers::{Answer, completed, deferral, interact, replied};
-pub use command_endpoints::{INTERACTIONS, MATRIX};
 pub use doctor::{
     Cadence, EGRESS_GUARDED, Egress, Findings, Gap, Here, Layer, Memory, Rounds, Tier, doctor,
     egress_guarded, keys, online, secrets, unserved,
@@ -49,8 +48,8 @@ pub use preview::{Previewed, preview};
 pub use room::{Place, Room, Running};
 pub use round::{ROUND_SECRET, Round};
 pub use serving::{
-    Answered, Did, HEALTH, HOOKS, Inbound, Interacted, Job, Reply, Serving, Webhooks, Worked,
-    answer, busy, refusal, uncomposed, unplaced, unworked, work,
+    Answered, Did, HEALTH, Inbound, Interacted, Job, Reply, Serving, Webhooks, Worked, answer,
+    busy, refusal, uncomposed, unplaced, unworked, work,
 };
 pub use sessions::{Sessions, Taker};
 pub use trial::trial;

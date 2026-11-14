@@ -28,7 +28,7 @@ pub use config::{KIND, SCHEME, SlackKind};
 pub use domain::Domain;
 pub use herald_ports::Credential;
 pub use interact::{
-    Interacting, Received, Replying, SECTION, SUBSCRIBE, UnreadCommand, accepted, subscribe_block,
+    Interacting, Received, Replying, SUBSCRIBE, UnreadCommand, accepted, subscribe_block,
 };
 pub use interactions::{Interactions, Subscribe, Via};
 pub use markers::SlackMarkers;

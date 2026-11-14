@@ -30,10 +30,7 @@ fn pem(der: &[u8]) -> String {
 }
 
 fn unhex(text: &str) -> Vec<u8> {
-    (0..text.trim().len())
-        .step_by(2)
-        .map(|index| u8::from_str_radix(&text[index..index + 2], 16).unwrap())
-        .collect()
+    herald_core::unhex(text.trim()).unwrap()
 }
 
 fn sign(algorithm: Algorithm, key: &Secret, message: &[u8]) -> Result<Vec<u8>, CryptoError> {
@@ -241,4 +238,13 @@ fn a_public_key_is_published_as_a_subject_public_key_info() {
             })
         );
     }
+}
+
+#[test]
+fn an_rsa_key_is_parsed_once_and_then_read_from_what_was_kept() {
+    let key = Secret::new("RSA", pem(&unhex(RSA)));
+    let first = rsa_pair(&key).unwrap();
+    let again = rsa_pair(&key).unwrap();
+    assert!(Arc::ptr_eq(&first, &again));
+    assert!(rsa_pair(&Secret::new("RSA", "not a key")).is_none());
 }

@@ -64,7 +64,7 @@ pub trait SourceConfig: fmt::Debug + Send + Sync + Itself {
 }
 
 /// Why a source that takes no webhooks announces nothing from one.
-pub const UNHOOKED: &str = "this source takes no webhooks";
+pub(crate) const UNHOOKED: &str = "this source takes no webhooks";
 
 /// What a webhook delivery asks herald to announce.
 #[derive(Debug, Clone, PartialEq, Eq)]

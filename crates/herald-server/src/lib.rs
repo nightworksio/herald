@@ -25,9 +25,10 @@ use std::time::Duration;
 
 use futures_util::stream::{FuturesUnordered, StreamExt};
 use herald_core::DestinationName;
+use herald_core::{media, status};
 use herald_flows::{
     Answered, Housekept, Inbound, Job, Round, Running, Serving, Sessions, Stop, Swept, Worked,
-    answer, housekeep, poll, refusal, unplaced, unworked, work,
+    answer, housekeep, poll, refusal, round, unplaced, unworked, work,
 };
 use herald_native::TokioTimer as Waiting;
 use herald_ports::{Clock, Http, Keyring, Secret, Signer, Sockets, Store, Verifier};
@@ -55,11 +56,6 @@ pub(crate) const RUN: &str = "server";
 fn named() -> String {
     format!("{RUN}/{}", herald_environment::nonce())
 }
-
-/// What a reply in words is.
-const TEXT: &str = "text/plain; charset=utf-8";
-/// What an answer to a host asking for a round is.
-const JSON: &str = "application/json";
 
 /// What the server heard, for its driver to say.
 #[derive(Debug)]
@@ -342,7 +338,11 @@ where
         && let Some(round) = timers.round(request.uri().path())
     {
         rounds.ran(serving, round).await;
-        return ControlFlow::Break(replied(200, JSON, timers.reply.as_bytes().to_vec()));
+        return ControlFlow::Break(replied(
+            status::OK,
+            media::JSON,
+            timers.reply.as_bytes().to_vec(),
+        ));
     }
     let path = match limits.timers {
         Some(timers) => match timers.within(request.uri().path()) {
@@ -350,7 +350,7 @@ where
             None => {
                 return ControlFlow::Break(sent(
                     rounds,
-                    refusal(404, "its path lies outside the host's prefix"),
+                    refusal(status::NOT_FOUND, "its path lies outside the host's prefix"),
                 ));
             }
         },
@@ -364,11 +364,15 @@ where
         if !Round::allowed(authorization, limits.secret) {
             return ControlFlow::Break(sent(
                 rounds,
-                refusal(401, "a round was asked without its secret"),
+                refusal(status::UNAUTHORIZED, round::unasked()),
             ));
         }
         rounds.ran(serving, round).await;
-        return ControlFlow::Break(replied(200, TEXT, b"the round ran".to_vec()));
+        return ControlFlow::Break(replied(
+            status::OK,
+            media::TEXT,
+            round::RAN.as_bytes().to_vec(),
+        ));
     }
     ControlFlow::Continue(path)
 }
@@ -379,11 +383,14 @@ async fn collected(body: Incoming, limits: Limits<'_>) -> ControlFlow<Answered, 
     let Ok(read) =
         tokio::time::timeout(limits.read, Limited::new(body, limits.body).collect()).await
     else {
-        return ControlFlow::Break(refusal(408, "its body was not sent in time"));
+        return ControlFlow::Break(refusal(
+            status::REQUEST_TIMEOUT,
+            "its body was not sent in time",
+        ));
     };
     let Ok(collected) = read else {
         return ControlFlow::Break(refusal(
-            413,
+            status::CONTENT_TOO_LARGE,
             format!(
                 "its body is larger than [server] body, {} bytes, or could not be read",
                 limits.body

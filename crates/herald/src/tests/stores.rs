@@ -416,13 +416,12 @@ fn a_postgres_store_that_cannot_be_reached_or_read_stops_the_run() {
 
 #[test]
 fn the_native_binary_opens_no_database_or_key_value_store_of_another_platform() {
-    use herald_compose::{Host as _, KvAt, SqlAt};
+    use herald_compose::{Host as _, KvAt, SqlAt, UNOFFERED};
 
     let vars = BTreeMap::new();
     let unreached = |base: &str, _: &herald_ports::Outbound| Err(format!("{base} is out of reach"));
     let connector = Connector::new(&unreached, &unreached);
     let native = stores::Native::new(&vars, &connector);
-    let unhosted = "only a Cloudflare Worker, Deno or Fastly Compute reaches it";
     for at in [
         SqlAt::D1("HERALD_DB"),
         SqlAt::DurableObject {
@@ -432,14 +431,14 @@ fn the_native_binary_opens_no_database_or_key_value_store_of_another_platform() 
     ] {
         assert_eq!(
             pollster::block_on(native.sql(at)).err().as_deref(),
-            Some(unhosted)
+            Some(UNOFFERED)
         );
     }
     assert_eq!(
         pollster::block_on(native.kv(KvAt::DenoKv(None)))
             .err()
             .as_deref(),
-        Some(unhosted)
+        Some(UNOFFERED)
     );
 }
 

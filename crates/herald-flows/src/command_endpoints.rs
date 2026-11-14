@@ -5,6 +5,7 @@
 //! command's work left for after (ADR-0007, ADR-0016).
 
 use herald_core::{Asked, DestinationName, Place, Scheme};
+use herald_core::{media, status};
 use herald_kinds::{Endpoint, Interacted, Post, Read, Replying, Said};
 use herald_ports::{Clock, Keyring, Store, Verifier};
 
@@ -16,11 +17,9 @@ use crate::verification::{Checking, Rejected, Verified, admitted, verified};
 
 /// Where requests carrying commands are posted, before the destination's
 /// name.
-pub const INTERACTIONS: &str = "/interactions/";
+pub(crate) const INTERACTIONS: &str = "/interactions/";
 /// Where a server pushes transactions, before the destination's name.
-pub const MATRIX: &str = "/matrix/";
-/// The media type of every answer an endpoint gives.
-const JSON: &str = "application/json";
+pub(crate) const MATRIX: &str = "/matrix/";
 
 fn job(destination: &DestinationName, asked: Vec<(Asked, Replying)>) -> Job {
     Job::Interact {
@@ -31,7 +30,7 @@ fn job(destination: &DestinationName, asked: Vec<(Asked, Replying)>) -> Job {
 
 /// What a destination's kind says, answered as JSON.
 fn json_reply(said: Said) -> Answered {
-    replied(said.status, JSON, said.body)
+    replied(said.status, media::JSON, said.body)
 }
 
 /// A request to `endpoint` for the destination `name`, at `rest` after its
@@ -140,7 +139,7 @@ async fn answered<S: Store, C: Clock, G, V: Verifier, H, P, K>(
             ))
             .await
         }
-        Read::Refused(reason) => refusal(400, reason),
+        Read::Refused(reason) => refusal(status::BAD_REQUEST, reason),
         Read::Unread(reason) => unread(serving.ports.store, scheme, verified, reason).await,
         Read::Unmethodical => unmethodical(),
         Read::Missing(what) => missing(what),
@@ -165,8 +164,8 @@ async fn completions<S: Store, C, G, V, H, P, K>(
     )
     .await
     {
-        Ok(projects) => replied(200, JSON, interacting.choices(&projects)),
-        Err(error) => refusal(503, unlisted(&error)),
+        Ok(projects) => replied(status::OK, media::JSON, interacting.choices(&projects)),
+        Err(error) => refusal(status::UNAVAILABLE, unlisted(&error)),
     }
 }
 

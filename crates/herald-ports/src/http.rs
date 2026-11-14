@@ -1,6 +1,7 @@
 use std::fmt;
 use std::future::Future;
 
+use herald_core::status;
 use herald_core::{Sent, Waits};
 use jiff::{SignedDuration, Timestamp};
 
@@ -196,8 +197,10 @@ pub const PUBLIC_BASE: &str = "public:";
 /// and its repository (ADR-0003).
 pub const USER_AGENT: &str = concat!(
     "herald/",
-    env!("CARGO_PKG_VERSION"),
-    " (+https://github.com/nightworksio/herald)"
+    herald_core::version!(),
+    " (+",
+    herald_core::repository!(),
+    ")"
 );
 
 /// One response, as a value.
@@ -224,14 +227,14 @@ impl Response {
     /// Whether the status is a success, `2xx`.
     #[must_use]
     pub fn succeeded(&self) -> bool {
-        (200..300).contains(&self.status)
+        status::succeeded(self.status)
     }
 
     /// Whether the status refuses the request's credential: `401`, as it is
     /// not taken, or `403`, as it may not do what the request asks.
     #[must_use]
     pub fn refuses_credential(&self) -> bool {
-        matches!(self.status, 401 | 403)
+        matches!(self.status, status::UNAUTHORIZED | status::FORBIDDEN)
     }
 
     /// When the response was sent, as its `Date` names it.
@@ -300,18 +303,30 @@ impl Response {
         if self.succeeded() {
             return Ok(());
         }
-        let refused = self.refused(who, &said());
-        Err(match named.or_else(|| self.retry_after()) {
+        let refused = self.said(who, &said());
+        let waited = match named.or_else(|| self.retry_after()) {
             Some(wait) => format!("{refused}, and asked to wait {wait:#}"),
             None => refused,
-        })
+        };
+        Err(self.remedied(waited))
     }
 
     fn refused(&self, who: &str, said: &str) -> String {
+        self.remedied(self.said(who, said))
+    }
+
+    fn said(&self, who: &str, said: &str) -> String {
         let status = self.status;
         match said.trim() {
             "" => format!("{who} refused it with {status}"),
             said => format!("{who} refused it with {status}: {said}"),
+        }
+    }
+
+    fn remedied(&self, refused: String) -> String {
+        match status::remedy(self.status) {
+            Some(remedy) => format!("{refused}; {remedy}"),
+            None => refused,
         }
     }
 }
@@ -478,12 +493,15 @@ mod tests {
         assert_eq!(
             status(403, &[]).failure(WAITS, None, "Discord", said),
             Some(Sent::Refused(
-                "Discord refused it with 403: Missing Access".to_owned()
+                "Discord refused it with 403: Missing Access; check what herald's credential is allowed to do there".to_owned()
             ))
         );
         assert_eq!(
             status(404, &[]).failure(WAITS, None, "the inbox", String::new),
-            Some(Sent::Refused("the inbox refused it with 404".to_owned()))
+            Some(Sent::Refused(
+                "the inbox refused it with 404; check the names and ids the config gives"
+                    .to_owned()
+            ))
         );
         assert_eq!(status(204, &[]).failure(WAITS, None, "Discord", said), None);
     }
@@ -498,11 +516,11 @@ mod tests {
         );
         assert_eq!(
             status(429, &[("Retry-After", "3")]).accepted(None, "Slack", said),
-            Err("Slack refused it with 429: slow down, and asked to wait 3s".to_owned())
+            Err("Slack refused it with 429: slow down, and asked to wait 3s; herald sent more than the platform takes at once".to_owned())
         );
         assert_eq!(
             status(429, &[]).accepted(Some(SignedDuration::from_millis(1_500)), "Slack", said),
-            Err("Slack refused it with 429: slow down, and asked to wait 1s 500ms".to_owned())
+            Err("Slack refused it with 429: slow down, and asked to wait 1s 500ms; herald sent more than the platform takes at once".to_owned())
         );
     }
 
@@ -547,7 +565,7 @@ mod tests {
             "Authorization",
             SecretText::plain("Bot ").then_secret(Secret::new("TOKEN", "hunter2")),
         )
-        .header("Content-Type", SecretText::plain("application/json"))
+        .header("Content-Type", SecretText::plain(herald_core::media::JSON))
         .body(r#"{"content":"hi"}"#);
         assert_eq!(
             request.with_body().to_string(),

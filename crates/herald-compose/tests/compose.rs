@@ -214,7 +214,12 @@ mod compose {
 
     fn kept(host: &Arc<Hosting>, store: &str) -> Result<&'static str, String> {
         let config = config(store);
-        let records = pollster::block_on(reached(opener(host), &config.store, &every()))?;
+        let records = pollster::block_on(reached(
+            opener(host),
+            &config.store,
+            config.attempts,
+            &every(),
+        ))?;
         Ok(if records.reads_posts() {
             "posts"
         } else {
@@ -279,7 +284,7 @@ mod compose {
                 "D1(\"DB\")",
                 "DurableObject { binding: \"HERALD\", object: \"herald\" }",
                 "DenoKv(Some(\"/data/kv\"))",
-                "FastlyKv(\"herald\")",
+                "FastlyKv { store: \"herald\", tombstone: 1h }",
             ]
         );
     }
@@ -376,6 +381,7 @@ mod compose {
         let refused = pollster::block_on(reached(
             opener(&host),
             &d1.store,
+            d1.attempts,
             &[herald_store_markers::MarkersKind::NAME],
         ));
         assert_eq!(
@@ -385,7 +391,12 @@ mod compose {
             )
         );
         let cached = config("kind = \"actions-cache\"");
-        let unkept = pollster::block_on(reached(opener(&host), &cached.store, &every()));
+        let unkept = pollster::block_on(reached(
+            opener(&host),
+            &cached.store,
+            cached.attempts,
+            &every(),
+        ));
         assert_eq!(
             unkept.err(),
             Some("ACTIONS_RESULTS_URL is not set; herald reads it from the CI run".to_owned())
@@ -668,7 +679,7 @@ template = "t"
         let unheld = reach(&composed, &asked("POST", "/herald/round/poll", None));
         assert_eq!(
             (unheld.reply.status, unheld.refused.as_deref()),
-            (401, Some("a round was asked without its secret"))
+            (401, Some(herald_flows::round::unasked().as_str()))
         );
         for round in ["poll", "housekeep"] {
             let held = reach(

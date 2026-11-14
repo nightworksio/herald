@@ -18,7 +18,7 @@ use serde::Deserialize;
 
 /// The file a store keeps its records in where its options name none, beside
 /// `herald.toml`.
-pub const FILE: &str = "herald.sqlite";
+pub(crate) const FILE: &str = "herald.sqlite";
 
 /// How long a transaction waits for another process to let go of the file
 /// where the options name no time.

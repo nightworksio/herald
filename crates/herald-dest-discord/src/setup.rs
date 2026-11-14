@@ -177,7 +177,7 @@ mod tests {
                 SetupTask::Commands,
                 &response(403, &json!({ "message": "Missing Access" }))
             ),
-            Err("Discord refused it with 403: Missing Access".to_owned())
+            Err("Discord refused it with 403: Missing Access; check what herald's credential is allowed to do there".to_owned())
         );
         let role = json!({ "id": "523456789012345678", "name": "releases" });
         assert_eq!(

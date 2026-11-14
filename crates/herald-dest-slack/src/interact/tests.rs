@@ -237,7 +237,10 @@ fn slack_taking_an_answer_or_not_is_read_from_its_status() {
     assert_eq!(accepted(&answer(200, "ok")), Ok(()));
     assert_eq!(
         accepted(&answer(404, "expired_url")),
-        Err("Slack refused it with 404: expired_url".to_owned())
+        Err(
+            "Slack refused it with 404: expired_url; check the names and ids the config gives"
+                .to_owned()
+        )
     );
     assert_eq!(
         accepted(&answer(500, "")),

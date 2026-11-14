@@ -7,7 +7,7 @@ use crate::config::Config;
 use crate::kinds::Kinds;
 
 use crate::file::{
-    AnnounceFile, AppFile, HttpFile, KeepFile, KindFile, MarkersFile, RenderFile, RouteFile,
+    AnnounceFile, AppFile, HttpFile, KindFile, MarkersFile, RecordsFile, RenderFile, RouteFile,
     RunFile, ScheduleFile, ServerFile, TemplateFile,
 };
 
@@ -93,7 +93,7 @@ struct Retained<T> {
     #[serde(flatten)]
     options: T,
     #[serde(flatten)]
-    keep: KeepFile,
+    records: RecordsFile,
 }
 
 /// A route to a destination of one kind.

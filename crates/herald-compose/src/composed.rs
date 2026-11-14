@@ -3,6 +3,7 @@ use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 
 use herald_config::{Config, Uses};
+use herald_core::status;
 use herald_flows::{
     Admission, Connected, Housekept, Inbound, Job, Keys, Place, Ports, Room, Round, Running,
     Serving, Sessions, Stop, Swept, Taker, Worked, answer, housekeep, poll, prepare, refusal,
@@ -102,7 +103,13 @@ where
         let records = match keeping {
             Keeping::Stored(hosting) => {
                 let opener = Opener::new(Arc::clone(&host), outbound.clone());
-                reached(Arc::new(opener), &config.store, &hosting.stores()).await?
+                reached(
+                    Arc::new(opener),
+                    &config.store,
+                    config.attempts,
+                    &hosting.stores(),
+                )
+                .await?
             }
             Keeping::Remembered => {
                 OpenedRecords::new(Opened::Kept(Box::new(RecordStore::new(Memory::default()))))
@@ -155,7 +162,7 @@ impl<'o, H: Host + 'o> Composed<'o, H> {
         }
         if inbound.body.len() > self.config.server.body {
             return refusal(
-                413,
+                status::CONTENT_TOO_LARGE,
                 format!(
                     "its body is larger than [server] body, {} bytes",
                     self.config.server.body

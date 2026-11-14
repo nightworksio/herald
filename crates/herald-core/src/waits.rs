@@ -3,6 +3,7 @@ use schemars::JsonSchema;
 use serde::Deserialize;
 
 use crate::duration::Duration;
+use crate::status;
 
 /// How long a destination waits before it sends again, where its platform
 /// answers without naming a wait.
@@ -27,12 +28,8 @@ pub struct WaitOptions {
 }
 
 impl Waits {
-    /// The status a platform answers with when herald sends too often.
-    pub const TOO_MANY: u16 = 429;
-    /// The first status a platform answers with when it is unwell.
-    pub const SERVER: u16 = 500;
     /// The shortest wait a config may set.
-    pub const SHORTEST: SignedDuration = SignedDuration::from_secs(1);
+    pub(crate) const SHORTEST: SignedDuration = SignedDuration::from_secs(1);
     /// The waits where neither the config nor the platform sets any.
     pub const DEFAULT: Self = Self {
         outage: SignedDuration::from_secs(5),
@@ -49,13 +46,17 @@ impl Waits {
         }
     }
 
-    /// How long to wait after an answer of `status`: the wait the answer
-    /// `named`, else this one; none where `status` asks for no wait.
+    /// How long to wait after an answer of `answered`: the wait the answer
+    /// `named`, else this one; none where `answered` asks for no wait.
     #[must_use]
-    pub const fn after(self, status: u16, named: Option<SignedDuration>) -> Option<SignedDuration> {
-        let unnamed = match status {
-            Self::TOO_MANY => self.limited,
-            Self::SERVER.. => self.outage,
+    pub const fn after(
+        self,
+        answered: u16,
+        named: Option<SignedDuration>,
+    ) -> Option<SignedDuration> {
+        let unnamed = match answered {
+            status::TOO_MANY_REQUESTS => self.limited,
+            status::SERVER_ERROR.. => self.outage,
             _ => return None,
         };
         match named {

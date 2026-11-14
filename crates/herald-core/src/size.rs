@@ -24,11 +24,11 @@ impl JsonSchema for Size {
 impl Size {
     /// The pattern the schema holds a size to: a number above 0 and its
     /// unit.
-    pub const PATTERN: &str = "^0*[1-9][0-9]*(KiB|MiB)$";
+    pub(crate) const PATTERN: &str = "^0*[1-9][0-9]*(KiB|MiB)$";
     /// The bytes in a KiB.
-    pub const KIB: usize = 1 << 10;
+    pub(crate) const KIB: usize = 1 << 10;
     /// The bytes in a MiB.
-    pub const MIB: usize = 1 << 20;
+    pub(crate) const MIB: usize = 1 << 20;
 
     fn parse(text: &str) -> Option<Self> {
         let (number, unit) = if let Some(number) = text.strip_suffix("KiB") {

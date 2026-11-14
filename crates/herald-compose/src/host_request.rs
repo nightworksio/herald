@@ -3,7 +3,8 @@
 
 use std::fmt;
 
-use herald_flows::{Admission, Inbound, ROUND_SECRET, Reply, Round, refusal};
+use herald_core::{media, status};
+use herald_flows::{Admission, Inbound, ROUND_SECRET, Reply, Round, refusal, round};
 use herald_ports::Secrets as _;
 
 use crate::answer::Answer;
@@ -12,13 +13,11 @@ use crate::host::Host;
 use crate::reaching::asked_query;
 use crate::told;
 
-const PLAIN: &str = "text/plain; charset=utf-8";
-
 /// A plain text reply.
 fn plain(status: u16, text: &str) -> Reply {
     Reply {
         status,
-        kind: PLAIN,
+        kind: media::TEXT,
         body: text.as_bytes().to_vec(),
         retry_after: None,
     }
@@ -83,14 +82,14 @@ impl<H: Host> Composed<'_, H> {
     pub(crate) async fn round(&self, round: Round, authorization: Option<&str>) -> Answer {
         let secret = self.host().secrets().secret(ROUND_SECRET).await.ok();
         if !Round::allowed(authorization, secret.as_ref()) {
-            return refusal(401, "a round was asked without its secret").into();
+            return refusal(status::UNAUTHORIZED, round::unasked()).into();
         }
         let said = match round {
             Round::Poll => self.poll().await.iter().flat_map(told::polled).collect(),
             Round::Housekeep => told::kept(&self.housekeep().await),
         };
         Answer {
-            reply: plain(200, "the round ran"),
+            reply: plain(status::OK, round::RAN),
             refused: None,
             left: None,
             said,

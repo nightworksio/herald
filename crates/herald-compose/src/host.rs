@@ -74,7 +74,9 @@ pub trait Host: Sync {
 #[derive(Debug)]
 pub struct Unoffered(());
 
-const UNOFFERED: &str = "this host offers none";
+/// Why a host refuses a database or key-value store it does not offer.
+pub const UNOFFERED: &str =
+    "this host offers no such store; herald doctor names the stores it keeps records in";
 
 fn unreached<T: Send>() -> impl Future<Output = Result<T, KvError>> + Send {
     ready(Err(KvError::unavailable(UNOFFERED)))

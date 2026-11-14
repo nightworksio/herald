@@ -11,9 +11,11 @@ mod kind;
 
 pub use kind::RepoVariablesKind;
 
+mod lock;
 mod name;
 mod options;
 mod variables;
 
+pub use lock::{LockLease, LockPatience, LockSightings};
 pub use options::StoreOptions;
 pub use variables::{RepoVariables, RepoVariablesStore, VariableRecords};

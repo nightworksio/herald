@@ -1,10 +1,13 @@
 //! herald's signing and verifying on ring (ADR-0007), for each driver that
 //! compiles it: the native binary, the WASI component and Fastly Compute.
 
+use std::collections::BTreeMap;
 use std::future::{Future, ready};
+use std::sync::{Arc, Mutex, PoisonError};
 
 use herald_keys::{PRIVATE_KEY, Public, pem, subject};
 use herald_ports::{Algorithm, CryptoError, Secret, Signer, Verifier};
+use ring::digest::{SHA256, digest};
 use ring::hmac;
 use ring::rand::SystemRandom;
 use ring::signature::{
@@ -22,6 +25,25 @@ pub struct RingSigner;
 #[derive(Debug, Clone, Copy, Default)]
 pub struct RingVerifier;
 
+/// Each RSA key pair parsed, by the SHA-256 of the PEM it was parsed from,
+/// so a key that signs many deliveries is parsed once.
+static RSA_PAIRS: Mutex<BTreeMap<[u8; 32], Arc<RsaKeyPair>>> = Mutex::new(BTreeMap::new());
+
+/// The RSA key pair the PEM `key` holds, parsed once per process.
+fn rsa_pair(key: &Secret) -> Option<Arc<RsaKeyPair>> {
+    let pem_digest: [u8; 32] = digest(&SHA256, key.expose().as_bytes())
+        .as_ref()
+        .try_into()
+        .ok()?;
+    let mut pairs = RSA_PAIRS.lock().unwrap_or_else(PoisonError::into_inner);
+    if let Some(pair) = pairs.get(&pem_digest) {
+        return Some(Arc::clone(pair));
+    }
+    let pair = Arc::new(RsaKeyPair::from_pkcs8(&pem(key.expose(), PRIVATE_KEY)?).ok()?);
+    pairs.insert(pem_digest, Arc::clone(&pair));
+    Some(pair)
+}
+
 fn signed(algorithm: Algorithm, key: &Secret, message: &[u8]) -> Option<Vec<u8>> {
     match algorithm {
         Algorithm::HmacSha256 => {
@@ -34,7 +56,7 @@ fn signed(algorithm: Algorithm, key: &Secret, message: &[u8]) -> Option<Vec<u8>>
             Some(pair.sign(message).as_ref().to_vec())
         }
         Algorithm::RsaSha256 => {
-            let pair = RsaKeyPair::from_pkcs8(&pem(key.expose(), PRIVATE_KEY)?).ok()?;
+            let pair = rsa_pair(key)?;
             let mut signature = vec![0; pair.public().modulus_len()];
             pair.sign(
                 &RSA_PKCS1_SHA256,
@@ -57,7 +79,7 @@ fn public_half(algorithm: Algorithm, key: &Secret) -> Option<Vec<u8>> {
             Some(subject(Public::Ed25519, pair.public_key().as_ref()))
         }
         Algorithm::RsaSha256 => {
-            let pair = RsaKeyPair::from_pkcs8(&pem(key.expose(), PRIVATE_KEY)?).ok()?;
+            let pair = rsa_pair(key)?;
             Some(subject(Public::Rsa, pair.public().as_ref()))
         }
     }

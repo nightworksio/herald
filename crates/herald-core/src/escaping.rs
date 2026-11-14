@@ -25,7 +25,7 @@ impl Escaping {
 
     /// Every visible ASCII byte kept but those that could end a Markdown
     /// link or open markup, and every other percent-encoded.
-    pub const LINK: Self = Self {
+    pub(crate) const LINK: Self = Self {
         keeps: |byte| byte.is_ascii_graphic() && !b"\"'<>\\^`{|}()[]".contains(&byte),
         mark: '%',
         upper: true,

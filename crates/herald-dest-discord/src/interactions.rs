@@ -110,7 +110,7 @@ impl Interactions {
             }
             (Some(key), _) if !public_key(key) => {
                 return Err(format!(
-                    "\"{key}\" is not a public key; give the 64 hex digits of the application's public key"
+                    "\"{key}\" is not a public key; give the {PUBLIC_KEY_DIGITS} hex digits of the application's public key"
                 ));
             }
             _ => {}
@@ -119,7 +119,7 @@ impl Interactions {
             && !command_name(group)
         {
             return Err(format!(
-                "\"{group}\" cannot name a command; use 1 to 32 lowercase letters, digits, - or _"
+                "\"{group}\" cannot name a command; use 1 to {COMMAND_NAME} lowercase letters, digits, - or _"
             ));
         }
         if let Some(guild) = &self.guild
@@ -190,18 +190,25 @@ impl Subscribe {
     }
 }
 
-/// Whether `id` is written as Discord writes an id: 17 to 20 digits.
+/// How many digits Discord writes an id in.
+const SNOWFLAKE_DIGITS: std::ops::RangeInclusive<usize> = 17..=20;
+/// How many hex digits an application's Ed25519 public key is written in.
+const PUBLIC_KEY_DIGITS: usize = 64;
+/// The longest name a Discord command takes.
+const COMMAND_NAME: usize = 32;
+
+/// Whether `id` is written as Discord writes an id.
 pub(crate) fn snowflake(id: &str) -> bool {
-    (17..=20).contains(&id.len()) && id.bytes().all(|byte| byte.is_ascii_digit())
+    SNOWFLAKE_DIGITS.contains(&id.len()) && id.bytes().all(|byte| byte.is_ascii_digit())
 }
 
 fn public_key(key: &str) -> bool {
-    key.len() == 64 && key.bytes().all(|byte| byte.is_ascii_hexdigit())
+    key.len() == PUBLIC_KEY_DIGITS && key.bytes().all(|byte| byte.is_ascii_hexdigit())
 }
 
 /// Whether `name` may name a Discord command.
 pub(crate) fn command_name(name: &str) -> bool {
-    (1..=32).contains(&name.len())
+    (1..=COMMAND_NAME).contains(&name.len())
         && name.bytes().all(|byte| {
             byte.is_ascii_lowercase() || byte.is_ascii_digit() || matches!(byte, b'-' | b'_')
         })

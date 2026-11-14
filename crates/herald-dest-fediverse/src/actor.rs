@@ -1,13 +1,12 @@
 use std::fmt;
 
+use herald_core::ACTIVITY_JSON;
 use herald_ports::{Method, Request, SecretText};
+
+use crate::activitypub::STREAMS;
 use serde_json::Value;
 use url::{Host, Url};
 
-/// What an ActivityPub server is asked for an actor's document in.
-const ACTIVITY_JSON: &str = "application/activity+json";
-/// The profile of JSON-LD that is `ActivityStreams`.
-const STREAMS: &str = "https://www.w3.org/ns/activitystreams";
 /// The types of the actors whose documents list their keys.
 const ACTORS: [&str; 5] = ["Person", "Service", "Application", "Group", "Organization"];
 

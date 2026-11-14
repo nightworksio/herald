@@ -17,7 +17,7 @@ mod conformance {
         Subscriptions, Written,
     };
     use herald_records::{RecordBackend, Wrote};
-    use herald_store_repo_variables::{RepoVariables, RepoVariablesStore};
+    use herald_store_repo_variables::{LockLease, LockPatience, RepoVariables, RepoVariablesStore};
     use herald_testing::store_conformance;
     use serde_json::{Value, json};
 
@@ -290,6 +290,34 @@ mod conformance {
         let subscribers =
             pollster::block_on(store.subscribers(&DestinationName::new("slack"), "p")).unwrap();
         assert_eq!(subscribers.len(), 35);
+    }
+
+    #[test]
+    fn a_lock_is_taken_as_abandoned_by_the_lease_and_patience_it_is_given() {
+        let entry = Entry::new(key());
+        let locking = |model| {
+            RepoVariables::new("o/r", Secret::new("HERALD_STATE_TOKEN", "t"), None)
+                .locked(
+                    LockLease::new(jiff::SignedDuration::from_mins(4)).unwrap(),
+                    LockPatience::new(1).unwrap(),
+                )
+                .store(
+                    GitHub {
+                        model: Mutex::new(model),
+                    },
+                    THIS_RUN,
+                )
+        };
+        assert_eq!(
+            pollster::block_on(
+                locking(locked(Some("2026-11-01T11:55:00Z"))).put_entry(&entry, None)
+            ),
+            Ok(Written::Written(herald_ports::Version(1)))
+        );
+        assert_eq!(
+            pollster::block_on(locking(locked(None)).put_entry(&entry, None)),
+            Ok(Written::Written(herald_ports::Version(1)))
+        );
     }
 
     #[test]

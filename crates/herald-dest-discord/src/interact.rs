@@ -16,7 +16,8 @@ mod commands;
 mod received;
 mod roles;
 
-pub use answers::{MESSAGE, choices, deferred, pong};
+pub(crate) use answers::pong;
+pub use answers::{MESSAGE, choices, deferred};
 pub use received::{Received, UnreadInteraction};
 pub use roles::{listed, made};
 

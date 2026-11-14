@@ -3,6 +3,9 @@ use std::future::Future;
 
 use zeroize::Zeroizing;
 
+/// What every redacted secret is shown opening with, its name following.
+pub const REDACTED: &str = "«secret:";
+
 /// A secret's value, with the name the config gives it. Its `Debug` prints the
 /// name alone, and it has no `Display`. Two secrets compare equal in time
 /// that does not depend on where their values differ, and a value is
@@ -44,7 +47,7 @@ impl Secret {
     /// How the secret is shown wherever a value would be: `«secret:NAME»`.
     #[must_use]
     pub fn redacted(&self) -> String {
-        format!("«secret:{}»", self.name)
+        format!("{REDACTED}{}»", self.name)
     }
 }
 
