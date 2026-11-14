@@ -98,7 +98,7 @@ async fn admit<S: Store, C: Clock, G, V: Verifier, H, P, K>(
     admitted(
         serving.ports.store,
         serving.admission,
-        scheme,
+        scheme.name,
         &verified,
         now,
     )
@@ -140,7 +140,7 @@ async fn answered<S: Store, C: Clock, G, V: Verifier, H, P, K>(
             .await
         }
         Read::Refused(reason) => refusal(status::BAD_REQUEST, reason),
-        Read::Unread(reason) => unread(serving.ports.store, scheme, verified, reason).await,
+        Read::Unread(reason) => unread(serving.ports.store, scheme.name, verified, reason).await,
         Read::Unmethodical => unmethodical(),
         Read::Missing(what) => missing(what),
     }
@@ -188,7 +188,7 @@ async fn redelivered<S: Store, C: Clock, G, V: Verifier, H, P, K>(
     match admitted(
         serving.ports.store,
         serving.admission,
-        scheme,
+        scheme.name,
         &delivery,
         serving.ports.clock.now(),
     )

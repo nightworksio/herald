@@ -45,7 +45,7 @@ pub(super) async fn posted<S: Store, C: Clock, G, V, H, P, K>(
     match admitted(
         serving.ports.store,
         serving.admission,
-        herald_sources_app::SCHEME,
+        herald_sources_app::ADMITTED,
         &verified,
         now,
     )

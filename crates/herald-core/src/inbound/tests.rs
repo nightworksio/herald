@@ -1,4 +1,4 @@
-use super::fixtures::{ACTIVITYPUB, APP, DISCORD, FORGEJO, GITHUB, GITLAB, MATRIX, SLACK};
+use super::fixtures::{ACTIVITYPUB, DISCORD, FORGEJO, GITHUB, GITLAB, MATRIX, SLACK};
 use super::*;
 use crate::bounds::Inbound;
 
@@ -430,16 +430,7 @@ fn an_unsigned_delivery_header_changes_nothing_a_store_admits() {
 
 #[test]
 fn each_scheme_keeps_its_deliveries_under_its_own_name() {
-    let schemes = [
-        GITHUB,
-        FORGEJO,
-        GITLAB,
-        DISCORD,
-        SLACK,
-        MATRIX,
-        ACTIVITYPUB,
-        APP,
-    ];
+    let schemes = [GITHUB, FORGEJO, GITLAB, DISCORD, SLACK, MATRIX, ACTIVITYPUB];
     assert_eq!(
         schemes.map(|scheme| scheme.name),
         [
@@ -449,30 +440,9 @@ fn each_scheme_keeps_its_deliveries_under_its_own_name() {
             "discord",
             "slack",
             "matrix",
-            "activitypub",
-            "app"
+            "activitypub"
         ]
     );
-}
-
-#[test]
-fn an_app_s_event_is_claimed_by_its_token_and_not_by_a_signature() {
-    assert_eq!(
-        claim(
-            APP,
-            &[("authorization", "Bearer t")],
-            b"{}",
-            now(),
-            &Inbound::DEFAULT
-        ),
-        Err(Refusal::Hashed)
-    );
-    assert_eq!(
-        Refusal::Hashed.to_string(),
-        "an app's request is held by the hash of its token, which no header signs"
-    );
-    assert_eq!(key(APP, "t"), Some(b"t".to_vec()));
-    assert_eq!(key(APP, ""), None);
 }
 
 fn probe(claim: Result<Claim, Refusal>) -> String {

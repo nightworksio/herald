@@ -5,19 +5,14 @@
 use std::collections::BTreeMap;
 use std::fmt;
 
-use herald_core::{
-    Attribute, Draft, Event, KeyForm, Kind, KindSpecs, Problem, Scheme, Signed, Standing,
-};
+use herald_core::{Attribute, Draft, Event, Kind, KindSpecs, Problem, Standing};
 use jiff::Timestamp;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-/// An app's event posted with `Authorization: Bearer <token>`, checked against the hashes `[apps]` keeps.
-pub const SCHEME: Scheme = Scheme {
-    name: "app",
-    signed: Signed::Hashed,
-    key: KeyForm::Bytes,
-};
+/// The namespace a store admits each app's event under, by its identity
+/// (ADR-0013).
+pub const ADMITTED: &str = "app";
 
 /// One event as an app writes it.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, JsonSchema)]

@@ -2,8 +2,7 @@ use std::fmt;
 use std::future::{Future, ready};
 
 use herald_core::{
-    Cursor, DestinationName, Entry, Key, Latest, RouteId, Schedule, Scheme, SourceName, State,
-    Subscription,
+    Cursor, DestinationName, Entry, Key, Latest, RouteId, Schedule, SourceName, State, Subscription,
 };
 use jiff::Timestamp;
 
@@ -305,20 +304,22 @@ pub trait Positions: Sync {
 
 /// The ids of the webhook deliveries it admitted (ADR-0013).
 pub trait Deliveries: Sync {
-    /// Admits the delivery `id` of `scheme`, arriving `at`: fresh the first
-    /// time, and seen every later time until it is released or expires. Two
-    /// admitting the same delivery at once admit one.
+    /// Admits the delivery `id` among those kept under `namespace`, arriving
+    /// `at`: fresh the first time, and seen every later time until it is
+    /// released or expires. Two admitting the same delivery at once admit
+    /// one.
     fn admit(
         &self,
-        scheme: Scheme,
+        namespace: &'static str,
         id: &str,
         at: Timestamp,
     ) -> impl Future<Output = Result<Admitted, StoreError>> + Send;
 
-    /// Forgets the delivery `id` of `scheme`, so it is admitted again.
+    /// Forgets the delivery `id` among those kept under `namespace`, so it
+    /// is admitted again.
     fn release(
         &self,
-        scheme: Scheme,
+        namespace: &'static str,
         id: &str,
     ) -> impl Future<Output = Result<(), StoreError>> + Send;
 
@@ -586,14 +587,18 @@ impl Positions for Unkept {
 impl Deliveries for Unkept {
     fn admit(
         &self,
-        _: Scheme,
+        _: &'static str,
         _: &str,
         _: Timestamp,
     ) -> impl Future<Output = Result<Admitted, StoreError>> + Send {
         ready(Err(Held::Deliveries.unsupported()))
     }
 
-    fn release(&self, _: Scheme, _: &str) -> impl Future<Output = Result<(), StoreError>> + Send {
+    fn release(
+        &self,
+        _: &'static str,
+        _: &str,
+    ) -> impl Future<Output = Result<(), StoreError>> + Send {
         ready(Err(Held::Deliveries.unsupported()))
     }
 

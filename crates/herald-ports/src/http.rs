@@ -636,6 +636,15 @@ mod tests {
     }
 
     #[test]
+    fn a_base_reads_as_its_url_or_as_every_public_address() {
+        assert_eq!(
+            Base::At("https://discord.com/api").to_string(),
+            "https://discord.com/api"
+        );
+        assert_eq!(Base::Public.to_string(), "every public address");
+    }
+
+    #[test]
     fn a_response_finds_its_headers_without_regard_to_case() {
         let response = Response {
             status: 200,

@@ -2,8 +2,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Mutex;
 
 use herald_core::{
-    Cursor, DestinationName, Entry, Key, Latest, RouteId, Schedule, Scheme, SourceName, State,
-    Subscription,
+    Cursor, DestinationName, Entry, Key, Latest, RouteId, Schedule, SourceName, State, Subscription,
 };
 use herald_ports::{
     Admitted, Announcements, Cursors, Deliveries, Held, Inboxes, Keeper, Ledger, Notes, Outboxed,
@@ -221,9 +220,14 @@ impl Positions for FakeStore {
 }
 
 impl Deliveries for FakeStore {
-    async fn admit(&self, scheme: Scheme, id: &str, at: Timestamp) -> Result<Admitted, StoreError> {
+    async fn admit(
+        &self,
+        namespace: &'static str,
+        id: &str,
+        at: Timestamp,
+    ) -> Result<Admitted, StoreError> {
         let mut state = lock(&self.state);
-        let delivery = (scheme.name, id.to_owned());
+        let delivery = (namespace, id.to_owned());
         if state.deliveries.contains_key(&delivery) {
             return Ok(Admitted::Seen);
         }
@@ -231,10 +235,10 @@ impl Deliveries for FakeStore {
         Ok(Admitted::Fresh)
     }
 
-    async fn release(&self, scheme: Scheme, id: &str) -> Result<(), StoreError> {
+    async fn release(&self, namespace: &'static str, id: &str) -> Result<(), StoreError> {
         lock(&self.state)
             .deliveries
-            .remove(&(scheme.name, id.to_owned()));
+            .remove(&(namespace, id.to_owned()));
         Ok(())
     }
 

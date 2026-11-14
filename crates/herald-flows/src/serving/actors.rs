@@ -186,7 +186,7 @@ pub(super) async fn inboxed<S: Store, C: Clock, G, V: Verifier, H, P: Http, K: K
     if let Err(rejected) = admitted(
         serving.ports.store,
         serving.admission,
-        herald_dest_fediverse::ACTOR_SCHEME,
+        herald_dest_fediverse::ACTOR_SCHEME.name,
         &verified,
         now,
     )

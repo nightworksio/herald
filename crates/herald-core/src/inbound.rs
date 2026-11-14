@@ -79,9 +79,6 @@ pub enum Signed {
     /// HTTP Signatures over where the request was sent, claimed by
     /// [`activity_claim`] alone.
     HttpSignature,
-    /// A bearer token checked against the hashes herald keeps, never by a
-    /// claim.
-    Hashed,
 }
 
 /// How the key a scheme is checked with is written.
@@ -187,9 +184,6 @@ pub enum Refusal {
     Misdirected,
     /// An ActivityPub activity was claimed without where it was sent.
     Unaddressed,
-    /// An app's request was claimed by its headers, where its token's hash
-    /// is what holds it.
-    Hashed,
 }
 
 impl fmt::Display for Refusal {
@@ -211,9 +205,6 @@ impl fmt::Display for Refusal {
             Self::Misdirected => f.write_str("the request was signed for another host"),
             Self::Unaddressed => f.write_str(
                 "an ActivityPub activity is claimed with where it was sent, which no header says",
-            ),
-            Self::Hashed => f.write_str(
-                "an app's request is held by the hash of its token, which no header signs",
             ),
         }
     }
@@ -282,7 +273,6 @@ pub fn claim(
             ))
         }
         Signed::HttpSignature => Err(Refusal::Unaddressed),
-        Signed::Hashed => Err(Refusal::Hashed),
         Signed::Bearer { header } => {
             let token = bearer(required(headers, header)?).ok_or(Refusal::Malformed { header })?;
             Ok(Claim {
@@ -649,11 +639,5 @@ pub(crate) mod fixtures {
         name: "activitypub",
         signed: Signed::HttpSignature,
         key: KeyForm::RsaPem,
-    };
-
-    pub(crate) const APP: Scheme = Scheme {
-        name: "app",
-        signed: Signed::Hashed,
-        key: KeyForm::Bytes,
     };
 }

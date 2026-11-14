@@ -18,12 +18,7 @@ mod kept {
     use herald_records::{Blob, RecordBackend, RecordStore, Wrote};
     use herald_testing::store_conformance;
 
-    /// A scheme as its crate writes it, for these tests.
-    const APP: herald_core::Scheme = herald_core::Scheme {
-        name: "app",
-        signed: herald_core::Signed::Hashed,
-        key: herald_core::KeyForm::Bytes,
-    };
+    const APP: &str = "app";
 
     #[derive(Debug, Default)]
     struct Memory {

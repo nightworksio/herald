@@ -2,7 +2,6 @@
 //! with the reason kept for the log (ADR-0007), and the work a reply
 //! leaves.
 
-use herald_core::Scheme;
 use herald_core::{media, status};
 use herald_ports::{Store, StoreError};
 
@@ -40,16 +39,16 @@ pub(crate) fn text_reply(status: u16, text: &str) -> Answered {
     replied(status, media::TEXT, text)
 }
 
-/// The refusal of a request admitted as `verified` whose body could not be
-/// read for `reason`. Its delivery is released first, so the sender's next
+/// The refusal of a request admitted as `verified`, among the deliveries
+/// kept under `namespace`, whose body could not be read for `reason`. Its delivery is released first, so the sender's next
 /// delivery of it is admitted, not refused as a replay (ADR-0013).
 pub(crate) async fn unread<S: Store>(
     store: &S,
-    scheme: Scheme,
+    namespace: &'static str,
     verified: &Verified,
     reason: impl std::fmt::Display,
 ) -> Answered {
-    let reason = match released(store, scheme, verified).await {
+    let reason = match released(store, namespace, verified).await {
         Ok(()) => reason.to_string(),
         Err(error) => format!("{reason}; {}", unreleased(&error)),
     };
