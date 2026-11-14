@@ -81,7 +81,7 @@ pub use ledger::{
 };
 pub use marker::{Marker, Marks};
 pub use markup::{LINK_SCHEMES, Text, convert, escaped, literal};
-pub use members::{Listed, Selection, Visibility};
+pub use members::{Listed, Listing, Membership, Owner, Selection, Visibility};
 pub use pattern::Pattern;
 pub use profile::{
     Bullet, Emphases, Escape, Features, Fences, Heading, Limits, Links, Markup, Measure,

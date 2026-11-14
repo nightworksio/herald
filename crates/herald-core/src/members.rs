@@ -1,9 +1,13 @@
 use std::collections::BTreeMap;
 
-use crate::Glob;
+use jiff::Timestamp;
+use serde::{Deserialize, Serialize};
+
+use crate::{Cursor, Glob};
 
 /// Who may see a repository.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum Visibility {
     /// Anyone.
     Public,
@@ -26,7 +30,7 @@ impl Visibility {
 }
 
 /// One repository an owner's listing names, as its selection reads it.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Listed {
     /// The forge's stable id for it, which a rename keeps.
     pub id: String,
@@ -123,6 +127,42 @@ impl Selection {
             .iter()
             .any(|visibility| *visibility != Visibility::Public)
     }
+}
+
+/// One repository's membership of an owner source, kept with its cursor.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Membership {
+    /// The repository, as its owner's last listing named it.
+    pub repository: Listed,
+    /// When a listing first took it.
+    pub discovered: Timestamp,
+    /// When it left the selection, where it has.
+    pub left: Option<Timestamp>,
+    /// What polling it has seen, once it has been polled.
+    pub cursor: Option<Cursor>,
+}
+
+/// What kind of account owns an owner source's repositories.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Owner {
+    /// An organization, or a GitLab group.
+    Organization,
+    /// A user.
+    User,
+}
+
+/// An owner source's last listing of its repositories.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Listing {
+    /// What kind of account the owner is.
+    pub owner: Owner,
+    /// The `ETag` of each page the listing read, in order.
+    pub pages: Vec<Option<String>>,
+    /// When the source was first listed.
+    pub first: Timestamp,
+    /// When it was last listed in full.
+    pub listed: Timestamp,
 }
 
 #[cfg(test)]

@@ -2,7 +2,8 @@ use std::fmt;
 use std::future::{Future, ready};
 
 use herald_core::{
-    Cursor, DestinationName, Entry, Key, Latest, RouteId, Schedule, SourceName, State, Subscription,
+    Cursor, DestinationName, Entry, Key, Latest, Listing, Membership, RouteId, Schedule,
+    SourceName, State, Subscription,
 };
 use jiff::Timestamp;
 
@@ -205,7 +206,8 @@ pub trait Ledger: Sync {
     ) -> impl Future<Output = Result<Vec<Key>, StoreError>> + Send;
 }
 
-/// Each source's cursor, written with compare-and-set.
+/// Each source's cursor, and each owner source's listing and members,
+/// written with compare-and-set.
 pub trait Cursors: Sync {
     /// The cursor of `source`.
     fn cursor(
@@ -221,6 +223,44 @@ pub trait Cursors: Sync {
         cursor: &Cursor,
         expected: Option<Version>,
     ) -> impl Future<Output = Result<Written, StoreError>> + Send;
+
+    /// The last listing of the owner source `source`.
+    fn listing(
+        &self,
+        source: &SourceName,
+    ) -> impl Future<Output = Result<Option<Versioned<Listing>>, StoreError>> + Send;
+
+    /// Writes the listing of `source` if the stored one is at `expected`,
+    /// or absent when `expected` is `None`.
+    fn put_listing(
+        &self,
+        source: &SourceName,
+        listing: &Listing,
+        expected: Option<Version>,
+    ) -> impl Future<Output = Result<Written, StoreError>> + Send;
+
+    /// Every member the owner source `source` keeps, taken or left.
+    fn members(
+        &self,
+        source: &SourceName,
+    ) -> impl Future<Output = Result<Vec<Versioned<Membership>>, StoreError>> + Send;
+
+    /// Writes the membership of one of `source`'s members if the stored
+    /// one is at `expected`, or absent when `expected` is `None`.
+    fn put_member(
+        &self,
+        source: &SourceName,
+        membership: &Membership,
+        expected: Option<Version>,
+    ) -> impl Future<Output = Result<Written, StoreError>> + Send;
+
+    /// Forgets the member of `source` whose forge id is `id`, and its
+    /// cursor.
+    fn forget_member(
+        &self,
+        source: &SourceName,
+        id: &str,
+    ) -> impl Future<Output = Result<(), StoreError>> + Send;
 }
 
 /// The schedules (ADR-0011), a set: adding or removing one twice is the
@@ -514,6 +554,46 @@ impl Cursors for Unkept {
         _: &Cursor,
         _: Option<Version>,
     ) -> impl Future<Output = Result<Written, StoreError>> + Send {
+        ready(Err(Held::Cursors.unsupported()))
+    }
+
+    fn listing(
+        &self,
+        _: &SourceName,
+    ) -> impl Future<Output = Result<Option<Versioned<Listing>>, StoreError>> + Send {
+        ready(Err(Held::Cursors.unsupported()))
+    }
+
+    fn put_listing(
+        &self,
+        _: &SourceName,
+        _: &Listing,
+        _: Option<Version>,
+    ) -> impl Future<Output = Result<Written, StoreError>> + Send {
+        ready(Err(Held::Cursors.unsupported()))
+    }
+
+    fn members(
+        &self,
+        _: &SourceName,
+    ) -> impl Future<Output = Result<Vec<Versioned<Membership>>, StoreError>> + Send {
+        ready(Err(Held::Cursors.unsupported()))
+    }
+
+    fn put_member(
+        &self,
+        _: &SourceName,
+        _: &Membership,
+        _: Option<Version>,
+    ) -> impl Future<Output = Result<Written, StoreError>> + Send {
+        ready(Err(Held::Cursors.unsupported()))
+    }
+
+    fn forget_member(
+        &self,
+        _: &SourceName,
+        _: &str,
+    ) -> impl Future<Output = Result<(), StoreError>> + Send {
         ready(Err(Held::Cursors.unsupported()))
     }
 }

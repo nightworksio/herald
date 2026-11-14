@@ -1,4 +1,4 @@
-use herald_core::State;
+use herald_core::{Listing, Membership, State};
 use herald_ports::{
     Admitted, Announcements, Cursors, Deliveries, Held, Inboxes, Keeper, Keeping, Keyring,
     KnownKey, Ledger, Notes, Outboxed, Pins, Positions, Schedules, Subscriptions, Versioned,
@@ -23,6 +23,10 @@ enum Fault {
     ExpiresEveryNote,
     RefusesWrites,
     OverwritesCursors,
+    OverwritesMembers,
+    ListsOtherSourcesMembers,
+    KeepsForgottenMembers,
+    ForgetsOtherSourcesMembers,
     DuplicatesSchedules,
     IgnoresProjects,
     KeepsTheFirstSubscription,
@@ -239,6 +243,78 @@ impl Cursors for Faulty {
         };
         let written = self.inner.put_cursor(source, cursor, expected).await?;
         Ok(self.raced(Fault::RacesCursors, source.as_str() == "raced", written))
+    }
+
+    async fn listing(&self, source: &SourceName) -> Result<Option<Versioned<Listing>>, StoreError> {
+        self.refuses()?;
+        self.inner.listing(source).await
+    }
+
+    async fn put_listing(
+        &self,
+        source: &SourceName,
+        listing: &Listing,
+        expected: Option<Version>,
+    ) -> Result<Written, StoreError> {
+        self.refuses()?;
+        self.inner.put_listing(source, listing, expected).await
+    }
+
+    async fn members(&self, source: &SourceName) -> Result<Vec<Versioned<Membership>>, StoreError> {
+        self.refuses()?;
+        let mut held = self.inner.members(source).await?;
+        if self.fault == Fault::ListsOtherSourcesMembers {
+            held.extend(
+                self.inner
+                    .members(&SourceName::new(super::members::OTHER))
+                    .await?,
+            );
+        }
+        Ok(held)
+    }
+
+    async fn put_member(
+        &self,
+        source: &SourceName,
+        membership: &Membership,
+        expected: Option<Version>,
+    ) -> Result<Written, StoreError> {
+        self.refuses()?;
+        let expected = if self.fault == Fault::OverwritesMembers {
+            self.inner
+                .members(source)
+                .await?
+                .into_iter()
+                .find(|kept| kept.value.repository.id == membership.repository.id)
+                .map(|kept| kept.version)
+        } else {
+            expected
+        };
+        self.inner.put_member(source, membership, expected).await
+    }
+
+    async fn forget_member(&self, source: &SourceName, id: &str) -> Result<(), StoreError> {
+        self.refuses()?;
+        match self.fault {
+            Fault::KeepsForgottenMembers => Ok(()),
+            Fault::ForgetsOtherSourcesMembers => {
+                self.inner.forget_member(source, id).await?;
+                for member in self
+                    .inner
+                    .members(&SourceName::new(super::members::OTHER))
+                    .await?
+                {
+                    self.inner
+                        .forget_member(
+                            &SourceName::new(super::members::OTHER),
+                            &member.value.repository.id,
+                        )
+                        .await?;
+                }
+                Ok(())
+            }
+            _ => self.inner.forget_member(source, id).await,
+        }
     }
 }
 
@@ -779,6 +855,28 @@ fn a_store_that_breaks_its_promises_on_the_run_s_records_is_refused() {
         (
             Fault::ForgetsEveryAnnouncement,
             "forgetting one announcement's deliveries forgot another's",
+        ),
+    ]);
+}
+
+#[test]
+fn a_store_that_breaks_its_promises_on_an_owner_source_s_members_is_refused() {
+    refused(&[
+        (
+            Fault::OverwritesMembers,
+            "a member was written over a version it did not expect",
+        ),
+        (
+            Fault::ListsOtherSourcesMembers,
+            "the members listed were not every member written under the source, as written",
+        ),
+        (
+            Fault::KeepsForgottenMembers,
+            "forgetting a member did not forget it alone",
+        ),
+        (
+            Fault::ForgetsOtherSourcesMembers,
+            "forgetting a member forgot another source's",
         ),
     ]);
 }

@@ -3,7 +3,8 @@
 //! does not.
 
 use herald_core::{
-    Cursor, DestinationName, Entry, Key, Latest, RouteId, Schedule, SourceName, State, Subscription,
+    Cursor, DestinationName, Entry, Key, Latest, Listing, Membership, RouteId, Schedule,
+    SourceName, State, Subscription,
 };
 use jiff::Timestamp;
 
@@ -60,6 +61,51 @@ impl<T: Cursors> Cursors for Option<&T> {
         match self {
             Some(kept) => kept.put_cursor(source, cursor, expected).await,
             None => Unkept.put_cursor(source, cursor, expected).await,
+        }
+    }
+
+    async fn listing(&self, source: &SourceName) -> Result<Option<Versioned<Listing>>, StoreError> {
+        match self {
+            Some(kept) => kept.listing(source).await,
+            None => Unkept.listing(source).await,
+        }
+    }
+
+    async fn put_listing(
+        &self,
+        source: &SourceName,
+        listing: &Listing,
+        expected: Option<Version>,
+    ) -> Result<Written, StoreError> {
+        match self {
+            Some(kept) => kept.put_listing(source, listing, expected).await,
+            None => Unkept.put_listing(source, listing, expected).await,
+        }
+    }
+
+    async fn members(&self, source: &SourceName) -> Result<Vec<Versioned<Membership>>, StoreError> {
+        match self {
+            Some(kept) => kept.members(source).await,
+            None => Unkept.members(source).await,
+        }
+    }
+
+    async fn put_member(
+        &self,
+        source: &SourceName,
+        membership: &Membership,
+        expected: Option<Version>,
+    ) -> Result<Written, StoreError> {
+        match self {
+            Some(kept) => kept.put_member(source, membership, expected).await,
+            None => Unkept.put_member(source, membership, expected).await,
+        }
+    }
+
+    async fn forget_member(&self, source: &SourceName, id: &str) -> Result<(), StoreError> {
+        match self {
+            Some(kept) => kept.forget_member(source, id).await,
+            None => Unkept.forget_member(source, id).await,
         }
     }
 }
