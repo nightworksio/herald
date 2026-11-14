@@ -11,6 +11,8 @@ use herald_testing::sample;
 use crate::*;
 
 const RSA: &str = include_str!("../../../herald-crypto/fixtures/rsa-2048-pkcs8.test.hex");
+const ROTATED: &str =
+    include_str!("../../../herald-crypto/fixtures/rsa-2048-pkcs8-rotated.test.hex");
 
 #[derive(Default)]
 struct Kept(Mutex<Option<Request>>);
@@ -27,10 +29,15 @@ impl Http for Kept {
 }
 
 pub(super) fn pkcs8() -> String {
+    armoured(RSA)
+}
+
+fn armoured(hex: &str) -> String {
     use base64::Engine as _;
-    let der: Vec<u8> = (0..RSA.trim().len())
+    let hex = hex.trim();
+    let der: Vec<u8> = (0..hex.len())
         .step_by(2)
-        .map(|index| u8::from_str_radix(&RSA[index..index + 2], 16).unwrap())
+        .map(|index| u8::from_str_radix(&hex[index..index + 2], 16).unwrap())
         .collect();
     format!(
         "-----BEGIN PRIVATE KEY-----\n{}\n-----END PRIVATE KEY-----\n",
@@ -57,7 +64,7 @@ fn a_delivery_herald_signs_is_one_its_own_inbox_takes_under_the_key_its_actor_pu
     let kept = Kept::default();
     let sent = pollster::block_on(actor.send(
         &kept,
-        &RingSigner,
+        &RingSigner::default(),
         now,
         &Step::Deliver("https://social.example:8443/inbox".to_owned()),
         &announcement,
@@ -92,7 +99,8 @@ fn a_delivery_herald_signs_is_one_its_own_inbox_takes_under_the_key_its_actor_pu
         claim.signer.as_deref(),
         Some("https://herald.example/users/php-mutation-gate#main-key")
     );
-    let published = pollster::block_on(RingSigner.public(Algorithm::RsaSha256, &secret)).unwrap();
+    let published =
+        pollster::block_on(RingSigner::default().public(Algorithm::RsaSha256, &secret)).unwrap();
     let public = key(herald_dest_fediverse::ACTOR_SCHEME, &public_pem(&published)).unwrap();
     let holds = |body: &[u8]| {
         claim.signatures.iter().any(|signature| {
@@ -189,7 +197,7 @@ fn doctor_loads_the_actor_s_key_where_it_is_set() {
         unset.out
     );
     let public = public_pem(
-        &pollster::block_on(herald_crypto::RingSigner.public(
+        &pollster::block_on(herald_crypto::RingSigner::default().public(
             Algorithm::RsaSha256,
             &Secret::new("HERALD_ACTIVITYPUB_KEY", pkcs8()),
         ))
@@ -212,4 +220,30 @@ fn a_run_whose_actor_key_cannot_sign_sends_nothing() {
     );
     assert_eq!(ran.code, STOPPED, "{}", ran.out);
     assert!(ran.err.contains(UNKEYED), "{}", ran.err);
+}
+
+#[test]
+fn each_composition_signs_with_the_key_its_config_names_when_it_is_composed() {
+    use herald_compose::Host as _;
+    use herald_ports::Secrets as _;
+
+    let connector = Connector::new(&|_, _| Err(String::new()), &|_, _| Err(String::new()));
+    let composed = |hex: &str| {
+        let vars = BTreeMap::from([("HERALD_ACTIVITYPUB_KEY".to_owned(), armoured(hex))]);
+        let native = crate::stores::Native::new(&vars, &connector);
+        let key = pollster::block_on(native.secrets().secret("HERALD_ACTIVITYPUB_KEY")).unwrap();
+        let signer = native.signer();
+        let signature = pollster::block_on(signer.sign(Algorithm::RsaSha256, &key, b"note"));
+        let public = pollster::block_on(signer.public(Algorithm::RsaSha256, &key));
+        (signature.unwrap(), public.unwrap())
+    };
+    let (_, before) = composed(RSA);
+    let (signature, after) = composed(ROTATED);
+    assert_ne!(before, after);
+    let holds = |published: &[u8]| {
+        let key = key(herald_dest_fediverse::ACTOR_SCHEME, &public_pem(published)).unwrap();
+        pollster::block_on(RingVerifier.verify(Algorithm::RsaSha256, &key, b"note", &signature))
+    };
+    assert!(holds(&after));
+    assert!(!holds(&before));
 }

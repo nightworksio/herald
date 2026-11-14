@@ -20,6 +20,7 @@ herald-flows.workspace = true
 herald-keys.workspace = true
 herald-ports.workspace = true
 jiff.workspace = true
+zeroize.workspace = true
 
 [features]
 conformance = ["dep:herald-records", "dep:herald-testing"]

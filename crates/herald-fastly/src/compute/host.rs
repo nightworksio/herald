@@ -43,6 +43,7 @@ pub(super) struct FastlyHost {
     pub(super) config: Option<ConfigStore>,
     pub(super) vars: BTreeMap<&'static str, String>,
     pub(super) secrets: StoreSecrets,
+    pub(super) signer: RingSigner,
 }
 
 impl FastlyHost {
@@ -59,6 +60,7 @@ impl FastlyHost {
             config,
             vars,
             secrets: StoreSecrets,
+            signer: RingSigner::default(),
         }
     }
 
@@ -103,7 +105,7 @@ impl Host for FastlyHost {
     }
 
     fn signer(&self) -> &RingSigner {
-        &RingSigner
+        &self.signer
     }
 
     fn verifier(&self) -> &RingVerifier {

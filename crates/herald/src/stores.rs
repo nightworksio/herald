@@ -17,6 +17,7 @@ use super::{Connect, Connection};
 pub(crate) struct Native<'a> {
     vars: &'a BTreeMap<String, String>,
     secrets: EnvSecrets,
+    signer: RingSigner,
     connect: Connect<'a>,
 }
 
@@ -25,6 +26,7 @@ impl<'a> Native<'a> {
         Self {
             vars,
             secrets: EnvSecrets::from_vars(vars.clone()),
+            signer: RingSigner::default(),
             connect,
         }
     }
@@ -63,7 +65,7 @@ impl Host for Native<'_> {
     }
 
     fn signer(&self) -> &RingSigner {
-        &RingSigner
+        &self.signer
     }
 
     fn verifier(&self) -> &RingVerifier {

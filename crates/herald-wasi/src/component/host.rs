@@ -13,6 +13,7 @@ use super::http::WasiHttp;
 pub(super) struct WasiHost {
     vars: BTreeMap<String, String>,
     secrets: EnvSecrets,
+    signer: RingSigner,
 }
 
 impl WasiHost {
@@ -21,6 +22,7 @@ impl WasiHost {
         let vars: BTreeMap<String, String> = vars.into_iter().collect();
         Self {
             secrets: EnvSecrets::from_vars(vars.clone()),
+            signer: RingSigner::default(),
             vars,
         }
     }
@@ -70,7 +72,7 @@ impl Host for WasiHost {
     }
 
     fn signer(&self) -> &RingSigner {
-        &RingSigner
+        &self.signer
     }
 
     fn verifier(&self) -> &RingVerifier {

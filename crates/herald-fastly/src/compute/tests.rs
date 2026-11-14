@@ -50,6 +50,7 @@ fn the_service_gives_the_variables_it_holds_and_not_an_empty_one() {
             ("EMPTY", String::new()),
         ]),
         secrets: StoreSecrets,
+        signer: herald_crypto::RingSigner::default(),
     };
     assert_eq!(host.var("GITHUB_REPOSITORY"), Some("cli/cli"));
     assert_eq!(host.var("EMPTY"), None);
@@ -67,6 +68,7 @@ fn the_service_passes_the_host_suite() {
             (CONFORMANCE_EMPTY, String::new()),
         ]),
         secrets: StoreSecrets,
+        signer: herald_crypto::RingSigner::default(),
     };
     assert_eq!(pollster::block_on(host_conformance(&host)), Ok(()));
 }
@@ -77,6 +79,7 @@ fn each_nonce_the_service_gives_is_new() {
         config: None,
         vars: BTreeMap::new(),
         secrets: StoreSecrets,
+        signer: herald_crypto::RingSigner::default(),
     };
     assert_ne!(host.nonce(), host.nonce());
 }

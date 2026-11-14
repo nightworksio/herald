@@ -36,7 +36,7 @@ fn function(config: &str, handing: bool) -> Setup {
 }
 
 fn webhook() -> Value {
-    let signature = on_tokio(RingSigner.sign(
+    let signature = on_tokio(RingSigner::default().sign(
         Algorithm::HmacSha256,
         &Secret::new("HERALD_WEBHOOK", "hook-secret"),
         EVENT.as_bytes(),

@@ -1,11 +1,15 @@
 //! How Web Crypto takes herald's keys, and the keys it publishes.
 
+use std::fmt;
+
 use herald_keys::{PRIVATE_KEY, Public, jwk_bytes, pem, rsa_public, subject};
 use herald_ports::{Algorithm, Secret};
+use zeroize::Zeroizing;
 
 /// How Web Crypto takes one key: the format its bytes are in, the
-/// algorithm's name, and the hash it signs over, where it names one.
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// algorithm's name, and the hash it signs over, where it names one. Its
+/// `Debug` shows the key's length alone.
+#[derive(Clone, PartialEq, Eq)]
 pub struct Imported {
     /// The format: `raw`, `pkcs8` or `spki`.
     pub format: &'static str,
@@ -13,8 +17,19 @@ pub struct Imported {
     pub name: &'static str,
     /// The hash, where the algorithm takes one.
     pub hash: Option<&'static str>,
-    /// The key's bytes.
-    pub data: Vec<u8>,
+    /// The key's bytes, overwritten with zeroes when dropped.
+    pub data: Zeroizing<Vec<u8>>,
+}
+
+impl fmt::Debug for Imported {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Imported")
+            .field("format", &self.format)
+            .field("name", &self.name)
+            .field("hash", &self.hash)
+            .field("data", &format_args!("{} bytes", self.data.len()))
+            .finish()
+    }
 }
 
 const HMAC: &str = "HMAC";
@@ -39,6 +54,7 @@ pub fn signing(algorithm: Algorithm, key: &Secret) -> Option<Imported> {
         Algorithm::HmacSha256 => ("raw", key.expose().as_bytes().to_vec()),
         Algorithm::Ed25519 | Algorithm::RsaSha256 => ("pkcs8", pem(key.expose(), PRIVATE_KEY)?),
     };
+    let data = Zeroizing::new(data);
     Some(Imported {
         format,
         name,
@@ -61,7 +77,7 @@ pub fn verifying(algorithm: Algorithm, key: &[u8]) -> Imported {
         format,
         name,
         hash,
-        data,
+        data: Zeroizing::new(data),
     }
 }
 
@@ -106,13 +122,17 @@ mod tests {
                 format: "raw",
                 name: "HMAC",
                 hash: Some("SHA-256"),
-                data: b"Jefe".to_vec(),
+                data: Zeroizing::new(b"Jefe".to_vec()),
             }
+        );
+        assert_eq!(
+            format!("{hmac:?}"),
+            "Imported { format: \"raw\", name: \"HMAC\", hash: Some(\"SHA-256\"), data: 4 bytes }"
         );
         let key = Secret::new("K", PEM);
         let ed = signing(Algorithm::Ed25519, &key).unwrap();
         assert_eq!((ed.format, ed.name, ed.hash), ("pkcs8", "Ed25519", None));
-        assert_eq!(ed.data, [0, 1, 2]);
+        assert_eq!(*ed.data, [0, 1, 2]);
         let rsa = signing(Algorithm::RsaSha256, &key).unwrap();
         assert_eq!(
             (rsa.format, rsa.name, rsa.hash),
@@ -128,10 +148,10 @@ mod tests {
     fn a_verifying_key_is_raw_but_for_rsa_whose_pkcs1_is_wrapped() {
         assert_eq!(verifying(Algorithm::HmacSha256, b"s").format, "raw");
         let ed = verifying(Algorithm::Ed25519, &[9; 32]);
-        assert_eq!((ed.format, ed.data), ("raw", vec![9; 32]));
+        assert_eq!((ed.format, ed.data.to_vec()), ("raw", vec![9; 32]));
         let rsa = verifying(Algorithm::RsaSha256, &[1, 2]);
         assert_eq!(rsa.format, "spki");
-        assert_eq!(rsa.data, subject(Public::Rsa, &[1, 2]));
+        assert_eq!(*rsa.data, subject(Public::Rsa, &[1, 2]));
     }
 
     #[test]
