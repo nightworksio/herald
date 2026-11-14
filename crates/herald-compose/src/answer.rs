@@ -5,13 +5,19 @@ use herald_flows::{Answered, Job, Place, Reply};
 pub struct Left {
     pub(crate) job: Job,
     pub(crate) place: Place,
+    pub(crate) from: Option<usize>,
 }
 
 impl Left {
-    /// `job`, holding `place`.
+    /// `job`, holding `place`, its outbound requests counted from when its
+    /// work starts.
     #[must_use]
     pub fn new(job: Job, place: Place) -> Self {
-        Self { job, place }
+        Self {
+            job,
+            place,
+            from: None,
+        }
     }
 }
 

@@ -1,5 +1,6 @@
 use std::future::Future;
 use std::sync::Arc;
+use std::sync::atomic::AtomicUsize;
 
 use herald_config::ConfiguredStore;
 use herald_core::Attempts;
@@ -10,6 +11,7 @@ use herald_ports::{
     Owned, RecordOptions, Signer, Store,
 };
 
+use crate::counted::Counted;
 use crate::host::Host;
 
 pub use herald_kinds::{GITHUB_REPOSITORY, GITHUB_TOKEN};
@@ -55,17 +57,23 @@ pub trait Served {
 }
 
 /// A host, as the stores it opens see it: its connections bound by
-/// `outbound`.
+/// `outbound`, each request they send counted on `made`.
 pub struct Opener<H> {
     host: Arc<H>,
     outbound: Outbound,
+    made: Arc<AtomicUsize>,
 }
 
 impl<H: Host> Opener<H> {
-    /// `host`, opening stores whose connections keep within `outbound`.
+    /// `host`, opening stores whose connections keep within `outbound` and
+    /// count each request on `made`.
     #[must_use]
-    pub const fn new(host: Arc<H>, outbound: Outbound) -> Self {
-        Self { host, outbound }
+    pub const fn new(host: Arc<H>, outbound: Outbound, made: Arc<AtomicUsize>) -> Self {
+        Self {
+            host,
+            outbound,
+            made,
+        }
     }
 }
 
@@ -79,7 +87,10 @@ where
 {
     fn connect(&self, base: &str) -> Result<Owned<dyn DynHttp + Send>, String> {
         let http = self.host.connect(Base::At(base), &self.outbound)?;
-        Ok(Owned::new(Box::new(http)))
+        Ok(Owned::new(Box::new(Counted::new(
+            http,
+            Arc::clone(&self.made),
+        ))))
     }
 
     fn var(&self, name: &str) -> Option<&str> {

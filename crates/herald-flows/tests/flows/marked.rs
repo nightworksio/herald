@@ -43,6 +43,7 @@ fn an_announcement_kept_only_in_its_post_is_found_there_by_the_next_run() {
         store: &store,
         clock: &clock,
         signer: &FakeSigner,
+        budget: herald_flows::Budget::UNBOUNDED,
     };
     let source = SourceName::new("gate");
     let posted = posted_by_herald();

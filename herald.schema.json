@@ -1706,6 +1706,10 @@
         "silence": {
           "description": "How long a session a destination holds hears nothing before it\nchecks the connection is alive, and then as long again before it\nopens another; \"30s\" where absent.",
           "$ref": "#/$defs/Duration"
+        },
+        "work": {
+          "description": "How the work a request leaves keeps within its host's limits.",
+          "$ref": "#/$defs/Work"
         }
       },
       "additionalProperties": false
@@ -3031,6 +3035,33 @@
         "outage": {
           "description": "After the platform answers that it is unwell; \"5s\" where unset.",
           "$ref": "#/$defs/Duration"
+        }
+      },
+      "additionalProperties": false
+    },
+    "Work": {
+      "description": "`[server.work]`: how the work a request leaves keeps within its host's\nlimits. herald starts no send that could pass them, and the next run\nsends what is left.",
+      "type": "object",
+      "properties": {
+        "after": {
+          "description": "How long the work may run after the answer; where absent, Cloudflare\nWorkers' 30 seconds of `waitUntil` there, and unbounded on every\nother host.",
+          "$ref": "#/$defs/Duration"
+        },
+        "requests": {
+          "description": "The most outbound requests a request and the work it leaves may\nmake, counted from when herald began answering it; where absent,\nFastly Compute's 32 backend requests there (set 10 on a trial), and\nunbounded on every other host.",
+          "type": "integer",
+          "format": "uint",
+          "minimum": 1
+        },
+        "spare": {
+          "description": "How much of `after` must be left for a send to start; \"10s\" where\nabsent, and less than `after`.",
+          "$ref": "#/$defs/Duration"
+        },
+        "spare_requests": {
+          "description": "How many of `requests` must be left for a send to start: the send,\nand the writes after it where the store writes over HTTP; 4 where\nabsent, and fewer than `requests`.",
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0
         }
       },
       "additionalProperties": false

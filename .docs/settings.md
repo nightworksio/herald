@@ -435,6 +435,11 @@ How `herald server` listens, and what it takes on at once.
 | `server.sessions.longest_wait` | [Duration](#duration) | The longest wait between attempts; "1m" where absent, and at least `first_wait`. |
 | `server.sessions.stale` | [Duration](#duration) | How long ago a command a session taken up again answers may have been given; one given earlier is skipped and logged; "10m" where absent. |
 | `server.silence` | [Duration](#duration) | How long a session a destination holds hears nothing before it checks the connection is alive, and then as long again before it opens another; "30s" where absent. |
+| `server.work` | table | How the work a request leaves keeps within its host's limits. |
+| `server.work.after` | [Duration](#duration) | How long the work may run after the answer; where absent, Cloudflare Workers' 30 seconds of `waitUntil` there, and unbounded on every other host. |
+| `server.work.requests` | integer | The most outbound requests a request and the work it leaves may make, counted from when herald began answering it; where absent, Fastly Compute's 32 backend requests there (set 10 on a trial), and unbounded on every other host. |
+| `server.work.spare` | [Duration](#duration) | How much of `after` must be left for a send to start; "10s" where absent, and less than `after`. |
+| `server.work.spare_requests` | integer | How many of `requests` must be left for a send to start: the send, and the writes after it where the store writes over HTTP; 4 where absent, and fewer than `requests`. |
 
 ## `sources`
 

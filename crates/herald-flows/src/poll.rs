@@ -74,6 +74,7 @@ async fn sweep<S: Store, C: Clock, G: Signer, H: Http>(
     (source, http): &(PreparedSource, H),
     run: &str,
 ) -> Result<Sweep, Stop> {
+    ports.budget.allows(ports.clock.now(), 1)?;
     let record = ports
         .store
         .cursors()

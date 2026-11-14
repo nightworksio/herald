@@ -1,7 +1,13 @@
 use herald_config::{Config, Uses, load};
 use herald_core::{Chore, Entry, Identity, Key, RouteId, SourceName, Step};
-use herald_flows::{Announced, Outcome, Ports, PrepareError, Stop, announce, prepare};
-use herald_ports::{Announcements, Base, Ledger, Pins, Schedules};
+use std::sync::atomic::{AtomicUsize, Ordering};
+
+use herald_flows::{
+    Announced, Budget, Outcome, Ports, PrepareError, Requests, Stop, announce, prepare,
+};
+use herald_ports::{
+    Announcements, Base, Http, HttpError, Ledger, Pins, Request, Response, Schedules,
+};
 use herald_testing::{FakeClock, FakeSecrets, FakeSigner};
 use jiff::SignedDuration;
 
@@ -48,6 +54,7 @@ fn an_event_no_route_takes_is_announced_nowhere() {
         store: &store,
         clock: &FakeClock::at(NOON),
         signer: &FakeSigner,
+        budget: herald_flows::Budget::UNBOUNDED,
     };
     let announced = pollster::block_on(announce(
         &config,
@@ -128,6 +135,105 @@ fn a_run_stopped_by_a_rate_limit_is_finished_by_the_next_after_it_asks_what_land
             steps: all()[1..].to_vec()
         }
     );
+}
+
+#[derive(Clone)]
+struct Tallied<'a> {
+    script: Script,
+    made: &'a AtomicUsize,
+}
+
+impl Http for Tallied<'_> {
+    async fn send(&self, request: Request) -> Result<Response, HttpError> {
+        self.made.fetch_add(1, Ordering::Relaxed);
+        self.script.send(request).await
+    }
+}
+
+#[test]
+fn a_run_near_its_host_s_request_limit_starts_no_send_and_the_next_sends_the_rest_without_asking_what_landed()
+ {
+    let store = healthy();
+    let clock = FakeClock::at(NOON);
+    let config = config("");
+    let made = AtomicUsize::new(5);
+    let budget = Budget {
+        requests: Some(Requests {
+            made: &made,
+            from: 5,
+            most: 3,
+            spare: 1,
+        }),
+        ..Budget::UNBOUNDED
+    };
+    let tallied = Tallied {
+        script: Script::answering(&[POSTED, CROSSPOSTED, THREADED]),
+        made: &made,
+    };
+    let first = pollster::block_on(run_within(
+        &config,
+        &store,
+        (&clock, budget),
+        &tallied,
+        "v1",
+        "r1",
+    ));
+    assert_eq!(
+        outcome(&first),
+        &Outcome::Stopped {
+            landed: all()[..2].to_vec(),
+            remaining: all()[2..].to_vec(),
+            reason: Stop::Limit(
+                "2 of the 3 outbound requests the host allows were made, so the next run sends the rest"
+                    .to_owned()
+            ),
+        }
+    );
+    let rest = Script::answering(&[THREADED, PINNED, WHO, NO_PINS]);
+    let second = pollster::block_on(run(&config, &store, &clock, &rest, "v1", "r2"));
+    assert_eq!(
+        outcome(&second),
+        &Outcome::Sent {
+            steps: all()[2..].to_vec()
+        }
+    );
+    assert!(
+        rest.seen().iter().all(|seen| !seen.contains("limit=100")),
+        "{:?}",
+        rest.seen()
+    );
+}
+
+#[test]
+fn a_run_near_its_host_s_time_limit_starts_no_send() {
+    let store = healthy();
+    let clock = FakeClock::at(NOON);
+    let script = Script::default();
+    let budget = Budget {
+        until: NOON.checked_add(SignedDuration::from_secs(10)).ok(),
+        spare: SignedDuration::from_secs(10),
+        requests: None,
+    };
+    let first = pollster::block_on(run_within(
+        &config(""),
+        &store,
+        (&clock, budget),
+        &script,
+        "v1",
+        "r1",
+    ));
+    assert_eq!(
+        outcome(&first),
+        &Outcome::Stopped {
+            landed: Vec::new(),
+            remaining: all(),
+            reason: Stop::Limit(
+                "10s was left before the host stops the work, no more than the 10s a send needs, so the next run sends the rest"
+                    .to_owned()
+            ),
+        }
+    );
+    assert_eq!(script.seen(), Vec::<String>::new());
 }
 
 #[test]
@@ -259,6 +365,7 @@ fn an_event_a_template_cannot_render_or_a_marker_key_that_fails_stops_before_any
         store: &store,
         clock: &clock,
         signer: &FakeSigner,
+        budget: herald_flows::Budget::UNBOUNDED,
     };
     let marked = pollster::block_on(announce(
         &keyed,
@@ -445,6 +552,7 @@ fn hooked(config: &Config, store: &Failing) -> (Vec<Announced>, Script) {
         store,
         clock: &FakeClock::at(NOON),
         signer: &FakeSigner,
+        budget: herald_flows::Budget::UNBOUNDED,
     };
     let announced = pollster::block_on(announce(
         config,

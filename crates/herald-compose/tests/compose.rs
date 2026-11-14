@@ -3,6 +3,8 @@
 
 #[cfg(test)]
 mod compose {
+    mod work;
+
     use std::collections::BTreeMap;
     use std::future::{Future, ready};
     use std::pin::Pin;
@@ -209,7 +211,11 @@ mod compose {
     }
 
     fn opener(host: &Arc<Hosting>) -> Arc<Opener<Hosting>> {
-        Arc::new(Opener::new(Arc::clone(host), Outbound::default()))
+        Arc::new(Opener::new(
+            Arc::clone(host),
+            Outbound::default(),
+            Arc::default(),
+        ))
     }
 
     fn kept(host: &Arc<Hosting>, store: &str) -> Result<&'static str, String> {

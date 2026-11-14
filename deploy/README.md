@@ -268,14 +268,24 @@ targets wasm, and enable dynamic backends on the service.
 Every host answers 413 to a request whose body is larger than `[server]
 body`, where the platform has not refused it first. Work a request leaves runs
 after its answer, and an announcement cut short is finished by the next run,
-which sends only what is missing. Each platform's own limits, from its
-documentation:
+which sends only what is missing.
+
+`[server.work]` keeps that work within a host's limits. `after` bounds how
+long it runs after the answer, and `requests` how many outbound requests the
+request and its work make, counted from when herald began answering it.
+herald starts no send while less than `spare` of the time, or fewer than
+`spare_requests` of the requests, is left. The route stops with what it did
+not send, and the next run sends it without asking the destination what
+landed. Where `after` and `requests` are absent, each takes the platform's own
+limit below, and is unbounded on a host that has none. Each platform's own
+limits, from its documentation:
 
 - **Cloudflare Workers** take a request body of up to 100 MB (200 MB on
   Business). `waitUntil` lets a request's work run at most 30 seconds after
   the answer, and a Cron Trigger or a Durable Object's alarm runs at most 15
   minutes
   ([limits](https://developers.cloudflare.com/workers/platform/limits/)).
+  `[server.work] after` is 30 seconds there where absent.
 - **Vercel** takes a request body of up to 4.5 MB, and a function runs 300
   seconds by default, up to 800 on Pro and Enterprise
   ([limits](https://vercel.com/docs/functions/limitations)).
@@ -296,6 +306,7 @@ documentation:
   trial), with 50 ms of CPU time, a 128 MB heap and 32 backend requests (10 on
   a trial). A Config Store value holds at most 8,000 characters
   ([resource limits](https://docs.fastly.com/products/compute-resource-limits)).
+  `[server.work] requests` is 32 there where absent; set it to 10 on a trial.
   An announcement needing more backend requests than one request allows is
   finished by the next run.
 - **Fermyon Cloud** runs Spin's request handler for 30 seconds and takes a

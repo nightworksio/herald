@@ -16,6 +16,7 @@
 
 mod announce;
 mod approving;
+mod budget;
 mod command_answers;
 mod command_endpoints;
 mod command_requests;
@@ -34,6 +35,7 @@ mod verification;
 
 pub use announce::{Announced, Outcome, Ports, Stop, announce, announce_within};
 pub use approving::{Decision, decide, followers};
+pub use budget::{Budget, Requests};
 pub use command_answers::{Answer, completed, deferral, interact, replied};
 pub use doctor::{
     Cadence, EGRESS_GUARDED, Egress, Findings, Gap, Here, Layer, Memory, Rounds, Tier, doctor,

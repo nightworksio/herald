@@ -1,6 +1,6 @@
 # ADR-0014: herald server answers first and works after, on one task, within limits
 
-**Status:** Accepted; `deliveries` superseded by [ADR-0020](0020-an-activitypub-destination-sets-how-many-inboxes-it-delivers-to-at-once.md), under which an ActivityPub destination sets it
+**Status:** Accepted; `deliveries` superseded by [ADR-0020](0020-an-activitypub-destination-sets-how-many-inboxes-it-delivers-to-at-once.md), under which an ActivityPub destination sets it; the work after the answer kept within each host's limits by [ADR-0028](0028-work-keeps-within-its-host-s-limits-and-starts-no-send-it-cannot-finish.md)
 **Date:** 2026-11-05
 
 ## Context

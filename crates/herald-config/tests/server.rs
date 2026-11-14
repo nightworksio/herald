@@ -88,7 +88,7 @@ body = "{{ event.body }}"
     #[test]
     fn the_server_table_sets_every_limit() {
         let text = format!(
-            "{EXAMPLE}\n[server]\nlisten = \"0.0.0.0:9000\"\nbase = \"/tools/herald\"\njobs = 2\nqueue = 5\nconnections = 3\nbody = \"64KiB\"\nfetches = 5\ncompletions = 9\nsilence = \"45s\"\nbusy_retry = \"2m\"\nread = \"10s\"\nheld = \"20s\"\naccept_pause = \"250ms\"\n\n[server.sessions]\nfirst_wait = \"2s\"\nlongest_wait = \"5m\"\njitter = false\nstale = \"30m\"\n\n[server.keys]\ncache = \"store\"\nrefresh_after = \"30m\"\nreread_after = \"5m\"\nmost = 7\ndocument = \"1MiB\"\n\n[server.inbound]\nreplay_window = \"20m\"\nsignatures = 2\ncovered = 4\n"
+            "{EXAMPLE}\n[server]\nlisten = \"0.0.0.0:9000\"\nbase = \"/tools/herald\"\njobs = 2\nqueue = 5\nconnections = 3\nbody = \"64KiB\"\nfetches = 5\ncompletions = 9\nsilence = \"45s\"\nbusy_retry = \"2m\"\nread = \"10s\"\nheld = \"20s\"\naccept_pause = \"250ms\"\n\n[server.sessions]\nfirst_wait = \"2s\"\nlongest_wait = \"5m\"\njitter = false\nstale = \"30m\"\n\n[server.keys]\ncache = \"store\"\nrefresh_after = \"30m\"\nreread_after = \"5m\"\nmost = 7\ndocument = \"1MiB\"\n\n[server.inbound]\nreplay_window = \"20m\"\nsignatures = 2\ncovered = 4\n\n[server.work]\nafter = \"1m\"\nspare = \"5s\"\nrequests = 100\nspare_requests = 6\n"
         );
         let config = load("herald.toml", &text, &nothing, &crate::common::kinds()).unwrap();
         assert_eq!(
@@ -123,12 +123,53 @@ body = "{{ event.body }}"
                     jitter: false,
                     stale: jiff::SignedDuration::from_mins(30),
                 },
+                work: herald_config::Work {
+                    after: Some(jiff::SignedDuration::from_mins(1)),
+                    spare: jiff::SignedDuration::from_secs(5),
+                    requests: std::num::NonZeroUsize::new(100),
+                    spare_requests: 6,
+                },
             }
         );
         assert!(config.server.keys_in_store());
         let memory = format!("{EXAMPLE}\n[server.keys]\ncache = \"memory\"\n");
         let config = load("herald.toml", &memory, &nothing, &crate::common::kinds()).unwrap();
         assert_eq!(config.server.keys, KeyCache::Memory);
+    }
+
+    #[test]
+    fn work_limits_that_leave_no_send_room_are_refused_by_key() {
+        let defaults = load("herald.toml", EXAMPLE, &nothing, &crate::common::kinds()).unwrap();
+        assert_eq!(defaults.server.work, herald_config::Work::default());
+        assert_eq!(
+            herald_config::Work::default(),
+            herald_config::Work {
+                after: None,
+                spare: jiff::SignedDuration::from_secs(10),
+                requests: None,
+                spare_requests: 4,
+            }
+        );
+        let short = errors(&format!(
+            "{EXAMPLE}\n[server.work]\nafter = \"10s\"\nrequests = 4\n"
+        ));
+        assert!(
+            short.contains("server.work.after: no send would start after the answer; make after longer than spare"),
+            "{short}"
+        );
+        assert!(
+            short.contains(
+                "server.work.requests: no send would start; make requests more than spare_requests"
+            ),
+            "{short}"
+        );
+        let room = format!("{EXAMPLE}\n[server.work]\nafter = \"11s\"\nrequests = 5\n");
+        let config = load("herald.toml", &room, &nothing, &crate::common::kinds()).unwrap();
+        assert_eq!(
+            config.server.work.after,
+            Some(jiff::SignedDuration::from_secs(11))
+        );
+        assert_eq!(config.server.work.requests, std::num::NonZeroUsize::new(5));
     }
 
     #[test]

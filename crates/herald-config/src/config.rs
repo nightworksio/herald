@@ -263,6 +263,45 @@ pub struct Server {
     /// How a session a destination holds connects again, and how old a
     /// command one taken up again answers.
     pub sessions: HeldSessions,
+    /// How the work a request leaves keeps within its host's limits.
+    pub work: Work,
+}
+
+/// How the work a request leaves keeps within its host's limits: herald
+/// starts no send that could pass them, and the next run sends what is
+/// left.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Work {
+    /// How long the work may run after the answer, where the config bounds
+    /// it; the host's own limit where it does not.
+    pub after: Option<SignedDuration>,
+    /// How much of `after` must be left for a send to start.
+    pub spare: SignedDuration,
+    /// The most outbound requests a request and its work may make, where
+    /// the config bounds it; the host's own limit where it does not.
+    pub requests: Option<NonZeroUsize>,
+    /// How many of `requests` must be left for a send to start.
+    pub spare_requests: usize,
+}
+
+impl Work {
+    /// How much time must be left for a send to start where the config
+    /// says nothing.
+    pub(crate) const SPARE: SignedDuration = SignedDuration::from_secs(10);
+    /// How many requests must be left for a send to start where the config
+    /// says nothing.
+    pub(crate) const SPARE_REQUESTS: usize = 4;
+}
+
+impl Default for Work {
+    fn default() -> Self {
+        Self {
+            after: None,
+            spare: Self::SPARE,
+            requests: None,
+            spare_requests: Self::SPARE_REQUESTS,
+        }
+    }
 }
 
 /// How a session a destination holds connects again: the first wait,
@@ -376,6 +415,7 @@ impl Default for Server {
             held: Self::HELD,
             accept_pause: Self::ACCEPT_PAUSE,
             sessions: HeldSessions::default(),
+            work: Work::default(),
         }
     }
 }

@@ -310,6 +310,7 @@ impl World {
             store: &self.store,
             clock: &clock,
             signer: &FakeSigner,
+            budget: herald_flows::Budget::UNBOUNDED,
         };
         let keys = keys_in(&self.keyring);
         let webhooks = Webhooks::default();

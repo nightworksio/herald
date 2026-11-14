@@ -203,6 +203,7 @@ impl World {
             store: &self.store,
             clock: &clock,
             signer: &FakeSigner,
+            budget: herald_flows::Budget::UNBOUNDED,
         })
     }
 

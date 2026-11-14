@@ -1,5 +1,7 @@
 use herald_flows::{Cadence, Egress, Layer, Memory, ROUND_SECRET, Rounds, Tier};
 use herald_kinds::Offer;
+use std::num::NonZeroUsize;
+
 use jiff::SignedDuration;
 
 use crate::kinds::kinds;
@@ -54,6 +56,15 @@ pub const POLLED: SignedDuration = SignedDuration::from_mins(5);
 /// How often the deploy files ask for housekeeping where a platform's
 /// scheduler asks for rounds.
 pub const HOUSEKEPT: SignedDuration = SignedDuration::from_hours(1);
+
+/// How long Cloudflare Workers' `waitUntil` lets the work a request leaves
+/// run after its answer:
+/// <https://developers.cloudflare.com/workers/platform/limits/>.
+const WORKER_AFTER: SignedDuration = SignedDuration::from_secs(30);
+
+/// How many backend requests Fastly Compute lets a request make:
+/// <https://docs.fastly.com/products/compute-resource-limits>.
+const FASTLY_REQUESTS: NonZeroUsize = NonZeroUsize::new(32).unwrap();
 
 /// The secret Vercel's cron sends, which herald takes as the round secret
 /// where that is unset.
@@ -297,6 +308,46 @@ impl Hosting {
         }
     }
 
+    /// How long the work a request leaves may run after its answer, where
+    /// the platform bounds it.
+    #[must_use]
+    pub const fn after(self) -> Option<SignedDuration> {
+        match self {
+            Self::Worker => Some(WORKER_AFTER),
+            Self::Actions
+            | Self::Deno
+            | Self::Vercel
+            | Self::Netlify
+            | Self::Lambda
+            | Self::Azure
+            | Self::Wasi
+            | Self::Spin
+            | Self::Fastly
+            | Self::Node
+            | Self::Server => None,
+        }
+    }
+
+    /// How many outbound requests a request and the work it leaves may
+    /// make, where the platform bounds them.
+    #[must_use]
+    pub const fn requests(self) -> Option<NonZeroUsize> {
+        match self {
+            Self::Fastly => Some(FASTLY_REQUESTS),
+            Self::Actions
+            | Self::Worker
+            | Self::Deno
+            | Self::Vercel
+            | Self::Netlify
+            | Self::Lambda
+            | Self::Azure
+            | Self::Wasi
+            | Self::Spin
+            | Self::Node
+            | Self::Server => None,
+        }
+    }
+
     /// What the host serves.
     #[must_use]
     pub fn layer(self) -> Layer {
@@ -369,6 +420,20 @@ mod tests {
             .filter(|hosting| hosting.sessions())
             .collect();
         assert_eq!(sessions, [Hosting::Worker, Hosting::Server]);
+    }
+
+    #[test]
+    fn only_workers_bound_the_time_after_an_answer_and_only_fastly_the_requests() {
+        for hosting in Hosting::ALL {
+            assert_eq!(
+                hosting.after(),
+                (hosting == Hosting::Worker).then_some(SignedDuration::from_secs(30))
+            );
+            assert_eq!(
+                hosting.requests().map(NonZeroUsize::get),
+                (hosting == Hosting::Fastly).then_some(32)
+            );
+        }
     }
 
     #[test]

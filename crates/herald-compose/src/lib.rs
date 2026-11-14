@@ -10,6 +10,7 @@ mod capped;
 mod composed;
 #[cfg(any(test, feature = "conformance"))]
 mod conformance;
+mod counted;
 mod host;
 mod host_request;
 mod hosting;
@@ -27,6 +28,7 @@ pub use composed::{Composed, ServingOn, Through};
 pub use conformance::{
     CONFORMANCE_EMPTY, CONFORMANCE_SECRET, CONFORMANCE_VAR, CONFORMS, host_conformance,
 };
+pub use counted::Counted;
 pub use herald_kinds::{KvAt, SqlAt};
 pub use host::{Host, UNOFFERED, Unoffered, plain};
 pub use host_request::HostRequest;
