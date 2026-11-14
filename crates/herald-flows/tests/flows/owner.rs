@@ -624,3 +624,30 @@ fn a_member_the_selection_no_longer_takes_leaves_though_the_listing_is_unchanged
     assert_eq!(swept[1], listed(0, &[], &["herald"]));
     assert_eq!(swept.len(), 2);
 }
+
+#[test]
+fn an_owner_and_a_repository_source_are_polled_side_by_side() {
+    let store = healthy();
+    let repository = config("").sources[&SourceName::new("gate")].clone();
+    let mut both = owned(|_| {});
+    both.sources.insert(SourceName::new("mutation"), repository);
+    let script = Script::answering(&[
+        (LISTING, 200, &repositories(&[(1, "herald")])),
+        (&released("herald"), 304, ""),
+        (&released("php-mutation-gate"), 304, ""),
+    ]);
+    let swept = polled_within(&both, &store, &script, NOON, None);
+    let outcomes: Vec<(&str, Option<&str>)> = swept
+        .iter()
+        .map(|swept| (swept.source.as_str(), swept.member.as_deref()))
+        .collect();
+    assert_eq!(
+        outcomes,
+        [
+            ("gate", None),
+            ("gate", Some("nightworksio/herald")),
+            ("mutation", None),
+        ]
+    );
+    assert!(matches!(swept[2].outcome, Sweep::Unchanged));
+}
