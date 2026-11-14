@@ -705,7 +705,8 @@ body = "{{ event.body }}"
         assert!(said.contains(&"kept".to_owned()), "{said:?}");
         assert_eq!(
             said.iter()
-                .filter(|line| line.strip_prefix("refused: ") == Some(herald_flows::round::UNASKED))
+                .filter(|line| line.strip_prefix("refused: ")
+                    == Some(herald_flows::round::unasked().as_str()))
                 .count(),
             2,
             "{said:?}"

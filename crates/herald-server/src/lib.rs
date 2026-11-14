@@ -362,7 +362,10 @@ where
             .get(AUTHORIZATION)
             .and_then(|value| value.to_str().ok());
         if !Round::allowed(authorization, limits.secret) {
-            return ControlFlow::Break(sent(rounds, refusal(status::UNAUTHORIZED, round::UNASKED)));
+            return ControlFlow::Break(sent(
+                rounds,
+                refusal(status::UNAUTHORIZED, round::unasked()),
+            ));
         }
         rounds.ran(serving, round).await;
         return ControlFlow::Break(replied(

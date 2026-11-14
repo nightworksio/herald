@@ -4,6 +4,8 @@
 pub const OK: u16 = 200;
 /// The request was taken, and its work is done after the answer.
 pub const ACCEPTED: u16 = 202;
+/// The first status past the successes: a redirection.
+const REDIRECTION: u16 = 300;
 /// What was asked for is unchanged since the copy the request names.
 pub const NOT_MODIFIED: u16 = 304;
 /// The request cannot be read.
@@ -36,7 +38,7 @@ pub const UNAVAILABLE: u16 = 503;
 /// Whether `status` is a success.
 #[must_use]
 pub const fn succeeded(status: u16) -> bool {
-    status >= OK && status < 300
+    status >= OK && status < REDIRECTION
 }
 
 /// What to do about a refusal of `status`, where herald knows a remedy.

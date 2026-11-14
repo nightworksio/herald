@@ -82,7 +82,7 @@ impl<H: Host> Composed<'_, H> {
     pub(crate) async fn round(&self, round: Round, authorization: Option<&str>) -> Answer {
         let secret = self.host().secrets().secret(ROUND_SECRET).await.ok();
         if !Round::allowed(authorization, secret.as_ref()) {
-            return refusal(status::UNAUTHORIZED, round::UNASKED).into();
+            return refusal(status::UNAUTHORIZED, round::unasked()).into();
         }
         let said = match round {
             Round::Poll => self.poll().await.iter().flat_map(told::polled).collect(),
