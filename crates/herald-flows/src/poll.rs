@@ -87,6 +87,33 @@ pub(crate) struct Found {
     pub(crate) advanced: Option<Cursor>,
 }
 
+/// Where a poll that found nothing to read stops.
+pub(crate) fn halted(unpolled: Unpolled) -> Stop {
+    match unpolled {
+        Unpolled::Unreachable(reason) => Stop::Unreachable(reason),
+        Unpolled::Unreadable(reason) => Stop::Source(reason),
+    }
+}
+
+/// The events of `found` to announce: those `cursor` has not seen, or with
+/// no cursor every one from `since` on where it is given, and otherwise
+/// the newest `backfill`.
+fn unseen(
+    cursor: Option<&Cursor>,
+    found: &[Event],
+    since: Option<Timestamp>,
+    backfill: usize,
+) -> Vec<Event> {
+    match (cursor, since) {
+        (None, Some(since)) => found
+            .iter()
+            .filter(|event| event.occurred() >= since)
+            .cloned()
+            .collect(),
+        _ => fresh(cursor, found.to_vec(), backfill),
+    }
+}
+
 /// What `poll` answers through `http` since `cursor`, each event it has
 /// not seen announced as `source`'s under `holder`, or nothing where it
 /// says nothing changed. Where `since` is given and there is no cursor,
@@ -98,24 +125,10 @@ pub(crate) async fn found<S: Store, C: Clock, G: Signer, H: Http>(
     (cursor, since, backfill): (Option<&Cursor>, Option<Timestamp>, usize),
     holder: &str,
 ) -> Result<Option<Found>, Stop> {
-    let polled = poll
-        .polled(http, cursor)
-        .await
-        .map_err(|unpolled| match unpolled {
-            Unpolled::Unreachable(reason) => Stop::Unreachable(reason),
-            Unpolled::Unreadable(reason) => Stop::Source(reason),
-        })?;
-    let Some(releases) = polled else {
+    let Some(releases) = poll.polled(http, cursor).await.map_err(halted)? else {
         return Ok(None);
     };
-    let unseen = Cursor::default();
-    let fresh_events = match (cursor, since) {
-        (None, Some(since)) => fresh(Some(&unseen), releases.events.clone(), backfill)
-            .into_iter()
-            .filter(|event| event.occurred() >= since)
-            .collect(),
-        _ => fresh(cursor, releases.events.clone(), backfill),
-    };
+    let fresh_events = unseen(cursor, &releases.events, since, backfill);
     let mut announced = Vec::new();
     let mut settled = true;
     for event in fresh_events.into_iter().rev() {

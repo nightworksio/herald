@@ -522,3 +522,34 @@ fn an_owner_near_its_host_s_request_limit_lists_and_polls_only_what_fits() {
         }]
     ));
 }
+
+#[test]
+fn a_member_whose_route_stops_keeps_its_cursor_where_it_was() {
+    let store = healthy();
+    let config = owned(|options| options.backfill = 1);
+    let one = repositories(&[(1, "herald")]);
+    let release = releases("herald", &[("v1", NOON)]);
+    let script = Script::answering(&[
+        (LISTING, 200, &one),
+        (&released("herald"), 200, &release),
+        ("/repos/nightworksio/herald", 200, &described(1, "herald")),
+        (
+            POSTED.0,
+            403,
+            r#"{"message":"Missing Access","code":50001}"#,
+        ),
+    ]);
+    let swept = polled(&config, &store, &script, NOON);
+    let (
+        _,
+        Sweep::Polled {
+            cursor, announced, ..
+        },
+    ) = &swept[1]
+    else {
+        panic!("herald was not polled: {swept:?}");
+    };
+    assert_eq!(cursor, &Remembered::Kept);
+    assert_eq!(announced.len(), 1);
+    assert_eq!(members(&store)[0].cursor, None);
+}

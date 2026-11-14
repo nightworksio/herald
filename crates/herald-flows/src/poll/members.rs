@@ -6,11 +6,11 @@ use std::collections::{BTreeMap, BTreeSet};
 use futures_util::stream::{self, StreamExt};
 use herald_config::Config;
 use herald_core::{Listed, Listing, Membership};
-use herald_kinds::{Expand, Expanded, Unlisted, Unpolled};
+use herald_kinds::{Expand, Expanded, Unlisted};
 use herald_ports::{Clock, Cursors, Http, Signer, Store, StoreError, Version, Versioned, Written};
 use jiff::Timestamp;
 
-use super::{Remembered, Sweep, Swept, found, remembered, stored};
+use super::{Remembered, Sweep, Swept, found, halted, remembered, stored};
 use crate::announce::{Ports, Stop, at_once};
 use crate::prepare::{Connected, PreparedSource};
 
@@ -233,10 +233,7 @@ pub(super) async fn swept<S: Store, C: Clock, G: Signer, H: Http>(
         Ok(listed) => listed,
         Err(Unlisted::Over(reason)) => return vec![told(Sweep::Stopped(Stop::Source(reason)))],
         Err(Unlisted::Failed(unpolled)) => {
-            swept.push(told(Sweep::Stopped(match unpolled {
-                Unpolled::Unreachable(reason) => Stop::Unreachable(reason),
-                Unpolled::Unreadable(reason) => Stop::Source(reason),
-            })));
+            swept.push(told(Sweep::Stopped(halted(unpolled))));
             (None, None)
         }
     };
