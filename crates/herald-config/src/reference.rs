@@ -23,7 +23,7 @@ pub fn reference(schema: &str) -> String {
     );
     for (key, node) in properties(&root) {
         let mut rows = Vec::new();
-        let _ = write!(written.out, "\n## `{key}`\n\n{}\n", said(node));
+        written.heading("##", &format!("`{key}`"), &said(node));
         written.walk(key, node, &mut rows, &mut Vec::new());
         written.table(&rows);
     }
@@ -55,14 +55,13 @@ impl<'a> Written<'a> {
             rows.clear();
             for variant in variants {
                 let (_, shape) = self.resolve(variant);
-                let _ = match kind(shape) {
-                    Some(kind) => write!(
-                        self.out,
-                        "\n### `{path}` of kind `{kind}`\n\n{}\n",
-                        said(variant)
-                    ),
-                    None => write!(self.out, "\n### `{path}`: {}\n", said(variant)),
-                };
+                let what = said(variant);
+                if let Some(kind) = kind(shape) {
+                    self.heading("###", &format!("`{path}` of kind `{kind}`"), &what);
+                } else {
+                    let named = what.trim_end_matches('.');
+                    self.heading("###", &format!("`{path}`: {named}"), "");
+                }
                 let mut own = Vec::new();
                 self.walk(path, variant, &mut own, within);
                 self.table(&own);
@@ -153,11 +152,14 @@ impl<'a> Written<'a> {
         self.out.push_str("\n## Types\n");
         for name in types {
             let described = self.defs.and_then(|defs| defs.get(name));
-            let _ = write!(
-                self.out,
-                "\n### {name}\n\n{}\n",
-                described.map(said).unwrap_or_default()
-            );
+            self.heading("###", name, &described.map(said).unwrap_or_default());
+        }
+    }
+
+    fn heading(&mut self, level: &str, heading: &str, what: &str) {
+        let _ = writeln!(self.out, "\n{level} {heading}");
+        if !what.is_empty() {
+            let _ = writeln!(self.out, "\n{what}");
         }
     }
 }
@@ -187,38 +189,58 @@ fn said(node: &Value) -> String {
 mod tests {
     use super::*;
 
-    #[test]
-    fn a_reference_follows_refs_once_and_names_what_it_cannot_type() {
-        let schema = r##"{
-            "properties": {
-                "tree": {"description": "A tree.", "$ref": "#/$defs/Tree"},
-                "loose": {"description": "Anything | at all."},
-                "list": {"type": "array"}
+    const SCHEMA: &str = r##"{
+        "properties": {
+            "tree": {"description": "A tree.", "$ref": "#/$defs/Tree"},
+            "loose": {"description": "Anything | at all."},
+            "list": {"type": "array"},
+            "names": {"type": "array", "items": {"type": "string"}},
+            "rows": {"type": "array", "items": {"$ref": "#/$defs/Row"}},
+            "shape": {"description": "A shape.", "$ref": "#/$defs/Shape"}
+        },
+        "$defs": {
+            "Tree": {
+                "type": "object",
+                "properties": {
+                    "child": {"description": "Its child.", "$ref": "#/$defs/Tree"},
+                    "box": {"description": "A box.", "type": "object", "properties": {"lid": {"type": "boolean"}}},
+                    "leaf": {"$ref": "#/$defs/Leaf"},
+                    "bare": {"$ref": "#/$defs/Bare"}
+                }
             },
-            "$defs": {
-                "Tree": {
-                    "type": "object",
-                    "properties": {
-                        "child": {"description": "Its child.", "$ref": "#/$defs/Tree"},
-                        "box": {"description": "A box.", "type": "object", "properties": {"lid": {"type": "boolean"}}},
-                        "leaf": {"$ref": "#/$defs/Leaf"}
-                    }
-                },
-                "Leaf": {"description": "A leaf.", "type": "string"}
+            "Leaf": {"description": "A leaf.", "type": "string"},
+            "Bare": {"type": "string"},
+            "Row": {"type": "object", "properties": {"cell": {"type": "integer"}}},
+            "Shape": {
+                "oneOf": [
+                    {"description": "A circle.", "type": "object", "properties": {"kind": {"const": "circle"}, "radius": {"type": "number"}}},
+                    {"description": "A free form.", "type": "object", "properties": {"points": {"type": "integer"}}},
+                    {"const": "dot"}
+                ]
             }
-        }"##;
-        let written = reference(schema);
-        assert!(
-            written.contains("| `tree.leaf` | [Leaf](#leaf) | A leaf. |"),
-            "{written}"
-        );
+        }
+    }"##;
+
+    #[test]
+    fn a_reference_follows_refs_once_and_writes_each_kind_and_type() {
+        let written = reference(SCHEMA);
+        for row in [
+            "| `tree.box` | table | A box. |",
+            "| `tree.box.lid` | boolean |  |",
+            "| `tree.leaf` | [Leaf](#leaf) | A leaf. |",
+            "| `loose` | any | Anything \\| at all. |",
+            "| `list` | array |  |",
+            "| `names` | array of string |  |",
+            "| `rows[].cell` | integer |  |",
+            "\n### `shape` of kind `circle`\n\nA circle.\n\n| Setting",
+            "| `shape.radius` | number |  |",
+            "\n### `shape`: A free form\n\n| Setting",
+            "\n### Bare\n\n### Leaf\n\nA leaf.\n",
+        ] {
+            assert!(written.contains(row), "{row} in {written}");
+        }
         assert!(!written.contains("tree.child"), "{written}");
-        assert!(
-            written.contains("| `loose` | any | Anything \\| at all. |"),
-            "{written}"
-        );
-        assert!(written.contains("| `list` | array |  |"), "{written}");
-        assert!(written.ends_with("### Leaf\n\nA leaf.\n"), "{written}");
+        assert!(!written.contains("\n\n\n"), "{written}");
         assert!(reference("not json").ends_with("## Types\n"));
     }
 }

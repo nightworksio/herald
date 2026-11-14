@@ -218,13 +218,13 @@ The kinds of event the config declares beside those herald ships, by name; its a
 | `kinds.<name>.attributes.<name>.type` | [AttributeType](#attributetype) | What it holds. |
 | `kinds.<name>.description` | string | What it is, in a sentence. |
 
-### `kinds.<name>.links[]`: A link whose button is labelled by its name.
+### `kinds.<name>.links[]`: A link whose button is labelled by its name
 
 | Setting | Type | What it sets |
 |---------|------|--------------|
 | `kinds.<name>.links[]` | string | A link whose button is labelled by its name. |
 
-### `kinds.<name>.links[]`: A link and its button's label.
+### `kinds.<name>.links[]`: A link and its button's label
 
 | Setting | Type | What it sets |
 |---------|------|--------------|
@@ -259,7 +259,7 @@ How far a template may go as it renders.
 
 Which events go where, rendered how.
 
-### `routes[]`: A route to a Discord destination.
+### `routes[]`: A route to a Discord destination
 
 | Setting | Type | What it sets |
 |---------|------|--------------|
@@ -285,7 +285,7 @@ Which events go where, rendered how.
 | `routes[].thread.name` | string | The template of the thread's name. |
 | `routes[].versions` | string | The versions it takes, as a pattern in which `*` stands for any run of characters and `?` for any one, such as `"*.*.*"`, which leaves out a Docker Hub tag such as `latest`; every version where absent. |
 
-### `routes[]`: A route to a Mastodon destination.
+### `routes[]`: A route to a Mastodon destination
 
 | Setting | Type | What it sets |
 |---------|------|--------------|
@@ -312,7 +312,7 @@ Which events go where, rendered how.
 | `routes[].versions` | string | The versions it takes, as a pattern in which `*` stands for any run of characters and `?` for any one, such as `"*.*.*"`, which leaves out a Docker Hub tag such as `latest`; every version where absent. |
 | `routes[].visibility` | [Visibility](#visibility) | Who sees each status. |
 
-### `routes[]`: A route to a Matrix destination.
+### `routes[]`: A route to a Matrix destination
 
 | Setting | Type | What it sets |
 |---------|------|--------------|
@@ -334,7 +334,7 @@ Which events go where, rendered how.
 | `routes[].thread.name` | string | The template of the thread's name. |
 | `routes[].versions` | string | The versions it takes, as a pattern in which `*` stands for any run of characters and `?` for any one, such as `"*.*.*"`, which leaves out a Docker Hub tag such as `latest`; every version where absent. |
 
-### `routes[]`: A route to a Slack destination.
+### `routes[]`: A route to a Slack destination
 
 | Setting | Type | What it sets |
 |---------|------|--------------|
@@ -358,7 +358,7 @@ Which events go where, rendered how.
 | `routes[].thread.name` | string | The template of the thread's name. |
 | `routes[].versions` | string | The versions it takes, as a pattern in which `*` stands for any run of characters and `?` for any one, such as `"*.*.*"`, which leaves out a Docker Hub tag such as `latest`; every version where absent. |
 
-### `routes[]`: A route announcing as one of herald's own ActivityPub actors.
+### `routes[]`: A route announcing as one of herald's own ActivityPub actors
 
 | Setting | Type | What it sets |
 |---------|------|--------------|
@@ -905,11 +905,7 @@ How Docker Hub lists a repository's tags.
 
 ### TokenHash
 
-
-
 ### Version
-
-
 
 ### Visibility
 
