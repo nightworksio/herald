@@ -14,7 +14,7 @@ name = "herald"
 path = "src/main.rs"
 
 [dependencies]
-futures-util = { version = "0.3", default-features = false, features = ["std"] }
+futures-util.workspace = true
 base64.workspace = true
 clap = { version = "4", features = ["derive", "env"] }
 herald-aws.workspace = true
