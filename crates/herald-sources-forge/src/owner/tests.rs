@@ -112,6 +112,7 @@ fn known(pages: &[&str]) -> Listing {
         pages: pages.iter().map(|page| Some((*page).to_owned())).collect(),
         first: jiff::Timestamp::UNIX_EPOCH,
         listed: jiff::Timestamp::UNIX_EPOCH,
+        fingerprint: owned(Forge::GitHub, &SourceOptions::default()).fingerprint(),
     }
 }
 
@@ -230,7 +231,7 @@ fn a_page_is_read_as_each_forge_describes_its_repositories() {
         ),
         (Visibility::Private, true, true, true)
     );
-    assert_eq!(read[2].visibility, Visibility::Public);
+    assert_eq!(read[2].visibility, Visibility::Private);
     let gitlab = page(
         Forge::GitLab,
         json!([{
@@ -263,9 +264,9 @@ fn a_page_is_read_as_each_forge_describes_its_repositories() {
         json!([
             { "id": 4, "name": "a", "full_name": "lemonfiber/a", "private": true, "internal": true,
               "template": true, "language": "", "topics": ["x"] },
-            { "id": 5, "name": "b", "full_name": "lemonfiber/b", "internal": true, "language": "Go",
+            { "id": 5, "name": "b", "full_name": "lemonfiber/b", "private": false, "internal": true, "language": "Go",
               "archived": true, "fork": true },
-            { "id": 6, "name": "c", "full_name": "lemonfiber/c" }
+            { "id": 6, "name": "c", "full_name": "lemonfiber/c", "private": false }
         ]),
     )
     .unwrap();
@@ -283,6 +284,93 @@ fn a_page_is_read_as_each_forge_describes_its_repositories() {
     assert!(forgejo[0].template && forgejo[1].archived && forgejo[1].fork);
     assert_eq!(forgejo[0].topics, ["x"]);
     assert!(page(Forge::GitHub, json!({ "message": "Not Found" })).is_err());
+}
+
+#[test]
+fn a_visibility_missing_or_unknown_is_read_as_private() {
+    let visibilities = |forge, entries: Value| {
+        owned(forge, &SourceOptions::default())
+            .page(&Response {
+                status: 200,
+                headers: Vec::new(),
+                body: entries.to_string().into_bytes(),
+            })
+            .unwrap()
+            .into_iter()
+            .map(|listed| listed.visibility)
+            .collect::<Vec<_>>()
+    };
+    let github = |extra: Value| {
+        let mut entry = json!({ "id": 1, "name": "a", "full_name": "o/a" });
+        if let (Some(entry), Some(extra)) = (entry.as_object_mut(), extra.as_object()) {
+            entry.extend(extra.clone());
+        }
+        entry
+    };
+    assert_eq!(
+        visibilities(
+            Forge::GitHub,
+            json!([
+                github(json!({ "visibility": "public", "private": true })),
+                github(json!({ "visibility": "internal" })),
+                github(json!({ "visibility": "private" })),
+                github(json!({ "visibility": "secret" })),
+                github(json!({ "private": false })),
+                github(json!({ "private": true })),
+                github(json!({}))
+            ])
+        ),
+        [
+            Visibility::Public,
+            Visibility::Internal,
+            Visibility::Private,
+            Visibility::Private,
+            Visibility::Public,
+            Visibility::Private,
+            Visibility::Private
+        ]
+    );
+    let gitlab = |extra: Value| {
+        let mut entry = json!({ "id": 1, "path": "a", "path_with_namespace": "g/a" });
+        if let (Some(entry), Some(extra)) = (entry.as_object_mut(), extra.as_object()) {
+            entry.extend(extra.clone());
+        }
+        entry
+    };
+    assert_eq!(
+        visibilities(
+            Forge::GitLab,
+            json!([
+                gitlab(json!({ "visibility": "public", "visibility_level": 0 })),
+                gitlab(json!({ "visibility_level": 20 })),
+                gitlab(json!({ "visibility_level": 10 })),
+                gitlab(json!({ "visibility_level": 0 })),
+                gitlab(json!({}))
+            ])
+        ),
+        [
+            Visibility::Public,
+            Visibility::Public,
+            Visibility::Internal,
+            Visibility::Private,
+            Visibility::Private
+        ]
+    );
+    assert_eq!(
+        visibilities(
+            Forge::Forgejo,
+            json!([
+                { "id": 1, "name": "a", "full_name": "o/a" },
+                { "id": 2, "name": "b", "full_name": "o/b", "internal": true },
+                { "id": 3, "name": "c", "full_name": "o/c", "private": false, "internal": true }
+            ])
+        ),
+        [
+            Visibility::Private,
+            Visibility::Private,
+            Visibility::Internal
+        ]
+    );
 }
 
 #[test]
@@ -543,4 +631,28 @@ fn a_listing_whose_pages_named_no_etag_is_read_whole_at_once() {
             None
         )]
     );
+}
+
+#[test]
+fn a_listing_kept_for_another_selection_is_read_whole() {
+    let http = Scripted::new(vec![answer(200, &json!([github(1, "a")]), "\"n\"", false)]);
+    let narrowed = owned(
+        Forge::GitHub,
+        &SourceOptions {
+            exclude: vec!["b".to_owned()],
+            ..SourceOptions::default()
+        },
+    );
+    assert_ne!(narrowed.fingerprint(), known(&[]).fingerprint);
+    assert_eq!(
+        names(&listed(&narrowed, &http, Some(&known(&["\"p1\""]))).unwrap()),
+        ["a"]
+    );
+    assert_eq!(http.asked()[0].1, None);
+    assert!(narrowed.takes(&Listed::from(
+        serde_json::from_value::<GitHub>(github(1, "a")).unwrap()
+    )));
+    assert!(!narrowed.takes(&Listed::from(
+        serde_json::from_value::<GitHub>(github(2, "b")).unwrap()
+    )));
 }

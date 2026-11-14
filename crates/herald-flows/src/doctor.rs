@@ -501,29 +501,24 @@ fn marked(config: &Config, findings: &mut Findings) {
 }
 
 /// The routes that take a private or internal repository's events to a
-/// place not declared private, as `[doctor] private_to_public` judges them.
-fn exposed(config: &Config, findings: &mut Findings) {
-    let guard = config.doctor.private_to_public;
+/// place not declared private, where `[doctor] private_to_public` warns of
+/// them; where it refuses, the config does not load (ADR-0029).
+fn exposed(config: &Config, notes: &mut Vec<String>) {
+    if config.doctor.private_to_public != Guard::Warn {
+        return;
+    }
     for route in config.routes.iter().filter(|route| !route.private) {
         for name in &route.route.filter.sources {
-            if !config
+            if config
                 .sources
                 .get(name)
                 .is_some_and(|source| source.unlisted())
             {
-                continue;
-            }
-            let said = format!(
-                "The route {} takes {}'s private or internal repositories to a place not declared private. Set private = true on the route where its place is private, or leave them out with the source's visibility",
-                route.route.id.as_str(),
-                name.as_str()
-            );
-            match guard {
-                Guard::Refuse => findings.mistakes.push(format!(
-                    "{said}; [doctor] private_to_public = \"warn\" lets it run."
-                )),
-                Guard::Warn => findings.notes.push(format!("{said}.")),
-                Guard::Allow => {}
+                notes.push(format!(
+                    "The route {} takes {}'s private or internal repositories to a place not declared private, as [doctor] private_to_public = \"warn\" lets it.",
+                    route.route.id.as_str(),
+                    name.as_str()
+                ));
             }
         }
     }
@@ -564,7 +559,7 @@ fn served(config: &Config, layer: &Layer, layers: &[Layer], here: &Here) -> Find
     loosened(config, &mut findings.notes);
     stored(config, layer, &mut findings);
     moving(config, &mut findings.notes);
-    exposed(config, &mut findings);
+    exposed(config, &mut findings.notes);
     webhooked(config, &mut findings.notes);
     scheduled(config, layer, here, &mut findings);
     for (index, route) in config.routes.iter().enumerate() {

@@ -32,6 +32,10 @@ at most 64 KiB, a GitHub repository variable 48 KB and a DynamoDB item
    page conditional on the `ETag` the last listing kept. Where every page
    is unchanged and the page after the last is empty, the listing is
    unchanged; any changed page reads the listing again from its first page.
+   The listing keeps a digest of what it asked for (the owner, the `api`
+   and the selection); a listing kept for anything else is read whole.
+   Every kept member is checked against the current selection each round,
+   whatever the listing found, and one it no longer takes leaves.
    An owner with no organization of its name is listed as a user, and the
    listing remembers which.
 4. **Two caps refuse the source for the round, naming the setting:**
@@ -54,10 +58,13 @@ at most 64 KiB, a GitHub repository variable 48 KB and a DynamoDB item
    listing is written only once every member it changed is, so a listing
    found unchanged never hides a member.
 8. **A route declares its place private with `private = true`**; a place is
-   public otherwise. Doctor refuses a route that takes a source's private or
-   internal repositories to a public place. `[doctor] private_to_public`
-   switches the refusal for the whole config: `"refuse"` (the default),
-   `"warn"` or `"allow"`. The field and the setting belong to the route and
+   public otherwise. Under `[doctor] private_to_public = "refuse"`, the
+   default, a config whose route takes a source's private or internal
+   repositories to a public place does not load, and an event from a member
+   not everyone may see is announced only to `private` routes. `"warn"`
+   loads it and doctor names the route; `"allow"` says nothing. A
+   repository whose visibility the forge does not name, or names in a way
+   herald does not know, is private. The field and the setting belong to the route and
    to doctor, not to any one kind of source.
 9. **`herald doctor --online` lists each owner**, notes how many
    repositories it takes, and names as a mistake a listing over a cap and

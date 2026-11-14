@@ -152,7 +152,7 @@
           "$ref": "#/$defs/Prereleases"
         },
         "private": {
-          "description": "Whether its place is private, so it may take a private or internal\nrepository's events; a place is public where absent, and doctor\nrefuses such events on it (`[doctor] private_to_public`).",
+          "description": "Whether its place is private, so it may take a private or internal\nrepository's events; a place is public where absent, and a config\nsending such events to it does not load (`[doctor] private_to_public`).",
           "type": "boolean",
           "default": false
         },
@@ -853,7 +853,7 @@
           "$ref": "#/$defs/Prereleases"
         },
         "private": {
-          "description": "Whether its place is private, so it may take a private or internal\nrepository's events; a place is public where absent, and doctor\nrefuses such events on it (`[doctor] private_to_public`).",
+          "description": "Whether its place is private, so it may take a private or internal\nrepository's events; a place is public where absent, and a config\nsending such events to it does not load (`[doctor] private_to_public`).",
           "type": "boolean",
           "default": false
         },
@@ -936,7 +936,7 @@
       "type": "object",
       "properties": {
         "private_to_public": {
-          "description": "What doctor does with a route that takes a private or internal\nrepository's events and is not `private`: \"refuse\" where absent,\n\"warn\" to name it and let it run, or \"allow\".",
+          "description": "What becomes of a route that takes a private or internal\nrepository's events and is not `private`: \"refuse\" where absent, so\nthe config does not load and no such event reaches it; \"warn\" to load\nit and have doctor name it; or \"allow\".",
           "$ref": "#/$defs/Guard"
         }
       },
@@ -1221,7 +1221,7 @@
           "$ref": "#/$defs/Prereleases"
         },
         "private": {
-          "description": "Whether its place is private, so it may take a private or internal\nrepository's events; a place is public where absent, and doctor\nrefuses such events on it (`[doctor] private_to_public`).",
+          "description": "Whether its place is private, so it may take a private or internal\nrepository's events; a place is public where absent, and a config\nsending such events to it does not load (`[doctor] private_to_public`).",
           "type": "boolean",
           "default": false
         },
@@ -1387,7 +1387,7 @@
           "$ref": "#/$defs/Prereleases"
         },
         "private": {
-          "description": "Whether its place is private, so it may take a private or internal\nrepository's events; a place is public where absent, and doctor\nrefuses such events on it (`[doctor] private_to_public`).",
+          "description": "Whether its place is private, so it may take a private or internal\nrepository's events; a place is public where absent, and a config\nsending such events to it does not load (`[doctor] private_to_public`).",
           "type": "boolean",
           "default": false
         },
@@ -1950,7 +1950,7 @@
           "$ref": "#/$defs/Prereleases"
         },
         "private": {
-          "description": "Whether its place is private, so it may take a private or internal\nrepository's events; a place is public where absent, and doctor\nrefuses such events on it (`[doctor] private_to_public`).",
+          "description": "Whether its place is private, so it may take a private or internal\nrepository's events; a place is public where absent, and a config\nsending such events to it does not load (`[doctor] private_to_public`).",
           "type": "boolean",
           "default": false
         },
@@ -2163,7 +2163,7 @@
               }
             },
             "visibility": {
-              "description": "The visibilities taken; only public repositories where absent. A\nroute that takes a private or internal member is refused unless it\nis `private` (`[doctor] private_to_public`).",
+              "description": "The visibilities taken; only public repositories where absent. A\nrepository whose visibility the forge does not name is private. A\nroute that takes a private or internal member is refused unless it\nis `private` (`[doctor] private_to_public`).",
               "type": "array",
               "items": {
                 "$ref": "#/$defs/RepositoryVisibility"
@@ -2318,7 +2318,7 @@
               }
             },
             "visibility": {
-              "description": "The visibilities taken; only public repositories where absent. A\nroute that takes a private or internal member is refused unless it\nis `private` (`[doctor] private_to_public`).",
+              "description": "The visibilities taken; only public repositories where absent. A\nrepository whose visibility the forge does not name is private. A\nroute that takes a private or internal member is refused unless it\nis `private` (`[doctor] private_to_public`).",
               "type": "array",
               "items": {
                 "$ref": "#/$defs/RepositoryVisibility"
@@ -2473,7 +2473,7 @@
               }
             },
             "visibility": {
-              "description": "The visibilities taken; only public repositories where absent. A\nroute that takes a private or internal member is refused unless it\nis `private` (`[doctor] private_to_public`).",
+              "description": "The visibilities taken; only public repositories where absent. A\nrepository whose visibility the forge does not name is private. A\nroute that takes a private or internal member is refused unless it\nis `private` (`[doctor] private_to_public`).",
               "type": "array",
               "items": {
                 "$ref": "#/$defs/RepositoryVisibility"

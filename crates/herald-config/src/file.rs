@@ -228,8 +228,8 @@ pub(crate) struct RouteFile {
     #[serde(default)]
     pub(crate) mentions: MentionsFile,
     /// Whether its place is private, so it may take a private or internal
-    /// repository's events; a place is public where absent, and doctor
-    /// refuses such events on it (`[doctor] private_to_public`).
+    /// repository's events; a place is public where absent, and a config
+    /// sending such events to it does not load (`[doctor] private_to_public`).
     #[serde(default)]
     pub(crate) private: bool,
 }
@@ -359,9 +359,10 @@ pub(crate) struct AnnounceFile {
 #[serde(deny_unknown_fields)]
 #[serde(rename = "Doctor")]
 pub(crate) struct DoctorFile {
-    /// What doctor does with a route that takes a private or internal
-    /// repository's events and is not `private`: "refuse" where absent,
-    /// "warn" to name it and let it run, or "allow".
+    /// What becomes of a route that takes a private or internal
+    /// repository's events and is not `private`: "refuse" where absent, so
+    /// the config does not load and no such event reaches it; "warn" to load
+    /// it and have doctor name it; or "allow".
     pub(crate) private_to_public: Option<crate::config::Guard>,
 }
 

@@ -58,7 +58,7 @@ body = "{{ event.body }}"
 
     #[test]
     fn an_owner_source_reads_its_selection_and_a_route_is_public_where_it_says_nothing() {
-        let config = loaded("", "").unwrap();
+        let config = loaded("", "\n[doctor]\nprivate_to_public = \"allow\"\n").unwrap();
         let source = config.sources.values().next().unwrap();
         let forged = source.of::<ForgeSource>().unwrap();
         assert_eq!(forged.options.owner.as_deref(), Some("lemonfiber/plugins"));
@@ -68,8 +68,28 @@ body = "{{ event.body }}"
         );
         assert!(source.unlisted());
         assert!(!config.routes[0].private);
-        assert_eq!(config.doctor, Doctor::default());
-        assert_eq!(config.doctor.private_to_public, Guard::Refuse);
+        assert_eq!(Doctor::default().private_to_public, Guard::Refuse);
+    }
+
+    #[test]
+    fn a_route_taking_private_repositories_to_a_public_place_does_not_load_where_doctor_refuses() {
+        let error = loaded("", "").unwrap_err();
+        assert!(
+            error.contains("routes[0]: this route takes org's private or internal repositories to a place not declared private; set private = true where its place is private, leave them out with the source's visibility, or set [doctor] private_to_public = \"warn\""),
+            "{error}"
+        );
+        let private = loaded("private = true", "").unwrap();
+        assert_eq!(private.doctor, Doctor::default());
+        let public_only = load(
+            "herald.toml",
+            &format!(
+                "{}{TEMPLATES}",
+                EXAMPLE.replace("visibility = [\"public\", \"internal\"]\n", "")
+            ),
+            &nothing,
+            &crate::common::kinds(),
+        );
+        assert!(public_only.is_ok());
     }
 
     #[test]

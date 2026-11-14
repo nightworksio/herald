@@ -125,6 +125,8 @@ impl Owned {
         known: Option<&Listing>,
     ) -> Result<Expanded, Unlisted> {
         let http = Erased(http);
+        let fingerprint = self.fingerprint();
+        let known = known.filter(|known| known.fingerprint == fingerprint);
         let mut owner = known.map_or(Owner::Organization, |known| known.owner);
         let known_pages = known.map_or(&[][..], |known| known.pages.as_slice());
         let mut conditional = !known_pages.is_empty() && known_pages.iter().all(Option::is_some);
@@ -227,11 +229,53 @@ impl Expand for Owned {
         Box::pin(self.list(http, known))
     }
 
+    fn takes(&self, repository: &Listed) -> bool {
+        self.selection.takes(repository)
+    }
+
+    fn fingerprint(&self) -> String {
+        herald_core::digest(&format!(
+            "{:?}\n{}\n{}\n{}\n{:?}",
+            self.forge, self.api, self.owner, self.subgroups, self.selection
+        ))
+    }
+
     fn member(&self, repository: &Listed) -> Arc<dyn Poll> {
         Arc::new(Releases {
             origin: Origin::new(self.forge, &self.options, &repository.path),
             token: self.token.clone(),
         })
+    }
+}
+
+/// The visibility a forge names, as GitHub's and GitLab's listings spell
+/// it; any other name is private, so an unknown one is never announced to
+/// a public place.
+fn named(name: &str) -> Visibility {
+    match name {
+        "public" => Visibility::Public,
+        "internal" => Visibility::Internal,
+        _ => Visibility::Private,
+    }
+}
+
+/// The visibility a repository's flags give: private unless it says it is
+/// not, and internal where it says so.
+const fn flagged(private: Option<bool>, internal: Option<bool>) -> Visibility {
+    match (private, internal) {
+        (Some(false), Some(true)) => Visibility::Internal,
+        (Some(false), _) => Visibility::Public,
+        _ => Visibility::Private,
+    }
+}
+
+/// The visibility GitLab's numeric level gives: 20 public, 10 internal,
+/// and private otherwise.
+const fn levelled(level: Option<u8>) -> Visibility {
+    match level {
+        Some(20) => Visibility::Public,
+        Some(10) => Visibility::Internal,
+        _ => Visibility::Private,
     }
 }
 
@@ -245,10 +289,6 @@ enum Property {
 
 /// A repository, as GitHub lists it.
 #[derive(Deserialize)]
-#[expect(
-    clippy::struct_excessive_bools,
-    reason = "the struct reads GitHub's answer, which names each flag"
-)]
 struct GitHub {
     id: u64,
     name: String,
@@ -257,9 +297,8 @@ struct GitHub {
     topics: Vec<String>,
     #[serde(default)]
     custom_properties: BTreeMap<String, Option<Property>>,
-    visibility: Option<Visibility>,
-    #[serde(default)]
-    private: bool,
+    visibility: Option<String>,
+    private: Option<bool>,
     #[serde(default)]
     archived: bool,
     #[serde(default)]
@@ -271,11 +310,10 @@ struct GitHub {
 
 impl From<GitHub> for Listed {
     fn from(repository: GitHub) -> Self {
-        let visibility = repository.visibility.unwrap_or(if repository.private {
-            Visibility::Private
-        } else {
-            Visibility::Public
-        });
+        let visibility = repository
+            .visibility
+            .as_deref()
+            .map_or_else(|| flagged(repository.private, None), named);
         Self {
             id: repository.id.to_string(),
             name: repository.name,
@@ -311,7 +349,8 @@ struct GitLab {
     path_with_namespace: String,
     #[serde(default)]
     topics: Vec<String>,
-    visibility: Visibility,
+    visibility: Option<String>,
+    visibility_level: Option<u8>,
     #[serde(default)]
     archived: bool,
     forked_from_project: Option<serde_json::Value>,
@@ -325,7 +364,10 @@ impl From<GitLab> for Listed {
             path: project.path_with_namespace,
             topics: project.topics,
             properties: BTreeMap::new(),
-            visibility: project.visibility,
+            visibility: project
+                .visibility
+                .as_deref()
+                .map_or_else(|| levelled(project.visibility_level), named),
             archived: project.archived,
             fork: project.forked_from_project.is_some(),
             template: false,
@@ -346,8 +388,7 @@ struct Forgejo {
     full_name: String,
     #[serde(default)]
     topics: Vec<String>,
-    #[serde(default)]
-    private: bool,
+    private: Option<bool>,
     #[serde(default)]
     internal: bool,
     #[serde(default)]
@@ -362,11 +403,7 @@ struct Forgejo {
 
 impl From<Forgejo> for Listed {
     fn from(repository: Forgejo) -> Self {
-        let visibility = match (repository.private, repository.internal) {
-            (true, _) => Visibility::Private,
-            (false, true) => Visibility::Internal,
-            (false, false) => Visibility::Public,
-        };
+        let visibility = flagged(repository.private, Some(repository.internal));
         Self {
             id: repository.id.to_string(),
             name: repository.name,

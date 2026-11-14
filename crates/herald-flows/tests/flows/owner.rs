@@ -219,15 +219,18 @@ fn an_owner_s_members_join_are_polled_on_their_own_and_a_listing_unchanged_reads
     assert!(kept.iter().all(|member| member.discovered == NOON
         && member.left.is_none()
         && member.cursor.is_some()));
+    let kept = listing(&store).unwrap();
     assert_eq!(
-        listing(&store),
-        Some(Listing {
+        kept,
+        Listing {
             owner: herald_core::Owner::Organization,
             pages: vec![Some("W/\"1\"".to_owned())],
             first: NOON,
             listed: NOON,
-        })
+            fingerprint: kept.fingerprint.clone(),
+        }
     );
+    assert_eq!(kept.fingerprint.len(), herald_core::SHA256_HEX_DIGITS);
     let script = Script::answering(&[
         (LISTING, 304, ""),
         (PROBE, 200, "[]"),
@@ -324,6 +327,18 @@ fn a_member_that_left_is_forgotten_with_its_cursor_after_keep_members() {
     assert_eq!(
         polled(&config, &store, &script, left)[0],
         listed(1, &[], &["herald"])
+    );
+    assert_eq!(members(&store).len(), 2);
+    let script = Script::answering(&[
+        (LISTING, 304, ""),
+        (PROBE, 200, "[]"),
+        (&released("gate"), 304, ""),
+    ]);
+    polled(
+        &config,
+        &store,
+        &script,
+        left + SignedDuration::from_hours(2),
     );
     assert_eq!(members(&store).len(), 2);
     let script = Script::answering(&[
@@ -552,4 +567,60 @@ fn a_member_whose_route_stops_keeps_its_cursor_where_it_was() {
     assert_eq!(cursor, &Remembered::Kept);
     assert_eq!(announced.len(), 1);
     assert_eq!(members(&store)[0].cursor, None);
+}
+
+#[test]
+fn a_member_renamed_keeps_its_cursor_and_is_polled_at_its_new_path() {
+    let store = healthy();
+    let config = owned(|_| {});
+    joined(&store, &config);
+    let renamed = repositories(&[(1, "herald"), (2, "gatekeeper")]);
+    let script = Script::answering(&[
+        (LISTING, 200, &renamed),
+        (LISTING, 200, &renamed),
+        (&released("herald"), 304, ""),
+        (&released("gatekeeper"), 304, ""),
+    ]);
+    let later = NOON + SignedDuration::from_hours(1);
+    assert_eq!(
+        polled(&config, &store, &script, later)[0],
+        listed(2, &[], &[])
+    );
+    let kept = members(&store);
+    assert_eq!(kept[1].repository.path, "nightworksio/gatekeeper");
+    assert!(kept[1].cursor.is_some());
+}
+
+#[test]
+fn a_member_the_selection_no_longer_takes_leaves_though_the_listing_is_unchanged() {
+    let store = healthy();
+    joined(&store, &owned(|_| {}));
+    let narrowed = owned(|options| options.exclude = vec!["gate".to_owned()]);
+    let script = Script::answering(&[
+        (LISTING, 200, &repositories(&[(1, "herald"), (2, "gate")])),
+        (&released("herald"), 304, ""),
+    ]);
+    let later = NOON + SignedDuration::from_hours(1);
+    let swept = polled(&narrowed, &store, &script, later);
+    assert_eq!(
+        swept,
+        [
+            listed(1, &[], &["gate"]),
+            member("herald", Sweep::Unchanged)
+        ]
+    );
+    assert!(script.seen()[0].ends_with(LISTING));
+    let kept = members(&store);
+    assert_eq!(kept[1].left, Some(later));
+    let failing = Script::answering(&[(LISTING, 500, "{}"), (&released("herald"), 304, "")]);
+    let widened = owned(|options| options.exclude = vec!["herald".to_owned()]);
+    let swept = polled(
+        &widened,
+        &store,
+        &failing,
+        later + SignedDuration::from_hours(1),
+    );
+    assert!(matches!(swept[0], (None, Sweep::Stopped(Stop::Source(_)))));
+    assert_eq!(swept[1], listed(0, &[], &["herald"]));
+    assert_eq!(swept.len(), 2);
 }

@@ -23,6 +23,9 @@ fn a_source_names_a_repository_or_an_owner_and_not_both() {
     );
     assert_eq!(owner("lemonfiber").check(Forge::GitHub), Ok(()));
     assert_eq!(owner("group/sub").check(Forge::GitLab), Ok(()));
+    let deepest = vec!["g"; 21].join("/");
+    assert_eq!(owner(&deepest).check(Forge::GitLab), Ok(()));
+    assert!(owner(&format!("{deepest}/g")).check(Forge::GitLab).is_err());
     assert_eq!(
         owner("group/sub").check(Forge::Forgejo),
         Err("\"group/sub\" is not an owner; give it as an organization's or a user's name, of letters, digits, '.', '_' and '-'".to_owned())

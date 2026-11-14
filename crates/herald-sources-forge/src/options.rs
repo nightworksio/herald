@@ -93,6 +93,7 @@ pub struct SourceOptions {
     #[serde(default)]
     pub topics: Vec<String>,
     /// The visibilities taken; only public repositories where absent. A
+    /// repository whose visibility the forge does not name is private. A
     /// route that takes a private or internal member is refused unless it
     /// is `private` (`[doctor] private_to_public`).
     pub visibility: Option<Vec<Visibility>>,

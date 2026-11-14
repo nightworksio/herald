@@ -111,6 +111,14 @@ pub trait Expand: fmt::Debug + Send + Sync {
 
     /// What polls the member `repository`.
     fn member(&self, repository: &Listed) -> Arc<dyn Poll>;
+
+    /// Whether the selection takes `repository`, as the last listing named
+    /// it.
+    fn takes(&self, repository: &Listed) -> bool;
+
+    /// A digest of what a listing asks for: the owner, where, and the
+    /// selection.
+    fn fingerprint(&self) -> String;
 }
 
 /// What listing an owner found.

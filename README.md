@@ -330,9 +330,13 @@ listing that fails keeps the members the last one found. A listing over
 names the setting.
 
 A route that takes private or internal repositories must say its place is
-private with `private = true`; otherwise doctor refuses the config.
-`[doctor] private_to_public = "warn"` names such a route and lets it run,
-and `"allow"` says nothing. `herald doctor --online` lists each owner and
+private with `private = true`; otherwise the config does not load, and an
+event from a repository not everyone may see reaches only `private` routes.
+A repository whose visibility the forge does not name counts as private.
+`[doctor] private_to_public = "warn"` loads such a config and doctor names
+the route, and `"allow"` says nothing. Each member is checked against the
+current filters every round, and a listing kept for other filters, another
+owner or another `api` is read whole. `herald doctor --online` lists each owner and
 names any two repositories, of one owner or of two, that would announce as
 the same project.
 

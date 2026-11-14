@@ -202,7 +202,7 @@ How doctor judges the config.
 
 | Setting | Type | What it sets |
 |---------|------|--------------|
-| `doctor.private_to_public` | [Guard](#guard) | What doctor does with a route that takes a private or internal repository's events and is not `private`: "refuse" where absent, "warn" to name it and let it run, or "allow". |
+| `doctor.private_to_public` | [Guard](#guard) | What becomes of a route that takes a private or internal repository's events and is not `private`: "refuse" where absent, so the config does not load and no such event reaches it; "warn" to load it and have doctor name it; or "allow". |
 
 ## `http`
 
@@ -282,7 +282,7 @@ Which events go where, rendered how.
 | `routes[].mentions.subscribers` | boolean | Whether it mentions the subscribers herald keeps. |
 | `routes[].pin` | [Pinning](#pinning) | Whether to pin each announcement in place of the route's earlier pin, and how the earlier pin is found. |
 | `routes[].prereleases` | [Prereleases](#prereleases) | Which pre-releases it takes. |
-| `routes[].private` | boolean | Whether its place is private, so it may take a private or internal repository's events; a place is public where absent, and doctor refuses such events on it (`[doctor] private_to_public`). |
+| `routes[].private` | boolean | Whether its place is private, so it may take a private or internal repository's events; a place is public where absent, and a config sending such events to it does not load (`[doctor] private_to_public`). |
 | `routes[].sources` | array of string | The sources it takes events from. |
 | `routes[].subscribe` | table | The opt-in role members subscribe to, where the route offers one. |
 | `routes[].subscribe.button` | boolean | Whether each announcement carries a button that subscribes, or unsubscribes a member already subscribed. |
@@ -311,7 +311,7 @@ Which events go where, rendered how.
 | `routes[].mentions.subscribers` | boolean | Whether it mentions the subscribers herald keeps. |
 | `routes[].pin` | [Pinning](#pinning) | Whether to pin each announcement in place of the route's earlier pin, and how the earlier pin is found. |
 | `routes[].prereleases` | [Prereleases](#prereleases) | Which pre-releases it takes. |
-| `routes[].private` | boolean | Whether its place is private, so it may take a private or internal repository's events; a place is public where absent, and doctor refuses such events on it (`[doctor] private_to_public`). |
+| `routes[].private` | boolean | Whether its place is private, so it may take a private or internal repository's events; a place is public where absent, and a config sending such events to it does not load (`[doctor] private_to_public`). |
 | `routes[].sources` | array of string | The sources it takes events from. |
 | `routes[].template` | string | The template it renders with. |
 | `routes[].thread` | table | The thread to open for each announcement. |
@@ -335,7 +335,7 @@ Which events go where, rendered how.
 | `routes[].mentions.subscribers` | boolean | Whether it mentions the subscribers herald keeps. |
 | `routes[].pin` | [Pinning](#pinning) | Whether to pin each announcement in place of the route's earlier pin, and how the earlier pin is found. |
 | `routes[].prereleases` | [Prereleases](#prereleases) | Which pre-releases it takes. |
-| `routes[].private` | boolean | Whether its place is private, so it may take a private or internal repository's events; a place is public where absent, and doctor refuses such events on it (`[doctor] private_to_public`). |
+| `routes[].private` | boolean | Whether its place is private, so it may take a private or internal repository's events; a place is public where absent, and a config sending such events to it does not load (`[doctor] private_to_public`). |
 | `routes[].room` | string | The room's id, such as `!abcdefg:matrix.org`, which the bot has joined. |
 | `routes[].sources` | array of string | The sources it takes events from. |
 | `routes[].template` | string | The template it renders with. |
@@ -359,7 +359,7 @@ Which events go where, rendered how.
 | `routes[].mentions.subscribers` | boolean | Whether it mentions the subscribers herald keeps. |
 | `routes[].pin` | [Pinning](#pinning) | Whether to pin each announcement in place of the route's earlier pin, and how the earlier pin is found. |
 | `routes[].prereleases` | [Prereleases](#prereleases) | Which pre-releases it takes. |
-| `routes[].private` | boolean | Whether its place is private, so it may take a private or internal repository's events; a place is public where absent, and doctor refuses such events on it (`[doctor] private_to_public`). |
+| `routes[].private` | boolean | Whether its place is private, so it may take a private or internal repository's events; a place is public where absent, and a config sending such events to it does not load (`[doctor] private_to_public`). |
 | `routes[].sources` | array of string | The sources it takes events from. |
 | `routes[].subscribe` | table | How the route offers subscribing, where it mentions its subscribers. |
 | `routes[].subscribe.button` | boolean | Whether each announcement carries a button that subscribes, or unsubscribes a member already subscribed. |
@@ -386,7 +386,7 @@ Which events go where, rendered how.
 | `routes[].mentions.subscribers` | boolean | Whether it mentions the subscribers herald keeps. |
 | `routes[].pin` | [Pinning](#pinning) | Whether to pin each announcement in place of the route's earlier pin, and how the earlier pin is found. |
 | `routes[].prereleases` | [Prereleases](#prereleases) | Which pre-releases it takes. |
-| `routes[].private` | boolean | Whether its place is private, so it may take a private or internal repository's events; a place is public where absent, and doctor refuses such events on it (`[doctor] private_to_public`). |
+| `routes[].private` | boolean | Whether its place is private, so it may take a private or internal repository's events; a place is public where absent, and a config sending such events to it does not load (`[doctor] private_to_public`). |
 | `routes[].sources` | array of string | The sources it takes events from. |
 | `routes[].template` | string | The template it renders with. |
 | `routes[].thread` | table | The thread to open for each announcement. |
@@ -488,7 +488,7 @@ A GitHub repository's releases.
 | `sources.<name>.token` | table | A token that reaches a private repository or raises the API's rate limit, such as the run's `GITHUB_TOKEN`. |
 | `sources.<name>.token.secret` | string | The secret's name. |
 | `sources.<name>.topics` | array of string | Topics, any one of which a member holds; any where absent. |
-| `sources.<name>.visibility` | array of [RepositoryVisibility](#repositoryvisibility) | The visibilities taken; only public repositories where absent. A route that takes a private or internal member is refused unless it is `private` (`[doctor] private_to_public`). |
+| `sources.<name>.visibility` | array of [RepositoryVisibility](#repositoryvisibility) | The visibilities taken; only public repositories where absent. A repository whose visibility the forge does not name is private. A route that takes a private or internal member is refused unless it is `private` (`[doctor] private_to_public`). |
 | `sources.<name>.webhook` | table | The secret the forge signs its webhook deliveries to `herald server` with: GitHub's and Forgejo's webhook secret, or GitLab's signing token (ADR-0007). A source of one repository only. |
 | `sources.<name>.webhook.secret` | string | The secret's name. |
 
@@ -522,7 +522,7 @@ A GitLab project's releases.
 | `sources.<name>.token` | table | A token that reaches a private repository or raises the API's rate limit, such as the run's `GITHUB_TOKEN`. |
 | `sources.<name>.token.secret` | string | The secret's name. |
 | `sources.<name>.topics` | array of string | Topics, any one of which a member holds; any where absent. |
-| `sources.<name>.visibility` | array of [RepositoryVisibility](#repositoryvisibility) | The visibilities taken; only public repositories where absent. A route that takes a private or internal member is refused unless it is `private` (`[doctor] private_to_public`). |
+| `sources.<name>.visibility` | array of [RepositoryVisibility](#repositoryvisibility) | The visibilities taken; only public repositories where absent. A repository whose visibility the forge does not name is private. A route that takes a private or internal member is refused unless it is `private` (`[doctor] private_to_public`). |
 | `sources.<name>.webhook` | table | The secret the forge signs its webhook deliveries to `herald server` with: GitHub's and Forgejo's webhook secret, or GitLab's signing token (ADR-0007). A source of one repository only. |
 | `sources.<name>.webhook.secret` | string | The secret's name. |
 
@@ -556,7 +556,7 @@ A Forgejo or Gitea repository's releases.
 | `sources.<name>.token` | table | A token that reaches a private repository or raises the API's rate limit, such as the run's `GITHUB_TOKEN`. |
 | `sources.<name>.token.secret` | string | The secret's name. |
 | `sources.<name>.topics` | array of string | Topics, any one of which a member holds; any where absent. |
-| `sources.<name>.visibility` | array of [RepositoryVisibility](#repositoryvisibility) | The visibilities taken; only public repositories where absent. A route that takes a private or internal member is refused unless it is `private` (`[doctor] private_to_public`). |
+| `sources.<name>.visibility` | array of [RepositoryVisibility](#repositoryvisibility) | The visibilities taken; only public repositories where absent. A repository whose visibility the forge does not name is private. A route that takes a private or internal member is refused unless it is `private` (`[doctor] private_to_public`). |
 | `sources.<name>.webhook` | table | The secret the forge signs its webhook deliveries to `herald server` with: GitHub's and Forgejo's webhook secret, or GitLab's signing token (ADR-0007). A source of one repository only. |
 | `sources.<name>.webhook.secret` | string | The secret's name. |
 

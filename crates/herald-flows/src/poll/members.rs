@@ -4,8 +4,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use futures_util::stream::{self, StreamExt};
-use herald_config::Config;
-use herald_core::{Listed, Listing, Membership};
+use herald_config::{Config, Guard};
+use herald_core::{Listed, Listing, Membership, RouteId, Visibility};
 use herald_kinds::{Expand, Expanded, Unlisted};
 use herald_ports::{Clock, Cursors, Http, Signer, Store, StoreError, Version, Versioned, Written};
 use jiff::Timestamp;
@@ -35,7 +35,7 @@ struct Reconciled {
 /// longer listed leaves, and one that left before `forget` is forgotten.
 fn reconcile(
     kept: Vec<Versioned<Membership>>,
-    listed: Option<Vec<Listed>>,
+    (listed, expand): (Option<Vec<Listed>>, &dyn Expand),
     now: Timestamp,
     forget: Timestamp,
 ) -> Reconciled {
@@ -89,6 +89,13 @@ fn reconcile(
             }
         }
     }
+    for member in held.values_mut() {
+        if member.membership.left.is_none() && !expand.takes(&member.membership.repository) {
+            left.push(member.membership.repository.path.clone());
+            member.membership.left = Some(now);
+            member.changed = true;
+        }
+    }
     let forgotten: BTreeSet<String> = held
         .iter()
         .filter(|(_, member)| member.membership.left.is_some_and(|at| at < forget))
@@ -101,6 +108,17 @@ fn reconcile(
         left,
         forgotten,
     }
+}
+
+/// The routes a member's events may reach where they are bounded: where
+/// `guard` refuses, a repository not everyone may see reaches only the
+/// `private` routes.
+fn reach<'a>(
+    guard: Guard,
+    visibility: Visibility,
+    private: impl Iterator<Item = &'a RouteId>,
+) -> Option<Vec<RouteId>> {
+    (guard == Guard::Refuse && visibility != Visibility::Public).then(|| private.cloned().collect())
 }
 
 /// The member `held` polled, and its cursor written where it moved.
@@ -127,9 +145,19 @@ async fn member<S: Store, C: Clock, G: Signer, H: Http>(
             held.membership.repository.id
         );
         let since = (held.membership.discovered > first).then_some(held.membership.discovered);
+        let config = flow.0;
+        let within = reach(
+            config.doctor.private_to_public,
+            held.membership.repository.visibility,
+            config
+                .routes
+                .iter()
+                .filter(|route| route.private)
+                .map(|route| &route.route.id),
+        );
         found(
             flow,
-            &source.name,
+            (&source.name, within.as_deref()),
             (poll.as_ref(), http),
             (held.membership.cursor.as_ref(), since, source.backfill),
             &holder,
@@ -188,6 +216,7 @@ async fn listed(
                 pages,
                 first: known.map_or(now, |known| known.first),
                 listed: now,
+                fingerprint: expand.fingerprint(),
             }),
         ),
     })
@@ -241,7 +270,7 @@ pub(super) async fn swept<S: Store, C: Clock, G: Signer, H: Http>(
         .as_ref()
         .or(known)
         .map_or(now, |listing| listing.first);
-    let reconciled = reconcile(kept, listed, now, now - expand.keep_members());
+    let reconciled = reconcile(kept, (listed, expand), now, now - expand.keep_members());
     let mut whole = true;
     for id in &reconciled.forgotten {
         if let Err(error) = cursors.forget_member(&source.name, id).await {
@@ -294,4 +323,34 @@ pub(super) async fn swept<S: Store, C: Clock, G: Signer, H: Http>(
     .await;
     swept.extend(polled);
     swept
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_member_not_everyone_may_see_reaches_only_private_routes_where_doctor_refuses() {
+        let private = [RouteId::new("team")];
+        assert_eq!(
+            reach(Guard::Refuse, Visibility::Private, private.iter()),
+            Some(private.to_vec())
+        );
+        assert_eq!(
+            reach(Guard::Refuse, Visibility::Internal, std::iter::empty()),
+            Some(Vec::new())
+        );
+        assert_eq!(
+            reach(Guard::Refuse, Visibility::Public, private.iter()),
+            None
+        );
+        assert_eq!(
+            reach(Guard::Warn, Visibility::Private, private.iter()),
+            None
+        );
+        assert_eq!(
+            reach(Guard::Allow, Visibility::Private, private.iter()),
+            None
+        );
+    }
 }

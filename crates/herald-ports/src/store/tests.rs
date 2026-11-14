@@ -371,6 +371,7 @@ fn an_owner_source_s_records_kept_nowhere_answer_unsupported_naming_cursors() {
         pages: Vec::new(),
         first: Timestamp::UNIX_EPOCH,
         listed: Timestamp::UNIX_EPOCH,
+        fingerprint: "f".to_owned(),
     };
     let membership = herald_core::Membership {
         repository: herald_core::Listed {

@@ -3,12 +3,12 @@
 
 use futures_util::stream::{self, StreamExt};
 use herald_config::Config;
-use herald_core::{Cursor, Event, SourceName, fresh};
+use herald_core::{Cursor, Event, RouteId, SourceName, fresh};
 use herald_kinds::{Poll, Polling, Unpolled};
 use herald_ports::{Clock, Cursors, Http, Signer, Store, StoreError, Written};
 use jiff::Timestamp;
 
-use crate::announce::{Announced, Outcome, Ports, Stop, announce, at_once};
+use crate::announce::{Announced, Outcome, Ports, Stop, announce_within, at_once};
 use crate::prepare::{Connected, PreparedSource};
 
 /// What polling one source, or one member of an owner source, did.
@@ -120,7 +120,7 @@ fn unseen(
 /// every event from then on is fresh; otherwise only the newest `backfill`.
 pub(crate) async fn found<S: Store, C: Clock, G: Signer, H: Http>(
     (config, connected, ports): (&Config, &Connected<H>, &Ports<'_, S, C, G>),
-    source: &SourceName,
+    (source, within): (&SourceName, Option<&[RouteId]>),
     (poll, http): (&dyn Poll, &H),
     (cursor, since, backfill): (Option<&Cursor>, Option<Timestamp>, usize),
     holder: &str,
@@ -132,7 +132,8 @@ pub(crate) async fn found<S: Store, C: Clock, G: Signer, H: Http>(
     let mut announced = Vec::new();
     let mut settled = true;
     for event in fresh_events.into_iter().rev() {
-        let outcomes = announce(config, connected, ports, source, &event, holder).await;
+        let outcomes =
+            announce_within(config, connected, ports, source, &event, within, holder).await;
         settled &= !outcomes
             .iter()
             .any(|outcome| matches!(outcome.outcome, Outcome::Stopped { .. }));
@@ -186,7 +187,7 @@ async fn sweep<S: Store, C: Clock, G: Signer, H: Http>(
     let holder = format!("{run}/{}", source.name.as_str());
     let Some(found) = found(
         flow,
-        &source.name,
+        (&source.name, None),
         (poll, http),
         (cursor, None, source.backfill),
         &holder,

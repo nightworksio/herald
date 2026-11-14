@@ -166,6 +166,9 @@ pub struct Listing {
     pub first: Timestamp,
     /// When it was last listed in full.
     pub listed: Timestamp,
+    /// A digest of what the listing asked for: the owner, where, and the
+    /// selection; a listing that asks for something else is read whole.
+    pub fingerprint: String,
 }
 
 #[cfg(test)]
