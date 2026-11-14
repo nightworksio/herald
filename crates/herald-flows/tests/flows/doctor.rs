@@ -417,3 +417,49 @@ fn each_bound_set_above_its_default_is_noted_by_its_key() {
         Vec::<String>::new()
     );
 }
+
+#[test]
+fn a_route_taking_private_repositories_to_a_public_place_is_refused_unless_doctor_is_told_otherwise()
+ {
+    let unlisted = |extra: &str| {
+        crate::owner::owned_in(extra, |options| {
+            options.visibility = Some(vec![
+                herald_core::Visibility::Public,
+                herald_core::Visibility::Private,
+            ]);
+        })
+    };
+    let said = "The route releases takes gate's private or internal repositories to a place not declared private. Set private = true on the route where its place is private, or leave them out with the source's visibility";
+    let actions = layer(&["sqlite"]);
+    assert_eq!(
+        doctored(&unlisted(""), &actions).mistakes,
+        [format!(
+            "{said}; [doctor] private_to_public = \"warn\" lets it run."
+        )]
+    );
+    let warned = doctored(
+        &unlisted("\n[doctor]\nprivate_to_public = \"warn\""),
+        &actions,
+    );
+    assert_eq!(warned.mistakes, Vec::<String>::new());
+    assert!(warned.notes.contains(&format!("{said}.")));
+    let allowed = doctored(
+        &unlisted("\n[doctor]\nprivate_to_public = \"allow\""),
+        &actions,
+    );
+    assert_eq!(allowed.mistakes, Vec::<String>::new());
+    assert!(
+        !allowed
+            .notes
+            .iter()
+            .any(|note| note.starts_with("The route releases takes gate's"))
+    );
+    assert_eq!(
+        doctored(&unlisted("private = true"), &actions).mistakes,
+        Vec::<String>::new()
+    );
+    assert_eq!(
+        doctored(&crate::owner::owned_in("", |_| {}), &actions).mistakes,
+        Vec::<String>::new()
+    );
+}

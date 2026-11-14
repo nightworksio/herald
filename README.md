@@ -30,7 +30,8 @@ enough to start.
 
 **Four sources.**
 
-- forge releases from GitHub, GitLab and Forgejo or Gitea;
+- forge releases from GitHub, GitLab and Forgejo or Gitea, from one
+  repository or every repository an owner holds;
 - package versions from Packagist, crates.io, npm and Docker Hub;
 - entries in RSS and Atom feeds;
 - anything an app says, through the CLI or the HTTP API.
@@ -290,6 +291,50 @@ time to judge it by is found held and unchanged. The `fastly-kv` store sets
 `tombstone` ("1h"), how long a deleted record's mark is kept before Fastly
 expires it. `herald doctor` names each of `attempts`, `lock_lease` and
 `lock_patience` set above its default.
+
+### Every repository an owner holds
+
+A forge source can name an `owner`, an organization, GitLab group or user,
+in place of a `repository`. Each round lists the owner's repositories and
+polls each one it takes on its own, with its own cursor:
+
+```toml
+[sources.plugins]
+kind = "github"
+owner = "lemonfiber"
+include = ["plugin-*"]
+exclude = ["plugin-template"]
+token = { secret = "GITHUB_TOKEN" }
+```
+
+`include` and `exclude` are case-insensitive name globs (`*`, `?`, `[...]`),
+and `exclude` wins. `topics` and `language` take any of their values, and
+`properties` (GitHub's custom properties) needs every named property to hold
+one of its values. Archived repositories, forks and templates are left out
+unless `archived`, `fork` or `template` is true, and only public
+repositories are taken unless `visibility` names `private` or `internal`. A
+GitLab group's subgroups are included unless `subgroups = false`. A user's
+listing on GitHub holds the repositories anyone may see. The listing is
+asked at the same `api` as everything else, so GitHub Enterprise Server,
+GHE.com and self-managed GitLab work alike.
+
+A repository found after the first listing announces only what it publishes
+after it was found; the members of the first listing announce their newest
+`backfill`. A repository that leaves the selection stops being polled at
+once, and its cursor is kept for `keep_members` ("30d") in case it comes
+back. Each page of the listing is asked with its `ETag`, so an unchanged
+owner costs one request per page and one for the page after the last. A
+listing that fails keeps the members the last one found. A listing over
+`most_listed` (10000 repositories before the filters) or a selection over
+`most_members` (1000, at most 100000) refuses the source for the round and
+names the setting.
+
+A route that takes private or internal repositories must say its place is
+private with `private = true`; otherwise doctor refuses the config.
+`[doctor] private_to_public = "warn"` names such a route and lets it run,
+and `"allow"` says nothing. `herald doctor --online` lists each owner and
+names any two repositories, of one owner or of two, that would announce as
+the same project.
 
 ### An app's own events
 

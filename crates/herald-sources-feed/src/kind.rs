@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use herald_core::{Cursor, Kind, Polled, SecretRef};
-use herald_kinds::{Fault, Poll, SourceConfig, SourceKind, Unpolled};
+use herald_kinds::{Fault, Poll, Polling, SourceConfig, SourceKind, Unpolled};
 use herald_ports::{Boxed, DynHttp, Erased, Http as _, Secret};
 
 use crate::{Feed, FeedOptions};
@@ -39,8 +39,8 @@ impl SourceConfig for FeedOptions {
         self.backfill
     }
 
-    fn poller(&self, _: Option<Secret>) -> Arc<dyn Poll> {
-        Arc::new(Entries(Feed::new(self)))
+    fn poller(&self, _: Option<Secret>) -> Polling {
+        Polling::One(Arc::new(Entries(Feed::new(self))))
     }
 }
 

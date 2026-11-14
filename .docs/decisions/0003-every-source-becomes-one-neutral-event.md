@@ -1,6 +1,6 @@
 # ADR-0003: Every source becomes one neutral event, parsed without I/O
 
-**Status:** Accepted; the `kind`, `version` and `prerelease` fields superseded by [ADR-0018](0018-a-kind-is-data-and-an-event-carries-its-kind-s-attributes.md), under which a kind is data and an event carries its kind's attributes; the registry and forge host in an identity extended by [ADR-0023](0023-urls-are-read-one-way-in-the-core-text-is-escaped-one-way-and-a-registry-names-its-events-by-its-kind.md)
+**Status:** Accepted; the `kind`, `version` and `prerelease` fields superseded by [ADR-0018](0018-a-kind-is-data-and-an-event-carries-its-kind-s-attributes.md), under which a kind is data and an event carries its kind's attributes; the registry and forge host in an identity extended by [ADR-0023](0023-urls-are-read-one-way-in-the-core-text-is-escaped-one-way-and-a-registry-names-its-events-by-its-kind.md); a forge source that names an owner extended by [ADR-0029](0029-an-owner-source-polls-each-repository-it-takes-on-its-own.md)
 **Date:** 2026-10-31
 
 ## Context

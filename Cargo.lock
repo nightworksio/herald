@@ -1334,6 +1334,7 @@ dependencies = [
  "herald-ports",
  "herald-wire",
  "jiff",
+ "pollster",
  "proptest",
  "schemars",
  "serde",

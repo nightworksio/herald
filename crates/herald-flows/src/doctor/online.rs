@@ -1,9 +1,9 @@
 //! What doctor finds by reading secrets, keys and destinations online.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use herald_config::Config;
-use herald_kinds::Probe;
+use herald_kinds::{Polling, Probe, Unlisted, Unpolled};
 use herald_ports::{Http, SecretError, Secrets, Signer};
 
 use super::{Findings, Here, gap};
@@ -103,6 +103,55 @@ pub async fn online<H: Http>(connected: &Connected<H>) -> Findings {
     for destination in taken.difference(&refused) {
         findings.notes.push(format!(
             "The destination \"{destination}\" takes its credential."
+        ));
+    }
+    findings.extend(owned(connected).await);
+    findings
+}
+
+/// What each owner source lists, asked through the `Http` `connected` gives
+/// it (ADR-0029): a mistake where a listing passes a cap, or where two
+/// members, of one owner or of two, share a project name.
+async fn owned<H: Http>(connected: &Connected<H>) -> Findings {
+    let mut findings = Findings::default();
+    let mut named: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    for (source, http) in &connected.sources {
+        let Polling::Many(expand) = &source.poll else {
+            continue;
+        };
+        let name = source.name.as_str();
+        match expand.listed(http, None).await {
+            Ok(expanded) => {
+                let members = expanded.members();
+                findings.notes.push(format!(
+                    "The source {name} takes {} repositories.",
+                    members.len()
+                ));
+                for member in members {
+                    named
+                        .entry(member.name.to_lowercase())
+                        .or_default()
+                        .push(format!("{name}'s {}", member.path));
+                }
+            }
+            Err(Unlisted::Over(reason)) => {
+                findings
+                    .mistakes
+                    .push(format!("The source {name}: {reason}."));
+            }
+            Err(Unlisted::Failed(Unpolled::Unreachable(reason) | Unpolled::Unreadable(reason))) => {
+                findings.gaps.push(gap(
+                    &format!("listing the owner of the source \"{name}\""),
+                    format!("sources.{name}.owner"),
+                    reason,
+                ));
+            }
+        }
+    }
+    for (project, members) in named.into_iter().filter(|(_, members)| members.len() > 1) {
+        findings.mistakes.push(format!(
+            "{} are all announced as the project {project}; leave all but one out with exclude, or name a narrower owner.",
+            members.join(", ")
         ));
     }
     findings

@@ -6,8 +6,11 @@ use serde::{Deserialize, Serialize};
 use crate::{Cursor, Glob};
 
 /// Who may see a repository.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, schemars::JsonSchema,
+)]
 #[serde(rename_all = "lowercase")]
+#[schemars(rename = "RepositoryVisibility")]
 pub enum Visibility {
     /// Anyone.
     Public,

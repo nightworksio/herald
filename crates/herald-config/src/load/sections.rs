@@ -12,7 +12,7 @@ use crate::config::{Config, Schedule, Server};
 use crate::file::{HttpFile, MarkersFile, ScheduleFile, ServerFile};
 
 /// The top-level keys of `herald.toml`.
-const SECTIONS: [&str; 15] = [
+const SECTIONS: [&str; 16] = [
     "version",
     "kinds",
     "store",
@@ -28,6 +28,7 @@ const SECTIONS: [&str; 15] = [
     "render",
     "announce",
     "run",
+    "doctor",
 ];
 
 /// The sections of the file, before each is read.
@@ -48,6 +49,7 @@ pub(super) struct Sections<'i> {
     pub(super) render: Option<Value<'i>>,
     pub(super) announce: Option<Value<'i>>,
     pub(super) run: Option<Value<'i>>,
+    pub(super) doctor: Option<Value<'i>>,
 }
 
 impl Loader<'_> {
@@ -70,6 +72,7 @@ impl Loader<'_> {
                 "render" => &mut sections.render,
                 "announce" => &mut sections.announce,
                 "run" => &mut sections.run,
+                "doctor" => &mut sections.doctor,
                 other => {
                     self.error(
                         &key.span(),

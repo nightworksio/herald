@@ -38,6 +38,8 @@ pub struct Config {
     pub announce: Announce,
     /// How many routes and sources a run goes through at once.
     pub run: Run,
+    /// How doctor judges the config.
+    pub doctor: Doctor,
     /// How `herald server` listens, and what it takes on at once.
     pub server: Server,
     /// How herald's own requests reach the services the config names.
@@ -128,6 +130,9 @@ pub struct RouteConfig {
     pub options: Placed,
     /// What its destination can do, as the core plans with it.
     pub profile: Profile,
+    /// Whether its place is declared private, so it may take a private or
+    /// internal repository's events.
+    pub private: bool,
 }
 
 /// An app of the HTTP API: its token's hash and what it may announce to.
@@ -168,6 +173,28 @@ impl Default for Announce {
             latest_attempts: Self::LATEST_ATTEMPTS,
         }
     }
+}
+
+/// What doctor does with a config that takes something private to a
+/// public place.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "lowercase")]
+pub enum Guard {
+    /// Refuse the config.
+    #[default]
+    Refuse,
+    /// Name it, and let it run.
+    Warn,
+    /// Say nothing.
+    Allow,
+}
+
+/// How doctor judges a config.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct Doctor {
+    /// What it does with a route that takes a private or internal
+    /// repository's events to a place not declared private.
+    pub private_to_public: Guard,
 }
 
 /// How many routes and sources a run goes through at once.

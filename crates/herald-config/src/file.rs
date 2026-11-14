@@ -227,6 +227,11 @@ pub(crate) struct RouteFile {
     /// Who it mentions.
     #[serde(default)]
     pub(crate) mentions: MentionsFile,
+    /// Whether its place is private, so it may take a private or internal
+    /// repository's events; a place is public where absent, and doctor
+    /// refuses such events on it (`[doctor] private_to_public`).
+    #[serde(default)]
+    pub(crate) private: bool,
 }
 
 impl RouteFile {
@@ -237,7 +242,7 @@ impl RouteFile {
 }
 
 /// The keys every route may give, whatever its destination.
-pub(crate) const ROUTE_KEYS: [&str; 11] = [
+pub(crate) const ROUTE_KEYS: [&str; 12] = [
     "id",
     "sources",
     "kinds",
@@ -249,6 +254,7 @@ pub(crate) const ROUTE_KEYS: [&str; 11] = [
     "thread",
     "pin",
     "mentions",
+    "private",
 ];
 
 /// A template: its title, and its body inline or in a file beside the config.
@@ -346,6 +352,17 @@ pub(crate) struct AnnounceFile {
     /// How often a run writes what a project last announced again when
     /// another write lands between its read and its write; 3 where absent.
     pub(crate) latest_attempts: Option<NonZeroUsize>,
+}
+
+/// `[doctor]`: how doctor judges the config.
+#[derive(Debug, Default, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+#[serde(rename = "Doctor")]
+pub(crate) struct DoctorFile {
+    /// What doctor does with a route that takes a private or internal
+    /// repository's events and is not `private`: "refuse" where absent,
+    /// "warn" to name it and let it run, or "allow".
+    pub(crate) private_to_public: Option<crate::config::Guard>,
 }
 
 /// `[run]`: how many routes and sources a run goes through at once.

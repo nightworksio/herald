@@ -41,10 +41,10 @@ mod github {
         Origin::new(
             Forge::GitHub,
             &SourceOptions {
-                repository: "neovim/neovim".to_owned(),
                 api: api.map(ToOwned::to_owned),
                 ..SourceOptions::default()
             },
+            "neovim/neovim",
         )
     }
 

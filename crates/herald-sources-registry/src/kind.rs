@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use herald_core::{Cursor, Kind, Polled, SecretRef};
-use herald_kinds::{Fault, Poll, SourceConfig, SourceKind, Unpolled};
+use herald_kinds::{Fault, Poll, Polling, SourceConfig, SourceKind, Unpolled};
 use herald_ports::{Boxed, DynHttp, Erased, Http as _, Secret};
 
 use crate::{Package, Registry, RegistryOptions};
@@ -100,11 +100,11 @@ impl SourceConfig for RegistrySource {
         self.registry.moving_tags()
     }
 
-    fn poller(&self, token: Option<Secret>) -> Arc<dyn Poll> {
-        Arc::new(Versions {
+    fn poller(&self, token: Option<Secret>) -> Polling {
+        Polling::One(Arc::new(Versions {
             package: Package::new(self.registry, &self.options),
             token,
-        })
+        }))
     }
 }
 

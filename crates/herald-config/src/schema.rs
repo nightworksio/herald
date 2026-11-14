@@ -7,8 +7,8 @@ use crate::config::Config;
 use crate::kinds::Kinds;
 
 use crate::file::{
-    AnnounceFile, AppFile, HttpFile, KindFile, MarkersFile, RecordsFile, RenderFile, RouteFile,
-    RunFile, ScheduleFile, ServerFile, TemplateFile,
+    AnnounceFile, AppFile, DoctorFile, HttpFile, KindFile, MarkersFile, RecordsFile, RenderFile,
+    RouteFile, RunFile, ScheduleFile, ServerFile, TemplateFile,
 };
 
 /// `version`: the one version of the config this herald reads.
@@ -266,6 +266,8 @@ struct FileSchema {
     announce: Option<AnnounceFile>,
     /// How many routes and sources a run goes through at once.
     run: Option<RunFile>,
+    /// How doctor judges the config.
+    doctor: Option<DoctorFile>,
 }
 
 /// The JSON Schema of `herald.toml` with `kinds`, as

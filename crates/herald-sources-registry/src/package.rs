@@ -260,13 +260,10 @@ impl Package {
         if let Some(token) = token.filter(|_| self.registry.takes_token()) {
             request = self.authorised(request, token);
         }
-        if let Some(etag) = cursor.and_then(|cursor| cursor.etag.as_deref()) {
-            request = request.header("If-None-Match", SecretText::plain(etag));
-        }
-        if let Some(modified) = cursor.and_then(|cursor| cursor.last_modified.as_deref()) {
-            request = request.header("If-Modified-Since", SecretText::plain(modified));
-        }
-        request
+        request.conditional(
+            cursor.and_then(|cursor| cursor.etag.as_deref()),
+            cursor.and_then(|cursor| cursor.last_modified.as_deref()),
+        )
     }
 
     /// The newest versions in the registry's answer to

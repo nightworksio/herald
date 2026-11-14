@@ -9,4 +9,6 @@ pub(crate) const API: Api = Api {
     repository: "Forgejo's repository",
     releases: "Forgejo's releases",
     release: "Forgejo's release",
+    listing: "Forgejo's repositories",
+    listed_page: std::num::NonZeroUsize::new(50).unwrap(),
 };

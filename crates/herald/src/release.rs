@@ -113,7 +113,11 @@ pub(super) async fn tagged(
             .ok()
             .map(Token::Run),
     };
-    let origin = Origin::new(forge, options);
+    let origin = Origin::new(
+        forge,
+        options,
+        options.repository.as_deref().unwrap_or_default(),
+    );
     let http = connect.reach(origin.api())?;
     let asked = |request| async { http.send(request).await.map_err(|error| error.to_string()) };
     let answer = asked(origin.release_request(tag, token.as_ref())).await?;

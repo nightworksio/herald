@@ -1,9 +1,10 @@
 use std::sync::Arc;
 
 use herald_core::{Cursor, Kind, Polled, Scheme, SecretRef};
-use herald_kinds::{Fault, Hooked, Poll, SourceConfig, SourceKind, Unpolled};
+use herald_kinds::{Fault, Hooked, Poll, Polling, SourceConfig, SourceKind, Unpolled};
 use herald_ports::{Boxed, DynHttp, Erased, Http as _, Secret};
 
+use crate::owner::Owned;
 use crate::{Forge, Origin, SourceOptions, Token};
 
 /// A repository's releases on a forge: the forge, and the options its
@@ -98,29 +99,54 @@ impl SourceConfig for ForgeSource {
         self.options.backfill
     }
 
+    fn unlisted(&self) -> bool {
+        self.options.owner.is_some()
+            && self
+                .options
+                .selection()
+                .is_ok_and(|selection| selection.takes_unlisted())
+    }
+
     fn scheme(&self) -> Option<Scheme> {
         Some(self.forge.scheme())
     }
 
     fn hooked(&self, headers: &[(&str, &str)], payload: &[u8]) -> Result<Hooked, String> {
         self.forge
-            .hooked(headers, payload, &self.options.repository)
+            .hooked(
+                headers,
+                payload,
+                self.options.repository.as_deref().unwrap_or_default(),
+            )
             .map_err(|error| error.to_string())
     }
 
-    fn poller(&self, token: Option<Secret>) -> Arc<dyn Poll> {
-        Arc::new(Releases {
-            origin: Origin::new(self.forge, &self.options),
-            token: token.map(Token::Named),
-        })
+    fn poller(&self, token: Option<Secret>) -> Polling {
+        let token = token.map(Token::Named);
+        match (&self.options.owner, &self.options.repository) {
+            (Some(owner), _) => Polling::Many(Arc::new(Owned::new(
+                self.forge,
+                owner,
+                &self.options,
+                token,
+            ))),
+            (None, repository) => Polling::One(Arc::new(Releases {
+                origin: Origin::new(
+                    self.forge,
+                    &self.options,
+                    repository.as_deref().unwrap_or_default(),
+                ),
+                token,
+            })),
+        }
     }
 }
 
 /// A repository's releases, polled with the token the config names.
 #[derive(Debug)]
-struct Releases {
-    origin: Origin,
-    token: Option<Token>,
+pub(crate) struct Releases {
+    pub(crate) origin: Origin,
+    pub(crate) token: Option<Token>,
 }
 
 impl Poll for Releases {

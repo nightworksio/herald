@@ -356,6 +356,7 @@ impl Loader<'_> {
             ..profile
         };
         let thread_name = route.thread.as_ref().map(|thread| thread.name.clone());
+        let private = route.private;
         let delivery = Delivery {
             crosspost: route.crosspost,
             thread: route.thread.map(opened),
@@ -403,6 +404,7 @@ impl Loader<'_> {
             },
             options,
             profile,
+            private,
         };
         Some(Read {
             config,

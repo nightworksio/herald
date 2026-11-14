@@ -280,6 +280,7 @@ pub fn load(
     loader.waited(&destinations);
     let announce = loader.announce(sections.announce);
     let run = loader.run(sections.run);
+    let doctor = loader.doctor(sections.doctor);
     let (true, Some(store), Some(templates)) = (loader.errors.is_empty(), store, compiled) else {
         return Err(loader.failed());
     };
@@ -302,6 +303,7 @@ pub fn load(
         http,
         announce,
         run,
+        doctor,
         kinds: loader.specs,
         secret_keys,
     })

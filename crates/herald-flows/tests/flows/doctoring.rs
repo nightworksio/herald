@@ -594,3 +594,69 @@ fn a_test_message_with_no_title_is_not_posted() {
     );
     assert_eq!(script.seen(), Vec::<String>::new());
 }
+
+fn listed_online(config: &Config, script: &Script) -> Findings {
+    let prepared = pollster::block_on(prepare(
+        config,
+        &crate::harness::secrets(),
+        &FakeSigner,
+        Uses::Polls,
+    ))
+    .unwrap();
+    let connected = prepared.connect(|_| Ok::<_, ()>(script.clone())).unwrap();
+    let mut findings = pollster::block_on(online(&connected));
+    findings
+        .notes
+        .retain(|note| !note.starts_with("The destination"));
+    findings
+}
+
+#[test]
+fn an_owner_is_listed_online_and_members_sharing_a_project_name_or_passing_a_cap_are_mistakes() {
+    use crate::owner::{LISTING, owned_in, repositories};
+    let config = owned_in("", |_| {});
+    let probe = |answers: &[(&str, u16, &str)]| {
+        let mut all = vec![
+            ("/users/@me", 200, r#"{"id":"99"}"#),
+            (
+                "/channels/1566200000000000100",
+                200,
+                r#"{"id":"1566200000000000100","guild_id":"1","type":5}"#,
+            ),
+        ];
+        all.extend_from_slice(answers);
+        Script::answering(&all)
+    };
+    let two = repositories(&[(1, "herald"), (2, "gate")]);
+    let findings = listed_online(&config, &probe(&[(LISTING, 200, &two)]));
+    assert_eq!(findings.mistakes, Vec::<String>::new());
+    assert!(
+        findings
+            .notes
+            .contains(&"The source gate takes 2 repositories.".to_owned())
+    );
+    let twins = repositories(&[(1, "cli"), (2, "CLI")]);
+    let findings = listed_online(&config, &probe(&[(LISTING, 200, &twins)]));
+    assert_eq!(
+        findings.mistakes,
+        [
+            "gate's nightworksio/cli, gate's nightworksio/CLI are all announced as the project cli; leave all but one out with exclude, or name a narrower owner."
+        ]
+    );
+    let capped = owned_in("", |options| {
+        options.most_members = std::num::NonZeroUsize::new(1);
+    });
+    let findings = listed_online(&capped, &probe(&[(LISTING, 200, &two)]));
+    assert_eq!(
+        findings.mistakes,
+        [
+            "The source gate: 2 repositories of nightworksio are taken, more than most_members, 1; raise it, or narrow the filters."
+        ]
+    );
+    let findings = listed_online(&config, &probe(&[(LISTING, 500, "{}")]));
+    assert_eq!(keyed(&findings), [("sources.gate.owner", None)]);
+    assert_eq!(
+        findings.gaps[0].feature,
+        "listing the owner of the source \"gate\""
+    );
+}

@@ -232,6 +232,11 @@ pub(crate) enum Fault {
     Cursors,
     WritesCursors,
     CursorConflicts,
+    ReadsMembers,
+    WritesMembers,
+    MemberConflicts,
+    ForgetsMembers,
+    ListingConflicts,
     ListsSchedules,
     Reads,
     Claims,
@@ -385,6 +390,9 @@ impl Cursors for Failing {
         listing: &herald_core::Listing,
         expected: Option<Version>,
     ) -> Result<Written, StoreError> {
+        if self.fault == Fault::ListingConflicts {
+            return Ok(Written::Conflict);
+        }
         self.inner.put_listing(source, listing, expected).await
     }
 
@@ -392,6 +400,9 @@ impl Cursors for Failing {
         &self,
         source: &SourceName,
     ) -> Result<Vec<Versioned<herald_core::Membership>>, StoreError> {
+        if self.fault == Fault::ReadsMembers {
+            return Err(broken());
+        }
         self.inner.members(source).await
     }
 
@@ -401,10 +412,17 @@ impl Cursors for Failing {
         membership: &herald_core::Membership,
         expected: Option<Version>,
     ) -> Result<Written, StoreError> {
-        self.inner.put_member(source, membership, expected).await
+        match self.fault {
+            Fault::WritesMembers => Err(broken()),
+            Fault::MemberConflicts if membership.cursor.is_some() => Ok(Written::Conflict),
+            _ => self.inner.put_member(source, membership, expected).await,
+        }
     }
 
     async fn forget_member(&self, source: &SourceName, id: &str) -> Result<(), StoreError> {
+        if self.fault == Fault::ForgetsMembers {
+            return Err(broken());
+        }
         self.inner.forget_member(source, id).await
     }
 }
