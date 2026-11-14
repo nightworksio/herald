@@ -155,14 +155,19 @@ jobs:
 
 The `markers` store keeps herald's never-twice ledger in the posts herald
 makes, so the run writes nothing to the repository. It has no compare-and-set,
-so the `concurrency` group keeps to one herald run at a time. `herald init`
-prints a new `HERALD_MARKER_SECRET`, once. Each destination reads back up to
+so the `concurrency` group keeps to one herald run at a time.
+`[markers] key` names the secret every route's markers are keyed with; where
+it is absent, a route's key is derived from its destination's credential, so
+a new credential gives the route new markers. `herald init` prints a new
+`HERALD_MARKER_SECRET`, once. Each destination reads back up to
 `read_back` pages of its own posts, 5 by default and at most 20, and stops at
 the page holding the post it looks for. A rerun that finds a post an earlier
 run attempted but cannot read the channel back stops rather than post it
 twice. Discord, Slack and Matrix look up at most `pin_lookups` pins, 25 by
 default and at most 100, as they find a route's earlier pins, and say so
-where more are pinned.
+where more are pinned. A route's `thread` takes `archive_after`, how long
+after the announcement housekeeping archives the thread, and `lock_after`,
+how long after the announcement housekeeping locks and archives it.
 
 ### herald's own ActivityPub actor
 
@@ -262,11 +267,12 @@ another in the file's order. On the `git-branch`, `repo-variables`,
 `actions-cache` and `markers` stores, which write one record at a time,
 routes and sources always go one at a time.
 
-Each source sets how a poll reads it: `page` (30), how many of the newest
-releases, versions or entries one poll reads; `remembered` (500, at least
-`page`), how many its cursor remembers; and `parse` ("4MiB", "16MiB" on
-Packagist and "32MiB" on npm, and at most four times that), the most of an
-answer it parses.
+Each source sets how a poll reads it: `backfill`, how many of the newest
+releases, versions or entries the first poll announces, none where absent;
+`page` (30), how many of the newest releases, versions or entries one poll
+reads; `remembered` (500, at least `page`), how many its cursor remembers;
+and `parse` ("4MiB", "16MiB" on Packagist and "32MiB" on npm, and at most four
+times that), the most of an answer it parses.
 
 Housekeeping also forgets what the store keeps past `[store]`'s
 `keep_deliveries` (each webhook delivery's id, "7d", and at least "3d"),

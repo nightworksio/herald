@@ -138,6 +138,11 @@ names in `worker/files.mjs`, and run `wrangler deploy` from `worker/`.
   Durable Object's SQLite storage, through the `HERALD` binding.
 - A request's work runs after its answer, through `waitUntil`.
 - The cron `HERALD_HOUSEKEEP_CRON` names keeps house; every other cron polls.
+- Each cron also wakes the Durable Object that holds the sessions a
+  destination takes commands over: a Discord gateway, Slack's Socket Mode or a
+  Matrix sync. `HERALD_SESSIONS_BINDING` names its binding, `HERALD` where
+  unset, and `HERALD_SESSIONS_OBJECT` the object's name, `herald` where unset.
+  Without the binding, no session is held.
 
 ## Deno
 
@@ -215,7 +220,10 @@ image is. Fetch one with `wkg oci pull`, or build it with `cargo build --release
 needs a clang that targets wasm. Run `wasmtime serve -Scli --dir=. herald_wasi.wasm`
 beside `herald.toml`, passing secrets with `--env`. `HERALD_CONFIG` names another
 config file, and `HERALD_TIMEOUT_MS` bounds each request herald sends in place
-of the config's `[http] total`.
+of the config's `[http] total`. `HERALD_HOST` names the host the component runs
+on, which decides the stores it opens and what it serves: `wasi` where unset,
+and `spin` in `spin/spin.toml`. A component refuses a name that is not a host
+it runs on.
 
 ## Fetching on others' behalf where herald cannot resolve names
 
@@ -254,6 +262,27 @@ targets wasm, and enable dynamic backends on the service.
 - `[store] kind = "fastly-kv"` needs the service linked to the KV Store it names.
   A delete first claims the item at its generation, as Fastly's delete takes
   none.
+
+## Limits by host
+
+- **Every host** answers 413 to a request whose body is larger than
+  `[server] body`, where the platform's own limit on a request has not
+  refused it first.
+- **Cloudflare Workers, Vercel and Netlify** run the work a request leaves
+  through `waitUntil`, after its answer, within the platform's own limit on
+  how long that work may go on. An announcement cut short there is
+  finished by the next run, which sends only what is missing.
+- **Spin** keeps `sqlite` records in its own database, so `[store] path` is
+  not read there. Its refusal of private addresses is set in a runtime config,
+  passed with `--runtime-config-file`.
+- **AWS Lambda** hands a request's work to itself as an event invocation, so a
+  request is handed off only within Lambda's limit on an event's payload; keep
+  `[server] body` inside it.
+- **Fastly Compute** holds each Config Store item to 8 KB, `herald.toml` and
+  each template file among them.
+- **`repo-variables`** keeps each record as a repository variable. A
+  repository holds at most 500, and a run is handed at most 256 KB of them, so
+  many records can crowd out the repository's own variables.
 
 ## Azure Functions
 
