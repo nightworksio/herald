@@ -389,6 +389,8 @@ appservice_token = {{ secret = "HERALD_MATRIX_AS" }}
                 r#"{"ok": true, "url": "wss://wss-primary.slack.com/link"}"#,
             ),
             answer("«secret:the command's response URL»", 200, "ok"),
+            answer("«secret:the command's response URL»", 200, "ok"),
+            answer("«secret:the command's response URL»", 200, "ok"),
         ]);
         let world = World::new("slack", answers, sockets).await;
         let heard = world
