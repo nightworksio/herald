@@ -19,6 +19,10 @@ use host::{FastlyHost, STORE};
 /// The Config Store item holding `herald.toml`.
 const CONFIG: &str = "herald.toml";
 
+#[expect(
+    clippy::print_stderr,
+    reason = "the host keeps what a component writes to standard error as its log"
+)]
 fn log_lines(lines: impl IntoIterator<Item = String>) {
     for line in lines {
         eprintln!("{line}");

@@ -46,7 +46,7 @@ fn an_app_s_event_is_answered_and_left_to_announce_once() {
     );
     assert_eq!(again.job, None);
     assert_eq!(
-        world.admits(herald_sources_app::SCHEME, "app/ci/7"),
+        world.admits(herald_sources_app::ADMITTED, "app/ci/7"),
         Admitted::Seen
     );
 }
@@ -112,7 +112,7 @@ fn an_app_s_event_its_token_or_scope_does_not_let_through_is_refused_unread() {
         Some("the event names the project \"other\", not \"herald\"")
     );
     assert_eq!(
-        world.admits(herald_sources_app::SCHEME, "app/ci/7"),
+        world.admits(herald_sources_app::ADMITTED, "app/ci/7"),
         Admitted::Fresh
     );
     let asked = Inbound {
@@ -157,7 +157,7 @@ fn an_app_s_work_that_stops_or_will_not_be_done_releases_its_delivery() {
         },
     };
     assert_eq!(
-        world.admits(herald_sources_app::SCHEME, "app/ci/7"),
+        world.admits(herald_sources_app::ADMITTED, "app/ci/7"),
         Admitted::Fresh
     );
     let Did::Announced(announced) = world.work(job()) else {
@@ -165,7 +165,7 @@ fn an_app_s_work_that_stops_or_will_not_be_done_releases_its_delivery() {
     };
     assert_eq!(announced[0].outcome, unadmitted());
     assert_eq!(
-        world.admits(herald_sources_app::SCHEME, "app/ci/7"),
+        world.admits(herald_sources_app::ADMITTED, "app/ci/7"),
         Admitted::Fresh
     );
     assert_eq!(
@@ -173,7 +173,7 @@ fn an_app_s_work_that_stops_or_will_not_be_done_releases_its_delivery() {
         Ok(())
     );
     assert_eq!(
-        world.admits(herald_sources_app::SCHEME, "app/ci/7"),
+        world.admits(herald_sources_app::ADMITTED, "app/ci/7"),
         Admitted::Fresh
     );
 }

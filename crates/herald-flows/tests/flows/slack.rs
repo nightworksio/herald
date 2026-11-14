@@ -169,7 +169,10 @@ fn a_slack_route_keeps_no_thread_chores_and_its_channel_lists_no_threads() {
         },
         None,
     ));
-    assert_eq!(reached.api(), "https://slack.com/api");
+    assert_eq!(
+        reached.base(),
+        herald_ports::Base::At("https://slack.com/api")
+    );
     assert_eq!(reached.profile(), herald_dest_slack::profile(true));
     let listed = pollster::block_on(reached.read(&script).threads(&Marker::of(&[1]))).unwrap();
     assert_eq!(listed, []);

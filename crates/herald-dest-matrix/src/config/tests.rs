@@ -157,8 +157,8 @@ fn a_route_reaches_and_profiles_its_room_through_the_bot() {
         ))
     );
     assert_eq!(
-        reached.map(|reached| reached.api().to_owned()),
-        Some("https://matrix.example".to_owned())
+        reached.as_ref().map(|reached| reached.base()),
+        Some(herald_ports::Base::At("https://matrix.example"))
     );
 }
 

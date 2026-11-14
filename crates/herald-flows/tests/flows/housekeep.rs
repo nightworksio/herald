@@ -245,26 +245,30 @@ fn housekeeping_forgets_a_delivery_admitted_more_than_a_week_ago_and_keeps_the_r
     let week_and_a_day = NOON.checked_sub(Retention::DELIVERIES + day).unwrap();
     let six_days = NOON.checked_sub(Retention::DELIVERIES - day).unwrap();
     pollster::block_on(store.admit(
-        herald_sources_forge::Forge::GitHub.scheme(),
+        herald_sources_forge::Forge::GitHub.scheme().name,
         "old",
         week_and_a_day,
     ))
     .unwrap();
     pollster::block_on(store.admit(
-        herald_sources_forge::Forge::GitHub.scheme(),
+        herald_sources_forge::Forge::GitHub.scheme().name,
         "recent",
         six_days,
     ))
     .unwrap();
     assert_eq!(kept(&store, &Script::answering(&[])).unwrap(), []);
     assert_eq!(
-        pollster::block_on(store.admit(herald_sources_forge::Forge::GitHub.scheme(), "old", NOON))
-            .unwrap(),
+        pollster::block_on(store.admit(
+            herald_sources_forge::Forge::GitHub.scheme().name,
+            "old",
+            NOON
+        ))
+        .unwrap(),
         Admitted::Fresh
     );
     assert_eq!(
         pollster::block_on(store.admit(
-            herald_sources_forge::Forge::GitHub.scheme(),
+            herald_sources_forge::Forge::GitHub.scheme().name,
             "recent",
             NOON
         ))
@@ -313,10 +317,14 @@ fn claimed(identity: &str, days_ago: i64) -> Entry {
 #[test]
 fn housekeeping_forgets_deliveries_as_long_ago_as_the_store_is_set_to_keep_them() {
     let store = healthy();
-    pollster::block_on(store.admit(herald_sources_forge::Forge::GitHub.scheme(), "old", ago(4)))
-        .unwrap();
     pollster::block_on(store.admit(
-        herald_sources_forge::Forge::GitHub.scheme(),
+        herald_sources_forge::Forge::GitHub.scheme().name,
+        "old",
+        ago(4),
+    ))
+    .unwrap();
+    pollster::block_on(store.admit(
+        herald_sources_forge::Forge::GitHub.scheme().name,
         "recent",
         ago(2),
     ))
@@ -330,13 +338,17 @@ fn housekeeping_forgets_deliveries_as_long_ago_as_the_store_is_set_to_keep_them(
         []
     );
     assert_eq!(
-        pollster::block_on(store.admit(herald_sources_forge::Forge::GitHub.scheme(), "old", NOON))
-            .unwrap(),
+        pollster::block_on(store.admit(
+            herald_sources_forge::Forge::GitHub.scheme().name,
+            "old",
+            NOON
+        ))
+        .unwrap(),
         Admitted::Fresh
     );
     assert_eq!(
         pollster::block_on(store.admit(
-            herald_sources_forge::Forge::GitHub.scheme(),
+            herald_sources_forge::Forge::GitHub.scheme().name,
             "recent",
             NOON
         ))

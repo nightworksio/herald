@@ -11,9 +11,7 @@ use herald_dest_fediverse::{
     ActorError, ActorKey, KeyOwner, activity_json, actor_key, actor_of, confirms, key_request,
     same_origin,
 };
-use herald_ports::{
-    Admitted, Algorithm, Deliveries, Http, Keyring, KnownKey, Store, StoreError, Verifier,
-};
+use herald_ports::{Admitted, Deliveries, Http, Keyring, KnownKey, Store, StoreError, Verifier};
 use jiff::{SignedDuration, Timestamp};
 
 /// When an inbound request is checked, and the bounds it is held to.
@@ -289,9 +287,7 @@ pub(crate) async fn fetched<H: Http>(
 /// Whether one of `claim`'s signatures holds under `key`.
 async fn signed<V: Verifier>(verifier: &V, key: &[u8], claim: &Claim) -> Result<(), Rejected> {
     let algorithm = match claim.kind {
-        Signature::HmacSha256 => Algorithm::HmacSha256,
-        Signature::Ed25519 => Algorithm::Ed25519,
-        Signature::RsaSha256 => Algorithm::RsaSha256,
+        Signature::Signed(algorithm) => algorithm,
         Signature::Token => {
             return claim
                 .signatures
@@ -312,8 +308,9 @@ async fn signed<V: Verifier>(verifier: &V, key: &[u8], claim: &Claim) -> Result<
     Err(Rejected::Forged)
 }
 
-/// Admits a request `verified` let through, by the delivery it names, at
-/// `now` (ADR-0013). A request whose scheme names no delivery, or a store
+/// Admits a request `verified` let through, by the delivery it names among
+/// those kept under `namespace`, at `now` (ADR-0013). A request whose
+/// scheme names no delivery, or a store
 /// that keeps none, admits it, and the ledger skips what a replay would
 /// announce.
 ///
@@ -324,7 +321,7 @@ async fn signed<V: Verifier>(verifier: &V, key: &[u8], claim: &Claim) -> Result<
 pub async fn admitted<S: Store>(
     store: &S,
     admitting: Admission,
-    scheme: Scheme,
+    namespace: &'static str,
     verified: &Verified,
     now: Timestamp,
 ) -> Result<(), Rejected> {
@@ -332,7 +329,7 @@ pub async fn admitted<S: Store>(
         return Ok(());
     };
     admission(
-        store.deliveries().admit(scheme, delivery, now).await,
+        store.deliveries().admit(namespace, delivery, now).await,
         admitting,
     )
 }
@@ -361,22 +358,22 @@ fn admission(answer: Result<Admitted, StoreError>, admitting: Admission) -> Resu
     }
 }
 
-/// Forgets the delivery of a request [`admitted`] let through whose
-/// processing failed, so the sender's next delivery of it is admitted
-/// (ADR-0013).
+/// Forgets the delivery, among those kept under `namespace`, of a request
+/// [`admitted`] let through whose processing failed, so the sender's next
+/// delivery of it is admitted (ADR-0013).
 ///
 /// # Errors
 ///
 /// Where the store cannot forget it.
 pub async fn released<S: Store>(
     store: &S,
-    scheme: Scheme,
+    namespace: &'static str,
     verified: &Verified,
 ) -> Result<(), StoreError> {
     let Some(delivery) = &verified.delivery else {
         return Ok(());
     };
-    kept_nowhere(store.deliveries().release(scheme, delivery).await)
+    kept_nowhere(store.deliveries().release(namespace, delivery).await)
 }
 
 /// What a store's `answer` leaves to report: a store that keeps none of

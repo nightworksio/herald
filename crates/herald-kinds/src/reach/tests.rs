@@ -61,8 +61,8 @@ impl Reach for Plain {
         PROFILE
     }
 
-    fn api(&self) -> &str {
-        self.0
+    fn base(&self) -> Base<'_> {
+        Base::At(self.0)
     }
 
     fn send<'a>(
@@ -103,8 +103,8 @@ impl Reach for Other {
         PROFILE
     }
 
-    fn api(&self) -> &'static str {
-        ""
+    fn base(&self) -> Base<'_> {
+        Base::Public
     }
 
     fn send<'a>(
@@ -185,7 +185,7 @@ fn a_reached_destination_is_its_kind_equal_only_to_the_same_and_keeps_every_defa
     assert_eq!(reached.of::<Plain>(), Some(&Plain("https://plain.example")));
     assert_eq!(reached.of::<Other>(), None);
     assert_eq!(format!("{reached:?}"), "Plain(\"https://plain.example\")");
-    assert_eq!(reached.api(), "https://plain.example");
+    assert_eq!(reached.base(), Base::At("https://plain.example"));
     assert_eq!(reached.profile(), PROFILE);
     let announcement = sample::announcement();
     assert_eq!(reached.follows(), None);
@@ -305,7 +305,7 @@ fn a_reached_destination_sends_and_keeps_house_through_the_ports_it_is_handed() 
         pollster::block_on(Reached::new(Other).housekeep(&Silent, Chore::Lock, "7")),
         Ok(Sent::Refused(String::new()))
     );
-    assert_eq!(Reached::new(Other).api(), "");
+    assert_eq!(Reached::new(Other).base(), Base::Public);
     assert_eq!(Reached::new(Other).profile(), PROFILE);
 }
 

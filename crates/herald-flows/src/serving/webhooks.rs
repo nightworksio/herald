@@ -53,7 +53,7 @@ pub(super) async fn hooked<S: Store, C: Clock, G, V: Verifier, H, P, K>(
         Ok(verified) => verified,
         Err(rejected) => return rejection(&rejected),
     };
-    if let Err(rejected) = admitted(store, serving.admission, scheme, &verified, now).await {
+    if let Err(rejected) = admitted(store, serving.admission, scheme.name, &verified, now).await {
         return rejection(&rejected);
     }
     match hooking.hooked(inbound.headers, inbound.body) {
@@ -68,6 +68,6 @@ pub(super) async fn hooked<S: Store, C: Clock, G, V: Verifier, H, P, K>(
             }),
         },
         Ok(Hooked::Nothing(why)) => text_reply(status::OK, why),
-        Err(error) => unread(store, scheme, &verified, error).await,
+        Err(error) => unread(store, scheme.name, &verified, error).await,
     }
 }

@@ -8,15 +8,7 @@ use jiff::Timestamp;
 use super::*;
 use crate::FakeStore;
 
-/// A scheme as its crate writes it, for these tests.
-const GITHUB: herald_core::Scheme = herald_core::Scheme {
-    name: "github",
-    signed: herald_core::Signed::Body {
-        headers: &["X-Hub-Signature-256"],
-        prefix: "sha256=",
-    },
-    key: herald_core::KeyForm::Bytes,
-};
+const GITHUB: &str = "github";
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Fault {
@@ -384,16 +376,16 @@ impl Positions for Faulty {
 impl Deliveries for Faulty {
     async fn admit(
         &self,
-        scheme: herald_core::Scheme,
+        namespace: &'static str,
         id: &str,
         at: Timestamp,
     ) -> Result<Admitted, StoreError> {
         self.refuses()?;
-        let scheme = match self.fault {
+        let namespace = match self.fault {
             Fault::SharesDeliveries => GITHUB,
-            _ => scheme,
+            _ => namespace,
         };
-        let admitted = self.inner.admit(scheme, id, at).await?;
+        let admitted = self.inner.admit(namespace, id, at).await?;
         Ok(match self.fault {
             Fault::AdmitsTwice => Admitted::Fresh,
             Fault::RacesAdmissions if id == "raced" => Admitted::Fresh,
@@ -401,12 +393,12 @@ impl Deliveries for Faulty {
         })
     }
 
-    async fn release(&self, scheme: herald_core::Scheme, id: &str) -> Result<(), StoreError> {
+    async fn release(&self, namespace: &'static str, id: &str) -> Result<(), StoreError> {
         self.refuses()?;
         if self.fault == Fault::KeepsReleased {
             return Ok(());
         }
-        self.inner.release(scheme, id).await
+        self.inner.release(namespace, id).await
     }
 
     async fn expire_deliveries(&self, before: Timestamp) -> Result<(), StoreError> {

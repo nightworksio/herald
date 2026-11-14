@@ -2,8 +2,8 @@ use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD;
 use herald_compose::{Host as _, KvAt, SqlAt};
 use herald_ports::{
-    Algorithm, Clock as _, CryptoError, Frame, Http as _, HttpError, Kv as _, Method, Outbound,
-    PUBLIC_BASE, Request, Secret, SecretError, SecretText, Secrets as _, Signer as _, Socket as _,
+    Algorithm, Base, Clock as _, CryptoError, Frame, Http as _, HttpError, Kv as _, Method,
+    Outbound, Request, Secret, SecretError, SecretText, Secrets as _, Signer as _, Socket as _,
     Sockets as _, Sql as _, Statement, Timer as _, Value, Verifier as _, Versionstamp,
 };
 use herald_records::KvRecords;
@@ -281,7 +281,7 @@ async fn the_host_gives_its_variables_secrets_and_time() {
 async fn a_connection_fetches_through_the_host_only_what_it_may_reach() {
     let hosted = hosted();
     let http = hosted
-        .connect("https://api.example/v1", &Outbound::default())
+        .connect(Base::At("https://api.example/v1"), &Outbound::default())
         .unwrap();
     let request = Request::new(Method::Post, SecretText::plain("https://api.example/v1/x"))
         .header("Accept", SecretText::plain("*/*"))
@@ -315,7 +315,7 @@ async fn a_connection_fetches_through_the_host_only_what_it_may_reach() {
         http.send(small).await,
         Err(HttpError::Unreachable { .. })
     ));
-    let public = hosted.connect(PUBLIC_BASE, &Outbound::default()).unwrap();
+    let public = hosted.connect(Base::Public, &Outbound::default()).unwrap();
     let fetched = public
         .send(Request::new(
             Method::Get,
@@ -326,7 +326,7 @@ async fn a_connection_fetches_through_the_host_only_what_it_may_reach() {
     assert_eq!(fetched.header("x-public"), Some("true"));
     assert!(
         hosted
-            .connect("http://api.example", &Outbound::default())
+            .connect(Base::At("http://api.example"), &Outbound::default())
             .is_err()
     );
 }

@@ -128,7 +128,10 @@ fn a_mastodon_route_keeps_no_thread_chores_and_its_account_lists_no_threads() {
         herald_ports::Secret::new("HERALD_MASTODON_TOKEN", "t0ken"),
         herald_dest_fediverse::RouteOptions::default(),
     ));
-    assert_eq!(reached.api(), "https://mastodon.example");
+    assert_eq!(
+        reached.base(),
+        herald_ports::Base::At("https://mastodon.example")
+    );
     assert_eq!(
         reached.profile(),
         herald_dest_fediverse::profile(&herald_dest_fediverse::RouteOptions::default())

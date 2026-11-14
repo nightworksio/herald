@@ -6,7 +6,7 @@ use std::pin::Pin;
 use std::sync::Arc;
 
 use herald_native::{ConnectError, NativeHttp, PublicHttp};
-use herald_ports::{Http, HttpError, Outbound, PUBLIC_BASE, Request, Response};
+use herald_ports::{Base, Http, HttpError, Outbound, Request, Response};
 
 use crate::worded;
 
@@ -39,15 +39,20 @@ impl Http for Connection {
     }
 }
 
-/// A function making a connection to a base URL within outbound bounds.
-type Making<'a> = &'a (dyn Fn(&str, &Outbound) -> Result<Connection, String> + Send + Sync);
+/// A function making a connection to what a base reaches within outbound
+/// bounds.
+type Making<'a> = &'a (dyn Fn(Base<'_>, &Outbound) -> Result<Connection, String> + Send + Sync);
+
+/// A function making a connection to a base URL that bounds no answer's
+/// time.
+type Waiting<'a> = &'a (dyn Fn(&str, &Outbound) -> Result<Connection, String> + Send + Sync);
 
 /// What makes connections: to a base URL's origin, each request bounded in
 /// time, and to Lambda's runtime API, which holds a request open until an
 /// invocation arrives.
 pub struct Connector<'a> {
     reaching: Making<'a>,
-    waiting: Making<'a>,
+    waiting: Waiting<'a>,
     outbound: Outbound,
 }
 
@@ -55,7 +60,7 @@ impl<'a> Connector<'a> {
     /// Connections made by `reaching`, and by `waiting` for Lambda's
     /// runtime API, within the bounds no config sets.
     #[must_use]
-    pub const fn new(reaching: Making<'a>, waiting: Making<'a>) -> Self {
+    pub const fn new(reaching: Making<'a>, waiting: Waiting<'a>) -> Self {
         Self {
             reaching,
             waiting,
@@ -79,7 +84,7 @@ impl<'a> Connector<'a> {
     ///
     /// When `base` may not be reached.
     pub fn reach(&self, base: &str) -> Result<Connection, String> {
-        self.reach_within(base, &self.outbound)
+        self.reach_within(Base::At(base), &self.outbound)
     }
 
     /// The connection to `base`, within `outbound`.
@@ -89,7 +94,7 @@ impl<'a> Connector<'a> {
     /// When `base` may not be reached.
     pub(crate) fn reach_within(
         &self,
-        base: &str,
+        base: Base<'_>,
         outbound: &Outbound,
     ) -> Result<Connection, String> {
         (self.reaching)(base, outbound)
@@ -118,18 +123,18 @@ pub fn waiting(base: &str, _: &Outbound) -> Result<Connection, String> {
 }
 
 /// The native connection to `base` within `outbound`: one reaching only its
-/// origin, or, for [`PUBLIC_BASE`], one reaching any public address (ADR-0007).
+/// origin, or, for [`Base::Public`], one reaching any public address
+/// (ADR-0007).
 ///
 /// # Errors
 ///
 /// When `base` may not be reached, or the client cannot be built.
-pub fn native(base: &str, outbound: &Outbound) -> Result<Connection, String> {
-    let connection = if base == PUBLIC_BASE {
-        PublicHttp::new(outbound)
+pub fn native(base: Base<'_>, outbound: &Outbound) -> Result<Connection, String> {
+    let connection = match base {
+        Base::At(url) => NativeHttp::reaching(url, outbound).map(Connection::new),
+        Base::Public => PublicHttp::new(outbound)
             .map(Connection::new)
-            .map_err(ConnectError::Build)
-    } else {
-        NativeHttp::reaching(base, outbound).map(Connection::new)
+            .map_err(ConnectError::Build),
     };
     worded(connection)
 }

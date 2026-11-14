@@ -2,7 +2,7 @@ use std::future::ready;
 
 use herald_core::{Announcement, Chore, Delivery, Entry, Profile, Sent, Step};
 use herald_kinds::{Probe, Reach, Signing};
-use herald_ports::{Boxed, DynHttp, DynMarkers, Erased, HttpError};
+use herald_ports::{Base, Boxed, DynHttp, DynMarkers, Erased, HttpError};
 
 use crate::markers::MatrixMarkers;
 use crate::matrix::Matrix;
@@ -13,8 +13,8 @@ impl Reach for Matrix {
         Self::profile(self)
     }
 
-    fn api(&self) -> &str {
-        Self::api(self)
+    fn base(&self) -> Base<'_> {
+        Base::At(Self::api(self))
     }
 
     fn send<'a>(

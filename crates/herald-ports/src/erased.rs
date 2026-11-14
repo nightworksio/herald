@@ -6,7 +6,9 @@ use herald_core::{Entry, Key, Marker};
 use jiff::Timestamp;
 
 use crate::clock::Clock;
-use crate::crypto::{Algorithm, CryptoError, Signer};
+use herald_core::Algorithm;
+
+use crate::crypto::{CryptoError, Signer};
 use crate::http::{Http, HttpError, Request, Response};
 use crate::kv::{Kv, KvError, Pair, Stamped, Versionstamp};
 use crate::markers::{MarkedThread, Markers, MarkersError};

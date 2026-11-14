@@ -1,5 +1,5 @@
 use herald_config::{Config, Uses, load};
-use herald_core::{Key, RouteId, Scheme, Step};
+use herald_core::{Key, RouteId, Step};
 use herald_flows::{
     Answered, Connected, Did, FollowError, Followed, Inbound, Job, Outcome, Ports, Serving, Stop,
     answer, busy, prepare, unplaced, unworked, work,
@@ -143,8 +143,8 @@ impl World {
         worked.did
     }
 
-    fn admits(&self, scheme: Scheme, delivery: &str) -> Admitted {
-        pollster::block_on(self.store.inner.admit(scheme, delivery, at())).unwrap()
+    fn admits(&self, namespace: &'static str, delivery: &str) -> Admitted {
+        pollster::block_on(self.store.inner.admit(namespace, delivery, at())).unwrap()
     }
 }
 
@@ -385,7 +385,7 @@ fn a_signed_webhook_of_a_release_is_answered_and_left_to_announce() {
         }])
     );
     assert_eq!(
-        world.admits(herald_sources_forge::Forge::GitHub.scheme(), &delivery),
+        world.admits(herald_sources_forge::Forge::GitHub.scheme().name, &delivery),
         Admitted::Seen
     );
     let note = world.answer(&get(&format!("/users/php-mutation-gate/notes/{}", key())));
@@ -620,7 +620,7 @@ fn work_that_stops_or_fails_releases_its_delivery() {
         signer: None,
     };
     assert_eq!(
-        world.admits(herald_sources_forge::Forge::GitHub.scheme(), "d1"),
+        world.admits(herald_sources_forge::Forge::GitHub.scheme().name, "d1"),
         Admitted::Fresh
     );
     let Did::Announced(announced) = world.work(Job::Announce {
@@ -633,7 +633,7 @@ fn work_that_stops_or_fails_releases_its_delivery() {
     };
     assert_eq!(announced[0].outcome, unadmitted());
     assert_eq!(
-        world.admits(herald_sources_forge::Forge::GitHub.scheme(), "d1"),
+        world.admits(herald_sources_forge::Forge::GitHub.scheme().name, "d1"),
         Admitted::Fresh
     );
     let follow = serde_json::json!({ "id": "https://social.example/f/1", "type": "Follow", "actor": ANA, "object": ACTOR })
@@ -644,7 +644,7 @@ fn work_that_stops_or_fails_releases_its_delivery() {
         signer: Some(ANA.to_owned()),
     };
     assert_eq!(
-        world.admits(herald_dest_fediverse::ACTOR_SCHEME, "d2"),
+        world.admits(herald_dest_fediverse::ACTOR_SCHEME.name, "d2"),
         Admitted::Fresh
     );
     let Did::Followed(taken) = world.work(Job::Follow {
@@ -655,7 +655,7 @@ fn work_that_stops_or_fails_releases_its_delivery() {
     };
     assert_eq!(taken, Err(FollowError::Unfetched("the host could not be reached: nothing scripted for GET https://social.example/users/ana".to_owned())));
     assert_eq!(
-        world.admits(herald_dest_fediverse::ACTOR_SCHEME, "d2"),
+        world.admits(herald_dest_fediverse::ACTOR_SCHEME.name, "d2"),
         Admitted::Fresh
     );
 }
@@ -692,12 +692,12 @@ fn work_that_will_not_be_done_releases_its_delivery() {
         ),
     ];
     for (scheme, job) in jobs {
-        assert_eq!(world.admits(scheme, "d3"), Admitted::Fresh);
+        assert_eq!(world.admits(scheme.name, "d3"), Admitted::Fresh);
         assert_eq!(
             world.serving(|serving| pollster::block_on(unworked(serving, &job))),
             Ok(())
         );
-        assert_eq!(world.admits(scheme, "d3"), Admitted::Fresh);
+        assert_eq!(world.admits(scheme.name, "d3"), Admitted::Fresh);
     }
 }
 
@@ -721,7 +721,7 @@ fn unreleased() -> String {
 fn work_that_stops_and_cannot_release_its_delivery_says_so() {
     let world = World::failing(Fault::ReleasesDeliveries);
     assert_eq!(
-        world.admits(herald_dest_fediverse::ACTOR_SCHEME, "d4"),
+        world.admits(herald_dest_fediverse::ACTOR_SCHEME.name, "d4"),
         Admitted::Fresh
     );
     let worked =
@@ -732,7 +732,7 @@ fn work_that_stops_and_cannot_release_its_delivery_says_so() {
     );
     assert_eq!(worked.unreleased, Some(unreleased()));
     assert_eq!(
-        world.admits(herald_dest_fediverse::ACTOR_SCHEME, "d4"),
+        world.admits(herald_dest_fediverse::ACTOR_SCHEME.name, "d4"),
         Admitted::Seen
     );
     assert_eq!(
@@ -745,14 +745,14 @@ fn work_that_stops_and_cannot_release_its_delivery_says_so() {
 fn work_with_no_place_is_refused_once_its_delivery_is_released() {
     let world = World::new(Script::default());
     assert_eq!(
-        world.admits(herald_dest_fediverse::ACTOR_SCHEME, "d5"),
+        world.admits(herald_dest_fediverse::ACTOR_SCHEME.name, "d5"),
         Admitted::Fresh
     );
     let refused =
         world.serving(|serving| pollster::block_on(unplaced(serving, &followed_by("d5"))));
     assert_eq!(refused, busy(world.config.server.busy_retry));
     assert_eq!(
-        world.admits(herald_dest_fediverse::ACTOR_SCHEME, "d5"),
+        world.admits(herald_dest_fediverse::ACTOR_SCHEME.name, "d5"),
         Admitted::Fresh
     );
 }
@@ -761,7 +761,7 @@ fn work_with_no_place_is_refused_once_its_delivery_is_released() {
 fn work_with_no_place_whose_delivery_cannot_be_released_names_the_release_for_the_log() {
     let world = World::failing(Fault::ReleasesDeliveries);
     assert_eq!(
-        world.admits(herald_dest_fediverse::ACTOR_SCHEME, "d6"),
+        world.admits(herald_dest_fediverse::ACTOR_SCHEME.name, "d6"),
         Admitted::Fresh
     );
     let refused =

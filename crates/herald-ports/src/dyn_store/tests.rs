@@ -6,15 +6,11 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::future::Future;
 
-use herald_core::{Identity, KeyForm, Kind, Shown, Signed};
+use herald_core::{Identity, Kind, Shown};
 
 use super::*;
 
-const SCHEME: Scheme = Scheme {
-    name: "scheme",
-    signed: Signed::Hashed,
-    key: KeyForm::Bytes,
-};
+const NAMESPACE: &str = "namespace";
 
 struct Refusing {
     holding: bool,
@@ -112,11 +108,11 @@ impl Positions for Refusing {
 }
 
 impl Deliveries for Refusing {
-    async fn admit(&self, _: Scheme, _: &str, _: Timestamp) -> Result<Admitted, StoreError> {
+    async fn admit(&self, _: &'static str, _: &str, _: Timestamp) -> Result<Admitted, StoreError> {
         Err(refused("admit"))
     }
 
-    async fn release(&self, _: Scheme, _: &str) -> Result<(), StoreError> {
+    async fn release(&self, _: &'static str, _: &str) -> Result<(), StoreError> {
         Err(refused("release"))
     }
 
@@ -273,8 +269,8 @@ fn every_answer_of_an_erased_store_is_the_store_s_own() {
         answered(erased.put_pinned(&route, "post")),
         answered(erased.position(&subscription.destination)),
         answered(erased.put_position(&subscription.destination, "s1")),
-        answered(erased.admit(SCHEME, "1", at)),
-        answered(erased.release(SCHEME, "1")),
+        answered(erased.admit(NAMESPACE, "1", at)),
+        answered(erased.release(NAMESPACE, "1")),
         answered(erased.expire_deliveries(at)),
         answered(erased.note(&key)),
         answered(erased.put_note("a", &key, "n", at)),

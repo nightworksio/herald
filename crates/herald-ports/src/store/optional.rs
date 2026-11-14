@@ -3,8 +3,7 @@
 //! does not.
 
 use herald_core::{
-    Cursor, DestinationName, Entry, Key, Latest, RouteId, Schedule, Scheme, SourceName, State,
-    Subscription,
+    Cursor, DestinationName, Entry, Key, Latest, RouteId, Schedule, SourceName, State, Subscription,
 };
 use jiff::Timestamp;
 
@@ -149,17 +148,22 @@ impl<T: Pins> Pins for Option<&T> {
 }
 
 impl<T: Deliveries> Deliveries for Option<&T> {
-    async fn admit(&self, scheme: Scheme, id: &str, at: Timestamp) -> Result<Admitted, StoreError> {
+    async fn admit(
+        &self,
+        namespace: &'static str,
+        id: &str,
+        at: Timestamp,
+    ) -> Result<Admitted, StoreError> {
         match self {
-            Some(kept) => kept.admit(scheme, id, at).await,
-            None => Unkept.admit(scheme, id, at).await,
+            Some(kept) => kept.admit(namespace, id, at).await,
+            None => Unkept.admit(namespace, id, at).await,
         }
     }
 
-    async fn release(&self, scheme: Scheme, id: &str) -> Result<(), StoreError> {
+    async fn release(&self, namespace: &'static str, id: &str) -> Result<(), StoreError> {
         match self {
-            Some(kept) => kept.release(scheme, id).await,
-            None => Unkept.release(scheme, id).await,
+            Some(kept) => kept.release(namespace, id).await,
+            None => Unkept.release(namespace, id).await,
         }
     }
 

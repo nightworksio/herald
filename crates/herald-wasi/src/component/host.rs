@@ -5,7 +5,7 @@ use herald_compose::{EGRESS_GUARDED, Host, KvAt, Reaching, SqlAt, UNOFFERED, Uno
 use herald_crypto::{RingSigner, RingVerifier};
 use herald_environment::{EnvSecrets, SystemClock};
 
-use herald_ports::Outbound;
+use herald_ports::{Base, Outbound};
 
 use super::http::WasiHttp;
 
@@ -13,6 +13,7 @@ use super::http::WasiHttp;
 pub(super) struct WasiHost {
     vars: BTreeMap<String, String>,
     secrets: EnvSecrets,
+    signer: RingSigner,
 }
 
 impl WasiHost {
@@ -21,6 +22,7 @@ impl WasiHost {
         let vars: BTreeMap<String, String> = vars.into_iter().collect();
         Self {
             secrets: EnvSecrets::from_vars(vars.clone()),
+            signer: RingSigner::default(),
             vars,
         }
     }
@@ -44,7 +46,7 @@ impl Host for WasiHost {
     type Sql = Database;
     type Kv = Unoffered;
 
-    fn connect(&self, base: &str, outbound: &Outbound) -> Result<WasiHttp, String> {
+    fn connect(&self, base: Base<'_>, outbound: &Outbound) -> Result<WasiHttp, String> {
         plain(outbound, "a WASI component")?;
         Reaching::unresolved(base, self.var(EGRESS_GUARDED))
             .map(|reaching| WasiHttp::new(reaching, outbound))
@@ -70,7 +72,7 @@ impl Host for WasiHost {
     }
 
     fn signer(&self) -> &RingSigner {
-        &RingSigner
+        &self.signer
     }
 
     fn verifier(&self) -> &RingVerifier {

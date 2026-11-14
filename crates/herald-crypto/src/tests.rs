@@ -21,6 +21,7 @@ const ACTIVITYPUB: herald_core::Scheme = herald_core::Scheme {
 };
 
 const RSA: &str = include_str!("../fixtures/rsa-2048-pkcs8.test.hex");
+const ROTATED: &str = include_str!("../fixtures/rsa-2048-pkcs8-rotated.test.hex");
 
 fn pem(der: &[u8]) -> String {
     format!(
@@ -34,7 +35,7 @@ fn unhex(text: &str) -> Vec<u8> {
 }
 
 fn sign(algorithm: Algorithm, key: &Secret, message: &[u8]) -> Result<Vec<u8>, CryptoError> {
-    pollster::block_on(RingSigner.sign(algorithm, key, message))
+    pollster::block_on(RingSigner::default().sign(algorithm, key, message))
 }
 
 fn verify(algorithm: Algorithm, key: &[u8], message: &[u8], signature: &[u8]) -> bool {
@@ -201,7 +202,7 @@ fn an_activity_signed_by_its_actors_key_verifies_through_the_pem_it_publishes() 
 }
 
 fn public(algorithm: Algorithm, key: &Secret) -> Result<Vec<u8>, CryptoError> {
-    pollster::block_on(RingSigner.public(algorithm, key))
+    pollster::block_on(RingSigner::default().public(algorithm, key))
 }
 
 #[test]
@@ -241,10 +242,42 @@ fn a_public_key_is_published_as_a_subject_public_key_info() {
 }
 
 #[test]
-fn an_rsa_key_is_parsed_once_and_then_read_from_what_was_kept() {
+fn an_rsa_key_is_parsed_once_per_name_and_read_again_by_a_new_signer() {
+    let signer = RingSigner::default();
     let key = Secret::new("RSA", pem(&unhex(RSA)));
-    let first = rsa_pair(&key).unwrap();
-    let again = rsa_pair(&key).unwrap();
-    assert!(Arc::ptr_eq(&first, &again));
-    assert!(rsa_pair(&Secret::new("RSA", "not a key")).is_none());
+    let rotated = Secret::new("RSA", pem(&unhex(ROTATED)));
+    let first = signer.rsa_pair(&key).unwrap();
+    assert!(Arc::ptr_eq(&first, &signer.rsa_pair(&key).unwrap()));
+    assert!(Arc::ptr_eq(&first, &signer.rsa_pair(&rotated).unwrap()));
+    let published = |signer: &RingSigner, key: &Secret| {
+        pollster::block_on(signer.public(Algorithm::RsaSha256, key)).unwrap()
+    };
+    let fresh = RingSigner::default();
+    assert_ne!(published(&fresh, &rotated), published(&signer, &rotated));
+    assert_eq!(
+        published(&fresh, &rotated),
+        subject(
+            Public::Rsa,
+            RsaKeyPair::from_pkcs8(&unhex(ROTATED))
+                .unwrap()
+                .public()
+                .as_ref()
+        )
+    );
+    assert!(
+        fresh
+            .rsa_pair(&Secret::new("UNPARSED", "not a key"))
+            .is_none()
+    );
+    assert!(format!("{signer:?}").contains("RSA"));
+}
+
+#[test]
+fn a_private_key_s_der_is_overwritten_with_zeroes_when_dropped() {
+    fn wiped_on_drop<T: zeroize::ZeroizeOnDrop>(_: &T) {}
+    let mut der = pkcs8(&Secret::new("RSA", pem(&unhex(RSA)))).unwrap();
+    wiped_on_drop(&der);
+    assert_eq!(*der, unhex(RSA));
+    zeroize::Zeroize::zeroize(&mut der);
+    assert!(der.is_empty());
 }

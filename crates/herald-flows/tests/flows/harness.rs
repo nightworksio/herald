@@ -3,7 +3,7 @@ use std::sync::Mutex;
 
 use herald_config::{Config, Uses, load};
 use herald_core::{
-    Cursor, DestinationName, Draft, Entry, Event, Identity, Key, Kind, RouteId, Schedule, Scheme,
+    Cursor, DestinationName, Draft, Entry, Event, Identity, Key, Kind, RouteId, Schedule,
     SourceName, State, Step, Subscription,
 };
 use herald_flows::{
@@ -434,21 +434,21 @@ impl Positions for Failing {
 impl Deliveries for Failing {
     async fn admit(
         &self,
-        scheme: herald_core::Scheme,
+        namespace: &'static str,
         id: &str,
         at: jiff::Timestamp,
     ) -> Result<herald_ports::Admitted, StoreError> {
         if self.fault == Fault::Admits {
             return Err(broken());
         }
-        self.inner.admit(scheme, id, at).await
+        self.inner.admit(namespace, id, at).await
     }
 
-    async fn release(&self, scheme: herald_core::Scheme, id: &str) -> Result<(), StoreError> {
+    async fn release(&self, namespace: &'static str, id: &str) -> Result<(), StoreError> {
         if self.fault == Fault::ReleasesDeliveries {
             return Err(broken());
         }
-        self.inner.release(scheme, id).await
+        self.inner.release(namespace, id).await
     }
 
     async fn expire_deliveries(&self, before: jiff::Timestamp) -> Result<(), StoreError> {
@@ -690,14 +690,14 @@ impl herald_ports::Positions for Refusing {
 impl herald_ports::Deliveries for Refusing {
     async fn admit(
         &self,
-        _: Scheme,
+        _: &'static str,
         _: &str,
         _: Timestamp,
     ) -> Result<herald_ports::Admitted, StoreError> {
         Err(self.0.clone())
     }
 
-    async fn release(&self, _: Scheme, _: &str) -> Result<(), StoreError> {
+    async fn release(&self, _: &'static str, _: &str) -> Result<(), StoreError> {
         Err(self.0.clone())
     }
 

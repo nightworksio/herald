@@ -3,7 +3,7 @@
 
 use crate::public::{public, reachable};
 use crate::reach::Reach;
-use herald_ports::{HttpError, PUBLIC_BASE, Request, Response, SecretText};
+use herald_ports::{Base, HttpError, Request, Response, SecretText};
 use url::Url;
 
 pub use herald_flows::EGRESS_GUARDED;
@@ -27,13 +27,13 @@ impl Reaching {
     /// # Errors
     ///
     /// Where `base` is not a URL a connection may be bound to, saying why.
-    pub fn of(base: &str) -> Result<Self, String> {
-        if base == PUBLIC_BASE {
-            return Ok(Self::Public);
+    pub fn of(base: Base<'_>) -> Result<Self, String> {
+        match base {
+            Base::At(url) => Reach::new([url])
+                .map(Self::Base)
+                .map_err(|error| error.to_string()),
+            Base::Public => Ok(Self::Public),
         }
-        Reach::new([base])
-            .map(Self::Base)
-            .map_err(|error| error.to_string())
     }
 
     /// What a connection to `base` may reach on a host that resolves names
@@ -44,7 +44,7 @@ impl Reaching {
     /// # Errors
     ///
     /// Where `base` is not a URL a connection may be bound to, saying why.
-    pub fn unresolved(base: &str, guarded: Option<&str>) -> Result<Self, String> {
+    pub fn unresolved(base: Base<'_>, guarded: Option<&str>) -> Result<Self, String> {
         Self::of(base).map(|reaching| match reaching {
             Self::Public if !egress_guarded(guarded) => Self::Nothing,
             reaching => reaching,
@@ -107,7 +107,7 @@ pub fn asked_query(query: Option<String>) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use herald_ports::{Method, PUBLIC_BASE};
+    use herald_ports::Method;
 
     use super::*;
 
@@ -129,7 +129,7 @@ mod tests {
     fn a_host_out_of_sight_of_names_fetches_on_others_behalf_only_where_guarded() {
         let name = plain("https://social.example/actor");
         for unguarded in [None, Some(""), Some("false"), Some("TRUE")] {
-            let reaching = Reaching::unresolved(PUBLIC_BASE, unguarded).unwrap();
+            let reaching = Reaching::unresolved(Base::Public, unguarded).unwrap();
             assert_eq!(reaching, Reaching::Nothing);
             assert!(!reaching.public());
             assert!(matches!(
@@ -137,21 +137,21 @@ mod tests {
                 Err(HttpError::Refused { .. })
             ));
         }
-        let guarded = Reaching::unresolved(PUBLIC_BASE, Some("true")).unwrap();
+        let guarded = Reaching::unresolved(Base::Public, Some("true")).unwrap();
         assert_eq!(guarded, Reaching::Public);
         assert!(guarded.admitted(&name).is_ok());
     }
 
     #[test]
     fn a_host_out_of_sight_of_names_still_reaches_a_base() {
-        let base = "https://discord.com/api/v10";
+        let base = Base::At("https://discord.com/api/v10");
         assert_eq!(Reaching::unresolved(base, None), Reaching::of(base));
-        assert!(Reaching::unresolved("not a url", None).is_err());
+        assert!(Reaching::unresolved(Base::At("not a url"), None).is_err());
     }
 
     #[test]
     fn a_base_connection_reaches_its_own_origin_alone() {
-        let reaching = Reaching::of("https://discord.com/api/v10").unwrap();
+        let reaching = Reaching::of(Base::At("https://discord.com/api/v10")).unwrap();
         assert!(!reaching.public());
         assert_eq!(
             reaching
@@ -166,7 +166,7 @@ mod tests {
             })
         );
         assert_eq!(
-            Reaching::of("http://discord.com"),
+            Reaching::of(Base::At("http://discord.com")),
             Err(
                 "http://discord.com is not HTTPS; plain HTTP is allowed only on a loopback host"
                     .to_owned()
@@ -176,7 +176,7 @@ mod tests {
 
     #[test]
     fn a_public_connection_reaches_public_https_origins_alone() {
-        let reaching = Reaching::of(PUBLIC_BASE).unwrap();
+        let reaching = Reaching::of(Base::Public).unwrap();
         assert!(reaching.public());
         assert!(
             reaching

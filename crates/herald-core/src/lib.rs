@@ -59,8 +59,8 @@ pub use escaping::{Escaping, safe_url, unreserved};
 pub use event::{Draft, Event, Problem};
 pub use housekeep::{Chore, Schedule, due, schedules};
 pub use inbound::{
-    Addressed, Claim, KeyForm, Refusal, Scheme, Signature, Signed, activity_claim, bearer, claim,
-    key, same,
+    Addressed, Algorithm, Claim, KeyForm, Refusal, Scheme, Signature, Signed, activity_claim,
+    bearer, claim, key, same,
 };
 pub use interact::{
     AnnouncedHere, Answering, Asked, Command, Member, Place, Replies, Said, Unchosen, announced,

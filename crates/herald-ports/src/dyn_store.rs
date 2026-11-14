@@ -1,6 +1,5 @@
 use herald_core::{
-    Cursor, DestinationName, Entry, Key, Latest, RouteId, Schedule, Scheme, SourceName, State,
-    Subscription,
+    Cursor, DestinationName, Entry, Key, Latest, RouteId, Schedule, SourceName, State, Subscription,
 };
 use jiff::Timestamp;
 
@@ -119,7 +118,7 @@ pub trait DynStore: Sync {
     /// [`Deliveries::admit`].
     fn admit_boxed<'a>(
         &'a self,
-        scheme: Scheme,
+        namespace: &'static str,
         id: &'a str,
         at: Timestamp,
     ) -> Boxed<'a, Result<Admitted, StoreError>>;
@@ -127,7 +126,7 @@ pub trait DynStore: Sync {
     /// [`Deliveries::release`].
     fn release_boxed<'a>(
         &'a self,
-        scheme: Scheme,
+        namespace: &'static str,
         id: &'a str,
     ) -> Boxed<'a, Result<(), StoreError>>;
 
@@ -338,19 +337,19 @@ impl<S: Store + Keyring> DynStore for S {
 
     fn admit_boxed<'a>(
         &'a self,
-        scheme: Scheme,
+        namespace: &'static str,
         id: &'a str,
         at: Timestamp,
     ) -> Boxed<'a, Result<Admitted, StoreError>> {
-        Box::pin(async move { self.deliveries().admit(scheme, id, at).await })
+        Box::pin(async move { self.deliveries().admit(namespace, id, at).await })
     }
 
     fn release_boxed<'a>(
         &'a self,
-        scheme: Scheme,
+        namespace: &'static str,
         id: &'a str,
     ) -> Boxed<'a, Result<(), StoreError>> {
-        Box::pin(async move { self.deliveries().release(scheme, id).await })
+        Box::pin(async move { self.deliveries().release(namespace, id).await })
     }
 
     fn expire_deliveries_boxed(&self, before: Timestamp) -> Boxed<'_, Result<(), StoreError>> {
@@ -535,12 +534,17 @@ impl Positions for Erased<'_, dyn DynStore + '_> {
 }
 
 impl Deliveries for Erased<'_, dyn DynStore + '_> {
-    async fn admit(&self, scheme: Scheme, id: &str, at: Timestamp) -> Result<Admitted, StoreError> {
-        self.0.admit_boxed(scheme, id, at).await
+    async fn admit(
+        &self,
+        namespace: &'static str,
+        id: &str,
+        at: Timestamp,
+    ) -> Result<Admitted, StoreError> {
+        self.0.admit_boxed(namespace, id, at).await
     }
 
-    async fn release(&self, scheme: Scheme, id: &str) -> Result<(), StoreError> {
-        self.0.release_boxed(scheme, id).await
+    async fn release(&self, namespace: &'static str, id: &str) -> Result<(), StoreError> {
+        self.0.release_boxed(namespace, id).await
     }
 
     async fn expire_deliveries(&self, before: Timestamp) -> Result<(), StoreError> {

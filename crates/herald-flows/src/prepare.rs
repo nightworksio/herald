@@ -8,7 +8,7 @@ use std::sync::Arc;
 use herald_config::{Config, Destination, Placed, RouteConfig, Uses};
 use herald_core::{DestinationName, RouteId, SourceName, hex};
 use herald_kinds::{Interacted, Poll, Posts, Reached};
-use herald_ports::{Algorithm, CryptoError, Http, Secret, SecretError, Secrets, Signer};
+use herald_ports::{Algorithm, Base, CryptoError, Http, Secret, SecretError, Secrets, Signer};
 use herald_store_markers::{MarkedRoute, MarkersStore};
 
 use crate::serving::Webhooks;
@@ -262,40 +262,48 @@ impl Prepared {
             .collect()
     }
 
-    /// The routes and sources, each with an `Http` made by `http` for its
-    /// base URL, one per base.
+    /// The routes and sources, each with an `Http` made by `http` for what
+    /// it reaches, one per base and one for every public address.
     ///
     /// # Errors
     ///
     /// The first error `http` gives.
     pub fn connect<H: Clone, E>(
         self,
-        mut http: impl FnMut(&str) -> Result<H, E>,
+        mut http: impl FnMut(Base<'_>) -> Result<H, E>,
     ) -> Result<Connected<H>, E> {
         let mut made: BTreeMap<String, H> = BTreeMap::new();
-        let mut reach = |base: &str| -> Result<H, E> {
-            if let Some(reaching) = made.get(base) {
+        let mut public: Option<H> = None;
+        let mut reach = |base: Base<'_>| -> Result<H, E> {
+            let known = match base {
+                Base::At(url) => made.get(url),
+                Base::Public => public.as_ref(),
+            };
+            if let Some(reaching) = known {
                 return Ok(reaching.clone());
             }
             let reaching = http(base)?;
-            made.insert(base.to_owned(), reaching.clone());
+            match base {
+                Base::At(url) => made.insert(url.to_owned(), reaching.clone()),
+                Base::Public => public.replace(reaching.clone()),
+            };
             Ok(reaching)
         };
         let mut routes = Vec::new();
         for route in self.routes {
-            let reaching = reach(route.reached.api())?;
+            let reaching = reach(route.reached.base())?;
             routes.push((route, reaching));
         }
         let mut sources = Vec::new();
         for source in self.sources {
-            let reaching = reach(source.poll.api())?;
+            let reaching = reach(Base::At(source.poll.api()))?;
             sources.push((source, reaching));
         }
         let mut interacting = Vec::new();
         for (name, destination) in self.interacting {
-            let reaching = reach(destination.api())?;
+            let reaching = reach(Base::At(destination.api()))?;
             let sessions = match destination.sessions() {
-                Some(base) => Some(reach(base)?),
+                Some(base) => Some(reach(Base::At(base))?),
                 None => None,
             };
             interacting.push((name, destination, reaching, sessions));

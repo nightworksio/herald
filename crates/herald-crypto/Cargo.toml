@@ -13,6 +13,7 @@ publish.workspace = true
 herald-keys.workspace = true
 herald-ports.workspace = true
 ring.workspace = true
+zeroize.workspace = true
 
 [dev-dependencies]
 base64.workspace = true

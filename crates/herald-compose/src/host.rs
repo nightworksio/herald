@@ -2,14 +2,14 @@ use std::future::{Future, ready};
 
 use herald_kinds::{KvAt, SqlAt};
 use herald_ports::{
-    Changed, Clock, Http, Kv, KvError, Outbound, Pair, Proxy, Secrets, Signer, Sql, SqlError,
+    Base, Changed, Clock, Http, Kv, KvError, Outbound, Pair, Proxy, Secrets, Signer, Sql, SqlError,
     Stamped, Statement, Verifier, Versionstamp,
 };
 
 /// What a platform gives herald: its ports, its variables, and the
 /// databases it offers.
 pub trait Host: Sync {
-    /// What reaches one base URL.
+    /// What reaches one base URL, or every public address.
     type Http: Http + Clone;
     /// Where secrets are read.
     type Secrets: Secrets;
@@ -31,7 +31,7 @@ pub trait Host: Sync {
     ///
     /// Where `base` cannot be reached from here, or this host cannot go
     /// through `outbound`'s proxy or trust its roots, saying why.
-    fn connect(&self, base: &str, outbound: &Outbound) -> Result<Self::Http, String>;
+    fn connect(&self, base: Base<'_>, outbound: &Outbound) -> Result<Self::Http, String>;
 
     /// The variable `name`, where the platform sets it and it is not empty.
     fn var(&self, name: &str) -> Option<&str>;

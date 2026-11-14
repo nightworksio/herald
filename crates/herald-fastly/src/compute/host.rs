@@ -7,8 +7,7 @@ use herald_compose::{
 };
 use herald_crypto::{RingSigner, RingVerifier};
 use herald_environment::SystemClock;
-use herald_ports::Outbound;
-use herald_ports::{Secret, SecretError, Secrets};
+use herald_ports::{Base, Outbound, Secret, SecretError, Secrets};
 
 use super::http::FastlyHttp;
 use super::kv::FastlyKv;
@@ -44,6 +43,7 @@ pub(super) struct FastlyHost {
     pub(super) config: Option<ConfigStore>,
     pub(super) vars: BTreeMap<&'static str, String>,
     pub(super) secrets: StoreSecrets,
+    pub(super) signer: RingSigner,
 }
 
 impl FastlyHost {
@@ -60,6 +60,7 @@ impl FastlyHost {
             config,
             vars,
             secrets: StoreSecrets,
+            signer: RingSigner::default(),
         }
     }
 
@@ -78,7 +79,7 @@ impl Host for FastlyHost {
     type Sql = Unoffered;
     type Kv = FastlyKv;
 
-    fn connect(&self, base: &str, outbound: &Outbound) -> Result<FastlyHttp, String> {
+    fn connect(&self, base: Base<'_>, outbound: &Outbound) -> Result<FastlyHttp, String> {
         plain(outbound, "Fastly Compute")?;
         Reaching::unresolved(base, self.item(EGRESS_GUARDED).as_deref())
             .map(|reaching| FastlyHttp::new(reaching, outbound))
@@ -104,7 +105,7 @@ impl Host for FastlyHost {
     }
 
     fn signer(&self) -> &RingSigner {
-        &RingSigner
+        &self.signer
     }
 
     fn verifier(&self) -> &RingVerifier {

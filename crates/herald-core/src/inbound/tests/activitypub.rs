@@ -64,7 +64,7 @@ fn activitypub(headers: &[(&str, &str)]) -> Result<Claim, Refusal> {
 fn an_activity_claims_rsa_over_the_headers_its_signature_names() {
     let digest = digest();
     let claim = activitypub(&activity_headers(SIGNED, DATE, &digest)).unwrap();
-    assert_eq!(claim.kind, Signature::RsaSha256);
+    assert_eq!(claim.kind, Signature::Signed(Algorithm::RsaSha256));
     assert_eq!(
         String::from_utf8(claim.message).unwrap(),
         format!(
@@ -122,7 +122,7 @@ fn an_activity_whose_digest_is_not_its_bodys_is_refused() {
     let both = format!("SHA-512=xyz, {}", digest().replace("SHA-256", "sha-256"));
     assert_eq!(
         probe(activitypub(&activity_headers(SIGNED, DATE, &both))),
-        "RsaSha256 (request-target): post /inbox\nhost: herald.example\ndate: Fri, 15 Jan 2027 08:00:00 GMT\ndigest: SHA-512=xyz, sha-256=GYwYnH3BiO6aICFt0ThC5bUIJ4byvqdpWtR8m5fNkww="
+        "Signed(RsaSha256) (request-target): post /inbox\nhost: herald.example\ndate: Fri, 15 Jan 2027 08:00:00 GMT\ndigest: SHA-512=xyz, sha-256=GYwYnH3BiO6aICFt0ThC5bUIJ4byvqdpWtR8m5fNkww="
     );
     for written in ["", "MD5=abc", "SHA-256"] {
         assert_eq!(
@@ -152,7 +152,7 @@ fn an_activity_dated_outside_the_window_or_undated_is_refused() {
             "Fri, 15 Jan 2027 07:55:00 GMT",
             &digest
         ))),
-        "RsaSha256 (request-target): post /inbox\nhost: herald.example\ndate: Fri, 15 Jan 2027 07:55:00 GMT\ndigest: SHA-256=GYwYnH3BiO6aICFt0ThC5bUIJ4byvqdpWtR8m5fNkww="
+        "Signed(RsaSha256) (request-target): post /inbox\nhost: herald.example\ndate: Fri, 15 Jan 2027 07:55:00 GMT\ndigest: SHA-256=GYwYnH3BiO6aICFt0ThC5bUIJ4byvqdpWtR8m5fNkww="
     );
     assert_eq!(
         activitypub(&activity_headers(
@@ -197,12 +197,12 @@ fn a_signature_header_not_in_its_form_is_malformed() {
     let hs2019 = SIGNED.replace("rsa-sha256", "hs2019");
     assert_eq!(
         probe(activitypub(&activity_headers(&hs2019, DATE, &digest))),
-        "RsaSha256 (request-target): post /inbox\nhost: herald.example\ndate: Fri, 15 Jan 2027 08:00:00 GMT\ndigest: SHA-256=GYwYnH3BiO6aICFt0ThC5bUIJ4byvqdpWtR8m5fNkww="
+        "Signed(RsaSha256) (request-target): post /inbox\nhost: herald.example\ndate: Fri, 15 Jan 2027 08:00:00 GMT\ndigest: SHA-256=GYwYnH3BiO6aICFt0ThC5bUIJ4byvqdpWtR8m5fNkww="
     );
     let unnamed = SIGNED.replace(r#"algorithm="rsa-sha256","#, "");
     assert_eq!(
         probe(activitypub(&activity_headers(&unnamed, DATE, &digest))),
-        "RsaSha256 (request-target): post /inbox\nhost: herald.example\ndate: Fri, 15 Jan 2027 08:00:00 GMT\ndigest: SHA-256=GYwYnH3BiO6aICFt0ThC5bUIJ4byvqdpWtR8m5fNkww="
+        "Signed(RsaSha256) (request-target): post /inbox\nhost: herald.example\ndate: Fri, 15 Jan 2027 08:00:00 GMT\ndigest: SHA-256=GYwYnH3BiO6aICFt0ThC5bUIJ4byvqdpWtR8m5fNkww="
     );
 }
 
@@ -294,7 +294,7 @@ fn an_activity_without_a_body_need_not_cover_a_digest() {
     let headers = activity_headers(&unsigned, DATE, "");
     assert_eq!(
         probe(addressed(&headers, b"")),
-        "RsaSha256 (request-target): post /inbox\nhost: herald.example\ndate: Fri, 15 Jan 2027 08:00:00 GMT"
+        "Signed(RsaSha256) (request-target): post /inbox\nhost: herald.example\ndate: Fri, 15 Jan 2027 08:00:00 GMT"
     );
     assert_eq!(
         addressed(&headers, ACTIVITY),
@@ -330,7 +330,7 @@ fn blank_names_do_not_count_toward_the_most_an_activity_may_name() {
     let headers = activity_headers(&padded, DATE, &digest);
     assert_eq!(
         probe(activitypub(&headers)),
-        "RsaSha256 (request-target): post /inbox\nhost: herald.example\ndate: Fri, 15 Jan 2027 08:00:00 GMT\ndigest: SHA-256=GYwYnH3BiO6aICFt0ThC5bUIJ4byvqdpWtR8m5fNkww="
+        "Signed(RsaSha256) (request-target): post /inbox\nhost: herald.example\ndate: Fri, 15 Jan 2027 08:00:00 GMT\ndigest: SHA-256=GYwYnH3BiO6aICFt0ThC5bUIJ4byvqdpWtR8m5fNkww="
     );
 }
 
@@ -354,7 +354,7 @@ fn an_activity_signed_for_another_host_is_misdirected() {
     headers.push(("Host", "HERALD.example "));
     assert_eq!(
         probe(activitypub(&headers)),
-        "RsaSha256 (request-target): post /inbox\nhost: HERALD.example\ndate: Fri, 15 Jan 2027 08:00:00 GMT\ndigest: SHA-256=GYwYnH3BiO6aICFt0ThC5bUIJ4byvqdpWtR8m5fNkww="
+        "Signed(RsaSha256) (request-target): post /inbox\nhost: HERALD.example\ndate: Fri, 15 Jan 2027 08:00:00 GMT\ndigest: SHA-256=GYwYnH3BiO6aICFt0ThC5bUIJ4byvqdpWtR8m5fNkww="
     );
     headers.retain(|(name, _)| *name != "Host");
     headers.push(("Host", "elsewhere.example"));
@@ -428,7 +428,7 @@ fn an_activity_naming_more_headers_than_it_may_is_refused_unread() {
     headers.push(("X-Extra", "1"));
     assert_eq!(
         probe(activitypub(&headers)),
-        "RsaSha256 (request-target): post /inbox\nhost: herald.example\ndate: Fri, 15 Jan 2027 08:00:00 GMT\ndigest: SHA-256=GYwYnH3BiO6aICFt0ThC5bUIJ4byvqdpWtR8m5fNkww=\nx-extra: 1\nx-extra: 1\nx-extra: 1\nx-extra: 1\nx-extra: 1\nx-extra: 1\nx-extra: 1\nx-extra: 1\nx-extra: 1\nx-extra: 1\nx-extra: 1\nx-extra: 1"
+        "Signed(RsaSha256) (request-target): post /inbox\nhost: herald.example\ndate: Fri, 15 Jan 2027 08:00:00 GMT\ndigest: SHA-256=GYwYnH3BiO6aICFt0ThC5bUIJ4byvqdpWtR8m5fNkww=\nx-extra: 1\nx-extra: 1\nx-extra: 1\nx-extra: 1\nx-extra: 1\nx-extra: 1\nx-extra: 1\nx-extra: 1\nx-extra: 1\nx-extra: 1\nx-extra: 1\nx-extra: 1"
     );
     let over = SIGNED.replace(
         "(request-target) host date digest",
@@ -456,7 +456,7 @@ fn a_bearer_token_is_read_whatever_case_its_scheme_is_written_in() {
 #[test]
 fn a_claim_debugs_without_its_message_or_signatures() {
     let claim = Claim {
-        kind: Signature::HmacSha256,
+        kind: Signature::Signed(Algorithm::HmacSha256),
         message: b"hs-token".to_vec(),
         signatures: vec![b"hs-token".to_vec()],
         delivery: Some("txn-1".to_owned()),
@@ -466,7 +466,7 @@ fn a_claim_debugs_without_its_message_or_signatures() {
     assert!(!shown.contains("hs-token"), "{shown}");
     assert_eq!(
         shown,
-        r#"Claim { kind: HmacSha256, message: 8 bytes, signatures: 1 held back, delivery: Some("txn-1"), signer: None }"#
+        r#"Claim { kind: Signed(HmacSha256), message: 8 bytes, signatures: 1 held back, delivery: Some("txn-1"), signer: None }"#
     );
 }
 
@@ -485,7 +485,7 @@ fn a_request_is_held_to_the_bounds_it_is_claimed_within() {
     ];
     assert_eq!(
         probe(claimed(DISCORD, &discord)),
-        "Ed25519 1800000061{\"action\":\"published\"}"
+        "Signed(Ed25519) 1800000061{\"action\":\"published\"}"
     );
     assert_eq!(
         claim(DISCORD, &discord, BODY, now(), &narrow),
@@ -500,7 +500,7 @@ fn a_request_is_held_to_the_bounds_it_is_claimed_within() {
     ];
     assert_eq!(
         probe(claimed(GITLAB, &rotating)),
-        "HmacSha256 msg_2KWPBgLlAfxdpx2AI54pPJ85f4W.1800000000.{\"action\":\"published\"}"
+        "Signed(HmacSha256) msg_2KWPBgLlAfxdpx2AI54pPJ85f4W.1800000000.{\"action\":\"published\"}"
     );
     assert_eq!(
         claim(GITLAB, &rotating, BODY, now(), &narrow),
@@ -522,7 +522,7 @@ fn a_request_is_held_to_the_bounds_it_is_claimed_within() {
             activity_now(),
             &Inbound::DEFAULT
         )),
-        "RsaSha256 (request-target): post /inbox\nhost: herald.example\ndate: Fri, 15 Jan 2027 08:00:00 GMT\ndigest: SHA-256=GYwYnH3BiO6aICFt0ThC5bUIJ4byvqdpWtR8m5fNkww="
+        "Signed(RsaSha256) (request-target): post /inbox\nhost: herald.example\ndate: Fri, 15 Jan 2027 08:00:00 GMT\ndigest: SHA-256=GYwYnH3BiO6aICFt0ThC5bUIJ4byvqdpWtR8m5fNkww="
     );
     assert_eq!(
         activity_claim(

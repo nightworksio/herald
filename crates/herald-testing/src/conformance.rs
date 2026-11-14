@@ -18,36 +18,11 @@ mod unkept;
 pub use kv::kv_conformance;
 pub use sql::sql_conformance;
 
-/// A scheme as its crate writes it, for these tests.
-const GITHUB: herald_core::Scheme = herald_core::Scheme {
-    name: "github",
-    signed: herald_core::Signed::Body {
-        headers: &["X-Hub-Signature-256"],
-        prefix: "sha256=",
-    },
-    key: herald_core::KeyForm::Bytes,
-};
+const GITHUB: &str = "github";
 
-/// A scheme as its crate writes it, for these tests.
-const GITLAB: herald_core::Scheme = herald_core::Scheme {
-    name: "gitlab",
-    signed: herald_core::Signed::StandardWebhooks {
-        id: "webhook-id",
-        timestamp: "webhook-timestamp",
-        signature: "webhook-signature",
-    },
-    key: herald_core::KeyForm::Whsec,
-};
+const GITLAB: &str = "gitlab";
 
-/// A scheme as its crate writes it, for these tests.
-const FORGEJO: herald_core::Scheme = herald_core::Scheme {
-    name: "forgejo",
-    signed: herald_core::Signed::Body {
-        headers: &["X-Forgejo-Signature", "X-Gitea-Signature"],
-        prefix: "",
-    },
-    key: herald_core::KeyForm::Bytes,
-};
+const FORGEJO: &str = "forgejo";
 
 /// Whether `store`, empty, skips no record, keeps every kind of record it
 /// answers as a store must (ADR-0005), and refuses every method of each

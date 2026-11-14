@@ -231,6 +231,11 @@ async fn run() -> Result<Vec<(PathBuf, String)>, String> {
         .collect()
 }
 
+#[expect(
+    clippy::print_stdout,
+    clippy::print_stderr,
+    reason = "this tool says on its streams what it wrote"
+)]
 fn main() -> ExitCode {
     let recorded = tokio::runtime::Builder::new_current_thread()
         .enable_all()

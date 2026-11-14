@@ -16,7 +16,7 @@ mod compose {
     use herald_core::DestinationName;
     use herald_flows::{Admission, Did, Housekept, Inbound, Job, Stop, Sweep, Taker, Worked};
     use herald_kinds::{Opening, StoreKind};
-    use herald_ports::{Changed, Frame, Http, HttpError, Outbound, Request, Response, Value};
+    use herald_ports::{Base, Changed, Frame, Http, HttpError, Outbound, Request, Response, Value};
     use herald_testing::{
         FakeClock, FakeKv, FakeSecrets, FakeSigner, FakeTimer, FakeVerifier, ScriptedSockets,
         ScriptedSql,
@@ -120,7 +120,7 @@ mod compose {
         type Sql = ScriptedSql;
         type Kv = FakeKv;
 
-        fn connect(&self, base: &str, _: &Outbound) -> Result<Answering, String> {
+        fn connect(&self, base: Base<'_>, _: &Outbound) -> Result<Answering, String> {
             if self.unreached {
                 Err(format!("{base} is out of reach"))
             } else {
@@ -869,7 +869,10 @@ body = "{{{{ event.body }}}}"
             Uses::Serves,
             "test",
         ));
-        assert_eq!(composed.err(), Some("public: is out of reach".to_owned()));
+        assert_eq!(
+            composed.err(),
+            Some("every public address is out of reach".to_owned())
+        );
     }
 
     struct Named;

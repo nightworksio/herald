@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 use fastly::Backend;
 use herald_compose::{Host as _, KvAt};
 use herald_ports::{
-    Http as _, HttpError, Kv as _, Method, Outbound, PUBLIC_BASE, Request, SecretError, SecretText,
+    Base, Http as _, HttpError, Kv as _, Method, Outbound, Request, SecretError, SecretText,
     Secrets as _, Versionstamp,
 };
 use herald_records::KvRecords;
@@ -50,6 +50,7 @@ fn the_service_gives_the_variables_it_holds_and_not_an_empty_one() {
             ("EMPTY", String::new()),
         ]),
         secrets: StoreSecrets,
+        signer: herald_crypto::RingSigner::default(),
     };
     assert_eq!(host.var("GITHUB_REPOSITORY"), Some("cli/cli"));
     assert_eq!(host.var("EMPTY"), None);
@@ -67,6 +68,7 @@ fn the_service_passes_the_host_suite() {
             (CONFORMANCE_EMPTY, String::new()),
         ]),
         secrets: StoreSecrets,
+        signer: herald_crypto::RingSigner::default(),
     };
     assert_eq!(pollster::block_on(host_conformance(&host)), Ok(()));
 }
@@ -77,6 +79,7 @@ fn each_nonce_the_service_gives_is_new() {
         config: None,
         vars: BTreeMap::new(),
         secrets: StoreSecrets,
+        signer: herald_crypto::RingSigner::default(),
     };
     assert_ne!(host.nonce(), host.nonce());
 }
@@ -85,7 +88,7 @@ fn each_nonce_the_service_gives_is_new() {
 fn a_connection_fetches_plain_http_on_loopback_without_tls() {
     const BASE: &str = "http://127.0.0.1:8099";
     let http = FastlyHost::new()
-        .connect(BASE, &Outbound::default())
+        .connect(Base::At(BASE), &Outbound::default())
         .unwrap();
     let mut asked = Request::new(Method::Post, SecretText::plain(format!("{BASE}/said")));
     asked.body = b"hello".to_vec();
@@ -98,7 +101,7 @@ fn a_connection_fetches_plain_http_on_loopback_without_tls() {
 fn a_connection_uses_the_backend_its_origin_already_has() {
     const BASE: &str = "http://127.0.0.1:8099";
     let http = FastlyHost::new()
-        .connect(BASE, &Outbound::default())
+        .connect(Base::At(BASE), &Outbound::default())
         .unwrap();
     for path in ["first", "again"] {
         let asked = Request::new(Method::Get, SecretText::plain(format!("{BASE}/{path}")));
@@ -120,7 +123,7 @@ fn a_connection_refuses_a_backend_under_its_origin_s_name_that_reaches_elsewhere
             .unwrap();
         let origin = format!("{scheme}://127.0.0.1:{port}");
         let http = FastlyHost::new()
-            .connect(&origin, &Outbound::default())
+            .connect(Base::At(&origin), &Outbound::default())
             .unwrap();
         let asked = Request::new(Method::Get, SecretText::plain(format!("{origin}/")));
         assert!(
@@ -137,17 +140,20 @@ fn a_connection_refuses_a_backend_under_its_origin_s_name_that_reaches_elsewhere
 fn a_connection_refuses_what_it_may_not_reach() {
     let host = FastlyHost::new();
     let http = host
-        .connect("https://discord.com/api", &Outbound::default())
+        .connect(Base::At("https://discord.com/api"), &Outbound::default())
         .unwrap();
     let elsewhere = Request::new(Method::Get, SecretText::plain("https://example.org/"));
     assert!(pollster::block_on(http.send(elsewhere)).is_err());
-    assert!(host.connect("not a url", &Outbound::default()).is_err());
+    assert!(
+        host.connect(Base::At("not a url"), &Outbound::default())
+            .is_err()
+    );
 }
 
 #[test]
 fn a_public_connection_refuses_a_name_on_a_service_not_said_to_be_guarded() {
     let http = FastlyHost::new()
-        .connect(PUBLIC_BASE, &Outbound::default())
+        .connect(Base::Public, &Outbound::default())
         .unwrap();
     let asked = Request::new(Method::Get, SecretText::plain("https://localhost:9/"));
     assert!(matches!(

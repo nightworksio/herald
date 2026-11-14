@@ -14,7 +14,7 @@ exclude_globs = [
     # release carries, and is judged by deploy/tests/worker.test.mjs on a Durable Object.
     "crates/herald-wasm/src/js/conformance.rs",
 ]
-# A host's clock, signer and verifier hold nothing, so a fresh one is the same one.
+# A host's clock and verifier hold nothing, and its signer holds only the key pairs it parsed, so a fresh one signs the same.
 exclude_re = [
     "impl Host for (Native<'_>|JsHost|WasiHost|FastlyHost)>::(clock|signer|verifier) ",
     # Each kind a store keeps none of is answered by herald-ports' `Unkept` whatever the store, so no store fails the probes of them; the probes themselves are judged by the suite's tests.

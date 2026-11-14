@@ -1064,6 +1064,7 @@ dependencies = [
  "jiff",
  "pollster",
  "ring",
+ "zeroize",
 ]
 
 [[package]]
@@ -1576,6 +1577,7 @@ dependencies = [
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "wasm-bindgen-test",
+ "zeroize",
 ]
 
 [[package]]

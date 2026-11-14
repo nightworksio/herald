@@ -9,7 +9,7 @@ use herald_config::{Config, Uses};
 use herald_crypto::{RingSigner, RingVerifier};
 use herald_environment::{EnvSecrets, SystemClock};
 use herald_native::{NativePostgres, NativeSql, NativeSqlite, Timeouts};
-use herald_ports::Outbound;
+use herald_ports::{Base, Outbound};
 
 use super::{Connect, Connection};
 
@@ -17,6 +17,7 @@ use super::{Connect, Connection};
 pub(crate) struct Native<'a> {
     vars: &'a BTreeMap<String, String>,
     secrets: EnvSecrets,
+    signer: RingSigner,
     connect: Connect<'a>,
 }
 
@@ -25,6 +26,7 @@ impl<'a> Native<'a> {
         Self {
             vars,
             secrets: EnvSecrets::from_vars(vars.clone()),
+            signer: RingSigner::default(),
             connect,
         }
     }
@@ -39,7 +41,7 @@ impl Host for Native<'_> {
     type Sql = NativeSql;
     type Kv = Unoffered;
 
-    fn connect(&self, base: &str, outbound: &Outbound) -> Result<Connection, String> {
+    fn connect(&self, base: Base<'_>, outbound: &Outbound) -> Result<Connection, String> {
         self.connect.reach_within(base, outbound)
     }
 
@@ -63,7 +65,7 @@ impl Host for Native<'_> {
     }
 
     fn signer(&self) -> &RingSigner {
-        &RingSigner
+        &self.signer
     }
 
     fn verifier(&self) -> &RingVerifier {

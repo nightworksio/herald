@@ -157,8 +157,9 @@ fn a_route_reaches_and_profiles_discord_as_its_bot_or_webhook() {
     assert_eq!(
         joined
             .reach(&placed, "", secret())
-            .map(|reached| reached.api().to_owned()),
-        Some(crate::discord::API.to_owned())
+            .as_ref()
+            .map(|reached| reached.base()),
+        Some(herald_ports::Base::At(crate::discord::API))
     );
     assert_eq!(
         webhook(&posted()).reach(&placed, "", secret()),

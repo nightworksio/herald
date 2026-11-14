@@ -3,7 +3,9 @@ use std::future::Future;
 
 use herald_core::{Entry, Key, Marker, Sent};
 
-use crate::crypto::{Algorithm, CryptoError, Signer};
+use herald_core::Algorithm;
+
+use crate::crypto::{CryptoError, Signer};
 use crate::http::HttpError;
 use crate::secret::Secret;
 use jiff::{SignedDuration, Timestamp};

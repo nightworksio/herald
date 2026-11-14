@@ -188,10 +188,24 @@ impl fmt::Display for Request {
     }
 }
 
-/// The base a destination names when it reaches any public address rather
-/// than one origin, as an ActivityPub actor's deliveries to its followers'
-/// inboxes do. Its `Http` admits only public addresses (ADR-0007).
-pub const PUBLIC_BASE: &str = "public:";
+/// What one connection may reach (ADR-0007).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum Base<'a> {
+    /// The origin of one base URL.
+    At(&'a str),
+    /// Any public address, as an ActivityPub actor's deliveries to its
+    /// followers' inboxes reach.
+    Public,
+}
+
+impl fmt::Display for Base<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::At(url) => f.write_str(url),
+            Self::Public => f.write_str("every public address"),
+        }
+    }
+}
 
 /// The `User-Agent` every request herald sends carries: herald, its version
 /// and its repository (ADR-0003).
@@ -619,6 +633,15 @@ mod tests {
         let request = Request::new(Method::Get, SecretText::plain("https://example.org"));
         assert_eq!(request.to_string(), "GET https://example.org");
         assert_eq!(request.with_body().to_string(), "GET https://example.org");
+    }
+
+    #[test]
+    fn a_base_reads_as_its_url_or_as_every_public_address() {
+        assert_eq!(
+            Base::At("https://discord.com/api").to_string(),
+            "https://discord.com/api"
+        );
+        assert_eq!(Base::Public.to_string(), "every public address");
     }
 
     #[test]

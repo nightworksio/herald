@@ -79,9 +79,6 @@ pub enum Signed {
     /// HTTP Signatures over where the request was sent, claimed by
     /// [`activity_claim`] alone.
     HttpSignature,
-    /// A bearer token checked against the hashes herald keeps, never by a
-    /// claim.
-    Hashed,
 }
 
 /// How the key a scheme is checked with is written.
@@ -97,17 +94,24 @@ pub enum KeyForm {
     RsaPem,
 }
 
+/// A signature algorithm herald signs or verifies with.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Algorithm {
+    /// HMAC over SHA-256, keyed by a shared secret.
+    HmacSha256,
+    /// Ed25519.
+    Ed25519,
+    /// RSASSA-PKCS1-v1_5 over SHA-256, for ActivityPub's HTTP signatures.
+    RsaSha256,
+}
+
 /// The kind of signature a scheme carries.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Signature {
-    /// HMAC over SHA-256, keyed by a shared secret.
-    HmacSha256,
-    /// Ed25519, checked with the sender's public key.
-    Ed25519,
+    /// Signed under an algorithm, checked with the sender's key.
+    Signed(Algorithm),
     /// A token the sender presents, checked against the one herald holds.
     Token,
-    /// RSASSA-PKCS1-v1_5 over SHA-256, checked with the signer's public key.
-    RsaSha256,
 }
 
 /// What a request claims: that one of `signatures` signs `message` under
@@ -246,7 +250,7 @@ pub fn claim(
             let signed = unhex(required(headers, signature)?)
                 .ok_or(Refusal::Malformed { header: signature })?;
             Ok(Claim {
-                kind: Signature::Ed25519,
+                kind: Signature::Signed(Algorithm::Ed25519),
                 message: [stamp.as_bytes(), body].concat(),
                 delivery: Some(crate::hex(&signed)),
                 signatures: vec![signed],
@@ -268,7 +272,7 @@ pub fn claim(
                 Some(&delivery),
             ))
         }
-        Signed::HttpSignature | Signed::Hashed => Err(Refusal::Unaddressed),
+        Signed::HttpSignature => Err(Refusal::Unaddressed),
         Signed::Bearer { header } => {
             let token = bearer(required(headers, header)?).ok_or(Refusal::Malformed { header })?;
             Ok(Claim {
@@ -302,7 +306,7 @@ pub fn claim(
                 })
                 .ok_or(Refusal::Malformed { header: signature })?;
             Ok(Claim {
-                kind: Signature::HmacSha256,
+                kind: Signature::Signed(Algorithm::HmacSha256),
                 message: [id.as_bytes(), b".", stamp.as_bytes(), b".", body].concat(),
                 signatures,
                 delivery: Some(id.to_owned()),
@@ -358,7 +362,7 @@ fn signed_body(body: &[u8], signature: Vec<u8>) -> Claim {
 
 fn hmac(message: Vec<u8>, signature: Vec<u8>, delivery: Option<&str>) -> Claim {
     Claim {
-        kind: Signature::HmacSha256,
+        kind: Signature::Signed(Algorithm::HmacSha256),
         message,
         signatures: vec![signature],
         delivery: delivery.map(str::to_owned),
@@ -521,7 +525,7 @@ pub fn activity_claim(
     }
     let delivery = crate::hex(&signature);
     Ok(Claim {
-        kind: Signature::RsaSha256,
+        kind: Signature::Signed(Algorithm::RsaSha256),
         message: lines.join("\n").into_bytes(),
         signatures: vec![signature],
         delivery: Some(delivery),
@@ -635,11 +639,5 @@ pub(crate) mod fixtures {
         name: "activitypub",
         signed: Signed::HttpSignature,
         key: KeyForm::RsaPem,
-    };
-
-    pub(crate) const APP: Scheme = Scheme {
-        name: "app",
-        signed: Signed::Hashed,
-        key: KeyForm::Bytes,
     };
 }

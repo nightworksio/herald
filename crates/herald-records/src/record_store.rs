@@ -4,7 +4,7 @@ use std::collections::BTreeSet;
 use std::sync::{Arc, Mutex, PoisonError};
 
 use herald_core::{
-    Attempts, Cursor, DestinationName, Entry, Key, Latest, RecordKind, RouteId, Schedule, Scheme,
+    Attempts, Cursor, DestinationName, Entry, Key, Latest, RecordKind, RouteId, Schedule,
     SourceName, State, Subscription,
 };
 use herald_ports::{
@@ -401,10 +401,15 @@ impl<R: RecordBackend> Positions for RecordStore<R> {
 }
 
 impl<R: RecordBackend> Deliveries for RecordStore<R> {
-    async fn admit(&self, scheme: Scheme, id: &str, at: Timestamp) -> Result<Admitted, StoreError> {
+    async fn admit(
+        &self,
+        namespace: &'static str,
+        id: &str,
+        at: Timestamp,
+    ) -> Result<Admitted, StoreError> {
         Ok(
             match self
-                .compare_and_set(&paths::delivery(scheme, id), &at, None)
+                .compare_and_set(&paths::delivery(namespace, id), &at, None)
                 .await?
             {
                 Written::Written(_) => Admitted::Fresh,
@@ -413,8 +418,8 @@ impl<R: RecordBackend> Deliveries for RecordStore<R> {
         )
     }
 
-    async fn release(&self, scheme: Scheme, id: &str) -> Result<(), StoreError> {
-        self.removed(&paths::delivery(scheme, id)).await
+    async fn release(&self, namespace: &'static str, id: &str) -> Result<(), StoreError> {
+        self.removed(&paths::delivery(namespace, id)).await
     }
 
     async fn expire_deliveries(&self, before: Timestamp) -> Result<(), StoreError> {

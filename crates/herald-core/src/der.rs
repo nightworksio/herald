@@ -21,7 +21,8 @@ pub const PRIVATE_KEY: &str = "PRIVATE KEY";
 pub const PUBLIC_KEY: &str = "PUBLIC KEY";
 
 /// The DER `text` holds as one PEM block labelled `label`, and nothing
-/// around it.
+/// around it, decoded four characters at a time into a buffer allocated
+/// once, so no other copy of a private key is left on the heap.
 #[must_use]
 pub fn pem(text: &str, label: &str) -> Option<Vec<u8>> {
     let inner = text
@@ -31,8 +32,25 @@ pub fn pem(text: &str, label: &str) -> Option<Vec<u8>> {
     if inner.contains("-----") {
         return None;
     }
-    let body: String = inner.split_whitespace().collect();
-    STANDARD.decode(body).ok()
+    let mut der = Vec::with_capacity(inner.len() / 4 * 3);
+    let mut quad = [0; 4];
+    let mut held = 0;
+    let mut padded = false;
+    for byte in inner.bytes().filter(|byte| !byte.is_ascii_whitespace()) {
+        if padded {
+            return None;
+        }
+        *quad.get_mut(held)? = byte;
+        held += 1;
+        if held == quad.len() {
+            let mut bytes = [0; 3];
+            let decoded = STANDARD.decode_slice(quad, &mut bytes).ok()?;
+            der.extend_from_slice(bytes.get(..decoded)?);
+            padded = decoded < bytes.len();
+            held = 0;
+        }
+    }
+    (held == 0).then_some(der)
 }
 
 /// The contents of the DER element of tag `tag` that `der` opens with, and
@@ -71,5 +89,17 @@ mod tests {
         assert_eq!(pem(&mixed, PRIVATE_KEY), None);
         let broken = armoured(PRIVATE_KEY, "not base64!", PRIVATE_KEY);
         assert_eq!(pem(&broken, PRIVATE_KEY), None);
+    }
+
+    #[test]
+    fn a_pem_body_is_read_across_any_whitespace_and_ends_at_its_padding() {
+        let read = |body: &str| pem(&armoured(PRIVATE_KEY, body, PRIVATE_KEY), PRIVATE_KEY);
+        assert_eq!(read("AA\tE C\r\nAAEC"), Some(vec![0, 1, 2, 0, 1, 2]));
+        assert_eq!(read(""), Some(vec![]));
+        assert_eq!(read("Aw==AAEC"), None);
+        assert_eq!(read("AAECAw"), None);
+        assert_eq!(read("AAE"), None);
+        let held = read("AAECAAECAAEC").unwrap();
+        assert_eq!((held.len(), held.capacity()), (9, 9));
     }
 }

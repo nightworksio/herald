@@ -5,8 +5,7 @@ use herald_core::{
     Sent, Step, Threads, Waits, signature_header, signing,
 };
 use herald_ports::{
-    Algorithm, CryptoError, Http, HttpError, Method, PUBLIC_BASE, Request, Response, Secret,
-    SecretText, Signer,
+    Algorithm, CryptoError, Http, HttpError, Method, Request, Response, Secret, SecretText, Signer,
 };
 use jiff::Timestamp;
 use serde_json::Value;
@@ -107,13 +106,6 @@ impl ActivityPub {
     #[must_use]
     pub fn waiting(self, waits: Waits) -> Self {
         Self { waits, ..self }
-    }
-
-    /// [`PUBLIC_BASE`]: its deliveries reach its followers' inboxes, on any
-    /// public address (ADR-0007).
-    #[must_use]
-    pub fn api(&self) -> &'static str {
-        PUBLIC_BASE
     }
 
     /// The actor's name, whose followers are its recipients.

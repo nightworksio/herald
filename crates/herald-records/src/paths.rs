@@ -1,6 +1,4 @@
-use herald_core::{
-    DestinationName, Escaping, Key, RouteId, Schedule, Scheme, SourceName, Subscription,
-};
+use herald_core::{DestinationName, Escaping, Key, RouteId, Schedule, SourceName, Subscription};
 use herald_ports::Outboxed;
 use jiff::Timestamp;
 
@@ -66,8 +64,8 @@ pub(crate) fn subscribed(subscription: &Subscription) -> String {
 
 pub(crate) const DELIVERIES: &str = "deliveries";
 
-pub(crate) fn delivery(scheme: Scheme, id: &str) -> String {
-    format!("{DELIVERIES}/{}.{}.json", scheme.name, segment(id))
+pub(crate) fn delivery(namespace: &str, id: &str) -> String {
+    format!("{DELIVERIES}/{namespace}.{}.json", segment(id))
 }
 
 pub(crate) const NOTES: &str = "notes";

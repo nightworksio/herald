@@ -115,7 +115,7 @@ fn a_discord_interaction_delivered_twice_is_a_replay() {
             admitted(
                 &store,
                 Admission::Once,
-                herald_dest_discord::SCHEME,
+                herald_dest_discord::SCHEME.name,
                 &verified,
                 now(),
             )
@@ -244,7 +244,7 @@ fn a_delivery_is_admitted_once_until_it_is_released() {
         pollster::block_on(admitted(
             &store,
             Admission::Once,
-            herald_sources_forge::Forge::GitHub.scheme(),
+            herald_sources_forge::Forge::GitHub.scheme().name,
             verified,
             now(),
         ))
@@ -255,7 +255,7 @@ fn a_delivery_is_admitted_once_until_it_is_released() {
         pollster::block_on(admitted(
             &store,
             Admission::Again,
-            herald_sources_forge::Forge::GitHub.scheme(),
+            herald_sources_forge::Forge::GitHub.scheme().name,
             &delivered("1"),
             now()
         )),
@@ -270,7 +270,7 @@ fn a_delivery_is_admitted_once_until_it_is_released() {
     assert_eq!(
         pollster::block_on(released(
             &store,
-            herald_sources_forge::Forge::GitHub.scheme(),
+            herald_sources_forge::Forge::GitHub.scheme().name,
             &delivered("1")
         )),
         Ok(())
@@ -285,7 +285,7 @@ fn a_delivery_is_admitted_once_until_it_is_released() {
     assert_eq!(
         pollster::block_on(released(
             &store,
-            herald_sources_forge::Forge::GitHub.scheme(),
+            herald_sources_forge::Forge::GitHub.scheme().name,
             &unnamed
         )),
         Ok(())
@@ -300,7 +300,7 @@ fn a_store_keeping_no_deliveries_admits_every_one_and_the_ledger_skips_replays()
         pollster::block_on(admitted(
             &store,
             Admission::Once,
-            herald_sources_forge::Forge::GitHub.scheme(),
+            herald_sources_forge::Forge::GitHub.scheme().name,
             &verified,
             now()
         )),
@@ -309,7 +309,7 @@ fn a_store_keeping_no_deliveries_admits_every_one_and_the_ledger_skips_replays()
     assert_eq!(
         pollster::block_on(released(
             &store,
-            herald_sources_forge::Forge::GitHub.scheme(),
+            herald_sources_forge::Forge::GitHub.scheme().name,
             &verified
         )),
         Ok(())
@@ -326,7 +326,7 @@ fn a_store_that_cannot_answer_lets_nothing_through() {
     let rejected = pollster::block_on(admitted(
         &store,
         Admission::Once,
-        herald_sources_forge::Forge::GitHub.scheme(),
+        herald_sources_forge::Forge::GitHub.scheme().name,
         &verified,
         now(),
     ));
@@ -343,7 +343,7 @@ fn a_store_that_cannot_answer_lets_nothing_through() {
     assert_eq!(
         pollster::block_on(released(
             &store,
-            herald_sources_forge::Forge::GitHub.scheme(),
+            herald_sources_forge::Forge::GitHub.scheme().name,
             &verified
         )),
         Err(down)

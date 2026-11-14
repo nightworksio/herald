@@ -105,16 +105,18 @@ pub struct Interacted {
 }
 
 impl Job {
-    /// The scheme and identity of the delivery the job came by, where it
+    /// The namespace and identity of the delivery the job came by, where it
     /// came by one to release.
     #[must_use]
-    pub fn delivery(&self) -> Option<(Scheme, &Verified)> {
+    pub fn delivery(&self) -> Option<(&'static str, &Verified)> {
         match self {
             Self::Announce {
                 scheme, verified, ..
-            } => Some((*scheme, verified)),
-            Self::App { verified, .. } => Some((herald_sources_app::SCHEME, verified)),
-            Self::Follow { verified, .. } => Some((herald_dest_fediverse::ACTOR_SCHEME, verified)),
+            } => Some((scheme.name, verified)),
+            Self::App { verified, .. } => Some((herald_sources_app::ADMITTED, verified)),
+            Self::Follow { verified, .. } => {
+                Some((herald_dest_fediverse::ACTOR_SCHEME.name, verified))
+            }
             Self::Interact { .. } => None,
         }
     }
@@ -131,7 +133,7 @@ pub async fn unworked<S: Store, C, G, V, H, P, K>(
     job: &Job,
 ) -> Result<(), String> {
     match job.delivery() {
-        Some((scheme, verified)) => released(serving.ports.store, scheme, verified)
+        Some((namespace, verified)) => released(serving.ports.store, namespace, verified)
             .await
             .map_err(|error| unreleased(&error)),
         None => Ok(()),
@@ -166,7 +168,7 @@ pub async fn work<S: Store, C: Clock, G: Signer, V, H: Http, P, K>(
     let store = serving.ports.store;
     let delivery = job
         .delivery()
-        .map(|(scheme, verified)| (scheme, verified.clone()));
+        .map(|(namespace, verified)| (namespace, verified.clone()));
     let did = match job {
         Job::Announce { source, event, .. } => announced(serving, &source, &event, None, run).await,
         Job::App { app, event, .. } => {
@@ -197,7 +199,7 @@ pub async fn work<S: Store, C: Clock, G: Signer, V, H: Http, P, K>(
     };
     let stopped = did.stopped();
     let unreleased = match delivery.filter(|_| stopped) {
-        Some((scheme, verified)) => released(store, scheme, &verified)
+        Some((namespace, verified)) => released(store, namespace, &verified)
             .await
             .err()
             .map(|error| unreleased(&error)),

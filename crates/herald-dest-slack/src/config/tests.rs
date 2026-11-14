@@ -160,8 +160,8 @@ fn a_route_reaches_and_profiles_slack_as_its_bot_or_webhook() {
         ))
     );
     assert_eq!(
-        reached.map(|reached| reached.api().to_owned()),
-        Some("https://slack.com/api".to_owned())
+        reached.as_ref().map(|reached| reached.base()),
+        Some(herald_ports::Base::At("https://slack.com/api"))
     );
     assert_eq!(
         webhook(&posted()).reach(&placed, "", secret()),

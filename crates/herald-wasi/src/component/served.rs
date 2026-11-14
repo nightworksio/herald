@@ -50,6 +50,10 @@ async fn composed(
     .map(Ok)
 }
 
+#[expect(
+    clippy::print_stderr,
+    reason = "the host keeps what a component writes to standard error as its log"
+)]
 pub(super) fn log_lines(lines: impl IntoIterator<Item = String>) {
     for line in lines {
         eprintln!("{line}");

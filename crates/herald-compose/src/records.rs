@@ -6,8 +6,8 @@ use herald_core::Attempts;
 use herald_flows::{Connected, unserved};
 use herald_kinds::{KvAt, Local, Opened, Opening, SqlAt};
 use herald_ports::{
-    Clock, DynHttp, DynKv, DynSecrets, DynSql, DynStore, Erased, Http, Keyring, Outbound, Owned,
-    RecordOptions, Signer, Store,
+    Base, Clock, DynHttp, DynKv, DynSecrets, DynSql, DynStore, Erased, Http, Keyring, Outbound,
+    Owned, RecordOptions, Signer, Store,
 };
 
 use crate::host::Host;
@@ -78,7 +78,7 @@ where
     H::Kv: 'static,
 {
     fn connect(&self, base: &str) -> Result<Owned<dyn DynHttp + Send>, String> {
-        let http = self.host.connect(base, &self.outbound)?;
+        let http = self.host.connect(Base::At(base), &self.outbound)?;
         Ok(Owned::new(Box::new(http)))
     }
 

@@ -32,15 +32,7 @@ mod server {
     use tokio::net::{TcpListener, TcpStream};
     use tokio::sync::Notify;
 
-    /// A scheme as its crate writes it, for these tests.
-    const GITHUB: herald_core::Scheme = herald_core::Scheme {
-        name: "github",
-        signed: herald_core::Signed::Body {
-            headers: &["X-Hub-Signature-256"],
-            prefix: "sha256=",
-        },
-        key: herald_core::KeyForm::Bytes,
-    };
+    const GITHUB: &str = "github";
 
     const EVENT: &str =
         include_str!("../../herald-sources-forge/fixtures/github/release-event.reference.json");
