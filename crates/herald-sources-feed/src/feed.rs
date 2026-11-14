@@ -1,7 +1,7 @@
-use herald_core::status;
 use std::collections::BTreeMap;
 use std::fmt::Write;
 
+use herald_core::status;
 use herald_core::{Address, Cursor, Draft, ENTRY_LINK, Event, Kind, Polled, digest};
 use herald_ports::{Method, Request, Response, SecretText};
 use herald_wire::{SourceError, answered};

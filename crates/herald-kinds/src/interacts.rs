@@ -1,8 +1,8 @@
-use herald_core::status;
 use std::fmt;
 use std::ops::Deref;
 use std::sync::Arc;
 
+use herald_core::status;
 use herald_core::{
     Answering, Asked, DestinationName, Markup, Place, Room, Scheme, SecretRef, Text,
 };

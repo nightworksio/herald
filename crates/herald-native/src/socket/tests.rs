@@ -1,7 +1,11 @@
 use super::*;
 
+fn silent_for(silence: Duration) -> NativeSockets {
+    NativeSockets::under(["discord.gg", "slack.com"], silence).unwrap()
+}
+
 fn sockets() -> NativeSockets {
-    NativeSockets::under(["discord.gg", "slack.com"]).unwrap()
+    silent_for(Duration::from_secs(30))
 }
 
 /// How long a test waits for a frame before it takes the socket to hang.
@@ -88,8 +92,7 @@ async fn a_silent_connection_is_pinged_then_lost_and_one_that_never_opens_is_not
         assert!(matches!(pinged, Message::Ping(_)), "{pinged:?}");
         tokio::time::sleep(Duration::from_secs(5)).await;
     });
-    let mut socket = sockets()
-        .silent_for(silence)
+    let mut socket = silent_for(silence)
         .open(&format!("ws://{address}/"))
         .await
         .unwrap();
@@ -102,9 +105,7 @@ async fn a_silent_connection_is_pinged_then_lost_and_one_that_never_opens_is_not
     let mute_address = mute.local_addr().unwrap();
     let unopened = timeout(
         LOST_BY,
-        sockets()
-            .silent_for(silence)
-            .open(&format!("ws://{mute_address}/")),
+        silent_for(silence).open(&format!("ws://{mute_address}/")),
     )
     .await
     .expect("an answer within the bound");

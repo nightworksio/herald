@@ -4,7 +4,7 @@ use serde_json::Value;
 
 use crate::matrix::Matrix;
 use crate::read::{failure, json, text};
-use crate::request::{MARKER, MESSAGE, get, pinned, pins};
+use crate::request::{MARKER, MESSAGE, THREAD, get, pinned, pins};
 
 /// The most events read back from a room's timeline.
 const PAGE: u8 = 100;
@@ -87,7 +87,7 @@ fn carries(event: &Value, marker: &Marker) -> bool {
 
 fn threaded_under(event: &Value, root: &str) -> bool {
     let relation = content(event).get("m.relates_to").unwrap_or(&Value::Null);
-    text(relation, "rel_type") == Some("m.thread") && text(relation, "event_id") == Some(root)
+    text(relation, "rel_type") == Some(THREAD) && text(relation, "event_id") == Some(root)
 }
 
 fn landed(event: &Value) -> Facts {

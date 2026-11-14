@@ -1,7 +1,7 @@
-use herald_core::status;
 use std::fmt;
 use std::future::Future;
 
+use herald_core::status;
 use herald_core::{Sent, Waits};
 use jiff::{SignedDuration, Timestamp};
 
@@ -197,8 +197,10 @@ pub const PUBLIC_BASE: &str = "public:";
 /// and its repository (ADR-0003).
 pub const USER_AGENT: &str = concat!(
     "herald/",
-    env!("CARGO_PKG_VERSION"),
-    " (+https://github.com/nightworksio/herald)"
+    herald_core::version!(),
+    " (+",
+    herald_core::repository!(),
+    ")"
 );
 
 /// One response, as a value.
@@ -548,7 +550,7 @@ mod tests {
             "Authorization",
             SecretText::plain("Bot ").then_secret(Secret::new("TOKEN", "hunter2")),
         )
-        .header("Content-Type", SecretText::plain("application/json"))
+        .header("Content-Type", SecretText::plain(herald_core::media::JSON))
         .body(r#"{"content":"hi"}"#);
         assert_eq!(
             request.with_body().to_string(),

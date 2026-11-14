@@ -1,7 +1,7 @@
 //! What a recording must never hold: a credential, in any shape herald's
 //! destinations and sources use.
 
-const REDACTED: &str = "«secret:";
+use herald_ports::REDACTED;
 
 const PREFIXES: [(&str, &str); 16] = [
     ("xoxb-", "a Slack bot token"),

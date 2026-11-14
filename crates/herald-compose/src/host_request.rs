@@ -1,9 +1,9 @@
 //! A request as a host with no script of its own reads it, and the answer
 //! herald gives it.
 
-use herald_core::status;
 use std::fmt;
 
+use herald_core::{media, status};
 use herald_flows::{Admission, Inbound, ROUND_SECRET, Reply, Round, refusal};
 use herald_ports::Secrets as _;
 
@@ -13,13 +13,11 @@ use crate::host::Host;
 use crate::reaching::asked_query;
 use crate::told;
 
-const PLAIN: &str = "text/plain; charset=utf-8";
-
 /// A plain text reply.
 fn plain(status: u16, text: &str) -> Reply {
     Reply {
         status,
-        kind: PLAIN,
+        kind: media::TEXT,
         body: text.as_bytes().to_vec(),
         retry_after: None,
     }

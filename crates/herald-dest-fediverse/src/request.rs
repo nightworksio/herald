@@ -1,3 +1,4 @@
+use herald_core::media;
 use herald_core::{Announcement, Declined, Entry, Step};
 use herald_ports::{Method, Request, SecretText};
 use serde_json::{Map, Value, json};
@@ -41,7 +42,7 @@ fn status(mastodon: &Mastodon, text: &str, reply_to: Option<&str>, key: String) 
     body.extend(reply_to.map(|reply_to| ("in_reply_to_id".to_owned(), json!(reply_to))));
     let url = SecretText::plain(format!("{}/api/v1/statuses", mastodon.server));
     authorised(Request::new(Method::Post, url), mastodon)
-        .header("Content-Type", SecretText::plain("application/json"))
+        .header("Content-Type", SecretText::plain(media::JSON))
         .header("Idempotency-Key", SecretText::plain(key))
         .body(Value::Object(body).to_string())
 }

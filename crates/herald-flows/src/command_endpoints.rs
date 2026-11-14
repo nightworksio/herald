@@ -4,8 +4,8 @@
 //! names and admitted before it is read, and answered at once with the
 //! command's work left for after (ADR-0007, ADR-0016).
 
-use herald_core::status;
 use herald_core::{Asked, DestinationName, Place, Scheme};
+use herald_core::{media, status};
 use herald_kinds::{Endpoint, Interacted, Post, Read, Replying, Said};
 use herald_ports::{Clock, Keyring, Store, Verifier};
 
@@ -20,8 +20,6 @@ use crate::verification::{Checking, Rejected, Verified, admitted, verified};
 pub(crate) const INTERACTIONS: &str = "/interactions/";
 /// Where a server pushes transactions, before the destination's name.
 pub(crate) const MATRIX: &str = "/matrix/";
-/// The media type of every answer an endpoint gives.
-const JSON: &str = "application/json";
 
 fn job(destination: &DestinationName, asked: Vec<(Asked, Replying)>) -> Job {
     Job::Interact {
@@ -32,7 +30,7 @@ fn job(destination: &DestinationName, asked: Vec<(Asked, Replying)>) -> Job {
 
 /// What a destination's kind says, answered as JSON.
 fn json_reply(said: Said) -> Answered {
-    replied(said.status, JSON, said.body)
+    replied(said.status, media::JSON, said.body)
 }
 
 /// A request to `endpoint` for the destination `name`, at `rest` after its
@@ -166,7 +164,7 @@ async fn completions<S: Store, C, G, V, H, P, K>(
     )
     .await
     {
-        Ok(projects) => replied(status::OK, JSON, interacting.choices(&projects)),
+        Ok(projects) => replied(status::OK, media::JSON, interacting.choices(&projects)),
         Err(error) => refusal(status::UNAVAILABLE, unlisted(&error)),
     }
 }

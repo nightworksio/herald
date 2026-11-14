@@ -1,5 +1,5 @@
-use herald_core::status;
 use herald_core::{Cursor, Event, KeyForm, Polled, Scheme, Signed, unreserved};
+use herald_core::{media, status};
 use herald_kinds::Hooked;
 use herald_ports::{Method, Request, Response, Secret, SecretText};
 use serde::Deserialize;
@@ -352,7 +352,7 @@ impl Origin {
         let request = match self.forge {
             Forge::GitHub => herald_wire::github::headed(request),
             Forge::GitLab | Forge::Forgejo => request
-                .header("Accept", SecretText::plain("application/json"))
+                .header("Accept", SecretText::plain(media::JSON))
                 .identified(),
         };
         match (self.forge, token) {

@@ -12,7 +12,6 @@
 //! One round of each kind runs at a time. Sources are polled, threads kept and
 //! keys forgotten on the config's schedule. TLS is a reverse proxy's.
 
-use herald_core::status;
 use std::cell::{Cell, RefCell};
 use std::collections::VecDeque;
 use std::convert::Infallible;
@@ -26,6 +25,7 @@ use std::time::Duration;
 
 use futures_util::stream::{FuturesUnordered, StreamExt};
 use herald_core::DestinationName;
+use herald_core::{media, status};
 use herald_flows::{
     Answered, Housekept, Inbound, Job, Round, Running, Serving, Sessions, Stop, Swept, Worked,
     answer, housekeep, poll, refusal, unplaced, unworked, work,
@@ -56,11 +56,6 @@ pub(crate) const RUN: &str = "server";
 fn named() -> String {
     format!("{RUN}/{}", herald_environment::nonce())
 }
-
-/// What a reply in words is.
-const TEXT: &str = "text/plain; charset=utf-8";
-/// What an answer to a host asking for a round is.
-const JSON: &str = "application/json";
 
 /// What the server heard, for its driver to say.
 #[derive(Debug)]
@@ -343,7 +338,11 @@ where
         && let Some(round) = timers.round(request.uri().path())
     {
         rounds.ran(serving, round).await;
-        return ControlFlow::Break(replied(status::OK, JSON, timers.reply.as_bytes().to_vec()));
+        return ControlFlow::Break(replied(
+            status::OK,
+            media::JSON,
+            timers.reply.as_bytes().to_vec(),
+        ));
     }
     let path = match limits.timers {
         Some(timers) => match timers.within(request.uri().path()) {
@@ -369,7 +368,7 @@ where
             ));
         }
         rounds.ran(serving, round).await;
-        return ControlFlow::Break(replied(status::OK, TEXT, b"the round ran".to_vec()));
+        return ControlFlow::Break(replied(status::OK, media::TEXT, b"the round ran".to_vec()));
     }
     ControlFlow::Continue(path)
 }

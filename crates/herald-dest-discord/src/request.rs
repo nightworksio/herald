@@ -1,3 +1,4 @@
+use herald_core::media;
 use herald_core::{
     Announcement, Button, Chore, Declined, Delivery, Entry, Phrase, Step, Wording, digest,
 };
@@ -25,8 +26,10 @@ const BUTTON_STYLE_SECONDARY: u8 = 2;
 /// The longest deduplication key Discord takes, in a message's `nonce`.
 const KEY_LENGTH: usize = 25;
 pub(crate) const USER_AGENT: &str = concat!(
-    "DiscordBot (https://github.com/nightworksio/herald, ",
-    env!("CARGO_PKG_VERSION"),
+    "DiscordBot (",
+    herald_core::repository!(),
+    ", ",
+    herald_core::version!(),
     ")"
 );
 
@@ -62,7 +65,7 @@ pub(crate) fn bare(method: Method, url: SecretText, bot: Option<&Secret>) -> Req
 /// `bot` holds its token.
 pub(crate) fn json(method: Method, url: SecretText, bot: Option<&Secret>, body: String) -> Request {
     bare(method, url, bot)
-        .header("Content-Type", SecretText::plain("application/json"))
+        .header("Content-Type", SecretText::plain(media::JSON))
         .body(body)
 }
 

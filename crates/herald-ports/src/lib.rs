@@ -35,7 +35,7 @@ pub use learned::Learned;
 pub use markers::{MarkedThread, Markers, MarkersError, marker};
 pub use outbound::{Outbound, Proxy, Roots};
 pub use record_options::RecordOptions;
-pub use secret::{Secret, SecretError, SecretText, Secrets, Segment};
+pub use secret::{REDACTED, Secret, SecretError, SecretText, Secrets, Segment};
 pub use socket::{Frame, Socket, Sockets};
 pub use sql::{Answers, Changed, Parameters, Sql, SqlError, Statement, Value};
 pub use store::{

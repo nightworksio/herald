@@ -11,6 +11,7 @@ publish.workspace = true
 
 [dependencies]
 base64.workspace = true
+herald-core.workspace = true
 
 [lints]
 workspace = true

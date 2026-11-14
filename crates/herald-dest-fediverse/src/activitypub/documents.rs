@@ -4,7 +4,7 @@ use serde_json::{Value, json};
 use super::options::{ActorRouteOptions, Audience};
 
 /// The `ActivityStreams` context.
-const STREAMS: &str = "https://www.w3.org/ns/activitystreams";
+pub(crate) const STREAMS: &str = "https://www.w3.org/ns/activitystreams";
 /// The security context, which names `publicKey`.
 const SECURITY: &str = "https://w3id.org/security/v1";
 /// Everyone, as `ActivityStreams` addresses them.

@@ -4,7 +4,7 @@
 //! `/conformance/postgres` over the Postgres database `HERALD_TEST_POSTGRES`
 //! names.
 
-use herald_core::status;
+use herald_core::{media, status};
 use herald_flows::Reply;
 use herald_ports::{Parameters, Secret, Sql as _, SqlError, Statement};
 use herald_records::{Dialect, SqlRecords};
@@ -18,7 +18,7 @@ const URL: &str = "HERALD_TEST_POSTGRES";
 fn plain(status: u16, body: impl Into<String>) -> Reply {
     Reply {
         status,
-        kind: "text/plain; charset=utf-8",
+        kind: media::TEXT,
         body: body.into().into_bytes(),
         retry_after: None,
     }

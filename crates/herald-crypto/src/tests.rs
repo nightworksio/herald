@@ -30,10 +30,7 @@ fn pem(der: &[u8]) -> String {
 }
 
 fn unhex(text: &str) -> Vec<u8> {
-    (0..text.trim().len())
-        .step_by(2)
-        .map(|index| u8::from_str_radix(&text[index..index + 2], 16).unwrap())
-        .collect()
+    herald_core::unhex(text.trim()).unwrap()
 }
 
 fn sign(algorithm: Algorithm, key: &Secret, message: &[u8]) -> Result<Vec<u8>, CryptoError> {

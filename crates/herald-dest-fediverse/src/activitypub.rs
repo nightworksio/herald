@@ -12,6 +12,7 @@ mod reach;
 
 pub(crate) use deliver::ACTOR;
 pub use deliver::{ACTOR_MARKUP, ActivityPub, actor_profile};
+pub(crate) use documents::STREAMS;
 pub use documents::{
     FIRST, InboxActivity, accept, actor_document, asked, create, follow_id, note, webfinger,
 };

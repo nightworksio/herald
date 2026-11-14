@@ -42,14 +42,21 @@ pub fn signing(addressed: Addressed<'_>, date: &str, body: &[u8]) -> Signing {
     Signing { digest, string }
 }
 
+/// The algorithm herald signs an activity with, as its `Signature` header
+/// names it.
+pub(crate) const RSA_SHA256: &str = "rsa-sha256";
+
 /// The `Signature` header of `signature`, made by the key `key_id` over
-/// [`SIGNED`].
+/// [`SIGNED`]; nothing where `key_id` holds a quote, which would end its
+/// quoted value.
 #[must_use]
-pub fn signature_header(key_id: &str, signature: &[u8]) -> String {
-    format!(
-        r#"keyId="{key_id}",algorithm="rsa-sha256",headers="{SIGNED}",signature="{}""#,
-        STANDARD.encode(signature)
-    )
+pub fn signature_header(key_id: &str, signature: &[u8]) -> Option<String> {
+    (!key_id.contains('"')).then(|| {
+        format!(
+            r#"keyId="{key_id}",algorithm="{RSA_SHA256}",headers="{SIGNED}",signature="{}""#,
+            STANDARD.encode(signature)
+        )
+    })
 }
 
 /// The DER `SubjectPublicKeyInfo` `der` as PEM, as an actor's
@@ -88,8 +95,14 @@ mod tests {
             "(request-target): post /inbox\nhost: social.example\ndate: Tue, 03 Nov 2026 08:00:00 GMT\ndigest: SHA-256=RBNvo1WzZ4oRRq0W9+hknpT7T8If536DEMBg9hyq/4o=\ncontent-type: application/activity+json"
         );
         assert_eq!(
-            signature_header("https://herald.example/users/a#main-key", b"sig"),
-            r#"keyId="https://herald.example/users/a#main-key",algorithm="rsa-sha256",headers="(request-target) host date digest content-type",signature="c2ln""#
+            signature_header("https://herald.example/users/a#main-key", b"sig").as_deref(),
+            Some(
+                r#"keyId="https://herald.example/users/a#main-key",algorithm="rsa-sha256",headers="(request-target) host date digest content-type",signature="c2ln""#
+            )
+        );
+        assert_eq!(
+            signature_header("https://herald.example/\"#main-key", b"sig"),
+            None
         );
     }
 

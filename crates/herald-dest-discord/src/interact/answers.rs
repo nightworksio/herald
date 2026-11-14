@@ -16,7 +16,7 @@ const CHOICES: u64 = 8;
 /// The flag of a message the asker alone sees.
 const EPHEMERAL: u64 = 64;
 /// The longest message Discord takes, in characters.
-pub const MESSAGE: usize = 2000;
+pub const MESSAGE: usize = 2_000;
 
 impl Interacting {
     fn callback(&self, replying: &Replying, body: String) -> Request {

@@ -186,7 +186,7 @@ impl Loader<'_> {
             let context = Context {
                 event,
                 route: &route.id,
-                herald: env!("CARGO_PKG_VERSION"),
+                herald: herald_core::itself::VERSION,
             };
             for (name, span, path, limit) in parts.iter().chain(thread.iter()) {
                 let rendered = match limit {

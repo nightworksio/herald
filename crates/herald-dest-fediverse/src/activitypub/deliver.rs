@@ -334,7 +334,12 @@ impl ActivityPub {
             Ok(signature) => signature,
             Err(error) => return Ok(refused(error.to_string())),
         };
-        let header = signature_header(&key_id(&self.origin, &self.route.actor), &signature);
+        let key = key_id(&self.origin, &self.route.actor);
+        let Some(header) = signature_header(&key, &signature) else {
+            return Ok(refused(format!(
+                "the key id {key} holds a quote, which no Signature header can carry; name the actor without one"
+            )));
+        };
         let request = Request::new(Method::Post, SecretText::plain(inbox))
             .at_most(ANSWER)
             .identified()

@@ -3,14 +3,11 @@
 //! leaves.
 
 use herald_core::Scheme;
-use herald_core::status;
+use herald_core::{media, status};
 use herald_ports::{Store, StoreError};
 
 use super::jobs::Job;
 use crate::verification::{Rejected, Verified, released};
-
-/// What a reply in words is.
-const TEXT: &str = "text/plain; charset=utf-8";
 
 /// What herald answers a request.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -40,7 +37,7 @@ pub struct Answered {
 
 /// The reply `status` in words: `text`, as plain text.
 pub(crate) fn text_reply(status: u16, text: &str) -> Answered {
-    replied(status, TEXT, text)
+    replied(status, media::TEXT, text)
 }
 
 /// The refusal of a request admitted as `verified` whose body could not be

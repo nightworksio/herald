@@ -211,6 +211,22 @@ mod activitypub {
             ),
             Sent::Refused("the secret BAD is not a key for this signature".to_owned())
         );
+        let quoted = ActivityPub::new(
+            DOMAIN,
+            "",
+            Secret::new("HERALD_ACTIVITYPUB_KEY", "the-key"),
+            ActorRouteOptions {
+                actor: "a\"b".to_owned(),
+                ..plain_route()
+            },
+        );
+        assert_eq!(
+            send(&quoted, &replay, &deliver("https://social.example/inbox")),
+            Sent::Refused(
+                "the key id https://herald.example/users/a\"b#main-key holds a quote, which no Signature header can carry; name the actor without one"
+                    .to_owned()
+            )
+        );
         replay.finish().unwrap();
         assert_eq!(actor.api(), PUBLIC_BASE);
         assert_eq!(actor.actor(), "php-mutation-gate");

@@ -1,6 +1,6 @@
-use herald_core::status;
 use std::sync::{Arc, Mutex, PoisonError};
 
+use herald_core::status;
 use herald_ports::{Http, Method, Response, Secret, StoreError};
 use herald_records::{Blob, RecordBackend, RecordStore, Wrote};
 use herald_wire::github::{self, GITHUB};

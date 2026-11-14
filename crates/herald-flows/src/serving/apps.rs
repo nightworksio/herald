@@ -3,17 +3,14 @@
 //! it is read (ADR-0007, ADR-0015).
 
 use herald_config::{App, Config};
-use herald_core::status;
 use herald_core::{Identity, Key, Standing, digest, same};
+use herald_core::{media, status};
 use herald_ports::{Clock, Ledger, Store};
 
 use super::jobs::Job;
 use super::replies::{Answered, refusal, rejection, replied, text_reply};
 use super::{Inbound, Serving};
 use crate::verification::{Rejected, Verified, admitted};
-
-/// The media type of the HTTP API's answers.
-const JSON: &str = "application/json";
 
 /// An app's event posted to `project`: its token and the project are checked
 /// before the event is read, the event is admitted once, and its
@@ -133,7 +130,7 @@ pub(super) async fn standing<S: Store, C: Clock, G, V, H, P, K>(
     }
     replied(
         status::OK,
-        JSON,
+        media::JSON,
         herald_sources_app::standings(id, project, &routes),
     )
 }

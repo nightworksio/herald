@@ -1,5 +1,5 @@
 use herald_core::Address;
-use herald_core::status;
+use herald_core::{media, status};
 use herald_ports::{Http, Method, Request, Response, Secret, SecretText, StoreError};
 use herald_records::Wrote;
 use serde::de::DeserializeOwned;
@@ -73,8 +73,8 @@ impl<H: Http + Send> CacheRecords<'_, H> {
             Method::Post,
             SecretText::plain(format!("{}{SERVICE}{method}", self.cache.results)),
         )
-        .header("Content-Type", SecretText::plain("application/json"))
-        .header("Accept", SecretText::plain("application/json"))
+        .header("Content-Type", SecretText::plain(media::JSON))
+        .header("Accept", SecretText::plain(media::JSON))
         .identified()
         .bearer(self.cache.token.clone())
         .body(body.to_string());

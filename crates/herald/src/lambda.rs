@@ -18,6 +18,7 @@ use herald_aws::{
 };
 use herald_compose::{Composed, Host as _, Hosting, Left};
 use herald_config::{Config, Uses};
+use herald_core::media;
 use herald_environment::EnvSecrets;
 use herald_flows::{Admission, Inbound, Reply};
 use herald_ports::{Clock as _, Http, Method, Request, Secret, SecretText, Secrets as _};
@@ -83,7 +84,7 @@ impl Handing {
         signed(
             request,
             &self.endpoint.canonical(&path),
-            "application/json",
+            media::JSON,
             &[("Invocation-Type", "Event")],
             &Signing {
                 access_key_id: &self.access_key_id,
@@ -252,7 +253,7 @@ impl Function<'_> {
                     self.api
                 )),
             )
-            .header("Content-Type", SecretText::plain("application/json"))
+            .header("Content-Type", SecretText::plain(media::JSON))
             .body(body.to_string().into_bytes());
             if let Err(error) = self.runtime.send(done).await {
                 self.log(&format!("the answer to {id} could not be given: {error}"));

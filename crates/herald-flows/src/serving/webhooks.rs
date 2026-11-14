@@ -2,10 +2,10 @@
 //! before it is read, and the release it publishes left to announce
 //! (ADR-0007, ADR-0013).
 
-use herald_core::status;
 use std::collections::BTreeMap;
 
 use herald_core::SourceName;
+use herald_core::status;
 use herald_kinds::Hooked;
 use herald_ports::{Clock, Secret, Store, Verifier};
 

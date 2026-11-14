@@ -1,11 +1,11 @@
 //! A dry run: an `Http` that sends nothing and keeps each request, and the
 //! requests it kept printed.
 
-use herald_core::status;
 use std::future::Future;
 use std::io::Write;
 use std::sync::{Arc, Mutex, PoisonError};
 
+use herald_core::status;
 use herald_ports::{Http, HttpError, Request, Response};
 
 use super::output::say;

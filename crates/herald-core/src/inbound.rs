@@ -11,7 +11,9 @@ use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD;
 use jiff::{SignedDuration, Timestamp};
 
+use crate::activity::RSA_SHA256;
 use crate::bounds::Inbound;
+use crate::der::{BIT_STRING, PUBLIC_KEY, RSA_ENCRYPTION, SEQUENCE, element, pem};
 use crate::key::unhex;
 
 /// Who signs a kind of inbound request, and how: data each source and
@@ -453,7 +455,7 @@ pub fn activity_claim(
             .find(|(key, _)| *key == name)
             .map(|(_, value)| *value)
     };
-    if !matches!(param("algorithm"), None | Some("rsa-sha256" | "hs2019")) {
+    if !matches!(param("algorithm"), None | Some(RSA_SHA256 | "hs2019")) {
         return Err(malformed);
     }
     let signer = param("keyId")
@@ -552,38 +554,15 @@ fn parameters(header: &str) -> Option<Vec<(&str, &str)>> {
 
 /// The DER of the RSA public key an ActivityPub actor publishes as a PEM
 /// `PUBLIC KEY`, as PKCS #1 holds it; nothing where it is not one.
-fn rsa_public_key(pem: &str) -> Option<Vec<u8>> {
-    const RSA_ENCRYPTION: [u8; 11] = [
-        0x06, 0x09, 0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x01, 0x01,
-    ];
-    let encoded: String = pem
-        .trim()
-        .strip_prefix("-----BEGIN PUBLIC KEY-----")?
-        .strip_suffix("-----END PUBLIC KEY-----")?
-        .split_whitespace()
-        .collect();
-    let der = STANDARD.decode(encoded).ok()?;
-    let (info, rest) = element(&der, 0x30)?;
-    let (algorithm, info) = element(info, 0x30)?;
-    let (bits, after) = element(info, 0x03)?;
+fn rsa_public_key(text: &str) -> Option<Vec<u8>> {
+    let der = pem(text, PUBLIC_KEY)?;
+    let (info, rest) = element(&der, SEQUENCE)?;
+    let (algorithm, info) = element(info, SEQUENCE)?;
+    let (bits, after) = element(info, BIT_STRING)?;
     let key = bits.strip_prefix(&[0x00])?;
     (rest.is_empty() && after.is_empty() && algorithm.starts_with(&RSA_ENCRYPTION))
         .then(|| key.to_vec())
-        .filter(|key| element(key, 0x30).is_some_and(|(_, after)| after.is_empty()))
-}
-
-/// The contents of the DER element of tag `tag` that `der` opens with, and
-/// what follows it. A length is read in one byte, or in the one or two after
-/// `0x81` or `0x82`, which an RSA key's lengths fit.
-fn element(der: &[u8], tag: u8) -> Option<(&[u8], &[u8])> {
-    let (&found, rest) = der.split_first()?;
-    let (length, rest) = match rest {
-        [short @ 0..=0x7f, rest @ ..] => (usize::from(*short), rest),
-        [0x81, long, rest @ ..] => (usize::from(*long), rest),
-        [0x82, high, low, rest @ ..] => (usize::from(u16::from_be_bytes([*high, *low])), rest),
-        _ => return None,
-    };
-    (found == tag && rest.len() >= length).then(|| rest.split_at(length))
+        .filter(|key| element(key, SEQUENCE).is_some_and(|(_, after)| after.is_empty()))
 }
 
 #[cfg(test)]
