@@ -1,18 +1,9 @@
 use std::fmt;
 use std::future::Future;
 
-use crate::secret::Secret;
+use herald_core::Algorithm;
 
-/// A signature algorithm herald signs or verifies with.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Algorithm {
-    /// HMAC over SHA-256, keyed by a shared secret.
-    HmacSha256,
-    /// Ed25519.
-    Ed25519,
-    /// RSASSA-PKCS1-v1_5 over SHA-256, for ActivityPub's HTTP signatures.
-    RsaSha256,
-}
+use crate::secret::Secret;
 
 /// Why a signature could not be made.
 #[derive(Debug, Clone, PartialEq, Eq)]

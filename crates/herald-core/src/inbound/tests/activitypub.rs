@@ -64,7 +64,7 @@ fn activitypub(headers: &[(&str, &str)]) -> Result<Claim, Refusal> {
 fn an_activity_claims_rsa_over_the_headers_its_signature_names() {
     let digest = digest();
     let claim = activitypub(&activity_headers(SIGNED, DATE, &digest)).unwrap();
-    assert_eq!(claim.kind, Signature::RsaSha256);
+    assert_eq!(claim.kind, Signature::Signed(Algorithm::RsaSha256));
     assert_eq!(
         String::from_utf8(claim.message).unwrap(),
         format!(
@@ -456,7 +456,7 @@ fn a_bearer_token_is_read_whatever_case_its_scheme_is_written_in() {
 #[test]
 fn a_claim_debugs_without_its_message_or_signatures() {
     let claim = Claim {
-        kind: Signature::HmacSha256,
+        kind: Signature::Signed(Algorithm::HmacSha256),
         message: b"hs-token".to_vec(),
         signatures: vec![b"hs-token".to_vec()],
         delivery: Some("txn-1".to_owned()),

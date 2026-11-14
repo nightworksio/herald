@@ -25,9 +25,10 @@ mod timer;
 
 pub use clock::Clock;
 pub use credential::Credential;
-pub use crypto::{Algorithm, CryptoError, Signer, Verifier};
+pub use crypto::{CryptoError, Signer, Verifier};
 pub use dyn_store::DynStore;
 pub use erased::{Boxed, DynHttp, DynKv, DynMarkers, DynSecrets, DynSigner, DynSql, Erased, Owned};
+pub use herald_core::Algorithm;
 pub use http::{Http, HttpError, Method, PUBLIC_BASE, Request, Response, USER_AGENT, WithBody};
 pub use keyring::{Keyring, KnownKey};
 pub use kv::{Kv, KvError, Pair, Stamped, Versionstamp};

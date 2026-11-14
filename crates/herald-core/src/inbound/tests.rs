@@ -25,7 +25,7 @@ fn a_github_webhook_claims_an_hmac_of_its_body() {
     assert_eq!(
         claim,
         Claim {
-            kind: Signature::HmacSha256,
+            kind: Signature::Signed(Algorithm::HmacSha256),
             message: BODY.to_vec(),
             signatures: vec![vec![0x00, 0xff, 0x10]],
             delivery: Some("00ff10".to_owned()),
@@ -60,7 +60,11 @@ fn a_forgejo_webhook_claims_an_hmac_of_its_body_under_either_header() {
         ("x-gitea-signature", "x-gitea-delivery"),
     ] {
         let claim = claimed(FORGEJO, &[(header, "abcd"), (delivered, "7")]).unwrap();
-        assert_eq!(claim.kind, Signature::HmacSha256, "{header}");
+        assert_eq!(
+            claim.kind,
+            Signature::Signed(Algorithm::HmacSha256),
+            "{header}"
+        );
         assert_eq!(claim.message, BODY, "{header}");
         assert_eq!(claim.signatures, [[0xab, 0xcd]], "{header}");
         assert_eq!(claim.delivery.as_deref(), Some("abcd"), "{header}");
@@ -105,7 +109,7 @@ fn a_discord_interaction_claims_an_ed25519_signature_of_its_timestamp_and_body()
         ],
     )
     .unwrap();
-    assert_eq!(claim.kind, Signature::Ed25519);
+    assert_eq!(claim.kind, Signature::Signed(Algorithm::Ed25519));
     assert_eq!(claim.message, [b"1800000000".as_slice(), BODY].concat());
     assert_eq!(claim.signatures, [[0x0a, 0x0b]]);
     assert_eq!(claim.delivery.as_deref(), Some("0a0b"));
@@ -139,7 +143,7 @@ fn a_slack_request_claims_an_hmac_of_its_versioned_base_string() {
         ],
     )
     .unwrap();
-    assert_eq!(claim.kind, Signature::HmacSha256);
+    assert_eq!(claim.kind, Signature::Signed(Algorithm::HmacSha256));
     assert_eq!(claim.message, [b"v0:1800000000:".as_slice(), BODY].concat());
     assert_eq!(claim.signatures, [[0xff]]);
     assert_eq!(claim.delivery.as_deref(), Some("ff"));
@@ -274,7 +278,7 @@ fn gitlab(signature: &str) -> Result<Claim, Refusal> {
 #[test]
 fn a_gitlab_webhook_claims_each_v1_signature_of_its_id_timestamp_and_body() {
     let claim = gitlab("v1,AAE= v2,ignored v1,/w==").unwrap();
-    assert_eq!(claim.kind, Signature::HmacSha256);
+    assert_eq!(claim.kind, Signature::Signed(Algorithm::HmacSha256));
     assert_eq!(
         claim.message,
         [

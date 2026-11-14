@@ -11,9 +11,7 @@ use herald_dest_fediverse::{
     ActorError, ActorKey, KeyOwner, activity_json, actor_key, actor_of, confirms, key_request,
     same_origin,
 };
-use herald_ports::{
-    Admitted, Algorithm, Deliveries, Http, Keyring, KnownKey, Store, StoreError, Verifier,
-};
+use herald_ports::{Admitted, Deliveries, Http, Keyring, KnownKey, Store, StoreError, Verifier};
 use jiff::{SignedDuration, Timestamp};
 
 /// When an inbound request is checked, and the bounds it is held to.
@@ -289,9 +287,7 @@ pub(crate) async fn fetched<H: Http>(
 /// Whether one of `claim`'s signatures holds under `key`.
 async fn signed<V: Verifier>(verifier: &V, key: &[u8], claim: &Claim) -> Result<(), Rejected> {
     let algorithm = match claim.kind {
-        Signature::HmacSha256 => Algorithm::HmacSha256,
-        Signature::Ed25519 => Algorithm::Ed25519,
-        Signature::RsaSha256 => Algorithm::RsaSha256,
+        Signature::Signed(algorithm) => algorithm,
         Signature::Token => {
             return claim
                 .signatures
