@@ -379,7 +379,15 @@ async fn a_database_the_host_offers_runs_statements_and_one_it_does_not_is_refus
         })
         .await;
     assert_eq!(refused.err().as_deref(), Some("no sqlite here"));
-    assert!(hosted.kv(KvAt::FastlyKv("herald")).await.is_err());
+    assert!(
+        hosted
+            .kv(KvAt::FastlyKv {
+                store: "herald",
+                tombstone: jiff::SignedDuration::from_hours(1)
+            })
+            .await
+            .is_err()
+    );
 }
 
 #[wasm_bindgen_test]
@@ -433,7 +441,7 @@ async fn a_key_value_store_the_host_offers_passes_the_key_value_suite() {
 #[wasm_bindgen_test]
 async fn a_key_value_store_the_host_offers_keeps_every_record_a_store_keeps() {
     let kv = hosted().kv(KvAt::DenoKv(None)).await.unwrap();
-    let store = KvRecords::kept(kv, None, None);
+    let store = KvRecords::kept(kv, None, herald_ports::RecordOptions::default());
     store_conformance(&store).await.unwrap();
 }
 

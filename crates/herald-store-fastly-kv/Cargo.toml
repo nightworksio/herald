@@ -14,6 +14,7 @@ herald-core.workspace = true
 herald-kinds.workspace = true
 herald-ports.workspace = true
 herald-records.workspace = true
+jiff.workspace = true
 schemars.workspace = true
 serde.workspace = true
 

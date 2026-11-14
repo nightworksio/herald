@@ -103,7 +103,13 @@ where
         let records = match keeping {
             Keeping::Stored(hosting) => {
                 let opener = Opener::new(Arc::clone(&host), outbound.clone());
-                reached(Arc::new(opener), &config.store, &hosting.stores()).await?
+                reached(
+                    Arc::new(opener),
+                    &config.store,
+                    config.attempts,
+                    &hosting.stores(),
+                )
+                .await?
             }
             Keeping::Remembered => {
                 OpenedRecords::new(Opened::Kept(Box::new(RecordStore::new(Memory::default()))))

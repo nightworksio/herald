@@ -44,7 +44,7 @@ impl<'a, H: Http> MatrixMarkers<'a, H> {
         let room = unreserved(&self.matrix.route.room);
         let mut own = Vec::new();
         let mut from: Option<String> = None;
-        for _ in 0..self.matrix.read_back.pages() {
+        for _ in 0..self.matrix.read_back.get() {
             let path = from.as_deref().map_or_else(
                 || format!("/rooms/{room}/messages?dir=b&limit={PAGE}"),
                 |from| {

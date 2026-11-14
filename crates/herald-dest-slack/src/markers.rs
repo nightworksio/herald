@@ -62,7 +62,7 @@ impl<'a, H: Http> SlackMarkers<'a, H> {
     ) -> Result<Vec<Value>, MarkersError> {
         let mut listed = Vec::new();
         let mut cursor: Option<String> = None;
-        for _ in 0..self.slack.read_back.pages() {
+        for _ in 0..self.slack.read_back.get() {
             let paging = cursor.as_deref().map_or_else(
                 || asked.to_owned(),
                 |cursor| format!("{asked}&cursor={}", unreserved(cursor)),

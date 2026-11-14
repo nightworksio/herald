@@ -46,12 +46,16 @@ async fn conforms(sql: SpinSql, postgres: bool) -> Result<(), String> {
         .await
         .map_err(|failure| failure.to_string())?;
     if postgres {
-        let store = SqlRecords::kept(sql, Dialect::Postgres, None)
-            .await
-            .map_err(|error| error.to_string())?;
+        let store = SqlRecords::kept(
+            sql,
+            Dialect::Postgres,
+            herald_ports::RecordOptions::default(),
+        )
+        .await
+        .map_err(|error| error.to_string())?;
         store_conformance(&store).await
     } else {
-        let store = SqlRecords::kept(sql, Dialect::Sqlite, None)
+        let store = SqlRecords::kept(sql, Dialect::Sqlite, herald_ports::RecordOptions::default())
             .await
             .map_err(|error| error.to_string())?;
         store_conformance(&store).await

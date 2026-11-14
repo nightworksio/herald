@@ -2,18 +2,18 @@ use std::collections::BTreeMap;
 use std::num::{NonZeroU64, NonZeroUsize};
 
 use herald_core::{
-    AttributeSpec, Duration, Inbound, Kind, LinkSpec, Pinning, Prereleases, Sandbox, SecretRef,
-    Size,
+    Attempts, AttributeSpec, Duration, Inbound, Kind, LinkSpec, Pinning, Prereleases, Sandbox,
+    SecretRef, Size,
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Deserializer};
 use toml::Spanned;
 
-/// How long a store keeps what herald records, beside its kind's own
-/// options.
+/// What every store that keeps records reads beside its kind's own
+/// options: how long it keeps them, and how many times it tries a write.
 #[derive(Debug, Default, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
-pub(crate) struct KeepFile {
+pub(crate) struct RecordsFile {
     /// How long a webhook delivery's id is kept after it was admitted, so a
     /// replay of it is refused (ADR-0013); "7d" where absent, and at least
     /// "3d", longer than any sender goes on retrying a delivery.
@@ -29,11 +29,14 @@ pub(crate) struct KeepFile {
     /// served by its id; "forever" where absent.
     #[serde(rename = "keep_notes")]
     pub(crate) notes: Option<Keep>,
+    /// How many times a write that lost a race to an unrelated write is
+    /// tried.
+    pub(crate) attempts: Option<Attempts>,
 }
 
-impl KeepFile {
+impl RecordsFile {
     /// Its keys, as the config spells them.
-    pub(crate) const KEYS: [&str; 3] = ["keep_deliveries", "keep_ledger", "keep_notes"];
+    pub(crate) const KEYS: [&str; 4] = ["keep_deliveries", "keep_ledger", "keep_notes", "attempts"];
 }
 
 /// How long a store keeps a kind of record: a length of time, or for ever.

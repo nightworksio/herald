@@ -117,7 +117,7 @@ impl Host for FastlyHost {
 
     fn kv(&self, at: KvAt<'_>) -> impl Future<Output = Result<FastlyKv, String>> {
         ready(match at {
-            KvAt::FastlyKv(name) => FastlyKv::open(name),
+            KvAt::FastlyKv { store, tombstone } => FastlyKv::open(store, tombstone),
             KvAt::DenoKv(_) => Err(UNOFFERED.to_owned()),
         })
     }

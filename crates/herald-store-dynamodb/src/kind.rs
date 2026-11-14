@@ -3,8 +3,7 @@ use std::sync::Arc;
 use herald_core::SecretRef;
 use herald_kinds::{Local, Opened, Opening, StoreConfig, StoreKind};
 use herald_ports::Erased;
-use herald_ports::Secret;
-use herald_records::Seal;
+use herald_ports::RecordOptions;
 
 use crate::{Dynamodb, StoreOptions};
 
@@ -35,7 +34,7 @@ impl StoreConfig for StoreOptions {
     fn open<'s, 'o: 's>(
         &'s self,
         opening: Arc<dyn Opening + 'o>,
-        seal: Option<Secret>,
+        options: RecordOptions,
     ) -> Local<'s, Result<Opened<'o>, String>> {
         Box::pin(async move {
             let table = Dynamodb::reached(self, &Erased(opening.secrets())).await?;
@@ -43,7 +42,7 @@ impl StoreConfig for StoreOptions {
             Ok(Opened::Kept(Box::new(
                 table
                     .store(http, opening.clock(), opening.nonce())
-                    .sealed(seal.map(Seal::new)),
+                    .with(options),
             )))
         })
     }

@@ -1,8 +1,7 @@
-use herald_ports::{Kv, Secret, StoreError, Versionstamp};
+use herald_ports::{Kv, RecordOptions, StoreError, Versionstamp};
 
 use crate::record_store::RecordStore;
 use crate::records::{Blob, RecordBackend, Wrote};
-use crate::seal::Seal;
 
 /// The key every record is kept under where a store's options name none.
 const PREFIX: &str = "herald";
@@ -34,11 +33,10 @@ impl<K: Kv> KvRecords<K> {
     }
 
     /// The store kept in `kv`, under the key `prefix` or `herald` where
-    /// none is named, sealing every record with `key` where there is one
-    /// (ADR-0005).
+    /// none is named, keeping its records as `options` say (ADR-0005).
     #[must_use]
-    pub fn kept(kv: K, prefix: Option<&str>, key: Option<Secret>) -> KvStore<K> {
-        RecordStore::new(Self::new(kv, prefix.unwrap_or(PREFIX))).sealed(key.map(Seal::new))
+    pub fn kept(kv: K, prefix: Option<&str>, options: RecordOptions) -> KvStore<K> {
+        RecordStore::new(Self::new(kv, prefix.unwrap_or(PREFIX))).with(options)
     }
 
     fn key(&self, path: &str) -> Vec<String> {
@@ -126,14 +124,17 @@ mod tests {
 
     #[test]
     fn a_kept_store_keeps_its_records_under_the_prefix_named_or_else_herald() {
-        let kept = KvRecords::kept(FakeKv::default(), None, None);
+        let kept = KvRecords::kept(FakeKv::default(), None, RecordOptions::default());
         assert!(format!("{kept:?}").contains(r#"prefix: ["herald"]"#));
         assert!(format!("{kept:?}").contains("seal: None"));
         assert_eq!(pollster::block_on(store_conformance(&kept)), Ok(()));
         let named = KvRecords::kept(
             FakeKv::default(),
             Some("apps/herald"),
-            Some(Secret::new("HERALD_STORE_KEY", "k")),
+            RecordOptions {
+                seal: Some(herald_ports::Secret::new("HERALD_STORE_KEY", "k")),
+                ..RecordOptions::default()
+            },
         );
         assert!(format!("{named:?}").contains(r#"prefix: ["apps", "herald"]"#));
         assert!(format!("{named:?}").contains("seal: Some("));

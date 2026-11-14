@@ -254,7 +254,8 @@ pub fn load(
     let sections = loader.sections(root.into_inner());
     loader.version(sections.version);
     loader.specs = loader.declared(sections.kinds);
-    let (store, retention) = loader.store(sections.store).unzip();
+    let (store, kept) = loader.store(sections.store).unzip();
+    let (retention, attempts) = kept.unwrap_or_default();
     let marker_key = loader.marker_key(sections.markers);
     let destinations = loader.destinations(sections.destinations, read);
     let sources = loader.sources(sections.sources);
@@ -284,7 +285,8 @@ pub fn load(
     };
     Ok(Config {
         store,
-        retention: retention.unwrap_or_default(),
+        retention,
+        attempts,
         render,
         marker_key,
         destinations: destinations

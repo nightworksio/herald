@@ -69,7 +69,7 @@ impl<'a, H: Http> DiscordMarkers<'a, H> {
     ) -> Result<Vec<Value>, MarkersError> {
         let mut own = Vec::new();
         let mut before: Option<String> = None;
-        for _ in 0..self.discord.read_back.pages() {
+        for _ in 0..self.discord.read_back.get() {
             let path = before.as_deref().map_or_else(
                 || format!("/channels/{channel}/messages?limit={PAGE}"),
                 |id| {

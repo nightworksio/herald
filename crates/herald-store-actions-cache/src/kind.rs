@@ -2,8 +2,7 @@ use std::sync::Arc;
 
 use herald_core::{RecordKind, SecretRef};
 use herald_kinds::{Local, Offer, Opened, Opening, StoreConfig, StoreKind};
-use herald_ports::Secret;
-use herald_records::Seal;
+use herald_ports::RecordOptions;
 
 use crate::{ActionsCache, StoreOptions};
 
@@ -51,7 +50,7 @@ impl StoreConfig for StoreOptions {
     fn open<'s, 'o: 's>(
         &'s self,
         opening: Arc<dyn Opening + 'o>,
-        seal: Option<Secret>,
+        options: RecordOptions,
     ) -> Local<'s, Result<Opened<'o>, String>> {
         Box::pin(async move {
             let results = opening
@@ -70,7 +69,7 @@ impl StoreConfig for StoreOptions {
             Ok(Opened::Kept(Box::new(
                 cache
                     .store(http, Box::new(move |base: &str| connecting.connect(base)))
-                    .sealed(seal.map(Seal::new)),
+                    .with(options),
             )))
         })
     }

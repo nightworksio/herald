@@ -43,7 +43,10 @@ pub use address::{Address, domain, path_of_names, socket_under, under_domain, we
 pub use announce::{
     Announcement, Button, Title, announce, body_template, thread_template, title_template,
 };
-pub use bounds::{Inbound, PinLookups, ReadBack, Sandbox};
+pub use bounds::{
+    Attempts, Count, Counted, Inbound, LookedUpPins, PinLookups, ReadBack, ReadBackPages, Sandbox,
+    WriteAttempts,
+};
 pub use chunk::{Room, chunk, size};
 pub use credentials::{basic, bot_or_webhook};
 pub use cursor::{Cursor, Polled, fresh};

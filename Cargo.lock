@@ -1150,7 +1150,9 @@ dependencies = [
  "herald-flows",
  "herald-ports",
  "herald-records",
+ "herald-store-fastly-kv",
  "herald-testing",
+ "jiff",
  "pollster",
 ]
 
@@ -1437,6 +1439,7 @@ dependencies = [
  "herald-kinds",
  "herald-ports",
  "herald-records",
+ "jiff",
  "schemars",
  "serde",
  "serde_json",

@@ -157,12 +157,20 @@ fn a_public_connection_refuses_a_name_on_a_service_not_said_to_be_guarded() {
 }
 
 fn kv() -> super::kv::FastlyKv {
-    pollster::block_on(FastlyHost::new().kv(KvAt::FastlyKv("herald"))).unwrap()
+    pollster::block_on(FastlyHost::new().kv(KvAt::FastlyKv {
+        store: "herald",
+        tombstone: herald_store_fastly_kv::StoreOptions::TOMBSTONE,
+    }))
+    .unwrap()
 }
 
 #[test]
 fn a_kv_store_the_service_is_linked_to_keeps_every_record_a_store_keeps() {
-    let store = KvRecords::kept(kv(), Some("conformance"), None);
+    let store = KvRecords::kept(
+        kv(),
+        Some("conformance"),
+        herald_ports::RecordOptions::default(),
+    );
     pollster::block_on(store_conformance(&store)).unwrap();
 }
 
@@ -213,7 +221,11 @@ fn a_deleted_record_is_absent_and_written_again_once() {
 
 #[test]
 fn a_kv_store_the_service_is_not_linked_to_is_refused_by_name() {
-    let refused = pollster::block_on(FastlyHost::new().kv(KvAt::FastlyKv("elsewhere"))).err();
+    let refused = pollster::block_on(FastlyHost::new().kv(KvAt::FastlyKv {
+        store: "elsewhere",
+        tombstone: herald_store_fastly_kv::StoreOptions::TOMBSTONE,
+    }))
+    .err();
     assert!(refused.is_some_and(|said| said.contains("elsewhere")));
     assert!(pollster::block_on(FastlyHost::new().kv(KvAt::DenoKv(None))).is_err());
 }

@@ -9,7 +9,8 @@ mod kind;
 
 pub use kind::FastlyKvKind;
 
-use herald_core::SecretRef;
+use herald_core::{Duration, SecretRef};
+use jiff::SignedDuration;
 use schemars::JsonSchema;
 use serde::Deserialize;
 
@@ -30,9 +31,23 @@ pub struct StoreOptions {
     /// `HERALD_STORE_KEY`, so a record herald did not seal reads as corrupt
     /// (ADR-0005); records are not sealed where absent.
     pub key: Option<SecretRef>,
+    /// How long a deleted record's mark is kept before Fastly expires it,
+    /// so a write that read the record before it was deleted fails; "1h"
+    /// where absent.
+    pub tombstone: Option<Duration>,
 }
 
 impl StoreOptions {
+    /// How long a deleted record's mark is kept where the options set none.
+    pub const TOMBSTONE: SignedDuration = SignedDuration::from_hours(1);
+
+    /// How long a deleted record's mark is kept.
+    #[must_use]
+    pub fn tombstone(&self) -> SignedDuration {
+        self.tombstone
+            .map_or(Self::TOMBSTONE, |Duration(kept)| kept)
+    }
+
     /// The KV Store opened.
     #[must_use]
     pub fn store(&self) -> &str {
@@ -51,5 +66,15 @@ mod tests {
             serde_json::from_str(r#"{"store": "records", "prefix": "a/b"}"#).unwrap();
         assert_eq!(named.store(), "records");
         assert_eq!(named.prefix.as_deref(), Some("a/b"));
+    }
+
+    #[test]
+    fn a_deleted_record_s_mark_is_kept_an_hour_or_as_long_as_the_options_say() {
+        assert_eq!(
+            StoreOptions::default().tombstone(),
+            SignedDuration::from_hours(1)
+        );
+        let set: StoreOptions = serde_json::from_str(r#"{"tombstone": "2d"}"#).unwrap();
+        assert_eq!(set.tombstone(), SignedDuration::from_hours(48));
     }
 }

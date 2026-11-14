@@ -4,7 +4,7 @@
 use std::collections::BTreeMap;
 use std::ops::Range;
 
-use herald_core::{DestinationName, RecordKind, Retention};
+use herald_core::{Attempts, DestinationName, RecordKind, Retention};
 use herald_kinds::{ConfiguredStore, Destination, StoreKind};
 use herald_store_git_branch::GitBranchKind;
 use toml::Spanned;
@@ -12,13 +12,13 @@ use toml::de::{DeTable, DeValue};
 
 use super::route::Read;
 use super::{Loader, Value, list};
-use crate::file::{Keep, KeepFile};
+use crate::file::{Keep, RecordsFile};
 
 impl Loader<'_> {
     pub(super) fn store(
         &mut self,
         value: Option<Value<'_>>,
-    ) -> Option<(ConfiguredStore, Retention)> {
+    ) -> Option<(ConfiguredStore, (Retention, Attempts))> {
         let kinds = self.kinds;
         let Some(value) = value else {
             self.error(
@@ -36,16 +36,16 @@ impl Loader<'_> {
         let kind = kinds.store_named(&kind)?;
         if !kind.retained() {
             let store = kind.parse(self, Spanned::new(span, DeValue::Table(table)))?;
-            return Some((store, Retention::default()));
+            return Some((store, Default::default()));
         }
-        let (rest, keep) = kept(span, table);
-        let retention = self.retention(keep);
+        let (rest, records) = kept(span, table);
+        let kept = self.records(records);
         let store = kind.parse(self, rest)?;
-        Some((store, retention?))
+        Some((store, kept?))
     }
 
-    fn retention(&mut self, keep: Value<'_>) -> Option<Retention> {
-        let file = self.typed::<KeepFile>(keep, "store")?;
+    fn records(&mut self, records: Value<'_>) -> Option<(Retention, Attempts)> {
+        let file = self.typed::<RecordsFile>(records, "store")?;
         let defaults = Retention::default();
         let deliveries = file.deliveries.map_or(defaults.deliveries, |kept| {
             if kept.get_ref().0 < Retention::LONGEST_RETRY {
@@ -60,11 +60,12 @@ impl Loader<'_> {
             }
             kept.into_inner().0
         });
-        Some(Retention {
+        let retention = Retention {
             deliveries,
             ledger: file.ledger.map_or(defaults.ledger, Keep::kept),
             notes: file.notes.map_or(defaults.notes, Keep::kept),
-        })
+        };
+        Some((retention, file.attempts.unwrap_or_default()))
     }
 
     /// Whether every route that reaches followers or subscribers has a store
@@ -121,14 +122,14 @@ impl Loader<'_> {
 /// `options`, a store's table written at `span`, apart from how long it
 /// keeps what herald records.
 fn kept(span: Range<usize>, mut options: DeTable<'_>) -> (Value<'_>, Value<'_>) {
-    let mut keep = DeTable::new();
-    for key in KeepFile::KEYS {
+    let mut records = DeTable::new();
+    for key in RecordsFile::KEYS {
         if let Some((name, value)) = options.remove_entry(key) {
-            keep.insert(name, value);
+            records.insert(name, value);
         }
     }
     (
         Spanned::new(span.clone(), DeValue::Table(options)),
-        Spanned::new(span, DeValue::Table(keep)),
+        Spanned::new(span, DeValue::Table(records)),
     )
 }

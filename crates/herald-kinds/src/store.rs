@@ -3,7 +3,7 @@ use std::ops::Deref;
 use std::sync::Arc;
 
 use herald_core::{RecordKind, SecretRef};
-use herald_ports::Secret;
+use herald_ports::RecordOptions;
 
 use crate::{Itself, Local, Opened, Opening};
 
@@ -54,13 +54,20 @@ pub trait StoreConfig: fmt::Debug + Send + Sync + Itself {
         None
     }
 
-    /// It, opened through `opening`, every record it keeps sealed with the
-    /// key `seal` where there is one (ADR-0005). What it opens holds nothing of its options,
-    /// and holds the opening only where it connects again later.
+    /// Each key of its own options set above its default, with what that
+    /// costs, for the doctor to name.
+    fn loosened(&self) -> Vec<(&'static str, &'static str)> {
+        Vec::new()
+    }
+
+    /// It, opened through `opening`, keeping its records as `options` say:
+    /// sealed with their key where there is one (ADR-0005). What it opens
+    /// holds nothing of its own options, and holds the opening only where it
+    /// connects again later.
     fn open<'s, 'o: 's>(
         &'s self,
         opening: Arc<dyn Opening + 'o>,
-        seal: Option<Secret>,
+        options: RecordOptions,
     ) -> Local<'s, Result<Opened<'o>, String>>;
 }
 

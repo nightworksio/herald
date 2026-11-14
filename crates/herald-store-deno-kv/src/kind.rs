@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use herald_core::SecretRef;
 use herald_kinds::{KvAt, Local, Offer, Opened, Opening, StoreConfig, StoreKind, unopened};
-use herald_ports::Secret;
+use herald_ports::RecordOptions;
 use herald_records::KvRecords;
 
 use crate::StoreOptions;
@@ -31,7 +31,7 @@ impl StoreConfig for StoreOptions {
     fn open<'s, 'o: 's>(
         &'s self,
         opening: Arc<dyn Opening + 'o>,
-        seal: Option<Secret>,
+        options: RecordOptions,
     ) -> Local<'s, Result<Opened<'o>, String>> {
         Box::pin(async move {
             let kv = opening
@@ -41,7 +41,7 @@ impl StoreConfig for StoreOptions {
             Ok(Opened::Kept(Box::new(KvRecords::kept(
                 kv,
                 self.prefix.as_deref(),
-                seal,
+                options,
             ))))
         })
     }

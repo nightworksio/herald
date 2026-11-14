@@ -53,7 +53,7 @@ async fn pinned_messages<H: Http>(
 ) -> ApiAnswer<Vec<String>> {
     let mut routed_pins = Vec::new();
     let mut before = None;
-    for _ in 0..discord.read_back.pages() {
+    for _ in 0..discord.read_back.get() {
         let path = before.as_deref().map_or_else(
             || format!("/channels/{channel}/messages/pins?limit={PINS}"),
             |at| {

@@ -348,6 +348,28 @@ fn commands_posted_to_herald_need_an_endpoint_and_sessions_need_a_layer_that_hol
 type Loosening = fn(&mut herald_config::Config);
 
 #[test]
+fn a_store_s_own_settings_above_their_default_are_noted_by_their_key() {
+    let mut config = config("");
+    config.store = load(
+        "herald.toml",
+        "version = 1\n[store]\nkind = \"repo-variables\"\ntoken = { secret = \"T\" }\nkey = { secret = \"K\" }\nlock_lease = \"20m\"\nlock_patience = 11\n",
+        &|_| Err(String::new()),
+        &crate::harness::kinds(),
+    )
+    .unwrap()
+    .store;
+    let notes = doctored(&config, &layer(&STORES)).notes;
+    for key in ["store.lock_lease", "store.lock_patience"] {
+        assert!(
+            notes
+                .iter()
+                .any(|note| note.starts_with(&format!("{key} is set above its default, so "))),
+            "{key}: {notes:?}"
+        );
+    }
+}
+
+#[test]
 fn each_bound_set_above_its_default_is_noted_by_its_key() {
     let keyed = || {
         on(
@@ -355,7 +377,7 @@ fn each_bound_set_above_its_default_is_noted_by_its_key() {
             "[markers]\nkey = { secret = \"HERALD_MARKER_SECRET\" }\n",
         )
     };
-    let loosen: [(&str, Loosening); 9] = [
+    let loosen: [(&str, Loosening); 10] = [
         ("server.body", |config| config.server.body += 1),
         ("server.inbound.replay_window", |config| {
             config.server.inbound.replay_window += jiff::SignedDuration::from_secs(1);
@@ -373,6 +395,9 @@ fn each_bound_set_above_its_default_is_noted_by_its_key() {
         ("render.fuel", |config| config.render.fuel += 1),
         ("render.recursion", |config| config.render.recursion += 1),
         ("render.output", |config| config.render.output += 1),
+        ("store.attempts", |config| {
+            config.attempts = herald_core::Attempts::new(4).unwrap();
+        }),
     ];
     for (key, loosened) in loosen {
         let mut config = keyed();

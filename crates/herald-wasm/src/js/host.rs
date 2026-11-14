@@ -73,7 +73,9 @@ fn kv_at(at: KvAt<'_>) -> JsValue {
             ("kind", "deno-kv".into()),
             ("path", path.map_or(JsValue::UNDEFINED, JsValue::from_str)),
         ]),
-        KvAt::FastlyKv(store) => object(&[("kind", "fastly-kv".into()), ("store", store.into())]),
+        KvAt::FastlyKv { store, .. } => {
+            object(&[("kind", "fastly-kv".into()), ("store", store.into())])
+        }
     }
 }
 

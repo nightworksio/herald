@@ -272,6 +272,16 @@ Housekeeping also forgets what the store keeps past `[store]`'s
 actors published, "forever"). `keep_ledger` and `keep_notes` also take
 `"forever"`.
 
+Every store that keeps records also sets `attempts` (3, at most 12), how
+many times it tries a write that lost a race to an unrelated write. The
+`repo-variables` store sets how its lock is taken as abandoned:
+`lock_lease` ("10m", at most "40m"), how long a lock holds by GitHub's
+clock, and `lock_patience` (10, at most 40), how many times a lock with no
+time to judge it by is found held and unchanged. The `fastly-kv` store sets
+`tombstone` ("1h"), how long a deleted record's mark is kept before Fastly
+expires it. `herald doctor` names each of `attempts`, `lock_lease` and
+`lock_patience` set above its default.
+
 ### An app's own events
 
 Any app can announce through herald: a deploy script, a CI step, a service

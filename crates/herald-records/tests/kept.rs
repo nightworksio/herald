@@ -12,8 +12,8 @@ mod kept {
 
     use herald_core::{DestinationName, Entry, Identity, Key, RouteId, Subscription};
     use herald_ports::{
-        Announcements, Deliveries, Ledger, Pins, Schedules, Store, StoreError, Subscriptions,
-        Version, Written,
+        Announcements, Deliveries, Ledger, Pins, RecordOptions, Schedules, Store, StoreError,
+        Subscriptions, Version, Written,
     };
     use herald_records::{Blob, RecordBackend, RecordStore, Wrote};
     use herald_testing::store_conformance;
@@ -187,6 +187,25 @@ mod kept {
         assert_eq!(
             pollster::block_on(store.pinned(&RouteId::new("r"))),
             Ok(Some("2".to_owned()))
+        );
+    }
+
+    #[test]
+    fn a_store_tries_a_write_that_lost_a_race_as_many_times_as_its_options_say() {
+        let entry = Entry::new(key());
+        let options = |attempts| RecordOptions {
+            attempts: herald_core::Attempts::new(attempts).unwrap(),
+            ..RecordOptions::default()
+        };
+        let once = RecordStore::new(Memory::racing(1)).with(options(1));
+        assert_eq!(
+            pollster::block_on(once.put_entry(&entry, None)),
+            Ok(Written::Conflict)
+        );
+        let five = RecordStore::new(Memory::racing(4)).with(options(5));
+        assert_eq!(
+            pollster::block_on(five.put_entry(&entry, None)),
+            Ok(Written::Written(Version(1)))
         );
     }
 

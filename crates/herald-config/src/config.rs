@@ -2,8 +2,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::num::NonZeroUsize;
 
 use herald_core::{
-    DestinationName, Inbound, KindSpecs, Profile, Retention, Route, RouteId, Sandbox, SecretRef,
-    SourceName, Templates,
+    Attempts, DestinationName, Inbound, KindSpecs, Profile, Retention, Route, RouteId, Sandbox,
+    SecretRef, SourceName, Templates,
 };
 use herald_kinds::{ConfiguredStore, Destination, Placed, Source};
 use jiff::SignedDuration;
@@ -15,6 +15,8 @@ pub struct Config {
     pub store: ConfiguredStore,
     /// How long the store keeps what herald records.
     pub retention: Retention,
+    /// How many times the store tries a write that lost a race.
+    pub attempts: Attempts,
     /// How far a template may go as it renders.
     pub render: Sandbox,
     /// The installation's marker key, where it is set (ADR-0011).

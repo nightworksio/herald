@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use herald_core::{RecordKind, SecretRef};
 use herald_kinds::{Local, Opened, Opening, StoreConfig, StoreKind};
-use herald_ports::Secret;
+use herald_ports::RecordOptions;
 use schemars::JsonSchema;
 use serde::Deserialize;
 
@@ -47,7 +47,7 @@ impl StoreConfig for MarkersOptions {
     fn open<'s, 'o: 's>(
         &'s self,
         _: Arc<dyn Opening + 'o>,
-        _: Option<Secret>,
+        _: RecordOptions,
     ) -> Local<'s, Result<Opened<'o>, String>> {
         Box::pin(std::future::ready(Ok(Opened::Posts)))
     }

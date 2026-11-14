@@ -3,14 +3,12 @@ use std::time::Duration;
 
 use fastly::kv_store::{InsertMode, KVStore, KVStoreError};
 use herald_ports::{Kv, KvError, Pair, Stamped, Versionstamp};
+use jiff::SignedDuration;
 
 /// The metadata of a deleted item. Fastly's delete takes no generation, so a
 /// delete replaces the item at its generation with an empty item under this
 /// mark, which reads as absent and which a write replaces at its generation.
 const GONE: &str = "herald:gone";
-
-/// How long a deleted item's mark is kept before Fastly expires it.
-const GONE_FOR: Duration = Duration::from_secs(3_600);
 
 /// An item as the store holds it: a record, or a record being deleted.
 struct Held {
@@ -21,16 +19,24 @@ struct Held {
 
 /// A Fastly KV Store, keys joined with `/`, its generation as the versionstamp.
 #[derive(Debug)]
-pub(super) struct FastlyKv(String);
+pub(super) struct FastlyKv {
+    name: String,
+    tombstone: Duration,
+}
 
 fn key_of(key: &[String]) -> String {
     key.join("/")
 }
 
 impl FastlyKv {
-    pub(super) fn open(name: &str) -> Result<Self, String> {
+    pub(super) fn open(name: &str, tombstone: SignedDuration) -> Result<Self, String> {
+        let tombstone = Duration::try_from(tombstone)
+            .map_err(|_| format!("a tombstone of {tombstone:#} is no time Fastly keeps"))?;
         match KVStore::open(name) {
-            Ok(Some(_)) => Ok(Self(name.to_owned())),
+            Ok(Some(_)) => Ok(Self {
+                name: name.to_owned(),
+                tombstone,
+            }),
             Ok(None) => Err(format!(
                 "the service is not linked to a KV Store named {name}"
             )),
@@ -39,9 +45,9 @@ impl FastlyKv {
     }
 
     fn store(&self) -> Result<KVStore, KvError> {
-        KVStore::open(&self.0)
+        KVStore::open(&self.name)
             .map_err(KvError::unavailable)?
-            .ok_or_else(|| KvError::unavailable(format_args!("the KV Store {} is gone", self.0)))
+            .ok_or_else(|| KvError::unavailable(format_args!("the KV Store {} is gone", self.name)))
     }
 
     fn held(&self, key: &str) -> Result<Option<Held>, KvError> {
@@ -142,7 +148,7 @@ impl Kv for FastlyKv {
                 .build_insert()
                 .if_generation_match(generation)
                 .metadata(GONE)
-                .time_to_live(GONE_FOR)
+                .time_to_live(self.tombstone)
                 .execute(&key, Vec::new());
             match marked {
                 Ok(()) => Ok(true),

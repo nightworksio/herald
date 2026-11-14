@@ -60,12 +60,12 @@ body = "{{{{ event.body }}}}"
     #[test]
     fn a_destination_reads_back_the_pages_it_names_or_five() {
         assert_eq!(read_back(&config("").unwrap()), ReadBack::DEFAULT);
-        assert_eq!(ReadBack::DEFAULT.pages(), 5);
+        assert_eq!(ReadBack::DEFAULT.get(), 5);
         assert_eq!(
             read_back(&config("read_back = 20").unwrap()),
             ReadBack::new(20).unwrap()
         );
-        assert_eq!(read_back(&config("read_back = 1").unwrap()).pages(), 1);
+        assert_eq!(read_back(&config("read_back = 1").unwrap()).get(), 1);
     }
 
     #[test]
@@ -79,7 +79,7 @@ body = "{{{{ event.body }}}}"
         }
         assert_eq!(ReadBack::new(0), None);
         assert_eq!(ReadBack::new(21), None);
-        assert_eq!(ReadBack::MOST.pages(), 20);
+        assert_eq!(ReadBack::MOST.get(), 20);
     }
 
     #[test]

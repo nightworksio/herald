@@ -132,6 +132,23 @@ fn loosened(config: &Config, notes: &mut Vec<String>) {
             "a template may write more",
         ),
     ];
+    let store = [(
+        "store.attempts".to_owned(),
+        config.attempts.loosened(),
+        "a write that keeps losing races is tried more times",
+    )]
+    .into_iter()
+    .chain(
+        config
+            .store
+            .loosened()
+            .into_iter()
+            .map(|(key, cost)| (format!("store.{key}"), true, cost)),
+    );
+    let bounds = bounds
+        .into_iter()
+        .map(|(key, above, cost)| (key.to_owned(), above, cost))
+        .chain(store);
     for (key, above, cost) in bounds {
         if above {
             notes.push(format!(

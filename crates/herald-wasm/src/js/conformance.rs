@@ -24,7 +24,7 @@ pub async fn conformance(sql: JsValue) -> Result<(), JsError> {
     let store = SqlRecords::kept(
         JsSql(SendWrapper::new(sql.unchecked_into())),
         Dialect::Sqlite,
-        None,
+        herald_ports::RecordOptions::default(),
     )
     .await
     .map_err(|error| failed(&error))?;

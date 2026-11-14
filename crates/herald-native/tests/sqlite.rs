@@ -49,7 +49,12 @@ mod sqlite {
     #[test]
     fn the_native_database_keeps_a_sqlite_file_s_records() {
         let sql = NativeSql::Sqlite(NativeSqlite::in_memory().unwrap());
-        let store = run(SqlRecords::kept(sql, Dialect::Sqlite, None)).unwrap();
+        let store = run(SqlRecords::kept(
+            sql,
+            Dialect::Sqlite,
+            herald_ports::RecordOptions::default(),
+        ))
+        .unwrap();
         run(store_conformance(&store)).unwrap();
     }
 

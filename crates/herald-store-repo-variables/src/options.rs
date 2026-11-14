@@ -2,6 +2,8 @@ use herald_core::SecretRef;
 use schemars::JsonSchema;
 use serde::Deserialize;
 
+use crate::lock::{LockLease, LockPatience};
+
 /// The repository-variables store's options in `herald.toml` (ADR-0006).
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
@@ -18,4 +20,11 @@ pub struct StoreOptions {
     /// `HERALD_STORE_KEY`: whoever can write the repository could otherwise
     /// forge records herald trusts (ADR-0005).
     pub key: SecretRef,
+    /// How long the store's lock holds before it is taken as abandoned.
+    #[serde(default)]
+    pub lock_lease: LockLease,
+    /// How many times a lock with no time to judge its age by is found
+    /// held, unchanged, before it is taken as abandoned.
+    #[serde(default)]
+    pub lock_patience: LockPatience,
 }

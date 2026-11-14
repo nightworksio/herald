@@ -4,13 +4,13 @@ use std::collections::BTreeSet;
 use std::sync::{Arc, Mutex, PoisonError};
 
 use herald_core::{
-    Cursor, DestinationName, Entry, Key, Latest, RecordKind, RouteId, Schedule, Scheme, SourceName,
-    State, Subscription,
+    Attempts, Cursor, DestinationName, Entry, Key, Latest, RecordKind, RouteId, Schedule, Scheme,
+    SourceName, State, Subscription,
 };
 use herald_ports::{
     Admitted, Announcements, Cursors, Deliveries, Held, Inboxes, Keeper, Keyring, KnownKey, Ledger,
-    Notes, Outboxed, Pins, Positions, Schedules, StoreError, Subscriptions, Version, Versioned,
-    Written,
+    Notes, Outboxed, Pins, Positions, RecordOptions, Schedules, StoreError, Subscriptions, Version,
+    Versioned, Written,
 };
 use jiff::Timestamp;
 use serde::de::DeserializeOwned;
@@ -20,9 +20,6 @@ use serde_json::Value;
 use crate::paths;
 use crate::records::{Blob, RecordBackend, Wrote};
 use crate::seal::Seal;
-
-/// How often a write that lost a race to an unrelated write is tried again.
-const ATTEMPTS: usize = 3;
 
 /// A record as it is kept: its version beside it.
 #[derive(Serialize, Deserialize)]
@@ -63,6 +60,7 @@ pub struct RecordStore<R> {
     skipped: Arc<Mutex<BTreeSet<String>>>,
     keeps: BTreeSet<RecordKind>,
     seal: Option<Seal>,
+    attempts: Attempts,
 }
 
 fn opened(seal: Option<&Seal>, path: &str, bytes: Vec<u8>) -> Result<Vec<u8>, StoreError> {
@@ -102,6 +100,18 @@ impl<R: RecordBackend> RecordStore<R> {
             ]
             .into(),
             seal: None,
+            attempts: Attempts::DEFAULT,
+        }
+    }
+
+    /// The store, keeping its records as `options` says: sealed with its
+    /// key where there is one, and trying a write that lost a race as many
+    /// times as it says.
+    #[must_use]
+    pub fn with(self, options: RecordOptions) -> Self {
+        Self {
+            attempts: options.attempts,
+            ..self.sealed(options.seal.map(Seal::new))
         }
     }
 
@@ -202,7 +212,7 @@ impl<R: RecordBackend> RecordStore<R> {
         expected: Option<Version>,
     ) -> Result<Written, StoreError> {
         let record = encoded(path, value)?;
-        for _ in 0..ATTEMPTS {
+        for _ in 0..self.attempts.get() {
             let read = self.read(path).await?;
             if read.as_ref().map(|read| read.version) != expected {
                 return Ok(Written::Conflict);
@@ -218,7 +228,7 @@ impl<R: RecordBackend> RecordStore<R> {
 
     async fn kept<T: Serialize>(&self, path: &str, value: &T) -> Result<(), StoreError> {
         let record = encoded(path, value)?;
-        for _ in 0..ATTEMPTS {
+        for _ in 0..self.attempts.get() {
             let read = self.read(path).await?;
             let version = read.as_ref().map_or(Version(1), |read| read.version);
             let token = read.as_ref().map(|read| read.token.as_str());
@@ -240,7 +250,7 @@ impl<R: RecordBackend> RecordStore<R> {
     }
 
     async fn removed(&self, path: &str) -> Result<(), StoreError> {
-        for _ in 0..ATTEMPTS {
+        for _ in 0..self.attempts.get() {
             let Some(Blob { token, .. }) = self.records.read(path).await? else {
                 return Ok(());
             };

@@ -569,6 +569,7 @@ dependencies = [
  "herald-kinds",
  "herald-ports",
  "herald-records",
+ "jiff",
  "schemars",
  "serde",
 ]

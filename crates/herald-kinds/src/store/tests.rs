@@ -1,5 +1,5 @@
 use herald_core::{RecordKind, SecretRef};
-use herald_ports::Secret;
+use herald_ports::RecordOptions;
 
 use super::*;
 use crate::{Local, Opened, Opening};
@@ -22,7 +22,7 @@ impl StoreConfig for Plain {
     fn open<'s, 'o: 's>(
         &'s self,
         _: Arc<dyn Opening + 'o>,
-        _: Option<Secret>,
+        _: RecordOptions,
     ) -> Local<'s, Result<Opened<'o>, String>> {
         Box::pin(std::future::ready(Ok(Opened::Posts)))
     }
@@ -48,7 +48,7 @@ impl StoreConfig for Tokened {
     fn open<'s, 'o: 's>(
         &'s self,
         opening: Arc<dyn Opening + 'o>,
-        _: Option<Secret>,
+        _: RecordOptions,
     ) -> Local<'s, Result<Opened<'o>, String>> {
         Box::pin(async move {
             opening.secret("TOKEN", "the store reads with it").await?;
@@ -110,9 +110,12 @@ fn a_store_is_read_as_its_own_kind_and_equal_only_to_the_same_options() {
 #[test]
 fn a_store_opens_through_what_its_host_offers() {
     let opening: Arc<dyn Opening> = Arc::new(crate::opening::tests::bare(&[]));
-    let posts = pollster::block_on(ConfiguredStore::new(sealed()).open(Arc::clone(&opening), None));
+    let posts = pollster::block_on(
+        ConfiguredStore::new(sealed()).open(Arc::clone(&opening), RecordOptions::default()),
+    );
     assert!(matches!(posts, Ok(Opened::Posts)));
-    let tokened = pollster::block_on(ConfiguredStore::new(Tokened).open(opening, None));
+    let tokened =
+        pollster::block_on(ConfiguredStore::new(Tokened).open(opening, RecordOptions::default()));
     assert_eq!(
         tokened.err(),
         Some("TOKEN is not set; the store reads with it".to_owned())
