@@ -114,7 +114,7 @@ mod replay {
             landed
         );
         let refused = Sent::Refused(
-            "Matrix refused it with 403: M_FORBIDDEN You don't have permission to post that to the room."
+            "Matrix refused it with 403: M_FORBIDDEN You don't have permission to post that to the room.; check what herald's credential is allowed to do there"
                 .to_owned(),
         );
         assert_eq!(send(&replay, &Step::Pin, &entry), refused);
@@ -309,7 +309,7 @@ mod replay {
         assert_eq!(
             unpin(),
             Sent::Refused(
-                "Matrix refused it with 401: M_UNKNOWN_TOKEN Invalid access token".to_owned()
+                "Matrix refused it with 401: M_UNKNOWN_TOKEN Invalid access token; check the credential herald sends, and that it has not expired".to_owned()
             )
         );
         assert_eq!(unpin(), Sent::RetryAfter(SignedDuration::from_secs(5)));
@@ -389,8 +389,8 @@ mod replay {
         let replay = fixture!("refused");
         let entry = Entry::new(announcement().key);
         for said in [
-            "Matrix refused it with 403: M_FORBIDDEN User @herald:matrix.example not in room",
-            "Matrix refused it with 401",
+            "Matrix refused it with 403: M_FORBIDDEN User @herald:matrix.example not in room; check what herald's credential is allowed to do there",
+            "Matrix refused it with 401; check the credential herald sends, and that it has not expired",
             "the homeserver's answer holds no event id",
         ] {
             assert_eq!(
@@ -474,7 +474,9 @@ mod replay {
             reason: reason.to_owned(),
         };
         for error in [
-            unreadable("Matrix refused it with 401: M_UNKNOWN_TOKEN Invalid access token"),
+            unreadable(
+                "Matrix refused it with 401: M_UNKNOWN_TOKEN Invalid access token; check the credential herald sends, and that it has not expired",
+            ),
             unreadable("the homeserver did not say which account the token is"),
             MarkersError::RetryAfter {
                 after: jiff::SignedDuration::from_secs(5),

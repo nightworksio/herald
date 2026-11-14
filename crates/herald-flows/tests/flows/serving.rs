@@ -303,7 +303,7 @@ fn an_actor_whose_key_cannot_be_read_is_not_served() {
     assert_eq!(
         answered.refused.as_deref(),
         Some(
-            "the actor's key cannot be read: the secret HERALD_ACTIVITYPUB_KEY is not a key for this signature"
+            "the actor's key cannot be read: the secret HERALD_ACTIVITYPUB_KEY is not a key for this signature; give a PKCS#8 private key as PEM"
         )
     );
     assert_eq!(

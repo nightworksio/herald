@@ -304,8 +304,9 @@ fn a_round_asked_with_its_secret_runs_and_says_what_it_did() {
     assert_eq!(given[0].1["statusCode"], json!(200));
     assert_eq!(given[0].1["body"], json!("the round ran"));
     assert!(
-        run.out
-            .starts_with("cli: stopped: GitHub's repository was answered with 400."),
+        run.out.starts_with(
+            "AWS_REGION is not set, so the work a request leaves is done before the next request is taken rather than handed to the function again\ncli: stopped: GitHub's repository was answered with 400."
+        ),
         "{}",
         run.out
     );

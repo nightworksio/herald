@@ -244,7 +244,7 @@ mod replay {
         let entry = Entry::new(announcement().key);
         for said in [
             "Mastodon refused it with 422: Validation failed: Text character limit of 500 exceeded",
-            "Mastodon refused it with 401",
+            "Mastodon refused it with 401; check the credential herald sends, and that it has not expired",
         ] {
             assert_eq!(
                 send(&mastodon, &replay, &Step::Post, &entry),
@@ -315,7 +315,7 @@ mod replay {
         let markers = MastodonMarkers::new(&mastodon, &replay);
         let key = announcement().key;
         for reason in [
-            "Mastodon refused it with 401: The access token is invalid",
+            "Mastodon refused it with 401: The access token is invalid; check the credential herald sends, and that it has not expired",
             "Mastodon did not say which account the token is",
         ] {
             assert_eq!(

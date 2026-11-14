@@ -271,7 +271,9 @@ fn a_source_that_cannot_be_read_or_reached_stops_its_poll() {
             &healthy(),
             &Script::answering(&[(RELEASES, 200, &body), (REPOSITORY.0, 404, "{}")])
         ),
-        source("GitHub's repository was answered with 404")
+        source(
+            "GitHub's repository was answered with 404; check the names and ids the config gives"
+        )
     );
     assert_eq!(
         swept(
@@ -345,7 +347,8 @@ fn a_registry_is_polled_as_a_forge_is_with_one_request() {
     assert_eq!(
         swept(&config, &store, &refused),
         Sweep::Stopped(Stop::Source(
-            "crates.io's versions was answered with 404".to_owned()
+            "crates.io's versions was answered with 404; check the names and ids the config gives"
+                .to_owned()
         ))
     );
 }

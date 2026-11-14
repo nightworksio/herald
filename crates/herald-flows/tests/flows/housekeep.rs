@@ -117,7 +117,7 @@ fn a_chore_refused_is_dropped_and_one_asked_to_wait_holds_the_rest_for_later() {
         [
             (
                 "7".to_owned(),
-                Chored::Dropped("Discord refused it with 404: 10003 Unknown Channel".to_owned())
+                Chored::Dropped("Discord refused it with 404: 10003 Unknown Channel; check the names and ids the config gives".to_owned())
             ),
             ("6".to_owned(), Chored::Later(wait.clone())),
             ("5".to_owned(), Chored::Later(wait)),

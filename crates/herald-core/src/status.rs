@@ -43,10 +43,10 @@ pub const fn succeeded(status: u16) -> bool {
 #[must_use]
 pub const fn remedy(status: u16) -> Option<&'static str> {
     match status {
-        UNAUTHORIZED => Some("check that the token is set and has not expired"),
-        FORBIDDEN => Some("give the token the scopes or permissions the step needs"),
+        UNAUTHORIZED => Some("check the credential herald sends, and that it has not expired"),
+        FORBIDDEN => Some("check what herald's credential is allowed to do there"),
         NOT_FOUND => Some("check the names and ids the config gives"),
-        TOO_MANY_REQUESTS => Some("herald is rate limited; it asks again after the wait"),
+        TOO_MANY_REQUESTS => Some("herald sent more than the platform takes at once"),
         _ => None,
     }
 }
@@ -67,11 +67,11 @@ mod tests {
     fn each_refusal_a_config_can_cure_names_its_remedy() {
         assert_eq!(
             remedy(UNAUTHORIZED),
-            Some("check that the token is set and has not expired")
+            Some("check the credential herald sends, and that it has not expired")
         );
         assert_eq!(
             remedy(FORBIDDEN),
-            Some("give the token the scopes or permissions the step needs")
+            Some("check what herald's credential is allowed to do there")
         );
         assert_eq!(
             remedy(NOT_FOUND),
@@ -79,7 +79,7 @@ mod tests {
         );
         assert_eq!(
             remedy(TOO_MANY_REQUESTS),
-            Some("herald is rate limited; it asks again after the wait")
+            Some("herald sent more than the platform takes at once")
         );
         assert_eq!(remedy(CONFLICT), None);
         assert_eq!(remedy(SERVER_ERROR), None);

@@ -544,7 +544,7 @@ fn a_request_is_held_to_the_bounds_it_is_claimed_within() {
             window: SignedDuration::from_mins(20),
         }
         .to_string(),
-        "the request was signed more than 20 minutes from now, so it is taken for a replay"
+        "the request was signed more than 20 minutes from now, so it is taken for a replay; check that the sender's clock and herald's are set right"
     );
     assert_eq!(
         Inbound::MOST,

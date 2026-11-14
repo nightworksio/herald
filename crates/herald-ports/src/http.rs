@@ -303,18 +303,30 @@ impl Response {
         if self.succeeded() {
             return Ok(());
         }
-        let refused = self.refused(who, &said());
-        Err(match named.or_else(|| self.retry_after()) {
+        let refused = self.said(who, &said());
+        let waited = match named.or_else(|| self.retry_after()) {
             Some(wait) => format!("{refused}, and asked to wait {wait:#}"),
             None => refused,
-        })
+        };
+        Err(self.remedied(waited))
     }
 
     fn refused(&self, who: &str, said: &str) -> String {
+        self.remedied(self.said(who, said))
+    }
+
+    fn said(&self, who: &str, said: &str) -> String {
         let status = self.status;
         match said.trim() {
             "" => format!("{who} refused it with {status}"),
             said => format!("{who} refused it with {status}: {said}"),
+        }
+    }
+
+    fn remedied(&self, refused: String) -> String {
+        match status::remedy(self.status) {
+            Some(remedy) => format!("{refused}; {remedy}"),
+            None => refused,
         }
     }
 }
@@ -481,12 +493,15 @@ mod tests {
         assert_eq!(
             status(403, &[]).failure(WAITS, None, "Discord", said),
             Some(Sent::Refused(
-                "Discord refused it with 403: Missing Access".to_owned()
+                "Discord refused it with 403: Missing Access; check what herald's credential is allowed to do there".to_owned()
             ))
         );
         assert_eq!(
             status(404, &[]).failure(WAITS, None, "the inbox", String::new),
-            Some(Sent::Refused("the inbox refused it with 404".to_owned()))
+            Some(Sent::Refused(
+                "the inbox refused it with 404; check the names and ids the config gives"
+                    .to_owned()
+            ))
         );
         assert_eq!(status(204, &[]).failure(WAITS, None, "Discord", said), None);
     }
@@ -501,11 +516,11 @@ mod tests {
         );
         assert_eq!(
             status(429, &[("Retry-After", "3")]).accepted(None, "Slack", said),
-            Err("Slack refused it with 429: slow down, and asked to wait 3s".to_owned())
+            Err("Slack refused it with 429: slow down, and asked to wait 3s; herald sent more than the platform takes at once".to_owned())
         );
         assert_eq!(
             status(429, &[]).accepted(Some(SignedDuration::from_millis(1_500)), "Slack", said),
-            Err("Slack refused it with 429: slow down, and asked to wait 1s 500ms".to_owned())
+            Err("Slack refused it with 429: slow down, and asked to wait 1s 500ms; herald sent more than the platform takes at once".to_owned())
         );
     }
 

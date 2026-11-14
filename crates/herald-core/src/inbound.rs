@@ -189,7 +189,7 @@ impl fmt::Display for Refusal {
             Self::Malformed { header } => write!(f, "the request's {header} is not in its form"),
             Self::Stale { window } => write!(
                 f,
-                "the request was signed more than {} minutes from now, so it is taken for a replay",
+                "the request was signed more than {} minutes from now, so it is taken for a replay; check that the sender's clock and herald's are set right",
                 window.as_mins()
             ),
             Self::Uncovered { header } => {

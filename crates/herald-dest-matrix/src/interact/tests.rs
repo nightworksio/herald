@@ -335,7 +335,7 @@ fn the_homeserver_taking_an_answer_or_not_is_read_from_its_status() {
             403,
             r#"{"errcode": "M_FORBIDDEN", "error": "not in room"}"#
         )),
-        Err("Matrix refused it with 403: M_FORBIDDEN not in room".to_owned())
+        Err("Matrix refused it with 403: M_FORBIDDEN not in room; check what herald's credential is allowed to do there".to_owned())
     );
     assert_eq!(
         accepted(&answer(502, "")),
@@ -346,7 +346,7 @@ fn the_homeserver_taking_an_answer_or_not_is_read_from_its_status() {
             429,
             r#"{"errcode": "M_LIMIT_EXCEEDED", "retry_after_ms": 2000}"#
         )),
-        Err("Matrix refused it with 429: M_LIMIT_EXCEEDED, and asked to wait 2s".to_owned())
+        Err("Matrix refused it with 429: M_LIMIT_EXCEEDED, and asked to wait 2s; herald sent more than the platform takes at once".to_owned())
     );
 }
 

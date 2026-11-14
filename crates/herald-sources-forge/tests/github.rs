@@ -273,7 +273,7 @@ mod github {
                 .release(&neovim(), &answer(404, "{}"))
                 .unwrap_err()
                 .to_string(),
-            "GitHub's release was answered with 404"
+            "GitHub's release was answered with 404; check the names and ids the config gives"
         );
     }
 
@@ -286,7 +286,7 @@ mod github {
                 .releases(&neovim(), &answer(403, "{}"), herald_wire::PARSE_LIMIT)
                 .unwrap_err()
                 .to_string(),
-            "GitHub's releases was answered with 403"
+            "GitHub's releases was answered with 403; check what herald's credential is allowed to do there"
         );
         assert_eq!(
             Forge::GitHub.repository(&answer(404, "{}")),

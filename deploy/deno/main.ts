@@ -1,4 +1,4 @@
-import { SCHEDULES, answered, configPath, denoKv, envHost, rounds } from "../host.mjs";
+import { answered, configPath, denoKv, envHost, rounds } from "../host.mjs";
 import { composedFrom } from "../files.mjs";
 import { guarded } from "../vetted.mjs";
 
@@ -10,7 +10,7 @@ const host = envHost(env, {
 });
 const herald = await composedFrom(configPath(env), host, "deno");
 
-Deno.cron("herald poll", env.HERALD_POLL_CRON ?? SCHEDULES.poll, () => rounds(herald, ["poll"]));
-Deno.cron("herald housekeep", env.HERALD_HOUSEKEEP_CRON ?? SCHEDULES.housekeep, () => rounds(herald, ["housekeep"]));
+Deno.cron("herald poll", env.HERALD_POLL_CRON ?? "*/5 * * * *", () => rounds(herald, ["poll"]));
+Deno.cron("herald housekeep", env.HERALD_HOUSEKEEP_CRON ?? "17 * * * *", () => rounds(herald, ["housekeep"]));
 
 Deno.serve(herald.listen(env.HERALD_LISTEN || undefined), (request) => answered(herald, request));
