@@ -171,7 +171,7 @@ fn a_timestamp_inside_the_window_either_way_is_taken() {
         ];
         assert_eq!(
             probe(claimed(SLACK, &headers)),
-            format!("HmacSha256 v0:{stamp}:{{\"action\":\"published\"}}"),
+            format!("Signed(HmacSha256) v0:{stamp}:{{\"action\":\"published\"}}"),
             "{offset}"
         );
     }
@@ -465,7 +465,11 @@ fn an_app_s_event_is_claimed_by_its_token_and_not_by_a_signature() {
             now(),
             &Inbound::DEFAULT
         ),
-        Err(Refusal::Unaddressed)
+        Err(Refusal::Hashed)
+    );
+    assert_eq!(
+        Refusal::Hashed.to_string(),
+        "an app's request is held by the hash of its token, which no header signs"
     );
     assert_eq!(key(APP, "t"), Some(b"t".to_vec()));
     assert_eq!(key(APP, ""), None);

@@ -187,6 +187,9 @@ pub enum Refusal {
     Misdirected,
     /// An ActivityPub activity was claimed without where it was sent.
     Unaddressed,
+    /// An app's request was claimed by its headers, where its token's hash
+    /// is what holds it.
+    Hashed,
 }
 
 impl fmt::Display for Refusal {
@@ -208,6 +211,9 @@ impl fmt::Display for Refusal {
             Self::Misdirected => f.write_str("the request was signed for another host"),
             Self::Unaddressed => f.write_str(
                 "an ActivityPub activity is claimed with where it was sent, which no header says",
+            ),
+            Self::Hashed => f.write_str(
+                "an app's request is held by the hash of its token, which no header signs",
             ),
         }
     }
@@ -275,7 +281,8 @@ pub fn claim(
                 Some(&delivery),
             ))
         }
-        Signed::HttpSignature | Signed::Hashed => Err(Refusal::Unaddressed),
+        Signed::HttpSignature => Err(Refusal::Unaddressed),
+        Signed::Hashed => Err(Refusal::Hashed),
         Signed::Bearer { header } => {
             let token = bearer(required(headers, header)?).ok_or(Refusal::Malformed { header })?;
             Ok(Claim {
