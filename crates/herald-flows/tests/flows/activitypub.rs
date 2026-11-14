@@ -3,7 +3,7 @@ use herald_core::{
     Chore, DestinationName, Identity, Key, Marker, RouteId, Schedule, SourceName, Step,
     Subscription,
 };
-use herald_flows::{Chored, Findings, Outcome, Ports, PrepareError, announce, keys, prepare};
+use herald_flows::{Chored, Findings, Outcome, Ports, PrepareError, Stop, announce, keys, prepare};
 use herald_kinds::Reached;
 use herald_ports::{Markers as _, MarkersError, Notes, Schedules, Subscriptions};
 use herald_testing::{FakeClock, FakeSecrets, FakeSigner};
@@ -74,6 +74,15 @@ fn announced(store: &Failing, script: &Script) -> Outcome {
 }
 
 fn announced_with(config: &Config, store: &Failing, script: &Script) -> Outcome {
+    announced_within(config, store, script, herald_flows::Budget::UNBOUNDED)
+}
+
+fn announced_within(
+    config: &Config,
+    store: &Failing,
+    script: &Script,
+    budget: herald_flows::Budget<'_>,
+) -> Outcome {
     let secrets = FakeSecrets::default().with("HERALD_ACTIVITYPUB_KEY", "the-key");
     let prepared = pollster::block_on(prepare(config, &secrets, &FakeSigner, Uses::Polls)).unwrap();
     let connected = prepared.connect(|_| Ok::<_, ()>(script.clone())).unwrap();
@@ -81,6 +90,7 @@ fn announced_with(config: &Config, store: &Failing, script: &Script) -> Outcome 
         store,
         clock: &FakeClock::at(NOON),
         signer: &FakeSigner,
+        budget,
     };
     let announced = pollster::block_on(announce(
         config,
@@ -141,6 +151,50 @@ fn an_announcement_is_delivered_once_to_each_inbox_its_actor_s_followers_share()
         created["actor"],
         "https://herald.example/users/php-mutation-gate"
     );
+}
+
+#[test]
+fn deliveries_the_host_s_request_limit_leaves_no_room_for_are_left_to_the_next_run() {
+    let store = healthy();
+    for (who, inbox) in [
+        (
+            "https://social.example/users/ana",
+            "https://social.example/inbox",
+        ),
+        (
+            "https://other.example/users/cy",
+            "https://other.example/inbox",
+        ),
+    ] {
+        pollster::block_on(store.subscribe(&follower("php-mutation-gate", who, Some(inbox))))
+            .unwrap();
+    }
+    let made = std::sync::atomic::AtomicUsize::new(0);
+    let budget = herald_flows::Budget {
+        requests: Some(herald_flows::Requests {
+            made: &made,
+            from: 0,
+            most: 2,
+            spare: 1,
+        }),
+        ..herald_flows::Budget::UNBOUNDED
+    };
+    let script = Script::default();
+    assert_eq!(
+        announced_within(&activitypub(), &store, &script, budget),
+        Outcome::Stopped {
+            landed: vec![Step::Post],
+            remaining: vec![
+                Step::Deliver("https://other.example/inbox".to_owned()),
+                Step::Deliver("https://social.example/inbox".to_owned()),
+            ],
+            reason: Stop::Limit(
+                "0 of the 2 outbound requests the host allows were made, so the next run sends the rest"
+                    .to_owned()
+            ),
+        }
+    );
+    assert_eq!(script.seen(), Vec::<String>::new());
 }
 
 #[test]

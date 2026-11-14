@@ -19,6 +19,7 @@ use herald_ports::{
 };
 use jiff::{SignedDuration, Timestamp};
 
+use crate::budget::Budget;
 use crate::prepare::{Connected, PreparedRoute};
 
 /// The ports an announcement goes through, beside each route's `Http`.
@@ -30,6 +31,8 @@ pub struct Ports<'a, S, C, G> {
     pub clock: &'a C,
     /// What computes each post's markers.
     pub signer: &'a G,
+    /// What the run may still spend before its host stops it.
+    pub budget: Budget<'a>,
 }
 
 /// What one route did with an event.
@@ -89,6 +92,9 @@ pub enum Stop {
     Marker(String),
     /// A polled source could not be read.
     Source(String),
+    /// The host's limit on the run's time or outbound requests was near,
+    /// so no further send was started.
+    Limit(String),
 }
 
 pub(crate) struct Run<'a, S, C, G, H> {
@@ -395,7 +401,15 @@ impl<S: Store, C: Clock, G: Signer, H: Http> Run<'_, S, C, G, H> {
             .map_or(1, herald_kinds::Federates::deliveries);
         let mut batches = pending.chunks(together.max(1));
         while let Some(batch) = batches.next() {
-            if let Err((mut failed, reason)) = self.delivered(batch, announcement, progress).await {
+            let delivered = match self
+                .ports
+                .budget
+                .allows(self.ports.clock.now(), batch.len())
+            {
+                Ok(()) => self.delivered(batch, announcement, progress).await,
+                Err(reason) => Err((batch.iter().cloned().map(Step::Deliver).collect(), reason)),
+            };
+            if let Err((mut failed, reason)) = delivered {
                 failed.extend(batches.flatten().cloned().map(Step::Deliver));
                 return Err((failed, reason));
             }
@@ -418,6 +432,10 @@ impl<S: Store, C: Clock, G: Signer, H: Http> Run<'_, S, C, G, H> {
         if let (Step::Deliveries, Some(actor)) = (&step.step, self.route.reached.follows()) {
             return self.deliveries(actor, announcement, progress).await;
         }
+        self.ports
+            .budget
+            .allows(self.ports.clock.now(), 1)
+            .map_err(|reason| (vec![step.step.clone()], reason))?;
         self.take(&step.step, step.verify_first, announcement, progress)
             .await
             .map_err(|reason| (vec![step.step.clone()], reason))

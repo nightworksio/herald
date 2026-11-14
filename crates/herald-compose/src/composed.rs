@@ -1,20 +1,23 @@
 use std::future::Future;
+use std::num::NonZeroUsize;
 use std::sync::Arc;
-use std::sync::atomic::AtomicBool;
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
 use herald_config::{Config, Uses};
 use herald_core::status;
 use herald_flows::{
-    Admission, Connected, Housekept, Inbound, Job, Keys, Place, Ports, Room, Round, Running,
-    Serving, Sessions, Stop, Swept, Taker, Worked, answer, housekeep, poll, prepare, refusal,
-    unplaced, work,
+    Admission, Budget, Connected, Housekept, Inbound, Job, Keys, Place, Ports, Requests, Room,
+    Round, Running, Serving, Sessions, Stop, Swept, Taker, Worked, answer, housekeep, poll,
+    prepare, refusal, unplaced, work,
 };
 use herald_kinds::Opened;
-use herald_ports::{Base, Keyring, Sockets, Store, Timer};
+use herald_ports::{Base, Clock as _, Keyring, Sockets, Store, Timer};
 use herald_records::{Memory, MemoryKeyring, RecordStore};
+use jiff::{SignedDuration, Timestamp};
 
 use crate::answer::{Answer, Left};
 use crate::capped::Capped;
+use crate::counted::Counted;
 use crate::host::Host;
 use crate::hosting::Hosting;
 use crate::records::{OpenedRecords, Opener, Served, reached};
@@ -30,8 +33,11 @@ pub struct Composed<'o, H: Host + 'o> {
     host: Arc<H>,
     config: Config,
     records: OpenedRecords<'o>,
-    connected: Connected<H::Http>,
-    public: Capped<H::Http>,
+    connected: Connected<Counted<H::Http>>,
+    public: Capped<Counted<H::Http>>,
+    made: Arc<AtomicUsize>,
+    after: Option<SignedDuration>,
+    requests: Option<NonZeroUsize>,
     memory: MemoryKeyring,
     room: Room,
     polling: AtomicBool,
@@ -96,13 +102,38 @@ where
         keeping: Keeping,
     ) -> Result<Self, String> {
         let host = Arc::new(host);
+        let made = Arc::new(AtomicUsize::new(0));
         let outbound = config.http.clone().timed(host.var(TIMEOUT_MS));
+        let work = config.server.work;
+        let (after, requests) = match keeping {
+            Keeping::Stored(hosting) => (
+                work.after.or(hosting.after()),
+                work.requests.or(hosting.requests()),
+            ),
+            Keeping::Remembered => (work.after, work.requests),
+        };
+        if let Some(after) = after
+            && after <= work.spare
+        {
+            return Err(format!(
+                "[server.work] spare, {:#}, leaves no time for a send in the {after:#} the work may run after its answer; make it shorter",
+                work.spare
+            ));
+        }
+        if let Some(most) = requests
+            && most.get() <= work.spare_requests
+        {
+            return Err(format!(
+                "[server.work] spare_requests, {}, leaves no room for a send in the {most} outbound requests a request may make; make it fewer",
+                work.spare_requests
+            ));
+        }
         let prepared = prepare(&config, host.secrets(), host.signer(), uses)
             .await
             .map_err(|error| error.to_string())?;
         let records = match keeping {
             Keeping::Stored(hosting) => {
-                let opener = Opener::new(Arc::clone(&host), outbound.clone());
+                let opener = Opener::new(Arc::clone(&host), outbound.clone(), Arc::clone(&made));
                 reached(
                     Arc::new(opener),
                     &config.store,
@@ -115,9 +146,10 @@ where
                 OpenedRecords::new(Opened::Kept(Box::new(RecordStore::new(Memory::default()))))
             }
         };
-        let connected = prepared.connect(|base| host.connect(base, &outbound))?;
+        let counted = |http| Counted::new(http, Arc::clone(&made));
+        let connected = prepared.connect(|base| host.connect(base, &outbound).map(counted))?;
         let public = Capped::new(
-            host.connect(Base::Public, &outbound.public())?,
+            counted(host.connect(Base::Public, &outbound.public())?),
             config.server.fetches,
         );
         let memory = MemoryKeyring::new(config.server.keys_most);
@@ -128,6 +160,9 @@ where
             records,
             connected,
             public,
+            made,
+            after,
+            requests,
             memory,
             room,
             polling: AtomicBool::new(false),
@@ -149,8 +184,16 @@ impl<'o, H: Host + 'o> Composed<'o, H> {
     }
 
     /// Every route, source and destination, connected.
-    pub fn connected(&self) -> &Connected<H::Http> {
+    pub fn connected(&self) -> &Connected<Counted<H::Http>> {
         &self.connected
+    }
+
+    /// Where a run starting now counts its outbound requests from.
+    fn started(&self) -> Started {
+        Started {
+            from: self.made.load(Ordering::Relaxed),
+            until: None,
+        }
     }
 
     /// The reply to `inbound`, and the work it leaves, its delivery admitted
@@ -170,11 +213,13 @@ impl<'o, H: Host + 'o> Composed<'o, H> {
             )
             .into();
         }
+        let started = self.started();
         let answering = Answering {
             inbound,
             room: &self.room,
+            from: started.from,
         };
-        self.through(admission, answering).await
+        self.through(admission, started, answering).await
     }
 
     /// A place for one more piece of work, where `[server] jobs` leaves one.
@@ -183,10 +228,22 @@ impl<'o, H: Host + 'o> Composed<'o, H> {
         self.room.place()
     }
 
-    /// The work `left` done, its place given up after.
+    /// The work `left` done, its place given up after: no send starts once
+    /// the host's limits leave less than their spare, and the next run
+    /// sends what is left.
     pub async fn work(&self, left: Left) -> Worked {
-        let Left { job, place } = left;
-        let worked = self.through(Admission::Once, Working(job)).await;
+        let Left { job, place, from } = left;
+        let started = Started {
+            from: from.unwrap_or_else(|| self.made.load(Ordering::Relaxed)),
+            until: self.after.map(|after| {
+                self.host
+                    .clock()
+                    .now()
+                    .checked_add(after)
+                    .unwrap_or(Timestamp::MAX)
+            }),
+        };
+        let worked = self.through(Admission::Once, started, Working(job)).await;
         drop(place);
         worked
     }
@@ -196,7 +253,7 @@ impl<'o, H: Host + 'o> Composed<'o, H> {
         let Some(_running) = Running::start(&self.polling) else {
             return Vec::new();
         };
-        self.through(Admission::Once, Polling).await
+        self.through(Admission::Once, self.started(), Polling).await
     }
 
     /// The store's housekeeping done, and the keys read longest ago
@@ -209,7 +266,8 @@ impl<'o, H: Host + 'o> Composed<'o, H> {
         let Some(_running) = Running::start(&self.housekeeping) else {
             return Ok(Housekept::default());
         };
-        self.through(Admission::Once, Housekeeping).await
+        self.through(Admission::Once, self.started(), Housekeeping)
+            .await
     }
 
     /// Every session the destinations hold, opened through `sockets`, each
@@ -226,18 +284,24 @@ impl<'o, H: Host + 'o> Composed<'o, H> {
             taker,
             timer,
         };
-        self.through(Admission::Once, holding).await;
+        self.through(Admission::Once, self.started(), holding).await;
     }
 
     /// `work` done through everything composed.
     pub async fn run<W: Through<H>>(&self, work: W) -> W::Done {
-        self.through(Admission::Once, work).await
+        self.through(Admission::Once, self.started(), work).await
     }
 
-    async fn through<W: Through<H>>(&self, admission: Admission, work: W) -> W::Done {
+    async fn through<W: Through<H>>(
+        &self,
+        admission: Admission,
+        started: Started,
+        work: W,
+    ) -> W::Done {
         let through = Keying {
             composed: self,
             admission,
+            started,
             work,
         };
         self.records
@@ -253,10 +317,18 @@ pub type ServingOn<'a, H, S, K> = Serving<
     <H as Host>::Clock,
     <H as Host>::Signer,
     <H as Host>::Verifier,
-    <H as Host>::Http,
-    Capped<<H as Host>::Http>,
+    Counted<<H as Host>::Http>,
+    Capped<Counted<<H as Host>::Http>>,
     K,
 >;
+
+/// Where a run counts its outbound requests from, and when its host stops
+/// it, where it does.
+#[derive(Debug, Clone, Copy)]
+struct Started {
+    from: usize,
+    until: Option<Timestamp>,
+}
 
 /// Work done through a composed herald: over its store, with the keys it
 /// checks activities with, its leases taken under a run name of its own.
@@ -275,6 +347,7 @@ pub trait Through<H: Host> {
 struct Keying<'c, H: Host, W> {
     composed: &'c Composed<'c, H>,
     admission: Admission,
+    started: Started,
     work: W,
 }
 
@@ -297,10 +370,21 @@ impl<H: Host, W: Through<H>> Keying<'_, H, W> {
     async fn with_keyring<S: Store, K: Keyring>(self, store: &S, keyring: &K) -> W::Done {
         let composed = self.composed;
         let host = &composed.host;
+        let work = &composed.config.server.work;
         let ports = Ports {
             store,
             clock: host.clock(),
             signer: host.signer(),
+            budget: Budget {
+                until: self.started.until,
+                spare: work.spare,
+                requests: composed.requests.map(|most| Requests {
+                    made: &composed.made,
+                    from: self.started.from,
+                    most: most.get(),
+                    spare: work.spare_requests,
+                }),
+            },
         };
         let keys = Keys {
             keyring,
@@ -325,6 +409,7 @@ impl<H: Host, W: Through<H>> Keying<'_, H, W> {
 struct Answering<'i, 'a> {
     inbound: &'i Inbound<'a>,
     room: &'i Room,
+    from: usize,
 }
 
 impl<H: Host> Through<H> for Answering<'_, '_> {
@@ -343,7 +428,11 @@ impl<H: Host> Through<H> for Answering<'_, '_> {
             return unplaced(serving, &job).await.into();
         };
         Answer {
-            left: Some(Left { job, place }),
+            left: Some(Left {
+                job,
+                place,
+                from: Some(self.from),
+            }),
             ..answered.into()
         }
     }

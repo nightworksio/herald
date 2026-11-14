@@ -483,6 +483,36 @@ pub(crate) struct ServerFile {
     /// How a session a destination holds waits before it connects again.
     #[serde(default)]
     pub(crate) sessions: SessionsFile,
+    /// How the work a request leaves keeps within its host's limits.
+    #[serde(default)]
+    pub(crate) work: WorkFile,
+}
+
+/// `[server.work]`: how the work a request leaves keeps within its host's
+/// limits. herald starts no send that could pass them, and the next run
+/// sends what is left.
+#[derive(Debug, Default, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+#[serde(rename = "Work")]
+pub(crate) struct WorkFile {
+    /// How long the work may run after the answer; where absent, Cloudflare
+    /// Workers' 30 seconds of `waitUntil` there, and unbounded on every
+    /// other host.
+    #[schemars(with = "Option<Duration>")]
+    pub(crate) after: Option<Spanned<Duration>>,
+    /// How much of `after` must be left for a send to start; "10s" where
+    /// absent, and less than `after`.
+    pub(crate) spare: Option<Duration>,
+    /// The most outbound requests a request and the work it leaves may
+    /// make, counted from when herald began answering it; where absent,
+    /// Fastly Compute's 32 backend requests there (set 10 on a trial), and
+    /// unbounded on every other host.
+    #[schemars(with = "Option<NonZeroUsize>")]
+    pub(crate) requests: Option<Spanned<NonZeroUsize>>,
+    /// How many of `requests` must be left for a send to start: the send,
+    /// and the writes after it where the store writes over HTTP; 4 where
+    /// absent, and fewer than `requests`.
+    pub(crate) spare_requests: Option<usize>,
 }
 
 /// `[server.sessions]`: how a session a destination holds waits before it

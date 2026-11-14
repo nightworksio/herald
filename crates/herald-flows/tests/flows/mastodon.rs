@@ -78,6 +78,7 @@ fn a_mastodon_route_posts_its_status_and_replies_its_overflow_under_it() {
         store: &marked,
         clock: &FakeClock::at(NOON),
         signer: &FakeSigner,
+        budget: herald_flows::Budget::UNBOUNDED,
     };
     let announced = pollster::block_on(announce(
         &config,

@@ -543,6 +543,7 @@ fn tried(configured: &Config, script: &Script) -> Vec<herald_flows::Announced> {
         store: &store,
         clock: &FakeClock::at(NOON),
         signer: &FakeSigner,
+        budget: herald_flows::Budget::UNBOUNDED,
     };
     pollster::block_on(trial(configured, &connected, &ports, "doctor"))
 }

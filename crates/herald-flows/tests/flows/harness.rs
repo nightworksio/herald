@@ -174,14 +174,35 @@ pub(crate) async fn run<S: Store>(
     version: &str,
     run: &str,
 ) -> Vec<Announced> {
+    run_within(
+        config,
+        store,
+        (clock, herald_flows::Budget::UNBOUNDED),
+        script,
+        version,
+        run,
+    )
+    .await
+}
+
+/// [`run`], what it may spend bounded by the budget beside its clock.
+pub(crate) async fn run_within<S: Store, H: Http + Clone>(
+    config: &Config,
+    store: &S,
+    (clock, budget): (&FakeClock, herald_flows::Budget<'_>),
+    http: &H,
+    version: &str,
+    run: &str,
+) -> Vec<Announced> {
     let prepared = prepare(config, &secrets(), &FakeSigner, Uses::Polls)
         .await
         .unwrap();
-    let connected = prepared.connect(|_| Ok::<_, ()>(script.clone())).unwrap();
+    let connected = prepared.connect(|_| Ok::<_, ()>(http.clone())).unwrap();
     let ports = Ports {
         store,
         clock,
         signer: &FakeSigner,
+        budget,
     };
     announce(
         config,

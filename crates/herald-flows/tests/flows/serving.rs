@@ -119,6 +119,7 @@ impl World {
             store: &self.store,
             clock: &clock,
             signer: &FakeSigner,
+            budget: herald_flows::Budget::UNBOUNDED,
         };
         let keys = keys_in(&self.keyring);
         act(&Serving {
@@ -282,6 +283,7 @@ fn an_actor_whose_key_cannot_be_read_is_not_served() {
         store: &world.store,
         clock: &clock,
         signer: &Keyless,
+        budget: herald_flows::Budget::UNBOUNDED,
     };
     let keys = keys_in(&world.keyring);
     let serving = Serving {

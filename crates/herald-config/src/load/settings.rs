@@ -11,10 +11,10 @@ use jiff::SignedDuration;
 use toml::Spanned;
 
 use super::{Loader, Value};
-use crate::config::{Announce, HeldSessions, KeyCache, Run, Server};
+use crate::config::{Announce, HeldSessions, KeyCache, Run, Server, Work};
 use crate::file::{
     AnnounceFile, HttpFile, InboundFile, KeyCacheFile, RenderFile, RunFile, ServerFile,
-    SessionsFile,
+    SessionsFile, WorkFile,
 };
 
 impl Loader<'_> {
@@ -181,6 +181,36 @@ impl Loader<'_> {
                 .accept_pause
                 .map_or(Server::ACCEPT_PAUSE, |pause| pause.0),
             sessions: self.sessions(file.sessions),
+            work: self.work(file.work),
+        }
+    }
+
+    fn work(&mut self, file: WorkFile) -> Work {
+        let spare = file.spare.map_or(Work::SPARE, |spare| spare.0);
+        let spare_requests = file.spare_requests.unwrap_or(Work::SPARE_REQUESTS);
+        if let Some(after) = &file.after
+            && after.get_ref().0 <= spare
+        {
+            self.error(
+                &after.span(),
+                "server.work.after",
+                "no send would start after the answer; make after longer than spare",
+            );
+        }
+        if let Some(requests) = &file.requests
+            && requests.get_ref().get() <= spare_requests
+        {
+            self.error(
+                &requests.span(),
+                "server.work.requests",
+                "no send would start; make requests more than spare_requests",
+            );
+        }
+        Work {
+            after: file.after.map(|after| after.into_inner().0),
+            spare,
+            requests: file.requests.map(Spanned::into_inner),
+            spare_requests,
         }
     }
 

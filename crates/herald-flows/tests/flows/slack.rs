@@ -61,6 +61,7 @@ fn announced(config: &Config, store: &Failing, script: &Script) -> Outcome {
         store,
         clock: &FakeClock::at(NOON),
         signer: &FakeSigner,
+        budget: herald_flows::Budget::UNBOUNDED,
     };
     let announced = pollster::block_on(announce(
         config,

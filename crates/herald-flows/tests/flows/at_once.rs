@@ -129,6 +129,7 @@ fn announced(config: &Config, store: &Failing, http: &ByPath) -> Vec<Announced> 
         store,
         clock: &clock,
         signer: &FakeSigner,
+        budget: herald_flows::Budget::UNBOUNDED,
     };
     pollster::block_on(announce(
         config,
@@ -240,6 +241,7 @@ body = "{{{{ event.body }}}}"
         store,
         clock: &clock,
         signer: &FakeSigner,
+        budget: herald_flows::Budget::UNBOUNDED,
     };
     (
         pollster::block_on(poll(&config, &connected, &ports, "r1")),

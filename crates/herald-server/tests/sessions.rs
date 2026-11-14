@@ -249,6 +249,7 @@ appservice_token = {{ secret = "HERALD_MATRIX_AS" }}
                 store: &self.store,
                 clock: &clock,
                 signer: &FakeSigner,
+                budget: herald_flows::Budget::UNBOUNDED,
             };
             let keys = Keys {
                 keyring: &self.keyring,

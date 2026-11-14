@@ -145,7 +145,10 @@ async fn stopping(
     if let Some(layer) = doctoring::warning(&run, vars) {
         warned(&doctoring::gaps(&config, layer, vars).await, vars, out);
     }
-    let code = finished(ran(run, config, vars, connect, out, stop).await, err);
+    let code = finished(
+        Box::pin(ran(run, config, vars, connect, out, stop)).await,
+        err,
+    );
     let _ = out.flush();
     let _ = err.flush();
     code

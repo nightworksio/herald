@@ -71,6 +71,22 @@ fn swept_with(
     script: &Script,
     secrets: &herald_testing::FakeSecrets,
 ) -> Sweep {
+    swept_within(
+        config,
+        store,
+        script,
+        secrets,
+        herald_flows::Budget::UNBOUNDED,
+    )
+}
+
+fn swept_within(
+    config: &Config,
+    store: &Failing,
+    script: &Script,
+    secrets: &herald_testing::FakeSecrets,
+    budget: herald_flows::Budget<'_>,
+) -> Sweep {
     let prepared = pollster::block_on(prepare(config, secrets, &FakeSigner, Uses::Polls)).unwrap();
     let connected = prepared.connect(|_| Ok::<_, ()>(script.clone())).unwrap();
     let clock = FakeClock::at(NOON);
@@ -78,6 +94,7 @@ fn swept_with(
         store,
         clock: &clock,
         signer: &FakeSigner,
+        budget,
     };
     let mut swept = pollster::block_on(poll(config, &connected, &ports, "r1"));
     assert_eq!(swept.len(), 1);
@@ -469,4 +486,23 @@ fn a_poll_reads_as_many_as_the_source_s_page_and_remembers_as_many_as_it_says() 
         reason.contains(&format!("larger than {} bytes", three.len() - 1)),
         "{reason}"
     );
+}
+
+#[test]
+fn a_poll_near_its_host_s_time_limit_asks_no_source_and_keeps_its_cursor() {
+    let store = healthy();
+    let script = Script::default();
+    let budget = herald_flows::Budget {
+        until: Some(NOON),
+        ..herald_flows::Budget::UNBOUNDED
+    };
+    assert_eq!(
+        swept_within(&config(""), &store, &script, &secrets(), budget),
+        Sweep::Stopped(Stop::Limit(
+            "0s was left before the host stops the work, no more than the 0s a send needs, so the next run sends the rest"
+                .to_owned()
+        ))
+    );
+    assert_eq!(script.seen(), Vec::<String>::new());
+    assert_eq!(cursor(&store), None);
 }

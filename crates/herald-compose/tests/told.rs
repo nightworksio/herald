@@ -111,6 +111,7 @@ mod told {
     #[test]
     fn a_stop_says_why_and_steps_are_named() {
         assert_eq!(told::why(&Stop::Source("down".to_owned())), "down");
+        assert_eq!(told::why(&Stop::Limit("near".to_owned())), "near");
         assert_eq!(told::why(&Stop::Unread("unread".to_owned())), "unread");
         assert_eq!(
             told::steps(&[
