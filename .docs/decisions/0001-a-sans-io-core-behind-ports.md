@@ -1,6 +1,6 @@
 # ADR-0001: A sans-IO core behind ports, in crates that each name only those before them
 
-**Status:** Accepted; the place of `herald-server` and its HTTP stack superseded by [ADR-0014](0014-herald-server-answers-first-and-works-after-on-one-task-within-limits.md); the serverless drivers of decision 8 superseded, and a composition layer added between flows and native, by [ADR-0017](0017-herald-runs-wherever-code-runs-from-one-native-binary-and-one-wasm-module.md); escaped path segments moved from `herald-wire` to the core, which reads every URL, by [ADR-0023](0023-urls-are-read-one-way-in-the-core-text-is-escaped-one-way-and-a-registry-names-its-events-by-its-kind.md)
+**Status:** Accepted; the place of `herald-server` and its HTTP stack superseded by [ADR-0014](0014-herald-server-answers-first-and-works-after-on-one-task-within-limits.md); the serverless drivers of decision 8 superseded, and a composition layer added between flows and native, by [ADR-0017](0017-herald-runs-wherever-code-runs-from-one-native-binary-and-one-wasm-module.md); escaped path segments moved from `herald-wire` to the core, which reads every URL, by [ADR-0023](0023-urls-are-read-one-way-in-the-core-text-is-escaped-one-way-and-a-registry-names-its-events-by-its-kind.md); the kits row, and the rules that hold the layers, superseded by [ADR-0027](0027-the-layer-rules-place-every-crate-and-ship-no-fakes.md)
 **Date:** 2026-10-31
 
 ## Context
