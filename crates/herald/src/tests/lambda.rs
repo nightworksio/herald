@@ -147,6 +147,38 @@ fn work_that_cannot_be_handed_on_is_done_before_the_answer() {
 }
 
 #[test]
+fn work_whose_event_is_larger_than_lambda_takes_is_done_now_without_handing_it_on() {
+    for (most, handed) in [("10", false), ("0", true), ("many", true)] {
+        let world = World::default();
+        discord(
+            &world,
+            &[(
+                "/channels/1566200000000000100/messages",
+                200,
+                r#"{"id":"1"}"#,
+            )],
+        );
+        invoked(&world, vec![webhook()]);
+        let mut setup = function(&hooked(), true);
+        setup
+            .vars
+            .insert(crate::lambda::EVENT_MOST.to_owned(), most.to_owned());
+        let run = herald(&setup, &world, &LAMBDA);
+        let refused = format!(
+            "bytes is larger than the 10 bytes {} lets an event carry; it is done now",
+            crate::lambda::EVENT_MOST
+        );
+        assert_eq!(run.out.contains(&refused), !handed, "{most}: {}", run.out);
+        assert_eq!(
+            given(&world).len(),
+            1 + usize::from(handed),
+            "{most}: {}",
+            run.out
+        );
+    }
+}
+
+#[test]
 fn an_event_herald_does_not_take_is_answered_as_an_error() {
     let world = World::default();
     invoked(&world, vec![json!({ "detail": "anything" })]);
