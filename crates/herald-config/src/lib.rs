@@ -13,6 +13,7 @@ mod file;
 mod kinds;
 mod load;
 mod position;
+mod reference;
 mod samples;
 mod schema;
 
@@ -23,5 +24,6 @@ pub use error::{ConfigError, Errors};
 pub use herald_kinds::{ConfiguredStore, Destination, Placed, Source};
 pub use kinds::Kinds;
 pub use load::load;
+pub use reference::reference;
 pub use samples::samples;
 pub use schema::schema;

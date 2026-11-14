@@ -720,4 +720,13 @@ body = "{{ event.body }}"
             "regenerate it: cargo run -p herald-compose --example schema > herald.schema.json"
         );
     }
+
+    #[test]
+    fn the_committed_settings_reference_is_the_one_the_schema_generates() {
+        assert_eq!(
+            herald_config::reference(&schema(&crate::common::kinds())),
+            include_str!("../../../.docs/settings.md"),
+            "regenerate it: cargo run -p herald-compose --example settings > .docs/settings.md"
+        );
+    }
 }
