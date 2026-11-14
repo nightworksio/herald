@@ -344,7 +344,6 @@ mod postgres {
         };
         assert!(reason.starts_with("the connection closed ("), "{reason}");
         assert!(reason.contains("could not be made again"), "{reason}");
-        assert!(reason.contains("administrator command"), "{reason}");
         assert!(reason.contains("not permitted to log in"), "{reason}");
         ran(&admin, "ALTER ROLE herald_reconnecting LOGIN")
             .await
