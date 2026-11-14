@@ -257,7 +257,7 @@ Build with `fastly compute build` from `fastly/`, which needs a clang that
 targets wasm, and enable dynamic backends on the service.
 
 - The Config Store `herald` holds `herald.toml`, each template file by its name,
-  and `GITHUB_REPOSITORY`. An item holds at most 8 KB.
+  and `GITHUB_REPOSITORY`. An item holds at most 8,000 characters.
 - The Secret Store `herald` holds every secret `herald.toml` names.
 - `[store] kind = "fastly-kv"` needs the service linked to the KV Store it names.
   A delete first claims the item at its generation, as Fastly's delete takes
@@ -265,21 +265,48 @@ targets wasm, and enable dynamic backends on the service.
 
 ## Limits by host
 
-- **Every host** answers 413 to a request whose body is larger than
-  `[server] body`, where the platform's own limit on a request has not
-  refused it first.
-- **Cloudflare Workers, Vercel and Netlify** run the work a request leaves
-  through `waitUntil`, after its answer, within the platform's own limit on
-  how long that work may go on. An announcement cut short there is
-  finished by the next run, which sends only what is missing.
+Every host answers 413 to a request whose body is larger than `[server]
+body`, where the platform has not refused it first. Work a request leaves runs
+after its answer, and an announcement cut short is finished by the next run,
+which sends only what is missing. Each platform's own limits, from its
+documentation:
+
+- **Cloudflare Workers** take a request body of up to 100 MB (200 MB on
+  Business). `waitUntil` lets a request's work run at most 30 seconds after
+  the answer, and a Cron Trigger or a Durable Object's alarm runs at most 15
+  minutes
+  ([limits](https://developers.cloudflare.com/workers/platform/limits/)).
+- **Vercel** takes a request body of up to 4.5 MB, and a function runs 300
+  seconds by default, up to 800 on Pro and Enterprise
+  ([limits](https://vercel.com/docs/functions/limitations)).
+- **Netlify** runs a synchronous function for 60 seconds and a scheduled one
+  for 30, and buffers at most 6 MB of a request or a response
+  ([configuration](https://docs.netlify.com/build/functions/configuration/)).
+- **AWS Lambda** runs a function for at most 900 seconds, takes 6 MB of a
+  synchronous invocation's payload, and 1 MB of an event invocation's
+  ([quotas](https://docs.aws.amazon.com/lambda/latest/dg/gettingstarted-limits.html)).
+  The function hands a request's work to itself as an event, its body in
+  base64, so a body larger than about 750 KiB is worked before the next
+  request instead. `HERALD_LAMBDA_EVENT_MOST` sets the most an event carries,
+  in bytes, 1048576 where unset.
+- **Azure Functions** must answer an HTTP request within 230 seconds, and take
+  a request of up to 210 MB
+  ([hosting](https://learn.microsoft.com/en-us/azure/azure-functions/functions-scale)).
+- **Fastly Compute** runs a request for at most 2 minutes (60 seconds on a
+  trial), with 50 ms of CPU time, a 128 MB heap and 32 backend requests (10 on
+  a trial). A Config Store value holds at most 8,000 characters
+  ([resource limits](https://docs.fastly.com/products/compute-resource-limits)).
+  An announcement needing more backend requests than one request allows is
+  finished by the next run.
+- **Fermyon Cloud** runs Spin's request handler for 30 seconds and takes a
+  body of up to 10 MB
+  ([quotas](https://developer.fermyon.com/cloud/faq)). `spin up` on your own
+  host sets neither.
+- **Deno Deploy** gives an application at most 512 MB of memory
+  ([limits](https://docs.deno.com/deploy/pricing_and_limits/)).
 - **Spin** keeps `sqlite` records in its own database, so `[store] path` is
   not read there. Its refusal of private addresses is set in a runtime config,
   passed with `--runtime-config-file`.
-- **AWS Lambda** hands a request's work to itself as an event invocation, so a
-  request is handed off only within Lambda's limit on an event's payload; keep
-  `[server] body` inside it.
-- **Fastly Compute** holds each Config Store item to 8 KB, `herald.toml` and
-  each template file among them.
 - **`repo-variables`** keeps each record as a repository variable. A
   repository holds at most 500, and a run is handed at most 256 KB of them, so
   many records can crowd out the repository's own variables.

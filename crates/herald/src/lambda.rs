@@ -43,6 +43,12 @@ const SERVICE: &str = "lambda";
 const VERSION: &str = "2018-06-01";
 /// What an event handing the function its own work says it is.
 const WORK: &str = "work";
+/// The variable setting the most an event invocation may carry, in bytes.
+pub(crate) const EVENT_MOST: &str = "HERALD_LAMBDA_EVENT_MOST";
+/// The most an asynchronous invocation's payload may hold where
+/// `HERALD_LAMBDA_EVENT_MOST` is unset, as Lambda's quotas give it:
+/// <https://docs.aws.amazon.com/lambda/latest/dg/gettingstarted-limits.html>.
+pub(crate) const EVENT_LIMIT: usize = 1024 * 1024;
 
 /// How the function hands itself work: its name, its region, where Lambda
 /// is reached, and its role's credentials.
@@ -53,6 +59,7 @@ struct Handing {
     access_key_id: Secret,
     secret_access_key: Secret,
     session_token: Option<Secret>,
+    most: usize,
 }
 
 impl Handing {
@@ -76,15 +83,20 @@ impl Handing {
             access_key_id: secrets.secret(id).await.map_err(|_| id)?,
             secret_access_key: secrets.secret(key).await.map_err(|_| key)?,
             session_token: secrets.secret(token).await.ok(),
+            most: vars
+                .get(EVENT_MOST)
+                .and_then(|most| most.parse().ok())
+                .filter(|most| *most > 0)
+                .unwrap_or(EVENT_LIMIT),
         })
     }
 
-    /// The request that invokes the function with `event`, not waiting for
-    /// it to finish, signed at `now`.
-    fn invocation(&self, event: &Value, now: Timestamp) -> Request {
+    /// The request that invokes the function with the event `event`, not
+    /// waiting for it to finish, signed at `now`.
+    fn invocation(&self, event: Vec<u8>, now: Timestamp) -> Request {
         let path = format!("/2015-03-31/functions/{}/invocations", self.function);
-        let request = Request::new(Method::Post, SecretText::plain(self.endpoint.at(&path)))
-            .body(event.to_string().into_bytes());
+        let request =
+            Request::new(Method::Post, SecretText::plain(self.endpoint.at(&path))).body(event);
         signed(
             request,
             &self.endpoint.canonical(&path),
@@ -313,16 +325,24 @@ impl Function<'_> {
     async fn leave(&self, left: Left, carried: &Carried) {
         if let Some((handing, http)) = &self.handing {
             let now = self.composed.host().clock().now();
-            let invocation = handing.invocation(&carried.handed(), now);
-            match http.send(invocation).await {
-                Ok(response) if response.succeeded() => return,
-                Ok(response) => self.log(&format!(
-                    "the work could not be handed on, as Lambda answered {}; it is done now",
-                    response.status
-                )),
-                Err(error) => self.log(&format!(
-                    "the work could not be handed on: {error}; it is done now"
-                )),
+            let event = carried.handed().to_string().into_bytes();
+            if event.len() > handing.most {
+                self.log(&format!(
+                    "the work could not be handed on, as its event of {} bytes is larger than the {} bytes {EVENT_MOST} lets an event carry; it is done now",
+                    event.len(),
+                    handing.most
+                ));
+            } else {
+                match http.send(handing.invocation(event, now)).await {
+                    Ok(response) if response.succeeded() => return,
+                    Ok(response) => self.log(&format!(
+                        "the work could not be handed on, as Lambda answered {}; it is done now",
+                        response.status
+                    )),
+                    Err(error) => self.log(&format!(
+                        "the work could not be handed on: {error}; it is done now"
+                    )),
+                }
             }
         }
         self.heard(Heard::Worked(self.composed.work(left).await));
