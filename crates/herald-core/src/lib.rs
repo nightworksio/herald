@@ -16,6 +16,7 @@ pub mod der;
 mod duration;
 mod escaping;
 mod event;
+mod glob;
 mod housekeep;
 mod inbound;
 mod interact;
@@ -28,6 +29,7 @@ mod ledger;
 mod marker;
 mod markup;
 pub mod media;
+mod members;
 mod pattern;
 mod profile;
 mod render;
@@ -57,6 +59,7 @@ pub use declined::Declined;
 pub use duration::Duration;
 pub use escaping::{Escaping, safe_url, unreserved};
 pub use event::{Draft, Event, Problem};
+pub use glob::{Glob, NotAGlob};
 pub use housekeep::{Chore, Schedule, due, schedules};
 pub use inbound::{
     Addressed, Algorithm, Claim, KeyForm, Refusal, Scheme, Signature, Signed, activity_claim,
@@ -78,6 +81,7 @@ pub use ledger::{
 };
 pub use marker::{Marker, Marks};
 pub use markup::{LINK_SCHEMES, Text, convert, escaped, literal};
+pub use members::{Listed, Selection, Visibility};
 pub use pattern::Pattern;
 pub use profile::{
     Bullet, Emphases, Escape, Features, Fences, Heading, Limits, Links, Markup, Measure,
