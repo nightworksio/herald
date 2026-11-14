@@ -75,15 +75,15 @@ impl Inbound {
 /// What a count a config sets counts, and how it is spoken of.
 pub trait Counted {
     /// Its name in the schema.
-    const NAME: &'static str;
+    const NAME: &str;
     /// The key that sets it.
-    const KEY: &'static str;
+    const KEY: &str;
     /// What it does with what it counts, such as "reads".
-    const VERB: &'static str;
+    const VERB: &str;
     /// What it counts, in the plural.
-    const UNIT: &'static str;
+    const UNIT: &str;
     /// What it counts, as the schema describes it.
-    const DESCRIPTION: &'static str;
+    const DESCRIPTION: &str;
     /// The count where a config sets none.
     const DEFAULT: u8;
 }
@@ -161,11 +161,11 @@ impl<C: Counted> JsonSchema for Count<C> {
 pub enum ReadBackPages {}
 
 impl Counted for ReadBackPages {
-    const NAME: &'static str = "ReadBack";
-    const KEY: &'static str = "read_back";
-    const VERB: &'static str = "reads";
-    const UNIT: &'static str = "pages";
-    const DESCRIPTION: &'static str = "How many pages of its own posts the destination reads back";
+    const NAME: &str = "ReadBack";
+    const KEY: &str = "read_back";
+    const VERB: &str = "reads";
+    const UNIT: &str = "pages";
+    const DESCRIPTION: &str = "How many pages of its own posts the destination reads back";
     const DEFAULT: u8 = 5;
 }
 
@@ -178,11 +178,11 @@ pub type ReadBack = Count<ReadBackPages>;
 pub enum LookedUpPins {}
 
 impl Counted for LookedUpPins {
-    const NAME: &'static str = "PinLookups";
-    const KEY: &'static str = "pin_lookups";
-    const VERB: &'static str = "looks up";
-    const UNIT: &'static str = "pins";
-    const DESCRIPTION: &'static str = "How many pins the destination looks up, one request each, as it finds the route's earlier pins";
+    const NAME: &str = "PinLookups";
+    const KEY: &str = "pin_lookups";
+    const VERB: &str = "looks up";
+    const UNIT: &str = "pins";
+    const DESCRIPTION: &str = "How many pins the destination looks up, one request each, as it finds the route's earlier pins";
     const DEFAULT: u8 = 25;
 }
 
@@ -217,11 +217,11 @@ impl PinLookups {
 pub enum WriteAttempts {}
 
 impl Counted for WriteAttempts {
-    const NAME: &'static str = "Attempts";
-    const KEY: &'static str = "attempts";
-    const VERB: &'static str = "makes";
-    const UNIT: &'static str = "attempts";
-    const DESCRIPTION: &'static str =
+    const NAME: &str = "Attempts";
+    const KEY: &str = "attempts";
+    const VERB: &str = "makes";
+    const UNIT: &str = "attempts";
+    const DESCRIPTION: &str =
         "How many times the store tries a write that lost a race to an unrelated write";
     const DEFAULT: u8 = 3;
 }

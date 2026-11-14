@@ -71,11 +71,11 @@ impl JsonSchema for LockLease {
 pub enum LockSightings {}
 
 impl Counted for LockSightings {
-    const NAME: &'static str = "LockPatience";
-    const KEY: &'static str = "lock_patience";
-    const VERB: &'static str = "waits for";
-    const UNIT: &'static str = "sightings";
-    const DESCRIPTION: &'static str = "How many times a lock with no time to judge its age by is found held, unchanged, before it is taken as abandoned";
+    const NAME: &str = "LockPatience";
+    const KEY: &str = "lock_patience";
+    const VERB: &str = "waits for";
+    const UNIT: &str = "sightings";
+    const DESCRIPTION: &str = "How many times a lock with no time to judge its age by is found held, unchanged, before it is taken as abandoned";
     const DEFAULT: u8 = 10;
 }
 

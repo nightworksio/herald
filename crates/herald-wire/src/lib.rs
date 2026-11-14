@@ -202,7 +202,7 @@ mod tests {
 
     #[test]
     fn each_error_reads_as_a_sentence() {
-        let errors = [
+        let errors: [(SourceError, &str); 5] = [
             (
                 SourceError::TooLarge {
                     what: "x",
@@ -230,6 +230,13 @@ mod tests {
                     status: 500,
                 },
                 "x was answered with 500",
+            ),
+            (
+                SourceError::Answered {
+                    what: "x",
+                    status: 404,
+                },
+                "x was answered with 404; check the names and ids the config gives",
             ),
         ];
         for (error, sentence) in errors {

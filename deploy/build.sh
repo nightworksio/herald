@@ -14,7 +14,7 @@ done
 locked="$(cargo metadata --format-version 1 --manifest-path "$root/Cargo.toml" --locked |
   jq -r 'first(.packages[] | select(.name == "wasm-bindgen") | .version)')"
 installed="$(wasm-bindgen --version | awk '{ print $2 }')"
-if [ "$installed" != "$locked" ]; then
+if [[ "$installed" != "$locked" ]]; then
   echo "deploy/build.sh needs wasm-bindgen $locked, as Cargo.lock holds, and found $installed; install it with: cargo install wasm-bindgen-cli --version $locked --locked" >&2
   exit 1
 fi

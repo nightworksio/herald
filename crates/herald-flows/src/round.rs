@@ -56,6 +56,14 @@ mod tests {
     use super::*;
 
     #[test]
+    fn a_round_asked_without_its_secret_is_told_how_to_ask() {
+        assert_eq!(
+            unasked(),
+            "a round was asked without its secret; send it as Authorization: Bearer, and set HERALD_ROUND_SECRET on the host where it is unset"
+        );
+    }
+
+    #[test]
     fn a_round_is_named_by_its_path_and_only_on_a_post() {
         assert_eq!(
             Round::named("POST", "/herald/round/poll"),
