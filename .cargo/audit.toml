@@ -1,5 +1,0 @@
-# wstd 0.6.8, the newest, holds instant through futures-lite 1 and fastrand 1, in
-# herald-wasi's wasm32-wasip2 build alone. instant is unmaintained, with no flaw
-# reported. deny.toml says the same.
-[advisories]
-ignore = ["RUSTSEC-2024-0384"]

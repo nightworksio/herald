@@ -49,7 +49,7 @@ jobs:
           persist-credentials: false
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: |
+          path: &cargo-cache |
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
             target
@@ -59,7 +59,7 @@ jobs:
   test:
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    services:
+    services: &postgres
       postgres:
         image: postgres:17-alpine@sha256:266d3c257594e195b309ae9d1805e54c788f1d7b375f56bf6c367aac6c917e7b
         env:
@@ -73,7 +73,7 @@ jobs:
           --health-interval 2s
           --health-timeout 5s
           --health-retries 30
-    env:
+    env: &postgres-env
       HERALD_TEST_POSTGRES: postgres://herald@localhost:5432/herald?sslmode=disable
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -82,10 +82,7 @@ jobs:
           persist-credentials: false
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: |
-            ~/.cargo/registry/index
-            ~/.cargo/registry/cache
-            target
+          path: *cargo-cache
           key: test-${{ hashFiles('rust-toolchain.toml', 'Cargo.lock') }}
       - run: .github/scripts/install-tool.sh cargo-nextest
       - run: cargo nextest run --workspace --locked --profile ci
@@ -95,22 +92,8 @@ jobs:
   coverage:
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    services:
-      postgres:
-        image: postgres:17-alpine@sha256:266d3c257594e195b309ae9d1805e54c788f1d7b375f56bf6c367aac6c917e7b
-        env:
-          POSTGRES_USER: herald
-          POSTGRES_DB: herald
-          POSTGRES_HOST_AUTH_METHOD: trust
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U herald"
-          --health-interval 2s
-          --health-timeout 5s
-          --health-retries 30
-    env:
-      HERALD_TEST_POSTGRES: postgres://herald@localhost:5432/herald?sslmode=disable
+    services: *postgres
+    env: *postgres-env
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -118,10 +101,7 @@ jobs:
           persist-credentials: false
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: |
-            ~/.cargo/registry/index
-            ~/.cargo/registry/cache
-            target
+          path: *cargo-cache
           key: coverage-${{ hashFiles('rust-toolchain.toml', 'Cargo.lock') }}
       - run: .github/scripts/install-tool.sh cargo-nextest
       - run: .github/scripts/install-tool.sh cargo-llvm-cov
@@ -169,8 +149,7 @@ jobs:
           ref: ${{ github.sha }}
           persist-credentials: false
       - run: .github/scripts/install-tool.sh cargo-audit
-      - run: cargo audit --deny warnings
-      - run: cargo audit --deny warnings --file fuzz/Cargo.lock
+      - run: .github/scripts/audit.sh Cargo.lock fuzz/Cargo.lock
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 24
@@ -214,10 +193,7 @@ jobs:
           rustup toolchain install "$RUSTUP_TOOLCHAIN" --profile minimal
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: |
-            ~/.cargo/registry/index
-            ~/.cargo/registry/cache
-            target
+          path: *cargo-cache
           key: msrv-${{ hashFiles('Cargo.toml', 'Cargo.lock') }}
       - run: cargo test --workspace --locked
 
@@ -232,22 +208,8 @@ jobs:
   wasm:
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    services:
-      postgres:
-        image: postgres:17-alpine@sha256:266d3c257594e195b309ae9d1805e54c788f1d7b375f56bf6c367aac6c917e7b
-        env:
-          POSTGRES_USER: herald
-          POSTGRES_DB: herald
-          POSTGRES_HOST_AUTH_METHOD: trust
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U herald"
-          --health-interval 2s
-          --health-timeout 5s
-          --health-retries 30
-    env:
-      HERALD_TEST_POSTGRES: postgres://herald@localhost:5432/herald?sslmode=disable
+    services: *postgres
+    env: *postgres-env
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -255,10 +217,7 @@ jobs:
           persist-credentials: false
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: |
-            ~/.cargo/registry/index
-            ~/.cargo/registry/cache
-            target
+          path: *cargo-cache
           key: wasm-${{ hashFiles('rust-toolchain.toml', 'Cargo.lock') }}
       - run: .github/scripts/install-tool.sh wasm-bindgen-test-runner
       - run: cargo clippy --locked --target wasm32-unknown-unknown -p herald-wasm --all-targets -- -D warnings
@@ -290,22 +249,8 @@ jobs:
   compute:
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    services:
-      postgres:
-        image: postgres:17-alpine@sha256:266d3c257594e195b309ae9d1805e54c788f1d7b375f56bf6c367aac6c917e7b
-        env:
-          POSTGRES_USER: herald
-          POSTGRES_DB: herald
-          POSTGRES_HOST_AUTH_METHOD: trust
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U herald"
-          --health-interval 2s
-          --health-timeout 5s
-          --health-retries 30
-    env:
-      HERALD_TEST_POSTGRES: postgres://herald@localhost:5432/herald?sslmode=disable
+    services: *postgres
+    env: *postgres-env
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -313,10 +258,7 @@ jobs:
           persist-credentials: false
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: |
-            ~/.cargo/registry/index
-            ~/.cargo/registry/cache
-            target
+          path: *cargo-cache
           key: compute-${{ hashFiles('rust-toolchain.toml', 'Cargo.lock') }}
       - run: .github/scripts/install-tool.sh wasmtime
       - run: .github/scripts/install-tool.sh viceroy
@@ -372,10 +314,7 @@ jobs:
           echo "key=${ID}-${VERSION_ID}-musl-tools-$(dpkg-query --showformat='${Version}' --show musl-tools)" >> "${GITHUB_OUTPUT}"
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: |
-            ~/.cargo/registry/index
-            ~/.cargo/registry/cache
-            target
+          path: *cargo-cache
           key: image-${{ steps.host.outputs.key }}-${{ hashFiles('rust-toolchain.toml', 'Cargo.lock') }}
       - run: rustup target add x86_64-unknown-linux-musl
       - run: cargo build --locked --release --package herald --target x86_64-unknown-linux-musl
@@ -461,22 +400,8 @@ jobs:
       fail-fast: false
       matrix:
         shard: [0, 1, 2, 3]
-    services:
-      postgres:
-        image: postgres:17-alpine@sha256:266d3c257594e195b309ae9d1805e54c788f1d7b375f56bf6c367aac6c917e7b
-        env:
-          POSTGRES_USER: herald
-          POSTGRES_DB: herald
-          POSTGRES_HOST_AUTH_METHOD: trust
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U herald"
-          --health-interval 2s
-          --health-timeout 5s
-          --health-retries 30
-    env:
-      HERALD_TEST_POSTGRES: postgres://herald@localhost:5432/herald?sslmode=disable
+    services: *postgres
+    env: *postgres-env
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

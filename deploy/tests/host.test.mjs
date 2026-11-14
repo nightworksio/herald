@@ -8,6 +8,7 @@ import { join } from "node:path";
 import { before, test } from "node:test";
 import {
   ROUNDS,
+  SCHEDULES,
   answered,
   answering,
   capped,
@@ -300,4 +301,19 @@ test("a Node header given more than once is one pair per value", () => {
     ["set-cookie", "b=2"],
     ["content-length", "2"],
   ]);
+});
+
+test("every template's own schedule asks for the rounds when the shared schedule does", async () => {
+  const read = (path) => readFile(new URL(`../${path}`, import.meta.url), "utf8");
+  const { poll, housekeep } = SCHEDULES;
+  const vercel = JSON.parse(await read("vercel/vercel.json")).crons.map((cron) => cron.schedule);
+  assert.deepEqual(vercel, [poll, housekeep]);
+  const wrangler = await read("worker/wrangler.toml");
+  assert.ok(wrangler.includes(`crons = ["${poll}", "${housekeep}"]`), wrangler);
+  assert.ok(wrangler.includes(`HERALD_HOUSEKEEP_CRON = "${housekeep}"`), wrangler);
+  for (const [round, schedule] of Object.entries(SCHEDULES)) {
+    assert.ok((await read(`netlify/functions/${round}.mjs`)).includes(`schedule: "${schedule}"`), round);
+    const azure = JSON.parse(await read(`azure/${round}/function.json`)).bindings[0].schedule;
+    assert.equal(azure, `0 ${schedule}`);
+  }
 });

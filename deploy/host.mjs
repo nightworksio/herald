@@ -13,6 +13,8 @@ export const TIMEOUT = 30_000;
 
 export const ROUNDS = ["poll", "housekeep"];
 
+export const SCHEDULES = { poll: "*/5 * * * *", housekeep: "17 * * * *" };
+
 const CONFIG = "herald.toml";
 
 export function configPath(env) {
