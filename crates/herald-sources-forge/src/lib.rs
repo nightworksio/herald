@@ -31,3 +31,4 @@ pub use options::{
     MOST_MEMBERS_ALLOWED, Members, Override, Signals, SourceOptions, TAG_WINDOW,
     TAG_WINDOW_ALLOWED, Transport, Values,
 };
+pub use polled::tag_event_of;

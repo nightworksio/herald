@@ -421,3 +421,100 @@ fn a_repository_without_a_page_or_an_unreadable_tag_fails_the_poll() {
         Err(Unpolled::Unreadable(_))
     ));
 }
+
+fn one_tag(forge: Forge, http: &Scripted) -> Result<Event, Unpolled> {
+    let options = SourceOptions {
+        repository: Some("o/r".to_owned()),
+        api: Some("https://forge.example/api".to_owned()),
+        ..SourceOptions::default()
+    };
+    let origin = Origin::new(forge, &options, "o/r");
+    pollster::block_on(tag_event_of(
+        &origin,
+        http,
+        ("v1-rc.1", None),
+        PrereleaseRule::Tag,
+    ))
+}
+
+#[test]
+fn one_tag_is_read_in_full_on_each_forge() {
+    let gitlab = Scripted::new(vec![
+        repository(Forge::GitLab),
+        answer(
+            200,
+            &json!({"name": "v1-rc.1", "message": "One", "created_at": "2026-11-01T10:00:00Z"}),
+            None,
+        ),
+    ]);
+    let event = one_tag(Forge::GitLab, &gitlab).unwrap();
+    assert_eq!(
+        (event.identity().as_str(), event.body(), event.prerelease()),
+        ("forge.example/7/v1-rc.1", "One", true)
+    );
+    assert_eq!(
+        gitlab.asked()[1].0,
+        "https://forge.example/api/projects/o%2Fr/repository/tags/v1-rc.1"
+    );
+    let forgejo = Scripted::new(vec![
+        repository(Forge::Forgejo),
+        answer(
+            200,
+            &json!({"name": "v1-rc.1", "message": "", "id": "c", "commit": {"sha": "c", "created": "2026-11-01T10:00:00Z"}}),
+            None,
+        ),
+    ]);
+    assert_eq!(
+        one_tag(Forge::Forgejo, &forgejo).map(|event| event.signal()),
+        Ok(Some(Signal::Tag))
+    );
+    assert_eq!(
+        forgejo.asked()[1].0,
+        "https://forge.example/api/repos/o/r/tags/v1-rc.1"
+    );
+    let github = Scripted::new(vec![
+        repository(Forge::GitHub),
+        answer(
+            200,
+            &json!({"object": {"type": "commit", "sha": "c"}}),
+            None,
+        ),
+        answer(
+            200,
+            &json!({"committer": {"date": "2026-11-01T10:00:00Z"}}),
+            None,
+        ),
+    ]);
+    assert!(one_tag(Forge::GitHub, &github).is_ok());
+    assert_eq!(github.asked().len(), 3);
+    let pageless = Scripted::new(vec![answer(200, &json!({"id": 7, "name": "r"}), None)]);
+    assert_eq!(
+        one_tag(Forge::GitHub, &pageless),
+        Err(Unpolled::Unreadable(
+            "GitHub's repository names no web page of the repository".to_owned()
+        ))
+    );
+    let missing = Scripted::new(vec![
+        repository(Forge::GitLab),
+        answer(404, &json!({}), None),
+    ]);
+    assert!(matches!(
+        one_tag(Forge::GitLab, &missing),
+        Err(Unpolled::Unreadable(_))
+    ));
+    let unreachable = Scripted::new(Vec::new());
+    assert!(matches!(
+        one_tag(Forge::GitLab, &unreachable),
+        Err(Unpolled::Unreachable(_))
+    ));
+    let undescribed = Scripted::new(vec![answer(500, &json!({}), None)]);
+    assert!(matches!(
+        one_tag(Forge::GitLab, &undescribed),
+        Err(Unpolled::Unreadable(_))
+    ));
+    let unanswered = Scripted::new(vec![repository(Forge::GitLab)]);
+    assert!(matches!(
+        one_tag(Forge::GitLab, &unanswered),
+        Err(Unpolled::Unreachable(_))
+    ));
+}

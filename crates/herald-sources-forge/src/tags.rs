@@ -117,7 +117,55 @@ fn worded(message: Option<String>) -> Option<String> {
     message.filter(|message| !message.trim().is_empty())
 }
 
+impl From<GitLabTag> for Listed {
+    fn from(tag: GitLabTag) -> Self {
+        Self::Read(ForgeTag {
+            date: tag
+                .created_at
+                .or_else(|| tag.commit.and_then(|commit| commit.committed_date)),
+            message: worded(tag.message),
+            name: tag.name,
+        })
+    }
+}
+
+impl From<ForgejoTag> for Listed {
+    fn from(tag: ForgejoTag) -> Self {
+        if tag.id == tag.commit.sha {
+            Self::Read(ForgeTag {
+                name: tag.name,
+                message: None,
+                date: tag.commit.created,
+            })
+        } else {
+            Self::Annotated {
+                name: tag.name,
+                object: tag.id,
+                message: worded(tag.message),
+            }
+        }
+    }
+}
+
 impl Forge {
+    /// The tag `name` as the forge's answer to [`crate::Origin::tag_request`]
+    /// names it; on GitHub, whose tag is read through its reference, the
+    /// answer is not read.
+    pub(crate) fn tag(self, name: &str, response: &Response) -> Result<Listed, SourceError> {
+        let what = self.api().tag;
+        match self {
+            Self::GitHub => Ok(Listed::Referenced(name.to_owned())),
+            Self::GitLab => {
+                answered(what, response)?;
+                crate::wire::read::<GitLabTag>(what, &response.body).map(Listed::from)
+            }
+            Self::Forgejo => {
+                answered(what, response)?;
+                crate::wire::read::<ForgejoTag>(what, &response.body).map(Listed::from)
+            }
+        }
+    }
+
     /// The tags the forge's answer to [`crate::Origin::tags_request`] lists,
     /// newest first as the forge orders them, parsing no more than `limit`
     /// bytes.
@@ -136,33 +184,11 @@ impl Forge {
                 .collect(),
             Self::GitLab => herald_wire::read::<Vec<GitLabTag>>(what, limit, body)?
                 .into_iter()
-                .map(|tag| {
-                    Listed::Read(ForgeTag {
-                        date: tag
-                            .created_at
-                            .or_else(|| tag.commit.and_then(|commit| commit.committed_date)),
-                        message: worded(tag.message),
-                        name: tag.name,
-                    })
-                })
+                .map(Listed::from)
                 .collect(),
             Self::Forgejo => herald_wire::read::<Vec<ForgejoTag>>(what, limit, body)?
                 .into_iter()
-                .map(|tag| {
-                    if tag.id == tag.commit.sha {
-                        Listed::Read(ForgeTag {
-                            name: tag.name,
-                            message: None,
-                            date: tag.commit.created,
-                        })
-                    } else {
-                        Listed::Annotated {
-                            name: tag.name,
-                            object: tag.id,
-                            message: worded(tag.message),
-                        }
-                    }
-                })
+                .map(Listed::from)
                 .collect(),
         })
     }

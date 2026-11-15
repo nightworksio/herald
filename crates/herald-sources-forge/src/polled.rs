@@ -151,6 +151,54 @@ impl Releases {
     }
 }
 
+/// The event of the tag `tag` of the repository `origin` names, read in
+/// full through `http` with `token`, its pre-release told by `rule`: what a
+/// CI run for a tag announces (ADR-0032).
+///
+/// # Errors
+///
+/// Where the forge cannot be reached, or its answers cannot be read.
+pub async fn tag_event_of(
+    origin: &Origin,
+    http: &dyn DynHttp,
+    (tag, token): (&str, Option<&Token>),
+    rule: herald_core::PrereleaseRule,
+) -> Result<Event, Unpolled> {
+    let releases = Releases {
+        origin: origin.clone(),
+        token: token.cloned(),
+        project: None,
+        signals: Signals {
+            taken: [Signal::Tag].into(),
+            prerelease: rule,
+        },
+        backfill: 0,
+        held: None,
+    };
+    let http = Erased(http);
+    let forge = origin.forge();
+    let described = releases
+        .ask(&http, origin.repository_request(token))
+        .await?;
+    let repository = forge.repository(&described).map_err(Unpolled::unreadable)?;
+    let listed = match forge {
+        Forge::GitHub => Listed::Referenced(tag.to_owned()),
+        Forge::GitLab | Forge::Forgejo => {
+            let answer = releases.ask(&http, origin.tag_request(tag, token)).await?;
+            forge.tag(tag, &answer).map_err(Unpolled::unreadable)?
+        }
+    };
+    let page = repository.page.as_deref().ok_or_else(|| {
+        Unpolled::Unreadable(format!(
+            "{} names no web page of the repository",
+            forge.api().repository
+        ))
+    })?;
+    let url = forge.tag_page(page, tag);
+    let read = releases.read(&http, listed).await?;
+    tag_event(forge.api().tags, &repository, (read, url), rule).map_err(Unpolled::unreadable)
+}
+
 impl Poll for Releases {
     fn api(&self) -> &str {
         self.origin.api()

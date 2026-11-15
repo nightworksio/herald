@@ -614,6 +614,17 @@ impl Origin {
         )
     }
 
+    /// The request for the tag `tag` on GitLab or Forgejo; GitHub reads a
+    /// tag through its reference.
+    #[must_use]
+    pub fn tag_request(&self, tag: &str, token: Option<&Token>) -> Request {
+        let path = match self.forge {
+            Forge::GitLab => format!("/repository/tags/{}", unreserved(tag)),
+            Forge::GitHub | Forge::Forgejo => format!("/tags/{}", segments(tag)),
+        };
+        self.get(&path, token)
+    }
+
     /// The request for GitHub's reference of the tag `tag`, naming what it
     /// points at.
     #[must_use]

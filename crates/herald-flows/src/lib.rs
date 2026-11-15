@@ -44,7 +44,7 @@ pub use doctor::{
 pub use follows::{FollowError, Followed, followed};
 pub use herald_kinds::Replying;
 pub use housekeep::{Chored, Housekept, HousekeptSchedule, housekeep, housekeep_announcing};
-pub use poll::{Fresh, Remembered, Sweep, Swept, announce_held, poll};
+pub use poll::{Fresh, Remembered, Sweep, Swept, announce_held, held_or_announced, poll};
 pub use prepare::{Connected, PrepareError, Prepared, UnreadSecret, prepare};
 pub use preview::{Previewed, preview};
 pub use room::{Place, Room, Running};
