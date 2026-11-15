@@ -11,7 +11,11 @@ use crate::config::{Doctor, Guard};
 use crate::kinds::At;
 
 impl Loader<'_> {
-    pub(super) fn sources(&mut self, value: Option<Value<'_>>) -> BTreeMap<SourceName, Source> {
+    pub(super) fn sources(
+        &mut self,
+        value: Option<Value<'_>>,
+        read: &dyn Fn(&str) -> Result<String, String>,
+    ) -> BTreeMap<SourceName, Source> {
         let mut sources = BTreeMap::new();
         for (name, value) in self.named(value, "sources") {
             let path = format!("sources.{name}");
@@ -26,7 +30,7 @@ impl Loader<'_> {
             };
             let source = kinds
                 .source_named(&kind)
-                .and_then(|kind| kind.parse(self, rest, at));
+                .and_then(|kind| kind.parse(self, rest, at, read));
             if let Some(source) = source {
                 sources.insert(SourceName::new(name), source);
             }

@@ -253,7 +253,13 @@ fn clean(loader: &mut Loader<'_>, at: At<'_>, faults: &[Fault]) -> bool {
 pub(crate) trait SourceKinded: Send + Sync {
     fn name(&self) -> &'static str;
 
-    fn parse(&self, loader: &mut Loader<'_>, rest: Value<'_>, at: At<'_>) -> Option<Source>;
+    fn parse(
+        &self,
+        loader: &mut Loader<'_>,
+        rest: Value<'_>,
+        at: At<'_>,
+        read: &dyn Fn(&str) -> Result<String, String>,
+    ) -> Option<Source>;
 
     fn schema(&self, generator: &mut SchemaGenerator) -> Schema;
 }
@@ -267,9 +273,15 @@ where
         K::NAME
     }
 
-    fn parse(&self, loader: &mut Loader<'_>, rest: Value<'_>, at: At<'_>) -> Option<Source> {
+    fn parse(
+        &self,
+        loader: &mut Loader<'_>,
+        rest: Value<'_>,
+        at: At<'_>,
+        read: &dyn Fn(&str) -> Result<String, String>,
+    ) -> Option<Source> {
         let file = loader.typed::<K::File>(rest, at.path)?;
-        match K::checked(file) {
+        match K::checked(file).and_then(|options| K::read(options, read)) {
             Ok(options) => Some(Source::new(options)),
             Err(fault) => {
                 clean(loader, at, &[fault]);

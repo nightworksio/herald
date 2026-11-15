@@ -4,6 +4,7 @@ use herald_core::{Cursor, Kind, Polled, SecretRef};
 use herald_kinds::{Fault, Poll, Polling, SourceConfig, SourceKind, Unpolled};
 use herald_ports::{Boxed, DynHttp, Erased, Http as _, Secret};
 
+use crate::feed::untitled;
 use crate::{Feed, FeedOptions};
 
 /// An RSS or Atom feed, as a kind of source.
@@ -37,6 +38,10 @@ impl SourceConfig for FeedOptions {
 
     fn backfill(&self) -> usize {
         self.backfill
+    }
+
+    fn projects(&self) -> Vec<String> {
+        vec![untitled(&self.url)]
     }
 
     fn poller(&self, _: Option<Secret>) -> Polling {

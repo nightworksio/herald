@@ -470,26 +470,52 @@ A GitHub repository's releases.
 | `sources.<name>.backfill` | integer | How many of the newest releases the first poll announces; none where absent (ADR-0003). For an owner, it applies to the members the first listing finds; a member found later announces only what it publishes after it was found. |
 | `sources.<name>.exclude` | array of string | The names left out, as `include` writes them, whatever `include` says. |
 | `sources.<name>.fork` | boolean | Whether forks are taken. |
+| `sources.<name>.graphql` | string | The GraphQL endpoint of a GitHub owner source; beside `api` where absent: `/api/graphql` on a GitHub Enterprise Server whose `api` ends in `/api/v3`, and `/graphql` on GitHub and GHE.com. |
+| `sources.<name>.graphql_batch` | integer | How many members one GraphQL request asks for; 50 where absent, and at most 100. |
 | `sources.<name>.include` | array of string | The names of the owner's repositories taken, as globs in which `*` stands for any run of characters, `?` for any one and `[...]` for any one of a class, ignoring case; every name where absent. |
 | `sources.<name>.keep_members` | [Duration](#duration) | How long a member that left the selection keeps its cursor before it is forgotten; "30d" where absent. |
+| `sources.<name>.key` | string | The field each entry of the member file names its repository by; "name" where absent. |
 | `sources.<name>.kind` | string |  |
 | `sources.<name>.language` | array of string | Languages, any one of which a member is written in; any where absent. |
 | `sources.<name>.listed_page` | integer | How many repositories one page of the listing asks for; 100 where absent on GitHub and GitLab, and 50 on Forgejo, whose instances answer at most 50 unless configured otherwise. |
+
+### `sources.<name>.members` of kind `github`: A file beside the config, such as `repos.toml`
+
+| Setting | Type | What it sets |
+|---------|------|--------------|
+| `sources.<name>.members` | table | A file beside the config, such as `repos.toml`. |
+| `sources.<name>.members.file` | string | Its path, from the config's directory. |
+
+### `sources.<name>.members` of kind `github`: A file in a repository on the source's forge, read through its API with the source's token each round
+
+| Setting | Type | What it sets |
+|---------|------|--------------|
+| `sources.<name>.members` | table | A file in a repository on the source's forge, read through its API with the source's token each round. |
+| `sources.<name>.members.path` | string | The file's path in it. |
+| `sources.<name>.members.ref` | string | The branch, tag or commit it is read at; the default branch where absent. |
+| `sources.<name>.members.repository` | string | The repository, as `repository` writes one. |
+
+| Setting | Type | What it sets |
+|---------|------|--------------|
 | `sources.<name>.most_listed` | integer | The most repositories a listing reads before the filters; 10000 where absent. A listing over it refuses the source for the round. |
 | `sources.<name>.most_members` | integer | The most members the filters may keep; 1000 where absent, and at most 100000. A selection over it refuses the source for the round. |
 | `sources.<name>.owner` | string | The organization, GitLab group or user whose repositories are the source's members, each polled on its own, in place of `repository`. |
 | `sources.<name>.page` | integer | How many of the newest releases one poll reads; 30 where absent. |
 | `sources.<name>.parse` | [Size](#size) | The most of an answer parsed; "4MiB" where absent, and at most four times that. |
+| `sources.<name>.project` | string | The project a member's events are announced as, a template of `repository.name`, `repository.path`, `repository.owner`, `repository.id`, `repository.topics`, `repository.properties` and `repository.visibility`; the repository's name where absent. |
 | `sources.<name>.properties.<name>` | [Values](#values) | A property's values: one, or any of several. |
 | `sources.<name>.remembered` | integer | How many identities the cursor remembers, newest first; 500 where absent, and at least `page`. |
+| `sources.<name>.repositories.<name>.project` | string | The project their events are announced as, a template as the source's `project` is; the source's where absent. |
 | `sources.<name>.repository` | string | The repository, as `owner/name`, or a GitLab project's full path, such as `group/subgroup/name`; or `owner` in its place. |
 | `sources.<name>.subgroups` | boolean | Whether a GitLab group's members include the projects of its subgroups; true where absent. |
+| `sources.<name>.tables` | array of string | The arrays of the member file that list repositories, such as `["repo", "ungoverned"]`; the file's own array where absent, which only JSON can hold. |
 | `sources.<name>.template` | boolean | Whether template repositories are taken. |
 | `sources.<name>.token` | table | A token that reaches a private repository or raises the API's rate limit, such as the run's `GITHUB_TOKEN`. |
 | `sources.<name>.token.secret` | string | The secret's name. |
 | `sources.<name>.topics` | array of string | Topics, any one of which a member holds; any where absent. |
+| `sources.<name>.transport` | [Transport](#transport) | How a GitHub owner's members are polled; "auto" where absent. |
 | `sources.<name>.visibility` | array of [RepositoryVisibility](#repositoryvisibility) | The visibilities taken; only public repositories where absent. A repository whose visibility the forge does not name is private. A route that takes a private or internal member is refused unless it is `private` (`[doctor] private_to_public`). |
-| `sources.<name>.webhook` | table | The secret the forge signs its webhook deliveries to `herald server` with: GitHub's and Forgejo's webhook secret, or GitLab's signing token (ADR-0007). A source of one repository only. |
+| `sources.<name>.webhook` | table | The secret the forge signs its webhook deliveries to `herald server` with: GitHub's and Forgejo's webhook secret, or GitLab's signing token (ADR-0007). An owner source takes its repositories' and its organization's deliveries, and announces one only where the owner's last membership record holds the repository when its work runs. |
 | `sources.<name>.webhook.secret` | string | The secret's name. |
 
 ### `sources.<name>` of kind `gitlab`
@@ -504,26 +530,52 @@ A GitLab project's releases.
 | `sources.<name>.backfill` | integer | How many of the newest releases the first poll announces; none where absent (ADR-0003). For an owner, it applies to the members the first listing finds; a member found later announces only what it publishes after it was found. |
 | `sources.<name>.exclude` | array of string | The names left out, as `include` writes them, whatever `include` says. |
 | `sources.<name>.fork` | boolean | Whether forks are taken. |
+| `sources.<name>.graphql` | string | The GraphQL endpoint of a GitHub owner source; beside `api` where absent: `/api/graphql` on a GitHub Enterprise Server whose `api` ends in `/api/v3`, and `/graphql` on GitHub and GHE.com. |
+| `sources.<name>.graphql_batch` | integer | How many members one GraphQL request asks for; 50 where absent, and at most 100. |
 | `sources.<name>.include` | array of string | The names of the owner's repositories taken, as globs in which `*` stands for any run of characters, `?` for any one and `[...]` for any one of a class, ignoring case; every name where absent. |
 | `sources.<name>.keep_members` | [Duration](#duration) | How long a member that left the selection keeps its cursor before it is forgotten; "30d" where absent. |
+| `sources.<name>.key` | string | The field each entry of the member file names its repository by; "name" where absent. |
 | `sources.<name>.kind` | string |  |
 | `sources.<name>.language` | array of string | Languages, any one of which a member is written in; any where absent. |
 | `sources.<name>.listed_page` | integer | How many repositories one page of the listing asks for; 100 where absent on GitHub and GitLab, and 50 on Forgejo, whose instances answer at most 50 unless configured otherwise. |
+
+### `sources.<name>.members` of kind `gitlab`: A file beside the config, such as `repos.toml`
+
+| Setting | Type | What it sets |
+|---------|------|--------------|
+| `sources.<name>.members` | table | A file beside the config, such as `repos.toml`. |
+| `sources.<name>.members.file` | string | Its path, from the config's directory. |
+
+### `sources.<name>.members` of kind `gitlab`: A file in a repository on the source's forge, read through its API with the source's token each round
+
+| Setting | Type | What it sets |
+|---------|------|--------------|
+| `sources.<name>.members` | table | A file in a repository on the source's forge, read through its API with the source's token each round. |
+| `sources.<name>.members.path` | string | The file's path in it. |
+| `sources.<name>.members.ref` | string | The branch, tag or commit it is read at; the default branch where absent. |
+| `sources.<name>.members.repository` | string | The repository, as `repository` writes one. |
+
+| Setting | Type | What it sets |
+|---------|------|--------------|
 | `sources.<name>.most_listed` | integer | The most repositories a listing reads before the filters; 10000 where absent. A listing over it refuses the source for the round. |
 | `sources.<name>.most_members` | integer | The most members the filters may keep; 1000 where absent, and at most 100000. A selection over it refuses the source for the round. |
 | `sources.<name>.owner` | string | The organization, GitLab group or user whose repositories are the source's members, each polled on its own, in place of `repository`. |
 | `sources.<name>.page` | integer | How many of the newest releases one poll reads; 30 where absent. |
 | `sources.<name>.parse` | [Size](#size) | The most of an answer parsed; "4MiB" where absent, and at most four times that. |
+| `sources.<name>.project` | string | The project a member's events are announced as, a template of `repository.name`, `repository.path`, `repository.owner`, `repository.id`, `repository.topics`, `repository.properties` and `repository.visibility`; the repository's name where absent. |
 | `sources.<name>.properties.<name>` | [Values](#values) | A property's values: one, or any of several. |
 | `sources.<name>.remembered` | integer | How many identities the cursor remembers, newest first; 500 where absent, and at least `page`. |
+| `sources.<name>.repositories.<name>.project` | string | The project their events are announced as, a template as the source's `project` is; the source's where absent. |
 | `sources.<name>.repository` | string | The repository, as `owner/name`, or a GitLab project's full path, such as `group/subgroup/name`; or `owner` in its place. |
 | `sources.<name>.subgroups` | boolean | Whether a GitLab group's members include the projects of its subgroups; true where absent. |
+| `sources.<name>.tables` | array of string | The arrays of the member file that list repositories, such as `["repo", "ungoverned"]`; the file's own array where absent, which only JSON can hold. |
 | `sources.<name>.template` | boolean | Whether template repositories are taken. |
 | `sources.<name>.token` | table | A token that reaches a private repository or raises the API's rate limit, such as the run's `GITHUB_TOKEN`. |
 | `sources.<name>.token.secret` | string | The secret's name. |
 | `sources.<name>.topics` | array of string | Topics, any one of which a member holds; any where absent. |
+| `sources.<name>.transport` | [Transport](#transport) | How a GitHub owner's members are polled; "auto" where absent. |
 | `sources.<name>.visibility` | array of [RepositoryVisibility](#repositoryvisibility) | The visibilities taken; only public repositories where absent. A repository whose visibility the forge does not name is private. A route that takes a private or internal member is refused unless it is `private` (`[doctor] private_to_public`). |
-| `sources.<name>.webhook` | table | The secret the forge signs its webhook deliveries to `herald server` with: GitHub's and Forgejo's webhook secret, or GitLab's signing token (ADR-0007). A source of one repository only. |
+| `sources.<name>.webhook` | table | The secret the forge signs its webhook deliveries to `herald server` with: GitHub's and Forgejo's webhook secret, or GitLab's signing token (ADR-0007). An owner source takes its repositories' and its organization's deliveries, and announces one only where the owner's last membership record holds the repository when its work runs. |
 | `sources.<name>.webhook.secret` | string | The secret's name. |
 
 ### `sources.<name>` of kind `forgejo`
@@ -538,26 +590,52 @@ A Forgejo or Gitea repository's releases.
 | `sources.<name>.backfill` | integer | How many of the newest releases the first poll announces; none where absent (ADR-0003). For an owner, it applies to the members the first listing finds; a member found later announces only what it publishes after it was found. |
 | `sources.<name>.exclude` | array of string | The names left out, as `include` writes them, whatever `include` says. |
 | `sources.<name>.fork` | boolean | Whether forks are taken. |
+| `sources.<name>.graphql` | string | The GraphQL endpoint of a GitHub owner source; beside `api` where absent: `/api/graphql` on a GitHub Enterprise Server whose `api` ends in `/api/v3`, and `/graphql` on GitHub and GHE.com. |
+| `sources.<name>.graphql_batch` | integer | How many members one GraphQL request asks for; 50 where absent, and at most 100. |
 | `sources.<name>.include` | array of string | The names of the owner's repositories taken, as globs in which `*` stands for any run of characters, `?` for any one and `[...]` for any one of a class, ignoring case; every name where absent. |
 | `sources.<name>.keep_members` | [Duration](#duration) | How long a member that left the selection keeps its cursor before it is forgotten; "30d" where absent. |
+| `sources.<name>.key` | string | The field each entry of the member file names its repository by; "name" where absent. |
 | `sources.<name>.kind` | string |  |
 | `sources.<name>.language` | array of string | Languages, any one of which a member is written in; any where absent. |
 | `sources.<name>.listed_page` | integer | How many repositories one page of the listing asks for; 100 where absent on GitHub and GitLab, and 50 on Forgejo, whose instances answer at most 50 unless configured otherwise. |
+
+### `sources.<name>.members` of kind `forgejo`: A file beside the config, such as `repos.toml`
+
+| Setting | Type | What it sets |
+|---------|------|--------------|
+| `sources.<name>.members` | table | A file beside the config, such as `repos.toml`. |
+| `sources.<name>.members.file` | string | Its path, from the config's directory. |
+
+### `sources.<name>.members` of kind `forgejo`: A file in a repository on the source's forge, read through its API with the source's token each round
+
+| Setting | Type | What it sets |
+|---------|------|--------------|
+| `sources.<name>.members` | table | A file in a repository on the source's forge, read through its API with the source's token each round. |
+| `sources.<name>.members.path` | string | The file's path in it. |
+| `sources.<name>.members.ref` | string | The branch, tag or commit it is read at; the default branch where absent. |
+| `sources.<name>.members.repository` | string | The repository, as `repository` writes one. |
+
+| Setting | Type | What it sets |
+|---------|------|--------------|
 | `sources.<name>.most_listed` | integer | The most repositories a listing reads before the filters; 10000 where absent. A listing over it refuses the source for the round. |
 | `sources.<name>.most_members` | integer | The most members the filters may keep; 1000 where absent, and at most 100000. A selection over it refuses the source for the round. |
 | `sources.<name>.owner` | string | The organization, GitLab group or user whose repositories are the source's members, each polled on its own, in place of `repository`. |
 | `sources.<name>.page` | integer | How many of the newest releases one poll reads; 30 where absent. |
 | `sources.<name>.parse` | [Size](#size) | The most of an answer parsed; "4MiB" where absent, and at most four times that. |
+| `sources.<name>.project` | string | The project a member's events are announced as, a template of `repository.name`, `repository.path`, `repository.owner`, `repository.id`, `repository.topics`, `repository.properties` and `repository.visibility`; the repository's name where absent. |
 | `sources.<name>.properties.<name>` | [Values](#values) | A property's values: one, or any of several. |
 | `sources.<name>.remembered` | integer | How many identities the cursor remembers, newest first; 500 where absent, and at least `page`. |
+| `sources.<name>.repositories.<name>.project` | string | The project their events are announced as, a template as the source's `project` is; the source's where absent. |
 | `sources.<name>.repository` | string | The repository, as `owner/name`, or a GitLab project's full path, such as `group/subgroup/name`; or `owner` in its place. |
 | `sources.<name>.subgroups` | boolean | Whether a GitLab group's members include the projects of its subgroups; true where absent. |
+| `sources.<name>.tables` | array of string | The arrays of the member file that list repositories, such as `["repo", "ungoverned"]`; the file's own array where absent, which only JSON can hold. |
 | `sources.<name>.template` | boolean | Whether template repositories are taken. |
 | `sources.<name>.token` | table | A token that reaches a private repository or raises the API's rate limit, such as the run's `GITHUB_TOKEN`. |
 | `sources.<name>.token.secret` | string | The secret's name. |
 | `sources.<name>.topics` | array of string | Topics, any one of which a member holds; any where absent. |
+| `sources.<name>.transport` | [Transport](#transport) | How a GitHub owner's members are polled; "auto" where absent. |
 | `sources.<name>.visibility` | array of [RepositoryVisibility](#repositoryvisibility) | The visibilities taken; only public repositories where absent. A repository whose visibility the forge does not name is private. A route that takes a private or internal member is refused unless it is `private` (`[doctor] private_to_public`). |
-| `sources.<name>.webhook` | table | The secret the forge signs its webhook deliveries to `herald server` with: GitHub's and Forgejo's webhook secret, or GitLab's signing token (ADR-0007). A source of one repository only. |
+| `sources.<name>.webhook` | table | The secret the forge signs its webhook deliveries to `herald server` with: GitHub's and Forgejo's webhook secret, or GitLab's signing token (ADR-0007). An owner source takes its repositories' and its organization's deliveries, and announces one only where the owner's last membership record holds the repository when its work runs. |
 | `sources.<name>.webhook.secret` | string | The secret's name. |
 
 ### `sources.<name>` of kind `packagist`
@@ -975,6 +1053,10 @@ How Slack carries commands to herald.
 How Docker Hub lists a repository's tags.
 
 ### TokenHash
+
+### Transport
+
+How an owner's members are polled on GitHub.
 
 ### Values
 

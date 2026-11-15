@@ -356,6 +356,14 @@ impl<R: RecordBackend> Cursors for RecordStore<R> {
         Ok(found)
     }
 
+    async fn member(
+        &self,
+        source: &SourceName,
+        id: &str,
+    ) -> Result<Option<Versioned<Membership>>, StoreError> {
+        self.listed(&paths::member(source, id)).await
+    }
+
     async fn put_member(
         &self,
         source: &SourceName,

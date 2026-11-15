@@ -653,6 +653,47 @@ fn an_owner_is_listed_online_and_members_sharing_a_project_name_or_passing_a_cap
             "The source gate: 2 repositories of nightworksio are taken, more than most_members, 1; raise it, or narrow the filters."
         ]
     );
+    let mut filed = owned_in("", |_| {});
+    if let Some(source) = filed.sources.values_mut().next()
+        && let Some(mut forged) = source.of::<herald_sources_forge::ForgeSource>().cloned()
+    {
+        forged.names = Some(vec!["herald".to_owned(), "gone".to_owned()]);
+        *source = herald_config::Source::new(forged);
+    }
+    let findings = listed_online(&filed, &probe(&[(LISTING, 200, &two)]));
+    assert_eq!(
+        findings.mistakes,
+        [
+            "The source gate's member file names gone, which its owner does not hold; correct or remove them."
+        ]
+    );
+    assert!(
+        findings
+            .notes
+            .contains(&"The source gate takes 1 repository.".to_owned())
+    );
+    let renamed = owned_in("", |options| {
+        options.project = Some("{{ repository.owner }}".to_owned());
+    });
+    let findings = listed_online(&renamed, &probe(&[(LISTING, 200, &two)]));
+    assert_eq!(
+        findings.mistakes,
+        [
+            "gate's nightworksio/herald, gate's nightworksio/gate are all announced as the project nightworksio; leave all but one out with exclude, or name a narrower owner."
+        ]
+    );
+    let unnamed = owned_in("", |options| {
+        options.project = Some("{{ repository.properties.team[0] }}".to_owned());
+    });
+    let findings = listed_online(&unnamed, &probe(&[(LISTING, 200, &two)]));
+    assert_eq!(findings.mistakes.len(), 2);
+    assert!(
+        findings.mistakes[0].starts_with(
+            "The source gate names no project for nightworksio/herald: template project: "
+        ),
+        "{}",
+        findings.mistakes[0]
+    );
     let findings = listed_online(&config, &probe(&[(LISTING, 500, "{}")]));
     assert_eq!(keyed(&findings), [("sources.gate.owner", None)]);
     assert_eq!(

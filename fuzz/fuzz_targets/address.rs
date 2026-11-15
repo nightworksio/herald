@@ -22,12 +22,25 @@ fuzz_target!(|text: &str| {
         let address = Address::parse(text).expect("a socket taken is an address");
         assert_eq!(address.scheme(), "wss");
         assert!(!address.names_a_user());
-        assert!(DOMAINS.iter().any(|domain| under_domain(address.host(), domain)));
+        assert!(
+            DOMAINS
+                .iter()
+                .any(|domain| under_domain(address.host(), domain))
+        );
     }
     if web_url(text) {
         assert!(Address::parse(text).is_some());
     }
     let escaped = Escaping::UNRESERVED.escape(text);
-    assert!(escaped.bytes().all(|byte| (Escaping::UNRESERVED.keeps)(byte) || byte == b'%' || byte.is_ascii_hexdigit()));
-    assert_eq!(Escaping::UNRESERVED.unescape(&escaped).as_deref(), Some(text));
+    assert!(
+        escaped
+            .bytes()
+            .all(|byte| (Escaping::UNRESERVED.keeps)(byte)
+                || byte == b'%'
+                || byte.is_ascii_hexdigit())
+    );
+    assert_eq!(
+        Escaping::UNRESERVED.unescape(&escaped).as_deref(),
+        Some(text)
+    );
 });

@@ -56,6 +56,22 @@ impl Cursors for Faulty {
         Ok(held)
     }
 
+    async fn member(
+        &self,
+        source: &SourceName,
+        id: &str,
+    ) -> Result<Option<Versioned<Membership>>, StoreError> {
+        self.refuses()?;
+        match self.inner.member(source, id).await? {
+            None if self.fault == Fault::ReadsOtherSourcesMember => {
+                self.inner
+                    .member(&SourceName::new(super::members::OTHER), id)
+                    .await
+            }
+            held => Ok(held),
+        }
+    }
+
     async fn put_member(
         &self,
         source: &SourceName,

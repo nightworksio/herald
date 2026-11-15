@@ -1,4 +1,4 @@
-use herald_core::{Cursor, Event, KeyForm, Polled, Scheme, Signed, unreserved};
+use herald_core::{Cursor, Event, KeyForm, Polled, Scheme, Selection, Signed, unreserved};
 use herald_core::{media, status};
 use herald_kinds::Hooked;
 use herald_ports::{Method, Request, Response, Secret, SecretText};
@@ -75,6 +75,8 @@ pub(crate) struct Api {
     pub(crate) release: &'static str,
     /// What its listing of an owner's repositories is called.
     pub(crate) listing: &'static str,
+    /// What a file it serves raw is called.
+    pub(crate) file: &'static str,
     /// The page size an owner's listing asks for where `listed_page` is
     /// absent.
     pub(crate) listed_page: std::num::NonZeroUsize,
@@ -82,6 +84,9 @@ pub(crate) struct Api {
 
 /// Why a webhook delivery of another event announces nothing.
 const OTHER_EVENT: &str = "the delivery is not of a release";
+/// Why a webhook delivery of a repository the owner source does not take
+/// announces nothing.
+const UNSELECTED: &str = "the repository is not one the source takes";
 /// Why a webhook delivery of an unpublished release announces nothing.
 const UNPUBLISHED: &str = "the release is not published, or is a draft";
 
@@ -206,16 +211,7 @@ impl Forge {
         payload: &[u8],
         repository: &str,
     ) -> Result<Hooked, SourceError> {
-        let (names, release): (&[&str], &str) = match self {
-            Self::GitHub => (&["x-github-event"], "release"),
-            Self::Forgejo => (&["x-forgejo-event", "x-gitea-event"], "release"),
-            Self::GitLab => (&["x-gitlab-event"], "Release Hook"),
-        };
-        let kind = headers
-            .iter()
-            .find(|(name, _)| names.iter().any(|header| name.eq_ignore_ascii_case(header)))
-            .map(|(_, value)| *value);
-        if kind != Some(release) {
+        if !self.of_a_release(headers) {
             return Ok(Hooked::Nothing(OTHER_EVENT));
         }
         let event = self.event(payload)?;
@@ -231,6 +227,67 @@ impl Forge {
             });
         }
         Ok(event.map_or(Hooked::Nothing(UNPUBLISHED), Hooked::Event))
+    }
+
+    /// Whether a delivery with `headers` is of a release.
+    fn of_a_release(self, headers: &[(&str, &str)]) -> bool {
+        let (names, release): (&[&str], &str) = match self {
+            Self::GitHub => (&["x-github-event"], "release"),
+            Self::Forgejo => (&["x-forgejo-event", "x-gitea-event"], "release"),
+            Self::GitLab => (&["x-gitlab-event"], "Release Hook"),
+        };
+        headers
+            .iter()
+            .find(|(name, _)| names.iter().any(|header| name.eq_ignore_ascii_case(header)))
+            .is_some_and(|(_, value)| *value == release)
+    }
+
+    /// What a webhook delivery of `owner`'s, `payload` with `headers`, asks
+    /// herald to announce: the event of a release published in a
+    /// repository `selection` admits by what the payload names, to announce
+    /// once the owner's last membership record holds it. A GitLab group's
+    /// repositories include its subgroups' where `subgroups` says so.
+    ///
+    /// # Errors
+    ///
+    /// When the payload is not the forge's release event, or is of a
+    /// repository `owner` does not hold.
+    pub fn hooked_owned(
+        self,
+        (headers, payload): (&[(&str, &str)], &[u8]),
+        (owner, subgroups): (&str, bool),
+        selection: &Selection,
+    ) -> Result<Hooked, SourceError> {
+        if !self.of_a_release(headers) {
+            return Ok(Hooked::Nothing(OTHER_EVENT));
+        }
+        let event = self.event(payload)?;
+        let what = self.api().event;
+        let (id, delivered) = crate::delivered::delivered(self, what, payload)?;
+        let lowered = owner.to_ascii_lowercase();
+        let held = delivered.path.rsplit_once('/').is_some_and(|(holder, _)| {
+            let holder = holder.to_ascii_lowercase();
+            holder == lowered
+                || (subgroups && self == Self::GitLab && holder.starts_with(&format!("{lowered}/")))
+        });
+        if !held {
+            return Err(SourceError::Unreadable {
+                what,
+                reason: format!(
+                    "it is not of a repository {owner}, the owner its source names, holds"
+                ),
+            });
+        }
+        if !selection.admits(&delivered) {
+            return Ok(Hooked::Nothing(UNSELECTED));
+        }
+        Ok(
+            event.map_or(Hooked::Nothing(UNPUBLISHED), |event| Hooked::Member {
+                visibility: delivered.visibility,
+                event,
+                id,
+            }),
+        )
     }
 
     /// The event a release event's payload announces, as a webhook or as
@@ -425,6 +482,43 @@ impl Origin {
             cursor.and_then(|cursor| cursor.etag.as_deref()),
             cursor.and_then(|cursor| cursor.last_modified.as_deref()),
         )
+    }
+
+    /// The request for the raw bytes of the file at `path`, at `reference`
+    /// or the default branch, conditional on `etag` where there is one.
+    #[must_use]
+    pub fn file_request(
+        &self,
+        (path, reference): (&str, Option<&str>),
+        token: Option<&Token>,
+        etag: Option<&str>,
+    ) -> Request {
+        let segments = path
+            .split('/')
+            .map(unreserved)
+            .collect::<Vec<_>>()
+            .join("/");
+        let at = |given: Option<&str>| {
+            given.map_or_else(String::new, |reference| {
+                format!("?ref={}", unreserved(reference))
+            })
+        };
+        let file = match self.forge {
+            Forge::GitHub => format!("/contents/{segments}{}", at(reference)),
+            Forge::GitLab => format!(
+                "/repository/files/{}/raw{}",
+                unreserved(path),
+                at(Some(reference.unwrap_or(gitlab::DEFAULT_REF)))
+            ),
+            Forge::Forgejo => format!("/raw/{segments}{}", at(reference)),
+        };
+        let request = self.get(&file, token).conditional(etag, None);
+        match self.forge {
+            Forge::GitHub => {
+                request.replacing("Accept", SecretText::plain(herald_wire::github::RAW))
+            }
+            Forge::GitLab | Forge::Forgejo => request,
+        }
     }
 
     /// The request for the release tagged `tag`.

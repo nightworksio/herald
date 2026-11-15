@@ -1,6 +1,8 @@
 use std::collections::BTreeMap;
 
-use herald_core::{Cursor, Identity, Listed, Listing, Membership, Owner, SourceName, Visibility};
+use herald_core::{
+    Cursor, EventsRead, Identity, Listed, Listing, Membership, Owner, SourceName, Visibility,
+};
 use herald_ports::{Cursors, StoreError, Written};
 
 use super::{Checks, NOON};
@@ -24,6 +26,7 @@ pub(super) fn membership(id: &str) -> Membership {
         discovered: NOON,
         left: None,
         cursor: None,
+        collides: None,
     }
 }
 
@@ -34,12 +37,17 @@ pub(super) fn listing() -> Listing {
         first: NOON,
         listed: NOON,
         fingerprint: "f".to_owned(),
+        file: Some("f1".to_owned()),
+        events: Some(EventsRead {
+            etag: Some("e1".to_owned()),
+            newest: 7,
+        }),
     }
 }
 
 /// Whether an owner source's listing is kept with compare-and-set, its
-/// members are each kept, written with compare-and-set, listed under
-/// their source alone, and forgotten one at a time.
+/// members are each kept, written with compare-and-set, listed and read
+/// one at a time under their source alone, and forgotten one at a time.
 pub(super) async fn members<S: Cursors>(store: &S, checks: &mut Checks) -> Result<(), StoreError> {
     let source = SourceName::new("owner");
     let other = SourceName::new(OTHER);
@@ -83,7 +91,9 @@ pub(super) async fn members<S: Cursors>(store: &S, checks: &mut Checks) -> Resul
             seen: vec![Identity::new("a")],
             etag: None,
             last_modified: None,
+            project: None,
         }),
+        collides: Some("its project is another's".to_owned()),
     };
     let moved = checks.written(store.put_member(&source, &polled, Some(joined)).await?);
     checks.ensure(moved != joined, "a member rewritten kept its version");
@@ -98,6 +108,15 @@ pub(super) async fn members<S: Cursors>(store: &S, checks: &mut Checks) -> Resul
         .map(|member| member.value)
         .collect();
     kept.sort_by(|one, another| one.repository.id.cmp(&another.repository.id));
+    let read = store.member(&source, "1").await?;
+    checks.ensure(
+        read.as_ref().map(|read| (&read.value, read.version)) == Some((&polled, moved)),
+        "a member was not read back alone as last written, at its version",
+    );
+    checks.ensure(
+        store.member(&source, "3").await?.is_none(),
+        "a member read under one source was another source's",
+    );
     checks.ensure(
         kept == [polled, second.clone()],
         "the members listed were not every member written under the source, as written",
@@ -113,6 +132,10 @@ pub(super) async fn members<S: Cursors>(store: &S, checks: &mut Checks) -> Resul
     checks.ensure(
         left == [second],
         "forgetting a member did not forget it alone",
+    );
+    checks.ensure(
+        store.member(&source, "1").await?.is_none(),
+        "a member forgotten was still read alone",
     );
     checks.ensure(
         store.members(&other).await?.len() == 1,

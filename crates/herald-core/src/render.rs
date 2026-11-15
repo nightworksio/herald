@@ -14,6 +14,7 @@ use crate::bounds::Sandbox;
 use crate::event::Event;
 use crate::key::RouteId;
 use crate::markup::escaped;
+use crate::members::Listed;
 use crate::route::TemplateName;
 
 const MARKDOWN: &str = "markdown";
@@ -175,6 +176,125 @@ impl Templates {
             .split_whitespace()
             .collect::<Vec<_>>()
             .join(" "))
+    }
+}
+
+/// The name a `project` template gives an owner's member as the project
+/// its events are announced as (ADR-0030).
+#[derive(Debug, Clone)]
+pub struct ProjectName {
+    environment: Environment<'static>,
+    output: usize,
+}
+
+/// The name a `project` template is compiled under.
+const PROJECT: &str = "project";
+
+/// What a `project` template reads a repository's attributes under.
+const REPOSITORY: &str = "repository";
+
+/// The attributes of a repository a `project` template reads.
+pub const REPOSITORY_FIELDS: [&str; 7] = [
+    "id",
+    "name",
+    "path",
+    "owner",
+    "topics",
+    "properties",
+    "visibility",
+];
+
+impl ProjectName {
+    /// The template `source`, compiled into `sandbox`.
+    ///
+    /// # Errors
+    ///
+    /// When it does not compile, with minijinja's reason.
+    pub fn compile(source: &str, sandbox: Sandbox) -> Result<Self, TemplateError> {
+        let mut environment = sandboxed(sandbox, BTreeSet::new());
+        environment
+            .add_template_owned(PROJECT, source.to_owned())
+            .map_err(|error| failure(PROJECT, &error))?;
+        Ok(Self {
+            environment,
+            output: sandbox.output,
+        })
+    }
+
+    /// Each name the template reads that is neither one of a repository's
+    /// attributes nor a function every template has, in order.
+    #[must_use]
+    pub fn unknown(&self) -> Vec<String> {
+        let mut unknown: Vec<String> = self
+            .environment
+            .get_template(PROJECT)
+            .map(|template| template.undeclared_variables(true))
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|name| {
+                let mut parts = name.split('.');
+                let top = parts.next().unwrap_or_default();
+                if top == REPOSITORY {
+                    parts
+                        .next()
+                        .is_some_and(|field| !REPOSITORY_FIELDS.contains(&field))
+                } else {
+                    !self.environment.globals().any(|(global, _)| global == top)
+                }
+            })
+            .collect();
+        unknown.sort();
+        unknown
+    }
+
+    /// The project `repository` is announced as, on one line.
+    ///
+    /// # Errors
+    ///
+    /// When the template prints an undefined value, runs out of fuel,
+    /// passes its output cap, or prints nothing.
+    pub fn render(&self, repository: &Listed) -> Result<String, TemplateError> {
+        let template = self
+            .environment
+            .get_template(PROJECT)
+            .map_err(|error| failure(PROJECT, &error))?;
+        let mut capped = Capped {
+            written: Vec::new(),
+            passed: false,
+            cap: self.output,
+        };
+        let rendered = template.render_captured_to(
+            context! {
+                repository => context! {
+                    id => repository.id.as_str(),
+                    name => repository.name.as_str(),
+                    path => repository.path.as_str(),
+                    owner => repository.owner(),
+                    topics => repository.topics.clone(),
+                    properties => repository.properties.clone(),
+                    visibility => repository.visibility.name(),
+                },
+            },
+            &mut capped,
+        );
+        if capped.passed {
+            return Err(TemplateError {
+                name: PROJECT.to_owned(),
+                reason: format!("its output passes the cap of {} bytes", self.output),
+            });
+        }
+        rendered.map_err(|error| failure(PROJECT, &error))?;
+        let named = String::from_utf8_lossy(&capped.written)
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ");
+        if named.is_empty() {
+            return Err(TemplateError {
+                name: PROJECT.to_owned(),
+                reason: format!("it names no project for {}", repository.path),
+            });
+        }
+        Ok(named)
     }
 }
 

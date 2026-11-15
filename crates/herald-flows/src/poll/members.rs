@@ -5,12 +5,15 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use futures_util::stream::{self, StreamExt};
 use herald_config::{Config, Guard};
-use herald_core::{Listed, Listing, Membership, RouteId, Visibility};
-use herald_kinds::{Expand, Expanded, Unlisted};
+use herald_core::{
+    Cursor, Listed, Listing, Membership, Owner, Polled, RouteId, SourceName, Visibility,
+};
+use herald_kinds::{Changed, Expand, Expanded, Unlisted};
 use herald_ports::{Clock, Cursors, Http, Signer, Store, StoreError, Version, Versioned, Written};
 use jiff::Timestamp;
 
-use super::{Remembered, Sweep, Swept, found, halted, remembered, stored};
+use super::claims::Claims;
+use super::{Remembered, Sweep, Swept, announced_found, halted, remembered, stored};
 use crate::announce::{Ports, Stop, at_once};
 use crate::prepare::{Connected, PreparedSource};
 
@@ -28,6 +31,26 @@ struct Reconciled {
     joined: Vec<String>,
     left: Vec<String>,
     forgotten: BTreeSet<String>,
+}
+
+impl Reconciled {
+    /// Each member taken whose project `claims` finds another announcing as
+    /// marked withheld, and each no longer so cleared, as a member of the
+    /// owner source `owner`.
+    fn withhold(&mut self, (owner, expand): (&SourceName, &dyn Expand), claims: &Claims) {
+        for held in self.held.values_mut() {
+            let collides = held
+                .membership
+                .left
+                .is_none()
+                .then(|| claims.collision((owner, expand), &held.membership.repository))
+                .flatten();
+            if collides != held.membership.collides {
+                held.membership.collides = collides;
+                held.changed = true;
+            }
+        }
+    }
 }
 
 /// The kept members, brought to what `listed` takes at `now`: a member
@@ -74,6 +97,7 @@ fn reconcile(
                             discovered: now,
                             left: None,
                             cursor: None,
+                            collides: None,
                         },
                         version: None,
                         changed: true,
@@ -121,12 +145,27 @@ fn reach<'a>(
     (guard == Guard::Refuse && visibility != Visibility::Public).then(|| private.cloned().collect())
 }
 
-/// The member `held` polled, and its cursor written where it moved.
+/// The routes `config` lets a member of `visibility` reach where they are
+/// bounded (ADR-0029).
+pub(crate) fn bounded(config: &Config, visibility: Visibility) -> Option<Vec<RouteId>> {
+    reach(
+        config.doctor.private_to_public,
+        visibility,
+        config
+            .routes
+            .iter()
+            .filter(|route| route.private)
+            .map(|route| &route.route.id),
+    )
+}
+
+/// The member `held`, whose poll answered `polled`, announced, and its
+/// cursor written where it moved.
 async fn member<S: Store, C: Clock, G: Signer, H: Http>(
     flow: (&Config, &Connected<H>, &Ports<'_, S, C, G>),
-    source: &PreparedSource,
-    (expand, http): (&dyn Expand, &H),
+    (source, expand): (&PreparedSource, &dyn Expand),
     (mut held, first): (Held, Timestamp),
+    polled: Result<Option<Polled>, Stop>,
     run: &str,
 ) -> Swept {
     let ports = flow.2;
@@ -135,36 +174,27 @@ async fn member<S: Store, C: Clock, G: Signer, H: Http>(
         member: Some(held.membership.repository.path.clone()),
         outcome,
     };
-    let polled = if let Err(stop) = ports.budget.allows(ports.clock.now(), 1) {
-        Err(stop)
-    } else {
-        let poll = expand.member(&held.membership.repository);
-        let holder = format!(
-            "{run}/{}/{}",
-            source.name.as_str(),
-            held.membership.repository.id
-        );
-        let since = (held.membership.discovered > first).then_some(held.membership.discovered);
-        let config = flow.0;
-        let within = reach(
-            config.doctor.private_to_public,
-            held.membership.repository.visibility,
-            config
-                .routes
-                .iter()
-                .filter(|route| route.private)
-                .map(|route| &route.route.id),
-        );
-        found(
-            flow,
-            (&source.name, within.as_deref()),
-            (poll.as_ref(), http),
-            (held.membership.cursor.as_ref(), since, source.backfill),
-            &holder,
-        )
-        .await
+    let found = match polled {
+        Err(stop) => Err(stop),
+        Ok(polled) => {
+            let holder = format!(
+                "{run}/{}/{}",
+                source.name.as_str(),
+                held.membership.repository.id
+            );
+            let since = (held.membership.discovered > first).then_some(held.membership.discovered);
+            let within = bounded(flow.0, held.membership.repository.visibility);
+            announced_found(
+                flow,
+                (&source.name, within.as_deref()),
+                (polled, expand.remembered()),
+                (held.membership.cursor.as_ref(), since, source.backfill),
+                &holder,
+            )
+            .await
+        }
     };
-    let outcome = match polled {
+    let outcome = match found {
         Err(stop) => Sweep::Stopped(stop),
         Ok(None) => Sweep::Unchanged,
         Ok(Some(found)) => {
@@ -194,6 +224,50 @@ async fn member<S: Store, C: Clock, G: Signer, H: Http>(
     swept(outcome)
 }
 
+/// The members `chunk` polled together through `http`, as one request
+/// where the source batches them, and each announced in turn.
+async fn chunk<S: Store, C: Clock, G: Signer, H: Http>(
+    flow: (&Config, &Connected<H>, &Ports<'_, S, C, G>),
+    source: &PreparedSource,
+    (expand, http): (&dyn Expand, &H),
+    (chunk, first): (Vec<Held>, Timestamp),
+    run: &str,
+) -> Vec<Swept> {
+    let ports = flow.2;
+    let polled: Vec<Result<Option<Polled>, Stop>> =
+        if let Err(stop) = ports.budget.allows(ports.clock.now(), 1) {
+            vec![Err(stop); chunk.len()]
+        } else {
+            let asked: Vec<(&Listed, Option<&Cursor>)> = chunk
+                .iter()
+                .map(|held| (&held.membership.repository, held.membership.cursor.as_ref()))
+                .collect();
+            expand
+                .polled(http, &asked)
+                .await
+                .into_iter()
+                .map(|answered| answered.map_err(halted))
+                .collect()
+        };
+    let mut swept = Vec::new();
+    for (held, polled) in chunk.into_iter().zip(polled) {
+        swept.push(member(flow, (source, expand), (held, first), polled, run).await);
+    }
+    swept
+}
+
+/// `takers` in runs of `size`, in order.
+fn chunked(takers: Vec<Held>, size: usize) -> Vec<Vec<Held>> {
+    let mut chunks: Vec<Vec<Held>> = Vec::new();
+    for held in takers {
+        match chunks.last_mut() {
+            Some(last) if last.len() < size => last.push(held),
+            _ => chunks.push(vec![held]),
+        }
+    }
+    chunks
+}
+
 /// What the owner `expand` lists through `http` at `now`, conditional on
 /// `known`: the members it takes and the listing to keep, or neither where
 /// it is unchanged.
@@ -209,6 +283,8 @@ async fn listed(
             members,
             owner,
             pages,
+            file,
+            ..
         } => (
             Some(members),
             Some(Listing {
@@ -217,34 +293,57 @@ async fn listed(
                 first: known.map_or(now, |known| known.first),
                 listed: now,
                 fingerprint: expand.fingerprint(),
+                file,
+                events: known.and_then(|known| known.events.clone()),
             }),
         ),
     })
 }
 
+/// An owner source's round as far as its reconciliation: its listing as
+/// read and as listed now, when it was first listed, its members brought to
+/// the listing, what the round reported so far, and whether a cap refused
+/// it.
+pub(super) struct Owning {
+    record: Option<Versioned<Listing>>,
+    listing: Option<Listing>,
+    first: Timestamp,
+    reconciled: Reconciled,
+    swept: Vec<Swept>,
+    refused: bool,
+}
+
+impl Owning {
+    /// Each member it takes.
+    pub(super) fn taken(&self) -> impl Iterator<Item = &Listed> {
+        self.reconciled
+            .held
+            .values()
+            .filter(|held| held.membership.left.is_none())
+            .map(|held| &held.membership.repository)
+    }
+}
+
 /// The owner `expand` lists, through `http`, reconciled with the members
-/// `source` keeps, and each member it takes polled. A listing over a cap
-/// refuses the source for the round; one that fails keeps the last
-/// membership, polling the members it holds and adding and dropping none.
-/// The listing is written only once every member it changed is, so a
-/// listing the next round finds unchanged never hides a member.
-pub(super) async fn swept<S: Store, C: Clock, G: Signer, H: Http>(
+/// `source` keeps. A listing over a cap refuses the source for the round,
+/// keeping its members as they were; one that fails keeps the last
+/// membership, adding and dropping none. Where the source's records cannot
+/// be read, what the round reports.
+pub(super) async fn reconciled<S: Store, C: Clock, G: Signer, H: Http>(
     flow: (&Config, &Connected<H>, &Ports<'_, S, C, G>),
-    source: &PreparedSource,
-    expand: &dyn Expand,
-    http: &H,
-    run: &str,
-) -> Vec<Swept> {
-    let (config, _, ports) = flow;
+    (source, expand, http): (&PreparedSource, &dyn Expand, &H),
+) -> Result<Owning, Vec<Swept>> {
+    let ports = flow.2;
     let told = |outcome| Swept {
         source: source.name.clone(),
         member: None,
         outcome,
     };
     let now = ports.clock.now();
-    if let Err(stop) = ports.budget.allows(now, 1) {
-        return vec![told(Sweep::Stopped(stop))];
-    }
+    ports
+        .budget
+        .allows(now, 1)
+        .map_err(|stop| vec![told(Sweep::Stopped(stop))])?;
     let cursors = ports.store.cursors();
     let read = async {
         Ok::<_, StoreError>((
@@ -252,15 +351,19 @@ pub(super) async fn swept<S: Store, C: Clock, G: Signer, H: Http>(
             cursors.members(&source.name).await?,
         ))
     };
-    let (record, kept) = match read.await {
-        Ok(read) => read,
-        Err(error) => return vec![told(Sweep::Stopped(stored(error)))],
-    };
+    let (record, kept) = read
+        .await
+        .map_err(|error| vec![told(Sweep::Stopped(stored(error)))])?;
     let known = record.as_ref().map(|record| &record.value);
     let mut swept = Vec::new();
+    let mut refused = false;
     let (listed, listing) = match listed(expand, http, known, now).await {
         Ok(listed) => listed,
-        Err(Unlisted::Over(reason)) => return vec![told(Sweep::Stopped(Stop::Source(reason)))],
+        Err(Unlisted::Over(reason)) => {
+            refused = true;
+            swept.push(told(Sweep::Stopped(Stop::Source(reason))));
+            (None, None)
+        }
         Err(Unlisted::Failed(unpolled)) => {
             swept.push(told(Sweep::Stopped(halted(unpolled))));
             (None, None)
@@ -271,6 +374,87 @@ pub(super) async fn swept<S: Store, C: Clock, G: Signer, H: Http>(
         .or(known)
         .map_or(now, |listing| listing.first);
     let reconciled = reconcile(kept, (listed, expand), now, now - expand.keep_members());
+    Ok(Owning {
+        record,
+        listing,
+        first,
+        reconciled,
+        swept,
+        refused,
+    })
+}
+
+/// The members the owner's events name since they were last read, where
+/// the source follows them, and the listing to keep where how far they
+/// were read moved; a read that fails is reported through `told` into
+/// `swept`, and every member is polled.
+async fn followed<S: Store, C: Clock, G: Signer, H: Http>(
+    (ports, expand, http): (&Ports<'_, S, C, G>, &dyn Expand, &H),
+    (known, listing): (Option<&Listing>, Option<&Listing>),
+    swept: &mut Vec<Swept>,
+    told: impl Fn(Sweep) -> Swept,
+) -> (Option<BTreeSet<String>>, Option<Listing>) {
+    let owner = listing
+        .or(known)
+        .map_or(Owner::Organization, |listing| listing.owner);
+    let last = known.and_then(|known| known.events.as_ref());
+    let changed = match ports.budget.allows(ports.clock.now(), 1) {
+        Ok(()) => expand.changed(http, owner, last).await,
+        Err(_) => None,
+    };
+    let (named, events) = match changed {
+        None => (None, None),
+        Some(Ok(Changed::Named { ids, read })) => (Some(ids), Some(read)),
+        Some(Ok(Changed::Gap(read))) => (None, Some(read)),
+        Some(Err(unpolled)) => {
+            swept.push(told(Sweep::Stopped(halted(unpolled))));
+            (None, None)
+        }
+    };
+    let kept = events.filter(|read| Some(read) != last).and_then(|read| {
+        listing.or(known).map(|listing| Listing {
+            events: Some(read),
+            ..listing.clone()
+        })
+    });
+    (named, kept)
+}
+
+/// What the owner source `source`, or its member at `member`, did.
+fn told(source: &SourceName, member: Option<&str>, outcome: Sweep) -> Swept {
+    Swept {
+        source: source.clone(),
+        member: member.map(ToOwned::to_owned),
+        outcome,
+    }
+}
+
+/// The owner source's round `owning` finished: each member whose project
+/// `claims` finds another announcing as withheld, every member it changed
+/// written, then its listing, and each member it takes polled. The listing
+/// is written only once every member it changed is, so a listing the next
+/// round finds unchanged never hides a member.
+pub(super) async fn finished<S: Store, C: Clock, G: Signer, H: Http>(
+    flow: (&Config, &Connected<H>, &Ports<'_, S, C, G>),
+    (source, expand, http): (&PreparedSource, &dyn Expand, &H),
+    (owning, claims): (Owning, &Claims),
+    run: &str,
+) -> Vec<Swept> {
+    let (config, _, ports) = flow;
+    let Owning {
+        record,
+        listing,
+        first,
+        mut reconciled,
+        mut swept,
+        refused,
+    } = owning;
+    if refused {
+        return swept;
+    }
+    let told = |outcome| told(&source.name, None, outcome);
+    reconciled.withhold((&source.name, expand), claims);
+    let cursors = ports.store.cursors();
     let mut whole = true;
     for id in &reconciled.forgotten {
         if let Err(error) = cursors.forget_member(&source.name, id).await {
@@ -279,6 +463,7 @@ pub(super) async fn swept<S: Store, C: Clock, G: Signer, H: Http>(
         }
     }
     let mut takers = Vec::new();
+    let mut withheld = Vec::new();
     for mut held in reconciled.held.into_values() {
         if held.changed {
             match cursors
@@ -295,11 +480,27 @@ pub(super) async fn swept<S: Store, C: Clock, G: Signer, H: Http>(
                 }
             }
         }
-        if held.membership.left.is_none() {
-            takers.push(held);
+        match (&held.membership.left, &held.membership.collides) {
+            (Some(_), _) => {}
+            (None, Some(reason)) => withheld.push(self::told(
+                &source.name,
+                Some(&held.membership.repository.path),
+                Sweep::Stopped(Stop::Source(reason.clone())),
+            )),
+            (None, None) => takers.push(held),
         }
     }
-    if let Some(listing) = listing.filter(|_| whole) {
+    let (named, followed) = followed(
+        (flow.2, expand, http),
+        (
+            record.as_ref().map(|record| &record.value),
+            listing.as_ref(),
+        ),
+        &mut swept,
+        told,
+    )
+    .await;
+    if let Some(listing) = followed.or(listing).filter(|_| whole) {
         let expected = record.as_ref().map(|record| record.version);
         if let Remembered::Failed(stop) = remembered(
             cursors.put_listing(&source.name, &listing, expected).await,
@@ -308,20 +509,33 @@ pub(super) async fn swept<S: Store, C: Clock, G: Signer, H: Http>(
             swept.push(told(Sweep::Stopped(stop)));
         }
     }
+    let (takers, quiet): (Vec<Held>, Vec<Held>) = takers.into_iter().partition(|held| {
+        named.as_ref().is_none_or(|ids| {
+            held.membership.cursor.is_none() || ids.contains(&held.membership.repository.id)
+        })
+    });
     swept.push(told(Sweep::Listed {
-        members: takers.len(),
+        members: takers.len() + quiet.len() + withheld.len(),
         joined: reconciled.joined,
         left: reconciled.left,
     }));
-    let polled: Vec<Swept> = stream::iter(
-        takers
+    swept.extend(withheld);
+    swept.extend(quiet.iter().map(|held| {
+        self::told(
+            &source.name,
+            Some(&held.membership.repository.path),
+            Sweep::Unchanged,
+        )
+    }));
+    let polled: Vec<Vec<Swept>> = stream::iter(
+        chunked(takers, expand.batch().get())
             .into_iter()
-            .map(|held| member(flow, source, (expand, http), (held, first), run)),
+            .map(|held| chunk(flow, source, (expand, http), (held, first), run)),
     )
     .buffered(at_once(ports.store, config.run.sources).get())
     .collect()
     .await;
-    swept.extend(polled);
+    swept.extend(polled.into_iter().flatten());
     swept
 }
 

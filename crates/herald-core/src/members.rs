@@ -80,6 +80,9 @@ pub struct Selection {
     /// Properties, every one of which a member holds with one of its
     /// values.
     pub properties: BTreeMap<String, Vec<String>>,
+    /// The names a member file lists, each a repository's name or full
+    /// path, ignoring case; where given, no other repository is taken.
+    pub names: Option<Vec<String>>,
 }
 
 impl Default for Selection {
@@ -94,6 +97,7 @@ impl Default for Selection {
             template: false,
             language: Vec::new(),
             properties: BTreeMap::new(),
+            names: None,
         }
     }
 }
@@ -103,22 +107,137 @@ fn any_of<'a>(wanted: &[String], mut held: impl Iterator<Item = &'a str>) -> boo
     wanted.is_empty() || held.any(|held| wanted.iter().any(|want| want.eq_ignore_ascii_case(held)))
 }
 
+/// Whether `name` is `repository`'s name or full path, ignoring case.
+fn naming(name: &str, (repository, path): (&str, &str)) -> bool {
+    name.eq_ignore_ascii_case(repository) || name.eq_ignore_ascii_case(path)
+}
+
+impl Listed {
+    /// Whether `name` names it, by its name or its full path, ignoring case.
+    #[must_use]
+    pub fn named(&self, name: &str) -> bool {
+        naming(name, (&self.name, &self.path))
+    }
+
+    /// Its owner's path: the full path without its name.
+    #[must_use]
+    pub fn owner(&self) -> &str {
+        self.path
+            .rsplit_once('/')
+            .map_or(self.path.as_str(), |(owner, _)| owner)
+    }
+}
+
+/// One repository as a webhook delivery names it: each attribute the
+/// delivery leaves out is `None`.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct Delivered {
+    /// Its name.
+    pub name: String,
+    /// Its full path.
+    pub path: String,
+    /// Its topics.
+    pub topics: Option<Vec<String>>,
+    /// Its custom properties, each with the values it holds.
+    pub properties: Option<BTreeMap<String, Vec<String>>>,
+    /// Who may see it.
+    pub visibility: Option<Visibility>,
+    /// Whether it is archived.
+    pub archived: Option<bool>,
+    /// Whether it is a fork.
+    pub fork: Option<bool>,
+    /// Whether it is a template.
+    pub template: Option<bool>,
+    /// Its main language.
+    pub language: Option<String>,
+}
+
+/// A repository's attributes as a selection reads them, each where known.
+struct Seen<'a> {
+    name: &'a str,
+    path: &'a str,
+    topics: Option<&'a [String]>,
+    properties: Option<&'a BTreeMap<String, Vec<String>>>,
+    visibility: Option<Visibility>,
+    archived: Option<bool>,
+    fork: Option<bool>,
+    template: Option<bool>,
+    language: Spoken<'a>,
+}
+
+/// A repository's main language, as a selection reads it.
+#[derive(Clone, Copy)]
+enum Spoken<'a> {
+    /// Not known, so not filtered on.
+    Unknown,
+    /// Known: its language, or that it has none.
+    Known(Option<&'a str>),
+}
+
 impl Selection {
     /// Whether it takes `member`.
     #[must_use]
     pub fn takes(&self, listed: &Listed) -> bool {
-        let named = |globs: &[Glob]| globs.iter().any(|glob| glob.matches(&listed.name));
-        (self.include.is_empty() || named(&self.include))
+        self.holds(&Seen {
+            name: &listed.name,
+            path: &listed.path,
+            topics: Some(&listed.topics),
+            properties: Some(&listed.properties),
+            visibility: Some(listed.visibility),
+            archived: Some(listed.archived),
+            fork: Some(listed.fork),
+            template: Some(listed.template),
+            language: Spoken::Known(listed.language.as_deref()),
+        })
+    }
+
+    /// Whether it takes `delivered` by what the delivery names, each
+    /// attribute it leaves out aside.
+    #[must_use]
+    pub fn admits(&self, delivered: &Delivered) -> bool {
+        self.holds(&Seen {
+            name: &delivered.name,
+            path: &delivered.path,
+            topics: delivered.topics.as_deref(),
+            properties: delivered.properties.as_ref(),
+            visibility: delivered.visibility,
+            archived: delivered.archived,
+            fork: delivered.fork,
+            template: delivered.template,
+            language: delivered
+                .language
+                .as_deref()
+                .map_or(Spoken::Unknown, |language| Spoken::Known(Some(language))),
+        })
+    }
+
+    fn holds(&self, seen: &Seen<'_>) -> bool {
+        let named = |globs: &[Glob]| globs.iter().any(|glob| glob.matches(seen.name));
+        let flag = |taken: bool, held: Option<bool>| taken || held != Some(true);
+        self.names.as_ref().is_none_or(|names| {
+            names
+                .iter()
+                .any(|name| naming(name, (seen.name, seen.path)))
+        }) && (self.include.is_empty() || named(&self.include))
             && !named(&self.exclude)
-            && any_of(&self.topics, listed.topics.iter().map(String::as_str))
-            && any_of(&self.language, listed.language.as_deref().into_iter())
-            && self.visibility.contains(&listed.visibility)
-            && (self.archived || !listed.archived)
-            && (self.fork || !listed.fork)
-            && (self.template || !listed.template)
-            && self.properties.iter().all(|(name, values)| {
-                listed.properties.get(name).is_some_and(|held| {
-                    any_of(values, held.iter().map(String::as_str)) && !held.is_empty()
+            && seen
+                .topics
+                .is_none_or(|topics| any_of(&self.topics, topics.iter().map(String::as_str)))
+            && match seen.language {
+                Spoken::Unknown => true,
+                Spoken::Known(language) => any_of(&self.language, language.into_iter()),
+            }
+            && seen
+                .visibility
+                .is_none_or(|visibility| self.visibility.contains(&visibility))
+            && flag(self.archived, seen.archived)
+            && flag(self.fork, seen.fork)
+            && flag(self.template, seen.template)
+            && seen.properties.is_none_or(|properties| {
+                self.properties.iter().all(|(name, values)| {
+                    properties.get(name).is_some_and(|held| {
+                        any_of(values, held.iter().map(String::as_str)) && !held.is_empty()
+                    })
                 })
             })
     }
@@ -143,6 +262,10 @@ pub struct Membership {
     pub left: Option<Timestamp>,
     /// What polling it has seen, once it has been polled.
     pub cursor: Option<Cursor>,
+    /// Why its events are withheld, where its project template names the
+    /// project another member or source announces as.
+    #[serde(default)]
+    pub collides: Option<String>,
 }
 
 /// What kind of account owns an owner source's repositories.
@@ -169,6 +292,22 @@ pub struct Listing {
     /// A digest of what the listing asked for: the owner, where, and the
     /// selection; a listing that asks for something else is read whole.
     pub fingerprint: String,
+    /// The `ETag` of the member file, where the source reads one through
+    /// its forge.
+    #[serde(default)]
+    pub file: Option<String>,
+    /// How far the owner's events were read, where the source follows them.
+    #[serde(default)]
+    pub events: Option<EventsRead>,
+}
+
+/// How far an owner's events feed was read.
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct EventsRead {
+    /// The `ETag` of the feed's first page.
+    pub etag: Option<String>,
+    /// The id of the newest event read.
+    pub newest: u64,
 }
 
 #[cfg(test)]
@@ -257,6 +396,127 @@ mod tests {
         assert!(!selection.takes(&listed("website")));
         assert!(!selection.takes(&listed("plugin-template")));
         assert!(!selection.takes(&listed("plugin-old-radarr")));
+    }
+
+    #[test]
+    fn a_member_file_takes_only_the_names_it_lists_by_name_or_path_and_the_filters_narrow_it() {
+        let selection = Selection {
+            names: Some(vec!["HERALD".to_owned(), "lemonfiber/Gate".to_owned()]),
+            exclude: globs(&["gate"]),
+            ..Selection::default()
+        };
+        assert!(selection.takes(&listed("herald")));
+        assert!(!selection.takes(&listed("gate")));
+        assert!(!selection.takes(&listed("website")));
+        assert!(
+            Selection {
+                names: Some(vec!["lemonfiber/gate".to_owned()]),
+                ..Selection::default()
+            }
+            .takes(&listed("gate"))
+        );
+        assert!(
+            !Selection {
+                names: Some(Vec::new()),
+                ..Selection::default()
+            }
+            .takes(&listed("herald"))
+        );
+    }
+
+    #[test]
+    fn a_delivery_is_admitted_by_what_it_names_and_what_it_leaves_out_is_aside() {
+        let narrow = Selection {
+            include: globs(&["plugin-*"]),
+            topics: vec!["media".to_owned()],
+            language: vec!["rust".to_owned()],
+            properties: BTreeMap::from([("team".to_owned(), vec!["media".to_owned()])]),
+            names: Some(vec!["lemonfiber/plugin-a".to_owned()]),
+            ..Selection::default()
+        };
+        let bare = Delivered {
+            name: "plugin-a".to_owned(),
+            path: "lemonfiber/plugin-a".to_owned(),
+            ..Delivered::default()
+        };
+        assert!(narrow.admits(&bare));
+        let full = Delivered {
+            topics: Some(vec!["Media".to_owned()]),
+            properties: Some(BTreeMap::from([(
+                "team".to_owned(),
+                vec!["media".to_owned()],
+            )])),
+            visibility: Some(Visibility::Public),
+            archived: Some(false),
+            fork: Some(false),
+            template: Some(false),
+            language: Some("Rust".to_owned()),
+            ..bare.clone()
+        };
+        assert!(narrow.admits(&full));
+        for refused in [
+            Delivered {
+                name: "web".to_owned(),
+                ..bare.clone()
+            },
+            Delivered {
+                path: "lemonfiber/plugin-b".to_owned(),
+                ..bare.clone()
+            },
+            Delivered {
+                topics: Some(Vec::new()),
+                ..bare.clone()
+            },
+            Delivered {
+                properties: Some(BTreeMap::new()),
+                ..bare.clone()
+            },
+            Delivered {
+                visibility: Some(Visibility::Private),
+                ..bare.clone()
+            },
+            Delivered {
+                archived: Some(true),
+                ..bare.clone()
+            },
+            Delivered {
+                fork: Some(true),
+                ..bare.clone()
+            },
+            Delivered {
+                template: Some(true),
+                ..bare.clone()
+            },
+            Delivered {
+                language: Some("Go".to_owned()),
+                ..bare.clone()
+            },
+        ] {
+            assert!(!narrow.admits(&refused), "{refused:?}");
+        }
+    }
+
+    #[test]
+    fn a_repository_is_named_by_its_name_or_its_full_path_ignoring_case() {
+        assert!(listed("herald").named("HERALD"));
+        assert!(listed("herald").named("Lemonfiber/Herald"));
+        assert!(!listed("herald").named("lemonfiber"));
+        assert!(!listed("herald").named("other/herald"));
+    }
+
+    #[test]
+    fn a_repository_s_owner_is_its_path_without_its_name() {
+        assert_eq!(listed("herald").owner(), "lemonfiber");
+        let nested = Listed {
+            path: "group/sub/herald".to_owned(),
+            ..listed("herald")
+        };
+        assert_eq!(nested.owner(), "group/sub");
+        let bare = Listed {
+            path: "herald".to_owned(),
+            ..listed("herald")
+        };
+        assert_eq!(bare.owner(), "herald");
     }
 
     #[test]

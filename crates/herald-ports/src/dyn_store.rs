@@ -78,6 +78,13 @@ pub trait DynStore: Sync {
         source: &'a SourceName,
     ) -> Boxed<'a, Result<Vec<Versioned<Membership>>, StoreError>>;
 
+    /// [`Cursors::member`].
+    fn member_boxed<'a>(
+        &'a self,
+        source: &'a SourceName,
+        id: &'a str,
+    ) -> Boxed<'a, Result<Option<Versioned<Membership>>, StoreError>>;
+
     /// [`Cursors::put_member`].
     fn put_member_boxed<'a>(
         &'a self,
@@ -326,6 +333,14 @@ impl<S: Store + Keyring> DynStore for S {
         Box::pin(async move { self.cursors().members(source).await })
     }
 
+    fn member_boxed<'a>(
+        &'a self,
+        source: &'a SourceName,
+        id: &'a str,
+    ) -> Boxed<'a, Result<Option<Versioned<Membership>>, StoreError>> {
+        Box::pin(async move { self.cursors().member(source, id).await })
+    }
+
     fn put_member_boxed<'a>(
         &'a self,
         source: &'a SourceName,
@@ -571,6 +586,14 @@ impl Cursors for Erased<'_, dyn DynStore + '_> {
 
     async fn members(&self, source: &SourceName) -> Result<Vec<Versioned<Membership>>, StoreError> {
         self.0.members_boxed(source).await
+    }
+
+    async fn member(
+        &self,
+        source: &SourceName,
+        id: &str,
+    ) -> Result<Option<Versioned<Membership>>, StoreError> {
+        self.0.member_boxed(source, id).await
     }
 
     async fn put_member(

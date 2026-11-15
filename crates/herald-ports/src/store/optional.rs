@@ -102,6 +102,17 @@ impl<T: Cursors> Cursors for Option<&T> {
         }
     }
 
+    async fn member(
+        &self,
+        source: &SourceName,
+        id: &str,
+    ) -> Result<Option<Versioned<Membership>>, StoreError> {
+        match self {
+            Some(kept) => kept.member(source, id).await,
+            None => Unkept.member(source, id).await,
+        }
+    }
+
     async fn forget_member(&self, source: &SourceName, id: &str) -> Result<(), StoreError> {
         match self {
             Some(kept) => kept.forget_member(source, id).await,

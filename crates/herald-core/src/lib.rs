@@ -81,13 +81,15 @@ pub use ledger::{
 };
 pub use marker::{Marker, Marks};
 pub use markup::{LINK_SCHEMES, Text, convert, escaped, literal};
-pub use members::{Listed, Listing, Membership, Owner, Selection, Visibility};
+pub use members::{
+    Delivered, EventsRead, Listed, Listing, Membership, Owner, Selection, Visibility,
+};
 pub use pattern::Pattern;
 pub use profile::{
     Bullet, Emphases, Escape, Features, Fences, Heading, Limits, Links, Markup, Measure,
     MentionRoom, MentionStyle, Pins, Profile, Threads,
 };
-pub use render::{Context, Form, TemplateError, Templates};
+pub use render::{Context, Form, ProjectName, REPOSITORY_FIELDS, TemplateError, Templates};
 pub use retention::Retention;
 pub use route::{
     Delivery, DestinationName, Filter, Mentions, Pinning, Prereleases, RoleId, Route, SecretRef,

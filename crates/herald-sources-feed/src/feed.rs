@@ -417,7 +417,7 @@ impl Feed {
         let (feed_title, entries) = read(&response.body)?;
         let answered_at = response.header("date").and_then(when);
         let project = if feed_title.is_empty() {
-            Address::parse(&self.url).map_or_else(|| self.url.clone(), |url| url.host().to_owned())
+            untitled(&self.url)
         } else {
             feed_title
         };
@@ -479,4 +479,9 @@ impl Feed {
                 problem,
             })
     }
+}
+/// The project a feed at `url` that names no title announces as: its
+/// host, or the URL itself where it names none.
+pub(crate) fn untitled(url: &str) -> String {
+    Address::parse(url).map_or_else(|| url.to_owned(), |url| url.host().to_owned())
 }

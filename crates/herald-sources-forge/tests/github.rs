@@ -62,6 +62,62 @@ mod github {
     }
 
     #[test]
+    fn an_owner_s_webhook_of_a_repository_it_takes_announces_its_member_s_release() {
+        let selection = herald_core::Selection::default();
+        let event = Forge::GitHub.event(EVENT.as_bytes()).unwrap().unwrap();
+        assert_eq!(
+            Forge::GitHub.hooked_owned((&[RELEASE], EVENT.as_bytes()), ("CLI", false), &selection),
+            Ok(Hooked::Member {
+                event,
+                id: "212613049".to_owned(),
+                visibility: Some(herald_core::Visibility::Public),
+            })
+        );
+        let private = edited(|payload| payload["repository"]["visibility"] = json!("private"));
+        assert_eq!(
+            Forge::GitHub.hooked_owned((&[RELEASE], &private), ("cli", false), &selection),
+            Ok(Hooked::Nothing(
+                "the repository is not one the source takes"
+            ))
+        );
+        let flagged = edited(|payload| {
+            payload["repository"]
+                .as_object_mut()
+                .unwrap()
+                .remove("visibility");
+            payload["repository"]["private"] = json!(true);
+        });
+        assert_eq!(
+            Forge::GitHub.hooked_owned((&[RELEASE], &flagged), ("cli", false), &selection),
+            Ok(Hooked::Nothing(
+                "the repository is not one the source takes"
+            ))
+        );
+        let Err(SourceError::Unreadable { reason, .. }) = Forge::GitHub.hooked_owned(
+            (&[RELEASE], EVENT.as_bytes()),
+            ("neovim", true),
+            &selection,
+        ) else {
+            panic!("a delivery of another owner's repository is refused");
+        };
+        assert_eq!(
+            reason,
+            "it is not of a repository neovim, the owner its source names, holds"
+        );
+        assert_eq!(
+            Forge::GitHub.hooked_owned((&[], EVENT.as_bytes()), ("cli", false), &selection),
+            Ok(Hooked::Nothing("the delivery is not of a release"))
+        );
+        let created = edited(|payload| payload["action"] = json!("created"));
+        assert_eq!(
+            Forge::GitHub.hooked_owned((&[RELEASE], &created), ("cli", false), &selection),
+            Ok(Hooked::Nothing(
+                "the release is not published, or is a draft"
+            ))
+        );
+    }
+
+    #[test]
     fn a_webhook_of_another_event_or_an_unpublished_release_announces_nothing() {
         for headers in [&[("X-GitHub-Event", "ping")][..], &[]] {
             assert_eq!(
@@ -321,6 +377,7 @@ mod github {
             seen: Vec::new(),
             etag: Some("W/\"abc\"".to_owned()),
             last_modified: Some("Sat, 31 Oct 2026 05:17:30 GMT".to_owned()),
+            project: None,
         };
         let request = source(None).releases_request(Some(&cursor), Some(&token));
         assert_eq!(

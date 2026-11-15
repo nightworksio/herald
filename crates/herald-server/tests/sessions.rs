@@ -390,15 +390,14 @@ appservice_token = {{ secret = "HERALD_MATRIX_AS" }}
                 r#"{"ok": true, "url": "wss://wss-primary.slack.com/link"}"#,
             ),
             answer("«secret:the command's response URL»", 200, "ok"),
+            answer("«secret:the command's response URL»", 200, "ok"),
+            answer("«secret:the command's response URL»", 200, "ok"),
         ]);
         let world = World::new("slack", answers, sockets).await;
-        let heard = world
-            .served(1, |line| line.contains("was not answered"))
-            .await;
-        let refused: Vec<&String> = heard
-            .iter()
-            .filter(|line| line.ends_with("was not answered: no more is answered at once"))
-            .collect();
+        let unanswered =
+            |line: &str| line.ends_with("was not answered: no more is answered at once");
+        let heard = world.served(1, |line| unanswered(line)).await;
+        let refused: Vec<&String> = heard.iter().filter(|line| unanswered(line)).collect();
         assert!(!refused.is_empty(), "{heard:?}");
         assert!(
             refused

@@ -176,6 +176,35 @@ mod told {
     }
 
     #[test]
+    fn an_owner_s_webhook_withheld_says_why() {
+        use herald_flows::Withheld;
+        for (withheld, why) in [
+            (
+                Withheld::Unlisted,
+                "the owner's last membership record does not name its repository",
+            ),
+            (Withheld::Left, "its repository left the owner's selection"),
+            (
+                Withheld::Unread("the store is down".to_owned()),
+                "the owner's membership record could not be read: the store is down",
+            ),
+            (
+                Withheld::Unnamed("no team".to_owned()),
+                "its project template names none: no team",
+            ),
+            (
+                Withheld::Collides("its project is the gate's".to_owned()),
+                "its project is the gate's",
+            ),
+        ] {
+            assert_eq!(
+                told::worked(&did(Did::Withheld(withheld))),
+                [format!("a webhook's release was not announced: {why}")]
+            );
+        }
+    }
+
+    #[test]
     fn a_job_says_what_it_did() {
         assert_eq!(
             told::worked(&did(Did::Announced(vec![announced(

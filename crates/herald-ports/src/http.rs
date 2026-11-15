@@ -97,6 +97,15 @@ impl Request {
         self
     }
 
+    /// The request with the header `name` set to `value` alone, in place of
+    /// any value it held, the name's case aside.
+    #[must_use]
+    pub fn replacing(mut self, name: &str, value: SecretText) -> Self {
+        self.headers
+            .retain(|(held, _)| !held.eq_ignore_ascii_case(name));
+        self.header(name, value)
+    }
+
     /// The request, asked only where the resource changed since `etag` and
     /// `last_modified`, each where given.
     #[must_use]
@@ -428,6 +437,24 @@ mod tests {
         assert_eq!(request().within(Outbound::BODY).most, Outbound::BODY);
         assert_eq!(request().at_most(10).within(20).most, 10);
         assert_eq!(request().at_most(20).within(10).most, 10);
+    }
+
+    #[test]
+    fn a_replaced_header_is_held_once_whatever_its_case() {
+        let request = Request::new(Method::Get, SecretText::plain("https://example.org"))
+            .header("accept", SecretText::plain("a"))
+            .header("X-Kept", SecretText::plain("k"))
+            .header("Accept", SecretText::plain("b"))
+            .replacing("Accept", SecretText::plain("c"));
+        let held: Vec<(&str, String)> = request
+            .headers
+            .iter()
+            .map(|(name, value)| (name.as_str(), value.redacted()))
+            .collect();
+        assert_eq!(
+            held,
+            [("X-Kept", "k".to_owned()), ("Accept", "c".to_owned())]
+        );
     }
 
     fn answered(headers: &[(&str, &str)]) -> Response {

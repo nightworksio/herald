@@ -15,7 +15,7 @@ mod replies;
 mod router;
 mod webhooks;
 
-pub use jobs::{Did, Interacted, Job, Worked, unplaced, unworked, work};
+pub use jobs::{Did, Interacted, Job, Member, Withheld, Worked, unplaced, unworked, work};
 pub use replies::{Answered, Reply, busy, refusal};
 pub(crate) use replies::{missing, rejection, replied, unmethodical, unread};
 pub use router::{HEALTH, answer, uncomposed};

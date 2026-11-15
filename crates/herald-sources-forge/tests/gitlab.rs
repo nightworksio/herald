@@ -46,6 +46,45 @@ mod gitlab {
     }
 
     #[test]
+    fn an_owner_s_release_hook_counts_a_subgroup_s_project_only_where_subgroups_says_so() {
+        const RELEASED: (&str, &str) = ("X-Gitlab-Event", "Release Hook");
+        let selection = herald_core::Selection::default();
+        let nested = edited(|hook| {
+            hook["project"]["path_with_namespace"] = json!("Gitlab-Org/tools/cli");
+        });
+        assert!(matches!(
+            Forge::GitLab.hooked_owned((&[RELEASED], &nested), ("gitlab-org", true), &selection),
+            Ok(Hooked::Member { ref id, .. }) if id == "34675721"
+        ));
+        assert!(
+            Forge::GitLab
+                .hooked_owned((&[RELEASED], &nested), ("gitlab-org", false), &selection)
+                .is_err()
+        );
+        assert!(
+            Forge::GitLab
+                .hooked_owned((&[RELEASED], &nested), ("gitlab", true), &selection)
+                .is_err()
+        );
+        let direct = Forge::GitLab.hooked_owned(
+            (&[RELEASED], HOOK.as_bytes()),
+            ("gitlab-org", false),
+            &herald_core::Selection {
+                include: vec![herald_core::Glob::new("c?i").unwrap()],
+                ..herald_core::Selection::default()
+            },
+        );
+        assert!(matches!(direct, Ok(Hooked::Member { .. })), "{direct:?}");
+        let internal = edited(|hook| hook["project"]["visibility_level"] = json!(10));
+        assert_eq!(
+            Forge::GitLab.hooked_owned((&[RELEASED], &internal), ("gitlab-org", false), &selection),
+            Ok(Hooked::Nothing(
+                "the repository is not one the source takes"
+            ))
+        );
+    }
+
+    #[test]
     fn a_release_hook_of_the_source_s_project_announces_its_release() {
         let release = [("X-Gitlab-Event", "Release Hook")];
         assert_eq!(
@@ -228,6 +267,7 @@ mod gitlab {
             seen: Vec::new(),
             etag: Some("W/\"abc\"".to_owned()),
             last_modified: None,
+            project: None,
         };
         let named = Token::Named(Secret::new("GITLAB_TOKEN", "hunter2"));
         assert_eq!(

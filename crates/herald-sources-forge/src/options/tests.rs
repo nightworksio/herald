@@ -44,107 +44,88 @@ fn a_source_names_a_repository_or_an_owner_and_not_both() {
     );
 }
 
+/// A change giving one of an owner's keys.
+type Change = fn(&mut SourceOptions);
+
 fn owned_keys() -> Vec<(&'static str, SourceOptions)> {
-    vec![
-        (
-            "include",
-            SourceOptions {
-                include: vec!["a".to_owned()],
-                ..SourceOptions::default()
-            },
-        ),
-        (
-            "exclude",
-            SourceOptions {
-                exclude: vec!["a".to_owned()],
-                ..SourceOptions::default()
-            },
-        ),
-        (
-            "topics",
-            SourceOptions {
-                topics: vec!["a".to_owned()],
-                ..SourceOptions::default()
-            },
-        ),
-        (
-            "visibility",
-            SourceOptions {
-                visibility: Some(Vec::new()),
-                ..SourceOptions::default()
-            },
-        ),
-        (
-            "archived",
-            SourceOptions {
-                archived: true,
-                ..SourceOptions::default()
-            },
-        ),
-        (
-            "fork",
-            SourceOptions {
-                fork: true,
-                ..SourceOptions::default()
-            },
-        ),
-        (
-            "template",
-            SourceOptions {
-                template: true,
-                ..SourceOptions::default()
-            },
-        ),
-        (
-            "language",
-            SourceOptions {
-                language: vec!["Rust".to_owned()],
-                ..SourceOptions::default()
-            },
-        ),
-        (
-            "properties",
-            SourceOptions {
-                properties: BTreeMap::from([("team".to_owned(), Values::One("a".to_owned()))]),
-                ..SourceOptions::default()
-            },
-        ),
-        (
-            "subgroups",
-            SourceOptions {
-                subgroups: Some(true),
-                ..SourceOptions::default()
-            },
-        ),
-        (
-            "most_listed",
-            SourceOptions {
-                most_listed: NonZeroUsize::new(1),
-                ..SourceOptions::default()
-            },
-        ),
-        (
-            "most_members",
-            SourceOptions {
-                most_members: NonZeroUsize::new(1),
-                ..SourceOptions::default()
-            },
-        ),
-        (
-            "keep_members",
-            SourceOptions {
-                keep_members: Some(Duration(SignedDuration::from_hours(1))),
-                ..SourceOptions::default()
-            },
-        ),
-        (
-            "listed_page",
-            SourceOptions {
-                listed_page: NonZeroUsize::new(1),
-                ..SourceOptions::default()
-            },
-        ),
-    ]
+    let changes: [(&str, Change); 22] = [
+        ("include", |options| {
+            options.include = vec!["a".to_owned()];
+        }),
+        ("exclude", |options| {
+            options.exclude = vec!["a".to_owned()];
+        }),
+        ("topics", |options| {
+            options.topics = vec!["a".to_owned()];
+        }),
+        ("visibility", |options| {
+            options.visibility = Some(Vec::new());
+        }),
+        ("archived", |options| {
+            options.archived = true;
+        }),
+        ("fork", |options| {
+            options.fork = true;
+        }),
+        ("template", |options| {
+            options.template = true;
+        }),
+        ("language", |options| {
+            options.language = vec!["Rust".to_owned()];
+        }),
+        ("properties", |options| {
+            options.properties = BTreeMap::from([("a".to_owned(), Values::One("b".to_owned()))]);
+        }),
+        ("subgroups", |options| {
+            options.subgroups = Some(true);
+        }),
+        ("most_listed", |options| {
+            options.most_listed = NonZeroUsize::new(1);
+        }),
+        ("most_members", |options| {
+            options.most_members = NonZeroUsize::new(1);
+        }),
+        ("keep_members", |options| {
+            options.keep_members = Some(Duration(SignedDuration::from_hours(1)));
+        }),
+        ("listed_page", |options| {
+            options.listed_page = NonZeroUsize::new(1);
+        }),
+        ("members", |options| {
+            options.members = Some(Members::File {
+                file: "repos.toml".to_owned(),
+            });
+        }),
+        ("tables", |options| {
+            options.tables = vec!["repo".to_owned()];
+        }),
+        ("key", |options| {
+            options.key = Some("name".to_owned());
+        }),
+        ("project", |options| {
+            options.project = Some("{{ repository.path }}".to_owned());
+        }),
+        ("repositories", |options| {
+            options.repositories = BTreeMap::from([("a".to_owned(), Override::default())]);
+        }),
+        ("transport", |options| {
+            options.transport = Some(Transport::Rest);
+        }),
+        ("graphql", |options| {
+            options.graphql = Some("https://x.example/graphql".to_owned());
+        }),
+        ("graphql_batch", |options| {
+            options.graphql_batch = NonZeroUsize::new(5);
+        }),
+    ];
+    changes
+        .into_iter()
+        .map(|(key, change)| {
+            let mut options = SourceOptions::default();
+            change(&mut options);
+            (key, options)
+        })
+        .collect()
 }
 
 #[test]
@@ -169,7 +150,7 @@ fn an_owner_s_keys_are_refused_on_a_source_of_one_repository() {
 }
 
 #[test]
-fn an_owner_source_takes_no_webhook_its_forge_s_keys_only_and_its_caps_within_bounds() {
+fn an_owner_source_takes_webhooks_its_forge_s_keys_only_and_its_caps_within_bounds() {
     assert_eq!(
         SourceOptions {
             webhook: Some(SecretRef {
@@ -178,7 +159,7 @@ fn an_owner_source_takes_no_webhook_its_forge_s_keys_only_and_its_caps_within_bo
             ..owner("a")
         }
         .check(Forge::GitHub),
-        Err("an owner source is polled, and takes no webhook; remove webhook".to_owned())
+        Ok(())
     );
     let grouped = SourceOptions {
         subgroups: Some(false),
@@ -264,6 +245,7 @@ fn an_owner_source_s_defaults_take_public_repositories_within_the_shipped_caps()
                     vec!["core".to_owned(), "edge".to_owned()]
                 ),
             ]),
+            names: None,
         })
     );
     assert_eq!(
@@ -275,4 +257,299 @@ fn an_owner_source_s_defaults_take_public_repositories_within_the_shipped_caps()
         ),
         (5, 4, SignedDuration::from_hours(2), false)
     );
+}
+
+#[test]
+fn a_project_template_is_checked_for_what_it_reads_when_the_config_loads() {
+    let projected = |project: &str| {
+        SourceOptions {
+            project: Some(project.to_owned()),
+            ..owner("a")
+        }
+        .check(Forge::GitHub)
+    };
+    assert_eq!(projected("{{ repository.path }}"), Ok(()));
+    assert_eq!(
+        projected("{{ repository.title }}"),
+        Err("project reads repository.title, which a repository does not carry; use repository.id, repository.name, repository.path, repository.owner, repository.topics, repository.properties, repository.visibility".to_owned())
+    );
+    let Err(unclosed) = projected("{{ repository.name") else {
+        panic!("a template that does not compile is refused");
+    };
+    assert!(unclosed.starts_with("project syntax error"), "{unclosed}");
+    assert!(
+        SourceOptions {
+            project: Some("{{ repository.name }}".to_owned()),
+            ..owner("a")
+        }
+        .project()
+        .is_some()
+    );
+    assert!(owner("a").project().is_none());
+}
+
+#[test]
+fn a_member_file_is_named_by_a_repository_and_a_path_inside_it() {
+    let filed = |repository: &str, path: &str| {
+        SourceOptions {
+            members: Some(Members::Repository {
+                repository: repository.to_owned(),
+                path: path.to_owned(),
+                reference: None,
+            }),
+            ..owner("a")
+        }
+        .check(Forge::GitHub)
+    };
+    assert_eq!(filed("lemonfiber/spec", "30-repos/repos.toml"), Ok(()));
+    assert_eq!(
+        filed("spec", "repos.toml"),
+        Err("members.repository \"spec\" is not a repository; give it as owner/name".to_owned())
+    );
+    for path in ["../secrets.toml", "a//b.toml", "a/./b.toml", ""] {
+        assert_eq!(
+            filed("lemonfiber/spec", path),
+            Err(format!(
+                "members.path \"{path}\" is not a file's path in the repository; give it as dir/file.toml, without empty, . or .. parts"
+            )),
+            "{path}"
+        );
+    }
+    for loose in [
+        SourceOptions {
+            tables: vec!["repo".to_owned()],
+            ..owner("a")
+        },
+        SourceOptions {
+            key: Some("name".to_owned()),
+            ..owner("a")
+        },
+    ] {
+        assert_eq!(
+            loose.check(Forge::GitHub),
+            Err("tables and key read a member file; give members, or remove them".to_owned())
+        );
+    }
+    assert_eq!(owner("a").key(), "name");
+    assert_eq!(
+        SourceOptions {
+            key: Some("repo".to_owned()),
+            ..owner("a")
+        }
+        .key(),
+        "repo"
+    );
+}
+
+#[test]
+fn a_member_file_table_is_one_shape_or_the_other() {
+    let read = |text: &str| toml::from_str::<SourceOptions>(text).map(|options| options.members);
+    assert_eq!(
+        read("members = { file = \"repos.toml\" }"),
+        Ok(Some(Members::File {
+            file: "repos.toml".to_owned()
+        }))
+    );
+    assert_eq!(
+        read("members = { repository = \"a/spec\", path = \"r.toml\", ref = \"main\" }"),
+        Ok(Some(Members::Repository {
+            repository: "a/spec".to_owned(),
+            path: "r.toml".to_owned(),
+            reference: Some("main".to_owned()),
+        }))
+    );
+    assert!(read("members = { file = \"repos.toml\", path = \"r.toml\" }").is_err());
+}
+
+#[test]
+fn a_github_owner_names_its_transport_its_graphql_endpoint_and_its_batch() {
+    let github = SourceOptions {
+        transport: Some(Transport::Events),
+        api: Some("https://ghe.example/api/v3".to_owned()),
+        graphql: Some("https://ghe.example/api/graphql".to_owned()),
+        graphql_batch: NonZeroUsize::new(GRAPHQL_BATCH_ALLOWED),
+        ..owner("a")
+    };
+    assert_eq!(github.check(Forge::GitHub), Ok(()));
+    assert_eq!(github.transport(), Transport::Events);
+    assert_eq!(github.graphql_batch().get(), GRAPHQL_BATCH_ALLOWED);
+    assert_eq!(owner("a").transport(), Transport::Auto);
+    assert_eq!(owner("a").graphql_batch(), GRAPHQL_BATCH);
+    for (key, options) in [
+        (
+            "transport",
+            SourceOptions {
+                transport: Some(Transport::Rest),
+                ..owner("a")
+            },
+        ),
+        (
+            "graphql",
+            SourceOptions {
+                graphql: Some("https://x.example/graphql".to_owned()),
+                ..owner("a")
+            },
+        ),
+        (
+            "graphql_batch",
+            SourceOptions {
+                graphql_batch: NonZeroUsize::new(5),
+                ..owner("a")
+            },
+        ),
+    ] {
+        for forge in [Forge::GitLab, Forge::Forgejo] {
+            assert_eq!(
+                options.check(forge),
+                Err(format!("{key} is a GitHub owner's; remove it"))
+            );
+        }
+    }
+    assert_eq!(
+        SourceOptions {
+            graphql: Some("ftp://x".to_owned()),
+            ..owner("a")
+        }
+        .check(Forge::GitHub),
+        Err("graphql \"ftp://x\" is not a web address; give the GraphQL endpoint, such as https://ghe.example/api/graphql".to_owned())
+    );
+    assert_eq!(
+        SourceOptions {
+            graphql: Some("https://elsewhere.example/graphql".to_owned()),
+            ..owner("a")
+        }
+        .check(Forge::GitHub),
+        Err("graphql \"https://elsewhere.example/graphql\" is not on api's host, the only one the source may reach; give the endpoint beside api, or remove graphql".to_owned())
+    );
+    assert_eq!(
+        SourceOptions {
+            graphql: Some("https://api.github.com/graphql".to_owned()),
+            ..owner("a")
+        }
+        .check(Forge::GitHub),
+        Ok(())
+    );
+    assert_eq!(
+        SourceOptions {
+            graphql_batch: NonZeroUsize::new(GRAPHQL_BATCH_ALLOWED + 1),
+            ..owner("a")
+        }
+        .check(Forge::GitHub),
+        Err(format!(
+            "graphql_batch is at most {GRAPHQL_BATCH_ALLOWED}; lower it"
+        ))
+    );
+}
+
+#[test]
+fn each_override_names_its_repositories_by_a_glob_and_its_project_by_a_template() {
+    let overriding = |glob: &str, project: &str| SourceOptions {
+        repositories: BTreeMap::from([(
+            glob.to_owned(),
+            Override {
+                project: Some(project.to_owned()),
+            },
+        )]),
+        ..owner("a")
+    };
+    assert_eq!(
+        overriding("plugin-*", "{{ repository.name }}").check(Forge::GitHub),
+        Ok(())
+    );
+    let Err(unclosed) = overriding("plugin-[", "x").check(Forge::GitHub) else {
+        panic!("a glob that cannot be read is refused");
+    };
+    assert!(
+        unclosed.starts_with("repositories: \"plugin-[\" opens a ["),
+        "{unclosed}"
+    );
+    assert_eq!(
+        overriding("plugin-*", "{{ event.project }}").check(Forge::GitHub),
+        Err("repositories.\"plugin-*\".project reads event.project, which a repository does not carry; use repository.id, repository.name, repository.path, repository.owner, repository.topics, repository.properties, repository.visibility".to_owned())
+    );
+    let ordered = SourceOptions {
+        repositories: BTreeMap::from([
+            (
+                "*".to_owned(),
+                Override {
+                    project: Some("all".to_owned()),
+                },
+            ),
+            (
+                "plugin-sonarr".to_owned(),
+                Override {
+                    project: Some("sonarr".to_owned()),
+                },
+            ),
+            ("plugin-*".to_owned(), Override { project: None }),
+            (
+                "plugin-?*".to_owned(),
+                Override {
+                    project: Some("plugin".to_owned()),
+                },
+            ),
+        ]),
+        ..owner("a")
+    };
+    assert_eq!(
+        ordered
+            .projects()
+            .iter()
+            .map(|(glob, _)| glob.as_str())
+            .collect::<Vec<_>>(),
+        ["plugin-sonarr", "plugin-?*", "*"]
+    );
+}
+
+#[test]
+fn graphql_is_chosen_by_transport_and_under_auto_by_a_token() {
+    let token = Some(SecretRef {
+        secret: "TOKEN".to_owned(),
+    });
+    let with = |transport: Option<Transport>, token: Option<SecretRef>| SourceOptions {
+        token,
+        transport,
+        ..owner("a")
+    };
+    assert!(with(None, token.clone()).batched());
+    assert!(!with(None, None).batched());
+    assert!(with(Some(Transport::Graphql), token.clone()).batched());
+    assert!(!with(Some(Transport::Rest), token.clone()).batched());
+    assert!(with(Some(Transport::Events), token.clone()).batched());
+    assert!(!with(Some(Transport::Events), None).batched());
+    assert_eq!(
+        with(Some(Transport::Graphql), None).check(Forge::GitHub),
+        Err("transport graphql needs a token, as GitHub's GraphQL API answers none without; give token, or choose rest".to_owned())
+    );
+}
+
+#[test]
+fn two_overrides_as_narrow_as_each_other_that_could_name_one_repository_do_not_load() {
+    let both = |one: &str, other: &str, project: Option<&str>| {
+        SourceOptions {
+            repositories: BTreeMap::from([
+                (
+                    one.to_owned(),
+                    Override {
+                        project: Some("a".to_owned()),
+                    },
+                ),
+                (
+                    other.to_owned(),
+                    Override {
+                        project: project.map(ToOwned::to_owned),
+                    },
+                ),
+            ]),
+            ..owner("a")
+        }
+        .check(Forge::GitHub)
+    };
+    assert_eq!(
+        both("plugin-*", "*-sonarr", Some("b")),
+        Err("repositories \"*-sonarr\" and \"plugin-*\" both set project, are as narrow as each other and could both name one repository; make one narrower".to_owned())
+    );
+    assert_eq!(both("plugin-*", "*-sonarr", None), Ok(()));
+    assert_eq!(both("plugin-*", "web-*", Some("b")), Ok(()));
+    assert_eq!(both("plugin-*", "plugin-s*", Some("b")), Ok(()));
 }

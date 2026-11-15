@@ -65,6 +65,48 @@ mod forgejo {
     }
 
     #[test]
+    fn an_owner_s_webhook_is_admitted_by_the_repository_attributes_it_names() {
+        const RELEASED: (&str, &str) = ("X-Forgejo-Event", "release");
+        let taking = |selection: &herald_core::Selection| {
+            Forge::Forgejo.hooked_owned(
+                (&[RELEASED], EVENT.as_bytes()),
+                ("forgejo", false),
+                selection,
+            )
+        };
+        assert!(matches!(
+            taking(&herald_core::Selection {
+                topics: vec!["git".to_owned()],
+                language: vec!["go".to_owned()],
+                properties: std::collections::BTreeMap::from([(
+                    "team".to_owned(),
+                    vec!["media".to_owned()],
+                )]),
+                ..herald_core::Selection::default()
+            }),
+            Ok(Hooked::Member { ref id, .. }) if id == "73144"
+        ));
+        for refusing in [
+            herald_core::Selection {
+                topics: vec!["media".to_owned()],
+                ..herald_core::Selection::default()
+            },
+            herald_core::Selection {
+                language: vec!["Rust".to_owned()],
+                ..herald_core::Selection::default()
+            },
+        ] {
+            assert_eq!(
+                taking(&refusing),
+                Ok(Hooked::Nothing(
+                    "the repository is not one the source takes"
+                )),
+                "{refusing:?}"
+            );
+        }
+    }
+
+    #[test]
     fn a_published_release_event_becomes_an_event() {
         let event = Forge::Forgejo.event(EVENT.as_bytes()).unwrap().unwrap();
         assert_eq!(event.identity().as_str(), "codeberg.org/73144/v17.0.1");

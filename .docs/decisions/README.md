@@ -46,4 +46,5 @@ no separate requirements document, and there are no requirement IDs.
 | [0026](0026-a-store-s-write-attempts-lock-and-tombstone-are-settings.md) | A store's write attempts, lock and tombstone are settings | Accepted |
 | [0027](0027-the-layer-rules-place-every-crate-and-ship-no-fakes.md) | The layer rules place every crate, know every runtime, and ship no fakes | Accepted |
 | [0028](0028-work-keeps-within-its-host-s-limits-and-starts-no-send-it-cannot-finish.md) | Work keeps within its host's limits and starts no send it cannot finish | Accepted |
-| [0029](0029-an-owner-source-polls-each-repository-it-takes-on-its-own.md) | An owner source polls each repository it takes on its own | Accepted |
+| [0029](0029-an-owner-source-polls-each-repository-it-takes-on-its-own.md) | An owner source polls each repository it takes on its own | Accepted; extended by [0030](0030-an-owner-source-reads-a-member-file-takes-webhooks-names-projects-and-polls-in-batches.md) |
+| [0030](0030-an-owner-source-reads-a-member-file-takes-webhooks-names-projects-and-polls-in-batches.md) | An owner source reads a member file, takes webhooks, names projects and polls in batches | Accepted |

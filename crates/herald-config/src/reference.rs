@@ -15,6 +15,7 @@ pub fn reference(schema: &str) -> String {
         defs,
         out: String::new(),
         types: Vec::new(),
+        kinds: Vec::new(),
     };
     written.out.push_str(
         "# herald.toml settings\n\nEvery key `herald.toml` takes, generated from \
@@ -35,6 +36,7 @@ struct Written<'a> {
     defs: Option<&'a Map<String, Value>>,
     out: String,
     types: Vec<&'a str>,
+    kinds: Vec<&'a str>,
 }
 
 impl<'a> Written<'a> {
@@ -56,15 +58,24 @@ impl<'a> Written<'a> {
             for variant in variants {
                 let (_, shape) = self.resolve(variant);
                 let what = said(variant);
-                if let Some(kind) = kind(shape) {
+                let kinded = kind(shape);
+                if let Some(kind) = kinded {
                     self.heading("###", &format!("`{path}` of kind `{kind}`"), &what);
                 } else {
                     let named = what.trim_end_matches('.');
-                    self.heading("###", &format!("`{path}`: {named}"), "");
+                    let under = self
+                        .kinds
+                        .last()
+                        .map_or_else(String::new, |kind| format!(" of kind `{kind}`"));
+                    self.heading("###", &format!("`{path}`{under}: {named}"), "");
                 }
+                self.kinds.extend(kinded);
                 let mut own = Vec::new();
                 self.walk(path, variant, &mut own, within);
                 self.table(&own);
+                if kinded.is_some() {
+                    self.kinds.pop();
+                }
             }
         } else if let Some(fields) = resolved.get("properties").and_then(Value::as_object) {
             let what = said(node);
@@ -214,7 +225,7 @@ mod tests {
             "Row": {"type": "object", "properties": {"cell": {"type": "integer"}}},
             "Shape": {
                 "oneOf": [
-                    {"description": "A circle.", "type": "object", "properties": {"kind": {"const": "circle"}, "radius": {"type": "number"}}},
+                    {"description": "A circle.", "type": "object", "properties": {"kind": {"const": "circle"}, "radius": {"type": "number"}, "tint": {"oneOf": [{"description": "A solid fill.", "type": "object", "properties": {"color": {"type": "string"}}}, {"description": "No fill.", "type": "object", "properties": {"none": {"type": "boolean"}}}]}}},
                     {"description": "A free form.", "type": "object", "properties": {"points": {"type": "integer"}}},
                     {"const": "dot"}
                 ]
@@ -237,6 +248,8 @@ mod tests {
             "\n### `shape` of kind `circle`\n\nA circle.\n\n| Setting",
             "| `shape.radius` | number |  |",
             "\n### `shape`: A free form\n\n| Setting",
+            "\n### `shape.tint` of kind `circle`: A solid fill\n\n| Setting",
+            "| `shape.tint.color` | string |  |",
             "\n### Bare\n\n### Leaf\n\nA leaf.\n",
         ] {
             assert!(written.contains(row), "{row} in {written}");
