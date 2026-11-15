@@ -2,9 +2,10 @@
 
 #[cfg(test)]
 mod gitlab {
+    use herald_core::PrereleaseRule;
     use herald_core::{Cursor, Kind};
     use herald_ports::{Response, Secret};
-    use herald_sources_forge::{Forge, Hooked, Origin, Repository, SourceOptions, Token};
+    use herald_sources_forge::{Forge, Hooked, Origin, Repository, Signals, SourceOptions, Token};
     use herald_wire::SourceError;
     use proptest::prelude::*;
     use serde_json::{Value, json};
@@ -53,31 +54,46 @@ mod gitlab {
             hook["project"]["path_with_namespace"] = json!("Gitlab-Org/tools/cli");
         });
         assert!(matches!(
-            Forge::GitLab.hooked_owned((&[RELEASED], &nested), ("gitlab-org", true), &selection),
+            Forge::GitLab.hooked_owned((&[RELEASED], &nested), ("gitlab-org", true), (&selection, &|_| Signals::default())),
             Ok(Hooked::Member { ref id, .. }) if id == "34675721"
         ));
         assert!(
             Forge::GitLab
-                .hooked_owned((&[RELEASED], &nested), ("gitlab-org", false), &selection)
+                .hooked_owned(
+                    (&[RELEASED], &nested),
+                    ("gitlab-org", false),
+                    (&selection, &|_| Signals::default())
+                )
                 .is_err()
         );
         assert!(
             Forge::GitLab
-                .hooked_owned((&[RELEASED], &nested), ("gitlab", true), &selection)
+                .hooked_owned(
+                    (&[RELEASED], &nested),
+                    ("gitlab", true),
+                    (&selection, &|_| Signals::default())
+                )
                 .is_err()
         );
         let direct = Forge::GitLab.hooked_owned(
             (&[RELEASED], HOOK.as_bytes()),
             ("gitlab-org", false),
-            &herald_core::Selection {
-                include: vec![herald_core::Glob::new("c?i").unwrap()],
-                ..herald_core::Selection::default()
-            },
+            (
+                &herald_core::Selection {
+                    include: vec![herald_core::Glob::new("c?i").unwrap()],
+                    ..herald_core::Selection::default()
+                },
+                &|_| Signals::default(),
+            ),
         );
         assert!(matches!(direct, Ok(Hooked::Member { .. })), "{direct:?}");
         let internal = edited(|hook| hook["project"]["visibility_level"] = json!(10));
         assert_eq!(
-            Forge::GitLab.hooked_owned((&[RELEASED], &internal), ("gitlab-org", false), &selection),
+            Forge::GitLab.hooked_owned(
+                (&[RELEASED], &internal),
+                ("gitlab-org", false),
+                (&selection, &|_| Signals::default())
+            ),
             Ok(Hooked::Nothing(
                 "the repository is not one the source takes"
             ))
@@ -88,9 +104,16 @@ mod gitlab {
     fn a_release_hook_of_the_source_s_project_announces_its_release() {
         let release = [("X-Gitlab-Event", "Release Hook")];
         assert_eq!(
-            Forge::GitLab.hooked(&release, HOOK.as_bytes(), "gitlab-org/cli"),
+            Forge::GitLab.hooked(
+                (&release, HOOK.as_bytes()),
+                "gitlab-org/cli",
+                &Signals::default()
+            ),
             Ok(Hooked::Event(
-                Forge::GitLab.event(HOOK.as_bytes()).unwrap().unwrap()
+                Forge::GitLab
+                    .event(HOOK.as_bytes(), PrereleaseRule::default())
+                    .unwrap()
+                    .unwrap()
             ))
         );
         let updated = {
@@ -99,29 +122,36 @@ mod gitlab {
             serde_json::to_vec(&hook).unwrap()
         };
         assert_eq!(
-            Forge::GitLab.hooked(&release, &updated, "gitlab-org/cli"),
+            Forge::GitLab.hooked((&release, &updated), "gitlab-org/cli", &Signals::default()),
             Ok(Hooked::Nothing(
                 "the release is not published, or is a draft"
             ))
         );
         assert_eq!(
             Forge::GitLab.hooked(
-                &[("X-Gitlab-Event", "Push Hook")],
-                HOOK.as_bytes(),
-                "gitlab-org/cli"
+                (&[("X-Gitlab-Event", "Push Hook")], HOOK.as_bytes()),
+                "gitlab-org/cli",
+                &Signals::default()
             ),
             Ok(Hooked::Nothing("the delivery is not of a release"))
         );
         assert!(
             Forge::GitLab
-                .hooked(&release, HOOK.as_bytes(), "gitlab-org/other")
+                .hooked(
+                    (&release, HOOK.as_bytes()),
+                    "gitlab-org/other",
+                    &Signals::default()
+                )
                 .is_err()
         );
     }
 
     #[test]
     fn a_created_release_hook_becomes_an_event() {
-        let event = Forge::GitLab.event(HOOK.as_bytes()).unwrap().unwrap();
+        let event = Forge::GitLab
+            .event(HOOK.as_bytes(), PrereleaseRule::default())
+            .unwrap()
+            .unwrap();
         assert_eq!(event.identity().as_str(), "gitlab.com/34675721/v1.126.0");
         assert_eq!(event.kind(), &Kind::RELEASE);
         assert_eq!(event.project(), "cli");
@@ -140,13 +170,19 @@ mod gitlab {
     fn only_a_created_release_announces_and_a_tag_says_whether_it_is_a_pre_release() {
         for action in ["update", "delete"] {
             let changed = edited(|payload| payload["action"] = json!(action));
-            assert_eq!(Forge::GitLab.event(&changed), Ok(None));
+            assert_eq!(
+                Forge::GitLab.event(&changed, PrereleaseRule::default()),
+                Ok(None)
+            );
         }
         let candidate = edited(|payload| {
             payload["tag"] = json!("v2.0.0-rc.1");
             payload["released_at"] = json!("2026-10-28T21:42:40.023Z");
         });
-        let event = Forge::GitLab.event(&candidate).unwrap().unwrap();
+        let event = Forge::GitLab
+            .event(&candidate, PrereleaseRule::default())
+            .unwrap()
+            .unwrap();
         assert!(event.prerelease());
         assert_eq!(event.occurred().to_string(), "2026-10-28T21:42:40.023Z");
     }
@@ -155,29 +191,38 @@ mod gitlab {
     fn what_is_not_a_release_hook_says_why() {
         let pushed = edited(|payload| payload["object_kind"] = json!("push"));
         assert_eq!(
-            Forge::GitLab.event(&pushed).unwrap_err().to_string(),
+            Forge::GitLab
+                .event(&pushed, PrereleaseRule::default())
+                .unwrap_err()
+                .to_string(),
             "GitLab's release event could not be read: it is a push hook, not a release hook"
         );
         let unreleased = edited(|payload| payload["released_at"] = json!(null));
         assert_eq!(
-            Forge::GitLab.event(&unreleased).unwrap_err().to_string(),
+            Forge::GitLab
+                .event(&unreleased, PrereleaseRule::default())
+                .unwrap_err()
+                .to_string(),
             "GitLab's release event could not be read: a published release has no publication time"
         );
         let missing = edited(|payload| {
             payload.as_object_mut().unwrap().remove("released_at");
         });
         assert_eq!(
-            Forge::GitLab.event(&missing).unwrap_err().to_string(),
+            Forge::GitLab
+                .event(&missing, PrereleaseRule::default())
+                .unwrap_err()
+                .to_string(),
             "GitLab's release event could not be read: a published release has no publication time"
         );
         let garbled = edited(|payload| payload["released_at"] = json!("last Tuesday UTC"));
         assert!(matches!(
-            Forge::GitLab.event(&garbled),
+            Forge::GitLab.event(&garbled, PrereleaseRule::default()),
             Err(SourceError::Unreadable { .. })
         ));
         let garbled = edited(|payload| payload["released_at"] = json!("last Tuesday"));
         assert!(matches!(
-            Forge::GitLab.event(&garbled),
+            Forge::GitLab.event(&garbled, PrereleaseRule::default()),
             Err(SourceError::Unreadable { .. })
         ));
     }
@@ -188,11 +233,16 @@ mod gitlab {
             cli(),
             Repository {
                 id: 34_675_721,
-                name: "cli".to_owned()
+                name: "cli".to_owned(),
+                page: Some("https://gitlab.com/gitlab-org/cli".to_owned())
             }
         );
         let releases = Forge::GitLab
-            .releases(&cli(), &answer(200, RELEASES), herald_wire::PARSE_LIMIT)
+            .releases(
+                &cli(),
+                &answer(200, RELEASES),
+                (herald_wire::PARSE_LIMIT, PrereleaseRule::default()),
+            )
             .unwrap();
         let found: Vec<&str> = releases
             .events
@@ -222,12 +272,16 @@ mod gitlab {
             .releases(
                 &cli(),
                 &answer(200, &upcoming.to_string()),
-                herald_wire::PARSE_LIMIT,
+                (herald_wire::PARSE_LIMIT, PrereleaseRule::default()),
             )
             .unwrap();
         assert_eq!(releases.events.len(), 2);
         assert_eq!(
-            Forge::GitLab.release(&cli(), &answer(200, &upcoming[0].to_string())),
+            Forge::GitLab.release(
+                &cli(),
+                &answer(200, &upcoming[0].to_string()),
+                PrereleaseRule::default()
+            ),
             Ok(None)
         );
     }
@@ -241,13 +295,17 @@ mod gitlab {
         );
         let releases: Value = serde_json::from_str(RELEASES).unwrap();
         let event = Forge::GitLab
-            .release(&cli(), &answer(200, &releases[0].to_string()))
+            .release(
+                &cli(),
+                &answer(200, &releases[0].to_string()),
+                PrereleaseRule::default(),
+            )
             .unwrap()
             .unwrap();
         assert_eq!(event.identity().as_str(), "gitlab.com/34675721/v1.126.0");
         assert_eq!(
             Forge::GitLab
-                .release(&cli(), &answer(404, "{}"))
+                .release(&cli(), &answer(404, "{}"), PrereleaseRule::default())
                 .unwrap_err()
                 .to_string(),
             "GitLab's release was answered with 404; check the names and ids the config gives"
@@ -268,6 +326,7 @@ mod gitlab {
             etag: Some("W/\"abc\"".to_owned()),
             last_modified: None,
             project: None,
+            ..Cursor::default()
         };
         let named = Token::Named(Secret::new("GITLAB_TOKEN", "hunter2"));
         assert_eq!(
@@ -302,10 +361,10 @@ mod gitlab {
     proptest! {
         #[test]
         fn any_bytes_are_an_event_nothing_or_an_error(bytes in proptest::collection::vec(any::<u8>(), 0..512)) {
-            let _ = Forge::GitLab.event(&bytes);
+            let _ = Forge::GitLab.event(&bytes, PrereleaseRule::default());
             let response = Response { status: 200, headers: Vec::new(), body: bytes };
-            let _ = Forge::GitLab.releases(&cli(), &response, herald_wire::PARSE_LIMIT);
-            let _ = Forge::GitLab.release(&cli(), &response);
+            let _ = Forge::GitLab.releases(&cli(), &response, (herald_wire::PARSE_LIMIT, PrereleaseRule::default()));
+            let _ = Forge::GitLab.release(&cli(), &response, PrereleaseRule::default());
             let _ = Forge::GitLab.repository(&response);
         }
 
@@ -315,7 +374,7 @@ mod gitlab {
             let written = time.strftime("%Y-%m-%d %H:%M:%S UTC").to_string();
             for form in [written, time.to_string()] {
                 let event = Forge::GitLab
-                    .event(&edited(|payload| payload["released_at"] = json!(form)))
+                    .event(&edited(|payload| payload["released_at"] = json!(form)), PrereleaseRule::default())
                     .unwrap()
                     .unwrap();
                 prop_assert_eq!(event.occurred(), time);

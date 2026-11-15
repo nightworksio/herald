@@ -204,6 +204,28 @@ fn an_owner_source_takes_webhooks_of_the_names_its_member_file_lists_and_says_to
         grouped.notes(),
         [Forge::GitLab.unsigned().unwrap(), OWNER_HOOKED]
     );
+    let tagged = GitLabKind::checked(SourceOptions {
+        signals: Some(vec![herald_core::Signal::Tag]),
+        ..grouped.options.clone()
+    })
+    .unwrap();
+    assert_eq!(
+        tagged.notes(),
+        [Forge::GitLab.unsigned().unwrap(), OWNER_HOOKED, TAG_POLLED]
+    );
+    let polled = GitHubKind::checked(SourceOptions {
+        webhook: None,
+        signals: Some(vec![herald_core::Signal::Tag]),
+        ..options("cli/cli")
+    })
+    .unwrap();
+    assert_eq!(polled.notes(), Vec::<&str>::new());
+    let hooked = GitHubKind::checked(SourceOptions {
+        signals: Some(vec![herald_core::Signal::Tag]),
+        ..options("cli/cli")
+    })
+    .unwrap();
+    assert_eq!(hooked.notes(), [TAG_POLLED]);
 }
 
 #[test]

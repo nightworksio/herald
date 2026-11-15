@@ -53,15 +53,24 @@ fn member(name: &str) -> Listed {
 fn seen(identities: &[&str]) -> Cursor {
     Cursor {
         seen: identities.iter().map(|seen| Identity::new(*seen)).collect(),
-        etag: None,
-        last_modified: None,
-        project: None,
+        ..Cursor::default()
     }
 }
 
 fn together(
     http: &Scripted,
     members: &[(&Listed, Option<&Cursor>)],
+) -> Vec<Result<Option<Polled>, Unpolled>> {
+    let signalled: Vec<(&Listed, Option<&Cursor>, Signals)> = members
+        .iter()
+        .map(|(member, cursor)| (*member, *cursor, Signals::default()))
+        .collect();
+    together_signalled(http, &signalled)
+}
+
+fn together_signalled(
+    http: &Scripted,
+    members: &[(&Listed, Option<&Cursor>, Signals)],
 ) -> Vec<Result<Option<Polled>, Unpolled>> {
     let token = Token::Named(Secret::new("TOKEN", "t"));
     let asking = Asking {
@@ -231,4 +240,193 @@ fn a_member_whose_cursor_has_not_seen_its_newest_release_is_asked_in_full() {
     };
     assert_eq!(polled.events.len(), 2);
     assert_eq!(http.bodies().len(), 2);
+}
+
+fn tagged(id: u64, releases: &[Value], tags: &[Value]) -> Value {
+    json!({
+        "databaseId": id,
+        "url": format!("https://github.com/lemonfiber/m{id}"),
+        "releases": { "nodes": releases },
+        "refs": { "nodes": tags }
+    })
+}
+
+fn signals(taken: &[Signal]) -> Signals {
+    Signals {
+        taken: taken.iter().copied().collect(),
+        prerelease: herald_core::PrereleaseRule::Either,
+    }
+}
+
+#[test]
+fn each_member_is_asked_for_the_releases_and_tags_its_signals_take() {
+    let (cli, web) = (member("cli"), member("web"));
+    let http = Scripted::new(vec![data(&[tagged(7, &[], &[]), tagged(8, &[], &[])])]);
+    let answered = together_signalled(
+        &http,
+        &[
+            (&cli, Some(&seen(&[])), signals(&[Signal::Tag])),
+            (
+                &web,
+                Some(&seen(&[])),
+                signals(&[Signal::Release, Signal::Tag]),
+            ),
+        ],
+    );
+    assert_eq!(answered, [Ok(None), Ok(None)]);
+    let query = http.bodies()[0]["query"].as_str().unwrap().to_owned();
+    let m0 = &query[query.find("m0:").unwrap()..query.find("m1:").unwrap()];
+    assert!(!m0.contains("releases("), "{m0}");
+    assert!(m0.contains("refs(refPrefix: \"refs/tags/\", first: $page, orderBy: {field: TAG_COMMIT_DATE, direction: DESC}) { nodes { name } }"), "{m0}");
+    let m1 = &query[query.find("m1:").unwrap()..];
+    assert!(m1.contains("releases(") && m1.contains("refs("), "{m1}");
+    assert!(m1.contains("databaseId url"), "{m1}");
+}
+
+#[test]
+fn a_tag_not_seen_is_read_in_full_with_its_date_and_a_tag_of_a_release_is_the_release_s() {
+    let cli = member("cli");
+    let cursor = seen(&["github.com/7/v1"]);
+    let annotated = json!({
+        "name": "v3-rc.1",
+        "target": {
+            "__typename": "Tag",
+            "message": "Candidate",
+            "tagger": {"date": "2026-11-03T12:00:00Z"},
+            "target": {"committedDate": "2026-11-02T12:00:00Z"}
+        }
+    });
+    let lightweight = json!({
+        "name": "v2",
+        "target": {"__typename": "Commit", "committedDate": "2026-10-30T12:00:00Z"}
+    });
+    let released = json!({"name": "v1", "target": {"__typename": "Commit", "committedDate": "2026-10-01T12:00:00Z"}});
+    let http = Scripted::new(vec![
+        data(&[tagged(
+            7,
+            &[release("v1", false)],
+            &[
+                json!({"name": "v3-rc.1"}),
+                json!({"name": "v2"}),
+                json!({"name": "v1"}),
+            ],
+        )]),
+        data(&[tagged(
+            7,
+            &[release("v1", false)],
+            &[annotated, lightweight, released],
+        )]),
+    ]);
+    let answered = together_signalled(
+        &http,
+        &[(
+            &cli,
+            Some(&cursor),
+            signals(&[Signal::Release, Signal::Tag]),
+        )],
+    );
+    let Ok(Some(polled)) = &answered[0] else {
+        panic!("{answered:?}");
+    };
+    let found: Vec<(&str, Option<Signal>, bool)> = polled
+        .events
+        .iter()
+        .map(|event| {
+            (
+                event.identity().as_str(),
+                event.signal(),
+                event.prerelease(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        found,
+        [
+            ("github.com/7/v3-rc.1", Some(Signal::Tag), true),
+            ("github.com/7/v1", Some(Signal::Release), false),
+            ("github.com/7/v2", Some(Signal::Tag), false),
+        ]
+    );
+    assert_eq!(polled.events[0].body(), "Candidate");
+    assert_eq!(
+        polled.events[0].occurred().to_string(),
+        "2026-11-03T12:00:00Z"
+    );
+    assert_eq!(
+        polled.events[0].link("release"),
+        Some("https://github.com/lemonfiber/m7/releases/tag/v3-rc.1")
+    );
+    assert_eq!(polled.events[2].body(), "");
+    assert_eq!(
+        polled.events[2].occurred().to_string(),
+        "2026-10-30T12:00:00Z"
+    );
+    assert!(http.bodies()[1]["query"].as_str().unwrap().contains(DATED));
+}
+
+#[test]
+fn a_member_whose_tags_its_cursor_has_seen_is_not_asked_in_full() {
+    let cli = member("cli");
+    let http = Scripted::new(vec![data(&[tagged(7, &[], &[json!({"name": "v1"})])])]);
+    let answered = together_signalled(
+        &http,
+        &[(
+            &cli,
+            Some(&seen(&["github.com/7/v1"])),
+            signals(&[Signal::Tag]),
+        )],
+    );
+    assert_eq!(answered, [Ok(None)]);
+    assert_eq!(http.bodies().len(), 1);
+}
+
+#[test]
+fn a_tag_of_an_annotated_tag_or_an_undated_one_takes_what_it_points_at() {
+    let nested = Ref {
+        name: "v1".to_owned(),
+        target: Some(Target {
+            message: Some(" ".to_owned()),
+            tagger: None,
+            pointed: Some(Box::new(Target {
+                message: None,
+                tagger: None,
+                pointed: None,
+                committed_date: Some("2026-11-01T00:00:00Z".parse().unwrap()),
+            })),
+            committed_date: None,
+        }),
+    }
+    .read();
+    assert_eq!(nested.message, None);
+    assert_eq!(nested.date, Some("2026-11-01T00:00:00Z".parse().unwrap()));
+    let bare = Ref {
+        name: "v0".to_owned(),
+        target: None,
+    }
+    .read();
+    assert_eq!((bare.message, bare.date), (None, None));
+}
+
+#[test]
+fn tags_of_a_repository_github_names_no_page_of_cannot_be_announced() {
+    let cli = member("cli");
+    let pageless = json!({
+        "databaseId": 7,
+        "refs": { "nodes": [{"name": "v1", "target": {"committedDate": "2026-11-01T00:00:00Z"}}] }
+    });
+    let http = Scripted::new(vec![
+        data(std::slice::from_ref(&pageless)),
+        data(&[pageless]),
+    ]);
+    let answered = together_signalled(&http, &[(&cli, None, signals(&[Signal::Tag]))]);
+    assert_eq!(
+        answered,
+        [Err(Unpolled::Unreadable(
+            "GitHub's GraphQL answer names no web page of lemonfiber/cli, which its tags are announced by".to_owned()
+        ))]
+    );
+    let empty = json!({"databaseId": 7, "refs": {"nodes": []}});
+    let http = Scripted::new(vec![data(std::slice::from_ref(&empty)), data(&[empty])]);
+    let answered = together_signalled(&http, &[(&cli, None, signals(&[Signal::Tag]))]);
+    assert_eq!(answered, [Ok(Some(Polled::default()))]);
 }

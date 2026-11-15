@@ -318,6 +318,7 @@ async fn cursors<S: Cursors>(store: &S) -> Result<(), Failure> {
         etag: Some("e1".to_owned()),
         last_modified: None,
         project: None,
+        ..Cursor::default()
     };
     checks.ensure(
         store.cursor(&source).await?.is_none(),
@@ -338,6 +339,7 @@ async fn cursors<S: Cursors>(store: &S) -> Result<(), Failure> {
         etag: Some("e2".to_owned()),
         last_modified: None,
         project: None,
+        ..Cursor::default()
     };
     let v2 = checks.written(store.put_cursor(&source, &advanced, Some(v1)).await?);
     checks.ensure(v2 != v1, "a cursor rewritten kept its version");

@@ -3,8 +3,9 @@
 #[cfg(test)]
 mod forgejo {
     use herald_core::Kind;
+    use herald_core::PrereleaseRule;
     use herald_ports::{Response, Secret};
-    use herald_sources_forge::{Forge, Hooked, Origin, Repository, SourceOptions, Token};
+    use herald_sources_forge::{Forge, Hooked, Origin, Repository, Signals, SourceOptions, Token};
     use herald_wire::SourceError;
     use proptest::prelude::*;
     use serde_json::{Value, json};
@@ -38,27 +39,34 @@ mod forgejo {
 
     #[test]
     fn a_webhook_named_by_either_of_forgejo_s_event_headers_announces_its_release() {
-        let event = Forge::Forgejo.event(EVENT.as_bytes()).unwrap().unwrap();
+        let event = Forge::Forgejo
+            .event(EVENT.as_bytes(), PrereleaseRule::default())
+            .unwrap()
+            .unwrap();
         for header in ["X-Forgejo-Event", "X-Gitea-Event"] {
             assert_eq!(
-                Forge::Forgejo.hooked(&[(header, "release")], EVENT.as_bytes(), "forgejo/forgejo"),
+                Forge::Forgejo.hooked(
+                    (&[(header, "release")], EVENT.as_bytes()),
+                    "forgejo/forgejo",
+                    &Signals::default()
+                ),
                 Ok(Hooked::Event(event.clone()))
             );
         }
         assert_eq!(
             Forge::Forgejo.hooked(
-                &[("X-Gitea-Event", "push")],
-                EVENT.as_bytes(),
-                "forgejo/forgejo"
+                (&[("X-Gitea-Event", "push")], EVENT.as_bytes()),
+                "forgejo/forgejo",
+                &Signals::default()
             ),
             Ok(Hooked::Nothing("the delivery is not of a release"))
         );
         assert!(
             Forge::Forgejo
                 .hooked(
-                    &[("X-Forgejo-Event", "release")],
-                    EVENT.as_bytes(),
-                    "other/repo"
+                    (&[("X-Forgejo-Event", "release")], EVENT.as_bytes()),
+                    "other/repo",
+                    &Signals::default()
                 )
                 .is_err()
         );
@@ -71,7 +79,7 @@ mod forgejo {
             Forge::Forgejo.hooked_owned(
                 (&[RELEASED], EVENT.as_bytes()),
                 ("forgejo", false),
-                selection,
+                (selection, &|_| Signals::default()),
             )
         };
         assert!(matches!(
@@ -108,7 +116,10 @@ mod forgejo {
 
     #[test]
     fn a_published_release_event_becomes_an_event() {
-        let event = Forge::Forgejo.event(EVENT.as_bytes()).unwrap().unwrap();
+        let event = Forge::Forgejo
+            .event(EVENT.as_bytes(), PrereleaseRule::default())
+            .unwrap()
+            .unwrap();
         assert_eq!(event.identity().as_str(), "codeberg.org/73144/v17.0.1");
         assert_eq!(event.kind(), &Kind::RELEASE);
         assert_eq!(event.project(), "forgejo");
@@ -121,7 +132,7 @@ mod forgejo {
         let mut updated: Value = serde_json::from_str(EVENT).unwrap();
         updated["action"] = json!("updated");
         assert_eq!(
-            Forge::Forgejo.event(updated.to_string().as_bytes()),
+            Forge::Forgejo.event(updated.to_string().as_bytes(), PrereleaseRule::default()),
             Ok(None)
         );
     }
@@ -132,11 +143,16 @@ mod forgejo {
             forgejo(),
             Repository {
                 id: 73_144,
-                name: "forgejo".to_owned()
+                name: "forgejo".to_owned(),
+                page: Some("https://codeberg.org/forgejo/forgejo".to_owned())
             }
         );
         let releases = Forge::Forgejo
-            .releases(&forgejo(), &answer(200, RELEASES), herald_wire::PARSE_LIMIT)
+            .releases(
+                &forgejo(),
+                &answer(200, RELEASES),
+                (herald_wire::PARSE_LIMIT, PrereleaseRule::default()),
+            )
             .unwrap();
         let found: Vec<&str> = releases
             .events
@@ -154,7 +170,11 @@ mod forgejo {
         assert_eq!(releases.etag, None);
         assert_eq!(
             Forge::Forgejo
-                .releases(&forgejo(), &answer(500, "{}"), herald_wire::PARSE_LIMIT)
+                .releases(
+                    &forgejo(),
+                    &answer(500, "{}"),
+                    (herald_wire::PARSE_LIMIT, PrereleaseRule::default())
+                )
                 .unwrap_err(),
             SourceError::Answered {
                 what: "Forgejo's releases",
@@ -192,7 +212,11 @@ mod forgejo {
         );
         let releases: Value = serde_json::from_str(RELEASES).unwrap();
         let event = Forge::Forgejo
-            .release(&forgejo(), &answer(200, &releases[2].to_string()))
+            .release(
+                &forgejo(),
+                &answer(200, &releases[2].to_string()),
+                PrereleaseRule::default(),
+            )
             .unwrap()
             .unwrap();
         assert_eq!(event.version(), Some("v15.0.11"));
@@ -201,10 +225,10 @@ mod forgejo {
     proptest! {
         #[test]
         fn any_bytes_are_an_event_nothing_or_an_error(bytes in proptest::collection::vec(any::<u8>(), 0..512)) {
-            let _ = Forge::Forgejo.event(&bytes);
+            let _ = Forge::Forgejo.event(&bytes, PrereleaseRule::default());
             let response = Response { status: 200, headers: Vec::new(), body: bytes };
-            let _ = Forge::Forgejo.releases(&forgejo(), &response, herald_wire::PARSE_LIMIT);
-            let _ = Forge::Forgejo.release(&forgejo(), &response);
+            let _ = Forge::Forgejo.releases(&forgejo(), &response, (herald_wire::PARSE_LIMIT, PrereleaseRule::default()));
+            let _ = Forge::Forgejo.release(&forgejo(), &response, PrereleaseRule::default());
         }
     }
 }

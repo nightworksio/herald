@@ -62,7 +62,10 @@ fn events(config: &Config, event_file: Option<(Forge, &str)>) -> Result<Vec<Even
     };
     let payload =
         std::fs::read(path).map_err(|error| format!("{path} could not be read: {error}"))?;
-    match forge.event(&payload).map_err(|error| error.to_string())? {
+    match forge
+        .event(&payload, herald_core::PrereleaseRule::default())
+        .map_err(|error| error.to_string())?
+    {
         Some(event) => Ok(vec![event]),
         None => Err(format!("{path} publishes no release")),
     }

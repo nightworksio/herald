@@ -1,5 +1,5 @@
 //! An owner's events on GitHub, read once a round to name the members whose
-//! releases changed (ADR-0030).
+//! releases or tags changed (ADR-0030, ADR-0031).
 
 use std::collections::BTreeSet;
 
@@ -22,6 +22,10 @@ const PAGES: usize = 3;
 const RELEASE: &str = "ReleaseEvent";
 /// The action of a release being published.
 const PUBLISHED: &str = "published";
+/// The event GitHub names a new branch or tag by.
+const CREATE: &str = "CreateEvent";
+/// What a `CreateEvent` names where it made a tag.
+const TAG: &str = "tag";
 
 /// One event, as GitHub lists it.
 #[derive(Deserialize)]
@@ -42,6 +46,7 @@ struct Repo {
 #[derive(Deserialize, Default)]
 struct Payload {
     action: Option<String>,
+    ref_type: Option<String>,
 }
 
 /// Where and how an owner's events are asked.
@@ -51,6 +56,7 @@ pub(crate) struct Asking<'a> {
     pub(crate) owner: Owner,
     pub(crate) token: Option<&'a Token>,
     pub(crate) parse: usize,
+    pub(crate) tags: bool,
 }
 
 impl Asking<'_> {
@@ -101,8 +107,12 @@ async fn page(
                     what: WHAT,
                     reason: format!("an event's id \"{}\" is not a number: {error}", happened.id),
                 })?;
-            let released =
-                happened.kind == RELEASE && happened.payload.action.as_deref() == Some(PUBLISHED);
+            let payload = &happened.payload;
+            let released = (happened.kind == RELEASE
+                && payload.action.as_deref() == Some(PUBLISHED))
+                || (asking.tags
+                    && happened.kind == CREATE
+                    && payload.ref_type.as_deref() == Some(TAG));
             Ok((id, released.then(|| happened.repo.id.to_string())))
         })
         .collect::<Result<Vec<_>, SourceError>>()
@@ -110,7 +120,8 @@ async fn page(
     Ok(Some((events, answer.header("etag").map(ToOwned::to_owned))))
 }
 
-/// The members whose releases the owner's events name since `last`, read
+/// The members whose releases, or tags where a member may announce them,
+/// the owner's events name since `last`, read
 /// conditionally on its `ETag`: every page GitHub keeps is read until one
 /// reaches back to `last`, and where none does, or there is no `last`,
 /// every member is polled.

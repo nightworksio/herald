@@ -1,3 +1,5 @@
+use std::collections::BTreeSet;
+
 use super::*;
 
 fn owner(owner: &str) -> SourceOptions {
@@ -448,6 +450,7 @@ fn each_override_names_its_repositories_by_a_glob_and_its_project_by_a_template(
             glob.to_owned(),
             Override {
                 project: Some(project.to_owned()),
+                ..Override::default()
             },
         )]),
         ..owner("a")
@@ -473,19 +476,28 @@ fn each_override_names_its_repositories_by_a_glob_and_its_project_by_a_template(
                 "*".to_owned(),
                 Override {
                     project: Some("all".to_owned()),
+                    ..Override::default()
                 },
             ),
             (
                 "plugin-sonarr".to_owned(),
                 Override {
                     project: Some("sonarr".to_owned()),
+                    ..Override::default()
                 },
             ),
-            ("plugin-*".to_owned(), Override { project: None }),
+            (
+                "plugin-*".to_owned(),
+                Override {
+                    project: None,
+                    ..Override::default()
+                },
+            ),
             (
                 "plugin-?*".to_owned(),
                 Override {
                     project: Some("plugin".to_owned()),
+                    ..Override::default()
                 },
             ),
         ]),
@@ -532,12 +544,14 @@ fn two_overrides_as_narrow_as_each_other_that_could_name_one_repository_do_not_l
                     one.to_owned(),
                     Override {
                         project: Some("a".to_owned()),
+                        ..Override::default()
                     },
                 ),
                 (
                     other.to_owned(),
                     Override {
                         project: project.map(ToOwned::to_owned),
+                        ..Override::default()
                     },
                 ),
             ]),
@@ -552,4 +566,177 @@ fn two_overrides_as_narrow_as_each_other_that_could_name_one_repository_do_not_l
     assert_eq!(both("plugin-*", "*-sonarr", None), Ok(()));
     assert_eq!(both("plugin-*", "web-*", Some("b")), Ok(()));
     assert_eq!(both("plugin-*", "plugin-s*", Some("b")), Ok(()));
+}
+
+fn signalled(signals: &[Signal], prerelease: Option<PrereleaseRule>) -> Override {
+    Override {
+        signals: Some(signals.to_vec()),
+        prerelease,
+        ..Override::default()
+    }
+}
+
+#[test]
+fn a_source_announces_releases_told_by_either_rule_where_it_says_nothing() {
+    let source = owner("a");
+    assert_eq!(source.signals_of("any"), Signals::default());
+    assert_eq!(
+        Signals::default(),
+        Signals {
+            taken: BTreeSet::from([Signal::Release]),
+            prerelease: PrereleaseRule::Either,
+        }
+    );
+    assert!(Signals::default().takes(Signal::Release));
+    assert!(!Signals::default().takes(Signal::Tag));
+    assert!(source.may_take(Signal::Release));
+    assert!(!source.may_take(Signal::Tag));
+}
+
+#[test]
+fn the_narrowest_override_that_sets_each_key_gives_it_and_the_source_the_rest() {
+    let source = SourceOptions {
+        signals: Some(vec![Signal::Tag]),
+        prerelease: Some(PrereleaseRule::Tag),
+        repositories: BTreeMap::from([
+            (
+                "plugin-*".to_owned(),
+                signalled(&[Signal::Release], Some(PrereleaseRule::Flag)),
+            ),
+            (
+                "plugin-sonarr".to_owned(),
+                signalled(&[Signal::Release, Signal::Tag], None),
+            ),
+            (
+                "web-*".to_owned(),
+                Override {
+                    project: Some("web".to_owned()),
+                    ..Override::default()
+                },
+            ),
+        ]),
+        ..owner("a")
+    };
+    assert_eq!(source.check(Forge::GitHub), Ok(()));
+    assert_eq!(
+        source.signals_of("plugin-sonarr"),
+        Signals {
+            taken: BTreeSet::from([Signal::Release, Signal::Tag]),
+            prerelease: PrereleaseRule::Flag,
+        }
+    );
+    assert_eq!(
+        source.signals_of("PLUGIN-radarr"),
+        Signals {
+            taken: BTreeSet::from([Signal::Release]),
+            prerelease: PrereleaseRule::Flag,
+        }
+    );
+    for name in ["web-site", "core"] {
+        assert_eq!(
+            source.signals_of(name),
+            Signals {
+                taken: BTreeSet::from([Signal::Tag]),
+                prerelease: PrereleaseRule::Tag,
+            }
+        );
+    }
+    assert!(source.may_take(Signal::Tag));
+    assert!(source.may_take(Signal::Release));
+    let releases_only = SourceOptions {
+        repositories: BTreeMap::from([(
+            "web-*".to_owned(),
+            Override {
+                project: Some("web".to_owned()),
+                ..Override::default()
+            },
+        )]),
+        ..owner("a")
+    };
+    assert!(!releases_only.may_take(Signal::Tag));
+    let tags_by_override = SourceOptions {
+        repositories: BTreeMap::from([("core".to_owned(), signalled(&[Signal::Tag], None))]),
+        ..owner("a")
+    };
+    assert!(tags_by_override.may_take(Signal::Tag));
+    let no_releases = SourceOptions {
+        signals: Some(vec![Signal::Tag]),
+        ..releases_only
+    };
+    assert!(!no_releases.may_take(Signal::Release));
+}
+
+#[test]
+fn signals_name_something_and_a_gitlab_source_tells_no_pre_release_by_a_flag() {
+    let repository = |signals: Option<Vec<Signal>>, prerelease| SourceOptions {
+        repository: Some("a/b".to_owned()),
+        signals,
+        prerelease,
+        ..SourceOptions::default()
+    };
+    assert_eq!(
+        repository(Some(Vec::new()), None).check(Forge::GitHub),
+        Err("signals names no signal; give release, tag or both, or remove it".to_owned())
+    );
+    assert_eq!(
+        repository(Some(vec![Signal::Tag]), Some(PrereleaseRule::Flag)).check(Forge::GitHub),
+        Ok(())
+    );
+    assert_eq!(
+        repository(None, Some(PrereleaseRule::Flag)).check(Forge::GitLab),
+        Err("prerelease \"flag\" marks nothing on GitLab, whose releases carry no pre-release flag; choose either or tag".to_owned())
+    );
+    assert_eq!(
+        repository(None, Some(PrereleaseRule::Tag)).check(Forge::GitLab),
+        Ok(())
+    );
+    let overridden = |chosen: Override| SourceOptions {
+        repositories: BTreeMap::from([("plugin-*".to_owned(), chosen)]),
+        ..owner("a")
+    };
+    assert_eq!(
+        overridden(signalled(&[], None)).check(Forge::GitHub),
+        Err("repositories.\"plugin-*\".signals names no signal; give release, tag or both, or remove it".to_owned())
+    );
+    assert_eq!(
+        overridden(signalled(&[Signal::Tag], Some(PrereleaseRule::Flag))).check(Forge::GitLab),
+        Err("repositories.\"plugin-*\".prerelease \"flag\" marks nothing on GitLab, whose releases carry no pre-release flag; choose either or tag".to_owned())
+    );
+    assert_eq!(
+        overridden(signalled(&[Signal::Tag], Some(PrereleaseRule::Flag))).check(Forge::Forgejo),
+        Ok(())
+    );
+}
+
+#[test]
+fn two_overrides_as_narrow_as_each_other_tie_on_signals_and_prerelease_alone() {
+    let both = |one: Override, other: Override| {
+        SourceOptions {
+            repositories: BTreeMap::from([
+                ("plugin-*".to_owned(), one),
+                ("*-sonarr".to_owned(), other),
+            ]),
+            ..owner("a")
+        }
+        .check(Forge::GitHub)
+    };
+    assert_eq!(
+        both(
+            signalled(&[Signal::Tag], None),
+            signalled(&[Signal::Release], None)
+        ),
+        Err("repositories \"*-sonarr\" and \"plugin-*\" both set signals, are as narrow as each other and could both name one repository; make one narrower".to_owned())
+    );
+    let ruled = |prerelease| Override {
+        prerelease: Some(prerelease),
+        ..Override::default()
+    };
+    assert_eq!(
+        both(ruled(PrereleaseRule::Tag), ruled(PrereleaseRule::Flag)),
+        Err("repositories \"*-sonarr\" and \"plugin-*\" both set prerelease, are as narrow as each other and could both name one repository; make one narrower".to_owned())
+    );
+    assert_eq!(
+        both(signalled(&[Signal::Tag], None), ruled(PrereleaseRule::Flag)),
+        Ok(())
+    );
 }

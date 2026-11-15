@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 use std::io::Write;
 
 use herald_compose::GITHUB_TOKEN;
-use herald_core::Event;
+use herald_core::{Event, PrereleaseRule};
 use herald_environment::EnvSecrets;
 use herald_ports::{Http, Secrets};
 use herald_sources_forge::{Forge, Origin, Repository, SourceOptions, Token};
@@ -52,7 +52,7 @@ pub(super) fn variable<'a>(
 
 /// The release the run's own event publishes, if it does.
 pub(super) fn evented(
-    forge: Forge,
+    (forge, rule): (Forge, PrereleaseRule),
     vars: &BTreeMap<String, String>,
     out: &mut dyn Write,
 ) -> Result<Option<Event>, String> {
@@ -67,7 +67,9 @@ pub(super) fn evented(
     let path = variable(vars, "GITHUB_EVENT_PATH")?;
     let payload =
         std::fs::read(path).map_err(|error| format!("{path} could not be read: {error}"))?;
-    let event = forge.event(&payload).map_err(|error| error.to_string())?;
+    let event = forge
+        .event(&payload, rule)
+        .map_err(|error| error.to_string())?;
     if event.is_none() {
         say(
             out,
@@ -85,6 +87,7 @@ pub(super) fn project(vars: &BTreeMap<String, String>) -> Result<Repository, Str
             .parse()
             .map_err(|_| format!("CI_PROJECT_ID is {id}, not a project's id"))?,
         name: variable(vars, "CI_PROJECT_NAME")?.to_owned(),
+        page: variable(vars, "CI_PROJECT_URL").ok().map(ToOwned::to_owned),
     })
 }
 
@@ -93,7 +96,7 @@ pub(super) fn project(vars: &BTreeMap<String, String>) -> Result<Repository, Str
 /// repository asked for too where the run does not name it.
 pub(super) async fn tagged(
     options: &SourceOptions,
-    forge: Forge,
+    (forge, rule): (Forge, PrereleaseRule),
     tag: &str,
     known: Option<Repository>,
     vars: &BTreeMap<String, String>,
@@ -130,7 +133,7 @@ pub(super) async fn tagged(
             .map_err(|error| error.to_string())?
     };
     let event = forge
-        .release(&repository, &answer)
+        .release(&repository, &answer, rule)
         .map_err(|error| error.to_string())?;
     if event.is_none() {
         say(

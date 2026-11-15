@@ -1,10 +1,13 @@
-use herald_core::{Cursor, Event, KeyForm, Polled, Scheme, Selection, Signed, unreserved};
+use herald_core::{
+    Cursor, Event, KeyForm, Polled, PrereleaseRule, Scheme, Selection, Signal, Signed, Validators,
+    unreserved,
+};
 use herald_core::{media, status};
 use herald_kinds::Hooked;
 use herald_ports::{Method, Request, Response, Secret, SecretText};
 use serde::Deserialize;
 
-use crate::options::SourceOptions;
+use crate::options::{Signals, SourceOptions};
 use herald_wire::SourceError;
 use herald_wire::{Reading, answered};
 
@@ -73,6 +76,8 @@ pub(crate) struct Api {
     pub(crate) repository: &'static str,
     pub(crate) releases: &'static str,
     pub(crate) release: &'static str,
+    pub(crate) tags: &'static str,
+    pub(crate) tag: &'static str,
     /// What its listing of an owner's repositories is called.
     pub(crate) listing: &'static str,
     /// What a file it serves raw is called.
@@ -89,6 +94,9 @@ const OTHER_EVENT: &str = "the delivery is not of a release";
 const UNSELECTED: &str = "the repository is not one the source takes";
 /// Why a webhook delivery of an unpublished release announces nothing.
 const UNPUBLISHED: &str = "the release is not published, or is a draft";
+/// Why a webhook delivery of a release announces nothing where the source
+/// announces no releases of its repository.
+const UNSIGNALLED: &str = "the source announces no releases of the repository";
 
 /// A repository, as its forge names it: its numeric id outlives a rename.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -97,6 +105,9 @@ pub struct Repository {
     pub id: u64,
     /// The name, without its owner.
     pub name: String,
+    /// Its web page, where the forge names it.
+    #[serde(default, rename = "html_url", alias = "web_url")]
+    pub page: Option<String>,
 }
 
 /// The token a request carries.
@@ -197,9 +208,10 @@ impl Forge {
     }
 
     /// What a webhook delivery with `headers` and `payload` asks herald to
-    /// announce for the source of `repository`: the release it publishes,
-    /// or nothing where it is of another event, or of an unpublished
-    /// release or a draft.
+    /// announce for the source of `repository`, which announces `signals`:
+    /// the release it publishes, or nothing where it is of another event,
+    /// of an unpublished release or a draft, or the source announces no
+    /// releases.
     ///
     /// # Errors
     ///
@@ -207,14 +219,14 @@ impl Forge {
     /// name, makes no event, or is of another repository than `repository`.
     pub fn hooked(
         self,
-        headers: &[(&str, &str)],
-        payload: &[u8],
+        (headers, payload): (&[(&str, &str)], &[u8]),
         repository: &str,
+        signals: &Signals,
     ) -> Result<Hooked, SourceError> {
         if !self.of_a_release(headers) {
             return Ok(Hooked::Nothing(OTHER_EVENT));
         }
-        let event = self.event(payload)?;
+        let event = self.event(payload, signals.prerelease)?;
         let what = self.api().event;
         let path = match self {
             Self::GitHub | Self::Forgejo => github::path(what, payload),
@@ -225,6 +237,9 @@ impl Forge {
                 what,
                 reason: format!("it is not of {repository}, the repository its source names"),
             });
+        }
+        if !signals.takes(Signal::Release) {
+            return Ok(Hooked::Nothing(UNSIGNALLED));
         }
         Ok(event.map_or(Hooked::Nothing(UNPUBLISHED), Hooked::Event))
     }
@@ -245,8 +260,10 @@ impl Forge {
     /// What a webhook delivery of `owner`'s, `payload` with `headers`, asks
     /// herald to announce: the event of a release published in a
     /// repository `selection` admits by what the payload names, to announce
-    /// once the owner's last membership record holds it. A GitLab group's
-    /// repositories include its subgroups' where `subgroups` says so.
+    /// once the owner's last membership record holds it, where the signals
+    /// `signals` gives for the repository's name take its releases, told a
+    /// pre-release as they say. A GitLab group's repositories include its
+    /// subgroups' where `subgroups` says so.
     ///
     /// # Errors
     ///
@@ -256,14 +273,15 @@ impl Forge {
         self,
         (headers, payload): (&[(&str, &str)], &[u8]),
         (owner, subgroups): (&str, bool),
-        selection: &Selection,
+        (selection, signals): (&Selection, &dyn Fn(&str) -> Signals),
     ) -> Result<Hooked, SourceError> {
         if !self.of_a_release(headers) {
             return Ok(Hooked::Nothing(OTHER_EVENT));
         }
-        let event = self.event(payload)?;
         let what = self.api().event;
         let (id, delivered) = crate::delivered::delivered(self, what, payload)?;
+        let signals = signals(&delivered.name);
+        let event = self.event(payload, signals.prerelease)?;
         let lowered = owner.to_ascii_lowercase();
         let held = delivered.path.rsplit_once('/').is_some_and(|(holder, _)| {
             let holder = holder.to_ascii_lowercase();
@@ -281,6 +299,9 @@ impl Forge {
         if !selection.admits(&delivered) {
             return Ok(Hooked::Nothing(UNSELECTED));
         }
+        if !signals.takes(Signal::Release) {
+            return Ok(Hooked::Nothing(UNSIGNALLED));
+        }
         Ok(
             event.map_or(Hooked::Nothing(UNPUBLISHED), |event| Hooked::Member {
                 visibility: delivered.visibility,
@@ -291,21 +312,21 @@ impl Forge {
     }
 
     /// The event a release event's payload announces, as a webhook or as
-    /// the forge's CI hands it to a run: a published release that is not a
-    /// draft, or nothing.
+    /// the forge's CI hands it to a run, its pre-release told by `rule`: a
+    /// published release that is not a draft, or nothing.
     ///
     /// # Errors
     ///
     /// When the payload is too large, is not the forge's release event, or
     /// makes no event.
-    pub fn event(self, payload: &[u8]) -> Result<Option<Event>, SourceError> {
+    pub fn event(self, payload: &[u8], rule: PrereleaseRule) -> Result<Option<Event>, SourceError> {
         let what = self.api().event;
         let published = match self {
             Self::GitHub | Self::Forgejo => github::published(what, payload)?,
             Self::GitLab => gitlab::published(what, payload)?,
         };
         match published {
-            Some((repository, found)) => event(what, &repository, found),
+            Some((repository, found)) => event(what, &repository, found, rule),
             None => Ok(None),
         }
     }
@@ -342,8 +363,8 @@ impl Forge {
     }
 
     /// The event the release of `repository` in the forge's answer to
-    /// [`Origin::release_request`] announces: a published release that is
-    /// not a draft, or nothing.
+    /// [`Origin::release_request`] announces, its pre-release told by
+    /// `rule`: a published release that is not a draft, or nothing.
     ///
     /// # Errors
     ///
@@ -352,14 +373,16 @@ impl Forge {
         self,
         repository: &Repository,
         response: &Response,
+        rule: PrereleaseRule,
     ) -> Result<Option<Event>, SourceError> {
         let what = self.api().release;
         answered(what, response)?;
-        event(what, repository, self.found(what, &response.body)?)
+        event(what, repository, self.found(what, &response.body)?, rule)
     }
 
     /// The published releases of `repository` in the forge's answer to
-    /// [`Origin::releases_request`], parsing no more than `limit` bytes.
+    /// [`Origin::releases_request`], each pre-release told by `rule`,
+    /// parsing no more than `limit` bytes.
     ///
     /// # Errors
     ///
@@ -368,19 +391,21 @@ impl Forge {
         self,
         repository: &Repository,
         response: &Response,
-        limit: usize,
+        (limit, rule): (usize, PrereleaseRule),
     ) -> Result<Polled, SourceError> {
         let what = self.api().releases;
         answered(what, response)?;
         let events = self
             .all_found(what, limit, &response.body)?
             .into_iter()
-            .filter_map(|found| event(what, repository, found).transpose())
+            .filter_map(|found| event(what, repository, found, rule).transpose())
             .collect::<Result<Vec<Event>, SourceError>>()?;
+        let validators = validators(response);
         Ok(Polled {
             events,
-            etag: response.header("etag").map(ToOwned::to_owned),
-            last_modified: response.header("last-modified").map(ToOwned::to_owned),
+            etag: validators.etag,
+            last_modified: validators.last_modified,
+            ..Polled::default()
         })
     }
 
@@ -389,6 +414,14 @@ impl Forge {
     #[must_use]
     pub fn unchanged(response: &Response) -> bool {
         response.status == status::NOT_MODIFIED
+    }
+}
+
+/// The validators `response` returns.
+pub(crate) fn validators(response: &Response) -> Validators {
+    Validators {
+        etag: response.header("etag").map(ToOwned::to_owned),
+        last_modified: response.header("last-modified").map(ToOwned::to_owned),
     }
 }
 
@@ -424,6 +457,14 @@ pub(crate) fn api_of(forge: Forge, options: &SourceOptions) -> String {
         .unwrap_or(forge.api().url)
         .trim_end_matches('/')
         .to_owned()
+}
+
+/// `path`, each of its `/`-separated parts escaped.
+pub(crate) fn segments(path: &str) -> String {
+    path.split('/')
+        .map(unreserved)
+        .collect::<Vec<_>>()
+        .join("/")
 }
 
 impl Origin {
@@ -484,6 +525,43 @@ impl Origin {
         )
     }
 
+    /// The request for the newest tags, conditional on `validators` where
+    /// there are any.
+    #[must_use]
+    pub fn tags_request(&self, validators: Option<&Validators>, token: Option<&Token>) -> Request {
+        let page = self.forge.api().page;
+        let path = match self.forge {
+            Forge::GitLab => format!(
+                "/repository/tags?order_by=updated&sort=desc&{page}={}",
+                self.reading.page
+            ),
+            Forge::GitHub | Forge::Forgejo => format!("/tags?{page}={}", self.reading.page),
+        };
+        self.get(&path, token).conditional(
+            validators.and_then(|validators| validators.etag.as_deref()),
+            validators.and_then(|validators| validators.last_modified.as_deref()),
+        )
+    }
+
+    /// The request for GitHub's reference of the tag `tag`, naming what it
+    /// points at.
+    #[must_use]
+    pub fn reference_request(&self, tag: &str, token: Option<&Token>) -> Request {
+        self.get(&format!("/git/ref/tags/{}", segments(tag)), token)
+    }
+
+    /// The request for the annotated tag object `sha`.
+    #[must_use]
+    pub fn tag_object_request(&self, sha: &str, token: Option<&Token>) -> Request {
+        self.get(&format!("/git/tags/{}", unreserved(sha)), token)
+    }
+
+    /// The request for GitHub's commit `sha`.
+    #[must_use]
+    pub fn commit_request(&self, sha: &str, token: Option<&Token>) -> Request {
+        self.get(&format!("/git/commits/{}", unreserved(sha)), token)
+    }
+
     /// The request for the raw bytes of the file at `path`, at `reference`
     /// or the default branch, conditional on `etag` where there is one.
     #[must_use]
@@ -493,11 +571,7 @@ impl Origin {
         token: Option<&Token>,
         etag: Option<&str>,
     ) -> Request {
-        let segments = path
-            .split('/')
-            .map(unreserved)
-            .collect::<Vec<_>>()
-            .join("/");
+        let segments = segments(path);
         let at = |given: Option<&str>| {
             given.map_or_else(String::new, |reference| {
                 format!("?ref={}", unreserved(reference))

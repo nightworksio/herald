@@ -167,12 +167,10 @@ pub(crate) async fn announced_found<S: Store, C: Clock, G: Signer, H: Http>(
         });
     }
     let advanced = settled.then(|| {
-        cursor.cloned().unwrap_or_default().advanced(
-            &releases.events,
-            releases.etag,
-            releases.last_modified,
-            remembered,
-        )
+        cursor
+            .cloned()
+            .unwrap_or_default()
+            .advanced(&releases, remembered)
     });
     Ok(Some(Found {
         count: releases.events.len(),

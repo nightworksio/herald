@@ -1,7 +1,10 @@
+use std::collections::BTreeMap;
+
 use serde::{Deserialize, Serialize};
 
 use crate::event::Event;
 use crate::key::Identity;
+use crate::signal::{Signal, Validators};
 
 /// What a polled source has seen, and the validators its server last returned.
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -15,11 +18,15 @@ pub struct Cursor {
     /// The project its newest event was announced as.
     #[serde(default)]
     pub project: Option<String>,
+    /// The validators the server last returned for each signal asked apart
+    /// from the releases.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub signals: BTreeMap<Signal, Validators>,
 }
 
 /// What one poll of a source found: its events, the newest first, and the
 /// validators the server returned.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Polled {
     /// The events, the newest first.
     pub events: Vec<Event>,
@@ -27,37 +34,54 @@ pub struct Polled {
     pub etag: Option<String>,
     /// The `Last-Modified` the server returned.
     pub last_modified: Option<String>,
+    /// The validators the server returned for each signal asked apart from
+    /// the releases.
+    pub signals: BTreeMap<Signal, Validators>,
+    /// The identities it found without reading them in full, newest first,
+    /// which announce nothing and are remembered as seen.
+    pub passed: Vec<Identity>,
 }
 
 impl Cursor {
-    /// The cursor after a poll that found `found`, the newest first, with the
-    /// validators the server returned. It remembers the newest `remembered`
-    /// identities only, enough to cover any one poll.
+    /// The cursor after `polled`, a poll's answer, with the validators the
+    /// server returned. It remembers the newest `remembered` identities
+    /// only, enough to cover any one poll.
     #[must_use]
-    pub fn advanced(
-        &self,
-        found: &[Event],
-        etag: Option<String>,
-        last_modified: Option<String>,
-        remembered: usize,
-    ) -> Self {
+    pub fn advanced(&self, polled: &Polled, remembered: usize) -> Self {
+        let found = &polled.events;
         let mut seen: Vec<Identity> = found.iter().map(|event| event.identity().clone()).collect();
+        seen.extend(
+            polled
+                .passed
+                .iter()
+                .filter(|identity| !seen_in(found, identity))
+                .cloned(),
+        );
+        let newest = seen.clone();
         seen.extend(
             self.seen
                 .iter()
-                .filter(|identity| !seen_in(found, identity))
+                .filter(|identity| !newest.contains(identity))
                 .cloned(),
         );
         seen.truncate(remembered);
         Self {
             seen,
-            etag,
-            last_modified,
+            etag: polled.etag.clone(),
+            last_modified: polled.last_modified.clone(),
             project: found
                 .first()
                 .map(|event| event.project().to_owned())
                 .or_else(|| self.project.clone()),
+            signals: polled.signals.clone(),
         }
+    }
+
+    /// The validators the server last returned for `signal`'s request, where
+    /// it returned any.
+    #[must_use]
+    pub fn validators(&self, signal: Signal) -> Option<&Validators> {
+        self.signals.get(&signal)
     }
 }
 
@@ -121,39 +145,61 @@ mod tests {
 
     #[test]
     fn an_advanced_cursor_keeps_the_newest_first_once_each_with_the_new_validators() {
+        let tags = Validators {
+            etag: Some("tags".to_owned()),
+            last_modified: None,
+        };
         let cursor = Cursor {
             seen: vec![Identity::new("b"), Identity::new("a")],
             etag: Some("old".to_owned()),
-            last_modified: None,
-            project: None,
+            signals: BTreeMap::from([(Signal::Release, Validators::default())]),
+            ..Cursor::default()
         };
         let advanced = cursor.advanced(
-            &[event("c"), event("b")],
-            Some("new".to_owned()),
-            Some("then".to_owned()),
+            &Polled {
+                events: vec![event("c"), event("b")],
+                etag: Some("new".to_owned()),
+                last_modified: Some("then".to_owned()),
+                signals: BTreeMap::from([(Signal::Tag, tags.clone())]),
+                passed: vec![Identity::new("b"), Identity::new("p"), Identity::new("a")],
+            },
             500,
         );
         assert_eq!(
             advanced,
             Cursor {
-                seen: vec![Identity::new("c"), Identity::new("b"), Identity::new("a")],
+                seen: vec![
+                    Identity::new("c"),
+                    Identity::new("b"),
+                    Identity::new("p"),
+                    Identity::new("a")
+                ],
                 etag: Some("new".to_owned()),
                 last_modified: Some("then".to_owned()),
                 project: Some(event("c").project().to_owned()),
+                signals: BTreeMap::from([(Signal::Tag, tags.clone())]),
             }
         );
+        assert_eq!(advanced.validators(Signal::Tag), Some(&tags));
+        assert_eq!(advanced.validators(Signal::Release), None);
         let quiet = Cursor {
             project: Some("kept".to_owned()),
             ..Cursor::default()
         }
-        .advanced(&[], None, None, 500);
+        .advanced(&Polled::default(), 500);
         assert_eq!(quiet.project.as_deref(), Some("kept"));
     }
 
     #[test]
     fn a_cursor_remembers_a_bounded_number_of_identities() {
         let found: Vec<Event> = (0..30).map(|index| event(&index.to_string())).collect();
-        let advanced = Cursor::default().advanced(&found, None, None, 20);
+        let advanced = Cursor::default().advanced(
+            &Polled {
+                events: found,
+                ..Polled::default()
+            },
+            20,
+        );
         assert_eq!(advanced.seen.len(), 20);
         assert_eq!(advanced.seen.first().map(Identity::as_str), Some("0"));
         assert_eq!(advanced.seen.last().map(Identity::as_str), Some("19"));
@@ -164,8 +210,7 @@ mod tests {
         let cursor = Cursor {
             seen: vec![Identity::new("a")],
             etag: Some("e".to_owned()),
-            last_modified: None,
-            project: None,
+            ..Cursor::default()
         };
         let json = serde_json::to_string(&cursor).unwrap();
         assert_eq!(
@@ -173,5 +218,21 @@ mod tests {
             r#"{"seen":["a"],"etag":"e","last_modified":null,"project":null}"#
         );
         assert_eq!(serde_json::from_str::<Cursor>(&json).unwrap(), cursor);
+        let tagged = Cursor {
+            signals: BTreeMap::from([(
+                Signal::Tag,
+                Validators {
+                    etag: Some("t".to_owned()),
+                    last_modified: None,
+                },
+            )]),
+            ..cursor
+        };
+        let json = serde_json::to_string(&tagged).unwrap();
+        assert!(
+            json.ends_with(r#""signals":{"tag":{"etag":"t","last_modified":null}}}"#),
+            "{json}"
+        );
+        assert_eq!(serde_json::from_str::<Cursor>(&json).unwrap(), tagged);
     }
 }

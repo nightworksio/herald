@@ -1,14 +1,15 @@
 use std::sync::Arc;
 
-use herald_core::{Cursor, Kind, Polled, Scheme, SecretRef, Selection};
-use herald_kinds::{Fault, Hooked, Poll, Polling, SourceConfig, SourceKind, Unpolled};
-use herald_ports::{Boxed, DynHttp, Erased, Http as _, Secret};
+use herald_core::{Kind, Polled, Scheme, SecretRef, Selection};
+use herald_kinds::{Fault, Hooked, Polling, SourceConfig, SourceKind, Unpolled};
+use herald_ports::Secret;
 
 use crate::owner::Owned;
+use crate::polled::Releases;
 use crate::{Forge, Members, Origin, SourceOptions, Token};
 
-/// A repository's releases on a forge: the forge, and the options its
-/// table reads into.
+/// A repository's releases and tags on a forge: the forge, and the options
+/// its table reads into.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ForgeSource {
     /// The forge.
@@ -46,6 +47,9 @@ impl ForgeSource {
     }
 }
 
+/// What the doctor says of a source that takes webhooks and announces tags.
+const TAG_POLLED: &str = "a tag is announced when the source is polled; its webhooks announce releases alone, so poll the source as well";
+
 /// What the doctor says of an owner source that takes webhooks.
 const OWNER_HOOKED: &str = "a webhook's release is announced only where the owner's last membership record holds its repository, so poll the source as well; a repository its polls have not listed announces nothing";
 
@@ -55,7 +59,7 @@ pub enum GitHubKind {}
 
 impl SourceKind for GitHubKind {
     const NAME: &str = Forge::GitHub.kind();
-    const DESCRIPTION: &str = "A GitHub repository's releases.";
+    const DESCRIPTION: &str = "A GitHub repository's releases and tags.";
 
     type File = SourceOptions;
     type Options = ForgeSource;
@@ -78,7 +82,7 @@ pub enum GitLabKind {}
 
 impl SourceKind for GitLabKind {
     const NAME: &str = Forge::GitLab.kind();
-    const DESCRIPTION: &str = "A GitLab project's releases.";
+    const DESCRIPTION: &str = "A GitLab project's releases and tags.";
 
     type File = SourceOptions;
     type Options = ForgeSource;
@@ -101,7 +105,7 @@ pub enum ForgejoKind {}
 
 impl SourceKind for ForgejoKind {
     const NAME: &str = Forge::Forgejo.kind();
-    const DESCRIPTION: &str = "A Forgejo or Gitea repository's releases.";
+    const DESCRIPTION: &str = "A Forgejo or Gitea repository's releases and tags.";
 
     type File = SourceOptions;
     type Options = ForgeSource;
@@ -140,7 +144,16 @@ impl SourceConfig for ForgeSource {
             return Vec::new();
         }
         let owned = self.options.owner.as_ref().map(|_| OWNER_HOOKED);
-        self.forge.unsigned().into_iter().chain(owned).collect()
+        let tagged = self
+            .options
+            .may_take(herald_core::Signal::Tag)
+            .then_some(TAG_POLLED);
+        self.forge
+            .unsigned()
+            .into_iter()
+            .chain(owned)
+            .chain(tagged)
+            .collect()
     }
 
     fn backfill(&self) -> usize {
@@ -163,29 +176,33 @@ impl SourceConfig for ForgeSource {
         self.options
             .repository
             .as_deref()
-            .and_then(|repository| repository.rsplit('/').next())
-            .map(ToOwned::to_owned)
+            .map(|repository| named(repository).to_owned())
             .into_iter()
             .collect()
     }
 
     fn hooked(&self, headers: &[(&str, &str)], payload: &[u8]) -> Result<Hooked, String> {
-        match &self.options.owner {
-            Some(owner) => self.forge.hooked_owned(
+        let hooked = if let Some(owner) = &self.options.owner {
+            self.forge.hooked_owned(
                 (headers, payload),
                 (owner, self.options.subgroups()),
-                &Selection {
-                    names: self.names.clone(),
-                    ..self.options.selection().unwrap_or_default()
-                },
-            ),
-            None => self.forge.hooked(
-                headers,
-                payload,
-                self.options.repository.as_deref().unwrap_or_default(),
-            ),
-        }
-        .map_err(|error| error.to_string())
+                (
+                    &Selection {
+                        names: self.names.clone(),
+                        ..self.options.selection().unwrap_or_default()
+                    },
+                    &|name| self.options.signals_of(name),
+                ),
+            )
+        } else {
+            let repository = self.options.repository.as_deref().unwrap_or_default();
+            self.forge.hooked(
+                (headers, payload),
+                repository,
+                &self.options.signals_of(named(repository)),
+            )
+        };
+        hooked.map_err(|error| error.to_string())
     }
 
     fn poller(&self, token: Option<Secret>) -> Polling {
@@ -197,17 +214,23 @@ impl SourceConfig for ForgeSource {
                 &self.options,
                 token,
             ))),
-            (None, repository) => Polling::One(Arc::new(Releases {
-                origin: Origin::new(
-                    self.forge,
-                    &self.options,
-                    repository.as_deref().unwrap_or_default(),
-                ),
-                token,
-                project: None,
-            })),
+            (None, repository) => {
+                let repository = repository.as_deref().unwrap_or_default();
+                Polling::One(Arc::new(Releases {
+                    origin: Origin::new(self.forge, &self.options, repository),
+                    token,
+                    project: None,
+                    signals: self.options.signals_of(named(repository)),
+                    backfill: self.options.backfill,
+                }))
+            }
         }
     }
+}
+
+/// The name of the repository at `path`, without its owner.
+pub(crate) fn named(path: &str) -> &str {
+    path.rsplit('/').next().unwrap_or(path)
 }
 
 /// `polled` with each event announced as of the project a template named,
@@ -228,53 +251,6 @@ pub(crate) fn projected(
                 .map_err(Unpolled::unreadable)?,
             ..polled
         }),
-    }
-}
-
-/// A repository's releases, polled with the token the config names, and
-/// announced as of the project a template named, where one did.
-#[derive(Debug)]
-pub(crate) struct Releases {
-    pub(crate) origin: Origin,
-    pub(crate) token: Option<Token>,
-    pub(crate) project: Option<Result<String, String>>,
-}
-
-impl Poll for Releases {
-    fn api(&self) -> &str {
-        self.origin.api()
-    }
-
-    fn remembered(&self) -> usize {
-        self.origin.reading().remembered
-    }
-
-    fn polled<'a>(
-        &'a self,
-        http: &'a dyn DynHttp,
-        cursor: Option<&'a Cursor>,
-    ) -> Boxed<'a, Result<Option<Polled>, Unpolled>> {
-        Box::pin(async move {
-            let http = Erased(http);
-            let token = self.token.as_ref();
-            let answer = http
-                .send(self.origin.releases_request(cursor, token))
-                .await
-                .map_err(Unpolled::unreachable)?;
-            if Forge::unchanged(&answer) {
-                return Ok(None);
-            }
-            let described = http
-                .send(self.origin.repository_request(token))
-                .await
-                .map_err(Unpolled::unreachable)?;
-            let forge = self.origin.forge();
-            let repository = forge.repository(&described).map_err(Unpolled::unreadable)?;
-            let polled = forge
-                .releases(&repository, &answer, self.origin.reading().parse)
-                .map_err(Unpolled::unreadable)?;
-            projected(polled, self.project.clone()).map(Some)
-        })
     }
 }
 

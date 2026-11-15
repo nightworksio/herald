@@ -2,9 +2,10 @@
 
 #[cfg(test)]
 mod github {
+    use herald_core::PrereleaseRule;
     use herald_core::{Cursor, Kind, Polled, Problem, prerelease_version};
     use herald_ports::{Response, Secret};
-    use herald_sources_forge::{Forge, Hooked, Origin, Repository, SourceOptions, Token};
+    use herald_sources_forge::{Forge, Hooked, Origin, Repository, Signals, SourceOptions, Token};
     use herald_wire::SourceError;
     use proptest::prelude::*;
     use serde_json::{Value, json};
@@ -52,21 +53,98 @@ mod github {
 
     #[test]
     fn a_webhook_of_the_source_s_published_release_announces_it() {
-        let hooked = Forge::GitHub.hooked(&[RELEASE], EVENT.as_bytes(), "CLI/cli");
+        let hooked = Forge::GitHub.hooked(
+            (&[RELEASE], EVENT.as_bytes()),
+            "CLI/cli",
+            &Signals::default(),
+        );
         assert_eq!(
             hooked,
             Ok(Hooked::Event(
-                Forge::GitHub.event(EVENT.as_bytes()).unwrap().unwrap()
+                Forge::GitHub
+                    .event(EVENT.as_bytes(), PrereleaseRule::default())
+                    .unwrap()
+                    .unwrap()
             ))
         );
     }
 
     #[test]
+    fn a_webhook_s_release_announces_nothing_where_the_source_takes_tags_alone() {
+        let tags = Signals {
+            taken: [herald_core::Signal::Tag].into(),
+            prerelease: PrereleaseRule::Either,
+        };
+        let unsignalled = Ok(Hooked::Nothing(
+            "the source announces no releases of the repository",
+        ));
+        assert_eq!(
+            Forge::GitHub.hooked((&[RELEASE], EVENT.as_bytes()), "cli/cli", &tags),
+            unsignalled
+        );
+        assert_eq!(
+            Forge::GitHub.hooked_owned(
+                (&[RELEASE], EVENT.as_bytes()),
+                ("cli", false),
+                (&herald_core::Selection::default(), &|_| tags.clone()),
+            ),
+            unsignalled
+        );
+    }
+
+    #[test]
+    fn a_webhook_s_release_is_a_pre_release_as_its_repository_s_rule_tells() {
+        let candidate = edited(|payload| {
+            payload["release"]["tag_name"] = json!("v3.0.0-rc.1");
+            payload["release"]["prerelease"] = json!(false);
+        });
+        let ruled = |rule| Signals {
+            prerelease: rule,
+            ..Signals::default()
+        };
+        let marked = |hooked: Result<Hooked, SourceError>| match hooked {
+            Ok(Hooked::Event(event) | Hooked::Member { event, .. }) => {
+                (event.prerelease(), event.signal())
+            }
+            other => panic!("{other:?}"),
+        };
+        let release = Some(herald_core::Signal::Release);
+        for (rule, prerelease) in [
+            (PrereleaseRule::Either, true),
+            (PrereleaseRule::Flag, false),
+            (PrereleaseRule::Tag, true),
+        ] {
+            assert_eq!(
+                marked(Forge::GitHub.hooked((&[RELEASE], &candidate), "cli/cli", &ruled(rule))),
+                (prerelease, release)
+            );
+            assert_eq!(
+                marked(Forge::GitHub.hooked_owned(
+                    (&[RELEASE], &candidate),
+                    ("cli", false),
+                    (&herald_core::Selection::default(), &|name: &str| {
+                        assert_eq!(name, "cli");
+                        ruled(rule)
+                    }),
+                )),
+                (prerelease, release)
+            );
+        }
+    }
+
+    #[test]
     fn an_owner_s_webhook_of_a_repository_it_takes_announces_its_member_s_release() {
         let selection = herald_core::Selection::default();
-        let event = Forge::GitHub.event(EVENT.as_bytes()).unwrap().unwrap();
+        let event = Forge::GitHub
+            .event(EVENT.as_bytes(), PrereleaseRule::default())
+            .unwrap()
+            .unwrap();
         assert_eq!(
-            Forge::GitHub.hooked_owned((&[RELEASE], EVENT.as_bytes()), ("CLI", false), &selection),
+            Forge::GitHub.hooked_owned(
+                (&[RELEASE], EVENT.as_bytes()),
+                ("CLI", false),
+                (&selection, &|_| Signals::default())
+            ),
             Ok(Hooked::Member {
                 event,
                 id: "212613049".to_owned(),
@@ -75,7 +153,11 @@ mod github {
         );
         let private = edited(|payload| payload["repository"]["visibility"] = json!("private"));
         assert_eq!(
-            Forge::GitHub.hooked_owned((&[RELEASE], &private), ("cli", false), &selection),
+            Forge::GitHub.hooked_owned(
+                (&[RELEASE], &private),
+                ("cli", false),
+                (&selection, &|_| Signals::default())
+            ),
             Ok(Hooked::Nothing(
                 "the repository is not one the source takes"
             ))
@@ -88,7 +170,11 @@ mod github {
             payload["repository"]["private"] = json!(true);
         });
         assert_eq!(
-            Forge::GitHub.hooked_owned((&[RELEASE], &flagged), ("cli", false), &selection),
+            Forge::GitHub.hooked_owned(
+                (&[RELEASE], &flagged),
+                ("cli", false),
+                (&selection, &|_| Signals::default())
+            ),
             Ok(Hooked::Nothing(
                 "the repository is not one the source takes"
             ))
@@ -96,7 +182,7 @@ mod github {
         let Err(SourceError::Unreadable { reason, .. }) = Forge::GitHub.hooked_owned(
             (&[RELEASE], EVENT.as_bytes()),
             ("neovim", true),
-            &selection,
+            (&selection, &|_| Signals::default()),
         ) else {
             panic!("a delivery of another owner's repository is refused");
         };
@@ -105,12 +191,20 @@ mod github {
             "it is not of a repository neovim, the owner its source names, holds"
         );
         assert_eq!(
-            Forge::GitHub.hooked_owned((&[], EVENT.as_bytes()), ("cli", false), &selection),
+            Forge::GitHub.hooked_owned(
+                (&[], EVENT.as_bytes()),
+                ("cli", false),
+                (&selection, &|_| Signals::default())
+            ),
             Ok(Hooked::Nothing("the delivery is not of a release"))
         );
         let created = edited(|payload| payload["action"] = json!("created"));
         assert_eq!(
-            Forge::GitHub.hooked_owned((&[RELEASE], &created), ("cli", false), &selection),
+            Forge::GitHub.hooked_owned(
+                (&[RELEASE], &created),
+                ("cli", false),
+                (&selection, &|_| Signals::default())
+            ),
             Ok(Hooked::Nothing(
                 "the release is not published, or is a draft"
             ))
@@ -121,13 +215,17 @@ mod github {
     fn a_webhook_of_another_event_or_an_unpublished_release_announces_nothing() {
         for headers in [&[("X-GitHub-Event", "ping")][..], &[]] {
             assert_eq!(
-                Forge::GitHub.hooked(headers, b"{\"zen\":\"x\"}", "cli/cli"),
+                Forge::GitHub.hooked(
+                    (headers, b"{\"zen\":\"x\"}"),
+                    "cli/cli",
+                    &Signals::default()
+                ),
                 Ok(Hooked::Nothing("the delivery is not of a release"))
             );
         }
         let created = edited(|payload| payload["action"] = json!("created"));
         assert_eq!(
-            Forge::GitHub.hooked(&[RELEASE], &created, "cli/cli"),
+            Forge::GitHub.hooked((&[RELEASE], &created), "cli/cli", &Signals::default()),
             Ok(Hooked::Nothing(
                 "the release is not published, or is a draft"
             ))
@@ -138,25 +236,29 @@ mod github {
     fn the_identity_names_the_host_of_the_release_s_page_as_a_client_reads_it() {
         let page = |url: &str| edited(|payload| payload["release"]["html_url"] = json!(url));
         let read = Forge::GitHub
-            .event(&page(
-                "https://bot:secret@GitHub.Example:8443/o/r/releases/tag/v1",
-            ))
+            .event(
+                &page("https://bot:secret@GitHub.Example:8443/o/r/releases/tag/v1"),
+                PrereleaseRule::default(),
+            )
             .unwrap()
             .unwrap();
         assert!(read.identity().as_str().starts_with("github.example/"));
         let bracketed = Forge::GitHub
-            .event(&page("https://[2001:db8::1]/o/r/releases/tag/v1"))
+            .event(
+                &page("https://[2001:db8::1]/o/r/releases/tag/v1"),
+                PrereleaseRule::default(),
+            )
             .unwrap()
             .unwrap();
         assert!(bracketed.identity().as_str().starts_with("[2001:db8::1]/"));
         assert_eq!(
             Forge::GitHub
-                .event(&page("o/r/releases/tag/v1"))
+                .event(&page("o/r/releases/tag/v1"), PrereleaseRule::default())
                 .unwrap_err()
                 .to_string(),
             SourceError::Unreadable {
                 what: "GitHub's release event",
-                reason: "a release's page names no host".to_owned(),
+                reason: "the page it links names no host".to_owned(),
             }
             .to_string()
         );
@@ -164,7 +266,11 @@ mod github {
 
     #[test]
     fn a_webhook_of_another_repository_or_of_no_release_is_refused() {
-        let elsewhere = Forge::GitHub.hooked(&[RELEASE], EVENT.as_bytes(), "other/repo");
+        let elsewhere = Forge::GitHub.hooked(
+            (&[RELEASE], EVENT.as_bytes()),
+            "other/repo",
+            &Signals::default(),
+        );
         assert_eq!(
             elsewhere.unwrap_err().to_string(),
             SourceError::Unreadable {
@@ -176,14 +282,14 @@ mod github {
         let unnamed = edited(|payload| payload["repository"]["full_name"] = json!(7));
         assert_eq!(
             Forge::GitHub
-                .hooked(&[RELEASE], &unnamed, "cli/cli")
+                .hooked((&[RELEASE], &unnamed), "cli/cli", &Signals::default())
                 .unwrap_err()
                 .to_string(),
             "GitHub's release event could not be read: it is not of cli/cli, the repository its source names"
         );
         assert_eq!(
             Forge::GitHub
-                .hooked(&[RELEASE], b"{}", "cli/cli")
+                .hooked((&[RELEASE], b"{}"), "cli/cli", &Signals::default())
                 .unwrap_err()
                 .to_string(),
             "GitHub's release event could not be read: missing field `action` at line 1 column 2"
@@ -192,7 +298,10 @@ mod github {
 
     #[test]
     fn a_published_release_event_becomes_an_event() {
-        let event = Forge::GitHub.event(EVENT.as_bytes()).unwrap().unwrap();
+        let event = Forge::GitHub
+            .event(EVENT.as_bytes(), PrereleaseRule::default())
+            .unwrap()
+            .unwrap();
         assert_eq!(event.identity().as_str(), "github.com/212613049/v2.103.3");
         assert_eq!(event.kind(), &Kind::RELEASE);
         assert_eq!(event.project(), "cli");
@@ -210,9 +319,15 @@ mod github {
     #[test]
     fn only_a_published_release_that_is_not_a_draft_announces() {
         let created = edited(|payload| payload["action"] = json!("created"));
-        assert_eq!(Forge::GitHub.event(&created), Ok(None));
+        assert_eq!(
+            Forge::GitHub.event(&created, PrereleaseRule::default()),
+            Ok(None)
+        );
         let draft = edited(|payload| payload["release"]["draft"] = json!(true));
-        assert_eq!(Forge::GitHub.event(&draft), Ok(None));
+        assert_eq!(
+            Forge::GitHub.event(&draft, PrereleaseRule::default()),
+            Ok(None)
+        );
     }
 
     #[test]
@@ -222,7 +337,10 @@ mod github {
             payload["release"]["name"] = json!("  ");
             payload["release"]["body"] = json!(null);
         });
-        let event = Forge::GitHub.event(&candidate).unwrap().unwrap();
+        let event = Forge::GitHub
+            .event(&candidate, PrereleaseRule::default())
+            .unwrap()
+            .unwrap();
         assert!(event.prerelease());
         assert_eq!(event.title(), "v3.0.0-rc.1");
         assert_eq!(event.body(), "");
@@ -232,19 +350,22 @@ mod github {
     fn what_is_not_a_release_event_says_why() {
         let unpublished = edited(|payload| payload["release"]["published_at"] = json!(null));
         assert_eq!(
-            Forge::GitHub.event(&unpublished).unwrap_err().to_string(),
+            Forge::GitHub
+                .event(&unpublished, PrereleaseRule::default())
+                .unwrap_err()
+                .to_string(),
             "GitHub's release event could not be read: a published release has no publication time"
         );
         let nameless = edited(|payload| payload["repository"]["name"] = json!(""));
         assert_eq!(
-            Forge::GitHub.event(&nameless),
+            Forge::GitHub.event(&nameless, PrereleaseRule::default()),
             Err(SourceError::Invalid {
                 what: "GitHub's release event",
                 problem: Problem::NoProject
             })
         );
         let error = Forge::GitHub
-            .event(b"{\"action\":\"published\"}")
+            .event(b"{\"action\":\"published\"}", PrereleaseRule::default())
             .unwrap_err();
         assert_eq!(
             error.to_string(),
@@ -252,12 +373,15 @@ mod github {
         );
         let huge = vec![b' '; 4_194_305];
         assert_eq!(
-            Forge::GitHub.event(&huge).unwrap_err().to_string(),
+            Forge::GitHub
+                .event(&huge, PrereleaseRule::default())
+                .unwrap_err()
+                .to_string(),
             "GitHub's release event is larger than the 4194304 bytes herald reads"
         );
         assert_eq!(
             Forge::GitHub
-                .event(&huge[..4_194_304])
+                .event(&huge[..4_194_304], PrereleaseRule::default())
                 .unwrap_err()
                 .to_string(),
             "GitHub's release event could not be read: EOF while parsing a value at line 1 column 4194304"
@@ -270,15 +394,21 @@ mod github {
             neovim(),
             Repository {
                 id: 16_408_992,
-                name: "neovim".to_owned()
+                name: "neovim".to_owned(),
+                page: Some("https://github.com/neovim/neovim".to_owned())
             }
         );
         let Polled {
             events,
             etag,
             last_modified,
+            ..
         } = Forge::GitHub
-            .releases(&neovim(), &answer(200, RELEASES), herald_wire::PARSE_LIMIT)
+            .releases(
+                &neovim(),
+                &answer(200, RELEASES),
+                (herald_wire::PARSE_LIMIT, PrereleaseRule::default()),
+            )
             .unwrap();
         let found: Vec<(&str, bool)> = events
             .iter()
@@ -314,19 +444,23 @@ mod github {
         let releases: Value = serde_json::from_str(RELEASES).unwrap();
         let one = releases[1].to_string();
         let event = Forge::GitHub
-            .release(&neovim(), &answer(200, &one))
+            .release(&neovim(), &answer(200, &one), PrereleaseRule::default())
             .unwrap()
             .unwrap();
         assert_eq!(event.identity().as_str(), "github.com/16408992/v0.12.6");
         let mut draft = releases[1].clone();
         draft["draft"] = json!(true);
         assert_eq!(
-            Forge::GitHub.release(&neovim(), &answer(200, &draft.to_string())),
+            Forge::GitHub.release(
+                &neovim(),
+                &answer(200, &draft.to_string()),
+                PrereleaseRule::default()
+            ),
             Ok(None)
         );
         assert_eq!(
             Forge::GitHub
-                .release(&neovim(), &answer(404, "{}"))
+                .release(&neovim(), &answer(404, "{}"), PrereleaseRule::default())
                 .unwrap_err()
                 .to_string(),
             "GitHub's release was answered with 404; check the names and ids the config gives"
@@ -339,7 +473,11 @@ mod github {
         assert!(!Forge::unchanged(&answer(200, RELEASES)));
         assert_eq!(
             Forge::GitHub
-                .releases(&neovim(), &answer(403, "{}"), herald_wire::PARSE_LIMIT)
+                .releases(
+                    &neovim(),
+                    &answer(403, "{}"),
+                    (herald_wire::PARSE_LIMIT, PrereleaseRule::default())
+                )
                 .unwrap_err()
                 .to_string(),
             "GitHub's releases was answered with 403; check what herald's credential is allowed to do there"
@@ -357,7 +495,11 @@ mod github {
         let body = drafts.to_string();
         assert_eq!(
             Forge::GitHub
-                .releases(&neovim(), &answer(200, &body), herald_wire::PARSE_LIMIT)
+                .releases(
+                    &neovim(),
+                    &answer(200, &body),
+                    (herald_wire::PARSE_LIMIT, PrereleaseRule::default())
+                )
                 .unwrap_err()
                 .to_string(),
             "GitHub's releases could not be read: a published release has no publication time"
@@ -365,7 +507,11 @@ mod github {
         drafts[1]["draft"] = json!(true);
         let body = drafts.to_string();
         let releases = Forge::GitHub
-            .releases(&neovim(), &answer(200, &body), herald_wire::PARSE_LIMIT)
+            .releases(
+                &neovim(),
+                &answer(200, &body),
+                (herald_wire::PARSE_LIMIT, PrereleaseRule::default()),
+            )
             .unwrap();
         assert_eq!(releases.events.len(), 1);
     }
@@ -378,6 +524,7 @@ mod github {
             etag: Some("W/\"abc\"".to_owned()),
             last_modified: Some("Sat, 31 Oct 2026 05:17:30 GMT".to_owned()),
             project: None,
+            ..Cursor::default()
         };
         let request = source(None).releases_request(Some(&cursor), Some(&token));
         assert_eq!(
@@ -429,8 +576,8 @@ mod github {
     proptest! {
         #[test]
         fn any_bytes_are_an_event_nothing_or_an_error(bytes in proptest::collection::vec(any::<u8>(), 0..512)) {
-            let _ = Forge::GitHub.event(&bytes);
-            let _ = Forge::GitHub.releases(&neovim(), &Response { status: 200, headers: Vec::new(), body: bytes.clone() }, herald_wire::PARSE_LIMIT);
+            let _ = Forge::GitHub.event(&bytes, PrereleaseRule::default());
+            let _ = Forge::GitHub.releases(&neovim(), &Response { status: 200, headers: Vec::new(), body: bytes.clone() }, (herald_wire::PARSE_LIMIT, PrereleaseRule::default()));
             let _ = Forge::GitHub.repository(&Response { status: 200, headers: Vec::new(), body: bytes });
         }
 
@@ -441,7 +588,7 @@ mod github {
             id in any::<u64>(),
             flagged in any::<bool>(),
         ) {
-            let event = Forge::GitHub.event(&payload(&tag, &host, id, flagged)).unwrap().unwrap();
+            let event = Forge::GitHub.event(&payload(&tag, &host, id, flagged), PrereleaseRule::default()).unwrap().unwrap();
             prop_assert_eq!(event.identity().as_str(), format!("{host}/{id}/{tag}"));
             prop_assert_eq!(event.prerelease(), flagged || prerelease_version(&tag));
         }

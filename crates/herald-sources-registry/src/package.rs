@@ -293,6 +293,7 @@ impl Package {
             events,
             etag: response.header("etag").map(ToOwned::to_owned),
             last_modified: response.header("last-modified").map(ToOwned::to_owned),
+            ..Polled::default()
         })
     }
 

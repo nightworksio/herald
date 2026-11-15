@@ -13,6 +13,8 @@ pub(crate) const API: Api = Api {
     repository: "GitHub's repository",
     releases: "GitHub's releases",
     release: "GitHub's release",
+    tags: "GitHub's tags",
+    tag: "GitHub's tag",
     listing: "GitHub's repositories",
     file: "GitHub's file",
     listed_page: std::num::NonZeroUsize::new(100).unwrap(),
@@ -46,7 +48,7 @@ impl From<Release> for ForgeRelease {
             body: release.body,
             url: release.html_url,
             draft: release.draft,
-            prerelease: release.prerelease,
+            prerelease: Some(release.prerelease),
             published: release.published_at,
         }
     }

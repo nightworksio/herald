@@ -224,6 +224,17 @@ async fn member<S: Store, C: Clock, G: Signer, H: Http>(
     swept(outcome)
 }
 
+/// The cursor a member that joined after the first listing is polled with,
+/// so its poll reads in full everything it finds, which announces what
+/// it published since it joined.
+static JOINED: Cursor = Cursor {
+    seen: Vec::new(),
+    etag: None,
+    last_modified: None,
+    project: None,
+    signals: std::collections::BTreeMap::new(),
+};
+
 /// The members `chunk` polled together through `http`, as one request
 /// where the source batches them, and each announced in turn.
 async fn chunk<S: Store, C: Clock, G: Signer, H: Http>(
@@ -240,7 +251,15 @@ async fn chunk<S: Store, C: Clock, G: Signer, H: Http>(
         } else {
             let asked: Vec<(&Listed, Option<&Cursor>)> = chunk
                 .iter()
-                .map(|held| (&held.membership.repository, held.membership.cursor.as_ref()))
+                .map(|held| {
+                    let joined = held.membership.discovered > first;
+                    let cursor = held
+                        .membership
+                        .cursor
+                        .as_ref()
+                        .or_else(|| joined.then_some(&JOINED));
+                    (&held.membership.repository, cursor)
+                })
                 .collect();
             expand
                 .polled(http, &asked)

@@ -17,8 +17,10 @@ mod kind;
 mod members;
 mod options;
 mod owner;
+mod polled;
 #[cfg(test)]
 mod scripted;
+mod tags;
 mod wire;
 
 pub use forge::{Forge, Origin, Repository, Token};
@@ -26,5 +28,5 @@ pub use herald_kinds::Hooked;
 pub use kind::{ForgeSource, ForgejoKind, GitHubKind, GitLabKind};
 pub use options::{
     GRAPHQL_BATCH, GRAPHQL_BATCH_ALLOWED, KEEP_MEMBERS, KEY, MOST_LISTED, MOST_MEMBERS,
-    MOST_MEMBERS_ALLOWED, Members, Override, SourceOptions, Transport, Values,
+    MOST_MEMBERS_ALLOWED, Members, Override, Signals, SourceOptions, Transport, Values,
 };

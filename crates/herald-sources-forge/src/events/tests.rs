@@ -28,12 +28,21 @@ fn changed_by(
     owner: Owner,
     last: Option<&EventsRead>,
 ) -> Result<Changed, Unpolled> {
+    changed_with(http, (owner, false), last)
+}
+
+fn changed_with(
+    http: &Scripted,
+    (owner, tags): (Owner, bool),
+    last: Option<&EventsRead>,
+) -> Result<Changed, Unpolled> {
     let asking = Asking {
         api: "https://api.github.com",
         name: "lemonfiber",
         owner,
         token: None,
         parse: 1 << 20,
+        tags,
     };
     pollster::block_on(changed(&Erased(http as &dyn DynHttp), &asking, last))
 }
@@ -176,4 +185,32 @@ fn events_that_cannot_be_reached_or_read_fail() {
         reason.contains("an event's id \"x\" is not a number"),
         "{reason}"
     );
+}
+
+#[test]
+fn a_tag_made_names_its_member_only_where_a_member_may_announce_tags() {
+    let created = |id: u64, ref_type: &str, repo: u64| json!({ "id": id.to_string(), "type": CREATE, "repo": { "id": repo }, "payload": { "ref_type": ref_type } });
+    let page = || {
+        answer(
+            &[
+                created(12, TAG, 4),
+                created(11, "branch", 5),
+                event(10, RELEASE, PUBLISHED, 6),
+                event(9, "PushEvent", "", 7),
+            ],
+            "\"e2\"",
+        )
+    };
+    let named = |tags: bool| {
+        let http = Scripted::new(vec![page()]);
+        match changed_with(&http, (Owner::Organization, tags), Some(&last(9))) {
+            Ok(Changed::Named { ids, .. }) => ids,
+            other => panic!("{other:?}"),
+        }
+    };
+    assert_eq!(
+        named(true),
+        BTreeSet::from(["4".to_owned(), "6".to_owned()])
+    );
+    assert_eq!(named(false), BTreeSet::from(["6".to_owned()]));
 }

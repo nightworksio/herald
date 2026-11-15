@@ -318,7 +318,7 @@ fn an_actor_whose_key_cannot_be_read_is_not_served() {
 
 pub(crate) fn key() -> Key {
     let event = herald_sources_forge::Forge::GitHub
-        .event(EVENT.as_bytes())
+        .event(EVENT.as_bytes(), herald_core::PrereleaseRule::default())
         .unwrap()
         .unwrap();
     Key::derive(&RouteId::new("followed"), event.identity())
@@ -614,7 +614,7 @@ fn an_activity_herald_cannot_take_is_answered_by_why() {
 fn work_that_stops_or_fails_releases_its_delivery() {
     let world = World::failing(Fault::Claims);
     let event = herald_sources_forge::Forge::GitHub
-        .event(EVENT.as_bytes())
+        .event(EVENT.as_bytes(), herald_core::PrereleaseRule::default())
         .unwrap()
         .unwrap();
     let verified = herald_flows::Verified {
@@ -667,7 +667,7 @@ fn work_that_stops_or_fails_releases_its_delivery() {
 fn work_that_will_not_be_done_releases_its_delivery() {
     let world = World::new(Script::default());
     let event = herald_sources_forge::Forge::GitHub
-        .event(EVENT.as_bytes())
+        .event(EVENT.as_bytes(), herald_core::PrereleaseRule::default())
         .unwrap()
         .unwrap();
     let jobs = [

@@ -1,9 +1,9 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::num::NonZeroUsize;
 
 use herald_core::{
-    Address, Duration, Glob, ProjectName, REPOSITORY_FIELDS, Sandbox, SecretRef, Selection, Size,
-    Visibility, path_of_names, web_url,
+    Address, Duration, Glob, PrereleaseRule, ProjectName, REPOSITORY_FIELDS, Sandbox, SecretRef,
+    Selection, Signal, Size, Visibility, path_of_names, web_url,
 };
 use herald_wire::{PARSE_LIMIT, Reading};
 use jiff::SignedDuration;
@@ -69,6 +69,39 @@ pub struct Override {
     /// The project their events are announced as, a template as the
     /// source's `project` is; the source's where absent.
     pub project: Option<String>,
+    /// What they announce, as the source's `signals` writes it; the
+    /// source's where absent.
+    pub signals: Option<Vec<Signal>>,
+    /// How a pre-release of theirs is told, as the source's `prerelease`
+    /// writes it; the source's where absent.
+    pub prerelease: Option<PrereleaseRule>,
+}
+
+/// What a source announces of one repository, and how it tells a
+/// pre-release there.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Signals {
+    /// The signals it announces.
+    pub taken: BTreeSet<Signal>,
+    /// How it tells a pre-release.
+    pub prerelease: PrereleaseRule,
+}
+
+impl Default for Signals {
+    fn default() -> Self {
+        Self {
+            taken: Signal::DEFAULT.into(),
+            prerelease: PrereleaseRule::default(),
+        }
+    }
+}
+
+impl Signals {
+    /// Whether it announces `signal`.
+    #[must_use]
+    pub fn takes(&self, signal: Signal) -> bool {
+        self.taken.contains(&signal)
+    }
 }
 
 /// The field each entry of a member file names its repository by where
@@ -122,10 +155,10 @@ pub struct SourceOptions {
     /// A token that reaches a private repository or raises the API's rate
     /// limit, such as the run's `GITHUB_TOKEN`.
     pub token: Option<SecretRef>,
-    /// How many of the newest releases the first poll announces; none where
-    /// absent (ADR-0003). For an owner, it applies to the members the first
-    /// listing finds; a member found later announces only what it publishes
-    /// after it was found.
+    /// How many of the newest releases and tags the first poll announces;
+    /// none where absent (ADR-0003). For an owner, it applies to the members
+    /// the first listing finds; a member found later announces only what it
+    /// publishes after it was found.
     #[serde(default)]
     pub backfill: usize,
     /// The secret the forge signs its webhook deliveries to `herald server`
@@ -134,7 +167,8 @@ pub struct SourceOptions {
     /// organization's deliveries, and announces one only where the owner's
     /// last membership record holds the repository when its work runs.
     pub webhook: Option<SecretRef>,
-    /// How many of the newest releases one poll reads; 30 where absent.
+    /// How many of the newest releases, and of the newest tags, one poll
+    /// reads; 30 where absent.
     #[schemars(with = "Option<NonZeroUsize>")]
     pub page: Option<NonZeroUsize>,
     /// How many identities the cursor remembers, newest first; 500 where
@@ -231,6 +265,16 @@ pub struct SourceOptions {
     /// at most 100.
     #[schemars(with = "Option<NonZeroUsize>")]
     pub graphql_batch: Option<NonZeroUsize>,
+    /// What the source announces of each repository: its published Releases,
+    /// its version tags, or both; `["release"]` where absent. A tag and a
+    /// Release of it share one identity, so each route announces it once.
+    #[schemars(example = SourceOptions::SIGNALS)]
+    pub signals: Option<Vec<Signal>>,
+    /// How a pre-release is told: by the forge's flag or a pre-release part
+    /// in the version ("either"), by the flag alone ("flag"), or by the
+    /// version alone ("tag"); "either" where absent. A tag carries no flag,
+    /// and neither does a GitLab release.
+    pub prerelease: Option<PrereleaseRule>,
 }
 
 /// The keys that only an owner source may give.
@@ -259,6 +303,41 @@ const OWNED: [&str; 22] = [
     "graphql_batch",
 ];
 
+/// Whether an override sets one of its keys.
+type Sets = fn(&Override) -> bool;
+
+const fn sets_project(chosen: &Override) -> bool {
+    chosen.project.is_some()
+}
+
+const fn sets_signals(chosen: &Override) -> bool {
+    chosen.signals.is_some()
+}
+
+const fn sets_prerelease(chosen: &Override) -> bool {
+    chosen.prerelease.is_some()
+}
+
+/// Each key of an override that the narrowest glob naming a repository
+/// gives it, and whether an override sets it.
+const OVERRIDDEN: [(&str, Sets); 3] = [
+    ("project", sets_project),
+    ("signals", sets_signals),
+    ("prerelease", sets_prerelease),
+];
+
+/// Two of `globs` as narrow as each other that could both name one
+/// repository, where two are.
+fn tie(globs: &[Glob]) -> Option<(&Glob, &Glob)> {
+    globs.iter().enumerate().find_map(|(at, glob)| {
+        globs
+            .iter()
+            .skip(at + 1)
+            .find(|other| other.specificity() == glob.specificity() && other.overlaps(glob))
+            .map(|other| (glob, other))
+    })
+}
+
 /// The project template `source`, compiled, where it compiles.
 fn compiled(source: &str) -> Option<ProjectName> {
     ProjectName::compile(source, Sandbox::DEFAULT).ok()
@@ -278,6 +357,8 @@ impl SourceOptions {
     const OWNER: &str = "nightworksio";
     /// The project template the schema shows as an example.
     const PROJECT: &str = "{{ repository.owner }}/{{ repository.name }}";
+    /// The signals the schema shows as an example.
+    const SIGNALS: [Signal; 2] = [Signal::Release, Signal::Tag];
 
     /// Whether the options are sound for a source on `forge`.
     ///
@@ -301,6 +382,7 @@ impl SourceOptions {
                 ));
             }
         }
+        self.signals_check(forge)?;
         match &self.api {
             Some(api) if !web_url(api) => Err(format!(
                 "\"{api}\" is not a web address; give the API's base URL, such as https://forge.example/api/v1"
@@ -402,13 +484,16 @@ impl SourceOptions {
                     .map_err(|reason| format!("repositories.\"{glob}\".project {reason}"))?;
             }
         }
-        let projects = self.projects();
-        for (at, (glob, _)) in projects.iter().enumerate() {
-            if let Some((other, _)) = projects.iter().skip(at + 1).find(|(other, _)| {
-                other.specificity() == glob.specificity() && other.overlaps(glob)
-            }) {
+        for (key, sets) in OVERRIDDEN {
+            let globs: Vec<Glob> = self
+                .repositories
+                .iter()
+                .filter(|(_, chosen)| sets(chosen))
+                .filter_map(|(glob, _)| Glob::new(glob).ok())
+                .collect();
+            if let Some((glob, other)) = tie(&globs) {
                 return Err(format!(
-                    "repositories \"{glob}\" and \"{other}\" both set project, are as narrow as each other and could both name one repository; make one narrower"
+                    "repositories \"{glob}\" and \"{other}\" both set {key}, are as narrow as each other and could both name one repository; make one narrower"
                 ));
             }
         }
@@ -418,6 +503,76 @@ impl SourceOptions {
             ));
         }
         self.selection().map(|_| ())
+    }
+
+    /// Whether the signals and pre-release rules, the source's and each
+    /// override's, are sound on `forge`.
+    fn signals_check(&self, forge: Forge) -> Result<(), String> {
+        let overrides = self.repositories.iter().map(|(glob, chosen)| {
+            (
+                format!("repositories.\"{glob}\"."),
+                &chosen.signals,
+                chosen.prerelease,
+            )
+        });
+        for (at, signals, prerelease) in
+            std::iter::once((String::new(), &self.signals, self.prerelease)).chain(overrides)
+        {
+            if signals.as_ref().is_some_and(Vec::is_empty) {
+                return Err(format!(
+                    "{at}signals names no signal; give release, tag or both, or remove it"
+                ));
+            }
+            if forge == Forge::GitLab && prerelease == Some(PrereleaseRule::Flag) {
+                return Err(format!(
+                    "{at}prerelease \"flag\" marks nothing on GitLab, whose releases carry no pre-release flag; choose either or tag"
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    /// What the source announces of the repository named `name`, and how it
+    /// tells a pre-release there: for each, the narrowest of `repositories`
+    /// naming it that sets it, or else the source's.
+    #[must_use]
+    pub fn signals_of(&self, name: &str) -> Signals {
+        let narrowest = |sets: Sets| {
+            self.repositories
+                .iter()
+                .filter(|(_, chosen)| sets(chosen))
+                .filter_map(|(glob, chosen)| Some((Glob::new(glob).ok()?, chosen)))
+                .filter(|(glob, _)| glob.matches(name))
+                .max_by_key(|(glob, _)| glob.specificity())
+                .map(|(_, chosen)| chosen)
+        };
+        let signals = narrowest(sets_signals)
+            .and_then(|chosen| chosen.signals.as_ref())
+            .or(self.signals.as_ref());
+        let prerelease = narrowest(sets_prerelease)
+            .and_then(|chosen| chosen.prerelease)
+            .or(self.prerelease);
+        let defaults = Signals::default();
+        Signals {
+            taken: signals.map_or(defaults.taken, |signals| signals.iter().copied().collect()),
+            prerelease: prerelease.unwrap_or(defaults.prerelease),
+        }
+    }
+
+    /// Whether any repository the source takes may announce `signal`.
+    #[must_use]
+    pub fn may_take(&self, signal: Signal) -> bool {
+        let taken = |signals: &Option<Vec<Signal>>| {
+            signals.as_ref().map_or_else(
+                || Signals::default().takes(signal),
+                |signals| signals.contains(&signal),
+            )
+        };
+        taken(&self.signals)
+            || self
+                .repositories
+                .values()
+                .any(|chosen| sets_signals(chosen) && taken(&chosen.signals))
     }
 
     /// Whether the `project` template compiles and reads a repository's
