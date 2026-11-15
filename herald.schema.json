@@ -1537,9 +1537,20 @@
       "description": "What an owner source makes of the repositories one glob names.",
       "type": "object",
       "properties": {
+        "prerelease": {
+          "description": "How a pre-release of theirs is told, as the source's `prerelease`\nwrites it; the source's where absent.",
+          "$ref": "#/$defs/PrereleaseRule"
+        },
         "project": {
           "description": "The project their events are announced as, a template as the\nsource's `project` is; the source's where absent.",
           "type": "string"
+        },
+        "signals": {
+          "description": "What they announce, as the source's `signals` writes it; the\nsource's where absent.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Signal"
+          }
         }
       },
       "additionalProperties": false
@@ -1562,6 +1573,26 @@
           "description": "By the pinned message the store remembers for the route. Only a store\nthat keeps pins serves it.",
           "type": "string",
           "const": "store"
+        }
+      ]
+    },
+    "PrereleaseRule": {
+      "description": "How a source tells a pre-release.",
+      "oneOf": [
+        {
+          "description": "The forge's pre-release flag, or a pre-release part in the version.",
+          "type": "string",
+          "const": "either"
+        },
+        {
+          "description": "The forge's pre-release flag alone; a tag, which carries none, is\nnever a pre-release.",
+          "type": "string",
+          "const": "flag"
+        },
+        {
+          "description": "A pre-release part in the version alone, as in `v1.2.0-rc.1`.",
+          "type": "string",
+          "const": "tag"
         }
       ]
     },
@@ -1887,6 +1918,21 @@
         "sha256"
       ]
     },
+    "Signal": {
+      "description": "What a source announces of a repository.",
+      "oneOf": [
+        {
+          "description": "A published Release.",
+          "type": "string",
+          "const": "release"
+        },
+        {
+          "description": "A version tag, with or without a Release.",
+          "type": "string",
+          "const": "tag"
+        }
+      ]
+    },
     "Size": {
       "description": "A number of bytes: a number and KiB or MiB, as \"1MiB\".",
       "type": "string",
@@ -2078,7 +2124,7 @@
       "description": "A source, by its kind.",
       "oneOf": [
         {
-          "description": "A GitHub repository's releases.",
+          "description": "A GitHub repository's releases and tags.",
           "type": "object",
           "properties": {
             "api": {
@@ -2091,7 +2137,7 @@
               "default": false
             },
             "backfill": {
-              "description": "How many of the newest releases the first poll announces; none where\nabsent (ADR-0003). For an owner, it applies to the members the first\nlisting finds; a member found later announces only what it publishes\nafter it was found.",
+              "description": "How many of the newest releases and tags the first poll announces;\nnone where absent (ADR-0003). For an owner, it applies to the members\nthe first listing finds; a member found later announces only what it\npublishes after it was found.",
               "type": "integer",
               "format": "uint",
               "default": 0,
@@ -2183,7 +2229,7 @@
               ]
             },
             "page": {
-              "description": "How many of the newest releases one poll reads; 30 where absent.",
+              "description": "How many of the newest releases, and of the newest tags, one poll\nreads; 30 where absent.",
               "type": "integer",
               "format": "uint",
               "minimum": 1
@@ -2191,6 +2237,10 @@
             "parse": {
               "description": "The most of an answer parsed; \"4MiB\" where absent, and at most four\ntimes that.",
               "$ref": "#/$defs/Size"
+            },
+            "prerelease": {
+              "description": "How a pre-release is told: by the forge's flag or a pre-release part\nin the version (\"either\"), by the flag alone (\"flag\"), or by the\nversion alone (\"tag\"); \"either\" where absent. A tag carries no flag,\nand neither does a GitLab release.",
+              "$ref": "#/$defs/PrereleaseRule"
             },
             "project": {
               "description": "The project a member's events are announced as, a template of\n`repository.name`, `repository.path`, `repository.owner`,\n`repository.id`, `repository.topics`, `repository.properties` and\n`repository.visibility`; the repository's name where absent.",
@@ -2225,6 +2275,19 @@
               "examples": [
                 "nightworksio/herald"
               ]
+            },
+            "signals": {
+              "description": "What the source announces of each repository: its published Releases,\nits version tags, or both; `[\"release\"]` where absent. A tag and a\nRelease of it share one identity, so each route announces it once.",
+              "type": "array",
+              "examples": [
+                [
+                  "release",
+                  "tag"
+                ]
+              ],
+              "items": {
+                "$ref": "#/$defs/Signal"
+              }
             },
             "subgroups": {
               "description": "Whether a GitLab group's members include the projects of its\nsubgroups; true where absent.",
@@ -2277,7 +2340,7 @@
           ]
         },
         {
-          "description": "A GitLab project's releases.",
+          "description": "A GitLab project's releases and tags.",
           "type": "object",
           "properties": {
             "api": {
@@ -2290,7 +2353,7 @@
               "default": false
             },
             "backfill": {
-              "description": "How many of the newest releases the first poll announces; none where\nabsent (ADR-0003). For an owner, it applies to the members the first\nlisting finds; a member found later announces only what it publishes\nafter it was found.",
+              "description": "How many of the newest releases and tags the first poll announces;\nnone where absent (ADR-0003). For an owner, it applies to the members\nthe first listing finds; a member found later announces only what it\npublishes after it was found.",
               "type": "integer",
               "format": "uint",
               "default": 0,
@@ -2382,7 +2445,7 @@
               ]
             },
             "page": {
-              "description": "How many of the newest releases one poll reads; 30 where absent.",
+              "description": "How many of the newest releases, and of the newest tags, one poll\nreads; 30 where absent.",
               "type": "integer",
               "format": "uint",
               "minimum": 1
@@ -2390,6 +2453,10 @@
             "parse": {
               "description": "The most of an answer parsed; \"4MiB\" where absent, and at most four\ntimes that.",
               "$ref": "#/$defs/Size"
+            },
+            "prerelease": {
+              "description": "How a pre-release is told: by the forge's flag or a pre-release part\nin the version (\"either\"), by the flag alone (\"flag\"), or by the\nversion alone (\"tag\"); \"either\" where absent. A tag carries no flag,\nand neither does a GitLab release.",
+              "$ref": "#/$defs/PrereleaseRule"
             },
             "project": {
               "description": "The project a member's events are announced as, a template of\n`repository.name`, `repository.path`, `repository.owner`,\n`repository.id`, `repository.topics`, `repository.properties` and\n`repository.visibility`; the repository's name where absent.",
@@ -2424,6 +2491,19 @@
               "examples": [
                 "nightworksio/herald"
               ]
+            },
+            "signals": {
+              "description": "What the source announces of each repository: its published Releases,\nits version tags, or both; `[\"release\"]` where absent. A tag and a\nRelease of it share one identity, so each route announces it once.",
+              "type": "array",
+              "examples": [
+                [
+                  "release",
+                  "tag"
+                ]
+              ],
+              "items": {
+                "$ref": "#/$defs/Signal"
+              }
             },
             "subgroups": {
               "description": "Whether a GitLab group's members include the projects of its\nsubgroups; true where absent.",
@@ -2476,7 +2556,7 @@
           ]
         },
         {
-          "description": "A Forgejo or Gitea repository's releases.",
+          "description": "A Forgejo or Gitea repository's releases and tags.",
           "type": "object",
           "properties": {
             "api": {
@@ -2489,7 +2569,7 @@
               "default": false
             },
             "backfill": {
-              "description": "How many of the newest releases the first poll announces; none where\nabsent (ADR-0003). For an owner, it applies to the members the first\nlisting finds; a member found later announces only what it publishes\nafter it was found.",
+              "description": "How many of the newest releases and tags the first poll announces;\nnone where absent (ADR-0003). For an owner, it applies to the members\nthe first listing finds; a member found later announces only what it\npublishes after it was found.",
               "type": "integer",
               "format": "uint",
               "default": 0,
@@ -2581,7 +2661,7 @@
               ]
             },
             "page": {
-              "description": "How many of the newest releases one poll reads; 30 where absent.",
+              "description": "How many of the newest releases, and of the newest tags, one poll\nreads; 30 where absent.",
               "type": "integer",
               "format": "uint",
               "minimum": 1
@@ -2589,6 +2669,10 @@
             "parse": {
               "description": "The most of an answer parsed; \"4MiB\" where absent, and at most four\ntimes that.",
               "$ref": "#/$defs/Size"
+            },
+            "prerelease": {
+              "description": "How a pre-release is told: by the forge's flag or a pre-release part\nin the version (\"either\"), by the flag alone (\"flag\"), or by the\nversion alone (\"tag\"); \"either\" where absent. A tag carries no flag,\nand neither does a GitLab release.",
+              "$ref": "#/$defs/PrereleaseRule"
             },
             "project": {
               "description": "The project a member's events are announced as, a template of\n`repository.name`, `repository.path`, `repository.owner`,\n`repository.id`, `repository.topics`, `repository.properties` and\n`repository.visibility`; the repository's name where absent.",
@@ -2623,6 +2707,19 @@
               "examples": [
                 "nightworksio/herald"
               ]
+            },
+            "signals": {
+              "description": "What the source announces of each repository: its published Releases,\nits version tags, or both; `[\"release\"]` where absent. A tag and a\nRelease of it share one identity, so each route announces it once.",
+              "type": "array",
+              "examples": [
+                [
+                  "release",
+                  "tag"
+                ]
+              ],
+              "items": {
+                "$ref": "#/$defs/Signal"
+              }
             },
             "subgroups": {
               "description": "Whether a GitLab group's members include the projects of its\nsubgroups; true where absent.",

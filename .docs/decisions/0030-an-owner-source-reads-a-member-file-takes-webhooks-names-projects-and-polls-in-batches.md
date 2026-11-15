@@ -1,6 +1,6 @@
 # ADR-0030: An owner source reads a member file, takes webhooks, names projects and polls in batches
 
-**Status:** Accepted
+**Status:** Accepted; the tags a batch and an owner's events read extended by [ADR-0031](0031-a-source-announces-releases-tags-or-both-and-tells-a-pre-release-by-its-own-rule.md)
 **Date:** 2026-11-15
 
 ## Context

@@ -35,6 +35,7 @@ mod profile;
 mod render;
 mod retention;
 mod route;
+mod signal;
 mod size;
 pub mod status;
 mod subscription;
@@ -95,6 +96,7 @@ pub use route::{
     Delivery, DestinationName, Filter, Mentions, Pinning, Prereleases, RoleId, Route, SecretRef,
     SourceName, TemplateName, Thread, route,
 };
+pub use signal::{Prefer, PrereleaseRule, SIGNAL, Signal, Validators};
 pub use size::Size;
 pub use subscription::Subscription;
 pub use symbols::Symbols;

@@ -304,12 +304,14 @@ fn the_narrowest_override_naming_a_member_names_its_project() {
                     "c*".to_owned(),
                     crate::Override {
                         project: Some("wide-{{ repository.name }}".to_owned()),
+                        ..crate::Override::default()
                     },
                 ),
                 (
                     "cli".to_owned(),
                     crate::Override {
                         project: Some("narrow".to_owned()),
+                        ..crate::Override::default()
                     },
                 ),
             ]),

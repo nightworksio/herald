@@ -14,7 +14,8 @@ use serde::Deserialize;
 
 use crate::forge::{api_of, authorized};
 use crate::graphql::{Asking, polled_together};
-use crate::kind::{Releases, projected};
+use crate::kind::projected;
+use crate::polled::Releases;
 use crate::{Forge, Members, Origin, SourceOptions, Token, Transport, events};
 
 /// An owner's repositories on a forge, each taken by the selection polled on
@@ -398,6 +399,7 @@ impl Expand for Owned {
                 owner,
                 token: self.token.as_ref(),
                 parse: self.reading().parse,
+                tags: self.options.may_take(herald_core::Signal::Tag),
             };
             Some(events::changed(&Erased(http), &asking, read).await)
         })
@@ -424,7 +426,17 @@ impl Expand for Owned {
                 page: self.reading().page,
                 parse: self.reading().parse,
             };
-            let answered = polled_together(&Erased(http), &asking, members).await;
+            let signalled: Vec<(&Listed, Option<&Cursor>, crate::Signals)> = members
+                .iter()
+                .map(|(repository, cursor)| {
+                    (
+                        *repository,
+                        *cursor,
+                        self.options.signals_of(&repository.name),
+                    )
+                })
+                .collect();
+            let answered = polled_together(&Erased(http), &asking, &signalled).await;
             answered
                 .into_iter()
                 .zip(members)
@@ -444,6 +456,8 @@ impl Expand for Owned {
             origin: Origin::new(self.forge, &self.options, &repository.path),
             token: self.token.clone(),
             project: self.named_project(repository),
+            signals: self.options.signals_of(&repository.name),
+            backfill: self.options.backfill,
         })
     }
 

@@ -378,18 +378,49 @@ GraphQL. The endpoint sits beside `api` (`/api/graphql` on a GitHub
 Enterprise Server, `/graphql` on GitHub and GHE.com); `graphql` names
 another on the same host.
 `transport = "events"` reads the owner's events once a round, with its
-`ETag`, and polls only the members a published release names, and those
-never polled; where the events do not reach back to the last read, every
+`ETag`, and polls only the members a published release names (or a new
+tag, where a member takes tags), and those never polled; where the events do not reach back to the last read, every
 member is polled.
 
-`[sources.<owner>.repositories."<glob>"]` overrides `project` for the
-repositories a glob names, each key settled by the narrowest glob setting
+`[sources.<owner>.repositories."<glob>"]` overrides `project`, `signals`
+and `prerelease` for the repositories a glob names, each key settled by the narrowest glob setting
 it: one without wildcards before one with, and otherwise the one naming
 more characters. Two equally narrow globs that set one key and could name
 one repository do not load. A repository's admin controls its
 name, topics and properties, so no member announces as a project another
 member, source or app announces as: such a member is withheld and
 reported until the two differ.
+
+### Releases, tags and pre-releases
+
+A forge source announces each published Release by default. `signals`
+chooses what it announces of each repository: `"release"`, `"tag"`, or
+both:
+
+```toml
+[sources.train]
+kind = "github"
+owner = "lemonfiber"
+signals = ["release", "tag"]
+prerelease = "tag"
+```
+
+A tag and a Release of it share one identity, so a route announces the
+version once, whichever comes first. Both are `release` events, and a
+template tells them apart by `event.attributes.signal` (`"release"` or
+`"tag"`). A tag's title is its name, its body its annotated message, and
+its time the annotated tag's date, or else its commit's. Releases and tags
+are each asked with their own `ETag`. On GitHub's REST API a new tag costs
+up to two more requests to read its date and message; GitLab lists them in
+full, and a GitHub owner polled through GraphQL reads them in its batch.
+Webhooks announce releases; a source's tags are announced when it is
+polled.
+
+`prerelease` chooses how a pre-release is told: `"either"` (the forge's
+flag, or a pre-release part in the version such as `v1.2.0-rc.1`; the
+default), `"flag"` (the flag alone) or `"tag"` (the version alone). A tag
+carries no flag, and neither does a GitLab release, so `"flag"` marks no
+tag and does not load on GitLab.
 
 ### An app's own events
 

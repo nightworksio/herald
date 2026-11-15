@@ -4,9 +4,9 @@
 
 #![no_main]
 
-use herald_core::{Event, Polled, Selection};
+use herald_core::{Event, Polled, PrereleaseRule, Selection};
 use herald_ports::Response;
-use herald_sources_forge::{Forge, Hooked, Repository};
+use herald_sources_forge::{Forge, Hooked, Repository, Signals};
 use herald_wire::PARSE_LIMIT;
 use libfuzzer_sys::fuzz_target;
 
@@ -30,16 +30,20 @@ fuzz_target!(|bytes: &[u8]| {
     let repository = Repository {
         id: 7,
         name: "fuzzed".to_owned(),
+        page: None,
     };
+    let rule = PrereleaseRule::default();
     for forge in FORGES {
-        if let Ok(Some(event)) = forge.event(bytes) {
+        if let Ok(Some(event)) = forge.event(bytes, rule) {
             identified(&event, None);
         }
         let _ = forge.repository(&response);
-        if let Ok(Some(event)) = forge.release(&repository, &response) {
+        if let Ok(Some(event)) = forge.release(&repository, &response, rule) {
             identified(&event, Some(repository.id));
         }
-        if let Ok(Polled { events, .. }) = forge.releases(&repository, &response, PARSE_LIMIT) {
+        if let Ok(Polled { events, .. }) =
+            forge.releases(&repository, &response, (PARSE_LIMIT, rule))
+        {
             for event in &events {
                 identified(event, Some(repository.id));
             }
@@ -49,9 +53,11 @@ fuzz_target!(|bytes: &[u8]| {
             ("X-Gitlab-Event", "Release Hook"),
             ("X-Forgejo-Event", "release"),
         ];
-        if let Ok(Hooked::Member { event, id, .. }) =
-            forge.hooked_owned((&headers, bytes), ("fuzzed", true), &Selection::default())
-        {
+        if let Ok(Hooked::Member { event, id, .. }) = forge.hooked_owned(
+            (&headers, bytes),
+            ("fuzzed", true),
+            (&Selection::default(), &|_| Signals::default()),
+        ) {
             identified(&event, None);
             assert!(
                 event.identity().as_str().contains(&format!("/{id}/")),

@@ -193,7 +193,7 @@ fn an_owner_s_webhook_its_project_template_names_no_project_for_announces_nothin
 fn a_member_s_job_of_a_source_of_one_repository_keeps_its_project() {
     let world = World::new(Script::default());
     let event = herald_sources_forge::Forge::GitHub
-        .event(EVENT.as_bytes())
+        .event(EVENT.as_bytes(), herald_core::PrereleaseRule::default())
         .unwrap()
         .unwrap();
     kept_in(&world, "quiet", Visibility::Public, false);

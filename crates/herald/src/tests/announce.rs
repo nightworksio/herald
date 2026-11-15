@@ -60,6 +60,23 @@ fn a_refusal_stops_the_run_and_says_what_remains() {
 }
 
 #[test]
+fn a_source_announcing_tags_alone_announces_no_release_from_the_run() {
+    let setup = setup(&CONFIG.replace(
+        "repository = \"cli/cli\"\n",
+        "repository = \"cli/cli\"\nsignals = [\"tag\"]\n",
+    ));
+    let world = World::default();
+    let run = herald(&setup, &world, &ANNOUNCE);
+    assert_eq!(
+        (run.code, run.out.as_str()),
+        (
+            DONE,
+            "The source announces no releases of the repository; nothing to announce.\n"
+        )
+    );
+}
+
+#[test]
 fn an_event_that_is_not_a_published_release_announces_nothing() {
     let mut setup = setup(CONFIG);
     let world = World::default();

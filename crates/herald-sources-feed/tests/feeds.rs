@@ -313,6 +313,7 @@ mod feeds {
             etag: Some("\"a\"".to_owned()),
             last_modified: Some(DATE.to_owned()),
             project: None,
+            ..Cursor::default()
         };
         assert_eq!(
             notes.request(Some(&cursor)).to_string(),

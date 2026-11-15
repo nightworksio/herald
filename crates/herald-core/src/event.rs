@@ -192,6 +192,15 @@ impl Event {
         self.links.values().next().map(String::as_str)
     }
 
+    /// The signal it is of, where its source names one.
+    #[must_use]
+    pub fn signal(&self) -> Option<crate::Signal> {
+        match self.attributes.get(crate::SIGNAL) {
+            Some(Attribute::Text(name)) => crate::Signal::named(name),
+            _ => None,
+        }
+    }
+
     /// Whether it is a pre-release.
     #[must_use]
     pub fn prerelease(&self) -> bool {
@@ -317,6 +326,33 @@ pub(crate) mod tests {
             .unwrap();
             assert_eq!(event.version(), None);
         }
+    }
+
+    #[test]
+    fn the_signal_is_read_from_its_attribute_where_it_names_one() {
+        let signalled = |value: Option<Attribute>| {
+            let mut attributes = crate::versioned("v1", false);
+            if let Some(value) = value {
+                attributes.insert(crate::SIGNAL.to_owned(), value);
+            }
+            Event::normalise(Draft {
+                attributes,
+                ..draft()
+            })
+            .unwrap()
+            .signal()
+        };
+        assert_eq!(
+            signalled(Some(Attribute::Text("tag".to_owned()))),
+            Some(crate::Signal::Tag)
+        );
+        assert_eq!(
+            signalled(Some(Attribute::Text("release".to_owned()))),
+            Some(crate::Signal::Release)
+        );
+        assert_eq!(signalled(Some(Attribute::Text("other".to_owned()))), None);
+        assert_eq!(signalled(Some(Attribute::Flag(true))), None);
+        assert_eq!(signalled(None), None);
     }
 
     #[test]

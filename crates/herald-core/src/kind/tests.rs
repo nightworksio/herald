@@ -110,6 +110,23 @@ fn herald_ships_four_kinds_and_only_releases_and_package_versions_are_versioned(
         shipped[3].links,
         [LinkSpec::named("release"), LinkSpec::named("changelog")]
     );
+    let signalled = AttributeSpec {
+        ty: AttributeType::Text,
+        required: false,
+    };
+    let signals: Vec<Option<&AttributeSpec>> = shipped
+        .iter()
+        .map(|spec| spec.attributes.get(crate::SIGNAL))
+        .collect();
+    assert_eq!(signals, [Some(&signalled), Some(&signalled), None, None]);
+    let mut tagged = crate::versioned("v1", false);
+    tagged.insert(crate::SIGNAL.to_owned(), Attribute::Text("tag".to_owned()));
+    assert_eq!(shipped[0].check(&tagged), Ok(()));
+    assert!(
+        shipped[2]
+            .check(&one(crate::SIGNAL, Attribute::Text("tag".to_owned())))
+            .is_err()
+    );
 }
 
 #[test]

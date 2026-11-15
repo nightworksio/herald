@@ -190,6 +190,18 @@ pub(crate) fn prerelease_in(attributes: &BTreeMap<String, Attribute>) -> bool {
     attributes.get(PRERELEASE) == Some(&Attribute::Flag(true))
 }
 
+/// The attributes of a kind a forge's signals announce: the signal an
+/// event is of, where its source names one.
+fn signalled() -> BTreeMap<String, AttributeSpec> {
+    BTreeMap::from([(
+        crate::signal::SIGNAL.to_owned(),
+        AttributeSpec {
+            ty: AttributeType::Text,
+            required: false,
+        },
+    )])
+}
+
 /// One link a kind's events carry, which becomes a button where the event
 /// carries it.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -278,14 +290,14 @@ impl KindSpec {
                 "A release on a forge.",
                 true,
                 buttons(&[RELEASE_LINK, CHANGELOG_LINK]),
-                BTreeMap::new(),
+                signalled(),
             ),
             Self::new(
                 Kind::PACKAGE_VERSION,
                 "A new version of a package on a registry.",
                 true,
                 buttons(&[RELEASE_LINK, CHANGELOG_LINK]),
-                BTreeMap::new(),
+                signalled(),
             ),
             Self::new(
                 Kind::FEED_ENTRY,

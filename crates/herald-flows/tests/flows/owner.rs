@@ -11,6 +11,8 @@ use serde_json::json;
 
 use crate::harness::*;
 
+mod tags;
+
 pub(crate) const LISTING: &str =
     "/orgs/nightworksio/repos?type=all&sort=full_name&direction=asc&per_page=100&page=1";
 const PROBE: &str =

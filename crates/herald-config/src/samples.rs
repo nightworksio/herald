@@ -1,4 +1,6 @@
-use herald_core::{Attribute, AttributeType, Draft, Event, KindSpec, PRERELEASE, VERSION};
+use herald_core::{
+    Attribute, AttributeType, Draft, Event, KindSpec, PRERELEASE, SIGNAL, Signal, VERSION,
+};
 use jiff::Timestamp;
 
 /// Noon on 31 October 2026, when every sample happened.
@@ -13,6 +15,9 @@ fn draft(spec: &KindSpec) -> Draft {
         .map(|(name, attribute)| {
             let sample = match attribute.ty {
                 AttributeType::Text if name == VERSION => Attribute::Text("v1.2.0".to_owned()),
+                AttributeType::Text if name == SIGNAL => {
+                    Attribute::Text(Signal::Release.name().to_owned())
+                }
                 AttributeType::Text => Attribute::Text(format!("sample {name}")),
                 AttributeType::Flag => Attribute::Flag(false),
                 AttributeType::Number => Attribute::Number(1.into()),
@@ -44,7 +49,8 @@ fn draft(spec: &KindSpec) -> Draft {
 
 /// The sample events of the kind `spec` describes, every template is
 /// dry-rendered against: a plain one, a pre-release where the kind marks
-/// one, and one with a long body (ADR-0006).
+/// one, one with a long body (ADR-0006), and a tag's where the kind names
+/// a signal (ADR-0031).
 #[must_use]
 pub fn samples(spec: &KindSpec) -> Vec<Event> {
     let plain = draft(spec);
@@ -63,9 +69,22 @@ pub fn samples(spec: &KindSpec) -> Vec<Event> {
         body: "- a sample change\n".repeat(LONG),
         ..plain.clone()
     };
+    let tagged = spec.attributes.contains_key(SIGNAL).then(|| {
+        let mut attributes = plain.attributes.clone();
+        attributes.insert(
+            SIGNAL.to_owned(),
+            Attribute::Text(Signal::Tag.name().to_owned()),
+        );
+        Draft {
+            attributes,
+            body: String::new(),
+            ..plain.clone()
+        }
+    });
     std::iter::once(plain)
         .chain(prerelease)
         .chain(std::iter::once(long))
+        .chain(tagged)
         .filter_map(|draft| Event::normalise(draft).ok())
         .collect()
 }
@@ -77,14 +96,25 @@ mod tests {
     use super::*;
 
     #[test]
-    fn a_versioned_kind_has_a_plain_a_pre_release_and_a_long_sample() {
+    fn a_versioned_kind_has_a_plain_a_pre_release_a_long_and_a_tag_s_sample() {
         let kinds = KindSpecs::default();
         for kind in [Kind::RELEASE, Kind::PACKAGE_VERSION] {
             let samples = samples(kinds.get(&kind).unwrap());
-            assert_eq!(samples.len(), 3, "{kind}");
+            assert_eq!(samples.len(), 4, "{kind}");
             assert!(samples.iter().all(|event| event.kind() == &kind));
             assert!(samples[1].prerelease());
             assert!(samples[2].body().len() > 30_000);
+            let signals: Vec<Option<Signal>> = samples.iter().map(Event::signal).collect();
+            assert_eq!(
+                signals,
+                [
+                    Some(Signal::Release),
+                    Some(Signal::Release),
+                    Some(Signal::Release),
+                    Some(Signal::Tag)
+                ]
+            );
+            assert_eq!(samples[3].body(), "");
         }
         let release = samples(kinds.get(&Kind::RELEASE).unwrap());
         assert_eq!(release[0].version(), Some("v1.2.0"));

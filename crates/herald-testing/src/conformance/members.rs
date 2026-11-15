@@ -92,6 +92,7 @@ pub(super) async fn members<S: Cursors>(store: &S, checks: &mut Checks) -> Resul
             etag: None,
             last_modified: None,
             project: None,
+            ..Cursor::default()
         }),
         collides: Some("its project is another's".to_owned()),
     };

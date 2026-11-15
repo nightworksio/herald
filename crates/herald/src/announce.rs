@@ -8,7 +8,7 @@ use std::io::Write;
 use herald_compose::told::report;
 use herald_compose::{Composed, Host, Hosting, ServingOn, Through};
 use herald_config::{Config, Uses};
-use herald_core::{Event, RouteId, SourceName};
+use herald_core::{Event, RouteId, Signal, SourceName};
 use herald_flows::{Announced, Outcome, announce_within};
 use herald_ports::{Base, Keyring, Outbound, Store};
 use herald_sources_forge::{Forge, ForgeSource, SourceOptions};
@@ -120,6 +120,16 @@ async fn released(
     connect: Connect<'_>,
     out: &mut dyn Write,
 ) -> Result<Option<Event>, String> {
+    let repository = options.repository.as_deref().unwrap_or_default();
+    let signals = options.signals_of(repository.rsplit('/').next().unwrap_or(repository));
+    if !signals.takes(Signal::Release) {
+        say(
+            out,
+            "The source announces no releases of the repository; nothing to announce.",
+        );
+        return Ok(None);
+    }
+    let rule = signals.prerelease;
     match (forge, tag) {
         (Forge::GitLab, None) => {
             say(out, "The pipeline is not for a tag; nothing to announce.");
@@ -127,10 +137,19 @@ async fn released(
         }
         (Forge::GitLab, Some(tag)) => {
             let project = project(vars)?;
-            tagged(options, forge, tag, Some(project), vars, connect, out).await
+            tagged(
+                options,
+                (forge, rule),
+                tag,
+                Some(project),
+                vars,
+                connect,
+                out,
+            )
+            .await
         }
-        (_, Some(tag)) => tagged(options, forge, tag, None, vars, connect, out).await,
-        (_, None) => evented(forge, vars, out),
+        (_, Some(tag)) => tagged(options, (forge, rule), tag, None, vars, connect, out).await,
+        (_, None) => evented((forge, rule), vars, out),
     }
 }
 

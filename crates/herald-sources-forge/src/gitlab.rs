@@ -17,6 +17,8 @@ pub(crate) const API: Api = Api {
     repository: "GitLab's project",
     releases: "GitLab's releases",
     release: "GitLab's release",
+    tags: "GitLab's tags",
+    tag: "GitLab's tag",
     listing: "GitLab's projects",
     file: "GitLab's file",
     listed_page: std::num::NonZeroUsize::new(100).unwrap(),
@@ -66,7 +68,7 @@ impl From<Release> for ForgeRelease {
             body: release.description,
             url: release.links.own,
             draft: release.upcoming,
-            prerelease: false,
+            prerelease: None,
             published: release.released_at,
         }
     }
@@ -138,7 +140,7 @@ pub(crate) fn published(
         body: hook.description,
         url: hook.url,
         draft: false,
-        prerelease: false,
+        prerelease: None,
         published: hook.released_at,
     };
     Ok(Some((hook.project, found)))
