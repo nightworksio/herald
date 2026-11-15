@@ -69,6 +69,12 @@ pub trait SourceConfig: fmt::Debug + Send + Sync + Itself {
         false
     }
 
+    /// Whether it may hold an event back until it is due, as a tag waiting
+    /// for its Release (ADR-0032).
+    fn holds(&self) -> bool {
+        false
+    }
+
     /// The projects its events are announced as, where its options name
     /// them.
     fn projects(&self) -> Vec<String> {
@@ -152,6 +158,12 @@ pub trait Expand: fmt::Debug + Send + Sync {
         members: &'a [(&'a Listed, Option<&'a Cursor>)],
     ) -> Boxed<'a, Vec<Result<Option<Polled>, Unpolled>>> {
         Box::pin(each_polled(self, http, members))
+    }
+
+    /// How long a tag the member `repository` publishes waits for its
+    /// Release before it is announced, where a tag waits (ADR-0032).
+    fn tag_window(&self, _repository: &Listed) -> Option<SignedDuration> {
+        None
     }
 
     /// The project the member `repository`'s events are announced as.
@@ -262,6 +274,10 @@ pub enum Hooked {
         /// Who may see the member, as the delivery names it, where it does.
         visibility: Option<Visibility>,
     },
+    /// A tag pushed to a repository the source takes, which a poll of the
+    /// source reads in full and announces or holds as it does any tag it
+    /// finds (ADR-0032).
+    Poll,
     /// Nothing, and why.
     Nothing(&'static str),
 }
@@ -317,6 +333,12 @@ pub trait Poll: fmt::Debug + Send + Sync {
         http: &'a dyn DynHttp,
         cursor: Option<&'a Cursor>,
     ) -> Boxed<'a, Result<Option<Polled>, Unpolled>>;
+
+    /// How long a tag it finds waits for its Release before it is
+    /// announced, where a tag waits (ADR-0032).
+    fn tag_window(&self) -> Option<SignedDuration> {
+        None
+    }
 }
 
 /// Why a poll found nothing to read.

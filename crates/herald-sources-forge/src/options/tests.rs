@@ -740,3 +740,90 @@ fn two_overrides_as_narrow_as_each_other_tie_on_signals_and_prerelease_alone() {
         Ok(())
     );
 }
+
+#[test]
+fn prefer_and_its_window_choose_between_a_tag_and_its_release_and_nothing_else() {
+    let repository = |signals: Option<Vec<Signal>>| SourceOptions {
+        repository: Some("a/b".to_owned()),
+        signals,
+        ..SourceOptions::default()
+    };
+    let both = || repository(Some(vec![Signal::Release, Signal::Tag]));
+    let window = |text: &str| {
+        Some(Duration(SignedDuration::from_secs(match text {
+            "7d" => 7 * 86_400,
+            "8d" => 8 * 86_400,
+            _ => 600,
+        })))
+    };
+    assert_eq!(both().prefer(), Prefer::Release);
+    assert_eq!(both().tag_window(), TAG_WINDOW);
+    assert_eq!(TAG_WINDOW, SignedDuration::from_hours(1));
+    assert_eq!(both().held_for(&both().signals_of("b")), Some(TAG_WINDOW));
+    assert_eq!(both().held_for(&Signals::default()), None);
+    let tags_alone = Signals {
+        taken: BTreeSet::from([Signal::Tag]),
+        prerelease: PrereleaseRule::Either,
+    };
+    assert_eq!(both().held_for(&tags_alone), None);
+    let first = SourceOptions {
+        prefer: Some(Prefer::First),
+        ..both()
+    };
+    assert_eq!(first.check(Forge::GitHub), Ok(()));
+    assert_eq!(first.held_for(&both().signals_of("b")), None);
+    let short = SourceOptions {
+        tag_window: window("10m"),
+        ..both()
+    };
+    assert_eq!(short.check(Forge::GitHub), Ok(()));
+    assert_eq!(short.tag_window(), SignedDuration::from_mins(10));
+    assert_eq!(
+        SourceOptions {
+            tag_window: window("7d"),
+            ..both()
+        }
+        .check(Forge::GitHub),
+        Ok(())
+    );
+    assert_eq!(
+        SourceOptions {
+            tag_window: window("8d"),
+            ..both()
+        }
+        .check(Forge::GitHub),
+        Err("tag_window is at most \"7d\"; shorten it".to_owned())
+    );
+    assert_eq!(
+        SourceOptions {
+            prefer: Some(Prefer::First),
+            ..short.clone()
+        }
+        .check(Forge::GitHub),
+        Err("tag_window is how long a tag waits for its Release, which prefer = \"first\" never does; remove one".to_owned())
+    );
+    for (key, options) in [
+        (
+            "prefer",
+            SourceOptions {
+                prefer: Some(Prefer::Release),
+                ..repository(None)
+            },
+        ),
+        (
+            "tag_window",
+            SourceOptions {
+                tag_window: window("10m"),
+                ..repository(Some(vec![Signal::Tag]))
+            },
+        ),
+    ] {
+        assert_eq!(
+            options.check(Forge::GitHub),
+            Err(format!(
+                "{key} chooses between a tag and its Release, which no repository the source takes announces both of; give signals = [\"release\", \"tag\"], or remove {key}"
+            ))
+        );
+    }
+    assert_eq!(TAG_WINDOW_ALLOWED, SignedDuration::from_hours(168));
+}

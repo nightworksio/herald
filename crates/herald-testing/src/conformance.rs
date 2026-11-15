@@ -12,6 +12,7 @@ use jiff::Timestamp;
 
 mod kv;
 mod members;
+mod pending;
 mod raced;
 mod sql;
 mod unkept;
@@ -69,6 +70,11 @@ pub async fn store_conformance<S: Store>(store: &S) -> Result<(), Failure> {
     }
     if let Some(kept) = store.positions() {
         positions(kept).await?;
+    }
+    if let Some(kept) = store.waiting() {
+        let mut checks = Checks::default();
+        pending::waiting(kept, &mut checks).await?;
+        checks.done()?;
     }
     if let Some(kept) = store.deliveries() {
         deliveries(kept).await?;

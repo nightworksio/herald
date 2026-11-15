@@ -17,6 +17,8 @@ use herald_ports::{
 use herald_testing::{FakeClock, FakeSecrets, FakeSigner, FakeStore};
 use jiff::Timestamp;
 
+mod pending;
+
 pub(crate) const NOON: Timestamp = Timestamp::constant(1_793_448_000, 0);
 
 pub(crate) fn config(extra: &str) -> Config {
@@ -222,6 +224,9 @@ pub(crate) fn outcome(announced: &[Announced]) -> &Outcome {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Fault {
     Nothing,
+    ReadsPending,
+    WritesPending,
+    DropsPending,
     Skipped,
     ExpiresDeliveries,
     ExpiresEntries,
@@ -229,6 +234,7 @@ pub(crate) enum Fault {
     ExpiresNotes,
     KeepsNoDeliveries,
     KeepsNoInboxes,
+    KeepsNoPending,
     Cursors,
     WritesCursors,
     CursorConflicts,
@@ -624,6 +630,7 @@ impl Keeper for Failing {
             Held::Inboxes => self.fault != Fault::KeepsNoInboxes,
             Held::Latest => self.fault != Fault::KeepsNoLatest,
             Held::Positions => self.fault != Fault::KeepsNoPositions,
+            Held::Pending => self.fault != Fault::KeepsNoPending,
             _ => true,
         }
     }

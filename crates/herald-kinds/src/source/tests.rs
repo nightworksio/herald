@@ -70,6 +70,7 @@ fn a_source_takes_no_webhook_and_no_moving_tag_where_its_kind_keeps_the_defaults
     assert_eq!(source.scheme(), None);
     assert!(!source.moving_tags());
     assert!(!source.unlisted());
+    assert!(!source.holds());
     assert_eq!(source.notes(), Vec::<&str>::new());
     assert_eq!(source.projects(), Vec::<String>::new());
     assert_eq!(
@@ -94,6 +95,7 @@ fn a_source_polls_with_the_token_it_is_given() {
     };
     assert_eq!(poll.remembered(), 2);
     assert_eq!(untokened.remembered(), 1);
+    assert_eq!(poll.tag_window(), None);
     let http = crate::reach::tests::Silent;
     assert_eq!(pollster::block_on(poll.polled(&http, None)), Ok(None));
 }
@@ -220,6 +222,7 @@ fn an_owner_by_default_polls_each_member_on_its_own_and_follows_no_events() {
     let http = Nowhere;
     let owner = Members;
     assert_eq!(owner.batch(), std::num::NonZeroUsize::MIN);
+    assert_eq!(owner.tag_window(&one), None);
     assert_eq!(
         pollster::block_on(owner.polled(&http, &[(&one, None), (&two, None)])),
         [Ok(None), Ok(None)]

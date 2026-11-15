@@ -88,7 +88,7 @@ pub(crate) struct Api {
 }
 
 /// Why a webhook delivery of another event announces nothing.
-const OTHER_EVENT: &str = "the delivery is not of a release";
+const OTHER_EVENT: &str = "the delivery is not of a release or a tag";
 /// Why a webhook delivery of a repository the owner source does not take
 /// announces nothing.
 const UNSELECTED: &str = "the repository is not one the source takes";
@@ -97,6 +97,11 @@ const UNPUBLISHED: &str = "the release is not published, or is a draft";
 /// Why a webhook delivery of a release announces nothing where the source
 /// announces no releases of its repository.
 const UNSIGNALLED: &str = "the source announces no releases of the repository";
+/// Why a webhook delivery of a tag announces nothing where the source
+/// announces no tags of its repository.
+const UNTAGGED: &str = "the source announces no tags of the repository";
+/// The commit GitLab names as a tag's after a push deleted it.
+const DELETED: &str = "0000000000000000000000000000000000000000";
 
 /// A repository, as its forge names it: its numeric id outlives a rename.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -209,9 +214,10 @@ impl Forge {
 
     /// What a webhook delivery with `headers` and `payload` asks herald to
     /// announce for the source of `repository`, which announces `signals`:
-    /// the release it publishes, or nothing where it is of another event,
-    /// of an unpublished release or a draft, or the source announces no
-    /// releases.
+    /// the release it publishes, a poll where it made a tag the source
+    /// announces, or nothing where it is of another event, of an
+    /// unpublished release or a draft, or of a signal the source does not
+    /// announce.
     ///
     /// # Errors
     ///
@@ -223,15 +229,25 @@ impl Forge {
         repository: &str,
         signals: &Signals,
     ) -> Result<Hooked, SourceError> {
+        if self.of_a_tag(headers, payload) {
+            let what = self.api().tag;
+            if !self
+                .path(what, payload)
+                .is_some_and(|path| path.eq_ignore_ascii_case(repository))
+            {
+                return Err(SourceError::Unreadable {
+                    what,
+                    reason: format!("it is not of {repository}, the repository its source names"),
+                });
+            }
+            return Ok(Self::tagged(signals));
+        }
         if !self.of_a_release(headers) {
             return Ok(Hooked::Nothing(OTHER_EVENT));
         }
         let event = self.event(payload, signals.prerelease)?;
         let what = self.api().event;
-        let path = match self {
-            Self::GitHub | Self::Forgejo => github::path(what, payload),
-            Self::GitLab => gitlab::path(what, payload),
-        };
+        let path = self.path(what, payload);
         if !path.is_some_and(|path| path.eq_ignore_ascii_case(repository)) {
             return Err(SourceError::Unreadable {
                 what,
@@ -242,6 +258,49 @@ impl Forge {
             return Ok(Hooked::Nothing(UNSIGNALLED));
         }
         Ok(event.map_or(Hooked::Nothing(UNPUBLISHED), Hooked::Event))
+    }
+
+    /// The full path of the repository a delivery's `payload` is of.
+    fn path(self, what: &'static str, payload: &[u8]) -> Option<String> {
+        match self {
+            Self::GitHub | Self::Forgejo => github::path(what, payload),
+            Self::GitLab => gitlab::path(what, payload),
+        }
+    }
+
+    /// What a delivery of a tag asks of a source announcing `signals`: a
+    /// poll, where they take tags.
+    fn tagged(signals: &Signals) -> Hooked {
+        if signals.takes(Signal::Tag) {
+            Hooked::Poll
+        } else {
+            Hooked::Nothing(UNTAGGED)
+        }
+    }
+
+    /// Whether a delivery with `headers` and `payload` is of a tag made:
+    /// GitHub's and Forgejo's `create` of a tag, or GitLab's tag push that
+    /// did not delete one.
+    fn of_a_tag(self, headers: &[(&str, &str)], payload: &[u8]) -> bool {
+        #[derive(Deserialize)]
+        struct Created {
+            ref_type: Option<String>,
+            after: Option<String>,
+        }
+        let (names, kind): (&[&str], &str) = match self {
+            Self::GitHub => (&["x-github-event"], "create"),
+            Self::Forgejo => (&["x-forgejo-event", "x-gitea-event"], "create"),
+            Self::GitLab => (&["x-gitlab-event"], "Tag Push Hook"),
+        };
+        let of_kind = headers
+            .iter()
+            .find(|(name, _)| names.iter().any(|header| name.eq_ignore_ascii_case(header)))
+            .is_some_and(|(_, value)| *value == kind);
+        of_kind
+            && read::<Created>(self.api().tag, payload).is_ok_and(|created| match self {
+                Self::GitHub | Self::Forgejo => created.ref_type.as_deref() == Some("tag"),
+                Self::GitLab => created.after.as_deref() != Some(DELETED),
+            })
     }
 
     /// Whether a delivery with `headers` is of a release.
@@ -275,13 +334,22 @@ impl Forge {
         (owner, subgroups): (&str, bool),
         (selection, signals): (&Selection, &dyn Fn(&str) -> Signals),
     ) -> Result<Hooked, SourceError> {
-        if !self.of_a_release(headers) {
+        let tag = self.of_a_tag(headers, payload);
+        if !tag && !self.of_a_release(headers) {
             return Ok(Hooked::Nothing(OTHER_EVENT));
         }
-        let what = self.api().event;
+        let what = if tag {
+            self.api().tag
+        } else {
+            self.api().event
+        };
         let (id, delivered) = crate::delivered::delivered(self, what, payload)?;
         let signals = signals(&delivered.name);
-        let event = self.event(payload, signals.prerelease)?;
+        let event = if tag {
+            None
+        } else {
+            self.event(payload, signals.prerelease)?
+        };
         let lowered = owner.to_ascii_lowercase();
         let held = delivered.path.rsplit_once('/').is_some_and(|(holder, _)| {
             let holder = holder.to_ascii_lowercase();
@@ -298,6 +366,9 @@ impl Forge {
         }
         if !selection.admits(&delivered) {
             return Ok(Hooked::Nothing(UNSELECTED));
+        }
+        if tag {
+            return Ok(Self::tagged(&signals));
         }
         if !signals.takes(Signal::Release) {
             return Ok(Hooked::Nothing(UNSIGNALLED));

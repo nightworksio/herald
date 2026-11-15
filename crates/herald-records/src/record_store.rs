@@ -4,13 +4,13 @@ use std::collections::BTreeSet;
 use std::sync::{Arc, Mutex, PoisonError};
 
 use herald_core::{
-    Attempts, Cursor, DestinationName, Entry, Key, Latest, Listing, Membership, RecordKind,
-    RouteId, Schedule, SourceName, State, Subscription,
+    Attempts, Cursor, DestinationName, Entry, Hold, Key, Latest, Listing, Membership, Pending,
+    RecordKind, RouteId, Schedule, SourceName, State, Subscription,
 };
 use herald_ports::{
     Admitted, Announcements, Cursors, Deliveries, Held, Inboxes, Keeper, Keyring, KnownKey, Ledger,
     Notes, Outboxed, Pins, Positions, RecordOptions, Schedules, StoreError, Subscriptions, Version,
-    Versioned, Written,
+    Versioned, Waiting, Written,
 };
 use jiff::Timestamp;
 use serde::de::DeserializeOwned;
@@ -444,6 +444,33 @@ impl<R: RecordBackend> Positions for RecordStore<R> {
     }
 }
 
+impl<R: RecordBackend> Waiting for RecordStore<R> {
+    async fn pending(&self, hold: &Hold) -> Result<Option<Versioned<Pending>>, StoreError> {
+        self.listed(&paths::pending(hold)).await
+    }
+
+    async fn every_pending(&self) -> Result<Vec<Versioned<Pending>>, StoreError> {
+        let mut found = Vec::new();
+        for path in self.records.list(paths::PENDING).await? {
+            found.extend(self.listed::<Pending>(&path).await?);
+        }
+        Ok(found)
+    }
+
+    async fn put_pending(
+        &self,
+        pending: &Pending,
+        expected: Option<Version>,
+    ) -> Result<Written, StoreError> {
+        self.compare_and_set(&paths::pending(&pending.hold), pending, expected)
+            .await
+    }
+
+    async fn drop_pending(&self, hold: &Hold) -> Result<(), StoreError> {
+        self.removed(&paths::pending(hold)).await
+    }
+}
+
 impl<R: RecordBackend> Deliveries for RecordStore<R> {
     async fn admit(
         &self,
@@ -577,9 +604,12 @@ impl<R: RecordBackend> Announcements for RecordStore<R> {
 impl<R: RecordBackend> Keeper for RecordStore<R> {
     fn holds(&self, kind: Held) -> bool {
         match kind {
-            Held::Ledger | Held::Cursors | Held::Schedules | Held::Deliveries | Held::Positions => {
-                true
-            }
+            Held::Ledger
+            | Held::Cursors
+            | Held::Schedules
+            | Held::Deliveries
+            | Held::Positions
+            | Held::Pending => true,
             Held::Subscriptions | Held::Inboxes => self.keeps.contains(&RecordKind::Subscriptions),
             Held::Pins => self.keeps.contains(&RecordKind::Pins),
             Held::Notes => self.keeps.contains(&RecordKind::Notes),

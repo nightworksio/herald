@@ -184,9 +184,14 @@ async fn member<S: Store, C: Clock, G: Signer, H: Http>(
             );
             let since = (held.membership.discovered > first).then_some(held.membership.discovered);
             let within = bounded(flow.0, held.membership.repository.visibility);
+            let repository = &held.membership.repository;
+            let holding = expand.tag_window(repository).map(|window| super::Holding {
+                window,
+                member: Some(&repository.id),
+            });
             announced_found(
                 flow,
-                (&source.name, within.as_deref()),
+                (&source.name, within.as_deref(), holding),
                 (polled, expand.remembered()),
                 (held.membership.cursor.as_ref(), since, source.backfill),
                 &holder,
@@ -233,6 +238,7 @@ static JOINED: Cursor = Cursor {
     last_modified: None,
     project: None,
     signals: std::collections::BTreeMap::new(),
+    tagged: Vec::new(),
 };
 
 /// The members `chunk` polled together through `http`, as one request

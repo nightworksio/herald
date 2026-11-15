@@ -84,6 +84,7 @@ fn a_keeper_answers_each_kind_it_holds_itself_and_none_it_does_not() {
     assert!(held(holding.pins()) && held(holding.deliveries()));
     assert!(held(holding.notes()) && held(holding.announcements()));
     assert!(held(holding.inboxes()) && held(holding.positions()));
+    assert!(held(holding.waiting()));
     assert_eq!(Store::skipped(&holding), ["corrupt.json"]);
     assert!(!Store::writes_one_at_a_time(&holding));
     let none = None::<&Unkept>;
@@ -92,6 +93,7 @@ fn a_keeper_answers_each_kind_it_holds_itself_and_none_it_does_not() {
     assert!(none.pins().is_none() && none.deliveries().is_none());
     assert!(none.notes().is_none() && none.announcements().is_none());
     assert!(none.inboxes().is_none() && none.positions().is_none());
+    assert!(none.waiting().is_none());
 }
 
 #[test]
@@ -167,6 +169,26 @@ fn the_run_s_kinds_kept_nowhere_answer_unsupported_naming_them() {
         assert_eq!(
             unsupported(unkept.put_position(&destination, "s1")),
             naming("session positions")
+        );
+        let hold = herald_core::Hold::Tag {
+            source: SourceName::new("s"),
+            identity: herald_core::Identity::new("1"),
+        };
+        let pending = herald_core::Pending {
+            hold: hold.clone(),
+            events: Vec::new(),
+            opened: Timestamp::UNIX_EPOCH,
+            due: Timestamp::UNIX_EPOCH,
+        };
+        assert_eq!(unsupported(unkept.pending(&hold)), naming("held events"));
+        assert_eq!(unsupported(unkept.every_pending()), naming("held events"));
+        assert_eq!(
+            unsupported(unkept.put_pending(&pending, None)),
+            naming("held events")
+        );
+        assert_eq!(
+            unsupported(unkept.drop_pending(&hold)),
+            naming("held events")
         );
     }
 }

@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 use std::fmt;
 
 use jiff::Timestamp;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::key::Identity;
 use crate::kind::{Attribute, Kind, prerelease_in, version_in};
@@ -56,8 +56,10 @@ impl fmt::Display for Problem {
     }
 }
 
-/// A source-neutral event, checked and ready to route.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+/// A source-neutral event, checked and ready to route; read back from its
+/// JSON only where it is still one.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(try_from = "Written")]
 pub struct Event {
     #[serde(serialize_with = "identity_text")]
     identity: Identity,
@@ -68,6 +70,36 @@ pub struct Event {
     links: BTreeMap<String, String>,
     attributes: BTreeMap<String, Attribute>,
     occurred: Timestamp,
+}
+
+/// An event as its JSON holds it, checked again as it is read back.
+#[derive(Deserialize)]
+struct Written {
+    identity: String,
+    kind: Kind,
+    project: String,
+    title: String,
+    body: String,
+    links: BTreeMap<String, String>,
+    attributes: BTreeMap<String, Attribute>,
+    occurred: Timestamp,
+}
+
+impl TryFrom<Written> for Event {
+    type Error = Problem;
+
+    fn try_from(written: Written) -> Result<Self, Problem> {
+        Self::normalise(Draft {
+            identity: written.identity,
+            kind: written.kind,
+            project: written.project,
+            title: written.title,
+            body: written.body,
+            links: written.links,
+            attributes: written.attributes,
+            occurred: written.occurred,
+        })
+    }
 }
 
 fn identity_text<S: serde::Serializer>(
@@ -447,6 +479,17 @@ pub(crate) mod tests {
                 "occurred": "2026-10-31T12:00:00Z"
             })
         );
+    }
+
+    #[test]
+    fn an_event_reads_back_from_its_json_only_where_it_is_still_one() {
+        let json = serde_json::to_string(&event()).unwrap();
+        assert_eq!(serde_json::from_str::<Event>(&json).unwrap(), event());
+        let untitled = json.replace("\"title\":\"php-mutation-gate v0.1.0\"", "\"title\":\" \"");
+        let error = serde_json::from_str::<Event>(&untitled)
+            .unwrap_err()
+            .to_string();
+        assert!(error.starts_with(&Problem::NoTitle.to_string()), "{error}");
     }
 
     #[test]

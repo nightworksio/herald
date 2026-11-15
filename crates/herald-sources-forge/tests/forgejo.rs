@@ -59,7 +59,7 @@ mod forgejo {
                 "forgejo/forgejo",
                 &Signals::default()
             ),
-            Ok(Hooked::Nothing("the delivery is not of a release"))
+            Ok(Hooked::Nothing("the delivery is not of a release or a tag"))
         );
         assert!(
             Forge::Forgejo

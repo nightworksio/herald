@@ -2,8 +2,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::num::NonZeroUsize;
 
 use herald_core::{
-    Address, Duration, Glob, PrereleaseRule, ProjectName, REPOSITORY_FIELDS, Sandbox, SecretRef,
-    Selection, Signal, Size, Visibility, path_of_names, web_url,
+    Address, Duration, Glob, Prefer, PrereleaseRule, ProjectName, REPOSITORY_FIELDS, Sandbox,
+    SecretRef, Selection, Signal, Size, Visibility, path_of_names, web_url,
 };
 use herald_wire::{PARSE_LIMIT, Reading};
 use jiff::SignedDuration;
@@ -275,7 +275,21 @@ pub struct SourceOptions {
     /// version alone ("tag"); "either" where absent. A tag carries no flag,
     /// and neither does a GitLab release.
     pub prerelease: Option<PrereleaseRule>,
+    /// Which of a tag and its Release is announced where a repository's
+    /// signals take both: the Release, a tag with none waiting for it as
+    /// long as `tag_window` ("release"), or whichever comes first
+    /// ("first"); "release" where absent. Holding a tag needs a store that
+    /// keeps held events, which the markers store does not.
+    pub prefer: Option<Prefer>,
+    /// How long a tag with no Release waits for one, counted from when
+    /// herald first sees the tag; "1h" where absent, and at most "7d".
+    pub tag_window: Option<Duration>,
 }
+
+/// How long a tag waits for its Release where `tag_window` is absent.
+pub const TAG_WINDOW: SignedDuration = SignedDuration::from_hours(1);
+/// The longest `tag_window` may be.
+pub const TAG_WINDOW_ALLOWED: SignedDuration = SignedDuration::from_hours(7 * 24);
 
 /// The keys that only an owner source may give.
 const OWNED: [&str; 22] = [
@@ -383,6 +397,7 @@ impl SourceOptions {
             }
         }
         self.signals_check(forge)?;
+        self.prefer_check()?;
         match &self.api {
             Some(api) if !web_url(api) => Err(format!(
                 "\"{api}\" is not a web address; give the API's base URL, such as https://forge.example/api/v1"
@@ -530,6 +545,55 @@ impl SourceOptions {
             }
         }
         Ok(())
+    }
+
+    /// Whether `prefer` and `tag_window` choose between a tag and its
+    /// Release that some repository the source takes announces both of.
+    fn prefer_check(&self) -> Result<(), String> {
+        let both = self.may_take(Signal::Release) && self.may_take(Signal::Tag);
+        if let Some(key) = [
+            (self.prefer.is_some(), "prefer"),
+            (self.tag_window.is_some(), "tag_window"),
+        ]
+        .into_iter()
+        .find_map(|(given, key)| (given && !both).then_some(key))
+        {
+            return Err(format!(
+                "{key} chooses between a tag and its Release, which no repository the source takes announces both of; give signals = [\"release\", \"tag\"], or remove {key}"
+            ));
+        }
+        if self.tag_window() > TAG_WINDOW_ALLOWED {
+            return Err("tag_window is at most \"7d\"; shorten it".to_owned());
+        }
+        if self.tag_window.is_some() && self.prefer() == Prefer::First {
+            return Err(
+                "tag_window is how long a tag waits for its Release, which prefer = \"first\" never does; remove one".to_owned(),
+            );
+        }
+        Ok(())
+    }
+
+    /// Which of a tag and its Release is announced.
+    #[must_use]
+    pub fn prefer(&self) -> Prefer {
+        self.prefer.unwrap_or_default()
+    }
+
+    /// How long a tag with no Release waits for one.
+    #[must_use]
+    pub fn tag_window(&self) -> SignedDuration {
+        self.tag_window.map_or(TAG_WINDOW, |window| window.0)
+    }
+
+    /// How long a tag of a repository whose signals are `signals` waits for
+    /// its Release, where it waits: where they take both and the source
+    /// prefers the Release.
+    #[must_use]
+    pub fn held_for(&self, signals: &Signals) -> Option<SignedDuration> {
+        (self.prefer() == Prefer::Release
+            && signals.takes(Signal::Release)
+            && signals.takes(Signal::Tag))
+        .then(|| self.tag_window())
     }
 
     /// What the source announces of the repository named `name`, and how it

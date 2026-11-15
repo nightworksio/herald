@@ -617,7 +617,7 @@ template = "t"
         let unscripted = "Err(Store(\"the store could not be reached: the database refused the statements: no answer was scripted\"))";
         let untreed = "Err(Store(\"a record in the store could not be read: deliveries: missing field `tree` at line 1 column 2\"))";
         let uncounted = "Err(Store(\"a record in the store could not be read: the repository's variables: missing field `total_count` at line 1 column 2\"))";
-        let kept = "Ok(Housekept { kept: [], skipped: [] })";
+        let kept = "Ok(Housekept { kept: [], skipped: [], released: [] })";
         let variables = "kind = \"repo-variables\"\ntoken = { secret = \"VARIABLES\" }";
         assert_eq!(
             housekeeping,

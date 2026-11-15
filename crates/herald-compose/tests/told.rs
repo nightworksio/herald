@@ -4,11 +4,11 @@
 mod told {
     use herald_compose::told;
     use herald_core::{
-        Asked, Chore, Command, DestinationName, Identity, Key, Place, RouteId, Schedule,
-        SourceName, Step,
+        Asked, Chore, Command, DestinationName, Draft, Event, Identity, Key, Place, RouteId,
+        Schedule, SourceName, Step,
     };
     use herald_flows::{
-        Announced, Answer, Chored, Did, FollowError, Followed, Housekept, HousekeptSchedule,
+        Announced, Answer, Chored, Did, FollowError, Followed, Fresh, Housekept, HousekeptSchedule,
         Interacted, Job, Outcome, Remembered, Stop, Sweep, Swept, Worked,
     };
 
@@ -111,6 +111,84 @@ mod told {
         );
     }
 
+    fn fresh(held: Option<jiff::Timestamp>) -> Fresh {
+        let event = Event::normalise(Draft {
+            identity: "gate/v1.0.0".to_owned(),
+            kind: herald_core::Kind::RELEASE,
+            project: "gate".to_owned(),
+            title: "gate v1.0.0".to_owned(),
+            body: String::new(),
+            links: std::collections::BTreeMap::new(),
+            attributes: herald_core::versioned("v1.0.0", false),
+            occurred: jiff::Timestamp::UNIX_EPOCH,
+        })
+        .unwrap();
+        let announced = if held.is_some() {
+            Vec::new()
+        } else {
+            vec![announced(Outcome::Sent {
+                steps: vec![Step::Post],
+            })]
+        };
+        Fresh {
+            event,
+            announced,
+            held,
+        }
+    }
+
+    #[test]
+    fn a_poll_a_webhook_asked_for_says_what_it_found_and_one_left_undone_says_so() {
+        let worked = told::worked(&did(Did::Polled(vec![Swept {
+            source: SourceName::new("gate"),
+            member: None,
+            outcome: Sweep::Unchanged,
+        }])));
+        assert_eq!(worked, ["gate: unchanged since the last poll"]);
+        let job = Job::Poll {
+            source: SourceName::new("gate"),
+            scheme: herald_core::Scheme {
+                name: "github",
+                signed: herald_core::Signed::Body {
+                    headers: &["X-Hub-Signature-256"],
+                    prefix: "sha256=",
+                },
+                key: herald_core::KeyForm::Bytes,
+            },
+            verified: herald_flows::Verified {
+                delivery: Some("d1".to_owned()),
+                signer: None,
+            },
+        };
+        assert_eq!(
+            told::unworked(&job, &Ok(())),
+            "herald stopped before it worked the poll of gate"
+        );
+    }
+
+    #[test]
+    fn a_tag_held_for_its_release_and_one_let_go_say_so() {
+        assert_eq!(
+            swept(Sweep::Polled {
+                first: false,
+                found: 1,
+                announced: vec![fresh(Some(jiff::Timestamp::UNIX_EPOCH))],
+                cursor: Remembered::Advanced,
+            }),
+            [
+                "gate: 1 found, 1 new",
+                "gate v1.0.0: held for its Release until 1970-01-01T00:00:00Z"
+            ]
+        );
+        assert_eq!(
+            swept(Sweep::Released {
+                announced: Vec::new(),
+                withheld: Some("it left".to_owned()),
+            }),
+            ["gate: a held tag was let go unannounced, as it left"]
+        );
+    }
+
     #[test]
     fn a_chore_says_what_became_of_its_thread() {
         assert_eq!(
@@ -121,10 +199,19 @@ mod told {
             told::kept(&Ok(Housekept {
                 kept: vec![kept(Chored::Later(refused()))],
                 skipped: vec!["deliveries/app/7.json".to_owned()],
+                released: vec![Swept {
+                    source: SourceName::new("gate"),
+                    member: None,
+                    outcome: Sweep::Released {
+                        announced: vec![fresh(None)],
+                        withheld: None,
+                    },
+                }],
             })),
             [
                 "releases: thread 9 not archived yet: no. The next run tries again.",
                 "the record deliveries/app/7.json could not be read and was skipped; fix or remove it",
+                "gate v1.0.0: releases: announced (post)",
             ]
         );
         assert_eq!(

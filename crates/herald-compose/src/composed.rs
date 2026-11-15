@@ -7,8 +7,8 @@ use herald_config::{Config, Uses};
 use herald_core::status;
 use herald_flows::{
     Admission, Budget, Connected, Housekept, Inbound, Job, Keys, Place, Ports, Requests, Room,
-    Round, Running, Serving, Sessions, Stop, Swept, Taker, Worked, answer, housekeep, poll,
-    prepare, refusal, unplaced, work,
+    Round, Running, Serving, Sessions, Stop, Swept, Taker, Worked, answer, housekeep_announcing,
+    poll, prepare, refusal, unplaced, work,
 };
 use herald_kinds::Opened;
 use herald_ports::{Base, Clock as _, Keyring, Sockets, Store, Timer};
@@ -490,15 +490,12 @@ impl<H: Host> Through<H> for Housekeeping {
     async fn through<S: Store, K: Keyring>(
         self,
         serving: &ServingOn<'_, H, S, K>,
-        _: &str,
+        run: &str,
     ) -> Result<Housekept, Stop> {
-        let ports = serving.ports;
-        housekeep(
-            serving.connected,
-            ports.store,
-            ports.clock,
+        housekeep_announcing(
+            (serving.config, serving.connected, serving.ports),
             serving.keys,
-            &serving.config.retention,
+            run,
         )
         .await
     }

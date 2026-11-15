@@ -430,3 +430,28 @@ fn tags_of_a_repository_github_names_no_page_of_cannot_be_announced() {
     let answered = together_signalled(&http, &[(&cli, None, signals(&[Signal::Tag]))]);
     assert_eq!(answered, [Ok(Some(Polled::default()))]);
 }
+
+#[test]
+fn a_release_of_a_version_its_cursor_saw_only_as_a_tag_is_asked_in_full() {
+    let cli = member("cli");
+    let cursor = Cursor {
+        tagged: vec![Identity::new("github.com/7/v1")],
+        ..seen(&["github.com/7/v1"])
+    };
+    let http = Scripted::new(vec![
+        data(&[tagged(7, &[release("v1", false)], &[])]),
+        data(&[tagged(7, &[release("v1", false)], &[])]),
+    ]);
+    let answered = together_signalled(&http, &[(&cli, Some(&cursor), signals(&[Signal::Release]))]);
+    assert!(matches!(&answered[0], Ok(Some(polled)) if polled.events.len() == 1));
+    let seen_as_release = Scripted::new(vec![data(&[tagged(7, &[release("v1", false)], &[])])]);
+    let answered = together_signalled(
+        &seen_as_release,
+        &[(
+            &cli,
+            Some(&seen(&["github.com/7/v1"])),
+            signals(&[Signal::Release]),
+        )],
+    );
+    assert_eq!(answered, [Ok(None)]);
+}

@@ -53,6 +53,14 @@ pub enum Sweep {
     /// The source could not be polled, for this reason; the next poll asks
     /// again.
     Stopped(Stop),
+    /// An event held back until it was due was announced, or let go
+    /// unannounced, as this says (ADR-0032).
+    Released {
+        /// The event announced, and what every route did with it.
+        announced: Vec<Fresh>,
+        /// Why it was let go unannounced, where it was.
+        withheld: Option<String>,
+    },
 }
 
 /// An event a poll announced, and what every route did with it.
@@ -62,6 +70,9 @@ pub struct Fresh {
     pub event: Event,
     /// What every route that takes it did with it.
     pub announced: Vec<Announced>,
+    /// When it is announced, where it is a tag held back for its Release
+    /// (ADR-0032).
+    pub held: Option<Timestamp>,
 }
 
 /// What became of a source's cursor after a poll.
@@ -128,9 +139,13 @@ pub(crate) async fn found<S: Store, C: Clock, G: Signer, H: Http>(
     holder: &str,
 ) -> Result<Option<Found>, Stop> {
     let polled = poll.polled(http, cursor).await.map_err(halted)?;
+    let holding = poll.tag_window().map(|window| Holding {
+        window,
+        member: None,
+    });
     announced_found(
         (config, connected, ports),
-        (source, within),
+        (source, within, holding),
         (polled, poll.remembered()),
         (cursor, since, backfill),
         holder,
@@ -144,7 +159,7 @@ pub(crate) async fn found<S: Store, C: Clock, G: Signer, H: Http>(
 /// events; nothing where it says nothing changed.
 pub(crate) async fn announced_found<S: Store, C: Clock, G: Signer, H: Http>(
     (config, connected, ports): (&Config, &Connected<H>, &Ports<'_, S, C, G>),
-    (source, within): (&SourceName, Option<&[RouteId]>),
+    (source, within, holding): (&SourceName, Option<&[RouteId]>, Option<Holding<'_>>),
     (polled, remembered): (Option<Polled>, usize),
     (cursor, since, backfill): (Option<&Cursor>, Option<Timestamp>, usize),
     holder: &str,
@@ -156,6 +171,16 @@ pub(crate) async fn announced_found<S: Store, C: Clock, G: Signer, H: Http>(
     let mut announced = Vec::new();
     let mut settled = true;
     for event in fresh_events.into_iter().rev() {
+        if let Some(holding) = holding
+            && let Some(due) = held(ports, (source, holding), &event).await?
+        {
+            announced.push(Fresh {
+                event,
+                announced: Vec::new(),
+                held: Some(due),
+            });
+            continue;
+        }
         let outcomes =
             announce_within(config, connected, ports, source, &event, within, holder).await;
         settled &= !outcomes
@@ -164,6 +189,7 @@ pub(crate) async fn announced_found<S: Store, C: Clock, G: Signer, H: Http>(
         announced.push(Fresh {
             event,
             announced: outcomes,
+            held: None,
         });
     }
     let advanced = settled.then(|| {
@@ -257,7 +283,33 @@ pub async fn poll<S: Store, C: Clock, G: Signer, H: Http>(
     ports: &Ports<'_, S, C, G>,
     run: &str,
 ) -> Vec<Swept> {
+    polled(config, connected, ports, (run, None)).await
+}
+
+/// [`poll`], sweeping the source `only` alone where it names one, as a
+/// webhook of a tag asks (ADR-0032); every owner is still listed, so each
+/// member's project is checked against every other's.
+pub(crate) async fn polled<S: Store, C: Clock, G: Signer, H: Http>(
+    config: &Config,
+    connected: &Connected<H>,
+    ports: &Ports<'_, S, C, G>,
+    (run, only): (&str, Option<&SourceName>),
+) -> Vec<Swept> {
     let flow = (config, connected, ports);
+    let polling = |name: &SourceName| only.is_none_or(|only| only == name);
+    let mut released = match held::announce_held(config, connected, ports, run).await {
+        Ok(released) => released,
+        Err(stop) => config
+            .sources
+            .iter()
+            .filter(|(_, options)| options.holds())
+            .map(|(source, _)| Swept {
+                source: source.clone(),
+                member: None,
+                outcome: Sweep::Stopped(stop.clone()),
+            })
+            .collect(),
+    };
     let at_once = at_once(ports.store, config.run.sources).get();
     let owners: Vec<(&SourceName, Result<members::Owning, Vec<Swept>>)> = stream::iter(
         connected
@@ -307,7 +359,9 @@ pub async fn poll<S: Store, C: Clock, G: Signer, H: Http>(
                 Round::Many(expand.as_ref(), owning.map(Box::new))
             }
         };
-        rounds.push((source, http, round));
+        if polling(&source.name) {
+            rounds.push((source, http, round));
+        }
     }
     let claims = &claims;
     let swept: Vec<Vec<Swept>> =
@@ -332,12 +386,17 @@ pub async fn poll<S: Store, C: Clock, G: Signer, H: Http>(
         .buffered(at_once)
         .collect()
         .await;
-    swept.into_iter().flatten().collect()
+    released.extend(swept.into_iter().flatten());
+    released
 }
 
 mod claims;
+mod held;
 mod members;
 
 use claims::Claims;
+use held::{Holding, held};
+
+pub use held::announce_held;
 
 pub(crate) use members::bounded;

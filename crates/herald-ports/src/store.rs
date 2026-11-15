@@ -2,8 +2,8 @@ use std::fmt;
 use std::future::{Future, ready};
 
 use herald_core::{
-    Cursor, DestinationName, Entry, Key, Latest, Listing, Membership, RouteId, Schedule,
-    SourceName, State, Subscription,
+    Cursor, DestinationName, Entry, Hold, Key, Latest, Listing, Membership, Pending, RouteId,
+    Schedule, SourceName, State, Subscription,
 };
 use jiff::Timestamp;
 
@@ -136,11 +136,13 @@ pub enum Held {
     Inboxes,
     /// Where each session a destination holds stands.
     Positions,
+    /// Events held back until they are due.
+    Pending,
 }
 
 impl Held {
     /// Every kind, in the order a store's accessors list them.
-    pub const ALL: [Self; 10] = [
+    pub const ALL: [Self; 11] = [
         Self::Ledger,
         Self::Cursors,
         Self::Schedules,
@@ -151,6 +153,7 @@ impl Held {
         Self::Latest,
         Self::Inboxes,
         Self::Positions,
+        Self::Pending,
     ];
 
     /// The kind as an error names it.
@@ -166,6 +169,7 @@ impl Held {
             Self::Latest => "latest",
             Self::Inboxes => "deliveries to followers",
             Self::Positions => "session positions",
+            Self::Pending => "held events",
         }
     }
 
@@ -348,6 +352,32 @@ pub trait Positions: Sync {
         destination: &DestinationName,
         position: &str,
     ) -> impl Future<Output = Result<(), StoreError>> + Send;
+}
+
+/// Events held back until they are due (ADR-0032), each record written
+/// with compare-and-set.
+pub trait Waiting: Sync {
+    /// The record `hold` keeps, where there is one.
+    fn pending(
+        &self,
+        hold: &Hold,
+    ) -> impl Future<Output = Result<Option<Versioned<Pending>>, StoreError>> + Send;
+
+    /// Every record kept.
+    fn every_pending(
+        &self,
+    ) -> impl Future<Output = Result<Vec<Versioned<Pending>>, StoreError>> + Send;
+
+    /// Writes `pending` if the stored one is at `expected`, or absent when
+    /// `expected` is `None`.
+    fn put_pending(
+        &self,
+        pending: &Pending,
+        expected: Option<Version>,
+    ) -> impl Future<Output = Result<Written, StoreError>> + Send;
+
+    /// Forgets the record `hold` keeps.
+    fn drop_pending(&self, hold: &Hold) -> impl Future<Output = Result<(), StoreError>> + Send;
 }
 
 /// The ids of the webhook deliveries it admitted (ADR-0013).
@@ -680,6 +710,33 @@ impl Positions for Unkept {
     }
 }
 
+impl Waiting for Unkept {
+    fn pending(
+        &self,
+        _: &Hold,
+    ) -> impl Future<Output = Result<Option<Versioned<Pending>>, StoreError>> + Send {
+        ready(Err(Held::Pending.unsupported()))
+    }
+
+    fn every_pending(
+        &self,
+    ) -> impl Future<Output = Result<Vec<Versioned<Pending>>, StoreError>> + Send {
+        ready(Err(Held::Pending.unsupported()))
+    }
+
+    fn put_pending(
+        &self,
+        _: &Pending,
+        _: Option<Version>,
+    ) -> impl Future<Output = Result<Written, StoreError>> + Send {
+        ready(Err(Held::Pending.unsupported()))
+    }
+
+    fn drop_pending(&self, _: &Hold) -> impl Future<Output = Result<(), StoreError>> + Send {
+        ready(Err(Held::Pending.unsupported()))
+    }
+}
+
 impl Deliveries for Unkept {
     fn admit(
         &self,
@@ -803,6 +860,8 @@ pub trait Store: Sync {
     type Inboxes: Inboxes;
     /// Where the sessions its destinations hold stand.
     type Positions: Positions;
+    /// Its events held back until they are due.
+    type Waiting: Waiting;
 
     /// The ledger, where it keeps or derives one.
     fn ledger(&self) -> Option<&Self::Ledger>;
@@ -824,6 +883,8 @@ pub trait Store: Sync {
     fn inboxes(&self) -> Option<&Self::Inboxes>;
     /// Where the sessions its destinations hold stand, where it keeps that.
     fn positions(&self) -> Option<&Self::Positions>;
+    /// The events held back until they are due, where it keeps them.
+    fn waiting(&self) -> Option<&Self::Waiting>;
 
     /// The paths of the records a listing skipped as corrupt since this was
     /// last asked, each once, so one bad record stops no listing and is
@@ -849,6 +910,7 @@ pub trait Keeper:
     + Announcements
     + Inboxes
     + Positions
+    + Waiting
 {
     /// Whether it holds records of `kind`.
     fn holds(&self, kind: Held) -> bool;
@@ -876,6 +938,7 @@ impl<K: Keeper> Store for K {
     type Announcements = Self;
     type Inboxes = Self;
     type Positions = Self;
+    type Waiting = Self;
 
     fn ledger(&self) -> Option<&Self> {
         self.holds(Held::Ledger).then_some(self)
@@ -915,6 +978,10 @@ impl<K: Keeper> Store for K {
 
     fn positions(&self) -> Option<&Self> {
         self.holds(Held::Positions).then_some(self)
+    }
+
+    fn waiting(&self) -> Option<&Self> {
+        self.holds(Held::Pending).then_some(self)
     }
 
     fn skipped(&self) -> Vec<String> {

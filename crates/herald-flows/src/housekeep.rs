@@ -2,11 +2,14 @@
 
 use std::collections::BTreeMap;
 
+use herald_config::Config;
 use herald_core::{DestinationName, Retention, Schedule, Sent, due};
-use herald_ports::{Clock, Deliveries, Http, Inboxes, Keyring, Ledger, Notes, Schedules, Store};
+use herald_ports::{
+    Clock, Deliveries, Http, Inboxes, Keyring, Ledger, Notes, Schedules, Signer, Store,
+};
 use jiff::{SignedDuration, Timestamp};
 
-use crate::announce::Stop;
+use crate::announce::{Ports, Stop};
 use crate::prepare::Connected;
 use crate::verification::Keys;
 
@@ -19,14 +22,17 @@ pub struct HousekeptSchedule {
     pub outcome: Chored,
 }
 
-/// What a round of housekeeping did: each schedule that fell due, and the
-/// records the store's listings skipped as corrupt since the last round.
+/// What a round of housekeeping did: each schedule that fell due, the
+/// records the store's listings skipped as corrupt since the last round,
+/// and each held event that fell due (ADR-0032).
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Housekept {
     /// What became of each schedule that fell due.
     pub kept: Vec<HousekeptSchedule>,
     /// The path of each record a listing skipped as corrupt.
     pub skipped: Vec<String>,
+    /// What became of each held event that fell due.
+    pub released: Vec<crate::Swept>,
 }
 
 /// What became of a schedule that fell due.
@@ -39,6 +45,25 @@ pub enum Chored {
     Dropped(String),
     /// The chore was not done now, for this reason, and the schedule stays.
     Later(Stop),
+}
+
+/// [`housekeep`]'s round, with each held event that fell due announced to
+/// the routes that take it under `run` (ADR-0032).
+///
+/// # Errors
+///
+/// Where [`housekeep`] stops, or the held events cannot be read.
+pub async fn housekeep_announcing<S: Store, C: Clock, G: Signer, H: Http, K: Keyring>(
+    (config, connected, ports): (&Config, &Connected<H>, &Ports<'_, S, C, G>),
+    keys: &Keys<'_, K>,
+    run: &str,
+) -> Result<Housekept, Stop> {
+    let housekept = housekeep(connected, ports.store, ports.clock, keys, &config.retention).await?;
+    let released = crate::announce_held(config, connected, ports, run).await?;
+    Ok(Housekept {
+        released,
+        ..housekept
+    })
 }
 
 /// Every chore due at the clock's time done through the route that
@@ -122,6 +147,7 @@ pub async fn housekeep<S: Store, C: Clock, H: Http, K: Keyring>(
         });
     }
     Ok(Housekept {
+        released: Vec::new(),
         kept,
         skipped: store.skipped(),
     })

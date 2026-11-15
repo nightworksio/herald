@@ -1,6 +1,6 @@
 use herald_core::{
-    Cursor, DestinationName, Entry, Key, Latest, Listing, Membership, RouteId, Schedule,
-    SourceName, State, Subscription,
+    Cursor, DestinationName, Entry, Hold, Key, Latest, Listing, Membership, Pending, RouteId,
+    Schedule, SourceName, State, Subscription,
 };
 use jiff::Timestamp;
 
@@ -9,7 +9,7 @@ use crate::keyring::{Keyring, KnownKey};
 use crate::store::{
     Admitted, Announcements, Cursors, Deliveries, Held, Inboxes, Keeper, Keeping, Ledger, Notes,
     Outboxed, Pins, Positions, Schedules, Store, StoreError, Subscriptions, Version, Versioned,
-    Written,
+    Waiting, Written,
 };
 
 /// [`Store`] and [`Keyring`] as one trait object: every store that is both
@@ -158,6 +158,25 @@ pub trait DynStore: Sync {
         position: &'a str,
     ) -> Boxed<'a, Result<(), StoreError>>;
 
+    /// [`Waiting::pending`].
+    fn pending_boxed<'a>(
+        &'a self,
+        hold: &'a Hold,
+    ) -> Boxed<'a, Result<Option<Versioned<Pending>>, StoreError>>;
+
+    /// [`Waiting::every_pending`].
+    fn every_pending_boxed(&self) -> Boxed<'_, Result<Vec<Versioned<Pending>>, StoreError>>;
+
+    /// [`Waiting::put_pending`].
+    fn put_pending_boxed<'a>(
+        &'a self,
+        pending: &'a Pending,
+        expected: Option<Version>,
+    ) -> Boxed<'a, Result<Written, StoreError>>;
+
+    /// [`Waiting::drop_pending`].
+    fn drop_pending_boxed<'a>(&'a self, hold: &'a Hold) -> Boxed<'a, Result<(), StoreError>>;
+
     /// [`Deliveries::admit`].
     fn admit_boxed<'a>(
         &'a self,
@@ -260,6 +279,7 @@ impl<S: Store + Keyring> DynStore for S {
             Held::Latest => self.announcements().is_some(),
             Held::Inboxes => self.inboxes().is_some(),
             Held::Positions => self.positions().is_some(),
+            Held::Pending => self.waiting().is_some(),
         }
     }
 
@@ -428,6 +448,29 @@ impl<S: Store + Keyring> DynStore for S {
         position: &'a str,
     ) -> Boxed<'a, Result<(), StoreError>> {
         Box::pin(async move { self.positions().put_position(destination, position).await })
+    }
+
+    fn pending_boxed<'a>(
+        &'a self,
+        hold: &'a Hold,
+    ) -> Boxed<'a, Result<Option<Versioned<Pending>>, StoreError>> {
+        Box::pin(async move { self.waiting().pending(hold).await })
+    }
+
+    fn every_pending_boxed(&self) -> Boxed<'_, Result<Vec<Versioned<Pending>>, StoreError>> {
+        Box::pin(async move { self.waiting().every_pending().await })
+    }
+
+    fn put_pending_boxed<'a>(
+        &'a self,
+        pending: &'a Pending,
+        expected: Option<Version>,
+    ) -> Boxed<'a, Result<Written, StoreError>> {
+        Box::pin(async move { self.waiting().put_pending(pending, expected).await })
+    }
+
+    fn drop_pending_boxed<'a>(&'a self, hold: &'a Hold) -> Boxed<'a, Result<(), StoreError>> {
+        Box::pin(async move { self.waiting().drop_pending(hold).await })
     }
 
     fn admit_boxed<'a>(
@@ -663,6 +706,28 @@ impl Positions for Erased<'_, dyn DynStore + '_> {
         position: &str,
     ) -> Result<(), StoreError> {
         self.0.put_position_boxed(destination, position).await
+    }
+}
+
+impl Waiting for Erased<'_, dyn DynStore + '_> {
+    async fn pending(&self, hold: &Hold) -> Result<Option<Versioned<Pending>>, StoreError> {
+        self.0.pending_boxed(hold).await
+    }
+
+    async fn every_pending(&self) -> Result<Vec<Versioned<Pending>>, StoreError> {
+        self.0.every_pending_boxed().await
+    }
+
+    async fn put_pending(
+        &self,
+        pending: &Pending,
+        expected: Option<Version>,
+    ) -> Result<Written, StoreError> {
+        self.0.put_pending_boxed(pending, expected).await
+    }
+
+    async fn drop_pending(&self, hold: &Hold) -> Result<(), StoreError> {
+        self.0.drop_pending_boxed(hold).await
     }
 }
 

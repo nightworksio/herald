@@ -3,7 +3,7 @@ use herald_core::{
 };
 use herald_ports::{
     Announcements, Cursors, Deliveries, Held, Inboxes, Ledger, Notes, Pins, Positions, Schedules,
-    Store, StoreError, Subscriptions,
+    Store, StoreError, Subscriptions, Waiting,
 };
 
 use super::{Checks, GITHUB, NOON, announced, key};
@@ -48,6 +48,37 @@ pub(super) async fn unkept<S: Store>(store: &S, checks: &mut Checks) {
     if store.positions().is_none() {
         positions(&store.positions(), checks).await;
     }
+    if store.waiting().is_none() {
+        waiting(&store.waiting(), checks).await;
+    }
+}
+
+pub(super) async fn waiting(store: &impl Waiting, checks: &mut Checks) {
+    let pending = super::pending::pending("unkept");
+    refused(
+        checks,
+        store.pending(&pending.hold).await,
+        Held::Pending,
+        "pending",
+    );
+    refused(
+        checks,
+        store.every_pending().await,
+        Held::Pending,
+        "every_pending",
+    );
+    refused(
+        checks,
+        store.put_pending(&pending, None).await,
+        Held::Pending,
+        "put_pending",
+    );
+    refused(
+        checks,
+        store.drop_pending(&pending.hold).await,
+        Held::Pending,
+        "drop_pending",
+    );
 }
 
 pub(super) async fn ledger(store: &impl Ledger, checks: &mut Checks) {

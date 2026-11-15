@@ -42,6 +42,6 @@ pub use sql::{Answers, Changed, EXACT_INTEGER, Parameters, Sql, SqlError, Statem
 pub use store::{
     Admitted, Announcements, Cursors, Deliveries, Held, Inboxes, Keeper, Keeping, Ledger, Notes,
     Outboxed, Pins, Positions, Schedules, Store, StoreError, Subscriptions, Unkept, Version,
-    Versioned, Written,
+    Versioned, Waiting, Written,
 };
 pub use timer::Timer;

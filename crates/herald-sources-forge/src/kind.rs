@@ -47,9 +47,6 @@ impl ForgeSource {
     }
 }
 
-/// What the doctor says of a source that takes webhooks and announces tags.
-const TAG_POLLED: &str = "a tag is announced when the source is polled; its webhooks announce releases alone, so poll the source as well";
-
 /// What the doctor says of an owner source that takes webhooks.
 const OWNER_HOOKED: &str = "a webhook's release is announced only where the owner's last membership record holds its repository, so poll the source as well; a repository its polls have not listed announces nothing";
 
@@ -144,16 +141,7 @@ impl SourceConfig for ForgeSource {
             return Vec::new();
         }
         let owned = self.options.owner.as_ref().map(|_| OWNER_HOOKED);
-        let tagged = self
-            .options
-            .may_take(herald_core::Signal::Tag)
-            .then_some(TAG_POLLED);
-        self.forge
-            .unsigned()
-            .into_iter()
-            .chain(owned)
-            .chain(tagged)
-            .collect()
+        self.forge.unsigned().into_iter().chain(owned).collect()
     }
 
     fn backfill(&self) -> usize {
@@ -166,6 +154,12 @@ impl SourceConfig for ForgeSource {
                 .options
                 .selection()
                 .is_ok_and(|selection| selection.takes_unlisted())
+    }
+
+    fn holds(&self) -> bool {
+        self.options.prefer() == herald_core::Prefer::Release
+            && self.options.may_take(herald_core::Signal::Release)
+            && self.options.may_take(herald_core::Signal::Tag)
     }
 
     fn scheme(&self) -> Option<Scheme> {
@@ -216,11 +210,13 @@ impl SourceConfig for ForgeSource {
             ))),
             (None, repository) => {
                 let repository = repository.as_deref().unwrap_or_default();
+                let signals = self.options.signals_of(named(repository));
                 Polling::One(Arc::new(Releases {
                     origin: Origin::new(self.forge, &self.options, repository),
                     token,
                     project: None,
-                    signals: self.options.signals_of(named(repository)),
+                    held: self.options.held_for(&signals),
+                    signals,
                     backfill: self.options.backfill,
                 }))
             }

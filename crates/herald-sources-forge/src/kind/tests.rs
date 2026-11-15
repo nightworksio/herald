@@ -204,28 +204,6 @@ fn an_owner_source_takes_webhooks_of_the_names_its_member_file_lists_and_says_to
         grouped.notes(),
         [Forge::GitLab.unsigned().unwrap(), OWNER_HOOKED]
     );
-    let tagged = GitLabKind::checked(SourceOptions {
-        signals: Some(vec![herald_core::Signal::Tag]),
-        ..grouped.options.clone()
-    })
-    .unwrap();
-    assert_eq!(
-        tagged.notes(),
-        [Forge::GitLab.unsigned().unwrap(), OWNER_HOOKED, TAG_POLLED]
-    );
-    let polled = GitHubKind::checked(SourceOptions {
-        webhook: None,
-        signals: Some(vec![herald_core::Signal::Tag]),
-        ..options("cli/cli")
-    })
-    .unwrap();
-    assert_eq!(polled.notes(), Vec::<&str>::new());
-    let hooked = GitHubKind::checked(SourceOptions {
-        signals: Some(vec![herald_core::Signal::Tag]),
-        ..options("cli/cli")
-    })
-    .unwrap();
-    assert_eq!(hooked.notes(), [TAG_POLLED]);
 }
 
 #[test]
@@ -244,5 +222,77 @@ fn a_source_of_one_repository_names_its_project_and_an_owner_none() {
         .unwrap()
         .projects(),
         Vec::<String>::new()
+    );
+}
+
+#[test]
+fn a_source_holds_a_tag_where_it_prefers_releases_and_takes_both() {
+    let holding = |signals: Option<Vec<herald_core::Signal>>, prefer| {
+        GitHubKind::checked(SourceOptions {
+            signals,
+            prefer,
+            ..options("cli/cli")
+        })
+        .unwrap()
+        .holds()
+    };
+    let both = || Some(vec![herald_core::Signal::Release, herald_core::Signal::Tag]);
+    assert!(holding(both(), None));
+    assert!(!holding(both(), Some(herald_core::Prefer::First)));
+    assert!(!holding(Some(vec![herald_core::Signal::Release]), None));
+    assert!(!holding(Some(vec![herald_core::Signal::Tag]), None));
+}
+
+#[test]
+fn each_poll_of_a_source_holding_tags_says_how_long_a_tag_waits() {
+    let both = || Some(vec![herald_core::Signal::Release, herald_core::Signal::Tag]);
+    let one = GitHubKind::checked(SourceOptions {
+        signals: both(),
+        ..options("cli/cli")
+    })
+    .unwrap();
+    let Polling::One(poll) = one.poller(None) else {
+        panic!("a repository is polled as one");
+    };
+    assert_eq!(poll.tag_window(), Some(crate::TAG_WINDOW));
+    let plain = GitHubKind::checked(options("cli/cli")).unwrap();
+    let Polling::One(poll) = plain.poller(None) else {
+        panic!("a repository is polled as one");
+    };
+    assert_eq!(poll.tag_window(), None);
+    let owner = GitHubKind::checked(SourceOptions {
+        repository: None,
+        owner: Some("cli".to_owned()),
+        signals: both(),
+        repositories: std::collections::BTreeMap::from([(
+            "quiet".to_owned(),
+            crate::Override {
+                signals: Some(vec![herald_core::Signal::Release]),
+                ..crate::Override::default()
+            },
+        )]),
+        ..options("cli/cli")
+    })
+    .unwrap();
+    let Polling::Many(expand) = owner.poller(None) else {
+        panic!("an owner is polled as its members");
+    };
+    let member = |name: &str| herald_core::Listed {
+        id: "1".to_owned(),
+        name: name.to_owned(),
+        path: format!("cli/{name}"),
+        topics: Vec::new(),
+        properties: std::collections::BTreeMap::new(),
+        visibility: herald_core::Visibility::Public,
+        archived: false,
+        fork: false,
+        template: false,
+        language: None,
+    };
+    assert_eq!(expand.tag_window(&member("cli")), Some(crate::TAG_WINDOW));
+    assert_eq!(expand.tag_window(&member("quiet")), None);
+    assert_eq!(
+        expand.member(&member("cli")).tag_window(),
+        Some(crate::TAG_WINDOW)
     );
 }
