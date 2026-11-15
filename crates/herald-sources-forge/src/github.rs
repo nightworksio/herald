@@ -14,6 +14,7 @@ pub(crate) const API: Api = Api {
     releases: "GitHub's releases",
     release: "GitHub's release",
     listing: "GitHub's repositories",
+    file: "GitHub's file",
     listed_page: std::num::NonZeroUsize::new(100).unwrap(),
 };
 

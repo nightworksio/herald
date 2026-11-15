@@ -1450,6 +1450,48 @@
         }
       ]
     },
+    "Members": {
+      "description": "Where an owner source's member file is.",
+      "anyOf": [
+        {
+          "description": "A file beside the config, such as `repos.toml`.",
+          "type": "object",
+          "properties": {
+            "file": {
+              "description": "Its path, from the config's directory.",
+              "type": "string"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "file"
+          ]
+        },
+        {
+          "description": "A file in a repository on the source's forge, read through its API\nwith the source's token each round.",
+          "type": "object",
+          "properties": {
+            "path": {
+              "description": "The file's path in it.",
+              "type": "string"
+            },
+            "ref": {
+              "description": "The branch, tag or commit it is read at; the default branch where\nabsent.",
+              "type": "string"
+            },
+            "repository": {
+              "description": "The repository, as `repository` writes one.",
+              "type": "string"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "repository",
+            "path"
+          ]
+        }
+      ]
+    },
     "Mentions": {
       "description": "Who a route mentions.",
       "type": "object",
@@ -1490,6 +1532,17 @@
       "type": "string",
       "maxLength": 1,
       "minLength": 1
+    },
+    "Override": {
+      "description": "What an owner source makes of the repositories one glob names.",
+      "type": "object",
+      "properties": {
+        "project": {
+          "description": "The project their events are announced as, a template as the\nsource's `project` is; the source's where absent.",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
     },
     "PinLookups": {
       "description": "How many pins the destination looks up, one request each, as it finds the route's earlier pins, 25 by default.",
@@ -2057,6 +2110,16 @@
               "type": "boolean",
               "default": false
             },
+            "graphql": {
+              "description": "The GraphQL endpoint of a GitHub owner source; beside `api` where\nabsent: `/api/graphql` on a GitHub Enterprise Server whose `api` ends\nin `/api/v3`, and `/graphql` on GitHub and GHE.com.",
+              "type": "string"
+            },
+            "graphql_batch": {
+              "description": "How many members one GraphQL request asks for; 50 where absent, and\nat most 100.",
+              "type": "integer",
+              "format": "uint",
+              "minimum": 1
+            },
             "include": {
               "description": "The names of the owner's repositories taken, as globs in which `*`\nstands for any run of characters, `?` for any one and `[...]` for\nany one of a class, ignoring case; every name where absent.",
               "type": "array",
@@ -2073,6 +2136,10 @@
             "keep_members": {
               "description": "How long a member that left the selection keeps its cursor before it\nis forgotten; \"30d\" where absent.",
               "$ref": "#/$defs/Duration"
+            },
+            "key": {
+              "description": "The field each entry of the member file names its repository by;\n\"name\" where absent.",
+              "type": "string"
             },
             "kind": {
               "type": "string",
@@ -2091,6 +2158,10 @@
               "type": "integer",
               "format": "uint",
               "minimum": 1
+            },
+            "members": {
+              "description": "The member file: where given, the names it lists are the source's\nmembers, which the filters narrow, read as TOML or JSON by its\nextension.",
+              "$ref": "#/$defs/Members"
             },
             "most_listed": {
               "description": "The most repositories a listing reads before the filters; 10000\nwhere absent. A listing over it refuses the source for the round.",
@@ -2121,6 +2192,13 @@
               "description": "The most of an answer parsed; \"4MiB\" where absent, and at most four\ntimes that.",
               "$ref": "#/$defs/Size"
             },
+            "project": {
+              "description": "The project a member's events are announced as, a template of\n`repository.name`, `repository.path`, `repository.owner`,\n`repository.id`, `repository.topics`, `repository.properties` and\n`repository.visibility`; the repository's name where absent.",
+              "type": "string",
+              "examples": [
+                "{{ repository.owner }}/{{ repository.name }}"
+              ]
+            },
             "properties": {
               "description": "Custom properties, every one of which a member holds with one of the\nvalues given, such as `{ team = \"media\", tier = [\"core\", \"edge\"] }`.",
               "type": "object",
@@ -2134,6 +2212,13 @@
               "format": "uint",
               "minimum": 1
             },
+            "repositories": {
+              "description": "What the source makes of the repositories each glob names, as\n`include` writes them; where several name one repository, the\nnarrowest that sets a key gives it.",
+              "type": "object",
+              "additionalProperties": {
+                "$ref": "#/$defs/Override"
+              }
+            },
             "repository": {
               "description": "The repository, as `owner/name`, or a GitLab project's full path,\nsuch as `group/subgroup/name`; or `owner` in its place.",
               "type": "string",
@@ -2144,6 +2229,14 @@
             "subgroups": {
               "description": "Whether a GitLab group's members include the projects of its\nsubgroups; true where absent.",
               "type": "boolean"
+            },
+            "tables": {
+              "description": "The arrays of the member file that list repositories, such as\n`[\"repo\", \"ungoverned\"]`; the file's own array where absent, which\nonly JSON can hold.",
+              "type": "array",
+              "default": [],
+              "items": {
+                "type": "string"
+              }
             },
             "template": {
               "description": "Whether template repositories are taken.",
@@ -2162,6 +2255,10 @@
                 "type": "string"
               }
             },
+            "transport": {
+              "description": "How a GitHub owner's members are polled; \"auto\" where absent.",
+              "$ref": "#/$defs/Transport"
+            },
             "visibility": {
               "description": "The visibilities taken; only public repositories where absent. A\nrepository whose visibility the forge does not name is private. A\nroute that takes a private or internal member is refused unless it\nis `private` (`[doctor] private_to_public`).",
               "type": "array",
@@ -2170,7 +2267,7 @@
               }
             },
             "webhook": {
-              "description": "The secret the forge signs its webhook deliveries to `herald server`\nwith: GitHub's and Forgejo's webhook secret, or GitLab's signing\ntoken (ADR-0007). A source of one repository only.",
+              "description": "The secret the forge signs its webhook deliveries to `herald server`\nwith: GitHub's and Forgejo's webhook secret, or GitLab's signing\ntoken (ADR-0007). An owner source takes its repositories' and its\norganization's deliveries, and announces one only where the owner's\nlast membership record holds the repository when its work runs.",
               "$ref": "#/$defs/SecretRef"
             }
           },
@@ -2212,6 +2309,16 @@
               "type": "boolean",
               "default": false
             },
+            "graphql": {
+              "description": "The GraphQL endpoint of a GitHub owner source; beside `api` where\nabsent: `/api/graphql` on a GitHub Enterprise Server whose `api` ends\nin `/api/v3`, and `/graphql` on GitHub and GHE.com.",
+              "type": "string"
+            },
+            "graphql_batch": {
+              "description": "How many members one GraphQL request asks for; 50 where absent, and\nat most 100.",
+              "type": "integer",
+              "format": "uint",
+              "minimum": 1
+            },
             "include": {
               "description": "The names of the owner's repositories taken, as globs in which `*`\nstands for any run of characters, `?` for any one and `[...]` for\nany one of a class, ignoring case; every name where absent.",
               "type": "array",
@@ -2228,6 +2335,10 @@
             "keep_members": {
               "description": "How long a member that left the selection keeps its cursor before it\nis forgotten; \"30d\" where absent.",
               "$ref": "#/$defs/Duration"
+            },
+            "key": {
+              "description": "The field each entry of the member file names its repository by;\n\"name\" where absent.",
+              "type": "string"
             },
             "kind": {
               "type": "string",
@@ -2246,6 +2357,10 @@
               "type": "integer",
               "format": "uint",
               "minimum": 1
+            },
+            "members": {
+              "description": "The member file: where given, the names it lists are the source's\nmembers, which the filters narrow, read as TOML or JSON by its\nextension.",
+              "$ref": "#/$defs/Members"
             },
             "most_listed": {
               "description": "The most repositories a listing reads before the filters; 10000\nwhere absent. A listing over it refuses the source for the round.",
@@ -2276,6 +2391,13 @@
               "description": "The most of an answer parsed; \"4MiB\" where absent, and at most four\ntimes that.",
               "$ref": "#/$defs/Size"
             },
+            "project": {
+              "description": "The project a member's events are announced as, a template of\n`repository.name`, `repository.path`, `repository.owner`,\n`repository.id`, `repository.topics`, `repository.properties` and\n`repository.visibility`; the repository's name where absent.",
+              "type": "string",
+              "examples": [
+                "{{ repository.owner }}/{{ repository.name }}"
+              ]
+            },
             "properties": {
               "description": "Custom properties, every one of which a member holds with one of the\nvalues given, such as `{ team = \"media\", tier = [\"core\", \"edge\"] }`.",
               "type": "object",
@@ -2289,6 +2411,13 @@
               "format": "uint",
               "minimum": 1
             },
+            "repositories": {
+              "description": "What the source makes of the repositories each glob names, as\n`include` writes them; where several name one repository, the\nnarrowest that sets a key gives it.",
+              "type": "object",
+              "additionalProperties": {
+                "$ref": "#/$defs/Override"
+              }
+            },
             "repository": {
               "description": "The repository, as `owner/name`, or a GitLab project's full path,\nsuch as `group/subgroup/name`; or `owner` in its place.",
               "type": "string",
@@ -2299,6 +2428,14 @@
             "subgroups": {
               "description": "Whether a GitLab group's members include the projects of its\nsubgroups; true where absent.",
               "type": "boolean"
+            },
+            "tables": {
+              "description": "The arrays of the member file that list repositories, such as\n`[\"repo\", \"ungoverned\"]`; the file's own array where absent, which\nonly JSON can hold.",
+              "type": "array",
+              "default": [],
+              "items": {
+                "type": "string"
+              }
             },
             "template": {
               "description": "Whether template repositories are taken.",
@@ -2317,6 +2454,10 @@
                 "type": "string"
               }
             },
+            "transport": {
+              "description": "How a GitHub owner's members are polled; \"auto\" where absent.",
+              "$ref": "#/$defs/Transport"
+            },
             "visibility": {
               "description": "The visibilities taken; only public repositories where absent. A\nrepository whose visibility the forge does not name is private. A\nroute that takes a private or internal member is refused unless it\nis `private` (`[doctor] private_to_public`).",
               "type": "array",
@@ -2325,7 +2466,7 @@
               }
             },
             "webhook": {
-              "description": "The secret the forge signs its webhook deliveries to `herald server`\nwith: GitHub's and Forgejo's webhook secret, or GitLab's signing\ntoken (ADR-0007). A source of one repository only.",
+              "description": "The secret the forge signs its webhook deliveries to `herald server`\nwith: GitHub's and Forgejo's webhook secret, or GitLab's signing\ntoken (ADR-0007). An owner source takes its repositories' and its\norganization's deliveries, and announces one only where the owner's\nlast membership record holds the repository when its work runs.",
               "$ref": "#/$defs/SecretRef"
             }
           },
@@ -2367,6 +2508,16 @@
               "type": "boolean",
               "default": false
             },
+            "graphql": {
+              "description": "The GraphQL endpoint of a GitHub owner source; beside `api` where\nabsent: `/api/graphql` on a GitHub Enterprise Server whose `api` ends\nin `/api/v3`, and `/graphql` on GitHub and GHE.com.",
+              "type": "string"
+            },
+            "graphql_batch": {
+              "description": "How many members one GraphQL request asks for; 50 where absent, and\nat most 100.",
+              "type": "integer",
+              "format": "uint",
+              "minimum": 1
+            },
             "include": {
               "description": "The names of the owner's repositories taken, as globs in which `*`\nstands for any run of characters, `?` for any one and `[...]` for\nany one of a class, ignoring case; every name where absent.",
               "type": "array",
@@ -2383,6 +2534,10 @@
             "keep_members": {
               "description": "How long a member that left the selection keeps its cursor before it\nis forgotten; \"30d\" where absent.",
               "$ref": "#/$defs/Duration"
+            },
+            "key": {
+              "description": "The field each entry of the member file names its repository by;\n\"name\" where absent.",
+              "type": "string"
             },
             "kind": {
               "type": "string",
@@ -2401,6 +2556,10 @@
               "type": "integer",
               "format": "uint",
               "minimum": 1
+            },
+            "members": {
+              "description": "The member file: where given, the names it lists are the source's\nmembers, which the filters narrow, read as TOML or JSON by its\nextension.",
+              "$ref": "#/$defs/Members"
             },
             "most_listed": {
               "description": "The most repositories a listing reads before the filters; 10000\nwhere absent. A listing over it refuses the source for the round.",
@@ -2431,6 +2590,13 @@
               "description": "The most of an answer parsed; \"4MiB\" where absent, and at most four\ntimes that.",
               "$ref": "#/$defs/Size"
             },
+            "project": {
+              "description": "The project a member's events are announced as, a template of\n`repository.name`, `repository.path`, `repository.owner`,\n`repository.id`, `repository.topics`, `repository.properties` and\n`repository.visibility`; the repository's name where absent.",
+              "type": "string",
+              "examples": [
+                "{{ repository.owner }}/{{ repository.name }}"
+              ]
+            },
             "properties": {
               "description": "Custom properties, every one of which a member holds with one of the\nvalues given, such as `{ team = \"media\", tier = [\"core\", \"edge\"] }`.",
               "type": "object",
@@ -2444,6 +2610,13 @@
               "format": "uint",
               "minimum": 1
             },
+            "repositories": {
+              "description": "What the source makes of the repositories each glob names, as\n`include` writes them; where several name one repository, the\nnarrowest that sets a key gives it.",
+              "type": "object",
+              "additionalProperties": {
+                "$ref": "#/$defs/Override"
+              }
+            },
             "repository": {
               "description": "The repository, as `owner/name`, or a GitLab project's full path,\nsuch as `group/subgroup/name`; or `owner` in its place.",
               "type": "string",
@@ -2454,6 +2627,14 @@
             "subgroups": {
               "description": "Whether a GitLab group's members include the projects of its\nsubgroups; true where absent.",
               "type": "boolean"
+            },
+            "tables": {
+              "description": "The arrays of the member file that list repositories, such as\n`[\"repo\", \"ungoverned\"]`; the file's own array where absent, which\nonly JSON can hold.",
+              "type": "array",
+              "default": [],
+              "items": {
+                "type": "string"
+              }
             },
             "template": {
               "description": "Whether template repositories are taken.",
@@ -2472,6 +2653,10 @@
                 "type": "string"
               }
             },
+            "transport": {
+              "description": "How a GitHub owner's members are polled; \"auto\" where absent.",
+              "$ref": "#/$defs/Transport"
+            },
             "visibility": {
               "description": "The visibilities taken; only public repositories where absent. A\nrepository whose visibility the forge does not name is private. A\nroute that takes a private or internal member is refused unless it\nis `private` (`[doctor] private_to_public`).",
               "type": "array",
@@ -2480,7 +2665,7 @@
               }
             },
             "webhook": {
-              "description": "The secret the forge signs its webhook deliveries to `herald server`\nwith: GitHub's and Forgejo's webhook secret, or GitLab's signing\ntoken (ADR-0007). A source of one repository only.",
+              "description": "The secret the forge signs its webhook deliveries to `herald server`\nwith: GitHub's and Forgejo's webhook secret, or GitLab's signing\ntoken (ADR-0007). An owner source takes its repositories' and its\norganization's deliveries, and announces one only where the owner's\nlast membership record holds the repository when its work runs.",
               "$ref": "#/$defs/SecretRef"
             }
           },
@@ -3373,6 +3558,31 @@
     "TokenHash": {
       "type": "string",
       "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "Transport": {
+      "description": "How an owner's members are polled on GitHub.",
+      "oneOf": [
+        {
+          "description": "GraphQL in batches where the source has a token, and REST per member\nwhere it has none.",
+          "type": "string",
+          "const": "auto"
+        },
+        {
+          "description": "GraphQL in batches of `graphql_batch` members, which needs a token.",
+          "type": "string",
+          "const": "graphql"
+        },
+        {
+          "description": "REST, one member at a time, each asked with its `ETag`.",
+          "type": "string",
+          "const": "rest"
+        },
+        {
+          "description": "The owner's events, read once a round, naming the members to poll,\neach through GraphQL where there is a token and REST otherwise.",
+          "type": "string",
+          "const": "events"
+        }
+      ]
     },
     "Values": {
       "description": "A property's values: one, or any of several.",

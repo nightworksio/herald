@@ -440,3 +440,103 @@ fn verbatim_templates_render_an_event_s_own_title_and_body_within_the_sandbox() 
     );
     assert!(capped.render(&body_template(&name), &context).is_err());
 }
+
+fn member() -> Listed {
+    Listed {
+        id: "42".to_owned(),
+        name: "cli".to_owned(),
+        path: "group/tools/cli".to_owned(),
+        topics: vec!["media".to_owned()],
+        properties: std::collections::BTreeMap::from([(
+            "team".to_owned(),
+            vec!["core".to_owned()],
+        )]),
+        visibility: crate::Visibility::Internal,
+        archived: false,
+        fork: false,
+        template: false,
+        language: None,
+    }
+}
+
+#[test]
+fn a_project_template_names_a_member_by_its_repository_on_one_line() {
+    let named = |source: &str| {
+        ProjectName::compile(source, Sandbox::DEFAULT)
+            .unwrap()
+            .render(&member())
+    };
+    assert_eq!(
+        named("{{ repository.owner }}/{{ repository.name }}\n#{{ repository.id }}"),
+        Ok("group/tools/cli #42".to_owned())
+    );
+    assert_eq!(
+        named(
+            "{{ repository.path }} {{ repository.visibility }} {{ repository.topics[0] }} {{ repository.properties.team[0] }}"
+        ),
+        Ok("group/tools/cli internal media core".to_owned())
+    );
+    assert_eq!(
+        named("{{ repository.nothing }}").map_err(|error| error.name),
+        Err("project".to_owned())
+    );
+    assert_eq!(
+        named("{% if false %}x{% endif %}  "),
+        Err(TemplateError {
+            name: "project".to_owned(),
+            reason: "it names no project for group/tools/cli".to_owned()
+        })
+    );
+    let long = ProjectName::compile(
+        "{{ repository.name }}",
+        Sandbox {
+            output: 2,
+            ..Sandbox::DEFAULT
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        long.render(&member()).map_err(|error| error.reason),
+        Err("its output passes the cap of 2 bytes".to_owned())
+    );
+    assert_eq!(
+        ProjectName::compile("{{ unclosed", Sandbox::DEFAULT)
+            .map(|_| ())
+            .map_err(|error| error.name),
+        Err("project".to_owned())
+    );
+}
+
+#[test]
+fn a_project_template_names_what_it_reads_that_a_repository_does_not_carry() {
+    let unknown = |source: &str| {
+        ProjectName::compile(source, Sandbox::DEFAULT)
+            .unwrap()
+            .unknown()
+    };
+    assert_eq!(
+        unknown(
+            "{{ repository.owner }}/{{ repository.properties.team[0] | default(repository.name) | upper }}{% for t in repository.topics %}{{ t }}{% endfor %}{{ range(2) | length }}"
+        ),
+        Vec::<String>::new()
+    );
+    assert_eq!(unknown("{{ repository }}"), Vec::<String>::new());
+    assert_eq!(
+        unknown("{{ repository.title }} {{ event.project }} {{ nothing }}"),
+        ["event.project", "nothing", "repository.title"]
+    );
+    assert_eq!(REPOSITORY_FIELDS.len(), 7);
+}
+
+#[test]
+fn a_project_name_whose_template_is_gone_names_none_and_reads_nothing() {
+    let gone = ProjectName {
+        environment: Environment::new(),
+        output: 8,
+    };
+    assert_eq!(
+        gone.render(&member()).map_err(|error| error.name),
+        Err("project".to_owned())
+    );
+    assert_eq!(gone.unknown(), Vec::<String>::new());
+}

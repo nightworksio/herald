@@ -312,6 +312,7 @@ mod feeds {
             seen: Vec::new(),
             etag: Some("\"a\"".to_owned()),
             last_modified: Some(DATE.to_owned()),
+            project: None,
         };
         assert_eq!(
             notes.request(Some(&cursor)).to_string(),
@@ -326,6 +327,20 @@ mod feeds {
         );
         assert_eq!(notes.request(None).headers.len(), 2);
         assert_eq!(notes.request(None).most, herald_wire::PARSE_LIMIT);
+    }
+
+    #[test]
+    fn a_feed_claims_its_host_as_the_project_it_names_without_a_title() {
+        use herald_kinds::SourceConfig;
+        let options = |url: &str| FeedOptions {
+            url: url.to_owned(),
+            ..FeedOptions::default()
+        };
+        assert_eq!(
+            options("https://blog.rust-lang.org/feed.xml").projects(),
+            ["blog.rust-lang.org"]
+        );
+        assert_eq!(options("not a url").projects(), ["not a url"]);
     }
 
     proptest! {

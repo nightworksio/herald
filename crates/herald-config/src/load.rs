@@ -258,7 +258,7 @@ pub fn load(
     let (retention, attempts) = kept.unwrap_or_default();
     let marker_key = loader.marker_key(sections.markers);
     let destinations = loader.destinations(sections.destinations, read);
-    let sources = loader.sources(sections.sources);
+    let sources = loader.sources(sections.sources, read);
     let templates = loader.templates(sections.templates, read);
     let listed = loader.apps(sections.apps, &sources);
     let routes = loader.every_route(

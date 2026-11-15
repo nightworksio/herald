@@ -1,8 +1,12 @@
+use std::collections::BTreeSet;
 use std::fmt;
+use std::num::NonZeroUsize;
 use std::ops::Deref;
 use std::sync::Arc;
 
-use herald_core::{Cursor, Event, Kind, Listed, Listing, Owner, Polled, Scheme, SecretRef};
+use herald_core::{
+    Cursor, Event, EventsRead, Kind, Listed, Listing, Owner, Polled, Scheme, SecretRef, Visibility,
+};
 use herald_ports::{Boxed, DynHttp, Secret};
 use jiff::SignedDuration;
 
@@ -49,9 +53,9 @@ pub trait SourceConfig: fmt::Debug + Send + Sync + Itself {
     }
 
     /// What the doctor says of every run that serves it, where its options
-    /// leave something to its platform.
-    fn note(&self) -> Option<&'static str> {
-        None
+    /// leave something to its platform or to its polls.
+    fn notes(&self) -> Vec<&'static str> {
+        Vec::new()
     }
 
     /// Whether a name it announces can move to another version, as a
@@ -63,6 +67,12 @@ pub trait SourceConfig: fmt::Debug + Send + Sync + Itself {
     /// Whether it may take a repository not everyone may see.
     fn unlisted(&self) -> bool {
         false
+    }
+
+    /// The projects its events are announced as, where its options name
+    /// them.
+    fn projects(&self) -> Vec<String> {
+        Vec::new()
     }
 
     /// What polls it, reading with `token` where it has one.
@@ -101,6 +111,9 @@ pub trait Expand: fmt::Debug + Send + Sync {
     /// forgotten with its cursor.
     fn keep_members(&self) -> SignedDuration;
 
+    /// How many identities each member's cursor remembers, newest first.
+    fn remembered(&self) -> usize;
+
     /// The members the owner lists through `http` that the selection takes,
     /// asked conditionally on `known`, the last listing.
     fn listed<'a>(
@@ -112,6 +125,42 @@ pub trait Expand: fmt::Debug + Send + Sync {
     /// What polls the member `repository`.
     fn member(&self, repository: &Listed) -> Arc<dyn Poll>;
 
+    /// The members whose releases the owner's events name since `read`,
+    /// read through `http` once a round, for an owner of the kind `owner`;
+    /// nothing where the source polls every member each round.
+    fn changed<'a>(
+        &'a self,
+        _http: &'a dyn DynHttp,
+        _owner: Owner,
+        _read: Option<&'a EventsRead>,
+    ) -> Boxed<'a, Option<Result<Changed, Unpolled>>> {
+        Box::pin(std::future::ready(None))
+    }
+
+    /// How many members one request polls together; one where each is
+    /// polled on its own.
+    fn batch(&self) -> NonZeroUsize {
+        NonZeroUsize::MIN
+    }
+
+    /// What each of `members`, each with its cursor, answers through
+    /// `http`, in order: polled together where the source batches them, and
+    /// each through its own poll otherwise.
+    fn polled<'a>(
+        &'a self,
+        http: &'a dyn DynHttp,
+        members: &'a [(&'a Listed, Option<&'a Cursor>)],
+    ) -> Boxed<'a, Vec<Result<Option<Polled>, Unpolled>>> {
+        Box::pin(each_polled(self, http, members))
+    }
+
+    /// The project the member `repository`'s events are announced as.
+    ///
+    /// # Errors
+    ///
+    /// Why its project template names none.
+    fn project(&self, repository: &Listed) -> Result<String, String>;
+
     /// Whether the selection takes `repository`, as the last listing named
     /// it.
     fn takes(&self, repository: &Listed) -> bool;
@@ -119,6 +168,38 @@ pub trait Expand: fmt::Debug + Send + Sync {
     /// A digest of what a listing asks for: the owner, where, and the
     /// selection.
     fn fingerprint(&self) -> String;
+}
+
+/// What each of `members`, each with its cursor, answers through `http`,
+/// each through the poll `expand` gives it, in order.
+pub async fn each_polled<E: Expand + ?Sized>(
+    expand: &E,
+    http: &dyn DynHttp,
+    members: &[(&Listed, Option<&Cursor>)],
+) -> Vec<Result<Option<Polled>, Unpolled>> {
+    let mut answered = Vec::new();
+    for (repository, cursor) in members {
+        answered.push(expand.member(repository).polled(http, *cursor).await);
+    }
+    answered
+}
+
+/// Which members an owner's events name since they were last read.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Changed {
+    /// The events read reach back to where the last read ended: the forge
+    /// id of each member they name a release of, and how far they were
+    /// read; unchanged where `read` is the last one's.
+    Named {
+        /// The forge id of each member named.
+        ids: BTreeSet<String>,
+        /// How far the events were read.
+        read: EventsRead,
+    },
+    /// The events read do not reach back to where the last read ended, or
+    /// there was no last read, so every member is polled; how far they
+    /// were read.
+    Gap(EventsRead),
 }
 
 /// What listing an owner found.
@@ -134,6 +215,11 @@ pub enum Expanded {
         owner: Owner,
         /// The `ETag` of each page read, in order.
         pages: Vec<Option<String>>,
+        /// The `ETag` of the member file, where it was read through the
+        /// forge.
+        file: Option<String>,
+        /// The names the member file lists that the owner does not hold.
+        missing: Vec<String>,
     },
 }
 
@@ -166,6 +252,16 @@ pub(crate) const UNHOOKED: &str = "this source takes no webhooks";
 pub enum Hooked {
     /// The event it publishes.
     Event(Event),
+    /// The event an owner's member publishes, announced only where the
+    /// owner's last membership record holds the member when its work runs.
+    Member {
+        /// The event.
+        event: Event,
+        /// The forge's id of the member.
+        id: String,
+        /// Who may see the member, as the delivery names it, where it does.
+        visibility: Option<Visibility>,
+    },
     /// Nothing, and why.
     Nothing(&'static str),
 }
@@ -189,6 +285,20 @@ pub trait SourceKind: 'static {
     ///
     /// The fault that keeps the source out of the config.
     fn checked(file: Self::File) -> Result<Self::Options, Fault>;
+
+    /// `options` with each file beside the config they name read through
+    /// `read`.
+    ///
+    /// # Errors
+    ///
+    /// The fault that keeps the source out of the config: a file that cannot
+    /// be read, or that does not hold what the options take from it.
+    fn read(
+        options: Self::Options,
+        _read: &dyn Fn(&str) -> Result<String, String>,
+    ) -> Result<Self::Options, Fault> {
+        Ok(options)
+    }
 }
 
 /// One source, ready to poll.

@@ -4,7 +4,7 @@
 use herald_core::{Chore, Schedule, Step};
 use herald_flows::{
     Announced, Chored, Did, FollowError, Followed, Housekept, HousekeptSchedule, Interacted, Job,
-    Outcome, Remembered, Stop, Sweep, Swept, Worked,
+    Outcome, Remembered, Stop, Sweep, Swept, Withheld, Worked,
 };
 
 /// What a poll of one source found and announced.
@@ -177,11 +177,28 @@ pub fn worked(worked: &Worked) -> Vec<String> {
         Did::Announced(announced) => announced.iter().map(report).collect(),
         Did::Followed(followed) => vec![follow(followed)],
         Did::Interacted(interacted) => interacted.iter().map(answered).collect(),
+        Did::Withheld(withheld) => vec![withheld_line(withheld)],
     };
     said.extend(worked.unreleased.iter().map(|unreleased| {
         format!("{unreleased}; its sender's next delivery of it is refused until housekeeping forgets it")
     }));
     said
+}
+
+/// What an owner's webhook announcing nothing is logged as.
+fn withheld_line(withheld: &Withheld) -> String {
+    let why = match withheld {
+        Withheld::Unlisted => {
+            "the owner's last membership record does not name its repository".to_owned()
+        }
+        Withheld::Left => "its repository left the owner's selection".to_owned(),
+        Withheld::Unread(reason) => {
+            format!("the owner's membership record could not be read: {reason}")
+        }
+        Withheld::Unnamed(reason) => format!("its project template names none: {reason}"),
+        Withheld::Collides(reason) => reason.clone(),
+    };
+    format!("a webhook's release was not announced: {why}")
 }
 
 /// What a job left undone as herald stopped is logged as, with why the

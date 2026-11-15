@@ -71,6 +71,14 @@ impl Cursors for Refusing {
         Err(refused("members"))
     }
 
+    async fn member(
+        &self,
+        _: &SourceName,
+        _: &str,
+    ) -> Result<Option<Versioned<Membership>>, StoreError> {
+        Err(refused("member"))
+    }
+
     async fn put_member(
         &self,
         _: &SourceName,
@@ -259,6 +267,7 @@ fn every_answer_of_an_erased_store_on_an_owner_source_is_the_store_s_own() {
         answered(erased.listing(&source)),
         answered(erased.put_listing(&source, &listing, None)),
         answered(erased.members(&source)),
+        answered(erased.member(&source, "1")),
         answered(erased.put_member(&source, &membership, None)),
         answered(erased.forget_member(&source, "1")),
     ];
@@ -266,6 +275,7 @@ fn every_answer_of_an_erased_store_on_an_owner_source_is_the_store_s_own() {
         "listing",
         "put_listing",
         "members",
+        "member",
         "put_member",
         "forget_member",
     ];
@@ -279,6 +289,8 @@ fn owned(at: Timestamp) -> (Listing, Membership) {
         first: at,
         listed: at,
         fingerprint: "f".to_owned(),
+        file: None,
+        events: None,
     };
     let membership = Membership {
         repository: herald_core::Listed {
@@ -296,6 +308,7 @@ fn owned(at: Timestamp) -> (Listing, Membership) {
         discovered: at,
         left: None,
         cursor: None,
+        collides: None,
     };
     (listing, membership)
 }

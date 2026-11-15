@@ -213,7 +213,7 @@ impl Package {
 
     /// The name its events give as their project: the package's, without
     /// Docker Hub's `library/` for an official image.
-    fn project(&self) -> &str {
+    pub(crate) fn project(&self) -> &str {
         match self.registry {
             Registry::DockerHub => docker_hub::project(&self.name),
             _ => &self.name,

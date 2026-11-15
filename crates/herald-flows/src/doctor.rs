@@ -320,7 +320,7 @@ fn hosted(config: &Config, layer: &Layer, here: &Here, findings: &mut Findings) 
         }
     }
     for (name, source) in &config.sources {
-        if let Some(note) = source.note() {
+        for note in source.notes() {
             findings
                 .notes
                 .push(format!("The source {}: {note}", name.as_str()));

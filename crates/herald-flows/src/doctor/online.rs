@@ -3,7 +3,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use herald_config::Config;
-use herald_kinds::{Polling, Probe, Unlisted, Unpolled};
+use herald_kinds::{Expanded, Polling, Probe, Unlisted, Unpolled};
 use herald_ports::{Http, SecretError, Secrets, Signer};
 
 use super::{Findings, Here, gap};
@@ -122,16 +122,34 @@ async fn owned<H: Http>(connected: &Connected<H>) -> Findings {
         let name = source.name.as_str();
         match expand.listed(http, None).await {
             Ok(expanded) => {
+                if let Expanded::Listed { missing, .. } = &expanded
+                    && !missing.is_empty()
+                {
+                    findings.mistakes.push(format!(
+                        "The source {name}'s member file names {}, which its owner does not hold; correct or remove them.",
+                        missing.join(", ")
+                    ));
+                }
                 let members = expanded.members();
-                findings.notes.push(format!(
-                    "The source {name} takes {} repositories.",
-                    members.len()
-                ));
+                let noun = if members.len() == 1 {
+                    "repository"
+                } else {
+                    "repositories"
+                };
+                findings
+                    .notes
+                    .push(format!("The source {name} takes {} {noun}.", members.len()));
                 for member in members {
-                    named
-                        .entry(member.name.to_lowercase())
-                        .or_default()
-                        .push(format!("{name}'s {}", member.path));
+                    match expand.project(&member) {
+                        Ok(project) => named
+                            .entry(project.to_lowercase())
+                            .or_default()
+                            .push(format!("{name}'s {}", member.path)),
+                        Err(reason) => findings.mistakes.push(format!(
+                            "The source {name} names no project for {}: {reason}.",
+                            member.path
+                        )),
+                    }
                 }
             }
             Err(Unlisted::Over(reason)) => {

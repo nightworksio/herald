@@ -628,6 +628,7 @@ fn work_that_stops_or_fails_releases_its_delivery() {
     let Did::Announced(announced) = world.work(Job::Announce {
         source: herald_core::SourceName::new("gate"),
         event,
+        member: None,
         scheme: herald_sources_forge::Forge::GitHub.scheme(),
         verified,
     }) else {
@@ -675,6 +676,7 @@ fn work_that_will_not_be_done_releases_its_delivery() {
             Job::Announce {
                 source: herald_core::SourceName::new("gate"),
                 event,
+                member: None,
                 scheme: herald_sources_forge::Forge::GitHub.scheme(),
                 verified: herald_flows::Verified {
                     delivery: Some("d3".to_owned()),
@@ -797,3 +799,4 @@ fn a_webhook_secret_that_is_not_set_stops_the_server_before_it_serves() {
 }
 
 mod apps;
+mod owned;

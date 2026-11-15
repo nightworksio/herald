@@ -18,6 +18,7 @@ pub(crate) const API: Api = Api {
     releases: "GitLab's releases",
     release: "GitLab's release",
     listing: "GitLab's projects",
+    file: "GitLab's file",
     listed_page: std::num::NonZeroUsize::new(100).unwrap(),
 };
 
@@ -86,6 +87,10 @@ fn when<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Option<Timestamp>,
     };
     parsed.map(Some).map_err(serde::de::Error::custom)
 }
+
+/// The reference GitLab reads a file at where none is named: the default
+/// branch.
+pub(crate) const DEFAULT_REF: &str = "HEAD";
 
 /// The base URL of a project's API, named by its full path.
 pub(crate) fn project(api: &str, path: &str) -> String {

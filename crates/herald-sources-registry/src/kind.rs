@@ -100,6 +100,14 @@ impl SourceConfig for RegistrySource {
         self.registry.moving_tags()
     }
 
+    fn projects(&self) -> Vec<String> {
+        vec![
+            Package::new(self.registry, &self.options)
+                .project()
+                .to_owned(),
+        ]
+    }
+
     fn poller(&self, token: Option<Secret>) -> Polling {
         Polling::One(Arc::new(Versions {
             package: Package::new(self.registry, &self.options),

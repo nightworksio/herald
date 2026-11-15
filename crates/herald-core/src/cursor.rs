@@ -12,6 +12,9 @@ pub struct Cursor {
     pub etag: Option<String>,
     /// The `Last-Modified` the server last returned.
     pub last_modified: Option<String>,
+    /// The project its newest event was announced as.
+    #[serde(default)]
+    pub project: Option<String>,
 }
 
 /// What one poll of a source found: its events, the newest first, and the
@@ -50,6 +53,10 @@ impl Cursor {
             seen,
             etag,
             last_modified,
+            project: found
+                .first()
+                .map(|event| event.project().to_owned())
+                .or_else(|| self.project.clone()),
         }
     }
 }
@@ -118,6 +125,7 @@ mod tests {
             seen: vec![Identity::new("b"), Identity::new("a")],
             etag: Some("old".to_owned()),
             last_modified: None,
+            project: None,
         };
         let advanced = cursor.advanced(
             &[event("c"), event("b")],
@@ -131,8 +139,15 @@ mod tests {
                 seen: vec![Identity::new("c"), Identity::new("b"), Identity::new("a")],
                 etag: Some("new".to_owned()),
                 last_modified: Some("then".to_owned()),
+                project: Some(event("c").project().to_owned()),
             }
         );
+        let quiet = Cursor {
+            project: Some("kept".to_owned()),
+            ..Cursor::default()
+        }
+        .advanced(&[], None, None, 500);
+        assert_eq!(quiet.project.as_deref(), Some("kept"));
     }
 
     #[test]
@@ -150,9 +165,13 @@ mod tests {
             seen: vec![Identity::new("a")],
             etag: Some("e".to_owned()),
             last_modified: None,
+            project: None,
         };
         let json = serde_json::to_string(&cursor).unwrap();
-        assert_eq!(json, r#"{"seen":["a"],"etag":"e","last_modified":null}"#);
+        assert_eq!(
+            json,
+            r#"{"seen":["a"],"etag":"e","last_modified":null,"project":null}"#
+        );
         assert_eq!(serde_json::from_str::<Cursor>(&json).unwrap(), cursor);
     }
 }

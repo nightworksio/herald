@@ -372,6 +372,8 @@ fn an_owner_source_s_records_kept_nowhere_answer_unsupported_naming_cursors() {
         first: Timestamp::UNIX_EPOCH,
         listed: Timestamp::UNIX_EPOCH,
         fingerprint: "f".to_owned(),
+        file: None,
+        events: None,
     };
     let membership = herald_core::Membership {
         repository: herald_core::Listed {
@@ -389,6 +391,7 @@ fn an_owner_source_s_records_kept_nowhere_answer_unsupported_naming_cursors() {
         discovered: Timestamp::UNIX_EPOCH,
         left: None,
         cursor: None,
+        collides: None,
     };
     for unkept in [None, Some(&Unkept)] {
         assert_eq!(unsupported(unkept.listing(&source)), naming("cursors"));
@@ -397,6 +400,7 @@ fn an_owner_source_s_records_kept_nowhere_answer_unsupported_naming_cursors() {
             naming("cursors")
         );
         assert_eq!(unsupported(unkept.members(&source)), naming("cursors"));
+        assert_eq!(unsupported(unkept.member(&source, "1")), naming("cursors"));
         assert_eq!(
             unsupported(unkept.put_member(&source, &membership, None)),
             naming("cursors")

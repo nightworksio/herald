@@ -90,3 +90,19 @@ fn a_registry_source_names_its_token_and_polls_its_package() {
         source.options.reading(Registry::Npm).remembered
     );
 }
+
+#[test]
+fn a_registry_source_names_its_package_s_project() {
+    assert_eq!(
+        DockerHubKind::checked(named("library/nginx", None))
+            .unwrap()
+            .projects(),
+        ["nginx"]
+    );
+    assert_eq!(
+        PackagistKind::checked(named("vendor/name", None))
+            .unwrap()
+            .projects(),
+        ["vendor/name"]
+    );
+}

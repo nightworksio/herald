@@ -9,6 +9,9 @@ pub const API: &str = "https://api.github.com";
 /// GitHub, as an error names it.
 pub const GITHUB: &str = "GitHub";
 
+/// The media type GitHub's REST API answers a file's raw bytes in.
+pub const RAW: &str = "application/vnd.github.raw+json";
+
 /// The version of GitHub's REST API herald was written against.
 const VERSION: &str = "2022-11-28";
 
@@ -16,6 +19,19 @@ const VERSION: &str = "2022-11-28";
 #[must_use]
 pub fn api(given: Option<&str>) -> String {
     given.unwrap_or(API).trim_end_matches('/').to_owned()
+}
+
+/// The GraphQL endpoint beside the REST API at `api`: a GitHub Enterprise
+/// Server's `https://ghe.example/api/v3` answers GraphQL at
+/// `https://ghe.example/api/graphql`, and api.github.com and a GHE.com
+/// tenant's `https://api.acme.ghe.com` at `/graphql`.
+#[must_use]
+pub fn graphql(api: &str) -> String {
+    let api = api.trim_end_matches('/');
+    match api.strip_suffix("/v3") {
+        Some(base) => format!("{base}/graphql"),
+        None => format!("{api}/graphql"),
+    }
 }
 
 /// `request` with the headers GitHub's REST API asks for, identified as
@@ -37,6 +53,27 @@ pub fn request(method: Method, url: String, token: Secret) -> Request {
 #[cfg(test)]
 mod tests {
     use herald_ports::USER_AGENT;
+
+    #[test]
+    fn graphql_is_asked_beside_each_kind_of_github_s_rest_api() {
+        for (rest, graphql) in [
+            ("https://api.github.com", "https://api.github.com/graphql"),
+            (
+                "https://api.acme.ghe.com/",
+                "https://api.acme.ghe.com/graphql",
+            ),
+            (
+                "https://ghe.example/api/v3",
+                "https://ghe.example/api/graphql",
+            ),
+            (
+                "https://ghe.example/api/v3/",
+                "https://ghe.example/api/graphql",
+            ),
+        ] {
+            assert_eq!(super::graphql(rest), graphql, "{rest}");
+        }
+    }
 
     use super::*;
 

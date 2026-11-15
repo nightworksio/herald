@@ -193,6 +193,7 @@ mod registries {
             seen: Vec::new(),
             etag: Some("\"a\"".to_owned()),
             last_modified: Some("Tue, 29 Sep 2026 19:21:45 GMT".to_owned()),
+            project: None,
         };
         let token = Secret::new("NPM_TOKEN", "hunter2");
         let asked = |registry, name: &str| {

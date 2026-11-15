@@ -1,11 +1,12 @@
 //! Whatever a forge sends, its parsers answer an event, nothing or an error,
-//! and an event's identity names its repository and ends with its version.
+//! and an event's identity names its repository and ends with its version;
+//! an owner's webhook names the member its event's identity names.
 
 #![no_main]
 
-use herald_core::{Event, Polled};
+use herald_core::{Event, Polled, Selection};
 use herald_ports::Response;
-use herald_sources_forge::{Forge, Repository};
+use herald_sources_forge::{Forge, Hooked, Repository};
 use herald_wire::PARSE_LIMIT;
 use libfuzzer_sys::fuzz_target;
 
@@ -42,6 +43,20 @@ fuzz_target!(|bytes: &[u8]| {
             for event in &events {
                 identified(event, Some(repository.id));
             }
+        }
+        let headers = [
+            ("X-GitHub-Event", "release"),
+            ("X-Gitlab-Event", "Release Hook"),
+            ("X-Forgejo-Event", "release"),
+        ];
+        if let Ok(Hooked::Member { event, id, .. }) =
+            forge.hooked_owned((&headers, bytes), ("fuzzed", true), &Selection::default())
+        {
+            identified(&event, None);
+            assert!(
+                event.identity().as_str().contains(&format!("/{id}/")),
+                "{event:?}"
+            );
         }
     }
 });

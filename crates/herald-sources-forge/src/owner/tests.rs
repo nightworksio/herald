@@ -1,53 +1,8 @@
-use std::collections::VecDeque;
-use std::sync::Mutex;
-
-use herald_ports::{Http, HttpError, Secret};
+use herald_ports::Secret;
 use serde_json::{Value, json};
 
 use super::*;
-
-/// A forge answering each request with the next scripted response, and
-/// keeping each request's URL and `If-None-Match`.
-struct Scripted {
-    answers: Mutex<VecDeque<Response>>,
-    asked: Mutex<Vec<(String, Option<String>)>>,
-}
-
-impl Scripted {
-    fn new(answers: Vec<Response>) -> Self {
-        Self {
-            answers: Mutex::new(answers.into()),
-            asked: Mutex::new(Vec::new()),
-        }
-    }
-
-    fn asked(&self) -> Vec<(String, Option<String>)> {
-        self.asked.lock().unwrap().clone()
-    }
-}
-
-impl Http for Scripted {
-    #[expect(
-        clippy::unused_async_trait_impl,
-        reason = "a fake answers at once, and is written as the async trait it fakes"
-    )]
-    async fn send(&self, request: Request) -> Result<Response, HttpError> {
-        let etag = request
-            .headers
-            .iter()
-            .find(|(name, _)| name == "If-None-Match")
-            .map(|(_, value)| value.redacted());
-        self.asked
-            .lock()
-            .unwrap()
-            .push((request.url.redacted(), etag));
-        self.answers
-            .lock()
-            .unwrap()
-            .pop_front()
-            .ok_or(HttpError::TimedOut)
-    }
-}
+use crate::scripted::Scripted;
 
 fn answer(status: u16, body: &Value, etag: &str, next: bool) -> Response {
     let mut headers = vec![("ETag".to_owned(), etag.to_owned())];
@@ -87,7 +42,7 @@ fn github(id: u64, name: &str) -> Value {
 fn owned(forge: Forge, options: &SourceOptions) -> Owned {
     Owned::new(
         forge,
-        "lemonfiber",
+        ("lemonfiber", None),
         options,
         Some(Token::Named(Secret::new("TOKEN", "t"))),
     )
@@ -113,6 +68,8 @@ fn known(pages: &[&str]) -> Listing {
         first: jiff::Timestamp::UNIX_EPOCH,
         listed: jiff::Timestamp::UNIX_EPOCH,
         fingerprint: owned(Forge::GitHub, &SourceOptions::default()).fingerprint(),
+        file: None,
+        events: None,
     }
 }
 
@@ -402,12 +359,19 @@ fn a_listing_reads_every_page_the_forge_names_and_keeps_what_the_selection_takes
             },
             owner: Owner::Organization,
             pages: vec![Some("\"p1\"".to_owned()), Some("\"p2\"".to_owned())],
+            file: None,
+            missing: Vec::new(),
         }
     );
     assert_eq!(http.asked().len(), 2);
     assert!(http.asked()[1].0.ends_with("&page=2"));
     assert_eq!(source.api(), "https://api.github.com");
     assert_eq!(source.keep_members(), crate::KEEP_MEMBERS);
+    assert_eq!(
+        source.remembered(),
+        SourceOptions::default().reading().remembered
+    );
+    assert!(source.remembered() > 1);
 }
 
 #[test]
@@ -656,3 +620,5 @@ fn a_listing_kept_for_another_selection_is_read_whole() {
         serde_json::from_value::<GitHub>(github(2, "b")).unwrap()
     )));
 }
+
+mod members;

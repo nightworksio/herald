@@ -228,6 +228,8 @@ fn an_owner_s_members_join_are_polled_on_their_own_and_a_listing_unchanged_reads
             first: NOON,
             listed: NOON,
             fingerprint: kept.fingerprint.clone(),
+            file: None,
+            events: None,
         }
     );
     assert_eq!(kept.fingerprint.len(), herald_core::SHA256_HEX_DIGITS);
@@ -650,4 +652,327 @@ fn an_owner_and_a_repository_source_are_polled_side_by_side() {
         ]
     );
     assert!(matches!(swept[2].outcome, Sweep::Unchanged));
+}
+
+#[test]
+fn a_github_owner_with_a_token_polls_its_members_in_graphql_batches() {
+    let store = healthy();
+    let config = owned(|options| {
+        options.token = Some(herald_core::SecretRef {
+            secret: "HERALD_DISCORD_TOKEN".to_owned(),
+        });
+        options.graphql_batch = std::num::NonZeroUsize::new(2);
+    });
+    let graphql = "POST https://api.github.com/graphql";
+    let member = |id: u64, name: &str| {
+        json!({ "databaseId": id, "releases": { "nodes": [{
+            "tagName": "v1",
+            "url": format!("https://github.com/nightworksio/{name}/releases/tag/v1"),
+            "isDraft": false,
+            "name": format!("{name} v1"),
+            "description": "## Added",
+            "isPrerelease": false,
+            "publishedAt": NOON.to_string()
+        }] } })
+    };
+    let two = json!({ "data": { "m0": member(1, "herald"), "m1": member(2, "gate") } }).to_string();
+    let one = json!({ "data": { "m0": member(3, "web") } }).to_string();
+    let script = Script::answering(&[
+        (
+            LISTING,
+            200,
+            &repositories(&[(1, "herald"), (2, "gate"), (3, "web")]),
+        ),
+        (graphql, 200, &two),
+        (graphql, 200, &two),
+        (graphql, 200, &one),
+        (graphql, 200, &one),
+    ]);
+    assert_eq!(
+        polled(&config, &store, &script, NOON),
+        [
+            listed(3, &["herald", "gate", "web"], &[]),
+            self::member("herald", first(1)),
+            self::member("gate", first(1)),
+            self::member("web", first(1)),
+        ]
+    );
+    assert_eq!(script.seen().len(), 5);
+}
+
+#[test]
+fn a_member_whose_template_names_another_source_s_project_from_a_hostile_topic_is_withheld() {
+    let store = healthy();
+    let repository = config("").sources[&SourceName::new("gate")].clone();
+    let mut both = owned(|options| {
+        options.project = Some("{{ repository.topics[0] }}".to_owned());
+    });
+    both.sources.insert(SourceName::new("mutation"), repository);
+    both.apps.insert(
+        "ci".to_owned(),
+        herald_config::App {
+            tokens: Vec::new(),
+            projects: vec!["deploys".to_owned()],
+            routes: Vec::new(),
+        },
+    );
+    let listing = json!([
+        { "id": 1, "name": "herald", "full_name": "nightworksio/herald", "visibility": "public", "topics": ["herald"] },
+        { "id": 2, "name": "evil", "full_name": "nightworksio/evil", "visibility": "public", "topics": ["PHP-Mutation-Gate"] },
+        { "id": 3, "name": "twin", "full_name": "nightworksio/twin", "visibility": "public", "topics": ["shared"] },
+        { "id": 4, "name": "copy", "full_name": "nightworksio/copy", "visibility": "public", "topics": ["shared"] },
+        { "id": 5, "name": "dep", "full_name": "nightworksio/dep", "visibility": "public", "topics": ["Deploys"] }
+    ])
+    .to_string();
+    let script = Script::answering(&[
+        (LISTING, 200, &listing),
+        (&released("herald"), 304, ""),
+        (&released("php-mutation-gate"), 304, ""),
+    ]);
+    let swept = polled_within(&both, &store, &script, NOON, None);
+    let reasons: Vec<(Option<&str>, String)> = swept
+        .iter()
+        .filter_map(|swept| match &swept.outcome {
+            Sweep::Stopped(Stop::Source(reason)) => Some((swept.member.as_deref(), reason.clone())),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        reasons,
+        [
+            (
+                Some("nightworksio/evil"),
+                "nightworksio/evil announces as the project PHP-Mutation-Gate, which the source mutation announces as too; its events are withheld until they differ".to_owned()
+            ),
+            (
+                Some("nightworksio/twin"),
+                "nightworksio/twin announces as the project shared, which gate's nightworksio/copy announces as too; its events are withheld until they differ".to_owned()
+            ),
+            (
+                Some("nightworksio/copy"),
+                "nightworksio/copy announces as the project shared, which gate's nightworksio/twin announces as too; its events are withheld until they differ".to_owned()
+            ),
+            (
+                Some("nightworksio/dep"),
+                "nightworksio/dep announces as the project Deploys, which the app ci announces as too; its events are withheld until they differ".to_owned()
+            ),
+        ]
+    );
+    let again = Script::answering(&[
+        (LISTING, 200, &listing),
+        (&released("herald"), 304, ""),
+        (&released("php-mutation-gate"), 304, ""),
+    ]);
+    let later = NOON + SignedDuration::from_hours(1);
+    let withheld = polled_within(&both, &store, &again, later, None)
+        .iter()
+        .filter(|swept| matches!(swept.outcome, Sweep::Stopped(Stop::Source(_))))
+        .count();
+    assert_eq!(withheld, 4);
+    let evil = members(&store)
+        .into_iter()
+        .find(|member| member.repository.id == "2")
+        .unwrap();
+    assert!(evil.collides.is_some());
+    assert!(members(&store)[0].collides.is_none());
+}
+
+/// Each member the round withheld, by its path, with why.
+fn withheld(swept: &[Swept]) -> Vec<(String, String)> {
+    swept
+        .iter()
+        .filter_map(|swept| match (&swept.member, &swept.outcome) {
+            (Some(member), Sweep::Stopped(Stop::Source(reason))) => Some((
+                format!("{}:{member}", swept.source.as_str()),
+                reason.clone(),
+            )),
+            _ => None,
+        })
+        .collect()
+}
+
+#[test]
+fn two_owners_joining_the_same_repositories_in_one_round_withhold_every_one_untemplated() {
+    let store = healthy();
+    let mut twice = owned(|_| {});
+    let gate = twice.sources[&SourceName::new("gate")].clone();
+    twice.sources.insert(SourceName::new("other"), gate);
+    let one = repositories(&[(1, "herald")]);
+    let script = Script::answering(&[(LISTING, 200, &one), (LISTING, 200, &one)]);
+    assert_eq!(
+        withheld(&polled_within(&twice, &store, &script, NOON, None)),
+        [
+            (
+                "gate:nightworksio/herald".to_owned(),
+                "nightworksio/herald announces as the project herald, which other's nightworksio/herald announces as too; its events are withheld until they differ".to_owned()
+            ),
+            (
+                "other:nightworksio/herald".to_owned(),
+                "nightworksio/herald announces as the project herald, which gate's nightworksio/herald announces as too; its events are withheld until they differ".to_owned()
+            ),
+        ]
+    );
+}
+
+#[test]
+fn a_member_announcing_as_the_project_a_feed_last_announced_is_withheld() {
+    let store = healthy();
+    let mut config = owned(|_| {});
+    config.sources.insert(
+        SourceName::new("news"),
+        herald_config::Source::new(herald_sources_feed::FeedOptions {
+            url: "https://news.example/feed.xml".to_owned(),
+            ..herald_sources_feed::FeedOptions::default()
+        }),
+    );
+    pollster::block_on(store.inner.put_cursor(
+        &SourceName::new("news"),
+        &herald_core::Cursor {
+            project: Some("Herald".to_owned()),
+            ..herald_core::Cursor::default()
+        },
+        None,
+    ))
+    .unwrap();
+    let script = Script::answering(&[
+        (LISTING, 200, &repositories(&[(1, "herald")])),
+        ("/feed.xml", 304, ""),
+    ]);
+    assert_eq!(
+        withheld(&polled_within(&config, &store, &script, NOON, None)),
+        [(
+            "gate:nightworksio/herald".to_owned(),
+            "nightworksio/herald announces as the project herald, which the source news announces as too; its events are withheld until they differ".to_owned()
+        )]
+    );
+}
+
+#[test]
+fn a_source_whose_records_cannot_be_read_withholds_every_member_that_round() {
+    let mut store = healthy();
+    let mut config = owned(|_| {});
+    let repository = crate::harness::config("").sources[&SourceName::new("gate")].clone();
+    config
+        .sources
+        .insert(SourceName::new("mutation"), repository);
+    store.fault = Fault::Cursors;
+    let script = Script::answering(&[(LISTING, 200, &repositories(&[(1, "herald")]))]);
+    let swept = polled_within(&config, &store, &script, NOON, None);
+    assert_eq!(
+        withheld(&swept),
+        [(
+            "gate:nightworksio/herald".to_owned(),
+            "the records of mutation could not be read, so whether another announces as its project herald cannot be checked; its events are withheld this round".to_owned()
+        )]
+    );
+    assert!(matches!(
+        swept.last().map(|swept| &swept.outcome),
+        Some(Sweep::Stopped(Stop::Store(_)))
+    ));
+}
+
+#[test]
+fn an_owner_following_its_events_polls_only_the_members_they_name() {
+    const EVENTS: &str = "/orgs/nightworksio/events?per_page=100&page=1";
+    let store = healthy();
+    let config = owned(|options| {
+        options.transport = Some(herald_sources_forge::Transport::Events);
+    });
+    let two = repositories(&[(1, "herald"), (2, "gate")]);
+    let release = releases("herald", &[("v1", NOON)]);
+    let gate = releases("gate", &[("v1", NOON)]);
+    let opening = Script::answering(&[
+        (LISTING, 200, &two),
+        (
+            EVENTS,
+            200,
+            r#"[{"id":"10","type":"PushEvent","repo":{"id":1}}]"#,
+        ),
+        (&released("herald"), 200, &release),
+        ("/repos/nightworksio/herald", 200, &described(1, "herald")),
+        (&released("gate"), 200, &gate),
+        ("/repos/nightworksio/gate", 200, &described(2, "gate")),
+    ])
+    .headed(&[ETAG]);
+    assert_eq!(
+        polled(&config, &store, &opening, NOON),
+        [
+            listed(2, &["herald", "gate"], &[]),
+            member("herald", first(1)),
+            member("gate", first(1)),
+        ]
+    );
+    assert_eq!(
+        listing(&store).unwrap().events,
+        Some(herald_core::EventsRead {
+            etag: Some("W/\"1\"".to_owned()),
+            newest: 10
+        })
+    );
+    let later = NOON + SignedDuration::from_hours(1);
+    let quiet = Script::answering(&[(LISTING, 304, ""), (PROBE, 200, "[]"), (EVENTS, 304, "")]);
+    assert_eq!(
+        polled(&config, &store, &quiet, later),
+        [
+            listed(2, &[], &[]),
+            member("herald", Sweep::Unchanged),
+            member("gate", Sweep::Unchanged),
+        ]
+    );
+    let named = Script::answering(&[
+        (LISTING, 304, ""),
+        (PROBE, 200, "[]"),
+        (
+            EVENTS,
+            200,
+            r#"[{"id":"12","type":"ReleaseEvent","repo":{"id":1},"payload":{"action":"published"}},{"id":"10","type":"PushEvent","repo":{"id":1}}]"#,
+        ),
+        (&released("herald"), 304, ""),
+    ]);
+    assert_eq!(
+        polled(
+            &config,
+            &store,
+            &named,
+            later + SignedDuration::from_hours(1)
+        ),
+        [
+            listed(2, &[], &[]),
+            member("gate", Sweep::Unchanged),
+            member("herald", Sweep::Unchanged),
+        ]
+    );
+    assert_eq!(listing(&store).unwrap().events.unwrap().newest, 12);
+    let failing = Script::answering(&[
+        (LISTING, 304, ""),
+        (PROBE, 200, "[]"),
+        (EVENTS, 500, "{}"),
+        (&released("herald"), 304, ""),
+        (&released("gate"), 304, ""),
+    ]);
+    let swept = polled(
+        &config,
+        &store,
+        &failing,
+        later + SignedDuration::from_hours(2),
+    );
+    assert!(matches!(swept[0], (None, Sweep::Stopped(Stop::Source(_)))));
+    assert_eq!(swept.len(), 4);
+}
+
+#[test]
+fn an_owner_following_its_events_reads_none_where_the_host_s_request_limit_is_spent() {
+    let store = healthy();
+    let config = owned(|options| {
+        options.transport = Some(herald_sources_forge::Transport::Events);
+    });
+    let script = Script::answering(&[(LISTING, 200, &repositories(&[(1, "herald")]))]);
+    let swept = polled_within(&config, &store, &script, NOON, Some(1));
+    assert_eq!(script.seen().len(), 1);
+    assert!(
+        swept
+            .iter()
+            .any(|swept| matches!(swept.outcome, Sweep::Stopped(Stop::Limit(_)))),
+        "{swept:?}"
+    );
 }

@@ -70,7 +70,8 @@ fn a_source_takes_no_webhook_and_no_moving_tag_where_its_kind_keeps_the_defaults
     assert_eq!(source.scheme(), None);
     assert!(!source.moving_tags());
     assert!(!source.unlisted());
-    assert_eq!(source.note(), None);
+    assert_eq!(source.notes(), Vec::<&str>::new());
+    assert_eq!(source.projects(), Vec::<String>::new());
     assert_eq!(
         source.secret_refs(),
         vec![&SecretRef {
@@ -138,8 +139,93 @@ fn a_listing_takes_its_members_and_an_unchanged_one_none() {
             members: vec![member.clone()],
             owner: herald_core::Owner::User,
             pages: Vec::new(),
+            file: None,
+            missing: Vec::new(),
         }
         .members(),
         [member]
+    );
+}
+
+/// An owner whose every member is polled on its own by a quiet poll.
+#[derive(Debug)]
+struct Members;
+
+impl Expand for Members {
+    fn api(&self) -> &'static str {
+        "https://owner.example"
+    }
+
+    fn keep_members(&self) -> SignedDuration {
+        SignedDuration::ZERO
+    }
+
+    fn remembered(&self) -> usize {
+        1
+    }
+
+    fn listed<'a>(
+        &'a self,
+        _: &'a dyn DynHttp,
+        _: Option<&'a Listing>,
+    ) -> Boxed<'a, Result<Expanded, Unlisted>> {
+        Box::pin(ready(Ok(Expanded::Unchanged)))
+    }
+
+    fn member(&self, repository: &Listed) -> Arc<dyn Poll> {
+        Arc::new(Quiet(None, repository.path.clone()))
+    }
+
+    fn project(&self, repository: &Listed) -> Result<String, String> {
+        Ok(repository.name.clone())
+    }
+
+    fn takes(&self, _: &Listed) -> bool {
+        true
+    }
+
+    fn fingerprint(&self) -> String {
+        String::new()
+    }
+}
+
+#[test]
+fn an_owner_by_default_polls_each_member_on_its_own_and_follows_no_events() {
+    struct Nowhere;
+    impl herald_ports::Http for Nowhere {
+        #[expect(
+            clippy::unused_async_trait_impl,
+            reason = "a fake answers at once, and is written as the async trait it fakes"
+        )]
+        async fn send(
+            &self,
+            _: herald_ports::Request,
+        ) -> Result<herald_ports::Response, herald_ports::HttpError> {
+            Err(herald_ports::HttpError::TimedOut)
+        }
+    }
+    let member = |name: &str| herald_core::Listed {
+        id: name.to_owned(),
+        name: name.to_owned(),
+        path: format!("o/{name}"),
+        topics: Vec::new(),
+        properties: std::collections::BTreeMap::new(),
+        visibility: herald_core::Visibility::Public,
+        archived: false,
+        fork: false,
+        template: false,
+        language: None,
+    };
+    let (one, two) = (member("one"), member("two"));
+    let http = Nowhere;
+    let owner = Members;
+    assert_eq!(owner.batch(), std::num::NonZeroUsize::MIN);
+    assert_eq!(
+        pollster::block_on(owner.polled(&http, &[(&one, None), (&two, None)])),
+        [Ok(None), Ok(None)]
+    );
+    assert_eq!(
+        pollster::block_on(owner.changed(&http, herald_core::Owner::User, None)),
+        None
     );
 }

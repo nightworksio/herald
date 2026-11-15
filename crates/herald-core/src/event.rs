@@ -110,6 +110,22 @@ impl Event {
         })
     }
 
+    /// The event, announced as of the project `project`.
+    ///
+    /// # Errors
+    ///
+    /// When `project` is empty once trimmed.
+    pub fn of_project(self, project: &str) -> Result<Self, Problem> {
+        let project = project.trim();
+        if project.is_empty() {
+            return Err(Problem::NoProject);
+        }
+        Ok(Self {
+            project: project.to_owned(),
+            ..self
+        })
+    }
+
     /// What makes this event this event.
     #[must_use]
     pub fn identity(&self) -> &Identity {
@@ -242,6 +258,15 @@ pub(crate) mod tests {
 
     pub(crate) fn event() -> Event {
         Event::normalise(draft()).unwrap()
+    }
+
+    #[test]
+    fn an_event_named_for_another_project_keeps_everything_else() {
+        let renamed = event().of_project("  plugins/gate ").unwrap();
+        assert_eq!(renamed.project(), "plugins/gate");
+        assert_eq!(renamed.identity(), event().identity());
+        assert_eq!(renamed.title(), event().title());
+        assert_eq!(event().of_project(" \t"), Err(Problem::NoProject));
     }
 
     #[test]

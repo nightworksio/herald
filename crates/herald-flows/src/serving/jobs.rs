@@ -2,15 +2,16 @@
 //! released undone so its sender's next delivery of it is admitted
 //! (ADR-0013).
 
-use herald_core::{Asked, DestinationName, Event, RouteId, Scheme, SourceName};
-use herald_kinds::Replying;
-use herald_ports::{Clock, Http, Signer, Store};
+use herald_core::{Asked, DestinationName, Event, RouteId, Scheme, SourceName, Visibility};
+use herald_kinds::{Polling, Replying};
+use herald_ports::{Clock, Cursors, Http, Signer, Store};
 
 use super::Serving;
 use super::replies::{Answered, busy, unreleased};
 use crate::announce::{Announced, Outcome, announce_within};
 use crate::command_answers::{Answer, interact, replied};
 use crate::follows::{FollowError, Followed, followed};
+use crate::poll::bounded;
 use crate::verification::{Checking, Verified, released};
 
 /// Work a request leaves to be done once it is answered.
@@ -23,6 +24,10 @@ pub enum Job {
         source: SourceName,
         /// The event it delivers.
         event: Event,
+        /// The owner's member it is of, where the source is an owner's:
+        /// announced only where the owner's last membership record holds it
+        /// (ADR-0030).
+        member: Option<Member>,
         /// The scheme it is signed under.
         scheme: Scheme,
         /// What its signature names.
@@ -76,6 +81,50 @@ pub enum Did {
     Followed(Result<Followed, FollowError>),
     /// What each command was answered, and whether the answer was sent.
     Interacted(Vec<Interacted>),
+    /// Nothing, as the owner's last membership record does not hold the
+    /// member the event is of, as this says.
+    Withheld(Withheld),
+}
+
+/// The owner's member a webhook delivery is of (ADR-0030).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Member {
+    /// The forge's id of the member.
+    pub id: String,
+    /// Who may see it, as the delivery names it, where it does.
+    pub visibility: Option<Visibility>,
+}
+
+impl Member {
+    /// Who may see the member as far as bounding its routes goes, beside
+    /// `kept`, who its membership record says may: public only where the
+    /// delivery says so too, and otherwise the stricter of the two, a
+    /// delivery that names none counting as private.
+    #[must_use]
+    pub fn bounded(&self, kept: Visibility) -> Visibility {
+        match self.visibility {
+            Some(delivered) if delivered == kept => kept,
+            Some(delivered) => delivered.max(kept).max(Visibility::Internal),
+            None => Visibility::Private,
+        }
+    }
+}
+
+/// Why an owner's member's event was not announced (ADR-0030).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Withheld {
+    /// The owner's last membership record does not name the member.
+    Unlisted,
+    /// The member left the owner's selection.
+    Left,
+    /// The membership record could not be read, as this says.
+    Unread(String),
+    /// The source's project template names no project for the member, as
+    /// this says.
+    Unnamed(String),
+    /// The member's project template names the project another member or
+    /// source announces as, as this says.
+    Collides(String),
 }
 
 impl Did {
@@ -89,6 +138,7 @@ impl Did {
                 .any(|announced| matches!(announced.outcome, Outcome::Stopped { .. })),
             Self::Followed(taken) => taken.is_err(),
             Self::Interacted(_) => false,
+            Self::Withheld(withheld) => matches!(withheld, Withheld::Unread(_)),
         }
     }
 }
@@ -170,6 +220,12 @@ pub async fn work<S: Store, C: Clock, G: Signer, V, H: Http, P, K>(
         .delivery()
         .map(|(namespace, verified)| (namespace, verified.clone()));
     let did = match job {
+        Job::Announce {
+            source,
+            event,
+            member: Some(member),
+            ..
+        } => membered(serving, &source, (&event, &member), run).await,
         Job::Announce { source, event, .. } => announced(serving, &source, &event, None, run).await,
         Job::App { app, event, .. } => {
             let within = serving
@@ -232,6 +288,59 @@ async fn announced<S: Store, C: Clock, G: Signer, V, H: Http, P, K>(
     )
 }
 
+/// `event`, from the owner source `source`'s member `id`, announced under
+/// the run name `run` where the owner's last membership record holds the
+/// member, and only to the `private` routes where it is not public and
+/// doctor refuses (ADR-0030).
+async fn membered<S: Store, C: Clock, G: Signer, V, H: Http, P, K>(
+    serving: &Serving<'_, S, C, G, V, H, P, K>,
+    source: &SourceName,
+    (event, member): (&Event, &Member),
+    run: &str,
+) -> Did {
+    let held = match serving
+        .ports
+        .store
+        .cursors()
+        .member(source, &member.id)
+        .await
+    {
+        Ok(Some(held)) => held.value,
+        Ok(None) => return Did::Withheld(Withheld::Unlisted),
+        Err(error) => return Did::Withheld(Withheld::Unread(error.to_string())),
+    };
+    if held.left.is_some() {
+        return Did::Withheld(Withheld::Left);
+    }
+    if let Some(reason) = held.collides {
+        return Did::Withheld(Withheld::Collides(reason));
+    }
+    let expand = serving
+        .connected
+        .sources
+        .iter()
+        .find(|(prepared, _)| prepared.name == *source)
+        .and_then(|(prepared, _)| match &prepared.poll {
+            Polling::Many(expand) => Some(expand),
+            Polling::One(_) => None,
+        });
+    let named = match expand {
+        None => Ok(event.clone()),
+        Some(expand) => expand.project(&held.repository).and_then(|project| {
+            event
+                .clone()
+                .of_project(&project)
+                .map_err(|problem| problem.to_string())
+        }),
+    };
+    let event = match named {
+        Ok(event) => event,
+        Err(reason) => return Did::Withheld(Withheld::Unnamed(reason)),
+    };
+    let within = bounded(serving.config, member.bounded(held.repository.visibility));
+    announced(serving, source, &event, within.as_deref(), run).await
+}
+
 /// Each command `asked` on `destination` answered, and each answer sent
 /// where it goes.
 async fn interacted<S: Store, C, G, V, H: Http, P, K>(
@@ -250,4 +359,42 @@ async fn interacted<S: Store, C, G, V, H: Http, P, K>(
         });
     }
     Did::Interacted(interacted)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_member_is_bounded_as_public_only_where_its_delivery_and_its_record_agree() {
+        let member = |visibility| Member {
+            id: "1".to_owned(),
+            visibility,
+        };
+        let public = Some(Visibility::Public);
+        assert_eq!(
+            member(public).bounded(Visibility::Public),
+            Visibility::Public
+        );
+        assert_eq!(
+            member(Some(Visibility::Private)).bounded(Visibility::Public),
+            Visibility::Private
+        );
+        assert_eq!(
+            member(public).bounded(Visibility::Internal),
+            Visibility::Internal
+        );
+        assert_eq!(
+            member(public).bounded(Visibility::Private),
+            Visibility::Private
+        );
+        assert_eq!(
+            member(Some(Visibility::Internal)).bounded(Visibility::Internal),
+            Visibility::Internal
+        );
+        assert_eq!(
+            member(None).bounded(Visibility::Public),
+            Visibility::Private
+        );
+    }
 }

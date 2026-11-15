@@ -26,6 +26,7 @@ pub use reach::{Posts, Probe, Reach, Reached, Signing, UnreadPosts};
 pub use session::{Connect, Effect, Session};
 pub use setup::{Made, Served, Setup, SetupNeeds, SetupStep, SetupTask};
 pub use source::{
-    Expand, Expanded, Hooked, Poll, Polling, Source, SourceConfig, SourceKind, Unlisted, Unpolled,
+    Changed, Expand, Expanded, Hooked, Poll, Polling, Source, SourceConfig, SourceKind, Unlisted,
+    Unpolled, each_polled,
 };
 pub use store::{ConfiguredStore, Offer, StoreConfig, StoreKind};

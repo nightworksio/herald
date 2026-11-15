@@ -406,6 +406,17 @@ impl Cursors for Failing {
         self.inner.members(source).await
     }
 
+    async fn member(
+        &self,
+        source: &SourceName,
+        id: &str,
+    ) -> Result<Option<herald_ports::Versioned<herald_core::Membership>>, StoreError> {
+        if self.fault == Fault::ReadsMembers {
+            return Err(broken());
+        }
+        self.inner.member(source, id).await
+    }
+
     async fn put_member(
         &self,
         source: &SourceName,
@@ -729,6 +740,14 @@ impl herald_ports::Cursors for Refusing {
         &self,
         _: &herald_core::SourceName,
     ) -> Result<Vec<herald_ports::Versioned<herald_core::Membership>>, StoreError> {
+        Err(self.0.clone())
+    }
+
+    async fn member(
+        &self,
+        _: &herald_core::SourceName,
+        _: &str,
+    ) -> Result<Option<herald_ports::Versioned<herald_core::Membership>>, StoreError> {
         Err(self.0.clone())
     }
 

@@ -340,6 +340,57 @@ owner or another `api` is read whole. `herald doctor --online` lists each owner 
 names any two repositories, of one owner or of two, that would announce as
 the same project.
 
+A member file names the repositories an owner source takes, and the filters
+narrow it. It is a TOML or JSON file beside the config, read once as the
+config loads, or a file in a repository on the same forge, read through its
+API with the source's token each round and asked with its `ETag`. `tables`
+names the arrays that list repositories and `key` the field naming each one
+("name" where absent); an entry matches a repository's name or full path,
+ignoring case. `herald doctor --online` names the entries the owner does
+not hold.
+
+```toml
+[sources.org]
+kind = "github"
+owner = "lemonfiber"
+members = { repository = "lemonfiber/spec", path = "30-repos/repos.toml", ref = "main" }
+tables = ["repo", "ungoverned"]
+project = "{{ repository.owner }}/{{ repository.name }}"
+webhook = { secret = "HERALD_WEBHOOK" }
+```
+
+`project` names the project a member's events are announced as, from
+`repository.name`, `path`, `owner`, `id`, `topics`, `properties` and
+`visibility`; a template that reads anything else does not load. An owner
+source takes webhooks from each repository and from the organization. A
+delivery is announced only where the repository is one the owner holds and
+the filters take by what the payload names, and only where the owner's last
+membership record holds it when the work runs, so poll the source as well. A delivery
+reaches a public route only where both it and the record say the
+repository is public.
+
+A GitHub owner with a `token` polls its members through GraphQL, 50 to a
+request (`graphql_batch`, at most 100): one request asks each member's
+newest releases by tag, and a second asks in full only those holding one
+not yet seen. `transport = "rest"` polls each member with its own request,
+as an owner without a token does, and `transport = "graphql"` insists on
+GraphQL. The endpoint sits beside `api` (`/api/graphql` on a GitHub
+Enterprise Server, `/graphql` on GitHub and GHE.com); `graphql` names
+another on the same host.
+`transport = "events"` reads the owner's events once a round, with its
+`ETag`, and polls only the members a published release names, and those
+never polled; where the events do not reach back to the last read, every
+member is polled.
+
+`[sources.<owner>.repositories."<glob>"]` overrides `project` for the
+repositories a glob names, each key settled by the narrowest glob setting
+it: one without wildcards before one with, and otherwise the one naming
+more characters. Two equally narrow globs that set one key and could name
+one repository do not load. A repository's admin controls its
+name, topics and properties, so no member announces as a project another
+member, source or app announces as: such a member is withheld and
+reported until the two differ.
+
 ### An app's own events
 
 Any app can announce through herald: a deploy script, a CI step, a service

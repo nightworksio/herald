@@ -159,6 +159,17 @@ impl Cursors for FakeStore {
             .collect())
     }
 
+    async fn member(
+        &self,
+        source: &SourceName,
+        id: &str,
+    ) -> Result<Option<Versioned<Membership>>, StoreError> {
+        Ok(lock(&self.state)
+            .members
+            .get(&(source.clone(), id.to_owned()))
+            .cloned())
+    }
+
     async fn put_member(
         &self,
         source: &SourceName,

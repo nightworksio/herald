@@ -27,6 +27,7 @@ enum Fault {
     OverwritesCursors,
     OverwritesMembers,
     ListsOtherSourcesMembers,
+    ReadsOtherSourcesMember,
     KeepsForgottenMembers,
     ForgetsOtherSourcesMembers,
     DuplicatesSchedules,
@@ -773,6 +774,10 @@ fn a_store_that_breaks_its_promises_on_an_owner_source_s_members_is_refused() {
         (
             Fault::ListsOtherSourcesMembers,
             "the members listed were not every member written under the source, as written",
+        ),
+        (
+            Fault::ReadsOtherSourcesMember,
+            "a member read under one source was another source's",
         ),
         (
             Fault::KeepsForgottenMembers,

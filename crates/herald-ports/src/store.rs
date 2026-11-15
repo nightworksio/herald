@@ -245,6 +245,14 @@ pub trait Cursors: Sync {
         source: &SourceName,
     ) -> impl Future<Output = Result<Vec<Versioned<Membership>>, StoreError>> + Send;
 
+    /// The membership of `source`'s member whose forge id is `id`, where
+    /// it is kept.
+    fn member(
+        &self,
+        source: &SourceName,
+        id: &str,
+    ) -> impl Future<Output = Result<Option<Versioned<Membership>>, StoreError>> + Send;
+
     /// Writes the membership of one of `source`'s members if the stored
     /// one is at `expected`, or absent when `expected` is `None`.
     fn put_member(
@@ -577,6 +585,14 @@ impl Cursors for Unkept {
         &self,
         _: &SourceName,
     ) -> impl Future<Output = Result<Vec<Versioned<Membership>>, StoreError>> + Send {
+        ready(Err(Held::Cursors.unsupported()))
+    }
+
+    fn member(
+        &self,
+        _: &SourceName,
+        _: &str,
+    ) -> impl Future<Output = Result<Option<Versioned<Membership>>, StoreError>> + Send {
         ready(Err(Held::Cursors.unsupported()))
     }
 

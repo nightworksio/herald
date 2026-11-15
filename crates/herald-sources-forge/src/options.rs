@@ -1,7 +1,10 @@
 use std::collections::BTreeMap;
 use std::num::NonZeroUsize;
 
-use herald_core::{Duration, Glob, SecretRef, Selection, Size, Visibility, path_of_names, web_url};
+use herald_core::{
+    Address, Duration, Glob, ProjectName, REPOSITORY_FIELDS, Sandbox, SecretRef, Selection, Size,
+    Visibility, path_of_names, web_url,
+};
 use herald_wire::{PARSE_LIMIT, Reading};
 use jiff::SignedDuration;
 
@@ -36,7 +39,67 @@ impl Values {
     }
 }
 
-/// A forge source's options in `herald.toml` (ADR-0006, ADR-0029).
+/// Where an owner source's member file is.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize, schemars::JsonSchema)]
+#[serde(untagged, deny_unknown_fields)]
+pub enum Members {
+    /// A file beside the config, such as `repos.toml`.
+    File {
+        /// Its path, from the config's directory.
+        file: String,
+    },
+    /// A file in a repository on the source's forge, read through its API
+    /// with the source's token each round.
+    Repository {
+        /// The repository, as `repository` writes one.
+        repository: String,
+        /// The file's path in it.
+        path: String,
+        /// The branch, tag or commit it is read at; the default branch where
+        /// absent.
+        #[serde(rename = "ref")]
+        reference: Option<String>,
+    },
+}
+
+/// What an owner source makes of the repositories one glob names.
+#[derive(Debug, Clone, PartialEq, Eq, Default, serde::Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct Override {
+    /// The project their events are announced as, a template as the
+    /// source's `project` is; the source's where absent.
+    pub project: Option<String>,
+}
+
+/// The field each entry of a member file names its repository by where
+/// `key` is absent.
+pub const KEY: &str = "name";
+
+/// How many of an owner's members one GitHub GraphQL request asks for
+/// where `graphql_batch` is absent.
+pub const GRAPHQL_BATCH: NonZeroUsize = NonZeroUsize::new(50).unwrap();
+/// The most `graphql_batch` may be: the most ids GitHub's GraphQL API
+/// looks up in one request.
+pub const GRAPHQL_BATCH_ALLOWED: usize = 100;
+
+/// How an owner's members are polled on GitHub.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "lowercase")]
+pub enum Transport {
+    /// GraphQL in batches where the source has a token, and REST per member
+    /// where it has none.
+    #[default]
+    Auto,
+    /// GraphQL in batches of `graphql_batch` members, which needs a token.
+    Graphql,
+    /// REST, one member at a time, each asked with its `ETag`.
+    Rest,
+    /// The owner's events, read once a round, naming the members to poll,
+    /// each through GraphQL where there is a token and REST otherwise.
+    Events,
+}
+
+/// A forge source's options in `herald.toml` (ADR-0006, ADR-0029, ADR-0030).
 #[derive(Debug, Clone, PartialEq, Eq, Default, serde::Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct SourceOptions {
@@ -67,7 +130,9 @@ pub struct SourceOptions {
     pub backfill: usize,
     /// The secret the forge signs its webhook deliveries to `herald server`
     /// with: GitHub's and Forgejo's webhook secret, or GitLab's signing
-    /// token (ADR-0007). A source of one repository only.
+    /// token (ADR-0007). An owner source takes its repositories' and its
+    /// organization's deliveries, and announces one only where the owner's
+    /// last membership record holds the repository when its work runs.
     pub webhook: Option<SecretRef>,
     /// How many of the newest releases one poll reads; 30 where absent.
     #[schemars(with = "Option<NonZeroUsize>")]
@@ -133,10 +198,43 @@ pub struct SourceOptions {
     /// answer at most 50 unless configured otherwise.
     #[schemars(with = "Option<NonZeroUsize>")]
     pub listed_page: Option<NonZeroUsize>,
+    /// The member file: where given, the names it lists are the source's
+    /// members, which the filters narrow, read as TOML or JSON by its
+    /// extension.
+    pub members: Option<Members>,
+    /// The arrays of the member file that list repositories, such as
+    /// `["repo", "ungoverned"]`; the file's own array where absent, which
+    /// only JSON can hold.
+    #[serde(default)]
+    pub tables: Vec<String>,
+    /// The field each entry of the member file names its repository by;
+    /// "name" where absent.
+    pub key: Option<String>,
+    /// The project a member's events are announced as, a template of
+    /// `repository.name`, `repository.path`, `repository.owner`,
+    /// `repository.id`, `repository.topics`, `repository.properties` and
+    /// `repository.visibility`; the repository's name where absent.
+    #[schemars(example = SourceOptions::PROJECT)]
+    pub project: Option<String>,
+    /// What the source makes of the repositories each glob names, as
+    /// `include` writes them; where several name one repository, the
+    /// narrowest that sets a key gives it.
+    #[serde(default)]
+    pub repositories: BTreeMap<String, Override>,
+    /// How a GitHub owner's members are polled; "auto" where absent.
+    pub transport: Option<Transport>,
+    /// The GraphQL endpoint of a GitHub owner source; beside `api` where
+    /// absent: `/api/graphql` on a GitHub Enterprise Server whose `api` ends
+    /// in `/api/v3`, and `/graphql` on GitHub and GHE.com.
+    pub graphql: Option<String>,
+    /// How many members one GraphQL request asks for; 50 where absent, and
+    /// at most 100.
+    #[schemars(with = "Option<NonZeroUsize>")]
+    pub graphql_batch: Option<NonZeroUsize>,
 }
 
 /// The keys that only an owner source may give.
-const OWNED: [&str; 14] = [
+const OWNED: [&str; 22] = [
     "include",
     "exclude",
     "topics",
@@ -151,7 +249,20 @@ const OWNED: [&str; 14] = [
     "most_members",
     "keep_members",
     "listed_page",
+    "members",
+    "tables",
+    "key",
+    "project",
+    "repositories",
+    "transport",
+    "graphql",
+    "graphql_batch",
 ];
+
+/// The project template `source`, compiled, where it compiles.
+fn compiled(source: &str) -> Option<ProjectName> {
+    ProjectName::compile(source, Sandbox::DEFAULT).ok()
+}
 
 fn globs(texts: &[String]) -> Result<Vec<Glob>, String> {
     texts
@@ -165,6 +276,8 @@ impl SourceOptions {
     const INCLUDE: [&str; 1] = ["plugin-*"];
     /// The owner the schema shows as an example.
     const OWNER: &str = "nightworksio";
+    /// The project template the schema shows as an example.
+    const PROJECT: &str = "{{ repository.owner }}/{{ repository.name }}";
 
     /// Whether the options are sound for a source on `forge`.
     ///
@@ -218,13 +331,86 @@ impl SourceOptions {
                 forge.owner_shape()
             ));
         }
-        if self.webhook.is_some() {
-            return Err(
-                "an owner source is polled, and takes no webhook; remove webhook".to_owned(),
-            );
-        }
         if self.subgroups.is_some() && forge != Forge::GitLab {
             return Err("subgroups is a GitLab group's; remove it".to_owned());
+        }
+        if forge != Forge::GitHub
+            && let Some(key) = [
+                (self.transport.is_some(), "transport"),
+                (self.graphql.is_some(), "graphql"),
+                (self.graphql_batch.is_some(), "graphql_batch"),
+            ]
+            .into_iter()
+            .find_map(|(given, key)| given.then_some(key))
+        {
+            return Err(format!("{key} is a GitHub owner's; remove it"));
+        }
+        if self.transport == Some(Transport::Graphql) && self.token.is_none() {
+            return Err(
+                "transport graphql needs a token, as GitHub's GraphQL API answers none without; give token, or choose rest".to_owned(),
+            );
+        }
+        if let Some(graphql) = &self.graphql {
+            if !web_url(graphql) {
+                return Err(format!(
+                    "graphql \"{graphql}\" is not a web address; give the GraphQL endpoint, such as https://ghe.example/api/graphql"
+                ));
+            }
+            let origin = |url: &str| Address::parse(url).map(|address| address.origin());
+            if origin(graphql) != origin(self.api.as_deref().unwrap_or(forge.api().url)) {
+                return Err(format!(
+                    "graphql \"{graphql}\" is not on api's host, the only one the source may reach; give the endpoint beside api, or remove graphql"
+                ));
+            }
+        }
+        if self.graphql_batch().get() > GRAPHQL_BATCH_ALLOWED {
+            return Err(format!(
+                "graphql_batch is at most {GRAPHQL_BATCH_ALLOWED}; lower it"
+            ));
+        }
+        if self.members.is_none() && (!self.tables.is_empty() || self.key.is_some()) {
+            return Err(
+                "tables and key read a member file; give members, or remove them".to_owned(),
+            );
+        }
+        if let Some(Members::Repository {
+            repository, path, ..
+        }) = &self.members
+        {
+            if !path_of_names(repository, forge.names()) {
+                return Err(format!(
+                    "members.repository \"{repository}\" is not a repository; give it as {}",
+                    forge.shape()
+                ));
+            }
+            if path
+                .split('/')
+                .any(|segment| matches!(segment, "" | "." | ".."))
+            {
+                return Err(format!(
+                    "members.path \"{path}\" is not a file's path in the repository; give it as dir/file.toml, without empty, . or .. parts"
+                ));
+            }
+        }
+        if let Some(project) = &self.project {
+            Self::project_check(project).map_err(|reason| format!("project {reason}"))?;
+        }
+        for (glob, chosen) in &self.repositories {
+            Glob::new(glob).map_err(|error| format!("repositories: {error}"))?;
+            if let Some(project) = &chosen.project {
+                Self::project_check(project)
+                    .map_err(|reason| format!("repositories.\"{glob}\".project {reason}"))?;
+            }
+        }
+        let projects = self.projects();
+        for (at, (glob, _)) in projects.iter().enumerate() {
+            if let Some((other, _)) = projects.iter().skip(at + 1).find(|(other, _)| {
+                other.specificity() == glob.specificity() && other.overlaps(glob)
+            }) {
+                return Err(format!(
+                    "repositories \"{glob}\" and \"{other}\" both set project, are as narrow as each other and could both name one repository; make one narrower"
+                ));
+            }
         }
         if self.most_members().get() > MOST_MEMBERS_ALLOWED {
             return Err(format!(
@@ -232,6 +418,47 @@ impl SourceOptions {
             ));
         }
         self.selection().map(|_| ())
+    }
+
+    /// Whether the `project` template compiles and reads a repository's
+    /// attributes alone.
+    fn project_check(project: &str) -> Result<(), String> {
+        let named =
+            ProjectName::compile(project, Sandbox::DEFAULT).map_err(|error| error.reason)?;
+        let unknown = named.unknown();
+        if unknown.is_empty() {
+            Ok(())
+        } else {
+            Err(format!(
+                "reads {}, which a repository does not carry; use repository.{}",
+                unknown.join(", "),
+                REPOSITORY_FIELDS.join(", repository.")
+            ))
+        }
+    }
+
+    /// The project template, compiled, where one is given.
+    #[must_use]
+    pub fn project(&self) -> Option<ProjectName> {
+        self.project.as_deref().and_then(compiled)
+    }
+
+    /// Each glob of `repositories` that sets a project, with its template
+    /// compiled, narrowest first.
+    #[must_use]
+    pub fn projects(&self) -> Vec<(Glob, ProjectName)> {
+        let mut projects: Vec<(Glob, ProjectName)> = self
+            .repositories
+            .iter()
+            .filter_map(|(glob, chosen)| {
+                Some((
+                    Glob::new(glob).ok()?,
+                    chosen.project.as_deref().and_then(compiled)?,
+                ))
+            })
+            .collect();
+        projects.sort_by_key(|(glob, _)| std::cmp::Reverse(glob.specificity()));
+        projects
     }
 
     /// Each owner's key the options give.
@@ -251,6 +478,14 @@ impl SourceOptions {
             self.most_members.is_some(),
             self.keep_members.is_some(),
             self.listed_page.is_some(),
+            self.members.is_some(),
+            !self.tables.is_empty(),
+            self.key.is_some(),
+            self.project.is_some(),
+            !self.repositories.is_empty(),
+            self.transport.is_some(),
+            self.graphql.is_some(),
+            self.graphql_batch.is_some(),
         ];
         OWNED
             .into_iter()
@@ -282,6 +517,7 @@ impl SourceOptions {
                 .iter()
                 .map(|(name, values)| (name.clone(), values.listed()))
                 .collect(),
+            names: None,
         })
     }
 
@@ -295,6 +531,36 @@ impl SourceOptions {
     #[must_use]
     pub fn most_members(&self) -> NonZeroUsize {
         self.most_members.unwrap_or(MOST_MEMBERS)
+    }
+
+    /// How many members one GraphQL request asks for.
+    #[must_use]
+    pub fn graphql_batch(&self) -> NonZeroUsize {
+        self.graphql_batch.unwrap_or(GRAPHQL_BATCH)
+    }
+
+    /// How a GitHub owner's members are polled.
+    #[must_use]
+    pub fn transport(&self) -> Transport {
+        self.transport.unwrap_or_default()
+    }
+
+    /// Whether a GitHub owner's members are polled together through
+    /// GraphQL: as `transport` says, and under "auto" and "events" where
+    /// there is a token.
+    #[must_use]
+    pub fn batched(&self) -> bool {
+        match self.transport() {
+            Transport::Graphql => true,
+            Transport::Auto | Transport::Events => self.token.is_some(),
+            Transport::Rest => false,
+        }
+    }
+
+    /// The field each entry of the member file names its repository by.
+    #[must_use]
+    pub fn key(&self) -> &str {
+        self.key.as_deref().unwrap_or(KEY)
     }
 
     /// How long a member that left is kept.

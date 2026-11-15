@@ -137,6 +137,7 @@ fn a_first_poll_remembers_what_it_finds_and_a_later_one_announces_only_what_is_n
             seen: seen(&["v2", "v1"]),
             etag: Some("W/\"2\"".to_owned()),
             last_modified: None,
+            project: Some("php-mutation-gate".to_owned()),
         })
     );
     let unchanged = Script::answering(&[(RELEASES, 304, "")]);

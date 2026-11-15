@@ -9,7 +9,7 @@ use herald_core::status;
 use herald_kinds::Hooked;
 use herald_ports::{Clock, Secret, Store, Verifier};
 
-use super::jobs::Job;
+use super::jobs::{Job, Member};
 use super::replies::{Answered, missing, rejection, text_reply, unread};
 use super::{Inbound, Serving};
 use crate::verification::{Checking, admitted, verified};
@@ -17,6 +17,15 @@ use crate::verification::{Checking, admitted, verified};
 /// The secret each forge source's webhooks are signed with, by the source.
 #[derive(Debug, Clone, Default)]
 pub struct Webhooks(pub(crate) BTreeMap<SourceName, Secret>);
+
+/// The answer to a delivery whose release is left to announce as `job`.
+fn accepted(job: Job) -> Answered {
+    Answered {
+        reply: text_reply(status::ACCEPTED, "herald announces the release").reply,
+        refused: None,
+        job: Some(job),
+    }
+}
 
 /// A webhook of the source `name`, verified and admitted, and the release
 /// it publishes left to announce.
@@ -57,16 +66,24 @@ pub(super) async fn hooked<S: Store, C: Clock, G, V: Verifier, H, P, K>(
         return rejection(&rejected);
     }
     match hooking.hooked(inbound.headers, inbound.body) {
-        Ok(Hooked::Event(event)) => Answered {
-            reply: text_reply(status::ACCEPTED, "herald announces the release").reply,
-            refused: None,
-            job: Some(Job::Announce {
-                source,
-                event,
-                scheme,
-                verified,
-            }),
-        },
+        Ok(Hooked::Event(event)) => accepted(Job::Announce {
+            source,
+            event,
+            member: None,
+            scheme,
+            verified,
+        }),
+        Ok(Hooked::Member {
+            event,
+            id,
+            visibility,
+        }) => accepted(Job::Announce {
+            source,
+            event,
+            member: Some(Member { id, visibility }),
+            scheme,
+            verified,
+        }),
         Ok(Hooked::Nothing(why)) => text_reply(status::OK, why),
         Err(error) => unread(store, scheme.name, &verified, error).await,
     }

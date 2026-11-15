@@ -22,6 +22,28 @@ enum Part {
 }
 
 impl Part {
+    /// Whether one character could match both it and `other`.
+    fn shares(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Literal(character), part) | (part, Self::Literal(character)) => {
+                part.takes(*character)
+            }
+            (
+                Self::Class {
+                    negated: false,
+                    ranges: ours,
+                },
+                Self::Class {
+                    negated: false,
+                    ranges: theirs,
+                },
+            ) => ours
+                .iter()
+                .any(|&(low, high)| theirs.iter().any(|&(from, to)| low <= to && from <= high)),
+            _ => true,
+        }
+    }
+
     fn takes(&self, character: char) -> bool {
         match self {
             Self::Any | Self::One => true,
@@ -79,6 +101,19 @@ impl Glob {
         })
     }
 
+    /// How narrowly it names: whether it holds no wildcard, then how many
+    /// characters it names as themselves. A narrower glob orders after a
+    /// wider one.
+    #[must_use]
+    pub fn specificity(&self) -> (bool, usize) {
+        let literal = self
+            .parts
+            .iter()
+            .filter(|part| matches!(part, Part::Literal(_)))
+            .count();
+        (literal == self.parts.len(), literal)
+    }
+
     /// The glob, as written.
     #[must_use]
     pub fn as_str(&self) -> &str {
@@ -90,6 +125,36 @@ impl Glob {
     pub fn matches(&self, name: &str) -> bool {
         let name: Vec<char> = name.to_lowercase().chars().collect();
         wildcards(&self.parts, |part| *part == Part::Any, Part::takes, &name)
+    }
+
+    /// Whether some name could match both it and `other`, ignoring case. A
+    /// negated class is taken to share a character with any other class.
+    #[must_use]
+    pub fn overlaps(&self, other: &Self) -> bool {
+        let (ours, theirs) = (&self.parts, &other.parts);
+        let width = theirs.len() + 1;
+        let mut reached = vec![false; (ours.len() + 1) * width];
+        for at in 0..=ours.len() {
+            for to in 0..=theirs.len() {
+                let was = |at: usize, to: usize| reached.get(at * width + to) == Some(&true);
+                let our = at.checked_sub(1).and_then(|before| ours.get(before));
+                let their = to.checked_sub(1).and_then(|before| theirs.get(before));
+                let here = match (our, their) {
+                    (None, None) => true,
+                    (Some(our), None) => *our == Part::Any && was(at - 1, to),
+                    (None, Some(their)) => *their == Part::Any && was(at, to - 1),
+                    (Some(our), Some(their)) => {
+                        (*our == Part::Any && (was(at - 1, to) || was(at, to - 1)))
+                            || (*their == Part::Any && (was(at, to - 1) || was(at - 1, to)))
+                            || (was(at - 1, to - 1) && our.shares(their))
+                    }
+                };
+                if let Some(cell) = reached.get_mut(at * width + to) {
+                    *cell = here;
+                }
+            }
+        }
+        reached.last() == Some(&true)
     }
 }
 
@@ -165,6 +230,42 @@ mod tests {
 
     fn glob(text: &str) -> Glob {
         Glob::new(text).unwrap()
+    }
+
+    #[test]
+    fn two_globs_overlap_where_some_name_matches_both() {
+        let overlap = |one: &str, other: &str| {
+            let (one, other) = (Glob::new(one).unwrap(), Glob::new(other).unwrap());
+            assert_eq!(one.overlaps(&other), other.overlaps(&one));
+            one.overlaps(&other)
+        };
+        assert!(overlap("plugin-*", "*-sonarr"));
+        assert!(overlap("a*", "abc"));
+        assert!(overlap("abc", "a*"));
+        assert!(overlap("a*", "a"));
+        assert!(overlap("a", "a*"));
+        assert!(overlap("PLUGIN-a", "plugin-?"));
+        assert!(overlap("*", ""));
+        assert!(overlap("a*b", "a*b*"));
+        assert!(overlap("[a-c]x", "[b-d]?"));
+        assert!(overlap("[!a]x", "[b]x"));
+        assert!(overlap("*a*", "*b*"));
+        assert!(!overlap("plugin-*", "web-*"));
+        assert!(!overlap("a?", "a"));
+        assert!(!overlap("[a-b]x", "[c-d]x"));
+        assert!(!overlap("a", ""));
+        assert!(!overlap("x[a]", "x[b]"));
+    }
+
+    #[test]
+    fn a_glob_without_wildcards_is_narrowest_and_more_named_characters_narrower() {
+        let narrow = |text: &str| Glob::new(text).unwrap().specificity();
+        assert_eq!(narrow("plugin-sonarr"), (true, 13));
+        assert_eq!(narrow("plugin-*"), (false, 7));
+        assert_eq!(narrow("plugin-[ab]?"), (false, 7));
+        assert_eq!(narrow("*"), (false, 0));
+        assert_eq!(narrow(""), (true, 0));
+        assert!(narrow("*") < narrow("p*") && narrow("plugin-*") < narrow("plugin-a"));
     }
 
     #[test]

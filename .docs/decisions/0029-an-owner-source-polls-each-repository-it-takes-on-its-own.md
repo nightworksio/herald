@@ -1,6 +1,6 @@
 # ADR-0029: An owner source polls each repository it takes on its own
 
-**Status:** Accepted
+**Status:** Accepted; extended by [ADR-0030](0030-an-owner-source-reads-a-member-file-takes-webhooks-names-projects-and-polls-in-batches.md)
 **Date:** 2026-11-14
 
 ## Context
