@@ -38,10 +38,10 @@ mod gitlab {
         Origin::new(
             Forge::GitLab,
             &SourceOptions {
-                repository: "gitlab-org/cli".to_owned(),
                 api: api.map(ToOwned::to_owned),
                 ..SourceOptions::default()
             },
+            "gitlab-org/cli",
         )
     }
 

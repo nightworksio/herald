@@ -381,17 +381,14 @@ impl Feed {
     /// holds.
     #[must_use]
     pub fn request(&self, cursor: Option<&Cursor>) -> Request {
-        let mut request = Request::new(Method::Get, SecretText::plain(self.url.clone()))
+        let request = Request::new(Method::Get, SecretText::plain(self.url.clone()))
             .at_most(self.reading.parse)
             .header("Accept", SecretText::plain(ACCEPT))
             .identified();
-        if let Some(etag) = cursor.and_then(|cursor| cursor.etag.as_deref()) {
-            request = request.header("If-None-Match", SecretText::plain(etag));
-        }
-        if let Some(modified) = cursor.and_then(|cursor| cursor.last_modified.as_deref()) {
-            request = request.header("If-Modified-Since", SecretText::plain(modified));
-        }
-        request
+        request.conditional(
+            cursor.and_then(|cursor| cursor.etag.as_deref()),
+            cursor.and_then(|cursor| cursor.last_modified.as_deref()),
+        )
     }
 
     /// Whether the server's answer to [`Feed::request`] says nothing changed

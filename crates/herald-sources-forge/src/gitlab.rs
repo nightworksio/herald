@@ -17,6 +17,8 @@ pub(crate) const API: Api = Api {
     repository: "GitLab's project",
     releases: "GitLab's releases",
     release: "GitLab's release",
+    listing: "GitLab's projects",
+    listed_page: std::num::NonZeroUsize::new(100).unwrap(),
 };
 
 /// The suffix of the times in GitLab's webhooks, which are in UTC.

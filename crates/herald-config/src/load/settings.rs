@@ -11,9 +11,9 @@ use jiff::SignedDuration;
 use toml::Spanned;
 
 use super::{Loader, Value};
-use crate::config::{Announce, HeldSessions, KeyCache, Run, Server, Work};
+use crate::config::{Announce, Doctor, HeldSessions, KeyCache, Run, Server, Work};
 use crate::file::{
-    AnnounceFile, HttpFile, InboundFile, KeyCacheFile, RenderFile, RunFile, ServerFile,
+    AnnounceFile, DoctorFile, HttpFile, InboundFile, KeyCacheFile, RenderFile, RunFile, ServerFile,
     SessionsFile, WorkFile,
 };
 
@@ -342,6 +342,14 @@ impl Loader<'_> {
                 latest_attempts: file
                     .latest_attempts
                     .map_or(Announce::LATEST_ATTEMPTS, NonZeroUsize::get),
+            })
+    }
+
+    pub(super) fn doctor(&mut self, value: Option<Value<'_>>) -> Doctor {
+        value
+            .and_then(|value| self.typed::<DoctorFile>(value, "doctor"))
+            .map_or_else(Doctor::default, |file| Doctor {
+                private_to_public: file.private_to_public.unwrap_or_default(),
             })
     }
 

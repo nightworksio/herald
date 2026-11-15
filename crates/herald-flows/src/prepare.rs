@@ -3,11 +3,10 @@
 
 use std::collections::BTreeMap;
 use std::fmt;
-use std::sync::Arc;
 
 use herald_config::{Config, Destination, Placed, RouteConfig, Uses};
 use herald_core::{DestinationName, RouteId, SourceName, hex};
-use herald_kinds::{Interacted, Poll, Posts, Reached};
+use herald_kinds::{Interacted, Polling, Posts, Reached};
 use herald_ports::{Algorithm, Base, CryptoError, Http, Secret, SecretError, Secrets, Signer};
 use herald_store_markers::{MarkedRoute, MarkersStore};
 
@@ -178,7 +177,7 @@ pub struct PreparedRoute {
 #[derive(Debug, Clone)]
 pub struct PreparedSource {
     pub(crate) name: SourceName,
-    pub(crate) poll: Arc<dyn Poll>,
+    pub(crate) poll: Polling,
     pub(crate) backfill: usize,
 }
 

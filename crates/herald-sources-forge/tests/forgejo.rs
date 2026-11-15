@@ -29,10 +29,10 @@ mod forgejo {
         Origin::new(
             Forge::Forgejo,
             &SourceOptions {
-                repository: "forgejo/forgejo".to_owned(),
                 api: api.map(ToOwned::to_owned),
                 ..SourceOptions::default()
             },
+            "forgejo/forgejo",
         )
     }
 

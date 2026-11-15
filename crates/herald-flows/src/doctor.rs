@@ -1,7 +1,7 @@
 //! What a config asks for that a layer cannot serve, and what it leaves to
 //! chance (ADR-0002).
 
-use herald_config::{Config, KeyCache, RouteConfig, Server};
+use herald_config::{Config, Guard, KeyCache, RouteConfig, Server};
 use herald_core::{Features, Inbound, Pinning, Pins, RecordKind, Sandbox, Threads};
 use herald_kinds::Carried;
 
@@ -500,6 +500,30 @@ fn marked(config: &Config, findings: &mut Findings) {
     findings.notes.push(UNGUARDED.to_owned());
 }
 
+/// The routes that take a private or internal repository's events to a
+/// place not declared private, where `[doctor] private_to_public` warns of
+/// them; where it refuses, the config does not load (ADR-0029).
+fn exposed(config: &Config, notes: &mut Vec<String>) {
+    if config.doctor.private_to_public != Guard::Warn {
+        return;
+    }
+    for route in config.routes.iter().filter(|route| !route.private) {
+        for name in &route.route.filter.sources {
+            if config
+                .sources
+                .get(name)
+                .is_some_and(|source| source.unlisted())
+            {
+                notes.push(format!(
+                    "The route {} takes {}'s private or internal repositories to a place not declared private, as [doctor] private_to_public = \"warn\" lets it.",
+                    route.route.id.as_str(),
+                    name.as_str()
+                ));
+            }
+        }
+    }
+}
+
 /// The routes that take a tag that moves with no versions pattern.
 fn moving(config: &Config, notes: &mut Vec<String>) {
     for route in &config.routes {
@@ -535,6 +559,7 @@ fn served(config: &Config, layer: &Layer, layers: &[Layer], here: &Here) -> Find
     loosened(config, &mut findings.notes);
     stored(config, layer, &mut findings);
     moving(config, &mut findings.notes);
+    exposed(config, &mut findings.notes);
     webhooked(config, &mut findings.notes);
     scheduled(config, layer, here, &mut findings);
     for (index, route) in config.routes.iter().enumerate() {

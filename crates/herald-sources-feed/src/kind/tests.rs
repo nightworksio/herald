@@ -18,7 +18,9 @@ fn a_feed_is_a_kind_of_source_and_polls_its_url() {
     assert_eq!(feed.token(), None);
     assert_eq!(feed.kinds(), &[Kind::FEED_ENTRY]);
     assert_eq!(feed.backfill(), 4);
-    let poll = feed.poller(None);
+    let herald_kinds::Polling::One(poll) = feed.poller(None) else {
+        panic!("a source of one is polled as one");
+    };
     assert_eq!(poll.api(), Feed::new(&feed).api());
     assert_eq!(poll.remembered(), feed.reading().remembered);
 }

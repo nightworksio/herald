@@ -78,7 +78,9 @@ fn a_registry_source_names_its_token_and_polls_its_package() {
     assert_eq!(source.kinds(), &[Kind::PACKAGE_VERSION]);
     assert_eq!(source.backfill(), 3);
     assert_eq!(source.scheme(), None);
-    let poll = source.poller(None);
+    let herald_kinds::Polling::One(poll) = source.poller(None) else {
+        panic!("a source of one is polled as one");
+    };
     assert_eq!(
         poll.api(),
         Package::new(Registry::Npm, &source.options).api()

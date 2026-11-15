@@ -6,8 +6,11 @@ use serde::{Deserialize, Serialize};
 use crate::{Cursor, Glob};
 
 /// Who may see a repository.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, schemars::JsonSchema,
+)]
 #[serde(rename_all = "lowercase")]
+#[schemars(rename = "RepositoryVisibility")]
 pub enum Visibility {
     /// Anyone.
     Public,
@@ -163,6 +166,9 @@ pub struct Listing {
     pub first: Timestamp,
     /// When it was last listed in full.
     pub listed: Timestamp,
+    /// A digest of what the listing asked for: the owner, where, and the
+    /// selection; a listing that asks for something else is read whole.
+    pub fingerprint: String,
 }
 
 #[cfg(test)]

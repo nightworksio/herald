@@ -12,9 +12,12 @@ mod github;
 mod gitlab;
 mod kind;
 mod options;
+mod owner;
 mod wire;
 
 pub use forge::{Forge, Origin, Repository, Token};
 pub use herald_kinds::Hooked;
 pub use kind::{ForgeSource, ForgejoKind, GitHubKind, GitLabKind};
-pub use options::SourceOptions;
+pub use options::{
+    KEEP_MEMBERS, MOST_LISTED, MOST_MEMBERS, MOST_MEMBERS_ALLOWED, SourceOptions, Values,
+};

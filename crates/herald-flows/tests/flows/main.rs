@@ -38,6 +38,8 @@ mod mastodon;
 #[cfg(test)]
 mod matrix;
 #[cfg(test)]
+mod owner;
+#[cfg(test)]
 mod poll;
 #[cfg(test)]
 mod preview;

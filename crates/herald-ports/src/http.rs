@@ -97,6 +97,20 @@ impl Request {
         self
     }
 
+    /// The request, asked only where the resource changed since `etag` and
+    /// `last_modified`, each where given.
+    #[must_use]
+    pub fn conditional(self, etag: Option<&str>, last_modified: Option<&str>) -> Self {
+        let request = match etag {
+            Some(etag) => self.header("If-None-Match", SecretText::plain(etag)),
+            None => self,
+        };
+        match last_modified {
+            Some(modified) => request.header("If-Modified-Since", SecretText::plain(modified)),
+            None => request,
+        }
+    }
+
     /// The request carrying `token` as its bearer token.
     #[must_use]
     pub fn bearer(self, token: Secret) -> Self {

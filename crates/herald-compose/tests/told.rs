@@ -33,6 +33,7 @@ mod told {
     fn swept(outcome: Sweep) -> Vec<String> {
         told::polled(&Swept {
             source: SourceName::new("gate"),
+            member: None,
             outcome,
         })
     }
@@ -52,6 +53,30 @@ mod told {
 
     fn refused() -> Stop {
         Stop::Refused("no".to_owned())
+    }
+
+    #[test]
+    fn an_owner_s_listing_says_who_joined_and_left_and_each_member_is_named() {
+        let listed = |joined: &[&str], left: &[&str]| {
+            swept(Sweep::Listed {
+                members: 2,
+                joined: joined.iter().map(|path| (*path).to_owned()).collect(),
+                left: left.iter().map(|path| (*path).to_owned()).collect(),
+            })
+        };
+        assert_eq!(listed(&[], &[]), ["gate: 2 members polled"]);
+        assert_eq!(
+            listed(&["o/a", "o/b"], &["o/c"]),
+            ["gate: 2 members polled; joined: o/a, o/b; left: o/c"]
+        );
+        assert_eq!(
+            told::polled(&Swept {
+                source: SourceName::new("gate"),
+                member: Some("o/a".to_owned()),
+                outcome: Sweep::Unchanged,
+            }),
+            ["gate o/a: unchanged since the last poll"]
+        );
     }
 
     #[test]

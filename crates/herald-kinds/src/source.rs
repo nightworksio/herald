@@ -2,8 +2,9 @@ use std::fmt;
 use std::ops::Deref;
 use std::sync::Arc;
 
-use herald_core::{Cursor, Event, Kind, Polled, Scheme, SecretRef};
+use herald_core::{Cursor, Event, Kind, Listed, Listing, Owner, Polled, Scheme, SecretRef};
 use herald_ports::{Boxed, DynHttp, Secret};
+use jiff::SignedDuration;
 
 use crate::{Fault, Itself};
 
@@ -59,8 +60,102 @@ pub trait SourceConfig: fmt::Debug + Send + Sync + Itself {
         false
     }
 
+    /// Whether it may take a repository not everyone may see.
+    fn unlisted(&self) -> bool {
+        false
+    }
+
     /// What polls it, reading with `token` where it has one.
-    fn poller(&self, token: Option<Secret>) -> Arc<dyn Poll>;
+    fn poller(&self, token: Option<Secret>) -> Polling;
+}
+
+/// How a source is polled: as one, or as each member an owner lists.
+#[derive(Debug, Clone)]
+pub enum Polling {
+    /// One poll.
+    One(Arc<dyn Poll>),
+    /// An owner's members, each polled on its own.
+    Many(Arc<dyn Expand>),
+}
+
+impl Polling {
+    /// The base URL of everything it asks, the only origin its `Http` may
+    /// reach (ADR-0007).
+    #[must_use]
+    pub fn api(&self) -> &str {
+        match self {
+            Self::One(poll) => poll.api(),
+            Self::Many(expand) => expand.api(),
+        }
+    }
+}
+
+/// A source that expands to an owner's repositories, each polled on its
+/// own.
+pub trait Expand: fmt::Debug + Send + Sync {
+    /// The base URL of everything it asks, the only origin its `Http` may
+    /// reach (ADR-0007).
+    fn api(&self) -> &str;
+
+    /// How long a member that left the selection is kept before it is
+    /// forgotten with its cursor.
+    fn keep_members(&self) -> SignedDuration;
+
+    /// The members the owner lists through `http` that the selection takes,
+    /// asked conditionally on `known`, the last listing.
+    fn listed<'a>(
+        &'a self,
+        http: &'a dyn DynHttp,
+        known: Option<&'a Listing>,
+    ) -> Boxed<'a, Result<Expanded, Unlisted>>;
+
+    /// What polls the member `repository`.
+    fn member(&self, repository: &Listed) -> Arc<dyn Poll>;
+
+    /// Whether the selection takes `repository`, as the last listing named
+    /// it.
+    fn takes(&self, repository: &Listed) -> bool;
+
+    /// A digest of what a listing asks for: the owner, where, and the
+    /// selection.
+    fn fingerprint(&self) -> String;
+}
+
+/// What listing an owner found.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Expanded {
+    /// Nothing changed since the last listing.
+    Unchanged,
+    /// The listing read in full.
+    Listed {
+        /// The repositories the selection takes.
+        members: Vec<Listed>,
+        /// What kind of account the owner is.
+        owner: Owner,
+        /// The `ETag` of each page read, in order.
+        pages: Vec<Option<String>>,
+    },
+}
+
+impl Expanded {
+    /// The members the listing takes; none where it was unchanged.
+    #[must_use]
+    pub fn members(self) -> Vec<Listed> {
+        match self {
+            Self::Unchanged => Vec::new(),
+            Self::Listed { members, .. } => members,
+        }
+    }
+}
+
+/// Why listing an owner found no members to take.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Unlisted {
+    /// The owner lists more than a setting allows, as this says, naming
+    /// the setting; the source is refused for the round.
+    Over(String),
+    /// The listing failed, or failed partway, for this reason.
+    Failed(Unpolled),
 }
 
 /// Why a source that takes no webhooks announces nothing from one.

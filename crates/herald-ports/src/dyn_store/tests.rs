@@ -278,6 +278,7 @@ fn owned(at: Timestamp) -> (Listing, Membership) {
         pages: Vec::new(),
         first: at,
         listed: at,
+        fingerprint: "f".to_owned(),
     };
     let membership = Membership {
         repository: herald_core::Listed {

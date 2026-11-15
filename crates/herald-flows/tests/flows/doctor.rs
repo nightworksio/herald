@@ -417,3 +417,30 @@ fn each_bound_set_above_its_default_is_noted_by_its_key() {
         Vec::<String>::new()
     );
 }
+
+#[test]
+fn a_route_taking_private_repositories_to_a_public_place_is_named_where_doctor_warns() {
+    let unlisted = |extra: &str| {
+        crate::owner::owned_in(extra, |options| {
+            options.visibility = Some(vec![
+                herald_core::Visibility::Public,
+                herald_core::Visibility::Private,
+            ]);
+        })
+    };
+    let said = "The route releases takes gate's private or internal repositories to a place not declared private, as [doctor] private_to_public = \"warn\" lets it.".to_owned();
+    let actions = layer(&["sqlite"]);
+    let named = |config: &herald_config::Config| doctored(config, &actions).notes.contains(&said);
+    assert!(named(&unlisted("\n[doctor]\nprivate_to_public = \"warn\"")));
+    assert!(!named(&unlisted(
+        "\n[doctor]\nprivate_to_public = \"allow\""
+    )));
+    assert!(!named(&unlisted("")));
+    assert!(!named(&unlisted(
+        "private = true\n[doctor]\nprivate_to_public = \"warn\""
+    )));
+    assert!(!named(&crate::owner::owned_in(
+        "\n[doctor]\nprivate_to_public = \"warn\"",
+        |_| {}
+    )));
+}

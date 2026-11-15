@@ -82,7 +82,11 @@ fn naming<'c>(
                 .of::<ForgeSource>()
                 .filter(|named| {
                     named.forge == forge
-                        && named.options.repository.eq_ignore_ascii_case(repository)
+                        && named
+                            .options
+                            .repository
+                            .as_deref()
+                            .is_some_and(|named| named.eq_ignore_ascii_case(repository))
                 })
                 .map(|named| (name, &named.options))
         })

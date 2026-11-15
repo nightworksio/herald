@@ -73,6 +73,11 @@ pub(crate) struct Api {
     pub(crate) repository: &'static str,
     pub(crate) releases: &'static str,
     pub(crate) release: &'static str,
+    /// What its listing of an owner's repositories is called.
+    pub(crate) listing: &'static str,
+    /// The page size an owner's listing asks for where `listed_page` is
+    /// absent.
+    pub(crate) listed_page: std::num::NonZeroUsize,
 }
 
 /// Why a webhook delivery of another event announces nothing.
@@ -137,6 +142,25 @@ impl Forge {
         }
     }
 
+    /// How many names an owner's path holds on the forge: a GitLab group's
+    /// holds its top group and up to 20 subgroups.
+    #[must_use]
+    pub const fn owners(self) -> std::ops::RangeInclusive<usize> {
+        match self {
+            Self::GitHub | Self::Forgejo => 1..=1,
+            Self::GitLab => 1..=GITLAB_DEPTH - 1,
+        }
+    }
+
+    /// How an owner is written on the forge.
+    #[must_use]
+    pub const fn owner_shape(self) -> &'static str {
+        match self {
+            Self::GitHub | Self::Forgejo => "an organization's or a user's name",
+            Self::GitLab => "a group's full path, such as group/subgroup, or a user's name",
+        }
+    }
+
     /// How a repository is written on the forge.
     #[must_use]
     pub const fn shape(self) -> &'static str {
@@ -159,7 +183,7 @@ impl Forge {
         }
     }
 
-    const fn api(self) -> &'static Api {
+    pub(crate) const fn api(self) -> &'static Api {
         match self {
             Self::GitHub => &github::API,
             Self::GitLab => &gitlab::API,
@@ -311,15 +335,48 @@ impl Forge {
     }
 }
 
+/// `request` to `forge`, as the forge is asked: with the headers it reads,
+/// and carrying `token` where there is one.
+pub(crate) fn authorized(forge: Forge, request: Request, token: Option<&Token>) -> Request {
+    let request = match forge {
+        Forge::GitHub => herald_wire::github::headed(request),
+        Forge::GitLab | Forge::Forgejo => request
+            .header("Accept", SecretText::plain(media::JSON))
+            .identified(),
+    };
+    match (forge, token) {
+        (_, None) => request,
+        (Forge::GitLab, Some(Token::Run(token))) => {
+            request.header("JOB-TOKEN", SecretText::secret(token.clone()))
+        }
+        (Forge::Forgejo, Some(Token::Named(token) | Token::Run(token))) => request.header(
+            "Authorization",
+            SecretText::plain("token ").then_secret(token.clone()),
+        ),
+        (Forge::GitHub | Forge::GitLab, Some(Token::Named(token) | Token::Run(token))) => {
+            request.bearer(token.clone())
+        }
+    }
+}
+
+/// The API base URL `options` give on `forge`, without a trailing `/`.
+pub(crate) fn api_of(forge: Forge, options: &SourceOptions) -> String {
+    options
+        .api
+        .as_deref()
+        .unwrap_or(forge.api().url)
+        .trim_end_matches('/')
+        .to_owned()
+}
+
 impl Origin {
-    /// The repository `options` name, on `forge`.
+    /// `repository` on `forge`, asked as `options` say.
     #[must_use]
-    pub fn new(forge: Forge, options: &SourceOptions) -> Self {
-        let api = options.api.as_deref().unwrap_or(forge.api().url);
+    pub fn new(forge: Forge, options: &SourceOptions, repository: &str) -> Self {
         Self {
             forge,
-            api: api.trim_end_matches('/').to_owned(),
-            repository: options.repository.clone(),
+            api: api_of(forge, options),
+            repository: repository.to_owned(),
             reading: options.reading(),
         }
     }
@@ -349,25 +406,7 @@ impl Origin {
         };
         let request = Request::new(Method::Get, SecretText::plain(format!("{base}{path}")))
             .at_most(self.reading.parse);
-        let request = match self.forge {
-            Forge::GitHub => herald_wire::github::headed(request),
-            Forge::GitLab | Forge::Forgejo => request
-                .header("Accept", SecretText::plain(media::JSON))
-                .identified(),
-        };
-        match (self.forge, token) {
-            (_, None) => request,
-            (Forge::GitLab, Some(Token::Run(token))) => {
-                request.header("JOB-TOKEN", SecretText::secret(token.clone()))
-            }
-            (Forge::Forgejo, Some(Token::Named(token) | Token::Run(token))) => request.header(
-                "Authorization",
-                SecretText::plain("token ").then_secret(token.clone()),
-            ),
-            (Forge::GitHub | Forge::GitLab, Some(Token::Named(token) | Token::Run(token))) => {
-                request.bearer(token.clone())
-            }
-        }
+        authorized(self.forge, request, token)
     }
 
     /// The request for the repository's numeric id and name.
@@ -381,14 +420,11 @@ impl Origin {
     #[must_use]
     pub fn releases_request(&self, cursor: Option<&Cursor>, token: Option<&Token>) -> Request {
         let page = self.forge.api().page;
-        let mut request = self.get(&format!("/releases?{page}={}", self.reading.page), token);
-        if let Some(etag) = cursor.and_then(|cursor| cursor.etag.as_deref()) {
-            request = request.header("If-None-Match", SecretText::plain(etag));
-        }
-        if let Some(modified) = cursor.and_then(|cursor| cursor.last_modified.as_deref()) {
-            request = request.header("If-Modified-Since", SecretText::plain(modified));
-        }
-        request
+        let request = self.get(&format!("/releases?{page}={}", self.reading.page), token);
+        request.conditional(
+            cursor.and_then(|cursor| cursor.etag.as_deref()),
+            cursor.and_then(|cursor| cursor.last_modified.as_deref()),
+        )
     }
 
     /// The request for the release tagged `tag`.
@@ -419,7 +455,7 @@ mod tests {
     #[test]
     fn each_forge_takes_a_repository_in_its_shape_and_an_api_at_a_web_address() {
         let options = |repository: &str, api: Option<&str>| crate::SourceOptions {
-            repository: repository.to_owned(),
+            repository: Some(repository.to_owned()),
             api: api.map(ToOwned::to_owned),
             ..crate::SourceOptions::default()
         };

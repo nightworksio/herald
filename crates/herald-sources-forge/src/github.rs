@@ -13,6 +13,8 @@ pub(crate) const API: Api = Api {
     repository: "GitHub's repository",
     releases: "GitHub's releases",
     release: "GitHub's release",
+    listing: "GitHub's repositories",
+    listed_page: std::num::NonZeroUsize::new(100).unwrap(),
 };
 
 /// A release event, as GitHub and Forgejo send it.

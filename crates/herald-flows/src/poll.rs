@@ -3,18 +3,21 @@
 
 use futures_util::stream::{self, StreamExt};
 use herald_config::Config;
-use herald_core::{Event, SourceName, fresh};
-use herald_kinds::Unpolled;
-use herald_ports::{Clock, Cursors, Http, Signer, Store, Written};
+use herald_core::{Cursor, Event, RouteId, SourceName, fresh};
+use herald_kinds::{Poll, Polling, Unpolled};
+use herald_ports::{Clock, Cursors, Http, Signer, Store, StoreError, Written};
+use jiff::Timestamp;
 
-use crate::announce::{Announced, Outcome, Ports, Stop, announce, at_once};
+use crate::announce::{Announced, Outcome, Ports, Stop, announce_within, at_once};
 use crate::prepare::{Connected, PreparedSource};
 
-/// What polling one source did.
+/// What polling one source, or one member of an owner source, did.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Swept {
     /// The source.
     pub source: SourceName,
+    /// The member of an owner source polled, by its path, where it is one.
+    pub member: Option<String>,
     /// What it did.
     pub outcome: Sweep,
 }
@@ -35,6 +38,15 @@ pub enum Sweep {
         announced: Vec<Fresh>,
         /// What became of the source's cursor.
         cursor: Remembered,
+    },
+    /// An owner source was listed, or its listing was unchanged (ADR-0029).
+    Listed {
+        /// How many members it polls.
+        members: usize,
+        /// The path of each member that joined.
+        joined: Vec<String>,
+        /// The path of each member that left.
+        left: Vec<String>,
     },
     /// The source could not be polled, for this reason; the next poll asks
     /// again.
@@ -63,45 +75,65 @@ pub enum Remembered {
     Failed(Stop),
 }
 
-fn stored(error: impl std::fmt::Display) -> Stop {
+pub(crate) fn stored(error: impl std::fmt::Display) -> Stop {
     Stop::Store(error.to_string())
 }
 
-async fn sweep<S: Store, C: Clock, G: Signer, H: Http>(
-    config: &Config,
-    connected: &Connected<H>,
-    ports: &Ports<'_, S, C, G>,
-    (source, http): &(PreparedSource, H),
-    run: &str,
-) -> Result<Sweep, Stop> {
-    ports.budget.allows(ports.clock.now(), 1)?;
-    let record = ports
-        .store
-        .cursors()
-        .cursor(&source.name)
-        .await
-        .map_err(stored)?;
-    let cursor = record.as_ref().map(|record| &record.value);
-    let polled = source
-        .poll
-        .polled(http, cursor)
-        .await
-        .map_err(|unpolled| match unpolled {
-            Unpolled::Unreachable(reason) => Stop::Unreachable(reason),
-            Unpolled::Unreadable(reason) => Stop::Source(reason),
-        })?;
-    let Some(releases) = polled else {
-        return Ok(Sweep::Unchanged);
+/// What one poll found and announced, and the cursor to remember where
+/// every route has its events.
+pub(crate) struct Found {
+    pub(crate) count: usize,
+    pub(crate) announced: Vec<Fresh>,
+    pub(crate) advanced: Option<Cursor>,
+}
+
+/// Where a poll that found nothing to read stops.
+pub(crate) fn halted(unpolled: Unpolled) -> Stop {
+    match unpolled {
+        Unpolled::Unreachable(reason) => Stop::Unreachable(reason),
+        Unpolled::Unreadable(reason) => Stop::Source(reason),
+    }
+}
+
+/// The events of `found` to announce: those `cursor` has not seen, or with
+/// no cursor every one from `since` on where it is given, and otherwise
+/// the newest `backfill`.
+fn unseen(
+    cursor: Option<&Cursor>,
+    found: &[Event],
+    since: Option<Timestamp>,
+    backfill: usize,
+) -> Vec<Event> {
+    match (cursor, since) {
+        (None, Some(since)) => found
+            .iter()
+            .filter(|event| event.occurred() >= since)
+            .cloned()
+            .collect(),
+        _ => fresh(cursor, found.to_vec(), backfill),
+    }
+}
+
+/// What `poll` answers through `http` since `cursor`, each event it has
+/// not seen announced as `source`'s under `holder`, or nothing where it
+/// says nothing changed. Where `since` is given and there is no cursor,
+/// every event from then on is fresh; otherwise only the newest `backfill`.
+pub(crate) async fn found<S: Store, C: Clock, G: Signer, H: Http>(
+    (config, connected, ports): (&Config, &Connected<H>, &Ports<'_, S, C, G>),
+    (source, within): (&SourceName, Option<&[RouteId]>),
+    (poll, http): (&dyn Poll, &H),
+    (cursor, since, backfill): (Option<&Cursor>, Option<Timestamp>, usize),
+    holder: &str,
+) -> Result<Option<Found>, Stop> {
+    let Some(releases) = poll.polled(http, cursor).await.map_err(halted)? else {
+        return Ok(None);
     };
-    let found = releases.events.len();
-    let holder = format!("{run}/{}", source.name.as_str());
+    let fresh_events = unseen(cursor, &releases.events, since, backfill);
     let mut announced = Vec::new();
     let mut settled = true;
-    for event in fresh(cursor, releases.events.clone(), source.backfill)
-        .into_iter()
-        .rev()
-    {
-        let outcomes = announce(config, connected, ports, &source.name, &event, &holder).await;
+    for event in fresh_events.into_iter().rev() {
+        let outcomes =
+            announce_within(config, connected, ports, source, &event, within, holder).await;
         settled &= !outcomes
             .iter()
             .any(|outcome| matches!(outcome.outcome, Outcome::Stopped { .. }));
@@ -110,34 +142,77 @@ async fn sweep<S: Store, C: Clock, G: Signer, H: Http>(
             announced: outcomes,
         });
     }
-    let remembered = if settled {
-        let advanced = cursor.cloned().unwrap_or_default().advanced(
+    let advanced = settled.then(|| {
+        cursor.cloned().unwrap_or_default().advanced(
             &releases.events,
             releases.etag,
             releases.last_modified,
-            source.poll.remembered(),
-        );
-        let expected = record.as_ref().map(|record| record.version);
-        match ports
-            .store
-            .cursors()
-            .put_cursor(&source.name, &advanced, expected)
-            .await
-        {
-            Ok(Written::Written(_)) => Remembered::Advanced,
-            Ok(Written::Conflict) => Remembered::Failed(Stop::Store(
-                "another run moved the source's cursor first".to_owned(),
-            )),
-            Err(error) => Remembered::Failed(stored(error)),
+            poll.remembered(),
+        )
+    });
+    Ok(Some(Found {
+        count: releases.events.len(),
+        announced,
+        advanced,
+    }))
+}
+
+/// What became of a write of a cursor.
+pub(crate) fn remembered(written: Result<Written, StoreError>, what: &str) -> Remembered {
+    match written {
+        Ok(Written::Written(_)) => Remembered::Advanced,
+        Ok(Written::Conflict) => {
+            Remembered::Failed(Stop::Store(format!("another run moved {what} first")))
         }
-    } else {
-        Remembered::Kept
+        Err(error) => Remembered::Failed(stored(error)),
+    }
+}
+
+async fn sweep<S: Store, C: Clock, G: Signer, H: Http>(
+    flow: (&Config, &Connected<H>, &Ports<'_, S, C, G>),
+    source: &PreparedSource,
+    poll: &dyn Poll,
+    http: &H,
+    run: &str,
+) -> Result<Sweep, Stop> {
+    let ports = flow.2;
+    ports.budget.allows(ports.clock.now(), 1)?;
+    let record = ports
+        .store
+        .cursors()
+        .cursor(&source.name)
+        .await
+        .map_err(stored)?;
+    let cursor = record.as_ref().map(|record| &record.value);
+    let holder = format!("{run}/{}", source.name.as_str());
+    let Some(found) = found(
+        flow,
+        (&source.name, None),
+        (poll, http),
+        (cursor, None, source.backfill),
+        &holder,
+    )
+    .await?
+    else {
+        return Ok(Sweep::Unchanged);
+    };
+    let cursor = match &found.advanced {
+        Some(advanced) => {
+            let expected = record.as_ref().map(|record| record.version);
+            let written = ports
+                .store
+                .cursors()
+                .put_cursor(&source.name, advanced, expected)
+                .await;
+            remembered(written, "the source's cursor")
+        }
+        None => Remembered::Kept,
     };
     Ok(Sweep::Polled {
         first: record.is_none(),
-        found,
-        announced,
-        cursor: remembered,
+        found: found.count,
+        announced: found.announced,
+        cursor,
     })
 }
 
@@ -155,16 +230,29 @@ pub async fn poll<S: Store, C: Clock, G: Signer, H: Http>(
     ports: &Ports<'_, S, C, G>,
     run: &str,
 ) -> Vec<Swept> {
-    stream::iter(connected.sources.iter().map(|source| async move {
-        let outcome = sweep(config, connected, ports, source, run)
-            .await
-            .unwrap_or_else(Sweep::Stopped);
-        Swept {
-            source: source.0.name.clone(),
-            outcome,
-        }
-    }))
-    .buffered(at_once(ports.store, config.run.sources).get())
-    .collect()
-    .await
+    let flow = (config, connected, ports);
+    let swept: Vec<Vec<Swept>> =
+        stream::iter(connected.sources.iter().map(|(source, http)| async move {
+            match &source.poll {
+                Polling::One(poll) => {
+                    let outcome = sweep(flow, source, poll.as_ref(), http, run)
+                        .await
+                        .unwrap_or_else(Sweep::Stopped);
+                    vec![Swept {
+                        source: source.name.clone(),
+                        member: None,
+                        outcome,
+                    }]
+                }
+                Polling::Many(expand) => {
+                    members::swept(flow, source, expand.as_ref(), http, run).await
+                }
+            }
+        }))
+        .buffered(at_once(ports.store, config.run.sources).get())
+        .collect()
+        .await;
+    swept.into_iter().flatten().collect()
 }
+
+mod members;

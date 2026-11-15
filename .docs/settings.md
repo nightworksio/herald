@@ -196,6 +196,14 @@ herald's own ActivityPub actors, on its domain.
 | `destinations.<name>.waits.limited` | [Duration](#duration) | After the platform answers that herald sends too often; the platform's own window where unset: "5m" on Mastodon, "5s" elsewhere. |
 | `destinations.<name>.waits.outage` | [Duration](#duration) | After the platform answers that it is unwell; "5s" where unset. |
 
+## `doctor`
+
+How doctor judges the config.
+
+| Setting | Type | What it sets |
+|---------|------|--------------|
+| `doctor.private_to_public` | [Guard](#guard) | What becomes of a route that takes a private or internal repository's events and is not `private`: "refuse" where absent, so the config does not load and no such event reaches it; "warn" to load it and have doctor name it; or "allow". |
+
 ## `http`
 
 How herald's own requests reach the services the config names.
@@ -274,6 +282,7 @@ Which events go where, rendered how.
 | `routes[].mentions.subscribers` | boolean | Whether it mentions the subscribers herald keeps. |
 | `routes[].pin` | [Pinning](#pinning) | Whether to pin each announcement in place of the route's earlier pin, and how the earlier pin is found. |
 | `routes[].prereleases` | [Prereleases](#prereleases) | Which pre-releases it takes. |
+| `routes[].private` | boolean | Whether its place is private, so it may take a private or internal repository's events; a place is public where absent, and a config sending such events to it does not load (`[doctor] private_to_public`). |
 | `routes[].sources` | array of string | The sources it takes events from. |
 | `routes[].subscribe` | table | The opt-in role members subscribe to, where the route offers one. |
 | `routes[].subscribe.button` | boolean | Whether each announcement carries a button that subscribes, or unsubscribes a member already subscribed. |
@@ -302,6 +311,7 @@ Which events go where, rendered how.
 | `routes[].mentions.subscribers` | boolean | Whether it mentions the subscribers herald keeps. |
 | `routes[].pin` | [Pinning](#pinning) | Whether to pin each announcement in place of the route's earlier pin, and how the earlier pin is found. |
 | `routes[].prereleases` | [Prereleases](#prereleases) | Which pre-releases it takes. |
+| `routes[].private` | boolean | Whether its place is private, so it may take a private or internal repository's events; a place is public where absent, and a config sending such events to it does not load (`[doctor] private_to_public`). |
 | `routes[].sources` | array of string | The sources it takes events from. |
 | `routes[].template` | string | The template it renders with. |
 | `routes[].thread` | table | The thread to open for each announcement. |
@@ -325,6 +335,7 @@ Which events go where, rendered how.
 | `routes[].mentions.subscribers` | boolean | Whether it mentions the subscribers herald keeps. |
 | `routes[].pin` | [Pinning](#pinning) | Whether to pin each announcement in place of the route's earlier pin, and how the earlier pin is found. |
 | `routes[].prereleases` | [Prereleases](#prereleases) | Which pre-releases it takes. |
+| `routes[].private` | boolean | Whether its place is private, so it may take a private or internal repository's events; a place is public where absent, and a config sending such events to it does not load (`[doctor] private_to_public`). |
 | `routes[].room` | string | The room's id, such as `!abcdefg:matrix.org`, which the bot has joined. |
 | `routes[].sources` | array of string | The sources it takes events from. |
 | `routes[].template` | string | The template it renders with. |
@@ -348,6 +359,7 @@ Which events go where, rendered how.
 | `routes[].mentions.subscribers` | boolean | Whether it mentions the subscribers herald keeps. |
 | `routes[].pin` | [Pinning](#pinning) | Whether to pin each announcement in place of the route's earlier pin, and how the earlier pin is found. |
 | `routes[].prereleases` | [Prereleases](#prereleases) | Which pre-releases it takes. |
+| `routes[].private` | boolean | Whether its place is private, so it may take a private or internal repository's events; a place is public where absent, and a config sending such events to it does not load (`[doctor] private_to_public`). |
 | `routes[].sources` | array of string | The sources it takes events from. |
 | `routes[].subscribe` | table | How the route offers subscribing, where it mentions its subscribers. |
 | `routes[].subscribe.button` | boolean | Whether each announcement carries a button that subscribes, or unsubscribes a member already subscribed. |
@@ -374,6 +386,7 @@ Which events go where, rendered how.
 | `routes[].mentions.subscribers` | boolean | Whether it mentions the subscribers herald keeps. |
 | `routes[].pin` | [Pinning](#pinning) | Whether to pin each announcement in place of the route's earlier pin, and how the earlier pin is found. |
 | `routes[].prereleases` | [Prereleases](#prereleases) | Which pre-releases it takes. |
+| `routes[].private` | boolean | Whether its place is private, so it may take a private or internal repository's events; a place is public where absent, and a config sending such events to it does not load (`[doctor] private_to_public`). |
 | `routes[].sources` | array of string | The sources it takes events from. |
 | `routes[].template` | string | The template it renders with. |
 | `routes[].thread` | table | The thread to open for each announcement. |
@@ -452,16 +465,31 @@ A GitHub repository's releases.
 | Setting | Type | What it sets |
 |---------|------|--------------|
 | `sources.<name>` | table | A GitHub repository's releases. |
-| `sources.<name>.api` | string | The API's base URL, for a forge that is not GitHub, GitLab.com or Codeberg: a GitHub Enterprise Server's `https://ghe.example/api/v3`, a GHE.com tenant's `https://api.acme.ghe.com`, a self-managed or Dedicated GitLab's `https://gitlab.example/api/v4`, or a Forgejo's `https://forge.example/api/v1`. Where absent, it is the CI run's own when announcing the run's repository, and otherwise the forge's public instance. |
-| `sources.<name>.backfill` | integer | How many of the newest releases the first poll announces; none where absent (ADR-0003). |
+| `sources.<name>.api` | string | The API's base URL, for a forge that is not GitHub, GitLab.com or Codeberg: a GitHub Enterprise Server's `https://ghe.example/api/v3`, a GHE.com tenant's `https://api.acme.ghe.com`, a self-managed or Dedicated GitLab's `https://gitlab.example/api/v4`, or a Forgejo's `https://forge.example/api/v1`. Where absent, it is the CI run's own when announcing the run's repository, and otherwise the forge's public instance. An owner is listed at the same base. |
+| `sources.<name>.archived` | boolean | Whether archived repositories are taken. |
+| `sources.<name>.backfill` | integer | How many of the newest releases the first poll announces; none where absent (ADR-0003). For an owner, it applies to the members the first listing finds; a member found later announces only what it publishes after it was found. |
+| `sources.<name>.exclude` | array of string | The names left out, as `include` writes them, whatever `include` says. |
+| `sources.<name>.fork` | boolean | Whether forks are taken. |
+| `sources.<name>.include` | array of string | The names of the owner's repositories taken, as globs in which `*` stands for any run of characters, `?` for any one and `[...]` for any one of a class, ignoring case; every name where absent. |
+| `sources.<name>.keep_members` | [Duration](#duration) | How long a member that left the selection keeps its cursor before it is forgotten; "30d" where absent. |
 | `sources.<name>.kind` | string |  |
+| `sources.<name>.language` | array of string | Languages, any one of which a member is written in; any where absent. |
+| `sources.<name>.listed_page` | integer | How many repositories one page of the listing asks for; 100 where absent on GitHub and GitLab, and 50 on Forgejo, whose instances answer at most 50 unless configured otherwise. |
+| `sources.<name>.most_listed` | integer | The most repositories a listing reads before the filters; 10000 where absent. A listing over it refuses the source for the round. |
+| `sources.<name>.most_members` | integer | The most members the filters may keep; 1000 where absent, and at most 100000. A selection over it refuses the source for the round. |
+| `sources.<name>.owner` | string | The organization, GitLab group or user whose repositories are the source's members, each polled on its own, in place of `repository`. |
 | `sources.<name>.page` | integer | How many of the newest releases one poll reads; 30 where absent. |
 | `sources.<name>.parse` | [Size](#size) | The most of an answer parsed; "4MiB" where absent, and at most four times that. |
+| `sources.<name>.properties.<name>` | [Values](#values) | A property's values: one, or any of several. |
 | `sources.<name>.remembered` | integer | How many identities the cursor remembers, newest first; 500 where absent, and at least `page`. |
-| `sources.<name>.repository` | string | The repository, as `owner/name`, or a GitLab project's full path, such as `group/subgroup/name`. |
+| `sources.<name>.repository` | string | The repository, as `owner/name`, or a GitLab project's full path, such as `group/subgroup/name`; or `owner` in its place. |
+| `sources.<name>.subgroups` | boolean | Whether a GitLab group's members include the projects of its subgroups; true where absent. |
+| `sources.<name>.template` | boolean | Whether template repositories are taken. |
 | `sources.<name>.token` | table | A token that reaches a private repository or raises the API's rate limit, such as the run's `GITHUB_TOKEN`. |
 | `sources.<name>.token.secret` | string | The secret's name. |
-| `sources.<name>.webhook` | table | The secret the forge signs its webhook deliveries to `herald server` with: GitHub's and Forgejo's webhook secret, or GitLab's signing token (ADR-0007). |
+| `sources.<name>.topics` | array of string | Topics, any one of which a member holds; any where absent. |
+| `sources.<name>.visibility` | array of [RepositoryVisibility](#repositoryvisibility) | The visibilities taken; only public repositories where absent. A repository whose visibility the forge does not name is private. A route that takes a private or internal member is refused unless it is `private` (`[doctor] private_to_public`). |
+| `sources.<name>.webhook` | table | The secret the forge signs its webhook deliveries to `herald server` with: GitHub's and Forgejo's webhook secret, or GitLab's signing token (ADR-0007). A source of one repository only. |
 | `sources.<name>.webhook.secret` | string | The secret's name. |
 
 ### `sources.<name>` of kind `gitlab`
@@ -471,16 +499,31 @@ A GitLab project's releases.
 | Setting | Type | What it sets |
 |---------|------|--------------|
 | `sources.<name>` | table | A GitLab project's releases. |
-| `sources.<name>.api` | string | The API's base URL, for a forge that is not GitHub, GitLab.com or Codeberg: a GitHub Enterprise Server's `https://ghe.example/api/v3`, a GHE.com tenant's `https://api.acme.ghe.com`, a self-managed or Dedicated GitLab's `https://gitlab.example/api/v4`, or a Forgejo's `https://forge.example/api/v1`. Where absent, it is the CI run's own when announcing the run's repository, and otherwise the forge's public instance. |
-| `sources.<name>.backfill` | integer | How many of the newest releases the first poll announces; none where absent (ADR-0003). |
+| `sources.<name>.api` | string | The API's base URL, for a forge that is not GitHub, GitLab.com or Codeberg: a GitHub Enterprise Server's `https://ghe.example/api/v3`, a GHE.com tenant's `https://api.acme.ghe.com`, a self-managed or Dedicated GitLab's `https://gitlab.example/api/v4`, or a Forgejo's `https://forge.example/api/v1`. Where absent, it is the CI run's own when announcing the run's repository, and otherwise the forge's public instance. An owner is listed at the same base. |
+| `sources.<name>.archived` | boolean | Whether archived repositories are taken. |
+| `sources.<name>.backfill` | integer | How many of the newest releases the first poll announces; none where absent (ADR-0003). For an owner, it applies to the members the first listing finds; a member found later announces only what it publishes after it was found. |
+| `sources.<name>.exclude` | array of string | The names left out, as `include` writes them, whatever `include` says. |
+| `sources.<name>.fork` | boolean | Whether forks are taken. |
+| `sources.<name>.include` | array of string | The names of the owner's repositories taken, as globs in which `*` stands for any run of characters, `?` for any one and `[...]` for any one of a class, ignoring case; every name where absent. |
+| `sources.<name>.keep_members` | [Duration](#duration) | How long a member that left the selection keeps its cursor before it is forgotten; "30d" where absent. |
 | `sources.<name>.kind` | string |  |
+| `sources.<name>.language` | array of string | Languages, any one of which a member is written in; any where absent. |
+| `sources.<name>.listed_page` | integer | How many repositories one page of the listing asks for; 100 where absent on GitHub and GitLab, and 50 on Forgejo, whose instances answer at most 50 unless configured otherwise. |
+| `sources.<name>.most_listed` | integer | The most repositories a listing reads before the filters; 10000 where absent. A listing over it refuses the source for the round. |
+| `sources.<name>.most_members` | integer | The most members the filters may keep; 1000 where absent, and at most 100000. A selection over it refuses the source for the round. |
+| `sources.<name>.owner` | string | The organization, GitLab group or user whose repositories are the source's members, each polled on its own, in place of `repository`. |
 | `sources.<name>.page` | integer | How many of the newest releases one poll reads; 30 where absent. |
 | `sources.<name>.parse` | [Size](#size) | The most of an answer parsed; "4MiB" where absent, and at most four times that. |
+| `sources.<name>.properties.<name>` | [Values](#values) | A property's values: one, or any of several. |
 | `sources.<name>.remembered` | integer | How many identities the cursor remembers, newest first; 500 where absent, and at least `page`. |
-| `sources.<name>.repository` | string | The repository, as `owner/name`, or a GitLab project's full path, such as `group/subgroup/name`. |
+| `sources.<name>.repository` | string | The repository, as `owner/name`, or a GitLab project's full path, such as `group/subgroup/name`; or `owner` in its place. |
+| `sources.<name>.subgroups` | boolean | Whether a GitLab group's members include the projects of its subgroups; true where absent. |
+| `sources.<name>.template` | boolean | Whether template repositories are taken. |
 | `sources.<name>.token` | table | A token that reaches a private repository or raises the API's rate limit, such as the run's `GITHUB_TOKEN`. |
 | `sources.<name>.token.secret` | string | The secret's name. |
-| `sources.<name>.webhook` | table | The secret the forge signs its webhook deliveries to `herald server` with: GitHub's and Forgejo's webhook secret, or GitLab's signing token (ADR-0007). |
+| `sources.<name>.topics` | array of string | Topics, any one of which a member holds; any where absent. |
+| `sources.<name>.visibility` | array of [RepositoryVisibility](#repositoryvisibility) | The visibilities taken; only public repositories where absent. A repository whose visibility the forge does not name is private. A route that takes a private or internal member is refused unless it is `private` (`[doctor] private_to_public`). |
+| `sources.<name>.webhook` | table | The secret the forge signs its webhook deliveries to `herald server` with: GitHub's and Forgejo's webhook secret, or GitLab's signing token (ADR-0007). A source of one repository only. |
 | `sources.<name>.webhook.secret` | string | The secret's name. |
 
 ### `sources.<name>` of kind `forgejo`
@@ -490,16 +533,31 @@ A Forgejo or Gitea repository's releases.
 | Setting | Type | What it sets |
 |---------|------|--------------|
 | `sources.<name>` | table | A Forgejo or Gitea repository's releases. |
-| `sources.<name>.api` | string | The API's base URL, for a forge that is not GitHub, GitLab.com or Codeberg: a GitHub Enterprise Server's `https://ghe.example/api/v3`, a GHE.com tenant's `https://api.acme.ghe.com`, a self-managed or Dedicated GitLab's `https://gitlab.example/api/v4`, or a Forgejo's `https://forge.example/api/v1`. Where absent, it is the CI run's own when announcing the run's repository, and otherwise the forge's public instance. |
-| `sources.<name>.backfill` | integer | How many of the newest releases the first poll announces; none where absent (ADR-0003). |
+| `sources.<name>.api` | string | The API's base URL, for a forge that is not GitHub, GitLab.com or Codeberg: a GitHub Enterprise Server's `https://ghe.example/api/v3`, a GHE.com tenant's `https://api.acme.ghe.com`, a self-managed or Dedicated GitLab's `https://gitlab.example/api/v4`, or a Forgejo's `https://forge.example/api/v1`. Where absent, it is the CI run's own when announcing the run's repository, and otherwise the forge's public instance. An owner is listed at the same base. |
+| `sources.<name>.archived` | boolean | Whether archived repositories are taken. |
+| `sources.<name>.backfill` | integer | How many of the newest releases the first poll announces; none where absent (ADR-0003). For an owner, it applies to the members the first listing finds; a member found later announces only what it publishes after it was found. |
+| `sources.<name>.exclude` | array of string | The names left out, as `include` writes them, whatever `include` says. |
+| `sources.<name>.fork` | boolean | Whether forks are taken. |
+| `sources.<name>.include` | array of string | The names of the owner's repositories taken, as globs in which `*` stands for any run of characters, `?` for any one and `[...]` for any one of a class, ignoring case; every name where absent. |
+| `sources.<name>.keep_members` | [Duration](#duration) | How long a member that left the selection keeps its cursor before it is forgotten; "30d" where absent. |
 | `sources.<name>.kind` | string |  |
+| `sources.<name>.language` | array of string | Languages, any one of which a member is written in; any where absent. |
+| `sources.<name>.listed_page` | integer | How many repositories one page of the listing asks for; 100 where absent on GitHub and GitLab, and 50 on Forgejo, whose instances answer at most 50 unless configured otherwise. |
+| `sources.<name>.most_listed` | integer | The most repositories a listing reads before the filters; 10000 where absent. A listing over it refuses the source for the round. |
+| `sources.<name>.most_members` | integer | The most members the filters may keep; 1000 where absent, and at most 100000. A selection over it refuses the source for the round. |
+| `sources.<name>.owner` | string | The organization, GitLab group or user whose repositories are the source's members, each polled on its own, in place of `repository`. |
 | `sources.<name>.page` | integer | How many of the newest releases one poll reads; 30 where absent. |
 | `sources.<name>.parse` | [Size](#size) | The most of an answer parsed; "4MiB" where absent, and at most four times that. |
+| `sources.<name>.properties.<name>` | [Values](#values) | A property's values: one, or any of several. |
 | `sources.<name>.remembered` | integer | How many identities the cursor remembers, newest first; 500 where absent, and at least `page`. |
-| `sources.<name>.repository` | string | The repository, as `owner/name`, or a GitLab project's full path, such as `group/subgroup/name`. |
+| `sources.<name>.repository` | string | The repository, as `owner/name`, or a GitLab project's full path, such as `group/subgroup/name`; or `owner` in its place. |
+| `sources.<name>.subgroups` | boolean | Whether a GitLab group's members include the projects of its subgroups; true where absent. |
+| `sources.<name>.template` | boolean | Whether template repositories are taken. |
 | `sources.<name>.token` | table | A token that reaches a private repository or raises the API's rate limit, such as the run's `GITHUB_TOKEN`. |
 | `sources.<name>.token.secret` | string | The secret's name. |
-| `sources.<name>.webhook` | table | The secret the forge signs its webhook deliveries to `herald server` with: GitHub's and Forgejo's webhook secret, or GitLab's signing token (ADR-0007). |
+| `sources.<name>.topics` | array of string | Topics, any one of which a member holds; any where absent. |
+| `sources.<name>.visibility` | array of [RepositoryVisibility](#repositoryvisibility) | The visibilities taken; only public repositories where absent. A repository whose visibility the forge does not name is private. A route that takes a private or internal member is refused unless it is `private` (`[doctor] private_to_public`). |
+| `sources.<name>.webhook` | table | The secret the forge signs its webhook deliveries to `herald server` with: GitHub's and Forgejo's webhook secret, or GitLab's signing token (ADR-0007). A source of one repository only. |
 | `sources.<name>.webhook.secret` | string | The secret's name. |
 
 ### `sources.<name>` of kind `packagist`
@@ -840,6 +898,10 @@ The Slack a workspace lives on: Slack's own, or Slack's government cloud.
 
 A length of time: a number and ms, s, m, h, d or w, as "14d".
 
+### Guard
+
+What doctor does with a config that takes something private to a public place.
+
 ### Keep
 
 A length of time, or "forever".
@@ -896,6 +958,10 @@ A kind of record a store may keep beside its ledger, cursors, schedules and deli
 
 Who sees herald's answers to `latest` and `changelog`; the answers to `subscribe` and `unsubscribe` are always the asker's alone.
 
+### RepositoryVisibility
+
+Who may see a repository.
+
 ### Size
 
 A number of bytes: a number and KiB or MiB, as "1MiB".
@@ -909,6 +975,10 @@ How Slack carries commands to herald.
 How Docker Hub lists a repository's tags.
 
 ### TokenHash
+
+### Values
+
+A property's values: one, or any of several.
 
 ### Version
 

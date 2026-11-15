@@ -22,6 +22,10 @@
         "$ref": "#/$defs/Destination"
       }
     },
+    "doctor": {
+      "description": "How doctor judges the config.",
+      "$ref": "#/$defs/Doctor"
+    },
     "http": {
       "description": "How herald's own requests reach the services the config names.",
       "$ref": "#/$defs/Http"
@@ -146,6 +150,11 @@
         "prereleases": {
           "description": "Which pre-releases it takes.",
           "$ref": "#/$defs/Prereleases"
+        },
+        "private": {
+          "description": "Whether its place is private, so it may take a private or internal\nrepository's events; a place is public where absent, and a config\nsending such events to it does not load (`[doctor] private_to_public`).",
+          "type": "boolean",
+          "default": false
         },
         "sources": {
           "description": "The sources it takes events from.",
@@ -843,6 +852,11 @@
           "description": "Which pre-releases it takes.",
           "$ref": "#/$defs/Prereleases"
         },
+        "private": {
+          "description": "Whether its place is private, so it may take a private or internal\nrepository's events; a place is public where absent, and a config\nsending such events to it does not load (`[doctor] private_to_public`).",
+          "type": "boolean",
+          "default": false
+        },
         "sources": {
           "description": "The sources it takes events from.",
           "type": "array",
@@ -917,6 +931,17 @@
         }
       ]
     },
+    "Doctor": {
+      "description": "`[doctor]`: how doctor judges the config.",
+      "type": "object",
+      "properties": {
+        "private_to_public": {
+          "description": "What becomes of a route that takes a private or internal\nrepository's events and is not `private`: \"refuse\" where absent, so\nthe config does not load and no such event reaches it; \"warn\" to load\nit and have doctor name it; or \"allow\".",
+          "$ref": "#/$defs/Guard"
+        }
+      },
+      "additionalProperties": false
+    },
     "Domain": {
       "description": "The Slack a workspace lives on: Slack's own, or Slack's government cloud.",
       "oneOf": [
@@ -955,6 +980,26 @@
         }
       },
       "additionalProperties": false
+    },
+    "Guard": {
+      "description": "What doctor does with a config that takes something private to a\npublic place.",
+      "oneOf": [
+        {
+          "description": "Refuse the config.",
+          "type": "string",
+          "const": "refuse"
+        },
+        {
+          "description": "Name it, and let it run.",
+          "type": "string",
+          "const": "warn"
+        },
+        {
+          "description": "Say nothing.",
+          "type": "string",
+          "const": "allow"
+        }
+      ]
     },
     "Http": {
       "description": "`[http]`: how herald's own requests reach the services a config names.\nNone of it applies to the hosts herald reaches on others' behalf, an\n`ActivityPub` actor's key or a follower's inbox (ADR-0007).",
@@ -1175,6 +1220,11 @@
           "description": "Which pre-releases it takes.",
           "$ref": "#/$defs/Prereleases"
         },
+        "private": {
+          "description": "Whether its place is private, so it may take a private or internal\nrepository's events; a place is public where absent, and a config\nsending such events to it does not load (`[doctor] private_to_public`).",
+          "type": "boolean",
+          "default": false
+        },
         "sources": {
           "description": "The sources it takes events from.",
           "type": "array",
@@ -1335,6 +1385,11 @@
         "prereleases": {
           "description": "Which pre-releases it takes.",
           "$ref": "#/$defs/Prereleases"
+        },
+        "private": {
+          "description": "Whether its place is private, so it may take a private or internal\nrepository's events; a place is public where absent, and a config\nsending such events to it does not load (`[doctor] private_to_public`).",
+          "type": "boolean",
+          "default": false
         },
         "room": {
           "description": "The room's id, such as `!abcdefg:matrix.org`, which the bot has\njoined.",
@@ -1550,6 +1605,26 @@
           "description": "The channel.",
           "type": "string",
           "const": "public"
+        }
+      ]
+    },
+    "RepositoryVisibility": {
+      "description": "Who may see a repository.",
+      "oneOf": [
+        {
+          "description": "Anyone.",
+          "type": "string",
+          "const": "public"
+        },
+        {
+          "description": "Members of the forge's enterprise or instance.",
+          "type": "string",
+          "const": "internal"
+        },
+        {
+          "description": "Those given access.",
+          "type": "string",
+          "const": "private"
         }
       ]
     },
@@ -1874,6 +1949,11 @@
           "description": "Which pre-releases it takes.",
           "$ref": "#/$defs/Prereleases"
         },
+        "private": {
+          "description": "Whether its place is private, so it may take a private or internal\nrepository's events; a place is public where absent, and a config\nsending such events to it does not load (`[doctor] private_to_public`).",
+          "type": "boolean",
+          "default": false
+        },
         "sources": {
           "description": "The sources it takes events from.",
           "type": "array",
@@ -1949,19 +2029,87 @@
           "type": "object",
           "properties": {
             "api": {
-              "description": "The API's base URL, for a forge that is not GitHub, GitLab.com or\nCodeberg: a GitHub Enterprise Server's `https://ghe.example/api/v3`,\na GHE.com tenant's `https://api.acme.ghe.com`, a self-managed or\nDedicated GitLab's `https://gitlab.example/api/v4`, or a Forgejo's\n`https://forge.example/api/v1`. Where absent, it is the CI run's own\nwhen announcing the run's repository, and otherwise the forge's\npublic instance.",
+              "description": "The API's base URL, for a forge that is not GitHub, GitLab.com or\nCodeberg: a GitHub Enterprise Server's `https://ghe.example/api/v3`,\na GHE.com tenant's `https://api.acme.ghe.com`, a self-managed or\nDedicated GitLab's `https://gitlab.example/api/v4`, or a Forgejo's\n`https://forge.example/api/v1`. Where absent, it is the CI run's own\nwhen announcing the run's repository, and otherwise the forge's\npublic instance. An owner is listed at the same base.",
               "type": "string"
             },
+            "archived": {
+              "description": "Whether archived repositories are taken.",
+              "type": "boolean",
+              "default": false
+            },
             "backfill": {
-              "description": "How many of the newest releases the first poll announces; none where\nabsent (ADR-0003).",
+              "description": "How many of the newest releases the first poll announces; none where\nabsent (ADR-0003). For an owner, it applies to the members the first\nlisting finds; a member found later announces only what it publishes\nafter it was found.",
               "type": "integer",
               "format": "uint",
               "default": 0,
               "minimum": 0
             },
+            "exclude": {
+              "description": "The names left out, as `include` writes them, whatever `include`\nsays.",
+              "type": "array",
+              "default": [],
+              "items": {
+                "type": "string"
+              }
+            },
+            "fork": {
+              "description": "Whether forks are taken.",
+              "type": "boolean",
+              "default": false
+            },
+            "include": {
+              "description": "The names of the owner's repositories taken, as globs in which `*`\nstands for any run of characters, `?` for any one and `[...]` for\nany one of a class, ignoring case; every name where absent.",
+              "type": "array",
+              "default": [],
+              "examples": [
+                [
+                  "plugin-*"
+                ]
+              ],
+              "items": {
+                "type": "string"
+              }
+            },
+            "keep_members": {
+              "description": "How long a member that left the selection keeps its cursor before it\nis forgotten; \"30d\" where absent.",
+              "$ref": "#/$defs/Duration"
+            },
             "kind": {
               "type": "string",
               "const": "github"
+            },
+            "language": {
+              "description": "Languages, any one of which a member is written in; any where\nabsent.",
+              "type": "array",
+              "default": [],
+              "items": {
+                "type": "string"
+              }
+            },
+            "listed_page": {
+              "description": "How many repositories one page of the listing asks for; 100 where\nabsent on GitHub and GitLab, and 50 on Forgejo, whose instances\nanswer at most 50 unless configured otherwise.",
+              "type": "integer",
+              "format": "uint",
+              "minimum": 1
+            },
+            "most_listed": {
+              "description": "The most repositories a listing reads before the filters; 10000\nwhere absent. A listing over it refuses the source for the round.",
+              "type": "integer",
+              "format": "uint",
+              "minimum": 1
+            },
+            "most_members": {
+              "description": "The most members the filters may keep; 1000 where absent, and at\nmost 100000. A selection over it refuses the source for the round.",
+              "type": "integer",
+              "format": "uint",
+              "minimum": 1
+            },
+            "owner": {
+              "description": "The organization, GitLab group or user whose repositories are the\nsource's members, each polled on its own, in place of `repository`.",
+              "type": "string",
+              "examples": [
+                "nightworksio"
+              ]
             },
             "page": {
               "description": "How many of the newest releases one poll reads; 30 where absent.",
@@ -1973,6 +2121,13 @@
               "description": "The most of an answer parsed; \"4MiB\" where absent, and at most four\ntimes that.",
               "$ref": "#/$defs/Size"
             },
+            "properties": {
+              "description": "Custom properties, every one of which a member holds with one of the\nvalues given, such as `{ team = \"media\", tier = [\"core\", \"edge\"] }`.",
+              "type": "object",
+              "additionalProperties": {
+                "$ref": "#/$defs/Values"
+              }
+            },
             "remembered": {
               "description": "How many identities the cursor remembers, newest first; 500 where\nabsent, and at least `page`.",
               "type": "integer",
@@ -1980,25 +2135,48 @@
               "minimum": 1
             },
             "repository": {
-              "description": "The repository, as `owner/name`, or a GitLab project's full path,\nsuch as `group/subgroup/name`.",
+              "description": "The repository, as `owner/name`, or a GitLab project's full path,\nsuch as `group/subgroup/name`; or `owner` in its place.",
               "type": "string",
               "examples": [
                 "nightworksio/herald"
               ]
             },
+            "subgroups": {
+              "description": "Whether a GitLab group's members include the projects of its\nsubgroups; true where absent.",
+              "type": "boolean"
+            },
+            "template": {
+              "description": "Whether template repositories are taken.",
+              "type": "boolean",
+              "default": false
+            },
             "token": {
               "description": "A token that reaches a private repository or raises the API's rate\nlimit, such as the run's `GITHUB_TOKEN`.",
               "$ref": "#/$defs/SecretRef"
             },
+            "topics": {
+              "description": "Topics, any one of which a member holds; any where absent.",
+              "type": "array",
+              "default": [],
+              "items": {
+                "type": "string"
+              }
+            },
+            "visibility": {
+              "description": "The visibilities taken; only public repositories where absent. A\nrepository whose visibility the forge does not name is private. A\nroute that takes a private or internal member is refused unless it\nis `private` (`[doctor] private_to_public`).",
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/RepositoryVisibility"
+              }
+            },
             "webhook": {
-              "description": "The secret the forge signs its webhook deliveries to `herald server`\nwith: GitHub's and Forgejo's webhook secret, or GitLab's signing\ntoken (ADR-0007).",
+              "description": "The secret the forge signs its webhook deliveries to `herald server`\nwith: GitHub's and Forgejo's webhook secret, or GitLab's signing\ntoken (ADR-0007). A source of one repository only.",
               "$ref": "#/$defs/SecretRef"
             }
           },
           "additionalProperties": false,
           "required": [
-            "kind",
-            "repository"
+            "kind"
           ]
         },
         {
@@ -2006,19 +2184,87 @@
           "type": "object",
           "properties": {
             "api": {
-              "description": "The API's base URL, for a forge that is not GitHub, GitLab.com or\nCodeberg: a GitHub Enterprise Server's `https://ghe.example/api/v3`,\na GHE.com tenant's `https://api.acme.ghe.com`, a self-managed or\nDedicated GitLab's `https://gitlab.example/api/v4`, or a Forgejo's\n`https://forge.example/api/v1`. Where absent, it is the CI run's own\nwhen announcing the run's repository, and otherwise the forge's\npublic instance.",
+              "description": "The API's base URL, for a forge that is not GitHub, GitLab.com or\nCodeberg: a GitHub Enterprise Server's `https://ghe.example/api/v3`,\na GHE.com tenant's `https://api.acme.ghe.com`, a self-managed or\nDedicated GitLab's `https://gitlab.example/api/v4`, or a Forgejo's\n`https://forge.example/api/v1`. Where absent, it is the CI run's own\nwhen announcing the run's repository, and otherwise the forge's\npublic instance. An owner is listed at the same base.",
               "type": "string"
             },
+            "archived": {
+              "description": "Whether archived repositories are taken.",
+              "type": "boolean",
+              "default": false
+            },
             "backfill": {
-              "description": "How many of the newest releases the first poll announces; none where\nabsent (ADR-0003).",
+              "description": "How many of the newest releases the first poll announces; none where\nabsent (ADR-0003). For an owner, it applies to the members the first\nlisting finds; a member found later announces only what it publishes\nafter it was found.",
               "type": "integer",
               "format": "uint",
               "default": 0,
               "minimum": 0
             },
+            "exclude": {
+              "description": "The names left out, as `include` writes them, whatever `include`\nsays.",
+              "type": "array",
+              "default": [],
+              "items": {
+                "type": "string"
+              }
+            },
+            "fork": {
+              "description": "Whether forks are taken.",
+              "type": "boolean",
+              "default": false
+            },
+            "include": {
+              "description": "The names of the owner's repositories taken, as globs in which `*`\nstands for any run of characters, `?` for any one and `[...]` for\nany one of a class, ignoring case; every name where absent.",
+              "type": "array",
+              "default": [],
+              "examples": [
+                [
+                  "plugin-*"
+                ]
+              ],
+              "items": {
+                "type": "string"
+              }
+            },
+            "keep_members": {
+              "description": "How long a member that left the selection keeps its cursor before it\nis forgotten; \"30d\" where absent.",
+              "$ref": "#/$defs/Duration"
+            },
             "kind": {
               "type": "string",
               "const": "gitlab"
+            },
+            "language": {
+              "description": "Languages, any one of which a member is written in; any where\nabsent.",
+              "type": "array",
+              "default": [],
+              "items": {
+                "type": "string"
+              }
+            },
+            "listed_page": {
+              "description": "How many repositories one page of the listing asks for; 100 where\nabsent on GitHub and GitLab, and 50 on Forgejo, whose instances\nanswer at most 50 unless configured otherwise.",
+              "type": "integer",
+              "format": "uint",
+              "minimum": 1
+            },
+            "most_listed": {
+              "description": "The most repositories a listing reads before the filters; 10000\nwhere absent. A listing over it refuses the source for the round.",
+              "type": "integer",
+              "format": "uint",
+              "minimum": 1
+            },
+            "most_members": {
+              "description": "The most members the filters may keep; 1000 where absent, and at\nmost 100000. A selection over it refuses the source for the round.",
+              "type": "integer",
+              "format": "uint",
+              "minimum": 1
+            },
+            "owner": {
+              "description": "The organization, GitLab group or user whose repositories are the\nsource's members, each polled on its own, in place of `repository`.",
+              "type": "string",
+              "examples": [
+                "nightworksio"
+              ]
             },
             "page": {
               "description": "How many of the newest releases one poll reads; 30 where absent.",
@@ -2030,6 +2276,13 @@
               "description": "The most of an answer parsed; \"4MiB\" where absent, and at most four\ntimes that.",
               "$ref": "#/$defs/Size"
             },
+            "properties": {
+              "description": "Custom properties, every one of which a member holds with one of the\nvalues given, such as `{ team = \"media\", tier = [\"core\", \"edge\"] }`.",
+              "type": "object",
+              "additionalProperties": {
+                "$ref": "#/$defs/Values"
+              }
+            },
             "remembered": {
               "description": "How many identities the cursor remembers, newest first; 500 where\nabsent, and at least `page`.",
               "type": "integer",
@@ -2037,25 +2290,48 @@
               "minimum": 1
             },
             "repository": {
-              "description": "The repository, as `owner/name`, or a GitLab project's full path,\nsuch as `group/subgroup/name`.",
+              "description": "The repository, as `owner/name`, or a GitLab project's full path,\nsuch as `group/subgroup/name`; or `owner` in its place.",
               "type": "string",
               "examples": [
                 "nightworksio/herald"
               ]
             },
+            "subgroups": {
+              "description": "Whether a GitLab group's members include the projects of its\nsubgroups; true where absent.",
+              "type": "boolean"
+            },
+            "template": {
+              "description": "Whether template repositories are taken.",
+              "type": "boolean",
+              "default": false
+            },
             "token": {
               "description": "A token that reaches a private repository or raises the API's rate\nlimit, such as the run's `GITHUB_TOKEN`.",
               "$ref": "#/$defs/SecretRef"
             },
+            "topics": {
+              "description": "Topics, any one of which a member holds; any where absent.",
+              "type": "array",
+              "default": [],
+              "items": {
+                "type": "string"
+              }
+            },
+            "visibility": {
+              "description": "The visibilities taken; only public repositories where absent. A\nrepository whose visibility the forge does not name is private. A\nroute that takes a private or internal member is refused unless it\nis `private` (`[doctor] private_to_public`).",
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/RepositoryVisibility"
+              }
+            },
             "webhook": {
-              "description": "The secret the forge signs its webhook deliveries to `herald server`\nwith: GitHub's and Forgejo's webhook secret, or GitLab's signing\ntoken (ADR-0007).",
+              "description": "The secret the forge signs its webhook deliveries to `herald server`\nwith: GitHub's and Forgejo's webhook secret, or GitLab's signing\ntoken (ADR-0007). A source of one repository only.",
               "$ref": "#/$defs/SecretRef"
             }
           },
           "additionalProperties": false,
           "required": [
-            "kind",
-            "repository"
+            "kind"
           ]
         },
         {
@@ -2063,19 +2339,87 @@
           "type": "object",
           "properties": {
             "api": {
-              "description": "The API's base URL, for a forge that is not GitHub, GitLab.com or\nCodeberg: a GitHub Enterprise Server's `https://ghe.example/api/v3`,\na GHE.com tenant's `https://api.acme.ghe.com`, a self-managed or\nDedicated GitLab's `https://gitlab.example/api/v4`, or a Forgejo's\n`https://forge.example/api/v1`. Where absent, it is the CI run's own\nwhen announcing the run's repository, and otherwise the forge's\npublic instance.",
+              "description": "The API's base URL, for a forge that is not GitHub, GitLab.com or\nCodeberg: a GitHub Enterprise Server's `https://ghe.example/api/v3`,\na GHE.com tenant's `https://api.acme.ghe.com`, a self-managed or\nDedicated GitLab's `https://gitlab.example/api/v4`, or a Forgejo's\n`https://forge.example/api/v1`. Where absent, it is the CI run's own\nwhen announcing the run's repository, and otherwise the forge's\npublic instance. An owner is listed at the same base.",
               "type": "string"
             },
+            "archived": {
+              "description": "Whether archived repositories are taken.",
+              "type": "boolean",
+              "default": false
+            },
             "backfill": {
-              "description": "How many of the newest releases the first poll announces; none where\nabsent (ADR-0003).",
+              "description": "How many of the newest releases the first poll announces; none where\nabsent (ADR-0003). For an owner, it applies to the members the first\nlisting finds; a member found later announces only what it publishes\nafter it was found.",
               "type": "integer",
               "format": "uint",
               "default": 0,
               "minimum": 0
             },
+            "exclude": {
+              "description": "The names left out, as `include` writes them, whatever `include`\nsays.",
+              "type": "array",
+              "default": [],
+              "items": {
+                "type": "string"
+              }
+            },
+            "fork": {
+              "description": "Whether forks are taken.",
+              "type": "boolean",
+              "default": false
+            },
+            "include": {
+              "description": "The names of the owner's repositories taken, as globs in which `*`\nstands for any run of characters, `?` for any one and `[...]` for\nany one of a class, ignoring case; every name where absent.",
+              "type": "array",
+              "default": [],
+              "examples": [
+                [
+                  "plugin-*"
+                ]
+              ],
+              "items": {
+                "type": "string"
+              }
+            },
+            "keep_members": {
+              "description": "How long a member that left the selection keeps its cursor before it\nis forgotten; \"30d\" where absent.",
+              "$ref": "#/$defs/Duration"
+            },
             "kind": {
               "type": "string",
               "const": "forgejo"
+            },
+            "language": {
+              "description": "Languages, any one of which a member is written in; any where\nabsent.",
+              "type": "array",
+              "default": [],
+              "items": {
+                "type": "string"
+              }
+            },
+            "listed_page": {
+              "description": "How many repositories one page of the listing asks for; 100 where\nabsent on GitHub and GitLab, and 50 on Forgejo, whose instances\nanswer at most 50 unless configured otherwise.",
+              "type": "integer",
+              "format": "uint",
+              "minimum": 1
+            },
+            "most_listed": {
+              "description": "The most repositories a listing reads before the filters; 10000\nwhere absent. A listing over it refuses the source for the round.",
+              "type": "integer",
+              "format": "uint",
+              "minimum": 1
+            },
+            "most_members": {
+              "description": "The most members the filters may keep; 1000 where absent, and at\nmost 100000. A selection over it refuses the source for the round.",
+              "type": "integer",
+              "format": "uint",
+              "minimum": 1
+            },
+            "owner": {
+              "description": "The organization, GitLab group or user whose repositories are the\nsource's members, each polled on its own, in place of `repository`.",
+              "type": "string",
+              "examples": [
+                "nightworksio"
+              ]
             },
             "page": {
               "description": "How many of the newest releases one poll reads; 30 where absent.",
@@ -2087,6 +2431,13 @@
               "description": "The most of an answer parsed; \"4MiB\" where absent, and at most four\ntimes that.",
               "$ref": "#/$defs/Size"
             },
+            "properties": {
+              "description": "Custom properties, every one of which a member holds with one of the\nvalues given, such as `{ team = \"media\", tier = [\"core\", \"edge\"] }`.",
+              "type": "object",
+              "additionalProperties": {
+                "$ref": "#/$defs/Values"
+              }
+            },
             "remembered": {
               "description": "How many identities the cursor remembers, newest first; 500 where\nabsent, and at least `page`.",
               "type": "integer",
@@ -2094,25 +2445,48 @@
               "minimum": 1
             },
             "repository": {
-              "description": "The repository, as `owner/name`, or a GitLab project's full path,\nsuch as `group/subgroup/name`.",
+              "description": "The repository, as `owner/name`, or a GitLab project's full path,\nsuch as `group/subgroup/name`; or `owner` in its place.",
               "type": "string",
               "examples": [
                 "nightworksio/herald"
               ]
             },
+            "subgroups": {
+              "description": "Whether a GitLab group's members include the projects of its\nsubgroups; true where absent.",
+              "type": "boolean"
+            },
+            "template": {
+              "description": "Whether template repositories are taken.",
+              "type": "boolean",
+              "default": false
+            },
             "token": {
               "description": "A token that reaches a private repository or raises the API's rate\nlimit, such as the run's `GITHUB_TOKEN`.",
               "$ref": "#/$defs/SecretRef"
             },
+            "topics": {
+              "description": "Topics, any one of which a member holds; any where absent.",
+              "type": "array",
+              "default": [],
+              "items": {
+                "type": "string"
+              }
+            },
+            "visibility": {
+              "description": "The visibilities taken; only public repositories where absent. A\nrepository whose visibility the forge does not name is private. A\nroute that takes a private or internal member is refused unless it\nis `private` (`[doctor] private_to_public`).",
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/RepositoryVisibility"
+              }
+            },
             "webhook": {
-              "description": "The secret the forge signs its webhook deliveries to `herald server`\nwith: GitHub's and Forgejo's webhook secret, or GitLab's signing\ntoken (ADR-0007).",
+              "description": "The secret the forge signs its webhook deliveries to `herald server`\nwith: GitHub's and Forgejo's webhook secret, or GitLab's signing\ntoken (ADR-0007). A source of one repository only.",
               "$ref": "#/$defs/SecretRef"
             }
           },
           "additionalProperties": false,
           "required": [
-            "kind",
-            "repository"
+            "kind"
           ]
         },
         {
@@ -2999,6 +3373,22 @@
     "TokenHash": {
       "type": "string",
       "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "Values": {
+      "description": "A property's values: one, or any of several.",
+      "anyOf": [
+        {
+          "description": "One value.",
+          "type": "string"
+        },
+        {
+          "description": "Any one of several values.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      ]
     },
     "Version": {
       "type": "integer",

@@ -50,8 +50,8 @@ impl SourceConfig for Plain {
         3
     }
 
-    fn poller(&self, token: Option<Secret>) -> Arc<dyn Poll> {
-        Arc::new(Quiet(token, "https://plain.example".to_owned()))
+    fn poller(&self, token: Option<Secret>) -> Polling {
+        Polling::One(Arc::new(Quiet(token, "https://plain.example".to_owned())))
     }
 }
 
@@ -69,6 +69,7 @@ fn a_source_takes_no_webhook_and_no_moving_tag_where_its_kind_keeps_the_defaults
     assert_eq!(source.webhook(), None);
     assert_eq!(source.scheme(), None);
     assert!(!source.moving_tags());
+    assert!(!source.unlisted());
     assert_eq!(source.note(), None);
     assert_eq!(
         source.secret_refs(),
@@ -85,10 +86,13 @@ fn a_source_takes_no_webhook_and_no_moving_tag_where_its_kind_keeps_the_defaults
 #[test]
 fn a_source_polls_with_the_token_it_is_given() {
     let source = Source::new(tokened());
-    let poll = source.poller(Some(Secret::new("TOKEN", "t")));
-    assert_eq!(poll.api(), "https://plain.example");
+    let polling = source.poller(Some(Secret::new("TOKEN", "t")));
+    assert_eq!(polling.api(), "https://plain.example");
+    let (Polling::One(poll), Polling::One(untokened)) = (polling, source.poller(None)) else {
+        panic!("a plain source is polled as one");
+    };
     assert_eq!(poll.remembered(), 2);
-    assert_eq!(source.poller(None).remembered(), 1);
+    assert_eq!(untokened.remembered(), 1);
     let http = crate::reach::tests::Silent;
     assert_eq!(pollster::block_on(poll.polled(&http, None)), Ok(None));
 }
@@ -111,5 +115,31 @@ fn a_poll_that_finds_nothing_to_read_says_why() {
     assert_eq!(
         Unpolled::unreadable("garbled"),
         Unpolled::Unreadable("garbled".to_owned())
+    );
+}
+
+#[test]
+fn a_listing_takes_its_members_and_an_unchanged_one_none() {
+    let member = herald_core::Listed {
+        id: "1".to_owned(),
+        name: "herald".to_owned(),
+        path: "nightworksio/herald".to_owned(),
+        topics: Vec::new(),
+        properties: std::collections::BTreeMap::new(),
+        visibility: herald_core::Visibility::Public,
+        archived: false,
+        fork: false,
+        template: false,
+        language: None,
+    };
+    assert_eq!(Expanded::Unchanged.members(), Vec::new());
+    assert_eq!(
+        Expanded::Listed {
+            members: vec![member.clone()],
+            owner: herald_core::Owner::User,
+            pages: Vec::new(),
+        }
+        .members(),
+        [member]
     );
 }

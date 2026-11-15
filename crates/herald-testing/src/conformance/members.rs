@@ -33,6 +33,7 @@ pub(super) fn listing() -> Listing {
         pages: vec![Some("e1".to_owned()), None],
         first: NOON,
         listed: NOON,
+        fingerprint: "f".to_owned(),
     }
 }
 

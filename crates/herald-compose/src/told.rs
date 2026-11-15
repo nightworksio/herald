@@ -10,13 +10,34 @@ use herald_flows::{
 /// What a poll of one source found and announced.
 #[must_use]
 pub fn polled(swept: &Swept) -> Vec<String> {
-    let source = swept.source.as_str();
+    let source = match &swept.member {
+        Some(member) => format!("{} {member}", swept.source.as_str()),
+        None => swept.source.as_str().to_owned(),
+    };
     match &swept.outcome {
         Sweep::Unchanged => vec![format!("{source}: unchanged since the last poll")],
         Sweep::Stopped(stop) => vec![format!(
             "{source}: stopped: {}. The next poll asks again.",
             why(stop)
         )],
+        Sweep::Listed {
+            members,
+            joined,
+            left,
+        } => {
+            let named = |what: &str, paths: &[String]| {
+                if paths.is_empty() {
+                    String::new()
+                } else {
+                    format!("; {what}: {}", paths.join(", "))
+                }
+            };
+            vec![format!(
+                "{source}: {members} members polled{}{}",
+                named("joined", joined),
+                named("left", left)
+            )]
+        }
         Sweep::Polled {
             first,
             found,
