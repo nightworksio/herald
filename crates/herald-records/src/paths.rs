@@ -1,4 +1,6 @@
-use herald_core::{DestinationName, Escaping, Key, RouteId, Schedule, SourceName, Subscription};
+use herald_core::{
+    DestinationName, Escaping, Hold, Key, RouteId, Schedule, SourceName, Subscription,
+};
 use herald_ports::Outboxed;
 use jiff::Timestamp;
 
@@ -44,6 +46,13 @@ pub(crate) fn members(source: &SourceName) -> String {
 /// cursor.
 pub(crate) fn member(source: &SourceName, id: &str) -> String {
     format!("{}/{}.json", members(source), segment(id))
+}
+
+pub(crate) const PENDING: &str = "pending";
+
+/// Where the events `hold` holds back are kept: under its digest.
+pub(crate) fn pending(hold: &Hold) -> String {
+    format!("{PENDING}/{}.json", hold.digest())
 }
 
 pub(crate) fn listing(source: &SourceName) -> String {

@@ -1,6 +1,6 @@
 //! Forge webhooks: each verified with its source's secret and admitted once
-//! before it is read, and the release it publishes left to announce
-//! (ADR-0007, ADR-0013).
+//! before it is read, and the release it publishes left to announce, or the
+//! source whose tag it made left to poll (ADR-0007, ADR-0013, ADR-0032).
 
 use std::collections::BTreeMap;
 
@@ -18,10 +18,16 @@ use crate::verification::{Checking, admitted, verified};
 #[derive(Debug, Clone, Default)]
 pub struct Webhooks(pub(crate) BTreeMap<SourceName, Secret>);
 
-/// The answer to a delivery whose release is left to announce as `job`.
-fn accepted(job: Job) -> Answered {
+/// What a delivery whose release is left to announce is answered.
+const ANNOUNCES: &str = "herald announces the release";
+/// What a delivery whose tag is left to a poll is answered.
+const POLLS: &str = "herald polls the source for the tag";
+
+/// The answer to a delivery whose work is left to `job`, saying `what`
+/// herald does.
+fn accepted(job: Job, what: &str) -> Answered {
     Answered {
-        reply: text_reply(status::ACCEPTED, "herald announces the release").reply,
+        reply: text_reply(status::ACCEPTED, what).reply,
         refused: None,
         job: Some(job),
     }
@@ -66,24 +72,38 @@ pub(super) async fn hooked<S: Store, C: Clock, G, V: Verifier, H, P, K>(
         return rejection(&rejected);
     }
     match hooking.hooked(inbound.headers, inbound.body) {
-        Ok(Hooked::Event(event)) => accepted(Job::Announce {
-            source,
-            event,
-            member: None,
-            scheme,
-            verified,
-        }),
+        Ok(Hooked::Event(event)) => accepted(
+            Job::Announce {
+                source,
+                event,
+                member: None,
+                scheme,
+                verified,
+            },
+            ANNOUNCES,
+        ),
         Ok(Hooked::Member {
             event,
             id,
             visibility,
-        }) => accepted(Job::Announce {
-            source,
-            event,
-            member: Some(Member { id, visibility }),
-            scheme,
-            verified,
-        }),
+        }) => accepted(
+            Job::Announce {
+                source,
+                event,
+                member: Some(Member { id, visibility }),
+                scheme,
+                verified,
+            },
+            ANNOUNCES,
+        ),
+        Ok(Hooked::Poll) => accepted(
+            Job::Poll {
+                source,
+                scheme,
+                verified,
+            },
+            POLLS,
+        ),
         Ok(Hooked::Nothing(why)) => text_reply(status::OK, why),
         Err(error) => unread(store, scheme.name, &verified, error).await,
     }

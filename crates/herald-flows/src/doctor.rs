@@ -497,6 +497,13 @@ fn marked(config: &Config, findings: &mut Findings) {
     } else if !config.sources.is_empty() {
         findings.notes.push(UNPOLLED.to_owned());
     }
+    for (source, _) in config.sources.iter().filter(|(_, options)| options.holds()) {
+        findings.gaps.push(gap(
+            "holding a tag for its Release",
+            format!("sources.{}.prefer", source.as_str()),
+            "the markers store keeps no held events; set prefer = \"first\", or choose a store that does".to_owned(),
+        ));
+    }
     findings.notes.push(UNGUARDED.to_owned());
 }
 

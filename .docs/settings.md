@@ -502,6 +502,7 @@ A GitHub repository's releases and tags.
 | `sources.<name>.owner` | string | The organization, GitLab group or user whose repositories are the source's members, each polled on its own, in place of `repository`. |
 | `sources.<name>.page` | integer | How many of the newest releases, and of the newest tags, one poll reads; 30 where absent. |
 | `sources.<name>.parse` | [Size](#size) | The most of an answer parsed; "4MiB" where absent, and at most four times that. |
+| `sources.<name>.prefer` | [Prefer](#prefer) | Which of a tag and its Release is announced where a repository's signals take both: the Release, a tag with none waiting for it as long as `tag_window` ("release"), or whichever comes first ("first"); "release" where absent. Holding a tag needs a store that keeps held events, which the markers store does not. |
 | `sources.<name>.prerelease` | [PrereleaseRule](#prereleaserule) | How a pre-release is told: by the forge's flag or a pre-release part in the version ("either"), by the flag alone ("flag"), or by the version alone ("tag"); "either" where absent. A tag carries no flag, and neither does a GitLab release. |
 | `sources.<name>.project` | string | The project a member's events are announced as, a template of `repository.name`, `repository.path`, `repository.owner`, `repository.id`, `repository.topics`, `repository.properties` and `repository.visibility`; the repository's name where absent. |
 | `sources.<name>.properties.<name>` | [Values](#values) | A property's values: one, or any of several. |
@@ -513,6 +514,7 @@ A GitHub repository's releases and tags.
 | `sources.<name>.signals` | array of [Signal](#signal) | What the source announces of each repository: its published Releases, its version tags, or both; `["release"]` where absent. A tag and a Release of it share one identity, so each route announces it once. |
 | `sources.<name>.subgroups` | boolean | Whether a GitLab group's members include the projects of its subgroups; true where absent. |
 | `sources.<name>.tables` | array of string | The arrays of the member file that list repositories, such as `["repo", "ungoverned"]`; the file's own array where absent, which only JSON can hold. |
+| `sources.<name>.tag_window` | [Duration](#duration) | How long a tag with no Release waits for one, counted from when herald first sees the tag; "1h" where absent, and at most "7d". |
 | `sources.<name>.template` | boolean | Whether template repositories are taken. |
 | `sources.<name>.token` | table | A token that reaches a private repository or raises the API's rate limit, such as the run's `GITHUB_TOKEN`. |
 | `sources.<name>.token.secret` | string | The secret's name. |
@@ -566,6 +568,7 @@ A GitLab project's releases and tags.
 | `sources.<name>.owner` | string | The organization, GitLab group or user whose repositories are the source's members, each polled on its own, in place of `repository`. |
 | `sources.<name>.page` | integer | How many of the newest releases, and of the newest tags, one poll reads; 30 where absent. |
 | `sources.<name>.parse` | [Size](#size) | The most of an answer parsed; "4MiB" where absent, and at most four times that. |
+| `sources.<name>.prefer` | [Prefer](#prefer) | Which of a tag and its Release is announced where a repository's signals take both: the Release, a tag with none waiting for it as long as `tag_window` ("release"), or whichever comes first ("first"); "release" where absent. Holding a tag needs a store that keeps held events, which the markers store does not. |
 | `sources.<name>.prerelease` | [PrereleaseRule](#prereleaserule) | How a pre-release is told: by the forge's flag or a pre-release part in the version ("either"), by the flag alone ("flag"), or by the version alone ("tag"); "either" where absent. A tag carries no flag, and neither does a GitLab release. |
 | `sources.<name>.project` | string | The project a member's events are announced as, a template of `repository.name`, `repository.path`, `repository.owner`, `repository.id`, `repository.topics`, `repository.properties` and `repository.visibility`; the repository's name where absent. |
 | `sources.<name>.properties.<name>` | [Values](#values) | A property's values: one, or any of several. |
@@ -577,6 +580,7 @@ A GitLab project's releases and tags.
 | `sources.<name>.signals` | array of [Signal](#signal) | What the source announces of each repository: its published Releases, its version tags, or both; `["release"]` where absent. A tag and a Release of it share one identity, so each route announces it once. |
 | `sources.<name>.subgroups` | boolean | Whether a GitLab group's members include the projects of its subgroups; true where absent. |
 | `sources.<name>.tables` | array of string | The arrays of the member file that list repositories, such as `["repo", "ungoverned"]`; the file's own array where absent, which only JSON can hold. |
+| `sources.<name>.tag_window` | [Duration](#duration) | How long a tag with no Release waits for one, counted from when herald first sees the tag; "1h" where absent, and at most "7d". |
 | `sources.<name>.template` | boolean | Whether template repositories are taken. |
 | `sources.<name>.token` | table | A token that reaches a private repository or raises the API's rate limit, such as the run's `GITHUB_TOKEN`. |
 | `sources.<name>.token.secret` | string | The secret's name. |
@@ -630,6 +634,7 @@ A Forgejo or Gitea repository's releases and tags.
 | `sources.<name>.owner` | string | The organization, GitLab group or user whose repositories are the source's members, each polled on its own, in place of `repository`. |
 | `sources.<name>.page` | integer | How many of the newest releases, and of the newest tags, one poll reads; 30 where absent. |
 | `sources.<name>.parse` | [Size](#size) | The most of an answer parsed; "4MiB" where absent, and at most four times that. |
+| `sources.<name>.prefer` | [Prefer](#prefer) | Which of a tag and its Release is announced where a repository's signals take both: the Release, a tag with none waiting for it as long as `tag_window` ("release"), or whichever comes first ("first"); "release" where absent. Holding a tag needs a store that keeps held events, which the markers store does not. |
 | `sources.<name>.prerelease` | [PrereleaseRule](#prereleaserule) | How a pre-release is told: by the forge's flag or a pre-release part in the version ("either"), by the flag alone ("flag"), or by the version alone ("tag"); "either" where absent. A tag carries no flag, and neither does a GitLab release. |
 | `sources.<name>.project` | string | The project a member's events are announced as, a template of `repository.name`, `repository.path`, `repository.owner`, `repository.id`, `repository.topics`, `repository.properties` and `repository.visibility`; the repository's name where absent. |
 | `sources.<name>.properties.<name>` | [Values](#values) | A property's values: one, or any of several. |
@@ -641,6 +646,7 @@ A Forgejo or Gitea repository's releases and tags.
 | `sources.<name>.signals` | array of [Signal](#signal) | What the source announces of each repository: its published Releases, its version tags, or both; `["release"]` where absent. A tag and a Release of it share one identity, so each route announces it once. |
 | `sources.<name>.subgroups` | boolean | Whether a GitLab group's members include the projects of its subgroups; true where absent. |
 | `sources.<name>.tables` | array of string | The arrays of the member file that list repositories, such as `["repo", "ungoverned"]`; the file's own array where absent, which only JSON can hold. |
+| `sources.<name>.tag_window` | [Duration](#duration) | How long a tag with no Release waits for one, counted from when herald first sees the tag; "1h" where absent, and at most "7d". |
 | `sources.<name>.template` | boolean | Whether template repositories are taken. |
 | `sources.<name>.token` | table | A token that reaches a private repository or raises the API's rate limit, such as the run's `GITHUB_TOKEN`. |
 | `sources.<name>.token.secret` | string | The secret's name. |
@@ -1031,6 +1037,10 @@ How many pins the destination looks up, one request each, as it finds the route'
 ### Pinning
 
 How a route keeps its newest announcement pinned: each pin unpins the route's earlier one, found as this says (ADR-0011).
+
+### Prefer
+
+Which of a tag and its Release a source announces where it announces both.
 
 ### PrereleaseRule
 

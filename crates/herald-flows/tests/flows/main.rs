@@ -26,6 +26,8 @@ mod following;
 #[cfg(test)]
 mod harness;
 #[cfg(test)]
+mod held;
+#[cfg(test)]
 mod housekeep;
 #[cfg(test)]
 mod inbound;

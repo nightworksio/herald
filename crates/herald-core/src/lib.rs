@@ -31,6 +31,7 @@ mod markup;
 pub mod media;
 mod members;
 mod pattern;
+mod pending;
 mod profile;
 mod render;
 mod retention;
@@ -86,6 +87,7 @@ pub use members::{
     Delivered, EventsRead, Listed, Listing, Membership, Owner, Selection, Visibility,
 };
 pub use pattern::Pattern;
+pub use pending::{HeldEvent, Hold, Pending};
 pub use profile::{
     Bullet, Emphases, Escape, Features, Fences, Heading, Limits, Links, Markup, Measure,
     MentionRoom, MentionStyle, Pins, Profile, Threads,

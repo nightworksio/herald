@@ -11,7 +11,7 @@ use super::replies::{Answered, busy, unreleased};
 use crate::announce::{Announced, Outcome, announce_within};
 use crate::command_answers::{Answer, interact, replied};
 use crate::follows::{FollowError, Followed, followed};
-use crate::poll::bounded;
+use crate::poll::{Sweep, Swept, bounded, polled};
 use crate::verification::{Checking, Verified, released};
 
 /// Work a request leaves to be done once it is answered.
@@ -28,6 +28,17 @@ pub enum Job {
         /// announced only where the owner's last membership record holds it
         /// (ADR-0030).
         member: Option<Member>,
+        /// The scheme it is signed under.
+        scheme: Scheme,
+        /// What its signature names.
+        verified: Verified,
+    },
+    /// The source `source`, whose webhook delivered a tag, to poll, so the
+    /// tag is read in full and announced or held as any tag a poll finds;
+    /// the delivery is released where the poll stops (ADR-0032).
+    Poll {
+        /// The source the webhook is of.
+        source: SourceName,
         /// The scheme it is signed under.
         scheme: Scheme,
         /// What its signature names.
@@ -77,6 +88,8 @@ pub struct Worked {
 pub enum Did {
     /// What each route did with the event.
     Announced(Vec<Announced>),
+    /// What polling the source did.
+    Polled(Vec<Swept>),
     /// What the activity did.
     Followed(Result<Followed, FollowError>),
     /// What each command was answered, and whether the answer was sent.
@@ -137,6 +150,9 @@ impl Did {
                 .iter()
                 .any(|announced| matches!(announced.outcome, Outcome::Stopped { .. })),
             Self::Followed(taken) => taken.is_err(),
+            Self::Polled(swept) => swept
+                .iter()
+                .any(|swept| matches!(swept.outcome, Sweep::Stopped(_))),
             Self::Interacted(_) => false,
             Self::Withheld(withheld) => matches!(withheld, Withheld::Unread(_)),
         }
@@ -161,6 +177,9 @@ impl Job {
     pub fn delivery(&self) -> Option<(&'static str, &Verified)> {
         match self {
             Self::Announce {
+                scheme, verified, ..
+            }
+            | Self::Poll {
                 scheme, verified, ..
             } => Some((scheme.name, verified)),
             Self::App { verified, .. } => Some((herald_sources_app::ADMITTED, verified)),
@@ -227,6 +246,15 @@ pub async fn work<S: Store, C: Clock, G: Signer, V, H: Http, P, K>(
             ..
         } => membered(serving, &source, (&event, &member), run).await,
         Job::Announce { source, event, .. } => announced(serving, &source, &event, None, run).await,
+        Job::Poll { source, .. } => Did::Polled(
+            polled(
+                serving.config,
+                serving.connected,
+                serving.ports,
+                (run, Some(&source)),
+            )
+            .await,
+        ),
         Job::App { app, event, .. } => {
             let within = serving
                 .config

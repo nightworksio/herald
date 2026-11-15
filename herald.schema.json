@@ -1576,6 +1576,21 @@
         }
       ]
     },
+    "Prefer": {
+      "description": "Which of a tag and its Release a source announces where it announces\nboth.",
+      "oneOf": [
+        {
+          "description": "The Release: a tag with none waits for it, as long as the tag window.",
+          "type": "string",
+          "const": "release"
+        },
+        {
+          "description": "Whichever comes first.",
+          "type": "string",
+          "const": "first"
+        }
+      ]
+    },
     "PrereleaseRule": {
       "description": "How a source tells a pre-release.",
       "oneOf": [
@@ -2238,6 +2253,10 @@
               "description": "The most of an answer parsed; \"4MiB\" where absent, and at most four\ntimes that.",
               "$ref": "#/$defs/Size"
             },
+            "prefer": {
+              "description": "Which of a tag and its Release is announced where a repository's\nsignals take both: the Release, a tag with none waiting for it as\nlong as `tag_window` (\"release\"), or whichever comes first\n(\"first\"); \"release\" where absent. Holding a tag needs a store that\nkeeps held events, which the markers store does not.",
+              "$ref": "#/$defs/Prefer"
+            },
             "prerelease": {
               "description": "How a pre-release is told: by the forge's flag or a pre-release part\nin the version (\"either\"), by the flag alone (\"flag\"), or by the\nversion alone (\"tag\"); \"either\" where absent. A tag carries no flag,\nand neither does a GitLab release.",
               "$ref": "#/$defs/PrereleaseRule"
@@ -2300,6 +2319,10 @@
               "items": {
                 "type": "string"
               }
+            },
+            "tag_window": {
+              "description": "How long a tag with no Release waits for one, counted from when\nherald first sees the tag; \"1h\" where absent, and at most \"7d\".",
+              "$ref": "#/$defs/Duration"
             },
             "template": {
               "description": "Whether template repositories are taken.",
@@ -2454,6 +2477,10 @@
               "description": "The most of an answer parsed; \"4MiB\" where absent, and at most four\ntimes that.",
               "$ref": "#/$defs/Size"
             },
+            "prefer": {
+              "description": "Which of a tag and its Release is announced where a repository's\nsignals take both: the Release, a tag with none waiting for it as\nlong as `tag_window` (\"release\"), or whichever comes first\n(\"first\"); \"release\" where absent. Holding a tag needs a store that\nkeeps held events, which the markers store does not.",
+              "$ref": "#/$defs/Prefer"
+            },
             "prerelease": {
               "description": "How a pre-release is told: by the forge's flag or a pre-release part\nin the version (\"either\"), by the flag alone (\"flag\"), or by the\nversion alone (\"tag\"); \"either\" where absent. A tag carries no flag,\nand neither does a GitLab release.",
               "$ref": "#/$defs/PrereleaseRule"
@@ -2516,6 +2543,10 @@
               "items": {
                 "type": "string"
               }
+            },
+            "tag_window": {
+              "description": "How long a tag with no Release waits for one, counted from when\nherald first sees the tag; \"1h\" where absent, and at most \"7d\".",
+              "$ref": "#/$defs/Duration"
             },
             "template": {
               "description": "Whether template repositories are taken.",
@@ -2670,6 +2701,10 @@
               "description": "The most of an answer parsed; \"4MiB\" where absent, and at most four\ntimes that.",
               "$ref": "#/$defs/Size"
             },
+            "prefer": {
+              "description": "Which of a tag and its Release is announced where a repository's\nsignals take both: the Release, a tag with none waiting for it as\nlong as `tag_window` (\"release\"), or whichever comes first\n(\"first\"); \"release\" where absent. Holding a tag needs a store that\nkeeps held events, which the markers store does not.",
+              "$ref": "#/$defs/Prefer"
+            },
             "prerelease": {
               "description": "How a pre-release is told: by the forge's flag or a pre-release part\nin the version (\"either\"), by the flag alone (\"flag\"), or by the\nversion alone (\"tag\"); \"either\" where absent. A tag carries no flag,\nand neither does a GitLab release.",
               "$ref": "#/$defs/PrereleaseRule"
@@ -2732,6 +2767,10 @@
               "items": {
                 "type": "string"
               }
+            },
+            "tag_window": {
+              "description": "How long a tag with no Release waits for one, counted from when\nherald first sees the tag; \"1h\" where absent, and at most \"7d\".",
+              "$ref": "#/$defs/Duration"
             },
             "template": {
               "description": "Whether template repositories are taken.",

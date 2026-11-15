@@ -452,13 +452,20 @@ impl Expand for Owned {
     }
 
     fn member(&self, repository: &Listed) -> Arc<dyn Poll> {
+        let signals = self.options.signals_of(&repository.name);
         Arc::new(Releases {
             origin: Origin::new(self.forge, &self.options, &repository.path),
             token: self.token.clone(),
             project: self.named_project(repository),
-            signals: self.options.signals_of(&repository.name),
+            held: self.options.held_for(&signals),
+            signals,
             backfill: self.options.backfill,
         })
+    }
+
+    fn tag_window(&self, repository: &Listed) -> Option<SignedDuration> {
+        self.options
+            .held_for(&self.options.signals_of(&repository.name))
     }
 
     fn project(&self, repository: &Listed) -> Result<String, String> {

@@ -3,14 +3,14 @@
 //! does not.
 
 use herald_core::{
-    Cursor, DestinationName, Entry, Key, Latest, Listing, Membership, RouteId, Schedule,
-    SourceName, State, Subscription,
+    Cursor, DestinationName, Entry, Hold, Key, Latest, Listing, Membership, Pending, RouteId,
+    Schedule, SourceName, State, Subscription,
 };
 use jiff::Timestamp;
 
 use super::{
     Admitted, Announcements, Cursors, Deliveries, Inboxes, Keeping, Ledger, Notes, Outboxed, Pins,
-    Positions, Schedules, StoreError, Subscriptions, Unkept, Version, Versioned, Written,
+    Positions, Schedules, StoreError, Subscriptions, Unkept, Version, Versioned, Waiting, Written,
 };
 
 impl<T: Ledger> Ledger for Option<&T> {
@@ -184,6 +184,40 @@ impl<T: Positions> Positions for Option<&T> {
         match self {
             Some(kept) => kept.put_position(destination, position).await,
             None => Unkept.put_position(destination, position).await,
+        }
+    }
+}
+
+impl<T: Waiting> Waiting for Option<&T> {
+    async fn pending(&self, hold: &Hold) -> Result<Option<Versioned<Pending>>, StoreError> {
+        match self {
+            Some(kept) => kept.pending(hold).await,
+            None => Unkept.pending(hold).await,
+        }
+    }
+
+    async fn every_pending(&self) -> Result<Vec<Versioned<Pending>>, StoreError> {
+        match self {
+            Some(kept) => kept.every_pending().await,
+            None => Unkept.every_pending().await,
+        }
+    }
+
+    async fn put_pending(
+        &self,
+        pending: &Pending,
+        expected: Option<Version>,
+    ) -> Result<Written, StoreError> {
+        match self {
+            Some(kept) => kept.put_pending(pending, expected).await,
+            None => Unkept.put_pending(pending, expected).await,
+        }
+    }
+
+    async fn drop_pending(&self, hold: &Hold) -> Result<(), StoreError> {
+        match self {
+            Some(kept) => kept.drop_pending(hold).await,
+            None => Unkept.drop_pending(hold).await,
         }
     }
 }

@@ -3,8 +3,8 @@
 
 use herald_core::{Chore, Schedule, Step};
 use herald_flows::{
-    Announced, Chored, Did, FollowError, Followed, Housekept, HousekeptSchedule, Interacted, Job,
-    Outcome, Remembered, Stop, Sweep, Swept, Withheld, Worked,
+    Announced, Chored, Did, FollowError, Followed, Fresh, Housekept, HousekeptSchedule, Interacted,
+    Job, Outcome, Remembered, Stop, Sweep, Swept, Withheld, Worked,
 };
 
 /// What a poll of one source found and announced.
@@ -61,18 +61,42 @@ pub fn polled(swept: &Swept) -> Vec<String> {
                 ),
             };
             let mut lines = vec![format!("{head}{tail}")];
-            for fresh in announced {
-                let event = fresh.event.version().unwrap_or(fresh.event.title());
-                lines.extend(
-                    fresh
-                        .announced
-                        .iter()
-                        .map(|announced| format!("{source} {event}: {}", report(announced))),
-                );
-            }
+            lines.extend(freshly(&source, announced));
+            lines
+        }
+        Sweep::Released {
+            announced,
+            withheld,
+        } => {
+            let mut lines: Vec<String> = withheld
+                .iter()
+                .map(|why| format!("{source}: a held tag was let go unannounced, as {why}"))
+                .collect();
+            lines.extend(freshly(&source, announced));
             lines
         }
     }
+}
+
+/// What became of each of `announced`, events of `source`: held until its
+/// time, or what every route did with it.
+fn freshly(source: &str, announced: &[Fresh]) -> Vec<String> {
+    let mut lines = Vec::new();
+    for fresh in announced {
+        let event = fresh.event.version().unwrap_or(fresh.event.title());
+        if let Some(due) = fresh.held {
+            lines.push(format!(
+                "{source} {event}: held for its Release until {due}"
+            ));
+        }
+        lines.extend(
+            fresh
+                .announced
+                .iter()
+                .map(|announced| format!("{source} {event}: {}", report(announced))),
+        );
+    }
+    lines
 }
 
 /// What one chore did.
@@ -178,6 +202,7 @@ pub fn worked(worked: &Worked) -> Vec<String> {
         Did::Followed(followed) => vec![follow(followed)],
         Did::Interacted(interacted) => interacted.iter().map(answered).collect(),
         Did::Withheld(withheld) => vec![withheld_line(withheld)],
+        Did::Polled(swept) => swept.iter().flat_map(polled).collect(),
     };
     said.extend(worked.unreleased.iter().map(|unreleased| {
         format!("{unreleased}; its sender's next delivery of it is refused until housekeeping forgets it")
@@ -210,6 +235,7 @@ pub fn unworked(job: &Job, released: &Result<(), String>) -> String {
             format!("the announcement of {}", event.identity().as_str())
         }
         Job::Follow { .. } => "an activity".to_owned(),
+        Job::Poll { source, .. } => format!("the poll of {}", source.as_str()),
         Job::Interact { destination, .. } => {
             format!("the commands given on {}", destination.as_str())
         }
@@ -242,6 +268,7 @@ pub fn kept(kept: &Result<Housekept, Stop>) -> Vec<String> {
             .iter()
             .map(chored)
             .chain(housekept.skipped.iter().map(|path| skipped(path)))
+            .chain(housekept.released.iter().flat_map(polled))
             .collect(),
         Err(stop) => vec![format!(
             "housekeeping stopped: {}. The next round tries again.",

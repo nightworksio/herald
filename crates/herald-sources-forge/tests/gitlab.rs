@@ -133,7 +133,7 @@ mod gitlab {
                 "gitlab-org/cli",
                 &Signals::default()
             ),
-            Ok(Hooked::Nothing("the delivery is not of a release"))
+            Ok(Hooked::Nothing("the delivery is not of a release or a tag"))
         );
         assert!(
             Forge::GitLab

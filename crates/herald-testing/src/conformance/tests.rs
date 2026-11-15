@@ -9,6 +9,7 @@ use super::*;
 use crate::FakeStore;
 
 mod cursors;
+mod pending;
 
 const GITHUB: &str = "github";
 
@@ -73,6 +74,13 @@ enum Fault {
     RacesCursors,
     RacesLatest,
     RacesAdmissions,
+    OverwritesPending,
+    SharesPending,
+    ListsNoPending,
+    KeepsDroppedPending,
+    HoldsAnUnwrittenPending,
+    IgnoresAStalePendingVersion,
+    DropsEveryPending,
 }
 
 struct Faulty {

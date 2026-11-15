@@ -22,6 +22,10 @@ pub struct Cursor {
     /// from the releases.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub signals: BTreeMap<Signal, Validators>,
+    /// The identities of `seen` it has seen as a tag and not yet as a
+    /// Release, newest first.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tagged: Vec<Identity>,
 }
 
 /// What one poll of a source found: its events, the newest first, and the
@@ -65,8 +69,25 @@ impl Cursor {
                 .cloned(),
         );
         seen.truncate(remembered);
+        let released = |identity: &Identity| {
+            found.iter().any(|event| {
+                event.identity() == identity && event.signal() == Some(Signal::Release)
+            })
+        };
+        let mut tagged: Vec<Identity> = Vec::new();
+        let fresh_tags = found
+            .iter()
+            .filter(|event| event.signal() == Some(Signal::Tag))
+            .map(Event::identity)
+            .chain(&polled.passed);
+        for identity in fresh_tags.chain(&self.tagged) {
+            if !released(identity) && seen.contains(identity) && !tagged.contains(identity) {
+                tagged.push(identity.clone());
+            }
+        }
         Self {
             seen,
+            tagged,
             etag: polled.etag.clone(),
             last_modified: polled.last_modified.clone(),
             project: found
@@ -75,6 +96,15 @@ impl Cursor {
                 .or_else(|| self.project.clone()),
             signals: polled.signals.clone(),
         }
+    }
+
+    /// Whether `event` is one it has not seen: an identity it has not seen,
+    /// or the Release of a version it has seen only as a tag.
+    #[must_use]
+    pub fn unseen(&self, event: &Event) -> bool {
+        let identity = event.identity();
+        !self.seen.contains(identity)
+            || (event.signal() == Some(Signal::Release) && self.tagged.contains(identity))
     }
 
     /// The validators the server last returned for `signal`'s request, where
@@ -89,14 +119,15 @@ fn seen_in(found: &[Event], identity: &Identity) -> bool {
     found.iter().any(|event| event.identity() == identity)
 }
 
-/// The events of a poll to announce: those `cursor` has not seen. With no
-/// cursor, the source is new, and only its newest `backfill` are announced.
+/// The events of a poll to announce: those `cursor` has not seen, and each
+/// Release of a version it has seen only as a tag. With no cursor, the
+/// source is new, and only its newest `backfill` are announced.
 #[must_use]
 pub fn fresh(cursor: Option<&Cursor>, found: Vec<Event>, backfill: usize) -> Vec<Event> {
     match cursor {
         Some(cursor) => found
             .into_iter()
-            .filter(|event| !cursor.seen.contains(event.identity()))
+            .filter(|event| cursor.unseen(event))
             .collect(),
         None => found.into_iter().take(backfill).collect(),
     }
@@ -178,6 +209,7 @@ mod tests {
                 last_modified: Some("then".to_owned()),
                 project: Some(event("c").project().to_owned()),
                 signals: BTreeMap::from([(Signal::Tag, tags.clone())]),
+                tagged: vec![Identity::new("b"), Identity::new("p"), Identity::new("a")],
             }
         );
         assert_eq!(advanced.validators(Signal::Tag), Some(&tags));
@@ -188,6 +220,65 @@ mod tests {
         }
         .advanced(&Polled::default(), 500);
         assert_eq!(quiet.project.as_deref(), Some("kept"));
+    }
+
+    fn signalled(identity: &str, signal: Signal) -> Event {
+        let mut attributes = crate::versioned("v1", false);
+        attributes.insert(
+            crate::SIGNAL.to_owned(),
+            crate::Attribute::Text(signal.name().to_owned()),
+        );
+        Event::normalise(Draft {
+            identity: identity.to_owned(),
+            attributes,
+            ..draft()
+        })
+        .unwrap()
+    }
+
+    #[test]
+    fn a_release_of_a_version_seen_only_as_a_tag_is_unseen_until_it_is_seen() {
+        let polled = |events: Vec<Event>| Polled {
+            events,
+            ..Polled::default()
+        };
+        let tagged = Cursor::default().advanced(
+            &polled(vec![
+                signalled("v2", Signal::Tag),
+                signalled("v1", Signal::Release),
+            ]),
+            500,
+        );
+        assert_eq!(tagged.tagged, [Identity::new("v2")]);
+        let release = signalled("v2", Signal::Release);
+        assert!(tagged.unseen(&release));
+        assert!(!tagged.unseen(&signalled("v2", Signal::Tag)));
+        assert!(!tagged.unseen(&signalled("v1", Signal::Release)));
+        assert!(tagged.unseen(&signalled("v3", Signal::Tag)));
+        assert_eq!(
+            identities(&fresh(
+                Some(&tagged),
+                vec![release.clone(), signalled("v1", Signal::Release)],
+                0
+            )),
+            ["v2"]
+        );
+        let released = tagged.advanced(&polled(vec![release.clone()]), 500);
+        assert_eq!(released.tagged, Vec::<Identity>::new());
+        assert!(!released.unseen(&release));
+        let quiet = tagged.advanced(&polled(Vec::new()), 500);
+        assert_eq!(quiet.tagged, [Identity::new("v2")]);
+        let forgotten = tagged.advanced(&polled(vec![signalled("v9", Signal::Release)]), 1);
+        assert_eq!(forgotten.tagged, Vec::<Identity>::new());
+        let twice = Cursor::default().advanced(
+            &Polled {
+                events: vec![signalled("v4", Signal::Tag)],
+                passed: vec![Identity::new("v4")],
+                ..Polled::default()
+            },
+            500,
+        );
+        assert_eq!(twice.tagged, [Identity::new("v4")]);
     }
 
     #[test]

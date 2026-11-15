@@ -413,8 +413,17 @@ its time the annotated tag's date, or else its commit's. Releases and tags
 are each asked with their own `ETag`. On GitHub's REST API a new tag costs
 up to two more requests to read its date and message; GitLab lists them in
 full, and a GitHub owner polled through GraphQL reads them in its batch.
-Webhooks announce releases; a source's tags are announced when it is
-polled.
+A webhook of a tag made (GitHub's and Forgejo's `create`, GitLab's tag
+push) polls its source at once, so the tag is read in full and announced
+or held like any tag a poll finds.
+
+Where a repository's signals take both, `prefer = "release"` (the
+default) holds a tag with no Release for `tag_window` ("1h", at most
+"7d"), counted from when herald first sees the tag. A Release that arrives
+in time is announced instead; otherwise the next poll or housekeeping round
+after the window announces the tag. The held tag is kept in the store, so
+the markers store, which keeps none, needs `prefer = "first"`, which
+announces whichever comes first.
 
 `prerelease` chooses how a pre-release is told: `"either"` (the forge's
 flag, or a pre-release part in the version such as `v1.2.0-rc.1`; the

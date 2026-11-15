@@ -24,6 +24,7 @@ pub(crate) struct Releases {
     pub(crate) project: Option<Result<String, String>>,
     pub(crate) signals: Signals,
     pub(crate) backfill: usize,
+    pub(crate) held: Option<jiff::SignedDuration>,
 }
 
 /// What the tags answer of a poll found: the events of tags read in full,
@@ -157,6 +158,10 @@ impl Poll for Releases {
 
     fn remembered(&self) -> usize {
         self.origin.reading().remembered
+    }
+
+    fn tag_window(&self) -> Option<jiff::SignedDuration> {
+        self.held
     }
 
     fn polled<'a>(

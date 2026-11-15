@@ -177,6 +177,30 @@ fn the_markers_store_names_the_pins_cursors_and_read_backs_it_lacks() {
             .contains("a webhook cannot read back its posts")
     );
     assert_eq!(webhook.gaps[0].feature, "sending each announcement once");
+    let mut tagged = on("markers", "");
+    for prefer in [None, Some(herald_core::Prefer::First)] {
+        if let Some(source) = tagged.sources.values_mut().next()
+            && let Some(mut forged) = source.of::<herald_sources_forge::ForgeSource>().cloned()
+        {
+            forged.options.signals =
+                Some(vec![herald_core::Signal::Release, herald_core::Signal::Tag]);
+            forged.options.prefer = prefer;
+            *source = herald_config::Source::new(forged);
+        }
+        let held = doctored(&tagged, &layer(&STORES));
+        let gaps: Vec<&str> = held
+            .gaps
+            .iter()
+            .filter(|gap| gap.feature == "holding a tag for its Release")
+            .map(|gap| gap.key.as_str())
+            .collect();
+        let expected: &[&str] = if prefer.is_none() {
+            &["sources.gate.prefer"]
+        } else {
+            &[]
+        };
+        assert_eq!(gaps, expected);
+    }
 }
 
 #[test]

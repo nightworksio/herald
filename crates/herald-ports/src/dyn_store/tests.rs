@@ -6,7 +6,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::future::Future;
 
-use herald_core::{Identity, Kind, Shown};
+use herald_core::{Hold, Identity, Kind, Pending, Shown};
 
 use super::*;
 
@@ -145,6 +145,24 @@ impl Positions for Refusing {
     }
 }
 
+impl Waiting for Refusing {
+    async fn pending(&self, _: &Hold) -> Result<Option<Versioned<Pending>>, StoreError> {
+        Err(refused("pending"))
+    }
+
+    async fn every_pending(&self) -> Result<Vec<Versioned<Pending>>, StoreError> {
+        Err(refused("every_pending"))
+    }
+
+    async fn put_pending(&self, _: &Pending, _: Option<Version>) -> Result<Written, StoreError> {
+        Err(refused("put_pending"))
+    }
+
+    async fn drop_pending(&self, _: &Hold) -> Result<(), StoreError> {
+        Err(refused("drop_pending"))
+    }
+}
+
 impl Deliveries for Refusing {
     async fn admit(&self, _: &'static str, _: &str, _: Timestamp) -> Result<Admitted, StoreError> {
         Err(refused("admit"))
@@ -244,7 +262,7 @@ fn an_erased_store_holds_and_skips_what_the_store_it_erases_does() {
         let erased = Erased(&store as &dyn DynStore);
         assert_eq!(
             Held::ALL.map(|held| Keeper::holds(&erased, held)),
-            [holding; 10]
+            [holding; 11]
         );
         assert_eq!(Keeper::skipped(&erased), ["corrupt.json"]);
         assert_eq!(Keeper::writes_one_at_a_time(&erased), holding);
@@ -412,5 +430,29 @@ fn every_answer_of_an_erased_store_is_the_store_s_own() {
         "know",
         "forget_before",
     ];
+    assert_eq!(refusals, by.map(|by| Some(refused(by))));
+}
+
+#[test]
+fn every_answer_of_an_erased_store_on_held_events_is_the_store_s_own() {
+    let store = Refusing { holding: true };
+    let erased = Erased(&store as &dyn DynStore);
+    let hold = Hold::Tag {
+        source: SourceName::new("s"),
+        identity: Identity::new("1"),
+    };
+    let pending = Pending {
+        hold: hold.clone(),
+        events: Vec::new(),
+        opened: Timestamp::UNIX_EPOCH,
+        due: Timestamp::UNIX_EPOCH,
+    };
+    let refusals = [
+        answered(erased.pending(&hold)),
+        answered(erased.every_pending()),
+        answered(erased.put_pending(&pending, None)),
+        answered(erased.drop_pending(&hold)),
+    ];
+    let by = ["pending", "every_pending", "put_pending", "drop_pending"];
     assert_eq!(refusals, by.map(|by| Some(refused(by))));
 }

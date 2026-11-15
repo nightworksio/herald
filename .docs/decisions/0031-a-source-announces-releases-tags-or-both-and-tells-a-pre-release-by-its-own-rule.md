@@ -1,6 +1,6 @@
 # ADR-0031: A source announces releases, tags or both, and tells a pre-release by its own rule
 
-**Status:** Accepted
+**Status:** Accepted; a tag waiting for its Release extended, and decision 6 (a webhook announces releases only) superseded, by [ADR-0032](0032-a-tag-waits-for-its-release-in-a-held-record-for-its-window.md)
 **Date:** 2026-11-15
 
 ## Context

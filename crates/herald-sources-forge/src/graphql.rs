@@ -258,7 +258,7 @@ fn identity(id: u64, node: &Node) -> Option<Identity> {
 }
 
 /// Whether `answered` holds a published release or a tag `cursor` has not
-/// seen.
+/// seen, or a release of a version it has seen only as a tag.
 fn unseen(answered: &Answered, cursor: Option<&Cursor>) -> bool {
     let Some(cursor) = cursor else {
         return true;
@@ -267,14 +267,18 @@ fn unseen(answered: &Answered, cursor: Option<&Cursor>) -> bool {
     let released = answered
         .releases()
         .iter()
-        .filter_map(|node| identity(answered.database_id, node));
-    let tagged = answered.tags().iter().filter_map(|tag| {
-        host.as_deref()
-            .map(|host| crate::wire::identity(host, answered.database_id, &tag.name))
-    });
+        .filter_map(|node| identity(answered.database_id, node))
+        .any(|identity| !cursor.seen.contains(&identity) || cursor.tagged.contains(&identity));
     released
-        .chain(tagged)
-        .any(|identity| !cursor.seen.contains(&identity))
+        || answered.tags().iter().any(|tag| {
+            host.as_deref().is_some_and(|host| {
+                !cursor.seen.contains(&crate::wire::identity(
+                    host,
+                    answered.database_id,
+                    &tag.name,
+                ))
+            })
+        })
 }
 
 /// The releases and tags `answered` holds of the member `member`, as

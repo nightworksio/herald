@@ -196,7 +196,7 @@ mod github {
                 ("cli", false),
                 (&selection, &|_| Signals::default())
             ),
-            Ok(Hooked::Nothing("the delivery is not of a release"))
+            Ok(Hooked::Nothing("the delivery is not of a release or a tag"))
         );
         let created = edited(|payload| payload["action"] = json!("created"));
         assert_eq!(
@@ -220,7 +220,7 @@ mod github {
                     "cli/cli",
                     &Signals::default()
                 ),
-                Ok(Hooked::Nothing("the delivery is not of a release"))
+                Ok(Hooked::Nothing("the delivery is not of a release or a tag"))
             );
         }
         let created = edited(|payload| payload["action"] = json!("created"));

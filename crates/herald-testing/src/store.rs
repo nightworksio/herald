@@ -2,12 +2,12 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Mutex;
 
 use herald_core::{
-    Cursor, DestinationName, Entry, Key, Latest, Listing, Membership, RouteId, Schedule,
-    SourceName, State, Subscription,
+    Cursor, DestinationName, Entry, Hold, Key, Latest, Listing, Membership, Pending, RouteId,
+    Schedule, SourceName, State, Subscription,
 };
 use herald_ports::{
     Admitted, Announcements, Cursors, Deliveries, Held, Inboxes, Keeper, Ledger, Notes, Outboxed,
-    Pins, Positions, Schedules, StoreError, Subscriptions, Version, Versioned, Written,
+    Pins, Positions, Schedules, StoreError, Subscriptions, Version, Versioned, Waiting, Written,
 };
 use jiff::Timestamp;
 
@@ -27,6 +27,7 @@ struct FakeState {
     notes: BTreeMap<Key, (String, String, Timestamp)>,
     latest: BTreeMap<String, Versioned<Latest>>,
     inboxes: BTreeMap<(Key, String), State>,
+    pending: BTreeMap<Hold, Versioned<Pending>>,
 }
 
 /// A store in memory, keeping everything a store can keep.
@@ -384,6 +385,35 @@ impl Announcements for FakeStore {
     }
 }
 
+impl Waiting for FakeStore {
+    async fn pending(&self, hold: &Hold) -> Result<Option<Versioned<Pending>>, StoreError> {
+        Ok(lock(&self.state).pending.get(hold).cloned())
+    }
+
+    async fn every_pending(&self) -> Result<Vec<Versioned<Pending>>, StoreError> {
+        Ok(lock(&self.state).pending.values().cloned().collect())
+    }
+
+    async fn put_pending(
+        &self,
+        pending: &Pending,
+        expected: Option<Version>,
+    ) -> Result<Written, StoreError> {
+        let mut state = lock(&self.state);
+        Ok(compare_and_set(
+            &mut state.pending,
+            pending.hold.clone(),
+            pending,
+            expected,
+        ))
+    }
+
+    async fn drop_pending(&self, hold: &Hold) -> Result<(), StoreError> {
+        lock(&self.state).pending.remove(hold);
+        Ok(())
+    }
+}
+
 impl Keeper for FakeStore {
     fn holds(&self, _: Held) -> bool {
         true
@@ -415,5 +445,6 @@ mod tests {
         assert!(itself(store.announcements()));
         assert!(itself(store.inboxes()));
         assert!(itself(store.positions()));
+        assert!(itself(store.waiting()));
     }
 }
