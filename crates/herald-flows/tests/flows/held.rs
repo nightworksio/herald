@@ -338,15 +338,16 @@ fn held_events_that_cannot_be_dropped_say_so_and_one_of_an_unlisted_member_is_le
     );
 }
 
-#[test]
-fn a_held_tag_of_a_member_that_left_is_let_go_unannounced() {
+/// A store holding the member `9`, `nightworksio/plugins`, which left at
+/// `left` where it did, and a tag of it held until noon.
+fn held_of_member(left: Option<Timestamp>) -> Failing {
     use herald_ports::Cursors;
-    let (config, store) = (tagged(None), healthy());
+    let store = healthy();
     let membership = herald_core::Membership {
         repository: herald_core::Listed {
             id: "9".to_owned(),
-            name: "gone".to_owned(),
-            path: "nightworksio/gone".to_owned(),
+            name: "plugins".to_owned(),
+            path: "nightworksio/plugins".to_owned(),
             topics: Vec::new(),
             properties: std::collections::BTreeMap::new(),
             visibility: herald_core::Visibility::Public,
@@ -356,7 +357,7 @@ fn a_held_tag_of_a_member_that_left_is_let_go_unannounced() {
             language: None,
         },
         discovered: NOON,
-        left: Some(NOON),
+        left,
         cursor: None,
         collides: None,
     };
@@ -367,16 +368,27 @@ fn a_held_tag_of_a_member_that_left_is_let_go_unannounced() {
     )
     .unwrap();
     pollster::block_on(store.inner.put_pending(&pending(Some("9"), NOON), None)).unwrap();
-    let swept = round(
-        &config,
-        &store,
-        &Script::answering(&[
-            (RELEASES, 200, "[]"),
-            (TAGS, 200, "[]"),
-            (REPOSITORY, 200, PAGE),
-        ]),
-        NOON,
-    );
+    store
+}
+
+#[test]
+fn a_held_tag_of_a_member_still_listed_is_announced_as_its_and_one_of_a_member_that_left_is_let_go()
+{
+    let config = tagged(None);
+    let quiet = [
+        (RELEASES, 200, "[]"),
+        (TAGS, 200, "[]"),
+        (REPOSITORY, 200, PAGE),
+    ];
+    let listed = held_of_member(None);
+    let mut answers = vec![POSTED, CROSSPOSTED, THREADED, PINNED, WHO, NO_PINS];
+    answers.extend(quiet);
+    let swept = round(&config, &listed, &Script::answering(&answers), NOON);
+    assert_eq!(swept[0].member.as_deref(), Some("nightworksio/plugins"));
+    assert_eq!(announced_steps(&swept[0].outcome), [true]);
+    let gone = held_of_member(Some(NOON));
+    let swept = round(&config, &gone, &Script::answering(&quiet), NOON);
+    assert_eq!(swept[0].member, None);
     assert_eq!(
         swept[0].outcome,
         Sweep::Released {
@@ -387,8 +399,27 @@ fn a_held_tag_of_a_member_that_left_is_let_go_unannounced() {
         }
     );
     assert_eq!(
-        pollster::block_on(store.inner.pending(&hold())).unwrap(),
+        pollster::block_on(gone.inner.pending(&hold())).unwrap(),
         None
+    );
+}
+
+#[test]
+fn a_store_keeping_no_held_events_releases_none() {
+    let store = Failing {
+        fault: Fault::KeepsNoPending,
+        ..healthy()
+    };
+    let swept = round(
+        &config(""),
+        &store,
+        &Script::answering(&[(RELEASES, 200, "[]"), (REPOSITORY, 200, PAGE)]),
+        NOON,
+    );
+    assert_eq!(swept.len(), 1);
+    assert!(
+        matches!(swept[0].outcome, Sweep::Polled { .. }),
+        "{swept:?}"
     );
 }
 

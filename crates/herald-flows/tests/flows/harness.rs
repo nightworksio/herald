@@ -234,6 +234,7 @@ pub(crate) enum Fault {
     ExpiresNotes,
     KeepsNoDeliveries,
     KeepsNoInboxes,
+    KeepsNoPending,
     Cursors,
     WritesCursors,
     CursorConflicts,
@@ -629,6 +630,7 @@ impl Keeper for Failing {
             Held::Inboxes => self.fault != Fault::KeepsNoInboxes,
             Held::Latest => self.fault != Fault::KeepsNoLatest,
             Held::Positions => self.fault != Fault::KeepsNoPositions,
+            Held::Pending => self.fault != Fault::KeepsNoPending,
             _ => true,
         }
     }

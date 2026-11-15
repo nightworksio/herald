@@ -147,3 +147,33 @@ fn a_held_tag_of_a_member_still_listed_is_announced_as_the_member_s() {
         None
     );
 }
+
+#[test]
+fn held_events_that_cannot_be_read_stop_an_owner_holding_tags_whose_members_are_still_polled() {
+    let store = Failing {
+        fault: Fault::ReadsPending,
+        ..healthy()
+    };
+    let config = owned(|options| {
+        options.signals = Some(vec![herald_core::Signal::Release, herald_core::Signal::Tag]);
+    });
+    let page =
+        json!({"id": 1, "name": "herald", "html_url": "https://github.com/nightworksio/herald"})
+            .to_string();
+    let listing = repositories(&[(1, "herald")]);
+    let script = Script::answering(&[
+        (LISTING, 200, &listing),
+        ("/repos/nightworksio/herald/releases?per_page=30", 200, "[]"),
+        ("/repos/nightworksio/herald/tags?per_page=30", 200, "[]"),
+        ("/repos/nightworksio/herald", 200, &page),
+    ]);
+    let swept = polled(&config, &store, &script, NOON);
+    assert!(
+        matches!(swept[0], (None, Sweep::Stopped(Stop::Store(_)))),
+        "{swept:?}"
+    );
+    assert_eq!(
+        swept[1..],
+        [listed(1, &["herald"], &[]), member("herald", first(0))]
+    );
+}
