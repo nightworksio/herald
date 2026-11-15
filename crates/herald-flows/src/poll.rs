@@ -397,6 +397,6 @@ mod members;
 use claims::Claims;
 use held::{Holding, held};
 
-pub use held::announce_held;
+pub use held::{announce_held, held_or_announced};
 
 pub(crate) use members::bounded;

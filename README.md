@@ -416,6 +416,9 @@ full, and a GitHub owner polled through GraphQL reads them in its batch.
 A webhook of a tag made (GitHub's and Forgejo's `create`, GitLab's tag
 push) polls its source at once, so the tag is read in full and announced
 or held like any tag a poll finds.
+`herald announce --from <forge>` in a run pushing a tag, or for the tag
+`--release` names or a GitLab tag pipeline is for, announces that tag where
+its forge has no Release of it, and holds it where the source holds tags.
 
 Where a repository's signals take both, `prefer = "release"` (the
 default) holds a tag with no Release for `tag_window` ("1h", at most

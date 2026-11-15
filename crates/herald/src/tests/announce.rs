@@ -449,3 +449,173 @@ fn on_actions_every_secret_is_masked_before_anything_is_printed() {
     let local = herald(&setup, &World::default(), &ANNOUNCE);
     assert!(!local.out.contains("add-mask"), "{}", local.out);
 }
+
+/// `world`'s forge answering for the tag `v1`, a lightweight one with no
+/// Release.
+fn with_tag(world: &World) {
+    forge(world, (200, &[]));
+    let mut state = world.state.lock().unwrap();
+    for (path, status, body) in [
+        (
+            "/repos/cli/cli/releases/tags/v1",
+            404,
+            r#"{"message":"Not Found"}"#,
+        ),
+        (
+            "/repos/cli/cli",
+            200,
+            r#"{"id":212613049,"name":"cli","html_url":"https://github.com/cli/cli"}"#,
+        ),
+        (
+            "/repos/cli/cli/git/ref/tags/v1",
+            200,
+            r#"{"object":{"type":"commit","sha":"c1"}}"#,
+        ),
+        (
+            "/repos/cli/cli/git/commits/c1",
+            200,
+            r#"{"committer":{"date":"2026-11-15T12:00:00Z"}}"#,
+        ),
+    ] {
+        state
+            .forge
+            .insert(path.to_owned(), (status, body.to_owned()));
+    }
+}
+
+fn signalled(extra: &str) -> Setup {
+    let mut setup = setup(&CONFIG.replace(
+        "repository = \"cli/cli\"\n",
+        &format!("repository = \"cli/cli\"\n{extra}"),
+    ));
+    setup
+        .vars
+        .insert("GITHUB_EVENT_NAME".to_owned(), "push".to_owned());
+    setup
+        .vars
+        .insert("GITHUB_REF".to_owned(), "refs/tags/v1".to_owned());
+    setup
+}
+
+#[test]
+fn a_run_pushing_a_tag_with_no_release_announces_the_tag_or_holds_it() {
+    let first = signalled("signals = [\"release\", \"tag\"]\nprefer = \"first\"\n");
+    let world = World::default();
+    with_tag(&world);
+    discord(
+        &world,
+        &[(
+            "/channels/1566200000000000100/messages",
+            200,
+            r#"{"id":"1"}"#,
+        )],
+    );
+    let announced = herald(&first, &world, &ANNOUNCE);
+    assert_eq!(
+        (
+            announced.code,
+            announced.out.as_str(),
+            announced.err.as_str()
+        ),
+        (DONE, "releases: announced (post)\n", "")
+    );
+    let held = signalled("signals = [\"release\", \"tag\"]\n");
+    let world = World::default();
+    with_tag(&world);
+    let waiting = herald(&held, &world, &ANNOUNCE);
+    assert_eq!(waiting.code, DONE, "{}", waiting.err);
+    assert!(
+        waiting
+            .out
+            .starts_with("The tag v1 is held for its Release until "),
+        "{}",
+        waiting.out
+    );
+    let tags = signalled("signals = [\"tag\"]\n");
+    let world = World::default();
+    with_tag(&world);
+    world
+        .state
+        .lock()
+        .unwrap()
+        .forge
+        .remove("/repos/cli/cli/releases/tags/v1");
+    discord(
+        &world,
+        &[(
+            "/channels/1566200000000000100/messages",
+            200,
+            r#"{"id":"1"}"#,
+        )],
+    );
+    let tagged = herald(
+        &tags,
+        &world,
+        &["announce", "--from", "github", "--release", "v1"],
+    );
+    assert_eq!(tagged.out, "releases: announced (post)\n");
+    let untagged = signalled("");
+    let world = World::default();
+    let pushed = herald(&untagged, &world, &ANNOUNCE);
+    assert_eq!(
+        pushed.out,
+        "The run's event is push, not a release; nothing to announce.\n"
+    );
+}
+
+#[test]
+fn a_tag_whose_held_record_cannot_be_read_stops_the_run_and_one_unread_says_why() {
+    let held = signalled("signals = [\"release\", \"tag\"]\n");
+    let world = World::default();
+    with_tag(&world);
+    assert_eq!(herald(&held, &world, &ANNOUNCE).code, DONE);
+    let pending = {
+        let state = world.state.lock().unwrap();
+        state
+            .files
+            .keys()
+            .find(|file| file.contains("pending/"))
+            .cloned()
+            .unwrap()
+    };
+    world.state.lock().unwrap().forge.insert(
+        format!("/repos/cli/cli/contents/{pending}?ref=herald-state"),
+        (500, "{}".to_owned()),
+    );
+    let stopped = herald(&held, &world, &ANNOUNCE);
+    assert_eq!(stopped.code, STOPPED, "{}", stopped.err);
+    assert!(stopped.out.starts_with("stopped: "), "{}", stopped.out);
+    let tags = signalled("signals = [\"tag\"]\n");
+    let world = World::default();
+    with_tag(&world);
+    world.state.lock().unwrap().forge.insert(
+        "/repos/cli/cli/git/ref/tags/v1".to_owned(),
+        (404, "{}".to_owned()),
+    );
+    let unread = herald(&tags, &world, &ANNOUNCE);
+    assert_ne!(unread.code, DONE);
+    assert!(unread.err.contains("tag"), "{}", unread.err);
+}
+
+#[test]
+fn only_a_push_of_a_tag_names_the_tag_a_run_is_for() {
+    let vars = |event: &str, reference: &str| {
+        BTreeMap::from([
+            ("GITHUB_EVENT_NAME".to_owned(), event.to_owned()),
+            ("GITHUB_REF".to_owned(), reference.to_owned()),
+        ])
+    };
+    assert_eq!(
+        crate::release::pushed(&vars("push", "refs/tags/v1")),
+        Some("v1")
+    );
+    assert_eq!(
+        crate::release::pushed(&vars("release", "refs/tags/v1")),
+        None
+    );
+    assert_eq!(crate::release::pushed(&vars("push", "refs/tags/")), None);
+    assert_eq!(
+        crate::release::pushed(&vars("push", "refs/heads/main")),
+        None
+    );
+}

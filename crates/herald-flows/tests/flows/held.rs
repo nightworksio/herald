@@ -466,3 +466,110 @@ fn housekeeping_announces_a_held_tag_that_fell_due() {
         Err(Stop::Store(_))
     ));
 }
+
+#[test]
+fn one_tag_a_ci_run_names_is_held_where_its_source_holds_tags_and_announced_otherwise() {
+    let tag = {
+        let mut attributes = herald_core::versioned("v1", false);
+        attributes.insert(
+            herald_core::SIGNAL.to_owned(),
+            herald_core::Attribute::Text("tag".to_owned()),
+        );
+        herald_core::Event::normalise(herald_core::Draft {
+            identity: "github.com/1/v1".to_owned(),
+            kind: herald_core::Kind::RELEASE,
+            project: "php-mutation-gate".to_owned(),
+            title: "v1".to_owned(),
+            body: String::new(),
+            links: std::collections::BTreeMap::new(),
+            attributes,
+            occurred: NOON,
+        })
+        .unwrap()
+    };
+    let told = |config: &Config, store: &Failing, script: &Script| {
+        let prepared =
+            pollster::block_on(prepare(config, &secrets(), &FakeSigner, Uses::Polls)).unwrap();
+        let connected = prepared.connect(|_| Ok::<_, ()>(script.clone())).unwrap();
+        let clock = FakeClock::at(NOON);
+        let ports = Ports {
+            store,
+            clock: &clock,
+            signer: &FakeSigner,
+            budget: Budget::UNBOUNDED,
+        };
+        pollster::block_on(herald_flows::held_or_announced(
+            config,
+            &connected,
+            &ports,
+            (&SourceName::new("gate"), &tag),
+            "r1",
+        ))
+    };
+    let store = healthy();
+    let held = told(&tagged(None), &store, &Script::default()).unwrap();
+    assert_eq!(held.held, Some(NOON + SignedDuration::from_hours(1)));
+    assert!(
+        pollster::block_on(store.inner.pending(&hold()))
+            .unwrap()
+            .is_some()
+    );
+    let script = Script::answering(&[POSTED, CROSSPOSTED, THREADED, PINNED, WHO, NO_PINS]);
+    let first = told(
+        &tagged(Some(herald_core::Prefer::First)),
+        &healthy(),
+        &script,
+    )
+    .unwrap();
+    assert_eq!(first.held, None);
+    assert_eq!(first.announced.len(), 1);
+    let unwritable = Failing {
+        fault: Fault::WritesPending,
+        ..healthy()
+    };
+    assert!(matches!(
+        told(&tagged(None), &unwritable, &Script::default()),
+        Err(Stop::Store(_))
+    ));
+}
+
+#[test]
+fn an_event_naming_no_signal_is_never_held() {
+    let untagged = herald_core::Event::normalise(herald_core::Draft {
+        identity: "github.com/1/v1".to_owned(),
+        kind: herald_core::Kind::RELEASE,
+        project: "php-mutation-gate".to_owned(),
+        title: "v1".to_owned(),
+        body: String::new(),
+        links: std::collections::BTreeMap::new(),
+        attributes: herald_core::versioned("v1", false),
+        occurred: NOON,
+    })
+    .unwrap();
+    let config = tagged(None);
+    let prepared =
+        pollster::block_on(prepare(&config, &secrets(), &FakeSigner, Uses::Polls)).unwrap();
+    let script = Script::answering(&[POSTED, CROSSPOSTED, THREADED, PINNED, WHO, NO_PINS]);
+    let connected = prepared.connect(|_| Ok::<_, ()>(script.clone())).unwrap();
+    let clock = FakeClock::at(NOON);
+    let store = healthy();
+    let ports = Ports {
+        store: &store,
+        clock: &clock,
+        signer: &FakeSigner,
+        budget: Budget::UNBOUNDED,
+    };
+    let told = pollster::block_on(herald_flows::held_or_announced(
+        &config,
+        &connected,
+        &ports,
+        (&SourceName::new("gate"), &untagged),
+        "r1",
+    ))
+    .unwrap();
+    assert_eq!((told.held, told.announced.len()), (None, 1));
+    assert_eq!(
+        pollster::block_on(store.inner.pending(&hold())).unwrap(),
+        None
+    );
+}

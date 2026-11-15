@@ -5,10 +5,13 @@ use std::collections::BTreeMap;
 use std::io::Write;
 
 use herald_compose::GITHUB_TOKEN;
-use herald_core::{Event, PrereleaseRule};
+use herald_core::{Event, PrereleaseRule, Signal};
 use herald_environment::EnvSecrets;
+use herald_kinds::Unpolled;
 use herald_ports::{Http, Secrets};
-use herald_sources_forge::{Forge, Origin, Repository, SourceOptions, Token};
+use herald_sources_forge::{
+    Forge, Origin, Repository, Signals, SourceOptions, Token, tag_event_of,
+};
 
 use super::output::say;
 use super::{Connect, JOB_TOKEN};
@@ -48,6 +51,16 @@ pub(super) fn variable<'a>(
         .map(String::as_str)
         .filter(|value| !value.is_empty())
         .ok_or_else(|| format!("{name} is not set; herald reads it from the CI run"))
+}
+
+/// The tag a GitHub Actions run pushing one is for, where it is.
+pub(super) fn pushed(vars: &BTreeMap<String, String>) -> Option<&str> {
+    let pushed = vars
+        .get("GITHUB_EVENT_NAME")
+        .is_some_and(|name| name == "push");
+    vars.get("GITHUB_REF")
+        .and_then(|reference| reference.strip_prefix("refs/tags/"))
+        .filter(|tag| pushed && !tag.is_empty())
 }
 
 /// The release the run's own event publishes, if it does.
@@ -96,7 +109,7 @@ pub(super) fn project(vars: &BTreeMap<String, String>) -> Result<Repository, Str
 /// repository asked for too where the run does not name it.
 pub(super) async fn tagged(
     options: &SourceOptions,
-    (forge, rule): (Forge, PrereleaseRule),
+    (forge, signals): (Forge, &Signals),
     tag: &str,
     known: Option<Repository>,
     vars: &BTreeMap<String, String>,
@@ -122,12 +135,28 @@ pub(super) async fn tagged(
         options.repository.as_deref().unwrap_or_default(),
     );
     let http = connect.reach(origin.api())?;
+    let rule = signals.prerelease;
+    let token = token.as_ref();
+    let tag_event = || async {
+        tag_event_of(&origin, &http, (tag, token), rule)
+            .await
+            .map(Some)
+            .map_err(|unpolled| match unpolled {
+                Unpolled::Unreachable(reason) | Unpolled::Unreadable(reason) => reason,
+            })
+    };
+    if !signals.takes(Signal::Release) {
+        return tag_event().await;
+    }
     let asked = |request| async { http.send(request).await.map_err(|error| error.to_string()) };
-    let answer = asked(origin.release_request(tag, token.as_ref())).await?;
+    let answer = asked(origin.release_request(tag, token)).await?;
+    if answer.status == herald_core::status::NOT_FOUND && signals.takes(Signal::Tag) {
+        return tag_event().await;
+    }
     let repository = if let Some(repository) = known {
         repository
     } else {
-        let described = asked(origin.repository_request(token.as_ref())).await?;
+        let described = asked(origin.repository_request(token)).await?;
         forge
             .repository(&described)
             .map_err(|error| error.to_string())?

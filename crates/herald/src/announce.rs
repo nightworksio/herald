@@ -5,17 +5,17 @@
 use std::collections::BTreeMap;
 use std::io::Write;
 
-use herald_compose::told::report;
+use herald_compose::told::{report, why};
 use herald_compose::{Composed, Host, Hosting, ServingOn, Through};
 use herald_config::{Config, Uses};
 use herald_core::{Event, RouteId, Signal, SourceName};
-use herald_flows::{Announced, Outcome, announce_within};
+use herald_flows::{Fresh, Outcome, Stop, announce_within, held_or_announced};
 use herald_ports::{Base, Keyring, Outbound, Store};
 use herald_sources_forge::{Forge, ForgeSource, SourceOptions};
 
 use super::dry_run::Dry;
 use super::output::say;
-use super::release::{Ci, evented, project, tagged, variable};
+use super::release::{Ci, evented, project, pushed, tagged, variable};
 use super::stores::{Native, composed};
 use super::{Connect, Connection, Connector, DONE, STOPPED, place, waiting};
 
@@ -122,14 +122,11 @@ async fn released(
 ) -> Result<Option<Event>, String> {
     let repository = options.repository.as_deref().unwrap_or_default();
     let signals = options.signals_of(repository.rsplit('/').next().unwrap_or(repository));
-    if !signals.takes(Signal::Release) {
-        say(
-            out,
-            "The source announces no releases of the repository; nothing to announce.",
-        );
-        return Ok(None);
-    }
-    let rule = signals.prerelease;
+    let tag = tag.or_else(|| {
+        (forge != Forge::GitLab && signals.takes(Signal::Tag))
+            .then(|| pushed(vars))
+            .flatten()
+    });
     match (forge, tag) {
         (Forge::GitLab, None) => {
             say(out, "The pipeline is not for a tag; nothing to announce.");
@@ -139,7 +136,7 @@ async fn released(
             let project = project(vars)?;
             tagged(
                 options,
-                (forge, rule),
+                (forge, &signals),
                 tag,
                 Some(project),
                 vars,
@@ -148,8 +145,15 @@ async fn released(
             )
             .await
         }
-        (_, Some(tag)) => tagged(options, (forge, rule), tag, None, vars, connect, out).await,
-        (_, None) => evented((forge, rule), vars, out),
+        (_, Some(tag)) => tagged(options, (forge, &signals), tag, None, vars, connect, out).await,
+        (_, None) if !signals.takes(Signal::Release) => {
+            say(
+                out,
+                "The source announces no releases of the repository; nothing to announce.",
+            );
+            Ok(None)
+        }
+        (_, None) => evented((forge, signals.prerelease), vars, out),
     }
 }
 
@@ -198,13 +202,30 @@ pub(super) async fn announcing(
 }
 
 /// The code `announced` ends a run with, each announcement reported.
-fn reported(announced: Vec<Announced>, out: &mut dyn Write) -> u8 {
+fn reported(told: Vec<Result<Fresh, Stop>>, out: &mut dyn Write) -> u8 {
     let mut code = DONE;
-    for announced in announced {
-        if matches!(announced.outcome, Outcome::Stopped { .. }) {
-            code = STOPPED;
+    for fresh in told {
+        let fresh = match fresh {
+            Ok(fresh) => fresh,
+            Err(stop) => {
+                say(out, &format!("stopped: {}", why(&stop)));
+                code = STOPPED;
+                continue;
+            }
+        };
+        if let Some(due) = fresh.held {
+            let version = fresh.event.version().unwrap_or(fresh.event.title());
+            say(
+                out,
+                &format!("The tag {version} is held for its Release until {due}."),
+            );
         }
-        say(out, &report(&announced));
+        for announced in fresh.announced {
+            if matches!(announced.outcome, Outcome::Stopped { .. }) {
+                code = STOPPED;
+            }
+            say(out, &report(&announced));
+        }
     }
     code
 }
@@ -213,28 +234,37 @@ fn reported(announced: Vec<Announced>, out: &mut dyn Write) -> u8 {
 struct Announcing<'a>(Routed<'a>);
 
 impl<H: Host> Through<H> for Announcing<'_> {
-    type Done = Vec<Announced>;
+    type Done = Vec<Result<Fresh, Stop>>;
 
     async fn through<S: Store, K: Keyring>(
         self,
         serving: &ServingOn<'_, H, S, K>,
         run: &str,
-    ) -> Vec<Announced> {
+    ) -> Vec<Result<Fresh, Stop>> {
         let routed = self.0;
+        let (config, connected, ports) = (serving.config, serving.connected, serving.ports);
         let mut all = Vec::new();
         for source in routed.sources {
-            all.extend(
-                announce_within(
-                    serving.config,
-                    serving.connected,
-                    serving.ports,
-                    source,
-                    routed.event,
-                    routed.within,
-                    run,
-                )
-                .await,
-            );
+            let told = match routed.within {
+                Some(within) => Ok(Fresh {
+                    event: routed.event.clone(),
+                    announced: announce_within(
+                        config,
+                        connected,
+                        ports,
+                        source,
+                        routed.event,
+                        Some(within),
+                        run,
+                    )
+                    .await,
+                    held: None,
+                }),
+                None => {
+                    held_or_announced(config, connected, ports, (source, routed.event), run).await
+                }
+            };
+            all.push(told);
         }
         all
     }

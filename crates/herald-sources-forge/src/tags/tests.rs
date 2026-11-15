@@ -258,3 +258,11 @@ proptest! {
         }
     }
 }
+
+#[test]
+fn a_github_tag_is_read_through_its_reference_whatever_its_answer() {
+    assert_eq!(
+        Forge::GitHub.tag("v1", &answer(404, &json!({}))),
+        Ok(Listed::Referenced("v1".to_owned()))
+    );
+}

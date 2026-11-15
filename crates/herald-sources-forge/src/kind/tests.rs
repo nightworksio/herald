@@ -255,6 +255,7 @@ fn each_poll_of_a_source_holding_tags_says_how_long_a_tag_waits() {
         panic!("a repository is polled as one");
     };
     assert_eq!(poll.tag_window(), Some(crate::TAG_WINDOW));
+    assert_eq!(one.tag_window(), Some(crate::TAG_WINDOW));
     let plain = GitHubKind::checked(options("cli/cli")).unwrap();
     let Polling::One(poll) = plain.poller(None) else {
         panic!("a repository is polled as one");
@@ -274,6 +275,13 @@ fn each_poll_of_a_source_holding_tags_says_how_long_a_tag_waits() {
         ..options("cli/cli")
     })
     .unwrap();
+    assert_eq!(owner.tag_window(), None);
+    assert_eq!(
+        GitHubKind::checked(options("cli/cli"))
+            .unwrap()
+            .tag_window(),
+        None
+    );
     let Polling::Many(expand) = owner.poller(None) else {
         panic!("an owner is polled as its members");
     };

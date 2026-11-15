@@ -58,6 +58,52 @@ pub(crate) async fn held<S: Store, C: Clock, G>(
     Ok(Some(due))
 }
 
+/// `event`, a tag or Release `source` names, held for its Release where the
+/// source holds its tags, and otherwise announced to every route that takes
+/// it under `run`: what a CI run for a tag or a release does (ADR-0032).
+///
+/// # Errors
+///
+/// Where its held record cannot be read or written.
+pub async fn held_or_announced<S: Store, C: Clock, G: Signer, H: Http>(
+    config: &Config,
+    connected: &Connected<H>,
+    ports: &Ports<'_, S, C, G>,
+    (source, event): (&SourceName, &Event),
+    run: &str,
+) -> Result<Fresh, Stop> {
+    let window = config
+        .sources
+        .get(source)
+        .and_then(|options| options.tag_window());
+    if let Some(window) = window
+        && let Some(due) = held(
+            ports,
+            (
+                source,
+                Holding {
+                    window,
+                    member: None,
+                },
+            ),
+            event,
+        )
+        .await?
+    {
+        return Ok(Fresh {
+            event: event.clone(),
+            announced: Vec::new(),
+            held: Some(due),
+        });
+    }
+    let announced = announce_within(config, connected, ports, source, event, None, run).await;
+    Ok(Fresh {
+        event: event.clone(),
+        announced,
+        held: None,
+    })
+}
+
 /// Every held event whose window has passed announced, each to the routes
 /// that take it, as its source's under `run`, and its record dropped once
 /// every route has it; a tag of an owner's member the owner's last

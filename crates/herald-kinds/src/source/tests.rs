@@ -71,6 +71,7 @@ fn a_source_takes_no_webhook_and_no_moving_tag_where_its_kind_keeps_the_defaults
     assert!(!source.moving_tags());
     assert!(!source.unlisted());
     assert!(!source.holds());
+    assert_eq!(source.tag_window(), None);
     assert_eq!(source.notes(), Vec::<&str>::new());
     assert_eq!(source.projects(), Vec::<String>::new());
     assert_eq!(

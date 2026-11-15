@@ -162,6 +162,12 @@ impl SourceConfig for ForgeSource {
             && self.options.may_take(herald_core::Signal::Tag)
     }
 
+    fn tag_window(&self) -> Option<jiff::SignedDuration> {
+        let repository = self.options.repository.as_deref()?;
+        self.options
+            .held_for(&self.options.signals_of(named(repository)))
+    }
+
     fn scheme(&self) -> Option<Scheme> {
         Some(self.forge.scheme())
     }

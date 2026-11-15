@@ -75,6 +75,12 @@ pub trait SourceConfig: fmt::Debug + Send + Sync + Itself {
         false
     }
 
+    /// How long a tag of the one repository it names waits for its Release,
+    /// where it names one and a tag waits (ADR-0032).
+    fn tag_window(&self) -> Option<SignedDuration> {
+        None
+    }
+
     /// The projects its events are announced as, where its options name
     /// them.
     fn projects(&self) -> Vec<String> {
