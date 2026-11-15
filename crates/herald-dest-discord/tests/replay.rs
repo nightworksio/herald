@@ -2,6 +2,10 @@
 //! it, and each answer read back into what the ledger records.
 
 #[cfg(test)]
+#[path = "replay/revise.rs"]
+mod revise;
+
+#[cfg(test)]
 mod replay {
     use herald_core::{
         Announcement, Chore, Declined, Delivery, Entry, Facts, Marker, Pins, Plan, Planned,

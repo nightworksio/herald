@@ -2,15 +2,16 @@
 //! finishing what an earlier run left (ADR-0005).
 
 use std::collections::BTreeSet;
+use std::convert::Infallible;
 use std::num::NonZeroUsize;
 
 use futures_util::future::join_all;
 use futures_util::stream::{self, StreamExt};
 use herald_config::Config;
 use herald_core::{
-    Announcement, Entry, Event, Facts, Key, KindSpecs, Latest, Marker, Marks, MentionStyle,
-    Pinning, Plan, Planned, Profile, RouteId, Sent, SourceName, State, Step, Templates, Threads,
-    plan, schedules, steps,
+    Announcement, Entry, Event, Facts, Identity, Key, KindSpecs, Latest, Marker, Marks,
+    MentionStyle, Pinning, Plan, Planned, Profile, Revise, Revision, RouteId, Sent, SourceName,
+    State, Step, Templates, Threads, plan, revise, revised, schedules, steps,
 };
 use herald_kinds::Signing;
 use herald_ports::{
@@ -54,6 +55,8 @@ pub enum Outcome {
     },
     /// An earlier run announced it; nothing was sent.
     AlreadyAnnounced,
+    /// It edits an announcement the route never made; nothing was sent.
+    Unedited,
     /// Another run holds it; nothing was sent by this one.
     Held {
         /// The run holding it.
@@ -284,14 +287,14 @@ impl<S: Store, C: Clock, G: Signer, H: Http> Run<'_, S, C, G, H> {
     }
 
     /// Keeps the Note the route's actor published with `step`, where it is
-    /// the post and the route serves what it publishes.
+    /// the post or its edit and the route serves what it publishes.
     async fn noted(
         &self,
         step: &Step,
         announcement: &Announcement,
         progress: &Progress,
     ) -> Result<(), Stop> {
-        if *step == Step::Post
+        if matches!(step, Step::Post | Step::Edit { part: 0, .. })
             && let Some((actor, published)) = self.route.reached.published(announcement)
         {
             self.ports
@@ -314,7 +317,7 @@ impl<S: Store, C: Clock, G: Signer, H: Http> Run<'_, S, C, G, H> {
     /// own record.
     async fn delivered(
         &self,
-        batch: &[String],
+        (batch, key): (&[String], Key),
         announcement: &Announcement,
         progress: &mut Progress,
     ) -> Result<(), Unlanded> {
@@ -322,7 +325,6 @@ impl<S: Store, C: Clock, G: Signer, H: Http> Run<'_, S, C, G, H> {
         let steps: Vec<Step> = batch.iter().cloned().map(Step::Deliver).collect();
         let unlanded = |reason| (steps.clone(), reason);
         self.write(progress).await.map_err(unlanded)?;
-        let key = progress.entry.key;
         for inbox in batch {
             self.ports
                 .store
@@ -369,28 +371,39 @@ impl<S: Store, C: Clock, G: Signer, H: Http> Run<'_, S, C, G, H> {
         first.map_or(Ok(()), |reason| Err((failed, reason)))
     }
 
-    /// Delivers the announcement to the inbox of each follower of `actor` it
-    /// has not landed in, as many at once as its destination's `deliveries`
-    /// says, and lands the deliveries once
-    /// every one has.
+    /// Delivers the announcement, as `step` says, to the inbox of each
+    /// follower of `actor` it has not landed in, as many at once as its
+    /// destination's `deliveries` says, and lands `step` once every one has:
+    /// the deliveries to every follower, or the updates of a revision to
+    /// each the deliveries reached, each kept under a key of the revision.
     async fn deliveries(
         &self,
-        actor: &str,
+        (actor, step): (&str, &Step),
         announcement: &Announcement,
         progress: &mut Progress,
     ) -> Result<(), Unlanded> {
-        let whole = |reason| (vec![Step::Deliveries], reason);
-        let key = progress.entry.key;
+        let whole = |reason| (vec![step.clone()], reason);
+        let created = progress.entry.key;
+        let key = match step {
+            Step::Updates(revision) => created.revised(revision),
+            _ => created,
+        };
         let mut pending = Vec::new();
         for inbox in self.recipients(actor).await.map_err(whole)? {
-            let state = self
-                .ports
-                .store
-                .inboxes()
+            let inboxes = self.ports.store.inboxes();
+            let reached = key == created
+                || landed(
+                    inboxes
+                        .delivery(&created, &inbox)
+                        .await
+                        .map_err(|error| whole(stored(error)))?
+                        .as_ref(),
+                );
+            let state = inboxes
                 .delivery(&key, &inbox)
                 .await
                 .map_err(|error| whole(stored(error)))?;
-            if !matches!(state, Some(State::Landed { .. })) {
+            if reached && !landed(state.as_ref()) {
                 pending.push(inbox);
             }
         }
@@ -406,7 +419,7 @@ impl<S: Store, C: Clock, G: Signer, H: Http> Run<'_, S, C, G, H> {
                 .budget
                 .allows(self.ports.clock.now(), batch.len())
             {
-                Ok(()) => self.delivered(batch, announcement, progress).await,
+                Ok(()) => self.delivered((batch, key), announcement, progress).await,
                 Err(reason) => Err((batch.iter().cloned().map(Step::Deliver).collect(), reason)),
             };
             if let Err((mut failed, reason)) = delivered {
@@ -417,7 +430,7 @@ impl<S: Store, C: Clock, G: Signer, H: Http> Run<'_, S, C, G, H> {
         progress.entry = progress
             .entry
             .clone()
-            .landed(Step::Deliveries, Facts::default());
+            .landed(step.clone(), Facts::default());
         self.write(progress).await.map_err(whole)
     }
 
@@ -429,8 +442,12 @@ impl<S: Store, C: Clock, G: Signer, H: Http> Run<'_, S, C, G, H> {
         announcement: &mut Announcement,
         progress: &mut Progress,
     ) -> Result<(), Unlanded> {
-        if let (Step::Deliveries, Some(actor)) = (&step.step, self.route.reached.follows()) {
-            return self.deliveries(actor, announcement, progress).await;
+        if let (Step::Deliveries | Step::Updates(_), Some(actor)) =
+            (&step.step, self.route.reached.follows())
+        {
+            return self
+                .deliveries((actor, &step.step), announcement, progress)
+                .await;
         }
         self.ports
             .budget
@@ -500,27 +517,54 @@ impl<S: Store, C: Clock, G: Signer, H: Http> Run<'_, S, C, G, H> {
     }
 
     pub(crate) async fn announce(&self, event: &Event, templates: &Templates) -> Outcome {
-        let key = Key::derive(&self.route.config.route.id, event.identity());
-        let (mut announcement, wanted) = match self.prepared(&key, event, templates).await {
-            Ok(prepared) => prepared,
-            Err(reason) => return stopped(reason),
-        };
-        let (planned, mut progress) = match self.claimed(key, &wanted).await {
-            Ok(claimed) => claimed,
-            Err(outcome) => return outcome,
-        };
-        let stop = self.taken(&planned, &mut announcement, &mut progress).await;
-        self.released(stop, progress).await
+        let route = &self.route.config.route.id;
+        let key = Key::derive(route, event.identity());
+        if let Ok(outcome) = self.announced(key, event, templates, Some(Reposted)).await {
+            return outcome;
+        }
+        let reposted = Identity::new(format!("{}{REPOSTED}", event.identity().as_str()));
+        let key = Key::derive(route, &reposted);
+        let Ok(outcome) = self
+            .announced::<Infallible>(key, event, templates, None)
+            .await;
+        outcome
     }
 
-    /// The announcement `key` of `event`, rendered for the route, and the
-    /// steps the route wants it sent in.
+    /// What the route did with `event` as the announcement `key`; or
+    /// `repost`, where it gives one and the route posts a late Release
+    /// anew under a key of its own.
+    async fn announced<R>(
+        &self,
+        key: Key,
+        event: &Event,
+        templates: &Templates,
+        repost: Option<R>,
+    ) -> Result<Outcome, R> {
+        let (mut announcement, wanted, (revision, parts)) =
+            match self.prepared(&key, event, templates).await {
+                Ok(prepared) => prepared,
+                Err(reason) => return Ok(stopped(reason)),
+            };
+        let (planned, mut progress) = match self
+            .claimed(key, &wanted, (&revision, parts, event.edited()), repost)
+            .await
+        {
+            Ok(claimed) => claimed,
+            Err(Claim::Reposted(repost)) => return Err(repost),
+            Err(Claim::Done(outcome)) => return Ok(outcome),
+        };
+        let stop = self.taken(&planned, &mut announcement, &mut progress).await;
+        Ok(self.released(stop, progress).await)
+    }
+
+    /// The announcement `key` of `event`, rendered for the route, the steps
+    /// the route wants it sent in, and what it shows in how many parts.
     async fn prepared(
         &self,
         key: &Key,
         event: &Event,
         templates: &Templates,
-    ) -> Result<(Announcement, Vec<Step>), Stop> {
+    ) -> Result<(Announcement, Vec<Step>, (Revision, u32)), Stop> {
         let marks = self.marks(key).await?;
         let profile = Profile {
             symbols: self.route.config.profile.symbols,
@@ -531,17 +575,28 @@ impl<S: Store, C: Clock, G: Signer, H: Http> Run<'_, S, C, G, H> {
         let follows = self.route.reached.follows().is_some();
         let delivery = &self.route.config.route.delivery;
         let wanted = steps(delivery, &profile.features, parts, follows);
-        Ok((announcement, wanted))
+        let link = announcement.link.as_deref();
+        let revision = Revision::of(
+            event.signal(),
+            std::iter::once(announcement.title.plain())
+                .chain(announcement.parts.iter().map(|part| part.body.as_str()))
+                .chain(link),
+        );
+        Ok((announcement, wanted, (revision, parts)))
     }
 
-    /// The steps the announcement `key` still needs, and its ledger entry
+    /// The steps the announcement `key` still needs, bringing a post that
+    /// changed to `revision` where the route edits it, and its ledger entry
     /// claimed for this run; or else what the route did instead: an earlier
-    /// run announced it, another holds it, or it could not be claimed.
-    async fn claimed(
+    /// run announced it, another holds it, it could not be claimed, or it
+    /// is posted anew as `repost`.
+    async fn claimed<R>(
         &self,
         key: Key,
         wanted: &[Step],
-    ) -> Result<(Vec<Planned>, Progress), Outcome> {
+        (revision, parts, edited): (&Revision, u32, bool),
+        repost: Option<R>,
+    ) -> Result<(Vec<Planned>, Progress), Claim<R>> {
         let now = self.ports.clock.now();
         let record = self
             .ports
@@ -549,18 +604,30 @@ impl<S: Store, C: Clock, G: Signer, H: Http> Run<'_, S, C, G, H> {
             .ledger()
             .entry(&key)
             .await
-            .map_err(|error| stopped(stored(error)))?;
-        let planned = match plan(
-            record.as_ref().map(|record| &record.value),
-            wanted,
-            self.holder,
-            now,
-        ) {
-            Plan::Complete => return Err(Outcome::AlreadyAnnounced),
-            Plan::Held { by, until } => return Err(Outcome::Held { by, until }),
+            .map_err(|error| Claim::Done(stopped(stored(error))))?;
+        let entry = record.as_ref().map(|record| &record.value);
+        if edited && entry.is_none_or(|entry| entry.message(&Step::Post).is_none()) {
+            return Err(Claim::Done(Outcome::Unedited));
+        }
+        let edits = self.route.reached.profile().features.edits;
+        let delivery = &self.route.config.route.delivery;
+        let revising = entry.map(|entry| (entry, revise(entry, revision, delivery, edits)));
+        let (wanted, shown) = match (revising, repost) {
+            (Some((_, Revise::Post)), Some(repost)) => return Err(Claim::Reposted(repost)),
+            (Some((entry, Revise::Edit)), _) => (revised(entry, revision, parts), revision),
+            (Some((entry, _)), _) => match &entry.revision {
+                Some(shown) if shown.digest != revision.digest => (wanted.to_vec(), shown),
+                _ => (resumed(entry).unwrap_or_else(|| wanted.to_vec()), revision),
+            },
+            (None, _) => (wanted.to_vec(), revision),
+        };
+        let planned = match plan(entry, &wanted, self.holder, now) {
+            Plan::Complete => return Err(Claim::Done(Outcome::AlreadyAnnounced)),
+            Plan::Held { by, until } => return Err(Claim::Done(Outcome::Held { by, until })),
             Plan::Send(planned) => planned,
         };
         let expected = record.as_ref().map(|record| record.version);
+        let shown = shown.clone();
         let claimed = record
             .map_or_else(|| Entry::new(key), |record| record.value)
             .claimed_by(
@@ -568,7 +635,8 @@ impl<S: Store, C: Clock, G: Signer, H: Http> Run<'_, S, C, G, H> {
                 now,
                 now.checked_add(self.lease).unwrap_or(Timestamp::MAX),
             )
-            .wanting(wanted);
+            .wanting(&wanted)
+            .revising(shown);
         let version = match self
             .ports
             .store
@@ -578,11 +646,11 @@ impl<S: Store, C: Clock, G: Signer, H: Http> Run<'_, S, C, G, H> {
         {
             Ok(Written::Written(version)) => version,
             Ok(Written::Conflict) => {
-                return Err(stopped(Stop::Store(
+                return Err(Claim::Done(stopped(Stop::Store(
                     "another run claimed the announcement first".to_owned(),
-                )));
+                ))));
             }
-            Err(error) => return Err(stopped(stored(error))),
+            Err(error) => return Err(Claim::Done(stopped(stored(error)))),
         };
         let progress = Progress {
             entry: claimed,
@@ -633,6 +701,34 @@ impl<S: Store, C: Clock, G: Signer, H: Http> Run<'_, S, C, G, H> {
     }
 }
 
+/// What a route's identity is suffixed with, keying a late Release it
+/// posts anew apart from its tag's post.
+const REPOSTED: &str = "#release";
+
+/// That a route posts its announcement anew under a key of its own.
+struct Reposted;
+
+/// Why a route claimed no steps of an announcement: it did something else,
+/// or posts it anew, as `R` says.
+enum Claim<R> {
+    Done(Outcome),
+    Reposted(R),
+}
+
+/// Whether a delivery stands `state`: landed.
+fn landed(state: Option<&State>) -> bool {
+    matches!(state, Some(State::Landed { .. }))
+}
+
+/// The steps `entry` wants where a revision it brings its post to is under
+/// way.
+fn resumed(entry: &Entry) -> Option<Vec<Step>> {
+    entry
+        .wanted
+        .clone()
+        .filter(|wanted| wanted.iter().any(|step| matches!(step, Step::Edit { .. })))
+}
+
 /// A route stopped by `reason` before it landed or planned anything.
 fn stopped(reason: Stop) -> Outcome {
     Outcome::Stopped {
@@ -657,7 +753,7 @@ async fn kept_latest<S: Store>(
     let landed = match &outcome {
         Outcome::Sent { steps } => steps.clone(),
         Outcome::AlreadyAnnounced => Vec::new(),
-        Outcome::Held { .. } | Outcome::Stopped { .. } => return outcome,
+        Outcome::Held { .. } | Outcome::Stopped { .. } | Outcome::Unedited => return outcome,
     };
     let Some(announcements) = store.announcements() else {
         return outcome;

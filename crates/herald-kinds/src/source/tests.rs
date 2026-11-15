@@ -50,7 +50,7 @@ impl SourceConfig for Plain {
         3
     }
 
-    fn poller(&self, token: Option<Secret>) -> Polling {
+    fn poller(&self, token: Option<Secret>, _: bool) -> Polling {
         Polling::One(Arc::new(Quiet(token, "https://plain.example".to_owned())))
     }
 }
@@ -83,15 +83,17 @@ fn a_source_takes_no_webhook_and_no_moving_tag_where_its_kind_keeps_the_defaults
     assert_eq!(source.kind(), "plain");
     assert_eq!(source.kinds(), &[Kind::RELEASE]);
     assert_eq!(source.backfill(), 3);
+    assert_eq!(source.signals(), Vec::new());
     assert_eq!(source.hooked(&[], b"{}"), Ok(Hooked::Nothing(UNHOOKED)));
 }
 
 #[test]
 fn a_source_polls_with_the_token_it_is_given() {
     let source = Source::new(tokened());
-    let polling = source.poller(Some(Secret::new("TOKEN", "t")));
+    let polling = source.poller(Some(Secret::new("TOKEN", "t")), false);
     assert_eq!(polling.api(), "https://plain.example");
-    let (Polling::One(poll), Polling::One(untokened)) = (polling, source.poller(None)) else {
+    let (Polling::One(poll), Polling::One(untokened)) = (polling, source.poller(None, false))
+    else {
         panic!("a plain source is polled as one");
     };
     assert_eq!(poll.remembered(), 2);

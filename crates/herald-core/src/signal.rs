@@ -6,6 +6,10 @@ use crate::version::prerelease_version;
 /// The attribute naming the signal an event is of.
 pub const SIGNAL: &str = "signal";
 
+/// The attribute marking an event as an edit of one the forge published
+/// before (ADR-0034).
+pub const EDITED: &str = "edited";
+
 /// What a source announces of a repository.
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, JsonSchema,
@@ -21,6 +25,8 @@ pub enum Signal {
 impl Signal {
     /// The signals a source announces where `signals` is absent.
     pub const DEFAULT: [Self; 1] = [Self::Release];
+    /// Every signal.
+    pub const ALL: [Self; 2] = [Self::Release, Self::Tag];
 
     /// Its name, as `signals` writes it and an event's `signal` attribute
     /// holds it.
@@ -35,9 +41,7 @@ impl Signal {
     /// The signal named `name`, where it names one.
     #[must_use]
     pub fn named(name: &str) -> Option<Self> {
-        [Self::Release, Self::Tag]
-            .into_iter()
-            .find(|signal| signal.name() == name)
+        Self::ALL.into_iter().find(|signal| signal.name() == name)
     }
 }
 

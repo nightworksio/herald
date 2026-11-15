@@ -191,15 +191,24 @@ pub(crate) fn prerelease_in(attributes: &BTreeMap<String, Attribute>) -> bool {
 }
 
 /// The attributes of a kind a forge's signals announce: the signal an
-/// event is of, where its source names one.
+/// event is of, where its source names one, and whether it is an edit.
 fn signalled() -> BTreeMap<String, AttributeSpec> {
-    BTreeMap::from([(
-        crate::signal::SIGNAL.to_owned(),
-        AttributeSpec {
-            ty: AttributeType::Text,
-            required: false,
-        },
-    )])
+    BTreeMap::from([
+        (
+            crate::signal::SIGNAL.to_owned(),
+            AttributeSpec {
+                ty: AttributeType::Text,
+                required: false,
+            },
+        ),
+        (
+            crate::signal::EDITED.to_owned(),
+            AttributeSpec {
+                ty: AttributeType::Flag,
+                required: false,
+            },
+        ),
+    ])
 }
 
 /// One link a kind's events carry, which becomes a button where the event

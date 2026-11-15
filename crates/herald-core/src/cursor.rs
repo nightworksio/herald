@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 
 use crate::event::Event;
-use crate::key::Identity;
+use crate::key::{Identity, digest};
 use crate::signal::{Signal, Validators};
 
 /// What a polled source has seen, and the validators its server last returned.
@@ -26,6 +26,10 @@ pub struct Cursor {
     /// Release, newest first.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub tagged: Vec<Identity>,
+    /// A digest of the name and notes of each Release it watches for an
+    /// edit (ADR-0034).
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub notes: BTreeMap<Identity, String>,
 }
 
 /// What one poll of a source found: its events, the newest first, and the
@@ -44,6 +48,8 @@ pub struct Polled {
     /// The identities it found without reading them in full, newest first,
     /// which announce nothing and are remembered as seen.
     pub passed: Vec<Identity>,
+    /// How many of the newest Releases it found are watched for an edit.
+    pub watched: usize,
 }
 
 impl Cursor {
@@ -95,7 +101,36 @@ impl Cursor {
                 .map(|event| event.project().to_owned())
                 .or_else(|| self.project.clone()),
             signals: polled.signals.clone(),
+            notes: self.watched(polled),
         }
+    }
+
+    /// The digests of the newest Releases `polled` found, as many as it
+    /// watches, where it found any; else those it watched before.
+    fn watched(&self, polled: &Polled) -> BTreeMap<Identity, String> {
+        let mut releases = polled
+            .events
+            .iter()
+            .filter(|event| event.signal() == Some(Signal::Release))
+            .peekable();
+        if releases.peek().is_none() {
+            return self.notes.clone();
+        }
+        releases
+            .take(polled.watched)
+            .map(|event| (event.identity().clone(), noted(event)))
+            .collect()
+    }
+
+    /// Whether `event` is a Release it watches whose name or notes changed
+    /// since.
+    #[must_use]
+    pub fn edited(&self, event: &Event) -> bool {
+        event.signal() == Some(Signal::Release)
+            && self
+                .notes
+                .get(event.identity())
+                .is_some_and(|digest| *digest != noted(event))
     }
 
     /// Whether `event` is one it has not seen: an identity it has not seen,
@@ -115,19 +150,38 @@ impl Cursor {
     }
 }
 
+/// The digest of `event`'s name and notes.
+fn noted(event: &Event) -> String {
+    digest(&format!(
+        "{}\n{}\n{}",
+        event.title().len(),
+        event.title(),
+        event.body()
+    ))
+}
+
 fn seen_in(found: &[Event], identity: &Identity) -> bool {
     found.iter().any(|event| event.identity() == identity)
 }
 
-/// The events of a poll to announce: those `cursor` has not seen, and each
-/// Release of a version it has seen only as a tag. With no cursor, the
+/// The events of a poll to announce: those `cursor` has not seen, each
+/// Release of a version it has seen only as a tag, and each Release it
+/// watches whose name or notes changed, marked edited. With no cursor, the
 /// source is new, and only its newest `backfill` are announced.
 #[must_use]
 pub fn fresh(cursor: Option<&Cursor>, found: Vec<Event>, backfill: usize) -> Vec<Event> {
     match cursor {
         Some(cursor) => found
             .into_iter()
-            .filter(|event| cursor.unseen(event))
+            .filter_map(|event| {
+                if cursor.unseen(&event) {
+                    Some(event)
+                } else if cursor.edited(&event) {
+                    Some(event.marked_edited())
+                } else {
+                    None
+                }
+            })
             .collect(),
         None => found.into_iter().take(backfill).collect(),
     }
@@ -193,6 +247,7 @@ mod tests {
                 last_modified: Some("then".to_owned()),
                 signals: BTreeMap::from([(Signal::Tag, tags.clone())]),
                 passed: vec![Identity::new("b"), Identity::new("p"), Identity::new("a")],
+                watched: 0,
             },
             500,
         );
@@ -209,6 +264,7 @@ mod tests {
                 last_modified: Some("then".to_owned()),
                 project: Some(event("c").project().to_owned()),
                 signals: BTreeMap::from([(Signal::Tag, tags.clone())]),
+                notes: BTreeMap::new(),
                 tagged: vec![Identity::new("b"), Identity::new("p"), Identity::new("a")],
             }
         );
@@ -325,5 +381,60 @@ mod tests {
             "{json}"
         );
         assert_eq!(serde_json::from_str::<Cursor>(&json).unwrap(), tagged);
+    }
+
+    /// The Release `identity`, its notes `body`.
+    fn released(identity: &str, body: &str) -> Event {
+        let mut attributes = crate::versioned("v1", false);
+        attributes.insert(
+            crate::SIGNAL.to_owned(),
+            crate::Attribute::Text(Signal::Release.name().to_owned()),
+        );
+        Event::normalise(Draft {
+            identity: identity.to_owned(),
+            attributes,
+            body: body.to_owned(),
+            ..draft()
+        })
+        .unwrap()
+    }
+
+    #[test]
+    fn a_release_watched_whose_notes_change_is_fresh_again_marked_as_an_edit() {
+        let first = Polled {
+            events: vec![released("a", "notes"), released("b", "notes"), event("c")],
+            watched: 1,
+            ..Polled::default()
+        };
+        let cursor = Cursor::default().advanced(&first, 500);
+        assert_eq!(
+            cursor
+                .notes
+                .keys()
+                .map(Identity::as_str)
+                .collect::<Vec<_>>(),
+            ["a"]
+        );
+        let edited = released("a", "fixed notes");
+        assert!(cursor.edited(&edited));
+        assert!(!cursor.edited(&released("a", "notes")));
+        assert!(!cursor.edited(&released("b", "fixed notes")));
+        let found = fresh(
+            Some(&cursor),
+            vec![edited.clone(), released("b", "fixed notes"), event("d")],
+            0,
+        );
+        assert_eq!(identities(&found), ["a", "d"]);
+        assert!(found[0].edited() && !found[1].edited());
+        let kept = cursor.advanced(&Polled::default(), 500);
+        assert_eq!(kept.notes, cursor.notes);
+        let unwatched = cursor.advanced(
+            &Polled {
+                events: vec![edited],
+                ..Polled::default()
+            },
+            500,
+        );
+        assert!(unwatched.notes.is_empty());
     }
 }

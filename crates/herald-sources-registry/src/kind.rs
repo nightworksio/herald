@@ -108,7 +108,7 @@ impl SourceConfig for RegistrySource {
         ]
     }
 
-    fn poller(&self, token: Option<Secret>) -> Polling {
+    fn poller(&self, token: Option<Secret>, _: bool) -> Polling {
         Polling::One(Arc::new(Versions {
             package: Package::new(self.registry, &self.options),
             token,

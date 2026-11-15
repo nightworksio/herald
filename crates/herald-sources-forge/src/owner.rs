@@ -33,6 +33,7 @@ pub(crate) struct Owned {
     page: NonZeroUsize,
     options: SourceOptions,
     token: Option<Token>,
+    watched: usize,
     file: Option<Filed>,
     project: Option<ProjectName>,
     projects: Vec<(Glob, ProjectName)>,
@@ -62,7 +63,7 @@ impl Owned {
         forge: Forge,
         (owner, names): (&str, Option<&[String]>),
         options: &SourceOptions,
-        token: Option<Token>,
+        (token, watched): (Option<Token>, usize),
     ) -> Self {
         let file = match &options.members {
             Some(Members::Repository {
@@ -91,6 +92,7 @@ impl Owned {
             page: options.listed_page.unwrap_or(forge.api().listed_page),
             options: options.clone(),
             token,
+            watched,
             file,
             project: options.project(),
             projects: options.projects(),
@@ -425,6 +427,7 @@ impl Expand for Owned {
                 token: self.token.as_ref(),
                 page: self.reading().page,
                 parse: self.reading().parse,
+                watched: self.watched,
             };
             let signalled: Vec<(&Listed, Option<&Cursor>, crate::Signals)> = members
                 .iter()
@@ -460,6 +463,7 @@ impl Expand for Owned {
             held: self.options.held_for(&signals),
             signals,
             backfill: self.options.backfill,
+            watched: self.watched,
         })
     }
 

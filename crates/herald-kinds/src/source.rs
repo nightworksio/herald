@@ -81,14 +81,22 @@ pub trait SourceConfig: fmt::Debug + Send + Sync + Itself {
         None
     }
 
+    /// The signals its events may carry: a route taking them may see one
+    /// announced again, changed, as a Release after its tag (ADR-0034).
+    fn signals(&self) -> Vec<herald_core::Signal> {
+        Vec::new()
+    }
+
     /// The projects its events are announced as, where its options name
     /// them.
     fn projects(&self) -> Vec<String> {
         Vec::new()
     }
 
-    /// What polls it, reading with `token` where it has one.
-    fn poller(&self, token: Option<Secret>) -> Polling;
+    /// What polls it, reading with `token` where it has one, and watching
+    /// what it announced for an edit where `edits` says a route edits its
+    /// posts (ADR-0034).
+    fn poller(&self, token: Option<Secret>, edits: bool) -> Polling;
 }
 
 /// How a source is polled: as one, or as each member an owner lists.

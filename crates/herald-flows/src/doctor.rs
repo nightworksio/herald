@@ -1,8 +1,12 @@
 //! What a config asks for that a layer cannot serve, and what it leaves to
 //! chance (ADR-0002).
 
+use std::collections::BTreeSet;
+
 use herald_config::{Config, Guard, KeyCache, RouteConfig, Server};
-use herald_core::{Features, Inbound, Pinning, Pins, RecordKind, Sandbox, Threads};
+use herald_core::{
+    Edits, Features, Inbound, LateRelease, Pinning, Pins, RecordKind, Sandbox, Signal, Threads,
+};
 use herald_kinds::Carried;
 
 mod layer;
@@ -440,6 +444,48 @@ fn webhooked(config: &Config, notes: &mut Vec<String>) {
     }
 }
 
+/// What each route does with an announcement that changed where it cannot
+/// edit the post: a Release whose tag it announced is posted anew, and an
+/// edited Release left as first announced; on a store that keeps only
+/// markers, which records nothing of what a post shows, neither is
+/// announced again (ADR-0034).
+fn revising(config: &Config, notes: &mut Vec<String>) {
+    let markers = config.store.reads_posts();
+    for route in &config.routes {
+        let signals: BTreeSet<Signal> = route
+            .route
+            .filter
+            .sources
+            .iter()
+            .filter_map(|source| config.sources.get(source))
+            .flat_map(|source| source.signals())
+            .collect();
+        let delivery = &route.route.delivery;
+        let late = signals.contains(&Signal::Tag)
+            && signals.contains(&Signal::Release)
+            && delivery.late_release != LateRelease::Skip;
+        let edited = signals.contains(&Signal::Release) && delivery.edits == Edits::Release;
+        let id = route.route.id.as_str();
+        if markers {
+            if late || edited {
+                notes.push(format!("The route {id} edits no post and posts no Release whose tag it announced anew, as the markers store keeps no record of what a post shows; choose a store that keeps records."));
+            }
+            continue;
+        }
+        let edits = config
+            .destinations
+            .get(&route.route.destination)
+            .and_then(|destination| destination.profile(&route.options))
+            .is_none_or(|(reached, _)| reached.features.edits);
+        if !edits && late && delivery.late_release == LateRelease::Edit {
+            notes.push(format!("The route {id} posts a Release whose tag it announced anew, as its destination cannot edit a post as it is reached; set late_release = \"skip\" to leave the tag's post."));
+        }
+        if !edits && edited {
+            notes.push(format!("The route {id} leaves an edited Release as first announced, as its destination cannot edit a post as it is reached."));
+        }
+    }
+}
+
 /// What `reached` cannot do that `bot` can (ADR-0004).
 fn lacked(reached: Features, bot: Features) -> Vec<&'static str> {
     [
@@ -568,6 +614,7 @@ fn served(config: &Config, layer: &Layer, layers: &[Layer], here: &Here) -> Find
     moving(config, &mut findings.notes);
     exposed(config, &mut findings.notes);
     webhooked(config, &mut findings.notes);
+    revising(config, &mut findings.notes);
     scheduled(config, layer, here, &mut findings);
     for (index, route) in config.routes.iter().enumerate() {
         unpinned(config, index, route, &mut findings.gaps);

@@ -4,6 +4,7 @@ use crate::event::Event;
 use crate::key::RouteId;
 use crate::kind::Kind;
 use crate::pattern::Pattern;
+use crate::revision::{Edits, LateRelease};
 
 macro_rules! name {
     ($(#[$doc:meta])* $name:ident) => {
@@ -208,6 +209,10 @@ pub struct Delivery {
     pub pin: Option<Pinning>,
     /// Who to mention.
     pub mentions: Mentions,
+    /// What it does with a Release whose tag it already announced.
+    pub late_release: LateRelease,
+    /// Which changed announcements it edits the post of.
+    pub edits: Edits,
 }
 
 /// An event filter leading to a destination, a template and how to deliver.

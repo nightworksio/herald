@@ -323,7 +323,7 @@ body = "{{ event.body }}"
     );
     let notes = on(&hooked, &actions(), &Here::default()).notes;
     assert!(
-        notes.contains(&"The route hooked cannot crosspost, open a thread from a message, pin, edit a post, read back its posts for markers or take commands through \"hook\" as it is reached; a bot token could.".to_owned()),
+        notes.contains(&"The route hooked cannot crosspost, open a thread from a message, pin, read back its posts for markers or take commands through \"hook\" as it is reached; a bot token could.".to_owned()),
         "{notes:?}"
     );
     assert!(
@@ -700,4 +700,104 @@ fn an_owner_is_listed_online_and_members_sharing_a_project_name_or_passing_a_cap
         findings.gaps[0].feature,
         "listing the owner of the source \"gate\""
     );
+}
+
+/// A config whose store is `store`, its destination `destination`, its
+/// source announcing `signals`, and its route set as `route`.
+fn revising(store: &str, destination: &str, signals: &str, route: &str) -> Config {
+    let prefer = if signals.contains("tag") && signals.contains("release") {
+        "prefer = \"first\""
+    } else {
+        ""
+    };
+    loaded(&format!(
+        r#"version = 1
+[store]
+kind = "{store}"
+[destinations.out]
+{destination}
+[sources.gate]
+kind = "github"
+repository = "o/r"
+signals = {signals}
+{prefer}
+[[routes]]
+id = "out"
+sources = ["gate"]
+destination = "out"
+template = "t"
+{route}
+[templates.t]
+title = "{{{{ event.title }}}}"
+body = "{{{{ event.body }}}}"
+"#
+    ))
+}
+
+#[test]
+fn a_route_that_cannot_edit_is_told_what_it_does_with_a_late_or_edited_release() {
+    const HOOK: &str = "kind = \"slack\"\nwebhook = { secret = \"HERALD_SLACK_WEBHOOK\" }";
+    const BOT: &str = "kind = \"slack\"\ntoken = { secret = \"HERALD_SLACK_TOKEN\" }";
+    const BOTH: &str = "[\"release\", \"tag\"]";
+    let noted = |config: &Config, said: &str| {
+        on(config, &actions(), &Here::default())
+            .notes
+            .iter()
+            .any(|note| note.starts_with("The route out") && note.contains(said))
+    };
+    let hooked = revising("sqlite", HOOK, BOTH, "edits = \"release\"");
+    assert!(noted(
+        &hooked,
+        "posts a Release whose tag it announced anew"
+    ));
+    assert!(noted(
+        &hooked,
+        "leaves an edited Release as first announced"
+    ));
+    let quiet = revising("sqlite", HOOK, BOTH, "late_release = \"skip\"");
+    assert!(!noted(&quiet, "anew"));
+    assert!(!noted(&quiet, "edited"));
+    let released = revising("sqlite", HOOK, "[\"release\"]", "");
+    assert!(!noted(&released, "anew"));
+    let tagged = revising("sqlite", HOOK, "[\"tag\"]", "edits = \"release\"");
+    assert!(!noted(&tagged, "edited"));
+    let bot = revising(
+        "sqlite",
+        BOT,
+        BOTH,
+        "channel = \"C0123456789\"\nedits = \"release\"",
+    );
+    assert!(!noted(&bot, "anew"));
+    assert!(!noted(&bot, "edited"));
+}
+
+#[test]
+fn the_markers_store_edits_no_post_and_posts_no_late_release_anew() {
+    const BOT: &str = "kind = \"discord\"\ntoken = { secret = \"HERALD_DISCORD_TOKEN\" }";
+    let noted = |config: &Config| {
+        on(config, &actions(), &Here::default())
+            .notes
+            .iter()
+            .any(|note| note.contains("the markers store keeps no record of what a post shows"))
+    };
+    let route = "channel = \"1566200000000000100\"";
+    assert!(noted(&revising(
+        "markers",
+        BOT,
+        "[\"release\", \"tag\"]",
+        route
+    )));
+    assert!(noted(&revising(
+        "markers",
+        BOT,
+        "[\"release\"]",
+        &format!("{route}\nedits = \"release\"")
+    )));
+    assert!(!noted(&revising("markers", BOT, "[\"release\"]", route)));
+    assert!(!noted(&revising(
+        "markers",
+        BOT,
+        "[\"release\", \"tag\"]",
+        &format!("{route}\nlate_release = \"skip\"")
+    )));
 }

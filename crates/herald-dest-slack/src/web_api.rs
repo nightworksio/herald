@@ -28,9 +28,19 @@ pub(crate) const CHAT_GET_PERMALINK: WebMethod = WebMethod {
     name: "chat.getPermalink",
     scopes: &[],
 };
+/// A message deleted.
+pub(crate) const CHAT_DELETE: WebMethod = WebMethod {
+    name: "chat.delete",
+    scopes: &["chat:write"],
+};
 /// A message posted.
 pub(crate) const CHAT_POST_MESSAGE: WebMethod = WebMethod {
     name: "chat.postMessage",
+    scopes: &["chat:write"],
+};
+/// A message edited.
+pub(crate) const CHAT_UPDATE: WebMethod = WebMethod {
+    name: "chat.update",
     scopes: &["chat:write"],
 };
 /// A channel's messages.

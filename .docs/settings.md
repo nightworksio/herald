@@ -274,9 +274,11 @@ Which events go where, rendered how.
 | `routes[].channel` | string | The channel's id. A bot needs one; a webhook posts where it was made. |
 | `routes[].crosspost` | boolean | Whether to crosspost each announcement. |
 | `routes[].destination` | string | The destination it announces to. |
+| `routes[].edits` | [Edits](#edits) | Which changed announcements it edits the post of: none, or a Release whose name or notes the forge says were edited (`release`). |
 | `routes[].forum` | boolean | Whether the channel is a forum, where each announcement is a post of its own. |
 | `routes[].id` | string | The route's stable id, part of every announcement's key. |
 | `routes[].kinds` | array of [Kind](#kind) | The kinds of event it takes; every kind where absent. |
+| `routes[].late_release` | [LateRelease](#laterelease) | What it does with a Release whose tag it already announced: edits the tag's post to it, or posts it anew where the destination cannot edit (`edit`); posts it anew (`post`); or leaves the tag's post (`skip`). |
 | `routes[].mentions` | table | Who it mentions. |
 | `routes[].mentions.roles` | array of string | The roles it pings, by the destination's ids for them. |
 | `routes[].mentions.subscribers` | boolean | Whether it mentions the subscribers herald keeps. |
@@ -301,9 +303,11 @@ Which events go where, rendered how.
 | `routes[].content_warning` | string | The content warning each status is shown behind. |
 | `routes[].crosspost` | boolean | Whether to crosspost each announcement. |
 | `routes[].destination` | string | The destination it announces to. |
+| `routes[].edits` | [Edits](#edits) | Which changed announcements it edits the post of: none, or a Release whose name or notes the forge says were edited (`release`). |
 | `routes[].id` | string | The route's stable id, part of every announcement's key. |
 | `routes[].kinds` | array of [Kind](#kind) | The kinds of event it takes; every kind where absent. |
 | `routes[].language` | string | The language each status is written in, as an ISO 639 code. |
+| `routes[].late_release` | [LateRelease](#laterelease) | What it does with a Release whose tag it already announced: edits the tag's post to it, or posts it anew where the destination cannot edit (`edit`); posts it anew (`post`); or leaves the tag's post (`skip`). |
 | `routes[].limit` | integer | The most characters the server takes in a status, Mastodon's own 500 where it is not given. |
 | `routes[].link_length` | integer | The characters the server counts a link as, however long it is: its `characters_reserved_per_url`, Mastodon's own 23 where unset. |
 | `routes[].mentions` | table | Who it mentions. |
@@ -328,8 +332,10 @@ Which events go where, rendered how.
 |---------|------|--------------|
 | `routes[].crosspost` | boolean | Whether to crosspost each announcement. |
 | `routes[].destination` | string | The destination it announces to. |
+| `routes[].edits` | [Edits](#edits) | Which changed announcements it edits the post of: none, or a Release whose name or notes the forge says were edited (`release`). |
 | `routes[].id` | string | The route's stable id, part of every announcement's key. |
 | `routes[].kinds` | array of [Kind](#kind) | The kinds of event it takes; every kind where absent. |
+| `routes[].late_release` | [LateRelease](#laterelease) | What it does with a Release whose tag it already announced: edits the tag's post to it, or posts it anew where the destination cannot edit (`edit`); posts it anew (`post`); or leaves the tag's post (`skip`). |
 | `routes[].mentions` | table | Who it mentions. |
 | `routes[].mentions.roles` | array of string | The roles it pings, by the destination's ids for them. |
 | `routes[].mentions.subscribers` | boolean | Whether it mentions the subscribers herald keeps. |
@@ -352,8 +358,10 @@ Which events go where, rendered how.
 | `routes[].channel` | string | The channel's id, such as `C0123456789`, which the bot has joined. A bot needs one; a webhook posts where it was made. |
 | `routes[].crosspost` | boolean | Whether to crosspost each announcement. |
 | `routes[].destination` | string | The destination it announces to. |
+| `routes[].edits` | [Edits](#edits) | Which changed announcements it edits the post of: none, or a Release whose name or notes the forge says were edited (`release`). |
 | `routes[].id` | string | The route's stable id, part of every announcement's key. |
 | `routes[].kinds` | array of [Kind](#kind) | The kinds of event it takes; every kind where absent. |
+| `routes[].late_release` | [LateRelease](#laterelease) | What it does with a Release whose tag it already announced: edits the tag's post to it, or posts it anew where the destination cannot edit (`edit`); posts it anew (`post`); or leaves the tag's post (`skip`). |
 | `routes[].mentions` | table | Who it mentions. |
 | `routes[].mentions.roles` | array of string | The roles it pings, by the destination's ids for them. |
 | `routes[].mentions.subscribers` | boolean | Whether it mentions the subscribers herald keeps. |
@@ -378,9 +386,11 @@ Which events go where, rendered how.
 | `routes[].content_warning` | string | The content warning each Note is shown behind. |
 | `routes[].crosspost` | boolean | Whether to crosspost each announcement. |
 | `routes[].destination` | string | The destination it announces to. |
+| `routes[].edits` | [Edits](#edits) | Which changed announcements it edits the post of: none, or a Release whose name or notes the forge says were edited (`release`). |
 | `routes[].id` | string | The route's stable id, part of every announcement's key. |
 | `routes[].kinds` | array of [Kind](#kind) | The kinds of event it takes; every kind where absent. |
 | `routes[].language` | string | The language each Note is written in, as an ISO 639 code. |
+| `routes[].late_release` | [LateRelease](#laterelease) | What it does with a Release whose tag it already announced: edits the tag's post to it, or posts it anew where the destination cannot edit (`edit`); posts it anew (`post`); or leaves the tag's post (`skip`). |
 | `routes[].mentions` | table | Who it mentions. |
 | `routes[].mentions.roles` | array of string | The roles it pings, by the destination's ids for them. |
 | `routes[].mentions.subscribers` | boolean | Whether it mentions the subscribers herald keeps. |
@@ -468,6 +478,7 @@ A GitHub repository's releases and tags.
 | `sources.<name>.api` | string | The API's base URL, for a forge that is not GitHub, GitLab.com or Codeberg: a GitHub Enterprise Server's `https://ghe.example/api/v3`, a GHE.com tenant's `https://api.acme.ghe.com`, a self-managed or Dedicated GitLab's `https://gitlab.example/api/v4`, or a Forgejo's `https://forge.example/api/v1`. Where absent, it is the CI run's own when announcing the run's repository, and otherwise the forge's public instance. An owner is listed at the same base. |
 | `sources.<name>.archived` | boolean | Whether archived repositories are taken. |
 | `sources.<name>.backfill` | integer | How many of the newest releases and tags the first poll announces; none where absent (ADR-0003). For an owner, it applies to the members the first listing finds; a member found later announces only what it publishes after it was found. |
+| `sources.<name>.edits_depth` | integer | How many of the newest Releases a poll watches for an edit of their name or notes, where a route taking the source edits them (`edits = "release"`); 30 where absent, and at most `page`. |
 | `sources.<name>.exclude` | array of string | The names left out, as `include` writes them, whatever `include` says. |
 | `sources.<name>.fork` | boolean | Whether forks are taken. |
 | `sources.<name>.graphql` | string | The GraphQL endpoint of a GitHub owner source; beside `api` where absent: `/api/graphql` on a GitHub Enterprise Server whose `api` ends in `/api/v3`, and `/graphql` on GitHub and GHE.com. |
@@ -534,6 +545,7 @@ A GitLab project's releases and tags.
 | `sources.<name>.api` | string | The API's base URL, for a forge that is not GitHub, GitLab.com or Codeberg: a GitHub Enterprise Server's `https://ghe.example/api/v3`, a GHE.com tenant's `https://api.acme.ghe.com`, a self-managed or Dedicated GitLab's `https://gitlab.example/api/v4`, or a Forgejo's `https://forge.example/api/v1`. Where absent, it is the CI run's own when announcing the run's repository, and otherwise the forge's public instance. An owner is listed at the same base. |
 | `sources.<name>.archived` | boolean | Whether archived repositories are taken. |
 | `sources.<name>.backfill` | integer | How many of the newest releases and tags the first poll announces; none where absent (ADR-0003). For an owner, it applies to the members the first listing finds; a member found later announces only what it publishes after it was found. |
+| `sources.<name>.edits_depth` | integer | How many of the newest Releases a poll watches for an edit of their name or notes, where a route taking the source edits them (`edits = "release"`); 30 where absent, and at most `page`. |
 | `sources.<name>.exclude` | array of string | The names left out, as `include` writes them, whatever `include` says. |
 | `sources.<name>.fork` | boolean | Whether forks are taken. |
 | `sources.<name>.graphql` | string | The GraphQL endpoint of a GitHub owner source; beside `api` where absent: `/api/graphql` on a GitHub Enterprise Server whose `api` ends in `/api/v3`, and `/graphql` on GitHub and GHE.com. |
@@ -600,6 +612,7 @@ A Forgejo or Gitea repository's releases and tags.
 | `sources.<name>.api` | string | The API's base URL, for a forge that is not GitHub, GitLab.com or Codeberg: a GitHub Enterprise Server's `https://ghe.example/api/v3`, a GHE.com tenant's `https://api.acme.ghe.com`, a self-managed or Dedicated GitLab's `https://gitlab.example/api/v4`, or a Forgejo's `https://forge.example/api/v1`. Where absent, it is the CI run's own when announcing the run's repository, and otherwise the forge's public instance. An owner is listed at the same base. |
 | `sources.<name>.archived` | boolean | Whether archived repositories are taken. |
 | `sources.<name>.backfill` | integer | How many of the newest releases and tags the first poll announces; none where absent (ADR-0003). For an owner, it applies to the members the first listing finds; a member found later announces only what it publishes after it was found. |
+| `sources.<name>.edits_depth` | integer | How many of the newest Releases a poll watches for an edit of their name or notes, where a route taking the source edits them (`edits = "release"`); 30 where absent, and at most `page`. |
 | `sources.<name>.exclude` | array of string | The names left out, as `include` writes them, whatever `include` says. |
 | `sources.<name>.fork` | boolean | Whether forks are taken. |
 | `sources.<name>.graphql` | string | The GraphQL endpoint of a GitHub owner source; beside `api` where absent: `/api/graphql` on a GitHub Enterprise Server whose `api` ends in `/api/v3`, and `/graphql` on GitHub and GHE.com. |
@@ -994,6 +1007,10 @@ The Slack a workspace lives on: Slack's own, or Slack's government cloud.
 
 A length of time: a number and ms, s, m, h, d or w, as "14d".
 
+### Edits
+
+Which announcements a route edits the post of, when the forge changes what it announced.
+
 ### Guard
 
 What doctor does with a config that takes something private to a public place.
@@ -1009,6 +1026,10 @@ Where `herald server` keeps the keys inbound activities are checked with.
 ### Kind
 
 What kind of thing an event announces: release, package-version, feed-entry, message, or a kind the config declares.
+
+### LateRelease
+
+What a route does with a Release whose tag it already announced.
 
 ### LockLease
 

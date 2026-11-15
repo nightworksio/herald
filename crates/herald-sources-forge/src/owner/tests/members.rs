@@ -42,7 +42,7 @@ fn a_member_file_beside_the_config_takes_only_what_it_names_and_names_what_the_o
             Some(&["HERALD".to_owned(), "gone".to_owned()]),
         ),
         &SourceOptions::default(),
-        None,
+        (None, 0),
     );
     let expanded = listed(&source, &http, None).unwrap();
     assert_eq!(names(&expanded), ["herald"]);

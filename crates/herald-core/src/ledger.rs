@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::key::Key;
 use crate::profile::{Features, Pins, Threads};
+use crate::revision::Revision;
 use crate::route::Delivery;
 
 /// One step of an announcement, in the order a destination takes them.
@@ -27,6 +28,46 @@ pub enum Step {
     /// Deliver it to one follower's inbox: what a destination is asked to
     /// send, never kept in the ledger.
     Deliver(String),
+    /// Edit the post, part 0, or the overflow chunk `part` to the revision
+    /// whose digest is `revision`.
+    Edit {
+        /// The digest of the revision.
+        revision: String,
+        /// The part edited.
+        part: u32,
+    },
+    /// Delete the overflow chunk a revision no longer needs.
+    Delete(u32),
+    /// Rename the thread opened from the post to the name of the revision
+    /// whose digest it holds.
+    Rename(String),
+    /// Deliver the revision whose digest it holds to every follower's inbox
+    /// the deliveries reached. Each delivery is kept as its own record.
+    Updates(String),
+}
+
+impl Step {
+    /// Whether sending it again, where an earlier attempt may have landed,
+    /// leaves what one send would: an edit, a deletion or a rename, which
+    /// need not be read back first.
+    #[must_use]
+    pub const fn resendable(&self) -> bool {
+        matches!(self, Self::Edit { .. } | Self::Delete(_) | Self::Rename(_))
+    }
+
+    /// Whether this step, once landed, leaves `earlier` nothing to stand
+    /// for: an edit of a part supersedes an earlier revision's edit of it,
+    /// and a chunk's deletion its post and every edit of it.
+    fn supersedes(&self, earlier: &Self) -> bool {
+        match (self, earlier) {
+            (Self::Edit { part, .. }, Self::Edit { part: other, .. }) => part == other,
+            (Self::Rename(_), Self::Rename(_)) | (Self::Updates(_), Self::Updates(_)) => true,
+            (Self::Delete(part), Self::Chunk(other) | Self::Edit { part: other, .. }) => {
+                part == other
+            }
+            _ => false,
+        }
+    }
 }
 
 /// What a destination answered when a step landed.
@@ -107,6 +148,10 @@ pub struct Entry {
     /// When a run last claimed it, which housekeeping expires it by.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub claimed: Option<Timestamp>,
+    /// What the steps it wants bring the post to show, where the run that
+    /// last claimed it said.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub revision: Option<Revision>,
 }
 
 impl Entry {
@@ -119,7 +164,30 @@ impl Entry {
             lease: None,
             wanted: None,
             claimed: None,
+            revision: None,
         }
+    }
+
+    /// The entry bringing its post to show `revision`.
+    #[must_use]
+    pub fn revising(mut self, revision: Revision) -> Self {
+        self.revision = Some(revision);
+        self
+    }
+
+    /// The overflow chunks that landed and were not deleted since.
+    #[must_use]
+    pub fn chunks(&self) -> Vec<u32> {
+        let mut chunks: Vec<u32> = self
+            .records
+            .iter()
+            .filter_map(|record| match (&record.step, &record.state) {
+                (Step::Chunk(part), State::Landed { .. }) => Some(*part),
+                _ => None,
+            })
+            .collect();
+        chunks.sort_unstable();
+        chunks
     }
 
     /// The entry wanting every step of `wanted` landed.
@@ -154,13 +222,18 @@ impl Entry {
     /// Each step of `wanted` not yet landed, in order, to be verified first
     /// where it was attempted.
     fn pending<'a>(&'a self, wanted: &'a [Step]) -> impl Iterator<Item = Planned> + 'a {
-        wanted.iter().filter_map(|step| match self.state(step) {
-            Some(State::Landed { .. }) => None,
-            state => Some(Planned {
-                step: step.clone(),
-                verify_first: matches!(state, Some(State::Attempted { .. })),
-            }),
-        })
+        let chunks = self.chunks();
+        wanted
+            .iter()
+            .filter_map(move |step| match self.state(step) {
+                Some(State::Landed { .. }) => None,
+                None if matches!(step, Step::Delete(part) if !chunks.contains(part)) => None,
+                state => Some(Planned {
+                    step: step.clone(),
+                    verify_first: matches!(state, Some(State::Attempted { .. }))
+                        && !step.resendable(),
+                }),
+            })
     }
 
     /// The entry claimed by `run` at `at`, and held by it until `until`.
@@ -236,6 +309,28 @@ impl Entry {
             .filter(|message| !message.is_empty())
     }
 
+    /// The message of `part`: the post's for part 0, else the overflow
+    /// chunk's.
+    #[must_use]
+    pub fn part(&self, part: u32) -> Option<&str> {
+        match part {
+            0 => self.message(&Step::Post),
+            chunk => self.message(&Step::Chunk(chunk)),
+        }
+    }
+
+    /// What a destination that takes a post once tells the overflow chunk
+    /// `index` apart by: the key and the index, and the revision the entry
+    /// brings its post to where it records one, so a chunk a later revision
+    /// posts again is not taken for one an earlier revision deleted.
+    #[must_use]
+    pub fn chunk_token(&self, index: u32) -> String {
+        match &self.revision {
+            Some(revision) => format!("{}.{index}.{}", self.key, revision.digest),
+            None => format!("{}.{index}", self.key),
+        }
+    }
+
     /// The message the overflow chunk `index` follows: the post's for the
     /// first chunk, else the chunk's before it.
     #[must_use]
@@ -247,8 +342,12 @@ impl Entry {
     }
 
     fn with(mut self, step: Step, state: State) -> Self {
-        self.records.retain(|record| record.step != step);
-        self.records.push(Record { step, state });
+        let landed = matches!(state, State::Landed { .. });
+        self.records
+            .retain(|record| record.step != step && !(landed && step.supersedes(&record.step)));
+        if !(landed && matches!(step, Step::Delete(_))) {
+            self.records.push(Record { step, state });
+        }
         self
     }
 

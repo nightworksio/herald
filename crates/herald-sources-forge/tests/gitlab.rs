@@ -121,12 +121,10 @@ mod gitlab {
             hook["action"] = json!("update");
             serde_json::to_vec(&hook).unwrap()
         };
-        assert_eq!(
+        assert!(matches!(
             Forge::GitLab.hooked((&release, &updated), "gitlab-org/cli", &Signals::default()),
-            Ok(Hooked::Nothing(
-                "the release is not published, or is a draft"
-            ))
-        );
+            Ok(Hooked::Event(event)) if event.edited()
+        ));
         assert_eq!(
             Forge::GitLab.hooked(
                 (&[("X-Gitlab-Event", "Push Hook")], HOOK.as_bytes()),
@@ -167,14 +165,21 @@ mod gitlab {
     }
 
     #[test]
-    fn only_a_created_release_announces_and_a_tag_says_whether_it_is_a_pre_release() {
-        for action in ["update", "delete"] {
-            let changed = edited(|payload| payload["action"] = json!(action));
-            assert_eq!(
-                Forge::GitLab.event(&changed, PrereleaseRule::default()),
-                Ok(None)
-            );
-        }
+    fn a_created_release_announces_an_updated_one_is_an_edit_and_a_tag_says_whether_it_is_a_pre_release()
+     {
+        let deleted = edited(|payload| payload["action"] = json!("delete"));
+        assert_eq!(
+            Forge::GitLab.event(&deleted, PrereleaseRule::default()),
+            Ok(None)
+        );
+        let updated = edited(|payload| payload["action"] = json!("update"));
+        assert!(
+            Forge::GitLab
+                .event(&updated, PrereleaseRule::default())
+                .unwrap()
+                .unwrap()
+                .edited()
+        );
         let candidate = edited(|payload| {
             payload["tag"] = json!("v2.0.0-rc.1");
             payload["released_at"] = json!("2026-10-28T21:42:40.023Z");

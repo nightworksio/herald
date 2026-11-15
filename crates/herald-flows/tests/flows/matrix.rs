@@ -126,10 +126,9 @@ fn subscribers_past_the_announcement_s_room_are_mentioned_in_a_message_after_it(
         pollster::block_on(store.subscribe(&subscription)).unwrap();
     }
     let posted = sent();
-    let after = format!("{posted}.1");
     let script = Script::answering(&[
         (posted.as_str(), 200, r#"{"event_id":"$e1"}"#),
-        (after.as_str(), 200, r#"{"event_id":"$e2"}"#),
+        ("", 200, r#"{"event_id":"$e2"}"#),
     ]);
     assert_eq!(
         announced(&matrix(true), &store, &script),
@@ -137,6 +136,7 @@ fn subscribers_past_the_announcement_s_room_are_mentioned_in_a_message_after_it(
             steps: vec![Step::Post, Step::Chunk(1)]
         }
     );
+    assert!(script.seen()[1].contains(&format!("{posted}.1.")));
     let bodies = script.bodies();
     let first = mentioned(&bodies[0]).as_array().unwrap().len();
     let rest = mentioned(&bodies[1]).as_array().unwrap().len();

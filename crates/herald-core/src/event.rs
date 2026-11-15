@@ -233,6 +233,20 @@ impl Event {
         }
     }
 
+    /// Whether it is an edit of an event the forge published before.
+    #[must_use]
+    pub fn edited(&self) -> bool {
+        self.attributes.get(crate::EDITED) == Some(&Attribute::Flag(true))
+    }
+
+    /// It, marked as an edit of an event the forge published before.
+    #[must_use]
+    pub fn marked_edited(mut self) -> Self {
+        self.attributes
+            .insert(crate::EDITED.to_owned(), Attribute::Flag(true));
+        self
+    }
+
     /// Whether it is a pre-release.
     #[must_use]
     pub fn prerelease(&self) -> bool {

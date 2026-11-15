@@ -131,6 +131,13 @@ mod forgejo {
         assert_eq!(event.occurred().to_string(), "2026-10-26T18:39:32Z");
         let mut updated: Value = serde_json::from_str(EVENT).unwrap();
         updated["action"] = json!("updated");
+        let edited = Forge::Forgejo
+            .event(updated.to_string().as_bytes(), PrereleaseRule::default())
+            .unwrap()
+            .unwrap();
+        assert!(edited.edited() && !event.edited());
+        assert_eq!(edited.identity(), event.identity());
+        updated["action"] = json!("deleted");
         assert_eq!(
             Forge::Forgejo.event(updated.to_string().as_bytes(), PrereleaseRule::default()),
             Ok(None)

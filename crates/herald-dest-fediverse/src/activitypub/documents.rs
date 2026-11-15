@@ -1,4 +1,5 @@
 use herald_core::{ACTIVITY_JSON, Announcement, digest, public_pem, safe_url};
+use jiff::Timestamp;
 use serde_json::{Value, json};
 
 use super::options::{ActorRouteOptions, Audience};
@@ -154,6 +155,29 @@ pub(crate) fn created(note: &Value) -> Value {
         "cc": field("cc"),
         "object": note,
     })
+}
+
+/// The `Update` of `announcement`'s Note to the revision whose digest is
+/// `revision`, made at `at`, as each follower's inbox takes it.
+#[must_use]
+pub fn update(
+    origin: &str,
+    announcement: &Announcement,
+    route: &ActorRouteOptions,
+    (revision, at): (&str, Timestamp),
+) -> Value {
+    let mut note = note(origin, announcement, route);
+    if let Value::Object(fields) = &mut note {
+        fields.insert("updated".to_owned(), json!(at.to_string()));
+    }
+    let mut activity = created(&note);
+    if let Value::Object(fields) = &mut activity {
+        let id = note.get("id").and_then(Value::as_str).unwrap_or_default();
+        fields.insert("id".to_owned(), json!(format!("{id}/activity/{revision}")));
+        fields.insert("type".to_owned(), json!("Update"));
+        fields.insert("published".to_owned(), json!(at.to_string()));
+    }
+    activity
 }
 
 /// The outbox of the actor `actor` served at `origin`, holding `total`

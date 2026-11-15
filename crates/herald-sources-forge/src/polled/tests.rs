@@ -63,6 +63,7 @@ fn releases(
         },
         backfill,
         held: None,
+        watched: 0,
     }
 }
 
@@ -104,11 +105,16 @@ fn releases_alone_ask_no_tags() {
         &[Signal::Release],
         (PrereleaseRule::Either, 0),
     );
+    let source = Releases {
+        watched: 2,
+        ..source
+    };
     let found = polled(&source, &http, None).unwrap().unwrap();
     assert_eq!(
         identities(&found),
         [("forge.example/7/v1", Some(Signal::Release))]
     );
+    assert_eq!(found.watched, 2);
     assert_eq!(found.etag.as_deref(), Some("r1"));
     assert!(found.signals.is_empty());
     assert_eq!(

@@ -434,6 +434,37 @@ default), `"flag"` (the flag alone) or `"tag"` (the version alone). A tag
 carries no flag, and neither does a GitLab release, so `"flag"` marks no
 tag and does not load on GitLab.
 
+### Edits to a late or edited release
+
+A Release that comes after its tag was announced edits the tag's post to
+the Release: the post and each chunk are edited in place, extra parts are
+posted as chunks, parts no longer needed are deleted, and a Discord thread
+opened from the post is renamed. A route's `late_release` chooses this:
+`"edit"` (the default; a destination that cannot edit posts the Release
+anew), `"post"` (always anew) or `"skip"` (leave the tag's post).
+`edits = "release"` on a route also edits a Release's post when its name
+or notes change on the forge; it is off by default:
+
+```toml
+[[routes]]
+id = "train"
+sources = ["train"]
+destination = "discord"
+channel = "1566184281406177531"
+template = "release"
+edits = "release"
+```
+
+The forge's own edit event (GitHub's `edited`, Forgejo's `updated`,
+GitLab's `update`) is announced as an edit, and a poll watches the newest
+`edits_depth` Releases (30, at most `page`) of a source a route edits
+for, by a digest of their name and notes. Discord (bot or webhook),
+Slack's bot, Matrix, Mastodon and ActivityPub edit; a Slack incoming
+webhook does not, and the markers store records nothing of what a post
+shows, so it edits nothing. ActivityPub sends the Note's `Update` to each
+follower its `Create` reached; one Note carries every part, so it sends no
+`Delete`.
+
 ### An app's own events
 
 Any app can announce through herald: a deploy script, a CI step, a service

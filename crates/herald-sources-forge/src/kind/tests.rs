@@ -96,7 +96,8 @@ fn a_forge_source_names_its_secrets_and_reads_its_webhooks() {
             .hooked(&[("X-GitHub-Event", "release")], b"[")
             .is_err()
     );
-    let herald_kinds::Polling::One(poll) = source.poller(Some(Secret::new("GITHUB_TOKEN", "t")))
+    let herald_kinds::Polling::One(poll) =
+        source.poller(Some(Secret::new("GITHUB_TOKEN", "t")), false)
     else {
         panic!("a source of one is polled as one");
     };
@@ -116,7 +117,7 @@ fn an_owner_source_is_polled_as_its_members_and_says_whether_it_takes_unlisted_o
     };
     let public = owned(None);
     assert!(!public.unlisted());
-    let herald_kinds::Polling::Many(expand) = public.poller(None) else {
+    let herald_kinds::Polling::Many(expand) = public.poller(None, false) else {
         panic!("an owner source is polled as its members");
     };
     assert_eq!(expand.api(), "https://gitlab.com/api/v4");
@@ -241,6 +242,20 @@ fn a_source_holds_a_tag_where_it_prefers_releases_and_takes_both() {
     assert!(!holding(both(), Some(herald_core::Prefer::First)));
     assert!(!holding(Some(vec![herald_core::Signal::Release]), None));
     assert!(!holding(Some(vec![herald_core::Signal::Tag]), None));
+    let signalled = |signals| {
+        GitHubKind::checked(SourceOptions {
+            signals,
+            ..options("cli/cli")
+        })
+        .unwrap()
+        .signals()
+    };
+    assert_eq!(signalled(None), [herald_core::Signal::Release]);
+    assert_eq!(signalled(both()), herald_core::Signal::ALL);
+    assert_eq!(
+        signalled(Some(vec![herald_core::Signal::Tag])),
+        [herald_core::Signal::Tag]
+    );
 }
 
 #[test]
@@ -251,13 +266,13 @@ fn each_poll_of_a_source_holding_tags_says_how_long_a_tag_waits() {
         ..options("cli/cli")
     })
     .unwrap();
-    let Polling::One(poll) = one.poller(None) else {
+    let Polling::One(poll) = one.poller(None, false) else {
         panic!("a repository is polled as one");
     };
     assert_eq!(poll.tag_window(), Some(crate::TAG_WINDOW));
     assert_eq!(one.tag_window(), Some(crate::TAG_WINDOW));
     let plain = GitHubKind::checked(options("cli/cli")).unwrap();
-    let Polling::One(poll) = plain.poller(None) else {
+    let Polling::One(poll) = plain.poller(None, false) else {
         panic!("a repository is polled as one");
     };
     assert_eq!(poll.tag_window(), None);
@@ -282,7 +297,7 @@ fn each_poll_of_a_source_holding_tags_says_how_long_a_tag_waits() {
             .tag_window(),
         None
     );
-    let Polling::Many(expand) = owner.poller(None) else {
+    let Polling::Many(expand) = owner.poller(None, false) else {
         panic!("an owner is polled as its members");
     };
     let member = |name: &str| herald_core::Listed {

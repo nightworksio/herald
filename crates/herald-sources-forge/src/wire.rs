@@ -1,8 +1,8 @@
 use std::collections::BTreeMap;
 
 use herald_core::{
-    Address, Attribute, Draft, Event, Identity, Kind, PrereleaseRule, RELEASE_LINK, SIGNAL, Signal,
-    versioned,
+    Address, Attribute, Draft, EDITED, Event, Identity, Kind, PrereleaseRule, RELEASE_LINK, SIGNAL,
+    Signal, versioned,
 };
 use jiff::Timestamp;
 
@@ -23,6 +23,7 @@ pub(crate) struct ForgeRelease {
     pub(crate) draft: bool,
     pub(crate) prerelease: Option<bool>,
     pub(crate) published: Option<Timestamp>,
+    pub(crate) edited: bool,
 }
 
 /// A tag, read in full: its name, its message where it is annotated, and
@@ -57,6 +58,7 @@ struct Signalled {
     url: String,
     flag: Option<bool>,
     occurred: Timestamp,
+    edited: bool,
 }
 
 /// The event `signalled` of `repository` makes, its pre-release told by
@@ -83,6 +85,9 @@ fn drafted(
         SIGNAL.to_owned(),
         Attribute::Text(signalled.signal.name().to_owned()),
     );
+    if signalled.edited {
+        attributes.insert(EDITED.to_owned(), Attribute::Flag(true));
+    }
     let draft = Draft {
         identity: identity(forge.host(), repository.id, &signalled.tag)
             .as_str()
@@ -121,6 +126,7 @@ pub(crate) fn event(
         url: found.url,
         flag: found.prerelease,
         occurred,
+        edited: found.edited,
     };
     drafted(what, repository, signalled, rule).map(Some)
 }
@@ -145,6 +151,7 @@ pub(crate) fn tag_event(
         url,
         flag: None,
         occurred,
+        edited: false,
     };
     drafted(what, repository, signalled, rule)
 }

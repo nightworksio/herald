@@ -3,6 +3,10 @@
 //! records.
 
 #[cfg(test)]
+#[path = "activitypub/revise.rs"]
+mod revise;
+
+#[cfg(test)]
 mod activitypub {
     use herald_core::{Entry, Facts, MentionStyle, Pins, Sent, Step, Text, Threads, Waits};
     use herald_dest_fediverse::{
@@ -186,6 +190,11 @@ mod activitypub {
             (Step::Pin, "pin"),
             (Step::Unpin, "pin"),
             (Step::Deliveries, "deliver to every inbox in one request"),
+            (
+                Step::Updates("r2".to_owned()),
+                "deliver to every inbox in one request",
+            ),
+            (Step::Rename("r2".to_owned()), "rename a thread"),
         ] {
             assert_eq!(
                 send(&actor, &replay, &step),
@@ -354,7 +363,7 @@ mod activitypub {
         assert_eq!(profile.features.threads, Threads::None);
         assert_eq!(profile.features.pins, Pins::None);
         assert_eq!(profile.features.mentions, MentionStyle::None);
-        assert!(!profile.features.reads_back && !profile.features.edits);
+        assert!(!profile.features.reads_back && profile.features.edits);
         assert!(!profile.features.crosspost && !profile.features.interactions);
         assert_eq!((profile.limits.title, profile.limits.text), (500, 20_000));
     }

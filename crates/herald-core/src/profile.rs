@@ -320,13 +320,11 @@ mod tests {
 
     fn asking(roles: &[&str], subscribers: bool) -> Delivery {
         Delivery {
-            crosspost: false,
-            thread: None,
-            pin: None,
             mentions: Mentions {
                 roles: roles.iter().map(|role| RoleId::new(*role)).collect(),
                 subscribers,
             },
+            ..Delivery::default()
         }
     }
 

@@ -25,6 +25,7 @@ pub(crate) struct Releases {
     pub(crate) signals: Signals,
     pub(crate) backfill: usize,
     pub(crate) held: Option<jiff::SignedDuration>,
+    pub(crate) watched: usize,
 }
 
 /// What the tags answer of a poll found: the events of tags read in full,
@@ -174,6 +175,7 @@ pub async fn tag_event_of(
         },
         backfill: 0,
         held: None,
+        watched: 0,
     };
     let http = Erased(http);
     let forge = origin.forge();
@@ -276,6 +278,7 @@ impl Poll for Releases {
             polled
                 .events
                 .sort_by_key(|event| std::cmp::Reverse(event.occurred()));
+            polled.watched = self.watched;
             projected(polled, self.project.clone()).map(Some)
         })
     }

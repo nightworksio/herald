@@ -12,7 +12,7 @@ use serde_json::Value;
 
 use super::documents::{
     accept, actor_document, actor_id, create, follow, followers_collection, key_id, note, note_id,
-    outbox, outbox_page, reject, webfinger,
+    outbox, outbox_page, reject, update, webfinger,
 };
 use super::options::{ActorOptions, ActorRouteOptions};
 use super::policy::Policy;
@@ -141,7 +141,7 @@ impl ActivityPub {
         now: Timestamp,
         step: &Step,
         announcement: &Announcement,
-        _: &Entry,
+        entry: &Entry,
     ) -> Result<Sent, HttpError> {
         match step {
             Step::Post => {
@@ -156,25 +156,43 @@ impl ActivityPub {
                     permalink: Some(note),
                 }))
             }
-            Step::Chunk(_) => Ok(Sent::Landed(Facts::default())),
-            Step::Deliver(inbox) => self.deliver(http, signer, now, inbox, announcement).await,
+            Step::Chunk(_) | Step::Edit { .. } | Step::Delete(_) => {
+                Ok(Sent::Landed(Facts::default()))
+            }
+            Step::Deliver(inbox) => {
+                self.deliver(http, signer, (now, inbox), announcement, entry)
+                    .await
+            }
+            Step::Rename(_) => Ok(cannot("rename a thread")),
             Step::Crosspost => Ok(cannot("crosspost")),
             Step::OpenThread => Ok(cannot("open a thread")),
             Step::Pin | Step::Unpin => Ok(cannot("pin")),
-            Step::Deliveries => Ok(cannot("deliver to every inbox in one request")),
+            Step::Deliveries | Step::Updates(_) => {
+                Ok(cannot("deliver to every inbox in one request"))
+            }
         }
     }
 
+    /// Delivers to `inbox` the Note's `Create`, or its `Update` to the
+    /// revision `entry` brings it to once the deliveries landed.
     async fn deliver<H: Http, G: Signer>(
         &self,
         http: &H,
         signer: &G,
-        now: Timestamp,
-        inbox: &str,
+        (now, inbox): (Timestamp, &str),
         announcement: &Announcement,
+        entry: &Entry,
     ) -> Result<Sent, HttpError> {
-        let created = create(&self.origin, announcement, &self.route);
-        self.post(http, signer, now, inbox, &created).await
+        let activity = match (&entry.revision, entry.facts(&Step::Deliveries)) {
+            (Some(revision), Some(_)) => update(
+                &self.origin,
+                announcement,
+                &self.route,
+                (&revision.digest, now),
+            ),
+            _ => create(&self.origin, announcement, &self.route),
+        };
+        self.post(http, signer, now, inbox, &activity).await
     }
 
     /// The domain the actor is served on.
@@ -380,7 +398,7 @@ pub fn actor_profile() -> Profile {
             crosspost: false,
             pins: Pins::None,
             reads_back: false,
-            edits: false,
+            edits: true,
             mentions: MentionStyle::None,
             interactions: false,
         },

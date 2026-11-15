@@ -48,13 +48,16 @@ pub(crate) fn failure(response: &Response, waits: Waits) -> Option<Sent> {
 }
 
 pub(crate) fn read(discord: &Discord, step: &Step, response: &Response) -> Sent {
+    if herald_core::already_deleted(step, response.status) {
+        return Sent::Landed(Facts::default());
+    }
     if let Some(sent) = failure(response, discord.waits) {
         return sent;
     }
     let body = json(response);
     let webhook = matches!(discord.credential, Credential::Webhook(_));
     let facts = match step {
-        Step::Pin => Some(Facts::default()),
+        Step::Pin | Step::Delete(_) | Step::Rename(_) => Some(Facts::default()),
         Step::Post if discord.route.forum && webhook => owned(&body, "id").map(|message| Facts {
             message: Some(message),
             thread: owned(&body, "channel_id"),

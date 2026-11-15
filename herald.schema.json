@@ -120,6 +120,11 @@
             "discord"
           ]
         },
+        "edits": {
+          "description": "Which changed announcements it edits the post of: none, or a Release\nwhose name or notes the forge says were edited (`release`).",
+          "$ref": "#/$defs/Edits",
+          "default": "none"
+        },
         "id": {
           "description": "The route's stable id, part of every announcement's key.",
           "type": "string",
@@ -138,6 +143,11 @@
         "language": {
           "description": "The language each Note is written in, as an ISO 639 code.",
           "type": "string"
+        },
+        "late_release": {
+          "description": "What it does with a Release whose tag it already announced: edits\nthe tag's post to it, or posts it anew where the destination cannot\nedit (`edit`); posts it anew (`post`); or leaves the tag's post\n(`skip`).",
+          "$ref": "#/$defs/LateRelease",
+          "default": "edit"
         },
         "mentions": {
           "description": "Who it mentions.",
@@ -820,6 +830,11 @@
             "discord"
           ]
         },
+        "edits": {
+          "description": "Which changed announcements it edits the post of: none, or a Release\nwhose name or notes the forge says were edited (`release`).",
+          "$ref": "#/$defs/Edits",
+          "default": "none"
+        },
         "forum": {
           "description": "Whether the channel is a forum, where each announcement is a post of\nits own.",
           "type": "boolean",
@@ -839,6 +854,11 @@
           "items": {
             "$ref": "#/$defs/Kind"
           }
+        },
+        "late_release": {
+          "description": "What it does with a Release whose tag it already announced: edits\nthe tag's post to it, or posts it anew where the destination cannot\nedit (`edit`); posts it anew (`post`); or leaves the tag's post\n(`skip`).",
+          "$ref": "#/$defs/LateRelease",
+          "default": "edit"
         },
         "mentions": {
           "description": "Who it mentions.",
@@ -961,6 +981,21 @@
       "description": "A length of time: a number and ms, s, m, h, d or w, as \"14d\".",
       "type": "string",
       "pattern": "^0*[1-9][0-9]*(ms|[smhdw])$"
+    },
+    "Edits": {
+      "description": "Which announcements a route edits the post of, when the forge changes\nwhat it announced.",
+      "oneOf": [
+        {
+          "description": "None: a post stays as it was first announced.",
+          "type": "string",
+          "const": "none"
+        },
+        {
+          "description": "A Release whose name or notes were edited.",
+          "type": "string",
+          "const": "release"
+        }
+      ]
     },
     "FollowerCaps": {
       "description": "How many may follow each of herald's actors, as `followers` writes it.",
@@ -1132,6 +1167,26 @@
         "label"
       ]
     },
+    "LateRelease": {
+      "description": "What a route does with a Release whose tag it already announced.",
+      "oneOf": [
+        {
+          "description": "Edit the tag's post to the Release, or post the Release where the\ndestination cannot edit.",
+          "type": "string",
+          "const": "edit"
+        },
+        {
+          "description": "Post the Release as an announcement of its own.",
+          "type": "string",
+          "const": "post"
+        },
+        {
+          "description": "Leave the tag's post as it is.",
+          "type": "string",
+          "const": "skip"
+        }
+      ]
+    },
     "LockLease": {
       "description": "How long the store's lock holds before it is taken as abandoned, \"10m\" by default and at most \"40m\".",
       "type": "string",
@@ -1177,6 +1232,11 @@
             "discord"
           ]
         },
+        "edits": {
+          "description": "Which changed announcements it edits the post of: none, or a Release\nwhose name or notes the forge says were edited (`release`).",
+          "$ref": "#/$defs/Edits",
+          "default": "none"
+        },
         "id": {
           "description": "The route's stable id, part of every announcement's key.",
           "type": "string",
@@ -1195,6 +1255,11 @@
         "language": {
           "description": "The language each status is written in, as an ISO 639 code.",
           "type": "string"
+        },
+        "late_release": {
+          "description": "What it does with a Release whose tag it already announced: edits\nthe tag's post to it, or posts it anew where the destination cannot\nedit (`edit`); posts it anew (`post`); or leaves the tag's post\n(`skip`).",
+          "$ref": "#/$defs/LateRelease",
+          "default": "edit"
         },
         "limit": {
           "description": "The most characters the server takes in a status, Mastodon's own\n500 where it is not given.",
@@ -1359,6 +1424,11 @@
             "discord"
           ]
         },
+        "edits": {
+          "description": "Which changed announcements it edits the post of: none, or a Release\nwhose name or notes the forge says were edited (`release`).",
+          "$ref": "#/$defs/Edits",
+          "default": "none"
+        },
         "id": {
           "description": "The route's stable id, part of every announcement's key.",
           "type": "string",
@@ -1373,6 +1443,11 @@
           "items": {
             "$ref": "#/$defs/Kind"
           }
+        },
+        "late_release": {
+          "description": "What it does with a Release whose tag it already announced: edits\nthe tag's post to it, or posts it anew where the destination cannot\nedit (`edit`); posts it anew (`post`); or leaves the tag's post\n(`skip`).",
+          "$ref": "#/$defs/LateRelease",
+          "default": "edit"
         },
         "mentions": {
           "description": "Who it mentions.",
@@ -2036,6 +2111,11 @@
             "discord"
           ]
         },
+        "edits": {
+          "description": "Which changed announcements it edits the post of: none, or a Release\nwhose name or notes the forge says were edited (`release`).",
+          "$ref": "#/$defs/Edits",
+          "default": "none"
+        },
         "id": {
           "description": "The route's stable id, part of every announcement's key.",
           "type": "string",
@@ -2050,6 +2130,11 @@
           "items": {
             "$ref": "#/$defs/Kind"
           }
+        },
+        "late_release": {
+          "description": "What it does with a Release whose tag it already announced: edits\nthe tag's post to it, or posts it anew where the destination cannot\nedit (`edit`); posts it anew (`post`); or leaves the tag's post\n(`skip`).",
+          "$ref": "#/$defs/LateRelease",
+          "default": "edit"
         },
         "mentions": {
           "description": "Who it mentions.",
@@ -2156,6 +2241,12 @@
               "type": "integer",
               "format": "uint",
               "default": 0,
+              "minimum": 0
+            },
+            "edits_depth": {
+              "description": "How many of the newest Releases a poll watches for an edit of their\nname or notes, where a route taking the source edits them\n(`edits = \"release\"`); 30 where absent, and at most `page`.",
+              "type": "integer",
+              "format": "uint",
               "minimum": 0
             },
             "exclude": {
@@ -2382,6 +2473,12 @@
               "default": 0,
               "minimum": 0
             },
+            "edits_depth": {
+              "description": "How many of the newest Releases a poll watches for an edit of their\nname or notes, where a route taking the source edits them\n(`edits = \"release\"`); 30 where absent, and at most `page`.",
+              "type": "integer",
+              "format": "uint",
+              "minimum": 0
+            },
             "exclude": {
               "description": "The names left out, as `include` writes them, whatever `include`\nsays.",
               "type": "array",
@@ -2604,6 +2701,12 @@
               "type": "integer",
               "format": "uint",
               "default": 0,
+              "minimum": 0
+            },
+            "edits_depth": {
+              "description": "How many of the newest Releases a poll watches for an edit of their\nname or notes, where a route taking the source edits them\n(`edits = \"release\"`); 30 where absent, and at most `page`.",
+              "type": "integer",
+              "format": "uint",
               "minimum": 0
             },
             "exclude": {
