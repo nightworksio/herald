@@ -154,9 +154,11 @@ pub(crate) async fn found<S: Store, C: Clock, G: Signer, H: Http>(
 }
 
 /// What `polled`, a poll's answer since `cursor`, holds that it has not
-/// seen, each event announced as `source`'s under `holder`, with the cursor
-/// to remember, holding `remembered` identities, where every route has its
-/// events; nothing where it says nothing changed.
+/// seen, each event announced as `source`'s under `holder` to the routes
+/// its own visibility allows where it names one, and those `within` names
+/// otherwise, with the cursor to remember, holding `remembered` identities,
+/// where every route has its events; nothing where it says nothing
+/// changed.
 pub(crate) async fn announced_found<S: Store, C: Clock, G: Signer, H: Http>(
     (config, connected, ports): (&Config, &Connected<H>, &Ports<'_, S, C, G>),
     (source, within, holding): (&SourceName, Option<&[RouteId]>, Option<Holding<'_>>),
@@ -181,8 +183,12 @@ pub(crate) async fn announced_found<S: Store, C: Clock, G: Signer, H: Http>(
             });
             continue;
         }
+        let own = event
+            .visibility()
+            .map(|visibility| members::bounded(config, visibility));
+        let reached = own.as_ref().map_or(within, Option::as_deref);
         let outcomes =
-            announce_within(config, connected, ports, source, &event, within, holder).await;
+            announce_within(config, connected, ports, source, &event, reached, holder).await;
         settled &= !outcomes
             .iter()
             .any(|outcome| matches!(outcome.outcome, Outcome::Stopped { .. }));

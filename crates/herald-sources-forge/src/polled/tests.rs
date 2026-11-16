@@ -1,4 +1,4 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use herald_core::{PrereleaseRule, Validators};
 use serde_json::{Value, json};
@@ -64,6 +64,9 @@ fn releases(
         backfill,
         held: None,
         watched: 0,
+        packaging: Packaging::of(forge, &options),
+        list: crate::packages::PackageList::Own,
+        visibility: None,
     }
 }
 

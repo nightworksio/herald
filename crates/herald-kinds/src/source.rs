@@ -1,3 +1,4 @@
+use std::any::Any;
 use std::collections::BTreeSet;
 use std::fmt;
 use std::num::NonZeroUsize;
@@ -157,6 +158,18 @@ pub trait Expand: fmt::Debug + Send + Sync {
         Box::pin(std::future::ready(None))
     }
 
+    /// What the source reads through `http` once a round, before any
+    /// member is polled, for an owner of the kind `owner`: its registry's
+    /// packages, where its members announce them (ADR-0035); nothing where
+    /// it reads nothing once a round.
+    fn rounded<'a>(
+        &'a self,
+        _http: &'a dyn DynHttp,
+        _owner: Owner,
+    ) -> Boxed<'a, Result<Rounded, Unpolled>> {
+        Box::pin(std::future::ready(Ok(Rounded::Nothing)))
+    }
+
     /// How many members one request polls together; one where each is
     /// polled on its own.
     fn batch(&self) -> NonZeroUsize {
@@ -164,12 +177,14 @@ pub trait Expand: fmt::Debug + Send + Sync {
     }
 
     /// What each of `members`, each with its cursor, answers through
-    /// `http`, in order: polled together where the source batches them, and
-    /// each through its own poll otherwise.
+    /// `http`, in order, with what the round read once as `rounded`: polled
+    /// together where the source batches them, and each through its own
+    /// poll otherwise.
     fn polled<'a>(
         &'a self,
         http: &'a dyn DynHttp,
         members: &'a [(&'a Listed, Option<&'a Cursor>)],
+        _rounded: &'a Rounded,
     ) -> Boxed<'a, Vec<Result<Option<Polled>, Unpolled>>> {
         Box::pin(each_polled(self, http, members))
     }
@@ -208,6 +223,37 @@ pub async fn each_polled<E: Expand + ?Sized>(
         answered.push(expand.member(repository).polled(http, *cursor).await);
     }
     answered
+}
+
+/// What an owner source read once a round for every member, before any
+/// was polled (ADR-0035).
+#[derive(Debug, Clone, Default)]
+pub enum Rounded {
+    /// The source reads nothing once a round.
+    #[default]
+    Nothing,
+    /// What it read.
+    Read {
+        /// The forge id of each member it names, polled this round whatever
+        /// the owner's events say.
+        named: BTreeSet<String>,
+        /// What the source's own polls read of it.
+        read: Arc<dyn Any + Send + Sync>,
+    },
+    /// Its read failed or was not sent, so each member's poll leaves out
+    /// what it would have read.
+    Unread,
+}
+
+impl Rounded {
+    /// The forge id of each member it names.
+    #[must_use]
+    pub fn named(&self) -> Option<&BTreeSet<String>> {
+        match self {
+            Self::Read { named, .. } => Some(named),
+            Self::Nothing | Self::Unread => None,
+        }
+    }
 }
 
 /// Which members an owner's events name since they were last read.

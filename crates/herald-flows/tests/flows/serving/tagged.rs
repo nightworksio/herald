@@ -61,7 +61,7 @@ fn a_signed_webhook_of_a_tag_polls_its_source_alone() {
         (
             200,
             TEXT,
-            "the delivery is not of a release or a tag".to_owned()
+            "the delivery is not of a release, a tag or a package".to_owned()
         )
     );
 }

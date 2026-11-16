@@ -21,6 +21,8 @@ pub(crate) const API: Api = Api {
     tag: "GitLab's tag",
     listing: "GitLab's projects",
     file: "GitLab's file",
+    packages: "GitLab's packages",
+    versions: "GitLab's package versions",
     listed_page: std::num::NonZeroUsize::new(100).unwrap(),
 };
 

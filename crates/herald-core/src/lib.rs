@@ -76,7 +76,7 @@ pub use kept::RecordKind;
 pub use key::{Identity, Key, NotAKey, RouteId, SHA256_HEX_DIGITS, digest, hex, unhex};
 pub use kind::{
     Attribute, AttributeSpec, AttributeType, CHANGELOG_LINK, ENTRY_LINK, Kind, KindSpec, KindSpecs,
-    LinkSpec, PRERELEASE, RELEASE_LINK, VERSION, readable, versioned,
+    LinkSpec, PACKAGE, PACKAGE_TYPE, PRERELEASE, RELEASE_LINK, VERSION, readable, versioned,
 };
 pub use latest::{Latest, Shown};
 pub use ledger::{

@@ -13,5 +13,7 @@ pub(crate) const API: Api = Api {
     tag: "Forgejo's tag",
     listing: "Forgejo's repositories",
     file: "Forgejo's file",
+    packages: "Forgejo's packages",
+    versions: "Forgejo's package versions",
     listed_page: std::num::NonZeroUsize::new(50).unwrap(),
 };

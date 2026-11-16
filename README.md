@@ -457,6 +457,56 @@ default), `"flag"` (the flag alone) or `"tag"` (the version alone). A tag
 carries no flag, and neither does a GitLab release, so `"flag"` marks no
 tag and does not load on GitLab.
 
+### Packages
+
+`signals = ["package"]`, beside or in place of the others, announces each
+new version of the packages the forge's registry holds for the
+repository, as a `package-version` event whose `signal` attribute is
+`"package"` and whose `package` and `package_type` attributes name the
+package and its type:
+
+```toml
+[sources.herald]
+kind = "github"
+repository = "nightworksio/herald"
+token = { secret = "GITHUB_TOKEN" }
+signals = ["release", "package"]
+package_types = ["container", "npm"]
+packages = ["herald*"]
+```
+
+`package_types` narrows the types (every type where absent; GitHub lists
+npm, maven, rubygems, docker, nuget and container) and `packages` the
+names, as globs. A container image announces each of its tags but those
+`moving` names (`["latest"]` where absent), each under the registry's
+identity `<registry>/<owner>/<image>/<tag>`, so a registry source of the
+same image shares it and a route announces it once. `registry` names the
+registry's host where it is not the default: ghcr.io beside GitHub,
+`containers.<host>` beside a GitHub Enterprise Server or a GHE.com tenant,
+each image's own on GitLab, and the instance's on Forgejo. Other types
+take `<forge host>/<type>/<owner>/<package>/<version>`.
+
+GitHub and Forgejo list an owner's packages, of which the source keeps
+those linked to its repository; GitHub answers only with a token that may
+read packages. An owner source lists them once a round for all its
+members, and polls each member the listing names even where it follows
+the owner's events. A package is seen as the stricter of its own visibility
+(GitHub's package visibility, the project's on GitLab, the owner's on
+Forgejo) and its repository's, so a private package of a public
+repository, and a public package of a private one, reach only `private`
+routes under `[doctor] private_to_public = "refuse"`, the default.
+`package_visibility = "package"` lets the package's own visibility
+decide. GitLab lists a project's packages, and its container
+images' tags. A listing reads at most `most_packages` entries (1000, at
+most 100000) before it refuses the round, each package's versions are
+asked with their own `ETag`, and a round keeps the newest `page` versions
+of a repository's packages. A new source announces its newest `backfill`
+versions, as it does releases; a source that already polled before it
+took packages remembers the versions it first finds without announcing
+them. GitLab's image tags carry no time in their listing, so a new source
+remembers the tags it first finds without announcing any. GitHub's `registry_package` and `package` webhooks
+and Forgejo's `package` webhook poll the source at once.
+
 ### Edits to a late or edited release
 
 A Release that comes after its tag was announced edits the tag's post to

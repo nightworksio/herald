@@ -1630,6 +1630,21 @@
       },
       "additionalProperties": false
     },
+    "PackageVisibility": {
+      "description": "Who may see a package's version where its own visibility and its\nrepository's differ.",
+      "oneOf": [
+        {
+          "description": "The stricter of the package's and the repository's: a public\npackage of a private repository is private.",
+          "type": "string",
+          "const": "stricter"
+        },
+        {
+          "description": "The package's own, whatever its repository's.",
+          "type": "string",
+          "const": "package"
+        }
+      ]
+    },
     "PinLookups": {
       "description": "How many pins the destination looks up, one request each, as it finds the route's earlier pins, 25 by default.",
       "type": "integer",
@@ -2020,6 +2035,11 @@
           "description": "A version tag, with or without a Release.",
           "type": "string",
           "const": "tag"
+        },
+        {
+          "description": "A version of a package the forge's registry holds for the\nrepository.",
+          "type": "string",
+          "const": "package"
         }
       ]
     },
@@ -2224,7 +2244,7 @@
       "description": "A source, by its kind.",
       "oneOf": [
         {
-          "description": "A GitHub repository's releases and tags.",
+          "description": "A GitHub repository's releases, tags and packages.",
           "type": "object",
           "properties": {
             "api": {
@@ -2237,7 +2257,7 @@
               "default": false
             },
             "backfill": {
-              "description": "How many of the newest releases and tags the first poll announces;\nnone where absent (ADR-0003). For an owner, it applies to the members\nthe first listing finds; a member found later announces only what it\npublishes after it was found.",
+              "description": "How many of the newest releases, tags and package versions the first\npoll announces;\nnone where absent (ADR-0003). For an owner, it applies to the members\nthe first listing finds; a member found later announces only what it\npublishes after it was found.",
               "type": "integer",
               "format": "uint",
               "default": 0,
@@ -2327,12 +2347,44 @@
               "format": "uint",
               "minimum": 1
             },
+            "most_packages": {
+              "description": "The most entries one listing of packages reads; 1000 where absent,\nand at most 100000. A listing over it refuses the source for the\nround.",
+              "type": "integer",
+              "format": "uint",
+              "minimum": 1
+            },
+            "moving": {
+              "description": "The container tags that move from one image to the next, which are\nnever announced, as globs as `include` writes them; `[\"latest\"]`\nwhere absent.",
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
             "owner": {
               "description": "The organization, GitLab group or user whose repositories are the\nsource's members, each polled on its own, in place of `repository`.",
               "type": "string",
               "examples": [
                 "nightworksio"
               ]
+            },
+            "package_types": {
+              "description": "The types of package announced where the signals take \"package\", as\nthe forge names them, such as `[\"container\", \"npm\"]`; every type\nwhere absent. GitHub's are npm, maven, rubygems, docker, nuget and\ncontainer.",
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "package_visibility": {
+              "description": "Who may see a package's version: the stricter of the package's own\nvisibility and its repository's (\"stricter\"), or the package's own\n(\"package\"); \"stricter\" where absent. A version not everyone may see\nreaches only `private` routes under `[doctor] private_to_public =\n\"refuse\"`.",
+              "$ref": "#/$defs/PackageVisibility"
+            },
+            "packages": {
+              "description": "The packages announced, as globs as `include` writes them; every\npackage where absent.",
+              "type": "array",
+              "default": [],
+              "items": {
+                "type": "string"
+              }
             },
             "page": {
               "description": "How many of the newest releases, and of the newest tags, one poll\nreads; 30 where absent.",
@@ -2366,6 +2418,10 @@
                 "$ref": "#/$defs/Values"
               }
             },
+            "registry": {
+              "description": "The host of the container registry an image is named on, as in\n`registry.example:5000`: where absent, ghcr.io beside GitHub's API,\n`containers.<host>` beside a GitHub Enterprise Server's or a GHE.com\ntenant's, each image's own on GitLab, and the instance's on Forgejo.",
+              "type": "string"
+            },
             "remembered": {
               "description": "How many identities the cursor remembers, newest first; 500 where\nabsent, and at least `page`.",
               "type": "integer",
@@ -2387,7 +2443,7 @@
               ]
             },
             "signals": {
-              "description": "What the source announces of each repository: its published Releases,\nits version tags, or both; `[\"release\"]` where absent. A tag and a\nRelease of it share one identity, so each route announces it once.",
+              "description": "What the source announces of each repository: its published Releases,\nits version tags, the versions of its packages, or several;\n`[\"release\"]` where absent. A tag and a Release of it share one\nidentity, so each route announces it once.",
               "type": "array",
               "examples": [
                 [
@@ -2454,7 +2510,7 @@
           ]
         },
         {
-          "description": "A GitLab project's releases and tags.",
+          "description": "A GitLab project's releases, tags and packages.",
           "type": "object",
           "properties": {
             "api": {
@@ -2467,7 +2523,7 @@
               "default": false
             },
             "backfill": {
-              "description": "How many of the newest releases and tags the first poll announces;\nnone where absent (ADR-0003). For an owner, it applies to the members\nthe first listing finds; a member found later announces only what it\npublishes after it was found.",
+              "description": "How many of the newest releases, tags and package versions the first\npoll announces;\nnone where absent (ADR-0003). For an owner, it applies to the members\nthe first listing finds; a member found later announces only what it\npublishes after it was found.",
               "type": "integer",
               "format": "uint",
               "default": 0,
@@ -2557,12 +2613,44 @@
               "format": "uint",
               "minimum": 1
             },
+            "most_packages": {
+              "description": "The most entries one listing of packages reads; 1000 where absent,\nand at most 100000. A listing over it refuses the source for the\nround.",
+              "type": "integer",
+              "format": "uint",
+              "minimum": 1
+            },
+            "moving": {
+              "description": "The container tags that move from one image to the next, which are\nnever announced, as globs as `include` writes them; `[\"latest\"]`\nwhere absent.",
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
             "owner": {
               "description": "The organization, GitLab group or user whose repositories are the\nsource's members, each polled on its own, in place of `repository`.",
               "type": "string",
               "examples": [
                 "nightworksio"
               ]
+            },
+            "package_types": {
+              "description": "The types of package announced where the signals take \"package\", as\nthe forge names them, such as `[\"container\", \"npm\"]`; every type\nwhere absent. GitHub's are npm, maven, rubygems, docker, nuget and\ncontainer.",
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "package_visibility": {
+              "description": "Who may see a package's version: the stricter of the package's own\nvisibility and its repository's (\"stricter\"), or the package's own\n(\"package\"); \"stricter\" where absent. A version not everyone may see\nreaches only `private` routes under `[doctor] private_to_public =\n\"refuse\"`.",
+              "$ref": "#/$defs/PackageVisibility"
+            },
+            "packages": {
+              "description": "The packages announced, as globs as `include` writes them; every\npackage where absent.",
+              "type": "array",
+              "default": [],
+              "items": {
+                "type": "string"
+              }
             },
             "page": {
               "description": "How many of the newest releases, and of the newest tags, one poll\nreads; 30 where absent.",
@@ -2596,6 +2684,10 @@
                 "$ref": "#/$defs/Values"
               }
             },
+            "registry": {
+              "description": "The host of the container registry an image is named on, as in\n`registry.example:5000`: where absent, ghcr.io beside GitHub's API,\n`containers.<host>` beside a GitHub Enterprise Server's or a GHE.com\ntenant's, each image's own on GitLab, and the instance's on Forgejo.",
+              "type": "string"
+            },
             "remembered": {
               "description": "How many identities the cursor remembers, newest first; 500 where\nabsent, and at least `page`.",
               "type": "integer",
@@ -2617,7 +2709,7 @@
               ]
             },
             "signals": {
-              "description": "What the source announces of each repository: its published Releases,\nits version tags, or both; `[\"release\"]` where absent. A tag and a\nRelease of it share one identity, so each route announces it once.",
+              "description": "What the source announces of each repository: its published Releases,\nits version tags, the versions of its packages, or several;\n`[\"release\"]` where absent. A tag and a Release of it share one\nidentity, so each route announces it once.",
               "type": "array",
               "examples": [
                 [
@@ -2684,7 +2776,7 @@
           ]
         },
         {
-          "description": "A Forgejo or Gitea repository's releases and tags.",
+          "description": "A Forgejo or Gitea repository's releases, tags and packages.",
           "type": "object",
           "properties": {
             "api": {
@@ -2697,7 +2789,7 @@
               "default": false
             },
             "backfill": {
-              "description": "How many of the newest releases and tags the first poll announces;\nnone where absent (ADR-0003). For an owner, it applies to the members\nthe first listing finds; a member found later announces only what it\npublishes after it was found.",
+              "description": "How many of the newest releases, tags and package versions the first\npoll announces;\nnone where absent (ADR-0003). For an owner, it applies to the members\nthe first listing finds; a member found later announces only what it\npublishes after it was found.",
               "type": "integer",
               "format": "uint",
               "default": 0,
@@ -2787,12 +2879,44 @@
               "format": "uint",
               "minimum": 1
             },
+            "most_packages": {
+              "description": "The most entries one listing of packages reads; 1000 where absent,\nand at most 100000. A listing over it refuses the source for the\nround.",
+              "type": "integer",
+              "format": "uint",
+              "minimum": 1
+            },
+            "moving": {
+              "description": "The container tags that move from one image to the next, which are\nnever announced, as globs as `include` writes them; `[\"latest\"]`\nwhere absent.",
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
             "owner": {
               "description": "The organization, GitLab group or user whose repositories are the\nsource's members, each polled on its own, in place of `repository`.",
               "type": "string",
               "examples": [
                 "nightworksio"
               ]
+            },
+            "package_types": {
+              "description": "The types of package announced where the signals take \"package\", as\nthe forge names them, such as `[\"container\", \"npm\"]`; every type\nwhere absent. GitHub's are npm, maven, rubygems, docker, nuget and\ncontainer.",
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "package_visibility": {
+              "description": "Who may see a package's version: the stricter of the package's own\nvisibility and its repository's (\"stricter\"), or the package's own\n(\"package\"); \"stricter\" where absent. A version not everyone may see\nreaches only `private` routes under `[doctor] private_to_public =\n\"refuse\"`.",
+              "$ref": "#/$defs/PackageVisibility"
+            },
+            "packages": {
+              "description": "The packages announced, as globs as `include` writes them; every\npackage where absent.",
+              "type": "array",
+              "default": [],
+              "items": {
+                "type": "string"
+              }
             },
             "page": {
               "description": "How many of the newest releases, and of the newest tags, one poll\nreads; 30 where absent.",
@@ -2826,6 +2950,10 @@
                 "$ref": "#/$defs/Values"
               }
             },
+            "registry": {
+              "description": "The host of the container registry an image is named on, as in\n`registry.example:5000`: where absent, ghcr.io beside GitHub's API,\n`containers.<host>` beside a GitHub Enterprise Server's or a GHE.com\ntenant's, each image's own on GitLab, and the instance's on Forgejo.",
+              "type": "string"
+            },
             "remembered": {
               "description": "How many identities the cursor remembers, newest first; 500 where\nabsent, and at least `page`.",
               "type": "integer",
@@ -2847,7 +2975,7 @@
               ]
             },
             "signals": {
-              "description": "What the source announces of each repository: its published Releases,\nits version tags, or both; `[\"release\"]` where absent. A tag and a\nRelease of it share one identity, so each route announces it once.",
+              "description": "What the source announces of each repository: its published Releases,\nits version tags, the versions of its packages, or several;\n`[\"release\"]` where absent. A tag and a Release of it share one\nidentity, so each route announces it once.",
               "type": "array",
               "examples": [
                 [
