@@ -422,11 +422,36 @@ fn a_github_owner_with_a_token_polls_its_members_together_through_graphql() {
             ..SourceOptions::default()
         },
     );
-    assert_eq!(gitlab.graphql, None);
+    assert_eq!(
+        gitlab.graphql.as_deref(),
+        Some("https://gitlab.com/api/graphql")
+    );
 }
 
 #[test]
-fn only_a_github_owner_following_its_events_reads_them() {
+fn a_gitlab_owner_polls_through_graphql_only_where_it_takes_releases_alone_and_forgejo_never() {
+    let tagged = owned(
+        Forge::GitLab,
+        &SourceOptions {
+            signals: Some(vec![Signal::Release, Signal::Tag]),
+            ..SourceOptions::default()
+        },
+    );
+    assert_eq!(tagged.graphql, None);
+    let forgejo = owned(
+        Forge::Forgejo,
+        &SourceOptions {
+            token: Some(herald_core::SecretRef {
+                secret: "TOKEN".to_owned(),
+            }),
+            ..SourceOptions::default()
+        },
+    );
+    assert_eq!(forgejo.graphql, None);
+}
+
+#[test]
+fn only_a_github_owner_following_its_events_or_a_forgejo_owner_following_its_feed_reads_them() {
     let following = |forge: Forge, transport: crate::Transport| {
         owned(
             forge,
@@ -447,10 +472,31 @@ fn only_a_github_owner_following_its_events_reads_them() {
         "{read:?}"
     );
     assert!(http.asked()[0].0.contains("/orgs/lemonfiber/events?"));
+    let fed = Scripted::new(vec![answer(200, &json!([]), "", false)]);
+    let paged = owned(
+        Forge::Forgejo,
+        &SourceOptions {
+            transport: Some(crate::Transport::Feed),
+            feed_page: std::num::NonZeroUsize::new(7),
+            ..SourceOptions::default()
+        },
+    );
+    let read = pollster::block_on(paged.changed(&fed, Owner::User, None));
+    assert!(
+        matches!(read, Some(Ok(herald_kinds::Changed::Gap(_)))),
+        "{read:?}"
+    );
+    assert!(
+        fed.asked()[0]
+            .0
+            .contains("/users/lemonfiber/activities/feeds?")
+    );
     let silent = Scripted::new(Vec::new());
     for (forge, transport) in [
         (Forge::GitHub, crate::Transport::Rest),
+        (Forge::GitHub, crate::Transport::Feed),
         (Forge::GitLab, crate::Transport::Events),
+        (Forge::Forgejo, crate::Transport::Events),
     ] {
         assert_eq!(
             pollster::block_on(following(forge, transport).changed(&silent, Owner::User, None)),

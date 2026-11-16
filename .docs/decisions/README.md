@@ -54,3 +54,4 @@ no separate requirements document, and there are no requirement IDs.
 | [0034](0034-a-post-is-edited-to-a-late-or-edited-release.md) | A post is edited to a late or edited release | Accepted |
 | [0035](0035-a-source-announces-the-versions-of-its-repositories-packages.md) | A source announces the versions of its repositories' packages | Accepted |
 | [0036](0036-a-route-announces-each-project-as-an-actor-of-its-own.md) | A route announces each project as an actor of its own | Accepted |
+| [0037](0037-gitlab-owners-poll-through-graphql-and-forgejo-owners-follow-their-feed.md) | GitLab owners poll through GraphQL, and Forgejo owners follow their feed | Accepted |

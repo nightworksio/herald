@@ -1,5 +1,6 @@
-//! An owner's events on GitHub, read once a round to name the members whose
-//! releases or tags changed (ADR-0030, ADR-0031).
+//! An owner's events on GitHub, or its activity feed on Forgejo, read once
+//! a round to name the members whose releases or tags changed (ADR-0030,
+//! ADR-0031, ADR-0037).
 
 use std::collections::BTreeSet;
 
@@ -12,12 +13,22 @@ use serde::Deserialize;
 use crate::forge::authorized;
 use crate::{Forge, Token};
 
-/// What GitHub's events are called.
-const WHAT: &str = "GitHub's events";
-/// How many events one page asks for: the most GitHub answers.
-const PER_PAGE: usize = 100;
-/// How many pages GitHub keeps of an owner's events: 300 events.
-const PAGES: usize = 3;
+/// What `forge`'s events are called.
+const fn what(forge: Forge) -> &'static str {
+    match forge {
+        Forge::Forgejo => "Forgejo's activity feed",
+        Forge::GitHub | Forge::GitLab => "GitHub's events",
+    }
+}
+/// How many events one page of GitHub's asks for: the most GitHub answers.
+const GITHUB_PAGE: usize = 100;
+/// How many pages of GitHub's events are read back: all GitHub keeps of an
+/// owner's events, 300 events.
+const GITHUB_PAGES: usize = 3;
+/// The activity Forgejo names a release published by.
+const PUBLISH_RELEASE: &str = "publish_release";
+/// The activity Forgejo names a tag pushed by.
+const PUSH_TAG: &str = "push_tag";
 /// The event GitHub names a release by.
 const RELEASE: &str = "ReleaseEvent";
 /// The action of a release being published.
@@ -49,8 +60,18 @@ struct Payload {
     ref_type: Option<String>,
 }
 
+/// One activity, as Forgejo's feed lists it.
+#[derive(Deserialize)]
+struct Activity {
+    id: u64,
+    op_type: String,
+    repo_id: u64,
+}
+
 /// Where and how an owner's events are asked.
 pub(crate) struct Asking<'a> {
+    pub(crate) forge: Forge,
+    pub(crate) paged: (usize, usize),
     pub(crate) api: &'a str,
     pub(crate) name: &'a str,
     pub(crate) owner: Owner,
@@ -59,21 +80,73 @@ pub(crate) struct Asking<'a> {
     pub(crate) tags: bool,
 }
 
+/// How many events a page of GitHub's asks for, and how many pages are read
+/// back.
+pub(crate) const GITHUB_PAGED: (usize, usize) = (GITHUB_PAGE, GITHUB_PAGES);
+
 impl Asking<'_> {
     /// The request for page `page` of the owner's events, conditional on
     /// `etag` where there is one.
     fn request(&self, page: usize, etag: Option<&str>) -> Request {
-        let (api, name) = (self.api, unreserved(self.name));
-        let url = match self.owner {
-            Owner::Organization => {
-                format!("{api}/orgs/{name}/events?per_page={PER_PAGE}&page={page}")
+        let (api, name, size) = (self.api, unreserved(self.name), self.paged.0);
+        let kind = match self.owner {
+            Owner::Organization => "orgs",
+            Owner::User => "users",
+        };
+        let url = match self.forge {
+            Forge::Forgejo => {
+                format!("{api}/{kind}/{name}/activities/feeds?limit={size}&page={page}")
             }
-            Owner::User => format!("{api}/users/{name}/events?per_page={PER_PAGE}&page={page}"),
+            Forge::GitHub | Forge::GitLab => {
+                format!("{api}/{kind}/{name}/events?per_page={size}&page={page}")
+            }
         };
         let request = Request::new(Method::Get, SecretText::plain(url))
             .at_most(self.parse)
             .conditional(etag, None);
-        authorized(Forge::GitHub, request, self.token)
+        authorized(self.forge, request, self.token)
+    }
+
+    /// Each of GitHub's events in `body`, by its id, with the member it
+    /// names a published release, or a tag where tags are taken, of.
+    fn github(&self, body: &[u8]) -> Result<Vec<(u64, Option<String>)>, SourceError> {
+        let what = what(self.forge);
+        let read: Vec<Happened> = herald_wire::read(what, self.parse, body)?;
+        read.into_iter()
+            .map(|happened| {
+                let id = happened
+                    .id
+                    .parse::<u64>()
+                    .map_err(|error| SourceError::Unreadable {
+                        what,
+                        reason: format!(
+                            "an event's id \"{}\" is not a number: {error}",
+                            happened.id
+                        ),
+                    })?;
+                let payload = &happened.payload;
+                let released = (happened.kind == RELEASE
+                    && payload.action.as_deref() == Some(PUBLISHED))
+                    || (self.tags
+                        && happened.kind == CREATE
+                        && payload.ref_type.as_deref() == Some(TAG));
+                Ok((id, released.then(|| happened.repo.id.to_string())))
+            })
+            .collect()
+    }
+
+    /// Each of Forgejo's activities in `body`, by its id, with the member it
+    /// names a published release, or a pushed tag where tags are taken, of.
+    fn forgejo(&self, body: &[u8]) -> Result<Vec<(u64, Option<String>)>, SourceError> {
+        let read: Vec<Activity> = herald_wire::read(what(self.forge), self.parse, body)?;
+        Ok(read
+            .into_iter()
+            .map(|activity| {
+                let released = activity.op_type == PUBLISH_RELEASE
+                    || (self.tags && activity.op_type == PUSH_TAG);
+                (activity.id, released.then(|| activity.repo_id.to_string()))
+            })
+            .collect())
     }
 }
 
@@ -94,29 +167,12 @@ async fn page(
     if etag.is_some() && Forge::unchanged(&answer) {
         return Ok(None);
     }
-    answered(WHAT, &answer).map_err(Unpolled::unreadable)?;
-    let read: Vec<Happened> =
-        herald_wire::read(WHAT, asking.parse, &answer.body).map_err(Unpolled::unreadable)?;
-    let events = read
-        .into_iter()
-        .map(|happened| {
-            let id = happened
-                .id
-                .parse::<u64>()
-                .map_err(|error| SourceError::Unreadable {
-                    what: WHAT,
-                    reason: format!("an event's id \"{}\" is not a number: {error}", happened.id),
-                })?;
-            let payload = &happened.payload;
-            let released = (happened.kind == RELEASE
-                && payload.action.as_deref() == Some(PUBLISHED))
-                || (asking.tags
-                    && happened.kind == CREATE
-                    && payload.ref_type.as_deref() == Some(TAG));
-            Ok((id, released.then(|| happened.repo.id.to_string())))
-        })
-        .collect::<Result<Vec<_>, SourceError>>()
-        .map_err(Unpolled::unreadable)?;
+    answered(what(asking.forge), &answer).map_err(Unpolled::unreadable)?;
+    let events = match asking.forge {
+        Forge::Forgejo => asking.forgejo(&answer.body),
+        Forge::GitHub | Forge::GitLab => asking.github(&answer.body),
+    }
+    .map_err(Unpolled::unreadable)?;
     Ok(Some((events, answer.header("etag").map(ToOwned::to_owned))))
 }
 
@@ -154,7 +210,8 @@ pub(crate) async fn changed(
     let mut number = 1;
     let reached =
         |events: &[(u64, Option<String>)]| events.iter().any(|(id, _)| *id <= last.newest);
-    while !reached(&events) && events.len() == number * PER_PAGE && number < PAGES {
+    let (size, pages) = asking.paged;
+    while !reached(&events) && events.len() == number * size && number < pages {
         number += 1;
         let more = page(http, asking, (number, None)).await?;
         events.extend(more.into_iter().flat_map(|(more, _)| more));

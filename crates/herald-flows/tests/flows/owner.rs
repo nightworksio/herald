@@ -11,6 +11,7 @@ use serde_json::json;
 
 use crate::harness::*;
 
+mod feed;
 mod packages;
 mod tags;
 

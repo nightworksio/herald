@@ -397,6 +397,7 @@ dependencies = [
  "herald-dest-fediverse",
  "herald-dest-matrix",
  "herald-dest-slack",
+ "herald-kinds",
  "herald-ports",
  "herald-records",
  "herald-sources-app",

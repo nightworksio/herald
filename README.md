@@ -405,6 +405,19 @@ another on the same host.
 tag, where a member takes tags), and those never polled; where the events do not reach back to the last read, every
 member is polled.
 
+A GitLab owner with a `token` polls its members through GitLab's GraphQL
+API the same way, asking each batch's projects by id; `transport =
+"graphql"` asks it without a token too, as public projects need none. The
+endpoint sits beside `api` (`/api/graphql` beside `/api/v4`, under any
+relative root). GitLab's GraphQL API lists no tags or packages, so an owner
+whose members take tags or packages polls each over REST, and does not
+load with `transport = "graphql"`. A Forgejo owner polls each member over
+REST; `transport = "feed"` reads the organization's or user's activity
+feed once a round instead and polls only the members it names publishing a
+Release (or pushing a tag, where a member takes tags), as GitHub's events
+do: `feed_page` activities to a page (50, at most 200) and `feed_pages`
+pages back (3, at most 12).
+
 `[sources.<owner>.repositories."<glob>"]` overrides `project`, `signals`
 and `prerelease` for the repositories a glob names, each key settled by the narrowest glob setting
 it: one without wildcards before one with, and otherwise the one naming

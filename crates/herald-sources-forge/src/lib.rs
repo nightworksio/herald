@@ -28,8 +28,8 @@ pub use forge::{Forge, Origin, Repository, Token};
 pub use herald_kinds::Hooked;
 pub use kind::{ForgeSource, ForgejoKind, GitHubKind, GitLabKind};
 pub use options::{
-    GRAPHQL_BATCH, GRAPHQL_BATCH_ALLOWED, KEEP_MEMBERS, KEY, MOST_LISTED, MOST_MEMBERS,
-    MOST_MEMBERS_ALLOWED, Members, Override, PackageVisibility, Signals, SourceOptions, TAG_WINDOW,
-    TAG_WINDOW_ALLOWED, Transport, Values,
+    EDITS_DEPTH, FEED_PAGE, FEED_PAGES, GRAPHQL_BATCH, GRAPHQL_BATCH_ALLOWED, KEEP_MEMBERS, KEY,
+    MOST_LISTED, MOST_MEMBERS, MOST_MEMBERS_ALLOWED, Members, Override, PackageVisibility, Signals,
+    SourceOptions, TAG_WINDOW, TAG_WINDOW_ALLOWED, Transport, Values,
 };
 pub use polled::tag_event_of;

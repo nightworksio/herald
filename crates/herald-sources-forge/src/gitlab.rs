@@ -102,6 +102,16 @@ fn when<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Option<Timestamp>,
 /// branch.
 pub(crate) const DEFAULT_REF: &str = "HEAD";
 
+/// The GraphQL endpoint beside `api`, a GitLab REST API: `/api/graphql`
+/// beside `/api/v4`, under any relative root the instance is served at.
+pub(crate) fn graphql(api: &str) -> String {
+    let api = api.trim_end_matches('/');
+    match api.strip_suffix("/v4") {
+        Some(base) => format!("{base}/graphql"),
+        None => format!("{api}/graphql"),
+    }
+}
+
 /// The base URL of a project's API, named by its full path.
 pub(crate) fn project(api: &str, path: &str) -> String {
     format!("{api}/projects/{}", unreserved(path))
@@ -168,4 +178,22 @@ pub(crate) fn all_found(
 ) -> Result<Vec<ForgeRelease>, SourceError> {
     let releases: Vec<Release> = herald_wire::read(what, limit, body)?;
     Ok(releases.into_iter().map(ForgeRelease::from).collect())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_graphql_endpoint_is_beside_the_rest_api_under_any_relative_root() {
+        assert_eq!(graphql(API.url), "https://gitlab.com/api/graphql");
+        assert_eq!(
+            graphql("https://git.example/gitlab/api/v4/"),
+            "https://git.example/gitlab/api/graphql"
+        );
+        assert_eq!(
+            graphql("https://git.example/api"),
+            "https://git.example/api/graphql"
+        );
+    }
 }

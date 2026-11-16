@@ -480,8 +480,10 @@ A GitHub repository's releases, tags and packages.
 | `sources.<name>.backfill` | integer | How many of the newest releases, tags and package versions the first poll announces; none where absent (ADR-0003). For an owner, it applies to the members the first listing finds; a member found later announces only what it publishes after it was found. |
 | `sources.<name>.edits_depth` | integer | How many of the newest Releases a poll watches for an edit of their name or notes, where a route taking the source edits them (`edits = "release"`); 30 where absent, and at most `page`. |
 | `sources.<name>.exclude` | array of string | The names left out, as `include` writes them, whatever `include` says. |
+| `sources.<name>.feed_page` | integer | How many activities one page of a Forgejo owner's feed asks for under `transport = "feed"`; 50 where absent, and at most 200. |
+| `sources.<name>.feed_pages` | integer | How many pages of a Forgejo owner's feed a round reads back before it polls every member; 3 where absent, and at most 12. |
 | `sources.<name>.fork` | boolean | Whether forks are taken. |
-| `sources.<name>.graphql` | string | The GraphQL endpoint of a GitHub owner source; beside `api` where absent: `/api/graphql` on a GitHub Enterprise Server whose `api` ends in `/api/v3`, and `/graphql` on GitHub and GHE.com. |
+| `sources.<name>.graphql` | string | The GraphQL endpoint of a GitHub or GitLab owner source; beside `api` where absent: `/api/graphql` on a GitHub Enterprise Server whose `api` ends in `/api/v3` and on GitLab, whose `api` ends in `/api/v4`, and `/graphql` on GitHub and GHE.com. |
 | `sources.<name>.graphql_batch` | integer | How many members one GraphQL request asks for; 50 where absent, and at most 100. |
 | `sources.<name>.include` | array of string | The names of the owner's repositories taken, as globs in which `*` stands for any run of characters, `?` for any one and `[...]` for any one of a class, ignoring case; every name where absent. |
 | `sources.<name>.keep_members` | [Duration](#duration) | How long a member that left the selection keeps its cursor before it is forgotten; "30d" where absent. |
@@ -536,7 +538,7 @@ A GitHub repository's releases, tags and packages.
 | `sources.<name>.token` | table | A token that reaches a private repository or raises the API's rate limit, such as the run's `GITHUB_TOKEN`. |
 | `sources.<name>.token.secret` | string | The secret's name. |
 | `sources.<name>.topics` | array of string | Topics, any one of which a member holds; any where absent. |
-| `sources.<name>.transport` | [Transport](#transport) | How a GitHub owner's members are polled; "auto" where absent. |
+| `sources.<name>.transport` | [Transport](#transport) | How an owner's members are polled; "auto" where absent. GitHub offers auto, graphql, rest and events; GitLab auto, graphql and rest; Forgejo auto, rest and feed. |
 | `sources.<name>.visibility` | array of [RepositoryVisibility](#repositoryvisibility) | The visibilities taken; only public repositories where absent. A repository whose visibility the forge does not name is private. A route that takes a private or internal member is refused unless it is `private` (`[doctor] private_to_public`). |
 | `sources.<name>.webhook` | table | The secret the forge signs its webhook deliveries to `herald server` with: GitHub's and Forgejo's webhook secret, or GitLab's signing token (ADR-0007). An owner source takes its repositories' and its organization's deliveries, and announces one only where the owner's last membership record holds the repository when its work runs. |
 | `sources.<name>.webhook.secret` | string | The secret's name. |
@@ -553,8 +555,10 @@ A GitLab project's releases, tags and packages.
 | `sources.<name>.backfill` | integer | How many of the newest releases, tags and package versions the first poll announces; none where absent (ADR-0003). For an owner, it applies to the members the first listing finds; a member found later announces only what it publishes after it was found. |
 | `sources.<name>.edits_depth` | integer | How many of the newest Releases a poll watches for an edit of their name or notes, where a route taking the source edits them (`edits = "release"`); 30 where absent, and at most `page`. |
 | `sources.<name>.exclude` | array of string | The names left out, as `include` writes them, whatever `include` says. |
+| `sources.<name>.feed_page` | integer | How many activities one page of a Forgejo owner's feed asks for under `transport = "feed"`; 50 where absent, and at most 200. |
+| `sources.<name>.feed_pages` | integer | How many pages of a Forgejo owner's feed a round reads back before it polls every member; 3 where absent, and at most 12. |
 | `sources.<name>.fork` | boolean | Whether forks are taken. |
-| `sources.<name>.graphql` | string | The GraphQL endpoint of a GitHub owner source; beside `api` where absent: `/api/graphql` on a GitHub Enterprise Server whose `api` ends in `/api/v3`, and `/graphql` on GitHub and GHE.com. |
+| `sources.<name>.graphql` | string | The GraphQL endpoint of a GitHub or GitLab owner source; beside `api` where absent: `/api/graphql` on a GitHub Enterprise Server whose `api` ends in `/api/v3` and on GitLab, whose `api` ends in `/api/v4`, and `/graphql` on GitHub and GHE.com. |
 | `sources.<name>.graphql_batch` | integer | How many members one GraphQL request asks for; 50 where absent, and at most 100. |
 | `sources.<name>.include` | array of string | The names of the owner's repositories taken, as globs in which `*` stands for any run of characters, `?` for any one and `[...]` for any one of a class, ignoring case; every name where absent. |
 | `sources.<name>.keep_members` | [Duration](#duration) | How long a member that left the selection keeps its cursor before it is forgotten; "30d" where absent. |
@@ -609,7 +613,7 @@ A GitLab project's releases, tags and packages.
 | `sources.<name>.token` | table | A token that reaches a private repository or raises the API's rate limit, such as the run's `GITHUB_TOKEN`. |
 | `sources.<name>.token.secret` | string | The secret's name. |
 | `sources.<name>.topics` | array of string | Topics, any one of which a member holds; any where absent. |
-| `sources.<name>.transport` | [Transport](#transport) | How a GitHub owner's members are polled; "auto" where absent. |
+| `sources.<name>.transport` | [Transport](#transport) | How an owner's members are polled; "auto" where absent. GitHub offers auto, graphql, rest and events; GitLab auto, graphql and rest; Forgejo auto, rest and feed. |
 | `sources.<name>.visibility` | array of [RepositoryVisibility](#repositoryvisibility) | The visibilities taken; only public repositories where absent. A repository whose visibility the forge does not name is private. A route that takes a private or internal member is refused unless it is `private` (`[doctor] private_to_public`). |
 | `sources.<name>.webhook` | table | The secret the forge signs its webhook deliveries to `herald server` with: GitHub's and Forgejo's webhook secret, or GitLab's signing token (ADR-0007). An owner source takes its repositories' and its organization's deliveries, and announces one only where the owner's last membership record holds the repository when its work runs. |
 | `sources.<name>.webhook.secret` | string | The secret's name. |
@@ -626,8 +630,10 @@ A Forgejo or Gitea repository's releases, tags and packages.
 | `sources.<name>.backfill` | integer | How many of the newest releases, tags and package versions the first poll announces; none where absent (ADR-0003). For an owner, it applies to the members the first listing finds; a member found later announces only what it publishes after it was found. |
 | `sources.<name>.edits_depth` | integer | How many of the newest Releases a poll watches for an edit of their name or notes, where a route taking the source edits them (`edits = "release"`); 30 where absent, and at most `page`. |
 | `sources.<name>.exclude` | array of string | The names left out, as `include` writes them, whatever `include` says. |
+| `sources.<name>.feed_page` | integer | How many activities one page of a Forgejo owner's feed asks for under `transport = "feed"`; 50 where absent, and at most 200. |
+| `sources.<name>.feed_pages` | integer | How many pages of a Forgejo owner's feed a round reads back before it polls every member; 3 where absent, and at most 12. |
 | `sources.<name>.fork` | boolean | Whether forks are taken. |
-| `sources.<name>.graphql` | string | The GraphQL endpoint of a GitHub owner source; beside `api` where absent: `/api/graphql` on a GitHub Enterprise Server whose `api` ends in `/api/v3`, and `/graphql` on GitHub and GHE.com. |
+| `sources.<name>.graphql` | string | The GraphQL endpoint of a GitHub or GitLab owner source; beside `api` where absent: `/api/graphql` on a GitHub Enterprise Server whose `api` ends in `/api/v3` and on GitLab, whose `api` ends in `/api/v4`, and `/graphql` on GitHub and GHE.com. |
 | `sources.<name>.graphql_batch` | integer | How many members one GraphQL request asks for; 50 where absent, and at most 100. |
 | `sources.<name>.include` | array of string | The names of the owner's repositories taken, as globs in which `*` stands for any run of characters, `?` for any one and `[...]` for any one of a class, ignoring case; every name where absent. |
 | `sources.<name>.keep_members` | [Duration](#duration) | How long a member that left the selection keeps its cursor before it is forgotten; "30d" where absent. |
@@ -682,7 +688,7 @@ A Forgejo or Gitea repository's releases, tags and packages.
 | `sources.<name>.token` | table | A token that reaches a private repository or raises the API's rate limit, such as the run's `GITHUB_TOKEN`. |
 | `sources.<name>.token.secret` | string | The secret's name. |
 | `sources.<name>.topics` | array of string | Topics, any one of which a member holds; any where absent. |
-| `sources.<name>.transport` | [Transport](#transport) | How a GitHub owner's members are polled; "auto" where absent. |
+| `sources.<name>.transport` | [Transport](#transport) | How an owner's members are polled; "auto" where absent. GitHub offers auto, graphql, rest and events; GitLab auto, graphql and rest; Forgejo auto, rest and feed. |
 | `sources.<name>.visibility` | array of [RepositoryVisibility](#repositoryvisibility) | The visibilities taken; only public repositories where absent. A repository whose visibility the forge does not name is private. A route that takes a private or internal member is refused unless it is `private` (`[doctor] private_to_public`). |
 | `sources.<name>.webhook` | table | The secret the forge signs its webhook deliveries to `herald server` with: GitHub's and Forgejo's webhook secret, or GitLab's signing token (ADR-0007). An owner source takes its repositories' and its organization's deliveries, and announces one only where the owner's last membership record holds the repository when its work runs. |
 | `sources.<name>.webhook.secret` | string | The secret's name. |
@@ -1129,7 +1135,7 @@ How Docker Hub lists a repository's tags.
 
 ### Transport
 
-How an owner's members are polled on GitHub.
+How an owner's members are polled.
 
 ### Values
 
