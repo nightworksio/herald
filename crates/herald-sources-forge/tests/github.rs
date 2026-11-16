@@ -212,6 +212,26 @@ mod github {
     }
 
     #[test]
+    fn a_webhook_of_a_release_edited_announces_it_marked_as_an_edit() {
+        let changed = edited(|payload| payload["action"] = json!("edited"));
+        let Ok(Hooked::Event(event)) =
+            Forge::GitHub.hooked((&[RELEASE], &changed), "cli/cli", &Signals::default())
+        else {
+            panic!("an edited release is announced as an edit");
+        };
+        assert!(event.edited());
+        let Ok(Hooked::Event(first)) = Forge::GitHub.hooked(
+            (&[RELEASE], EVENT.as_bytes()),
+            "cli/cli",
+            &Signals::default(),
+        ) else {
+            panic!("a published release is announced");
+        };
+        assert!(!first.edited());
+        assert_eq!(first.identity(), event.identity());
+    }
+
+    #[test]
     fn a_webhook_of_another_event_or_an_unpublished_release_announces_nothing() {
         for headers in [&[("X-GitHub-Event", "ping")][..], &[]] {
             assert_eq!(

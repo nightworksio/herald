@@ -27,6 +27,8 @@ exclude_re = [
     "StoreConfig::named -> Vec<&str> with vec!\\[\\]",
     # A source says nothing to the doctor unless its kind says so, and `Vec::new()` is `vec![]`.
     "SourceConfig::notes -> Vec<&'static str> with vec!\\[\\]",
+    # A source names no signal its events carry unless its kind says so, and `Vec::new()` is `vec![]`.
+    "SourceConfig::signals -> Vec<herald_core::Signal> with vec!\\[\\]",
     # An owner polls one member a request unless its kind batches them, and `1.try_into().unwrap()` is `NonZeroUsize::MIN`.
     "Expand::batch -> NonZeroUsize with 1\\.try_into\\(\\)\\.unwrap\\(\\)",
     # A source names no project unless its kind says so, and `Vec::new()` is `vec![]`.

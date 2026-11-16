@@ -284,7 +284,15 @@ pub struct SourceOptions {
     /// How long a tag with no Release waits for one, counted from when
     /// herald first sees the tag; "1h" where absent, and at most "7d".
     pub tag_window: Option<Duration>,
+    /// How many of the newest Releases a poll watches for an edit of their
+    /// name or notes, where a route taking the source edits them
+    /// (`edits = "release"`); 30 where absent, and at most `page`.
+    pub edits_depth: Option<usize>,
 }
+
+/// How many of the newest Releases are watched for an edit where
+/// `edits_depth` is absent.
+pub const EDITS_DEPTH: usize = 30;
 
 /// How long a tag waits for its Release where `tag_window` is absent.
 pub const TAG_WINDOW: SignedDuration = SignedDuration::from_hours(1);
@@ -792,6 +800,20 @@ impl SourceOptions {
     #[must_use]
     pub fn subgroups(&self) -> bool {
         self.subgroups.unwrap_or(true)
+    }
+
+    /// How many of the newest Releases a poll watches for an edit: as many
+    /// as `edits_depth` says, at most a page, where a route edits them as
+    /// `edits` says, and none otherwise.
+    #[must_use]
+    pub fn watched(&self, edits: bool) -> usize {
+        if edits {
+            self.edits_depth
+                .unwrap_or(EDITS_DEPTH)
+                .min(self.reading().page)
+        } else {
+            0
+        }
     }
 
     /// How a poll of the source reads.

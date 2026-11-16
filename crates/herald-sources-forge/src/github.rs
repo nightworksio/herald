@@ -20,6 +20,13 @@ pub(crate) const API: Api = Api {
     listed_page: std::num::NonZeroUsize::new(100).unwrap(),
 };
 
+/// The action of a release event of a release published.
+const PUBLISHED: &str = "published";
+/// The action of GitHub's release event of a release edited.
+const EDITED: &str = "edited";
+/// The action of Forgejo's release event of a release updated.
+const UPDATED: &str = "updated";
+
 /// A release event, as GitHub and Forgejo send it.
 #[derive(Deserialize)]
 struct Payload {
@@ -50,18 +57,29 @@ impl From<Release> for ForgeRelease {
             draft: release.draft,
             prerelease: Some(release.prerelease),
             published: release.published_at,
+            edited: false,
         }
     }
 }
 
-/// The repository and release a `published` release event names, or
-/// nothing for any other action.
+/// The repository and release a `published` release event names, or one
+/// GitHub's `edited` or Forgejo's `updated` names edited, or nothing for
+/// any other action.
 pub(crate) fn published(
     what: &'static str,
     payload: &[u8],
 ) -> Result<Option<(Repository, ForgeRelease)>, SourceError> {
     let payload: Payload = read(what, payload)?;
-    Ok((payload.action == "published").then(|| (payload.repository, payload.release.into())))
+    let edited = match payload.action.as_str() {
+        PUBLISHED => false,
+        EDITED | UPDATED => true,
+        _ => return Ok(None),
+    };
+    let release = ForgeRelease {
+        edited,
+        ..payload.release.into()
+    };
+    Ok(Some((payload.repository, release)))
 }
 
 /// A repository as a webhook payload names it in full.

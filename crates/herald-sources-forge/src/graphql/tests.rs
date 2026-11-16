@@ -72,12 +72,21 @@ fn together_signalled(
     http: &Scripted,
     members: &[(&Listed, Option<&Cursor>, Signals)],
 ) -> Vec<Result<Option<Polled>, Unpolled>> {
+    watching(http, members, 0)
+}
+
+fn watching(
+    http: &Scripted,
+    members: &[(&Listed, Option<&Cursor>, Signals)],
+    watched: usize,
+) -> Vec<Result<Option<Polled>, Unpolled>> {
     let token = Token::Named(Secret::new("TOKEN", "t"));
     let asking = Asking {
         endpoint: "https://api.github.com/graphql",
         token: Some(&token),
         page: 30,
         parse: 1 << 20,
+        watched,
     };
     pollster::block_on(polled_together(
         &Erased(http as &dyn DynHttp),
@@ -454,4 +463,40 @@ fn a_release_of_a_version_its_cursor_saw_only_as_a_tag_is_asked_in_full() {
         )],
     );
     assert_eq!(answered, [Ok(None)]);
+}
+
+#[test]
+fn a_member_watched_for_edits_is_asked_its_notes_and_read_in_full_once_one_changed() {
+    let api = member("api");
+    let noted = |notes: &str| {
+        let mut edited = release("v2", false);
+        edited["description"] = json!(notes);
+        data(&[tagged(9, &[edited, release("v1", false)], &[])])
+    };
+    let http = Scripted::new(vec![noted("## Added"), noted("## Added")]);
+    let first = watching(&http, &[(&api, None, Signals::default())], 1);
+    let Ok(Some(polled)) = &first[0] else {
+        panic!("a member with no cursor is read in full: {first:?}");
+    };
+    assert_eq!(polled.watched, 1);
+    let cursor = Cursor::default().advanced(polled, 500);
+    assert_eq!(cursor.notes.len(), 1);
+    let http = Scripted::new(vec![noted("## Added")]);
+    let quiet = watching(&http, &[(&api, Some(&cursor), Signals::default())], 1);
+    assert!(matches!(quiet[..], [Ok(None)]), "{quiet:?}");
+    let asked = http.bodies()[0]["query"].as_str().unwrap().to_owned();
+    assert!(asked.contains("description"), "{asked}");
+    let http = Scripted::new(vec![noted("## Fixed"), noted("## Fixed")]);
+    let changed = watching(&http, &[(&api, Some(&cursor), Signals::default())], 1);
+    let Ok(Some(polled)) = &changed[0] else {
+        panic!("an edited release is read in full: {changed:?}");
+    };
+    let found = herald_core::fresh(Some(&cursor), polled.events.clone(), 0);
+    assert_eq!(found.len(), 1);
+    assert!(found[0].edited());
+    let unwatched = Scripted::new(vec![noted("## Fixed")]);
+    let light = watching(&unwatched, &[(&api, Some(&cursor), Signals::default())], 0);
+    assert!(matches!(light[..], [Ok(None)]));
+    let asked = unwatched.bodies()[0]["query"].as_str().unwrap().to_owned();
+    assert!(!asked.contains("description"), "{asked}");
 }

@@ -1,5 +1,5 @@
 use herald_core::media;
-use herald_core::{Announcement, Declined, Entry, Step};
+use herald_core::{Announcement, Declined, Entry, NO_PART, Step, unreserved};
 use herald_ports::{Method, Request, SecretText};
 use serde_json::{Map, Value, json};
 
@@ -22,11 +22,12 @@ fn authorised(request: Request, mastodon: &Mastodon) -> Request {
     request.identified().bearer(mastodon.token.clone())
 }
 
-fn status(mastodon: &Mastodon, text: &str, reply_to: Option<&str>, key: String) -> Request {
+/// What a status reads, `text`, in the route's language and behind its
+/// content warning.
+fn written(mastodon: &Mastodon, text: &str) -> Map<String, Value> {
     let route = &mastodon.route;
     let mut body = Map::new();
     body.insert("status".to_owned(), json!(text));
-    body.insert("visibility".to_owned(), json!(route.visibility.as_str()));
     body.extend(
         route
             .language
@@ -39,12 +40,42 @@ fn status(mastodon: &Mastodon, text: &str, reply_to: Option<&str>, key: String) 
             .iter()
             .map(|warning| ("spoiler_text".to_owned(), json!(warning))),
     );
+    body
+}
+
+fn status(mastodon: &Mastodon, text: &str, reply_to: Option<&str>, key: String) -> Request {
+    let mut body = written(mastodon, text);
+    body.insert(
+        "visibility".to_owned(),
+        json!(mastodon.route.visibility.as_str()),
+    );
     body.extend(reply_to.map(|reply_to| ("in_reply_to_id".to_owned(), json!(reply_to))));
     let url = SecretText::plain(format!("{}/api/v1/statuses", mastodon.server));
     authorised(Request::new(Method::Post, url), mastodon)
         .header("Content-Type", SecretText::plain(media::JSON))
         .header("Idempotency-Key", SecretText::plain(key))
         .body(Value::Object(body).to_string())
+}
+
+/// The status of `part` in the record `entry` keeps, addressed.
+fn statused(mastodon: &Mastodon, entry: &Entry, part: u32) -> Result<SecretText, Declined> {
+    let id = entry.part(part).ok_or(NO_PART)?;
+    Ok(SecretText::plain(format!(
+        "{}/api/v1/statuses/{}",
+        mastodon.server,
+        unreserved(id)
+    )))
+}
+
+/// What `part` of `announcement` reads.
+fn text_of(announcement: &Announcement, part: u32) -> String {
+    match part {
+        0 => first(announcement),
+        chunk => announcement
+            .part(chunk)
+            .map(|part| part.body.clone())
+            .unwrap_or_default(),
+    }
 }
 
 fn first(announcement: &Announcement) -> String {
@@ -73,7 +104,7 @@ pub(crate) fn step(
 ) -> Result<Request, Declined> {
     let key = announcement.key.to_string();
     match step {
-        Step::Post => Ok(status(mastodon, &first(announcement), None, key)),
+        Step::Post => Ok(status(mastodon, &text_of(announcement, 0), None, key)),
         Step::Chunk(index) => {
             let before = entry
                 .before(*index)
@@ -82,20 +113,32 @@ pub(crate) fn step(
                 } else {
                     "the announcement's status"
                 }))?;
-            let text = announcement
-                .part(*index)
-                .map(|part| part.body.as_str())
-                .unwrap_or_default();
             Ok(status(
                 mastodon,
-                text,
+                &text_of(announcement, *index),
                 Some(before),
-                format!("{key}.{index}"),
+                entry.chunk_token(*index),
             ))
         }
         Step::Crosspost => Err(cannot("crosspost")),
         Step::OpenThread => Err(cannot("open a thread; its replies are the thread")),
         Step::Pin | Step::Unpin => Err(cannot("pin a route's announcement")),
-        Step::Deliver(_) | Step::Deliveries => Err(cannot("deliver to an inbox")),
+        Step::Deliver(_) | Step::Deliveries | Step::Updates(_) => {
+            Err(cannot("deliver to an inbox"))
+        }
+        Step::Edit { part, .. } => {
+            let body = Value::Object(written(mastodon, &text_of(announcement, *part)));
+            Ok(authorised(
+                Request::new(Method::Put, statused(mastodon, entry, *part)?),
+                mastodon,
+            )
+            .header("Content-Type", SecretText::plain(media::JSON))
+            .body(body.to_string()))
+        }
+        Step::Delete(part) => Ok(authorised(
+            Request::new(Method::Delete, statused(mastodon, entry, *part)?),
+            mastodon,
+        )),
+        Step::Rename(_) => Err(cannot("rename a thread; its replies are the thread")),
     }
 }

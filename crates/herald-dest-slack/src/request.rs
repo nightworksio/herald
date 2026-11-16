@@ -1,11 +1,11 @@
-use herald_core::{Announcement, Declined, Entry, Phrase, Step, safe_url, unreserved};
+use herald_core::{Announcement, Declined, Entry, NO_PART, Phrase, Step, safe_url, unreserved};
 use herald_ports::{Credential, Method, Request, SecretText};
 use serde_json::{Value, json};
 
 use crate::interact::subscribe_block;
 use crate::interactions::Subscribe;
 use crate::slack::{SLACK, Slack};
-use crate::web_api::{CHAT_POST_MESSAGE, PINS_ADD, PINS_LIST, WebMethod};
+use crate::web_api::{CHAT_DELETE, CHAT_POST_MESSAGE, CHAT_UPDATE, PINS_ADD, PINS_LIST, WebMethod};
 
 /// The type of the metadata event herald's posts carry their markers in
 /// (ADR-0011).
@@ -217,7 +217,9 @@ pub(crate) fn step(
     match (&slack.credential, step) {
         (_, Step::Crosspost) => Err(cannot("crosspost")),
         (_, Step::OpenThread) => Err(cannot("open a thread; its replies are the thread")),
-        (_, Step::Deliver(_) | Step::Deliveries) => Err(cannot("deliver to an inbox")),
+        (_, Step::Deliver(_) | Step::Deliveries | Step::Updates(_)) => {
+            Err(cannot("deliver to an inbox"))
+        }
         (Credential::Webhook(url), Step::Post) => Ok(posted_json(
             slack,
             SecretText::secret(url.clone()),
@@ -265,6 +267,26 @@ pub(crate) fn step(
             Ok(pin(slack, PINS_ADD, channel, post))
         }
         (Credential::Bot(_), Step::Unpin) => Ok(pins(slack, channel(slack)?)),
+        (Credential::Webhook(_), Step::Edit { .. }) => Err(webhook_cannot("edit a message")),
+        (Credential::Webhook(_), Step::Delete(_)) => Err(webhook_cannot("delete a message")),
+        (_, Step::Rename(_)) => Err(cannot("rename a thread; its replies are the thread")),
+        (Credential::Bot(_), Step::Edit { part, .. }) => {
+            let ts = entry.part(*part).ok_or(NO_PART)?;
+            let body = match part {
+                0 => announcement_body(slack, announcement, slack.route.subscribe.as_ref()),
+                chunk => chunk_body(announcement, *chunk),
+            };
+            let body = with(
+                body,
+                &[("channel", json!(channel(slack)?)), ("ts", json!(ts))],
+            );
+            Ok(call(slack, CHAT_UPDATE, &body))
+        }
+        (Credential::Bot(_), Step::Delete(part)) => {
+            let ts = entry.part(*part).ok_or(NO_PART)?;
+            let body = json!({ "channel": channel(slack)?, "ts": ts });
+            Ok(call(slack, CHAT_DELETE, &body))
+        }
     }
 }
 

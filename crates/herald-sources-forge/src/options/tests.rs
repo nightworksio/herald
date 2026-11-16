@@ -827,3 +827,17 @@ fn prefer_and_its_window_choose_between_a_tag_and_its_release_and_nothing_else()
     }
     assert_eq!(TAG_WINDOW_ALLOWED, SignedDuration::from_hours(168));
 }
+
+#[test]
+fn a_poll_watches_releases_for_an_edit_only_where_a_route_edits_them_and_at_most_a_page() {
+    let options = |edits_depth: Option<usize>| SourceOptions {
+        repository: Some("o/r".to_owned()),
+        edits_depth,
+        ..SourceOptions::default()
+    };
+    assert_eq!(options(None).watched(false), 0);
+    assert_eq!(options(None).watched(true), EDITS_DEPTH);
+    assert_eq!(options(Some(5)).watched(true), 5);
+    assert_eq!(options(Some(500)).watched(true), 30);
+    assert_eq!(options(Some(500)).watched(false), 0);
+}

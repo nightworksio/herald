@@ -208,7 +208,7 @@ pub fn profile(bot: bool, forum: bool) -> Profile {
                 (true, true) => Pins::One,
             },
             reads_back: bot && !forum,
-            edits: bot,
+            edits: true,
             mentions: MentionStyle::Roles,
             interactions: bot,
         },

@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 use std::fmt;
 
 use herald_config::{Config, Destination, Placed, RouteConfig, Uses};
-use herald_core::{DestinationName, RouteId, SourceName, hex};
+use herald_core::{DestinationName, Edits, RouteId, SourceName, hex};
 use herald_kinds::{Interacted, Polling, Posts, Reached};
 use herald_ports::{Algorithm, Base, CryptoError, Http, Secret, SecretError, Secrets, Signer};
 use herald_store_markers::{MarkedRoute, MarkersStore};
@@ -438,9 +438,13 @@ pub async fn prepare<S: Secrets, G: Signer>(
     let mut sources = Vec::new();
     for (name, source) in config.sources.iter().filter(|_| uses >= Uses::Polls) {
         let token = herald_kinds::optional(&read, source.token()).await?;
+        let edits = config.routes.iter().any(|route| {
+            route.route.delivery.edits == Edits::Release
+                && route.route.filter.sources.contains(name)
+        });
         sources.push(PreparedSource {
             name: name.clone(),
-            poll: source.poller(token),
+            poll: source.poller(token, edits),
             backfill: source.backfill(),
         });
     }

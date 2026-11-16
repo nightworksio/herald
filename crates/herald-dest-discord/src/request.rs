@@ -8,6 +8,7 @@ use serde_json::{Map, Value, json};
 use crate::discord::{DISCORD, Discord};
 use crate::interact::subscribe_button;
 use crate::interactions::Subscribe;
+use crate::revise;
 
 /// The flag of a forum post pinned to the top of its forum.
 pub(crate) const PINNED: u64 = 2;
@@ -69,7 +70,7 @@ pub(crate) fn json(method: Method, url: SecretText, bot: Option<&Secret>, body: 
         .body(body)
 }
 
-fn message(
+pub(crate) fn message(
     discord: &Discord,
     announcement: &Announcement,
     delivery: &Delivery,
@@ -168,7 +169,7 @@ fn fits(button: &Button) -> bool {
     button.url.len() <= BUTTON_URL
 }
 
-fn thread_name(announcement: &Announcement) -> String {
+pub(crate) fn thread_name(announcement: &Announcement) -> String {
     announcement
         .thread
         .clone()
@@ -176,9 +177,9 @@ fn thread_name(announcement: &Announcement) -> String {
 }
 
 /// The overflow chunk `index` of `announcement`. A bot's chunk carries a
-/// nonce of its own, so Discord takes it once however often it is sent; a
-/// webhook takes none.
-fn chunk(announcement: &Announcement, index: u32, deduplicated: bool) -> Value {
+/// nonce of its own, so Discord takes it once however often it is sent, of
+/// the revision its `entry` brings the post to; a webhook takes none.
+pub(crate) fn chunk(announcement: &Announcement, index: u32, entry: Option<&Entry>) -> Value {
     let part = announcement.part(index);
     let mut body = Map::new();
     body.insert(
@@ -186,17 +187,26 @@ fn chunk(announcement: &Announcement, index: u32, deduplicated: bool) -> Value {
         json!(part.map(|part| part.body.as_str()).unwrap_or_default()),
     );
     body.insert("allowed_mentions".to_owned(), json!({ "parse": [] }));
-    if deduplicated {
-        body.insert("nonce".to_owned(), json!(chunk_nonce(announcement, index)));
+    if let Some(entry) = entry {
+        body.insert(
+            "nonce".to_owned(),
+            json!(chunk_nonce(announcement, index, entry)),
+        );
         body.insert("enforce_nonce".to_owned(), json!(true));
     }
     Value::Object(body)
 }
 
 /// The nonce of a bot's overflow chunk `index`: a digest of the
-/// announcement's key and the index, as long as Discord takes.
-fn chunk_nonce(announcement: &Announcement, index: u32) -> String {
-    digest(&format!("{}/{index}", announcement.key))
+/// announcement's key, the index and the revision `entry` brings the post
+/// to where it records one, as long as Discord takes.
+fn chunk_nonce(announcement: &Announcement, index: u32, entry: &Entry) -> String {
+    let revised = entry
+        .revision
+        .as_ref()
+        .map(|revision| format!("/{}", revision.digest))
+        .unwrap_or_default();
+    digest(&format!("{}/{index}{revised}", announcement.key))
         .chars()
         .take(KEY_LENGTH)
         .collect()
@@ -208,7 +218,7 @@ pub(crate) fn posted(entry: &Entry) -> Result<&str, Declined> {
         .ok_or(Declined::Missing("the announcement's message"))
 }
 
-fn thread(entry: &Entry) -> Option<&str> {
+pub(crate) fn thread(entry: &Entry) -> Option<&str> {
     [Step::OpenThread, Step::Post]
         .iter()
         .filter_map(|step| entry.facts(step))
@@ -262,14 +272,19 @@ fn webhook(
                 Method::Post,
                 target,
                 None,
-                chunk(announcement, *index, false).to_string(),
+                chunk(announcement, *index, None).to_string(),
             ))
         }
         Step::Crosspost => Err(webhook_cannot("crosspost")),
         Step::OpenThread => Err(webhook_cannot("open a thread from a message")),
         Step::Pin => Err(webhook_cannot("pin")),
         Step::Unpin => Err(webhook_cannot("unpin")),
-        Step::Deliver(_) | Step::Deliveries => Err(NO_INBOX),
+        Step::Edit { part, .. } => {
+            revise::webhook_edit(discord, url, *part, announcement, delivery, entry)
+        }
+        Step::Delete(part) => revise::webhook_delete(url, *part, entry),
+        Step::Rename(_) => Err(webhook_cannot("rename a thread")),
+        Step::Deliver(_) | Step::Deliveries | Step::Updates(_) => Err(NO_INBOX),
     }
 }
 
@@ -303,7 +318,7 @@ fn bot(
                 Method::Post,
                 url,
                 bot,
-                chunk(announcement, *index, true).to_string(),
+                chunk(announcement, *index, Some(entry)).to_string(),
             ))
         }
         Step::Pin => Ok(pin(discord, channel, posted(entry)?)),
@@ -315,7 +330,12 @@ fn bot(
                 .ok_or(Declined::Missing("the route's earlier pin"))?;
             Ok(unpin(discord, channel, earlier))
         }
-        Step::Deliver(_) | Step::Deliveries => Err(NO_INBOX),
+        Step::Edit { part, .. } => {
+            revise::bot_edit(discord, channel, *part, announcement, delivery, entry)
+        }
+        Step::Delete(part) => revise::bot_delete(discord, channel, *part, entry),
+        Step::Rename(_) => revise::bot_rename(discord, announcement, entry),
+        Step::Deliver(_) | Step::Deliveries | Step::Updates(_) => Err(NO_INBOX),
     }
 }
 

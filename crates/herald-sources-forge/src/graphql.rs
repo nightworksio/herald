@@ -44,6 +44,12 @@ const LIGHT: Fields = Fields {
     release: TAGGED,
     tag: NAMED,
 };
+/// What the first request asks where a poll watches Releases for an edit:
+/// each Release in full, to tell its name and notes apart.
+const WATCHING: Fields = Fields {
+    release: FULL,
+    tag: NAMED,
+};
 /// What the second request asks.
 const WHOLE: Fields = Fields {
     release: FULL,
@@ -112,7 +118,7 @@ fn request(
 }
 
 /// A release, as GitHub's GraphQL API names it.
-#[derive(Deserialize)]
+#[derive(Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct Node {
     tag_name: String,
@@ -126,14 +132,14 @@ struct Node {
 }
 
 /// A tag, as GitHub's GraphQL API names it.
-#[derive(Deserialize)]
+#[derive(Clone, Deserialize)]
 struct Ref {
     name: String,
     target: Option<Target>,
 }
 
 /// What a tag points at: an annotated tag object, or a commit.
-#[derive(Deserialize)]
+#[derive(Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct Target {
     message: Option<String>,
@@ -143,7 +149,7 @@ struct Target {
     committed_date: Option<Timestamp>,
 }
 
-#[derive(Deserialize)]
+#[derive(Clone, Deserialize)]
 struct Tagger {
     date: Option<Timestamp>,
 }
@@ -176,7 +182,7 @@ impl Ref {
 }
 
 /// A repository's releases and tags, as GitHub's GraphQL API answers them.
-#[derive(Deserialize)]
+#[derive(Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct Answered {
     database_id: u64,
@@ -185,7 +191,7 @@ struct Answered {
     refs: Option<Nodes<Ref>>,
 }
 
-#[derive(Deserialize)]
+#[derive(Clone, Deserialize)]
 struct Nodes<T> {
     nodes: Vec<T>,
 }
@@ -281,6 +287,19 @@ fn unseen(answered: &Answered, cursor: Option<&Cursor>) -> bool {
         })
 }
 
+/// Whether a Release `answered` holds of `member`, told as `signals` say,
+/// is one `cursor` watches whose name or notes changed.
+fn edited(
+    (member, signals): (&Listed, &Signals),
+    answered: &Answered,
+    cursor: Option<&Cursor>,
+) -> bool {
+    cursor.is_some_and(|cursor| {
+        polled(member, answered.clone(), signals)
+            .is_ok_and(|polled| polled.events.iter().any(|event| cursor.edited(event)))
+    })
+}
+
 /// The releases and tags `answered` holds of the member `member`, as
 /// events, newest first, each pre-release told as `signals` say; a tag
 /// sharing its identity with a release is the release's.
@@ -308,6 +327,7 @@ fn polled(member: &Listed, answered: Answered, signals: &Signals) -> Result<Poll
                     draft: node.is_draft,
                     prerelease: Some(node.is_prerelease),
                     published: node.published_at,
+                    edited: false,
                 },
                 rule,
             )
@@ -351,6 +371,7 @@ pub(crate) struct Asking<'a> {
     pub(crate) token: Option<&'a Token>,
     pub(crate) page: usize,
     pub(crate) parse: usize,
+    pub(crate) watched: usize,
 }
 
 /// What each of `members`, each with its cursor and signals, answers
@@ -366,7 +387,8 @@ pub(crate) async fn polled_together(
         .iter()
         .map(|(member, _, signals)| (*member, signals))
         .collect();
-    let tagged = match ask(http, asking, &listed, LIGHT).await {
+    let first = if asking.watched > 0 { WATCHING } else { LIGHT };
+    let tagged = match ask(http, asking, &listed, first).await {
         Ok(tagged) => tagged,
         Err(unpolled) => return members.iter().map(|_| Err(unpolled.clone())).collect(),
     };
@@ -374,10 +396,11 @@ pub(crate) async fn polled_together(
         .iter()
         .zip(members)
         .enumerate()
-        .filter(|(_, (answered, (_, cursor, _)))| {
-            answered
-                .as_ref()
-                .is_ok_and(|answered| unseen(answered, *cursor))
+        .filter(|(_, (answered, (member, cursor, signals)))| {
+            answered.as_ref().is_ok_and(|answered| {
+                unseen(answered, *cursor)
+                    || (asking.watched > 0 && edited((member, signals), answered, *cursor))
+            })
         })
         .map(|(index, _)| index)
         .collect();
@@ -405,7 +428,12 @@ pub(crate) async fn polled_together(
                 (Ok(_), None) => Ok(None),
                 (Ok(_), Some(answered)) => answered
                     .and_then(|answered| polled(member, answered, signals))
-                    .map(Some),
+                    .map(|polled| {
+                        Some(Polled {
+                            watched: asking.watched,
+                            ..polled
+                        })
+                    }),
             },
         )
         .collect()

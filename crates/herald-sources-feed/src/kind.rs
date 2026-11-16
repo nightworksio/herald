@@ -44,7 +44,7 @@ impl SourceConfig for FeedOptions {
         vec![untitled(&self.url)]
     }
 
-    fn poller(&self, _: Option<Secret>) -> Polling {
+    fn poller(&self, _: Option<Secret>, _: bool) -> Polling {
         Polling::One(Arc::new(Entries(Feed::new(self))))
     }
 }

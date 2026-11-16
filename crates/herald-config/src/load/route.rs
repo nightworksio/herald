@@ -365,6 +365,8 @@ impl Loader<'_> {
                 roles: mentioned(route.mentions.roles, options.opt_in_role()),
                 subscribers: route.mentions.subscribers,
             },
+            late_release: route.late_release,
+            edits: route.edits,
         };
         let reach = Reach {
             name,

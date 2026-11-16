@@ -27,6 +27,11 @@ pub(crate) const API: Api = Api {
 /// The suffix of the times in GitLab's webhooks, which are in UTC.
 const UTC: &str = " UTC";
 
+/// The action of GitLab's hook of a release created.
+const CREATED: &str = "create";
+/// The action of GitLab's hook of a release updated.
+const UPDATED: &str = "update";
+
 /// A release hook, as GitLab sends it.
 #[derive(Deserialize)]
 struct Hook {
@@ -70,6 +75,7 @@ impl From<Release> for ForgeRelease {
             draft: release.upcoming,
             prerelease: None,
             published: release.released_at,
+            edited: false,
         }
     }
 }
@@ -118,8 +124,8 @@ pub(crate) fn path(what: &'static str, payload: &[u8]) -> Option<String> {
         .map(|located| located.project.path_with_namespace)
 }
 
-/// The project and release a `create` release hook names, or nothing for
-/// any other action.
+/// The project and release a `create` release hook names, or an `update`
+/// one names edited, or nothing for any other action.
 pub(crate) fn published(
     what: &'static str,
     payload: &[u8],
@@ -131,9 +137,11 @@ pub(crate) fn published(
             reason: format!("it is a {} hook, not a release hook", hook.object_kind),
         });
     }
-    if hook.action != "create" {
-        return Ok(None);
-    }
+    let edited = match hook.action.as_str() {
+        CREATED => false,
+        UPDATED => true,
+        _ => return Ok(None),
+    };
     let found = ForgeRelease {
         tag: hook.tag,
         name: hook.name,
@@ -142,6 +150,7 @@ pub(crate) fn published(
         draft: false,
         prerelease: None,
         published: hook.released_at,
+        edited,
     };
     Ok(Some((hook.project, found)))
 }

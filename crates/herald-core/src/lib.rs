@@ -35,6 +35,7 @@ mod pending;
 mod profile;
 mod render;
 mod retention;
+mod revision;
 mod route;
 mod signal;
 mod size;
@@ -94,11 +95,14 @@ pub use profile::{
 };
 pub use render::{Context, Form, ProjectName, REPOSITORY_FIELDS, TemplateError, Templates};
 pub use retention::Retention;
+pub use revision::{
+    Edits, LateRelease, NO_PART, Revise, Revision, already_deleted, revise, revised,
+};
 pub use route::{
     Delivery, DestinationName, Filter, Mentions, Pinning, Prereleases, RoleId, Route, SecretRef,
     SourceName, TemplateName, Thread, route,
 };
-pub use signal::{Prefer, PrereleaseRule, SIGNAL, Signal, Validators};
+pub use signal::{EDITED, Prefer, PrereleaseRule, SIGNAL, Signal, Validators};
 pub use size::Size;
 pub use subscription::Subscription;
 pub use symbols::Symbols;

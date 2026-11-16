@@ -162,6 +162,13 @@ impl SourceConfig for ForgeSource {
             && self.options.may_take(herald_core::Signal::Tag)
     }
 
+    fn signals(&self) -> Vec<herald_core::Signal> {
+        herald_core::Signal::ALL
+            .into_iter()
+            .filter(|signal| self.options.may_take(*signal))
+            .collect()
+    }
+
     fn tag_window(&self) -> Option<jiff::SignedDuration> {
         let repository = self.options.repository.as_deref()?;
         self.options
@@ -205,14 +212,15 @@ impl SourceConfig for ForgeSource {
         hooked.map_err(|error| error.to_string())
     }
 
-    fn poller(&self, token: Option<Secret>) -> Polling {
+    fn poller(&self, token: Option<Secret>, edits: bool) -> Polling {
         let token = token.map(Token::Named);
+        let watched = self.options.watched(edits);
         match (&self.options.owner, &self.options.repository) {
             (Some(owner), _) => Polling::Many(Arc::new(Owned::new(
                 self.forge,
                 (owner, self.names.as_deref()),
                 &self.options,
-                token,
+                (token, watched),
             ))),
             (None, repository) => {
                 let repository = repository.as_deref().unwrap_or_default();
@@ -224,6 +232,7 @@ impl SourceConfig for ForgeSource {
                     held: self.options.held_for(&signals),
                     signals,
                     backfill: self.options.backfill,
+                    watched,
                 }))
             }
         }

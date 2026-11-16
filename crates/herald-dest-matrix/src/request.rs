@@ -5,6 +5,7 @@ use serde_json::{Map, Value, json};
 
 use crate::matrix::{MATRIX, Matrix};
 use crate::read::{failure, json};
+use crate::revise;
 
 /// The field of a message's content carrying its route's marker (ADR-0011).
 pub(crate) const ROUTE: &str = "io.nightworks.herald.route";
@@ -44,7 +45,7 @@ pub(crate) fn get(matrix: &Matrix, path: &str) -> Request {
     authorised(Request::new(Method::Get, SecretText::plain(url)), matrix)
 }
 
-fn put(matrix: &Matrix, path: &str, body: &Value) -> Request {
+pub(crate) fn put(matrix: &Matrix, path: &str, body: &Value) -> Request {
     let url = format!("{}{CLIENT}{path}", matrix.homeserver);
     authorised(Request::new(Method::Put, SecretText::plain(url)), matrix)
         .header("Content-Type", SecretText::plain(media::JSON))
@@ -71,7 +72,7 @@ fn user_id(user: &str) -> bool {
         })
 }
 
-fn announcement_content(announcement: &Announcement) -> Value {
+pub(crate) fn announcement_content(announcement: &Announcement) -> Value {
     let first = announcement.parts.first();
     let title = announcement.title.shown(crate::matrix::MARKUP);
     let link = announcement
@@ -130,7 +131,12 @@ fn mentions(users: &[&str]) -> (String, String) {
     (users.join(" "), format!("<p>{}</p>", pills.join(" ")))
 }
 
-fn chunk_content(announcement: &Announcement, index: u32, root: &str, before: &str) -> Value {
+pub(crate) fn chunk_content(
+    announcement: &Announcement,
+    index: u32,
+    root: &str,
+    before: &str,
+) -> Value {
     let mentioned = usize::try_from(index)
         .ok()
         .and_then(|index| announcement.mentioned_in(index))
@@ -173,7 +179,7 @@ pub(crate) fn posted<'a>(
     entry.message(step).ok_or(Declined::Missing(what))
 }
 
-fn sent(matrix: &Matrix, transaction: &str, content: &Value) -> Request {
+pub(crate) fn sent(matrix: &Matrix, transaction: &str, content: &Value) -> Request {
     let path = format!(
         "{}/send/{MESSAGE}/{}",
         room(matrix),
@@ -197,12 +203,19 @@ pub(crate) fn step(
                 .before(*index)
                 .ok_or(Declined::Missing("the message before it"))?;
             let content = chunk_content(announcement, *index, root, before);
-            Ok(sent(matrix, &format!("{key}.{index}"), &content))
+            Ok(sent(matrix, &entry.chunk_token(*index), &content))
         }
         Step::Pin | Step::Unpin => Ok(pinned(matrix)),
         Step::Crosspost => Err(cannot("crosspost")),
         Step::OpenThread => Err(cannot("open a thread; its replies are the thread")),
-        Step::Deliver(_) | Step::Deliveries => Err(cannot("deliver to an inbox")),
+        Step::Deliver(_) | Step::Deliveries | Step::Updates(_) => {
+            Err(cannot("deliver to an inbox"))
+        }
+        Step::Edit { revision, part } => {
+            revise::edit(matrix, (revision, *part), announcement, entry)
+        }
+        Step::Delete(part) => revise::redact(matrix, *part, &key, entry),
+        Step::Rename(_) => Err(cannot("rename a thread; its replies are the thread")),
     }
 }
 

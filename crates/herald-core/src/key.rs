@@ -5,6 +5,8 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use sha2::{Digest, Sha256};
 
 const DOMAIN: &[u8] = b"herald/key/v1\0";
+/// What a revision's key is derived under, apart from every announcement's.
+const REVISED: &[u8] = b"herald/revised/v1\0";
 /// How many hex digits a SHA-256 digest is written in.
 pub const SHA256_HEX_DIGITS: usize = 64;
 
@@ -60,6 +62,18 @@ impl Key {
             hasher.update((part.len() as u64).to_be_bytes());
             hasher.update(part.as_bytes());
         }
+        Self(hasher.finalize().into())
+    }
+
+    /// The key of the revision whose digest is `revision` of the
+    /// announcement this keys: what keeps its updates apart from its first
+    /// deliveries.
+    #[must_use]
+    pub fn revised(&self, revision: &str) -> Self {
+        let mut hasher = Sha256::new();
+        hasher.update(REVISED);
+        hasher.update(self.0);
+        hasher.update(revision.as_bytes());
         Self(hasher.finalize().into())
     }
 
@@ -172,6 +186,14 @@ mod tests {
         assert_eq!(
             key("php-mutation-gate-releases", "github.com/1066469473/v0.1.0").to_string(),
             "da765393824b2f92d4e0df694048a62b994615c2ca027d5a69263e41b6828159"
+        );
+    }
+
+    #[test]
+    fn a_revision_s_key_is_the_sha256_of_its_domain_the_key_and_the_revision() {
+        assert_eq!(
+            key("route", "identity").revised("r2").to_string(),
+            "e6e7c8fd0f232ab91e4398cc28f61961e29e1f08b829c9f3dd0bc0cdaf645a07"
         );
     }
 

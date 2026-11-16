@@ -2,8 +2,8 @@ use std::collections::BTreeMap;
 use std::num::{NonZeroU64, NonZeroUsize};
 
 use herald_core::{
-    Attempts, AttributeSpec, Duration, Inbound, Kind, LinkSpec, Pinning, Prereleases,
-    SHA256_HEX_DIGITS, Sandbox, SecretRef, Size,
+    Attempts, AttributeSpec, Duration, Edits, Inbound, Kind, LateRelease, LinkSpec, Pinning,
+    Prereleases, SHA256_HEX_DIGITS, Sandbox, SecretRef, Size,
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Deserializer};
@@ -232,6 +232,16 @@ pub(crate) struct RouteFile {
     /// sending such events to it does not load (`[doctor] private_to_public`).
     #[serde(default)]
     pub(crate) private: bool,
+    /// What it does with a Release whose tag it already announced: edits
+    /// the tag's post to it, or posts it anew where the destination cannot
+    /// edit (`edit`); posts it anew (`post`); or leaves the tag's post
+    /// (`skip`).
+    #[serde(default)]
+    pub(crate) late_release: LateRelease,
+    /// Which changed announcements it edits the post of: none, or a Release
+    /// whose name or notes the forge says were edited (`release`).
+    #[serde(default)]
+    pub(crate) edits: Edits,
 }
 
 impl RouteFile {
@@ -242,7 +252,7 @@ impl RouteFile {
 }
 
 /// The keys every route may give, whatever its destination.
-pub(crate) const ROUTE_KEYS: [&str; 12] = [
+pub(crate) const ROUTE_KEYS: [&str; 14] = [
     "id",
     "sources",
     "kinds",
@@ -255,6 +265,8 @@ pub(crate) const ROUTE_KEYS: [&str; 12] = [
     "pin",
     "mentions",
     "private",
+    "late_release",
+    "edits",
 ];
 
 /// A template: its title, and its body inline or in a file beside the config.

@@ -123,7 +123,11 @@ impl Mastodon {
             Ok(request) => request,
             Err(refusal) => return Ok(Sent::Refused(refusal.to_string())),
         };
-        Ok(read(&http.send(request).await?, self.waits))
+        let response = http.send(request).await?;
+        if herald_core::already_deleted(step_to_take, response.status) {
+            return Ok(Sent::Landed(herald_core::Facts::default()));
+        }
+        Ok(read(&response, self.waits))
     }
 }
 

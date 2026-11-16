@@ -234,6 +234,20 @@ mod told {
             ]),
             "post, chunk 2, thread, deliveries to followers"
         );
+        let edit = |part| Step::Edit {
+            revision: "r2".to_owned(),
+            part,
+        };
+        assert_eq!(
+            told::steps(&[
+                edit(0),
+                edit(1),
+                Step::Delete(2),
+                Step::Rename("r2".to_owned()),
+                Step::Updates("r2".to_owned())
+            ]),
+            "edit, edit of chunk 1, deletion of chunk 2, thread renamed, updates to followers"
+        );
     }
 
     #[test]
@@ -298,6 +312,10 @@ mod told {
                 Outcome::AlreadyAnnounced
             )]))),
             ["releases: already announced; nothing sent"]
+        );
+        assert_eq!(
+            told::worked(&did(Did::Announced(vec![announced(Outcome::Unedited)]))),
+            ["releases: an edit of nothing it announced; nothing sent"]
         );
         assert_eq!(
             told::worked(&did(Did::Followed(Ok(Followed::Undone {

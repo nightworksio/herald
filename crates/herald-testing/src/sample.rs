@@ -88,6 +88,7 @@ pub fn delivery(role: &str) -> Delivery {
             roles: vec![RoleId::new(role)],
             subscribers: false,
         },
+        ..Delivery::default()
     }
 }
 

@@ -20,6 +20,7 @@ mod probe;
 mod reach;
 mod read;
 mod request;
+mod revise;
 mod setup;
 mod unpin;
 

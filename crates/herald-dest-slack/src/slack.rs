@@ -35,6 +35,8 @@ pub const MARKUP: Markup = Markup {
 const TITLE: usize = 150;
 /// What Slack answers for a pin already in place.
 const ALREADY_PINNED: &str = "already_pinned";
+/// What Slack answers a deletion of a message already gone.
+const MESSAGE_GONE: &str = "message_not_found";
 /// What Slack answers for an unpin of a message no longer pinned, or gone.
 const UNPINNED: [&str; 2] = ["no_pin", "message_not_found"];
 /// The platform, as herald names it.
@@ -214,6 +216,14 @@ impl Slack {
                 Sent::Landed(facts) => Ok(Sent::Landed(self.linked(http, facts).await?)),
                 sent => Ok(sent),
             },
+            Step::Delete(_) => {
+                let answer = http.send(request).await?;
+                let body = json(&answer);
+                if text(&body, "error") == Some(MESSAGE_GONE) {
+                    return Ok(Sent::Landed(Facts::default()));
+                }
+                Ok(failure(&answer, &body, self.waits).unwrap_or(Sent::Landed(Facts::default())))
+            }
             _ => Ok(read(&http.send(request).await?, self.waits)),
         }
     }

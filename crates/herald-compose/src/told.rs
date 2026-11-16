@@ -151,6 +151,11 @@ fn step(step: &Step) -> String {
         Step::Unpin => "unpin".to_owned(),
         Step::Deliver(inbox) => format!("delivery to {inbox}"),
         Step::Deliveries => "deliveries to followers".to_owned(),
+        Step::Edit { part: 0, .. } => "edit".to_owned(),
+        Step::Edit { part, .. } => format!("edit of chunk {part}"),
+        Step::Delete(index) => format!("deletion of chunk {index}"),
+        Step::Rename(_) => "thread renamed".to_owned(),
+        Step::Updates(_) => "updates to followers".to_owned(),
     }
 }
 
@@ -167,6 +172,7 @@ pub fn report(announced: &Announced) -> String {
     match &announced.outcome {
         Outcome::Sent { steps: sent } => format!("{route}: announced ({})", steps(sent)),
         Outcome::AlreadyAnnounced => format!("{route}: already announced; nothing sent"),
+        Outcome::Unedited => format!("{route}: an edit of nothing it announced; nothing sent"),
         Outcome::Held { by, until } => {
             format!("{route}: run {by} holds it until {until}; nothing sent by this run")
         }

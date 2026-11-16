@@ -154,7 +154,13 @@ impl Matrix {
             return self.repin(http, step_to_take, announcement, entry).await;
         }
         match self.request(step_to_take, announcement, entry) {
-            Ok(request) => Ok(read(self, &http.send(request).await?)),
+            Ok(request) => {
+                let response = http.send(request).await?;
+                if herald_core::already_deleted(step_to_take, response.status) {
+                    return Ok(Sent::Landed(herald_core::Facts::default()));
+                }
+                Ok(read(self, &response))
+            }
             Err(refusal) => Ok(Sent::Refused(refusal.to_string())),
         }
     }
