@@ -252,6 +252,39 @@ mod federates {
     }
 
     #[test]
+    fn an_actor_named_from_each_project_federates_as_the_actor_its_project_names() {
+        let gate = gate();
+        assert_eq!(Federates::names(&gate, "herald"), None);
+        assert_eq!(Federates::name_in(&gate, ACTOR), Some("gate"));
+        let projects = ActivityPub::new(DOMAIN, "", key(), route("{{ event.project }}"));
+        assert_eq!(
+            Federates::names(&projects, "herald"),
+            Some(Ok("herald".to_owned()))
+        );
+        let herald = Federates::named(&projects, "herald");
+        assert_eq!(herald.actor(), "herald");
+        assert_eq!(herald.names("other"), None);
+        let reached = herald.reached();
+        assert_eq!(reached.follows(), Some("herald"));
+        assert_eq!(
+            reached.federates().map(Federates::id),
+            Some("https://herald.example/users/herald".to_owned())
+        );
+        assert_eq!(Placed::new(route("gate")).names("herald"), None);
+        assert_eq!(Placed::new(route("gate")).actor(), Some("gate"));
+        assert_eq!(Placed::new(route("{{ event.project }}")).actor(), None);
+        assert_eq!(actor().actor_domain(), Some(DOMAIN));
+        assert_eq!(
+            Placed::new(route("{{ event.project }}")).names("Night"),
+            Some(Err("\"Night\" is not an actor's name; give at most 30 lowercase letters, digits, `_` or a `-` within, such as \"php-mutation-gate\"".to_owned()))
+        );
+        assert_eq!(
+            Placed::new(route("{{ event.project }}")).names("herald"),
+            Some(Ok("herald".to_owned()))
+        );
+    }
+
+    #[test]
     fn an_outbox_counts_its_notes_and_pages_the_actor_s_own_newest_first() {
         let gate = gate();
         let outbox: Value = serde_json::from_str(&Federates::outbox(&gate, 4)).unwrap();

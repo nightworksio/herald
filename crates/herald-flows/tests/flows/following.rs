@@ -625,6 +625,7 @@ fn a_follow_approved_past_the_caps_or_of_no_actor_is_refused() {
         &store,
         &DestinationName::new("fedi"),
         "php-mutation-gate",
+        crate::harness::NOON,
     ))
     .unwrap();
     assert_eq!(listed.len(), 2);
@@ -637,7 +638,8 @@ fn a_follow_approved_past_the_caps_or_of_no_actor_is_refused() {
             &connected,
             &store,
             &DestinationName::new("fedi"),
-            "nobody"
+            "nobody",
+            crate::harness::NOON,
         ))
         .is_err()
     );

@@ -8,9 +8,10 @@ use herald_ports::{Clock, Http, Keyring, Signer, Store, Verifier};
 
 use super::actors::{actor, counted, documented, domain, fingered, inboxed, noted, outboxed};
 use super::apps::{posted, standing};
-use super::replies::{Answered, Reply, missing, text_reply, unmethodical};
+use super::replies::{Answered, Reply, gone, missing, refusal, text_reply, unmethodical};
 use super::webhooks::hooked;
 use super::{Inbound, Serving};
+use crate::acting::{Found, Standing};
 use crate::command_endpoints::{INTERACTIONS, MATRIX, commanded};
 
 /// Where the server answers whether it is up.
@@ -65,7 +66,7 @@ pub async fn answer<S: Store, C: Clock, G: Signer, V: Verifier, H, P: Http, K: K
     };
     match (inbound.method, path) {
         ("GET", HEALTH) => text_reply(status::OK, UP),
-        ("GET", WEBFINGER) => fingered(serving.connected, inbound.query),
+        ("GET", WEBFINGER) => fingered(serving, inbound.query).await,
         ("POST", SHARED_INBOX) => match domain(serving.connected, inbound.host()) {
             Some(audience) => inboxed(serving, inbound, audience).await,
             None => missing("actor on this host"),
@@ -145,18 +146,21 @@ async fn users<S: Store, C: Clock, G: Signer, V: Verifier, H, P: Http, K: Keyrin
     inbound: &Inbound<'_>,
 ) -> Answered {
     let parts: Vec<&str> = rest.split('/').collect();
-    let Some((served, destination)) = parts
-        .first()
-        .and_then(|name| actor(serving.connected, name, inbound.host()))
-    else {
-        return missing("such actor");
+    let name = parts.first().copied().unwrap_or_default();
+    let acting = match actor(serving, name, inbound.host()).await {
+        Ok(Found::Acting(acting)) if acting.standing == Standing::Gone => return gone(),
+        Ok(Found::Acting(acting)) => acting,
+        Ok(Found::Ambiguous(why)) => return text_reply(status::NOT_FOUND, &why),
+        Ok(Found::Missing) => return missing("such actor"),
+        Err(error) => return refusal(status::UNAVAILABLE, error.to_string()),
     };
+    let served = acting.actor();
     match (method, parts.as_slice()) {
         ("GET", [_]) => documented(serving, served).await,
         ("POST", [_, "inbox"]) => inboxed(serving, inbound, served.domain()).await,
         ("GET", [_, "notes", key]) => noted(serving, served, key).await,
         ("GET", [_, "outbox"]) => outboxed(serving, served, inbound.query).await,
-        ("GET", [_, "followers"]) => counted(serving, served, destination).await,
+        ("GET", [_, "followers"]) => counted(serving, served, acting.destination()).await,
         (_, [_] | [_, "inbox" | "outbox" | "followers"] | [_, "notes", _]) => unmethodical(),
         _ => missing("such path"),
     }

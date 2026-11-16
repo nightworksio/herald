@@ -173,6 +173,7 @@ pub fn report(announced: &Announced) -> String {
         Outcome::Sent { steps: sent } => format!("{route}: announced ({})", steps(sent)),
         Outcome::AlreadyAnnounced => format!("{route}: already announced; nothing sent"),
         Outcome::Unedited => format!("{route}: an edit of nothing it announced; nothing sent"),
+        Outcome::Skipped(reason) => format!("{route}: skipped, as {reason}; nothing sent"),
         Outcome::Held { by, until } => {
             format!("{route}: run {by} holds it until {until}; nothing sent by this run")
         }

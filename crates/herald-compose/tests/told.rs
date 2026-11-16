@@ -318,6 +318,12 @@ mod told {
             ["releases: an edit of nothing it announced; nothing sent"]
         );
         assert_eq!(
+            told::worked(&did(Did::Announced(vec![announced(Outcome::Skipped(
+                "the project Night names no actor".to_owned()
+            ))]))),
+            ["releases: skipped, as the project Night names no actor; nothing sent"]
+        );
+        assert_eq!(
             told::worked(&did(Did::Followed(Ok(Followed::Undone {
                 follower: "ana".to_owned(),
                 actor: "gate".to_owned(),

@@ -16,5 +16,6 @@ pub(crate) use documents::STREAMS;
 pub use documents::{
     FIRST, InboxActivity, accept, actor_document, asked, create, follow_id, note, webfinger,
 };
+pub(crate) use options::named_actor;
 pub use options::{ActorOptions, ActorRouteOptions, Audience};
 pub use policy::{Approve, FollowerCaps, Mode, Policy, SharedList};

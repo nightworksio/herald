@@ -152,6 +152,7 @@ fn a_destination_is_its_kind_equal_only_to_the_same_options_and_keeps_every_defa
     assert!(!destination.acts());
     assert_eq!(destination.unread_why(), crate::UNREAD);
     assert_eq!(destination.session_domains(), Vec::<&str>::new());
+    assert_eq!(destination.actor_domain(), None);
     let patient = Destination::new(Patient);
     assert_eq!(patient.kind(), "patient");
     assert_eq!(patient.credential(), None);
@@ -190,6 +191,8 @@ fn a_route_is_placed_as_its_kind_and_keeps_every_default() {
     assert!(!spot.threads_each_post());
     assert_eq!(spot.place(), None);
     assert_eq!(spot.opt_in_role(), None);
+    assert_eq!(spot.names("herald"), None);
+    assert_eq!(spot.actor(), None);
     let room = Placed::new(Room);
     assert!(room.threads_each_post());
     assert_eq!(room.place(), Some("!room"));

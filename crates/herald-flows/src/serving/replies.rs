@@ -112,6 +112,11 @@ pub(crate) fn missing(what: &str) -> Answered {
     text_reply(status::NOT_FOUND, &format!("herald serves no {what} here"))
 }
 
+/// The reply to a request for one of herald's actors that is gone for good.
+pub(crate) fn gone() -> Answered {
+    text_reply(status::GONE, "the actor is gone")
+}
+
 pub(crate) fn unmethodical() -> Answered {
     text_reply(
         status::METHOD_NOT_ALLOWED,

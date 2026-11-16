@@ -1,5 +1,7 @@
+use std::sync::Arc;
+
 use herald_core::Sent;
-use herald_kinds::{Activity, Federates, Inboxes};
+use herald_kinds::{Activity, Federates, Inboxes, Reached};
 use herald_ports::{Boxed, CryptoError, DynHttp, DynSigner, Erased, HttpError};
 use jiff::Timestamp;
 use serde_json::Value;
@@ -15,6 +17,22 @@ impl Federates for ActivityPub {
 
     fn domain(&self) -> &str {
         Self::domain(self)
+    }
+
+    fn names(&self, project: &str) -> Option<Result<String, String>> {
+        Self::names(self, project)
+    }
+
+    fn named(&self, name: &str) -> Arc<dyn Federates> {
+        Arc::new(Self::named(self, name))
+    }
+
+    fn reached(&self) -> Reached {
+        Reached::new(self.clone())
+    }
+
+    fn name_in<'a>(&self, id: &'a str) -> Option<&'a str> {
+        Self::name_in(self, id)
     }
 
     fn id(&self) -> String {

@@ -7,7 +7,8 @@ use herald_core::{DestinationName, Sent, Subscription};
 use herald_kinds::{Activity, Federates};
 use herald_ports::{Http, HttpError, Signer, Store, StoreError, Subscriptions};
 
-use crate::prepare::{Connected, PreparedRoute};
+use crate::acting::{Acting, Found, Standing, Wanted, found};
+use crate::prepare::Connected;
 use crate::verification::{Checking, Verified, fetched};
 
 /// What a follow, or the undoing of one, did.
@@ -30,8 +31,9 @@ pub enum Followed {
         /// The actor it asks to follow.
         actor: String,
     },
-    /// The follower is turned away, as the actor's follower caps are full:
-    /// it is not kept, and its follow was answered with a `Reject`.
+    /// The follower is turned away, as the actor's follower caps are full
+    /// or it takes no new follows: it is not kept, and its follow was
+    /// answered with a `Reject`.
     Rejected {
         /// The follower's actor id.
         follower: String,
@@ -96,17 +98,6 @@ pub(crate) fn answered(posted: Result<Sent, HttpError>) -> Sent {
     posted.unwrap_or_else(|error| Sent::Refused(error.to_string()))
 }
 
-/// The route announcing as the actor `id`, and that actor.
-fn serving<'a, H>(
-    connected: &'a Connected<H>,
-    id: &str,
-) -> Option<(&'a PreparedRoute, &'a dyn Federates, &'a H)> {
-    connected.routes.iter().find_map(|(route, http)| {
-        let actor = route.reached.federates()?;
-        (actor.id() == id).then_some((route, actor, http))
-    })
-}
-
 /// Every follower `actor` keeps on `destination`, waiting or not.
 pub(crate) async fn kept<S: Store>(
     store: &S,
@@ -129,29 +120,18 @@ pub(crate) fn following<'a>(actor: &dyn Federates, kept: &'a [Subscription]) -> 
         .collect()
 }
 
-/// A follow of one of herald's actors: by whom, the `Follow`'s id, and on
-/// which destination.
-struct Follow<'a> {
-    follower: &'a str,
-    id: &'a str,
-    destination: &'a DestinationName,
-}
-
-/// Takes `follow` of `actor`, reached through `http`: turned away by its
-/// lists or caps, kept waiting for the operator, or kept and accepted.
+/// Takes the follow `id` of `acting` by `follower`: turned away by its
+/// lists or caps or as it takes no new follows, kept waiting for the
+/// operator, or kept and accepted.
 async fn taken<S: Store, G: Signer, H: Http>(
-    store: &S,
-    signer: &G,
+    (store, signer): (&S, &G),
     checking: Checking<'_>,
-    actor: &dyn Federates,
-    http: &H,
-    follow: Follow<'_>,
+    acting: &Acting<'_, H>,
+    (follower, id): (&str, &str),
 ) -> Result<Followed, FollowError> {
-    let Follow {
-        follower,
-        id,
-        destination,
-    } = follow;
+    let actor = acting.actor();
+    let http = acting.http;
+    let destination = acting.destination();
     if !actor.admits(follower) {
         return Ok(ignored(
             "the actor's block or allow list turns its follower away",
@@ -167,7 +147,7 @@ async fn taken<S: Store, G: Signer, H: Http>(
     };
     let kept = kept(store, actor, destination).await?;
     let mine = kept.iter().find(|kept| kept.subscriber == follower);
-    if !actor.room(follower, &following(actor, &kept)) {
+    if acting.standing == Standing::Kept || !actor.room(follower, &following(actor, &kept)) {
         let answered = answered(
             actor
                 .post(
@@ -249,21 +229,24 @@ pub async fn followed<S: Store, G: Signer, H: Http>(
         );
     match activity {
         Activity::Follow { target, id } => {
-            let Some((route, actor, http)) = serving(connected, &target) else {
-                return Ok(ignored("it follows no actor herald serves"));
-            };
-            let follow = Follow {
-                follower,
-                id: &id,
-                destination: &route.config.route.destination,
-            };
-            taken(store, signer, checking, actor, http, follow).await
+            match found(connected, store, Wanted::Id(&target), checking.now).await? {
+                Found::Acting(acting) if acting.standing != Standing::Gone => {
+                    taken((store, signer), checking, &acting, (follower, &id)).await
+                }
+                Found::Ambiguous(why) => Ok(Followed::Ignored(why)),
+                Found::Acting(_) | Found::Missing => {
+                    Ok(ignored("it follows no actor herald serves"))
+                }
+            }
         }
         Activity::Undo { follower, target } => {
-            let Some((route, actor, _)) = serving(connected, &target) else {
+            let Found::Acting(acting) =
+                found(connected, store, Wanted::Id(&target), checking.now).await?
+            else {
                 return Ok(ignored("it undoes a follow of no actor herald serves"));
             };
-            let kept = kept(store, actor, &route.config.route.destination).await?;
+            let actor = acting.actor();
+            let kept = kept(store, actor, acting.destination()).await?;
             for subscription in kept.iter().filter(|kept| kept.subscriber == follower) {
                 store.subscriptions().unsubscribe(subscription).await?;
             }

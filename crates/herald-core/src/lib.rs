@@ -93,7 +93,10 @@ pub use profile::{
     Bullet, Emphases, Escape, Features, Fences, Heading, Limits, Links, Markup, Measure,
     MentionRoom, MentionStyle, Pins, Profile, Threads,
 };
-pub use render::{Context, Form, ProjectName, REPOSITORY_FIELDS, TemplateError, Templates};
+pub use render::{
+    ACTOR_FIELDS, ActorName, Context, Form, ProjectName, REPOSITORY_FIELDS, TemplateError,
+    Templates,
+};
 pub use retention::Retention;
 pub use revision::{
     Edits, LateRelease, NO_PART, Revise, Revision, already_deleted, revise, revised,

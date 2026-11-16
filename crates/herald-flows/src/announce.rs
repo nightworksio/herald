@@ -20,6 +20,7 @@ use herald_ports::{
 };
 use jiff::{SignedDuration, Timestamp};
 
+use crate::acting::acting;
 use crate::budget::Budget;
 use crate::prepare::{Connected, PreparedRoute};
 
@@ -57,6 +58,9 @@ pub enum Outcome {
     AlreadyAnnounced,
     /// It edits an announcement the route never made; nothing was sent.
     Unedited,
+    /// It announces each project as an actor of its own, and the event's
+    /// project names none, for this reason; nothing was sent.
+    Skipped(String),
     /// Another run holds it; nothing was sent by this one.
     Held {
         /// The run holding it.
@@ -753,7 +757,10 @@ async fn kept_latest<S: Store>(
     let landed = match &outcome {
         Outcome::Sent { steps } => steps.clone(),
         Outcome::AlreadyAnnounced => Vec::new(),
-        Outcome::Held { .. } | Outcome::Stopped { .. } | Outcome::Unedited => return outcome,
+        Outcome::Held { .. }
+        | Outcome::Stopped { .. }
+        | Outcome::Unedited
+        | Outcome::Skipped(_) => return outcome,
     };
     let Some(announcements) = store.announcements() else {
         return outcome;
@@ -831,10 +838,15 @@ pub async fn announce_within<S: Store, C: Clock, G: Signer, H: Http>(
                 && route.config.route.filter.takes(source, event)
         })
         .collect();
+    let now = ports.clock.now();
     let outcomes: Vec<Outcome> = stream::iter(taking.iter().map(|(route, http)| async move {
+        let route = match acting((connected, ports.store, now), route, (source, event)).await {
+            Ok(route) => route,
+            Err(outcome) => return outcome,
+        };
         Run {
             ports,
-            route,
+            route: &route,
             kinds: &config.kinds,
             http,
             holder: run,

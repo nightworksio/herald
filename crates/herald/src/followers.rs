@@ -48,6 +48,7 @@ impl<'a, H: Host> Through<H> for FollowersRequest<'a> {
                 ports.store,
                 &self.destination,
                 self.actor,
+                ports.clock.now(),
             )
             .await
             .map(Done::Listed),

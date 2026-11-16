@@ -98,7 +98,7 @@
       "type": "object",
       "properties": {
         "actor": {
-          "description": "The actor the route announces as, such as `php-mutation-gate`, which\nis followed as `@php-mutation-gate@<domain>`.",
+          "description": "The actor the route announces as, such as `php-mutation-gate`, which\nis followed as `@php-mutation-gate@<domain>`; or a template naming\neach project's own actor from `event.project`, such as\n`{{ event.project }}`. A project whose name is no actor's name is\nnot announced on the route.",
           "type": "string",
           "examples": [
             "php-mutation-gate"

@@ -25,6 +25,17 @@ pub trait Placement: fmt::Debug + Send + Sync + Itself {
     fn opt_in_role(&self) -> Option<String> {
         None
     }
+
+    /// The one actor the route announces as, where it announces as one.
+    fn actor(&self) -> Option<&str> {
+        None
+    }
+
+    /// The actor `project` announces as, or why it names none, where the
+    /// route announces each project as an actor of its own (ADR-0036).
+    fn names(&self, _project: &str) -> Option<Result<String, String>> {
+        None
+    }
 }
 
 /// A route's options for its destination, of any kind.

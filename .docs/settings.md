@@ -382,7 +382,7 @@ Which events go where, rendered how.
 
 | Setting | Type | What it sets |
 |---------|------|--------------|
-| `routes[].actor` | string | The actor the route announces as, such as `php-mutation-gate`, which is followed as `@php-mutation-gate@<domain>`. |
+| `routes[].actor` | string | The actor the route announces as, such as `php-mutation-gate`, which is followed as `@php-mutation-gate@<domain>`; or a template naming each project's own actor from `event.project`, such as `{{ event.project }}`. A project whose name is no actor's name is not announced on the route. |
 | `routes[].content_warning` | string | The content warning each Note is shown behind. |
 | `routes[].crosspost` | boolean | Whether to crosspost each announcement. |
 | `routes[].destination` | string | The destination it announces to. |

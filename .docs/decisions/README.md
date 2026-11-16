@@ -52,3 +52,4 @@ no separate requirements document, and there are no requirement IDs.
 | [0032](0032-a-tag-waits-for-its-release-in-a-held-record-for-its-window.md) | A tag waits for its Release in a held record, for its window | Accepted; extended by [0033](0033-a-ci-run-for-a-tag-announces-the-tag-or-holds-it.md) |
 | [0033](0033-a-ci-run-for-a-tag-announces-the-tag-or-holds-it.md) | A CI run for a tag announces the tag, or holds it | Accepted |
 | [0034](0034-a-post-is-edited-to-a-late-or-edited-release.md) | A post is edited to a late or edited release | Accepted |
+| [0036](0036-a-route-announces-each-project-as-an-actor-of-its-own.md) | A route announces each project as an actor of its own | Accepted |

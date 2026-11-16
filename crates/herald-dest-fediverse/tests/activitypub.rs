@@ -46,6 +46,53 @@ mod activitypub {
         )
     }
 
+    fn per_project(actor: &str) -> ActivityPub {
+        ActivityPub::new(
+            DOMAIN,
+            "/herald",
+            Secret::new("HERALD_ACTIVITYPUB_KEY", "the-key"),
+            ActorRouteOptions {
+                actor: actor.to_owned(),
+                ..plain_route()
+            },
+        )
+    }
+
+    #[test]
+    fn a_route_naming_each_project_s_actor_announces_as_the_actor_its_project_names() {
+        let fixed = per_project("php-mutation-gate");
+        assert_eq!(fixed.names("herald"), None);
+        let named = per_project("{{ event.project | lower }}");
+        assert_eq!(named.names("Herald"), Some(Ok("herald".to_owned())));
+        assert_eq!(
+            named.names("Night Works"),
+            Some(Err("\"night works\" is not an actor's name; give at most 30 lowercase letters, digits, `_` or a `-` within, such as \"php-mutation-gate\"".to_owned()))
+        );
+        assert_eq!(
+            per_project("{% if false %}x{% endif %}").names("herald"),
+            Some(Err("it names no actor for herald".to_owned()))
+        );
+        let herald = named.named("herald");
+        assert_eq!(herald.actor(), "herald");
+        assert_eq!(herald.id(), "https://herald.example/herald/users/herald");
+        assert_eq!(herald.names("other"), None);
+        for (id, name) in [
+            ("https://herald.example/herald/users/herald", Some("herald")),
+            (
+                "https://herald.example/herald/users/gh_tools",
+                Some("gh_tools"),
+            ),
+            ("https://herald.example/herald/users/herald/inbox", None),
+            ("https://herald.example/herald/users/", None),
+            ("https://herald.example/herald/users/Herald", None),
+            ("https://herald.example/users/herald", None),
+            ("https://other.example/herald/users/herald", None),
+        ] {
+            assert_eq!(named.name_in(id), name, "{id}");
+            assert_eq!(fixed.name_in(id), name, "{id}");
+        }
+    }
+
     #[test]
     fn an_actor_served_under_a_base_names_every_id_under_it_and_keeps_its_handle() {
         let based = ActivityPub::new(
@@ -358,6 +405,19 @@ mod activitypub {
                 "{actor:?}"
             );
         }
+        for template in ["{{ event.project }}", "{{ event.project | lower }}-x"] {
+            assert_eq!(route(template).check(), Ok(()), "{template}");
+        }
+        assert_eq!(
+            route("{{ event.version }}{{ nothing }}").check(),
+            Err("the actor's template reads event.version, nothing; it reads only event.project, known of a project before any of its events".to_owned())
+        );
+        assert!(
+            route("{{ event.project")
+                .check()
+                .unwrap_err()
+                .starts_with("the actor's template does not compile: "),
+        );
         let profile = actor_profile();
         assert_eq!(profile.markup, herald_dest_fediverse::ACTOR_MARKUP);
         assert_eq!(profile.features.threads, Threads::None);

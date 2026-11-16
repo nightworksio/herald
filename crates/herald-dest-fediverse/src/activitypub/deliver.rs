@@ -1,8 +1,8 @@
 use herald_core::status;
 use herald_core::{
-    ACTIVITY_JSON, Address, Addressed, Announcement, Bullet, Declined, Emphases, Entry, Escape,
-    Facts, Features, Fences, Heading, Limits, Links, Markup, Measure, MentionStyle, Pins, Profile,
-    Sent, Step, Threads, Waits, signature_header, signing,
+    ACTIVITY_JSON, ActorName, Address, Addressed, Announcement, Bullet, Declined, Emphases, Entry,
+    Escape, Facts, Features, Fences, Heading, Limits, Links, Markup, Measure, MentionStyle, Pins,
+    Profile, Sent, Step, Threads, Waits, signature_header, signing,
 };
 use herald_ports::{
     Algorithm, CryptoError, Http, HttpError, Method, Request, Response, Secret, SecretText, Signer,
@@ -14,7 +14,7 @@ use super::documents::{
     accept, actor_document, actor_id, create, follow, followers_collection, key_id, note, note_id,
     outbox, outbox_page, reject, update, webfinger,
 };
-use super::options::{ActorOptions, ActorRouteOptions};
+use super::options::{ActorOptions, ActorRouteOptions, actor_name, named_actor};
 use super::policy::Policy;
 
 /// The HTML of a Note, beside its plain text.
@@ -50,6 +50,7 @@ pub struct ActivityPub {
     origin: String,
     key: Secret,
     route: ActorRouteOptions,
+    naming: Option<ActorName>,
     waits: Waits,
     page: usize,
     deliveries: usize,
@@ -82,6 +83,7 @@ impl ActivityPub {
             domain: domain.to_owned(),
             origin: format!("{domain}{base}"),
             key,
+            naming: route.naming(),
             route,
             waits: Waits::DEFAULT,
             page: ActorOptions::OUTBOX_PAGE,
@@ -118,6 +120,34 @@ impl ActivityPub {
     #[must_use]
     pub fn id(&self) -> String {
         actor_id(&self.origin, &self.route.actor)
+    }
+
+    /// The actor `project` announces as, or why it names none, where the
+    /// route names one actor per project; none where it announces as one.
+    #[must_use]
+    pub fn names(&self, project: &str) -> Option<Result<String, String>> {
+        Some(named_actor(self.naming.as_ref()?, project))
+    }
+
+    /// The actor, announcing as `name`.
+    #[must_use]
+    pub fn named(&self, name: &str) -> Self {
+        Self {
+            route: ActorRouteOptions {
+                actor: name.to_owned(),
+                ..self.route.clone()
+            },
+            naming: None,
+            ..self.clone()
+        }
+    }
+
+    /// The name of the actor whose id is `id`, where `id` is the id of an
+    /// actor served where this one is.
+    #[must_use]
+    pub fn name_in<'a>(&self, id: &'a str) -> Option<&'a str> {
+        id.strip_prefix(&actor_id(&self.origin, ""))
+            .filter(|name| actor_name(name).is_ok())
     }
 
     /// What the destination can do, as the core plans with it.

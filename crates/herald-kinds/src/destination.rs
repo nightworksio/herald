@@ -74,6 +74,12 @@ pub trait DestinationConfig: fmt::Debug + Send + Sync + Itself {
         false
     }
 
+    /// The domain its actors are served on, where it is one of herald's own
+    /// actors.
+    fn actor_domain(&self) -> Option<&str> {
+        None
+    }
+
     /// The domains its sessions connect under, where it holds any open
     /// (ADR-0016).
     fn session_domains(&self) -> Vec<&str> {
