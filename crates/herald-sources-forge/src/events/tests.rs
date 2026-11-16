@@ -18,7 +18,7 @@ fn answer(events: &[Value], etag: &str) -> Response {
 
 /// A full page of events, ids `from` down, none a release.
 fn full(from: u64) -> Vec<Value> {
-    (0..PER_PAGE as u64)
+    (0..GITHUB_PAGE as u64)
         .map(|offset| event(from - offset, "PushEvent", "", 1))
         .collect()
 }
@@ -37,6 +37,8 @@ fn changed_with(
     last: Option<&EventsRead>,
 ) -> Result<Changed, Unpolled> {
     let asking = Asking {
+        forge: Forge::GitHub,
+        paged: GITHUB_PAGED,
         api: "https://api.github.com",
         name: "lemonfiber",
         owner,
@@ -142,7 +144,7 @@ fn full_pages_are_read_until_one_reaches_back_and_every_page_short_of_it_is_a_ga
         changed_by(&short, Owner::Organization, Some(&last(10))),
         Ok(Changed::Gap(EventsRead { newest: 500, .. }))
     ));
-    assert_eq!(short.asked().len(), PAGES);
+    assert_eq!(short.asked().len(), GITHUB_PAGES);
     let ended = Scripted::new(vec![answer(&[event(50, "PushEvent", "", 1)], "\"e2\"")]);
     assert!(matches!(
         changed_by(&ended, Owner::Organization, Some(&last(10))),
@@ -213,4 +215,81 @@ fn a_tag_made_names_its_member_only_where_a_member_may_announce_tags() {
         BTreeSet::from(["4".to_owned(), "6".to_owned()])
     );
     assert_eq!(named(false), BTreeSet::from(["6".to_owned()]));
+}
+
+fn activity(id: u64, op_type: &str, repo: u64) -> Value {
+    json!({ "id": id, "op_type": op_type, "repo_id": repo, "content": "" })
+}
+
+fn fed(
+    http: &Scripted,
+    (owner, tags): (Owner, bool),
+    last: Option<&EventsRead>,
+) -> Result<Changed, Unpolled> {
+    let asking = Asking {
+        forge: Forge::Forgejo,
+        paged: (50, 3),
+        api: "https://codeberg.org/api/v1",
+        name: "forgejo",
+        owner,
+        token: None,
+        parse: 1 << 20,
+        tags,
+    };
+    pollster::block_on(changed(&Erased(http as &dyn DynHttp), &asking, last))
+}
+
+#[test]
+fn a_forgejo_owner_s_activity_feed_names_the_members_that_published_a_release_or_pushed_a_tag() {
+    let feed = [
+        activity(12, PUBLISH_RELEASE, 3),
+        activity(11, PUSH_TAG, 4),
+        activity(10, "commit_repo", 5),
+        activity(8, PUBLISH_RELEASE, 6),
+    ];
+    let http = Scripted::new(vec![answer(&feed, "\"f2\"")]);
+    assert_eq!(
+        fed(&http, (Owner::Organization, true), Some(&last(9))),
+        Ok(Changed::Named {
+            ids: BTreeSet::from(["3".to_owned(), "4".to_owned()]),
+            read: EventsRead {
+                etag: Some("\"f2\"".to_owned()),
+                newest: 12,
+            },
+        })
+    );
+    assert_eq!(
+        http.asked(),
+        [(
+            "https://codeberg.org/api/v1/orgs/forgejo/activities/feeds?limit=50&page=1".to_owned(),
+            Some("\"e1\"".to_owned())
+        )]
+    );
+    let http = Scripted::new(vec![answer(&feed, "\"f2\"")]);
+    let Ok(Changed::Named { ids, .. }) = fed(&http, (Owner::User, false), Some(&last(9))) else {
+        panic!("the feed reaches back");
+    };
+    assert_eq!(ids, BTreeSet::from(["3".to_owned()]));
+    assert_eq!(
+        http.asked()[0].0,
+        "https://codeberg.org/api/v1/users/forgejo/activities/feeds?limit=50&page=1"
+    );
+    let full: Vec<Value> = (0..50)
+        .map(|offset| activity(200 - offset, "commit_repo", 1))
+        .collect();
+    let http = Scripted::new(vec![
+        answer(&full, "\"f3\""),
+        answer(&[activity(9, PUSH_TAG, 7)], ""),
+    ]);
+    let Ok(Changed::Named { ids, .. }) = fed(&http, (Owner::Organization, true), Some(&last(9)))
+    else {
+        panic!("the second page reaches back");
+    };
+    assert_eq!(ids, BTreeSet::new());
+    assert_eq!(http.asked().len(), 2);
+    let http = Scripted::new(vec![answer(&[json!({ "id": "x" })], "")]);
+    assert!(matches!(
+        fed(&http, (Owner::Organization, true), Some(&last(9))),
+        Err(Unpolled::Unreadable(reason)) if reason.starts_with("Forgejo's activity feed")
+    ));
 }

@@ -1,7 +1,7 @@
-//! An owner's members polled together through GitHub's GraphQL API: one
-//! request asks each member's newest releases and tags by name, and a
-//! second asks in full only the members holding one their cursor has not
-//! seen (ADR-0030, ADR-0031).
+//! An owner's members polled together through GitHub's or GitLab's
+//! GraphQL API: one request asks each member's newest releases (and on
+//! GitHub its tags), and a second asks in full only the members holding
+//! one their cursor has not seen (ADR-0030, ADR-0031, ADR-0037).
 
 use std::collections::BTreeMap;
 
@@ -17,8 +17,18 @@ use crate::forge::{Repository, authorized};
 use crate::wire::{ForgeRelease, ForgeTag, event, tag_event};
 use crate::{Forge, Signals, Token};
 
-/// What GitHub's GraphQL answers are called.
-const WHAT: &str = "GitHub's GraphQL answer";
+/// What `forge`'s GraphQL answers are called.
+const fn what(forge: Forge) -> &'static str {
+    match forge {
+        Forge::GitLab => "GitLab's GraphQL answer",
+        Forge::GitHub | Forge::Forgejo => "GitHub's GraphQL answer",
+    }
+}
+
+/// The fields of a GitLab release the first request asks for.
+const GITLAB_TAGGED: &str = "tagName upcomingRelease links { selfUrl }";
+/// The fields of a GitLab release the second request asks for.
+const GITLAB_FULL: &str = "tagName name description releasedAt upcomingRelease links { selfUrl }";
 
 /// The fields of a release the first request asks for: enough to know
 /// whether a cursor has seen it.
@@ -32,28 +42,33 @@ const NAMED: &str = "name";
 /// the annotated tag's date or else its commit's.
 const DATED: &str = "name target { __typename ... on Tag { message tagger { date } target { ... on Commit { committedDate } } } ... on Commit { committedDate } }";
 
-/// Which fields a request asks of each release and tag.
+/// Which fields a request asks of each release and tag on GitHub, and of
+/// each release on GitLab.
 #[derive(Clone, Copy)]
 struct Fields {
     release: &'static str,
     tag: &'static str,
+    gitlab: &'static str,
 }
 
 /// What the first request asks.
 const LIGHT: Fields = Fields {
     release: TAGGED,
     tag: NAMED,
+    gitlab: GITLAB_TAGGED,
 };
 /// What the first request asks where a poll watches Releases for an edit:
 /// each Release in full, to tell its name and notes apart.
 const WATCHING: Fields = Fields {
     release: FULL,
     tag: NAMED,
+    gitlab: GITLAB_FULL,
 };
 /// What the second request asks.
 const WHOLE: Fields = Fields {
     release: FULL,
     tag: DATED,
+    gitlab: GITLAB_FULL,
 };
 
 /// The query asking each repository of `signals`, the `i`th named by the
@@ -111,6 +126,36 @@ fn request(
     variables.insert("page".to_owned(), json!(page));
     let signals: Vec<&Signals> = members.iter().map(|(_, signals)| *signals).collect();
     let body = json!({ "query": query(&signals, fields), "variables": variables });
+    posted(endpoint, &body, parse)
+}
+
+/// The request asking GitLab's GraphQL API at `endpoint` for the newest
+/// `page` releases of each of `members`, by its project id, each with
+/// `fields`, reading at most `parse` bytes.
+fn gitlab_request(
+    endpoint: &str,
+    members: &[(&Listed, &Signals)],
+    (fields, page, parse): (Fields, usize, usize),
+) -> Request {
+    let ids: Vec<String> = members
+        .iter()
+        .map(|(member, _)| format!("{GITLAB_PROJECT}{}", member.id))
+        .collect();
+    let query = format!(
+        "query($ids: [ID!], $page: Int!) {{ projects(ids: $ids, first: {GITLAB_MOST}) {{ nodes {{ id webUrl releases(first: $page, sort: RELEASED_AT_DESC) {{ nodes {{ {} }} }} }} }} }}",
+        fields.gitlab
+    );
+    let body = json!({ "query": query, "variables": { "ids": ids, "page": page } });
+    posted(endpoint, &body, parse)
+}
+
+/// What a GitLab project's global id is written after.
+const GITLAB_PROJECT: &str = "gid://gitlab/Project/";
+/// The most projects one GitLab request lists, as many as a batch holds.
+const GITLAB_MOST: usize = crate::options::GRAPHQL_BATCH_ALLOWED;
+
+/// `body` posted as JSON to `endpoint`, reading at most `parse` bytes.
+fn posted(endpoint: &str, body: &Value, parse: usize) -> Request {
     Request::new(Method::Post, SecretText::plain(endpoint.to_owned()))
         .header("Content-Type", SecretText::plain(herald_core::media::JSON))
         .body(body.to_string())
@@ -126,9 +171,64 @@ struct Node {
     is_draft: bool,
     name: Option<String>,
     description: Option<String>,
-    #[serde(default)]
-    is_prerelease: bool,
+    is_prerelease: Option<bool>,
     published_at: Option<Timestamp>,
+}
+
+/// A release, as GitLab's GraphQL API names it.
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct GitLabRelease {
+    tag_name: String,
+    name: Option<String>,
+    description: Option<String>,
+    released_at: Option<Timestamp>,
+    #[serde(default)]
+    upcoming_release: bool,
+    links: GitLabLinks,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct GitLabLinks {
+    self_url: String,
+}
+
+impl From<GitLabRelease> for Node {
+    fn from(release: GitLabRelease) -> Self {
+        Self {
+            tag_name: release.tag_name,
+            url: release.links.self_url,
+            is_draft: release.upcoming_release,
+            name: release.name,
+            description: release.description,
+            is_prerelease: None,
+            published_at: release.released_at,
+        }
+    }
+}
+
+/// A project and its releases, as GitLab's GraphQL API answers them.
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct GitLabProject {
+    id: String,
+    web_url: Option<String>,
+    releases: Option<Nodes<GitLabRelease>>,
+}
+
+/// The projects of GitLab's GraphQL answer.
+#[derive(Deserialize)]
+struct GitLabProjects {
+    projects: Nodes<GitLabProject>,
+}
+
+/// GitLab's GraphQL answer: the projects it names, and the errors it met.
+#[derive(Deserialize)]
+struct GitLabEnvelope {
+    data: Option<GitLabProjects>,
+    #[serde(default)]
+    errors: Vec<Value>,
 }
 
 /// A tag, as GitHub's GraphQL API names it.
@@ -225,35 +325,92 @@ struct Envelope {
     errors: Vec<Value>,
 }
 
-/// Each of `count` members' repositories in `response`, in order, or why
-/// none could be read.
-fn answers(response: &Response, count: usize, parse: usize) -> Vec<Result<Answered, Unpolled>> {
-    let read = answered(WHAT, response)
-        .and_then(|()| herald_wire::read::<Envelope>(WHAT, parse, &response.body));
-    let mut data = match read {
-        Ok(Envelope {
-            data: Some(data), ..
-        }) => data,
-        Ok(Envelope { errors, .. }) => {
-            let reason = format!("{WHAT} holds no data: {}", Value::from(errors));
-            return (0..count)
-                .map(|_| Err(Unpolled::Unreadable(reason.clone())))
-                .collect();
-        }
-        Err(error) => {
-            let unpolled = Unpolled::unreadable(error);
-            return (0..count).map(|_| Err(unpolled.clone())).collect();
-        }
+/// Each of `members`' repositories in `response` from `forge`, in order,
+/// or why none could be read.
+fn answers(
+    forge: Forge,
+    response: &Response,
+    members: &[(&Listed, &Signals)],
+    parse: usize,
+) -> Vec<Result<Answered, Unpolled>> {
+    let what = what(forge);
+    let read = answered(what, response)
+        .map_err(Unpolled::unreadable)
+        .and_then(|()| match forge {
+            Forge::GitLab => gitlab_answers(what, parse, &response.body),
+            Forge::GitHub | Forge::Forgejo => github_answers(what, parse, &response.body),
+        });
+    let mut found = match read {
+        Ok(found) => found,
+        Err(unpolled) => return members.iter().map(|_| Err(unpolled.clone())).collect(),
     };
-    (0..count)
-        .map(|index| {
-            data.remove(&format!("m{index}")).flatten().ok_or_else(|| {
+    members
+        .iter()
+        .enumerate()
+        .map(|(index, (member, _))| {
+            let key = match forge {
+                Forge::GitLab => member.id.clone(),
+                Forge::GitHub | Forge::Forgejo => format!("m{index}"),
+            };
+            found.remove(&key).ok_or_else(|| {
                 Unpolled::Unreadable(format!(
-                    "{WHAT} names no repository for member {index}; the token may not reach it"
+                    "{what} names no repository for member {index}; the token may not reach it"
                 ))
             })
         })
         .collect()
+}
+
+/// Each repository GitHub's GraphQL answer `body` names, by its alias.
+fn github_answers(
+    what: &'static str,
+    parse: usize,
+    body: &[u8],
+) -> Result<BTreeMap<String, Answered>, Unpolled> {
+    match herald_wire::read::<Envelope>(what, parse, body).map_err(Unpolled::unreadable)? {
+        Envelope {
+            data: Some(data), ..
+        } => Ok(data
+            .into_iter()
+            .filter_map(|(alias, answered)| Some((alias, answered?)))
+            .collect()),
+        Envelope { errors, .. } => Err(empty(what, errors)),
+    }
+}
+
+/// Each project GitLab's GraphQL answer `body` names, by its id.
+fn gitlab_answers(
+    what: &'static str,
+    parse: usize,
+    body: &[u8],
+) -> Result<BTreeMap<String, Answered>, Unpolled> {
+    match herald_wire::read::<GitLabEnvelope>(what, parse, body).map_err(Unpolled::unreadable)? {
+        GitLabEnvelope {
+            data: Some(data), ..
+        } => Ok(data
+            .projects
+            .nodes
+            .into_iter()
+            .filter_map(|project| {
+                let id = project.id.strip_prefix(GITLAB_PROJECT)?.to_owned();
+                let answered = Answered {
+                    database_id: id.parse().ok()?,
+                    url: project.web_url,
+                    releases: project.releases.map(|releases| Nodes {
+                        nodes: releases.nodes.into_iter().map(Node::from).collect(),
+                    }),
+                    refs: None,
+                };
+                Some((id, answered))
+            })
+            .collect()),
+        GitLabEnvelope { errors, .. } => Err(empty(what, errors)),
+    }
+}
+
+/// That `what` holds no data, beside the `errors` it names.
+fn empty(what: &str, errors: Vec<Value>) -> Unpolled {
+    Unpolled::Unreadable(format!("{what} holds no data: {}", Value::from(errors)))
 }
 
 /// The identity of `node`, a release of the repository `id`, as an event
@@ -290,12 +447,12 @@ fn unseen(answered: &Answered, cursor: Option<&Cursor>) -> bool {
 /// Whether a Release `answered` holds of `member`, told as `signals` say,
 /// is one `cursor` watches whose name or notes changed.
 fn edited(
-    (member, signals): (&Listed, &Signals),
+    (member, signals, forge): (&Listed, &Signals, Forge),
     answered: &Answered,
     cursor: Option<&Cursor>,
 ) -> bool {
     cursor.is_some_and(|cursor| {
-        polled(member, answered.clone(), signals)
+        polled((member, forge), answered.clone(), signals)
             .is_ok_and(|polled| polled.events.iter().any(|event| cursor.edited(event)))
     })
 }
@@ -303,7 +460,12 @@ fn edited(
 /// The releases and tags `answered` holds of the member `member`, as
 /// events, newest first, each pre-release told as `signals` say; a tag
 /// sharing its identity with a release is the release's.
-fn polled(member: &Listed, answered: Answered, signals: &Signals) -> Result<Polled, Unpolled> {
+fn polled(
+    (member, forge): (&Listed, Forge),
+    answered: Answered,
+    signals: &Signals,
+) -> Result<Polled, Unpolled> {
+    let what = what(forge);
     let host = answered.host();
     let repository = Repository {
         id: answered.database_id,
@@ -317,7 +479,7 @@ fn polled(member: &Listed, answered: Answered, signals: &Signals) -> Result<Poll
         .flat_map(|releases| releases.nodes)
         .filter_map(|node| {
             event(
-                WHAT,
+                what,
                 &repository,
                 ForgeRelease {
                     tag: node.tag_name,
@@ -325,7 +487,7 @@ fn polled(member: &Listed, answered: Answered, signals: &Signals) -> Result<Poll
                     body: node.description,
                     url: node.url,
                     draft: node.is_draft,
-                    prerelease: Some(node.is_prerelease),
+                    prerelease: node.is_prerelease,
                     published: node.published_at,
                     edited: false,
                 },
@@ -348,13 +510,13 @@ fn polled(member: &Listed, answered: Answered, signals: &Signals) -> Result<Poll
             }
             let url = Forge::GitHub.tag_page(page, &tag.name);
             events.push(
-                tag_event(WHAT, &repository, (tag.read(), url), rule)
+                tag_event(what, &repository, (tag.read(), url), rule)
                     .map_err(Unpolled::unreadable)?,
             );
         }
     } else if !tags.is_empty() {
         return Err(Unpolled::Unreadable(format!(
-            "{WHAT} names no web page of {}, which its tags are announced by",
+            "{what} names no web page of {}, which its tags are announced by",
             member.path
         )));
     }
@@ -365,8 +527,9 @@ fn polled(member: &Listed, answered: Answered, signals: &Signals) -> Result<Poll
     })
 }
 
-/// Where and how a batch asks GitHub's GraphQL API.
+/// Where and how a batch asks a forge's GraphQL API.
 pub(crate) struct Asking<'a> {
+    pub(crate) forge: Forge,
     pub(crate) endpoint: &'a str,
     pub(crate) token: Option<&'a Token>,
     pub(crate) page: usize,
@@ -399,7 +562,8 @@ pub(crate) async fn polled_together(
         .filter(|(_, (answered, (member, cursor, signals)))| {
             answered.as_ref().is_ok_and(|answered| {
                 unseen(answered, *cursor)
-                    || (asking.watched > 0 && edited((member, signals), answered, *cursor))
+                    || (asking.watched > 0
+                        && edited((member, signals, asking.forge), answered, *cursor))
             })
         })
         .map(|(index, _)| index)
@@ -427,7 +591,7 @@ pub(crate) async fn polled_together(
                 (Err(unpolled), _) => Err(unpolled),
                 (Ok(_), None) => Ok(None),
                 (Ok(_), Some(answered)) => answered
-                    .and_then(|answered| polled(member, answered, signals))
+                    .and_then(|answered| polled((member, asking.forge), answered, signals))
                     .map(|polled| {
                         Some(Polled {
                             watched: asking.watched,
@@ -447,17 +611,14 @@ async fn ask(
     members: &[(&Listed, &Signals)],
     fields: Fields,
 ) -> Result<Vec<Result<Answered, Unpolled>>, Unpolled> {
-    let request = authorized(
-        Forge::GitHub,
-        request(
-            asking.endpoint,
-            members,
-            (fields, asking.page, asking.parse),
-        ),
-        asking.token,
-    );
+    let reading = (fields, asking.page, asking.parse);
+    let asked = match asking.forge {
+        Forge::GitLab => gitlab_request(asking.endpoint, members, reading),
+        Forge::GitHub | Forge::Forgejo => request(asking.endpoint, members, reading),
+    };
+    let request = authorized(asking.forge, asked, asking.token);
     let response = http.send(request).await.map_err(Unpolled::unreachable)?;
-    Ok(answers(&response, members.len(), asking.parse))
+    Ok(answers(asking.forge, &response, members, asking.parse))
 }
 
 #[cfg(test)]

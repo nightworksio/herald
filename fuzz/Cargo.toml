@@ -16,6 +16,7 @@ herald-dest-discord = { path = "../crates/herald-dest-discord" }
 herald-dest-fediverse = { path = "../crates/herald-dest-fediverse" }
 herald-dest-matrix = { path = "../crates/herald-dest-matrix" }
 herald-dest-slack = { path = "../crates/herald-dest-slack" }
+herald-kinds = { path = "../crates/herald-kinds" }
 herald-ports = { path = "../crates/herald-ports" }
 herald-records = { path = "../crates/herald-records" }
 herald-sources-app = { path = "../crates/herald-sources-app" }

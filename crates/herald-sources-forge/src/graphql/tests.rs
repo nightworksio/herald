@@ -82,6 +82,7 @@ fn watching(
 ) -> Vec<Result<Option<Polled>, Unpolled>> {
     let token = Token::Named(Secret::new("TOKEN", "t"));
     let asking = Asking {
+        forge: Forge::GitHub,
         endpoint: "https://api.github.com/graphql",
         token: Some(&token),
         page: 30,
@@ -230,7 +231,7 @@ fn a_release_whose_page_names_no_host_is_never_seen() {
         is_draft: false,
         name: None,
         description: None,
-        is_prerelease: false,
+        is_prerelease: None,
         published_at: None,
     };
     assert_eq!(identity(7, &node), None);
@@ -499,4 +500,136 @@ fn a_member_watched_for_edits_is_asked_its_notes_and_read_in_full_once_one_chang
     assert!(matches!(light[..], [Ok(None)]));
     let asked = unwatched.bodies()[0]["query"].as_str().unwrap().to_owned();
     assert!(!asked.contains("description"), "{asked}");
+}
+
+fn projects(nodes: &[Value]) -> Response {
+    Response {
+        status: 200,
+        headers: Vec::new(),
+        body: json!({ "data": { "projects": { "nodes": nodes } } })
+            .to_string()
+            .into_bytes(),
+    }
+}
+
+fn gitlab_release(tag: &str, upcoming: bool) -> Value {
+    json!({
+        "tagName": tag,
+        "name": format!("cli {tag}"),
+        "description": "## Added",
+        "releasedAt": "2026-11-01T12:00:00Z",
+        "upcomingRelease": upcoming,
+        "links": { "selfUrl": format!("https://gitlab.com/lemonfiber/cli/-/releases/{tag}") }
+    })
+}
+
+fn project(id: u64, releases: &[Value]) -> Value {
+    json!({
+        "id": format!("gid://gitlab/Project/{id}"),
+        "webUrl": "https://gitlab.com/lemonfiber/cli",
+        "releases": { "nodes": releases }
+    })
+}
+
+fn on_gitlab(
+    http: &Scripted,
+    members: &[(&Listed, Option<&Cursor>)],
+) -> Vec<Result<Option<Polled>, Unpolled>> {
+    let asking = Asking {
+        forge: Forge::GitLab,
+        endpoint: "https://gitlab.com/api/graphql",
+        token: None,
+        page: 30,
+        parse: 1 << 20,
+        watched: 0,
+    };
+    let signalled: Vec<(&Listed, Option<&Cursor>, Signals)> = members
+        .iter()
+        .map(|(member, cursor)| (*member, *cursor, Signals::default()))
+        .collect();
+    pollster::block_on(polled_together(
+        &Erased(http as &dyn DynHttp),
+        &asking,
+        &signalled,
+    ))
+}
+
+#[test]
+fn a_gitlab_owner_s_members_are_asked_by_project_id_and_announce_releases_as_rest_names_them() {
+    let cli = Listed {
+        id: "7".to_owned(),
+        ..member("cli")
+    };
+    let web = Listed {
+        id: "8".to_owned(),
+        ..member("web")
+    };
+    let gone = Listed {
+        id: "9".to_owned(),
+        ..member("gone")
+    };
+    let http = Scripted::new(vec![
+        projects(&[
+            project(7, &[gitlab_release("v1", false)]),
+            project(8, &[gitlab_release("v1", false)]),
+            json!({ "id": "gid://gitlab/Group/9", "webUrl": null, "releases": null }),
+        ]),
+        projects(&[project(
+            7,
+            &[gitlab_release("v2", true), gitlab_release("v1", false)],
+        )]),
+    ]);
+    let answered = on_gitlab(
+        &http,
+        &[
+            (&cli, None),
+            (&web, Some(&seen(&["gitlab.com/8/v1"]))),
+            (&gone, None),
+        ],
+    );
+    let Ok(Some(polled)) = &answered[0] else {
+        panic!("an unseen member is read in full: {answered:?}");
+    };
+    assert_eq!(polled.events.len(), 1);
+    assert_eq!(polled.events[0].identity().as_str(), "gitlab.com/7/v1");
+    assert!(!polled.events[0].prerelease());
+    assert_eq!(answered[1], Ok(None));
+    assert_eq!(
+        answered[2],
+        Err(Unpolled::Unreadable(
+            "GitLab's GraphQL answer names no repository for member 2; the token may not reach it"
+                .to_owned()
+        ))
+    );
+    let bodies = http.bodies();
+    assert_eq!(
+        bodies[0]["variables"],
+        json!({ "ids": ["gid://gitlab/Project/7", "gid://gitlab/Project/8", "gid://gitlab/Project/9"], "page": 30 })
+    );
+    let query = bodies[0]["query"].as_str().unwrap();
+    assert!(query.contains("projects(ids: $ids, first: 100)"), "{query}");
+    assert!(
+        query.contains("nodes { tagName upcomingRelease links { selfUrl } }"),
+        "{query}"
+    );
+    assert!(bodies[1]["query"].as_str().unwrap().contains("releasedAt"));
+    assert_eq!(
+        bodies[1]["variables"]["ids"],
+        json!(["gid://gitlab/Project/7"])
+    );
+    assert_eq!(
+        http.requests()[0].url.redacted(),
+        "https://gitlab.com/api/graphql"
+    );
+    let failed = Scripted::new(vec![Response {
+        status: 200,
+        headers: Vec::new(),
+        body: br#"{"data":null,"errors":[{"message":"complexity"}]}"#.to_vec(),
+    }]);
+    assert_eq!(
+        on_gitlab(&failed, &[(&cli, None)]),
+        [Err(Unpolled::Unreadable(
+            r#"GitLab's GraphQL answer holds no data: [{"message":"complexity"}]"#.to_owned()
+        ))]
+    );
 }

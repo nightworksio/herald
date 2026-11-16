@@ -2277,13 +2277,25 @@
                 "type": "string"
               }
             },
+            "feed_page": {
+              "description": "How many activities one page of a Forgejo owner's feed asks for\nunder `transport = \"feed\"`; 50 where absent, and at most 200.",
+              "type": "integer",
+              "format": "uint",
+              "minimum": 1
+            },
+            "feed_pages": {
+              "description": "How many pages of a Forgejo owner's feed a round reads back before\nit polls every member; 3 where absent, and at most 12.",
+              "type": "integer",
+              "format": "uint",
+              "minimum": 1
+            },
             "fork": {
               "description": "Whether forks are taken.",
               "type": "boolean",
               "default": false
             },
             "graphql": {
-              "description": "The GraphQL endpoint of a GitHub owner source; beside `api` where\nabsent: `/api/graphql` on a GitHub Enterprise Server whose `api` ends\nin `/api/v3`, and `/graphql` on GitHub and GHE.com.",
+              "description": "The GraphQL endpoint of a GitHub or GitLab owner source; beside\n`api` where absent: `/api/graphql` on a GitHub Enterprise Server\nwhose `api` ends in `/api/v3` and on GitLab, whose `api` ends in\n`/api/v4`, and `/graphql` on GitHub and GHE.com.",
               "type": "string"
             },
             "graphql_batch": {
@@ -2489,7 +2501,7 @@
               }
             },
             "transport": {
-              "description": "How a GitHub owner's members are polled; \"auto\" where absent.",
+              "description": "How an owner's members are polled; \"auto\" where absent. GitHub\noffers auto, graphql, rest and events; GitLab auto, graphql and rest;\nForgejo auto, rest and feed.",
               "$ref": "#/$defs/Transport"
             },
             "visibility": {
@@ -2543,13 +2555,25 @@
                 "type": "string"
               }
             },
+            "feed_page": {
+              "description": "How many activities one page of a Forgejo owner's feed asks for\nunder `transport = \"feed\"`; 50 where absent, and at most 200.",
+              "type": "integer",
+              "format": "uint",
+              "minimum": 1
+            },
+            "feed_pages": {
+              "description": "How many pages of a Forgejo owner's feed a round reads back before\nit polls every member; 3 where absent, and at most 12.",
+              "type": "integer",
+              "format": "uint",
+              "minimum": 1
+            },
             "fork": {
               "description": "Whether forks are taken.",
               "type": "boolean",
               "default": false
             },
             "graphql": {
-              "description": "The GraphQL endpoint of a GitHub owner source; beside `api` where\nabsent: `/api/graphql` on a GitHub Enterprise Server whose `api` ends\nin `/api/v3`, and `/graphql` on GitHub and GHE.com.",
+              "description": "The GraphQL endpoint of a GitHub or GitLab owner source; beside\n`api` where absent: `/api/graphql` on a GitHub Enterprise Server\nwhose `api` ends in `/api/v3` and on GitLab, whose `api` ends in\n`/api/v4`, and `/graphql` on GitHub and GHE.com.",
               "type": "string"
             },
             "graphql_batch": {
@@ -2755,7 +2779,7 @@
               }
             },
             "transport": {
-              "description": "How a GitHub owner's members are polled; \"auto\" where absent.",
+              "description": "How an owner's members are polled; \"auto\" where absent. GitHub\noffers auto, graphql, rest and events; GitLab auto, graphql and rest;\nForgejo auto, rest and feed.",
               "$ref": "#/$defs/Transport"
             },
             "visibility": {
@@ -2809,13 +2833,25 @@
                 "type": "string"
               }
             },
+            "feed_page": {
+              "description": "How many activities one page of a Forgejo owner's feed asks for\nunder `transport = \"feed\"`; 50 where absent, and at most 200.",
+              "type": "integer",
+              "format": "uint",
+              "minimum": 1
+            },
+            "feed_pages": {
+              "description": "How many pages of a Forgejo owner's feed a round reads back before\nit polls every member; 3 where absent, and at most 12.",
+              "type": "integer",
+              "format": "uint",
+              "minimum": 1
+            },
             "fork": {
               "description": "Whether forks are taken.",
               "type": "boolean",
               "default": false
             },
             "graphql": {
-              "description": "The GraphQL endpoint of a GitHub owner source; beside `api` where\nabsent: `/api/graphql` on a GitHub Enterprise Server whose `api` ends\nin `/api/v3`, and `/graphql` on GitHub and GHE.com.",
+              "description": "The GraphQL endpoint of a GitHub or GitLab owner source; beside\n`api` where absent: `/api/graphql` on a GitHub Enterprise Server\nwhose `api` ends in `/api/v3` and on GitLab, whose `api` ends in\n`/api/v4`, and `/graphql` on GitHub and GHE.com.",
               "type": "string"
             },
             "graphql_batch": {
@@ -3021,7 +3057,7 @@
               }
             },
             "transport": {
-              "description": "How a GitHub owner's members are polled; \"auto\" where absent.",
+              "description": "How an owner's members are polled; \"auto\" where absent. GitHub\noffers auto, graphql, rest and events; GitLab auto, graphql and rest;\nForgejo auto, rest and feed.",
               "$ref": "#/$defs/Transport"
             },
             "visibility": {
@@ -3927,15 +3963,15 @@
       "pattern": "^sha256:[0-9a-f]{64}$"
     },
     "Transport": {
-      "description": "How an owner's members are polled on GitHub.",
+      "description": "How an owner's members are polled.",
       "oneOf": [
         {
-          "description": "GraphQL in batches where the source has a token, and REST per member\nwhere it has none.",
+          "description": "On GitHub and GitLab, GraphQL in batches where the source has a\ntoken and REST per member where it has none; on Forgejo, REST.",
           "type": "string",
           "const": "auto"
         },
         {
-          "description": "GraphQL in batches of `graphql_batch` members, which needs a token.",
+          "description": "GraphQL in batches of `graphql_batch` members, on GitHub (which\nneeds a token) and GitLab.",
           "type": "string",
           "const": "graphql"
         },
@@ -3945,9 +3981,14 @@
           "const": "rest"
         },
         {
-          "description": "The owner's events, read once a round, naming the members to poll,\neach through GraphQL where there is a token and REST otherwise.",
+          "description": "GitHub's owner events, read once a round, naming the members to\npoll, each through GraphQL where there is a token and REST\notherwise.",
           "type": "string",
           "const": "events"
+        },
+        {
+          "description": "A Forgejo owner's activity feed, read once a round, naming the\nmembers to poll, each through REST.",
+          "type": "string",
+          "const": "feed"
         }
       ]
     },

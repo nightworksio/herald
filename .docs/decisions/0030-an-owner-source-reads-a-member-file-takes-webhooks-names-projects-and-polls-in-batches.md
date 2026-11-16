@@ -1,6 +1,6 @@
 # ADR-0030: An owner source reads a member file, takes webhooks, names projects and polls in batches
 
-**Status:** Accepted; the tags a batch and an owner's events read extended by [ADR-0031](0031-a-source-announces-releases-tags-or-both-and-tells-a-pre-release-by-its-own-rule.md)
+**Status:** Accepted; the tags a batch and an owner's events read extended by [ADR-0031](0031-a-source-announces-releases-tags-or-both-and-tells-a-pre-release-by-its-own-rule.md); the batches and the events extended to GitLab and Forgejo by [ADR-0037](0037-gitlab-owners-poll-through-graphql-and-forgejo-owners-follow-their-feed.md)
 **Date:** 2026-11-15
 
 ## Context

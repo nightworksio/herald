@@ -98,11 +98,11 @@ impl Owned {
             file,
             project: options.project(),
             projects: options.projects(),
-            graphql: (forge == Forge::GitHub && options.batched()).then(|| {
+            graphql: options.batched(forge).then(|| {
                 options
                     .graphql
                     .clone()
-                    .unwrap_or_else(|| herald_wire::github::graphql(&api_of(forge, options)))
+                    .unwrap_or_else(|| graphql_beside(forge, &api_of(forge, options)))
             }),
             packaging: Packaging::of(forge, options),
         }
@@ -450,10 +450,24 @@ impl Expand for Owned {
         read: Option<&'a EventsRead>,
     ) -> Boxed<'a, Option<Result<Changed, Unpolled>>> {
         Box::pin(async move {
-            if self.forge != Forge::GitHub || self.options.transport() != Transport::Events {
+            let followed = match self.forge {
+                Forge::GitHub => Some(Transport::Events),
+                Forge::Forgejo => Some(Transport::Feed),
+                Forge::GitLab => None,
+            };
+            if followed != Some(self.options.transport()) {
                 return None;
             }
+            let paged = match self.forge {
+                Forge::Forgejo => (
+                    self.options.feed_page().get(),
+                    self.options.feed_pages().get(),
+                ),
+                Forge::GitHub | Forge::GitLab => events::GITHUB_PAGED,
+            };
             let asking = events::Asking {
+                forge: self.forge,
+                paged,
                 api: &self.api,
                 name: &self.owner,
                 owner,
@@ -525,6 +539,7 @@ impl Expand for Owned {
                 return answered;
             };
             let asking = Asking {
+                forge: self.forge,
                 endpoint,
                 token: self.token.as_ref(),
                 page: self.reading().page,
@@ -758,6 +773,15 @@ impl From<Forgejo> for Listed {
             template: repository.template,
             language: Some(repository.language).filter(|language| !language.is_empty()),
         }
+    }
+}
+
+/// The GraphQL endpoint beside `api`, the REST API of `forge`.
+fn graphql_beside(forge: Forge, api: &str) -> String {
+    if forge == Forge::GitLab {
+        crate::gitlab::graphql(api)
+    } else {
+        herald_wire::github::graphql(api)
     }
 }
 

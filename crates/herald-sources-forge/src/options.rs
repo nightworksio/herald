@@ -1,69 +1,21 @@
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 use std::num::NonZeroUsize;
 
 use herald_core::{
-    Address, Duration, Glob, Prefer, PrereleaseRule, ProjectName, REPOSITORY_FIELDS, Sandbox,
-    SecretRef, Selection, Signal, Size, Visibility, path_of_names, web_url,
+    Duration, Glob, Prefer, PrereleaseRule, SecretRef, Signal, Size, Visibility, path_of_names,
+    web_url,
 };
 use herald_wire::{PARSE_LIMIT, Reading};
-use jiff::SignedDuration;
 
 use crate::Forge;
 
+pub use owner::{
+    KEEP_MEMBERS, KEY, MOST_LISTED, MOST_MEMBERS, MOST_MEMBERS_ALLOWED, Members, Values,
+};
 pub(crate) use packages::GITHUB_PACKAGE_TYPES;
 pub use packages::PackageVisibility;
-
-/// The most repositories a listing reads, before the filters, where
-/// `most_listed` is absent.
-pub const MOST_LISTED: NonZeroUsize = NonZeroUsize::new(10_000).unwrap();
-/// The most members a selection keeps where `most_members` is absent.
-pub const MOST_MEMBERS: NonZeroUsize = NonZeroUsize::new(1_000).unwrap();
-/// The most `most_members` may be.
-pub const MOST_MEMBERS_ALLOWED: usize = 100_000;
-/// How long a member that left is kept where `keep_members` is absent.
-pub const KEEP_MEMBERS: SignedDuration = SignedDuration::from_hours(30 * 24);
-
-/// A property's values: one, or any of several.
-#[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize, schemars::JsonSchema)]
-#[serde(untagged)]
-pub enum Values {
-    /// One value.
-    One(String),
-    /// Any one of several values.
-    Any(Vec<String>),
-}
-
-impl Values {
-    fn listed(&self) -> Vec<String> {
-        match self {
-            Self::One(value) => vec![value.clone()],
-            Self::Any(values) => values.clone(),
-        }
-    }
-}
-
-/// Where an owner source's member file is.
-#[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize, schemars::JsonSchema)]
-#[serde(untagged, deny_unknown_fields)]
-pub enum Members {
-    /// A file beside the config, such as `repos.toml`.
-    File {
-        /// Its path, from the config's directory.
-        file: String,
-    },
-    /// A file in a repository on the source's forge, read through its API
-    /// with the source's token each round.
-    Repository {
-        /// The repository, as `repository` writes one.
-        repository: String,
-        /// The file's path in it.
-        path: String,
-        /// The branch, tag or commit it is read at; the default branch where
-        /// absent.
-        #[serde(rename = "ref")]
-        reference: Option<String>,
-    },
-}
+pub use signals::{EDITS_DEPTH, Signals, TAG_WINDOW, TAG_WINDOW_ALLOWED};
+pub use transport::{FEED_PAGE, FEED_PAGES, GRAPHQL_BATCH, GRAPHQL_BATCH_ALLOWED, Transport};
 
 /// What an owner source makes of the repositories one glob names.
 #[derive(Debug, Clone, PartialEq, Eq, Default, serde::Deserialize, schemars::JsonSchema)]
@@ -78,61 +30,6 @@ pub struct Override {
     /// How a pre-release of theirs is told, as the source's `prerelease`
     /// writes it; the source's where absent.
     pub prerelease: Option<PrereleaseRule>,
-}
-
-/// What a source announces of one repository, and how it tells a
-/// pre-release there.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Signals {
-    /// The signals it announces.
-    pub taken: BTreeSet<Signal>,
-    /// How it tells a pre-release.
-    pub prerelease: PrereleaseRule,
-}
-
-impl Default for Signals {
-    fn default() -> Self {
-        Self {
-            taken: Signal::DEFAULT.into(),
-            prerelease: PrereleaseRule::default(),
-        }
-    }
-}
-
-impl Signals {
-    /// Whether it announces `signal`.
-    #[must_use]
-    pub fn takes(&self, signal: Signal) -> bool {
-        self.taken.contains(&signal)
-    }
-}
-
-/// The field each entry of a member file names its repository by where
-/// `key` is absent.
-pub const KEY: &str = "name";
-
-/// How many of an owner's members one GitHub GraphQL request asks for
-/// where `graphql_batch` is absent.
-pub const GRAPHQL_BATCH: NonZeroUsize = NonZeroUsize::new(50).unwrap();
-/// The most `graphql_batch` may be: the most ids GitHub's GraphQL API
-/// looks up in one request.
-pub const GRAPHQL_BATCH_ALLOWED: usize = 100;
-
-/// How an owner's members are polled on GitHub.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Deserialize, schemars::JsonSchema)]
-#[serde(rename_all = "lowercase")]
-pub enum Transport {
-    /// GraphQL in batches where the source has a token, and REST per member
-    /// where it has none.
-    #[default]
-    Auto,
-    /// GraphQL in batches of `graphql_batch` members, which needs a token.
-    Graphql,
-    /// REST, one member at a time, each asked with its `ETag`.
-    Rest,
-    /// The owner's events, read once a round, naming the members to poll,
-    /// each through GraphQL where there is a token and REST otherwise.
-    Events,
 }
 
 /// A forge source's options in `herald.toml` (ADR-0006, ADR-0029, ADR-0030).
@@ -259,16 +156,27 @@ pub struct SourceOptions {
     /// narrowest that sets a key gives it.
     #[serde(default)]
     pub repositories: BTreeMap<String, Override>,
-    /// How a GitHub owner's members are polled; "auto" where absent.
+    /// How an owner's members are polled; "auto" where absent. GitHub
+    /// offers auto, graphql, rest and events; GitLab auto, graphql and rest;
+    /// Forgejo auto, rest and feed.
     pub transport: Option<Transport>,
-    /// The GraphQL endpoint of a GitHub owner source; beside `api` where
-    /// absent: `/api/graphql` on a GitHub Enterprise Server whose `api` ends
-    /// in `/api/v3`, and `/graphql` on GitHub and GHE.com.
+    /// The GraphQL endpoint of a GitHub or GitLab owner source; beside
+    /// `api` where absent: `/api/graphql` on a GitHub Enterprise Server
+    /// whose `api` ends in `/api/v3` and on GitLab, whose `api` ends in
+    /// `/api/v4`, and `/graphql` on GitHub and GHE.com.
     pub graphql: Option<String>,
     /// How many members one GraphQL request asks for; 50 where absent, and
     /// at most 100.
     #[schemars(with = "Option<NonZeroUsize>")]
     pub graphql_batch: Option<NonZeroUsize>,
+    /// How many activities one page of a Forgejo owner's feed asks for
+    /// under `transport = "feed"`; 50 where absent, and at most 200.
+    #[schemars(with = "Option<NonZeroUsize>")]
+    pub feed_page: Option<NonZeroUsize>,
+    /// How many pages of a Forgejo owner's feed a round reads back before
+    /// it polls every member; 3 where absent, and at most 12.
+    #[schemars(with = "Option<NonZeroUsize>")]
+    pub feed_pages: Option<NonZeroUsize>,
     /// What the source announces of each repository: its published Releases,
     /// its version tags, the versions of its packages, or several;
     /// `["release"]` where absent. A tag and a Release of it share one
@@ -324,41 +232,6 @@ pub struct SourceOptions {
     pub package_visibility: Option<PackageVisibility>,
 }
 
-/// How many of the newest Releases are watched for an edit where
-/// `edits_depth` is absent.
-pub const EDITS_DEPTH: usize = 30;
-
-/// How long a tag waits for its Release where `tag_window` is absent.
-pub const TAG_WINDOW: SignedDuration = SignedDuration::from_hours(1);
-/// The longest `tag_window` may be.
-pub const TAG_WINDOW_ALLOWED: SignedDuration = SignedDuration::from_hours(7 * 24);
-
-/// The keys that only an owner source may give.
-const OWNED: [&str; 22] = [
-    "include",
-    "exclude",
-    "topics",
-    "visibility",
-    "archived",
-    "fork",
-    "template",
-    "language",
-    "properties",
-    "subgroups",
-    "most_listed",
-    "most_members",
-    "keep_members",
-    "listed_page",
-    "members",
-    "tables",
-    "key",
-    "project",
-    "repositories",
-    "transport",
-    "graphql",
-    "graphql_batch",
-];
-
 /// Whether an override sets one of its keys.
 type Sets = fn(&Override) -> bool;
 
@@ -392,11 +265,6 @@ fn tie(globs: &[Glob]) -> Option<(&Glob, &Glob)> {
             .find(|other| other.specificity() == glob.specificity() && other.overlaps(glob))
             .map(|other| (glob, other))
     })
-}
-
-/// The project template `source`, compiled, where it compiles.
-fn compiled(source: &str) -> Option<ProjectName> {
-    ProjectName::compile(source, Sandbox::DEFAULT).ok()
 }
 
 fn globs(texts: &[String]) -> Result<Vec<Glob>, String> {
@@ -464,393 +332,6 @@ impl SourceOptions {
         }
     }
 
-    fn owner_check(&self, forge: Forge, owner: &str) -> Result<(), String> {
-        if !path_of_names(owner, forge.owners()) {
-            return Err(format!(
-                "\"{owner}\" is not an owner; give it as {}, of letters, digits, '.', '_' and '-'",
-                forge.owner_shape()
-            ));
-        }
-        if self.subgroups.is_some() && forge != Forge::GitLab {
-            return Err("subgroups is a GitLab group's; remove it".to_owned());
-        }
-        if forge != Forge::GitHub
-            && let Some(key) = [
-                (self.transport.is_some(), "transport"),
-                (self.graphql.is_some(), "graphql"),
-                (self.graphql_batch.is_some(), "graphql_batch"),
-            ]
-            .into_iter()
-            .find_map(|(given, key)| given.then_some(key))
-        {
-            return Err(format!("{key} is a GitHub owner's; remove it"));
-        }
-        if self.transport == Some(Transport::Graphql) && self.token.is_none() {
-            return Err(
-                "transport graphql needs a token, as GitHub's GraphQL API answers none without; give token, or choose rest".to_owned(),
-            );
-        }
-        if let Some(graphql) = &self.graphql {
-            if !web_url(graphql) {
-                return Err(format!(
-                    "graphql \"{graphql}\" is not a web address; give the GraphQL endpoint, such as https://ghe.example/api/graphql"
-                ));
-            }
-            let origin = |url: &str| Address::parse(url).map(|address| address.origin());
-            if origin(graphql) != origin(self.api.as_deref().unwrap_or(forge.api().url)) {
-                return Err(format!(
-                    "graphql \"{graphql}\" is not on api's host, the only one the source may reach; give the endpoint beside api, or remove graphql"
-                ));
-            }
-        }
-        if self.graphql_batch().get() > GRAPHQL_BATCH_ALLOWED {
-            return Err(format!(
-                "graphql_batch is at most {GRAPHQL_BATCH_ALLOWED}; lower it"
-            ));
-        }
-        if self.members.is_none() && (!self.tables.is_empty() || self.key.is_some()) {
-            return Err(
-                "tables and key read a member file; give members, or remove them".to_owned(),
-            );
-        }
-        if let Some(Members::Repository {
-            repository, path, ..
-        }) = &self.members
-        {
-            if !path_of_names(repository, forge.names()) {
-                return Err(format!(
-                    "members.repository \"{repository}\" is not a repository; give it as {}",
-                    forge.shape()
-                ));
-            }
-            if path
-                .split('/')
-                .any(|segment| matches!(segment, "" | "." | ".."))
-            {
-                return Err(format!(
-                    "members.path \"{path}\" is not a file's path in the repository; give it as dir/file.toml, without empty, . or .. parts"
-                ));
-            }
-        }
-        if let Some(project) = &self.project {
-            Self::project_check(project).map_err(|reason| format!("project {reason}"))?;
-        }
-        for (glob, chosen) in &self.repositories {
-            Glob::new(glob).map_err(|error| format!("repositories: {error}"))?;
-            if let Some(project) = &chosen.project {
-                Self::project_check(project)
-                    .map_err(|reason| format!("repositories.\"{glob}\".project {reason}"))?;
-            }
-        }
-        for (key, sets) in OVERRIDDEN {
-            let globs: Vec<Glob> = self
-                .repositories
-                .iter()
-                .filter(|(_, chosen)| sets(chosen))
-                .filter_map(|(glob, _)| Glob::new(glob).ok())
-                .collect();
-            if let Some((glob, other)) = tie(&globs) {
-                return Err(format!(
-                    "repositories \"{glob}\" and \"{other}\" both set {key}, are as narrow as each other and could both name one repository; make one narrower"
-                ));
-            }
-        }
-        if self.most_members().get() > MOST_MEMBERS_ALLOWED {
-            return Err(format!(
-                "most_members is at most {MOST_MEMBERS_ALLOWED}; lower it"
-            ));
-        }
-        self.selection().map(|_| ())
-    }
-
-    /// Whether the signals and pre-release rules, the source's and each
-    /// override's, are sound on `forge`.
-    fn signals_check(&self, forge: Forge) -> Result<(), String> {
-        let overrides = self.repositories.iter().map(|(glob, chosen)| {
-            (
-                format!("repositories.\"{glob}\"."),
-                &chosen.signals,
-                chosen.prerelease,
-            )
-        });
-        for (at, signals, prerelease) in
-            std::iter::once((String::new(), &self.signals, self.prerelease)).chain(overrides)
-        {
-            if signals.as_ref().is_some_and(Vec::is_empty) {
-                return Err(format!(
-                    "{at}signals names no signal; give release, tag, package or several, or remove it"
-                ));
-            }
-            if forge == Forge::GitLab && prerelease == Some(PrereleaseRule::Flag) {
-                return Err(format!(
-                    "{at}prerelease \"flag\" marks nothing on GitLab, whose releases carry no pre-release flag; choose either or tag"
-                ));
-            }
-        }
-        Ok(())
-    }
-
-    /// Whether `prefer` and `tag_window` choose between a tag and its
-    /// Release that some repository the source takes announces both of.
-    fn prefer_check(&self) -> Result<(), String> {
-        let both = self.may_take(Signal::Release) && self.may_take(Signal::Tag);
-        if let Some(key) = [
-            (self.prefer.is_some(), "prefer"),
-            (self.tag_window.is_some(), "tag_window"),
-        ]
-        .into_iter()
-        .find_map(|(given, key)| (given && !both).then_some(key))
-        {
-            return Err(format!(
-                "{key} chooses between a tag and its Release, which no repository the source takes announces both of; give signals = [\"release\", \"tag\"], or remove {key}"
-            ));
-        }
-        if self.tag_window() > TAG_WINDOW_ALLOWED {
-            return Err("tag_window is at most \"7d\"; shorten it".to_owned());
-        }
-        if self.tag_window.is_some() && self.prefer() == Prefer::First {
-            return Err(
-                "tag_window is how long a tag waits for its Release, which prefer = \"first\" never does; remove one".to_owned(),
-            );
-        }
-        Ok(())
-    }
-
-    /// Which of a tag and its Release is announced.
-    #[must_use]
-    pub fn prefer(&self) -> Prefer {
-        self.prefer.unwrap_or_default()
-    }
-
-    /// How long a tag with no Release waits for one.
-    #[must_use]
-    pub fn tag_window(&self) -> SignedDuration {
-        self.tag_window.map_or(TAG_WINDOW, |window| window.0)
-    }
-
-    /// How long a tag of a repository whose signals are `signals` waits for
-    /// its Release, where it waits: where they take both and the source
-    /// prefers the Release.
-    #[must_use]
-    pub fn held_for(&self, signals: &Signals) -> Option<SignedDuration> {
-        (self.prefer() == Prefer::Release
-            && signals.takes(Signal::Release)
-            && signals.takes(Signal::Tag))
-        .then(|| self.tag_window())
-    }
-
-    /// What the source announces of the repository named `name`, and how it
-    /// tells a pre-release there: for each, the narrowest of `repositories`
-    /// naming it that sets it, or else the source's.
-    #[must_use]
-    pub fn signals_of(&self, name: &str) -> Signals {
-        let narrowest = |sets: Sets| {
-            self.repositories
-                .iter()
-                .filter(|(_, chosen)| sets(chosen))
-                .filter_map(|(glob, chosen)| Some((Glob::new(glob).ok()?, chosen)))
-                .filter(|(glob, _)| glob.matches(name))
-                .max_by_key(|(glob, _)| glob.specificity())
-                .map(|(_, chosen)| chosen)
-        };
-        let signals = narrowest(sets_signals)
-            .and_then(|chosen| chosen.signals.as_ref())
-            .or(self.signals.as_ref());
-        let prerelease = narrowest(sets_prerelease)
-            .and_then(|chosen| chosen.prerelease)
-            .or(self.prerelease);
-        let defaults = Signals::default();
-        Signals {
-            taken: signals.map_or(defaults.taken, |signals| signals.iter().copied().collect()),
-            prerelease: prerelease.unwrap_or(defaults.prerelease),
-        }
-    }
-
-    /// Whether any repository the source takes may announce `signal`.
-    #[must_use]
-    pub fn may_take(&self, signal: Signal) -> bool {
-        let taken = |signals: &Option<Vec<Signal>>| {
-            signals.as_ref().map_or_else(
-                || Signals::default().takes(signal),
-                |signals| signals.contains(&signal),
-            )
-        };
-        taken(&self.signals)
-            || self
-                .repositories
-                .values()
-                .any(|chosen| sets_signals(chosen) && taken(&chosen.signals))
-    }
-
-    /// Whether the `project` template compiles and reads a repository's
-    /// attributes alone.
-    fn project_check(project: &str) -> Result<(), String> {
-        let named =
-            ProjectName::compile(project, Sandbox::DEFAULT).map_err(|error| error.reason)?;
-        let unknown = named.unknown();
-        if unknown.is_empty() {
-            Ok(())
-        } else {
-            Err(format!(
-                "reads {}, which a repository does not carry; use repository.{}",
-                unknown.join(", "),
-                REPOSITORY_FIELDS.join(", repository.")
-            ))
-        }
-    }
-
-    /// The project template, compiled, where one is given.
-    #[must_use]
-    pub fn project(&self) -> Option<ProjectName> {
-        self.project.as_deref().and_then(compiled)
-    }
-
-    /// Each glob of `repositories` that sets a project, with its template
-    /// compiled, narrowest first.
-    #[must_use]
-    pub fn projects(&self) -> Vec<(Glob, ProjectName)> {
-        let mut projects: Vec<(Glob, ProjectName)> = self
-            .repositories
-            .iter()
-            .filter_map(|(glob, chosen)| {
-                Some((
-                    Glob::new(glob).ok()?,
-                    chosen.project.as_deref().and_then(compiled)?,
-                ))
-            })
-            .collect();
-        projects.sort_by_key(|(glob, _)| std::cmp::Reverse(glob.specificity()));
-        projects
-    }
-
-    /// Each owner's key the options give.
-    fn owned(&self) -> Vec<&'static str> {
-        let given = [
-            !self.include.is_empty(),
-            !self.exclude.is_empty(),
-            !self.topics.is_empty(),
-            self.visibility.is_some(),
-            self.archived,
-            self.fork,
-            self.template,
-            !self.language.is_empty(),
-            !self.properties.is_empty(),
-            self.subgroups.is_some(),
-            self.most_listed.is_some(),
-            self.most_members.is_some(),
-            self.keep_members.is_some(),
-            self.listed_page.is_some(),
-            self.members.is_some(),
-            !self.tables.is_empty(),
-            self.key.is_some(),
-            self.project.is_some(),
-            !self.repositories.is_empty(),
-            self.transport.is_some(),
-            self.graphql.is_some(),
-            self.graphql_batch.is_some(),
-        ];
-        OWNED
-            .into_iter()
-            .zip(given)
-            .filter_map(|(key, given)| given.then_some(key))
-            .collect()
-    }
-
-    /// Which of the owner's repositories the source takes.
-    ///
-    /// # Errors
-    ///
-    /// When a glob of `include` or `exclude` cannot be read.
-    pub fn selection(&self) -> Result<Selection, String> {
-        Ok(Selection {
-            include: globs(&self.include)?,
-            exclude: globs(&self.exclude)?,
-            topics: self.topics.clone(),
-            visibility: self
-                .visibility
-                .clone()
-                .unwrap_or_else(|| Selection::default().visibility),
-            archived: self.archived,
-            fork: self.fork,
-            template: self.template,
-            language: self.language.clone(),
-            properties: self
-                .properties
-                .iter()
-                .map(|(name, values)| (name.clone(), values.listed()))
-                .collect(),
-            names: None,
-        })
-    }
-
-    /// The most repositories a listing reads before the filters.
-    #[must_use]
-    pub fn most_listed(&self) -> NonZeroUsize {
-        self.most_listed.unwrap_or(MOST_LISTED)
-    }
-
-    /// The most members the filters may keep.
-    #[must_use]
-    pub fn most_members(&self) -> NonZeroUsize {
-        self.most_members.unwrap_or(MOST_MEMBERS)
-    }
-
-    /// How many members one GraphQL request asks for.
-    #[must_use]
-    pub fn graphql_batch(&self) -> NonZeroUsize {
-        self.graphql_batch.unwrap_or(GRAPHQL_BATCH)
-    }
-
-    /// How a GitHub owner's members are polled.
-    #[must_use]
-    pub fn transport(&self) -> Transport {
-        self.transport.unwrap_or_default()
-    }
-
-    /// Whether a GitHub owner's members are polled together through
-    /// GraphQL: as `transport` says, and under "auto" and "events" where
-    /// there is a token.
-    #[must_use]
-    pub fn batched(&self) -> bool {
-        match self.transport() {
-            Transport::Graphql => true,
-            Transport::Auto | Transport::Events => self.token.is_some(),
-            Transport::Rest => false,
-        }
-    }
-
-    /// The field each entry of the member file names its repository by.
-    #[must_use]
-    pub fn key(&self) -> &str {
-        self.key.as_deref().unwrap_or(KEY)
-    }
-
-    /// How long a member that left is kept.
-    #[must_use]
-    pub fn keep_members(&self) -> SignedDuration {
-        self.keep_members.map_or(KEEP_MEMBERS, |kept| kept.0)
-    }
-
-    /// Whether a GitLab group's members include its subgroups' projects.
-    #[must_use]
-    pub fn subgroups(&self) -> bool {
-        self.subgroups.unwrap_or(true)
-    }
-
-    /// How many of the newest Releases a poll watches for an edit: as many
-    /// as `edits_depth` says, at most a page, where a route edits them as
-    /// `edits` says, and none otherwise.
-    #[must_use]
-    pub fn watched(&self, edits: bool) -> usize {
-        if edits {
-            self.edits_depth
-                .unwrap_or(EDITS_DEPTH)
-                .min(self.reading().page)
-        } else {
-            0
-        }
-    }
-
     /// How a poll of the source reads.
     #[must_use]
     pub fn reading(&self) -> Reading {
@@ -858,6 +339,9 @@ impl SourceOptions {
     }
 }
 
+mod owner;
 mod packages;
+mod signals;
 #[cfg(test)]
 mod tests;
+mod transport;

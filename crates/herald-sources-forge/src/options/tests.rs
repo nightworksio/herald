@@ -1,5 +1,8 @@
 use std::collections::BTreeSet;
 
+use herald_core::Selection;
+use jiff::SignedDuration;
+
 use super::*;
 
 fn owner(owner: &str) -> SourceOptions {
@@ -379,16 +382,9 @@ fn a_github_owner_names_its_transport_its_graphql_endpoint_and_its_batch() {
     assert_eq!(owner("a").graphql_batch(), GRAPHQL_BATCH);
     for (key, options) in [
         (
-            "transport",
-            SourceOptions {
-                transport: Some(Transport::Rest),
-                ..owner("a")
-            },
-        ),
-        (
             "graphql",
             SourceOptions {
-                graphql: Some("https://x.example/graphql".to_owned()),
+                graphql: Some("https://codeberg.org/graphql".to_owned()),
                 ..owner("a")
             },
         ),
@@ -400,13 +396,21 @@ fn a_github_owner_names_its_transport_its_graphql_endpoint_and_its_batch() {
             },
         ),
     ] {
-        for forge in [Forge::GitLab, Forge::Forgejo] {
-            assert_eq!(
-                options.check(forge),
-                Err(format!("{key} is a GitHub owner's; remove it"))
-            );
-        }
+        assert_eq!(
+            options.check(Forge::Forgejo),
+            Err(format!(
+                "{key} is a GitHub or GitLab owner's, as Forgejo has no GraphQL API; remove it"
+            ))
+        );
     }
+    let gitlab = SourceOptions {
+        transport: Some(Transport::Rest),
+        api: Some("https://git.example/gitlab/api/v4".to_owned()),
+        graphql: Some("https://git.example/gitlab/api/graphql".to_owned()),
+        graphql_batch: NonZeroUsize::new(5),
+        ..owner("a")
+    };
+    assert_eq!(gitlab.check(Forge::GitLab), Ok(()));
     assert_eq!(
         SourceOptions {
             graphql: Some("ftp://x".to_owned()),
@@ -523,12 +527,52 @@ fn graphql_is_chosen_by_transport_and_under_auto_by_a_token() {
         transport,
         ..owner("a")
     };
-    assert!(with(None, token.clone()).batched());
-    assert!(!with(None, None).batched());
-    assert!(with(Some(Transport::Graphql), token.clone()).batched());
-    assert!(!with(Some(Transport::Rest), token.clone()).batched());
-    assert!(with(Some(Transport::Events), token.clone()).batched());
-    assert!(!with(Some(Transport::Events), None).batched());
+    let github = Forge::GitHub;
+    assert!(with(None, token.clone()).batched(github));
+    assert!(!with(None, None).batched(github));
+    assert!(with(Some(Transport::Graphql), token.clone()).batched(github));
+    assert!(!with(Some(Transport::Rest), token.clone()).batched(github));
+    assert!(with(Some(Transport::Events), token.clone()).batched(github));
+    assert!(!with(Some(Transport::Events), None).batched(github));
+    assert!(with(None, token.clone()).batched(Forge::GitLab));
+    assert!(with(Some(Transport::Graphql), None).batched(Forge::GitLab));
+    assert!(!with(Some(Transport::Rest), token.clone()).batched(Forge::GitLab));
+    assert!(!with(None, token.clone()).batched(Forge::Forgejo));
+    assert!(!with(Some(Transport::Feed), token.clone()).batched(Forge::Forgejo));
+    let tagged = SourceOptions {
+        signals: Some(vec![Signal::Release, Signal::Tag]),
+        ..with(None, token.clone())
+    };
+    assert!(!tagged.batched(Forge::GitLab));
+    assert!(tagged.batched(github));
+    let packaged = SourceOptions {
+        signals: Some(vec![Signal::Package]),
+        ..with(Some(Transport::Graphql), token.clone())
+    };
+    assert_eq!(
+        packaged.check(Forge::GitLab),
+        Err("transport graphql reads only Releases on GitLab, whose GraphQL API lists no tags or packages; choose rest or auto, or take only releases".to_owned())
+    );
+    assert_eq!(
+        with(Some(Transport::Graphql), None).check(Forge::GitLab),
+        Ok(())
+    );
+    assert_eq!(
+        with(Some(Transport::Feed), None).check(Forge::GitHub),
+        Err("transport feed is not offered here; choose auto, graphql, rest, events".to_owned())
+    );
+    assert_eq!(
+        with(Some(Transport::Events), None).check(Forge::GitLab),
+        Err("transport events is not offered here; choose auto, graphql, rest".to_owned())
+    );
+    assert_eq!(
+        with(Some(Transport::Graphql), None).check(Forge::Forgejo),
+        Err("transport graphql is not offered here; choose auto, rest, feed".to_owned())
+    );
+    assert_eq!(
+        with(Some(Transport::Feed), None).check(Forge::Forgejo),
+        Ok(())
+    );
     assert_eq!(
         with(Some(Transport::Graphql), None).check(Forge::GitHub),
         Err("transport graphql needs a token, as GitHub's GraphQL API answers none without; give token, or choose rest".to_owned())
@@ -843,6 +887,57 @@ fn a_poll_watches_releases_for_an_edit_only_where_a_route_edits_them_and_at_most
     assert_eq!(options(Some(5)).watched(true), 5);
     assert_eq!(options(Some(500)).watched(true), 30);
     assert_eq!(options(Some(500)).watched(false), 0);
+}
+
+#[test]
+fn a_forgejo_feed_is_paged_as_its_settings_say_within_four_times_their_defaults() {
+    let fed = |page: usize, pages: usize| SourceOptions {
+        transport: Some(Transport::Feed),
+        feed_page: NonZeroUsize::new(page),
+        feed_pages: NonZeroUsize::new(pages),
+        ..owner("a")
+    };
+    assert_eq!(owner("a").feed_page(), FEED_PAGE);
+    assert_eq!(owner("a").feed_pages(), FEED_PAGES);
+    assert_eq!(
+        (
+            fed(200, 12).feed_page().get(),
+            fed(200, 12).feed_pages().get()
+        ),
+        (200, 12)
+    );
+    assert_eq!(fed(200, 12).check(Forge::Forgejo), Ok(()));
+    assert_eq!(
+        fed(201, 12).check(Forge::Forgejo),
+        Err("feed_page is at most 200; lower it".to_owned())
+    );
+    assert_eq!(
+        fed(10, 13).check(Forge::Forgejo),
+        Err("feed_pages is at most 12; lower it".to_owned())
+    );
+    for (key, options) in [
+        (
+            "feed_page",
+            SourceOptions {
+                feed_page: NonZeroUsize::new(10),
+                ..owner("a")
+            },
+        ),
+        (
+            "feed_pages",
+            SourceOptions {
+                feed_pages: NonZeroUsize::new(2),
+                ..owner("a")
+            },
+        ),
+    ] {
+        assert_eq!(
+            options.check(Forge::Forgejo),
+            Err(format!(
+                "{key} is how a feed is read; set transport = \"feed\" on a Forgejo owner, or remove it"
+            ))
+        );
+    }
 }
 
 mod packages;
