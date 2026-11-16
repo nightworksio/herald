@@ -518,7 +518,10 @@ pub(super) fn forge(world: &World, releases: (u16, &[&str])) {
     );
     state.forge.insert(
         REPOSITORY.to_owned(),
-        (200, r#"{"id":212613049,"name":"cli"}"#.to_owned()),
+        (
+            200,
+            r#"{"id":212613049,"name":"cli","visibility":"public"}"#.to_owned(),
+        ),
     );
 }
 

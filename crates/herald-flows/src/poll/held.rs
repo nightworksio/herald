@@ -2,13 +2,14 @@
 //! passes (ADR-0032).
 
 use herald_config::Config;
-use herald_core::{Event, HeldEvent, Hold, Pending, Signal, SourceName};
+use herald_core::{Event, HeldEvent, Hold, Pending, Reach, Signal, SourceName};
 use herald_ports::{Clock, Cursors, Http, Signer, Store, Versioned, Waiting};
 use jiff::{SignedDuration, Timestamp};
 
-use super::{Fresh, Sweep, Swept, bounded, stored};
-use crate::announce::{Outcome, Ports, Stop, announce_within};
+use super::{Fresh, Sweep, Swept, stored};
+use crate::announce::{Outcome, Ports, Stop, Within, announce_within};
 use crate::prepare::Connected;
+use crate::prepare::expanded;
 
 /// How a source's tags wait for their Release: as long as `window`, each
 /// held as of the owner's member `member`, where it is one's.
@@ -96,7 +97,16 @@ pub async fn held_or_announced<S: Store, C: Clock, G: Signer, H: Http>(
             held: Some(due),
         });
     }
-    let announced = announce_within(config, connected, ports, source, event, None, run).await;
+    let announced = announce_within(
+        config,
+        connected,
+        ports,
+        source,
+        event,
+        Within::default(),
+        run,
+    )
+    .await;
     Ok(Fresh {
         event: event.clone(),
         announced,
@@ -153,8 +163,8 @@ pub async fn announce_held<S: Store, C: Clock, G: Signer, H: Http>(
     Ok(swept)
 }
 
-/// `held` announced to the routes that take it, bounded as its owner's
-/// member is where it is one's.
+/// `held` announced to the routes that take it, from its owner's member as
+/// the member's last membership record names it, where it is one's.
 async fn announced<S: Store, C: Clock, G: Signer, H: Http>(
     config: &Config,
     connected: &Connected<H>,
@@ -168,14 +178,24 @@ async fn announced<S: Store, C: Clock, G: Signer, H: Http>(
         member,
         outcome,
     };
-    let (path, within) = match &held.member {
-        None => (None, None),
+    let (path, event, reach) = match &held.member {
+        None => (None, held.event.clone(), None),
         Some(id) => match ports.store.cursors().member(source, id).await {
             Err(error) => return swept(None, Sweep::Stopped(stored(error))),
-            Ok(Some(kept)) if kept.value.left.is_none() => (
-                Some(kept.value.repository.path.clone()),
-                bounded(config, kept.value.repository.visibility),
-            ),
+            Ok(Some(kept)) if kept.value.left.is_none() => {
+                let repository = &kept.value.repository;
+                let (event, reach) = match expanded(connected, source) {
+                    Some(expand) => (
+                        held.event.clone().from_origin(expand.origin(repository)),
+                        expand.reach(repository),
+                    ),
+                    None => (
+                        held.event.clone().seen_as(repository.visibility),
+                        Reach::default(),
+                    ),
+                };
+                (Some(repository.path.clone()), event, Some(reach))
+            }
             Ok(_) => {
                 return swept(
                     None,
@@ -193,8 +213,11 @@ async fn announced<S: Store, C: Clock, G: Signer, H: Http>(
         connected,
         ports,
         source,
-        &held.event,
-        within.as_deref(),
+        &event,
+        Within {
+            routes: None,
+            reach: reach.as_ref(),
+        },
         &holder,
     )
     .await;
@@ -202,7 +225,7 @@ async fn announced<S: Store, C: Clock, G: Signer, H: Http>(
         path,
         Sweep::Released {
             announced: vec![Fresh {
-                event: held.event.clone(),
+                event,
                 announced: outcomes,
                 held: None,
             }],

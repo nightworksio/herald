@@ -258,7 +258,7 @@ pub fn load(
     let (retention, attempts) = kept.unwrap_or_default();
     let marker_key = loader.marker_key(sections.markers);
     let destinations = loader.destinations(sections.destinations, read);
-    let sources = loader.sources(sections.sources, read);
+    let (sources, source_spans) = loader.sources(sections.sources, read);
     let templates = loader.templates(sections.templates, read);
     let listed = loader.apps(sections.apps, &sources);
     let routes = loader.every_route(
@@ -282,6 +282,7 @@ pub fn load(
     let run = loader.run(sections.run);
     let doctor = loader.doctor(sections.doctor);
     loader.exposed(&sources, &routes, doctor);
+    loader.routed((&sources, &source_spans), &routes, doctor);
     let (true, Some(store), Some(templates)) = (loader.errors.is_empty(), store, compiled) else {
         return Err(loader.failed());
     };

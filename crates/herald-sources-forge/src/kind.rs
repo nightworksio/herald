@@ -4,6 +4,7 @@ use herald_core::{Kind, Polled, Scheme, SecretRef, Selection, Signal};
 use herald_kinds::{Fault, Hooked, Polling, SourceConfig, SourceKind, Unpolled};
 use herald_ports::Secret;
 
+use crate::forge::{api_of, host_of};
 use crate::owner::Owned;
 use crate::packages::{PackageList, Packaging};
 use crate::polled::Releases;
@@ -185,6 +186,14 @@ impl SourceConfig for ForgeSource {
         Some(self.forge.scheme())
     }
 
+    fn origins(&self) -> bool {
+        true
+    }
+
+    fn routed(&self) -> Vec<(String, String)> {
+        self.options.routed()
+    }
+
     fn projects(&self) -> Vec<String> {
         self.options
             .repository
@@ -211,7 +220,10 @@ impl SourceConfig for ForgeSource {
             let repository = self.options.repository.as_deref().unwrap_or_default();
             self.forge.hooked(
                 (headers, payload),
-                repository,
+                (
+                    repository,
+                    &host_of(self.forge, &api_of(self.forge, &self.options)),
+                ),
                 &self.options.signals_of(named(repository)),
             )
         };
@@ -271,6 +283,18 @@ pub(crate) fn projected(
                 .map_err(Unpolled::unreadable)?,
             ..polled
         }),
+    }
+}
+
+/// `polled`, each of its events from `origin`.
+pub(crate) fn originated(polled: Polled, origin: &herald_core::Origin) -> Polled {
+    Polled {
+        events: polled
+            .events
+            .into_iter()
+            .map(|event| event.from_origin(origin.clone()))
+            .collect(),
+        ..polled
     }
 }
 

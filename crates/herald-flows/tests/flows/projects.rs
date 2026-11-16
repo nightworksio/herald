@@ -761,3 +761,5 @@ fn a_name_one_route_holds_as_gone_is_served_by_the_route_that_holds_it_live() {
     followed_by(&world.store, "secret", None);
     assert_eq!(world.answer(&get("/users/secret")).reply.status, 200);
 }
+
+mod matching;

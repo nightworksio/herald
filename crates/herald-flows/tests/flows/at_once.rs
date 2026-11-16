@@ -229,7 +229,7 @@ body = "{{{{ event.body }}}}"
         ("/releases?per_page=30", releases),
         (
             "/repos/nightworksio/php-mutation-gate",
-            r#"{"id":1,"name":"php-mutation-gate"}"#,
+            r#"{"id":1,"name":"php-mutation-gate","visibility":"public"}"#,
         ),
         (FIRST, POSTED),
     ]);

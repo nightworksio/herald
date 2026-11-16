@@ -1,6 +1,6 @@
 use herald_core::{
-    Cursor, Event, KeyForm, Polled, PrereleaseRule, Scheme, Selection, Signal, Signed, Validators,
-    unreserved,
+    Address, Cursor, Event, KeyForm, Polled, PrereleaseRule, Scheme, Selection, Signal, Signed,
+    Validators, unreserved,
 };
 use herald_core::{media, status};
 use herald_kinds::Hooked;
@@ -242,7 +242,7 @@ impl Forge {
     pub fn hooked(
         self,
         (headers, payload): (&[(&str, &str)], &[u8]),
-        repository: &str,
+        (repository, host): (&str, &str),
         signals: &Signals,
     ) -> Result<Hooked, SourceError> {
         if self.of_a_package(headers, payload) {
@@ -286,7 +286,14 @@ impl Forge {
         if !signals.takes(Signal::Release) {
             return Ok(Hooked::Nothing(UNSIGNALLED));
         }
-        Ok(event.map_or(Hooked::Nothing(UNPUBLISHED), Hooked::Event))
+        let origin = crate::delivered::origin(
+            self,
+            host,
+            crate::delivered::delivered(self, what, payload)?,
+        );
+        Ok(event.map_or(Hooked::Nothing(UNPUBLISHED), |event| {
+            Hooked::Event(event.from_origin(origin))
+        }))
     }
 
     /// The full path of the repository a delivery's `payload` is of.
@@ -610,6 +617,23 @@ pub(crate) fn api_of(forge: Forge, options: &SourceOptions) -> String {
         .to_owned()
 }
 
+/// The host a forge's repositories are named on, from its API's base URL
+/// `api`: without the `api.` label GitHub's and a GHE.com tenant's API
+/// carry.
+pub(crate) fn host_of(forge: Forge, api: &str) -> String {
+    let authority = Address::parse(api)
+        .as_ref()
+        .map(Address::authority)
+        .unwrap_or_default();
+    match forge {
+        Forge::GitHub => authority
+            .strip_prefix("api.")
+            .unwrap_or(&authority)
+            .to_owned(),
+        Forge::GitLab | Forge::Forgejo => authority,
+    }
+}
+
 /// `path`, each of its `/`-separated parts escaped.
 pub(crate) fn segments(path: &str) -> String {
     path.split('/')
@@ -628,6 +652,26 @@ impl Origin {
             repository: repository.to_owned(),
             reading: options.reading(),
         }
+    }
+
+    /// The host its repositories are named on.
+    #[must_use]
+    pub fn host(&self) -> String {
+        host_of(self.forge, &self.api)
+    }
+
+    /// Where the events of the repository the forge's answer to
+    /// [`Origin::repository_request`] describes come from.
+    ///
+    /// # Errors
+    ///
+    /// When the answer is not a repository.
+    pub fn described(&self, response: &Response) -> Result<herald_core::Origin, SourceError> {
+        crate::delivered::answered_origin(
+            self.forge,
+            (&self.host(), self.forge.api().repository, &self.repository),
+            &response.body,
+        )
     }
 
     /// How a poll of it reads.
@@ -791,6 +835,30 @@ mod tests {
     #[test]
     fn each_forge_is_named_as_a_source_s_kind_writes_it() {
         assert_eq!(Forge::ALL.map(Forge::kind), ["github", "gitlab", "forgejo"]);
+    }
+
+    #[test]
+    fn a_forge_s_repositories_are_named_on_its_api_s_host_without_github_s_api_label() {
+        for (forge, api, host) in [
+            (Forge::GitHub, "https://api.github.com", "github.com"),
+            (Forge::GitHub, "https://api.acme.ghe.com", "acme.ghe.com"),
+            (
+                Forge::GitHub,
+                "https://ghe.example:8443/api/v3",
+                "ghe.example:8443",
+            ),
+            (Forge::GitLab, "https://gitlab.com/api/v4", "gitlab.com"),
+            (
+                Forge::Forgejo,
+                "https://api.forge.example/api/v1",
+                "api.forge.example",
+            ),
+        ] {
+            assert_eq!(host_of(forge, api), host, "{api}");
+        }
+        assert_eq!(host_of(Forge::GitLab, "not a url"), "");
+        let origin = Origin::new(Forge::GitHub, &crate::SourceOptions::default(), "cli/cli");
+        assert_eq!(origin.host(), "github.com");
     }
 
     #[test]

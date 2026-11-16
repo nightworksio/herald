@@ -5,7 +5,7 @@
 use std::collections::BTreeMap;
 use std::fmt;
 
-use herald_core::{Attribute, Draft, Event, Kind, KindSpecs, Problem, Standing};
+use herald_core::{Attribute, Draft, Event, Kind, KindSpecs, Origin, Problem, Standing};
 use jiff::Timestamp;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -52,6 +52,11 @@ pub struct AppEvent {
     #[serde(default)]
     #[schemars(with = "Option<String>", extend("format" = "date-time"))]
     pub occurred: Option<Timestamp>,
+    /// Where it comes from: the forge or registry, the owner, and the
+    /// repository or package, which a route's `match` reads; none where it
+    /// is left out.
+    #[serde(default)]
+    pub origin: Option<Origin>,
 }
 
 /// The pattern of a field herald refuses when it holds only white space.
@@ -162,7 +167,10 @@ pub fn event(
     })
     .map_err(UnreadEvent::Problem)?;
     spec.check(event.attributes()).map_err(UnreadEvent::Unfit)?;
-    Ok(event)
+    match written.origin {
+        Some(origin) => Ok(event.from_origin(origin.checked().map_err(UnreadEvent::Problem)?)),
+        None => Ok(event),
+    }
 }
 
 /// Where an app's event stands on each route it may go to, as the HTTP API

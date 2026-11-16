@@ -4,7 +4,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use herald_config::Config;
 use herald_core::{Listed, SourceName};
-use herald_kinds::{Expanded, Polling, Probe, Unlisted, Unpolled};
+use herald_kinds::{Expand, Expanded, Polling, Probe, Unlisted, Unpolled};
 use herald_ports::{Http, SecretError, Secrets, Signer};
 
 use super::{Findings, Gap, Here, gap, unnamed_gap};
@@ -117,20 +117,21 @@ pub async fn online<H: Http>(connected: &Connected<H>) -> Findings {
 /// none; each actor it does name held in `claimed` (ADR-0036).
 fn unnamed<H>(
     connected: &Connected<H>,
-    (source, member): (&SourceName, &Listed),
+    (source, expand, member): (&SourceName, &dyn Expand, &Listed),
     project: &str,
     claimed: &mut Claimed,
 ) -> Vec<Gap> {
     let mut gaps = Vec::new();
     for (index, (route, _)) in connected.routes.iter().enumerate() {
-        let seen = route
-            .projects
-            .as_ref()
-            .is_some_and(|projects| projects.sees(member.visibility));
+        let taken = route.projects.as_ref().is_some_and(|projects| {
+            projects
+                .owner(source)
+                .is_some_and(|sourced| projects.takes((expand, sourced), member, project))
+        });
         let Some((actor, named)) = route
             .reached
             .federates()
-            .filter(|_| seen && route.config.route.filter.sources.contains(source))
+            .filter(|_| taken)
             .and_then(|actor| Some((actor, actor.names(project)?)))
         else {
             continue;
@@ -192,7 +193,7 @@ async fn owned<H: Http>(connected: &Connected<H>) -> Findings {
                         Ok(project) => {
                             findings.gaps.extend(unnamed(
                                 connected,
-                                (&source.name, &member),
+                                (&source.name, expand.as_ref(), &member),
                                 &project,
                                 &mut claimed,
                             ));

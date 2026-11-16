@@ -75,7 +75,7 @@ body = "{{ event.body }}"
         let config = load("herald.toml", &text, &nothing, &crate::common::kinds()).unwrap();
         let app = &config.apps["ci"];
         assert_eq!(app.tokens, ["0".repeat(64), "f".repeat(64)]);
-        assert_eq!(app.projects, ["herald"]);
+        assert_eq!(app.named().collect::<Vec<_>>(), ["herald"]);
         let routes: Vec<&str> = app
             .routes
             .iter()

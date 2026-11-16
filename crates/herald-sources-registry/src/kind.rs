@@ -100,6 +100,10 @@ impl SourceConfig for RegistrySource {
         self.registry.moving_tags()
     }
 
+    fn origins(&self) -> bool {
+        true
+    }
+
     fn projects(&self) -> Vec<String> {
         vec![
             Package::new(self.registry, &self.options)

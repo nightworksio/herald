@@ -621,5 +621,49 @@ fn a_listing_kept_for_another_selection_is_read_whole() {
     )));
 }
 
+#[test]
+fn a_member_s_events_come_from_its_listing_on_the_owner_s_host_and_reach_its_overrides_routes() {
+    let options = SourceOptions {
+        owner: Some("lemonfiber".to_owned()),
+        api: Some("https://api.acme.ghe.com".to_owned()),
+        repositories: BTreeMap::from([(
+            "plugin-*".to_owned(),
+            crate::Override {
+                routes: Some(vec!["plugins".to_owned()]),
+                ..crate::Override::default()
+            },
+        )]),
+        ..SourceOptions::default()
+    };
+    let owned = owned(Forge::GitHub, &options);
+    let member = Listed {
+        id: "3".to_owned(),
+        name: "plugin-sonarr".to_owned(),
+        path: "lemonfiber/plugin-sonarr".to_owned(),
+        topics: vec!["media".to_owned()],
+        properties: BTreeMap::new(),
+        visibility: herald_core::Visibility::Public,
+        archived: false,
+        fork: false,
+        template: false,
+        language: None,
+    };
+    let origin = owned.origin(&member);
+    assert_eq!(
+        (
+            origin.forge.as_str(),
+            origin.host.as_str(),
+            origin.owner.as_str(),
+            origin.id.as_str()
+        ),
+        ("github", "acme.ghe.com", "lemonfiber", "3")
+    );
+    assert_eq!(origin.topics, ["media"]);
+    assert_eq!(
+        owned.reach(&member).routes,
+        [herald_core::RouteId::new("plugins")]
+    );
+}
+
 mod members;
 mod packages;

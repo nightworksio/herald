@@ -30,6 +30,12 @@ pub struct Override {
     /// How a pre-release of theirs is told, as the source's `prerelease`
     /// writes it; the source's where absent.
     pub prerelease: Option<PrereleaseRule>,
+    /// The routes their events also reach, by id, whatever sources those
+    /// routes name; each route's other keys still narrow what it takes.
+    pub routes: Option<Vec<String>>,
+    /// Whether `routes` are the only routes their events reach, leaving out
+    /// the routes that name the source; false where absent.
+    pub routes_only: Option<bool>,
 }
 
 /// A forge source's options in `herald.toml` (ADR-0006, ADR-0029, ADR-0030).
@@ -247,12 +253,22 @@ const fn sets_prerelease(chosen: &Override) -> bool {
     chosen.prerelease.is_some()
 }
 
+const fn sets_routes(chosen: &Override) -> bool {
+    chosen.routes.is_some()
+}
+
+const fn sets_routes_only(chosen: &Override) -> bool {
+    chosen.routes_only.is_some()
+}
+
 /// Each key of an override that the narrowest glob naming a repository
 /// gives it, and whether an override sets it.
-const OVERRIDDEN: [(&str, Sets); 3] = [
+const OVERRIDDEN: [(&str, Sets); 5] = [
     ("project", sets_project),
     ("signals", sets_signals),
     ("prerelease", sets_prerelease),
+    ("routes", sets_routes),
+    ("routes_only", sets_routes_only),
 ];
 
 /// Two of `globs` as narrow as each other that could both name one
@@ -339,6 +355,7 @@ impl SourceOptions {
     }
 }
 
+mod overrides;
 mod owner;
 mod packages;
 mod signals;

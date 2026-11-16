@@ -149,6 +149,10 @@
           "$ref": "#/$defs/LateRelease",
           "default": "edit"
         },
+        "match": {
+          "description": "What of an event it narrows its sources' events by, an event taken\nonly where every key holds; every event its other keys take where\nabsent.",
+          "$ref": "#/$defs/Match"
+        },
         "mentions": {
           "description": "Who it mentions.",
           "$ref": "#/$defs/Mentions"
@@ -229,7 +233,7 @@
       "type": "object",
       "properties": {
         "projects": {
-          "description": "The projects it may announce: at least one.",
+          "description": "The projects it may announce, at least one, each a glob ignoring\ncase, such as `\"plugin-*\"`. A project named with no wildcard is one\nthe app announces as; a glob only scopes what it may announce, and\ntakes no project from a source or member.",
           "type": "array",
           "examples": [
             [
@@ -860,6 +864,10 @@
           "$ref": "#/$defs/LateRelease",
           "default": "edit"
         },
+        "match": {
+          "description": "What of an event it narrows its sources' events by, an event taken\nonly where every key holds; every event its other keys take where\nabsent.",
+          "$ref": "#/$defs/Match"
+        },
         "mentions": {
           "description": "Who it mentions.",
           "$ref": "#/$defs/Mentions"
@@ -1273,6 +1281,10 @@
           "format": "uint",
           "minimum": 0
         },
+        "match": {
+          "description": "What of an event it narrows its sources' events by, an event taken\nonly where every key holds; every event its other keys take where\nabsent.",
+          "$ref": "#/$defs/Match"
+        },
         "mentions": {
           "description": "Who it mentions.",
           "$ref": "#/$defs/Mentions"
@@ -1335,6 +1347,77 @@
         "destination",
         "template"
       ]
+    },
+    "Match": {
+      "description": "What of an event a route narrows its sources' events by. Each list\ntakes any one of what it holds, and every event where empty; an event\nwith no origin, such as a feed's, is taken only where the match names\nprojects alone.",
+      "type": "object",
+      "properties": {
+        "forges": {
+          "description": "The forges and registries taken, as a source's `kind` names them.",
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "string"
+          }
+        },
+        "hosts": {
+          "description": "The hosts taken, such as `github.com` or `ghe.example`.",
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "string"
+          }
+        },
+        "owners": {
+          "description": "The owners taken: accounts, organizations, groups, or a registry's\nscopes, vendors and namespaces, as globs, ignoring case.",
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "string"
+          }
+        },
+        "projects": {
+          "description": "The projects taken, as globs, ignoring case.",
+          "type": "array",
+          "default": [],
+          "examples": [
+            [
+              "plugin-*"
+            ]
+          ],
+          "items": {
+            "type": "string"
+          }
+        },
+        "properties": {
+          "description": "The custom properties, every one of which a repository holds with\none of the values given for it; any value where none is given.",
+          "type": "object",
+          "additionalProperties": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "default": {}
+        },
+        "repositories": {
+          "description": "The repositories or packages taken by their full path, as globs,\nignoring case, such as `\"*/plugin-*\"`.",
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "string"
+          }
+        },
+        "topics": {
+          "description": "The topics, any one of which a repository holds.",
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false
     },
     "MatrixInteractions": {
       "description": "How a Matrix destination takes commands.",
@@ -1448,6 +1531,10 @@
           "description": "What it does with a Release whose tag it already announced: edits\nthe tag's post to it, or posts it anew where the destination cannot\nedit (`edit`); posts it anew (`post`); or leaves the tag's post\n(`skip`).",
           "$ref": "#/$defs/LateRelease",
           "default": "edit"
+        },
+        "match": {
+          "description": "What of an event it narrows its sources' events by, an event taken\nonly where every key holds; every event its other keys take where\nabsent.",
+          "$ref": "#/$defs/Match"
         },
         "mentions": {
           "description": "Who it mentions.",
@@ -1619,6 +1706,17 @@
         "project": {
           "description": "The project their events are announced as, a template as the\nsource's `project` is; the source's where absent.",
           "type": "string"
+        },
+        "routes": {
+          "description": "The routes their events also reach, by id, whatever sources those\nroutes name; each route's other keys still narrow what it takes.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "routes_only": {
+          "description": "Whether `routes` are the only routes their events reach, leaving out\nthe routes that name the source; false where absent.",
+          "type": "boolean"
         },
         "signals": {
           "description": "What they announce, as the source's `signals` writes it; the\nsource's where absent.",
@@ -2155,6 +2253,10 @@
           "description": "What it does with a Release whose tag it already announced: edits\nthe tag's post to it, or posts it anew where the destination cannot\nedit (`edit`); posts it anew (`post`); or leaves the tag's post\n(`skip`).",
           "$ref": "#/$defs/LateRelease",
           "default": "edit"
+        },
+        "match": {
+          "description": "What of an event it narrows its sources' events by, an event taken\nonly where every key holds; every event its other keys take where\nabsent.",
+          "$ref": "#/$defs/Match"
         },
         "mentions": {
           "description": "Who it mentions.",

@@ -3,10 +3,11 @@
 
 use std::collections::BTreeMap;
 use std::fmt;
+use std::sync::Arc;
 
 use herald_config::{Config, Destination, Placed, RouteConfig, Uses};
 use herald_core::{DestinationName, Edits, RouteId, SourceName, hex};
-use herald_kinds::{Interacted, Polling, Posts, Reached};
+use herald_kinds::{Expand, Interacted, Polling, Posts, Reached};
 use herald_ports::{Algorithm, Base, CryptoError, Http, Secret, SecretError, Secrets, Signer};
 use herald_store_markers::{MarkedRoute, MarkersStore};
 
@@ -181,6 +182,22 @@ pub struct PreparedSource {
     pub(crate) name: SourceName,
     pub(crate) poll: Polling,
     pub(crate) backfill: usize,
+}
+
+/// The owner source `name` of `connected` expands to, where it is one the
+/// run polls.
+pub(crate) fn expanded<'a, H>(
+    connected: &'a Connected<H>,
+    name: &SourceName,
+) -> Option<&'a Arc<dyn Expand>> {
+    connected
+        .sources
+        .iter()
+        .find(|(prepared, _)| prepared.name == *name)
+        .and_then(|(prepared, _)| match &prepared.poll {
+            Polling::Many(expand) => Some(expand),
+            Polling::One(_) => None,
+        })
 }
 
 /// A config's routes, each with its destination's credential resolved, and
@@ -444,7 +461,8 @@ pub async fn prepare<S: Secrets, G: Signer>(
         let token = herald_kinds::optional(&read, source.token()).await?;
         let edits = config.routes.iter().any(|route| {
             route.route.delivery.edits == Edits::Release
-                && route.route.filter.sources.contains(name)
+                && (route.route.filter.sources.contains(name)
+                    || source.names_route(&route.route.id))
         });
         sources.push(PreparedSource {
             name: name.clone(),

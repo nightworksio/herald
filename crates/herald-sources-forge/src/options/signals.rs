@@ -4,7 +4,7 @@
 
 use std::collections::BTreeSet;
 
-use herald_core::{Glob, Prefer, PrereleaseRule, Signal};
+use herald_core::{Prefer, PrereleaseRule, Signal};
 use jiff::SignedDuration;
 
 use super::{Sets, SourceOptions, sets_prerelease, sets_signals};
@@ -129,15 +129,7 @@ impl SourceOptions {
     /// naming it that sets it, or else the source's.
     #[must_use]
     pub fn signals_of(&self, name: &str) -> Signals {
-        let narrowest = |sets: Sets| {
-            self.repositories
-                .iter()
-                .filter(|(_, chosen)| sets(chosen))
-                .filter_map(|(glob, chosen)| Some((Glob::new(glob).ok()?, chosen)))
-                .filter(|(glob, _)| glob.matches(name))
-                .max_by_key(|(glob, _)| glob.specificity())
-                .map(|(_, chosen)| chosen)
-        };
+        let narrowest = |sets: Sets| self.narrowest(name, sets);
         let signals = narrowest(sets_signals)
             .and_then(|chosen| chosen.signals.as_ref())
             .or(self.signals.as_ref());

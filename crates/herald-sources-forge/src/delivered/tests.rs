@@ -96,3 +96,89 @@ fn a_gitlab_delivery_names_its_project_by_its_path_s_last_name_and_level() {
     );
     assert!(delivered(Forge::GitLab, "GitLab's release event", b"{}").is_err());
 }
+
+#[test]
+fn a_repository_the_api_answers_with_is_the_origin_of_its_events() {
+    let github = br#"{"id":7,"name":"herald","full_name":"lemonfiber/herald","topics":["media"],"custom_properties":{"team":"media"},"visibility":"internal"}"#;
+    let origin = answered_origin(
+        Forge::GitHub,
+        ("github.com", "GitHub's repository", "x/y"),
+        github,
+    )
+    .unwrap();
+    assert_eq!(
+        origin,
+        Origin {
+            forge: "github".to_owned(),
+            host: "github.com".to_owned(),
+            owner: "lemonfiber".to_owned(),
+            repository: "lemonfiber/herald".to_owned(),
+            id: "7".to_owned(),
+            topics: vec!["media".to_owned()],
+            properties: BTreeMap::from([("team".to_owned(), vec!["media".to_owned()])]),
+            visibility: Visibility::Internal,
+            source: None,
+        }
+    );
+    let forgejo = br#"{"id":8,"name":"gate","private":false,"internal":true}"#;
+    let origin = answered_origin(
+        Forge::Forgejo,
+        ("codeberg.org", "Forgejo's repository", "nightworks/gate"),
+        forgejo,
+    )
+    .unwrap();
+    assert_eq!(origin.repository, "nightworks/gate");
+    assert_eq!(origin.owner, "nightworks");
+    assert_eq!(origin.visibility, Visibility::Internal);
+    assert!(origin.topics.is_empty() && origin.properties.is_empty());
+    let gitlab =
+        br#"{"id":9,"path_with_namespace":"group/sub/cli","topics":["cli"],"visibility":"public"}"#;
+    let origin = answered_origin(
+        Forge::GitLab,
+        ("gitlab.com", "GitLab's project", "x/y"),
+        gitlab,
+    )
+    .unwrap();
+    assert_eq!(
+        (
+            origin.forge.as_str(),
+            origin.owner.as_str(),
+            origin.repository.as_str()
+        ),
+        ("gitlab", "group/sub", "group/sub/cli")
+    );
+    assert_eq!(origin.topics, ["cli"]);
+    assert_eq!(origin.visibility, Visibility::Public);
+    let silent = answered_origin(
+        Forge::GitHub,
+        ("github.com", "GitHub's repository", "a/b"),
+        br#"{"id":1}"#,
+    )
+    .unwrap();
+    assert_eq!(silent.visibility, Visibility::Private);
+    assert!(
+        answered_origin(
+            Forge::GitHub,
+            ("github.com", "GitHub's repository", "a/b"),
+            br#"{"id":1,"topics":3}"#
+        )
+        .is_err()
+    );
+    let lone = origin_of_lone();
+    assert_eq!(lone.owner, "");
+}
+
+fn origin_of_lone() -> Origin {
+    origin(
+        Forge::GitLab,
+        "gitlab.example",
+        (
+            "1".to_owned(),
+            Delivered {
+                name: "lone".to_owned(),
+                path: "lone".to_owned(),
+                ..Delivered::default()
+            },
+        ),
+    )
+}

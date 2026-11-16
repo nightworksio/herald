@@ -58,6 +58,49 @@ mod registries {
     }
 
     #[test]
+    fn each_registry_s_events_come_from_the_package_its_scope_and_the_api_s_host() {
+        for (registry, name, body, host, owner) in [
+            (
+                Registry::Packagist,
+                "monolog/monolog",
+                PACKAGIST,
+                "repo.packagist.org",
+                "monolog",
+            ),
+            (Registry::CratesIo, "jiff", CRATES_IO, "crates.io", ""),
+            (Registry::Npm, "left-pad", NPM, "registry.npmjs.org", ""),
+            (
+                Registry::DockerHub,
+                "library/caddy",
+                DOCKER_HUB,
+                "hub.docker.com",
+                "library",
+            ),
+            (
+                Registry::Npm,
+                "@scope/left-pad",
+                NPM,
+                "npm.example:4873",
+                "scope",
+            ),
+        ] {
+            let api = (host == "npm.example:4873").then_some("https://npm.example:4873");
+            let polled = package(registry, name, api)
+                .versions(&answer(200, body))
+                .unwrap();
+            let origin = polled.events[0].origin().unwrap();
+            assert_eq!(origin.forge, registry.kind(), "{name}");
+            assert_eq!(origin.host, host, "{name}");
+            assert_eq!(origin.owner, owner, "{name}");
+            assert_eq!(
+                (origin.repository.as_str(), origin.id.as_str()),
+                (name, name)
+            );
+            assert_eq!(origin.visibility, herald_core::Visibility::Public);
+        }
+    }
+
+    #[test]
     fn packagist_s_newest_tagged_versions_become_events_with_the_validators() {
         let monolog = package(Registry::Packagist, "monolog/monolog", None);
         let polled = monolog.versions(&answer(200, PACKAGIST)).unwrap();

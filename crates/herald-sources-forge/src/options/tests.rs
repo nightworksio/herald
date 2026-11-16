@@ -941,3 +941,5 @@ fn a_forgejo_feed_is_paged_as_its_settings_say_within_four_times_their_defaults(
 }
 
 mod packages;
+
+mod routes;

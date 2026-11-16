@@ -98,7 +98,7 @@ fn scoped<'c>(
     let Some((name, app)) = token.and_then(|token| token_owner(config, token)) else {
         return Err(Refused::Token);
     };
-    if !app.projects.iter().any(|named| named == project) {
+    if !app.announces(project) {
         return Err(Refused::Project);
     }
     Ok((name, app))

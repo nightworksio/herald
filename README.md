@@ -354,7 +354,8 @@ names the setting.
 
 A route that takes private or internal repositories must say its place is
 private with `private = true`; otherwise the config does not load, and an
-event from a repository not everyone may see reaches only `private` routes.
+event whose `event.origin` says not everyone may see its repository reaches
+only `private` routes, from an owner's member and a single repository alike.
 A repository whose visibility the forge does not name counts as private.
 `[doctor] private_to_public = "warn"` loads such a config and doctor names
 the route, and `"allow"` says nothing. Each member is checked against the
@@ -418,14 +419,53 @@ Release (or pushing a tag, where a member takes tags), as GitHub's events
 do: `feed_page` activities to a page (50, at most 200) and `feed_pages`
 pages back (3, at most 12).
 
-`[sources.<owner>.repositories."<glob>"]` overrides `project`, `signals`
-and `prerelease` for the repositories a glob names, each key settled by the narrowest glob setting
+`[sources.<owner>.repositories."<glob>"]` overrides `project`, `signals`,
+`prerelease`, `routes` and `routes_only` for the repositories a glob names, each key settled by the narrowest glob setting
 it: one without wildcards before one with, and otherwise the one naming
 more characters. Two equally narrow globs that set one key and could name
 one repository do not load. A repository's admin controls its
 name, topics and properties, so no member announces as a project another
 member, source or app announces as: such a member is withheld and
 reported until the two differ.
+
+### Where each event goes
+
+Every forge and registry event carries `event.origin`: `forge` and `host`
+(the source's `kind` and its host, so GitHub Enterprise Server, GHE.com and
+self-managed GitLab name their own), `owner`, `repository` (the full path,
+or the package's name), `id`, `topics`, `properties`, `visibility`, and
+`source`, the source or app it came through. A registry's `owner` is the
+package's scope, vendor or namespace, and its packages are public with no
+topics or properties. Templates read it as `{{ event.origin.repository }}`;
+a template reading it loads only on a route whose every source gives one.
+
+A route's `match` narrows what its sources give; `sources` stays required.
+Each list takes any of its values and every event where empty, and every
+key must hold:
+
+```toml
+[[routes]]
+id = "plugins"
+sources = ["org", "registry"]
+destination = "discord"
+channel = "1566184281406177531"
+template = "release"
+match = { projects = ["plugin-*"], repositories = ["*/plugin-*"], owners = ["lemonfiber"], forges = ["github", "npm"], hosts = ["github.com"], topics = ["media"], properties = { team = ["core"] } }
+```
+
+`projects`, `repositories` and `owners` are case-insensitive globs.
+`properties` needs every named property to hold one of its values (any
+value where none is given). An event with no origin, such as a feed's,
+passes only a `match` that names projects alone.
+
+An owner's member can also name routes: `routes = ["plugins"]` under
+`[sources.<owner>.repositories."<glob>"]` adds those routes for its events,
+whatever sources they name, and `routes_only = true` makes them the only
+ones. A route named so still narrows by its kinds, pre-releases, versions
+and `match`. A route not declared private refuses such an override where
+the owner takes private or internal repositories, as above. A route
+announcing each project as an actor of its own serves only the projects
+its `match` and its members' overrides take.
 
 ### Releases, tags and pre-releases
 
@@ -571,8 +611,8 @@ projects = ["herald"]
 ```
 
 - `herald token new --app ci` prints a new token once, with the `tokens` line to keep. Add a second token before removing the first to rotate it.
-- An app names at least one project, and at least one route names it among its sources; herald refuses a config where either is missing.
-- An event is herald's event JSON, as [`herald-event.schema.json`](herald-event.schema.json) describes it: `{"id": "7", "project": "herald", "title": "Deployed"}`, with `kind`, `body`, `links`, `attributes` and `occurred` where there are any. Its kind is `message` where it names none.
+- An app names at least one project, and at least one route names it among its sources; herald refuses a config where either is missing. A project is a case-insensitive glob: `projects = ["plugin-*"]` scopes the token to every plugin. Only a project named without a wildcard is the app's own, so a glob never withholds a member announcing as a matching project, and has no actor of its own.
+- An event is herald's event JSON, as [`herald-event.schema.json`](herald-event.schema.json) describes it: `{"id": "7", "project": "herald", "title": "Deployed"}`, with `kind`, `body`, `links`, `attributes`, `occurred` and `origin` where there are any. An `origin` is checked as a forge's (`forge` a kind's name, `host` a host, `owner` and `repository` paths, an `id`), and herald names its `source` itself. Its kind is `message` where it names none.
 - An app sends any kind the config knows: `release`, `package-version`, `feed-entry`, `message`, or one it declares. A declared kind names the attributes its events carry, and herald refuses an event whose attributes do not fit ([ADR-0018](.docs/decisions/0018-a-kind-is-data-and-an-event-carries-its-kind-s-attributes.md)):
 
   ```toml

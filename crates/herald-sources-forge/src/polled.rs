@@ -7,7 +7,7 @@ use herald_kinds::{Poll, Unpolled};
 use herald_ports::{Boxed, DynHttp, Erased, Http as _, Response};
 
 use crate::forge::{Repository, validators};
-use crate::kind::projected;
+use crate::kind::{originated, projected};
 use crate::packages::{Asking, PackageList, Packaging, merged, packaged_of};
 use crate::tags::{Listed, Pointed};
 use crate::wire::{ForgeTag, tag_event};
@@ -202,9 +202,12 @@ pub async fn tag_event_of(
             forge.api().repository
         ))
     })?;
+    let origin = origin.described(&described).map_err(Unpolled::unreadable)?;
     let url = forge.tag_page(page, tag);
     let read = releases.read(&http, listed).await?;
-    tag_event(forge.api().tags, &repository, (read, url), rule).map_err(Unpolled::unreadable)
+    tag_event(forge.api().tags, &repository, (read, url), rule)
+        .map(|event| event.from_origin(origin))
+        .map_err(Unpolled::unreadable)
 }
 
 impl Poll for Releases {
@@ -255,6 +258,10 @@ impl Poll for Releases {
                 .await?;
             let forge = self.origin.forge();
             let repository = forge.repository(&described).map_err(Unpolled::unreadable)?;
+            let origin = self
+                .origin
+                .described(&described)
+                .map_err(Unpolled::unreadable)?;
             let packaged = if asks_packages {
                 let asking = Asking {
                     origin: &self.origin,
@@ -307,7 +314,7 @@ impl Poll for Releases {
                 .events
                 .sort_by_key(|event| std::cmp::Reverse(event.occurred()));
             polled.watched = self.watched;
-            projected(polled, self.project.clone()).map(Some)
+            projected(originated(polled, &origin), self.project.clone()).map(Some)
         })
     }
 }

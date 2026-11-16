@@ -106,7 +106,7 @@ mod gitlab {
         assert_eq!(
             Forge::GitLab.hooked(
                 (&release, HOOK.as_bytes()),
-                "gitlab-org/cli",
+                ("gitlab-org/cli", "gitlab.com"),
                 &Signals::default()
             ),
             Ok(Hooked::Event(
@@ -114,6 +114,17 @@ mod gitlab {
                     .event(HOOK.as_bytes(), PrereleaseRule::default())
                     .unwrap()
                     .unwrap()
+                    .from_origin(herald_core::Origin {
+                        forge: "gitlab".to_owned(),
+                        host: "gitlab.com".to_owned(),
+                        owner: "gitlab-org".to_owned(),
+                        repository: "gitlab-org/cli".to_owned(),
+                        id: "34675721".to_owned(),
+                        topics: vec![],
+                        properties: std::collections::BTreeMap::new(),
+                        visibility: herald_core::Visibility::Public,
+                        source: None,
+                    })
             ))
         );
         let updated = {
@@ -122,13 +133,13 @@ mod gitlab {
             serde_json::to_vec(&hook).unwrap()
         };
         assert!(matches!(
-            Forge::GitLab.hooked((&release, &updated), "gitlab-org/cli", &Signals::default()),
+            Forge::GitLab.hooked((&release, &updated), ("gitlab-org/cli", "gitlab.com"), &Signals::default()),
             Ok(Hooked::Event(event)) if event.edited()
         ));
         assert_eq!(
             Forge::GitLab.hooked(
                 (&[("X-Gitlab-Event", "Push Hook")], HOOK.as_bytes()),
-                "gitlab-org/cli",
+                ("gitlab-org/cli", "gitlab.com"),
                 &Signals::default()
             ),
             Ok(Hooked::Nothing(
@@ -139,7 +150,7 @@ mod gitlab {
             Forge::GitLab
                 .hooked(
                     (&release, HOOK.as_bytes()),
-                    "gitlab-org/other",
+                    ("gitlab-org/other", "gitlab.com"),
                     &Signals::default()
                 )
                 .is_err()

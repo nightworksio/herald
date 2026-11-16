@@ -52,6 +52,10 @@ fn split(name: &str) -> (&str, &str) {
     name.split_once('/').unwrap_or((OFFICIAL, name))
 }
 
+pub(crate) fn namespace(name: &str) -> &str {
+    split(name).0
+}
+
 pub(crate) fn project(name: &str) -> &str {
     match split(name) {
         (OFFICIAL, image) => image,

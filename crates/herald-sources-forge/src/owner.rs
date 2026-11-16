@@ -586,6 +586,18 @@ impl Expand for Owned {
             .held_for(&self.options.signals_of(&repository.name))
     }
 
+    fn origin(&self, repository: &Listed) -> herald_core::Origin {
+        herald_core::Origin::of_member(
+            self.forge.kind(),
+            &crate::forge::host_of(self.forge, &self.api),
+            repository,
+        )
+    }
+
+    fn reach(&self, repository: &Listed) -> herald_core::Reach {
+        self.options.reach_of(&repository.name)
+    }
+
     fn project(&self, repository: &Listed) -> Result<String, String> {
         self.template_for(repository).map_or_else(
             || Ok(repository.name.clone()),

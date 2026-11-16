@@ -7,6 +7,8 @@ use serde::{Deserialize, Serialize};
 use crate::key::Identity;
 use crate::kind::{Attribute, Kind, prerelease_in, version_in};
 use crate::members::Visibility;
+use crate::origin::Origin;
+use crate::route::SourceName;
 
 /// An event as a source parsed it, before [`Event::normalise`] checks it.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -43,6 +45,16 @@ pub enum Problem {
     UnnamedLink,
     /// A link is not an `https` or `http` URL.
     LinkNotWeb,
+    /// A field of the origin is over its length.
+    OriginTooLong,
+    /// The origin's forge is not a kind's name.
+    OriginForge,
+    /// The origin's host is not a host.
+    OriginHost,
+    /// The origin's owner or repository is not a path of names.
+    OriginPath,
+    /// The origin has no id.
+    OriginId,
 }
 
 impl fmt::Display for Problem {
@@ -53,6 +65,15 @@ impl fmt::Display for Problem {
             Self::NoTitle => "the event has no title",
             Self::UnnamedLink => "a link of the event has no name",
             Self::LinkNotWeb => "a link of the event is not an http or https URL",
+            Self::OriginTooLong => "a field of the event's origin is longer than 512 bytes",
+            Self::OriginForge => {
+                "the event's origin.forge is not a kind's name, of lowercase letters, digits and '-'"
+            }
+            Self::OriginHost => "the event's origin.host is not a host, such as forge.example:3000",
+            Self::OriginPath => {
+                "the event's origin.owner or origin.repository is not a path of names joined by '/'"
+            }
+            Self::OriginId => "the event's origin has no id",
         })
     }
 }
@@ -73,6 +94,8 @@ pub struct Event {
     occurred: Timestamp,
     #[serde(skip_serializing_if = "Option::is_none")]
     visibility: Option<Visibility>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    origin: Option<Box<Origin>>,
 }
 
 /// An event as its JSON holds it, checked again as it is read back.
@@ -88,6 +111,8 @@ struct Written {
     occurred: Timestamp,
     #[serde(default)]
     visibility: Option<Visibility>,
+    #[serde(default)]
+    origin: Option<Box<Origin>>,
 }
 
 impl TryFrom<Written> for Event {
@@ -95,6 +120,7 @@ impl TryFrom<Written> for Event {
 
     fn try_from(written: Written) -> Result<Self, Problem> {
         let visibility = written.visibility;
+        let origin = written.origin;
         Self::normalise(Draft {
             identity: written.identity,
             kind: written.kind,
@@ -107,6 +133,7 @@ impl TryFrom<Written> for Event {
         })
         .map(|event| Self {
             visibility,
+            origin,
             ..event
         })
     }
@@ -150,6 +177,7 @@ impl Event {
             attributes: attributes(draft.attributes),
             occurred: draft.occurred,
             visibility: None,
+            origin: None,
         })
     }
 
@@ -167,6 +195,39 @@ impl Event {
     #[must_use]
     pub const fn visibility(&self) -> Option<Visibility> {
         self.visibility
+    }
+
+    /// Who may see it: its own visibility where its source names one, and
+    /// its origin's otherwise, where it has an origin.
+    #[must_use]
+    pub fn bounded_by(&self) -> Option<Visibility> {
+        self.visibility
+            .or_else(|| self.origin.as_ref().map(|origin| origin.visibility))
+    }
+
+    /// The event, from `origin`.
+    #[must_use]
+    pub fn from_origin(self, origin: Origin) -> Self {
+        Self {
+            origin: Some(Box::new(origin)),
+            ..self
+        }
+    }
+
+    /// Where it comes from, where its source says.
+    #[must_use]
+    pub fn origin(&self) -> Option<&Origin> {
+        self.origin.as_deref()
+    }
+
+    /// The event, its origin naming `source` as what it reached herald
+    /// through, where it has an origin.
+    #[must_use]
+    pub fn through(mut self, source: &SourceName) -> Self {
+        if let Some(origin) = &mut self.origin {
+            origin.source = Some(source.clone());
+        }
+        self
     }
 
     /// The event, announced as of the project `project`.

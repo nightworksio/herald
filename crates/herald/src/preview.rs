@@ -3,7 +3,7 @@
 
 use std::io::Write;
 
-use herald_config::{Config, samples};
+use herald_config::{Config, samples_from};
 use herald_core::{Event, Kind, RouteId};
 use herald_flows::{Previewed, preview};
 use herald_sources_forge::Forge;
@@ -54,7 +54,7 @@ fn events(config: &Config, event_file: Option<(Forge, &str)>) -> Result<Vec<Even
         return Ok(config
             .kinds
             .get(&Kind::RELEASE)
-            .map(samples)
+            .map(|spec| samples_from(spec, true))
             .unwrap_or_default()
             .into_iter()
             .take(1)

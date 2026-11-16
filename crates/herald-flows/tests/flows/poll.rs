@@ -16,7 +16,7 @@ const RELEASES: &str = "/repos/nightworksio/php-mutation-gate/releases?per_page=
 const REPOSITORY: (&str, u16, &str) = (
     "/repos/nightworksio/php-mutation-gate",
     200,
-    r#"{"id":1,"name":"php-mutation-gate"}"#,
+    r#"{"id":1,"name":"php-mutation-gate","visibility":"public"}"#,
 );
 const ETAG: (&str, &str) = ("etag", "W/\"2\"");
 const VERSIONS: &str = "/crates/gate/versions?per_page=30&sort=date";
@@ -507,3 +507,5 @@ fn a_poll_near_its_host_s_time_limit_asks_no_source_and_keeps_its_cursor() {
     assert_eq!(script.seen(), Vec::<String>::new());
     assert_eq!(cursor(&store), None);
 }
+
+mod origin;

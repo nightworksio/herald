@@ -31,6 +31,10 @@ exclude_re = [
     "SourceConfig::signals -> Vec<herald_core::Signal> with vec!\\[\\]",
     # An owner polls one member a request unless its kind batches them, and `1.try_into().unwrap()` is `NonZeroUsize::MIN`.
     "Expand::batch -> NonZeroUsize with 1\\.try_into\\(\\)\\.unwrap\\(\\)",
+    # A source names no route for some of its events unless its kind says so, and `Vec::new()` is `vec![]`.
+    "SourceConfig::routed -> Vec<\\(String, String\\)> with vec!\\[\\]",
+    # A member names no route of its own unless its kind says so, and `Reach::default()` is `Default::default()`.
+    "Expand::reach -> Reach with Default::default\\(\\)",
     # A source names no project unless its kind says so, and `Vec::new()` is `vec![]`.
     "SourceConfig::projects -> Vec<String> with vec!\\[\\]",
     # A store's options set no key above its default unless its kind says so, and `Vec::new()` is `vec![]`.

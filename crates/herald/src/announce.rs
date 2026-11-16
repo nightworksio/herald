@@ -9,7 +9,7 @@ use herald_compose::told::{report, why};
 use herald_compose::{Composed, Host, Hosting, ServingOn, Through};
 use herald_config::{Config, Uses};
 use herald_core::{Event, RouteId, Signal, SourceName};
-use herald_flows::{Fresh, Outcome, Stop, announce_within, held_or_announced};
+use herald_flows::{Fresh, Outcome, Stop, Within, announce_within, held_or_announced};
 use herald_ports::{Base, Keyring, Outbound, Store};
 use herald_sources_forge::{Forge, ForgeSource, SourceOptions};
 
@@ -254,7 +254,7 @@ impl<H: Host> Through<H> for Announcing<'_> {
                         ports,
                         source,
                         routed.event,
-                        Some(within),
+                        Within::routes(within),
                         run,
                     )
                     .await,

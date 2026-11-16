@@ -4,7 +4,7 @@
 use std::collections::BTreeMap;
 use std::ops::Range;
 
-use herald_core::{RouteId, SourceName};
+use herald_core::{Glob, RouteId, SourceName};
 use herald_kinds::Source;
 use toml::Spanned;
 
@@ -16,7 +16,7 @@ use crate::file::AppFile;
 /// An app as its table names it, its routes not yet checked.
 pub(super) struct Named {
     tokens: Vec<String>,
-    projects: Vec<String>,
+    projects: Vec<Glob>,
     routes: Vec<Spanned<String>>,
     span: Range<usize>,
 }
@@ -47,6 +47,20 @@ impl Loader<'_> {
                     ),
                 );
                 sound = false;
+            }
+            let mut projects = Vec::new();
+            for (index, project) in app.projects.iter().enumerate() {
+                match Glob::new(project) {
+                    Ok(glob) => projects.push(glob),
+                    Err(error) => {
+                        self.error(
+                            &span,
+                            &format!("{path}.projects[{index}]"),
+                            error.to_string(),
+                        );
+                        sound = false;
+                    }
+                }
             }
             if sources.contains_key(&SourceName::new(&name)) {
                 self.error(
@@ -86,7 +100,7 @@ impl Loader<'_> {
                     name,
                     Named {
                         tokens,
-                        projects: app.projects,
+                        projects,
                         routes: app.routes,
                         span,
                     },
