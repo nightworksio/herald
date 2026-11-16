@@ -1,5 +1,8 @@
+use std::collections::BTreeMap;
+
 use herald_core::{
-    Attribute, AttributeType, Draft, Event, Kind, KindSpec, PRERELEASE, SIGNAL, Signal, VERSION,
+    Attribute, AttributeType, Draft, Event, Kind, KindSpec, Origin, PRERELEASE, SIGNAL, Signal,
+    SourceName, VERSION, Visibility,
 };
 use jiff::Timestamp;
 
@@ -54,6 +57,39 @@ fn draft(spec: &KindSpec) -> Draft {
             .collect(),
         attributes,
         occurred: NOON,
+    }
+}
+
+/// Where a sample event from a forge, registry or app that names one comes
+/// from.
+#[must_use]
+pub fn sample_origin() -> Origin {
+    Origin {
+        forge: "github".to_owned(),
+        host: "github.com".to_owned(),
+        owner: "sample-owner".to_owned(),
+        repository: "sample-owner/sample-project".to_owned(),
+        id: "1".to_owned(),
+        topics: vec!["sample-topic".to_owned()],
+        properties: BTreeMap::from([("team".to_owned(), vec!["sample".to_owned()])]),
+        visibility: Visibility::Public,
+        source: Some(SourceName::new("sample-source")),
+    }
+}
+
+/// The samples of the kind `spec` describes, each from the sample origin
+/// where `origins` says every event a route takes has one, and each both
+/// with it and without it otherwise.
+#[must_use]
+pub fn samples_from(spec: &KindSpec, origins: bool) -> Vec<Event> {
+    let plain = samples(spec);
+    let originated = plain
+        .iter()
+        .map(|event| event.clone().from_origin(sample_origin()));
+    if origins {
+        originated.collect()
+    } else {
+        originated.chain(plain.iter().cloned()).collect()
     }
 }
 
@@ -129,6 +165,28 @@ mod tests {
         let release = samples(kinds.get(&Kind::RELEASE).unwrap());
         assert_eq!(release[0].version(), Some("v1.2.0"));
         assert_eq!(release[1].version(), Some("v1.2.0-rc.1"));
+    }
+
+    #[test]
+    fn samples_come_from_the_sample_origin_and_also_from_none_where_some_events_have_none() {
+        let kinds = KindSpecs::default();
+        let spec = kinds.get(&Kind::RELEASE).unwrap();
+        let all = samples_from(spec, true);
+        assert_eq!(all.len(), 4);
+        assert!(
+            all.iter()
+                .all(|event| event.origin() == Some(&sample_origin()))
+        );
+        let mixed = samples_from(spec, false);
+        assert_eq!(mixed.len(), 8);
+        assert_eq!(
+            mixed
+                .iter()
+                .filter(|event| event.origin().is_none())
+                .count(),
+            4
+        );
+        assert_eq!(sample_origin().checked(), Ok(sample_origin()));
     }
 
     #[test]

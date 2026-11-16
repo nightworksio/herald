@@ -1,7 +1,8 @@
 use std::collections::BTreeMap;
 
 use herald_core::{
-    Cursor, Draft, Event, Kind, Polled, RELEASE_LINK, prerelease_version, versioned,
+    Address, Cursor, Draft, Event, Kind, Origin, Polled, RELEASE_LINK, prerelease_version,
+    versioned,
 };
 use herald_core::{media, status};
 use herald_ports::{Method, Request, Response, Secret, SecretText};
@@ -220,6 +221,23 @@ impl Package {
         }
     }
 
+    /// Where its events come from: the registry at its API's host, the
+    /// package's scope, vendor or namespace, and the package.
+    fn origin(&self) -> Origin {
+        let owner = match self.registry {
+            Registry::DockerHub => docker_hub::namespace(&self.name),
+            Registry::Packagist | Registry::CratesIo | Registry::Npm => self
+                .name
+                .rsplit_once('/')
+                .map_or("", |(owner, _)| owner.trim_start_matches('@')),
+        };
+        let host = Address::parse(&self.api)
+            .as_ref()
+            .map(Address::authority)
+            .unwrap_or_default();
+        Origin::of_package(self.registry.kind(), &host, owner, &self.name)
+    }
+
     fn public(&self) -> bool {
         self.api == self.registry.api().url
     }
@@ -322,6 +340,8 @@ impl Package {
             links,
             occurred: found.published,
         };
-        Event::normalise(draft).map_err(|problem| SourceError::Invalid { what, problem })
+        Event::normalise(draft)
+            .map(|event| event.from_origin(self.origin()))
+            .map_err(|problem| SourceError::Invalid { what, problem })
     }
 }

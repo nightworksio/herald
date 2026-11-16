@@ -8,7 +8,7 @@ use std::collections::BTreeSet;
 use std::sync::Arc;
 
 use herald_config::{Config, RouteConfig};
-use herald_core::{DestinationName, Event, SourceName, Visibility};
+use herald_core::{DestinationName, Event, Listed, Match, RouteId, SourceName, Visibility};
 use herald_kinds::{Expand, Federates, Polling};
 use herald_ports::{Cursors, Store, StoreError, Subscriptions};
 use jiff::Timestamp;
@@ -72,32 +72,41 @@ impl Claim {
 
 /// What a route announcing as each project's own actor names its actors
 /// from: the projects its sources and apps name, the owner sources whose
-/// members join them, and whether members not everyone may see join.
+/// members join them, whether the route names each, whether members not
+/// everyone may see join, and what of an event the route matches.
 #[derive(Debug, Clone)]
 pub(crate) struct Projects {
     named: Vec<(SourceName, String)>,
-    owners: Vec<(SourceName, Arc<dyn Expand>)>,
+    owners: Vec<(SourceName, Arc<dyn Expand>, bool)>,
     unlisted: bool,
+    id: RouteId,
+    matching: Match,
 }
 
 impl Projects {
     /// The projects `route` of `config` names its actors from, where it
-    /// announces each project as an actor of its own.
+    /// announces each project as an actor of its own: those of its sources
+    /// and of the owner sources whose members name it, and the projects its
+    /// apps name one by one, each its match may take.
     pub(crate) fn of(config: &Config, route: &RouteConfig) -> Option<Self> {
         route.options.names("").map(drop)?;
         let id = &route.route.id;
+        let matching = &route.route.filter.matching;
+        let taking = &route.route.filter.sources;
         let mut named = Vec::new();
         let mut owners = Vec::new();
-        for name in &route.route.filter.sources {
-            let Some(source) = config.sources.get(name) else {
+        for (name, source) in &config.sources {
+            let sourced = taking.contains(name);
+            if !sourced && !source.names_route(id) {
                 continue;
-            };
+            }
             match source.poller(None, false) {
-                Polling::Many(expand) => owners.push((name.clone(), expand)),
+                Polling::Many(expand) => owners.push((name.clone(), expand, sourced)),
                 Polling::One(_) => named.extend(
                     source
                         .projects()
                         .into_iter()
+                        .filter(|project| matching.admits(project, None))
                         .map(|project| (name.clone(), project)),
                 ),
             }
@@ -109,16 +118,43 @@ impl Projects {
         {
             let app = SourceName::new(app);
             named.extend(
-                held.projects
-                    .iter()
-                    .map(|project| (app.clone(), project.clone())),
+                held.named()
+                    .filter(|project| matching.admits(project, None))
+                    .map(|project| (app.clone(), project.to_owned())),
             );
         }
         Some(Self {
             named,
             owners,
             unlisted: bounded(config, Visibility::Private).is_none_or(|routes| routes.contains(id)),
+            id: id.clone(),
+            matching: matching.clone(),
         })
+    }
+
+    /// Whether the member `repository` of an owner `expand` expands to,
+    /// announcing as `project`, reaches the route, which names the owner
+    /// where `sourced`.
+    pub(crate) fn takes(
+        &self,
+        (expand, sourced): (&dyn Expand, bool),
+        repository: &Listed,
+        project: &str,
+    ) -> bool {
+        self.sees(repository.visibility)
+            && expand.reach(repository).reaches(&self.id, sourced)
+            && self
+                .matching
+                .admits(project, Some(&expand.origin(repository)))
+    }
+
+    /// Whether the route names the owner source `owner`, where it takes the
+    /// owner's members at all.
+    pub(crate) fn owner(&self, owner: &SourceName) -> Option<bool> {
+        self.owners
+            .iter()
+            .find(|(name, _, _)| name == owner)
+            .map(|(_, _, sourced)| *sourced)
     }
 
     /// Whether a member of `visibility` reaches the route.
@@ -157,14 +193,13 @@ impl Projects {
             .collect();
         let mut live = !claims.is_empty();
         let mut kept = None;
-        for (owner, expand) in &self.owners {
+        for (owner, expand, sourced) in &self.owners {
             for member in store.cursors().members(owner).await? {
                 let member = member.value;
-                let Some(project) = expand
-                    .project(&member.repository)
-                    .ok()
-                    .filter(|project| self.sees(member.repository.visibility) && names(project))
-                else {
+                let Some(project) = expand.project(&member.repository).ok().filter(|project| {
+                    names(project)
+                        && self.takes((expand.as_ref(), *sourced), &member.repository, project)
+                }) else {
                     continue;
                 };
                 claims.insert(Claim {

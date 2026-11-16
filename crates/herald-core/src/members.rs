@@ -103,8 +103,20 @@ impl Default for Selection {
 }
 
 /// Whether `wanted` is empty or `held` holds one of it, ignoring case.
-fn any_of<'a>(wanted: &[String], mut held: impl Iterator<Item = &'a str>) -> bool {
+pub(crate) fn any_of<'a>(wanted: &[String], mut held: impl Iterator<Item = &'a str>) -> bool {
     wanted.is_empty() || held.any(|held| wanted.iter().any(|want| want.eq_ignore_ascii_case(held)))
+}
+
+/// Whether `held` holds every property of `wanted` with one of the values
+/// given for it, ignoring case, any value where none is given.
+pub(crate) fn holds_all(
+    wanted: &BTreeMap<String, Vec<String>>,
+    held: &BTreeMap<String, Vec<String>>,
+) -> bool {
+    wanted.iter().all(|(name, values)| {
+        held.get(name)
+            .is_some_and(|held| !held.is_empty() && any_of(values, held.iter().map(String::as_str)))
+    })
 }
 
 /// Whether `name` is `repository`'s name or full path, ignoring case.
@@ -233,13 +245,9 @@ impl Selection {
             && flag(self.archived, seen.archived)
             && flag(self.fork, seen.fork)
             && flag(self.template, seen.template)
-            && seen.properties.is_none_or(|properties| {
-                self.properties.iter().all(|(name, values)| {
-                    properties.get(name).is_some_and(|held| {
-                        any_of(values, held.iter().map(String::as_str)) && !held.is_empty()
-                    })
-                })
-            })
+            && seen
+                .properties
+                .is_none_or(|properties| holds_all(&self.properties, properties))
     }
 
     /// Whether it may take a repository not everyone may see.

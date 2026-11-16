@@ -39,15 +39,32 @@ mod forgejo {
 
     #[test]
     fn a_webhook_named_by_either_of_forgejo_s_event_headers_announces_its_release() {
+        let origin = herald_core::Origin {
+            forge: "forgejo".to_owned(),
+            host: "codeberg.org".to_owned(),
+            owner: "forgejo".to_owned(),
+            repository: "forgejo/forgejo".to_owned(),
+            id: "73144".to_owned(),
+            topics: vec![
+                "forge".to_owned(),
+                "forgejo".to_owned(),
+                "git".to_owned(),
+                "self-hosted".to_owned(),
+            ],
+            properties: std::collections::BTreeMap::new(),
+            visibility: herald_core::Visibility::Public,
+            source: None,
+        };
         let event = Forge::Forgejo
             .event(EVENT.as_bytes(), PrereleaseRule::default())
             .unwrap()
-            .unwrap();
+            .unwrap()
+            .from_origin(origin);
         for header in ["X-Forgejo-Event", "X-Gitea-Event"] {
             assert_eq!(
                 Forge::Forgejo.hooked(
                     (&[(header, "release")], EVENT.as_bytes()),
-                    "forgejo/forgejo",
+                    ("forgejo/forgejo", "codeberg.org"),
                     &Signals::default()
                 ),
                 Ok(Hooked::Event(event.clone()))
@@ -56,7 +73,7 @@ mod forgejo {
         assert_eq!(
             Forge::Forgejo.hooked(
                 (&[("X-Gitea-Event", "push")], EVENT.as_bytes()),
-                "forgejo/forgejo",
+                ("forgejo/forgejo", "codeberg.org"),
                 &Signals::default()
             ),
             Ok(Hooked::Nothing(
@@ -67,7 +84,7 @@ mod forgejo {
             Forge::Forgejo
                 .hooked(
                     (&[("X-Forgejo-Event", "release")], EVENT.as_bytes()),
-                    "other/repo",
+                    ("other/repo", "codeberg.org"),
                     &Signals::default()
                 )
                 .is_err()

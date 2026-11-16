@@ -582,19 +582,18 @@ fn marked(config: &Config, findings: &mut Findings) {
 }
 
 /// The routes that take a private or internal repository's events to a
-/// place not declared private, where `[doctor] private_to_public` warns of
+/// place not declared private, by their sources or a member's override,
+/// where `[doctor] private_to_public` warns of
 /// them; where it refuses, the config does not load (ADR-0029).
 fn exposed(config: &Config, notes: &mut Vec<String>) {
     if config.doctor.private_to_public != Guard::Warn {
         return;
     }
     for route in config.routes.iter().filter(|route| !route.private) {
-        for name in &route.route.filter.sources {
-            if config
-                .sources
-                .get(name)
-                .is_some_and(|source| source.unlisted())
-            {
+        for (name, source) in &config.sources {
+            let taken =
+                route.route.filter.sources.contains(name) || source.names_route(&route.route.id);
+            if taken && source.unlisted() {
                 notes.push(format!(
                     "The route {} takes {}'s private or internal repositories to a place not declared private, as [doctor] private_to_public = \"warn\" lets it.",
                     route.route.id.as_str(),

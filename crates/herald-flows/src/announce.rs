@@ -10,8 +10,9 @@ use futures_util::stream::{self, StreamExt};
 use herald_config::Config;
 use herald_core::{
     Announcement, Entry, Event, Facts, Identity, Key, KindSpecs, Latest, Marker, Marks,
-    MentionStyle, Pinning, Plan, Planned, Profile, Revise, Revision, RouteId, Sent, SourceName,
-    State, Step, Templates, Threads, plan, revise, revised, schedules, steps,
+    MentionStyle, Pinning, Plan, Planned, Profile, Reach, Revise, Revision, RouteId, Sent,
+    SourceName, State, Step, Templates, Threads, Visibility, plan, revise, revised, schedules,
+    steps,
 };
 use herald_kinds::Signing;
 use herald_ports::{
@@ -813,29 +814,79 @@ pub async fn announce<S: Store, C: Clock, G: Signer, H: Http>(
     event: &Event,
     run: &str,
 ) -> Vec<Announced> {
-    announce_within(config, connected, ports, source, event, None, run).await
+    announce_within(
+        config,
+        connected,
+        ports,
+        source,
+        event,
+        Within::default(),
+        run,
+    )
+    .await
+}
+
+/// The routes an event may reach beside what each route takes: those an
+/// app may announce to, and those an owner's member names.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct Within<'a> {
+    /// The routes it may reach, where only some.
+    pub routes: Option<&'a [RouteId]>,
+    /// The routes the owner's member it is of names, where it is one's.
+    pub reach: Option<&'a Reach>,
+}
+
+impl<'a> Within<'a> {
+    /// Within `routes` alone.
+    #[must_use]
+    pub const fn routes(routes: &'a [RouteId]) -> Self {
+        Self {
+            routes: Some(routes),
+            reach: None,
+        }
+    }
 }
 
 /// [`announce`], to the routes `within` names alone where it names any: the
-/// routes an app may announce to (ADR-0007). As many routes as `[run]
-/// routes` says are announced to at once, one at a time where the store
-/// writes one record at a time, and what the project last announced is
-/// kept for each route in the file's order (ADR-0025).
+/// routes an app may announce to (ADR-0007), or those an owner's member
+/// names beside or in place of its source's; and to the `private` routes
+/// alone where the event is not public, or is an owner's member's and says
+/// nothing of who may see it, and `[doctor] private_to_public` refuses
+/// (ADR-0029). As many routes as `[run] routes` says are announced
+/// to at once, one at a time where the store writes one record at a time,
+/// and what the project last announced is kept for each route in the
+/// file's order (ADR-0025).
 pub async fn announce_within<S: Store, C: Clock, G: Signer, H: Http>(
     config: &Config,
     connected: &Connected<H>,
     ports: &Ports<'_, S, C, G>,
     source: &SourceName,
     event: &Event,
-    within: Option<&[RouteId]>,
+    within: Within<'_>,
     run: &str,
 ) -> Vec<Announced> {
+    let event = &event.clone().through(source);
+    let visibility = match (event.bounded_by(), within.reach) {
+        (Some(visibility), _) => Some(visibility),
+        (None, Some(_)) => Some(Visibility::Private),
+        (None, None) => None,
+    };
+    let bound = visibility.and_then(|visibility| crate::poll::bounded(config, visibility));
     let taking: Vec<&(PreparedRoute, H)> = connected
         .routes
         .iter()
         .filter(|(route, _)| {
-            within.is_none_or(|within| within.contains(&route.config.route.id))
-                && route.config.route.filter.takes(source, event)
+            let route = &route.config.route;
+            within
+                .routes
+                .is_none_or(|routes| routes.contains(&route.id))
+                && bound
+                    .as_ref()
+                    .is_none_or(|routes| routes.contains(&route.id))
+                && within.reach.map_or_else(
+                    || route.filter.takes(source, event),
+                    |reach| reach.takes(route, source, event),
+                )
         })
         .collect();
     let now = ports.clock.now();

@@ -3,6 +3,7 @@ use jiff::SignedDuration;
 use crate::event::Event;
 use crate::key::RouteId;
 use crate::kind::Kind;
+use crate::matching::Match;
 use crate::pattern::Pattern;
 use crate::revision::{Edits, LateRelease};
 
@@ -136,12 +137,20 @@ pub struct Filter {
     /// The versions it takes; every event, with a version or without, where
     /// absent.
     pub versions: Option<Pattern>,
+    /// What of an event it narrows its sources' events by.
+    pub matching: Match,
 }
 
 impl Filter {
     /// Whether the filter takes `event`, which came from `source`.
     #[must_use]
     pub fn takes(&self, source: &SourceName, event: &Event) -> bool {
+        self.sources.contains(source) && self.takes_event(event)
+    }
+
+    /// Whether the filter takes `event` by everything but its source.
+    #[must_use]
+    pub fn takes_event(&self, event: &Event) -> bool {
         let prerelease = match self.prereleases {
             Prereleases::Include => true,
             Prereleases::Exclude => !event.prerelease(),
@@ -152,10 +161,39 @@ impl Filter {
                 .version()
                 .is_some_and(|version| pattern.matches(version))
         });
-        self.sources.contains(source)
-            && (self.kinds.is_empty() || self.kinds.contains(event.kind()))
+        (self.kinds.is_empty() || self.kinds.contains(event.kind()))
             && prerelease
             && version
+            && self.matching.takes(event)
+    }
+}
+
+/// The routes an owner's member names, beside its source's or in their
+/// place.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct Reach {
+    /// The routes it names.
+    pub routes: Vec<RouteId>,
+    /// Whether they are the only routes it reaches.
+    pub only: bool,
+}
+
+impl Reach {
+    /// Whether `route` takes `event` of the member, which came from
+    /// `source`: by everything but the source where the member names the
+    /// route, and as the route's filter says where its routes are not the
+    /// only ones.
+    #[must_use]
+    pub fn takes(&self, route: &Route, source: &SourceName, event: &Event) -> bool {
+        self.reaches(&route.id, route.filter.sources.contains(source))
+            && route.filter.takes_event(event)
+    }
+
+    /// Whether a member reaching this may reach `route`, which names
+    /// `source` among its sources where `sourced`.
+    #[must_use]
+    pub fn reaches(&self, route: &RouteId, sourced: bool) -> bool {
+        self.routes.contains(route) || (!self.only && sourced)
     }
 }
 
@@ -254,6 +292,7 @@ pub(crate) mod tests {
                 kinds: vec![],
                 prereleases: Prereleases::Include,
                 versions: None,
+                matching: Match::default(),
             },
             destination: DestinationName::new("discord"),
             template: TemplateName::new("package-release"),
@@ -393,5 +432,47 @@ pub(crate) mod tests {
         assert_eq!(DestinationName::new("d").as_str(), "d");
         assert_eq!(TemplateName::new("t").as_str(), "t");
         assert_eq!(RoleId::new("1").as_str(), "1");
+    }
+
+    #[test]
+    fn a_route_s_match_narrows_what_its_sources_give() {
+        let mut route = route_for("r", "php-mutation-gate");
+        route.filter.matching = Match {
+            projects: vec![crate::Glob::new("other-*").unwrap()],
+            ..Match::default()
+        };
+        assert!(!route.filter.takes(&source(), &event()));
+        assert!(!route.filter.takes_event(&event()));
+        route.filter.matching.projects = vec![crate::Glob::new("php-*").unwrap()];
+        assert!(route.filter.takes(&source(), &event()));
+        assert!(route.filter.takes_event(&event()));
+    }
+
+    #[test]
+    fn a_member_reaches_the_routes_it_names_beside_or_in_place_of_its_source_s() {
+        let sourced = route_for("sourced", "php-mutation-gate");
+        let named = route_for("named", "elsewhere");
+        let none = Reach::default();
+        assert!(none.takes(&sourced, &source(), &event()));
+        assert!(!none.takes(&named, &source(), &event()));
+        let beside = Reach {
+            routes: vec![RouteId::new("named")],
+            only: false,
+        };
+        assert!(beside.takes(&sourced, &source(), &event()));
+        assert!(beside.takes(&named, &source(), &event()));
+        assert!(beside.reaches(&RouteId::new("named"), false));
+        assert!(beside.reaches(&RouteId::new("sourced"), true));
+        assert!(!beside.reaches(&RouteId::new("sourced"), false));
+        let only = Reach {
+            only: true,
+            ..beside
+        };
+        assert!(!only.takes(&sourced, &source(), &event()));
+        assert!(only.takes(&named, &source(), &event()));
+        assert!(!only.reaches(&RouteId::new("sourced"), true));
+        let mut pre_only = named;
+        pre_only.filter.prereleases = Prereleases::Only;
+        assert!(!only.takes(&pre_only, &source(), &event()));
     }
 }

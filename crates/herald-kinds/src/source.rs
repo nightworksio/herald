@@ -6,7 +6,8 @@ use std::ops::Deref;
 use std::sync::Arc;
 
 use herald_core::{
-    Cursor, Event, EventsRead, Kind, Listed, Listing, Owner, Polled, Scheme, SecretRef, Visibility,
+    Cursor, Event, EventsRead, Kind, Listed, Listing, Origin, Owner, Polled, Reach, RouteId,
+    Scheme, SecretRef, Visibility,
 };
 use herald_ports::{Boxed, DynHttp, Secret};
 use jiff::SignedDuration;
@@ -92,6 +93,22 @@ pub trait SourceConfig: fmt::Debug + Send + Sync + Itself {
     /// them.
     fn projects(&self) -> Vec<String> {
         Vec::new()
+    }
+
+    /// Whether every event it gives carries an origin.
+    fn origins(&self) -> bool {
+        false
+    }
+
+    /// Each route its options name for some of its events beside the routes
+    /// naming it, by id, with the key naming it under the source's table.
+    fn routed(&self) -> Vec<(String, String)> {
+        Vec::new()
+    }
+
+    /// Whether its options name the route `route` for some of its events.
+    fn names_route(&self, route: &RouteId) -> bool {
+        self.routed().iter().any(|(_, id)| id == route.as_str())
     }
 
     /// What polls it, reading with `token` where it has one, and watching
@@ -193,6 +210,15 @@ pub trait Expand: fmt::Debug + Send + Sync {
     /// Release before it is announced, where a tag waits (ADR-0032).
     fn tag_window(&self, _repository: &Listed) -> Option<SignedDuration> {
         None
+    }
+
+    /// Where the member `repository`'s events come from.
+    fn origin(&self, repository: &Listed) -> Origin;
+
+    /// The routes the member `repository` names beside, or in place of,
+    /// those naming the source.
+    fn reach(&self, _repository: &Listed) -> Reach {
+        Reach::default()
     }
 
     /// The project the member `repository`'s events are announced as.

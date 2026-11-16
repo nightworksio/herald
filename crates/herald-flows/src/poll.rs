@@ -5,12 +5,12 @@ use futures_util::stream::{self, StreamExt};
 use herald_config::Config;
 use std::collections::BTreeMap;
 
-use herald_core::{Cursor, Event, Polled, RouteId, SourceName, fresh};
+use herald_core::{Cursor, Event, Polled, SourceName, fresh};
 use herald_kinds::{Expand, Poll, Polling, Unpolled};
 use herald_ports::{Clock, Cursors, Http, Signer, Store, StoreError, Versioned, Written};
 use jiff::Timestamp;
 
-use crate::announce::{Announced, Outcome, Ports, Stop, announce_within, at_once};
+use crate::announce::{Announced, Outcome, Ports, Stop, Within, announce_within, at_once};
 use crate::prepare::{Connected, PreparedSource};
 
 /// What polling one source, or one member of an owner source, did.
@@ -133,7 +133,7 @@ fn unseen(
 /// every event from then on is fresh; otherwise only the newest `backfill`.
 pub(crate) async fn found<S: Store, C: Clock, G: Signer, H: Http>(
     (config, connected, ports): (&Config, &Connected<H>, &Ports<'_, S, C, G>),
-    (source, within): (&SourceName, Option<&[RouteId]>),
+    (source, within): (&SourceName, Within<'_>),
     (poll, http): (&dyn Poll, &H),
     (cursor, since, backfill): (Option<&Cursor>, Option<Timestamp>, usize),
     holder: &str,
@@ -154,14 +154,12 @@ pub(crate) async fn found<S: Store, C: Clock, G: Signer, H: Http>(
 }
 
 /// What `polled`, a poll's answer since `cursor`, holds that it has not
-/// seen, each event announced as `source`'s under `holder` to the routes
-/// its own visibility allows where it names one, and those `within` names
-/// otherwise, with the cursor to remember, holding `remembered` identities,
-/// where every route has its events; nothing where it says nothing
-/// changed.
+/// seen, each event announced as `source`'s under `holder` within `within`,
+/// with the cursor to remember, holding `remembered` identities, where
+/// every route has its events; nothing where it says nothing changed.
 pub(crate) async fn announced_found<S: Store, C: Clock, G: Signer, H: Http>(
     (config, connected, ports): (&Config, &Connected<H>, &Ports<'_, S, C, G>),
-    (source, within, holding): (&SourceName, Option<&[RouteId]>, Option<Holding<'_>>),
+    (source, within, holding): (&SourceName, Within<'_>, Option<Holding<'_>>),
     (polled, remembered): (Option<Polled>, usize),
     (cursor, since, backfill): (Option<&Cursor>, Option<Timestamp>, usize),
     holder: &str,
@@ -183,12 +181,8 @@ pub(crate) async fn announced_found<S: Store, C: Clock, G: Signer, H: Http>(
             });
             continue;
         }
-        let own = event
-            .visibility()
-            .map(|visibility| members::bounded(config, visibility));
-        let reached = own.as_ref().map_or(within, Option::as_deref);
         let outcomes =
-            announce_within(config, connected, ports, source, &event, reached, holder).await;
+            announce_within(config, connected, ports, source, &event, within, holder).await;
         settled &= !outcomes
             .iter()
             .any(|outcome| matches!(outcome.outcome, Outcome::Stopped { .. }));
@@ -239,7 +233,7 @@ async fn sweep<S: Store, C: Clock, G: Signer, H: Http>(
     let holder = format!("{run}/{}", source.name.as_str());
     let Some(found) = found(
         flow,
-        (&source.name, None),
+        (&source.name, Within::default()),
         (poll, http),
         (cursor, None, source.backfill),
         &holder,

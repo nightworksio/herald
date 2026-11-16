@@ -50,6 +50,18 @@
       "format": "date-time",
       "default": null
     },
+    "origin": {
+      "description": "Where it comes from: the forge or registry, the owner, and the\nrepository or package, which a route's `match` reads; none where it\nis left out.",
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Origin"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
     "project": {
       "description": "The project it is about.",
       "type": "string",
@@ -99,6 +111,93 @@
       "format": "uri",
       "maxLength": 4194304,
       "pattern": "^https?://"
+    },
+    "Origin": {
+      "description": "Where an event comes from: the forge or registry, the owner and the\nrepository or package, with what the source knows of it.",
+      "type": "object",
+      "properties": {
+        "forge": {
+          "description": "The forge or registry, as a source's `kind` names it, such as\n`github` or `npm`.",
+          "type": "string",
+          "examples": [
+            "github"
+          ]
+        },
+        "host": {
+          "description": "Its host, with a port where it is not the scheme's own.",
+          "type": "string",
+          "examples": [
+            "github.com"
+          ]
+        },
+        "id": {
+          "description": "The forge's or registry's stable id for it.",
+          "type": "string"
+        },
+        "owner": {
+          "description": "The owner: an account, organization or group path, or a registry's\nscope, vendor or namespace; empty where the package has none.",
+          "type": "string",
+          "default": ""
+        },
+        "properties": {
+          "description": "Its custom properties, each with the values it holds.",
+          "type": "object",
+          "additionalProperties": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "default": {}
+        },
+        "repository": {
+          "description": "The repository's full path, or the package's name.",
+          "type": "string",
+          "examples": [
+            "nightworksio/herald"
+          ]
+        },
+        "topics": {
+          "description": "Its topics.",
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "string"
+          }
+        },
+        "visibility": {
+          "description": "Who may see it.",
+          "$ref": "#/$defs/RepositoryVisibility"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "forge",
+        "host",
+        "repository",
+        "id",
+        "visibility"
+      ]
+    },
+    "RepositoryVisibility": {
+      "description": "Who may see a repository.",
+      "oneOf": [
+        {
+          "description": "Anyone.",
+          "type": "string",
+          "const": "public"
+        },
+        {
+          "description": "Members of the forge's enterprise or instance.",
+          "type": "string",
+          "const": "internal"
+        },
+        {
+          "description": "Those given access.",
+          "type": "string",
+          "const": "private"
+        }
+      ]
     }
   }
 }

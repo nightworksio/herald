@@ -5,8 +5,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::ops::Range;
 
 use herald_core::{
-    Delivery, DestinationName, Filter, Kind, Mentions, Pattern, Profile, RoleId, Route, RouteId,
-    SourceName, TemplateName, Thread,
+    Delivery, DestinationName, Filter, Glob, Kind, Match, Mentions, Pattern, Profile, RoleId,
+    Route, RouteId, SourceName, TemplateName, Thread,
 };
 use toml::Spanned;
 use toml::de::{DeTable, DeValue};
@@ -17,7 +17,7 @@ use super::{Loader, Value, list};
 use herald_kinds::{Destination, Placed, Placing, Source};
 
 use crate::config::RouteConfig;
-use crate::file::{ROUTE_KEYS, RouteFile, ThreadFile};
+use crate::file::{MatchFile, ROUTE_KEYS, RouteFile, ThreadFile};
 use crate::kinds::At;
 
 /// A route as its keys say, before its templates are compiled.
@@ -27,6 +27,7 @@ pub(super) struct Read {
     pub(super) body_span: Range<usize>,
     pub(super) body_path: String,
     pub(super) sample_kinds: BTreeSet<Kind>,
+    pub(super) origins: bool,
     pub(super) thread: Option<Spanned<String>>,
     pub(super) id_span: Range<usize>,
     pub(super) path: String,
@@ -51,6 +52,39 @@ struct Reach<'r> {
 }
 
 impl Loader<'_> {
+    /// The match `file` writes at `path`, where each of its globs reads.
+    fn matching(&mut self, file: MatchFile, path: &str) -> Option<Match> {
+        let mut sound = true;
+        let mut globs = |written: Vec<Spanned<String>>, key: &str| -> Vec<Glob> {
+            written
+                .into_iter()
+                .enumerate()
+                .filter_map(|(index, text)| match Glob::new(text.get_ref()) {
+                    Ok(glob) => Some(glob),
+                    Err(error) => {
+                        self.error(
+                            &text.span(),
+                            &format!("{path}.match.{key}[{index}]"),
+                            error.to_string(),
+                        );
+                        sound = false;
+                        None
+                    }
+                })
+                .collect()
+        };
+        let matching = Match {
+            projects: globs(file.projects, "projects"),
+            repositories: globs(file.repositories, "repositories"),
+            owners: globs(file.owners, "owners"),
+            forges: file.forges,
+            hosts: file.hosts,
+            topics: file.topics,
+            properties: file.properties,
+        };
+        sound.then_some(matching)
+    }
+
     /// The kinds of event `route` takes, each known, where its versions
     /// can match them.
     fn sample_kinds(
@@ -384,6 +418,12 @@ impl Loader<'_> {
             versions: route.versions.as_ref(),
         };
         let sample_kinds = self.sample_kinds(taken, &path, sources, apps)?;
+        let matching = self.matching(route.matching, &path)?;
+        let origins = route.sources.iter().all(|name| {
+            sources
+                .get(&SourceName::new(name.get_ref()))
+                .is_some_and(|source| source.origins())
+        });
         let filter = Filter {
             sources: route
                 .sources
@@ -395,6 +435,7 @@ impl Loader<'_> {
             versions: route
                 .versions
                 .map(|versions| Pattern::new(versions.into_inner())),
+            matching,
         };
         let config = RouteConfig {
             route: Route {
@@ -414,6 +455,7 @@ impl Loader<'_> {
             body_span: written.body.span(),
             body_path: written.body_path.clone(),
             sample_kinds,
+            origins,
             thread: thread_name,
             id_span: span,
             path,

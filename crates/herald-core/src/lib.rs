@@ -28,8 +28,10 @@ mod latest;
 mod ledger;
 mod marker;
 mod markup;
+mod matching;
 pub mod media;
 mod members;
+mod origin;
 mod pattern;
 mod pending;
 mod profile;
@@ -84,9 +86,11 @@ pub use ledger::{
 };
 pub use marker::{Marker, Marks};
 pub use markup::{LINK_SCHEMES, Text, convert, escaped, literal};
+pub use matching::Match;
 pub use members::{
     Delivered, EventsRead, Listed, Listing, Membership, Owner, Selection, Visibility,
 };
+pub use origin::Origin;
 pub use pattern::Pattern;
 pub use pending::{HeldEvent, Hold, Pending};
 pub use profile::{
@@ -102,8 +106,8 @@ pub use revision::{
     Edits, LateRelease, NO_PART, Revise, Revision, already_deleted, revise, revised,
 };
 pub use route::{
-    Delivery, DestinationName, Filter, Mentions, Pinning, Prereleases, RoleId, Route, SecretRef,
-    SourceName, TemplateName, Thread, route,
+    Delivery, DestinationName, Filter, Mentions, Pinning, Prereleases, Reach, RoleId, Route,
+    SecretRef, SourceName, TemplateName, Thread, route,
 };
 pub use signal::{EDITED, Prefer, PrereleaseRule, SIGNAL, Signal, Validators};
 pub use size::Size;

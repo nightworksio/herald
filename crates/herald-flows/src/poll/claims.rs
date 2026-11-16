@@ -34,7 +34,7 @@ impl Claims {
             }
         }
         for (name, app) in &config.apps {
-            for project in &app.projects {
+            for project in app.named() {
                 claims.claim(project, format!("the app {name}"), None);
             }
         }

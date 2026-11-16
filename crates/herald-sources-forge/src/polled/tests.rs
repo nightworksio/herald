@@ -94,6 +94,35 @@ fn seen(identities: &[&str]) -> Cursor {
 }
 
 #[test]
+fn a_repository_answer_that_names_no_origin_fails_the_poll_and_the_tag() {
+    let unreadable = || {
+        answer(
+            200,
+            &json!({"id": 7, "name": "r", "html_url": "https://forge.example/o/r", "topics": 3}),
+            None,
+        )
+    };
+    let http = Scripted::new(vec![
+        answer(200, &json!([release("v1", "2026-11-01T10:00:00Z")]), None),
+        unreadable(),
+    ]);
+    let source = releases(
+        Forge::GitHub,
+        &[Signal::Release],
+        (PrereleaseRule::Either, 0),
+    );
+    assert!(matches!(
+        polled(&source, &http, None),
+        Err(Unpolled::Unreadable(_))
+    ));
+    let tagged = Scripted::new(vec![unreadable()]);
+    assert!(matches!(
+        one_tag(Forge::GitHub, &tagged),
+        Err(Unpolled::Unreadable(_))
+    ));
+}
+
+#[test]
 fn releases_alone_ask_no_tags() {
     let http = Scripted::new(vec![
         answer(
@@ -118,6 +147,16 @@ fn releases_alone_ask_no_tags() {
         [("forge.example/7/v1", Some(Signal::Release))]
     );
     assert_eq!(found.watched, 2);
+    let origin = found.events[0].origin().unwrap();
+    assert_eq!(
+        (
+            origin.forge.as_str(),
+            origin.host.as_str(),
+            origin.repository.as_str(),
+            origin.id.as_str()
+        ),
+        ("github", "forge.example", "o/r", "7")
+    );
     assert_eq!(found.etag.as_deref(), Some("r1"));
     assert!(found.signals.is_empty());
     assert_eq!(
@@ -457,6 +496,10 @@ fn one_tag_is_read_in_full_on_each_forge() {
         ),
     ]);
     let event = one_tag(Forge::GitLab, &gitlab).unwrap();
+    assert_eq!(
+        event.origin().map(|origin| origin.repository.as_str()),
+        Some("o/r")
+    );
     assert_eq!(
         (event.identity().as_str(), event.body(), event.prerelease()),
         ("forge.example/7/v1-rc.1", "One", true)

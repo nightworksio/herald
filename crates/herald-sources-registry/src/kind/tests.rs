@@ -44,6 +44,7 @@ fn each_registry_is_a_kind_of_source_named_as_the_config_spells_it() {
         assert_eq!(source.registry, registry);
         assert_eq!(source.kind(), registry.kind());
         assert_eq!(source.moving_tags(), registry.moving_tags());
+        assert!(source.origins());
     }
 }
 

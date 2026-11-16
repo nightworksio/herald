@@ -37,6 +37,8 @@ fn each_forge_is_a_kind_of_source_named_as_the_config_spells_it() {
         assert_eq!(source.forge, forge);
         assert_eq!(source.kind(), forge.kind());
         assert_eq!(source.scheme(), Some(forge.scheme()));
+        assert!(source.origins());
+        assert_eq!(source.routed(), Vec::new());
         assert_eq!(
             source.notes(),
             forge.unsigned().into_iter().collect::<Vec<_>>()
@@ -342,4 +344,29 @@ fn each_poll_of_a_source_holding_tags_says_how_long_a_tag_waits() {
         expand.member(&member("cli")).tag_window(),
         Some(crate::TAG_WINDOW)
     );
+}
+
+#[test]
+fn an_owner_source_names_each_route_its_overrides_name() {
+    let owner = GitHubKind::checked(SourceOptions {
+        repository: None,
+        owner: Some("cli".to_owned()),
+        repositories: std::collections::BTreeMap::from([(
+            "plugin-*".to_owned(),
+            crate::Override {
+                routes: Some(vec!["plugins".to_owned()]),
+                ..crate::Override::default()
+            },
+        )]),
+        ..options("cli/cli")
+    })
+    .unwrap();
+    assert_eq!(
+        owner.routed(),
+        [(
+            "repositories.\"plugin-*\".routes".to_owned(),
+            "plugins".to_owned()
+        )]
+    );
+    assert!(owner.names_route(&herald_core::RouteId::new("plugins")));
 }

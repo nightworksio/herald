@@ -26,5 +26,5 @@ pub use herald_kinds::{ConfiguredStore, Destination, Placed, Source};
 pub use kinds::Kinds;
 pub use load::load;
 pub use reference::reference;
-pub use samples::samples;
+pub use samples::{sample_origin, samples, samples_from};
 pub use schema::schema;

@@ -55,6 +55,39 @@ impl SourceConfig for Plain {
     }
 }
 
+/// A plain source whose options name `plugins` for its plugin repositories.
+#[derive(Debug, PartialEq, Eq)]
+struct Routing(Plain);
+
+impl SourceConfig for Routing {
+    fn kind(&self) -> &'static str {
+        self.0.kind()
+    }
+
+    fn token(&self) -> Option<&SecretRef> {
+        self.0.token()
+    }
+
+    fn kinds(&self) -> &'static [Kind] {
+        self.0.kinds()
+    }
+
+    fn backfill(&self) -> usize {
+        self.0.backfill()
+    }
+
+    fn poller(&self, token: Option<Secret>, edits: bool) -> Polling {
+        self.0.poller(token, edits)
+    }
+
+    fn routed(&self) -> Vec<(String, String)> {
+        vec![(
+            "repositories.\"plugin-*\".routes".to_owned(),
+            "plugins".to_owned(),
+        )]
+    }
+}
+
 fn tokened() -> Plain {
     Plain {
         token: Some(SecretRef {
@@ -74,6 +107,9 @@ fn a_source_takes_no_webhook_and_no_moving_tag_where_its_kind_keeps_the_defaults
     assert_eq!(source.tag_window(), None);
     assert_eq!(source.notes(), Vec::<&str>::new());
     assert_eq!(source.projects(), Vec::<String>::new());
+    assert!(!source.origins());
+    assert_eq!(source.routed(), Vec::new());
+    assert!(!source.names_route(&herald_core::RouteId::new("releases")));
     assert_eq!(
         source.secret_refs(),
         vec![&SecretRef {
@@ -85,6 +121,13 @@ fn a_source_takes_no_webhook_and_no_moving_tag_where_its_kind_keeps_the_defaults
     assert_eq!(source.backfill(), 3);
     assert_eq!(source.signals(), Vec::new());
     assert_eq!(source.hooked(&[], b"{}"), Ok(Hooked::Nothing(UNHOOKED)));
+}
+
+#[test]
+fn a_source_names_a_route_only_where_its_options_route_to_it() {
+    let source = Routing(tokened());
+    assert!(source.names_route(&herald_core::RouteId::new("plugins")));
+    assert!(!source.names_route(&herald_core::RouteId::new("releases")));
 }
 
 #[test]
@@ -181,6 +224,10 @@ impl Expand for Members {
         Arc::new(Quiet(None, repository.path.clone()))
     }
 
+    fn origin(&self, repository: &Listed) -> herald_core::Origin {
+        herald_core::Origin::of_member("forge", "owner.example", repository)
+    }
+
     fn project(&self, repository: &Listed) -> Result<String, String> {
         Ok(repository.name.clone())
     }
@@ -226,6 +273,8 @@ fn an_owner_by_default_polls_each_member_on_its_own_and_follows_no_events() {
     let owner = Members;
     assert_eq!(owner.batch(), std::num::NonZeroUsize::MIN);
     assert_eq!(owner.tag_window(&one), None);
+    assert_eq!(owner.reach(&one), herald_core::Reach::default());
+    assert_eq!(owner.origin(&one).repository, "o/one");
     assert_eq!(
         pollster::block_on(owner.polled(&http, &[(&one, None), (&two, None)], &Rounded::Unread)),
         [Ok(None), Ok(None)]

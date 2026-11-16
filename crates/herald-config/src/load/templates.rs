@@ -12,7 +12,7 @@ use toml::Spanned;
 use super::route::Read;
 use super::{Loader, Value};
 use crate::file::TemplateFile;
-use crate::samples::samples;
+use crate::samples::samples_from;
 
 /// A template's sources, with where each is written.
 pub(super) struct Written {
@@ -180,7 +180,7 @@ impl Loader<'_> {
             .sample_kinds
             .iter()
             .filter_map(|kind| self.specs.get(kind))
-            .flat_map(samples)
+            .flat_map(|spec| samples_from(spec, read.origins))
             .collect();
         for event in &events {
             let context = Context {

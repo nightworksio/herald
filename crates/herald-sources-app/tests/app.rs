@@ -91,6 +91,41 @@ mod app {
     }
 
     #[test]
+    fn an_event_may_name_its_origin_which_is_checked_as_a_forge_s() {
+        let written = |origin: &str| {
+            format!(r#"{{"id":"1","project":"herald","title":"Deployed","origin":{origin}}}"#)
+        };
+        let origin = r#"{"forge":"github","host":"ghe.example:8443","owner":"nightworksio","repository":"nightworksio/herald","id":"7","topics":["release"],"properties":{"team":["core"]},"visibility":"internal"}"#;
+        let read = event(
+            "ci",
+            written(origin).as_bytes(),
+            now(),
+            &KindSpecs::default(),
+        )
+        .unwrap();
+        let origin = read.origin().unwrap();
+        assert_eq!(origin.host, "ghe.example:8443");
+        assert_eq!(origin.visibility, herald_core::Visibility::Internal);
+        assert_eq!(read.bounded_by(), Some(herald_core::Visibility::Internal));
+        let bare = event(
+            "ci",
+            br#"{"id":"1","project":"herald","title":"Deployed"}"#,
+            now(),
+            &KindSpecs::default(),
+        )
+        .unwrap();
+        assert_eq!(bare.origin(), None);
+        let refused = event(
+            "ci",
+            written(r#"{"forge":"github","host":"https://x","repository":"a/b","id":"7","visibility":"public"}"#).as_bytes(),
+            now(),
+            &KindSpecs::default(),
+        )
+        .unwrap_err();
+        assert!(matches!(refused, UnreadEvent::Problem(Problem::OriginHost)));
+    }
+
+    #[test]
     fn the_identity_is_the_app_s_name_and_its_trimmed_id() {
         let read = event(
             "deploys",

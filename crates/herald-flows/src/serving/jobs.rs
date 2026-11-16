@@ -2,16 +2,17 @@
 //! released undone so its sender's next delivery of it is admitted
 //! (ADR-0013).
 
-use herald_core::{Asked, DestinationName, Event, RouteId, Scheme, SourceName, Visibility};
-use herald_kinds::{Polling, Replying};
+use herald_core::{Asked, DestinationName, Event, Origin, Scheme, SourceName, Visibility};
+use herald_kinds::Replying;
 use herald_ports::{Clock, Cursors, Http, Signer, Store};
 
 use super::Serving;
 use super::replies::{Answered, busy, unreleased};
-use crate::announce::{Announced, Outcome, announce_within};
+use crate::announce::{Announced, Outcome, Within, announce_within};
 use crate::command_answers::{Answer, interact, replied};
 use crate::follows::{FollowError, Followed, followed};
-use crate::poll::{Sweep, Swept, bounded, polled};
+use crate::poll::{Sweep, Swept, polled};
+use crate::prepare::expanded;
 use crate::verification::{Checking, Verified, released};
 
 /// Work a request leaves to be done once it is answered.
@@ -245,7 +246,9 @@ pub async fn work<S: Store, C: Clock, G: Signer, V, H: Http, P, K>(
             member: Some(member),
             ..
         } => membered(serving, &source, (&event, &member), run).await,
-        Job::Announce { source, event, .. } => announced(serving, &source, &event, None, run).await,
+        Job::Announce { source, event, .. } => {
+            announced(serving, &source, &event, Within::default(), run).await
+        }
         Job::Poll { source, .. } => Did::Polled(
             polled(
                 serving.config,
@@ -262,7 +265,14 @@ pub async fn work<S: Store, C: Clock, G: Signer, V, H: Http, P, K>(
                 .get(&app)
                 .map(|app| app.routes.as_slice())
                 .unwrap_or_default();
-            announced(serving, &SourceName::new(&app), &event, Some(within), run).await
+            announced(
+                serving,
+                &SourceName::new(&app),
+                &event,
+                Within::routes(within),
+                run,
+            )
+            .await
         }
         Job::Follow { verified, body } => {
             let taken = followed(
@@ -299,7 +309,7 @@ async fn announced<S: Store, C: Clock, G: Signer, V, H: Http, P, K>(
     serving: &Serving<'_, S, C, G, V, H, P, K>,
     source: &SourceName,
     event: &Event,
-    within: Option<&[RouteId]>,
+    within: Within<'_>,
     run: &str,
 ) -> Did {
     Did::Announced(
@@ -343,30 +353,40 @@ async fn membered<S: Store, C: Clock, G: Signer, V, H: Http, P, K>(
     if let Some(reason) = held.collides {
         return Did::Withheld(Withheld::Collides(reason));
     }
-    let expand = serving
-        .connected
-        .sources
-        .iter()
-        .find(|(prepared, _)| prepared.name == *source)
-        .and_then(|(prepared, _)| match &prepared.poll {
-            Polling::Many(expand) => Some(expand),
-            Polling::One(_) => None,
-        });
+    let expand = expanded(serving.connected, source);
     let named = match expand {
-        None => Ok(event.clone()),
+        None => Ok((
+            event
+                .clone()
+                .seen_as(member.bounded(held.repository.visibility)),
+            None,
+        )),
         Some(expand) => expand.project(&held.repository).and_then(|project| {
+            let origin = Origin {
+                visibility: member.bounded(held.repository.visibility),
+                ..expand.origin(&held.repository)
+            };
             event
                 .clone()
                 .of_project(&project)
+                .map(|event| {
+                    (
+                        event.from_origin(origin),
+                        Some(expand.reach(&held.repository)),
+                    )
+                })
                 .map_err(|problem| problem.to_string())
         }),
     };
-    let event = match named {
-        Ok(event) => event,
+    let (event, reach) = match named {
+        Ok(named) => named,
         Err(reason) => return Did::Withheld(Withheld::Unnamed(reason)),
     };
-    let within = bounded(serving.config, member.bounded(held.repository.visibility));
-    announced(serving, source, &event, within.as_deref(), run).await
+    let within = Within {
+        routes: None,
+        reach: reach.as_ref(),
+    };
+    announced(serving, source, &event, within, run).await
 }
 
 /// Each command `asked` on `destination` answered, and each answer sent

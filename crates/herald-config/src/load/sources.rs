@@ -1,6 +1,7 @@
 //! `[sources]`: each source read by its kind.
 
 use std::collections::BTreeMap;
+use std::ops::Range;
 
 use herald_core::SourceName;
 use herald_kinds::Source;
@@ -15,8 +16,12 @@ impl Loader<'_> {
         &mut self,
         value: Option<Value<'_>>,
         read: &dyn Fn(&str) -> Result<String, String>,
-    ) -> BTreeMap<SourceName, Source> {
+    ) -> (
+        BTreeMap<SourceName, Source>,
+        BTreeMap<SourceName, Range<usize>>,
+    ) {
         let mut sources = BTreeMap::new();
+        let mut spans = BTreeMap::new();
         for (name, value) in self.named(value, "sources") {
             let path = format!("sources.{name}");
             let span = value.span();
@@ -32,10 +37,51 @@ impl Loader<'_> {
                 .source_named(&kind)
                 .and_then(|kind| kind.parse(self, rest, at, read));
             if let Some(source) = source {
+                spans.insert(SourceName::new(&name), span);
                 sources.insert(SourceName::new(name), source);
             }
         }
-        sources
+        (sources, spans)
+    }
+
+    /// Each route a source names for some of its events, refused where no
+    /// route has its id, or where it is not declared private, the source
+    /// may take private or internal repositories, and `[doctor]
+    /// private_to_public` refuses (ADR-0029).
+    pub(super) fn routed(
+        &mut self,
+        (sources, spans): (
+            &BTreeMap<SourceName, Source>,
+            &BTreeMap<SourceName, Range<usize>>,
+        ),
+        routes: &[Read],
+        doctor: Doctor,
+    ) {
+        for (name, source) in sources {
+            let span = spans.get(name).cloned().unwrap_or_default();
+            for (key, id) in source.routed() {
+                let path = format!("sources.{}.{key}", name.as_str());
+                let Some(read) = routes
+                    .iter()
+                    .find(|read| read.config.route.id.as_str() == id)
+                else {
+                    self.error(
+                        &span,
+                        &path,
+                        format!("there is no route with the id \"{id}\"; name a route's id"),
+                    );
+                    continue;
+                };
+                if doctor.private_to_public == Guard::Refuse
+                    && !read.config.private
+                    && source.unlisted()
+                {
+                    self.error(&span, &path, format!(
+                        "the route {id} is not declared private, and this source may take private or internal repositories; set private = true on the route where its place is private, or set [doctor] private_to_public = \"warn\""
+                    ));
+                }
+            }
+        }
     }
 
     /// Each route that takes a source's private or internal repositories to

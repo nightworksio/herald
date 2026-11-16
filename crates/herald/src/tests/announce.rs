@@ -464,7 +464,7 @@ fn with_tag(world: &World) {
         (
             "/repos/cli/cli",
             200,
-            r#"{"id":212613049,"name":"cli","html_url":"https://github.com/cli/cli"}"#,
+            r#"{"id":212613049,"name":"cli","visibility":"public","html_url":"https://github.com/cli/cli"}"#,
         ),
         (
             "/repos/cli/cli/git/ref/tags/v1",

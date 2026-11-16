@@ -2,8 +2,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::num::NonZeroUsize;
 
 use herald_core::{
-    Attempts, DestinationName, Inbound, KindSpecs, Profile, Retention, Route, RouteId, Sandbox,
-    SecretRef, SourceName, Templates,
+    Attempts, DestinationName, Glob, Inbound, KindSpecs, Profile, Retention, Route, RouteId,
+    Sandbox, SecretRef, SourceName, Templates,
 };
 use herald_kinds::{ConfiguredStore, Destination, Placed, Source};
 use jiff::SignedDuration;
@@ -140,11 +140,29 @@ pub struct RouteConfig {
 pub struct App {
     /// The SHA-256 of each of its tokens, in lowercase hex.
     pub tokens: Vec<String>,
-    /// The projects it may announce.
-    pub projects: Vec<String>,
+    /// The projects it may announce, each a glob.
+    pub projects: Vec<Glob>,
     /// The routes it announces to: those it names, or every route that
     /// names it among its sources.
     pub routes: Vec<RouteId>,
+}
+
+impl App {
+    /// Whether it may announce `project`.
+    #[must_use]
+    pub fn announces(&self, project: &str) -> bool {
+        self.projects.iter().any(|glob| glob.matches(project))
+    }
+
+    /// The projects it names one by one, which it announces as: each of its
+    /// projects with no wildcard. A glob scopes what it may announce and
+    /// claims no project.
+    pub fn named(&self) -> impl Iterator<Item = &str> {
+        self.projects
+            .iter()
+            .filter(|glob| glob.specificity().0)
+            .map(Glob::as_str)
+    }
 }
 
 /// How a run holds and keeps an announcement.

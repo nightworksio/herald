@@ -61,7 +61,11 @@ mod webhooks {
         ];
         for (forge, header, payload) in &cases {
             let hooked = |repository: &str, signals: &Signals| {
-                forge.hooked((&[*header], payload.as_bytes()), repository, signals)
+                forge.hooked(
+                    (&[*header], payload.as_bytes()),
+                    (repository, "forge.example"),
+                    signals,
+                )
             };
             assert_eq!(hooked("CLI/cli", &tags()), Ok(Hooked::Poll), "{forge:?}");
             assert_eq!(
@@ -99,7 +103,11 @@ mod webhooks {
             (Forge::GitHub, ("X-GitHub-Event", "create"), "not json"),
         ] {
             assert_eq!(
-                forge.hooked((&[header], payload.as_bytes()), "cli/cli", &tags()),
+                forge.hooked(
+                    (&[header], payload.as_bytes()),
+                    ("cli/cli", "forge.example"),
+                    &tags()
+                ),
                 Ok(Hooked::Nothing(OTHER_EVENT))
             );
             assert_eq!(
@@ -128,7 +136,11 @@ mod webhooks {
         for (forge, header, action) in cases {
             let payload = published(action, true);
             let hooked = |repository: &str, signals: &Signals| {
-                forge.hooked((&[header], payload.as_bytes()), repository, signals)
+                forge.hooked(
+                    (&[header], payload.as_bytes()),
+                    (repository, "forge.example"),
+                    signals,
+                )
             };
             assert_eq!(
                 hooked("CLI/cli", &packages()),
@@ -167,7 +179,11 @@ mod webhooks {
             );
             let unlinked = published(action, false);
             assert_eq!(
-                forge.hooked((&[header], unlinked.as_bytes()), "cli/cli", &packages()),
+                forge.hooked(
+                    (&[header], unlinked.as_bytes()),
+                    ("cli/cli", "forge.example"),
+                    &packages()
+                ),
                 Ok(Hooked::Nothing(UNLINKED))
             );
             assert_eq!(
@@ -210,7 +226,11 @@ mod webhooks {
             ),
         ] {
             assert_eq!(
-                forge.hooked((&[header], payload.as_bytes()), "cli/cli", &packages()),
+                forge.hooked(
+                    (&[header], payload.as_bytes()),
+                    ("cli/cli", "forge.example"),
+                    &packages()
+                ),
                 Ok(Hooked::Nothing(OTHER_EVENT)),
                 "{forge:?} {payload}"
             );

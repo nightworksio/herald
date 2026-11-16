@@ -11,7 +11,7 @@ use crate::harness::*;
 const RELEASES: &str = "/repos/nightworksio/php-mutation-gate/releases?per_page=30";
 const TAGS: &str = "/repos/nightworksio/php-mutation-gate/tags?per_page=30";
 const REPOSITORY: &str = "/repos/nightworksio/php-mutation-gate";
-const PAGE: &str = r#"{"id":1,"name":"php-mutation-gate","html_url":"https://github.com/nightworksio/php-mutation-gate"}"#;
+const PAGE: &str = r#"{"id":1,"name":"php-mutation-gate","visibility":"public","html_url":"https://github.com/nightworksio/php-mutation-gate"}"#;
 const TAGGED: &str = r#"[{"name":"v1"}]"#;
 
 fn tagged(prefer: Option<herald_core::Prefer>) -> Config {

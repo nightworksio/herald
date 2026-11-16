@@ -55,9 +55,20 @@ mod github {
     fn a_webhook_of_the_source_s_published_release_announces_it() {
         let hooked = Forge::GitHub.hooked(
             (&[RELEASE], EVENT.as_bytes()),
-            "CLI/cli",
+            ("CLI/cli", "github.com"),
             &Signals::default(),
         );
+        let origin = herald_core::Origin {
+            forge: "github".to_owned(),
+            host: "github.com".to_owned(),
+            owner: "cli".to_owned(),
+            repository: "cli/cli".to_owned(),
+            id: "212613049".to_owned(),
+            topics: vec![],
+            properties: std::collections::BTreeMap::new(),
+            visibility: herald_core::Visibility::Public,
+            source: None,
+        };
         assert_eq!(
             hooked,
             Ok(Hooked::Event(
@@ -65,6 +76,7 @@ mod github {
                     .event(EVENT.as_bytes(), PrereleaseRule::default())
                     .unwrap()
                     .unwrap()
+                    .from_origin(origin)
             ))
         );
     }
@@ -79,7 +91,11 @@ mod github {
             "the source announces no releases of the repository",
         ));
         assert_eq!(
-            Forge::GitHub.hooked((&[RELEASE], EVENT.as_bytes()), "cli/cli", &tags),
+            Forge::GitHub.hooked(
+                (&[RELEASE], EVENT.as_bytes()),
+                ("cli/cli", "github.com"),
+                &tags
+            ),
             unsignalled
         );
         assert_eq!(
@@ -115,7 +131,11 @@ mod github {
             (PrereleaseRule::Tag, true),
         ] {
             assert_eq!(
-                marked(Forge::GitHub.hooked((&[RELEASE], &candidate), "cli/cli", &ruled(rule))),
+                marked(Forge::GitHub.hooked(
+                    (&[RELEASE], &candidate),
+                    ("cli/cli", "github.com"),
+                    &ruled(rule)
+                )),
                 (prerelease, release)
             );
             assert_eq!(
@@ -216,15 +236,17 @@ mod github {
     #[test]
     fn a_webhook_of_a_release_edited_announces_it_marked_as_an_edit() {
         let changed = edited(|payload| payload["action"] = json!("edited"));
-        let Ok(Hooked::Event(event)) =
-            Forge::GitHub.hooked((&[RELEASE], &changed), "cli/cli", &Signals::default())
-        else {
+        let Ok(Hooked::Event(event)) = Forge::GitHub.hooked(
+            (&[RELEASE], &changed),
+            ("cli/cli", "github.com"),
+            &Signals::default(),
+        ) else {
             panic!("an edited release is announced as an edit");
         };
         assert!(event.edited());
         let Ok(Hooked::Event(first)) = Forge::GitHub.hooked(
             (&[RELEASE], EVENT.as_bytes()),
-            "cli/cli",
+            ("cli/cli", "github.com"),
             &Signals::default(),
         ) else {
             panic!("a published release is announced");
@@ -239,7 +261,7 @@ mod github {
             assert_eq!(
                 Forge::GitHub.hooked(
                     (headers, b"{\"zen\":\"x\"}"),
-                    "cli/cli",
+                    ("cli/cli", "github.com"),
                     &Signals::default()
                 ),
                 Ok(Hooked::Nothing(
@@ -249,7 +271,11 @@ mod github {
         }
         let created = edited(|payload| payload["action"] = json!("created"));
         assert_eq!(
-            Forge::GitHub.hooked((&[RELEASE], &created), "cli/cli", &Signals::default()),
+            Forge::GitHub.hooked(
+                (&[RELEASE], &created),
+                ("cli/cli", "github.com"),
+                &Signals::default()
+            ),
             Ok(Hooked::Nothing(
                 "the release is not published, or is a draft"
             ))
@@ -292,7 +318,7 @@ mod github {
     fn a_webhook_of_another_repository_or_of_no_release_is_refused() {
         let elsewhere = Forge::GitHub.hooked(
             (&[RELEASE], EVENT.as_bytes()),
-            "other/repo",
+            ("other/repo", "github.com"),
             &Signals::default(),
         );
         assert_eq!(
@@ -306,14 +332,22 @@ mod github {
         let unnamed = edited(|payload| payload["repository"]["full_name"] = json!(7));
         assert_eq!(
             Forge::GitHub
-                .hooked((&[RELEASE], &unnamed), "cli/cli", &Signals::default())
+                .hooked(
+                    (&[RELEASE], &unnamed),
+                    ("cli/cli", "github.com"),
+                    &Signals::default()
+                )
                 .unwrap_err()
                 .to_string(),
             "GitHub's release event could not be read: it is not of cli/cli, the repository its source names"
         );
         assert_eq!(
             Forge::GitHub
-                .hooked((&[RELEASE], b"{}"), "cli/cli", &Signals::default())
+                .hooked(
+                    (&[RELEASE], b"{}"),
+                    ("cli/cli", "github.com"),
+                    &Signals::default()
+                )
                 .unwrap_err()
                 .to_string(),
             "GitHub's release event could not be read: missing field `action` at line 1 column 2"

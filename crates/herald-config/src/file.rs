@@ -242,6 +242,53 @@ pub(crate) struct RouteFile {
     /// whose name or notes the forge says were edited (`release`).
     #[serde(default)]
     pub(crate) edits: Edits,
+    /// What of an event it narrows its sources' events by, an event taken
+    /// only where every key holds; every event its other keys take where
+    /// absent.
+    #[serde(default, rename = "match")]
+    pub(crate) matching: MatchFile,
+}
+
+/// What of an event a route narrows its sources' events by. Each list
+/// takes any one of what it holds, and every event where empty; an event
+/// with no origin, such as a feed's, is taken only where the match names
+/// projects alone.
+#[derive(Debug, Default, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+#[serde(rename = "Match")]
+pub(crate) struct MatchFile {
+    /// The projects taken, as globs, ignoring case.
+    #[serde(default)]
+    #[schemars(with = "Vec<String>", example = MatchFile::PROJECTS)]
+    pub(crate) projects: Vec<Spanned<String>>,
+    /// The repositories or packages taken by their full path, as globs,
+    /// ignoring case, such as `"*/plugin-*"`.
+    #[serde(default)]
+    #[schemars(with = "Vec<String>")]
+    pub(crate) repositories: Vec<Spanned<String>>,
+    /// The owners taken: accounts, organizations, groups, or a registry's
+    /// scopes, vendors and namespaces, as globs, ignoring case.
+    #[serde(default)]
+    #[schemars(with = "Vec<String>")]
+    pub(crate) owners: Vec<Spanned<String>>,
+    /// The forges and registries taken, as a source's `kind` names them.
+    #[serde(default)]
+    pub(crate) forges: Vec<String>,
+    /// The hosts taken, such as `github.com` or `ghe.example`.
+    #[serde(default)]
+    pub(crate) hosts: Vec<String>,
+    /// The topics, any one of which a repository holds.
+    #[serde(default)]
+    pub(crate) topics: Vec<String>,
+    /// The custom properties, every one of which a repository holds with
+    /// one of the values given for it; any value where none is given.
+    #[serde(default)]
+    pub(crate) properties: BTreeMap<String, Vec<String>>,
+}
+
+impl MatchFile {
+    /// The projects the schema shows as an example.
+    const PROJECTS: [&str; 1] = ["plugin-*"];
 }
 
 impl RouteFile {
@@ -252,7 +299,7 @@ impl RouteFile {
 }
 
 /// The keys every route may give, whatever its destination.
-pub(crate) const ROUTE_KEYS: [&str; 14] = [
+pub(crate) const ROUTE_KEYS: [&str; 15] = [
     "id",
     "sources",
     "kinds",
@@ -267,6 +314,7 @@ pub(crate) const ROUTE_KEYS: [&str; 14] = [
     "private",
     "late_release",
     "edits",
+    "match",
 ];
 
 /// A template: its title, and its body inline or in a file beside the config.
@@ -297,7 +345,10 @@ pub(crate) struct AppFile {
     #[serde(default)]
     #[schemars(with = "Vec<TokenHash>")]
     pub(crate) tokens: Vec<Spanned<String>>,
-    /// The projects it may announce: at least one.
+    /// The projects it may announce, at least one, each a glob ignoring
+    /// case, such as `"plugin-*"`. A project named with no wildcard is one
+    /// the app announces as; a glob only scopes what it may announce, and
+    /// takes no project from a source or member.
     #[schemars(length(min = 1), example = AppFile::PROJECTS)]
     pub(crate) projects: Vec<String>,
     /// The routes it announces to, each naming the app among its sources;

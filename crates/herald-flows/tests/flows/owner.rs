@@ -12,7 +12,9 @@ use serde_json::json;
 use crate::harness::*;
 
 mod feed;
+mod held;
 mod packages;
+mod routes;
 mod tags;
 
 pub(crate) const LISTING: &str =
@@ -716,7 +718,7 @@ fn a_member_whose_template_names_another_source_s_project_from_a_hostile_topic_i
         "ci".to_owned(),
         herald_config::App {
             tokens: Vec::new(),
-            projects: vec!["deploys".to_owned()],
+            projects: vec![herald_core::Glob::new("deploys").unwrap()],
             routes: Vec::new(),
         },
     );

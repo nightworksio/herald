@@ -17,7 +17,7 @@ The HTTP API's apps, by name.
 
 | Setting | Type | What it sets |
 |---------|------|--------------|
-| `apps.<name>.projects` | array of string | The projects it may announce: at least one. |
+| `apps.<name>.projects` | array of string | The projects it may announce, at least one, each a glob ignoring case, such as `"plugin-*"`. A project named with no wildcard is one the app announces as; a glob only scopes what it may announce, and takes no project from a source or member. |
 | `apps.<name>.routes` | array of string | The routes it announces to, each naming the app among its sources; every such route where it names none. |
 | `apps.<name>.tokens` | array of [TokenHash](#tokenhash) | The SHA-256 of each of the app's tokens, written `sha256:` and 64 lowercase hex digits, as `herald token new` prints it. A token is rotated by adding the new one before the old one is removed. |
 
@@ -279,6 +279,14 @@ Which events go where, rendered how.
 | `routes[].id` | string | The route's stable id, part of every announcement's key. |
 | `routes[].kinds` | array of [Kind](#kind) | The kinds of event it takes; every kind where absent. |
 | `routes[].late_release` | [LateRelease](#laterelease) | What it does with a Release whose tag it already announced: edits the tag's post to it, or posts it anew where the destination cannot edit (`edit`); posts it anew (`post`); or leaves the tag's post (`skip`). |
+| `routes[].match` | table | What of an event it narrows its sources' events by, an event taken only where every key holds; every event its other keys take where absent. |
+| `routes[].match.forges` | array of string | The forges and registries taken, as a source's `kind` names them. |
+| `routes[].match.hosts` | array of string | The hosts taken, such as `github.com` or `ghe.example`. |
+| `routes[].match.owners` | array of string | The owners taken: accounts, organizations, groups, or a registry's scopes, vendors and namespaces, as globs, ignoring case. |
+| `routes[].match.projects` | array of string | The projects taken, as globs, ignoring case. |
+| `routes[].match.properties.<name>` | array of string |  |
+| `routes[].match.repositories` | array of string | The repositories or packages taken by their full path, as globs, ignoring case, such as `"*/plugin-*"`. |
+| `routes[].match.topics` | array of string | The topics, any one of which a repository holds. |
 | `routes[].mentions` | table | Who it mentions. |
 | `routes[].mentions.roles` | array of string | The roles it pings, by the destination's ids for them. |
 | `routes[].mentions.subscribers` | boolean | Whether it mentions the subscribers herald keeps. |
@@ -310,6 +318,14 @@ Which events go where, rendered how.
 | `routes[].late_release` | [LateRelease](#laterelease) | What it does with a Release whose tag it already announced: edits the tag's post to it, or posts it anew where the destination cannot edit (`edit`); posts it anew (`post`); or leaves the tag's post (`skip`). |
 | `routes[].limit` | integer | The most characters the server takes in a status, Mastodon's own 500 where it is not given. |
 | `routes[].link_length` | integer | The characters the server counts a link as, however long it is: its `characters_reserved_per_url`, Mastodon's own 23 where unset. |
+| `routes[].match` | table | What of an event it narrows its sources' events by, an event taken only where every key holds; every event its other keys take where absent. |
+| `routes[].match.forges` | array of string | The forges and registries taken, as a source's `kind` names them. |
+| `routes[].match.hosts` | array of string | The hosts taken, such as `github.com` or `ghe.example`. |
+| `routes[].match.owners` | array of string | The owners taken: accounts, organizations, groups, or a registry's scopes, vendors and namespaces, as globs, ignoring case. |
+| `routes[].match.projects` | array of string | The projects taken, as globs, ignoring case. |
+| `routes[].match.properties.<name>` | array of string |  |
+| `routes[].match.repositories` | array of string | The repositories or packages taken by their full path, as globs, ignoring case, such as `"*/plugin-*"`. |
+| `routes[].match.topics` | array of string | The topics, any one of which a repository holds. |
 | `routes[].mentions` | table | Who it mentions. |
 | `routes[].mentions.roles` | array of string | The roles it pings, by the destination's ids for them. |
 | `routes[].mentions.subscribers` | boolean | Whether it mentions the subscribers herald keeps. |
@@ -336,6 +352,14 @@ Which events go where, rendered how.
 | `routes[].id` | string | The route's stable id, part of every announcement's key. |
 | `routes[].kinds` | array of [Kind](#kind) | The kinds of event it takes; every kind where absent. |
 | `routes[].late_release` | [LateRelease](#laterelease) | What it does with a Release whose tag it already announced: edits the tag's post to it, or posts it anew where the destination cannot edit (`edit`); posts it anew (`post`); or leaves the tag's post (`skip`). |
+| `routes[].match` | table | What of an event it narrows its sources' events by, an event taken only where every key holds; every event its other keys take where absent. |
+| `routes[].match.forges` | array of string | The forges and registries taken, as a source's `kind` names them. |
+| `routes[].match.hosts` | array of string | The hosts taken, such as `github.com` or `ghe.example`. |
+| `routes[].match.owners` | array of string | The owners taken: accounts, organizations, groups, or a registry's scopes, vendors and namespaces, as globs, ignoring case. |
+| `routes[].match.projects` | array of string | The projects taken, as globs, ignoring case. |
+| `routes[].match.properties.<name>` | array of string |  |
+| `routes[].match.repositories` | array of string | The repositories or packages taken by their full path, as globs, ignoring case, such as `"*/plugin-*"`. |
+| `routes[].match.topics` | array of string | The topics, any one of which a repository holds. |
 | `routes[].mentions` | table | Who it mentions. |
 | `routes[].mentions.roles` | array of string | The roles it pings, by the destination's ids for them. |
 | `routes[].mentions.subscribers` | boolean | Whether it mentions the subscribers herald keeps. |
@@ -362,6 +386,14 @@ Which events go where, rendered how.
 | `routes[].id` | string | The route's stable id, part of every announcement's key. |
 | `routes[].kinds` | array of [Kind](#kind) | The kinds of event it takes; every kind where absent. |
 | `routes[].late_release` | [LateRelease](#laterelease) | What it does with a Release whose tag it already announced: edits the tag's post to it, or posts it anew where the destination cannot edit (`edit`); posts it anew (`post`); or leaves the tag's post (`skip`). |
+| `routes[].match` | table | What of an event it narrows its sources' events by, an event taken only where every key holds; every event its other keys take where absent. |
+| `routes[].match.forges` | array of string | The forges and registries taken, as a source's `kind` names them. |
+| `routes[].match.hosts` | array of string | The hosts taken, such as `github.com` or `ghe.example`. |
+| `routes[].match.owners` | array of string | The owners taken: accounts, organizations, groups, or a registry's scopes, vendors and namespaces, as globs, ignoring case. |
+| `routes[].match.projects` | array of string | The projects taken, as globs, ignoring case. |
+| `routes[].match.properties.<name>` | array of string |  |
+| `routes[].match.repositories` | array of string | The repositories or packages taken by their full path, as globs, ignoring case, such as `"*/plugin-*"`. |
+| `routes[].match.topics` | array of string | The topics, any one of which a repository holds. |
 | `routes[].mentions` | table | Who it mentions. |
 | `routes[].mentions.roles` | array of string | The roles it pings, by the destination's ids for them. |
 | `routes[].mentions.subscribers` | boolean | Whether it mentions the subscribers herald keeps. |
@@ -391,6 +423,14 @@ Which events go where, rendered how.
 | `routes[].kinds` | array of [Kind](#kind) | The kinds of event it takes; every kind where absent. |
 | `routes[].language` | string | The language each Note is written in, as an ISO 639 code. |
 | `routes[].late_release` | [LateRelease](#laterelease) | What it does with a Release whose tag it already announced: edits the tag's post to it, or posts it anew where the destination cannot edit (`edit`); posts it anew (`post`); or leaves the tag's post (`skip`). |
+| `routes[].match` | table | What of an event it narrows its sources' events by, an event taken only where every key holds; every event its other keys take where absent. |
+| `routes[].match.forges` | array of string | The forges and registries taken, as a source's `kind` names them. |
+| `routes[].match.hosts` | array of string | The hosts taken, such as `github.com` or `ghe.example`. |
+| `routes[].match.owners` | array of string | The owners taken: accounts, organizations, groups, or a registry's scopes, vendors and namespaces, as globs, ignoring case. |
+| `routes[].match.projects` | array of string | The projects taken, as globs, ignoring case. |
+| `routes[].match.properties.<name>` | array of string |  |
+| `routes[].match.repositories` | array of string | The repositories or packages taken by their full path, as globs, ignoring case, such as `"*/plugin-*"`. |
+| `routes[].match.topics` | array of string | The topics, any one of which a repository holds. |
 | `routes[].mentions` | table | Who it mentions. |
 | `routes[].mentions.roles` | array of string | The roles it pings, by the destination's ids for them. |
 | `routes[].mentions.subscribers` | boolean | Whether it mentions the subscribers herald keeps. |
@@ -528,6 +568,8 @@ A GitHub repository's releases, tags and packages.
 | `sources.<name>.remembered` | integer | How many identities the cursor remembers, newest first; 500 where absent, and at least `page`. |
 | `sources.<name>.repositories.<name>.prerelease` | [PrereleaseRule](#prereleaserule) | How a pre-release of theirs is told, as the source's `prerelease` writes it; the source's where absent. |
 | `sources.<name>.repositories.<name>.project` | string | The project their events are announced as, a template as the source's `project` is; the source's where absent. |
+| `sources.<name>.repositories.<name>.routes` | array of string | The routes their events also reach, by id, whatever sources those routes name; each route's other keys still narrow what it takes. |
+| `sources.<name>.repositories.<name>.routes_only` | boolean | Whether `routes` are the only routes their events reach, leaving out the routes that name the source; false where absent. |
 | `sources.<name>.repositories.<name>.signals` | array of [Signal](#signal) | What they announce, as the source's `signals` writes it; the source's where absent. |
 | `sources.<name>.repository` | string | The repository, as `owner/name`, or a GitLab project's full path, such as `group/subgroup/name`; or `owner` in its place. |
 | `sources.<name>.signals` | array of [Signal](#signal) | What the source announces of each repository: its published Releases, its version tags, the versions of its packages, or several; `["release"]` where absent. A tag and a Release of it share one identity, so each route announces it once. |
@@ -603,6 +645,8 @@ A GitLab project's releases, tags and packages.
 | `sources.<name>.remembered` | integer | How many identities the cursor remembers, newest first; 500 where absent, and at least `page`. |
 | `sources.<name>.repositories.<name>.prerelease` | [PrereleaseRule](#prereleaserule) | How a pre-release of theirs is told, as the source's `prerelease` writes it; the source's where absent. |
 | `sources.<name>.repositories.<name>.project` | string | The project their events are announced as, a template as the source's `project` is; the source's where absent. |
+| `sources.<name>.repositories.<name>.routes` | array of string | The routes their events also reach, by id, whatever sources those routes name; each route's other keys still narrow what it takes. |
+| `sources.<name>.repositories.<name>.routes_only` | boolean | Whether `routes` are the only routes their events reach, leaving out the routes that name the source; false where absent. |
 | `sources.<name>.repositories.<name>.signals` | array of [Signal](#signal) | What they announce, as the source's `signals` writes it; the source's where absent. |
 | `sources.<name>.repository` | string | The repository, as `owner/name`, or a GitLab project's full path, such as `group/subgroup/name`; or `owner` in its place. |
 | `sources.<name>.signals` | array of [Signal](#signal) | What the source announces of each repository: its published Releases, its version tags, the versions of its packages, or several; `["release"]` where absent. A tag and a Release of it share one identity, so each route announces it once. |
@@ -678,6 +722,8 @@ A Forgejo or Gitea repository's releases, tags and packages.
 | `sources.<name>.remembered` | integer | How many identities the cursor remembers, newest first; 500 where absent, and at least `page`. |
 | `sources.<name>.repositories.<name>.prerelease` | [PrereleaseRule](#prereleaserule) | How a pre-release of theirs is told, as the source's `prerelease` writes it; the source's where absent. |
 | `sources.<name>.repositories.<name>.project` | string | The project their events are announced as, a template as the source's `project` is; the source's where absent. |
+| `sources.<name>.repositories.<name>.routes` | array of string | The routes their events also reach, by id, whatever sources those routes name; each route's other keys still narrow what it takes. |
+| `sources.<name>.repositories.<name>.routes_only` | boolean | Whether `routes` are the only routes their events reach, leaving out the routes that name the source; false where absent. |
 | `sources.<name>.repositories.<name>.signals` | array of [Signal](#signal) | What they announce, as the source's `signals` writes it; the source's where absent. |
 | `sources.<name>.repository` | string | The repository, as `owner/name`, or a GitLab project's full path, such as `group/subgroup/name`; or `owner` in its place. |
 | `sources.<name>.signals` | array of [Signal](#signal) | What the source announces of each repository: its published Releases, its version tags, the versions of its packages, or several; `["release"]` where absent. A tag and a Release of it share one identity, so each route announces it once. |

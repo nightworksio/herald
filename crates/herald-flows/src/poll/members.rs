@@ -6,7 +6,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use futures_util::stream::{self, StreamExt};
 use herald_config::{Config, Guard};
 use herald_core::{
-    Cursor, Listed, Listing, Membership, Owner, Polled, RouteId, SourceName, Visibility,
+    Cursor, Listed, Listing, Membership, Origin, Owner, Polled, RouteId, SourceName, Visibility,
 };
 use herald_kinds::{Changed, Expand, Expanded, Rounded, Unlisted};
 use herald_ports::{Clock, Cursors, Http, Signer, Store, StoreError, Version, Versioned, Written};
@@ -14,7 +14,7 @@ use jiff::Timestamp;
 
 use super::claims::Claims;
 use super::{Remembered, Sweep, Swept, announced_found, halted, remembered, stored};
-use crate::announce::{Ports, Stop, at_once};
+use crate::announce::{Ports, Stop, Within, at_once};
 use crate::prepare::{Connected, PreparedSource};
 
 /// One member as this round holds it: its membership, the version it was
@@ -159,6 +159,18 @@ pub(crate) fn bounded(config: &Config, visibility: Visibility) -> Option<Vec<Rou
     )
 }
 
+/// `polled`, each of its events from `origin`.
+fn originated(polled: Option<Polled>, origin: &Origin) -> Option<Polled> {
+    polled.map(|polled| Polled {
+        events: polled
+            .events
+            .into_iter()
+            .map(|event| event.from_origin(origin.clone()))
+            .collect(),
+        ..polled
+    })
+}
+
 /// The member `held`, whose poll answered `polled`, announced, and its
 /// cursor written where it moved.
 async fn member<S: Store, C: Clock, G: Signer, H: Http>(
@@ -183,15 +195,23 @@ async fn member<S: Store, C: Clock, G: Signer, H: Http>(
                 held.membership.repository.id
             );
             let since = (held.membership.discovered > first).then_some(held.membership.discovered);
-            let within = bounded(flow.0, held.membership.repository.visibility);
             let repository = &held.membership.repository;
+            let reach = expand.reach(repository);
+            let polled = originated(polled, &expand.origin(repository));
             let holding = expand.tag_window(repository).map(|window| super::Holding {
                 window,
                 member: Some(&repository.id),
             });
             announced_found(
                 flow,
-                (&source.name, within.as_deref(), holding),
+                (
+                    &source.name,
+                    Within {
+                        routes: None,
+                        reach: Some(&reach),
+                    },
+                    holding,
+                ),
                 (polled, expand.remembered()),
                 (held.membership.cursor.as_ref(), since, source.backfill),
                 &holder,
