@@ -1,6 +1,10 @@
+use std::sync::Arc;
+
 use herald_core::Sent;
 use herald_ports::{Boxed, CryptoError, DynHttp, DynSigner, HttpError};
 use jiff::Timestamp;
+
+use crate::Reached;
 
 /// What an activity delivered to an inbox herald serves asks of it.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -42,6 +46,21 @@ pub trait Federates: Send + Sync {
 
     /// The domain its handle is on.
     fn domain(&self) -> &str;
+
+    /// The actor `project` announces as, or why it names none, where each
+    /// project announces as an actor of its own; none where it announces as
+    /// one actor.
+    fn names(&self, project: &str) -> Option<Result<String, String>>;
+
+    /// It, announcing as the actor `name`.
+    fn named(&self, name: &str) -> Arc<dyn Federates>;
+
+    /// It, as a route's destination.
+    fn reached(&self) -> Reached;
+
+    /// The name of the actor whose id is `id`, where `id` is the id of an
+    /// actor served where it is.
+    fn name_in<'a>(&self, id: &'a str) -> Option<&'a str>;
 
     /// The actor's id.
     fn id(&self) -> String;

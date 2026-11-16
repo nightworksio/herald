@@ -46,6 +46,8 @@ mod poll;
 #[cfg(test)]
 mod preview;
 #[cfg(test)]
+mod projects;
+#[cfg(test)]
 mod revise;
 #[cfg(test)]
 mod serving;

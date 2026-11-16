@@ -179,13 +179,89 @@ impl Templates {
     }
 }
 
+/// A template of one line, compiled under its name, rendered with one
+/// value whose fields it reads.
+#[derive(Debug, Clone)]
+struct Line {
+    environment: Environment<'static>,
+    output: usize,
+    name: &'static str,
+}
+
+impl Line {
+    fn compile(name: &'static str, source: &str, sandbox: Sandbox) -> Result<Self, TemplateError> {
+        let mut environment = sandboxed(sandbox, BTreeSet::new());
+        environment
+            .add_template_owned(name, source.to_owned())
+            .map_err(|error| failure(name, &error))?;
+        Ok(Self {
+            environment,
+            output: sandbox.output,
+            name,
+        })
+    }
+
+    /// Each name the template reads that is neither one of `fields` of
+    /// `value` nor a function every template has, in order.
+    fn unknown(&self, value: &str, fields: &[&str]) -> Vec<String> {
+        let mut unknown: Vec<String> = self
+            .environment
+            .get_template(self.name)
+            .map(|template| template.undeclared_variables(true))
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|name| {
+                let mut parts = name.split('.');
+                let top = parts.next().unwrap_or_default();
+                if top == value {
+                    parts.next().is_some_and(|field| !fields.contains(&field))
+                } else {
+                    !self.environment.globals().any(|(global, _)| global == top)
+                }
+            })
+            .collect();
+        unknown.sort();
+        unknown
+    }
+
+    /// The template rendered with `context`, on one line: refused where it
+    /// prints nothing, saying it names nothing for `subject`.
+    fn render(&self, context: Value, subject: &str) -> Result<String, TemplateError> {
+        let template = self
+            .environment
+            .get_template(self.name)
+            .map_err(|error| failure(self.name, &error))?;
+        let mut capped = Capped {
+            written: Vec::new(),
+            passed: false,
+            cap: self.output,
+        };
+        let rendered = template.render_captured_to(context, &mut capped);
+        if capped.passed {
+            return Err(TemplateError {
+                name: self.name.to_owned(),
+                reason: format!("its output passes the cap of {} bytes", self.output),
+            });
+        }
+        rendered.map_err(|error| failure(self.name, &error))?;
+        let named = String::from_utf8_lossy(&capped.written)
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ");
+        if named.is_empty() {
+            return Err(TemplateError {
+                name: self.name.to_owned(),
+                reason: format!("it names no {} for {subject}", self.name),
+            });
+        }
+        Ok(named)
+    }
+}
+
 /// The name a `project` template gives an owner's member as the project
 /// its events are announced as (ADR-0030).
 #[derive(Debug, Clone)]
-pub struct ProjectName {
-    environment: Environment<'static>,
-    output: usize,
-}
+pub struct ProjectName(Line);
 
 /// The name a `project` template is compiled under.
 const PROJECT: &str = "project";
@@ -211,40 +287,14 @@ impl ProjectName {
     ///
     /// When it does not compile, with minijinja's reason.
     pub fn compile(source: &str, sandbox: Sandbox) -> Result<Self, TemplateError> {
-        let mut environment = sandboxed(sandbox, BTreeSet::new());
-        environment
-            .add_template_owned(PROJECT, source.to_owned())
-            .map_err(|error| failure(PROJECT, &error))?;
-        Ok(Self {
-            environment,
-            output: sandbox.output,
-        })
+        Line::compile(PROJECT, source, sandbox).map(Self)
     }
 
     /// Each name the template reads that is neither one of a repository's
     /// attributes nor a function every template has, in order.
     #[must_use]
     pub fn unknown(&self) -> Vec<String> {
-        let mut unknown: Vec<String> = self
-            .environment
-            .get_template(PROJECT)
-            .map(|template| template.undeclared_variables(true))
-            .unwrap_or_default()
-            .into_iter()
-            .filter(|name| {
-                let mut parts = name.split('.');
-                let top = parts.next().unwrap_or_default();
-                if top == REPOSITORY {
-                    parts
-                        .next()
-                        .is_some_and(|field| !REPOSITORY_FIELDS.contains(&field))
-                } else {
-                    !self.environment.globals().any(|(global, _)| global == top)
-                }
-            })
-            .collect();
-        unknown.sort();
-        unknown
+        self.0.unknown(REPOSITORY, &REPOSITORY_FIELDS)
     }
 
     /// The project `repository` is announced as, on one line.
@@ -254,16 +304,7 @@ impl ProjectName {
     /// When the template prints an undefined value, runs out of fuel,
     /// passes its output cap, or prints nothing.
     pub fn render(&self, repository: &Listed) -> Result<String, TemplateError> {
-        let template = self
-            .environment
-            .get_template(PROJECT)
-            .map_err(|error| failure(PROJECT, &error))?;
-        let mut capped = Capped {
-            written: Vec::new(),
-            passed: false,
-            cap: self.output,
-        };
-        let rendered = template.render_captured_to(
+        self.0.render(
             context! {
                 repository => context! {
                     id => repository.id.as_str(),
@@ -275,28 +316,84 @@ impl ProjectName {
                     visibility => repository.visibility.name(),
                 },
             },
-            &mut capped,
-        );
-        if capped.passed {
-            return Err(TemplateError {
-                name: PROJECT.to_owned(),
-                reason: format!("its output passes the cap of {} bytes", self.output),
-            });
-        }
-        rendered.map_err(|error| failure(PROJECT, &error))?;
-        let named = String::from_utf8_lossy(&capped.written)
-            .split_whitespace()
-            .collect::<Vec<_>>()
-            .join(" ");
-        if named.is_empty() {
-            return Err(TemplateError {
-                name: PROJECT.to_owned(),
-                reason: format!("it names no project for {}", repository.path),
-            });
-        }
-        Ok(named)
+            &repository.path,
+        )
     }
 }
+
+/// The name an `actor` template gives the actor each project announces as
+/// (ADR-0036).
+#[derive(Debug, Clone)]
+pub struct ActorName {
+    line: Line,
+    source: String,
+}
+
+/// The name an `actor` template is compiled under.
+const ACTOR: &str = "actor";
+
+/// What an `actor` template reads the event's fields under.
+const EVENT: &str = "event";
+
+/// The fields of an event an `actor` template reads: those known of a
+/// project before any of its events.
+pub const ACTOR_FIELDS: [&str; 1] = ["project"];
+
+impl ActorName {
+    /// Whether `text` is a template rather than a name.
+    #[must_use]
+    pub fn templated(text: &str) -> bool {
+        ["{{", "{%", "{#"]
+            .iter()
+            .any(|opening| text.contains(opening))
+    }
+
+    /// The template `source`, compiled into `sandbox`.
+    ///
+    /// # Errors
+    ///
+    /// When it does not compile, with minijinja's reason.
+    pub fn compile(source: &str, sandbox: Sandbox) -> Result<Self, TemplateError> {
+        Ok(Self {
+            line: Line::compile(ACTOR, source, sandbox)?,
+            source: source.to_owned(),
+        })
+    }
+
+    /// The template, as written.
+    #[must_use]
+    pub fn source(&self) -> &str {
+        &self.source
+    }
+
+    /// Each name the template reads that is neither one of [`ACTOR_FIELDS`]
+    /// of the event nor a function every template has, in order.
+    #[must_use]
+    pub fn unknown(&self) -> Vec<String> {
+        self.line.unknown(EVENT, &ACTOR_FIELDS)
+    }
+
+    /// The name of the actor `project` announces as, on one line.
+    ///
+    /// # Errors
+    ///
+    /// When the template prints an undefined value, runs out of fuel,
+    /// passes its output cap, or prints nothing.
+    pub fn render(&self, project: &str) -> Result<String, TemplateError> {
+        self.line.render(
+            context! { event => context! { project => project } },
+            project,
+        )
+    }
+}
+
+impl PartialEq for ActorName {
+    fn eq(&self, other: &Self) -> bool {
+        self.source == other.source
+    }
+}
+
+impl Eq for ActorName {}
 
 /// An environment kept to `sandbox`, escaping what it places into the
 /// templates named in `markdown` as Markdown.

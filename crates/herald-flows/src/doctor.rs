@@ -9,6 +9,8 @@ use herald_core::{
 };
 use herald_kinds::Carried;
 
+use crate::acting::{Claimed, Projects};
+
 mod layer;
 mod online;
 
@@ -197,6 +199,32 @@ fn unpinned(config: &Config, index: usize, route: &RouteConfig, gaps: &mut Vec<G
             config.store.kind()
         ),
     ));
+}
+
+/// Each project of a source or app that a route announcing each project
+/// as an actor of its own names no actor for (ADR-0036).
+fn unnamed(config: &Config, index: usize, route: &RouteConfig, gaps: &mut Vec<Gap>) {
+    let Some(projects) = Projects::of(config, route) else {
+        return;
+    };
+    for (_, project) in projects.named() {
+        if let Some(Err(why)) = route.options.names(project) {
+            gaps.push(unnamed_gap(route, index, project, &why));
+        }
+    }
+}
+
+/// That `route`, the config's route `index`, announces nothing of
+/// `project`, as `why` says it names no actor.
+fn unnamed_gap(route: &RouteConfig, index: usize, project: &str, why: &str) -> Gap {
+    gap(
+        &format!(
+            "announcing {project} on the route {} as an actor of its own",
+            route.route.id.as_str()
+        ),
+        format!("routes[{index}].actor"),
+        format!("{why}; its events skip the route until the template names an actor for it"),
+    )
 }
 
 fn unkept(config: &Config, index: usize, route: &RouteConfig, gaps: &mut Vec<Gap>) {
@@ -618,10 +646,14 @@ fn served(config: &Config, layer: &Layer, layers: &[Layer], here: &Here) -> Find
     scheduled(config, layer, here, &mut findings);
     for (index, route) in config.routes.iter().enumerate() {
         unpinned(config, index, route, &mut findings.gaps);
+        unnamed(config, index, route, &mut findings.gaps);
     }
     if config.store.reads_posts() {
         marked(config, &mut findings);
     }
+    findings
+        .mistakes
+        .extend(Claimed::of_config(config).collisions(false));
     findings
 }
 

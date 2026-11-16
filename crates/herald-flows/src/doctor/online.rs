@@ -3,11 +3,13 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use herald_config::Config;
+use herald_core::{Listed, SourceName};
 use herald_kinds::{Expanded, Polling, Probe, Unlisted, Unpolled};
 use herald_ports::{Http, SecretError, Secrets, Signer};
 
-use super::{Findings, Here, gap};
+use super::{Findings, Gap, Here, gap, unnamed_gap};
 use crate::Connected;
+use crate::acting::{Claim, Claimant, Claimed};
 use crate::prepare::signs_as_actor;
 
 /// Each ActivityPub actor's key in `config` that is set here, read through
@@ -109,12 +111,58 @@ pub async fn online<H: Http>(connected: &Connected<H>) -> Findings {
     findings
 }
 
+/// That each route taking the owner source `source`, whose member `member`
+/// announces as `project`, announces nothing of it, where the route
+/// announces each project as an actor of its own and the project names
+/// none; each actor it does name held in `claimed` (ADR-0036).
+fn unnamed<H>(
+    connected: &Connected<H>,
+    (source, member): (&SourceName, &Listed),
+    project: &str,
+    claimed: &mut Claimed,
+) -> Vec<Gap> {
+    let mut gaps = Vec::new();
+    for (index, (route, _)) in connected.routes.iter().enumerate() {
+        let seen = route
+            .projects
+            .as_ref()
+            .is_some_and(|projects| projects.sees(member.visibility));
+        let Some((actor, named)) = route
+            .reached
+            .federates()
+            .filter(|_| seen && route.config.route.filter.sources.contains(source))
+            .and_then(|actor| Some((actor, actor.names(project)?)))
+        else {
+            continue;
+        };
+        let label = format!("{}'s {} on routes[{index}]", source.as_str(), member.path);
+        match named {
+            Ok(name) => claimed.hold(
+                (actor.domain(), &name),
+                Claim {
+                    claimant: Claimant::Member(source.clone(), member.id.clone()),
+                    project: project.to_owned(),
+                },
+                (label, true),
+            ),
+            Err(why) => gaps.push(unnamed_gap(
+                &route.config,
+                index,
+                project,
+                &format!("{}'s {}: {why}", source.as_str(), member.path),
+            )),
+        }
+    }
+    gaps
+}
+
 /// What each owner source lists, asked through the `Http` `connected` gives
 /// it (ADR-0029): a mistake where a listing passes a cap, or where two
 /// members, of one owner or of two, share a project name.
 async fn owned<H: Http>(connected: &Connected<H>) -> Findings {
     let mut findings = Findings::default();
     let mut named: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    let mut claimed = Claimed::of_connected(connected);
     for (source, http) in &connected.sources {
         let Polling::Many(expand) = &source.poll else {
             continue;
@@ -141,10 +189,18 @@ async fn owned<H: Http>(connected: &Connected<H>) -> Findings {
                     .push(format!("The source {name} takes {} {noun}.", members.len()));
                 for member in members {
                     match expand.project(&member) {
-                        Ok(project) => named
-                            .entry(project.to_lowercase())
-                            .or_default()
-                            .push(format!("{name}'s {}", member.path)),
+                        Ok(project) => {
+                            findings.gaps.extend(unnamed(
+                                connected,
+                                (&source.name, &member),
+                                &project,
+                                &mut claimed,
+                            ));
+                            named
+                                .entry(project.to_lowercase())
+                                .or_default()
+                                .push(format!("{name}'s {}", member.path));
+                        }
                         Err(reason) => findings.mistakes.push(format!(
                             "The source {name} names no project for {}: {reason}.",
                             member.path
@@ -172,5 +228,6 @@ async fn owned<H: Http>(connected: &Connected<H>) -> Findings {
             members.join(", ")
         ));
     }
+    findings.mistakes.extend(claimed.collisions(true));
     findings
 }

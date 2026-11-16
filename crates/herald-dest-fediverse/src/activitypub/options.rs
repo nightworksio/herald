@@ -1,6 +1,6 @@
 use std::num::NonZeroUsize;
 
-use herald_core::{SecretRef, Symbols, WaitOptions};
+use herald_core::{ACTOR_FIELDS, ActorName, Sandbox, SecretRef, Symbols, WaitOptions};
 use schemars::JsonSchema;
 use serde::Deserialize;
 
@@ -135,7 +135,10 @@ impl ActorOptions {
 #[serde(deny_unknown_fields)]
 pub struct ActorRouteOptions {
     /// The actor the route announces as, such as `php-mutation-gate`, which
-    /// is followed as `@php-mutation-gate@<domain>`.
+    /// is followed as `@php-mutation-gate@<domain>`; or a template naming
+    /// each project's own actor from `event.project`, such as
+    /// `{{ event.project }}`. A project whose name is no actor's name is
+    /// not announced on the route.
     #[schemars(example = "php-mutation-gate")]
     pub actor: String,
     /// The content warning each Note is shown behind.
@@ -159,7 +162,8 @@ pub enum Audience {
 }
 
 impl ActorRouteOptions {
-    /// Whether the actor's name is one a follower can write.
+    /// Whether the actor's name is one a follower can write, or its template
+    /// compiles and reads only what is known of a project before its events.
     ///
     /// # Errors
     ///
@@ -172,20 +176,63 @@ impl ActorRouteOptions {
         {
             return Err(crate::options::unwritten_language(language));
         }
-        let sound = !self.actor.is_empty()
-            && self.actor.len() <= NAME
-            && !self.actor.starts_with('-')
-            && !self.actor.ends_with('-')
-            && self.actor.bytes().all(|byte| {
-                byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'_' || byte == b'-'
-            });
-        if sound {
+        if !ActorName::templated(&self.actor) {
+            return actor_name(&self.actor);
+        }
+        let naming = ActorName::compile(&self.actor, Sandbox::DEFAULT)
+            .map_err(|error| format!("the actor's template does not compile: {}", error.reason))?;
+        let unknown = naming.unknown();
+        if unknown.is_empty() {
             Ok(())
         } else {
             Err(format!(
-                "\"{}\" is not an actor's name; give at most {NAME} lowercase letters, digits, `_` or a `-` within, such as \"php-mutation-gate\"",
-                self.actor
+                "the actor's template reads {}; it reads only event.{}, known of a project before any of its events",
+                unknown.join(", "),
+                ACTOR_FIELDS.join(", event.")
             ))
         }
+    }
+
+    /// The template each project's actor is named from, where the route
+    /// names one actor per project.
+    #[must_use]
+    pub fn naming(&self) -> Option<ActorName> {
+        ActorName::templated(&self.actor)
+            .then(|| ActorName::compile(&self.actor, Sandbox::DEFAULT).ok())
+            .flatten()
+    }
+}
+
+/// The actor `project` announces as where `naming` names each project's
+/// actor.
+///
+/// # Errors
+///
+/// Why the project names none: the template renders nothing for it, or
+/// what it renders is no actor's name.
+pub(crate) fn named_actor(naming: &ActorName, project: &str) -> Result<String, String> {
+    let name = naming.render(project).map_err(|error| error.reason)?;
+    actor_name(&name).map(|()| name)
+}
+
+/// Whether `name` is an actor's name a follower can write.
+///
+/// # Errors
+///
+/// When it is not, naming the rule.
+pub(crate) fn actor_name(name: &str) -> Result<(), String> {
+    let sound = !name.is_empty()
+        && name.len() <= NAME
+        && !name.starts_with('-')
+        && !name.ends_with('-')
+        && name.bytes().all(|byte| {
+            byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'_' || byte == b'-'
+        });
+    if sound {
+        Ok(())
+    } else {
+        Err(format!(
+            "\"{name}\" is not an actor's name; give at most {NAME} lowercase letters, digits, `_` or a `-` within, such as \"php-mutation-gate\""
+        ))
     }
 }

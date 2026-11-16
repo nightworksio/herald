@@ -530,13 +530,86 @@ fn a_project_template_names_what_it_reads_that_a_repository_does_not_carry() {
 
 #[test]
 fn a_project_name_whose_template_is_gone_names_none_and_reads_nothing() {
-    let gone = ProjectName {
+    let gone = ProjectName(Line {
         environment: Environment::new(),
         output: 8,
-    };
+        name: PROJECT,
+    });
     assert_eq!(
         gone.render(&member()).map_err(|error| error.name),
         Err("project".to_owned())
     );
     assert_eq!(gone.unknown(), Vec::<String>::new());
+}
+
+#[test]
+fn an_actor_template_names_each_project_s_actor_on_one_line() {
+    let named = |source: &str| {
+        ActorName::compile(source, Sandbox::DEFAULT)
+            .unwrap()
+            .render("Plugin.Sonarr")
+    };
+    assert_eq!(
+        named("{{ event.project | lower | replace('.', '-') }}"),
+        Ok("plugin-sonarr".to_owned())
+    );
+    assert_eq!(
+        named("lf_{{ event.project }}\n"),
+        Ok("lf_Plugin.Sonarr".to_owned())
+    );
+    assert_eq!(
+        named("{{ event.nothing }}").map_err(|error| error.name),
+        Err("actor".to_owned())
+    );
+    assert_eq!(
+        named("{% if false %}x{% endif %}"),
+        Err(TemplateError {
+            name: "actor".to_owned(),
+            reason: "it names no actor for Plugin.Sonarr".to_owned()
+        })
+    );
+    assert_eq!(
+        ActorName::compile("{{ unclosed", Sandbox::DEFAULT)
+            .map(|_| ())
+            .map_err(|error| error.name),
+        Err("actor".to_owned())
+    );
+}
+
+#[test]
+fn an_actor_template_reads_only_the_event_s_project_and_is_told_from_a_name() {
+    let unknown = |source: &str| {
+        ActorName::compile(source, Sandbox::DEFAULT)
+            .unwrap()
+            .unknown()
+    };
+    assert_eq!(
+        unknown("{{ event.project | lower }}{{ range(2) | length }}"),
+        Vec::<String>::new()
+    );
+    assert_eq!(
+        unknown("{{ event.version }} {{ repository.name }}"),
+        ["event.version", "repository.name"]
+    );
+    assert_eq!(ACTOR_FIELDS, ["project"]);
+    for template in [
+        "{{ event.project }}",
+        "a{% if true %}b{% endif %}",
+        "{# x #}a",
+    ] {
+        assert!(ActorName::templated(template), "{template}");
+    }
+    for name in ["lemonfiber", "php-mutation-gate", "{x}", "a}}"] {
+        assert!(!ActorName::templated(name), "{name}");
+    }
+    let one = ActorName::compile("{{ event.project }}", Sandbox::DEFAULT).unwrap();
+    assert_eq!(one.source(), "{{ event.project }}");
+    assert_eq!(
+        one,
+        ActorName::compile("{{ event.project }}", Sandbox::DEFAULT).unwrap()
+    );
+    assert_ne!(
+        one,
+        ActorName::compile("{{ event.project | lower }}", Sandbox::DEFAULT).unwrap()
+    );
 }

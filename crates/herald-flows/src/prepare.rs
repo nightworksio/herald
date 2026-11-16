@@ -10,6 +10,7 @@ use herald_kinds::{Interacted, Polling, Posts, Reached};
 use herald_ports::{Algorithm, Base, CryptoError, Http, Secret, SecretError, Secrets, Signer};
 use herald_store_markers::{MarkedRoute, MarkersStore};
 
+use crate::acting::Projects;
 use crate::serving::Webhooks;
 
 /// What a marker key is derived from a credential under (ADR-0011).
@@ -171,6 +172,7 @@ pub struct PreparedRoute {
     pub(crate) reached: Reached,
     pub(crate) marker_key: Secret,
     pub(crate) derived: bool,
+    pub(crate) projects: Option<Projects>,
 }
 
 /// A source ready to poll.
@@ -428,11 +430,13 @@ pub async fn prepare<S: Secrets, G: Signer>(
                 route: route.route.id.as_str().to_owned(),
             });
         };
+        let projects = Projects::of(config, route);
         routes.push(PreparedRoute {
             config: route.clone(),
             reached,
             marker_key: destination.marker_key.clone(),
             derived: destination.derived,
+            projects,
         });
     }
     let mut sources = Vec::new();

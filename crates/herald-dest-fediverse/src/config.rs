@@ -1,10 +1,12 @@
-use herald_core::{KeyForm, Profile, Scheme, SecretRef, Signed, Symbols, WaitOptions, Waits};
+use herald_core::{
+    ActorName, KeyForm, Profile, Scheme, SecretRef, Signed, Symbols, WaitOptions, Waits,
+};
 use herald_kinds::{
     DestinationConfig, DestinationKind, Fault, Placed, Placement, Placing, Reached,
 };
 use herald_ports::Secret;
 
-use crate::activitypub::ACTOR;
+use crate::activitypub::{ACTOR, named_actor};
 use crate::activitypub::{ActivityPub, ActorOptions, ActorRouteOptions, actor_profile};
 use crate::mastodon::{self, Mastodon, PLATFORM};
 use crate::options::{DestinationOptions, RouteOptions};
@@ -85,6 +87,10 @@ impl DestinationConfig for ActorOptions {
         true
     }
 
+    fn actor_domain(&self) -> Option<&str> {
+        Some(&self.domain)
+    }
+
     fn profile(&self, placed: &Placed) -> Option<(Profile, Option<Profile>)> {
         placed.of::<ActorRouteOptions>()?;
         Some((actor_profile(), None))
@@ -104,7 +110,15 @@ impl DestinationConfig for ActorOptions {
 
 impl Placement for RouteOptions {}
 
-impl Placement for ActorRouteOptions {}
+impl Placement for ActorRouteOptions {
+    fn actor(&self) -> Option<&str> {
+        (!ActorName::templated(&self.actor)).then_some(self.actor.as_str())
+    }
+
+    fn names(&self, project: &str) -> Option<Result<String, String>> {
+        Some(named_actor(&self.naming()?, project))
+    }
+}
 
 /// Mastodon, as a kind of destination.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

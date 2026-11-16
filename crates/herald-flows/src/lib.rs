@@ -14,6 +14,7 @@
 //! names what a config asks for that cannot be served, and [`preview`]
 //! renders each route's templates as its destination would show them.
 
+mod acting;
 mod announce;
 mod approving;
 mod budget;

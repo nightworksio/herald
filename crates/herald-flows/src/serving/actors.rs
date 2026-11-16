@@ -5,29 +5,34 @@ use herald_core::status;
 use herald_core::{ACTIVITY_JSON, Addressed, DestinationName, Escaping, Key};
 use herald_kinds::Federates;
 use herald_ports::{
-    Clock, CryptoError, Http, Keyring, Notes, Outboxed, Signer, Store, Subscriptions, Verifier,
+    Clock, CryptoError, Http, Keyring, Notes, Outboxed, Signer, Store, StoreError, Subscriptions,
+    Verifier,
 };
 
 use super::jobs::Job;
-use super::replies::{Answered, missing, refusal, rejection, replied, text_reply};
+use super::replies::{Answered, gone, missing, refusal, rejection, replied, text_reply};
 use super::{Inbound, Serving};
+use crate::acting::{Found, Standing, Wanted, found};
 use crate::prepare::Connected;
 use crate::verification::{Checking, activity_verified, admitted};
 
 /// What WebFinger answers as.
 const JRD: &str = "application/jrd+json";
 
-/// The actor herald serves as `name`.
-pub(super) fn actor<'a, H>(
-    connected: &'a Connected<H>,
+/// The actor herald serves as `name` on `host`, as the store keeps its
+/// project's members and followers now.
+pub(super) async fn actor<'a, S: Store, C: Clock, G, V, H, P, K>(
+    serving: &Serving<'a, S, C, G, V, H, P, K>,
     name: &str,
     host: &str,
-) -> Option<(&'a dyn Federates, &'a DestinationName)> {
-    connected.routes.iter().find_map(|(route, _)| {
-        let actor = route.reached.federates()?;
-        (actor.actor() == name && actor.domain() == host)
-            .then_some((actor, &route.config.route.destination))
-    })
+) -> Result<Found<'a, H>, StoreError> {
+    found(
+        serving.connected,
+        serving.ports.store,
+        Wanted::Named { name, host },
+        serving.ports.clock.now(),
+    )
+    .await
 }
 
 /// The domain from herald's config that is `host`, when herald serves an
@@ -41,22 +46,31 @@ pub(super) fn domain<'a, H>(connected: &'a Connected<H>, host: &str) -> Option<&
 
 /// What WebFinger answers for the resource `query` asks for: an actor herald
 /// serves, as `acct:<actor>@<domain>` or as its id.
-pub(super) fn fingered<H>(connected: &Connected<H>, query: Option<&str>) -> Answered {
+pub(super) async fn fingered<S: Store, C: Clock, G, V, H, P, K>(
+    serving: &Serving<'_, S, C, G, V, H, P, K>,
+    query: Option<&str>,
+) -> Answered {
     let resource = query
         .unwrap_or_default()
         .split('&')
         .find_map(|pair| pair.strip_prefix("resource="))
         .and_then(|resource| Escaping::UNRESERVED.unescape(resource))
         .unwrap_or_default();
-    let found = connected.routes.iter().find_map(|(route, _)| {
-        let actor = route.reached.federates()?;
-        (resource == format!("acct:{}@{}", actor.actor(), actor.domain()) || resource == actor.id())
-            .then_some(actor)
-    });
-    found.map_or_else(
-        || missing("such actor"),
-        |actor| replied(status::OK, JRD, actor.finger()),
-    )
+    let wanted = resource
+        .strip_prefix("acct:")
+        .and_then(|account| account.rsplit_once('@'))
+        .map_or(Wanted::Id(&resource), |(name, host)| Wanted::Named {
+            name,
+            host,
+        });
+    let now = serving.ports.clock.now();
+    match found(serving.connected, serving.ports.store, wanted, now).await {
+        Ok(Found::Acting(acting)) if acting.standing == Standing::Gone => gone(),
+        Ok(Found::Acting(acting)) => replied(status::OK, JRD, acting.actor().finger()),
+        Ok(Found::Ambiguous(why)) => text_reply(status::NOT_FOUND, &why),
+        Ok(Found::Missing) => missing("such actor"),
+        Err(error) => refusal(status::UNAVAILABLE, error.to_string()),
+    }
 }
 
 /// The actor document of `served`.

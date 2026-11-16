@@ -2,10 +2,10 @@
 //! followers each actor keeps.
 
 use herald_core::{DestinationName, Sent, Subscription};
-use herald_kinds::Federates;
 use herald_ports::{Http, Signer, Store, Subscriptions};
 use jiff::Timestamp;
 
+use crate::acting::{Acting, Found, Standing, Wanted, found};
 use crate::follows::{FollowError, answered, following, kept};
 use crate::prepare::Connected;
 
@@ -18,31 +18,31 @@ pub enum Decision {
     Reject,
 }
 
-/// The actor named `actor` that `destination` serves, with the `Http` it
-/// reaches inboxes through.
-fn served<'a, H>(
+/// The actor named `actor` that `destination` serves, as the store keeps
+/// its project's members and followers at `now`.
+async fn served<'a, S: Store, H>(
     connected: &'a Connected<H>,
-    destination: &DestinationName,
-    actor: &str,
-) -> Result<(&'a dyn Federates, &'a H), FollowError> {
-    connected
-        .routes
-        .iter()
-        .find_map(|(route, http)| {
-            let served = route.reached.federates()?;
-            (served.actor() == actor && &route.config.route.destination == destination)
-                .then_some((served, http))
-        })
-        .ok_or_else(|| {
-            FollowError::Unknown(format!(
-                "the destination \"{}\" serves no actor \"{actor}\"",
-                destination.as_str()
-            ))
-        })
+    store: &S,
+    (destination, actor): (&DestinationName, &str),
+    now: Timestamp,
+) -> Result<Acting<'a, H>, FollowError> {
+    let wanted = Wanted::Of {
+        name: actor,
+        destination,
+    };
+    match found(connected, store, wanted, now).await? {
+        Found::Acting(acting) => Ok(acting),
+        Found::Ambiguous(why) => Err(FollowError::Unknown(why)),
+        Found::Missing => Err(FollowError::Unknown(format!(
+            "the destination \"{}\" serves no actor \"{actor}\"",
+            destination.as_str()
+        ))),
+    }
 }
 
 /// Every follower the actor `actor` of `destination` keeps, approved or
-/// waiting, for the operator to read.
+/// waiting, for the operator to read, the actor's project's members read
+/// as they stand at `now`.
 ///
 /// # Errors
 ///
@@ -52,9 +52,10 @@ pub async fn followers<S: Store, H>(
     store: &S,
     destination: &DestinationName,
     actor: &str,
+    now: Timestamp,
 ) -> Result<Vec<Subscription>, FollowError> {
-    let (served, _) = served(connected, destination, actor)?;
-    kept(store, served, destination).await
+    let served = served(connected, store, (destination, actor), now).await?;
+    kept(store, served.actor(), destination).await
 }
 
 /// Approves or rejects, as `decision` says, the follow of the actor `actor`
@@ -65,8 +66,8 @@ pub async fn followers<S: Store, H>(
 /// # Errors
 ///
 /// When herald serves no such actor, no follow of it by `follower` waits,
-/// an approval would pass the actor's follower caps, or the store cannot
-/// keep or forget the follower.
+/// an approval would pass the actor's follower caps or is of an actor that
+/// takes no new follows, or the store cannot keep or forget the follower.
 #[allow(
     clippy::too_many_arguments,
     reason = "a decision names its actor, its follower and the ports it answers through"
@@ -81,7 +82,8 @@ pub async fn decide<S: Store, G: Signer, H: Http>(
     follower: &str,
     decision: Decision,
 ) -> Result<Sent, FollowError> {
-    let (served, http) = served(connected, destination, actor)?;
+    let acting = served(connected, store, (destination, actor), now).await?;
+    let (served, http) = (acting.actor(), acting.http);
     let kept = kept(store, served, destination).await?;
     let Some((waiting, id)) = kept.iter().find_map(|kept| {
         (kept.subscriber == follower)
@@ -97,6 +99,11 @@ pub async fn decide<S: Store, G: Signer, H: Http>(
     let subscriptions = store.subscriptions();
     let answer = match decision {
         Decision::Approve => {
+            if acting.standing != Standing::Live {
+                return Err(FollowError::Unknown(format!(
+                    "\"{actor}\" takes no new follows, as its project left its owner's selection; reject the follow"
+                )));
+            }
             if !served.room(follower, &following(served, &kept)) {
                 return Err(FollowError::Full);
             }
