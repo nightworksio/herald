@@ -1,14 +1,15 @@
 use std::sync::Arc;
 
-use herald_core::{Kind, Polled, Scheme, SecretRef, Selection};
+use herald_core::{Kind, Polled, Scheme, SecretRef, Selection, Signal};
 use herald_kinds::{Fault, Hooked, Polling, SourceConfig, SourceKind, Unpolled};
 use herald_ports::Secret;
 
 use crate::owner::Owned;
+use crate::packages::{PackageList, Packaging};
 use crate::polled::Releases;
 use crate::{Forge, Members, Origin, SourceOptions, Token};
 
-/// A repository's releases and tags on a forge: the forge, and the options
+/// A repository's releases, tags and packages on a forge: the forge, and the options
 /// its table reads into.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ForgeSource {
@@ -56,7 +57,7 @@ pub enum GitHubKind {}
 
 impl SourceKind for GitHubKind {
     const NAME: &str = Forge::GitHub.kind();
-    const DESCRIPTION: &str = "A GitHub repository's releases and tags.";
+    const DESCRIPTION: &str = "A GitHub repository's releases, tags and packages.";
 
     type File = SourceOptions;
     type Options = ForgeSource;
@@ -79,7 +80,7 @@ pub enum GitLabKind {}
 
 impl SourceKind for GitLabKind {
     const NAME: &str = Forge::GitLab.kind();
-    const DESCRIPTION: &str = "A GitLab project's releases and tags.";
+    const DESCRIPTION: &str = "A GitLab project's releases, tags and packages.";
 
     type File = SourceOptions;
     type Options = ForgeSource;
@@ -102,7 +103,7 @@ pub enum ForgejoKind {}
 
 impl SourceKind for ForgejoKind {
     const NAME: &str = Forge::Forgejo.kind();
-    const DESCRIPTION: &str = "A Forgejo or Gitea repository's releases and tags.";
+    const DESCRIPTION: &str = "A Forgejo or Gitea repository's releases, tags and packages.";
 
     type File = SourceOptions;
     type Options = ForgeSource;
@@ -133,7 +134,12 @@ impl SourceConfig for ForgeSource {
     }
 
     fn kinds(&self) -> &'static [Kind] {
-        &[Kind::RELEASE]
+        let released = self.options.may_take(Signal::Release) || self.options.may_take(Signal::Tag);
+        match (released, self.options.may_take(Signal::Package)) {
+            (true, true) => &[Kind::RELEASE, Kind::PACKAGE_VERSION],
+            (false, true) => &[Kind::PACKAGE_VERSION],
+            (_, false) => &[Kind::RELEASE],
+        }
     }
 
     fn notes(&self) -> Vec<&'static str> {
@@ -233,6 +239,9 @@ impl SourceConfig for ForgeSource {
                     signals,
                     backfill: self.options.backfill,
                     watched,
+                    packaging: Packaging::of(self.forge, &self.options),
+                    list: PackageList::Own,
+                    visibility: None,
                 }))
             }
         }

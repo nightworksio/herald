@@ -82,13 +82,17 @@ pub(crate) struct Api {
     pub(crate) listing: &'static str,
     /// What a file it serves raw is called.
     pub(crate) file: &'static str,
+    /// What its listing of packages is called.
+    pub(crate) packages: &'static str,
+    /// What its listing of a package's versions is called.
+    pub(crate) versions: &'static str,
     /// The page size an owner's listing asks for where `listed_page` is
     /// absent.
     pub(crate) listed_page: std::num::NonZeroUsize,
 }
 
 /// Why a webhook delivery of another event announces nothing.
-const OTHER_EVENT: &str = "the delivery is not of a release or a tag";
+const OTHER_EVENT: &str = "the delivery is not of a release, a tag or a package";
 /// Why a webhook delivery of a repository the owner source does not take
 /// announces nothing.
 const UNSELECTED: &str = "the repository is not one the source takes";
@@ -100,6 +104,17 @@ const UNSIGNALLED: &str = "the source announces no releases of the repository";
 /// Why a webhook delivery of a tag announces nothing where the source
 /// announces no tags of its repository.
 const UNTAGGED: &str = "the source announces no tags of the repository";
+/// Why a webhook delivery of a package announces nothing where the source
+/// announces no packages of its repository.
+const UNPACKAGED: &str = "the source announces no packages of the repository";
+/// Why a webhook delivery of a package linked to no repository announces
+/// nothing.
+const UNLINKED: &str = "the package is linked to no repository";
+/// The actions of GitHub's `registry_package` and `package` deliveries of a
+/// version published.
+const PACKAGE_ACTIONS: [&str; 2] = ["published", "updated"];
+/// The action of Forgejo's `package` delivery of a version published.
+const PACKAGE_CREATED: &str = "created";
 /// The commit GitLab names as a tag's after a push deleted it.
 const DELETED: &str = "0000000000000000000000000000000000000000";
 
@@ -214,9 +229,10 @@ impl Forge {
 
     /// What a webhook delivery with `headers` and `payload` asks herald to
     /// announce for the source of `repository`, which announces `signals`:
-    /// the release it publishes, a poll where it made a tag the source
-    /// announces, or nothing where it is of another event, of an
-    /// unpublished release or a draft, or of a signal the source does not
+    /// the release it publishes, a poll where it made a tag or published a
+    /// package version the source announces, or nothing where it is of
+    /// another event, of an unpublished release or a draft, of a package
+    /// linked to no repository, or of a signal the source does not
     /// announce.
     ///
     /// # Errors
@@ -229,6 +245,19 @@ impl Forge {
         repository: &str,
         signals: &Signals,
     ) -> Result<Hooked, SourceError> {
+        if self.of_a_package(headers, payload) {
+            let what = self.api().packages;
+            let Some(path) = self.path(what, payload) else {
+                return Ok(Hooked::Nothing(UNLINKED));
+            };
+            if !path.eq_ignore_ascii_case(repository) {
+                return Err(SourceError::Unreadable {
+                    what,
+                    reason: format!("it is not of {repository}, the repository its source names"),
+                });
+            }
+            return Ok(Self::packaged(signals));
+        }
         if self.of_a_tag(headers, payload) {
             let what = self.api().tag;
             if !self
@@ -278,6 +307,46 @@ impl Forge {
         }
     }
 
+    /// What a delivery of a package asks of a source announcing `signals`:
+    /// a poll, where they take packages.
+    fn packaged(signals: &Signals) -> Hooked {
+        if signals.takes(Signal::Package) {
+            Hooked::Poll
+        } else {
+            Hooked::Nothing(UNPACKAGED)
+        }
+    }
+
+    /// Whether a delivery with `headers` and `payload` is of a package
+    /// version published: GitHub's `registry_package` or `package`
+    /// published or updated, or Forgejo's `package` created.
+    fn of_a_package(self, headers: &[(&str, &str)], payload: &[u8]) -> bool {
+        #[derive(Deserialize)]
+        struct Acted {
+            action: String,
+        }
+        let (names, kinds, actions): (&[&str], &[&str], &[&str]) = match self {
+            Self::GitHub => (
+                &["x-github-event"],
+                &["registry_package", "package"],
+                &PACKAGE_ACTIONS,
+            ),
+            Self::Forgejo => (
+                &["x-forgejo-event", "x-gitea-event"],
+                &["package"],
+                &[PACKAGE_CREATED],
+            ),
+            Self::GitLab => return false,
+        };
+        let of_kind = headers
+            .iter()
+            .find(|(name, _)| names.iter().any(|header| name.eq_ignore_ascii_case(header)))
+            .is_some_and(|(_, value)| kinds.contains(value));
+        of_kind
+            && read::<Acted>(self.api().packages, payload)
+                .is_ok_and(|acted| actions.contains(&acted.action.as_str()))
+    }
+
     /// Whether a delivery with `headers` and `payload` is of a tag made:
     /// GitHub's and Forgejo's `create` of a tag, or GitLab's tag push that
     /// did not delete one.
@@ -321,8 +390,10 @@ impl Forge {
     /// repository `selection` admits by what the payload names, to announce
     /// once the owner's last membership record holds it, where the signals
     /// `signals` gives for the repository's name take its releases, told a
-    /// pre-release as they say. A GitLab group's repositories include its
-    /// subgroups' where `subgroups` says so.
+    /// pre-release as they say; or a poll where it made a tag or published
+    /// a package version such a repository's signals take. A GitLab
+    /// group's repositories include its subgroups' where `subgroups` says
+    /// so.
     ///
     /// # Errors
     ///
@@ -334,18 +405,24 @@ impl Forge {
         (owner, subgroups): (&str, bool),
         (selection, signals): (&Selection, &dyn Fn(&str) -> Signals),
     ) -> Result<Hooked, SourceError> {
-        let tag = self.of_a_tag(headers, payload);
-        if !tag && !self.of_a_release(headers) {
+        let package = self.of_a_package(headers, payload);
+        let tag = !package && self.of_a_tag(headers, payload);
+        if !package && !tag && !self.of_a_release(headers) {
             return Ok(Hooked::Nothing(OTHER_EVENT));
         }
-        let what = if tag {
+        let what = if package {
+            self.api().packages
+        } else if tag {
             self.api().tag
         } else {
             self.api().event
         };
+        if package && self.path(what, payload).is_none() {
+            return Ok(Hooked::Nothing(UNLINKED));
+        }
         let (id, delivered) = crate::delivered::delivered(self, what, payload)?;
         let signals = signals(&delivered.name);
-        let event = if tag {
+        let event = if tag || package {
             None
         } else {
             self.event(payload, signals.prerelease)?
@@ -366,6 +443,9 @@ impl Forge {
         }
         if !selection.admits(&delivered) {
             return Ok(Hooked::Nothing(UNSELECTED));
+        }
+        if package {
+            return Ok(Self::packaged(&signals));
         }
         if tag {
             return Ok(Self::tagged(&signals));
@@ -568,13 +648,24 @@ impl Origin {
         &self.api
     }
 
-    fn get(&self, path: &str, token: Option<&Token>) -> Request {
+    /// The request for `path` under the repository, carrying `token`.
+    pub(crate) fn get(&self, path: &str, token: Option<&Token>) -> Request {
         let base = match self.forge {
             Forge::GitHub | Forge::Forgejo => format!("{}/repos/{}", self.api, self.repository),
             Forge::GitLab => gitlab::project(&self.api, &self.repository),
         };
         let request = Request::new(Method::Get, SecretText::plain(format!("{base}{path}")))
             .at_most(self.reading.parse);
+        authorized(self.forge, request, token)
+    }
+
+    /// The request for `path` under the API's base URL, carrying `token`.
+    pub(crate) fn rooted(&self, path: &str, token: Option<&Token>) -> Request {
+        let request = Request::new(
+            Method::Get,
+            SecretText::plain(format!("{}{path}", self.api)),
+        )
+        .at_most(self.reading.parse);
         authorized(self.forge, request, token)
     }
 

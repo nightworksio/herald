@@ -148,6 +148,11 @@ pub struct AttributeSpec {
 pub const VERSION: &str = "version";
 /// The attribute that marks a pre-release.
 pub const PRERELEASE: &str = "prerelease";
+/// The attribute naming the package a forge's package version is of.
+pub const PACKAGE: &str = "package";
+/// The attribute naming the type of that package, as its forge writes it,
+/// such as `container` or `npm`.
+pub const PACKAGE_TYPE: &str = "package_type";
 /// The link to a release's page.
 pub const RELEASE_LINK: &str = "release";
 /// The link to a release's changelog.
@@ -209,6 +214,22 @@ fn signalled() -> BTreeMap<String, AttributeSpec> {
             },
         ),
     ])
+}
+
+/// The attributes of a package version: a forge's signals', and the
+/// package and its type where a forge announces it.
+fn packaged() -> BTreeMap<String, AttributeSpec> {
+    let mut attributes = signalled();
+    for name in [PACKAGE, PACKAGE_TYPE] {
+        attributes.insert(
+            name.to_owned(),
+            AttributeSpec {
+                ty: AttributeType::Text,
+                required: false,
+            },
+        );
+    }
+    attributes
 }
 
 /// One link a kind's events carry, which becomes a button where the event
@@ -306,7 +327,7 @@ impl KindSpec {
                 "A new version of a package on a registry.",
                 true,
                 buttons(&[RELEASE_LINK, CHANGELOG_LINK]),
-                signalled(),
+                packaged(),
             ),
             Self::new(
                 Kind::FEED_ENTRY,

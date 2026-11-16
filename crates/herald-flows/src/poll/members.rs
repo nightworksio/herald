@@ -8,7 +8,7 @@ use herald_config::{Config, Guard};
 use herald_core::{
     Cursor, Listed, Listing, Membership, Owner, Polled, RouteId, SourceName, Visibility,
 };
-use herald_kinds::{Changed, Expand, Expanded, Unlisted};
+use herald_kinds::{Changed, Expand, Expanded, Rounded, Unlisted};
 use herald_ports::{Clock, Cursors, Http, Signer, Store, StoreError, Version, Versioned, Written};
 use jiff::Timestamp;
 
@@ -240,6 +240,7 @@ static JOINED: Cursor = Cursor {
     signals: std::collections::BTreeMap::new(),
     tagged: Vec::new(),
     notes: std::collections::BTreeMap::new(),
+    packages: std::collections::BTreeMap::new(),
 };
 
 /// The members `chunk` polled together through `http`, as one request
@@ -247,7 +248,7 @@ static JOINED: Cursor = Cursor {
 async fn chunk<S: Store, C: Clock, G: Signer, H: Http>(
     flow: (&Config, &Connected<H>, &Ports<'_, S, C, G>),
     source: &PreparedSource,
-    (expand, http): (&dyn Expand, &H),
+    (expand, http, rounded): (&dyn Expand, &H, &Rounded),
     (chunk, first): (Vec<Held>, Timestamp),
     run: &str,
 ) -> Vec<Swept> {
@@ -269,7 +270,7 @@ async fn chunk<S: Store, C: Clock, G: Signer, H: Http>(
                 })
                 .collect();
             expand
-                .polled(http, &asked)
+                .polled(http, &asked, rounded)
                 .await
                 .into_iter()
                 .map(|answered| answered.map_err(halted))
@@ -280,6 +281,25 @@ async fn chunk<S: Store, C: Clock, G: Signer, H: Http>(
         swept.push(member(flow, (source, expand), (held, first), polled, run).await);
     }
     swept
+}
+
+/// `takers` split into those polled this round and those left quiet: a
+/// member is polled where the owner's events are not followed, it has
+/// never been polled, or the events `named` or the round's read `rounded`
+/// names it.
+fn split(
+    takers: Vec<Held>,
+    named: Option<&BTreeSet<String>>,
+    rounded: &Rounded,
+) -> (Vec<Held>, Vec<Held>) {
+    takers.into_iter().partition(|held| {
+        let id = &held.membership.repository.id;
+        named.is_none_or(|ids| {
+            held.membership.cursor.is_none()
+                || ids.contains(id)
+                || rounded.named().is_some_and(|named| named.contains(id))
+        })
+    })
 }
 
 /// `takers` in runs of `size`, in order.
@@ -446,6 +466,28 @@ async fn followed<S: Store, C: Clock, G: Signer, H: Http>(
     (named, kept)
 }
 
+/// What the owner `expand`, of the kind `owner`, reads through `http` once
+/// a round before any member is polled; a read that fails is reported
+/// through `told` into `swept`, and where it fails or the budget leaves no
+/// room for it, each member's poll leaves out what it would have read.
+async fn rounded<S: Store, C: Clock, G: Signer, H: Http>(
+    (ports, expand, http): (&Ports<'_, S, C, G>, &dyn Expand, &H),
+    owner: Owner,
+    swept: &mut Vec<Swept>,
+    told: impl Fn(Sweep) -> Swept,
+) -> Rounded {
+    if ports.budget.allows(ports.clock.now(), 1).is_err() {
+        return Rounded::Unread;
+    }
+    expand
+        .rounded(http, owner)
+        .await
+        .unwrap_or_else(|unpolled| {
+            swept.push(told(Sweep::Stopped(halted(unpolled))));
+            Rounded::Unread
+        })
+}
+
 /// What the owner source `source`, or its member at `member`, did.
 fn told(source: &SourceName, member: Option<&str>, outcome: Sweep) -> Swept {
     Swept {
@@ -526,6 +568,10 @@ pub(super) async fn finished<S: Store, C: Clock, G: Signer, H: Http>(
         told,
     )
     .await;
+    let owner = listing
+        .as_ref()
+        .or(record.as_ref().map(|record| &record.value))
+        .map_or(Owner::Organization, |listing| listing.owner);
     if let Some(listing) = followed.or(listing).filter(|_| whole) {
         let expected = record.as_ref().map(|record| record.version);
         if let Remembered::Failed(stop) = remembered(
@@ -535,11 +581,8 @@ pub(super) async fn finished<S: Store, C: Clock, G: Signer, H: Http>(
             swept.push(told(Sweep::Stopped(stop)));
         }
     }
-    let (takers, quiet): (Vec<Held>, Vec<Held>) = takers.into_iter().partition(|held| {
-        named.as_ref().is_none_or(|ids| {
-            held.membership.cursor.is_none() || ids.contains(&held.membership.repository.id)
-        })
-    });
+    let rounded = rounded((flow.2, expand, http), owner, &mut swept, told).await;
+    let (takers, quiet) = split(takers, named.as_ref(), &rounded);
     swept.push(told(Sweep::Listed {
         members: takers.len() + quiet.len() + withheld.len(),
         joined: reconciled.joined,
@@ -556,7 +599,7 @@ pub(super) async fn finished<S: Store, C: Clock, G: Signer, H: Http>(
     let polled: Vec<Vec<Swept>> = stream::iter(
         chunked(takers, expand.batch().get())
             .into_iter()
-            .map(|held| chunk(flow, source, (expand, http), (held, first), run)),
+            .map(|held| chunk(flow, source, (expand, http, &rounded), (held, first), run)),
     )
     .buffered(at_once(ports.store, config.run.sources).get())
     .collect()

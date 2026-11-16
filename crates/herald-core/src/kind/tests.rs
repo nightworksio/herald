@@ -119,6 +119,13 @@ fn herald_ships_four_kinds_and_only_releases_and_package_versions_are_versioned(
         .map(|spec| spec.attributes.get(crate::SIGNAL))
         .collect();
     assert_eq!(signals, [Some(&signalled), Some(&signalled), None, None]);
+    for name in [crate::PACKAGE, crate::PACKAGE_TYPE] {
+        let packaged: Vec<Option<&AttributeSpec>> = shipped
+            .iter()
+            .map(|spec| spec.attributes.get(name))
+            .collect();
+        assert_eq!(packaged, [None, Some(&signalled), None, None], "{name}");
+    }
     let mut tagged = crate::versioned("v1", false);
     tagged.insert(crate::SIGNAL.to_owned(), Attribute::Text("tag".to_owned()));
     assert_eq!(shipped[0].check(&tagged), Ok(()));

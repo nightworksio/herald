@@ -1,5 +1,5 @@
 use herald_core::{
-    Attribute, AttributeType, Draft, Event, KindSpec, PRERELEASE, SIGNAL, Signal, VERSION,
+    Attribute, AttributeType, Draft, Event, Kind, KindSpec, PRERELEASE, SIGNAL, Signal, VERSION,
 };
 use jiff::Timestamp;
 
@@ -7,6 +7,16 @@ use jiff::Timestamp;
 const NOON: Timestamp = Timestamp::constant(1_793_448_000, 0);
 /// The lines of a sample's long body, past every destination's limit.
 const LONG: usize = 2_000;
+
+/// The signal a sample of the kind `kind` is of: a package version's, or
+/// a Release's.
+fn signal_of(kind: &Kind) -> Signal {
+    if *kind == Kind::PACKAGE_VERSION {
+        Signal::Package
+    } else {
+        Signal::Release
+    }
+}
 
 fn draft(spec: &KindSpec) -> Draft {
     let attributes = spec
@@ -16,7 +26,7 @@ fn draft(spec: &KindSpec) -> Draft {
             let sample = match attribute.ty {
                 AttributeType::Text if name == VERSION => Attribute::Text("v1.2.0".to_owned()),
                 AttributeType::Text if name == SIGNAL => {
-                    Attribute::Text(Signal::Release.name().to_owned())
+                    Attribute::Text(signal_of(&spec.kind).name().to_owned())
                 }
                 AttributeType::Text => Attribute::Text(format!("sample {name}")),
                 AttributeType::Flag => Attribute::Flag(false),
@@ -49,8 +59,9 @@ fn draft(spec: &KindSpec) -> Draft {
 
 /// The sample events of the kind `spec` describes, every template is
 /// dry-rendered against: a plain one, a pre-release where the kind marks
-/// one, one with a long body (ADR-0006), and a tag's where the kind names
-/// a signal (ADR-0031).
+/// one, one with a long body (ADR-0006), and one with no body where the
+/// kind names a signal: a tag's (ADR-0031), or a package version's
+/// (ADR-0035).
 #[must_use]
 pub fn samples(spec: &KindSpec) -> Vec<Event> {
     let plain = draft(spec);
@@ -71,10 +82,11 @@ pub fn samples(spec: &KindSpec) -> Vec<Event> {
     };
     let tagged = spec.attributes.contains_key(SIGNAL).then(|| {
         let mut attributes = plain.attributes.clone();
-        attributes.insert(
-            SIGNAL.to_owned(),
-            Attribute::Text(Signal::Tag.name().to_owned()),
-        );
+        let signal = match signal_of(&spec.kind) {
+            Signal::Release => Signal::Tag,
+            other => other,
+        };
+        attributes.insert(SIGNAL.to_owned(), Attribute::Text(signal.name().to_owned()));
         Draft {
             attributes,
             body: String::new(),
@@ -91,14 +103,17 @@ pub fn samples(spec: &KindSpec) -> Vec<Event> {
 
 #[cfg(test)]
 mod tests {
-    use herald_core::{Kind, KindSpecs};
+    use herald_core::KindSpecs;
 
     use super::*;
 
     #[test]
-    fn a_versioned_kind_has_a_plain_a_pre_release_a_long_and_a_tag_s_sample() {
+    fn a_versioned_kind_has_a_plain_a_pre_release_a_long_and_a_bodiless_sample() {
         let kinds = KindSpecs::default();
-        for kind in [Kind::RELEASE, Kind::PACKAGE_VERSION] {
+        for (kind, signal, bodiless) in [
+            (Kind::RELEASE, Signal::Release, Signal::Tag),
+            (Kind::PACKAGE_VERSION, Signal::Package, Signal::Package),
+        ] {
             let samples = samples(kinds.get(&kind).unwrap());
             assert_eq!(samples.len(), 4, "{kind}");
             assert!(samples.iter().all(|event| event.kind() == &kind));
@@ -107,12 +122,7 @@ mod tests {
             let signals: Vec<Option<Signal>> = samples.iter().map(Event::signal).collect();
             assert_eq!(
                 signals,
-                [
-                    Some(Signal::Release),
-                    Some(Signal::Release),
-                    Some(Signal::Release),
-                    Some(Signal::Tag)
-                ]
+                [Some(signal), Some(signal), Some(signal), Some(bodiless)]
             );
             assert_eq!(samples[3].body(), "");
         }

@@ -365,7 +365,7 @@ fn a_github_owner_with_a_token_polls_its_members_together_through_graphql() {
         answer(200, &json!({ "data": { "m0": releases } }), "", false),
     ]);
     let member = cli();
-    let answered = pollster::block_on(source.polled(&http, &[(&member, None)]));
+    let answered = pollster::block_on(source.polled(&http, &[(&member, None)], &Rounded::Nothing));
     let Ok(Some(polled)) = &answered[0] else {
         panic!("a member never polled is read in full: {answered:?}");
     };
@@ -375,7 +375,7 @@ fn a_github_owner_with_a_token_polls_its_members_together_through_graphql() {
     assert_eq!(rest.batch(), NonZeroUsize::MIN);
     let unchanged = Scripted::new(vec![unchanged()]);
     assert_eq!(
-        pollster::block_on(rest.polled(&unchanged, &[(&member, None)])),
+        pollster::block_on(rest.polled(&unchanged, &[(&member, None)], &Rounded::Nothing)),
         [Ok(None)]
     );
     assert!(

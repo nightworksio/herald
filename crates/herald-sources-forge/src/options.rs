@@ -10,6 +10,9 @@ use jiff::SignedDuration;
 
 use crate::Forge;
 
+pub(crate) use packages::GITHUB_PACKAGE_TYPES;
+pub use packages::PackageVisibility;
+
 /// The most repositories a listing reads, before the filters, where
 /// `most_listed` is absent.
 pub const MOST_LISTED: NonZeroUsize = NonZeroUsize::new(10_000).unwrap();
@@ -155,7 +158,8 @@ pub struct SourceOptions {
     /// A token that reaches a private repository or raises the API's rate
     /// limit, such as the run's `GITHUB_TOKEN`.
     pub token: Option<SecretRef>,
-    /// How many of the newest releases and tags the first poll announces;
+    /// How many of the newest releases, tags and package versions the first
+    /// poll announces;
     /// none where absent (ADR-0003). For an owner, it applies to the members
     /// the first listing finds; a member found later announces only what it
     /// publishes after it was found.
@@ -266,8 +270,9 @@ pub struct SourceOptions {
     #[schemars(with = "Option<NonZeroUsize>")]
     pub graphql_batch: Option<NonZeroUsize>,
     /// What the source announces of each repository: its published Releases,
-    /// its version tags, or both; `["release"]` where absent. A tag and a
-    /// Release of it share one identity, so each route announces it once.
+    /// its version tags, the versions of its packages, or several;
+    /// `["release"]` where absent. A tag and a Release of it share one
+    /// identity, so each route announces it once.
     #[schemars(example = SourceOptions::SIGNALS)]
     pub signals: Option<Vec<Signal>>,
     /// How a pre-release is told: by the forge's flag or a pre-release part
@@ -288,6 +293,35 @@ pub struct SourceOptions {
     /// name or notes, where a route taking the source edits them
     /// (`edits = "release"`); 30 where absent, and at most `page`.
     pub edits_depth: Option<usize>,
+    /// The types of package announced where the signals take "package", as
+    /// the forge names them, such as `["container", "npm"]`; every type
+    /// where absent. GitHub's are npm, maven, rubygems, docker, nuget and
+    /// container.
+    pub package_types: Option<Vec<String>>,
+    /// The packages announced, as globs as `include` writes them; every
+    /// package where absent.
+    #[serde(default)]
+    pub packages: Vec<String>,
+    /// The container tags that move from one image to the next, which are
+    /// never announced, as globs as `include` writes them; `["latest"]`
+    /// where absent.
+    pub moving: Option<Vec<String>>,
+    /// The host of the container registry an image is named on, as in
+    /// `registry.example:5000`: where absent, ghcr.io beside GitHub's API,
+    /// `containers.<host>` beside a GitHub Enterprise Server's or a GHE.com
+    /// tenant's, each image's own on GitLab, and the instance's on Forgejo.
+    pub registry: Option<String>,
+    /// The most entries one listing of packages reads; 1000 where absent,
+    /// and at most 100000. A listing over it refuses the source for the
+    /// round.
+    #[schemars(with = "Option<NonZeroUsize>")]
+    pub most_packages: Option<NonZeroUsize>,
+    /// Who may see a package's version: the stricter of the package's own
+    /// visibility and its repository's ("stricter"), or the package's own
+    /// ("package"); "stricter" where absent. A version not everyone may see
+    /// reaches only `private` routes under `[doctor] private_to_public =
+    /// "refuse"`.
+    pub package_visibility: Option<PackageVisibility>,
 }
 
 /// How many of the newest Releases are watched for an edit where
@@ -406,6 +440,7 @@ impl SourceOptions {
         }
         self.signals_check(forge)?;
         self.prefer_check()?;
+        self.packages_check(forge)?;
         match &self.api {
             Some(api) if !web_url(api) => Err(format!(
                 "\"{api}\" is not a web address; give the API's base URL, such as https://forge.example/api/v1"
@@ -543,7 +578,7 @@ impl SourceOptions {
         {
             if signals.as_ref().is_some_and(Vec::is_empty) {
                 return Err(format!(
-                    "{at}signals names no signal; give release, tag or both, or remove it"
+                    "{at}signals names no signal; give release, tag, package or several, or remove it"
                 ));
             }
             if forge == Forge::GitLab && prerelease == Some(PrereleaseRule::Flag) {
@@ -823,5 +858,6 @@ impl SourceOptions {
     }
 }
 
+mod packages;
 #[cfg(test)]
 mod tests;

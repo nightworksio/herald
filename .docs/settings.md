@@ -470,14 +470,14 @@ What herald listens to, by name.
 
 ### `sources.<name>` of kind `github`
 
-A GitHub repository's releases and tags.
+A GitHub repository's releases, tags and packages.
 
 | Setting | Type | What it sets |
 |---------|------|--------------|
-| `sources.<name>` | table | A GitHub repository's releases and tags. |
+| `sources.<name>` | table | A GitHub repository's releases, tags and packages. |
 | `sources.<name>.api` | string | The API's base URL, for a forge that is not GitHub, GitLab.com or Codeberg: a GitHub Enterprise Server's `https://ghe.example/api/v3`, a GHE.com tenant's `https://api.acme.ghe.com`, a self-managed or Dedicated GitLab's `https://gitlab.example/api/v4`, or a Forgejo's `https://forge.example/api/v1`. Where absent, it is the CI run's own when announcing the run's repository, and otherwise the forge's public instance. An owner is listed at the same base. |
 | `sources.<name>.archived` | boolean | Whether archived repositories are taken. |
-| `sources.<name>.backfill` | integer | How many of the newest releases and tags the first poll announces; none where absent (ADR-0003). For an owner, it applies to the members the first listing finds; a member found later announces only what it publishes after it was found. |
+| `sources.<name>.backfill` | integer | How many of the newest releases, tags and package versions the first poll announces; none where absent (ADR-0003). For an owner, it applies to the members the first listing finds; a member found later announces only what it publishes after it was found. |
 | `sources.<name>.edits_depth` | integer | How many of the newest Releases a poll watches for an edit of their name or notes, where a route taking the source edits them (`edits = "release"`); 30 where absent, and at most `page`. |
 | `sources.<name>.exclude` | array of string | The names left out, as `include` writes them, whatever `include` says. |
 | `sources.<name>.fork` | boolean | Whether forks are taken. |
@@ -510,19 +510,25 @@ A GitHub repository's releases and tags.
 |---------|------|--------------|
 | `sources.<name>.most_listed` | integer | The most repositories a listing reads before the filters; 10000 where absent. A listing over it refuses the source for the round. |
 | `sources.<name>.most_members` | integer | The most members the filters may keep; 1000 where absent, and at most 100000. A selection over it refuses the source for the round. |
+| `sources.<name>.most_packages` | integer | The most entries one listing of packages reads; 1000 where absent, and at most 100000. A listing over it refuses the source for the round. |
+| `sources.<name>.moving` | array of string | The container tags that move from one image to the next, which are never announced, as globs as `include` writes them; `["latest"]` where absent. |
 | `sources.<name>.owner` | string | The organization, GitLab group or user whose repositories are the source's members, each polled on its own, in place of `repository`. |
+| `sources.<name>.package_types` | array of string | The types of package announced where the signals take "package", as the forge names them, such as `["container", "npm"]`; every type where absent. GitHub's are npm, maven, rubygems, docker, nuget and container. |
+| `sources.<name>.package_visibility` | [PackageVisibility](#packagevisibility) | Who may see a package's version: the stricter of the package's own visibility and its repository's ("stricter"), or the package's own ("package"); "stricter" where absent. A version not everyone may see reaches only `private` routes under `[doctor] private_to_public = "refuse"`. |
+| `sources.<name>.packages` | array of string | The packages announced, as globs as `include` writes them; every package where absent. |
 | `sources.<name>.page` | integer | How many of the newest releases, and of the newest tags, one poll reads; 30 where absent. |
 | `sources.<name>.parse` | [Size](#size) | The most of an answer parsed; "4MiB" where absent, and at most four times that. |
 | `sources.<name>.prefer` | [Prefer](#prefer) | Which of a tag and its Release is announced where a repository's signals take both: the Release, a tag with none waiting for it as long as `tag_window` ("release"), or whichever comes first ("first"); "release" where absent. Holding a tag needs a store that keeps held events, which the markers store does not. |
 | `sources.<name>.prerelease` | [PrereleaseRule](#prereleaserule) | How a pre-release is told: by the forge's flag or a pre-release part in the version ("either"), by the flag alone ("flag"), or by the version alone ("tag"); "either" where absent. A tag carries no flag, and neither does a GitLab release. |
 | `sources.<name>.project` | string | The project a member's events are announced as, a template of `repository.name`, `repository.path`, `repository.owner`, `repository.id`, `repository.topics`, `repository.properties` and `repository.visibility`; the repository's name where absent. |
 | `sources.<name>.properties.<name>` | [Values](#values) | A property's values: one, or any of several. |
+| `sources.<name>.registry` | string | The host of the container registry an image is named on, as in `registry.example:5000`: where absent, ghcr.io beside GitHub's API, `containers.<host>` beside a GitHub Enterprise Server's or a GHE.com tenant's, each image's own on GitLab, and the instance's on Forgejo. |
 | `sources.<name>.remembered` | integer | How many identities the cursor remembers, newest first; 500 where absent, and at least `page`. |
 | `sources.<name>.repositories.<name>.prerelease` | [PrereleaseRule](#prereleaserule) | How a pre-release of theirs is told, as the source's `prerelease` writes it; the source's where absent. |
 | `sources.<name>.repositories.<name>.project` | string | The project their events are announced as, a template as the source's `project` is; the source's where absent. |
 | `sources.<name>.repositories.<name>.signals` | array of [Signal](#signal) | What they announce, as the source's `signals` writes it; the source's where absent. |
 | `sources.<name>.repository` | string | The repository, as `owner/name`, or a GitLab project's full path, such as `group/subgroup/name`; or `owner` in its place. |
-| `sources.<name>.signals` | array of [Signal](#signal) | What the source announces of each repository: its published Releases, its version tags, or both; `["release"]` where absent. A tag and a Release of it share one identity, so each route announces it once. |
+| `sources.<name>.signals` | array of [Signal](#signal) | What the source announces of each repository: its published Releases, its version tags, the versions of its packages, or several; `["release"]` where absent. A tag and a Release of it share one identity, so each route announces it once. |
 | `sources.<name>.subgroups` | boolean | Whether a GitLab group's members include the projects of its subgroups; true where absent. |
 | `sources.<name>.tables` | array of string | The arrays of the member file that list repositories, such as `["repo", "ungoverned"]`; the file's own array where absent, which only JSON can hold. |
 | `sources.<name>.tag_window` | [Duration](#duration) | How long a tag with no Release waits for one, counted from when herald first sees the tag; "1h" where absent, and at most "7d". |
@@ -537,14 +543,14 @@ A GitHub repository's releases and tags.
 
 ### `sources.<name>` of kind `gitlab`
 
-A GitLab project's releases and tags.
+A GitLab project's releases, tags and packages.
 
 | Setting | Type | What it sets |
 |---------|------|--------------|
-| `sources.<name>` | table | A GitLab project's releases and tags. |
+| `sources.<name>` | table | A GitLab project's releases, tags and packages. |
 | `sources.<name>.api` | string | The API's base URL, for a forge that is not GitHub, GitLab.com or Codeberg: a GitHub Enterprise Server's `https://ghe.example/api/v3`, a GHE.com tenant's `https://api.acme.ghe.com`, a self-managed or Dedicated GitLab's `https://gitlab.example/api/v4`, or a Forgejo's `https://forge.example/api/v1`. Where absent, it is the CI run's own when announcing the run's repository, and otherwise the forge's public instance. An owner is listed at the same base. |
 | `sources.<name>.archived` | boolean | Whether archived repositories are taken. |
-| `sources.<name>.backfill` | integer | How many of the newest releases and tags the first poll announces; none where absent (ADR-0003). For an owner, it applies to the members the first listing finds; a member found later announces only what it publishes after it was found. |
+| `sources.<name>.backfill` | integer | How many of the newest releases, tags and package versions the first poll announces; none where absent (ADR-0003). For an owner, it applies to the members the first listing finds; a member found later announces only what it publishes after it was found. |
 | `sources.<name>.edits_depth` | integer | How many of the newest Releases a poll watches for an edit of their name or notes, where a route taking the source edits them (`edits = "release"`); 30 where absent, and at most `page`. |
 | `sources.<name>.exclude` | array of string | The names left out, as `include` writes them, whatever `include` says. |
 | `sources.<name>.fork` | boolean | Whether forks are taken. |
@@ -577,19 +583,25 @@ A GitLab project's releases and tags.
 |---------|------|--------------|
 | `sources.<name>.most_listed` | integer | The most repositories a listing reads before the filters; 10000 where absent. A listing over it refuses the source for the round. |
 | `sources.<name>.most_members` | integer | The most members the filters may keep; 1000 where absent, and at most 100000. A selection over it refuses the source for the round. |
+| `sources.<name>.most_packages` | integer | The most entries one listing of packages reads; 1000 where absent, and at most 100000. A listing over it refuses the source for the round. |
+| `sources.<name>.moving` | array of string | The container tags that move from one image to the next, which are never announced, as globs as `include` writes them; `["latest"]` where absent. |
 | `sources.<name>.owner` | string | The organization, GitLab group or user whose repositories are the source's members, each polled on its own, in place of `repository`. |
+| `sources.<name>.package_types` | array of string | The types of package announced where the signals take "package", as the forge names them, such as `["container", "npm"]`; every type where absent. GitHub's are npm, maven, rubygems, docker, nuget and container. |
+| `sources.<name>.package_visibility` | [PackageVisibility](#packagevisibility) | Who may see a package's version: the stricter of the package's own visibility and its repository's ("stricter"), or the package's own ("package"); "stricter" where absent. A version not everyone may see reaches only `private` routes under `[doctor] private_to_public = "refuse"`. |
+| `sources.<name>.packages` | array of string | The packages announced, as globs as `include` writes them; every package where absent. |
 | `sources.<name>.page` | integer | How many of the newest releases, and of the newest tags, one poll reads; 30 where absent. |
 | `sources.<name>.parse` | [Size](#size) | The most of an answer parsed; "4MiB" where absent, and at most four times that. |
 | `sources.<name>.prefer` | [Prefer](#prefer) | Which of a tag and its Release is announced where a repository's signals take both: the Release, a tag with none waiting for it as long as `tag_window` ("release"), or whichever comes first ("first"); "release" where absent. Holding a tag needs a store that keeps held events, which the markers store does not. |
 | `sources.<name>.prerelease` | [PrereleaseRule](#prereleaserule) | How a pre-release is told: by the forge's flag or a pre-release part in the version ("either"), by the flag alone ("flag"), or by the version alone ("tag"); "either" where absent. A tag carries no flag, and neither does a GitLab release. |
 | `sources.<name>.project` | string | The project a member's events are announced as, a template of `repository.name`, `repository.path`, `repository.owner`, `repository.id`, `repository.topics`, `repository.properties` and `repository.visibility`; the repository's name where absent. |
 | `sources.<name>.properties.<name>` | [Values](#values) | A property's values: one, or any of several. |
+| `sources.<name>.registry` | string | The host of the container registry an image is named on, as in `registry.example:5000`: where absent, ghcr.io beside GitHub's API, `containers.<host>` beside a GitHub Enterprise Server's or a GHE.com tenant's, each image's own on GitLab, and the instance's on Forgejo. |
 | `sources.<name>.remembered` | integer | How many identities the cursor remembers, newest first; 500 where absent, and at least `page`. |
 | `sources.<name>.repositories.<name>.prerelease` | [PrereleaseRule](#prereleaserule) | How a pre-release of theirs is told, as the source's `prerelease` writes it; the source's where absent. |
 | `sources.<name>.repositories.<name>.project` | string | The project their events are announced as, a template as the source's `project` is; the source's where absent. |
 | `sources.<name>.repositories.<name>.signals` | array of [Signal](#signal) | What they announce, as the source's `signals` writes it; the source's where absent. |
 | `sources.<name>.repository` | string | The repository, as `owner/name`, or a GitLab project's full path, such as `group/subgroup/name`; or `owner` in its place. |
-| `sources.<name>.signals` | array of [Signal](#signal) | What the source announces of each repository: its published Releases, its version tags, or both; `["release"]` where absent. A tag and a Release of it share one identity, so each route announces it once. |
+| `sources.<name>.signals` | array of [Signal](#signal) | What the source announces of each repository: its published Releases, its version tags, the versions of its packages, or several; `["release"]` where absent. A tag and a Release of it share one identity, so each route announces it once. |
 | `sources.<name>.subgroups` | boolean | Whether a GitLab group's members include the projects of its subgroups; true where absent. |
 | `sources.<name>.tables` | array of string | The arrays of the member file that list repositories, such as `["repo", "ungoverned"]`; the file's own array where absent, which only JSON can hold. |
 | `sources.<name>.tag_window` | [Duration](#duration) | How long a tag with no Release waits for one, counted from when herald first sees the tag; "1h" where absent, and at most "7d". |
@@ -604,14 +616,14 @@ A GitLab project's releases and tags.
 
 ### `sources.<name>` of kind `forgejo`
 
-A Forgejo or Gitea repository's releases and tags.
+A Forgejo or Gitea repository's releases, tags and packages.
 
 | Setting | Type | What it sets |
 |---------|------|--------------|
-| `sources.<name>` | table | A Forgejo or Gitea repository's releases and tags. |
+| `sources.<name>` | table | A Forgejo or Gitea repository's releases, tags and packages. |
 | `sources.<name>.api` | string | The API's base URL, for a forge that is not GitHub, GitLab.com or Codeberg: a GitHub Enterprise Server's `https://ghe.example/api/v3`, a GHE.com tenant's `https://api.acme.ghe.com`, a self-managed or Dedicated GitLab's `https://gitlab.example/api/v4`, or a Forgejo's `https://forge.example/api/v1`. Where absent, it is the CI run's own when announcing the run's repository, and otherwise the forge's public instance. An owner is listed at the same base. |
 | `sources.<name>.archived` | boolean | Whether archived repositories are taken. |
-| `sources.<name>.backfill` | integer | How many of the newest releases and tags the first poll announces; none where absent (ADR-0003). For an owner, it applies to the members the first listing finds; a member found later announces only what it publishes after it was found. |
+| `sources.<name>.backfill` | integer | How many of the newest releases, tags and package versions the first poll announces; none where absent (ADR-0003). For an owner, it applies to the members the first listing finds; a member found later announces only what it publishes after it was found. |
 | `sources.<name>.edits_depth` | integer | How many of the newest Releases a poll watches for an edit of their name or notes, where a route taking the source edits them (`edits = "release"`); 30 where absent, and at most `page`. |
 | `sources.<name>.exclude` | array of string | The names left out, as `include` writes them, whatever `include` says. |
 | `sources.<name>.fork` | boolean | Whether forks are taken. |
@@ -644,19 +656,25 @@ A Forgejo or Gitea repository's releases and tags.
 |---------|------|--------------|
 | `sources.<name>.most_listed` | integer | The most repositories a listing reads before the filters; 10000 where absent. A listing over it refuses the source for the round. |
 | `sources.<name>.most_members` | integer | The most members the filters may keep; 1000 where absent, and at most 100000. A selection over it refuses the source for the round. |
+| `sources.<name>.most_packages` | integer | The most entries one listing of packages reads; 1000 where absent, and at most 100000. A listing over it refuses the source for the round. |
+| `sources.<name>.moving` | array of string | The container tags that move from one image to the next, which are never announced, as globs as `include` writes them; `["latest"]` where absent. |
 | `sources.<name>.owner` | string | The organization, GitLab group or user whose repositories are the source's members, each polled on its own, in place of `repository`. |
+| `sources.<name>.package_types` | array of string | The types of package announced where the signals take "package", as the forge names them, such as `["container", "npm"]`; every type where absent. GitHub's are npm, maven, rubygems, docker, nuget and container. |
+| `sources.<name>.package_visibility` | [PackageVisibility](#packagevisibility) | Who may see a package's version: the stricter of the package's own visibility and its repository's ("stricter"), or the package's own ("package"); "stricter" where absent. A version not everyone may see reaches only `private` routes under `[doctor] private_to_public = "refuse"`. |
+| `sources.<name>.packages` | array of string | The packages announced, as globs as `include` writes them; every package where absent. |
 | `sources.<name>.page` | integer | How many of the newest releases, and of the newest tags, one poll reads; 30 where absent. |
 | `sources.<name>.parse` | [Size](#size) | The most of an answer parsed; "4MiB" where absent, and at most four times that. |
 | `sources.<name>.prefer` | [Prefer](#prefer) | Which of a tag and its Release is announced where a repository's signals take both: the Release, a tag with none waiting for it as long as `tag_window` ("release"), or whichever comes first ("first"); "release" where absent. Holding a tag needs a store that keeps held events, which the markers store does not. |
 | `sources.<name>.prerelease` | [PrereleaseRule](#prereleaserule) | How a pre-release is told: by the forge's flag or a pre-release part in the version ("either"), by the flag alone ("flag"), or by the version alone ("tag"); "either" where absent. A tag carries no flag, and neither does a GitLab release. |
 | `sources.<name>.project` | string | The project a member's events are announced as, a template of `repository.name`, `repository.path`, `repository.owner`, `repository.id`, `repository.topics`, `repository.properties` and `repository.visibility`; the repository's name where absent. |
 | `sources.<name>.properties.<name>` | [Values](#values) | A property's values: one, or any of several. |
+| `sources.<name>.registry` | string | The host of the container registry an image is named on, as in `registry.example:5000`: where absent, ghcr.io beside GitHub's API, `containers.<host>` beside a GitHub Enterprise Server's or a GHE.com tenant's, each image's own on GitLab, and the instance's on Forgejo. |
 | `sources.<name>.remembered` | integer | How many identities the cursor remembers, newest first; 500 where absent, and at least `page`. |
 | `sources.<name>.repositories.<name>.prerelease` | [PrereleaseRule](#prereleaserule) | How a pre-release of theirs is told, as the source's `prerelease` writes it; the source's where absent. |
 | `sources.<name>.repositories.<name>.project` | string | The project their events are announced as, a template as the source's `project` is; the source's where absent. |
 | `sources.<name>.repositories.<name>.signals` | array of [Signal](#signal) | What they announce, as the source's `signals` writes it; the source's where absent. |
 | `sources.<name>.repository` | string | The repository, as `owner/name`, or a GitLab project's full path, such as `group/subgroup/name`; or `owner` in its place. |
-| `sources.<name>.signals` | array of [Signal](#signal) | What the source announces of each repository: its published Releases, its version tags, or both; `["release"]` where absent. A tag and a Release of it share one identity, so each route announces it once. |
+| `sources.<name>.signals` | array of [Signal](#signal) | What the source announces of each repository: its published Releases, its version tags, the versions of its packages, or several; `["release"]` where absent. A tag and a Release of it share one identity, so each route announces it once. |
 | `sources.<name>.subgroups` | boolean | Whether a GitLab group's members include the projects of its subgroups; true where absent. |
 | `sources.<name>.tables` | array of string | The arrays of the member file that list repositories, such as `["repo", "ungoverned"]`; the file's own array where absent, which only JSON can hold. |
 | `sources.<name>.tag_window` | [Duration](#duration) | How long a tag with no Release waits for one, counted from when herald first sees the tag; "1h" where absent, and at most "7d". |
@@ -1050,6 +1068,10 @@ Whom herald's actors federate with.
 ### OneCharacter
 
 One character, as a config writes it.
+
+### PackageVisibility
+
+Who may see a package's version where its own visibility and its repository's differ.
 
 ### PinLookups
 

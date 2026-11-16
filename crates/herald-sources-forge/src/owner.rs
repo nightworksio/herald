@@ -3,10 +3,10 @@ use std::num::NonZeroUsize;
 use std::sync::Arc;
 
 use herald_core::{
-    Cursor, EventsRead, Glob, Listed, Listing, Owner, Polled, ProjectName, Selection, Visibility,
-    status, unreserved,
+    Cursor, EventsRead, Glob, Listed, Listing, Owner, Polled, ProjectName, Selection, Signal,
+    Visibility, status, unreserved,
 };
-use herald_kinds::{Changed, Expand, Expanded, Poll, Unlisted, Unpolled, each_polled};
+use herald_kinds::{Changed, Expand, Expanded, Poll, Rounded, Unlisted, Unpolled};
 use herald_ports::{Boxed, DynHttp, Erased, Http as _, Method, Request, Response, SecretText};
 use herald_wire::{Reading, SourceError, answered};
 use jiff::SignedDuration;
@@ -15,6 +15,7 @@ use serde::Deserialize;
 use crate::forge::{api_of, authorized};
 use crate::graphql::{Asking, polled_together};
 use crate::kind::projected;
+use crate::packages::{self, OwnerPackages, PackageList, Packaging, merged, seen_packages};
 use crate::polled::Releases;
 use crate::{Forge, Members, Origin, SourceOptions, Token, Transport, events};
 
@@ -38,6 +39,7 @@ pub(crate) struct Owned {
     project: Option<ProjectName>,
     projects: Vec<(Glob, ProjectName)>,
     graphql: Option<String>,
+    packaging: Packaging,
 }
 
 /// A member file read through the forge each round: the repository it is
@@ -102,6 +104,7 @@ impl Owned {
                     .clone()
                     .unwrap_or_else(|| herald_wire::github::graphql(&api_of(forge, options)))
             }),
+            packaging: Packaging::of(forge, options),
         }
     }
 
@@ -145,6 +148,61 @@ impl Owned {
             names: Some(names),
             etag: answer.header("etag").map(ToOwned::to_owned),
         })
+    }
+
+    /// What polls the member `repository`, its packages listed from
+    /// `list`.
+    fn releases(&self, repository: &Listed, list: PackageList) -> Releases {
+        let signals = self.options.signals_of(&repository.name);
+        Releases {
+            origin: Origin::new(self.forge, &self.options, &repository.path),
+            token: self.token.clone(),
+            project: self.named_project(repository),
+            held: self.options.held_for(&signals),
+            signals,
+            backfill: self.options.backfill,
+            watched: self.watched,
+            packaging: self.packaging.clone(),
+            list,
+            visibility: Some(repository.visibility),
+        }
+    }
+
+    /// How the packages of a repository at `origin` are asked, listed from
+    /// `list`, a pre-release told by `rule`.
+    fn asking<'a>(
+        &'a self,
+        origin: &'a Origin,
+        list: &'a PackageList,
+        rule: herald_core::PrereleaseRule,
+    ) -> packages::Asking<'a> {
+        packages::Asking {
+            origin,
+            token: self.token.as_ref(),
+            packaging: &self.packaging,
+            rule,
+            list,
+            repository: None,
+        }
+    }
+
+    /// What the member `repository` polled through GraphQL found of its
+    /// packages since `cursor`, listed from `list`, a pre-release told as
+    /// `signals` say.
+    async fn packaged(
+        &self,
+        http: &Erased<'_, dyn DynHttp + '_>,
+        (repository, list): (&Listed, &PackageList),
+        (signals, cursor): (&crate::Signals, Option<&Cursor>),
+    ) -> Result<packages::Packaged, Unpolled> {
+        let origin = Origin::new(self.forge, &self.options, &repository.path);
+        let asking = self.asking(&origin, list, signals.prerelease);
+        match list {
+            PackageList::Owners(owned) => {
+                packages::packaged_member(http, &asking, (repository, owned), cursor).await
+            }
+            PackageList::Own | PackageList::Kept => Ok(packages::Packaged::kept(cursor)),
+        }
     }
 
     fn reading(&self) -> Reading {
@@ -336,7 +394,7 @@ fn failed(error: SourceError) -> Unlisted {
 }
 
 /// Whether the forge's answer names a next page.
-fn next(response: &Response) -> bool {
+pub(crate) fn next(response: &Response) -> bool {
     response.header("link").is_some_and(|link| {
         link.split(',').any(|part| {
             part.split(';')
@@ -413,14 +471,58 @@ impl Expand for Owned {
             .map_or(NonZeroUsize::MIN, |_| self.options.graphql_batch())
     }
 
+    fn rounded<'a>(
+        &'a self,
+        http: &'a dyn DynHttp,
+        owner: Owner,
+    ) -> Boxed<'a, Result<Rounded, Unpolled>> {
+        Box::pin(async move {
+            if self.forge == Forge::GitLab || !self.options.may_take(Signal::Package) {
+                return Ok(Rounded::Nothing);
+            }
+            let (origin, list) = (
+                Origin::new(self.forge, &self.options, &self.owner),
+                PackageList::Own,
+            );
+            let packages = self
+                .asking(&origin, &list, self.options.prerelease.unwrap_or_default())
+                .listed(&Erased(http), (&self.owner, owner), None)
+                .await?;
+            Ok(Rounded::Read {
+                named: packages.linked().cloned().collect(),
+                read: Arc::new(packages),
+            })
+        })
+    }
+
     fn polled<'a>(
         &'a self,
         http: &'a dyn DynHttp,
         members: &'a [(&'a Listed, Option<&'a Cursor>)],
+        rounded: &'a Rounded,
     ) -> Boxed<'a, Vec<Result<Option<Polled>, Unpolled>>> {
         Box::pin(async move {
+            let list = match rounded {
+                Rounded::Nothing => PackageList::Own,
+                Rounded::Read { read, .. } => Arc::clone(read)
+                    .downcast::<OwnerPackages>()
+                    .map_or(PackageList::Kept, PackageList::Owners),
+                Rounded::Unread => PackageList::Kept,
+            };
             let Some(endpoint) = &self.graphql else {
-                return each_polled(self, http, members).await;
+                let mut answered = Vec::new();
+                for (repository, cursor) in members {
+                    let list = match &list {
+                        PackageList::Owners(owned)
+                            if !owned.holds(&repository.id) && seen_packages(*cursor) =>
+                        {
+                            PackageList::Kept
+                        }
+                        list => list.clone(),
+                    };
+                    answered.push(self.releases(repository, list).polled(http, *cursor).await);
+                }
+                return answered;
             };
             let asking = Asking {
                 endpoint,
@@ -439,32 +541,29 @@ impl Expand for Owned {
                     )
                 })
                 .collect();
-            let answered = polled_together(&Erased(http), &asking, &signalled).await;
-            answered
-                .into_iter()
-                .zip(members)
-                .map(|(answered, (repository, _))| {
-                    answered.and_then(|polled| {
-                        polled
-                            .map(|polled| projected(polled, self.named_project(repository)))
-                            .transpose()
-                    })
-                })
-                .collect()
+            let http = Erased(http);
+            let answered = polled_together(&http, &asking, &signalled).await;
+            let mut polled = Vec::new();
+            for (answered, (repository, cursor, signals)) in answered.into_iter().zip(&signalled) {
+                let answered = match answered {
+                    Ok(found) if signals.takes(Signal::Package) => self
+                        .packaged(&http, (repository, &list), (signals, *cursor))
+                        .await
+                        .map(|packaged| merged(found, packaged, *cursor)),
+                    answered => answered,
+                };
+                polled.push(answered.and_then(|found| {
+                    found
+                        .map(|found| projected(found, self.named_project(repository)))
+                        .transpose()
+                }));
+            }
+            polled
         })
     }
 
     fn member(&self, repository: &Listed) -> Arc<dyn Poll> {
-        let signals = self.options.signals_of(&repository.name);
-        Arc::new(Releases {
-            origin: Origin::new(self.forge, &self.options, &repository.path),
-            token: self.token.clone(),
-            project: self.named_project(repository),
-            held: self.options.held_for(&signals),
-            signals,
-            backfill: self.options.backfill,
-            watched: self.watched,
-        })
+        Arc::new(self.releases(repository, PackageList::Own))
     }
 
     fn tag_window(&self, repository: &Listed) -> Option<SignedDuration> {

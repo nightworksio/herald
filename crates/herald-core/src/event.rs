@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::key::Identity;
 use crate::kind::{Attribute, Kind, prerelease_in, version_in};
+use crate::members::Visibility;
 
 /// An event as a source parsed it, before [`Event::normalise`] checks it.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -70,6 +71,8 @@ pub struct Event {
     links: BTreeMap<String, String>,
     attributes: BTreeMap<String, Attribute>,
     occurred: Timestamp,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    visibility: Option<Visibility>,
 }
 
 /// An event as its JSON holds it, checked again as it is read back.
@@ -83,12 +86,15 @@ struct Written {
     links: BTreeMap<String, String>,
     attributes: BTreeMap<String, Attribute>,
     occurred: Timestamp,
+    #[serde(default)]
+    visibility: Option<Visibility>,
 }
 
 impl TryFrom<Written> for Event {
     type Error = Problem;
 
     fn try_from(written: Written) -> Result<Self, Problem> {
+        let visibility = written.visibility;
         Self::normalise(Draft {
             identity: written.identity,
             kind: written.kind,
@@ -98,6 +104,10 @@ impl TryFrom<Written> for Event {
             links: written.links,
             attributes: written.attributes,
             occurred: written.occurred,
+        })
+        .map(|event| Self {
+            visibility,
+            ..event
         })
     }
 }
@@ -139,7 +149,24 @@ impl Event {
             links,
             attributes: attributes(draft.attributes),
             occurred: draft.occurred,
+            visibility: None,
         })
+    }
+
+    /// The event, seen only by those its own `visibility` lets see it,
+    /// whatever the repository it is of: a package's own visibility
+    /// (ADR-0035).
+    #[must_use]
+    pub const fn seen_as(mut self, visibility: Visibility) -> Self {
+        self.visibility = Some(visibility);
+        self
+    }
+
+    /// Who may see it, where its source names that apart from its
+    /// repository.
+    #[must_use]
+    pub const fn visibility(&self) -> Option<Visibility> {
+        self.visibility
     }
 
     /// The event, announced as of the project `project`.
@@ -504,6 +531,13 @@ pub(crate) mod tests {
             .unwrap_err()
             .to_string();
         assert!(error.starts_with(&Problem::NoTitle.to_string()), "{error}");
+        assert!(!json.contains("visibility"));
+        assert_eq!(event().visibility(), None);
+        let private = event().seen_as(Visibility::Private);
+        assert_eq!(private.visibility(), Some(Visibility::Private));
+        let json = serde_json::to_string(&private).unwrap();
+        assert!(json.contains("\"visibility\":\"private\""), "{json}");
+        assert_eq!(serde_json::from_str::<Event>(&json).unwrap(), private);
     }
 
     #[test]

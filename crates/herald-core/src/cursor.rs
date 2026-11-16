@@ -30,6 +30,10 @@ pub struct Cursor {
     /// edit (ADR-0034).
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub notes: BTreeMap<Identity, String>,
+    /// The validators the server last returned for each package's
+    /// versions, by package (ADR-0035).
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub packages: BTreeMap<String, Validators>,
 }
 
 /// What one poll of a source found: its events, the newest first, and the
@@ -50,6 +54,13 @@ pub struct Polled {
     pub passed: Vec<Identity>,
     /// How many of the newest Releases it found are watched for an edit.
     pub watched: usize,
+    /// The validators the server returned for each package's versions, by
+    /// package.
+    pub packages: BTreeMap<String, Validators>,
+    /// The identities of package versions it found without reading them in
+    /// full, newest first, which announce nothing and are remembered as
+    /// seen.
+    pub unread: Vec<Identity>,
 }
 
 impl Cursor {
@@ -64,6 +75,7 @@ impl Cursor {
             polled
                 .passed
                 .iter()
+                .chain(&polled.unread)
                 .filter(|identity| !seen_in(found, identity))
                 .cloned(),
         );
@@ -102,6 +114,7 @@ impl Cursor {
                 .or_else(|| self.project.clone()),
             signals: polled.signals.clone(),
             notes: self.watched(polled),
+            packages: polled.packages.clone(),
         }
     }
 
@@ -248,6 +261,8 @@ mod tests {
                 signals: BTreeMap::from([(Signal::Tag, tags.clone())]),
                 passed: vec![Identity::new("b"), Identity::new("p"), Identity::new("a")],
                 watched: 0,
+                packages: BTreeMap::from([("container/herald".to_owned(), tags.clone())]),
+                unread: vec![Identity::new("u"), Identity::new("c")],
             },
             500,
         );
@@ -258,7 +273,8 @@ mod tests {
                     Identity::new("c"),
                     Identity::new("b"),
                     Identity::new("p"),
-                    Identity::new("a")
+                    Identity::new("a"),
+                    Identity::new("u")
                 ],
                 etag: Some("new".to_owned()),
                 last_modified: Some("then".to_owned()),
@@ -266,6 +282,7 @@ mod tests {
                 signals: BTreeMap::from([(Signal::Tag, tags.clone())]),
                 notes: BTreeMap::new(),
                 tagged: vec![Identity::new("b"), Identity::new("p"), Identity::new("a")],
+                packages: BTreeMap::from([("container/herald".to_owned(), tags.clone())]),
             }
         );
         assert_eq!(advanced.validators(Signal::Tag), Some(&tags));

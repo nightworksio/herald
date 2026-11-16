@@ -1,8 +1,6 @@
 //! One repository polled for each signal its source announces of it: its
-//! releases, its tags, or both, each asked with its own validators
-//! (ADR-0031).
-
-use std::collections::BTreeMap;
+//! releases, its tags, its packages' versions, or several, each asked with
+//! its own validators (ADR-0031, ADR-0035).
 
 use herald_core::{Address, Cursor, Event, Identity, Polled, Signal};
 use herald_kinds::{Poll, Unpolled};
@@ -10,13 +8,15 @@ use herald_ports::{Boxed, DynHttp, Erased, Http as _, Response};
 
 use crate::forge::{Repository, validators};
 use crate::kind::projected;
+use crate::packages::{Asking, PackageList, Packaging, merged, packaged_of};
 use crate::tags::{Listed, Pointed};
 use crate::wire::{ForgeTag, tag_event};
 use crate::{Forge, Origin, Signals, Token};
 
-/// A repository's releases and tags, as its source's signals ask, polled
-/// with the token the config names, and announced as of the project a
-/// template named, where one did.
+/// A repository's releases, tags and package versions, as its source's
+/// signals ask, polled with the token the config names, and announced as
+/// of the project a template named, where one did; who may see it, where
+/// its owner's listing said.
 #[derive(Debug)]
 pub(crate) struct Releases {
     pub(crate) origin: Origin,
@@ -26,6 +26,9 @@ pub(crate) struct Releases {
     pub(crate) backfill: usize,
     pub(crate) held: Option<jiff::SignedDuration>,
     pub(crate) watched: usize,
+    pub(crate) packaging: Packaging,
+    pub(crate) list: PackageList,
+    pub(crate) visibility: Option<herald_core::Visibility>,
 }
 
 /// What the tags answer of a poll found: the events of tags read in full,
@@ -176,6 +179,9 @@ pub async fn tag_event_of(
         backfill: 0,
         held: None,
         watched: 0,
+        packaging: Packaging::of(origin.forge(), &crate::SourceOptions::default()),
+        list: PackageList::Own,
+        visibility: None,
     };
     let http = Erased(http);
     let forge = origin.forge();
@@ -239,7 +245,9 @@ impl Poll for Releases {
             } else {
                 None
             };
-            if !changed(releases.as_ref()) && !changed(tags.as_ref()) {
+            let asks_packages = self.signals.takes(Signal::Package);
+            let asked = changed(releases.as_ref()) || changed(tags.as_ref());
+            if !asked && (!asks_packages || matches!(self.list, PackageList::Kept)) {
                 return Ok(None);
             }
             let described = self
@@ -247,6 +255,22 @@ impl Poll for Releases {
                 .await?;
             let forge = self.origin.forge();
             let repository = forge.repository(&described).map_err(Unpolled::unreadable)?;
+            let packaged = if asks_packages {
+                let asking = Asking {
+                    origin: &self.origin,
+                    token,
+                    packaging: &self.packaging,
+                    rule: self.signals.prerelease,
+                    list: &self.list,
+                    repository: self.visibility,
+                };
+                Some(packaged_of(&http, &asking, (&repository, &described), cursor).await?)
+            } else {
+                None
+            };
+            if !asked && !packaged.as_ref().is_some_and(|packaged| packaged.changed) {
+                return Ok(None);
+            }
             let mut polled = match &releases {
                 Some(answer) if changed(Some(answer)) => forge
                     .releases(
@@ -273,8 +297,12 @@ impl Poll for Releases {
                 } else {
                     kept.cloned().unwrap_or_default()
                 };
-                polled.signals = BTreeMap::from([(Signal::Tag, validators)]);
+                polled.signals.insert(Signal::Tag, validators);
             }
+            let mut polled = match packaged {
+                Some(packaged) => merged(Some(polled), packaged, cursor).unwrap_or_default(),
+                None => polled,
+            };
             polled
                 .events
                 .sort_by_key(|event| std::cmp::Reverse(event.occurred()));

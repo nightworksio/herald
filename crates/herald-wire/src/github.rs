@@ -34,6 +34,28 @@ pub fn graphql(api: &str) -> String {
     }
 }
 
+/// The host of GitHub's own container registry.
+const GHCR: &str = "ghcr.io";
+
+/// The host of the container registry beside the REST API at `api`:
+/// ghcr.io beside api.github.com, `containers.acme.ghe.com` beside a GHE.com
+/// tenant's `https://api.acme.ghe.com`, and `containers.ghe.example` beside
+/// a GitHub Enterprise Server's `https://ghe.example/api/v3`.
+#[must_use]
+pub fn containers(api: &str) -> String {
+    let api = api.trim_end_matches('/');
+    if api == API {
+        return GHCR.to_owned();
+    }
+    let host = herald_core::Address::parse(api)
+        .map(|address| address.host().to_owned())
+        .unwrap_or_default();
+    let tenant = host
+        .strip_prefix("api.")
+        .filter(|tenant| tenant.ends_with(".ghe.com"));
+    format!("containers.{}", tenant.unwrap_or(&host))
+}
+
 /// `request` with the headers GitHub's REST API asks for, identified as
 /// herald's.
 #[must_use]
@@ -72,6 +94,22 @@ mod tests {
             ),
         ] {
             assert_eq!(super::graphql(rest), graphql, "{rest}");
+        }
+    }
+
+    #[test]
+    fn containers_are_named_on_the_registry_beside_each_kind_of_github_s_rest_api() {
+        for (rest, registry) in [
+            ("https://api.github.com", "ghcr.io"),
+            ("https://api.github.com/", "ghcr.io"),
+            ("https://api.acme.ghe.com", "containers.acme.ghe.com"),
+            ("https://ghe.example/api/v3", "containers.ghe.example"),
+            (
+                "https://api.ghe.example/api/v3",
+                "containers.api.ghe.example",
+            ),
+        ] {
+            assert_eq!(super::containers(rest), registry, "{rest}");
         }
     }
 

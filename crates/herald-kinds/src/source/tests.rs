@@ -227,9 +227,19 @@ fn an_owner_by_default_polls_each_member_on_its_own_and_follows_no_events() {
     assert_eq!(owner.batch(), std::num::NonZeroUsize::MIN);
     assert_eq!(owner.tag_window(&one), None);
     assert_eq!(
-        pollster::block_on(owner.polled(&http, &[(&one, None), (&two, None)])),
+        pollster::block_on(owner.polled(&http, &[(&one, None), (&two, None)], &Rounded::Unread)),
         [Ok(None), Ok(None)]
     );
+    let rounded = pollster::block_on(owner.rounded(&http, herald_core::Owner::User)).unwrap();
+    assert!(matches!(rounded, Rounded::Nothing));
+    assert_eq!(rounded.named(), None);
+    assert_eq!(Rounded::Unread.named(), None);
+    let named = std::collections::BTreeSet::from(["one".to_owned()]);
+    let read = Rounded::Read {
+        named: named.clone(),
+        read: Arc::new(()),
+    };
+    assert_eq!(read.named(), Some(&named));
     assert_eq!(
         pollster::block_on(owner.changed(&http, herald_core::Owner::User, None)),
         None

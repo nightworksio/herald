@@ -85,6 +85,27 @@ fn a_forge_source_names_its_secrets_and_reads_its_webhooks() {
         ]
     );
     assert_eq!(source.kinds(), &[Kind::RELEASE]);
+    let kinds = |signals: &[herald_core::Signal]| {
+        GitHubKind::checked(SourceOptions {
+            signals: Some(signals.to_vec()),
+            ..options("cli/cli")
+        })
+        .unwrap()
+        .kinds()
+    };
+    assert_eq!(
+        kinds(&[herald_core::Signal::Tag, herald_core::Signal::Package]),
+        &[Kind::RELEASE, Kind::PACKAGE_VERSION]
+    );
+    assert_eq!(
+        kinds(&[herald_core::Signal::Release, herald_core::Signal::Package]),
+        &[Kind::RELEASE, Kind::PACKAGE_VERSION]
+    );
+    assert_eq!(
+        kinds(&[herald_core::Signal::Package]),
+        &[Kind::PACKAGE_VERSION]
+    );
+    assert_eq!(kinds(&[herald_core::Signal::Tag]), &[Kind::RELEASE]);
     assert_eq!(source.backfill(), 2);
     assert!(!source.moving_tags());
     assert!(matches!(
@@ -251,7 +272,10 @@ fn a_source_holds_a_tag_where_it_prefers_releases_and_takes_both() {
         .signals()
     };
     assert_eq!(signalled(None), [herald_core::Signal::Release]);
-    assert_eq!(signalled(both()), herald_core::Signal::ALL);
+    assert_eq!(
+        signalled(both()),
+        [herald_core::Signal::Release, herald_core::Signal::Tag]
+    );
     assert_eq!(
         signalled(Some(vec![herald_core::Signal::Tag])),
         [herald_core::Signal::Tag]

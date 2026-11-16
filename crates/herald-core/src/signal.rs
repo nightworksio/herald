@@ -20,13 +20,16 @@ pub enum Signal {
     Release,
     /// A version tag, with or without a Release.
     Tag,
+    /// A version of a package the forge's registry holds for the
+    /// repository.
+    Package,
 }
 
 impl Signal {
     /// The signals a source announces where `signals` is absent.
     pub const DEFAULT: [Self; 1] = [Self::Release];
     /// Every signal.
-    pub const ALL: [Self; 2] = [Self::Release, Self::Tag];
+    pub const ALL: [Self; 3] = [Self::Release, Self::Tag, Self::Package];
 
     /// Its name, as `signals` writes it and an event's `signal` attribute
     /// holds it.
@@ -35,6 +38,7 @@ impl Signal {
         match self {
             Self::Release => "release",
             Self::Tag => "tag",
+            Self::Package => "package",
         }
     }
 
@@ -100,7 +104,11 @@ mod tests {
 
     #[test]
     fn each_signal_is_named_as_signals_writes_it() {
-        for (signal, name) in [(Signal::Release, "release"), (Signal::Tag, "tag")] {
+        for (signal, name) in [
+            (Signal::Release, "release"),
+            (Signal::Tag, "tag"),
+            (Signal::Package, "package"),
+        ] {
             assert_eq!(signal.name(), name);
             assert_eq!(Signal::named(name), Some(signal));
             assert_eq!(

@@ -11,6 +11,7 @@ use serde_json::json;
 
 use crate::harness::*;
 
+mod packages;
 mod tags;
 
 pub(crate) const LISTING: &str =
