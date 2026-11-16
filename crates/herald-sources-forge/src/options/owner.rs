@@ -9,18 +9,7 @@ use jiff::SignedDuration;
 use super::{OVERRIDDEN, SourceOptions, globs, tie};
 use crate::Forge;
 
-/// The most repositories a listing reads, before the filters, where
-/// `most_listed` is absent.
-pub const MOST_LISTED: NonZeroUsize = NonZeroUsize::new(10_000).unwrap();
-
-/// The most members a selection keeps where `most_members` is absent.
-pub const MOST_MEMBERS: NonZeroUsize = NonZeroUsize::new(1_000).unwrap();
-
-/// The most `most_members` may be.
-pub const MOST_MEMBERS_ALLOWED: usize = 100_000;
-
-/// How long a member that left is kept where `keep_members` is absent.
-pub const KEEP_MEMBERS: SignedDuration = SignedDuration::from_hours(30 * 24);
+pub use herald_core::{KEEP_MEMBERS, MOST_LISTED, MOST_MEMBERS, MOST_MEMBERS_ALLOWED};
 
 /// A property's values: one, or any of several.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize, schemars::JsonSchema)]

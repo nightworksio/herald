@@ -32,6 +32,9 @@ impl Reaching {
             Base::At(url) => Reach::new([url])
                 .map(Self::Base)
                 .map_err(|error| error.to_string()),
+            Base::Among(urls) => Reach::new(urls.iter().map(String::as_str))
+                .map(Self::Base)
+                .map_err(|error| error.to_string()),
             Base::Public => Ok(Self::Public),
         }
     }
@@ -169,6 +172,36 @@ mod tests {
             Reaching::of(Base::At("http://discord.com")),
             Err(
                 "http://discord.com is not HTTPS; plain HTTP is allowed only on a loopback host"
+                    .to_owned()
+            )
+        );
+    }
+
+    #[test]
+    fn a_connection_among_bases_reaches_each_of_their_origins_alone() {
+        let bases = [
+            "https://repo.packagist.org".to_owned(),
+            "https://packagist.org".to_owned(),
+        ];
+        let reaching = Reaching::of(Base::Among(&bases)).unwrap();
+        for url in [
+            "https://repo.packagist.org/p2/a/b.json",
+            "https://packagist.org/packages/list.json",
+        ] {
+            assert_eq!(
+                reaching.admitted(&plain(url)).map(String::from),
+                Ok(url.to_owned())
+            );
+        }
+        assert!(reaching.admitted(&plain("https://example.org/")).is_err());
+        let plain_http = [
+            "https://a.example".to_owned(),
+            "http://b.example".to_owned(),
+        ];
+        assert_eq!(
+            Reaching::of(Base::Among(&plain_http)),
+            Err(
+                "http://b.example is not HTTPS; plain HTTP is allowed only on a loopback host"
                     .to_owned()
             )
         );

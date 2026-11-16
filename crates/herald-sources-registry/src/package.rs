@@ -1,15 +1,15 @@
 use std::collections::BTreeMap;
 
 use herald_core::{
-    Address, Cursor, Draft, Event, Kind, Origin, Polled, RELEASE_LINK, prerelease_version,
-    versioned,
+    Address, Cursor, Draft, Event, Kind, Origin, Polled, RELEASE_LINK, path_of_names,
+    prerelease_version, versioned,
 };
 use herald_core::{media, status};
 use herald_ports::{Method, Request, Response, Secret, SecretText};
 use herald_wire::{Reading, SourceError, answered};
 use jiff::Timestamp;
 
-use crate::options::{RegistryOptions, TagOrdering};
+use crate::options::{CratesOwner, RegistryOptions, TagOrdering};
 use crate::{crates_io, docker_hub, npm, packagist};
 
 /// A registry whose package versions herald announces.
@@ -24,6 +24,10 @@ pub enum Registry {
     /// Docker Hub, whose tags are a repository's versions.
     DockerHub,
 }
+
+/// The most packages one page of crates.io's and Docker Hub's namespace
+/// listings holds.
+const LISTED_PAGE: usize = 100;
 
 /// How a registry is asked, and what its answer is called in an error.
 pub(crate) struct Api {
@@ -88,12 +92,88 @@ impl Registry {
         }
     }
 
+    /// What its namespace listing is called in an error.
+    pub(crate) const fn listing(self) -> &'static str {
+        match self {
+            Self::Packagist => packagist::VENDOR,
+            Self::CratesIo => crates_io::CRATES,
+            Self::Npm => npm::ORG,
+            Self::DockerHub => docker_hub::REPOSITORIES,
+        }
+    }
+
     pub(crate) const fn api(self) -> &'static Api {
         match self {
             Self::Packagist => &packagist::API,
             Self::CratesIo => &crates_io::API,
             Self::Npm => &npm::API,
             Self::DockerHub => &docker_hub::API,
+        }
+    }
+
+    /// The key that names a namespace of its packages in `herald.toml`.
+    #[must_use]
+    pub const fn namespace_key(self) -> &'static str {
+        match self {
+            Self::Packagist => "vendor",
+            Self::CratesIo => "owner",
+            Self::Npm => "scope",
+            Self::DockerHub => "namespace",
+        }
+    }
+
+    /// How a namespace of its packages is written.
+    #[must_use]
+    pub const fn namespace_shape(self) -> &'static str {
+        match self {
+            Self::Packagist => "the vendor's name, such as monolog",
+            Self::CratesIo => "user:<login> or team:github:<org>:<team>",
+            Self::Npm => "@scope",
+            Self::DockerHub => "the namespace's name, such as bitnami",
+        }
+    }
+
+    /// Whether `package` is written as the registry names a package: of
+    /// letters, digits, '.', '_' and '-', in as many names as it takes, and
+    /// npm's scoped packages as `@scope/name`.
+    #[must_use]
+    pub fn writes_package(self, package: &str) -> bool {
+        match (self, package.strip_prefix('@')) {
+            (Self::Npm, Some(scoped)) => path_of_names(scoped, 2..=2),
+            _ => path_of_names(package, self.names()),
+        }
+    }
+
+    /// Whether `namespace` is written as the registry writes a namespace.
+    #[must_use]
+    pub fn writes_namespace(self, namespace: &str) -> bool {
+        match self {
+            Self::CratesIo => CratesOwner::of(namespace).is_some(),
+            Self::Npm => namespace
+                .strip_prefix('@')
+                .is_some_and(|scope| path_of_names(scope, 1..=1)),
+            Self::Packagist | Self::DockerHub => path_of_names(namespace, 1..=1),
+        }
+    }
+
+    /// Whether its namespace listing says who may see each package.
+    #[must_use]
+    pub const fn lists_visibility(self) -> bool {
+        matches!(self, Self::DockerHub)
+    }
+
+    /// Whether it lists a namespace page by page.
+    #[must_use]
+    pub const fn pages_its_listing(self) -> bool {
+        matches!(self, Self::CratesIo | Self::DockerHub)
+    }
+
+    /// The most packages one page of its namespace listing holds.
+    #[must_use]
+    pub const fn listed_page(self) -> usize {
+        match self {
+            Self::CratesIo | Self::DockerHub => LISTED_PAGE,
+            Self::Npm | Self::Packagist => usize::MAX,
         }
     }
 
@@ -126,14 +206,14 @@ impl Registry {
 }
 
 impl Package {
-    /// The package `options` name, on `registry`.
+    /// The package `name` on `registry`, asked as `options` say.
     #[must_use]
-    pub fn new(registry: Registry, options: &RegistryOptions) -> Self {
+    pub fn new(registry: Registry, name: &str, options: &RegistryOptions) -> Self {
         let name = match registry {
-            Registry::DockerHub if !options.package.contains('/') => {
-                format!("{}/{}", docker_hub::OFFICIAL, options.package)
+            Registry::DockerHub if !name.contains('/') => {
+                format!("{}/{name}", docker_hub::OFFICIAL)
             }
-            _ => options.package.clone(),
+            _ => name.to_owned(),
         };
         Self {
             registry,
@@ -223,7 +303,7 @@ impl Package {
 
     /// Where its events come from: the registry at its API's host, the
     /// package's scope, vendor or namespace, and the package.
-    fn origin(&self) -> Origin {
+    pub(crate) fn origin(&self) -> Origin {
         let owner = match self.registry {
             Registry::DockerHub => docker_hub::namespace(&self.name),
             Registry::Packagist | Registry::CratesIo | Registry::Npm => self
@@ -245,7 +325,7 @@ impl Package {
     /// `request` authorised by `token` as the registry takes it: as HTTP Basic
     /// with the user `token` on Packagist, as Private Packagist takes it,
     /// and as a bearer token elsewhere.
-    fn authorised(&self, request: Request, token: &Secret) -> Request {
+    pub(crate) fn authorised(&self, request: Request, token: &Secret) -> Request {
         match self.registry {
             Registry::Packagist => request.header(
                 "Authorization",
@@ -327,7 +407,15 @@ impl Package {
             };
             links.insert(RELEASE_LINK.to_owned(), page);
         }
-        let identity = format!("{}/{}/{}", self.registry.kind(), self.name, found.version);
+        let identity = match self.registry {
+            Registry::DockerHub => format!(
+                "{}/{}/{}",
+                docker_hub::REGISTRY,
+                self.name.to_ascii_lowercase(),
+                found.version
+            ),
+            _ => format!("{}/{}/{}", self.registry.kind(), self.name, found.version),
+        };
         let title = format!("{project} {}", found.version);
         let prerelease = prerelease_version(&found.version);
         let draft = Draft {

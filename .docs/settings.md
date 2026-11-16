@@ -748,15 +748,29 @@ A package's versions on Packagist.
 | `sources.<name>` | table | A package's versions on Packagist. |
 | `sources.<name>.api` | string | The registry's base URL, for a mirror or a private registry that answers as the public one does; the public registry's where absent. |
 | `sources.<name>.backfill` | integer | How many of the newest versions the first poll announces; none where absent (ADR-0003). |
+| `sources.<name>.exclude` | array of string | Globs of the package names a namespace source leaves out, whatever `include` says. |
+| `sources.<name>.include` | array of string | Globs of the package names a namespace source takes; every name where empty. |
+| `sources.<name>.keep_members` | [Duration](#duration) | How long a package that left the namespace is kept, with its cursor, before it is forgotten; "30d" where absent. |
 | `sources.<name>.kind` | string |  |
+| `sources.<name>.listed_page` | integer | How many packages one page of a namespace's listing asks for, where the registry pages it; the most it allows where absent. |
+| `sources.<name>.listing` | [VendorListing](#vendorlisting) | How a Packagist vendor's packages are listed: `packagist`, through `/packages/list.json` at `listing_api`, where absent, or `composer`, through a Composer repository's `packages.json` at `api`. |
+| `sources.<name>.listing_api` | string | The base URL serving Packagist's `/packages/list.json` for a vendor source; `https://packagist.org` where absent. |
+| `sources.<name>.most_listed` | integer | The most packages a namespace's listing reads before `include` and `exclude`; 10000 where absent. A namespace listing more is refused for the round. |
+| `sources.<name>.most_members` | integer | The most packages `include` and `exclude` may keep; 1000 where absent, and at most 100000. A namespace keeping more is refused for the round. |
+| `sources.<name>.namespace` | string | The Docker Hub namespace whose repositories the source takes, each polled on its own; exclusive with `package`. |
 | `sources.<name>.ordering` | [TagOrdering](#tagordering) | How Docker Hub lists a repository's tags for a poll: `last_updated`, the most recently pushed first, where unset, or `name`. |
+| `sources.<name>.owner` | string | The crates.io owner whose crates the source takes, each polled on its own, as crates.io writes owners: `user:<login>` or `team:github:<org>:<team>`; exclusive with `package`. |
 | `sources.<name>.package` | string | The package, as the registry names it: `vendor/name` on Packagist, a crate's name, an npm package's name such as `@scope/name`, or a Docker Hub repository such as `library/caddy`, where an official image may leave out `library/`. |
 | `sources.<name>.page` | integer | How many of the newest versions one poll reads; 30 where absent. |
 | `sources.<name>.parse` | [Size](#size) | The most of an answer parsed; "4MiB", "16MiB" on Packagist and "32MiB" on npm, where absent, and at most four times that. |
 | `sources.<name>.remembered` | integer | How many identities the cursor remembers, newest first; 500 where absent, and at least `page`. |
+| `sources.<name>.scope` | string | The npm scope whose packages the source takes, each polled on its own, such as `@acme`; exclusive with `package`. |
 | `sources.<name>.token` | table | A token for a private package: npm's, sent as a bearer token; Private Packagist's Composer token, sent as HTTP Basic with the user `token`; or a Docker Hub personal access token, exchanged with `username` for a bearer token. crates.io takes none. |
 | `sources.<name>.token.secret` | string | The secret's name. |
+| `sources.<name>.unscoped` | boolean | Whether an npm scope source also takes the packages its organization owns outside the scope. |
 | `sources.<name>.username` | string | The Docker Hub account `token` belongs to. |
+| `sources.<name>.vendor` | string | The Packagist vendor whose packages the source takes, each polled on its own; exclusive with `package`. |
+| `sources.<name>.visibility` | [Declared](#declared) | Who may see a namespace's packages where its listing does not say: `public` declares them public. Where absent, they are public when the source has no token and private when it has one, which a token may list. |
 
 ### `sources.<name>` of kind `crates-io`
 
@@ -767,15 +781,29 @@ A crate's versions on crates.io.
 | `sources.<name>` | table | A crate's versions on crates.io. |
 | `sources.<name>.api` | string | The registry's base URL, for a mirror or a private registry that answers as the public one does; the public registry's where absent. |
 | `sources.<name>.backfill` | integer | How many of the newest versions the first poll announces; none where absent (ADR-0003). |
+| `sources.<name>.exclude` | array of string | Globs of the package names a namespace source leaves out, whatever `include` says. |
+| `sources.<name>.include` | array of string | Globs of the package names a namespace source takes; every name where empty. |
+| `sources.<name>.keep_members` | [Duration](#duration) | How long a package that left the namespace is kept, with its cursor, before it is forgotten; "30d" where absent. |
 | `sources.<name>.kind` | string |  |
+| `sources.<name>.listed_page` | integer | How many packages one page of a namespace's listing asks for, where the registry pages it; the most it allows where absent. |
+| `sources.<name>.listing` | [VendorListing](#vendorlisting) | How a Packagist vendor's packages are listed: `packagist`, through `/packages/list.json` at `listing_api`, where absent, or `composer`, through a Composer repository's `packages.json` at `api`. |
+| `sources.<name>.listing_api` | string | The base URL serving Packagist's `/packages/list.json` for a vendor source; `https://packagist.org` where absent. |
+| `sources.<name>.most_listed` | integer | The most packages a namespace's listing reads before `include` and `exclude`; 10000 where absent. A namespace listing more is refused for the round. |
+| `sources.<name>.most_members` | integer | The most packages `include` and `exclude` may keep; 1000 where absent, and at most 100000. A namespace keeping more is refused for the round. |
+| `sources.<name>.namespace` | string | The Docker Hub namespace whose repositories the source takes, each polled on its own; exclusive with `package`. |
 | `sources.<name>.ordering` | [TagOrdering](#tagordering) | How Docker Hub lists a repository's tags for a poll: `last_updated`, the most recently pushed first, where unset, or `name`. |
+| `sources.<name>.owner` | string | The crates.io owner whose crates the source takes, each polled on its own, as crates.io writes owners: `user:<login>` or `team:github:<org>:<team>`; exclusive with `package`. |
 | `sources.<name>.package` | string | The package, as the registry names it: `vendor/name` on Packagist, a crate's name, an npm package's name such as `@scope/name`, or a Docker Hub repository such as `library/caddy`, where an official image may leave out `library/`. |
 | `sources.<name>.page` | integer | How many of the newest versions one poll reads; 30 where absent. |
 | `sources.<name>.parse` | [Size](#size) | The most of an answer parsed; "4MiB", "16MiB" on Packagist and "32MiB" on npm, where absent, and at most four times that. |
 | `sources.<name>.remembered` | integer | How many identities the cursor remembers, newest first; 500 where absent, and at least `page`. |
+| `sources.<name>.scope` | string | The npm scope whose packages the source takes, each polled on its own, such as `@acme`; exclusive with `package`. |
 | `sources.<name>.token` | table | A token for a private package: npm's, sent as a bearer token; Private Packagist's Composer token, sent as HTTP Basic with the user `token`; or a Docker Hub personal access token, exchanged with `username` for a bearer token. crates.io takes none. |
 | `sources.<name>.token.secret` | string | The secret's name. |
+| `sources.<name>.unscoped` | boolean | Whether an npm scope source also takes the packages its organization owns outside the scope. |
 | `sources.<name>.username` | string | The Docker Hub account `token` belongs to. |
+| `sources.<name>.vendor` | string | The Packagist vendor whose packages the source takes, each polled on its own; exclusive with `package`. |
+| `sources.<name>.visibility` | [Declared](#declared) | Who may see a namespace's packages where its listing does not say: `public` declares them public. Where absent, they are public when the source has no token and private when it has one, which a token may list. |
 
 ### `sources.<name>` of kind `npm`
 
@@ -786,15 +814,29 @@ A package's versions on the npm registry.
 | `sources.<name>` | table | A package's versions on the npm registry. |
 | `sources.<name>.api` | string | The registry's base URL, for a mirror or a private registry that answers as the public one does; the public registry's where absent. |
 | `sources.<name>.backfill` | integer | How many of the newest versions the first poll announces; none where absent (ADR-0003). |
+| `sources.<name>.exclude` | array of string | Globs of the package names a namespace source leaves out, whatever `include` says. |
+| `sources.<name>.include` | array of string | Globs of the package names a namespace source takes; every name where empty. |
+| `sources.<name>.keep_members` | [Duration](#duration) | How long a package that left the namespace is kept, with its cursor, before it is forgotten; "30d" where absent. |
 | `sources.<name>.kind` | string |  |
+| `sources.<name>.listed_page` | integer | How many packages one page of a namespace's listing asks for, where the registry pages it; the most it allows where absent. |
+| `sources.<name>.listing` | [VendorListing](#vendorlisting) | How a Packagist vendor's packages are listed: `packagist`, through `/packages/list.json` at `listing_api`, where absent, or `composer`, through a Composer repository's `packages.json` at `api`. |
+| `sources.<name>.listing_api` | string | The base URL serving Packagist's `/packages/list.json` for a vendor source; `https://packagist.org` where absent. |
+| `sources.<name>.most_listed` | integer | The most packages a namespace's listing reads before `include` and `exclude`; 10000 where absent. A namespace listing more is refused for the round. |
+| `sources.<name>.most_members` | integer | The most packages `include` and `exclude` may keep; 1000 where absent, and at most 100000. A namespace keeping more is refused for the round. |
+| `sources.<name>.namespace` | string | The Docker Hub namespace whose repositories the source takes, each polled on its own; exclusive with `package`. |
 | `sources.<name>.ordering` | [TagOrdering](#tagordering) | How Docker Hub lists a repository's tags for a poll: `last_updated`, the most recently pushed first, where unset, or `name`. |
+| `sources.<name>.owner` | string | The crates.io owner whose crates the source takes, each polled on its own, as crates.io writes owners: `user:<login>` or `team:github:<org>:<team>`; exclusive with `package`. |
 | `sources.<name>.package` | string | The package, as the registry names it: `vendor/name` on Packagist, a crate's name, an npm package's name such as `@scope/name`, or a Docker Hub repository such as `library/caddy`, where an official image may leave out `library/`. |
 | `sources.<name>.page` | integer | How many of the newest versions one poll reads; 30 where absent. |
 | `sources.<name>.parse` | [Size](#size) | The most of an answer parsed; "4MiB", "16MiB" on Packagist and "32MiB" on npm, where absent, and at most four times that. |
 | `sources.<name>.remembered` | integer | How many identities the cursor remembers, newest first; 500 where absent, and at least `page`. |
+| `sources.<name>.scope` | string | The npm scope whose packages the source takes, each polled on its own, such as `@acme`; exclusive with `package`. |
 | `sources.<name>.token` | table | A token for a private package: npm's, sent as a bearer token; Private Packagist's Composer token, sent as HTTP Basic with the user `token`; or a Docker Hub personal access token, exchanged with `username` for a bearer token. crates.io takes none. |
 | `sources.<name>.token.secret` | string | The secret's name. |
+| `sources.<name>.unscoped` | boolean | Whether an npm scope source also takes the packages its organization owns outside the scope. |
 | `sources.<name>.username` | string | The Docker Hub account `token` belongs to. |
+| `sources.<name>.vendor` | string | The Packagist vendor whose packages the source takes, each polled on its own; exclusive with `package`. |
+| `sources.<name>.visibility` | [Declared](#declared) | Who may see a namespace's packages where its listing does not say: `public` declares them public. Where absent, they are public when the source has no token and private when it has one, which a token may list. |
 
 ### `sources.<name>` of kind `docker-hub`
 
@@ -805,15 +847,29 @@ A repository's tags on Docker Hub.
 | `sources.<name>` | table | A repository's tags on Docker Hub. |
 | `sources.<name>.api` | string | The registry's base URL, for a mirror or a private registry that answers as the public one does; the public registry's where absent. |
 | `sources.<name>.backfill` | integer | How many of the newest versions the first poll announces; none where absent (ADR-0003). |
+| `sources.<name>.exclude` | array of string | Globs of the package names a namespace source leaves out, whatever `include` says. |
+| `sources.<name>.include` | array of string | Globs of the package names a namespace source takes; every name where empty. |
+| `sources.<name>.keep_members` | [Duration](#duration) | How long a package that left the namespace is kept, with its cursor, before it is forgotten; "30d" where absent. |
 | `sources.<name>.kind` | string |  |
+| `sources.<name>.listed_page` | integer | How many packages one page of a namespace's listing asks for, where the registry pages it; the most it allows where absent. |
+| `sources.<name>.listing` | [VendorListing](#vendorlisting) | How a Packagist vendor's packages are listed: `packagist`, through `/packages/list.json` at `listing_api`, where absent, or `composer`, through a Composer repository's `packages.json` at `api`. |
+| `sources.<name>.listing_api` | string | The base URL serving Packagist's `/packages/list.json` for a vendor source; `https://packagist.org` where absent. |
+| `sources.<name>.most_listed` | integer | The most packages a namespace's listing reads before `include` and `exclude`; 10000 where absent. A namespace listing more is refused for the round. |
+| `sources.<name>.most_members` | integer | The most packages `include` and `exclude` may keep; 1000 where absent, and at most 100000. A namespace keeping more is refused for the round. |
+| `sources.<name>.namespace` | string | The Docker Hub namespace whose repositories the source takes, each polled on its own; exclusive with `package`. |
 | `sources.<name>.ordering` | [TagOrdering](#tagordering) | How Docker Hub lists a repository's tags for a poll: `last_updated`, the most recently pushed first, where unset, or `name`. |
+| `sources.<name>.owner` | string | The crates.io owner whose crates the source takes, each polled on its own, as crates.io writes owners: `user:<login>` or `team:github:<org>:<team>`; exclusive with `package`. |
 | `sources.<name>.package` | string | The package, as the registry names it: `vendor/name` on Packagist, a crate's name, an npm package's name such as `@scope/name`, or a Docker Hub repository such as `library/caddy`, where an official image may leave out `library/`. |
 | `sources.<name>.page` | integer | How many of the newest versions one poll reads; 30 where absent. |
 | `sources.<name>.parse` | [Size](#size) | The most of an answer parsed; "4MiB", "16MiB" on Packagist and "32MiB" on npm, where absent, and at most four times that. |
 | `sources.<name>.remembered` | integer | How many identities the cursor remembers, newest first; 500 where absent, and at least `page`. |
+| `sources.<name>.scope` | string | The npm scope whose packages the source takes, each polled on its own, such as `@acme`; exclusive with `package`. |
 | `sources.<name>.token` | table | A token for a private package: npm's, sent as a bearer token; Private Packagist's Composer token, sent as HTTP Basic with the user `token`; or a Docker Hub personal access token, exchanged with `username` for a bearer token. crates.io takes none. |
 | `sources.<name>.token.secret` | string | The secret's name. |
+| `sources.<name>.unscoped` | boolean | Whether an npm scope source also takes the packages its organization owns outside the scope. |
 | `sources.<name>.username` | string | The Docker Hub account `token` belongs to. |
+| `sources.<name>.vendor` | string | The Packagist vendor whose packages the source takes, each polled on its own; exclusive with `package`. |
+| `sources.<name>.visibility` | [Declared](#declared) | Who may see a namespace's packages where its listing does not say: `public` declares them public. Where absent, they are public when the source has no token and private when it has one, which a token may list. |
 
 ### `sources.<name>` of kind `feed`
 
@@ -1065,6 +1121,10 @@ A colour, written "#rrggbb".
 
 A command a member gives herald.
 
+### Declared
+
+Who may see a namespace's packages, where the source declares it.
+
 ### DiscordVia
 
 How Discord carries commands to herald.
@@ -1186,6 +1246,10 @@ How an owner's members are polled.
 ### Values
 
 A property's values: one, or any of several.
+
+### VendorListing
+
+How a Packagist vendor's packages are listed.
 
 ### Version
 

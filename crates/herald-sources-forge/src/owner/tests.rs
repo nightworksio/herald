@@ -2,7 +2,7 @@ use herald_ports::Secret;
 use serde_json::{Value, json};
 
 use super::*;
-use crate::scripted::Scripted;
+use herald_testing::ScriptedHttp;
 
 fn answer(status: u16, body: &Value, etag: &str, next: bool) -> Response {
     let mut headers = vec![("ETag".to_owned(), etag.to_owned())];
@@ -48,7 +48,11 @@ fn owned(forge: Forge, options: &SourceOptions) -> Owned {
     )
 }
 
-fn listed(owned: &Owned, http: &Scripted, known: Option<&Listing>) -> Result<Expanded, Unlisted> {
+fn listed(
+    owned: &Owned,
+    http: &ScriptedHttp,
+    known: Option<&Listing>,
+) -> Result<Expanded, Unlisted> {
     pollster::block_on(owned.listed(http, known))
 }
 
@@ -332,7 +336,7 @@ fn a_visibility_missing_or_unknown_is_read_as_private() {
 
 #[test]
 fn a_listing_reads_every_page_the_forge_names_and_keeps_what_the_selection_takes() {
-    let http = Scripted::new(vec![
+    let http = ScriptedHttp::new(vec![
         answer(
             200,
             &json!([github(1, "herald"), github(2, "plugin-a")]),
@@ -376,7 +380,7 @@ fn a_listing_reads_every_page_the_forge_names_and_keeps_what_the_selection_takes
 
 #[test]
 fn an_owner_no_organization_names_is_listed_as_a_user() {
-    let http = Scripted::new(vec![
+    let http = ScriptedHttp::new(vec![
         answer(404, &json!({ "message": "Not Found" }), "", false),
         answer(200, &json!([github(1, "herald")]), "\"u1\"", false),
     ]);
@@ -394,7 +398,7 @@ fn an_owner_no_organization_names_is_listed_as_a_user() {
         }
     ));
     assert!(http.asked()[1].0.contains("/users/lemonfiber/repos?"));
-    let gone = Scripted::new(vec![
+    let gone = ScriptedHttp::new(vec![
         answer(404, &json!({}), "", false),
         answer(404, &json!({}), "", false),
     ]);
@@ -406,7 +410,7 @@ fn an_owner_no_organization_names_is_listed_as_a_user() {
         ),
         Err(Unlisted::Failed(Unpolled::Unreadable(_)))
     ));
-    let known_gone = Scripted::new(vec![answer(404, &json!({}), "", false)]);
+    let known_gone = ScriptedHttp::new(vec![answer(404, &json!({}), "", false)]);
     assert!(matches!(
         listed(
             &owned(Forge::GitHub, &SourceOptions::default()),
@@ -423,7 +427,7 @@ fn an_owner_no_organization_names_is_listed_as_a_user() {
 
 #[test]
 fn a_listing_whose_every_page_is_unchanged_and_that_grew_no_page_is_unchanged() {
-    let http = Scripted::new(vec![
+    let http = ScriptedHttp::new(vec![
         unchanged(),
         unchanged(),
         answer(200, &json!([]), "", false),
@@ -442,7 +446,7 @@ fn a_listing_whose_every_page_is_unchanged_and_that_grew_no_page_is_unchanged() 
 
 #[test]
 fn a_listing_with_a_changed_or_a_new_page_is_read_again_from_its_first_page() {
-    let grown = Scripted::new(vec![
+    let grown = ScriptedHttp::new(vec![
         unchanged(),
         answer(200, &json!([github(2, "new")]), "\"n\"", false),
         answer(200, &json!([github(1, "herald")]), "\"p1\"", true),
@@ -452,7 +456,7 @@ fn a_listing_with_a_changed_or_a_new_page_is_read_again_from_its_first_page() {
     let expanded = listed(&source, &grown, Some(&known(&["\"p1\""]))).unwrap();
     assert_eq!(names(&expanded), ["herald", "new"]);
     assert_eq!(grown.asked()[2].1, None);
-    let changed = Scripted::new(vec![
+    let changed = ScriptedHttp::new(vec![
         answer(200, &json!([github(1, "renamed")]), "\"r\"", false),
         answer(200, &json!([github(1, "renamed")]), "\"r\"", false),
     ]);
@@ -464,7 +468,7 @@ fn a_listing_with_a_changed_or_a_new_page_is_read_again_from_its_first_page() {
 #[test]
 fn a_listing_over_a_cap_refuses_the_source_naming_the_setting() {
     let page = json!([github(1, "a"), github(2, "b"), github(3, "c")]);
-    let http = Scripted::new(vec![answer(200, &page, "", true)]);
+    let http = ScriptedHttp::new(vec![answer(200, &page, "", true)]);
     let capped = owned(
         Forge::GitHub,
         &SourceOptions {
@@ -480,7 +484,7 @@ fn a_listing_over_a_cap_refuses_the_source_naming_the_setting() {
         ))
     );
     assert_eq!(http.asked().len(), 1);
-    let exactly = Scripted::new(vec![answer(200, &page, "", false)]);
+    let exactly = ScriptedHttp::new(vec![answer(200, &page, "", false)]);
     let at_cap = owned(
         Forge::GitHub,
         &SourceOptions {
@@ -496,7 +500,7 @@ fn a_listing_over_a_cap_refuses_the_source_naming_the_setting() {
                 .to_owned()
         ))
     );
-    let fits = Scripted::new(vec![answer(200, &page, "", false)]);
+    let fits = ScriptedHttp::new(vec![answer(200, &page, "", false)]);
     let roomy = owned(
         Forge::GitHub,
         &SourceOptions {
@@ -514,18 +518,18 @@ fn a_listing_over_a_cap_refuses_the_source_naming_the_setting() {
 #[test]
 fn a_listing_that_fails_or_names_a_next_page_after_an_empty_one_stops() {
     let source = owned(Forge::GitHub, &SourceOptions::default());
-    let unreachable = Scripted::new(Vec::new());
+    let unreachable = ScriptedHttp::new(Vec::new());
     assert!(matches!(
         listed(&source, &unreachable, None),
         Err(Unlisted::Failed(Unpolled::Unreachable(_)))
     ));
-    let endless = Scripted::new(vec![answer(200, &json!([]), "", true)]);
+    let endless = ScriptedHttp::new(vec![answer(200, &json!([]), "", true)]);
     assert_eq!(
         names(&listed(&source, &endless, None).unwrap()),
         Vec::<&str>::new()
     );
     assert_eq!(endless.asked().len(), 1);
-    let partway = Scripted::new(vec![
+    let partway = ScriptedHttp::new(vec![
         answer(200, &json!([github(1, "a")]), "", true),
         answer(500, &json!({}), "", false),
     ]);
@@ -551,7 +555,7 @@ fn a_member_is_polled_at_its_own_path_with_the_source_s_token() {
         language: None,
     });
     assert_eq!(poll.api(), "https://gitlab.com/api/v4");
-    let http = Scripted::new(vec![unchanged()]);
+    let http = ScriptedHttp::new(vec![unchanged()]);
     assert_eq!(pollster::block_on(poll.polled(&http, None)), Ok(None));
     assert_eq!(
         http.asked()[0].0,
@@ -578,7 +582,7 @@ fn a_link_names_a_next_page_only_with_rel_next() {
 
 #[test]
 fn a_listing_whose_pages_named_no_etag_is_read_whole_at_once() {
-    let http = Scripted::new(vec![answer(200, &json!([github(1, "a")]), "", false)]);
+    let http = ScriptedHttp::new(vec![answer(200, &json!([github(1, "a")]), "", false)]);
     let source = owned(Forge::GitHub, &SourceOptions::default());
     let last = Listing {
         pages: vec![Some("\"p1\"".to_owned()), None],
@@ -599,7 +603,7 @@ fn a_listing_whose_pages_named_no_etag_is_read_whole_at_once() {
 
 #[test]
 fn a_listing_kept_for_another_selection_is_read_whole() {
-    let http = Scripted::new(vec![answer(200, &json!([github(1, "a")]), "\"n\"", false)]);
+    let http = ScriptedHttp::new(vec![answer(200, &json!([github(1, "a")]), "\"n\"", false)]);
     let narrowed = owned(
         Forge::GitHub,
         &SourceOptions {

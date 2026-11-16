@@ -180,11 +180,8 @@ async fn owned<H: Http>(connected: &Connected<H>) -> Findings {
                     ));
                 }
                 let members = expanded.members();
-                let noun = if members.len() == 1 {
-                    "repository"
-                } else {
-                    "repositories"
-                };
+                let (one, several) = expand.member_nouns();
+                let noun = if members.len() == 1 { one } else { several };
                 findings
                     .notes
                     .push(format!("The source {name} takes {} {noun}.", members.len()));
@@ -215,9 +212,10 @@ async fn owned<H: Http>(connected: &Connected<H>) -> Findings {
                     .push(format!("The source {name}: {reason}."));
             }
             Err(Unlisted::Failed(Unpolled::Unreachable(reason) | Unpolled::Unreadable(reason))) => {
+                let key = expand.owner_key();
                 findings.gaps.push(gap(
-                    &format!("listing the owner of the source \"{name}\""),
-                    format!("sources.{name}.owner"),
+                    &format!("listing the {key} of the source \"{name}\""),
+                    format!("sources.{name}.{key}"),
                     reason,
                 ));
             }

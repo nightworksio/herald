@@ -1,9 +1,23 @@
 use std::collections::BTreeMap;
+use std::num::NonZeroUsize;
 
-use jiff::Timestamp;
+use jiff::{SignedDuration, Timestamp};
 use serde::{Deserialize, Serialize};
 
 use crate::{Cursor, Glob};
+
+/// The most an owner's listing reads, before the filters, where
+/// `most_listed` is absent.
+pub const MOST_LISTED: NonZeroUsize = NonZeroUsize::new(10_000).unwrap();
+
+/// The most members a selection keeps where `most_members` is absent.
+pub const MOST_MEMBERS: NonZeroUsize = NonZeroUsize::new(1_000).unwrap();
+
+/// The most `most_members` may be.
+pub const MOST_MEMBERS_ALLOWED: usize = 100_000;
+
+/// How long a member that left is kept where `keep_members` is absent.
+pub const KEEP_MEMBERS: SignedDuration = SignedDuration::from_hours(30 * 24);
 
 /// Who may see a repository.
 #[derive(
@@ -321,6 +335,14 @@ pub struct EventsRead {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_owner_s_caps_default_to_ten_thousand_listed_a_thousand_kept_for_thirty_days() {
+        assert_eq!(MOST_LISTED.get(), 10_000);
+        assert_eq!(MOST_MEMBERS.get(), 1_000);
+        assert_eq!(MOST_MEMBERS_ALLOWED, 100_000);
+        assert_eq!(KEEP_MEMBERS, SignedDuration::from_hours(720));
+    }
 
     fn listed(name: &str) -> Listed {
         Listed {

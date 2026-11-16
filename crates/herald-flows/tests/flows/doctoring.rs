@@ -801,3 +801,56 @@ fn the_markers_store_edits_no_post_and_posts_no_late_release_anew() {
         &format!("{route}\nlate_release = \"skip\"")
     )));
 }
+
+#[test]
+fn online_a_namespace_listing_a_package_outside_it_is_a_gap_at_the_namespace_key() {
+    let mut config = config("");
+    config.sources.insert(
+        herald_core::SourceName::new("gate"),
+        herald_config::Source::new(herald_sources_registry::RegistrySource {
+            registry: herald_sources_registry::Registry::DockerHub,
+            options: herald_sources_registry::RegistryOptions {
+                namespace: Some("acme".to_owned()),
+                ..herald_sources_registry::RegistryOptions::default()
+            },
+        }),
+    );
+    let own = r#"{"results":[{"name":"a","namespace":"acme","is_private":false}],"next":null}"#;
+    let foreign = r#"{"results":[{"name":"b","namespace":"evil","is_private":false}],"next":null}"#;
+    let answering = |listing: &'static str| {
+        Script::answering(&[
+            ("/users/@me", 200, r#"{"id":"99"}"#),
+            (
+                "/channels/1566200000000000100",
+                200,
+                r#"{"id":"1566200000000000100","guild_id":"1","type":5}"#,
+            ),
+            (
+                "/namespaces/acme/repositories?page_size=100&page=1",
+                200,
+                listing,
+            ),
+        ])
+    };
+    let findings = listed_online(&config, &answering(own));
+    assert!(
+        findings
+            .notes
+            .contains(&"The source gate takes 1 package.".to_owned()),
+        "{:?}",
+        findings.notes
+    );
+    let findings = listed_online(&config, &answering(foreign));
+    assert_eq!(keyed(&findings), [("sources.gate.namespace", None)]);
+    assert_eq!(
+        findings.gaps[0].feature,
+        "listing the namespace of the source \"gate\""
+    );
+    assert!(
+        findings.gaps[0]
+            .why
+            .contains("it names evil/b, outside the namespace acme"),
+        "{:?}",
+        findings.gaps[0]
+    );
+}

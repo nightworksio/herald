@@ -6,8 +6,8 @@ use herald_ports::Response;
 use serde_json::{Value, json};
 
 use crate::polled::Releases;
-use crate::scripted::Scripted;
 use crate::{Forge, Origin, Signals, SourceOptions};
+use herald_testing::ScriptedHttp;
 
 use super::Packaging;
 
@@ -73,7 +73,7 @@ fn releases(forge: Forge, chosen: SourceOptions) -> Releases {
 
 fn polled(
     releases: &Releases,
-    http: &Scripted,
+    http: &ScriptedHttp,
     cursor: Option<&Cursor>,
 ) -> Result<Option<Polled>, Unpolled> {
     pollster::block_on(releases.polled(http, cursor))
@@ -87,7 +87,7 @@ fn identities(polled: &Polled) -> Vec<&str> {
         .collect()
 }
 
-fn urls(http: &Scripted) -> Vec<String> {
+fn urls(http: &ScriptedHttp) -> Vec<String> {
     http.asked().into_iter().map(|(url, _)| url).collect()
 }
 
@@ -139,7 +139,7 @@ fn github_containers() -> SourceOptions {
 #[test]
 fn a_github_repository_announces_each_tag_of_its_linked_images_and_each_npm_version() {
     let releases = releases(Forge::GitHub, github_containers());
-    let http = Scripted::new(vec![
+    let http = ScriptedHttp::new(vec![
         github_repository("Organization"),
         ok(&json!([github_package("cli", Some(7))])),
         ok(&json!([
@@ -223,7 +223,7 @@ fn a_github_user_s_packages_are_listed_page_by_page_within_the_most_listed() {
         ..SourceOptions::default()
     };
     let next = [("Link", "<https://api.github.com/next>; rel=\"next\"")];
-    let http = Scripted::new(vec![
+    let http = ScriptedHttp::new(vec![
         github_repository("User"),
         answer(
             &json!([
@@ -250,7 +250,7 @@ fn a_github_user_s_packages_are_listed_page_by_page_within_the_most_listed() {
             "https://api.github.com/users/O/packages?package_type=container&per_page=100&page=2",
         ]
     );
-    let over = Scripted::new(vec![
+    let over = ScriptedHttp::new(vec![
         github_repository("User"),
         answer(
             &json!([github_package("a", None), github_package("b", None)]),
@@ -284,7 +284,7 @@ fn a_package_whose_versions_are_unchanged_keeps_its_validators_and_announces_not
         ..polled_packages()
     };
     let listing = || ok(&json!([github_package("herald", Some(7))]));
-    let http = Scripted::new(vec![
+    let http = ScriptedHttp::new(vec![
         github_repository("Organization"),
         listing(),
         unchanged(),
@@ -305,7 +305,7 @@ fn a_package_whose_versions_are_unchanged_keeps_its_validators_and_announces_not
         ]),
         ..polled_packages()
     };
-    let http = Scripted::new(vec![
+    let http = ScriptedHttp::new(vec![
         github_repository("Organization"),
         listing(),
         unchanged(),
@@ -322,7 +322,7 @@ fn a_package_whose_versions_are_unchanged_keeps_its_validators_and_announces_not
 
 #[test]
 fn packages_first_polled_on_a_source_with_a_cursor_are_remembered_unannounced() {
-    let http = Scripted::new(vec![
+    let http = ScriptedHttp::new(vec![
         github_repository("Organization"),
         ok(&json!([github_package("herald", Some(7))])),
         ok(&json!([container_version(&["v1"], "2026-01-01T00:00:00Z")])),
@@ -353,7 +353,7 @@ fn a_round_keeps_the_newest_page_of_package_versions() {
         page: std::num::NonZeroUsize::new(2),
         ..SourceOptions::default()
     };
-    let http = Scripted::new(vec![
+    let http = ScriptedHttp::new(vec![
         github_repository("Organization"),
         ok(&json!([github_package("herald", Some(7))])),
         ok(&json!([
@@ -371,7 +371,7 @@ fn a_round_keeps_the_newest_page_of_package_versions() {
     );
     assert_eq!(found.unread, [Identity::new("ghcr.io/o/herald/v1")]);
     let cursor = Cursor::default().advanced(&found, 500);
-    let http = Scripted::new(vec![
+    let http = ScriptedHttp::new(vec![
         github_repository("Organization"),
         ok(&json!([github_package("herald", Some(7))])),
         ok(&json!([
@@ -415,7 +415,7 @@ fn a_repository_its_forge_names_no_owner_or_page_of_polls_no_packages() {
             "GitLab's project names no web page",
         ),
     ] {
-        let http = Scripted::new(vec![ok(&described)]);
+        let http = ScriptedHttp::new(vec![ok(&described)]);
         assert_eq!(
             polled(&releases(forge, chosen()), &http, None),
             Err(Unpolled::Unreadable(reason.to_owned())),
@@ -439,7 +439,7 @@ fn a_gitlab_project_announces_its_packages_and_each_unseen_tag_of_its_images() {
         seen: vec![Identity::new("registry.gitlab.example/g/s/r/v1")],
         ..polled_packages()
     };
-    let http = Scripted::new(vec![
+    let http = ScriptedHttp::new(vec![
         gitlab_project(),
         answer(
             &json!([
@@ -527,7 +527,7 @@ fn a_gitlab_listing_unchanged_keeps_its_validators_and_images_unread_wait_for_a_
         package_types: Some(vec!["npm".to_owned()]),
         ..SourceOptions::default()
     };
-    let http = Scripted::new(vec![gitlab_project(), unchanged()]);
+    let http = ScriptedHttp::new(vec![gitlab_project(), unchanged()]);
     assert_eq!(
         polled(&releases(Forge::GitLab, only_npm()), &http, Some(&cursor)),
         Ok(None)
@@ -544,7 +544,7 @@ fn a_gitlab_listing_unchanged_keeps_its_validators_and_images_unread_wait_for_a_
         registry: Some("mirror.example".to_owned()),
         ..SourceOptions::default()
     };
-    let http = Scripted::new(vec![
+    let http = ScriptedHttp::new(vec![
         gitlab_project(),
         ok(&json!([{"id": 3, "name": ""}])),
         ok(&json!([{"name": "v1", "location": "registry.gitlab.example/g/s/r:v1"}])),
@@ -558,7 +558,7 @@ fn a_gitlab_listing_unchanged_keeps_its_validators_and_images_unread_wait_for_a_
 
 #[test]
 fn a_gitlab_tag_with_no_time_polls_nothing() {
-    let http = Scripted::new(vec![
+    let http = ScriptedHttp::new(vec![
         gitlab_project(),
         ok(&json!([{"id": 3, "name": ""}])),
         ok(&json!([{"name": "v1", "location": "registry.gitlab.example/g/s/r:v1"}])),
@@ -598,7 +598,7 @@ fn a_forgejo_repository_announces_its_owner_s_packages_linked_to_it_until_a_page
         ..SourceOptions::default()
     };
     let next = [("Link", "<https://forge.example/next>; rel=\"next\"")];
-    let http = Scripted::new(vec![
+    let http = ScriptedHttp::new(vec![
         ok(&json!({
             "id": 7,
             "name": "r",
@@ -654,7 +654,7 @@ fn a_forgejo_listing_of_one_type_asks_for_it_alone_within_the_most_listed() {
             "owner": {"login": "O"}
         }))
     };
-    let http = Scripted::new(vec![
+    let http = ScriptedHttp::new(vec![
         described(),
         ok(&json!([forgejo_package("npm", ("cli", "1.0.0"), Some(7))])),
     ]);
@@ -666,7 +666,7 @@ fn a_forgejo_listing_of_one_type_asks_for_it_alone_within_the_most_listed() {
         urls(&http)[1],
         "https://forge.example/api/packages/O?limit=50&page=1&type=npm"
     );
-    let over = Scripted::new(vec![
+    let over = ScriptedHttp::new(vec![
         described(),
         ok(&json!([
             forgejo_package("npm", ("cli", "1.0.0"), Some(7)),
@@ -689,7 +689,7 @@ fn a_gitlab_project_s_images_are_listed_page_by_page_within_the_most_listed() {
         ..SourceOptions::default()
     };
     let next = [("Link", "<https://forge.example/next>; rel=\"next\"")];
-    let http = Scripted::new(vec![
+    let http = ScriptedHttp::new(vec![
         gitlab_project(),
         answer(&json!([{"id": 3, "name": ""}]), &next),
         ok(&json!([{"id": 4, "name": "tools"}])),
@@ -711,7 +711,7 @@ fn a_gitlab_project_s_images_are_listed_page_by_page_within_the_most_listed() {
             "https://forge.example/api/projects/o%2Fr/registry/repositories?per_page=100&page=2",
         ]
     );
-    let over = Scripted::new(vec![
+    let over = ScriptedHttp::new(vec![
         gitlab_project(),
         answer(
             &json!([{"id": 3, "name": ""}, {"id": 4, "name": "tools"}]),
@@ -745,7 +745,7 @@ fn a_poll_tells_a_change_by_a_version_unseen_in_or_beyond_its_page() {
     newer["created_at"] = json!("2026-01-02T00:00:00Z");
     let older = forgejo_package("npm", ("cli", "1.0.0"), Some(7));
     let script = || {
-        Scripted::new(vec![
+        ScriptedHttp::new(vec![
             described(),
             ok(&json!([newer.clone(), older.clone()])),
         ])
@@ -801,7 +801,7 @@ fn each_package_is_seen_as_the_stricter_of_its_own_and_its_repository_s_visibili
         package["visibility"] = json!(visibility);
         package
     };
-    let http = Scripted::new(vec![
+    let http = ScriptedHttp::new(vec![
         github_repository("Organization"),
         ok(&json!([
             image("open", Some("public")),
@@ -846,7 +846,7 @@ fn each_package_is_seen_as_the_stricter_of_its_own_and_its_repository_s_visibili
             "path_with_namespace": "g/r"
         });
         described["visibility"] = json!(project);
-        let http = Scripted::new(vec![
+        let http = ScriptedHttp::new(vec![
             ok(&described),
             ok(
                 &json!([{"name": "cli", "version": "1.0.0", "package_type": "npm", "created_at": "2026-01-01T00:00:00Z"}]),
@@ -870,7 +870,7 @@ fn each_package_is_seen_as_the_stricter_of_its_own_and_its_repository_s_visibili
     ] {
         let mut package = forgejo_package("npm", ("cli", "1.0.0"), Some(7));
         package["owner"] = owner.clone();
-        let http = Scripted::new(vec![
+        let http = ScriptedHttp::new(vec![
             ok(
                 &json!({"id": 7, "name": "r", "html_url": "https://forge.example/O/r", "private": false, "owner": {"login": "O"}}),
             ),
@@ -917,7 +917,7 @@ fn a_public_package_of_a_private_repository_is_private_unless_the_package_decide
         }
         let mut package = github_package("herald", Some(7));
         package["visibility"] = json!("public");
-        let http = Scripted::new(vec![
+        let http = ScriptedHttp::new(vec![
             ok(&repository),
             ok(&json!([package])),
             ok(&json!([container_version(&["v1"], "2026-01-01T00:00:00Z")])),
@@ -938,7 +938,7 @@ fn a_public_package_of_a_private_repository_is_private_unless_the_package_decide
 fn a_version_whose_page_is_no_web_address_polls_nothing() {
     let mut version = container_version(&["v1"], "2026-01-01T00:00:00Z");
     version["html_url"] = json!("not a page");
-    let http = Scripted::new(vec![
+    let http = ScriptedHttp::new(vec![
         github_repository("Organization"),
         ok(&json!([github_package("herald", Some(7))])),
         ok(&json!([version])),

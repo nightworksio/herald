@@ -1,10 +1,12 @@
 use herald_kinds::{Fault, SourceConfig, SourceKind};
 
+use crate::Declared;
+
 use super::*;
 
 fn named(package: &str, token: Option<&str>) -> RegistryOptions {
     RegistryOptions {
-        package: package.to_owned(),
+        package: Some(package.to_owned()),
         token: token.map(|secret| SecretRef {
             secret: secret.to_owned(),
         }),
@@ -58,7 +60,7 @@ fn a_token_a_registry_does_not_take_keeps_the_source_out_at_its_key() {
         )
     );
     let unnamed = RegistryOptions {
-        package: String::new(),
+        package: Some(String::new()),
         ..options(None)
     };
     assert_eq!(
@@ -84,7 +86,7 @@ fn a_registry_source_names_its_token_and_polls_its_package() {
     };
     assert_eq!(
         poll.api(),
-        Package::new(Registry::Npm, &source.options).api()
+        Package::new(Registry::Npm, "left-pad", &source.options).api()
     );
     assert_eq!(
         poll.remembered(),
@@ -105,5 +107,46 @@ fn a_registry_source_names_its_package_s_project() {
             .unwrap()
             .projects(),
         ["vendor/name"]
+    );
+}
+
+#[test]
+fn a_namespace_source_is_polled_as_its_packages_and_names_no_project() {
+    let scope = |token: Option<&str>, visibility: Option<Declared>| RegistryOptions {
+        package: None,
+        scope: Some("@acme".to_owned()),
+        visibility,
+        ..options(token)
+    };
+    let source = NpmKind::checked(scope(None, None)).unwrap();
+    assert_eq!(source.projects(), Vec::<String>::new());
+    assert!(!source.unlisted());
+    let herald_kinds::Polling::Many(expand) = source.poller(None, false) else {
+        panic!("a namespace is polled as its packages");
+    };
+    assert_eq!(expand.api(), "https://registry.npmjs.org");
+    assert!(
+        NpmKind::checked(scope(Some("NPM_TOKEN"), None))
+            .unwrap()
+            .unlisted()
+    );
+    assert!(
+        !NpmKind::checked(scope(Some("NPM_TOKEN"), Some(Declared::Public)))
+            .unwrap()
+            .unlisted()
+    );
+    let hub = |token: Option<&str>| RegistryOptions {
+        package: None,
+        namespace: Some("acme".to_owned()),
+        username: token.map(|_| "acme".to_owned()),
+        visibility: Some(Declared::Public),
+        ..options(token)
+    };
+    assert!(!DockerHubKind::checked(hub(None)).unwrap().unlisted());
+    assert!(DockerHubKind::checked(hub(Some("HUB"))).unwrap().unlisted());
+    assert!(
+        !NpmKind::checked(options(Some("NPM_TOKEN")))
+            .unwrap()
+            .unlisted()
     );
 }

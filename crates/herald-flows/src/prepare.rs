@@ -290,20 +290,21 @@ impl Prepared {
         self,
         mut http: impl FnMut(Base<'_>) -> Result<H, E>,
     ) -> Result<Connected<H>, E> {
-        let mut made: BTreeMap<String, H> = BTreeMap::new();
+        let mut made: BTreeMap<Vec<String>, H> = BTreeMap::new();
         let mut public: Option<H> = None;
         let mut reach = |base: Base<'_>| -> Result<H, E> {
-            let known = match base {
-                Base::At(url) => made.get(url),
-                Base::Public => public.as_ref(),
+            let bases = base.bases();
+            let known = match &bases {
+                Some(bases) => made.get(bases),
+                None => public.as_ref(),
             };
             if let Some(reaching) = known {
                 return Ok(reaching.clone());
             }
             let reaching = http(base)?;
-            match base {
-                Base::At(url) => made.insert(url.to_owned(), reaching.clone()),
-                Base::Public => public.replace(reaching.clone()),
+            match bases {
+                Some(bases) => made.insert(bases, reaching.clone()),
+                None => public.replace(reaching.clone()),
             };
             Ok(reaching)
         };
@@ -314,7 +315,7 @@ impl Prepared {
         }
         let mut sources = Vec::new();
         for source in self.sources {
-            let reaching = reach(Base::At(source.poll.api()))?;
+            let reaching = reach(source.poll.base())?;
             sources.push((source, reaching));
         }
         let mut interacting = Vec::new();

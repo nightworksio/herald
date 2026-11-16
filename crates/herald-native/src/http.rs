@@ -84,13 +84,16 @@ impl NativeHttp {
         })
     }
 
-    /// A client reaching only the origin of `base`, within `outbound`.
+    /// A client reaching only the origins of `bases`, within `outbound`.
     ///
     /// # Errors
     ///
-    /// When `base` may not be reached, or the client cannot be built.
-    pub fn reaching(base: &str, outbound: &Outbound) -> Result<Self, ConnectError> {
-        let reach = Reach::new([base]).map_err(ConnectError::Reach)?;
+    /// When a base may not be reached, or the client cannot be built.
+    pub fn reaching<'a>(
+        bases: impl IntoIterator<Item = &'a str>,
+        outbound: &Outbound,
+    ) -> Result<Self, ConnectError> {
+        let reach = Reach::new(bases).map_err(ConnectError::Reach)?;
         Self::new(reach, outbound).map_err(ConnectError::Build)
     }
 

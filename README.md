@@ -560,6 +560,49 @@ them. GitLab's image tags carry no time in their listing, so a new source
 remembers the tags it first finds without announcing any. GitHub's `registry_package` and `package` webhooks
 and Forgejo's `package` webhook poll the source at once.
 
+### Every package of a namespace
+
+A registry source gives its registry's namespace key in place of
+`package` to take every package of the namespace, each polled on its own
+as an owner's repositories are:
+
+```toml
+[sources.acme]
+kind = "npm"
+scope = "@acme"
+exclude = ["*-internal"]
+```
+
+npm takes `scope`, Packagist `vendor`, crates.io `owner` (`user:<login>` or
+`team:github:<org>:<team>`) and Docker Hub `namespace`. `include` and
+`exclude` choose packages by name, as globs. A listing reads at most
+`most_listed` packages (10000) and keeps at most `most_members` (1000, at
+most 100000), refusing the round over either, and a package that leaves
+is kept `keep_members` ("30d") before its cursor is forgotten. Each
+package's events take the identity and project a source of that package
+gives.
+
+npm lists `@scope/*` packages of the scope's organization;
+`unscoped = true` takes its unscoped packages too. Where npm refuses the
+listing, give a token that may read the organization, or name packages
+one by one. Packagist lists a vendor through `/packages/list.json` at
+`listing_api` (`https://packagist.org`), the one origin the source reaches
+beside `api`, and never sends its token there; `listing = "composer"`
+lists a Composer repository's `packages.json` at `api` instead, as
+Private Packagist and Satis serve it. crates.io and Docker Hub list page
+by page, `listed_page` (100, at most 100) to a page. A Packagist or
+Docker Hub listing that names a package outside the vendor or namespace
+fails, keeping the packages last listed, and `herald doctor --online`
+names it. A listed name that is not a package's name, as
+`package` takes one, fails the listing the same way.
+
+Docker Hub names each repository's visibility. Elsewhere a package is
+public where the source has no token and private where it has one, as a
+token may list private packages; `visibility = "public"` declares a
+namespace's packages public. Docker Hub tags take the identity
+`docker.io/<namespace>/<repository>/<tag>`, the one a forge's container
+package and any other source of the image share.
+
 ### Edits to a late or edited release
 
 A Release that comes after its tag was announced edits the tag's post to
@@ -674,7 +717,7 @@ What is built on `main`, and the decision each part follows:
 | The core: events, routes, rendering, dialects, chunking, the never-twice plan | [ADR-0001](.docs/decisions/0001-a-sans-io-core-behind-ports.md) | yes |
 | The ports, fakes and the conformance suites every store, keyring, database, key-value store and host passes | [ADR-0001](.docs/decisions/0001-a-sans-io-core-behind-ports.md), [ADR-0005](.docs/decisions/0005-an-announcement-is-sent-once-and-finished-if-interrupted.md) | yes |
 | `herald.toml` and its JSON Schema | [ADR-0006](.docs/decisions/0006-one-herald-toml-with-sandboxed-templates-and-a-published-schema.md) | yes |
-| Sources: forges, registries, feeds, apps | [ADR-0003](.docs/decisions/0003-every-source-becomes-one-neutral-event.md) | forge releases from GitHub, GitLab and Forgejo, by their event and by polling; package versions from Packagist, crates.io, npm and Docker Hub, and RSS and Atom feed entries, by polling; an app's events, through `herald announce --event` and `herald server` ([ADR-0015](.docs/decisions/0015-an-app-is-a-source-routes-name-announcing-with-hashed-tokens-scoped-to-its-projects.md)) |
+| Sources: forges, registries, feeds, apps | [ADR-0003](.docs/decisions/0003-every-source-becomes-one-neutral-event.md) | forge releases from GitHub, GitLab and Forgejo, by their event and by polling; package versions from Packagist, crates.io, npm and Docker Hub, one package or every package of a namespace ([ADR-0039](.docs/decisions/0039-a-registry-source-takes-every-package-of-a-namespace.md)), and RSS and Atom feed entries, by polling; an app's events, through `herald announce --event` and `herald server` ([ADR-0015](.docs/decisions/0015-an-app-is-a-source-routes-name-announcing-with-hashed-tokens-scoped-to-its-projects.md)) |
 | Destination: Discord | [ADR-0004](.docs/decisions/0004-each-destination-gets-its-own-dialect-limits-and-features.md), [ADR-0011](.docs/decisions/0011-markers-count-only-on-herald-s-own-posts-a-route-keeps-one-pin-and-a-lock-archives.md) | yes, against reference fixtures until recorded ones replace them |
 | Inbound requests verified before they are parsed | [ADR-0007](.docs/decisions/0007-secrets-stay-out-of-reach-and-every-inbound-request-is-verified-first.md) | the signatures of GitHub, GitLab and Forgejo webhooks, Discord interactions and Slack requests, with the replay window, and the homeserver token of a Matrix transaction, each webhook delivery admitted once ([ADR-0013](.docs/decisions/0013-a-webhook-delivery-is-admitted-once-released-when-it-fails-and-kept-for-a-week.md)), and an ActivityPub activity's HTTP signature and digest against its actor's key, read from a public address on the key's own origin, with the activity's actor held to that key's owner |
 | Destinations: Matrix, Slack, Fediverse | [ADR-0004](.docs/decisions/0004-each-destination-gets-its-own-dialect-limits-and-features.md), [ADR-0036](.docs/decisions/0036-a-route-announces-each-project-as-an-actor-of-its-own.md) | the Fediverse through the Mastodon client API, Matrix through the client-server API, and Slack by bot token or incoming webhook, with subscribers mentioned, against reference fixtures; the ActivityPub actor's signed deliveries of each Note to its followers' shared inboxes, each follow kept and answered with a signed `Accept` and each undo forgetting its follower, and its key loaded by every run and by `herald doctor`; `herald server` serving its inbox, its Notes and the actor and WebFinger documents ([ADR-0014](.docs/decisions/0014-herald-server-answers-first-and-works-after-on-one-task-within-limits.md)); a route announcing each project as an actor of its own, a departed repository's actor kept while followed and gone after |

@@ -8,11 +8,12 @@
 mod crates_io;
 mod docker_hub;
 mod kind;
+mod namespace;
 mod npm;
 mod options;
 mod package;
 mod packagist;
 
 pub use kind::{CratesIoKind, DockerHubKind, NpmKind, PackagistKind, RegistrySource};
-pub use options::{RegistryOptions, TagOrdering};
+pub use options::{Declared, RegistryOptions, TagOrdering, VendorListing};
 pub use package::{Package, Registry};

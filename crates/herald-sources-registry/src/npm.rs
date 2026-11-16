@@ -8,7 +8,20 @@ use jiff::Timestamp;
 use serde::de::{IgnoredAny, MapAccess, Visitor};
 use serde::{Deserialize, Deserializer};
 
+use crate::namespace::Page;
 use crate::package::{Api, RegistryVersion};
+
+/// What npm's listing of an organization's packages is called.
+pub(crate) const ORG: &str = "npm's organization packages";
+
+/// An organization's packages, each named with what the organization may
+/// do with it, which is skipped as it is read.
+#[derive(Deserialize)]
+#[serde(transparent)]
+struct Org {
+    #[serde(deserialize_with = "keys")]
+    names: Vec<String>,
+}
 
 pub(crate) const API: Api = Api {
     url: "https://registry.npmjs.org",
@@ -79,4 +92,36 @@ pub(crate) fn found(
             })
         })
         .collect())
+}
+
+/// The path that lists the packages of the organization behind `scope`.
+pub(crate) fn org_path(scope: &str) -> String {
+    format!(
+        "/-/org/{}/package",
+        unreserved(scope.trim_start_matches('@'))
+    )
+}
+
+/// The packages the organization behind `scope` lists: those of the scope,
+/// and its others too where `unscoped` says so.
+pub(crate) fn org_packages(
+    limit: usize,
+    scope: &str,
+    unscoped: bool,
+    body: &[u8],
+) -> Result<Page, SourceError> {
+    let org: Org = read(ORG, limit, body)?;
+    let prefix = format!("{}/", scope.to_ascii_lowercase());
+    Ok(Page {
+        packages: org
+            .names
+            .into_iter()
+            .filter(|name| {
+                name.to_ascii_lowercase().starts_with(&prefix)
+                    || (unscoped && !name.starts_with('@'))
+            })
+            .map(|name| (name, None))
+            .collect(),
+        more: false,
+    })
 }

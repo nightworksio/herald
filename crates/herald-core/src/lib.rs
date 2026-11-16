@@ -88,7 +88,8 @@ pub use marker::{Marker, Marks};
 pub use markup::{LINK_SCHEMES, Text, convert, escaped, literal};
 pub use matching::Match;
 pub use members::{
-    Delivered, EventsRead, Listed, Listing, Membership, Owner, Selection, Visibility,
+    Delivered, EventsRead, KEEP_MEMBERS, Listed, Listing, MOST_LISTED, MOST_MEMBERS,
+    MOST_MEMBERS_ALLOWED, Membership, Owner, Selection, Visibility,
 };
 pub use origin::Origin;
 pub use pattern::Pattern;

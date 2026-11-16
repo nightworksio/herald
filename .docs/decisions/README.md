@@ -56,3 +56,4 @@ no separate requirements document, and there are no requirement IDs.
 | [0036](0036-a-route-announces-each-project-as-an-actor-of-its-own.md) | A route announces each project as an actor of its own | Accepted |
 | [0037](0037-gitlab-owners-poll-through-graphql-and-forgejo-owners-follow-their-feed.md) | GitLab owners poll through GraphQL, and Forgejo owners follow their feed | Accepted |
 | [0038](0038-a-route-matches-each-event-by-its-origin.md) | A route matches each event by its origin | Accepted |
+| [0039](0039-a-registry-source-takes-every-package-of-a-namespace.md) | A registry source takes every package of a namespace | Accepted |
