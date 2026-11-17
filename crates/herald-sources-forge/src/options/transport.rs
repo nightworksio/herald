@@ -109,7 +109,7 @@ impl SourceOptions {
         }
         if forge == Forge::GitHub
             && self.transport == Some(Transport::Graphql)
-            && self.token.is_none()
+            && !self.reads_with_token()
         {
             return Err(
                 "transport graphql needs a token, as GitHub's GraphQL API answers none without; give token, or choose rest".to_owned(),
@@ -204,7 +204,7 @@ impl SourceOptions {
         offered
             && match self.transport() {
                 Transport::Graphql => true,
-                Transport::Auto | Transport::Events => self.token.is_some(),
+                Transport::Auto | Transport::Events => self.reads_with_token(),
                 Transport::Rest | Transport::Feed => false,
             }
     }

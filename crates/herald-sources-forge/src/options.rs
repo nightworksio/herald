@@ -9,6 +9,8 @@ use herald_wire::{PARSE_LIMIT, Reading};
 
 use crate::Forge;
 
+pub use discovery::Discovery;
+pub use hooks::MemberHooks;
 pub use owner::{
     KEEP_MEMBERS, KEY, MOST_LISTED, MOST_MEMBERS, MOST_MEMBERS_ALLOWED, Members, Values,
 };
@@ -63,6 +65,14 @@ pub struct SourceOptions {
     /// A token that reaches a private repository or raises the API's rate
     /// limit, such as the run's `GITHUB_TOKEN`.
     pub token: Option<SecretRef>,
+    /// The GitHub App the source reads as, by the name of its
+    /// `[github_apps.<name>]` table, in place of `token`: herald mints an
+    /// installation token for each round.
+    pub app: Option<String>,
+    /// The id of the App's installation tokens are minted for; looked up
+    /// on the owner, or on the repository, where absent.
+    #[schemars(with = "Option<std::num::NonZeroU64>")]
+    pub installation: Option<std::num::NonZeroU64>,
     /// How many of the newest releases, tags and package versions the first
     /// poll announces;
     /// none where absent (ADR-0003). For an owner, it applies to the members
@@ -164,6 +174,17 @@ pub struct SourceOptions {
     /// narrowest that sets a key gives it.
     #[serde(default)]
     pub repositories: BTreeMap<String, Override>,
+    /// How an owner source finds the repositories that join or leave it:
+    /// listing the owner each round ("list"), or only where it holds no
+    /// listing, its selection changed or a delivery said the owner's
+    /// repositories changed ("push"); "list" where absent.
+    pub discovery: Option<Discovery>,
+    /// Who registers a project webhook on each member of a GitLab owner,
+    /// whose group cannot send its own on GitLab Free: no one ("off"),
+    /// `herald hooks <name>` ("setup"), or each poll round too ("round");
+    /// "off" where absent. Each hook points at `[server] url` and is signed
+    /// with `webhook`.
+    pub member_hooks: Option<MemberHooks>,
     /// How an owner's members are polled; "auto" where absent. GitHub
     /// offers auto, graphql, rest and events; GitLab auto, graphql and rest;
     /// Forgejo auto, rest and feed.
@@ -324,6 +345,8 @@ impl SourceOptions {
                 ));
             }
         }
+        self.app_check(forge)?;
+        self.hooks_check(forge)?;
         self.signals_check(forge)?;
         self.prefer_check()?;
         self.packages_check(forge)?;
@@ -357,6 +380,9 @@ impl SourceOptions {
     }
 }
 
+mod app;
+mod discovery;
+mod hooks;
 mod overrides;
 mod owner;
 mod packages;

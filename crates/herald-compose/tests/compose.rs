@@ -947,5 +947,29 @@ body = "{{{{ event.body }}}}"
                 .err()
                 .is_some_and(|error| error.contains("SOURCE_TOKEN"))
         );
+        let installed = load(
+            "herald.toml",
+            "version = 1\n[store]\nkind = \"sqlite\"\n[sources.app]\nkind = \"github\"\nrepository = \"o/r\"\napp = \"herald\"\n[github_apps.herald]\nclient_id = \"Iv23liABCDEF\"\nprivate_key = { secret = \"APP_KEY\" }\n[destinations.chat]\nkind = \"discord\"\ntoken = { secret = \"TOKEN\" }\n[destinations.chat.interactions]\napplication = \"123456789012345678\"\nvia = \"gateway\"\n",
+            &|_| Err(String::new()),
+            &herald_compose::kinds(),
+        )
+        .unwrap();
+        let minting = pollster::block_on(Composed::dry(
+            Hosting {
+                secrets: FakeSecrets::default()
+                    .with("APP_KEY", "k")
+                    .with("TOKEN", "t"),
+                ..Hosting::default()
+            },
+            installed,
+            Uses::Serves,
+            "dry",
+        ));
+        assert!(minting.is_ok_and(|composed| {
+            composed
+                .connected()
+                .interacting(&DestinationName::new("chat"))
+                .is_some()
+        }));
     }
 }

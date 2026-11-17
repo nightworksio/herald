@@ -7,12 +7,13 @@ use std::sync::Arc;
 
 use herald_config::{Config, Destination, Placed, RouteConfig, Uses};
 use herald_core::{DestinationName, Edits, RouteId, SourceName, hex};
-use herald_kinds::{Expand, Interacted, Polling, Posts, Reached};
+use herald_kinds::{Credential, Expand, Interacted, Polling, Posts, Reached, Registering};
 use herald_ports::{Algorithm, Base, CryptoError, Http, Secret, SecretError, Secrets, Signer};
 use herald_store_markers::{MarkedRoute, MarkersStore};
 
 use crate::acting::Projects;
-use crate::serving::Webhooks;
+use crate::installations::{Minting, Mintings};
+use crate::serving::{HOOKS, Webhooks};
 
 /// What a marker key is derived from a credential under (ADR-0011).
 const DERIVATION: &[u8] = b"herald/marker-key/v1";
@@ -182,6 +183,10 @@ pub struct PreparedSource {
     pub(crate) name: SourceName,
     pub(crate) poll: Polling,
     pub(crate) backfill: usize,
+    /// Where each member's webhook points, where some registers one, and
+    /// the secret it is signed with, where each round registers one on a
+    /// member that has none.
+    pub(crate) hook: Option<(String, Option<Secret>)>,
 }
 
 /// The owner source `name` of `connected` expands to, where it is one the
@@ -206,6 +211,7 @@ pub(crate) fn expanded<'a, H>(
 pub struct Prepared {
     routes: Vec<PreparedRoute>,
     sources: Vec<PreparedSource>,
+    mintings: Vec<Minting>,
     interacting: Vec<(DestinationName, Interacted)>,
     webhooks: Webhooks,
 }
@@ -215,6 +221,7 @@ pub struct Prepared {
 pub struct Connected<H> {
     pub(crate) routes: Vec<(PreparedRoute, H)>,
     pub(crate) sources: Vec<(PreparedSource, H)>,
+    pub(crate) mintings: Vec<(Minting, H)>,
     pub(crate) interacting: Vec<(DestinationName, Interacted, H, Option<H>)>,
     webhooks: Webhooks,
 }
@@ -321,15 +328,21 @@ impl Prepared {
         let mut interacting = Vec::new();
         for (name, destination) in self.interacting {
             let reaching = reach(Base::At(destination.api()))?;
-            let sessions = match destination.sessions() {
-                Some(base) => Some(reach(Base::At(base))?),
-                None => None,
-            };
+            let sessions = destination
+                .sessions()
+                .map(|base| reach(Base::At(base)))
+                .transpose()?;
             interacting.push((name, destination, reaching, sessions));
         }
+        let mintings = self
+            .mintings
+            .into_iter()
+            .map(|minting| reach(Base::At(&minting.api)).map(|reaching| (minting, reaching)))
+            .collect::<Result<Vec<_>, E>>()?;
         Ok(Connected {
             routes,
             sources,
+            mintings,
             interacting,
             webhooks: self.webhooks,
         })
@@ -458,21 +471,41 @@ pub async fn prepare<S: Secrets, G: Signer>(
         });
     }
     let mut sources = Vec::new();
+    let mut mintings = Mintings::default();
     for (name, source) in config.sources.iter().filter(|_| uses >= Uses::Polls) {
-        let token = herald_kinds::optional(&read, source.token()).await?;
+        let token = match source.installed() {
+            Some(installed) => mintings
+                .of((&config.github_apps, &read), name, installed)
+                .await?
+                .map(Credential::Minted),
+            None => herald_kinds::optional(&read, source.token())
+                .await?
+                .map(Credential::Named),
+        };
         let edits = config.routes.iter().any(|route| {
             route.route.delivery.edits == Edits::Release
                 && (route.route.filter.sources.contains(name)
                     || source.names_route(&route.route.id))
         });
+        let hook = match (source.registering(), &config.server.url) {
+            (Registering::Never, _) | (_, None) => None,
+            (registering, Some(url)) => Some((
+                format!("{}{HOOKS}{}", url.trim_end_matches('/'), name.as_str()),
+                match (registering, source.webhook()) {
+                    (Registering::Round, Some(named)) => Some(read.secret(&named.secret).await?),
+                    _ => None,
+                },
+            )),
+        };
         sources.push(PreparedSource {
             name: name.clone(),
             poll: source.poller(token, edits),
             backfill: source.backfill(),
+            hook,
         });
     }
     let mut interacting = Vec::new();
-    let mut webhooks = BTreeMap::new();
+    let mut webhooks = Webhooks::default();
     if uses == Uses::Serves {
         for (name, resolved) in &resolved {
             if let Some(found) = resolved
@@ -485,15 +518,25 @@ pub async fn prepare<S: Secrets, G: Signer>(
         }
         for (name, source) in &config.sources {
             if let Some(named) = source.webhook() {
-                webhooks.insert(name.clone(), read.secret(&named.secret).await?);
+                webhooks
+                    .sources
+                    .insert(name.clone(), read.secret(&named.secret).await?);
+            }
+        }
+        for (name, app) in &config.github_apps {
+            if let Some(named) = &app.webhook {
+                webhooks
+                    .apps
+                    .insert(name.clone(), read.secret(&named.secret).await?);
             }
         }
     }
     Ok(Prepared {
         routes,
         sources,
+        mintings: mintings.0,
         interacting,
-        webhooks: Webhooks(webhooks),
+        webhooks,
     })
 }
 

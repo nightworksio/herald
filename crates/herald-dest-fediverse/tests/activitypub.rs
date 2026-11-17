@@ -267,7 +267,7 @@ mod activitypub {
                 &deliver("https://social.example/inbox")
             ),
             Sent::Refused(
-                "the secret BAD is not a key for this signature; give a PKCS#8 private key as PEM"
+                "the secret BAD is not a key for this signature; give a private key as PEM, PKCS#8 or an RSA key's PKCS#1"
                     .to_owned()
             )
         );
@@ -650,7 +650,7 @@ mod activitypub {
             pollster::block_on(reached("BAD").document(&FakeSigner))
                 .unwrap_err()
                 .to_string(),
-            "the secret BAD is not a key for this signature; give a PKCS#8 private key as PEM"
+            "the secret BAD is not a key for this signature; give a private key as PEM, PKCS#8 or an RSA key's PKCS#1"
         );
         let finger: serde_json::Value = serde_json::from_str(&actor.finger()).unwrap();
         assert_eq!(finger, webfinger(DOMAIN, DOMAIN, "php-mutation-gate"));

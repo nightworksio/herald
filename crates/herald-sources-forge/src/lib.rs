@@ -14,8 +14,10 @@ mod ghcr;
 mod github;
 mod gitlab;
 mod graphql;
+mod hooks;
 mod kind;
 mod members;
+mod moved;
 mod options;
 mod owner;
 mod packages;
@@ -28,8 +30,9 @@ pub use ghcr::{GhcrKind, GhcrOptions, GhcrSource};
 pub use herald_kinds::Hooked;
 pub use kind::{ForgeSource, ForgejoKind, GitHubKind, GitLabKind};
 pub use options::{
-    EDITS_DEPTH, FEED_PAGE, FEED_PAGES, GRAPHQL_BATCH, GRAPHQL_BATCH_ALLOWED, KEEP_MEMBERS, KEY,
-    MOST_LISTED, MOST_MEMBERS, MOST_MEMBERS_ALLOWED, Members, Override, PackageVisibility, Signals,
-    SourceOptions, TAG_WINDOW, TAG_WINDOW_ALLOWED, Transport, Values,
+    Discovery, EDITS_DEPTH, FEED_PAGE, FEED_PAGES, GRAPHQL_BATCH, GRAPHQL_BATCH_ALLOWED,
+    KEEP_MEMBERS, KEY, MOST_LISTED, MOST_MEMBERS, MOST_MEMBERS_ALLOWED, MemberHooks, Members,
+    Override, PackageVisibility, Signals, SourceOptions, TAG_WINDOW, TAG_WINDOW_ALLOWED, Transport,
+    Values,
 };
 pub use polled::tag_event_of;

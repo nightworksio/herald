@@ -55,6 +55,10 @@ pub(crate) fn pending(hold: &Hold) -> String {
     format!("{PENDING}/{}.json", hold.digest())
 }
 
+pub(crate) fn token(name: &str) -> String {
+    format!("tokens/{}.json", segment(name))
+}
+
 pub(crate) fn listing(source: &SourceName) -> String {
     format!("listings/{}.json", segment(source.as_str()))
 }

@@ -55,6 +55,7 @@ fn kept_in(world: &World, source: &str, visibility: Visibility, left: bool) {
         left: left.then(at),
         cursor: None,
         collides: None,
+        hooked: false,
     };
     let gate = SourceName::new(source);
     let version = pollster::block_on(world.store.inner.member(&gate, ID))
@@ -281,5 +282,199 @@ fn a_delivery_naming_its_repository_private_reaches_only_private_routes_though_i
     assert_eq!(
         announced(Some(Visibility::Public)),
         [RouteId::new("followed")]
+    );
+}
+
+/// The owner listing `gate` keeps, marked `stale`.
+fn listed(world: &World, stale: bool) {
+    let gate = SourceName::new("gate");
+    let version = pollster::block_on(world.store.inner.listing(&gate))
+        .unwrap()
+        .map(|kept| kept.version);
+    let listing = herald_core::Listing {
+        owner: herald_core::Owner::Organization,
+        pages: Vec::new(),
+        first: at(),
+        listed: at(),
+        fingerprint: "f".to_owned(),
+        file: None,
+        events: None,
+        stale,
+    };
+    pollster::block_on(world.store.inner.put_listing(&gate, &listing, version)).unwrap();
+}
+
+fn stale(world: &World) -> Option<bool> {
+    pollster::block_on(world.store.inner.listing(&SourceName::new("gate")))
+        .unwrap()
+        .map(|kept| kept.value.stale)
+}
+
+#[test]
+fn a_change_of_an_owner_s_repositories_marks_its_listing_stale_and_polls_it_at_once() {
+    let mut world = owned_world();
+    let payload = br#"{"action":"created","repository":{"id":7,"full_name":"cli/new"}}"#;
+    let signature = signed("hook-secret", payload);
+    let headers = [
+        ("X-Hub-Signature-256", signature.as_str()),
+        ("X-GitHub-Event", "repository"),
+    ];
+    let answered = world.answer(&hooked("/hooks/gate", &headers, payload));
+    assert_eq!(
+        said(&answered),
+        (
+            202,
+            TEXT,
+            "herald lists the owner's repositories again".to_owned()
+        )
+    );
+    let Some(job @ Job::Poll { relist: true, .. }) = answered.job else {
+        panic!("a change of the owner's repositories is left to a poll");
+    };
+    let Did::Polled(swept) = world.work(job.clone()) else {
+        panic!("the owner is polled");
+    };
+    assert!(swept.iter().all(|swept| swept.source.as_str() == "gate"));
+    assert_eq!(stale(&world), None);
+    listed(&world, false);
+    world.work(job.clone());
+    assert_eq!(stale(&world), Some(true));
+    world.work(job.clone());
+    assert_eq!(stale(&world), Some(true));
+    listed(&world, false);
+    let Job::Poll {
+        source,
+        scheme,
+        verified,
+        ..
+    } = job.clone()
+    else {
+        unreachable!()
+    };
+    world.work(Job::Poll {
+        source,
+        scheme,
+        verified,
+        relist: false,
+    });
+    assert_eq!(stale(&world), Some(false));
+    world.store.fault = Fault::ListingConflicts;
+    assert_eq!(
+        world.work(job),
+        Did::Polled(vec![herald_flows::Swept {
+            source: SourceName::new("gate"),
+            member: None,
+            outcome: herald_flows::Sweep::Stopped(herald_flows::Stop::Store(
+                "another run moved the owner's listing first".to_owned()
+            )),
+        }])
+    );
+    assert_eq!(stale(&world), Some(false));
+}
+
+/// The owner source `gate`, a second owner source `mirror` of the same
+/// owner, and the source `one` of the repository, each reading as the App
+/// `herald`, whose webhooks the App takes.
+fn installed_world() -> World {
+    installed_world_beside(
+        "[sources.mirror]\nkind = \"github\"\nowner = \"cli\"\napp = \"herald\"\n[sources.one]\nkind = \"github\"\nrepository = \"cli/cli\"\napp = \"herald\"\n",
+    )
+}
+
+/// The owner source `gate` reading as the App `herald`, beside the sources
+/// `beside`.
+fn installed_world_beside(beside: &str) -> World {
+    let text = config_text().replacen(
+        "repository = \"cli/cli\"\nwebhook = { secret = \"HERALD_WEBHOOK\" }",
+        &format!("owner = \"cli\"\napp = \"herald\"\n{beside}[github_apps.herald]\nclient_id = \"Iv23liABCDEF\"\nprivate_key = {{ secret = \"HERALD_APP_KEY\" }}\nwebhook = {{ secret = \"HERALD_WEBHOOK\" }}"),
+        1,
+    );
+    let config = load(
+        "herald.toml",
+        &text,
+        &|_| Err(String::new()),
+        &crate::harness::kinds(),
+    )
+    .unwrap();
+    World::with(config, Script::default())
+}
+
+#[test]
+fn an_app_s_delivery_is_left_to_each_source_reading_as_the_app_that_takes_it() {
+    let world = installed_world();
+    let delivery = |path: &str, event: &str, body: &[u8]| {
+        let signature = signed("hook-secret", body);
+        let headers = [
+            ("X-Hub-Signature-256", signature.as_str()),
+            ("X-GitHub-Event", event),
+            ("X-GitHub-Delivery", "d-app"),
+        ];
+        world.answer(&hooked(path, &headers, body))
+    };
+    let answered = delivery("/hooks/app/herald", "release", EVENT.as_bytes());
+    assert_eq!(
+        said(&answered),
+        (
+            202,
+            TEXT,
+            "herald takes the delivery for each source the App reaches".to_owned()
+        )
+    );
+    let Some(Job::Fanned { jobs, .. }) = &answered.job else {
+        panic!("the delivery is left to each source");
+    };
+    let sources: Vec<&str> = jobs
+        .iter()
+        .map(|job| match job {
+            Job::Announce { source, .. } | Job::Poll { source, .. } => source.as_str(),
+            _ => "",
+        })
+        .collect();
+    assert_eq!(sources, ["gate", "mirror", "one"]);
+    let Did::Fanned(each) = world.work(answered.job.unwrap()) else {
+        panic!("each source's job is done");
+    };
+    assert_eq!(each.len(), 3);
+    let moved = br#"{"action":"created","repository":{"id":7,"full_name":"cli/new"}}"#;
+    let answered = delivery("/hooks/app/herald", "repository", moved);
+    assert!(matches!(&answered.job, Some(Job::Fanned { jobs, .. }) if jobs.len() == 2));
+    let elsewhere = br#"{"action":"created","repository":{"id":7,"full_name":"neovim/new"}}"#;
+    assert_eq!(
+        said(&delivery("/hooks/app/herald", "repository", elsewhere)),
+        (
+            200,
+            TEXT,
+            "no source the App reaches takes the delivery".to_owned()
+        )
+    );
+    assert_eq!(
+        said(&delivery("/hooks/app/other", "release", EVENT.as_bytes())).0,
+        404
+    );
+    let answer = world.answer(&get("/hooks/app/herald"));
+    assert_eq!(said(&answer).0, 405);
+    let unsigned = world.answer(&hooked(
+        "/hooks/app/herald",
+        &[("X-GitHub-Event", "release")],
+        EVENT.as_bytes(),
+    ));
+    assert_eq!(said(&unsigned).0, 401);
+}
+
+#[test]
+fn an_app_s_delivery_one_source_takes_is_that_source_s_job() {
+    let world = installed_world_beside("");
+    let signature = signed("hook-secret", EVENT.as_bytes());
+    let headers = [
+        ("X-Hub-Signature-256", signature.as_str()),
+        ("X-GitHub-Event", "release"),
+        ("X-GitHub-Delivery", "d-one"),
+    ];
+    let answered = world.answer(&hooked("/hooks/app/herald", &headers, EVENT.as_bytes()));
+    assert_eq!(said(&answered).0, 202);
+    assert!(
+        matches!(&answered.job, Some(Job::Announce { source, .. } | Job::Poll { source, .. }) if source.as_str() == "gate"),
+        "{:?}",
+        answered.job
     );
 }

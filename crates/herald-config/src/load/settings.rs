@@ -92,6 +92,23 @@ impl Loader<'_> {
     }
 
     /// `[server]` as `file` gives it, over the store `store`.
+    /// herald's public address, as `[server] url` gives it, where it is a
+    /// web address.
+    fn server_url(&mut self, url: toml::Spanned<String>) -> Option<String> {
+        if herald_core::web_url(url.get_ref()) {
+            return Some(url.into_inner());
+        }
+        self.error(
+            &url.span(),
+            "server.url",
+            format!(
+                "\"{}\" is not a web address; give herald's public address, such as \"https://herald.example\"",
+                url.get_ref()
+            ),
+        );
+        None
+    }
+
     pub(super) fn server(&mut self, file: ServerFile, store: Option<&ConfiguredStore>) -> Server {
         let defaults = Server::default();
         let listen = file.listen.map_or(defaults.listen, |listen| {
@@ -147,9 +164,11 @@ impl Loader<'_> {
             KeyCache::Store
         });
         let count = |given: Option<NonZeroUsize>, default| given.map_or(default, NonZeroUsize::get);
+        let url = file.url.and_then(|url| self.server_url(url));
         Server {
             listen,
             base,
+            url,
             jobs: count(file.jobs, defaults.jobs),
             queue: count(file.queue, count(file.jobs, defaults.jobs)),
             connections: count(file.connections, defaults.connections),

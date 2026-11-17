@@ -138,11 +138,13 @@ pub enum Held {
     Positions,
     /// Events held back until they are due.
     Pending,
+    /// Minted tokens, sealed.
+    Tokens,
 }
 
 impl Held {
     /// Every kind, in the order a store's accessors list them.
-    pub const ALL: [Self; 11] = [
+    pub const ALL: [Self; 12] = [
         Self::Ledger,
         Self::Cursors,
         Self::Schedules,
@@ -154,6 +156,7 @@ impl Held {
         Self::Inboxes,
         Self::Positions,
         Self::Pending,
+        Self::Tokens,
     ];
 
     /// The kind as an error names it.
@@ -170,6 +173,7 @@ impl Held {
             Self::Inboxes => "deliveries to followers",
             Self::Positions => "session positions",
             Self::Pending => "held events",
+            Self::Tokens => "minted tokens",
         }
     }
 
@@ -862,6 +866,8 @@ pub trait Store: Sync {
     type Positions: Positions;
     /// Its events held back until they are due.
     type Waiting: Waiting;
+    /// Its minted tokens.
+    type Tokens: Tokens;
 
     /// The ledger, where it keeps or derives one.
     fn ledger(&self) -> Option<&Self::Ledger>;
@@ -885,6 +891,8 @@ pub trait Store: Sync {
     fn positions(&self) -> Option<&Self::Positions>;
     /// The events held back until they are due, where it keeps them.
     fn waiting(&self) -> Option<&Self::Waiting>;
+    /// The minted tokens, where it keeps them.
+    fn tokens(&self) -> Option<&Self::Tokens>;
 
     /// The paths of the records a listing skipped as corrupt since this was
     /// last asked, each once, so one bad record stops no listing and is
@@ -897,103 +905,12 @@ pub trait Store: Sync {
     fn writes_one_at_a_time(&self) -> bool;
 }
 
-/// A store holding every kind of record it keeps itself, and saying which
-/// kinds it holds.
-pub trait Keeper:
-    Ledger
-    + Cursors
-    + Schedules
-    + Subscriptions
-    + Pins
-    + Deliveries
-    + Notes
-    + Announcements
-    + Inboxes
-    + Positions
-    + Waiting
-{
-    /// Whether it holds records of `kind`.
-    fn holds(&self, kind: Held) -> bool;
-
-    /// Whether a run writes one record at a time: where a write may be
-    /// refused because another record was written at once, or where writes
-    /// are not compared and set.
-    fn writes_one_at_a_time(&self) -> bool {
-        false
-    }
-
-    /// The paths of the records a listing skipped as corrupt since this was
-    /// last asked, each once.
-    fn skipped(&self) -> Vec<String>;
-}
-
-impl<K: Keeper> Store for K {
-    type Ledger = Self;
-    type Cursors = Self;
-    type Schedules = Self;
-    type Subscriptions = Self;
-    type Pins = Self;
-    type Deliveries = Self;
-    type Notes = Self;
-    type Announcements = Self;
-    type Inboxes = Self;
-    type Positions = Self;
-    type Waiting = Self;
-
-    fn ledger(&self) -> Option<&Self> {
-        self.holds(Held::Ledger).then_some(self)
-    }
-
-    fn cursors(&self) -> Option<&Self> {
-        self.holds(Held::Cursors).then_some(self)
-    }
-
-    fn schedules(&self) -> Option<&Self> {
-        self.holds(Held::Schedules).then_some(self)
-    }
-
-    fn subscriptions(&self) -> Option<&Self> {
-        self.holds(Held::Subscriptions).then_some(self)
-    }
-
-    fn pins(&self) -> Option<&Self> {
-        self.holds(Held::Pins).then_some(self)
-    }
-
-    fn deliveries(&self) -> Option<&Self> {
-        self.holds(Held::Deliveries).then_some(self)
-    }
-
-    fn notes(&self) -> Option<&Self> {
-        self.holds(Held::Notes).then_some(self)
-    }
-
-    fn announcements(&self) -> Option<&Self> {
-        self.holds(Held::Latest).then_some(self)
-    }
-
-    fn inboxes(&self) -> Option<&Self> {
-        self.holds(Held::Inboxes).then_some(self)
-    }
-
-    fn positions(&self) -> Option<&Self> {
-        self.holds(Held::Positions).then_some(self)
-    }
-
-    fn waiting(&self) -> Option<&Self> {
-        self.holds(Held::Pending).then_some(self)
-    }
-
-    fn skipped(&self) -> Vec<String> {
-        Keeper::skipped(self)
-    }
-
-    fn writes_one_at_a_time(&self) -> bool {
-        Keeper::writes_one_at_a_time(self)
-    }
-}
-
+mod keeper;
 mod optional;
+mod tokens;
+
+pub use keeper::Keeper;
+pub use tokens::Tokens;
 
 #[cfg(test)]
 mod tests;

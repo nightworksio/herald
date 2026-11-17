@@ -43,6 +43,11 @@ pub trait StoreConfig: fmt::Debug + Send + Sync + Itself {
         true
     }
 
+    /// Whether it keeps minted tokens, sealed, between runs (ADR-0041).
+    fn keeps_tokens(&self) -> bool {
+        true
+    }
+
     /// What the doctor says of every run that keeps its records in it.
     fn note(&self) -> Option<&'static str> {
         None

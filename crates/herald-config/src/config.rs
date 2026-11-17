@@ -5,7 +5,7 @@ use herald_core::{
     Attempts, DestinationName, Glob, Inbound, KindSpecs, Profile, Retention, Route, RouteId,
     Sandbox, SecretRef, SourceName, Templates,
 };
-use herald_kinds::{ConfiguredStore, Destination, Placed, Source};
+use herald_kinds::{ConfiguredStore, Destination, Placed, Registering, Source};
 use jiff::SignedDuration;
 
 /// A config, read, resolved and with its templates compiled.
@@ -32,6 +32,8 @@ pub struct Config {
     pub templates: Templates,
     /// The HTTP API's apps, by name (ADR-0007).
     pub apps: BTreeMap<String, App>,
+    /// The GitHub Apps sources read as, by name (ADR-0041).
+    pub github_apps: BTreeMap<String, GithubApp>,
     /// The cadence of polling and housekeeping.
     pub schedule: Schedule,
     /// How a run holds and keeps an announcement.
@@ -103,11 +105,30 @@ impl Config {
         });
         let sources = self.sources.values().flat_map(|source| match uses {
             Uses::Serves => source.secret_refs(),
-            Uses::Polls => source.token().into_iter().collect(),
+            Uses::Polls => source
+                .token()
+                .into_iter()
+                .chain(
+                    source
+                        .webhook()
+                        .filter(|_| source.registering() == Registering::Round),
+                )
+                .collect(),
             Uses::Announces => Vec::new(),
+        });
+        let apps = self.github_apps.iter().flat_map(|(name, app)| {
+            let read = self.sources.values().any(|source| {
+                source
+                    .installed()
+                    .is_some_and(|installed| installed.app == name)
+            });
+            let key = (uses >= Uses::Polls && read).then_some(&app.private_key);
+            let webhook = app.webhook.as_ref().filter(|_| uses == Uses::Serves);
+            key.into_iter().chain(webhook)
         });
         destinations
             .chain(sources)
+            .chain(apps)
             .chain(self.marker_key.as_ref())
             .map(|named| named.secret.as_str())
             .collect()
@@ -145,6 +166,28 @@ pub struct App {
     /// The routes it announces to: those it names, or every route that
     /// names it among its sources.
     pub routes: Vec<RouteId>,
+}
+
+/// A GitHub App herald reads as, through installation tokens it mints
+/// (ADR-0041).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GithubApp {
+    /// What its tokens' JWTs are issued by: its client id, or its id.
+    pub issuer: String,
+    /// Its private key.
+    pub private_key: SecretRef,
+    /// The REST API its tokens are minted at.
+    pub api: String,
+    /// The secret its webhook deliveries are signed with, where it takes
+    /// them.
+    pub webhook: Option<SecretRef>,
+    /// Whether its installation tokens are kept in the store between runs.
+    pub store_token: bool,
+}
+
+impl GithubApp {
+    /// The REST API an App's tokens are minted at where `api` is absent.
+    pub const API: &str = "https://api.github.com";
 }
 
 impl App {
@@ -268,6 +311,8 @@ pub struct Server {
     /// The path every endpoint is served under, as `/herald`; empty where
     /// they are served at the root.
     pub base: String,
+    /// herald's public address, where the config gives it.
+    pub url: Option<String>,
     /// How many pieces of work it does at once.
     pub jobs: usize,
     /// How many pieces of work may wait for a place; a request leaving one
@@ -443,6 +488,7 @@ impl Default for Server {
         Self {
             listen: Self::LISTEN.to_owned(),
             base: String::new(),
+            url: None,
             jobs: Self::JOBS,
             queue: Self::JOBS,
             connections: Self::CONNECTIONS,

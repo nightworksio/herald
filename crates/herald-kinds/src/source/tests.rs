@@ -50,8 +50,11 @@ impl SourceConfig for Plain {
         3
     }
 
-    fn poller(&self, token: Option<Secret>, _: bool) -> Polling {
-        Polling::One(Arc::new(Quiet(token, "https://plain.example".to_owned())))
+    fn poller(&self, token: Option<Credential>, _: bool) -> Polling {
+        Polling::One(Arc::new(Quiet(
+            token.and_then(Credential::named),
+            "https://plain.example".to_owned(),
+        )))
     }
 }
 
@@ -76,7 +79,7 @@ impl SourceConfig for Routing {
         self.0.backfill()
     }
 
-    fn poller(&self, token: Option<Secret>, edits: bool) -> Polling {
+    fn poller(&self, token: Option<Credential>, edits: bool) -> Polling {
         self.0.poller(token, edits)
     }
 
@@ -108,6 +111,8 @@ fn a_source_takes_no_webhook_and_no_moving_tag_where_its_kind_keeps_the_defaults
     assert_eq!(source.notes(), Vec::<&str>::new());
     assert_eq!(source.projects(), Vec::<String>::new());
     assert!(!source.origins());
+    assert!(!source.pushed());
+    assert_eq!(source.registering(), Registering::Never);
     assert_eq!(source.routed(), Vec::new());
     assert!(!source.names_route(&herald_core::RouteId::new("releases")));
     assert_eq!(
@@ -133,7 +138,7 @@ fn a_source_names_a_route_only_where_its_options_route_to_it() {
 #[test]
 fn a_source_polls_with_the_token_it_is_given() {
     let source = Source::new(tokened());
-    let polling = source.poller(Some(Secret::new("TOKEN", "t")), false);
+    let polling = source.poller(Some(Credential::Named(Secret::new("TOKEN", "t"))), false);
     assert_eq!(polling.api(), "https://plain.example");
     let (Polling::One(poll), Polling::One(untokened)) = (polling, source.poller(None, false))
     else {
@@ -240,6 +245,43 @@ impl Expand for Members {
     fn fingerprint(&self) -> String {
         String::new()
     }
+
+    fn pushed(&self) -> bool {
+        false
+    }
+}
+
+#[test]
+fn an_owner_by_default_registers_no_webhook_on_its_members() {
+    let member = Listed {
+        id: "1".to_owned(),
+        name: "a".to_owned(),
+        path: "o/a".to_owned(),
+        topics: Vec::new(),
+        properties: std::collections::BTreeMap::new(),
+        visibility: herald_core::Visibility::Public,
+        archived: false,
+        fork: false,
+        template: false,
+        language: None,
+        linked: None,
+    };
+    assert_eq!(Members.registering(), Registering::Never);
+    let secret = Secret::new("HOOK", "s");
+    assert_eq!(
+        pollster::block_on(Members.register(
+            &crate::reach::tests::Silent,
+            &member,
+            ("https://herald.example/hooks/o", &secret)
+        )),
+        Ok(Registered::Found)
+    );
+    let http = crate::reach::tests::Silent;
+    assert_eq!(
+        pollster::block_on(Members.hooked(&http, &member, "https://herald.example")),
+        Ok(true)
+    );
+    assert_eq!(pollster::block_on(Members.may_register(&http)), Ok(()));
 }
 
 #[test]
@@ -337,6 +379,10 @@ impl Expand for OwnerBeside {
 
     fn keep_members(&self) -> SignedDuration {
         SignedDuration::ZERO
+    }
+
+    fn pushed(&self) -> bool {
+        false
     }
 
     fn remembered(&self) -> usize {

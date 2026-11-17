@@ -76,6 +76,7 @@ fn secrets() -> FakeSecrets {
     FakeSecrets::default()
         .with("HERALD_ACTIVITYPUB_KEY", "the-key")
         .with("HERALD_WEBHOOK", "hook-secret")
+        .with("HERALD_APP_KEY", "the App's key")
 }
 
 pub(crate) struct World {
@@ -305,7 +306,7 @@ fn an_actor_whose_key_cannot_be_read_is_not_served() {
     assert_eq!(
         answered.refused.as_deref(),
         Some(
-            "the actor's key cannot be read: the secret HERALD_ACTIVITYPUB_KEY is not a key for this signature; give a PKCS#8 private key as PEM"
+            "the actor's key cannot be read: the secret HERALD_ACTIVITYPUB_KEY is not a key for this signature; give a private key as PEM, PKCS#8 or an RSA key's PKCS#1"
         )
     );
     assert_eq!(

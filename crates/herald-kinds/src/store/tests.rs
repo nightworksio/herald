@@ -80,6 +80,7 @@ fn a_store_keeps_every_kind_itself_and_says_nothing_where_its_kind_keeps_the_def
     }
     assert!(!store.reads_posts());
     assert!(store.keeps_deliveries());
+    assert!(store.keeps_tokens());
     assert_eq!(store.note(), None);
     assert_eq!(store.withheld(), None);
     assert_eq!(store.loosened(), Vec::<(&str, &str)>::new());

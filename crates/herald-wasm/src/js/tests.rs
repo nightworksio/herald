@@ -3,8 +3,8 @@ use base64::engine::general_purpose::STANDARD;
 use herald_compose::{Host as _, KvAt, SqlAt};
 use herald_ports::{
     Algorithm, Base, Clock as _, CryptoError, Frame, Http as _, HttpError, Kv as _, Method,
-    Outbound, Request, Secret, SecretError, SecretText, Secrets as _, Signer as _, Socket as _,
-    Sockets as _, Sql as _, Statement, Timer as _, Value, Verifier as _, Versionstamp,
+    Outbound, Request, Sealing, Secret, SecretError, SecretText, Secrets as _, Signer as _,
+    Socket as _, Sockets as _, Sql as _, Statement, Timer as _, Value, Verifier as _, Versionstamp,
 };
 use herald_records::KvRecords;
 use herald_testing::{kv_conformance, store_conformance};
@@ -231,6 +231,47 @@ async fn an_ed25519_key_publishes_rfc_8410_s_public_key_and_verifies_its_own_sig
         Err(CryptoError::BadKey {
             name: "BAD".to_owned()
         })
+    );
+}
+
+#[wasm_bindgen_test]
+async fn a_sealed_value_opens_only_under_its_key_purpose_and_bound_data_as_ring_opens_it() {
+    let key = Secret::new("APP", "the App's key");
+    let token = Sealing {
+        purpose: "token",
+        bound: b"bound",
+    };
+    let sealed = WebSigner.seal(&key, token, b"ghs_minted").await.unwrap();
+    assert_eq!(sealed.len(), 12 + 10 + 16);
+    assert_eq!(
+        WebSigner.open(&key, token, &sealed).await,
+        Ok(b"ghs_minted".to_vec())
+    );
+    let refused = Err(CryptoError::Unsealed {
+        name: "APP".to_owned(),
+    });
+    let other = Sealing {
+        purpose: "other",
+        ..token
+    };
+    let moved = Sealing {
+        bound: b"other",
+        ..token
+    };
+    assert_eq!(WebSigner.open(&key, other, &sealed).await, refused);
+    assert_eq!(WebSigner.open(&key, moved, &sealed).await, refused);
+    assert_eq!(WebSigner.open(&key, token, &sealed[..8]).await, refused);
+    assert_eq!(
+        WebSigner
+            .open(
+                &key,
+                token,
+                &unhex(
+                    "000102030405060708090a0b47ec349fd84f0dda1c482d086372fa4ec7df8ddeac7f830d93c1"
+                )
+            )
+            .await,
+        Ok(b"ghs_minted".to_vec())
     );
 }
 

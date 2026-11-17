@@ -103,6 +103,15 @@ pub(crate) enum Setting {
     /// Set a Matrix destination up to take commands.
     #[command(subcommand)]
     Matrix(Matrixing),
+    /// Register a webhook on each member of a GitLab owner source whose
+    /// `member_hooks` asks for one (ADR-0041).
+    Hooks {
+        /// The source, by name.
+        name: String,
+        /// The address herald is served at; `[server] url` where absent.
+        #[arg(long)]
+        url: Option<String>,
+    },
 }
 
 /// The commands that set Discord up to take commands.

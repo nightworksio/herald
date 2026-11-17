@@ -5,10 +5,12 @@ use std::collections::BTreeMap;
 use std::future::{Future, ready};
 use std::sync::{Arc, Mutex, PoisonError};
 
-use herald_keys::{PRIVATE_KEY, Public, pem, subject};
-use herald_ports::{Algorithm, CryptoError, Secret, Signer, Verifier};
+use herald_keys::{Public, private_key, subject};
+use herald_ports::{Algorithm, CryptoError, Sealing, Secret, Signer, Verifier};
+use ring::aead::{AES_256_GCM, Aad, LessSafeKey, NONCE_LEN, Nonce, UnboundKey};
+use ring::hkdf::{HKDF_SHA256, Salt};
 use ring::hmac;
-use ring::rand::SystemRandom;
+use ring::rand::{SecureRandom as _, SystemRandom};
 use ring::signature::{
     ED25519, Ed25519KeyPair, KeyPair as _, RSA_PKCS1_2048_8192_SHA256, RSA_PKCS1_SHA256,
     RsaKeyPair, UnparsedPublicKey,
@@ -30,7 +32,7 @@ pub struct RingSigner {
 pub struct RingVerifier;
 
 fn pkcs8(key: &Secret) -> Option<Zeroizing<Vec<u8>>> {
-    pem(key.expose(), PRIVATE_KEY).map(Zeroizing::new)
+    private_key(key.expose()).map(Zeroizing::new)
 }
 
 impl RingSigner {
@@ -84,6 +86,42 @@ impl RingSigner {
     }
 }
 
+/// The AES-256-GCM key HKDF-SHA256 derives from `key` for `purpose`.
+fn sealing(key: &Secret, purpose: &str) -> Option<LessSafeKey> {
+    let extracted = Salt::new(HKDF_SHA256, &[]).extract(key.expose().as_bytes());
+    let info = [purpose.as_bytes()];
+    let derived = extracted.expand(&info, &AES_256_GCM).ok()?;
+    Some(LessSafeKey::new(UnboundKey::from(derived)))
+}
+
+/// `plain` sealed under `key` as `with` says, a fresh nonce first.
+fn sealed(key: &Secret, with: Sealing<'_>, plain: &[u8]) -> Option<Vec<u8>> {
+    let sealing = sealing(key, with.purpose)?;
+    let mut nonce = [0; NONCE_LEN];
+    SystemRandom::new().fill(&mut nonce).ok()?;
+    let mut held = plain.to_vec();
+    sealing
+        .seal_in_place_append_tag(
+            Nonce::assume_unique_for_key(nonce),
+            Aad::from(with.bound),
+            &mut held,
+        )
+        .ok()?;
+    Some([&nonce[..], &held].concat())
+}
+
+/// What `sealed` holds, sealed under `key` as `with` says.
+fn opened(key: &Secret, with: Sealing<'_>, sealed: &[u8]) -> Option<Vec<u8>> {
+    let sealing = sealing(key, with.purpose)?;
+    let (nonce, held) = sealed.split_at_checked(NONCE_LEN)?;
+    let nonce = Nonce::try_assume_unique_for_key(nonce).ok()?;
+    let mut held = held.to_vec();
+    let plain = sealing
+        .open_in_place(nonce, Aad::from(with.bound), &mut held)
+        .ok()?;
+    Some(plain.to_vec())
+}
+
 impl Signer for RingSigner {
     fn sign(
         &self,
@@ -109,6 +147,30 @@ impl Signer for RingSigner {
                 .ok_or_else(|| CryptoError::BadKey {
                     name: key.name().to_owned(),
                 }),
+        )
+    }
+
+    fn seal(
+        &self,
+        key: &Secret,
+        sealing: Sealing<'_>,
+        plain: &[u8],
+    ) -> impl Future<Output = Result<Vec<u8>, CryptoError>> + Send {
+        ready(sealed(key, sealing, plain).ok_or(CryptoError::Unsealable {
+            name: key.name().to_owned(),
+        }))
+    }
+
+    fn open(
+        &self,
+        key: &Secret,
+        sealing: Sealing<'_>,
+        sealed: &[u8],
+    ) -> impl Future<Output = Result<Vec<u8>, CryptoError>> + Send {
+        ready(
+            opened(key, sealing, sealed).ok_or_else(|| CryptoError::Unsealed {
+                name: key.name().to_owned(),
+            }),
         )
     }
 }

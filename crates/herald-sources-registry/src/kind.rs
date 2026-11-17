@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use herald_core::{Cursor, Kind, Polled, SecretRef, Visibility};
-use herald_kinds::{Fault, Poll, Polling, SourceConfig, SourceKind, Unpolled};
+use herald_kinds::{Credential, Fault, Poll, Polling, SourceConfig, SourceKind, Unpolled};
 use herald_ports::{Boxed, DynHttp, Erased, Http as _, Secret};
 
 use crate::namespace::Namespaced;
@@ -123,7 +123,8 @@ impl SourceConfig for RegistrySource {
             .collect()
     }
 
-    fn poller(&self, token: Option<Secret>, _: bool) -> Polling {
+    fn poller(&self, token: Option<Credential>, _: bool) -> Polling {
+        let token = token.and_then(Credential::named);
         match (
             &self.options.package,
             self.options.namespace_of(self.registry),

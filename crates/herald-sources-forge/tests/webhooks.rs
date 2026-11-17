@@ -7,6 +7,8 @@ mod webhooks {
     use herald_sources_forge::{Forge, Hooked, Signals};
 
     const OTHER_EVENT: &str = "the delivery is not of a release, a tag or a package";
+    const OWNED_OTHER_EVENT: &str =
+        "the delivery is not of a release, a tag, a package or the owner's repositories";
     const UNTAGGED: &str = "the source announces no tags of the repository";
     const UNSELECTED: &str = "the repository is not one the source takes";
     const DELETED: &str = "0000000000000000000000000000000000000000";
@@ -116,7 +118,7 @@ mod webhooks {
                     ("cli", false),
                     (&Selection::default(), &|_| tags()),
                 ),
-                Ok(Hooked::Nothing(OTHER_EVENT))
+                Ok(Hooked::Nothing(OWNED_OTHER_EVENT))
             );
         }
     }
@@ -235,5 +237,63 @@ mod webhooks {
                 "{forge:?} {payload}"
             );
         }
+    }
+
+    #[test]
+    fn a_change_of_an_owner_s_repositories_has_its_source_list_it_again() {
+        let repository = br#"{"action":"created","repository":{"id":1,"full_name":"CLI/new"}}"#;
+        let installed =
+            br#"{"action":"removed","installation":{"id":9,"account":{"login":"cli"}}}"#;
+        for (forge, header, payload) in [
+            (
+                Forge::GitHub,
+                ("X-GitHub-Event", "repository"),
+                &repository[..],
+            ),
+            (
+                Forge::GitHub,
+                ("X-GitHub-Event", "installation_repositories"),
+                &installed[..],
+            ),
+            (
+                Forge::Forgejo,
+                ("X-Forgejo-Event", "repository"),
+                &repository[..],
+            ),
+        ] {
+            assert_eq!(
+                forge.hooked_owned(
+                    (&[header], payload),
+                    ("cli", false),
+                    (&Selection::default(), &|_| tags()),
+                ),
+                Ok(Hooked::Relist)
+            );
+            assert_eq!(
+                forge.hooked_owned(
+                    (&[header], payload),
+                    ("neovim", false),
+                    (&Selection::default(), &|_| tags()),
+                ),
+                Err(herald_wire::SourceError::Unreadable {
+                    what: "a repository event",
+                    reason: "it is not of a repository neovim, the owner its source names, holds"
+                        .to_owned(),
+                })
+            );
+            assert_eq!(
+                forge.hooked((&[header], payload), ("cli/cli", "forge.example"), &tags()),
+                Ok(Hooked::Nothing(OTHER_EVENT))
+            );
+        }
+        assert!(
+            Forge::GitHub
+                .hooked_owned(
+                    (&[("X-GitHub-Event", "repository")], b"{}"),
+                    ("cli", false),
+                    (&Selection::default(), &|_| tags()),
+                )
+                .is_err()
+        );
     }
 }

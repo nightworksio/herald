@@ -9,19 +9,19 @@ use clap::{Args, ValueEnum};
 use herald_compose::{Composed, Host, Hosting, ServingOn, Through, told};
 use herald_config::{Config, Uses};
 use herald_crypto::RingSigner;
-use herald_environment::EnvSecrets;
+use herald_environment::{EnvSecrets, SystemClock};
 use herald_flows::{
-    Announced, EGRESS_GUARDED, Findings, Gap, Here, Outcome, Tier, doctor, egress_guarded, keys,
-    online, trial,
+    Announced, EGRESS_GUARDED, Findings, Gap, Here, Outcome, Tier, doctor, egress_guarded,
+    kept_tokens, keys, online, trial,
 };
-use herald_ports::{Keyring, Secrets as _, Store};
+use herald_ports::{Clock as _, Keyring, Secrets as _, Store};
 use schemars::JsonSchema;
 use serde::Serialize;
 
 use super::cli::{Layer, Running};
 use super::output::say;
 use super::serving::hosting;
-use super::stores::Native;
+use super::stores::{Native, composed};
 use super::{Connect, DONE, MISTAKEN, STOPPED, place};
 
 /// How doctor prints its findings.
@@ -65,6 +65,28 @@ impl<H: Host> Through<H> for Posting {
         run: &str,
     ) -> Vec<Announced> {
         trial(serving.config, serving.connected, serving.ports, run).await
+    }
+}
+
+/// Whether the store keeps the installation tokens of each GitHub App that
+/// keeps them, minting one for each.
+struct Keeping;
+
+impl<H: Host> Through<H> for Keeping {
+    type Done = Findings;
+
+    async fn through<S: Store, K: Keyring>(
+        self,
+        serving: &ServingOn<'_, H, S, K>,
+        _: &str,
+    ) -> Findings {
+        let ports = serving.ports;
+        kept_tokens(
+            serving.connected,
+            (ports.signer, ports.store.tokens(), ports.clock.now()),
+            serving.config.store.kind(),
+        )
+        .await
     }
 }
 
@@ -223,7 +245,13 @@ async fn findings(
         let native = Native::new(vars, connect);
         match Composed::dry(native, config.clone(), Uses::Announces, place(vars)).await {
             Ok(composed) => {
-                findings.extend(online(composed.connected()).await);
+                findings.extend(
+                    online(
+                        composed.connected(),
+                        (&RingSigner::default(), SystemClock.now()),
+                    )
+                    .await,
+                );
                 if asked.post {
                     let tried = composed.run(Posting).await;
                     findings.extend(posted(config, &tried));
@@ -233,8 +261,28 @@ async fn findings(
                 .notes
                 .push(format!("No destination is asked, as {why}.")),
         }
+        if config.github_apps.values().any(|app| app.store_token) {
+            findings.extend(keeping(config, asked.layer.0, vars, connect).await);
+        }
     }
     findings
+}
+
+/// Whether the store `config` keeps records in on `hosting` keeps the
+/// installation tokens of each GitHub App that keeps them.
+async fn keeping(
+    config: &Config,
+    hosting: Hosting,
+    vars: &BTreeMap<String, String>,
+    connect: Connect<'_>,
+) -> Findings {
+    match composed(config, vars, connect, hosting, Uses::Polls, place(vars)).await {
+        Ok(composed) => composed.run(Keeping).await,
+        Err(why) => Findings {
+            notes: vec![format!("No installation token is kept, as {why}.")],
+            ..Findings::default()
+        },
+    }
 }
 
 /// The exit code `findings` call for (ADR-0002).

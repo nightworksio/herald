@@ -204,6 +204,21 @@ How doctor judges the config.
 |---------|------|--------------|
 | `doctor.private_to_public` | [Guard](#guard) | What becomes of a route that takes a private or internal repository's events and is not `private`: "refuse" where absent, so the config does not load and no such event reaches it; "warn" to load it and have doctor name it; or "allow". |
 
+## `github_apps`
+
+The GitHub Apps sources read as, by name.
+
+| Setting | Type | What it sets |
+|---------|------|--------------|
+| `github_apps.<name>.api` | string | The REST API the App's tokens are minted at; `https://api.github.com` where absent, such as `https://ghe.example/api/v3` on GitHub Enterprise Server or `https://api.example.ghe.com` on GHE.com. Each source naming the App reads that host. |
+| `github_apps.<name>.app_id` | integer | The App's id, as its settings page shows it; give it or `client_id`. |
+| `github_apps.<name>.client_id` | string | The App's client id, such as `Iv23liABCDEF`, which GitHub recommends over the id; give it or `app_id`. |
+| `github_apps.<name>.private_key` | table | The App's private key, as GitHub hands it out (PKCS#1) or as PKCS#8. |
+| `github_apps.<name>.private_key.secret` | string | The secret's name. |
+| `github_apps.<name>.store_token` | boolean | Whether each installation token is kept in the store between runs, so a run skips minting one while it is good; false where absent. The token, good for an hour at most, is then a credential at rest: herald keeps it encrypted with AES-256-GCM under a key derived from `private_key`, bound to its record and its expiry, in a record the store seals too. |
+| `github_apps.<name>.webhook` | table | The secret the App's webhook deliveries are signed with, taken at `/hooks/app/<name>`. |
+| `github_apps.<name>.webhook.secret` | string | The secret's name. |
+
 ## `http`
 
 How herald's own requests reach the services the config names.
@@ -498,6 +513,7 @@ How `herald server` listens, and what it takes on at once.
 | `server.sessions.longest_wait` | [Duration](#duration) | The longest wait between attempts; "1m" where absent, and at least `first_wait`. |
 | `server.sessions.stale` | [Duration](#duration) | How long ago a command a session taken up again answers may have been given; one given earlier is skipped and logged; "10m" where absent. |
 | `server.silence` | [Duration](#duration) | How long a session a destination holds hears nothing before it checks the connection is alive, and then as long again before it opens another; "30s" where absent. |
+| `server.url` | string | herald's public address as forges and platforms reach it, such as `https://herald.example`, with `base` after it where one is given: what a webhook herald registers points at. A setup command's `--url` takes its place. |
 | `server.work` | table | How the work a request leaves keeps within its host's limits. |
 | `server.work.after` | [Duration](#duration) | How long the work may run after the answer; where absent, Cloudflare Workers' 30 seconds of `waitUntil` there, and unbounded on every other host. |
 | `server.work.requests` | integer | The most outbound requests a request and the work it leaves may make, counted from when herald began answering it; where absent, Fastly Compute's 32 backend requests there (set 10 on a trial), and unbounded on every other host. |
@@ -516,8 +532,10 @@ A GitHub repository's releases, tags and packages.
 |---------|------|--------------|
 | `sources.<name>` | table | A GitHub repository's releases, tags and packages. |
 | `sources.<name>.api` | string | The API's base URL, for a forge that is not GitHub, GitLab.com or Codeberg: a GitHub Enterprise Server's `https://ghe.example/api/v3`, a GHE.com tenant's `https://api.acme.ghe.com`, a self-managed or Dedicated GitLab's `https://gitlab.example/api/v4`, or a Forgejo's `https://forge.example/api/v1`. Where absent, it is the CI run's own when announcing the run's repository, and otherwise the forge's public instance. An owner is listed at the same base. |
+| `sources.<name>.app` | string | The GitHub App the source reads as, by the name of its `[github_apps.<name>]` table, in place of `token`: herald mints an installation token for each round. |
 | `sources.<name>.archived` | boolean | Whether archived repositories are taken. |
 | `sources.<name>.backfill` | integer | How many of the newest releases, tags and package versions the first poll announces; none where absent (ADR-0003). For an owner, it applies to the members the first listing finds; a member found later announces only what it publishes after it was found. |
+| `sources.<name>.discovery` | [Discovery](#discovery) | How an owner source finds the repositories that join or leave it: listing the owner each round ("list"), or only where it holds no listing, its selection changed or a delivery said the owner's repositories changed ("push"); "list" where absent. |
 | `sources.<name>.edits_depth` | integer | How many of the newest Releases a poll watches for an edit of their name or notes, where a route taking the source edits them (`edits = "release"`); 30 where absent, and at most `page`. |
 | `sources.<name>.exclude` | array of string | The names left out, as `include` writes them, whatever `include` says. |
 | `sources.<name>.feed_page` | integer | How many activities one page of a Forgejo owner's feed asks for under `transport = "feed"`; 50 where absent, and at most 200. |
@@ -526,11 +544,13 @@ A GitHub repository's releases, tags and packages.
 | `sources.<name>.graphql` | string | The GraphQL endpoint of a GitHub or GitLab owner source; beside `api` where absent: `/api/graphql` on a GitHub Enterprise Server whose `api` ends in `/api/v3` and on GitLab, whose `api` ends in `/api/v4`, and `/graphql` on GitHub and GHE.com. |
 | `sources.<name>.graphql_batch` | integer | How many members one GraphQL request asks for; 50 where absent, and at most 100. |
 | `sources.<name>.include` | array of string | The names of the owner's repositories taken, as globs in which `*` stands for any run of characters, `?` for any one and `[...]` for any one of a class, ignoring case; every name where absent. |
+| `sources.<name>.installation` | integer | The id of the App's installation tokens are minted for; looked up on the owner, or on the repository, where absent. |
 | `sources.<name>.keep_members` | [Duration](#duration) | How long a member that left the selection keeps its cursor before it is forgotten; "30d" where absent. |
 | `sources.<name>.key` | string | The field each entry of the member file names its repository by; "name" where absent. |
 | `sources.<name>.kind` | string |  |
 | `sources.<name>.language` | array of string | Languages, any one of which a member is written in; any where absent. |
 | `sources.<name>.listed_page` | integer | How many repositories one page of the listing asks for; 100 where absent on GitHub and GitLab, and 50 on Forgejo, whose instances answer at most 50 unless configured otherwise. |
+| `sources.<name>.member_hooks` | [MemberHooks](#memberhooks) | Who registers a project webhook on each member of a GitLab owner, whose group cannot send its own on GitLab Free: no one ("off"), `herald hooks <name>` ("setup"), or each poll round too ("round"); "off" where absent. Each hook points at `[server] url` and is signed with `webhook`. |
 
 ### `sources.<name>.members` of kind `github`: A file beside the config, such as `repos.toml`
 
@@ -593,8 +613,10 @@ A GitLab project's releases, tags and packages.
 |---------|------|--------------|
 | `sources.<name>` | table | A GitLab project's releases, tags and packages. |
 | `sources.<name>.api` | string | The API's base URL, for a forge that is not GitHub, GitLab.com or Codeberg: a GitHub Enterprise Server's `https://ghe.example/api/v3`, a GHE.com tenant's `https://api.acme.ghe.com`, a self-managed or Dedicated GitLab's `https://gitlab.example/api/v4`, or a Forgejo's `https://forge.example/api/v1`. Where absent, it is the CI run's own when announcing the run's repository, and otherwise the forge's public instance. An owner is listed at the same base. |
+| `sources.<name>.app` | string | The GitHub App the source reads as, by the name of its `[github_apps.<name>]` table, in place of `token`: herald mints an installation token for each round. |
 | `sources.<name>.archived` | boolean | Whether archived repositories are taken. |
 | `sources.<name>.backfill` | integer | How many of the newest releases, tags and package versions the first poll announces; none where absent (ADR-0003). For an owner, it applies to the members the first listing finds; a member found later announces only what it publishes after it was found. |
+| `sources.<name>.discovery` | [Discovery](#discovery) | How an owner source finds the repositories that join or leave it: listing the owner each round ("list"), or only where it holds no listing, its selection changed or a delivery said the owner's repositories changed ("push"); "list" where absent. |
 | `sources.<name>.edits_depth` | integer | How many of the newest Releases a poll watches for an edit of their name or notes, where a route taking the source edits them (`edits = "release"`); 30 where absent, and at most `page`. |
 | `sources.<name>.exclude` | array of string | The names left out, as `include` writes them, whatever `include` says. |
 | `sources.<name>.feed_page` | integer | How many activities one page of a Forgejo owner's feed asks for under `transport = "feed"`; 50 where absent, and at most 200. |
@@ -603,11 +625,13 @@ A GitLab project's releases, tags and packages.
 | `sources.<name>.graphql` | string | The GraphQL endpoint of a GitHub or GitLab owner source; beside `api` where absent: `/api/graphql` on a GitHub Enterprise Server whose `api` ends in `/api/v3` and on GitLab, whose `api` ends in `/api/v4`, and `/graphql` on GitHub and GHE.com. |
 | `sources.<name>.graphql_batch` | integer | How many members one GraphQL request asks for; 50 where absent, and at most 100. |
 | `sources.<name>.include` | array of string | The names of the owner's repositories taken, as globs in which `*` stands for any run of characters, `?` for any one and `[...]` for any one of a class, ignoring case; every name where absent. |
+| `sources.<name>.installation` | integer | The id of the App's installation tokens are minted for; looked up on the owner, or on the repository, where absent. |
 | `sources.<name>.keep_members` | [Duration](#duration) | How long a member that left the selection keeps its cursor before it is forgotten; "30d" where absent. |
 | `sources.<name>.key` | string | The field each entry of the member file names its repository by; "name" where absent. |
 | `sources.<name>.kind` | string |  |
 | `sources.<name>.language` | array of string | Languages, any one of which a member is written in; any where absent. |
 | `sources.<name>.listed_page` | integer | How many repositories one page of the listing asks for; 100 where absent on GitHub and GitLab, and 50 on Forgejo, whose instances answer at most 50 unless configured otherwise. |
+| `sources.<name>.member_hooks` | [MemberHooks](#memberhooks) | Who registers a project webhook on each member of a GitLab owner, whose group cannot send its own on GitLab Free: no one ("off"), `herald hooks <name>` ("setup"), or each poll round too ("round"); "off" where absent. Each hook points at `[server] url` and is signed with `webhook`. |
 
 ### `sources.<name>.members` of kind `gitlab`: A file beside the config, such as `repos.toml`
 
@@ -670,8 +694,10 @@ A Forgejo or Gitea repository's releases, tags and packages.
 |---------|------|--------------|
 | `sources.<name>` | table | A Forgejo or Gitea repository's releases, tags and packages. |
 | `sources.<name>.api` | string | The API's base URL, for a forge that is not GitHub, GitLab.com or Codeberg: a GitHub Enterprise Server's `https://ghe.example/api/v3`, a GHE.com tenant's `https://api.acme.ghe.com`, a self-managed or Dedicated GitLab's `https://gitlab.example/api/v4`, or a Forgejo's `https://forge.example/api/v1`. Where absent, it is the CI run's own when announcing the run's repository, and otherwise the forge's public instance. An owner is listed at the same base. |
+| `sources.<name>.app` | string | The GitHub App the source reads as, by the name of its `[github_apps.<name>]` table, in place of `token`: herald mints an installation token for each round. |
 | `sources.<name>.archived` | boolean | Whether archived repositories are taken. |
 | `sources.<name>.backfill` | integer | How many of the newest releases, tags and package versions the first poll announces; none where absent (ADR-0003). For an owner, it applies to the members the first listing finds; a member found later announces only what it publishes after it was found. |
+| `sources.<name>.discovery` | [Discovery](#discovery) | How an owner source finds the repositories that join or leave it: listing the owner each round ("list"), or only where it holds no listing, its selection changed or a delivery said the owner's repositories changed ("push"); "list" where absent. |
 | `sources.<name>.edits_depth` | integer | How many of the newest Releases a poll watches for an edit of their name or notes, where a route taking the source edits them (`edits = "release"`); 30 where absent, and at most `page`. |
 | `sources.<name>.exclude` | array of string | The names left out, as `include` writes them, whatever `include` says. |
 | `sources.<name>.feed_page` | integer | How many activities one page of a Forgejo owner's feed asks for under `transport = "feed"`; 50 where absent, and at most 200. |
@@ -680,11 +706,13 @@ A Forgejo or Gitea repository's releases, tags and packages.
 | `sources.<name>.graphql` | string | The GraphQL endpoint of a GitHub or GitLab owner source; beside `api` where absent: `/api/graphql` on a GitHub Enterprise Server whose `api` ends in `/api/v3` and on GitLab, whose `api` ends in `/api/v4`, and `/graphql` on GitHub and GHE.com. |
 | `sources.<name>.graphql_batch` | integer | How many members one GraphQL request asks for; 50 where absent, and at most 100. |
 | `sources.<name>.include` | array of string | The names of the owner's repositories taken, as globs in which `*` stands for any run of characters, `?` for any one and `[...]` for any one of a class, ignoring case; every name where absent. |
+| `sources.<name>.installation` | integer | The id of the App's installation tokens are minted for; looked up on the owner, or on the repository, where absent. |
 | `sources.<name>.keep_members` | [Duration](#duration) | How long a member that left the selection keeps its cursor before it is forgotten; "30d" where absent. |
 | `sources.<name>.key` | string | The field each entry of the member file names its repository by; "name" where absent. |
 | `sources.<name>.kind` | string |  |
 | `sources.<name>.language` | array of string | Languages, any one of which a member is written in; any where absent. |
 | `sources.<name>.listed_page` | integer | How many repositories one page of the listing asks for; 100 where absent on GitHub and GitLab, and 50 on Forgejo, whose instances answer at most 50 unless configured otherwise. |
+| `sources.<name>.member_hooks` | [MemberHooks](#memberhooks) | Who registers a project webhook on each member of a GitLab owner, whose group cannot send its own on GitLab Free: no one ("off"), `herald hooks <name>` ("setup"), or each poll round too ("round"); "off" where absent. Each hook points at `[server] url` and is signed with `webhook`. |
 
 ### `sources.<name>.members` of kind `forgejo`: A file beside the config, such as `repos.toml`
 
@@ -1155,6 +1183,10 @@ Who may see a namespace's packages, where the source declares it.
 
 How Discord carries commands to herald.
 
+### Discovery
+
+How an owner source keeps its membership.
+
 ### Domain
 
 The Slack a workspace lives on: Slack's own, or Slack's government cloud.
@@ -1198,6 +1230,10 @@ How many times a lock with no time to judge its age by is found held, unchanged,
 ### MatrixVia
 
 How the homeserver carries commands to herald.
+
+### MemberHooks
+
+Who registers a project webhook on each member of a GitLab owner.
 
 ### Mode
 

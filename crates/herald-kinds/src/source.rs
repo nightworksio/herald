@@ -9,10 +9,24 @@ use herald_core::{
     Cursor, Event, EventsRead, Kind, Listed, Listing, Origin, Owner, Polled, Reach, RouteId,
     Scheme, SecretRef, Visibility,
 };
-use herald_ports::{Base, Boxed, DynHttp, Secret};
+use herald_ports::{Base, Boxed, DynHttp};
 use jiff::SignedDuration;
 
-use crate::{Fault, Itself};
+pub use herald_core::Installation;
+
+use crate::{Credential, Fault, Itself};
+
+/// A GitHub App a source reads as: the App's name, the REST API the source
+/// reads, and the installation its tokens are minted for.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Installed<'a> {
+    /// The App's name, as `[github_apps.<name>]` writes it.
+    pub app: &'a str,
+    /// The REST API the source reads.
+    pub api: String,
+    /// The installation its tokens are minted for.
+    pub installation: Installation<'a>,
+}
 
 /// One source's table in `herald.toml`, read: what every kind of source's
 /// options are to the config and the flows that read it.
@@ -100,6 +114,21 @@ pub trait SourceConfig: fmt::Debug + Send + Sync + Itself {
         false
     }
 
+    /// Whether the owner's deliveries keep its membership between listings.
+    fn pushed(&self) -> bool {
+        false
+    }
+
+    /// The GitHub App it reads as, where it reads as one (ADR-0041).
+    fn installed(&self) -> Option<Installed<'_>> {
+        None
+    }
+
+    /// Who registers a webhook on each of its owner's members.
+    fn registering(&self) -> Registering {
+        Registering::Never
+    }
+
     /// Each route its options name for some of its events beside the routes
     /// naming it, by id, with the key naming it under the source's table.
     fn routed(&self) -> Vec<(String, String)> {
@@ -119,7 +148,7 @@ pub trait SourceConfig: fmt::Debug + Send + Sync + Itself {
     /// What polls it, reading with `token` where it has one, and watching
     /// what it announced for an edit where `edits` says a route edits its
     /// posts (ADR-0034).
-    fn poller(&self, token: Option<Secret>, edits: bool) -> Polling;
+    fn poller(&self, token: Option<Credential>, edits: bool) -> Polling;
 }
 
 /// The repository a source or an owner's member announces for, so a
@@ -308,6 +337,65 @@ pub trait Expand: fmt::Debug + Send + Sync {
     /// A digest of what a listing asks for: the owner, where, and the
     /// selection.
     fn fingerprint(&self) -> String;
+
+    /// Whether the owner's deliveries keep its membership between listings,
+    /// so it lists only where it holds no listing, its selection changed,
+    /// or a delivery said the owner's repositories changed.
+    fn pushed(&self) -> bool;
+
+    /// Who registers a webhook on each member.
+    fn registering(&self) -> Registering {
+        Registering::Never
+    }
+
+    /// A webhook on the member `repository`, pointing at `url` and signed
+    /// with `secret`, registered through `http` where it has none that
+    /// points at `url`.
+    fn register<'a>(
+        &'a self,
+        _http: &'a dyn DynHttp,
+        _repository: &'a Listed,
+        (_url, _secret): (&'a str, &'a herald_ports::Secret),
+    ) -> Boxed<'a, Result<Registered, Unpolled>> {
+        Box::pin(std::future::ready(Ok(Registered::Found)))
+    }
+
+    /// Whether the member `repository` has a webhook pointing at `url`,
+    /// asked through `http`.
+    fn hooked<'a>(
+        &'a self,
+        _http: &'a dyn DynHttp,
+        _repository: &'a Listed,
+        _url: &'a str,
+    ) -> Boxed<'a, Result<bool, Unpolled>> {
+        Box::pin(std::future::ready(Ok(true)))
+    }
+
+    /// Why its token may not register a webhook on a member, asked through
+    /// `http`, where it may not.
+    fn may_register<'a>(&'a self, _http: &'a dyn DynHttp) -> Boxed<'a, Result<(), String>> {
+        Box::pin(std::future::ready(Ok(())))
+    }
+}
+
+/// Who registers a webhook on each member of an owner.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Registering {
+    /// No one.
+    Never,
+    /// The operator, through `herald hooks`.
+    Setup,
+    /// The operator, and each poll round for a member that has none.
+    Round,
+}
+
+/// What registering a member's webhook did.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Registered {
+    /// It had one already.
+    Found,
+    /// It has one now.
+    Made,
 }
 
 /// What each of `members`, each with its cursor, answers through `http`,
@@ -437,6 +525,9 @@ pub enum Hooked {
     /// source reads in full and announces or holds as it does any tag it
     /// finds (ADR-0032).
     Poll,
+    /// The owner's repositories changed, so the owner is listed again and
+    /// its members polled.
+    Relist,
     /// Nothing, and why.
     Nothing(&'static str),
 }

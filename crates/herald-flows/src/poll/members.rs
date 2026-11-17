@@ -98,6 +98,7 @@ fn reconcile(
                             left: None,
                             cursor: None,
                             collides: None,
+                            hooked: false,
                         },
                         version: None,
                         changed: true,
@@ -336,7 +337,7 @@ fn chunked(takers: Vec<Held>, size: usize) -> Vec<Vec<Held>> {
 
 /// What the owner `expand` lists through `http` at `now`, conditional on
 /// `known`: the members it takes and the listing to keep, or neither where
-/// it is unchanged.
+/// it is unchanged, but for `known` no longer stale where it was.
 async fn listed(
     expand: &dyn Expand,
     http: &dyn herald_ports::DynHttp,
@@ -344,7 +345,13 @@ async fn listed(
     now: Timestamp,
 ) -> Result<(Option<Vec<Listed>>, Option<Listing>), Unlisted> {
     Ok(match expand.listed(http, known).await? {
-        Expanded::Unchanged => (None, None),
+        Expanded::Unchanged => (
+            None,
+            known.filter(|known| known.stale).map(|known| Listing {
+                stale: false,
+                ..known.clone()
+            }),
+        ),
         Expanded::Listed {
             members,
             owner,
@@ -361,6 +368,7 @@ async fn listed(
                 fingerprint: expand.fingerprint(),
                 file,
                 events: known.and_then(|known| known.events.clone()),
+                stale: false,
             }),
         ),
     })
@@ -393,8 +401,9 @@ impl Owning {
 /// The owner `expand` lists, through `http`, reconciled with the members
 /// `source` keeps. A listing over a cap refuses the source for the round,
 /// keeping its members as they were; one that fails keeps the last
-/// membership, adding and dropping none. Where the source's records cannot
-/// be read, what the round reports.
+/// membership, adding and dropping none. A source discovering by push
+/// lists only where its listing is missing, stale or of another selection.
+/// Where the source's records cannot be read, what the round reports.
 pub(super) async fn reconciled<S: Store, C: Clock, G: Signer, H: Http>(
     flow: (&Config, &Connected<H>, &Ports<'_, S, C, G>),
     (source, expand, http): (&PreparedSource, &dyn Expand, &H),
@@ -423,7 +432,14 @@ pub(super) async fn reconciled<S: Store, C: Clock, G: Signer, H: Http>(
     let known = record.as_ref().map(|record| &record.value);
     let mut swept = Vec::new();
     let mut refused = false;
-    let (listed, listing) = match listed(expand, http, known, now).await {
+    let fresh = expand.pushed()
+        && known.is_some_and(|known| !known.stale && known.fingerprint == expand.fingerprint());
+    let listing = if fresh {
+        Ok((None, None))
+    } else {
+        listed(expand, http, known, now).await
+    };
+    let (listed, listing) = match listing {
         Ok(listed) => listed,
         Err(Unlisted::Over(reason)) => {
             refused = true;
@@ -508,6 +524,65 @@ async fn rounded<S: Store, C: Clock, G: Signer, H: Http>(
         })
 }
 
+/// Whether every member of `forgotten` was forgotten with its cursor by the
+/// owner source `source`; each that could not be is reported into `swept`.
+async fn forgot<S: Store>(
+    store: &S,
+    source: &SourceName,
+    forgotten: &BTreeSet<String>,
+    swept: &mut Vec<Swept>,
+) -> bool {
+    let mut whole = true;
+    for id in forgotten {
+        if let Err(error) = store.cursors().forget_member(source, id).await {
+            whole = false;
+            swept.push(told(source, None, Sweep::Stopped(stored(error))));
+        }
+    }
+    whole
+}
+
+/// Each of `takers` given a webhook where the round registers one on a
+/// member that has none, its membership written once it has one; a member
+/// that could not be given one is reported into `swept`, and asked again
+/// next round.
+async fn hooked<S: Store, C: Clock, G: Signer, H: Http>(
+    (ports, expand, http): (&Ports<'_, S, C, G>, &dyn Expand, &H),
+    source: &PreparedSource,
+    mut takers: Vec<Held>,
+    swept: &mut Vec<Swept>,
+) -> Vec<Held> {
+    let Some((url, Some(secret))) = &source.hook else {
+        return takers;
+    };
+    let cursors = ports.store.cursors();
+    for held in takers.iter_mut().filter(|held| !held.membership.hooked) {
+        if ports.budget.allows(ports.clock.now(), 2).is_err() {
+            break;
+        }
+        match expand
+            .register(http, &held.membership.repository, (url, secret))
+            .await
+        {
+            Ok(_) => {
+                held.membership.hooked = true;
+                if let Ok(Written::Written(version)) = cursors
+                    .put_member(&source.name, &held.membership, held.version)
+                    .await
+                {
+                    held.version = Some(version);
+                }
+            }
+            Err(unpolled) => swept.push(told(
+                &source.name,
+                Some(&held.membership.repository.path),
+                Sweep::Stopped(halted(unpolled)),
+            )),
+        }
+    }
+    takers
+}
+
 /// What the owner source `source`, or its member at `member`, did.
 fn told(source: &SourceName, member: Option<&str>, outcome: Sweep) -> Swept {
     Swept {
@@ -543,13 +618,7 @@ pub(super) async fn finished<S: Store, C: Clock, G: Signer, H: Http>(
     let told = |outcome| told(&source.name, None, outcome);
     reconciled.withhold((&source.name, expand), claims);
     let cursors = ports.store.cursors();
-    let mut whole = true;
-    for id in &reconciled.forgotten {
-        if let Err(error) = cursors.forget_member(&source.name, id).await {
-            whole = false;
-            swept.push(told(Sweep::Stopped(stored(error))));
-        }
-    }
+    let mut whole = forgot(ports.store, &source.name, &reconciled.forgotten, &mut swept).await;
     let mut takers = Vec::new();
     let mut withheld = Vec::new();
     for mut held in reconciled.held.into_values() {
@@ -601,6 +670,7 @@ pub(super) async fn finished<S: Store, C: Clock, G: Signer, H: Http>(
             swept.push(told(Sweep::Stopped(stop)));
         }
     }
+    let takers = hooked((flow.2, expand, http), source, takers, &mut swept).await;
     let rounded = rounded((flow.2, expand, http), owner, &mut swept, told).await;
     let (takers, quiet) = split(takers, named.as_ref(), &rounded);
     swept.push(told(Sweep::Listed {

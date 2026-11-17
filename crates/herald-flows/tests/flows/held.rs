@@ -361,6 +361,7 @@ fn held_of_member(left: Option<Timestamp>) -> Failing {
         left,
         cursor: None,
         collides: None,
+        hooked: false,
     };
     pollster::block_on(
         store

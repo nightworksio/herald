@@ -183,4 +183,30 @@ extern "C" {
         signature: &Uint8Array,
         data: &Uint8Array,
     ) -> Result<Promise, JsValue>;
+
+    #[wasm_bindgen(method, catch, js_name = deriveKey)]
+    pub(crate) fn derive_key(
+        this: &Subtle,
+        algorithm: &JsValue,
+        base: &JsValue,
+        derived: &JsValue,
+        extractable: bool,
+        usages: &Array,
+    ) -> Result<Promise, JsValue>;
+
+    #[wasm_bindgen(method, catch)]
+    pub(crate) fn encrypt(
+        this: &Subtle,
+        algorithm: &JsValue,
+        key: &JsValue,
+        data: &Uint8Array,
+    ) -> Result<Promise, JsValue>;
+
+    #[wasm_bindgen(method, catch)]
+    pub(crate) fn decrypt(
+        this: &Subtle,
+        algorithm: &JsValue,
+        key: &JsValue,
+        data: &Uint8Array,
+    ) -> Result<Promise, JsValue>;
 }

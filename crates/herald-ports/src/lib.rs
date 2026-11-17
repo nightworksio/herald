@@ -25,7 +25,7 @@ mod timer;
 
 pub use clock::Clock;
 pub use credential::Credential;
-pub use crypto::{CryptoError, Signer, Verifier};
+pub use crypto::{CryptoError, Sealing, Signer, Verifier};
 pub use dyn_store::DynStore;
 pub use erased::{Boxed, DynHttp, DynKv, DynMarkers, DynSecrets, DynSigner, DynSql, Erased, Owned};
 pub use herald_core::Algorithm;
@@ -41,7 +41,7 @@ pub use socket::{Frame, Socket, Sockets};
 pub use sql::{Answers, Changed, EXACT_INTEGER, Parameters, Sql, SqlError, Statement, Value};
 pub use store::{
     Admitted, Announcements, Cursors, Deliveries, Held, Inboxes, Keeper, Keeping, Ledger, Notes,
-    Outboxed, Pins, Positions, Schedules, Store, StoreError, Subscriptions, Unkept, Version,
-    Versioned, Waiting, Written,
+    Outboxed, Pins, Positions, Schedules, Store, StoreError, Subscriptions, Tokens, Unkept,
+    Version, Versioned, Waiting, Written,
 };
 pub use timer::Timer;

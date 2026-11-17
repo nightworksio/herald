@@ -2,12 +2,13 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Mutex;
 
 use herald_core::{
-    Cursor, DestinationName, Entry, Hold, Key, Latest, Listing, Membership, Pending, RouteId,
-    Schedule, SourceName, State, Subscription,
+    Cursor, DestinationName, Entry, Hold, KeptToken, Key, Latest, Listing, Membership, Pending,
+    RouteId, Schedule, SourceName, State, Subscription,
 };
 use herald_ports::{
     Admitted, Announcements, Cursors, Deliveries, Held, Inboxes, Keeper, Ledger, Notes, Outboxed,
-    Pins, Positions, Schedules, StoreError, Subscriptions, Version, Versioned, Waiting, Written,
+    Pins, Positions, Schedules, StoreError, Subscriptions, Tokens, Version, Versioned, Waiting,
+    Written,
 };
 use jiff::Timestamp;
 
@@ -28,6 +29,7 @@ struct FakeState {
     latest: BTreeMap<String, Versioned<Latest>>,
     inboxes: BTreeMap<(Key, String), State>,
     pending: BTreeMap<Hold, Versioned<Pending>>,
+    tokens: BTreeMap<String, Versioned<KeptToken>>,
 }
 
 /// A store in memory, keeping everything a store can keep.
@@ -411,6 +413,26 @@ impl Waiting for FakeStore {
     async fn drop_pending(&self, hold: &Hold) -> Result<(), StoreError> {
         lock(&self.state).pending.remove(hold);
         Ok(())
+    }
+}
+
+impl Tokens for FakeStore {
+    async fn token(&self, name: &str) -> Result<Option<Versioned<KeptToken>>, StoreError> {
+        Ok(lock(&self.state).tokens.get(name).cloned())
+    }
+
+    async fn put_token(
+        &self,
+        token: &KeptToken,
+        expected: Option<Version>,
+    ) -> Result<Written, StoreError> {
+        let mut state = lock(&self.state);
+        Ok(compare_and_set(
+            &mut state.tokens,
+            token.name.clone(),
+            token,
+            expected,
+        ))
     }
 }
 

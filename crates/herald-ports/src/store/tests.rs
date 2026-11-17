@@ -396,6 +396,7 @@ fn an_owner_source_s_records_kept_nowhere_answer_unsupported_naming_cursors() {
         fingerprint: "f".to_owned(),
         file: None,
         events: None,
+        stale: false,
     };
     let membership = herald_core::Membership {
         repository: herald_core::Listed {
@@ -415,6 +416,7 @@ fn an_owner_source_s_records_kept_nowhere_answer_unsupported_naming_cursors() {
         left: None,
         cursor: None,
         collides: None,
+        hooked: false,
     };
     for unkept in [None, Some(&Unkept)] {
         assert_eq!(unsupported(unkept.listing(&source)), naming("cursors"));

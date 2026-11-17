@@ -649,8 +649,10 @@ dependencies = [
 name = "herald-wire"
 version = "0.0.0"
 dependencies = [
+ "base64",
  "herald-core",
  "herald-ports",
+ "jiff",
  "serde",
  "serde_json",
 ]

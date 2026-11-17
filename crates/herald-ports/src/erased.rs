@@ -8,7 +8,7 @@ use jiff::Timestamp;
 use crate::clock::Clock;
 use herald_core::Algorithm;
 
-use crate::crypto::{CryptoError, Signer};
+use crate::crypto::{CryptoError, Sealing, Signer};
 use crate::http::{Http, HttpError, Request, Response};
 use crate::kv::{Kv, KvError, Pair, Stamped, Versionstamp};
 use crate::markers::{MarkedThread, Markers, MarkersError};
@@ -46,6 +46,22 @@ pub trait DynSigner: Sync {
         algorithm: Algorithm,
         key: &'a Secret,
     ) -> Boxed<'a, Result<Vec<u8>, CryptoError>>;
+
+    /// `plain` sealed under `key` as `sealing` says.
+    fn seal_boxed<'a>(
+        &'a self,
+        key: &'a Secret,
+        sealing: Sealing<'a>,
+        plain: &'a [u8],
+    ) -> Boxed<'a, Result<Vec<u8>, CryptoError>>;
+
+    /// `sealed` opened under `key` as `sealing` says.
+    fn open_boxed<'a>(
+        &'a self,
+        key: &'a Secret,
+        sealing: Sealing<'a>,
+        sealed: &'a [u8],
+    ) -> Boxed<'a, Result<Vec<u8>, CryptoError>>;
 }
 
 impl<G: Signer> DynSigner for G {
@@ -64,6 +80,24 @@ impl<G: Signer> DynSigner for G {
         key: &'a Secret,
     ) -> Boxed<'a, Result<Vec<u8>, CryptoError>> {
         Box::pin(self.public(algorithm, key))
+    }
+
+    fn seal_boxed<'a>(
+        &'a self,
+        key: &'a Secret,
+        sealing: Sealing<'a>,
+        plain: &'a [u8],
+    ) -> Boxed<'a, Result<Vec<u8>, CryptoError>> {
+        Box::pin(self.seal(key, sealing, plain))
+    }
+
+    fn open_boxed<'a>(
+        &'a self,
+        key: &'a Secret,
+        sealing: Sealing<'a>,
+        sealed: &'a [u8],
+    ) -> Boxed<'a, Result<Vec<u8>, CryptoError>> {
+        Box::pin(self.open(key, sealing, sealed))
     }
 }
 
@@ -260,6 +294,24 @@ impl Signer for Erased<'_, dyn DynSigner + '_> {
 
     async fn public(&self, algorithm: Algorithm, key: &Secret) -> Result<Vec<u8>, CryptoError> {
         self.0.public_boxed(algorithm, key).await
+    }
+
+    async fn seal(
+        &self,
+        key: &Secret,
+        sealing: Sealing<'_>,
+        plain: &[u8],
+    ) -> Result<Vec<u8>, CryptoError> {
+        self.0.seal_boxed(key, sealing, plain).await
+    }
+
+    async fn open(
+        &self,
+        key: &Secret,
+        sealing: Sealing<'_>,
+        sealed: &[u8],
+    ) -> Result<Vec<u8>, CryptoError> {
+        self.0.open_boxed(key, sealing, sealed).await
     }
 }
 
@@ -495,6 +547,11 @@ mod tests {
         );
     }
 
+    const SEALING: Sealing<'static> = Sealing {
+        purpose: "purpose",
+        bound: b"bound",
+    };
+
     #[test]
     fn an_erased_port_answers_as_the_port_it_erases() {
         let http: &dyn DynHttp = &Echo;
@@ -523,6 +580,32 @@ mod tests {
             Err(CryptoError::BadKey {
                 name: "E".to_owned()
             })
+        );
+        assert_eq!(
+            pollster::block_on(Erased(signer).seal(&key, SEALING, b"abc")),
+            Err(CryptoError::Unsealable {
+                name: "K".to_owned(),
+            })
+        );
+        assert_eq!(
+            pollster::block_on(Erased(signer).open(&key, SEALING, b"abc")),
+            Err(CryptoError::Unsealed {
+                name: "K".to_owned(),
+            })
+        );
+        assert_eq!(
+            CryptoError::Unsealable {
+                name: "K".to_owned()
+            }
+            .to_string(),
+            "nothing can be sealed under the secret K on this host"
+        );
+        assert_eq!(
+            CryptoError::Unsealed {
+                name: "K".to_owned()
+            }
+            .to_string(),
+            "what was sealed under the secret K cannot be opened: it was sealed under another key, or changed since"
         );
     }
 }

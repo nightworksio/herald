@@ -15,6 +15,7 @@ mod members;
 mod pending;
 mod raced;
 mod sql;
+mod tokens;
 mod unkept;
 
 pub use kv::kv_conformance;
@@ -74,6 +75,11 @@ pub async fn store_conformance<S: Store>(store: &S) -> Result<(), Failure> {
     if let Some(kept) = store.waiting() {
         let mut checks = Checks::default();
         pending::waiting(kept, &mut checks).await?;
+        checks.done()?;
+    }
+    if let Some(kept) = store.tokens() {
+        let mut checks = Checks::default();
+        tokens::tokens(kept, &mut checks).await?;
         checks.done()?;
     }
     if let Some(kept) = store.deliveries() {

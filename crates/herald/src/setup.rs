@@ -74,6 +74,10 @@ pub(crate) async fn set_up(
 ) -> Result<u8, String> {
     let base = config.server.base.as_str();
     let (kind, named, task) = match setting {
+        Setting::Hooks { name, url } => {
+            return super::sourcing::set_up_source(config, vars, connect, (name, url.clone()), out)
+                .await;
+        }
         Setting::Discord(Discording::Commands { destination }) => {
             (herald_dest_discord::KIND, destination, SetupTask::Commands)
         }

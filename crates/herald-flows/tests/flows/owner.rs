@@ -11,8 +11,11 @@ use serde_json::json;
 
 use crate::harness::*;
 
+mod apps;
+mod discovery;
 mod feed;
 mod held;
+mod hooks;
 mod packages;
 mod registries;
 mod routes;
@@ -237,6 +240,7 @@ fn an_owner_s_members_join_are_polled_on_their_own_and_a_listing_unchanged_reads
             fingerprint: kept.fingerprint.clone(),
             file: None,
             events: None,
+            stale: false,
         }
     );
     assert_eq!(kept.fingerprint.len(), herald_core::SHA256_HEX_DIGITS);

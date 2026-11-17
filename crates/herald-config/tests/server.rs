@@ -61,6 +61,7 @@ body = "{{ event.body }}"
             (8, 8, 256, 1_048_576, 4, 4, 1024)
         );
         assert_eq!(config.server.keys, KeyCache::Memory);
+        assert_eq!(config.server.url, None);
         assert!(!config.server.keys_in_store());
         assert_eq!(config.server.keys_refreshed.as_secs(), 3_600);
         assert_eq!(config.server.keys_reread.as_secs(), 60);
@@ -88,7 +89,7 @@ body = "{{ event.body }}"
     #[test]
     fn the_server_table_sets_every_limit() {
         let text = format!(
-            "{EXAMPLE}\n[server]\nlisten = \"0.0.0.0:9000\"\nbase = \"/tools/herald\"\njobs = 2\nqueue = 5\nconnections = 3\nbody = \"64KiB\"\nfetches = 5\ncompletions = 9\nsilence = \"45s\"\nbusy_retry = \"2m\"\nread = \"10s\"\nheld = \"20s\"\naccept_pause = \"250ms\"\n\n[server.sessions]\nfirst_wait = \"2s\"\nlongest_wait = \"5m\"\njitter = false\nstale = \"30m\"\n\n[server.keys]\ncache = \"store\"\nrefresh_after = \"30m\"\nreread_after = \"5m\"\nmost = 7\ndocument = \"1MiB\"\n\n[server.inbound]\nreplay_window = \"20m\"\nsignatures = 2\ncovered = 4\n\n[server.work]\nafter = \"1m\"\nspare = \"5s\"\nrequests = 100\nspare_requests = 6\n"
+            "{EXAMPLE}\n[server]\nlisten = \"0.0.0.0:9000\"\nbase = \"/tools/herald\"\nurl = \"https://herald.example/tools/herald\"\njobs = 2\nqueue = 5\nconnections = 3\nbody = \"64KiB\"\nfetches = 5\ncompletions = 9\nsilence = \"45s\"\nbusy_retry = \"2m\"\nread = \"10s\"\nheld = \"20s\"\naccept_pause = \"250ms\"\n\n[server.sessions]\nfirst_wait = \"2s\"\nlongest_wait = \"5m\"\njitter = false\nstale = \"30m\"\n\n[server.keys]\ncache = \"store\"\nrefresh_after = \"30m\"\nreread_after = \"5m\"\nmost = 7\ndocument = \"1MiB\"\n\n[server.inbound]\nreplay_window = \"20m\"\nsignatures = 2\ncovered = 4\n\n[server.work]\nafter = \"1m\"\nspare = \"5s\"\nrequests = 100\nspare_requests = 6\n"
         );
         let config = load("herald.toml", &text, &nothing, &crate::common::kinds()).unwrap();
         assert_eq!(
@@ -96,6 +97,7 @@ body = "{{ event.body }}"
             Server {
                 listen: "0.0.0.0:9000".to_owned(),
                 base: "/tools/herald".to_owned(),
+                url: Some("https://herald.example/tools/herald".to_owned()),
                 jobs: 2,
                 queue: 5,
                 connections: 3,
@@ -204,6 +206,11 @@ body = "{{ event.body }}"
                 "{wrong}"
             );
         }
+        let unaddressed = errors(&format!("{EXAMPLE}\n[server]\nurl = \"herald.example\"\n"));
+        assert!(
+            unaddressed.contains("server.url: \"herald.example\" is not a web address"),
+            "{unaddressed}"
+        );
         let short = errors(&format!(
             "{EXAMPLE}\n[server]\nread = \"2m\"\nheld = \"1m\"\n"
         ));
