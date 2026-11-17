@@ -16,6 +16,10 @@ pub(crate) const EVENT: &str =
 pub(crate) const ACTOR: &str = "https://herald.example/users/php-mutation-gate";
 
 const APP_TOKEN: &str = "app-token";
+/// The newest federation key, as the fake signer reads an Ed25519 key.
+pub(crate) const NEW_KEY: &str = "new-federation-key-of-32-bytes!!";
+/// An older federation key.
+pub(crate) const OLD_KEY: &str = "old-federation-key-of-32-bytes!!";
 
 fn config() -> Config {
     load(
@@ -77,6 +81,10 @@ fn secrets() -> FakeSecrets {
         .with("HERALD_ACTIVITYPUB_KEY", "the-key")
         .with("HERALD_WEBHOOK", "hook-secret")
         .with("HERALD_APP_KEY", "the App's key")
+        .with("HERALD_KEY_NEW", NEW_KEY)
+        .with("HERALD_KEY_OLD", OLD_KEY)
+        .with("HERALD_KEY_RSA", "not an Ed25519 key")
+        .with("BAD", "unreadable")
 }
 
 pub(crate) struct World {
@@ -800,5 +808,6 @@ fn a_webhook_secret_that_is_not_set_stops_the_server_before_it_serves() {
 }
 
 mod apps;
+mod discovery;
 mod owned;
 mod tagged;

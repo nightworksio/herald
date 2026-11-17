@@ -1,8 +1,8 @@
 //! A store that holds every kind of record it keeps itself, as one value.
 
 use super::{
-    Announcements, Cursors, Deliveries, Held, Inboxes, Ledger, Notes, Pins, Positions, Schedules,
-    Store, Subscriptions, Tokens, Waiting,
+    Announcements, Cursors, Deliveries, Held, Inboxes, Ledger, Notes, Pins, Positions, Published,
+    Schedules, Store, Subscriptions, Tokens, Waiting,
 };
 
 /// A store holding every kind of record it keeps itself, and saying which
@@ -20,6 +20,7 @@ pub trait Keeper:
     + Positions
     + Waiting
     + Tokens
+    + Published
 {
     /// Whether it holds records of `kind`.
     fn holds(&self, kind: Held) -> bool;
@@ -49,6 +50,7 @@ impl<K: Keeper> Store for K {
     type Positions = Self;
     type Waiting = Self;
     type Tokens = Self;
+    type Published = Self;
 
     fn ledger(&self) -> Option<&Self> {
         self.holds(Held::Ledger).then_some(self)
@@ -96,6 +98,10 @@ impl<K: Keeper> Store for K {
 
     fn tokens(&self) -> Option<&Self> {
         self.holds(Held::Tokens).then_some(self)
+    }
+
+    fn published(&self) -> Option<&Self> {
+        self.holds(Held::Published).then_some(self)
     }
 
     fn skipped(&self) -> Vec<String> {

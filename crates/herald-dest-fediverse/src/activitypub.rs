@@ -18,4 +18,4 @@ pub use documents::{
 };
 pub(crate) use options::named_actor;
 pub use options::{ActorOptions, ActorRouteOptions, Audience};
-pub use policy::{Approve, FollowerCaps, Mode, Policy, SharedList};
+pub use policy::{Approve, FollowerCaps, Mode, Policy, SharedList, followed_by};

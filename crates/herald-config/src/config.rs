@@ -44,6 +44,8 @@ pub struct Config {
     pub doctor: Doctor,
     /// How `herald server` listens, and what it takes on at once.
     pub server: Server,
+    /// This herald among other instances.
+    pub federation: Federation,
     /// How herald's own requests reach the services the config names.
     pub http: herald_ports::Outbound,
     /// Every kind of event it knows: those herald ships, and those it
@@ -126,9 +128,11 @@ impl Config {
             let webhook = app.webhook.as_ref().filter(|_| uses == Uses::Serves);
             key.into_iter().chain(webhook)
         });
+        let instance = self.federation.keys.iter().filter(|_| uses == Uses::Serves);
         destinations
             .chain(sources)
             .chain(apps)
+            .chain(instance)
             .chain(self.marker_key.as_ref())
             .map(|named| named.secret.as_str())
             .collect()
@@ -301,6 +305,37 @@ pub enum KeyCache {
     Memory,
     /// In the store, kept across restarts and shared by every instance.
     Store,
+}
+
+/// This herald among other instances: the domain it serves its discovery
+/// document on, its Ed25519 keys, newest first, and how long peers keep its
+/// key set (ADR-0043, ADR-0044).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Federation {
+    /// The domain, where the config gives it.
+    pub domain: Option<String>,
+    /// The secrets holding its Ed25519 private keys, newest first: the
+    /// first signs, and every one verifies.
+    pub keys: Vec<SecretRef>,
+    /// How long a peer may keep its key set before reading it again.
+    pub refresh: SignedDuration,
+}
+
+impl Federation {
+    /// How long a peer keeps the key set where `refresh` is absent.
+    pub const REFRESH: SignedDuration = SignedDuration::from_hours(24);
+    /// The longest `refresh` may be.
+    pub const REFRESH_ALLOWED: SignedDuration = SignedDuration::from_hours(7 * 24);
+}
+
+impl Default for Federation {
+    fn default() -> Self {
+        Self {
+            domain: None,
+            keys: Vec::new(),
+            refresh: Self::REFRESH,
+        }
+    }
 }
 
 /// How `herald server` listens, and what it takes on at once.

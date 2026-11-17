@@ -10,6 +10,13 @@ use herald_core::der::{BIT_STRING, INTEGER, NULL, RSA_ENCRYPTION, SEQUENCE};
 /// The DER `AlgorithmIdentifier` of Ed25519.
 const ED25519: [u8; 7] = [0x30, 0x05, 0x06, 0x03, 0x2b, 0x65, 0x70];
 
+/// The bytes of an Ed25519 public key.
+pub const ED25519_LENGTH: usize = 32;
+
+/// The bytes of an Ed25519 `SubjectPublicKeyInfo` before its key: the
+/// sequence, the algorithm and the bit string's header.
+const ED25519_PREFIX: usize = 12;
+
 /// A kind of public key a `SubjectPublicKeyInfo` holds.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Public {
@@ -40,6 +47,15 @@ pub fn subject(public: Public, key: &[u8]) -> Vec<u8> {
     };
     let bits = der(BIT_STRING, &[&[0], key].concat());
     der(SEQUENCE, &[algorithm, &bits].concat())
+}
+
+/// The 32 bytes of the Ed25519 public key the `SubjectPublicKeyInfo`
+/// `spki` holds, where it holds one.
+#[must_use]
+pub fn ed25519_of(spki: &[u8]) -> Option<[u8; ED25519_LENGTH]> {
+    spki.strip_prefix(subject(Public::Ed25519, &[0; ED25519_LENGTH]).get(..ED25519_PREFIX)?)?
+        .try_into()
+        .ok()
 }
 
 /// The PKCS#1 `RSAPublicKey` of the modulus `modulus` and the public
@@ -102,6 +118,17 @@ mod tests {
     fn a_jwk_member_is_base64url_without_padding() {
         assert_eq!(jwk_bytes("_-8"), Some(vec![0xff, 0xef]));
         assert_eq!(jwk_bytes("_-8="), None);
+    }
+
+    #[test]
+    fn an_ed25519_key_is_read_back_from_its_subject_and_nothing_else_is() {
+        assert_eq!(
+            ed25519_of(&subject(Public::Ed25519, &[7; 32])),
+            Some([7; 32])
+        );
+        assert_eq!(ed25519_of(&subject(Public::Ed25519, &[7; 31])), None);
+        assert_eq!(ed25519_of(&subject(Public::Rsa, &[7; 32])), None);
+        assert_eq!(ed25519_of(&[0x30]), None);
     }
 
     #[test]

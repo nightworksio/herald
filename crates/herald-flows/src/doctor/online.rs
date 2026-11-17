@@ -4,8 +4,9 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use herald_config::Config;
 use herald_core::{Listed, SourceName};
+use herald_keys::ed25519_of;
 use herald_kinds::{Expand, Expanded, Polling, Probe, Standing, Unlisted, Unpolled};
-use herald_ports::{DynHttp, Http, SecretError, Secrets, Signer, Tokens};
+use herald_ports::{Algorithm, DynHttp, Http, SecretError, Secrets, Signer, Tokens};
 use jiff::Timestamp;
 
 use super::{Findings, Gap, Here, gap, unnamed_gap};
@@ -15,9 +16,10 @@ use crate::installations::{Kept, refreshed_by};
 use crate::prepare::PreparedSource;
 use crate::prepare::signs_as_actor;
 
-/// Each ActivityPub actor's key in `config` that is set here, read through
-/// `secrets` and loaded through `signer`: a mistake where it cannot sign as
-/// the actor.
+/// Each ActivityPub actor's key and each of the instance's keys in `config`
+/// that is set here, read through `secrets` and loaded through `signer`: a
+/// mistake where an instance key is no Ed25519 key, or where an actor's
+/// cannot sign as the actor.
 pub async fn keys<S: Secrets, G: Signer>(config: &Config, secrets: &S, signer: &G) -> Findings {
     let mut findings = Findings::default();
     for (name, destination) in &config.destinations {
@@ -29,6 +31,18 @@ pub async fn keys<S: Secrets, G: Signer>(config: &Config, secrets: &S, signer: &
         };
         if let Err(unkeyed) = signs_as_actor(signer, name, &key).await {
             findings.mistakes.push(unkeyed.to_string());
+        }
+    }
+    for (index, reference) in config.federation.keys.iter().enumerate() {
+        let Ok(key) = secrets.secret(&reference.secret).await else {
+            continue;
+        };
+        let public = signer.public(Algorithm::Ed25519, &key).await;
+        if public.as_deref().ok().and_then(ed25519_of).is_none() {
+            findings.mistakes.push(format!(
+                "federation.keys[{index}]: the secret {} is not an Ed25519 private key; give one as PKCS#8 PEM, such as openssl genpkey -algorithm ed25519 writes",
+                reference.secret
+            ));
         }
     }
     findings

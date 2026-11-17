@@ -11,12 +11,15 @@ use crate::FakeStore;
 mod cursors;
 mod latest;
 mod pending;
+mod published;
 mod tokens;
 
 const GITHUB: &str = "github";
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Fault {
+    ForgetsPublishedKeys,
+    OverwritesAnyPublishedVersion,
     ForgetsTheSecondToken,
     OverwritesAnyTokenVersion,
     OverwritesEntries,

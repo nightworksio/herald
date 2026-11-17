@@ -366,6 +366,27 @@ fn doctor_checks_each_actor_s_key_where_it_is_set() {
     );
 }
 
+#[test]
+fn doctor_checks_each_instance_key_is_an_ed25519_key_where_it_is_set() {
+    let mut federated = activitypub();
+    federated.federation.keys = ["NEW", "RSA", "UNSET"]
+        .map(|secret| herald_core::SecretRef {
+            secret: secret.to_owned(),
+        })
+        .to_vec();
+    let secrets = FakeSecrets::default()
+        .with("HERALD_ACTIVITYPUB_KEY", "the-key")
+        .with("NEW", "an-ed25519-key-of-thirty-two-b!!")
+        .with("RSA", "an RSA key");
+    let found = pollster::block_on(keys(&federated, &secrets, &FakeSigner));
+    assert_eq!(
+        found.mistakes,
+        [
+            "federation.keys[1]: the secret RSA is not an Ed25519 private key; give one as PKCS#8 PEM, such as openssl genpkey -algorithm ed25519 writes"
+        ]
+    );
+}
+
 const CY: &str = "https://other.example/users/cy/inbox";
 const SOCIAL: &str = "https://social.example/inbox";
 const THIRD: &str = "https://third.example/inbox";

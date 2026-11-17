@@ -9,6 +9,7 @@ use herald_ports::{
     Verifier,
 };
 
+use super::discovery::instance;
 use super::jobs::Job;
 use super::replies::{Answered, gone, missing, refusal, rejection, replied, text_reply};
 use super::{Inbound, Serving};
@@ -44,18 +45,25 @@ pub(super) fn domain<'a, H>(connected: &'a Connected<H>, host: &str) -> Option<&
     })
 }
 
-/// What WebFinger answers for the resource `query` asks for: an actor herald
-/// serves, as `acct:<actor>@<domain>` or as its id.
+/// What WebFinger answers for the resource `inbound` asks for: the
+/// instance, by `acct:herald@<domain>` or its domain's URL, or an actor
+/// herald serves, as `acct:<actor>@<domain>` or as its id.
 pub(super) async fn fingered<S: Store, C: Clock, G, V, H, P, K>(
     serving: &Serving<'_, S, C, G, V, H, P, K>,
-    query: Option<&str>,
+    inbound: &Inbound<'_>,
 ) -> Answered {
-    let resource = query
+    let resource = inbound
+        .query
         .unwrap_or_default()
         .split('&')
         .find_map(|pair| pair.strip_prefix("resource="))
         .and_then(|resource| Escaping::UNRESERVED.unescape(resource))
         .unwrap_or_default();
+    if let Some(instance) =
+        instance(serving, inbound.host()).filter(|instance| instance.named_by(&resource))
+    {
+        return replied(status::OK, JRD, instance.finger());
+    }
     let wanted = resource
         .strip_prefix("acct:")
         .and_then(|account| account.rsplit_once('@'))

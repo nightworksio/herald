@@ -18,3 +18,6 @@ macro_rules! repository {
 
 /// herald's version.
 pub const VERSION: &str = version!();
+
+/// herald's name, as it names itself to other software.
+pub const NAME: &str = "herald";

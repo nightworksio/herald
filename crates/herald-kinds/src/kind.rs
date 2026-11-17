@@ -62,6 +62,18 @@ impl Placing<'_> {
     }
 }
 
+/// A key a destination of a kind takes from `[federation]` where its own
+/// table leaves it out.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Inherited {
+    /// The key in the destination's table.
+    pub key: &'static str,
+    /// The key in `[federation]` it is taken from.
+    pub from: &'static str,
+    /// Whether the destination needs it from one or the other.
+    pub required: bool,
+}
+
 /// One kind of destination: the options its table reads into and a route's
 /// options for it, how each is checked, and how the schema names them.
 pub trait DestinationKind: 'static {
@@ -80,6 +92,10 @@ pub trait DestinationKind: 'static {
     type Options: DestinationConfig + Clone;
     /// A route's own options for it.
     type Route: Placement + Clone;
+
+    /// The keys a destination of it takes from `[federation]` where its
+    /// table leaves them out.
+    const INHERITS: &[Inherited] = &[];
 
     /// `options`, checked and completed with the files they name, read
     /// through `read`, with the faults the destination is kept beside.

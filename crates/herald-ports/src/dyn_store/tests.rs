@@ -6,7 +6,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::future::Future;
 
-use herald_core::{Hold, Identity, KeptToken, Kind, Pending, Shown};
+use herald_core::{Hold, Identity, KeptToken, Kind, Pending, PublishedKeys, Shown};
 
 use super::*;
 
@@ -155,6 +155,20 @@ impl Tokens for Refusing {
     }
 }
 
+impl Published for Refusing {
+    async fn published_keys(&self) -> Result<Option<Versioned<PublishedKeys>>, StoreError> {
+        Err(refused("published_keys"))
+    }
+
+    async fn put_published_keys(
+        &self,
+        _: &PublishedKeys,
+        _: Option<Version>,
+    ) -> Result<Written, StoreError> {
+        Err(refused("put_published_keys"))
+    }
+}
+
 impl Waiting for Refusing {
     async fn pending(&self, _: &Hold) -> Result<Option<Versioned<Pending>>, StoreError> {
         Err(refused("pending"))
@@ -272,7 +286,7 @@ fn an_erased_store_holds_and_skips_what_the_store_it_erases_does() {
         let erased = Erased(&store as &dyn DynStore);
         assert_eq!(
             Held::ALL.map(|held| Keeper::holds(&erased, held)),
-            [holding; 12]
+            [holding; 13]
         );
         assert_eq!(Keeper::skipped(&erased), ["corrupt.json"]);
         assert_eq!(Keeper::writes_one_at_a_time(&erased), holding);
@@ -327,6 +341,33 @@ fn every_answer_of_an_erased_store_on_an_owner_source_is_the_store_s_own() {
     });
     assert_eq!(answered(erased.token(&kept.name)), unkept);
     assert_eq!(answered(erased.put_token(&kept, None)), unkept);
+}
+
+#[test]
+fn an_erased_store_answers_for_what_the_instance_published_as_the_store_it_erases_does() {
+    let keys = PublishedKeys {
+        sequence: 1,
+        keys: vec!["z6Mkkey".to_owned()],
+    };
+    let store = Refusing { holding: true };
+    let erased = Erased(&store as &dyn DynStore);
+    assert_eq!(
+        [
+            answered(erased.published_keys()),
+            answered(erased.put_published_keys(&keys, None)),
+        ],
+        [
+            Some(refused("published_keys")),
+            Some(refused("put_published_keys"))
+        ]
+    );
+    let unheld = Refusing { holding: false };
+    let erased = Erased(&unheld as &dyn DynStore);
+    let unkept = Some(StoreError::Unsupported {
+        what: "published key sets",
+    });
+    assert_eq!(answered(erased.published_keys()), unkept);
+    assert_eq!(answered(erased.put_published_keys(&keys, None)), unkept);
 }
 
 fn owned(at: Timestamp) -> (Listing, Membership) {

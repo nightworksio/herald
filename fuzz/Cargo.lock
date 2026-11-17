@@ -341,7 +341,9 @@ dependencies = [
  "herald-dest-fediverse",
  "herald-dest-matrix",
  "herald-dest-slack",
+ "herald-keys",
  "herald-kinds",
+ "herald-peers",
  "herald-ports",
  "herald-sources-app",
  "herald-store-markers",
@@ -374,6 +376,14 @@ dependencies = [
  "pollster",
  "pulldown-cmark",
  "serde_json",
+]
+
+[[package]]
+name = "herald-keys"
+version = "0.0.0"
+dependencies = [
+ "base64",
+ "herald-core",
 ]
 
 [[package]]

@@ -1,6 +1,6 @@
 use herald_core::{
     Cursor, DestinationName, Entry, Hold, KeptToken, Key, Latest, Listing, Membership, Pending,
-    RouteId, Schedule, SourceName, State, Subscription,
+    PublishedKeys, RouteId, Schedule, SourceName, State, Subscription,
 };
 use jiff::Timestamp;
 
@@ -8,8 +8,8 @@ use crate::erased::{Boxed, Erased};
 use crate::keyring::{Keyring, KnownKey};
 use crate::store::{
     Admitted, Announcements, Cursors, Deliveries, Held, Inboxes, Keeper, Keeping, Ledger, Notes,
-    Outboxed, Pins, Positions, Schedules, Store, StoreError, Subscriptions, Tokens, Version,
-    Versioned, Waiting, Written,
+    Outboxed, Pins, Positions, Published, Schedules, Store, StoreError, Subscriptions, Tokens,
+    Version, Versioned, Waiting, Written,
 };
 
 /// [`Store`] and [`Keyring`] as one trait object: every store that is both
@@ -190,6 +190,18 @@ pub trait DynStore: Sync {
         expected: Option<Version>,
     ) -> Boxed<'a, Result<Written, StoreError>>;
 
+    /// [`Published::published_keys`].
+    fn published_keys_boxed(
+        &self,
+    ) -> Boxed<'_, Result<Option<Versioned<PublishedKeys>>, StoreError>>;
+
+    /// [`Published::put_published_keys`].
+    fn put_published_keys_boxed<'a>(
+        &'a self,
+        keys: &'a PublishedKeys,
+        expected: Option<Version>,
+    ) -> Boxed<'a, Result<Written, StoreError>>;
+
     /// [`Deliveries::admit`].
     fn admit_boxed<'a>(
         &'a self,
@@ -294,6 +306,7 @@ impl<S: Store + Keyring> DynStore for S {
             Held::Positions => self.positions().is_some(),
             Held::Pending => self.waiting().is_some(),
             Held::Tokens => self.tokens().is_some(),
+            Held::Published => self.published().is_some(),
         }
     }
 
@@ -500,6 +513,20 @@ impl<S: Store + Keyring> DynStore for S {
         expected: Option<Version>,
     ) -> Boxed<'a, Result<Written, StoreError>> {
         Box::pin(async move { self.tokens().put_token(token, expected).await })
+    }
+
+    fn published_keys_boxed(
+        &self,
+    ) -> Boxed<'_, Result<Option<Versioned<PublishedKeys>>, StoreError>> {
+        Box::pin(async move { self.published().published_keys().await })
+    }
+
+    fn put_published_keys_boxed<'a>(
+        &'a self,
+        keys: &'a PublishedKeys,
+        expected: Option<Version>,
+    ) -> Boxed<'a, Result<Written, StoreError>> {
+        Box::pin(async move { self.published().put_published_keys(keys, expected).await })
     }
 
     fn admit_boxed<'a>(
@@ -749,6 +776,20 @@ impl Tokens for Erased<'_, dyn DynStore + '_> {
         expected: Option<Version>,
     ) -> Result<Written, StoreError> {
         self.0.put_token_boxed(token, expected).await
+    }
+}
+
+impl Published for Erased<'_, dyn DynStore + '_> {
+    async fn published_keys(&self) -> Result<Option<Versioned<PublishedKeys>>, StoreError> {
+        self.0.published_keys_boxed().await
+    }
+
+    async fn put_published_keys(
+        &self,
+        keys: &PublishedKeys,
+        expected: Option<Version>,
+    ) -> Result<Written, StoreError> {
+        self.0.put_published_keys_boxed(keys, expected).await
     }
 }
 

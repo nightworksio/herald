@@ -342,6 +342,13 @@ fn unhosted(config: &Config, gaps: &mut Vec<Gap>) {
             ));
         }
     }
+    if config.federation.domain.is_some() {
+        gaps.push(gap(
+            "the instance's discovery document",
+            "federation.domain".to_owned(),
+            format!("{UNHOSTED}, so no peer reads the instance's keys"),
+        ));
+    }
     for (name, app) in &config.apps {
         if !app.tokens.is_empty() {
             gaps.push(gap(
@@ -598,6 +605,13 @@ fn marked(config: &Config, findings: &mut Findings) {
             "holding a tag for its Release",
             format!("sources.{}.prefer", source.as_str()),
             "the markers store keeps no held events; set prefer = \"first\", or choose a store that does".to_owned(),
+        ));
+    }
+    if !config.federation.keys.is_empty() {
+        findings.gaps.push(gap(
+            "raising the key set's sequence with each new set",
+            "federation.keys".to_owned(),
+            "the markers store keeps no published key set, so peers read sequence 0 and take no new set; choose a store that does".to_owned(),
         ));
     }
     findings.notes.push(UNGUARDED.to_owned());

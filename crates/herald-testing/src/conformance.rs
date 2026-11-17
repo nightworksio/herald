@@ -13,6 +13,7 @@ use jiff::Timestamp;
 mod kv;
 mod members;
 mod pending;
+mod published;
 mod raced;
 mod sql;
 mod tokens;
@@ -80,6 +81,11 @@ pub async fn store_conformance<S: Store>(store: &S) -> Result<(), Failure> {
     if let Some(kept) = store.tokens() {
         let mut checks = Checks::default();
         tokens::tokens(kept, &mut checks).await?;
+        checks.done()?;
+    }
+    if let Some(kept) = store.published() {
+        let mut checks = Checks::default();
+        published::published(kept, &mut checks).await?;
         checks.done()?;
     }
     if let Some(kept) = store.deliveries() {

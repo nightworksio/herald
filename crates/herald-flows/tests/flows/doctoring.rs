@@ -130,59 +130,6 @@ fn a_layer_with_no_endpoint_names_the_actor_webhooks_and_apps_it_cannot_serve() 
 }
 
 #[test]
-fn a_layer_with_no_endpoint_names_an_owner_discovering_by_push() {
-    let pushed = crate::owner::owned_in("", |options| {
-        options.discovery = Some(herald_sources_forge::Discovery::Push);
-    });
-    let findings = on(&pushed, &actions(), &Here::default());
-    let gap = findings
-        .gaps
-        .iter()
-        .find(|gap| gap.key == "sources.gate.discovery")
-        .unwrap();
-    assert_eq!(gap.feature, "discovery by push");
-    assert_eq!(gap.first_layer, Some(Tier::Serverless));
-    assert!(gap.why.ends_with(
-        ", so the owner is listed only where the source holds no listing or its selection changed; choose discovery \"list\""
-    ));
-    let mut installed = crate::owner::owned_in("", |_| ());
-    installed.github_apps.insert(
-        "herald".to_owned(),
-        herald_config::GithubApp {
-            issuer: "7".to_owned(),
-            private_key: herald_core::SecretRef {
-                secret: "K".to_owned(),
-            },
-            api: "https://api.github.com".to_owned(),
-            webhook: Some(herald_core::SecretRef {
-                secret: "H".to_owned(),
-            }),
-            store_token: false,
-        },
-    );
-    let gaps = on(&installed, &actions(), &Here::default()).gaps;
-    let app = gaps
-        .iter()
-        .find(|gap| gap.key == "github_apps.herald.webhook")
-        .unwrap();
-    assert_eq!(app.feature, "a GitHub App's webhooks");
-    assert!(app.why.ends_with("; poll the sources reading as the App"));
-    assert!(
-        on(&installed, &server(), &Here::default())
-            .gaps
-            .iter()
-            .all(|gap| gap.key != "github_apps.herald.webhook")
-    );
-    let listing = crate::owner::owned_in("", |_| ());
-    assert!(
-        on(&listing, &actions(), &Here::default())
-            .gaps
-            .iter()
-            .all(|gap| gap.key != "sources.gate.discovery")
-    );
-}
-
-#[test]
 fn an_owner_registering_member_webhooks_needs_herald_s_address() {
     let mut hooking = crate::owner::owned_in("", |options| {
         options.member_hooks = Some(herald_sources_forge::MemberHooks::Setup);
@@ -995,3 +942,5 @@ fn an_owner_registering_member_webhooks_is_checked_online_for_its_token_and_each
                 && gap.feature == "nightworksio/gate's webhooks")
     );
 }
+
+mod unhosted;

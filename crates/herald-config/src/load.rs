@@ -257,7 +257,8 @@ pub fn load(
     let (store, kept) = loader.store(sections.store).unzip();
     let (retention, attempts) = kept.unwrap_or_default();
     let marker_key = loader.marker_key(sections.markers);
-    let destinations = loader.destinations(sections.destinations, read);
+    let (federation, inherited) = loader.federation(sections.federation);
+    let destinations = loader.destinations(sections.destinations, &inherited, read);
     let (mut sources, source_spans) = loader.sources(sections.sources, read);
     loader.remembering(store.as_ref(), (&mut sources, &source_spans));
     let templates = loader.templates(sections.templates, read);
@@ -306,6 +307,7 @@ pub fn load(
         github_apps,
         schedule,
         server,
+        federation,
         http,
         announce,
         run,
@@ -318,6 +320,7 @@ pub fn load(
 mod apps;
 mod declared;
 mod destinations;
+mod federation;
 mod github_apps;
 mod route;
 mod secrets;

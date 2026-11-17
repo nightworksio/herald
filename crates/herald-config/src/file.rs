@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 use std::num::{NonZeroU64, NonZeroUsize};
 
+use herald_core::follows::{Approve, FollowerCaps, Mode, SharedList};
 use herald_core::{
     Attempts, AttributeSpec, Duration, Edits, Inbound, Kind, LateRelease, LinkSpec, Pinning,
     Prereleases, SHA256_HEX_DIGITS, Sandbox, SecretRef, Size,
@@ -362,6 +363,67 @@ pub(crate) struct GithubAppFile {
     /// `private_key`, bound to its record and its expiry, in a record the
     /// store seals too.
     pub(crate) store_token: Option<bool>,
+}
+
+/// This herald among other instances: the domain it serves, its keys, and
+/// what its ActivityPub actors take where their destination leaves it out.
+#[derive(Debug, Clone, Default, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+#[serde(rename = "Federation")]
+pub(crate) struct FederationFile {
+    /// The domain herald serves its discovery document and actors on, such
+    /// as `herald.example`: a host alone, with no scheme, port or path. An
+    /// ActivityPub destination that names no `domain` takes it.
+    #[schemars(example = "herald.example")]
+    pub(crate) domain: Option<String>,
+    /// The secrets holding the instance's Ed25519 private keys, each as
+    /// PKCS#8 PEM, such as `openssl genpkey -algorithm ed25519` writes,
+    /// newest first: the first signs, and every one verifies. Rotate by
+    /// writing a new key before the old one, and leave the old one out once
+    /// peers know the new one.
+    #[serde(default)]
+    pub(crate) keys: Vec<SecretRef>,
+    /// How long a peer may keep the instance's key set before it reads it
+    /// again; "1d" where absent, at most "7d".
+    pub(crate) refresh: Option<Duration>,
+    /// The secret holding the RSA private key herald's ActivityPub actors
+    /// sign with, as PKCS#8 PEM. An ActivityPub destination that names no
+    /// `key` takes it.
+    #[allow(
+        dead_code,
+        reason = "read by each ActivityPub destination from the table as written"
+    )]
+    pub(crate) actor_key: Option<SecretRef>,
+    /// Whom herald's actors federate with, for an ActivityPub destination
+    /// that names no `mode`: `open` or `allowlist`.
+    #[allow(
+        dead_code,
+        reason = "read by each ActivityPub destination from the table as written"
+    )]
+    pub(crate) mode: Option<Mode>,
+    /// The servers and actors herald's actors never take a follow from or
+    /// deliver to, for an ActivityPub destination that names no `block`.
+    pub(crate) block: Option<Vec<String>>,
+    /// The servers and actors an `allowlist` federates with, for an
+    /// ActivityPub destination that names no `allow`.
+    pub(crate) allow: Option<Vec<String>>,
+    /// How many may follow each actor, for an ActivityPub destination that
+    /// names no `followers`.
+    pub(crate) followers: Option<FollowerCaps>,
+    /// Who takes a follow, for an ActivityPub destination that names no
+    /// `approve`: `auto` or `manual`.
+    #[allow(
+        dead_code,
+        reason = "read by each ActivityPub destination from the table as written"
+    )]
+    pub(crate) approve: Option<Approve>,
+    /// Shared block lists, for an ActivityPub destination that names no
+    /// `lists`.
+    #[allow(
+        dead_code,
+        reason = "read by each ActivityPub destination from the table as written"
+    )]
+    pub(crate) lists: Option<Vec<SharedList>>,
 }
 
 /// An app of the HTTP API (ADR-0007).
