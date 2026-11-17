@@ -240,11 +240,6 @@ fn a_signature_without_parameters_herald_needs_is_unreadable() {
             Refusal::Unreadable("Signature-Input is no dictionary"),
         ),
         (
-            r#"herald=("@method";req);created=1;expires=2;keyid="k";tag="herald""#,
-            "herald=:AAAA:",
-            Refusal::Unreadable("a covered part is not one herald reads"),
-        ),
-        (
             r#"herald=("@request-target");created=1;expires=2;keyid="k";tag="herald""#,
             "herald=:AAAA:",
             Refusal::Unreadable("a covered part is not one herald reads"),
@@ -505,4 +500,76 @@ fn a_signature_field_longer_than_its_bound_is_refused_before_it_is_read() {
         .to_string(),
         "the signature field holds more than the 10 bytes read"
     );
+}
+
+fn response(fields: &[(String, String)]) -> Message<'_> {
+    Message {
+        status: Some(200),
+        ..request(fields)
+    }
+}
+
+#[test]
+fn a_response_covers_the_request_it_answers_through_req() {
+    let held = fields(&[("Content-Type", "application/json")]);
+    let signing = covered(vec![
+        Component::Status,
+        Component::Field("content-type".to_owned()),
+        Component::Request(Box::new(Component::Method)),
+        Component::Request(Box::new(Component::TargetUri)),
+    ]);
+    let base = String::from_utf8(signing.base(&response(&held)).unwrap()).unwrap();
+    assert_eq!(
+        base,
+        concat!(
+            "\"@status\": 200\n",
+            "\"content-type\": application/json\n",
+            "\"@method\";req: POST\n",
+            "\"@target-uri\";req: https://example.com/foo?param=Value&Pet=dog\n",
+            "\"@signature-params\": (\"@status\" \"content-type\" \"@method\";req \"@target-uri\";req)",
+            ";created=1618884473;expires=1618884773;keyid=\"z6Mkkey\";alg=\"ed25519\";tag=\"herald\""
+        )
+    );
+    let all = signed(&signing, &held, b"sig");
+    let presented = presented(&response(&all), FIELD_MOST).unwrap();
+    assert_eq!(presented.covered, signing);
+    assert_eq!(presented.base, base.into_bytes());
+    assert_eq!(
+        signing.base(&request(&held)),
+        Err(Unsigned::Missing {
+            component: "@status".to_owned()
+        })
+    );
+    let requested = covered(vec![Component::Request(Box::new(Component::Path))]);
+    assert_eq!(
+        requested.base(&request(&held)),
+        Err(Unsigned::Missing {
+            component: "@path".to_owned()
+        })
+    );
+    assert_eq!(
+        Component::Request(Box::new(Component::Path)).name(),
+        "@path"
+    );
+}
+
+#[test]
+fn a_part_marked_otherwise_than_as_the_request_s_is_unreadable() {
+    for covered in [
+        r#""@method";req=?0"#,
+        r#""@method";bs"#,
+        r#""@status";req"#,
+        r#""content-type";req"#,
+        r#""@method" "@path";req;bs"#,
+    ] {
+        let input = format!(r#"herald=({covered});created=1;expires=2;keyid="k";tag="herald""#);
+        let all = fields(&[("signature-input", &input), ("signature", "herald=:AAAA:")]);
+        assert_eq!(
+            presented(&response(&all), FIELD_MOST),
+            Err(Refusal::Unreadable(
+                "a covered part is not one herald reads"
+            )),
+            "{covered}"
+        );
+    }
 }

@@ -56,6 +56,9 @@ fn respond(out: ResponseOutparam, reply: &Reply) {
     if let Some(after) = reply.retry_after {
         let _ = headers.set("retry-after", &[after.to_string().into_bytes()]);
     }
+    for (name, value) in &reply.headers {
+        let _ = headers.append(name, value.as_bytes());
+    }
     let response = OutgoingResponse::new(headers);
     let _ = response.set_status_code(reply.status);
     let Ok(outgoing) = response.body() else {

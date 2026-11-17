@@ -20,6 +20,7 @@ fn plain(status: u16, text: &str) -> Reply {
         kind: media::TEXT,
         body: text.as_bytes().to_vec(),
         retry_after: None,
+        headers: Vec::new(),
     }
 }
 

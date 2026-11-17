@@ -66,6 +66,14 @@ fn strings<S: AsRef<str>>(values: &[S]) -> Array {
         .collect()
 }
 
+/// `pairs` as an array of `[name, value]` arrays: what [`pairs`] reads.
+fn pair_array(pairs: &[(String, String)]) -> Array {
+    pairs
+        .iter()
+        .map(|(name, value)| strings(&[name, value]))
+        .collect()
+}
+
 /// The strings of the array `value`.
 fn strings_of(value: &JsValue) -> Vec<String> {
     Array::from(value)

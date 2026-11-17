@@ -173,7 +173,13 @@ fn bare_items_and_parameters_are_written_as_they_read() {
     assert_eq!(written(&Bare::Boolean(true)), "?1");
     assert_eq!(
         written_inner(
-            &[text("@method"), text("@path")],
+            &[
+                item(text("@method")),
+                Item {
+                    bare: text("@path"),
+                    parameters: vec![("req".to_owned(), Bare::Boolean(true))],
+                },
+            ],
             &[
                 ("created".to_owned(), Bare::Integer(5)),
                 ("flag".to_owned(), Bare::Boolean(true)),
@@ -181,7 +187,7 @@ fn bare_items_and_parameters_are_written_as_they_read() {
                 ("keyid".to_owned(), text("k")),
             ]
         ),
-        "(\"@method\" \"@path\");created=5;flag;off=?0;keyid=\"k\""
+        "(\"@method\" \"@path\";req);created=5;flag;off=?0;keyid=\"k\""
     );
     assert_eq!(written_inner(&[], &[]), "()");
 }

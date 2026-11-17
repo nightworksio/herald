@@ -214,9 +214,10 @@ pub(crate) struct RouteFile {
     /// The destination it announces to.
     #[schemars(with = "String", example = RouteFile::DESTINATION)]
     pub(crate) destination: Spanned<String>,
-    /// The template it renders with.
-    #[schemars(with = "String", example = "package-release")]
-    pub(crate) template: Spanned<String>,
+    /// The template it renders with; none on a route to a herald feed,
+    /// which publishes each event as an envelope.
+    #[schemars(with = "Option<String>", example = "package-release")]
+    pub(crate) template: Option<Spanned<String>>,
     /// Whether to crosspost each announcement.
     #[serde(default)]
     pub(crate) crosspost: bool,
@@ -386,6 +387,9 @@ pub(crate) struct FederationFile {
     /// How long a peer may keep the instance's key set before it reads it
     /// again; "1d" where absent, at most "7d".
     pub(crate) refresh: Option<Duration>,
+    /// How long each response of herald's API stays signed, from when it
+    /// is made: "5m" where absent, at most "20m".
+    pub(crate) signed_for: Option<Duration>,
     /// The secret holding the RSA private key herald's ActivityPub actors
     /// sign with, as PKCS#8 PEM. An ActivityPub destination that names no
     /// `key` takes it.

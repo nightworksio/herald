@@ -103,7 +103,7 @@ pub use profile::{
     Bullet, Emphases, Escape, Features, Fences, Heading, Limits, Links, Markup, Measure,
     MentionRoom, MentionStyle, Pins, Profile, Threads,
 };
-pub use published::PublishedKeys;
+pub use published::{Feed, FeedItem, PublishedKeys};
 pub use render::{
     ACTOR_FIELDS, ActorName, Context, Form, ProjectName, REPOSITORY_FIELDS, TemplateError,
     Templates,

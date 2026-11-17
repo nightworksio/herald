@@ -26,9 +26,9 @@ impl Size {
     /// unit.
     pub(crate) const PATTERN: &str = "^0*[1-9][0-9]*(KiB|MiB)$";
     /// The bytes in a KiB.
-    pub(crate) const KIB: usize = 1 << 10;
+    pub const KIB: usize = 1 << 10;
     /// The bytes in a MiB.
-    pub(crate) const MIB: usize = 1 << 20;
+    pub const MIB: usize = 1 << 20;
 
     fn parse(text: &str) -> Option<Self> {
         let (number, unit) = if let Some(number) = text.strip_suffix("KiB") {

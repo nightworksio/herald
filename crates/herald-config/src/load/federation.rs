@@ -53,6 +53,16 @@ impl Loader<'_> {
                 "refresh is at most \"7d\"; shorten it",
             );
         }
+        let signed_for = file
+            .signed_for
+            .map_or(Federation::SIGNED_FOR, |signed_for| signed_for.0);
+        if signed_for > Federation::SIGNED_FOR_ALLOWED {
+            self.error(
+                &span,
+                "federation.signed_for",
+                "signed_for is at most \"20m\"; shorten it",
+            );
+        }
         let block = file.block.unwrap_or_default();
         let allow = file.allow.unwrap_or_default();
         if let Err(refused) = followed_by(&block, &allow, file.followers) {
@@ -63,6 +73,7 @@ impl Loader<'_> {
                 domain: file.domain,
                 keys: file.keys,
                 refresh,
+                signed_for,
             },
             written,
         )

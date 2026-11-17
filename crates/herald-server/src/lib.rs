@@ -34,7 +34,7 @@ use herald_native::TokioTimer as Waiting;
 use herald_ports::{Clock, Http, Keyring, Secret, Signer, Sockets, Store, Verifier};
 use http_body_util::{BodyExt, Full, Limited};
 use hyper::body::{Bytes, Incoming};
-use hyper::header::{AUTHORIZATION, CONTENT_TYPE, HeaderMap, HeaderValue, RETRY_AFTER};
+use hyper::header::{AUTHORIZATION, CONTENT_TYPE, HeaderMap, HeaderName, HeaderValue, RETRY_AFTER};
 use hyper::server::conn::http1;
 use hyper::service::service_fn;
 use hyper::{Method, StatusCode};
@@ -263,6 +263,13 @@ fn sent(rounds: &Rounds<'_>, answered: Answered) -> hyper::Response<Full<Bytes>>
             .headers_mut()
             .insert(RETRY_AFTER, HeaderValue::from(after));
     }
+    let carried = answered.reply.headers.iter().filter_map(|(name, value)| {
+        Some((
+            HeaderName::from_bytes(name.as_bytes()).ok()?,
+            HeaderValue::from_str(value).ok()?,
+        ))
+    });
+    response.headers_mut().extend(carried);
     response
 }
 

@@ -304,10 +304,11 @@ fn a_body_that_is_not_text_is_answered_in_base64() {
             kind: "application/octet-stream",
             body: vec![0xff, 0x00],
             retry_after: None,
+            headers: vec![("etag".to_owned(), "\"1.0.20\"".to_owned())],
         }),
         json!({
             "statusCode": 200,
-            "headers": { "content-type": "application/octet-stream" },
+            "headers": { "content-type": "application/octet-stream", "etag": "\"1.0.20\"" },
             "body": "/wA=",
             "isBase64Encoded": true,
         })

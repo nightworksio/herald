@@ -52,6 +52,7 @@ fn a_destination_naming_an_option_its_kind_lacks_is_refused_by_name() {
                 "activitypub",
                 "`domain`, `key`, `symbols`, `waits`, `outbox_page`, `deliveries`, `mode`, `block`, `allow`, `followers`, `approve`, `lists`"
             ),
+            unknown("herald", "`keep`, `page`, `envelope`"),
         ]
     );
 }

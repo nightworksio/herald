@@ -689,7 +689,13 @@ body = "{{ event.body }}"
                 .contains("version: invalid type: string")
         );
         let untemplated = EXAMPLE.replace("template = \"package-release\"\n", "");
-        assert!(errors(&untemplated).contains("routes[0]: missing field `template`"));
+        let error = errors(&untemplated);
+        assert!(
+            error.contains(
+                "routes[0].template: give the template the route renders with: template = \"<name>\""
+            ),
+            "{error}"
+        );
     }
 
     #[test]

@@ -18,7 +18,7 @@ use super::crypto::{WebSigner, WebVerifier};
 use super::herald::Herald;
 use super::host::{JsHost, sql_at};
 use super::sessions::{JsSockets, JsTaker, JsTimer};
-use super::{bytes, member, object, strings, strings_of};
+use super::{bytes, member, object, pair_array, pairs, strings, strings_of};
 
 #[wasm_bindgen(inline_js = r#"
 export function host(vars) {
@@ -471,6 +471,17 @@ async fn a_key_value_store_the_host_offers_keeps_every_record_a_store_keeps() {
     let kv = hosted().kv(KvAt::DenoKv(None)).await.unwrap();
     let store = KvRecords::kept(kv, None, herald_ports::RecordOptions::default());
     store_conformance(&store).await.unwrap();
+}
+
+#[wasm_bindgen_test]
+fn an_answer_s_headers_are_written_as_the_pairs_a_request_s_are_read_by() {
+    let headers = vec![
+        ("etag".to_owned(), "\"1.0.20\"".to_owned()),
+        ("signature".to_owned(), "herald=:AA==:".to_owned()),
+    ];
+    let written = pair_array(&headers);
+    assert_eq!(written.length(), 2);
+    assert_eq!(pairs(&written.into()), headers);
 }
 
 #[wasm_bindgen_test]

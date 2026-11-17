@@ -1,6 +1,6 @@
 # ADR-0044: An instance is found by its discovery document, and `[federation]` holds its identity
 
-**Status:** Accepted
+**Status:** Accepted; its feeds and signed answers extended by [ADR-0046](0046-a-herald-feed-publishes-each-public-event-as-a-proved-envelope-and-the-api-signs-every-answer.md)
 **Date:** 2026-11-17
 
 ## Context

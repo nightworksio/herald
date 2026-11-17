@@ -11,6 +11,7 @@ use crate::verification::{Admission, Keys};
 mod actors;
 mod apps;
 mod discovery;
+mod feeds;
 mod jobs;
 mod replies;
 mod router;

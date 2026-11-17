@@ -476,6 +476,23 @@ fn a_store_that_cannot_list_or_an_unshowable_record_is_answered_as_unavailable()
     }
 }
 
+#[test]
+fn a_route_naming_no_template_answers_no_command() {
+    let mut untemplated = world();
+    for route in &mut untemplated.config.routes {
+        route.route.template = None;
+    }
+    let answer = untemplated.interact(&discord(Command::Latest));
+    assert_eq!(
+        said(&answer),
+        "herald could not answer just now; try again later."
+    );
+    assert_eq!(
+        answer.trouble.as_deref(),
+        Some("the route names no template to answer with")
+    );
+}
+
 fn role_world(answers: &[(&str, u16, &str)]) -> World {
     World::new("", Script::answering(answers)).announced("gate", &["releases"])
 }

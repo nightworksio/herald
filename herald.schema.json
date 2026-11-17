@@ -194,7 +194,7 @@
           }
         },
         "template": {
-          "description": "The template it renders with.",
+          "description": "The template it renders with; none on a route to a herald feed,\nwhich publishes each event as an envelope.",
           "type": "string",
           "examples": [
             "package-release"
@@ -218,7 +218,6 @@
         "id",
         "sources",
         "destination",
-        "template",
         "actor"
       ]
     },
@@ -761,6 +760,36 @@
           "required": [
             "kind"
           ]
+        },
+        {
+          "description": "A feed of herald's own, served on the [federation] domain: each event as an envelope proved by the instance's newest key.",
+          "type": "object",
+          "properties": {
+            "envelope": {
+              "description": "The most bytes one envelope takes, its proof counted: \"16KiB\" where\nunset, and at most \"64KiB\". A longer event's body is cut to fit.",
+              "$ref": "#/$defs/Size"
+            },
+            "keep": {
+              "description": "The most envelopes the feed keeps, newest first: 1000 where unset,\nfewer where the store's records hold fewer, and at most 4000.",
+              "type": "integer",
+              "format": "uint",
+              "minimum": 1
+            },
+            "kind": {
+              "type": "string",
+              "const": "herald"
+            },
+            "page": {
+              "description": "The most envelopes a page lists: 20 where unset, and at most 80.",
+              "type": "integer",
+              "format": "uint",
+              "minimum": 1
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind"
+          ]
         }
       ]
     },
@@ -921,7 +950,7 @@
           "$ref": "#/$defs/DiscordSubscribe"
         },
         "template": {
-          "description": "The template it renders with.",
+          "description": "The template it renders with; none on a route to a herald feed,\nwhich publishes each event as an envelope.",
           "type": "string",
           "examples": [
             "package-release"
@@ -940,8 +969,7 @@
       "required": [
         "id",
         "sources",
-        "destination",
-        "template"
+        "destination"
       ]
     },
     "DiscordSubscribe": {
@@ -1097,6 +1125,10 @@
         "refresh": {
           "description": "How long a peer may keep the instance's key set before it reads it\nagain; \"1d\" where absent, at most \"7d\".",
           "$ref": "#/$defs/Duration"
+        },
+        "signed_for": {
+          "description": "How long each response of herald's API stays signed, from when it\nis made: \"5m\" where absent, at most \"20m\".",
+          "$ref": "#/$defs/Duration"
         }
       },
       "additionalProperties": false
@@ -1174,6 +1206,103 @@
           "type": "string",
           "const": "allow"
         }
+      ]
+    },
+    "HeraldRoute": {
+      "description": "A route publishing its events to a feed of herald's own.",
+      "type": "object",
+      "properties": {
+        "crosspost": {
+          "description": "Whether to crosspost each announcement.",
+          "type": "boolean",
+          "default": false
+        },
+        "destination": {
+          "description": "The destination it announces to.",
+          "type": "string",
+          "examples": [
+            "discord"
+          ]
+        },
+        "edits": {
+          "description": "Which changed announcements it edits the post of: none, or a Release\nwhose name or notes the forge says were edited (`release`).",
+          "$ref": "#/$defs/Edits",
+          "default": "none"
+        },
+        "id": {
+          "description": "The route's stable id, part of every announcement's key.",
+          "type": "string",
+          "examples": [
+            "herald-releases"
+          ]
+        },
+        "kinds": {
+          "description": "The kinds of event it takes; every kind where absent.",
+          "type": "array",
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/Kind"
+          }
+        },
+        "late_release": {
+          "description": "What it does with a Release whose tag it already announced: edits\nthe tag's post to it, or posts it anew where the destination cannot\nedit (`edit`); posts it anew (`post`); or leaves the tag's post\n(`skip`).",
+          "$ref": "#/$defs/LateRelease",
+          "default": "edit"
+        },
+        "match": {
+          "description": "What of an event it narrows its sources' events by, an event taken\nonly where every key holds; every event its other keys take where\nabsent.",
+          "$ref": "#/$defs/Match"
+        },
+        "mentions": {
+          "description": "Who it mentions.",
+          "$ref": "#/$defs/Mentions"
+        },
+        "pin": {
+          "description": "Whether to pin each announcement in place of the route's earlier pin,\nand how the earlier pin is found.",
+          "$ref": "#/$defs/Pinning"
+        },
+        "prereleases": {
+          "description": "Which pre-releases it takes.",
+          "$ref": "#/$defs/Prereleases"
+        },
+        "private": {
+          "description": "Whether its place is private, so it may take a private or internal\nrepository's events; a place is public where absent, and a config\nsending such events to it does not load (`[doctor] private_to_public`).",
+          "type": "boolean",
+          "default": false
+        },
+        "sources": {
+          "description": "The sources it takes events from.",
+          "type": "array",
+          "examples": [
+            [
+              "herald"
+            ]
+          ],
+          "items": {
+            "type": "string"
+          }
+        },
+        "template": {
+          "description": "The template it renders with; none on a route to a herald feed,\nwhich publishes each event as an envelope.",
+          "type": "string",
+          "examples": [
+            "package-release"
+          ]
+        },
+        "thread": {
+          "description": "The thread to open for each announcement.",
+          "$ref": "#/$defs/Thread"
+        },
+        "versions": {
+          "description": "The versions it takes, as a pattern in which `*` stands for any run\nof characters and `?` for any one, such as `\"*.*.*\"`, which leaves\nout a Docker Hub tag such as `latest`; every version where absent.",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "sources",
+        "destination"
       ]
     },
     "Http": {
@@ -1447,7 +1576,7 @@
           }
         },
         "template": {
-          "description": "The template it renders with.",
+          "description": "The template it renders with; none on a route to a herald feed,\nwhich publishes each event as an envelope.",
           "type": "string",
           "examples": [
             "package-release"
@@ -1476,8 +1605,7 @@
       "required": [
         "id",
         "sources",
-        "destination",
-        "template"
+        "destination"
       ]
     },
     "Match": {
@@ -1705,7 +1833,7 @@
           }
         },
         "template": {
-          "description": "The template it renders with.",
+          "description": "The template it renders with; none on a route to a herald feed,\nwhich publishes each event as an envelope.",
           "type": "string",
           "examples": [
             "package-release"
@@ -1725,7 +1853,6 @@
         "id",
         "sources",
         "destination",
-        "template",
         "room"
       ]
     },
@@ -2089,6 +2216,10 @@
         {
           "description": "A route announcing as one of herald's own ActivityPub actors.",
           "$ref": "#/$defs/ActivityPubRoute"
+        },
+        {
+          "description": "A route publishing its events to a feed of herald's own.",
+          "$ref": "#/$defs/HeraldRoute"
         }
       ]
     },
@@ -2448,7 +2579,7 @@
           "$ref": "#/$defs/SlackSubscribe"
         },
         "template": {
-          "description": "The template it renders with.",
+          "description": "The template it renders with; none on a route to a herald feed,\nwhich publishes each event as an envelope.",
           "type": "string",
           "examples": [
             "package-release"
@@ -2467,8 +2598,7 @@
       "required": [
         "id",
         "sources",
-        "destination",
-        "template"
+        "destination"
       ]
     },
     "SlackSubscribe": {

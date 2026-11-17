@@ -1,6 +1,6 @@
 use herald_core::{
-    Cursor, DestinationName, Entry, Hold, KeptToken, Key, Latest, Listing, Membership, Pending,
-    PublishedKeys, RouteId, Schedule, SourceName, State, Subscription,
+    Cursor, DestinationName, Entry, Feed, Hold, KeptToken, Key, Latest, Listing, Membership,
+    Pending, PublishedKeys, RouteId, Schedule, SourceName, State, Subscription,
 };
 use jiff::Timestamp;
 
@@ -199,6 +199,20 @@ pub trait DynStore: Sync {
     fn put_published_keys_boxed<'a>(
         &'a self,
         keys: &'a PublishedKeys,
+        expected: Option<Version>,
+    ) -> Boxed<'a, Result<Written, StoreError>>;
+
+    /// [`Published::feed`].
+    fn feed_boxed<'a>(
+        &'a self,
+        destination: &'a DestinationName,
+    ) -> Boxed<'a, Result<Option<Versioned<Feed>>, StoreError>>;
+
+    /// [`Published::put_feed`].
+    fn put_feed_boxed<'a>(
+        &'a self,
+        destination: &'a DestinationName,
+        feed: &'a Feed,
         expected: Option<Version>,
     ) -> Boxed<'a, Result<Written, StoreError>>;
 
@@ -529,6 +543,22 @@ impl<S: Store + Keyring> DynStore for S {
         Box::pin(async move { self.published().put_published_keys(keys, expected).await })
     }
 
+    fn feed_boxed<'a>(
+        &'a self,
+        destination: &'a DestinationName,
+    ) -> Boxed<'a, Result<Option<Versioned<Feed>>, StoreError>> {
+        Box::pin(async move { self.published().feed(destination).await })
+    }
+
+    fn put_feed_boxed<'a>(
+        &'a self,
+        destination: &'a DestinationName,
+        feed: &'a Feed,
+        expected: Option<Version>,
+    ) -> Boxed<'a, Result<Written, StoreError>> {
+        Box::pin(async move { self.published().put_feed(destination, feed, expected).await })
+    }
+
     fn admit_boxed<'a>(
         &'a self,
         namespace: &'static str,
@@ -790,6 +820,22 @@ impl Published for Erased<'_, dyn DynStore + '_> {
         expected: Option<Version>,
     ) -> Result<Written, StoreError> {
         self.0.put_published_keys_boxed(keys, expected).await
+    }
+
+    async fn feed(
+        &self,
+        destination: &DestinationName,
+    ) -> Result<Option<Versioned<Feed>>, StoreError> {
+        self.0.feed_boxed(destination).await
+    }
+
+    async fn put_feed(
+        &self,
+        destination: &DestinationName,
+        feed: &Feed,
+        expected: Option<Version>,
+    ) -> Result<Written, StoreError> {
+        self.0.put_feed_boxed(destination, feed, expected).await
     }
 }
 

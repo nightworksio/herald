@@ -20,6 +20,9 @@ pub struct Reply {
     /// How many seconds the sender is asked to wait before it asks again,
     /// as `Retry-After` names them.
     pub retry_after: Option<u32>,
+    /// Every other header it carries, by its lowercase name: an entity
+    /// tag, and an HTTP message signature with the body's digest.
+    pub headers: Vec<(String, String)>,
 }
 
 /// A request's reply, and the work it leaves.
@@ -102,6 +105,7 @@ pub(crate) fn replied(status: u16, kind: &'static str, body: impl Into<Vec<u8>>)
             kind,
             body: body.into(),
             retry_after: None,
+            headers: Vec::new(),
         },
         job: None,
         refused: None,

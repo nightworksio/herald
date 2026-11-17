@@ -18,6 +18,7 @@ async-lock.workspace = true
 herald-config.workspace = true
 herald-dest-discord.workspace = true
 herald-dest-fediverse.workspace = true
+herald-dest-herald.workspace = true
 herald-dest-matrix.workspace = true
 herald-dest-slack.workspace = true
 herald-core.workspace = true

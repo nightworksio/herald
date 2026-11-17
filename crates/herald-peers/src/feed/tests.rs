@@ -1,0 +1,300 @@
+use herald_core::{Event, KindSpec};
+use serde_json::{Value, json};
+
+use super::*;
+use crate::jcs::canonical;
+
+const INSTANCE: Instance<'static> = Instance {
+    domain: "herald.example",
+    base: "",
+    software: "herald",
+    version: "1.2.3",
+    repository: "https://github.com/nightworksio/herald",
+};
+
+fn event(title: &str, body: &str, release: bool) -> Event {
+    let links = if release {
+        json!({ "release": "https://forge.example/gate/releases/v1" })
+    } else {
+        json!({ "changelog": "https://forge.example/gate/CHANGELOG.md" })
+    };
+    serde_json::from_value(json!({
+        "identity": "forge.example/1/v1",
+        "kind": "release",
+        "project": "gate",
+        "title": title,
+        "body": body,
+        "links": links,
+        "attributes": { "version": "v1" },
+        "occurred": "2026-11-17T10:00:00Z",
+    }))
+    .unwrap()
+}
+
+fn release() -> KindSpec {
+    KindSpec::shipped().remove(0)
+}
+
+fn size(envelope: &Value) -> usize {
+    canonical(envelope).unwrap().len()
+}
+
+#[test]
+fn an_envelope_is_what_of_the_event_is_public_its_type_its_path_and_its_evidence() {
+    let released = event("gate v1", "the gate", true);
+    let envelope = INSTANCE
+        .envelope(&released, Some(&release()), 8192)
+        .unwrap();
+    assert_eq!(
+        envelope,
+        json!({
+            "identity": "forge.example/1/v1",
+            "kind": "release",
+            "project": "gate",
+            "title": "gate v1",
+            "body": "the gate",
+            "links": { "release": "https://forge.example/gate/releases/v1" },
+            "attributes": { "version": "v1" },
+            "occurred": "2026-11-17T10:00:00Z",
+            "visibility": "public",
+            "type": "herald:Event",
+            "path": ["https://herald.example/.well-known/herald"],
+            "evidence": { "release": "https://forge.example/gate/releases/v1" },
+        })
+    );
+    let unreleased = INSTANCE
+        .envelope(&event("gate v1", "the gate", false), Some(&release()), 8192)
+        .unwrap();
+    assert_eq!(unreleased.get("evidence"), None);
+    assert_eq!(unreleased.get("cut"), None);
+}
+
+#[test]
+fn an_envelope_carries_no_field_the_event_keeps_to_itself() {
+    let mut written = serde_json::to_value(event("gate v1", "b", true)).unwrap();
+    written["attributes"]["signal"] = json!("release");
+    written["visibility"] = json!("public");
+    written["origin"] = json!({
+        "forge": "github",
+        "host": "forge.example",
+        "owner": "nightworksio",
+        "repository": "nightworksio/gate",
+        "id": "1",
+        "topics": ["internal-topic"],
+        "properties": { "team": ["secret"] },
+        "visibility": "public",
+    });
+    let carried: Event = serde_json::from_value(written).unwrap();
+    let envelope = INSTANCE.envelope(&carried, Some(&release()), 8192).unwrap();
+    let keys: Vec<&str> = envelope
+        .as_object()
+        .unwrap()
+        .keys()
+        .map(String::as_str)
+        .collect();
+    assert_eq!(
+        keys,
+        [
+            "attributes",
+            "body",
+            "evidence",
+            "identity",
+            "kind",
+            "links",
+            "occurred",
+            "origin",
+            "path",
+            "project",
+            "title",
+            "type",
+            "visibility",
+        ]
+    );
+    assert_eq!(
+        envelope["origin"],
+        json!({ "forge": "github", "host": "forge.example", "repository": "nightworksio/gate" })
+    );
+    assert_eq!(
+        envelope["attributes"],
+        json!({ "signal": "release", "version": "v1" })
+    );
+    let undeclared = INSTANCE.envelope(&carried, None, 8192).unwrap();
+    assert_eq!(undeclared["attributes"], json!({}));
+}
+
+#[test]
+fn an_envelope_that_fits_exactly_keeps_its_body() {
+    let released = event("gate v1", "the whole body", true);
+    let whole = size(
+        &INSTANCE
+            .envelope(&released, Some(&release()), usize::MAX)
+            .unwrap(),
+    );
+    let fitting = INSTANCE
+        .envelope(&released, Some(&release()), whole + PROOF_ROOM)
+        .unwrap();
+    assert_eq!(fitting["body"], json!("the whole body"));
+    assert_eq!(fitting.get("cut"), None);
+    let cut = INSTANCE
+        .envelope(&released, Some(&release()), whole + PROOF_ROOM - 1)
+        .unwrap();
+    assert_eq!(cut["cut"], json!(true));
+}
+
+#[test]
+fn a_long_body_is_cut_to_fill_the_room_left_for_the_proof() {
+    let body = "a".repeat(4000);
+    let envelope = INSTANCE
+        .envelope(&event("gate v1", &body, true), Some(&release()), 2048)
+        .unwrap();
+    assert_eq!(envelope["cut"], json!(true));
+    assert_eq!(size(&envelope), 2048 - PROOF_ROOM);
+    let kept = envelope["body"].as_str().unwrap();
+    assert!(body.starts_with(kept) && kept.len() > 1000, "{kept}");
+}
+
+#[test]
+fn a_body_is_cut_between_characters() {
+    let body = "é".repeat(2000);
+    let envelope = INSTANCE
+        .envelope(&event("gate v1", &body, true), Some(&release()), 2048)
+        .unwrap();
+    let kept = envelope["body"].as_str().unwrap();
+    assert!(body.starts_with(kept) && !kept.is_empty(), "{kept}");
+    assert!(size(&envelope) <= 2048 - PROOF_ROOM);
+    assert!(size(&envelope) > 2048 - PROOF_ROOM - 2);
+}
+
+#[test]
+fn an_envelope_too_long_without_its_body_is_refused() {
+    let title = "t".repeat(3000);
+    let refused = INSTANCE.envelope(&event(&title, "body", true), Some(&release()), 2048);
+    let Err(Unenveloped::Oversized { bytes, most }) = refused else {
+        panic!("{refused:?}");
+    };
+    assert_eq!(most, 2048 - PROOF_ROOM);
+    assert!(bytes > 3000 && bytes < 3400, "{bytes}");
+    let inexact = crate::jcs::Uncanonical::Inexact {
+        number: "1e400".to_owned(),
+    };
+    assert_eq!(
+        Unenveloped::Uncanonical(inexact.clone()).to_string(),
+        inexact.to_string()
+    );
+    assert!(
+        Unenveloped::Oversized { bytes: 9, most: 4 }
+            .to_string()
+            .contains("takes 9 bytes with its body cut, more than the 4")
+    );
+}
+
+#[test]
+fn a_feed_lives_under_the_api() {
+    let based = Instance {
+        base: "/b",
+        ..INSTANCE
+    };
+    assert_eq!(
+        based.feed("releases"),
+        "https://herald.example/b/herald/v1/feeds/releases"
+    );
+    assert_eq!(
+        based.feed("night works/1"),
+        "https://herald.example/b/herald/v1/feeds/night%20works%2F1"
+    );
+}
+
+#[test]
+fn a_page_lists_its_envelopes_newest_first_and_links_the_next() {
+    let (newer, older) = (json!({ "n": 2 }), json!({ "n": 1 }));
+    let feed = "https://herald.example/herald/v1/feeds/releases";
+    let page = Page {
+        feed,
+        before: None,
+        listed: vec![
+            Listed {
+                sequence: 9,
+                envelope: &newer,
+            },
+            Listed {
+                sequence: 7,
+                envelope: &older,
+            },
+        ],
+        more: true,
+    };
+    assert_eq!(
+        serde_json::from_str::<Value>(&page.document()).unwrap(),
+        json!({
+            "id": feed,
+            "feed": feed,
+            "items": [
+                { "sequence": 9, "envelope": { "n": 2 } },
+                { "sequence": 7, "envelope": { "n": 1 } },
+            ],
+            "next": format!("{feed}?before=7"),
+        })
+    );
+    let last = Page {
+        before: Some(7),
+        more: false,
+        ..page.clone()
+    };
+    let written: Value = serde_json::from_str(&last.document()).unwrap();
+    assert_eq!(written["id"], json!(format!("{feed}?before=7")));
+    assert_eq!(written.get("next"), None);
+    let empty = Page {
+        listed: Vec::new(),
+        more: true,
+        ..page
+    };
+    let written: Value = serde_json::from_str(&empty.document()).unwrap();
+    assert_eq!(written["items"], json!([]));
+    assert_eq!(written.get("next"), None);
+}
+
+#[test]
+fn a_page_s_tag_changes_with_the_feed_the_cursor_and_the_page_size() {
+    assert_eq!(tag(9, None, 20), "\"9.0.20\"");
+    assert_eq!(tag(9, Some(4), 20), "\"9.4.20\"");
+    assert_ne!(tag(10, None, 20), tag(9, None, 20));
+    assert_ne!(tag(9, None, 21), tag(9, None, 20));
+}
+
+#[test]
+fn a_tombstone_withdraws_an_event_s_envelope_by_its_identity() {
+    let tombstone = INSTANCE.tombstone(
+        "forge.example/1/v1",
+        jiff::Timestamp::constant(1_793_448_000, 0),
+    );
+    assert_eq!(
+        tombstone,
+        json!({
+            "type": "herald:Tombstone",
+            "identity": "forge.example/1/v1",
+            "deleted": "2026-10-31T12:00:00Z",
+            "path": ["https://herald.example/.well-known/herald"],
+        })
+    );
+    assert!(withdrawn(&tombstone));
+    let envelope = INSTANCE
+        .envelope(&event("gate v1", "b", true), None, 8192)
+        .unwrap();
+    assert!(!withdrawn(&envelope));
+    assert!(!withdrawn(&json!({ "type": 1 })));
+}
+
+#[test]
+fn a_listed_envelope_shows_what_it_carries_whatever_its_proof() {
+    let envelope = json!({ "identity": "forge.example/1/v1", "n": 1 });
+    let proved = json!({ "identity": "forge.example/1/v1", "n": 1, "proof": { "a": 1 } });
+    assert!(shows(&proved, &envelope));
+    assert!(shows(&envelope, &envelope));
+    assert!(!shows(
+        &proved,
+        &json!({ "identity": "forge.example/1/v1", "n": 2 })
+    ));
+    assert!(!shows(&json!([1]), &envelope));
+    assert_eq!(identity(&proved), "forge.example/1/v1");
+    assert_eq!(identity(&json!({ "identity": 1 })), "");
+}

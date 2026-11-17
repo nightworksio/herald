@@ -4,8 +4,9 @@ use std::collections::BTreeSet;
 use std::sync::{Arc, Mutex, PoisonError};
 
 use herald_core::{
-    Attempts, Cursor, DestinationName, Entry, Hold, KeptToken, Key, Latest, Listing, Membership,
-    Pending, PublishedKeys, RecordKind, RouteId, Schedule, SourceName, State, Subscription,
+    Attempts, Cursor, DestinationName, Entry, Feed, Hold, KeptToken, Key, Latest, Listing,
+    Membership, Pending, PublishedKeys, RecordKind, RouteId, Schedule, SourceName, State,
+    Subscription,
 };
 use herald_ports::{
     Admitted, Announcements, Cursors, Deliveries, Held, Inboxes, Keeper, Keyring, KnownKey, Ledger,
@@ -627,6 +628,23 @@ impl<R: RecordBackend> herald_ports::Published for RecordStore<R> {
         expected: Option<Version>,
     ) -> Result<Written, StoreError> {
         self.compare_and_set(paths::PUBLISHED_KEYS, keys, expected)
+            .await
+    }
+
+    async fn feed(
+        &self,
+        destination: &DestinationName,
+    ) -> Result<Option<Versioned<Feed>>, StoreError> {
+        self.listed(&paths::feed(destination)).await
+    }
+
+    async fn put_feed(
+        &self,
+        destination: &DestinationName,
+        feed: &Feed,
+        expected: Option<Version>,
+    ) -> Result<Written, StoreError> {
+        self.compare_and_set(&paths::feed(destination), feed, expected)
             .await
     }
 }

@@ -2,8 +2,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Mutex;
 
 use herald_core::{
-    Cursor, DestinationName, Entry, Hold, KeptToken, Key, Latest, Listing, Membership, Pending,
-    PublishedKeys, RouteId, Schedule, SourceName, State, Subscription,
+    Cursor, DestinationName, Entry, Feed, Hold, KeptToken, Key, Latest, Listing, Membership,
+    Pending, PublishedKeys, RouteId, Schedule, SourceName, State, Subscription,
 };
 use herald_ports::{
     Admitted, Announcements, Cursors, Deliveries, Held, Inboxes, Keeper, Ledger, Notes, Outboxed,
@@ -31,6 +31,7 @@ struct FakeState {
     pending: BTreeMap<Hold, Versioned<Pending>>,
     tokens: BTreeMap<String, Versioned<KeptToken>>,
     published: BTreeMap<(), Versioned<PublishedKeys>>,
+    feeds: BTreeMap<DestinationName, Versioned<Feed>>,
 }
 
 /// A store in memory, keeping everything a store can keep.
@@ -449,6 +450,28 @@ impl Published for FakeStore {
     ) -> Result<Written, StoreError> {
         let mut state = lock(&self.state);
         Ok(compare_and_set(&mut state.published, (), keys, expected))
+    }
+
+    async fn feed(
+        &self,
+        destination: &DestinationName,
+    ) -> Result<Option<Versioned<Feed>>, StoreError> {
+        Ok(lock(&self.state).feeds.get(destination).cloned())
+    }
+
+    async fn put_feed(
+        &self,
+        destination: &DestinationName,
+        feed: &Feed,
+        expected: Option<Version>,
+    ) -> Result<Written, StoreError> {
+        let mut state = lock(&self.state);
+        Ok(compare_and_set(
+            &mut state.feeds,
+            destination.clone(),
+            feed,
+            expected,
+        ))
     }
 }
 

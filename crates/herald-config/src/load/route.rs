@@ -23,14 +23,20 @@ use crate::kinds::At;
 /// A route as its keys say, before its templates are compiled.
 pub(super) struct Read {
     pub(super) config: RouteConfig,
-    pub(super) title_span: Range<usize>,
-    pub(super) body_span: Range<usize>,
-    pub(super) body_path: String,
+    pub(super) rendered: Option<Rendered>,
     pub(super) sample_kinds: BTreeSet<Kind>,
     pub(super) origins: bool,
     pub(super) thread: Option<Spanned<String>>,
     pub(super) id_span: Range<usize>,
     pub(super) path: String,
+}
+
+/// The template a route renders with, and where its parts are written.
+pub(super) struct Rendered {
+    pub(super) template: TemplateName,
+    pub(super) title_span: Range<usize>,
+    pub(super) body_span: Range<usize>,
+    pub(super) body_path: String,
 }
 
 /// What a route takes events by: its sources, kinds and versions.
@@ -301,28 +307,57 @@ impl Loader<'_> {
         None
     }
 
-    /// The template `route` names as `template`, where `templates` has it.
-    fn written<'t>(
+    /// The template `route` renders with, where `templates` has the one it
+    /// names: none where it is a route to a feed, which renders none.
+    ///
+    /// # Errors
+    ///
+    /// When a route to a feed names a template, another route names none,
+    /// or `templates` has not the one it names.
+    fn rendered(
         &mut self,
-        template: &TemplateName,
         route: &RouteFile,
-        path: &str,
-        templates: &'t BTreeMap<TemplateName, Written>,
-    ) -> Option<&'t Written> {
-        let written = templates.get(template);
-        if written.is_none() {
+        (path, span): (&str, &Range<usize>),
+        feeds: bool,
+        templates: &BTreeMap<TemplateName, Written>,
+    ) -> Result<Option<Rendered>, ()> {
+        let key = format!("{path}.template");
+        let given = match (&route.template, feeds) {
+            (None, true) => return Ok(None),
+            (Some(given), false) => given,
+            (Some(given), true) => {
+                self.error(&given.span(), &key, "a herald feed publishes each event as an envelope and renders no template; remove template");
+                return Err(());
+            }
+            (None, false) => {
+                self.error(
+                    span,
+                    &key,
+                    "give the template the route renders with: template = \"<name>\"",
+                );
+                return Err(());
+            }
+        };
+        let template = TemplateName::new(given.get_ref());
+        let Some(written) = templates.get(&template) else {
             let names: Vec<&str> = templates.keys().map(TemplateName::as_str).collect();
             self.error(
-                &route.template.span(),
-                &format!("{path}.template"),
+                &given.span(),
+                &key,
                 format!(
                     "no template is named \"{}\"; the templates are {}",
-                    route.template.get_ref(),
+                    given.get_ref(),
                     list(&names)
                 ),
             );
-        }
-        written
+            return Err(());
+        };
+        Ok(Some(Rendered {
+            template,
+            title_span: written.title.span(),
+            body_span: written.body.span(),
+            body_path: written.body_path.clone(),
+        }))
     }
 
     /// Whether the destination `destination`, as `reach` reaches it, can do
@@ -379,9 +414,9 @@ impl Loader<'_> {
         let mut sound = self.sources_named(&route, &path, sources, apps);
         let destination = DestinationName::new(route.destination.get_ref());
         let reached = self.reached(&destination, &route, &path, destinations)?;
-        let template = TemplateName::new(route.template.get_ref());
-        let written = self.written(&template, &route, &path, templates);
         let span = route.id.span();
+        let feeds = reached.feeding().is_some();
+        let rendered = self.rendered(&route, (&path, &span), feeds, templates);
         let (options, name) =
             self.placed(reached, rest, &route, &path, &destination, &mut sound)?;
         let (profile, as_bot) = reached.profile(&options)?;
@@ -409,7 +444,7 @@ impl Loader<'_> {
             threads_each_post: options.threads_each_post(),
         };
         sound &= self.deliverable(&path, &span, &destination, reach, &delivery);
-        let (Some(written), true) = (written, sound) else {
+        let (Ok(rendered), true) = (rendered, sound) else {
             return None;
         };
         let taken = Taken {
@@ -442,7 +477,7 @@ impl Loader<'_> {
                 id: RouteId::new(route.id.get_ref()),
                 filter,
                 destination,
-                template,
+                template: rendered.as_ref().map(|rendered| rendered.template.clone()),
                 delivery,
             },
             options,
@@ -451,9 +486,7 @@ impl Loader<'_> {
         };
         Some(Read {
             config,
-            title_span: written.title.span(),
-            body_span: written.body.span(),
-            body_path: written.body_path.clone(),
+            rendered,
             sample_kinds,
             origins,
             thread: thread_name,

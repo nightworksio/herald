@@ -48,12 +48,12 @@ fn templates(route: &Route) -> Templates {
     Templates::compile(
         &[
             (
-                &title_template(&route.template),
+                &title_template(route.template.as_ref().unwrap()),
                 "📦 {{ event.project }} {{ event.attributes.version }}",
                 Form::Line,
             ),
             (
-                &body_template(&route.template),
+                &body_template(route.template.as_ref().unwrap()),
                 "{{ event.body }}",
                 Form::Markdown,
             ),
@@ -264,8 +264,33 @@ fn a_template_that_fails_fails_the_announcement() {
         .to_string(),
         "template package-release/title: template not found: template \"package-release/title\" does not exist"
     );
+    let untemplated = Route {
+        template: None,
+        ..route.clone()
+    };
+    assert_eq!(
+        announce(
+            &event(),
+            &untemplated,
+            &broken,
+            &profile(256, 4096),
+            "0",
+            marks(),
+            &links()
+        )
+        .unwrap_err()
+        .to_string(),
+        format!(
+            "template {}: the route names no template; it publishes each event as an envelope",
+            route.id.as_str()
+        )
+    );
     let no_body = Templates::compile(
-        &[(&title_template(&route.template), "t", Form::Line)],
+        &[(
+            &title_template(route.template.as_ref().unwrap()),
+            "t",
+            Form::Line,
+        )],
         crate::Sandbox::DEFAULT,
     )
     .unwrap();
@@ -285,8 +310,16 @@ fn a_template_that_fails_fails_the_announcement() {
     );
     let no_thread = Templates::compile(
         &[
-            (&title_template(&route.template), "t", Form::Line),
-            (&body_template(&route.template), "b", Form::Markdown),
+            (
+                &title_template(route.template.as_ref().unwrap()),
+                "t",
+                Form::Line,
+            ),
+            (
+                &body_template(route.template.as_ref().unwrap()),
+                "b",
+                Form::Markdown,
+            ),
         ],
         crate::Sandbox::DEFAULT,
     )

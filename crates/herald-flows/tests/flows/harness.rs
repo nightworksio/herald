@@ -251,6 +251,9 @@ pub(crate) enum Fault {
     ReadsPublished,
     WritesPublished,
     ConflictsPublished,
+    ReadsFeeds,
+    WritesFeeds,
+    ConflictsFeeds,
     KeepsNoPublished,
     ListsSchedules,
     Reads,
@@ -922,6 +925,7 @@ pub fn kinds() -> herald_config::Kinds {
         .destination::<herald_dest_matrix::MatrixKind>()
         .destination::<herald_dest_slack::SlackKind>()
         .destination::<herald_dest_fediverse::ActorKind>()
+        .destination::<herald_dest_herald::HeraldKind>()
         .source::<herald_sources_forge::GitHubKind>()
         .source::<herald_sources_forge::GitLabKind>()
         .source::<herald_sources_forge::ForgejoKind>()

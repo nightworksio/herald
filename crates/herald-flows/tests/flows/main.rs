@@ -22,6 +22,8 @@ mod doctoring;
 #[cfg(test)]
 mod endpoint;
 #[cfg(test)]
+mod feeds;
+#[cfg(test)]
 mod following;
 #[cfg(test)]
 mod harness;

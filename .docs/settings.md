@@ -196,6 +196,18 @@ herald's own ActivityPub actors, on its domain.
 | `destinations.<name>.waits.limited` | [Duration](#duration) | After the platform answers that herald sends too often; the platform's own window where unset: "5m" on Mastodon, "5s" elsewhere. |
 | `destinations.<name>.waits.outage` | [Duration](#duration) | After the platform answers that it is unwell; "5s" where unset. |
 
+### `destinations.<name>` of kind `herald`
+
+A feed of herald's own, served on the [federation] domain: each event as an envelope proved by the instance's newest key.
+
+| Setting | Type | What it sets |
+|---------|------|--------------|
+| `destinations.<name>` | table | A feed of herald's own, served on the [federation] domain: each event as an envelope proved by the instance's newest key. |
+| `destinations.<name>.envelope` | [Size](#size) | The most bytes one envelope takes, its proof counted: "16KiB" where unset, and at most "64KiB". A longer event's body is cut to fit. |
+| `destinations.<name>.keep` | integer | The most envelopes the feed keeps, newest first: 1000 where unset, fewer where the store's records hold fewer, and at most 4000. |
+| `destinations.<name>.kind` | string |  |
+| `destinations.<name>.page` | integer | The most envelopes a page lists: 20 where unset, and at most 80. |
+
 ## `doctor`
 
 How doctor judges the config.
@@ -224,6 +236,7 @@ This herald among other instances: its domain, its keys, and what its ActivityPu
 | `federation.lists[].sha256` | string | The SHA-256 of the file's text, in hex: a list that changes is not read until its new digest is pinned. |
 | `federation.mode` | [Mode](#mode) | Whom herald's actors federate with, for an ActivityPub destination that names no `mode`: `open` or `allowlist`. |
 | `federation.refresh` | [Duration](#duration) | How long a peer may keep the instance's key set before it reads it again; "1d" where absent, at most "7d". |
+| `federation.signed_for` | [Duration](#duration) | How long each response of herald's API stays signed, from when it is made: "5m" where absent, at most "20m". |
 
 ## `github_apps`
 
@@ -333,7 +346,7 @@ Which events go where, rendered how.
 | `routes[].subscribe` | table | The opt-in role members subscribe to, where the route offers one. |
 | `routes[].subscribe.button` | boolean | Whether each announcement carries a button that subscribes, or unsubscribes a member already subscribed. |
 | `routes[].subscribe.role` | string | The opt-in role `subscribe` gives a member and `unsubscribe` takes away, by id. The route mentions it with its announcements. |
-| `routes[].template` | string | The template it renders with. |
+| `routes[].template` | string | The template it renders with; none on a route to a herald feed, which publishes each event as an envelope. |
 | `routes[].thread` | table | The thread to open for each announcement. |
 | `routes[].thread.archive_after` | [Duration](#duration) | How long after the announcement the thread is archived. |
 | `routes[].thread.lock_after` | [Duration](#duration) | How long after the announcement the thread is locked, and archived. |
@@ -369,7 +382,7 @@ Which events go where, rendered how.
 | `routes[].prereleases` | [Prereleases](#prereleases) | Which pre-releases it takes. |
 | `routes[].private` | boolean | Whether its place is private, so it may take a private or internal repository's events; a place is public where absent, and a config sending such events to it does not load (`[doctor] private_to_public`). |
 | `routes[].sources` | array of string | The sources it takes events from. |
-| `routes[].template` | string | The template it renders with. |
+| `routes[].template` | string | The template it renders with; none on a route to a herald feed, which publishes each event as an envelope. |
 | `routes[].thread` | table | The thread to open for each announcement. |
 | `routes[].thread.archive_after` | [Duration](#duration) | How long after the announcement the thread is archived. |
 | `routes[].thread.lock_after` | [Duration](#duration) | How long after the announcement the thread is locked, and archived. |
@@ -404,7 +417,7 @@ Which events go where, rendered how.
 | `routes[].private` | boolean | Whether its place is private, so it may take a private or internal repository's events; a place is public where absent, and a config sending such events to it does not load (`[doctor] private_to_public`). |
 | `routes[].room` | string | The room's id, such as `!abcdefg:matrix.org`, which the bot has joined. |
 | `routes[].sources` | array of string | The sources it takes events from. |
-| `routes[].template` | string | The template it renders with. |
+| `routes[].template` | string | The template it renders with; none on a route to a herald feed, which publishes each event as an envelope. |
 | `routes[].thread` | table | The thread to open for each announcement. |
 | `routes[].thread.archive_after` | [Duration](#duration) | How long after the announcement the thread is archived. |
 | `routes[].thread.lock_after` | [Duration](#duration) | How long after the announcement the thread is locked, and archived. |
@@ -439,7 +452,7 @@ Which events go where, rendered how.
 | `routes[].sources` | array of string | The sources it takes events from. |
 | `routes[].subscribe` | table | How the route offers subscribing, where it mentions its subscribers. |
 | `routes[].subscribe.button` | boolean | Whether each announcement carries a button that subscribes, or unsubscribes a member already subscribed. |
-| `routes[].template` | string | The template it renders with. |
+| `routes[].template` | string | The template it renders with; none on a route to a herald feed, which publishes each event as an envelope. |
 | `routes[].thread` | table | The thread to open for each announcement. |
 | `routes[].thread.archive_after` | [Duration](#duration) | How long after the announcement the thread is archived. |
 | `routes[].thread.lock_after` | [Duration](#duration) | How long after the announcement the thread is locked, and archived. |
@@ -474,13 +487,45 @@ Which events go where, rendered how.
 | `routes[].prereleases` | [Prereleases](#prereleases) | Which pre-releases it takes. |
 | `routes[].private` | boolean | Whether its place is private, so it may take a private or internal repository's events; a place is public where absent, and a config sending such events to it does not load (`[doctor] private_to_public`). |
 | `routes[].sources` | array of string | The sources it takes events from. |
-| `routes[].template` | string | The template it renders with. |
+| `routes[].template` | string | The template it renders with; none on a route to a herald feed, which publishes each event as an envelope. |
 | `routes[].thread` | table | The thread to open for each announcement. |
 | `routes[].thread.archive_after` | [Duration](#duration) | How long after the announcement the thread is archived. |
 | `routes[].thread.lock_after` | [Duration](#duration) | How long after the announcement the thread is locked, and archived. |
 | `routes[].thread.name` | string | The template of the thread's name. |
 | `routes[].versions` | string | The versions it takes, as a pattern in which `*` stands for any run of characters and `?` for any one, such as `"*.*.*"`, which leaves out a Docker Hub tag such as `latest`; every version where absent. |
 | `routes[].visibility` | [Audience](#audience) | Who sees each Note on the timelines. |
+
+### `routes[]`: A route publishing its events to a feed of herald's own
+
+| Setting | Type | What it sets |
+|---------|------|--------------|
+| `routes[].crosspost` | boolean | Whether to crosspost each announcement. |
+| `routes[].destination` | string | The destination it announces to. |
+| `routes[].edits` | [Edits](#edits) | Which changed announcements it edits the post of: none, or a Release whose name or notes the forge says were edited (`release`). |
+| `routes[].id` | string | The route's stable id, part of every announcement's key. |
+| `routes[].kinds` | array of [Kind](#kind) | The kinds of event it takes; every kind where absent. |
+| `routes[].late_release` | [LateRelease](#laterelease) | What it does with a Release whose tag it already announced: edits the tag's post to it, or posts it anew where the destination cannot edit (`edit`); posts it anew (`post`); or leaves the tag's post (`skip`). |
+| `routes[].match` | table | What of an event it narrows its sources' events by, an event taken only where every key holds; every event its other keys take where absent. |
+| `routes[].match.forges` | array of string | The forges and registries taken, as a source's `kind` names them. |
+| `routes[].match.hosts` | array of string | The hosts taken, such as `github.com` or `ghe.example`. |
+| `routes[].match.owners` | array of string | The owners taken: accounts, organizations, groups, or a registry's scopes, vendors and namespaces, as globs, ignoring case. |
+| `routes[].match.projects` | array of string | The projects taken, as globs, ignoring case. |
+| `routes[].match.properties.<name>` | array of string |  |
+| `routes[].match.repositories` | array of string | The repositories or packages taken by their full path, as globs, ignoring case, such as `"*/plugin-*"`. |
+| `routes[].match.topics` | array of string | The topics, any one of which a repository holds. |
+| `routes[].mentions` | table | Who it mentions. |
+| `routes[].mentions.roles` | array of string | The roles it pings, by the destination's ids for them. |
+| `routes[].mentions.subscribers` | boolean | Whether it mentions the subscribers herald keeps. |
+| `routes[].pin` | [Pinning](#pinning) | Whether to pin each announcement in place of the route's earlier pin, and how the earlier pin is found. |
+| `routes[].prereleases` | [Prereleases](#prereleases) | Which pre-releases it takes. |
+| `routes[].private` | boolean | Whether its place is private, so it may take a private or internal repository's events; a place is public where absent, and a config sending such events to it does not load (`[doctor] private_to_public`). |
+| `routes[].sources` | array of string | The sources it takes events from. |
+| `routes[].template` | string | The template it renders with; none on a route to a herald feed, which publishes each event as an envelope. |
+| `routes[].thread` | table | The thread to open for each announcement. |
+| `routes[].thread.archive_after` | [Duration](#duration) | How long after the announcement the thread is archived. |
+| `routes[].thread.lock_after` | [Duration](#duration) | How long after the announcement the thread is locked, and archived. |
+| `routes[].thread.name` | string | The template of the thread's name. |
+| `routes[].versions` | string | The versions it takes, as a pattern in which `*` stands for any run of characters and `?` for any one, such as `"*.*.*"`, which leaves out a Docker Hub tag such as `latest`; every version where absent. |
 
 ## `run`
 

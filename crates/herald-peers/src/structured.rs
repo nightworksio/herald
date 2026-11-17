@@ -268,11 +268,21 @@ pub fn written_parameters(parameters: &[(String, Bare)]) -> String {
     out
 }
 
-/// The inner list of `items`, each a bare item without parameters, with
-/// the list's `parameters`.
+/// `item` with its parameters, written as a structured field writes it.
 #[must_use]
-pub fn written_inner(items: &[Bare], parameters: &[(String, Bare)]) -> String {
-    let listed: Vec<String> = items.iter().map(written).collect();
+pub fn written_item(item: &Item) -> String {
+    format!(
+        "{}{}",
+        written(&item.bare),
+        written_parameters(&item.parameters)
+    )
+}
+
+/// The inner list of `items`, each with its parameters, with the list's
+/// `parameters`.
+#[must_use]
+pub fn written_inner(items: &[Item], parameters: &[(String, Bare)]) -> String {
+    let listed: Vec<String> = items.iter().map(written_item).collect();
     format!("({}){}", listed.join(" "), written_parameters(parameters))
 }
 

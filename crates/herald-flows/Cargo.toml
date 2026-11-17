@@ -28,6 +28,7 @@ jiff.workspace = true
 
 [dev-dependencies]
 base64.workspace = true
+herald-dest-herald.workspace = true
 herald-records.workspace = true
 herald-sources-feed.workspace = true
 herald-sources-forge.workspace = true

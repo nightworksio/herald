@@ -20,6 +20,9 @@ const GITHUB: &str = "github";
 enum Fault {
     ForgetsPublishedKeys,
     OverwritesAnyPublishedVersion,
+    ForgetsFeeds,
+    SharesFeeds,
+    OverwritesAnyFeedVersion,
     ForgetsTheSecondToken,
     OverwritesAnyTokenVersion,
     OverwritesEntries,

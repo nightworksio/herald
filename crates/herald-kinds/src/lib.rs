@@ -5,6 +5,7 @@
 mod credential;
 mod destination;
 mod federates;
+mod feeding;
 mod interacts;
 mod itself;
 mod kind;
@@ -19,6 +20,7 @@ mod store;
 pub use credential::{Credential, Minted};
 pub use destination::{Carried, Destination, DestinationConfig, UNREAD};
 pub use federates::{Activity, Federates, Inboxes};
+pub use feeding::{Fed, Feeding};
 pub use interacts::{Endpoint, Interacted, Interacts, Post, Read, Replying, Said, optional};
 pub use itself::Itself;
 pub use kind::{DestinationKind, Fault, Inherited, Placing};

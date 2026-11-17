@@ -168,6 +168,21 @@ test("a refusal that asks its sender to wait says how long", async (t) => {
   assert.equal(response.headers.get("retry-after"), "30");
 });
 
+test("every other header herald names is carried on the answer", async () => {
+  const herald = {
+    answer: async () => ({
+      status: 200,
+      kind: "application/json",
+      body: new TextEncoder().encode("{}"),
+      headers: [["etag", '"1.0.20"'], ["signature", "herald=:AA==:"]],
+    }),
+  };
+  const { response } = await answering(herald, {});
+  assert.equal(response.headers.get("etag"), '"1.0.20"');
+  assert.equal(response.headers.get("signature"), "herald=:AA==:");
+  assert.equal(response.headers.get("content-type"), "application/json");
+});
+
 test("a body larger than [server] body is refused on Node", async (t) => {
   const directory = await mkdtemp(join(tmpdir(), "herald-node-"));
   const path = join(directory, "herald.toml");

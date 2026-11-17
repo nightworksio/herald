@@ -115,6 +115,31 @@ impl herald_ports::Published for Failing {
         }
         self.inner.put_published_keys(keys, expected).await
     }
+
+    async fn feed(
+        &self,
+        destination: &herald_core::DestinationName,
+    ) -> Result<Option<Versioned<herald_core::Feed>>, StoreError> {
+        if self.fault == Fault::ReadsFeeds {
+            return Err(broken());
+        }
+        self.inner.feed(destination).await
+    }
+
+    async fn put_feed(
+        &self,
+        destination: &herald_core::DestinationName,
+        feed: &herald_core::Feed,
+        expected: Option<Version>,
+    ) -> Result<Written, StoreError> {
+        if self.fault == Fault::WritesFeeds {
+            return Err(broken());
+        }
+        if self.fault == Fault::ConflictsFeeds {
+            return Ok(Written::Conflict);
+        }
+        self.inner.put_feed(destination, feed, expected).await
+    }
 }
 
 impl herald_ports::Published for Refusing {
@@ -127,6 +152,22 @@ impl herald_ports::Published for Refusing {
     async fn put_published_keys(
         &self,
         _: &herald_core::PublishedKeys,
+        _: Option<Version>,
+    ) -> Result<Written, StoreError> {
+        Err(self.0.clone())
+    }
+
+    async fn feed(
+        &self,
+        _: &herald_core::DestinationName,
+    ) -> Result<Option<Versioned<herald_core::Feed>>, StoreError> {
+        Err(self.0.clone())
+    }
+
+    async fn put_feed(
+        &self,
+        _: &herald_core::DestinationName,
+        _: &herald_core::Feed,
         _: Option<Version>,
     ) -> Result<Written, StoreError> {
         Err(self.0.clone())

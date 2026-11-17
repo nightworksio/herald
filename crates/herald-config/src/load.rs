@@ -258,7 +258,8 @@ pub fn load(
     let (retention, attempts) = kept.unwrap_or_default();
     let marker_key = loader.marker_key(sections.markers);
     let (federation, inherited) = loader.federation(sections.federation);
-    let destinations = loader.destinations(sections.destinations, &inherited, read);
+    let mut destinations = loader.destinations(sections.destinations, &inherited, read);
+    loader.feeds(store.as_ref(), &federation, &mut destinations);
     let (mut sources, source_spans) = loader.sources(sections.sources, read);
     loader.remembering(store.as_ref(), (&mut sources, &source_spans));
     let templates = loader.templates(sections.templates, read);
@@ -286,6 +287,7 @@ pub fn load(
     let run = loader.run(sections.run);
     let doctor = loader.doctor(sections.doctor);
     loader.exposed(&sources, &routes, doctor);
+    loader.unfed(&destinations, &routes, doctor);
     loader.routed((&sources, &source_spans), &routes, doctor);
     let (true, Some(store), Some(templates)) = (loader.errors.is_empty(), store, compiled) else {
         return Err(loader.failed());
@@ -321,6 +323,7 @@ mod apps;
 mod declared;
 mod destinations;
 mod federation;
+mod feeds;
 mod github_apps;
 mod route;
 mod secrets;

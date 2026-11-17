@@ -61,4 +61,5 @@ no separate requirements document, and there are no requirement IDs.
 | [0041](0041-an-owner-learns-of-its-repositories-by-push-and-reads-as-a-github-app.md) | An owner learns of its repositories by push, and reads as a GitHub App | Accepted |
 | [0042](0042-an-oci-source-announces-an-image-s-tags-on-any-registry.md) | An oci source announces an image's tags on any registry | Accepted |
 | [0043](0043-instances-sign-with-ed25519-prove-their-objects-and-publish-a-key-set.md) | Instances sign with Ed25519, prove their objects, and publish a key set | Accepted |
-| [0044](0044-an-instance-is-found-by-its-discovery-document-and-federation-holds-its-identity.md) | An instance is found by its discovery document, and `[federation]` holds its identity | Accepted |
+| [0044](0044-an-instance-is-found-by-its-discovery-document-and-federation-holds-its-identity.md) | An instance is found by its discovery document, and `[federation]` holds its identity | Accepted; extended by [0046](0046-a-herald-feed-publishes-each-public-event-as-a-proved-envelope-and-the-api-signs-every-answer.md) |
+| [0046](0046-a-herald-feed-publishes-each-public-event-as-a-proved-envelope-and-the-api-signs-every-answer.md) | A herald feed publishes each public event as a proved envelope, and the API signs every answer | Accepted |
