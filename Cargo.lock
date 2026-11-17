@@ -924,6 +924,7 @@ dependencies = [
  "herald-flows",
  "herald-kinds",
  "herald-native",
+ "herald-peers",
  "herald-ports",
  "herald-records",
  "herald-server",
@@ -946,6 +947,7 @@ dependencies = [
  "tempfile",
  "tokio",
  "toml",
+ "toml_edit",
 ]
 
 [[package]]
@@ -1015,6 +1017,7 @@ dependencies = [
  "herald-dest-matrix",
  "herald-dest-slack",
  "herald-kinds",
+ "herald-peers",
  "herald-ports",
  "herald-sources-feed",
  "herald-sources-forge",
@@ -3523,6 +3526,7 @@ dependencies = [
  "indexmap",
  "toml_datetime",
  "toml_parser",
+ "toml_writer",
  "winnow",
 ]
 

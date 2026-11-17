@@ -6,7 +6,7 @@ use herald_core::{
     Problem, RELEASE_LINK, Visibility, prerelease_version, status, unreserved, versioned,
 };
 use herald_kinds::{Poll, Probed, Unpolled};
-use herald_ports::{Boxed, DynHttp, Response, SecretText};
+use herald_ports::{Boxed, DynHttp, Response};
 use herald_wire::{SourceError, answered};
 use jiff::{SignedDuration, Timestamp};
 
@@ -107,9 +107,7 @@ impl Image {
                 .map(|last| format!("&last={}", unreserved(last)))
                 .unwrap_or_default();
             let path = format!("/v2/{}/tags/list?n={page}{last}", self.name);
-            let request = session
-                .get(&path)
-                .header("Accept", SecretText::plain(herald_core::media::JSON));
+            let request = session.get(&path).accepting(herald_core::media::JSON);
             let answer = session.send(request).await?;
             answered(wire::TAGS, &answer).map_err(|error| Failure::read("repository", &error))?;
             answered_at = answered_at.or_else(|| answer.date());
@@ -151,7 +149,7 @@ impl Image {
     fn manifest(&self, session: &Session<'_>, reference: &str) -> herald_ports::Request {
         session
             .get(&format!("/v2/{}/manifests/{reference}", self.name))
-            .header("Accept", SecretText::plain(wire::MANIFESTS))
+            .accepting(wire::MANIFESTS)
     }
 
     /// When the image `tag` names was created, as its manifest, its first

@@ -29,6 +29,7 @@ herald-kinds.workspace = true
 herald-crypto.workspace = true
 herald-environment.workspace = true
 herald-native.workspace = true
+herald-peers.workspace = true
 herald-ports.workspace = true
 herald-records.workspace = true
 herald-server.workspace = true
@@ -46,6 +47,7 @@ schemars.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 tokio = { workspace = true, features = ["fs", "io-std", "io-util", "macros", "net", "rt", "signal"] }
+toml_edit.workspace = true
 
 [dev-dependencies]
 base64.workspace = true

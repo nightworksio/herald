@@ -112,3 +112,26 @@ fn nodeinfo_links_its_document_and_names_activitypub_only_where_actors_are_serve
     assert_eq!(none["usage"]["users"]["total"], json!(0));
     assert_eq!(none["metadata"]["feeds"], json!([]));
 }
+
+#[test]
+fn the_key_set_a_discovery_document_lists_reads_back_as_written() {
+    let keys = KeySet {
+        sequence: 4,
+        refresh: 3_600,
+        keys: vec![[5; 32], [6; 32]],
+    };
+    let document = INSTANCE.document(&keys, &[]);
+    assert_eq!(key_set(document.as_bytes(), "herald.example"), Ok(keys));
+    assert!(matches!(
+        key_set(document.as_bytes(), "other.example"),
+        Err(Unkeyed::Foreign(_))
+    ));
+    assert_eq!(
+        key_set(br#"{"version": 1}"#, "herald.example"),
+        Err(Unkeyed::Shape("it has no sequence"))
+    );
+    assert_eq!(
+        key_set(b"<html>", "herald.example"),
+        Err(Unkeyed::Shape("it is no JSON"))
+    );
+}

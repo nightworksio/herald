@@ -32,6 +32,7 @@ mod followers;
 mod health;
 mod lambda;
 mod output;
+mod peers;
 mod preview;
 mod release;
 mod serving;
@@ -267,6 +268,11 @@ async fn answered(
             let done = setup::set_up(config, vars, connect, &setting, &random_secret, out).await;
             finished(done, err)
         }
+        Reading::Peer(asked) => {
+            let answers = &mut tokio::io::BufReader::new(tokio::io::stdin());
+            let done = peers::peering(config, path, &asked, connect, answers, out).await;
+            finished(done, err)
+        }
         Reading::Run(run) => return ControlFlow::Continue(run),
     })
 }
@@ -290,9 +296,30 @@ pub async fn run(
     .await
 }
 
+/// `done`, its error worded after `what`, as herald says a file could not
+/// be read or written.
+fn filed<T>(done: std::io::Result<T>, what: &str) -> Result<T, String> {
+    done.map_err(|error| format!("{what}: {error}"))
+}
+
+/// The text of the file at `path`.
+fn text(path: &str) -> Result<String, String> {
+    filed(
+        std::fs::read_to_string(path),
+        &format!("{path} could not be read"),
+    )
+}
+
+/// `text` written to the file at `path`.
+fn rewrite(path: &str, text: String) -> Result<(), String> {
+    filed(
+        std::fs::write(path, text),
+        &format!("{path} could not be written"),
+    )
+}
+
 fn read(path: &str) -> Result<Config, String> {
-    let text = std::fs::read_to_string(path)
-        .map_err(|error| format!("{path} could not be read: {error}"))?;
+    let text = text(path)?;
     let directory = Path::new(path).parent().unwrap_or(Path::new(""));
     let files = |file: &str| {
         std::fs::read_to_string(directory.join(file)).map_err(|error| error.to_string())

@@ -81,7 +81,7 @@ pub fn key_request(key_id: &str, most: usize) -> Option<Request> {
     origin(key_id)?;
     Some(
         Request::new(Method::Get, SecretText::plain(document(key_id)))
-            .header("Accept", SecretText::plain(ACTIVITY_JSON))
+            .accepting(ACTIVITY_JSON)
             .identified()
             .at_most(most),
     )

@@ -6,6 +6,7 @@
 //! the documents an instance is found by (ADR-0044), and its feeds of
 //! proved envelopes.
 
+pub mod answer;
 pub mod digest;
 pub mod discovery;
 pub mod feed;

@@ -75,6 +75,10 @@ pub(crate) enum Reading {
     Store,
     #[command(flatten)]
     Set(Setting),
+    /// Trust another herald by the keys you confirm, list and check those
+    /// trusted, or stop trusting one.
+    #[command(subcommand)]
+    Peer(Peering),
     /// Render each route's templates as its destination would show them,
     /// against a sample event or a release event's file.
     Preview {
@@ -88,6 +92,50 @@ pub(crate) enum Reading {
         /// The forge whose release event the file is.
         #[arg(long, value_enum, default_value_t = RunForge::Github)]
         from: RunForge,
+    },
+}
+
+/// The commands on the heralds this one trusts.
+#[derive(Debug, Subcommand)]
+pub(crate) enum Peering {
+    /// Read a herald's discovery document, show each key's Multikey and
+    /// fingerprint, and pin the keys you confirm as [peers.<name>] in the
+    /// config.
+    Add {
+        /// The herald's domain, or its address with any path its endpoints
+        /// are under.
+        url: String,
+        /// The peer's name; its domain with each '.' as '-' where absent.
+        #[arg(long)]
+        name: Option<String>,
+        /// A key to pin without asking, as a Multikey or a `sha256:`
+        /// fingerprint its operator gave you; give it once for each key.
+        #[arg(long)]
+        key: Vec<String>,
+        /// Print the table rather than write it into the config.
+        #[arg(long)]
+        print: bool,
+        /// Pin the keys a peer already named lists now.
+        #[arg(long)]
+        update: bool,
+    },
+    /// List each peer with its pinned keys.
+    List,
+    /// Read each peer's discovery document, checked against its pinned
+    /// keys, and name each key set that changed.
+    Test {
+        /// Only this peer.
+        name: Option<String>,
+    },
+    /// Stop trusting a peer, or one of its keys: taken from the config and
+    /// added to [federation] revoked, so it is never pinned again.
+    Revoke {
+        /// The peer, by name.
+        name: String,
+        /// Only this key, as a Multikey or a `sha256:` fingerprint; the peer
+        /// is kept while it pins another.
+        #[arg(long)]
+        key: Option<String>,
     },
 }
 

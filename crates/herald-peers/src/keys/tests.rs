@@ -223,3 +223,12 @@ fn every_refusal_reads_as_a_sentence() {
         assert_eq!(refused.to_string(), text);
     }
 }
+
+#[test]
+fn a_key_s_fingerprint_is_the_sha_256_of_its_bytes() {
+    assert_eq!(
+        fingerprint(&[0; 32]),
+        "sha256:66687aadf862bd776c8fc18b8e9f8e20089714856ee233b3902a591d0d5f2925"
+    );
+    assert_ne!(fingerprint(&[1; 32]), fingerprint(&[0; 32]));
+}

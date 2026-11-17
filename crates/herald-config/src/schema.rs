@@ -8,7 +8,7 @@ use crate::kinds::Kinds;
 
 use crate::file::{
     AnnounceFile, AppFile, DoctorFile, FederationFile, GithubAppFile, HttpFile, KindFile,
-    MarkersFile, RecordsFile, RenderFile, RouteFile, RunFile, ScheduleFile, ServerFile,
+    MarkersFile, PeerFile, RecordsFile, RenderFile, RouteFile, RunFile, ScheduleFile, ServerFile,
     TemplateFile,
 };
 
@@ -265,6 +265,9 @@ struct FileSchema {
     /// This herald among other instances: its domain, its keys, and what
     /// its ActivityPub actors take by default.
     federation: Option<FederationFile>,
+    /// The other heralds this one trusts, by name.
+    #[serde(default)]
+    peers: BTreeMap<String, PeerFile>,
     /// How herald's own requests reach the services the config names.
     http: Option<HttpFile>,
     /// How far a template may go as it renders.

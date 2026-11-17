@@ -61,7 +61,7 @@ pub fn containers(api: &str) -> String {
 #[must_use]
 pub fn headed(request: Request) -> Request {
     request
-        .header("Accept", SecretText::plain("application/vnd.github+json"))
+        .accepting("application/vnd.github+json")
         .header("X-GitHub-Api-Version", SecretText::plain(VERSION))
         .identified()
 }

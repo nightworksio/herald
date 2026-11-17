@@ -383,7 +383,7 @@ impl Feed {
     pub fn request(&self, cursor: Option<&Cursor>) -> Request {
         let request = Request::new(Method::Get, SecretText::plain(self.url.clone()))
             .at_most(self.reading.parse)
-            .header("Accept", SecretText::plain(ACCEPT))
+            .accepting(ACCEPT)
             .identified();
         request.conditional(
             cursor.and_then(|cursor| cursor.etag.as_deref()),

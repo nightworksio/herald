@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use herald_core::{Listed, Listing, Origin, Owner, Selection, unreserved};
 use herald_kinds::{Expand, Expanded, Poll, Probed, Unlisted, Unpolled};
-use herald_ports::{Boxed, DynHttp, SecretText};
+use herald_ports::{Boxed, DynHttp};
 use herald_wire::answered;
 use jiff::SignedDuration;
 
@@ -75,7 +75,7 @@ impl Catalogued {
                 .unwrap_or_default();
             let request = session
                 .get(&format!("/v2/_catalog?n={page}{last}"))
-                .header("Accept", SecretText::plain(herald_core::media::JSON));
+                .accepting(herald_core::media::JSON);
             let answer = session.send(request).await.map_err(Unlisted::from)?;
             let listed = answered(wire::CATALOG, &answer)
                 .and_then(|()| wire::catalog(self.reached.reading.parse, &answer.body))

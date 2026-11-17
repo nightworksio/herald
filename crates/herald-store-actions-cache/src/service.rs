@@ -74,7 +74,7 @@ impl<H: Http + Send> CacheRecords<'_, H> {
             SecretText::plain(format!("{}{SERVICE}{method}", self.cache.results)),
         )
         .header("Content-Type", SecretText::plain(media::JSON))
-        .header("Accept", SecretText::plain(media::JSON))
+        .accepting(media::JSON)
         .identified()
         .bearer(self.cache.token.clone())
         .body(body.to_string());

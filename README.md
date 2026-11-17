@@ -231,62 +231,11 @@ answers that the actor is gone.
 
 ### herald among other instances
 
-`[federation]` names the domain herald serves on and its Ed25519 keys,
-newest first: the first signs, and every one verifies.
-
-```toml
-[federation]
-domain = "herald.example.org"
-keys = [{ secret = "HERALD_KEY" }]
-```
-
-Make a key with:
-
-```sh
-openssl genpkey -algorithm ed25519 -out herald-key.pem
-```
-
-`herald server` then answers `/.well-known/herald` on that domain: the API
-it serves, its software and its key set, under a sequence the store raises
-by one whenever the keys change. Peers pin the keys and read the set again
-after `refresh` (`"1d"`, at most `"7d"`). Rotate by writing the new key
-before the old one, and leave the old one out once peers know the new one.
-WebFinger finds the instance as `acct:herald@herald.example.org`, and
-NodeInfo 2.1 describes it at `/.well-known/nodeinfo`. herald reads at most
-8 KiB of a peer's signature fields.
-
-An ActivityPub destination takes `domain`, `key` (as `actor_key`) and its
-follow policy (`mode`, `block`, `allow`, `followers`, `approve`, `lists`)
-from `[federation]` where it leaves them out, and its own where it names
-them. `herald doctor` checks that each key is an Ed25519 key, and names
-the markers store, which keeps no key set, and a layer that serves no
-endpoint.
-
-#### A feed of herald's own
-
-A `herald` destination is a feed herald serves rather than posts to. Each
-event a route takes is published as an envelope of what of it is public
-(its identity, kind, project, title, body, links, the attributes its kind
-declares, when it happened, and its forge, host and repository), proved by
-the newest `[federation]` key, and listed newest first at
-`/herald/v1/feeds/<destination>` on the federation domain:
-
-```toml
-[destinations.releases]
-kind = "herald"
-
-[[routes]]
-id = "releases-feed"
-sources = ["herald"]
-destination = "releases"
-```
-
-- A route to a feed renders no template, so it names none.
-- The feed keeps the newest `keep` envelopes (1000, at most 4000, fewer where the store's records hold fewer), lists `page` of them a page (20, at most 80), each `?before=<sequence>` the next, and tags each page for `If-None-Match`. An envelope takes at most `envelope` (`"16KiB"`, at most `"64KiB"`), and a longer event's body is cut, marked `"cut": true`.
-- An edited or late Release enters again first, under a new sequence, in place of its older envelope.
-- Only an event herald sees as public enters. Where a published event is no longer public, its envelope gives way to a tombstone. A route declared `private` to a feed does not load unless `[doctor] private_to_public = "warn"`.
-- Every answer under `/herald/v1`, and the discovery document, carries an HTTP message signature by the newest key over its status, type, `Content-Digest`, tag, and the method and URL asked, valid for `[federation] signed_for` (`"5m"`, at most `"20m"`).
-- The markers store keeps no feed, and a feed needs `[federation]`'s `domain` and `keys`. The discovery document and NodeInfo list each feed.
+`[federation]` names the domain herald serves on and its Ed25519 keys; a
+`herald` destination publishes a signed feed of herald's own; and
+`[peers.*]` pins the other heralds this one trusts, by the keys their
+operators confirm with `herald peer add`. [.docs/federation.md](.docs/federation.md)
+covers each.
 
 ### herald server
 
