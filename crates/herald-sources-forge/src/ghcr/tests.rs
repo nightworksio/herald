@@ -3,6 +3,9 @@ use serde_json::{Value, json};
 
 use super::*;
 
+/// The round each poll here is made in.
+const ROUND: jiff::Timestamp = jiff::Timestamp::UNIX_EPOCH;
+
 fn options() -> GhcrOptions {
     GhcrOptions {
         owner: "nightworksio".to_owned(),
@@ -324,7 +327,7 @@ fn polled(
     http: &ScriptedHttp,
     cursor: Option<&Cursor>,
 ) -> Result<Option<Polled>, Unpolled> {
-    pollster::block_on(poll.polled(http, cursor))
+    pollster::block_on(poll.polled(http, cursor, ROUND))
 }
 
 #[test]

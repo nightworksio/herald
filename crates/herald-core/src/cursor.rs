@@ -1,5 +1,6 @@
 use std::collections::BTreeMap;
 
+use jiff::Timestamp;
 use serde::{Deserialize, Serialize};
 
 use crate::event::Event;
@@ -34,6 +35,10 @@ pub struct Cursor {
     /// versions, by package (ADR-0035).
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub packages: BTreeMap<String, Validators>,
+    /// When the newest event it announced occurred, where its source
+    /// leaves older ones it finds unannounced (ADR-0042).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub newest: Option<Timestamp>,
 }
 
 /// What one poll of a source found: its events, the newest first, and the
@@ -61,6 +66,10 @@ pub struct Polled {
     /// full, newest first, which announce nothing and are remembered as
     /// seen.
     pub unread: Vec<Identity>,
+    /// When the newest event its source announced occurred, where the
+    /// source keeps that mark; the cursor's own mark stays where it is
+    /// not given.
+    pub newest: Option<Timestamp>,
 }
 
 impl Cursor {
@@ -115,6 +124,7 @@ impl Cursor {
             signals: polled.signals.clone(),
             notes: self.watched(polled),
             packages: polled.packages.clone(),
+            newest: polled.newest.or(self.newest),
         }
     }
 
@@ -232,6 +242,30 @@ mod tests {
     }
 
     #[test]
+    fn an_advanced_cursor_takes_the_newest_mark_its_poll_gives_and_else_keeps_its_own() {
+        let then = Timestamp::constant(1_700_000_000, 0);
+        let later = Timestamp::constant(1_800_000_000, 0);
+        let cursor = Cursor {
+            newest: Some(then),
+            ..Cursor::default()
+        };
+        let marked = Polled {
+            newest: Some(later),
+            ..Polled::default()
+        };
+        assert_eq!(cursor.advanced(&marked, 500).newest, Some(later));
+        assert_eq!(cursor.advanced(&Polled::default(), 500).newest, Some(then));
+        assert_eq!(
+            Cursor::default().advanced(&Polled::default(), 500).newest,
+            None
+        );
+        let written = serde_json::to_string(&Cursor::default()).unwrap();
+        assert!(!written.contains("newest"), "{written}");
+        let read: Cursor = serde_json::from_str(&serde_json::to_string(&cursor).unwrap()).unwrap();
+        assert_eq!(read.newest, Some(then));
+    }
+
+    #[test]
     fn a_known_source_announces_what_its_cursor_has_not_seen() {
         let cursor = Cursor {
             seen: vec![Identity::new("b"), Identity::new("a")],
@@ -263,6 +297,7 @@ mod tests {
                 watched: 0,
                 packages: BTreeMap::from([("container/herald".to_owned(), tags.clone())]),
                 unread: vec![Identity::new("u"), Identity::new("c")],
+                newest: None,
             },
             500,
         );
@@ -283,6 +318,7 @@ mod tests {
                 notes: BTreeMap::new(),
                 tagged: vec![Identity::new("b"), Identity::new("p"), Identity::new("a")],
                 packages: BTreeMap::from([("container/herald".to_owned(), tags.clone())]),
+                newest: None,
             }
         );
         assert_eq!(advanced.validators(Signal::Tag), Some(&tags));

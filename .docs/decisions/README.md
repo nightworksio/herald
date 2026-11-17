@@ -59,3 +59,4 @@ no separate requirements document, and there are no requirement IDs.
 | [0039](0039-a-registry-source-takes-every-package-of-a-namespace.md) | A registry source takes every package of a namespace | Accepted |
 | [0040](0040-a-ghcr-source-announces-an-owner-s-images-as-their-repositories-projects.md) | A ghcr source announces an owner's images as their repositories' projects | Accepted |
 | [0041](0041-an-owner-learns-of-its-repositories-by-push-and-reads-as-a-github-app.md) | An owner learns of its repositories by push, and reads as a GitHub App | Accepted |
+| [0042](0042-an-oci-source-announces-an-image-s-tags-on-any-registry.md) | An oci source announces an image's tags on any registry | Accepted |

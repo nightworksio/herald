@@ -16,6 +16,7 @@ mod discovery;
 mod feed;
 mod held;
 mod hooks;
+mod images;
 mod packages;
 mod registries;
 mod routes;

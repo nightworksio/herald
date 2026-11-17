@@ -232,6 +232,36 @@ fn a_route_taking_docker_hub_tags_without_versions_is_noted() {
     );
 }
 
+#[test]
+fn an_oci_source_whose_store_chose_its_most_tags_is_noted() {
+    let text = |bound: &str| {
+        format!(
+            "version = 1\n[store]\nkind = \"git-branch\"\nkey = {{ secret = \"S\" }}\n[markers]\nkey = {{ secret = \"K\" }}\n[destinations.discord]\nkind = \"discord\"\ntoken = {{ secret = \"T\" }}\n[sources.app]\nkind = \"oci\"\nregistry = \"https://registry.example\"\nrepository = \"acme/app\"\n{bound}\n[[routes]]\nid = \"images\"\nsources = [\"app\"]\ndestination = \"discord\"\nchannel = \"1566200000000000100\"\ntemplate = \"t\"\n[templates.t]\ntitle = \"{{{{ event.attributes.version }}}}\"\nbody = \"\"\n"
+        )
+    };
+    let loaded = |bound: &str| {
+        load(
+            "herald.toml",
+            &text(bound),
+            &|_| Err(String::new()),
+            &crate::harness::kinds(),
+        )
+        .unwrap()
+    };
+    let each = "registry.example/acme/app/".len() + 128 + 5;
+    assert_eq!(
+        doctored(&loaded(""), &layer(&STORES)).notes,
+        [format!(
+            "The source app's most_tags is {}, the most the git-branch store keeps in a record, as its options set none; set it to choose, or give a store that keeps more.",
+            (1_000_000 - 4_096) / each
+        )]
+    );
+    assert_eq!(
+        doctored(&loaded("most_tags = 100"), &layer(&STORES)).notes,
+        Vec::<String>::new()
+    );
+}
+
 fn interacting(discord: &str, slack: &str, matrix: &str) -> herald_config::Config {
     let text = format!(
         r#"version = 1

@@ -569,6 +569,7 @@ impl Expand for Owned {
         http: &'a dyn DynHttp,
         members: &'a [(&'a Listed, Option<&'a Cursor>)],
         rounded: &'a Rounded,
+        now: jiff::Timestamp,
     ) -> Boxed<'a, Vec<Result<Option<Polled>, Unpolled>>> {
         Box::pin(async move {
             let list = match rounded {
@@ -589,7 +590,11 @@ impl Expand for Owned {
                         }
                         list => list.clone(),
                     };
-                    answered.push(self.releases(repository, list).polled(http, *cursor).await);
+                    answered.push(
+                        self.releases(repository, list)
+                            .polled(http, *cursor, now)
+                            .await,
+                    );
                 }
                 return answered;
             };

@@ -925,6 +925,37 @@ A repository's tags on Docker Hub.
 | `sources.<name>.vendor` | string | The Packagist vendor whose packages the source takes, each polled on its own; exclusive with `package`. |
 | `sources.<name>.visibility` | [Declared](#declared) | Who may see a namespace's packages where its listing does not say: `public` declares them public. Where absent, they are public when the source has no token and private when it has one, which a token may list. |
 
+### `sources.<name>` of kind `oci`
+
+A container image's tags on any registry serving the OCI Distribution API.
+
+| Setting | Type | What it sets |
+|---------|------|--------------|
+| `sources.<name>` | table | A container image's tags on any registry serving the OCI Distribution API. |
+| `sources.<name>.auth` | string | The base URL of the one origin besides the registry's own that may hand out its tokens: a `Bearer` challenge naming a realm anywhere else is refused. `https://auth.docker.io` for Docker Hub's registry where absent, and none otherwise; GitLab's registry needs its GitLab's, such as `https://gitlab.com`. |
+| `sources.<name>.backfill` | integer | How many of the newest tags the first poll announces; none where absent. The registry gives tags no time, so the first poll reads the last `page` tags its listing names to find the newest. |
+| `sources.<name>.blobs` | array of string | The base URLs of the origins a config blob may be redirected to, fetched without the registry's credential. Docker Hub's and GitHub's CDNs for their registries where absent, and none otherwise. A blob redirected elsewhere is not read: its tag takes the time it was first seen. |
+| `sources.<name>.catalog` | boolean | Whether the source takes every repository the registry's `/v2/_catalog` lists, each polled on its own. Exclusive with `repository`. |
+| `sources.<name>.exclude` | array of string | Globs of the repositories a catalog source leaves out, whatever `include` says. |
+| `sources.<name>.include` | array of string | Globs of the repositories a catalog source takes; every one where empty. |
+| `sources.<name>.keep_members` | [Duration](#duration) | How long a repository that left the catalog is kept, with its cursor, before it is forgotten; "30d" where absent. |
+| `sources.<name>.kind` | string |  |
+| `sources.<name>.listed_page` | integer | How many tags, or repositories of the catalog, one page of a listing asks for; 1000 where absent, and at most 10000. |
+| `sources.<name>.most_listed` | integer | The most repositories the catalog reads before `include` and `exclude`; 10000 where absent. A catalog listing more is refused for the round. |
+| `sources.<name>.most_members` | integer | The most repositories `include` and `exclude` may keep; 1000 where absent, and at most 100000. A catalog keeping more is refused for the round. |
+| `sources.<name>.most_tags` | integer | The most tags a repository's listing reads; at most 100000. A repository listing more is refused for the round. The cursor remembers every tag, so where absent it is 10000, or as many as the store keeps in one record where that is fewer, which the doctor names; a value the store's records cannot hold is refused. |
+| `sources.<name>.moving` | array of string | Globs of the tags that move, such as `latest`, which are never announced; `["latest"]` where absent. |
+| `sources.<name>.page` | integer | How many unseen tags one poll reads; 30 where absent. Each takes up to four requests. |
+| `sources.<name>.parse` | [Size](#size) | The most of an answer parsed; "4MiB" where absent, and at most four times that. |
+| `sources.<name>.registry` | string | The registry's base URL, which serves the OCI Distribution API under `/v2/`, such as `https://registry-1.docker.io`, `https://ghcr.io` or `https://registry.gitlab.com`. |
+| `sources.<name>.registry_name` | string | The registry's name in each tag's identity, such as `docker.io` for a mirror of Docker Hub, so the tag is announced once with any other source of the image; `docker.io` for Docker Hub's registry where absent, and the registry's host otherwise. |
+| `sources.<name>.remembered` | integer | How many identities the cursor remembers; `most_tags` where absent, and at least that. |
+| `sources.<name>.repository` | string | The repository whose tags the source takes, such as `acme/app`; on Docker Hub an official image may leave out `library/`. Exclusive with `catalog`. |
+| `sources.<name>.token` | table | A token or password for a private repository, sent with `username`. Anonymous where absent. |
+| `sources.<name>.token.secret` | string | The secret's name. |
+| `sources.<name>.username` | string | The account `token` belongs to, sent with it as HTTP Basic to the registry's token service, or to the registry where it asks for Basic. |
+| `sources.<name>.visibility` | [Declared](#declared) | Who may see the repositories: `public` declares them public. Where absent, they are public when the source has no token and private when it has one. |
+
 ### `sources.<name>` of kind `feed`
 
 An RSS or Atom feed's entries.

@@ -170,7 +170,7 @@ body = "{{ event.body }}"
                 "herald.toml:2:1 unknown: herald.toml has no key \"unknown\"; the keys are \"version\", \"kinds\", \"store\", \"markers\", \"destinations\", \"sources\", \"routes\", \"templates\", \"apps\", \"github_apps\", \"schedule\", \"server\", \"http\", \"render\", \"announce\", \"run\", \"doctor\"",
                 "herald.toml:4:8 store.kind: there is no kind \"nowhere\"; the kinds are \"sqlite\", \"postgres\", \"d1\", \"durable-object\", \"deno-kv\", \"fastly-kv\", \"dynamodb\", \"git-branch\", \"markers\", \"actions-cache\", \"repo-variables\"",
                 "herald.toml:5:1 destinations.d: a Discord destination needs a token or a webhook; give one",
-                "herald.toml:8:8 sources.s.kind: there is no kind \"bitbucket\"; the kinds are \"github\", \"gitlab\", \"forgejo\", \"ghcr\", \"packagist\", \"crates-io\", \"npm\", \"docker-hub\", \"feed\"",
+                "herald.toml:8:8 sources.s.kind: there is no kind \"bitbucket\"; the kinds are \"github\", \"gitlab\", \"forgejo\", \"ghcr\", \"packagist\", \"crates-io\", \"npm\", \"docker-hub\", \"oci\", \"feed\"",
             ]
             .join("\n")
         );
@@ -294,6 +294,13 @@ body = "{{ event.body }}"
                     .replace(
                         "repository = \"nightworksio/php-mutation-gate\"",
                         "owner = \"nightworksio\"\ntoken = { secret = \"GITHUB_TOKEN\" }",
+                    )
+                    .replace("kinds = [\"release\"]", "kinds = [\"package-version\"]");
+            } else if kind == "oci" {
+                text = text
+                    .replace(
+                        "repository = \"nightworksio/php-mutation-gate\"",
+                        "registry = \"https://ghcr.io\"\nrepository = \"nightworksio/php-mutation-gate\"",
                     )
                     .replace("kinds = [\"release\"]", "kinds = [\"package-version\"]");
             } else if !forge {

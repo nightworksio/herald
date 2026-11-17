@@ -227,6 +227,7 @@ impl Poll for Releases {
         &'a self,
         http: &'a dyn DynHttp,
         cursor: Option<&'a Cursor>,
+        _: jiff::Timestamp,
     ) -> Boxed<'a, Result<Option<Polled>, Unpolled>> {
         Box::pin(async move {
             let http = Erased(http);

@@ -10,7 +10,7 @@ use herald_core::{
     Scheme, SecretRef, Visibility,
 };
 use herald_ports::{Base, Boxed, DynHttp};
-use jiff::SignedDuration;
+use jiff::{SignedDuration, Timestamp};
 
 pub use herald_core::Installation;
 
@@ -145,6 +145,18 @@ pub trait SourceConfig: fmt::Debug + Send + Sync + Itself {
         None
     }
 
+    /// How much its cursor holds where it remembers every identity it
+    /// lists rather than the newest few (ADR-0042).
+    fn remembers(&self) -> Option<Remembers> {
+        None
+    }
+
+    /// It, remembering at most `identities` as its store's records hold
+    /// where its options name no bound; nothing where it cannot (ADR-0042).
+    fn fitted(&self, _identities: usize) -> Option<Source> {
+        None
+    }
+
     /// What polls it, reading with `token` where it has one, and watching
     /// what it announced for an edit where `edits` says a route edits its
     /// posts (ADR-0034).
@@ -182,6 +194,70 @@ impl Standing {
     }
 }
 
+/// How much a cursor holds that remembers every identity its source lists.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Remembers {
+    /// The most identities it remembers.
+    pub identities: usize,
+    /// The most bytes one identity takes in a record.
+    pub each: usize,
+    /// The key of the source's table that bounds `identities`.
+    pub key: &'static str,
+    /// What chose `identities`.
+    pub bound: Bound,
+}
+
+/// What chose how many identities a cursor remembering every one holds.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Bound {
+    /// The source's options, which a store keeping smaller records refuses.
+    Named,
+    /// The kind's default, which a store keeping smaller records lowers.
+    Default,
+    /// The store, as the most its records hold.
+    Fitted,
+}
+
+impl Remembers {
+    /// The most bytes a cursor remembering `identities` takes in a record,
+    /// what else it holds counted as [`Remembers::REST`].
+    #[must_use]
+    pub const fn bytes(&self) -> usize {
+        self.identities
+            .saturating_mul(self.each)
+            .saturating_add(Self::REST)
+    }
+
+    /// Whether a cursor remembering its identities fits in `most` bytes.
+    #[must_use]
+    pub const fn fits(&self, most: usize) -> bool {
+        self.bytes() <= most
+    }
+
+    /// The most identities whose cursor fits in `most` bytes.
+    #[must_use]
+    pub const fn fitting(&self, most: usize) -> usize {
+        match most.saturating_sub(Self::REST).checked_div(self.each) {
+            Some(fitting) => fitting,
+            None => usize::MAX,
+        }
+    }
+
+    /// The most bytes a cursor holds beside its identities: its validators,
+    /// project and marks, and the record's own key and seal.
+    pub const REST: usize = 4096;
+}
+
+/// What a source's own check of what it reaches found wrong: the key of its
+/// table to change, and why.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Probed {
+    /// The key.
+    pub key: &'static str,
+    /// Why.
+    pub why: String,
+}
+
 /// How a source is polled: as one, or as each member an owner lists.
 #[derive(Debug, Clone)]
 pub enum Polling {
@@ -214,6 +290,15 @@ impl Polling {
             Base::At(self.api())
         } else {
             Base::Among(bases)
+        }
+    }
+
+    /// What its own check of what it reaches through `http` finds wrong,
+    /// for the doctor to name.
+    pub fn probed<'a>(&'a self, http: &'a dyn DynHttp) -> Boxed<'a, Vec<Probed>> {
+        match self {
+            Self::One(poll) => poll.probed(http),
+            Self::Many(expand) => expand.probed(http),
         }
     }
 }
@@ -296,16 +381,17 @@ pub trait Expand: fmt::Debug + Send + Sync {
     }
 
     /// What each of `members`, each with its cursor, answers through
-    /// `http`, in order, with what the round read once as `rounded`: polled
-    /// together where the source batches them, and each through its own
-    /// poll otherwise.
+    /// `http` in the round at `now`, in order, with what the round read
+    /// once as `rounded`: polled together where the source batches them,
+    /// and each through its own poll otherwise.
     fn polled<'a>(
         &'a self,
         http: &'a dyn DynHttp,
         members: &'a [(&'a Listed, Option<&'a Cursor>)],
         _rounded: &'a Rounded,
+        now: Timestamp,
     ) -> Boxed<'a, Vec<Result<Option<Polled>, Unpolled>>> {
-        Box::pin(each_polled(self, http, members))
+        Box::pin(each_polled(self, http, members, now))
     }
 
     /// How long a tag the member `repository` publishes waits for its
@@ -376,6 +462,12 @@ pub trait Expand: fmt::Debug + Send + Sync {
     fn may_register<'a>(&'a self, _http: &'a dyn DynHttp) -> Boxed<'a, Result<(), String>> {
         Box::pin(std::future::ready(Ok(())))
     }
+
+    /// What its own check of what it reaches through `http` finds wrong,
+    /// beyond its listing; nothing where it checks nothing more.
+    fn probed<'a>(&'a self, _http: &'a dyn DynHttp) -> Boxed<'a, Vec<Probed>> {
+        Box::pin(std::future::ready(Vec::new()))
+    }
 }
 
 /// Who registers a webhook on each member of an owner.
@@ -398,16 +490,18 @@ pub enum Registered {
     Made,
 }
 
-/// What each of `members`, each with its cursor, answers through `http`,
-/// each through the poll `expand` gives it, in order.
+/// What each of `members`, each with its cursor, answers through `http`
+/// in the round at `now`, each through the poll `expand` gives it, in
+/// order.
 pub async fn each_polled<E: Expand + ?Sized>(
     expand: &E,
     http: &dyn DynHttp,
     members: &[(&Listed, Option<&Cursor>)],
+    now: Timestamp,
 ) -> Vec<Result<Option<Polled>, Unpolled>> {
     let mut answered = Vec::new();
     for (repository, cursor) in members {
-        answered.push(expand.member(repository).polled(http, *cursor).await);
+        answered.push(expand.member(repository).polled(http, *cursor, now).await);
     }
     answered
 }
@@ -582,18 +676,26 @@ pub trait Poll: fmt::Debug + Send + Sync {
     /// How many identities its cursor remembers, newest first.
     fn remembered(&self) -> usize;
 
-    /// What it answers through `http` since `cursor`, or nothing where it
+    /// What it answers through `http` since `cursor` in the round at
+    /// `now`, which bounds any time its answers claim, or nothing where it
     /// says nothing changed.
     fn polled<'a>(
         &'a self,
         http: &'a dyn DynHttp,
         cursor: Option<&'a Cursor>,
+        now: Timestamp,
     ) -> Boxed<'a, Result<Option<Polled>, Unpolled>>;
 
     /// How long a tag it finds waits for its Release before it is
     /// announced, where a tag waits (ADR-0032).
     fn tag_window(&self) -> Option<SignedDuration> {
         None
+    }
+
+    /// What its own check of what it reaches through `http` finds wrong;
+    /// nothing where it checks nothing.
+    fn probed<'a>(&'a self, _http: &'a dyn DynHttp) -> Boxed<'a, Vec<Probed>> {
+        Box::pin(std::future::ready(Vec::new()))
     }
 }
 

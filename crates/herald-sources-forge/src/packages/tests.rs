@@ -11,6 +11,9 @@ use herald_testing::ScriptedHttp;
 
 use super::Packaging;
 
+/// The round each poll here is made in.
+const ROUND: jiff::Timestamp = jiff::Timestamp::UNIX_EPOCH;
+
 fn answer(body: &Value, headers: &[(&str, &str)]) -> Response {
     Response {
         status: 200,
@@ -76,7 +79,7 @@ fn polled(
     http: &ScriptedHttp,
     cursor: Option<&Cursor>,
 ) -> Result<Option<Polled>, Unpolled> {
-    pollster::block_on(releases.polled(http, cursor))
+    pollster::block_on(releases.polled(http, cursor, ROUND))
 }
 
 fn identities(polled: &Polled) -> Vec<&str> {

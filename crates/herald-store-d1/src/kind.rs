@@ -19,6 +19,9 @@ impl StoreKind for D1Kind {
     type Options = StoreOptions;
 }
 
+/// The most bytes D1 keeps in one row: 2 MB.
+const MOST_RECORD: usize = 2_000_000;
+
 impl StoreConfig for StoreOptions {
     fn kind(&self) -> &'static str {
         D1Kind::NAME
@@ -26,6 +29,10 @@ impl StoreConfig for StoreOptions {
 
     fn key(&self) -> Option<&SecretRef> {
         self.key.as_ref()
+    }
+
+    fn most_record(&self) -> Option<usize> {
+        Some(MOST_RECORD)
     }
 
     fn open<'s, 'o: 's>(
@@ -73,5 +80,6 @@ mod tests {
         assert!(options.keeps(RecordKind::Notes));
         assert_eq!(options.kept_by(RecordKind::Notes), None);
         assert!(!options.reads_posts());
+        assert_eq!(options.most_record(), Some(MOST_RECORD));
     }
 }

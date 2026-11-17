@@ -262,6 +262,7 @@ static JOINED: Cursor = Cursor {
     tagged: Vec::new(),
     notes: std::collections::BTreeMap::new(),
     packages: std::collections::BTreeMap::new(),
+    newest: None,
 };
 
 /// The members `chunk` polled together through `http`, as one request
@@ -291,7 +292,7 @@ async fn chunk<S: Store, C: Clock, G: Signer, H: Http>(
                 })
                 .collect();
             expand
-                .polled(http, &asked, rounded)
+                .polled(http, &asked, rounded, ports.clock.now())
                 .await
                 .into_iter()
                 .map(|answered| answered.map_err(halted))

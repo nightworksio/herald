@@ -8,6 +8,9 @@ use serde_json::{Value, json};
 use super::*;
 use crate::{Declared, VendorListing};
 
+/// The round each poll here is made in.
+const ROUND: jiff::Timestamp = jiff::Timestamp::UNIX_EPOCH;
+
 fn answer(status: u16, body: &Value, etag: Option<&str>) -> Response {
     Response {
         status,
@@ -544,7 +547,7 @@ fn each_package_of_a_namespace_is_polled_and_announced_as_its_own() {
         &json!({"results": [{"name": "1.0", "tag_last_pushed": "2026-01-01T00:00:00Z"}]}),
         None,
     )]);
-    let polled = pollster::block_on(poll.polled(&http, None))
+    let polled = pollster::block_on(poll.polled(&http, None, ROUND))
         .unwrap()
         .unwrap();
     assert_eq!(

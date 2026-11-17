@@ -4,6 +4,9 @@ use herald_core::{Signal, Validators};
 
 use super::*;
 
+/// The round each poll here is made in.
+const ROUND: jiff::Timestamp = jiff::Timestamp::UNIX_EPOCH;
+
 fn member(id: &str, name: &str) -> Listed {
     Listed {
         id: id.to_owned(),
@@ -134,7 +137,7 @@ fn a_member_polled_on_its_own_takes_its_packages_from_the_owner_s_listing() {
         false,
     )]);
     let cli = member("9", "cli");
-    let polled = pollster::block_on(source.polled(&http, &[(&cli, None)], &read));
+    let polled = pollster::block_on(source.polled(&http, &[(&cli, None)], &read, ROUND));
     assert_eq!(
         identities(&polled[0]),
         ["codeberg.org/npm/lemonfiber/cli/1.0.0"]
@@ -157,7 +160,7 @@ fn a_member_polled_on_its_own_takes_its_packages_from_the_owner_s_listing() {
         "",
         false,
     )]);
-    let polled = pollster::block_on(source.polled(&again, &[(&cli, Some(&marked))], &read));
+    let polled = pollster::block_on(source.polled(&again, &[(&cli, Some(&marked))], &read, ROUND));
     assert_eq!(
         identities(&polled[0]),
         ["codeberg.org/npm/lemonfiber/cli/1.0.0"],
@@ -166,7 +169,7 @@ fn a_member_polled_on_its_own_takes_its_packages_from_the_owner_s_listing() {
     let docs = member("11", "docs");
     let none = ScriptedHttp::new(Vec::new());
     assert_eq!(
-        pollster::block_on(source.polled(&none, &[(&docs, Some(&marked))], &read)),
+        pollster::block_on(source.polled(&none, &[(&docs, Some(&marked))], &read, ROUND)),
         [Ok(None)],
         "a member with no package, polled for them before, asks nothing"
     );
@@ -177,8 +180,12 @@ fn a_member_polled_on_its_own_takes_its_packages_from_the_owner_s_listing() {
         "",
         false,
     )]);
-    let polled =
-        pollster::block_on(source.polled(&first, &[(&docs, Some(&Cursor::default()))], &read));
+    let polled = pollster::block_on(source.polled(
+        &first,
+        &[(&docs, Some(&Cursor::default()))],
+        &read,
+        ROUND,
+    ));
     let Ok(Some(found)) = &polled[0] else {
         panic!("a member polled for packages the first time is marked: {polled:?}");
     };
@@ -193,7 +200,7 @@ fn a_member_polled_on_its_own_takes_its_packages_from_the_owner_s_listing() {
     };
     for rounded in [Rounded::Unread, foreign] {
         assert_eq!(
-            pollster::block_on(source.polled(&unread, &[(&cli, None)], &rounded)),
+            pollster::block_on(source.polled(&unread, &[(&cli, None)], &rounded, ROUND)),
             [Ok(None)]
         );
     }
@@ -248,7 +255,7 @@ fn a_member_polled_through_graphql_takes_its_packages_from_the_owner_s_listing()
     };
     let cli = member("9", "cli");
     let http = ScriptedHttp::new(vec![released(), released(), versions()]);
-    let polled = pollster::block_on(source.polled(&http, &[(&cli, None)], &read));
+    let polled = pollster::block_on(source.polled(&http, &[(&cli, None)], &read, ROUND));
     assert_eq!(
         identities(&polled[0]),
         ["ghcr.io/lemonfiber/cli/v1.1", "github.com/9/v1"]
@@ -274,7 +281,7 @@ fn a_member_polled_through_graphql_takes_its_packages_from_the_owner_s_listing()
         ..Cursor::default()
     };
     let http = ScriptedHttp::new(vec![released(), versions()]);
-    let polled = pollster::block_on(source.polled(&http, &[(&cli, Some(&cursor))], &read));
+    let polled = pollster::block_on(source.polled(&http, &[(&cli, Some(&cursor))], &read, ROUND));
     assert_eq!(identities(&polled[0]), ["ghcr.io/lemonfiber/cli/v1.1"]);
     let Ok(Some(found)) = &polled[0] else {
         panic!("the member's new image is found");
@@ -293,12 +300,18 @@ fn a_member_polled_through_graphql_takes_its_packages_from_the_owner_s_listing()
     );
     let quiet = ScriptedHttp::new(vec![released()]);
     assert_eq!(
-        pollster::block_on(source.polled(&quiet, &[(&cli, Some(&cursor))], &Rounded::Unread)),
+        pollster::block_on(source.polled(
+            &quiet,
+            &[(&cli, Some(&cursor))],
+            &Rounded::Unread,
+            ROUND
+        )),
         [Ok(None)]
     );
     let failing = ScriptedHttp::new(vec![released()]);
     assert!(
-        pollster::block_on(source.polled(&failing, &[(&cli, Some(&cursor))], &read))[0].is_err()
+        pollster::block_on(source.polled(&failing, &[(&cli, Some(&cursor))], &read, ROUND))[0]
+            .is_err()
     );
 }
 
@@ -331,7 +344,7 @@ fn a_member_whose_signals_take_no_package_keeps_its_cursor_as_it_was() {
     };
     let http = ScriptedHttp::new(vec![released()]);
     assert_eq!(
-        pollster::block_on(source.polled(&http, &[(&cli, Some(&cursor))], &read)),
+        pollster::block_on(source.polled(&http, &[(&cli, Some(&cursor))], &read, ROUND)),
         [Ok(None)]
     );
 }
@@ -375,7 +388,7 @@ fn a_member_whose_owner_s_listing_failed_keeps_its_package_state_as_its_releases
     ]);
     let cli = member("9", "cli");
     let polled =
-        pollster::block_on(source.polled(&http, &[(&cli, Some(&cursor))], &Rounded::Unread));
+        pollster::block_on(source.polled(&http, &[(&cli, Some(&cursor))], &Rounded::Unread, ROUND));
     let Ok(Some(found)) = &polled[0] else {
         panic!("the member's new release is found: {polled:?}");
     };

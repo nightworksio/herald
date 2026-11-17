@@ -48,6 +48,11 @@ pub trait StoreConfig: fmt::Debug + Send + Sync + Itself {
         true
     }
 
+    /// The most bytes one record it keeps may hold, where it bounds them.
+    fn most_record(&self) -> Option<usize> {
+        None
+    }
+
     /// What the doctor says of every run that keeps its records in it.
     fn note(&self) -> Option<&'static str> {
         None

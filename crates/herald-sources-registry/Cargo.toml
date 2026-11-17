@@ -1,6 +1,6 @@
 [package]
 name = "herald-sources-registry"
-description = "Package versions as herald events: Packagist, crates.io, npm and Docker Hub"
+description = "Package versions as herald events: Packagist, crates.io, npm, Docker Hub and OCI registries"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

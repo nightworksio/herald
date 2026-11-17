@@ -32,7 +32,8 @@ enough to start.
 
 - forge releases from GitHub, GitLab and Forgejo or Gitea, from one
   repository or every repository an owner holds;
-- package versions from Packagist, crates.io, npm and Docker Hub;
+- package versions from Packagist, crates.io, npm and Docker Hub, and
+  image tags from ghcr and any OCI registry;
 - entries in RSS and Atom feeds;
 - anything an app says, through the CLI or the HTTP API.
 
@@ -686,6 +687,43 @@ announcing as it withholds the image's events. An image linked to none
 announces as its own name. An image is seen as the stricter of its own
 visibility and its repository's; `package_visibility = "package"` lets the
 image's own decide.
+
+### An image on any registry
+
+`kind = "oci"` takes an image's tags on any registry that serves the OCI
+Distribution API, such as GitLab's, Quay, Harbor or a self-hosted one:
+
+```toml
+[sources.app]
+kind = "oci"
+registry = "https://registry.gitlab.com"
+repository = "acme/app"
+auth = "https://gitlab.com"
+```
+
+`catalog = true` instead takes every repository the registry's catalog
+lists, each polled on its own, chosen by `include` and `exclude` globs on
+its full path. The registry lists tags with no time, so the cursor
+remembers every tag: the first poll records them all without announcing
+any, and each later poll reads at most `page` new tags. A tag's time is its
+image's `org.opencontainers.image.created` annotation, or else its config's
+`created`, or else the time the tag was first seen; a time more than five
+minutes past herald's own clock is not believed. A tag created before the
+newest one announced is recorded without being announced. A listing reads at
+most `most_tags` tags (10000, at most 100000). Where `most_tags` is not set
+and the store keeps smaller records, such as git-branch or deno-kv, it is as
+many as one record holds, and `herald doctor` names the number. `moving`
+(`["latest"]`) names the tags never announced.
+
+A token is fetched only from the registry's own origin or from `auth`
+(`https://auth.docker.io` for Docker Hub's registry). `username` and `token`
+read a private repository. A config blob is followed only to an origin
+`blobs` names: by default Docker Hub's and GitHub's CDNs for their
+registries. `herald doctor --online` names a token service or a blob origin
+the source may not reach. Each tag takes the identity
+`<registry_name>/<repository>/<tag>`, where `registry_name` is the registry's
+host (`docker.io` for Docker Hub's), so a route taking the same image from
+Docker Hub, ghcr or a repository's `package` signal announces it once.
 
 ### Edits to a late or edited release
 

@@ -258,7 +258,8 @@ pub fn load(
     let (retention, attempts) = kept.unwrap_or_default();
     let marker_key = loader.marker_key(sections.markers);
     let destinations = loader.destinations(sections.destinations, read);
-    let (sources, source_spans) = loader.sources(sections.sources, read);
+    let (mut sources, source_spans) = loader.sources(sections.sources, read);
+    loader.remembering(store.as_ref(), (&mut sources, &source_spans));
     let templates = loader.templates(sections.templates, read);
     let listed = loader.apps(sections.apps, &sources);
     let github_apps = loader.github_apps(sections.github_apps, store.as_ref());

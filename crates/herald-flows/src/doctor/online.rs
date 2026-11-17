@@ -5,13 +5,14 @@ use std::collections::{BTreeMap, BTreeSet};
 use herald_config::Config;
 use herald_core::{Listed, SourceName};
 use herald_kinds::{Expand, Expanded, Polling, Probe, Standing, Unlisted, Unpolled};
-use herald_ports::{Http, SecretError, Secrets, Signer, Tokens};
+use herald_ports::{DynHttp, Http, SecretError, Secrets, Signer, Tokens};
 use jiff::Timestamp;
 
 use super::{Findings, Gap, Here, gap, unnamed_gap};
 use crate::Connected;
 use crate::acting::{Claim, Claimant, Claimed};
 use crate::installations::{Kept, refreshed_by};
+use crate::prepare::PreparedSource;
 use crate::prepare::signs_as_actor;
 
 /// Each ActivityPub actor's key in `config` that is set here, read through
@@ -113,6 +114,31 @@ pub async fn online<H: Http, G: Signer>(
         ));
     }
     findings.extend(owned(connected, (signer, now)).await);
+    let sources: Vec<(&PreparedSource, &dyn DynHttp)> = connected
+        .sources
+        .iter()
+        .map(|(source, http)| (source, http as &dyn DynHttp))
+        .collect();
+    findings.extend(probed(&sources).await);
+    findings
+}
+
+/// What each of `sources`' own check of what it reaches through its `Http`
+/// finds wrong (ADR-0042).
+async fn probed(sources: &[(&PreparedSource, &dyn DynHttp)]) -> Findings {
+    let mut findings = Findings::default();
+    for (source, http) in sources {
+        let name = source.name.as_str();
+        findings
+            .gaps
+            .extend(source.poll.probed(*http).await.into_iter().map(|probed| {
+                gap(
+                    &format!("reading the source \"{name}\""),
+                    format!("sources.{name}.{}", probed.key),
+                    probed.why,
+                )
+            }));
+    }
     findings
 }
 
