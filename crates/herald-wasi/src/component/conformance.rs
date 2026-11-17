@@ -21,6 +21,7 @@ fn plain(status: u16, body: impl Into<String>) -> Reply {
         kind: media::TEXT,
         body: body.into().into_bytes(),
         retry_after: None,
+        headers: Vec::new(),
     }
 }
 

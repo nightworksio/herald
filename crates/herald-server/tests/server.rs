@@ -63,6 +63,9 @@ actor = "php-mutation-gate"
 [templates.t]
 title = "{{ event.title }}"
 body = "{{ event.body }}"
+[federation]
+domain = "herald.example"
+keys = [{ secret = "HERALD_KEY" }]
 "#,
             &|_| Err(String::new()),
             &herald_compose::kinds(),
@@ -74,6 +77,7 @@ body = "{{ event.body }}"
         FakeSecrets::default()
             .with("HERALD_ACTIVITYPUB_KEY", "the-key")
             .with("HERALD_WEBHOOK", "hook-secret")
+            .with("HERALD_KEY", "new-federation-key-of-32-bytes!!")
     }
 
     /// An `Http` that answers every request 202 once `open` lets it.
@@ -301,6 +305,34 @@ body = "{{ event.body }}"
         );
         assert!(answer.ends_with("herald is up"), "{answer}");
         assert_eq!(said(&heard), ["listening"]);
+    }
+
+    #[tokio::test]
+    async fn an_answer_of_herald_s_api_carries_its_signature_and_digest() {
+        let world = World::new(Gate::default()).await;
+        let (listener, address) = listening().await;
+        let stop = Notify::new();
+        let client = async {
+            let answer = asked(
+                address,
+                b"GET /herald/v1/feeds/none HTTP/1.1\r\nHost: herald.example\r\n\r\n",
+            )
+            .await;
+            stop.notify_one();
+            answer
+        };
+        let (answer, ()) = tokio::join!(
+            client,
+            world.serve(listener, limits(), &|_| (), stop.notified())
+        );
+        assert!(answer.starts_with("HTTP/1.1 404 Not Found\r\n"), "{answer}");
+        for field in [
+            "content-digest: sha-256=:",
+            "signature-input: herald=(\"@status\" \"content-type\" \"content-digest\" \"@method\";req \"@target-uri\";req)",
+            "signature: herald=:",
+        ] {
+            assert!(answer.contains(field), "{field} in {answer}");
+        }
     }
 
     #[tokio::test]

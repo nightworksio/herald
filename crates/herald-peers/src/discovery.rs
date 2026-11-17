@@ -24,6 +24,9 @@ pub const NODEINFO_JSON: &str =
 const JSON: &str = "application/json";
 /// The protocol NodeInfo names where herald serves ActivityPub actors.
 const ACTIVITYPUB: &str = "activitypub";
+/// The feature the discovery document names where the instance serves
+/// feeds.
+const FEEDS: &str = "feeds";
 
 /// The instance a document describes: where it is served, and what it runs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -47,17 +50,22 @@ impl Instance<'_> {
         format!("https://{}{}{WELL_KNOWN}", self.domain, self.base)
     }
 
-    /// Its discovery document: the API it serves, its software, and its key
-    /// set.
+    /// Its discovery document: the API it serves, its software, its key
+    /// set, and the feeds named `feeds` it serves.
     #[must_use]
-    pub fn document(&self, keys: &KeySet) -> String {
+    pub fn document(&self, keys: &KeySet, feeds: &[&str]) -> String {
+        let features: Vec<&str> = (!feeds.is_empty()).then_some(FEEDS).into_iter().collect();
+        let feeds: Vec<Value> = feeds
+            .iter()
+            .map(|name| json!({ "name": name, "url": self.feed(name) }))
+            .collect();
         json!({
             "version": API_VERSION,
             "api": format!("https://{}{}{API}", self.domain, self.base),
             "software": { "name": self.software, "version": self.version },
             "keys": keys.document(self.domain),
-            "features": Value::Array(Vec::new()),
-            "feeds": Value::Array(Vec::new()),
+            "features": features,
+            "feeds": feeds,
         })
         .to_string()
     }
@@ -94,9 +102,10 @@ impl Instance<'_> {
     }
 
     /// Its NodeInfo document, counting `actors` ActivityPub actors served
-    /// on its domain.
+    /// on its domain, and naming the feeds named `feeds` it serves.
     #[must_use]
-    pub fn nodeinfo(&self, actors: usize) -> String {
+    pub fn nodeinfo(&self, actors: usize, feeds: &[&str]) -> String {
+        let feeds: Vec<String> = feeds.iter().map(|name| self.feed(name)).collect();
         let protocols: Vec<&str> = (actors > 0).then_some(ACTIVITYPUB).into_iter().collect();
         json!({
             "version": "2.1",
@@ -109,7 +118,7 @@ impl Instance<'_> {
             "services": { "inbound": Value::Array(Vec::new()), "outbound": Value::Array(Vec::new()) },
             "openRegistrations": false,
             "usage": { "users": { "total": actors } },
-            "metadata": { "discovery": self.discovery(), "feeds": Value::Array(Vec::new()) },
+            "metadata": { "discovery": self.discovery(), "feeds": feeds },
         })
         .to_string()
     }

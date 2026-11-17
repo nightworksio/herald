@@ -21,6 +21,8 @@ use herald_ports::{
 };
 use jiff::{SignedDuration, Timestamp};
 
+mod feeding;
+
 use crate::acting::acting;
 use crate::budget::Budget;
 use crate::prepare::{Connected, PreparedRoute};
@@ -98,6 +100,8 @@ pub enum Stop {
     Template(String),
     /// A marker could not be computed.
     Marker(String),
+    /// An event's envelope could not be proved by the instance's key.
+    Proof(String),
     /// A polled source could not be read.
     Source(String),
     /// The host's limit on the run's time or outbound requests was near,
@@ -112,6 +116,10 @@ pub(crate) struct Run<'a, S, C, G, H> {
     pub(crate) http: &'a H,
     pub(crate) holder: &'a str,
     pub(crate) lease: SignedDuration,
+    /// Who may see the event, as the routing worked it out: its own
+    /// visibility, its origin's, private for an owner's member saying
+    /// nothing of it, and public otherwise.
+    pub(crate) seen: Visibility,
 }
 
 /// The steps a run took that did not land, and why the first of them did
@@ -522,6 +530,9 @@ impl<S: Store, C: Clock, G: Signer, H: Http> Run<'_, S, C, G, H> {
     }
 
     pub(crate) async fn announce(&self, event: &Event, templates: &Templates) -> Outcome {
+        if let Some(fed) = self.route.reached.feeds() {
+            return self.fed(fed, event).await;
+        }
         let route = &self.route.config.route.id;
         let key = Key::derive(route, event.identity());
         if let Ok(outcome) = self.announced(key, event, templates, Some(Reposted)).await {
@@ -871,6 +882,7 @@ pub async fn announce_within<S: Store, C: Clock, G: Signer, H: Http>(
         (None, Some(_)) => Some(Visibility::Private),
         (None, None) => None,
     };
+    let seen = visibility.unwrap_or(Visibility::Public);
     let bound = visibility.and_then(|visibility| crate::poll::bounded(config, visibility));
     let taking: Vec<&(PreparedRoute, H)> = connected
         .routes
@@ -902,6 +914,7 @@ pub async fn announce_within<S: Store, C: Clock, G: Signer, H: Http>(
             http,
             holder: run,
             lease: config.announce.lease,
+            seen,
         }
         .announce(event, &config.templates)
         .await

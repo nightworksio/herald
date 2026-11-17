@@ -6,7 +6,9 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::future::Future;
 
-use herald_core::{Hold, Identity, KeptToken, Kind, Pending, PublishedKeys, Shown};
+use herald_core::{
+    DestinationName, Feed, Hold, Identity, KeptToken, Kind, Pending, PublishedKeys, Shown,
+};
 
 use super::*;
 
@@ -166,6 +168,19 @@ impl Published for Refusing {
         _: Option<Version>,
     ) -> Result<Written, StoreError> {
         Err(refused("put_published_keys"))
+    }
+
+    async fn feed(&self, _: &DestinationName) -> Result<Option<Versioned<Feed>>, StoreError> {
+        Err(refused("feed"))
+    }
+
+    async fn put_feed(
+        &self,
+        _: &DestinationName,
+        _: &Feed,
+        _: Option<Version>,
+    ) -> Result<Written, StoreError> {
+        Err(refused("put_feed"))
     }
 }
 
@@ -349,25 +364,32 @@ fn an_erased_store_answers_for_what_the_instance_published_as_the_store_it_erase
         sequence: 1,
         keys: vec!["z6Mkkey".to_owned()],
     };
+    let (feed, releases) = (Feed::default(), DestinationName::new("releases"));
     let store = Refusing { holding: true };
     let erased = Erased(&store as &dyn DynStore);
     assert_eq!(
         [
             answered(erased.published_keys()),
             answered(erased.put_published_keys(&keys, None)),
+            answered(erased.feed(&releases)),
+            answered(erased.put_feed(&releases, &feed, None)),
         ],
         [
             Some(refused("published_keys")),
-            Some(refused("put_published_keys"))
+            Some(refused("put_published_keys")),
+            Some(refused("feed")),
+            Some(refused("put_feed")),
         ]
     );
     let unheld = Refusing { holding: false };
     let erased = Erased(&unheld as &dyn DynStore);
     let unkept = Some(StoreError::Unsupported {
-        what: "published key sets",
+        what: "published key sets and feeds",
     });
     assert_eq!(answered(erased.published_keys()), unkept);
     assert_eq!(answered(erased.put_published_keys(&keys, None)), unkept);
+    assert_eq!(answered(erased.feed(&releases)), unkept);
+    assert_eq!(answered(erased.put_feed(&releases, &feed, None)), unkept);
 }
 
 fn owned(at: Timestamp) -> (Listing, Membership) {

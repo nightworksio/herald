@@ -1,5 +1,5 @@
-//! What a layer with no endpoint names: the instance's discovery document
-//! and an owner discovering by push.
+//! What a layer with no endpoint names: the instance's discovery document,
+//! each herald feed, and an owner discovering by push.
 
 use super::*;
 
@@ -27,6 +27,30 @@ fn a_layer_with_no_endpoint_names_the_instance_s_discovery_document() {
             .gaps
             .iter()
             .all(|gap| gap.key != "federation.domain")
+    );
+}
+
+#[test]
+fn a_layer_with_no_endpoint_names_each_herald_feed() {
+    let mut fed = served();
+    fed.destinations.insert(
+        herald_core::DestinationName::new("releases"),
+        herald_kinds::Destination::new(herald_dest_herald::FeedOptions::default()),
+    );
+    let findings = on(&fed, &actions(), &Here::default());
+    let gap = findings
+        .gaps
+        .iter()
+        .find(|gap| gap.key == "destinations.releases")
+        .unwrap();
+    assert_eq!(gap.feature, "a herald feed");
+    assert_eq!(gap.first_layer, Some(Tier::Serverless));
+    assert!(gap.why.ends_with(", so no peer reads its envelopes"));
+    assert!(
+        on(&fed, &server(), &Here::default())
+            .gaps
+            .iter()
+            .all(|gap| gap.key != "destinations.releases")
     );
 }
 

@@ -139,6 +139,7 @@ pub fn why(reason: &Stop) -> String {
         | Stop::Store(reason)
         | Stop::Template(reason)
         | Stop::Marker(reason)
+        | Stop::Proof(reason)
         | Stop::Source(reason)
         | Stop::Limit(reason) => reason.clone(),
     }

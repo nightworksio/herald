@@ -303,6 +303,7 @@ fn every_outcome_and_step_reads_as_a_line() {
         Stop::Store("s".to_owned()),
         Stop::Template("t".to_owned()),
         Stop::Marker("m".to_owned()),
+        Stop::Proof("p".to_owned()),
     ] {
         let line = report(&announced(Outcome::Stopped {
             landed: Vec::new(),

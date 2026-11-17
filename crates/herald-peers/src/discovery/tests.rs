@@ -22,7 +22,7 @@ fn the_discovery_document_names_the_api_the_software_and_the_key_set() {
         keys: vec![[1; 32]],
     };
     assert_eq!(
-        read(&INSTANCE.document(&keys)),
+        read(&INSTANCE.document(&keys, &[])),
         json!({
             "version": 1,
             "api": "https://herald.example/herald/herald/v1",
@@ -35,6 +35,15 @@ fn the_discovery_document_names_the_api_the_software_and_the_key_set() {
     assert_eq!(
         INSTANCE.discovery(),
         "https://herald.example/herald/.well-known/herald"
+    );
+    let feeding = read(&INSTANCE.document(&keys, &["releases", "tags"]));
+    assert_eq!(feeding["features"], json!(["feeds"]));
+    assert_eq!(
+        feeding["feeds"],
+        json!([
+            { "name": "releases", "url": "https://herald.example/herald/herald/v1/feeds/releases" },
+            { "name": "tags", "url": "https://herald.example/herald/herald/v1/feeds/tags" },
+        ])
     );
 }
 
@@ -78,7 +87,7 @@ fn nodeinfo_links_its_document_and_names_activitypub_only_where_actors_are_serve
             "href": "https://herald.example/herald/nodeinfo/2.1",
         }] })
     );
-    let served = read(&INSTANCE.nodeinfo(3));
+    let served = read(&INSTANCE.nodeinfo(3, &["releases"]));
     assert_eq!(
         served,
         json!({
@@ -94,11 +103,12 @@ fn nodeinfo_links_its_document_and_names_activitypub_only_where_actors_are_serve
             "usage": { "users": { "total": 3 } },
             "metadata": {
                 "discovery": "https://herald.example/herald/.well-known/herald",
-                "feeds": [],
+                "feeds": ["https://herald.example/herald/herald/v1/feeds/releases"],
             },
         })
     );
-    let none = read(&INSTANCE.nodeinfo(0));
+    let none = read(&INSTANCE.nodeinfo(0, &[]));
     assert_eq!(none["protocols"], json!([]));
     assert_eq!(none["usage"]["users"]["total"], json!(0));
+    assert_eq!(none["metadata"]["feeds"], json!([]));
 }

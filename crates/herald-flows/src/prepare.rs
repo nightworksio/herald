@@ -6,8 +6,9 @@ use std::fmt;
 use std::sync::Arc;
 
 use herald_config::{Config, Destination, Placed, RouteConfig, Uses};
-use herald_core::{DestinationName, Edits, RouteId, SourceName, hex};
+use herald_core::{DestinationName, Edits, RouteId, SourceName, hex, itself};
 use herald_kinds::{Credential, Expand, Interacted, Polling, Posts, Reached, Registering};
+use herald_peers::discovery::Instance;
 use herald_ports::{Algorithm, Base, CryptoError, Http, Secret, SecretError, Secrets, Signer};
 use herald_store_markers::{MarkedRoute, MarkersStore};
 
@@ -175,6 +176,27 @@ pub struct PreparedRoute {
     pub(crate) marker_key: Secret,
     pub(crate) derived: bool,
     pub(crate) projects: Option<Projects>,
+    /// The instance's domain, which a feed is served on; empty where
+    /// `[federation]` names none.
+    pub(crate) domain: String,
+    /// The path every endpoint is served under.
+    pub(crate) base: String,
+    /// How many times a record is written before another run's writes
+    /// stop it.
+    pub(crate) attempts: usize,
+}
+
+impl PreparedRoute {
+    /// The instance as a feed's envelopes and pages name it.
+    pub(crate) fn instance(&self) -> Instance<'_> {
+        Instance {
+            domain: &self.domain,
+            base: &self.base,
+            software: itself::NAME,
+            version: itself::VERSION,
+            repository: herald_core::repository!(),
+        }
+    }
 }
 
 /// A source ready to poll.
@@ -403,7 +425,7 @@ async fn destination_secrets<'c, G: Signer>(
     };
     let mut resolved: BTreeMap<&DestinationName, Resolved> = BTreeMap::new();
     for (name, destination) in &config.destinations {
-        let Some(reference) = destination.credential() else {
+        let Some(reference) = config.credential(destination) else {
             return Err(PrepareError::NoCredential {
                 destination: name.as_str().to_owned(),
             });
@@ -471,6 +493,9 @@ pub async fn prepare<S: Secrets, G: Signer>(
             marker_key: destination.marker_key.clone(),
             derived: destination.derived,
             projects,
+            domain: config.federation.domain.clone().unwrap_or_default(),
+            base: config.server.base.clone(),
+            attempts: config.attempts.get(),
         });
     }
     let mut sources = Vec::new();

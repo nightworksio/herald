@@ -193,6 +193,9 @@ pub(crate) fn replied(reply: &Reply) -> Value {
     if let Some(after) = reply.retry_after {
         headers.insert("retry-after".to_owned(), after.to_string().into());
     }
+    for (name, value) in &reply.headers {
+        headers.insert(name.clone(), value.as_str().into());
+    }
     json!({
         "statusCode": reply.status,
         "headers": headers,

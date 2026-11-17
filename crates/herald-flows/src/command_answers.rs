@@ -354,6 +354,9 @@ async fn by_store<S: Store>(
     }
 }
 
+/// Why a route that names no template answers no command.
+const UNTEMPLATED: &str = "the route names no template to answer with";
+
 /// What `latest` or `changelog` shows of `latest`, rendered with the
 /// template `answering` names, or else `route`'s.
 fn latest_reply(
@@ -377,10 +380,13 @@ fn latest_reply(
         Ok(event) => event,
         Err(problem) => return Reply::unavailable(problem.to_string()),
     };
-    let template = answering
+    let Some(template) = answering
         .template
         .clone()
-        .unwrap_or_else(|| route.route.template.clone());
+        .or_else(|| route.route.template.clone())
+    else {
+        return Reply::unavailable(UNTEMPLATED);
+    };
     let context = Context {
         event: &event,
         route: &route.route.id,

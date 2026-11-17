@@ -349,6 +349,17 @@ fn unhosted(config: &Config, gaps: &mut Vec<Gap>) {
             format!("{UNHOSTED}, so no peer reads the instance's keys"),
         ));
     }
+    for (name, _) in config
+        .destinations
+        .iter()
+        .filter(|(_, destination)| destination.feeding().is_some())
+    {
+        gaps.push(gap(
+            "a herald feed",
+            format!("destinations.{}", name.as_str()),
+            format!("{UNHOSTED}, so no peer reads its envelopes"),
+        ));
+    }
     for (name, app) in &config.apps {
         if !app.tokens.is_empty() {
             gaps.push(gap(

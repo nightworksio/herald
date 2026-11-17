@@ -106,6 +106,7 @@ export async function answering(herald, asked) {
   said(answer.said);
   const headers = { "content-type": answer.kind };
   if (answer.retryAfter !== undefined) headers["retry-after"] = String(answer.retryAfter);
+  for (const [name, value] of answer.headers ?? []) headers[name] = value;
   const response = new Response(answer.body.length ? answer.body : null, { status: answer.status, headers });
   return { response, work: answer.work?.then(said) };
 }

@@ -79,9 +79,15 @@ approve = "manual"
                 domain: Some("herald.example".to_owned()),
                 keys: vec![secret("HERALD_KEY_NEW"), secret("HERALD_KEY_OLD")],
                 refresh: Federation::REFRESH,
+                signed_for: Federation::SIGNED_FOR,
             }
         );
         assert_eq!(Federation::REFRESH, SignedDuration::from_hours(24));
+        assert_eq!(Federation::SIGNED_FOR, SignedDuration::from_mins(5));
+        assert_eq!(
+            Federation::SIGNED_FOR_ALLOWED,
+            SignedDuration::from_mins(20)
+        );
     }
 
     #[test]

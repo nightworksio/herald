@@ -151,20 +151,23 @@ impl Loader<'_> {
     }
 
     fn dry_render(&mut self, templates: &Templates, read: &Read) {
+        let Some(rendered) = &read.rendered else {
+            return;
+        };
         let route = &read.config.route;
-        let template_path = format!("templates.{}", route.template.as_str());
+        let template_path = format!("templates.{}", rendered.template.as_str());
         let limits = read.config.profile.limits;
         let parts = [
             (
-                title_template(&route.template),
-                read.title_span.clone(),
+                title_template(&rendered.template),
+                rendered.title_span.clone(),
                 format!("{template_path}.title"),
                 Some(limits.title),
             ),
             (
-                body_template(&route.template),
-                read.body_span.clone(),
-                read.body_path.clone(),
+                body_template(&rendered.template),
+                rendered.body_span.clone(),
+                rendered.body_path.clone(),
                 None,
             ),
         ];

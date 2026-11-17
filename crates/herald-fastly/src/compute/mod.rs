@@ -85,6 +85,9 @@ fn send(reply: Reply, head: bool) {
     if let Some(after) = reply.retry_after {
         response.set_header("retry-after", after.to_string());
     }
+    for (name, value) in &reply.headers {
+        response.set_header(name, value);
+    }
     if !head {
         response.set_body(reply.body);
     }

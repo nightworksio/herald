@@ -14,6 +14,9 @@ use crate::wording::{Phrase, Wording};
 
 const ELLIPSIS: &str = "…";
 
+/// Why a route that names no template renders nothing.
+const UNTEMPLATED: &str = "the route names no template; it publishes each event as an envelope";
+
 /// The name a template's title is compiled under.
 #[must_use]
 pub fn title_template(template: &TemplateName) -> String {
@@ -168,8 +171,12 @@ pub fn announce(
         route: &route.id,
         herald,
     };
-    let title = templates.render_line(&title_template(&route.template), &context)?;
-    let body = templates.render(&body_template(&route.template), &context)?;
+    let template = route.template.as_ref().ok_or_else(|| TemplateError {
+        name: route.id.as_str().to_owned(),
+        reason: UNTEMPLATED.to_owned(),
+    })?;
+    let title = templates.render_line(&title_template(template), &context)?;
+    let body = templates.render(&body_template(template), &context)?;
     let thread = match &route.delivery.thread {
         Some(_) => Some(templates.render_line(&thread_template(&route.id), &context)?),
         None => None,

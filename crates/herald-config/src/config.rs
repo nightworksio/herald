@@ -99,11 +99,11 @@ impl Config {
     #[must_use]
     pub fn secrets_used(&self, uses: Uses) -> BTreeSet<&str> {
         let destinations = self.destinations.values().flat_map(|destination| {
+            let mut named: Vec<&SecretRef> = self.credential(destination).into_iter().collect();
             if uses == Uses::Serves {
-                destination.secret_refs()
-            } else {
-                destination.credential().into_iter().collect()
+                named.extend(destination.secret_refs());
             }
+            named
         });
         let sources = self.sources.values().flat_map(|source| match uses {
             Uses::Serves => source.secret_refs(),
@@ -136,6 +136,16 @@ impl Config {
             .chain(self.marker_key.as_ref())
             .map(|named| named.secret.as_str())
             .collect()
+    }
+
+    /// The secret `destination` is reached with: its own credential, or for
+    /// a feed of herald's own, the instance's newest key, which proves its
+    /// envelopes.
+    #[must_use]
+    pub fn credential<'a>(&'a self, destination: &'a Destination) -> Option<&'a SecretRef> {
+        destination
+            .credential()
+            .or_else(|| destination.feeding().and(self.federation.keys.first()))
     }
 
     /// The keys that name the secret `name`, such as
@@ -319,6 +329,8 @@ pub struct Federation {
     pub keys: Vec<SecretRef>,
     /// How long a peer may keep its key set before reading it again.
     pub refresh: SignedDuration,
+    /// How long each response of herald's API stays signed.
+    pub signed_for: SignedDuration,
 }
 
 impl Federation {
@@ -326,6 +338,10 @@ impl Federation {
     pub const REFRESH: SignedDuration = SignedDuration::from_hours(24);
     /// The longest `refresh` may be.
     pub const REFRESH_ALLOWED: SignedDuration = SignedDuration::from_hours(7 * 24);
+    /// How long a response stays signed where `signed_for` is absent.
+    pub const SIGNED_FOR: SignedDuration = SignedDuration::from_mins(5);
+    /// The longest `signed_for` may be.
+    pub const SIGNED_FOR_ALLOWED: SignedDuration = SignedDuration::from_mins(20);
 }
 
 impl Default for Federation {
@@ -334,6 +350,7 @@ impl Default for Federation {
             domain: None,
             keys: Vec::new(),
             refresh: Self::REFRESH,
+            signed_for: Self::SIGNED_FOR,
         }
     }
 }

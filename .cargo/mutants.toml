@@ -25,6 +25,9 @@ exclude_re = [
     "DestinationConfig::platform_waits -> Waits with Default::default\\(\\)",
     # A store names no secret beside its key unless its kind says so, and `Vec::new()` is `vec![]`.
     "StoreConfig::named -> Vec<&str> with vec!\\[\\]",
+    # A herald feed names no secret of its own and places every route as it is, and `Vec::new()` is `vec![]`.
+    "impl DestinationConfig for FeedOptions>::secret_refs -> Vec<&SecretRef> with vec!\\[\\]",
+    "impl DestinationKind for HeraldKind>::placed -> Vec<Fault> with vec!\\[\\]",
     # A source says nothing to the doctor unless its kind says so, and `Vec::new()` is `vec![]`.
     "SourceConfig::notes -> Vec<&'static str> with vec!\\[\\]",
     # A poll and an owner ask only their API's origin unless their kind names more bases, and an empty slice is an empty slice.

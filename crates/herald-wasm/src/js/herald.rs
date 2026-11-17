@@ -11,7 +11,7 @@ use wasm_bindgen_futures::future_to_promise;
 use super::bindings::{HostObject, SocketsObject};
 use super::host::JsHost;
 use super::sessions::{JsSockets, JsTaker, JsTimer};
-use super::{bytes, member, object, pairs, strings};
+use super::{bytes, member, object, pair_array, pairs, strings};
 use crate::numbers::millis;
 
 /// Whether `address` is on the public internet: what a host that resolves
@@ -82,7 +82,8 @@ impl Herald {
 
     /// The answer to `request`, `{ method, path, query?, headers, body }`,
     /// its delivery admitted again where `again`: `{ status, kind, body,
-    /// retryAfter?, work?, refused?, said }`, `work` settling to what the
+    /// retryAfter?, headers, work?, refused?, said }`, `headers` each other
+    /// header as a `[name, value]` pair, `work` settling to what the
     /// work it leaves did, in words, and `said` what a round it asked for
     /// did.
     pub fn answer(&self, request: JsValue, again: bool) -> Promise {
@@ -130,6 +131,7 @@ impl Herald {
                     "retryAfter",
                     reply.retry_after.map_or(JsValue::UNDEFINED, JsValue::from),
                 ),
+                ("headers", pair_array(&reply.headers).into()),
                 ("work", work),
                 ("refused", refused),
                 ("said", strings(&answered.said).into()),

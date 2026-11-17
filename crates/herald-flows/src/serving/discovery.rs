@@ -54,11 +54,31 @@ pub(super) async fn discovered<S: Store, C, G: Signer, V, H, P, K>(
         refresh: serving.config.federation.refresh.as_secs().unsigned_abs(),
         keys,
     };
-    replied(status::OK, media::JSON, instance.document(&set))
+    replied(
+        status::OK,
+        media::JSON,
+        instance.document(&set, &feeds(serving)),
+    )
+}
+
+/// The name of each feed of herald's own a route publishes to, once each.
+pub(super) fn feeds<'a, S, C, G, V, H, P, K>(
+    serving: &Serving<'a, S, C, G, V, H, P, K>,
+) -> Vec<&'a str> {
+    let mut names: Vec<&str> = serving
+        .connected
+        .routes
+        .iter()
+        .filter(|(route, _)| route.reached.feeds().is_some())
+        .map(|(route, _)| route.config.route.destination.as_str())
+        .collect();
+    names.sort_unstable();
+    names.dedup();
+    names
 }
 
 /// The instance's Ed25519 public keys, newest first.
-async fn public_keys<S, C, G: Signer, V, H, P, K>(
+pub(super) async fn public_keys<S, C, G: Signer, V, H, P, K>(
     serving: &Serving<'_, S, C, G, V, H, P, K>,
 ) -> Result<Vec<[u8; ED25519_LENGTH]>, String> {
     let mut keys = Vec::new();
@@ -146,5 +166,9 @@ pub(super) fn nodeinfo<S, C, G, V, H, P, K>(
         .filter_map(|(route, _)| route.reached.federates())
         .filter(|actor| actor.domain() == instance.domain)
         .count();
-    replied(status::OK, NODEINFO_JSON, instance.nodeinfo(actors))
+    replied(
+        status::OK,
+        NODEINFO_JSON,
+        instance.nodeinfo(actors, &feeds(serving)),
+    )
 }

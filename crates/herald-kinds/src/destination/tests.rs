@@ -153,6 +153,8 @@ fn a_destination_is_its_kind_equal_only_to_the_same_options_and_keeps_every_defa
     assert_eq!(destination.unread_why(), crate::UNREAD);
     assert_eq!(destination.session_domains(), Vec::<&str>::new());
     assert_eq!(destination.actor_domain(), None);
+    assert_eq!(destination.feeding(), None);
+    assert_eq!(destination.fitted(3), None);
     let patient = Destination::new(Patient);
     assert_eq!(patient.kind(), "patient");
     assert_eq!(patient.credential(), None);

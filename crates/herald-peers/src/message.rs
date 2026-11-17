@@ -6,7 +6,7 @@ use std::fmt::{self, Write as _};
 
 use herald_core::Address;
 
-use crate::structured::{Bare, Item, Member, dictionary, written, written_inner};
+use crate::structured::{Bare, Item, Member, dictionary, written, written_inner, written_item};
 
 /// The field naming what a signature covers.
 pub const SIGNATURE_INPUT: &str = "signature-input";
@@ -36,6 +36,8 @@ const KEYID: &str = "keyid";
 const ALG: &str = "alg";
 /// The parameter carrying the application's tag.
 const TAG_PARAMETER: &str = "tag";
+/// The parameter marking a covered part as the request's, on a response.
+const REQUEST: &str = "req";
 
 /// One part of a message a signature covers.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -56,6 +58,9 @@ pub enum Component {
     Status,
     /// A field by its lowercase name.
     Field(String),
+    /// A part of the request a response answers, `;req`: one derived from
+    /// the request.
+    Request(Box<Component>),
 }
 
 impl Component {
@@ -71,7 +76,29 @@ impl Component {
             Self::Query => "@query",
             Self::Status => "@status",
             Self::Field(name) => name,
+            Self::Request(component) => component.name(),
         }
+    }
+
+    /// It as an item of a signature's input: its name, with `;req` where it
+    /// is a part of the request.
+    fn item(&self) -> Item {
+        let parameters = match self {
+            Self::Request(_) => vec![(REQUEST.to_owned(), Bare::Boolean(true))],
+            _ => Vec::new(),
+        };
+        Item {
+            bare: Bare::String(self.name().to_owned()),
+            parameters,
+        }
+    }
+
+    /// The part of the request a response answers named `name`, where it
+    /// is derived from the request.
+    fn requested(name: &str) -> Option<Self> {
+        Self::named(name)
+            .filter(|component| !matches!(component, Self::Field(_) | Self::Status))
+            .map(|component| Self::Request(Box::new(component)))
     }
 
     fn named(name: &str) -> Option<Self> {
@@ -142,6 +169,10 @@ impl Message<'_> {
                 format!("?{}", query.unwrap_or_default())
             }
             Component::Status => self.status.ok_or_else(missing)?.to_string(),
+            Component::Request(component) => {
+                self.status.ok_or_else(missing)?;
+                return self.value(component);
+            }
             Component::Field(name) => {
                 let values: Vec<&str> = self
                     .fields
@@ -275,11 +306,8 @@ impl Covered {
 /// The inner list of `components` with `parameters`: a signature's
 /// `@signature-params`.
 fn listed(components: &[Component], parameters: &[(String, Bare)]) -> String {
-    let names: Vec<Bare> = components
-        .iter()
-        .map(|component| Bare::String(component.name().to_owned()))
-        .collect();
-    written_inner(&names, parameters)
+    let items: Vec<Item> = components.iter().map(Component::item).collect();
+    written_inner(&items, parameters)
 }
 
 /// The signature base of `message` over `components`, ending in `params`.
@@ -292,8 +320,8 @@ fn signature_base(
     for component in components {
         let _ = writeln!(
             base,
-            "\"{}\": {}",
-            component.name(),
+            "{}: {}",
+            written_item(&component.item()),
             message.value(component)?
         );
     }
@@ -440,8 +468,11 @@ fn signature_field(
 fn covered(items: Vec<Item>, parameters: &[(String, Bare)]) -> Result<Covered, Refusal> {
     let components = items
         .into_iter()
-        .map(|item| match (item.bare, item.parameters.is_empty()) {
-            (Bare::String(name), true) => Component::named(&name),
+        .map(|item| match (item.bare, item.parameters.as_slice()) {
+            (Bare::String(name), []) => Component::named(&name),
+            (Bare::String(name), [(parameter, Bare::Boolean(true))]) if parameter == REQUEST => {
+                Component::requested(&name)
+            }
             _ => None,
         })
         .collect::<Option<Vec<_>>>()

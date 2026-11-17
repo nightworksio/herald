@@ -4,7 +4,7 @@
 use std::collections::BTreeMap;
 
 use herald_config::Config;
-use herald_core::{Delivery, Draft, Event, Kind, TemplateName, Templates};
+use herald_core::{Delivery, Draft, Event, Kind, TemplateName, Templates, Visibility};
 use herald_ports::{Clock, Http, Signer, Store};
 
 use crate::announce::{Announced, Outcome, Ports, Run, Stop};
@@ -19,7 +19,7 @@ const PROJECT: &str = "herald";
 /// announcement's own steps, as `herald doctor --post` asks: a plain post,
 /// with no crosspost, thread, pin or mention, worded by the destination's
 /// wording and kept in `ports`' store, which `run` holds (ADR-0002). A route
-/// to one of herald's own actors posts nowhere, and is left out.
+/// to one of herald's own actors or feeds posts nowhere, and is left out.
 pub async fn trial<S: Store, C: Clock, G: Signer, H: Http>(
     config: &Config,
     connected: &Connected<H>,
@@ -31,7 +31,7 @@ pub async fn trial<S: Store, C: Clock, G: Signer, H: Http>(
     let now = ports.clock.now();
     let mut tried = Vec::new();
     for (route, http) in &connected.routes {
-        if route.reached.follows().is_some() {
+        if route.reached.follows().is_some() || route.reached.feeds().is_some() {
             continue;
         }
         let id = route.config.route.id.clone();
@@ -55,7 +55,7 @@ pub async fn trial<S: Store, C: Clock, G: Signer, H: Http>(
         let outcome = match drafted {
             Ok(event) => {
                 let mut tested = route.clone();
-                tested.config.route.template = template.clone();
+                tested.config.route.template = Some(template.clone());
                 tested.config.route.delivery = Delivery::default();
                 Run {
                     ports,
@@ -64,6 +64,7 @@ pub async fn trial<S: Store, C: Clock, G: Signer, H: Http>(
                     http,
                     holder: run,
                     lease: config.announce.lease,
+                    seen: Visibility::Public,
                 }
                 .announce(&event, &templates)
                 .await

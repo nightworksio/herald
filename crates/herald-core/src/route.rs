@@ -262,8 +262,9 @@ pub struct Route {
     pub filter: Filter,
     /// Where it announces them.
     pub destination: DestinationName,
-    /// The template it renders them with.
-    pub template: TemplateName,
+    /// The template it renders them with; none where it publishes each
+    /// event as an envelope, to a feed.
+    pub template: Option<TemplateName>,
     /// How it delivers them.
     pub delivery: Delivery,
 }
@@ -295,7 +296,7 @@ pub(crate) mod tests {
                 matching: Match::default(),
             },
             destination: DestinationName::new("discord"),
-            template: TemplateName::new("package-release"),
+            template: Some(TemplateName::new("package-release")),
             delivery: Delivery::default(),
         }
     }

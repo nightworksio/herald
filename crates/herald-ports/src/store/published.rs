@@ -1,9 +1,9 @@
 //! What the instance last published to its peers: its key set and the
-//! sequence it published it under (ADR-0044).
+//! sequence it published it under (ADR-0044), and each feed's envelopes.
 
 use std::future::Future;
 
-use herald_core::PublishedKeys;
+use herald_core::{DestinationName, Feed, PublishedKeys};
 
 use super::{StoreError, Version, Versioned, Written};
 
@@ -21,6 +21,21 @@ pub trait Published: Sync {
         keys: &PublishedKeys,
         expected: Option<Version>,
     ) -> impl Future<Output = Result<Written, StoreError>> + Send;
+
+    /// What the feed of `destination` lists, where it lists anything.
+    fn feed(
+        &self,
+        destination: &DestinationName,
+    ) -> impl Future<Output = Result<Option<Versioned<Feed>>, StoreError>> + Send;
+
+    /// Writes the feed of `destination` as `feed` if the stored one is at
+    /// `expected`, or absent when `expected` is `None`.
+    fn put_feed(
+        &self,
+        destination: &DestinationName,
+        feed: &Feed,
+        expected: Option<Version>,
+    ) -> impl Future<Output = Result<Written, StoreError>> + Send;
 }
 
 impl Published for super::Unkept {
@@ -33,6 +48,22 @@ impl Published for super::Unkept {
     fn put_published_keys(
         &self,
         _: &PublishedKeys,
+        _: Option<Version>,
+    ) -> impl Future<Output = Result<Written, StoreError>> + Send {
+        std::future::ready(Err(super::Held::Published.unsupported()))
+    }
+
+    fn feed(
+        &self,
+        _: &DestinationName,
+    ) -> impl Future<Output = Result<Option<Versioned<Feed>>, StoreError>> + Send {
+        std::future::ready(Err(super::Held::Published.unsupported()))
+    }
+
+    fn put_feed(
+        &self,
+        _: &DestinationName,
+        _: &Feed,
         _: Option<Version>,
     ) -> impl Future<Output = Result<Written, StoreError>> + Send {
         std::future::ready(Err(super::Held::Published.unsupported()))
@@ -55,6 +86,28 @@ impl<T: Published> Published for Option<&T> {
         match self {
             Some(kept) => kept.put_published_keys(keys, expected).await,
             None => super::Unkept.put_published_keys(keys, expected).await,
+        }
+    }
+
+    async fn feed(
+        &self,
+        destination: &DestinationName,
+    ) -> Result<Option<Versioned<Feed>>, StoreError> {
+        match self {
+            Some(kept) => kept.feed(destination).await,
+            None => super::Unkept.feed(destination).await,
+        }
+    }
+
+    async fn put_feed(
+        &self,
+        destination: &DestinationName,
+        feed: &Feed,
+        expected: Option<Version>,
+    ) -> Result<Written, StoreError> {
+        match self {
+            Some(kept) => kept.put_feed(destination, feed, expected).await,
+            None => super::Unkept.put_feed(destination, feed, expected).await,
         }
     }
 }
