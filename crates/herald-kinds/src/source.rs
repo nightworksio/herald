@@ -111,10 +111,46 @@ pub trait SourceConfig: fmt::Debug + Send + Sync + Itself {
         self.routed().iter().any(|(_, id)| id == route.as_str())
     }
 
+    /// The repository it announces for, where it names one.
+    fn standing(&self) -> Option<Standing> {
+        None
+    }
+
     /// What polls it, reading with `token` where it has one, and watching
     /// what it announced for an edit where `edits` says a route edits its
     /// posts (ADR-0034).
     fn poller(&self, token: Option<Secret>, edits: bool) -> Polling;
+}
+
+/// The repository a source or an owner's member announces for, so a
+/// container image and its repository's own source may share a project
+/// (ADR-0040).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Standing {
+    /// The repository, as its API base and full path, ignoring case.
+    pub repository: String,
+    /// Whether it is a container image linked to the repository, rather
+    /// than the repository itself.
+    pub image: bool,
+}
+
+impl Standing {
+    /// The repository at `path` on the API at `api`, or an image linked to
+    /// it where `image` says so.
+    #[must_use]
+    pub fn new(api: &str, path: &str, image: bool) -> Self {
+        Self {
+            repository: format!("{}/{path}", api.trim_end_matches('/')).to_lowercase(),
+            image,
+        }
+    }
+
+    /// Whether it may share a project with `other`: an image and the
+    /// repository it is linked to.
+    #[must_use]
+    pub fn shares(&self, other: &Self) -> bool {
+        self.repository == other.repository && self.image != other.image
+    }
 }
 
 /// How a source is polled: as one, or as each member an owner lists.
@@ -174,6 +210,12 @@ pub trait Expand: fmt::Debug + Send + Sync {
     /// What one of its members is called, and what several are.
     fn member_nouns(&self) -> (&'static str, &'static str) {
         ("repository", "repositories")
+    }
+
+    /// The repository the member `member` announces for, where it is one or
+    /// is linked to one.
+    fn standing(&self, _member: &Listed) -> Option<Standing> {
+        None
     }
 
     /// How long a member that left the selection is kept before it is

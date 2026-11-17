@@ -225,6 +225,7 @@ fn cli() -> Listed {
         fork: false,
         template: false,
         language: None,
+        linked: None,
     }
 }
 

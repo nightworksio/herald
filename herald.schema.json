@@ -3190,6 +3190,109 @@
           ]
         },
         {
+          "description": "A GitHub owner's container images, each announced as the project of the repository it is linked to.",
+          "type": "object",
+          "properties": {
+            "api": {
+              "description": "GitHub's REST API, for a GitHub Enterprise Server or a GHE.com\ntenant; `https://api.github.com` where absent.",
+              "type": "string"
+            },
+            "backfill": {
+              "description": "How many of the newest versions the first poll announces; none\nwhere absent.",
+              "type": "integer",
+              "format": "uint",
+              "default": 0,
+              "minimum": 0
+            },
+            "exclude": {
+              "description": "Globs of the image names left out, whatever `include` says.",
+              "type": "array",
+              "default": [],
+              "items": {
+                "type": "string"
+              }
+            },
+            "include": {
+              "description": "Globs of the image names taken; every name where empty.",
+              "type": "array",
+              "default": [],
+              "items": {
+                "type": "string"
+              }
+            },
+            "keep_members": {
+              "description": "How long an image that left the owner is kept, with its cursor;\n\"30d\" where absent.",
+              "$ref": "#/$defs/Duration"
+            },
+            "kind": {
+              "type": "string",
+              "const": "ghcr"
+            },
+            "most_packages": {
+              "description": "The most images a listing reads before it refuses the round; 1000\nwhere absent, and at most 100000.",
+              "type": "integer",
+              "format": "uint",
+              "minimum": 1
+            },
+            "moving": {
+              "description": "Globs of the tags never announced, as they move from one image to\nthe next; `[\"latest\"]` where absent.",
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "owner": {
+              "description": "The GitHub organization or user whose container images the source\ntakes.",
+              "type": "string"
+            },
+            "package_visibility": {
+              "description": "Who may see an image linked to a repository: `stricter`, the\nstricter of the image's visibility and its repository's, where\nabsent, or `package`, the image's own.",
+              "$ref": "#/$defs/PackageVisibility"
+            },
+            "page": {
+              "description": "How many of an image's newest versions one poll reads; 30 where\nabsent.",
+              "type": "integer",
+              "format": "uint",
+              "minimum": 1
+            },
+            "parse": {
+              "description": "The most of an answer parsed; \"4MiB\" where absent, and at most four\ntimes that.",
+              "$ref": "#/$defs/Size"
+            },
+            "project": {
+              "description": "The project an image linked to a repository is announced as: a\ntemplate over the repository's `repository.*`, as an owner source\nrenders it; the repository's name where absent. An image linked to\nnone is announced as its own name.",
+              "type": "string"
+            },
+            "registry": {
+              "description": "The registry's host the images are named on, in their identities;\nghcr.io beside api.github.com, and `containers.<host>` beside a\nGitHub Enterprise Server or a GHE.com tenant, where absent.",
+              "type": "string"
+            },
+            "remembered": {
+              "description": "How many identities each image's cursor remembers; 500 where\nabsent, and at least `page`.",
+              "type": "integer",
+              "format": "uint",
+              "minimum": 1
+            },
+            "token": {
+              "description": "A token that may read the owner's packages, which GitHub asks for\neven for public images.",
+              "$ref": "#/$defs/SecretRef"
+            },
+            "visibility": {
+              "description": "The visibilities of the images taken; `[\"public\"]` where absent.",
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/RepositoryVisibility"
+              }
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "owner",
+            "token"
+          ]
+        },
+        {
           "description": "A package's versions on Packagist.",
           "type": "object",
           "properties": {

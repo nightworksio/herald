@@ -456,6 +456,7 @@ fn member() -> Listed {
         fork: false,
         template: false,
         language: None,
+        linked: None,
     }
 }
 

@@ -180,6 +180,7 @@ fn a_listing_takes_its_members_and_an_unchanged_one_none() {
         fork: false,
         template: false,
         language: None,
+        linked: None,
     };
     assert_eq!(Expanded::Unchanged.members(), Vec::new());
     assert_eq!(
@@ -267,6 +268,7 @@ fn an_owner_by_default_polls_each_member_on_its_own_and_follows_no_events() {
         fork: false,
         template: false,
         language: None,
+        linked: None,
     };
     let (one, two) = (member("one"), member("two"));
     let http = Nowhere;
@@ -418,9 +420,40 @@ fn a_poll_reaches_its_api_s_origin_unless_it_names_more_bases() {
         fork: false,
         template: false,
         language: None,
+        linked: None,
     };
     assert!(owner.takes(&member));
     assert_eq!(owner.project(&member), Ok("one".to_owned()));
     assert_eq!(owner.member(&member).api(), "o/one");
     assert_eq!(owner.origin(&member).repository, "o/one");
+}
+
+#[test]
+fn an_image_shares_a_project_with_the_repository_it_is_linked_to_alone() {
+    let repository = Standing::new("https://api.github.com/", "Nightworksio/Herald", false);
+    assert_eq!(
+        repository.repository,
+        "https://api.github.com/nightworksio/herald"
+    );
+    let image = Standing::new("https://api.github.com", "nightworksio/herald", true);
+    assert!(image.shares(&repository) && repository.shares(&image));
+    assert!(!repository.shares(&repository.clone()));
+    assert!(!image.shares(&image.clone()));
+    let other = Standing::new("https://api.github.com", "nightworksio/other", true);
+    assert!(!other.shares(&repository));
+    assert_eq!(Source::new(tokened()).standing(), None);
+    let member = Listed {
+        id: "1".to_owned(),
+        name: "one".to_owned(),
+        path: "o/one".to_owned(),
+        topics: Vec::new(),
+        properties: std::collections::BTreeMap::new(),
+        visibility: herald_core::Visibility::Public,
+        archived: false,
+        fork: false,
+        template: false,
+        language: None,
+        linked: None,
+    };
+    assert_eq!(Members.standing(&member), None);
 }

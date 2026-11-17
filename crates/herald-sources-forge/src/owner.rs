@@ -409,6 +409,14 @@ impl Expand for Owned {
         &self.api
     }
 
+    fn standing(&self, repository: &Listed) -> Option<herald_kinds::Standing> {
+        Some(herald_kinds::Standing::new(
+            &self.api,
+            &repository.path,
+            false,
+        ))
+    }
+
     fn keep_members(&self) -> SignedDuration {
         self.keep_members
     }
@@ -670,7 +678,7 @@ pub(crate) fn properties(
 
 /// A repository, as GitHub lists it.
 #[derive(Deserialize)]
-struct GitHub {
+pub(crate) struct GitHub {
     id: u64,
     name: String,
     full_name: String,
@@ -706,6 +714,7 @@ impl From<GitHub> for Listed {
             fork: repository.fork,
             template: repository.is_template,
             language: repository.language,
+            linked: None,
         }
     }
 }
@@ -741,6 +750,7 @@ impl From<GitLab> for Listed {
             fork: project.forked_from_project.is_some(),
             template: false,
             language: None,
+            linked: None,
         }
     }
 }
@@ -784,6 +794,7 @@ impl From<Forgejo> for Listed {
             fork: repository.fork,
             template: repository.template,
             language: Some(repository.language).filter(|language| !language.is_empty()),
+            linked: None,
         }
     }
 }

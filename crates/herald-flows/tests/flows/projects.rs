@@ -96,6 +96,7 @@ fn member(
             fork: false,
             template: false,
             language: None,
+            linked: None,
         },
         discovered: at(),
         left,

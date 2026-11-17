@@ -1,7 +1,9 @@
 //! Whatever a forge sends, its parsers answer an event, nothing or an error,
 //! and an event's identity names its repository and ends with its version;
 //! an owner's webhook names the member its event's identity names, and its
-//! events, feed and GraphQL answers name members by their numeric ids.
+//! events, feed and GraphQL answers name members by their numeric ids; a
+//! ghcr source's listing names images with a project, and each version's
+//! identity names its registry, owner and image.
 
 #![no_main]
 
@@ -13,7 +15,7 @@ use herald_core::{
 use herald_kinds::{Changed, Polling, Rounded, SourceConfig as _};
 use herald_ports::{Http, HttpError, Request, Response, Secret};
 use herald_sources_forge::{Forge, Hooked, Repository, Signals};
-use herald_sources_forge::{ForgeSource, SourceOptions, Transport};
+use herald_sources_forge::{ForgeSource, GhcrOptions, GhcrSource, SourceOptions, Transport};
 use herald_wire::PARSE_LIMIT;
 use libfuzzer_sys::fuzz_target;
 
@@ -64,6 +66,7 @@ fn owned(bytes: &[u8]) {
         fork: false,
         template: false,
         language: None,
+        linked: None,
     };
     for (forge, transport) in OWNERS {
         let source = ForgeSource {
@@ -99,8 +102,76 @@ fn owned(bytes: &[u8]) {
     }
 }
 
+/// What a ghcr source makes of `bytes` as its owner's listing and as an
+/// image's versions: images with a project, and versions whose identity
+/// names the registry, the owner and the image and ends with the tag.
+fn images(bytes: &[u8]) {
+    let http = Answering(bytes.to_vec());
+    let source = GhcrSource {
+        options: GhcrOptions {
+            owner: "fuzzer".to_owned(),
+            token: SecretRef {
+                secret: "TOKEN".to_owned(),
+            },
+            api: None,
+            registry: None,
+            include: Vec::new(),
+            exclude: Vec::new(),
+            visibility: Some(vec![
+                Visibility::Public,
+                Visibility::Internal,
+                Visibility::Private,
+            ]),
+            moving: None,
+            package_visibility: None,
+            most_packages: None,
+            keep_members: None,
+            project: None,
+            backfill: 0,
+            page: None,
+            remembered: None,
+            parse: None,
+        },
+    };
+    let Polling::Many(expand) = source.poller(Some(Secret::new("TOKEN", "t")), false) else {
+        panic!("an owner's images are polled as members");
+    };
+    if let Ok(listed) = pollster::block_on(expand.listed(&http, None)) {
+        for image in listed.members() {
+            assert!(expand.project(&image).is_ok(), "{image:?}");
+            assert_eq!(expand.origin(&image).visibility, image.visibility);
+        }
+    }
+    let image = Listed {
+        id: "7".to_owned(),
+        name: "fuzzed".to_owned(),
+        path: "fuzzed".to_owned(),
+        topics: Vec::new(),
+        properties: BTreeMap::new(),
+        visibility: Visibility::Public,
+        archived: false,
+        fork: false,
+        template: false,
+        language: None,
+        linked: None,
+    };
+    if let Ok(Some(polled)) = pollster::block_on(expand.member(&image).polled(&http, None)) {
+        for event in &polled.events {
+            identified(event, None);
+            assert!(
+                event
+                    .identity()
+                    .as_str()
+                    .starts_with("ghcr.io/fuzzer/fuzzed/"),
+                "{event:?}"
+            );
+        }
+    }
+}
+
 fuzz_target!(|bytes: &[u8]| {
     owned(bytes);
+    images(bytes);
     let response = Response {
         status: 200,
         headers: Vec::new(),

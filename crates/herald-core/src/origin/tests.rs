@@ -16,6 +16,7 @@ pub(crate) fn origin() -> Origin {
             fork: false,
             template: false,
             language: None,
+            linked: None,
         },
     )
 }

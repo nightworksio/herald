@@ -22,6 +22,7 @@ pub(super) fn membership(id: &str) -> Membership {
             fork: false,
             template: false,
             language: Some("Rust".to_owned()),
+            linked: None,
         },
         discovered: NOON,
         left: None,

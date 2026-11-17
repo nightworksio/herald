@@ -181,6 +181,7 @@ fn a_page_is_read_as_each_forge_describes_its_repositories() {
             fork: false,
             template: false,
             language: Some("Rust".to_owned()),
+            linked: None,
         }
     );
     assert_eq!(
@@ -217,9 +218,21 @@ fn a_page_is_read_as_each_forge_describes_its_repositories() {
             fork: true,
             template: false,
             language: None,
+            linked: None,
         }
     );
     assert!(!gitlab[1].fork);
+}
+
+#[test]
+fn a_forgejo_page_is_read_as_forgejo_describes_its_repositories() {
+    let page = |forge, body: Value| {
+        owned(forge, &SourceOptions::default()).page(&Response {
+            status: 200,
+            headers: Vec::new(),
+            body: body.to_string().into_bytes(),
+        })
+    };
     let forgejo = page(
         Forge::Forgejo,
         json!([
@@ -553,6 +566,7 @@ fn a_member_is_polled_at_its_own_path_with_the_source_s_token() {
         fork: false,
         template: false,
         language: None,
+        linked: None,
     });
     assert_eq!(poll.api(), "https://gitlab.com/api/v4");
     let http = ScriptedHttp::new(vec![unchanged()]);
@@ -651,6 +665,7 @@ fn a_member_s_events_come_from_its_listing_on_the_owner_s_host_and_reach_its_ove
         fork: false,
         template: false,
         language: None,
+        linked: None,
     };
     let origin = owned.origin(&member);
     assert_eq!(
@@ -671,3 +686,29 @@ fn a_member_s_events_come_from_its_listing_on_the_owner_s_host_and_reach_its_ove
 
 mod members;
 mod packages;
+
+#[test]
+fn an_owner_s_member_stands_for_its_own_repository() {
+    let source = owned(Forge::GitHub, &SourceOptions::default());
+    let member = Listed {
+        id: "1".to_owned(),
+        name: "herald".to_owned(),
+        path: "lemonfiber/herald".to_owned(),
+        topics: Vec::new(),
+        properties: BTreeMap::new(),
+        visibility: Visibility::Public,
+        archived: false,
+        fork: false,
+        template: false,
+        language: None,
+        linked: None,
+    };
+    assert_eq!(
+        source.standing(&member),
+        Some(herald_kinds::Standing::new(
+            "https://api.github.com",
+            "lemonfiber/herald",
+            false
+        ))
+    );
+}

@@ -29,6 +29,8 @@ exclude_re = [
     "SourceConfig::notes -> Vec<&'static str> with vec!\\[\\]",
     # A poll and an owner ask only their API's origin unless their kind names more bases, and an empty slice is an empty slice.
     "(Expand|Poll)::bases -> &\\[String\\] with Vec::leak\\(Vec::new\\(\\)\\)",
+    # A source or member stands for no repository unless its kind names one, and `None` is `None`.
+    "(SourceConfig|Expand)::standing -> Option<Standing> with None",
     # A source names no signal its events carry unless its kind says so, and `Vec::new()` is `vec![]`.
     "SourceConfig::signals -> Vec<herald_core::Signal> with vec!\\[\\]",
     # An owner polls one member a request unless its kind batches them, and `1.try_into().unwrap()` is `NonZeroUsize::MIN`.

@@ -16,6 +16,7 @@ fn member(id: &str, name: &str) -> Listed {
         fork: false,
         template: false,
         language: None,
+        linked: None,
     }
 }
 

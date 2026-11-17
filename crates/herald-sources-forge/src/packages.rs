@@ -215,7 +215,7 @@ fn read<T: serde::de::DeserializeOwned>(
 
 /// The identity of the image `image` of `owner`, tagged `tag`, on
 /// `registry`: one a registry's own source of the image shares.
-fn container(registry: &str, (owner, image): (&str, &str), tag: &str) -> Identity {
+pub(crate) fn container(registry: &str, (owner, image): (&str, &str), tag: &str) -> Identity {
     Identity::new(format!(
         "{}/{}/{}/{tag}",
         registry.to_ascii_lowercase(),

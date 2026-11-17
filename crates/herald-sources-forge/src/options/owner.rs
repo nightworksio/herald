@@ -159,7 +159,7 @@ impl SourceOptions {
 
     /// Whether the `project` template compiles and reads a repository's
     /// attributes alone.
-    pub(super) fn project_check(project: &str) -> Result<(), String> {
+    pub(crate) fn project_check(project: &str) -> Result<(), String> {
         let named =
             ProjectName::compile(project, Sandbox::DEFAULT).map_err(|error| error.reason)?;
         let unknown = named.unknown();

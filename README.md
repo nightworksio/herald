@@ -603,6 +603,36 @@ namespace's packages public. Docker Hub tags take the identity
 `docker.io/<namespace>/<repository>/<tag>`, the one a forge's container
 package and any other source of the image share.
 
+### An owner's container images
+
+`kind = "ghcr"` takes a GitHub owner's container images, each polled on its
+own and announced as the project of the repository it is linked to:
+
+```toml
+[sources.images]
+kind = "ghcr"
+owner = "nightworksio"
+token = { secret = "GITHUB_TOKEN" }
+```
+
+GitHub lists packages only with a token that may read them. `api` names a
+GitHub Enterprise Server or a GHE.com tenant, and `registry` the host the
+images are named on (ghcr.io, or `containers.<host>` beside `api`, where
+absent). `include` and `exclude` choose images by name, `visibility`
+(`["public"]`) by who may see them, and `moving` (`["latest"]`) names the
+tags never announced. A listing reads at most `most_packages` images
+(1000, at most 100000), and an image that leaves is kept `keep_members`
+("30d"). Each tag takes the identity `<registry>/<owner>/<image>/<tag>`, the
+one a repository's `package` signal gives, so a route announces it once.
+
+An image linked to a repository announces as that repository's project:
+`project`, a template over its `repository.*`, or the repository's name. It
+may share the project with the repository's own source; any other source
+announcing as it withholds the image's events. An image linked to none
+announces as its own name. An image is seen as the stricter of its own
+visibility and its repository's; `package_visibility = "package"` lets the
+image's own decide.
+
 ### Edits to a late or edited release
 
 A Release that comes after its tag was announced edits the tag's post to
@@ -717,7 +747,7 @@ What is built on `main`, and the decision each part follows:
 | The core: events, routes, rendering, dialects, chunking, the never-twice plan | [ADR-0001](.docs/decisions/0001-a-sans-io-core-behind-ports.md) | yes |
 | The ports, fakes and the conformance suites every store, keyring, database, key-value store and host passes | [ADR-0001](.docs/decisions/0001-a-sans-io-core-behind-ports.md), [ADR-0005](.docs/decisions/0005-an-announcement-is-sent-once-and-finished-if-interrupted.md) | yes |
 | `herald.toml` and its JSON Schema | [ADR-0006](.docs/decisions/0006-one-herald-toml-with-sandboxed-templates-and-a-published-schema.md) | yes |
-| Sources: forges, registries, feeds, apps | [ADR-0003](.docs/decisions/0003-every-source-becomes-one-neutral-event.md) | forge releases from GitHub, GitLab and Forgejo, by their event and by polling; package versions from Packagist, crates.io, npm and Docker Hub, one package or every package of a namespace ([ADR-0039](.docs/decisions/0039-a-registry-source-takes-every-package-of-a-namespace.md)), and RSS and Atom feed entries, by polling; an app's events, through `herald announce --event` and `herald server` ([ADR-0015](.docs/decisions/0015-an-app-is-a-source-routes-name-announcing-with-hashed-tokens-scoped-to-its-projects.md)) |
+| Sources: forges, registries, feeds, apps | [ADR-0003](.docs/decisions/0003-every-source-becomes-one-neutral-event.md) | forge releases from GitHub, GitLab and Forgejo, by their event and by polling; package versions from Packagist, crates.io, npm and Docker Hub, one package or every package of a namespace ([ADR-0039](.docs/decisions/0039-a-registry-source-takes-every-package-of-a-namespace.md)), a GitHub owner's container images ([ADR-0040](.docs/decisions/0040-a-ghcr-source-announces-an-owner-s-images-as-their-repositories-projects.md)), and RSS and Atom feed entries, by polling; an app's events, through `herald announce --event` and `herald server` ([ADR-0015](.docs/decisions/0015-an-app-is-a-source-routes-name-announcing-with-hashed-tokens-scoped-to-its-projects.md)) |
 | Destination: Discord | [ADR-0004](.docs/decisions/0004-each-destination-gets-its-own-dialect-limits-and-features.md), [ADR-0011](.docs/decisions/0011-markers-count-only-on-herald-s-own-posts-a-route-keeps-one-pin-and-a-lock-archives.md) | yes, against reference fixtures until recorded ones replace them |
 | Inbound requests verified before they are parsed | [ADR-0007](.docs/decisions/0007-secrets-stay-out-of-reach-and-every-inbound-request-is-verified-first.md) | the signatures of GitHub, GitLab and Forgejo webhooks, Discord interactions and Slack requests, with the replay window, and the homeserver token of a Matrix transaction, each webhook delivery admitted once ([ADR-0013](.docs/decisions/0013-a-webhook-delivery-is-admitted-once-released-when-it-fails-and-kept-for-a-week.md)), and an ActivityPub activity's HTTP signature and digest against its actor's key, read from a public address on the key's own origin, with the activity's actor held to that key's owner |
 | Destinations: Matrix, Slack, Fediverse | [ADR-0004](.docs/decisions/0004-each-destination-gets-its-own-dialect-limits-and-features.md), [ADR-0036](.docs/decisions/0036-a-route-announces-each-project-as-an-actor-of-its-own.md) | the Fediverse through the Mastodon client API, Matrix through the client-server API, and Slack by bot token or incoming webhook, with subscribers mentioned, against reference fixtures; the ActivityPub actor's signed deliveries of each Note to its followers' shared inboxes, each follow kept and answered with a signed `Accept` and each undo forgetting its follower, and its key loaded by every run and by `herald doctor`; `herald server` serving its inbox, its Notes and the actor and WebFinger documents ([ADR-0014](.docs/decisions/0014-herald-server-answers-first-and-works-after-on-one-task-within-limits.md)); a route announcing each project as an actor of its own, a departed repository's actor kept while followed and gone after |

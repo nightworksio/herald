@@ -10,6 +10,7 @@ mod delivered;
 mod events;
 mod forge;
 mod forgejo;
+mod ghcr;
 mod github;
 mod gitlab;
 mod graphql;
@@ -23,6 +24,7 @@ mod tags;
 mod wire;
 
 pub use forge::{Forge, Origin, Repository, Token};
+pub use ghcr::{GhcrKind, GhcrOptions, GhcrSource};
 pub use herald_kinds::Hooked;
 pub use kind::{ForgeSource, ForgejoKind, GitHubKind, GitLabKind};
 pub use options::{
