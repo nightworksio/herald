@@ -135,6 +135,20 @@ pub(crate) struct Run<'a, S, C, G, H> {
     pub(crate) seen: Visibility,
 }
 
+impl<S, C, G, H> Clone for Run<'_, S, C, G, H> {
+    fn clone(&self) -> Self {
+        Self {
+            ports: self.ports,
+            route: self.route,
+            kinds: self.kinds,
+            http: self.http,
+            holder: self.holder,
+            lease: self.lease,
+            seen: self.seen,
+        }
+    }
+}
+
 /// The steps a run took that did not land, and why the first of them did
 /// not.
 type Unlanded = (Vec<Step>, Stop);
