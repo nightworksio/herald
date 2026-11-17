@@ -360,6 +360,15 @@ mod told {
             ["releases: skipped, as the project Night names no actor; nothing sent"]
         );
         assert_eq!(
+            told::worked(&did(Did::Announced(vec![announced(Outcome::Gathered {
+                key: "v1.2.0".to_owned(),
+                due: "2026-11-17T12:30:00Z".parse().unwrap(),
+            })]))),
+            [
+                "releases: gathered into the group v1.2.0, announced at 2026-11-17T12:30:00Z; nothing sent yet"
+            ]
+        );
+        assert_eq!(
             told::worked(&did(Did::Followed(Ok(Followed::Undone {
                 follower: "ana".to_owned(),
                 actor: "gate".to_owned(),

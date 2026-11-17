@@ -1,8 +1,8 @@
 use std::collections::BTreeMap;
 
 use super::*;
-use crate::event::Draft;
 use crate::event::tests::{draft, event};
+use crate::event::{Draft, Event};
 use crate::marker::Marker;
 use crate::profile::fixtures::{DISCORD, MATRIX, PLAIN, SLACK};
 use crate::profile::{Features, Limits, MentionStyle, Pins, Threads};
@@ -82,7 +82,7 @@ fn threaded() -> Route {
 fn an_event_is_announced_with_its_key_title_parts_thread_and_link() {
     let route = threaded();
     let announcement = announce(
-        &event(),
+        (&event()).into(),
         &route,
         &templates(&route),
         &profile(256, 4096),
@@ -127,7 +127,7 @@ fn an_event_is_announced_with_its_key_title_parts_thread_and_link() {
 fn each_list_of_users_past_the_room_is_a_message_after_the_parts() {
     let route = threaded();
     let mut announcement = announce(
-        &event(),
+        (&event()).into(),
         &route,
         &templates(&route),
         &profile(256, 4096),
@@ -157,7 +157,7 @@ fn a_route_without_a_thread_names_none_and_a_long_body_is_cut() {
     })
     .unwrap();
     let announcement = announce(
-        &long,
+        (&long).into(),
         &route,
         &templates(&route),
         &profile(10, 5),
@@ -184,7 +184,7 @@ fn without_a_release_link_the_first_link_is_used_and_the_changelog_kept() {
     })
     .unwrap();
     let announcement = announce(
-        &other,
+        (&other).into(),
         &route,
         &templates(&route),
         &profile(256, 4096),
@@ -209,7 +209,7 @@ fn without_a_release_link_the_first_link_is_used_and_the_changelog_kept() {
     .unwrap();
     assert_eq!(
         announce(
-            &bare,
+            (&bare).into(),
             &route,
             &templates(&route),
             &profile(256, 4096),
@@ -234,7 +234,7 @@ fn an_announcement_is_written_with_its_destination_s_symbols() {
         ..profile(256, 4096)
     };
     let announcement = announce(
-        &event(),
+        (&event()).into(),
         &route,
         &templates(&route),
         &profile,
@@ -252,7 +252,7 @@ fn a_template_that_fails_fails_the_announcement() {
     let broken = Templates::compile(&[], crate::Sandbox::DEFAULT).unwrap();
     assert_eq!(
         announce(
-            &event(),
+            (&event()).into(),
             &route,
             &broken,
             &profile(256, 4096),
@@ -270,7 +270,7 @@ fn a_template_that_fails_fails_the_announcement() {
     };
     assert_eq!(
         announce(
-            &event(),
+            (&event()).into(),
             &untemplated,
             &broken,
             &profile(256, 4096),
@@ -296,7 +296,7 @@ fn a_template_that_fails_fails_the_announcement() {
     .unwrap();
     assert_eq!(
         announce(
-            &event(),
+            (&event()).into(),
             &route,
             &no_body,
             &profile(256, 4096),
@@ -326,7 +326,7 @@ fn a_template_that_fails_fails_the_announcement() {
     .unwrap();
     assert_eq!(
         announce(
-            &event(),
+            (&event()).into(),
             &route,
             &no_thread,
             &profile(256, 4096),
@@ -422,7 +422,7 @@ fn a_kind_s_links_become_buttons_in_its_order_where_the_event_carries_them() {
         LinkSpec::named("release"),
     ];
     let announcement = announce(
-        &linked,
+        (&linked).into(),
         &route,
         &templates(&route),
         &profile(256, 4096),
@@ -448,5 +448,47 @@ fn a_kind_s_links_become_buttons_in_its_order_where_the_event_carries_them() {
             ("status", Some("Status page"), "https://example.org/s"),
             ("release", None, "https://example.org/r"),
         ]
+    );
+}
+
+#[test]
+fn a_group_is_announced_under_its_key_as_its_lead_renders() {
+    let route = threaded();
+    let lead = event();
+    let other = Event::normalise(Draft {
+        identity: "github.com/2/v0.1.0".to_owned(),
+        project: "other".to_owned(),
+        ..draft()
+    })
+    .unwrap();
+    let members = [&lead, &other];
+    let subject = Subject {
+        event: &lead,
+        group: Some(crate::Group {
+            key: "v0.1.0",
+            events: &members,
+        }),
+    };
+    assert_eq!(subject.identity(), crate::group_identity("v0.1.0"));
+    let grouped = announce(
+        subject,
+        &route,
+        &templates(&route),
+        &profile(256, 4096),
+        "0.1.0",
+        marks(),
+        &links(),
+    )
+    .unwrap();
+    assert_eq!(
+        grouped.key,
+        Key::derive(&route.id, &crate::group_identity("v0.1.0"))
+    );
+    assert_eq!(grouped.project, "php-mutation-gate");
+    assert_eq!(grouped.title.plain(), "📦 php-mutation-gate v0.1.0");
+    assert_eq!(Subject::from(&other).identity(), *other.identity());
+    assert_eq!(
+        group_template(&route.id),
+        "route/php-mutation-gate-releases/group"
     );
 }

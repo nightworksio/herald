@@ -228,7 +228,12 @@ pub(crate) fn outcome(announced: &[Announced]) -> &Outcome {
 pub(crate) enum Fault {
     Nothing,
     ReadsPending,
+    ReadsHeld,
+    ReadsOnce,
     WritesPending,
+    PendingConflicts,
+    ClosingConflicts,
+    GroupedConflicts,
     DropsPending,
     Skipped,
     ExpiresDeliveries,
@@ -342,7 +347,12 @@ impl Inboxes for Failing {
 
 impl Ledger for Failing {
     async fn entry(&self, key: &Key) -> Result<Option<Versioned<Entry>>, StoreError> {
-        if self.fault == Fault::Reads {
+        let read = self.fault == Fault::ReadsOnce && {
+            let mut reads = self.landings.lock().unwrap();
+            *reads += 1;
+            *reads > 1
+        };
+        if self.fault == Fault::Reads || read {
             return Err(broken());
         }
         self.inner.entry(key).await
@@ -362,6 +372,7 @@ impl Ledger for Failing {
             (Fault::Claims, 1) => Err(broken()),
             (Fault::ClaimConflicts, 1) | (Fault::Writes, 2) => Ok(Written::Conflict),
             (Fault::Releases, _) if entry.lease.is_none() => Err(broken()),
+            (Fault::GroupedConflicts, _) if entry.group.is_some() => Ok(Written::Conflict),
             _ => self.inner.put_entry(entry, expected).await,
         }
     }

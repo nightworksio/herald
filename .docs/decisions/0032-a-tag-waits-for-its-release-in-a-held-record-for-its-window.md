@@ -1,6 +1,6 @@
 # ADR-0032: A tag waits for its Release in a held record, for its window
 
-**Status:** Accepted; a CI run holding a tag extended by [ADR-0033](0033-a-ci-run-for-a-tag-announces-the-tag-or-holds-it.md)
+**Status:** Accepted; a CI run holding a tag extended by [ADR-0033](0033-a-ci-run-for-a-tag-announces-the-tag-or-holds-it.md); a route's group held by [ADR-0045](0045-a-route-gathers-the-events-that-share-a-key-into-one-announcement.md)
 **Date:** 2026-11-15
 
 ## Context

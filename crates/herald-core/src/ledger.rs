@@ -152,6 +152,10 @@ pub struct Entry {
     /// last claimed it said.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub revision: Option<Revision>,
+    /// The key of the group whose announcement it was announced in, where
+    /// it was one's member; it is then never announced alone.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub group: Option<String>,
 }
 
 impl Entry {
@@ -165,6 +169,19 @@ impl Entry {
             wanted: None,
             claimed: None,
             revision: None,
+            group: None,
+        }
+    }
+
+    /// The entry of a member announced in the group `key` at `at`, showing
+    /// `revision`.
+    #[must_use]
+    pub fn grouped(key: Key, group: &str, revision: Revision, at: Timestamp) -> Self {
+        Self {
+            claimed: Some(at),
+            revision: Some(revision),
+            group: Some(group.to_owned()),
+            ..Self::new(key)
         }
     }
 
@@ -468,6 +485,27 @@ mod tests {
 
     fn at(text: &str) -> Timestamp {
         text.parse().unwrap()
+    }
+
+    #[test]
+    fn a_member_s_entry_names_its_group_shows_its_revision_and_sends_nothing() {
+        let revision = crate::Revision::of(None, ["member"]);
+        let entry = Entry::grouped(key(), "v1", revision.clone(), at("2026-11-17T10:00:00Z"));
+        assert_eq!(entry.key, key());
+        assert_eq!(entry.group.as_deref(), Some("v1"));
+        assert_eq!(entry.revision, Some(revision));
+        assert_eq!(entry.claimed, Some(at("2026-11-17T10:00:00Z")));
+        assert_eq!(entry.records, Vec::<Record>::new());
+        assert_eq!(entry.lease, None);
+        let json = serde_json::to_value(&entry).unwrap();
+        assert_eq!(json["group"], "v1");
+        assert_eq!(serde_json::from_value::<Entry>(json).unwrap(), entry);
+        assert!(
+            serde_json::to_value(Entry::new(key()))
+                .unwrap()
+                .get("group")
+                .is_none()
+        );
     }
 
     fn discord() -> Features {

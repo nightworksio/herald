@@ -178,6 +178,9 @@ pub fn report(announced: &Announced) -> String {
         Outcome::AlreadyAnnounced => format!("{route}: already announced; nothing sent"),
         Outcome::Unedited => format!("{route}: an edit of nothing it announced; nothing sent"),
         Outcome::Skipped(reason) => format!("{route}: skipped, as {reason}; nothing sent"),
+        Outcome::Gathered { key, due } => {
+            format!("{route}: gathered into the group {key}, announced at {due}; nothing sent yet")
+        }
         Outcome::Held { by, until } => {
             format!("{route}: run {by} holds it until {until}; nothing sent by this run")
         }

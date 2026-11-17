@@ -115,6 +115,8 @@ fn a_held_tag_of_a_member_still_listed_is_announced_as_the_member_s() {
         }],
         opened: NOON,
         due: NOON,
+        closed: None,
+        landed: false,
     };
     pollster::block_on(store.inner.put_pending(&pending, None)).unwrap();
     let mut answers = vec![POSTED, CROSSPOSTED, THREADED, PINNED, WHO, NO_PINS];

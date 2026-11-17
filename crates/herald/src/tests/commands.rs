@@ -138,6 +138,64 @@ fn preview_renders_each_route_against_a_sample_or_a_release_event() {
 }
 
 #[test]
+fn preview_renders_each_grouping_route_against_every_sample_or_the_event_as_one_group() {
+    let world = World::default();
+    let grouping = setup(&CONFIG.replace(
+        "template = \"release\"\n",
+        "template = \"release\"\ngroup = { key = \"{{ event.attributes.version }}\" }\n",
+    ).replace(
+        "title = \"📦 {{ event.project }} {{ event.attributes.version }}\"",
+        "title = \"{% if group %}{{ group.key }} of {{ events | length }}{% else %}alone{% endif %}\"",
+    ));
+    let sampled = herald(&grouping, &world, &["preview", "--group", "v9"]);
+    assert_eq!(sampled.code, DONE, "{}", sampled.err);
+    assert!(
+        sampled
+            .out
+            .starts_with("releases to discord:\n  title: v9 of 4\n"),
+        "{}",
+        sampled.out
+    );
+    let path = grouping
+        .directory
+        .path()
+        .join("event.json")
+        .display()
+        .to_string();
+    let evented = herald(
+        &grouping,
+        &world,
+        &["preview", "--group", "v9", "--event", &path],
+    );
+    assert!(
+        evented
+            .out
+            .starts_with("releases to discord:\n  title: v9 of 1\n"),
+        "{}",
+        evented.out
+    );
+    assert!(
+        herald(&grouping, &world, &["preview"])
+            .out
+            .starts_with("releases to discord:\n  title: alone\n")
+    );
+    let unknown = herald(
+        &grouping,
+        &world,
+        &["preview", "--group", "v9", "--route", "nope"],
+    );
+    assert_eq!(
+        (unknown.code, unknown.err.as_str()),
+        (MISTAKEN, "no route that groups has the id \"nope\"\n")
+    );
+    let ungrouped = herald(&setup(CONFIG), &world, &["preview", "--group", "v9"]);
+    assert_eq!(
+        (ungrouped.code, ungrouped.err.as_str()),
+        (MISTAKEN, "no route groups\n")
+    );
+}
+
+#[test]
 fn preview_says_why_an_event_file_or_a_template_fails() {
     let world = World::default();
     let failing = setup(&CONFIG.replace(

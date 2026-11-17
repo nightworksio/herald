@@ -541,6 +541,8 @@ fn every_answer_of_an_erased_store_on_held_events_is_the_store_s_own() {
         events: Vec::new(),
         opened: Timestamp::UNIX_EPOCH,
         due: Timestamp::UNIX_EPOCH,
+        closed: None,
+        landed: false,
     };
     let refusals = [
         answered(erased.pending(&hold)),

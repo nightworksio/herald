@@ -143,6 +143,10 @@
           "$ref": "#/$defs/Edits",
           "default": "none"
         },
+        "group": {
+          "description": "How it gathers the events that share a key into one announcement;\neach event is announced alone where absent.",
+          "$ref": "#/$defs/Group"
+        },
         "id": {
           "description": "The route's stable id, part of every announcement's key.",
           "type": "string",
@@ -899,6 +903,10 @@
           "type": "boolean",
           "default": false
         },
+        "group": {
+          "description": "How it gathers the events that share a key into one announcement;\neach event is announced alone where absent.",
+          "$ref": "#/$defs/Group"
+        },
         "id": {
           "description": "The route's stable id, part of every announcement's key.",
           "type": "string",
@@ -1207,6 +1215,112 @@
         "private_key"
       ]
     },
+    "Group": {
+      "description": "How a route gathers the events that share a key into one announcement.",
+      "type": "object",
+      "properties": {
+        "key": {
+          "description": "The template of the key events are grouped by, on one line; an\nevent whose key renders empty, or longer than 256 bytes, is\nannounced alone.",
+          "type": "string",
+          "examples": [
+            "{{ event.attributes.version }}"
+          ]
+        },
+        "late": {
+          "description": "What becomes of a member that comes after its group was announced:\nannounced alone (`post`), edited into the group's post where the\ndestination edits one and announced alone otherwise (`edit`), or\nleft unannounced (`skip`).",
+          "$ref": "#/$defs/GroupLate",
+          "default": "post"
+        },
+        "lead": {
+          "description": "The projects whose event leads a group, as globs ignoring case, the\nfirst that matches a member first; the first member leads where none\ndoes.",
+          "type": "array",
+          "default": [],
+          "examples": [
+            [
+              "lemonfiber"
+            ]
+          ],
+          "items": {
+            "type": "string"
+          }
+        },
+        "mode": {
+          "description": "How the group is announced: held until it is due, then announced as\none (`hold`), or the first member announced at once and its post\nedited as each other comes within the window (`edit`), where the\ndestination edits a post.",
+          "$ref": "#/$defs/GroupMode",
+          "default": "hold"
+        },
+        "most": {
+          "description": "How many members a group takes, each member more announced alone;\n25 where absent, and at most 100.",
+          "type": "integer",
+          "format": "uint",
+          "maximum": 100,
+          "minimum": 1
+        },
+        "until": {
+          "description": "When a held group is due: when its window passes (`window`), or as\nsoon as the member that leads it comes (`lead`).",
+          "$ref": "#/$defs/GroupUntil",
+          "default": "window"
+        },
+        "window": {
+          "description": "How long a group gathers its members, from when herald sees the\nfirst; \"30m\" where absent, and at most \"7d\".",
+          "$ref": "#/$defs/Duration"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "key"
+      ]
+    },
+    "GroupLate": {
+      "description": "What a route does with a member that comes after its group was\nannounced: once a held group closed to be announced, or once an edited\ngroup's window passed.",
+      "oneOf": [
+        {
+          "description": "Announce it alone.",
+          "type": "string",
+          "const": "post"
+        },
+        {
+          "description": "Edit the group's post to take it, or announce it alone where the\ndestination edits no post.",
+          "type": "string",
+          "const": "edit"
+        },
+        {
+          "description": "Leave it unannounced.",
+          "type": "string",
+          "const": "skip"
+        }
+      ]
+    },
+    "GroupMode": {
+      "description": "How a route announces a group.",
+      "oneOf": [
+        {
+          "description": "Hold the members until the window passes, then announce them as one.",
+          "type": "string",
+          "const": "hold"
+        },
+        {
+          "description": "Announce the first member at once, and edit its post as each other\nmember comes within the window.",
+          "type": "string",
+          "const": "edit"
+        }
+      ]
+    },
+    "GroupUntil": {
+      "description": "When a held group is announced.",
+      "oneOf": [
+        {
+          "description": "When its window passes.",
+          "type": "string",
+          "const": "window"
+        },
+        {
+          "description": "When the member that leads it comes, or its window passes.",
+          "type": "string",
+          "const": "lead"
+        }
+      ]
+    },
     "Guard": {
       "description": "What doctor does with a config that takes something private to a\npublic place.",
       "oneOf": [
@@ -1247,6 +1361,10 @@
           "description": "Which changed announcements it edits the post of: none, or a Release\nwhose name or notes the forge says were edited (`release`).",
           "$ref": "#/$defs/Edits",
           "default": "none"
+        },
+        "group": {
+          "description": "How it gathers the events that share a key into one announcement;\neach event is announced alone where absent.",
+          "$ref": "#/$defs/Group"
         },
         "id": {
           "description": "The route's stable id, part of every announcement's key.",
@@ -1525,6 +1643,10 @@
           "$ref": "#/$defs/Edits",
           "default": "none"
         },
+        "group": {
+          "description": "How it gathers the events that share a key into one announcement;\neach event is announced alone where absent.",
+          "$ref": "#/$defs/Group"
+        },
         "id": {
           "description": "The route's stable id, part of every announcement's key.",
           "type": "string",
@@ -1790,6 +1912,10 @@
           "description": "Which changed announcements it edits the post of: none, or a Release\nwhose name or notes the forge says were edited (`release`).",
           "$ref": "#/$defs/Edits",
           "default": "none"
+        },
+        "group": {
+          "description": "How it gathers the events that share a key into one announcement;\neach event is announced alone where absent.",
+          "$ref": "#/$defs/Group"
         },
         "id": {
           "description": "The route's stable id, part of every announcement's key.",
@@ -2608,6 +2734,10 @@
           "description": "Which changed announcements it edits the post of: none, or a Release\nwhose name or notes the forge says were edited (`release`).",
           "$ref": "#/$defs/Edits",
           "default": "none"
+        },
+        "group": {
+          "description": "How it gathers the events that share a key into one announcement;\neach event is announced alone where absent.",
+          "$ref": "#/$defs/Group"
         },
         "id": {
           "description": "The route's stable id, part of every announcement's key.",

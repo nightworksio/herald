@@ -26,6 +26,8 @@ mod feeds;
 #[cfg(test)]
 mod following;
 #[cfg(test)]
+mod grouping;
+#[cfg(test)]
 mod harness;
 #[cfg(test)]
 mod held;

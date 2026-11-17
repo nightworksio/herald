@@ -27,6 +27,7 @@ pub(super) struct Read {
     pub(super) sample_kinds: BTreeSet<Kind>,
     pub(super) origins: bool,
     pub(super) thread: Option<Spanned<String>>,
+    pub(super) group: Option<Spanned<String>>,
     pub(super) id_span: Range<usize>,
     pub(super) path: String,
 }
@@ -426,6 +427,7 @@ impl Loader<'_> {
         };
         let thread_name = route.thread.as_ref().map(|thread| thread.name.clone());
         let private = route.private;
+        let (group, group_key) = self.grouping(route.group, (&path, &options, feeds)).unzip();
         let delivery = Delivery {
             crosspost: route.crosspost,
             thread: route.thread.map(opened),
@@ -436,6 +438,7 @@ impl Loader<'_> {
             },
             late_release: route.late_release,
             edits: route.edits,
+            group,
         };
         let reach = Reach {
             name,
@@ -490,6 +493,7 @@ impl Loader<'_> {
             sample_kinds,
             origins,
             thread: thread_name,
+            group: group_key,
             id_span: span,
             path,
         })

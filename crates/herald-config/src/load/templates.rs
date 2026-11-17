@@ -5,7 +5,8 @@ use std::collections::BTreeMap;
 use std::ops::Range;
 
 use herald_core::{
-    Context, Form, Sandbox, TemplateName, Templates, body_template, thread_template, title_template,
+    Context, Event, Form, Group, Sandbox, TemplateName, Templates, body_template, group_template,
+    thread_template, title_template,
 };
 use toml::Spanned;
 
@@ -125,6 +126,15 @@ impl Loader<'_> {
                     format!("{}.thread.name", read.path),
                 ));
             }
+            if let Some(key) = &read.group {
+                sources.push((
+                    group_template(&read.config.route.id),
+                    key.get_ref().clone(),
+                    Form::Line,
+                    key.span(),
+                    format!("{}.group.key", read.path),
+                ));
+            }
         }
         let compiled: Vec<(&str, &str, Form)> = sources
             .iter()
@@ -157,7 +167,7 @@ impl Loader<'_> {
         let route = &read.config.route;
         let template_path = format!("templates.{}", rendered.template.as_str());
         let limits = read.config.profile.limits;
-        let parts = [
+        let mut parts = vec![
             (
                 title_template(&rendered.template),
                 rendered.title_span.clone(),
@@ -171,54 +181,91 @@ impl Loader<'_> {
                 None,
             ),
         ];
-        let thread = read.thread.as_ref().map(|thread| {
+        parts.extend(read.thread.as_ref().map(|thread| {
             (
                 thread_template(&route.id),
                 thread.span(),
                 format!("{}.thread.name", read.path),
                 Some(limits.thread_name),
             )
-        });
-        let events: Vec<_> = read
+        }));
+        parts.extend(read.group.as_ref().map(|key| {
+            (
+                group_template(&route.id),
+                key.span(),
+                format!("{}.group.key", read.path),
+                Some(usize::MAX),
+            )
+        }));
+        let events: Vec<Event> = read
             .sample_kinds
             .iter()
             .filter_map(|kind| self.specs.get(kind))
             .flat_map(|spec| samples_from(spec, read.origins))
             .collect();
+        let members: Vec<&Event> = events.iter().collect();
+        let group = read.group.as_ref().map(|_| Group {
+            key: SAMPLE_KEY,
+            events: &members,
+        });
         for event in &events {
-            let context = Context {
-                event,
-                route: &route.id,
-                herald: herald_core::itself::VERSION,
-            };
-            for (name, span, path, limit) in parts.iter().chain(thread.iter()) {
-                let rendered = match limit {
-                    Some(_) => templates.render_line(name, &context),
-                    None => templates.render(name, &context),
+            for group in std::iter::once(None).chain(group.map(Some)) {
+                let context = Context {
+                    event,
+                    route: &route.id,
+                    herald: herald_core::itself::VERSION,
+                    group,
                 };
-                match (rendered, limit) {
-                    (Err(failure), _) => {
-                        self.error(
-                            span,
-                            path,
-                            format!(
-                                "it does not render a sample {} event: {}",
-                                event.kind(),
-                                failure.reason
-                            ),
-                        );
-                        return;
-                    }
-                    (Ok(text), Some(limit)) if text.chars().count() > *limit => {
-                        self.error(span, path, format!(
-                                "it renders {} characters for a sample event, over the destination's {limit}; shorten it",
-                                text.chars().count()
-                            ));
-                        return;
-                    }
-                    (Ok(_), _) => {}
+                if !self.rendered_sample(templates, &context, &parts) {
+                    return;
                 }
             }
         }
     }
+
+    /// Whether every one of `parts` renders `context` within its limit,
+    /// each that does not said where it is written.
+    fn rendered_sample(
+        &mut self,
+        templates: &Templates,
+        context: &Context<'_>,
+        parts: &[(String, Range<usize>, String, Option<usize>)],
+    ) -> bool {
+        let sample = match context.group {
+            Some(_) => format!("group of sample {} events", context.event.kind()),
+            None => format!("sample {} event", context.event.kind()),
+        };
+        for (name, span, path, limit) in parts {
+            let rendered = match limit {
+                Some(_) => templates.render_line(name, context),
+                None => templates.render(name, context),
+            };
+            match (rendered, limit) {
+                (Err(failure), _) => {
+                    self.error(
+                        span,
+                        path,
+                        format!("it does not render a {sample}: {}", failure.reason),
+                    );
+                    return false;
+                }
+                (Ok(text), Some(limit)) if text.chars().count() > *limit => {
+                    self.error(
+                        span,
+                        path,
+                        format!(
+                            "it renders {} characters for a {sample}, over the destination's {limit}; shorten it",
+                            text.chars().count()
+                        ),
+                    );
+                    return false;
+                }
+                (Ok(_), _) => {}
+            }
+        }
+        true
+    }
 }
+
+/// The key a sample group is rendered under.
+const SAMPLE_KEY: &str = "v1.0.0";

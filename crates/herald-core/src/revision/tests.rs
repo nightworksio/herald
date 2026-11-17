@@ -223,3 +223,14 @@ fn a_part_is_the_post_s_message_or_a_chunk_s() {
     assert_eq!(entry.part(2), Some("two"));
     assert_eq!(entry.part(3), None);
 }
+
+#[test]
+fn a_group_s_post_is_edited_where_it_landed_renders_otherwise_and_the_destination_edits() {
+    let shown = posted(release());
+    assert_eq!(regrouped(&shown, &tag(), true), Revise::Edit);
+    assert_eq!(regrouped(&shown, &tag(), false), Revise::Keep);
+    assert_eq!(regrouped(&shown, &release(), true), Revise::Keep);
+    let unposted = Entry::new(key()).revising(release());
+    assert_eq!(regrouped(&unposted, &tag(), true), Revise::Keep);
+    assert_eq!(regrouped(&Entry::new(key()), &tag(), true), Revise::Keep);
+}

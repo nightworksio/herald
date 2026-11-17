@@ -341,6 +341,14 @@ Which events go where, rendered how.
 | `routes[].destination` | string | The destination it announces to. |
 | `routes[].edits` | [Edits](#edits) | Which changed announcements it edits the post of: none, or a Release whose name or notes the forge says were edited (`release`). |
 | `routes[].forum` | boolean | Whether the channel is a forum, where each announcement is a post of its own. |
+| `routes[].group` | table | How it gathers the events that share a key into one announcement; each event is announced alone where absent. |
+| `routes[].group.key` | string | The template of the key events are grouped by, on one line; an event whose key renders empty, or longer than 256 bytes, is announced alone. |
+| `routes[].group.late` | [GroupLate](#grouplate) | What becomes of a member that comes after its group was announced: announced alone (`post`), edited into the group's post where the destination edits one and announced alone otherwise (`edit`), or left unannounced (`skip`). |
+| `routes[].group.lead` | array of string | The projects whose event leads a group, as globs ignoring case, the first that matches a member first; the first member leads where none does. |
+| `routes[].group.mode` | [GroupMode](#groupmode) | How the group is announced: held until it is due, then announced as one (`hold`), or the first member announced at once and its post edited as each other comes within the window (`edit`), where the destination edits a post. |
+| `routes[].group.most` | integer | How many members a group takes, each member more announced alone; 25 where absent, and at most 100. |
+| `routes[].group.until` | [GroupUntil](#groupuntil) | When a held group is due: when its window passes (`window`), or as soon as the member that leads it comes (`lead`). |
+| `routes[].group.window` | [Duration](#duration) | How long a group gathers its members, from when herald sees the first; "30m" where absent, and at most "7d". |
 | `routes[].id` | string | The route's stable id, part of every announcement's key. |
 | `routes[].kinds` | array of [Kind](#kind) | The kinds of event it takes; every kind where absent. |
 | `routes[].late_release` | [LateRelease](#laterelease) | What it does with a Release whose tag it already announced: edits the tag's post to it, or posts it anew where the destination cannot edit (`edit`); posts it anew (`post`); or leaves the tag's post (`skip`). |
@@ -377,6 +385,14 @@ Which events go where, rendered how.
 | `routes[].crosspost` | boolean | Whether to crosspost each announcement. |
 | `routes[].destination` | string | The destination it announces to. |
 | `routes[].edits` | [Edits](#edits) | Which changed announcements it edits the post of: none, or a Release whose name or notes the forge says were edited (`release`). |
+| `routes[].group` | table | How it gathers the events that share a key into one announcement; each event is announced alone where absent. |
+| `routes[].group.key` | string | The template of the key events are grouped by, on one line; an event whose key renders empty, or longer than 256 bytes, is announced alone. |
+| `routes[].group.late` | [GroupLate](#grouplate) | What becomes of a member that comes after its group was announced: announced alone (`post`), edited into the group's post where the destination edits one and announced alone otherwise (`edit`), or left unannounced (`skip`). |
+| `routes[].group.lead` | array of string | The projects whose event leads a group, as globs ignoring case, the first that matches a member first; the first member leads where none does. |
+| `routes[].group.mode` | [GroupMode](#groupmode) | How the group is announced: held until it is due, then announced as one (`hold`), or the first member announced at once and its post edited as each other comes within the window (`edit`), where the destination edits a post. |
+| `routes[].group.most` | integer | How many members a group takes, each member more announced alone; 25 where absent, and at most 100. |
+| `routes[].group.until` | [GroupUntil](#groupuntil) | When a held group is due: when its window passes (`window`), or as soon as the member that leads it comes (`lead`). |
+| `routes[].group.window` | [Duration](#duration) | How long a group gathers its members, from when herald sees the first; "30m" where absent, and at most "7d". |
 | `routes[].id` | string | The route's stable id, part of every announcement's key. |
 | `routes[].kinds` | array of [Kind](#kind) | The kinds of event it takes; every kind where absent. |
 | `routes[].language` | string | The language each status is written in, as an ISO 639 code. |
@@ -414,6 +430,14 @@ Which events go where, rendered how.
 | `routes[].crosspost` | boolean | Whether to crosspost each announcement. |
 | `routes[].destination` | string | The destination it announces to. |
 | `routes[].edits` | [Edits](#edits) | Which changed announcements it edits the post of: none, or a Release whose name or notes the forge says were edited (`release`). |
+| `routes[].group` | table | How it gathers the events that share a key into one announcement; each event is announced alone where absent. |
+| `routes[].group.key` | string | The template of the key events are grouped by, on one line; an event whose key renders empty, or longer than 256 bytes, is announced alone. |
+| `routes[].group.late` | [GroupLate](#grouplate) | What becomes of a member that comes after its group was announced: announced alone (`post`), edited into the group's post where the destination edits one and announced alone otherwise (`edit`), or left unannounced (`skip`). |
+| `routes[].group.lead` | array of string | The projects whose event leads a group, as globs ignoring case, the first that matches a member first; the first member leads where none does. |
+| `routes[].group.mode` | [GroupMode](#groupmode) | How the group is announced: held until it is due, then announced as one (`hold`), or the first member announced at once and its post edited as each other comes within the window (`edit`), where the destination edits a post. |
+| `routes[].group.most` | integer | How many members a group takes, each member more announced alone; 25 where absent, and at most 100. |
+| `routes[].group.until` | [GroupUntil](#groupuntil) | When a held group is due: when its window passes (`window`), or as soon as the member that leads it comes (`lead`). |
+| `routes[].group.window` | [Duration](#duration) | How long a group gathers its members, from when herald sees the first; "30m" where absent, and at most "7d". |
 | `routes[].id` | string | The route's stable id, part of every announcement's key. |
 | `routes[].kinds` | array of [Kind](#kind) | The kinds of event it takes; every kind where absent. |
 | `routes[].late_release` | [LateRelease](#laterelease) | What it does with a Release whose tag it already announced: edits the tag's post to it, or posts it anew where the destination cannot edit (`edit`); posts it anew (`post`); or leaves the tag's post (`skip`). |
@@ -448,6 +472,14 @@ Which events go where, rendered how.
 | `routes[].crosspost` | boolean | Whether to crosspost each announcement. |
 | `routes[].destination` | string | The destination it announces to. |
 | `routes[].edits` | [Edits](#edits) | Which changed announcements it edits the post of: none, or a Release whose name or notes the forge says were edited (`release`). |
+| `routes[].group` | table | How it gathers the events that share a key into one announcement; each event is announced alone where absent. |
+| `routes[].group.key` | string | The template of the key events are grouped by, on one line; an event whose key renders empty, or longer than 256 bytes, is announced alone. |
+| `routes[].group.late` | [GroupLate](#grouplate) | What becomes of a member that comes after its group was announced: announced alone (`post`), edited into the group's post where the destination edits one and announced alone otherwise (`edit`), or left unannounced (`skip`). |
+| `routes[].group.lead` | array of string | The projects whose event leads a group, as globs ignoring case, the first that matches a member first; the first member leads where none does. |
+| `routes[].group.mode` | [GroupMode](#groupmode) | How the group is announced: held until it is due, then announced as one (`hold`), or the first member announced at once and its post edited as each other comes within the window (`edit`), where the destination edits a post. |
+| `routes[].group.most` | integer | How many members a group takes, each member more announced alone; 25 where absent, and at most 100. |
+| `routes[].group.until` | [GroupUntil](#groupuntil) | When a held group is due: when its window passes (`window`), or as soon as the member that leads it comes (`lead`). |
+| `routes[].group.window` | [Duration](#duration) | How long a group gathers its members, from when herald sees the first; "30m" where absent, and at most "7d". |
 | `routes[].id` | string | The route's stable id, part of every announcement's key. |
 | `routes[].kinds` | array of [Kind](#kind) | The kinds of event it takes; every kind where absent. |
 | `routes[].late_release` | [LateRelease](#laterelease) | What it does with a Release whose tag it already announced: edits the tag's post to it, or posts it anew where the destination cannot edit (`edit`); posts it anew (`post`); or leaves the tag's post (`skip`). |
@@ -484,6 +516,14 @@ Which events go where, rendered how.
 | `routes[].crosspost` | boolean | Whether to crosspost each announcement. |
 | `routes[].destination` | string | The destination it announces to. |
 | `routes[].edits` | [Edits](#edits) | Which changed announcements it edits the post of: none, or a Release whose name or notes the forge says were edited (`release`). |
+| `routes[].group` | table | How it gathers the events that share a key into one announcement; each event is announced alone where absent. |
+| `routes[].group.key` | string | The template of the key events are grouped by, on one line; an event whose key renders empty, or longer than 256 bytes, is announced alone. |
+| `routes[].group.late` | [GroupLate](#grouplate) | What becomes of a member that comes after its group was announced: announced alone (`post`), edited into the group's post where the destination edits one and announced alone otherwise (`edit`), or left unannounced (`skip`). |
+| `routes[].group.lead` | array of string | The projects whose event leads a group, as globs ignoring case, the first that matches a member first; the first member leads where none does. |
+| `routes[].group.mode` | [GroupMode](#groupmode) | How the group is announced: held until it is due, then announced as one (`hold`), or the first member announced at once and its post edited as each other comes within the window (`edit`), where the destination edits a post. |
+| `routes[].group.most` | integer | How many members a group takes, each member more announced alone; 25 where absent, and at most 100. |
+| `routes[].group.until` | [GroupUntil](#groupuntil) | When a held group is due: when its window passes (`window`), or as soon as the member that leads it comes (`lead`). |
+| `routes[].group.window` | [Duration](#duration) | How long a group gathers its members, from when herald sees the first; "30m" where absent, and at most "7d". |
 | `routes[].id` | string | The route's stable id, part of every announcement's key. |
 | `routes[].kinds` | array of [Kind](#kind) | The kinds of event it takes; every kind where absent. |
 | `routes[].language` | string | The language each Note is written in, as an ISO 639 code. |
@@ -518,6 +558,14 @@ Which events go where, rendered how.
 | `routes[].crosspost` | boolean | Whether to crosspost each announcement. |
 | `routes[].destination` | string | The destination it announces to. |
 | `routes[].edits` | [Edits](#edits) | Which changed announcements it edits the post of: none, or a Release whose name or notes the forge says were edited (`release`). |
+| `routes[].group` | table | How it gathers the events that share a key into one announcement; each event is announced alone where absent. |
+| `routes[].group.key` | string | The template of the key events are grouped by, on one line; an event whose key renders empty, or longer than 256 bytes, is announced alone. |
+| `routes[].group.late` | [GroupLate](#grouplate) | What becomes of a member that comes after its group was announced: announced alone (`post`), edited into the group's post where the destination edits one and announced alone otherwise (`edit`), or left unannounced (`skip`). |
+| `routes[].group.lead` | array of string | The projects whose event leads a group, as globs ignoring case, the first that matches a member first; the first member leads where none does. |
+| `routes[].group.mode` | [GroupMode](#groupmode) | How the group is announced: held until it is due, then announced as one (`hold`), or the first member announced at once and its post edited as each other comes within the window (`edit`), where the destination edits a post. |
+| `routes[].group.most` | integer | How many members a group takes, each member more announced alone; 25 where absent, and at most 100. |
+| `routes[].group.until` | [GroupUntil](#groupuntil) | When a held group is due: when its window passes (`window`), or as soon as the member that leads it comes (`lead`). |
+| `routes[].group.window` | [Duration](#duration) | How long a group gathers its members, from when herald sees the first; "30m" where absent, and at most "7d". |
 | `routes[].id` | string | The route's stable id, part of every announcement's key. |
 | `routes[].kinds` | array of [Kind](#kind) | The kinds of event it takes; every kind where absent. |
 | `routes[].late_release` | [LateRelease](#laterelease) | What it does with a Release whose tag it already announced: edits the tag's post to it, or posts it anew where the destination cannot edit (`edit`); posts it anew (`post`); or leaves the tag's post (`skip`). |
@@ -1311,6 +1359,18 @@ A length of time: a number and ms, s, m, h, d or w, as "14d".
 ### Edits
 
 Which announcements a route edits the post of, when the forge changes what it announced.
+
+### GroupLate
+
+What a route does with a member that comes after its group was announced: once a held group closed to be announced, or once an edited group's window passed.
+
+### GroupMode
+
+How a route announces a group.
+
+### GroupUntil
+
+When a held group is announced.
 
 ### Guard
 

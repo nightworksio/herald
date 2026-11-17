@@ -764,6 +764,47 @@ shows, so it edits nothing. ActivityPub sends the Note's `Update` to each
 follower its `Create` reached; one Note carries every part, so it sends no
 `Delete`.
 
+### One post for a release train
+
+A route's `group` gathers the events that share a key into one
+announcement, such as every repository a train tags with one version:
+
+```toml
+[[routes]]
+id = "train"
+sources = ["org"]
+destination = "discord"
+channel = "1566184281406177531"
+template = "train"
+group = { key = "{{ event.attributes.version }}", window = "30m", lead = ["lemonfiber"] }
+
+[templates.train]
+title = "{% if group %}Release {{ group.key }}{% else %}{{ event.title }}{% endif %}"
+body = "{% for member in events %}- {{ member.project }} {{ member.attributes.version }}\n{% endfor %}"
+```
+
+`mode = "hold"` (the default) holds the members for `window` ("30m", at
+most "7d", from the first member) and announces them as one post at the
+next poll or housekeeping round. `until = "lead"` posts as soon as the
+lead comes. `mode = "edit"` posts the first member at once and edits the
+post as the others come within the window, where the destination edits
+a post. `lead` names, by project globs, whose event leads the post: the
+first glob that matches a member wins, and the first member leads
+otherwise. Templates read `events` (the members, lead first) and
+`group.key`. Where an event is announced alone, `events` holds only that
+event and `group` is none, so one template serves both.
+
+A member that comes after its group was announced is posted alone
+(`late = "post"`, the default), edited into the group's post
+(`"edit"`), or left out (`"skip"`). A Release of a member the post shows
+as a tag, or an edit of a member's Release, edits the group's post as
+`late_release` and `edits` say. An event whose key renders empty or
+longer than 256 bytes, or one past `most` (25, at most 100) or past what
+the store keeps in a record, is announced alone. The markers store keeps
+no groups, and a route to a herald feed, which publishes each event as
+an envelope of its own, takes no `group`. `herald preview --group v1.2.0` renders a route's group of
+the sample releases.
+
 ### An app's own events
 
 Any app can announce through herald: a deploy script, a CI step, a service

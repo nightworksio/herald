@@ -22,6 +22,7 @@ fn markdown(source: &str, event: &Event) -> String {
                 event,
                 route: &route,
                 herald: "0.1.0",
+                group: None,
             },
         )
         .unwrap()
@@ -35,6 +36,7 @@ fn render(source: &str, event: &Event) -> Result<String, TemplateError> {
             event,
             route: &route,
             herald: "0.1.0",
+            group: None,
         },
     )
 }
@@ -122,6 +124,7 @@ fn a_render_line_is_on_one_line() {
             event: &event(),
             route: &route,
             herald: "0.1.0",
+            group: None,
         },
     )
     .unwrap();
@@ -133,6 +136,7 @@ fn a_render_line_is_on_one_line() {
                 event: &event(),
                 route: &route,
                 herald: "0.1.0",
+                group: None,
             },
         )
         .unwrap_err();
@@ -171,6 +175,7 @@ fn a_template_that_does_not_exist_is_an_error() {
                 event: &event(),
                 route: &route,
                 herald: "0.1.0",
+                group: None,
             },
         )
         .unwrap_err();
@@ -184,6 +189,7 @@ fn a_template_includes_another_by_name_and_nothing_from_disk() {
         event: &event(),
         route: &route,
         herald: "0.1.0",
+        group: None,
     };
     let set = templates(&[
         ("footer", "— {{ event.project }}"),
@@ -277,7 +283,8 @@ fn a_markdown_template_prints_numbers_and_absent_values_as_a_line_template_does(
             &Context {
                 event: &event(),
                 route: &RouteId::new("r"),
-                herald: "0.1.0"
+                herald: "0.1.0",
+                group: None,
             }
         )
         .unwrap_err()
@@ -337,6 +344,7 @@ fn a_template_is_held_to_the_sandbox_it_was_compiled_into() {
         event: &event,
         route: &route,
         herald: "0.1.0",
+        group: None,
     };
     assert_eq!(templates.render("short", &context).as_deref(), Ok("abcd"));
     assert_eq!(
@@ -421,6 +429,7 @@ fn verbatim_templates_render_an_event_s_own_title_and_body_within_the_sandbox() 
         event: &event,
         route: &route,
         herald: "0.1.0",
+        group: None,
     };
     let verbatim = Templates::verbatim(&name, Sandbox::DEFAULT);
     assert_eq!(
@@ -612,5 +621,53 @@ fn an_actor_template_reads_only_the_event_s_project_and_is_told_from_a_name() {
     assert_ne!(
         one,
         ActorName::compile("{{ event.project | lower }}", Sandbox::DEFAULT).unwrap()
+    );
+}
+
+fn of(project: &str) -> Event {
+    Event::normalise(Draft {
+        project: project.to_owned(),
+        body: format!("**{project}** notes"),
+        ..draft()
+    })
+    .unwrap()
+}
+
+#[test]
+fn a_group_s_template_reads_its_members_lead_first_and_its_key() {
+    let (core, plugin) = (of("core"), of("plugin"));
+    let members = [&core, &plugin];
+    let route = RouteId::new("train");
+    let source = "{{ group.key }}: {% for member in events %}{{ member.project }} {{ member.body }}; {% endfor %}{{ event.project }}";
+    let rendered = Templates::compile(&[("t", source, Form::Markdown)], Sandbox::DEFAULT)
+        .unwrap()
+        .render(
+            "t",
+            &Context {
+                event: &core,
+                route: &route,
+                herald: "0.1.0",
+                group: Some(crate::Group {
+                    key: "v1 <b>",
+                    events: &members,
+                }),
+            },
+        )
+        .unwrap();
+    assert_eq!(
+        rendered,
+        "v1 \\<b\\>: core **core** notes; plugin **plugin** notes; core"
+    );
+}
+
+#[test]
+fn an_event_alone_is_its_template_s_only_member_in_no_group() {
+    let alone = of("cli");
+    assert_eq!(
+        markdown(
+            "{% for member in events %}{{ member.project }} {{ member.body }}{% endfor %} {% if group %}grouped{% else %}alone{% endif %}",
+            &alone
+        ),
+        "cli **cli** notes alone"
     );
 }

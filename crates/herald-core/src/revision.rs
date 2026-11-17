@@ -113,6 +113,22 @@ pub fn revise(entry: &Entry, revision: &Revision, delivery: &Delivery, edits: bo
     }
 }
 
+/// What a route does to the post `entry` keeps of a group, now rendered as
+/// `revision`, on a destination that edits where `edits` says: edits it
+/// where it landed and the group renders otherwise, and leaves it
+/// otherwise.
+#[must_use]
+pub fn regrouped(entry: &Entry, revision: &Revision, edits: bool) -> Revise {
+    match &entry.revision {
+        Some(shown)
+            if edits && shown.digest != revision.digest && entry.message(&Step::Post).is_some() =>
+        {
+            Revise::Edit
+        }
+        _ => Revise::Keep,
+    }
+}
+
 /// The steps that bring the post `entry` keeps to `revision`, rendered in
 /// `parts` parts: the post and each chunk that landed edited, each chunk
 /// more posted, each chunk fewer deleted, the thread opened from the post

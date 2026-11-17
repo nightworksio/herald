@@ -259,6 +259,14 @@ impl Features {
                 delivery.mentions.subscribers && !matches!(self.mentions, MentionStyle::Users(_)),
                 "mentions.subscribers",
             ),
+            (
+                delivery
+                    .group
+                    .as_ref()
+                    .is_some_and(|group| group.mode == crate::GroupMode::Edit)
+                    && !self.edits,
+                "group.mode",
+            ),
         ]
         .into_iter()
         .filter_map(|(lacks, key)| lacks.then_some(key))
@@ -430,6 +438,39 @@ mod tests {
         assert_eq!(
             features(MentionStyle::Roles).lacking(&named_only),
             ["thread"]
+        );
+    }
+
+    #[test]
+    fn a_group_that_edits_is_lacking_where_the_destination_edits_no_post() {
+        let grouped = |mode| Delivery {
+            group: Some(crate::Grouping {
+                key: "{{ event.attributes.version }}".to_owned(),
+                window: crate::GROUP_WINDOW,
+                lead: Vec::new(),
+                mode,
+                until: crate::GroupUntil::Window,
+                late: crate::GroupLate::Post,
+                most: crate::GROUP_MOST,
+            }),
+            ..asking(&[], false)
+        };
+        let fixed = features(MentionStyle::Roles);
+        assert_eq!(
+            fixed.lacking(&grouped(crate::GroupMode::Edit)),
+            ["group.mode"]
+        );
+        assert_eq!(
+            fixed.lacking(&grouped(crate::GroupMode::Hold)),
+            Vec::<&str>::new()
+        );
+        let editing = Features {
+            edits: true,
+            ..fixed
+        };
+        assert_eq!(
+            editing.lacking(&grouped(crate::GroupMode::Edit)),
+            Vec::<&str>::new()
         );
     }
 }

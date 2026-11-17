@@ -254,6 +254,8 @@ fn pending(member: Option<&str>, due: Timestamp) -> herald_core::Pending {
         }],
         opened: NOON,
         due,
+        closed: None,
+        landed: false,
     }
 }
 

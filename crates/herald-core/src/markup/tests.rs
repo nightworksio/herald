@@ -369,7 +369,7 @@ mod hostile {
             )], crate::Sandbox::DEFAULT)
             .unwrap();
             let route = RouteId::new("r");
-            let markdown = templates.render("body", &Context { event: &event, route: &route, herald: "0" }).unwrap();
+            let markdown = templates.render("body", &Context { event: &event, route: &route, herald: "0", group: None }).unwrap();
             for markup in DIALECTS {
                 prop_assert_eq!(inert(&convert(&markdown, markup), markup), Ok(()), "{:?} in {:?}", markdown, markup);
             }

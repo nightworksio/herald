@@ -12,6 +12,7 @@ use minijinja::{
 use crate::announce::{body_template, title_template};
 use crate::bounds::Sandbox;
 use crate::event::Event;
+use crate::group::Group;
 use crate::key::RouteId;
 use crate::markup::escaped;
 use crate::members::Listed;
@@ -38,6 +39,10 @@ pub struct Context<'a> {
     pub route: &'a RouteId,
     /// The running herald's version.
     pub herald: &'a str,
+    /// The group the event leads, where the route gathers events into one
+    /// announcement; a template reads its members as `events`, or the event
+    /// alone where there is none.
+    pub group: Option<Group<'a>>,
 }
 
 /// Why a template could not be compiled or rendered.
@@ -135,10 +140,9 @@ impl Templates {
         };
         let rendered = template.render_captured_to(
             context! {
-                event => merge_maps([
-                    Value::from(Serde(context.event)),
-                    context! { body => Value::from_safe_string(context.event.body().to_owned()) },
-                ]),
+                event => event_value(context.event),
+                events => grouped_values(context),
+                group => context.group.map(|group| context! { key => group.key }),
                 route => context.route.as_str(),
                 herald => context.herald,
             },
@@ -176,6 +180,27 @@ impl Templates {
             .split_whitespace()
             .collect::<Vec<_>>()
             .join(" "))
+    }
+}
+
+/// `event` as a template reads it, its body placed as written.
+fn event_value(event: &Event) -> Value {
+    merge_maps([
+        Value::from(Serde(event)),
+        context! { body => Value::from_safe_string(event.body().to_owned()) },
+    ])
+}
+
+/// The events of `context` as a template reads them: the group's members,
+/// the lead first, or the event alone where it leads none.
+fn grouped_values(context: &Context<'_>) -> Vec<Value> {
+    match context.group {
+        Some(group) => group
+            .events
+            .iter()
+            .map(|event| event_value(event))
+            .collect(),
+        None => vec![event_value(context.event)],
     }
 }
 
