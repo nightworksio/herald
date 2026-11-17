@@ -9,7 +9,8 @@ pub enum Layer {
     Testing,
     /// What siblings of a later layer share: records kept one per path and
     /// the SQL the SQL stores run, the kinds' registry, keys' encodings,
-    /// AWS signing, and what every source reads its answers with.
+    /// AWS signing, what every source reads its answers with, and what
+    /// instances say to each other.
     Kits,
     /// One crate per source family.
     Sources,
@@ -42,9 +43,8 @@ impl Layer {
             "herald-core" => Some(Self::Core),
             "herald-ports" => Some(Self::Ports),
             "herald-testing" => Some(Self::Testing),
-            "herald-aws" | "herald-keys" | "herald-kinds" | "herald-records" | "herald-wire" => {
-                Some(Self::Kits)
-            }
+            "herald-aws" | "herald-keys" | "herald-kinds" | "herald-peers" | "herald-records"
+            | "herald-wire" => Some(Self::Kits),
             "herald-config" => Some(Self::Config),
             "herald-flows" => Some(Self::Flows),
             "herald-compose" => Some(Self::Composition),
@@ -136,6 +136,7 @@ mod tests {
             ("herald-crypto", Layer::Native),
             ("herald-keys", Layer::Kits),
             ("herald-records", Layer::Kits),
+            ("herald-peers", Layer::Kits),
             ("herald-aws", Layer::Kits),
             ("herald-kinds", Layer::Kits),
             ("herald-environment", Layer::Native),

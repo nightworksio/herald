@@ -1,6 +1,6 @@
 # ADR-0027: The layer rules place every crate, know every runtime, and ship no fakes
 
-**Status:** Accepted
+**Status:** Accepted; the kit `herald-peers` added by [ADR-0043](0043-instances-sign-with-ed25519-prove-their-objects-and-publish-a-key-set.md)
 **Date:** 2026-11-14
 
 ## Context
@@ -20,8 +20,9 @@ time, and printing.
 ## Decision
 
 1. **The kits are `herald-aws`, `herald-keys`, `herald-kinds`,
-   `herald-records` and `herald-wire`**, and they may name `base64`, `hmac`,
-   `jiff`, `serde`, `serde_json` and `sha2` from outside the workspace.
+   `herald-peers`, `herald-records` and `herald-wire`**, and they may name
+   `base64`, `hmac`, `jiff`, `serde`, `serde_json` and `sha2` from outside
+   the workspace.
 2. **Every workspace crate has a place.** The placement test lists each one,
    and a crate no layer claims is a violation.
 3. **No crate ships the fakes.** Naming `herald-testing` as a normal

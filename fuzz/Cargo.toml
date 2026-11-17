@@ -17,6 +17,7 @@ herald-dest-fediverse = { path = "../crates/herald-dest-fediverse" }
 herald-dest-matrix = { path = "../crates/herald-dest-matrix" }
 herald-dest-slack = { path = "../crates/herald-dest-slack" }
 herald-kinds = { path = "../crates/herald-kinds" }
+herald-peers = { path = "../crates/herald-peers" }
 herald-ports = { path = "../crates/herald-ports" }
 herald-records = { path = "../crates/herald-records" }
 herald-sources-app = { path = "../crates/herald-sources-app" }
@@ -113,6 +114,13 @@ bench = false
 [[bin]]
 name = "address"
 path = "fuzz_targets/address.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "peers"
+path = "fuzz_targets/peers.rs"
 test = false
 doc = false
 bench = false
