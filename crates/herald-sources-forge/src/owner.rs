@@ -6,8 +6,12 @@ use herald_core::{
     Cursor, EventsRead, Glob, Listed, Listing, Owner, Polled, ProjectName, Selection, Signal,
     Visibility, status, unreserved,
 };
-use herald_kinds::{Changed, Expand, Expanded, Poll, Rounded, Unlisted, Unpolled};
-use herald_ports::{Boxed, DynHttp, Erased, Http as _, Method, Request, Response, SecretText};
+use herald_kinds::{
+    Changed, Expand, Expanded, Poll, Registered, Registering, Rounded, Unlisted, Unpolled,
+};
+use herald_ports::{
+    Boxed, DynHttp, Erased, Http as _, Method, Request, Response, Secret, SecretText,
+};
 use herald_wire::{Reading, SourceError, answered};
 use jiff::SignedDuration;
 use serde::Deserialize;
@@ -17,7 +21,7 @@ use crate::graphql::{Asking, polled_together};
 use crate::kind::projected;
 use crate::packages::{self, OwnerPackages, PackageList, Packaging, merged, seen_packages};
 use crate::polled::Releases;
-use crate::{Forge, Members, Origin, SourceOptions, Token, Transport, events};
+use crate::{Discovery, Forge, Members, Origin, SourceOptions, Token, Transport, events};
 
 /// An owner's repositories on a forge, each taken by the selection polled on
 /// its own (ADR-0029).
@@ -448,6 +452,49 @@ impl Expand for Owned {
             self.file,
             self.options.tables,
             self.options.key()
+        ))
+    }
+
+    fn pushed(&self) -> bool {
+        self.options.discovery() == Discovery::Push
+    }
+
+    fn registering(&self) -> Registering {
+        self.options.registering()
+    }
+
+    fn register<'a>(
+        &'a self,
+        http: &'a dyn DynHttp,
+        repository: &'a Listed,
+        hook: (&'a str, &'a Secret),
+    ) -> Boxed<'a, Result<Registered, Unpolled>> {
+        Box::pin(crate::hooks::registered(
+            http,
+            (&self.api, self.token.as_ref()),
+            &repository.id,
+            hook,
+        ))
+    }
+
+    fn hooked<'a>(
+        &'a self,
+        http: &'a dyn DynHttp,
+        repository: &'a Listed,
+        url: &'a str,
+    ) -> Boxed<'a, Result<bool, Unpolled>> {
+        Box::pin(crate::hooks::found(
+            http,
+            (&self.api, self.token.as_ref()),
+            &repository.id,
+            url,
+        ))
+    }
+
+    fn may_register<'a>(&'a self, http: &'a dyn DynHttp) -> Boxed<'a, Result<(), String>> {
+        Box::pin(crate::hooks::may_register(
+            http,
+            (&self.api, self.token.as_ref()),
         ))
     }
 

@@ -4,13 +4,13 @@ use std::collections::BTreeSet;
 use std::sync::{Arc, Mutex, PoisonError};
 
 use herald_core::{
-    Attempts, Cursor, DestinationName, Entry, Hold, Key, Latest, Listing, Membership, Pending,
-    RecordKind, RouteId, Schedule, SourceName, State, Subscription,
+    Attempts, Cursor, DestinationName, Entry, Hold, KeptToken, Key, Latest, Listing, Membership,
+    Pending, RecordKind, RouteId, Schedule, SourceName, State, Subscription,
 };
 use herald_ports::{
     Admitted, Announcements, Cursors, Deliveries, Held, Inboxes, Keeper, Keyring, KnownKey, Ledger,
-    Notes, Outboxed, Pins, Positions, RecordOptions, Schedules, StoreError, Subscriptions, Version,
-    Versioned, Waiting, Written,
+    Notes, Outboxed, Pins, Positions, RecordOptions, Schedules, StoreError, Subscriptions, Tokens,
+    Version, Versioned, Waiting, Written,
 };
 use jiff::Timestamp;
 use serde::de::DeserializeOwned;
@@ -601,6 +601,21 @@ impl<R: RecordBackend> Announcements for RecordStore<R> {
     }
 }
 
+impl<R: RecordBackend> Tokens for RecordStore<R> {
+    async fn token(&self, name: &str) -> Result<Option<Versioned<KeptToken>>, StoreError> {
+        self.listed(&paths::token(name)).await
+    }
+
+    async fn put_token(
+        &self,
+        token: &KeptToken,
+        expected: Option<Version>,
+    ) -> Result<Written, StoreError> {
+        self.compare_and_set(&paths::token(&token.name), token, expected)
+            .await
+    }
+}
+
 impl<R: RecordBackend> Keeper for RecordStore<R> {
     fn holds(&self, kind: Held) -> bool {
         match kind {
@@ -609,7 +624,8 @@ impl<R: RecordBackend> Keeper for RecordStore<R> {
             | Held::Schedules
             | Held::Deliveries
             | Held::Positions
-            | Held::Pending => true,
+            | Held::Pending
+            | Held::Tokens => true,
             Held::Subscriptions | Held::Inboxes => self.keeps.contains(&RecordKind::Subscriptions),
             Held::Pins => self.keeps.contains(&RecordKind::Pins),
             Held::Notes => self.keeps.contains(&RecordKind::Notes),

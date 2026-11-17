@@ -91,6 +91,25 @@ fn an_ed25519_signature_verifies_under_its_public_key_only() {
 }
 
 #[test]
+fn an_rsa_key_github_hands_out_as_pkcs1_signs_as_its_pkcs8_does() {
+    let der = unhex(RSA);
+    let (inner, _) = herald_core::der::element(&der, herald_core::der::SEQUENCE).unwrap();
+    let (_, inner) = herald_core::der::element(inner, herald_core::der::INTEGER).unwrap();
+    let (_, inner) = herald_core::der::element(inner, herald_core::der::SEQUENCE).unwrap();
+    let (pkcs1, _) = herald_core::der::element(inner, herald_core::der::OCTET_STRING).unwrap();
+    let armoured = format!(
+        "-----BEGIN RSA PRIVATE KEY-----\n{}\n-----END RSA PRIVATE KEY-----\n",
+        STANDARD.encode(pkcs1)
+    );
+    let pkcs8 = Secret::new("PKCS8", pem(&der));
+    let github = Secret::new("PKCS1", armoured);
+    assert_eq!(
+        sign(Algorithm::RsaSha256, &github, b"hello").unwrap(),
+        sign(Algorithm::RsaSha256, &pkcs8, b"hello").unwrap()
+    );
+}
+
+#[test]
 fn an_rsa_signature_verifies_under_its_public_key_only() {
     let der = unhex(RSA);
     let pair = RsaKeyPair::from_pkcs8(&der).unwrap();
@@ -281,3 +300,44 @@ fn a_private_key_s_der_is_overwritten_with_zeroes_when_dropped() {
     zeroize::Zeroize::zeroize(&mut der);
     assert!(der.is_empty());
 }
+
+#[test]
+fn a_sealed_value_opens_only_under_its_key_purpose_and_bound_data_unchanged() {
+    let signer = RingSigner::default();
+    let key = Secret::new("APP", "the App's key");
+    let with = |purpose, bound| Sealing { purpose, bound };
+    let seal = |key: &Secret, sealing: Sealing<'_>, plain: &[u8]| {
+        pollster::block_on(signer.seal(key, sealing, plain))
+    };
+    let open = |key: &Secret, sealing: Sealing<'_>, sealed: &[u8]| {
+        pollster::block_on(signer.open(key, sealing, sealed))
+    };
+    let token = with("token", b"bound");
+    let sealed = seal(&key, token, b"ghs_minted").unwrap();
+    assert_eq!(sealed.len(), 12 + 10 + 16);
+    assert_ne!(seal(&key, token, b"ghs_minted").unwrap(), sealed);
+    assert_eq!(open(&key, token, &sealed), Ok(b"ghs_minted".to_vec()));
+    let refused = Err(CryptoError::Unsealed {
+        name: "APP".to_owned(),
+    });
+    assert_eq!(open(&key, with("other", b"bound"), &sealed), refused);
+    assert_eq!(open(&key, with("token", b"other"), &sealed), refused);
+    assert_eq!(
+        open(&Secret::new("APP", "another key"), token, &sealed),
+        refused
+    );
+    let mut changed = sealed.clone();
+    changed[20] ^= 1;
+    assert_eq!(open(&key, token, &changed), refused);
+    assert_eq!(open(&key, token, &sealed[..8]), refused);
+    let web: Vec<u8> = (0..SEALED_ON_THE_WEB.len())
+        .step_by(2)
+        .map(|at| u8::from_str_radix(&SEALED_ON_THE_WEB[at..at + 2], 16).unwrap())
+        .collect();
+    assert_eq!(open(&key, token, &web), Ok(b"ghs_minted".to_vec()));
+}
+
+/// `ghs_minted` sealed by Web Crypto under the key `the App's key` for
+/// `token`, bound to `bound`, its nonce 0 to 11.
+const SEALED_ON_THE_WEB: &str =
+    "000102030405060708090a0b47ec349fd84f0dda1c482d086372fa4ec7df8ddeac7f830d93c1";

@@ -37,6 +37,7 @@ mod release;
 mod serving;
 mod setup;
 mod signals;
+mod sourcing;
 mod stores;
 
 pub use connect::{Connect, Connection, Connector, NATIVE, native, waiting};
@@ -224,7 +225,7 @@ async fn ran(
         Running::Server { listen } => {
             serving(&config, vars, connect, listen.as_deref(), out, stop).await
         }
-        Running::Lambda => lambda::lambda(config, vars, connect, out).await,
+        Running::Lambda => Box::pin(lambda::lambda(config, vars, connect, out)).await,
         Running::Followers(asked) => {
             followers::following(&config, vars, connect, &asked, out).await
         }

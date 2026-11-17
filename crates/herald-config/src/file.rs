@@ -334,6 +334,36 @@ pub(crate) struct TemplateFile {
     pub(crate) file: Option<Spanned<String>>,
 }
 
+/// A GitHub App herald reads as, through installation tokens it mints
+/// (ADR-0041).
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+#[serde(rename = "GitHubApp")]
+pub(crate) struct GithubAppFile {
+    /// The App's id, as its settings page shows it; give it or `client_id`.
+    pub(crate) app_id: Option<NonZeroU64>,
+    /// The App's client id, such as `Iv23liABCDEF`, which GitHub recommends
+    /// over the id; give it or `app_id`.
+    pub(crate) client_id: Option<String>,
+    /// The App's private key, as GitHub hands it out (PKCS#1) or as PKCS#8.
+    pub(crate) private_key: SecretRef,
+    /// The REST API the App's tokens are minted at; `https://api.github.com`
+    /// where absent, such as `https://ghe.example/api/v3` on GitHub
+    /// Enterprise Server or `https://api.example.ghe.com` on GHE.com. Each
+    /// source naming the App reads that host.
+    pub(crate) api: Option<String>,
+    /// The secret the App's webhook deliveries are signed with, taken at
+    /// `/hooks/app/<name>`.
+    pub(crate) webhook: Option<SecretRef>,
+    /// Whether each installation token is kept in the store between runs,
+    /// so a run skips minting one while it is good; false where absent.
+    /// The token, good for an hour at most, is then a credential at rest:
+    /// herald keeps it encrypted with AES-256-GCM under a key derived from
+    /// `private_key`, bound to its record and its expiry, in a record the
+    /// store seals too.
+    pub(crate) store_token: Option<bool>,
+}
+
 /// An app of the HTTP API (ADR-0007).
 #[derive(Debug, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
@@ -521,6 +551,12 @@ pub(crate) struct ServerFile {
     /// absent. herald's ActivityPub actors' ids are under it too.
     #[schemars(with = "Option<String>")]
     pub(crate) base: Option<Spanned<String>>,
+    /// herald's public address as forges and platforms reach it, such as
+    /// `https://herald.example`, with `base` after it where one is given:
+    /// what a webhook herald registers points at. A setup command's `--url`
+    /// takes its place.
+    #[schemars(with = "Option<String>")]
+    pub(crate) url: Option<Spanned<String>>,
     /// How many pieces of work it does at once, each an announcement, an
     /// activity or a command a request leaves; 8 where absent.
     pub(crate) jobs: Option<NonZeroUsize>,

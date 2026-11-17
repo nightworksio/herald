@@ -261,6 +261,8 @@ pub fn load(
     let (sources, source_spans) = loader.sources(sections.sources, read);
     let templates = loader.templates(sections.templates, read);
     let listed = loader.apps(sections.apps, &sources);
+    let github_apps = loader.github_apps(sections.github_apps, store.as_ref());
+    loader.installed((&sources, &source_spans), &github_apps);
     let routes = loader.every_route(
         sections.routes,
         &destinations,
@@ -300,6 +302,7 @@ pub fn load(
         routes: routes.into_iter().map(|read| read.config).collect(),
         templates,
         apps,
+        github_apps,
         schedule,
         server,
         http,
@@ -314,6 +317,7 @@ pub fn load(
 mod apps;
 mod declared;
 mod destinations;
+mod github_apps;
 mod route;
 mod secrets;
 mod sections;

@@ -2,7 +2,7 @@
 
 use std::fmt;
 
-use herald_keys::{PRIVATE_KEY, Public, jwk_bytes, pem, rsa_public, subject};
+use herald_keys::{Public, jwk_bytes, private_key, rsa_public, subject};
 use herald_ports::{Algorithm, Secret};
 use zeroize::Zeroizing;
 
@@ -52,7 +52,7 @@ pub fn signing(algorithm: Algorithm, key: &Secret) -> Option<Imported> {
     let (name, hash) = named(algorithm);
     let (format, data) = match algorithm {
         Algorithm::HmacSha256 => ("raw", key.expose().as_bytes().to_vec()),
-        Algorithm::Ed25519 | Algorithm::RsaSha256 => ("pkcs8", pem(key.expose(), PRIVATE_KEY)?),
+        Algorithm::Ed25519 | Algorithm::RsaSha256 => ("pkcs8", private_key(key.expose())?),
     };
     let data = Zeroizing::new(data);
     Some(Imported {

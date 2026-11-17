@@ -357,3 +357,69 @@ fn a_test_message_that_did_not_land_is_named_at_its_own_route() {
         run.out
     );
 }
+
+#[test]
+fn online_doctor_says_where_the_store_does_not_keep_an_app_s_tokens() {
+    let config = CONFIG.replace(
+        "repository = \"cli/cli\"\n",
+        "repository = \"cli/cli\"\napp = \"herald\"\n",
+    ) + "[github_apps.herald]\nclient_id = \"Iv23liABCDEF\"\nprivate_key = { secret = \"HERALD_APP_KEY\" }\nstore_token = true\n";
+    let mut kept = setup(&config);
+    kept.vars
+        .insert("HERALD_APP_KEY".to_owned(), super::activitypub::pkcs8());
+    let world = World::default();
+    {
+        let mut state = world.state.lock().unwrap();
+        state.branch = true;
+        state.forge.insert(
+            "/repos/cli/cli/installation".to_owned(),
+            (200, r#"{"id":42}"#.to_owned()),
+        );
+        state.forge.insert(
+            "/app/installations/42/access_tokens".to_owned(),
+            (
+                201,
+                r#"{"token":"ghs_minted","expires_at":"2099-01-01T00:00:00Z"}"#.to_owned(),
+            ),
+        );
+    }
+    let gap = "github_apps.herald.store_token: keeping the GitHub App herald's installation tokens cannot be served";
+    world.state.lock().unwrap().failing = Some(herald_ports::Method::Put);
+    let refused = herald(&kept, &world, &["doctor", "--online"]);
+    assert_eq!(refused.code, STOPPED, "{}", refused.out);
+    assert!(
+        refused
+            .out
+            .contains(&format!("{gap}: the git-branch store refused it: ")),
+        "{}",
+        refused.out
+    );
+    assert!(!refused.out.contains("ghs_minted"), "{}", refused.out);
+    world.state.lock().unwrap().failing = None;
+    let healthy = herald(&kept, &world, &["doctor", "--online"]);
+    assert!(!healthy.out.contains(gap), "{}", healthy.out);
+    assert!(
+        world
+            .state
+            .lock()
+            .unwrap()
+            .files
+            .keys()
+            .any(|file| file.starts_with("tokens/"))
+    );
+    kept.vars.remove("HERALD_STORE_KEY");
+    let unopened = herald(&kept, &world, &["doctor", "--online"]);
+    assert!(
+        unopened.out.contains("No installation token is kept, as "),
+        "{}",
+        unopened.out
+    );
+    let mut unkept = setup(&config.replace("store_token = true", "store_token = false"));
+    unkept.vars = kept.vars.clone();
+    let memory = herald(&unkept, &world, &["doctor", "--online"]);
+    assert!(
+        !memory.out.contains("No installation token is kept"),
+        "{}",
+        memory.out
+    );
+}

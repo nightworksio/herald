@@ -6,7 +6,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::future::Future;
 
-use herald_core::{Hold, Identity, Kind, Pending, Shown};
+use herald_core::{Hold, Identity, KeptToken, Kind, Pending, Shown};
 
 use super::*;
 
@@ -145,6 +145,16 @@ impl Positions for Refusing {
     }
 }
 
+impl Tokens for Refusing {
+    async fn token(&self, _: &str) -> Result<Option<Versioned<KeptToken>>, StoreError> {
+        Err(refused("token"))
+    }
+
+    async fn put_token(&self, _: &KeptToken, _: Option<Version>) -> Result<Written, StoreError> {
+        Err(refused("put_token"))
+    }
+}
+
 impl Waiting for Refusing {
     async fn pending(&self, _: &Hold) -> Result<Option<Versioned<Pending>>, StoreError> {
         Err(refused("pending"))
@@ -262,7 +272,7 @@ fn an_erased_store_holds_and_skips_what_the_store_it_erases_does() {
         let erased = Erased(&store as &dyn DynStore);
         assert_eq!(
             Held::ALL.map(|held| Keeper::holds(&erased, held)),
-            [holding; 11]
+            [holding; 12]
         );
         assert_eq!(Keeper::skipped(&erased), ["corrupt.json"]);
         assert_eq!(Keeper::writes_one_at_a_time(&erased), holding);
@@ -298,6 +308,25 @@ fn every_answer_of_an_erased_store_on_an_owner_source_is_the_store_s_own() {
         "forget_member",
     ];
     assert_eq!(refusals, by.map(|by| Some(refused(by))));
+    let kept = KeptToken {
+        name: "github_apps.herald/1".to_owned(),
+        sealed: "c2VhbGVk".to_owned(),
+        expires: Timestamp::UNIX_EPOCH,
+    };
+    assert_eq!(
+        [
+            answered(erased.token(&kept.name)),
+            answered(erased.put_token(&kept, None)),
+        ],
+        [Some(refused("token")), Some(refused("put_token"))]
+    );
+    let unheld = Refusing { holding: false };
+    let erased = Erased(&unheld as &dyn DynStore);
+    let unkept = Some(StoreError::Unsupported {
+        what: "minted tokens",
+    });
+    assert_eq!(answered(erased.token(&kept.name)), unkept);
+    assert_eq!(answered(erased.put_token(&kept, None)), unkept);
 }
 
 fn owned(at: Timestamp) -> (Listing, Membership) {
@@ -309,6 +338,7 @@ fn owned(at: Timestamp) -> (Listing, Membership) {
         fingerprint: "f".to_owned(),
         file: None,
         events: None,
+        stale: false,
     };
     let membership = Membership {
         repository: herald_core::Listed {
@@ -328,6 +358,7 @@ fn owned(at: Timestamp) -> (Listing, Membership) {
         left: None,
         cursor: None,
         collides: None,
+        hooked: false,
     };
     (listing, membership)
 }

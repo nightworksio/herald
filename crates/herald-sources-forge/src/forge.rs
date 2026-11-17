@@ -1,9 +1,11 @@
+use std::sync::Arc;
+
 use herald_core::{
     Address, Cursor, Event, KeyForm, Polled, PrereleaseRule, Scheme, Selection, Signal, Signed,
     Validators, unreserved,
 };
 use herald_core::{media, status};
-use herald_kinds::Hooked;
+use herald_kinds::{Credential, Hooked, Minted};
 use herald_ports::{Method, Request, Response, Secret, SecretText};
 use serde::Deserialize;
 
@@ -93,6 +95,9 @@ pub(crate) struct Api {
 
 /// Why a webhook delivery of another event announces nothing.
 const OTHER_EVENT: &str = "the delivery is not of a release, a tag or a package";
+/// What a delivery to an owner source of anything else is answered.
+const OWNED_OTHER_EVENT: &str =
+    "the delivery is not of a release, a tag, a package or the owner's repositories";
 /// Why a webhook delivery of a repository the owner source does not take
 /// announces nothing.
 const UNSELECTED: &str = "the repository is not one the source takes";
@@ -138,6 +143,20 @@ pub enum Token {
     /// The CI run's own token, such as `GITHUB_TOKEN` or GitLab's
     /// `CI_JOB_TOKEN`.
     Run(Secret),
+    /// A GitHub App's installation token, refreshed before each round, and
+    /// none where its minting failed (ADR-0041).
+    Minted(Arc<Minted>),
+}
+
+impl Token {
+    /// What `credential` reads with.
+    #[must_use]
+    pub fn of(credential: Credential) -> Self {
+        match credential {
+            Credential::Named(secret) => Self::Named(secret),
+            Credential::Minted(minted) => Self::Minted(minted),
+        }
+    }
 }
 
 /// One repository on one forge, whose releases are asked for.
@@ -412,10 +431,26 @@ impl Forge {
         (owner, subgroups): (&str, bool),
         (selection, signals): (&Selection, &dyn Fn(&str) -> Signals),
     ) -> Result<Hooked, SourceError> {
+        let holds = |holder: &str| {
+            let (holder, lowered) = (holder.to_ascii_lowercase(), owner.to_ascii_lowercase());
+            holder == lowered
+                || (subgroups && self == Self::GitLab && holder.starts_with(&format!("{lowered}/")))
+        };
+        let unheld = |what| SourceError::Unreadable {
+            what,
+            reason: format!("it is not of a repository {owner}, the owner its source names, holds"),
+        };
+        if let Some(moved) = crate::moved::moved(self, headers, payload) {
+            return if holds(&moved?) {
+                Ok(Hooked::Relist)
+            } else {
+                Err(unheld(crate::moved::MOVED))
+            };
+        }
         let package = self.of_a_package(headers, payload);
         let tag = !package && self.of_a_tag(headers, payload);
         if !package && !tag && !self.of_a_release(headers) {
-            return Ok(Hooked::Nothing(OTHER_EVENT));
+            return Ok(Hooked::Nothing(OWNED_OTHER_EVENT));
         }
         let what = if package {
             self.api().packages
@@ -434,19 +469,12 @@ impl Forge {
         } else {
             self.event(payload, signals.prerelease)?
         };
-        let lowered = owner.to_ascii_lowercase();
-        let held = delivered.path.rsplit_once('/').is_some_and(|(holder, _)| {
-            let holder = holder.to_ascii_lowercase();
-            holder == lowered
-                || (subgroups && self == Self::GitLab && holder.starts_with(&format!("{lowered}/")))
-        });
-        if !held {
-            return Err(SourceError::Unreadable {
-                what,
-                reason: format!(
-                    "it is not of a repository {owner}, the owner its source names, holds"
-                ),
-            });
+        if !delivered
+            .path
+            .rsplit_once('/')
+            .is_some_and(|(holder, _)| holds(holder))
+        {
+            return Err(unheld(what));
         }
         if !selection.admits(&delivered) {
             return Ok(Hooked::Nothing(UNSELECTED));
@@ -592,8 +620,16 @@ pub(crate) fn authorized(forge: Forge, request: Request, token: Option<&Token>) 
             .header("Accept", SecretText::plain(media::JSON))
             .identified(),
     };
+    let current;
+    let token = match token {
+        Some(Token::Minted(minted)) => {
+            current = minted.current().map(Token::Named);
+            current.as_ref()
+        }
+        token => token,
+    };
     match (forge, token) {
-        (_, None) => request,
+        (_, None | Some(Token::Minted(_))) => request,
         (Forge::GitLab, Some(Token::Run(token))) => {
             request.header("JOB-TOKEN", SecretText::secret(token.clone()))
         }

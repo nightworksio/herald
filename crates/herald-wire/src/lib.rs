@@ -5,6 +5,7 @@
 
 mod error;
 pub mod github;
+pub mod github_app;
 
 pub use error::SourceError;
 

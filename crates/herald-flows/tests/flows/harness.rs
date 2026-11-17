@@ -71,7 +71,10 @@ pub(crate) fn event(version: &str) -> Event {
 }
 
 pub(crate) fn secrets() -> FakeSecrets {
-    FakeSecrets::default().with("HERALD_DISCORD_TOKEN", "hunter2")
+    FakeSecrets::default()
+        .with("HERALD_DISCORD_TOKEN", "hunter2")
+        .with("HERALD_APP_KEY", "the App's key")
+        .with("BAD", "a key that signs nothing")
 }
 
 #[derive(Debug, Clone, Default)]
@@ -243,6 +246,8 @@ pub(crate) enum Fault {
     MemberConflicts,
     ForgetsMembers,
     ListingConflicts,
+    ReadsTokens,
+    WritesTokens,
     ListsSchedules,
     Reads,
     Claims,

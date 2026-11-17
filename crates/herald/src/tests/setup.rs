@@ -441,3 +441,134 @@ fn a_manifest_and_a_registration_reach_herald_under_its_base() {
         registered.out
     );
 }
+
+const GROUP: &str = "/groups/group/projects?include_subgroups=true&with_shared=false&order_by=id&sort=asc&per_page=100&page=1";
+
+fn hooking(extra: &str) -> Setup {
+    let mut setup = setup(&config(&format!(
+        "[sources.group]\nkind = \"gitlab\"\nowner = \"group\"\nwebhook = {{ secret = \"HERALD_WEBHOOK\" }}\n{extra}"
+    )));
+    setup
+        .vars
+        .insert("HERALD_WEBHOOK".to_owned(), "hook-secret".to_owned());
+    setup
+}
+
+fn projects(world: &World, answers: &[(&str, u16, &str)]) {
+    let listed = serde_json::json!([
+        { "id": 1, "path": "a", "path_with_namespace": "group/a", "visibility": "public", "topics": [] },
+        { "id": 2, "path": "b", "path_with_namespace": "group/b", "visibility": "public", "topics": [] },
+    ]);
+    let mut state = world.state.lock().unwrap();
+    state
+        .forge
+        .insert(GROUP.to_owned(), (200, listed.to_string()));
+    for (path, status, body) in answers {
+        state
+            .forge
+            .insert((*path).to_owned(), (*status, (*body).to_owned()));
+    }
+}
+
+#[test]
+fn a_gitlab_owner_s_members_are_each_given_a_webhook_to_herald_once() {
+    let mut setup = hooking("member_hooks = \"setup\"\ntoken = { secret = \"GITLAB_TOKEN\" }\n");
+    setup
+        .vars
+        .insert("GITLAB_TOKEN".to_owned(), "glpat".to_owned());
+    let world = World::default();
+    projects(
+        &world,
+        &[
+            ("/projects/1/hooks?per_page=100", 200, "[]"),
+            ("/projects/1/hooks", 201, "{}"),
+            (
+                "/projects/2/hooks?per_page=100",
+                200,
+                r#"[{"url":"https://herald.example/hooks/group"}]"#,
+            ),
+        ],
+    );
+    let done = herald(
+        &setup,
+        &world,
+        &["hooks", "group", "--url", "https://herald.example/"],
+    );
+    assert_eq!(done.code, DONE, "{}", done.err);
+    assert_eq!(
+        done.out,
+        "group/a: was given a webhook to herald\ngroup/b: has a webhook to herald\n"
+    );
+}
+
+#[test]
+fn a_member_that_cannot_be_given_a_webhook_stops_the_setup_and_says_why() {
+    let setup = hooking("member_hooks = \"round\"\n");
+    let world = World::default();
+    projects(
+        &world,
+        &[
+            ("/projects/1/hooks?per_page=100", 403, "{}"),
+            ("/projects/2/hooks?per_page=100", 200, "[]"),
+            ("/projects/2/hooks", 201, "{}"),
+        ],
+    );
+    let stopped = herald(
+        &setup,
+        &world,
+        &["hooks", "group", "--url", "https://herald.example"],
+    );
+    assert_eq!(stopped.code, STOPPED);
+    assert!(
+        stopped.out.starts_with(
+            "group/a: could not be given a webhook: the project's webhooks was answered with 403"
+        ),
+        "{}",
+        stopped.out
+    );
+    assert!(
+        stopped
+            .out
+            .ends_with("group/b: was given a webhook to herald\n")
+    );
+}
+
+#[test]
+fn a_source_set_up_names_an_owner_registering_webhooks_and_herald_s_address() {
+    let world = World::default();
+    let refused = |setup: &Setup, args: &[&str]| herald(setup, &world, args).err;
+    let off = hooking("");
+    assert_eq!(
+        refused(&off, &["hooks", "nowhere"]),
+        "no source is named \"nowhere\"\n"
+    );
+    assert_eq!(
+        refused(&off, &["hooks", "group"]),
+        "the source group registers no webhook on its members; set member_hooks = \"setup\" or \"round\"\n"
+    );
+    let set = hooking("member_hooks = \"setup\"\n");
+    assert_eq!(
+        refused(&set, &["hooks", "group"]),
+        "herald's address is not given; pass --url, or give [server] url\n"
+    );
+    let addressed =
+        hooking("member_hooks = \"setup\"\n[server]\nurl = \"https://herald.example\"\n");
+    assert!(refused(&addressed, &["hooks", "group"]).starts_with("the owner could not be listed:"));
+    let crowded = hooking("member_hooks = \"setup\"\nmost_members = 1\n");
+    projects(&world, &[]);
+    assert!(
+        refused(&crowded, &["hooks", "group", "--url", "https://h.example"])
+            .contains("most_members"),
+    );
+    let tokened = hooking("member_hooks = \"setup\"\ntoken = { secret = \"GITLAB_TOKEN\" }\n");
+    assert!(
+        refused(&tokened, &["hooks", "group", "--url", "https://h.example"])
+            .contains("GITLAB_TOKEN")
+    );
+    let mut unsecret = hooking("member_hooks = \"setup\"\n");
+    unsecret.vars.remove("HERALD_WEBHOOK");
+    assert!(
+        refused(&unsecret, &["hooks", "group", "--url", "https://h.example"])
+            .contains("HERALD_WEBHOOK")
+    );
+}

@@ -9,7 +9,7 @@ use herald_ports::{Clock, Http, Keyring, Signer, Store, Verifier};
 use super::actors::{actor, counted, documented, domain, fingered, inboxed, noted, outboxed};
 use super::apps::{posted, standing};
 use super::replies::{Answered, Reply, gone, missing, refusal, text_reply, unmethodical};
-use super::webhooks::hooked;
+use super::webhooks::{app_hooked, hooked};
 use super::{Inbound, Serving};
 use crate::acting::{Found, Standing};
 use crate::command_endpoints::{INTERACTIONS, MATRIX, commanded};
@@ -20,6 +20,8 @@ pub const HEALTH: &str = "/healthz";
 const UP: &str = "herald is up";
 /// Where a forge delivers its webhooks, before the source's name.
 pub(crate) const HOOKS: &str = "/hooks/";
+/// Where a GitHub App delivers its webhooks, before the App's name.
+pub(crate) const APP_HOOKS: &str = "/hooks/app/";
 /// Where apps post their projects' events: `/api/projects/<project>/events`.
 pub const PROJECTS: &str = "/api/projects/";
 /// Where WebFinger is asked.
@@ -99,6 +101,13 @@ async fn prefixed<S: Store, C: Clock, G: Signer, V: Verifier, H, P: Http, K: Key
         .and_then(|rest| rest.split_once('/'))
     {
         return commanded(serving, Endpoint::Pushed, destination, rest, inbound).await;
+    }
+    if let Some(app) = path.strip_prefix(APP_HOOKS) {
+        return if method == "POST" {
+            app_hooked(serving, app, inbound).await
+        } else {
+            unmethodical()
+        };
     }
     if let Some(source) = path.strip_prefix(HOOKS) {
         return if method == "POST" {

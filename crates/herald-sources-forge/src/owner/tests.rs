@@ -74,6 +74,7 @@ fn known(pages: &[&str]) -> Listing {
         fingerprint: owned(Forge::GitHub, &SourceOptions::default()).fingerprint(),
         file: None,
         events: None,
+        stale: false,
     }
 }
 

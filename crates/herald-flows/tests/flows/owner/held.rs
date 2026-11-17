@@ -53,6 +53,7 @@ fn kept(store: &Failing, visibility: Visibility) {
         left: None,
         cursor: None,
         collides: None,
+        hooked: false,
     };
     let held = pollster::block_on(store.inner.member(&SourceName::new("gate"), "1")).unwrap();
     pollster::block_on(store.inner.put_member(

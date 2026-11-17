@@ -119,9 +119,13 @@ fn a_forge_source_names_its_secrets_and_reads_its_webhooks() {
             .hooked(&[("X-GitHub-Event", "release")], b"[")
             .is_err()
     );
-    let herald_kinds::Polling::One(poll) =
-        source.poller(Some(Secret::new("GITHUB_TOKEN", "t")), false)
-    else {
+    let herald_kinds::Polling::One(poll) = source.poller(
+        Some(herald_kinds::Credential::Named(herald_ports::Secret::new(
+            "GITHUB_TOKEN",
+            "t",
+        ))),
+        false,
+    ) else {
         panic!("a source of one is polled as one");
     };
     assert_eq!(poll.api(), "https://api.github.com");
@@ -226,7 +230,45 @@ fn an_owner_source_takes_webhooks_of_the_names_its_member_file_lists_and_says_to
     .unwrap();
     assert_eq!(
         grouped.notes(),
+        [
+            Forge::GitLab.unsigned().unwrap(),
+            OWNER_HOOKED,
+            super::GITLAB_GROUPED
+        ]
+    );
+    let hooked = GitLabKind::checked(SourceOptions {
+        owner: Some("cli".to_owned()),
+        webhook: Some(SecretRef {
+            secret: "HERALD_WEBHOOK".to_owned(),
+        }),
+        member_hooks: Some(crate::MemberHooks::Setup),
+        ..SourceOptions::default()
+    })
+    .unwrap();
+    assert_eq!(
+        hooked.notes(),
         [Forge::GitLab.unsigned().unwrap(), OWNER_HOOKED]
+    );
+    assert_eq!(hooked.registering(), herald_kinds::Registering::Setup);
+}
+
+#[test]
+fn a_github_source_naming_an_app_reads_as_its_installation() {
+    let installed = GitHubKind::checked(SourceOptions {
+        app: Some("herald".to_owned()),
+        token: None,
+        ..options("cli/cli")
+    })
+    .unwrap();
+    assert_eq!(
+        installed
+            .installed()
+            .map(|installed| installed.installation),
+        Some(herald_kinds::Installation::Repository("cli/cli"))
+    );
+    assert_eq!(
+        GitHubKind::checked(options("cli/cli")).unwrap().installed(),
+        None
     );
 }
 
@@ -389,4 +431,172 @@ fn an_owner_source_names_each_route_its_overrides_name() {
         )]
     );
     assert!(owner.names_route(&herald_core::RouteId::new("plugins")));
+}
+
+#[test]
+fn an_owner_discovering_by_push_says_so_and_what_it_cannot_hear() {
+    let owner = |forge: fn(SourceOptions) -> Result<ForgeSource, Fault>,
+                 discovery: Option<crate::Discovery>,
+                 webhook: bool| {
+        forge(SourceOptions {
+            repository: None,
+            owner: Some("cli".to_owned()),
+            discovery,
+            webhook: webhook.then(|| SecretRef {
+                secret: "HERALD_WEBHOOK".to_owned(),
+            }),
+            ..options("cli/cli")
+        })
+        .unwrap()
+    };
+    let listing = owner(GitHubKind::checked, None, true);
+    assert!(!listing.pushed());
+    let Polling::Many(expand) = listing.poller(None, false) else {
+        panic!("an owner is polled as its members");
+    };
+    assert!(!expand.pushed());
+    let pushed = owner(GitHubKind::checked, Some(crate::Discovery::Push), true);
+    assert!(pushed.pushed());
+    let Polling::Many(expand) = pushed.poller(None, false) else {
+        panic!("an owner is polled as its members");
+    };
+    assert!(expand.pushed());
+    assert_eq!(pushed.notes(), [super::OWNER_HOOKED]);
+    assert_eq!(
+        owner(GitHubKind::checked, Some(crate::Discovery::Push), false).notes(),
+        [super::UNPUSHED]
+    );
+    assert_eq!(
+        owner(GitLabKind::checked, Some(crate::Discovery::Push), false).notes(),
+        [super::UNPUSHED, super::GITLAB_UNPUSHED]
+    );
+    assert_eq!(
+        owner(GitLabKind::checked, Some(crate::Discovery::Push), true).notes(),
+        [
+            Forge::GitLab.unsigned().unwrap(),
+            super::OWNER_HOOKED,
+            super::GITLAB_UNPUSHED,
+            super::GITLAB_GROUPED
+        ]
+    );
+    assert_eq!(
+        owner(GitHubKind::checked, None, false).notes(),
+        Vec::<&str>::new()
+    );
+}
+
+#[test]
+fn a_minted_token_authorizes_a_request_as_its_last_refresh_left_it() {
+    use std::sync::Arc;
+
+    use herald_kinds::{Credential, Minted};
+
+    use herald_ports::{Method, Request, Secret, SecretText};
+
+    use crate::Token;
+
+    let minted = Arc::new(Minted::default());
+    let token = Token::of(Credential::Minted(Arc::clone(&minted)));
+    let authorization = || {
+        let request = Request::new(Method::Get, SecretText::plain("https://api.github.com/x"));
+        crate::forge::authorized(Forge::GitHub, request, Some(&token))
+            .headers
+            .iter()
+            .find(|(name, _)| name == "Authorization")
+            .map(|(_, value)| value.expose().clone())
+    };
+    assert_eq!(authorization(), None);
+    minted.refresh(Some(Secret::new("T", "ghs_now")));
+    assert_eq!(authorization(), Some("Bearer ghs_now".to_owned()));
+    assert_eq!(
+        Token::of(Credential::Named(Secret::new("N", "n"))),
+        Token::Named(Secret::new("N", "n"))
+    );
+}
+
+#[test]
+fn a_gitlab_owner_says_who_registers_its_members_webhooks() {
+    for (member_hooks, registering) in [
+        (None, herald_kinds::Registering::Never),
+        (
+            Some(crate::MemberHooks::Off),
+            herald_kinds::Registering::Never,
+        ),
+        (
+            Some(crate::MemberHooks::Setup),
+            herald_kinds::Registering::Setup,
+        ),
+        (
+            Some(crate::MemberHooks::Round),
+            herald_kinds::Registering::Round,
+        ),
+    ] {
+        let source = GitLabKind::checked(SourceOptions {
+            repository: None,
+            owner: Some("group".to_owned()),
+            member_hooks,
+            ..options("cli/cli")
+        })
+        .unwrap();
+        let Polling::Many(expand) = source.poller(None, false) else {
+            panic!("an owner is polled as its members");
+        };
+        assert_eq!(expand.registering(), registering);
+    }
+}
+
+#[test]
+fn a_gitlab_owner_asks_its_members_hooks_and_its_token_s_scopes_at_its_api() {
+    use herald_ports::{Response, Secret};
+
+    let source = GitLabKind::checked(SourceOptions {
+        repository: None,
+        owner: Some("group".to_owned()),
+        ..options("cli/cli")
+    })
+    .unwrap();
+    let Polling::Many(expand) = source.poller(None, false) else {
+        panic!("an owner is polled as its members");
+    };
+    let answer = |body: &str| Response {
+        status: 200,
+        headers: Vec::new(),
+        body: body.as_bytes().to_vec(),
+    };
+    let member = herald_core::Listed {
+        id: "7".to_owned(),
+        name: "a".to_owned(),
+        path: "group/a".to_owned(),
+        topics: Vec::new(),
+        properties: std::collections::BTreeMap::new(),
+        visibility: herald_core::Visibility::Public,
+        archived: false,
+        fork: false,
+        template: false,
+        language: None,
+        linked: None,
+    };
+    let url = "https://herald.example/hooks/group";
+    let scripted = herald_testing::ScriptedHttp::new(vec![
+        answer(&format!(r#"[{{"url":"{url}"}}]"#)),
+        answer(r#"{"scopes":["api"]}"#),
+        answer("[]"),
+    ]);
+    assert_eq!(
+        pollster::block_on(expand.hooked(&scripted, &member, url)),
+        Ok(true)
+    );
+    assert_eq!(pollster::block_on(expand.may_register(&scripted)), Ok(()));
+    assert!(
+        pollster::block_on(expand.register(&scripted, &member, (url, &Secret::new("HOOK", "s"))))
+            .is_err()
+    );
+    let asked: Vec<String> = scripted.asked().into_iter().map(|(url, _)| url).collect();
+    assert_eq!(
+        asked[..2],
+        [
+            "https://gitlab.com/api/v4/projects/7/hooks?per_page=100".to_owned(),
+            "https://gitlab.com/api/v4/personal_access_tokens/self".to_owned(),
+        ]
+    );
 }

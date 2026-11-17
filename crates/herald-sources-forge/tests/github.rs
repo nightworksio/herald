@@ -217,7 +217,7 @@ mod github {
                 (&selection, &|_| Signals::default())
             ),
             Ok(Hooked::Nothing(
-                "the delivery is not of a release, a tag or a package"
+                "the delivery is not of a release, a tag, a package or the owner's repositories"
             ))
         );
         let created = edited(|payload| payload["action"] = json!("created"));

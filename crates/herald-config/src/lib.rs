@@ -18,8 +18,8 @@ mod samples;
 mod schema;
 
 pub use config::{
-    Announce, App, Config, Doctor, Guard, HeldSessions, KeyCache, RouteConfig, Run, Schedule,
-    Server, Uses, Work,
+    Announce, App, Config, Doctor, GithubApp, Guard, HeldSessions, KeyCache, RouteConfig, Run,
+    Schedule, Server, Uses, Work,
 };
 pub use error::{ConfigError, Errors};
 pub use herald_kinds::{ConfiguredStore, Destination, Placed, Source};

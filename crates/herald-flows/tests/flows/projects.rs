@@ -102,6 +102,7 @@ fn member(
         left,
         cursor: None,
         collides: None,
+        hooked: false,
     };
     pollster::block_on(
         store
@@ -517,7 +518,10 @@ fn doctor_names_each_project_of_a_source_app_or_member_that_names_no_actor() {
     );
     let listing = crate::owner::repositories(&[(1, "cli"), (2, "Upper")]);
     let script = Script::answering(&[(crate::owner::LISTING, 200, &listing)]);
-    let findings = pollster::block_on(online(&connected_for(&config, &script, Uses::Polls)));
+    let findings = pollster::block_on(online(
+        &connected_for(&config, &script, Uses::Polls),
+        (&FakeSigner, crate::harness::NOON),
+    ));
     let unnamed: Vec<(&str, &str)> = findings
         .gaps
         .iter()
@@ -736,7 +740,10 @@ fn doctor_names_each_actor_s_name_more_than_one_holds() {
     );
     let listing = crate::owner::repositories(&[(1, "php-mutation-gate"), (2, "cli")]);
     let script = Script::answering(&[(crate::owner::LISTING, 200, &listing)]);
-    let findings = pollster::block_on(online(&connected_for(&projects(), &script, Uses::Polls)));
+    let findings = pollster::block_on(online(
+        &connected_for(&projects(), &script, Uses::Polls),
+        (&FakeSigner, crate::harness::NOON),
+    ));
     let actors: Vec<&str> = findings
         .mistakes
         .iter()

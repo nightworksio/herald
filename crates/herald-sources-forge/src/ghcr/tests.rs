@@ -37,7 +37,7 @@ fn answer(status: u16, body: &Value) -> Response {
 fn images(options: &GhcrOptions) -> Images {
     Images::new(
         options,
-        Some(Token::Named(Secret::new("GITHUB_TOKEN", "t"))),
+        Some(Token::Named(herald_ports::Secret::new("GITHUB_TOKEN", "t"))),
     )
 }
 
@@ -189,6 +189,7 @@ fn a_ghcr_source_names_its_registry_beside_its_api_and_is_a_kind_of_its_own() {
         expand.member_nouns(),
         ("container image", "container images")
     );
+    assert!(!expand.pushed());
     assert_eq!(expand.keep_members(), KEEP_MEMBERS);
     assert_eq!(expand.remembered(), 500);
     let kept = Images::new(
@@ -297,6 +298,7 @@ fn a_listing_over_most_packages_or_one_that_fails_lists_nothing() {
         listed: Timestamp::UNIX_EPOCH,
         fingerprint: source.fingerprint(),
         file: None,
+        stale: false,
         events: None,
     };
     let http = ScriptedHttp::new(vec![answer(404, &json!({}))]);

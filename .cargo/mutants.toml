@@ -35,6 +35,10 @@ exclude_re = [
     "SourceConfig::signals -> Vec<herald_core::Signal> with vec!\\[\\]",
     # An owner polls one member a request unless its kind batches them, and `1.try_into().unwrap()` is `NonZeroUsize::MIN`.
     "Expand::batch -> NonZeroUsize with 1\\.try_into\\(\\)\\.unwrap\\(\\)",
+    # A source reads as no GitHub App unless its kind says so, and the default is `None`.
+    "SourceConfig::installed -> Option<Installed<'_>> with None",
+    # A source lists its owner each round unless its kind keeps membership by push, and the default is `false`.
+    "SourceConfig::pushed -> bool with false",
     # A source names no route for some of its events unless its kind says so, and `Vec::new()` is `vec![]`.
     "SourceConfig::routed -> Vec<\\(String, String\\)> with vec!\\[\\]",
     # A member names no route of its own unless its kind says so, and `Reach::default()` is `Default::default()`.

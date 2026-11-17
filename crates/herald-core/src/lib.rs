@@ -19,6 +19,7 @@ mod event;
 mod glob;
 mod housekeep;
 mod inbound;
+mod installation;
 mod interact;
 pub mod itself;
 mod kept;
@@ -44,6 +45,7 @@ mod size;
 pub mod status;
 mod subscription;
 mod symbols;
+mod token;
 mod version;
 mod waits;
 mod wording;
@@ -70,6 +72,7 @@ pub use inbound::{
     Addressed, Algorithm, Claim, KeyForm, Refusal, Scheme, Signature, Signed, activity_claim,
     bearer, claim, key, same,
 };
+pub use installation::Installation;
 pub use interact::{
     AnnouncedHere, Answering, Asked, Command, Member, Place, Replies, Said, Unchosen, announced,
     chosen, completions, every_command,
@@ -91,7 +94,7 @@ pub use members::{
     Delivered, EventsRead, KEEP_MEMBERS, Listed, Listing, MOST_LISTED, MOST_MEMBERS,
     MOST_MEMBERS_ALLOWED, Membership, Owner, Selection, Visibility,
 };
-pub use origin::Origin;
+pub use origin::{Origin, kind_name};
 pub use pattern::Pattern;
 pub use pending::{HeldEvent, Hold, Pending};
 pub use profile::{
@@ -114,6 +117,7 @@ pub use signal::{EDITED, Prefer, PrereleaseRule, SIGNAL, Signal, Validators};
 pub use size::Size;
 pub use subscription::Subscription;
 pub use symbols::Symbols;
+pub use token::KeptToken;
 pub use version::prerelease_version;
 pub use waits::{WaitOptions, Waits};
 pub use wording::{Phrase, Wording};

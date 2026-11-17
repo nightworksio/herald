@@ -7,7 +7,7 @@ use herald_config::{Config, Guard, KeyCache, RouteConfig, Server};
 use herald_core::{
     Edits, Features, Inbound, LateRelease, Pinning, Pins, RecordKind, Sandbox, Signal, Threads,
 };
-use herald_kinds::Carried;
+use herald_kinds::{Carried, Registering};
 
 use crate::acting::{Claimed, Projects};
 
@@ -15,7 +15,7 @@ mod layer;
 mod online;
 
 pub use layer::{Cadence, Egress, Here, Layer, Memory, Rounds, Tier};
-pub use online::{keys, online, secrets};
+pub use online::{kept_tokens, keys, online, secrets};
 
 /// A feature the config asks for that this herald cannot serve (ADR-0002).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -325,6 +325,22 @@ fn unhosted(config: &Config, gaps: &mut Vec<Gap>) {
                 format!("{UNHOSTED}; announce the run's own event, or poll the source"),
             ));
         }
+        if source.pushed() {
+            gaps.push(gap(
+                "discovery by push",
+                format!("sources.{}.discovery", name.as_str()),
+                format!("{UNHOSTED}, so the owner is listed only where the source holds no listing or its selection changed; choose discovery \"list\""),
+            ));
+        }
+    }
+    for (name, app) in &config.github_apps {
+        if app.webhook.is_some() {
+            gaps.push(gap(
+                "a GitHub App's webhooks",
+                format!("github_apps.{name}.webhook"),
+                format!("{UNHOSTED}; poll the sources reading as the App"),
+            ));
+        }
     }
     for (name, app) in &config.apps {
         if !app.tokens.is_empty() {
@@ -356,6 +372,12 @@ fn hosted(config: &Config, layer: &Layer, here: &Here, findings: &mut Findings) 
             findings
                 .notes
                 .push(format!("The source {}: {note}", name.as_str()));
+        }
+        if source.registering() != Registering::Never && config.server.url.is_none() {
+            findings.notes.push(format!(
+                "The source {name}: member_hooks points each project's webhook at [server] url, which the config gives none of; give it, or run herald hooks {name} --url <herald's address>",
+                name = name.as_str()
+            ));
         }
     }
     let actors: Vec<&str> = config

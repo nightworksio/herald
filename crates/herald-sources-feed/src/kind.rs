@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use herald_core::{Cursor, Kind, Polled, SecretRef};
 use herald_kinds::{Fault, Poll, Polling, SourceConfig, SourceKind, Unpolled};
-use herald_ports::{Boxed, DynHttp, Erased, Http as _, Secret};
+use herald_ports::{Boxed, DynHttp, Erased, Http as _};
 
 use crate::feed::untitled;
 use crate::{Feed, FeedOptions};
@@ -44,7 +44,7 @@ impl SourceConfig for FeedOptions {
         vec![untitled(&self.url)]
     }
 
-    fn poller(&self, _: Option<Secret>, _: bool) -> Polling {
+    fn poller(&self, _: Option<herald_kinds::Credential>, _: bool) -> Polling {
         Polling::One(Arc::new(Entries(Feed::new(self))))
     }
 }

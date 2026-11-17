@@ -428,6 +428,60 @@ name, topics and properties, so no member announces as a project another
 member, source or app announces as: such a member is withheld and
 reported until the two differ.
 
+`discovery = "push"` lists the owner only where the source holds no
+listing, its filters changed, or a delivery said the owner's repositories
+changed (ADR-0041); `"list"`, the default, lists it each round. GitHub's
+`repository` and `installation_repositories` events and Forgejo's
+`repository` event, from a repository the owner holds, have herald list
+the owner again and poll it at once, under either setting. herald reads no
+GitLab event of a project joining a group, so doctor names a GitLab source
+discovering by push, one that names no webhook, and one on a layer with
+no endpoint.
+
+A GitHub source can read as a GitHub App in place of a `token`. herald
+mints an installation token before each round, keeps it in memory, and
+mints the next one five minutes before it expires:
+
+```toml
+[github_apps.herald]
+client_id = "Iv23liABCDEF"
+private_key = { secret = "HERALD_APP_KEY" }
+webhook = { secret = "HERALD_APP_WEBHOOK" }
+
+[sources.org]
+kind = "github"
+owner = "lemonfiber"
+app = "herald"
+```
+
+`store_token = true` keeps each token in the store as well, so a later run
+reads it in place of minting one. The token, good for an hour at most, is
+then a credential at rest: herald encrypts it with AES-256-GCM under a key
+derived from the App's private key, bound to its record and its expiry so
+it opens nowhere else and never later, and a store that keeps no records
+refuses the setting. A token the store does not keep is still read with:
+the round notes it for each source, naming the store, and
+`herald doctor --online` names a store that refuses it. `app_id` may stand in for `client_id`. The private key is read as GitHub
+hands it out (PKCS#1) or as PKCS#8. `api` names GitHub Enterprise Server's
+or GHE.com's REST API, and every source naming the App reads the same host.
+The owner's installation is looked up as an organization's, then a
+user's, and a repository's at the repository; `installation` fixes its id.
+A source whose token could not be minted is not polled that round, and
+says why. The App's webhooks arrive at `/hooks/app/<name>`, and each
+delivery goes to every source reading as the App that takes it: an owner
+source whose owner holds the repository, or the source of that repository.
+
+GitLab sends a group's own webhooks only on Premium or Ultimate. On Free,
+`member_hooks` gives each member a project webhook of its own, pointing at
+`<[server] url>/hooks/<source>` and signed with the source's `webhook`:
+`"setup"` registers them when you run `herald hooks <source>` (`--url`
+names herald's address in place of `[server] url`), and `"round"` has each
+poll round register one on a member that has none, which needs a token with
+the `api` scope that may maintain each project. `"off"`, the default,
+leaves the group to its own webhook or to polling. `herald doctor --online`
+names each member with no webhook to herald, and under `"round"` a token
+without the `api` scope.
+
 ### Where each event goes
 
 Every forge and registry event carries `event.origin`: `forge` and `host`

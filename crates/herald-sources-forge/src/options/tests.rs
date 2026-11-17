@@ -53,7 +53,7 @@ fn a_source_names_a_repository_or_an_owner_and_not_both() {
 type Change = fn(&mut SourceOptions);
 
 fn owned_keys() -> Vec<(&'static str, SourceOptions)> {
-    let changes: [(&str, Change); 22] = [
+    let changes: [(&str, Change); 24] = [
         ("include", |options| {
             options.include = vec!["a".to_owned()];
         }),
@@ -112,6 +112,12 @@ fn owned_keys() -> Vec<(&'static str, SourceOptions)> {
         }),
         ("repositories", |options| {
             options.repositories = BTreeMap::from([("a".to_owned(), Override::default())]);
+        }),
+        ("discovery", |options| {
+            options.discovery = Some(Discovery::Push);
+        }),
+        ("member_hooks", |options| {
+            options.member_hooks = Some(MemberHooks::Setup);
         }),
         ("transport", |options| {
             options.transport = Some(Transport::Rest);
@@ -939,6 +945,48 @@ fn a_forgejo_feed_is_paged_as_its_settings_say_within_four_times_their_defaults(
         );
     }
 }
+
+#[test]
+fn an_owner_source_lists_its_owner_each_round_unless_it_discovers_by_push() {
+    assert_eq!(owner("lemonfiber").discovery(), Discovery::List);
+    let pushed = SourceOptions {
+        discovery: Some(Discovery::Push),
+        ..owner("lemonfiber")
+    };
+    assert_eq!(pushed.check(Forge::GitLab), Ok(()));
+    assert_eq!(pushed.discovery(), Discovery::Push);
+}
+
+#[test]
+fn a_gitlab_owner_s_members_take_project_hooks_only_beside_its_webhook() {
+    let hooked = |member_hooks| SourceOptions {
+        member_hooks: Some(member_hooks),
+        webhook: Some(SecretRef {
+            secret: "HERALD_WEBHOOK".to_owned(),
+        }),
+        ..owner("group")
+    };
+    assert_eq!(owner("group").member_hooks(), MemberHooks::Off);
+    for member_hooks in [MemberHooks::Off, MemberHooks::Setup, MemberHooks::Round] {
+        assert_eq!(hooked(member_hooks).check(Forge::GitLab), Ok(()));
+        assert_eq!(hooked(member_hooks).member_hooks(), member_hooks);
+    }
+    assert_eq!(hooked(MemberHooks::Off).check(Forge::GitHub), Ok(()));
+    assert_eq!(
+        hooked(MemberHooks::Setup).check(Forge::GitHub),
+        Err("member_hooks is a GitLab owner's; remove it".to_owned())
+    );
+    assert_eq!(
+        SourceOptions {
+            webhook: None,
+            ..hooked(MemberHooks::Round)
+        }
+        .check(Forge::GitLab),
+        Err("member_hooks registers project hooks signed with webhook; give webhook, or remove member_hooks".to_owned())
+    );
+}
+
+mod app;
 
 mod packages;
 

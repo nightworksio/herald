@@ -58,7 +58,7 @@ pub enum Members {
 pub const KEY: &str = "name";
 
 /// The keys that only an owner source may give.
-const OWNED: [&str; 24] = [
+const OWNED: [&str; 26] = [
     "include",
     "exclude",
     "topics",
@@ -78,6 +78,8 @@ const OWNED: [&str; 24] = [
     "key",
     "project",
     "repositories",
+    "discovery",
+    "member_hooks",
     "transport",
     "graphql",
     "graphql_batch",
@@ -220,6 +222,8 @@ impl SourceOptions {
             self.key.is_some(),
             self.project.is_some(),
             !self.repositories.is_empty(),
+            self.discovery.is_some(),
+            self.member_hooks.is_some(),
             self.transport.is_some(),
             self.graphql.is_some(),
             self.graphql_batch.is_some(),

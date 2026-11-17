@@ -292,6 +292,9 @@ pub struct Membership {
     /// project another member or source announces as.
     #[serde(default)]
     pub collides: Option<String>,
+    /// Whether herald registered a webhook on it, or found one there.
+    #[serde(default)]
+    pub hooked: bool,
 }
 
 /// What kind of account owns an owner source's repositories.
@@ -325,6 +328,10 @@ pub struct Listing {
     /// How far the owner's events were read, where the source follows them.
     #[serde(default)]
     pub events: Option<EventsRead>,
+    /// Whether a delivery said the owner's repositories changed since it
+    /// was listed, so a source discovering by push lists it again.
+    #[serde(default)]
+    pub stale: bool,
 }
 
 /// How far an owner's events feed was read.

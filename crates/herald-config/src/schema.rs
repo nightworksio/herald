@@ -7,8 +7,8 @@ use crate::config::Config;
 use crate::kinds::Kinds;
 
 use crate::file::{
-    AnnounceFile, AppFile, DoctorFile, HttpFile, KindFile, MarkersFile, RecordsFile, RenderFile,
-    RouteFile, RunFile, ScheduleFile, ServerFile, TemplateFile,
+    AnnounceFile, AppFile, DoctorFile, GithubAppFile, HttpFile, KindFile, MarkersFile, RecordsFile,
+    RenderFile, RouteFile, RunFile, ScheduleFile, ServerFile, TemplateFile,
 };
 
 /// `version`: the one version of the config this herald reads.
@@ -254,6 +254,9 @@ struct FileSchema {
     /// The HTTP API's apps, by name.
     #[serde(default)]
     apps: BTreeMap<String, AppFile>,
+    /// The GitHub Apps sources read as, by name.
+    #[serde(default)]
+    github_apps: BTreeMap<String, GithubAppFile>,
     /// How often a driver that keeps its own schedule polls and keeps house.
     schedule: Option<ScheduleFile>,
     /// How `herald server` listens, and what it takes on at once.

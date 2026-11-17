@@ -72,7 +72,7 @@ impl SourceOptions {
                 "{key} chooses packages, which no repository the source takes announces; add \"package\" to signals, or remove {key}"
             ));
         }
-        if packaged && forge == Forge::GitHub && self.token.is_none() {
+        if packaged && forge == Forge::GitHub && !self.reads_with_token() {
             return Err(
                 "GitHub's packages API answers only with a token that may read packages; give token, or remove \"package\" from signals".to_owned(),
             );

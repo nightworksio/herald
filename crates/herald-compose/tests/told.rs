@@ -90,6 +90,12 @@ mod told {
             ["gate: stopped: no. The next poll asks again."]
         );
         assert_eq!(
+            swept(Sweep::Unkept("the sqlite store refused it".to_owned())),
+            [
+                "gate: the installation token it reads with was minted but not kept, as the sqlite store refused it. This run reads with it; the next mints it again."
+            ]
+        );
+        assert_eq!(
             swept(Sweep::Polled {
                 first: false,
                 found: 2,
@@ -159,10 +165,40 @@ mod told {
                 delivery: Some("d1".to_owned()),
                 signer: None,
             },
+            relist: false,
         };
         assert_eq!(
             told::unworked(&job, &Ok(())),
             "herald stopped before it worked the poll of gate"
+        );
+        let Job::Poll {
+            scheme, verified, ..
+        } = job.clone()
+        else {
+            unreachable!()
+        };
+        let fanned = Job::Fanned {
+            jobs: vec![job.clone(), job],
+            scheme,
+            verified,
+        };
+        assert_eq!(
+            told::unworked(&fanned, &Ok(())),
+            "herald stopped before it worked a GitHub App's delivery to 2 sources"
+        );
+        let each = |source: &str| {
+            Did::Polled(vec![Swept {
+                source: SourceName::new(source),
+                member: None,
+                outcome: Sweep::Unchanged,
+            }])
+        };
+        assert_eq!(
+            told::worked(&did(Did::Fanned(vec![each("gate"), each("mirror")]))),
+            [
+                "gate: unchanged since the last poll",
+                "mirror: unchanged since the last poll"
+            ]
         );
     }
 

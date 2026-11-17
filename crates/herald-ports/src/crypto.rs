@@ -13,6 +13,18 @@ pub enum CryptoError {
         /// The secret's name.
         name: String,
     },
+    /// Nothing can be sealed under a key derived from the secret on this
+    /// host.
+    Unsealable {
+        /// The secret's name.
+        name: String,
+    },
+    /// What was sealed under a key derived from the secret could not be
+    /// opened: it was sealed under another key, or changed since.
+    Unsealed {
+        /// The secret's name.
+        name: String,
+    },
 }
 
 impl fmt::Display for CryptoError {
@@ -20,7 +32,17 @@ impl fmt::Display for CryptoError {
         match self {
             Self::BadKey { name } => write!(
                 f,
-                "the secret {name} is not a key for this signature; give a PKCS#8 private key as PEM"
+                "the secret {name} is not a key for this signature; give a private key as PEM, PKCS#8 or an RSA key's PKCS#1"
+            ),
+            Self::Unsealable { name } => {
+                write!(
+                    f,
+                    "nothing can be sealed under the secret {name} on this host"
+                )
+            }
+            Self::Unsealed { name } => write!(
+                f,
+                "what was sealed under the secret {name} cannot be opened: it was sealed under another key, or changed since"
             ),
         }
     }
@@ -44,6 +66,44 @@ pub trait Signer: Sync {
         algorithm: Algorithm,
         key: &Secret,
     ) -> impl Future<Output = Result<Vec<u8>, CryptoError>> + Send;
+
+    /// `plain` sealed with AES-256-GCM under a key derived from `key` by
+    /// HKDF-SHA256 for the purpose `sealing` names, bound to its data, its
+    /// nonce first; a host that seals nothing refuses.
+    fn seal(
+        &self,
+        key: &Secret,
+        _sealing: Sealing<'_>,
+        _plain: &[u8],
+    ) -> impl Future<Output = Result<Vec<u8>, CryptoError>> + Send {
+        std::future::ready(Err(CryptoError::Unsealable {
+            name: key.name().to_owned(),
+        }))
+    }
+
+    /// What [`Signer::seal`] sealed under `key` as `sealing` says as
+    /// `sealed`, opened; refused where it was sealed under another key,
+    /// purpose or bound data, or changed since.
+    fn open(
+        &self,
+        key: &Secret,
+        _sealing: Sealing<'_>,
+        _sealed: &[u8],
+    ) -> impl Future<Output = Result<Vec<u8>, CryptoError>> + Send {
+        std::future::ready(Err(CryptoError::Unsealed {
+            name: key.name().to_owned(),
+        }))
+    }
+}
+
+/// What a value is sealed for: the purpose its key is derived for, and the
+/// data it is bound to, which must match again for it to open.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Sealing<'a> {
+    /// The purpose its key is derived for.
+    pub purpose: &'a str,
+    /// The data it is bound to, as AES-GCM's associated data.
+    pub bound: &'a [u8],
 }
 
 /// Checks a signature against the key or secret it is handed.
@@ -71,7 +131,7 @@ mod tests {
                 name: "KEY".to_owned()
             }
             .to_string(),
-            "the secret KEY is not a key for this signature; give a PKCS#8 private key as PEM"
+            "the secret KEY is not a key for this signature; give a private key as PEM, PKCS#8 or an RSA key's PKCS#1"
         );
     }
 }

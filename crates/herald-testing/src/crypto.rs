@@ -1,4 +1,4 @@
-use herald_ports::{Algorithm, CryptoError, Secret, Signer, Verifier};
+use herald_ports::{Algorithm, CryptoError, Sealing, Secret, Signer, Verifier};
 
 /// A signer whose signature spells out what was signed, with which key: the
 /// algorithm, the key's value and the message, joined by `|`. A key named
@@ -28,6 +28,47 @@ impl Signer for FakeSigner {
             });
         }
         Ok(spelled(algorithm, key.expose().as_bytes(), message))
+    }
+
+    /// `sealed|`, the key's value, the purpose, the bound data and `plain`,
+    /// joined by `|`.
+    async fn seal(
+        &self,
+        key: &Secret,
+        sealing: Sealing<'_>,
+        plain: &[u8],
+    ) -> Result<Vec<u8>, CryptoError> {
+        Ok([
+            b"sealed",
+            key.expose().as_bytes(),
+            sealing.purpose.as_bytes(),
+            sealing.bound,
+            plain,
+        ]
+        .join(&b'|'))
+    }
+
+    /// What [`FakeSigner::seal`] sealed under `key` as `sealing` says.
+    async fn open(
+        &self,
+        key: &Secret,
+        sealing: Sealing<'_>,
+        sealed: &[u8],
+    ) -> Result<Vec<u8>, CryptoError> {
+        let head = [
+            b"sealed",
+            key.expose().as_bytes(),
+            sealing.purpose.as_bytes(),
+            sealing.bound,
+            b"",
+        ]
+        .join(&b'|');
+        sealed
+            .strip_prefix(head.as_slice())
+            .map(<[u8]>::to_vec)
+            .ok_or_else(|| CryptoError::Unsealed {
+                name: key.name().to_owned(),
+            })
     }
 
     /// `public|`, the algorithm and the key's value, joined by `|`.
@@ -95,6 +136,30 @@ mod tests {
             pollster::block_on(FakeSigner.public(Algorithm::Ed25519, &bad)),
             Err(CryptoError::BadKey {
                 name: "BAD".to_owned()
+            })
+        );
+    }
+
+    #[test]
+    fn a_sealed_value_spells_its_key_and_purpose_and_opens_only_under_them() {
+        let key = Secret::new("KEY", "k");
+        let with = |purpose, bound| Sealing { purpose, bound };
+        let sealed = pollster::block_on(FakeSigner.seal(&key, with("p", b"b"), b"plain")).unwrap();
+        assert_eq!(sealed, b"sealed|k|p|b|plain");
+        assert_eq!(
+            pollster::block_on(FakeSigner.open(&key, with("p", b"b"), &sealed)),
+            Ok(b"plain".to_vec())
+        );
+        assert_eq!(
+            pollster::block_on(FakeSigner.open(&key, with("p", b"c"), &sealed)),
+            Err(CryptoError::Unsealed {
+                name: "KEY".to_owned()
+            })
+        );
+        assert_eq!(
+            pollster::block_on(FakeSigner.open(&key, with("other", b"b"), &sealed)),
+            Err(CryptoError::Unsealed {
+                name: "KEY".to_owned()
             })
         );
     }

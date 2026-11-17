@@ -51,3 +51,43 @@ impl Waiting for Refusing {
         Err(self.0.clone())
     }
 }
+
+impl herald_ports::Tokens for Failing {
+    async fn token(
+        &self,
+        name: &str,
+    ) -> Result<Option<Versioned<herald_core::KeptToken>>, StoreError> {
+        if self.fault == Fault::ReadsTokens {
+            return Err(broken());
+        }
+        self.inner.token(name).await
+    }
+
+    async fn put_token(
+        &self,
+        token: &herald_core::KeptToken,
+        expected: Option<Version>,
+    ) -> Result<Written, StoreError> {
+        if self.fault == Fault::WritesTokens {
+            return Err(broken());
+        }
+        self.inner.put_token(token, expected).await
+    }
+}
+
+impl herald_ports::Tokens for Refusing {
+    async fn token(
+        &self,
+        _: &str,
+    ) -> Result<Option<Versioned<herald_core::KeptToken>>, StoreError> {
+        Err(self.0.clone())
+    }
+
+    async fn put_token(
+        &self,
+        _: &herald_core::KeptToken,
+        _: Option<Version>,
+    ) -> Result<Written, StoreError> {
+        Err(self.0.clone())
+    }
+}

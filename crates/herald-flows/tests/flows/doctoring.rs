@@ -130,6 +130,77 @@ fn a_layer_with_no_endpoint_names_the_actor_webhooks_and_apps_it_cannot_serve() 
 }
 
 #[test]
+fn a_layer_with_no_endpoint_names_an_owner_discovering_by_push() {
+    let pushed = crate::owner::owned_in("", |options| {
+        options.discovery = Some(herald_sources_forge::Discovery::Push);
+    });
+    let findings = on(&pushed, &actions(), &Here::default());
+    let gap = findings
+        .gaps
+        .iter()
+        .find(|gap| gap.key == "sources.gate.discovery")
+        .unwrap();
+    assert_eq!(gap.feature, "discovery by push");
+    assert_eq!(gap.first_layer, Some(Tier::Serverless));
+    assert!(gap.why.ends_with(
+        ", so the owner is listed only where the source holds no listing or its selection changed; choose discovery \"list\""
+    ));
+    let mut installed = crate::owner::owned_in("", |_| ());
+    installed.github_apps.insert(
+        "herald".to_owned(),
+        herald_config::GithubApp {
+            issuer: "7".to_owned(),
+            private_key: herald_core::SecretRef {
+                secret: "K".to_owned(),
+            },
+            api: "https://api.github.com".to_owned(),
+            webhook: Some(herald_core::SecretRef {
+                secret: "H".to_owned(),
+            }),
+            store_token: false,
+        },
+    );
+    let gaps = on(&installed, &actions(), &Here::default()).gaps;
+    let app = gaps
+        .iter()
+        .find(|gap| gap.key == "github_apps.herald.webhook")
+        .unwrap();
+    assert_eq!(app.feature, "a GitHub App's webhooks");
+    assert!(app.why.ends_with("; poll the sources reading as the App"));
+    assert!(
+        on(&installed, &server(), &Here::default())
+            .gaps
+            .iter()
+            .all(|gap| gap.key != "github_apps.herald.webhook")
+    );
+    let listing = crate::owner::owned_in("", |_| ());
+    assert!(
+        on(&listing, &actions(), &Here::default())
+            .gaps
+            .iter()
+            .all(|gap| gap.key != "sources.gate.discovery")
+    );
+}
+
+#[test]
+fn an_owner_registering_member_webhooks_needs_herald_s_address() {
+    let mut hooking = crate::owner::owned_in("", |options| {
+        options.member_hooks = Some(herald_sources_forge::MemberHooks::Setup);
+    });
+    let unaddressed = "The source gate: member_hooks points each project's webhook at [server] url, which the config gives none of; give it, or run herald hooks gate --url <herald's address>";
+    let noted = |config: &Config| {
+        on(config, &server(), &Here::default())
+            .notes
+            .iter()
+            .any(|note| note == unaddressed)
+    };
+    assert!(noted(&hooking));
+    hooking.server.url = Some("https://herald.example".to_owned());
+    assert!(!noted(&hooking));
+    assert!(!noted(&crate::owner::owned_in("", |_| ())));
+}
+
+#[test]
 fn an_actor_on_a_host_that_cannot_check_addresses_needs_its_egress_guarded() {
     let unset = on(&served(), &fastly(), &Here::default());
     assert_eq!(keyed(&unset), []);
@@ -423,7 +494,10 @@ fn online_each_route_s_platform_is_asked_and_its_answers_named_once_per_destinat
             .clone()
             .connect(|_| Ok::<_, ()>(script.clone()))
             .unwrap();
-        (pollster::block_on(online(&connected)), script.seen().len())
+        (
+            pollster::block_on(online(&connected, (&FakeSigner, crate::harness::NOON))),
+            script.seen().len(),
+        )
     };
     let (taken, asked) = ask(&[
         ("/users/@me", 200, "{}"),
@@ -520,7 +594,7 @@ body = "{{ event.body }}"
     ])
     .headed(&[("x-oauth-scopes", "chat:write")]);
     let connected = prepared.connect(|_| Ok::<_, ()>(script.clone())).unwrap();
-    let findings = pollster::block_on(online(&connected));
+    let findings = pollster::block_on(online(&connected, (&FakeSigner, crate::harness::NOON)));
     assert_eq!(keyed(&findings), [("routes[1]", None)]);
     assert_eq!(findings.gaps[0].feature, "announcing on the route chatted");
     assert_eq!(
@@ -604,7 +678,7 @@ fn listed_online(config: &Config, script: &Script) -> Findings {
     ))
     .unwrap();
     let connected = prepared.connect(|_| Ok::<_, ()>(script.clone())).unwrap();
-    let mut findings = pollster::block_on(online(&connected));
+    let mut findings = pollster::block_on(online(&connected, (&FakeSigner, crate::harness::NOON)));
     findings
         .notes
         .retain(|note| !note.starts_with("The destination"));
@@ -852,5 +926,72 @@ fn online_a_namespace_listing_a_package_outside_it_is_a_gap_at_the_namespace_key
             .contains("it names evil/b, outside the namespace acme"),
         "{:?}",
         findings.gaps[0]
+    );
+}
+
+#[test]
+fn an_owner_registering_member_webhooks_is_checked_online_for_its_token_and_each_member() {
+    use crate::owner::{LISTING, owned_in, repositories};
+    let hooked = |member_hooks| {
+        let mut config = owned_in("", |options| {
+            options.member_hooks = Some(member_hooks);
+            options.webhook = Some(herald_core::SecretRef {
+                secret: "HERALD_APP_KEY".to_owned(),
+            });
+        });
+        config.server.url = Some("https://herald.example".to_owned());
+        config
+    };
+    let probed = |answers: &[(&str, u16, &str)]| {
+        let mut all = vec![
+            ("/users/@me", 200, r#"{"id":"99"}"#),
+            (
+                "/channels/1566200000000000100",
+                200,
+                r#"{"id":"1566200000000000100","guild_id":"1","type":5}"#,
+            ),
+        ];
+        all.extend_from_slice(answers);
+        Script::answering(&all)
+    };
+    let two = repositories(&[(1, "herald"), (2, "gate")]);
+    let found = r#"[{"url":"https://herald.example/hooks/gate"}]"#;
+    let round = listed_online(
+        &hooked(herald_sources_forge::MemberHooks::Round),
+        &probed(&[
+            (LISTING, 200, &two),
+            (
+                "/personal_access_tokens/self",
+                200,
+                r#"{"scopes":["read_api"]}"#,
+            ),
+            ("/projects/1/hooks?per_page=100", 200, found),
+            ("/projects/2/hooks?per_page=100", 200, "[]"),
+        ]),
+    );
+    assert!(round.mistakes.iter().any(|mistake| mistake
+        == "The source gate's token cannot register its members' webhooks: its scopes are read_api, and registering a project webhook needs the api scope; give it the api scope and Maintainer access, or set member_hooks = \"setup\"."));
+    assert!(round.mistakes.iter().any(|mistake| mistake
+        == "The source gate's members nightworksio/gate have no webhook to herald; run herald hooks gate."));
+    let setup = listed_online(
+        &hooked(herald_sources_forge::MemberHooks::Setup),
+        &probed(&[
+            (LISTING, 200, &two),
+            ("/projects/1/hooks?per_page=100", 200, found),
+            ("/projects/2/hooks?per_page=100", 500, "{}"),
+        ]),
+    );
+    assert!(
+        setup
+            .mistakes
+            .iter()
+            .all(|mistake| !mistake.contains("token"))
+    );
+    assert!(
+        setup
+            .gaps
+            .iter()
+            .any(|gap| gap.key == "sources.gate.member_hooks"
+                && gap.feature == "nightworksio/gate's webhooks")
     );
 }

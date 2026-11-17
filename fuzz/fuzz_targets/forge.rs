@@ -12,7 +12,7 @@ use std::collections::BTreeMap;
 use herald_core::{
     Event, EventsRead, Listed, Owner, Polled, PrereleaseRule, SecretRef, Selection, Visibility,
 };
-use herald_kinds::{Changed, Polling, Rounded, SourceConfig as _};
+use herald_kinds::{Changed, Credential, Polling, Rounded, SourceConfig as _};
 use herald_ports::{Http, HttpError, Request, Response, Secret};
 use herald_sources_forge::{Forge, Hooked, Repository, Signals};
 use herald_sources_forge::{ForgeSource, GhcrOptions, GhcrSource, SourceOptions, Transport};
@@ -81,7 +81,9 @@ fn owned(bytes: &[u8]) {
             },
             names: None,
         };
-        let Polling::Many(expand) = source.poller(Some(Secret::new("TOKEN", "t")), false) else {
+        let Polling::Many(expand) =
+            source.poller(Some(Credential::Named(Secret::new("TOKEN", "t"))), false)
+        else {
             continue;
         };
         let read = EventsRead::default();
@@ -133,7 +135,9 @@ fn images(bytes: &[u8]) {
             parse: None,
         },
     };
-    let Polling::Many(expand) = source.poller(Some(Secret::new("TOKEN", "t")), false) else {
+    let Polling::Many(expand) =
+        source.poller(Some(Credential::Named(Secret::new("TOKEN", "t"))), false)
+    else {
         panic!("an owner's images are polled as members");
     };
     if let Ok(listed) = pollster::block_on(expand.listed(&http, None)) {

@@ -19,12 +19,53 @@ pub const RSA_ENCRYPTION: [u8; 11] = [
 pub const PRIVATE_KEY: &str = "PRIVATE KEY";
 /// The label of a `SubjectPublicKeyInfo`'s PEM block.
 pub const PUBLIC_KEY: &str = "PUBLIC KEY";
+/// The label of a PKCS#1 RSA private key's PEM block, as GitHub hands out
+/// an App's key.
+pub const RSA_PRIVATE_KEY: &str = "RSA PRIVATE KEY";
+/// The DER tag of an `OCTET STRING`.
+pub const OCTET_STRING: u8 = 0x04;
+/// The bytes a PKCS#8 key holds before the PKCS#1 key it wraps: its
+/// `SEQUENCE`, version, algorithm and `OCTET STRING` headers, each length
+/// in two bytes.
+const PKCS8_HEAD: usize = 26;
+/// The bytes of a PKCS#8 key's `SEQUENCE` after its length and before the
+/// PKCS#1 key: its version, algorithm and `OCTET STRING` header.
+const PKCS8_BETWEEN: u16 = 22;
 
 /// The DER `text` holds as one PEM block labelled `label`, and nothing
 /// around it, decoded four characters at a time into a buffer allocated
 /// once, so no other copy of a private key is left on the heap.
 #[must_use]
 pub fn pem(text: &str, label: &str) -> Option<Vec<u8>> {
+    decoded(text, label, 0)
+}
+
+/// The PKCS#8 DER of the private key `text` holds as one PEM block: a
+/// PKCS#8 key as it is, or a PKCS#1 RSA key wrapped in PKCS#8 in the buffer
+/// it is decoded into, so no other copy of it is left on the heap.
+#[must_use]
+pub fn private_key(text: &str) -> Option<Vec<u8>> {
+    if let Some(der) = pem(text, PRIVATE_KEY) {
+        return Some(der);
+    }
+    let mut der = decoded(text, RSA_PRIVATE_KEY, PKCS8_HEAD)?;
+    let key = u16::try_from(der.len() - PKCS8_HEAD)
+        .ok()
+        .filter(|key| *key > 0xff)?;
+    let [whole_high, whole_low] = key.checked_add(PKCS8_BETWEEN)?.to_be_bytes();
+    let [key_high, key_low] = key.to_be_bytes();
+    let mut head = vec![SEQUENCE, 0x82, whole_high, whole_low, INTEGER, 0x01, 0x00];
+    head.extend_from_slice(&[SEQUENCE, 0x0d]);
+    head.extend_from_slice(&RSA_ENCRYPTION);
+    head.extend_from_slice(&NULL);
+    head.extend_from_slice(&[OCTET_STRING, 0x82, key_high, key_low]);
+    der.get_mut(..PKCS8_HEAD)?.copy_from_slice(&head);
+    Some(der)
+}
+
+/// The DER `text` holds as one PEM block labelled `label`, decoded after
+/// `room` zero bytes.
+fn decoded(text: &str, label: &str, room: usize) -> Option<Vec<u8>> {
     let inner = text
         .trim()
         .strip_prefix(&format!("-----BEGIN {label}-----"))?
@@ -32,7 +73,8 @@ pub fn pem(text: &str, label: &str) -> Option<Vec<u8>> {
     if inner.contains("-----") {
         return None;
     }
-    let mut der = Vec::with_capacity(inner.len() / 4 * 3);
+    let mut der = Vec::with_capacity(room + inner.len() / 4 * 3);
+    der.resize(room, 0);
     let mut quad = [0; 4];
     let mut held = 0;
     let mut padded = false;
@@ -89,6 +131,35 @@ mod tests {
         assert_eq!(pem(&mixed, PRIVATE_KEY), None);
         let broken = armoured(PRIVATE_KEY, "not base64!", PRIVATE_KEY);
         assert_eq!(pem(&broken, PRIVATE_KEY), None);
+    }
+
+    #[test]
+    fn a_private_key_is_read_as_pkcs8_or_wrapped_into_it_from_pkcs1() {
+        let pkcs8 = armoured(PRIVATE_KEY, "AAEC", PRIVATE_KEY);
+        assert_eq!(private_key(&pkcs8), Some(vec![0, 1, 2]));
+        let key = vec![7; 0x100];
+        let pkcs1 = armoured(RSA_PRIVATE_KEY, &STANDARD.encode(&key), RSA_PRIVATE_KEY);
+        let wrapped = private_key(&pkcs1).unwrap();
+        let (inner, rest) = element(&wrapped, SEQUENCE).unwrap();
+        assert_eq!(rest, <&[u8]>::default());
+        let (version, inner) = element(inner, INTEGER).unwrap();
+        assert_eq!(version, [0]);
+        let (algorithm, inner) = element(inner, SEQUENCE).unwrap();
+        assert_eq!(algorithm, [&RSA_ENCRYPTION[..], &NULL[..]].concat());
+        assert_eq!(element(inner, OCTET_STRING), Some((&key[..], &[][..])));
+        let short = armoured(
+            RSA_PRIVATE_KEY,
+            &STANDARD.encode([7; 0xff]),
+            RSA_PRIVATE_KEY,
+        );
+        assert_eq!(private_key(&short), None);
+        let long = armoured(
+            RSA_PRIVATE_KEY,
+            &STANDARD.encode(vec![7; 0xffea]),
+            RSA_PRIVATE_KEY,
+        );
+        assert_eq!(private_key(&long), None);
+        assert_eq!(private_key(&armoured(PUBLIC_KEY, "AAEC", PUBLIC_KEY)), None);
     }
 
     #[test]

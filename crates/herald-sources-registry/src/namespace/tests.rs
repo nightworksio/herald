@@ -74,6 +74,7 @@ fn known(source: &Namespaced, pages: Vec<Option<String>>) -> Listing {
         listed: Timestamp::UNIX_EPOCH,
         fingerprint: source.fingerprint(),
         file: None,
+        stale: false,
         events: None,
     }
 }
@@ -526,6 +527,7 @@ fn each_package_of_a_namespace_is_polled_and_announced_as_its_own() {
         ("acme/api", Visibility::Private)
     );
     assert_eq!(source.member_nouns(), ("package", "packages"));
+    assert!(!source.pushed());
     assert!(!source.takes(&source.member_of("acme/web".to_owned(), None)));
     let poll = source.member(&own);
     assert_eq!(poll.api(), "https://hub.docker.com/v2");

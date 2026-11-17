@@ -24,6 +24,7 @@ mod command_requests;
 mod doctor;
 mod follows;
 mod housekeep;
+mod installations;
 mod poll;
 mod prepare;
 mod preview;
@@ -40,11 +41,12 @@ pub use budget::{Budget, Requests};
 pub use command_answers::{Answer, completed, deferral, interact, replied};
 pub use doctor::{
     Cadence, EGRESS_GUARDED, Egress, Findings, Gap, Here, Layer, Memory, Rounds, Tier, doctor,
-    egress_guarded, keys, online, secrets, unserved,
+    egress_guarded, kept_tokens, keys, online, secrets, unserved,
 };
 pub use follows::{FollowError, Followed, followed};
 pub use herald_kinds::Replying;
 pub use housekeep::{Chored, Housekept, HousekeptSchedule, housekeep, housekeep_announcing};
+pub use installations::AHEAD as MINTED_AHEAD;
 pub use poll::{Fresh, Remembered, Sweep, Swept, announce_held, held_or_announced, poll};
 pub use prepare::{Connected, PrepareError, Prepared, UnreadSecret, prepare};
 pub use preview::{Previewed, preview};

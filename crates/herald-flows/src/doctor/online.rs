@@ -5,11 +5,13 @@ use std::collections::{BTreeMap, BTreeSet};
 use herald_config::Config;
 use herald_core::{Listed, SourceName};
 use herald_kinds::{Expand, Expanded, Polling, Probe, Standing, Unlisted, Unpolled};
-use herald_ports::{Http, SecretError, Secrets, Signer};
+use herald_ports::{Http, SecretError, Secrets, Signer, Tokens};
+use jiff::Timestamp;
 
 use super::{Findings, Gap, Here, gap, unnamed_gap};
 use crate::Connected;
 use crate::acting::{Claim, Claimant, Claimed};
+use crate::installations::{Kept, refreshed_by};
 use crate::prepare::signs_as_actor;
 
 /// Each ActivityPub actor's key in `config` that is set here, read through
@@ -68,7 +70,10 @@ pub async fn secrets<S: Secrets>(config: &Config, secrets: &S, here: &Here) -> F
 
 /// What each route's platform says of it, asked through the `Http`
 /// `connected` gives the route, with nothing posted (ADR-0002).
-pub async fn online<H: Http>(connected: &Connected<H>) -> Findings {
+pub async fn online<H: Http, G: Signer>(
+    connected: &Connected<H>,
+    (signer, now): (&G, Timestamp),
+) -> Findings {
     let mut findings = Findings::default();
     let mut refused = BTreeSet::new();
     let mut taken = BTreeSet::new();
@@ -107,7 +112,7 @@ pub async fn online<H: Http>(connected: &Connected<H>) -> Findings {
             "The destination \"{destination}\" takes its credential."
         ));
     }
-    findings.extend(owned(connected).await);
+    findings.extend(owned(connected, (signer, now)).await);
     findings
 }
 
@@ -170,14 +175,119 @@ fn unnamed<H>(
     gaps
 }
 
+/// What the members of the owner source `name` lack of the webhooks its
+/// `member_hooks` registers at `url`, asked through `http`: each member
+/// without one, and, where each round registers them, why its token may
+/// not.
+async fn hooks<H: Http>(
+    (name, expand, http): (&str, &dyn Expand, &H),
+    (url, rounds): (&str, bool),
+    members: &[Listed],
+) -> Findings {
+    let mut findings = Findings::default();
+    if rounds && let Err(reason) = expand.may_register(http).await {
+        findings.mistakes.push(format!(
+            "The source {name}'s token cannot register its members' webhooks: {reason}; give it the api scope and Maintainer access, or set member_hooks = \"setup\"."
+        ));
+    }
+    let mut unhooked = Vec::new();
+    for member in members {
+        match expand.hooked(http, member, url).await {
+            Ok(true) => {}
+            Ok(false) => unhooked.push(member.path.as_str()),
+            Err(Unpolled::Unreachable(reason) | Unpolled::Unreadable(reason)) => {
+                findings.gaps.push(gap(
+                    &format!("{}'s webhooks", member.path),
+                    format!("sources.{name}.member_hooks"),
+                    reason,
+                ));
+            }
+        }
+    }
+    if !unhooked.is_empty() {
+        findings.mistakes.push(format!(
+            "The source {name}'s members {} have no webhook to herald; run herald hooks {name}.",
+            unhooked.join(", ")
+        ));
+    }
+    findings
+}
+
+/// The sources whose App's token could not be minted at `now`, signed by
+/// `signer`, each named as a gap into `findings`.
+async fn unminted<H: Http, G: Signer>(
+    connected: &Connected<H>,
+    (signer, now): (&G, Timestamp),
+    findings: &mut Findings,
+) -> BTreeMap<SourceName, herald_wire::github_app::Unminted> {
+    let unminted = refreshed_by(
+        &connected.mintings,
+        (signer, None::<Kept<'_, herald_ports::Unkept>>),
+        now,
+    )
+    .await
+    .unminted;
+    for (name, stop) in &unminted {
+        findings.gaps.push(gap(
+            &format!(
+                "minting the token the source \"{}\" reads with",
+                name.as_str()
+            ),
+            format!("sources.{}.app", name.as_str()),
+            stop.to_string(),
+        ));
+    }
+    unminted
+}
+
+/// Each GitHub App that keeps its installation tokens, a token minted
+/// through `connected` at `now`, signed by `signer`, and kept in the store
+/// `kind`'s `tokens`: a gap for each App whose token the store does not
+/// keep (ADR-0041).
+pub async fn kept_tokens<H: Http, G: Signer, T: Tokens>(
+    connected: &Connected<H>,
+    (signer, tokens, now): (&G, Option<&T>, Timestamp),
+    kind: &str,
+) -> Findings {
+    let mut findings = Findings::default();
+    let refreshed = refreshed_by(
+        &connected.mintings,
+        (signer, tokens.map(|tokens| (tokens, kind))),
+        now,
+    )
+    .await;
+    let mut named = BTreeSet::new();
+    for unkept in refreshed.unkept {
+        if named.insert(unkept.app.clone()) {
+            findings.gaps.push(gap(
+                &format!(
+                    "keeping the GitHub App {}'s installation tokens",
+                    unkept.app
+                ),
+                format!("github_apps.{}.store_token", unkept.app),
+                unkept.why,
+            ));
+        }
+    }
+    findings
+}
+
 /// What each owner source lists, asked through the `Http` `connected` gives
 /// it (ADR-0029): a mistake where a listing passes a cap, or where two
 /// members, of one owner or of two, share a project name.
-async fn owned<H: Http>(connected: &Connected<H>) -> Findings {
+async fn owned<H: Http, G: Signer>(
+    connected: &Connected<H>,
+    (signer, now): (&G, Timestamp),
+) -> Findings {
     let mut findings = Findings::default();
+    let unminted = unminted(connected, (signer, now), &mut findings).await;
     let mut named: BTreeMap<String, Vec<(String, Option<Standing>)>> = BTreeMap::new();
     let mut claimed = Claimed::of_connected(connected);
-    for (source, http) in &connected.sources {
+    for (source, http) in connected
+        .sources
+        .iter()
+        .filter(|(source, _)| !unminted.contains_key(&source.name))
+    {
         let Polling::Many(expand) = &source.poll else {
             continue;
         };
@@ -193,6 +303,16 @@ async fn owned<H: Http>(connected: &Connected<H>) -> Findings {
                     ));
                 }
                 let members = expanded.members();
+                if let Some((url, secret)) = &source.hook {
+                    findings.extend(
+                        hooks(
+                            (name, expand.as_ref(), http),
+                            (url, secret.is_some()),
+                            &members,
+                        )
+                        .await,
+                    );
+                }
                 let (one, several) = expand.member_nouns();
                 let noun = if members.len() == 1 { one } else { several };
                 findings

@@ -12,11 +12,10 @@ use herald_core::{
     Visibility, path_of_names, prerelease_version, status, unreserved, versioned, web_url,
 };
 use herald_kinds::{
-    Expand, Expanded, Fault, Poll, Polling, SourceConfig, SourceKind, Unlisted, Unpolled,
+    Credential, Expand, Expanded, Fault, Poll, Polling, SourceConfig, SourceKind, Unlisted,
+    Unpolled,
 };
-use herald_ports::{
-    Boxed, DynHttp, Erased, Http as _, Method, Request, Response, Secret, SecretText,
-};
+use herald_ports::{Boxed, DynHttp, Erased, Http as _, Method, Request, Response, SecretText};
 use herald_wire::{PARSE_LIMIT, Reading, SourceError, answered};
 use jiff::{SignedDuration, Timestamp};
 use serde::Deserialize;
@@ -245,11 +244,8 @@ impl SourceConfig for GhcrSource {
             .is_ok_and(|selection| selection.takes_unlisted())
     }
 
-    fn poller(&self, token: Option<Secret>, _: bool) -> Polling {
-        Polling::Many(Arc::new(Images::new(
-            &self.options,
-            token.map(Token::Named),
-        )))
+    fn poller(&self, token: Option<Credential>, _: bool) -> Polling {
+        Polling::Many(Arc::new(Images::new(&self.options, token.map(Token::of))))
     }
 }
 
@@ -434,6 +430,10 @@ impl Expand for Images {
 
     fn member_nouns(&self) -> (&'static str, &'static str) {
         ("container image", "container images")
+    }
+
+    fn pushed(&self) -> bool {
+        false
     }
 
     fn standing(&self, image: &Listed) -> Option<herald_kinds::Standing> {

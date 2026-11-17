@@ -26,6 +26,13 @@
       "description": "How doctor judges the config.",
       "$ref": "#/$defs/Doctor"
     },
+    "github_apps": {
+      "description": "The GitHub Apps sources read as, by name.",
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/GitHubApp"
+      }
+    },
     "http": {
       "description": "How herald's own requests reach the services the config names.",
       "$ref": "#/$defs/Http"
@@ -969,6 +976,21 @@
         }
       ]
     },
+    "Discovery": {
+      "description": "How an owner source keeps its membership.",
+      "oneOf": [
+        {
+          "description": "The owner listed each round, conditionally, and again at once where\na delivery says its repositories changed.",
+          "type": "string",
+          "const": "list"
+        },
+        {
+          "description": "The owner listed only where the source holds no listing, its\nselection changed, or a delivery said its repositories changed.",
+          "type": "string",
+          "const": "push"
+        }
+      ]
+    },
     "Doctor": {
       "description": "`[doctor]`: how doctor judges the config.",
       "type": "object",
@@ -1033,6 +1055,42 @@
         }
       },
       "additionalProperties": false
+    },
+    "GitHubApp": {
+      "description": "A GitHub App herald reads as, through installation tokens it mints\n(ADR-0041).",
+      "type": "object",
+      "properties": {
+        "api": {
+          "description": "The REST API the App's tokens are minted at; `https://api.github.com`\nwhere absent, such as `https://ghe.example/api/v3` on GitHub\nEnterprise Server or `https://api.example.ghe.com` on GHE.com. Each\nsource naming the App reads that host.",
+          "type": "string"
+        },
+        "app_id": {
+          "description": "The App's id, as its settings page shows it; give it or `client_id`.",
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 1
+        },
+        "client_id": {
+          "description": "The App's client id, such as `Iv23liABCDEF`, which GitHub recommends\nover the id; give it or `app_id`.",
+          "type": "string"
+        },
+        "private_key": {
+          "description": "The App's private key, as GitHub hands it out (PKCS#1) or as PKCS#8.",
+          "$ref": "#/$defs/SecretRef"
+        },
+        "store_token": {
+          "description": "Whether each installation token is kept in the store between runs,\nso a run skips minting one while it is good; false where absent.\nThe token, good for an hour at most, is then a credential at rest:\nherald keeps it encrypted with AES-256-GCM under a key derived from\n`private_key`, bound to its record and its expiry, in a record the\nstore seals too.",
+          "type": "boolean"
+        },
+        "webhook": {
+          "description": "The secret the App's webhook deliveries are signed with, taken at\n`/hooks/app/<name>`.",
+          "$ref": "#/$defs/SecretRef"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "private_key"
+      ]
     },
     "Guard": {
       "description": "What doctor does with a config that takes something private to a\npublic place.",
@@ -1622,6 +1680,26 @@
         }
       ]
     },
+    "MemberHooks": {
+      "description": "Who registers a project webhook on each member of a GitLab owner.",
+      "oneOf": [
+        {
+          "description": "No one: the group's own webhook where its tier has them, and polls.",
+          "type": "string",
+          "const": "off"
+        },
+        {
+          "description": "`herald hooks <name>`, run by the operator.",
+          "type": "string",
+          "const": "setup"
+        },
+        {
+          "description": "`herald hooks <name>`, and each poll round for a member that\nhas none, which needs a token with the `api` scope that may maintain\neach project.",
+          "type": "string",
+          "const": "round"
+        }
+      ]
+    },
     "Members": {
       "description": "Where an owner source's member file is.",
       "anyOf": [
@@ -2079,6 +2157,10 @@
           "description": "How long a session a destination holds hears nothing before it\nchecks the connection is alive, and then as long again before it\nopens another; \"30s\" where absent.",
           "$ref": "#/$defs/Duration"
         },
+        "url": {
+          "description": "herald's public address as forges and platforms reach it, such as\n`https://herald.example`, with `base` after it where one is given:\nwhat a webhook herald registers points at. A setup command's `--url`\ntakes its place.",
+          "type": "string"
+        },
         "work": {
           "description": "How the work a request leaves keeps within its host's limits.",
           "$ref": "#/$defs/Work"
@@ -2363,6 +2445,10 @@
               "description": "The API's base URL, for a forge that is not GitHub, GitLab.com or\nCodeberg: a GitHub Enterprise Server's `https://ghe.example/api/v3`,\na GHE.com tenant's `https://api.acme.ghe.com`, a self-managed or\nDedicated GitLab's `https://gitlab.example/api/v4`, or a Forgejo's\n`https://forge.example/api/v1`. Where absent, it is the CI run's own\nwhen announcing the run's repository, and otherwise the forge's\npublic instance. An owner is listed at the same base.",
               "type": "string"
             },
+            "app": {
+              "description": "The GitHub App the source reads as, by the name of its\n`[github_apps.<name>]` table, in place of `token`: herald mints an\ninstallation token for each round.",
+              "type": "string"
+            },
             "archived": {
               "description": "Whether archived repositories are taken.",
               "type": "boolean",
@@ -2374,6 +2460,10 @@
               "format": "uint",
               "default": 0,
               "minimum": 0
+            },
+            "discovery": {
+              "description": "How an owner source finds the repositories that join or leave it:\nlisting the owner each round (\"list\"), or only where it holds no\nlisting, its selection changed or a delivery said the owner's\nrepositories changed (\"push\"); \"list\" where absent.",
+              "$ref": "#/$defs/Discovery"
             },
             "edits_depth": {
               "description": "How many of the newest Releases a poll watches for an edit of their\nname or notes, where a route taking the source edits them\n(`edits = \"release\"`); 30 where absent, and at most `page`.",
@@ -2429,6 +2519,12 @@
                 "type": "string"
               }
             },
+            "installation": {
+              "description": "The id of the App's installation tokens are minted for; looked up\non the owner, or on the repository, where absent.",
+              "type": "integer",
+              "format": "uint64",
+              "minimum": 1
+            },
             "keep_members": {
               "description": "How long a member that left the selection keeps its cursor before it\nis forgotten; \"30d\" where absent.",
               "$ref": "#/$defs/Duration"
@@ -2454,6 +2550,10 @@
               "type": "integer",
               "format": "uint",
               "minimum": 1
+            },
+            "member_hooks": {
+              "description": "Who registers a project webhook on each member of a GitLab owner,\nwhose group cannot send its own on GitLab Free: no one (\"off\"),\n`herald hooks <name>` (\"setup\"), or each poll round too (\"round\");\n\"off\" where absent. Each hook points at `[server] url` and is signed\nwith `webhook`.",
+              "$ref": "#/$defs/MemberHooks"
             },
             "members": {
               "description": "The member file: where given, the names it lists are the source's\nmembers, which the filters narrow, read as TOML or JSON by its\nextension.",
@@ -2641,6 +2741,10 @@
               "description": "The API's base URL, for a forge that is not GitHub, GitLab.com or\nCodeberg: a GitHub Enterprise Server's `https://ghe.example/api/v3`,\na GHE.com tenant's `https://api.acme.ghe.com`, a self-managed or\nDedicated GitLab's `https://gitlab.example/api/v4`, or a Forgejo's\n`https://forge.example/api/v1`. Where absent, it is the CI run's own\nwhen announcing the run's repository, and otherwise the forge's\npublic instance. An owner is listed at the same base.",
               "type": "string"
             },
+            "app": {
+              "description": "The GitHub App the source reads as, by the name of its\n`[github_apps.<name>]` table, in place of `token`: herald mints an\ninstallation token for each round.",
+              "type": "string"
+            },
             "archived": {
               "description": "Whether archived repositories are taken.",
               "type": "boolean",
@@ -2652,6 +2756,10 @@
               "format": "uint",
               "default": 0,
               "minimum": 0
+            },
+            "discovery": {
+              "description": "How an owner source finds the repositories that join or leave it:\nlisting the owner each round (\"list\"), or only where it holds no\nlisting, its selection changed or a delivery said the owner's\nrepositories changed (\"push\"); \"list\" where absent.",
+              "$ref": "#/$defs/Discovery"
             },
             "edits_depth": {
               "description": "How many of the newest Releases a poll watches for an edit of their\nname or notes, where a route taking the source edits them\n(`edits = \"release\"`); 30 where absent, and at most `page`.",
@@ -2707,6 +2815,12 @@
                 "type": "string"
               }
             },
+            "installation": {
+              "description": "The id of the App's installation tokens are minted for; looked up\non the owner, or on the repository, where absent.",
+              "type": "integer",
+              "format": "uint64",
+              "minimum": 1
+            },
             "keep_members": {
               "description": "How long a member that left the selection keeps its cursor before it\nis forgotten; \"30d\" where absent.",
               "$ref": "#/$defs/Duration"
@@ -2732,6 +2846,10 @@
               "type": "integer",
               "format": "uint",
               "minimum": 1
+            },
+            "member_hooks": {
+              "description": "Who registers a project webhook on each member of a GitLab owner,\nwhose group cannot send its own on GitLab Free: no one (\"off\"),\n`herald hooks <name>` (\"setup\"), or each poll round too (\"round\");\n\"off\" where absent. Each hook points at `[server] url` and is signed\nwith `webhook`.",
+              "$ref": "#/$defs/MemberHooks"
             },
             "members": {
               "description": "The member file: where given, the names it lists are the source's\nmembers, which the filters narrow, read as TOML or JSON by its\nextension.",
@@ -2919,6 +3037,10 @@
               "description": "The API's base URL, for a forge that is not GitHub, GitLab.com or\nCodeberg: a GitHub Enterprise Server's `https://ghe.example/api/v3`,\na GHE.com tenant's `https://api.acme.ghe.com`, a self-managed or\nDedicated GitLab's `https://gitlab.example/api/v4`, or a Forgejo's\n`https://forge.example/api/v1`. Where absent, it is the CI run's own\nwhen announcing the run's repository, and otherwise the forge's\npublic instance. An owner is listed at the same base.",
               "type": "string"
             },
+            "app": {
+              "description": "The GitHub App the source reads as, by the name of its\n`[github_apps.<name>]` table, in place of `token`: herald mints an\ninstallation token for each round.",
+              "type": "string"
+            },
             "archived": {
               "description": "Whether archived repositories are taken.",
               "type": "boolean",
@@ -2930,6 +3052,10 @@
               "format": "uint",
               "default": 0,
               "minimum": 0
+            },
+            "discovery": {
+              "description": "How an owner source finds the repositories that join or leave it:\nlisting the owner each round (\"list\"), or only where it holds no\nlisting, its selection changed or a delivery said the owner's\nrepositories changed (\"push\"); \"list\" where absent.",
+              "$ref": "#/$defs/Discovery"
             },
             "edits_depth": {
               "description": "How many of the newest Releases a poll watches for an edit of their\nname or notes, where a route taking the source edits them\n(`edits = \"release\"`); 30 where absent, and at most `page`.",
@@ -2985,6 +3111,12 @@
                 "type": "string"
               }
             },
+            "installation": {
+              "description": "The id of the App's installation tokens are minted for; looked up\non the owner, or on the repository, where absent.",
+              "type": "integer",
+              "format": "uint64",
+              "minimum": 1
+            },
             "keep_members": {
               "description": "How long a member that left the selection keeps its cursor before it\nis forgotten; \"30d\" where absent.",
               "$ref": "#/$defs/Duration"
@@ -3010,6 +3142,10 @@
               "type": "integer",
               "format": "uint",
               "minimum": 1
+            },
+            "member_hooks": {
+              "description": "Who registers a project webhook on each member of a GitLab owner,\nwhose group cannot send its own on GitLab Free: no one (\"off\"),\n`herald hooks <name>` (\"setup\"), or each poll round too (\"round\");\n\"off\" where absent. Each hook points at `[server] url` and is signed\nwith `webhook`.",
+              "$ref": "#/$defs/MemberHooks"
             },
             "members": {
               "description": "The member file: where given, the names it lists are the source's\nmembers, which the filters narrow, read as TOML or JSON by its\nextension.",

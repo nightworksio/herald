@@ -287,6 +287,10 @@ impl Expand for Namespaced {
         ("package", "packages")
     }
 
+    fn pushed(&self) -> bool {
+        false
+    }
+
     fn keep_members(&self) -> SignedDuration {
         self.options.keep_members()
     }

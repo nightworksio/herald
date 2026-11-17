@@ -16,6 +16,9 @@ pub fn polled(swept: &Swept) -> Vec<String> {
     };
     match &swept.outcome {
         Sweep::Unchanged => vec![format!("{source}: unchanged since the last poll")],
+        Sweep::Unkept(why) => vec![format!(
+            "{source}: the installation token it reads with was minted but not kept, as {why}. This run reads with it; the next mints it again."
+        )],
         Sweep::Stopped(stop) => vec![format!(
             "{source}: stopped: {}. The next poll asks again.",
             why(stop)
@@ -204,17 +207,23 @@ pub fn report(announced: &Announced) -> String {
 /// where it could not.
 #[must_use]
 pub fn worked(worked: &Worked) -> Vec<String> {
-    let mut said: Vec<String> = match &worked.did {
+    let mut said = lines(&worked.did);
+    said.extend(worked.unreleased.iter().map(|unreleased| {
+        format!("{unreleased}; its sender's next delivery of it is refused until housekeeping forgets it")
+    }));
+    said
+}
+
+/// What `did` is logged as, a line each.
+fn lines(did: &Did) -> Vec<String> {
+    match did {
         Did::Announced(announced) => announced.iter().map(report).collect(),
         Did::Followed(followed) => vec![follow(followed)],
         Did::Interacted(interacted) => interacted.iter().map(answered).collect(),
         Did::Withheld(withheld) => vec![withheld_line(withheld)],
         Did::Polled(swept) => swept.iter().flat_map(polled).collect(),
-    };
-    said.extend(worked.unreleased.iter().map(|unreleased| {
-        format!("{unreleased}; its sender's next delivery of it is refused until housekeeping forgets it")
-    }));
-    said
+        Did::Fanned(each) => each.iter().flat_map(lines).collect(),
+    }
 }
 
 /// What an owner's webhook announcing nothing is logged as.
@@ -246,6 +255,7 @@ pub fn unworked(job: &Job, released: &Result<(), String>) -> String {
         Job::Interact { destination, .. } => {
             format!("the commands given on {}", destination.as_str())
         }
+        Job::Fanned { jobs, .. } => format!("a GitHub App's delivery to {} sources", jobs.len()),
     };
     match released {
         Ok(()) => format!("herald stopped before it worked {what}"),

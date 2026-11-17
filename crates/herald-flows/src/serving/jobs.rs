@@ -2,16 +2,17 @@
 //! released undone so its sender's next delivery of it is admitted
 //! (ADR-0013).
 
-use herald_core::{Asked, DestinationName, Event, Origin, Scheme, SourceName, Visibility};
+use herald_core::{Asked, DestinationName, Event, Listing, Origin, Scheme, SourceName, Visibility};
 use herald_kinds::Replying;
 use herald_ports::{Clock, Cursors, Http, Signer, Store};
 
 use super::Serving;
 use super::replies::{Answered, busy, unreleased};
+use crate::announce::Stop;
 use crate::announce::{Announced, Outcome, Within, announce_within};
 use crate::command_answers::{Answer, interact, replied};
 use crate::follows::{FollowError, Followed, followed};
-use crate::poll::{Sweep, Swept, polled};
+use crate::poll::{Remembered, Sweep, Swept, polled, remembered, stored};
 use crate::prepare::expanded;
 use crate::verification::{Checking, Verified, released};
 
@@ -40,6 +41,20 @@ pub enum Job {
     Poll {
         /// The source the webhook is of.
         source: SourceName,
+        /// The scheme it is signed under.
+        scheme: Scheme,
+        /// What its signature names.
+        verified: Verified,
+        /// Whether the delivery said the owner's repositories changed, so
+        /// the owner is listed again first.
+        relist: bool,
+    },
+    /// A GitHub App's delivery, left to each source it reaches as that
+    /// source's own job; the delivery is released where any stops
+    /// (ADR-0041).
+    Fanned {
+        /// Each source's job.
+        jobs: Vec<Job>,
         /// The scheme it is signed under.
         scheme: Scheme,
         /// What its signature names.
@@ -98,6 +113,8 @@ pub enum Did {
     /// Nothing, as the owner's last membership record does not hold the
     /// member the event is of, as this says.
     Withheld(Withheld),
+    /// What each source an App's delivery reached did with it.
+    Fanned(Vec<Did>),
 }
 
 /// The owner's member a webhook delivery is of (ADR-0030).
@@ -156,6 +173,7 @@ impl Did {
                 .any(|swept| matches!(swept.outcome, Sweep::Stopped(_))),
             Self::Interacted(_) => false,
             Self::Withheld(withheld) => matches!(withheld, Withheld::Unread(_)),
+            Self::Fanned(each) => each.iter().any(Self::stopped),
         }
     }
 }
@@ -182,6 +200,9 @@ impl Job {
             }
             | Self::Poll {
                 scheme, verified, ..
+            }
+            | Self::Fanned {
+                scheme, verified, ..
             } => Some((scheme.name, verified)),
             Self::App { verified, .. } => Some((herald_sources_app::ADMITTED, verified)),
             Self::Follow { verified, .. } => {
@@ -189,6 +210,38 @@ impl Job {
             }
             Self::Interact { .. } => None,
         }
+    }
+}
+
+/// The owner listing `source` keeps marked stale where `relist` says its
+/// repositories changed, so a source discovering by push lists the owner
+/// again; nothing to mark where it keeps no listing or one already stale.
+///
+/// # Errors
+///
+/// Where the listing could not be read or marked.
+async fn stale<S: Store>(store: &S, source: &SourceName, relist: bool) -> Result<(), Stop> {
+    let cursors = store.cursors();
+    let Some(record) = cursors
+        .listing(source)
+        .await
+        .map_err(stored)?
+        .filter(|record| relist && !record.value.stale)
+    else {
+        return Ok(());
+    };
+    let listing = Listing {
+        stale: true,
+        ..record.value
+    };
+    match remembered(
+        cursors
+            .put_listing(source, &listing, Some(record.version))
+            .await,
+        "the owner's listing",
+    ) {
+        Remembered::Failed(stop) => Err(stop),
+        Remembered::Advanced | Remembered::Kept => Ok(()),
     }
 }
 
@@ -239,7 +292,26 @@ pub async fn work<S: Store, C: Clock, G: Signer, V, H: Http, P, K>(
     let delivery = job
         .delivery()
         .map(|(namespace, verified)| (namespace, verified.clone()));
-    let did = match job {
+    let did = done(serving, job, run).await;
+    let stopped = did.stopped();
+    let unreleased = match delivery.filter(|_| stopped) {
+        Some((namespace, verified)) => released(store, namespace, &verified)
+            .await
+            .err()
+            .map(|error| unreleased(&error)),
+        None => None,
+    };
+    Worked { did, unreleased }
+}
+
+/// What `job` did, under the run name `run`.
+async fn done<S: Store, C: Clock, G: Signer, V, H: Http, P, K>(
+    serving: &Serving<'_, S, C, G, V, H, P, K>,
+    job: Job,
+    run: &str,
+) -> Did {
+    let store = serving.ports.store;
+    match job {
         Job::Announce {
             source,
             event,
@@ -249,15 +321,24 @@ pub async fn work<S: Store, C: Clock, G: Signer, V, H: Http, P, K>(
         Job::Announce { source, event, .. } => {
             announced(serving, &source, &event, Within::default(), run).await
         }
-        Job::Poll { source, .. } => Did::Polled(
-            polled(
-                serving.config,
-                serving.connected,
-                serving.ports,
-                (run, Some(&source)),
-            )
-            .await,
-        ),
+        Job::Poll { source, relist, .. } => {
+            Did::Polled(match stale(store, &source, relist).await {
+                Ok(()) => {
+                    polled(
+                        serving.config,
+                        serving.connected,
+                        serving.ports,
+                        (run, Some(&source)),
+                    )
+                    .await
+                }
+                Err(stop) => vec![Swept {
+                    source,
+                    member: None,
+                    outcome: Sweep::Stopped(stop),
+                }],
+            })
+        }
         Job::App { app, event, .. } => {
             let within = serving
                 .config
@@ -290,16 +371,14 @@ pub async fn work<S: Store, C: Clock, G: Signer, V, H: Http, P, K>(
             Did::Followed(taken)
         }
         Job::Interact { destination, asked } => interacted(serving, &destination, asked).await,
-    };
-    let stopped = did.stopped();
-    let unreleased = match delivery.filter(|_| stopped) {
-        Some((namespace, verified)) => released(store, namespace, &verified)
-            .await
-            .err()
-            .map(|error| unreleased(&error)),
-        None => None,
-    };
-    Worked { did, unreleased }
+        Job::Fanned { jobs, .. } => {
+            let mut each = Vec::new();
+            for job in jobs {
+                each.push(Box::pin(done(serving, job, run)).await);
+            }
+            Did::Fanned(each)
+        }
+    }
 }
 
 /// `event`, from `source`, announced under the run name `run` to every

@@ -28,6 +28,7 @@ pub(super) fn membership(id: &str) -> Membership {
         left: None,
         cursor: None,
         collides: None,
+        hooked: true,
     }
 }
 
@@ -43,6 +44,7 @@ pub(super) fn listing() -> Listing {
             etag: Some("e1".to_owned()),
             newest: 7,
         }),
+        stale: true,
     }
 }
 
@@ -96,6 +98,7 @@ pub(super) async fn members<S: Cursors>(store: &S, checks: &mut Checks) -> Resul
             ..Cursor::default()
         }),
         collides: Some("its project is another's".to_owned()),
+        hooked: false,
     };
     let moved = checks.written(store.put_member(&source, &polled, Some(joined)).await?);
     checks.ensure(moved != joined, "a member rewritten kept its version");

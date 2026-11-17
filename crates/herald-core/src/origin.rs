@@ -49,9 +49,10 @@ const NAMES: usize = 21;
 /// The most bytes one of an origin's fields holds.
 const FIELD: usize = 512;
 
-/// Whether `text` names a kind of source: lowercase ASCII letters, digits
-/// and inner `-`.
-fn kind_name(text: &str) -> bool {
+/// Whether `text` is a name of lowercase ASCII letters, digits and inner
+/// `-`, as a kind of source or a GitHub App's table is named.
+#[must_use]
+pub fn kind_name(text: &str) -> bool {
     !text.is_empty()
         && !text.starts_with('-')
         && !text.ends_with('-')

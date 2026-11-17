@@ -11,6 +11,7 @@ use herald_ports::{Clock, Cursors, Http, Signer, Store, StoreError, Versioned, W
 use jiff::Timestamp;
 
 use crate::announce::{Announced, Outcome, Ports, Stop, Within, announce_within, at_once};
+use crate::installations;
 use crate::prepare::{Connected, PreparedSource};
 
 /// What polling one source, or one member of an owner source, did.
@@ -61,6 +62,10 @@ pub enum Sweep {
         /// Why it was let go unannounced, where it was.
         withheld: Option<String>,
     },
+    /// The installation token the source reads with was minted for the
+    /// round but not kept in the store, for this reason; the next run
+    /// mints it again (ADR-0041).
+    Unkept(String),
 }
 
 /// An event a poll announced, and what every route did with it.
@@ -286,6 +291,59 @@ pub async fn poll<S: Store, C: Clock, G: Signer, H: Http>(
     polled(config, connected, ports, (run, None)).await
 }
 
+/// What the source `source` did, as `outcome` says.
+fn swept(source: &SourceName, outcome: Sweep) -> Swept {
+    Swept {
+        source: source.clone(),
+        member: None,
+        outcome,
+    }
+}
+
+/// Each installation the sources read given a token for the round: why the
+/// sources reading one that could not be minted are not polled, and the
+/// sweeps of those `polling` sweeps, with a note for each source whose
+/// token the store did not keep.
+async fn minting<S: Store, C: Clock, G: Signer, H: Http>(
+    (config, connected, ports): (&Config, &Connected<H>, &Ports<'_, S, C, G>),
+    polling: impl Fn(&SourceName) -> bool,
+) -> (BTreeMap<SourceName, Stop>, Vec<Swept>) {
+    let (unminted, unkept) =
+        installations::refreshed(&connected.mintings, ports, config.store.kind()).await;
+    let stopped = unminted
+        .iter()
+        .map(|(source, stop)| (source, Sweep::Stopped(stop.clone())));
+    let noted = unkept.iter().flat_map(|unkept| {
+        unkept
+            .sources
+            .iter()
+            .map(|source| (source, Sweep::Unkept(unkept.why.clone())))
+    });
+    let swept = stopped
+        .chain(noted)
+        .filter(|(source, _)| polling(source))
+        .map(|(source, outcome)| swept(source, outcome))
+        .collect();
+    (unminted, swept)
+}
+
+/// Every held event whose window passed, released; where the held events
+/// cannot be read, each source that holds them stopped.
+async fn released_held<S: Store, C: Clock, G: Signer, H: Http>(
+    (config, connected, ports): (&Config, &Connected<H>, &Ports<'_, S, C, G>),
+    run: &str,
+) -> Vec<Swept> {
+    match held::announce_held(config, connected, ports, run).await {
+        Ok(released) => released,
+        Err(stop) => config
+            .sources
+            .iter()
+            .filter(|(_, options)| options.holds())
+            .map(|(source, _)| swept(source, Sweep::Stopped(stop.clone())))
+            .collect(),
+    }
+}
+
 /// [`poll`], sweeping the source `only` alone where it names one, as a
 /// webhook of a tag asks (ADR-0032); every owner is still listed, so each
 /// member's project is checked against every other's.
@@ -297,24 +355,16 @@ pub(crate) async fn polled<S: Store, C: Clock, G: Signer, H: Http>(
 ) -> Vec<Swept> {
     let flow = (config, connected, ports);
     let polling = |name: &SourceName| only.is_none_or(|only| only == name);
-    let mut released = match held::announce_held(config, connected, ports, run).await {
-        Ok(released) => released,
-        Err(stop) => config
-            .sources
-            .iter()
-            .filter(|(_, options)| options.holds())
-            .map(|(source, _)| Swept {
-                source: source.clone(),
-                member: None,
-                outcome: Sweep::Stopped(stop.clone()),
-            })
-            .collect(),
-    };
+    let mut released = released_held(flow, run).await;
+    let (unminted, noted) = minting(flow, polling).await;
+    released.extend(noted);
+    let minted = |source: &PreparedSource| !unminted.contains_key(&source.name);
     let at_once = at_once(ports.store, config.run.sources).get();
     let owners: Vec<(&SourceName, Result<members::Owning, Vec<Swept>>)> = stream::iter(
         connected
             .sources
             .iter()
+            .filter(|(source, _)| minted(source))
             .filter_map(|(source, http)| match &source.poll {
                 Polling::Many(expand) => Some((source, expand, http)),
                 Polling::One(_) => None,
@@ -334,6 +384,10 @@ pub(crate) async fn polled<S: Store, C: Clock, G: Signer, H: Http>(
     let mut claims = Claims::of(config);
     let mut rounds = Vec::new();
     for (source, http) in &connected.sources {
+        if !minted(source) {
+            claims.unread(&source.name);
+            continue;
+        }
         let round = match &source.poll {
             Polling::One(poll) => {
                 let read = ports.store.cursors().cursor(&source.name).await;
