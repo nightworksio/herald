@@ -31,6 +31,7 @@ herald-keys = { path = "crates/herald-keys" }
 herald-kinds = { path = "crates/herald-kinds" }
 herald-spin = { path = "crates/herald-spin" }
 herald-native = { path = "crates/herald-native" }
+herald-peers = { path = "crates/herald-peers" }
 herald-ports = { path = "crates/herald-ports" }
 herald-records = { path = "crates/herald-records" }
 herald-server = { path = "crates/herald-server" }

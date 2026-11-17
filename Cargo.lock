@@ -1059,11 +1059,13 @@ dependencies = [
  "base64 0.23.1",
  "herald-core",
  "herald-keys",
+ "herald-peers",
  "herald-ports",
  "herald-testing",
  "jiff",
  "pollster",
  "ring",
+ "serde_json",
  "zeroize",
 ]
 
@@ -1243,6 +1245,18 @@ dependencies = [
  "tokio-tungstenite",
  "url",
  "webpki-roots",
+]
+
+[[package]]
+name = "herald-peers"
+version = "0.0.0"
+dependencies = [
+ "base64 0.23.1",
+ "herald-core",
+ "jiff",
+ "proptest",
+ "serde_json",
+ "sha2 0.11.1",
 ]
 
 [[package]]

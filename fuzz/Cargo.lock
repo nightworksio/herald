@@ -361,6 +361,7 @@ dependencies = [
  "herald-dest-matrix",
  "herald-dest-slack",
  "herald-kinds",
+ "herald-peers",
  "herald-ports",
  "herald-records",
  "herald-sources-app",
@@ -382,6 +383,17 @@ dependencies = [
  "herald-core",
  "herald-ports",
  "jiff",
+]
+
+[[package]]
+name = "herald-peers"
+version = "0.0.0"
+dependencies = [
+ "base64",
+ "herald-core",
+ "jiff",
+ "serde_json",
+ "sha2",
 ]
 
 [[package]]
