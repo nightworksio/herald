@@ -336,6 +336,7 @@ where
     S: Store,
     C: Clock,
     G: Signer,
+    V: Verifier,
     H: Http,
     K: Keyring,
 {
@@ -448,13 +449,20 @@ impl<'a> Rounds<'a> {
     }
 
     /// A poll, where none is running.
-    async fn polled<S: Store, C: Clock, G: Signer, V, H: Http, P, K>(
+    async fn polled<S: Store, C: Clock, G: Signer, V: Verifier, H: Http, P, K>(
         &self,
         serving: &Serving<'_, S, C, G, V, H, P, K>,
     ) -> Option<Heard> {
         once(&self.polling, async {
             Some(Heard::Polled(
-                poll(serving.config, serving.connected, serving.ports, &named()).await,
+                poll(
+                    serving.config,
+                    serving.connected,
+                    serving.ports,
+                    serving.verifier,
+                    &named(),
+                )
+                .await,
             ))
         })
         .await
@@ -500,7 +508,7 @@ impl<'a> Rounds<'a> {
 
     /// `round` done, where none of its kind is running, and what it did
     /// said.
-    async fn ran<S: Store, C: Clock, G: Signer, V, H: Http, P, K: Keyring>(
+    async fn ran<S: Store, C: Clock, G: Signer, V: Verifier, H: Http, P, K: Keyring>(
         &self,
         serving: &Serving<'_, S, C, G, V, H, P, K>,
         round: Round,
@@ -639,7 +647,7 @@ pub async fn serve<S, C, G, V, H, P, K, L, So>(
 }
 
 /// The work waiting in `queue` started, while fewer than `jobs` run.
-fn started<'a, S: Store, C: Clock, G: Signer, V, H: Http, P, K>(
+fn started<'a, S: Store, C: Clock, G: Signer, V: Verifier, H: Http, P, K>(
     serving: &'a Serving<'_, S, C, G, V, H, P, K>,
     queue: &Queue,
     running: &mut Underway<'a>,

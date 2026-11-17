@@ -284,7 +284,7 @@ async fn answered(
         }
         Reading::Peer(asked) => {
             let answers = &mut tokio::io::BufReader::new(tokio::io::stdin());
-            let done = peers::peering(config, path, &asked, connect, answers, out).await;
+            let done = peers::peering(config, path, &asked, (vars, connect), answers, out).await;
             finished(done, err)
         }
         Reading::Run(run) => return ControlFlow::Continue(run),

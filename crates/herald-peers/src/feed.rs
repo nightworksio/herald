@@ -3,11 +3,11 @@
 
 use std::fmt;
 
-use herald_core::{Escaping, Event, KindSpec, RELEASE_LINK, Visibility};
+use herald_core::{Escaping, Event, KindSpec, RELEASE_LINK, Size, Visibility};
 use jiff::Timestamp;
 use serde_json::{Map, Value, json};
 
-use crate::discovery::{API, Instance};
+use crate::discovery::{API, Instance, address};
 use crate::jcs::{Uncanonical, canonical};
 use crate::proof::PROOF;
 
@@ -15,8 +15,8 @@ use crate::proof::PROOF;
 pub const FEEDS: &str = "/feeds/";
 /// The query naming the sequence a page lists the envelopes before.
 pub const BEFORE: &str = "before";
-/// The type an envelope names.
-const ENVELOPE: &str = "herald:Event";
+/// The type an envelope carrying an event names.
+pub const EVENT: &str = "herald:Event";
 /// The type a tombstone names: an envelope withdrawn.
 pub const TOMBSTONE: &str = "herald:Tombstone";
 /// The member naming what an envelope or tombstone is.
@@ -26,6 +26,14 @@ const TYPE: &str = "type";
 const DELETED_FORMAT: &str = "%Y-%m-%dT%H:%M:%SZ";
 /// The bytes left in an envelope for the proof it carries.
 pub const PROOF_ROOM: usize = 512;
+/// The envelopes a page lists where its feed says nothing.
+pub const PAGE: usize = 20;
+/// The most envelopes a page lists.
+pub const PAGE_MOST: usize = 4 * PAGE;
+/// The bytes an envelope takes at most where its feed says nothing.
+pub const ENVELOPE: usize = 16 * Size::KIB;
+/// The most bytes an envelope takes, its proof counted.
+pub const ENVELOPE_MOST: usize = 4 * ENVELOPE;
 
 /// Why an event has no envelope.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -58,12 +66,7 @@ impl Instance<'_> {
     /// The URL of the feed `name`, its name escaped as one segment.
     #[must_use]
     pub fn feed(&self, name: &str) -> String {
-        format!(
-            "https://{}{}{API}{FEEDS}{}",
-            self.domain,
-            self.base,
-            Escaping::UNRESERVED.escape(name)
-        )
+        feed_of(&format!("https://{}{}", self.domain, self.base), name)
     }
 
     /// `event`'s envelope, before its proof: what of the event is public
@@ -84,7 +87,7 @@ impl Instance<'_> {
         most: usize,
     ) -> Result<Value, Unenveloped> {
         let mut envelope = public(event, spec);
-        envelope.insert(TYPE.to_owned(), Value::String(ENVELOPE.to_owned()));
+        envelope.insert(TYPE.to_owned(), Value::String(EVENT.to_owned()));
         envelope.insert("path".to_owned(), json!([self.discovery()]));
         if let Some(release) = event.link(RELEASE_LINK) {
             envelope.insert("evidence".to_owned(), json!({ RELEASE_LINK: release }));
@@ -119,6 +122,38 @@ impl Instance<'_> {
             "path": [self.discovery()],
         })
     }
+}
+
+/// The URL of the feed `name` of the instance served at `url`, its name
+/// escaped as one segment.
+#[must_use]
+pub fn feed_of(url: &str, name: &str) -> String {
+    format!("{url}{API}{FEEDS}{}", Escaping::UNRESERVED.escape(name))
+}
+
+/// A feed's URL read back: the URL itself, where its instance is served,
+/// and the instance's domain.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct FeedAt {
+    /// The feed's URL, with no trailing `/`.
+    pub feed: String,
+    /// Where its instance is served.
+    pub instance: String,
+    /// Its instance's domain.
+    pub domain: String,
+}
+
+/// The feed `url` names, as [`crate::discovery::address`] reads it;
+/// `None` where `url` is no feed's URL.
+#[must_use]
+pub fn feed_at(url: &str) -> Option<FeedAt> {
+    let (feed, domain) = address(url)?;
+    let (instance, name) = feed.rsplit_once(&format!("{API}{FEEDS}"))?;
+    (!name.is_empty() && !name.contains('/')).then(|| FeedAt {
+        instance: instance.to_owned(),
+        feed: feed.clone(),
+        domain,
+    })
 }
 
 /// An envelope or tombstone, as JSON.

@@ -8,7 +8,7 @@ use jiff::Timestamp;
 use crate::clock::Clock;
 use herald_core::Algorithm;
 
-use crate::crypto::{CryptoError, Sealing, Signer};
+use crate::crypto::{CryptoError, Sealing, Signer, Verifier};
 use crate::http::{Http, HttpError, Request, Response};
 use crate::kv::{Kv, KvError, Pair, Stamped, Versionstamp};
 use crate::markers::{MarkedThread, Markers, MarkersError};
@@ -98,6 +98,31 @@ impl<G: Signer> DynSigner for G {
         sealed: &'a [u8],
     ) -> Boxed<'a, Result<Vec<u8>, CryptoError>> {
         Box::pin(self.open(key, sealing, sealed))
+    }
+}
+
+/// [`Verifier`] as a trait object: every `Verifier` is one.
+pub trait DynVerifier: Sync {
+    /// Whether `signature` is `key`'s signature of `message` under
+    /// `algorithm`.
+    fn verify_boxed<'a>(
+        &'a self,
+        algorithm: Algorithm,
+        key: &'a [u8],
+        message: &'a [u8],
+        signature: &'a [u8],
+    ) -> Boxed<'a, bool>;
+}
+
+impl<V: Verifier> DynVerifier for V {
+    fn verify_boxed<'a>(
+        &'a self,
+        algorithm: Algorithm,
+        key: &'a [u8],
+        message: &'a [u8],
+        signature: &'a [u8],
+    ) -> Boxed<'a, bool> {
+        Box::pin(self.verify(algorithm, key, message, signature))
     }
 }
 
@@ -312,6 +337,20 @@ impl Signer for Erased<'_, dyn DynSigner + '_> {
         sealed: &[u8],
     ) -> Result<Vec<u8>, CryptoError> {
         self.0.open_boxed(key, sealing, sealed).await
+    }
+}
+
+impl Verifier for Erased<'_, dyn DynVerifier + '_> {
+    async fn verify(
+        &self,
+        algorithm: Algorithm,
+        key: &[u8],
+        message: &[u8],
+        signature: &[u8],
+    ) -> bool {
+        self.0
+            .verify_boxed(algorithm, key, message, signature)
+            .await
     }
 }
 
@@ -545,6 +584,43 @@ mod tests {
                 name: String::new()
             })
         );
+    }
+
+    struct Matching;
+
+    impl Verifier for Matching {
+        async fn verify(
+            &self,
+            algorithm: Algorithm,
+            key: &[u8],
+            message: &[u8],
+            signature: &[u8],
+        ) -> bool {
+            algorithm == Algorithm::Ed25519 && [key, message].concat() == signature
+        }
+    }
+
+    #[test]
+    fn an_erased_verifier_answers_as_the_verifier_it_erases() {
+        let verifier: &dyn DynVerifier = &Matching;
+        assert!(pollster::block_on(Erased(verifier).verify(
+            Algorithm::Ed25519,
+            b"k",
+            b"m",
+            b"km"
+        )));
+        assert!(!pollster::block_on(Erased(verifier).verify(
+            Algorithm::Ed25519,
+            b"k",
+            b"m",
+            b"mk"
+        )));
+        assert!(!pollster::block_on(Erased(verifier).verify(
+            Algorithm::HmacSha256,
+            b"k",
+            b"m",
+            b"km"
+        )));
     }
 
     const SEALING: Sealing<'static> = Sealing {

@@ -67,6 +67,11 @@ pub(crate) fn feed(destination: &DestinationName) -> String {
     format!("published/feeds/{}.json", segment(destination.as_str()))
 }
 
+/// Where the key set the peer `peer` last handed over to is kept.
+pub(crate) fn peer_keys(peer: &str) -> String {
+    format!("peers/{}.json", segment(peer))
+}
+
 pub(crate) fn listing(source: &SourceName) -> String {
     format!("listings/{}.json", segment(source.as_str()))
 }

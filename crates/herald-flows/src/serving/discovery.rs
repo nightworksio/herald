@@ -5,9 +5,10 @@
 use herald_core::{PublishedKeys, itself, media, status};
 use herald_keys::{ED25519_LENGTH, ed25519_of};
 use herald_peers::discovery::{Instance, NODEINFO_JSON};
-use herald_peers::keys::KeySet;
+use herald_peers::keys::{KeySet, method};
 use herald_peers::multibase::ed25519_public;
-use herald_ports::{Algorithm, Published, Signer, Store, StoreError, Written};
+use herald_peers::proof;
+use herald_ports::{Algorithm, Clock, Published, Signer, Store, StoreError, Written};
 
 use super::replies::{Answered, missing, refusal, replied};
 use super::{Inbound, Serving};
@@ -32,7 +33,7 @@ pub(super) fn instance<'a, S, C, G, V, H, P, K>(
 
 /// The instance's discovery document: its API, its software, and its key
 /// set under the sequence the store keeps.
-pub(super) async fn discovered<S: Store, C, G: Signer, V, H, P, K>(
+pub(super) async fn discovered<S: Store, C: Clock, G: Signer, V, H, P, K>(
     serving: &Serving<'_, S, C, G, V, H, P, K>,
     inbound: &Inbound<'_>,
 ) -> Answered {
@@ -57,8 +58,35 @@ pub(super) async fn discovered<S: Store, C, G: Signer, V, H, P, K>(
     replied(
         status::OK,
         media::JSON,
-        instance.document(&set, &feeds(serving)),
+        handed_over(serving, &instance, &set).await,
     )
+}
+
+/// The discovery document of `instance` listing `set`, the set proved by
+/// its oldest key, the one a peer that pinned an earlier set most likely
+/// still pins, so the peer may take the set in its place (ADR-0049).
+async fn handed_over<S, C: Clock, G: Signer, V, H, P, K>(
+    serving: &Serving<'_, S, C, G, V, H, P, K>,
+    instance: &Instance<'_>,
+    set: &KeySet,
+) -> String {
+    let feeds = feeds(serving);
+    let mut keys = set.document(instance.domain);
+    if let Some((oldest, secret)) = set.keys.last().zip(serving.connected.instance.last())
+        && let Ok(unproved) = proof::unproved(
+            &keys,
+            &method(instance.domain, oldest),
+            serving.ports.clock.now(),
+        )
+        && let Ok(signature) = serving
+            .ports
+            .signer
+            .sign(Algorithm::Ed25519, secret, unproved.message())
+            .await
+    {
+        keys = unproved.proved(&signature);
+    }
+    instance.document(&keys, &feeds)
 }
 
 /// The name of each feed of herald's own a route publishes to, once each.

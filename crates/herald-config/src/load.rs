@@ -262,6 +262,7 @@ pub fn load(
     let mut destinations = loader.destinations(sections.destinations, &inherited, read);
     loader.feeds(store.as_ref(), &federation, &mut destinations);
     let (mut sources, source_spans) = loader.sources(sections.sources, read);
+    loader.joined((&mut sources, &source_spans), &peers, &federation.revoked);
     loader.remembering(store.as_ref(), (&mut sources, &source_spans));
     let templates = loader.templates(sections.templates, read);
     let listed = loader.apps(sections.apps, &sources);

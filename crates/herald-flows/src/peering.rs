@@ -9,8 +9,8 @@ use herald_config::{Config, Federation};
 use herald_core::{media, status};
 use herald_peers::answer::{Answer, Bounds, Unanswered, checked};
 use herald_peers::discovery;
-use herald_peers::keys::{Key, KeySet, Unkeyed};
-use herald_ports::{Algorithm, Http, Method, Request, SecretText, Verifier};
+use herald_peers::keys::{Key, KeySet, Unkeyed, Unrotated};
+use herald_ports::{Algorithm, Http, Method, Request, Response, SecretText, Verifier};
 use jiff::Timestamp;
 
 /// Where a peer's discovery document is, and what bounds its answer.
@@ -49,6 +49,10 @@ pub enum Undiscovered {
     Forged,
     /// Its key set cannot be read.
     Unkeyed(Unkeyed),
+    /// Its key set is no rotation statement the held set takes.
+    Unrotated(Unrotated),
+    /// Its key set's proof does not hold.
+    Unhanded,
 }
 
 impl fmt::Display for Undiscovered {
@@ -59,6 +63,8 @@ impl fmt::Display for Undiscovered {
             Self::Unanswered(why) => write!(f, "the discovery document's answer is refused: {why}"),
             Self::Forged => write!(f, "the discovery document's signature does not hold"),
             Self::Unkeyed(why) => why.fmt(f),
+            Self::Unrotated(why) => why.fmt(f),
+            Self::Unhanded => write!(f, "the discovery document's key set's proof does not hold"),
         }
     }
 }
@@ -92,13 +98,7 @@ pub async fn discovered<H: Http, V: Verifier>(
     reading: Reading<'_>,
     pinned: Option<&[Key]>,
 ) -> Result<Discovered, Undiscovered> {
-    let request = Request::new(Method::Get, SecretText::plain(reading.url))
-        .accepting(media::JSON)
-        .at_most(reading.most);
-    let response = http.send(request).await.map_err(unreached)?;
-    if response.status != status::OK {
-        return Err(Undiscovered::Status(response.status));
-    }
+    let response = fetched(http, reading).await?;
     let listed = pinned
         .is_none()
         .then(|| key_set(&response.body, reading.domain))
@@ -106,6 +106,76 @@ pub async fn discovered<H: Http, V: Verifier>(
     let trusted = pinned
         .or_else(|| listed.as_ref().map(|set| set.keys.as_slice()))
         .unwrap_or_default();
+    let by = vouched(verifier, reading, &response, trusted).await?;
+    let set = match listed {
+        Some(set) => set,
+        None => key_set(&response.body, reading.domain)?,
+    };
+    Ok(Discovered { set, by })
+}
+
+/// The key set the peer `reading` names hands over to from `held`
+/// (ADR-0049): its discovery document fetched through `http`, its answer
+/// checked through `verifier` against `held`'s keys, and the set it lists
+/// taken where a key of `held` proved it under a later sequence; `None`
+/// where it lists no later set.
+///
+/// # Errors
+///
+/// It cannot be fetched or is not vouched for as [`discovered`] says, or
+/// its set's proof is missing, by a key `held` does not hold, or does not
+/// hold.
+pub async fn handed_over<H: Http, V: Verifier>(
+    http: &H,
+    verifier: &V,
+    reading: Reading<'_>,
+    held: &KeySet,
+) -> Result<Option<KeySet>, Undiscovered> {
+    let response = fetched(http, reading).await?;
+    vouched(verifier, reading, &response, &held.keys).await?;
+    match discovery::handed_over(&response.body, held, reading.domain) {
+        Ok(rotation) => {
+            let proved = verifier
+                .verify(
+                    Algorithm::Ed25519,
+                    &rotation.by,
+                    &rotation.proof.message,
+                    &rotation.proof.signature,
+                )
+                .await;
+            if proved {
+                Ok(Some(rotation.set))
+            } else {
+                Err(Undiscovered::Unhanded)
+            }
+        }
+        Err(Unrotated::Stale { .. }) => Ok(None),
+        Err(other) => Err(Undiscovered::Unrotated(other)),
+    }
+}
+
+/// The discovery document `reading` names, fetched through `http` within
+/// its body bound.
+async fn fetched<H: Http>(http: &H, reading: Reading<'_>) -> Result<Response, Undiscovered> {
+    let request = Request::new(Method::Get, SecretText::plain(reading.url))
+        .accepting(media::JSON)
+        .at_most(reading.most);
+    let response = http.send(request).await.map_err(unreached)?;
+    if response.status == status::OK {
+        Ok(response)
+    } else {
+        Err(Undiscovered::Status(response.status))
+    }
+}
+
+/// The key among `trusted` that signed `response`, checked through
+/// `verifier` over what herald demands of an answer to `reading`.
+async fn vouched<V: Verifier>(
+    verifier: &V,
+    reading: Reading<'_>,
+    response: &Response,
+    trusted: &[Key],
+) -> Result<Key, Undiscovered> {
     let answer = Answer {
         method: Method::Get.as_str(),
         url: reading.url,
@@ -115,18 +185,14 @@ pub async fn discovered<H: Http, V: Verifier>(
     };
     let (by, shown) = checked(&answer, reading.domain, trusted, reading.bounds)
         .map_err(Undiscovered::Unanswered)?;
-    if !verifier
+    if verifier
         .verify(Algorithm::Ed25519, by, &shown.base, &shown.signature)
         .await
     {
-        return Err(Undiscovered::Forged);
+        Ok(*by)
+    } else {
+        Err(Undiscovered::Forged)
     }
-    let by = *by;
-    let set = match listed {
-        Some(set) => set,
-        None => key_set(&response.body, reading.domain)?,
-    };
-    Ok(Discovered { set, by })
 }
 
 /// Why a fetch failed, as a document left unread.

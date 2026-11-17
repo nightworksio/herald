@@ -87,6 +87,7 @@ pub async fn store_conformance<S: Store>(store: &S) -> Result<(), Failure> {
         let mut checks = Checks::default();
         published::published(kept, &mut checks).await?;
         published::feeds(kept, &mut checks).await?;
+        published::peers(kept, &mut checks).await?;
         checks.done()?;
     }
     if let Some(kept) = store.deliveries() {

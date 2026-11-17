@@ -4600,6 +4600,74 @@
             "kind",
             "url"
           ]
+        },
+        {
+          "description": "Another herald's feed, each answer and envelope checked against the keys trusted for it.",
+          "type": "object",
+          "properties": {
+            "backfill": {
+              "description": "How many of the newest envelopes the first pull announces; none\nwhere absent, and at most `pages` pages of 80.",
+              "type": "integer",
+              "format": "uint",
+              "default": 0,
+              "minimum": 0
+            },
+            "feed": {
+              "description": "The name of the peer's feed, as its discovery document lists it.",
+              "type": "string",
+              "examples": [
+                "releases"
+              ]
+            },
+            "keys": {
+              "description": "The Ed25519 keys pinned for the instance `url` names, each a\nMultikey its operator gave out of band.",
+              "type": "array",
+              "default": [],
+              "items": {
+                "type": "string"
+              }
+            },
+            "kind": {
+              "type": "string",
+              "const": "herald"
+            },
+            "namespaces": {
+              "description": "The identities the peer may give as they are, each the start of\nidentities up to a '/', such as \"github.com/123456\"; every other is\ntaken as herald/<peer>/<identity>. None where absent.",
+              "type": "array",
+              "default": [],
+              "items": {
+                "type": "string"
+              }
+            },
+            "pages": {
+              "description": "How many pages one pull reads at most: 5 where absent, and at most\n20.",
+              "type": "integer",
+              "format": "uint",
+              "minimum": 1
+            },
+            "peer": {
+              "description": "The peer of `[peers]` whose feed it pulls, through the keys pinned\nfor it; with `feed`, in place of `url`.",
+              "type": "string",
+              "examples": [
+                "herald-example-net"
+              ]
+            },
+            "url": {
+              "description": "The full URL of a feed of an instance that is no peer, whose keys\n`keys` pins; in place of `peer` and `feed`.",
+              "type": "string",
+              "examples": [
+                "https://herald.example.net/herald/v1/feeds/releases"
+              ]
+            },
+            "verify": {
+              "description": "Which envelopes it takes: \"origin\" (where absent), those the peer\nproved itself, or \"hop\", also those it passes on from another peer.",
+              "$ref": "#/$defs/Verify"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind"
+          ]
         }
       ]
     },
@@ -5255,6 +5323,21 @@
           "description": "A Composer repository's `packages.json`, at `api`, as Private\nPackagist and Satis serve it.",
           "type": "string",
           "const": "composer"
+        }
+      ]
+    },
+    "Verify": {
+      "description": "Which envelopes a pull takes.",
+      "oneOf": [
+        {
+          "description": "Only those the peer itself proved, which passed through no other\ninstance.",
+          "type": "string",
+          "const": "origin"
+        },
+        {
+          "description": "Also those the peer passes on from another peer of `[peers]`, each\nproved by that peer's key, through at most the peer's `hops`\ninstances.",
+          "type": "string",
+          "const": "hop"
         }
       ]
     },

@@ -14,7 +14,7 @@ use jiff::{SignedDuration, Timestamp};
 
 pub use herald_core::Installation;
 
-use crate::{Credential, Fault, Itself};
+use crate::{Credential, Fault, Itself, Peering, Pull};
 
 /// A GitHub App a source reads as: the App's name, the REST API the source
 /// reads, and the installation its tokens are minted for.
@@ -112,6 +112,23 @@ pub trait SourceConfig: fmt::Debug + Send + Sync + Itself {
     /// Whether every event it gives carries an origin.
     fn origins(&self) -> bool {
         false
+    }
+
+    /// Whether its events may be of any kind the config declares, rather
+    /// than only [`SourceConfig::kinds`] (ADR-0049).
+    fn any_kind(&self) -> bool {
+        false
+    }
+
+    /// Whose feed it pulls, where it pulls another herald's (ADR-0049).
+    fn peering(&self) -> Option<Peering<'_>> {
+        None
+    }
+
+    /// The source pulling from its peer, served at `url`, where it pulls
+    /// from a peer of `[peers]`.
+    fn joined(&self, _url: &str) -> Option<Source> {
+        None
     }
 
     /// Whether the owner's deliveries keep its membership between listings.
@@ -258,13 +275,16 @@ pub struct Probed {
     pub why: String,
 }
 
-/// How a source is polled: as one, or as each member an owner lists.
+/// How a source is polled: as one, as each member an owner lists, or as
+/// another herald's feed.
 #[derive(Debug, Clone)]
 pub enum Polling {
     /// One poll.
     One(Arc<dyn Poll>),
     /// An owner's members, each polled on its own.
     Many(Arc<dyn Expand>),
+    /// Another herald's feed, pulled through the keys trusted for it.
+    Pull(Arc<dyn Pull>),
 }
 
 impl Polling {
@@ -275,6 +295,7 @@ impl Polling {
         match self {
             Self::One(poll) => poll.api(),
             Self::Many(expand) => expand.api(),
+            Self::Pull(pull) => pull.api(),
         }
     }
 
@@ -285,6 +306,7 @@ impl Polling {
         let bases = match self {
             Self::One(poll) => poll.bases(),
             Self::Many(expand) => expand.bases(),
+            Self::Pull(_) => &[],
         };
         if bases.is_empty() {
             Base::At(self.api())
@@ -299,6 +321,7 @@ impl Polling {
         match self {
             Self::One(poll) => poll.probed(http),
             Self::Many(expand) => expand.probed(http),
+            Self::Pull(_) => Box::pin(std::future::ready(Vec::new())),
         }
     }
 }

@@ -1,21 +1,26 @@
 //! `herald peer`: another herald pinned by the keys its operator confirms,
 //! listed, checked against its pinned keys, or no longer trusted.
 
+use std::collections::BTreeMap;
 use std::io::Write;
 
-use herald_config::{Config, Peer};
+use herald_compose::{Host, Hosting, ServingOn, Through};
+use herald_config::{Config, Peer, Rotation, Uses};
+use herald_core::PeerKeys;
 use herald_core::kind_name;
 use herald_crypto::RingVerifier;
 use herald_environment::SystemClock;
 use herald_flows::peering::{Discovered, Reading, bounds, discovered};
+use herald_peers::discovery;
 use herald_peers::keys::{Key, fingerprint};
-use herald_peers::multibase::ed25519_public;
-use herald_ports::Clock as _;
+use herald_peers::multibase::{ed25519_key, ed25519_public};
+use herald_ports::{Clock as _, Keyring, Published as _, Store};
 use tokio::io::{AsyncBufRead, AsyncBufReadExt as _};
 
 use super::cli::Peering;
 use super::output::say;
-use super::{Connect, DONE, STOPPED, rewrite, text};
+use super::stores::composed;
+use super::{Connect, DONE, STOPPED, place, rewrite, text};
 
 mod written;
 
@@ -37,12 +42,13 @@ pub(crate) struct Adding<'a> {
 }
 
 /// The `peer` command `asked`, against `config` read from `path`, reaching
-/// peers through `connect`, asking the operator through `answers`.
+/// peers and the store `vars` names through `connect`, asking the operator
+/// through `answers`.
 pub(crate) async fn peering(
     config: &Config,
     path: &str,
     asked: &Peering,
-    connect: Connect<'_>,
+    (vars, connect): (&BTreeMap<String, String>, Connect<'_>),
     answers: &mut (dyn AsyncBufRead + Send + Unpin),
     out: &mut dyn Write,
 ) -> Result<u8, String> {
@@ -61,7 +67,7 @@ pub(crate) async fn peering(
                 print: *print,
                 update: *update,
             };
-            add(config, path, &adding, connect, answers, out).await
+            add(config, path, &adding, (vars, connect), answers, out).await
         }
         Peering::List => Ok(list(config, out)),
         Peering::Test { name } => test(config, name.as_deref(), connect, out).await,
@@ -101,16 +107,16 @@ async fn add(
     config: &Config,
     path: &str,
     adding: &Adding<'_>,
-    connect: Connect<'_>,
+    (vars, connect): (&BTreeMap<String, String>, Connect<'_>),
     answers: &mut (dyn AsyncBufRead + Send + Unpin),
     out: &mut dyn Write,
 ) -> Result<u8, String> {
     let given = if adding.url.contains("://") {
         adding.url.to_owned()
     } else {
-        format!("{}://{}", Peer::SCHEME, adding.url)
+        format!("{}://{}", discovery::SCHEME, adding.url)
     };
-    let (url, domain) = Peer::address(&given).ok_or_else(|| {
+    let (url, domain) = discovery::address(&given).ok_or_else(|| {
         format!("\"{}\" is not a peer's address; give its domain, or https://, its domain and any path its endpoints are under", adding.url)
     })?;
     let name = adding
@@ -130,6 +136,28 @@ async fn add(
         }
         (None, true) => return Err(format!("no peer named {name} is pinned to update")),
         _ => {}
+    }
+    if let Some(peer) = known.filter(|peer| peer.rotation == Rotation::Signed)
+        && let Some(held) = handed(config, (vars, connect), &name, peer).await?
+    {
+        let keys: Vec<Key> = held
+            .keys
+            .iter()
+            .filter_map(|key| ed25519_key(key))
+            .collect();
+        say(
+            out,
+            &format!(
+                "The peer {name} handed over to {} keys under sequence {}, each set proved by a key trusted for it:",
+                keys.len(),
+                held.sequence
+            ),
+        );
+        for key in &keys {
+            say(out, &shown(key));
+        }
+        let chosen = chosen(config, &name, &keys, &[])?;
+        return pinned(path, (&name, &peer.url), &chosen, adding.print, out);
     }
     let most = known.map_or(Peer::MOST, |peer| peer.most);
     let discovery = Peer::discovery_at(&url);
@@ -155,21 +183,76 @@ async fn add(
         say(out, &line);
     }
     let chosen = chosen(config, &name, listed, adding.keys)?;
-    let keys: Vec<String> = chosen.iter().map(ed25519_public).collect();
-    if adding.print {
-        let _ = write!(out, "{}", written::table(&name, &url, &keys));
-        return Ok(DONE);
-    }
-    if adding.keys.is_empty() && !confirmed(&name, path, keys.len(), answers, out).await {
+    if !adding.print
+        && adding.keys.is_empty()
+        && !confirmed(&name, path, chosen.len(), answers, out).await
+    {
         say(out, "Nothing was pinned.");
         return Ok(STOPPED);
     }
-    rewrite(path, written::pinned(&text(path)?, &name, &url, &keys)?)?;
+    pinned(path, (&name, &url), &chosen, adding.print, out)
+}
+
+/// `keys` pinned for the peer `name` served at `url`: its table printed
+/// where `print`, else written into herald.toml at `path`.
+fn pinned(
+    path: &str,
+    (name, url): (&str, &str),
+    keys: &[Key],
+    print: bool,
+    out: &mut dyn Write,
+) -> Result<u8, String> {
+    let keys: Vec<String> = keys.iter().map(ed25519_public).collect();
+    if print {
+        let _ = write!(out, "{}", written::table(name, url, &keys));
+        return Ok(DONE);
+    }
+    rewrite(path, written::pinned(&text(path)?, name, url, &keys)?)?;
     say(
         out,
         &format!("Pinned {} keys for the peer {name} in {path}.", keys.len()),
     );
     Ok(DONE)
+}
+
+/// The key set the peer `name`, whose rotation is signed, handed over to,
+/// as the store `config` keeps records in keeps it (ADR-0049), where it
+/// stands for the keys `peer` pins and lists others.
+async fn handed(
+    config: &Config,
+    (vars, connect): (&BTreeMap<String, String>, Connect<'_>),
+    name: &str,
+    peer: &Peer,
+) -> Result<Option<PeerKeys>, String> {
+    let composed = composed(
+        config,
+        vars,
+        connect,
+        Hosting::Actions,
+        Uses::Polls,
+        place(vars),
+    )
+    .await?;
+    let held = composed.run(Handed(name)).await?;
+    let pinned: Vec<String> = peer.keys.iter().map(ed25519_public).collect();
+    Ok(held.filter(|held| held.stands(&pinned) && held.keys != pinned))
+}
+
+/// The key set a peer handed over to, read from the store.
+struct Handed<'a>(&'a str);
+
+impl<H: Host> Through<H> for Handed<'_> {
+    type Done = Result<Option<PeerKeys>, String>;
+
+    async fn through<S: Store, K: Keyring>(
+        self,
+        serving: &ServingOn<'_, H, S, K>,
+        _: &str,
+    ) -> Self::Done {
+        let held = serving.ports.store.published().peer_keys(self.0).await;
+        held.map(|held| held.map(|held| held.value))
+            .map_err(|error| error.to_string())
+    }
 }
 
 /// The keys of `listed` to pin for the peer `peer`: those `named` names,

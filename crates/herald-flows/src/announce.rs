@@ -547,6 +547,7 @@ impl<S: Store, C: Clock, G: Signer, H: Http> Run<'_, S, C, G, H> {
         let shown = shown.clone();
         let claimed = record
             .map_or_else(|| Entry::new(key), |record| record.value)
+            .through(subject.event.source())
             .wanting(&wanted)
             .revising(shown);
         let progress = self

@@ -423,3 +423,47 @@ fn online_doctor_says_where_the_store_does_not_keep_an_app_s_tokens() {
         memory.out
     );
 }
+
+#[test]
+fn doctor_names_each_signed_peer_and_the_keys_it_handed_over_to() {
+    use super::peers::handed::{held, kept, signed};
+    use super::peers::{NEWER, OLDER};
+    let mut setup = setup(&format!("{CONFIG}{}", signed()));
+    let world = World::default();
+    world.state.lock().unwrap().branch = true;
+    let offline = herald(&setup, &world, &["doctor"]);
+    assert!(
+        offline
+            .out
+            .contains("peers.org: rotation = \"signed\" takes a key set the peer proves"),
+        "{}",
+        offline.out
+    );
+    let quiet = herald(&setup, &world, &["doctor", "--online"]);
+    assert!(!quiet.out.contains("handed over to z6Mk"), "{}", quiet.out);
+    kept(&setup, &world, held(OLDER, &[NEWER, OLDER]));
+    let drifted = herald(&setup, &world, &["doctor", "--online"]);
+    assert!(
+        drifted.out.contains("peers.org: the peer handed over to z6Mk")
+            && drifted.out.contains("under sequence 4, which herald.toml does not pin; herald peer add https://herald.peer.example --name org --update pins them."),
+        "{}",
+        drifted.out
+    );
+    world.state.lock().unwrap().failing = Some(herald_ports::Method::Get);
+    let unread = herald(&setup, &world, &["doctor", "--online"]);
+    assert!(
+        unread.out.contains(
+            "peers.org.rotation: reading the key set the peer org handed over to cannot be served"
+        ),
+        "{}",
+        unread.out
+    );
+    world.state.lock().unwrap().failing = None;
+    setup.vars.remove("HERALD_STORE_KEY");
+    let unopened = herald(&setup, &world, &["doctor", "--online"]);
+    assert!(
+        unopened.out.contains("No peer's key set is read, as "),
+        "{}",
+        unopened.out
+    );
+}

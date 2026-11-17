@@ -232,3 +232,21 @@ fn nodeinfo_links_its_document_and_counts_the_actors_on_the_domain() {
     assert_eq!(info["usage"]["users"]["total"], 0);
     assert_eq!(info["protocols"], serde_json::json!([]));
 }
+
+#[test]
+fn the_key_set_is_proved_by_its_oldest_key_so_a_peer_pinning_it_takes_the_set() {
+    let world = World::with(
+        federated(&["HERALD_KEY_NEW", "HERALD_KEY_OLD"]),
+        Script::default(),
+    );
+    let found = document(&world);
+    let proof = &found["keys"]["proof"];
+    let oldest: [u8; 32] = OLD_KEY.as_bytes().try_into().unwrap();
+    assert_eq!(
+        proof["verificationMethod"],
+        herald_peers::keys::method("herald.example", &oldest)
+    );
+    let signature =
+        herald_peers::multibase::decode(proof["proofValue"].as_str().unwrap(), 4096).unwrap();
+    assert!(signature.starts_with(&[b"Ed25519|".as_slice(), OLD_KEY.as_bytes(), b"|"].concat()));
+}

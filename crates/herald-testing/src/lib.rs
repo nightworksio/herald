@@ -33,7 +33,7 @@ pub use clock::FakeClock;
 pub use conformance::{
     Failure, keyring_conformance, kv_conformance, sql_conformance, store_conformance,
 };
-pub use crypto::{FakeSigner, FakeVerifier};
+pub use crypto::{FakeSigner, FakeVerifier, fake_ed25519};
 pub use fixture::{Answer, Exchange, Fixture, Recorded, Recorder, Replay};
 pub use http::ScriptedHttp;
 pub use kv::FakeKv;

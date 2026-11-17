@@ -1,13 +1,15 @@
 //! Whatever arrives from another instance, reading it never panics: a
 //! structured field's items write back to what they read as, canonical
 //! JSON is its own canonical form, a key set reads back as it writes, and
-//! an answer or a discovery document is checked or read without panicking.
+//! an answer, a discovery document, a feed's page or an envelope is checked
+//! or read without panicking.
 
 #![no_main]
 
 use herald_peers::answer::{Answer, Bounds, CONTENT_TYPE, checked};
 use herald_peers::digest::CONTENT_DIGEST;
-use herald_peers::discovery::key_set;
+use herald_peers::discovery::{handed_over, key_set};
+use herald_peers::reading::{carried, page};
 use herald_peers::jcs::canonical;
 use herald_peers::keys::{KeySet, rotation};
 use herald_peers::message::{FIELD_MOST, Message, SIGNATURE, SIGNATURE_INPUT, presented};
@@ -60,6 +62,13 @@ fuzz_target!(|bytes: &[u8]| {
     let bounds = Bounds { fields: FIELD_MOST, now: 1_800_000_000, skew: 300, longest: 1200 };
     let _ = checked(&answer, DOMAIN, &[[0; 32]], bounds);
     let _ = key_set(bytes, DOMAIN);
+    let held = KeySet { sequence: 0, refresh: 0, keys: vec![[0; 32]] };
+    let _ = handed_over(bytes, &held, DOMAIN);
+    if let Ok(read) = page(bytes, "https://herald.example/herald/v1/feeds/releases") {
+        for (_, envelope) in &read.items {
+            let _ = carried(envelope);
+        }
+    }
     let Ok(value) = serde_json::from_slice::<serde_json::Value>(bytes) else {
         return;
     };
@@ -68,6 +77,7 @@ fuzz_target!(|bytes: &[u8]| {
         assert_eq!(canonical(&read).as_deref(), Ok(written.as_str()));
     }
     let _ = shown(&value);
+    let _ = carried(&value);
     if let Ok(set) = KeySet::read(&value, DOMAIN) {
         assert_eq!(KeySet::read(&set.document(DOMAIN), DOMAIN), Ok(set.clone()));
         let _ = rotation(&value, &set, DOMAIN);

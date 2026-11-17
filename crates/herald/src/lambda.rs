@@ -388,7 +388,7 @@ pub(crate) async fn lambda(
             "{unset} is not set, so the work a request leaves is done before the next request is taken rather than handed to the function again"
         ));
     }
-    Ok(function.run().await)
+    Ok(Box::pin(function.run()).await)
 }
 
 #[cfg(test)]

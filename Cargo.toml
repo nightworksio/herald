@@ -39,6 +39,7 @@ herald-server = { path = "crates/herald-server" }
 herald-sources-app = { path = "crates/herald-sources-app" }
 herald-sources-feed = { path = "crates/herald-sources-feed" }
 herald-sources-forge = { path = "crates/herald-sources-forge" }
+herald-sources-herald = { path = "crates/herald-sources-herald" }
 herald-sources-registry = { path = "crates/herald-sources-registry" }
 herald-store-actions-cache = { path = "crates/herald-store-actions-cache" }
 herald-store-d1 = { path = "crates/herald-store-d1" }

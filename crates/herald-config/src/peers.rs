@@ -1,10 +1,9 @@
 //! `[peers.*]`: the other heralds this one trusts, each by the keys it pins,
 //! how it reaches them and what bounds what they send.
 
-use std::net::Ipv4Addr;
 use std::num::NonZeroU32;
 
-use herald_core::{Address, Per, Rate, Size, domain};
+use herald_core::{Per, Rate, Size};
 use herald_peers::keys::{Key, WELL_KNOWN};
 use schemars::JsonSchema;
 use serde::Deserialize;
@@ -60,8 +59,6 @@ pub struct Peer {
 }
 
 impl Peer {
-    /// The scheme a peer is reached by.
-    pub const SCHEME: &str = "https";
     /// How many requests a peer may make where the config says nothing.
     pub const RATE: Rate = Rate::new(NonZeroU32::new(120).unwrap(), Per::Minute);
     /// The most requests a config may let a peer make: four times the
@@ -80,25 +77,6 @@ impl Peer {
     pub const HOPS: u8 = 2;
     /// The most hops a config may allow: four times the default.
     pub const HOPS_ALLOWED: u8 = Self::HOPS * 4;
-
-    /// `url` as a peer's address, where it is one: `https://`, a domain and
-    /// a path, with no port, user, query or fragment. It answers the URL
-    /// with no trailing `/`, and the domain.
-    #[must_use]
-    pub fn address(url: &str) -> Option<(String, String)> {
-        let address = Address::parse(url).filter(|address| {
-            address.scheme() == Self::SCHEME
-                && domain(address.host())
-                && address.host().parse::<Ipv4Addr>().is_err()
-                && address.authority() == address.host()
-                && !address.names_a_user()
-                && !address.target().contains('?')
-                && !url.contains('#')
-        })?;
-        let host = address.host().to_owned();
-        let path = address.target().trim_end_matches('/');
-        Some((format!("{}://{host}{path}", Self::SCHEME), host))
-    }
 
     /// The URL of its discovery document.
     #[must_use]

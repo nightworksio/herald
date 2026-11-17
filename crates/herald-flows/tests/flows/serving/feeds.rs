@@ -166,7 +166,10 @@ fn a_reader_holding_the_page_s_tag_is_told_it_is_unchanged() {
     assert_eq!(answered.reply.status, 304);
     assert_eq!(answered.reply.body, Vec::<u8>::new());
     assert_eq!(header(&answered, "etag"), Some("\"1.0.2\""));
-    signed_over(&answered, &inbound, FEED);
+    let covered = signed_over(&answered, &inbound, FEED);
+    for demanded in herald_peers::answer::demanded_unchanged() {
+        assert!(covered.contains(&demanded), "{demanded:?}");
+    }
     let stale = asked(
         None,
         &[("Host", "herald.example"), ("If-None-Match", "\"0.0.2\"")],

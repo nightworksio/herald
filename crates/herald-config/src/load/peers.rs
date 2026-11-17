@@ -4,7 +4,11 @@
 use std::collections::BTreeMap;
 use std::ops::Range;
 
+use herald_core::SourceName;
+use herald_kinds::{Peering, Source};
+
 use herald_core::{Size, kind_name};
+use herald_peers::discovery;
 use herald_peers::keys::Key;
 use herald_peers::multibase::{ed25519_key, ed25519_public};
 
@@ -13,6 +17,59 @@ use crate::file::PeerFile;
 use crate::peers::Peer;
 
 impl Loader<'_> {
+    /// Each source pulling another herald's feed joined to the peer it
+    /// names, refused where `[peers]` has no such peer; one pinning keys of
+    /// its own refused where it pins a key `revoked` lists or a peer pins
+    /// (ADR-0049).
+    pub(super) fn joined(
+        &mut self,
+        (sources, spans): (
+            &mut BTreeMap<SourceName, Source>,
+            &BTreeMap<SourceName, Range<usize>>,
+        ),
+        peers: &BTreeMap<String, Peer>,
+        revoked: &[Key],
+    ) {
+        for (name, source) in sources.iter_mut() {
+            let span = spans.get(name).cloned().unwrap_or_default();
+            let path = format!("sources.{}", name.as_str());
+            match source.peering() {
+                Some(Peering::Peer(peer)) => match peers.get(peer) {
+                    Some(found) => {
+                        if let Some(joined) = source.joined(&found.url) {
+                            *source = joined;
+                        }
+                    }
+                    None => self.error(
+                        &span,
+                        &format!("{path}.peer"),
+                        format!("there is no peer \"{peer}\" in [peers]; `herald peer add <url>` pins one"),
+                    ),
+                },
+                Some(Peering::Pinned(instance)) => {
+                    for key in instance.keys {
+                        let shown = ed25519_public(key);
+                        if revoked.contains(key) {
+                            self.error(
+                                &span,
+                                &format!("{path}.keys"),
+                                format!("the key {shown} is revoked in [federation] revoked; pin a key the instance has not lost"),
+                            );
+                        }
+                        if let Some((peer, _)) = peers.iter().find(|(_, peer)| peer.keys.contains(key)) {
+                            self.error(
+                                &span,
+                                &format!("{path}.keys"),
+                                format!("the key {shown} is pinned for the peer {peer}; name it as peer = \"{peer}\" in place of url and keys"),
+                            );
+                        }
+                    }
+                }
+                None => {}
+            }
+        }
+    }
+
     /// Each peer of `[peers]`, by name.
     pub(super) fn peers(
         &mut self,
@@ -61,7 +118,7 @@ impl Loader<'_> {
     /// The peer `file` describes, at `path`; `None` where it does not load.
     fn peer(&mut self, file: &PeerFile, span: &Range<usize>, path: &str) -> Option<Peer> {
         let at = |key: &str| format!("{path}.{key}");
-        let address = Peer::address(&file.url);
+        let address = discovery::address(&file.url);
         if address.is_none() {
             self.error(
                 span,

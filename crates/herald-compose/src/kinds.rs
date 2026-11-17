@@ -20,6 +20,7 @@ pub fn kinds() -> Kinds {
         .source::<herald_sources_registry::DockerHubKind>()
         .source::<herald_sources_registry::OciKind>()
         .source::<herald_sources_feed::FeedKind>()
+        .source::<herald_sources_herald::HeraldKind>()
         .store::<herald_store_sqlite::SqliteKind>()
         .store::<herald_store_postgres::PostgresKind>()
         .store::<herald_store_d1::D1Kind>()

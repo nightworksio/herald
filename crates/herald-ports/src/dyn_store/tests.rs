@@ -7,7 +7,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::future::Future;
 
 use herald_core::{
-    DestinationName, Feed, Hold, Identity, KeptToken, Kind, Pending, PublishedKeys, Shown,
+    DestinationName, Feed, Hold, Identity, KeptToken, Kind, PeerKeys, Pending, PublishedKeys, Shown,
 };
 
 use super::*;
@@ -187,6 +187,19 @@ impl Published for Refusing {
         _: Option<Version>,
     ) -> Result<Written, StoreError> {
         Err(refused("put_feed"))
+    }
+
+    async fn peer_keys(&self, _: &str) -> Result<Option<Versioned<PeerKeys>>, StoreError> {
+        Err(refused("peer_keys"))
+    }
+
+    async fn put_peer_keys(
+        &self,
+        _: &str,
+        _: &PeerKeys,
+        _: Option<Version>,
+    ) -> Result<Written, StoreError> {
+        Err(refused("put_peer_keys"))
     }
 }
 
@@ -379,6 +392,13 @@ fn an_erased_store_answers_for_what_the_instance_published_as_the_store_it_erase
         keys: vec!["z6Mkkey".to_owned()],
     };
     let (feed, releases) = (Feed::default(), DestinationName::new("releases"));
+    let peer = PeerKeys {
+        pinned: Vec::new(),
+        sequence: 1,
+        keys: Vec::new(),
+        read: Timestamp::UNIX_EPOCH,
+        refresh: 60,
+    };
     let store = Refusing { holding: true };
     let erased = Erased(&store as &dyn DynStore);
     assert_eq!(
@@ -387,23 +407,32 @@ fn an_erased_store_answers_for_what_the_instance_published_as_the_store_it_erase
             answered(erased.put_published_keys(&keys, None)),
             answered(erased.feed(&releases)),
             answered(erased.put_feed(&releases, &feed, None)),
+            answered(erased.peer_keys("upstream")),
+            answered(erased.put_peer_keys("upstream", &peer, None)),
         ],
         [
             Some(refused("published_keys")),
             Some(refused("put_published_keys")),
             Some(refused("feed")),
             Some(refused("put_feed")),
+            Some(refused("peer_keys")),
+            Some(refused("put_peer_keys")),
         ]
     );
     let unheld = Refusing { holding: false };
     let erased = Erased(&unheld as &dyn DynStore);
     let unkept = Some(StoreError::Unsupported {
-        what: "published key sets and feeds",
+        what: "published key sets, feeds and peers' key sets",
     });
     assert_eq!(answered(erased.published_keys()), unkept);
     assert_eq!(answered(erased.put_published_keys(&keys, None)), unkept);
     assert_eq!(answered(erased.feed(&releases)), unkept);
     assert_eq!(answered(erased.put_feed(&releases, &feed, None)), unkept);
+    assert_eq!(answered(erased.peer_keys("upstream")), unkept);
+    assert_eq!(
+        answered(erased.put_peer_keys("upstream", &peer, None)),
+        unkept
+    );
 }
 
 fn owned(at: Timestamp) -> (Listing, Membership) {

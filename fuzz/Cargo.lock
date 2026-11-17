@@ -230,6 +230,7 @@ dependencies = [
  "herald-records",
  "herald-sources-feed",
  "herald-sources-forge",
+ "herald-sources-herald",
  "herald-sources-registry",
  "herald-store-actions-cache",
  "herald-store-d1",
@@ -311,6 +312,7 @@ version = "0.0.0"
 dependencies = [
  "herald-core",
  "herald-kinds",
+ "herald-peers",
  "herald-ports",
  "schemars",
  "serde",
@@ -481,6 +483,20 @@ dependencies = [
  "serde",
  "serde_json",
  "toml",
+]
+
+[[package]]
+name = "herald-sources-herald"
+version = "0.0.0"
+dependencies = [
+ "herald-core",
+ "herald-kinds",
+ "herald-peers",
+ "herald-ports",
+ "jiff",
+ "schemars",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

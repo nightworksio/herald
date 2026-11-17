@@ -5,7 +5,7 @@
 use std::iter::once;
 
 use herald_core::{DestinationName, Escaping, Feed, media, status};
-use herald_peers::answer::CONTENT_TYPE;
+use herald_peers::answer::{CONTENT_TYPE, ETAG};
 use herald_peers::digest::{CONTENT_DIGEST, content_digest};
 use herald_peers::feed::{BEFORE, FEEDS, Listed, Page, tag};
 use herald_peers::keys::method;
@@ -16,8 +16,6 @@ use super::discovery::{instance, public_keys};
 use super::replies::{Answered, missing, refusal, replied, unmethodical};
 use super::{Inbound, Serving};
 
-/// The header naming a page's entity tag.
-const ETAG: &str = "etag";
 /// The header naming the entity tag a reader holds.
 const IF_NONE_MATCH: &str = "if-none-match";
 /// What a host that is not the instance's domain has none of.
@@ -188,7 +186,7 @@ async fn signature<S, C: Clock, G: Signer, V, H, P, K>(
 }
 
 /// What `error` says.
-fn said(error: impl std::fmt::Display) -> String {
+pub(super) fn said(error: impl std::fmt::Display) -> String {
     error.to_string()
 }
 

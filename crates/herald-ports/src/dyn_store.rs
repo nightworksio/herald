@@ -1,6 +1,6 @@
 use herald_core::{
     Cursor, DestinationName, Entry, Feed, Hold, KeptToken, Key, Latest, Listing, Membership,
-    Pending, PublishedKeys, RouteId, Schedule, SourceName, State, Subscription,
+    PeerKeys, Pending, PublishedKeys, RouteId, Schedule, SourceName, State, Subscription,
 };
 use jiff::Timestamp;
 
@@ -220,6 +220,20 @@ pub trait DynStore: Sync {
         &'a self,
         destination: &'a DestinationName,
         feed: &'a Feed,
+        expected: Option<Version>,
+    ) -> Boxed<'a, Result<Written, StoreError>>;
+
+    /// [`Published::peer_keys`].
+    fn peer_keys_boxed<'a>(
+        &'a self,
+        peer: &'a str,
+    ) -> Boxed<'a, Result<Option<Versioned<PeerKeys>>, StoreError>>;
+
+    /// [`Published::put_peer_keys`].
+    fn put_peer_keys_boxed<'a>(
+        &'a self,
+        peer: &'a str,
+        keys: &'a PeerKeys,
         expected: Option<Version>,
     ) -> Boxed<'a, Result<Written, StoreError>>;
 
@@ -580,6 +594,22 @@ impl<S: Store + Keyring> DynStore for S {
         Box::pin(async move { self.published().put_feed(destination, feed, expected).await })
     }
 
+    fn peer_keys_boxed<'a>(
+        &'a self,
+        peer: &'a str,
+    ) -> Boxed<'a, Result<Option<Versioned<PeerKeys>>, StoreError>> {
+        Box::pin(async move { self.published().peer_keys(peer).await })
+    }
+
+    fn put_peer_keys_boxed<'a>(
+        &'a self,
+        peer: &'a str,
+        keys: &'a PeerKeys,
+        expected: Option<Version>,
+    ) -> Boxed<'a, Result<Written, StoreError>> {
+        Box::pin(async move { self.published().put_peer_keys(peer, keys, expected).await })
+    }
+
     fn admit_boxed<'a>(
         &'a self,
         namespace: &'static str,
@@ -694,6 +724,8 @@ impl<S: Store + Keyring> DynStore for S {
 }
 
 mod erased;
+
+mod published;
 
 #[cfg(test)]
 mod tests;

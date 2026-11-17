@@ -4,10 +4,13 @@
 use futures_util::stream::{self, StreamExt};
 use herald_config::Config;
 use std::collections::BTreeMap;
+use std::iter::once;
 
 use herald_core::{Cursor, Event, Identity, Polled, SourceName, fresh};
-use herald_kinds::{Expand, Poll, Polling, Unpolled};
-use herald_ports::{Clock, Cursors, Http, Signer, Store, StoreError, Versioned, Written};
+use herald_kinds::{Expand, Poll, Polling, Pull, Unpolled};
+use herald_ports::{
+    Clock, Cursors, DynVerifier, Http, Signer, Store, StoreError, Versioned, Written,
+};
 use jiff::Timestamp;
 
 use crate::announce::{Announced, Outcome, Ports, Stop, Within, announce_within, at_once};
@@ -63,7 +66,9 @@ pub enum Sweep {
         withheld: Option<String>,
     },
     /// A release the forge deleted, whose withdrawal a run stopped
-    /// part-way, was withdrawn by a round, or stopped again (ADR-0048).
+    /// part-way, was withdrawn by a round, or stopped again (ADR-0048); or
+    /// one another herald's feed withdrew by a tombstone, by the poll that
+    /// read it (ADR-0049).
     Withdrawn {
         /// The release.
         identity: Identity,
@@ -111,6 +116,7 @@ pub(crate) struct Found {
     pub(crate) count: usize,
     pub(crate) announced: Vec<Fresh>,
     pub(crate) advanced: Option<Cursor>,
+    pub(crate) withdrawn: Vec<Sweep>,
 }
 
 /// Where a poll that found nothing to read stops.
@@ -218,6 +224,7 @@ pub(crate) async fn announced_found<S: Store, C: Clock, G: Signer, H: Http>(
         count: releases.events.len(),
         announced,
         advanced,
+        withdrawn: Vec::new(),
     }))
 }
 
@@ -232,31 +239,53 @@ pub(crate) fn remembered(written: Result<Written, StoreError>, what: &str) -> Re
     }
 }
 
+/// What a source polled as one is read through: its own poll, or another
+/// herald's feed with what checks its signatures.
+#[derive(Clone, Copy)]
+enum Reader<'a> {
+    Poll(&'a dyn Poll),
+    Pull(&'a dyn Pull, &'a dyn DynVerifier),
+}
+
 async fn sweep<S: Store, C: Clock, G: Signer, H: Http>(
     flow: (&Config, &Connected<H>, &Ports<'_, S, C, G>),
     (source, record): (
         &PreparedSource,
         Result<Option<Versioned<Cursor>>, StoreError>,
     ),
-    poll: &dyn Poll,
+    reader: Reader<'_>,
     http: &H,
     run: &str,
-) -> Result<Sweep, Stop> {
+) -> Result<Vec<Sweep>, Stop> {
     let ports = flow.2;
     ports.budget.allows(ports.clock.now(), 1)?;
     let record = record.map_err(stored)?;
     let cursor = record.as_ref().map(|record| &record.value);
     let holder = format!("{run}/{}", source.name.as_str());
-    let Some(found) = found(
-        flow,
-        (&source.name, Within::default()),
-        (poll, http),
-        (cursor, None, source.backfill),
-        &holder,
-    )
-    .await?
-    else {
-        return Ok(Sweep::Unchanged);
+    let read = match reader {
+        Reader::Poll(poll) => {
+            found(
+                flow,
+                (&source.name, Within::default()),
+                (poll, http),
+                (cursor, None, source.backfill),
+                &holder,
+            )
+            .await?
+        }
+        Reader::Pull(pull, verifier) => {
+            pulled::found(
+                flow,
+                (&source.name, Within::default()),
+                (pull, verifier, http),
+                (cursor, source.backfill),
+                &holder,
+            )
+            .await?
+        }
+    };
+    let Some(found) = read else {
+        return Ok(vec![Sweep::Unchanged]);
     };
     let cursor = match &found.advanced {
         Some(advanced) => {
@@ -270,18 +299,45 @@ async fn sweep<S: Store, C: Clock, G: Signer, H: Http>(
         }
         None => Remembered::Kept,
     };
-    Ok(Sweep::Polled {
+    let polled = Sweep::Polled {
         first: record.is_none(),
         found: found.count,
         announced: found.announced,
         cursor,
-    })
+    };
+    Ok(once(polled).chain(found.withdrawn).collect())
+}
+
+/// The round of `source`, polled as one through `reader`, with its cursor
+/// as read, the project it last claimed noted in `claims`.
+async fn one<'a, S: Store, C: Clock, G: Signer>(
+    ports: &Ports<'_, S, C, G>,
+    claims: &mut Claims,
+    source: &PreparedSource,
+    reader: Reader<'a>,
+) -> Round<'a> {
+    let read = ports.store.cursors().cursor(&source.name).await;
+    match &read {
+        Ok(record) => {
+            if let Some(project) = record
+                .as_ref()
+                .and_then(|record| record.value.project.as_deref())
+            {
+                claims.source(&source.name, project);
+            }
+        }
+        Err(_) => claims.unread(&source.name),
+    }
+    Round::One(reader, Box::new(read))
 }
 
 /// One source's round, once every owner is reconciled: a source polled
 /// as one, with its cursor as read, or an owner's members.
 enum Round<'a> {
-    One(&'a dyn Poll, Result<Option<Versioned<Cursor>>, StoreError>),
+    One(
+        Reader<'a>,
+        Box<Result<Option<Versioned<Cursor>>, StoreError>>,
+    ),
     Many(&'a dyn Expand, Result<Box<members::Owning>, Vec<Swept>>),
 }
 
@@ -293,13 +349,16 @@ enum Round<'a> {
 /// the store writes one record at a time (ADR-0025). Each source takes its
 /// leases under `run` and its own name, so two sources finding one event
 /// never both send it.
+/// A source pulling another herald's feed checks its answers through
+/// `verifier` (ADR-0049).
 pub async fn poll<S: Store, C: Clock, G: Signer, H: Http>(
     config: &Config,
     connected: &Connected<H>,
     ports: &Ports<'_, S, C, G>,
+    verifier: &dyn DynVerifier,
     run: &str,
 ) -> Vec<Swept> {
-    polled(config, connected, ports, (run, None)).await
+    polled(config, connected, ports, verifier, (run, None)).await
 }
 
 /// What the source `source` did, as `outcome` says.
@@ -362,6 +421,7 @@ pub(crate) async fn polled<S: Store, C: Clock, G: Signer, H: Http>(
     config: &Config,
     connected: &Connected<H>,
     ports: &Ports<'_, S, C, G>,
+    verifier: &dyn DynVerifier,
     (run, only): (&str, Option<&SourceName>),
 ) -> Vec<Swept> {
     let flow = (config, connected, ports);
@@ -378,7 +438,7 @@ pub(crate) async fn polled<S: Store, C: Clock, G: Signer, H: Http>(
             .filter(|(source, _)| minted(source))
             .filter_map(|(source, http)| match &source.poll {
                 Polling::Many(expand) => Some((source, expand, http)),
-                Polling::One(_) => None,
+                Polling::One(_) | Polling::Pull(_) => None,
             })
             .map(|(source, expand, http)| async move {
                 (
@@ -401,19 +461,16 @@ pub(crate) async fn polled<S: Store, C: Clock, G: Signer, H: Http>(
         }
         let round = match &source.poll {
             Polling::One(poll) => {
-                let read = ports.store.cursors().cursor(&source.name).await;
-                match &read {
-                    Ok(record) => {
-                        if let Some(project) = record
-                            .as_ref()
-                            .and_then(|record| record.value.project.as_deref())
-                        {
-                            claims.source(&source.name, project);
-                        }
-                    }
-                    Err(_) => claims.unread(&source.name),
-                }
-                Round::One(poll.as_ref(), read)
+                one(ports, &mut claims, source, Reader::Poll(poll.as_ref())).await
+            }
+            Polling::Pull(pull) => {
+                one(
+                    ports,
+                    &mut claims,
+                    source,
+                    Reader::Pull(pull.as_ref(), verifier),
+                )
+                .await
             }
             Polling::Many(expand) => {
                 let owning = owners.remove(&source.name).unwrap_or(Err(Vec::new()));
@@ -432,16 +489,12 @@ pub(crate) async fn polled<S: Store, C: Clock, G: Signer, H: Http>(
     let swept: Vec<Vec<Swept>> =
         stream::iter(rounds.into_iter().map(|(source, http, round)| async move {
             match round {
-                Round::One(poll, cursor) => {
-                    let outcome = sweep(flow, (source, cursor), poll, http, run)
-                        .await
-                        .unwrap_or_else(Sweep::Stopped);
-                    vec![Swept {
-                        source: source.name.clone(),
-                        member: None,
-                        outcome,
-                    }]
-                }
+                Round::One(reader, cursor) => sweep(flow, (source, *cursor), reader, http, run)
+                    .await
+                    .unwrap_or_else(|stop| vec![Sweep::Stopped(stop)])
+                    .into_iter()
+                    .map(|outcome| swept(&source.name, outcome))
+                    .collect(),
                 Round::Many(expand, Ok(owning)) => {
                     members::finished(flow, (source, expand, http), (*owning, claims), run).await
                 }
@@ -458,6 +511,7 @@ pub(crate) async fn polled<S: Store, C: Clock, G: Signer, H: Http>(
 mod claims;
 mod held;
 mod members;
+mod pulled;
 
 use claims::Claims;
 use held::{Holding, held};

@@ -1,7 +1,8 @@
 //! The key set an instance last published, kept so its sequence rises by
-//! one with each new set (ADR-0044), and the envelopes each of its feeds
-//! lists.
+//! one with each new set (ADR-0044), the envelopes each of its feeds
+//! lists, and the key set each peer last handed over to (ADR-0049).
 
+use jiff::{SignedDuration, Timestamp};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -28,6 +29,41 @@ impl PublishedKeys {
                 keys,
             },
         }
+    }
+}
+
+/// The key set a peer whose rotation is signed last proved with a key
+/// trusted for it, kept in place of the keys pinned for it while those stay
+/// pinned (ADR-0049).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PeerKeys {
+    /// The keys pinned for the peer when the set was taken, each as its
+    /// Multikey.
+    pub pinned: Vec<String>,
+    /// The set's sequence.
+    pub sequence: u64,
+    /// The keys, newest first, each as its Multikey.
+    pub keys: Vec<String>,
+    /// When the peer's discovery document was last read.
+    pub read: Timestamp,
+    /// How many seconds the set is kept before the document is read again.
+    pub refresh: u64,
+}
+
+impl PeerKeys {
+    /// Whether it stands for a peer for which `pinned` is pinned now: a set
+    /// taken over other pinned keys stands for nothing.
+    #[must_use]
+    pub fn stands(&self, pinned: &[String]) -> bool {
+        self.pinned == pinned
+    }
+
+    /// Whether the peer's discovery document is due to be read again at
+    /// `now`.
+    #[must_use]
+    pub fn due(&self, now: Timestamp) -> bool {
+        let refresh = SignedDuration::from_secs(i64::try_from(self.refresh).unwrap_or(i64::MAX));
+        self.read.checked_add(refresh).is_ok_and(|next| now >= next)
     }
 }
 
@@ -147,6 +183,27 @@ mod tests {
             PublishedKeys::after(Some(&reordered), keys(&["z6Mkb", "z6Mka"])).sequence,
             3
         );
+    }
+
+    #[test]
+    fn a_peer_s_set_stands_while_its_pinned_keys_do_and_is_read_again_once_due() {
+        let read = Timestamp::constant(1_800_000_000, 0);
+        let held = PeerKeys {
+            pinned: keys(&["z6Mka"]),
+            sequence: 3,
+            keys: keys(&["z6Mkb", "z6Mka"]),
+            read,
+            refresh: 60,
+        };
+        assert!(held.stands(&keys(&["z6Mka"])));
+        assert!(!held.stands(&keys(&["z6Mkc"])));
+        assert!(!held.due(Timestamp::constant(1_800_000_059, 0)));
+        assert!(held.due(Timestamp::constant(1_800_000_060, 0)));
+        let forever = PeerKeys {
+            refresh: u64::MAX,
+            ..held
+        };
+        assert!(!forever.due(Timestamp::MAX));
     }
 
     fn feed(identities: &[&str]) -> Feed {

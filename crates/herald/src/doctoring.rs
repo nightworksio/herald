@@ -7,12 +7,12 @@ use std::io::Write;
 
 use clap::{Args, ValueEnum};
 use herald_compose::{Composed, Host, Hosting, ServingOn, Through, told};
-use herald_config::{Config, Uses};
+use herald_config::{Config, Rotation, Uses};
 use herald_crypto::RingSigner;
 use herald_environment::{EnvSecrets, SystemClock};
 use herald_flows::{
     Announced, EGRESS_GUARDED, Findings, Gap, Here, Outcome, Tier, doctor, egress_guarded,
-    kept_tokens, keys, online, trial,
+    handed_over, kept_tokens, keys, online, trial,
 };
 use herald_ports::{Clock as _, Keyring, Secrets as _, Store};
 use schemars::JsonSchema;
@@ -87,6 +87,22 @@ impl<H: Host> Through<H> for Keeping {
             serving.config.store.kind(),
         )
         .await
+    }
+}
+
+/// Whether each peer whose rotation is signed handed over to keys
+/// herald.toml does not pin, as the store keeps them (ADR-0049).
+struct Rotating;
+
+impl<H: Host> Through<H> for Rotating {
+    type Done = Findings;
+
+    async fn through<S: Store, K: Keyring>(
+        self,
+        serving: &ServingOn<'_, H, S, K>,
+        _: &str,
+    ) -> Findings {
+        handed_over(serving.config, &serving.ports.store.published()).await
     }
 }
 
@@ -264,6 +280,13 @@ async fn findings(
         if config.github_apps.values().any(|app| app.store_token) {
             findings.extend(keeping(config, asked.layer.0, vars, connect).await);
         }
+        if config
+            .peers
+            .values()
+            .any(|peer| peer.rotation == Rotation::Signed)
+        {
+            findings.extend(rotating(config, asked.layer.0, vars, connect).await);
+        }
     }
     findings
 }
@@ -280,6 +303,24 @@ async fn keeping(
         Ok(composed) => composed.run(Keeping).await,
         Err(why) => Findings {
             notes: vec![format!("No installation token is kept, as {why}.")],
+            ..Findings::default()
+        },
+    }
+}
+
+/// Whether each peer whose rotation is signed handed over to keys
+/// herald.toml does not pin, in the store `config` keeps records in on
+/// `hosting`.
+async fn rotating(
+    config: &Config,
+    hosting: Hosting,
+    vars: &BTreeMap<String, String>,
+    connect: Connect<'_>,
+) -> Findings {
+    match composed(config, vars, connect, hosting, Uses::Polls, place(vars)).await {
+        Ok(composed) => composed.run(Rotating).await,
+        Err(why) => Findings {
+            notes: vec![format!("No peer's key set is read, as {why}.")],
             ..Findings::default()
         },
     }

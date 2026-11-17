@@ -131,13 +131,6 @@ mod peers {
                 "{url}: {error}"
             );
         }
-        assert_eq!(
-            Peer::address("https://herald.example"),
-            Some((
-                "https://herald.example".to_owned(),
-                "herald.example".to_owned()
-            ))
-        );
     }
 
     #[test]

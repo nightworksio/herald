@@ -603,3 +603,40 @@ fn a_route_that_withdraws_on_the_markers_store_is_a_gap_and_one_that_cannot_dele
             .any(|note| note.contains("deletes none"))
     );
 }
+
+#[test]
+fn the_markers_store_names_each_peer_whose_rotation_is_signed() {
+    let mut peered = on("markers", "");
+    let handing = |config: &herald_config::Config| {
+        let found = doctored(config, &layer(&STORES));
+        let gaps: Vec<String> = found
+            .gaps
+            .into_iter()
+            .filter(|gap| gap.feature == "taking the key set a peer hands over to")
+            .map(|gap| gap.key)
+            .collect();
+        let named = found
+            .notes
+            .iter()
+            .any(|note| note.starts_with("peers.org: rotation = \"signed\""));
+        (gaps, named)
+    };
+    let mut peer = herald_config::Peer {
+        url: "https://herald.example".to_owned(),
+        domain: "herald.example".to_owned(),
+        keys: vec![[7; 32]],
+        rotation: herald_config::Rotation::Manual,
+        rate: herald_config::Peer::RATE,
+        most: herald_config::Peer::MOST,
+        hops: herald_config::Peer::HOPS,
+        private: false,
+    };
+    peered.peers.insert("org".to_owned(), peer.clone());
+    assert_eq!(handing(&peered), (Vec::new(), false));
+    peer.rotation = herald_config::Rotation::Signed;
+    peered.peers.insert("org".to_owned(), peer);
+    assert_eq!(
+        handing(&peered),
+        (vec!["peers.org.rotation".to_owned()], true)
+    );
+}

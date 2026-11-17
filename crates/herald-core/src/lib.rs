@@ -111,7 +111,7 @@ pub use profile::{
     Bullet, Emphases, Escape, Features, Fences, Heading, Limits, Links, Markup, Measure,
     MentionRoom, MentionStyle, Pins, Profile, Threads,
 };
-pub use published::{Feed, FeedItem, PublishedKeys};
+pub use published::{Feed, FeedItem, PeerKeys, PublishedKeys};
 pub use rate::{Per, Rate};
 pub use render::{
     ACTOR_FIELDS, ActorName, Context, Form, ProjectName, REPOSITORY_FIELDS, TemplateError,

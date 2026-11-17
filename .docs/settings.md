@@ -1106,6 +1106,23 @@ An RSS or Atom feed's entries.
 | `sources.<name>.remembered` | integer | How many identities the cursor remembers, newest first; 500 where absent, and at least `page`. |
 | `sources.<name>.url` | string | The feed's URL, RSS 2.0 or Atom 1.0. |
 
+### `sources.<name>` of kind `herald`
+
+Another herald's feed, each answer and envelope checked against the keys trusted for it.
+
+| Setting | Type | What it sets |
+|---------|------|--------------|
+| `sources.<name>` | table | Another herald's feed, each answer and envelope checked against the keys trusted for it. |
+| `sources.<name>.backfill` | integer | How many of the newest envelopes the first pull announces; none where absent, and at most `pages` pages of 80. |
+| `sources.<name>.feed` | string | The name of the peer's feed, as its discovery document lists it. |
+| `sources.<name>.keys` | array of string | The Ed25519 keys pinned for the instance `url` names, each a Multikey its operator gave out of band. |
+| `sources.<name>.kind` | string |  |
+| `sources.<name>.namespaces` | array of string | The identities the peer may give as they are, each the start of identities up to a '/', such as "github.com/123456"; every other is taken as herald/<peer>/<identity>. None where absent. |
+| `sources.<name>.pages` | integer | How many pages one pull reads at most: 5 where absent, and at most 20. |
+| `sources.<name>.peer` | string | The peer of `[peers]` whose feed it pulls, through the keys pinned for it; with `feed`, in place of `url`. |
+| `sources.<name>.url` | string | The full URL of a feed of an instance that is no peer, whose keys `keys` pins; in place of `peer` and `feed`. |
+| `sources.<name>.verify` | [Verify](#verify) | Which envelopes it takes: "origin" (where absent), those the peer proved itself, or "hop", also those it passes on from another peer. |
+
 ## `store`
 
 The store herald keeps its records in.
@@ -1499,6 +1516,10 @@ A property's values: one, or any of several.
 ### VendorListing
 
 How a Packagist vendor's packages are listed.
+
+### Verify
+
+Which envelopes a pull takes.
 
 ### Version
 

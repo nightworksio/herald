@@ -689,3 +689,48 @@ fn a_cursor_remembering_every_identity_takes_each_one_s_bytes_beside_the_rest() 
     };
     assert_eq!(huge.bytes(), usize::MAX);
 }
+
+/// Another herald's feed that lists nothing.
+#[derive(Debug)]
+struct Empty(String);
+
+impl crate::Pull for Empty {
+    fn api(&self) -> &str {
+        &self.0
+    }
+
+    fn peering(&self) -> crate::Peering<'_> {
+        crate::Peering::Peer("upstream")
+    }
+
+    fn remembered(&self) -> usize {
+        4
+    }
+
+    fn pulled<'a>(
+        &'a self,
+        _: crate::Pulling<'a>,
+        _: &'a crate::Trust,
+        _: Option<&'a Cursor>,
+    ) -> Boxed<'a, Result<Option<Polled>, crate::Unpulled>> {
+        Box::pin(ready(Ok(None)))
+    }
+}
+
+#[test]
+fn a_pull_reaches_its_feed_s_origin_alone_and_checks_nothing_of_its_own() {
+    let http = crate::reach::tests::Silent;
+    let pull = Polling::Pull(Arc::new(Empty(
+        "https://peer.example/herald/v1/feeds/releases".to_owned(),
+    )));
+    assert_eq!(pull.api(), "https://peer.example/herald/v1/feeds/releases");
+    assert_eq!(
+        pull.base(),
+        Base::At("https://peer.example/herald/v1/feeds/releases")
+    );
+    assert_eq!(pollster::block_on(pull.probed(&http)), Vec::new());
+    let plain = Plain { token: None };
+    assert!(!plain.any_kind());
+    assert_eq!(plain.peering(), None);
+    assert!(plain.joined("https://peer.example").is_none());
+}

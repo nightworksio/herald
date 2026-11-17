@@ -462,7 +462,14 @@ impl<H: Host> Through<H> for Polling {
         serving: &ServingOn<'_, H, S, K>,
         run: &str,
     ) -> Vec<Swept> {
-        poll(serving.config, serving.connected, serving.ports, run).await
+        poll(
+            serving.config,
+            serving.connected,
+            serving.ports,
+            serving.verifier,
+            run,
+        )
+        .await
     }
 }
 

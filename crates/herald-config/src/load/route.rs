@@ -131,13 +131,15 @@ impl Loader<'_> {
                 .iter()
                 .flat_map(|source| {
                     let name = source.get_ref();
-                    let posted: Vec<Kind> = if apps.contains_key(name) {
+                    let named = sources.get(&SourceName::new(name));
+                    let posted: Vec<Kind> = if apps.contains_key(name)
+                        || named.is_some_and(|source| source.any_kind())
+                    {
                         self.specs.iter().map(|spec| spec.kind.clone()).collect()
                     } else {
                         Vec::new()
                     };
-                    sources
-                        .get(&SourceName::new(name))
+                    named
                         .map(|source| source.kinds().to_vec())
                         .unwrap_or_default()
                         .into_iter()

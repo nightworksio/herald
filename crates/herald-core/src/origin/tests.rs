@@ -184,11 +184,9 @@ fn topics_and_properties_are_held_ignoring_case() {
 fn an_event_carries_its_origin_and_the_source_it_came_through() {
     let source = SourceName::new("nightworksio");
     assert_eq!(event().through(&source).origin(), None);
+    assert_eq!(event().through(&source).source(), None);
     let from = event().from_origin(origin()).through(&source);
-    assert_eq!(
-        from.origin().and_then(|origin| origin.source.as_ref()),
-        Some(&source)
-    );
+    assert_eq!(from.source(), Some(&source));
     assert_eq!(from.bounded_by(), Some(Visibility::Internal));
     assert_eq!(
         from.clone().seen_as(Visibility::Public).bounded_by(),
