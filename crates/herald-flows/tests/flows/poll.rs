@@ -40,7 +40,7 @@ fn releases(versions: &[&str]) -> String {
     serde_json::Value::Array(releases).to_string()
 }
 
-fn announced() -> [(&'static str, u16, &'static str); 6] {
+pub(crate) fn announced() -> [(&'static str, u16, &'static str); 6] {
     [POSTED, CROSSPOSTED, THREADED, PINNED, WHO, NO_PINS]
 }
 

@@ -355,6 +355,7 @@ fn held_of_member(left: Option<Timestamp>) -> Failing {
             fork: false,
             template: false,
             language: None,
+            linked: None,
         },
         discovered: NOON,
         left,

@@ -70,6 +70,10 @@ pub struct Listed {
     pub template: bool,
     /// Its main language, where the forge names one.
     pub language: Option<String>,
+    /// The repository it is linked to, where it is a package a repository
+    /// links.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub linked: Option<Box<Listed>>,
 }
 
 /// Which of an owner's repositories a source takes.
@@ -356,6 +360,7 @@ mod tests {
             fork: false,
             template: false,
             language: Some("Rust".to_owned()),
+            linked: None,
         }
     }
 
@@ -567,10 +572,12 @@ mod tests {
         assert!(language.takes(&listed("a")));
         assert!(!language.takes(&Listed {
             language: None,
+            linked: None,
             ..listed("b")
         }));
         assert!(!language.takes(&Listed {
             language: Some("PHP".to_owned()),
+            linked: None,
             ..listed("c")
         }));
         let properties = Selection {

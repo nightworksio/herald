@@ -49,6 +49,7 @@ fn kept_in(world: &World, source: &str, visibility: Visibility, left: bool) {
             fork: false,
             template: false,
             language: None,
+            linked: None,
         },
         discovered: at(),
         left: left.then(at),

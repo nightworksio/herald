@@ -194,6 +194,12 @@ impl SourceConfig for ForgeSource {
         self.options.routed()
     }
 
+    fn standing(&self) -> Option<herald_kinds::Standing> {
+        self.options.repository.as_deref().map(|repository| {
+            herald_kinds::Standing::new(&api_of(self.forge, &self.options), repository, false)
+        })
+    }
+
     fn projects(&self) -> Vec<String> {
         self.options
             .repository

@@ -27,6 +27,6 @@ pub use session::{Connect, Effect, Session};
 pub use setup::{Made, Served, Setup, SetupNeeds, SetupStep, SetupTask};
 pub use source::{
     Changed, Expand, Expanded, Hooked, Poll, Polling, Rounded, Source, SourceConfig, SourceKind,
-    Unlisted, Unpolled, each_polled,
+    Standing, Unlisted, Unpolled, each_polled,
 };
 pub use store::{ConfiguredStore, Offer, StoreConfig, StoreKind};

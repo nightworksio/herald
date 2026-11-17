@@ -322,6 +322,7 @@ fn owned(at: Timestamp) -> (Listing, Membership) {
             fork: false,
             template: false,
             language: None,
+            linked: None,
         },
         discovered: at,
         left: None,

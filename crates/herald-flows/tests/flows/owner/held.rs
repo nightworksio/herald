@@ -47,6 +47,7 @@ fn kept(store: &Failing, visibility: Visibility) {
             fork: false,
             template: false,
             language: None,
+            linked: None,
         },
         discovered: NOON,
         left: None,

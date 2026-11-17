@@ -124,3 +124,34 @@ fn only_true_says_a_host_s_egress_is_guarded() {
     assert!(!egress_guarded(Some("yes")));
     assert!(!egress_guarded(None));
 }
+
+#[test]
+fn members_sharing_a_project_collide_unless_an_image_stands_for_the_other_s_repository() {
+    use herald_kinds::Standing;
+    let at = |path: &str, image: bool| Some(Standing::new("https://api.github.com", path, image));
+    let named = |members: &[Option<Standing>]| {
+        members
+            .iter()
+            .map(|standing| ("m".to_owned(), standing.clone()))
+            .collect::<Vec<_>>()
+    };
+    assert!(!super::online::colliding(&named(&[at("o/a", false)])));
+    assert!(!super::online::colliding(&named(&[
+        at("o/a", false),
+        at("o/a", true)
+    ])));
+    assert!(super::online::colliding(&named(&[
+        at("o/a", false),
+        at("o/b", true)
+    ])));
+    assert!(super::online::colliding(&named(&[
+        at("o/a", false),
+        at("o/a", false)
+    ])));
+    assert!(super::online::colliding(&named(&[at("o/a", false), None])));
+    assert!(super::online::colliding(&named(&[
+        at("o/a", true),
+        at("o/a", false),
+        at("o/a", true)
+    ])));
+}

@@ -247,6 +247,25 @@ fn a_source_of_one_repository_names_its_project_and_an_owner_none() {
         .projects(),
         Vec::<String>::new()
     );
+    assert_eq!(
+        GitLabKind::checked(options("group/sub/cli"))
+            .unwrap()
+            .standing(),
+        Some(herald_kinds::Standing::new(
+            "https://gitlab.com/api/v4",
+            "group/sub/cli",
+            false
+        ))
+    );
+    assert_eq!(
+        GitHubKind::checked(SourceOptions {
+            owner: Some("cli".to_owned()),
+            ..SourceOptions::default()
+        })
+        .unwrap()
+        .standing(),
+        None
+    );
 }
 
 #[test]
@@ -337,6 +356,7 @@ fn each_poll_of_a_source_holding_tags_says_how_long_a_tag_waits() {
         fork: false,
         template: false,
         language: None,
+        linked: None,
     };
     assert_eq!(expand.tag_window(&member("cli")), Some(crate::TAG_WINDOW));
     assert_eq!(expand.tag_window(&member("quiet")), None);

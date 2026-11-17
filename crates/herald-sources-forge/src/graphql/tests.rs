@@ -47,6 +47,7 @@ fn member(name: &str) -> Listed {
         fork: false,
         template: false,
         language: None,
+        linked: None,
     }
 }
 

@@ -167,6 +167,7 @@ impl Namespaced {
             fork: false,
             template: false,
             language: None,
+            linked: None,
         }
     }
 

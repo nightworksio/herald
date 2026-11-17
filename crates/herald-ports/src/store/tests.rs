@@ -409,6 +409,7 @@ fn an_owner_source_s_records_kept_nowhere_answer_unsupported_naming_cursors() {
             fork: false,
             template: false,
             language: None,
+            linked: None,
         },
         discovered: Timestamp::UNIX_EPOCH,
         left: None,

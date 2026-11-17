@@ -4,7 +4,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use herald_config::Config;
 use herald_core::{Listed, SourceName};
-use herald_kinds::{Expand, Expanded, Polling, Probe, Unlisted, Unpolled};
+use herald_kinds::{Expand, Expanded, Polling, Probe, Standing, Unlisted, Unpolled};
 use herald_ports::{Http, SecretError, Secrets, Signer};
 
 use super::{Findings, Gap, Here, gap, unnamed_gap};
@@ -111,6 +111,19 @@ pub async fn online<H: Http>(connected: &Connected<H>) -> Findings {
     findings
 }
 
+/// Whether two of `members` announce as one project and may not share it,
+/// as an image and the repository it is linked to may.
+pub(super) fn colliding(members: &[(String, Option<Standing>)]) -> bool {
+    members.iter().enumerate().any(|(at, (_, mine))| {
+        members.iter().skip(at + 1).any(|(_, theirs)| {
+            !mine
+                .as_ref()
+                .zip(theirs.as_ref())
+                .is_some_and(|(mine, theirs)| mine.shares(theirs))
+        })
+    })
+}
+
 /// That each route taking the owner source `source`, whose member `member`
 /// announces as `project`, announces nothing of it, where the route
 /// announces each project as an actor of its own and the project names
@@ -162,7 +175,7 @@ fn unnamed<H>(
 /// members, of one owner or of two, share a project name.
 async fn owned<H: Http>(connected: &Connected<H>) -> Findings {
     let mut findings = Findings::default();
-    let mut named: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    let mut named: BTreeMap<String, Vec<(String, Option<Standing>)>> = BTreeMap::new();
     let mut claimed = Claimed::of_connected(connected);
     for (source, http) in &connected.sources {
         let Polling::Many(expand) = &source.poll else {
@@ -194,10 +207,10 @@ async fn owned<H: Http>(connected: &Connected<H>) -> Findings {
                                 &project,
                                 &mut claimed,
                             ));
-                            named
-                                .entry(project.to_lowercase())
-                                .or_default()
-                                .push(format!("{name}'s {}", member.path));
+                            named.entry(project.to_lowercase()).or_default().push((
+                                format!("{name}'s {}", member.path),
+                                expand.standing(&member),
+                            ));
                         }
                         Err(reason) => findings.mistakes.push(format!(
                             "The source {name} names no project for {}: {reason}.",
@@ -221,10 +234,11 @@ async fn owned<H: Http>(connected: &Connected<H>) -> Findings {
             }
         }
     }
-    for (project, members) in named.into_iter().filter(|(_, members)| members.len() > 1) {
+    for (project, members) in named.into_iter().filter(|(_, members)| colliding(members)) {
+        let labels: Vec<String> = members.into_iter().map(|(label, _)| label).collect();
         findings.mistakes.push(format!(
             "{} are all announced as the project {project}; leave all but one out with exclude, or name a narrower owner.",
-            members.join(", ")
+            labels.join(", ")
         ));
     }
     findings.mistakes.extend(claimed.collisions(true));

@@ -739,6 +739,32 @@ A Forgejo or Gitea repository's releases, tags and packages.
 | `sources.<name>.webhook` | table | The secret the forge signs its webhook deliveries to `herald server` with: GitHub's and Forgejo's webhook secret, or GitLab's signing token (ADR-0007). An owner source takes its repositories' and its organization's deliveries, and announces one only where the owner's last membership record holds the repository when its work runs. |
 | `sources.<name>.webhook.secret` | string | The secret's name. |
 
+### `sources.<name>` of kind `ghcr`
+
+A GitHub owner's container images, each announced as the project of the repository it is linked to.
+
+| Setting | Type | What it sets |
+|---------|------|--------------|
+| `sources.<name>` | table | A GitHub owner's container images, each announced as the project of the repository it is linked to. |
+| `sources.<name>.api` | string | GitHub's REST API, for a GitHub Enterprise Server or a GHE.com tenant; `https://api.github.com` where absent. |
+| `sources.<name>.backfill` | integer | How many of the newest versions the first poll announces; none where absent. |
+| `sources.<name>.exclude` | array of string | Globs of the image names left out, whatever `include` says. |
+| `sources.<name>.include` | array of string | Globs of the image names taken; every name where empty. |
+| `sources.<name>.keep_members` | [Duration](#duration) | How long an image that left the owner is kept, with its cursor; "30d" where absent. |
+| `sources.<name>.kind` | string |  |
+| `sources.<name>.most_packages` | integer | The most images a listing reads before it refuses the round; 1000 where absent, and at most 100000. |
+| `sources.<name>.moving` | array of string | Globs of the tags never announced, as they move from one image to the next; `["latest"]` where absent. |
+| `sources.<name>.owner` | string | The GitHub organization or user whose container images the source takes. |
+| `sources.<name>.package_visibility` | [PackageVisibility](#packagevisibility) | Who may see an image linked to a repository: `stricter`, the stricter of the image's visibility and its repository's, where absent, or `package`, the image's own. |
+| `sources.<name>.page` | integer | How many of an image's newest versions one poll reads; 30 where absent. |
+| `sources.<name>.parse` | [Size](#size) | The most of an answer parsed; "4MiB" where absent, and at most four times that. |
+| `sources.<name>.project` | string | The project an image linked to a repository is announced as: a template over the repository's `repository.*`, as an owner source renders it; the repository's name where absent. An image linked to none is announced as its own name. |
+| `sources.<name>.registry` | string | The registry's host the images are named on, in their identities; ghcr.io beside api.github.com, and `containers.<host>` beside a GitHub Enterprise Server or a GHE.com tenant, where absent. |
+| `sources.<name>.remembered` | integer | How many identities each image's cursor remembers; 500 where absent, and at least `page`. |
+| `sources.<name>.token` | table | A token that may read the owner's packages, which GitHub asks for even for public images. |
+| `sources.<name>.token.secret` | string | The secret's name. |
+| `sources.<name>.visibility` | array of [RepositoryVisibility](#repositoryvisibility) | The visibilities of the images taken; `["public"]` where absent. |
+
 ### `sources.<name>` of kind `packagist`
 
 A package's versions on Packagist.

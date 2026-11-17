@@ -14,6 +14,7 @@ pub fn kinds() -> Kinds {
         .source::<herald_sources_forge::GitHubKind>()
         .source::<herald_sources_forge::GitLabKind>()
         .source::<herald_sources_forge::ForgejoKind>()
+        .source::<herald_sources_forge::GhcrKind>()
         .source::<herald_sources_registry::PackagistKind>()
         .source::<herald_sources_registry::CratesIoKind>()
         .source::<herald_sources_registry::NpmKind>()

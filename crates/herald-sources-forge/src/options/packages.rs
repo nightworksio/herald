@@ -43,7 +43,7 @@ const PACKAGED: [&str; 6] = [
 
 /// Whether `registry` is a registry's host: a domain, and a port where
 /// one follows it.
-fn registry_host(registry: &str) -> bool {
+pub(crate) fn registry_host(registry: &str) -> bool {
     match registry.split_once(':') {
         Some((host, port)) => domain(host) && port.parse::<u16>().is_ok_and(|port| port > 0),
         None => domain(registry),
