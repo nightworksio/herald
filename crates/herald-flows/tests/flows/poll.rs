@@ -334,7 +334,7 @@ fn a_registry_is_polled_as_a_forge_is_with_one_request() {
         Source::new(RegistrySource {
             registry: Registry::CratesIo,
             options: RegistryOptions {
-                package: "gate".to_owned(),
+                package: Some("gate".to_owned()),
                 backfill: 1,
                 ..RegistryOptions::default()
             },
@@ -380,7 +380,7 @@ fn a_docker_hub_token_is_exchanged_before_each_poll_and_a_refused_exchange_stops
         Source::new(RegistrySource {
             registry: Registry::DockerHub,
             options: RegistryOptions {
-                package: "nightworksio/gate".to_owned(),
+                package: Some("nightworksio/gate".to_owned()),
                 token: Some(herald_core::SecretRef {
                     secret: "HERALD_DOCKER_HUB_TOKEN".to_owned(),
                 }),

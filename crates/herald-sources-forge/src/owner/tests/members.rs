@@ -29,7 +29,7 @@ const FILE: &str = "[[repo]]\nname = \"herald\"\n[[repo]]\nname = \"Gone\"\n";
 
 #[test]
 fn a_member_file_beside_the_config_takes_only_what_it_names_and_names_what_the_owner_lacks() {
-    let http = Scripted::new(vec![answer(
+    let http = ScriptedHttp::new(vec![answer(
         200,
         &json!([github(1, "herald"), github(2, "plugin-a")]),
         "\"p1\"",
@@ -111,7 +111,7 @@ fn a_member_file_on_the_forge_is_asked_raw_at_its_reference_on_each_forge() {
 
 #[test]
 fn a_member_file_on_the_forge_that_changed_reads_the_listing_whole() {
-    let http = Scripted::new(vec![
+    let http = ScriptedHttp::new(vec![
         raw(FILE, "\"f2\""),
         answer(
             200,
@@ -151,7 +151,7 @@ fn a_member_file_unchanged_is_read_again_only_where_the_listing_changed() {
         fingerprint: source.fingerprint(),
         ..known(&["\"p1\""])
     };
-    let still = Scripted::new(vec![
+    let still = ScriptedHttp::new(vec![
         unchanged(),
         unchanged(),
         answer(200, &json!([]), "", false),
@@ -160,7 +160,7 @@ fn a_member_file_unchanged_is_read_again_only_where_the_listing_changed() {
         listed(&source, &still, Some(&known)),
         Ok(Expanded::Unchanged)
     );
-    let moved = Scripted::new(vec![
+    let moved = ScriptedHttp::new(vec![
         unchanged(),
         answer(
             200,
@@ -198,7 +198,7 @@ fn a_member_file_the_forge_does_not_serve_or_that_cannot_be_read_fails_the_listi
         },
         raw("not = [toml", "\"f\""),
     ] {
-        let http = Scripted::new(vec![answer]);
+        let http = ScriptedHttp::new(vec![answer]);
         let failed = listed(&filed(Forge::GitHub, None), &http, None);
         assert!(
             matches!(failed, Err(Unlisted::Failed(Unpolled::Unreadable(_)))),
@@ -206,7 +206,7 @@ fn a_member_file_the_forge_does_not_serve_or_that_cannot_be_read_fails_the_listi
         );
         assert_eq!(http.asked().len(), 1);
     }
-    let silent = Scripted::new(Vec::new());
+    let silent = ScriptedHttp::new(Vec::new());
     assert!(matches!(
         listed(&filed(Forge::GitHub, None), &silent, None),
         Err(Unlisted::Failed(Unpolled::Unreachable(_)))
@@ -238,8 +238,8 @@ fn templated(project: &str) -> Owned {
     )
 }
 
-fn released() -> Scripted {
-    Scripted::new(vec![
+fn released() -> ScriptedHttp {
+    ScriptedHttp::new(vec![
         Response {
             status: 200,
             headers: Vec::new(),
@@ -360,7 +360,7 @@ fn a_github_owner_with_a_token_polls_its_members_together_through_graphql() {
         "isDraft": false,
         "publishedAt": "2026-11-01T12:00:00Z"
     }] } });
-    let http = Scripted::new(vec![
+    let http = ScriptedHttp::new(vec![
         answer(200, &json!({ "data": { "m0": releases } }), "", false),
         answer(200, &json!({ "data": { "m0": releases } }), "", false),
     ]);
@@ -373,7 +373,7 @@ fn a_github_owner_with_a_token_polls_its_members_together_through_graphql() {
     assert_eq!(http.asked()[0].0, "https://api.github.com/graphql");
     let rest = owned(Forge::GitHub, &SourceOptions::default());
     assert_eq!(rest.batch(), NonZeroUsize::MIN);
-    let unchanged = Scripted::new(vec![unchanged()]);
+    let unchanged = ScriptedHttp::new(vec![unchanged()]);
     assert_eq!(
         pollster::block_on(rest.polled(&unchanged, &[(&member, None)], &Rounded::Nothing)),
         [Ok(None)]
@@ -461,7 +461,7 @@ fn only_a_github_owner_following_its_events_or_a_forgejo_owner_following_its_fee
             },
         )
     };
-    let http = Scripted::new(vec![answer(200, &json!([]), "\"e1\"", false)]);
+    let http = ScriptedHttp::new(vec![answer(200, &json!([]), "\"e1\"", false)]);
     let read = pollster::block_on(following(Forge::GitHub, crate::Transport::Events).changed(
         &http,
         Owner::Organization,
@@ -472,7 +472,7 @@ fn only_a_github_owner_following_its_events_or_a_forgejo_owner_following_its_fee
         "{read:?}"
     );
     assert!(http.asked()[0].0.contains("/orgs/lemonfiber/events?"));
-    let fed = Scripted::new(vec![answer(200, &json!([]), "", false)]);
+    let fed = ScriptedHttp::new(vec![answer(200, &json!([]), "", false)]);
     let paged = owned(
         Forge::Forgejo,
         &SourceOptions {
@@ -491,7 +491,7 @@ fn only_a_github_owner_following_its_events_or_a_forgejo_owner_following_its_fee
             .0
             .contains("/users/lemonfiber/activities/feeds?")
     );
-    let silent = Scripted::new(Vec::new());
+    let silent = ScriptedHttp::new(Vec::new());
     for (forge, transport) in [
         (Forge::GitHub, crate::Transport::Rest),
         (Forge::GitHub, crate::Transport::Feed),

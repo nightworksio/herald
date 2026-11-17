@@ -678,7 +678,7 @@ fn each_destination_answers_through_its_own_base_and_socket_mode_opens_through_s
     let connected = prepared
         .connect(|base| match base {
             herald_ports::Base::At(url) => Ok(url.to_owned()),
-            herald_ports::Base::Public => Err(()),
+            herald_ports::Base::Among(_) | herald_ports::Base::Public => Err(()),
         })
         .unwrap();
     let bases: Vec<(&str, &str, Option<&str>)> = connected

@@ -29,7 +29,7 @@ fn packaged(forge: Forge, chosen: SourceOptions) -> Owned {
     )
 }
 
-fn rounded(source: &Owned, http: &Scripted, owner: Owner) -> Result<Rounded, Unpolled> {
+fn rounded(source: &Owned, http: &ScriptedHttp, owner: Owner) -> Result<Rounded, Unpolled> {
     pollster::block_on(source.rounded(http, owner))
 }
 
@@ -61,7 +61,7 @@ fn forgejo_version(name: &str, version: &str, repository: u64) -> Value {
 
 #[test]
 fn an_owner_reads_its_packages_once_a_round_only_where_a_member_announces_them() {
-    let nothing = Scripted::new(Vec::new());
+    let nothing = ScriptedHttp::new(Vec::new());
     for source in [
         packaged(Forge::GitLab, SourceOptions::default()),
         owned(Forge::GitHub, &SourceOptions::default()),
@@ -76,7 +76,7 @@ fn an_owner_reads_its_packages_once_a_round_only_where_a_member_announces_them()
         package_types: Some(vec!["container".to_owned()]),
         ..SourceOptions::default()
     };
-    let http = Scripted::new(vec![answer(
+    let http = ScriptedHttp::new(vec![answer(
         200,
         &json!([
             {"name": "herald", "html_url": "https://github.com/herald", "repository": {"id": 9}},
@@ -94,7 +94,7 @@ fn an_owner_reads_its_packages_once_a_round_only_where_a_member_announces_them()
         http.asked()[0].0,
         "https://api.github.com/users/lemonfiber/packages?package_type=container&per_page=100&page=1"
     );
-    let failing = Scripted::new(vec![answer(403, &json!({}), "", false)]);
+    let failing = ScriptedHttp::new(vec![answer(403, &json!({}), "", false)]);
     assert!(
         rounded(
             &packaged(Forge::GitHub, containers()),
@@ -112,7 +112,7 @@ fn an_owner_reads_its_packages_once_a_round_only_where_a_member_announces_them()
 #[test]
 fn a_member_polled_on_its_own_takes_its_packages_from_the_owner_s_listing() {
     let source = packaged(Forge::Forgejo, SourceOptions::default());
-    let listing = Scripted::new(vec![answer(
+    let listing = ScriptedHttp::new(vec![answer(
         200,
         &json!([
             forgejo_version("cli", "1.0.0", 9),
@@ -126,7 +126,7 @@ fn a_member_polled_on_its_own_takes_its_packages_from_the_owner_s_listing() {
         listing.asked()[0].0,
         "https://codeberg.org/api/v1/packages/lemonfiber?limit=50&page=1"
     );
-    let http = Scripted::new(vec![answer(
+    let http = ScriptedHttp::new(vec![answer(
         200,
         &json!({"id": 9, "name": "cli", "html_url": "https://codeberg.org/lemonfiber/cli"}),
         "",
@@ -150,7 +150,7 @@ fn a_member_polled_on_its_own_takes_its_packages_from_the_owner_s_listing() {
         signals: BTreeMap::from([(Signal::Package, Validators::default())]),
         ..Cursor::default()
     };
-    let again = Scripted::new(vec![answer(
+    let again = ScriptedHttp::new(vec![answer(
         200,
         &json!({"id": 9, "name": "cli", "html_url": "https://codeberg.org/lemonfiber/cli"}),
         "",
@@ -163,14 +163,14 @@ fn a_member_polled_on_its_own_takes_its_packages_from_the_owner_s_listing() {
         "a member the listing names is read though polled for packages before"
     );
     let docs = member("11", "docs");
-    let none = Scripted::new(Vec::new());
+    let none = ScriptedHttp::new(Vec::new());
     assert_eq!(
         pollster::block_on(source.polled(&none, &[(&docs, Some(&marked))], &read)),
         [Ok(None)],
         "a member with no package, polled for them before, asks nothing"
     );
     assert_eq!(none.asked(), Vec::new());
-    let first = Scripted::new(vec![answer(
+    let first = ScriptedHttp::new(vec![answer(
         200,
         &json!({"id": 11, "name": "docs", "html_url": "https://codeberg.org/lemonfiber/docs"}),
         "",
@@ -185,7 +185,7 @@ fn a_member_polled_on_its_own_takes_its_packages_from_the_owner_s_listing() {
         found.signals.get(&Signal::Package),
         Some(&Validators::default())
     );
-    let unread = Scripted::new(Vec::new());
+    let unread = ScriptedHttp::new(Vec::new());
     let foreign = Rounded::Read {
         named: std::collections::BTreeSet::new(),
         read: Arc::new(()),
@@ -226,7 +226,7 @@ fn released() -> Response {
 #[test]
 fn a_member_polled_through_graphql_takes_its_packages_from_the_owner_s_listing() {
     let source = graphql_owner();
-    let listing = Scripted::new(vec![answer(
+    let listing = ScriptedHttp::new(vec![answer(
         200,
         &json!([{"name": "cli", "html_url": "https://github.com/cli", "repository": {"id": 9}}]),
         "",
@@ -246,7 +246,7 @@ fn a_member_polled_through_graphql_takes_its_packages_from_the_owner_s_listing()
         )
     };
     let cli = member("9", "cli");
-    let http = Scripted::new(vec![released(), released(), versions()]);
+    let http = ScriptedHttp::new(vec![released(), released(), versions()]);
     let polled = pollster::block_on(source.polled(&http, &[(&cli, None)], &read));
     assert_eq!(
         identities(&polled[0]),
@@ -272,7 +272,7 @@ fn a_member_polled_through_graphql_takes_its_packages_from_the_owner_s_listing()
         ]),
         ..Cursor::default()
     };
-    let http = Scripted::new(vec![released(), versions()]);
+    let http = ScriptedHttp::new(vec![released(), versions()]);
     let polled = pollster::block_on(source.polled(&http, &[(&cli, Some(&cursor))], &read));
     assert_eq!(identities(&polled[0]), ["ghcr.io/lemonfiber/cli/v1.1"]);
     let Ok(Some(found)) = &polled[0] else {
@@ -290,12 +290,12 @@ fn a_member_polled_through_graphql_takes_its_packages_from_the_owner_s_listing()
         found.packages["container/cli"].etag.as_deref(),
         Some("\"cli\"")
     );
-    let quiet = Scripted::new(vec![released()]);
+    let quiet = ScriptedHttp::new(vec![released()]);
     assert_eq!(
         pollster::block_on(source.polled(&quiet, &[(&cli, Some(&cursor))], &Rounded::Unread)),
         [Ok(None)]
     );
-    let failing = Scripted::new(vec![released()]);
+    let failing = ScriptedHttp::new(vec![released()]);
     assert!(
         pollster::block_on(source.polled(&failing, &[(&cli, Some(&cursor))], &read))[0].is_err()
     );
@@ -321,14 +321,14 @@ fn a_member_whose_signals_take_no_package_keeps_its_cursor_as_it_was() {
             ..SourceOptions::default()
         },
     );
-    let listing = Scripted::new(vec![answer(200, &json!([]), "", false)]);
+    let listing = ScriptedHttp::new(vec![answer(200, &json!([]), "", false)]);
     let read = rounded(&source, &listing, Owner::Organization).unwrap();
     let cli = member("9", "cli");
     let cursor = Cursor {
         seen: vec![herald_core::Identity::new("github.com/9/v1")],
         ..Cursor::default()
     };
-    let http = Scripted::new(vec![released()]);
+    let http = ScriptedHttp::new(vec![released()]);
     assert_eq!(
         pollster::block_on(source.polled(&http, &[(&cli, Some(&cursor))], &read)),
         [Ok(None)]
@@ -363,7 +363,7 @@ fn a_member_whose_owner_s_listing_failed_keeps_its_package_state_as_its_releases
         "prerelease": false,
         "published_at": "2026-11-02T12:00:00Z"
     }]);
-    let http = Scripted::new(vec![
+    let http = ScriptedHttp::new(vec![
         answer(200, &releases, "\"r\"", false),
         answer(
             200,

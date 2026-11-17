@@ -216,15 +216,32 @@ impl fmt::Display for Request {
 pub enum Base<'a> {
     /// The origin of one base URL.
     At(&'a str),
+    /// The origins of several base URLs, as a source that lists what it
+    /// polls at one and polls at another reaches.
+    Among(&'a [String]),
     /// Any public address, as an ActivityPub actor's deliveries to its
     /// followers' inboxes reach.
     Public,
+}
+
+impl Base<'_> {
+    /// The base URLs whose origins it reaches; none where it reaches any
+    /// public address.
+    #[must_use]
+    pub fn bases(self) -> Option<Vec<String>> {
+        match self {
+            Self::At(url) => Some(vec![url.to_owned()]),
+            Self::Among(urls) => Some(urls.to_vec()),
+            Self::Public => None,
+        }
+    }
 }
 
 impl fmt::Display for Base<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::At(url) => f.write_str(url),
+            Self::Among(urls) => f.write_str(&urls.join(", ")),
             Self::Public => f.write_str("every public address"),
         }
     }
@@ -683,6 +700,20 @@ mod tests {
             "https://discord.com/api"
         );
         assert_eq!(Base::Public.to_string(), "every public address");
+        let bases = [
+            "https://a.example".to_owned(),
+            "https://b.example".to_owned(),
+        ];
+        assert_eq!(
+            Base::Among(&bases).to_string(),
+            "https://a.example, https://b.example"
+        );
+        assert_eq!(Base::Among(&bases).bases(), Some(bases.to_vec()));
+        assert_eq!(
+            Base::At("https://a.example").bases(),
+            Some(vec!["https://a.example".to_owned()])
+        );
+        assert_eq!(Base::Public.bases(), None);
     }
 
     #[test]

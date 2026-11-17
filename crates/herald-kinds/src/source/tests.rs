@@ -1,7 +1,7 @@
 use std::future::ready;
 
 use herald_core::{Cursor, Kind, Polled, SecretRef};
-use herald_ports::{Boxed, DynHttp, Secret};
+use herald_ports::{Base, Boxed, DynHttp, Secret};
 
 use super::*;
 
@@ -293,4 +293,134 @@ fn an_owner_by_default_polls_each_member_on_its_own_and_follows_no_events() {
         pollster::block_on(owner.changed(&http, herald_core::Owner::User, None)),
         None
     );
+}
+
+/// A poll and an owner asking a second base beside their API.
+#[derive(Debug)]
+struct Beside(Vec<String>);
+
+impl Poll for Beside {
+    fn api(&self) -> &str {
+        &self.0[0]
+    }
+
+    fn bases(&self) -> &[String] {
+        &self.0
+    }
+
+    fn remembered(&self) -> usize {
+        1
+    }
+
+    fn polled<'a>(
+        &'a self,
+        _: &'a dyn DynHttp,
+        _: Option<&'a Cursor>,
+    ) -> Boxed<'a, Result<Option<Polled>, Unpolled>> {
+        Box::pin(ready(Ok(None)))
+    }
+}
+
+#[derive(Debug)]
+struct OwnerBeside(Vec<String>);
+
+impl Expand for OwnerBeside {
+    fn api(&self) -> &str {
+        &self.0[0]
+    }
+
+    fn bases(&self) -> &[String] {
+        &self.0
+    }
+
+    fn keep_members(&self) -> SignedDuration {
+        SignedDuration::ZERO
+    }
+
+    fn remembered(&self) -> usize {
+        1
+    }
+
+    fn listed<'a>(
+        &'a self,
+        _: &'a dyn DynHttp,
+        _: Option<&'a Listing>,
+    ) -> Boxed<'a, Result<Expanded, Unlisted>> {
+        Box::pin(ready(Ok(Expanded::Unchanged)))
+    }
+
+    fn member(&self, repository: &Listed) -> Arc<dyn Poll> {
+        Arc::new(Quiet(None, repository.path.clone()))
+    }
+
+    fn origin(&self, repository: &Listed) -> herald_core::Origin {
+        herald_core::Origin::of_member("forge", "owner.example", repository)
+    }
+
+    fn project(&self, repository: &Listed) -> Result<String, String> {
+        Ok(repository.name.clone())
+    }
+
+    fn takes(&self, _: &Listed) -> bool {
+        true
+    }
+
+    fn fingerprint(&self) -> String {
+        String::new()
+    }
+}
+
+#[test]
+fn a_poll_reaches_its_api_s_origin_unless_it_names_more_bases() {
+    let quiet = Polling::One(Arc::new(Quiet(None, "https://plain.example".to_owned())));
+    assert_eq!(quiet.base(), Base::At("https://plain.example"));
+    assert_eq!(Quiet(None, String::new()).bases(), &[] as &[String]);
+    assert_eq!(
+        Polling::Many(Arc::new(Members)).base(),
+        Base::At("https://owner.example")
+    );
+    assert_eq!(Members.bases(), &[] as &[String]);
+    assert_eq!(Members.owner_key(), "owner");
+    assert_eq!(Members.member_nouns(), ("repository", "repositories"));
+    let bases = vec![
+        "https://a.example".to_owned(),
+        "https://b.example".to_owned(),
+    ];
+    assert_eq!(
+        Polling::One(Arc::new(Beside(bases.clone()))).base(),
+        Base::Among(&bases)
+    );
+    assert_eq!(
+        Polling::Many(Arc::new(OwnerBeside(bases.clone()))).base(),
+        Base::Among(&bases)
+    );
+    assert_eq!(Beside(bases.clone()).remembered(), 1);
+    assert_eq!(
+        pollster::block_on(Beside(bases.clone()).polled(&crate::reach::tests::Silent, None)),
+        Ok(None)
+    );
+    let owner = OwnerBeside(bases);
+    assert_eq!(owner.keep_members(), SignedDuration::ZERO);
+    assert_eq!(owner.remembered(), 1);
+    assert_eq!(owner.fingerprint(), "");
+    assert_eq!(
+        pollster::block_on(owner.listed(&crate::reach::tests::Silent, None)),
+        Ok(Expanded::Unchanged)
+    );
+    let member = Listed {
+        id: "1".to_owned(),
+        name: "one".to_owned(),
+        path: "o/one".to_owned(),
+        topics: Vec::new(),
+        properties: std::collections::BTreeMap::new(),
+        visibility: herald_core::Visibility::Public,
+        archived: false,
+        fork: false,
+        template: false,
+        language: None,
+    };
+    assert!(owner.takes(&member));
+    assert_eq!(owner.project(&member), Ok("one".to_owned()));
+    assert_eq!(owner.member(&member).api(), "o/one");
+    assert_eq!(owner.origin(&member).repository, "o/one");
 }

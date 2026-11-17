@@ -1,9 +1,10 @@
 use std::sync::Arc;
 
-use herald_core::{Cursor, Kind, Polled, SecretRef};
+use herald_core::{Cursor, Kind, Polled, SecretRef, Visibility};
 use herald_kinds::{Fault, Poll, Polling, SourceConfig, SourceKind, Unpolled};
 use herald_ports::{Boxed, DynHttp, Erased, Http as _, Secret};
 
+use crate::namespace::Namespaced;
 use crate::{Package, Registry, RegistryOptions};
 
 /// A package's versions on a registry: the registry, and the options its
@@ -104,27 +105,52 @@ impl SourceConfig for RegistrySource {
         true
     }
 
+    fn unlisted(&self) -> bool {
+        self.options.namespace_of(self.registry).is_some()
+            && (self.options.listed_visibility() != Visibility::Public
+                || (self.registry.lists_visibility() && self.options.token.is_some()))
+    }
+
     fn projects(&self) -> Vec<String> {
-        vec![
-            Package::new(self.registry, &self.options)
-                .project()
-                .to_owned(),
-        ]
+        self.options
+            .package
+            .iter()
+            .map(|name| {
+                Package::new(self.registry, name, &self.options)
+                    .project()
+                    .to_owned()
+            })
+            .collect()
     }
 
     fn poller(&self, token: Option<Secret>, _: bool) -> Polling {
-        Polling::One(Arc::new(Versions {
-            package: Package::new(self.registry, &self.options),
-            token,
-        }))
+        match (
+            &self.options.package,
+            self.options.namespace_of(self.registry),
+        ) {
+            (None, Some(namespace)) => Polling::Many(Arc::new(Namespaced::new(
+                self.registry,
+                namespace,
+                &self.options,
+                token,
+            ))),
+            (package, _) => Polling::One(Arc::new(Versions {
+                package: Package::new(
+                    self.registry,
+                    package.as_deref().unwrap_or_default(),
+                    &self.options,
+                ),
+                token,
+            })),
+        }
     }
 }
 
 /// A package's versions, polled with the token the config names.
 #[derive(Debug)]
-struct Versions {
-    package: Package,
-    token: Option<Secret>,
+pub(crate) struct Versions {
+    pub(crate) package: Package,
+    pub(crate) token: Option<Secret>,
 }
 
 impl Poll for Versions {
@@ -142,23 +168,9 @@ impl Poll for Versions {
         cursor: Option<&'a Cursor>,
     ) -> Boxed<'a, Result<Option<Polled>, Unpolled>> {
         Box::pin(async move {
-            let http = Erased(http);
             let package = &self.package;
-            let bearer = match self
-                .token
-                .as_ref()
-                .and_then(|token| package.token_request(token).map(|request| (token, request)))
-            {
-                Some((token, request)) => {
-                    let answer = http.send(request).await.map_err(Unpolled::unreachable)?;
-                    Some(
-                        package
-                            .exchanged(token, &answer)
-                            .map_err(Unpolled::unreadable)?,
-                    )
-                }
-                None => self.token.clone(),
-            };
+            let bearer = bearer(package, http, self.token.as_ref()).await?;
+            let http = Erased(http);
             let answer = http
                 .send(package.versions_request(cursor, bearer.as_ref()))
                 .await
@@ -172,6 +184,29 @@ impl Poll for Versions {
                 .map_err(Unpolled::unreadable)
         })
     }
+}
+
+/// The token `package` is asked with through `http`: the bearer token
+/// `token` is exchanged for, where the registry exchanges one, and `token`
+/// itself otherwise.
+pub(crate) async fn bearer(
+    package: &Package,
+    http: &dyn DynHttp,
+    token: Option<&Secret>,
+) -> Result<Option<Secret>, Unpolled> {
+    let Some((token, request)) =
+        token.and_then(|token| package.token_request(token).map(|request| (token, request)))
+    else {
+        return Ok(token.cloned());
+    };
+    let answer = Erased(http)
+        .send(request)
+        .await
+        .map_err(Unpolled::unreachable)?;
+    package
+        .exchanged(token, &answer)
+        .map(Some)
+        .map_err(Unpolled::unreadable)
 }
 
 #[cfg(test)]

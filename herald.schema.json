@@ -417,6 +417,16 @@
         }
       ]
     },
+    "Declared": {
+      "description": "Who may see a namespace's packages, where the source declares it.",
+      "oneOf": [
+        {
+          "description": "Anyone: the namespace holds only public packages.",
+          "type": "string",
+          "const": "public"
+        }
+      ]
+    },
     "DeclaredKind": {
       "description": "A kind of event the config declares, which its apps may announce.",
       "type": "object",
@@ -3194,13 +3204,70 @@
               "default": 0,
               "minimum": 0
             },
+            "exclude": {
+              "description": "Globs of the package names a namespace source leaves out, whatever\n`include` says.",
+              "type": "array",
+              "default": [],
+              "items": {
+                "type": "string"
+              }
+            },
+            "include": {
+              "description": "Globs of the package names a namespace source takes; every name\nwhere empty.",
+              "type": "array",
+              "default": [],
+              "items": {
+                "type": "string"
+              }
+            },
+            "keep_members": {
+              "description": "How long a package that left the namespace is kept, with its\ncursor, before it is forgotten; \"30d\" where absent.",
+              "$ref": "#/$defs/Duration"
+            },
             "kind": {
               "type": "string",
               "const": "packagist"
             },
+            "listed_page": {
+              "description": "How many packages one page of a namespace's listing asks for, where\nthe registry pages it; the most it allows where absent.",
+              "type": "integer",
+              "format": "uint",
+              "minimum": 1
+            },
+            "listing": {
+              "description": "How a Packagist vendor's packages are listed: `packagist`, through\n`/packages/list.json` at `listing_api`, where absent, or\n`composer`, through a Composer repository's `packages.json` at\n`api`.",
+              "$ref": "#/$defs/VendorListing"
+            },
+            "listing_api": {
+              "description": "The base URL serving Packagist's `/packages/list.json` for a vendor\nsource; `https://packagist.org` where absent.",
+              "type": "string"
+            },
+            "most_listed": {
+              "description": "The most packages a namespace's listing reads before `include` and\n`exclude`; 10000 where absent. A namespace listing more is refused\nfor the round.",
+              "type": "integer",
+              "format": "uint",
+              "minimum": 1
+            },
+            "most_members": {
+              "description": "The most packages `include` and `exclude` may keep; 1000 where\nabsent, and at most 100000. A namespace keeping more is refused for\nthe round.",
+              "type": "integer",
+              "format": "uint",
+              "minimum": 1
+            },
+            "namespace": {
+              "description": "The Docker Hub namespace whose repositories the source takes, each\npolled on its own; exclusive with `package`.",
+              "type": "string"
+            },
             "ordering": {
               "description": "How Docker Hub lists a repository's tags for a poll:\n`last_updated`, the most recently pushed first, where unset, or\n`name`.",
               "$ref": "#/$defs/TagOrdering"
+            },
+            "owner": {
+              "description": "The crates.io owner whose crates the source takes, each polled on\nits own, as crates.io writes owners: `user:<login>` or\n`team:github:<org>:<team>`; exclusive with `package`.",
+              "type": "string",
+              "examples": [
+                "user:<login>"
+              ]
             },
             "package": {
               "description": "The package, as the registry names it: `vendor/name` on Packagist,\na crate's name, an npm package's name such as `@scope/name`, or a\nDocker Hub repository such as `library/caddy`, where an official\nimage may leave out `library/`.",
@@ -3225,19 +3292,38 @@
               "format": "uint",
               "minimum": 1
             },
+            "scope": {
+              "description": "The npm scope whose packages the source takes, each polled on its\nown, such as `@acme`; exclusive with `package`.",
+              "type": "string",
+              "examples": [
+                "@acme"
+              ]
+            },
             "token": {
               "description": "A token for a private package: npm's, sent as a bearer token;\nPrivate Packagist's Composer token, sent as HTTP Basic with the user\n`token`; or a Docker Hub personal access token, exchanged with\n`username` for a bearer token. crates.io takes none.",
               "$ref": "#/$defs/SecretRef"
             },
+            "unscoped": {
+              "description": "Whether an npm scope source also takes the packages its\norganization owns outside the scope.",
+              "type": "boolean",
+              "default": false
+            },
             "username": {
               "description": "The Docker Hub account `token` belongs to.",
               "type": "string"
+            },
+            "vendor": {
+              "description": "The Packagist vendor whose packages the source takes, each polled\non its own; exclusive with `package`.",
+              "type": "string"
+            },
+            "visibility": {
+              "description": "Who may see a namespace's packages where its listing does not say:\n`public` declares them public. Where absent, they are public when\nthe source has no token and private when it has one, which a token\nmay list.",
+              "$ref": "#/$defs/Declared"
             }
           },
           "additionalProperties": false,
           "required": [
-            "kind",
-            "package"
+            "kind"
           ]
         },
         {
@@ -3255,13 +3341,70 @@
               "default": 0,
               "minimum": 0
             },
+            "exclude": {
+              "description": "Globs of the package names a namespace source leaves out, whatever\n`include` says.",
+              "type": "array",
+              "default": [],
+              "items": {
+                "type": "string"
+              }
+            },
+            "include": {
+              "description": "Globs of the package names a namespace source takes; every name\nwhere empty.",
+              "type": "array",
+              "default": [],
+              "items": {
+                "type": "string"
+              }
+            },
+            "keep_members": {
+              "description": "How long a package that left the namespace is kept, with its\ncursor, before it is forgotten; \"30d\" where absent.",
+              "$ref": "#/$defs/Duration"
+            },
             "kind": {
               "type": "string",
               "const": "crates-io"
             },
+            "listed_page": {
+              "description": "How many packages one page of a namespace's listing asks for, where\nthe registry pages it; the most it allows where absent.",
+              "type": "integer",
+              "format": "uint",
+              "minimum": 1
+            },
+            "listing": {
+              "description": "How a Packagist vendor's packages are listed: `packagist`, through\n`/packages/list.json` at `listing_api`, where absent, or\n`composer`, through a Composer repository's `packages.json` at\n`api`.",
+              "$ref": "#/$defs/VendorListing"
+            },
+            "listing_api": {
+              "description": "The base URL serving Packagist's `/packages/list.json` for a vendor\nsource; `https://packagist.org` where absent.",
+              "type": "string"
+            },
+            "most_listed": {
+              "description": "The most packages a namespace's listing reads before `include` and\n`exclude`; 10000 where absent. A namespace listing more is refused\nfor the round.",
+              "type": "integer",
+              "format": "uint",
+              "minimum": 1
+            },
+            "most_members": {
+              "description": "The most packages `include` and `exclude` may keep; 1000 where\nabsent, and at most 100000. A namespace keeping more is refused for\nthe round.",
+              "type": "integer",
+              "format": "uint",
+              "minimum": 1
+            },
+            "namespace": {
+              "description": "The Docker Hub namespace whose repositories the source takes, each\npolled on its own; exclusive with `package`.",
+              "type": "string"
+            },
             "ordering": {
               "description": "How Docker Hub lists a repository's tags for a poll:\n`last_updated`, the most recently pushed first, where unset, or\n`name`.",
               "$ref": "#/$defs/TagOrdering"
+            },
+            "owner": {
+              "description": "The crates.io owner whose crates the source takes, each polled on\nits own, as crates.io writes owners: `user:<login>` or\n`team:github:<org>:<team>`; exclusive with `package`.",
+              "type": "string",
+              "examples": [
+                "user:<login>"
+              ]
             },
             "package": {
               "description": "The package, as the registry names it: `vendor/name` on Packagist,\na crate's name, an npm package's name such as `@scope/name`, or a\nDocker Hub repository such as `library/caddy`, where an official\nimage may leave out `library/`.",
@@ -3286,19 +3429,38 @@
               "format": "uint",
               "minimum": 1
             },
+            "scope": {
+              "description": "The npm scope whose packages the source takes, each polled on its\nown, such as `@acme`; exclusive with `package`.",
+              "type": "string",
+              "examples": [
+                "@acme"
+              ]
+            },
             "token": {
               "description": "A token for a private package: npm's, sent as a bearer token;\nPrivate Packagist's Composer token, sent as HTTP Basic with the user\n`token`; or a Docker Hub personal access token, exchanged with\n`username` for a bearer token. crates.io takes none.",
               "$ref": "#/$defs/SecretRef"
             },
+            "unscoped": {
+              "description": "Whether an npm scope source also takes the packages its\norganization owns outside the scope.",
+              "type": "boolean",
+              "default": false
+            },
             "username": {
               "description": "The Docker Hub account `token` belongs to.",
               "type": "string"
+            },
+            "vendor": {
+              "description": "The Packagist vendor whose packages the source takes, each polled\non its own; exclusive with `package`.",
+              "type": "string"
+            },
+            "visibility": {
+              "description": "Who may see a namespace's packages where its listing does not say:\n`public` declares them public. Where absent, they are public when\nthe source has no token and private when it has one, which a token\nmay list.",
+              "$ref": "#/$defs/Declared"
             }
           },
           "additionalProperties": false,
           "required": [
-            "kind",
-            "package"
+            "kind"
           ]
         },
         {
@@ -3316,13 +3478,70 @@
               "default": 0,
               "minimum": 0
             },
+            "exclude": {
+              "description": "Globs of the package names a namespace source leaves out, whatever\n`include` says.",
+              "type": "array",
+              "default": [],
+              "items": {
+                "type": "string"
+              }
+            },
+            "include": {
+              "description": "Globs of the package names a namespace source takes; every name\nwhere empty.",
+              "type": "array",
+              "default": [],
+              "items": {
+                "type": "string"
+              }
+            },
+            "keep_members": {
+              "description": "How long a package that left the namespace is kept, with its\ncursor, before it is forgotten; \"30d\" where absent.",
+              "$ref": "#/$defs/Duration"
+            },
             "kind": {
               "type": "string",
               "const": "npm"
             },
+            "listed_page": {
+              "description": "How many packages one page of a namespace's listing asks for, where\nthe registry pages it; the most it allows where absent.",
+              "type": "integer",
+              "format": "uint",
+              "minimum": 1
+            },
+            "listing": {
+              "description": "How a Packagist vendor's packages are listed: `packagist`, through\n`/packages/list.json` at `listing_api`, where absent, or\n`composer`, through a Composer repository's `packages.json` at\n`api`.",
+              "$ref": "#/$defs/VendorListing"
+            },
+            "listing_api": {
+              "description": "The base URL serving Packagist's `/packages/list.json` for a vendor\nsource; `https://packagist.org` where absent.",
+              "type": "string"
+            },
+            "most_listed": {
+              "description": "The most packages a namespace's listing reads before `include` and\n`exclude`; 10000 where absent. A namespace listing more is refused\nfor the round.",
+              "type": "integer",
+              "format": "uint",
+              "minimum": 1
+            },
+            "most_members": {
+              "description": "The most packages `include` and `exclude` may keep; 1000 where\nabsent, and at most 100000. A namespace keeping more is refused for\nthe round.",
+              "type": "integer",
+              "format": "uint",
+              "minimum": 1
+            },
+            "namespace": {
+              "description": "The Docker Hub namespace whose repositories the source takes, each\npolled on its own; exclusive with `package`.",
+              "type": "string"
+            },
             "ordering": {
               "description": "How Docker Hub lists a repository's tags for a poll:\n`last_updated`, the most recently pushed first, where unset, or\n`name`.",
               "$ref": "#/$defs/TagOrdering"
+            },
+            "owner": {
+              "description": "The crates.io owner whose crates the source takes, each polled on\nits own, as crates.io writes owners: `user:<login>` or\n`team:github:<org>:<team>`; exclusive with `package`.",
+              "type": "string",
+              "examples": [
+                "user:<login>"
+              ]
             },
             "package": {
               "description": "The package, as the registry names it: `vendor/name` on Packagist,\na crate's name, an npm package's name such as `@scope/name`, or a\nDocker Hub repository such as `library/caddy`, where an official\nimage may leave out `library/`.",
@@ -3347,19 +3566,38 @@
               "format": "uint",
               "minimum": 1
             },
+            "scope": {
+              "description": "The npm scope whose packages the source takes, each polled on its\nown, such as `@acme`; exclusive with `package`.",
+              "type": "string",
+              "examples": [
+                "@acme"
+              ]
+            },
             "token": {
               "description": "A token for a private package: npm's, sent as a bearer token;\nPrivate Packagist's Composer token, sent as HTTP Basic with the user\n`token`; or a Docker Hub personal access token, exchanged with\n`username` for a bearer token. crates.io takes none.",
               "$ref": "#/$defs/SecretRef"
             },
+            "unscoped": {
+              "description": "Whether an npm scope source also takes the packages its\norganization owns outside the scope.",
+              "type": "boolean",
+              "default": false
+            },
             "username": {
               "description": "The Docker Hub account `token` belongs to.",
               "type": "string"
+            },
+            "vendor": {
+              "description": "The Packagist vendor whose packages the source takes, each polled\non its own; exclusive with `package`.",
+              "type": "string"
+            },
+            "visibility": {
+              "description": "Who may see a namespace's packages where its listing does not say:\n`public` declares them public. Where absent, they are public when\nthe source has no token and private when it has one, which a token\nmay list.",
+              "$ref": "#/$defs/Declared"
             }
           },
           "additionalProperties": false,
           "required": [
-            "kind",
-            "package"
+            "kind"
           ]
         },
         {
@@ -3377,13 +3615,70 @@
               "default": 0,
               "minimum": 0
             },
+            "exclude": {
+              "description": "Globs of the package names a namespace source leaves out, whatever\n`include` says.",
+              "type": "array",
+              "default": [],
+              "items": {
+                "type": "string"
+              }
+            },
+            "include": {
+              "description": "Globs of the package names a namespace source takes; every name\nwhere empty.",
+              "type": "array",
+              "default": [],
+              "items": {
+                "type": "string"
+              }
+            },
+            "keep_members": {
+              "description": "How long a package that left the namespace is kept, with its\ncursor, before it is forgotten; \"30d\" where absent.",
+              "$ref": "#/$defs/Duration"
+            },
             "kind": {
               "type": "string",
               "const": "docker-hub"
             },
+            "listed_page": {
+              "description": "How many packages one page of a namespace's listing asks for, where\nthe registry pages it; the most it allows where absent.",
+              "type": "integer",
+              "format": "uint",
+              "minimum": 1
+            },
+            "listing": {
+              "description": "How a Packagist vendor's packages are listed: `packagist`, through\n`/packages/list.json` at `listing_api`, where absent, or\n`composer`, through a Composer repository's `packages.json` at\n`api`.",
+              "$ref": "#/$defs/VendorListing"
+            },
+            "listing_api": {
+              "description": "The base URL serving Packagist's `/packages/list.json` for a vendor\nsource; `https://packagist.org` where absent.",
+              "type": "string"
+            },
+            "most_listed": {
+              "description": "The most packages a namespace's listing reads before `include` and\n`exclude`; 10000 where absent. A namespace listing more is refused\nfor the round.",
+              "type": "integer",
+              "format": "uint",
+              "minimum": 1
+            },
+            "most_members": {
+              "description": "The most packages `include` and `exclude` may keep; 1000 where\nabsent, and at most 100000. A namespace keeping more is refused for\nthe round.",
+              "type": "integer",
+              "format": "uint",
+              "minimum": 1
+            },
+            "namespace": {
+              "description": "The Docker Hub namespace whose repositories the source takes, each\npolled on its own; exclusive with `package`.",
+              "type": "string"
+            },
             "ordering": {
               "description": "How Docker Hub lists a repository's tags for a poll:\n`last_updated`, the most recently pushed first, where unset, or\n`name`.",
               "$ref": "#/$defs/TagOrdering"
+            },
+            "owner": {
+              "description": "The crates.io owner whose crates the source takes, each polled on\nits own, as crates.io writes owners: `user:<login>` or\n`team:github:<org>:<team>`; exclusive with `package`.",
+              "type": "string",
+              "examples": [
+                "user:<login>"
+              ]
             },
             "package": {
               "description": "The package, as the registry names it: `vendor/name` on Packagist,\na crate's name, an npm package's name such as `@scope/name`, or a\nDocker Hub repository such as `library/caddy`, where an official\nimage may leave out `library/`.",
@@ -3408,19 +3703,38 @@
               "format": "uint",
               "minimum": 1
             },
+            "scope": {
+              "description": "The npm scope whose packages the source takes, each polled on its\nown, such as `@acme`; exclusive with `package`.",
+              "type": "string",
+              "examples": [
+                "@acme"
+              ]
+            },
             "token": {
               "description": "A token for a private package: npm's, sent as a bearer token;\nPrivate Packagist's Composer token, sent as HTTP Basic with the user\n`token`; or a Docker Hub personal access token, exchanged with\n`username` for a bearer token. crates.io takes none.",
               "$ref": "#/$defs/SecretRef"
             },
+            "unscoped": {
+              "description": "Whether an npm scope source also takes the packages its\norganization owns outside the scope.",
+              "type": "boolean",
+              "default": false
+            },
             "username": {
               "description": "The Docker Hub account `token` belongs to.",
               "type": "string"
+            },
+            "vendor": {
+              "description": "The Packagist vendor whose packages the source takes, each polled\non its own; exclusive with `package`.",
+              "type": "string"
+            },
+            "visibility": {
+              "description": "Who may see a namespace's packages where its listing does not say:\n`public` declares them public. Where absent, they are public when\nthe source has no token and private when it has one, which a token\nmay list.",
+              "$ref": "#/$defs/Declared"
             }
           },
           "additionalProperties": false,
           "required": [
-            "kind",
-            "package"
+            "kind"
           ]
         },
         {
@@ -4107,6 +4421,21 @@
           "items": {
             "type": "string"
           }
+        }
+      ]
+    },
+    "VendorListing": {
+      "description": "How a Packagist vendor's packages are listed.",
+      "oneOf": [
+        {
+          "description": "Packagist's `/packages/list.json?vendor=`, at `listing_api`.",
+          "type": "string",
+          "const": "packagist"
+        },
+        {
+          "description": "A Composer repository's `packages.json`, at `api`, as Private\nPackagist and Satis serve it.",
+          "type": "string",
+          "const": "composer"
         }
       ]
     },

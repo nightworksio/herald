@@ -1,8 +1,9 @@
-use herald_core::unreserved;
+use herald_core::{Visibility, unreserved};
 use herald_wire::{SourceError, read};
 use jiff::Timestamp;
 use serde::Deserialize;
 
+use crate::namespace::Page;
 use crate::options::TagOrdering;
 use crate::package::{Api, RegistryVersion};
 
@@ -30,6 +31,26 @@ pub(crate) fn exchanged(response: &herald_ports::Response) -> Option<String> {
         .map(|exchanged| exchanged.access_token)
         .filter(|token| !token.is_empty())
 }
+
+/// What Docker Hub's listing of a namespace's repositories is called.
+pub(crate) const REPOSITORIES: &str = "Docker Hub's repositories of a namespace";
+
+#[derive(Deserialize)]
+struct Repositories {
+    results: Vec<Repository>,
+    next: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct Repository {
+    name: String,
+    namespace: String,
+    is_private: bool,
+}
+
+/// The registry host Docker Hub's images are named on, which their
+/// identities share with any other source of the image (ADR-0035).
+pub(crate) const REGISTRY: &str = "docker.io";
 
 /// The namespace of Docker Hub's official images.
 pub(crate) const OFFICIAL: &str = "library";
@@ -97,4 +118,59 @@ pub(crate) fn found(
             })
         })
         .collect())
+}
+
+/// The path of page `number` of `namespace`'s repositories, `page` to a
+/// page.
+pub(crate) fn repositories_path(namespace: &str, page: usize, number: usize) -> String {
+    format!(
+        "/namespaces/{}/repositories?page_size={page}&page={number}",
+        unreserved(namespace)
+    )
+}
+
+/// The repositories a page of `namespace`'s listing names, each with who
+/// may see it.
+///
+/// # Errors
+///
+/// Where the page names a repository of another namespace, which no
+/// listing of `namespace` holds.
+pub(crate) fn repositories(
+    limit: usize,
+    namespace: &str,
+    body: &[u8],
+) -> Result<Page, SourceError> {
+    let repositories: Repositories = read(REPOSITORIES, limit, body)?;
+    if let Some(foreign) = repositories
+        .results
+        .iter()
+        .find(|repository| !repository.namespace.eq_ignore_ascii_case(namespace))
+    {
+        return Err(SourceError::Unreadable {
+            what: REPOSITORIES,
+            reason: format!(
+                "it names {}/{}, outside the namespace {namespace}; check that api lists Docker Hub's namespaces",
+                foreign.namespace, foreign.name
+            ),
+        });
+    }
+    Ok(Page {
+        packages: repositories
+            .results
+            .into_iter()
+            .map(|repository| {
+                let visibility = if repository.is_private {
+                    Visibility::Private
+                } else {
+                    Visibility::Public
+                };
+                (
+                    format!("{}/{}", repository.namespace, repository.name),
+                    Some(visibility),
+                )
+            })
+            .collect(),
+        more: repositories.next.is_some(),
+    })
 }

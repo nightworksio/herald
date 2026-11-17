@@ -131,7 +131,10 @@ pub fn waiting(base: &str, _: &Outbound) -> Result<Connection, String> {
 /// When `base` may not be reached, or the client cannot be built.
 pub fn native(base: Base<'_>, outbound: &Outbound) -> Result<Connection, String> {
     let connection = match base {
-        Base::At(url) => NativeHttp::reaching(url, outbound).map(Connection::new),
+        Base::At(url) => NativeHttp::reaching([url], outbound).map(Connection::new),
+        Base::Among(urls) => {
+            NativeHttp::reaching(urls.iter().map(String::as_str), outbound).map(Connection::new)
+        }
         Base::Public => PublicHttp::new(outbound)
             .map(Connection::new)
             .map_err(ConnectError::Build),

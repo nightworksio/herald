@@ -15,6 +15,7 @@ mod clock;
 mod conformance;
 mod crypto;
 mod fixture;
+mod http;
 mod kv;
 mod markers;
 pub mod sample;
@@ -34,6 +35,7 @@ pub use conformance::{
 };
 pub use crypto::{FakeSigner, FakeVerifier};
 pub use fixture::{Answer, Exchange, Fixture, Recorded, Recorder, Replay};
+pub use http::ScriptedHttp;
 pub use kv::FakeKv;
 pub use markers::FakeMarkers;
 pub use scrub::{Ids, Scrub};

@@ -21,6 +21,7 @@ serde_json.workspace = true
 toml.workspace = true
 
 [dev-dependencies]
+herald-testing.workspace = true
 pollster.workspace = true
 proptest.workspace = true
 

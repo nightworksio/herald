@@ -4,7 +4,7 @@ use herald_core::Visibility;
 use herald_ports::Secret;
 
 use super::*;
-use crate::scripted::Scripted;
+use herald_testing::ScriptedHttp;
 
 fn data(members: &[Value]) -> Response {
     let data: serde_json::Map<String, Value> = members
@@ -58,7 +58,7 @@ fn seen(identities: &[&str]) -> Cursor {
 }
 
 fn together(
-    http: &Scripted,
+    http: &ScriptedHttp,
     members: &[(&Listed, Option<&Cursor>)],
 ) -> Vec<Result<Option<Polled>, Unpolled>> {
     let signalled: Vec<(&Listed, Option<&Cursor>, Signals)> = members
@@ -69,14 +69,14 @@ fn together(
 }
 
 fn together_signalled(
-    http: &Scripted,
+    http: &ScriptedHttp,
     members: &[(&Listed, Option<&Cursor>, Signals)],
 ) -> Vec<Result<Option<Polled>, Unpolled>> {
     watching(http, members, 0)
 }
 
 fn watching(
-    http: &Scripted,
+    http: &ScriptedHttp,
     members: &[(&Listed, Option<&Cursor>, Signals)],
     watched: usize,
 ) -> Vec<Result<Option<Polled>, Unpolled>> {
@@ -103,7 +103,7 @@ fn one_request_asks_each_member_by_variables_with_the_source_s_token() {
         path: "lemonfiber/sub/web".to_owned(),
         ..member("web")
     };
-    let http = Scripted::new(vec![data(&[repository(7, &[]), repository(8, &[])])]);
+    let http = ScriptedHttp::new(vec![data(&[repository(7, &[]), repository(8, &[])])]);
     let answered = together(&http, &[(&cli, Some(&seen(&[]))), (&web, Some(&seen(&[])))]);
     assert_eq!(answered, [Ok(None), Ok(None)]);
     let asked = http.requests();
@@ -132,7 +132,7 @@ fn one_request_asks_each_member_by_variables_with_the_source_s_token() {
 fn only_members_holding_a_release_their_cursor_has_not_seen_are_asked_in_full() {
     let (cli, web, api) = (member("cli"), member("web"), member("api"));
     let cursor = seen(&["github.com/7/v1"]);
-    let http = Scripted::new(vec![
+    let http = ScriptedHttp::new(vec![
         data(&[
             repository(7, &[release("v1", false), release("v2-draft", true)]),
             repository(8, &[release("v1", false)]),
@@ -169,19 +169,19 @@ fn only_members_holding_a_release_their_cursor_has_not_seen_are_asked_in_full() 
 #[test]
 fn a_member_github_names_no_repository_for_fails_alone_and_a_failed_request_fails_them_all() {
     let (cli, web) = (member("cli"), member("web"));
-    let http = Scripted::new(vec![data(&[Value::Null, repository(8, &[])])]);
+    let http = ScriptedHttp::new(vec![data(&[Value::Null, repository(8, &[])])]);
     let answered = together(&http, &[(&cli, None), (&web, Some(&seen(&[])))]);
     assert_eq!(answered[1], Ok(None));
     assert!(
         matches!(&answered[0], Err(Unpolled::Unreadable(reason)) if reason.contains("names no repository for member 0"))
     );
-    let silent = Scripted::new(Vec::new());
+    let silent = ScriptedHttp::new(Vec::new());
     assert!(
         together(&silent, &[(&cli, None), (&web, None)])
             .iter()
             .all(|answered| matches!(answered, Err(Unpolled::Unreachable(_))))
     );
-    let refused = Scripted::new(vec![Response {
+    let refused = ScriptedHttp::new(vec![Response {
         status: 502,
         headers: Vec::new(),
         body: Vec::new(),
@@ -191,7 +191,7 @@ fn a_member_github_names_no_repository_for_fails_alone_and_a_failed_request_fail
             .iter()
             .all(|answered| matches!(answered, Err(Unpolled::Unreadable(_))))
     );
-    let errored = Scripted::new(vec![Response {
+    let errored = ScriptedHttp::new(vec![Response {
         status: 200,
         headers: Vec::new(),
         body: br#"{"errors":[{"message":"rate limited"}]}"#.to_vec(),
@@ -201,7 +201,7 @@ fn a_member_github_names_no_repository_for_fails_alone_and_a_failed_request_fail
         answered,
         Err(Unpolled::Unreadable(reason)) if reason.contains("holds no data") && reason.contains("rate limited")
     )));
-    let second_fails = Scripted::new(vec![data(&[repository(7, &[release("v1", false)])])]);
+    let second_fails = ScriptedHttp::new(vec![data(&[repository(7, &[release("v1", false)])])]);
     assert!(matches!(
         together(&second_fails, &[(&cli, None)])[0],
         Err(Unpolled::Unreachable(_))
@@ -213,7 +213,7 @@ fn a_release_github_answers_without_a_publication_time_is_unreadable() {
     let cli = member("cli");
     let mut unpublished = release("v1", false);
     unpublished["publishedAt"] = Value::Null;
-    let http = Scripted::new(vec![
+    let http = ScriptedHttp::new(vec![
         data(&[repository(7, &[unpublished.clone()])]),
         data(&[repository(7, &[unpublished])]),
     ]);
@@ -240,7 +240,7 @@ fn a_release_whose_page_names_no_host_is_never_seen() {
 #[test]
 fn a_member_whose_cursor_has_not_seen_its_newest_release_is_asked_in_full() {
     let api = member("api");
-    let http = Scripted::new(vec![
+    let http = ScriptedHttp::new(vec![
         data(&[repository(9, &[release("v2", false), release("v1", false)])]),
         data(&[repository(9, &[release("v2", false), release("v1", false)])]),
     ]);
@@ -271,7 +271,7 @@ fn signals(taken: &[Signal]) -> Signals {
 #[test]
 fn each_member_is_asked_for_the_releases_and_tags_its_signals_take() {
     let (cli, web) = (member("cli"), member("web"));
-    let http = Scripted::new(vec![data(&[tagged(7, &[], &[]), tagged(8, &[], &[])])]);
+    let http = ScriptedHttp::new(vec![data(&[tagged(7, &[], &[]), tagged(8, &[], &[])])]);
     let answered = together_signalled(
         &http,
         &[
@@ -311,7 +311,7 @@ fn a_tag_not_seen_is_read_in_full_with_its_date_and_a_tag_of_a_release_is_the_re
         "target": {"__typename": "Commit", "committedDate": "2026-10-30T12:00:00Z"}
     });
     let released = json!({"name": "v1", "target": {"__typename": "Commit", "committedDate": "2026-10-01T12:00:00Z"}});
-    let http = Scripted::new(vec![
+    let http = ScriptedHttp::new(vec![
         data(&[tagged(
             7,
             &[release("v1", false)],
@@ -377,7 +377,7 @@ fn a_tag_not_seen_is_read_in_full_with_its_date_and_a_tag_of_a_release_is_the_re
 #[test]
 fn a_member_whose_tags_its_cursor_has_seen_is_not_asked_in_full() {
     let cli = member("cli");
-    let http = Scripted::new(vec![data(&[tagged(7, &[], &[json!({"name": "v1"})])])]);
+    let http = ScriptedHttp::new(vec![data(&[tagged(7, &[], &[json!({"name": "v1"})])])]);
     let answered = together_signalled(
         &http,
         &[(
@@ -424,7 +424,7 @@ fn tags_of_a_repository_github_names_no_page_of_cannot_be_announced() {
         "databaseId": 7,
         "refs": { "nodes": [{"name": "v1", "target": {"committedDate": "2026-11-01T00:00:00Z"}}] }
     });
-    let http = Scripted::new(vec![
+    let http = ScriptedHttp::new(vec![
         data(std::slice::from_ref(&pageless)),
         data(&[pageless]),
     ]);
@@ -436,7 +436,7 @@ fn tags_of_a_repository_github_names_no_page_of_cannot_be_announced() {
         ))]
     );
     let empty = json!({"databaseId": 7, "refs": {"nodes": []}});
-    let http = Scripted::new(vec![data(std::slice::from_ref(&empty)), data(&[empty])]);
+    let http = ScriptedHttp::new(vec![data(std::slice::from_ref(&empty)), data(&[empty])]);
     let answered = together_signalled(&http, &[(&cli, None, signals(&[Signal::Tag]))]);
     assert_eq!(answered, [Ok(Some(Polled::default()))]);
 }
@@ -448,13 +448,13 @@ fn a_release_of_a_version_its_cursor_saw_only_as_a_tag_is_asked_in_full() {
         tagged: vec![Identity::new("github.com/7/v1")],
         ..seen(&["github.com/7/v1"])
     };
-    let http = Scripted::new(vec![
+    let http = ScriptedHttp::new(vec![
         data(&[tagged(7, &[release("v1", false)], &[])]),
         data(&[tagged(7, &[release("v1", false)], &[])]),
     ]);
     let answered = together_signalled(&http, &[(&cli, Some(&cursor), signals(&[Signal::Release]))]);
     assert!(matches!(&answered[0], Ok(Some(polled)) if polled.events.len() == 1));
-    let seen_as_release = Scripted::new(vec![data(&[tagged(7, &[release("v1", false)], &[])])]);
+    let seen_as_release = ScriptedHttp::new(vec![data(&[tagged(7, &[release("v1", false)], &[])])]);
     let answered = together_signalled(
         &seen_as_release,
         &[(
@@ -474,7 +474,7 @@ fn a_member_watched_for_edits_is_asked_its_notes_and_read_in_full_once_one_chang
         edited["description"] = json!(notes);
         data(&[tagged(9, &[edited, release("v1", false)], &[])])
     };
-    let http = Scripted::new(vec![noted("## Added"), noted("## Added")]);
+    let http = ScriptedHttp::new(vec![noted("## Added"), noted("## Added")]);
     let first = watching(&http, &[(&api, None, Signals::default())], 1);
     let Ok(Some(polled)) = &first[0] else {
         panic!("a member with no cursor is read in full: {first:?}");
@@ -482,12 +482,12 @@ fn a_member_watched_for_edits_is_asked_its_notes_and_read_in_full_once_one_chang
     assert_eq!(polled.watched, 1);
     let cursor = Cursor::default().advanced(polled, 500);
     assert_eq!(cursor.notes.len(), 1);
-    let http = Scripted::new(vec![noted("## Added")]);
+    let http = ScriptedHttp::new(vec![noted("## Added")]);
     let quiet = watching(&http, &[(&api, Some(&cursor), Signals::default())], 1);
     assert!(matches!(quiet[..], [Ok(None)]), "{quiet:?}");
     let asked = http.bodies()[0]["query"].as_str().unwrap().to_owned();
     assert!(asked.contains("description"), "{asked}");
-    let http = Scripted::new(vec![noted("## Fixed"), noted("## Fixed")]);
+    let http = ScriptedHttp::new(vec![noted("## Fixed"), noted("## Fixed")]);
     let changed = watching(&http, &[(&api, Some(&cursor), Signals::default())], 1);
     let Ok(Some(polled)) = &changed[0] else {
         panic!("an edited release is read in full: {changed:?}");
@@ -495,7 +495,7 @@ fn a_member_watched_for_edits_is_asked_its_notes_and_read_in_full_once_one_chang
     let found = herald_core::fresh(Some(&cursor), polled.events.clone(), 0);
     assert_eq!(found.len(), 1);
     assert!(found[0].edited());
-    let unwatched = Scripted::new(vec![noted("## Fixed")]);
+    let unwatched = ScriptedHttp::new(vec![noted("## Fixed")]);
     let light = watching(&unwatched, &[(&api, Some(&cursor), Signals::default())], 0);
     assert!(matches!(light[..], [Ok(None)]));
     let asked = unwatched.bodies()[0]["query"].as_str().unwrap().to_owned();
@@ -532,7 +532,7 @@ fn project(id: u64, releases: &[Value]) -> Value {
 }
 
 fn on_gitlab(
-    http: &Scripted,
+    http: &ScriptedHttp,
     members: &[(&Listed, Option<&Cursor>)],
 ) -> Vec<Result<Option<Polled>, Unpolled>> {
     let asking = Asking {
@@ -568,7 +568,7 @@ fn a_gitlab_owner_s_members_are_asked_by_project_id_and_announce_releases_as_res
         id: "9".to_owned(),
         ..member("gone")
     };
-    let http = Scripted::new(vec![
+    let http = ScriptedHttp::new(vec![
         projects(&[
             project(7, &[gitlab_release("v1", false)]),
             project(8, &[gitlab_release("v1", false)]),
@@ -621,7 +621,7 @@ fn a_gitlab_owner_s_members_are_asked_by_project_id_and_announce_releases_as_res
         http.requests()[0].url.redacted(),
         "https://gitlab.com/api/graphql"
     );
-    let failed = Scripted::new(vec![Response {
+    let failed = ScriptedHttp::new(vec![Response {
         status: 200,
         headers: Vec::new(),
         body: br#"{"data":null,"errors":[{"message":"complexity"}]}"#.to_vec(),

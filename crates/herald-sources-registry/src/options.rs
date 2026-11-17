@@ -1,9 +1,14 @@
 use std::num::NonZeroUsize;
 
-use herald_core::{SecretRef, Size, path_of_names, web_url};
+use herald_core::{Duration, SecretRef, Size, web_url};
 use herald_wire::Reading;
 
 use crate::Registry;
+
+mod namespace;
+
+pub(crate) use namespace::CratesOwner;
+pub use namespace::{Declared, VendorListing};
 
 /// How Docker Hub lists a repository's tags.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Deserialize, schemars::JsonSchema)]
@@ -37,7 +42,64 @@ pub struct RegistryOptions {
     /// Docker Hub repository such as `library/caddy`, where an official
     /// image may leave out `library/`.
     #[schemars(example = "vendor/name")]
-    pub package: String,
+    pub package: Option<String>,
+    /// The npm scope whose packages the source takes, each polled on its
+    /// own, such as `@acme`; exclusive with `package`.
+    #[schemars(example = "@acme")]
+    pub scope: Option<String>,
+    /// The Packagist vendor whose packages the source takes, each polled
+    /// on its own; exclusive with `package`.
+    pub vendor: Option<String>,
+    /// The crates.io owner whose crates the source takes, each polled on
+    /// its own, as crates.io writes owners: `user:<login>` or
+    /// `team:github:<org>:<team>`; exclusive with `package`.
+    #[schemars(example = "user:<login>")]
+    pub owner: Option<String>,
+    /// The Docker Hub namespace whose repositories the source takes, each
+    /// polled on its own; exclusive with `package`.
+    pub namespace: Option<String>,
+    /// Globs of the package names a namespace source takes; every name
+    /// where empty.
+    #[serde(default)]
+    pub include: Vec<String>,
+    /// Globs of the package names a namespace source leaves out, whatever
+    /// `include` says.
+    #[serde(default)]
+    pub exclude: Vec<String>,
+    /// The most packages a namespace's listing reads before `include` and
+    /// `exclude`; 10000 where absent. A namespace listing more is refused
+    /// for the round.
+    #[schemars(with = "Option<NonZeroUsize>")]
+    pub most_listed: Option<NonZeroUsize>,
+    /// The most packages `include` and `exclude` may keep; 1000 where
+    /// absent, and at most 100000. A namespace keeping more is refused for
+    /// the round.
+    #[schemars(with = "Option<NonZeroUsize>")]
+    pub most_members: Option<NonZeroUsize>,
+    /// How long a package that left the namespace is kept, with its
+    /// cursor, before it is forgotten; "30d" where absent.
+    pub keep_members: Option<Duration>,
+    /// How many packages one page of a namespace's listing asks for, where
+    /// the registry pages it; the most it allows where absent.
+    #[schemars(with = "Option<NonZeroUsize>")]
+    pub listed_page: Option<NonZeroUsize>,
+    /// Who may see a namespace's packages where its listing does not say:
+    /// `public` declares them public. Where absent, they are public when
+    /// the source has no token and private when it has one, which a token
+    /// may list.
+    pub visibility: Option<Declared>,
+    /// Whether an npm scope source also takes the packages its
+    /// organization owns outside the scope.
+    #[serde(default)]
+    pub unscoped: bool,
+    /// How a Packagist vendor's packages are listed: `packagist`, through
+    /// `/packages/list.json` at `listing_api`, where absent, or
+    /// `composer`, through a Composer repository's `packages.json` at
+    /// `api`.
+    pub listing: Option<VendorListing>,
+    /// The base URL serving Packagist's `/packages/list.json` for a vendor
+    /// source; `https://packagist.org` where absent.
+    pub listing_api: Option<String>,
     /// The registry's base URL, for a mirror or a private registry that
     /// answers as the public one does; the public registry's where absent.
     pub api: Option<String>,
@@ -76,14 +138,14 @@ impl RegistryOptions {
     /// When `package` is not a name the registry gives a package, or `api`
     /// is not a web address.
     pub fn check(&self, registry: Registry) -> Result<(), String> {
-        let (path, count) = match (registry, self.package.strip_prefix('@')) {
-            (Registry::Npm, Some(scoped)) => (scoped, 2..=2),
-            _ => (self.package.as_str(), registry.names()),
-        };
-        if !path_of_names(path, count) {
+        self.namespace_check(registry)?;
+        if let Some(package) = self
+            .package
+            .as_ref()
+            .filter(|package| !registry.writes_package(package))
+        {
             return Err(format!(
-                "\"{}\" is not a package; give it as {}, of letters, digits, '.', '_' and '-'",
-                self.package,
+                "\"{package}\" is not a package; give it as {}, of letters, digits, '.', '_' and '-'",
                 registry.shape()
             ));
         }

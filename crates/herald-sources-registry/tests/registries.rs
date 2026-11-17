@@ -25,8 +25,8 @@ mod registries {
     fn package(registry: Registry, name: &str, api: Option<&str>) -> Package {
         Package::new(
             registry,
+            name,
             &RegistryOptions {
-                package: name.to_owned(),
                 api: api.map(ToOwned::to_owned),
                 ..RegistryOptions::default()
             },
@@ -203,7 +203,7 @@ mod registries {
         assert_eq!(caddy.name(), "library/caddy");
         let polled = caddy.versions(&answer(200, DOCKER_HUB)).unwrap();
         let first = &polled.events[0];
-        assert_eq!(first.identity().as_str(), "docker-hub/library/caddy/latest");
+        assert_eq!(first.identity().as_str(), "docker.io/library/caddy/latest");
         assert_eq!(first.project(), "caddy");
         assert_eq!(first.title(), "caddy latest");
         let release = polled
@@ -320,8 +320,8 @@ mod registries {
         let token = Secret::new("HERALD_DOCKER_HUB_TOKEN", "dckr_pat_1");
         let hub = Package::new(
             Registry::DockerHub,
+            "nightworksio/herald",
             &RegistryOptions {
-                package: "nightworksio/herald".to_owned(),
                 token: Some(herald_core::SecretRef {
                     secret: "HERALD_DOCKER_HUB_TOKEN".to_owned(),
                 }),
@@ -363,8 +363,8 @@ mod registries {
         );
         let npm = Package::new(
             Registry::Npm,
+            "left-pad",
             &RegistryOptions {
-                package: "left-pad".to_owned(),
                 username: Some("wessel".to_owned()),
                 ..RegistryOptions::default()
             },
@@ -375,7 +375,7 @@ mod registries {
     #[test]
     fn a_username_goes_with_a_docker_hub_token_and_nowhere_else() {
         let options = |token: bool, username: bool| RegistryOptions {
-            package: "nightworksio/herald".to_owned(),
+            package: Some("nightworksio/herald".to_owned()),
             token: token.then(|| herald_core::SecretRef {
                 secret: "T".to_owned(),
             }),
@@ -399,10 +399,14 @@ mod registries {
         };
         assert_eq!(named.check(Registry::DockerHub), Ok(()));
         assert_eq!(
-            Package::new(Registry::DockerHub, &named)
-                .versions_request(None, None)
-                .url
-                .expose(),
+            Package::new(
+                Registry::DockerHub,
+                named.package.as_deref().unwrap(),
+                &named
+            )
+            .versions_request(None, None)
+            .url
+            .expose(),
             "https://hub.docker.com/v2/namespaces/nightworksio/repositories/herald/tags?page_size=30&ordering=name"
         );
         assert_eq!(
@@ -442,7 +446,7 @@ mod registries {
     #[test]
     fn each_registry_takes_a_package_in_its_shape_and_an_api_at_a_web_address() {
         let options = |name: &str, api: Option<&str>| RegistryOptions {
-            package: name.to_owned(),
+            package: Some(name.to_owned()),
             api: api.map(ToOwned::to_owned),
             ..RegistryOptions::default()
         };

@@ -9,7 +9,7 @@ use herald_core::{
     Cursor, Event, EventsRead, Kind, Listed, Listing, Origin, Owner, Polled, Reach, RouteId,
     Scheme, SecretRef, Visibility,
 };
-use herald_ports::{Boxed, DynHttp, Secret};
+use herald_ports::{Base, Boxed, DynHttp, Secret};
 use jiff::SignedDuration;
 
 use crate::{Fault, Itself};
@@ -136,14 +136,45 @@ impl Polling {
             Self::Many(expand) => expand.api(),
         }
     }
+
+    /// What its `Http` may reach: the origin of [`Polling::api`], and any
+    /// other base it asks (ADR-0007).
+    #[must_use]
+    pub fn base(&self) -> Base<'_> {
+        let bases = match self {
+            Self::One(poll) => poll.bases(),
+            Self::Many(expand) => expand.bases(),
+        };
+        if bases.is_empty() {
+            Base::At(self.api())
+        } else {
+            Base::Among(bases)
+        }
+    }
 }
 
 /// A source that expands to an owner's repositories, each polled on its
 /// own.
 pub trait Expand: fmt::Debug + Send + Sync {
     /// The base URL of everything it asks, the only origin its `Http` may
-    /// reach (ADR-0007).
+    /// reach (ADR-0007) unless [`Expand::bases`] names others.
     fn api(&self) -> &str;
+
+    /// Every base URL it asks, `api` among them, where it asks more than
+    /// `api`'s origin; none where it asks only that.
+    fn bases(&self) -> &[String] {
+        &[]
+    }
+
+    /// The key of its table that names the owner it lists.
+    fn owner_key(&self) -> &'static str {
+        "owner"
+    }
+
+    /// What one of its members is called, and what several are.
+    fn member_nouns(&self) -> (&'static str, &'static str) {
+        ("repository", "repositories")
+    }
 
     /// How long a member that left the selection is kept before it is
     /// forgotten with its cursor.
@@ -406,8 +437,14 @@ pub trait SourceKind: 'static {
 /// One source, ready to poll.
 pub trait Poll: fmt::Debug + Send + Sync {
     /// The base URL of everything it asks, the only origin its `Http` may
-    /// reach (ADR-0007).
+    /// reach (ADR-0007) unless [`Poll::bases`] names others.
     fn api(&self) -> &str;
+
+    /// Every base URL it asks, `api` among them, where it asks more than
+    /// `api`'s origin; none where it asks only that.
+    fn bases(&self) -> &[String] {
+        &[]
+    }
 
     /// How many identities its cursor remembers, newest first.
     fn remembered(&self) -> usize;

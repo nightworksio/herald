@@ -139,6 +139,27 @@ fn a_public_base_connects_to_any_public_address_and_another_to_its_origin_alone(
         )
         .is_err()
     );
+    let among = |bases: [&str; 2]| bases.map(ToOwned::to_owned);
+    assert!(
+        native(
+            herald_ports::Base::Among(&among([
+                "https://repo.packagist.org",
+                "https://packagist.org"
+            ])),
+            &herald_ports::Outbound::default()
+        )
+        .is_ok()
+    );
+    assert!(
+        native(
+            herald_ports::Base::Among(&among([
+                "https://repo.packagist.org",
+                "http://packagist.org"
+            ])),
+            &herald_ports::Outbound::default()
+        )
+        .is_err()
+    );
     assert!(
         native(
             herald_ports::Base::At("waiting+http://127.0.0.1:9001"),

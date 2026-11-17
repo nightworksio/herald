@@ -14,6 +14,7 @@ use crate::harness::*;
 mod feed;
 mod held;
 mod packages;
+mod registries;
 mod routes;
 mod tags;
 

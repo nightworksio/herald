@@ -5,7 +5,7 @@ use serde_json::{Value, json};
 
 use super::*;
 use crate::SourceOptions;
-use crate::scripted::Scripted;
+use herald_testing::ScriptedHttp;
 
 fn answer(status: u16, body: &Value, etag: Option<&str>) -> Response {
     Response {
@@ -72,7 +72,7 @@ fn releases(
 
 fn polled(
     releases: &Releases,
-    http: &Scripted,
+    http: &ScriptedHttp,
     cursor: Option<&Cursor>,
 ) -> Result<Option<Polled>, Unpolled> {
     pollster::block_on(releases.polled(http, cursor))
@@ -102,7 +102,7 @@ fn a_repository_answer_that_names_no_origin_fails_the_poll_and_the_tag() {
             None,
         )
     };
-    let http = Scripted::new(vec![
+    let http = ScriptedHttp::new(vec![
         answer(200, &json!([release("v1", "2026-11-01T10:00:00Z")]), None),
         unreadable(),
     ]);
@@ -115,7 +115,7 @@ fn a_repository_answer_that_names_no_origin_fails_the_poll_and_the_tag() {
         polled(&source, &http, None),
         Err(Unpolled::Unreadable(_))
     ));
-    let tagged = Scripted::new(vec![unreadable()]);
+    let tagged = ScriptedHttp::new(vec![unreadable()]);
     assert!(matches!(
         one_tag(Forge::GitHub, &tagged),
         Err(Unpolled::Unreadable(_))
@@ -124,7 +124,7 @@ fn a_repository_answer_that_names_no_origin_fails_the_poll_and_the_tag() {
 
 #[test]
 fn releases_alone_ask_no_tags() {
-    let http = Scripted::new(vec![
+    let http = ScriptedHttp::new(vec![
         answer(
             200,
             &json!([release("v1", "2026-11-01T10:00:00Z")]),
@@ -173,7 +173,7 @@ fn releases_alone_ask_no_tags() {
 
 #[test]
 fn a_tag_with_a_release_is_the_release_s_and_a_tag_without_one_is_read_in_full() {
-    let http = Scripted::new(vec![
+    let http = ScriptedHttp::new(vec![
         answer(
             200,
             &json!([release("v1", "2026-11-01T10:00:00Z")]),
@@ -236,7 +236,7 @@ fn a_tag_with_a_release_is_the_release_s_and_a_tag_without_one_is_read_in_full()
 
 #[test]
 fn a_lightweight_github_tag_takes_its_commit_s_date() {
-    let http = Scripted::new(vec![
+    let http = ScriptedHttp::new(vec![
         answer(200, &json!([{"name": "v3", "commit": {"sha": "c3"}}]), None),
         repository(Forge::GitHub),
         answer(
@@ -270,7 +270,7 @@ fn a_lightweight_github_tag_takes_its_commit_s_date() {
 
 #[test]
 fn with_no_cursor_only_the_newest_backfill_tags_are_read_and_the_rest_remembered() {
-    let http = Scripted::new(vec![
+    let http = ScriptedHttp::new(vec![
         answer(
             200,
             &json!([
@@ -307,7 +307,7 @@ fn with_no_cursor_only_the_newest_backfill_tags_are_read_and_the_rest_remembered
 
 #[test]
 fn a_seen_tag_is_left_out_and_a_forgejo_annotated_tag_reads_its_object() {
-    let http = Scripted::new(vec![
+    let http = ScriptedHttp::new(vec![
         answer(
             200,
             &json!([
@@ -365,7 +365,7 @@ fn each_signal_is_asked_with_its_own_validators_and_keeps_them_when_unchanged() 
         &[Signal::Release, Signal::Tag],
         (PrereleaseRule::Either, 0),
     );
-    let quiet = Scripted::new(vec![unchanged(), unchanged()]);
+    let quiet = ScriptedHttp::new(vec![unchanged(), unchanged()]);
     assert_eq!(polled(&source, &quiet, Some(&cursor)), Ok(None));
     assert_eq!(
         quiet
@@ -375,7 +375,7 @@ fn each_signal_is_asked_with_its_own_validators_and_keeps_them_when_unchanged() 
             .collect::<Vec<_>>(),
         [Some("r1".to_owned()), Some("t1".to_owned())]
     );
-    let released = Scripted::new(vec![
+    let released = ScriptedHttp::new(vec![
         answer(
             200,
             &json!([release("v4", "2026-11-04T10:00:00Z")]),
@@ -387,7 +387,7 @@ fn each_signal_is_asked_with_its_own_validators_and_keeps_them_when_unchanged() 
     let found = polled(&source, &released, Some(&cursor)).unwrap().unwrap();
     assert_eq!(found.etag.as_deref(), Some("r2"));
     assert_eq!(found.signals, cursor.signals);
-    let tagged = Scripted::new(vec![
+    let tagged = ScriptedHttp::new(vec![
         unchanged(),
         answer(200, &json!([]), Some("t2")),
         repository(Forge::GitHub),
@@ -407,7 +407,7 @@ fn each_signal_is_asked_with_its_own_validators_and_keeps_them_when_unchanged() 
 #[test]
 fn a_repository_without_a_page_or_an_unreadable_tag_fails_the_poll() {
     let source = releases(Forge::GitHub, &[Signal::Tag], (PrereleaseRule::Either, 0));
-    let pageless = Scripted::new(vec![
+    let pageless = ScriptedHttp::new(vec![
         answer(200, &json!([{"name": "v1"}]), None),
         answer(200, &json!({"id": 7, "name": "r"}), None),
     ]);
@@ -417,7 +417,7 @@ fn a_repository_without_a_page_or_an_unreadable_tag_fails_the_poll() {
             "GitHub's repository names no web page of the repository".to_owned()
         ))
     );
-    let hostless = Scripted::new(vec![
+    let hostless = ScriptedHttp::new(vec![
         answer(200, &json!([{"name": "v1"}]), None),
         answer(200, &json!({"id": 7, "name": "r", "html_url": "o/r"}), None),
     ]);
@@ -427,7 +427,7 @@ fn a_repository_without_a_page_or_an_unreadable_tag_fails_the_poll() {
             "the repository's page o/r names no host".to_owned()
         ))
     );
-    let undated = Scripted::new(vec![
+    let undated = ScriptedHttp::new(vec![
         answer(200, &json!([{"name": "v1"}]), None),
         repository(Forge::GitHub),
         answer(
@@ -443,7 +443,7 @@ fn a_repository_without_a_page_or_an_unreadable_tag_fails_the_poll() {
             "GitHub's tags could not be read: the tag v1 has no time".to_owned()
         ))
     );
-    let garbled = Scripted::new(vec![
+    let garbled = ScriptedHttp::new(vec![
         answer(200, &json!({"not": "tags"}), None),
         repository(Forge::GitHub),
     ]);
@@ -451,7 +451,7 @@ fn a_repository_without_a_page_or_an_unreadable_tag_fails_the_poll() {
         polled(&source, &garbled, Some(&Cursor::default())),
         Err(Unpolled::Unreadable(reason)) if reason.contains("GitHub's tags")
     ));
-    let unreachable = Scripted::new(vec![
+    let unreachable = ScriptedHttp::new(vec![
         answer(200, &json!([{"name": "v1"}]), None),
         repository(Forge::GitHub),
     ]);
@@ -459,7 +459,7 @@ fn a_repository_without_a_page_or_an_unreadable_tag_fails_the_poll() {
         polled(&source, &unreachable, Some(&Cursor::default())),
         Err(Unpolled::Unreachable(_))
     ));
-    let broken = Scripted::new(vec![
+    let broken = ScriptedHttp::new(vec![
         answer(200, &json!([{"name": "v1"}]), None),
         repository(Forge::GitHub),
         answer(200, &json!({"object": {"type": "tree", "sha": "c"}}), None),
@@ -470,7 +470,7 @@ fn a_repository_without_a_page_or_an_unreadable_tag_fails_the_poll() {
     ));
 }
 
-fn one_tag(forge: Forge, http: &Scripted) -> Result<Event, Unpolled> {
+fn one_tag(forge: Forge, http: &ScriptedHttp) -> Result<Event, Unpolled> {
     let options = SourceOptions {
         repository: Some("o/r".to_owned()),
         api: Some("https://forge.example/api".to_owned()),
@@ -487,7 +487,7 @@ fn one_tag(forge: Forge, http: &Scripted) -> Result<Event, Unpolled> {
 
 #[test]
 fn one_tag_is_read_in_full_on_each_forge() {
-    let gitlab = Scripted::new(vec![
+    let gitlab = ScriptedHttp::new(vec![
         repository(Forge::GitLab),
         answer(
             200,
@@ -508,7 +508,7 @@ fn one_tag_is_read_in_full_on_each_forge() {
         gitlab.asked()[1].0,
         "https://forge.example/api/projects/o%2Fr/repository/tags/v1-rc.1"
     );
-    let forgejo = Scripted::new(vec![
+    let forgejo = ScriptedHttp::new(vec![
         repository(Forge::Forgejo),
         answer(
             200,
@@ -524,7 +524,7 @@ fn one_tag_is_read_in_full_on_each_forge() {
         forgejo.asked()[1].0,
         "https://forge.example/api/repos/o/r/tags/v1-rc.1"
     );
-    let github = Scripted::new(vec![
+    let github = ScriptedHttp::new(vec![
         repository(Forge::GitHub),
         answer(
             200,
@@ -539,14 +539,14 @@ fn one_tag_is_read_in_full_on_each_forge() {
     ]);
     assert!(one_tag(Forge::GitHub, &github).is_ok());
     assert_eq!(github.asked().len(), 3);
-    let pageless = Scripted::new(vec![answer(200, &json!({"id": 7, "name": "r"}), None)]);
+    let pageless = ScriptedHttp::new(vec![answer(200, &json!({"id": 7, "name": "r"}), None)]);
     assert_eq!(
         one_tag(Forge::GitHub, &pageless),
         Err(Unpolled::Unreadable(
             "GitHub's repository names no web page of the repository".to_owned()
         ))
     );
-    let missing = Scripted::new(vec![
+    let missing = ScriptedHttp::new(vec![
         repository(Forge::GitLab),
         answer(404, &json!({}), None),
     ]);
@@ -554,17 +554,17 @@ fn one_tag_is_read_in_full_on_each_forge() {
         one_tag(Forge::GitLab, &missing),
         Err(Unpolled::Unreadable(_))
     ));
-    let unreachable = Scripted::new(Vec::new());
+    let unreachable = ScriptedHttp::new(Vec::new());
     assert!(matches!(
         one_tag(Forge::GitLab, &unreachable),
         Err(Unpolled::Unreachable(_))
     ));
-    let undescribed = Scripted::new(vec![answer(500, &json!({}), None)]);
+    let undescribed = ScriptedHttp::new(vec![answer(500, &json!({}), None)]);
     assert!(matches!(
         one_tag(Forge::GitLab, &undescribed),
         Err(Unpolled::Unreadable(_))
     ));
-    let unanswered = Scripted::new(vec![repository(Forge::GitLab)]);
+    let unanswered = ScriptedHttp::new(vec![repository(Forge::GitLab)]);
     assert!(matches!(
         one_tag(Forge::GitLab, &unanswered),
         Err(Unpolled::Unreachable(_))

@@ -19,8 +19,6 @@ mod options;
 mod owner;
 mod packages;
 mod polled;
-#[cfg(test)]
-mod scripted;
 mod tags;
 mod wire;
 
