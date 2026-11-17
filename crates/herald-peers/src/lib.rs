@@ -2,9 +2,11 @@
 //! ADR-0043): JSON written one way (RFC 8785), integrity proofs on
 //! herald's objects (W3C Data Integrity, `eddsa-jcs-2022`), HTTP message
 //! signatures by Ed25519 (RFC 9421) over a body's digest (RFC 9530), and an
-//! instance's key set with the rotation statement that replaces it.
+//! instance's key set with the rotation statement that replaces it, and
+//! the documents an instance is found by (ADR-0044).
 
 pub mod digest;
+pub mod discovery;
 pub mod jcs;
 pub mod keys;
 pub mod message;

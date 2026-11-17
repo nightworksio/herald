@@ -248,6 +248,10 @@ pub(crate) enum Fault {
     ListingConflicts,
     ReadsTokens,
     WritesTokens,
+    ReadsPublished,
+    WritesPublished,
+    ConflictsPublished,
+    KeepsNoPublished,
     ListsSchedules,
     Reads,
     Claims,
@@ -636,6 +640,7 @@ impl Keeper for Failing {
             Held::Latest => self.fault != Fault::KeepsNoLatest,
             Held::Positions => self.fault != Fault::KeepsNoPositions,
             Held::Pending => self.fault != Fault::KeepsNoPending,
+            Held::Published => self.fault != Fault::KeepsNoPublished,
             _ => true,
         }
     }

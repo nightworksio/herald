@@ -21,7 +21,7 @@ pub use destination::{Carried, Destination, DestinationConfig, UNREAD};
 pub use federates::{Activity, Federates, Inboxes};
 pub use interacts::{Endpoint, Interacted, Interacts, Post, Read, Replying, Said, optional};
 pub use itself::Itself;
-pub use kind::{DestinationKind, Fault, Placing};
+pub use kind::{DestinationKind, Fault, Inherited, Placing};
 pub use opening::{GITHUB_REPOSITORY, GITHUB_TOKEN, KvAt, Local, Opened, Opening, SqlAt, unopened};
 pub use placement::{Placed, Placement};
 pub use reach::{Posts, Probe, Reach, Reached, Signing, UnreadPosts};

@@ -140,11 +140,13 @@ pub enum Held {
     Pending,
     /// Minted tokens, sealed.
     Tokens,
+    /// What the instance published to its peers.
+    Published,
 }
 
 impl Held {
     /// Every kind, in the order a store's accessors list them.
-    pub const ALL: [Self; 12] = [
+    pub const ALL: [Self; 13] = [
         Self::Ledger,
         Self::Cursors,
         Self::Schedules,
@@ -157,6 +159,7 @@ impl Held {
         Self::Positions,
         Self::Pending,
         Self::Tokens,
+        Self::Published,
     ];
 
     /// The kind as an error names it.
@@ -174,6 +177,7 @@ impl Held {
             Self::Positions => "session positions",
             Self::Pending => "held events",
             Self::Tokens => "minted tokens",
+            Self::Published => "published key sets",
         }
     }
 
@@ -868,6 +872,8 @@ pub trait Store: Sync {
     type Waiting: Waiting;
     /// Its minted tokens.
     type Tokens: Tokens;
+    /// What the instance published to its peers.
+    type Published: Published;
 
     /// The ledger, where it keeps or derives one.
     fn ledger(&self) -> Option<&Self::Ledger>;
@@ -893,6 +899,8 @@ pub trait Store: Sync {
     fn waiting(&self) -> Option<&Self::Waiting>;
     /// The minted tokens, where it keeps them.
     fn tokens(&self) -> Option<&Self::Tokens>;
+    /// What the instance published to its peers, where it keeps that.
+    fn published(&self) -> Option<&Self::Published>;
 
     /// The paths of the records a listing skipped as corrupt since this was
     /// last asked, each once, so one bad record stops no listing and is
@@ -907,9 +915,11 @@ pub trait Store: Sync {
 
 mod keeper;
 mod optional;
+mod published;
 mod tokens;
 
 pub use keeper::Keeper;
+pub use published::Published;
 pub use tokens::Tokens;
 
 #[cfg(test)]

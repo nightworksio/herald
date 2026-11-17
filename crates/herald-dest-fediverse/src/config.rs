@@ -2,7 +2,7 @@ use herald_core::{
     ActorName, KeyForm, Profile, Scheme, SecretRef, Signed, Symbols, WaitOptions, Waits,
 };
 use herald_kinds::{
-    DestinationConfig, DestinationKind, Fault, Placed, Placement, Placing, Reached,
+    DestinationConfig, DestinationKind, Fault, Inherited, Placed, Placement, Placing, Reached,
 };
 use herald_ports::Secret;
 
@@ -156,6 +156,49 @@ impl DestinationKind for ActorKind {
 
     type Options = ActorOptions;
     type Route = ActorRouteOptions;
+
+    const INHERITS: &[Inherited] = &[
+        Inherited {
+            key: "domain",
+            from: "domain",
+            required: true,
+        },
+        Inherited {
+            key: "key",
+            from: "actor_key",
+            required: true,
+        },
+        Inherited {
+            key: "mode",
+            from: "mode",
+            required: false,
+        },
+        Inherited {
+            key: "block",
+            from: "block",
+            required: false,
+        },
+        Inherited {
+            key: "allow",
+            from: "allow",
+            required: false,
+        },
+        Inherited {
+            key: "followers",
+            from: "followers",
+            required: false,
+        },
+        Inherited {
+            key: "approve",
+            from: "approve",
+            required: false,
+        },
+        Inherited {
+            key: "lists",
+            from: "lists",
+            required: false,
+        },
+    ];
 
     fn checked(
         mut options: ActorOptions,

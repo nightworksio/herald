@@ -172,20 +172,20 @@ herald's own ActivityPub actors, on its domain.
 | Setting | Type | What it sets |
 |---------|------|--------------|
 | `destinations.<name>` | table | herald's own ActivityPub actors, on its domain. |
-| `destinations.<name>.allow` | array of string | The servers and actors an `allowlist` federates with, written as `block` writes them. |
-| `destinations.<name>.approve` | [Approve](#approve) | Who takes a follow: `auto`, herald by the lists and caps, or `manual`, the operator through `herald followers`. |
-| `destinations.<name>.block` | array of string | The servers and actors its actors never take a follow from or deliver to: each a domain, naming its subdomains too, or an actor's id. |
+| `destinations.<name>.allow` | array of string | The servers and actors an `allowlist` federates with, written as `block` writes them; `[federation]`'s where unset. |
+| `destinations.<name>.approve` | [Approve](#approve) | Who takes a follow: `auto`, herald by the lists and caps, or `manual`, the operator through `herald followers`; `[federation]`'s where unset. |
+| `destinations.<name>.block` | array of string | The servers and actors its actors never take a follow from or deliver to: each a domain, naming its subdomains too, or an actor's id; `[federation]`'s where unset. |
 | `destinations.<name>.deliveries` | integer | How many of an announcement's followers' inboxes it delivers to at once, by every command that announces; 8 where unset. |
-| `destinations.<name>.domain` | string | The domain herald serves its actors on, such as `herald.example`: a host alone, with no scheme, port or path. |
-| `destinations.<name>.followers` | table | How many may follow each actor, in all and from any one server; a follow past either is answered with a `Reject`. |
+| `destinations.<name>.domain` | string | The domain herald serves its actors on, such as `herald.example`: a host alone, with no scheme, port or path; `[federation] domain` where unset. |
+| `destinations.<name>.followers` | table | How many may follow each actor, in all and from any one server; a follow past either is answered with a `Reject`; `[federation]`'s where unset. |
 | `destinations.<name>.followers.most` | integer | The most followers one actor keeps; no limit where unset. |
 | `destinations.<name>.followers.per_domain` | integer | The most followers one actor keeps from any one server; no limit where unset. |
-| `destinations.<name>.key` | table | The secret holding the actors' RSA private key, as PKCS#8 PEM, such as `openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048` writes. |
+| `destinations.<name>.key` | table | The secret holding the actors' RSA private key, as PKCS#8 PEM, such as `openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048` writes; `[federation] actor_key` where unset. |
 | `destinations.<name>.key.secret` | string | The secret's name. |
 | `destinations.<name>.kind` | string |  |
 | `destinations.<name>.lists[].file` | string | The file, as a path beside `herald.toml`. |
 | `destinations.<name>.lists[].sha256` | string | The SHA-256 of the file's text, in hex: a list that changes is not read until its new digest is pinned. |
-| `destinations.<name>.mode` | [Mode](#mode) | Whom its actors federate with: `open`, everyone `block` does not name, or `allowlist`, only those `allow` names. |
+| `destinations.<name>.mode` | [Mode](#mode) | Whom its actors federate with: `open`, everyone `block` does not name, or `allowlist`, only those `allow` names; `[federation]`'s where unset. |
 | `destinations.<name>.outbox_page` | integer | How many Notes one page of each actor's outbox holds, from 1 to 80; 20 where unset. |
 | `destinations.<name>.symbols` | table | The characters its posts write where its markup has none: a task done and to do, a rule and a text list's bullet. |
 | `destinations.<name>.symbols.bullet` | [OneCharacter](#onecharacter) | A list's bullet where a list is written as text: `•` in Slack and `-` in plain text where unset. |
@@ -203,6 +203,27 @@ How doctor judges the config.
 | Setting | Type | What it sets |
 |---------|------|--------------|
 | `doctor.private_to_public` | [Guard](#guard) | What becomes of a route that takes a private or internal repository's events and is not `private`: "refuse" where absent, so the config does not load and no such event reaches it; "warn" to load it and have doctor name it; or "allow". |
+
+## `federation`
+
+This herald among other instances: its domain, its keys, and what its ActivityPub actors take by default.
+
+| Setting | Type | What it sets |
+|---------|------|--------------|
+| `federation.actor_key` | table | The secret holding the RSA private key herald's ActivityPub actors sign with, as PKCS#8 PEM. An ActivityPub destination that names no `key` takes it. |
+| `federation.actor_key.secret` | string | The secret's name. |
+| `federation.allow` | array of string | The servers and actors an `allowlist` federates with, for an ActivityPub destination that names no `allow`. |
+| `federation.approve` | [Approve](#approve) | Who takes a follow, for an ActivityPub destination that names no `approve`: `auto` or `manual`. |
+| `federation.block` | array of string | The servers and actors herald's actors never take a follow from or deliver to, for an ActivityPub destination that names no `block`. |
+| `federation.domain` | string | The domain herald serves its discovery document and actors on, such as `herald.example`: a host alone, with no scheme, port or path. An ActivityPub destination that names no `domain` takes it. |
+| `federation.followers` | table | How many may follow each actor, for an ActivityPub destination that names no `followers`. |
+| `federation.followers.most` | integer | The most followers one actor keeps; no limit where unset. |
+| `federation.followers.per_domain` | integer | The most followers one actor keeps from any one server; no limit where unset. |
+| `federation.keys[].secret` | string | The secret's name. |
+| `federation.lists[].file` | string | The file, as a path beside `herald.toml`. |
+| `federation.lists[].sha256` | string | The SHA-256 of the file's text, in hex: a list that changes is not read until its new digest is pinned. |
+| `federation.mode` | [Mode](#mode) | Whom herald's actors federate with, for an ActivityPub destination that names no `mode`: `open` or `allowlist`. |
+| `federation.refresh` | [Duration](#duration) | How long a peer may keep the instance's key set before it reads it again; "1d" where absent, at most "7d". |
 
 ## `github_apps`
 

@@ -201,6 +201,20 @@ fn the_markers_store_names_the_pins_cursors_and_read_backs_it_lacks() {
         };
         assert_eq!(gaps, expected);
     }
+    let mut federated = on("markers", "");
+    let published = |config: &herald_config::Config| {
+        doctored(config, &layer(&STORES))
+            .gaps
+            .into_iter()
+            .filter(|gap| gap.feature == "raising the key set's sequence with each new set")
+            .map(|gap| gap.key)
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(published(&federated), Vec::<String>::new());
+    federated.federation.keys = vec![herald_core::SecretRef {
+        secret: "HERALD_KEY".to_owned(),
+    }];
+    assert_eq!(published(&federated), ["federation.keys"]);
 }
 
 #[test]

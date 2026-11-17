@@ -5,7 +5,7 @@ use std::sync::{Arc, Mutex, PoisonError};
 
 use herald_core::{
     Attempts, Cursor, DestinationName, Entry, Hold, KeptToken, Key, Latest, Listing, Membership,
-    Pending, RecordKind, RouteId, Schedule, SourceName, State, Subscription,
+    Pending, PublishedKeys, RecordKind, RouteId, Schedule, SourceName, State, Subscription,
 };
 use herald_ports::{
     Admitted, Announcements, Cursors, Deliveries, Held, Inboxes, Keeper, Keyring, KnownKey, Ledger,
@@ -616,6 +616,21 @@ impl<R: RecordBackend> Tokens for RecordStore<R> {
     }
 }
 
+impl<R: RecordBackend> herald_ports::Published for RecordStore<R> {
+    async fn published_keys(&self) -> Result<Option<Versioned<PublishedKeys>>, StoreError> {
+        self.listed(paths::PUBLISHED_KEYS).await
+    }
+
+    async fn put_published_keys(
+        &self,
+        keys: &PublishedKeys,
+        expected: Option<Version>,
+    ) -> Result<Written, StoreError> {
+        self.compare_and_set(paths::PUBLISHED_KEYS, keys, expected)
+            .await
+    }
+}
+
 impl<R: RecordBackend> Keeper for RecordStore<R> {
     fn holds(&self, kind: Held) -> bool {
         match kind {
@@ -625,7 +640,8 @@ impl<R: RecordBackend> Keeper for RecordStore<R> {
             | Held::Deliveries
             | Held::Positions
             | Held::Pending
-            | Held::Tokens => true,
+            | Held::Tokens
+            | Held::Published => true,
             Held::Subscriptions | Held::Inboxes => self.keeps.contains(&RecordKind::Subscriptions),
             Held::Pins => self.keeps.contains(&RecordKind::Pins),
             Held::Notes => self.keeps.contains(&RecordKind::Notes),

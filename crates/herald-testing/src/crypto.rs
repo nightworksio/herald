@@ -11,6 +11,13 @@ pub struct FakeSigner;
 #[derive(Debug, Default)]
 pub struct FakeVerifier;
 
+/// The DER of an Ed25519 `SubjectPublicKeyInfo` before its 32-byte key.
+const ED25519_SUBJECT: [u8; 12] = [
+    0x30, 0x2a, 0x30, 0x05, 0x06, 0x03, 0x2b, 0x65, 0x70, 0x03, 0x21, 0x00,
+];
+/// The bytes of an Ed25519 public key.
+const ED25519_LENGTH: usize = 32;
+
 fn spelled(algorithm: Algorithm, key: &[u8], message: &[u8]) -> Vec<u8> {
     [format!("{algorithm:?}").as_bytes(), key, message].join(&b'|')
 }
@@ -71,14 +78,20 @@ impl Signer for FakeSigner {
             })
     }
 
-    /// `public|`, the algorithm and the key's value, joined by `|`.
+    /// `public|`, the algorithm and the key's value, joined by `|`; for an
+    /// Ed25519 key whose value is 32 bytes, those bytes as the key of a
+    /// `SubjectPublicKeyInfo`, as a real Ed25519 key's public half is.
     async fn public(&self, algorithm: Algorithm, key: &Secret) -> Result<Vec<u8>, CryptoError> {
         if key.name() == "BAD" {
             return Err(CryptoError::BadKey {
                 name: key.name().to_owned(),
             });
         }
-        Ok(spelled(algorithm, b"public", key.expose().as_bytes()))
+        let value = key.expose().as_bytes();
+        if algorithm == Algorithm::Ed25519 && value.len() == ED25519_LENGTH {
+            return Ok([&ED25519_SUBJECT[..], value].concat());
+        }
+        Ok(spelled(algorithm, b"public", value))
     }
 }
 
@@ -130,6 +143,19 @@ mod tests {
         assert_eq!(
             pollster::block_on(FakeSigner.public(Algorithm::Ed25519, &key)).unwrap(),
             b"Ed25519|public|k"
+        );
+        let wide = Secret::new("WIDE", "k".repeat(ED25519_LENGTH));
+        assert_eq!(
+            pollster::block_on(FakeSigner.public(Algorithm::Ed25519, &wide)).unwrap(),
+            [&ED25519_SUBJECT[..], "k".repeat(ED25519_LENGTH).as_bytes()].concat()
+        );
+        assert_eq!(
+            pollster::block_on(FakeSigner.public(Algorithm::RsaSha256, &wide)).unwrap(),
+            [
+                b"RsaSha256|public|".as_slice(),
+                "k".repeat(ED25519_LENGTH).as_bytes()
+            ]
+            .concat()
         );
         let bad = Secret::new("BAD", "k");
         assert_eq!(

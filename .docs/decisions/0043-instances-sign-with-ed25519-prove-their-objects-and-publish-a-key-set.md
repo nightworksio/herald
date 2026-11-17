@@ -1,6 +1,6 @@
 # ADR-0043: Instances sign with Ed25519, prove their objects, and publish a key set
 
-**Status:** Accepted
+**Status:** Accepted; the instance's keys, its discovery document and the key set's sequence extended by [ADR-0044](0044-an-instance-is-found-by-its-discovery-document-and-federation-holds-its-identity.md)
 **Date:** 2026-11-17
 
 ## Context

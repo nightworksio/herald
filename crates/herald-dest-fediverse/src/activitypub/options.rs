@@ -4,7 +4,7 @@ use herald_core::{ACTOR_FIELDS, ActorName, Sandbox, SecretRef, Symbols, WaitOpti
 use schemars::JsonSchema;
 use serde::Deserialize;
 
-use super::policy::{Approve, FollowerCaps, Mode, Policy, SharedList, unlisted};
+use super::policy::{Approve, FollowerCaps, Mode, Policy, SharedList, followed_by};
 
 /// The longest name an actor takes, as Mastodon takes a username.
 const NAME: usize = 30;
@@ -14,12 +14,13 @@ const NAME: usize = 30;
 #[serde(deny_unknown_fields)]
 pub struct ActorOptions {
     /// The domain herald serves its actors on, such as `herald.example`:
-    /// a host alone, with no scheme, port or path.
+    /// a host alone, with no scheme, port or path; `[federation] domain`
+    /// where unset.
     #[schemars(example = "herald.example")]
     pub domain: String,
     /// The secret holding the actors' RSA private key, as PKCS#8 PEM, such
     /// as `openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048`
-    /// writes.
+    /// writes; `[federation] actor_key` where unset.
     pub key: SecretRef,
     /// The characters its posts write where its markup has none: a task
     /// done and to do, a rule and a text list's bullet.
@@ -35,27 +36,31 @@ pub struct ActorOptions {
     /// once, by every command that announces; 8 where unset.
     pub deliveries: Option<NonZeroUsize>,
     /// Whom its actors federate with: `open`, everyone `block` does not
-    /// name, or `allowlist`, only those `allow` names.
+    /// name, or `allowlist`, only those `allow` names; `[federation]`'s
+    /// where unset.
     #[serde(default)]
     pub mode: Mode,
     /// The servers and actors its actors never take a follow from or
     /// deliver to: each a domain, naming its subdomains too, or an actor's
-    /// id.
+    /// id; `[federation]`'s where unset.
     #[serde(default)]
     pub block: Vec<String>,
     /// The servers and actors an `allowlist` federates with, written as
-    /// `block` writes them.
+    /// `block` writes them; `[federation]`'s where unset.
     #[serde(default)]
     pub allow: Vec<String>,
     /// How many may follow each actor, in all and from any one server; a
-    /// follow past either is answered with a `Reject`.
+    /// follow past either is answered with a `Reject`; `[federation]`'s
+    /// where unset.
     pub followers: Option<FollowerCaps>,
     /// Who takes a follow: `auto`, herald by the lists and caps, or
-    /// `manual`, the operator through `herald followers`.
+    /// `manual`, the operator through `herald followers`; `[federation]`'s
+    /// where unset.
     #[serde(default)]
     pub approve: Approve,
     /// Shared block lists, each a file of Mastodon's domain block CSV
-    /// pinned by its SHA-256, whose domains are blocked beside `block`'s.
+    /// pinned by its SHA-256, whose domains are blocked beside `block`'s;
+    /// `[federation]`'s where unset.
     #[serde(default)]
     pub lists: Vec<SharedList>,
 }
@@ -107,18 +112,7 @@ impl ActorOptions {
                 self.domain
             ));
         }
-        if let Some(refused) = self
-            .block
-            .iter()
-            .chain(&self.allow)
-            .find_map(|entry| unlisted(entry))
-        {
-            return Err(refused);
-        }
-        let caps = self.followers.unwrap_or_default();
-        if caps.most == Some(0) || caps.per_domain == Some(0) {
-            return Err("followers.most and followers.per_domain take at least 1; leave one out for no limit".to_owned());
-        }
+        followed_by(&self.block, &self.allow, self.followers)?;
         if !(1..=Self::OUTBOX_MOST).contains(&self.outbox_page()) {
             return Err(format!(
                 "outbox_page holds 1 to {} Notes, not {}",

@@ -214,6 +214,7 @@ pub struct Prepared {
     mintings: Vec<Minting>,
     interacting: Vec<(DestinationName, Interacted)>,
     webhooks: Webhooks,
+    instance: Vec<Secret>,
 }
 
 /// The prepared routes and sources, each with the `Http` that reaches it.
@@ -224,6 +225,7 @@ pub struct Connected<H> {
     pub(crate) mintings: Vec<(Minting, H)>,
     pub(crate) interacting: Vec<(DestinationName, Interacted, H, Option<H>)>,
     webhooks: Webhooks,
+    pub(crate) instance: Vec<Secret>,
 }
 
 impl<H> Connected<H> {
@@ -345,6 +347,7 @@ impl Prepared {
             mintings,
             interacting,
             webhooks: self.webhooks,
+            instance: self.instance,
         })
     }
 }
@@ -506,7 +509,11 @@ pub async fn prepare<S: Secrets, G: Signer>(
     }
     let mut interacting = Vec::new();
     let mut webhooks = Webhooks::default();
+    let mut instance = Vec::new();
     if uses == Uses::Serves {
+        for key in &config.federation.keys {
+            instance.push(read.secret(&key.secret).await?);
+        }
         for (name, resolved) in &resolved {
             if let Some(found) = resolved
                 .destination
@@ -537,6 +544,7 @@ pub async fn prepare<S: Secrets, G: Signer>(
         mintings: mintings.0,
         interacting,
         webhooks,
+        instance,
     })
 }
 

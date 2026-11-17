@@ -4,10 +4,13 @@
 use herald_core::Escaping;
 use herald_core::status;
 use herald_kinds::Endpoint;
+use herald_peers::discovery::{NODEINFO, NODEINFO_LINKS};
+use herald_peers::keys::WELL_KNOWN;
 use herald_ports::{Clock, Http, Keyring, Signer, Store, Verifier};
 
 use super::actors::{actor, counted, documented, domain, fingered, inboxed, noted, outboxed};
 use super::apps::{posted, standing};
+use super::discovery::{discovered, nodeinfo, nodeinfo_links};
 use super::replies::{Answered, Reply, gone, missing, refusal, text_reply, unmethodical};
 use super::webhooks::{app_hooked, hooked};
 use super::{Inbound, Serving};
@@ -68,12 +71,17 @@ pub async fn answer<S: Store, C: Clock, G: Signer, V: Verifier, H, P: Http, K: K
     };
     match (inbound.method, path) {
         ("GET", HEALTH) => text_reply(status::OK, UP),
-        ("GET", WEBFINGER) => fingered(serving, inbound.query).await,
+        ("GET", WEBFINGER) => fingered(serving, inbound).await,
+        ("GET", WELL_KNOWN) => discovered(serving, inbound).await,
+        ("GET", NODEINFO_LINKS) => nodeinfo_links(serving, inbound),
+        ("GET", NODEINFO) => nodeinfo(serving, inbound),
         ("POST", SHARED_INBOX) => match domain(serving.connected, inbound.host()) {
             Some(audience) => inboxed(serving, inbound, audience).await,
             None => missing("actor on this host"),
         },
-        (_, HEALTH | WEBFINGER | SHARED_INBOX) => unmethodical(),
+        (_, HEALTH | WEBFINGER | SHARED_INBOX | WELL_KNOWN | NODEINFO_LINKS | NODEINFO) => {
+            unmethodical()
+        }
         (method, path) => prefixed(serving, method, path, inbound).await,
     }
 }

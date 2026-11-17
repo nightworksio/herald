@@ -229,6 +229,39 @@ selection keeps its actor while it has followers, taking no new follows,
 until its last follower leaves or `keep_members` passes; herald then
 answers that the actor is gone.
 
+### herald among other instances
+
+`[federation]` names the domain herald serves on and its Ed25519 keys,
+newest first: the first signs, and every one verifies.
+
+```toml
+[federation]
+domain = "herald.example.org"
+keys = [{ secret = "HERALD_KEY" }]
+```
+
+Make a key with:
+
+```sh
+openssl genpkey -algorithm ed25519 -out herald-key.pem
+```
+
+`herald server` then answers `/.well-known/herald` on that domain: the API
+it serves, its software and its key set, under a sequence the store raises
+by one whenever the keys change. Peers pin the keys and read the set again
+after `refresh` (`"1d"`, at most `"7d"`). Rotate by writing the new key
+before the old one, and leave the old one out once peers know the new one.
+WebFinger finds the instance as `acct:herald@herald.example.org`, and
+NodeInfo 2.1 describes it at `/.well-known/nodeinfo`. herald reads at most
+`fields` (`"8KiB"`) of a peer's signature fields.
+
+An ActivityPub destination takes `domain`, `key` (as `actor_key`) and its
+follow policy (`mode`, `block`, `allow`, `followers`, `approve`, `lists`)
+from `[federation]` where it leaves them out, and its own where it names
+them. `herald doctor` checks that each key is an Ed25519 key, and names
+the markers store, which keeps no key set, and a layer that serves no
+endpoint.
+
 ### herald server
 
 `herald server` answers forge webhooks and serves herald's ActivityPub

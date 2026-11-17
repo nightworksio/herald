@@ -7,8 +7,9 @@ use crate::config::Config;
 use crate::kinds::Kinds;
 
 use crate::file::{
-    AnnounceFile, AppFile, DoctorFile, GithubAppFile, HttpFile, KindFile, MarkersFile, RecordsFile,
-    RenderFile, RouteFile, RunFile, ScheduleFile, ServerFile, TemplateFile,
+    AnnounceFile, AppFile, DoctorFile, FederationFile, GithubAppFile, HttpFile, KindFile,
+    MarkersFile, RecordsFile, RenderFile, RouteFile, RunFile, ScheduleFile, ServerFile,
+    TemplateFile,
 };
 
 /// `version`: the one version of the config this herald reads.
@@ -261,6 +262,9 @@ struct FileSchema {
     schedule: Option<ScheduleFile>,
     /// How `herald server` listens, and what it takes on at once.
     server: Option<ServerFile>,
+    /// This herald among other instances: its domain, its keys, and what
+    /// its ActivityPub actors take by default.
+    federation: Option<FederationFile>,
     /// How herald's own requests reach the services the config names.
     http: Option<HttpFile>,
     /// How far a template may go as it renders.

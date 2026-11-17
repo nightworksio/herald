@@ -3,12 +3,12 @@ use std::sync::Mutex;
 
 use herald_core::{
     Cursor, DestinationName, Entry, Hold, KeptToken, Key, Latest, Listing, Membership, Pending,
-    RouteId, Schedule, SourceName, State, Subscription,
+    PublishedKeys, RouteId, Schedule, SourceName, State, Subscription,
 };
 use herald_ports::{
     Admitted, Announcements, Cursors, Deliveries, Held, Inboxes, Keeper, Ledger, Notes, Outboxed,
-    Pins, Positions, Schedules, StoreError, Subscriptions, Tokens, Version, Versioned, Waiting,
-    Written,
+    Pins, Positions, Published, Schedules, StoreError, Subscriptions, Tokens, Version, Versioned,
+    Waiting, Written,
 };
 use jiff::Timestamp;
 
@@ -30,6 +30,7 @@ struct FakeState {
     inboxes: BTreeMap<(Key, String), State>,
     pending: BTreeMap<Hold, Versioned<Pending>>,
     tokens: BTreeMap<String, Versioned<KeptToken>>,
+    published: BTreeMap<(), Versioned<PublishedKeys>>,
 }
 
 /// A store in memory, keeping everything a store can keep.
@@ -433,6 +434,21 @@ impl Tokens for FakeStore {
             token,
             expected,
         ))
+    }
+}
+
+impl Published for FakeStore {
+    async fn published_keys(&self) -> Result<Option<Versioned<PublishedKeys>>, StoreError> {
+        Ok(lock(&self.state).published.get(&()).cloned())
+    }
+
+    async fn put_published_keys(
+        &self,
+        keys: &PublishedKeys,
+        expected: Option<Version>,
+    ) -> Result<Written, StoreError> {
+        let mut state = lock(&self.state);
+        Ok(compare_and_set(&mut state.published, (), keys, expected))
     }
 }
 

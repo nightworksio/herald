@@ -3,8 +3,8 @@ use std::marker::PhantomData;
 use std::ops::Range;
 
 use herald_kinds::{
-    ConfiguredStore, Destination, DestinationKind, Fault, Offer, Placed, Placing, Source,
-    SourceKind, StoreKind,
+    ConfiguredStore, Destination, DestinationKind, Fault, Inherited, Offer, Placed, Placing,
+    Source, SourceKind, StoreKind,
 };
 use jiff::SignedDuration;
 use schemars::{JsonSchema, Schema, SchemaGenerator};
@@ -148,6 +148,8 @@ pub(crate) struct At<'a> {
 pub(crate) trait Kinded: Send + Sync {
     fn name(&self) -> &'static str;
 
+    fn inherits(&self) -> &'static [Inherited];
+
     fn parse(
         &self,
         loader: &mut Loader<'_>,
@@ -184,6 +186,10 @@ where
         K::NAME
     }
 
+    fn inherits(&self) -> &'static [Inherited] {
+        K::INHERITS
+    }
+
     fn parse(
         &self,
         loader: &mut Loader<'_>,
@@ -218,12 +224,32 @@ where
     }
 
     fn destination_schema(&self, generator: &mut SchemaGenerator) -> Schema {
-        tagged::<K::Options>(generator, K::NAME, K::DESCRIPTION)
+        uninherited(
+            tagged::<K::Options>(generator, K::NAME, K::DESCRIPTION),
+            K::INHERITS,
+        )
     }
 
     fn route_schema(&self, generator: &mut SchemaGenerator) -> Schema {
         routed::<K::Route>(generator, K::ROUTE, K::ROUTE_DESCRIPTION)
     }
+}
+
+/// `schema` with every key of `inherits` left out of what it requires, as
+/// `[federation]` may give it.
+fn uninherited(mut schema: Schema, inherits: &[Inherited]) -> Schema {
+    schema
+        .get_mut("required")
+        .and_then(serde_json::Value::as_array_mut)
+        .into_iter()
+        .for_each(|required| {
+            required.retain(|key| {
+                !inherits
+                    .iter()
+                    .any(|inheriting| key.as_str() == Some(inheriting.key))
+            });
+        });
+    schema
 }
 
 /// The destination `checked` admits, with every fault it was checked with

@@ -13,7 +13,7 @@ fn a_destination_naming_an_option_its_kind_lacks_is_refused_by_name() {
         .into_iter()
         .map(|kind| {
             let text = format!(
-                "version = 1\n\n[store]\nkind = \"sqlite\"\n\n[destinations.team]\nkind = \"{kind}\"\nbogus = 1\n"
+                "version = 1\n\n[store]\nkind = \"sqlite\"\n\n[destinations.team]\nkind = \"{kind}\"\nbogus = 1\n\n[federation]\ndomain = \"herald.example\"\nactor_key = {{ secret = \"HERALD_ACTOR_KEY\" }}\n"
             );
             let error = load("herald.toml", &text, &nothing, &kinds)
                 .unwrap_err()

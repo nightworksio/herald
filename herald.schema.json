@@ -26,6 +26,10 @@
       "description": "How doctor judges the config.",
       "$ref": "#/$defs/Doctor"
     },
+    "federation": {
+      "description": "This herald among other instances: its domain, its keys, and what\nits ActivityPub actors take by default.",
+      "$ref": "#/$defs/Federation"
+    },
     "github_apps": {
       "description": "The GitHub Apps sources read as, by name.",
       "type": "object",
@@ -682,7 +686,7 @@
           "type": "object",
           "properties": {
             "allow": {
-              "description": "The servers and actors an `allowlist` federates with, written as\n`block` writes them.",
+              "description": "The servers and actors an `allowlist` federates with, written as\n`block` writes them; `[federation]`'s where unset.",
               "type": "array",
               "default": [],
               "items": {
@@ -690,11 +694,11 @@
               }
             },
             "approve": {
-              "description": "Who takes a follow: `auto`, herald by the lists and caps, or\n`manual`, the operator through `herald followers`.",
+              "description": "Who takes a follow: `auto`, herald by the lists and caps, or\n`manual`, the operator through `herald followers`; `[federation]`'s\nwhere unset.",
               "$ref": "#/$defs/Approve"
             },
             "block": {
-              "description": "The servers and actors its actors never take a follow from or\ndeliver to: each a domain, naming its subdomains too, or an actor's\nid.",
+              "description": "The servers and actors its actors never take a follow from or\ndeliver to: each a domain, naming its subdomains too, or an actor's\nid; `[federation]`'s where unset.",
               "type": "array",
               "default": [],
               "items": {
@@ -708,18 +712,18 @@
               "minimum": 1
             },
             "domain": {
-              "description": "The domain herald serves its actors on, such as `herald.example`:\na host alone, with no scheme, port or path.",
+              "description": "The domain herald serves its actors on, such as `herald.example`:\na host alone, with no scheme, port or path; `[federation] domain`\nwhere unset.",
               "type": "string",
               "examples": [
                 "herald.example"
               ]
             },
             "followers": {
-              "description": "How many may follow each actor, in all and from any one server; a\nfollow past either is answered with a `Reject`.",
+              "description": "How many may follow each actor, in all and from any one server; a\nfollow past either is answered with a `Reject`; `[federation]`'s\nwhere unset.",
               "$ref": "#/$defs/FollowerCaps"
             },
             "key": {
-              "description": "The secret holding the actors' RSA private key, as PKCS#8 PEM, such\nas `openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048`\nwrites.",
+              "description": "The secret holding the actors' RSA private key, as PKCS#8 PEM, such\nas `openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048`\nwrites; `[federation] actor_key` where unset.",
               "$ref": "#/$defs/SecretRef"
             },
             "kind": {
@@ -727,14 +731,14 @@
               "const": "activitypub"
             },
             "lists": {
-              "description": "Shared block lists, each a file of Mastodon's domain block CSV\npinned by its SHA-256, whose domains are blocked beside `block`'s.",
+              "description": "Shared block lists, each a file of Mastodon's domain block CSV\npinned by its SHA-256, whose domains are blocked beside `block`'s;\n`[federation]`'s where unset.",
               "type": "array",
               "items": {
                 "$ref": "#/$defs/SharedList"
               }
             },
             "mode": {
-              "description": "Whom its actors federate with: `open`, everyone `block` does not\nname, or `allowlist`, only those `allow` names.",
+              "description": "Whom its actors federate with: `open`, everyone `block` does not\nname, or `allowlist`, only those `allow` names; `[federation]`'s\nwhere unset.",
               "$ref": "#/$defs/Mode"
             },
             "outbox_page": {
@@ -755,9 +759,7 @@
           },
           "additionalProperties": false,
           "required": [
-            "kind",
-            "domain",
-            "key"
+            "kind"
           ]
         }
       ]
@@ -1036,6 +1038,68 @@
           "const": "release"
         }
       ]
+    },
+    "Federation": {
+      "description": "This herald among other instances: the domain it serves, its keys, and\nwhat its ActivityPub actors take where their destination leaves it out.",
+      "type": "object",
+      "properties": {
+        "actor_key": {
+          "description": "The secret holding the RSA private key herald's ActivityPub actors\nsign with, as PKCS#8 PEM. An ActivityPub destination that names no\n`key` takes it.",
+          "$ref": "#/$defs/SecretRef"
+        },
+        "allow": {
+          "description": "The servers and actors an `allowlist` federates with, for an\nActivityPub destination that names no `allow`.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "approve": {
+          "description": "Who takes a follow, for an ActivityPub destination that names no\n`approve`: `auto` or `manual`.",
+          "$ref": "#/$defs/Approve"
+        },
+        "block": {
+          "description": "The servers and actors herald's actors never take a follow from or\ndeliver to, for an ActivityPub destination that names no `block`.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "domain": {
+          "description": "The domain herald serves its discovery document and actors on, such\nas `herald.example`: a host alone, with no scheme, port or path. An\nActivityPub destination that names no `domain` takes it.",
+          "type": "string",
+          "examples": [
+            "herald.example"
+          ]
+        },
+        "followers": {
+          "description": "How many may follow each actor, for an ActivityPub destination that\nnames no `followers`.",
+          "$ref": "#/$defs/FollowerCaps"
+        },
+        "keys": {
+          "description": "The secrets holding the instance's Ed25519 private keys, each as\nPKCS#8 PEM, such as `openssl genpkey -algorithm ed25519` writes,\nnewest first: the first signs, and every one verifies. Rotate by\nwriting a new key before the old one, and leave the old one out once\npeers know the new one.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/SecretRef"
+          }
+        },
+        "lists": {
+          "description": "Shared block lists, for an ActivityPub destination that names no\n`lists`.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/SharedList"
+          }
+        },
+        "mode": {
+          "description": "Whom herald's actors federate with, for an ActivityPub destination\nthat names no `mode`: `open` or `allowlist`.",
+          "$ref": "#/$defs/Mode"
+        },
+        "refresh": {
+          "description": "How long a peer may keep the instance's key set before it reads it\nagain; \"1d\" where absent, at most \"7d\".",
+          "$ref": "#/$defs/Duration"
+        }
+      },
+      "additionalProperties": false
     },
     "FollowerCaps": {
       "description": "How many may follow each of herald's actors, as `followers` writes it.",

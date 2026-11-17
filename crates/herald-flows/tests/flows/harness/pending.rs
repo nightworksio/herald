@@ -91,3 +91,44 @@ impl herald_ports::Tokens for Refusing {
         Err(self.0.clone())
     }
 }
+
+impl herald_ports::Published for Failing {
+    async fn published_keys(
+        &self,
+    ) -> Result<Option<Versioned<herald_core::PublishedKeys>>, StoreError> {
+        if self.fault == Fault::ReadsPublished {
+            return Err(broken());
+        }
+        self.inner.published_keys().await
+    }
+
+    async fn put_published_keys(
+        &self,
+        keys: &herald_core::PublishedKeys,
+        expected: Option<Version>,
+    ) -> Result<Written, StoreError> {
+        if self.fault == Fault::WritesPublished {
+            return Err(broken());
+        }
+        if self.fault == Fault::ConflictsPublished {
+            return Ok(Written::Conflict);
+        }
+        self.inner.put_published_keys(keys, expected).await
+    }
+}
+
+impl herald_ports::Published for Refusing {
+    async fn published_keys(
+        &self,
+    ) -> Result<Option<Versioned<herald_core::PublishedKeys>>, StoreError> {
+        Err(self.0.clone())
+    }
+
+    async fn put_published_keys(
+        &self,
+        _: &herald_core::PublishedKeys,
+        _: Option<Version>,
+    ) -> Result<Written, StoreError> {
+        Err(self.0.clone())
+    }
+}

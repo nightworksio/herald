@@ -59,6 +59,9 @@ pub(crate) fn token(name: &str) -> String {
     format!("tokens/{}.json", segment(name))
 }
 
+/// Where the key set the instance last published is kept.
+pub(crate) const PUBLISHED_KEYS: &str = "published/keys.json";
+
 pub(crate) fn listing(source: &SourceName) -> String {
     format!("listings/{}.json", segment(source.as_str()))
 }

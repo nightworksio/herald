@@ -196,6 +196,7 @@ impl<M: Markers, G: Signer> Store for MarkersStore<M, G> {
     type Positions = Unkept;
     type Waiting = Unkept;
     type Tokens = Unkept;
+    type Published = Unkept;
 
     fn ledger(&self) -> Option<&Self> {
         Some(self)
@@ -242,6 +243,10 @@ impl<M: Markers, G: Signer> Store for MarkersStore<M, G> {
     }
 
     fn tokens(&self) -> Option<&Unkept> {
+        None
+    }
+
+    fn published(&self) -> Option<&Unkept> {
         None
     }
 
