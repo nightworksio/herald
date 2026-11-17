@@ -78,6 +78,8 @@ fn held(store: &Failing) {
         }],
         opened: NOON,
         due: NOON,
+        closed: None,
+        landed: false,
     };
     pollster::block_on(store.inner.put_pending(&pending, None)).unwrap();
 }

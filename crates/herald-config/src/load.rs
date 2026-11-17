@@ -327,6 +327,7 @@ mod destinations;
 mod federation;
 mod feeds;
 mod github_apps;
+mod group;
 mod peers;
 mod route;
 mod secrets;

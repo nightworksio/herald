@@ -18,6 +18,7 @@ mod escaping;
 mod event;
 pub mod follows;
 mod glob;
+mod group;
 mod housekeep;
 mod inbound;
 mod installation;
@@ -56,7 +57,8 @@ mod wording;
 pub use activity::{ACTIVITY_JSON, SIGNED, Signing, public_pem, signature_header, signing};
 pub use address::{Address, domain, path_of_names, socket_under, under_domain, web_url};
 pub use announce::{
-    Announcement, Button, Title, announce, body_template, thread_template, title_template,
+    Announcement, Button, Title, announce, body_template, group_template, thread_template,
+    title_template,
 };
 pub use bounds::{
     Attempts, Count, Counted, Inbound, LookedUpPins, PinLookups, ReadBack, ReadBackPages, Sandbox,
@@ -70,6 +72,10 @@ pub use duration::Duration;
 pub use escaping::{Escaping, safe_url, unreserved};
 pub use event::{Draft, Event, Problem};
 pub use glob::{Glob, NotAGlob};
+pub use group::{
+    Change, GROUP_KEY_MOST, GROUP_MOST, GROUP_MOST_ALLOWED, GROUP_WINDOW, Group, GroupLate,
+    GroupMode, GroupUntil, Grouping, Subject, group_identity, shown,
+};
 pub use housekeep::{Chore, Schedule, due, schedules};
 pub use inbound::{
     Addressed, Algorithm, Claim, KeyForm, Refusal, Scheme, Signature, Signed, activity_claim,
@@ -99,7 +105,7 @@ pub use members::{
 };
 pub use origin::{Origin, kind_name};
 pub use pattern::Pattern;
-pub use pending::{HeldEvent, Hold, Pending};
+pub use pending::{HeldEvent, Hold, LONGEST_HOLD, Pending};
 pub use profile::{
     Bullet, Emphases, Escape, Features, Fences, Heading, Limits, Links, Markup, Measure,
     MentionRoom, MentionStyle, Pins, Profile, Threads,
@@ -112,7 +118,7 @@ pub use render::{
 };
 pub use retention::Retention;
 pub use revision::{
-    Edits, LateRelease, NO_PART, Revise, Revision, already_deleted, revise, revised,
+    Edits, LateRelease, NO_PART, Revise, Revision, already_deleted, regrouped, revise, revised,
 };
 pub use route::{
     Delivery, DestinationName, Filter, Mentions, Pinning, Prereleases, Reach, RoleId, Route,

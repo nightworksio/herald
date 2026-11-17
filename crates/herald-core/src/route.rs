@@ -1,6 +1,7 @@
 use jiff::SignedDuration;
 
 use crate::event::Event;
+use crate::group::Grouping;
 use crate::key::RouteId;
 use crate::kind::Kind;
 use crate::matching::Match;
@@ -251,6 +252,9 @@ pub struct Delivery {
     pub late_release: LateRelease,
     /// Which changed announcements it edits the post of.
     pub edits: Edits,
+    /// How it gathers the events that share a key into one announcement,
+    /// where it does.
+    pub group: Option<Grouping>,
 }
 
 /// An event filter leading to a destination, a template and how to deliver.

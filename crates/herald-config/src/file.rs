@@ -3,8 +3,8 @@ use std::num::{NonZeroU64, NonZeroUsize};
 
 use herald_core::follows::{Approve, FollowerCaps, Mode, SharedList};
 use herald_core::{
-    Attempts, AttributeSpec, Duration, Edits, Inbound, Kind, LateRelease, LinkSpec, Pinning,
-    Prereleases, Rate, SHA256_HEX_DIGITS, Sandbox, SecretRef, Size,
+    Attempts, AttributeSpec, Duration, Edits, GroupLate, GroupMode, GroupUntil, Inbound, Kind,
+    LateRelease, LinkSpec, Pinning, Prereleases, Rate, SHA256_HEX_DIGITS, Sandbox, SecretRef, Size,
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Deserializer};
@@ -117,6 +117,53 @@ pub(crate) struct ThreadFile {
     pub(crate) archive_after: Option<Duration>,
     /// How long after the announcement the thread is locked, and archived.
     pub(crate) lock_after: Option<Duration>,
+}
+
+/// How a route gathers the events that share a key into one announcement.
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+#[serde(rename = "Group")]
+pub(crate) struct GroupFile {
+    /// The template of the key events are grouped by, on one line; an
+    /// event whose key renders empty, or longer than 256 bytes, is
+    /// announced alone.
+    #[schemars(with = "String", example = "{{ event.attributes.version }}")]
+    pub(crate) key: Spanned<String>,
+    /// How long a group gathers its members, from when herald sees the
+    /// first; "30m" where absent, and at most "7d".
+    #[schemars(with = "Option<Duration>")]
+    pub(crate) window: Option<Spanned<Duration>>,
+    /// The projects whose event leads a group, as globs ignoring case, the
+    /// first that matches a member first; the first member leads where none
+    /// does.
+    #[serde(default)]
+    #[schemars(with = "Vec<String>", example = GroupFile::LEAD)]
+    pub(crate) lead: Vec<Spanned<String>>,
+    /// How the group is announced: held until it is due, then announced as
+    /// one (`hold`), or the first member announced at once and its post
+    /// edited as each other comes within the window (`edit`), where the
+    /// destination edits a post.
+    #[serde(default)]
+    pub(crate) mode: GroupMode,
+    /// When a held group is due: when its window passes (`window`), or as
+    /// soon as the member that leads it comes (`lead`).
+    #[serde(default)]
+    pub(crate) until: GroupUntil,
+    /// What becomes of a member that comes after its group was announced:
+    /// announced alone (`post`), edited into the group's post where the
+    /// destination edits one and announced alone otherwise (`edit`), or
+    /// left unannounced (`skip`).
+    #[serde(default)]
+    pub(crate) late: GroupLate,
+    /// How many members a group takes, each member more announced alone;
+    /// 25 where absent, and at most 100.
+    #[schemars(with = "Option<usize>", range(min = 1, max = 100))]
+    pub(crate) most: Option<Spanned<usize>>,
+}
+
+impl GroupFile {
+    /// The lead the schema shows as an example.
+    const LEAD: [&str; 1] = ["lemonfiber"];
 }
 
 /// Who a route mentions.
@@ -251,6 +298,9 @@ pub(crate) struct RouteFile {
     /// absent.
     #[serde(default, rename = "match")]
     pub(crate) matching: MatchFile,
+    /// How it gathers the events that share a key into one announcement;
+    /// each event is announced alone where absent.
+    pub(crate) group: Option<GroupFile>,
 }
 
 /// What of an event a route narrows its sources' events by. Each list
@@ -303,7 +353,7 @@ impl RouteFile {
 }
 
 /// The keys every route may give, whatever its destination.
-pub(crate) const ROUTE_KEYS: [&str; 15] = [
+pub(crate) const ROUTE_KEYS: [&str; 16] = [
     "id",
     "sources",
     "kinds",
@@ -319,6 +369,7 @@ pub(crate) const ROUTE_KEYS: [&str; 15] = [
     "late_release",
     "edits",
     "match",
+    "group",
 ];
 
 /// A template: its title, and its body inline or in a file beside the config.

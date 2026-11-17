@@ -260,9 +260,14 @@ async fn answered(
             say(out, config.store.kind());
             DONE
         }
-        Reading::Preview { route, event, from } => {
+        Reading::Preview {
+            route,
+            event,
+            from,
+            group,
+        } => {
             let event = event.as_deref().map(|path| (from.forge(), path));
-            previewing(config, route.as_deref(), event, out, err)
+            previewing(config, route.as_deref(), event, group.as_deref(), out, err)
         }
         Reading::Set(setting) => {
             let done = setup::set_up(config, vars, connect, &setting, &random_secret, out).await;

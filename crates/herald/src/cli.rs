@@ -92,6 +92,10 @@ pub(crate) enum Reading {
         /// The forge whose release event the file is.
         #[arg(long, value_enum, default_value_t = RunForge::Github)]
         from: RunForge,
+        /// Render each route that groups against the file's release, or
+        /// every sample release, as one group under this key.
+        #[arg(long)]
+        group: Option<String>,
     },
 }
 

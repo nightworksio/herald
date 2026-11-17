@@ -62,5 +62,6 @@ no separate requirements document, and there are no requirement IDs.
 | [0042](0042-an-oci-source-announces-an-image-s-tags-on-any-registry.md) | An oci source announces an image's tags on any registry | Accepted |
 | [0043](0043-instances-sign-with-ed25519-prove-their-objects-and-publish-a-key-set.md) | Instances sign with Ed25519, prove their objects, and publish a key set | Accepted |
 | [0044](0044-an-instance-is-found-by-its-discovery-document-and-federation-holds-its-identity.md) | An instance is found by its discovery document, and `[federation]` holds its identity | Accepted; extended by [0046](0046-a-herald-feed-publishes-each-public-event-as-a-proved-envelope-and-the-api-signs-every-answer.md), [0047](0047-a-peer-is-pinned-by-the-keys-its-operator-confirms.md) |
+| [0045](0045-a-route-gathers-the-events-that-share-a-key-into-one-announcement.md) | A route gathers the events that share a key into one announcement | Accepted |
 | [0046](0046-a-herald-feed-publishes-each-public-event-as-a-proved-envelope-and-the-api-signs-every-answer.md) | A herald feed publishes each public event as a proved envelope, and the API signs every answer | Accepted |
 | [0047](0047-a-peer-is-pinned-by-the-keys-its-operator-confirms.md) | A peer is pinned by the keys its operator confirms | Accepted |

@@ -179,6 +179,8 @@ fn the_run_s_kinds_kept_nowhere_answer_unsupported_naming_them() {
             events: Vec::new(),
             opened: Timestamp::UNIX_EPOCH,
             due: Timestamp::UNIX_EPOCH,
+            closed: None,
+            landed: false,
         };
         assert_eq!(unsupported(unkept.pending(&hold)), naming("held events"));
         assert_eq!(unsupported(unkept.every_pending()), naming("held events"));

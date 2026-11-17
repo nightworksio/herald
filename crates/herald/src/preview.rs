@@ -5,22 +5,25 @@ use std::io::Write;
 
 use herald_config::{Config, samples_from};
 use herald_core::{Event, Kind, RouteId};
-use herald_flows::{Previewed, preview};
+use herald_flows::{Previewed, preview, preview_group};
 use herald_sources_forge::Forge;
 
 use super::output::say;
 use super::{DONE, MISTAKEN, STOPPED};
 
 /// Each route's templates rendered against the release of a forge's event
-/// file, or a sample release, as its destination would show them.
+/// file, or a sample release, as its destination would show them; or, under
+/// `group`, each grouping route's against the file's release or every sample
+/// release as one group.
 pub(super) fn previewing(
     config: &Config,
     route: Option<&str>,
     event_file: Option<(Forge, &str)>,
+    group: Option<&str>,
     out: &mut dyn Write,
     err: &mut dyn Write,
 ) -> u8 {
-    let events = match events(config, event_file) {
+    let events = match events(config, event_file, group.is_some()) {
         Ok(events) => events,
         Err(message) => {
             say(err, &message);
@@ -28,14 +31,17 @@ pub(super) fn previewing(
         }
     };
     let only = route.map(RouteId::new);
+    let shown: Vec<Vec<Previewed>> = match group {
+        Some(key) => vec![preview_group(config, (key, &events), only.as_ref())],
+        None => events
+            .iter()
+            .map(|event| preview(config, event, only.as_ref()))
+            .collect(),
+    };
     let mut code = DONE;
-    for event in &events {
-        let previewed = preview(config, event, only.as_ref());
+    for previewed in shown {
         if previewed.is_empty() {
-            say(
-                err,
-                &format!("no route has the id \"{}\"", route.unwrap_or_default()),
-            );
+            say(err, &unpreviewed(route, group.is_some()));
             return MISTAKEN;
         }
         for shown in previewed {
@@ -47,9 +53,23 @@ pub(super) fn previewing(
     code
 }
 
-/// The release a forge's event file publishes, or else a sample release, or
-/// why the file gives none.
-fn events(config: &Config, event_file: Option<(Forge, &str)>) -> Result<Vec<Event>, String> {
+/// Why nothing was previewed: no route has the id `route`, or none that
+/// groups where `grouped`.
+fn unpreviewed(route: Option<&str>, grouped: bool) -> String {
+    match (route, grouped) {
+        (Some(id), true) => format!("no route that groups has the id \"{id}\""),
+        (None, true) => "no route groups".to_owned(),
+        (id, false) => format!("no route has the id \"{}\"", id.unwrap_or_default()),
+    }
+}
+
+/// The release a forge's event file publishes, or else a sample release,
+/// every sample release where `every`, or why the file gives none.
+fn events(
+    config: &Config,
+    event_file: Option<(Forge, &str)>,
+    every: bool,
+) -> Result<Vec<Event>, String> {
     let Some((forge, path)) = event_file else {
         return Ok(config
             .kinds
@@ -57,7 +77,7 @@ fn events(config: &Config, event_file: Option<(Forge, &str)>) -> Result<Vec<Even
             .map(|spec| samples_from(spec, true))
             .unwrap_or_default()
             .into_iter()
-            .take(1)
+            .take(if every { usize::MAX } else { 1 })
             .collect());
     };
     let payload =

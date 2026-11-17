@@ -878,7 +878,7 @@ fn prefer_and_its_window_choose_between_a_tag_and_its_release_and_nothing_else()
             ))
         );
     }
-    assert_eq!(TAG_WINDOW_ALLOWED, SignedDuration::from_hours(168));
+    assert_eq!(herald_core::LONGEST_HOLD, SignedDuration::from_hours(168));
 }
 
 #[test]

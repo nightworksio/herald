@@ -611,6 +611,19 @@ fn marked(config: &Config, findings: &mut Findings) {
     } else if !config.sources.is_empty() {
         findings.notes.push(UNPOLLED.to_owned());
     }
+    for (index, _) in config
+        .routes
+        .iter()
+        .enumerate()
+        .filter(|(_, route)| route.route.delivery.group.is_some())
+    {
+        findings.gaps.push(gap(
+            "grouping a route's announcements",
+            format!("routes[{index}].group"),
+            "the markers store keeps no held events; remove group, or choose a store that does"
+                .to_owned(),
+        ));
+    }
     for (source, _) in config.sources.iter().filter(|(_, options)| options.holds()) {
         findings.gaps.push(gap(
             "holding a tag for its Release",
@@ -670,6 +683,34 @@ fn fitted(config: &Config, notes: &mut Vec<String>) {
     }
 }
 
+/// The room a member with long notes takes in a group's record.
+const MEMBER_ROOM: usize = 8 * 1024;
+
+/// The routes that group more members than the store's records hold room
+/// for with long notes (ADR-0045).
+fn crowded(config: &Config, notes: &mut Vec<String>) {
+    let Some(record) = config.store.most_record() else {
+        return;
+    };
+    let room = record / MEMBER_ROOM;
+    for route in &config.routes {
+        if let Some(group) = route
+            .route
+            .delivery
+            .group
+            .as_ref()
+            .filter(|group| group.most > room)
+        {
+            notes.push(format!(
+                "The route {} groups up to {} members, and the {} store keeps at most {record} bytes in a record, room for about {room} members with long notes; each member past what a record holds is announced alone.",
+                route.route.id.as_str(),
+                group.most,
+                config.store.kind()
+            ));
+        }
+    }
+}
+
 /// The routes that take a tag that moves with no versions pattern.
 fn moving(config: &Config, notes: &mut Vec<String>) {
     for route in &config.routes {
@@ -706,6 +747,7 @@ fn served(config: &Config, layer: &Layer, layers: &[Layer], here: &Here) -> Find
     stored(config, layer, &mut findings);
     moving(config, &mut findings.notes);
     fitted(config, &mut findings.notes);
+    crowded(config, &mut findings.notes);
     exposed(config, &mut findings.notes);
     webhooked(config, &mut findings.notes);
     revising(config, &mut findings.notes);

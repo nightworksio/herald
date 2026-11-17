@@ -44,9 +44,6 @@ pub const EDITS_DEPTH: usize = 30;
 /// How long a tag waits for its Release where `tag_window` is absent.
 pub const TAG_WINDOW: SignedDuration = SignedDuration::from_hours(1);
 
-/// The longest `tag_window` may be.
-pub const TAG_WINDOW_ALLOWED: SignedDuration = SignedDuration::from_hours(7 * 24);
-
 impl SourceOptions {
     /// Whether the signals and pre-release rules, the source's and each
     /// override's, are sound on `forge`.
@@ -90,7 +87,7 @@ impl SourceOptions {
                 "{key} chooses between a tag and its Release, which no repository the source takes announces both of; give signals = [\"release\", \"tag\"], or remove {key}"
             ));
         }
-        if self.tag_window() > TAG_WINDOW_ALLOWED {
+        if self.tag_window() > herald_core::LONGEST_HOLD {
             return Err("tag_window is at most \"7d\"; shorten it".to_owned());
         }
         if self.tag_window.is_some() && self.prefer() == Prefer::First {

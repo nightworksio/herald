@@ -3,7 +3,7 @@
 
 use herald_config::Config;
 use herald_core::{Event, HeldEvent, Hold, Pending, Reach, Signal, SourceName};
-use herald_ports::{Clock, Cursors, Http, Signer, Store, Versioned, Waiting};
+use herald_ports::{Clock, Cursors, Http, Signer, Store, Waiting};
 use jiff::{SignedDuration, Timestamp};
 
 use super::{Fresh, Sweep, Swept, stored};
@@ -54,6 +54,8 @@ pub(crate) async fn held<S: Store, C: Clock, G>(
         }],
         opened,
         due,
+        closed: None,
+        landed: false,
     };
     waiting.put_pending(&pending, None).await.map_err(stored)?;
     Ok(Some(due))
@@ -135,8 +137,22 @@ pub async fn announce_held<S: Store, C: Clock, G: Signer, H: Http>(
     let every = waiting.every_pending().await.map_err(stored)?;
     let now = ports.clock.now();
     let mut swept = Vec::new();
-    for Versioned { value: pending, .. } in every.into_iter().filter(|kept| kept.value.due_at(now))
-    {
+    for kept in every {
+        let source = match &kept.value.hold {
+            Hold::Tag { source, .. } => source.clone(),
+            Hold::Group { route, key } => {
+                let (route, key) = (route.clone(), key.clone());
+                swept.extend(
+                    crate::grouping::round(config, connected, ports, run, (&route, &key), kept)
+                        .await,
+                );
+                continue;
+            }
+        };
+        let pending = kept.value;
+        if !pending.due_at(now) {
+            continue;
+        }
         let mut done = Vec::new();
         for held in &pending.events {
             done.push(announced(config, connected, ports, held, run).await);
@@ -152,9 +168,8 @@ pub async fn announce_held<S: Store, C: Clock, G: Signer, H: Http>(
         });
         swept.extend(done);
         if settled && let Err(error) = waiting.drop_pending(&pending.hold).await {
-            let Hold::Tag { source, .. } = &pending.hold;
             swept.push(Swept {
-                source: source.clone(),
+                source,
                 member: None,
                 outcome: Sweep::Stopped(stored(error)),
             });

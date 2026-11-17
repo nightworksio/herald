@@ -2,7 +2,7 @@ use jiff::Timestamp;
 use unicode_segmentation::UnicodeSegmentation;
 
 use crate::chunk::{Room, chunk_in};
-use crate::event::Event;
+use crate::group::Subject;
 use crate::key::{Key, RouteId};
 use crate::kind::{LinkSpec, RELEASE_LINK};
 use crate::marker::Marks;
@@ -33,6 +33,12 @@ pub fn body_template(template: &TemplateName) -> String {
 #[must_use]
 pub fn thread_template(route: &RouteId) -> String {
     format!("route/{}/thread", route.as_str())
+}
+
+/// The name a route's group key is compiled under.
+#[must_use]
+pub fn group_template(route: &RouteId) -> String {
+    format!("route/{}/group", route.as_str())
 }
 
 /// An announcement's title, rendered with nothing escaped. It is read plain
@@ -151,14 +157,15 @@ impl Announcement {
     }
 }
 
-/// `event` rendered by `route` for a destination described by `profile`,
-/// carrying `marks`, with a button to each of `links` the event carries.
+/// `subject` rendered by `route` for a destination described by `profile`,
+/// carrying `marks`, with a button to each of `links` its event carries:
+/// the event, or the group it leads, keyed by the group.
 ///
 /// # Errors
 ///
 /// When a template does not render.
 pub fn announce(
-    event: &Event,
+    subject: Subject<'_>,
     route: &Route,
     templates: &Templates,
     profile: &Profile,
@@ -166,10 +173,12 @@ pub fn announce(
     marks: Marks,
     links: &[LinkSpec],
 ) -> Result<Announcement, TemplateError> {
+    let event = subject.event;
     let context = Context {
         event,
         route: &route.id,
         herald,
+        group: subject.group,
     };
     let template = route.template.as_ref().ok_or_else(|| TemplateError {
         name: route.id.as_str().to_owned(),
@@ -187,7 +196,7 @@ pub fn announce(
         rest: profile.limits.followup,
     };
     Ok(Announcement {
-        key: Key::derive(&route.id, event.identity()),
+        key: Key::derive(&route.id, &subject.identity()),
         marks,
         route: route.id.clone(),
         project: event.project().to_owned(),

@@ -25,6 +25,7 @@ mod command_endpoints;
 mod command_requests;
 mod doctor;
 mod follows;
+mod grouping;
 mod housekeep;
 mod installations;
 pub mod peering;
@@ -52,7 +53,7 @@ pub use housekeep::{Chored, Housekept, HousekeptSchedule, housekeep, housekeep_a
 pub use installations::AHEAD as MINTED_AHEAD;
 pub use poll::{Fresh, Remembered, Sweep, Swept, announce_held, held_or_announced, poll};
 pub use prepare::{Connected, PrepareError, Prepared, UnreadSecret, prepare};
-pub use preview::{Previewed, preview};
+pub use preview::{Previewed, preview, preview_group};
 pub use room::{Place, Room, Running};
 pub use round::{ROUND_SECRET, Round};
 pub use serving::{

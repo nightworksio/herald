@@ -9,15 +9,15 @@ use futures_util::future::join_all;
 use futures_util::stream::{self, StreamExt};
 use herald_config::Config;
 use herald_core::{
-    Announcement, Entry, Event, Facts, Identity, Key, KindSpecs, Latest, Marker, Marks,
-    MentionStyle, Pinning, Plan, Planned, Profile, Reach, Revise, Revision, RouteId, Sent,
-    SourceName, State, Step, Templates, Threads, Visibility, plan, revise, revised, schedules,
+    Announcement, Entry, Event, Facts, Identity, Key, KindSpecs, Marker, Marks, MentionStyle,
+    Pinning, Plan, Planned, Profile, Reach, Revise, Revision, RouteId, Sent, SourceName, State,
+    Step, Subject, Templates, Threads, Visibility, plan, regrouped, revise, revised, schedules,
     steps,
 };
 use herald_kinds::Signing;
 use herald_ports::{
-    Announcements, Clock, Http, Inboxes, Ledger, Markers, MarkersError, Notes, Pins, Schedules,
-    Secret, Signer, Store, Subscriptions, Version, Written, marker,
+    Clock, Http, Inboxes, Ledger, Markers, MarkersError, Notes, Pins, Schedules, Secret, Signer,
+    Store, Subscriptions, Version, Written, marker,
 };
 use jiff::{SignedDuration, Timestamp};
 
@@ -25,7 +25,12 @@ mod feeding;
 
 use crate::acting::acting;
 use crate::budget::Budget;
+use crate::grouping::Grouped;
+
+mod latest;
+
 use crate::prepare::{Connected, PreparedRoute};
+pub(crate) use latest::kept_latest;
 
 /// The ports an announcement goes through, beside each route's `Http`.
 #[derive(Debug)]
@@ -64,6 +69,14 @@ pub enum Outcome {
     /// It announces each project as an actor of its own, and the event's
     /// project names none, for this reason; nothing was sent.
     Skipped(String),
+    /// It joined the group of its key, announced as one when due; nothing
+    /// was sent.
+    Gathered {
+        /// The key of its group.
+        key: String,
+        /// When the group is due.
+        due: Timestamp,
+    },
     /// Another run holds it; nothing was sent by this one.
     Held {
         /// The run holding it.
@@ -139,7 +152,7 @@ async fn mac<G: Signer>(signer: &G, key: &Secret, message: &[u8]) -> Result<Mark
         .map_err(|error| Stop::Marker(error.to_string()))
 }
 
-fn stored(error: impl std::fmt::Display) -> Stop {
+pub(crate) fn stored(error: impl std::fmt::Display) -> Stop {
     Stop::Store(error.to_string())
 }
 
@@ -493,14 +506,15 @@ impl<S: Store, C: Clock, G: Signer, H: Http> Run<'_, S, C, G, H> {
 
     async fn rendered(
         &self,
-        event: &Event,
+        subject: Subject<'_>,
         templates: &Templates,
         profile: &Profile,
         marks: Marks,
     ) -> Result<Announcement, Stop> {
         let route = &self.route.config.route;
+        let event = subject.event;
         let mut announcement = herald_core::announce(
-            event,
+            subject,
             route,
             templates,
             profile,
@@ -512,16 +526,21 @@ impl<S: Store, C: Clock, G: Signer, H: Http> Run<'_, S, C, G, H> {
         if route.delivery.mentions.subscribers
             && let MentionStyle::Users(room) = profile.features.mentions
         {
-            let subscribers = self
-                .ports
-                .store
-                .subscriptions()
-                .subscribers(&route.destination, event.project())
-                .await
-                .map_err(stored)?
-                .into_iter()
-                .map(|subscription| subscription.subscriber)
-                .collect();
+            let mut subscribers: Vec<String> = Vec::new();
+            for project in projects(subject) {
+                let kept = self
+                    .ports
+                    .store
+                    .subscriptions()
+                    .subscribers(&route.destination, project)
+                    .await
+                    .map_err(stored)?;
+                for subscription in kept {
+                    if !subscribers.contains(&subscription.subscriber) {
+                        subscribers.push(subscription.subscriber);
+                    }
+                }
+            }
             let mut messages = room.spread(subscribers).into_iter();
             announcement.mentioned = messages.next().unwrap_or_default();
             announcement.mentioned_after = messages.collect();
@@ -535,13 +554,37 @@ impl<S: Store, C: Clock, G: Signer, H: Http> Run<'_, S, C, G, H> {
         }
         let route = &self.route.config.route.id;
         let key = Key::derive(route, event.identity());
-        if let Ok(outcome) = self.announced(key, event, templates, Some(Reposted)).await {
+        if let Ok(outcome) = self
+            .announced(key, event.into(), templates, Some(Reposted))
+            .await
+        {
             return outcome;
         }
+        self.announce_anew(event, templates).await
+    }
+
+    /// What the route did with `event`, a Release posted anew under a key
+    /// of its own apart from its tag's post.
+    pub(crate) async fn announce_anew(&self, event: &Event, templates: &Templates) -> Outcome {
         let reposted = Identity::new(format!("{}{REPOSTED}", event.identity().as_str()));
-        let key = Key::derive(route, &reposted);
+        let key = Key::derive(&self.route.config.route.id, &reposted);
         let Ok(outcome) = self
-            .announced::<Infallible>(key, event, templates, None)
+            .announced::<Infallible>(key, event.into(), templates, None)
+            .await;
+        outcome
+    }
+
+    /// What the route did with `subject`, a group, announced under its key:
+    /// posted, or its post edited to what the group now renders where the
+    /// destination edits.
+    pub(crate) async fn announce_group(
+        &self,
+        subject: Subject<'_>,
+        templates: &Templates,
+    ) -> Outcome {
+        let key = Key::derive(&self.route.config.route.id, &subject.identity());
+        let Ok(outcome) = self
+            .announced::<Infallible>(key, subject, templates, None)
             .await;
         outcome
     }
@@ -552,17 +595,17 @@ impl<S: Store, C: Clock, G: Signer, H: Http> Run<'_, S, C, G, H> {
     async fn announced<R>(
         &self,
         key: Key,
-        event: &Event,
+        subject: Subject<'_>,
         templates: &Templates,
         repost: Option<R>,
     ) -> Result<Outcome, R> {
         let (mut announcement, wanted, (revision, parts)) =
-            match self.prepared(&key, event, templates).await {
+            match self.prepared(&key, subject, templates).await {
                 Ok(prepared) => prepared,
                 Err(reason) => return Ok(stopped(reason)),
             };
         let (planned, mut progress) = match self
-            .claimed(key, &wanted, (&revision, parts, event.edited()), repost)
+            .claimed(key, &wanted, (&revision, parts, subject), repost)
             .await
         {
             Ok(claimed) => claimed,
@@ -578,7 +621,7 @@ impl<S: Store, C: Clock, G: Signer, H: Http> Run<'_, S, C, G, H> {
     async fn prepared(
         &self,
         key: &Key,
-        event: &Event,
+        subject: Subject<'_>,
         templates: &Templates,
     ) -> Result<(Announcement, Vec<Step>, (Revision, u32)), Stop> {
         let marks = self.marks(key).await?;
@@ -586,14 +629,14 @@ impl<S: Store, C: Clock, G: Signer, H: Http> Run<'_, S, C, G, H> {
             symbols: self.route.config.profile.symbols,
             ..self.route.reached.profile()
         };
-        let announcement = self.rendered(event, templates, &profile, marks).await?;
+        let announcement = self.rendered(subject, templates, &profile, marks).await?;
         let parts = u32::try_from(announcement.messages()).unwrap_or(u32::MAX);
         let follows = self.route.reached.follows().is_some();
         let delivery = &self.route.config.route.delivery;
         let wanted = steps(delivery, &profile.features, parts, follows);
         let link = announcement.link.as_deref();
         let revision = Revision::of(
-            event.signal(),
+            subject.event.signal(),
             std::iter::once(announcement.title.plain())
                 .chain(announcement.parts.iter().map(|part| part.body.as_str()))
                 .chain(link),
@@ -604,15 +647,16 @@ impl<S: Store, C: Clock, G: Signer, H: Http> Run<'_, S, C, G, H> {
     /// The steps the announcement `key` still needs, bringing a post that
     /// changed to `revision` where the route edits it, and its ledger entry
     /// claimed for this run; or else what the route did instead: an earlier
-    /// run announced it, another holds it, it could not be claimed, or it
-    /// is posted anew as `repost`.
+    /// run announced it, alone or in a group, another holds it, it could
+    /// not be claimed, or it is posted anew as `repost`.
     async fn claimed<R>(
         &self,
         key: Key,
         wanted: &[Step],
-        (revision, parts, edited): (&Revision, u32, bool),
+        (revision, parts, subject): (&Revision, u32, Subject<'_>),
         repost: Option<R>,
     ) -> Result<(Vec<Planned>, Progress), Claim<R>> {
+        let edited = subject.group.is_none() && subject.event.edited();
         let now = self.ports.clock.now();
         let record = self
             .ports
@@ -622,12 +666,21 @@ impl<S: Store, C: Clock, G: Signer, H: Http> Run<'_, S, C, G, H> {
             .await
             .map_err(|error| Claim::Done(stopped(stored(error))))?;
         let entry = record.as_ref().map(|record| &record.value);
+        if entry.is_some_and(|entry| entry.group.is_some()) {
+            return Err(Claim::Done(Outcome::AlreadyAnnounced));
+        }
         if edited && entry.is_none_or(|entry| entry.message(&Step::Post).is_none()) {
             return Err(Claim::Done(Outcome::Unedited));
         }
         let edits = self.route.reached.profile().features.edits;
         let delivery = &self.route.config.route.delivery;
-        let revising = entry.map(|entry| (entry, revise(entry, revision, delivery, edits)));
+        let revising = entry.map(|entry| {
+            let revised = match subject.group {
+                Some(_) => regrouped(entry, revision, edits),
+                None => revise(entry, revision, delivery, edits),
+            };
+            (entry, revised)
+        });
         let (wanted, shown) = match (revising, repost) {
             (Some((_, Revise::Post)), Some(repost)) => return Err(Claim::Reposted(repost)),
             (Some((entry, Revise::Edit)), _) => (revised(entry, revision, parts), revision),
@@ -731,6 +784,15 @@ enum Claim<R> {
     Reposted(R),
 }
 
+/// The projects whose subscribers `subject` mentions: each of its group's
+/// members', or its event's.
+fn projects(subject: Subject<'_>) -> Vec<&str> {
+    match subject.group {
+        Some(group) => group.events.iter().map(|event| event.project()).collect(),
+        None => vec![subject.event.project()],
+    }
+}
+
 /// Whether a delivery stands `state`: landed.
 fn landed(state: Option<&State>) -> bool {
     matches!(state, Some(State::Landed { .. }))
@@ -746,73 +808,12 @@ fn resumed(entry: &Entry) -> Option<Vec<Step>> {
 }
 
 /// A route stopped by `reason` before it landed or planned anything.
-fn stopped(reason: Stop) -> Outcome {
+pub(crate) fn stopped(reason: Stop) -> Outcome {
     Outcome::Stopped {
         landed: Vec::new(),
         remaining: Vec::new(),
         reason,
     }
-}
-
-/// `outcome`, once `event` is kept as what its project last announced on
-/// `route`, where it was sent or had been and the store keeps that, or
-/// stopped by why it could not be kept (ADR-0016). An announcement already
-/// complete keeps it again, so a run that could not keep it is made good by
-/// the next.
-async fn kept_latest<S: Store>(
-    store: &S,
-    event: &Event,
-    route: &RouteId,
-    outcome: Outcome,
-    attempts: usize,
-) -> Outcome {
-    let landed = match &outcome {
-        Outcome::Sent { steps } => steps.clone(),
-        Outcome::AlreadyAnnounced => Vec::new(),
-        Outcome::Held { .. }
-        | Outcome::Stopped { .. }
-        | Outcome::Unedited
-        | Outcome::Skipped(_) => return outcome,
-    };
-    let Some(announcements) = store.announcements() else {
-        return outcome;
-    };
-    match keep_latest(announcements, event, route, attempts).await {
-        Ok(()) => outcome,
-        Err(reason) => Outcome::Stopped {
-            landed,
-            remaining: Vec::new(),
-            reason,
-        },
-    }
-}
-
-async fn keep_latest<A: Announcements>(
-    announcements: &A,
-    event: &Event,
-    route: &RouteId,
-    attempts: usize,
-) -> Result<(), Stop> {
-    for _ in 0..attempts {
-        let kept = announcements
-            .latest(event.project())
-            .await
-            .map_err(stored)?;
-        let expected = kept.as_ref().map(|kept| kept.version);
-        let latest = Latest::after(kept.map(|kept| kept.value), event, route);
-        if announcements
-            .put_latest(&latest, expected)
-            .await
-            .map_err(stored)?
-            != Written::Conflict
-        {
-            return Ok(());
-        }
-    }
-    Err(Stop::Store(format!(
-        "what {} last announced changed under each of {attempts} writes",
-        event.project()
-    )))
 }
 
 /// `event`, from `source`, sent to every route of `connected` that takes it,
@@ -866,7 +867,9 @@ impl<'a> Within<'a> {
 /// (ADR-0029). As many routes as `[run] routes` says are announced
 /// to at once, one at a time where the store writes one record at a time,
 /// and what the project last announced is kept for each route in the
-/// file's order (ADR-0025).
+/// file's order (ADR-0025). A route that groups gathers the event into the
+/// group of its key, and keeps what each member's project last announced
+/// as it announces the group (ADR-0045).
 pub async fn announce_within<S: Store, C: Clock, G: Signer, H: Http>(
     config: &Config,
     connected: &Connected<H>,
@@ -907,7 +910,7 @@ pub async fn announce_within<S: Store, C: Clock, G: Signer, H: Http>(
             Ok(route) => route,
             Err(outcome) => return outcome,
         };
-        Run {
+        let running = Run {
             ports,
             route: &route,
             kinds: &config.kinds,
@@ -915,9 +918,19 @@ pub async fn announce_within<S: Store, C: Clock, G: Signer, H: Http>(
             holder: run,
             lease: config.announce.lease,
             seen,
+        };
+        match &route.config.route.delivery.group {
+            Some(grouping) => {
+                Grouped {
+                    run: &running,
+                    config,
+                    grouping,
+                }
+                .announce(source, event)
+                .await
+            }
+            None => running.announce(event, &config.templates).await,
         }
-        .announce(event, &config.templates)
-        .await
     }))
     .buffered(at_once(ports.store, config.run.routes).get())
     .collect()
@@ -925,14 +938,19 @@ pub async fn announce_within<S: Store, C: Clock, G: Signer, H: Http>(
     let mut announced = Vec::new();
     for ((route, _), outcome) in taking.into_iter().zip(outcomes) {
         let id = &route.config.route.id;
-        let outcome = kept_latest(
-            ports.store,
-            event,
-            id,
-            outcome,
-            config.announce.latest_attempts,
-        )
-        .await;
+        let outcome = match route.config.route.delivery.group {
+            Some(_) => outcome,
+            None => {
+                kept_latest(
+                    ports.store,
+                    event,
+                    id,
+                    outcome,
+                    config.announce.latest_attempts,
+                )
+                .await
+            }
+        };
         announced.push(Announced {
             route: id.clone(),
             outcome,

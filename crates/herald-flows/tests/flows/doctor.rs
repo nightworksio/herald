@@ -512,3 +512,39 @@ fn a_route_taking_private_repositories_to_a_public_place_is_named_where_doctor_w
         |_| {}
     )));
 }
+
+/// The grouping config, its store `store`.
+fn grouped_on(store: &str, group: &str) -> herald_config::Config {
+    let mut config = crate::grouping::grouped(group, "");
+    config.store = on(store, "").store;
+    config
+}
+
+#[test]
+fn a_group_on_the_markers_store_is_a_gap_and_one_its_records_crowd_is_noted() {
+    let marked = doctored(&grouped_on("markers", ""), &layer(&STORES));
+    let gap = marked
+        .gaps
+        .iter()
+        .find(|gap| gap.feature == "grouping a route's announcements")
+        .unwrap();
+    assert_eq!(gap.key, "routes[0].group");
+    assert!(gap.why.contains("the markers store keeps no held events"));
+    let crowded = |store: &'static str, group: &str| -> Vec<String> {
+        doctored(&grouped_on(store, group), &layer(&[store]))
+            .notes
+            .into_iter()
+            .filter(|note| note.contains("members with long notes"))
+            .collect()
+    };
+    assert_eq!(
+        crowded("deno-kv", ""),
+        [
+            "The route train groups up to 25 members, and the deno-kv store keeps at most 65536 bytes in a record, room for about 8 members with long notes; each member past what a record holds is announced alone."
+        ]
+    );
+    assert_eq!(crowded("deno-kv", ", most = 8"), Vec::<String>::new());
+    assert_eq!(crowded("deno-kv", ", most = 9").len(), 1);
+    assert_eq!(crowded("git-branch", ", most = 100"), Vec::<String>::new());
+    assert_eq!(crowded("sqlite", ""), Vec::<String>::new());
+}

@@ -38,6 +38,8 @@ pub(super) fn pending(identity: &str) -> Pending {
             .collect(),
         opened: NOON,
         due: LATER,
+        closed: None,
+        landed: false,
     }
 }
 
@@ -60,6 +62,8 @@ pub(super) async fn waiting<S: Waiting>(store: &S, checks: &mut Checks) -> Resul
         events: one.events.clone(),
         opened: NOON,
         due: NOON,
+        closed: Some(LATER),
+        landed: true,
     };
     checks.written(store.put_pending(&moved, Some(first)).await?);
     checks.written(store.put_pending(&other, None).await?);
