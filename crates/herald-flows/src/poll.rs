@@ -143,7 +143,10 @@ pub(crate) async fn found<S: Store, C: Clock, G: Signer, H: Http>(
     (cursor, since, backfill): (Option<&Cursor>, Option<Timestamp>, usize),
     holder: &str,
 ) -> Result<Option<Found>, Stop> {
-    let polled = poll.polled(http, cursor).await.map_err(halted)?;
+    let polled = poll
+        .polled(http, cursor, ports.clock.now())
+        .await
+        .map_err(halted)?;
     let holding = poll.tag_window().map(|window| Holding {
         window,
         member: None,

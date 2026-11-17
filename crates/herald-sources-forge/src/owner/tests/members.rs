@@ -2,6 +2,9 @@
 
 use super::*;
 
+/// The round each poll here is made in.
+const ROUND: jiff::Timestamp = jiff::Timestamp::UNIX_EPOCH;
+
 fn raw(body: &str, etag: &str) -> Response {
     Response {
         status: 200,
@@ -258,7 +261,7 @@ fn released() -> ScriptedHttp {
 fn a_member_s_events_are_announced_as_the_project_its_template_names() {
     let source = templated("{{ repository.owner }}-{{ repository.name }}");
     assert_eq!(source.project(&cli()), Ok("lemonfiber-cli".to_owned()));
-    let polled = pollster::block_on(source.member(&cli()).polled(&released(), None))
+    let polled = pollster::block_on(source.member(&cli()).polled(&released(), None, ROUND))
         .unwrap()
         .unwrap();
     assert_ne!(polled.events, Vec::new());
@@ -270,7 +273,7 @@ fn a_member_s_events_are_announced_as_the_project_its_template_names() {
     );
     let plain = owned(Forge::GitHub, &SourceOptions::default());
     assert_eq!(plain.project(&cli()), Ok("cli".to_owned()));
-    let untouched = pollster::block_on(plain.member(&cli()).polled(&released(), None))
+    let untouched = pollster::block_on(plain.member(&cli()).polled(&released(), None, ROUND))
         .unwrap()
         .unwrap();
     assert!(
@@ -289,7 +292,7 @@ fn a_member_its_template_names_no_project_for_is_not_read() {
     };
     assert!(reason.starts_with("template project: "), "{reason}");
     assert_eq!(
-        pollster::block_on(source.member(&cli()).polled(&released(), None)),
+        pollster::block_on(source.member(&cli()).polled(&released(), None, ROUND)),
         Err(Unpolled::Unreadable(reason))
     );
 }
@@ -330,7 +333,7 @@ fn the_narrowest_override_naming_a_member_names_its_project() {
         ..cli()
     };
     assert_eq!(source.project(&web), Ok("source-web".to_owned()));
-    let polled = pollster::block_on(source.member(&cat).polled(&released(), None))
+    let polled = pollster::block_on(source.member(&cat).polled(&released(), None, ROUND))
         .unwrap()
         .unwrap();
     assert!(
@@ -366,7 +369,8 @@ fn a_github_owner_with_a_token_polls_its_members_together_through_graphql() {
         answer(200, &json!({ "data": { "m0": releases } }), "", false),
     ]);
     let member = cli();
-    let answered = pollster::block_on(source.polled(&http, &[(&member, None)], &Rounded::Nothing));
+    let answered =
+        pollster::block_on(source.polled(&http, &[(&member, None)], &Rounded::Nothing, ROUND));
     let Ok(Some(polled)) = &answered[0] else {
         panic!("a member never polled is read in full: {answered:?}");
     };
@@ -376,7 +380,7 @@ fn a_github_owner_with_a_token_polls_its_members_together_through_graphql() {
     assert_eq!(rest.batch(), NonZeroUsize::MIN);
     let unchanged = ScriptedHttp::new(vec![unchanged()]);
     assert_eq!(
-        pollster::block_on(rest.polled(&unchanged, &[(&member, None)], &Rounded::Nothing)),
+        pollster::block_on(rest.polled(&unchanged, &[(&member, None)], &Rounded::Nothing, ROUND)),
         [Ok(None)]
     );
     assert!(

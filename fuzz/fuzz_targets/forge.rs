@@ -92,7 +92,7 @@ fn owned(bytes: &[u8]) {
             assert!(ids.iter().all(|id| id.parse::<u64>().is_ok()), "{ids:?}");
         }
         let members = [(&member, None)];
-        for polled in pollster::block_on(expand.polled(&http, &members, &Rounded::Nothing))
+        for polled in pollster::block_on(expand.polled(&http, &members, &Rounded::Nothing, jiff::Timestamp::UNIX_EPOCH))
             .into_iter()
             .flatten()
             .flatten()
@@ -159,7 +159,7 @@ fn images(bytes: &[u8]) {
         language: None,
         linked: None,
     };
-    if let Ok(Some(polled)) = pollster::block_on(expand.member(&image).polled(&http, None)) {
+    if let Ok(Some(polled)) = pollster::block_on(expand.member(&image).polled(&http, None, jiff::Timestamp::UNIX_EPOCH)) {
         for event in &polled.events {
             identified(event, None);
             assert!(

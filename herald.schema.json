@@ -3977,6 +3977,144 @@
           ]
         },
         {
+          "description": "A container image's tags on any registry serving the OCI Distribution API.",
+          "type": "object",
+          "properties": {
+            "auth": {
+              "description": "The base URL of the one origin besides the registry's own that may\nhand out its tokens: a `Bearer` challenge naming a realm anywhere\nelse is refused. `https://auth.docker.io` for Docker Hub's registry\nwhere absent, and none otherwise; GitLab's registry needs its\nGitLab's, such as `https://gitlab.com`.",
+              "type": "string"
+            },
+            "backfill": {
+              "description": "How many of the newest tags the first poll announces; none where\nabsent. The registry gives tags no time, so the first poll reads\nthe last `page` tags its listing names to find the newest.",
+              "type": "integer",
+              "format": "uint",
+              "default": 0,
+              "minimum": 0
+            },
+            "blobs": {
+              "description": "The base URLs of the origins a config blob may be redirected to,\nfetched without the registry's credential. Docker Hub's and\nGitHub's CDNs for their registries where absent, and none otherwise.\nA blob redirected elsewhere is not read: its tag takes the time it\nwas first seen.",
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "catalog": {
+              "description": "Whether the source takes every repository the registry's\n`/v2/_catalog` lists, each polled on its own. Exclusive with\n`repository`.",
+              "type": "boolean",
+              "default": false
+            },
+            "exclude": {
+              "description": "Globs of the repositories a catalog source leaves out, whatever\n`include` says.",
+              "type": "array",
+              "default": [],
+              "items": {
+                "type": "string"
+              }
+            },
+            "include": {
+              "description": "Globs of the repositories a catalog source takes; every one where\nempty.",
+              "type": "array",
+              "default": [],
+              "items": {
+                "type": "string"
+              }
+            },
+            "keep_members": {
+              "description": "How long a repository that left the catalog is kept, with its\ncursor, before it is forgotten; \"30d\" where absent.",
+              "$ref": "#/$defs/Duration"
+            },
+            "kind": {
+              "type": "string",
+              "const": "oci"
+            },
+            "listed_page": {
+              "description": "How many tags, or repositories of the catalog, one page of a listing\nasks for; 1000 where absent, and at most 10000.",
+              "type": "integer",
+              "format": "uint",
+              "minimum": 1
+            },
+            "most_listed": {
+              "description": "The most repositories the catalog reads before `include` and\n`exclude`; 10000 where absent. A catalog listing more is refused for\nthe round.",
+              "type": "integer",
+              "format": "uint",
+              "minimum": 1
+            },
+            "most_members": {
+              "description": "The most repositories `include` and `exclude` may keep; 1000 where\nabsent, and at most 100000. A catalog keeping more is refused for\nthe round.",
+              "type": "integer",
+              "format": "uint",
+              "minimum": 1
+            },
+            "most_tags": {
+              "description": "The most tags a repository's listing reads; at most 100000. A\nrepository listing more is refused for the round. The cursor\nremembers every tag, so where absent it is 10000, or as many as the\nstore keeps in one record where that is fewer, which the doctor\nnames; a value the store's records cannot hold is refused.",
+              "type": "integer",
+              "format": "uint",
+              "minimum": 1
+            },
+            "moving": {
+              "description": "Globs of the tags that move, such as `latest`, which are never\nannounced; `[\"latest\"]` where absent.",
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "page": {
+              "description": "How many unseen tags one poll reads; 30 where absent. Each takes up\nto four requests.",
+              "type": "integer",
+              "format": "uint",
+              "minimum": 1
+            },
+            "parse": {
+              "description": "The most of an answer parsed; \"4MiB\" where absent, and at most four\ntimes that.",
+              "$ref": "#/$defs/Size"
+            },
+            "registry": {
+              "description": "The registry's base URL, which serves the OCI Distribution API under\n`/v2/`, such as `https://registry-1.docker.io`, `https://ghcr.io` or\n`https://registry.gitlab.com`.",
+              "type": "string",
+              "examples": [
+                "https://registry.example"
+              ]
+            },
+            "registry_name": {
+              "description": "The registry's name in each tag's identity, such as `docker.io` for\na mirror of Docker Hub, so the tag is announced once with any other\nsource of the image; `docker.io` for Docker Hub's registry where\nabsent, and the registry's host otherwise.",
+              "type": "string",
+              "examples": [
+                "docker.io"
+              ]
+            },
+            "remembered": {
+              "description": "How many identities the cursor remembers; `most_tags` where absent,\nand at least that.",
+              "type": "integer",
+              "format": "uint",
+              "minimum": 1
+            },
+            "repository": {
+              "description": "The repository whose tags the source takes, such as `acme/app`; on\nDocker Hub an official image may leave out `library/`. Exclusive\nwith `catalog`.",
+              "type": "string",
+              "examples": [
+                "acme/app"
+              ]
+            },
+            "token": {
+              "description": "A token or password for a private repository, sent with `username`.\nAnonymous where absent.",
+              "$ref": "#/$defs/SecretRef"
+            },
+            "username": {
+              "description": "The account `token` belongs to, sent with it as HTTP Basic to the\nregistry's token service, or to the registry where it asks for\nBasic.",
+              "type": "string"
+            },
+            "visibility": {
+              "description": "Who may see the repositories: `public` declares them public. Where\nabsent, they are public when the source has no token and private\nwhen it has one.",
+              "$ref": "#/$defs/Declared"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "registry"
+          ]
+        },
+        {
           "description": "An RSS or Atom feed's entries.",
           "type": "object",
           "properties": {

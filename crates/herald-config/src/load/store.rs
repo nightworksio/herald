@@ -4,8 +4,8 @@
 use std::collections::BTreeMap;
 use std::ops::Range;
 
-use herald_core::{Attempts, DestinationName, RecordKind, Retention};
-use herald_kinds::{ConfiguredStore, Destination, StoreKind};
+use herald_core::{Attempts, DestinationName, RecordKind, Retention, SourceName};
+use herald_kinds::{Bound, ConfiguredStore, Destination, Source, StoreKind};
 use herald_store_git_branch::GitBranchKind;
 use toml::Spanned;
 use toml::de::{DeTable, DeValue};
@@ -114,6 +114,62 @@ impl Loader<'_> {
                         elsewhere(RecordKind::Notes)
                     ),
                 );
+            }
+        }
+    }
+
+    /// Whether the store keeps the cursor of every source remembering every
+    /// identity it lists, each whose options name no bound fitted to the
+    /// most the store's records hold (ADR-0042).
+    pub(super) fn remembering(
+        &mut self,
+        store: Option<&ConfiguredStore>,
+        (sources, spans): (
+            &mut BTreeMap<SourceName, Source>,
+            &BTreeMap<SourceName, Range<usize>>,
+        ),
+    ) {
+        let Some(store) = store else {
+            return;
+        };
+        for (name, source) in sources.iter_mut() {
+            let Some(remembers) = source.remembers() else {
+                continue;
+            };
+            let span = spans.get(name).cloned().unwrap_or_default();
+            let path = format!("sources.{}.{}", name.as_str(), remembers.key);
+            if store.reads_posts() {
+                self.error(
+                    &span,
+                    &path,
+                    format!(
+                        "the {} store keeps no cursor, and this source remembers every identity it lists; give a store that keeps records, such as \"{}\"",
+                        store.kind(),
+                        GitBranchKind::NAME
+                    ),
+                );
+                continue;
+            }
+            let Some(most) = store.most_record().filter(|most| !remembers.fits(*most)) else {
+                continue;
+            };
+            let fitting = remembers.fitting(most);
+            match (remembers.bound == Bound::Default)
+                .then(|| source.fitted(fitting))
+                .flatten()
+            {
+                Some(fitted) => *source = fitted,
+                None => self.error(
+                    &span,
+                    &path,
+                    format!(
+                        "the {} store keeps at most {most} bytes in a record, and this source's cursor may take {} remembering {} identities; make {} at most {fitting}, or give a store that keeps more",
+                        store.kind(),
+                        remembers.bytes(),
+                        remembers.identities,
+                        remembers.key,
+                    ),
+                ),
             }
         }
     }

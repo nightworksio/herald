@@ -5,6 +5,9 @@ use herald_ports::{Base, Boxed, DynHttp, Secret};
 
 use super::*;
 
+/// The round each poll here is made in.
+const ROUND: jiff::Timestamp = jiff::Timestamp::UNIX_EPOCH;
+
 /// Options of a kind that keeps every default.
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct Plain {
@@ -28,6 +31,7 @@ impl Poll for Quiet {
         &'a self,
         _: &'a dyn DynHttp,
         _: Option<&'a Cursor>,
+        _: jiff::Timestamp,
     ) -> Boxed<'a, Result<Option<Polled>, Unpolled>> {
         Box::pin(ready(Ok(None)))
     }
@@ -110,6 +114,8 @@ fn a_source_takes_no_webhook_and_no_moving_tag_where_its_kind_keeps_the_defaults
     assert_eq!(source.tag_window(), None);
     assert_eq!(source.notes(), Vec::<&str>::new());
     assert_eq!(source.projects(), Vec::<String>::new());
+    assert_eq!(source.remembers(), None);
+    assert_eq!(source.fitted(10), None);
     assert!(!source.origins());
     assert!(!source.pushed());
     assert_eq!(source.registering(), Registering::Never);
@@ -148,7 +154,10 @@ fn a_source_polls_with_the_token_it_is_given() {
     assert_eq!(untokened.remembered(), 1);
     assert_eq!(poll.tag_window(), None);
     let http = crate::reach::tests::Silent;
-    assert_eq!(pollster::block_on(poll.polled(&http, None)), Ok(None));
+    assert_eq!(
+        pollster::block_on(poll.polled(&http, None, ROUND)),
+        Ok(None)
+    );
 }
 
 #[test]
@@ -320,7 +329,12 @@ fn an_owner_by_default_polls_each_member_on_its_own_and_follows_no_events() {
     assert_eq!(owner.reach(&one), herald_core::Reach::default());
     assert_eq!(owner.origin(&one).repository, "o/one");
     assert_eq!(
-        pollster::block_on(owner.polled(&http, &[(&one, None), (&two, None)], &Rounded::Unread)),
+        pollster::block_on(owner.polled(
+            &http,
+            &[(&one, None), (&two, None)],
+            &Rounded::Unread,
+            ROUND
+        )),
         [Ok(None), Ok(None)]
     );
     let rounded = pollster::block_on(owner.rounded(&http, herald_core::Owner::User)).unwrap();
@@ -360,6 +374,7 @@ impl Poll for Beside {
         &'a self,
         _: &'a dyn DynHttp,
         _: Option<&'a Cursor>,
+        _: jiff::Timestamp,
     ) -> Boxed<'a, Result<Option<Polled>, Unpolled>> {
         Box::pin(ready(Ok(None)))
     }
@@ -444,7 +459,7 @@ fn a_poll_reaches_its_api_s_origin_unless_it_names_more_bases() {
     );
     assert_eq!(Beside(bases.clone()).remembered(), 1);
     assert_eq!(
-        pollster::block_on(Beside(bases.clone()).polled(&crate::reach::tests::Silent, None)),
+        pollster::block_on(Beside(bases.clone()).polled(&crate::reach::tests::Silent, None, ROUND)),
         Ok(None)
     );
     let owner = OwnerBeside(bases);
@@ -502,4 +517,175 @@ fn an_image_shares_a_project_with_the_repository_it_is_linked_to_alone() {
         linked: None,
     };
     assert_eq!(Members.standing(&member), None);
+}
+
+/// A poll whose own check finds its auth wanting.
+#[derive(Debug)]
+struct Probing;
+
+impl Poll for Probing {
+    fn api(&self) -> &'static str {
+        "https://probing.example"
+    }
+
+    fn remembered(&self) -> usize {
+        1
+    }
+
+    fn polled<'a>(
+        &'a self,
+        _: &'a dyn DynHttp,
+        _: Option<&'a Cursor>,
+        _: jiff::Timestamp,
+    ) -> Boxed<'a, Result<Option<Polled>, Unpolled>> {
+        Box::pin(ready(Ok(None)))
+    }
+
+    fn probed<'a>(&'a self, _: &'a dyn DynHttp) -> Boxed<'a, Vec<Probed>> {
+        Box::pin(ready(vec![Probed {
+            key: "auth",
+            why: "refused".to_owned(),
+        }]))
+    }
+}
+
+/// An owner whose own check finds its catalog wanting.
+#[derive(Debug)]
+struct ProbingOwner;
+
+impl Expand for ProbingOwner {
+    fn api(&self) -> &'static str {
+        "https://probing.example"
+    }
+
+    fn pushed(&self) -> bool {
+        false
+    }
+
+    fn keep_members(&self) -> SignedDuration {
+        SignedDuration::ZERO
+    }
+
+    fn remembered(&self) -> usize {
+        1
+    }
+
+    fn listed<'a>(
+        &'a self,
+        _: &'a dyn DynHttp,
+        _: Option<&'a Listing>,
+    ) -> Boxed<'a, Result<Expanded, Unlisted>> {
+        Box::pin(ready(Ok(Expanded::Unchanged)))
+    }
+
+    fn member(&self, _: &Listed) -> Arc<dyn Poll> {
+        Arc::new(Probing)
+    }
+
+    fn origin(&self, repository: &Listed) -> herald_core::Origin {
+        herald_core::Origin::of_package("probing", "probing.example", "o", &repository.path)
+    }
+
+    fn project(&self, repository: &Listed) -> Result<String, String> {
+        Ok(repository.name.clone())
+    }
+
+    fn takes(&self, _: &Listed) -> bool {
+        true
+    }
+
+    fn fingerprint(&self) -> String {
+        String::new()
+    }
+
+    fn probed<'a>(&'a self, _: &'a dyn DynHttp) -> Boxed<'a, Vec<Probed>> {
+        Box::pin(ready(vec![Probed {
+            key: "catalog",
+            why: "unlisted".to_owned(),
+        }]))
+    }
+}
+
+#[test]
+fn a_source_s_own_check_finds_nothing_unless_its_poll_or_owner_checks_something() {
+    let http = crate::reach::tests::Silent;
+    let quiet = Polling::One(Arc::new(Quiet(None, "https://plain.example".to_owned())));
+    assert_eq!(pollster::block_on(quiet.probed(&http)), Vec::new());
+    assert_eq!(
+        pollster::block_on(Polling::Many(Arc::new(Members)).probed(&http)),
+        Vec::new()
+    );
+    assert_eq!(
+        pollster::block_on(Polling::One(Arc::new(Probing)).probed(&http)),
+        [Probed {
+            key: "auth",
+            why: "refused".to_owned()
+        }]
+    );
+    let owner = ProbingOwner;
+    assert_eq!(
+        pollster::block_on(Polling::Many(Arc::new(ProbingOwner)).probed(&http)),
+        [Probed {
+            key: "catalog",
+            why: "unlisted".to_owned()
+        }]
+    );
+    assert_eq!(owner.api(), "https://probing.example");
+    assert!(!owner.pushed());
+    assert_eq!(owner.keep_members(), SignedDuration::ZERO);
+    assert_eq!(owner.remembered(), 1);
+    assert_eq!(owner.fingerprint(), "");
+    assert_eq!(
+        pollster::block_on(owner.listed(&http, None)),
+        Ok(Expanded::Unchanged)
+    );
+    let member = Listed {
+        id: "1".to_owned(),
+        name: "one".to_owned(),
+        path: "o/one".to_owned(),
+        topics: Vec::new(),
+        properties: std::collections::BTreeMap::new(),
+        visibility: herald_core::Visibility::Public,
+        archived: false,
+        fork: false,
+        template: false,
+        language: None,
+        linked: None,
+    };
+    assert!(owner.takes(&member));
+    assert_eq!(owner.project(&member), Ok("one".to_owned()));
+    assert_eq!(owner.origin(&member).repository, "o/one");
+    let poll = owner.member(&member);
+    assert_eq!(poll.api(), "https://probing.example");
+    assert_eq!(poll.remembered(), 1);
+    assert_eq!(
+        pollster::block_on(poll.polled(&http, None, ROUND)),
+        Ok(None)
+    );
+}
+
+#[test]
+fn a_cursor_remembering_every_identity_takes_each_one_s_bytes_beside_the_rest() {
+    let remembers = Remembers {
+        identities: 10,
+        each: 100,
+        key: "most_tags",
+        bound: Bound::Named,
+    };
+    assert_eq!(remembers.bytes(), 1000 + Remembers::REST);
+    assert!(remembers.fits(1000 + Remembers::REST));
+    assert!(!remembers.fits(999 + Remembers::REST));
+    assert_eq!(remembers.fitting(Remembers::REST + 1099), 10);
+    assert_eq!(remembers.fitting(Remembers::REST + 1100), 11);
+    assert_eq!(remembers.fitting(Remembers::REST - 1), 0);
+    let empty = Remembers {
+        each: 0,
+        ..remembers
+    };
+    assert_eq!(empty.fitting(1), usize::MAX);
+    let huge = Remembers {
+        identities: usize::MAX,
+        ..remembers
+    };
+    assert_eq!(huge.bytes(), usize::MAX);
 }

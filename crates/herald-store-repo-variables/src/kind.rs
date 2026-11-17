@@ -22,6 +22,9 @@ impl StoreKind for RepoVariablesKind {
     type Options = StoreOptions;
 }
 
+/// The most bytes GitHub keeps in one repository variable: 48 KB.
+const MOST_RECORD: usize = 48_000;
+
 impl StoreConfig for StoreOptions {
     fn kind(&self) -> &'static str {
         RepoVariablesKind::NAME
@@ -29,6 +32,10 @@ impl StoreConfig for StoreOptions {
 
     fn key(&self) -> Option<&SecretRef> {
         Some(&self.key)
+    }
+
+    fn most_record(&self) -> Option<usize> {
+        Some(MOST_RECORD)
     }
 
     fn named(&self) -> Vec<&str> {
@@ -109,6 +116,7 @@ mod tests {
         assert!(options.keeps(RecordKind::Notes));
         assert_eq!(options.kept_by(RecordKind::Notes), None);
         assert!(!options.reads_posts());
+        assert_eq!(options.most_record(), Some(MOST_RECORD));
         assert_eq!(options.withheld(), None);
         let job = StoreOptions {
             token: secret("GITHUB_TOKEN"),

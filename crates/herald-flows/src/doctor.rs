@@ -7,7 +7,7 @@ use herald_config::{Config, Guard, KeyCache, RouteConfig, Server};
 use herald_core::{
     Edits, Features, Inbound, LateRelease, Pinning, Pins, RecordKind, Sandbox, Signal, Threads,
 };
-use herald_kinds::{Carried, Registering};
+use herald_kinds::{Bound, Carried, Registering};
 
 use crate::acting::{Claimed, Projects};
 
@@ -626,6 +626,25 @@ fn exposed(config: &Config, notes: &mut Vec<String>) {
     }
 }
 
+/// The sources whose bound on what their cursor remembers the store chose,
+/// as the most its records hold (ADR-0042).
+fn fitted(config: &Config, notes: &mut Vec<String>) {
+    for (name, source) in &config.sources {
+        if let Some(remembers) = source
+            .remembers()
+            .filter(|remembers| remembers.bound == Bound::Fitted)
+        {
+            notes.push(format!(
+                "The source {}'s {} is {}, the most the {} store keeps in a record, as its options set none; set it to choose, or give a store that keeps more.",
+                name.as_str(),
+                remembers.key,
+                remembers.identities,
+                config.store.kind()
+            ));
+        }
+    }
+}
+
 /// The routes that take a tag that moves with no versions pattern.
 fn moving(config: &Config, notes: &mut Vec<String>) {
     for route in &config.routes {
@@ -661,6 +680,7 @@ fn served(config: &Config, layer: &Layer, layers: &[Layer], here: &Here) -> Find
     loosened(config, &mut findings.notes);
     stored(config, layer, &mut findings);
     moving(config, &mut findings.notes);
+    fitted(config, &mut findings.notes);
     exposed(config, &mut findings.notes);
     webhooked(config, &mut findings.notes);
     revising(config, &mut findings.notes);

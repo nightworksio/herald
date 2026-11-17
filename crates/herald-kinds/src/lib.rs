@@ -28,8 +28,8 @@ pub use reach::{Posts, Probe, Reach, Reached, Signing, UnreadPosts};
 pub use session::{Connect, Effect, Session};
 pub use setup::{Made, Served, Setup, SetupNeeds, SetupStep, SetupTask};
 pub use source::{
-    Changed, Expand, Expanded, Hooked, Installation, Installed, Poll, Polling, Registered,
-    Registering, Rounded, Source, SourceConfig, SourceKind, Standing, Unlisted, Unpolled,
-    each_polled,
+    Bound, Changed, Expand, Expanded, Hooked, Installation, Installed, Poll, Polling, Probed,
+    Registered, Registering, Remembers, Rounded, Source, SourceConfig, SourceKind, Standing,
+    Unlisted, Unpolled, each_polled,
 };
 pub use store::{ConfiguredStore, Offer, StoreConfig, StoreKind};

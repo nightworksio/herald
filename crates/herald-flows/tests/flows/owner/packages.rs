@@ -5,8 +5,10 @@ use serde_json::json;
 
 use super::*;
 
-const PACKAGES: &str = "/orgs/nightworksio/packages?package_type=container&per_page=100&page=1";
-const VERSIONS: &str = "/orgs/nightworksio/packages/container/gate-image/versions?per_page=30";
+pub(super) const PACKAGES: &str =
+    "/orgs/nightworksio/packages?package_type=container&per_page=100&page=1";
+pub(super) const VERSIONS: &str =
+    "/orgs/nightworksio/packages/container/gate-image/versions?per_page=30";
 const EVENTS: &str = "/orgs/nightworksio/events?per_page=100&page=1";
 
 #[test]
@@ -326,7 +328,7 @@ fn image(name: &str, visibility: Option<&str>, repository: u64) -> serde_json::V
     })
 }
 
-fn tagged(tag: &str) -> String {
+pub(super) fn tagged(tag: &str) -> String {
     json!([{
         "name": "sha256:abc",
         "created_at": NOON.to_string(),
@@ -493,7 +495,7 @@ fn a_version_whose_page_is_no_web_address_stops_its_source() {
 
 /// A repository source taking its packages and a ghcr source of its owner,
 /// both on one route, polled one after the other.
-const DEDUPED: &str = r#"version = 1
+pub(super) const DEDUPED: &str = r#"version = 1
 [store]
 kind = "sqlite"
 [run]
@@ -608,9 +610,9 @@ fn an_image_a_repository_s_package_signal_and_a_ghcr_source_both_see_is_announce
 /// Answers each request with the first answer whose line ends its own,
 /// whatever order the requests come in, and keeps each request's line.
 #[derive(Clone)]
-struct Keyed {
-    answers: Vec<(String, u16, String)>,
-    seen: Arc<std::sync::Mutex<Vec<String>>>,
+pub(super) struct Keyed {
+    pub(super) answers: Vec<(String, u16, String)>,
+    pub(super) seen: Arc<std::sync::Mutex<Vec<String>>>,
 }
 
 impl Http for Keyed {

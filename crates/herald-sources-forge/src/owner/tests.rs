@@ -4,6 +4,9 @@ use serde_json::{Value, json};
 use super::*;
 use herald_testing::ScriptedHttp;
 
+/// The round each poll here is made in.
+const ROUND: jiff::Timestamp = jiff::Timestamp::UNIX_EPOCH;
+
 fn answer(status: u16, body: &Value, etag: &str, next: bool) -> Response {
     let mut headers = vec![("ETag".to_owned(), etag.to_owned())];
     if next {
@@ -69,8 +72,8 @@ fn known(pages: &[&str]) -> Listing {
     Listing {
         owner: Owner::Organization,
         pages: pages.iter().map(|page| Some((*page).to_owned())).collect(),
-        first: jiff::Timestamp::UNIX_EPOCH,
-        listed: jiff::Timestamp::UNIX_EPOCH,
+        first: ROUND,
+        listed: ROUND,
         fingerprint: owned(Forge::GitHub, &SourceOptions::default()).fingerprint(),
         file: None,
         events: None,
@@ -571,7 +574,10 @@ fn a_member_is_polled_at_its_own_path_with_the_source_s_token() {
     });
     assert_eq!(poll.api(), "https://gitlab.com/api/v4");
     let http = ScriptedHttp::new(vec![unchanged()]);
-    assert_eq!(pollster::block_on(poll.polled(&http, None)), Ok(None));
+    assert_eq!(
+        pollster::block_on(poll.polled(&http, None, ROUND)),
+        Ok(None)
+    );
     assert_eq!(
         http.asked()[0].0,
         "https://gitlab.com/api/v4/projects/lemonfiber%2Ftools%2Fcli/releases?per_page=30"

@@ -7,6 +7,9 @@ use super::*;
 use crate::SourceOptions;
 use herald_testing::ScriptedHttp;
 
+/// The round each poll here is made in.
+const ROUND: jiff::Timestamp = jiff::Timestamp::UNIX_EPOCH;
+
 fn answer(status: u16, body: &Value, etag: Option<&str>) -> Response {
     Response {
         status,
@@ -75,7 +78,7 @@ fn polled(
     http: &ScriptedHttp,
     cursor: Option<&Cursor>,
 ) -> Result<Option<Polled>, Unpolled> {
-    pollster::block_on(releases.polled(http, cursor))
+    pollster::block_on(releases.polled(http, cursor, ROUND))
 }
 
 fn identities(polled: &Polled) -> Vec<(&str, Option<Signal>)> {

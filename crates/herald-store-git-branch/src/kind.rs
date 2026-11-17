@@ -20,6 +20,9 @@ impl StoreKind for GitBranchKind {
     type Options = StoreOptions;
 }
 
+/// The most bytes of a file GitHub's Contents API answers as JSON: 1 MB.
+const MOST_RECORD: usize = 1_000_000;
+
 impl StoreConfig for StoreOptions {
     fn kind(&self) -> &'static str {
         GitBranchKind::NAME
@@ -27,6 +30,10 @@ impl StoreConfig for StoreOptions {
 
     fn key(&self) -> Option<&SecretRef> {
         Some(&self.key)
+    }
+
+    fn most_record(&self) -> Option<usize> {
+        Some(MOST_RECORD)
     }
 
     fn named(&self) -> Vec<&str> {
@@ -95,5 +102,6 @@ mod tests {
         assert!(options.keeps(RecordKind::Notes));
         assert_eq!(options.kept_by(RecordKind::Notes), None);
         assert!(!options.reads_posts());
+        assert_eq!(options.most_record(), Some(MOST_RECORD));
     }
 }
