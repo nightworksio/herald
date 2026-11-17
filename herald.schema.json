@@ -52,6 +52,13 @@
       "description": "The installation's marker key.",
       "$ref": "#/$defs/Markers"
     },
+    "peers": {
+      "description": "The other heralds this one trusts, by name.",
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/Peer"
+      }
+    },
     "render": {
       "description": "How far a template may go as it renders.",
       "$ref": "#/$defs/Render"
@@ -1100,6 +1107,10 @@
             "herald.example"
           ]
         },
+        "fields": {
+          "description": "The most bytes a peer's signature field, such as `Signature` or\n`Content-Digest`, may hold and still be read: \"8KiB\" where absent,\nat most \"32KiB\". A longer one is refused before it is parsed.",
+          "$ref": "#/$defs/Size"
+        },
         "followers": {
           "description": "How many may follow each actor, for an ActivityPub destination that\nnames no `followers`.",
           "$ref": "#/$defs/FollowerCaps"
@@ -1125,6 +1136,14 @@
         "refresh": {
           "description": "How long a peer may keep the instance's key set before it reads it\nagain; \"1d\" where absent, at most \"7d\".",
           "$ref": "#/$defs/Duration"
+        },
+        "revoked": {
+          "description": "Peer keys that are never trusted again, each a Multikey such as\n`z6Mk…`, as `herald peer revoke` adds them: a peer pinning one does\nnot load, and a new key set naming one is refused.",
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "string"
+          }
         },
         "signed_for": {
           "description": "How long each response of herald's API stays signed, from when it\nis made: \"5m\" where absent, at most \"20m\".",
@@ -2022,6 +2041,55 @@
         }
       ]
     },
+    "Peer": {
+      "description": "Another herald this one trusts: who it is, how it is reached, and what\nbounds it. What it may do sits beside each resource it may do it to.",
+      "type": "object",
+      "properties": {
+        "hops": {
+          "description": "The most instances an object from the peer may have passed through:\n2 where absent, at most 8.",
+          "type": "integer",
+          "format": "uint8",
+          "maximum": 8,
+          "minimum": 1
+        },
+        "keys": {
+          "description": "The peer's Ed25519 keys, each a Multikey as its discovery document\nlists it, such as `z6Mk…`, pinned by `herald peer add` once the\noperator confirms them. A key is never taken from the network unless\na pinned key signed it.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1
+        },
+        "most": {
+          "description": "The most bytes of a body the peer sends that are read: \"2MiB\" where\nabsent, at most \"8MiB\". A longer one is refused before it is parsed.",
+          "$ref": "#/$defs/Size"
+        },
+        "private": {
+          "description": "Whether private events may go to the peer; false where absent.",
+          "type": "boolean"
+        },
+        "rate": {
+          "description": "How many requests the peer may make of this herald: \"120/m\" where\nabsent, at most \"480/m\".",
+          "$ref": "#/$defs/Rate"
+        },
+        "rotation": {
+          "description": "Whether a new key set the peer signs with a pinned key replaces the\npinned keys: `manual` (the operator pins each new key) where absent,\nor `signed`.",
+          "$ref": "#/$defs/Rotation"
+        },
+        "url": {
+          "description": "Where the peer is served, such as `https://herald.example`:\n`https://`, its domain, and the path its endpoints are under where\nthey are not at the root. Its discovery document is\n`/.well-known/herald` under it.",
+          "type": "string",
+          "examples": [
+            "https://herald.example"
+          ]
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "url",
+        "keys"
+      ]
+    },
     "PinLookups": {
       "description": "How many pins the destination looks up, one request each, as it finds the route's earlier pins, 25 by default.",
       "type": "integer",
@@ -2097,6 +2165,11 @@
           "const": "only"
         }
       ]
+    },
+    "Rate": {
+      "description": "How many in a length of time: a number, a slash and s, m, h or d, as \"120/m\".",
+      "type": "string",
+      "pattern": "^0*[1-9][0-9]*/[smhd]$"
     },
     "ReadBack": {
       "description": "How many pages of its own posts the destination reads back, 5 by default.",
@@ -2191,6 +2264,21 @@
           "description": "Those given access.",
           "type": "string",
           "const": "private"
+        }
+      ]
+    },
+    "Rotation": {
+      "description": "Whether a peer's own signed statement may replace the keys pinned for\nit.",
+      "oneOf": [
+        {
+          "description": "Only the operator pins a new key, so a stolen key cannot replace\nitself; a new key set is reported, and `herald peer add --update`\npins it.",
+          "type": "string",
+          "const": "manual"
+        },
+        {
+          "description": "A new key set the peer signs with a pinned key replaces the pinned\nkeys, and doctor names the change.",
+          "type": "string",
+          "const": "signed"
         }
       ]
     },

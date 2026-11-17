@@ -353,7 +353,7 @@ impl Package {
             SecretText::plain(format!("{}{path}", self.api)),
         )
         .at_most(self.reading.parse)
-        .header("Accept", SecretText::plain(media::JSON))
+        .accepting(media::JSON)
         .identified();
         if let Some(token) = token.filter(|_| self.registry.takes_token()) {
             request = self.authorised(request, token);

@@ -811,4 +811,5 @@ mod apps;
 mod discovery;
 mod feeds;
 mod owned;
+mod peered;
 mod tagged;

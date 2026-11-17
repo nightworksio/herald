@@ -129,6 +129,12 @@ impl Request {
         )
     }
 
+    /// The request asking for a body of the type `kind`, by its `Accept`.
+    #[must_use]
+    pub fn accepting(self, kind: &str) -> Self {
+        self.header("Accept", SecretText::plain(kind))
+    }
+
     /// The request identified as herald's, by its `User-Agent`.
     #[must_use]
     pub fn identified(self) -> Self {
@@ -457,11 +463,23 @@ mod tests {
     }
 
     #[test]
+    fn a_request_asks_for_the_type_it_accepts() {
+        let request = Request::new(Method::Get, SecretText::plain("https://example.org"))
+            .accepting("application/json");
+        let held: Vec<(&str, String)> = request
+            .headers
+            .iter()
+            .map(|(name, value)| (name.as_str(), value.redacted()))
+            .collect();
+        assert_eq!(held, [("Accept", "application/json".to_owned())]);
+    }
+
+    #[test]
     fn a_replaced_header_is_held_once_whatever_its_case() {
         let request = Request::new(Method::Get, SecretText::plain("https://example.org"))
             .header("accept", SecretText::plain("a"))
             .header("X-Kept", SecretText::plain("k"))
-            .header("Accept", SecretText::plain("b"))
+            .accepting("b")
             .replacing("Accept", SecretText::plain("c"));
         let held: Vec<(&str, String)> = request
             .headers

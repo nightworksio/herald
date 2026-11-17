@@ -112,12 +112,18 @@ mod examples {
     }
 
     #[test]
-    fn every_toml_block_of_the_readme_holds_to_the_schema() {
+    fn every_toml_block_of_the_guides_holds_to_the_schema() {
         let schema = partial();
-        let blocks = blocks(&read(Path::new("README.md")));
-        assert!(blocks.len() >= 6, "{blocks:?}");
-        for block in blocks {
-            assert_eq!(mistakes(&schema, &block), Vec::<String>::new(), "{block}");
+        for (guide, least) in [("README.md", 6), (".docs/federation.md", 3)] {
+            let blocks = blocks(&read(Path::new(guide)));
+            assert!(blocks.len() >= least, "{guide}: {blocks:?}");
+            for block in blocks {
+                assert_eq!(
+                    mistakes(&schema, &block),
+                    Vec::<String>::new(),
+                    "{guide}: {block}"
+                );
+            }
         }
     }
 

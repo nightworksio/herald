@@ -1,7 +1,9 @@
 //! `[federation]`: this herald among other instances, and the keys its
 //! ActivityPub destinations take from it where they leave them out.
 
+use herald_core::Size;
 use herald_core::follows::followed_by;
+use herald_peers::multibase::ed25519_key;
 use toml::de::{DeTable, DeValue};
 
 use super::{Loader, Value};
@@ -63,6 +65,28 @@ impl Loader<'_> {
                 "signed_for is at most \"20m\"; shorten it",
             );
         }
+        let fields = file.fields.map_or(Federation::FIELDS, |fields| fields.0);
+        if fields > Federation::FIELDS_ALLOWED {
+            self.error(
+                &span,
+                "federation.fields",
+                format!(
+                    "fields is at most {}; lower it",
+                    Size::written(Federation::FIELDS_ALLOWED)
+                ),
+            );
+        }
+        let mut revoked = Vec::with_capacity(file.revoked.len());
+        for written in &file.revoked {
+            match ed25519_key(written) {
+                Some(key) => revoked.push(key),
+                None => self.error(
+                    &span,
+                    "federation.revoked",
+                    format!("\"{written}\" is not an Ed25519 Multikey; give each revoked key as `herald peer revoke` writes it, such as \"z6Mk…\""),
+                ),
+            }
+        }
         let block = file.block.unwrap_or_default();
         let allow = file.allow.unwrap_or_default();
         if let Err(refused) = followed_by(&block, &allow, file.followers) {
@@ -74,6 +98,8 @@ impl Loader<'_> {
                 keys: file.keys,
                 refresh,
                 signed_for,
+                fields,
+                revoked,
             },
             written,
         )

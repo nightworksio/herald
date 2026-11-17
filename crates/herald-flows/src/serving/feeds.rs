@@ -5,6 +5,7 @@
 use std::iter::once;
 
 use herald_core::{DestinationName, Escaping, Feed, media, status};
+use herald_peers::answer::CONTENT_TYPE;
 use herald_peers::digest::{CONTENT_DIGEST, content_digest};
 use herald_peers::feed::{BEFORE, FEEDS, Listed, Page, tag};
 use herald_peers::keys::method;
@@ -19,8 +20,6 @@ use super::{Inbound, Serving};
 const ETAG: &str = "etag";
 /// The header naming the entity tag a reader holds.
 const IF_NONE_MATCH: &str = "if-none-match";
-/// The header naming what a body is.
-const CONTENT_TYPE: &str = "content-type";
 /// What a host that is not the instance's domain has none of.
 const NO_FEED: &str = "herald feed on this host";
 

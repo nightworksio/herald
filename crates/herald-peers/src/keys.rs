@@ -5,6 +5,7 @@
 use std::fmt;
 
 use serde_json::{Value, json};
+use sha2::{Digest as _, Sha256};
 
 use crate::multibase::{ED25519_LENGTH, ed25519_key, ed25519_public};
 use crate::proof::{Shown, Unproven, shown};
@@ -28,6 +29,16 @@ pub struct KeySet {
     pub refresh: u64,
     /// The keys, newest first.
     pub keys: Vec<Key>,
+}
+
+/// How a key's fingerprint is written, before its hex digits.
+pub const FINGERPRINT: &str = "sha256:";
+
+/// The fingerprint of `key` an operator compares out of band: `sha256:`
+/// and the SHA-256 of its 32 bytes, in lowercase hex.
+#[must_use]
+pub fn fingerprint(key: &Key) -> String {
+    format!("{FINGERPRINT}{}", herald_core::hex(&Sha256::digest(key)))
 }
 
 /// The controller of every key the instance on `domain` holds: its

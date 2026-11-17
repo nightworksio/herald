@@ -13,6 +13,8 @@
 //! holds the sessions a destination carries commands over. [`doctor`]
 //! names what a config asks for that cannot be served, and [`preview`]
 //! renders each route's templates as its destination would show them.
+//! [`peering`] reads a peer's discovery document, checked against the keys
+//! trusted for it.
 
 mod acting;
 mod announce;
@@ -25,6 +27,7 @@ mod doctor;
 mod follows;
 mod housekeep;
 mod installations;
+pub mod peering;
 mod poll;
 mod prepare;
 mod preview;

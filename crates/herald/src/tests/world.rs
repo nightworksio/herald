@@ -30,6 +30,7 @@ pub(super) struct State {
     pub(super) runtime: Option<u16>,
     pub(super) unheard: bool,
     pub(super) unanswered: Vec<String>,
+    pub(super) peer: Option<Response>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -318,6 +319,9 @@ impl Http for World {
         }
         if let Some(path) = url.strip_prefix("https://api.github.com") {
             return Ok(state.github(request.method, path, &body));
+        }
+        if url.starts_with("https://herald.peer.example/") {
+            return state.peer.clone().ok_or(HttpError::TimedOut);
         }
         Ok(state.discord(&line))
     }

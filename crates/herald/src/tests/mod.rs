@@ -13,6 +13,7 @@ mod followers;
 mod forges;
 mod housekeep;
 mod lambda;
+mod peers;
 mod poll;
 mod secrets;
 mod server;

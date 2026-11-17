@@ -3,7 +3,7 @@
 
 use serde_json::{Value, json};
 
-use crate::keys::{KeySet, WELL_KNOWN};
+use crate::keys::{KeySet, Unkeyed, WELL_KNOWN};
 
 /// Where herald's API lives, under its base.
 pub const API: &str = "/herald/v1";
@@ -27,6 +27,19 @@ const ACTIVITYPUB: &str = "activitypub";
 /// The feature the discovery document names where the instance serves
 /// feeds.
 const FEEDS: &str = "feeds";
+
+/// The key set the discovery document `body` of the instance on `domain`
+/// lists.
+///
+/// # Errors
+///
+/// It is no JSON, or lists no key set of the shape [`KeySet::document`]
+/// writes, or a key that is not the instance's own.
+pub fn key_set(body: &[u8], domain: &str) -> Result<KeySet, Unkeyed> {
+    let document: Value =
+        serde_json::from_slice(body).map_err(|_| Unkeyed::Shape("it is no JSON"))?;
+    KeySet::read(document.get("keys").unwrap_or(&Value::Null), domain)
+}
 
 /// The instance a document describes: where it is served, and what it runs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

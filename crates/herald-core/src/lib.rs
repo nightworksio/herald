@@ -38,6 +38,7 @@ mod pattern;
 mod pending;
 mod profile;
 mod published;
+mod rate;
 mod render;
 mod retention;
 mod revision;
@@ -104,6 +105,7 @@ pub use profile::{
     MentionRoom, MentionStyle, Pins, Profile, Threads,
 };
 pub use published::{Feed, FeedItem, PublishedKeys};
+pub use rate::{Per, Rate};
 pub use render::{
     ACTOR_FIELDS, ActorName, Context, Form, ProjectName, REPOSITORY_FIELDS, TemplateError,
     Templates,

@@ -616,9 +616,7 @@ pub(crate) fn validators(response: &Response) -> Validators {
 pub(crate) fn authorized(forge: Forge, request: Request, token: Option<&Token>) -> Request {
     let request = match forge {
         Forge::GitHub => herald_wire::github::headed(request),
-        Forge::GitLab | Forge::Forgejo => request
-            .header("Accept", SecretText::plain(media::JSON))
-            .identified(),
+        Forge::GitLab | Forge::Forgejo => request.accepting(media::JSON).identified(),
     };
     let current;
     let token = match token {

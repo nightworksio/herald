@@ -228,6 +228,7 @@ This herald among other instances: its domain, its keys, and what its ActivityPu
 | `federation.approve` | [Approve](#approve) | Who takes a follow, for an ActivityPub destination that names no `approve`: `auto` or `manual`. |
 | `federation.block` | array of string | The servers and actors herald's actors never take a follow from or deliver to, for an ActivityPub destination that names no `block`. |
 | `federation.domain` | string | The domain herald serves its discovery document and actors on, such as `herald.example`: a host alone, with no scheme, port or path. An ActivityPub destination that names no `domain` takes it. |
+| `federation.fields` | [Size](#size) | The most bytes a peer's signature field, such as `Signature` or `Content-Digest`, may hold and still be read: "8KiB" where absent, at most "32KiB". A longer one is refused before it is parsed. |
 | `federation.followers` | table | How many may follow each actor, for an ActivityPub destination that names no `followers`. |
 | `federation.followers.most` | integer | The most followers one actor keeps; no limit where unset. |
 | `federation.followers.per_domain` | integer | The most followers one actor keeps from any one server; no limit where unset. |
@@ -236,6 +237,7 @@ This herald among other instances: its domain, its keys, and what its ActivityPu
 | `federation.lists[].sha256` | string | The SHA-256 of the file's text, in hex: a list that changes is not read until its new digest is pinned. |
 | `federation.mode` | [Mode](#mode) | Whom herald's actors federate with, for an ActivityPub destination that names no `mode`: `open` or `allowlist`. |
 | `federation.refresh` | [Duration](#duration) | How long a peer may keep the instance's key set before it reads it again; "1d" where absent, at most "7d". |
+| `federation.revoked` | array of string | Peer keys that are never trusted again, each a Multikey such as `z6Mk…`, as `herald peer revoke` adds them: a peer pinning one does not load, and a new key set naming one is refused. |
 | `federation.signed_for` | [Duration](#duration) | How long each response of herald's API stays signed, from when it is made: "5m" where absent, at most "20m". |
 
 ## `github_apps`
@@ -301,6 +303,20 @@ The installation's marker key.
 |---------|------|--------------|
 | `markers.key` | table | The secret holding the marker key, such as `HERALD_MARKER_SECRET`. |
 | `markers.key.secret` | string | The secret's name. |
+
+## `peers`
+
+The other heralds this one trusts, by name.
+
+| Setting | Type | What it sets |
+|---------|------|--------------|
+| `peers.<name>.hops` | integer | The most instances an object from the peer may have passed through: 2 where absent, at most 8. |
+| `peers.<name>.keys` | array of string | The peer's Ed25519 keys, each a Multikey as its discovery document lists it, such as `z6Mk…`, pinned by `herald peer add` once the operator confirms them. A key is never taken from the network unless a pinned key signed it. |
+| `peers.<name>.most` | [Size](#size) | The most bytes of a body the peer sends that are read: "2MiB" where absent, at most "8MiB". A longer one is refused before it is parsed. |
+| `peers.<name>.private` | boolean | Whether private events may go to the peer; false where absent. |
+| `peers.<name>.rate` | [Rate](#rate) | How many requests the peer may make of this herald: "120/m" where absent, at most "480/m". |
+| `peers.<name>.rotation` | [Rotation](#rotation) | Whether a new key set the peer signs with a pinned key replaces the pinned keys: `manual` (the operator pins each new key) where absent, or `signed`. |
+| `peers.<name>.url` | string | Where the peer is served, such as `https://herald.example`: `https://`, its domain, and the path its endpoints are under where they are not at the root. Its discovery document is `/.well-known/herald` under it. |
 
 ## `render`
 
@@ -1364,6 +1380,10 @@ How a source tells a pre-release.
 
 Which pre-releases a route takes.
 
+### Rate
+
+How many in a length of time: a number, a slash and s, m, h or d, as "120/m".
+
 ### ReadBack
 
 How many pages of its own posts the destination reads back, 5 by default.
@@ -1379,6 +1399,10 @@ Who sees herald's answers to `latest` and `changelog`; the answers to `subscribe
 ### RepositoryVisibility
 
 Who may see a repository.
+
+### Rotation
+
+Whether a peer's own signed statement may replace the keys pinned for it.
 
 ### Signal
 

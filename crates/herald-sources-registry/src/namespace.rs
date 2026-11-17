@@ -104,7 +104,7 @@ impl Namespaced {
     fn request(&self, url: String, bearer: Option<&Secret>, etag: Option<&str>) -> Request {
         let request = Request::new(Method::Get, SecretText::plain(url))
             .at_most(self.options.reading(self.registry).parse)
-            .header("Accept", SecretText::plain(media::JSON))
+            .accepting(media::JSON)
             .identified();
         let request = match bearer.filter(|_| self.listing_api.is_none()) {
             Some(token) => self.asker.authorised(request, token),

@@ -4,11 +4,13 @@ use std::num::{NonZeroU64, NonZeroUsize};
 use herald_core::follows::{Approve, FollowerCaps, Mode, SharedList};
 use herald_core::{
     Attempts, AttributeSpec, Duration, Edits, Inbound, Kind, LateRelease, LinkSpec, Pinning,
-    Prereleases, SHA256_HEX_DIGITS, Sandbox, SecretRef, Size,
+    Prereleases, Rate, SHA256_HEX_DIGITS, Sandbox, SecretRef, Size,
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Deserializer};
 use toml::Spanned;
+
+use crate::peers::{Peer, Rotation};
 
 /// What every store that keeps records reads beside its kind's own
 /// options: how long it keeps them, and how many times it tries a write.
@@ -390,6 +392,15 @@ pub(crate) struct FederationFile {
     /// How long each response of herald's API stays signed, from when it
     /// is made: "5m" where absent, at most "20m".
     pub(crate) signed_for: Option<Duration>,
+    /// The most bytes a peer's signature field, such as `Signature` or
+    /// `Content-Digest`, may hold and still be read: "8KiB" where absent,
+    /// at most "32KiB". A longer one is refused before it is parsed.
+    pub(crate) fields: Option<Size>,
+    /// Peer keys that are never trusted again, each a Multikey such as
+    /// `z6Mk…`, as `herald peer revoke` adds them: a peer pinning one does
+    /// not load, and a new key set naming one is refused.
+    #[serde(default)]
+    pub(crate) revoked: Vec<String>,
     /// The secret holding the RSA private key herald's ActivityPub actors
     /// sign with, as PKCS#8 PEM. An ActivityPub destination that names no
     /// `key` takes it.
@@ -428,6 +439,42 @@ pub(crate) struct FederationFile {
         reason = "read by each ActivityPub destination from the table as written"
     )]
     pub(crate) lists: Option<Vec<SharedList>>,
+}
+
+/// Another herald this one trusts: who it is, how it is reached, and what
+/// bounds it. What it may do sits beside each resource it may do it to.
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+#[serde(rename = "Peer")]
+pub(crate) struct PeerFile {
+    /// Where the peer is served, such as `https://herald.example`:
+    /// `https://`, its domain, and the path its endpoints are under where
+    /// they are not at the root. Its discovery document is
+    /// `/.well-known/herald` under it.
+    #[schemars(example = "https://herald.example")]
+    pub(crate) url: String,
+    /// The peer's Ed25519 keys, each a Multikey as its discovery document
+    /// lists it, such as `z6Mk…`, pinned by `herald peer add` once the
+    /// operator confirms them. A key is never taken from the network unless
+    /// a pinned key signed it.
+    #[schemars(length(min = 1))]
+    pub(crate) keys: Vec<String>,
+    /// Whether a new key set the peer signs with a pinned key replaces the
+    /// pinned keys: `manual` (the operator pins each new key) where absent,
+    /// or `signed`.
+    pub(crate) rotation: Option<Rotation>,
+    /// How many requests the peer may make of this herald: "120/m" where
+    /// absent, at most "480/m".
+    pub(crate) rate: Option<Rate>,
+    /// The most bytes of a body the peer sends that are read: "2MiB" where
+    /// absent, at most "8MiB". A longer one is refused before it is parsed.
+    pub(crate) most: Option<Size>,
+    /// The most instances an object from the peer may have passed through:
+    /// 2 where absent, at most 8.
+    #[schemars(range(min = 1, max = Peer::HOPS_ALLOWED))]
+    pub(crate) hops: Option<u8>,
+    /// Whether private events may go to the peer; false where absent.
+    pub(crate) private: Option<bool>,
 }
 
 /// An app of the HTTP API (ADR-0007).

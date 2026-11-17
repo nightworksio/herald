@@ -8,6 +8,8 @@ use herald_core::{
 use herald_kinds::{ConfiguredStore, Destination, Placed, Registering, Source};
 use jiff::SignedDuration;
 
+use crate::peers::Peer;
+
 /// A config, read, resolved and with its templates compiled.
 #[derive(Debug, Clone)]
 pub struct Config {
@@ -46,6 +48,8 @@ pub struct Config {
     pub server: Server,
     /// This herald among other instances.
     pub federation: Federation,
+    /// The other heralds it trusts, by name.
+    pub peers: BTreeMap<String, Peer>,
     /// How herald's own requests reach the services the config names.
     pub http: herald_ports::Outbound,
     /// Every kind of event it knows: those herald ships, and those it
@@ -331,6 +335,10 @@ pub struct Federation {
     pub refresh: SignedDuration,
     /// How long each response of herald's API stays signed.
     pub signed_for: SignedDuration,
+    /// The most bytes a peer's signature field may hold and still be read.
+    pub fields: usize,
+    /// The peer keys never trusted again.
+    pub revoked: Vec<herald_peers::keys::Key>,
 }
 
 impl Federation {
@@ -342,6 +350,12 @@ impl Federation {
     pub const SIGNED_FOR: SignedDuration = SignedDuration::from_mins(5);
     /// The longest `signed_for` may be.
     pub const SIGNED_FOR_ALLOWED: SignedDuration = SignedDuration::from_mins(20);
+    /// The most bytes a peer's signature field may hold where `fields` is
+    /// absent.
+    pub const FIELDS: usize = herald_peers::message::FIELD_MOST;
+    /// The most bytes a config may let a signature field hold: four times
+    /// the default.
+    pub const FIELDS_ALLOWED: usize = Self::FIELDS * 4;
 }
 
 impl Default for Federation {
@@ -351,6 +365,8 @@ impl Default for Federation {
             keys: Vec::new(),
             refresh: Self::REFRESH,
             signed_for: Self::SIGNED_FOR,
+            fields: Self::FIELDS,
+            revoked: Vec::new(),
         }
     }
 }

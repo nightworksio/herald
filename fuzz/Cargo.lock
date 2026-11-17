@@ -252,6 +252,7 @@ version = "0.0.0"
 dependencies = [
  "herald-core",
  "herald-kinds",
+ "herald-peers",
  "herald-ports",
  "herald-store-git-branch",
  "jiff",

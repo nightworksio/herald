@@ -80,8 +80,12 @@ approve = "manual"
                 keys: vec![secret("HERALD_KEY_NEW"), secret("HERALD_KEY_OLD")],
                 refresh: Federation::REFRESH,
                 signed_for: Federation::SIGNED_FOR,
+                fields: Federation::FIELDS,
+                revoked: Vec::new(),
             }
         );
+        assert_eq!(Federation::FIELDS, 8192);
+        assert_eq!(Federation::FIELDS_ALLOWED, 32768);
         assert_eq!(Federation::REFRESH, SignedDuration::from_hours(24));
         assert_eq!(Federation::SIGNED_FOR, SignedDuration::from_mins(5));
         assert_eq!(
@@ -115,6 +119,21 @@ approve = "manual"
         assert_eq!(
             read("refresh = \"169h\"").err().as_deref(),
             Some("herald.toml:7:1 federation.refresh: refresh is at most \"7d\"; shorten it")
+        );
+    }
+
+    #[test]
+    fn fields_is_read_within_its_bounds() {
+        let read = |set: &str| {
+            loaded(&format!(
+                "\n[federation]\n{set}\n\n[destinations.fedi]\nkind = \"activitypub\"\ndomain = \"herald.example\"\nkey = {{ secret = \"OWN\" }}\n"
+            ))
+        };
+        assert_eq!(read("fields = \"32KiB\"").unwrap().federation.fields, 32768);
+        assert_eq!(read("fields = \"1KiB\"").unwrap().federation.fields, 1024);
+        assert_eq!(
+            read("fields = \"33KiB\"").err().as_deref(),
+            Some("herald.toml:7:1 federation.fields: fields is at most \"32KiB\"; lower it")
         );
     }
 
