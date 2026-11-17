@@ -3,7 +3,7 @@
 //! the store keeps, once for each revision the route shows.
 
 use herald_core::{
-    Entry, Event, Facts, Feed, FeedItem, Key, Revise, Revision, Step, Visibility, revise,
+    Entry, Event, Facts, Feed, FeedItem, Identity, Key, Revise, Revision, Step, Visibility, revise,
 };
 use herald_keys::ed25519_of;
 use herald_kinds::Fed;
@@ -93,29 +93,62 @@ impl<S: Store, C: herald_ports::Clock, G: Signer, H> Run<'_, S, C, G, H> {
         event: &Event,
         entry: Option<Versioned<Entry>>,
     ) -> Outcome {
-        let identity = event.identity().as_str();
+        let skipped = Outcome::Skipped(PRIVATE.to_owned());
+        match self.tombstoned(fed, event.identity()).await {
+            Err(reason) => stopped(reason),
+            Ok(false) => skipped,
+            Ok(true) => {
+                let key = Key::derive(&self.route.config.route.id, event.identity());
+                let forgotten = self.fed_entry(key, None);
+                self.recorded(&forgotten, entry, skipped).await
+            }
+        }
+    }
+
+    /// What the route did with `identity`, a release the forge deleted
+    /// whose post `record` keeps (ADR-0048): its envelope withdrawn by a
+    /// tombstone, and its post forgotten, so a re-created release enters
+    /// again.
+    pub(super) async fn unfed(
+        &self,
+        fed: Fed<'_>,
+        identity: &Identity,
+        record: Versioned<Entry>,
+    ) -> Outcome {
+        if let Err(reason) = self.tombstoned(fed, identity).await {
+            return stopped(reason);
+        }
+        let forgotten = self.fed_entry(record.value.key, None);
+        let withdrawn = Outcome::Sent {
+            steps: vec![Step::Delete(0)],
+        };
+        self.recorded(&forgotten, Some(record), withdrawn).await
+    }
+
+    /// Whether the feed listed the envelope of `identity`, which a
+    /// tombstone replaces now; false where it lists none, or one withdrawn.
+    async fn tombstoned(&self, fed: Fed<'_>, identity: &Identity) -> Result<bool, Stop> {
+        let identity = identity.as_str();
         let destination = &self.route.config.route.destination;
         let gone = |item: Option<&FeedItem>| item.is_none_or(|item| withdrawn(&item.envelope));
-        let listed = match self.ports.store.published().feed(destination).await {
-            Ok(listed) => listed,
-            Err(error) => return stopped(stored(error)),
-        };
-        let skipped = Outcome::Skipped(PRIVATE.to_owned());
+        let listed = self
+            .ports
+            .store
+            .published()
+            .feed(destination)
+            .await
+            .map_err(stored)?;
         if gone(
             listed
                 .as_ref()
                 .and_then(|listed| listed.value.held(identity)),
         ) {
-            return skipped;
+            return Ok(false);
         }
         let instance = self.route.instance();
         let tombstone = instance.tombstone(identity, self.ports.clock.now());
-        if let Err(reason) = self.entered(fed, &instance, &tombstone, gone).await {
-            return stopped(reason);
-        }
-        let key = Key::derive(&self.route.config.route.id, event.identity());
-        let forgotten = self.fed_entry(key, None);
-        self.recorded(&forgotten, entry, skipped).await
+        self.entered(fed, &instance, &tombstone, gone).await?;
+        Ok(true)
     }
 
     /// The route's entry for `key`, kept where `entry` keeps it, claimed and

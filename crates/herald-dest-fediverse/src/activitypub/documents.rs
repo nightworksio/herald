@@ -180,6 +180,35 @@ pub fn update(
     activity
 }
 
+/// The `Delete` of `announcement`'s Note, made at `at`, its object a
+/// `Tombstone`, as each follower's inbox the Note reached takes it
+/// (ADR-0048).
+#[must_use]
+pub fn deletion(
+    origin: &str,
+    announcement: &Announcement,
+    route: &ActorRouteOptions,
+    at: Timestamp,
+) -> Value {
+    let note = note(origin, announcement, route);
+    let field = |name: &str| note.get(name).cloned().unwrap_or(Value::Null);
+    let id = note.get("id").and_then(Value::as_str).unwrap_or_default();
+    json!({
+        "@context": STREAMS,
+        "id": format!("{id}/activity/deleted"),
+        "type": "Delete",
+        "actor": field("attributedTo"),
+        "published": at.to_string(),
+        "to": field("to"),
+        "cc": field("cc"),
+        "object": {
+            "id": id,
+            "type": "Tombstone",
+            "deleted": at.to_string(),
+        },
+    })
+}
+
 /// The outbox of the actor `actor` served at `origin`, holding `total`
 /// Notes: a collection that names its first page.
 #[must_use]

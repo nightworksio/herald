@@ -183,6 +183,7 @@ impl World {
                 ),
             ]),
             occurred: at(),
+            identity: None,
         };
         let latest = Latest {
             project: project.to_owned(),
@@ -355,6 +356,7 @@ fn changelog_shows_the_notes_with_a_link_to_the_changelog_or_the_release() {
             body: "  ".to_owned(),
             links: BTreeMap::from([("release".to_owned(), "https://example.org/r".to_owned())]),
             occurred: at(),
+            identity: None,
         },
         stable: None,
         routes: BTreeSet::from([RouteId::new("releases")]),
@@ -450,6 +452,7 @@ fn a_store_that_cannot_list_or_an_unshowable_record_is_answered_as_unavailable()
             body: String::new(),
             links: BTreeMap::new(),
             occurred: at(),
+            identity: None,
         },
         stable: None,
         routes: BTreeSet::from([RouteId::new("releases")]),

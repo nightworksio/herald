@@ -196,7 +196,8 @@ pub(crate) fn prerelease_in(attributes: &BTreeMap<String, Attribute>) -> bool {
 }
 
 /// The attributes of a kind a forge's signals announce: the signal an
-/// event is of, where its source names one, and whether it is an edit.
+/// event is of, where its source names one, and whether it is an edit or
+/// a deletion.
 fn signalled() -> BTreeMap<String, AttributeSpec> {
     BTreeMap::from([
         (
@@ -208,6 +209,13 @@ fn signalled() -> BTreeMap<String, AttributeSpec> {
         ),
         (
             crate::signal::EDITED.to_owned(),
+            AttributeSpec {
+                ty: AttributeType::Flag,
+                required: false,
+            },
+        ),
+        (
+            crate::signal::WITHDRAWN.to_owned(),
             AttributeSpec {
                 ty: AttributeType::Flag,
                 required: false,

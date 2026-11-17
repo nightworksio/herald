@@ -208,7 +208,7 @@ pub(crate) fn step(
         Step::Pin | Step::Unpin => Ok(pinned(matrix)),
         Step::Crosspost => Err(cannot("crosspost")),
         Step::OpenThread => Err(cannot("open a thread; its replies are the thread")),
-        Step::Deliver(_) | Step::Deliveries | Step::Updates(_) => {
+        Step::Deliver(_) | Step::Deliveries | Step::Updates(_) | Step::Deletes => {
             Err(cannot("deliver to an inbox"))
         }
         Step::Edit { revision, part } => {

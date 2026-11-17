@@ -223,6 +223,31 @@ mod told {
             }),
             ["gate: a held tag was let go unannounced, as it left"]
         );
+        let withdrawn = |outcome| {
+            swept(Sweep::Withdrawn {
+                identity: Identity::new("github.com/1/v1"),
+                announced: vec![Announced {
+                    route: RouteId::new("releases"),
+                    outcome,
+                }],
+            })
+        };
+        assert_eq!(
+            withdrawn(Outcome::Sent {
+                steps: vec![Step::Delete(1), Step::Delete(0), Step::Deletes],
+            }),
+            [
+                "gate: releases: withdrew github.com/1/v1 (deletion of chunk 1, deletion of the post, deletions to followers)"
+            ]
+        );
+        assert_eq!(
+            withdrawn(Outcome::Sent { steps: Vec::new() }),
+            ["gate: releases: withdrew github.com/1/v1; nothing was left to delete"]
+        );
+        assert_eq!(
+            withdrawn(Outcome::Skipped("kept".to_owned())),
+            ["gate: withdrawing github.com/1/v1: releases: skipped, as kept; nothing sent"]
+        );
     }
 
     #[test]

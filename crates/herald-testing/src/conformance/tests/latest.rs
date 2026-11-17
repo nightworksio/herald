@@ -34,4 +34,18 @@ impl Announcements for Faulty {
         let written = self.inner.put_latest(latest, expected).await?;
         Ok(self.raced(Fault::RacesLatest, latest.project == "raced", written))
     }
+
+    async fn forget_latest(&self, project: &str) -> Result<(), StoreError> {
+        self.refuses()?;
+        match self.fault {
+            Fault::KeepsForgottenLatest => Ok(()),
+            Fault::ForgetsEveryLatest => {
+                for latest in self.inner.every_latest().await? {
+                    self.inner.forget_latest(&latest.project).await?;
+                }
+                Ok(())
+            }
+            _ => self.inner.forget_latest(project).await,
+        }
+    }
 }

@@ -6,6 +6,7 @@ use std::collections::BTreeSet;
 use herald_config::{Config, Guard, KeyCache, RouteConfig, Server};
 use herald_core::{
     Edits, Features, Inbound, LateRelease, Pinning, Pins, RecordKind, Sandbox, Signal, Threads,
+    Withdraw,
 };
 use herald_kinds::{Bound, Carried, Registering};
 
@@ -239,6 +240,19 @@ fn unkept(config: &Config, index: usize, route: &RouteConfig, gaps: &mut Vec<Gap
             key("destination"),
             format!("the markers store reads announcements back from their posts, and {cannot}; post through a bot to a text or announcement channel, or choose a store that keeps records"),
         ));
+    }
+}
+
+/// A note for each route that withdraws a deleted release's posts to a
+/// destination that deletes none (ADR-0048).
+fn undeleted(config: &Config, notes: &mut Vec<String>) {
+    for route in &config.routes {
+        if route.route.delivery.withdraw == Withdraw::Delete && !route.profile.features.edits {
+            notes.push(format!(
+                "The route {} keeps a deleted release's posts, as its destination deletes none; set withdraw = \"keep\" to say so.",
+                route.route.id.as_str()
+            ));
+        }
     }
 }
 
@@ -624,6 +638,19 @@ fn marked(config: &Config, findings: &mut Findings) {
                 .to_owned(),
         ));
     }
+    for (index, _) in config
+        .routes
+        .iter()
+        .enumerate()
+        .filter(|(_, route)| route.route.delivery.withdraw == Withdraw::Delete)
+    {
+        findings.gaps.push(gap(
+            "withdrawing a deleted release's posts",
+            format!("routes[{index}].withdraw"),
+            "the markers store keeps no record to finish a withdrawal by; set withdraw = \"keep\", or choose a store that does"
+                .to_owned(),
+        ));
+    }
     for (source, _) in config.sources.iter().filter(|(_, options)| options.holds()) {
         findings.gaps.push(gap(
             "holding a tag for its Release",
@@ -751,6 +778,7 @@ fn served(config: &Config, layer: &Layer, layers: &[Layer], here: &Here) -> Find
     exposed(config, &mut findings.notes);
     webhooked(config, &mut findings.notes);
     revising(config, &mut findings.notes);
+    undeleted(config, &mut findings.notes);
     scheduled(config, layer, here, &mut findings);
     for (index, route) in config.routes.iter().enumerate() {
         unpinned(config, index, route, &mut findings.gaps);

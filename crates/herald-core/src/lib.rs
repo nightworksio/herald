@@ -52,6 +52,7 @@ mod symbols;
 mod token;
 mod version;
 mod waits;
+mod withdrawal;
 mod wording;
 
 pub use activity::{ACTIVITY_JSON, SIGNED, Signing, public_pem, signature_header, signing};
@@ -118,17 +119,19 @@ pub use render::{
 };
 pub use retention::Retention;
 pub use revision::{
-    Edits, LateRelease, NO_PART, Revise, Revision, already_deleted, regrouped, revise, revised,
+    Edits, LateRelease, NO_PART, Revise, Revision, Withdraw, already_deleted, regrouped, revise,
+    revised,
 };
 pub use route::{
     Delivery, DestinationName, Filter, Mentions, Pinning, Prereleases, Reach, RoleId, Route,
     SecretRef, SourceName, TemplateName, Thread, route,
 };
-pub use signal::{EDITED, Prefer, PrereleaseRule, SIGNAL, Signal, Validators};
+pub use signal::{EDITED, Prefer, PrereleaseRule, SIGNAL, Signal, Validators, WITHDRAWN};
 pub use size::Size;
 pub use subscription::Subscription;
 pub use symbols::Symbols;
 pub use token::KeptToken;
 pub use version::prerelease_version;
 pub use waits::{WaitOptions, Waits};
+pub use withdrawal::{reissued, withdrawal};
 pub use wording::{Phrase, Wording};

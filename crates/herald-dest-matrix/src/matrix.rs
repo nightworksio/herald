@@ -153,6 +153,13 @@ impl Matrix {
         if matches!(step_to_take, Step::Pin | Step::Unpin) {
             return self.repin(http, step_to_take, announcement, entry).await;
         }
+        if *step_to_take == Step::Delete(0)
+            && entry.facts(&Step::Pin).is_some()
+            && let Some(post) = entry.message(&Step::Post)
+            && let Some(failed) = self.unpinned(http, post).await?
+        {
+            return Ok(failed);
+        }
         match self.request(step_to_take, announcement, entry) {
             Ok(request) => {
                 let response = http.send(request).await?;
@@ -203,6 +210,22 @@ impl Matrix {
         }
         let answer = http.send(repinned(self, &wanted)).await?;
         Ok(failure(&answer, self.waits).unwrap_or(landed))
+    }
+
+    /// The room's pins without `post`, the post a withdrawal redacts
+    /// (ADR-0048): nothing where it is not pinned or the pins were written,
+    /// and otherwise what the homeserver's trouble means.
+    async fn unpinned<H: Http>(&self, http: &H, post: &str) -> Result<Option<Sent>, HttpError> {
+        let held = match pins(&http.send(pinned(self)).await?, self.waits) {
+            Ok(held) => held,
+            Err(sent) => return Ok(Some(sent)),
+        };
+        if !held.iter().any(|pin| pin == post) {
+            return Ok(None);
+        }
+        let left: Vec<String> = held.into_iter().filter(|pin| pin != post).collect();
+        let answer = http.send(repinned(self, &left)).await?;
+        Ok(failure(&answer, self.waits))
     }
 
     /// The pins in `held`, other than `post`, that herald's own account sent

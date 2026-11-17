@@ -14,7 +14,7 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 
 use crate::forge::{Repository, authorized};
-use crate::wire::{ForgeRelease, ForgeTag, event, tag_event};
+use crate::wire::{ForgeRelease, ForgeTag, Released, event, tag_event};
 use crate::{Forge, Signals, Token};
 
 /// What `forge`'s GraphQL answers are called.
@@ -489,7 +489,7 @@ fn polled(
                     draft: node.is_draft,
                     prerelease: node.is_prerelease,
                     published: node.published_at,
-                    edited: false,
+                    released: Released::Published,
                 },
                 rule,
             )

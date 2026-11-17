@@ -7,7 +7,7 @@ use crate::forge::{Api, Repository};
 use herald_core::unreserved;
 use herald_wire::SourceError;
 
-use crate::wire::{ForgeRelease, read};
+use crate::wire::{ForgeRelease, Released, read};
 
 pub(crate) const API: Api = Api {
     url: "https://gitlab.com/api/v4",
@@ -33,6 +33,8 @@ const UTC: &str = " UTC";
 const CREATED: &str = "create";
 /// The action of GitLab's hook of a release updated.
 const UPDATED: &str = "update";
+/// The action of GitLab's hook of a release deleted.
+const DELETED: &str = "delete";
 
 /// A release hook, as GitLab sends it.
 #[derive(Deserialize)]
@@ -77,7 +79,7 @@ impl From<Release> for ForgeRelease {
             draft: release.upcoming,
             prerelease: None,
             published: release.released_at,
-            edited: false,
+            released: Released::Published,
         }
     }
 }
@@ -136,8 +138,9 @@ pub(crate) fn path(what: &'static str, payload: &[u8]) -> Option<String> {
         .map(|located| located.project.path_with_namespace)
 }
 
-/// The project and release a `create` release hook names, or an `update`
-/// one names edited, or nothing for any other action.
+/// The project and release a `create` release hook names, an `update` one
+/// names edited, or a `delete` one names withdrawn, or nothing for any
+/// other action.
 pub(crate) fn published(
     what: &'static str,
     payload: &[u8],
@@ -149,9 +152,10 @@ pub(crate) fn published(
             reason: format!("it is a {} hook, not a release hook", hook.object_kind),
         });
     }
-    let edited = match hook.action.as_str() {
-        CREATED => false,
-        UPDATED => true,
+    let released = match hook.action.as_str() {
+        CREATED => Released::Published,
+        UPDATED => Released::Edited,
+        DELETED => Released::Withdrawn,
         _ => return Ok(None),
     };
     let found = ForgeRelease {
@@ -162,7 +166,7 @@ pub(crate) fn published(
         draft: false,
         prerelease: None,
         published: hook.released_at,
-        edited,
+        released,
     };
     Ok(Some((hook.project, found)))
 }

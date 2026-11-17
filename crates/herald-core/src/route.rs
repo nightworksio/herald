@@ -252,6 +252,8 @@ pub struct Delivery {
     pub late_release: LateRelease,
     /// Which changed announcements it edits the post of.
     pub edits: Edits,
+    /// What it does with an announcement whose release the forge deleted.
+    pub withdraw: crate::revision::Withdraw,
     /// How it gathers the events that share a key into one announcement,
     /// where it does.
     pub group: Option<Grouping>,

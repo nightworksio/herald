@@ -5,7 +5,8 @@ use super::{Failing, Fault, Refusing, broken};
 
 impl Waiting for Failing {
     async fn pending(&self, hold: &Hold) -> Result<Option<Versioned<Pending>>, StoreError> {
-        if self.fault == Fault::ReadsHeld {
+        let group = matches!(hold, Hold::Group { .. });
+        if self.fault == Fault::ReadsHeld || (self.fault == Fault::ReadsGroups && group) {
             return Err(broken());
         }
         self.inner.pending(hold).await
@@ -24,8 +25,10 @@ impl Waiting for Failing {
         expected: Option<Version>,
     ) -> Result<Written, StoreError> {
         let closing = pending.closed.is_some() || pending.landed;
+        let group = matches!(pending.hold, Hold::Group { .. });
         match self.fault {
             Fault::WritesPending => Err(broken()),
+            Fault::WritesGroups if group => Err(broken()),
             Fault::PendingConflicts => Ok(Written::Conflict),
             Fault::ClosingConflicts if closing => Ok(Written::Conflict),
             _ => self.inner.put_pending(pending, expected).await,

@@ -75,6 +75,19 @@ pub enum Edits {
     Release,
 }
 
+/// What a route does with an announcement whose release the forge deleted
+/// (ADR-0048).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "lowercase")]
+pub enum Withdraw {
+    /// Keep its post.
+    #[default]
+    Keep,
+    /// Delete every message herald recorded of it, where the destination
+    /// can.
+    Delete,
+}
+
 /// What a route does to an announcement whose post landed, when what it
 /// renders has changed since.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -140,6 +140,13 @@ pub async fn announce_held<S: Store, C: Clock, G: Signer, H: Http>(
     for kept in every {
         let source = match &kept.value.hold {
             Hold::Tag { source, .. } => source.clone(),
+            Hold::Withdraw { route, identity } => {
+                let (route, identity) = (route.clone(), identity.clone());
+                let resumed = (&route, &identity);
+                let round = crate::withdraw::round(config, connected, ports, run, resumed, kept);
+                swept.extend(Box::pin(round).await);
+                continue;
+            }
             Hold::Group { route, key } => {
                 let (route, key) = (route.clone(), key.clone());
                 swept.extend(

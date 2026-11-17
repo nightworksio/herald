@@ -253,6 +253,16 @@ mod github {
         };
         assert!(!first.edited());
         assert_eq!(first.identity(), event.identity());
+        let deleted = edited(|payload| payload["action"] = json!("deleted"));
+        let Ok(Hooked::Event(withdrawn)) = Forge::GitHub.hooked(
+            (&[RELEASE], &deleted),
+            ("cli/cli", "github.com"),
+            &Signals::default(),
+        ) else {
+            panic!("a deleted release is announced as withdrawn");
+        };
+        assert!(withdrawn.withdrawn() && !withdrawn.edited() && !first.withdrawn());
+        assert_eq!(withdrawn.identity(), first.identity());
     }
 
     #[test]

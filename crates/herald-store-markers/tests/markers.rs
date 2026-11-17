@@ -153,6 +153,7 @@ mod markers {
                 body: String::new(),
                 links: std::collections::BTreeMap::new(),
                 occurred: OPENED,
+                identity: None,
             },
             stable: None,
             routes: std::collections::BTreeSet::new(),

@@ -163,6 +163,10 @@ fn the_run_s_kinds_kept_nowhere_answer_unsupported_naming_them() {
         assert_eq!(unsupported(unkept.pinned(&route)), naming("pins"));
         assert_eq!(unsupported(unkept.put_pinned(&route, "1")), naming("pins"));
         assert_eq!(
+            unsupported(unkept.forget_pinned(&route, "1")),
+            naming("pins")
+        );
+        assert_eq!(
             unsupported(unkept.position(&destination)),
             naming("session positions")
         );
@@ -211,6 +215,7 @@ fn the_served_kinds_kept_nowhere_answer_unsupported_naming_them() {
             body: String::new(),
             links: std::collections::BTreeMap::new(),
             occurred: at,
+            identity: None,
         },
         stable: None,
         routes: std::collections::BTreeSet::new(),
@@ -238,12 +243,14 @@ fn the_served_kinds_kept_nowhere_answer_unsupported_naming_them() {
             naming("notes")
         );
         assert_eq!(unsupported(unkept.expire_notes(at)), naming("notes"));
+        assert_eq!(unsupported(unkept.forget_note(&key)), naming("notes"));
         assert_eq!(unsupported(unkept.latest("p")), naming("latest"));
         assert_eq!(unsupported(unkept.every_latest()), naming("latest"));
         assert_eq!(
             unsupported(unkept.put_latest(&latest, None)),
             naming("latest")
         );
+        assert_eq!(unsupported(unkept.forget_latest("p")), naming("latest"));
         assert_eq!(
             unsupported(unkept.delivery(&key, "i")),
             naming("deliveries to followers")

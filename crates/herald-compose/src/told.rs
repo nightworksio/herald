@@ -1,7 +1,7 @@
 //! What a run did, in words: each announcement, poll, chore and job, as
 //! every driver says it.
 
-use herald_core::{Chore, Schedule, Step};
+use herald_core::{Chore, Identity, Schedule, Step};
 use herald_flows::{
     Announced, Chored, Did, FollowError, Followed, Fresh, Housekept, HousekeptSchedule, Interacted,
     Job, Outcome, Remembered, Stop, Sweep, Swept, Withheld, Worked,
@@ -67,6 +67,13 @@ pub fn polled(swept: &Swept) -> Vec<String> {
             lines.extend(freshly(&source, announced));
             lines
         }
+        Sweep::Withdrawn {
+            identity,
+            announced,
+        } => announced
+            .iter()
+            .map(|announced| format!("{source}: {}", withdrew(identity, announced)))
+            .collect(),
         Sweep::Released {
             announced,
             withheld,
@@ -100,6 +107,20 @@ fn freshly(source: &str, announced: &[Fresh]) -> Vec<String> {
         );
     }
     lines
+}
+
+/// What a route did withdrawing the release `identity` (ADR-0048).
+#[must_use]
+pub fn withdrew(identity: &Identity, announced: &Announced) -> String {
+    let identity = identity.as_str();
+    let route = announced.route.as_str();
+    match &announced.outcome {
+        Outcome::Sent { steps: sent } if sent.is_empty() => {
+            format!("{route}: withdrew {identity}; nothing was left to delete")
+        }
+        Outcome::Sent { steps: sent } => format!("{route}: withdrew {identity} ({})", steps(sent)),
+        _ => format!("withdrawing {identity}: {}", report(announced)),
+    }
 }
 
 /// What one chore did.
@@ -157,9 +178,11 @@ fn step(step: &Step) -> String {
         Step::Deliveries => "deliveries to followers".to_owned(),
         Step::Edit { part: 0, .. } => "edit".to_owned(),
         Step::Edit { part, .. } => format!("edit of chunk {part}"),
+        Step::Delete(0) => "deletion of the post".to_owned(),
         Step::Delete(index) => format!("deletion of chunk {index}"),
         Step::Rename(_) => "thread renamed".to_owned(),
         Step::Updates(_) => "updates to followers".to_owned(),
+        Step::Deletes => "deletions to followers".to_owned(),
     }
 }
 

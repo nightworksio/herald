@@ -270,6 +270,14 @@ impl Pins for FakeStore {
             .insert(route.clone(), post.to_owned());
         Ok(())
     }
+
+    async fn forget_pinned(&self, route: &RouteId, post: &str) -> Result<(), StoreError> {
+        let mut state = lock(&self.state);
+        if state.pins.get(route).is_some_and(|pinned| pinned == post) {
+            state.pins.remove(route);
+        }
+        Ok(())
+    }
 }
 
 impl Positions for FakeStore {
@@ -360,6 +368,11 @@ impl Notes for FakeStore {
             .retain(|_, (_, _, at)| *at >= before);
         Ok(())
     }
+
+    async fn forget_note(&self, key: &Key) -> Result<(), StoreError> {
+        lock(&self.state).notes.remove(key);
+        Ok(())
+    }
 }
 
 impl Announcements for FakeStore {
@@ -386,6 +399,11 @@ impl Announcements for FakeStore {
             latest,
             expected,
         ))
+    }
+
+    async fn forget_latest(&self, project: &str) -> Result<(), StoreError> {
+        lock(&self.state).latest.remove(project);
+        Ok(())
     }
 }
 

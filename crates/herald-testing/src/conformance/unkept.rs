@@ -222,6 +222,12 @@ pub(super) async fn pins(store: &impl Pins, checks: &mut Checks) {
         Held::Pins,
         "put_pinned",
     );
+    refused(
+        checks,
+        store.forget_pinned(&route, "1").await,
+        Held::Pins,
+        "forget_pinned",
+    );
 }
 
 pub(super) async fn deliveries(store: &impl Deliveries, checks: &mut Checks) {
@@ -266,6 +272,12 @@ pub(super) async fn notes(store: &impl Notes, checks: &mut Checks) {
         Held::Notes,
         "expire_notes",
     );
+    refused(
+        checks,
+        store.forget_note(&published).await,
+        Held::Notes,
+        "forget_note",
+    );
 }
 
 pub(super) async fn announcements(store: &impl Announcements, checks: &mut Checks) {
@@ -287,6 +299,12 @@ pub(super) async fn announcements(store: &impl Announcements, checks: &mut Check
         store.put_latest(&latest, None).await,
         Held::Latest,
         "put_latest",
+    );
+    refused(
+        checks,
+        store.forget_latest(&latest.project).await,
+        Held::Latest,
+        "forget_latest",
     );
 }
 

@@ -16,6 +16,8 @@ use crate::announce::{Announced, Outcome, Ports, Run, Stop, kept_latest, stopped
 use crate::poll::{Fresh, Sweep, Swept};
 use crate::prepare::Connected;
 
+mod withdrawn;
+
 /// Why a member that came after its group was announced is let go, where
 /// its route's `late` skips it.
 const LATE: &str = "its group was announced before it came";

@@ -548,3 +548,58 @@ fn a_group_on_the_markers_store_is_a_gap_and_one_its_records_crowd_is_noted() {
     assert_eq!(crowded("git-branch", ", most = 100"), Vec::<String>::new());
     assert_eq!(crowded("sqlite", ""), Vec::<String>::new());
 }
+
+#[test]
+fn a_route_that_withdraws_on_the_markers_store_is_a_gap_and_one_that_cannot_delete_is_noted() {
+    let mut marked = crate::withdraw::withdrawing("delete", "");
+    marked.store = on("markers", "").store;
+    let gaps = doctored(&marked, &layer(&STORES)).gaps;
+    let gap = gaps
+        .iter()
+        .find(|gap| gap.feature == "withdrawing a deleted release's posts")
+        .unwrap();
+    assert_eq!(gap.key, "routes[0].withdraw");
+    assert!(gap.why.contains("set withdraw = \"keep\""), "{}", gap.why);
+    let mut kept = crate::withdraw::withdrawing("keep", "");
+    kept.store = on("markers", "").store;
+    assert!(
+        !doctored(&kept, &layer(&STORES))
+            .gaps
+            .iter()
+            .any(|gap| gap.feature == "withdrawing a deleted release's posts")
+    );
+    let hooked = |withdraw: &str| {
+        let text = format!(
+            "version = 1\n[store]\nkind = \"sqlite\"\n[destinations.hook]\nkind = \"slack\"\nwebhook = {{ secret = \"W\" }}\n[sources.gate]\nkind = \"github\"\nrepository = \"o/r\"\n[[routes]]\nid = \"hooked\"\nsources = [\"gate\"]\ndestination = \"hook\"\ntemplate = \"t\"\nwithdraw = \"{withdraw}\"\n[templates.t]\ntitle = \"t\"\nbody = \"b\"\n"
+        );
+        let config = load(
+            "herald.toml",
+            &text,
+            &|_| Err(String::new()),
+            &crate::harness::kinds(),
+        )
+        .unwrap();
+        doctored(&config, &layer(&["sqlite"]))
+            .notes
+            .into_iter()
+            .filter(|note| note.contains("deletes none"))
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(
+        hooked("delete"),
+        [
+            "The route hooked keeps a deleted release's posts, as its destination deletes none; set withdraw = \"keep\" to say so."
+        ]
+    );
+    assert_eq!(hooked("keep"), Vec::<String>::new());
+    let deletes = doctored(
+        &crate::withdraw::withdrawing("delete", ""),
+        &layer(&["sqlite"]),
+    );
+    assert!(
+        !deletes
+            .notes
+            .iter()
+            .any(|note| note.contains("deletes none"))
+    );
+}

@@ -7,7 +7,7 @@ use jiff::Timestamp;
 use serde::{Deserialize, Serialize};
 
 use crate::event::Event;
-use crate::key::RouteId;
+use crate::key::{Identity, RouteId};
 use crate::kind::{Attribute, Kind, prerelease_in, version_in};
 
 /// One event, as a command shows it.
@@ -25,6 +25,9 @@ pub struct Shown {
     pub attributes: BTreeMap<String, Attribute>,
     /// When it happened.
     pub occurred: Timestamp,
+    /// What makes it that event, where it was kept with it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub identity: Option<Identity>,
 }
 
 impl Shown {
@@ -38,6 +41,7 @@ impl Shown {
             links: event.links().clone(),
             attributes: event.attributes().clone(),
             occurred: event.occurred(),
+            identity: Some(event.identity().clone()),
         }
     }
 
@@ -45,6 +49,12 @@ impl Shown {
     #[must_use]
     pub fn prerelease(&self) -> bool {
         prerelease_in(&self.attributes)
+    }
+
+    /// Whether it shows the event `identity` names.
+    #[must_use]
+    pub fn is(&self, identity: &Identity) -> bool {
+        self.identity.as_ref() == Some(identity)
     }
 
     /// The version, where its kind carries one.
@@ -96,6 +106,33 @@ impl Latest {
         }
         latest.routes.insert(route.clone());
         latest
+    }
+
+    /// What the project last announced once its release `identity` was
+    /// withdrawn (ADR-0048): the newest it keeps falls back to the stable
+    /// one where that is another release, a withdrawn stable release is no
+    /// longer kept, and none is left where nothing else is kept.
+    #[must_use]
+    pub fn without(mut self, identity: &Identity) -> Option<Self> {
+        let withdrawn = |shown: &Shown| shown.is(identity);
+        if self.stable.as_ref().is_some_and(withdrawn) {
+            self.stable = None;
+        }
+        if withdrawn(&self.newest) {
+            self.newest = self.stable.clone()?;
+        }
+        Some(self)
+    }
+
+    /// Whether it keeps the event `identity` names, as its newest or its
+    /// stable event.
+    #[must_use]
+    pub fn shows(&self, identity: &Identity) -> bool {
+        self.newest.is(identity)
+            || self
+                .stable
+                .as_ref()
+                .is_some_and(|stable| stable.is(identity))
     }
 
     /// The newest event, or the newest that is not a pre-release where

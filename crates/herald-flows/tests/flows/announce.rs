@@ -740,6 +740,7 @@ fn a_store_that_fails_or_is_written_by_another_run_stops_the_run_and_says_where(
     };
     for fault in [
         Fault::Reads,
+        Fault::ReadsOnce,
         Fault::Claims,
         Fault::Schedules,
         Fault::Pins,
