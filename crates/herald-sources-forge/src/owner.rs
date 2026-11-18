@@ -169,6 +169,7 @@ impl Owned {
             packaging: self.packaging.clone(),
             list,
             visibility: Some(repository.visibility),
+            runs: self.options.run_choice(),
         }
     }
 
@@ -207,6 +208,40 @@ impl Owned {
             }
             PackageList::Own | PackageList::Kept => Ok(packages::Packaged::kept(cursor)),
         }
+    }
+
+    /// What the member `repository`'s runs since `cursor` are, read through
+    /// `http` beside what GraphQL read of it.
+    async fn ran(
+        &self,
+        http: &Erased<'_, dyn DynHttp + '_>,
+        repository: &Listed,
+        cursor: Option<&Cursor>,
+    ) -> Result<(crate::runs::Asked, crate::runs::Runs), Unpolled> {
+        let id = repository.id.parse::<u64>().map_err(|error| {
+            Unpolled::Unreadable(format!(
+                "the repository {}'s id \"{}\" is not a number: {error}",
+                repository.path, repository.id
+            ))
+        })?;
+        let host = crate::forge::host_of(self.forge, &self.api);
+        let api = herald_core::Address::parse(&self.api);
+        let scheme = api.as_ref().map_or("https", herald_core::Address::scheme);
+        let described = crate::forge::Repository {
+            id,
+            name: repository.name.clone(),
+            page: Some(format!("{scheme}://{host}/{}", repository.path)),
+        };
+        let origin = Origin::new(self.forge, &self.options, &repository.path);
+        let choice = self.options.run_choice();
+        let asking = crate::runs::Asking {
+            origin: &origin,
+            token: self.token.as_ref(),
+            choice: &choice,
+        };
+        let asked = asking.asked(http, cursor).await?;
+        let runs = asking.read(&asked, &described)?;
+        Ok((asked, runs))
     }
 
     fn reading(&self) -> Reading {
@@ -472,7 +507,10 @@ impl Expand for Owned {
         Box::pin(crate::hooks::registered(
             http,
             (&self.api, self.token.as_ref()),
-            &repository.id,
+            (
+                &repository.id,
+                self.options.signals_of(&repository.name).takes(Signal::Run),
+            ),
             hook,
         ))
     }
@@ -510,7 +548,7 @@ impl Expand for Owned {
                 Forge::Forgejo => Some(Transport::Feed),
                 Forge::GitLab => None,
             };
-            if followed != Some(self.options.transport()) {
+            if followed != Some(self.options.transport()) || self.options.may_take(Signal::Run) {
                 return None;
             }
             let paged = match self.forge {
@@ -625,6 +663,15 @@ impl Expand for Owned {
                         .packaged(&http, (repository, &list), (signals, *cursor))
                         .await
                         .map(|packaged| merged(found, packaged, *cursor)),
+                    answered => answered,
+                };
+                let answered = match answered {
+                    Ok(found) if signals.takes(Signal::Run) => self
+                        .ran(&http, repository, *cursor)
+                        .await
+                        .map(|(asked, runs)| {
+                            crate::runs::merged_into(found, (&asked, runs), *cursor)
+                        }),
                     answered => answered,
                 };
                 polled.push(answered.and_then(|found| {

@@ -20,6 +20,8 @@ impl Kind {
     pub const FEED_ENTRY: Self = Self(Cow::Borrowed("feed-entry"));
     /// Anything an app says.
     pub const MESSAGE: Self = Self(Cow::Borrowed("message"));
+    /// A CI run on a forge.
+    pub const RUN: Self = Self(Cow::Borrowed("run"));
 
     /// The kind named `name`.
     ///
@@ -78,7 +80,7 @@ impl JsonSchema for Kind {
 
     fn json_schema(_: &mut SchemaGenerator) -> Schema {
         json_schema!({
-            "description": "What kind of thing an event announces: release, package-version, feed-entry, message, or a kind the config declares.",
+            "description": "What kind of thing an event announces: release, package-version, feed-entry, message, run, or a kind the config declares.",
             "type": "string",
             "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"
         })
@@ -159,6 +161,32 @@ pub const RELEASE_LINK: &str = "release";
 pub const CHANGELOG_LINK: &str = "changelog";
 /// The link to a feed's entry.
 pub const ENTRY_LINK: &str = "entry";
+/// The link to a run's page.
+pub const RUN_LINK: &str = "run";
+/// What a run did: `requested`, `in_progress` or `completed`.
+pub const ACTION: &str = "action";
+/// How a finished run ended, in GitHub's words: `success`, `failure`,
+/// `cancelled`, `timed_out`, `skipped`, `action_required`, `neutral`,
+/// `startup_failure` or `stale`.
+pub const CONCLUSION: &str = "conclusion";
+/// The workflow, pipeline, check suite's app or status context a run is of.
+pub const WORKFLOW: &str = "workflow";
+/// What started a run, as its forge names it, such as `push` or
+/// `schedule`; GitLab's `merge_request_event` reads as `pull_request`.
+pub const TRIGGER: &str = "trigger";
+/// The branch, or tag, a run ran on.
+pub const BRANCH: &str = "branch";
+/// The commit a run ran on.
+pub const COMMIT: &str = "commit";
+/// The forge's number of a run within its repository.
+pub const NUMBER: &str = "number";
+/// Which attempt at a run this is, the first being 1.
+pub const ATTEMPT: &str = "attempt";
+/// Who started a run.
+pub const ACTOR: &str = "actor";
+/// What a run is read from: `actions`, the forge's own CI, or `checks`, a
+/// check suite or a commit status.
+pub const FROM: &str = "from";
 
 /// Whether `name` can name an attribute or a link as a template reads it:
 /// lowercase letters, digits and `_`, starting with a letter.
@@ -236,6 +264,27 @@ fn packaged() -> BTreeMap<String, AttributeSpec> {
                 required: false,
             },
         );
+    }
+    attributes
+}
+
+/// The attributes of a run: a forge's signals', and what the run is.
+fn ran() -> BTreeMap<String, AttributeSpec> {
+    let mut attributes = signalled();
+    let typed = [
+        (ACTION, AttributeType::Text, true),
+        (CONCLUSION, AttributeType::Text, false),
+        (WORKFLOW, AttributeType::Text, true),
+        (TRIGGER, AttributeType::Text, false),
+        (BRANCH, AttributeType::Text, false),
+        (COMMIT, AttributeType::Text, false),
+        (NUMBER, AttributeType::Number, false),
+        (ATTEMPT, AttributeType::Number, false),
+        (ACTOR, AttributeType::Text, false),
+        (FROM, AttributeType::Text, true),
+    ];
+    for (name, ty, required) in typed {
+        attributes.insert(name.to_owned(), AttributeSpec { ty, required });
     }
     attributes
 }
@@ -350,6 +399,13 @@ impl KindSpec {
                 false,
                 buttons(&[RELEASE_LINK, CHANGELOG_LINK]),
                 BTreeMap::new(),
+            ),
+            Self::new(
+                Kind::RUN,
+                "A CI run on a forge: a workflow run, a pipeline, a check suite or a commit status.",
+                false,
+                buttons(&[RUN_LINK]),
+                ran(),
             ),
         ]
     }

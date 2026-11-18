@@ -5,11 +5,14 @@ use herald_kinds::{
     Credential, Fault, Hooked, Installed, Polling, Registering, SourceConfig, SourceKind, Unpolled,
 };
 
-use crate::forge::{api_of, host_of};
+use herald_wire::SourceError;
+
+use crate::forge::{UNSELECTED, api_of, host_of};
 use crate::owner::Owned;
 use crate::packages::{PackageList, Packaging};
 use crate::polled::Releases;
-use crate::{Discovery, Forge, Members, Origin, SourceOptions, Token};
+use crate::runs::{Delivery, delivered_event};
+use crate::{Discovery, Forge, Members, Origin, RunFrom, SourceOptions, Token, Transport};
 
 /// A repository's releases, tags and packages on a forge: the forge, and the options
 /// its table reads into.
@@ -52,6 +55,12 @@ impl ForgeSource {
 
 /// What the doctor says of an owner source that takes webhooks.
 const OWNER_HOOKED: &str = "a webhook's release is announced only where the owner's last membership record holds its repository, so poll the source as well; a repository its polls have not listed announces nothing";
+
+/// What doctor says of an owner source announcing runs through the owner's
+/// events or feed.
+const RUNS_UNFOLLOWED: &str = "the owner's events name no runs, so a source announcing runs polls every member each round, conditionally; a webhook or a GitHub App delivers them as they finish";
+/// What doctor says of a source reading checks by polling.
+const CHECKS_POLLED: &str = "a poll reads the check suites and statuses of one commit, the newest of the one branch runs.branches names or of the default branch; a webhook delivers every commit's";
 
 /// What doctor says of a source discovering by push that names no webhook.
 const UNPUSHED: &str = "discovery \"push\" learns of the owner's repositories joining and leaving through its webhook, which the source names none of, so it lists the owner only where it holds no listing or its selection changed";
@@ -144,10 +153,16 @@ impl SourceConfig for ForgeSource {
 
     fn kinds(&self) -> &'static [Kind] {
         let released = self.options.may_take(Signal::Release) || self.options.may_take(Signal::Tag);
-        match (released, self.options.may_take(Signal::Package)) {
-            (true, true) => &[Kind::RELEASE, Kind::PACKAGE_VERSION],
-            (false, true) => &[Kind::PACKAGE_VERSION],
-            (_, false) => &[Kind::RELEASE],
+        let packaged = self.options.may_take(Signal::Package);
+        let ran = self.options.may_take(Signal::Run);
+        match (released || !(packaged || ran), packaged, ran) {
+            (true, true, true) => &[Kind::RELEASE, Kind::PACKAGE_VERSION, Kind::RUN],
+            (true, true, false) => &[Kind::RELEASE, Kind::PACKAGE_VERSION],
+            (true, false, true) => &[Kind::RELEASE, Kind::RUN],
+            (true, false, false) => &[Kind::RELEASE],
+            (false, true, true) => &[Kind::PACKAGE_VERSION, Kind::RUN],
+            (false, true, false) => &[Kind::PACKAGE_VERSION],
+            (false, false, _) => &[Kind::RUN],
         }
     }
 
@@ -157,7 +172,16 @@ impl SourceConfig for ForgeSource {
             && self.options.owner.is_some()
             && self.options.webhook.is_some()
             && self.options.member_hooks() == crate::MemberHooks::Off;
+        let followed = self.options.owner.is_some()
+            && matches!(
+                self.options.transport(),
+                Transport::Events | Transport::Feed
+            );
+        let ran = self.options.may_take(Signal::Run);
+        let checked = self.options.run_choice().reads(RunFrom::Checks);
         let unheard = [
+            (ran && followed, RUNS_UNFOLLOWED),
+            (checked && self.options.webhook.is_none(), CHECKS_POLLED),
             (pushed && self.options.webhook.is_none(), UNPUSHED),
             (pushed && self.forge == Forge::GitLab, GITLAB_UNPUSHED),
             (grouped, GITLAB_GROUPED),
@@ -247,6 +271,11 @@ impl SourceConfig for ForgeSource {
     }
 
     fn hooked(&self, headers: &[(&str, &str)], payload: &[u8]) -> Result<Hooked, String> {
+        if let Some(delivery) = self.forge.run_delivery(headers) {
+            return self
+                .ran(delivery, payload)
+                .map_err(|error| error.to_string());
+        }
         let hooked = if let Some(owner) = &self.options.owner {
             self.forge.hooked_owned(
                 (headers, payload),
@@ -297,9 +326,72 @@ impl SourceConfig for ForgeSource {
                     packaging: Packaging::of(self.forge, &self.options),
                     list: PackageList::Own,
                     visibility: None,
+                    runs: self.options.run_choice(),
                 }))
             }
         }
+    }
+}
+
+/// Why a run delivery announces nothing where the source announces no runs
+/// of its repository.
+const UNRAN: &str = "the source announces no runs of the repository";
+/// Why a run delivery announces nothing where the source does not announce
+/// that run.
+const UNCHOSEN: &str = "the run is not one the source's runs announce";
+
+impl ForgeSource {
+    /// What the run delivery `delivery`, `payload`, asks the source to
+    /// announce: the run's event where the source announces runs of its
+    /// repository and its `runs` choose the run, as of an owner's member
+    /// where the source names an owner.
+    fn ran(&self, delivery: Delivery, payload: &[u8]) -> Result<Hooked, SourceError> {
+        let what = self.forge.runs_what();
+        let (path, event) =
+            delivered_event(self.forge, (delivery, payload), &self.options.run_choice())?;
+        let (id, delivered) = crate::delivered::delivered_run(self.forge, what, payload)?;
+        let named = named(&path);
+        let unheld = |reason: String| SourceError::Unreadable { what, reason };
+        let (owned, admitted) = if let Some(owner) = &self.options.owner {
+            let holder = path.rsplit_once('/').map_or("", |(holder, _)| holder);
+            if !self.forge.holds((owner, self.options.subgroups()), holder) {
+                return Err(unheld(format!(
+                    "it is not of a repository {owner}, the owner its source names, holds"
+                )));
+            }
+            let selection = Selection {
+                names: self.names.clone(),
+                ..self.options.selection().unwrap_or_default()
+            };
+            (true, selection.admits(&delivered))
+        } else {
+            let repository = self.options.repository.as_deref().unwrap_or_default();
+            if !path.eq_ignore_ascii_case(repository) {
+                return Err(unheld(format!(
+                    "it is not of {repository}, the repository its source names"
+                )));
+            }
+            (false, true)
+        };
+        if !admitted {
+            return Ok(Hooked::Nothing(UNSELECTED));
+        }
+        if !self.options.signals_of(named).takes(Signal::Run) {
+            return Ok(Hooked::Nothing(UNRAN));
+        }
+        let Some(event) = event else {
+            return Ok(Hooked::Nothing(UNCHOSEN));
+        };
+        if owned {
+            return Ok(Hooked::Member {
+                visibility: delivered.visibility,
+                event,
+                id,
+            });
+        }
+        let host = host_of(self.forge, &api_of(self.forge, &self.options));
+        let origin = crate::delivered::origin(self.forge, &host, (id, delivered));
+        Ok(Hooked::Event(event.from_origin(origin)))
     }
 }
 

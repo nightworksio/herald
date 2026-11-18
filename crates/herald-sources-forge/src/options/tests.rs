@@ -727,7 +727,7 @@ fn signals_name_something_and_a_gitlab_source_tells_no_pre_release_by_a_flag() {
     assert_eq!(
         repository(Some(Vec::new()), None).check(Forge::GitHub),
         Err(
-            "signals names no signal; give release, tag, package or several, or remove it"
+            "signals names no signal; give release, tag, package, run or several, or remove it"
                 .to_owned()
         )
     );
@@ -749,7 +749,7 @@ fn signals_name_something_and_a_gitlab_source_tells_no_pre_release_by_a_flag() {
     };
     assert_eq!(
         overridden(signalled(&[], None)).check(Forge::GitHub),
-        Err("repositories.\"plugin-*\".signals names no signal; give release, tag, package or several, or remove it".to_owned())
+        Err("repositories.\"plugin-*\".signals names no signal; give release, tag, package, run or several, or remove it".to_owned())
     );
     assert_eq!(
         overridden(signalled(&[Signal::Tag], Some(PrereleaseRule::Flag))).check(Forge::GitLab),
@@ -991,3 +991,4 @@ mod app;
 mod packages;
 
 mod routes;
+mod runs;

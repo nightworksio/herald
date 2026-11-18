@@ -1,0 +1,53 @@
+{
+  "action": "completed",
+  "workflow_run": {
+    "id": 30433642,
+    "name": "Build",
+    "node_id": "MDEyOldvcmtmbG93IFJ1bjI2OTI4OQ==",
+    "head_branch": "main",
+    "head_sha": "acb5820ced9479c074f688cc328bf03f341a511d",
+    "path": ".github/workflows/build.yml",
+    "display_title": "Update README.md",
+    "run_number": 562,
+    "event": "push",
+    "status": "completed",
+    "conclusion": "failure",
+    "workflow_id": 159038,
+    "check_suite_id": 414944374,
+    "url": "https://api.github.com/repos/cli/cli/actions/runs/30433642",
+    "html_url": "https://github.com/cli/cli/actions/runs/30433642",
+    "created_at": "2026-11-17T09:58:12Z",
+    "updated_at": "2026-11-17T10:02:47Z",
+    "run_attempt": 1,
+    "run_started_at": "2026-11-17T09:58:12Z",
+    "actor": { "login": "octocat", "id": 1, "type": "User" },
+    "triggering_actor": { "login": "octocat", "id": 1, "type": "User" },
+    "head_commit": {
+      "id": "acb5820ced9479c074f688cc328bf03f341a511d",
+      "message": "Update README.md",
+      "timestamp": "2026-11-17T09:58:00Z"
+    }
+  },
+  "workflow": {
+    "id": 159038,
+    "name": "Build",
+    "path": ".github/workflows/build.yml",
+    "state": "active"
+  },
+  "repository": {
+    "id": 212613049,
+    "node_id": "MDEwOlJlcG9zaXRvcnkyMTI2MTMwNDk=",
+    "name": "cli",
+    "full_name": "cli/cli",
+    "private": false,
+    "visibility": "public",
+    "html_url": "https://github.com/cli/cli",
+    "topics": ["cli", "github"],
+    "archived": false,
+    "fork": false,
+    "is_template": false,
+    "language": "Go",
+    "owner": { "login": "cli", "id": 59704711, "type": "Organization" }
+  },
+  "sender": { "login": "octocat", "id": 1, "type": "User" }
+}

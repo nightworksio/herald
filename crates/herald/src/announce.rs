@@ -11,7 +11,7 @@ use herald_config::{Config, Uses};
 use herald_core::{Event, RouteId, Signal, SourceName};
 use herald_flows::{Fresh, Outcome, Stop, Within, announce_within, held_or_announced};
 use herald_ports::{Base, Keyring, Outbound, Store};
-use herald_sources_forge::{Forge, ForgeSource, SourceOptions};
+use herald_sources_forge::{Forge, ForgeSource, Signals, SourceOptions, ci_run, of_a_run};
 
 use super::dry_run::Dry;
 use super::output::say;
@@ -122,6 +122,10 @@ async fn released(
 ) -> Result<Option<Event>, String> {
     let repository = options.repository.as_deref().unwrap_or_default();
     let signals = options.signals_of(repository.rsplit('/').next().unwrap_or(repository));
+    let name = vars.get("GITHUB_EVENT_NAME").map_or("", String::as_str);
+    if tag.is_none() && forge == Forge::GitHub && of_a_run(forge, name) {
+        return ran(options, (forge, &signals), (name, vars), out);
+    }
     let tag = tag.or_else(|| {
         (forge != Forge::GitLab && signals.takes(Signal::Tag))
             .then(|| pushed(vars))
@@ -155,6 +159,36 @@ async fn released(
         }
         (_, None) => evented((forge, signals.prerelease), vars, out),
     }
+}
+
+/// The run a GitHub Actions run's own event `name` is of: its event where
+/// `signals` take runs and the source's `runs` choose it.
+fn ran(
+    options: &SourceOptions,
+    (forge, signals): (Forge, &Signals),
+    (name, vars): (&str, &BTreeMap<String, String>),
+    out: &mut dyn Write,
+) -> Result<Option<Event>, String> {
+    if !signals.takes(Signal::Run) {
+        say(
+            out,
+            &format!(
+                "The run's event is {name}, and the source announces no runs of the repository; nothing to announce."
+            ),
+        );
+        return Ok(None);
+    }
+    let path = variable(vars, "GITHUB_EVENT_PATH")?;
+    let payload =
+        std::fs::read(path).map_err(|error| format!("{path} could not be read: {error}"))?;
+    let ran = ci_run((forge, options), (name, &payload)).map_err(|error| error.to_string())?;
+    if ran.is_none() {
+        say(
+            out,
+            "The run is not one the source's runs announce; nothing to announce.",
+        );
+    }
+    Ok(ran)
 }
 
 /// An event, and the sources and routes it is announced from and to.

@@ -262,6 +262,7 @@ static JOINED: Cursor = Cursor {
     tagged: Vec::new(),
     notes: std::collections::BTreeMap::new(),
     packages: std::collections::BTreeMap::new(),
+    listings: std::collections::BTreeMap::new(),
     newest: None,
     sequence: None,
     proved: std::collections::BTreeMap::new(),

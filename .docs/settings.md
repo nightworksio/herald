@@ -353,6 +353,7 @@ Which events go where, rendered how.
 | `routes[].kinds` | array of [Kind](#kind) | The kinds of event it takes; every kind where absent. |
 | `routes[].late_release` | [LateRelease](#laterelease) | What it does with a Release whose tag it already announced: edits the tag's post to it, or posts it anew where the destination cannot edit (`edit`); posts it anew (`post`); or leaves the tag's post (`skip`). |
 | `routes[].match` | table | What of an event it narrows its sources' events by, an event taken only where every key holds; every event its other keys take where absent. |
+| `routes[].match.attributes.<name>` | array of string |  |
 | `routes[].match.forges` | array of string | The forges and registries taken, as a source's `kind` names them. |
 | `routes[].match.hosts` | array of string | The hosts taken, such as `github.com` or `ghe.example`. |
 | `routes[].match.owners` | array of string | The owners taken: accounts, organizations, groups, or a registry's scopes, vendors and namespaces, as globs, ignoring case. |
@@ -401,6 +402,7 @@ Which events go where, rendered how.
 | `routes[].limit` | integer | The most characters the server takes in a status, Mastodon's own 500 where it is not given. |
 | `routes[].link_length` | integer | The characters the server counts a link as, however long it is: its `characters_reserved_per_url`, Mastodon's own 23 where unset. |
 | `routes[].match` | table | What of an event it narrows its sources' events by, an event taken only where every key holds; every event its other keys take where absent. |
+| `routes[].match.attributes.<name>` | array of string |  |
 | `routes[].match.forges` | array of string | The forges and registries taken, as a source's `kind` names them. |
 | `routes[].match.hosts` | array of string | The hosts taken, such as `github.com` or `ghe.example`. |
 | `routes[].match.owners` | array of string | The owners taken: accounts, organizations, groups, or a registry's scopes, vendors and namespaces, as globs, ignoring case. |
@@ -444,6 +446,7 @@ Which events go where, rendered how.
 | `routes[].kinds` | array of [Kind](#kind) | The kinds of event it takes; every kind where absent. |
 | `routes[].late_release` | [LateRelease](#laterelease) | What it does with a Release whose tag it already announced: edits the tag's post to it, or posts it anew where the destination cannot edit (`edit`); posts it anew (`post`); or leaves the tag's post (`skip`). |
 | `routes[].match` | table | What of an event it narrows its sources' events by, an event taken only where every key holds; every event its other keys take where absent. |
+| `routes[].match.attributes.<name>` | array of string |  |
 | `routes[].match.forges` | array of string | The forges and registries taken, as a source's `kind` names them. |
 | `routes[].match.hosts` | array of string | The hosts taken, such as `github.com` or `ghe.example`. |
 | `routes[].match.owners` | array of string | The owners taken: accounts, organizations, groups, or a registry's scopes, vendors and namespaces, as globs, ignoring case. |
@@ -487,6 +490,7 @@ Which events go where, rendered how.
 | `routes[].kinds` | array of [Kind](#kind) | The kinds of event it takes; every kind where absent. |
 | `routes[].late_release` | [LateRelease](#laterelease) | What it does with a Release whose tag it already announced: edits the tag's post to it, or posts it anew where the destination cannot edit (`edit`); posts it anew (`post`); or leaves the tag's post (`skip`). |
 | `routes[].match` | table | What of an event it narrows its sources' events by, an event taken only where every key holds; every event its other keys take where absent. |
+| `routes[].match.attributes.<name>` | array of string |  |
 | `routes[].match.forges` | array of string | The forges and registries taken, as a source's `kind` names them. |
 | `routes[].match.hosts` | array of string | The hosts taken, such as `github.com` or `ghe.example`. |
 | `routes[].match.owners` | array of string | The owners taken: accounts, organizations, groups, or a registry's scopes, vendors and namespaces, as globs, ignoring case. |
@@ -533,6 +537,7 @@ Which events go where, rendered how.
 | `routes[].language` | string | The language each Note is written in, as an ISO 639 code. |
 | `routes[].late_release` | [LateRelease](#laterelease) | What it does with a Release whose tag it already announced: edits the tag's post to it, or posts it anew where the destination cannot edit (`edit`); posts it anew (`post`); or leaves the tag's post (`skip`). |
 | `routes[].match` | table | What of an event it narrows its sources' events by, an event taken only where every key holds; every event its other keys take where absent. |
+| `routes[].match.attributes.<name>` | array of string |  |
 | `routes[].match.forges` | array of string | The forges and registries taken, as a source's `kind` names them. |
 | `routes[].match.hosts` | array of string | The hosts taken, such as `github.com` or `ghe.example`. |
 | `routes[].match.owners` | array of string | The owners taken: accounts, organizations, groups, or a registry's scopes, vendors and namespaces, as globs, ignoring case. |
@@ -575,6 +580,7 @@ Which events go where, rendered how.
 | `routes[].kinds` | array of [Kind](#kind) | The kinds of event it takes; every kind where absent. |
 | `routes[].late_release` | [LateRelease](#laterelease) | What it does with a Release whose tag it already announced: edits the tag's post to it, or posts it anew where the destination cannot edit (`edit`); posts it anew (`post`); or leaves the tag's post (`skip`). |
 | `routes[].match` | table | What of an event it narrows its sources' events by, an event taken only where every key holds; every event its other keys take where absent. |
+| `routes[].match.attributes.<name>` | array of string |  |
 | `routes[].match.forges` | array of string | The forges and registries taken, as a source's `kind` names them. |
 | `routes[].match.hosts` | array of string | The hosts taken, such as `github.com` or `ghe.example`. |
 | `routes[].match.owners` | array of string | The owners taken: accounts, organizations, groups, or a registry's scopes, vendors and namespaces, as globs, ignoring case. |
@@ -728,6 +734,13 @@ A GitHub repository's releases, tags and packages.
 | `sources.<name>.repositories.<name>.routes_only` | boolean | Whether `routes` are the only routes their events reach, leaving out the routes that name the source; false where absent. |
 | `sources.<name>.repositories.<name>.signals` | array of [Signal](#signal) | What they announce, as the source's `signals` writes it; the source's where absent. |
 | `sources.<name>.repository` | string | The repository, as `owner/name`, or a GitLab project's full path, such as `group/subgroup/name`; or `owner` in its place. |
+| `sources.<name>.runs` | table | Which runs are announced where the signals take "run": what they are read from, what they did, how they ended, and their branches, triggers and workflows; every finished run of the forge's own CI where absent. |
+| `sources.<name>.runs.actions` | array of [RunAction](#runaction) | What a run did that is announced: `requested`, `in_progress`, `completed`; `["completed"]` where absent. |
+| `sources.<name>.runs.branches` | array of string | The branches or tags runs are announced of, as globs as `include` writes them; every one where empty. One name with no glob in it is asked of the forge, so a poll reads only its runs. |
+| `sources.<name>.runs.conclusions` | array of [Conclusion](#conclusion) | How a finished run ended for it to be announced; every conclusion where empty. |
+| `sources.<name>.runs.from` | array of [RunFrom](#runfrom) | What runs are read from: "actions", the forge's own CI, and on GitHub "checks", the check suites and commit statuses other CI services report; `["actions"]` where absent. |
+| `sources.<name>.runs.triggers` | array of string | What started the runs announced, as the forge names it, such as `push` or `schedule`; GitLab's `merge_request_event` is written `pull_request`. Every trigger where empty. |
+| `sources.<name>.runs.workflows` | array of string | The workflows, pipelines, check suites' apps or status contexts whose runs are announced, as globs as `include` writes them; every one where empty. |
 | `sources.<name>.signals` | array of [Signal](#signal) | What the source announces of each repository: its published Releases, its version tags, the versions of its packages, or several; `["release"]` where absent. A tag and a Release of it share one identity, so each route announces it once. |
 | `sources.<name>.subgroups` | boolean | Whether a GitLab group's members include the projects of its subgroups; true where absent. |
 | `sources.<name>.tables` | array of string | The arrays of the member file that list repositories, such as `["repo", "ungoverned"]`; the file's own array where absent, which only JSON can hold. |
@@ -809,6 +822,13 @@ A GitLab project's releases, tags and packages.
 | `sources.<name>.repositories.<name>.routes_only` | boolean | Whether `routes` are the only routes their events reach, leaving out the routes that name the source; false where absent. |
 | `sources.<name>.repositories.<name>.signals` | array of [Signal](#signal) | What they announce, as the source's `signals` writes it; the source's where absent. |
 | `sources.<name>.repository` | string | The repository, as `owner/name`, or a GitLab project's full path, such as `group/subgroup/name`; or `owner` in its place. |
+| `sources.<name>.runs` | table | Which runs are announced where the signals take "run": what they are read from, what they did, how they ended, and their branches, triggers and workflows; every finished run of the forge's own CI where absent. |
+| `sources.<name>.runs.actions` | array of [RunAction](#runaction) | What a run did that is announced: `requested`, `in_progress`, `completed`; `["completed"]` where absent. |
+| `sources.<name>.runs.branches` | array of string | The branches or tags runs are announced of, as globs as `include` writes them; every one where empty. One name with no glob in it is asked of the forge, so a poll reads only its runs. |
+| `sources.<name>.runs.conclusions` | array of [Conclusion](#conclusion) | How a finished run ended for it to be announced; every conclusion where empty. |
+| `sources.<name>.runs.from` | array of [RunFrom](#runfrom) | What runs are read from: "actions", the forge's own CI, and on GitHub "checks", the check suites and commit statuses other CI services report; `["actions"]` where absent. |
+| `sources.<name>.runs.triggers` | array of string | What started the runs announced, as the forge names it, such as `push` or `schedule`; GitLab's `merge_request_event` is written `pull_request`. Every trigger where empty. |
+| `sources.<name>.runs.workflows` | array of string | The workflows, pipelines, check suites' apps or status contexts whose runs are announced, as globs as `include` writes them; every one where empty. |
 | `sources.<name>.signals` | array of [Signal](#signal) | What the source announces of each repository: its published Releases, its version tags, the versions of its packages, or several; `["release"]` where absent. A tag and a Release of it share one identity, so each route announces it once. |
 | `sources.<name>.subgroups` | boolean | Whether a GitLab group's members include the projects of its subgroups; true where absent. |
 | `sources.<name>.tables` | array of string | The arrays of the member file that list repositories, such as `["repo", "ungoverned"]`; the file's own array where absent, which only JSON can hold. |
@@ -890,6 +910,13 @@ A Forgejo or Gitea repository's releases, tags and packages.
 | `sources.<name>.repositories.<name>.routes_only` | boolean | Whether `routes` are the only routes their events reach, leaving out the routes that name the source; false where absent. |
 | `sources.<name>.repositories.<name>.signals` | array of [Signal](#signal) | What they announce, as the source's `signals` writes it; the source's where absent. |
 | `sources.<name>.repository` | string | The repository, as `owner/name`, or a GitLab project's full path, such as `group/subgroup/name`; or `owner` in its place. |
+| `sources.<name>.runs` | table | Which runs are announced where the signals take "run": what they are read from, what they did, how they ended, and their branches, triggers and workflows; every finished run of the forge's own CI where absent. |
+| `sources.<name>.runs.actions` | array of [RunAction](#runaction) | What a run did that is announced: `requested`, `in_progress`, `completed`; `["completed"]` where absent. |
+| `sources.<name>.runs.branches` | array of string | The branches or tags runs are announced of, as globs as `include` writes them; every one where empty. One name with no glob in it is asked of the forge, so a poll reads only its runs. |
+| `sources.<name>.runs.conclusions` | array of [Conclusion](#conclusion) | How a finished run ended for it to be announced; every conclusion where empty. |
+| `sources.<name>.runs.from` | array of [RunFrom](#runfrom) | What runs are read from: "actions", the forge's own CI, and on GitHub "checks", the check suites and commit statuses other CI services report; `["actions"]` where absent. |
+| `sources.<name>.runs.triggers` | array of string | What started the runs announced, as the forge names it, such as `push` or `schedule`; GitLab's `merge_request_event` is written `pull_request`. Every trigger where empty. |
+| `sources.<name>.runs.workflows` | array of string | The workflows, pipelines, check suites' apps or status contexts whose runs are announced, as globs as `include` writes them; every one where empty. |
 | `sources.<name>.signals` | array of [Signal](#signal) | What the source announces of each repository: its published Releases, its version tags, the versions of its packages, or several; `["release"]` where absent. A tag and a Release of it share one identity, so each route announces it once. |
 | `sources.<name>.subgroups` | boolean | Whether a GitLab group's members include the projects of its subgroups; true where absent. |
 | `sources.<name>.tables` | array of string | The arrays of the member file that list repositories, such as `["repo", "ungoverned"]`; the file's own array where absent, which only JSON can hold. |
@@ -1359,6 +1386,10 @@ A colour, written "#rrggbb".
 
 A command a member gives herald.
 
+### Conclusion
+
+How a finished run ended, in GitHub's words, which every forge's run is read as.
+
 ### Declared
 
 Who may see a namespace's packages, where the source declares it.
@@ -1409,7 +1440,7 @@ Where `herald server` keeps the keys inbound activities are checked with.
 
 ### Kind
 
-What kind of thing an event announces: release, package-version, feed-entry, message, or a kind the config declares.
+What kind of thing an event announces: release, package-version, feed-entry, message, run, or a kind the config declares.
 
 ### LateRelease
 
@@ -1486,6 +1517,14 @@ Who may see a repository.
 ### Rotation
 
 Whether a peer's own signed statement may replace the keys pinned for it.
+
+### RunAction
+
+What a run did that is announced.
+
+### RunFrom
+
+What a run is read from.
 
 ### Signal
 

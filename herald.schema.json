@@ -443,6 +443,56 @@
         }
       ]
     },
+    "Conclusion": {
+      "description": "How a finished run ended, in GitHub's words, which every forge's run is\nread as.",
+      "oneOf": [
+        {
+          "description": "It passed.",
+          "type": "string",
+          "const": "success"
+        },
+        {
+          "description": "It failed: GitLab's `failed`, a commit status's `failure` or\n`error`.",
+          "type": "string",
+          "const": "failure"
+        },
+        {
+          "description": "It was cancelled: GitLab's `canceled`.",
+          "type": "string",
+          "const": "cancelled"
+        },
+        {
+          "description": "It ran out of time.",
+          "type": "string",
+          "const": "timed_out"
+        },
+        {
+          "description": "It was skipped.",
+          "type": "string",
+          "const": "skipped"
+        },
+        {
+          "description": "It waits for someone: GitLab's `manual`.",
+          "type": "string",
+          "const": "action_required"
+        },
+        {
+          "description": "It finished neither passing nor failing.",
+          "type": "string",
+          "const": "neutral"
+        },
+        {
+          "description": "It failed before it started.",
+          "type": "string",
+          "const": "startup_failure"
+        },
+        {
+          "description": "GitHub gave up on it.",
+          "type": "string",
+          "const": "stale"
+        }
+      ]
+    },
     "Declared": {
       "description": "Who may see a namespace's packages, where the source declares it.",
       "oneOf": [
@@ -1565,7 +1615,7 @@
       "additionalProperties": false
     },
     "Kind": {
-      "description": "What kind of thing an event announces: release, package-version, feed-entry, message, or a kind the config declares.",
+      "description": "What kind of thing an event announces: release, package-version, feed-entry, message, run, or a kind the config declares.",
       "type": "string",
       "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"
     },
@@ -1770,9 +1820,30 @@
       ]
     },
     "Match": {
-      "description": "What of an event a route narrows its sources' events by. Each list\ntakes any one of what it holds, and every event where empty; an event\nwith no origin, such as a feed's, is taken only where the match names\nprojects alone.",
+      "description": "What of an event a route narrows its sources' events by. Each list\ntakes any one of what it holds, and every event where empty; an event\nwith no origin, such as a feed's, is taken only where the match names\nprojects and attributes alone; and an event `not` takes is never taken.",
       "type": "object",
       "properties": {
+        "attributes": {
+          "description": "The attributes of the event's kind, every one of which it carries\nwith one of the values given for it, as text and ignoring case, such\nas `conclusion = [\"failure\", \"timed_out\"]`; any value where none is\ngiven.",
+          "type": "object",
+          "additionalProperties": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "examples": [
+            [
+              [
+                "conclusion",
+                [
+                  "failure",
+                  "timed_out"
+                ]
+              ]
+            ]
+          ]
+        },
         "forges": {
           "description": "The forges and registries taken, as a source's `kind` names them.",
           "type": "array",
@@ -1788,6 +1859,10 @@
           "items": {
             "type": "string"
           }
+        },
+        "not": {
+          "description": "What is never taken, written as a match is, whatever the rest of the\nmatch takes, such as `not = { attributes = { trigger = [\"pull_request\"] } }`.",
+          "$ref": "#/$defs/Match"
         },
         "owners": {
           "description": "The owners taken: accounts, organizations, groups, or a registry's\nscopes, vendors and namespaces, as globs, ignoring case.",
@@ -2481,6 +2556,93 @@
       },
       "additionalProperties": false
     },
+    "RunAction": {
+      "description": "What a run did that is announced.",
+      "oneOf": [
+        {
+          "description": "It was asked for, and waits to start.",
+          "type": "string",
+          "const": "requested"
+        },
+        {
+          "description": "It started.",
+          "type": "string",
+          "const": "in_progress"
+        },
+        {
+          "description": "It finished.",
+          "type": "string",
+          "const": "completed"
+        }
+      ]
+    },
+    "RunFrom": {
+      "description": "What a run is read from.",
+      "oneOf": [
+        {
+          "description": "The forge's own CI: GitHub Actions' workflow runs, GitLab's\npipelines and Forgejo Actions' runs.",
+          "type": "string",
+          "const": "actions"
+        },
+        {
+          "description": "GitHub's check suites and commit statuses, which other CI services\nreport through; GitHub Actions' own check suites are read as\nworkflow runs.",
+          "type": "string",
+          "const": "checks"
+        }
+      ]
+    },
+    "Runs": {
+      "description": "Which runs a source announces, where its signals take \"run\".",
+      "type": "object",
+      "properties": {
+        "actions": {
+          "description": "What a run did that is announced: `requested`, `in_progress`,\n`completed`; `[\"completed\"]` where absent.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/RunAction"
+          }
+        },
+        "branches": {
+          "description": "The branches or tags runs are announced of, as globs as `include`\nwrites them; every one where empty. One name with no glob in it is\nasked of the forge, so a poll reads only its runs.",
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "string"
+          }
+        },
+        "conclusions": {
+          "description": "How a finished run ended for it to be announced; every conclusion\nwhere empty.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Conclusion"
+          }
+        },
+        "from": {
+          "description": "What runs are read from: \"actions\", the forge's own CI, and on\nGitHub \"checks\", the check suites and commit statuses other CI\nservices report; `[\"actions\"]` where absent.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/RunFrom"
+          }
+        },
+        "triggers": {
+          "description": "What started the runs announced, as the forge names it, such as\n`push` or `schedule`; GitLab's `merge_request_event` is written\n`pull_request`. Every trigger where empty.",
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "string"
+          }
+        },
+        "workflows": {
+          "description": "The workflows, pipelines, check suites' apps or status contexts\nwhose runs are announced, as globs as `include` writes them; every\none where empty.",
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
     "Schedule": {
       "description": "How often a driver that keeps its own schedule polls and keeps house.",
       "type": "object",
@@ -2664,6 +2826,11 @@
           "description": "A version of a package the forge's registry holds for the\nrepository.",
           "type": "string",
           "const": "package"
+        },
+        {
+          "description": "A finished CI run: a workflow run, a pipeline, or a check suite or\ncommit status where the source reads checks.",
+          "type": "string",
+          "const": "run"
         }
       ]
     },
@@ -3108,6 +3275,10 @@
                 "nightworksio/herald"
               ]
             },
+            "runs": {
+              "description": "Which runs are announced where the signals take \"run\": what they\nare read from, what they did, how they ended, and their branches,\ntriggers and workflows; every finished run of the forge's own CI\nwhere absent.",
+              "$ref": "#/$defs/Runs"
+            },
             "signals": {
               "description": "What the source announces of each repository: its published Releases,\nits version tags, the versions of its packages, or several;\n`[\"release\"]` where absent. A tag and a Release of it share one\nidentity, so each route announces it once.",
               "type": "array",
@@ -3404,6 +3575,10 @@
                 "nightworksio/herald"
               ]
             },
+            "runs": {
+              "description": "Which runs are announced where the signals take \"run\": what they\nare read from, what they did, how they ended, and their branches,\ntriggers and workflows; every finished run of the forge's own CI\nwhere absent.",
+              "$ref": "#/$defs/Runs"
+            },
             "signals": {
               "description": "What the source announces of each repository: its published Releases,\nits version tags, the versions of its packages, or several;\n`[\"release\"]` where absent. A tag and a Release of it share one\nidentity, so each route announces it once.",
               "type": "array",
@@ -3699,6 +3874,10 @@
               "examples": [
                 "nightworksio/herald"
               ]
+            },
+            "runs": {
+              "description": "Which runs are announced where the signals take \"run\": what they\nare read from, what they did, how they ended, and their branches,\ntriggers and workflows; every finished run of the forge's own CI\nwhere absent.",
+              "$ref": "#/$defs/Runs"
             },
             "signals": {
               "description": "What the source announces of each repository: its published Releases,\nits version tags, the versions of its packages, or several;\n`[\"release\"]` where absent. A tag and a Release of it share one\nidentity, so each route announces it once.",

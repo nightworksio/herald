@@ -3,7 +3,8 @@
 //! an owner's webhook names the member its event's identity names, and its
 //! events, feed and GraphQL answers name members by their numeric ids; a
 //! ghcr source's listing names images with a project, and each version's
-//! identity names its registry, owner and image.
+//! identity names its registry, owner and image; and a run, delivered or
+//! polled, is named as a run of its repository's id.
 
 #![no_main]
 
@@ -15,7 +16,10 @@ use herald_core::{
 use herald_kinds::{Changed, Credential, Polling, Rounded, SourceConfig as _};
 use herald_ports::{Http, HttpError, Request, Response, Secret};
 use herald_sources_forge::{Forge, Hooked, Repository, Signals};
-use herald_sources_forge::{ForgeSource, GhcrOptions, GhcrSource, SourceOptions, Transport};
+use herald_core::Signal;
+use herald_sources_forge::{
+    ForgeSource, GhcrOptions, GhcrSource, RunFrom, Runs, SourceOptions, Transport, ci_run,
+};
 use herald_wire::PARSE_LIMIT;
 use libfuzzer_sys::fuzz_target;
 
@@ -173,9 +177,76 @@ fn images(bytes: &[u8]) {
     }
 }
 
+/// That `event` is a run of the repository of id `id`, delivered or
+/// polled.
+fn ran(event: &Event, id: &str) {
+    let identity = event.identity().as_str();
+    assert!(
+        ["/run/", "/check-suite/", "/status/"]
+            .iter()
+            .any(|ran| identity.contains(&format!("/{id}{ran}"))),
+        "{event:?}"
+    );
+}
+
+/// What a source announcing every run of every forge makes of `bytes` as
+/// a run's delivery, a CI run's event and its runs' listings.
+fn runs(bytes: &[u8]) {
+    let http = Answering(bytes.to_vec());
+    let headers = [
+        ("X-GitHub-Event", "workflow_run"),
+        ("X-GitHub-Event", "check_suite"),
+        ("X-GitHub-Event", "status"),
+        ("X-Gitlab-Event", "Pipeline Hook"),
+        ("X-Forgejo-Event", "workflow_run_success"),
+        ("X-Gitea-Event", "action_run_failure"),
+    ];
+    for forge in FORGES {
+        let from = if forge == Forge::GitHub {
+            vec![RunFrom::Actions, RunFrom::Checks]
+        } else {
+            vec![RunFrom::Actions]
+        };
+        let options = SourceOptions {
+            repository: Some("fuzzer/fuzzed".to_owned()),
+            signals: Some(vec![Signal::Run]),
+            runs: Some(Runs {
+                from: Some(from),
+                ..Runs::default()
+            }),
+            ..SourceOptions::default()
+        };
+        let source = ForgeSource {
+            forge,
+            options: options.clone(),
+            names: None,
+        };
+        for header in headers {
+            if let Ok(Hooked::Event(event)) = source.hooked(&[header], bytes) {
+                let origin = event.origin().expect("a delivered run names its origin");
+                ran(&event, &origin.id);
+            }
+            if let Ok(Some(event)) = ci_run((forge, &options), (header.1, bytes)) {
+                let origin = event.origin().expect("a CI run's event names its origin");
+                ran(&event, &origin.id);
+            }
+        }
+        if let Polling::One(poll) = source.poller(None, false)
+            && let Ok(Some(polled)) =
+                pollster::block_on(poll.polled(&http, None, jiff::Timestamp::UNIX_EPOCH))
+        {
+            for event in &polled.events {
+                let origin = event.origin().expect("a polled run names its origin");
+                ran(event, &origin.id);
+            }
+        }
+    }
+}
+
 fuzz_target!(|bytes: &[u8]| {
     owned(bytes);
     images(bytes);
+    runs(bytes);
     let response = Response {
         status: 200,
         headers: Vec::new(),

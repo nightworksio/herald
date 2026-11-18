@@ -17,11 +17,15 @@ fn answer(status: u16, body: &Value) -> Response {
 }
 
 fn register(scripted: &ScriptedHttp) -> Result<Registered, Unpolled> {
+    registering(scripted, false)
+}
+
+fn registering(scripted: &ScriptedHttp, ran: bool) -> Result<Registered, Unpolled> {
     let token = Token::Named(Secret::new("GITLAB_TOKEN", "glpat"));
     pollster::block_on(registered(
         scripted,
         (API, Some(&token)),
-        "7",
+        ("7", ran),
         (URL, &Secret::new("HERALD_WEBHOOK", "hook-secret")),
     ))
 }
@@ -56,10 +60,23 @@ fn a_member_with_a_hook_to_herald_keeps_it_and_one_without_is_given_one() {
             "releases_events": true,
             "tag_push_events": true,
             "push_events": false,
+            "pipeline_events": false,
         })
     );
     assert_eq!(posted.method, Method::Post);
     assert!(posted.sealed);
+}
+
+#[test]
+fn a_member_announcing_runs_is_given_a_hook_sending_its_pipelines() {
+    let made = ScriptedHttp::new(vec![
+        answer(200, &json!([])),
+        answer(201, &json!({ "id": 1 })),
+    ]);
+    assert_eq!(registering(&made, true), Ok(Registered::Made));
+    let posted: Value = serde_json::from_slice(&made.requests()[1].body).unwrap();
+    assert_eq!(posted["pipeline_events"], json!(true));
+    assert_eq!(posted["releases_events"], json!(true));
 }
 
 #[test]

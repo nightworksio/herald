@@ -1,6 +1,6 @@
 # ADR-0038: A route matches each event by its origin
 
-**Status:** Accepted
+**Status:** Accepted; its `match` extended by attributes and `not` by [ADR-0050](0050-a-forge-source-announces-its-ci-runs-and-a-route-matches-by-attributes.md)
 **Date:** 2026-11-16
 
 ## Context

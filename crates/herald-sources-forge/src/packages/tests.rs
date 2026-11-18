@@ -71,6 +71,7 @@ fn releases(forge: Forge, chosen: SourceOptions) -> Releases {
         packaging: Packaging::of(forge, &options),
         list: super::PackageList::Own,
         visibility: None,
+        runs: crate::options::RunChoice::default(),
     }
 }
 

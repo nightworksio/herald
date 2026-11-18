@@ -35,6 +35,12 @@ struct Repositoried {
     repository: Described,
 }
 
+/// A Forgejo run's delivery, by the repository its run is of.
+#[derive(Deserialize)]
+struct Ran {
+    run: Repositoried,
+}
+
 /// A project, as GitLab's release hook describes it.
 #[derive(Deserialize)]
 struct Project {
@@ -176,6 +182,20 @@ pub(crate) fn delivered(
             )
         }
     })
+}
+
+/// The forge's id of the repository the run delivery `payload` is of, and
+/// the repository as the delivery describes it: Forgejo names it in its
+/// run.
+pub(crate) fn delivered_run(
+    forge: Forge,
+    what: &'static str,
+    payload: &[u8],
+) -> Result<(String, Delivered), SourceError> {
+    match forge {
+        Forge::Forgejo => Ok(github(read::<Ran>(what, payload)?.run.repository)),
+        Forge::GitHub | Forge::GitLab => delivered(forge, what, payload),
+    }
 }
 
 #[cfg(test)]

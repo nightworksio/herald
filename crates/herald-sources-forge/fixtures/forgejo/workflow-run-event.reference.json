@@ -1,0 +1,39 @@
+{
+  "action": "run_completed",
+  "run": {
+    "ScheduleID": 0,
+    "approved_by": 0,
+    "commit_sha": "5e9a9b3b8d4f6d1c0a2b7e8f9c1d2e3f4a5b6c7d",
+    "created": "2026-11-17T09:58:12Z",
+    "duration": 275000000000,
+    "event": "push",
+    "event_payload": "{}",
+    "html_url": "https://codeberg.org/forgejo/forgejo/actions/runs/562",
+    "id": 30433,
+    "index_in_repo": 562,
+    "is_fork_pull_request": false,
+    "is_ref_deleted": false,
+    "need_approval": false,
+    "prettyref": "forgejo",
+    "repository": {
+      "id": 76,
+      "name": "forgejo",
+      "full_name": "forgejo/forgejo",
+      "private": false,
+      "html_url": "https://codeberg.org/forgejo/forgejo",
+      "archived": false,
+      "fork": false,
+      "template": false,
+      "language": "Go",
+      "owner": { "id": 9, "login": "forgejo" }
+    },
+    "started": "2026-11-17T09:58:20Z",
+    "status": "failure",
+    "stopped": "2026-11-17T10:02:47Z",
+    "title": "Update README.md",
+    "trigger_event": "push",
+    "trigger_user": { "id": 1, "login": "earl-warren" },
+    "updated": "2026-11-17T10:02:47Z",
+    "workflow_id": "testing.yml"
+  }
+}

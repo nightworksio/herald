@@ -97,12 +97,12 @@ mod pulls {
         let refused = config.unwrap_err();
         assert!(refused.contains("routes[0].versions"), "{refused}");
         let config = loaded(
-            "[sources.up]\nkind = \"herald\"\npeer = \"upstream\"\nfeed = \"releases\"\n[destinations.feed]\nkind = \"herald\"\n[federation]\ndomain = \"herald.self\"\nkeys = [{ secret = \"HERALD_KEY\" }]\n[[routes]]\nid = \"relay\"\nsources = [\"up\"]\ndestination = \"feed\"\nkinds = [\"release\", \"feed-entry\"]\n",
+            "[sources.up]\nkind = \"herald\"\npeer = \"upstream\"\nfeed = \"releases\"\n[destinations.feed]\nkind = \"herald\"\n[federation]\ndomain = \"herald.self\"\nkeys = [{ secret = \"HERALD_KEY\" }]\n[[routes]]\nid = \"relay\"\nsources = [\"up\"]\ndestination = \"feed\"\nkinds = [\"release\", \"feed-entry\", \"run\"]\n",
         )
         .unwrap();
         assert_eq!(
             config.routes[0].route.filter.kinds,
-            [Kind::RELEASE, Kind::FEED_ENTRY]
+            [Kind::RELEASE, Kind::FEED_ENTRY, Kind::RUN]
         );
     }
 }

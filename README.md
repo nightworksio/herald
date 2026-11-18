@@ -30,8 +30,8 @@ enough to start.
 
 **Four sources.**
 
-- forge releases from GitHub, GitLab and Forgejo or Gitea, from one
-  repository or every repository an owner holds;
+- forge releases and CI runs from GitHub, GitLab and Forgejo or Gitea,
+  from one repository or every repository an owner holds;
 - package versions from Packagist, crates.io, npm and Docker Hub, and
   image tags from ghcr and any OCI registry;
 - entries in RSS and Atom feeds;
@@ -519,8 +519,12 @@ match = { projects = ["plugin-*"], repositories = ["*/plugin-*"], owners = ["lem
 
 `projects`, `repositories` and `owners` are case-insensitive globs.
 `properties` needs every named property to hold one of its values (any
-value where none is given). An event with no origin, such as a feed's,
-passes only a `match` that names projects alone.
+value where none is given), and `attributes` every named attribute of the
+event's kind, compared as text ignoring case. `not`, written as a `match`
+is, leaves out whatever it takes. An event with no origin, such as a
+feed's, passes only a `match` that names projects and attributes alone.
+A route whose `kinds` names a kind none of its sources announces is
+refused, as is an attribute no kind it takes carries.
 
 An owner's member can also name routes: `routes = ["plugins"]` under
 `[sources.<owner>.repositories."<glob>"]` adds those routes for its events,
@@ -623,6 +627,18 @@ took packages remembers the versions it first finds without announcing
 them. GitLab's image tags carry no time in their listing, so a new source
 remembers the tags it first finds without announcing any. GitHub's `registry_package` and `package` webhooks
 and Forgejo's `package` webhook poll the source at once.
+
+### Runs
+
+`signals = ["run"]` announces the repository's CI runs as `run` events:
+GitHub Actions' workflow runs, GitLab's pipelines and Forgejo Actions'
+runs, and on GitHub the check suites and commit statuses other CI services
+report, with `runs.from = ["actions", "checks"]`. Every finished run is
+announced where `runs` is absent; `runs` narrows by what a run did, how it
+ended, and its branches, triggers and workflows, and a route's
+`match.attributes` sends each where it belongs. [`.docs/runs.md`](.docs/runs.md)
+covers the keys, the attributes, each forge's webhooks and what a poll
+reads.
 
 ### Every package of a namespace
 

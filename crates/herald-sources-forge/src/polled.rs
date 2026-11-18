@@ -8,7 +8,9 @@ use herald_ports::{Boxed, DynHttp, Erased, Http as _, Response};
 
 use crate::forge::{Repository, validators};
 use crate::kind::{originated, projected};
+use crate::options::RunChoice;
 use crate::packages::{Asking, PackageList, Packaging, merged, packaged_of};
+use crate::runs;
 use crate::tags::{Listed, Pointed};
 use crate::wire::{ForgeTag, tag_event};
 use crate::{Forge, Origin, Signals, Token};
@@ -29,6 +31,7 @@ pub(crate) struct Releases {
     pub(crate) packaging: Packaging,
     pub(crate) list: PackageList,
     pub(crate) visibility: Option<herald_core::Visibility>,
+    pub(crate) runs: RunChoice,
 }
 
 /// What the tags answer of a poll found: the events of tags read in full,
@@ -182,6 +185,7 @@ pub async fn tag_event_of(
         packaging: Packaging::of(origin.forge(), &crate::SourceOptions::default()),
         list: PackageList::Own,
         visibility: None,
+        runs: RunChoice::default(),
     };
     let http = Erased(http);
     let forge = origin.forge();
@@ -208,6 +212,17 @@ pub async fn tag_event_of(
     tag_event(forge.api().tags, &repository, (read, url), rule)
         .map(|event| event.from_origin(origin))
         .map_err(Unpolled::unreadable)
+}
+
+impl Releases {
+    /// How its repository's runs are asked, where its signals take them.
+    fn run_asking(&self) -> Option<runs::Asking<'_>> {
+        self.signals.takes(Signal::Run).then_some(runs::Asking {
+            origin: &self.origin,
+            token: self.token.as_ref(),
+            choice: &self.runs,
+        })
+    }
 }
 
 impl Poll for Releases {
@@ -249,8 +264,15 @@ impl Poll for Releases {
             } else {
                 None
             };
+            let runs = self.run_asking();
+            let ran = match &runs {
+                Some(runs) => Some(runs.asked(&http, cursor).await?),
+                None => None,
+            };
             let asks_packages = self.signals.takes(Signal::Package);
-            let asked = changed(releases.as_ref()) || changed(tags.as_ref());
+            let asked = changed(releases.as_ref())
+                || changed(tags.as_ref())
+                || ran.as_ref().is_some_and(runs::Asked::changed);
             if !asked && (!asks_packages || matches!(self.list, PackageList::Kept)) {
                 return Ok(None);
             }
@@ -307,9 +329,13 @@ impl Poll for Releases {
                 };
                 polled.signals.insert(Signal::Tag, validators);
             }
-            let mut polled = match packaged {
+            let polled = match packaged {
                 Some(packaged) => merged(Some(polled), packaged, cursor).unwrap_or_default(),
                 None => polled,
+            };
+            let mut polled = match (runs, ran) {
+                (Some(runs), Some(ran)) => runs::merged(polled, runs.read(&ran, &repository)?),
+                _ => polled,
             };
             polled
                 .events

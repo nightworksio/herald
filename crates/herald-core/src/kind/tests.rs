@@ -90,7 +90,7 @@ fn a_versioned_kind_carries_a_required_version_and_an_optional_prerelease() {
 }
 
 #[test]
-fn herald_ships_four_kinds_and_only_releases_and_package_versions_are_versioned() {
+fn herald_ships_five_kinds_and_only_releases_and_package_versions_are_versioned() {
     let shipped = KindSpec::shipped();
     let versioned: Vec<(&str, bool)> = shipped
         .iter()
@@ -102,7 +102,8 @@ fn herald_ships_four_kinds_and_only_releases_and_package_versions_are_versioned(
             ("release", true),
             ("package-version", true),
             ("feed-entry", false),
-            ("message", false)
+            ("message", false),
+            ("run", false)
         ]
     );
     assert_eq!(shipped[2].links, [LinkSpec::named("entry")]);
@@ -118,13 +119,26 @@ fn herald_ships_four_kinds_and_only_releases_and_package_versions_are_versioned(
         .iter()
         .map(|spec| spec.attributes.get(crate::SIGNAL))
         .collect();
-    assert_eq!(signals, [Some(&signalled), Some(&signalled), None, None]);
+    assert_eq!(
+        signals,
+        [
+            Some(&signalled),
+            Some(&signalled),
+            None,
+            None,
+            Some(&signalled)
+        ]
+    );
     for name in [crate::PACKAGE, crate::PACKAGE_TYPE] {
         let packaged: Vec<Option<&AttributeSpec>> = shipped
             .iter()
             .map(|spec| spec.attributes.get(name))
             .collect();
-        assert_eq!(packaged, [None, Some(&signalled), None, None], "{name}");
+        assert_eq!(
+            packaged,
+            [None, Some(&signalled), None, None, None],
+            "{name}"
+        );
     }
     let mut tagged = crate::versioned("v1", false);
     tagged.insert(crate::SIGNAL.to_owned(), Attribute::Text("tag".to_owned()));
@@ -132,6 +146,53 @@ fn herald_ships_four_kinds_and_only_releases_and_package_versions_are_versioned(
     assert!(
         shipped[2]
             .check(&one(crate::SIGNAL, Attribute::Text("tag".to_owned())))
+            .is_err()
+    );
+}
+
+#[test]
+fn a_run_names_its_action_workflow_and_source_and_links_its_page() {
+    let run = &KindSpec::shipped()[4];
+    assert_eq!(run.kind, Kind::RUN);
+    assert_eq!(run.links, [LinkSpec::named("run")]);
+    let typed: Vec<(&str, AttributeType, bool)> = run
+        .attributes
+        .iter()
+        .map(|(name, spec)| (name.as_str(), spec.ty, spec.required))
+        .collect();
+    assert_eq!(
+        typed,
+        [
+            ("action", AttributeType::Text, true),
+            ("actor", AttributeType::Text, false),
+            ("attempt", AttributeType::Number, false),
+            ("branch", AttributeType::Text, false),
+            ("commit", AttributeType::Text, false),
+            ("conclusion", AttributeType::Text, false),
+            ("edited", AttributeType::Flag, false),
+            ("from", AttributeType::Text, true),
+            ("number", AttributeType::Number, false),
+            ("signal", AttributeType::Text, false),
+            ("trigger", AttributeType::Text, false),
+            ("withdrawn", AttributeType::Flag, false),
+            ("workflow", AttributeType::Text, true),
+        ]
+    );
+    let finished = BTreeMap::from([
+        (
+            crate::ACTION.to_owned(),
+            Attribute::Text("completed".to_owned()),
+        ),
+        (crate::WORKFLOW.to_owned(), Attribute::Text("CI".to_owned())),
+        (
+            crate::FROM.to_owned(),
+            Attribute::Text("actions".to_owned()),
+        ),
+        (crate::ATTEMPT.to_owned(), Attribute::Number(2.into())),
+    ]);
+    assert_eq!(run.check(&finished), Ok(()));
+    assert!(
+        run.check(&one(crate::WORKFLOW, Attribute::Text("CI".to_owned())))
             .is_err()
     );
 }
@@ -231,6 +292,7 @@ fn the_kinds_a_config_knows_are_herald_s_and_those_it_declares_in_order() {
             "package-version",
             "feed-entry",
             "message",
+            "run",
             "deploy"
         ]
     );

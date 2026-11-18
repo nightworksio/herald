@@ -35,6 +35,10 @@ pub struct Cursor {
     /// versions, by package (ADR-0035).
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub packages: BTreeMap<String, Validators>,
+    /// The validators the server last returned for each further listing a
+    /// signal reads, by the listing's name, such as a run's `check-suite`.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub listings: BTreeMap<String, Validators>,
     /// When the newest event it announced occurred, where its source
     /// leaves older ones it finds unannounced (ADR-0042).
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -74,6 +78,9 @@ pub struct Polled {
     /// full, newest first, which announce nothing and are remembered as
     /// seen.
     pub unread: Vec<Identity>,
+    /// The validators the server returned for each further listing a
+    /// signal reads, by the listing's name.
+    pub listings: BTreeMap<String, Validators>,
     /// When the newest event its source announced occurred, where the
     /// source keeps that mark; the cursor's own mark stays where it is
     /// not given.
@@ -147,6 +154,7 @@ impl Cursor {
             signals: polled.signals.clone(),
             notes,
             packages: polled.packages.clone(),
+            listings: polled.listings.clone(),
             newest: polled.newest.or(self.newest),
             sequence: polled.sequence.or(self.sequence),
             proved: self.proofs(polled, remembered),
@@ -381,6 +389,7 @@ mod tests {
                 watched: 0,
                 packages: BTreeMap::from([("container/herald".to_owned(), tags.clone())]),
                 unread: vec![Identity::new("u"), Identity::new("c")],
+                listings: BTreeMap::from([("status".to_owned(), tags.clone())]),
                 newest: None,
                 sequence: None,
                 withdrawn: Vec::new(),
@@ -406,6 +415,7 @@ mod tests {
                 notes: BTreeMap::new(),
                 tagged: vec![Identity::new("b"), Identity::new("p"), Identity::new("a")],
                 packages: BTreeMap::from([("container/herald".to_owned(), tags.clone())]),
+                listings: BTreeMap::from([("status".to_owned(), tags.clone())]),
                 newest: None,
                 sequence: None,
                 proved: BTreeMap::new(),
