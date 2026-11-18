@@ -266,13 +266,20 @@ pub fn load(
     loader.remembering(store.as_ref(), (&mut sources, &source_spans));
     let templates = loader.templates(sections.templates, read);
     let listed = loader.apps(sections.apps, &sources);
+    let views = loader.views(sections.views, &sources);
+    let reports = loader.reports(
+        sections.reports,
+        &views,
+        &sources,
+        &listed.keys().map(String::as_str).collect(),
+    );
     let github_apps = loader.github_apps(sections.github_apps, store.as_ref());
     loader.installed((&sources, &source_spans), &github_apps);
     let routes = loader.every_route(
         sections.routes,
         &destinations,
         &sources,
-        &listed,
+        (&listed, &reports),
         &templates,
     );
     loader.followed(store.as_ref(), &destinations, &routes);
@@ -310,6 +317,8 @@ pub fn load(
         templates,
         apps,
         github_apps,
+        views,
+        reports,
         schedule,
         server,
         federation,
@@ -338,3 +347,4 @@ mod settings;
 mod sources;
 mod store;
 mod templates;
+mod views;

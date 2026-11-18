@@ -468,6 +468,7 @@ fn a_group_is_announced_under_its_key_as_its_lead_renders() {
             key: "v0.1.0",
             events: &members,
         }),
+        view: None,
     };
     assert_eq!(subject.identity(), crate::group_identity("v0.1.0"));
     let grouped = announce(

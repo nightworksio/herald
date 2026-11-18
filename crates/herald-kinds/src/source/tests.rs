@@ -732,6 +732,16 @@ fn a_pull_reaches_its_feed_s_origin_alone_and_checks_nothing_of_its_own() {
     assert_eq!(pollster::block_on(pull.probed(&http)), Vec::new());
     let plain = Plain { token: None };
     assert!(!plain.any_kind());
+    assert!(plain.queue(None).is_none());
+    assert_eq!(plain.queue_cost(crate::Most::default()), None);
+    assert_eq!(
+        crate::Most::default(),
+        crate::Most {
+            open: crate::MOST_OPEN,
+            pulls: crate::MOST_PULLS
+        }
+    );
+    assert_eq!((crate::MOST_OPEN, crate::MOST_PULLS), (500, 100));
     assert_eq!(plain.peering(), None);
     assert!(plain.joined("https://peer.example").is_none());
 }

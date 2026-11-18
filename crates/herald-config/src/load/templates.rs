@@ -5,15 +5,16 @@ use std::collections::BTreeMap;
 use std::ops::Range;
 
 use herald_core::{
-    Context, Event, Form, Group, Sandbox, TemplateName, Templates, body_template, group_template,
-    thread_template, title_template,
+    Context, Event, Form, Group, Kind, Sandbox, Showing, TemplateName, Templates, body_template,
+    group_template, thread_template, title_template,
 };
 use toml::Spanned;
 
 use super::route::Read;
 use super::{Loader, Value};
 use crate::file::TemplateFile;
-use crate::samples::samples_from;
+use crate::samples::{sample_boards, samples_from};
+use crate::views::{BUILT_IN_VIEW, QUEUE_BODY, QUEUE_TEMPLATE, QUEUE_TITLE};
 
 /// A template's sources, with where each is written.
 pub(super) struct Written {
@@ -71,6 +72,16 @@ impl Loader<'_> {
                     },
                 );
             }
+        }
+        let shipped = [(QUEUE_TEMPLATE, QUEUE_TITLE, QUEUE_BODY)];
+        for (name, title, body) in shipped {
+            templates
+                .entry(TemplateName::new(name))
+                .or_insert_with(|| Written {
+                    title: Spanned::new(0..0, title.to_owned()),
+                    body: Spanned::new(0..0, body.to_owned()),
+                    body_path: name.to_owned(),
+                });
         }
         templates
     }
@@ -208,16 +219,33 @@ impl Loader<'_> {
             key: SAMPLE_KEY,
             events: &members,
         });
+        let boards = sample_boards();
         for event in &events {
+            let views: Vec<Option<Showing<'_>>> = if *event.kind() == Kind::REPORT {
+                boards
+                    .iter()
+                    .map(|board| {
+                        Some(Showing {
+                            view: BUILT_IN_VIEW,
+                            board,
+                        })
+                    })
+                    .collect()
+            } else {
+                vec![None]
+            };
             for group in std::iter::once(None).chain(group.map(Some)) {
-                let context = Context {
-                    event,
-                    route: &route.id,
-                    herald: herald_core::itself::VERSION,
-                    group,
-                };
-                if !self.rendered_sample(templates, &context, &parts) {
-                    return;
+                for view in &views {
+                    let context = Context {
+                        event,
+                        route: &route.id,
+                        herald: herald_core::itself::VERSION,
+                        group,
+                        view: *view,
+                    };
+                    if !self.rendered_sample(templates, &context, &parts) {
+                        return;
+                    }
                 }
             }
         }

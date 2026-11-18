@@ -3,6 +3,7 @@
 
 #[cfg(test)]
 mod compose {
+    mod reports;
     mod work;
 
     use std::collections::BTreeMap;
@@ -687,7 +688,7 @@ template = "t"
             (unheld.reply.status, unheld.refused.as_deref()),
             (401, Some(herald_flows::round::unasked().as_str()))
         );
-        for round in ["poll", "housekeep"] {
+        for round in ["poll", "report", "housekeep"] {
             let held = reach(
                 &composed,
                 &asked(

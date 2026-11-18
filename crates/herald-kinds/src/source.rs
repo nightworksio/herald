@@ -14,7 +14,7 @@ use jiff::{SignedDuration, Timestamp};
 
 pub use herald_core::Installation;
 
-use crate::{Credential, Fault, Itself, Peering, Pull};
+use crate::{Credential, Fault, Itself, Most, Peering, Pull, Queue, QueueCost};
 
 /// A GitHub App a source reads as: the App's name, the REST API the source
 /// reads, and the installation its tokens are minted for.
@@ -177,6 +177,18 @@ pub trait SourceConfig: fmt::Debug + Send + Sync + Itself {
     /// It, remembering at most `identities` as its store's records hold
     /// where its options name no bound; nothing where it cannot (ADR-0042).
     fn fitted(&self, _identities: usize) -> Option<Source> {
+        None
+    }
+
+    /// What reads its repository's open pull requests with `token` where it
+    /// has one, where it names one repository on a forge.
+    fn queue(&self, _token: Option<Credential>) -> Option<Arc<dyn Queue>> {
+        None
+    }
+
+    /// What reading at most `most` of its open pull requests costs each
+    /// round, where [`SourceConfig::queue`] reads them.
+    fn queue_cost(&self, _most: Most) -> Option<QueueCost> {
         None
     }
 

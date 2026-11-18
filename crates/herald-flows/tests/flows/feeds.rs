@@ -247,6 +247,7 @@ fn an_event_the_routing_saw_as_anything_but_public_never_enters() {
     let within = Within {
         routes: None,
         reach: Some(&member),
+        view: None,
     };
     assert_eq!(world.within(&event("v1"), within), skipped());
     assert_eq!(world.feed(), Feed::default());

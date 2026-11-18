@@ -250,6 +250,7 @@ fn a_member_s_event_saying_nothing_of_who_may_see_it_reaches_only_the_private_ro
         Within {
             routes: None,
             reach: Some(&reach),
+            view: None,
         },
         "r1",
     ));

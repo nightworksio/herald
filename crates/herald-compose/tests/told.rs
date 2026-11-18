@@ -154,6 +154,32 @@ mod told {
     }
 
     #[test]
+    fn a_report_says_its_window_how_many_it_shows_and_where_its_cursor_stands() {
+        let reported = |announced: Vec<Fresh>, cursor| {
+            swept(Sweep::Reported {
+                pulls: 3,
+                announced,
+                cursor,
+            })
+        };
+        let lines = reported(vec![fresh(None)], Remembered::Advanced);
+        assert_eq!(lines[0], "gate: gate/v1.0.0 reports 3 open pull requests");
+        assert_eq!(lines.len(), 2);
+        assert_eq!(
+            reported(Vec::new(), Remembered::Kept),
+            [
+                "gate:  reports 3 open pull requests; a route stopped, so the next round reports the window again"
+            ]
+        );
+        assert_eq!(
+            reported(Vec::new(), Remembered::Failed(Stop::Store("no".to_owned()))),
+            [
+                "gate:  reports 3 open pull requests; the window is not remembered: no. The next round reports it again"
+            ]
+        );
+    }
+
+    #[test]
     fn a_poll_a_webhook_asked_for_says_what_it_found_and_one_left_undone_says_so() {
         let worked = told::worked(&did(Did::Polled(vec![Swept {
             source: SourceName::new("gate"),

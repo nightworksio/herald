@@ -15,6 +15,7 @@ use crate::acting::{Claimed, Projects};
 mod layer;
 mod online;
 mod peers;
+mod views;
 
 pub use layer::{Cadence, Egress, Here, Layer, Memory, Rounds, Tier};
 pub use online::{kept_tokens, keys, online, secrets};
@@ -482,7 +483,7 @@ fn scheduled(config: &Config, layer: &Layer, here: &Here, findings: &mut Finding
             } else {
                 ""
             };
-            findings.notes.push(format!("On the {name} layer, a round runs only when a request holding the round secret asks for it at POST /herald/round/poll or /herald/round/housekeep; have a scheduler send them{often}."));
+            findings.notes.push(format!("On the {name} layer, a round runs only when a request holding the round secret asks for it at POST /herald/round/poll, /herald/round/report or /herald/round/housekeep; have a scheduler send them{often}."));
         }
     }
     let secrets = layer.round_secrets;
@@ -808,6 +809,7 @@ fn served(config: &Config, layer: &Layer, layers: &[Layer], here: &Here) -> Find
     webhooked(config, &mut findings.notes);
     revising(config, &mut findings.notes);
     undeleted(config, &mut findings.notes);
+    views::reported(config, &mut findings.notes);
     peers::signed(config, &mut findings.notes);
     scheduled(config, layer, here, &mut findings);
     for (index, route) in config.routes.iter().enumerate() {

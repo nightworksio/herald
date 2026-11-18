@@ -353,6 +353,23 @@ impl SourceConfig for ForgeSource {
         hooked.map_err(|error| error.to_string())
     }
 
+    fn queue(&self, token: Option<Credential>) -> Option<Arc<dyn herald_kinds::Queue>> {
+        let repository = self.options.repository.as_deref()?;
+        let api = api_of(self.forge, &self.options);
+        Some(Arc::new(crate::queue::Queued {
+            origin: Origin::new(self.forge, &self.options, repository),
+            token: token.map(Token::of),
+            project: named(repository).to_owned(),
+            graphql: herald_wire::github::graphql(&api),
+        }))
+    }
+
+    fn queue_cost(&self, most: herald_kinds::Most) -> Option<herald_kinds::QueueCost> {
+        self.options.repository.as_ref()?;
+        let tokened = self.token().is_some() || self.installed().is_some();
+        Some(crate::queue::cost(self.forge, tokened, most))
+    }
+
     fn poller(&self, token: Option<Credential>, edits: bool) -> Polling {
         let token = token.map(Token::of);
         let watched = self.options.watched(edits);

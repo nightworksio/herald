@@ -16,6 +16,7 @@ use crate::group::Group;
 use crate::key::RouteId;
 use crate::markup::escaped;
 use crate::members::Listed;
+use crate::queue::Showing;
 use crate::route::TemplateName;
 
 const MARKDOWN: &str = "markdown";
@@ -43,6 +44,9 @@ pub struct Context<'a> {
     /// announcement; a template reads its members as `events`, or the event
     /// alone where there is none.
     pub group: Option<Group<'a>>,
+    /// The view the event reports, where it is a report; a template reads
+    /// it as `view`.
+    pub view: Option<Showing<'a>>,
 }
 
 /// Why a template could not be compiled or rendered.
@@ -143,6 +147,7 @@ impl Templates {
                 event => event_value(context.event),
                 events => grouped_values(context),
                 group => context.group.map(|group| context! { key => group.key }),
+                view => context.view.map(shown::view_value),
                 route => context.route.as_str(),
                 herald => context.herald,
             },
@@ -509,6 +514,17 @@ fn failure(name: &str, error: &minijinja::Error) -> TemplateError {
         reason,
     }
 }
+
+/// `showing` as JSON, with the keys a template reads as `view` and no
+/// other, as `herald queue --format json` prints it.
+#[must_use]
+pub fn view_json(showing: Showing<'_>) -> String {
+    serde_json::to_string_pretty(&shown::view_value(showing)).unwrap_or_default()
+}
+
+mod shown;
+
+pub use shown::waited;
 
 #[cfg(test)]
 mod tests;

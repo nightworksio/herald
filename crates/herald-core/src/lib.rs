@@ -8,6 +8,7 @@ mod activity;
 mod address;
 mod announce;
 mod bounds;
+mod bump;
 mod chunk;
 mod credentials;
 mod cursor;
@@ -39,8 +40,10 @@ mod pattern;
 mod pending;
 mod profile;
 mod published;
+mod queue;
 mod rate;
 mod render;
+pub mod report;
 mod retention;
 mod revision;
 mod route;
@@ -65,6 +68,7 @@ pub use bounds::{
     Attempts, Count, Counted, Inbound, LookedUpPins, PinLookups, ReadBack, ReadBackPages, Sandbox,
     WriteAttempts,
 };
+pub use bump::{Bump, BumpPattern, Bumper, NotABumpPattern, bumped, read_bump};
 pub use chunk::{Room, chunk, size};
 pub use credentials::{basic, bot_or_webhook};
 pub use cursor::{Cursor, Polled, Proof, Tombstone, Unheld, fresh};
@@ -93,8 +97,8 @@ pub use kind::{
     ACTION, ACTOR, ALERT_LINK, ATTEMPT, AUTHOR, Attribute, AttributeSpec, AttributeType, BASE, BOT,
     BRANCH, CHANGELOG_LINK, COMMIT, CONCLUSION, DRAFT, ECOSYSTEM, ENTRY_LINK, FROM, HEAD,
     ISSUE_LINK, Kind, KindSpec, KindSpecs, LABELS, LinkSpec, MERGED_BY, NUMBER, PACKAGE,
-    PACKAGE_TYPE, PATH, PRERELEASE, PULL_LINK, RELEASE_LINK, RESOLUTION, RULE, RUN_LINK, SEVERITY,
-    STATE_REASON, TOOL, TRIGGER, VERSION, WORKFLOW, readable, versioned,
+    PACKAGE_TYPE, PATH, PRERELEASE, PULL_LINK, PULLS, RELEASE_LINK, RESOLUTION, RULE, RUN_LINK,
+    SEVERITY, STALE, STATE_REASON, TOOL, TRIGGER, VERSION, VIEW, WORKFLOW, readable, versioned,
 };
 pub use latest::{Latest, Shown};
 pub use ledger::{
@@ -115,11 +119,16 @@ pub use profile::{
     MentionRoom, MentionStyle, Pins, Profile, Threads,
 };
 pub use published::{Feed, FeedItem, PeerKeys, PublishedKeys};
+pub use queue::{
+    Batch, Board, Bots, Checks, Deciding, GroupBy, Grouped, Mergeable, Pull, Reason, Review, Row,
+    Rules, Showing, Turn, View, board,
+};
 pub use rate::{Per, Rate};
 pub use render::{
     ACTOR_FIELDS, ActorName, Context, Form, ProjectName, REPOSITORY_FIELDS, TemplateError,
-    Templates,
+    Templates, view_json, waited,
 };
+pub use report::{REPORT_PREFIX, ReportSchedule, report_event, report_identity, zone};
 pub use retention::Retention;
 pub use revision::{
     Edits, LateRelease, NO_PART, Revise, Revision, Withdraw, already_deleted, regrouped, revise,

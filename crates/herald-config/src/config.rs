@@ -36,6 +36,11 @@ pub struct Config {
     pub apps: BTreeMap<String, App>,
     /// The GitHub Apps sources read as, by name (ADR-0041).
     pub github_apps: BTreeMap<String, GithubApp>,
+    /// The views of open pull requests, by name, the built-in `queue` among
+    /// them (ADR-0055).
+    pub views: BTreeMap<String, crate::ViewConfig>,
+    /// The reports routes name among their sources, by name (ADR-0055).
+    pub reports: BTreeMap<String, crate::Report>,
     /// The cadence of polling and housekeeping.
     pub schedule: Schedule,
     /// How a run holds and keeps an announcement.

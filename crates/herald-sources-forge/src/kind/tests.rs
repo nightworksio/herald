@@ -630,3 +630,45 @@ mod alerts;
 mod issues;
 mod pulls;
 mod runs;
+
+#[test]
+fn a_source_of_one_repository_reads_its_queue_and_an_owner_s_does_not() {
+    let most = herald_kinds::Most::default();
+    let one = |options: SourceOptions| {
+        GitHubKind::checked(SourceOptions {
+            repository: Some("o/r".to_owned()),
+            ..options
+        })
+        .unwrap()
+    };
+    let tokenless = one(SourceOptions::default());
+    assert_eq!(
+        tokenless.queue_cost(most).map(|cost| cost.path),
+        Some("rest")
+    );
+    assert!(tokenless.queue(None).is_some());
+    let tokened = one(SourceOptions {
+        token: Some(SecretRef {
+            secret: "HERALD_GITHUB_TOKEN".to_owned(),
+        }),
+        api: Some("https://ghe.example/api/v3".to_owned()),
+        ..SourceOptions::default()
+    });
+    assert_eq!(
+        tokened.queue_cost(most).map(|cost| cost.path),
+        Some("graphql")
+    );
+    let queued = tokened.queue(None).unwrap();
+    let queued = format!("{queued:?}");
+    assert!(
+        queued.contains("https://ghe.example/api/graphql"),
+        "{queued}"
+    );
+    let owner = GitHubKind::checked(SourceOptions {
+        owner: Some("cli".to_owned()),
+        ..SourceOptions::default()
+    })
+    .unwrap();
+    assert_eq!(owner.queue_cost(most), None);
+    assert!(owner.queue(None).is_none());
+}

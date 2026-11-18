@@ -98,6 +98,8 @@ pub enum UnreadEvent {
     Problem(Problem),
     /// The config knows no kind of event by its name.
     UnknownKind(Kind),
+    /// Its kind is one only herald announces, as a report.
+    Own(Kind),
     /// Its attributes are not what its kind's events carry, as the reason
     /// says.
     Unfit(String),
@@ -113,6 +115,10 @@ impl fmt::Display for UnreadEvent {
                 "the event is longer than {MOST} bytes; send a shorter one"
             ),
             Self::Problem(problem) => problem.fmt(f),
+            Self::Own(kind) => write!(
+                f,
+                "herald announces \"{kind}\" events itself; send another kind"
+            ),
             Self::UnknownKind(kind) => write!(
                 f,
                 "herald knows no kind \"{kind}\"; send a kind it ships, or one the config declares under [kinds.{kind}]"
@@ -151,6 +157,9 @@ pub fn event(
         serde_json::from_slice(body).map_err(|error| UnreadEvent::NotAnEvent(error.to_string()))?;
     if written.id.trim().is_empty() {
         return Err(UnreadEvent::NoId);
+    }
+    if written.kind.own() {
+        return Err(UnreadEvent::Own(written.kind));
     }
     let Some(spec) = kinds.get(&written.kind) else {
         return Err(UnreadEvent::UnknownKind(written.kind));

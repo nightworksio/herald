@@ -4,11 +4,11 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
 use herald_config::{Config, Uses};
-use herald_core::status;
+use herald_core::{Board, status};
 use herald_flows::{
     Admission, Budget, Connected, Housekept, Inbound, Job, Keys, Place, Ports, Requests, Room,
     Round, Running, Serving, Sessions, Stop, Swept, Taker, Worked, answer, housekeep_announcing,
-    poll, prepare, refusal, unplaced, work,
+    poll, prepare, queue, refusal, report, unplaced, work,
 };
 use herald_kinds::Opened;
 use herald_ports::{Base, Clock as _, Keyring, Sockets, Store, Timer};
@@ -248,7 +248,30 @@ impl<'o, H: Host + 'o> Composed<'o, H> {
         worked
     }
 
-    /// Every source polled, where no poll is running; none where one is.
+    /// The board of the view `view`, its sources' open pull requests read
+    /// now (ADR-0055).
+    ///
+    /// # Errors
+    ///
+    /// Where the config has no such view, or a source it reads could not
+    /// be read.
+    pub async fn queue(&self, view: &str) -> Result<Board, Stop> {
+        self.through(Admission::Once, self.started(), Queueing(view))
+            .await
+    }
+
+    /// Every report whose window began announced, where no poll is
+    /// running; none where one is (ADR-0055).
+    pub async fn report(&self) -> Vec<Swept> {
+        let Some(_running) = Running::start(&self.polling) else {
+            return Vec::new();
+        };
+        self.through(Admission::Once, self.started(), Reporting)
+            .await
+    }
+
+    /// Every source polled, then every report due announced, where no poll
+    /// is running; none where one is.
     pub async fn poll(&self) -> Vec<Swept> {
         let Some(_running) = Running::start(&self.polling) else {
             return Vec::new();
@@ -470,6 +493,34 @@ impl<H: Host> Through<H> for Polling {
             run,
         )
         .await
+    }
+}
+
+struct Queueing<'v>(&'v str);
+
+impl<H: Host> Through<H> for Queueing<'_> {
+    type Done = Result<Board, Stop>;
+
+    async fn through<S: Store, K: Keyring>(
+        self,
+        serving: &ServingOn<'_, H, S, K>,
+        _: &str,
+    ) -> Result<Board, Stop> {
+        queue(serving.config, serving.connected, serving.ports, self.0).await
+    }
+}
+
+struct Reporting;
+
+impl<H: Host> Through<H> for Reporting {
+    type Done = Vec<Swept>;
+
+    async fn through<S: Store, K: Keyring>(
+        self,
+        serving: &ServingOn<'_, H, S, K>,
+        run: &str,
+    ) -> Vec<Swept> {
+        report(serving.config, serving.connected, serving.ports, run).await
     }
 }
 

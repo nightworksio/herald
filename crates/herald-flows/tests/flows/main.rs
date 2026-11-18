@@ -56,6 +56,8 @@ mod projects;
 #[cfg(test)]
 mod pulls;
 #[cfg(test)]
+mod reports;
+#[cfg(test)]
 mod revise;
 #[cfg(test)]
 mod serving;

@@ -6,9 +6,11 @@
 //! identity names its registry, owner and image; a run, delivered or
 //! polled, is named as a run of its repository's id; and an alert,
 //! delivered or polled, is named as an alert of its repository's id and
-//! carries only the attributes an alert carries; and a pull request,
+//! carries only the attributes an alert carries; a pull request,
 //! delivered or polled, is named as a pull request of its repository's id,
-//! and an issue as an issue of its repository's id.
+//! and an issue as an issue of its repository's id; a repository's open
+//! pull requests read for a view are its own, as many as the view lists;
+//! and a bump pattern reads a package its title writes.
 
 #![no_main]
 
@@ -429,7 +431,55 @@ fn issues(bytes: &[u8]) {
     }
 }
 
+/// A repository's open pull requests read for a view by every path: each
+/// pull request is of its repository, none more than the view lists, and
+/// only those past the most read in full read as unknown.
+fn queued(bytes: &[u8]) {
+    let http = Answering(bytes.to_vec());
+    let most = herald_kinds::Most { open: 150, pulls: 2 };
+    for forge in FORGES {
+        let source = ForgeSource {
+            forge,
+            options: SourceOptions {
+                repository: Some("fuzzer/fuzzed".to_owned()),
+                ..SourceOptions::default()
+            },
+            names: None,
+        };
+        for token in [None, Some(Credential::Named(Secret::new("TOKEN", "t")))] {
+            let Some(queue) = source.queue(token) else {
+                continue;
+            };
+            let Ok(pulls) = pollster::block_on(queue.opened(&http, most)) else {
+                continue;
+            };
+            assert!(pulls.len() <= most.open, "{}", pulls.len());
+            for (index, pull) in pulls.iter().enumerate() {
+                assert_eq!(pull.repository, "fuzzer/fuzzed");
+                assert_eq!(pull.project, "fuzzed");
+                assert!(!pull.unread || index >= most.pulls, "{pull:?}");
+            }
+        }
+    }
+}
+
+/// A bump pattern written from the fuzzed text, and a title read by it and
+/// by every shipped reader: a package read is written in the title.
+fn bumped(bytes: &[u8]) {
+    let Ok(text) = std::str::from_utf8(bytes) else {
+        return;
+    };
+    let (pattern, title) = text.split_once('\n').unwrap_or((text, text));
+    let own: Vec<herald_core::BumpPattern> =
+        herald_core::BumpPattern::new(pattern).into_iter().collect();
+    if let Some(bump) = herald_core::read_bump(&own, title) {
+        assert!(title.contains(&bump.package), "{bump:?}");
+    }
+}
+
 fuzz_target!(|bytes: &[u8]| {
+    queued(bytes);
+    bumped(bytes);
     owned(bytes);
     images(bytes);
     runs(bytes);

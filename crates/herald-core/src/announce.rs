@@ -202,6 +202,7 @@ pub fn announce(
         route: &route.id,
         herald,
         group: subject.group,
+        view: subject.view,
     };
     let template = route.template.as_ref().ok_or_else(|| TemplateError {
         name: route.id.as_str().to_owned(),

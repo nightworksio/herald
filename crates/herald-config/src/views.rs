@@ -1,0 +1,266 @@
+//! `[views.*]` and `[reports.*]` as the file writes them, and as a config
+//! holds them (ADR-0055).
+
+use std::num::NonZeroUsize;
+
+use herald_core::{Duration, ReportSchedule, SourceName, Turn, View};
+use herald_kinds::Most;
+use jiff::civil::Weekday;
+use schemars::JsonSchema;
+use serde::Deserialize;
+use toml::Spanned;
+
+/// The view a report shows where it names none, over every source that
+/// lists its repository's pull requests; `[views.queue]` replaces it.
+pub const BUILT_IN_VIEW: &str = "queue";
+
+/// The template herald ships for a report, which a route names as
+/// `template = "herald:queue"` and `[templates."herald:queue"]` replaces.
+pub const QUEUE_TEMPLATE: &str = "herald:queue";
+
+/// The title of [`QUEUE_TEMPLATE`].
+pub(crate) const QUEUE_TITLE: &str = "{{ view.name }}: {{ view.total }} open pull requests{% if view.stale %}, {{ view.stale }} stale{% endif %}";
+
+/// The body of [`QUEUE_TEMPLATE`]: each group's rows, oldest first, then
+/// each batch of bumps.
+pub(crate) const QUEUE_BODY: &str = "{% for group in view.groups %}**{{ group.name or \"everyone\" }}**\n{% for row in group.rows %}- [{{ row.repository }}#{{ row.number }}]({{ row.url }}) {{ row.title }}: {{ row.reason }}, {{ row.waited }}{% if row.stale %}, stale{% endif %}\n{% endfor %}\n{% endfor %}{% if view.batches %}**bumps**\n{% for batch in view.batches %}- {{ batch.package or \"unread\" }}{% if batch.to %} to {{ batch.to }}{% endif %}: {{ batch.rows | length }} open, {{ batch.green }} green, {{ batch.failing }} failing\n{% endfor %}{% endif %}{% if not view.total %}Nothing is open.{% endif %}";
+
+/// A view: the open pull requests it shows of the sources it reads, and
+/// how many it reads of each.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ViewConfig {
+    /// What it shows, and how.
+    pub view: View,
+    /// The sources it reads, each naming one repository on a forge.
+    pub sources: Vec<SourceName>,
+    /// How many it reads of each.
+    pub most: Most,
+}
+
+/// A report: the view it shows, and when.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Report {
+    /// The view.
+    pub view: String,
+    /// When each of its windows begins.
+    pub schedule: ReportSchedule,
+}
+
+/// What a view does with a bot's pull requests.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, JsonSchema)]
+#[serde(rename_all = "lowercase")]
+#[serde(rename = "Bots")]
+pub(crate) enum BotsFile {
+    /// Lists them with everyone's.
+    Include,
+    /// Leaves them out.
+    Exclude,
+    /// Lists only them.
+    Only,
+    /// Gathers them into batches of the same bump across repositories.
+    Batch,
+}
+
+/// What a view groups its rows by.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, JsonSchema)]
+#[serde(rename_all = "lowercase")]
+#[serde(rename = "GroupBy")]
+pub(crate) enum GroupByFile {
+    /// Whose turn it is.
+    Turn,
+    /// The repository.
+    Repository,
+    /// The author.
+    Author,
+    /// Nothing: one group.
+    Nothing,
+}
+
+/// What tells a view whose turn a pull request is, by name.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, JsonSchema)]
+#[serde(rename_all = "lowercase")]
+#[serde(rename = "DecidingName")]
+pub(crate) enum DecidingName {
+    /// herald's own rules.
+    Herald,
+    /// The forge's own status, mapped as it is.
+    Forge,
+}
+
+/// A label maintainers set, and the state it puts a pull request in.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+#[serde(rename = "LabelledState")]
+pub(crate) struct LabelledFile {
+    /// The label, as the forge names it, ignoring case.
+    pub(crate) label: String,
+    /// The state.
+    pub(crate) state: Turn,
+}
+
+/// The labels maintainers set, the first a pull request carries telling
+/// its state.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+#[serde(rename = "DecidingLabels")]
+pub(crate) struct DecidingLabels {
+    /// Each label and its state, in the order they are tried.
+    #[schemars(length(min = 1))]
+    pub(crate) labels: Vec<LabelledFile>,
+}
+
+/// What tells a view whose turn a pull request is: "herald", "forge", or
+/// labels maintainers set.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, JsonSchema)]
+#[serde(untagged)]
+#[serde(rename = "Deciding")]
+pub(crate) enum DecidingFile {
+    /// herald's own rules, or the forge's own status.
+    Named(DecidingName),
+    /// The labels maintainers set.
+    Labels(DecidingLabels),
+}
+
+/// herald's own rules, each on where absent.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+#[serde(rename = "Rules")]
+pub(crate) struct RulesFile {
+    /// A draft waits on its author's readiness.
+    pub(crate) draft: Option<bool>,
+    /// One in the merge queue waits on the queue.
+    pub(crate) queued: Option<bool>,
+    /// One that conflicts waits on its author.
+    pub(crate) conflict: Option<bool>,
+    /// One a reviewer asked to change waits on its author.
+    pub(crate) changes: Option<bool>,
+    /// One whose check failed waits on its author.
+    pub(crate) failed: Option<bool>,
+    /// One whose checks are running waits on them.
+    pub(crate) pending: Option<bool>,
+    /// One waits on review until it is approved.
+    pub(crate) approval: Option<bool>,
+}
+
+/// `[views.<name>]`: which open pull requests a report, `herald queue` and
+/// every other surface shows, and how.
+#[derive(Debug, Default, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+#[serde(rename = "View")]
+pub(crate) struct ViewFile {
+    /// The sources it reads, each naming one repository on a forge; every
+    /// such source where absent.
+    #[schemars(with = "Option<Vec<String>>")]
+    pub(crate) sources: Option<Vec<Spanned<String>>>,
+    /// The states it shows, every one where empty.
+    #[serde(default)]
+    pub(crate) states: Vec<Turn>,
+    /// What it does with a bot's pull requests: "batch" where absent.
+    pub(crate) bots: Option<BotsFile>,
+    /// The repositories it shows, by full path, each a glob ignoring case;
+    /// every one where empty.
+    #[serde(default)]
+    pub(crate) repositories: Vec<String>,
+    /// The authors it shows, by login, each a glob ignoring case; every one
+    /// where empty.
+    #[serde(default)]
+    pub(crate) authors: Vec<String>,
+    /// The labels, any one of which a pull request it shows carries, each a
+    /// glob ignoring case; every pull request where empty.
+    #[serde(default)]
+    pub(crate) labels: Vec<String>,
+    /// How long one waits with nobody acting before it is stale: "14d"
+    /// where absent.
+    pub(crate) stale: Option<Duration>,
+    /// Whether it shows only the stale.
+    #[serde(default)]
+    pub(crate) stale_only: bool,
+    /// What it groups its rows by: "turn" where absent.
+    pub(crate) group_by: Option<GroupByFile>,
+    /// What tells whose turn each is: "herald" where absent, "forge", or
+    /// `{ labels = [{ label = "...", state = "..." }] }`.
+    pub(crate) deciding: Option<DecidingFile>,
+    /// herald's own rules, each of which it may switch off.
+    #[serde(default)]
+    pub(crate) rules: RulesFile,
+    /// Its own bump patterns, read before Dependabot's and Renovate's, such
+    /// as "chore: bump {package} to {to}".
+    #[serde(default)]
+    pub(crate) bumps: Vec<String>,
+    /// The most open pull requests it lists of each repository: 500 where
+    /// absent.
+    pub(crate) most_open: Option<NonZeroUsize>,
+    /// The most it reads in full where each takes requests of its own, as
+    /// on Forgejo and on GitHub without a token: 100 where absent; those
+    /// past it read as unknown.
+    pub(crate) most_pulls: Option<usize>,
+}
+
+/// A day of the week, by its first three letters.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, JsonSchema)]
+#[serde(rename_all = "lowercase")]
+#[serde(rename = "Day")]
+pub(crate) enum DayFile {
+    /// Monday.
+    Mon,
+    /// Tuesday.
+    Tue,
+    /// Wednesday.
+    Wed,
+    /// Thursday.
+    Thu,
+    /// Friday.
+    Fri,
+    /// Saturday.
+    Sat,
+    /// Sunday.
+    Sun,
+}
+
+impl DayFile {
+    pub(crate) const fn weekday(self) -> Weekday {
+        match self {
+            Self::Mon => Weekday::Monday,
+            Self::Tue => Weekday::Tuesday,
+            Self::Wed => Weekday::Wednesday,
+            Self::Thu => Weekday::Thursday,
+            Self::Fri => Weekday::Friday,
+            Self::Sat => Weekday::Saturday,
+            Self::Sun => Weekday::Sunday,
+        }
+    }
+}
+
+/// `[reports.<name>]`: a view announced once a window, through the routes
+/// naming the report among their sources.
+#[derive(Debug, Default, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+#[serde(rename = "Report")]
+pub(crate) struct ReportFile {
+    /// The view it shows: "queue", every source's open pull requests, where
+    /// absent.
+    #[schemars(with = "Option<String>")]
+    pub(crate) view: Option<Spanned<String>>,
+    /// How long each window lasts within a day, from "1m" to "1d": "1d"
+    /// where absent.
+    #[schemars(with = "Option<Duration>")]
+    pub(crate) every: Option<Spanned<Duration>>,
+    /// The wall-clock time a day's first window begins at, as "HH:MM":
+    /// "09:00" where absent.
+    #[schemars(with = "Option<String>", example = ReportFile::AT)]
+    pub(crate) at: Option<Spanned<String>>,
+    /// The days windows begin on, every day where empty.
+    #[serde(default)]
+    pub(crate) days: Vec<DayFile>,
+    /// The IANA time zone `at` and `days` are read in, such as
+    /// "Europe/Amsterdam": "UTC" where absent.
+    #[schemars(with = "Option<String>", example = ReportFile::ZONE)]
+    pub(crate) zone: Option<Spanned<String>>,
+}
+
+impl ReportFile {
+    /// The time the schema and the loader's errors show as an example.
+    pub(crate) const AT: &str = "09:00";
+    /// The zone the schema and the loader's errors show as an example.
+    pub(crate) const ZONE: &str = "Europe/Amsterdam";
+}

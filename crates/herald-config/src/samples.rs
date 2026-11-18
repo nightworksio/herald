@@ -1,8 +1,8 @@
 use std::collections::BTreeMap;
 
 use herald_core::{
-    Attribute, AttributeType, Draft, Event, Kind, KindSpec, Origin, PRERELEASE, SIGNAL, Signal,
-    SourceName, VERSION, Visibility,
+    Attribute, AttributeType, Board, Checks, Draft, Event, Kind, KindSpec, Mergeable, Origin,
+    PRERELEASE, Pull, Review, SIGNAL, Signal, SourceName, VERSION, View, Visibility, board,
 };
 use jiff::Timestamp;
 
@@ -58,6 +58,48 @@ fn draft(spec: &KindSpec) -> Draft {
         attributes,
         occurred: NOON,
     }
+}
+
+/// The boards every report template is dry-rendered against: one with a
+/// person's pull request waiting on review and a bot's bump, and an empty
+/// one.
+#[must_use]
+pub fn sample_boards() -> [Board; 2] {
+    let opened = NOON - jiff::SignedDuration::from_hours(15 * 24);
+    let pull = Pull {
+        project: "sample-project".to_owned(),
+        repository: "sample-owner/sample-project".to_owned(),
+        visibility: Visibility::Public,
+        number: 1,
+        title: "Add a sample".to_owned(),
+        url: "https://github.com/sample-owner/sample-project/pull/1".to_owned(),
+        author: Some("sample-author".to_owned()),
+        bot: false,
+        draft: false,
+        labels: vec!["sample-label".to_owned()],
+        opened,
+        updated: opened,
+        review: Review::Requested,
+        checks: Checks::Passed,
+        mergeable: Mergeable::Clean,
+        queued: false,
+        forge: None,
+        head: Some("0123456789abcdef".to_owned()),
+        unread: false,
+    };
+    let bump = Pull {
+        number: 2,
+        title: "Bump sample-package from 1.0.0 to 1.1.0".to_owned(),
+        url: "https://github.com/sample-owner/sample-project/pull/2".to_owned(),
+        author: Some("dependabot[bot]".to_owned()),
+        bot: true,
+        review: Review::Approved,
+        ..pull.clone()
+    };
+    [
+        board(&View::default(), &[pull, bump], NOON),
+        Board::default(),
+    ]
 }
 
 /// Where a sample event from a forge, registry or app that names one comes
@@ -142,6 +184,48 @@ mod tests {
     use herald_core::KindSpecs;
 
     use super::*;
+
+    #[test]
+    fn a_sample_board_shows_a_person_s_pull_request_waiting_on_review_and_a_bot_s_bump() {
+        let [full, empty] = sample_boards();
+        assert_eq!(empty, Board::default());
+        let row = &full.groups[0].rows[0];
+        assert_eq!(full.groups[0].name, "waiting-on-review");
+        assert_eq!(
+            (
+                row.pull.number,
+                row.pull.title.as_str(),
+                row.pull.url.as_str()
+            ),
+            (
+                1,
+                "Add a sample",
+                "https://github.com/sample-owner/sample-project/pull/1"
+            )
+        );
+        assert_eq!(row.pull.author.as_deref(), Some("sample-author"));
+        assert_eq!(row.reason.written(), "review-requested");
+        assert_eq!(row.waited, jiff::SignedDuration::from_hours(15 * 24));
+        assert!(row.stale);
+        let batch = &full.batches[0];
+        let bump = batch.bump.as_ref().unwrap();
+        assert_eq!(
+            (bump.package.as_str(), bump.to.as_deref()),
+            ("sample-package", Some("1.1.0"))
+        );
+        let bumped = &batch.rows[0].pull;
+        assert_eq!(
+            (bumped.number, bumped.url.as_str(), bumped.author.as_deref()),
+            (
+                2,
+                "https://github.com/sample-owner/sample-project/pull/2",
+                Some("dependabot[bot]")
+            )
+        );
+        assert_eq!((batch.green, batch.failing), (1, 0));
+        assert_eq!(batch.rows[0].reason.written(), "ready");
+        assert_eq!(full.total(), 2);
+    }
 
     #[test]
     fn a_versioned_kind_has_a_plain_a_pre_release_a_long_and_a_bodiless_sample() {

@@ -10,12 +10,16 @@ pub const ROUND_SECRET: &str = "HERALD_ROUND_SECRET";
 pub const RAN: &str = "the round ran";
 
 /// A scheduled round a host with no timer of its own asks for over HTTP:
-/// `POST /herald/round/poll` or `/herald/round/housekeep`, carrying the secret
+/// `POST /herald/round/poll`, `/herald/round/report` or
+/// `/herald/round/housekeep`, carrying the secret
 /// as a bearer token.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Round {
-    /// Every source polled.
+    /// Every source polled, then every report due announced.
     Poll,
+    /// Every report due announced, for a host that times reports apart
+    /// from polls (ADR-0055).
+    Report,
     /// The store's housekeeping.
     Housekeep,
 }
@@ -35,6 +39,7 @@ impl Round {
     pub fn named(method: &str, path: &str) -> Option<Self> {
         match (method, path) {
             ("POST", "/herald/round/poll") => Some(Self::Poll),
+            ("POST", "/herald/round/report") => Some(Self::Report),
             ("POST", "/herald/round/housekeep") => Some(Self::Housekeep),
             _ => None,
         }
@@ -68,6 +73,10 @@ mod tests {
         assert_eq!(
             Round::named("POST", "/herald/round/poll"),
             Some(Round::Poll)
+        );
+        assert_eq!(
+            Round::named("POST", "/herald/round/report"),
+            Some(Round::Report)
         );
         assert_eq!(
             Round::named("POST", "/herald/round/housekeep"),

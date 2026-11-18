@@ -51,7 +51,15 @@ pub fn preview_group(
                 key,
                 events: &ordered,
             });
-            Some(previewed(config, route, Subject { event: lead, group }))
+            Some(previewed(
+                config,
+                route,
+                Subject {
+                    event: lead,
+                    group,
+                    view: None,
+                },
+            ))
         })
         .collect()
 }

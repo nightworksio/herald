@@ -136,8 +136,14 @@ pub(crate) struct Account {
 impl Account {
     /// Whether it is a bot's or an app's.
     pub(crate) fn bot(&self) -> bool {
-        self.kind.as_deref() == Some(BOT) || self.login.ends_with(BOT_SUFFIX)
+        bot(self.kind.as_deref(), &self.login)
     }
+}
+
+/// Whether the account `login`, of the kind `kind` where the forge names
+/// one, is a bot's or an app's.
+pub(crate) fn bot(kind: Option<&str>, login: &str) -> bool {
+    kind == Some(BOT) || login.ends_with(BOT_SUFFIX)
 }
 
 /// A label, as GitHub and Forgejo name one.

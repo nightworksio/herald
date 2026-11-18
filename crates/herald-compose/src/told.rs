@@ -7,6 +7,29 @@ use herald_flows::{
     Job, Outcome, Remembered, Stop, Sweep, Swept, Withheld, Worked,
 };
 
+/// What a report announced of its view's `pulls` open pull requests.
+fn reported(source: &str, pulls: usize, announced: &[Fresh], cursor: &Remembered) -> Vec<String> {
+    let tail = match cursor {
+        Remembered::Advanced => String::new(),
+        Remembered::Kept => {
+            "; a route stopped, so the next round reports the window again".to_owned()
+        }
+        Remembered::Failed(stop) => format!(
+            "; the window is not remembered: {}. The next round reports it again",
+            why(stop)
+        ),
+    };
+    let window = announced
+        .first()
+        .map(|fresh| fresh.event.identity().as_str())
+        .unwrap_or_default();
+    let mut lines = vec![format!(
+        "{source}: {window} reports {pulls} open pull requests{tail}"
+    )];
+    lines.extend(freshly(source, announced));
+    lines
+}
+
 /// What a poll of one source found and announced.
 #[must_use]
 pub fn polled(swept: &Swept) -> Vec<String> {
@@ -73,6 +96,11 @@ pub fn polled(swept: &Swept) -> Vec<String> {
             lines.extend(freshly(&source, announced));
             lines
         }
+        Sweep::Reported {
+            pulls,
+            announced,
+            cursor,
+        } => reported(&source, *pulls, announced, cursor),
         Sweep::Withdrawn {
             identity,
             announced,

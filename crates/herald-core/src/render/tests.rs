@@ -23,6 +23,7 @@ fn markdown(source: &str, event: &Event) -> String {
                 route: &route,
                 herald: "0.1.0",
                 group: None,
+                view: None,
             },
         )
         .unwrap()
@@ -37,6 +38,7 @@ fn render(source: &str, event: &Event) -> Result<String, TemplateError> {
             route: &route,
             herald: "0.1.0",
             group: None,
+            view: None,
         },
     )
 }
@@ -125,6 +127,7 @@ fn a_render_line_is_on_one_line() {
             route: &route,
             herald: "0.1.0",
             group: None,
+            view: None,
         },
     )
     .unwrap();
@@ -137,6 +140,7 @@ fn a_render_line_is_on_one_line() {
                 route: &route,
                 herald: "0.1.0",
                 group: None,
+                view: None,
             },
         )
         .unwrap_err();
@@ -176,6 +180,7 @@ fn a_template_that_does_not_exist_is_an_error() {
                 route: &route,
                 herald: "0.1.0",
                 group: None,
+                view: None,
             },
         )
         .unwrap_err();
@@ -190,6 +195,7 @@ fn a_template_includes_another_by_name_and_nothing_from_disk() {
         route: &route,
         herald: "0.1.0",
         group: None,
+        view: None,
     };
     let set = templates(&[
         ("footer", "— {{ event.project }}"),
@@ -285,6 +291,7 @@ fn a_markdown_template_prints_numbers_and_absent_values_as_a_line_template_does(
                 route: &RouteId::new("r"),
                 herald: "0.1.0",
                 group: None,
+                view: None,
             }
         )
         .unwrap_err()
@@ -345,6 +352,7 @@ fn a_template_is_held_to_the_sandbox_it_was_compiled_into() {
         route: &route,
         herald: "0.1.0",
         group: None,
+        view: None,
     };
     assert_eq!(templates.render("short", &context).as_deref(), Ok("abcd"));
     assert_eq!(
@@ -430,6 +438,7 @@ fn verbatim_templates_render_an_event_s_own_title_and_body_within_the_sandbox() 
         route: &route,
         herald: "0.1.0",
         group: None,
+        view: None,
     };
     let verbatim = Templates::verbatim(&name, Sandbox::DEFAULT);
     assert_eq!(
@@ -651,6 +660,7 @@ fn a_group_s_template_reads_its_members_lead_first_and_its_key() {
                     key: "v1 <b>",
                     events: &members,
                 }),
+                view: None,
             },
         )
         .unwrap();
@@ -670,4 +680,39 @@ fn an_event_alone_is_its_template_s_only_member_in_no_group() {
         ),
         "cli **cli** notes alone"
     );
+}
+
+#[test]
+fn a_report_template_reads_its_view_and_any_other_reads_none() {
+    let event = event();
+    let route = RouteId::new("queue");
+    let board = crate::queue::board(
+        &crate::queue::View::default(),
+        &[crate::queue::tests::pull()],
+        event.occurred(),
+    );
+    let source = "{% if view %}{{ view.name }} {{ view.total }}{% for group in view.groups %} {{ group.name }}{% endfor %}{% else %}none{% endif %}";
+    let templates = Templates::compile(&[("t", source, Form::Line)], Sandbox::DEFAULT).unwrap();
+    let rendered = |view| {
+        templates
+            .render(
+                "t",
+                &Context {
+                    event: &event,
+                    route: &route,
+                    herald: "0.1.0",
+                    group: None,
+                    view,
+                },
+            )
+            .unwrap()
+    };
+    assert_eq!(
+        rendered(Some(crate::queue::Showing {
+            view: "mine",
+            board: &board,
+        })),
+        "mine 1 waiting-on-merge"
+    );
+    assert_eq!(rendered(None), "none");
 }

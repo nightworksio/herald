@@ -87,6 +87,7 @@ impl<H: Host> Composed<'_, H> {
         }
         let said = match round {
             Round::Poll => self.poll().await.iter().flat_map(told::polled).collect(),
+            Round::Report => self.report().await.iter().flat_map(told::polled).collect(),
             Round::Housekeep => told::kept(&self.housekeep().await),
         };
         Answer {

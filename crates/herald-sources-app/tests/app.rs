@@ -182,6 +182,21 @@ mod app {
     }
 
     #[test]
+    fn a_kind_herald_announces_itself_is_refused_and_named() {
+        let refused = event(
+            "ci",
+            br#"{"id": "7", "kind": "report", "project": "herald", "title": "Queue", "attributes": {"view": "queue", "pulls": 0, "stale": 0}}"#,
+            now(),
+            &KindSpecs::default(),
+        )
+        .unwrap_err();
+        assert_eq!(
+            refused.to_string(),
+            "herald announces \"report\" events itself; send another kind"
+        );
+    }
+
+    #[test]
     fn a_declared_kind_is_read_with_its_attributes_and_refused_without_them() {
         let deploy = herald_core::KindSpec::new(
             Kind::new("deploy").unwrap(),

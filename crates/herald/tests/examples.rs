@@ -121,6 +121,7 @@ mod examples {
             (".docs/alerts.md", 1),
             (".docs/pulls.md", 1),
             (".docs/issues.md", 1),
+            (".docs/queue.md", 1),
         ] {
             let blocks = blocks(&read(Path::new(guide)));
             assert!(blocks.len() >= least, "{guide}: {blocks:?}");

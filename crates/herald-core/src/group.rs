@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 use crate::event::Event;
 use crate::glob::Glob;
 use crate::key::Identity;
+use crate::queue::Showing;
 use crate::revision::{Edits, LateRelease, Revise, Revision};
 use crate::route::Delivery;
 use crate::signal::Signal;
@@ -197,6 +198,8 @@ pub struct Subject<'a> {
     pub event: &'a Event,
     /// The group it leads, where it leads one.
     pub group: Option<Group<'a>>,
+    /// The view it reports, where it is a report.
+    pub view: Option<Showing<'a>>,
 }
 
 impl Subject<'_> {
@@ -213,7 +216,11 @@ impl Subject<'_> {
 
 impl<'a> From<&'a Event> for Subject<'a> {
     fn from(event: &'a Event) -> Self {
-        Self { event, group: None }
+        Self {
+            event,
+            group: None,
+            view: None,
+        }
     }
 }
 

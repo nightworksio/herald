@@ -258,6 +258,13 @@ struct FileSchema {
     /// The GitHub Apps sources read as, by name.
     #[serde(default)]
     github_apps: BTreeMap<String, GithubAppFile>,
+    /// The views of open pull requests reports and `herald queue` show, by
+    /// name; `queue`, over every source, where none replaces it.
+    #[serde(default)]
+    views: BTreeMap<String, crate::views::ViewFile>,
+    /// The reports routes name among their sources, by name.
+    #[serde(default)]
+    reports: BTreeMap<String, crate::views::ReportFile>,
     /// How often a driver that keeps its own schedule polls and keeps house.
     schedule: Option<ScheduleFile>,
     /// How `herald server` listens, and what it takes on at once.

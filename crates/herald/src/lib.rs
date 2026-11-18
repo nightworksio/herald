@@ -34,6 +34,7 @@ mod lambda;
 mod output;
 mod peers;
 mod preview;
+mod queueing;
 mod release;
 mod serving;
 mod setup;
@@ -269,6 +270,10 @@ async fn answered(
             say(out, config.store.kind());
             DONE
         }
+        Reading::Queue { view, format } => {
+            let done = queueing::queueing(config, vars, connect, (view.as_deref(), format), out);
+            finished(done.await, err)
+        }
         Reading::Preview {
             route,
             event,
@@ -407,6 +412,10 @@ async fn polling(
     for swept in &swept {
         if let Sweep::Stopped(_)
         | Sweep::Polled {
+            cursor: Remembered::Kept | Remembered::Failed(_),
+            ..
+        }
+        | Sweep::Reported {
             cursor: Remembered::Kept | Remembered::Failed(_),
             ..
         } = swept.outcome

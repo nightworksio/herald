@@ -291,7 +291,7 @@ impl Pulled {
         maker: &Maker<'_>,
         specs: &KindSpecs,
     ) -> Option<Event> {
-        let kind = Kind::new(&enveloped.kind).ok()?;
+        let kind = Kind::new(&enveloped.kind).ok().filter(|kind| !kind.own())?;
         let spec = specs.get(&kind)?;
         let mut attributes: BTreeMap<String, Attribute> = enveloped
             .attributes

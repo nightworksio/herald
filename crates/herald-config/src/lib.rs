@@ -17,6 +17,7 @@ mod position;
 mod reference;
 mod samples;
 mod schema;
+mod views;
 
 pub use config::{
     Announce, App, Config, Doctor, Federation, GithubApp, Guard, HeldSessions, KeyCache,
@@ -28,5 +29,6 @@ pub use kinds::Kinds;
 pub use load::load;
 pub use peers::{Peer, Rotation};
 pub use reference::reference;
-pub use samples::{sample_origin, samples, samples_from};
+pub use samples::{sample_boards, sample_origin, samples, samples_from};
 pub use schema::schema;
+pub use views::{BUILT_IN_VIEW, QUEUE_TEMPLATE, Report, ViewConfig};

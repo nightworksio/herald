@@ -392,6 +392,7 @@ fn latest_reply(
         route: &route.route.id,
         herald: herald_core::itself::VERSION,
         group: None,
+        view: None,
     };
     let said = if asked.command == Command::Latest {
         config

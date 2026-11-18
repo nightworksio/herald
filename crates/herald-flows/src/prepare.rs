@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 use herald_config::{Config, Destination, Placed, RouteConfig, Uses};
 use herald_core::{DestinationName, Edits, RouteId, SourceName, hex, itself};
-use herald_kinds::{Credential, Expand, Interacted, Polling, Posts, Reached, Registering};
+use herald_kinds::{Credential, Expand, Interacted, Polling, Posts, Queue, Reached, Registering};
 use herald_peers::discovery::Instance;
 use herald_ports::{Algorithm, Base, CryptoError, Http, Secret, SecretError, Secrets, Signer};
 use herald_store_markers::{MarkedRoute, MarkersStore};
@@ -205,6 +205,9 @@ pub struct PreparedSource {
     pub(crate) name: SourceName,
     pub(crate) poll: Polling,
     pub(crate) backfill: usize,
+    /// What reads its repository's open pull requests for a view, where it
+    /// names one repository on a forge (ADR-0055).
+    pub(crate) queue: Option<Arc<dyn Queue>>,
     /// Where each member's webhook points, where some registers one, and
     /// the secret it is signed with, where each round registers one on a
     /// member that has none.
@@ -527,6 +530,7 @@ pub async fn prepare<S: Secrets, G: Signer>(
         };
         sources.push(PreparedSource {
             name: name.clone(),
+            queue: source.queue(token.clone()),
             poll: source.poller(token, edits),
             backfill: source.backfill(),
             hook,
