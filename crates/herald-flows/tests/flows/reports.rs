@@ -313,3 +313,36 @@ fn a_route_that_stops_leaves_the_window_to_be_reported_again() {
         "{again:?}"
     );
 }
+
+#[test]
+fn a_view_read_now_is_the_board_of_every_source_it_reads() {
+    let config = config("");
+    let script = Script::answering(&[
+        (GRAPHQL, 200, &page("o/closed", "PRIVATE")),
+        (GRAPHQL, 200, &page("o/open", "PUBLIC")),
+    ]);
+    let secrets = FakeSecrets::default()
+        .with("HERALD_DISCORD_TOKEN", "hunter2")
+        .with("HERALD_GITHUB_TOKEN", "ghp_x");
+    let prepared =
+        pollster::block_on(prepare(&config, &secrets, &FakeSigner, Uses::Polls)).unwrap();
+    let connected: Connected<Script> = prepared.connect(|_| Ok::<_, ()>(script.clone())).unwrap();
+    let clock = FakeClock::at(NOON);
+    let store = healthy();
+    let ports = Ports {
+        store: &store,
+        clock: &clock,
+        signer: &FakeSigner,
+        budget: herald_flows::Budget::UNBOUNDED,
+    };
+    let board =
+        pollster::block_on(herald_flows::queue(&config, &connected, &ports, "queue")).unwrap();
+    assert_eq!(board.total(), 2);
+    let repositories: Vec<&str> = board
+        .groups
+        .iter()
+        .flat_map(|group| &group.rows)
+        .map(|row| row.pull.repository.as_str())
+        .collect();
+    assert_eq!(repositories, ["o/closed", "o/open"]);
+}
