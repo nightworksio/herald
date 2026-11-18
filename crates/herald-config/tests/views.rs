@@ -115,6 +115,10 @@ deciding = "herald"
 group_by = "nothing"
 bots = "include"
 
+[views.batched]
+group_by = "turn"
+bots = "batch"
+
 [reports.daily]
 view = "mine"
 every = "12h"
@@ -174,6 +178,11 @@ zone = "Europe/Amsterdam"
             ),
             (Deciding::Herald, GroupBy::Nothing, Bots::Include)
         );
+        let batched = &config.views["batched"];
+        assert_eq!(
+            (batched.view.group_by, batched.view.bots),
+            (GroupBy::Turn, Bots::Batch)
+        );
         let daily = &config.reports["daily"];
         assert_eq!(daily.view, "mine");
         assert_eq!(daily.schedule.every, SignedDuration::from_hours(12));
@@ -225,6 +234,9 @@ at = "25:00"
 
 [reports.short]
 every = "30s"
+
+[reports.typed]
+days = "mon"
 "#,
         ));
         for wanted in [
@@ -241,6 +253,7 @@ every = "30s"
             "reports.gate: a source or app is named \"gate\" too; a route names sources, apps and reports alike, so give each its own name",
             "reports.gate.at: a report begins at a wall-clock time written",
             "reports.short.every: a report's window lasts from \"1m\" to \"1d\"",
+            "reports.typed.days:",
         ] {
             assert!(error.contains(wanted), "{wanted}\n{error}");
         }

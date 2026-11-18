@@ -70,6 +70,30 @@ fn a_step_is_held_between_a_minute_and_a_day() {
 }
 
 #[test]
+fn a_day_holds_a_window_each_minute_and_none_past_its_end() {
+    let minutely = ReportSchedule {
+        every: SHORTEST,
+        at: Time::midnight(),
+        ..ReportSchedule::default()
+    };
+    assert_eq!(
+        window(&minutely, "2026-11-18T23:59:30Z").as_deref(),
+        Some("2026-11-18T23:59:00Z")
+    );
+    let monday = date(2026, 11, 16);
+    let mondays = ReportSchedule {
+        every: DAY,
+        at: Time::midnight(),
+        days: vec![monday.weekday()],
+        ..ReportSchedule::default()
+    };
+    assert_eq!(
+        window(&mondays, "2026-11-17T00:30:00Z").as_deref(),
+        Some("2026-11-16T00:00:00Z")
+    );
+}
+
+#[test]
 fn windows_begin_only_on_the_days_named_looking_a_week_back() {
     let today = date(2026, 11, 18);
     let named = today.checked_sub(SignedDuration::from_hours(48)).unwrap();

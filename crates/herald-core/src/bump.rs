@@ -201,11 +201,11 @@ impl Reading<'_> {
         if self.failed.contains(&(part, at)) {
             return false;
         }
-        let matched = self.matched(part, at);
-        if !matched {
-            self.failed.insert((part, at));
+        if self.matched(part, at) {
+            return true;
         }
-        matched
+        self.failed.insert((part, at));
+        false
     }
 
     /// As [`Reading::matches`], unremembered.

@@ -25,7 +25,10 @@ pub const AT: Time = Time::constant(9, 0, 0, 0);
 
 /// How many days back a window's start is looked for, so a report naming
 /// one weekday finds last week's.
-const LOOKBACK: i8 = 7;
+const LOOKBACK: usize = 7;
+
+/// The most windows a day holds: one each [`SHORTEST`].
+const MOST_WINDOWS: i32 = 24 * 60;
 
 /// The zone a report's times are read in where it names none.
 pub const UTC: &str = "UTC";
@@ -64,19 +67,15 @@ impl ReportSchedule {
     /// it, none where none began in the last week.
     #[must_use]
     pub fn window(&self, now: Timestamp) -> Option<Timestamp> {
-        let mut date = now.to_zoned(self.zone.clone()).date();
-        for _ in 0..=LOOKBACK {
-            if let Some(start) = self
-                .starts(date)
-                .into_iter()
-                .rev()
-                .find(|start| *start <= now)
-            {
-                return Some(start);
-            }
-            date = date.yesterday().ok()?;
-        }
-        None
+        let today = now.to_zoned(self.zone.clone()).date();
+        std::iter::successors(Some(today), |date| date.yesterday().ok())
+            .take(LOOKBACK + 1)
+            .find_map(|date| {
+                self.starts(date)
+                    .into_iter()
+                    .rev()
+                    .find(|start| *start <= now)
+            })
     }
 
     /// The windows that begin on `date`, earliest first: none on a day it
@@ -87,18 +86,11 @@ impl ReportSchedule {
             return Vec::new();
         }
         let step = self.every.clamp(SHORTEST, DAY);
-        let mut offset = self.at.duration_since(Time::midnight());
-        let mut starts = Vec::new();
-        while offset < DAY {
-            let start = Time::midnight()
-                .checked_add(offset)
-                .ok()
-                .and_then(|time| date.to_datetime(time).to_zoned(self.zone.clone()).ok())
-                .map(|zoned| zoned.timestamp());
-            starts.extend(start);
-            offset += step;
-        }
-        starts
+        (0..MOST_WINDOWS)
+            .map_while(|index| self.at.checked_add(step.checked_mul(index)?).ok())
+            .filter_map(|time| date.to_datetime(time).to_zoned(self.zone.clone()).ok())
+            .map(|zoned| zoned.timestamp())
+            .collect()
     }
 }
 

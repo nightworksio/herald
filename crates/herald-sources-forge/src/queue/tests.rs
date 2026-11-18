@@ -329,3 +329,45 @@ fn a_queued_repository_reads_its_pulls_through_its_own_path_at_its_most() {
     let asked: Vec<String> = http.asked().into_iter().map(|(url, _)| url).collect();
     assert_eq!(asked, ["https://ghe.example/api/graphql"]);
 }
+
+#[test]
+fn a_failed_listing_names_what_it_read_on_each_forge_and_path() {
+    let named = |forge, tokened| {
+        let (failed, _) = listed(forge, tokened, LISTED, vec![answer(500, &json!({}))]);
+        match failed {
+            Err(Unpolled::Unreadable(why)) => why,
+            other => panic!("{other:?}"),
+        }
+    };
+    assert!(named(Forge::GitHub, true).starts_with(github::WHAT));
+    assert!(named(Forge::GitHub, false).starts_with(listing::GITHUB));
+    assert!(named(Forge::GitLab, false).starts_with(gitlab::WHAT));
+    assert!(named(Forge::Forgejo, true).starts_with(listing::FORGEJO));
+}
+
+#[test]
+fn github_without_a_token_pages_while_each_page_is_full() {
+    let (pulls, asked) = listed(
+        Forge::GitHub,
+        false,
+        LISTED,
+        vec![answer(200, &headed(0..100)), answer(200, &headed(100..101))],
+    );
+    assert_eq!(pulls.unwrap().len(), 101);
+    assert_eq!(asked.len(), 2);
+}
+
+#[test]
+fn a_pull_request_with_a_reviewer_asked_and_no_review_given_waits_on_review() {
+    let (pulls, _) = listed(
+        Forge::GitHub,
+        false,
+        (MOST_OPEN, 1),
+        vec![
+            answer(200, &headed(1..2)),
+            answer(200, &json!([])),
+            answer(200, &json!({ "check_runs": [] })),
+        ],
+    );
+    assert_eq!(pulls.unwrap()[0].review, Review::Requested);
+}

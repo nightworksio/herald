@@ -3,6 +3,7 @@
 
 #[cfg(test)]
 mod compose {
+    mod reports;
     mod work;
 
     use std::collections::BTreeMap;

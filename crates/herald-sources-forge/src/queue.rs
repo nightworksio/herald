@@ -69,18 +69,11 @@ impl ReadPath {
     /// The most requests a round of it takes for a repository listing at
     /// most `most_open` and reading at most `most_pulls` in full.
     #[must_use]
-    pub const fn most_requests(self, most_open: usize, most_pulls: usize) -> usize {
+    pub fn most_requests(self, most_open: usize, most_pulls: usize) -> usize {
         let pages = most_open.div_ceil(PAGE);
         match self {
             Self::Graphql | Self::Listing => pages,
-            Self::Detailed => {
-                let read = if most_pulls < most_open {
-                    most_pulls
-                } else {
-                    most_open
-                };
-                pages + read * PER_PULL
-            }
+            Self::Detailed => pages + most_pulls.min(most_open) * PER_PULL,
         }
     }
 }
@@ -274,11 +267,7 @@ impl herald_kinds::Queue for Queued {
 /// What reading at most `most` open pull requests of a repository on
 /// `forge` costs each round, `tokened` where its source reads with a token.
 #[must_use]
-pub const fn cost(
-    forge: Forge,
-    tokened: bool,
-    most: herald_kinds::Most,
-) -> herald_kinds::QueueCost {
+pub fn cost(forge: Forge, tokened: bool, most: herald_kinds::Most) -> herald_kinds::QueueCost {
     let path = ReadPath::of(forge, tokened);
     herald_kinds::QueueCost {
         path: path.name(),
