@@ -68,7 +68,14 @@ edits a post with the steps a destination offers. Grouping reuses both.
 9. **The markers store keeps no records**, so a grouped route there stops
    for the round, as a held tag does (ADR-0032), and doctor names the gap
    "grouping a route's announcements" at the route's `group`.
-10. **`herald preview --group <key>`** renders each route that groups
+10. **A member reaches a group only where its visibility reaches the
+    route** (ADR-0029): a private member is refused before it is gathered,
+    and one that names no visibility of its own is held under the bound
+    the routing gave it. Each flush leaves out a member the config no
+    longer lets reach the route, and a group left with none is announced
+    to no one. The group is announced under its strictest member's
+    visibility.
+11. **`herald preview --group <key>`** renders each route that groups
     against the event file's release, or every sample release, as one
     group.
 

@@ -274,3 +274,18 @@ fn a_group_is_seen_as_its_strictest_member_and_by_anyone_where_none_is_bounded()
     assert_eq!(seen(&[Some(Public), None, Some(Internal)]), Internal);
     assert_eq!(seen(&[Some(Private), Some(Public)]), Private);
 }
+
+#[test]
+fn a_member_that_names_no_one_is_held_under_the_bound_the_routing_saw() {
+    let unnamed = event("cli", "github.com/2/v1.2.0");
+    assert_eq!(
+        bounded(&unnamed, Visibility::Private).bounded_by(),
+        Some(Visibility::Private)
+    );
+    assert_eq!(bounded(&unnamed, Visibility::Public).bounded_by(), None);
+    let own = unnamed.clone().seen_as(Visibility::Internal);
+    assert_eq!(
+        bounded(&own, Visibility::Private).bounded_by(),
+        Some(Visibility::Internal)
+    );
+}

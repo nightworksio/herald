@@ -13,6 +13,7 @@ use crate::harness::*;
 mod edits;
 mod mentions;
 mod rounds;
+mod visibility;
 
 pub(crate) const EDITED: (&str, u16, &str) = (
     "/channels/1566200000000000100/messages/1",

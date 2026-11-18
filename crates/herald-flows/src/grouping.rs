@@ -20,6 +20,10 @@ use crate::prepare::Connected;
 /// its route's `late` skips it.
 const LATE: &str = "its group was announced before it came";
 
+/// Why a group was announced to no one: no member it gathered may reach
+/// the route under the config now.
+const UNADMITTED: &str = "no member it gathered may reach the route now, as [doctor] private_to_public and the route's private say";
+
 /// A route that groups, announcing as `run` within `config`.
 pub(crate) struct Grouped<'a, 'r, S, C, G, H> {
     pub(crate) run: &'a Run<'r, S, C, G, H>,
@@ -152,6 +156,8 @@ impl<S: Store, C: Clock, G: Signer, H: Http> Grouped<'_, '_, S, C, G, H> {
     /// alone where its key names no group; or, where a group announced it,
     /// that group's post brought to it as the route says.
     pub(crate) async fn announce(&self, source: &SourceName, event: &Event) -> Outcome {
+        let bounded = bounded(event, self.run.seen);
+        let event = &bounded;
         let key = match key_of(&self.config.templates, self.route(), event) {
             Ok(Some(key)) => key,
             Ok(None) => return self.alone(event).await,
@@ -388,8 +394,17 @@ impl<S: Store, C: Clock, G: Signer, H: Http> Grouped<'_, '_, S, C, G, H> {
             .value
             .events
             .iter()
+            .filter(|held| admitted(self.config, self.route(), &held.event))
             .map(|held| held.event.clone())
             .collect();
+        if events.is_empty() {
+            return match self.recorded(key, &events).await {
+                Ok(()) => Outcome::Skipped(UNADMITTED.to_owned()),
+                Err(reason) => stopped(reason),
+            };
+        }
+        let mut run = self.run.clone();
+        run.seen = strictest(&kept.value).max(self.run.seen);
         let ordered = self.grouping.ordered(&events);
         let subject = Subject {
             event: ordered.first().copied().unwrap_or(by),
@@ -398,10 +413,7 @@ impl<S: Store, C: Clock, G: Signer, H: Http> Grouped<'_, '_, S, C, G, H> {
                 events: &ordered,
             }),
         };
-        let outcome = self
-            .run
-            .announce_group(subject, &self.config.templates)
-            .await;
+        let outcome = run.announce_group(subject, &self.config.templates).await;
         if !matches!(outcome, Outcome::Sent { .. } | Outcome::AlreadyAnnounced) {
             return outcome;
         }
@@ -487,6 +499,26 @@ impl<S: Store, C: Clock, G: Signer, H: Http> Grouped<'_, '_, S, C, G, H> {
         }
         Err(raced(key))
     }
+}
+
+/// `event`, bounded by who the routing saw may see it, `seen`, where it
+/// names no one itself, so the group's record holds the bound its member
+/// was gathered under.
+fn bounded(event: &Event, seen: Visibility) -> Event {
+    match event.bounded_by() {
+        None if seen != Visibility::Public => event.clone().seen_as(seen),
+        _ => event.clone(),
+    }
+}
+
+/// Whether `config` lets `event`, a member gathered under the config of
+/// its time, reach `route` now: never where who may see it bounds it to
+/// routes that leave this one out (ADR-0029).
+fn admitted(config: &Config, route: &RouteId, event: &Event) -> bool {
+    event
+        .bounded_by()
+        .and_then(|visibility| crate::poll::bounded(config, visibility))
+        .is_none_or(|routes| routes.contains(route))
 }
 
 /// Why a group's record could not be written: another run wrote it first.
