@@ -1,7 +1,8 @@
+use std::collections::BTreeMap;
 use std::num::NonZeroUsize;
 
-use herald_core::kind_name;
-use herald_kinds::{Fault, Instance, Peering, PublicKey};
+use herald_core::{Grant, kind_name};
+use herald_kinds::{Bound, Fault, Instance, Peering, PublicKey};
 use herald_peers::feed::{FeedAt, PAGE_MOST, feed_at, feed_of};
 use herald_peers::multibase::ed25519_key;
 use schemars::JsonSchema;
@@ -79,6 +80,11 @@ pub struct HeraldFile {
     /// again later; a tombstone of an identity it took is always taken.
     #[schemars(with = "Option<NonZeroUsize>")]
     pub peer_share: Option<NonZeroUsize>,
+    /// What each peer of `[peers]` may do with the source, by the peer's
+    /// name, such as `{ upstream = { actions = ["push"] } }`; the peer's
+    /// own `grants` must name the same. None where absent.
+    #[serde(default)]
+    pub peers: BTreeMap<String, Grant>,
 }
 
 /// A `herald` source, checked: whose feed it pulls, where, and what it
@@ -108,6 +114,12 @@ pub struct HeraldOptions {
     pub(crate) tombstones: usize,
     pub(crate) peer_tombstones: usize,
     pub(crate) peer_share: usize,
+    /// What chose `pages`, `tombstones` and `peer_share`.
+    pub(crate) bound: Bound,
+    pub(crate) grants: BTreeMap<String, Grant>,
+    /// Whether it pulls a feed, rather than only taking what its peers
+    /// push to it.
+    pub(crate) pulls: bool,
 }
 
 impl HeraldOptions {
@@ -145,6 +157,136 @@ impl HeraldOptions {
                 format!("pages is at most {}; lower it", Self::PAGES_ALLOWED),
             ));
         }
+        let (tombstones, peer_tombstones, peer_share) = Self::tombstoned(&file)?;
+        let most = pages.saturating_mul(PAGE_MOST);
+        if file.backfill > most {
+            return Err(Fault::at(
+                "backfill",
+                format!(
+                    "backfill is at most {most}, the {pages} pages of {PAGE_MOST} one pull reads; lower it or raise pages"
+                ),
+            ));
+        }
+        Self::granting(&file)?;
+        let pulls = file.peer.is_some() || file.feed.is_some() || file.url.is_some();
+        if !pulls && !file.peers.is_empty() {
+            Self::pushed_only(&file)?;
+        }
+        let (peer, feed, at, keys) = match (file.peer, file.feed, file.url) {
+            (Some(peer), Some(feed), None) => {
+                named(&peer, &feed)?;
+                (Some(peer), feed, FeedAt::default(), Vec::new())
+            }
+            (None, None, Some(url)) => {
+                let at = feed_at(&url).ok_or_else(|| {
+                    Fault::at(
+                        "url",
+                        format!("\"{url}\" is not a feed's URL; give https://, its domain and the path of the feed, such as \"https://herald.example/herald/v1/feeds/releases\""),
+                    )
+                })?;
+                (None, String::new(), at, pinned(&file.keys)?)
+            }
+            (None, None, None) if !file.peers.is_empty() => {
+                (None, String::new(), FeedAt::default(), Vec::new())
+            }
+            _ => {
+                return Err(Fault::here(
+                    "name a peer of [peers] with its feed, as peer = \"<name>\" and feed = \"<feed>\", or a feed's url with the keys pinned for it, not both; or for a source that only takes what peers push, neither, with the peers it grants",
+                ));
+            }
+        };
+        if peer.is_some() && !file.keys.is_empty() {
+            return Err(Fault::at(
+                "keys",
+                "a peer's keys are pinned in [peers]; leave keys out, or name a url in place of the peer",
+            ));
+        }
+        Ok(Self {
+            name: peer.clone().unwrap_or_else(|| at.domain.clone()),
+            peer,
+            feed,
+            url: at.instance,
+            domain: at.domain,
+            api: at.feed,
+            keys,
+            backfill: file.backfill,
+            pages,
+            verify: file.verify,
+            namespaces: file.namespaces,
+            tombstones,
+            peer_tombstones,
+            peer_share,
+            bound: if file.pages.is_some() || file.tombstones.is_some() || file.peer_share.is_some()
+            {
+                Bound::Named
+            } else {
+                Bound::Default
+            },
+            grants: file.peers,
+            pulls,
+        })
+    }
+
+    /// Whether what `file` grants each peer is sound: a peer's name, at
+    /// least one action, and namespaces a peer may be granted.
+    fn granting(file: &HeraldFile) -> Result<(), Fault> {
+        for (peer, grant) in &file.peers {
+            let at = format!("peers.{peer}");
+            if !kind_name(peer) {
+                return Err(Fault::at(
+                    "peers",
+                    format!("\"{peer}\" is not a peer's name; name a table of [peers]"),
+                ));
+            }
+            if grant.actions.is_empty() {
+                return Err(Fault::at(
+                    "peers",
+                    format!("{at} grants no action; grant one, such as actions = [\"push\"]"),
+                ));
+            }
+            if let Some(namespace) = grant
+                .namespaces
+                .iter()
+                .find(|namespace| !granted(namespace))
+            {
+                return Err(Fault::at(
+                    "peers",
+                    format!(
+                        "{at}: \"{namespace}\" is not a namespace a peer may be granted; give the start of identities up to a '/', such as \"github.com/123456\", outside {NAMESPACE}/"
+                    ),
+                ));
+            }
+        }
+        if let Some(namespace) = file.namespaces.iter().find(|namespace| !granted(namespace)) {
+            return Err(Fault::at(
+                "namespaces",
+                format!(
+                    "\"{namespace}\" is not a namespace a peer may be granted; give the start of identities up to a '/', such as \"github.com/123456\", outside {NAMESPACE}/"
+                ),
+            ));
+        }
+        Ok(())
+    }
+
+    /// Whether `file`, which pulls no feed, names nothing only a pull
+    /// reads.
+    fn pushed_only(file: &HeraldFile) -> Result<(), Fault> {
+        match (file.keys.is_empty(), file.namespaces.is_empty()) {
+            (false, _) => Err(Fault::at(
+                "keys",
+                "a source that only takes what peers push pins no keys; each peer's keys are pinned in [peers]",
+            )),
+            (_, false) => Err(Fault::at(
+                "namespaces",
+                "a source that only takes what peers push grants namespaces to each peer, in peers.<name>.namespaces",
+            )),
+            (true, true) => Ok(()),
+        }
+    }
+
+    /// How many tombstones `file` keeps, in all and of one instance, where
+    /// both are within their bounds.
+    fn tombstoned(file: &HeraldFile) -> Result<(usize, usize, usize), Fault> {
         let tombstones = file.tombstones.map_or(Self::TOMBSTONES, NonZeroUsize::get);
         if tombstones > Self::TOMBSTONES_ALLOWED {
             return Err(Fault::at(
@@ -176,65 +318,7 @@ impl HeraldOptions {
                 ),
             ));
         }
-        let most = pages.saturating_mul(PAGE_MOST);
-        if file.backfill > most {
-            return Err(Fault::at(
-                "backfill",
-                format!(
-                    "backfill is at most {most}, the {pages} pages of {PAGE_MOST} one pull reads; lower it or raise pages"
-                ),
-            ));
-        }
-        if let Some(namespace) = file.namespaces.iter().find(|namespace| !granted(namespace)) {
-            return Err(Fault::at(
-                "namespaces",
-                format!(
-                    "\"{namespace}\" is not a namespace a peer may be granted; give the start of identities up to a '/', such as \"github.com/123456\", outside {NAMESPACE}/"
-                ),
-            ));
-        }
-        let (peer, feed, at, keys) = match (file.peer, file.feed, file.url) {
-            (Some(peer), Some(feed), None) => {
-                named(&peer, &feed)?;
-                (Some(peer), feed, FeedAt::default(), Vec::new())
-            }
-            (None, None, Some(url)) => {
-                let at = feed_at(&url).ok_or_else(|| {
-                    Fault::at(
-                        "url",
-                        format!("\"{url}\" is not a feed's URL; give https://, its domain and the path of the feed, such as \"https://herald.example/herald/v1/feeds/releases\""),
-                    )
-                })?;
-                (None, String::new(), at, pinned(&file.keys)?)
-            }
-            _ => {
-                return Err(Fault::here(
-                    "name a peer of [peers] with its feed, as peer = \"<name>\" and feed = \"<feed>\", or a feed's url with the keys pinned for it, not both",
-                ));
-            }
-        };
-        if peer.is_some() && !file.keys.is_empty() {
-            return Err(Fault::at(
-                "keys",
-                "a peer's keys are pinned in [peers]; leave keys out, or name a url in place of the peer",
-            ));
-        }
-        Ok(Self {
-            name: peer.clone().unwrap_or_else(|| at.domain.clone()),
-            peer,
-            feed,
-            url: at.instance,
-            domain: at.domain,
-            api: at.feed,
-            keys,
-            backfill: file.backfill,
-            pages,
-            verify: file.verify,
-            namespaces: file.namespaces,
-            tombstones,
-            peer_tombstones,
-            peer_share,
-        })
+        Ok((tombstones, peer_tombstones, peer_share))
     }
 
     /// Whose feed the source reads.

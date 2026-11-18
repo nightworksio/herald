@@ -114,8 +114,10 @@ fn a_source_takes_no_webhook_and_no_moving_tag_where_its_kind_keeps_the_defaults
     assert_eq!(source.tag_window(), None);
     assert_eq!(source.notes(), Vec::<&str>::new());
     assert_eq!(source.projects(), Vec::<String>::new());
-    assert_eq!(source.remembers(), None);
-    assert_eq!(source.fitted(10), None);
+    assert_eq!(source.remembers(0), None);
+    assert_eq!(source.fitted(10, 0), None);
+    assert_eq!(source.grants(), None);
+    assert!(source.receiver().is_none());
     assert_eq!(source.share(), None);
     assert!(!source.origins());
     assert!(!source.pushed());
@@ -435,6 +437,18 @@ impl Expand for OwnerBeside {
 }
 
 #[test]
+fn a_source_taking_only_pushes_reaches_no_origin_and_probes_nothing() {
+    let unpolled = Polling::Unpolled;
+    assert_eq!(unpolled.api(), "");
+    assert_eq!(unpolled.base(), Base::Among(&[]));
+    assert_eq!(unpolled.base().bases(), Some(Vec::new()));
+    assert_eq!(
+        pollster::block_on(unpolled.probed(&crate::reach::tests::Silent)),
+        Vec::new()
+    );
+}
+
+#[test]
 fn a_poll_reaches_its_api_s_origin_unless_it_names_more_bases() {
     let quiet = Polling::One(Arc::new(Quiet(None, "https://plain.example".to_owned())));
     assert_eq!(quiet.base(), Base::At("https://plain.example"));
@@ -672,6 +686,9 @@ fn a_cursor_remembering_every_identity_takes_each_one_s_bytes_beside_the_rest() 
         each: 100,
         key: "most_tags",
         bound: Bound::Named,
+        per: 1,
+        beside: 0,
+        besides: &[],
     };
     assert_eq!(remembers.bytes(), 1000 + Remembers::REST);
     assert!(remembers.fits(1000 + Remembers::REST));
@@ -679,6 +696,22 @@ fn a_cursor_remembering_every_identity_takes_each_one_s_bytes_beside_the_rest() 
     assert_eq!(remembers.fitting(Remembers::REST + 1099), 10);
     assert_eq!(remembers.fitting(Remembers::REST + 1100), 11);
     assert_eq!(remembers.fitting(Remembers::REST - 1), 0);
+    assert_eq!(remembers.named(Remembers::REST + 1100), 11);
+    let paged = Remembers {
+        per: 4,
+        beside: 300,
+        ..remembers
+    };
+    assert_eq!(paged.bytes(), 1300 + Remembers::REST);
+    assert_eq!(paged.fitting(Remembers::REST + 1100), 8);
+    assert_eq!(paged.named(Remembers::REST + 1100), 2);
+    assert_eq!(paged.named(Remembers::REST + 1099), 1);
+    assert_eq!(paged.named(Remembers::REST + 299), 0);
+    let unpaged = Remembers {
+        per: 0,
+        ..remembers
+    };
+    assert_eq!(unpaged.named(Remembers::REST), usize::MAX);
     let empty = Remembers {
         each: 0,
         ..remembers

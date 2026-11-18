@@ -366,6 +366,17 @@ pub struct Federation {
     pub fields: usize,
     /// The peer keys never trusted again.
     pub revoked: Vec<herald_peers::keys::Key>,
+    /// How long what each peer asked is kept, by UTC day.
+    pub keep_audit: SignedDuration,
+    /// How soon before a grant ends doctor names it.
+    pub grants_ending: SignedDuration,
+    /// How many inbox requests no peer's key signs are kept in the audit.
+    pub stranger_rate: herald_core::Rate,
+    /// How many replayed nonces of one peer are answered before 429.
+    pub replay_rate: herald_core::Rate,
+    /// How many requests of one peer refused past its rate have their
+    /// nonces kept in each span of `SIGNED_FOR_ALLOWED`.
+    pub refused_nonces: u32,
 }
 
 impl Federation {
@@ -383,6 +394,22 @@ impl Federation {
     /// The most bytes a config may let a signature field hold: four times
     /// the default.
     pub const FIELDS_ALLOWED: usize = Self::FIELDS * 4;
+    /// How long a peer's requests are kept where `keep_audit` is absent.
+    pub const KEEP_AUDIT: SignedDuration = SignedDuration::from_hours(90 * 24);
+    /// The longest `keep_audit` may be.
+    pub const KEEP_AUDIT_ALLOWED: SignedDuration = SignedDuration::from_hours(365 * 24);
+    /// How soon before a grant ends doctor names it where `grants_ending`
+    /// is absent.
+    pub const GRANTS_ENDING: SignedDuration = SignedDuration::from_hours(7 * 24);
+    /// The longest `grants_ending` may be.
+    pub const GRANTS_ENDING_ALLOWED: SignedDuration = SignedDuration::from_hours(90 * 24);
+    /// How many refused requests of one peer have their nonces kept where
+    /// `refused_nonces` is absent: as many as its default rate lets through
+    /// in the longest a request lives.
+    pub const REFUSED_NONCES: u32 = 2400;
+    /// The most `refused_nonces` may be: as many as the highest rate lets
+    /// through in the longest a request lives.
+    pub const REFUSED_NONCES_ALLOWED: u32 = 4 * Self::REFUSED_NONCES;
 }
 
 impl Default for Federation {
@@ -394,6 +421,11 @@ impl Default for Federation {
             signed_for: Self::SIGNED_FOR,
             fields: Self::FIELDS,
             revoked: Vec::new(),
+            keep_audit: Self::KEEP_AUDIT,
+            grants_ending: Self::GRANTS_ENDING,
+            stranger_rate: crate::Peer::RATE,
+            replay_rate: crate::Peer::RATE,
+            refused_nonces: Self::REFUSED_NONCES,
         }
     }
 }

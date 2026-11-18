@@ -2,7 +2,9 @@
 //! released undone so its sender's next delivery of it is admitted
 //! (ADR-0013).
 
-use herald_core::{Asked, DestinationName, Event, Listing, Origin, Scheme, SourceName, Visibility};
+use herald_core::{
+    Asked, DestinationName, Event, Identity, Listing, Origin, Scheme, SourceName, Visibility,
+};
 use herald_kinds::Replying;
 use herald_ports::{Clock, Cursors, Http, Signer, Store, Verifier};
 
@@ -15,6 +17,7 @@ use crate::follows::{FollowError, Followed, followed};
 use crate::poll::{Remembered, Sweep, Swept, polled, remembered, stored};
 use crate::prepare::expanded;
 use crate::verification::{Checking, Verified, released};
+use crate::withdraw::tombstoned;
 
 /// Work a request leaves to be done once it is answered.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -77,6 +80,18 @@ pub enum Job {
         verified: Verified,
         /// The activity.
         body: Vec<u8>,
+    },
+    /// What a peer pushed into the `herald` source `source`, its proof
+    /// already kept in the source's cursor: its event to announce, or the
+    /// identity its tombstone withdraws with the project the cursor held
+    /// it under (ADR-0054).
+    Pushed {
+        /// The source it was pushed into.
+        source: SourceName,
+        /// The event to announce.
+        event: Option<Event>,
+        /// The identity to withdraw, and its project.
+        withdrawn: Option<(Identity, Option<String>)>,
     },
     /// Commands given on `destination`, each to answer where it says.
     Interact {
@@ -208,7 +223,7 @@ impl Job {
             Self::Follow { verified, .. } => {
                 Some((herald_dest_fediverse::ACTOR_SCHEME.name, verified))
             }
-            Self::Interact { .. } => None,
+            Self::Interact { .. } | Self::Pushed { .. } => None,
         }
     }
 }
@@ -372,6 +387,11 @@ async fn done<S: Store, C: Clock, G: Signer, V: Verifier, H: Http, P, K>(
             Did::Followed(taken)
         }
         Job::Interact { destination, asked } => interacted(serving, &destination, asked).await,
+        Job::Pushed {
+            source,
+            event,
+            withdrawn,
+        } => Did::Announced(pushed(serving, &source, (event, withdrawn), run).await),
         Job::Fanned { jobs, .. } => {
             let mut each = Vec::new();
             for job in jobs {
@@ -380,6 +400,44 @@ async fn done<S: Store, C: Clock, G: Signer, V: Verifier, H: Http, P, K>(
             Did::Fanned(each)
         }
     }
+}
+
+/// What each route did with what a peer pushed into `source`: its event
+/// announced, or the identity its tombstone withdraws withdrawn.
+async fn pushed<S: Store, C: Clock, G: Signer, V, H: Http, P, K>(
+    serving: &Serving<'_, S, C, G, V, H, P, K>,
+    source: &SourceName,
+    (event, withdrawn): (Option<Event>, Option<(Identity, Option<String>)>),
+    run: &str,
+) -> Vec<Announced> {
+    let mut announced = Vec::new();
+    if let Some(event) = event {
+        announced.extend(
+            announce_within(
+                serving.config,
+                serving.connected,
+                serving.ports,
+                source,
+                &event,
+                Within::default(),
+                run,
+            )
+            .await,
+        );
+    }
+    if let Some((identity, project)) = withdrawn {
+        announced.extend(
+            Box::pin(tombstoned(
+                serving.config,
+                serving.connected,
+                serving.ports,
+                (source, &identity, project.as_deref()),
+                run,
+            ))
+            .await,
+        );
+    }
+    announced
 }
 
 /// `event`, from `source`, announced under the run name `run` to every

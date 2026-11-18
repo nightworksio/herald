@@ -2,8 +2,9 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Mutex;
 
 use herald_core::{
-    Cursor, DestinationName, Entry, Feed, Hold, KeptToken, Key, Latest, Listing, Membership,
-    PeerKeys, Pending, PublishedKeys, RouteId, Schedule, SourceName, State, Subscription,
+    AuditDay, Cursor, DestinationName, Entry, Feed, Hold, KeptToken, Key, Latest, Listing,
+    Membership, PeerKeys, Pending, PublishedKeys, RouteId, Schedule, SourceName, State,
+    Subscription, Window,
 };
 use herald_ports::{
     Admitted, Announcements, Cursors, Deliveries, Held, Inboxes, Keeper, Ledger, Notes, Outboxed,
@@ -33,6 +34,8 @@ struct FakeState {
     published: BTreeMap<(), Versioned<PublishedKeys>>,
     feeds: BTreeMap<DestinationName, Versioned<Feed>>,
     peer_keys: BTreeMap<String, Versioned<PeerKeys>>,
+    audits: BTreeMap<(String, String), Versioned<AuditDay>>,
+    windows: BTreeMap<String, Versioned<Window>>,
 }
 
 /// A store in memory, keeping everything a store can keep.
@@ -314,6 +317,12 @@ impl Deliveries for FakeStore {
         Ok(Admitted::Fresh)
     }
 
+    async fn seen(&self, namespace: &'static str, id: &str) -> Result<bool, StoreError> {
+        Ok(lock(&self.state)
+            .deliveries
+            .contains_key(&(namespace, id.to_owned())))
+    }
+
     async fn release(&self, namespace: &'static str, id: &str) -> Result<(), StoreError> {
         lock(&self.state)
             .deliveries
@@ -508,6 +517,66 @@ impl Published for FakeStore {
             &mut state.peer_keys,
             peer.to_owned(),
             keys,
+            expected,
+        ))
+    }
+
+    async fn audit(
+        &self,
+        peer: &str,
+        day: &str,
+    ) -> Result<Option<Versioned<AuditDay>>, StoreError> {
+        Ok(lock(&self.state)
+            .audits
+            .get(&(peer.to_owned(), day.to_owned()))
+            .cloned())
+    }
+
+    async fn put_audit(
+        &self,
+        audit: &AuditDay,
+        expected: Option<Version>,
+    ) -> Result<Written, StoreError> {
+        let mut state = lock(&self.state);
+        Ok(compare_and_set(
+            &mut state.audits,
+            (audit.peer.clone(), audit.day.clone()),
+            audit,
+            expected,
+        ))
+    }
+
+    async fn audits(&self, peer: &str) -> Result<Vec<AuditDay>, StoreError> {
+        Ok(lock(&self.state)
+            .audits
+            .iter()
+            .filter(|((kept, _), _)| kept == peer)
+            .map(|(_, audit)| audit.value.clone())
+            .collect())
+    }
+
+    async fn expire_audits(&self, day: &str) -> Result<(), StoreError> {
+        lock(&self.state)
+            .audits
+            .retain(|(_, kept), _| kept.as_str() >= day);
+        Ok(())
+    }
+
+    async fn window(&self, peer: &str) -> Result<Option<Versioned<Window>>, StoreError> {
+        Ok(lock(&self.state).windows.get(peer).cloned())
+    }
+
+    async fn put_window(
+        &self,
+        peer: &str,
+        window: &Window,
+        expected: Option<Version>,
+    ) -> Result<Written, StoreError> {
+        let mut state = lock(&self.state);
+        Ok(compare_and_set(
+            &mut state.windows,
+            peer.to_owned(),
+            window,
             expected,
         ))
     }

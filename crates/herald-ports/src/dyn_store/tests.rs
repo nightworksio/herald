@@ -7,7 +7,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::future::Future;
 
 use herald_core::{
-    DestinationName, Feed, Hold, Identity, KeptToken, Kind, PeerKeys, Pending, PublishedKeys, Shown,
+    AuditDay, DestinationName, Feed, Hold, Identity, KeptToken, Kind, PeerKeys, Pending,
+    PublishedKeys, Shown, Window,
 };
 
 use super::*;
@@ -201,6 +202,35 @@ impl Published for Refusing {
     ) -> Result<Written, StoreError> {
         Err(refused("put_peer_keys"))
     }
+
+    async fn audit(&self, _: &str, _: &str) -> Result<Option<Versioned<AuditDay>>, StoreError> {
+        Err(refused("audit"))
+    }
+
+    async fn put_audit(&self, _: &AuditDay, _: Option<Version>) -> Result<Written, StoreError> {
+        Err(refused("put_audit"))
+    }
+
+    async fn audits(&self, _: &str) -> Result<Vec<AuditDay>, StoreError> {
+        Err(refused("audits"))
+    }
+
+    async fn expire_audits(&self, _: &str) -> Result<(), StoreError> {
+        Err(refused("expire_audits"))
+    }
+
+    async fn window(&self, _: &str) -> Result<Option<Versioned<Window>>, StoreError> {
+        Err(refused("window"))
+    }
+
+    async fn put_window(
+        &self,
+        _: &str,
+        _: &Window,
+        _: Option<Version>,
+    ) -> Result<Written, StoreError> {
+        Err(refused("put_window"))
+    }
 }
 
 impl Waiting for Refusing {
@@ -224,6 +254,10 @@ impl Waiting for Refusing {
 impl Deliveries for Refusing {
     async fn admit(&self, _: &'static str, _: &str, _: Timestamp) -> Result<Admitted, StoreError> {
         Err(refused("admit"))
+    }
+
+    async fn seen(&self, _: &'static str, _: &str) -> Result<bool, StoreError> {
+        Err(refused("seen"))
     }
 
     async fn release(&self, _: &'static str, _: &str) -> Result<(), StoreError> {
@@ -399,6 +433,12 @@ fn an_erased_store_answers_for_what_the_instance_published_as_the_store_it_erase
         read: Timestamp::UNIX_EPOCH,
         refresh: 60,
     };
+    let audit = AuditDay::of("upstream", Timestamp::UNIX_EPOCH);
+    let window = Window {
+        start: Timestamp::UNIX_EPOCH,
+        count: 1,
+        ..Window::default()
+    };
     let store = Refusing { holding: true };
     let erased = Erased(&store as &dyn DynStore);
     assert_eq!(
@@ -409,6 +449,12 @@ fn an_erased_store_answers_for_what_the_instance_published_as_the_store_it_erase
             answered(erased.put_feed(&releases, &feed, None)),
             answered(erased.peer_keys("upstream")),
             answered(erased.put_peer_keys("upstream", &peer, None)),
+            answered(erased.audit("upstream", "2027-01-15")),
+            answered(erased.put_audit(&audit, None)),
+            answered(erased.audits("upstream")),
+            answered(erased.expire_audits("2027-01-15")),
+            answered(erased.window("upstream")),
+            answered(erased.put_window("upstream", &window, None)),
         ],
         [
             Some(refused("published_keys")),
@@ -417,12 +463,18 @@ fn an_erased_store_answers_for_what_the_instance_published_as_the_store_it_erase
             Some(refused("put_feed")),
             Some(refused("peer_keys")),
             Some(refused("put_peer_keys")),
+            Some(refused("audit")),
+            Some(refused("put_audit")),
+            Some(refused("audits")),
+            Some(refused("expire_audits")),
+            Some(refused("window")),
+            Some(refused("put_window")),
         ]
     );
     let unheld = Refusing { holding: false };
     let erased = Erased(&unheld as &dyn DynStore);
     let unkept = Some(StoreError::Unsupported {
-        what: "published key sets, feeds and peers' key sets",
+        what: "published key sets, feeds, and peers' key sets and audits",
     });
     assert_eq!(answered(erased.published_keys()), unkept);
     assert_eq!(answered(erased.put_published_keys(&keys, None)), unkept);
@@ -431,6 +483,15 @@ fn an_erased_store_answers_for_what_the_instance_published_as_the_store_it_erase
     assert_eq!(answered(erased.peer_keys("upstream")), unkept);
     assert_eq!(
         answered(erased.put_peer_keys("upstream", &peer, None)),
+        unkept
+    );
+    assert_eq!(answered(erased.audit("upstream", "1970-01-01")), unkept);
+    assert_eq!(answered(erased.put_audit(&audit, None)), unkept);
+    assert_eq!(answered(erased.audits("upstream")), unkept);
+    assert_eq!(answered(erased.expire_audits("1970-01-01")), unkept);
+    assert_eq!(answered(erased.window("upstream")), unkept);
+    assert_eq!(
+        answered(erased.put_window("upstream", &window, None)),
         unkept
     );
 }
@@ -527,6 +588,7 @@ fn every_answer_of_an_erased_store_is_the_store_s_own() {
         answered(erased.position(&subscription.destination)),
         answered(erased.put_position(&subscription.destination, "s1")),
         answered(erased.admit(NAMESPACE, "1", at)),
+        answered(erased.seen(NAMESPACE, "1")),
         answered(erased.release(NAMESPACE, "1")),
         answered(erased.expire_deliveries(at)),
         answered(erased.note(&key)),
@@ -562,6 +624,7 @@ fn every_answer_of_an_erased_store_is_the_store_s_own() {
         "position",
         "put_position",
         "admit",
+        "seen",
         "release",
         "expire_deliveries",
         "note",

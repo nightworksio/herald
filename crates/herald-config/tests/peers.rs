@@ -53,6 +53,7 @@ mod peers {
                 most: Peer::MOST,
                 hops: Peer::HOPS,
                 private: false,
+                grants: std::collections::BTreeMap::new(),
             }
         );
         assert_eq!(

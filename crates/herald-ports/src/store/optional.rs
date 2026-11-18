@@ -258,6 +258,13 @@ impl<T: Deliveries> Deliveries for Option<&T> {
         }
     }
 
+    async fn seen(&self, namespace: &'static str, id: &str) -> Result<bool, StoreError> {
+        match self {
+            Some(kept) => kept.seen(namespace, id).await,
+            None => Unkept.seen(namespace, id).await,
+        }
+    }
+
     async fn release(&self, namespace: &'static str, id: &str) -> Result<(), StoreError> {
         match self {
             Some(kept) => kept.release(namespace, id).await,

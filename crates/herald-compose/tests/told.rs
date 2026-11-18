@@ -222,6 +222,16 @@ mod told {
             told::unworked(&fanned, &Ok(())),
             "herald stopped before it worked a GitHub App's delivery to 2 sources"
         );
+        let pushed = Job::Pushed {
+            source: SourceName::new("inbox"),
+            event: None,
+            withdrawn: None,
+        };
+        assert_eq!(
+            told::unworked(&pushed, &Ok(())),
+            "herald stopped before it worked what a peer pushed into inbox"
+        );
+        assert_eq!(pushed.delivery(), None);
         let each = |source: &str| {
             Did::Polled(vec![Swept {
                 source: SourceName::new(source),

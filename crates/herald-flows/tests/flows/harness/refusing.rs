@@ -178,6 +178,10 @@ impl herald_ports::Deliveries for Refusing {
         Err(self.0.clone())
     }
 
+    async fn seen(&self, _: &'static str, _: &str) -> Result<bool, StoreError> {
+        Err(self.0.clone())
+    }
+
     async fn release(&self, _: &'static str, _: &str) -> Result<(), StoreError> {
         Err(self.0.clone())
     }

@@ -1,6 +1,6 @@
 use std::fmt;
 
-use herald_core::{Cursor, KindSpecs, Polled};
+use herald_core::{Cursor, Grant, KindSpecs, Polled};
 use herald_ports::{Boxed, DynHttp, DynVerifier};
 use jiff::Timestamp;
 
@@ -135,6 +135,28 @@ pub trait Pull: fmt::Debug + Send + Sync {
         trust: &'a Trust,
         cursor: Option<&'a Cursor>,
     ) -> Boxed<'a, Result<Option<Polled>, Unpulled>>;
+}
+
+/// What a source takes from the peers that push to it (ADR-0054).
+pub trait Receive: fmt::Debug + Send + Sync {
+    /// How many identities its cursor remembers that are no tombstones.
+    fn remembered(&self) -> usize;
+
+    /// What `body`'s bytes, pushed by the peer `pushed` names with its grant, add
+    /// to the cursor `reading` holds, checked against its trust: nothing
+    /// where the cursor holds as new a proof of its identity, but where
+    /// `again` says the push is worked once more after it was answered,
+    /// what the cursor holds the very proof of.
+    ///
+    /// # Errors
+    ///
+    /// Why the source does not take it.
+    fn received<'a>(
+        &'a self,
+        reading: (Pulling<'a>, &'a Trust, Option<&'a Cursor>),
+        pushed: (&'a str, &'a Grant),
+        body: (&'a [u8], bool),
+    ) -> Boxed<'a, Result<Polled, String>>;
 }
 
 #[cfg(test)]

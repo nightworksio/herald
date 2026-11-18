@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 use std::ops::Range;
 
 use herald_core::{Attempts, DestinationName, RecordKind, Retention, SourceName};
-use herald_kinds::{Bound, ConfiguredStore, Destination, Source, StoreKind};
+use herald_kinds::{Bound, ConfiguredStore, Destination, Remembers, Source, StoreKind};
 use herald_store_git_branch::GitBranchKind;
 use toml::Spanned;
 use toml::de::{DeTable, DeValue};
@@ -119,11 +119,12 @@ impl Loader<'_> {
     }
 
     /// Whether the store keeps the cursor of every source remembering every
-    /// identity it lists, each whose options name no bound fitted to the
-    /// most the store's records hold (ADR-0042).
+    /// identity it lists, where `[peers]` names `peers` instances, each
+    /// whose options name no bound fitted to the most the store's records
+    /// hold (ADR-0042).
     pub(super) fn remembering(
         &mut self,
-        store: Option<&ConfiguredStore>,
+        (store, peers): (Option<&ConfiguredStore>, usize),
         (sources, spans): (
             &mut BTreeMap<SourceName, Source>,
             &BTreeMap<SourceName, Range<usize>>,
@@ -133,7 +134,7 @@ impl Loader<'_> {
             return;
         };
         for (name, source) in sources.iter_mut() {
-            let Some(remembers) = source.remembers() else {
+            let Some(remembers) = source.remembers(peers) else {
                 continue;
             };
             let span = spans.get(name).cloned().unwrap_or_default();
@@ -153,9 +154,9 @@ impl Loader<'_> {
             let Some(most) = store.most_record().filter(|most| !remembers.fits(*most)) else {
                 continue;
             };
-            let fitting = remembers.fitting(most);
+            let fitting = remembers.named(most);
             match (remembers.bound == Bound::Default)
-                .then(|| source.fitted(fitting))
+                .then(|| source.fitted(most, peers))
                 .flatten()
             {
                 Some(fitted) => *source = fitted,
@@ -163,15 +164,29 @@ impl Loader<'_> {
                     &span,
                     &path,
                     format!(
-                        "the {} store keeps at most {most} bytes in a record, and this source's cursor may take {} remembering {} identities; make {} at most {fitting}, or give a store that keeps more",
+                        "the {} store keeps at most {most} bytes in a record, and this source's cursor may take {} remembering {} identities; {}, or give a store that keeps more",
                         store.kind(),
                         remembers.bytes(),
                         remembers.identities,
-                        remembers.key,
+                        remedy(&remembers, fitting),
                     ),
                 ),
             }
         }
+    }
+}
+
+/// What makes a cursor `remembers` describes fit where `key` may name at
+/// most `fitting`.
+fn remedy(remembers: &Remembers, fitting: usize) -> String {
+    let lowered = remembers.besides.join(" or ");
+    match (fitting, lowered.is_empty()) {
+        (_, true) => format!("make {} at most {fitting}", remembers.key),
+        (0, false) => format!("lower {lowered}"),
+        (_, false) => format!(
+            "make {} at most {fitting}, or lower {lowered}",
+            remembers.key
+        ),
     }
 }
 

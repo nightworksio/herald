@@ -174,6 +174,66 @@ impl herald_ports::Published for Failing {
         }
         self.inner.put_peer_keys(peer, keys, expected).await
     }
+
+    async fn audit(
+        &self,
+        peer: &str,
+        day: &str,
+    ) -> Result<Option<Versioned<herald_core::AuditDay>>, StoreError> {
+        if self.fault == Fault::ReadsAudits {
+            return Err(broken());
+        }
+        self.inner.audit(peer, day).await
+    }
+
+    async fn put_audit(
+        &self,
+        audit: &herald_core::AuditDay,
+        expected: Option<Version>,
+    ) -> Result<Written, StoreError> {
+        match self.fault {
+            Fault::WritesAudits => Err(broken()),
+            Fault::ConflictsAudits => Ok(Written::Conflict),
+            _ => self.inner.put_audit(audit, expected).await,
+        }
+    }
+
+    async fn audits(&self, peer: &str) -> Result<Vec<herald_core::AuditDay>, StoreError> {
+        if self.fault == Fault::ReadsAudits {
+            return Err(broken());
+        }
+        self.inner.audits(peer).await
+    }
+
+    async fn expire_audits(&self, day: &str) -> Result<(), StoreError> {
+        if self.fault == Fault::ExpiresAudits {
+            return Err(broken());
+        }
+        self.inner.expire_audits(day).await
+    }
+
+    async fn window(
+        &self,
+        peer: &str,
+    ) -> Result<Option<Versioned<herald_core::Window>>, StoreError> {
+        if self.fault == Fault::ReadsWindows {
+            return Err(broken());
+        }
+        self.inner.window(peer).await
+    }
+
+    async fn put_window(
+        &self,
+        peer: &str,
+        window: &herald_core::Window,
+        expected: Option<Version>,
+    ) -> Result<Written, StoreError> {
+        match self.fault {
+            Fault::ConflictsWindows => Ok(Written::Conflict),
+            Fault::WritesWindows => Err(broken()),
+            _ => self.inner.put_window(peer, window, expected).await,
+        }
+    }
 }
 
 impl herald_ports::Published for Refusing {
@@ -218,6 +278,43 @@ impl herald_ports::Published for Refusing {
         &self,
         _: &str,
         _: &herald_core::PeerKeys,
+        _: Option<Version>,
+    ) -> Result<Written, StoreError> {
+        Err(self.0.clone())
+    }
+
+    async fn audit(
+        &self,
+        _: &str,
+        _: &str,
+    ) -> Result<Option<Versioned<herald_core::AuditDay>>, StoreError> {
+        Err(self.0.clone())
+    }
+
+    async fn put_audit(
+        &self,
+        _: &herald_core::AuditDay,
+        _: Option<Version>,
+    ) -> Result<Written, StoreError> {
+        Err(self.0.clone())
+    }
+
+    async fn audits(&self, _: &str) -> Result<Vec<herald_core::AuditDay>, StoreError> {
+        Err(self.0.clone())
+    }
+
+    async fn expire_audits(&self, _: &str) -> Result<(), StoreError> {
+        Err(self.0.clone())
+    }
+
+    async fn window(&self, _: &str) -> Result<Option<Versioned<herald_core::Window>>, StoreError> {
+        Err(self.0.clone())
+    }
+
+    async fn put_window(
+        &self,
+        _: &str,
+        _: &herald_core::Window,
         _: Option<Version>,
     ) -> Result<Written, StoreError> {
         Err(self.0.clone())

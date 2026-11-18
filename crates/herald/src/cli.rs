@@ -141,6 +141,23 @@ pub(crate) enum Peering {
         /// Only this peer.
         name: Option<String>,
     },
+    /// Show what each peer asked of this herald and how it was answered,
+    /// newest first, from the audit the store keeps of each day
+    /// (ADR-0054); never a request's body.
+    Log {
+        /// Only this peer; "-" for requests signed by keys no peer holds.
+        name: Option<String>,
+        /// Only requests since this day, as YYYY-MM-DD, this time, in
+        /// RFC 3339, or this long ago, such as "7d".
+        #[arg(long)]
+        since: Option<String>,
+        /// The most requests shown.
+        #[arg(long, default_value_t = LOG_LIMIT)]
+        limit: usize,
+        /// How they are printed.
+        #[arg(long, value_enum, default_value_t = Shown::Text)]
+        format: Shown,
+    },
     /// Stop trusting a peer, or one of its keys: taken from the config and
     /// added to [federation] revoked, so it is never pinned again.
     Revoke {
@@ -151,6 +168,18 @@ pub(crate) enum Peering {
         #[arg(long)]
         key: Option<String>,
     },
+}
+
+/// How many requests `herald peer log` shows where `--limit` is absent.
+pub(crate) const LOG_LIMIT: usize = 1000;
+
+/// How a listing is printed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub(crate) enum Shown {
+    /// One line each.
+    Text,
+    /// One JSON array.
+    Json,
 }
 
 /// The commands that set a destination up to take commands.

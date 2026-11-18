@@ -7,7 +7,7 @@ use std::ops::Range;
 use herald_core::SourceName;
 use herald_kinds::{Peering, Source};
 
-use herald_core::{Size, kind_name};
+use herald_core::{Grant, Size, kind_name};
 use herald_peers::discovery;
 use herald_peers::keys::Key;
 use herald_peers::multibase::{ed25519_key, ed25519_public};
@@ -180,6 +180,7 @@ impl Loader<'_> {
                 format!("hops is from 1 to {}", Peer::HOPS_ALLOWED),
             );
         }
+        let grants = self.peer_grants(file, span, path);
         let (url, domain) = address?;
         Some(Peer {
             url,
@@ -190,6 +191,108 @@ impl Loader<'_> {
             most,
             hops,
             private: file.private.unwrap_or_default(),
+            grants,
         })
+    }
+
+    /// The grants `file` lists, at `path`, by the source each names; one
+    /// naming no source, granting nothing, or naming a source twice is
+    /// refused.
+    fn peer_grants(
+        &mut self,
+        file: &PeerFile,
+        span: &Range<usize>,
+        path: &str,
+    ) -> BTreeMap<SourceName, Grant> {
+        let mut grants = BTreeMap::new();
+        for (at, written) in file.grants.iter().enumerate() {
+            let here = format!("{path}.grants[{at}]");
+            let Some(source) = written.resource.strip_prefix(Peer::SOURCES) else {
+                self.error(
+                    span,
+                    &format!("{here}.resource"),
+                    format!("\"{}\" is no resource a peer may be granted; name a herald source, as \"{}<name>\"", written.resource, Peer::SOURCES),
+                );
+                continue;
+            };
+            if written.actions.is_empty() {
+                self.error(
+                    span,
+                    &format!("{here}.actions"),
+                    "the grant grants no action; grant one, such as actions = [\"push\"]",
+                );
+                continue;
+            }
+            let grant = Grant {
+                actions: written.actions.clone(),
+                until: written.until,
+                namespaces: written.namespaces.clone(),
+            };
+            if grants.insert(SourceName::new(source), grant).is_some() {
+                self.error(
+                    span,
+                    &format!("{here}.resource"),
+                    format!(
+                        "{} is granted twice; grant each resource once",
+                        written.resource
+                    ),
+                );
+            }
+        }
+        grants
+    }
+
+    /// Each grant checked against the resource it names: a peer's grant
+    /// and the source's own must both exist and say the same, or the
+    /// config does not load, naming both places.
+    pub(super) fn granted(
+        &mut self,
+        (sources, spans): (
+            &BTreeMap<SourceName, Source>,
+            &BTreeMap<SourceName, Range<usize>>,
+        ),
+        peers: &BTreeMap<String, Peer>,
+    ) {
+        for (name, peer) in peers {
+            for (source, grant) in &peer.grants {
+                let path = format!("peers.{name}.grants");
+                let resource = format!("{}{}", Peer::SOURCES, source.as_str());
+                let span = spans.get(source).cloned().unwrap_or_default();
+                match sources.get(source).map(|found| found.grants()) {
+                    None => self.error(
+                        &span,
+                        &path,
+                        format!("there is no source {resource} to grant; name a herald source"),
+                    ),
+                    Some(None) => self.error(
+                        &span,
+                        &path,
+                        format!("{resource} takes no grants; only a herald source takes what a peer pushes"),
+                    ),
+                    Some(Some(granted)) if granted.get(name) != Some(grant) => self.error(
+                        &span,
+                        &path,
+                        format!("{resource}.peers.{name} must grant the same as the grant for {resource} in [peers.{name}]; make both name the same actions, until and namespaces"),
+                    ),
+                    Some(Some(_)) => {}
+                }
+            }
+        }
+        for (source, found) in sources {
+            let span = spans.get(source).cloned().unwrap_or_default();
+            for name in found.grants().into_iter().flat_map(BTreeMap::keys) {
+                let resource = format!("{}{}", Peer::SOURCES, source.as_str());
+                if !peers
+                    .get(name)
+                    .is_some_and(|peer| peer.grants.contains_key(source))
+                {
+                    self.error(
+                        &span,
+                        &format!("{resource}.peers.{name}"),
+                        format!("[peers.{name}] grants nothing on {resource}; add {{ resource = \"{resource}\", ... }} to its grants, the same as here"),
+                    );
+                }
+            }
+        }
     }
 }

@@ -14,6 +14,7 @@ mod latest;
 mod pending;
 mod published;
 mod tokens;
+mod unkept;
 
 const GITHUB: &str = "github";
 
@@ -26,6 +27,10 @@ enum Fault {
     OverwritesAnyFeedVersion,
     ForgetsPeerKeys,
     SharesPeerKeys,
+    SharesAudits,
+    KeepsExpiredAudits,
+    OverwritesAnyAuditVersion,
+    SharesWindows,
     OverwritesAnyPeerKeysVersion,
     ForgetsTheSecondToken,
     OverwritesAnyTokenVersion,
@@ -62,6 +67,9 @@ enum Fault {
     SharesInboxes,
     AdmitsTwice,
     SharesDeliveries,
+    SeesNothing,
+    AdmitsWhenSeeing,
+    SeesOtherSchemes,
     KeepsReleased,
     ExpiresEverything,
     ExpiresNothing,
@@ -407,6 +415,20 @@ impl Deliveries for Faulty {
             Fault::RacesAdmissions if id == "raced" => Admitted::Fresh,
             _ => admitted,
         })
+    }
+
+    async fn seen(&self, namespace: &'static str, id: &str) -> Result<bool, StoreError> {
+        self.refuses()?;
+        match self.fault {
+            Fault::SeesNothing => Ok(false),
+            Fault::AdmitsWhenSeeing => {
+                let seen = self.inner.seen(namespace, id).await?;
+                self.inner.admit(namespace, id, NOON).await?;
+                Ok(seen)
+            }
+            Fault::SeesOtherSchemes => self.inner.seen(GITHUB, id).await,
+            _ => self.inner.seen(namespace, id).await,
+        }
     }
 
     async fn release(&self, namespace: &'static str, id: &str) -> Result<(), StoreError> {
@@ -807,10 +829,16 @@ fn a_store_that_breaks_its_promises_on_the_served_records_is_refused() {
             Fault::SharesDeliveries,
             "another scheme's delivery of the same id was seen",
         ),
+        (Fault::SeesNothing, "an admitted delivery was not seen"),
         (
-            Fault::KeepsReleased,
-            "a released delivery was not admitted again",
+            Fault::AdmitsWhenSeeing,
+            "a delivery arriving the first time was not fresh",
         ),
+        (
+            Fault::SeesOtherSchemes,
+            "a delivery was seen under another scheme",
+        ),
+        (Fault::KeepsReleased, "a released delivery was still seen"),
         (
             Fault::ExpiresNothing,
             "a delivery admitted before the expiry was still seen",
@@ -949,38 +977,6 @@ fn a_store_answering_a_kind_it_keeps_none_of_is_refused() {
     let mut checks = Checks::default();
     pollster::block_on(super::unkept::inboxes(&store, &mut checks));
     probed(checks, "delivery");
-}
-
-#[test]
-fn every_method_of_a_kind_a_store_keeps_none_of_is_probed() {
-    let mut checks = Checks::default();
-    let unkept = Option::<&FakeStore>::None;
-    pollster::block_on(async {
-        super::unkept::ledger(&unkept, &mut checks).await;
-        super::unkept::cursors(&unkept, &mut checks).await;
-        super::unkept::schedules(&unkept, &mut checks).await;
-        super::unkept::subscriptions(&unkept, &mut checks).await;
-        super::unkept::pins(&unkept, &mut checks).await;
-        super::unkept::positions(&unkept, &mut checks).await;
-        super::unkept::deliveries(&unkept, &mut checks).await;
-        super::unkept::notes(&unkept, &mut checks).await;
-        super::unkept::announcements(&unkept, &mut checks).await;
-        super::unkept::inboxes(&unkept, &mut checks).await;
-    });
-    assert_eq!(checks.done(), Ok(()));
-    let mut checks = Checks::default();
-    let store = FakeStore::default();
-    pollster::block_on(super::unkept::notes(&store, &mut checks));
-    assert_eq!(
-        checks.0,
-        [
-            "note was not refused as unsupported by a store keeping none of its kind",
-            "put_note was not refused as unsupported by a store keeping none of its kind",
-            "outbox was not refused as unsupported by a store keeping none of its kind",
-            "expire_notes was not refused as unsupported by a store keeping none of its kind",
-            "forget_note was not refused as unsupported by a store keeping none of its kind",
-        ]
-    );
 }
 
 #[test]

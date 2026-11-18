@@ -207,6 +207,20 @@ pub(crate) enum Fault {
     ReadsPeerKeys,
     WritesPeerKeys,
     ConflictsPeerKeys,
+    /// Reading a peer's audit fails.
+    ReadsAudits,
+    /// Writing a peer's audit fails.
+    WritesAudits,
+    /// Writing a peer's audit always conflicts.
+    ConflictsAudits,
+    /// Forgetting expired audits fails.
+    ExpiresAudits,
+    /// Reading a peer's window fails.
+    ReadsWindows,
+    /// Writing a peer's window always conflicts.
+    ConflictsWindows,
+    /// Writing a peer's window fails.
+    WritesWindows,
     KeepsNoPublished,
     ListsSchedules,
     Reads,
@@ -232,6 +246,8 @@ pub(crate) enum Fault {
     LatestConflicts,
     KeepsNoLatest,
     Admits,
+    SeesDeliveries,
+    SeesNoDeliveries,
     ReadsDeliveries,
     AttemptsDeliveries,
     LandsDeliveries,
@@ -522,6 +538,14 @@ impl Deliveries for Failing {
         self.inner.admit(namespace, id, at).await
     }
 
+    async fn seen(&self, namespace: &'static str, id: &str) -> Result<bool, StoreError> {
+        match self.fault {
+            Fault::SeesDeliveries => Err(broken()),
+            Fault::SeesNoDeliveries => Ok(false),
+            _ => self.inner.seen(namespace, id).await,
+        }
+    }
+
     async fn release(&self, namespace: &'static str, id: &str) -> Result<(), StoreError> {
         if self.fault == Fault::ReleasesDeliveries {
             return Err(broken());
@@ -730,6 +754,6 @@ pub(crate) fn housekept<S: herald_ports::Store, H: herald_ports::Http>(
         store,
         &FakeClock::at(NOON),
         &keys_in(&keyring),
-        retention,
+        (retention, herald_config::Federation::KEEP_AUDIT),
     ))
 }

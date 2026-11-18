@@ -19,7 +19,7 @@ const ACTING: &str = "the route announces each project as an actor of its own, a
 
 /// Why a route announcing each project as an actor of its own withdraws
 /// nothing a tombstone of another herald's feed withdraws.
-const TOMBSTONED: &str = "the route announces each project as an actor of its own, and a tombstone names no project, so its post stays";
+const TOMBSTONED: &str = "the route announces each project as an actor of its own, and the source no longer knows the project the tombstone's release was of, so its post stays";
 
 /// What a route of the operator's choice would withdraw of a release.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -90,29 +90,48 @@ pub async fn withdraw<S: Store, C: Clock, G: Signer, H: Http>(
     withdrawn
 }
 
-/// What each route taking `source` did, as `run`, with `identity`, which
-/// another herald's feed withdrew by a tombstone (ADR-0049): its posts
-/// withdrawn as the route's `withdraw` says, where `source` announced them;
-/// nothing where the route announced nothing of it, or another source did.
+/// What each route taking `source` did, as `run`, with `identity`, of
+/// `project` where the source still knows it, which another herald's feed
+/// withdrew by a tombstone (ADR-0049): its posts withdrawn as the route's
+/// `withdraw` says, where `source` announced them, as the project's actor
+/// where the route announces as each project's own; nothing where the
+/// route announced nothing of it, or another source did.
 pub(crate) async fn tombstoned<S: Store, C: Clock, G: Signer, H: Http>(
     config: &Config,
     connected: &Connected<H>,
     ports: &Ports<'_, S, C, G>,
-    (source, identity): (&SourceName, &Identity),
+    (source, identity, project): (&SourceName, &Identity, Option<&str>),
     run: &str,
 ) -> Vec<Announced> {
     let mut withdrawn = Vec::new();
+    let now = ports.clock.now();
     let taking = connected
         .routes
         .iter()
         .filter(|(prepared, _)| prepared.config.route.filter.sources.contains(source));
     for (prepared, http) in taking {
-        let outcome = if acts(prepared) {
-            Outcome::Skipped(TOMBSTONED.to_owned())
-        } else {
-            running(config, ports, (prepared, http), run)
-                .withdraw(config, (identity, None), None, Asked::Tombstone(source))
-                .await
+        let outcome = match (acts(prepared), project) {
+            (true, None) => Outcome::Skipped(TOMBSTONED.to_owned()),
+            (true, Some(project)) => {
+                match acting((connected, ports.store, now), prepared, (source, project)).await {
+                    Ok(acted) => {
+                        running(config, ports, (&acted, http), run)
+                            .withdraw(
+                                config,
+                                (identity, Some(project)),
+                                None,
+                                Asked::Tombstone(source),
+                            )
+                            .await
+                    }
+                    Err(outcome) => outcome,
+                }
+            }
+            (false, _) => {
+                running(config, ports, (prepared, http), run)
+                    .withdraw(config, (identity, None), None, Asked::Tombstone(source))
+                    .await
+            }
         };
         withdrawn.push(Announced {
             route: prepared.config.route.id.clone(),
@@ -223,7 +242,7 @@ async fn resumed<S: Store, C: Clock, G: Signer, H: Http>(
     (identity, deleted): (&Identity, &HeldEvent),
 ) -> Outcome {
     let now = ports.clock.now();
-    let found = (&deleted.source, &deleted.event);
+    let found = (&deleted.source, deleted.event.project());
     match acting((connected, ports.store, now), prepared, found).await {
         Ok(acted) => {
             let released = (identity, Some(deleted.event.project()));

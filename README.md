@@ -234,8 +234,10 @@ answers that the actor is gone.
 `[federation]` names the domain herald serves on and its Ed25519 keys; a
 `herald` destination publishes a signed feed of herald's own;
 `[peers.*]` pins the other heralds this one trusts, by the keys their
-operators confirm with `herald peer add`; and a `herald` source pulls a
-peer's feed through those keys. [.docs/federation.md](.docs/federation.md)
+operators confirm with `herald peer add`; a `herald` source pulls a
+peer's feed through those keys, and takes what the peers it grants
+`push` send to its inbox, each request kept in the peer's audit of the
+day for `herald peer log`. [.docs/federation.md](.docs/federation.md)
 covers each.
 
 ### herald server

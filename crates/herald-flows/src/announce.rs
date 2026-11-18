@@ -743,6 +743,30 @@ impl<'a> Within<'a> {
     }
 }
 
+/// The routes of `connected` that take `event` of `source`: those
+/// `within` names and `bound` lets through, where either names any.
+fn taking<'c, H>(
+    connected: &'c Connected<H>,
+    (within, bound): (Within<'_>, Option<&[RouteId]>),
+    (source, event): (&SourceName, &Event),
+) -> Vec<&'c (PreparedRoute, H)> {
+    connected
+        .routes
+        .iter()
+        .filter(|(route, _)| {
+            let route = &route.config.route;
+            within
+                .routes
+                .is_none_or(|routes| routes.contains(&route.id))
+                && bound.is_none_or(|routes| routes.contains(&route.id))
+                && within.reach.map_or_else(
+                    || route.filter.takes(source, event),
+                    |reach| reach.takes(route, source, event),
+                )
+        })
+        .collect()
+}
+
 /// [`announce`], to the routes `within` names alone where it names any: the
 /// routes an app may announce to (ADR-0007), or those an owner's member
 /// names beside or in place of its source's; and to the `private` routes
@@ -773,29 +797,19 @@ pub async fn announce_within<S: Store, C: Clock, G: Signer, H: Http>(
     };
     let seen = visibility.unwrap_or(Visibility::Public);
     let bound = visibility.and_then(|visibility| crate::poll::bounded(config, visibility));
-    let taking: Vec<&(PreparedRoute, H)> = connected
-        .routes
-        .iter()
-        .filter(|(route, _)| {
-            let route = &route.config.route;
-            within
-                .routes
-                .is_none_or(|routes| routes.contains(&route.id))
-                && bound
-                    .as_ref()
-                    .is_none_or(|routes| routes.contains(&route.id))
-                && within.reach.map_or_else(
-                    || route.filter.takes(source, event),
-                    |reach| reach.takes(route, source, event),
-                )
-        })
-        .collect();
+    let taking = taking(connected, (within, bound.as_deref()), (source, event));
     let now = ports.clock.now();
     let outcomes: Vec<Outcome> = stream::iter(taking.iter().map(|(route, http)| async move {
         if !config.places(&route.config, event.kind()) {
             return Outcome::Skipped(UNPLACED.to_owned());
         }
-        let route = match acting((connected, ports.store, now), route, (source, event)).await {
+        let route = match acting(
+            (connected, ports.store, now),
+            route,
+            (source, event.project()),
+        )
+        .await
+        {
             Ok(route) => route,
             Err(outcome) => return outcome,
         };

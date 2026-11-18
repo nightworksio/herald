@@ -3,7 +3,7 @@ use serde_json::{Value, json};
 
 use super::*;
 use crate::discovery::Instance;
-use crate::feed::{Listed, Page as Written};
+use crate::feed::{IDENTITY_MOST, Listed, Long, PROJECT_MOST, Page as Written};
 
 const INSTANCE: Instance<'static> = Instance {
     domain: "herald.example",
@@ -206,6 +206,39 @@ fn a_tombstone_reads_back_as_the_identity_it_withdraws() {
 }
 
 #[test]
+fn an_envelope_whose_identity_or_project_is_too_long_is_refused() {
+    let long = |what: &'static str, most: usize| {
+        Err(Unread::Long(Long {
+            what,
+            bytes: most + 1,
+            most,
+        }))
+    };
+    let at = |bytes: usize| {
+        let tombstone =
+            INSTANCE.tombstone(&"i".repeat(bytes), "2026-11-17T10:00:00Z".parse().unwrap());
+        let mut event = envelope(true);
+        event["identity"] = json!("i".repeat(bytes));
+        (carried(&tombstone).map(|_| ()), carried(&event).map(|_| ()))
+    };
+    assert_eq!(at(IDENTITY_MOST), (Ok(()), Ok(())));
+    assert_eq!(
+        at(IDENTITY_MOST + 1),
+        (
+            long("identity", IDENTITY_MOST),
+            long("identity", IDENTITY_MOST)
+        )
+    );
+    let project = |bytes: usize| {
+        let mut event = envelope(true);
+        event["project"] = json!("p".repeat(bytes));
+        carried(&event).map(|_| ())
+    };
+    assert_eq!(project(PROJECT_MOST), Ok(()));
+    assert_eq!(project(PROJECT_MOST + 1), long("project", PROJECT_MOST));
+}
+
+#[test]
 fn an_envelope_out_of_shape_or_not_public_is_refused() {
     let with = |name: &str, value: Value| {
         let mut changed = envelope(true);
@@ -297,6 +330,14 @@ fn every_refusal_reads_as_a_sentence() {
         (
             Unread::Unpublic,
             "an envelope carries an event that is not public".to_owned(),
+        ),
+        (
+            Unread::Long(Long {
+                what: "project",
+                bytes: 1025,
+                most: 1024,
+            }),
+            "an envelope's project takes 1025 bytes, more than the 1024 any may".to_owned(),
         ),
     ] {
         assert_eq!(unread.to_string(), said);

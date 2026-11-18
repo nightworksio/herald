@@ -1,10 +1,11 @@
 //! What the instance last published to its peers: its key set and the
 //! sequence it published it under (ADR-0044), and each feed's envelopes;
-//! and the key set each peer last handed over to (ADR-0049).
+//! the key set each peer last handed over to (ADR-0049); and what each
+//! peer asked of it, by day, and in its rate's window (ADR-0054).
 
 use std::future::Future;
 
-use herald_core::{DestinationName, Feed, PeerKeys, PublishedKeys};
+use herald_core::{AuditDay, DestinationName, Feed, PeerKeys, PublishedKeys, Window};
 
 use super::{StoreError, Version, Versioned, Written};
 
@@ -52,6 +53,42 @@ pub trait Published: Sync {
         keys: &PeerKeys,
         expected: Option<Version>,
     ) -> impl Future<Output = Result<Written, StoreError>> + Send;
+
+    /// What `peer` asked on `day`, where it asked anything.
+    fn audit(
+        &self,
+        peer: &str,
+        day: &str,
+    ) -> impl Future<Output = Result<Option<Versioned<AuditDay>>, StoreError>> + Send;
+
+    /// Writes `audit` under its peer and day if the stored one is at
+    /// `expected`, or absent when `expected` is `None`.
+    fn put_audit(
+        &self,
+        audit: &AuditDay,
+        expected: Option<Version>,
+    ) -> impl Future<Output = Result<Written, StoreError>> + Send;
+
+    /// Every day kept of what `peer` asked, in no order.
+    fn audits(&self, peer: &str) -> impl Future<Output = Result<Vec<AuditDay>, StoreError>> + Send;
+
+    /// Forgets every day of every peer before `day`.
+    fn expire_audits(&self, day: &str) -> impl Future<Output = Result<(), StoreError>> + Send;
+
+    /// The window of `peer`'s rate, where it asked anything.
+    fn window(
+        &self,
+        peer: &str,
+    ) -> impl Future<Output = Result<Option<Versioned<Window>>, StoreError>> + Send;
+
+    /// Writes the window of `peer`'s rate as `window` if the stored one is
+    /// at `expected`, or absent when `expected` is `None`.
+    fn put_window(
+        &self,
+        peer: &str,
+        window: &Window,
+        expected: Option<Version>,
+    ) -> impl Future<Output = Result<Written, StoreError>> + Send;
 }
 
 impl Published for super::Unkept {
@@ -96,6 +133,46 @@ impl Published for super::Unkept {
         &self,
         _: &str,
         _: &PeerKeys,
+        _: Option<Version>,
+    ) -> impl Future<Output = Result<Written, StoreError>> + Send {
+        std::future::ready(Err(super::Held::Published.unsupported()))
+    }
+
+    fn audit(
+        &self,
+        _: &str,
+        _: &str,
+    ) -> impl Future<Output = Result<Option<Versioned<AuditDay>>, StoreError>> + Send {
+        std::future::ready(Err(super::Held::Published.unsupported()))
+    }
+
+    fn put_audit(
+        &self,
+        _: &AuditDay,
+        _: Option<Version>,
+    ) -> impl Future<Output = Result<Written, StoreError>> + Send {
+        std::future::ready(Err(super::Held::Published.unsupported()))
+    }
+
+    fn audits(&self, _: &str) -> impl Future<Output = Result<Vec<AuditDay>, StoreError>> + Send {
+        std::future::ready(Err(super::Held::Published.unsupported()))
+    }
+
+    fn expire_audits(&self, _: &str) -> impl Future<Output = Result<(), StoreError>> + Send {
+        std::future::ready(Err(super::Held::Published.unsupported()))
+    }
+
+    fn window(
+        &self,
+        _: &str,
+    ) -> impl Future<Output = Result<Option<Versioned<Window>>, StoreError>> + Send {
+        std::future::ready(Err(super::Held::Published.unsupported()))
+    }
+
+    fn put_window(
+        &self,
+        _: &str,
+        _: &Window,
         _: Option<Version>,
     ) -> impl Future<Output = Result<Written, StoreError>> + Send {
         std::future::ready(Err(super::Held::Published.unsupported()))
@@ -159,6 +236,61 @@ impl<T: Published> Published for Option<&T> {
         match self {
             Some(kept) => kept.put_peer_keys(peer, keys, expected).await,
             None => super::Unkept.put_peer_keys(peer, keys, expected).await,
+        }
+    }
+
+    async fn audit(
+        &self,
+        peer: &str,
+        day: &str,
+    ) -> Result<Option<Versioned<AuditDay>>, StoreError> {
+        match self {
+            Some(kept) => kept.audit(peer, day).await,
+            None => super::Unkept.audit(peer, day).await,
+        }
+    }
+
+    async fn put_audit(
+        &self,
+        audit: &AuditDay,
+        expected: Option<Version>,
+    ) -> Result<Written, StoreError> {
+        match self {
+            Some(kept) => kept.put_audit(audit, expected).await,
+            None => super::Unkept.put_audit(audit, expected).await,
+        }
+    }
+
+    async fn audits(&self, peer: &str) -> Result<Vec<AuditDay>, StoreError> {
+        match self {
+            Some(kept) => kept.audits(peer).await,
+            None => super::Unkept.audits(peer).await,
+        }
+    }
+
+    async fn expire_audits(&self, day: &str) -> Result<(), StoreError> {
+        match self {
+            Some(kept) => kept.expire_audits(day).await,
+            None => super::Unkept.expire_audits(day).await,
+        }
+    }
+
+    async fn window(&self, peer: &str) -> Result<Option<Versioned<Window>>, StoreError> {
+        match self {
+            Some(kept) => kept.window(peer).await,
+            None => super::Unkept.window(peer).await,
+        }
+    }
+
+    async fn put_window(
+        &self,
+        peer: &str,
+        window: &Window,
+        expected: Option<Version>,
+    ) -> Result<Written, StoreError> {
+        match self {
+            Some(kept) => kept.put_window(peer, window, expected).await,
+            None => super::Unkept.put_window(peer, window, expected).await,
         }
     }
 }

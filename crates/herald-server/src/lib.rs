@@ -495,7 +495,10 @@ impl<'a> Rounds<'a> {
                     ports.store,
                     ports.clock,
                     serving.keys,
-                    &serving.config.retention,
+                    (
+                        &serving.config.retention,
+                        serving.config.federation.keep_audit,
+                    ),
                 )
                 .await,
             ))

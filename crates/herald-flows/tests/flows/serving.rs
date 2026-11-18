@@ -95,6 +95,7 @@ pub(crate) struct World {
     pub(crate) store: Failing,
     keyring: MemoryKeyring,
     script: Script,
+    now: std::cell::Cell<jiff::Timestamp>,
 }
 
 type Served<'a> =
@@ -115,7 +116,13 @@ impl World {
             store: healthy(),
             keyring: MemoryKeyring::new(8),
             script,
+            now: std::cell::Cell::new(at()),
         }
+    }
+
+    /// It answering at `now` from here on.
+    pub(crate) fn at(&self, now: jiff::Timestamp) {
+        self.now.set(now);
     }
 
     pub(crate) fn failing(fault: Fault) -> Self {
@@ -125,7 +132,15 @@ impl World {
     }
 
     fn serving<T>(&self, act: impl FnOnce(&Served<'_>) -> T) -> T {
-        let clock = FakeClock::at(at());
+        self.admitting(herald_flows::Admission::Once, act)
+    }
+
+    fn admitting<T>(
+        &self,
+        admission: herald_flows::Admission,
+        act: impl FnOnce(&Served<'_>) -> T,
+    ) -> T {
+        let clock = FakeClock::at(self.now.get());
         let ports = Ports {
             store: &self.store,
             clock: &clock,
@@ -141,12 +156,20 @@ impl World {
             public: &self.script,
             keys: &keys,
             webhooks: self.connected.webhooks(),
-            admission: herald_flows::Admission::Once,
+            admission,
         })
     }
 
     pub(crate) fn answer(&self, inbound: &Inbound<'_>) -> Answered {
         self.serving(|serving| pollster::block_on(answer(serving, inbound)))
+    }
+
+    /// The answer to `inbound` handed on once more to be worked, as the
+    /// Lambda does.
+    pub(crate) fn answer_again(&self, inbound: &Inbound<'_>) -> Answered {
+        self.admitting(herald_flows::Admission::Again, |serving| {
+            pollster::block_on(answer(serving, inbound))
+        })
     }
 
     fn work(&self, job: Job) -> Did {
@@ -814,4 +837,5 @@ mod discovery;
 mod feeds;
 mod owned;
 mod peered;
+mod pushes;
 mod tagged;

@@ -55,6 +55,10 @@ pub struct Cursor {
     /// another herald's feed was made, the latest taken first (ADR-0049).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub proved: Vec<Proof>,
+    /// The project of each event it took from another herald's feed and
+    /// still sees (ADR-0049).
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub projects: BTreeMap<Identity, String>,
 }
 
 /// When the proof of the newest envelope a source took of one identity from
@@ -215,6 +219,15 @@ impl Cursor {
             }
         }
         let notes = self.watched(polled, &seen);
+        let taken = polled.taken();
+        let mut projects = self.projects.clone();
+        projects.extend(
+            found
+                .iter()
+                .filter(|event| taken.contains(event.identity()))
+                .map(|event| (event.identity().clone(), event.project().to_owned())),
+        );
+        projects.retain(|identity, _| seen.contains(identity));
         Self {
             seen,
             tagged,
@@ -232,6 +245,27 @@ impl Cursor {
             sequence: polled.sequence.or(self.sequence),
             ahead: polled.ahead.clone(),
             proved: self.proofs(polled, remembered),
+            projects,
+        }
+    }
+
+    /// The cursor after `polled`, what a peer pushed rather than what a
+    /// poll read: everything a poll keeps of its own, such as its entity
+    /// tag and place in the feed, stays as it was (ADR-0054).
+    #[must_use]
+    pub fn received(&self, polled: &Polled, remembered: usize) -> Self {
+        let advanced = self.advanced(polled, remembered);
+        Self {
+            etag: self.etag.clone(),
+            last_modified: self.last_modified.clone(),
+            project: self.project.clone().or(advanced.project),
+            signals: self.signals.clone(),
+            packages: self.packages.clone(),
+            listings: self.listings.clone(),
+            newest: self.newest,
+            sequence: self.sequence,
+            ahead: self.ahead.clone(),
+            ..advanced
         }
     }
 
@@ -301,6 +335,13 @@ impl Cursor {
             *held.entry(proof.maker.as_str()).or_default() += 1;
         }
         held
+    }
+
+    /// The project of the event `identity` it took from another herald's
+    /// feed, where it still sees it.
+    #[must_use]
+    pub fn project_of(&self, identity: &Identity) -> Option<&str> {
+        self.projects.get(identity).map(String::as_str)
     }
 
     /// The proof of the newest envelope of `identity` it took.

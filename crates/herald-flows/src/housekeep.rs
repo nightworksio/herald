@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 use herald_config::Config;
 use herald_core::{DestinationName, Retention, Schedule, Sent, due};
 use herald_ports::{
-    Clock, Deliveries, Http, Inboxes, Keyring, Ledger, Notes, Schedules, Signer, Store,
+    Clock, Deliveries, Http, Inboxes, Keyring, Ledger, Notes, Published, Schedules, Signer, Store,
 };
 use jiff::{SignedDuration, Timestamp};
 
@@ -58,7 +58,14 @@ pub async fn housekeep_announcing<S: Store, C: Clock, G: Signer, H: Http, K: Key
     keys: &Keys<'_, K>,
     run: &str,
 ) -> Result<Housekept, Stop> {
-    let housekept = housekeep(connected, ports.store, ports.clock, keys, &config.retention).await?;
+    let housekept = housekeep(
+        connected,
+        ports.store,
+        ports.clock,
+        keys,
+        (&config.retention, config.federation.keep_audit),
+    )
+    .await?;
     let released = crate::announce_held(config, connected, ports, run).await?;
     Ok(Housekept {
         released,
@@ -72,7 +79,8 @@ pub async fn housekeep_announcing<S: Store, C: Clock, G: Signer, H: Http, K: Key
 /// later left until the next round, after every key in `keys` read longer ago than its refresh
 /// and what the store keeps longer than `retention` says are forgotten: each
 /// delivery's id (ADR-0013), each ledger entry with its deliveries to
-/// followers' inboxes, and each Note.
+/// followers' inboxes, and each Note; and each peer's audit of a day
+/// longer ago than `keep_audit` (ADR-0054).
 ///
 /// # Errors
 ///
@@ -83,12 +91,12 @@ pub async fn housekeep<S: Store, C: Clock, H: Http, K: Keyring>(
     store: &S,
     clock: &C,
     keys: &Keys<'_, K>,
-    retention: &Retention,
+    (retention, keep_audit): (&Retention, SignedDuration),
 ) -> Result<Housekept, Stop> {
     keys.sweep(clock.now())
         .await
         .map_err(|error| Stop::Store(error.to_string()))?;
-    expire(store, clock.now(), retention)
+    expire(store, clock.now(), (retention, keep_audit))
         .await
         .map_err(|error| Stop::Store(error.to_string()))?;
     let schedules = store
@@ -156,7 +164,7 @@ pub async fn housekeep<S: Store, C: Clock, H: Http, K: Keyring>(
 async fn expire<S: Store>(
     store: &S,
     now: Timestamp,
-    retention: &Retention,
+    (retention, keep_audit): (&Retention, SignedDuration),
 ) -> Result<(), herald_ports::StoreError> {
     let before = |kept: SignedDuration| now.checked_sub(kept).unwrap_or(Timestamp::MIN);
     if let Some(deliveries) = store.deliveries() {
@@ -173,6 +181,11 @@ async fn expire<S: Store>(
     }
     if let (Some(notes), Some(kept)) = (store.notes(), retention.notes) {
         notes.expire_notes(before(kept)).await?;
+    }
+    if let Some(published) = store.published() {
+        published
+            .expire_audits(&herald_core::utc_day(before(keep_audit)))
+            .await?;
     }
     Ok(())
 }

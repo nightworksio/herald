@@ -1,12 +1,14 @@
 //! `[federation]`: this herald among other instances, and the keys its
 //! ActivityPub destinations take from it where they leave them out.
 
-use herald_core::Size;
 use herald_core::follows::followed_by;
+use herald_core::{Duration, Size};
 use herald_peers::multibase::ed25519_key;
+use jiff::SignedDuration;
 use toml::de::{DeTable, DeValue};
 
 use super::{Loader, Value};
+use crate::Peer;
 use crate::config::Federation;
 use crate::file::FederationFile;
 
@@ -45,26 +47,8 @@ impl Loader<'_> {
                 "give the domain the keys are published on: domain = \"herald.example\"",
             );
         }
-        let refresh = file
-            .refresh
-            .map_or(Federation::REFRESH, |refresh| refresh.0);
-        if refresh > Federation::REFRESH_ALLOWED {
-            self.error(
-                &span,
-                "federation.refresh",
-                "refresh is at most \"7d\"; shorten it",
-            );
-        }
-        let signed_for = file
-            .signed_for
-            .map_or(Federation::SIGNED_FOR, |signed_for| signed_for.0);
-        if signed_for > Federation::SIGNED_FOR_ALLOWED {
-            self.error(
-                &span,
-                "federation.signed_for",
-                "signed_for is at most \"20m\"; shorten it",
-            );
-        }
+        let [refresh, signed_for, keep_audit, grants_ending] = self.lastings(&span, &file);
+        let ([stranger_rate, replay_rate], refused_nonces) = self.rates(&span, &file);
         let fields = file.fields.map_or(Federation::FIELDS, |fields| fields.0);
         if fields > Federation::FIELDS_ALLOWED {
             self.error(
@@ -100,8 +84,111 @@ impl Loader<'_> {
                 signed_for,
                 fields,
                 revoked,
+                keep_audit,
+                grants_ending,
+                stranger_rate,
+                replay_rate,
+                refused_nonces,
             },
             written,
         )
+    }
+
+    /// `file`'s `stranger_rate` and `replay_rate`, and its `refused_nonces`,
+    /// each within its bound.
+    fn rates(
+        &mut self,
+        span: &std::ops::Range<usize>,
+        file: &FederationFile,
+    ) -> ([herald_core::Rate; 2], u32) {
+        let rates = [
+            ("stranger_rate", file.stranger_rate),
+            ("replay_rate", file.replay_rate),
+        ]
+        .map(|(key, rate)| {
+            let rate = rate.unwrap_or(Peer::RATE);
+            if rate.exceeds(&Peer::RATE_ALLOWED) {
+                self.error(
+                    span,
+                    &format!("federation.{key}"),
+                    format!("{key} is at most \"{}\"; lower it", Peer::RATE_ALLOWED),
+                );
+            }
+            rate
+        });
+        let refused_nonces = file.refused_nonces.unwrap_or(Federation::REFUSED_NONCES);
+        if refused_nonces > Federation::REFUSED_NONCES_ALLOWED {
+            self.error(
+                span,
+                "federation.refused_nonces",
+                format!(
+                    "refused_nonces is at most {}; lower it",
+                    Federation::REFUSED_NONCES_ALLOWED
+                ),
+            );
+        }
+        (rates, refused_nonces)
+    }
+
+    /// How long `file`'s `refresh`, `signed_for`, `keep_audit` and
+    /// `grants_ending` last, each within its bounds.
+    fn lastings(
+        &mut self,
+        span: &std::ops::Range<usize>,
+        file: &FederationFile,
+    ) -> [SignedDuration; 4] {
+        let span_at = |key: &str| (span.clone(), key.to_owned());
+        let refresh = self.lasting(
+            span_at("refresh"),
+            file.refresh,
+            (Federation::REFRESH, Federation::REFRESH_ALLOWED, "7d"),
+        );
+        let signed_for = self.lasting(
+            span_at("signed_for"),
+            file.signed_for,
+            (
+                Federation::SIGNED_FOR,
+                Federation::SIGNED_FOR_ALLOWED,
+                "20m",
+            ),
+        );
+        let keep_audit = self.lasting(
+            span_at("keep_audit"),
+            file.keep_audit,
+            (
+                Federation::KEEP_AUDIT,
+                Federation::KEEP_AUDIT_ALLOWED,
+                "365d",
+            ),
+        );
+        let grants_ending = self.lasting(
+            span_at("grants_ending"),
+            file.grants_ending,
+            (
+                Federation::GRANTS_ENDING,
+                Federation::GRANTS_ENDING_ALLOWED,
+                "90d",
+            ),
+        );
+        [refresh, signed_for, keep_audit, grants_ending]
+    }
+
+    /// How long `[federation]`'s `key` lasts, as `written` or else its
+    /// default, refused past its longest, written as `most`.
+    fn lasting(
+        &mut self,
+        (span, key): (std::ops::Range<usize>, String),
+        written: Option<Duration>,
+        (default, longest, most): (SignedDuration, SignedDuration, &str),
+    ) -> SignedDuration {
+        let lasting = written.map_or(default, |written| written.0);
+        if lasting > longest {
+            self.error(
+                &span,
+                &format!("federation.{key}"),
+                format!("{key} is at most \"{most}\"; shorten it"),
+            );
+        }
+        lasting
     }
 }

@@ -130,12 +130,15 @@ fn a_repository_source_announces_as_its_repository_and_a_catalog_names_no_projec
 fn an_oci_cursor_remembers_every_tag_each_as_long_as_its_identity_may_grow() {
     let one = OciSource::new(of("https://registry.example", "acme/app"));
     assert_eq!(
-        one.remembers(),
+        one.remembers(0),
         Some(Remembers {
             identities: 10_000,
             each: "registry.example".len() + 1 + "acme/app".len() + 1 + 128 + 5,
             key: "most_tags",
             bound: Bound::Default,
+            per: 1,
+            beside: 0,
+            besides: &[],
         })
     );
     let hub = OciSource::new(OciOptions {
@@ -143,17 +146,20 @@ fn an_oci_cursor_remembers_every_tag_each_as_long_as_its_identity_may_grow() {
         ..of("https://registry-1.docker.io", "caddy")
     });
     assert_eq!(
-        hub.remembers(),
+        hub.remembers(0),
         Some(Remembers {
             identities: 20_000,
             each: "docker.io".len() + 1 + "library/caddy".len() + 1 + 128 + 5,
             key: "remembered",
             bound: Bound::Named,
+            per: 1,
+            beside: 0,
+            besides: &[],
         })
     );
     let catalog = OciSource::new(catalogued("https://registry.example"));
     assert_eq!(
-        catalog.remembers().map(|remembers| remembers.each),
+        catalog.remembers(0).map(|remembers| remembers.each),
         Some("registry.example".len() + 1 + 255 + 1 + 128 + 5)
     );
 }
@@ -190,8 +196,9 @@ fn a_repository_is_polled_as_one_and_a_catalog_as_each_repository_at_the_registr
 #[test]
 fn a_source_naming_no_bound_is_fitted_to_its_store_and_one_naming_its_tags_is_named() {
     let unset = OciSource::new(of("https://registry.example", "acme/app"));
-    let fitted = unset.fitted(500).unwrap();
-    let remembers = fitted.remembers().unwrap();
+    let holding = |tags: usize| Remembers::REST + tags * unset.remembers(0).unwrap().each;
+    let fitted = unset.fitted(holding(500) + 1, 0).unwrap();
+    let remembers = fitted.remembers(0).unwrap();
     assert_eq!(remembers.identities, 500);
     assert_eq!(remembers.bound, Bound::Fitted);
     assert_eq!(remembers.key, "most_tags");
@@ -200,12 +207,12 @@ fn a_source_naming_no_bound_is_fitted_to_its_store_and_one_naming_its_tags_is_na
     };
     assert!(source.fitted);
     assert_eq!(source.options.most_tags, std::num::NonZeroUsize::new(500));
-    assert_eq!(unset.fitted(0), None);
-    assert_eq!(unset.fitted(29), None);
-    assert!(unset.fitted(30).is_some());
+    assert_eq!(unset.fitted(0, 0), None);
+    assert_eq!(unset.fitted(holding(30) - 1, 0), None);
+    assert!(unset.fitted(holding(30), 0).is_some());
     let named = OciSource::new(OciOptions {
         most_tags: std::num::NonZeroUsize::new(100),
         ..of("https://registry.example", "acme/app")
     });
-    assert_eq!(named.remembers().unwrap().bound, Bound::Named);
+    assert_eq!(named.remembers(0).unwrap().bound, Bound::Named);
 }

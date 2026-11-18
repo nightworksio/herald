@@ -282,7 +282,8 @@ pub fn load(
     loader.feeds(store.as_ref(), &federation, &mut destinations);
     let (mut sources, source_spans) = loader.sources(sections.sources, read);
     loader.joined((&mut sources, &source_spans), &peers, &federation.revoked);
-    loader.remembering(store.as_ref(), (&mut sources, &source_spans));
+    loader.granted((&sources, &source_spans), &peers);
+    loader.remembering((store.as_ref(), peers.len()), (&mut sources, &source_spans));
     let templates = loader.templates(sections.templates, read);
     let listed = loader.apps(sections.apps, &sources);
     let views = loader.views(sections.views, &sources);

@@ -139,6 +139,16 @@
     "store"
   ],
   "$defs": {
+    "Action": {
+      "description": "What a peer may be granted to do with a resource of this herald.",
+      "oneOf": [
+        {
+          "description": "Push envelopes and tombstones into a `herald` source's inbox.",
+          "type": "string",
+          "const": "push"
+        }
+      ]
+    },
     "ActivityPubRoute": {
       "description": "A route announcing as one of herald's own ActivityPub actors.",
       "type": "object",
@@ -2159,6 +2169,14 @@
           "description": "How many may follow each actor, for an ActivityPub destination that\nnames no `followers`.",
           "$ref": "#/$defs/FollowerCaps"
         },
+        "grants_ending": {
+          "description": "How soon before a grant ends doctor names it: \"7d\" where absent, at\nmost \"90d\" (ADR-0054).",
+          "$ref": "#/$defs/Duration"
+        },
+        "keep_audit": {
+          "description": "How long what each peer asked is kept, by UTC day: \"90d\" where\nabsent, at most \"365d\" (ADR-0054).",
+          "$ref": "#/$defs/Duration"
+        },
         "keys": {
           "description": "The secrets holding the instance's Ed25519 private keys, each as\nPKCS#8 PEM, such as `openssl genpkey -algorithm ed25519` writes,\nnewest first: the first signs, and every one verifies. Rotate by\nwriting a new key before the old one, and leave the old one out once\npeers know the new one.",
           "type": "array",
@@ -2181,6 +2199,16 @@
           "description": "How long a peer may keep the instance's key set before it reads it\nagain; \"1d\" where absent, at most \"7d\".",
           "$ref": "#/$defs/Duration"
         },
+        "refused_nonces": {
+          "description": "How many requests of one peer refused past its rate have their\nnonces kept, counted afresh every 20 minutes, the longest a request\nlives, so none is taken later: 2400 where absent, its rate's default\nover that time, at most 9600. Past it the peer is held, and nothing\nof it is taken until every request it made unkept has expired\n(ADR-0054).",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        },
+        "replay_rate": {
+          "description": "How many requests replaying a nonce one peer already used are kept\nin its audit, counted apart from its own rate so a replay spends\nnone of it: \"120/m\" where absent, at most \"480/m\"; past it herald\nanswers 429 (ADR-0054).",
+          "$ref": "#/$defs/Rate"
+        },
         "revoked": {
           "description": "Peer keys that are never trusted again, each a Multikey such as\n`z6Mk…`, as `herald peer revoke` adds them: a peer pinning one does\nnot load, and a new key set naming one is refused.",
           "type": "array",
@@ -2192,6 +2220,10 @@
         "signed_for": {
           "description": "How long each response of herald's API stays signed, from when it\nis made: \"5m\" where absent, at most \"20m\".",
           "$ref": "#/$defs/Duration"
+        },
+        "stranger_rate": {
+          "description": "How many requests to a source's inbox that no peer's key signs are\nkept in the audit: \"120/m\" where absent, at most \"480/m\"; the rest\nare only logged (ADR-0054).",
+          "$ref": "#/$defs/Rate"
         }
       },
       "additionalProperties": false
@@ -2249,6 +2281,37 @@
       "additionalProperties": false,
       "required": [
         "private_key"
+      ]
+    },
+    "Grant": {
+      "description": "What a peer may do with one resource: its actions, until when, and the\nidentities it may give as they are.",
+      "type": "object",
+      "properties": {
+        "actions": {
+          "description": "What the peer may do, such as `[\"push\"]`.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Action"
+          },
+          "uniqueItems": true
+        },
+        "namespaces": {
+          "description": "The identities the peer may give as they are, each the start of\nidentities up to a '/', such as \"github.com/123456\"; every other is\ntaken as herald/<peer>/<identity>. None where absent.",
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true
+        },
+        "until": {
+          "description": "When the grant ends, in RFC 3339 such as \"2027-01-01T00:00:00Z\" or\nas a TOML datetime with its offset; never where absent.",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "actions"
       ]
     },
     "Group": {
@@ -3357,6 +3420,13 @@
       "description": "Another herald this one trusts: who it is, how it is reached, and what\nbounds it. What it may do sits beside each resource it may do it to.",
       "type": "object",
       "properties": {
+        "grants": {
+          "description": "What the peer may do with this herald's resources, each also granted\non the resource itself, such as `[{ resource = \"sources.upstream\",\nactions = [\"push\"] }]`. None where absent.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/PeerGrant"
+          }
+        },
         "hops": {
           "description": "The most instances an object from the peer may have passed through:\n2 where absent, at most 8.",
           "type": "integer",
@@ -3400,6 +3470,45 @@
       "required": [
         "url",
         "keys"
+      ]
+    },
+    "PeerGrant": {
+      "description": "What a peer may do with one resource of this herald.",
+      "type": "object",
+      "properties": {
+        "actions": {
+          "description": "What the peer may do with it, such as `[\"push\"]`.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Action"
+          },
+          "uniqueItems": true
+        },
+        "namespaces": {
+          "description": "The identities the peer may give as they are, each the start of\nidentities up to a '/'. None where absent.",
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true
+        },
+        "resource": {
+          "description": "The resource, such as \"sources.upstream\", a `herald` source.",
+          "type": "string",
+          "examples": [
+            "sources.upstream"
+          ]
+        },
+        "until": {
+          "description": "When the grant ends, in RFC 3339 such as \"2027-01-01T00:00:00Z\" or\nas a TOML datetime with its offset; never where absent.",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "resource",
+        "actions"
       ]
     },
     "Pin": {
@@ -6235,6 +6344,13 @@
               "type": "integer",
               "format": "uint",
               "minimum": 1
+            },
+            "peers": {
+              "description": "What each peer of `[peers]` may do with the source, by the peer's\nname, such as `{ upstream = { actions = [\"push\"] } }`; the peer's\nown `grants` must name the same. None where absent.",
+              "type": "object",
+              "additionalProperties": {
+                "$ref": "#/$defs/Grant"
+              }
             },
             "tombstones": {
               "description": "How many tombstones of identities it never took it keeps the proof\nof in all, so no older envelope of them is taken again, apart from\nthose of identities it took, which it never forgets: 1000 where\nabsent, and at most 4000. It forgets those taken first.",

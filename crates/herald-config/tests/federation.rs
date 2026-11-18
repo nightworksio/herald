@@ -82,6 +82,11 @@ approve = "manual"
                 signed_for: Federation::SIGNED_FOR,
                 fields: Federation::FIELDS,
                 revoked: Vec::new(),
+                keep_audit: Federation::KEEP_AUDIT,
+                grants_ending: Federation::GRANTS_ENDING,
+                stranger_rate: herald_config::Peer::RATE,
+                replay_rate: herald_config::Peer::RATE,
+                refused_nonces: Federation::REFUSED_NONCES,
             }
         );
         assert_eq!(Federation::FIELDS, 8192);
@@ -119,6 +124,88 @@ approve = "manual"
         assert_eq!(
             read("refresh = \"169h\"").err().as_deref(),
             Some("herald.toml:7:1 federation.refresh: refresh is at most \"7d\"; shorten it")
+        );
+    }
+
+    #[test]
+    fn keep_audit_and_grants_ending_are_read_within_their_bounds() {
+        let read = |set: &str| {
+            loaded(&format!(
+                "\n[federation]\n{set}\n\n[destinations.fedi]\nkind = \"activitypub\"\ndomain = \"herald.example\"\nkey = {{ secret = \"OWN\" }}\n"
+            ))
+        };
+        let set = read("keep_audit = \"365d\"\ngrants_ending = \"90d\"")
+            .unwrap()
+            .federation;
+        assert_eq!(
+            (set.keep_audit, set.grants_ending),
+            (
+                Federation::KEEP_AUDIT_ALLOWED,
+                Federation::GRANTS_ENDING_ALLOWED
+            )
+        );
+        assert_eq!(Federation::KEEP_AUDIT, SignedDuration::from_hours(90 * 24));
+        assert_eq!(
+            Federation::GRANTS_ENDING,
+            SignedDuration::from_hours(7 * 24)
+        );
+        assert_eq!(
+            read("keep_audit = \"366d\"").err().as_deref(),
+            Some(
+                "herald.toml:7:1 federation.keep_audit: keep_audit is at most \"365d\"; shorten it"
+            )
+        );
+        assert_eq!(
+            read("stranger_rate = \"480/m\"")
+                .unwrap()
+                .federation
+                .stranger_rate,
+            herald_config::Peer::RATE_ALLOWED
+        );
+        assert_eq!(
+            read("replay_rate = \"481/m\"").err().as_deref(),
+            Some(
+                "herald.toml:7:1 federation.replay_rate: replay_rate is at most \"480/m\"; lower it"
+            )
+        );
+        let lives = |rate: herald_core::Rate| {
+            let spans = Federation::SIGNED_FOR_ALLOWED.as_secs() / rate.per.length().as_secs();
+            u32::try_from(spans).unwrap() * rate.count.get()
+        };
+        assert_eq!(
+            (
+                Federation::REFUSED_NONCES,
+                Federation::REFUSED_NONCES_ALLOWED
+            ),
+            (
+                lives(herald_config::Peer::RATE),
+                lives(herald_config::Peer::RATE_ALLOWED)
+            )
+        );
+        assert_eq!(
+            read("refused_nonces = 9600")
+                .unwrap()
+                .federation
+                .refused_nonces,
+            9600
+        );
+        assert_eq!(
+            read("refused_nonces = 9601").err().as_deref(),
+            Some(
+                "herald.toml:7:1 federation.refused_nonces: refused_nonces is at most 9600; lower it"
+            )
+        );
+        assert_eq!(
+            read("stranger_rate = \"481/m\"").err().as_deref(),
+            Some(
+                "herald.toml:7:1 federation.stranger_rate: stranger_rate is at most \"480/m\"; lower it"
+            )
+        );
+        assert_eq!(
+            read("grants_ending = \"91d\"").err().as_deref(),
+            Some(
+                "herald.toml:7:1 federation.grants_ending: grants_ending is at most \"90d\"; shorten it"
+            )
         );
     }
 

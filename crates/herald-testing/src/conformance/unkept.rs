@@ -239,6 +239,12 @@ pub(super) async fn deliveries(store: &impl Deliveries, checks: &mut Checks) {
     );
     refused(
         checks,
+        store.seen(GITHUB, "unkept").await,
+        Held::Deliveries,
+        "seen",
+    );
+    refused(
+        checks,
         store.release(GITHUB, "unkept").await,
         Held::Deliveries,
         "release",

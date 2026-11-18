@@ -196,6 +196,10 @@ impl Deliveries for Erased<'_, dyn DynStore + '_> {
         self.0.admit_boxed(namespace, id, at).await
     }
 
+    async fn seen(&self, namespace: &'static str, id: &str) -> Result<bool, StoreError> {
+        self.0.seen_boxed(namespace, id).await
+    }
+
     async fn release(&self, namespace: &'static str, id: &str) -> Result<(), StoreError> {
         self.0.release_boxed(namespace, id).await
     }

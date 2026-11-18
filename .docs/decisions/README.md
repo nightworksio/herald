@@ -66,10 +66,11 @@ no separate requirements document, and there are no requirement IDs.
 | [0046](0046-a-herald-feed-publishes-each-public-event-as-a-proved-envelope-and-the-api-signs-every-answer.md) | A herald feed publishes each public event as a proved envelope, and the API signs every answer | Accepted |
 | [0047](0047-a-peer-is-pinned-by-the-keys-its-operator-confirms.md) | A peer is pinned by the keys its operator confirms | Accepted; extended by [0049](0049-a-herald-source-pulls-a-peer-s-feed-through-the-keys-that-stand-for-it.md) |
 | [0048](0048-a-release-the-forge-deletes-is-withdrawn-from-each-route-that-asks.md) | A release the forge deletes is withdrawn from each route that asks | Accepted; extended by [0049](0049-a-herald-source-pulls-a-peer-s-feed-through-the-keys-that-stand-for-it.md) |
-| [0049](0049-a-herald-source-pulls-a-peer-s-feed-through-the-keys-that-stand-for-it.md) | A herald source pulls a peer's feed through the keys that stand for it | Accepted |
+| [0049](0049-a-herald-source-pulls-a-peer-s-feed-through-the-keys-that-stand-for-it.md) | A herald source pulls a peer's feed through the keys that stand for it | Accepted; extended by [0054](0054-a-peer-pushes-into-a-herald-source-it-is-granted.md) |
 | [0050](0050-a-forge-source-announces-its-ci-runs-and-a-route-matches-by-attributes.md) | A forge source announces its CI runs, and a route matches by attributes | Accepted |
 | [0051](0051-a-forge-source-announces-its-security-alerts-to-private-places.md) | A forge source announces its security alerts to private places | Accepted |
 | [0052](0052-a-forge-source-announces-its-pull-requests.md) | A forge source announces its pull requests | Accepted |
 | [0053](0053-a-forge-source-announces-its-issues.md) | A forge source announces its issues | Accepted |
+| [0054](0054-a-peer-pushes-into-a-herald-source-it-is-granted.md) | A peer pushes into a herald source it is granted | Accepted |
 | [0055](0055-a-report-announces-a-view-of-open-pull-requests-once-a-window.md) | A report announces a view of open pull requests once a window | Accepted |
 | [0056](0056-a-board-keeps-one-post-of-a-report-and-a-rule-nudges-each-pull-request-past-its-stages.md) | A board keeps one post of a report, and a rule nudges each pull request past its stages | Accepted |

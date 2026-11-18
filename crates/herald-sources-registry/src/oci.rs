@@ -113,7 +113,7 @@ impl SourceConfig for OciSource {
             .collect()
     }
 
-    fn remembers(&self) -> Option<Remembers> {
+    fn remembers(&self, _peers: usize) -> Option<Remembers> {
         let repository = self
             .options
             .repository
@@ -133,12 +133,17 @@ impl SourceConfig for OciSource {
             each: self.options.registry_name().len() + 1 + repository + 1 + TAG_BYTES,
             key: self.options.remembering_key(),
             bound,
+            per: 1,
+            beside: 0,
+            besides: &[],
         })
     }
 
-    fn fitted(&self, identities: usize) -> Option<Source> {
+    fn fitted(&self, most: usize, peers: usize) -> Option<Source> {
         let options = OciOptions {
-            most_tags: Some(std::num::NonZeroUsize::new(identities)?),
+            most_tags: Some(std::num::NonZeroUsize::new(
+                self.remembers(peers)?.named(most),
+            )?),
             ..self.options.clone()
         };
         options.check().ok()?;
